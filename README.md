@@ -103,6 +103,44 @@ The number of cells grows quickly with the number of variables and the
 degrees: the implementation is meant for problems with a few variables and
 moderate degrees.
 
+### Assumptions as mathematical statements (`sympy_extras.assumptions`)
+
+An alternative front end to SymPy's assumptions, modelled on Mathematica's
+user interface with Python names. Assumptions are written as ordinary
+statements instead of predicates: `x > 0` for `Q.positive(x)`,
+`element(n, S.Integers)` (that is `Contains(n, S.Integers)`) for
+`Q.integer(n)`, intervals and other sets, combined with `&`, `|`, `~`, and
+quantified with `ForAll` and `Exists`. SymPy's `ask`, `refine`, `simplify`
+and SAT solver are the backends, together with the cylindrical algebraic
+decomposition above for everything polynomial over the reals.
+
+```python
+>>> from sympy import S, Abs, sqrt, Eq
+>>> from sympy.abc import b, c, x, y, n
+>>> from sympy_extras.assumptions import ask, refine, element, resolve, satisfiable, ForAll, Exists
+>>> ask(x**2 - 2*x + 1 >= 0, x > 0)
+True
+>>> ask(x > 1, x > 2)
+True
+>>> refine(Abs(x - 1) + sqrt(x**2), x > 2)
+2*x - 1
+>>> ask(element(n**2 + n, S.Integers), element(n, S.Integers))
+True
+>>> resolve(ForAll(x, x**2 + b*x + c > 0))
+b**2 - 4*c < 0
+>>> resolve(Exists(y, Eq(x**2 + y**2, 1) & (y > x)))
+(x >= -1) & (x < CRootOf(2*x**2 - 1, 1))
+>>> satisfiable((x**2 + y**2 < 1) & (x + y > 1))
+{x: 1/2, y: 2/3}
+
+```
+
+`refine`, `simplify`, `ask`, `assuming`/`global_assumptions`, `resolve`,
+`satisfiable`, `tautology` and `find_instance` correspond to Mathematica's
+`Refine`, `Simplify`, `Assuming`/`$Assumptions`, `Resolve`, `SatisfiableQ`,
+`TautologyQ` and `FindInstance`. See
+[docs/assumptions.md](docs/assumptions.md).
+
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
@@ -126,6 +164,14 @@ subdirectories and use the same conventions as SymPy's tests.
 
 ```
 sympy_extras/
+    assumptions/
+        facts.py             assumptions as statements, translation to predicates and polynomials
+        quantifiers.py       ForAll, Exists, prenex normal form
+        context.py           assuming, global_assumptions
+        ask.py               ask
+        refine.py            refine, simplify
+        resolve.py           resolve (quantifier elimination)
+        sat.py               satisfiable, tautology, find_instance
     polys/
         euclidtools.py       principal subresultant coefficients
         cad/

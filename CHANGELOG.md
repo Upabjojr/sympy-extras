@@ -23,6 +23,12 @@ First release.
   `solution_set`).
 - `sympy_extras.polys.euclidtools`: principal subresultant coefficients of
   two polynomials (`dup_psc`, `dmp_psc`, `psc`).
+- `sympy_extras.assumptions`: assumptions written as mathematical statements
+  (`x > 0`, `element(n, S.Integers)`, `ForAll`, `Exists`) instead of `Q`
+  predicates, with an interface modelled on Mathematica's: `ask`, `refine`,
+  `simplify`, `assuming`/`global_assumptions`, `resolve` (quantifier
+  elimination), `satisfiable`, `tautology` and `find_instance`. SymPy's
+  assumptions system and SAT solver are the backends together with the CAD.
 
 The CAD code was originally proposed to SymPy in the pull requests
 [sympy/sympy#30422](https://github.com/sympy/sympy/pull/30422),

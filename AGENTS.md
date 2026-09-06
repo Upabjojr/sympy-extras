@@ -39,6 +39,15 @@ module into SymPy later.
 ```
 sympy_extras/
     __init__.py              __version__
+    assumptions/             assumptions written as mathematical statements
+        facts.py             element(), normalize(), Facts: translation to predicates and polynomial relations
+        quantifiers.py       ForAll, Exists, prenex()
+        context.py           assuming(), global_assumptions
+        ask.py               ask(): sympy.ask first, then the CAD
+        refine.py            refine(), simplify(): sympy.refine plus CAD-decided handlers
+        resolve.py           resolve(): quantifier elimination through the CAD
+        sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check
+        tests/
     polys/
         euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)
         tests/
@@ -77,6 +86,9 @@ are shipped with the package.
   for exceptions, like SymPy's tests.
 - Keep the code pure Python with SymPy (and mpmath, through SymPy) as the
   only runtime dependency.
+- Do not reimplement what SymPy already does: call SymPy's algorithms
+  (`ask`, `refine`, `simplify`, `satisfiable`, the polynomial routines) and
+  add what is missing on top. Algorithms that need no change stay in SymPy.
 
 ## Running the tests
 
