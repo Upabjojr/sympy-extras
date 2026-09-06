@@ -225,39 +225,44 @@ def _sign_formula(cad, cells, k):
         return not any(covers(conditions, v) for v in false_vectors)
 
     # each true sign vector is a conjunction of sign conditions; merge
-    # conjunctions differing in one factor, then drop redundant conditions
+    # conjunctions differing in one factor, then drop redundant conditions,
+    # and repeat until nothing changes
     implicants = [{i: frozenset([s]) for i, s in enumerate(v)} for v in sorted(true_vectors)]
-    merged = True
-    while merged:
-        merged = False
-        for a in range(len(implicants)):
-            for b in range(a + 1, len(implicants)):
-                p, q = implicants[a], implicants[b]
-                if p.keys() != q.keys():
-                    continue
-                diff = [i for i in p if p[i] != q[i]]
-                if len(diff) == 1:
-                    [i] = diff
-                    new = dict(p)
-                    new[i] = p[i] | q[i]
-                    if len(new[i]) == 3:
-                        del new[i]
-                    if consistent(new):
-                        implicants[a] = new
-                        del implicants[b]
-                        merged = True
-                        break
-            if merged:
-                break
-    reduced = []
-    for conditions in implicants:
-        for i in sorted(conditions, reverse=True):
-            trial = dict(conditions)
-            del trial[i]
-            if consistent(trial):
-                conditions = trial
-        if conditions not in reduced:
-            reduced.append(conditions)
+    while True:
+        merged = True
+        while merged:
+            merged = False
+            for a in range(len(implicants)):
+                for b in range(a + 1, len(implicants)):
+                    p, q = implicants[a], implicants[b]
+                    if p.keys() != q.keys():
+                        continue
+                    diff = [i for i in p if p[i] != q[i]]
+                    if len(diff) == 1:
+                        [i] = diff
+                        new = dict(p)
+                        new[i] = p[i] | q[i]
+                        if len(new[i]) == 3:
+                            del new[i]
+                        if consistent(new):
+                            implicants[a] = new
+                            del implicants[b]
+                            merged = True
+                            break
+                if merged:
+                    break
+        reduced = []
+        for conditions in implicants:
+            for i in sorted(conditions, reverse=True):
+                trial = dict(conditions)
+                del trial[i]
+                if consistent(trial):
+                    conditions = trial
+            if conditions not in reduced:
+                reduced.append(conditions)
+        if reduced == implicants:
+            break
+        implicants = reduced
     # drop implicants whose true cells are all covered by the others
     def covered(conditions):
         return {v for v in true_vectors if covers(conditions, v)}
@@ -279,6 +284,31 @@ def _sign_formula(cad, cells, k):
                  for i, allowed in sorted(conditions.items())]
         terms.append(And(*atoms))
     return Or(*terms)
+
+
+def truth_tables(formulas, gens, method=None):
+    """Truth values of several quantifier-free formulas on the cells of a
+    single decomposition sign-invariant for the polynomials of all of them.
+
+    Returns ``(cells, tables)`` where ``cells`` are the cells of
+    `\\mathbb{R}^n` and ``tables[i][j]`` is the truth value of
+    ``formulas[i]`` on ``cells[j]``. This is useful to compare formulas or
+    to check implications between them with one decomposition.
+
+    >>> from sympy.abc import x
+    >>> from sympy_extras.polys.cad import truth_tables
+    >>> cells, (a, b) = truth_tables([x > 0, x**3 > 0], [x])
+    >>> [c.point for c in cells]
+    [(-1,), (0,), (1,)]
+    >>> a == b
+    True
+    """
+    gens = [sympify(g) for g in gens]
+    polys, index = [], {}
+    compiled = [_compile(sympify(f), gens, polys, index) for f in formulas]
+    cad = cylindrical_algebraic_decomposition(polys, gens, method=method)
+    tables = [[c(cell.signs) for cell in cad.cells] for c in compiled]
+    return cad.cells, tables
 
 
 def quantifier_elimination(formula, quantifiers=(), free=None, method=None):

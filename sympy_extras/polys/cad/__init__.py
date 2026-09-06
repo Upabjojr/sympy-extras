@@ -14,9 +14,10 @@ from .projection import (projection_sets, mccallum_projection,
 from .samplepoints import SamplePoint
 from .lifting import (cylindrical_algebraic_decomposition, CAD, CADCell,
     NotWellOriented)
-from .qe import quantifier_elimination, decide, sample_points, solution_set
+from .qe import (quantifier_elimination, decide, sample_points, solution_set,
+    truth_tables)
 
 __all__ = ['projection_sets', 'mccallum_projection', 'hong_projection',
     'squarefree_basis', 'SamplePoint', 'cylindrical_algebraic_decomposition',
     'CAD', 'CADCell', 'NotWellOriented', 'quantifier_elimination', 'decide',
-    'sample_points', 'solution_set']
+    'sample_points', 'solution_set', 'truth_tables']
