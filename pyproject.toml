@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sympy-extras"
+dynamic = ["version"]
+description = "Extensions to SymPy: algorithms built on top of SymPy which are not (yet) part of SymPy itself"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Francesco Bonazzi"},
+]
+requires-python = ">=3.9"
+dependencies = [
+    "sympy>=1.14",
+]
+keywords = [
+    "sympy",
+    "computer algebra",
+    "symbolic",
+    "cylindrical algebraic decomposition",
+    "quantifier elimination",
+    "polynomials",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+]
+dev = [
+    "pytest",
+    "build",
+    "twine",
+]
+
+[project.urls]
+Homepage = "https://github.com/Upabjojr/sympy-extras"
+Repository = "https://github.com/Upabjojr/sympy-extras"
+Issues = "https://github.com/Upabjojr/sympy-extras/issues"
+Changelog = "https://github.com/Upabjojr/sympy-extras/blob/master/CHANGELOG.md"
+
+[tool.setuptools.dynamic]
+version = {attr = "sympy_extras.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["sympy_extras*"]
+
+[tool.pytest.ini_options]
+testpaths = ["sympy_extras"]
+addopts = "--doctest-modules -p no:cacheprovider"
