@@ -1,0 +1,2 @@
+include LICENSE README.md AGENTS.md CHANGELOG.md conftest.py
+recursive-include docs *.md
