@@ -141,6 +141,61 @@ b**2 - 4*c < 0
 `TautologyQ` and `FindInstance`. See
 [docs/assumptions.md](docs/assumptions.md).
 
+### Karr's algorithm for summation (`sympy_extras.concrete`)
+
+SymPy sums hypergeometric terms with Gosper's algorithm but has no
+implementation of Karr's algorithm, its extension to summands containing
+sums such as harmonic numbers, nested sums and their products with
+factorials and powers. `karr_sum` implements it in a ΠΣ-field built from
+the summand, and decides when no closed form exists in that field.
+
+```python
+>>> from sympy import harmonic, factorial
+>>> from sympy.abc import k, n
+>>> from sympy_extras.concrete import karr_sum, summation
+>>> karr_sum(harmonic(k)**2, (k, 1, n))
+n*harmonic(n)**2 - 2*n*harmonic(n) + 2*n + harmonic(n)**2 - harmonic(n)
+>>> karr_sum(harmonic(k)/k, (k, 1, n))
+(harmonic(n)**2 + harmonic(n, 2))/2
+>>> karr_sum(k*factorial(k), (k, 1, n))
+n*factorial(n) + factorial(n) - 1
+>>> karr_sum(2**k/k, (k, 1, n)) is None
+True
+
+```
+
+`summation` runs SymPy's summation first and Karr's algorithm on what is
+left. See [docs/karr.md](docs/karr.md).
+
+### Polynomial ideals and the Gröbner walk (`sympy_extras.polys.ideals`)
+
+SymPy computes Gröbner bases and converts them with FGLM for
+zero-dimensional ideals, but its ideal class leaves saturation, radicals,
+primality and dimension unimplemented. The `Ideal` class adds elimination
+ideals (with hashable block orders, which SymPy's product orders are not),
+intersections, quotients, saturations, radical membership, the Krull
+dimension, Hilbert series and polynomial, the degree, and for
+zero-dimensional ideals the standard monomials, multiplication matrices,
+the radical and the tests for radical, prime and maximal ideals. The
+Gröbner walk converts bases between orders for ideals of any dimension.
+
+```python
+>>> from sympy.abc import x, y, z, t
+>>> from sympy_extras.polys.ideals import Ideal
+>>> I = Ideal([x*z - y**2, x**2 - y*z], x, y, z)
+>>> I.dimension(), I.degree(), I.hilbert_series(t)
+(1, 4, (t**2 + 2*t + 1)/(1 - t))
+>>> I.saturate(Ideal([y], x, y, z))
+Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)
+>>> [p.as_expr() for p in I.change_order('lex')]
+[x**2 - y*z, x*y**2 - y*z**2, x*z - y**2, y**4 - y*z**3]
+>>> Ideal([x**2 + y**2 - 1, x - y**2], x, y).is_maximal()
+True
+
+```
+
+See [docs/ideals.md](docs/ideals.md).
+
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
@@ -172,8 +227,14 @@ sympy_extras/
         refine.py            refine, simplify
         resolve.py           resolve (quantifier elimination)
         sat.py               satisfiable, tautology, find_instance
+    concrete/
+        pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
+        karr.py              karr_sum, karr_term, summation
     polys/
         euclidtools.py       principal subresultant coefficients
+        ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
+        groebnerwalk.py      Gröbner walk (order conversion for any ideal)
+        orderings.py         WeightOrder, BlockOrder
         cad/
             projection.py    projection operators (McCallum, Hong)
             samplepoints.py  exact real algebraic sample points

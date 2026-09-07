@@ -48,8 +48,15 @@ sympy_extras/
         resolve.py           resolve(): quantifier elimination through the CAD
         sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check
         tests/
+    concrete/                summation algorithms extending sympy.concrete
+        pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver
+        karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation
+        tests/
     polys/
         euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)
+        ideals.py            Ideal: operations and invariants on top of sympy.groebner
+        groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
+        orderings.py         WeightOrder, BlockOrder, elimination_order (hashable monomial orders)
         tests/
         cad/                 cylindrical algebraic decomposition
             projection.py    projection operators (McCallum, Hong), projection_sets
