@@ -13,9 +13,14 @@ where `x` is assumed to lie is found from calculus:
    certified numerical evaluation (the value is computed with a margin
    over its error bound before its sign is trusted);
 3. when the zeros cannot be found, interval arithmetic (SymPy's
-   ``AccumBounds``) bounds `f` on the set, and monotonicity is tried: if
-   the sign of `f'` is constant on the set (found by the same procedure),
-   `f` is monotone and its sign follows from its limits at the endpoints.
+   ``AccumBounds``) bounds `f` on the set, the critical points of `f'`
+   split the set into monotone pieces whose signs follow from the limits
+   at the ends, and finally the zeros are isolated by bisection with
+   rigorous interval arithmetic (:mod:`sympy_extras.assumptions.intervals`).
+
+Expressions of several variables are handled on the box of their
+assumptions by branch and bound with interval arithmetic, by monotonicity
+in every variable, or through the range of a single inner argument.
 
 Every answer is a proof modulo the correctness of ``solveset`` and
 ``continuous_domain``; the undecided cases give ``None``.
@@ -27,6 +32,8 @@ from typing import Optional
 from sympy.calculus.util import continuous_domain
 from sympy.calculus.accumulationbounds import AccumBounds
 from sympy.core.expr import Expr
+from sympy.core.function import count_ops
+from sympy.core.traversal import preorder_traversal
 from sympy.core.numbers import Rational, Float
 from sympy.core.relational import Relational, Eq, Ne, Gt, Lt, Ge, Le
 from sympy.core.singleton import S
@@ -44,8 +51,9 @@ from sympy_extras.polys.cad import solution_set
 from sympy_extras.settings import settings
 
 from .facts import Facts, to_polynomial
+from .intervals import Box, Openness, signs_on_box, corner_signs, range_on_box, monotone_range, isolate_signs
 
-__all__ = ['certified_sign', 'domain_of', 'sign_on', 'decide_relational']
+__all__ = ['certified_sign', 'domain_of', 'sign_on', 'signs_multivariate', 'box_of', 'decide_relational']
 
 #: the possible signs of an expression on a set
 Signs = frozenset[Sign]
@@ -233,7 +241,14 @@ def sign_on(f: Expr, x: Symbol, domain: Set, depth: int = 1) -> Optional[Signs]:
         monotone = _signs_from_monotonicity(f, x, pieces, depth)
         if monotone is not None:
             return monotone
-    return bounded
+    # certified root isolation by interval arithmetic
+    isolated: set[Sign] = set()
+    for piece in pieces:
+        part = isolate_signs(f, x, piece)
+        if part is None:
+            return bounded
+        isolated.update(part)
+    return frozenset(isolated)
 
 
 def _signs_from_bounds(f: Expr, x: Symbol, pieces: list[Interval]) -> Optional[Signs]:
@@ -407,6 +422,80 @@ def _signs_from_monotonicity(f: Expr, x: Symbol, pieces: list[Interval], depth: 
     return frozenset(signs)
 
 
+def box_of(symbols: list[Symbol], facts: Facts) -> Optional[tuple[Box, Openness]]:
+    """The box of the values of the symbols allowed by the facts which
+    concern one symbol at a time (the hull of the pieces), and for every
+    symbol whether the range is open at each end; ``None`` when a symbol
+    is not known to be real."""
+    box: Box = {}
+    openness: Openness = {}
+    for v in symbols:
+        domain = domain_of(v, facts)
+        if domain is None:
+            return None
+        pieces = _pieces(domain)
+        if not pieces:
+            return None
+        first = min(pieces, key=lambda p: as_expr(p.start).evalf(20))
+        last = max(pieces, key=lambda p: as_expr(p.end).evalf(20))
+        box[v] = (as_expr(first.start), as_expr(last.end))
+        openness[v] = (bool(first.left_open), bool(last.right_open))
+    return box, openness
+
+
+def _single_argument(f: Expr, symbols: set[Symbol]) -> Optional[tuple[Expr, Expr, Symbol]]:
+    """When ``f`` depends on the variables only through one subexpression
+    ``u``: ``(F, u, v)`` with ``f = F(v)`` at ``v = u``."""
+    v = Symbol('v', real=True)
+    candidates = [e for e in preorder_traversal(f) if isinstance(e, Expr) and e is not f
+                  and free_symbols(e) == symbols and not isinstance(e, Symbol)]
+    for u in sorted(candidates, key=lambda e: -int(count_ops(e))):
+        F = as_expr(f.xreplace({u: v}))
+        if free_symbols(F) == {v}:
+            return F, as_expr(u), v
+    return None
+
+
+def signs_multivariate(f: Expr, symbols: list[Symbol], facts: Facts) -> Optional[Signs]:
+    """The signs of an expression of several real variables on the box of
+    their assumptions: branch and bound with interval arithmetic,
+    monotonicity in every variable (extreme values at the corners), and the
+    range of a single inner argument analysed as a univariate problem."""
+    found = box_of(symbols, facts)
+    if found is None:
+        return None
+    box, openness = found
+
+    def partial_sign(derivative: Expr) -> Optional[Signs]:
+        # a partial derivative of one variable is analysed exactly on the
+        # (possibly open) domain of that variable; otherwise on the box
+        inner = free_symbols(derivative)
+        if not inner:
+            s = certified_sign(derivative)
+            return None if s is None else frozenset([s])
+        if len(inner) == 1:
+            [w] = inner
+            domain = domain_of(w, facts)
+            return sign_on(derivative, w, domain, 0) if domain is not None else None
+        return signs_on_box(derivative, box, weak=True)
+
+    signs = corner_signs(f, box, openness, partial_sign)
+    if signs is not None:
+        return signs
+    signs = signs_on_box(f, box)
+    if signs is not None:
+        return signs
+    single = _single_argument(f, set(symbols))
+    if single is not None:
+        F, u, v = single
+        rng = monotone_range(u, box, openness, partial_sign)
+        if rng is None:
+            rng = range_on_box(u, box)
+        if rng is not None:
+            return sign_on(F, v, rng)
+    return None
+
+
 def decide_relational(atom: Relational, facts: Facts) -> Truth:
     """Truth of a relation between expressions of one real variable under
     the facts, by the sign analysis of the difference of its sides.
@@ -425,16 +514,25 @@ def decide_relational(atom: Relational, facts: Facts) -> Truth:
     sin(x)
     >>> ask(x*exp(x) > 1, x > 1)
     True
+    >>> from sympy.abc import y
+    >>> ask(exp(x) + y > 1, (x > 0) & (y > 0))
+    True
+    >>> ask(sin(x*y) > 0, (x > 0) & (x < 1) & (y > 0) & (y < 3))
+    True
     """
     symbols = free_symbols(atom)
-    if len(symbols) != 1:
-        return None
-    [x] = symbols
-    domain = domain_of(x, facts)
-    if domain is None or isinstance(domain, EmptySet):
+    if not symbols:
         return None
     f = as_expr(atom.lhs - atom.rhs)
-    signs = sign_on(f, x, domain)
+    signs: Optional[Signs]
+    if len(symbols) == 1:
+        [x] = symbols
+        domain = domain_of(x, facts)
+        if domain is None or isinstance(domain, EmptySet):
+            return None
+        signs = sign_on(f, x, domain)
+    else:
+        signs = signs_multivariate(f, sorted(symbols, key=lambda v: v.name), facts)
     if signs is None:
         return None
     kind = type(atom)

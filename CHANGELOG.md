@@ -57,6 +57,16 @@ First release.
   the endpoints; constants signed exactly or by certified numerical
   evaluation), used by `ask` and so by `refine`, `simplify` and `solve`:
   `refine(Abs(sin(x)), (x > 0) & (x < pi))` is `sin(x)`.
+- `sympy_extras.assumptions.intervals`: rigorous interval arithmetic
+  (mpmath) on boxes: branch and bound, monotonicity in every variable with
+  the extreme values at the corners, ranges of inner arguments, and
+  certified isolation of the zeros of a function of one variable;
+  `sympy_extras.assumptions.bounds`: elementary functions replaced by
+  variables constrained by polynomial bounds (MetiTarski's method) and
+  decided by the CAD. Both are used by `ask`, hence by `refine`,
+  `simplify` and `solve`, for expressions of several variables and for
+  statements the univariate analysis cannot settle: `ask(sin(x) < x, x > 0)`,
+  `refine(Abs(sin(x*y)), 0 < x < 1, 0 < y < 3)`.
 - `sympy_extras.settings`: global settings `numerical_checks` (the
   certified numerical evaluation in `ask`/`solve`, on by default),
   `precision` and `timeout` (the default time limit of the solvers), with

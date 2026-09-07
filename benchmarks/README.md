@@ -70,6 +70,10 @@ point satisfying the random assumption was found).
 intervals, `ask(f > 0)` and `refine(Abs(f))` against dense sampling):
 0 wrong, 15 undecided (a sign change inside the interval, where `None` is
 the right answer, or the zeros out of reach of `solveset`).
+`logic_random.py --bivariate 30 --seed 21 --timeout 60` (random
+expressions of two variables on random boxes, decided by interval branch
+and bound, monotonicity at the corners, the range of an inner argument
+and the polynomial bounds handed to the CAD): 0 wrong, 15 undecided.
 
 `qf_nra.py --sample 20 --seed 2 --timeout 20 --max-variables 3`: no
 wrong answer; `satisfiable` decided 8 of 20 (12 undecided within the

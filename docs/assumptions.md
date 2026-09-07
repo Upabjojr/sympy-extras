@@ -90,7 +90,7 @@ variables.
    `ask(x*exp(x) > 1, x > 1)` `True`.
 
 ```python
->>> from sympy import S, sin, exp, log, Abs, pi
+>>> from sympy import S, sin, exp, log, Abs, Max, pi
 >>> from sympy.abc import x
 >>> from sympy_extras.assumptions import ask, refine
 >>> ask(sin(x) > 0, (x > 0) & (x < pi))
@@ -99,6 +99,38 @@ True
 exp(x) + log(x) - 2
 >>> ask(exp(x) >= x + 1, domain=S.Reals)
 True
+
+```
+
+4. **Several variables and slack** (`sympy_extras.assumptions.intervals`,
+   `sympy_extras.assumptions.bounds`). For expressions of several real
+   variables the box of their assumptions is analysed with rigorous
+   interval arithmetic (mpmath's, which rounds outwards): branch and bound
+   subdivides the box until every piece has a definite sign, monotonicity
+   in every variable (each partial derivative of definite sign) puts the
+   extreme values at two corners, and an expression depending on the
+   variables through a single inner argument is treated as a univariate
+   problem on the range of that argument. In one variable, the zeros are
+   isolated by bisection with interval arithmetic when `solveset` cannot
+   list them. Finally, elementary functions of polynomial arguments are
+   replaced by variables constrained by classical polynomial bounds
+   (`t >= 1 + u` for `t = exp(u)`, `t**2 = u, t >= 0` for `sqrt(u)`,
+   Taylor bounds of `sin`, `cos`, `log`, `atan`, ...; the method of
+   MetiTarski) and the cylindrical algebraic decomposition decides whether
+   the relation holds for every allowed value of the new variables. All
+   of this is sound; statements which are tight at a point (such as
+   `exp(x) >= 1 + x` at `x = 0`) are only reached through the exact bounds.
+
+```python
+>>> from sympy.abc import y
+>>> ask(exp(x) + y > 1, (x > 0) & (y > 0))
+True
+>>> refine(Abs(sin(x*y)), (x > 0) & (x < 1) & (y > 0) & (y < 3))
+sin(x*y)
+>>> ask(sin(x) < x, x > 0)
+True
+>>> refine(Max(exp(x), 1 + x), domain=S.Reals)
+exp(x)
 
 ```
 

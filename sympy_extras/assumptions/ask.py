@@ -5,6 +5,9 @@ from typing import Iterable, Optional, Union
 
 from sympy.assumptions import Q, ask as _sympy_ask
 from sympy.core.basic import Basic
+from sympy.core.function import Function
+from sympy.core.singleton import S
+from sympy.sets.contains import Contains
 from sympy.core.relational import Relational, Gt, Lt, Ge, Le
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or,
@@ -86,10 +89,37 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
             return bool(value)
     value = _cad_ask(atom, facts)
     if value is None and isinstance(atom, Relational):
-        # expressions of one real variable beyond polynomials: calculus
+        # expressions beyond polynomials: calculus and interval arithmetic
         from .analysis import decide_relational
         value = decide_relational(atom, facts)
+    if value is None:
+        value = _bounded_cad_ask(atom, facts)
     return value
+
+
+def _bounded_cad_ask(formula: Boolean, facts: Facts) -> Truth:
+    """Decide a formula with elementary functions by replacing them with
+    variables constrained by polynomial bounds (see
+    :mod:`sympy_extras.assumptions.bounds`) and asking the CAD whether the
+    formula holds, or fails, for every allowed value of the new
+    variables."""
+    from .bounds import polynomial_abstraction
+    if not formula.atoms(Function):
+        return None
+    abstraction = polynomial_abstraction(normalize(formula), facts.real)
+    if abstraction is None:
+        return None
+    try:
+        extended = Facts(facts.conjuncts + abstraction.constraints
+                         + [Contains(t, S.Reals) for t in abstraction.variables])
+    except (ValueError, TypeError):
+        return None
+    if len(free_symbols(extended.polynomial) | free_symbols(abstraction.formula)) > 3:
+        return None
+    from sympy_extras._timeout import attempt
+    from sympy_extras.settings import settings
+    limit = None if settings.timeout is None else min(settings.timeout, 5.0)
+    return attempt(lambda: _cad_ask(normalize(abstraction.formula), extended), limit)
 
 
 def _evaluate(formula: Boolean, facts: Facts) -> Truth:
@@ -105,6 +135,8 @@ def _evaluate(formula: Boolean, facts: Facts) -> Truth:
         value = _combine(formula, values)
         if value is None:
             value = _cad_ask(formula, facts)
+        if value is None:
+            value = _bounded_cad_ask(formula, facts)
         return value
     return _evaluate_atom(formula, facts)
 

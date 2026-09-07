@@ -161,6 +161,55 @@ def check_transcendental(rng: random.Random, cases: int, timeout: float) -> tupl
     return problems, undecided
 
 
+def random_bivariate(rng: random.Random) -> Expr:
+    pieces = [x, y, x*y, x + y, exp(x), exp(-y), log(x + 6), sin(x*y), cos(x + y), sqrt(x + 6), atan(y)]
+    terms = rng.sample(pieces, rng.randint(2, 3))
+    result: Expr = S.Zero
+    for term in terms:
+        result = result + rng.choice([-3, -2, -1, 1, 2, 3])*term
+    return result + rng.randint(-4, 4)
+
+
+def check_bivariate(rng: random.Random, cases: int, timeout: float) -> tuple[int, int]:
+    """``ask(f > 0)`` and ``refine(Abs(f))`` for random non-polynomial
+    ``f`` of two variables on random boxes, against sampling on a grid.
+    Returns (problems, undecided)."""
+    problems = 0
+    undecided = 0
+    for case in range(cases):
+        f = random_bivariate(rng)
+        box = {}
+        for v in (x, y):
+            lo = Rational(rng.randint(-4, 2), rng.randint(1, 2))
+            box[v] = (lo, lo + Rational(rng.randint(1, 6), rng.randint(1, 2)))
+        assumption = as_boolean(And(*[And(v > lo, v < hi) for v, (lo, hi) in box.items()]))
+        samples: list[Point] = []
+        for i in range(1, 20):
+            for j in range(1, 20):
+                samples.append({x: box[x][0] + (box[x][1] - box[x][0])*Rational(i, 20),
+                                y: box[y][0] + (box[y][1] - box[y][0])*Rational(j, 20)})
+        values = [N(f.subs(p), 30) for p in samples]
+        positive = all(v > 0 for v in values)
+        label = "bivariate %d: %s on %s" % (case, f, assumption)
+        answer = attempt(lambda: ask(f > 0, assumption), timeout)
+        if answer is True and not positive or answer is False and not all(v <= 0 for v in values):
+            problems += 1
+            print("WRONG ask", label, "->", answer)
+        elif answer is None:
+            undecided += 1
+        refined = attempt(lambda: refine(Abs(f), assumption), timeout)
+        if refined is None:
+            undecided += 1
+            continue
+        for p, v in zip(samples[::37], values[::37]):
+            w = N(refined.subs(p), 30)
+            if abs(w - abs(v)) > Rational(1, 10)**20:
+                problems += 1
+                print("WRONG refine", label, "->", refined, "at", p)
+                break
+    return problems, undecided
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cases', type=int, default=100)
@@ -169,6 +218,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument('--timeout', type=float, default=30.0)
     parser.add_argument('--transcendental', type=int, default=0,
                         help="number of random non-polynomial expressions of one variable to check as well")
+    parser.add_argument('--bivariate', type=int, default=0,
+                        help="number of random non-polynomial expressions of two variables to check as well")
     args = parser.parse_args(argv)
     rng = random.Random(args.seed)
     variables = [x, y][:args.variables]
@@ -178,6 +229,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         wrong, undecided = check_transcendental(rng, args.transcendental, args.timeout)
         problems += wrong
         print("transcendental cases:", args.transcendental, "wrong:", wrong, "undecided:", undecided)
+    if args.bivariate:
+        wrong, undecided = check_bivariate(rng, args.bivariate, args.timeout)
+        problems += wrong
+        print("bivariate cases:", args.bivariate, "wrong:", wrong, "undecided:", undecided)
     for case in range(args.cases):
         formula = random_formula(rng, variables, rng.randint(1, 3))
         assumption: Boolean = true if rng.random() < 0.4 else random_atom(rng, variables)
