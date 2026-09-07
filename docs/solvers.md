@@ -1,4 +1,4 @@
-# Differential equations: Lie point symmetries, similarity reductions, and solving with assumptions
+# Differential equations: Lie point symmetries, linear equations, first order PDEs, and solving with assumptions
 
 Modules: `sympy_extras.solvers` and `sympy_extras.assumptions.solve`.
 
@@ -107,6 +107,68 @@ many, by the completion procedure of Contejean and Devie
 {pi/2}
 >>> solve(Eq(3*x + 5*y, 22), [x, y], (x >= 0) & (y >= 0), domain=S.Integers)
 {(4, 2)}
+
+```
+
+## Linear ODEs with rational coefficients
+
+`sympy_extras.solvers.linear_ode` and `sympy_extras.solvers.kovacic` add
+the algorithms behind Mathematica's `DSolve` for linear equations that
+SymPy lacks:
+
+- **Kovacic's algorithm** (`liouvillian_solution`, `dsolve_kovacic`): a
+  decision procedure for the Liouvillian solutions of second order
+  equations `y'' + p y' + q y = 0` with rational `p, q`, in its three
+  cases (rational, quadratic and finite-group `omega = z'/z`), with the
+  second solution by reduction of order. SymPy's rational Riccati solver
+  covers only the first case (and misses equations without finite
+  poles).
+- **Polynomial, rational and hyperexponential solutions** of equations
+  of any order with polynomial coefficients (`polynomial_solutions`,
+  `rational_solutions`, `hyperexponential_solutions`): degree bounds
+  from the indicial polynomial at infinity, denominator bounds from the
+  indicial polynomials at the singular points (Abramov, Bronstein,
+  Petkovšek; Singer), and for Fuchsian equations the ansatz
+  `prod (x - c)**e_c * P(x)` with the local exponents (Beke's first
+  order factors).
+- **Reduction of order** (`reduce_order_linear`) by a known solution,
+  and `dsolve_linear` which chains all of the above with SymPy's
+  `dsolve` for the reduced equations.
+
+```python
+>>> from sympy import Function, Rational
+>>> from sympy_extras.solvers import dsolve_linear, dsolve_kovacic, liouvillian_solution
+>>> y = Function('y')(x)
+>>> dsolve_linear(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y)
+[x**2 + 2*x + 2, exp(x)]
+>>> dsolve_kovacic(y.diff(x, 2) + y.diff(x)/x + (1 - 1/(4*x**2))*y, y)
+[exp(I*x)/sqrt(x), exp(-I*x)/sqrt(x)]
+>>> liouvillian_solution(1/x - Rational(3, 16)/x**2, x).case
+2
+>>> liouvillian_solution(x, x) is None
+True
+
+```
+
+## First order nonlinear PDEs
+
+`sympy_extras.solvers.charpit.complete_integral` finds complete
+integrals (solutions with two arbitrary constants) of
+`F(x, y, u, u_x, u_y) = 0` by Charpit's method: the standard first
+integrals of the characteristic system (`F(p, q) = 0`, `F(u, p, q) = 0`,
+separable and Clairaut equations, `p = a` or `q = a` when they are first
+integrals) and the integration of `du = p dx + q dy`. SymPy's `pdsolve`
+handles first order linear equations only.
+
+```python
+>>> from sympy import symbols
+>>> from sympy_extras.solvers import complete_integral
+>>> x, y = symbols('x y')
+>>> u = Function('u')(x, y)
+>>> complete_integral(u.diff(x)*u.diff(y) - 1, u)
+Eq(u(x, y), a*x + b + y/a)
+>>> complete_integral(Eq(u, u.diff(x)*x + u.diff(y)*y + u.diff(x)*u.diff(y)), u)
+Eq(u(x, y), a*b + a*x + b*y)
 
 ```
 

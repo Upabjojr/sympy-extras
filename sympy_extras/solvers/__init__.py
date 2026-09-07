@@ -11,6 +11,10 @@ from .integers import (hermite_normal_form_with_transform, linear_diophantine_sy
     hilbert_basis, minimal_nonnegative_solutions, cooper, presburger_quantifier_elimination,
     is_presburger)
 from .transcendental import solve_transcendental, polynomialize
+from .kovacic import liouvillian_solution, dsolve_kovacic, KovacicSolution
+from .linear_ode import (LinearOperator, polynomial_solutions, rational_solutions,
+    hyperexponential_solutions, reduce_order_linear, dsolve_linear)
+from .charpit import complete_integral, check_complete_integral
 
 __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
     'pde_symmetries', 'similarity_reduction', 'pdsolve_lie', 'Reduction',
@@ -18,4 +22,7 @@ __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
     'solve_ode', 'ReducedODE',
     'hermite_normal_form_with_transform', 'linear_diophantine_system', 'hilbert_basis',
     'minimal_nonnegative_solutions', 'cooper', 'presburger_quantifier_elimination',
-    'is_presburger', 'solve_transcendental', 'polynomialize']
+    'is_presburger', 'solve_transcendental', 'polynomialize',
+    'liouvillian_solution', 'dsolve_kovacic', 'KovacicSolution', 'LinearOperator', 'polynomial_solutions',
+    'rational_solutions', 'hyperexponential_solutions', 'reduce_order_linear', 'dsolve_linear',
+    'complete_integral', 'check_complete_integral']

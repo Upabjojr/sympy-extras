@@ -289,6 +289,27 @@ Ne(a, 0)
 
 ```
 
+### Limits and series
+
+`limit` and `series` pass the assumptions on the parameters to SymPy
+and, when a limit still depends on the sign of some expression, compute
+each case compatible with the assumptions (a `Piecewise`, like
+Mathematica's `GenerateConditions`).
+
+```python
+>>> from sympy import exp, oo, sqrt
+>>> from sympy_extras.assumptions import limit, series
+>>> limit(exp(a*x), x, oo, assumptions=a < 0)
+0
+>>> limit(exp(a*x), x, oo)
+Piecewise((oo, a > 0), (1, Eq(a, 0)), (0, a < 0))
+>>> limit(a**x, x, oo, assumptions=(a > 0) & (a < 1))
+0
+>>> series(sqrt(a**2 + x), x, 0, 2, assumptions=a < 0)
+-x/(2*a) - a + O(x**2)
+
+```
+
 ### Satisfiability and instances
 
 `satisfiable` combines SymPy's SAT solver, for the Boolean structure, with

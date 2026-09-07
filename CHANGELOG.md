@@ -12,6 +12,16 @@ First release.
 
 ### Added
 
+- Differential equations, sums, series and limits, after the same
+  implementation notes: `sympy_extras.solvers.kovacic` (Kovacic's
+  algorithm, the three cases), `sympy_extras.solvers.linear_ode`
+  (polynomial, rational and hyperexponential solutions of linear ODEs
+  with polynomial coefficients, first order right factors, reduction of
+  order, `dsolve_linear`), `sympy_extras.solvers.charpit` (complete
+  integrals of first order nonlinear PDEs), `sympy_extras.concrete.zeilberger`
+  (Zeilberger's algorithm, WZ certificates, `zeilberger_sum`),
+  `sympy_extras.assumptions.limit` and `series` (statement assumptions,
+  `Piecewise` case distinctions).
 - Exact equation solving and reduction, after the list of algorithms in
   Mathematica's implementation notes ([docs/reduce.md](docs/reduce.md)):
   `sympy_extras.polys.virtual_substitution` (linear quantifier elimination

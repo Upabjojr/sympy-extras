@@ -6,8 +6,9 @@ Modules: `sympy_extras.assumptions.resolve`, `sympy_extras.assumptions.solve`,
 `sympy_extras.solvers.transcendental`.
 
 Mathematica's notes on its internal implementation list the algorithms
-behind `Solve`, `Reduce` and `Resolve`. The table says where each of them
-lives for SymPy users: in SymPy itself (nothing is duplicated here), in
+behind `Solve`, `Reduce` and `Resolve` (and, further down, `DSolve`,
+`Sum`, `Series` and `Limit`). The tables say where each of them lives for
+SymPy users: in SymPy itself (nothing is duplicated here), in
 sympy-extras, or nowhere yet.
 
 | Algorithm (Mathematica) | SymPy | sympy-extras |
@@ -27,6 +28,26 @@ sympy-extras, or nowhere yet.
 | Binary quadratic Diophantine equations: Hardy–Muskat–Williams, Gauss/Dirichlet/Lagrange (Pell) | `diophantine` (`diop_quadratic`, `diop_DN`) | — |
 | Thue equations, exponential Diophantine equations | — | — (see the issue tracker) |
 | Assumptions in `Simplify`/`Refine`: CAD, simplex/Loos–Weispfenning, Gröbner bases | — | `ask`, `refine`, `simplify` with statement assumptions |
+
+## Differential equations, sums and products, series and limits
+
+The same notes describe `DSolve`, `Sum`/`Product`, `Series` and `Limit`.
+Only what SymPy lacks is implemented here.
+
+| Algorithm (Mathematica) | SymPy | sympy-extras |
+| --- | --- | --- |
+| Linear ODE systems with constant coefficients: matrix exponentials | `dsolve` (`linodesolve`) | — |
+| Second order linear ODEs: Kovacic's algorithm | rational Riccati solutions only (`riccati`) | `solvers.kovacic` (all three cases) |
+| Higher order linear ODEs with rational coefficients: Abramov–Bronstein rational and exponential solutions, factorisation (Bronstein, van Hoeij), reduction of order | — | `solvers.linear_ode`: polynomial, rational and hyperexponential (Fuchsian) solutions, first order right factors, reduction of order |
+| Linear ODEs solved by special functions through Mellin transforms | hints `2nd_hypergeometric`, Bessel, Airy | — (issue tracker) |
+| Linear ODE systems with rational coefficients: Abramov–Bronstein elimination | — | — (issue tracker) |
+| Nonlinear ODEs: Riccati, Bernoulli, Abel, Chini, Clairaut, d'Alembert, exact and integrating factors, Lie symmetries | `dsolve` hints (no Abel, Chini, d'Alembert) | Lie symmetries of any order (`solvers.ode`) |
+| PDEs: separation of variables and symmetry reduction (Göktaş), first order nonlinear complete integrals (Legendre, Euler transformations), Germundsson's trigonometric power methods | `pde_separate`, first order linear `pdsolve` | symmetry reductions (`solvers.pde`), complete integrals by Charpit's method (`solvers.charpit`) |
+| Sums: rational, hypergeometric (Gosper, Zeilberger), q-rational, Adamchik's hypergeometric closed forms, polygamma series by integral representations, Dirichlet series by pattern matching | `summation` (polynomial, rational, Gosper, hypergeometric closed forms) | Karr's algorithm (`concrete.karr`), Zeilberger's algorithm and WZ certificates (`concrete.zeilberger`); q-analogues, polygamma and Dirichlet series: issue tracker |
+| Products: polynomial, rational, q-rational, hypergeometric, periodic classes | `product` (polynomial, rational, hypergeometric) | — |
+| Series by recursive composition of expansions | `series`, `fps`, `ring_series` | — |
+| Limits from series and other methods (exp-log, Gruntz) | `limit` (Gruntz), `limit_seq` | — |
+| Assumptions in limits and series through `Refine`/`Simplify` | Symbol assumptions only | `assumptions.limit`, `assumptions.series` with statement assumptions and case distinctions |
 
 ## Linear quantifier elimination
 

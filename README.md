@@ -276,6 +276,43 @@ ConditionSet(x, a > 0, {log(a)})
 
 ```
 
+### Linear ODEs, first order PDEs, definite sums, limits (`sympy_extras.solvers`, `sympy_extras.concrete`, `sympy_extras.assumptions`)
+
+The algorithms of Mathematica's `DSolve`, `Sum` and `Limit` that SymPy
+lacks (mapping in [docs/reduce.md](docs/reduce.md)): Kovacic's
+algorithm for the Liouvillian solutions of second order linear ODEs (all
+three cases); polynomial, rational and hyperexponential solutions,
+first order right factors and reduction of order for linear ODEs of any
+order with polynomial coefficients (Abramov–Bronstein–Petkovšek,
+Singer, Beke); complete integrals of first order nonlinear PDEs by
+Charpit's method; Zeilberger's algorithm and Wilf–Zeilberger
+certificates for definite hypergeometric sums; limits and series with
+statement assumptions and case distinctions.
+
+```python
+>>> from sympy import Function, binomial, exp, oo, symbols
+>>> from sympy_extras.solvers import dsolve_kovacic, dsolve_linear, complete_integral
+>>> from sympy_extras.concrete import zeilberger_sum, wz_prove
+>>> from sympy_extras.assumptions import limit
+>>> x, y = symbols('x y')
+>>> f = Function('y')(x)
+>>> dsolve_kovacic(f.diff(x, 2) + f.diff(x)/x + (1 - 1/(4*x**2))*f, f)
+[exp(I*x)/sqrt(x), exp(-I*x)/sqrt(x)]
+>>> dsolve_linear(x*f.diff(x, 2) - (x + 2)*f.diff(x) + 2*f, f)
+[x**2 + 2*x + 2, exp(x)]
+>>> u = Function('u')(x, y)
+>>> complete_integral(u.diff(x)*u.diff(y) - 1, u)
+Eq(u(x, y), a*x + b + y/a)
+>>> n, k = symbols('n k', integer=True)
+>>> zeilberger_sum((-1)**k*binomial(2*n, k)**3, (k, 0, 2*n))
+(-1)**n*factorial(3*n)/factorial(n)**3
+>>> wz_prove(binomial(n, k)**2, binomial(2*n, n), n, k)
+True
+>>> limit(exp(a*x), x, oo)
+Piecewise((oo, a > 0), (1, Eq(a, 0)), (0, a < 0))
+
+```
+
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
@@ -308,15 +345,20 @@ sympy_extras/
         resolve.py           resolve (quantifier elimination over the reals, integers, complexes)
         sat.py               satisfiable, tautology, find_instance
         solve.py             solve with assumptions and a domain
+        limits.py            limit and series with assumptions and case distinctions
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation
+        zeilberger.py        Zeilberger's algorithm, WZ certificates, definite sums
     solvers/
         lie.py               jet spaces, prolongation, determining equations, symmetries
         pde.py               pde_symmetries, similarity_reduction, pdsolve_lie
         ode.py               ode_symmetries, canonical_coordinates, reduce_order, dsolve_lie, solve_ode
         integers.py          Hermite normal form, Contejean-Devie, Cooper's algorithm
         transcendental.py    transcendental equations reduced to polynomial ones
+        kovacic.py           Kovacic's algorithm (Liouvillian solutions of second order linear ODEs)
+        linear_ode.py        polynomial, rational, hyperexponential solutions; reduction of order
+        charpit.py           complete integrals of first order nonlinear PDEs
     polys/
         euclidtools.py       principal subresultant coefficients
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals

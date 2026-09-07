@@ -60,7 +60,9 @@ from .refine import refine, simplify
 from .resolve import resolve
 from .sat import satisfiable, tautology, find_instance
 from .solve import solve
+from .limits import limit, series
 
 __all__ = ['element', 'Facts', 'ForAll', 'Exists', 'Quantifier', 'prenex',
     'global_assumptions', 'assuming', 'AssumptionsContext', 'ask', 'refine',
-    'simplify', 'resolve', 'satisfiable', 'tautology', 'find_instance', 'solve']
+    'simplify', 'resolve', 'satisfiable', 'tautology', 'find_instance', 'solve',
+    'limit', 'series']

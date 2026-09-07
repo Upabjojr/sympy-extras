@@ -116,6 +116,34 @@ summand adjoined (`auto=True`); further sequences can be given with
 $\sum H_k^2/k$, for instance, needs the nested sum $\sum_j H_j^{(2)}/j$,
 which is not a harmonic number.
 
+## Definite sums: Zeilberger's algorithm and WZ certificates
+
+`sympy_extras.concrete.zeilberger` adds creative telescoping for
+definite sums of hypergeometric terms `F(n, k)`: a recurrence
+`sum_j a_j(n) S(n + j) = 0` for `S(n) = sum_k F(n, k)` with its rational
+certificate (`zeilberger`), Wilf–Zeilberger certificates proving
+identities `sum_k F(n, k) = f(n)` (`wz_certificate`, `wz_prove`), and
+closed forms of definite sums through the recurrence and SymPy's
+`rsolve` (`zeilberger_sum`). SymPy has Gosper's algorithm for indefinite
+sums and closed forms of hypergeometric functions for some definite
+ones, but no creative telescoping: Dixon's sum and Apéry's numbers get no
+recurrence from `summation`.
+
+```python
+>>> from sympy import binomial, symbols
+>>> from sympy_extras.concrete import zeilberger, zeilberger_sum, wz_prove
+>>> n, k = symbols('n k', integer=True)
+>>> zeilberger(binomial(n, k)**2, n, k)
+Telescoper([-2*(2*n + 1), n + 1], k**2*(2*k - 3*n - 3)/(k - n - 1)**2)
+>>> zeilberger_sum((-1)**k*binomial(2*n, k)**3, (k, 0, 2*n))
+(-1)**n*factorial(3*n)/factorial(n)**3
+>>> zeilberger_sum(binomial(n, k)**2*binomial(n + k, k)**2, (k, 0, n))
+Eq((n + 1)**3*S(n) + (n + 2)**3*S(n + 2) - (2*n + 3)*(17*n**2 + 51*n + 39)*S(n + 1), 0)
+>>> wz_prove(binomial(n, k)**2, binomial(2*n, n), n, k)
+True
+
+```
+
 ## Reference
 
 - `karr_sum(f, (k, a, b), extensions=(), auto=True)`: the definite sum, or

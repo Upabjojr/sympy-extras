@@ -32,6 +32,18 @@ all symmetries verify (about 10 s in total).
 verified, 4 unverified (a solution which `checkodesol` could not confirm
 within the limit), 30 failed, 2 timeouts.
 
+`linear_odes.py --limit 60 --timeout 10` (the first 60 homogeneous linear
+equations with rational coefficients of the Kamke collection, orders 1
+and 2, solved by `dsolve_linear` without SymPy's `dsolve`: rational and
+hyperexponential solutions, Kovacic's algorithm, reduction of order,
+each solution verified by `checkodesol`): 28 verified with a full basis
+of solutions, 32 failed, none wrong or unverified (about 3 min). The
+failures are equations whose solutions are special functions (Bessel,
+Airy, Weber, Whittaker) or which depend on a parameter (`n`, `a`) for
+which Liouvillian solutions exist only at particular values, so that no
+Liouvillian solution exists generically; that is the correct answer of
+Kovacic's algorithm for a symbolic parameter.
+
 `kamke_odes.py --collections kamke2 --limit 40 --timeout 15` (the first 40
 second order equations, almost all linear with special function
 solutions):
