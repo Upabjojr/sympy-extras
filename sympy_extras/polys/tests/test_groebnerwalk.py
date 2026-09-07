@@ -16,6 +16,8 @@ def _check_walk(F, gens, source, target, domain=QQ):
     T = R.clone(order=target)
     expected = groebner([T.from_dict(dict(p)) for p in polys], T)
     assert W == expected, (W, expected)
+    assert groebner_walk(G, R, target, lift='cofactors') == expected
+    raises(ValueError, lambda: groebner_walk(G, R, target, lift='magic'))
     assert is_groebner(W, T) and is_reduced(W, T)
     return W
 

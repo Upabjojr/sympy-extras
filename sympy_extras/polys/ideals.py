@@ -31,8 +31,8 @@ Examples
 >>> I.eliminate([x])
 Ideal([y**4 - y*z**3], y, z)
 
-The variety of ``I`` is a twisted cubic together with a line; saturating
-by ``y`` removes the line:
+The variety of ``I`` consists of three lines through the origin (where
+``x**3 == y**3``) and the ``z`` axis; saturating by ``y`` removes the axis:
 
 >>> I.saturate(Ideal([y], x, y, z))
 Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)
@@ -404,7 +404,8 @@ class Ideal:
         num, den = N, Poly((1 - t)**n, t)
         g = num.gcd(den)
         num, den = num.quo(g), den.quo(g)
-        return num.as_expr()/den.as_expr()
+        # den is a unit times (1 - t)**m; the unit is its value at t = 0
+        return (num.as_expr()/den.eval(0))/(1 - t)**den.degree()
 
     def _hilbert_data(self):
         """``(q, dim)`` with ``q`` the numerator of the Hilbert series
@@ -544,6 +545,37 @@ class Ideal:
         rows = [[columns[j][i] for j in range(len(monoms))] for i in range(len(monoms))]
         return DomainMatrix(rows, (len(monoms), len(monoms)), R.domain)
 
+    def minimal_polynomial(self, f, y=None):
+        """The monic polynomial ``p`` of least degree with ``p(f)`` in the
+        ideal (zero-dimensional ideals): the minimal polynomial of
+        multiplication by ``f`` on $K[x]/I$ applied to the class of 1, as a
+        ``Poly`` in ``y``. It generates the ideal of the polynomials of
+        ``f`` which belong to ``I``.
+
+        >>> from sympy.abc import x, y, z
+        >>> from sympy_extras.polys.ideals import Ideal
+        >>> Ideal([x**2 - 2, y**2 - 3], x, y).minimal_polynomial(x + y, z)
+        Poly(z**4 - 10*z**2 + 1, z, domain='QQ')
+        """
+        self._require_zero_dimensional()
+        y = Symbol('y') if y is None else sympify(y)
+        M = self._multiplication_matrix(f)
+        K = M.domain
+        dim = M.shape[0]
+        # Krylov sequence of the class of 1 (the first standard monomial)
+        v = DomainMatrix([[K.one]] + [[K.zero]]*(dim - 1), (dim, 1), K)
+        vectors = [v]
+        while True:
+            v = M*v
+            A = DomainMatrix.hstack(*vectors, v)
+            ns = A.nullspace()
+            if ns.shape[0]:
+                coeffs = [ns.to_Matrix()[0, i] for i in range(ns.shape[1])]
+                lead = coeffs[-1]
+                coeffs = [c/lead for c in coeffs]
+                return Poly(sum(c*y**i for i, c in enumerate(coeffs)), y, domain=self.domain)
+            vectors.append(v)
+
     def univariate(self, x):
         """The monic generator of $I \\cap K[x]$ for a variable ``x``
         (zero-dimensional ideals), as a ``Poly``.
@@ -553,12 +585,10 @@ class Ideal:
         >>> Ideal([x**2 - y, y**2 - 1], x, y).univariate(x)
         Poly(x**4 - 1, x, domain='QQ')
         """
-        self._require_zero_dimensional()
         x = sympify(x)
-        others = [s for s in self.symbols if s != x]
-        J = self.eliminate(others)
-        [g] = J._basis()
-        return Poly(g.as_expr(), x, domain=self.domain).monic()
+        if x not in self.symbols:
+            raise ValueError("%s is not a variable of the ring" % (x,))
+        return self.minimal_polynomial(x, x)
 
     def radical(self):
         """The radical of a zero-dimensional ideal (Seidenberg's lemma: the
@@ -614,10 +644,7 @@ class Ideal:
         for coefficients in ([1]*n, list(range(1, n + 1)), [i**2 + 1 for i in range(n)],
                              [3**i for i in range(n)], [(-2)**i for i in range(n)]):
             ell = sum(c*s for c, s in zip(coefficients, self.symbols))
-            J = Ideal([g.as_expr() for g in self.gens] + [y - ell], *self.symbols, y,
-                      domain=self.domain, order=self.order)
-            [p] = J.eliminate(list(self.symbols))._basis()
-            p = Poly(p.as_expr(), y, domain=self.domain)
+            p = self.minimal_polynomial(ell, y)
             if p.degree() < dim:
                 continue
             _, factors = p.factor_list()

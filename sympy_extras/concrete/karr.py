@@ -79,6 +79,17 @@ def _linear_shift(arg, k):
     return None
 
 
+def _linear(arg, k):
+    """``(a, b)`` if ``arg == a*k + b`` with ``a`` a positive integer and
+    ``b`` an integer, else ``None``."""
+    arg = sympify(arg).expand()
+    a = arg.coeff(k)
+    b = (arg - a*k).expand()
+    if a.is_Integer and a > 0 and b.is_Integer:
+        return int(a), int(b)
+    return None
+
+
 def _evaluate_at(expr, k, k0):
     value = expr.subs(k, k0)
     try:
@@ -126,8 +137,12 @@ class _Builder:
             return self.field.to_expr(self.field.sigma(element, shift), substitute=False)
         if isinstance(atom, harmonic):
             order = atom.args[1] if len(atom.args) > 1 else S.One
-            if atom.args[0] == k and not order.has(k):
-                return self._sigma(atom, 1/(k + 1)**order)
+            linear = _linear(atom.args[0], k)
+            if linear is not None and not order.has(k):
+                a, b = linear
+                # H_{a(k+1)+b} - H_{ak+b} = sum of the a reciprocals in between
+                beta = sum(1/(a*k + b + i)**order for i in range(1, a + 1))
+                return self._sigma(atom, beta)
         if isinstance(atom, Sum) and len(atom.limits) == 1:
             j, lo, hi = atom.limits[0]
             if hi == k and not lo.has(k) and not atom.function.has(k):
@@ -147,9 +162,12 @@ class _Builder:
         and products with argument or upper limit ``k + c``."""
         k = self.k
         if isinstance(atom, harmonic):
-            shift = _linear_shift(atom.args[0], k)
-            if shift:
-                return atom.func(k, *atom.args[1:]), shift
+            linear = _linear(atom.args[0], k)
+            if linear is not None:
+                a, b = linear
+                b0 = b % a
+                if b != b0:
+                    return atom.func(a*k + b0, *atom.args[1:]), (b - b0)//a
         if isinstance(atom, (Sum, Product)) and len(atom.limits) == 1:
             j, lo, hi = atom.limits[0]
             shift = _linear_shift(hi, k)

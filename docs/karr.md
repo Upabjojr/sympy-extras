@@ -51,6 +51,13 @@ becomes a generator, unless it is already expressible in the field built so
 far, which is decided by the algorithm itself (`factorial(k + 1)` is
 recognised as `(k + 1)*factorial(k)`, `harmonic(k + 1)` as
 `harmonic(k) + 1/(k + 1)`, a `Sum(1/j, (j, 1, k))` as `harmonic(k)`).
+Harmonic numbers with arguments `a*k + b` are Σ-extensions too:
+
+```python
+>>> karr_sum(harmonic(2*k), (k, 1, n))
+n*harmonic(2*n) - n + harmonic(n)/4 + harmonic(2*n)/2
+
+```
 
 ```python
 >>> from sympy_extras.concrete import build_pisigma_field

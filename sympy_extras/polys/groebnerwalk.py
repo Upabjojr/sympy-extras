@@ -13,6 +13,19 @@ the representations, and the representations are used to lift it to a
 Gröbner basis of the whole ideal for the new weight. The initial forms are
 usually much smaller than the polynomials, so each step is cheap.
 
+The lifting used here is the one of [2]_: if $G$ is the basis for the
+previous order and $\omega$ lies in the closure of its Gröbner cone, then
+for every element $h$ of a Gröbner basis of the initial ideal the
+polynomial $h - \mathrm{NF}_G(h)$ (normal form for the previous order)
+belongs to the ideal and has initial form $h$. This allows the initial
+forms to be handled by SymPy's own Buchberger implementation;
+:func:`extended_groebner`, a Buchberger algorithm keeping the
+representations, is kept as an alternative lifting (``lift='cofactors'``).
+
+For zero-dimensional ideals the FGLM algorithm of SymPy is usually faster
+than the walk; :meth:`sympy_extras.polys.ideals.Ideal.change_order` uses
+it in that case.
+
 The weight orders used along the walk are :class:`~.WeightOrder` instances:
 a weight vector refined by the target order.
 
@@ -29,7 +42,7 @@ from __future__ import annotations
 from fractions import Fraction
 from math import lcm
 
-from sympy.polys.groebnertools import red_groebner, is_groebner
+from sympy.polys.groebnertools import groebner as _groebner, red_groebner, is_groebner
 from sympy.polys.monomials import monomial_lcm, monomial_div
 from sympy.polys.orderings import lex, grlex, grevlex, ilex, igrlex, igrevlex
 
@@ -171,10 +184,15 @@ def _next_weight(G, weights, target):
     return tuple(w + tmin*(t - w) for w, t in zip(weights, target))
 
 
-def groebner_walk(G, ring, target, check=False):
+def groebner_walk(G, ring, target, check=False, lift='normal_form'):
     """Convert the reduced Gröbner basis ``G`` of ``ring`` (elements of the
     ring, whose order is the source order) to the reduced Gröbner basis for
     the ``target`` order, returned in the ring with that order.
+
+    ``lift`` is ``'normal_form'`` (lifting by normal forms modulo the
+    previous basis, the initial forms handled by SymPy's Buchberger
+    algorithm) or ``'cofactors'`` (lifting through the representations
+    computed by :func:`extended_groebner`).
 
     Examples
     ========
@@ -197,22 +215,33 @@ def groebner_walk(G, ring, target, check=False):
     G = [ring.from_dict(dict(g)) for g in G]
     if not G or all(not g for g in G):
         return _convert(G, ring.clone(order=target))
+    if lift not in ('normal_form', 'cofactors'):
+        raise ValueError("lift must be 'normal_form' or 'cofactors'")
     weights = _weight_of(ring.order, n, G)
     tau = _target_weight(target, n)
+    current = ring
     while True:
         new_order = WeightOrder(_integral(weights), target)
         new_ring = ring.clone(order=new_order)
         initial = [_convert([initial_form(g, weights)], new_ring)[0] for g in G]
-        H, C = extended_groebner(initial, new_ring)
-        G_new = _convert(G, new_ring)
-        lifted = []
-        for cof in C:
-            h = new_ring.zero
-            for c, g in zip(cof, G_new):
-                if c:
-                    h += c*g
-            lifted.append(h)
+        if lift == 'cofactors':
+            H, C = extended_groebner(initial, new_ring)
+            G_new = _convert(G, new_ring)
+            lifted = []
+            for cof in C:
+                h = new_ring.zero
+                for c, g in zip(cof, G_new):
+                    if c:
+                        h += c*g
+                lifted.append(h)
+        else:
+            H = _groebner(initial, new_ring)
+            lifted = []
+            for h in H:
+                h_old = _convert([h], current)[0]
+                lifted.append(_convert([h_old - h_old.rem(G)], new_ring)[0])
         G = red_groebner(lifted, new_ring)
+        current = new_ring
         if check and not is_groebner(G, new_ring):
             raise RuntimeError("the lifted basis is not a Groebner basis")
         if weights == tau:

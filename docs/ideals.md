@@ -54,16 +54,17 @@ Ideal([y**4 - y*z**3], y, z)
 
 ```
 
-The variety of `I` is the union of a twisted cubic and the `z` axis (where
-`x = y = 0`). Saturating by `y` removes the axis:
+The variety of `I` is the union of three lines through the origin (on
+which `x**3 = y**3`) and the `z` axis (where `x = y = 0`), four lines in
+all, hence degree 4. Saturating by `y` removes the axis:
 
 ```python
->>> cubic = I.saturate(Ideal([y], x, y, z))
->>> cubic
+>>> lines = I.saturate(Ideal([y], x, y, z))
+>>> lines
 Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)
->>> cubic.degree(), cubic.hilbert_polynomial(d)
+>>> lines.degree(), lines.hilbert_polynomial(d)
 (3, 3)
->>> I.quotient(cubic)
+>>> I.quotient(lines)
 Ideal([x, y], x, y, z)
 >>> Ideal([x], x, y).intersect(Ideal([y], x, y))
 Ideal([x*y], x, y)
@@ -80,12 +81,25 @@ Zero-dimensional ideals:
 (4, [1, y, x, x*y])
 >>> J.univariate(y)
 Poly(y**4 + y**2 - 1, y, domain='QQ')
+>>> J.minimal_polynomial(x + y, t)
+Poly(t**4 + 2*t**3 - 6*t - 1, t, domain='QQ')
 >>> J.multiplication_matrix(y)
 Matrix([[0, 0, 0, 1], [1, 0, 0, 0], [0, 1, 0, -1], [0, 0, 1, 0]])
 >>> J.is_radical(), J.is_maximal()
 (True, True)
 >>> Ideal([x**2, y**2 - 2*y + 1], x, y).radical()
 Ideal([x, y - 1], x, y)
+
+```
+
+The twisted cubic in `P^3` has the classical invariants (Macaulay2's
+documentation examples):
+
+```python
+>>> from sympy.abc import w
+>>> C = Ideal([x*z - y**2, y*w - z**2, x*w - y*z], x, y, z, w)
+>>> C.dimension(), C.degree(), C.hilbert_series(t), C.hilbert_polynomial(d)
+(2, 3, (2*t + 1)/(1 - t)**2, 3*d + 1)
 
 ```
 

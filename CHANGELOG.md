@@ -37,7 +37,13 @@ First release.
   radical/prime/maximal tests (all missing from SymPy's `agca` ideals).
 - `sympy_extras.polys.groebnerwalk`: the Gröbner walk, converting Gröbner
   bases between orders for ideals of any dimension (SymPy's FGLM is
-  restricted to zero-dimensional ideals).
+  restricted to zero-dimensional ideals), with lifting by normal forms so
+  that SymPy's Buchberger implementation handles the initial forms.
+- Validation suites against results published elsewhere (Concrete
+  Mathematics, A = B, the Sigma literature, Cox-Little-O'Shea, Macaulay2
+  and Singular documentation examples, the Katsura and cyclic benchmark
+  systems): `sympy_extras/concrete/tests/test_karr_known.py` and
+  `sympy_extras/polys/tests/test_ideals_known.py`.
 - `sympy_extras.polys.orderings`: hashable weight and block (elimination)
   monomial orders usable with `sympy.groebner`.
 - `sympy_extras.assumptions`: assumptions written as mathematical statements

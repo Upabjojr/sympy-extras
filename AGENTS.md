@@ -21,7 +21,11 @@ authorship:
 - every public function has a docstring with doctested examples;
 - there are tests which check the results against independent sources
   (hand computations, known results, other computer algebra systems such as
-  QEPCAD or Redlog), not only against the code's own output;
+  QEPCAD or Redlog), not only against the code's own output. Results
+  published in the literature or in the documentation of other systems
+  may be used as test data (they are facts), but their code must not be
+  copied: the licenses do not allow it. Such tests live in the
+  `test_*_known.py` files;
 - the provenance of the code (which model, which pull request it was ported
   from) is stated in the commit message.
 
