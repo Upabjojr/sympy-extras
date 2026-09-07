@@ -34,7 +34,9 @@ References
 from __future__ import annotations
 
 from itertools import combinations
+from typing import Iterable, Sequence, Union
 
+from sympy.core.symbol import Symbol
 from sympy.polys.densebasic import dmp_strip, dmp_zero_p
 from sympy.polys.domains import ZZ
 from sympy_extras.polys.euclidtools import dmp_psc
@@ -42,8 +44,10 @@ from sympy.polys.polyclasses import DMP
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 
+from sympy_extras._typing import Dmp, DomainElement, ExprLike
 
-def _to_polys(polys, gens):
+
+def _to_polys(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbol]) -> list[Poly]:
     """Convert ``polys`` to primitive polynomials over ZZ in ``gens``."""
     result = []
     for p in polys:
@@ -60,7 +64,7 @@ def _to_polys(polys, gens):
     return result
 
 
-def _level(f, gens):
+def _level(f: Poly, gens: Sequence[Symbol]) -> int:
     """Index of the last generator of ``gens`` that ``f`` depends on."""
     for k in range(len(gens), 0, -1):
         if gens[k - 1] in f.gens and f.degree(gens[k - 1]) > 0:
@@ -68,7 +72,7 @@ def _level(f, gens):
     return 0
 
 
-def _factors(f):
+def _factors(f: Poly) -> list[Poly]:
     """Irreducible non-constant factors of ``f`` with positive leading
     coefficient."""
     factors = []
@@ -81,7 +85,7 @@ def _factors(f):
     return factors
 
 
-def squarefree_basis(polys, gens):
+def squarefree_basis(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbol]) -> list[list[Poly]]:
     """Finest squarefree basis of ``polys``, split by level.
 
     Returns a list ``[B_1, ..., B_n]`` where ``n = len(gens)`` and ``B_k``
@@ -101,7 +105,7 @@ def squarefree_basis(polys, gens):
     the sign of each input polynomial is determined by the signs of the basis
     elements.
     """
-    levels = [[] for _ in gens]
+    levels: list[list[Poly]] = [[] for _ in gens]
     for f in _to_polys(polys, gens):
         for g in _factors(f):
             k = _level(g, gens)
@@ -110,13 +114,13 @@ def squarefree_basis(polys, gens):
     return levels
 
 
-def _main_first(f, x):
+def _main_first(f: Poly, x: Symbol) -> Poly:
     """Reorder the generators of ``f`` so that ``x`` comes first."""
     gens = [x] + [g for g in f.gens if g != x]
     return f.reorder(*gens)
 
 
-def _from_dense(rep, f):
+def _from_dense(rep: Union[Dmp, DomainElement], f: Poly) -> Union[Poly, DomainElement]:
     """Polynomial in the generators of ``f`` after the first one from the
     dense representation ``rep``. Univariate ``f`` give domain elements."""
     rest = f.gens[1:]
@@ -125,13 +129,13 @@ def _from_dense(rep, f):
     return Poly.new(DMP(rep, f.domain, len(rest) - 1), *rest)
 
 
-def _coefficients(f):
+def _coefficients(f: Poly) -> list[Union[Poly, DomainElement]]:
     """Coefficients of ``f`` with respect to its first generator, from the
     leading one down, as polynomials in the other generators."""
     return [_from_dense(c, f) for c in f.rep.to_list()]
 
 
-def _psc(f, g):
+def _psc(f: Poly, g: Poly) -> list[Union[Poly, DomainElement]]:
     """Principal subresultant coefficients of ``f`` and ``g`` with respect
     to their first generator."""
     lev = len(f.gens) - 1
@@ -139,7 +143,7 @@ def _psc(f, g):
     return [_from_dense(c, f) for c in psc]
 
 
-def _reducta(f):
+def _reducta(f: Poly) -> list[Poly]:
     """The nonzero reducta of ``f`` with respect to its first generator:
     ``f``, ``f`` minus its leading term, and so on."""
     rep = f.rep.to_list()
@@ -151,17 +155,17 @@ def _reducta(f):
     return reducta
 
 
-def _is_constant(c):
+def _is_constant(c: Union[Poly, DomainElement]) -> bool:
     return not isinstance(c, Poly) or c.is_ground
 
 
-def _is_zero(c):
+def _is_zero(c: Union[Poly, DomainElement]) -> bool:
     return c.is_zero if isinstance(c, Poly) else not c
 
 
-def _collect(items):
+def _collect(items: Iterable[Union[Poly, DomainElement]]) -> list[Poly]:
     """Irreducible factors of the non-constant polynomials in ``items``."""
-    result = []
+    result: list[Poly] = []
     for c in items:
         if _is_constant(c):
             continue
@@ -171,7 +175,7 @@ def _collect(items):
     return result
 
 
-def mccallum_projection(polys, x):
+def mccallum_projection(polys: Iterable[Poly], x: Symbol) -> list[Poly]:
     """McCallum's projection of ``polys`` with respect to ``x``.
 
     ``polys`` must be a squarefree basis (pairwise coprime squarefree
@@ -197,7 +201,7 @@ def mccallum_projection(polys, x):
     [Poly(x, x, domain='ZZ'), Poly(x - 1, x, domain='ZZ'), Poly(x + 1, x, domain='ZZ')]
     """
     polys = [_main_first(f, x) for f in polys]
-    items = []
+    items: list[Union[Poly, DomainElement]] = []
     for f in polys:
         for c in _coefficients(f):
             if not _is_constant(c):
@@ -211,7 +215,7 @@ def mccallum_projection(polys, x):
     return _collect(items)
 
 
-def hong_projection(polys, x):
+def hong_projection(polys: Iterable[Poly], x: Symbol) -> list[Poly]:
     """Hong's projection of ``polys`` with respect to ``x``.
 
     ``polys`` must be a squarefree basis of positive degree in ``x``. For
@@ -232,7 +236,7 @@ def hong_projection(polys, x):
     [Poly(x, x, domain='ZZ'), Poly(x - 1, x, domain='ZZ'), Poly(x + 1, x, domain='ZZ')]
     """
     polys = [_main_first(f, x) for f in polys]
-    items = []
+    items: list[Union[Poly, DomainElement]] = []
     for f in polys:
         for r in _reducta(f):
             items.append(_coefficients(r)[0])
@@ -253,7 +257,8 @@ _PROJECTIONS = {
 }
 
 
-def projection_sets(polys, gens, method='mccallum'):
+def projection_sets(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbol],
+                    method: str = 'mccallum') -> list[list[Poly]]:
     """Projection factor sets of ``polys`` for the variables ``gens``.
 
     The last generator is projected first. Returns a list
@@ -285,7 +290,7 @@ def projection_sets(polys, gens, method='mccallum'):
     levels = squarefree_basis(polys, gens)
     n = len(gens)
 
-    result = [None]*n
+    result: list[list[Poly]] = [[] for _ in range(n)]
     for k in range(n, 0, -1):
         current = [Poly(f.as_expr(), *gens[:k]) for f in levels[k - 1]]
         result[k - 1] = current

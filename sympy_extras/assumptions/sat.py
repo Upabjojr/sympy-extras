@@ -22,24 +22,32 @@ conclusive when the variables are known to be real.
 from __future__ import annotations
 
 from itertools import product
+from typing import Optional, Sequence, Union
 
 from sympy.assumptions.assume import AppliedPredicate
 from sympy.core.numbers import Integer
-from sympy.core.relational import Relational
+from sympy.core.basic import Basic
+from sympy.core.expr import Expr
+from sympy.core.relational import Relational, Eq, Ne
 from sympy.core.singleton import S
 from sympy.core.symbol import Symbol, Dummy
 from sympy.core.sympify import sympify
-from sympy.logic.boolalg import And, Not, true, false
+from sympy.logic.boolalg import Boolean, And, Not, true, false
 from sympy.logic.inference import satisfiable as _sympy_satisfiable
 from sympy.sets.contains import Contains
 from sympy.sets.fancysets import Reals
-from sympy.sets.sets import Interval, FiniteSet, Union
+from sympy.sets.sets import Interval, FiniteSet, Set, Union as SetUnion
+
+from sympy_extras._typing import Truth, as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
 
 from sympy_extras.polys.cad import (sample_points as _cad_sample_points,
     solution_set as _cad_solution_set)
 from sympy_extras.polys.cad.samplepoints import compare_real, _floor_scaled
 
-from .ask import _facts
+from typing import Literal, overload
+
+from .ask import Assumptions, _facts
+from .facts import Facts
 from .facts import (normalize, to_predicates, to_polynomial,
     predicates_consistent, _consequences, _is_atom, _REAL_SETS)
 from .quantifiers import Quantifier
@@ -47,12 +55,18 @@ from .quantifiers import Quantifier
 __all__ = ['satisfiable', 'tautology', 'find_instance']
 
 
-def _abstract(formula):
+#: a model: Boolean variables to truth values, real variables to values
+Model = dict[Basic, Union[bool, Expr]]
+#: a witness point
+Witness = dict[Symbol, Expr]
+
+
+def _abstract(formula: Boolean) -> tuple[Boolean, dict[Dummy, Boolean]]:
     """Replace the non-propositional atoms of a normalized formula by
     Boolean dummies. Returns the abstraction and the map from dummies to
     atoms."""
-    atoms = {}
-    mapping = {}
+    atoms: dict[Dummy, Boolean] = {}
+    mapping: dict[Basic, Dummy] = {}
     for atom in formula.atoms(Relational, Contains, AppliedPredicate):
         d = Dummy('p%d' % len(atoms))
         atoms[d] = atom
@@ -60,10 +74,12 @@ def _abstract(formula):
     return formula.xreplace(mapping), atoms
 
 
-def _literals(model, atoms):
+def _literals(model: dict[Basic, bool], atoms: dict[Dummy, Boolean]) -> list[Boolean]:
     """The theory literals selected by a propositional model."""
-    literals = []
+    literals: list[Boolean] = []
     for symbol, value in model.items():
+        if not isinstance(symbol, Dummy):
+            continue
         atom = atoms.get(symbol)
         if atom is None:
             continue
@@ -71,15 +87,15 @@ def _literals(model, atoms):
     return literals
 
 
-def _integer_in(sets):
+def _integer_in(sets: Set) -> Optional[Expr]:
     """An integer in a union of intervals and points with real algebraic
     endpoints, or ``None`` if there is none."""
-    parts = sets.args if isinstance(sets, Union) else [sets]
+    parts = sets.args if isinstance(sets, SetUnion) else [sets]
     for part in parts:
         if isinstance(part, FiniteSet):
             for v in part.args:
                 if v.is_integer:
-                    return v
+                    return as_expr(v)
             continue
         if not isinstance(part, Interval):
             continue
@@ -99,7 +115,8 @@ def _integer_in(sets):
     return None
 
 
-def _integer_witness(formula, points, integer, gens):
+def _integer_witness(formula: Boolean, points: Sequence[Witness], integer: set[Symbol],
+                     gens: Sequence[Symbol]) -> Union[Witness, bool, None]:
     """A point with integer values for the variables in ``integer`` (and
     real values for the others) satisfying the polynomial ``formula``.
 
@@ -122,15 +139,15 @@ def _integer_witness(formula, points, integer, gens):
             k = _integer_in(sets)
             if k is None:
                 return False
-            witness = {n: k}
+            witness: Witness = {n: k}
             if others:
-                point = _cad_sample_points(formula.subs(n, k), others)
-                if not point:
+                points_ = _cad_sample_points(as_boolean(formula.subs(n, k)), others)
+                if not points_:
                     return None
-                witness.update(point[0])
+                witness.update(points_[0])
             return witness
     for point in points:
-        choices = []
+        choices: list[list[Expr]] = []
         for g in gens:
             v = point[g]
             if g in integer:
@@ -139,21 +156,21 @@ def _integer_witness(formula, points, integer, gens):
             else:
                 choices.append([v])
         for combo in product(*choices):
-            candidate = dict(zip(gens, combo))
-            value = formula.subs(candidate)
+            candidate: Witness = dict(zip(gens, combo))
+            value = formula.subs(list(candidate.items()))
             if value is true:
                 return candidate
     return None
 
 
-def _theory_check(literals, facts):
+def _theory_check(literals: Sequence[Boolean], facts: Facts) -> Union[Witness, bool, None]:
     """Check the conjunction of theory literals for consistency.
 
     Returns a witness dict (possibly empty) if the literals are
     satisfiable, ``False`` if they are not and ``None`` if it cannot be
     decided.
     """
-    predicates = []
+    predicates: list[Boolean] = []
     for lit in literals:
         p = to_predicates(lit)
         if p is not None:
@@ -168,7 +185,7 @@ def _theory_check(literals, facts):
     real = set(facts.real)
     integer = set(facts.integer)
     for lit in literals:
-        if isinstance(lit, Relational) and not lit.is_Equality and lit.rel_op != '!=':
+        if isinstance(lit, Relational) and not isinstance(lit, (Eq, Ne)):
             real.update(s for s in lit.free_symbols if isinstance(s, Symbol))
         if isinstance(lit, Contains) and isinstance(lit.args[0], Symbol):
             if isinstance(lit.args[1], _REAL_SETS):
@@ -185,7 +202,8 @@ def _theory_check(literals, facts):
         atom = lit.args[0] if isinstance(lit, Not) else lit
         if isinstance(atom, Relational):
             candidates.update(s for s in atom.free_symbols if isinstance(s, Symbol))
-    polynomial, unknown = [], False
+    polynomial: list[Boolean] = []
+    unknown = False
     for lit in literals:
         p = to_polynomial(lit, candidates)
         if p is None:
@@ -204,10 +222,10 @@ def _theory_check(literals, facts):
     if premise is not true:
         polynomial.append(premise)
 
-    witness = {}
+    witness: Witness = {}
     if polynomial:
         formula = And(*polynomial)
-        gens = sorted(formula.free_symbols, key=lambda s: s.name)
+        gens = sorted_symbols(free_symbols(formula))
         points = _cad_sample_points(formula, gens)
         if not points:
             return False if set(gens) <= real else None
@@ -217,9 +235,10 @@ def _theory_check(literals, facts):
             if exact:
                 witness = exact[0]
             else:
-                witness = _integer_witness(formula, points, integer, gens)
-                if witness is None or witness is False:
-                    return witness
+                found = _integer_witness(formula, points, integer, gens)
+                if found is None or found is False or found is True:
+                    return None if found is None else bool(found)
+                witness = found
         else:
             witness = points[0]
     if unknown:
@@ -227,7 +246,21 @@ def _theory_check(literals, facts):
     return witness
 
 
-def satisfiable(formula, assumptions=None, domain=None, all_models=False):
+@overload
+def satisfiable(formula: Union[Boolean, bool], assumptions: Assumptions = None,
+                domain: Optional[Set] = None, all_models: Literal[False] = False
+                ) -> Union[Model, bool, None]: ...
+
+
+@overload
+def satisfiable(formula: Union[Boolean, bool], assumptions: Assumptions = None,
+                domain: Optional[Set] = None, *, all_models: Literal[True]
+                ) -> Optional[list[Model]]: ...
+
+
+def satisfiable(formula: Union[Boolean, bool], assumptions: Assumptions = None,
+                domain: Optional[Set] = None, all_models: bool = False
+                ) -> Union[Model, bool, None, list[Model]]:
     """Whether a formula can be true, the counterpart of Mathematica's
     ``SatisfiableQ`` (together with :func:`find_instance`).
 
@@ -282,15 +315,13 @@ def satisfiable(formula, assumptions=None, domain=None, all_models=False):
     >>> satisfiable(Eq(x**2, -1)) is None
     True
     """
-    formula = sympify(formula)
-    if formula is True or formula is False:
-        formula = true if formula else false
-    if formula.has(Quantifier):
+    formula_ = as_boolean(formula)
+    if formula_.has(Quantifier):
         from .resolve import resolve
-        formula = resolve(formula, assumptions=assumptions, domain=domain)
-    facts = _facts(assumptions, domain, formula.free_symbols)
-    formula = normalize(formula)
-    abstract, atoms = _abstract(formula)
+        formula_ = resolve(formula_, assumptions=assumptions, domain=domain)
+    facts = _facts(assumptions, domain, formula_.free_symbols)
+    formula_ = normalize(formula_)
+    abstract, atoms = _abstract(formula_)
     if abstract is false:
         return [] if all_models else False
     if abstract is true:
@@ -298,7 +329,7 @@ def satisfiable(formula, assumptions=None, domain=None, all_models=False):
     models = _sympy_satisfiable(abstract, all_models=True)
     if models is False:
         return [] if all_models else False
-    results = []
+    results: list[Model] = []
     unknown = False
     for model in models:
         if model is False:
@@ -310,8 +341,10 @@ def satisfiable(formula, assumptions=None, domain=None, all_models=False):
             continue
         if result is False:
             continue
-        full = {s: v for s, v in model.items() if s not in atoms}
-        full.update(result)
+        full: Model = {s: v for s, v in model.items() if s not in atoms}
+        if isinstance(result, dict):
+            for key, val in result.items():
+                full[key] = val
         if not all_models:
             return full
         results.append(full)
@@ -320,7 +353,8 @@ def satisfiable(formula, assumptions=None, domain=None, all_models=False):
     return None if unknown else False
 
 
-def tautology(formula, assumptions=None, domain=None):
+def tautology(formula: Union[Boolean, bool], assumptions: Assumptions = None,
+              domain: Optional[Set] = None) -> Truth:
     """Whether a formula is always true, the counterpart of Mathematica's
     ``TautologyQ``: ``True``, ``False`` or ``None`` if undecided.
 
@@ -348,7 +382,9 @@ def tautology(formula, assumptions=None, domain=None):
     return result is False
 
 
-def find_instance(formula, variables, domain=S.Reals, assumptions=None, count=1):
+def find_instance(formula: Union[Boolean, bool], variables: Union[Symbol, Sequence[Symbol]],
+                  domain: Set = S.Reals, assumptions: Assumptions = None,
+                  count: int = 1) -> Optional[list[Witness]]:
     """Values of the variables satisfying a formula, the counterpart of
     Mathematica's ``FindInstance[expr, vars, dom, n]``.
 
@@ -395,19 +431,17 @@ def find_instance(formula, variables, domain=S.Reals, assumptions=None, count=1)
     >>> find_instance(x**2 < 0, [x])
     []
     """
-    formula = sympify(formula)
-    if isinstance(variables, Symbol):
-        variables = [variables]
-    variables = [sympify(v) for v in variables]
+    formula_ = as_boolean(formula)
+    variables = [variables] if isinstance(variables, Symbol) else [as_symbol(v) for v in variables]
     domain = sympify(domain)
-    if formula.has(Quantifier):
+    if formula_.has(Quantifier):
         from .resolve import resolve
-        formula = resolve(formula, assumptions=assumptions, domain=S.Reals)
+        formula_ = resolve(formula_, assumptions=assumptions, domain=S.Reals)
     facts = _facts(assumptions, None, set(variables))
-    formula = normalize(And(formula, facts.formula))
+    formula_ = normalize(And(formula_, facts.formula))
     if isinstance(domain, Reals):
         real = facts.real | set(variables)
-        poly = to_polynomial(formula, real)
+        poly = to_polynomial(formula_, real)
         if poly is not None and poly.free_symbols <= set(variables):
             if poly is true:
                 return [{v: S.Zero for v in variables}]
@@ -415,18 +449,22 @@ def find_instance(formula, variables, domain=S.Reals, assumptions=None, count=1)
                 return []
             points = _cad_sample_points(poly, variables)
             return points[:count]
-    results = []
-    models = satisfiable(formula, domain=domain, all_models=True)
+    results: list[Witness] = []
+    models = satisfiable(formula_, domain=domain, all_models=True)
     if models is None:
         return None
     for model in models:
-        assignment = {s: (true if v is True else false if v is False else v)
-                      for s, v in model.items()}
-        instance = {v: assignment.get(v, S.Zero) for v in variables}
-        assignment.update(instance)
+        assignment: dict[Basic, Basic] = {s: (true if v is True else false if v is False else v)
+                                          for s, v in model.items()}
+        instance: Witness = {}
+        for v in variables:
+            value = assignment.get(v, S.Zero)
+            instance[v] = as_expr(value) if isinstance(value, Expr) else S.Zero
+        for key, val in instance.items():
+            assignment[key] = val
         # the model was checked against the theory; only an evaluation to
         # False rejects it
-        if formula.subs(assignment) is false:
+        if formula_.subs(list(assignment.items())) is false:
             continue
         if instance not in results:
             results.append(instance)

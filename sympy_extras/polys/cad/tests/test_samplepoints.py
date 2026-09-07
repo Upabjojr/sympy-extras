@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from sympy.core.expr import Expr
 from sympy.core.numbers import Rational
 from sympy.functions.elementary.integers import floor
 from sympy.functions.elementary.miscellaneous import sqrt
@@ -13,11 +14,11 @@ from sympy.testing.pytest import raises
 from sympy.abc import x, y, z, w
 
 
-def _roots(f):
+def _roots(f: Expr) -> list[Expr]:
     return Poly(f, x).real_roots(radicals=False)
 
 
-def test_simplest_between():
+def test_simplest_between() -> None:
     assert simplest_between(QQ(1, 3), QQ(1, 2)) == QQ(2, 5)
     assert simplest_between(QQ(5, 2), QQ(3)) == QQ(8, 3)
     assert simplest_between(QQ(-1), QQ(1)) == 0
@@ -54,7 +55,7 @@ def test_simplest_between():
                 assert not (lo < QQ(n, d) < hi)
 
 
-def test_compare_real():
+def test_compare_real() -> None:
     s2, ms2 = CRootOf(x**2 - 2, 1), CRootOf(x**2 - 2, 0)
     c2 = CRootOf(x**3 - 2, 0)
     assert compare_real(s2, Rational(3, 2)) == -1
@@ -83,7 +84,7 @@ def test_compare_real():
     assert compare_real(r1, CRootOf(x**2 - 5, 1)) == -1
     assert compare_real(r0, -2) == -1
     assert _minpoly(r0).all_coeffs() == _minpoly(r1).all_coeffs() == [2, 0, -9]
-    assert _minpoly(r0).gens == r0.args[1].poly.gens
+    assert _minpoly(r0).gens == getattr(r0.args[1], 'poly').gens
     assert _minpoly(CRootOf(x**3 - 2, 0)).all_coeffs() == [1, 0, 0, -2]
     assert rational_between(r0, r1) == 0
     assert rational_between(2, r1) == Rational(33, 16)
@@ -91,7 +92,7 @@ def test_compare_real():
     assert rational_above(r1) == 3
 
 
-def test_floor_scaled():
+def test_floor_scaled() -> None:
     s2 = CRootOf(x**2 - 2, 1)
     for k in range(6):
         assert _floor_scaled(s2, k) == floor(2**k*sqrt(2))
@@ -103,7 +104,7 @@ def test_floor_scaled():
     assert _floor_scaled(Rational(-7, 2), 0) == -4
 
 
-def test_rational_between():
+def test_rational_between() -> None:
     s2, ms2 = CRootOf(x**2 - 2, 1), CRootOf(x**2 - 2, 0)
     assert rational_between(ms2, s2) == 0
     assert rational_between(1, s2) == Rational(5, 4)
@@ -133,7 +134,7 @@ def test_rational_between():
         assert q.q <= 16
 
 
-def test_rational_below_above():
+def test_rational_below_above() -> None:
     s2, ms2 = CRootOf(x**2 - 2, 1), CRootOf(x**2 - 2, 0)
     assert rational_below(s2) == 0
     assert rational_above(s2) == 2
@@ -157,7 +158,7 @@ def test_rational_below_above():
     assert rational_above(r) == 0
 
 
-def test_sign_in_field():
+def test_sign_in_field() -> None:
     s2 = CRootOf(x**2 - 2, 1)
     K = QQ.algebraic_field(s2)
     assert _sign_in_field(s2, K.zero) == 0
@@ -177,11 +178,11 @@ def test_sign_in_field():
     assert _sign_in_field(s2, a) == 1
 
 
-def test_join():
+def test_join() -> None:
     s2, ms2 = CRootOf(x**2 - 2, 1), CRootOf(x**2 - 2, 0)
     s3 = CRootOf(x**2 - 3, 1)
     g, K, tK, bK = _join(s2, s3)
-    assert g.poly.degree() == 4
+    assert getattr(g, 'poly').degree() == 4
     assert abs(K.to_sympy(tK).evalf(20) - sqrt(2).evalf(20)) < 1e-15
     assert abs(K.to_sympy(bK).evalf(20) - sqrt(3).evalf(20)) < 1e-15
     assert abs(g.evalf(20) - sqrt(2).evalf(20) - sqrt(3).evalf(20)) < 1e-15
@@ -189,20 +190,20 @@ def test_join():
     assert _sign_in_field(g, bK**2 - K.convert(QQ(3))) == 0
     # conjugates and elements of the same field give no bigger field
     g, K, tK, bK = _join(s2, ms2)
-    assert g.poly.degree() == 2
+    assert getattr(g, 'poly').degree() == 2
     assert K.to_sympy(tK) == -ms2 and K.to_sympy(bK) == ms2
     assert _sign_in_field(g, tK + bK) == 0
     g, K, tK, bK = _join(s2, CRootOf(x**2 - 8, 1))
-    assert g.poly.degree() == 2
+    assert getattr(g, 'poly').degree() == 2
     assert K.to_sympy(tK)*2 == K.to_sympy(bK)
     c2 = CRootOf(x**3 - 2, 0)
     g, K, tK, bK = _join(c2, s2)
-    assert g.poly.degree() == 6
+    assert getattr(g, 'poly').degree() == 6
     assert abs(K.to_sympy(tK).evalf(20) - c2.evalf(20)) < 1e-15
     assert abs(K.to_sympy(bK).evalf(20) - s2.evalf(20)) < 1e-15
 
 
-def test_sample_point():
+def test_sample_point() -> None:
     origin = SamplePoint()
     assert len(origin) == 0 and origin.degree == 1
     assert origin.sign(3, []) == 1
@@ -265,6 +266,7 @@ def test_sample_point():
     assert q2.sign(y - x, [x, y]) == -1
     assert q2.sign(y**4 - 2, [x, y]) == 0
     r3 = q2.real_roots(z**2 - x - y, [x, y, z])
+    assert r3 is not None
     assert len(r3) == 2 and compare_real(r3[0], r3[1]) == -1
     q3 = q2.extend(r3[1])
     assert q3.degree == 8
@@ -273,8 +275,9 @@ def test_sample_point():
     assert q3.sign(z - 2, [x, y, z]) == -1
     assert q3.real_roots(0*w, [x, y, z, w]) is None
     assert q3.real_roots(w**2 + 1, [x, y, z, w]) == []
-    assert q3.real_roots(w**2 - z**2, [x, y, z, w]) == [-r3[1], r3[1]] or \
-        len(q3.real_roots(w**2 - z**2, [x, y, z, w])) == 2
+    r4 = q3.real_roots(w**2 - z**2, [x, y, z, w])
+    assert r4 is not None
+    assert r4 == [-r3[1], r3[1]] or len(r4) == 2
     raises(ValueError, lambda: q3.sign(x, [x]))
     raises(ValueError, lambda: q3.real_roots(w, [x, y]))
 

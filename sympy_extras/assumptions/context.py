@@ -11,10 +11,13 @@ so that :func:`sympy.ask` and :func:`sympy.refine` see them too.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from typing import Iterable, Iterator, Union
 
 from sympy.assumptions import global_assumptions as _sympy_global_assumptions
 from sympy.core.sympify import sympify
-from sympy.logic.boolalg import And
+from sympy.logic.boolalg import And, Boolean
+
+from sympy_extras._typing import as_boolean
 
 from .facts import Facts
 
@@ -39,45 +42,45 @@ class AssumptionsContext:
     True
     """
 
-    def __init__(self, assumptions=()):
-        self._items = []
+    def __init__(self, assumptions: Iterable[Union[Boolean, bool]] = ()) -> None:
+        self._items: list[Boolean] = []
         for a in assumptions:
             self.add(a)
 
-    def add(self, *assumptions):
+    def add(self, *assumptions: Union[Boolean, bool]) -> None:
         """Add one or more assumptions."""
         for a in assumptions:
-            a = sympify(a)
-            if a not in self._items:
-                self._items.append(a)
+            b = as_boolean(a)
+            if b not in self._items:
+                self._items.append(b)
 
-    def remove(self, *assumptions):
+    def remove(self, *assumptions: Union[Boolean, bool]) -> None:
         """Remove assumptions; missing ones are ignored."""
         for a in assumptions:
-            a = sympify(a)
-            if a in self._items:
-                self._items.remove(a)
+            b = as_boolean(a)
+            if b in self._items:
+                self._items.remove(b)
 
-    def clear(self):
+    def clear(self) -> None:
         """Remove all assumptions."""
         self._items.clear()
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Boolean]:
         return iter(self._items)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._items)
 
-    def __contains__(self, item):
+    def __contains__(self, item: object) -> bool:
         return sympify(item) in self._items
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return bool(self._items)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "AssumptionsContext(%s)" % (self._items,)
 
-    def as_boolean(self):
+    def as_boolean(self) -> Boolean:
         """The conjunction of the assumptions."""
         return And(*self._items)
 
@@ -87,7 +90,7 @@ global_assumptions = AssumptionsContext()
 
 
 @contextmanager
-def assuming(*assumptions):
+def assuming(*assumptions: Union[Boolean, bool]) -> Iterator[None]:
     """Context manager adding assumptions to :data:`global_assumptions`
     for the duration of a ``with`` block, the counterpart of Mathematica's
     ``Assuming[assum, expr]``.
@@ -109,9 +112,9 @@ def assuming(*assumptions):
     >>> refine(Abs(x - 1))
     Abs(x - 1)
     """
-    assumptions = [sympify(a) for a in assumptions]
-    predicates = Facts(assumptions).predicates
-    added = [a for a in assumptions if a not in global_assumptions]
+    items = [as_boolean(a) for a in assumptions]
+    predicates = Facts(items).predicates
+    added = [a for a in items if a not in global_assumptions]
     global_assumptions.add(*added)
     old_sympy = set(_sympy_global_assumptions)
     _sympy_global_assumptions.add(predicates)

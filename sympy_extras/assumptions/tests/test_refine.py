@@ -8,7 +8,7 @@ from sympy.abc import x, y, z, n
 from sympy_extras.assumptions import refine, simplify, element, ForAll, Exists
 
 
-def test_refine_abs():
+def test_refine_abs() -> None:
     assert refine(Abs(x), x > 0) == x
     assert refine(Abs(x), x < 0) == -x
     assert refine(Abs(x), x >= 0) == x
@@ -30,7 +30,7 @@ def test_refine_abs():
     assert refine(Abs(sin(x)), (x > 0) & (x < 3)) == Abs(sin(x))
 
 
-def test_refine_sign():
+def test_refine_sign() -> None:
     assert refine(sign(x), x > 0) == 1
     assert refine(sign(x), x < 0) == -1
     assert refine(sign(x), Eq(x, 0)) == 0
@@ -40,7 +40,7 @@ def test_refine_sign():
     assert refine(sign(x), x >= 0) == sign(x)
 
 
-def test_refine_minmax():
+def test_refine_minmax() -> None:
     assert refine(Max(x, y), x > y) == x
     assert refine(Max(x, y), x < y) == y
     assert refine(Max(x, y), x >= y) == x
@@ -56,7 +56,7 @@ def test_refine_minmax():
     assert refine(Min(x, 1), x > 2) == 1
 
 
-def test_refine_floor():
+def test_refine_floor() -> None:
     assert refine(floor(n), element(n, S.Integers)) == n
     assert refine(ceiling(n), element(n, S.Integers)) == n
     assert refine(floor(n + 1), element(n, S.Integers)) == n + 1
@@ -66,7 +66,7 @@ def test_refine_floor():
     assert refine(floor(x), Eq(x, 2)) == x
 
 
-def test_refine_piecewise():
+def test_refine_piecewise() -> None:
     p = Piecewise((1, x > 0), (2, True))
     assert refine(p, x > 0) == 1
     assert refine(p, x > 1) == 1
@@ -90,7 +90,7 @@ def test_refine_piecewise():
     assert refine(Piecewise((1, x > 0)), x < 0) is nan
 
 
-def test_refine_relational():
+def test_refine_relational() -> None:
     assert refine(x > 0, x > 1) is true
     assert refine(x < 0, x > 1) is false
     assert refine(x > 2, x > 1) == (x > 2)
@@ -114,7 +114,7 @@ def test_refine_relational():
     assert refine(Exists(y, Eq(y**2, x)), x > 1) is true
 
 
-def test_refine_complex():
+def test_refine_complex() -> None:
     assert refine(re(x), element(x, S.Reals)) == x
     assert refine(im(x), x > 0) == 0
     assert refine(conjugate(x), x > 0) == x
@@ -124,7 +124,7 @@ def test_refine_complex():
     assert refine(atan2(y, x), (x > 0) & (y > 0)) == atan2(y, x).rewrite(1).func(y, x) or True
 
 
-def test_refine_powers():
+def test_refine_powers() -> None:
     # handled by sympy's refine through the predicates
     assert refine((-1)**(2*n), element(n, S.Integers)) == 1
     assert refine(sqrt(x**2), x > 0) == x
@@ -133,7 +133,7 @@ def test_refine_powers():
     assert refine(exp(log(x)), x > 0) == x
 
 
-def test_refine_nested():
+def test_refine_nested() -> None:
     assert refine(Abs(Max(x, y)), (x > 0) & (y < 0)) == x
     assert refine(sign(Abs(x)), Ne(x, 0) & element(x, S.Reals)) == 1
     assert refine(Abs(x)*sign(x), x < 0) == x
@@ -147,7 +147,7 @@ def test_refine_nested():
     assert refine(Abs(x) + Abs(y) + Abs(z), (x > 0) & (y < 0) & (z > x)) == x - y + z
 
 
-def test_refine_domain():
+def test_refine_domain() -> None:
     assert refine(sqrt(x**2), domain=S.Reals) == Abs(x)
     assert refine(Abs(x**2 + 1), domain=S.Reals) == x**2 + 1
     assert refine(floor(x), domain=S.Integers) == x
@@ -155,7 +155,7 @@ def test_refine_domain():
     assert refine(x**2 >= 0, domain=S.Complexes) == (x**2 >= 0)
 
 
-def test_refine_symbols():
+def test_refine_symbols() -> None:
     p = Symbol('p', positive=True)
     assert refine(Abs(p)) == p
     assert refine(Abs(p - 1)) == Abs(p - 1)
@@ -164,7 +164,7 @@ def test_refine_symbols():
     assert refine(floor(i + x), Eq(x, 2)) == i + x
 
 
-def test_refine_global():
+def test_refine_global() -> None:
     from sympy_extras.assumptions import global_assumptions
     global_assumptions.add(x > 0)
     try:
@@ -174,7 +174,7 @@ def test_refine_global():
         global_assumptions.clear()
 
 
-def test_simplify():
+def test_simplify() -> None:
     assert simplify(sqrt(x**2) + Abs(x)*sin(x)**2 + Abs(x)*cos(x)**2, x < 0) == -2*x
     assert simplify((x**2 - 1)/(x - 1), x > 1) == x + 1
     assert simplify(Abs(x)/x, x > 0) == 1

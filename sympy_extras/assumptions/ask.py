@@ -1,11 +1,17 @@
 """Truth values of statements under assumptions."""
 from __future__ import annotations
 
+from typing import Iterable, Optional, Union
+
 from sympy.assumptions import ask as _sympy_ask
+from sympy.core.basic import Basic
 from sympy.core.relational import Relational
-from sympy.core.sympify import sympify
-from sympy.logic.boolalg import (BooleanTrue, BooleanFalse, And, Or, Not,
-    Implies, Equivalent, Xor, ITE, true, false)
+from sympy.core.symbol import Symbol
+from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or,
+    Not, Implies, Equivalent, Xor, ITE, true, false)
+from sympy.sets.sets import Set
+
+from sympy_extras._typing import Truth, as_boolean, free_symbols, sorted_symbols
 
 from sympy_extras.polys.cad import truth_tables
 
@@ -16,18 +22,20 @@ from .quantifiers import Quantifier
 __all__ = ['ask']
 
 
-def _facts(assumptions, domain, symbols):
+Assumptions = Union[None, Boolean, bool, Iterable[Union[Boolean, bool]]]
+
+
+def _facts(assumptions: Assumptions, domain: Optional[Set], symbols: Iterable[Basic]) -> Facts:
     """The facts from the global assumptions and the explicit ones."""
-    items = list(global_assumptions)
-    if assumptions is not None:
-        if isinstance(assumptions, (list, tuple, set, frozenset)):
-            items.extend(assumptions)
-        else:
-            items.append(assumptions)
-    return Facts(items, domain, symbols)
+    items: list[Union[Boolean, bool]] = list(global_assumptions)
+    if isinstance(assumptions, (Boolean, bool)):
+        items.append(assumptions)
+    elif assumptions is not None:
+        items.extend(assumptions)
+    return Facts(items, domain, [s for s in symbols if isinstance(s, Symbol)])
 
 
-def _cad_ask(formula, facts):
+def _cad_ask(formula: Boolean, facts: Facts) -> Truth:
     """Truth value of a Boolean combination of polynomial relations under
     the polynomial part of the facts, by cylindrical algebraic
     decomposition: ``True`` if it holds on every real point satisfying the
@@ -39,7 +47,7 @@ def _cad_ask(formula, facts):
     if isinstance(poly, (BooleanTrue, BooleanFalse)):
         return bool(poly)
     premise = facts.polynomial
-    gens = sorted(poly.free_symbols | premise.free_symbols, key=lambda s: s.name)
+    gens = sorted_symbols(free_symbols(poly) | free_symbols(premise))
     if not gens:
         return bool(poly)
     _, (holds, values) = truth_tables([premise, poly], gens)
@@ -54,7 +62,7 @@ def _cad_ask(formula, facts):
     return None
 
 
-def _evaluate_atom(atom, facts):
+def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
     if isinstance(atom, (BooleanTrue, BooleanFalse)):
         return bool(atom)
     predicate = _predicate_of_atom(atom)
@@ -72,7 +80,7 @@ def _evaluate_atom(atom, facts):
     return _cad_ask(atom, facts)
 
 
-def _evaluate(formula, facts):
+def _evaluate(formula: Boolean, facts: Facts) -> Truth:
     """Three-valued evaluation of a normalized formula: ``True``,
     ``False`` or ``None``."""
     if isinstance(formula, (BooleanTrue, BooleanFalse)):
@@ -81,7 +89,7 @@ def _evaluate(formula, facts):
         value = _evaluate(formula.args[0], facts)
         return None if value is None else not value
     if isinstance(formula, (And, Or, Implies, Equivalent, Xor, ITE)):
-        values = [_evaluate(arg, facts) for arg in formula.args]
+        values = [_evaluate(as_boolean(arg), facts) for arg in formula.args]
         value = _combine(formula, values)
         if value is None:
             value = _cad_ask(formula, facts)
@@ -89,7 +97,7 @@ def _evaluate(formula, facts):
     return _evaluate_atom(formula, facts)
 
 
-def _combine(formula, values):
+def _combine(formula: Boolean, values: list[Truth]) -> Truth:
     if isinstance(formula, And):
         if any(v is False for v in values):
             return False
@@ -116,7 +124,7 @@ def _combine(formula, values):
     if isinstance(formula, Xor):
         if any(v is None for v in values):
             return None
-        return sum(values) % 2 == 1
+        return sum(1 for v in values if v) % 2 == 1
     if isinstance(formula, ITE):
         c, a, b = values
         if c is True:
@@ -129,7 +137,7 @@ def _combine(formula, values):
     return None
 
 
-def ask(query, assumptions=None, domain=None):
+def ask(query: Union[Boolean, bool], assumptions: Assumptions = None, domain: Optional[Set] = None) -> Truth:
     """Truth value of a statement under assumptions.
 
     Parameters
@@ -188,12 +196,10 @@ def ask(query, assumptions=None, domain=None):
     >>> ask(Q.positive(x), Eq(x, 3))
     True
     """
-    query = sympify(query)
-    if query is True or query is False:
-        return bool(query)
-    if query.has(Quantifier):
+    query_ = as_boolean(query)
+    if query_.has(Quantifier):
         from .resolve import resolve
-        query = resolve(query, assumptions=assumptions, domain=domain)
-    query = normalize(query)
-    facts = _facts(assumptions, domain, query.free_symbols)
-    return _evaluate(query, facts)
+        query_ = resolve(query_, assumptions=assumptions, domain=domain)
+    query_ = normalize(query_)
+    facts = _facts(assumptions, domain, query_.free_symbols)
+    return _evaluate(query_, facts)

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from sympy import QQ, GF, grevlex, grlex, lex, ring
+from sympy.polys.domains.domain import Domain
+from sympy.polys.rings import PolyElement
+
+from sympy_extras._typing import OrderSpec
 from sympy.polys.groebnertools import groebner, is_groebner, is_reduced
 from sympy.testing.pytest import raises
 
@@ -8,7 +12,8 @@ from sympy_extras.polys.groebnerwalk import groebner_walk, extended_groebner, in
 from sympy_extras.polys.orderings import WeightOrder
 
 
-def _check_walk(F, gens, source, target, domain=QQ):
+def _check_walk(F: list[str], gens: str, source: OrderSpec, target: OrderSpec,
+                domain: Domain = QQ) -> list[PolyElement]:
     R, *xs = ring(gens, domain, source)
     polys = [R.from_expr(f) if not isinstance(f, str) else eval(f, dict(zip(gens.split(","), xs))) for f in F]
     G = groebner(polys, R)
@@ -22,7 +27,7 @@ def _check_walk(F, gens, source, target, domain=QQ):
     return W
 
 
-def test_extended_groebner():
+def test_extended_groebner() -> None:
     R, x, y = ring("x,y", QQ)
     F = [x**2 - y, x*y - 1]
     H, C = extended_groebner(F, R)
@@ -34,7 +39,7 @@ def test_extended_groebner():
     assert initial_form(x**2*y + x*y**2 + x, (1, 1)) == x**2*y + x*y**2
 
 
-def test_walk():
+def test_walk() -> None:
     _check_walk(["x*z - y**2", "x**2 - y*z"], "x,y,z", grevlex, lex)
     _check_walk(["x*z - y**2", "x**2 - y*z"], "x,y,z", lex, grevlex)
     _check_walk(["x*z - y**2", "x**2 - y*z"], "x,y,z", grlex, lex)

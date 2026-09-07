@@ -10,7 +10,7 @@ from sympy.testing.pytest import raises
 from sympy.abc import x, y, z, w
 
 
-def _check_signs(cad):
+def _check_signs(cad: CAD) -> None:
     """The signs of the input polynomials on each cell, which are derived
     from the signs of the projection factors, must agree with a direct
     exact evaluation at the sample point."""
@@ -22,7 +22,7 @@ def _check_signs(cad):
             assert abs(value.evalf(30) - coord.evalf(30)) < 1e-25
 
 
-def _check_structure(cad):
+def _check_structure(cad: CAD) -> None:
     """Indices are lexicographic, parents are consistent and the sample
     points of the children lie over the parent's sample point."""
     n = len(cad.gens)
@@ -52,7 +52,7 @@ def _check_structure(cad):
     assert cad.cells is cad.cells_at(n)
 
 
-def test_merge_roots():
+def test_merge_roots() -> None:
     r = CRootOf(x**2 - 2, 1)
     assert _merge_roots([], []) == []
     assert _merge_roots([1], []) == [1]
@@ -60,7 +60,7 @@ def test_merge_roots():
     assert _merge_roots([0, 3], [1, 2]) == [0, 1, 2, 3]
 
 
-def test_univariate():
+def test_univariate() -> None:
     cad = cylindrical_algebraic_decomposition([x**2 - 2, x - 1], [x])
     assert len(cad) == 7
     assert cad.gens == (x,)
@@ -91,7 +91,7 @@ def test_univariate():
     assert [c.signs for c in cad] == [(-1,), (0,), (1,)]
 
 
-def test_circle():
+def test_circle() -> None:
     cad = cylindrical_algebraic_decomposition([x**2 + y**2 - 1], [x, y])
     assert repr(cad) == "CAD(13 cells, x, y)"
     assert len(cad) == 13
@@ -118,7 +118,7 @@ def test_circle():
     _check_structure(cad)
 
 
-def test_circle_and_line():
+def test_circle_and_line() -> None:
     circle, line = x**2 + y**2 - 1, x - y
     cad = cylindrical_algebraic_decomposition([circle, line], [x, y])
     assert len(cad) == 47
@@ -146,7 +146,7 @@ def test_circle_and_line():
     assert [c.signs for c in cad3] == [(s, -t) for s, t in [c.signs for c in cad]]
 
 
-def test_parabola_and_circle():
+def test_parabola_and_circle() -> None:
     cad = cylindrical_algebraic_decomposition([y - x**2, x**2 + y**2 - 1], [x, y])
     assert len(cad) == 47
     assert [c.point[0] for c in cad.cells_at(1)] == [
@@ -162,7 +162,7 @@ def test_parabola_and_circle():
     _check_structure(cad)
 
 
-def test_polynomials_in_fewer_variables():
+def test_polynomials_in_fewer_variables() -> None:
     cad = cylindrical_algebraic_decomposition([x - 1], [x, y])
     assert [c.point for c in cad] == [(0, 0), (1, 0), (2, 0)]
     assert [c.signs for c in cad] == [(-1,), (0,), (1,)]
@@ -183,7 +183,7 @@ def test_polynomials_in_fewer_variables():
     assert cad.cells[0].index == (1, 1, 1)
 
 
-def test_three_variables():
+def test_three_variables() -> None:
     sphere, saddle = x**2 + y**2 + z**2 - 1, z - x*y
     cad = cylindrical_algebraic_decomposition([sphere, saddle], [x, y, z])
     assert len(cad) == 137
@@ -198,7 +198,7 @@ def test_three_variables():
     _check_structure(cad)
 
 
-def test_not_well_oriented():
+def test_not_well_oriented() -> None:
     # x*w + y vanishes identically on the line x = y = 0 in (x, y, z)
     raises(NotWellOriented, lambda: cylindrical_algebraic_decomposition(
         [x*w + y], [x, y, z, w], method='mccallum'))
@@ -221,7 +221,7 @@ def test_not_well_oriented():
     _check_signs(cad)
 
 
-def test_hong_method():
+def test_hong_method() -> None:
     circle, line = x**2 + y**2 - 1, x - y
     cad = cylindrical_algebraic_decomposition([circle, line], [x, y], method='hong')
     assert cad.method == 'hong'
@@ -233,7 +233,7 @@ def test_hong_method():
     _check_structure(cad)
 
 
-def test_errors():
+def test_errors() -> None:
     raises(ValueError, lambda: cylindrical_algebraic_decomposition([x], []))
     raises(ValueError, lambda: cylindrical_algebraic_decomposition([x], [x], method='collins'))
     raises(Exception, lambda: cylindrical_algebraic_decomposition([x + z], [x, y]))

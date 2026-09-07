@@ -1,20 +1,27 @@
 """Quantifier elimination over the real numbers."""
 from __future__ import annotations
 
+from typing import Optional, Union
+
 from sympy.core.singleton import S
 from sympy.core.sympify import sympify
-from sympy.logic.boolalg import BooleanTrue, BooleanFalse, true, false
+from sympy.logic.boolalg import Boolean, BooleanTrue, BooleanFalse, true, false
 from sympy.sets.fancysets import Reals
+from sympy.sets.sets import Set
 
 from sympy_extras.polys.cad import quantifier_elimination
 
 from .facts import normalize, to_polynomial
+from sympy_extras._typing import as_boolean, free_symbols, sorted_symbols
+
 from .quantifiers import prenex
+from .ask import Assumptions, _facts
 
 __all__ = ['resolve']
 
 
-def resolve(formula, domain=S.Reals, assumptions=None, method=None):
+def resolve(formula: Union[Boolean, bool], domain: Optional[Set] = S.Reals,
+            assumptions: 'Assumptions' = None, method: Optional[str] = None) -> Boolean:
     """Eliminate the quantifiers of a formula over the real numbers, the
     counterpart of Mathematica's ``Resolve[expr, Reals]`` (and of
     ``Reduce`` for quantifier-free formulas).
@@ -69,33 +76,32 @@ def resolve(formula, domain=S.Reals, assumptions=None, method=None):
     >>> resolve(x**2 > 2)
     (x > CRootOf(x**2 - 2, 1)) | (x < CRootOf(x**2 - 2, 0))
     """
-    formula = sympify(formula)
+    formula_ = as_boolean(formula)
     domain = S.Reals if domain is None else sympify(domain)
     if not isinstance(domain, Reals):
         raise NotImplementedError(
             "quantifier elimination is only implemented over the real numbers")
-    prefix, matrix = prenex(formula)
+    prefix, matrix = prenex(formula_)
     bound = [v for _, v in prefix]
-    from .ask import _facts
     facts = _facts(assumptions, S.Reals, matrix.free_symbols | set(bound))
     matrix = normalize(matrix)
-    real = facts.real | set(bound) | matrix.free_symbols
+    real = facts.real | set(bound) | free_symbols(matrix)
     poly = to_polynomial(matrix, real)
     if poly is None:
         raise ValueError(
             "the formula is not a Boolean combination of polynomial relations "
             "with rational coefficients: %s" % (matrix,))
     premise = to_polynomial(facts.formula, real)
-    if premise not in (None, true):
+    if premise is not None and premise is not true:
         from sympy.logic.boolalg import And
         poly = And(premise, poly)
-    free = sorted((poly.free_symbols) - set(bound), key=lambda s: s.name)
+    free = sorted_symbols(free_symbols(poly) - set(bound))
     if isinstance(poly, (BooleanTrue, BooleanFalse)):
         return poly
     if not prefix and not free:
         return true if bool(poly) else false
     result = quantifier_elimination(poly, prefix, free=free, method=method)
-    if premise not in (None, true) and result not in (true, false):
+    if premise is not None and premise is not true and result not in (true, false):
         # drop the conditions which are implied by the assumptions
         from .refine import _refine_boolean
         result = _refine_boolean(result, facts)

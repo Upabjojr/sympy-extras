@@ -8,23 +8,25 @@ from sympy.abc import x, y, z
 from sympy_extras.assumptions import ForAll, Exists, Quantifier, prenex
 
 
-def test_construction():
+def test_construction() -> None:
     f = ForAll(x, x > 0)
-    assert isinstance(f, Quantifier) and f.kind == 'forall'
+    assert isinstance(f, Quantifier) and f.quantifier == 'forall'
     assert f.variables == (x,) and f.formula == (x > 0)
     assert f.free_symbols == set()
     assert f.bound_symbols == [x]
-    assert ForAll([x, y], x > y).variables == (x, y)
+    g = ForAll([x, y], x > y)
+    assert isinstance(g, ForAll) and g.variables == (x, y)
     assert ForAll((x, y), x > y) == ForAll([x, y], x > y)
     assert ForAll(x, x > y).free_symbols == {y}
-    assert Exists(x, x > y).kind == 'exists'
+    e = Exists(x, x > y)
+    assert isinstance(e, Exists) and e.quantifier == 'exists'
     # trivial cases
     assert ForAll(x, True) is true
     assert Exists(x, false) is false
     assert ForAll(x, y > 0) == (y > 0)
     assert ForAll([x, z], y > x) == ForAll(x, y > x)
     assert ForAll([], x > 0) == (x > 0)
-    raises(TypeError, lambda: ForAll(2, x > 0))
+    raises(TypeError, lambda: ForAll(2, x > 0))  # type: ignore[arg-type]
     raises(TypeError, lambda: ForAll(x, x + 1))
     raises(ValueError, lambda: ForAll([x, x], x > 0))
     # Boolean operations
@@ -45,7 +47,7 @@ def test_construction():
     assert latex(Exists([x, y], x > y)) == r"\exists x, y \, x > y"
 
 
-def test_prenex():
+def test_prenex() -> None:
     assert prenex(x > 0) == ([], x > 0)
     assert prenex(True) == ([], true)
     assert prenex(ForAll(x, x > 0)) == ([('forall', x)], x > 0)

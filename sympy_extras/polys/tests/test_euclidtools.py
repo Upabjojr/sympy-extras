@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from sympy.matrices import Matrix
 from sympy.polys import ring, ZZ
 from sympy.testing.pytest import raises
@@ -7,7 +9,7 @@ from sympy.testing.pytest import raises
 from sympy_extras.polys.euclidtools import dup_psc, dmp_psc, psc
 
 
-def test_dup_psc():
+def test_dup_psc() -> None:
     R, x = ring("x", ZZ)
 
     assert psc(R(0), R(0)) == []
@@ -35,7 +37,7 @@ def test_dup_psc():
 
     # principal subresultant coefficients as determinants of the Sylvester
     # submatrices, checked on a few cases with degree jumps and common roots
-    def psc_det(f, g):
+    def psc_det(f: list[int], g: list[int]) -> list[Any]:
         n, m = len(f) - 1, len(g) - 1
         out = []
         for j in range(m + 1):
@@ -62,7 +64,7 @@ def test_dup_psc():
         assert dup_psc([ZZ(c) for c in f], [ZZ(c) for c in g], ZZ) == psc_det(f, g)
 
 
-def test_dmp_psc():
+def test_dmp_psc() -> None:
     R, x, y = ring("x,y", ZZ)
 
     assert psc(R(0), R(0)) == []

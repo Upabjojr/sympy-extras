@@ -10,8 +10,10 @@ values of ``n`` and, where SymPy can decide it, symbolically.
 """
 from __future__ import annotations
 
-from sympy import (Sum, harmonic, factorial, binomial, Rational, simplify,
-    symbols)
+from typing import Iterable, Optional
+
+from sympy import (Sum, Expr, Symbol, harmonic, factorial, binomial, Rational,
+    simplify, symbols)
 from sympy.abc import k, n, m, x
 
 from sympy_extras.concrete import karr_sum
@@ -19,7 +21,8 @@ from sympy_extras.concrete import karr_sum
 H = harmonic
 
 
-def _agree(ours, published, values=range(1, 9), extra=None):
+def _agree(ours: Optional[Expr], published: Expr, values: Iterable[int] = range(1, 9),
+           extra: Optional[dict[Symbol, int]] = None) -> None:
     assert ours is not None
     for v in values:
         subs = {n: v}
@@ -28,7 +31,7 @@ def _agree(ours, published, values=range(1, 9), extra=None):
         assert simplify((ours - published).subs(subs).doit()) == 0, (v, ours, published)
 
 
-def test_concrete_mathematics():
+def test_concrete_mathematics() -> None:
     # GKP (6.67): sum_{0<=k<n} H_k = n H_n - n
     _agree(karr_sum(H(k), (k, 0, n - 1)), n*H(n) - n)
     # GKP (6.69): sum_{0<=k<n} k H_k = n(n-1)/2 H_n - n(n-1)/4
@@ -54,7 +57,7 @@ def test_concrete_mathematics():
     _agree(karr_sum(k*x**k, (k, 1, n)), x*(1 - (n + 1)*x**n + n*x**(n + 1))/(1 - x)**2, extra={x: 5})
 
 
-def test_a_equals_b_and_gosper_examples():
+def test_a_equals_b_and_gosper_examples() -> None:
     # A = B, chapter 5: sum_{k=0}^{n} k k! = (n+1)! - 1
     _agree(karr_sum(k*factorial(k), (k, 0, n)), factorial(n + 1) - 1)
     # A = B: sum_{k=0}^{n} (4k+1) k!/(2k+1)! = 2 - (n+1)!... Gosper-summable;
@@ -78,7 +81,7 @@ def test_a_equals_b_and_gosper_examples():
     assert karr_sum(binomial(n, k), (k, 0, m)) is None
 
 
-def test_sigma_examples():
+def test_sigma_examples() -> None:
     # examples of the kind treated in Schneider's papers on Sigma
     # sum_{k=1}^{n} H_k^(2) = (n+1) H_n^(2) - H_n
     _agree(karr_sum(H(k, 2), (k, 1, n)), (n + 1)*H(n, 2) - H(n))
@@ -89,10 +92,12 @@ def test_sigma_examples():
     # sum_{k=1}^{n} H_k^3 = (n+1) H_n^3 - 3(n+1) H_n^2 + 3(2n+1) H_n - 6n + ... : compare
     # with the direct sum only (published forms differ in presentation)
     s = karr_sum(H(k)**3, (k, 1, n))
+    assert s is not None
     for v in range(1, 7):
         assert s.subs(n, v).doit() == sum(H(i)**3 for i in range(1, v + 1))
     # sum_{k=1}^{n} H_k H_k^(2) needs H^(3), found automatically
     s = karr_sum(H(k)*H(k, 2), (k, 1, n))
+    assert s is not None
     for v in range(1, 7):
         assert s.subs(n, v).doit() == sum(H(i)*H(i, 2) for i in range(1, v + 1))
     # harmonic numbers with a scaled argument: sum_{k=1}^{n} H_{2k}
@@ -105,7 +110,9 @@ def test_sigma_examples():
     # nested sums as such
     j = symbols('j')
     s = karr_sum(Sum(H(j), (j, 1, k)), (k, 1, n))
-    _agree(s, karr_sum((n + 1 - k)*H(k), (k, 1, n)))
+    direct = karr_sum((n + 1 - k)*H(k), (k, 1, n))
+    assert direct is not None
+    _agree(s, direct)
     # impossibility results: no closed form in harmonic numbers and powers
     assert karr_sum(H(k)*2**k, (k, 1, n)) is None
     assert karr_sum(H(k)/2**k, (k, 1, n)) is None
@@ -115,7 +122,7 @@ def test_sigma_examples():
     assert karr_sum(1/(k*2**k), (k, 1, n)) is None
 
 
-def test_mathematica_maple_documented_results():
+def test_mathematica_maple_documented_results() -> None:
     # Mathematica: Sum[HarmonicNumber[k], {k, 1, n}] == (n + 1) HarmonicNumber[n] - n
     _agree(karr_sum(H(k), (k, 1, n)), (n + 1)*H(n) - n)
     # Mathematica: Sum[k HarmonicNumber[k], {k, 1, n}]

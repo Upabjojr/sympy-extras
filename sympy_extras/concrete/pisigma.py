@@ -57,16 +57,32 @@ References
 from __future__ import annotations
 
 from math import comb
+from typing import Callable, Iterable, Optional, Sequence, Union
 
+from sympy.core.expr import Expr
 from sympy.core.symbol import Dummy, Symbol
 from sympy.core.sympify import sympify
 from sympy.polys.domains import QQ
-from sympy.polys.fields import field as _field
+from sympy.polys.domains.domain import Domain
+from sympy.polys.fields import field as _field, FracElement, FracField
+from sympy.polys.rings import PolyElement
 from sympy.polys.matrices import DomainMatrix
 from sympy.core.exprtools import factor_terms
 from sympy.polys.polytools import Poly, factor_list
 
-__all__ = ['PiSigmaField', 'Extension']
+from sympy_extras._typing import DomainElement
+
+__all__ = ['PiSigmaField', 'Extension', 'Solution', 'Solutions']
+
+#: an element of the constant field
+Constant = DomainElement
+#: a solution (c_1, ..., c_r, g) of the parameterized first order equation
+Solution = tuple[list[Constant], FracElement]
+#: a basis of solutions, or None when the equation is out of scope
+Solutions = Optional[list[Solution]]
+#: the right hand sides of a step of the coefficientwise recursion, as a
+#: function of the current expression of the constants and coefficients
+Rhs = Callable[[list[list[Constant]], dict[int, list[FracElement]], int], list[FracElement]]
 
 
 class Extension:
@@ -88,13 +104,13 @@ class Extension:
 
     __slots__ = ('kind', 'symbol', 'value', 'expr')
 
-    def __init__(self, kind, symbol, value, expr):
+    def __init__(self, kind: str, symbol: Dummy, value: Expr, expr: Expr) -> None:
         self.kind = kind
         self.symbol = symbol
         self.value = value
         self.expr = expr
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Extension(%s, %s, %s)" % (self.kind, self.expr, self.value)
 
 
@@ -135,22 +151,36 @@ class PiSigmaField:
     True
     """
 
-    def __init__(self, k, params=()):
-        self.k = sympify(k)
-        if not isinstance(self.k, Symbol):
+    def __init__(self, k: Symbol, params: Iterable[Symbol] = ()) -> None:
+        k_ = sympify(k)
+        if not isinstance(k_, Symbol):
             raise TypeError("the summation index must be a symbol")
+        self.k: Symbol = k_
         self.params = tuple(sympify(p) for p in params)
-        self.C = QQ.frac_field(*self.params) if self.params else QQ
-        self.extensions = []
+        self.C: Domain = QQ.frac_field(*self.params) if self.params else QQ
+        self.extensions: list[Extension] = []
+        self.field: FracField
+        self.gens: tuple[FracElement, ...]
+        self.symbols: tuple[Symbol, ...]
+        self._sigma_gens: list[FracElement]
+        self.zero: FracElement
+        self.one: FracElement
+        self._sigma_cache: dict[tuple[int, int], FracElement]
+        self._sigma_inv_gens: Optional[list[FracElement]]
+        self._sigma_inv_cache: dict[tuple[int, int], FracElement]
+        #: the atoms represented in the field, filled by build_pisigma_field
+        self.known_atoms: list[Expr] = []
         self._rebuild()
 
     # ------------------------------------------------------------------
     # the field
 
-    def _rebuild(self):
-        symbols = [self.k] + [e.symbol for e in self.extensions]
+    def _rebuild(self) -> None:
+        symbols: list[Symbol] = [self.k] + [e.symbol for e in self.extensions]
         self.field, *gens = _field(symbols, self.C)
         self.gens = tuple(gens)
+        self.zero = getattr(self.field, 'zero')
+        self.one = getattr(self.field, 'one')
         self.symbols = tuple(symbols)
         self._sigma_gens = [self.gens[0] + 1]
         for i, e in enumerate(self.extensions, start=1):
@@ -164,16 +194,16 @@ class PiSigmaField:
         self._sigma_inv_cache = {}
 
     @property
-    def level(self):
+    def level(self) -> int:
         """The number of extensions."""
         return len(self.extensions)
 
-    def from_expr(self, expr):
+    def from_expr(self, expr: Union[Expr, int]) -> FracElement:
         """Convert an expression in the index, the parameters and the
         generator symbols to an element of the field."""
         return self.field.from_expr(sympify(expr))
 
-    def to_expr(self, f, substitute=True):
+    def to_expr(self, f: FracElement, substitute: bool = True) -> Expr:
         """Convert an element to an expression; with ``substitute`` the
         generators are replaced by the sequences they stand for."""
         expr = f.as_expr()
@@ -183,7 +213,7 @@ class PiSigmaField:
             expr = factor_terms(expr)
         return expr
 
-    def add_sigma(self, beta, expr, name=None):
+    def add_sigma(self, beta: Union[Expr, int], expr: Union[Expr, int], name: Optional[str] = None) -> Dummy:
         r"""Adjoin a $\Sigma$-extension $t$ with $\sigma(t) = t + \beta$.
 
         ``beta`` is an expression in the index and the existing generators
@@ -192,11 +222,11 @@ class PiSigmaField:
         """
         return self._add('sigma', beta, expr, name)
 
-    def add_pi(self, alpha, expr, name=None):
+    def add_pi(self, alpha: Union[Expr, int], expr: Union[Expr, int], name: Optional[str] = None) -> Dummy:
         r"""Adjoin a $\Pi$-extension $t$ with $\sigma(t) = \alpha t$."""
         return self._add('pi', alpha, expr, name)
 
-    def _add(self, kind, value, expr, name):
+    def _add(self, kind: str, value: Union[Expr, int], expr: Union[Expr, int], name: Optional[str]) -> Dummy:
         value = sympify(value)
         if kind == 'pi' and value == 0:
             raise ValueError("alpha must be nonzero")
@@ -208,7 +238,7 @@ class PiSigmaField:
     # ------------------------------------------------------------------
     # the shift
 
-    def sigma(self, f, power=1):
+    def sigma(self, f: FracElement, power: int = 1) -> FracElement:
         """The shift $\\sigma^{j}(f)$ for an integer ``j = power`` (negative
         powers are the inverse shift)."""
         if power == 0:
@@ -221,7 +251,7 @@ class PiSigmaField:
             f = self._sigma_poly(f.numer, images, cache)/self._sigma_poly(f.denom, images, cache)
         return f
 
-    def _inverse_gens(self):
+    def _inverse_gens(self) -> list[FracElement]:
         """Images of the generators under the inverse shift, computed on
         first use: $\\sigma^{-1}(k) = k - 1$, $\\sigma^{-1}(t) = t/\\sigma^{-1}(\\alpha)$
         or $t - \\sigma^{-1}(\\beta)$."""
@@ -235,10 +265,11 @@ class PiSigmaField:
                     self._sigma_inv_gens.append(self.gens[i] - value)
         return self._sigma_inv_gens
 
-    def _sigma_poly(self, p, images=None, cache=None):
-        if images is None:
+    def _sigma_poly(self, p: PolyElement, images: Optional[list[FracElement]] = None,
+                    cache: Optional[dict[tuple[int, int], FracElement]] = None) -> FracElement:
+        if images is None or cache is None:
             images, cache = self._sigma_gens, self._sigma_cache
-        result = self.field.zero
+        result = self.zero
         for monom, coeff in p.terms():
             term = self.field(coeff)
             for i, e in enumerate(monom):
@@ -252,7 +283,7 @@ class PiSigmaField:
             result += term
         return result
 
-    def shift_poly(self, p, j):
+    def shift_poly(self, p: PolyElement, j: int) -> PolyElement:
         """$\\sigma^j$ of a polynomial in ``k`` alone (a ring element),
         for any integer ``j``."""
         x = self.field.ring.gens[0]
@@ -261,7 +292,7 @@ class PiSigmaField:
     # ------------------------------------------------------------------
     # levels and decompositions
 
-    def level_of(self, f):
+    def level_of(self, f: FracElement) -> int:
         """The index of the highest generator occurring in ``f``: ``-1`` for
         a constant, ``0`` for an element of $\\mathbb{C}(k)$, ``i`` for an
         element involving $t_i$."""
@@ -274,19 +305,19 @@ class PiSigmaField:
                         break
         return level
 
-    def is_constant(self, f):
+    def is_constant(self, f: FracElement) -> bool:
         return self.level_of(f) == -1
 
-    def to_constant(self, f):
+    def to_constant(self, f: FracElement) -> Constant:
         """The element of the constant field equal to the constant ``f``."""
         if not self.is_constant(f):
             raise ValueError("%s is not a constant" % (f,))
         return self.C.convert(f.numer.LC)/self.C.convert(f.denom.LC)
 
-    def from_constant(self, c):
+    def from_constant(self, c: Constant) -> FracElement:
         return self.field(c)
 
-    def as_poly_in(self, f, i, laurent=False):
+    def as_poly_in(self, f: FracElement, i: int, laurent: bool = False) -> Optional[dict[int, FracElement]]:
         """Decompose ``f`` as a polynomial in the generator of index ``i``
         with coefficients in the field without it: a dict mapping exponents
         to coefficients. With ``laurent`` the denominator may be a power of
@@ -304,7 +335,7 @@ class PiSigmaField:
                 return None
             shift = d
             den = ring.from_dict({m[:i] + (0,) + m[i + 1:]: c for m, c in den.terms()})
-        result = {}
+        result: dict[int, PolyElement] = {}
         for monom, coeff in num.terms():
             e = monom[i] - shift
             rest = monom[:i] + (0,) + monom[i + 1:]
@@ -315,7 +346,7 @@ class PiSigmaField:
     # ------------------------------------------------------------------
     # linear algebra over the constants
 
-    def _nullspace(self, rows, ncols):
+    def _nullspace(self, rows: Sequence[Sequence[Constant]], ncols: int) -> list[list[Constant]]:
         """Basis of the null space of a matrix over the constants given as a
         list of rows (lists of constants)."""
         if not rows:
@@ -329,7 +360,7 @@ class PiSigmaField:
     # ------------------------------------------------------------------
     # the solver
 
-    def solve(self, a, fs, level=None):
+    def solve(self, a: FracElement, fs: Sequence[FracElement], level: Optional[int] = None) -> Solutions:
         r"""Solve $\sigma(g) - a\,g = c_1 f_1 + \cdots + c_r f_r$.
 
         Returns a basis of the space of solutions $(c_1, \ldots, c_r, g)$
@@ -357,10 +388,10 @@ class PiSigmaField:
             return self._solve_sigma(level, a, fs)
         return self._solve_pi(level, a, fs)
 
-    def telescope(self, f):
+    def telescope(self, f: FracElement) -> Optional[FracElement]:
         r"""A solution $g$ of $\sigma(g) - g = f$, or ``None`` if there is
         none in the field (or it could not be decided, see :meth:`solve`)."""
-        sols = self.solve(self.field.one, [f])
+        sols = self.solve(self.one, [f])
         if not sols:
             return None
         for c, g in sols:
@@ -370,24 +401,24 @@ class PiSigmaField:
 
     # constants: sigma is the identity
 
-    def _solve_constants(self, a, fs):
-        a = self.to_constant(a)
-        fs = [self.to_constant(f) for f in fs]
+    def _solve_constants(self, a_: FracElement, fs_: Sequence[FracElement]) -> Solutions:
+        a = self.to_constant(a_)
+        fs = [self.to_constant(f) for f in fs_]
         s = len(fs)
         one, zero = self.C.one, self.C.zero
         if a != one:
             return [([one if i == l else zero for i in range(s)],
                      self.field(fs[l]/(one - a))) for l in range(s)]
-        sols = [(v, self.field.zero) for v in self._nullspace([fs], s)] if s else []
-        sols.append(([zero]*s, self.field.one))
+        sols: list[Solution] = [(v, self.zero) for v in self._nullspace([fs], s)] if s else []
+        sols.append(([zero]*s, self.one))
         return sols
 
     # the rational level C(k): Abramov's universal denominator and a
     # degree bound for the polynomial part
 
-    def _integer_roots(self, p, h):
+    def _integer_roots(self, p: Poly, h: Symbol) -> set[int]:
         """Non-negative integer roots of a polynomial in ``h`` (a Poly)."""
-        roots = set()
+        roots: set[int] = set()
         if p.is_zero:
             return roots
         for factor, _ in factor_list(p.as_expr(), h)[1]:
@@ -399,7 +430,7 @@ class PiSigmaField:
                     roots.add(int(r))
         return roots
 
-    def _dispersion(self, A, B):
+    def _dispersion(self, A: PolyElement, B: PolyElement) -> int:
         """The largest ``h >= 0`` with ``gcd(A(k), B(k + h)) != 1`` for
         univariate polynomials ``A``, ``B`` (ring elements), or ``-1``."""
         k, h = self.k, Dummy('h')
@@ -411,7 +442,7 @@ class PiSigmaField:
         roots = self._integer_roots(res, h)
         return max(roots) if roots else -1
 
-    def _universal_denominator(self, p1, p0):
+    def _universal_denominator(self, p1: PolyElement, p0: PolyElement) -> PolyElement:
         """Abramov's universal denominator of the rational solutions of
         ``p1(k) y(k + 1) + p0(k) y(k) = q(k)`` with polynomial ``q``."""
         ring = self.field.ring
@@ -429,16 +460,16 @@ class PiSigmaField:
                 U *= self.shift_poly(d, -j)
         return U
 
-    def _coeff_list(self, p):
+    def _coeff_list(self, p: PolyElement) -> list[Constant]:
         """Coefficients of a univariate polynomial in ``k`` (ring element)
         as a list indexed by the degree, as constants."""
-        coeffs = {}
+        coeffs: dict[int, Constant] = {}
         for monom, c in p.terms():
             coeffs[monom[0]] = self.C.convert(c)
         d = max(coeffs) if coeffs else -1
         return [coeffs.get(i, self.C.zero) for i in range(d + 1)]
 
-    def _solve_rational(self, a, fs):
+    def _solve_rational(self, a: FracElement, fs: Sequence[FracElement]) -> Solutions:
         ring = self.field.ring
         x = ring.gens[0]
         A, B = a.numer, a.denom
@@ -448,7 +479,7 @@ class PiSigmaField:
         W = ring.one
         for f in bfs:
             W = W.lcm(f.denom)
-        S = []
+        S: list[PolyElement] = []
         for f in bfs:
             wf = self.field(W)*f
             if wf.denom.degree(0) > 0:
@@ -474,17 +505,17 @@ class PiSigmaField:
             if rs.is_Integer and rs >= 0:
                 D = max(D, int(rs))
         # linear system for the coefficients y_0..y_D and the constants
-        columns = []
+        columns: list[list[Constant]] = []
         for j in range(D + 1):
             columns.append(self._coeff_list(P1*(x + 1)**j + P0*x**j))
         for q in Q:
             columns.append([-c for c in self._coeff_list(q)])
         nrows = max([len(col) for col in columns] + [0])
         ncols = len(columns)
-        rows = []
+        rows: list[list[Constant]] = []
         for r in range(nrows):
             rows.append([col[r] if r < len(col) else self.C.zero for col in columns])
-        sols = []
+        sols: list[Solution] = []
         for v in self._nullspace(rows, ncols):
             p = ring.zero
             for j in range(D + 1):
@@ -497,15 +528,25 @@ class PiSigmaField:
     # Sigma and Pi extensions: coefficientwise recursion with a running set
     # of unknown constants
 
-    def _is_sigma_ratio(self, a, level):
+    def _is_sigma_ratio(self, a: FracElement, level: int) -> bool:
         """Whether $\\sigma(h) = a h$ has a nonzero solution in the field of
         the given level (``a == 1`` included)."""
-        if a == self.field.one:
+        if a == self.one:
             return True
         sols = self.solve(a, [], level=level)
-        return bool(sols) and any(g != self.field.zero for _, g in sols)
+        if not sols:
+            return False
+        return any(g != self.zero for _, g in sols)
 
-    def _solve_steps(self, level, steps, r):
+    def _combination(self, coefficients: Sequence[Constant], elements: Sequence[FracElement]) -> FracElement:
+        """The linear combination of ``elements`` with constant ``coefficients``."""
+        result = self.zero
+        for c, e in zip(coefficients, elements):
+            if c:
+                result += self.field(c)*e
+        return result
+
+    def _solve_steps(self, level: int, steps: Sequence[tuple[int, FracElement, Rhs]], r: int) -> Solutions:
         """Common driver of the $\\Sigma$ and $\\Pi$ cases.
 
         ``steps`` is a list of ``(j, a_j, rhs)`` where ``rhs(cmap, G)``
@@ -517,8 +558,8 @@ class PiSigmaField:
         """
         one, zero = self.C.one, self.C.zero
         s = r
-        cmap = [[one if i == l else zero for l in range(s)] for i in range(r)]
-        G = {}
+        cmap: list[list[Constant]] = [[one if i == l else zero for l in range(s)] for i in range(r)]
+        G: dict[int, list[FracElement]] = {}
         for j, a_j, rhs in steps:
             R = rhs(cmap, G, s)
             sols = self.solve(a_j, R, level=level - 1)
@@ -531,23 +572,22 @@ class PiSigmaField:
             G[j] = [g for _, g in sols]
             for jj in G:
                 if jj != j:
-                    G[jj] = [sum((self.field(V[m][l])*G[jj][l] for l in range(s)), self.field.zero)
-                             for m in range(p)]
+                    G[jj] = [self._combination([V[m][l] for l in range(s)], G[jj]) for m in range(p)]
             cmap = [[sum((cmap[i][l]*V[m][l] for l in range(s)), zero) for m in range(p)]
                     for i in range(r)]
             s = p
         t = self.gens[level]
-        result = []
+        result: list[Solution] = []
         for m in range(s):
-            g = self.field.zero
+            g = self.zero
             for j, coeffs in G.items():
                 g += coeffs[m]*t**j
             result.append(([cmap[i][m] for i in range(r)], g))
         return result
 
-    def _solve_sigma(self, level, a, fs):
+    def _solve_sigma(self, level: int, a: FracElement, fs: Sequence[FracElement]) -> Solutions:
         beta = self.from_expr(self.extensions[level - 1].value)
-        polys = []
+        polys: list[dict[int, FracElement]] = []
         for f in fs:
             p = self.as_poly_in(f, level)
             if p is None:
@@ -556,13 +596,13 @@ class PiSigmaField:
         maxdeg = max([max(p) for p in polys if p] + [0])
         D = maxdeg + (1 if self._is_sigma_ratio(a, level - 1) else 0)
         r = len(fs)
-        betas = {}
+        betas: dict[int, FracElement] = {}
 
-        def make_rhs(j):
-            def rhs(cmap, G, s):
-                R = []
+        def make_rhs(j: int) -> Rhs:
+            def rhs(cmap: list[list[Constant]], G: dict[int, list[FracElement]], s: int) -> list[FracElement]:
+                R: list[FracElement] = []
                 for l in range(s):
-                    value = self.field.zero
+                    value = self.zero
                     for i in range(r):
                         fij = polys[i].get(j)
                         if fij is not None and cmap[i][l]:
@@ -576,21 +616,21 @@ class PiSigmaField:
                 return R
             return rhs
 
-        steps = [(j, a, make_rhs(j)) for j in range(D, -1, -1)]
+        steps: list[tuple[int, FracElement, Rhs]] = [(j, a, make_rhs(j)) for j in range(D, -1, -1)]
         return self._solve_steps(level, steps, r)
 
-    def _pi_exponents(self, a, alpha):
+    def _pi_exponents(self, a: FracElement, alpha: FracElement) -> set[int]:
         r"""Candidate exponents ``j`` such that $\sigma(c)\, \alpha^j = a\, c$
         may have a solution $c$ in the field below: for elements of
         $\mathbb{C}(k)$ the leading coefficients and the degrees of ``a``
         and ``alpha`` must match, which fixes ``j`` in most cases; otherwise
         a few small exponents are tried."""
-        if a == self.field.one:
+        if a == self.one:
             return set()
         if self.level_of(a) > 0 or self.level_of(alpha) > 0:
             return set(range(-3, 4))
 
-        def lc_and_degree(f):
+        def lc_and_degree(f: FracElement) -> tuple[Constant, int]:
             num, den = f.numer, f.denom
             return (self.C.convert(num.LC)/self.C.convert(den.LC),
                     num.degree(0) - den.degree(0))
@@ -615,24 +655,24 @@ class PiSigmaField:
             return set()
         return set(range(-3, 4))
 
-    def _solve_pi(self, level, a, fs):
+    def _solve_pi(self, level: int, a: FracElement, fs: Sequence[FracElement]) -> Solutions:
         alpha = self.from_expr(self.extensions[level - 1].value)
-        polys = []
+        polys: list[dict[int, FracElement]] = []
         for f in fs:
             p = self.as_poly_in(f, level, laurent=True)
             if p is None:
                 return None
             polys.append(p)
-        exponents = set().union(*[set(p) for p in polys]) | {0}
-        exponents |= self._pi_exponents(a, alpha)
-        exponents = sorted(exponents, reverse=True)
+        exponent_set: set[int] = set().union(*[set(p) for p in polys]) | {0}
+        exponent_set |= self._pi_exponents(a, alpha)
+        exponents = sorted(exponent_set, reverse=True)
         r = len(fs)
 
-        def make_rhs(j, alpha_j):
-            def rhs(cmap, G, s):
-                R = []
+        def make_rhs(j: int, alpha_j: FracElement) -> Rhs:
+            def rhs(cmap: list[list[Constant]], G: dict[int, list[FracElement]], s: int) -> list[FracElement]:
+                R: list[FracElement] = []
                 for l in range(s):
-                    value = self.field.zero
+                    value = self.zero
                     for i in range(r):
                         fij = polys[i].get(j)
                         if fij is not None and cmap[i][l]:
@@ -641,7 +681,7 @@ class PiSigmaField:
                 return R
             return rhs
 
-        steps = []
+        steps: list[tuple[int, FracElement, Rhs]] = []
         for j in exponents:
             alpha_j = alpha**j
             steps.append((j, a/alpha_j, make_rhs(j, alpha_j)))

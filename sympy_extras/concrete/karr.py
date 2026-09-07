@@ -35,9 +35,12 @@ in terms of rational functions of $n$ and $2^n$.
 """
 from __future__ import annotations
 
+from typing import Optional, Sequence, Union
+
 from sympy.concrete.products import Product
 from sympy.concrete.summations import Sum, summation as _sympy_summation
 from sympy.core.add import Add
+from sympy.core.expr import Expr
 from sympy.core.exprtools import factor_terms
 from sympy.core.mul import Mul
 from sympy.core.power import Pow
@@ -48,14 +51,17 @@ from sympy.functions.combinatorial.numbers import harmonic
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import cancel
 from sympy.simplify.simplify import hypersimp
-from sympy.utilities.iterables import is_sequence
+
+from sympy.polys.fields import FracElement
+
+from sympy_extras._typing import as_expr, as_symbol, free_symbols, sorted_symbols
 
 from .pisigma import PiSigmaField
 
 __all__ = ['karr_term', 'karr_sum', 'summation', 'build_pisigma_field']
 
 
-def _atoms(expr, k):
+def _atoms(expr: Expr, k: Symbol) -> set[Expr]:
     """The subexpressions of ``expr`` depending on ``k`` which are not
     rational operations: functions of ``k``, powers with ``k`` in the
     exponent or with a non-integer exponent, sums and products."""
@@ -71,7 +77,7 @@ def _atoms(expr, k):
     return {expr}
 
 
-def _linear_shift(arg, k):
+def _linear_shift(arg: Expr, k: Symbol) -> Optional[int]:
     """``c`` if ``arg == k + c`` with ``c`` an integer, else ``None``."""
     c = arg - k
     if c.is_Integer:
@@ -79,7 +85,7 @@ def _linear_shift(arg, k):
     return None
 
 
-def _linear(arg, k):
+def _linear(arg: Expr, k: Symbol) -> Optional[tuple[int, int]]:
     """``(a, b)`` if ``arg == a*k + b`` with ``a`` a positive integer and
     ``b`` an integer, else ``None``."""
     arg = sympify(arg).expand()
@@ -90,7 +96,7 @@ def _linear(arg, k):
     return None
 
 
-def _evaluate_at(expr, k, k0):
+def _evaluate_at(expr: Expr, k: Symbol, k0: int) -> Optional[Expr]:
     value = expr.subs(k, k0)
     try:
         value = value.doit()
@@ -104,12 +110,13 @@ def _evaluate_at(expr, k, k0):
 class _Builder:
     """Builds a $\\Pi\\Sigma$-field containing given expressions."""
 
-    def __init__(self, k, params):
+    def __init__(self, k: Symbol, params: Sequence[Symbol]) -> None:
         self.k = k
         self.field = PiSigmaField(k, params)
-        self.known = {}  # atom -> expression in k and the generator symbols
+        # atom -> expression in k and the generator symbols
+        self.known: dict[Expr, Expr] = {}
 
-    def convert(self, expr):
+    def convert(self, expr: Union[Expr, int]) -> FracElement:
         """The element of the field equal to ``expr``, adjoining
         generators as needed."""
         expr = sympify(expr)
@@ -125,7 +132,7 @@ class _Builder:
                              "index, the parameters and the sequences of the "
                              "field: %s" % (expr, e))
 
-    def _represent(self, atom):
+    def _represent(self, atom: Expr) -> Expr:
         k = self.k
         # sums and products with a shifted upper limit are expressed through
         # the unshifted ones
@@ -157,7 +164,7 @@ class _Builder:
         raise ValueError("%s is not a hypergeometric term or an indefinite sum "
                          "in %s" % (atom, k))
 
-    def _canonical(self, atom):
+    def _canonical(self, atom: Expr) -> tuple[Expr, int]:
         """``(atom with k in place of k + c, c)`` for harmonic numbers, sums
         and products with argument or upper limit ``k + c``."""
         k = self.k
@@ -175,7 +182,7 @@ class _Builder:
                 return atom.func(atom.function, (j, lo, k)), shift
         return atom, 0
 
-    def _initial_constant(self, atom, w_expr, ratio=False):
+    def _initial_constant(self, atom: Expr, w_expr: Expr, ratio: bool = False) -> Optional[Expr]:
         """The constant ``atom - w`` (or ``atom/w``) as an element of the
         constants, by evaluation at a point, or ``None``."""
         for k0 in range(0, 12):
@@ -190,7 +197,7 @@ class _Builder:
             else:
                 c = cancel(a0 - w0)
             try:
-                c = self.field.C.from_sympy(c)
+                self.field.C.from_sympy(c)
             except Exception:
                 return None
             # the identity must hold for all k: check at another point
@@ -198,37 +205,34 @@ class _Builder:
             a1 = _evaluate_at(atom, self.k, k1)
             w1 = _evaluate_at(w_expr, self.k, k1)
             if a1 is not None and w1 is not None:
-                check = cancel(a1/w1 - self.field.C.to_sympy(c)) if ratio else \
-                    cancel(a1 - w1 - self.field.C.to_sympy(c))
+                check = cancel(a1/w1 - c) if ratio else cancel(a1 - w1 - c)
                 if check != 0:
                     return None
             return c
         return None
 
-    def _sigma(self, atom, beta):
+    def _sigma(self, atom: Expr, beta: Expr) -> Expr:
         b = self.convert(beta)
         w = self.field.telescope(b)
         if w is not None:
             c = self._initial_constant(atom, self.field.to_expr(w))
             if c is not None:
-                return self.field.to_expr(w, substitute=False) + self.field.C.to_sympy(c)
-        symbol = self.field.add_sigma(self.field.to_expr(b, substitute=False), atom)
-        return symbol
+                return self.field.to_expr(w, substitute=False) + c
+        return self.field.add_sigma(self.field.to_expr(b, substitute=False), atom)
 
-    def _pi(self, atom, alpha):
+    def _pi(self, atom: Expr, alpha: Expr) -> Expr:
         a = self.convert(alpha)
         sols = self.field.solve(a, [])
         if sols:
             for _, w in sols:
-                if w != self.field.field.zero:
+                if w != self.field.zero:
                     c = self._initial_constant(atom, self.field.to_expr(w), ratio=True)
                     if c is not None:
-                        return self.field.C.to_sympy(c)*self.field.to_expr(w, substitute=False)
-        symbol = self.field.add_pi(self.field.to_expr(a, substitute=False), atom)
-        return symbol
+                        return c*self.field.to_expr(w, substitute=False)
+        return self.field.add_pi(self.field.to_expr(a, substitute=False), atom)
 
 
-def _auto_extensions(f, k):
+def _auto_extensions(f: Expr, k: Symbol) -> list[Expr]:
     """Harmonic numbers to adjoin when the telescoping fails: for a summand
     with harmonic numbers or nested sums of total degree ``d`` and highest
     order ``m``, the harmonic numbers of orders up to ``m + d``."""
@@ -246,7 +250,7 @@ def _auto_extensions(f, k):
     return [harmonic(k, m) for m in range(1, order + max(degree, 1) + 1)]
 
 
-def _degree_in(expr, atom):
+def _degree_in(expr: Expr, atom: Expr) -> int:
     """The degree of ``expr`` in ``atom`` (an upper bound)."""
     expr = sympify(expr)
     if expr == atom:
@@ -262,7 +266,7 @@ def _degree_in(expr, atom):
     return 1
 
 
-def build_pisigma_field(f, k, extensions=()):
+def build_pisigma_field(f: Union[Expr, int], k: Symbol, extensions: Sequence[Expr] = ()) -> tuple[PiSigmaField, FracElement]:
     r"""A $\Pi\Sigma$-field containing ``f`` and the ``extensions``, and
     the element of the field equal to ``f``.
 
@@ -281,36 +285,38 @@ def build_pisigma_field(f, k, extensions=()):
     >>> F.to_expr(f)
     (k*harmonic(k) + harmonic(k) + 1)*factorial(k)/(k + 1)
     """
-    f = sympify(f)
-    k = sympify(k)
-    if not isinstance(k, Symbol):
-        raise TypeError("the summation index must be a symbol")
-    params = sorted((f.free_symbols | set().union(*[sympify(e).free_symbols
-                     for e in extensions])) - {k}, key=lambda s: s.name)
-    builder = _Builder(k, params)
+    f_ = as_expr(f)
+    k_ = as_symbol(k)
+    symbols = free_symbols(f_)
+    for e in extensions:
+        symbols |= free_symbols(sympify(e))
+    params = sorted_symbols(symbols - {k_})
+    builder = _Builder(k_, params)
     for e in extensions:
         builder.convert(e)
-    element = builder.convert(f)
+    element = builder.convert(f_)
     field = builder.field
-    field.known_atoms = lambda: list(builder.known)
+    field.known_atoms = list(builder.known)
     return field, element
 
 
-def _telescope(f, k, extensions, auto):
+def _telescope(f: Union[Expr, int], k: Symbol, extensions: Sequence[Expr], auto: bool
+               ) -> tuple[PiSigmaField, FracElement, Optional[FracElement]]:
     """The field, the element and a telescoper for ``f``, trying the
     automatic extensions if the first attempt fails."""
-    field, element = build_pisigma_field(f, k, extensions)
+    f_ = as_expr(f)
+    field, element = build_pisigma_field(f_, k, extensions)
     g = field.telescope(element)
     if g is None and auto:
-        extra = [e for e in _auto_extensions(f, k)
-                 if e not in extensions and e not in field.known_atoms()]
+        extra = [e for e in _auto_extensions(f_, k)
+                 if e not in extensions and e not in field.known_atoms]
         if extra:
-            field, element = build_pisigma_field(f, k, list(extensions) + extra)
+            field, element = build_pisigma_field(f_, k, list(extensions) + extra)
             g = field.telescope(element)
     return field, element, g
 
 
-def karr_term(f, k, extensions=(), auto=True):
+def karr_term(f: Union[Expr, int], k: Symbol, extensions: Sequence[Expr] = (), auto: bool = True) -> Optional[Expr]:
     r"""Indefinite sum of ``f`` by Karr's algorithm: ``g`` with
     ``g.subs(k, k + 1) - g == f``, or ``None`` if there is none in the
     $\Pi\Sigma$-field built from ``f``.
@@ -357,7 +363,8 @@ def karr_term(f, k, extensions=(), auto=True):
     return field.to_expr(g)
 
 
-def karr_sum(f, k, extensions=(), auto=True):
+def karr_sum(f: Union[Expr, int], k: Union[Symbol, Sequence[Union[Symbol, Expr, int]]],
+             extensions: Sequence[Expr] = (), auto: bool = True) -> Optional[Expr]:
     r"""Definite sum $\sum_{k=a}^{b} f(k)$ by Karr's algorithm.
 
     ``k`` is ``(k, a, b)``; the result is $g(b + 1) - g(a)$ where ``g`` is
@@ -380,24 +387,28 @@ def karr_sum(f, k, extensions=(), auto=True):
     >>> karr_sum(k**2*2**k, (k, 0, n))
     2*(2**n*n**2 - 2*2**n*n + 3*2**n - 3)
     """
-    f = sympify(f)
-    if is_sequence(k):
-        k, a, b = k
-        a, b = sympify(a), sympify(b)
+    f_ = as_expr(f)
+    a: Optional[Expr] = None
+    b: Optional[Expr] = None
+    if isinstance(k, Symbol):
+        index = k
     else:
-        a = b = None
-    field, element, g = _telescope(f, k, extensions, auto)
+        index_, a_, b_ = k
+        index = as_symbol(index_)
+        a, b = as_expr(a_), as_expr(b_)
+    field, element, g = _telescope(f_, index, extensions, auto)
     if g is None:
         return None
-    if a is None:
+    if a is None or b is None:
         return field.to_expr(g)
     # g(b + 1) is sigma(g) at b, which keeps the generators unshifted
-    upper = field.to_expr(field.sigma(g)).subs(k, b)
-    lower = field.to_expr(g).subs(k, a)
+    upper = field.to_expr(field.sigma(g)).subs(index, b)
+    lower = field.to_expr(g).subs(index, a)
     return factor_terms(cancel(upper.doit() - lower.doit()))
 
 
-def summation(f, *symbols, extensions=(), auto=True, **kwargs):
+def summation(f: Union[Expr, int], *symbols: Union[Symbol, Sequence[Union[Symbol, Expr, int]]],
+              extensions: Sequence[Expr] = (), auto: bool = True, **kwargs: object) -> Expr:
     r"""Summation with SymPy's :func:`~sympy.summation` and Karr's
     algorithm.
 
@@ -418,14 +429,14 @@ def summation(f, *symbols, extensions=(), auto=True, **kwargs):
     >>> summation(harmonic(k)/k, (k, 1, n))
     (harmonic(n)**2 + harmonic(n, 2))/2
     """
-    result = _sympy_summation(f, *symbols, **kwargs)
+    result = as_expr(_sympy_summation(f, *symbols, **kwargs))
     if not result.has(Sum):
         return result
     return _karr_on_sums(result, extensions, auto)
 
 
-def _karr_on_sums(expr, extensions, auto):
-    def evaluate(s):
+def _karr_on_sums(expr: Expr, extensions: Sequence[Expr], auto: bool) -> Expr:
+    def evaluate(s: Sum) -> Expr:
         if len(s.limits) != 1:
             return s
         k, a, b = s.limits[0]
@@ -434,4 +445,4 @@ def _karr_on_sums(expr, extensions, auto):
         except ValueError:
             return s
         return s if value is None else value
-    return expr.replace(lambda e: isinstance(e, Sum), evaluate)
+    return as_expr(expr.replace(lambda e: isinstance(e, Sum), evaluate))

@@ -39,6 +39,11 @@ First release.
   bases between orders for ideals of any dimension (SymPy's FGLM is
   restricted to zero-dimensional ideals), with lifting by normal forms so
   that SymPy's Buchberger implementation handles the initial forms.
+- Complete type annotations checked by mypy in strict mode (`python -m
+  mypy`), type aliases in `sympy_extras._typing` and a `py.typed` marker;
+  `Quantifier.kind` is renamed `Quantifier.quantifier` (SymPy's `Basic`
+  already has a `kind`) and the internal CAD function `_truth_values`
+  returns a 4-tuple.
 - Validation suites against results published elsewhere (Concrete
   Mathematics, A = B, the Sigma literature, Cox-Little-O'Shea, Macaulay2
   and Singular documentation examples, the Katsura and cyclic benchmark

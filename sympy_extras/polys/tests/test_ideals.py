@@ -11,7 +11,7 @@ from sympy_extras.polys.ideals import Ideal, hilbert_numerator
 from sympy_extras.polys.orderings import WeightOrder, BlockOrder, elimination_order
 
 
-def _hilbert_function(I, deg):
+def _hilbert_function(I: Ideal, deg: int) -> int:
     """Brute force count of the standard monomials of degree ``deg``."""
     lms = I.leading_monomials()
     n = len(I.symbols)
@@ -19,7 +19,7 @@ def _hilbert_function(I, deg):
                if sum(e) == deg and not any(monomial_divides(l, e) for l in lms))
 
 
-def test_construction_and_membership():
+def test_construction_and_membership() -> None:
     I = Ideal([x**2 + y**2 - 1, x - y])
     assert I.symbols == (x, y) and I.domain == QQ
     assert I.exprs == [x**2 + y**2 - 1, x - y]
@@ -40,7 +40,7 @@ def test_construction_and_membership():
     assert repr(I) == "Ideal([x**2 + y**2 - 1, x - y], x, y)"
     raises(ValueError, lambda: Ideal([S(1)]))
     raises(ValueError, lambda: I.eliminate([z]))
-    raises(TypeError, lambda: I + 3)
+    raises(TypeError, lambda: I + 3)  # type: ignore[operator]
     raises(ValueError, lambda: I + Ideal([z], z))
     assert I == Ideal([y - x, 2*x**2 - 1], x, y)
     assert I != Ideal([x - y], x, y) and I != 3
@@ -50,7 +50,7 @@ def test_construction_and_membership():
     assert Ideal([x, x + 1], x, y).radical().is_whole_ring()
 
 
-def test_arithmetic():
+def test_arithmetic() -> None:
     I = Ideal([x**2], x, y)
     J = Ideal([y], x, y)
     assert (I + J).exprs == [x**2, y]
@@ -61,7 +61,7 @@ def test_arithmetic():
     assert Ideal([x, y], x, y)**2 == Ideal([x**2, x*y, y**2], x, y)
 
 
-def test_elimination_intersection_quotient():
+def test_elimination_intersection_quotient() -> None:
     I = Ideal([x - t**2, y - t**3], t, x, y)
     assert I.eliminate([t]) == Ideal([x**3 - y**2], x, y)
     assert I.eliminate([]) == I
@@ -89,7 +89,7 @@ def test_elimination_intersection_quotient():
     assert Ideal([x*y], x, y).radical_contains(x*y) and not Ideal([x*y], x, y).radical_contains(x)
 
 
-def test_orders():
+def test_orders() -> None:
     O = WeightOrder((1, 3), 'lex')
     assert list(groebner([x**2 - y, x*y - 1], x, y, order=O)) == [x**3 - 1, -x**2 + y]
     assert O((2, 0)) == (2, (2, 0)) and O == WeightOrder((1, 3), 'lex') and hash(O) == hash(WeightOrder((1, 3)))
@@ -105,7 +105,7 @@ def test_orders():
     assert isinstance(elimination_order(1, 3), BlockOrder)
 
 
-def test_dimension_hilbert():
+def test_dimension_hilbert() -> None:
     assert hilbert_numerator([(2, 0), (0, 2)], t) == Poly(t**4 - 2*t**2 + 1, t)
     assert hilbert_numerator([], t) == Poly(1, t)
     assert hilbert_numerator([(0, 0)], t) == Poly(0, t)
@@ -131,7 +131,7 @@ def test_dimension_hilbert():
     assert Ideal([x*z - y**2, x**2 - y*z], x, y, z, order='lex').dimension() == 1
 
 
-def test_zero_dimensional():
+def test_zero_dimensional() -> None:
     I = Ideal([x**2 - y, y**2 - 1], x, y)
     assert I.standard_monomials() == [1, y, x, x*y]
     assert I.vector_space_dimension() == 4
@@ -166,7 +166,7 @@ def test_zero_dimensional():
     assert K.is_radical() and K.is_maximal()
 
 
-def test_change_order():
+def test_change_order() -> None:
     I = Ideal([x*z - y**2, x**2 - y*z], x, y, z)
     lex_basis = I.change_order('lex')
     assert [p.as_expr() for p in lex_basis] == list(groebner([x*z - y**2, x**2 - y*z], x, y, z, order='lex'))

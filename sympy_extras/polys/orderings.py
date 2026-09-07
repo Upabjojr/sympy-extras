@@ -9,15 +9,22 @@ functions of :mod:`sympy.polys.groebnertools`.
 """
 from __future__ import annotations
 
+from typing import Sequence
+
 from sympy.polys.orderings import MonomialOrder, monomial_key
+
+from sympy_extras._typing import Monomial, OrderSpec
 
 __all__ = ['WeightOrder', 'BlockOrder', 'elimination_order', 'as_order']
 
 
-def as_order(order):
-    """The :class:`~sympy.polys.orderings.MonomialOrder` (or key function)
-    for a name or an order."""
-    return monomial_key(order)
+def as_order(order: OrderSpec) -> MonomialOrder:
+    """The :class:`~sympy.polys.orderings.MonomialOrder` for a name or an
+    order."""
+    result = monomial_key(order)
+    if not isinstance(result, MonomialOrder):
+        raise TypeError("a monomial order or its name is expected, got %s" % (order,))
+    return result
 
 
 class WeightOrder(MonomialOrder):
@@ -40,23 +47,23 @@ class WeightOrder(MonomialOrder):
     alias = 'weight'
     is_global = True
 
-    def __init__(self, weights, tail='lex'):
+    def __init__(self, weights: Sequence[int], tail: OrderSpec = 'lex') -> None:
         self.weights = tuple(weights)
         if any(w < 0 for w in self.weights):
             raise ValueError("the weights must be non-negative")
         self.tail = as_order(tail)
 
-    def __call__(self, monomial):
+    def __call__(self, monomial: Monomial) -> tuple[int, object]:
         return (sum(w*e for w, e in zip(self.weights, monomial)), self.tail(monomial))
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.__class__, self.weights, self.tail))
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, WeightOrder) and \
             (self.weights, self.tail) == (other.weights, other.tail)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "WeightOrder(%s, %s)" % (self.weights, self.tail)
 
     __repr__ = __str__
@@ -84,31 +91,32 @@ class BlockOrder(MonomialOrder):
     alias = 'block'
     is_global = True
 
-    def __init__(self, blocks):
+    def __init__(self, blocks: Sequence[tuple[OrderSpec, int]]) -> None:
         self.blocks = tuple((as_order(order), int(size)) for order, size in blocks)
         if any(size <= 0 for _, size in self.blocks):
             raise ValueError("block sizes must be positive")
 
-    def __call__(self, monomial):
-        key, start = [], 0
+    def __call__(self, monomial: Monomial) -> tuple[object, ...]:
+        key: list[object] = []
+        start = 0
         for order, size in self.blocks:
             key.append(order(monomial[start:start + size]))
             start += size
         return tuple(key)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.__class__, self.blocks))
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, BlockOrder) and self.blocks == other.blocks
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "BlockOrder(%s)" % ", ".join("(%s, %d)" % (o, s) for o, s in self.blocks)
 
     __repr__ = __str__
 
 
-def elimination_order(neliminate, nvars, order='grevlex'):
+def elimination_order(neliminate: int, nvars: int, order: OrderSpec = 'grevlex') -> MonomialOrder:
     """The block order eliminating the first ``neliminate`` of ``nvars``
     variables, with ``order`` on each block."""
     if neliminate <= 0:

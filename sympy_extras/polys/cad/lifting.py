@@ -12,13 +12,19 @@ the sign of every input polynomial on a cell is read off its sample point.
 """
 from __future__ import annotations
 
+from typing import Iterable, Iterator, Optional, Sequence, Union
+
+from sympy.core.expr import Expr
 from sympy.core.numbers import Rational
+from sympy.core.symbol import Symbol
+from sympy.core.sympify import sympify
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 
 from .projection import projection_sets, _to_polys
-from .samplepoints import (SamplePoint, compare_real, rational_between,
-    rational_below, rational_above)
+from .samplepoints import (SamplePoint, RealAlgebraic, compare_real,
+    rational_between, rational_below, rational_above)
+from sympy_extras._typing import ExprLike, Sign
 
 
 class NotWellOriented(PolynomialError):
@@ -50,7 +56,8 @@ class CADCell:
 
     __slots__ = ('index', 'point', 'sample', 'parent', '_signs', 'signs')
 
-    def __init__(self, index, point, sample, parent, signs):
+    def __init__(self, index: tuple[int, ...], point: tuple[Expr, ...], sample: SamplePoint,
+                 parent: Optional[CADCell], signs: tuple[Sign, ...]) -> None:
         self.index = index
         self.point = point
         self.sample = sample
@@ -58,30 +65,32 @@ class CADCell:
         # signs of the projection factors of this level at the sample point
         self._signs = signs
         # signs of the input polynomials, filled by CAD for the top level
-        self.signs = None
+        # (empty for the cells of the lower levels)
+        self.signs: tuple[Sign, ...] = ()
 
     @property
-    def level(self):
+    def level(self) -> int:
         return len(self.index)
 
     @property
-    def dimension(self):
+    def dimension(self) -> int:
         """The dimension of the cell: the number of sectors in its index."""
         return sum(i % 2 for i in self.index)
 
     @property
-    def is_section(self):
+    def is_section(self) -> bool:
         """Whether the cell is a section (a root) over its parent."""
         return self.index[-1] % 2 == 0
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "CADCell(%s, %s)" % (self.index, self.point)
 
-    def _factor_sign(self, level, i):
+    def _factor_sign(self, level: int, i: int) -> Sign:
         """Sign of the ``i``-th projection factor of level ``level`` at the
         sample point of this cell."""
-        cell = self
+        cell: CADCell = self
         while cell.level > level:
+            assert cell.parent is not None
             cell = cell.parent
         return cell._signs[i]
 
@@ -109,7 +118,8 @@ class CAD:
         input polynomials on the cell.
     """
 
-    def __init__(self, gens, polys, projection, method, levels):
+    def __init__(self, gens: Sequence[Symbol], polys: list[Poly], projection: list[list[Poly]],
+                 method: str, levels: list[list[CADCell]]) -> None:
         self.gens = tuple(gens)
         self.polys = polys
         self.projection = projection
@@ -117,31 +127,31 @@ class CAD:
         self._levels = levels
         self.cells = levels[-1]
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.cells)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[CADCell]:
         return iter(self.cells)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "CAD(%d cells, %s)" % (len(self.cells), ", ".join(map(str, self.gens)))
 
-    def cells_at(self, level):
+    def cells_at(self, level: int) -> list[CADCell]:
         """The cells of `\\mathbb{R}^k` for ``level = k``, ``1 <= k <= n``."""
         if not 1 <= level <= len(self.gens):
             raise ValueError("level must be between 1 and %d" % len(self.gens))
         return self._levels[level - 1]
 
-    def children(self, cell):
+    def children(self, cell: CADCell) -> list[CADCell]:
         """The cells of the next level lying over ``cell``."""
         if cell.level >= len(self.gens):
             return []
         return [c for c in self._levels[cell.level] if c.parent is cell]
 
 
-def _merge_roots(roots, new):
+def _merge_roots(roots: Sequence[Union[RealAlgebraic, int]], new: Sequence[Union[RealAlgebraic, int]]) -> list[Union[RealAlgebraic, int]]:
     """Merge the sorted lists of distinct real roots ``roots`` and ``new``."""
-    result = []
+    result: list[Union[RealAlgebraic, int]] = []
     i = j = 0
     while i < len(roots) and j < len(new):
         c = compare_real(roots[i], new[j])
@@ -160,17 +170,17 @@ def _merge_roots(roots, new):
     return result
 
 
-def _lift(projection, gens, method):
+def _lift(projection: Sequence[Sequence[Poly]], gens: Sequence[Symbol], method: str) -> list[list[CADCell]]:
     """Build the cells of all levels from the projection factor sets."""
     root = CADCell((), (), SamplePoint(), None, ())
-    levels = []
+    levels: list[list[CADCell]] = []
     current = [root]
     for k, polys in enumerate(projection, start=1):
         level_gens = gens[:k]
-        cells = []
+        cells: list[CADCell] = []
         for parent in current:
-            roots = []
-            nullified = set()
+            roots: list[Union[RealAlgebraic, int]] = []
+            nullified: set[int] = set()
             for i, f in enumerate(polys):
                 r = parent.sample.real_roots(f, level_gens)
                 if r is None:
@@ -181,51 +191,52 @@ def _lift(projection, gens, method):
                     nullified.add(i)
                 else:
                     roots = _merge_roots(roots, r)
-            values = []
+            values: list[tuple[Union[Expr, int], Optional[Union[RealAlgebraic, int]]]] = []
             if not roots:
                 values.append((Rational(0), None))
             else:
                 values.append((rational_below(roots[0]), None))
-                for j, r in enumerate(roots):
-                    values.append((r, r))
+                for j, root_ in enumerate(roots):
+                    values.append((root_, root_))
                     if j + 1 < len(roots):
-                        values.append((rational_between(r, roots[j + 1]), None))
+                        values.append((rational_between(root_, roots[j + 1]), None))
                 values.append((rational_above(roots[-1]), None))
             for j, (value, section_root) in enumerate(values, start=1):
                 sample = parent.sample.extend(value)
-                signs = []
+                signs: list[Sign] = []
                 for i, f in enumerate(polys):
                     if i in nullified:
                         signs.append(0)
                     else:
                         signs.append(sample.sign(f, level_gens))
-                cells.append(CADCell(parent.index + (j,), parent.point + (value,),
+                cells.append(CADCell(parent.index + (j,), parent.point + (sympify(value),),
                                      sample, parent, tuple(signs)))
         levels.append(cells)
         current = cells
     return levels
 
 
-def _level_of(f, gens):
+def _level_of(f: Poly, gens: Sequence[Symbol]) -> int:
     for k in range(len(gens), 0, -1):
         if f.degree(gens[k - 1]) > 0:
             return k
     return 0
 
 
-def _factor_signs(polys, projection, gens):
+def _factor_signs(polys: Sequence[Poly], projection: Sequence[Sequence[Poly]],
+                  gens: Sequence[Symbol]) -> list[tuple[Sign, list[tuple[int, int, int]]]]:
     """For every input polynomial, the sign of its constant factor and the
     positions ``(level, index, exponent)`` of its irreducible factors in
     the projection sets."""
-    positions = {}
+    positions: dict[Poly, tuple[int, int]] = {}
     for k, level in enumerate(projection, start=1):
         for i, g in enumerate(level):
             positions[Poly(g.as_expr(), *gens)] = (k, i)
-    result = []
+    result: list[tuple[Sign, list[tuple[int, int, int]]]] = []
     for f in polys:
         coeff, factors = f.factor_list()
         c = 0 if f.is_zero else (1 if coeff > 0 else -1)
-        items = []
+        items: list[tuple[int, int, int]] = []
         for g, e in factors:
             if g.LC() < 0:
                 g = -g
@@ -236,7 +247,8 @@ def _factor_signs(polys, projection, gens):
     return result
 
 
-def cylindrical_algebraic_decomposition(polys, gens, method=None):
+def cylindrical_algebraic_decomposition(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbol],
+                                        method: Optional[str] = None) -> CAD:
     """Cylindrical algebraic decomposition sign-invariant for ``polys``.
 
     Parameters
@@ -301,6 +313,9 @@ def cylindrical_algebraic_decomposition(polys, gens, method=None):
     else:
         raise ValueError("unknown projection method %r" % (method,))
 
+    levels: list[list[CADCell]] = []
+    projection: list[list[Poly]] = []
+    m = methods[0]
     for m in methods:
         projection = projection_sets(polys, gens, method=m)
         try:
@@ -313,7 +328,7 @@ def cylindrical_algebraic_decomposition(polys, gens, method=None):
 
     factor_signs = _factor_signs(polys, projection, gens)
     for cell in levels[-1]:
-        signs = []
+        signs: list[Sign] = []
         for c, items in factor_signs:
             s = c
             for level, i, e in items:

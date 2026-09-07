@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sympy import (Sum, Product, harmonic, factorial, binomial, Rational,
+from typing import Iterable, Optional
+
+from sympy import (Sum, Product, Expr, harmonic, factorial, binomial, Rational,
     RisingFactorial, sin, sqrt, simplify, cancel)
 from sympy.testing.pytest import raises
 from sympy.abc import k, n, j, x
@@ -9,14 +11,15 @@ from sympy_extras.concrete import (karr_term, karr_sum, summation,
     build_pisigma_field, PiSigmaField)
 
 
-def _check(f, closed, lower=1, values=range(1, 7)):
+def _check(f: Expr, closed: Optional[Expr], lower: int = 1, values: Iterable[int] = range(1, 7)) -> None:
     """The closed form agrees with the direct sum for several n."""
+    assert closed is not None
     for m in values:
         direct = sum(f.subs({k: i, n: m}).doit() for i in range(lower, m + 1))
         assert simplify(closed.subs(n, m).doit() - direct) == 0, (f, m)
 
 
-def test_harmonic_sums():
+def test_harmonic_sums() -> None:
     s = karr_sum(harmonic(k), (k, 1, n))
     assert s == n*harmonic(n) - n + harmonic(n)
     _check(harmonic(k), s)
@@ -44,7 +47,7 @@ def test_harmonic_sums():
     _check(harmonic(k)/(k + 1), s)
 
 
-def test_no_closed_form():
+def test_no_closed_form() -> None:
     # provably no closed form in the field built from the summand
     assert karr_sum(harmonic(k)/k, (k, 1, n), auto=False) is None
     assert karr_term(harmonic(k, 2), k, auto=False) is None
@@ -55,18 +58,23 @@ def test_no_closed_form():
     assert karr_sum(1/k, (k, 1, n)) is None
     assert karr_term(1/k**2, k) is None
     # with the right extension there is one
-    assert karr_sum(harmonic(k)/k, (k, 1, n), extensions=[harmonic(k, 2)]).expand() == \
+    s = karr_sum(harmonic(k)/k, (k, 1, n), extensions=[harmonic(k, 2)])
+    assert s is not None
+    assert s.expand() == \
         harmonic(n)**2/2 + harmonic(n, 2)/2
 
 
-def test_hypergeometric_and_rational():
+def test_hypergeometric_and_rational() -> None:
     assert karr_sum(k*factorial(k), (k, 1, n)) == n*factorial(n) + factorial(n) - 1
-    assert karr_sum(k**2*2**k, (k, 0, n)).expand() == 2*2**n*n**2 - 4*2**n*n + 6*2**n - 6
+    s2 = karr_sum(k**2*2**k, (k, 0, n))
+    assert s2 is not None
+    assert s2.expand() == 2*2**n*n**2 - 4*2**n*n + 6*2**n - 6
     assert karr_sum(1/(k*(k + 1)), (k, 1, n)) == n/(n + 1)
     assert karr_sum(k**2, (k, 1, n)) == n*(2*n**2 + 3*n + 1)/6
     assert karr_sum(binomial(2*k, k)/4**k, (k, 0, n)) == (2*n + 1)*binomial(2*n, n)/4**n
     s = karr_sum(k*binomial(n, k)/(n - k + 1), (k, 0, n))
-    assert s is None or _check(k*binomial(n, k)/(n - k + 1), s, lower=0) is None
+    if s is not None:
+        _check(k*binomial(n, k)/(n - k + 1), s, lower=0)
     assert karr_sum(RisingFactorial(x, k), (k, 0, n)) is None
     s = karr_sum(RisingFactorial(x, k)/factorial(k), (k, 0, n))
     _check(RisingFactorial(x, k)/factorial(k), s, lower=0)
@@ -81,8 +89,9 @@ def test_hypergeometric_and_rational():
     assert karr_sum(harmonic(k)*k*factorial(k), (k, 1, n)) is None
     s = karr_sum(harmonic(k)*k*factorial(k) + factorial(k), (k, 1, n))
     _check(harmonic(k)*k*factorial(k) + factorial(k), s)
-    s = karr_sum(2**k*(harmonic(k) - 2/(k + 1)) , (k, 1, n))
-    assert s is None or _check(2**k*(harmonic(k) - 2/(k + 1)), s) is None
+    s = karr_sum(2**k*(harmonic(k) - 2/(k + 1)), (k, 1, n))
+    if s is not None:
+        _check(2**k*(harmonic(k) - 2/(k + 1)), s)
     # parameters
     s = karr_sum(n*k + 1/(k*(k + 1)), (k, 1, n))
     _check(n*k + 1/(k*(k + 1)), s)
@@ -90,7 +99,7 @@ def test_hypergeometric_and_rational():
     assert simplify(s - (x**(n + 1) - 1)/(x - 1)) == 0
 
 
-def test_nested_sums_and_products():
+def test_nested_sums_and_products() -> None:
     inner = Sum(1/j**2, (j, 1, k))
     s = karr_sum(inner, (k, 1, n))
     _check(inner, s)
@@ -105,10 +114,11 @@ def test_nested_sums_and_products():
     assert karr_sum(k*p, (k, 1, n)) is None
 
 
-def test_karr_term_and_field():
+def test_karr_term_and_field() -> None:
     assert karr_term(harmonic(k), k) == k*(harmonic(k) - 1)
     assert karr_term(k*factorial(k), k) == factorial(k)
     g = karr_term(k, k)
+    assert g is not None
     assert (g.subs(k, k + 1) - g).expand() == k
     assert karr_sum(harmonic(k), k) == karr_term(harmonic(k), k)
     F, f = build_pisigma_field(harmonic(k + 1)*factorial(k), k)
@@ -124,10 +134,10 @@ def test_karr_term_and_field():
     assert len(F.extensions) == 1 and F.to_expr(f) == 2**k*(2**k + 1)
     raises(ValueError, lambda: build_pisigma_field(sin(k), k))
     raises(ValueError, lambda: build_pisigma_field(sqrt(k), k))
-    raises(TypeError, lambda: build_pisigma_field(k, 2))
+    raises(TypeError, lambda: build_pisigma_field(k, 2))  # type: ignore[arg-type]
 
 
-def test_pisigma_field():
+def test_pisigma_field() -> None:
     F = PiSigmaField(k, params=[n])
     assert F.level == 0 and F.params == (n,)
     kk = F.gens[0]
@@ -137,7 +147,7 @@ def test_pisigma_field():
     kk = F.gens[0]
     assert F.level == 1 and F.level_of(t) == 1 and F.level_of(kk) == 0 and F.level_of(F.from_expr(n)) == -1
     assert F.sigma(F.sigma(t), -1) == t
-    assert F.as_poly_in(t**2*kk + 1, 1) == {2: kk, 0: F.field.one}
+    assert F.as_poly_in(t**2*kk + 1, 1) == {2: kk, 0: F.one}
     assert F.as_poly_in(1/t, 1) is None
     assert F.to_constant(F.from_expr(n/2)) == F.C.from_sympy(n/2)
     raises(ValueError, lambda: F.to_constant(kk))
@@ -149,20 +159,23 @@ def test_pisigma_field():
     assert F.sigma(u, -1) == u/2
     # the parameterized equation: sigma(g) - g = c1*H + c2*(k*H) has a two
     # dimensional solution space plus the constants
-    sols = F.solve(F.field.one, [t, kk*t])
+    sols = F.solve(F.one, [t, kk*t])
+    assert sols is not None
     assert len(sols) == 3
     for c, g in sols:
         assert F.sigma(g) - g == F.field(c[0])*t + F.field(c[1])*kk*t
     # homogeneous equations
     assert F.solve(F.from_expr(k + 1), []) == []
-    [(c, g)] = F.solve(F.from_expr((k + 1)/k), [])
+    hom = F.solve(F.from_expr((k + 1)/k), [])
+    assert hom is not None
+    [(c, g)] = hom
     assert c == [] and F.to_expr(g) in (k, 2*k) or F.sigma(g)*kk == (kk + 1)*g
     raises(ValueError, lambda: F.add_pi(0, 1))
-    raises(TypeError, lambda: PiSigmaField(2))
+    raises(TypeError, lambda: PiSigmaField(2))  # type: ignore[arg-type]
     assert repr(F.extensions[0]) == "Extension(sigma, harmonic(k), 1/(k + 1))"
 
 
-def test_summation():
+def test_summation() -> None:
     assert summation(k**2, (k, 1, n)) == n**3/3 + n**2/2 + n/6
     assert summation(harmonic(k), (k, 1, n)) == n*harmonic(n) - n + harmonic(n)
     assert summation(harmonic(k)/k, (k, 1, n)).expand() == harmonic(n)**2/2 + harmonic(n, 2)/2

@@ -8,7 +8,7 @@ from sympy.abc import x, y
 from sympy_extras.assumptions import ask, element, ForAll, Exists
 
 
-def test_ask_predicates():
+def test_ask_predicates() -> None:
     # answered through sympy's assumptions
     assert ask(x > 0, x > 0) is True
     assert ask(x < 0, x > 0) is False
@@ -43,7 +43,7 @@ def test_ask_predicates():
     assert ask(x > 4, Eq(x, 3)) is False
 
 
-def test_ask_cad():
+def test_ask_cad() -> None:
     # decided by the cylindrical algebraic decomposition
     assert ask(x > 1, x > 2) is True
     assert ask(x > 3, x > 2) is None
@@ -80,7 +80,7 @@ def test_ask_cad():
     assert ask(x > 0, (x**2 < 0) & element(x, S.Reals)) is None
 
 
-def test_ask_reals():
+def test_ask_reals() -> None:
     # variables are not real unless assumed
     assert ask(x**2 >= 0) is None
     assert ask(x**2 >= 0, domain=S.Reals) is True
@@ -100,7 +100,7 @@ def test_ask_reals():
     assert ask(p > 1) is None
 
 
-def test_ask_undecidable():
+def test_ask_undecidable() -> None:
     assert ask(sin(x) > 0, x > 0) is None
     assert ask(sqrt(x) > 0, x > 0) is True
     assert ask(sqrt(x) > 1, x > 4) is None
@@ -109,7 +109,7 @@ def test_ask_undecidable():
     assert ask(Or(Symbol('p'), x > 0), x > 1) is True
 
 
-def test_ask_quantified():
+def test_ask_quantified() -> None:
     assert ask(ForAll(x, x**2 >= 0), domain=S.Reals) is True
     assert ask(ForAll(x, x**2 > 0), domain=S.Reals) is False
     assert ask(Exists(x, x**2 < 0), domain=S.Reals) is False
@@ -120,7 +120,7 @@ def test_ask_quantified():
     assert ask(ForAll(x, x**2 + y*x + 1 > 0), (y > -2) & (y < 2)) is True
 
 
-def test_ask_inputs():
+def test_ask_inputs() -> None:
     assert ask(True) is True
     assert ask(False) is False
     assert ask(S.true) is True
@@ -131,4 +131,4 @@ def test_ask_inputs():
     assert ask(x > 0, domain=S.Integers) is None
     assert ask(x > 3, [x > 0, x < 0]) is None
     raises(ValueError, lambda: ask(x > 0, S.false))
-    raises(TypeError, lambda: ask(x > 0, domain=2))
+    raises(TypeError, lambda: ask(x > 0, domain=2))  # type: ignore[arg-type]

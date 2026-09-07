@@ -101,6 +101,33 @@ are shipped with the package.
   (`ask`, `refine`, `simplify`, `satisfiable`, the polynomial routines) and
   add what is missing on top. Algorithms that need no change stay in SymPy.
 
+## Types
+
+The code is fully annotated and checked with mypy in strict mode
+(`python -m mypy`, configured in `pyproject.toml`); the package ships a
+`py.typed` marker. The goal is type stability: every function has explicit
+parameter and return types, unions are narrowed with `isinstance` checks
+rather than left to duck typing, and containers are typed precisely, so
+that the algorithms can be translated to a statically typed language later.
+
+- Use the aliases of `sympy_extras/_typing.py` (`Monomial`, `Sign`, `Truth`,
+  `Dup`/`Dmp`, `OrderSpec`, `Weights`, `QuantifierPrefix`, ...) and add new
+  ones there when a structure is passed around.
+- SymPy 1.14 ships no `py.typed` and few annotations. Its sources are
+  followed for the annotations they have (`follow_untyped_imports`), so
+  `sympify`, `.args`, `.subs` are typed as `Basic`; convert at the boundary
+  with the helpers `as_expr`, `as_boolean`, `as_symbol`, `as_set`,
+  `free_symbols` and `sorted_symbols` instead of `cast`. Elements of SymPy
+  domains are `DomainElement = Any`.
+- Because SymPy's API is untyped, `disallow_untyped_calls` and
+  `warn_return_any` are off: a value coming out of SymPy is `Any` until
+  it is narrowed. Narrow it as soon as it enters our code.
+- `# type: ignore` is allowed only with the error code and a comment saying
+  why (there is one, on `Quantifier.__new__`, because SymPy constructors
+  evaluate and may return another object).
+- Tests are annotated too (`-> None`) and compare SymPy numbers with
+  Python literals, so `strict_equality` is off for them only.
+
 ## Running the tests
 
 ```
@@ -113,10 +140,12 @@ This runs the unit tests and the doctests of every module under
 
 ```
 python -m pytest --doctest-glob='*.md' README.md docs
+python -m mypy
+python -m pyflakes sympy_extras conftest.py
 ```
 
-Run everything before committing; a change is not done until the tests
-pass.
+Run everything before committing; a change is not done until the tests,
+mypy and pyflakes pass.
 
 ## Adding a new algorithm
 

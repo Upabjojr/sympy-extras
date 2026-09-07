@@ -48,7 +48,9 @@ python -m pytest
 ```
 
 The test command runs both the unit tests and the doctests in the
-docstrings.
+docstrings. The package is fully type annotated and checked with mypy in
+strict mode (`pip install -e ".[dev]"` then `python -m mypy`); it ships a
+`py.typed` marker.
 
 ## Contents
 

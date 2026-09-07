@@ -28,6 +28,23 @@ jobs:
       - name: Run the examples in the documentation
         run: python -m pytest --doctest-glob='*.md' README.md docs
 
+  typecheck:
+    name: mypy and pyflakes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: mypy
+        run: python -m mypy
+      - name: pyflakes
+        run: python -m pyflakes sympy_extras conftest.py
+
   package:
     name: Build the package
     runs-on: ubuntu-latest

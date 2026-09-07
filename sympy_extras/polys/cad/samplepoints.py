@@ -13,18 +13,27 @@ element whenever a new algebraic coordinate is added.
 from __future__ import annotations
 
 from itertools import count
+from typing import Optional, Sequence, Union
 
 from sympy.core.expr import Expr
 from sympy.core.numbers import Rational
-from sympy.core.symbol import Dummy
+from sympy.core.symbol import Dummy, Symbol
+from sympy.core.sympify import sympify
 from sympy.polys.densetools import dup_eval
 from sympy.polys.domains import QQ
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import ComplexRootOf
+from sympy.polys.domains.domain import Domain
+
+from sympy_extras._typing import DomainElement, ExprLike, Sign
+
+#: a real algebraic number: a Rational, a real ComplexRootOf or a rational
+#: multiple of one
+RealAlgebraic = Expr
 
 
-def _split(r):
+def _split(r: Union[RealAlgebraic, int]) -> tuple[DomainElement, Optional[ComplexRootOf]]:
     """Split a real algebraic number into a rational factor and a
     :class:`~.ComplexRootOf` (or ``None`` for a rational number).
 
@@ -40,7 +49,7 @@ def _split(r):
     return QQ.convert(r), None
 
 
-def _bounds(r):
+def _bounds(r: Union[RealAlgebraic, int]) -> tuple[DomainElement, DomainElement]:
     """Rational lower and upper bounds of the real algebraic number ``r``."""
     c, root = _split(r)
     if root is None:
@@ -50,18 +59,20 @@ def _bounds(r):
     return (a, b) if a <= b else (b, a)
 
 
-def _refine(r):
+def _refine(r: Union[RealAlgebraic, int]) -> None:
     """Refine the isolating interval of the real algebraic number ``r``."""
     _, root = _split(r)
     if root is not None:
         root._set_interval(root._get_interval().refine())
 
 
-def _minpoly(r):
+def _minpoly(r: RealAlgebraic) -> Poly:
     """Minimal polynomial over ZZ of the real algebraic number ``r``, which
     must not be rational."""
     c, root = _split(r)
-    p = root.poly
+    if root is None:
+        raise ValueError("%s is rational" % (r,))
+    p: Poly = getattr(root, 'poly')
     if c != 1:
         x = p.gen
         d = p.degree()
@@ -70,7 +81,7 @@ def _minpoly(r):
     return p
 
 
-def compare_real(a, b):
+def compare_real(a: Union[RealAlgebraic, int], b: Union[RealAlgebraic, int]) -> Sign:
     """Compare two real algebraic numbers exactly.
 
     ``a`` and ``b`` must be :class:`~.Rational` numbers, real
@@ -101,11 +112,11 @@ def compare_real(a, b):
         _refine(b)
 
 
-def _floor(q):
+def _floor(q: DomainElement) -> int:
     return q.numerator // q.denominator
 
 
-def _floor_scaled(a, k):
+def _floor_scaled(a: Union[RealAlgebraic, int], k: int) -> int:
     """Exact value of `\\lfloor 2^k a \\rfloor` for a real algebraic ``a``."""
     scale = QQ(2)**k
     while True:
@@ -116,7 +127,8 @@ def _floor_scaled(a, k):
         _refine(a)
 
 
-def simplest_between(lo, hi, lo_open=True, hi_open=True):
+def simplest_between(lo: DomainElement, hi: Optional[DomainElement], lo_open: bool = True,
+                     hi_open: bool = True) -> DomainElement:
     """The rational number with the smallest denominator in the interval
     with rational endpoints ``lo`` and ``hi``. The endpoints are excluded
     unless ``lo_open`` or ``hi_open`` is ``False``; ``hi`` may be ``None``
@@ -157,7 +169,7 @@ def simplest_between(lo, hi, lo_open=True, hi_open=True):
     return n + 1/inner
 
 
-def _dyadic_bounds(r, k):
+def _dyadic_bounds(r: Union[RealAlgebraic, int], k: int) -> tuple[DomainElement, DomainElement, bool, bool]:
     """Rational bounds of the real algebraic number ``r`` at the scale
     `2^{-k}`, and whether they are attained.
 
@@ -173,7 +185,7 @@ def _dyadic_bounds(r, k):
     return lo, lo + 1/scale, False, False
 
 
-def rational_between(a, b):
+def rational_between(a: Union[RealAlgebraic, int], b: Union[RealAlgebraic, int]) -> Rational:
     """A simple rational number strictly between the real algebraic
     numbers ``a < b``.
 
@@ -201,9 +213,10 @@ def rational_between(a, b):
         lo, _, lo_open, _ = _dyadic_bounds(b, k)
         if hi < lo or (hi == lo and not (hi_open or lo_open)):
             return Rational(simplest_between(hi, lo, hi_open, lo_open))
+    raise RuntimeError("unreachable")  # pragma: no cover
 
 
-def rational_below(a):
+def rational_below(a: Union[RealAlgebraic, int]) -> Rational:
     """A simple rational number smaller than the real algebraic number ``a``.
 
     >>> from sympy import CRootOf
@@ -222,7 +235,7 @@ def rational_below(a):
     return Rational(fl)
 
 
-def rational_above(a):
+def rational_above(a: Union[RealAlgebraic, int]) -> Rational:
     """A simple rational number greater than the real algebraic number ``a``.
 
     >>> from sympy import CRootOf
@@ -236,7 +249,12 @@ def rational_above(a):
     return Rational(_floor_scaled(a, 0) + 1)
 
 
-def _sign_in_field(theta, a):
+def _unit(K: Domain) -> DomainElement:
+    """The generator of an algebraic field as an element of it."""
+    return getattr(K, 'unit')
+
+
+def _sign_in_field(theta: RealAlgebraic, a: DomainElement) -> Sign:
     """Sign of the element ``a`` of `\\mathbb{Q}(\\theta)`, with
     ``theta`` a real :class:`~.ComplexRootOf`."""
     if not a:
@@ -255,7 +273,7 @@ def _sign_in_field(theta, a):
         _refine(theta)
 
 
-def _horner(coeffs, a, K):
+def _horner(coeffs: Sequence[DomainElement], a: DomainElement, K: Domain) -> DomainElement:
     """Evaluate the polynomial with rational ``coeffs`` at the element
     ``a`` of the field ``K``."""
     result = K.zero
@@ -264,7 +282,7 @@ def _horner(coeffs, a, K):
     return result
 
 
-def _join(theta, beta):
+def _join(theta: RealAlgebraic, beta: RealAlgebraic) -> tuple[ComplexRootOf, Domain, DomainElement, DomainElement]:
     """Primitive element of `\\mathbb{Q}(\\theta, \\beta)`.
 
     Returns ``(gamma, K, theta_K, beta_K)`` where ``gamma`` is a real
@@ -350,49 +368,51 @@ class SamplePoint:
 
     __slots__ = ('field', 'theta', 'coords')
 
-    def __init__(self, field=QQ, theta=None, coords=()):
+    def __init__(self, field: Domain = QQ, theta: Optional[RealAlgebraic] = None,
+                 coords: Sequence[DomainElement] = ()) -> None:
         self.field = field
         self.theta = theta
         self.coords = tuple(coords)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.coords)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "SamplePoint(%s)" % ", ".join(str(c) for c in self.as_exprs())
 
-    def as_exprs(self):
+    def as_exprs(self) -> tuple[Expr, ...]:
         """The coordinates as SymPy expressions."""
         return tuple(self.field.to_sympy(c) for c in self.coords)
 
     @property
-    def degree(self):
+    def degree(self) -> int:
         """Degree of the field of the coordinates over the rationals."""
         if self.theta is None:
             return 1
         return _minpoly(self.theta).degree()
 
-    def extend(self, root):
+    def extend(self, root: Union[RealAlgebraic, int]) -> SamplePoint:
         """The point with the coordinate ``root`` appended.
 
         ``root`` is a :class:`~.Rational`, a real :class:`~.ComplexRootOf`
         or a product of the two.
         """
-        if _split(root)[1] is not None:
-            if root == self.theta:
+        r = sympify(root)
+        if _split(r)[1] is not None:
+            if r == self.theta:
                 return SamplePoint(self.field, self.theta,
-                                   self.coords + (self.field.unit,))
+                                   self.coords + (_unit(self.field),))
             if self.theta is None:
-                K = QQ.algebraic_field(root)
+                K = QQ.algebraic_field(r)
                 coords = [K.convert(c, QQ) for c in self.coords]
-                return SamplePoint(K, root, coords + [K.unit])
-            gamma, K, theta_K, beta_K = _join(self.theta, root)
+                return SamplePoint(K, r, coords + [_unit(K)])
+            gamma, K, theta_K, beta_K = _join(self.theta, r)
             coords = [_horner(c.to_list(), theta_K, K) for c in self.coords]
             return SamplePoint(K, gamma, coords + [beta_K])
         value = self.field.convert(QQ.from_sympy(Rational(root)), QQ)
         return SamplePoint(self.field, self.theta, self.coords + (value,))
 
-    def _evaluate(self, poly, gens):
+    def _evaluate(self, poly: Union[ExprLike, Poly], gens: Sequence[Symbol]) -> Union[Poly, DomainElement]:
         """``poly`` in the generators ``gens`` with the leading ones
         replaced by the coordinates: a polynomial in the remaining generators
         over the field, or an element of the field if none remains."""
@@ -414,17 +434,19 @@ class SamplePoint:
             f = f.eval(gens[n - 1], last)
         return f
 
-    def sign(self, poly, gens):
+    def sign(self, poly: Union[ExprLike, Poly], gens: Sequence[Symbol]) -> Sign:
         """Exact sign of the polynomial ``poly`` in the generators ``gens``
         at the point. There must be as many generators as coordinates."""
         if len(gens) != len(self.coords):
             raise ValueError("expected %d generators" % len(self.coords))
         value = self._evaluate(poly, gens)
+        if isinstance(value, Poly):
+            raise ValueError("expected %d generators" % len(self.coords))
         if self.theta is None:
-            return (value > 0) - (value < 0)
+            return int(value > 0) - int(value < 0)
         return _sign_in_field(self.theta, value)
 
-    def real_roots(self, poly, gens):
+    def real_roots(self, poly: Union[ExprLike, Poly], gens: Sequence[Symbol]) -> Optional[list[RealAlgebraic]]:
         """Sorted distinct real roots of ``poly`` in the last generator of
         ``gens``, after substituting the point for the other generators.
 
@@ -445,8 +467,8 @@ class SamplePoint:
 class _SortKey:
     __slots__ = ('root',)
 
-    def __init__(self, root):
+    def __init__(self, root: RealAlgebraic) -> None:
         self.root = root
 
-    def __lt__(self, other):
+    def __lt__(self, other: _SortKey) -> bool:
         return compare_real(self.root, other.root) < 0

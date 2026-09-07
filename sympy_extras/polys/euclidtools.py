@@ -12,12 +12,16 @@ from __future__ import annotations
 
 from sympy.polys.densebasic import (dmp_degree, dmp_zero, dmp_zero_p,
     dup_degree)
+from sympy.polys.domains.domain import Domain
 from sympy.polys.euclidtools import dmp_inner_subresultants, dup_inner_subresultants
+from sympy.polys.rings import PolyElement
+
+from sympy_extras._typing import Dmp, DomainElement, Dup
 
 __all__ = ["dup_psc", "dmp_psc", "psc"]
 
 
-def dup_psc(f, g, K):
+def dup_psc(f: Dup, g: Dup, K: Domain) -> list[DomainElement]:
     r"""
     Principal subresultant coefficients of two polynomials in `K[x]`.
 
@@ -61,7 +65,7 @@ def dup_psc(f, g, K):
     return psc
 
 
-def dmp_psc(f, g, u, K):
+def dmp_psc(f: Dmp, g: Dmp, u: int, K: Domain) -> list[Dmp]:
     """
     Principal subresultant coefficients of two polynomials in `K[X]`.
 
@@ -99,7 +103,7 @@ def dmp_psc(f, g, u, K):
     return psc
 
 
-def psc(f, g):
+def psc(f: PolyElement | DomainElement, g: PolyElement | DomainElement) -> list[PolyElement | DomainElement]:
     """
     Principal subresultant coefficients of two elements of a polynomial ring
     with respect to the first generator.

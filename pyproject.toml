@@ -46,6 +46,8 @@ test = [
 ]
 dev = [
     "pytest",
+    "mypy>=1.14",
+    "pyflakes",
     "build",
     "twine",
 ]
@@ -62,6 +64,35 @@ version = {attr = "sympy_extras.__version__"}
 [tool.setuptools.packages.find]
 include = ["sympy_extras*"]
 
+[tool.setuptools.package-data]
+sympy_extras = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["sympy_extras"]
 addopts = "--doctest-modules -p no:cacheprovider"
+
+[tool.mypy]
+python_version = "3.10"  # mypy no longer analyses for 3.9; the package still supports it
+files = ["sympy_extras", "conftest.py"]
+strict = true
+# SymPy 1.14 ships no py.typed and few annotations: its sources are followed
+# for the annotations they have, but calls into unannotated SymPy functions
+# and values of type Any coming from SymPy cannot be flagged.
+disallow_untyped_calls = false
+warn_return_any = false
+disallow_subclassing_any = false
+warn_unused_ignores = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["sympy", "sympy.*"]
+follow_untyped_imports = true
+
+[[tool.mypy.overrides]]
+module = ["mpmath", "mpmath.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# the tests compare SymPy numbers with Python literals on purpose
+module = ["sympy_extras.*.tests.*", "sympy_extras.*.*.tests.*"]
+strict_equality = false

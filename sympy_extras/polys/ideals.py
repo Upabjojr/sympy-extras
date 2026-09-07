@@ -44,18 +44,25 @@ Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)
 """
 from __future__ import annotations
 
+from typing import Iterable, Optional, Sequence, Union
+
+from sympy.core.expr import Expr
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.core.sympify import sympify
 from sympy.functions.combinatorial.factorials import binomial
 from sympy.polys.domains import QQ
+from sympy.polys.domains.domain import Domain
 from sympy.polys.fglmtools import matrix_fglm
 from sympy.polys.groebnertools import groebner as _groebner
 from sympy.polys.matrices import DomainMatrix
 from sympy.polys.monomials import monomial_divides
-from sympy.polys.orderings import grevlex, lex
+from sympy.polys.orderings import MonomialOrder, grevlex, lex
 from sympy.polys.polytools import Poly
-from sympy.polys.rings import ring as _ring, PolyElement
+from sympy.polys.rings import ring as _ring, PolyElement, PolyRing
+from sympy.matrices.dense import MutableDenseMatrix
+
+from sympy_extras._typing import Monomial, OrderSpec, as_symbol, free_symbols, sorted_symbols
 
 from .groebnerwalk import groebner_walk
 from .orderings import as_order, elimination_order
@@ -63,11 +70,11 @@ from .orderings import as_order, elimination_order
 __all__ = ['Ideal', 'hilbert_numerator']
 
 
-def _is_graded(order):
+def _is_graded(order: OrderSpec) -> bool:
     return as_order(order) in (grevlex, as_order('grlex'))
 
 
-def hilbert_numerator(monomials, t):
+def hilbert_numerator(monomials: Iterable[Sequence[int]], t: Symbol) -> Poly:
     r"""Numerator $N(t)$ of the Hilbert series $N(t)/(1 - t)^n$ of
     $K[x_1, \ldots, x_n]/M$ for a monomial ideal $M$ given by the exponent
     vectors of its generators.
@@ -81,15 +88,15 @@ def hilbert_numerator(monomials, t):
     return Poly(_hilbert_numerator(monomials, t), t)
 
 
-def _minimal_monomials(monomials):
-    minimal = []
+def _minimal_monomials(monomials: Iterable[Monomial]) -> list[Monomial]:
+    minimal: list[Monomial] = []
     for m in sorted(set(monomials), key=sum):
         if not any(monomial_divides(u, m) for u in minimal):
             minimal.append(m)
     return minimal
 
 
-def _hilbert_numerator(monomials, t):
+def _hilbert_numerator(monomials: list[Monomial], t: Symbol) -> Expr:
     if not monomials:
         return S.One
     m = monomials[-1]
@@ -124,14 +131,21 @@ class Ideal:
     cached per order.
     """
 
-    def __init__(self, gens, *symbols, domain=None, order='grevlex'):
+    def __init__(self, gens: Iterable[Union[Expr, Poly]], *symbols: Symbol,
+                 domain: Optional[Domain] = None, order: OrderSpec = 'grevlex') -> None:
         gens = [sympify(g) for g in gens]
         polys = [g.as_expr() if isinstance(g, Poly) else g for g in gens]
-        if not symbols:
-            symbols = sorted(set().union(*[p.free_symbols for p in polys]), key=lambda s: s.name)
-            if not symbols and polys:
+        variables: list[Symbol]
+        if symbols:
+            variables = [as_symbol(s) for s in symbols]
+        else:
+            found: set[Symbol] = set()
+            for p in polys:
+                found |= free_symbols(p)
+            variables = sorted_symbols(found)
+            if not variables and polys:
                 raise ValueError("no variables: give the symbols of the ring")
-        self.symbols = tuple(sympify(s) for s in symbols)
+        self.symbols: tuple[Symbol, ...] = tuple(variables)
         if domain is None:
             polys_ = [Poly(p, *self.symbols, extension=True) for p in polys] if polys else []
             domains = [p.domain for p in polys_]
@@ -145,16 +159,15 @@ class Ideal:
                 domain = domain.get_field()
         self.domain = domain
         self.order = as_order(order)
-        self._rings = {}
-        self._bases = {}
+        self._rings: dict[object, PolyRing] = {}
+        self._bases: dict[object, list[PolyElement]] = {}
         R = self.ring()
-        self.gens = [R.from_expr(p) for p in polys]
-        self.gens = [g for g in self.gens if g]
+        self.gens: list[PolyElement] = [g for g in (R.from_expr(p) for p in polys) if g]
 
     # ------------------------------------------------------------------
     # rings and bases
 
-    def ring(self, order=None):
+    def ring(self, order: Optional[OrderSpec] = None) -> PolyRing:
         """The polynomial ring with the given order."""
         order = self.order if order is None else as_order(order)
         R = self._rings.get(order)
@@ -163,7 +176,7 @@ class Ideal:
             self._rings[order] = R
         return R
 
-    def _basis(self, order=None):
+    def _basis(self, order: Optional[OrderSpec] = None) -> list[PolyElement]:
         """The reduced Gröbner basis for the order, as ring elements."""
         order = self.order if order is None else as_order(order)
         G = self._bases.get(order)
@@ -175,14 +188,14 @@ class Ideal:
             self._bases[order] = G
         return G
 
-    def groebner_basis(self, order=None):
+    def groebner_basis(self, order: Optional[OrderSpec] = None) -> list[Poly]:
         """The reduced Gröbner basis for the order, as a list of ``Poly``."""
         return [self._to_poly(g) for g in self._basis(order)]
 
-    def _to_poly(self, g):
+    def _to_poly(self, g: PolyElement) -> Poly:
         return Poly(g.as_expr(), *self.symbols, domain=self.domain)
 
-    def _from_expr(self, f, order=None):
+    def _from_expr(self, f: Union[Expr, Poly, PolyElement], order: Optional[OrderSpec] = None) -> PolyElement:
         R = self.ring(order)
         if isinstance(f, PolyElement):
             return R.from_dict(dict(f))
@@ -190,63 +203,64 @@ class Ideal:
             f = f.as_expr()
         return R.from_expr(sympify(f))
 
-    def _new(self, gens, symbols=None, order=None):
-        symbols = self.symbols if symbols is None else symbols
+    def _new(self, gens: Iterable[Union[Expr, PolyElement]], symbols: Optional[Sequence[Symbol]] = None,
+             order: Optional[OrderSpec] = None) -> Ideal:
+        variables = self.symbols if symbols is None else tuple(symbols)
         return Ideal([g.as_expr() if isinstance(g, PolyElement) else g for g in gens],
-                     *symbols, domain=self.domain, order=self.order if order is None else order)
+                     *variables, domain=self.domain, order=self.order if order is None else order)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Ideal([%s], %s)" % (", ".join(str(g.as_expr()) for g in self.gens),
                                     ", ".join(map(str, self.symbols)))
 
     @property
-    def exprs(self):
+    def exprs(self) -> list[Expr]:
         """The generators as expressions."""
         return [g.as_expr() for g in self.gens]
 
     # ------------------------------------------------------------------
     # membership and equality
 
-    def reduce(self, f, order=None):
+    def reduce(self, f: Union[Expr, Poly, PolyElement], order: Optional[OrderSpec] = None) -> Expr:
         """The normal form of ``f`` modulo the Gröbner basis."""
         g = self._from_expr(f, order)
         G = self._basis(order)
         r = g.rem(G) if G else g
         return r.as_expr()
 
-    def contains(self, f):
+    def contains(self, f: Union[Expr, Poly, PolyElement]) -> bool:
         """Whether the polynomial ``f`` belongs to the ideal."""
         g = self._from_expr(f)
         G = self._basis()
         return (g.rem(G) if G else g) == 0
 
-    def __contains__(self, f):
+    def __contains__(self, f: Union[Expr, Poly, PolyElement]) -> bool:
         return self.contains(f)
 
-    def is_zero(self):
+    def is_zero(self) -> bool:
         return not self._basis()
 
-    def is_whole_ring(self):
+    def is_whole_ring(self) -> bool:
         G = self._basis()
         return len(G) == 1 and G[0].is_ground
 
-    def _same_ring(self, other):
+    def _same_ring(self, other: object) -> None:
         if not isinstance(other, Ideal):
             raise TypeError("an Ideal is expected")
         if other.symbols != self.symbols:
             raise ValueError("the ideals live in different rings")
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, Ideal) or other.symbols != self.symbols:
             return False
         return [g.as_expr() for g in self._basis()] == [g.as_expr() for g in other._basis(self.order)]
 
-    def __ne__(self, other):
+    def __ne__(self, other: object) -> bool:
         return not self == other
 
     __hash__ = object.__hash__
 
-    def subset(self, other):
+    def subset(self, other: Ideal) -> bool:
         """Whether the ideal is contained in ``other``."""
         self._same_ring(other)
         return all(other.contains(g) for g in self.gens)
@@ -254,11 +268,11 @@ class Ideal:
     # ------------------------------------------------------------------
     # arithmetic
 
-    def __add__(self, other):
+    def __add__(self, other: Ideal) -> Ideal:
         self._same_ring(other)
         return self._new(self.gens + other.gens)
 
-    def __mul__(self, other):
+    def __mul__(self, other: Union[Ideal, Expr, Poly, PolyElement]) -> Ideal:
         if isinstance(other, Ideal):
             self._same_ring(other)
             return self._new([f*g for f in self.gens for g in other.gens])
@@ -266,7 +280,7 @@ class Ideal:
 
     __rmul__ = __mul__
 
-    def __pow__(self, n):
+    def __pow__(self, n: int) -> Ideal:
         if not isinstance(n, int) or n < 0:
             raise ValueError("the exponent must be a non-negative integer")
         result = self._new([self.ring().one])
@@ -277,7 +291,7 @@ class Ideal:
     # ------------------------------------------------------------------
     # elimination and the operations built on it
 
-    def eliminate(self, symbols):
+    def eliminate(self, symbols: Iterable[Symbol]) -> Ideal:
         """The elimination ideal: the intersection with the polynomial ring
         in the variables other than ``symbols``, as an ideal of that ring.
 
@@ -289,22 +303,22 @@ class Ideal:
         >>> Ideal([x - t**2, y - t**3], t, x, y).eliminate([t])
         Ideal([x**3 - y**2], x, y)
         """
-        symbols = [sympify(s) for s in symbols]
-        for s in symbols:
+        eliminated = [as_symbol(s) for s in symbols]
+        for s in eliminated:
             if s not in self.symbols:
                 raise ValueError("%s is not a variable of the ring" % (s,))
-        keep = [s for s in self.symbols if s not in symbols]
-        if not symbols:
+        keep = [s for s in self.symbols if s not in eliminated]
+        if not eliminated:
             return self
-        ordered = list(symbols) + keep
-        R = _ring(ordered, self.domain, elimination_order(len(symbols), len(ordered)))[0]
+        ordered = eliminated + keep
+        R = _ring(ordered, self.domain, elimination_order(len(eliminated), len(ordered)))[0]
         gens = [R.from_expr(g.as_expr()) for g in self.gens]
         G = _groebner(gens, R) if gens else []
-        indices = set(range(len(symbols)))
+        indices = set(range(len(eliminated)))
         kept = [g for g in G if all(all(m[i] == 0 for i in indices) for m in g.monoms())]
         return Ideal([g.as_expr() for g in kept], *keep, domain=self.domain, order=self.order)
 
-    def intersect(self, other):
+    def intersect(self, other: Ideal) -> Ideal:
         """The intersection with ``other``, as $(tI + (1 - t)J) \\cap K[x]$."""
         self._same_ring(other)
         t = Dummy('t')
@@ -313,7 +327,7 @@ class Ideal:
         J = Ideal(gens, t, *self.symbols, domain=self.domain, order=self.order)
         return J.eliminate([t])
 
-    def quotient(self, other):
+    def quotient(self, other: Union[Ideal, Expr, Poly, PolyElement]) -> Ideal:
         """The ideal quotient ``I : J`` (``other`` may also be a single
         polynomial): the polynomials ``h`` with ``h*J`` in ``I``.
 
@@ -325,7 +339,7 @@ class Ideal:
         if not isinstance(other, Ideal):
             other = self._new([self._from_expr(other)])
         self._same_ring(other)
-        result = None
+        result: Optional[Ideal] = None
         for f in other.gens:
             fI = self._new([f])
             common = self.intersect(fI)
@@ -341,7 +355,7 @@ class Ideal:
             return self._new([self.ring().one])
         return result
 
-    def saturate(self, other):
+    def saturate(self, other: Union[Ideal, Expr, Poly, PolyElement]) -> Ideal:
         """The saturation ``I : J**oo``, the union of the quotients
         ``I : J**n``, computed by iterating the quotient until it is
         stable.
@@ -360,7 +374,7 @@ class Ideal:
                 return following
             current = following
 
-    def radical_contains(self, f):
+    def radical_contains(self, f: Union[Expr, Poly, PolyElement]) -> bool:
         """Whether ``f`` belongs to the radical of the ideal, i.e. some
         power of ``f`` belongs to the ideal (Rabinowitsch's trick).
 
@@ -379,15 +393,15 @@ class Ideal:
     # ------------------------------------------------------------------
     # dimension, Hilbert series
 
-    def leading_monomials(self, order=None):
+    def leading_monomials(self, order: Optional[OrderSpec] = None) -> list[Monomial]:
         """The leading monomials of the Gröbner basis, as exponent
         tuples."""
         return [g.LM for g in self._basis(order)]
 
-    def _graded_order(self):
+    def _graded_order(self) -> MonomialOrder:
         return self.order if _is_graded(self.order) else grevlex
 
-    def hilbert_series(self, t=None):
+    def hilbert_series(self, t: Optional[Symbol] = None) -> Expr:
         r"""The Hilbert series of $K[x]/I$ as a rational function
         $N(t)/(1 - t)^n$ (for a non-homogeneous ideal, the series of the
         associated graded ring, computed from the leading term ideal of a
@@ -407,7 +421,7 @@ class Ideal:
         # den is a unit times (1 - t)**m; the unit is its value at t = 0
         return (num.as_expr()/den.eval(0))/(1 - t)**den.degree()
 
-    def _hilbert_data(self):
+    def _hilbert_data(self) -> tuple[Poly, int]:
         """``(q, dim)`` with ``q`` the numerator of the Hilbert series
         reduced by the powers of ``1 - t`` and ``dim`` the Krull
         dimension."""
@@ -423,7 +437,7 @@ class Ideal:
             N, s = q, s + 1
         return N, n - s
 
-    def dimension(self):
+    def dimension(self) -> int:
         """The Krull dimension of $K[x]/I$ (``-1`` for the whole ring).
 
         >>> from sympy.abc import x, y, z
@@ -437,10 +451,10 @@ class Ideal:
             return -1
         return self._hilbert_data()[1]
 
-    def is_zero_dimensional(self):
+    def is_zero_dimensional(self) -> bool:
         return self.dimension() == 0
 
-    def degree(self):
+    def degree(self) -> int:
         """The degree of the ideal: the leading coefficient of the Hilbert
         polynomial times the factorial of the dimension (for a
         zero-dimensional ideal, the number of solutions with
@@ -456,7 +470,7 @@ class Ideal:
         q, _ = self._hilbert_data()
         return int(q.eval(1))
 
-    def hilbert_polynomial(self, d=None):
+    def hilbert_polynomial(self, d: Optional[Symbol] = None) -> Expr:
         r"""The Hilbert polynomial $HP(d)$ of $K[x]/I$: the dimension of the
         degree ``d`` part for ``d`` large (of the associated graded ring
         for a non-homogeneous ideal).
@@ -480,11 +494,11 @@ class Ideal:
     # ------------------------------------------------------------------
     # zero-dimensional ideals
 
-    def _require_zero_dimensional(self):
+    def _require_zero_dimensional(self) -> None:
         if not self.is_zero_dimensional():
             raise NotImplementedError("the ideal is not zero-dimensional")
 
-    def standard_monomials(self, order=None):
+    def standard_monomials(self, order: Optional[OrderSpec] = None) -> list[Expr]:
         """The monomials not divisible by any leading monomial of the
         Gröbner basis, a basis of $K[x]/I$ (zero-dimensional ideals), as
         expressions.
@@ -498,9 +512,9 @@ class Ideal:
         lms = self.leading_monomials(order)
         n = len(self.symbols)
         R = self.ring(order)
-        found = []
-        seen = set()
-        queue = [(0,)*n]
+        found: list[Monomial] = []
+        seen: set[Monomial] = set()
+        queue: list[Monomial] = [(0,)*n]
         while queue:
             m = queue.pop(0)
             if m in seen or any(monomial_divides(lm, m) for lm in lms):
@@ -512,12 +526,12 @@ class Ideal:
         found.sort(key=R.order)
         return [R.from_dict({m: R.domain.one}).as_expr() for m in found]
 
-    def vector_space_dimension(self):
+    def vector_space_dimension(self) -> int:
         """The dimension of $K[x]/I$ as a vector space (zero-dimensional
         ideals): the number of solutions counted with multiplicity."""
         return len(self.standard_monomials())
 
-    def multiplication_matrix(self, f, order=None):
+    def multiplication_matrix(self, f: Union[Expr, Poly, PolyElement], order: Optional[OrderSpec] = None) -> MutableDenseMatrix:
         """The matrix of multiplication by ``f`` on $K[x]/I$ in the basis of
         :meth:`standard_monomials`, as a :class:`~sympy.Matrix`.
 
@@ -528,7 +542,7 @@ class Ideal:
         """
         return self._multiplication_matrix(f, order).to_Matrix()
 
-    def _multiplication_matrix(self, f, order=None):
+    def _multiplication_matrix(self, f: Union[Expr, Poly, PolyElement], order: Optional[OrderSpec] = None) -> DomainMatrix:
         R = self.ring(order)
         G = self._basis(order)
         basis = self.standard_monomials(order)
@@ -545,7 +559,7 @@ class Ideal:
         rows = [[columns[j][i] for j in range(len(monoms))] for i in range(len(monoms))]
         return DomainMatrix(rows, (len(monoms), len(monoms)), R.domain)
 
-    def minimal_polynomial(self, f, y=None):
+    def minimal_polynomial(self, f: Union[Expr, Poly, PolyElement], y: Optional[Symbol] = None) -> Poly:
         """The monic polynomial ``p`` of least degree with ``p(f)`` in the
         ideal (zero-dimensional ideals): the minimal polynomial of
         multiplication by ``f`` on $K[x]/I$ applied to the class of 1, as a
@@ -558,7 +572,7 @@ class Ideal:
         Poly(z**4 - 10*z**2 + 1, z, domain='QQ')
         """
         self._require_zero_dimensional()
-        y = Symbol('y') if y is None else sympify(y)
+        y_ = Symbol('y') if y is None else as_symbol(y)
         M = self._multiplication_matrix(f)
         K = M.domain
         dim = M.shape[0]
@@ -573,10 +587,10 @@ class Ideal:
                 coeffs = [ns.to_Matrix()[0, i] for i in range(ns.shape[1])]
                 lead = coeffs[-1]
                 coeffs = [c/lead for c in coeffs]
-                return Poly(sum(c*y**i for i, c in enumerate(coeffs)), y, domain=self.domain)
+                return Poly(sum(c*y_**i for i, c in enumerate(coeffs)), y_, domain=self.domain)
             vectors.append(v)
 
-    def univariate(self, x):
+    def univariate(self, x: Symbol) -> Poly:
         """The monic generator of $I \\cap K[x]$ for a variable ``x``
         (zero-dimensional ideals), as a ``Poly``.
 
@@ -585,12 +599,12 @@ class Ideal:
         >>> Ideal([x**2 - y, y**2 - 1], x, y).univariate(x)
         Poly(x**4 - 1, x, domain='QQ')
         """
-        x = sympify(x)
-        if x not in self.symbols:
-            raise ValueError("%s is not a variable of the ring" % (x,))
-        return self.minimal_polynomial(x, x)
+        x_ = as_symbol(x)
+        if x_ not in self.symbols:
+            raise ValueError("%s is not a variable of the ring" % (x_,))
+        return self.minimal_polynomial(x_, x_)
 
-    def radical(self):
+    def radical(self) -> Ideal:
         """The radical of a zero-dimensional ideal (Seidenberg's lemma: the
         ideal plus the squarefree parts of the univariate polynomials in
         each variable).
@@ -610,15 +624,15 @@ class Ideal:
             extra.append(sqf.as_expr())
         return self._new([g.as_expr() for g in self._basis()] + extra).reduced()
 
-    def reduced(self):
+    def reduced(self) -> Ideal:
         """The same ideal generated by its reduced Gröbner basis."""
         return self._new([g.as_expr() for g in self._basis()])
 
-    def is_radical(self):
+    def is_radical(self) -> bool:
         """Whether a zero-dimensional ideal equals its radical."""
         return self.radical() == self
 
-    def is_maximal(self):
+    def is_maximal(self) -> bool:
         """Whether a zero-dimensional ideal is maximal, i.e. $K[x]/I$ is a
         field: the ideal is radical and the minimal polynomial of a generic
         linear form has degree the dimension of $K[x]/I$ and is
@@ -651,7 +665,7 @@ class Ideal:
             return len(factors) == 1 and factors[0][1] == 1
         raise NotImplementedError("no separating linear form was found")
 
-    def is_prime(self):
+    def is_prime(self) -> bool:
         """Whether a zero-dimensional ideal is prime (equivalently,
         maximal)."""
         return self.is_maximal()
@@ -659,7 +673,7 @@ class Ideal:
     # ------------------------------------------------------------------
     # change of order
 
-    def change_order(self, order):
+    def change_order(self, order: OrderSpec) -> list[Poly]:
         """The reduced Gröbner basis for another order, converted with FGLM
         for zero-dimensional ideals and with the Gröbner walk otherwise
         (returned as a list of ``Poly``, and cached).

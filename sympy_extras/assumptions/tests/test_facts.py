@@ -10,15 +10,15 @@ from sympy_extras.assumptions.facts import (normalize, conjuncts, to_predicates,
     to_polynomial, predicates_consistent)
 
 
-def test_element():
+def test_element() -> None:
     assert element(x, S.Integers) == Contains(x, S.Integers)
     assert element(2, S.Integers) is true
     assert element(Rational(1, 2), S.Integers) is false
     assert element(x, Interval(0, 1)) == Contains(x, Interval(0, 1))
-    raises(TypeError, lambda: normalize(element(x, 3)))
+    raises(TypeError, lambda: normalize(element(x, 3)))  # type: ignore[arg-type]
 
 
-def test_normalize():
+def test_normalize() -> None:
     assert normalize(True) is true
     assert normalize(False) is false
     assert normalize(x > 0) == (x > 0)
@@ -44,14 +44,14 @@ def test_normalize():
     assert normalize(Q.positive(x)) == Q.positive(x)
 
 
-def test_conjuncts():
+def test_conjuncts() -> None:
     assert conjuncts(true) == []
     assert conjuncts(x > 0) == [x > 0]
     assert set(conjuncts(And(x > 0, y > 0))) == {x > 0, y > 0}
     assert conjuncts(Or(x > 0, y > 0)) == [Or(x > 0, y > 0)]
 
 
-def test_to_predicates():
+def test_to_predicates() -> None:
     assert to_predicates(x > 0) == Q.positive(x)
     assert to_predicates(x < 0) == Q.negative(x)
     assert to_predicates(x >= 0) == Q.nonnegative(x)
@@ -75,7 +75,7 @@ def test_to_predicates():
     assert to_predicates(Or(x > 0, Symbol('p'))) is None
 
 
-def test_to_polynomial():
+def test_to_polynomial() -> None:
     assert to_polynomial(x > 0, {x}) == (x > 0)
     assert to_polynomial(x > 0, set()) is None
     assert to_polynomial(x*y > 1, {x, y}) == (x*y > 1)
@@ -98,7 +98,7 @@ def test_to_polynomial():
     assert to_polynomial(false, set()) is false
 
 
-def test_predicates_consistent():
+def test_predicates_consistent() -> None:
     assert predicates_consistent(Q.positive(x) & Q.integer(x)) is True
     assert predicates_consistent(Q.positive(x) & Q.negative(x)) is False
     assert predicates_consistent(Q.positive(x) & Q.zero(x)) is False
@@ -107,7 +107,7 @@ def test_predicates_consistent():
     assert predicates_consistent(true) is True
 
 
-def test_facts():
+def test_facts() -> None:
     f = Facts()
     assert f.formula is true and f.predicates is true and f.polynomial is true
     assert f.real == set() and f.integer == set()
@@ -149,7 +149,7 @@ def test_facts():
     assert f.real == {x, y} and f.integer == {x, y}
     f = Facts([], domain=S.Complexes, symbols=[x])
     assert f.real == set()
-    raises(TypeError, lambda: Facts([], domain=3, symbols=[x]))
+    raises(TypeError, lambda: Facts([], domain=3, symbols=[x]))  # type: ignore[arg-type]
 
     # symbols with old style assumptions are known
     p = Symbol('p', positive=True)

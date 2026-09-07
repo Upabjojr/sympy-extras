@@ -1,4 +1,7 @@
 from __future__ import annotations
+from typing import Iterable
+
+from sympy.core.expr import Expr
 from sympy.core.numbers import Rational
 from sympy.polys.polytools import Poly
 from sympy.polys.polyerrors import PolynomialError
@@ -8,11 +11,11 @@ from sympy.testing.pytest import raises
 from sympy.abc import x, y, z, w
 
 
-def _exprs(polys):
+def _exprs(polys: Iterable[Poly]) -> set[Expr]:
     return {p.as_expr() for p in polys}
 
 
-def test_squarefree_basis():
+def test_squarefree_basis() -> None:
     assert squarefree_basis([], [x, y]) == [[], []]
     assert squarefree_basis([3, -7], [x, y]) == [[], []]
     assert squarefree_basis([(x**2 - 1)*(x + y)**2, 6], [x, y]) == [
@@ -31,7 +34,7 @@ def test_squarefree_basis():
     raises(PolynomialError, lambda: squarefree_basis([x + z], [x, y]))
 
 
-def test_coefficients_and_reducta():
+def test_coefficients_and_reducta() -> None:
     f = Poly(x*y**2 + (x - 1)*y + 3, y, x)
     assert _coefficients(f) == [Poly(x, x), Poly(x - 1, x), Poly(3, x)]
     assert _reducta(f) == [f, Poly((x - 1)*y + 3, y, x), Poly(3, y, x)]
@@ -42,7 +45,7 @@ def test_coefficients_and_reducta():
     assert _reducta(h) == [h, Poly(-2*x, x)]
 
 
-def test_psc():
+def test_psc() -> None:
     f = Poly(x**2 + y**2 - 1, y, x)
     assert _psc(f, f.diff(y)) == [Poly(4*x**2 - 4, x), Poly(2, x)]
     g = Poly(y - x, y, x)
@@ -51,7 +54,7 @@ def test_psc():
     assert _psc(u, Poly(x**2 - 1, x)) == [4, 0, 1]
 
 
-def test_mccallum_projection():
+def test_mccallum_projection() -> None:
     circle = Poly(x**2 + y**2 - 1, x, y)
     assert mccallum_projection([circle], y) == [Poly(x - 1, x), Poly(x + 1, x)]
     assert mccallum_projection([circle], x) == [Poly(y - 1, y), Poly(y + 1, y)]
@@ -76,7 +79,7 @@ def test_mccallum_projection():
         x**2 + y**2 - 1, x**2*y**2 + x**2 + y**2 - 1}
 
 
-def test_hong_projection():
+def test_hong_projection() -> None:
     circle = Poly(x**2 + y**2 - 1, x, y)
     assert hong_projection([circle], y) == [Poly(x - 1, x), Poly(x + 1, x)]
     # the constant term of a linear polynomial is a reductum, so it is added
@@ -95,7 +98,7 @@ def test_hong_projection():
     assert _exprs(hong_projection([f], y)) == {x - 1, x + 1, x, 19*x**2 - 20}
 
 
-def test_projection_sets():
+def test_projection_sets() -> None:
     circle, line = x**2 + y**2 - 1, x - y
     P1, P2 = projection_sets([circle, line], [x, y])
     assert _exprs(P1) == {x - 1, x + 1, 2*x**2 - 1}

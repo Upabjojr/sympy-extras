@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from sympy.core.numbers import Rational
+from sympy.core.symbol import Symbol
+from sympy.logic.boolalg import Boolean
 from sympy.core.relational import Eq, Ne
 from sympy.core.singleton import S
 from sympy.core.symbol import symbols
@@ -17,14 +19,14 @@ from sympy.abc import a, b, c, d, e, x, y, z
 qe = quantifier_elimination
 
 
-def _equivalent(f, g, gens):
+def _equivalent(f: Boolean, g: Boolean, gens: list[Symbol]) -> bool:
     """Whether two quantifier-free formulas agree on every cell of a
     decomposition sign-invariant for the polynomials of both."""
-    _, _, truth = _truth_values(Equivalent(f, g), gens, [], None)
-    return all(value for _, value in truth)
+    _, _, _, cells = _truth_values(Equivalent(f, g), gens, [], None)
+    return all(value for _, value in cells)
 
 
-def test_decide():
+def test_decide() -> None:
     assert decide(x >= 22, [('forall', x)]) is False
     assert decide(x >= 22, [('exists', x)]) is True
     assert decide(x >= 22, [('exists', [x, y])]) is True
@@ -64,7 +66,7 @@ def test_decide():
     assert decide(x**2 - 3*x*y + y**2 >= 0, [('forall', [x, y])]) is False
 
 
-def test_quantifier_elimination_one_variable():
+def test_quantifier_elimination_one_variable() -> None:
     # solvability of the monic quadratic
     assert qe(Eq(x**2 + a*x + b, 0), [('exists', x)]) == (a**2 - 4*b >= 0)
     # positivity of the monic quadratic
@@ -111,7 +113,7 @@ def test_quantifier_elimination_one_variable():
     assert solution_set(x/2 > Rational(1, 3), x) == Interval.open(Rational(2, 3), S.Infinity)
 
 
-def test_quantifier_elimination_several_variables():
+def test_quantifier_elimination_several_variables() -> None:
     # a linear polynomial has a positive value: a /= 0 \/ b > 0
     r = qe(a*x + b > 0, [('exists', x)])
     assert _equivalent(r, Or(Ne(a, 0), b > 0), [a, b])
@@ -159,7 +161,7 @@ def test_quantifier_elimination_several_variables():
     raises(NotImplementedError, lambda: qe(Eq(z**2, x) & (z > y), [('exists', z)], free=[x, y]))
 
 
-def test_sample_points():
+def test_sample_points() -> None:
     assert sample_points(x**2 + y**2 < 0, [x, y]) == []
     assert sample_points((x**2 + y**2 < 1) & (x > y), [x, y]) == [
         {x: 0, y: -Rational(1, 2)}, {x: CRootOf(2*x**2 - 1, 1), y: 0}, {x: Rational(3, 4), y: 0}]
@@ -170,12 +172,12 @@ def test_sample_points():
     assert sample_points((x > 0) & (y > 0) & (x + y < 1), [x, y]) == [{x: Rational(1, 2), y: Rational(1, 3)}]
     f = And(x**2 + y**2 - 7 > 0, x + y - 2 > 0, x**2 + y - 10 > 0)
     pts = sample_points(f, [x, y])
-    assert len(pts) == 13 and all(f.subs(pt) for pt in pts)
+    assert len(pts) == 13 and all(f.subs(list(pt.items())) for pt in pts)
     assert sample_points(And(x**2 + y**2 - 7 > 0, x + y - 2 > 0, x**2 + y - 10 > 0,
                              x**2 + y**2 - 7 < 0), [x, y]) == []
 
 
-def test_errors():
+def test_errors() -> None:
     raises(ValueError, lambda: qe(x > 0, [('some', x)]))
     raises(ValueError, lambda: qe(x > 0, [('exists', x)], free=[x]))
     raises(ValueError, lambda: qe(x + y > 0, [('exists', x)], free=[]))
@@ -186,7 +188,7 @@ def test_errors():
     raises(ValueError, lambda: qe(ITE(x > 0, y > 0, y < 0), [('exists', [x, y])]))
 
 
-def test_sign_formula_minimization():
+def test_sign_formula_minimization() -> None:
     # the disc, described by one factor
     assert qe(x**2 + y**2 < 1, [], free=[x, y]) == (x**2 + y**2 - 1 < 0)
     # a half plane with a redundant polynomial in the formula

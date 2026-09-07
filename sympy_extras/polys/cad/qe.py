@@ -10,18 +10,29 @@ constant sign on every cell.
 """
 from __future__ import annotations
 
-from sympy.core.relational import Relational, Eq, Ne, Lt, Le, Gt, Ge
-from sympy.core.singleton import S
-from sympy.core.sympify import sympify
-from sympy.logic.boolalg import (And, Or, Not, Implies, Equivalent, Xor,
-    BooleanTrue, BooleanFalse)
-from sympy.polys.polytools import Poly
-from sympy.sets.sets import Interval, FiniteSet, Union
+from typing import Callable, Optional, Sequence, Union, cast
 
-from .lifting import cylindrical_algebraic_decomposition
+from sympy.core.expr import Expr
+from sympy.core.relational import Relational, Eq, Ne, Lt, Le, Gt, Ge
+from sympy.core.symbol import Symbol
+from sympy.core.singleton import S
+from sympy.logic.boolalg import (And, Or, Not, Implies, Equivalent, Xor,
+    Boolean, BooleanTrue, BooleanFalse)
+from sympy.polys.polytools import Poly
+from sympy.sets.sets import Interval, FiniteSet, Set, Union as SetUnion
+
+from sympy_extras._typing import (QuantifierPrefix, QuantifierSpec, Sign,
+    as_boolean, as_symbol, free_symbols, sorted_symbols)
+
+from .lifting import CAD, CADCell, cylindrical_algebraic_decomposition
 from .projection import _to_polys
 
-_RELATIONS = {
+#: the truth value of a formula on a cell
+CellTruth = tuple[CADCell, bool]
+#: a sign test on an atom
+SignTest = Callable[[int], bool]
+
+_RELATIONS: dict[type, SignTest] = {
     Lt: lambda s: s < 0,
     Gt: lambda s: s > 0,
     Le: lambda s: s <= 0,
@@ -36,20 +47,20 @@ class _Compiled:
 
     __slots__ = ('kind', 'args')
 
-    def __init__(self, kind, args):
+    def __init__(self, kind: str, args: Union[bool, tuple[int, SignTest], _Compiled, list[_Compiled]]) -> None:
         self.kind = kind
         self.args = args
 
-    def __call__(self, signs):
+    def __call__(self, signs: Sequence[Sign]) -> bool:
         kind, args = self.kind, self.args
         if kind == 'const':
-            return args
+            return cast(bool, args)
         if kind == 'atom':
-            i, test = args
+            i, test = cast('tuple[int, SignTest]', args)
             return test(signs[i])
         if kind == 'not':
-            return not args(signs)
-        values = [a(signs) for a in args]
+            return not cast(_Compiled, args)(signs)
+        values = [a(signs) for a in cast('list[_Compiled]', args)]
         if kind == 'and':
             return all(values)
         if kind == 'or':
@@ -63,7 +74,8 @@ class _Compiled:
         raise ValueError("unknown node %r" % kind)
 
 
-def _compile(formula, gens, polys, index):
+def _compile(formula: Union[Boolean, bool], gens: Sequence[Symbol], polys: list[Poly],
+             index: dict[Poly, int]) -> _Compiled:
     """Compile ``formula`` into a :class:`_Compiled` tree, collecting the
     polynomials of the atoms into ``polys`` (``index`` maps them to their
     position)."""
@@ -90,58 +102,64 @@ def _compile(formula, gens, polys, index):
     raise ValueError("unsupported formula %s" % formula)
 
 
-def _quantifiers(quantifiers):
+def _quantifiers(quantifiers: QuantifierSpec) -> QuantifierPrefix:
     """Normalize the quantifier prefix to a list of ``(kind, var)`` pairs."""
-    result = []
+    result: QuantifierPrefix = []
     for kind, variables in quantifiers:
         if kind not in ('exists', 'forall'):
             raise ValueError("unknown quantifier %r" % (kind,))
-        if not isinstance(variables, (list, tuple, set)):
-            variables = [variables]
-        for v in variables:
-            result.append((kind, sympify(v)))
+        items = list(variables) if isinstance(variables, (list, tuple, set)) else [variables]
+        for v in items:
+            result.append((kind, as_symbol(v)))
     return result
 
 
-def _truth_values(formula, free, quantifiers, method):
-    """The decomposition of the space of the free variables and the truth
-    value of the quantified formula on each of its cells (or on the whole
-    space if there are no free variables)."""
-    formula = sympify(formula)
-    quantifiers = _quantifiers(quantifiers)
-    bound = [v for _, v in quantifiers]
+def _truth_values(formula: Union[Boolean, bool], free: Optional[Sequence[Symbol]],
+                  quantifiers: QuantifierSpec, method: Optional[str]
+                  ) -> tuple[CAD, list[Symbol], Optional[bool], list[CellTruth]]:
+    """The decomposition of the space of the free variables, the free
+    variables, the truth value of the quantified formula if there are no
+    free variables (else ``None``) and its truth value on each cell of the
+    space of the free variables (an empty list if there are none)."""
+    formula_ = as_boolean(formula)
+    prefix = _quantifiers(quantifiers)
+    bound = [v for _, v in prefix]
     if free is None:
-        free = sorted(formula.free_symbols - set(bound), key=lambda s: s.name)
-    free = [sympify(v) for v in free]
-    gens = free + bound
+        free_list = sorted_symbols(free_symbols(formula_) - set(bound))
+    else:
+        free_list = [as_symbol(v) for v in free]
+    gens = free_list + bound
     if len(set(gens)) != len(gens):
         raise ValueError("a variable is both free and quantified")
-    extra = formula.free_symbols - set(gens)
+    extra = formula_.free_symbols - set(gens)
     if extra:
         raise ValueError("variables not declared: %s" % ", ".join(sorted(map(str, extra))))
 
-    polys, index = [], {}
-    compiled = _compile(formula, gens, polys, index)
+    polys: list[Poly] = []
+    index: dict[Poly, int] = {}
+    compiled = _compile(formula_, gens, polys, index)
     cad = cylindrical_algebraic_decomposition(polys, gens, method=method)
 
-    n, k = len(gens), len(free)
-    truth = {cell: compiled(cell.signs) for cell in cad.cells}
+    n, k = len(gens), len(free_list)
+    truth: dict[Optional[CADCell], bool] = {}
+    for cell in cad.cells:
+        truth[cell] = compiled(cell.signs)
     for level in range(n, k, -1):
-        kind = quantifiers[level - k - 1][0]
-        combine = any if kind == 'exists' else all
-        lower = {}
+        kind = prefix[level - k - 1][0]
+        combine: Callable[[list[bool]], bool] = any if kind == 'exists' else all
+        lower: dict[Optional[CADCell], list[bool]] = {}
         for cell in cad.cells_at(level):
             lower.setdefault(cell.parent, []).append(truth[cell])
         truth = {parent: combine(values) for parent, values in lower.items()}
     if k == 0:
         [value] = truth.values()
-        return cad, free, value
-    return cad, free, [(cell, truth[cell]) for cell in cad.cells_at(k)]
+        return cad, free_list, value, []
+    return cad, free_list, None, [(cell, truth[cell]) for cell in cad.cells_at(k)]
 
 
-def _interval_union(cells, x):
+def _interval_union(cells: Sequence[CellTruth], x: Symbol) -> Set:
     """The union of the true cells of the real line as a set."""
-    intervals = []
+    intervals: list[Set] = []
     i = 0
     while i < len(cells):
         if not cells[i][1]:
@@ -168,18 +186,20 @@ def _interval_union(cells, x):
         else:
             intervals.append(Interval(left, right, left_open, right_open))
         i = j + 1
-    return Union(*intervals)
+    return SetUnion(*intervals)
 
 
-def _as_relational(sets, x):
+def _as_relational(sets: Set, x: Symbol) -> Boolean:
     """Relational form of a union of intervals and points, without
     conditions involving infinity."""
-    terms = []
-    for part in (sets.args if isinstance(sets, Union) else [sets]):
+    terms: list[Boolean] = []
+    for part in (sets.args if isinstance(sets, SetUnion) else [sets]):
         if isinstance(part, FiniteSet):
             terms.extend(Eq(x, v) for v in part.args)
             continue
-        conditions = []
+        if not isinstance(part, Interval):
+            raise TypeError("unexpected set %s" % (part,))
+        conditions: list[Boolean] = []
         if part.start != S.NegativeInfinity:
             conditions.append(x > part.start if part.left_open else x >= part.start)
         if part.end != S.Infinity:
@@ -188,27 +208,29 @@ def _as_relational(sets, x):
     return Or(*terms)
 
 
-def _sign_vector(cell):
+def _sign_vector(cell: CADCell) -> tuple[Sign, ...]:
     """Signs of the projection factors of all levels at the cell."""
-    signs = []
-    while cell.level > 0:
-        signs.append(cell._signs)
-        cell = cell.parent
+    signs: list[tuple[Sign, ...]] = []
+    current: Optional[CADCell] = cell
+    while current is not None and current.level > 0:
+        signs.append(current._signs)
+        current = current.parent
     return tuple(s for level in reversed(signs) for s in level)
 
 
-_SIGN_RELATIONS = {
+_SIGN_RELATIONS: dict[frozenset[int], type] = {
     frozenset([-1]): Lt, frozenset([0]): Eq, frozenset([1]): Gt,
     frozenset([-1, 0]): Le, frozenset([0, 1]): Ge, frozenset([-1, 1]): Ne,
 }
 
 
-def _sign_formula(cad, cells, k):
+def _sign_formula(cad: CAD, cells: Sequence[CellTruth], k: int) -> Optional[Boolean]:
     """A formula in the projection factors of the first ``k`` levels that
     holds exactly on the true cells, or ``None`` if the truth of the cells
     is not determined by the signs of those factors."""
     factors = [f for level in cad.projection[:k] for f in level]
-    true_vectors, false_vectors = set(), set()
+    true_vectors: set[tuple[Sign, ...]] = set()
+    false_vectors: set[tuple[Sign, ...]] = set()
     for cell, value in cells:
         (true_vectors if value else false_vectors).add(_sign_vector(cell))
     if true_vectors & false_vectors:
@@ -218,16 +240,18 @@ def _sign_formula(cad, cells, k):
     if not false_vectors:
         return S.true
 
-    def covers(conditions, vector):
+    Conditions = dict[int, frozenset[int]]
+
+    def covers(conditions: Conditions, vector: tuple[Sign, ...]) -> bool:
         return all(vector[i] in allowed for i, allowed in conditions.items())
 
-    def consistent(conditions):
+    def consistent(conditions: Conditions) -> bool:
         return not any(covers(conditions, v) for v in false_vectors)
 
     # each true sign vector is a conjunction of sign conditions; merge
     # conjunctions differing in one factor, then drop redundant conditions,
     # and repeat until nothing changes
-    implicants = [{i: frozenset([s]) for i, s in enumerate(v)} for v in sorted(true_vectors)]
+    implicants: list[Conditions] = [{i: frozenset([s]) for i, s in enumerate(v)} for v in sorted(true_vectors)]
     while True:
         merged = True
         while merged:
@@ -251,7 +275,7 @@ def _sign_formula(cad, cells, k):
                             break
                 if merged:
                     break
-        reduced = []
+        reduced: list[Conditions] = []
         for conditions in implicants:
             for i in sorted(conditions, reverse=True):
                 trial = dict(conditions)
@@ -264,7 +288,7 @@ def _sign_formula(cad, cells, k):
             break
         implicants = reduced
     # drop implicants whose true cells are all covered by the others
-    def covered(conditions):
+    def covered(conditions: Conditions) -> set[tuple[Sign, ...]]:
         return {v for v in true_vectors if covers(conditions, v)}
 
     final = list(reduced)
@@ -278,7 +302,7 @@ def _sign_formula(cad, cells, k):
                 final.remove(conditions)
                 dropped = True
                 break
-    terms = []
+    terms: list[Boolean] = []
     for conditions in final:
         atoms = [_SIGN_RELATIONS[allowed](factors[i].as_expr(), 0)
                  for i, allowed in sorted(conditions.items())]
@@ -286,7 +310,8 @@ def _sign_formula(cad, cells, k):
     return Or(*terms)
 
 
-def truth_tables(formulas, gens, method=None):
+def truth_tables(formulas: Sequence[Union[Boolean, bool]], gens: Sequence[Symbol],
+                 method: Optional[str] = None) -> tuple[list[CADCell], list[list[bool]]]:
     """Truth values of several quantifier-free formulas on the cells of a
     single decomposition sign-invariant for the polynomials of all of them.
 
@@ -303,15 +328,22 @@ def truth_tables(formulas, gens, method=None):
     >>> a == b
     True
     """
-    gens = [sympify(g) for g in gens]
-    polys, index = [], {}
-    compiled = [_compile(sympify(f), gens, polys, index) for f in formulas]
+    gens = [as_symbol(g) for g in gens]
+    polys: list[Poly] = []
+    index: dict[Poly, int] = {}
+    compiled = [_compile(as_boolean(f), gens, polys, index) for f in formulas]
     cad = cylindrical_algebraic_decomposition(polys, gens, method=method)
-    tables = [[c(cell.signs) for cell in cad.cells] for c in compiled]
+    tables: list[list[bool]] = []
+    for c in compiled:
+        table: list[bool] = []
+        for cell in cad.cells:
+            table.append(c(cell.signs))
+        tables.append(table)
     return cad.cells, tables
 
 
-def quantifier_elimination(formula, quantifiers=(), free=None, method=None):
+def quantifier_elimination(formula: Union[Boolean, bool], quantifiers: QuantifierSpec = (),
+                           free: Optional[Sequence[Symbol]] = None, method: Optional[str] = None) -> Boolean:
     """Eliminate the quantifiers of a formula over the real numbers.
 
     Parameters
@@ -360,24 +392,24 @@ def quantifier_elimination(formula, quantifiers=(), free=None, method=None):
     >>> qe(Eq(y, x**2), [('forall', x), ('exists', y)])
     True
     """
-    cad, free, truth = _truth_values(formula, free, quantifiers, method)
-    if not free:
-        return S.true if truth else S.false
-    if len(free) == 1:
-        result = _interval_union(truth, free[0])
+    cad, free_vars, value, cells = _truth_values(formula, free, quantifiers, method)
+    if not free_vars:
+        return S.true if value else S.false
+    if len(free_vars) == 1:
+        result = _interval_union(cells, free_vars[0])
         if result == S.Reals:
             return S.true
         if result == S.EmptySet:
             return S.false
-        return _as_relational(result, free[0])
-    result = _sign_formula(cad, truth, len(free))
-    if result is None:
+        return _as_relational(result, free_vars[0])
+    formula_ = _sign_formula(cad, cells, len(free_vars))
+    if formula_ is None:
         raise NotImplementedError(
             "the solution set is not described by the signs of the projection factors")
-    return result
+    return formula_
 
 
-def decide(formula, quantifiers, method=None):
+def decide(formula: Union[Boolean, bool], quantifiers: QuantifierSpec, method: Optional[str] = None) -> bool:
     """Truth value of a formula with all its variables quantified.
 
     >>> from sympy import Eq
@@ -388,11 +420,12 @@ def decide(formula, quantifiers, method=None):
     >>> decide(x**2 + y**2 < 0, [('exists', [x, y])])
     False
     """
-    cad, free, truth = _truth_values(formula, [], quantifiers, method)
-    return bool(truth)
+    _, _, value, _ = _truth_values(formula, [], quantifiers, method)
+    return bool(value)
 
 
-def sample_points(formula, gens, method=None):
+def sample_points(formula: Union[Boolean, bool], gens: Sequence[Symbol],
+                  method: Optional[str] = None) -> list[dict[Symbol, Expr]]:
     """Sample points of the cells on which a quantifier-free formula holds.
 
     Returns a list of dicts mapping the variables ``gens`` to exact
@@ -406,12 +439,13 @@ def sample_points(formula, gens, method=None):
     >>> sample_points(x**2 + y**2 < 0, [x, y])
     []
     """
-    gens = [sympify(g) for g in gens]
-    cad, free, truth = _truth_values(formula, gens, [], method)
-    return [dict(zip(gens, cell.point)) for cell, value in truth if value]
+    gens = [as_symbol(g) for g in gens]
+    _, _, _, cells = _truth_values(formula, gens, [], method)
+    return [dict(zip(gens, cell.point)) for cell, value in cells if value]
 
 
-def solution_set(formula, x, quantifiers=(), method=None):
+def solution_set(formula: Union[Boolean, bool], x: Symbol, quantifiers: QuantifierSpec = (),
+                 method: Optional[str] = None) -> Set:
     """The set of values of the free variable ``x`` for which the quantified
     formula holds, as a union of intervals and points with exact endpoints.
 
@@ -423,5 +457,5 @@ def solution_set(formula, x, quantifiers=(), method=None):
     >>> solution_set(x**2 > 2, x)
     Union(Interval.open(-oo, CRootOf(x**2 - 2, 0)), Interval.open(CRootOf(x**2 - 2, 1), oo))
     """
-    cad, free, truth = _truth_values(formula, [x], quantifiers, method)
-    return _interval_union(truth, free[0])
+    _, free_vars, _, cells = _truth_values(formula, [x], quantifiers, method)
+    return _interval_union(cells, free_vars[0])

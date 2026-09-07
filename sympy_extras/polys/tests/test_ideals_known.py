@@ -7,48 +7,57 @@ numbers of solutions are well known.
 """
 from __future__ import annotations
 
-from sympy import QQ, Rational, symbols, groebner, cancel
+from typing import Iterable
+
+from sympy import QQ, Expr, Rational, Symbol, symbols, groebner, cancel
+from sympy import S
 from sympy.abc import x, y, z, w, t, u, d
 
 from sympy_extras.polys.ideals import Ideal
 
 
-def katsura(m):
+def katsura(m: int) -> tuple[list[Expr], tuple[Symbol, ...]]:
     """The Katsura-m system in the variables u_0, ..., u_m, with 2**m
     solutions."""
     us = symbols('u0:%d' % (m + 1))
 
-    def U(i):
+    def U(i: int) -> Expr:
         i = abs(i)
-        return us[i] if i <= m else 0
+        return us[i] if i <= m else S.Zero
 
-    eqs = [us[0] + 2*sum(us[1:]) - 1]
+    eqs: list[Expr] = [us[0] + 2*sum(us[1:]) - 1]
     for r in range(m):
-        eqs.append(sum(U(i)*U(r - i) for i in range(-m, m + 1)) - us[r])
+        total: Expr = S.Zero
+        for i in range(-m, m + 1):
+            total += U(i)*U(r - i)
+        eqs.append(total - us[r])
     return eqs, us
 
 
-def cyclic(m):
+def cyclic(m: int) -> tuple[list[Expr], tuple[Symbol, ...]]:
     """The cyclic-m system."""
     xs = symbols('x0:%d' % m)
-    eqs = []
+    eqs: list[Expr] = []
     for r in range(1, m):
-        eqs.append(sum(prod_(xs[(i + j) % m] for j in range(r)) for i in range(m)))
-    p = 1
+        total: Expr = S.Zero
+        for i in range(m):
+            total += prod_(xs[(i + j) % m] for j in range(r))
+        eqs.append(total)
+    p: Expr = S.One
     for v in xs:
         p *= v
     eqs.append(p - 1)
     return eqs, xs
 
 
-def prod_(items):
-    result = 1
+def prod_(items: Iterable[Expr]) -> Expr:
+    result: Expr = S.One
     for it in items:
         result *= it
     return result
 
 
-def test_cox_little_oshea():
+def test_cox_little_oshea() -> None:
     # CLO chapter 2, section 7, example 2: the reduced grlex basis of
     # (x^3 - 2xy, x^2 y - 2y^2 + x) is {x^2, xy, y^2 - x/2}
     I = Ideal([x**3 - 2*x*y, x**2*y - 2*y**2 + x], x, y, order='grlex')
@@ -79,7 +88,7 @@ def test_cox_little_oshea():
     assert cubic.hilbert_series(t) == (2*t + 1)/(1 - t)**2
 
 
-def test_macaulay2_singular_documented_examples():
+def test_macaulay2_singular_documented_examples() -> None:
     # Macaulay2 "radical": radical of (x^2, y^3) is (x, y)
     assert Ideal([x**2, y**3], x, y).radical() == Ideal([x, y], x, y)
     # Macaulay2 "hilbertSeries" of the twisted cubic: (1 + 2T)/(1 - T)^2
@@ -106,7 +115,7 @@ def test_macaulay2_singular_documented_examples():
     assert Ideal([x**2 + x + 1, y - x], x, y).is_prime()
 
 
-def test_benchmark_systems():
+def test_benchmark_systems() -> None:
     # Katsura-m has 2^m solutions
     from sympy_extras.polys.groebnerwalk import groebner_walk
     for m_, count in [(2, 4), (3, 8), (4, 16)]:

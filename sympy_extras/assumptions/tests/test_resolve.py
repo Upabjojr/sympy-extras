@@ -9,7 +9,7 @@ from sympy_extras.assumptions import resolve, ForAll, Exists, element
 from sympy_extras.polys.cad.tests.test_qe import _equivalent
 
 
-def test_resolve_closed():
+def test_resolve_closed() -> None:
     assert resolve(ForAll(x, x**2 >= 0)) is true
     assert resolve(ForAll(x, x**2 > 0)) is false
     assert resolve(Exists(x, x**2 < 0)) is false
@@ -29,7 +29,7 @@ def test_resolve_closed():
     assert resolve(Eq(S(2), 3)) is false
 
 
-def test_resolve_one_free_variable():
+def test_resolve_one_free_variable() -> None:
     assert resolve(ForAll(x, x**2 + b*x + 1 > 0)) == And(b > -2, b < 2)
     assert resolve(Exists(y, Eq(x**2 + y**2, 1))) == And(x >= -1, x <= 1)
     assert resolve(Exists(y, Eq(y**2, x))) == (x >= 0)
@@ -45,7 +45,7 @@ def test_resolve_one_free_variable():
     assert resolve(ForAll(y, x > 1)) == (x > 1)
 
 
-def test_resolve_several_free_variables():
+def test_resolve_several_free_variables() -> None:
     assert resolve(ForAll(x, x**2 + b*x + c > 0)) == (b**2 - 4*c < 0)
     assert resolve(Exists(x, Eq(x**2 + a*x + b, 0))) == (a**2 - 4*b >= 0)
     r = resolve(Exists(x, Eq(a*x**2 + b*x + c, 0)))
@@ -59,7 +59,7 @@ def test_resolve_several_free_variables():
     raises(NotImplementedError, lambda: resolve(Exists(z, Eq(z**2, x) & (z > y))))
 
 
-def test_resolve_assumptions():
+def test_resolve_assumptions() -> None:
     assert resolve(Exists(y, Eq(y**2, x)), assumptions=x > 1) is true
     assert resolve(Exists(y, Eq(y**2, x)), assumptions=x < 0) is false
     assert resolve(Exists(y, Eq(y**2, x) & (y > 1)), assumptions=x > 0) == (x > 1)
@@ -67,13 +67,13 @@ def test_resolve_assumptions():
     assert resolve(ForAll(x, x**2 + b*x + 1 > 0), assumptions=b > 3) is false
 
 
-def test_resolve_predicates():
+def test_resolve_predicates() -> None:
     assert resolve(ForAll(x, Implies(Q.positive(x), x**3 > 0))) is true
     assert resolve(Exists(x, Q.negative(x) & element(x, S.Reals) & (x**2 < 1))) is true
     assert resolve(Exists(x, element(x, Interval(0, 1)) & (x > y))) == (y < 1)
 
 
-def test_resolve_errors():
+def test_resolve_errors() -> None:
     raises(NotImplementedError, lambda: resolve(ForAll(x, x > 0), domain=S.Integers))
     raises(ValueError, lambda: resolve(ForAll(x, sin(x) > 0)))
     raises(ValueError, lambda: resolve(ForAll(x, element(x, S.Integers))))

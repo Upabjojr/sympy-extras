@@ -8,7 +8,7 @@ from sympy_extras.assumptions import (assuming, global_assumptions, ask, refine,
     AssumptionsContext)
 
 
-def test_assumptions_context():
+def test_assumptions_context() -> None:
     c = AssumptionsContext([x > 0, y > 0])
     assert len(c) == 2 and (x > 0) in c and list(c) == [x > 0, y > 0]
     c.add(x > 0)
@@ -24,7 +24,7 @@ def test_assumptions_context():
     assert repr(AssumptionsContext([x > 0])) == "AssumptionsContext([x > 0])"
 
 
-def test_global_assumptions():
+def test_global_assumptions() -> None:
     assert len(global_assumptions) == 0
     assert ask(x > 0) is None
     global_assumptions.add(x > 0)
@@ -39,7 +39,7 @@ def test_global_assumptions():
     assert ask(x > 0) is None
 
 
-def test_assuming():
+def test_assuming() -> None:
     assert refine(Abs(x - 1)) == Abs(x - 1)
     with assuming(x > 1):
         assert refine(Abs(x - 1) + sqrt(x**2)) == 2*x - 1
