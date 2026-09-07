@@ -4,17 +4,28 @@ from __future__ import annotations
 from typing import Iterable, Optional, Union
 
 from sympy.assumptions import Q, ask as _sympy_ask
+from sympy.assumptions.assume import AppliedPredicate
+from sympy.core.add import Add
 from sympy.core.basic import Basic
+from sympy.core.expr import Expr
 from sympy.core.function import Function
+from sympy.core.mul import Mul
+from sympy.core.numbers import Rational
+from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.sets.contains import Contains
 from sympy.core.relational import Relational, Gt, Lt, Ge, Le
 from sympy.core.symbol import Symbol
+from sympy.functions.elementary.complexes import Abs
+from sympy.functions.elementary.exponential import exp, log
+from sympy.functions.elementary.hyperbolic import sinh, cosh, tanh, asinh, acosh, atanh
+from sympy.functions.elementary.integers import floor, ceiling
+from sympy.functions.elementary.trigonometric import sin, cos, tan, asin, acos, atan
 from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or,
     Not, Implies, Equivalent, Xor, ITE, true, false)
 from sympy.sets.sets import Set
 
-from sympy_extras._typing import Truth, as_boolean, free_symbols, sorted_symbols
+from sympy_extras._typing import Truth, as_boolean, as_expr, free_symbols, sorted_symbols
 
 from sympy_extras.polys.cad import truth_tables
 
@@ -75,6 +86,15 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
                 return False
         except ValueError:
             pass
+    membership = _real_membership(atom)
+    if membership is not None:
+        # SymPy's ``ask(Q.real(sqrt(a - 2)), Q.positive(a))`` is True: the
+        # reality of roots and logarithms is decided here instead
+        value = _realness(membership, facts)
+        if value is not None:
+            return value
+        if _fragile(membership):
+            return None
     predicate = _predicate_of_atom(atom)
     if predicate is not None:
         try:
@@ -95,6 +115,83 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
     if value is None:
         value = _bounded_cad_ask(atom, facts)
     return value
+
+
+def _real_membership(atom: Boolean) -> Optional[Expr]:
+    """The expression of an atom ``Contains(e, S.Reals)`` or ``Q.real(e)``."""
+    if isinstance(atom, Contains) and atom.args[1] == S.Reals and isinstance(atom.args[0], Expr):
+        return atom.args[0]
+    if isinstance(atom, AppliedPredicate) and atom.function == Q.real and isinstance(atom.arguments[0], Expr):
+        return atom.arguments[0]
+    return None
+
+
+def _fragile(e: Expr) -> bool:
+    """Whether SymPy's ``Q.real`` handlers are known to misjudge ``e``:
+    non-integer powers, logarithms and inverse trigonometric functions of
+    expressions whose sign they do not check."""
+    return any(isinstance(a, Pow) and not as_expr(a.exp).is_integer for a in e.atoms(Pow)) or \
+        bool(e.atoms(log, asin, acos, acosh, atanh))
+
+
+def _realness(e: Expr, facts: Facts) -> Truth:
+    """Whether ``e`` is a real number, by the structure of the expression
+    and the facts about the signs of its parts."""
+    if isinstance(e, Symbol):
+        return True if e in facts.real or e.is_extended_real else None
+    if e.is_number:
+        return True if e.is_extended_real else (False if e.is_extended_real is False else None)
+    if isinstance(e, (Add, Mul)):
+        parts = [_realness(as_expr(a), facts) for a in e.args]
+        return True if all(p is True for p in parts) else None
+    if isinstance(e, Pow):
+        base, exponent = as_expr(e.base), as_expr(e.exp)
+        base_real = _realness(base, facts)
+        if exponent.is_integer:
+            return base_real
+        if base_real is not True:
+            return None
+        if isinstance(exponent, Rational) or _realness(exponent, facts) is True:
+            if _evaluate(as_boolean(base >= 0), facts) is True:
+                return True
+            if isinstance(exponent, Rational) and _evaluate(as_boolean(base < 0), facts) is True:
+                # the principal root of a negative number is not real
+                return False
+        return None
+    if isinstance(e, log):
+        argument = as_expr(e.args[0])
+        if _evaluate(as_boolean(argument > 0), facts) is True:
+            return True
+        if _evaluate(as_boolean(argument < 0), facts) is True:
+            return False
+        return None
+    if isinstance(e, (asin, acos)):
+        argument = as_expr(e.args[0])
+        if _evaluate(as_boolean(And(argument >= -1, argument <= 1)), facts) is True:
+            return True
+        if _evaluate(as_boolean(Or(argument > 1, argument < -1)), facts) is True:
+            return False
+        return None
+    if isinstance(e, acosh):
+        argument = as_expr(e.args[0])
+        if _evaluate(as_boolean(argument >= 1), facts) is True:
+            return True
+        if _evaluate(as_boolean(argument < 1), facts) is True:
+            return False
+        return None
+    if isinstance(e, atanh):
+        argument = as_expr(e.args[0])
+        if _evaluate(as_boolean(And(argument > -1, argument < 1)), facts) is True:
+            return True
+        if _evaluate(as_boolean(Or(argument > 1, argument < -1)), facts) is True:
+            return False
+        return None
+    if isinstance(e, Abs):
+        return True if e.args[0].is_finite is not False else None
+    if isinstance(e, (exp, sin, cos, tan, atan, sinh, cosh, tanh, asinh, floor, ceiling)):
+        argument = as_expr(e.args[0])
+        return True if _realness(argument, facts) is True else None
+    return None
 
 
 def _bounded_cad_ask(formula: Boolean, facts: Facts) -> Truth:

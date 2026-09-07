@@ -244,6 +244,38 @@ equations and inequalities in one real unknown go to the CAD, the rest to
 `solveset`/`nonlinsolve` with the parameters carrying the assumptions and
 the solutions filtered by `ask`. See [docs/solvers.md](docs/solvers.md).
 
+### Exact equation solving and reduction (`resolve`, `solve`, `sympy_extras.polys.comprehensive`, `sympy_extras.solvers.integers`, `sympy_extras.solvers.transcendental`)
+
+The algorithms of Mathematica's `Reduce`/`Resolve`/`Solve` that SymPy
+lacks (see [docs/reduce.md](docs/reduce.md) for the full mapping): linear
+quantifier elimination by virtual substitution (Loos–Weispfenning), used
+by `resolve` before the CAD; reduction over the complex numbers with
+comprehensive Gröbner systems (Kapur–Sun–Wang); linear Diophantine
+systems by the Hermite normal form, minimal nonnegative solutions by
+Contejean–Devie, and Presburger arithmetic by Cooper's algorithm;
+transcendental equations reduced to polynomial ones through kernels with
+side conditions and inverted with a database of inverse images, the
+parameters carrying their assumptions.
+
+```python
+>>> from sympy import S, Eq, Mod, exp, sin, cos
+>>> from sympy.abc import a, b, x, y
+>>> from sympy_extras.assumptions import resolve, solve, Exists, ForAll
+>>> resolve(Exists(y, Eq(a*y + b, 0) & (y > 0)))
+(Eq(a, 0) & Eq(b, 0)) | ((a > 0) & (b < 0)) | ((b > 0) & (a < 0))
+>>> resolve(Exists(x, Eq(x**2 + a*x + b, 0) & Eq(2*x + a, 0)), domain=S.Complexes)
+Eq(a**2 - 4*b, 0)
+>>> resolve(Exists(x, Eq(2*x, y)), domain=S.Integers)
+Eq(Mod(y, 2), 0)
+>>> solve(Eq(3*x + 5*y, 22), [x, y], (x >= 0) & (y >= 0), domain=S.Integers)
+{(4, 2)}
+>>> solve(Eq(sin(x) + cos(x), 1), x, (x > 0) & (x < 3))
+{pi/2}
+>>> solve(Eq(exp(x), a), x, domain=S.Reals)
+ConditionSet(x, a > 0, {log(a)})
+
+```
+
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
@@ -273,7 +305,7 @@ sympy_extras/
         context.py           assuming, global_assumptions
         ask.py               ask
         refine.py            refine, simplify
-        resolve.py           resolve (quantifier elimination)
+        resolve.py           resolve (quantifier elimination over the reals, integers, complexes)
         sat.py               satisfiable, tautology, find_instance
         solve.py             solve with assumptions and a domain
     concrete/
@@ -283,11 +315,16 @@ sympy_extras/
         lie.py               jet spaces, prolongation, determining equations, symmetries
         pde.py               pde_symmetries, similarity_reduction, pdsolve_lie
         ode.py               ode_symmetries, canonical_coordinates, reduce_order, dsolve_lie, solve_ode
+        integers.py          Hermite normal form, Contejean-Devie, Cooper's algorithm
+        transcendental.py    transcendental equations reduced to polynomial ones
     polys/
         euclidtools.py       principal subresultant coefficients
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
         orderings.py         WeightOrder, BlockOrder
+        virtual_substitution.py  linear quantifier elimination (Loos-Weispfenning)
+        comprehensive.py     comprehensive Gröbner systems, reduction over the complex numbers
+        roots.py             roots in radicals through functional decomposition
         cad/
             projection.py    projection operators (McCallum, Hong)
             samplepoints.py  exact real algebraic sample points

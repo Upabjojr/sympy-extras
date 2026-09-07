@@ -272,6 +272,22 @@ True
 
 Quantifiers may appear anywhere in the formula: it is put in prenex form
 (bound variables are renamed when they clash) before the elimination.
+Variables occurring linearly are eliminated first by virtual substitution
+(Loos–Weispfenning), without any decomposition. With `domain=S.Integers`
+the formula must be one of Presburger arithmetic (linear relations and
+divisibilities `Eq(Mod(e, k), 0)`) and Cooper's algorithm is used; with
+`domain=S.Complexes` it is a combination of equations and inequations and
+comprehensive Gröbner systems are used. See
+[docs/reduce.md](reduce.md).
+
+```python
+>>> from sympy import Mod
+>>> resolve(Exists(x, Eq(2*x, y)), domain=S.Integers)
+Eq(Mod(y, 2), 0)
+>>> resolve(Exists(x, Eq(a*x, 1)), domain=S.Complexes)
+Ne(a, 0)
+
+```
 
 ### Satisfiability and instances
 

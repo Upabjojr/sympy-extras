@@ -8,23 +8,26 @@ from sympy.core.expr import Expr
 from sympy.core.relational import Relational, Eq, Gt, Lt, Ge, Le
 from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
-from sympy.core.numbers import Rational
+from sympy.core.numbers import Rational, Integer
+from sympy.core.containers import Tuple
+from sympy.core.function import Lambda
 from sympy.core.evalf import N
 from sympy.functions.elementary.complexes import im
 from sympy.core.sympify import sympify
-from sympy.polys.rootoftools import CRootOf
 from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or,
     Not, true)
 from sympy.sets.contains import Contains
 from sympy.sets.conditionset import ConditionSet
-from sympy.sets.fancysets import Reals, Integers, Naturals, Rationals, Complexes
+from sympy.sets.fancysets import Reals, Integers, Naturals, Rationals, Complexes, ImageSet
 from sympy.sets.sets import (Set, FiniteSet, Intersection, Complement,
-    Union as SetUnion, EmptySet)
+    Union as SetUnion, EmptySet, ProductSet)
 from sympy.solvers.solveset import solveset, nonlinsolve
 
 from sympy_extras._typing import Truth, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
 from sympy_extras.polys.cad import solution_set
-from sympy_extras.polys.cad.samplepoints import _root_poly
+from sympy_extras.polys.roots import in_radicals
+from sympy_extras.solvers.transcendental import solve_transcendental
+from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 
 from .ask import Assumptions, _facts, _evaluate
@@ -173,12 +176,9 @@ def _restrict(result: Set, x: Symbol, condition: Boolean, facts: Facts, formula:
 
 
 def _radicals(result: Set) -> Set:
-    """Write the algebraic numbers of degree at most two in radicals."""
-    replacements: dict[Basic, Basic] = {}
-    for r in result.atoms(CRootOf):
-        if _root_poly(r).degree() <= 2:
-            replacements[r] = CRootOf(r.expr, int(as_expr(r.args[1])), radicals=True)
-    return as_set(result.xreplace(replacements)) if replacements else result
+    """Write the algebraic numbers in radicals when that is reasonable
+    (see :func:`sympy_extras.polys.roots.in_radicals`)."""
+    return in_radicals(result)
 
 
 def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]) -> Set:
@@ -198,6 +198,21 @@ def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]
         if isinstance(dom, Reals):
             return real
         return Intersection(real, dom)
+    if isinstance(dom, Reals) and polynomial_on_x is not None:
+        # transcendental formulas reduced to polynomial ones through
+        # their kernels (exp, log, sin and cos, roots); the parameters
+        # carry their assumptions into the polynomial solving and the
+        # inversion of the kernels
+        facts_ = facts
+        transcendental = attempt(
+            lambda: solve_transcendental(formula, x,
+                                         solver=lambda f, v: _univariate(f, v, facts_, S.Reals),
+                                         decide=lambda c: _evaluate(normalize(c), facts_)),
+            settings.timeout)
+        if transcendental is not None:
+            if polynomial_on_x is not true:
+                transcendental = Intersection(transcendental, _radicals(solution_set(polynomial_on_x, x)))
+            return _restrict(as_set(transcendental), x, true, facts, formula, real=True)
     # the parameters carry their assumptions while SymPy solves; with
     # parameters the equations are solved over the complex numbers and the
     # membership in the domain is decided afterwards
@@ -213,10 +228,15 @@ def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]
     condition = as_boolean(on_x)
     solving_domain = dom
     if parameters and not isinstance(dom, Complexes):
-        solving_domain = S.Complexes
-        implies_real = isinstance(dom, Reals) and any(isinstance(c, (Gt, Lt, Ge, Le)) for c in conjuncts(condition))
-        if not implies_real:
-            condition = And(Contains(x, dom), condition)
+        ordered_condition = any(isinstance(c, (Gt, Lt, Ge, Le)) for c in conjuncts(condition))
+        ordered_formula = any(isinstance(a, (Gt, Lt, Ge, Le)) for a in formula.atoms(Relational))
+        if isinstance(dom, Reals) and ordered_formula:
+            # an inequality only makes sense between real numbers
+            solving_domain = S.Reals
+        else:
+            solving_domain = S.Complexes
+            if not (isinstance(dom, Reals) and ordered_condition):
+                condition = And(Contains(x, dom), condition)
     result = _solveset(as_boolean(abstracted), x, solving_domain)
     result = as_set(result.xreplace(back_symbols))
     return _restrict(result, x, condition, facts, formula, real=dom.is_subset(S.Reals) is True)
@@ -237,6 +257,10 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
     if not equations:
         raise NotImplementedError("systems of inequalities in several variables are not solved; "
                                   "use resolve for a description of the solution set")
+    if isinstance(domain, Integers) or set(symbols) <= facts.integer:
+        integer = _integer_linear_system(equations, conditions, symbols, facts)
+        if integer is not None:
+            return integer
     try:
         solutions = nonlinsolve(equations, list(symbols))
     except (NotImplementedError, ValueError, TypeError):
@@ -258,6 +282,51 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
     if undecided:
         result = SetUnion(result, ConditionSet(tuple(symbols), And(condition, membership), FiniteSet(*undecided)))
     return result
+
+
+def _integer_linear_system(equations: Sequence[Expr], conditions: Sequence[Boolean],
+                           symbols: Sequence[Symbol], facts: Facts) -> Optional[Set]:
+    """The integer solutions of a linear system with integer coefficients
+    (by the Hermite normal form), as a parametrised set; the minimal
+    nonnegative solutions (Contejean–Devie) when the unknowns are known to
+    be nonnegative and the solutions are finitely many. ``None`` when the
+    system is not linear."""
+    from sympy_extras.solvers.integers import (_linear_system, linear_diophantine_system,
+        minimal_nonnegative_solutions)
+    system = _linear_system(equations, symbols)
+    if system is None:
+        return None
+    general = linear_diophantine_system(equations, symbols)
+    if general is None:
+        return S.EmptySet
+    values, parameters = general
+    # the memberships in the integers are satisfied by construction
+    condition = And(*[c for c in conditions
+                      if not (isinstance(c, Contains) and c.args[1] == S.Integers and c.args[0] in symbols)])
+    if not parameters:
+        point = Tuple(*values)
+        holds = _holds_at(condition, {s: v for s, v in zip(symbols, values)}, facts)
+        if holds is False:
+            return S.EmptySet
+        if holds is True:
+            return FiniteSet(point)
+        return ConditionSet(Tuple(*symbols), condition, FiniteSet(point))
+    nonnegative = all(_evaluate(s >= 0, facts) is True for s in symbols)
+    if nonnegative:
+        A, b = system
+        try:
+            particular, homogeneous = minimal_nonnegative_solutions(A, b)
+        except RuntimeError:
+            particular, homogeneous = [], [[0]]
+        if not homogeneous:
+            points = [Tuple(*[Integer(c) for c in p]) for p in particular]
+            kept = [p for p in points if _holds_at(condition, {s: v for s, v in zip(symbols, p.args)}, facts) is not False]
+            return FiniteSet(*kept) if kept else S.EmptySet
+    solutions: Set = ImageSet(Lambda(Tuple(*parameters), Tuple(*values)),
+                              ProductSet(*[S.Integers]*len(parameters)) if len(parameters) > 1 else S.Integers)
+    if condition is true:
+        return solutions
+    return ConditionSet(Tuple(*symbols), condition, solutions)
 
 
 def solve(equations: Union[Statement, Sequence[Statement]],
@@ -318,6 +387,10 @@ def solve(equations: Union[Statement, Sequence[Statement]],
     EmptySet
     >>> solve([x**2 + y**2 - 1, x - y], [x, y], x > 0)
     {(sqrt(2)/2, sqrt(2)/2)}
+    >>> solve(Eq(3*x + 5*y, 22), [x, y], (x >= 0) & (y >= 0), domain=S.Integers)
+    {(4, 2)}
+    >>> solve(Eq(3*x + 5*y, 22), [x, y], domain=S.Integers)
+    ImageSet(Lambda(t0, (44 - 5*t0, 3*t0 - 22)), Integers)
     """
     items = [equations] if isinstance(equations, (Basic, bool)) else list(equations)
     statements = [_as_statement(item) for item in items]

@@ -88,6 +88,28 @@ Union(Interval.open(-oo, -sqrt(2)), Interval.open(sqrt(2), 3))
 
 ```
 
+## Transcendental equations and integer systems
+
+`solve` reduces equations and inequalities in which the unknown occurs
+only inside exponentials, logarithms, trigonometric functions or roots
+to polynomial problems in a kernel variable and inverts the kernels with
+the assumptions (`sympy_extras.solvers.transcendental`); systems of
+linear equations over the integers are solved through the Hermite normal
+form and, when the unknowns are nonnegative and the solutions finitely
+many, by the completion procedure of Contejean and Devie
+(`sympy_extras.solvers.integers`). See [docs/reduce.md](reduce.md).
+
+```python
+>>> from sympy import exp, sin, cos, Eq, S
+>>> solve(exp(2*x) - 3*exp(x) + 2, x, x > 0)
+{log(2)}
+>>> solve(Eq(sin(x) + cos(x), 1), x, (x > 0) & (x < 3))
+{pi/2}
+>>> solve(Eq(3*x + 5*y, 22), [x, y], (x >= 0) & (y >= 0), domain=S.Integers)
+{(4, 2)}
+
+```
+
 ## Limitations
 
 - The ansatz is polynomial (plus the functions given in `basis`). Linear

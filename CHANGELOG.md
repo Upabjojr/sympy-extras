@@ -12,6 +12,24 @@ First release.
 
 ### Added
 
+- Exact equation solving and reduction, after the list of algorithms in
+  Mathematica's implementation notes ([docs/reduce.md](docs/reduce.md)):
+  `sympy_extras.polys.virtual_substitution` (linear quantifier elimination
+  by virtual substitution, used first by `resolve`),
+  `sympy_extras.polys.comprehensive` (comprehensive Gröbner systems of
+  Kapur–Sun–Wang, existential elimination and simplification over the
+  complex numbers, `resolve(..., domain=S.Complexes)`),
+  `sympy_extras.solvers.integers` (Hermite normal form with transform,
+  linear Diophantine systems, Hilbert bases and minimal nonnegative
+  solutions by Contejean–Devie, Cooper's algorithm,
+  `resolve(..., domain=S.Integers)`, integer systems in `solve`),
+  `sympy_extras.solvers.transcendental` (transcendental equations and
+  inequalities reduced to polynomial ones through kernels and inverse
+  images, with the parameters' assumptions, used by `solve`),
+  `sympy_extras.polys.roots` (roots in radicals of decomposable
+  polynomials). `ask` decides the reality of roots and logarithms itself
+  (SymPy's `ask(Q.real(sqrt(a - 2)), Q.positive(a))` is `True`).
+
 - `sympy_extras.polys.cad`: cylindrical algebraic decomposition (CAD) of
   real space adapted to a set of polynomials with rational coefficients, with
   McCallum's and Hong's projection operators, exact real algebraic sample

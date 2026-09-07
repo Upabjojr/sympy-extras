@@ -74,7 +74,7 @@ def test_resolve_predicates() -> None:
 
 
 def test_resolve_errors() -> None:
-    raises(NotImplementedError, lambda: resolve(ForAll(x, x > 0), domain=S.Integers))
+    raises(NotImplementedError, lambda: resolve(ForAll(x, x > 0), domain=S.Rationals))
     raises(ValueError, lambda: resolve(ForAll(x, sin(x) > 0)))
     raises(ValueError, lambda: resolve(ForAll(x, element(x, S.Integers))))
     raises(ValueError, lambda: resolve(Exists(x, x > symbols('p'))) if False else resolve(Exists(x, symbols('p'))))
