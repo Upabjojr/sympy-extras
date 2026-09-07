@@ -84,7 +84,12 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
         value = atom.doit()
         if value in (true, false):
             return bool(value)
-    return _cad_ask(atom, facts)
+    value = _cad_ask(atom, facts)
+    if value is None and isinstance(atom, Relational):
+        # expressions of one real variable beyond polynomials: calculus
+        from .analysis import decide_relational
+        value = decide_relational(atom, facts)
+    return value
 
 
 def _evaluate(formula: Boolean, facts: Facts) -> Truth:

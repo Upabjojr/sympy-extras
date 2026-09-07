@@ -65,6 +65,11 @@ solutions are wanted.)
 `logic_random.py --cases 80 --seed 3` (one variable) and
 `--cases 40 --seed 5 --variables 2`: 0 problems, 7 cases skipped (no
 point satisfying the random assumption was found).
+`logic_random.py --transcendental 40 --seed 9` (random expressions in
+`exp`, `log`, `sin`, `cos`, `sqrt`, `atan` of one variable on random
+intervals, `ask(f > 0)` and `refine(Abs(f))` against dense sampling):
+0 wrong, 15 undecided (a sign change inside the interval, where `None` is
+the right answer, or the zeros out of reach of `solveset`).
 
 `qf_nra.py --sample 20 --seed 2 --timeout 20 --max-variables 3`: no
 wrong answer; `satisfiable` decided 8 of 20 (12 undecided within the

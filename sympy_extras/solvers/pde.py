@@ -26,14 +26,21 @@ from sympy.solvers.pde import checkpdesol
 from sympy.solvers.solvers import solve
 
 from sympy_extras._timeout import attempt
+from sympy_extras.settings import settings
 from sympy_extras._typing import as_expr, free_symbols
 
 from .lie import Equation, JetSpace, Symmetry, symmetries, _as_zero
 
 __all__ = ['pde_symmetries', 'similarity_reduction', 'pdsolve_lie', 'Reduction']
 
-#: default time limit, in seconds, of each step handed to SymPy
-DEFAULT_TIMEOUT = 30.0
+#: the default ``timeout`` argument: the value of
+#: :data:`sympy_extras.settings.settings.timeout` at call time
+DEFAULT_TIMEOUT = -1.0
+
+
+def _limit(timeout: Optional[float]) -> Optional[float]:
+    """The time limit to use: the global setting for the default marker."""
+    return settings.timeout if timeout == DEFAULT_TIMEOUT else timeout
 
 
 def pde_symmetries(pde: Equation, u: AppliedUndef, degree: int = 2,
@@ -161,6 +168,7 @@ def similarity_reduction(pde: Equation, u: AppliedUndef, symmetry: Symmetry,
     >>> r.ode
     z*Derivative(F(z), z) + 2*Derivative(F(z), (z, 2))
     """
+    timeout = _limit(timeout)
     jets = JetSpace([u])
     if jets.q != 1:
         raise ValueError("one dependent variable is expected")
@@ -311,6 +319,7 @@ def pdsolve_lie(pde: Equation, u: AppliedUndef, symmetries_: Optional[Sequence[S
     Eq(u(x, t), C1 + C2*erf(x/(2*sqrt(t))))
     Eq(u(x, t), C1*exp(-x**2/(4*t))/sqrt(t))
     """
+    timeout = _limit(timeout)
     syms = list(symmetries_) if symmetries_ is not None else pde_symmetries(pde, u, degree=degree)
     solutions: list[Eq] = []
     seen: set[Basic] = set()

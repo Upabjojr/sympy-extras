@@ -142,6 +142,12 @@ b**2 - 4*c < 0
 
 ```
 
+Relations between non-polynomial expressions of one real variable
+(`sin(x) > 0` for `0 < x < pi`, `x*exp(x) > 1` for `x > 1`) are decided by
+calculus (exact zeros, continuity, monotonicity, certified numerics); the
+numerical checks and the solver time limits are governed by
+`sympy_extras.settings`.
+
 `refine`, `simplify`, `ask`, `assuming`/`global_assumptions`, `resolve`,
 `satisfiable`, `tautology` and `find_instance` correspond to Mathematica's
 `Refine`, `Simplify`, `Assuming`/`$Assumptions`, `Resolve`, `SatisfiableQ`,

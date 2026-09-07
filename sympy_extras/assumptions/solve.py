@@ -25,6 +25,7 @@ from sympy.solvers.solveset import solveset, nonlinsolve
 from sympy_extras._typing import Truth, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
 from sympy_extras.polys.cad import solution_set
 from sympy_extras.polys.cad.samplepoints import _root_poly
+from sympy_extras.settings import settings
 
 from .ask import Assumptions, _facts, _evaluate
 from .facts import Facts, normalize, conjuncts, to_polynomial
@@ -94,12 +95,15 @@ def _holds_at(formula: Boolean, values: dict[Basic, Basic], facts: Facts) -> Tru
 
 def _clearly_not_real(e: Basic) -> bool:
     """Whether the imaginary part of a number is clearly nonzero, by
-    evaluation with 30 digits."""
-    value = N(e, 30)
+    numerical evaluation (when the settings allow it)."""
+    if not settings.numerical_checks:
+        return False
+    digits = settings.precision
+    value = N(e, digits)
     if not (isinstance(value, Expr) and value.is_number and value.is_finite):
         return False
-    imaginary = N(im(value), 30)
-    return isinstance(imaginary, Expr) and imaginary.is_number and bool(abs(imaginary) > Rational(1, 10)**20)
+    imaginary = N(im(value), digits)
+    return isinstance(imaginary, Expr) and imaginary.is_number and bool(abs(imaginary) > Rational(1, 10)**(digits*2//3))
 
 
 def _filter_finite(elements: Sequence[Basic], x: Symbol, condition: Boolean, facts: Facts,
@@ -134,14 +138,17 @@ def _numeric_root(instance: Boolean) -> Truth:
     """Whether the equations of a formula without free symbols hold, by
     evaluation with 30 digits: ``False`` when a residual is clearly not
     zero, ``True`` when all vanish, ``None`` when this cannot be told."""
+    if not settings.numerical_checks:
+        return None
     equations = [c for c in conjuncts(instance) if isinstance(c, Eq)]
     if not equations or any(free_symbols(c) for c in equations):
         return None
+    digits = settings.precision
     for c in equations:
-        residual = N(as_expr(c.lhs - c.rhs), 30)
+        residual = N(as_expr(c.lhs - c.rhs), digits)
         if not (isinstance(residual, Expr) and residual.is_number and residual.is_finite):
             return None
-        if abs(residual) > Rational(1, 10)**20:
+        if abs(residual) > Rational(1, 10)**(digits*2//3):
             return False
     return True
 

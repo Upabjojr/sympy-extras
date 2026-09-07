@@ -38,6 +38,7 @@ from sympy.solvers.ode import dsolve, checkodesol
 from sympy.solvers.solvers import solve
 
 from sympy_extras._timeout import attempt
+from sympy_extras.settings import settings
 from sympy_extras._typing import as_expr, free_symbols
 
 from .lie import Equation, JetSpace, Symmetry, symmetries, _as_zero, _leading_derivatives
@@ -45,8 +46,14 @@ from .lie import Equation, JetSpace, Symmetry, symmetries, _as_zero, _leading_de
 __all__ = ['ode_symmetries', 'canonical_coordinates', 'reduce_order',
     'dsolve_lie', 'solve_ode', 'ReducedODE']
 
-#: default time limit, in seconds, of each step handed to SymPy
-DEFAULT_TIMEOUT = 30.0
+#: the default ``timeout`` argument: the value of
+#: :data:`sympy_extras.settings.settings.timeout` at call time
+DEFAULT_TIMEOUT = -1.0
+
+
+def _limit(timeout: Optional[float]) -> Optional[float]:
+    """The time limit to use: the global setting for the default marker."""
+    return settings.timeout if timeout == DEFAULT_TIMEOUT else timeout
 
 
 def _natural_basis(eq: Expr, x: Symbol, ysym: Symbol) -> list[Expr]:
@@ -137,6 +144,7 @@ def canonical_coordinates(symmetry: Symmetry, timeout: Optional[float] = DEFAULT
     >>> canonical_coordinates(X)
     (sqrt(x)*y, log(x))
     """
+    timeout = _limit(timeout)
     jets = symmetry.jets
     if jets.p != 1 or jets.q != 1:
         raise ValueError("an ordinary differential equation with one unknown is expected")
@@ -240,6 +248,7 @@ def reduce_order(ode: Equation, y: AppliedUndef, symmetry: Symmetry,
     >>> reduce_order(eq, y, Symmetry(jets, [0], [x*jets.u[0]]))
     ReducedODE(r=x, s=log(y)/x, ode=Derivative(v(r), r) + 2*v(r)/r)
     """
+    timeout = _limit(timeout)
     jets = JetSpace([y])
     x, ysym = jets.x[0], jets.u[0]
     eq = jets.to_jet(_as_zero(ode))
@@ -355,7 +364,8 @@ def dsolve_lie(ode: Equation, y: AppliedUndef, degree: int = 2, basis: Sequence[
     equation is solved by :func:`sympy.dsolve` and the solutions are
     written in the original variables. With ``check`` only the solutions
     verified by :func:`sympy.solvers.ode.checkodesol` are returned. Every
-    step handed to SymPy is abandoned after ``timeout`` seconds.
+    step handed to SymPy is abandoned after ``timeout`` seconds (by default
+    the ``timeout`` of :data:`sympy_extras.settings.settings`).
 
     Examples
     ========
@@ -367,6 +377,7 @@ def dsolve_lie(ode: Equation, y: AppliedUndef, degree: int = 2, basis: Sequence[
     >>> dsolve_lie(y.diff(x, 2) - y.diff(x)**2/y, y)
     [Eq(y(x), exp(C1*x + C2))]
     """
+    timeout = _limit(timeout)
     if symmetries_ is None:
         syms = ode_symmetries(ode, y, degree=degree, basis=basis)
         if not syms and not basis:
@@ -405,6 +416,7 @@ def solve_ode(ode: Equation, y: AppliedUndef, degree: int = 2, check: bool = Tru
     >>> solve_ode(y.diff(x, 2) - y.diff(x)**2/y - y.diff(x)/x, y)
     [Eq(y(x), exp(C1*x**2/2 + C2))]
     """
+    timeout = _limit(timeout)
     sols = attempt(lambda: dsolve(ode, y), timeout)
     found = _solutions(sols) if sols is not None else []
     if found:

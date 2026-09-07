@@ -69,6 +69,53 @@ The decomposition is exact but its cost grows quickly with the number of
 variables and the degrees: the module is meant for statements with a few
 variables.
 
+3. **Beyond polynomials** (`sympy_extras.assumptions.analysis`). A relation
+   between expressions of *one* real variable which are not polynomials
+   (`sin`, `exp`, `log`, `atan`, roots, ...) is decided by calculus on the
+   set where the variable is assumed to lie: the expression must be
+   continuous there, its zeros are found exactly with `solveset`, the sign
+   is constant between consecutive zeros and is read at a rational sample
+   point of each piece, and when the zeros cannot be found the sign of the
+   derivative (found the same way) gives monotonicity and the sign follows
+   from the limits at the endpoints. Constant expressions such as
+   `sin(3) - 1/7` are signed by SymPy's own knowledge (exact, or its
+   numerical evaluation of constants) or, when
+   `sympy_extras.settings.settings.numerical_checks` is on (the default),
+   by high precision numerical evaluation with a margin over the error
+   bound. With the checks off, only what SymPy knows by itself is used,
+   and `solve` no longer discards the candidates of `solveset` by their
+   numerical residual. This is what
+   makes `ask(sin(x) > 0, (x > 0) & (x < pi))` `True`,
+   `refine(Abs(sin(x)), (x > 0) & (x < pi))` `sin(x)`, and
+   `ask(x*exp(x) > 1, x > 1)` `True`.
+
+```python
+>>> from sympy import S, sin, exp, log, Abs, pi
+>>> from sympy.abc import x
+>>> from sympy_extras.assumptions import ask, refine
+>>> ask(sin(x) > 0, (x > 0) & (x < pi))
+True
+>>> refine(Abs(exp(x) - 2) + Abs(log(x)), x > 1)
+exp(x) + log(x) - 2
+>>> ask(exp(x) >= x + 1, domain=S.Reals)
+True
+
+```
+
+The global settings (`sympy_extras.settings`) switch the numerical checks
+off for speed or reproducibility, set their precision, and set the default
+time limit of the solvers:
+
+```python
+>>> from sympy_extras.settings import settings, configure
+>>> with configure(numerical_checks=False, timeout=5.0):
+...     settings
+Settings(numerical_checks=False, precision=30, timeout=5.0)
+>>> settings
+Settings(numerical_checks=True, precision=30, timeout=30.0)
+
+```
+
 ## Examples
 
 ### Asking

@@ -51,6 +51,16 @@ First release.
   canonical coordinates (`ode_symmetries`, `canonical_coordinates`,
   `reduce_order`, `dsolve_lie`, `solve_ode`, verified with `checkodesol`).
   Every SymPy step runs under a time limit (`sympy_extras._timeout`).
+- `sympy_extras.assumptions.analysis`: signs of expressions of one real
+  variable beyond polynomials (continuity, exact zeros with `solveset`,
+  sample points between zeros, monotonicity from the derivative, limits at
+  the endpoints; constants signed exactly or by certified numerical
+  evaluation), used by `ask` and so by `refine`, `simplify` and `solve`:
+  `refine(Abs(sin(x)), (x > 0) & (x < pi))` is `sin(x)`.
+- `sympy_extras.settings`: global settings `numerical_checks` (the
+  certified numerical evaluation in `ask`/`solve`, on by default),
+  `precision` and `timeout` (the default time limit of the solvers), with
+  the context manager `configure`.
 - `sympy_extras.assumptions.solve` checks the finite candidates returned
   by SymPy's solvers against the equation and drops extraneous roots
   (`solveset` returns some for radical equations).

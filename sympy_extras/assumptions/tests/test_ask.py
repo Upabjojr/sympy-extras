@@ -105,7 +105,8 @@ def test_ask_reals() -> None:
 def test_ask_undecidable() -> None:
     assert ask(sin(x) > 0, x > 0) is None
     assert ask(sqrt(x) > 0, x > 0) is True
-    assert ask(sqrt(x) > 1, x > 4) is None
+    assert ask(sqrt(x) > 1, x > 4) is True  # decided by the sign analysis beyond polynomials
+    assert ask(sqrt(x) > 3, x > 4) is None
     assert ask(element(x, S.Reals**2)) is None
     assert ask(Symbol('p')) is None
     assert ask(Or(Symbol('p'), x > 0), x > 1) is True

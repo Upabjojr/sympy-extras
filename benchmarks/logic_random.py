@@ -34,7 +34,7 @@ from typing import Optional, Union
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from sympy import (S, Symbol, Rational, And, Or, Not, Implies, Equivalent, Xor,
-    Eq, Ne, Basic, true, false)
+    Eq, Ne, Basic, Expr, true, false, exp, log, sin, cos, sqrt, atan, Abs, N)
 from sympy.logic.boolalg import Boolean
 
 from sympy_extras._typing import as_boolean, as_expr
@@ -115,17 +115,69 @@ def random_points(rng: random.Random, variables: list[Symbol], assumption: Boole
     return points
 
 
+def random_transcendental(rng: random.Random) -> Expr:
+    pieces = [x, x**2, exp(x), exp(-x), log(x + 6), sin(x), cos(x), sqrt(x + 6), atan(x)]
+    terms = rng.sample(pieces, rng.randint(1, 3))
+    result: Expr = S.Zero
+    for term in terms:
+        result = result + rng.choice([-3, -2, -1, 1, 2, 3])*term
+    return result + rng.randint(-4, 4)
+
+
+def check_transcendental(rng: random.Random, cases: int, timeout: float) -> tuple[int, int]:
+    """``ask(f > 0)`` and ``refine(Abs(f))`` for random non-polynomial
+    ``f`` of one variable on random intervals, against dense sampling.
+    Returns (problems, undecided)."""
+    problems = 0
+    undecided = 0
+    for case in range(cases):
+        f = random_transcendental(rng)
+        lo = Rational(rng.randint(-5, 2), rng.randint(1, 2))
+        hi = lo + Rational(rng.randint(1, 8), rng.randint(1, 2))
+        assumption = as_boolean(And(x > lo, x < hi))
+        samples = [lo + (hi - lo)*Rational(k, 400) for k in range(1, 400)]
+        values = [N(f.subs(x, s), 30) for s in samples]
+        positive = all(v > 0 for v in values)
+        negative = all(v < 0 for v in values)
+        label = "transcendental %d: %s on (%s, %s)" % (case, f, lo, hi)
+        answer = attempt(lambda: ask(f > 0, assumption), timeout)
+        if answer is True and not positive or answer is False and not all(v <= 0 for v in values):
+            problems += 1
+            print("WRONG ask", label, "->", answer)
+        elif answer is None:
+            undecided += 1
+        refined = attempt(lambda: refine(Abs(f), assumption), timeout)
+        if refined is None:
+            undecided += 1
+            continue
+        for s, v in zip(samples[::40], values[::40]):
+            w = N(refined.subs(x, s), 30)
+            if abs(w - abs(v)) > Rational(1, 10)**20:
+                problems += 1
+                print("WRONG refine", label, "->", refined, "at", s)
+                break
+        if refined == Abs(f) and (positive or negative):
+            undecided += 1
+    return problems, undecided
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cases', type=int, default=100)
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--variables', type=int, default=1)
     parser.add_argument('--timeout', type=float, default=30.0)
+    parser.add_argument('--transcendental', type=int, default=0,
+                        help="number of random non-polynomial expressions of one variable to check as well")
     args = parser.parse_args(argv)
     rng = random.Random(args.seed)
     variables = [x, y][:args.variables]
     problems = 0
     skipped = 0
+    if args.transcendental:
+        wrong, undecided = check_transcendental(rng, args.transcendental, args.timeout)
+        problems += wrong
+        print("transcendental cases:", args.transcendental, "wrong:", wrong, "undecided:", undecided)
     for case in range(args.cases):
         formula = random_formula(rng, variables, rng.randint(1, 3))
         assumption: Boolean = true if rng.random() < 0.4 else random_atom(rng, variables)

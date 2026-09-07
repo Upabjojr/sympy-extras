@@ -28,7 +28,8 @@ def test_refine_abs() -> None:
     assert refine(sqrt(x**2), element(x, S.Reals)) == Abs(x)
     assert refine(sqrt(x**2)) == sqrt(x**2)
     assert refine(Abs(sin(x)), x > 0) == Abs(sin(x))
-    assert refine(Abs(sin(x)), (x > 0) & (x < 3)) == Abs(sin(x))
+    assert refine(Abs(sin(x)), (x > 0) & (x < 3)) == sin(x)  # 3 < pi: the sign analysis decides
+    assert refine(Abs(sin(x)), (x > 0) & (x < 4)) == Abs(sin(x))
 
 
 def test_refine_sign() -> None:
