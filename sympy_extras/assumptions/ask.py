@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from typing import Iterable, Optional, Union
 
-from sympy.assumptions import ask as _sympy_ask
+from sympy.assumptions import Q, ask as _sympy_ask
 from sympy.core.basic import Basic
-from sympy.core.relational import Relational
+from sympy.core.relational import Relational, Gt, Lt, Ge, Le
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or,
     Not, Implies, Equivalent, Xor, ITE, true, false)
@@ -65,6 +65,13 @@ def _cad_ask(formula: Boolean, facts: Facts) -> Truth:
 def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
     if isinstance(atom, (BooleanTrue, BooleanFalse)):
         return bool(atom)
+    if isinstance(atom, (Gt, Lt, Ge, Le)):
+        # an inequality is false when its sides are not both real
+        try:
+            if _sympy_ask(Q.real(atom.lhs - atom.rhs), facts.predicates) is False:
+                return False
+        except ValueError:
+            pass
     predicate = _predicate_of_atom(atom)
     if predicate is not None:
         try:

@@ -28,3 +28,7 @@ env/
 *.swp
 *~
 .DS_Store
+
+# downloaded benchmark data
+benchmarks/.cache/
+benchmarks/results/

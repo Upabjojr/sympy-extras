@@ -203,6 +203,41 @@ True
 
 See [docs/ideals.md](docs/ideals.md).
 
+### Lie symmetries of differential equations (`sympy_extras.solvers`)
+
+Point symmetries of ODEs, PDEs and systems from the determining equations
+with a polynomial ansatz (every symmetry found is verified by
+substitution), similarity reductions of PDEs to ODEs and their group
+invariant solutions, and ODEs of any order solved by reduction of order in
+canonical coordinates. SymPy's `dsolve` only has a `lie_group` hint for
+first order equations and `pdsolve` has no symmetry analysis.
+
+```python
+>>> from sympy import Function, symbols
+>>> from sympy_extras.solvers import pde_symmetries, pdsolve_lie, dsolve_lie
+>>> x, t = symbols('x t')
+>>> u = Function('u')(x, t)
+>>> burgers = u.diff(t) + u*u.diff(x) - u.diff(x, 2)
+>>> for X in pde_symmetries(burgers, u):
+...     print(X.generator())
+d/dt
+d/dx
+t*d/dx + d/du
+x*d/dx + 2*t*d/dt - u*d/du
+t*x*d/dx + t**2*d/dt + (-t*u + x)*d/du
+>>> pdsolve_lie(u.diff(t) - u.diff(x, 2), u)[2]
+Eq(u(x, t), C1 + C2*erf(x/(2*sqrt(t))))
+>>> f = Function('y')(x)
+>>> dsolve_lie(f.diff(x, 2) - f.diff(x)**2/f - f.diff(x)/x, f)
+[Eq(y(x), exp(C1*x**2/2 + C2))]
+
+```
+
+`sympy_extras.assumptions.solve` is `Solve` with assumptions: polynomial
+equations and inequalities in one real unknown go to the CAD, the rest to
+`solveset`/`nonlinsolve` with the parameters carrying the assumptions and
+the solutions filtered by `ask`. See [docs/solvers.md](docs/solvers.md).
+
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
@@ -234,9 +269,14 @@ sympy_extras/
         refine.py            refine, simplify
         resolve.py           resolve (quantifier elimination)
         sat.py               satisfiable, tautology, find_instance
+        solve.py             solve with assumptions and a domain
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation
+    solvers/
+        lie.py               jet spaces, prolongation, determining equations, symmetries
+        pde.py               pde_symmetries, similarity_reduction, pdsolve_lie
+        ode.py               ode_symmetries, canonical_coordinates, reduce_order, dsolve_lie, solve_ode
     polys/
         euclidtools.py       principal subresultant coefficients
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
@@ -249,6 +289,11 @@ sympy_extras/
             qe.py            quantifier elimination and decision
 
 ```
+
+`benchmarks/` holds the drivers which run the algorithms on external
+collections (the Kamke ODEs from Maxima's test suite, classical PDE
+symmetry algebras, random polynomial equations against an oracle); they
+are not part of the test suite and download their data on first use.
 
 ## Releasing
 

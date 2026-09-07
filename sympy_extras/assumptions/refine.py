@@ -181,6 +181,14 @@ class _Refiner:
         self._dummies[f] = dummy
         return dummy
 
+    def dummy_for(self, f: Expr) -> Optional[Symbol]:
+        """A dummy carrying the properties of ``f`` which follow from the
+        facts, or ``None`` when there are none."""
+        props = self.properties(f)
+        if not props:
+            return None
+        return self._dummy(f, props)
+
     def _candidates(self, expr: Basic) -> list[Expr]:
         """The non-atomic subexpressions whose properties matter."""
         found: list[Expr] = []

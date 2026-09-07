@@ -217,6 +217,13 @@ was already published. See the `Releasing` section of `README.md`.
 
 ## Things not to do
 
+- Do not call a SymPy routine which may not terminate (`integrate`,
+  `dsolve`, `solve`, `simplify` on unbounded input, `checkodesol`) without
+  a time limit: wrap it with `sympy_extras._timeout.attempt`, as the
+  solvers do, so that every public function returns.
+- Benchmarks against external collections live in `benchmarks/`, download
+  their data on first use into `benchmarks/.cache/` (never committed) and
+  are not part of the test suite; the unit tests must stay fast.
 - Do not change SymPy's behaviour from this package (no monkeypatching).
 - Do not add dependencies beyond SymPy without a discussion.
 - Do not delete or weaken a test to make the suite pass.

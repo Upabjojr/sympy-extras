@@ -39,6 +39,28 @@ First release.
   bases between orders for ideals of any dimension (SymPy's FGLM is
   restricted to zero-dimensional ideals), with lifting by normal forms so
   that SymPy's Buchberger implementation handles the initial forms.
+- `sympy_extras.solvers`: Lie point symmetries of ordinary and partial
+  differential equations and systems (`JetSpace`, `Symmetry`, `symmetries`,
+  `check_symmetry`): prolongation, invariance condition with the leading
+  derivatives eliminated, determining equations solved exactly with a
+  polynomial ansatz times optional basis functions, every symmetry verified
+  by substitution. Similarity reductions of PDEs in two independent
+  variables and group invariant solutions (`pde_symmetries`,
+  `similarity_reduction`, `pdsolve_lie`, verified with `checkpdesol`).
+  ODEs of any order solved through a symmetry by reduction of order in
+  canonical coordinates (`ode_symmetries`, `canonical_coordinates`,
+  `reduce_order`, `dsolve_lie`, `solve_ode`, verified with `checkodesol`).
+  Every SymPy step runs under a time limit (`sympy_extras._timeout`).
+- `sympy_extras.assumptions.solve`: `Solve` with assumptions and a domain;
+  polynomial problems in one real unknown are solved exactly by the CAD,
+  the others by `solveset`/`nonlinsolve` with the parameters carrying the
+  assumptions and the solutions filtered, dropped or kept in a
+  `ConditionSet` by `ask`.
+- `ask` now answers `False` for an inequality whose sides are not real
+  (`sqrt(a) > 0` with `a < 0`).
+- `benchmarks/`: drivers running the Kamke collection of ODEs (downloaded
+  from Maxima's test suite), a table of classical PDE symmetry algebras and
+  random polynomial equations against an oracle.
 - `sympy_extras.assumptions.refine` and `simplify` rewritten: the symbols
   and the subexpressions whose sign or nature matters are decided against
   the assumptions (SymPy's predicates plus the CAD) and replaced by symbols

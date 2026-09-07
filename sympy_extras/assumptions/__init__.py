@@ -24,7 +24,8 @@ The functions are
   ``$Assumptions``;
 * :func:`resolve` -- ``Resolve``, quantifier elimination over the reals;
 * :func:`satisfiable`, :func:`tautology` and :func:`find_instance` --
-  ``SatisfiableQ``, ``TautologyQ`` and ``FindInstance``.
+  ``SatisfiableQ``, ``TautologyQ`` and ``FindInstance``;
+* :func:`solve` -- ``Solve`` with assumptions and a domain.
 
 Two backends are used: the assumptions system of SymPy (:func:`sympy.ask`,
 :func:`sympy.refine` and its SAT solver), which receives the predicates
@@ -58,7 +59,8 @@ from .ask import ask
 from .refine import refine, simplify
 from .resolve import resolve
 from .sat import satisfiable, tautology, find_instance
+from .solve import solve
 
 __all__ = ['element', 'Facts', 'ForAll', 'Exists', 'Quantifier', 'prenex',
     'global_assumptions', 'assuming', 'AssumptionsContext', 'ask', 'refine',
-    'simplify', 'resolve', 'satisfiable', 'tautology', 'find_instance']
+    'simplify', 'resolve', 'satisfiable', 'tautology', 'find_instance', 'solve']
