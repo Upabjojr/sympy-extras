@@ -73,7 +73,7 @@ addopts = "--doctest-modules -p no:cacheprovider"
 
 [tool.mypy]
 python_version = "3.10"  # mypy no longer analyses for 3.9; the package still supports it
-files = ["sympy_extras", "conftest.py"]
+files = ["sympy_extras", "conftest.py", "benchmarks"]
 strict = true
 # SymPy 1.14 ships no py.typed and few annotations: its sources are followed
 # for the annotations they have, but calls into unannotated SymPy functions

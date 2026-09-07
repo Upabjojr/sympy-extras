@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sympy import (S, Eq, sqrt, exp, log, sin, pi, Interval, Union, FiniteSet, Range,
+from sympy import (S, Eq, sqrt, exp, log, sin, pi, Interval, Union, FiniteSet, Range, Rational,
     ConditionSet, ImageSet, Q, CRootOf)
 from sympy.abc import x, y, a, n
 from sympy.testing.pytest import raises
@@ -66,3 +66,11 @@ def test_solve_predicates_and_integers() -> None:
     assert solve(n**2 - 9, n, element(n, S.Naturals0)) == FiniteSet(3)
     assert solve(2*x - 1, x, element(x, S.Integers)) == S.EmptySet
     assert solve(2*x - 1, x, element(x, S.Rationals)) == FiniteSet(S.Half)
+
+
+def test_solve_drops_extraneous_roots() -> None:
+    # sympy's solveset returns extraneous roots of radical equations
+    f = 2*x**2 + 3*sqrt(x + 6) - 1
+    assert solve(f, x, (x > 2) & (x < Rational(7, 2))) == S.EmptySet
+    assert solve(f, x, domain=S.Reals) == S.EmptySet
+    assert solve(sqrt(x + 2) - x, x, domain=S.Reals) == FiniteSet(2)

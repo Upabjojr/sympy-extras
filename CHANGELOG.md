@@ -51,6 +51,13 @@ First release.
   canonical coordinates (`ode_symmetries`, `canonical_coordinates`,
   `reduce_order`, `dsolve_lie`, `solve_ode`, verified with `checkodesol`).
   Every SymPy step runs under a time limit (`sympy_extras._timeout`).
+- `sympy_extras.assumptions.solve` checks the finite candidates returned
+  by SymPy's solvers against the equation and drops extraneous roots
+  (`solveset` returns some for radical equations).
+- `benchmarks/`: random verification drivers (`verify_random.py` on the
+  Kamke collection with a numerical residual check, `logic_random.py` for
+  the refinement of logical expressions, `qf_nra.py` on the SMT-LIB
+  Meti-Tarski problems, transcendental equations in `solve_random.py`).
 - `sympy_extras.assumptions.solve`: `Solve` with assumptions and a domain;
   polynomial problems in one real unknown are solved exactly by the CAD,
   the others by `solveset`/`nonlinsolve` with the parameters carrying the

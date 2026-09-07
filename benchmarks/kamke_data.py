@@ -16,6 +16,7 @@ import urllib.request
 from typing import Optional
 
 from sympy.core.basic import Basic
+from sympy.core.expr import Expr
 from sympy.core.function import Function, Derivative
 from sympy.core.symbol import Symbol
 from sympy.parsing.sympy_parser import parse_expr
@@ -37,7 +38,7 @@ _COMMENT = re.compile(r"/\*.*?\*/", re.S)
 class ODEEntry:
     """One equation of a collection."""
 
-    def __init__(self, collection: str, number: int, source: str, equation: Basic, order: int) -> None:
+    def __init__(self, collection: str, number: int, source: str, equation: Expr, order: int) -> None:
         self.collection = collection
         self.number = number
         self.source = source
@@ -71,7 +72,7 @@ def fetch(name: str) -> Optional[str]:
 
 x = Symbol('x')
 y = Function('y')
-_FUNCTIONS = {name: Function(name) for name in ('f', 'g', 'h', 'phi', 'psi', 'tg')}
+_FUNCTIONS: dict[str, object] = {name: Function(name) for name in ('f', 'g', 'h', 'phi', 'psi', 'tg')}
 _NAMES = {
     'bessel_j': 'besselj', 'bessel_y': 'bessely', 'bessel_i': 'besseli',
     'bessel_k': 'besselk', 'abs': 'Abs', '%e': 'E', '%i': 'I', '%pi': 'pi',
@@ -80,7 +81,7 @@ _NAMES = {
 }
 
 
-def translate(text: str) -> Optional[Basic]:
+def translate(text: str) -> Optional[Expr]:
     """A Maxima expression of the collections as a SymPy expression in
     ``y(x)``, or ``None`` when it cannot be translated."""
     s = text.strip()
@@ -94,7 +95,7 @@ def translate(text: str) -> Optional[Basic]:
     for old, new in _NAMES.items():
         s = re.sub(re.escape(old) + r"(?![A-Za-z_0-9])", new, s)
     s = s.replace('^', '**')
-    local: dict[str, Basic] = dict(_FUNCTIONS)
+    local: dict[str, object] = dict(_FUNCTIONS)
     local['y'] = y
     local['x'] = x
     local['Derivative'] = Derivative
@@ -102,7 +103,7 @@ def translate(text: str) -> Optional[Basic]:
         expr = parse_expr(s, local_dict=local)
     except Exception:
         return None
-    if not isinstance(expr, Basic) or not expr.has(y(x)):
+    if not isinstance(expr, Expr) or not expr.has(y(x)):
         return None
     return expr
 
@@ -135,7 +136,7 @@ def load(collections: tuple[str, ...] = ('kamke1', 'kamke2')) -> list[ODEEntry]:
 
 if __name__ == '__main__':
     loaded = load(('kamke1', 'kamke2', 'murphy1', 'murphy2'))
-    by = {}
+    by: dict[str, int] = {}
     for e in loaded:
         by.setdefault(e.collection, 0)
         by[e.collection] += 1

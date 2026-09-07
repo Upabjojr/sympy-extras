@@ -8,6 +8,9 @@ from sympy.core.expr import Expr
 from sympy.core.relational import Relational, Eq, Gt, Lt, Ge, Le
 from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
+from sympy.core.numbers import Rational
+from sympy.core.evalf import N
+from sympy.functions.elementary.complexes import im
 from sympy.core.sympify import sympify
 from sympy.polys.rootoftools import CRootOf
 from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or,
@@ -89,12 +92,33 @@ def _holds_at(formula: Boolean, values: dict[Basic, Basic], facts: Facts) -> Tru
     return _evaluate(instance, facts)
 
 
-def _filter_finite(elements: Sequence[Basic], x: Symbol, condition: Boolean, facts: Facts) -> Set:
+def _clearly_not_real(e: Basic) -> bool:
+    """Whether the imaginary part of a number is clearly nonzero, by
+    evaluation with 30 digits."""
+    value = N(e, 30)
+    if not (isinstance(value, Expr) and value.is_number and value.is_finite):
+        return False
+    imaginary = N(im(value), 30)
+    return isinstance(imaginary, Expr) and imaginary.is_number and bool(abs(imaginary) > Rational(1, 10)**20)
+
+
+def _filter_finite(elements: Sequence[Basic], x: Symbol, condition: Boolean, facts: Facts,
+                   formula: Boolean = true, real: bool = False) -> Set:
     """Keep the elements at which the condition holds, and put the
-    undecided ones in a :class:`~sympy.sets.conditionset.ConditionSet`."""
+    undecided ones in a :class:`~sympy.sets.conditionset.ConditionSet`.
+    Elements at which the solved formula itself provably fails (SymPy's
+    solvers return extraneous roots of radical equations), and elements
+    which are clearly not real when ``real`` solutions are wanted, are
+    dropped."""
     kept: list[Basic] = []
     undecided: list[Basic] = []
     for e in elements:
+        if real and _clearly_not_real(e):
+            continue
+        if formula is not true:
+            at_point = normalize(as_boolean(formula.xreplace({x: e})))
+            if _evaluate(at_point, facts) is False or _numeric_root(at_point) is False:
+                continue
         value = _holds_at(condition, {x: e}, facts)
         if value is True:
             kept.append(e)
@@ -106,14 +130,32 @@ def _filter_finite(elements: Sequence[Basic], x: Symbol, condition: Boolean, fac
     return result
 
 
-def _restrict(result: Set, x: Symbol, condition: Boolean, facts: Facts) -> Set:
-    """Restrict a solution set to the values satisfying the condition."""
+def _numeric_root(instance: Boolean) -> Truth:
+    """Whether the equations of a formula without free symbols hold, by
+    evaluation with 30 digits: ``False`` when a residual is clearly not
+    zero, ``True`` when all vanish, ``None`` when this cannot be told."""
+    equations = [c for c in conjuncts(instance) if isinstance(c, Eq)]
+    if not equations or any(free_symbols(c) for c in equations):
+        return None
+    for c in equations:
+        residual = N(as_expr(c.lhs - c.rhs), 30)
+        if not (isinstance(residual, Expr) and residual.is_number and residual.is_finite):
+            return None
+        if abs(residual) > Rational(1, 10)**20:
+            return False
+    return True
+
+
+def _restrict(result: Set, x: Symbol, condition: Boolean, facts: Facts, formula: Boolean = true,
+              real: bool = False) -> Set:
+    """Restrict a solution set to the values satisfying the condition (and
+    check the finite candidates against the solved formula)."""
+    if isinstance(result, FiniteSet):
+        return _filter_finite(list(result.args), x, condition, facts, formula, real)
+    if isinstance(result, (SetUnion, Intersection)):
+        return as_set(result.func(*[_restrict(as_set(a), x, condition, facts, formula, real) for a in result.args]))
     if condition is true:
         return result
-    if isinstance(result, FiniteSet):
-        return _filter_finite(list(result.args), x, condition, facts)
-    if isinstance(result, (SetUnion, Intersection)):
-        return as_set(result.func(*[_restrict(as_set(a), x, condition, facts) for a in result.args]))
     if isinstance(result, EmptySet):
         return result
     if free_symbols(condition) <= {x} and x in facts.real:
@@ -170,7 +212,7 @@ def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]
             condition = And(Contains(x, dom), condition)
     result = _solveset(as_boolean(abstracted), x, solving_domain)
     result = as_set(result.xreplace(back_symbols))
-    return _restrict(result, x, condition, facts)
+    return _restrict(result, x, condition, facts, formula, real=dom.is_subset(S.Reals) is True)
 
 
 def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], facts: Facts,
