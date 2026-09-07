@@ -101,32 +101,67 @@ are shipped with the package.
   (`ask`, `refine`, `simplify`, `satisfiable`, the polynomial routines) and
   add what is missing on top. Algorithms that need no change stay in SymPy.
 
-## Types
+## Types: strict type stability (required)
 
-The code is fully annotated and checked with mypy in strict mode
-(`python -m mypy`, configured in `pyproject.toml`); the package ships a
-`py.typed` marker. The goal is type stability: every function has explicit
-parameter and return types, unions are narrowed with `isinstance` checks
-rather than left to duck typing, and containers are typed precisely, so
-that the algorithms can be translated to a statically typed language later.
+Type stability is a hard requirement of this project, not a style
+preference: the code must be translatable to a statically typed language
+(C++ or Rust) one day, so every value must have one explicit, statically
+known type. mypy in strict mode enforces it (`python -m mypy`, configured
+in `pyproject.toml`) and the CI job fails on any error; the package ships a
+`py.typed` marker.
 
-- Use the aliases of `sympy_extras/_typing.py` (`Monomial`, `Sign`, `Truth`,
-  `Dup`/`Dmp`, `OrderSpec`, `Weights`, `QuantifierPrefix`, ...) and add new
-  ones there when a structure is passed around.
-- SymPy 1.14 ships no `py.typed` and few annotations. Its sources are
-  followed for the annotations they have (`follow_untyped_imports`), so
-  `sympify`, `.args`, `.subs` are typed as `Basic`; convert at the boundary
-  with the helpers `as_expr`, `as_boolean`, `as_symbol`, `as_set`,
-  `free_symbols` and `sorted_symbols` instead of `cast`. Elements of SymPy
-  domains are `DomainElement = Any`.
-- Because SymPy's API is untyped, `disallow_untyped_calls` and
-  `warn_return_any` are off: a value coming out of SymPy is `Any` until
-  it is narrowed. Narrow it as soon as it enters our code.
-- `# type: ignore` is allowed only with the error code and a comment saying
-  why (there is one, on `Quantifier.__new__`, because SymPy constructors
-  evaluate and may return another object).
-- Tests are annotated too (`-> None`) and compare SymPy numbers with
-  Python literals, so `strict_equality` is off for them only.
+Rules, all of them mandatory for every change:
+
+1. **Every function, method, lambda-free callable and test has explicit
+   parameter and return annotations.** No untyped or partially typed
+   definitions; tests return `None` and their helpers are annotated too.
+2. **No implicit `Any`.** `Any` is allowed only for elements of SymPy
+   coefficient domains (`DomainElement`) and inside the dense polynomial
+   aliases `Dup`/`Dmp`, both defined in `sympy_extras/_typing.py`. Do not
+   introduce new uses of `Any`, `object` as a catch-all, or untyped
+   containers (`list`, `dict`, `tuple` without parameters).
+3. **Narrow at the SymPy boundary.** SymPy 1.14 ships no `py.typed` and
+   few annotations, so its results are `Basic` or `Any`. The moment a
+   SymPy value enters our code, convert it with the helpers of
+   `sympy_extras/_typing.py` (`as_expr`, `as_boolean`, `as_symbol`,
+   `as_set`, `free_symbols`, `sorted_symbols`), which check the class at
+   run time and raise `TypeError`. Never use `typing.cast` to silence a
+   SymPy type; never rely on duck typing across a union.
+4. **Unions are narrowed with `isinstance` before use**, `Optional` values
+   are checked before use, and a function returns one type of value (or a
+   documented `Optional`), never a value whose type depends on an
+   argument, except through `@overload` on a literal argument (as
+   `satisfiable` does with `all_models`).
+5. **Name the structures.** Recurring shapes get an alias in
+   `sympy_extras/_typing.py` (`Monomial`, `Sign`, `Truth`, `Weights`,
+   `OrderSpec`, `QuantifierPrefix`, ...) or in the module that owns them
+   (`Solution`, `Rhs` in `pisigma.py`, `CellTruth` in `qe.py`, `Model`,
+   `Witness` in `sat.py`). Use them instead of repeating tuple types.
+6. **Attributes are declared with their type**, in `__init__` or as class
+   level annotations, before being assigned in other methods
+   (`PiSigmaField` declares `field`, `gens`, `zero`, ... in `__init__`).
+   Dynamic attributes of SymPy objects are read through a typed accessor
+   (`_unit`, `getattr` wrapped in a function with a return type), never
+   through a bare attribute access that mypy cannot see.
+7. **`# type: ignore` is forbidden** except with an error code and a
+   comment explaining why the checker is wrong. The code base has exactly
+   one (`Quantifier.__new__`: SymPy constructors evaluate and may return a
+   different object) and one `getattr` per dynamic SymPy attribute. Every
+   new one must be justified in the pull request.
+8. **The mypy configuration is not to be weakened.** `strict = true` stays;
+   the only relaxations are `disallow_untyped_calls` and
+   `warn_return_any` (both forced off by SymPy's untyped API) and
+   `strict_equality` for the tests (they compare SymPy numbers with Python
+   literals). Do not add `ignore_errors`, per-module `disallow_*` = false,
+   or new `ignore_missing_imports` entries beyond `mpmath`.
+9. **Run mypy before every commit.** `python -m mypy` must report
+   `Success: no issues found`; a change with type errors is not done, and
+   the CI job (`typecheck` in `.github/workflows/tests.yml`) rejects it.
+
+When SymPy gains annotations, tighten the configuration (enable
+`warn_return_any`, then `disallow_untyped_calls`) rather than relying on
+the relaxations. Issue #15 tracks what cannot be checked yet and the
+planned typed core layer independent of SymPy objects.
 
 ## Running the tests
 
@@ -174,3 +209,6 @@ was already published. See the `Releasing` section of `README.md`.
 - Do not add dependencies beyond SymPy without a discussion.
 - Do not delete or weaken a test to make the suite pass.
 - Do not silently drop the provenance of ported code.
+- Do not add an unannotated function, an untyped container, a new `Any`,
+  a `cast` around a SymPy value or a `# type: ignore` without an error code
+  and a justification, and do not weaken the mypy configuration.
