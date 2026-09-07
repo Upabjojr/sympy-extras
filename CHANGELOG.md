@@ -39,6 +39,19 @@ First release.
   bases between orders for ideals of any dimension (SymPy's FGLM is
   restricted to zero-dimensional ideals), with lifting by normal forms so
   that SymPy's Buchberger implementation handles the initial forms.
+- `sympy_extras.assumptions.refine` and `simplify` rewritten: the symbols
+  and the subexpressions whose sign or nature matters are decided against
+  the assumptions (SymPy's predicates plus the CAD) and replaced by symbols
+  carrying the equivalent assumptions of SymPy's core while SymPy's
+  `refine`/`simplify` run, so that `log(exp(x))`, `sin(n*pi)`,
+  `log(x) + log(y)`, `gamma(x + 1)/gamma(x)`, `(x**y)**(1/y)` and the like
+  simplify; new handlers for powers and logarithms of polynomials with
+  factors of known sign (`sqrt(x**2 - 2*x + 1)`, `log((x - 1)**2)`),
+  `atan2`, `arg`, `re`/`im` of compound expressions and `frac`; Boolean
+  formulas polynomial in real variables are minimised by quantifier
+  elimination in `simplify` (`Eq(x**2, 1)` with `x > 0` is `Eq(x, 1)`).
+  SymPy's `refine` is no longer applied to relations (its `ask` on them is
+  unreliable).
 - Complete type annotations checked by mypy in strict mode (`python -m
   mypy`), type aliases in `sympy_extras._typing` and a `py.typed` marker;
   `Quantifier.kind` is renamed `Quantifier.quantifier` (SymPy's `Basic`

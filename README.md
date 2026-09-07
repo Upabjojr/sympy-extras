@@ -114,18 +114,23 @@ statements instead of predicates: `x > 0` for `Q.positive(x)`,
 `Q.integer(n)`, intervals and other sets, combined with `&`, `|`, `~`, and
 quantified with `ForAll` and `Exists`. SymPy's `ask`, `refine`, `simplify`
 and SAT solver are the backends, together with the cylindrical algebraic
-decomposition above for everything polynomial over the reals.
+decomposition above for everything polynomial over the reals. `refine` and
+`simplify` decide the signs of the symbols and of the relevant
+subexpressions, hand SymPy's algorithms symbols carrying the equivalent
+assumptions, and rewrite with the CAD what SymPy cannot decide.
 
 ```python
->>> from sympy import S, Abs, sqrt, Eq
+>>> from sympy import S, Abs, sqrt, Eq, log
 >>> from sympy.abc import b, c, x, y, n
->>> from sympy_extras.assumptions import ask, refine, element, resolve, satisfiable, ForAll, Exists
+>>> from sympy_extras.assumptions import ask, refine, simplify, element, resolve, satisfiable, ForAll, Exists
 >>> ask(x**2 - 2*x + 1 >= 0, x > 0)
 True
 >>> ask(x > 1, x > 2)
 True
 >>> refine(Abs(x - 1) + sqrt(x**2), x > 2)
 2*x - 1
+>>> simplify(sqrt(x**2 - 2*x + 1) + log(x) + log(y), (x > 1) & (y > 0))
+x + log(x*y) - 1
 >>> ask(element(n**2 + n, S.Integers), element(n, S.Integers))
 True
 >>> resolve(ForAll(x, x**2 + b*x + c > 0))

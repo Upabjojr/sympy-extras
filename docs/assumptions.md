@@ -49,7 +49,8 @@ mathematical notation.
 ## Backends
 
 Nothing in SymPy is reimplemented: the module translates the assumptions
-and dispatches to two engines.
+and dispatches to two engines, and the CAD engine is the one of this
+package.
 
 1. The assumptions are translated to the equivalent predicates of
    `sympy.assumptions` (`x > 2` becomes `Q.positive(x - 2)`, and its
@@ -95,10 +96,34 @@ True
 
 ### Refining and simplifying
 
+`refine` and `simplify` are the counterparts of `Refine` and `Simplify`
+with assumptions. They work in two steps. First every symbol, and every
+subexpression whose sign or nature matters (the base of a fractional
+power, the argument of `Abs`, `log`, `floor`, `atan2`, ...), is decided
+against the assumptions and temporarily replaced by a symbol carrying the
+equivalent assumptions of SymPy's core (`positive`, `integer`, `real`,
+...): SymPy's automatic evaluation, `sympy.refine` and `sympy.simplify`
+then apply unchanged, which is how `log(exp(x))`, `sin(n*pi)`,
+`gamma(x + 1)/gamma(x)` or `log(x) + log(y)` get simplified. Second, what
+SymPy cannot decide is rewritten here with the CAD: relations, `Max` and
+`Min`, `atan2`, the conditions of `Piecewise`, and powers and logarithms of
+polynomials whose factors have a known sign (`sqrt(x**2 - 2*x + 1)` is
+`x - 1` when `x > 1`). A result is kept only when it is not larger than the
+input.
+
 ```python
+>>> from sympy import log, exp, atan2, gamma
 >>> from sympy_extras.assumptions import refine, simplify
 >>> refine(Abs(x - 1) + sqrt(x**2), x > 2)
 2*x - 1
+>>> refine(sqrt(x**2 - 2*x + 1) + log(x**2), x > 1)
+x + 2*log(x) - 1
+>>> refine(atan2(y, x - 1), x > 1)
+atan(y/(x - 1))
+>>> simplify(log(x) + log(y) + log(exp(y)), (x > 0) & (y > 0))
+y + log(x*y)
+>>> simplify(gamma(x**2 + 1)/gamma(x**2), x > 0)
+x**2
 >>> refine(sign(x*y), (x > 0) & (y < 0))
 -1
 >>> refine(Max(x, x**2), (x > 0) & (x < 1))
@@ -114,13 +139,19 @@ x + 1
 
 ```
 
-Boolean expressions are refined too: the decided parts disappear.
+Boolean expressions are refined too: the decided parts disappear. When a
+formula is polynomial in real variables, `simplify` minimises it by
+quantifier elimination.
 
 ```python
 >>> refine((x > 0) & (y > 0), x > 1)
 y > 0
 >>> refine(x*y > 0, (x > 0) & (y > 0))
 True
+>>> simplify(Eq(x**2, 1), x > 0)
+Eq(x, 1)
+>>> simplify((x > 1) | (x**2 > 1), domain=S.Reals)
+(x > 1) | (x < -1)
 
 ```
 
