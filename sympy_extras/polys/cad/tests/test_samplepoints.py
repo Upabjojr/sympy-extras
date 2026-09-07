@@ -7,7 +7,7 @@ from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.polys.domains import QQ
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import CRootOf
-from sympy_extras.polys.cad.samplepoints import (SamplePoint, compare_real,
+from sympy_extras.polys.cad.samplepoints import (SamplePoint, compare_real, _root_poly,
     simplest_between, rational_between, rational_below, rational_above,
     _floor_scaled, _join, _sign_in_field, _minpoly)
 from sympy.testing.pytest import raises
@@ -84,7 +84,9 @@ def test_compare_real() -> None:
     assert compare_real(r1, CRootOf(x**2 - 5, 1)) == -1
     assert compare_real(r0, -2) == -1
     assert _minpoly(r0).all_coeffs() == _minpoly(r1).all_coeffs() == [2, 0, -9]
-    assert _minpoly(r0).gens == getattr(r0.args[1], 'poly').gens
+    root = r0.args[1]
+    assert isinstance(root, CRootOf)
+    assert _minpoly(r0).gens == _root_poly(root).gens
     assert _minpoly(CRootOf(x**3 - 2, 0)).all_coeffs() == [1, 0, 0, -2]
     assert rational_between(r0, r1) == 0
     assert rational_between(2, r1) == Rational(33, 16)
@@ -182,7 +184,7 @@ def test_join() -> None:
     s2, ms2 = CRootOf(x**2 - 2, 1), CRootOf(x**2 - 2, 0)
     s3 = CRootOf(x**2 - 3, 1)
     g, K, tK, bK = _join(s2, s3)
-    assert getattr(g, 'poly').degree() == 4
+    assert _root_poly(g).degree() == 4
     assert abs(K.to_sympy(tK).evalf(20) - sqrt(2).evalf(20)) < 1e-15
     assert abs(K.to_sympy(bK).evalf(20) - sqrt(3).evalf(20)) < 1e-15
     assert abs(g.evalf(20) - sqrt(2).evalf(20) - sqrt(3).evalf(20)) < 1e-15
@@ -190,15 +192,15 @@ def test_join() -> None:
     assert _sign_in_field(g, bK**2 - K.convert(QQ(3))) == 0
     # conjugates and elements of the same field give no bigger field
     g, K, tK, bK = _join(s2, ms2)
-    assert getattr(g, 'poly').degree() == 2
+    assert _root_poly(g).degree() == 2
     assert K.to_sympy(tK) == -ms2 and K.to_sympy(bK) == ms2
     assert _sign_in_field(g, tK + bK) == 0
     g, K, tK, bK = _join(s2, CRootOf(x**2 - 8, 1))
-    assert getattr(g, 'poly').degree() == 2
+    assert _root_poly(g).degree() == 2
     assert K.to_sympy(tK)*2 == K.to_sympy(bK)
     c2 = CRootOf(x**3 - 2, 0)
     g, K, tK, bK = _join(c2, s2)
-    assert getattr(g, 'poly').degree() == 6
+    assert _root_poly(g).degree() == 6
     assert abs(K.to_sympy(tK).evalf(20) - c2.evalf(20)) < 1e-15
     assert abs(K.to_sympy(bK).evalf(20) - s2.evalf(20)) < 1e-15
 

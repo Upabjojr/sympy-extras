@@ -3,6 +3,8 @@ from __future__ import annotations
 from sympy import (And, Or, Not, Implies, Equivalent, Xor, ITE, Dummy, latex,
     sstr, srepr, true, false)
 from sympy.testing.pytest import raises
+
+from sympy_extras._testing import untyped
 from sympy.abc import x, y, z
 
 from sympy_extras.assumptions import ForAll, Exists, Quantifier, prenex
@@ -20,13 +22,15 @@ def test_construction() -> None:
     assert ForAll(x, x > y).free_symbols == {y}
     e = Exists(x, x > y)
     assert isinstance(e, Exists) and e.quantifier == 'exists'
-    # trivial cases
-    assert ForAll(x, True) is true
-    assert Exists(x, false) is false
-    assert ForAll(x, y > 0) == (y > 0)
-    assert ForAll([x, z], y > x) == ForAll(x, y > x)
-    assert ForAll([], x > 0) == (x > 0)
-    raises(TypeError, lambda: ForAll(2, x > 0))  # type: ignore[arg-type]
+    # the constructor does not evaluate the trivial cases, simplify does
+    assert isinstance(ForAll(x, True), ForAll)
+    assert ForAll(x, True).simplify() is true
+    assert Exists(x, false).simplify() is false
+    assert ForAll(x, y > 0).simplify() == (y > 0)
+    assert ForAll([x, z], y > x).simplify() == ForAll(x, x < y)
+    assert ForAll(x, (x > 0) & true).simplify() == ForAll(x, x > 0)
+    raises(ValueError, lambda: ForAll([], x > 0))
+    raises(TypeError, lambda: untyped(ForAll)(2, x > 0))
     raises(TypeError, lambda: ForAll(x, x + 1))
     raises(ValueError, lambda: ForAll([x, x], x > 0))
     # Boolean operations
@@ -50,6 +54,8 @@ def test_construction() -> None:
 def test_prenex() -> None:
     assert prenex(x > 0) == ([], x > 0)
     assert prenex(True) == ([], true)
+    assert prenex(ForAll(x, True)) == ([], true)
+    assert prenex(ForAll([x, z], y > x)) == ([('forall', x)], y > x)
     assert prenex(ForAll(x, x > 0)) == ([('forall', x)], x > 0)
     assert prenex(ForAll([x, y], x > y)) == ([('forall', x), ('forall', y)], x > y)
     assert prenex(ForAll(x, Exists(y, x < y))) == ([('forall', x), ('exists', y)], x < y)

@@ -3,6 +3,8 @@ from __future__ import annotations
 from sympy import (S, Q, Eq, Ne, And, Or, Not, Implies, Xor, ITE, Interval,
     FiniteSet, Union, Intersection, Complement, Contains, Symbol, Rational, true, false)
 from sympy.testing.pytest import raises
+
+from sympy_extras._testing import untyped
 from sympy.abc import x, y, z
 
 from sympy_extras.assumptions import element, Facts
@@ -15,7 +17,7 @@ def test_element() -> None:
     assert element(2, S.Integers) is true
     assert element(Rational(1, 2), S.Integers) is false
     assert element(x, Interval(0, 1)) == Contains(x, Interval(0, 1))
-    raises(TypeError, lambda: normalize(element(x, 3)))  # type: ignore[arg-type]
+    raises(TypeError, lambda: untyped(element)(x, 3))
 
 
 def test_normalize() -> None:
@@ -149,7 +151,7 @@ def test_facts() -> None:
     assert f.real == {x, y} and f.integer == {x, y}
     f = Facts([], domain=S.Complexes, symbols=[x])
     assert f.real == set()
-    raises(TypeError, lambda: Facts([], domain=3, symbols=[x]))  # type: ignore[arg-type]
+    raises(TypeError, lambda: untyped(Facts)([], domain=3, symbols=[x]))
 
     # symbols with old style assumptions are known
     p = Symbol('p', positive=True)

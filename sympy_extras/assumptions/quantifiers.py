@@ -28,16 +28,17 @@ class Quantifier(Boolean):
     """Base class of :class:`ForAll` and :class:`Exists`.
 
     ``Quantifier(variables, formula)`` binds one symbol or a sequence of
-    symbols in ``formula``.
+    symbols in ``formula``. The constructor does not evaluate: the trivial
+    cases (a constant formula, variables which do not occur in the formula)
+    are reduced by :meth:`~sympy.core.basic.Basic.simplify`, by
+    :func:`prenex` and by the functions taking quantified formulas.
     """
 
     #: 'forall' or 'exists' (``kind`` is taken by SymPy's Basic)
     quantifier: str = ''
 
-    # SymPy constructors evaluate: the trivial cases return the formula
-    # itself rather than an instance, which mypy does not allow for __new__
-    def __new__(cls, variables: Union[Symbol, Iterable[Symbol]],  # type: ignore[misc]
-                formula: Union[Boolean, bool]) -> Boolean:
+    def __new__(cls, variables: Union[Symbol, Iterable[Symbol]],
+                formula: Union[Boolean, bool]) -> Quantifier:
         if isinstance(variables, (list, tuple, set, frozenset, Tuple)):
             raw = tuple(variables)
         else:
@@ -48,14 +49,11 @@ class Quantifier(Boolean):
                 raise TypeError("quantified variables must be symbols, got %s" % (v,))
         if len(set(variables)) != len(variables):
             raise ValueError("repeated quantified variable in %s" % (variables,))
+        if not variables:
+            raise ValueError("a quantifier needs at least one variable")
         formula_ = as_boolean(formula)
-        if isinstance(formula_, (BooleanTrue, BooleanFalse)) or not variables:
-            return formula_
-        # drop the variables that do not occur in the formula
-        occurring = tuple(v for v in variables if v in formula_.free_symbols)
-        if not occurring:
-            return formula_
-        result: Boolean = Basic.__new__(cls, Tuple(*occurring), formula_)
+        result = Basic.__new__(cls, Tuple(*variables), formula_)
+        assert isinstance(result, Quantifier)
         return result
 
     @property
@@ -95,6 +93,18 @@ class Quantifier(Boolean):
         return r"%s %s \, %s" % (symbol,
             ", ".join(printer._print(x) for x in self.variables),
             printer._print(self.formula))
+
+    def _eval_simplify(self, **kwargs: object) -> Boolean:
+        """The formula itself when it is a constant or does not contain
+        the quantified variables; the variables which do not occur in the
+        formula are dropped."""
+        formula = self.formula.simplify(**kwargs)
+        if isinstance(formula, (BooleanTrue, BooleanFalse)):
+            return formula
+        occurring = tuple(v for v in self.variables if v in formula.free_symbols)
+        if not occurring:
+            return formula
+        return type(self)(occurring, formula)
 
     def _eval_subs(self, old: Basic, new: Basic) -> Boolean:
         if old in self.variables:
@@ -175,6 +185,8 @@ def _prenex(formula: Boolean, taken: set[Basic]) -> tuple[QuantifierPrefix, Bool
         inner_prefix, matrix = _prenex(formula.formula, taken | set(formula.variables))
         prefix: QuantifierPrefix = []
         for v in formula.variables:
+            if v not in matrix.free_symbols:
+                continue
             if v in taken:
                 new = Dummy(v.name, **v.assumptions0)
                 matrix = matrix.xreplace({v: new})

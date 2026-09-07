@@ -10,10 +10,13 @@ before executing an example, so both are replaced.
 from __future__ import annotations
 
 import sys
-from typing import Optional
+from typing import Callable, Optional
 
 import pytest
 from _pytest.doctest import DoctestItem
+
+#: the display hooks replaced while a doctest item runs
+_DISPLAYHOOKS = pytest.StashKey[tuple[Callable[[object], None], Callable[[object], None]]]()
 
 
 def _str_displayhook(value: object) -> None:
@@ -26,12 +29,12 @@ def _str_displayhook(value: object) -> None:
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_setup(item: pytest.Item) -> None:
     if isinstance(item, DoctestItem):
-        item._sympy_extras_displayhook = (sys.displayhook, sys.__displayhook__)  # type: ignore[attr-defined]
+        item.stash[_DISPLAYHOOKS] = (sys.displayhook, sys.__displayhook__)
         sys.displayhook = sys.__displayhook__ = _str_displayhook
 
 
 @pytest.hookimpl(trylast=True)
 def pytest_runtest_teardown(item: pytest.Item, nextitem: Optional[pytest.Item]) -> None:
-    hooks = getattr(item, "_sympy_extras_displayhook", None)
+    hooks = item.stash.get(_DISPLAYHOOKS, None)
     if hooks is not None:
         sys.displayhook, sys.__displayhook__ = hooks

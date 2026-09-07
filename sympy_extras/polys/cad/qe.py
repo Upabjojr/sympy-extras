@@ -10,14 +10,14 @@ constant sign on every cell.
 """
 from __future__ import annotations
 
-from typing import Callable, Optional, Sequence, Union, cast
+from typing import Callable, Optional, Sequence, Union
 
 from sympy.core.expr import Expr
 from sympy.core.relational import Relational, Eq, Ne, Lt, Le, Gt, Ge
 from sympy.core.symbol import Symbol
 from sympy.core.singleton import S
 from sympy.logic.boolalg import (And, Or, Not, Implies, Equivalent, Xor,
-    Boolean, BooleanTrue, BooleanFalse)
+    Boolean, BooleanFunction, BooleanTrue, BooleanFalse)
 from sympy.polys.polytools import Poly
 from sympy.sets.sets import Interval, FiniteSet, Set, Union as SetUnion
 
@@ -45,22 +45,60 @@ _RELATIONS: dict[type, SignTest] = {
 class _Compiled:
     """A formula compiled into a tree evaluated on sign vectors."""
 
+    __slots__ = ()
+
+    def __call__(self, signs: Sequence[Sign]) -> bool:
+        raise NotImplementedError
+
+
+class _Const(_Compiled):
+    __slots__ = ('value',)
+
+    def __init__(self, value: bool) -> None:
+        self.value = value
+
+    def __call__(self, signs: Sequence[Sign]) -> bool:
+        return self.value
+
+
+class _Atom(_Compiled):
+    """The sign test ``test`` on the polynomial of index ``index``."""
+
+    __slots__ = ('index', 'test')
+
+    def __init__(self, index: int, test: SignTest) -> None:
+        self.index = index
+        self.test = test
+
+    def __call__(self, signs: Sequence[Sign]) -> bool:
+        return self.test(signs[self.index])
+
+
+class _Not(_Compiled):
+    __slots__ = ('arg',)
+
+    def __init__(self, arg: _Compiled) -> None:
+        self.arg = arg
+
+    def __call__(self, signs: Sequence[Sign]) -> bool:
+        return not self.arg(signs)
+
+
+class _Connective(_Compiled):
+    """An n-ary connective: ``kind`` is one of ``'and'``, ``'or'``,
+    ``'xor'``, ``'implies'`` and ``'equivalent'``."""
+
     __slots__ = ('kind', 'args')
 
-    def __init__(self, kind: str, args: Union[bool, tuple[int, SignTest], _Compiled, list[_Compiled]]) -> None:
+    def __init__(self, kind: str, args: list[_Compiled]) -> None:
+        if kind not in _CONNECTIVES.values():
+            raise ValueError("unknown connective %r" % kind)
         self.kind = kind
         self.args = args
 
     def __call__(self, signs: Sequence[Sign]) -> bool:
-        kind, args = self.kind, self.args
-        if kind == 'const':
-            return cast(bool, args)
-        if kind == 'atom':
-            i, test = cast('tuple[int, SignTest]', args)
-            return test(signs[i])
-        if kind == 'not':
-            return not cast(_Compiled, args)(signs)
-        values = [a(signs) for a in cast('list[_Compiled]', args)]
+        kind = self.kind
+        values = [a(signs) for a in self.args]
         if kind == 'and':
             return all(values)
         if kind == 'or':
@@ -69,9 +107,11 @@ class _Compiled:
             return sum(values) % 2 == 1
         if kind == 'implies':
             return (not values[0]) or values[1]
-        if kind == 'equivalent':
-            return all(v == values[0] for v in values)
-        raise ValueError("unknown node %r" % kind)
+        return all(v == values[0] for v in values)
+
+
+_CONNECTIVES: dict[type[BooleanFunction], str] = {And: 'and', Or: 'or', Xor: 'xor',
+    Implies: 'implies', Equivalent: 'equivalent'}
 
 
 def _compile(formula: Union[Boolean, bool], gens: Sequence[Symbol], polys: list[Poly],
@@ -80,7 +120,7 @@ def _compile(formula: Union[Boolean, bool], gens: Sequence[Symbol], polys: list[
     polynomials of the atoms into ``polys`` (``index`` maps them to their
     position)."""
     if isinstance(formula, (BooleanTrue, BooleanFalse)) or formula in (True, False):
-        return _Compiled('const', bool(formula))
+        return _Const(bool(formula))
     if isinstance(formula, Relational):
         try:
             test = _RELATIONS[type(formula)]
@@ -91,14 +131,12 @@ def _compile(formula: Union[Boolean, bool], gens: Sequence[Symbol], polys: list[
         if p not in index:
             index[p] = len(polys)
             polys.append(p)
-        return _Compiled('atom', (index[p], test))
+        return _Atom(index[p], test)
     if isinstance(formula, Not):
-        return _Compiled('not', _compile(formula.args[0], gens, polys, index))
-    kinds = {And: 'and', Or: 'or', Xor: 'xor', Implies: 'implies',
-             Equivalent: 'equivalent'}
-    for cls, kind in kinds.items():
+        return _Not(_compile(formula.args[0], gens, polys, index))
+    for cls, kind in _CONNECTIVES.items():
         if isinstance(formula, cls):
-            return _Compiled(kind, [_compile(a, gens, polys, index) for a in formula.args])
+            return _Connective(kind, [_compile(as_boolean(a), gens, polys, index) for a in formula.args])
     raise ValueError("unsupported formula %s" % formula)
 
 

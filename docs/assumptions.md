@@ -203,6 +203,9 @@ Everything is importable from `sympy_extras.assumptions`.
 - `element(x, domain)`: membership in a SymPy set (`Contains`).
 - `ForAll(variables, formula)`, `Exists(variables, formula)`: quantified
   formulas; `prenex(formula)` gives the quantifier prefix and the matrix.
+  The constructors do not evaluate: `ForAll(x, True)` is a `ForAll` and
+  `simplify()` reduces it to `True` (and drops the variables which do not
+  occur in the formula), as do `prenex`, `resolve`, `ask` and the others.
 - `ask(query, assumptions=None, domain=None)`: `True`, `False` or `None`.
 - `refine(expr, assumptions=None, domain=None)` and
   `simplify(expr, assumptions=None, domain=None, **kwargs)`.

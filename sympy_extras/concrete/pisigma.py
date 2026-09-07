@@ -179,8 +179,8 @@ class PiSigmaField:
         symbols: list[Symbol] = [self.k] + [e.symbol for e in self.extensions]
         self.field, *gens = _field(symbols, self.C)
         self.gens = tuple(gens)
-        self.zero = getattr(self.field, 'zero')
-        self.one = getattr(self.field, 'one')
+        self.zero = self.field(0)
+        self.one = self.field(1)
         self.symbols = tuple(symbols)
         self._sigma_gens = [self.gens[0] + 1]
         for i, e in enumerate(self.extensions, start=1):

@@ -3,6 +3,8 @@ from __future__ import annotations
 from sympy import (S, Q, Eq, Ne, Or, Not, Implies, Equivalent, Xor, ITE,
     Interval, FiniteSet, Symbol, Rational, sqrt, sin, pi)
 from sympy.testing.pytest import raises
+
+from sympy_extras._testing import untyped
 from sympy.abc import x, y
 
 from sympy_extras.assumptions import ask, element, ForAll, Exists
@@ -131,4 +133,4 @@ def test_ask_inputs() -> None:
     assert ask(x > 0, domain=S.Integers) is None
     assert ask(x > 3, [x > 0, x < 0]) is None
     raises(ValueError, lambda: ask(x > 0, S.false))
-    raises(TypeError, lambda: ask(x > 0, domain=2))  # type: ignore[arg-type]
+    raises(TypeError, lambda: untyped(ask)(x > 0, domain=2))

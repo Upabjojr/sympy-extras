@@ -43,7 +43,11 @@ First release.
   mypy`), type aliases in `sympy_extras._typing` and a `py.typed` marker;
   `Quantifier.kind` is renamed `Quantifier.quantifier` (SymPy's `Basic`
   already has a `kind`) and the internal CAD function `_truth_values`
-  returns a 4-tuple.
+  returns a 4-tuple. The code base has no `# type: ignore`, `cast` or
+  `getattr`: `ForAll`/`Exists` no longer evaluate in the constructor
+  (`ForAll(x, True)` is an instance; `simplify()`, `prenex` and the
+  functions consuming quantified formulas reduce the trivial cases, and a
+  quantifier without variables is a `ValueError`).
 - Validation suites against results published elsewhere (Concrete
   Mathematics, A = B, the Sigma literature, Cox-Little-O'Shea, Macaulay2
   and Singular documentation examples, the Katsura and cyclic benchmark

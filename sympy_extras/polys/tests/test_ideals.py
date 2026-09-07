@@ -5,6 +5,8 @@ from itertools import product
 from sympy import QQ, GF, Matrix, Poly, S, symbols, groebner, series, sqrt
 from sympy.polys.monomials import monomial_divides
 from sympy.testing.pytest import raises
+
+from sympy_extras._testing import untyped
 from sympy.abc import x, y, z, w, t, d
 
 from sympy_extras.polys.ideals import Ideal, hilbert_numerator
@@ -40,7 +42,7 @@ def test_construction_and_membership() -> None:
     assert repr(I) == "Ideal([x**2 + y**2 - 1, x - y], x, y)"
     raises(ValueError, lambda: Ideal([S(1)]))
     raises(ValueError, lambda: I.eliminate([z]))
-    raises(TypeError, lambda: I + 3)  # type: ignore[operator]
+    raises(TypeError, lambda: untyped(I.__add__)(3))
     raises(ValueError, lambda: I + Ideal([z], z))
     assert I == Ideal([y - x, 2*x**2 - 1], x, y)
     assert I != Ideal([x - y], x, y) and I != 3

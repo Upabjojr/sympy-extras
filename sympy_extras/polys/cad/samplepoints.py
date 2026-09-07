@@ -25,8 +25,9 @@ from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import ComplexRootOf
 from sympy.polys.domains.domain import Domain
+from sympy.polys.domains.algebraicfield import AlgebraicField
 
-from sympy_extras._typing import DomainElement, ExprLike, Sign
+from sympy_extras._typing import DomainElement, ExprLike, Sign, free_symbols
 
 #: a real algebraic number: a Rational, a real ComplexRootOf or a rational
 #: multiple of one
@@ -66,13 +67,21 @@ def _refine(r: Union[RealAlgebraic, int]) -> None:
         root._set_interval(root._get_interval().refine())
 
 
+def _root_poly(root: ComplexRootOf) -> Poly:
+    """The polynomial of the root ``root`` as a :class:`~.Poly` in its
+    variable."""
+    expr = root.expr
+    [gen] = sorted(free_symbols(expr), key=str)
+    return Poly(expr, gen)
+
+
 def _minpoly(r: RealAlgebraic) -> Poly:
     """Minimal polynomial over ZZ of the real algebraic number ``r``, which
     must not be rational."""
     c, root = _split(r)
     if root is None:
         raise ValueError("%s is rational" % (r,))
-    p: Poly = getattr(root, 'poly')
+    p = _root_poly(root)
     if c != 1:
         x = p.gen
         d = p.degree()
@@ -251,7 +260,9 @@ def rational_above(a: Union[RealAlgebraic, int]) -> Rational:
 
 def _unit(K: Domain) -> DomainElement:
     """The generator of an algebraic field as an element of it."""
-    return getattr(K, 'unit')
+    if not isinstance(K, AlgebraicField):
+        raise TypeError("expected an algebraic field, got %s" % (K,))
+    return K.unit
 
 
 def _sign_in_field(theta: RealAlgebraic, a: DomainElement) -> Sign:

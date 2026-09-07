@@ -140,14 +140,26 @@ Rules, all of them mandatory for every change:
 6. **Attributes are declared with their type**, in `__init__` or as class
    level annotations, before being assigned in other methods
    (`PiSigmaField` declares `field`, `gens`, `zero`, ... in `__init__`).
-   Dynamic attributes of SymPy objects are read through a typed accessor
-   (`_unit`, `getattr` wrapped in a function with a return type), never
-   through a bare attribute access that mypy cannot see.
-7. **`# type: ignore` is forbidden** except with an error code and a
-   comment explaining why the checker is wrong. The code base has exactly
-   one (`Quantifier.__new__`: SymPy constructors evaluate and may return a
-   different object) and one `getattr` per dynamic SymPy attribute. Every
-   new one must be justified in the pull request.
+   Attributes that SymPy sets dynamically (so that mypy cannot see them)
+   are not read at all: narrow the object with `isinstance` to the class
+   that declares the attribute (`_unit` narrows to `AlgebraicField`), or
+   rebuild the value from a typed API (`_root_poly` builds the polynomial
+   of a `ComplexRootOf` from its expression; `PiSigmaField` gets its zero
+   and one from `field(0)` and `field(1)`). `getattr` is forbidden.
+7. **`# type: ignore`, `typing.cast` and `getattr` are forbidden.** The
+   code base has none, and a change that adds one is not accepted:
+   restructure the code so that the types are honest instead. Two
+   consequences of this rule shape the API:
+   - Constructors do not evaluate. A SymPy-style `__new__` that returns a
+     different object in trivial cases cannot be typed, so `ForAll(x, True)`
+     is a `ForAll` instance and the trivial cases are reduced by
+     `simplify()`, `prenex` and the functions consuming quantified
+     formulas. Follow the same pattern for new classes.
+   - Tests which check that a wrong argument type raises `TypeError` call
+     the function through `sympy_extras._testing.untyped`, whose type
+     `Callable[..., object]` makes the mismatch explicit instead of
+     suppressing it. A compiled formula in `qe.py` is a small hierarchy of
+     node classes with typed fields, not a tagged union.
 8. **The mypy configuration is not to be weakened.** `strict = true` stays;
    the only relaxations are `disallow_untyped_calls` and
    `warn_return_any` (both forced off by SymPy's untyped API) and
@@ -210,5 +222,5 @@ was already published. See the `Releasing` section of `README.md`.
 - Do not delete or weaken a test to make the suite pass.
 - Do not silently drop the provenance of ported code.
 - Do not add an unannotated function, an untyped container, a new `Any`,
-  a `cast` around a SymPy value or a `# type: ignore` without an error code
-  and a justification, and do not weaken the mypy configuration.
+  a `cast`, a `getattr` or a `# type: ignore`, and do not weaken the mypy
+  configuration.

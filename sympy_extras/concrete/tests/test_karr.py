@@ -5,6 +5,8 @@ from typing import Iterable, Optional
 from sympy import (Sum, Product, Expr, harmonic, factorial, binomial, Rational,
     RisingFactorial, sin, sqrt, simplify, cancel)
 from sympy.testing.pytest import raises
+
+from sympy_extras._testing import untyped
 from sympy.abc import k, n, j, x
 
 from sympy_extras.concrete import (karr_term, karr_sum, summation,
@@ -134,7 +136,7 @@ def test_karr_term_and_field() -> None:
     assert len(F.extensions) == 1 and F.to_expr(f) == 2**k*(2**k + 1)
     raises(ValueError, lambda: build_pisigma_field(sin(k), k))
     raises(ValueError, lambda: build_pisigma_field(sqrt(k), k))
-    raises(TypeError, lambda: build_pisigma_field(k, 2))  # type: ignore[arg-type]
+    raises(TypeError, lambda: untyped(build_pisigma_field)(k, 2))
 
 
 def test_pisigma_field() -> None:
@@ -171,7 +173,7 @@ def test_pisigma_field() -> None:
     [(c, g)] = hom
     assert c == [] and F.to_expr(g) in (k, 2*k) or F.sigma(g)*kk == (kk + 1)*g
     raises(ValueError, lambda: F.add_pi(0, 1))
-    raises(TypeError, lambda: PiSigmaField(2))  # type: ignore[arg-type]
+    raises(TypeError, lambda: untyped(PiSigmaField)(2))
     assert repr(F.extensions[0]) == "Extension(sigma, harmonic(k), 1/(k + 1))"
 
 
