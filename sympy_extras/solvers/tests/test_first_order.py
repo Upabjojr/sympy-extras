@@ -4,7 +4,7 @@ from sympy import Function, Symbol, Eq, N, Rational, Tuple, Basic, sqrt
 from sympy.core.expr import Expr
 from sympy.testing.pytest import raises
 
-from sympy_extras.solvers.first_order import chini_ode, abel_ode, lagrange_ode, dsolve_first_order
+from sympy_extras.solvers.first_order import riccati_ode, chini_ode, abel_ode, lagrange_ode, dsolve_first_order
 from sympy_extras._typing import as_expr
 
 x = Symbol('x')
@@ -82,3 +82,29 @@ def test_lagrange() -> None:
     chini = dsolve_first_order(eq, y)
     assert isinstance(chini, Eq) and _implicit_holds(eq, chini)
     assert dsolve_first_order(y.diff(x) - sqrt(y) - x**2, y) is None
+
+
+def _explicit_holds(equation: Expr, solution: Basic) -> bool:
+    assert isinstance(solution, Eq)
+    residual = equation.subs(y, solution.rhs).doit()
+    C1 = Symbol('C1')
+    values = {s: Rational(3, 10) + Rational(k, 7) for k, s in enumerate(sorted(residual.free_symbols - {x, C1}, key=str))}
+    residual = residual.subs(values).subs(C1, Rational(1, 3))
+    return all(abs(N(residual.subs(x, v), 20)) < 1e-10 for v in (Rational(7, 10), Rational(13, 10)))
+
+
+def test_riccati() -> None:
+    eq = y.diff(x) + y**2 - 2/x**2
+    solution = riccati_ode(eq, y)
+    assert solution is not None and _explicit_holds(eq, solution)
+    a, b = Symbol('a'), Symbol('b')
+    # Kamke 1.13: y' + y**2 + a x + b, no rational particular solution (Airy)
+    eq = y.diff(x) + y**2 + a*x + b
+    solution = riccati_ode(eq, y)
+    assert solution is not None and _explicit_holds(eq, solution)
+    # Kamke 1.24: y' + a y**2 - b x**nu
+    eq = y.diff(x) + a*y**2 - b*x**3
+    solution = riccati_ode(eq, y)
+    assert solution is not None and _explicit_holds(eq, solution)
+    assert riccati_ode(y.diff(x) - y**3, y) is None
+    assert isinstance(dsolve_first_order(y.diff(x) + y**2 + a*x + b, y), Eq)

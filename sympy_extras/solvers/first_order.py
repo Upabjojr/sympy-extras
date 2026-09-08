@@ -14,6 +14,12 @@ d'Alembert–Lagrange type.
   `y + g = 1/w`. Only the constant-invariant cases are solved (the
   classical solvable classes; the general Abel equation has no closed
   form).
+* **Riccati equations** `y' = a y^2 + b y + c` with rational
+  coefficients are linearised, `y = -u'/(a u)`, and the second order
+  linear equation is solved by Kovacic's algorithm or in special
+  functions (:mod:`sympy_extras.solvers.linear_ode`), so Riccati
+  equations without rational particular solutions (SymPy's requirement)
+  get Bessel or hypergeometric general solutions.
 * **d'Alembert–Lagrange equations** `y = x F(y') + G(y')`: with `p = y'`,
   differentiation gives the linear equation `dx/dp - x F'(p)/(p - F(p))
   = G'(p)/(p - F(p))` for `x(p)`, solved by ``dsolve``; the solution is
@@ -50,7 +56,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_expr
 from sympy_extras.settings import settings
 
-__all__ = ['chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order']
+__all__ = ['riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order']
 
 
 def _derivative_polynomial(equation: Basic, f: AppliedUndef) -> tuple[Expr, Symbol, Symbol, Symbol]:
@@ -277,10 +283,64 @@ def lagrange_ode(equation: Basic, f: AppliedUndef) -> Optional[list[Basic]]:
     return [Eq(x, X_value), Eq(f, as_expr(simplify(X_value*Fp + Gp)))]
 
 
+def riccati_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
+    """The general solution of a Riccati equation ``y' = a(x) y**2 + b(x) y
+    + c(x)`` with rational coefficients through the linear equation
+    ``u'' - (a'/a + b) u' + a c u = 0`` (``y = -u'/(a u)``), solved by
+    :func:`~sympy_extras.solvers.linear_ode.dsolve_linear` (Kovacic's
+    algorithm and the special functions): ``y = -(u1' + C1 u2')/(a (u1 +
+    C1 u2))``. ``None`` when the linear equation is not solved. SymPy's
+    Riccati hints need a rational particular solution.
+
+    Examples
+    ========
+
+    >>> from sympy import Function
+    >>> from sympy.abc import x
+    >>> from sympy_extras.solvers.first_order import riccati_ode
+    >>> y = Function('y')(x)
+    >>> riccati_ode(y.diff(x) + y**2 - 2/x**2, y)
+    Eq(y(x), (2*C1*x**3 - 1)/(C1*x**4 + x))
+    """
+    from .linear_ode import dsolve_linear
+    F, x, u, p = _derivative_polynomial(equation, f)
+    rhs = _explicit_rhs(F, p)
+    if rhs is None:
+        return None
+    try:
+        poly = Poly(expand(rhs), u)
+    except PolynomialError:
+        return None
+    if poly.degree() != 2:
+        return None
+    a, b, c = [as_expr(coefficient) for coefficient in poly.all_coeffs()]
+    if not all(coefficient.is_rational_function(x) for coefficient in (a, b, c)):
+        return None
+    w = Function('u')(x)
+    linear = w.diff(x, 2) - (a.diff(x)/a + b)*w.diff(x) + a*c*w
+    solutions = attempt(lambda: dsolve_linear(linear, w), settings.timeout)
+    if not solutions:
+        return None
+    C1 = Symbol('C1')
+    if len(solutions) >= 2:
+        u1, u2 = solutions[0], solutions[1]
+        numerator = as_expr(u1.diff(x) + C1*u2.diff(x))
+        denominator = as_expr(a*(u1 + C1*u2))
+    else:
+        # a particular solution only
+        u1 = solutions[0]
+        numerator, denominator = as_expr(u1.diff(x)), as_expr(a*u1)
+    value = as_expr(-numerator/denominator)
+    if value.is_rational_function(x):
+        value = as_expr(cancel(value))
+    return Eq(f, value)
+
+
 def dsolve_first_order(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
-    """The Chini/Abel implicit solution or the Lagrange parametric
-    solution (as a list) of a first order equation, else ``None``."""
-    for method in (abel_ode, chini_ode):
+    """The Riccati general solution, the Chini/Abel implicit solution or
+    the Lagrange parametric solution (as a list) of a first order
+    equation, else ``None``."""
+    for method in (riccati_ode, abel_ode, chini_ode):
         solution = attempt(lambda: method(equation, f), settings.timeout)
         if solution is not None:
             return solution

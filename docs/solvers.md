@@ -170,16 +170,23 @@ SymPy lacks:
 
 ```
 
-## First order equations of Abel, Chini and d'Alembert–Lagrange type
+## First order equations of Riccati, Abel, Chini and d'Alembert–Lagrange type
 
-`sympy_extras.solvers.first_order` solves Chini's equation
-`y' = f(x) y**n + g(x) y + h(x)` and Abel's equations of the first and
-second kind in the constant-invariant cases (implicit solutions), and
-d'Alembert–Lagrange equations `y = x F(y') + G(y')` parametrically.
-SymPy has hints for Bernoulli, Riccati and Clairaut equations only.
+`sympy_extras.solvers.first_order` linearises Riccati equations
+`y' = a y**2 + b y + c` (`y = -u'/(a u)`) and solves the linear equation
+with Kovacic's algorithm or in special functions, so that Riccati
+equations without rational particular solutions (which SymPy's hints
+need) get Bessel or hypergeometric general solutions; it solves Chini's
+equation `y' = f(x) y**n + g(x) y + h(x)` and Abel's equations of the
+first and second kind in the constant-invariant cases (implicit
+solutions), and d'Alembert–Lagrange equations `y = x F(y') + G(y')`
+parametrically. SymPy has hints for Bernoulli, Riccati (rational
+particular solutions) and Clairaut equations only.
 
 ```python
->>> from sympy_extras.solvers import lagrange_ode, abel_ode
+>>> from sympy_extras.solvers import lagrange_ode, abel_ode, riccati_ode
+>>> riccati_ode(y.diff(x) + y**2 - 2/x**2, y)
+Eq(y(x), (2*C1*x**3 - 1)/(C1*x**4 + x))
 >>> lagrange_ode(Eq(y, 2*x*y.diff(x) + y.diff(x)**2), y)
 [Eq(x, C1/p**2 - 2*p/3), Eq(y(x), (6*C1 - p**3)/(3*p))]
 >>> abel_ode(y.diff(x) - y**3 - 3*y**2 - 3*y, y)     # doctest: +ELLIPSIS

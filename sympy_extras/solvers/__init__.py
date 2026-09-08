@@ -16,7 +16,7 @@ from .linear_ode import (LinearOperator, polynomial_solutions, rational_solution
     hyperexponential_solutions, reduce_order_linear, dsolve_linear)
 from .charpit import complete_integral, check_complete_integral
 from .special import special_solutions, bessel_solutions, whittaker_solutions, hypergeometric_solutions, whittaker_m
-from .first_order import chini_ode, abel_ode, lagrange_ode, dsolve_first_order
+from .first_order import riccati_ode, chini_ode, abel_ode, lagrange_ode, dsolve_first_order
 from .linear_systems import cyclic_vector, system_to_scalar, dsolve_linear_system, rational_system_solutions
 
 __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
@@ -30,5 +30,5 @@ __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
     'rational_solutions', 'hyperexponential_solutions', 'reduce_order_linear', 'dsolve_linear',
     'complete_integral', 'check_complete_integral',
     'special_solutions', 'bessel_solutions', 'whittaker_solutions', 'hypergeometric_solutions',
-    'whittaker_m', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order',
+    'whittaker_m', 'riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order',
     'cyclic_vector', 'system_to_scalar', 'dsolve_linear_system', 'rational_system_solutions']
