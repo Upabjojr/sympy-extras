@@ -5,7 +5,8 @@ from sympy.core.expr import Expr
 from sympy.abc import x, y
 from sympy.testing.pytest import raises
 
-from sympy_extras.solvers.thue_equation import thue, units_of_order, elements_of_norm, lll, ThueEquation
+from sympy_extras.solvers.thue_equation import (thue, units_of_order, elements_of_norm, lll,
+    short_vectors, ThueEquation)
 
 
 def _brute_force(F: Expr, m: int, box: int) -> list[tuple[int, int]]:
@@ -17,6 +18,33 @@ def _brute_force(F: Expr, m: int, box: int) -> list[tuple[int, int]]:
             if poly.eval({x: a, y: b}) == m:
                 found.append((a, b))
     return sorted(found)
+
+
+def test_precision_is_restored() -> None:
+    """The numerical parts raise mpmath's global precision and put it back:
+    the results of the other modules must not depend on whether a Thue
+    equation was solved before."""
+    import mpmath
+    from sympy_extras.solvers.thue_equation import at_precision
+    before = mpmath.mp.dps
+    with at_precision(before + 20):
+        assert mpmath.mp.dps == before + 20
+    assert mpmath.mp.dps == before
+    units_of_order([1, 0, 0, -2])
+    assert mpmath.mp.dps == before
+    elements_of_norm([1, 0, 0, -2], 2, units_of_order([1, 0, 0, -2])[0])
+    assert mpmath.mp.dps == before
+    thue(x**3 - 2*y**3, 1, x, y)
+    assert mpmath.mp.dps == before
+    # a right-hand side beyond the enumeration budget is refused, not run forever
+    raises(NotImplementedError, lambda: thue(x**3 - 2*y**3, 10**5, x, y))
+    assert mpmath.mp.dps == before
+
+
+def test_short_vectors() -> None:
+    assert sorted(short_vectors([[2, 0], [0, 3]], 3.5)) == [[-1, 0], [0, -1], [0, 0], [0, 1], [1, 0]]
+    assert len(short_vectors([[1, 0], [0, 1]], 5.0)) == 81
+    raises(NotImplementedError, lambda: short_vectors([[1, 0], [0, 1]], 5.0, budget=10))
 
 
 def test_lll() -> None:

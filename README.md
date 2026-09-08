@@ -417,6 +417,17 @@ subresultant sequence, which are needed by Hong's projection operator.
 
 ```
 
+## What this adds to SymPy
+
+[docs/comparison.md](docs/comparison.md) puts seventy questions to SymPy
+alone and to sympy-extras on top of it, with the answers of both: 37 which
+SymPy cannot answer at all, 20 it returns unevaluated, 9 it answers
+partially (a truncated power series where there is a closed form, one
+branch of two) and 4 where it is wrong. The examples of sympy-extras
+there are doctests, and
+[benchmarks/comparison.py](benchmarks/comparison.py) regenerates the whole
+comparison against the installed SymPy.
+
 ## Layout
 
 The package mirrors the layout of SymPy: code extending `sympy.polys` lives

@@ -12,6 +12,11 @@ First release.
 
 ### Added
 
+- [docs/comparison.md](docs/comparison.md): seventy questions answered by
+  sympy-extras and not (or wrongly) by SymPy, with both answers, generated
+  and checked by `benchmarks/comparison.py`; the sympy-extras side is
+  doctested.
+
 - The remaining items of the implementation notes: `sympy_extras.solvers.thue_equation`
   (Thue equations by Baker's method: units of the order by enumeration
   and saturation, Baker–Wüstholz, de Weger's reduction with an exact
@@ -204,6 +209,17 @@ First release.
   `simplify`, `assuming`/`global_assumptions`, `resolve` (quantifier
   elimination), `satisfiable`, `tautology` and `find_instance`. SymPy's
   assumptions system and SAT solver are the backends together with the CAD.
+
+### Fixed
+
+- `sympy_extras.solvers.thue_equation` no longer leaves mpmath's global
+  precision raised when it returns (`at_precision`), so the results of the
+  interval arithmetic and of the root isolation no longer depend on whether
+  a Thue equation was solved before; and the enumeration of the elements of
+  a given norm, whose cost is proportional to the right-hand side, is
+  bounded and raises `NotImplementedError` instead of running for hours.
+  The module was renamed from `solvers.thue` to `solvers.thue_equation` so
+  that it does not shadow the `thue` function.
 
 The CAD code was originally proposed to SymPy in the pull requests
 [sympy/sympy#30422](https://github.com/sympy/sympy/pull/30422),

@@ -43,8 +43,17 @@ in the order `O = \\mathbb{Z}[\\alpha]`. The steps:
    directly.
 
 SymPy has no Thue equation solver (``diophantine`` handles binary
-quadratic forms). Fields whose fundamental units are too large for the
-enumeration of step 1 raise ``NotImplementedError``.
+quadratic forms).
+
+Two limitations, both of which raise ``NotImplementedError`` rather than
+return an incomplete list: fields whose fundamental units are too large
+for the search of step 1, and right-hand sides `m` which are too large
+for step 2. The lattice of step 2 gets denser as `|m|` grows (its
+covolume is divided by `|m|`), so the number of points to examine is
+proportional to `|m|`; the budget is about a minute of work, which covers
+`|m|` up to a few hundred for a cubic form. Elements of a given norm are
+found in practice by factoring the ideal `(m)` into prime ideals, which
+needs the maximal order and its ideal arithmetic (not implemented here).
 
 References
 ==========
@@ -60,10 +69,11 @@ References
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from fractions import Fraction
 from itertools import product as cartesian
 from math import factorial, log, sqrt, exp, pi, floor, ceil
-from typing import Optional, Sequence
+from typing import Iterator, Optional, Sequence
 
 import mpmath
 
@@ -78,6 +88,42 @@ from sympy_extras._typing import as_expr
 
 __all__ = ['thue', 'ThueEquation', 'units_of_order', 'elements_of_norm', 'lll', 'short_vectors', 'OrderElement']
 
+#: the working precision, in decimal places, of the numerical parts
+_PRECISION = 60
+
+
+@contextmanager
+def at_precision(digits: int) -> Iterator[None]:
+    """Run the body with mpmath's precision set to ``digits`` decimal
+    places, and restore the previous setting afterwards.
+
+    The precision of mpmath is global state; every public function of this
+    module raises it while it works and puts it back, so that the results
+    of the other modules (the interval arithmetic of
+    :mod:`sympy_extras.assumptions.intervals`, the root isolation of
+    :mod:`sympy_extras.solvers.isolation`) do not depend on whether a Thue
+    equation was solved before.
+
+    Examples
+    ========
+
+    >>> import mpmath
+    >>> from sympy_extras.solvers.thue_equation import at_precision
+    >>> before = mpmath.mp.dps
+    >>> with at_precision(before + 20):
+    ...     mpmath.mp.dps == before + 20
+    True
+    >>> mpmath.mp.dps == before
+    True
+    """
+    previous = mpmath.mp.dps
+    mpmath.mp.dps = digits
+    try:
+        yield
+    finally:
+        mpmath.mp.dps = previous
+
+
 #: an element of Z[alpha] by its integer coordinates in 1, alpha, ..., alpha**(n-1)
 OrderElement = tuple[int, ...]
 #: the conjugates of an element, as complex numbers
@@ -91,7 +137,7 @@ class _Order:
     """The order ``Z[alpha]`` for a monic integer polynomial ``g``: exact
     arithmetic on coordinate vectors and numerical conjugates."""
 
-    def __init__(self, g: list[int], precision: int = 60) -> None:
+    def __init__(self, g: list[int], precision: int = _PRECISION) -> None:
         # g = [1, c_{n-1}, ..., c_0] (leading coefficient first)
         self.g = g
         self.n = len(g) - 1
@@ -284,10 +330,13 @@ def _small_units(order: _Order, bound: int, limit: int = 4000000) -> list[OrderE
     return found
 
 
-def short_vectors(rows: Sequence[Sequence[int]], radius: float) -> list[list[int]]:
+def short_vectors(rows: Sequence[Sequence[int]], radius: float, budget: int = 0) -> list[list[int]]:
     """All the integer combinations ``c`` of the row vectors with
     ``||sum c_i rows_i|| <= radius`` (Fincke–Pohst enumeration on the
     Gram–Schmidt orthogonalisation; the rows should be LLL reduced).
+
+    A positive ``budget`` bounds the number of vectors: the enumeration
+    raises ``NotImplementedError`` instead of returning more than that.
 
     Examples
     ========
@@ -325,6 +374,10 @@ def short_vectors(rows: Sequence[Sequence[int]], radius: float) -> list[list[int
                 continue
             if i == 0:
                 results.append(list(coefficients))
+                if budget and len(results) > budget:
+                    raise NotImplementedError(
+                        "more than %d lattice points to examine; the enumeration of the elements "
+                        "of a given norm is linear in that norm (see the module documentation)" % budget)
             else:
                 search(i - 1, remaining - used)
         coefficients[i] = 0
@@ -348,6 +401,11 @@ def _minkowski_rows(order: _Order) -> list[list[mpmath.mpf]]:
     return rows
 
 
+#: the largest number of lattice points examined when looking for the
+#: elements of a given norm (about a minute of work)
+_ENUMERATION_BUDGET = 400000
+
+
 def _elements_by_lattice(order: _Order, norm: int, limits: Sequence[float]) -> list[OrderElement]:
     """Elements of the given norm whose logarithmic vector (the logarithms
     of the conjugates minus ``log|norm|/n``) lies in the box of the
@@ -365,6 +423,7 @@ def _elements_by_lattice(order: _Order, norm: int, limits: Sequence[float]) -> l
     size = mpmath.mpf(abs(norm))**(mpmath.mpf(1)/order.n)
     found: set[OrderElement] = set()
     scale = 10**12
+    budget, examined = _ENUMERATION_BUDGET, 0
     ranges = [range(-int(ceil(limit)), int(ceil(limit)) + 1) for limit in limits[:free]]
     for grid in cartesian(*ranges):
         logs = [float(v) for v in grid]
@@ -383,7 +442,9 @@ def _elements_by_lattice(order: _Order, norm: int, limits: Sequence[float]) -> l
         coordinates_of = [[v//scale for v in row[-order.n:]] for row in reduced_rows]
         # vectors with every scaled coordinate at most e**1.5 (radius sqrt(n) e**1.5)
         radius = sqrt(order.n)*exp(1.5)*scale
-        for combination in short_vectors([row[:-order.n] for row in reduced_rows], radius):
+        vectors = short_vectors([row[:-order.n] for row in reduced_rows], radius, budget - examined)
+        examined += len(vectors)
+        for combination in vectors:
             coordinates = [0]*order.n
             for c, vector in zip(combination, coordinates_of):
                 if c:
@@ -557,21 +618,23 @@ def units_of_order(g: Sequence[int], bound: int = 64) -> tuple[list[OrderElement
     >>> units in ([(1, -1, 0)], [(1, 1, 1)]), torsion
     (True, [(-1, 0, 0), (1, 0, 0)])
     """
-    order = _Order([int(c) for c in g])
-    if order.rank == 0:
-        candidates = _small_units(order, 2)
-        return [], _torsion(order, candidates)
-    candidates = _small_units(order, 3)
-    torsion = _torsion(order, candidates)
-    system = _independent_system(order, candidates)
-    L = 4
-    while system is None and L <= bound:
-        candidates = candidates + _units_by_lattice(order, L)
+    with at_precision(_PRECISION):
+        order = _Order([int(c) for c in g])
+        if order.rank == 0:
+            candidates = _small_units(order, 2)
+            return [], _torsion(order, candidates)
+        candidates = _small_units(order, 3)
+        torsion = _torsion(order, candidates)
         system = _independent_system(order, candidates)
-        L *= 2
-    if system is None:
-        raise NotImplementedError("no system of %d independent units with logarithms up to %d" % (order.rank, bound))
-    return [_normalized(u) for u in _saturate(order, _reduce_system(order, system), torsion)], torsion
+        L = 4
+        while system is None and L <= bound:
+            candidates = candidates + _units_by_lattice(order, L)
+            system = _independent_system(order, candidates)
+            L *= 2
+        if system is None:
+            raise NotImplementedError("no system of %d independent units with logarithms up to %d"
+                                      % (order.rank, bound))
+        return [_normalized(u) for u in _saturate(order, _reduce_system(order, system), torsion)], torsion
 
 
 def _normalized(element: OrderElement) -> OrderElement:
@@ -601,8 +664,9 @@ def elements_of_norm(g: Sequence[int], norm: int, units: Sequence[OrderElement],
     >>> elements_of_norm([1, 0, 0, -2], 2, units)
     [(0, 1, 0)]
     """
-    order = _Order([int(c) for c in g])
-    return _elements_of_norm(order, norm, units, limit)
+    with at_precision(_PRECISION):
+        order = _Order([int(c) for c in g])
+        return _elements_of_norm(order, norm, units, limit)
 
 
 def _elements_of_norm(order: _Order, norm: int, units: Sequence[OrderElement], limit: int) -> list[OrderElement]:
@@ -766,10 +830,11 @@ class ThueEquation:
         self.a0 = a0
         # g(X) = a0**(n-1) F(X/a0, 1): coefficient of X**(n-i) is a_i a0**(i-1)
         self.g = [1] + [self.coefficients[i]*a0**(i - 1) for i in range(1, self.n + 1)]
-        self.order = _Order(self.g)
-        self.norm = a0**(self.n - 1)*self.m
-        self.units, self.torsion = units_of_order(self.g, bound)
-        self.representatives = _elements_of_norm(self.order, self.norm, self.units, 100000)
+        with at_precision(_PRECISION):
+            self.order = _Order(self.g)
+            self.norm = a0**(self.n - 1)*self.m
+            self.units, self.torsion = units_of_order(self.g, bound)
+            self.representatives = _elements_of_norm(self.order, self.norm, self.units, 100000)
 
     def evaluate(self, x: int, y: int) -> int:
         total = 0
@@ -810,9 +875,12 @@ class ThueEquation:
 
     def solve(self) -> list[tuple[int, int]]:
         """All the integer solutions."""
+        with at_precision(self.order.precision):
+            return self._solve()
+
+    def _solve(self) -> list[tuple[int, int]]:
         order = self.order
         n = self.n
-        mpmath.mp.dps = order.precision
         roots = order.roots
         N0 = abs(self.norm)
         solutions: set[tuple[int, int]] = set()
