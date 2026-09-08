@@ -337,6 +337,32 @@ order equations (`dsolve_first_order`). See
 
 ```
 
+### Thue equations, second order integrating factors, Abel invariants, polygamma series
+
+The last items of the notes: `thue` solves Thue equations `F(x, y) = m`
+completely (Baker's method with the reduction of Tzanakis and de Weger),
+`dsolve_second_order` finds integrating factors and linearising
+transformations of second order equations (Lie's test, the fibre
+preserving construction, and the rectification of two commuting
+symmetries), `abel_ode` recognises the integrable Abel classes through
+their invariants, and `polygamma_series` sums Euler sums and series of
+polygamma functions in zeta values.
+
+```python
+>>> from sympy import harmonic
+>>> from sympy_extras.solvers import thue, dsolve_second_order
+>>> from sympy_extras.concrete import polygamma_series
+>>> thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y)
+[(-9, 5), (-1, -1), (-1, 1), (-1, 2), (0, -1), (1, 0), (2, -1), (4, -9), (5, 4)]
+>>> from sympy import Function
+>>> f = Function('y')(x)
+>>> dsolve_second_order(f.diff(x, 2) + 3*f*f.diff(x) + f**3, f)
+[Eq(y(x), 2*(C2 + x)/(2*C1 + 2*C2*x + x**2))]
+>>> polygamma_series(harmonic(n)/n**2, n)
+2*zeta(3)
+
+```
+
 ### Transcendental roots, differential-algebraic equations, convergence (`sympy_extras.solvers`, `sympy_extras.concrete`)
 
 More of the algorithms of Mathematica's notes (see

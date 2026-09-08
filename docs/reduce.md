@@ -27,7 +27,8 @@ sympy-extras, or nowhere yet.
 | Presburger arithmetic (quantified linear integer formulas) | — | `solvers.integers.cooper`, `resolve(domain=S.Integers)` |
 | Univariate polynomial equations over the integers: Cucker–Koiran–Smale | `solveset(..., S.Integers)`, `diophantine` (integer roots by factorisation) | — |
 | Binary quadratic Diophantine equations: Hardy–Muskat–Williams, Gauss/Dirichlet/Lagrange (Pell) | `diophantine` (`diop_quadratic`, `diop_DN`) | — |
-| Thue equations, exponential Diophantine equations | — | — (see the issue tracker) |
+| Thue equations (Tzanakis–de Weger, Bilu–Hanrot) | — | `solvers.thue_equation`: units of the order by enumeration and saturation, Baker–Wüstholz bound, de Weger's LLL reduction, enumeration |
+| Exponential Diophantine equations | — | — (see the issue tracker) |
 | Assumptions in `Simplify`/`Refine`: CAD, simplex/Loos–Weispfenning, Gröbner bases | — | `ask`, `refine`, `simplify` with statement assumptions; linear formulas decided by Loos–Weispfenning virtual substitution before the CAD |
 | Number theory rules for integer functions | `Q.even`/`Q.odd` handlers | residues of integer polynomials in `refine` (`(-1)**(n**2 + n)`, `Mod(n**3 - n, 6)`) |
 
@@ -43,10 +44,12 @@ Only what SymPy lacks is implemented here.
 | Higher order linear ODEs with rational coefficients: Abramov–Bronstein rational and exponential solutions, factorisation (Bronstein, van Hoeij), reduction of order | — | `solvers.linear_ode`: polynomial, rational and hyperexponential solutions (exponential parts at infinity from the Newton polygon, regular singular finite points), first order right factors, reduction of order |
 | Linear ODEs solved by special functions through Mellin transforms | hints `2nd_hypergeometric`, Bessel, Airy | `solvers.special`: Bessel, Whittaker and hypergeometric equations recognised through the normal-form invariant |
 | Linear ODE systems with rational coefficients: Abramov–Bronstein elimination | — | `solvers.linear_systems`: cyclic vector, `rational_system_solutions`, `dsolve_linear_system` |
-| Nonlinear ODEs: Riccati, Bernoulli, Abel, Chini, Clairaut, d'Alembert, exact and integrating factors, Lie symmetries | `dsolve` hints (no Abel, Chini, d'Alembert) | Lie symmetries of any order (`solvers.ode`); Abel, Chini and d'Alembert–Lagrange equations (`solvers.first_order`) |
+| Nonlinear ODEs: Riccati, Bernoulli, Abel, Chini, Clairaut, d'Alembert, exact and integrating factors, Lie symmetries | `dsolve` hints (no Abel, Chini, d'Alembert) | Lie symmetries of any order (`solvers.ode`); Abel, Chini and d'Alembert–Lagrange equations (`solvers.first_order`); Abel invariants, equivalence classes and the AIR class (`solvers.abel`) |
+| Second order equations: integrating factors, Bocharov's equivalence techniques | — | `solvers.second_order`: integrating factors `mu(x, y)` and `mu(y')`, Lie's linearisation test with the transformation to `u'' = 0`, rectification of two commuting symmetries |
 | Differential-algebraic equations: singular parts isolated by core-nilpotent decomposition | — | `solvers.dae`: regular pencils with constant coefficients, `core_nilpotent_decomposition`, `dsolve_dae`, `dae_index` |
 | PDEs: separation of variables and symmetry reduction (Göktaş), first order nonlinear complete integrals (Legendre, Euler transformations), Germundsson's trigonometric power methods | `pde_separate`, first order linear `pdsolve` | symmetry reductions (`solvers.pde`), complete integrals by Charpit's method (`solvers.charpit`) |
-| Sums: rational, hypergeometric (Gosper, Zeilberger), q-rational, Adamchik's hypergeometric closed forms, polygamma series by integral representations, Dirichlet series by pattern matching | `summation` (polynomial, rational, Gosper, hypergeometric closed forms, `zeta` and Hurwitz `zeta`) | Abramov's rational decomposition (`concrete.rational`), Karr's algorithm (`concrete.karr`), Zeilberger's algorithm and WZ certificates (`concrete.zeilberger`), q-Gosper and q-Zeilberger (`concrete.qhyper`), Dirichlet series of the arithmetic functions by pattern matching (`concrete.dirichlet`); polygamma series: issue tracker |
+| Sums: rational, hypergeometric (Gosper, Zeilberger), q-rational, Adamchik's hypergeometric closed forms, polygamma series by integral representations, Dirichlet series by pattern matching | `summation` (polynomial, rational, Gosper, hypergeometric closed forms, `zeta` and Hurwitz `zeta`) | Abramov's rational decomposition (`concrete.rational`), Karr's algorithm (`concrete.karr`), Zeilberger's algorithm and WZ certificates (`concrete.zeilberger`), q-Gosper and q-Zeilberger (`concrete.qhyper`), Dirichlet series of the arithmetic functions by pattern matching (`concrete.dirichlet`), polygamma series (`concrete.eulersums`) |
+| Polygamma series by integral representations | — | `concrete.eulersums`: Euler sums `S(p, q)` in zeta values (Euler, Borwein–Borwein–Girgensohn / Flajolet–Salvy), `polygamma_series`, the integral representation for a symbolic exponent |
 | Convergence testing: d'Alembert and Raabe tests | `Sum.is_convergent` (no parameters) | `concrete.convergence`: `sum_convergence` and `product_convergence` with conditions on the parameters (ratio, Raabe, Bertrand, root, power comparison, Leibniz, integral tests) |
 | Products: polynomial, rational, q-rational, hypergeometric, periodic classes | `product` (polynomial, rational, hypergeometric) | convergence of infinite products (`product_convergence`) |
 | Series by recursive composition of expansions | `series`, `fps`, `ring_series` | — |
@@ -256,3 +259,34 @@ Piecewise((oo, a > 1), (1, Eq(a, 1)), (0, a < 1))
   enumeration.
 - `sympy_extras/solvers/tests/test_transcendental.py` checks the solutions
   by membership tests and substitution.
+
+## Thue equations
+
+```python
+>>> from sympy_extras.solvers import thue
+>>> thue(x**3 - 2*y**3, 1, x, y)
+[(-1, -1), (1, 0)]
+>>> thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y)
+[(-9, 5), (-1, -1), (-1, 1), (-1, 2), (0, -1), (1, 0), (2, -1), (4, -9), (5, 4)]
+
+```
+
+The units of the order `Z[alpha]` are found by enumeration and saturated
+with Friedman's lower bound on regulators, the elements of the right
+norm are enumerated modulo the units, the linear form in logarithms of
+Siegel's identity is bounded from below by the theorem of Baker and
+Wüstholz, and de Weger's lattice reduction (with an exact LLL) brings the
+bound on the exponents down to a few dozens before the enumeration.
+
+## Polygamma series
+
+```python
+>>> from sympy import harmonic, polygamma
+>>> from sympy.abc import n
+>>> from sympy_extras.concrete import polygamma_series
+>>> polygamma_series(harmonic(n)/n**2, n)
+2*zeta(3)
+>>> polygamma_series(polygamma(1, n)/n**2, n)
+7*pi**4/360
+
+```

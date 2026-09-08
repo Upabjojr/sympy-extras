@@ -4,7 +4,8 @@ reductions and the solution of ODEs through their symmetries; linear
 Diophantine systems, nonnegative integer solutions and Presburger
 arithmetic; transcendental equations reduced to polynomial ones; real roots
 of transcendental functions isolated exactly; linear differential-algebraic
-equations with constant coefficients."""
+equations with constant coefficients; Thue equations; integrating factors,
+linearisation and Abel invariants for ordinary differential equations."""
 from .lie import JetSpace, Symmetry, symmetries, check_symmetry
 from .pde import pde_symmetries, similarity_reduction, pdsolve_lie, Reduction
 from .ode import (ode_symmetries, canonical_coordinates, reduce_order,
@@ -22,6 +23,11 @@ from .first_order import riccati_ode, chini_ode, abel_ode, lagrange_ode, dsolve_
 from .linear_systems import cyclic_vector, system_to_scalar, dsolve_linear_system, rational_system_solutions
 from .dae import core_nilpotent_decomposition, dae_index, dsolve_dae, dae_matrices, check_dae, DAESolution
 from .isolation import TranscendentalRoot, isolate_real_roots, real_roots_of
+from .abel import (abel_invariants, abel_equivalence, abel_by_invariants, air_solution, particular_solution,
+    AbelInvariants, AbelTransformation)
+from .thue_equation import thue, units_of_order, elements_of_norm, ThueEquation
+from .second_order import (integrating_factor_xy, integrating_factor_p, is_linearizable, linearize,
+    rectify_symmetries, dsolve_second_order, FirstIntegral, Linearization)
 
 __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
     'pde_symmetries', 'similarity_reduction', 'pdsolve_lie', 'Reduction',
@@ -37,4 +43,8 @@ __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
     'whittaker_m', 'riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order',
     'cyclic_vector', 'system_to_scalar', 'dsolve_linear_system', 'rational_system_solutions',
     'core_nilpotent_decomposition', 'dae_index', 'dsolve_dae', 'dae_matrices', 'check_dae', 'DAESolution',
-    'TranscendentalRoot', 'isolate_real_roots', 'real_roots_of']
+    'TranscendentalRoot', 'isolate_real_roots', 'real_roots_of',
+    'integrating_factor_xy', 'integrating_factor_p', 'is_linearizable', 'linearize', 'rectify_symmetries',
+    'dsolve_second_order', 'FirstIntegral', 'Linearization',
+    'abel_invariants', 'abel_equivalence', 'abel_by_invariants', 'air_solution', 'particular_solution',
+    'AbelInvariants', 'AbelTransformation', 'thue', 'units_of_order', 'elements_of_norm', 'ThueEquation']
