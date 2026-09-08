@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sympy import Function, exp, sqrt, simplify, Eq, Rational, cancel, S
+from sympy import Function, exp, sqrt, simplify, Eq, Rational, cancel, S, besseli, besselj, besselk
 from sympy.abc import x
 from sympy.testing.pytest import raises
 
@@ -94,6 +94,6 @@ def test_dsolve_linear() -> None:
     L = LinearOperator.from_equation(x**2*y.diff(x, 2) + x*y.diff(x) + (x**2 - Rational(1, 4))*y, y)
     found = dsolve_linear(x**2*y.diff(x, 2) + x*y.diff(x) + (x**2 - Rational(1, 4))*y, y, use_dsolve=False)
     assert len(found) == 2 and all(_solves(L, s) for s in found)
-    # Airy: no Liouvillian solution and dsolve's special functions
+    # Airy: no Liouvillian solution; Bessel functions of order 1/3
     found = dsolve_linear(y.diff(x, 2) - x*y, y, use_dsolve=False)
-    assert found == []
+    assert len(found) == 2 and all(s.has(besseli) or s.has(besselj) or s.has(besselk) for s in found)

@@ -12,6 +12,15 @@ First release.
 
 ### Added
 
+- `sympy_extras.solvers.special` (Bessel, Whittaker and hypergeometric
+  solutions of second order linear equations recognised through the
+  normal-form invariant), `sympy_extras.solvers.first_order` (Abel, Chini
+  and d'Alembert–Lagrange equations), `sympy_extras.solvers.linear_systems`
+  (cyclic vector, rational and general solutions of `Y' = A Y`),
+  exponential parts at infinity from the Newton polygon in
+  `hyperexponential_solutions`, Lambert W fallback in the transcendental
+  solver, and the Kamke driver trying these solvers after `dsolve`.
+
 - Differential equations, sums, series and limits, after the same
   implementation notes: `sympy_extras.solvers.kovacic` (Kovacic's
   algorithm, the three cases), `sympy_extras.solvers.linear_ode`

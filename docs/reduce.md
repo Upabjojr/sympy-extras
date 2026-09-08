@@ -17,7 +17,7 @@ sympy-extras, or nowhere yet.
 | Root objects: real roots by continued fractions (Vincent–Collins–Akritas), complex roots by Collins–Krandick, validated numerics | `CRootOf`, `Poly.intervals`, `real_roots` | radicals for the roots of decomposable polynomials (`polys.roots`) |
 | Polynomial equations: explicit formulas to degree four, `Factor`, `Decompose`, cyclotomic and other special polynomials | `roots` (formulas, binomials, cyclotomic, quintics, functional decomposition), `factor` | — |
 | Systems of polynomial equations: Gröbner bases | `groebner`, `solve_poly_system`, `nonlinsolve` | `Ideal` (elimination, saturation, radicals; `polys.ideals`) |
-| Non-polynomial equations: change of variables and polynomial side conditions | `solveset` (`_transolve`, `_solve_trig`, `_solve_radical`) | `solvers.transcendental`: kernels with side conditions, inverse-image database, assumptions on parameters |
+| Non-polynomial equations: change of variables and polynomial side conditions | `solveset` (`_transolve`, `_solve_trig`, `_solve_radical`) | `solvers.transcendental`: kernels with side conditions, inverse-image database, assumptions on parameters, Lambert W fallback |
 | `Reduce` over the reals: cylindrical algebraic decomposition | — | `polys.cad`, `resolve` |
 | `Reduce` over the complex numbers: Gröbner bases | — | `polys.comprehensive`: comprehensive Gröbner systems (Kapur–Sun–Wang), `resolve(domain=S.Complexes)` |
 | Linear quantifier elimination (Loos–Weispfenning virtual substitution) | — | `polys.virtual_substitution`, used first by `resolve` |
@@ -38,10 +38,10 @@ Only what SymPy lacks is implemented here.
 | --- | --- | --- |
 | Linear ODE systems with constant coefficients: matrix exponentials | `dsolve` (`linodesolve`) | — |
 | Second order linear ODEs: Kovacic's algorithm | rational Riccati solutions only (`riccati`) | `solvers.kovacic` (all three cases) |
-| Higher order linear ODEs with rational coefficients: Abramov–Bronstein rational and exponential solutions, factorisation (Bronstein, van Hoeij), reduction of order | — | `solvers.linear_ode`: polynomial, rational and hyperexponential (Fuchsian) solutions, first order right factors, reduction of order |
-| Linear ODEs solved by special functions through Mellin transforms | hints `2nd_hypergeometric`, Bessel, Airy | — (issue tracker) |
-| Linear ODE systems with rational coefficients: Abramov–Bronstein elimination | — | — (issue tracker) |
-| Nonlinear ODEs: Riccati, Bernoulli, Abel, Chini, Clairaut, d'Alembert, exact and integrating factors, Lie symmetries | `dsolve` hints (no Abel, Chini, d'Alembert) | Lie symmetries of any order (`solvers.ode`) |
+| Higher order linear ODEs with rational coefficients: Abramov–Bronstein rational and exponential solutions, factorisation (Bronstein, van Hoeij), reduction of order | — | `solvers.linear_ode`: polynomial, rational and hyperexponential solutions (exponential parts at infinity from the Newton polygon, regular singular finite points), first order right factors, reduction of order |
+| Linear ODEs solved by special functions through Mellin transforms | hints `2nd_hypergeometric`, Bessel, Airy | `solvers.special`: Bessel, Whittaker and hypergeometric equations recognised through the normal-form invariant |
+| Linear ODE systems with rational coefficients: Abramov–Bronstein elimination | — | `solvers.linear_systems`: cyclic vector, `rational_system_solutions`, `dsolve_linear_system` |
+| Nonlinear ODEs: Riccati, Bernoulli, Abel, Chini, Clairaut, d'Alembert, exact and integrating factors, Lie symmetries | `dsolve` hints (no Abel, Chini, d'Alembert) | Lie symmetries of any order (`solvers.ode`); Abel, Chini and d'Alembert–Lagrange equations (`solvers.first_order`) |
 | PDEs: separation of variables and symmetry reduction (Göktaş), first order nonlinear complete integrals (Legendre, Euler transformations), Germundsson's trigonometric power methods | `pde_separate`, first order linear `pdsolve` | symmetry reductions (`solvers.pde`), complete integrals by Charpit's method (`solvers.charpit`) |
 | Sums: rational, hypergeometric (Gosper, Zeilberger), q-rational, Adamchik's hypergeometric closed forms, polygamma series by integral representations, Dirichlet series by pattern matching | `summation` (polynomial, rational, Gosper, hypergeometric closed forms) | Karr's algorithm (`concrete.karr`), Zeilberger's algorithm and WZ certificates (`concrete.zeilberger`); q-analogues, polygamma and Dirichlet series: issue tracker |
 | Products: polynomial, rational, q-rational, hypergeometric, periodic classes | `product` (polynomial, rational, hypergeometric) | — |

@@ -85,8 +85,15 @@ def test_solve_transcendental_log_roots_abs() -> None:
     assert solve_transcendental(Eq(Abs(exp(x) - 2), 1), x) == FiniteSet(0, log(3))
 
 
+def test_lambert() -> None:
+    from sympy import LambertW
+    assert solve_transcendental(Eq(x*exp(x), 1), x) == FiniteSet(LambertW(1))
+    assert solve(Eq(x*exp(x), 1), x, domain=S.Reals) == FiniteSet(LambertW(1))
+    assert solve(Eq(x + log(x), 2), x, domain=S.Reals) == FiniteSet(LambertW(exp(2)))
+    assert solve(Eq(x*exp(x), 1), x, x < 0) is S.EmptySet
+
+
 def test_solve_transcendental_unreducible() -> None:
-    assert solve_transcendental(Eq(x*exp(x), 1), x) is None
     assert solve_transcendental(Eq(exp(x), sin(x)), x) is None
     assert solve_transcendental(Eq(log(x) + log(x + 1), 1), x) is None
 

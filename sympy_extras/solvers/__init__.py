@@ -15,6 +15,9 @@ from .kovacic import liouvillian_solution, dsolve_kovacic, KovacicSolution
 from .linear_ode import (LinearOperator, polynomial_solutions, rational_solutions,
     hyperexponential_solutions, reduce_order_linear, dsolve_linear)
 from .charpit import complete_integral, check_complete_integral
+from .special import special_solutions, bessel_solutions, whittaker_solutions, hypergeometric_solutions, whittaker_m
+from .first_order import chini_ode, abel_ode, lagrange_ode, dsolve_first_order
+from .linear_systems import cyclic_vector, system_to_scalar, dsolve_linear_system, rational_system_solutions
 
 __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
     'pde_symmetries', 'similarity_reduction', 'pdsolve_lie', 'Reduction',
@@ -25,4 +28,7 @@ __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
     'is_presburger', 'solve_transcendental', 'polynomialize',
     'liouvillian_solution', 'dsolve_kovacic', 'KovacicSolution', 'LinearOperator', 'polynomial_solutions',
     'rational_solutions', 'hyperexponential_solutions', 'reduce_order_linear', 'dsolve_linear',
-    'complete_integral', 'check_complete_integral']
+    'complete_integral', 'check_complete_integral',
+    'special_solutions', 'bessel_solutions', 'whittaker_solutions', 'hypergeometric_solutions',
+    'whittaker_m', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order',
+    'cyclic_vector', 'system_to_scalar', 'dsolve_linear_system', 'rational_system_solutions']

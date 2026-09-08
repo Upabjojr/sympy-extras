@@ -33,16 +33,29 @@ verified, 4 unverified (a solution which `checkodesol` could not confirm
 within the limit), 30 failed, 2 timeouts.
 
 `linear_odes.py --limit 60 --timeout 10` (the first 60 homogeneous linear
-equations with rational coefficients of the Kamke collection, orders 1
-and 2, solved by `dsolve_linear` without SymPy's `dsolve`: rational and
-hyperexponential solutions, Kovacic's algorithm, reduction of order,
-each solution verified by `checkodesol`): 28 verified with a full basis
-of solutions, 32 failed, none wrong or unverified (about 3 min). The
-failures are equations whose solutions are special functions (Bessel,
-Airy, Weber, Whittaker) or which depend on a parameter (`n`, `a`) for
-which Liouvillian solutions exist only at particular values, so that no
-Liouvillian solution exists generically; that is the correct answer of
-Kovacic's algorithm for a symbolic parameter.
+equations of the collections, 3 of first order and 57 of second order,
+almost all with symbolic parameters), after adding Bessel/Whittaker/
+hypergeometric recognition, exponential parts from the Newton polygon and
+the numerical check of hypergeometric solutions:
+
+| verified | verified numerically | partial | failed |
+|---|---|---|---|
+| 37 | 18 | 5 | 0 |
+
+"Verified numerically" are solutions with `hyper` which `checkodesol`
+cannot simplify (it even returns `False` for them: issue #25), checked at
+three points with 20 digits; "partial" are the five equations where only
+one solution of the basis was found (the second one needs a `log` term
+or a `2F1` second solution at an integer exponent difference). Before the
+special functions were added the same run gave 28 verified, 2 partial and
+30 failed.
+
+`kamke_odes.py --collections kamke1 --limit 60 --timeout 15` with the
+Abel/Chini/Lagrange solvers tried after `dsolve` ("extras"): `dsolve` 23
+verified; extras add 1 (a Chini equation), `dsolve_lie` 2; combined 26
+verified, 9 unverified, 15 failed, 10 timeouts. The first order part of
+Kamke is dominated by Riccati and Abel equations without a constant
+invariant, which no closed-form method solves.
 
 `kamke_odes.py --collections kamke2 --limit 40 --timeout 15` (the first 40
 second order equations, almost all linear with special function

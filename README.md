@@ -313,6 +313,30 @@ Piecewise((oo, a > 0), (1, Eq(a, 0)), (0, a < 0))
 
 ```
 
+### Linear and first order ODEs beyond `dsolve` (`sympy_extras.solvers`)
+
+Kovacic's algorithm (`dsolve_kovacic`), polynomial, rational and
+hyperexponential solutions of linear equations of any order with
+exponential parts from the Newton polygon (`dsolve_linear`), Bessel,
+Whittaker and hypergeometric solutions recognised through the normal
+form (`special_solutions`), systems through a cyclic vector
+(`dsolve_linear_system`), and Abel, Chini and d'Alembert–Lagrange first
+order equations (`dsolve_first_order`). See
+[docs/solvers.md](docs/solvers.md); the Kamke benchmark results are in
+[benchmarks/README.md](benchmarks/README.md).
+
+```python
+>>> from sympy import Function
+>>> from sympy.abc import x, a, n
+>>> from sympy_extras.solvers import dsolve_linear, special_solutions
+>>> y = Function('y')(x)
+>>> dsolve_linear(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y)
+[x**2 + 2*x + 2, exp(x)]
+>>> special_solutions(x**2*y.diff(x, 2) + x*y.diff(x) + (x**2 - n**2)*y, y)
+[besselj(n, x), bessely(n, x)]
+
+```
+
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
@@ -356,6 +380,12 @@ sympy_extras/
         ode.py               ode_symmetries, canonical_coordinates, reduce_order, dsolve_lie, solve_ode
         integers.py          Hermite normal form, Contejean-Devie, Cooper's algorithm
         transcendental.py    transcendental equations reduced to polynomial ones
+        kovacic.py           Kovacic's algorithm
+        linear_ode.py        polynomial/rational/hyperexponential solutions, reduction of order
+        special.py           Bessel, Whittaker, hypergeometric solutions
+        linear_systems.py    cyclic vector, systems Y' = A Y
+        first_order.py       Abel, Chini, d'Alembert-Lagrange equations
+        charpit.py           complete integrals of first order PDEs
         kovacic.py           Kovacic's algorithm (Liouvillian solutions of second order linear ODEs)
         linear_ode.py        polynomial, rational, hyperexponential solutions; reduction of order
         charpit.py           complete integrals of first order nonlinear PDEs

@@ -11,7 +11,9 @@ Usage::
 For every equation which ``LinearOperator.from_equation`` accepts (a
 homogeneous linear equation with rational coefficients) the outcome is
 ``verified`` (as many independent solutions as the order, all confirmed by
-``checkodesol``), ``partial`` (fewer solutions, all confirmed),
+``checkodesol``), ``verified numerically`` (solutions with special
+functions which ``checkodesol`` cannot simplify, checked at three points
+with 20 digits), ``partial`` (fewer solutions, all confirmed),
 ``unverified`` (a solution which could not be checked), ``failed`` (no
 solution) or ``timeout``.
 """
@@ -28,6 +30,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from sympy.core.relational import Eq
+from sympy.core.expr import Expr
 from sympy.solvers.ode import checkodesol
 
 from sympy_extras._timeout import attempt
@@ -50,13 +53,40 @@ def run(entry: ODEEntry, timeout: float) -> tuple[str, float, int]:
         return 'timeout', elapsed, 0
     if not found:
         return 'failed', elapsed, 0
+    status = 'verified'
     for solution in found:
         verdict = attempt(lambda: checkodesol(entry.equation, Eq(y(x), solution), y(x)), timeout)
-        if verdict is None:
+        if verdict is not None and verdict[0]:
+            continue
+        # checkodesol cannot simplify hypergeometric solutions (and returns
+        # False for correct ones): the residual is evaluated numerically
+        residual = _numeric_residual(entry, solution)
+        if residual is not None and residual < 1e-8:
+            status = 'verified numerically'
+            continue
+        if verdict is None or residual is None:
             return 'unverified', time.time() - started, len(found)
-        if not verdict[0]:
-            return 'wrong', time.time() - started, len(found)
-    return ('verified' if len(found) >= L.order else 'partial'), time.time() - started, len(found)
+        return 'wrong', time.time() - started, len(found)
+    if len(found) < L.order:
+        return 'partial', time.time() - started, len(found)
+    return status, time.time() - started, len(found)
+
+
+def _numeric_residual(entry: ODEEntry, solution: Expr) -> Optional[float]:
+    """The largest residual at a few points, the parameters given
+    rational values, or ``None`` when it cannot be evaluated."""
+    from sympy import N
+    from sympy.core.numbers import Rational
+    lhs = entry.equation.lhs - entry.equation.rhs if isinstance(entry.equation, Eq) else entry.equation
+    residual = lhs.subs(y(x), solution).doit()
+    values = {s: Rational(3, 10) + Rational(k, 7) for k, s in enumerate(sorted(residual.free_symbols - {x}, key=str))}
+    worst = 0.0
+    for point in (Rational(7, 10), Rational(13, 10), Rational(21, 10)):
+        value = N(residual.subs(values).subs(x, point), 20)
+        if not value.is_number or not value.is_finite:
+            return None
+        worst = max(worst, float(abs(value)))
+    return worst
 
 
 def main(argv: Optional[list[str]] = None) -> int:

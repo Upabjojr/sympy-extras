@@ -134,9 +134,62 @@ SymPy lacks:
 - **Reduction of order** (`reduce_order_linear`) by a known solution,
   and `dsolve_linear` which chains all of the above with SymPy's
   `dsolve` for the reduced equations.
+- **Exponential parts at infinity** from the Newton polygon of the
+  operator (`hyperexponential_solutions` finds `exp(P(x))` times the
+  Fuchsian ansatz, so `y'' - 2x y' + 4y = 0` gives `x**2 - 1/2` and
+  `exp(x**2)` times a polynomial is found where it exists).
+- **Special functions** (`sympy_extras.solvers.special`): equations
+  equivalent to the Bessel, Whittaker (confluent hypergeometric) or
+  Gauss hypergeometric equations are recognised through the invariant
+  of the normal form `z'' = r z` under `t = a (x - c)**k` and Möbius
+  transformations, and solved with `besselj`/`bessely`
+  (`besseli`/`besselk`), Whittaker's `M` written with `hyper`, and
+  `2F1`. Airy, parabolic cylinder, Hermite, Kummer, Legendre and
+  Chebyshev equations with symbolic parameters are all covered. This is
+  the "solutions through Mellin transforms" of Mathematica's notes.
+- **Systems** `Y' = A(x) Y` (`sympy_extras.solvers.linear_systems`):
+  a cyclic vector turns the system into a scalar equation solved by the
+  same machinery; `rational_system_solutions` is the elimination method
+  for rational solutions of systems (Abramov–Bronstein).
+
+```python
+>>> from sympy import Matrix, Function
+>>> from sympy.abc import n
+>>> from sympy_extras.solvers import special_solutions, dsolve_linear_system
+>>> y = Function('y')(x)
+>>> special_solutions(y.diff(x, 2) + x*y, y)
+[sqrt(x)*besselj(1/3, 2*x**(3/2)/3), sqrt(x)*besselj(-1/3, 2*x**(3/2)/3)]
+>>> special_solutions(x**2*y.diff(x, 2) + x*y.diff(x) + (x**2 - n**2)*y, y)
+[besselj(n, x), bessely(n, x)]
+>>> dsolve_linear_system(Matrix([[1/x, 1], [0, 1/x]]), x)
+[Matrix([
+[x],
+[0]]), Matrix([
+[x**2],
+[   x]])]
+
+```
+
+## First order equations of Abel, Chini and d'Alembert–Lagrange type
+
+`sympy_extras.solvers.first_order` solves Chini's equation
+`y' = f(x) y**n + g(x) y + h(x)` and Abel's equations of the first and
+second kind in the constant-invariant cases (implicit solutions), and
+d'Alembert–Lagrange equations `y = x F(y') + G(y')` parametrically.
+SymPy has hints for Bernoulli, Riccati and Clairaut equations only.
+
+```python
+>>> from sympy_extras.solvers import lagrange_ode, abel_ode
+>>> lagrange_ode(Eq(y, 2*x*y.diff(x) + y.diff(x)**2), y)
+[Eq(x, C1/p**2 - 2*p/3), Eq(y(x), (6*C1 - p**3)/(3*p))]
+>>> abel_ode(y.diff(x) - y**3 - 3*y**2 - 3*y, y)     # doctest: +ELLIPSIS
+Eq(..., C1 + x)
+
+```
 
 ```python
 >>> from sympy import Function, Rational
+>>> from sympy.abc import n
 >>> from sympy_extras.solvers import dsolve_linear, dsolve_kovacic, liouvillian_solution
 >>> y = Function('y')(x)
 >>> dsolve_linear(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y)

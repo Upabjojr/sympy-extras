@@ -49,7 +49,11 @@ from sympy.sets.fancysets import ImageSet
 from sympy.sets.sets import Set, FiniteSet, Interval, Union as SetUnion, Intersection, EmptySet
 from sympy.core.function import expand, expand_trig, expand_log
 
+from sympy.core.evalf import N
+
+from sympy_extras._timeout import attempt
 from sympy_extras._typing import Truth, as_boolean, as_expr, as_set
+from sympy_extras.settings import settings
 from sympy_extras.polys.cad import solution_set
 from sympy_extras.polys.roots import in_radicals
 
@@ -608,6 +612,41 @@ def _solve_real(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
     return _solve_transcendental(formula, x, ctx.deeper())
 
 
+def _lambert(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
+    """Equations ``x`` appears in both inside and outside an exponential
+    or logarithm (``x*exp(x) = 1``, ``x + log(x) = 2``): SymPy's ``solve``
+    has the Lambert W patterns; its candidates are checked on the
+    equation and kept only when real."""
+    from sympy.functions.elementary.exponential import LambertW
+    from sympy.solvers.solvers import solve as _solve
+    if not isinstance(formula, Eq):
+        return None
+    e = as_expr(formula.lhs - formula.rhs)
+    if e.free_symbols - {x}:
+        return None
+    if not (e.has(exp) or e.has(log)):
+        return None
+    found = attempt(lambda: _solve(e, x), settings.timeout)
+    if not found:
+        return None
+    candidates: list[Expr] = []
+    for v in found:
+        if not isinstance(v, Expr) or v.has(x) or not v.has(LambertW):
+            continue
+        # the principal branch is real for arguments >= -1/e; other branches
+        # are left out
+        real = v.is_real
+        if real is None and settings.numerical_checks:
+            value = N(v, settings.precision)
+            real = bool(value.is_real) if isinstance(value, Expr) and value.is_number else None
+        if real is False:
+            continue
+        candidates.append(v)
+    if not candidates:
+        return None
+    return FiniteSet(*candidates)
+
+
 def _without_abs(formula: Boolean, x: Symbol) -> Boolean:
     """Absolute values of expressions in ``x`` removed by case
     distinctions."""
@@ -669,7 +708,7 @@ def _solve_transcendental(formula: Boolean, x: Symbol, ctx: _Context) -> Optiona
         return in_radicals(solution_set(formula, x))
     reduction = polynomialize(formula, x)
     if reduction is None:
-        return None
+        return _lambert(formula, x, ctx)
     side: Boolean = S.true
     if reduction.family == 'exp':
         side = reduction.variable > 0

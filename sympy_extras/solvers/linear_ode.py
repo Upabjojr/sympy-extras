@@ -60,7 +60,7 @@ from sympy.core.relational import Eq
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.combinatorial.factorials import ff
-from sympy.functions.elementary.exponential import exp_polar
+from sympy.functions.elementary.exponential import exp, exp_polar
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.integrals.integrals import Integral, integrate
 from sympy.matrices.dense import Matrix
@@ -308,9 +308,8 @@ def rational_solutions(L: LinearOperator) -> list[Expr]:
 # hyperexponential solutions of Fuchsian operators
 
 def _is_fuchsian(L: LinearOperator) -> bool:
-    """Whether every singular point (finite and at infinity) is regular
-    singular: ``ord_c(a_i) >= ord_c(a_n) - (n - i)`` at finite points and
-    ``deg a_i <= deg a_n - (n - i)`` at infinity."""
+    """Whether every finite singular point is regular singular:
+    ``ord_c(a_i) >= ord_c(a_n) - (n - i)``."""
     x = L.x
     n = L.order
     leading = Poly(L.coefficients[-1], x)
@@ -325,10 +324,6 @@ def _is_fuchsian(L: LinearOperator) -> bool:
             order = _order_at(Poly(c, x), q)
             if order < multiplicity - (n - i):
                 return False
-    degree_n = leading.degree()
-    for i, c in enumerate(L.coefficients[:-1]):
-        if c != 0 and Poly(c, x).degree() > degree_n - (n - i):
-            return False
     return True
 
 
@@ -350,10 +345,71 @@ def _exponents(L: LinearOperator, q: Poly) -> list[Rational]:
     return sorted(set(r for r in roots(indicial) if isinstance(r, Rational)), key=lambda r: (r.p, r.q))
 
 
+def _newton_polygon_parts(L: LinearOperator) -> list[Expr]:
+    """Candidate leading terms ``c x**s`` (``s`` a nonnegative integer)
+    of ``rho = y'/y`` at infinity, from the edges of the Newton polygon
+    of the points ``(i, deg a_i)`` with slope ``-s``: on such an edge the
+    terms ``a_i rho**i`` balance, ``sum lc(a_i) c**i = 0``."""
+    x = L.x
+    points: list[tuple[int, int, Expr]] = []
+    for i, c in enumerate(L.coefficients):
+        if c != 0:
+            p = Poly(c, x)
+            points.append((i, p.degree(), as_expr(p.LC())))
+    if len(points) < 2:
+        return []
+    # upper convex hull from the left
+    hull: list[tuple[int, int, Expr]] = []
+    for point in points:
+        while len(hull) >= 2:
+            (i1, d1, _), (i2, d2, _) = hull[-2], hull[-1]
+            i3, d3 = point[0], point[1]
+            # keep the hull concave: drop the middle point when it lies below the chord
+            if (d2 - d1)*(i3 - i1) <= (d3 - d1)*(i2 - i1):
+                hull.pop()
+            else:
+                break
+        hull.append(point)
+    candidates: list[Expr] = []
+    t = Dummy('t')
+    for (i1, d1, _), (i2, d2, _) in zip(hull, hull[1:]):
+        slope = Rational(d2 - d1, i2 - i1)
+        s = -slope
+        if s < 0 or not s.is_integer:
+            continue
+        on_edge = [(i, lc) for i, d, lc in points if d - d1 == slope*(i - i1)]
+        characteristic = Poly(as_expr(Add(*[lc*t**i for i, lc in on_edge])), t)
+        for root in roots(characteristic):
+            r = as_expr(root)
+            if r != 0 and r.is_number:
+                candidates.append(as_expr(r*x**int(s)))
+    return candidates
+
+
+def _exponential_parts(L: LinearOperator, depth: int = 0) -> list[Expr]:
+    """The polynomial parts ``P`` of ``rho`` at infinity (solutions
+    ``exp(Integral(P)) * ...``), found term by term from the Newton
+    polygon; ``0`` is always a candidate (no exponential part)."""
+    x = L.x
+    parts: list[Expr] = [S.Zero]
+    if depth > 4:
+        return parts
+    for leading in _newton_polygon_parts(L):
+        exponent = as_expr(integrate(leading, x))
+        M = L.transformed(exp(exponent))
+        for lower in _exponential_parts(M, depth + 1):
+            candidate = as_expr(leading + lower)
+            if candidate not in parts:
+                parts.append(candidate)
+    return parts
+
+
 def hyperexponential_solutions(L: LinearOperator, max_combinations: int = 200) -> list[Expr]:
-    """Solutions ``prod (x - c)**e_c * P(x)`` with rational exponents at
-    the singular points and a polynomial ``P``, of a Fuchsian operator.
-    Solutions with distinct exponent combinations are independent.
+    """Solutions ``exp(Integral(P)) * prod (x - c)**e_c * Q(x)`` with ``P``
+    a polynomial (the exponential part at infinity, from the Newton
+    polygon), rational exponents at the finite singular points, which
+    must be regular singular, and a polynomial ``Q``. Solutions with
+    distinct exponent combinations are independent.
 
     Examples
     ========
@@ -365,7 +421,30 @@ def hyperexponential_solutions(L: LinearOperator, max_combinations: int = 200) -
     >>> L = LinearOperator.from_equation(4*x**2*y.diff(x, 2) + 4*x*y.diff(x) - y, y)
     >>> hyperexponential_solutions(L)
     [1/sqrt(x), sqrt(x)]
+    >>> hyperexponential_solutions(LinearOperator.from_equation(y.diff(x, 2) - 2*x*y.diff(x) + 4*y, y))
+    [x**2 - 1/2]
+    >>> hyperexponential_solutions(LinearOperator.from_equation(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y))
+    [x**2 + 2*x + 2, exp(x)]
     """
+    x = L.x
+    solutions: list[Expr] = []
+    for part in _exponential_parts(L):
+        if part == 0:
+            M = L
+            factor_part: Expr = S.One
+        else:
+            factor_part = as_expr(exp(integrate(part, x)))
+            M = L.transformed(factor_part)
+        for s in _hyperexponential_regular(M, max_combinations):
+            candidate = as_expr(factor_part*s)
+            if candidate not in solutions:
+                solutions.append(candidate)
+    return _independent(solutions, x)
+
+
+def _hyperexponential_regular(L: LinearOperator, max_combinations: int) -> list[Expr]:
+    """The ansatz with the local exponents at the finite singular points,
+    which must be regular singular."""
     x = L.x
     if not _is_fuchsian(L):
         return []
@@ -484,6 +563,13 @@ def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_d
         liouvillian = attempt(lambda: dsolve_kovacic(equation, y), settings.timeout)
         if liouvillian:
             found = _independent(found + liouvillian, x)
+    if len(found) < n and n == 2:
+        from .special import special_solutions
+        y = Function('y')(x)
+        equation = as_expr(Add(*[c*y.diff(x, i) if i else c*y for i, c in enumerate(L.coefficients)]))
+        special = attempt(lambda: special_solutions(equation, y), settings.timeout)
+        if special:
+            found = _independent(found + special, x)
     if found and len(found) < n:
         # reduction of order by the first solution
         y1 = found[0]
@@ -504,9 +590,10 @@ def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_d
         equation = as_expr(Add(*[c*y.diff(x, i) if i else c*y for i, c in enumerate(L.coefficients)]))
         result = attempt(lambda: dsolve(equation, y), settings.timeout)
         if isinstance(result, Eq) and not result.rhs.has(Integral):
-            constants = sorted((s for s in free_symbols(as_expr(result.rhs)) if s.name.startswith('C')), key=lambda s: s.name)
+            rhs = as_expr(expand(as_expr(result.rhs)))
+            constants = sorted((s for s in free_symbols(rhs) if s.name.startswith('C')), key=lambda s: s.name)
             for c in constants:
-                part = as_expr(result.rhs.coeff(c))
+                part = as_expr(rhs.coeff(c))
                 if part != 0 and not part.has(*constants):
                     found = _independent(found + [part], x)
     return found[:n]
