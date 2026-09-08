@@ -316,3 +316,24 @@ def test_simplify_boolean() -> None:
     assert simplify((sin(x) > 0) & (x > 0), x > 1) == (sin(x) > 0)
     assert simplify(ForAll(y, x**2 + y**2 >= 0), domain=S.Reals) is true
     assert simplify(Exists(y, Eq(y**2, x)), domain=S.Reals) == (x >= 0)
+
+
+def test_refine_parity() -> None:
+    # the parity of an integer polynomial is read off its residues
+    integers = element(n, S.Integers)
+    assert refine((-1)**(n**2 + n), integers) == 1
+    assert refine((-1)**(n**2 + n + 1), integers) == -1
+    assert refine((-1)**(n*(n + 1)*(n + 2)), integers) == 1
+    assert refine((-1)**(n**2), integers) == (-1)**(n**2)
+    assert refine(cos(pi*(n**2 + n)), integers) == 1
+    m = Symbol('m')
+    both = integers & element(m, S.Integers)
+    assert refine((-1)**(2*n*m + 1), both) == -1
+    assert refine((-1)**(n*m), both) == (-1)**(n*m)
+    # residues modulo other numbers
+    from sympy import Mod
+    assert refine(Mod(n**2 + n, 2), integers) == 0
+    assert refine(Mod(n**3 - n, 6), integers) == 0
+    assert refine(Mod(n**2, 4), integers) == Mod(n**2, 4)
+    assert refine(Mod(n**2 + n, 2)) == Mod(n**2 + n, 2)
+    assert refine(Mod(2*n*m + 1, 2), both) == 1

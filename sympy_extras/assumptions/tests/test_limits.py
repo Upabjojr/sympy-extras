@@ -37,3 +37,28 @@ def test_series_with_assumptions() -> None:
     expansion = series(log(a*x), x, 1, 2, assumptions=a > 0)
     assert expansion.removeO() == log(a) + x - 1
     assert series(exp(a*x), x, 0, 3) == 1 + a*x + a**2*x**2/2 + O(x**3)
+
+
+def test_limit_seq_with_assumptions() -> None:
+    from sympy import factorial, harmonic, EulerGamma, Limit, pi
+    from sympy.abc import n
+    from sympy_extras.assumptions import limit_seq
+    assert limit_seq(x**n/factorial(n), n) == 0
+    assert limit_seq((1 + x/n)**n, n) == exp(x)
+    assert limit_seq(harmonic(n) - log(n), n) == EulerGamma
+    assert limit_seq((-1)**n/n, n) == 0
+    assert limit_seq(sin(pi*n), n) == 0
+    assert limit_seq(a**n, n, assumptions=(a > 0) & (a < 1)) == 0
+    assert limit_seq(a**n, n, assumptions=a > 1) is oo
+    assert limit_seq(a**n, n, assumptions=Eq(a, 1)) == 1
+    assert limit_seq(n*a**n, n, assumptions=(a > 0) & (a < 1)) == 0
+    assert limit_seq(a**n/n, n, assumptions=a > 1) is oo
+    # a negative base oscillates unless the magnitude tends to zero
+    assert limit_seq(a**n, n, assumptions=(a > -1) & (a < 0)) == 0
+    assert limit_seq(a**n, n, assumptions=a < -1) == Limit(a**n, n, oo, '-')
+    assert limit_seq(a**n, n, assumptions=a > 0) == Piecewise((oo, a > 1), (1, Eq(a, 1)), (0, a < 1))
+    result = limit_seq(a**n, n)
+    assert result.subs(a, 2) is oo and result.subs(a, S.Half) == 0 and result.subs(a, -S.Half) == 0
+    assert isinstance(result.subs(a, -2), Limit)
+    assert limit_seq(n**a, n, assumptions=a < 0) == 0
+    assert limit_seq(n**a, n) == Piecewise((oo, a > 0), (1, Eq(a, 0)), (0, a < 0))

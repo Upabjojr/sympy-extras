@@ -12,6 +12,40 @@ First release.
 
 ### Added
 
+- The remaining items of the implementation notes: `sympy_extras.solvers.thue_equation`
+  (Thue equations by Baker's method: units of the order by enumeration
+  and saturation, Baker–Wüstholz, de Weger's reduction with an exact
+  LLL), `sympy_extras.solvers.second_order` (integrating factors
+  `mu(x, y)` and `mu(y')`, Lie's linearisation test, the fibre preserving
+  transformation to `u'' = 0`, rectification of commuting symmetries,
+  `dsolve_second_order`), `sympy_extras.solvers.abel` (relative and
+  absolute invariants, equivalence of Abel equations with the
+  transformation, the AIR class through a particular solution or a
+  representative; `abel_ode` uses it for non-constant invariants and no
+  longer runs the separable-class search on them),
+  `sympy_extras.concrete.eulersums` (Euler sums in zeta values,
+  `polygamma_series`, `polygamma_integral_representation`). The Riccati
+  solver tries the special functions before Kovacic's algorithm.
+- More of the algorithms in Mathematica's implementation notes:
+  `sympy_extras.solvers.isolation` (real roots of transcendental
+  functions isolated exactly, `TranscendentalRoot` objects returned by
+  `solve` when `solveset` gives a `ConditionSet`, inequalities solved
+  through the roots), `sympy_extras.solvers.dae` (linear
+  differential-algebraic equations with constant coefficients through
+  the core-nilpotent decomposition of the pencil, `dsolve_dae`,
+  `dae_index`, `dae_matrices`), `sympy_extras.concrete.convergence`
+  (`sum_convergence`, `product_convergence`, `is_convergent`: the
+  condition on the parameters for convergence, by the ratio, Raabe,
+  Bertrand, root, power comparison, Leibniz and integral tests),
+  `sympy_extras.concrete.dirichlet` (`dirichlet_series` for the
+  arithmetic functions, alternating signs and logarithmic factors),
+  `sympy_extras.assumptions.limit_seq` (sequence limits with assumptions
+  and case distinctions, negative bases handled), `ask` deciding linear
+  formulas by Loos–Weispfenning virtual substitution before the CAD,
+  `refine` knowing the residues of integer polynomials
+  (`(-1)**(n**2 + n)`, `Mod(n**3 - n, 6)`). The Lambert W fallback of the
+  transcendental solver returns both real branches
+  (`solve(exp(x) - x - 2, x, x > 0)` was empty).
 - Quadratic virtual substitution (Weispfenning) in
   `sympy_extras.polys.virtual_substitution` (`eliminate_quadratic`,
   `virtual_substitution_elimination`), used by `resolve` before the CAD;

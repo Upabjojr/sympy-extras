@@ -260,3 +260,67 @@ Eq(u(x, y), a*b + a*x + b*y)
   assumptions against real root isolation and high-precision evaluation.
 - The unit tests verify every symmetry by substitution and every solution
   with `checkodesol`/`checkpdesol`.
+
+## Differential-algebraic equations
+
+`sympy_extras.solvers.dae` solves linear differential-algebraic systems
+`A y' + B y = f(x)` with constant coefficients and a singular `A`
+(SymPy's `dsolve` rejects them). The pencil must be regular; then
+`(lambda A + B)^{-1} A` has a core-nilpotent decomposition whose
+invertible part carries the free constants (an ordinary system solved
+by the matrix exponential) and whose nilpotent part isolates the
+algebraic constraints, solved by differentiating the right-hand side up
+to the index of the equation.
+
+```python
+>>> from sympy import Function, Matrix, Eq, sin, symbols
+>>> from sympy_extras.solvers import dae_matrices, dsolve_dae, dae_index
+>>> x = symbols('x')
+>>> y1, y2 = Function('y1')(x), Function('y2')(x)
+>>> A, B, f, _ = dae_matrices([Eq(y1.diff(x), y2), Eq(y1, sin(x))], [y1, y2])
+>>> dae_index(A, B)
+2
+>>> dsolve_dae(A, B, f, x).solution.T
+Matrix([[sin(x), cos(x)]])
+
+```
+
+## Second order equations: integrating factors and linearisation
+
+`sympy_extras.solvers.second_order` finds integrating factors `mu(x, y)`
+and `mu(y')` of `y'' = Phi(x, y, y')` (the exactness conditions of
+Cheb-Terrab and Roche, with a linear equation for the `x`-dependence),
+tests Lie's linearisation conditions, constructs the fibre preserving
+transformation to `u'' = 0` when it exists, and otherwise rectifies two
+commuting point symmetries into translations, after which the equation
+is `u'' = F(u')`, solvable by quadratures.
+
+```python
+>>> from sympy_extras.solvers import dsolve_second_order
+>>> f = Function('y')(x)
+>>> dsolve_second_order(f.diff(x, 2) + 3*f*f.diff(x) + f**3, f)
+[Eq(y(x), 2*(C2 + x)/(2*C1 + 2*C2*x + x**2))]
+
+```
+
+## Abel equations: invariants and equivalence classes
+
+`sympy_extras.solvers.abel` computes the relative invariants `s3`, `s5`
+and the absolute invariants `I1`, `I2` of an Abel equation of the first
+kind, decides the equivalence of two equations under `y = P(x) u + Q(x)`,
+`x = xi(t)` (with the transformation), and solves the equations of the
+AIR class (equivalent to the inverse of a Riccati equation with linear
+coefficients) either directly, through a particular solution, or by
+equivalence with the representatives of the database. `abel_ode` uses
+it when the invariant is not constant.
+
+```python
+>>> from sympy_extras.solvers.abel import abel_invariants, abel_equivalence
+>>> abel_invariants((-1, -2*x, 0, 0), x).I1
+11664*x**6*(8*x**3 - 15)**3/(8*x**3 - 9)**5
+>>> from sympy import Symbol
+>>> t = Symbol('t')
+>>> abel_equivalence((-1, -2*(x - 1), 0, 0), x, (-1, -2*t, 0, 0), t)
+AbelTransformation(xi=x - 1, P=1, Q=0)
+
+```

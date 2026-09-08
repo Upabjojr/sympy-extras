@@ -188,7 +188,19 @@ def abel_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     a1, a0 = [as_expr(c) for c in poly.all_coeffs()]
     # a1(x, y) y' + a0(x, y) = 0
     if not a1.has(u):
-        return _abel_first_kind(as_expr(cancel(-a0/a1)), x, u, f, f)
+        from .abel import abel_by_invariants, constant_invariant, abel_coefficients
+        rhs = as_expr(cancel(-a0/a1))
+        try:
+            coefficients, _ = abel_coefficients(Eq(f.diff(x), rhs.subs(u, f)), f)
+        except ValueError:
+            return None
+        if constant_invariant(coefficients, x) is not False:
+            solution = _abel_first_kind(rhs, x, u, f, f)
+            if solution is not None:
+                return solution
+        # a non-constant invariant: the integrable classes recognised
+        # through the invariants (the AIR class and the representatives)
+        return abel_by_invariants(equation, f)
     # second kind: a1 linear in y, a0 quadratic in y
     try:
         p1 = Poly(a1, u)
@@ -204,8 +216,20 @@ def abel_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     w = Dummy('w')
     v = as_expr(1/w - g)
     w_rhs = as_expr(cancel(-(rhs.subs(u, v)*w - g.diff(x))*w**2))
-    solution = _abel_first_kind(w_rhs, x, w, as_expr(1/(f + g)), f)
-    return solution
+    from .abel import abel_by_invariants, constant_invariant, abel_coefficients
+    W = Function('W')(x)
+    try:
+        coefficients, _ = abel_coefficients(Eq(W.diff(x), w_rhs.subs(w, W)), W)
+    except ValueError:
+        return None
+    if constant_invariant(coefficients, x) is not False:
+        solution = _abel_first_kind(w_rhs, x, w, as_expr(1/(f + g)), f)
+        if solution is not None:
+            return solution
+    first_kind = abel_by_invariants(Eq(W.diff(x), w_rhs.subs(w, W)), W)
+    if not isinstance(first_kind, Eq):
+        return None
+    return Eq(as_expr(first_kind.lhs.subs(W, 1/(f + g))), as_expr(first_kind.rhs.subs(W, 1/(f + g))))
 
 
 def _abel_first_kind(rhs: Expr, x: Symbol, u: Symbol, value: Expr, f: AppliedUndef) -> Optional[Basic]:
@@ -318,7 +342,13 @@ def riccati_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
         return None
     w = Function('u')(x)
     linear = w.diff(x, 2) - (a.diff(x)/a + b)*w.diff(x) + a*c*w
-    solutions = attempt(lambda: dsolve_linear(linear, w), settings.timeout)
+    # the special functions are recognised at once; Kovacic's algorithm
+    # (inside dsolve_linear) is slow to fail on equations without
+    # Liouvillian solutions
+    from .special import special_solutions
+    solutions = attempt(lambda: special_solutions(linear, w), settings.timeout)
+    if not solutions:
+        solutions = attempt(lambda: dsolve_linear(linear, w), settings.timeout)
     if not solutions:
         return None
     C1 = Symbol('C1')

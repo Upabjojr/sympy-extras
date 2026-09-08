@@ -135,3 +135,22 @@ def test_ask_inputs() -> None:
     assert ask(x > 3, [x > 0, x < 0]) is None
     raises(ValueError, lambda: ask(x > 0, S.false))
     raises(TypeError, lambda: untyped(ask)(x > 0, domain=2))
+
+
+def test_ask_linear() -> None:
+    # linear formulas are decided by virtual substitution (Loos-Weispfenning)
+    from sympy.abc import a, b, c, d, e
+    from sympy_extras.assumptions.ask import _linear_ask
+    assert ask(a + b + c + d + e < 5, (a < 1) & (b < 1) & (c < 1) & (d < 1) & (e < 1)) is True
+    assert ask(2*a - b + c > 0, (a > b) & (b > c) & (c > 0)) is True
+    assert ask(x + y > 3, (x < 1) & (y < 1)) is False
+    assert ask(x + y > 0, (x < 1) & (y < 1)) is None
+    assert ask(Eq(x + y, 2), (x < 1) & (y < 1)) is False
+    assert ask(Ne(x + y, 2), (x < 1) & (y < 1)) is True
+    assert ask(x - y > 0, (x > 2) & (y < 1)) is True
+    assert ask(x - y > 1, (x > 2) & (y < 1)) is True
+    assert ask(x - y > 2, (x > 2) & (y < 1)) is None
+    assert _linear_ask(x + y < 3, (x < 1) & (y < 1), [x, y]) is True
+    assert _linear_ask(x**2 + y < 3, (x < 1) & (y < 1), [x, y]) is None
+    # a contradictory premise decides nothing
+    assert _linear_ask(x < 3, (x < 1) & (x > 2), [x]) is None

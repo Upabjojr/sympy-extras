@@ -633,18 +633,47 @@ def _lambert(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
     for v in found:
         if not isinstance(v, Expr) or v.has(x) or not v.has(LambertW):
             continue
-        # the principal branch is real for arguments >= -1/e; other branches
-        # are left out
-        real = v.is_real
-        if real is None and settings.numerical_checks:
-            value = N(v, settings.precision)
-            real = bool(value.is_real) if isinstance(value, Expr) and value.is_number else None
-        if real is False:
-            continue
-        candidates.append(v)
+        # SymPy returns the principal branch only; the branch -1 is real
+        # too for arguments in [-1/e, 0) and gives the second real root
+        for candidate in _lambert_branches(v):
+            if _real_root(e, x, candidate) is not False and candidate not in candidates:
+                candidates.append(candidate)
     if not candidates:
         return None
     return FiniteSet(*candidates)
+
+
+def _lambert_branches(v: Expr) -> list[Expr]:
+    from sympy.functions.elementary.exponential import LambertW
+    result = [v]
+    for w in v.atoms(LambertW):
+        if len(w.args) != 1:
+            continue
+        argument = as_expr(w.args[0])
+        if argument.is_number and argument.is_real and \
+                bool(argument < 0) and bool(argument >= -exp(-1)):
+            result.append(as_expr(v.xreplace({w: LambertW(argument, -1)})))
+    return result
+
+
+def _real_root(e: Expr, x: Symbol, v: Expr) -> Truth:
+    """Whether the candidate is a real root of ``e``: ``False`` when it is
+    not real or the residual is clearly nonzero (with the numerical
+    checks), ``None`` when this cannot be told."""
+    real = v.is_real
+    if real is None and settings.numerical_checks:
+        value = N(v, settings.precision)
+        real = bool(value.is_real) if isinstance(value, Expr) and value.is_number else None
+    if real is False:
+        return False
+    if not settings.numerical_checks:
+        return None
+    residual = N(e.subs(x, v), settings.precision)
+    if isinstance(residual, Expr) and residual.is_number and residual.is_finite:
+        if abs(residual) > Rational(1, 10)**(settings.precision*2//3):
+            return False
+        return True
+    return None
 
 
 def _without_abs(formula: Boolean, x: Symbol) -> Boolean:

@@ -5,7 +5,7 @@ from typing import Optional, Sequence, Union
 
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
-from sympy.core.relational import Relational, Eq, Gt, Lt, Ge, Le
+from sympy.core.relational import Relational, Eq, Ne, Gt, Lt, Ge, Le
 from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
 from sympy.core.numbers import Rational, Integer
@@ -19,7 +19,7 @@ from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or,
 from sympy.sets.contains import Contains
 from sympy.sets.conditionset import ConditionSet
 from sympy.sets.fancysets import Reals, Integers, Naturals, Rationals, Complexes, ImageSet
-from sympy.sets.sets import (Set, FiniteSet, Intersection, Complement,
+from sympy.sets.sets import (Set, FiniteSet, Intersection, Complement, Interval,
     Union as SetUnion, EmptySet, ProductSet)
 from sympy.solvers.solveset import solveset, nonlinsolve
 
@@ -33,6 +33,7 @@ from sympy_extras.settings import settings
 from .ask import Assumptions, _facts, _evaluate
 from .facts import Facts, normalize, conjuncts, to_polynomial
 from .refine import _Refiner
+from .analysis import domain_of, certified_sign, _pieces
 
 __all__ = ['solve']
 
@@ -239,7 +240,64 @@ def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]
                 condition = And(Contains(x, dom), condition)
     result = _solveset(as_boolean(abstracted), x, solving_domain)
     result = as_set(result.xreplace(back_symbols))
-    return _restrict(result, x, condition, facts, formula, real=dom.is_subset(S.Reals) is True)
+    restricted = _restrict(result, x, condition, facts, formula, real=dom.is_subset(S.Reals) is True)
+    if not parameters and restricted.has(ConditionSet) and dom.is_subset(S.Reals) is True:
+        # no closed form: the real roots are isolated instead
+        isolated = attempt(lambda: _isolated(formula, x, facts, dom), settings.timeout)
+        if isolated is not None:
+            return isolated
+    return restricted
+
+
+def _isolated(formula: Boolean, x: Symbol, facts: Facts, dom: Set) -> Optional[Set]:
+    """An equation or inequality in one real unknown without parameters
+    solved through the isolated real roots of the difference of its sides
+    (:mod:`sympy_extras.solvers.isolation`): exact roots where SymPy finds
+    them, :class:`~sympy_extras.solvers.isolation.TranscendentalRoot`
+    objects otherwise; ``None`` when the roots cannot be isolated."""
+    # imported here: the isolation module uses the analysis of this package
+    from sympy_extras.solvers.isolation import isolate_real_roots, point_between, compare_points
+    if not isinstance(formula, Relational) or free_symbols(formula) != {x}:
+        return None
+    region = domain_of(x, facts.with_reals([x]))
+    if region is None:
+        return None
+    region = as_set(Intersection(region, dom))
+    pieces = _pieces(region)
+    if pieces is None:
+        return None
+    f = as_expr(formula.lhs - formula.rhs)
+    roots = isolate_real_roots(f, x, region)
+    if roots is None:
+        return None
+    if isinstance(formula, Eq):
+        return FiniteSet(*roots) if roots else S.EmptySet
+    if isinstance(formula, Ne):
+        return as_set(Complement(region, FiniteSet(*roots))) if roots else region
+    strict = isinstance(formula, (Gt, Lt))
+    wanted = 1 if isinstance(formula, (Gt, Ge)) else -1
+    parts: list[Set] = []
+    for piece in pieces:
+        a, b = as_expr(piece.start), as_expr(piece.end)
+        inner = [r for r in roots if compare_points(r, a) == 1 and compare_points(b, r) == 1]
+        points: list[Expr] = [a] + inner + [b]
+        for p, q in zip(points, points[1:]):
+            sample = point_between(p, q)
+            if sample is None:
+                return None
+            s = certified_sign(as_expr(f.subs(x, sample)))
+            if s is None:
+                return None
+            if s == wanted:
+                parts.append(Interval.open(p, q))
+        if not strict:
+            parts.extend(FiniteSet(r) for r in inner)
+        for closed, point in ((not piece.left_open, a), (not piece.right_open, b)):
+            if closed and point.is_finite:
+                s = certified_sign(as_expr(f.subs(x, point)))
+                if s == wanted or (s == 0 and not strict):
+                    parts.append(FiniteSet(point))
+    return as_set(SetUnion(*parts)) if parts else S.EmptySet
 
 
 def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], facts: Facts,

@@ -25,7 +25,9 @@ The functions are
 * :func:`resolve` -- ``Resolve``, quantifier elimination over the reals;
 * :func:`satisfiable`, :func:`tautology` and :func:`find_instance` --
   ``SatisfiableQ``, ``TautologyQ`` and ``FindInstance``;
-* :func:`solve` -- ``Solve`` with assumptions and a domain.
+* :func:`solve` -- ``Solve`` with assumptions and a domain;
+* :func:`limit`, :func:`limit_seq` and :func:`series` -- limits and
+  expansions with the parameters carrying the assumptions.
 
 Two backends are used: the assumptions system of SymPy (:func:`sympy.ask`,
 :func:`sympy.refine` and its SAT solver), which receives the predicates
@@ -60,9 +62,9 @@ from .refine import refine, simplify
 from .resolve import resolve
 from .sat import satisfiable, tautology, find_instance
 from .solve import solve
-from .limits import limit, series
+from .limits import limit, limit_seq, series
 
 __all__ = ['element', 'Facts', 'ForAll', 'Exists', 'Quantifier', 'prenex',
     'global_assumptions', 'assuming', 'AssumptionsContext', 'ask', 'refine',
     'simplify', 'resolve', 'satisfiable', 'tautology', 'find_instance', 'solve',
-    'limit', 'series']
+    'limit', 'limit_seq', 'series']

@@ -337,6 +337,71 @@ order equations (`dsolve_first_order`). See
 
 ```
 
+### Thue equations, second order integrating factors, Abel invariants, polygamma series
+
+The last items of the notes: `thue` solves Thue equations `F(x, y) = m`
+completely (Baker's method with the reduction of Tzanakis and de Weger),
+`dsolve_second_order` finds integrating factors and linearising
+transformations of second order equations (Lie's test, the fibre
+preserving construction, and the rectification of two commuting
+symmetries), `abel_ode` recognises the integrable Abel classes through
+their invariants, and `polygamma_series` sums Euler sums and series of
+polygamma functions in zeta values.
+
+```python
+>>> from sympy import harmonic
+>>> from sympy_extras.solvers import thue, dsolve_second_order
+>>> from sympy_extras.concrete import polygamma_series
+>>> thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y)
+[(-9, 5), (-1, -1), (-1, 1), (-1, 2), (0, -1), (1, 0), (2, -1), (4, -9), (5, 4)]
+>>> from sympy import Function
+>>> f = Function('y')(x)
+>>> dsolve_second_order(f.diff(x, 2) + 3*f*f.diff(x) + f**3, f)
+[Eq(y(x), 2*(C2 + x)/(2*C1 + 2*C2*x + x**2))]
+>>> polygamma_series(harmonic(n)/n**2, n)
+2*zeta(3)
+
+```
+
+### Transcendental roots, differential-algebraic equations, convergence (`sympy_extras.solvers`, `sympy_extras.concrete`)
+
+More of the algorithms of Mathematica's notes (see
+[docs/reduce.md](docs/reduce.md)): real roots of transcendental functions
+isolated exactly and returned by `solve` as `TranscendentalRoot` objects
+(`sympy_extras.solvers.isolation`); linear differential-algebraic
+equations with constant coefficients through the core-nilpotent
+decomposition of the pencil (`sympy_extras.solvers.dae`); convergence
+of series and infinite products with conditions on the parameters by the
+tests of d'Alembert, Raabe, Bertrand, Cauchy and Leibniz
+(`sympy_extras.concrete.convergence`); Dirichlet series of the
+arithmetic functions by pattern matching (`sympy_extras.concrete.dirichlet`);
+sequence limits with assumptions (`limit_seq`); linear questions in `ask`
+decided by virtual substitution and the parity of integer polynomials in
+`refine`.
+
+```python
+>>> from sympy import cos, exp, Eq, S, Matrix, sin, mobius, Mod
+>>> from sympy.abc import x, n, p
+>>> from sympy_extras.assumptions import solve, refine, limit_seq, element
+>>> from sympy_extras.solvers import dsolve_dae
+>>> from sympy_extras.concrete import sum_convergence, dirichlet_series
+>>> solve(Eq(x, cos(x)), x, domain=S.Reals)
+{TranscendentalRoot(x - cos(x), x, 5/8, 3/4)}
+>>> dsolve_dae(Matrix([[1, 0], [0, 0]]), Matrix([[0, -1], [1, 0]]), Matrix([0, sin(x)]), x).solution.T
+Matrix([[sin(x), cos(x)]])
+>>> sum_convergence(x**n/n, n)
+(x >= -1) & (x < 1)
+>>> sum_convergence(1/n**p, n)
+p > 1
+>>> dirichlet_series(mobius(n)/n**p, n)
+(1/zeta(p), re(p) > 1)
+>>> limit_seq(p**n, n, assumptions=(p > -1) & (p < 0))
+0
+>>> refine((-1)**(n**2 + n), element(n, S.Integers))
+1
+
+```
+
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
