@@ -15,9 +15,10 @@ sympy-extras, or nowhere yet.
 | --- | --- | --- |
 | Linear equations: Gaussian elimination, sparse and modular methods | `linsolve`, `Matrix.rref`, `DomainMatrix` | — |
 | Root objects: real roots by continued fractions (Vincent–Collins–Akritas), complex roots by Collins–Krandick, validated numerics | `CRootOf`, `Poly.intervals`, `real_roots` | radicals for the roots of decomposable polynomials (`polys.roots`) |
+| Transcendental `Root` objects: exact exp-log root isolation over the reals | — | `solvers.isolation`: `TranscendentalRoot`, `isolate_real_roots` (Rolle recursion on the derivative, certified signs by interval arithmetic), used by `solve` when `solveset` gives a `ConditionSet` |
 | Polynomial equations: explicit formulas to degree four, `Factor`, `Decompose`, cyclotomic and other special polynomials | `roots` (formulas, binomials, cyclotomic, quintics, functional decomposition), `factor` | — |
 | Systems of polynomial equations: Gröbner bases | `groebner`, `solve_poly_system`, `nonlinsolve` | `Ideal` (elimination, saturation, radicals; `polys.ideals`) |
-| Non-polynomial equations: change of variables and polynomial side conditions | `solveset` (`_transolve`, `_solve_trig`, `_solve_radical`) | `solvers.transcendental`: kernels with side conditions, inverse-image database, assumptions on parameters, Lambert W fallback |
+| Non-polynomial equations: change of variables and polynomial side conditions | `solveset` (`_transolve`, `_solve_trig`, `_solve_radical`) | `solvers.transcendental`: kernels with side conditions, inverse-image database, assumptions on parameters, Lambert W fallback (both real branches) |
 | `Reduce` over the reals: cylindrical algebraic decomposition | — | `polys.cad`, `resolve` |
 | `Reduce` over the complex numbers: Gröbner bases | — | `polys.comprehensive`: comprehensive Gröbner systems (Kapur–Sun–Wang), `resolve(domain=S.Complexes)` |
 | Linear quantifier elimination (Loos–Weispfenning virtual substitution) | — | `polys.virtual_substitution`, used first by `resolve` |
@@ -27,7 +28,8 @@ sympy-extras, or nowhere yet.
 | Univariate polynomial equations over the integers: Cucker–Koiran–Smale | `solveset(..., S.Integers)`, `diophantine` (integer roots by factorisation) | — |
 | Binary quadratic Diophantine equations: Hardy–Muskat–Williams, Gauss/Dirichlet/Lagrange (Pell) | `diophantine` (`diop_quadratic`, `diop_DN`) | — |
 | Thue equations, exponential Diophantine equations | — | — (see the issue tracker) |
-| Assumptions in `Simplify`/`Refine`: CAD, simplex/Loos–Weispfenning, Gröbner bases | — | `ask`, `refine`, `simplify` with statement assumptions |
+| Assumptions in `Simplify`/`Refine`: CAD, simplex/Loos–Weispfenning, Gröbner bases | — | `ask`, `refine`, `simplify` with statement assumptions; linear formulas decided by Loos–Weispfenning virtual substitution before the CAD |
+| Number theory rules for integer functions | `Q.even`/`Q.odd` handlers | residues of integer polynomials in `refine` (`(-1)**(n**2 + n)`, `Mod(n**3 - n, 6)`) |
 
 ## Differential equations, sums and products, series and limits
 
@@ -42,12 +44,14 @@ Only what SymPy lacks is implemented here.
 | Linear ODEs solved by special functions through Mellin transforms | hints `2nd_hypergeometric`, Bessel, Airy | `solvers.special`: Bessel, Whittaker and hypergeometric equations recognised through the normal-form invariant |
 | Linear ODE systems with rational coefficients: Abramov–Bronstein elimination | — | `solvers.linear_systems`: cyclic vector, `rational_system_solutions`, `dsolve_linear_system` |
 | Nonlinear ODEs: Riccati, Bernoulli, Abel, Chini, Clairaut, d'Alembert, exact and integrating factors, Lie symmetries | `dsolve` hints (no Abel, Chini, d'Alembert) | Lie symmetries of any order (`solvers.ode`); Abel, Chini and d'Alembert–Lagrange equations (`solvers.first_order`) |
+| Differential-algebraic equations: singular parts isolated by core-nilpotent decomposition | — | `solvers.dae`: regular pencils with constant coefficients, `core_nilpotent_decomposition`, `dsolve_dae`, `dae_index` |
 | PDEs: separation of variables and symmetry reduction (Göktaş), first order nonlinear complete integrals (Legendre, Euler transformations), Germundsson's trigonometric power methods | `pde_separate`, first order linear `pdsolve` | symmetry reductions (`solvers.pde`), complete integrals by Charpit's method (`solvers.charpit`) |
-| Sums: rational, hypergeometric (Gosper, Zeilberger), q-rational, Adamchik's hypergeometric closed forms, polygamma series by integral representations, Dirichlet series by pattern matching | `summation` (polynomial, rational, Gosper, hypergeometric closed forms) | Karr's algorithm (`concrete.karr`), Zeilberger's algorithm and WZ certificates (`concrete.zeilberger`); q-analogues, polygamma and Dirichlet series: issue tracker |
-| Products: polynomial, rational, q-rational, hypergeometric, periodic classes | `product` (polynomial, rational, hypergeometric) | — |
+| Sums: rational, hypergeometric (Gosper, Zeilberger), q-rational, Adamchik's hypergeometric closed forms, polygamma series by integral representations, Dirichlet series by pattern matching | `summation` (polynomial, rational, Gosper, hypergeometric closed forms, `zeta` and Hurwitz `zeta`) | Karr's algorithm (`concrete.karr`), Zeilberger's algorithm and WZ certificates (`concrete.zeilberger`), Dirichlet series of the arithmetic functions by pattern matching (`concrete.dirichlet`); q-analogues and polygamma series: issue tracker |
+| Convergence testing: d'Alembert and Raabe tests | `Sum.is_convergent` (no parameters) | `concrete.convergence`: `sum_convergence` and `product_convergence` with conditions on the parameters (ratio, Raabe, Bertrand, root, power comparison, Leibniz, integral tests) |
+| Products: polynomial, rational, q-rational, hypergeometric, periodic classes | `product` (polynomial, rational, hypergeometric) | convergence of infinite products (`product_convergence`) |
 | Series by recursive composition of expansions | `series`, `fps`, `ring_series` | — |
 | Limits from series and other methods (exp-log, Gruntz) | `limit` (Gruntz), `limit_seq` | — |
-| Assumptions in limits and series through `Refine`/`Simplify` | Symbol assumptions only | `assumptions.limit`, `assumptions.series` with statement assumptions and case distinctions |
+| Assumptions in limits and series through `Refine`/`Simplify` | Symbol assumptions only | `assumptions.limit`, `assumptions.limit_seq`, `assumptions.series` with statement assumptions and case distinctions |
 
 ## Linear quantifier elimination
 
@@ -164,6 +168,69 @@ ConditionSet(x, a > 0, {log(a)})
 
 SymPy's `solveset` returns `{-1, 2}` for the third equation over the
 reals, although the logarithms are not real at `-1`.
+
+## Transcendental root objects
+
+An equation in one real unknown which neither `solveset` nor the kernel
+reduction solves gets its real roots *isolated*: the roots of `f'` are
+isolated first (recursively, down to a polynomial or to a function
+`solveset` handles), `f` is strictly monotone between them, so the sign
+of its values or limits at the ends of each piece tells whether a root
+lies inside, and the root is bracketed by rational points and refined by
+bisection with rigorous interval arithmetic. The result is a
+`TranscendentalRoot`, a real number which evaluates to any precision and
+prints with its function and isolating interval, the counterpart of
+Mathematica's transcendental `Root` objects. Inequalities are solved
+through the same roots and the signs between them.
+
+```python
+>>> from sympy import cos, exp
+>>> from sympy_extras.solvers.isolation import isolate_real_roots
+>>> isolate_real_roots(x - cos(x), x)
+[TranscendentalRoot(x - cos(x), x, 5/8, 3/4)]
+>>> solve(Eq(x, cos(x)), x, domain=S.Reals)
+{TranscendentalRoot(x - cos(x), x, 5/8, 3/4)}
+>>> solve(x**2 + cos(x) > 1, x, domain=S.Reals)
+Union(Interval.open(-oo, 0), Interval.open(0, oo))
+>>> solve(exp(x) - x - 2, x, domain=S.Reals)
+{-2 - LambertW(-exp(-2)), -2 - LambertW(-exp(-2), -1)}
+>>> _.args[1].evalf(20)
+1.1461932206205825852
+
+```
+
+## Convergence of sums and products
+
+`sum_convergence(term, n, assumptions)` is the counterpart of
+Mathematica's `SumConvergence`: the condition on the parameters under
+which the series converges, from the ratio test (d'Alembert), Raabe's and
+Bertrand's tests on its boundary, the root test, the comparison with the
+`p`-series, Leibniz's test for alternating series and the integral test,
+with the boundary points of a parametric ratio examined one by one.
+`product_convergence` reduces an infinite product to the series of
+`term - 1` or of `log(term)`. `limit_seq` takes the assumptions on the
+parameters like `limit`.
+
+```python
+>>> from sympy import factorial, log
+>>> from sympy.abc import n, p
+>>> from sympy_extras.concrete import sum_convergence, product_convergence, dirichlet_series
+>>> from sympy_extras.assumptions import limit_seq
+>>> sum_convergence(x**n/n, n)
+(x >= -1) & (x < 1)
+>>> sum_convergence(1/n**p, n)
+p > 1
+>>> sum_convergence((-1)**n*n**p, n)
+p < 0
+>>> product_convergence(1 + x/n**2, n)
+True
+>>> limit_seq(a**n, n, assumptions=a > 0)
+Piecewise((oo, a > 1), (1, Eq(a, 1)), (0, a < 1))
+>>> from sympy import mobius
+>>> dirichlet_series(mobius(n)/n**p, n)
+(1/zeta(p), re(p) > 1)
+
+```
 
 ## Verification
 

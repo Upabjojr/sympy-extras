@@ -12,6 +12,26 @@ First release.
 
 ### Added
 
+- More of the algorithms in Mathematica's implementation notes:
+  `sympy_extras.solvers.isolation` (real roots of transcendental
+  functions isolated exactly, `TranscendentalRoot` objects returned by
+  `solve` when `solveset` gives a `ConditionSet`, inequalities solved
+  through the roots), `sympy_extras.solvers.dae` (linear
+  differential-algebraic equations with constant coefficients through
+  the core-nilpotent decomposition of the pencil, `dsolve_dae`,
+  `dae_index`, `dae_matrices`), `sympy_extras.concrete.convergence`
+  (`sum_convergence`, `product_convergence`, `is_convergent`: the
+  condition on the parameters for convergence, by the ratio, Raabe,
+  Bertrand, root, power comparison, Leibniz and integral tests),
+  `sympy_extras.concrete.dirichlet` (`dirichlet_series` for the
+  arithmetic functions, alternating signs and logarithmic factors),
+  `sympy_extras.assumptions.limit_seq` (sequence limits with assumptions
+  and case distinctions, negative bases handled), `ask` deciding linear
+  formulas by Loos–Weispfenning virtual substitution before the CAD,
+  `refine` knowing the residues of integer polynomials
+  (`(-1)**(n**2 + n)`, `Mod(n**3 - n, 6)`). The Lambert W fallback of the
+  transcendental solver returns both real branches
+  (`solve(exp(x) - x - 2, x, x > 0)` was empty).
 - `sympy_extras.solvers.special` (Bessel, Whittaker and hypergeometric
   solutions of second order linear equations recognised through the
   normal-form invariant), `sympy_extras.solvers.first_order` (Abel, Chini

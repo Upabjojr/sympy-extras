@@ -2,7 +2,9 @@
 :mod:`sympy.solvers`: Lie point symmetries of ODEs and PDEs, similarity
 reductions and the solution of ODEs through their symmetries; linear
 Diophantine systems, nonnegative integer solutions and Presburger
-arithmetic; transcendental equations reduced to polynomial ones."""
+arithmetic; transcendental equations reduced to polynomial ones; real roots
+of transcendental functions isolated exactly; linear differential-algebraic
+equations with constant coefficients."""
 from .lie import JetSpace, Symmetry, symmetries, check_symmetry
 from .pde import pde_symmetries, similarity_reduction, pdsolve_lie, Reduction
 from .ode import (ode_symmetries, canonical_coordinates, reduce_order,
@@ -18,6 +20,8 @@ from .charpit import complete_integral, check_complete_integral
 from .special import special_solutions, bessel_solutions, whittaker_solutions, hypergeometric_solutions, whittaker_m
 from .first_order import riccati_ode, chini_ode, abel_ode, lagrange_ode, dsolve_first_order
 from .linear_systems import cyclic_vector, system_to_scalar, dsolve_linear_system, rational_system_solutions
+from .dae import core_nilpotent_decomposition, dae_index, dsolve_dae, dae_matrices, check_dae, DAESolution
+from .isolation import TranscendentalRoot, isolate_real_roots, real_roots_of
 
 __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
     'pde_symmetries', 'similarity_reduction', 'pdsolve_lie', 'Reduction',
@@ -31,4 +35,6 @@ __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
     'complete_integral', 'check_complete_integral',
     'special_solutions', 'bessel_solutions', 'whittaker_solutions', 'hypergeometric_solutions',
     'whittaker_m', 'riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order',
-    'cyclic_vector', 'system_to_scalar', 'dsolve_linear_system', 'rational_system_solutions']
+    'cyclic_vector', 'system_to_scalar', 'dsolve_linear_system', 'rational_system_solutions',
+    'core_nilpotent_decomposition', 'dae_index', 'dsolve_dae', 'dae_matrices', 'check_dae', 'DAESolution',
+    'TranscendentalRoot', 'isolate_real_roots', 'real_roots_of']

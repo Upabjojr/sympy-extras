@@ -41,6 +41,10 @@ from sympy.core.sympify import sympify
 from sympy.functions.elementary.complexes import Abs, sign, conjugate, re, im, arg
 from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.integers import floor, ceiling, frac
+from sympy.core.mod import Mod
+from sympy.core.numbers import Integer
+from itertools import product
+from sympy.polys.polytools import Poly
 from sympy.functions.elementary.miscellaneous import Max, Min
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.functions.elementary.trigonometric import atan, atan2, asin, acos
@@ -53,7 +57,7 @@ from sympy.sets.contains import Contains
 from sympy.sets.sets import Set
 from sympy.simplify.simplify import simplify as _sympy_simplify
 
-from sympy_extras._typing import Truth, as_boolean, as_expr, free_symbols
+from sympy_extras._typing import Truth, as_boolean, as_expr, free_symbols, sorted_symbols
 
 from .ask import Assumptions, _facts, _evaluate, _evaluate_atom
 from .facts import Facts, normalize
@@ -147,15 +151,44 @@ class _Refiner:
             integer = f in self.facts.integer if isinstance(f, Symbol) else False
             if integer or self.true(Contains(f, S.Integers)):
                 props['integer'] = True
-                if self.true(Q.even(f)):
+                parity = self.residue(f, 2)
+                if parity is None:
+                    parity = 0 if self.true(Q.even(f)) else (1 if self.true(Q.odd(f)) else None)
+                if parity == 0:
                     props['even'] = True
-                elif self.true(Q.odd(f)):
+                elif parity == 1:
                     props['odd'] = True
                 if isinstance(f, Symbol) and self.true(Q.prime(f)):
                     props['prime'] = True
             elif self.true(Contains(f, S.Rationals)):
                 props['rational'] = True
         return props
+
+    def residue(self, f: Expr, m: int) -> Optional[int]:
+        """The residue of ``f`` modulo ``m`` when ``f`` is a polynomial
+        with integer coefficients in integer variables whose value modulo
+        ``m`` is the same at every point (a polynomial is even for every
+        integer argument exactly when it is even on the residues 0 and 1,
+        so the residues are checked on ``{0, ..., m - 1}**k``)."""
+        symbols = sorted_symbols(free_symbols(f))
+        if not symbols or not all(s in self.facts.integer for s in symbols):
+            return None
+        try:
+            poly = Poly(f, *symbols)
+        except PolynomialError:
+            return None
+        if not all(c.is_Integer for c in poly.coeffs()):
+            return None
+        if len(symbols)*m > 64:
+            return None
+        found: Optional[int] = None
+        for point in product(range(m), repeat=len(symbols)):
+            value = int(poly.eval(dict(zip(symbols, point)))) % m
+            if found is None:
+                found = value
+            elif value != found:
+                return None
+        return found
 
     # ------------------------------------------------------------------
     # abstraction: dummies carrying the assumptions
@@ -425,6 +458,17 @@ class _Refiner:
             terms.append(as_expr(log(c)))
         return self._better(as_expr(sum(terms)), e)
 
+    def refine_mod(self, e: Expr) -> Expr:
+        """``Mod(f, m)`` for an integer polynomial ``f`` whose residue is
+        the same at every integer point (``Mod(n**2 + n, 2)`` is ``0``)."""
+        f, m = (as_expr(a) for a in e.args)
+        if not m.is_Integer or m <= 0:
+            return e
+        residue = self.residue(f, int(m))
+        if residue is None:
+            return e
+        return as_expr(Integer(residue))
+
     def refine_piecewise(self, e: Expr) -> Expr:
         """The conditions are decided with the facts; the expression of a
         branch is refined with the facts and its own condition (and the
@@ -531,6 +575,7 @@ _HANDLERS: list[tuple[Union[type, tuple[type, ...]], Handler]] = [
     (atan2, _expr_handler(_Refiner.refine_atan2)),
     (log, _expr_handler(_Refiner.refine_log)),
     (Piecewise, _expr_handler(_Refiner.refine_piecewise)),
+    (Mod, _expr_handler(_Refiner.refine_mod)),
 ]
 
 

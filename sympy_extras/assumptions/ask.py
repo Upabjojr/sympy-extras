@@ -28,6 +28,8 @@ from sympy.sets.sets import Set
 from sympy_extras._typing import Truth, as_boolean, as_expr, free_symbols, sorted_symbols
 
 from sympy_extras.polys.cad import truth_tables
+from sympy_extras.polys.virtual_substitution import is_linear_in, linear_quantifier_elimination
+from sympy_extras._typing import QuantifierPrefix
 
 from .context import global_assumptions
 from .facts import Facts, normalize, to_polynomial, _predicate_of_atom
@@ -64,6 +66,9 @@ def _cad_ask(formula: Boolean, facts: Facts) -> Truth:
     gens = sorted_symbols(free_symbols(poly) | free_symbols(premise))
     if not gens:
         return bool(poly)
+    linear = _linear_ask(poly, premise, gens)
+    if linear is not None:
+        return linear
     _, (holds, values) = truth_tables([premise, poly], gens)
     relevant = [v for h, v in zip(holds, values) if h]
     if not relevant:
@@ -72,6 +77,31 @@ def _cad_ask(formula: Boolean, facts: Facts) -> Truth:
     if all(relevant):
         return True
     if not any(relevant):
+        return False
+    return None
+
+
+def _linear_ask(poly: Boolean, premise: Boolean, gens: list[Symbol]) -> Truth:
+    """A formula linear in every variable decided by virtual substitution
+    (Loos–Weispfenning), which needs no decomposition: the formula holds
+    under the premise when ``premise & ~poly`` has no real solution, fails
+    when ``premise & poly`` has none; ``None`` otherwise, or when the
+    formula is not linear (the CAD decides then)."""
+    combined = And(premise, poly)
+    if not all(is_linear_in(combined, g) for g in gens):
+        return None
+    prefix: QuantifierPrefix = [('exists', g) for g in gens]
+    counterexamples, rest = linear_quantifier_elimination(And(premise, Not(poly)), prefix)
+    examples, rest_ = linear_quantifier_elimination(combined, prefix)
+    if rest or rest_ or not isinstance(counterexamples, (BooleanTrue, BooleanFalse)) \
+            or not isinstance(examples, (BooleanTrue, BooleanFalse)):
+        return None
+    if examples is false and counterexamples is false:
+        # the premise has no real solution: nothing can be said
+        return None
+    if counterexamples is false:
+        return True
+    if examples is false:
         return False
     return None
 
