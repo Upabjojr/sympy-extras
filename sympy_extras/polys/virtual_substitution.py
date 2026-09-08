@@ -15,8 +15,17 @@ test point (for instance `c x + d < 0` at `-\\infty` becomes
 combination of polynomial relations in the remaining variables, and no
 decomposition of the space is needed.
 
-A universal quantifier is treated as `\\neg \\exists \\neg`. Variables
-occurring with higher degree are left to the cylindrical algebraic
+A universal quantifier is treated as `\\neg \\exists \\neg`.
+
+For a variable of degree at most two (Weispfenning's quadratic case) the
+test points are the roots `(-b \\pm \\sqrt{b^2 - 4ac})/(2a)` of the
+quadratic atoms, guarded by `a \\ne 0` and `b^2 - 4ac \\ge 0`, the roots
+`-c/b` of the atoms which are linear when `a = 0`, and `-\\infty`; a value
+`(p + q\\sqrt{r})/s` is substituted virtually into `g(x) \\rho 0` by
+writing `s^2 g` as `A + B\\sqrt{r}` with polynomials `A, B` and deciding
+the sign of `A + B\\sqrt{r}` through the signs of `A`, `B` and
+`A^2 - B^2 r`; the infinitesimal shifts use the derivatives of `g`.
+Variables of higher degree are left to the cylindrical algebraic
 decomposition (see :func:`sympy_extras.assumptions.resolve`).
 
 References
@@ -26,6 +35,8 @@ References
    quantifier elimination, The Computer Journal 36 (1993).
 .. [Weispfenning] V. Weispfenning, The complexity of linear problems in
    fields, Journal of Symbolic Computation 5 (1988).
+.. [Weispfenning97] V. Weispfenning, Quantifier elimination for real
+   algebra — the quadratic case and beyond, AAECC 8 (1997).
 """
 from __future__ import annotations
 
@@ -33,7 +44,7 @@ from typing import Optional
 
 from sympy.core.add import Add
 from sympy.core.expr import Expr
-from sympy.core.relational import Relational, Eq, Ne, Lt, Le, Gt
+from sympy.core.relational import Relational, Eq, Ne, Lt, Le, Gt, Ge
 from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or, Not,
@@ -43,7 +54,8 @@ from sympy.polys.polytools import Poly
 
 from sympy_extras._typing import QuantifierPrefix, as_boolean, as_expr
 
-__all__ = ['is_linear_in', 'eliminate_linear', 'linear_quantifier_elimination', 'with_sides']
+__all__ = ['is_linear_in', 'is_quadratic_in', 'eliminate_linear', 'eliminate_quadratic',
+           'linear_quantifier_elimination', 'virtual_substitution_elimination', 'with_sides']
 
 
 def _atoms(formula: Boolean) -> list[Relational]:
@@ -278,3 +290,204 @@ def linear_quantifier_elimination(formula: Boolean, prefix: QuantifierPrefix
             current = _clean(Not(eliminate_linear(Not(current), v)))
     return current, remaining
 
+
+
+# ---------------------------------------------------------------------------
+# the quadratic case
+
+def _quadratic_coefficients(atom: Relational, x: Symbol) -> Optional[tuple[Expr, Expr, Expr]]:
+    """``(a, b, c)`` with ``atom.lhs - atom.rhs == a*x**2 + b*x + c``."""
+    p = as_expr(atom.lhs - atom.rhs)
+    if not p.has(x):
+        return S.Zero, S.Zero, p
+    try:
+        poly = Poly(p, x)
+    except PolynomialError:
+        return None
+    if poly.degree() > 2:
+        return None
+    coefficients = [as_expr(c) for c in poly.all_coeffs()]
+    while len(coefficients) < 3:
+        coefficients.insert(0, S.Zero)
+    a, b, c = coefficients
+    return a, b, c
+
+
+def is_quadratic_in(formula: Boolean, x: Symbol) -> bool:
+    """Whether every relation of the formula has degree at most two in
+    ``x``.
+
+    >>> from sympy.abc import x, y
+    >>> from sympy_extras.polys.virtual_substitution import is_quadratic_in
+    >>> is_quadratic_in((x**2 + y*x > 0) & (x < 1), x)
+    True
+    >>> is_quadratic_in(x**3 > y, x)
+    False
+    """
+    return all(_quadratic_coefficients(a, x) is not None for a in _atoms(formula))
+
+
+class _Root:
+    """A test point ``(p + q*sqrt(r))/s`` with the guard under which it
+    is a real root."""
+
+    def __init__(self, p: Expr, q: Expr, r: Expr, s: Expr, guard: Boolean) -> None:
+        self.p, self.q, self.r, self.s, self.guard = p, q, r, s, guard
+
+
+def _parts(a2: Expr, a1: Expr, a0: Expr, root: _Root) -> tuple[Expr, Expr]:
+    """``A, B`` with ``s**2 * g((p + q sqrt(r))/s) == A + B sqrt(r)`` for
+    ``g = a2 x**2 + a1 x + a0``."""
+    p, q, r, s = root.p, root.q, root.r, root.s
+    A = as_expr(a2*(p**2 + q**2*r) + a1*s*p + a0*s**2)
+    B = as_expr(2*a2*p*q + a1*s*q)
+    return as_expr(A.expand()), as_expr(B.expand())
+
+
+def _sign_with_sqrt(kind: type, A: Expr, B: Expr, r: Expr) -> Boolean:
+    """``A + B sqrt(r) rel 0`` (``r >= 0``) as a formula in ``A, B, r``."""
+    if B == 0:
+        return _relation(kind, A)
+    D = as_expr((A**2 - B**2*r).expand())
+    if kind is Eq:
+        return Or(And(Eq(A, 0), Eq(B, 0)), And(A*B <= 0, Eq(D, 0)))
+    if kind is Ne:
+        return Not(_sign_with_sqrt(Eq, A, B, r))
+    if kind is Lt:
+        return Or(And(B <= 0, Or(A < 0, D < 0)), And(B > 0, A < 0, D > 0))
+    if kind is Le:
+        return Or(And(B <= 0, Or(A <= 0, D <= 0)), And(B > 0, A <= 0, D >= 0))
+    if kind is Gt:
+        return _sign_with_sqrt(Lt, as_expr(-A), as_expr(-B), r)
+    return _sign_with_sqrt(Le, as_expr(-A), as_expr(-B), r)
+
+
+def _at_algebraic(atom: Relational, coefficients: tuple[Expr, Expr, Expr], root: _Root) -> Boolean:
+    """The atom at the root (its sign is that of ``s**2 g`` since ``s != 0``)."""
+    a2, a1, a0 = coefficients
+    A, B = _parts(a2, a1, a0, root)
+    return _sign_with_sqrt(_kind(atom), A, B, root.r)
+
+
+def _at_algebraic_plus_epsilon(atom: Relational, coefficients: tuple[Expr, Expr, Expr], root: _Root) -> Boolean:
+    """The atom at the root shifted by an infinitesimal: the sign of the
+    first nonvanishing derivative ``g, g', g''``."""
+    a2, a1, a0 = coefficients
+    kind = _kind(atom)
+    derivatives = [(a2, a1, a0), (S.Zero, 2*a2, a1), (S.Zero, S.Zero, 2*a2)]
+    values = [_parts(*d, root) for d in derivatives]
+    zero = [_sign_with_sqrt(Eq, A, B, root.r) for A, B in values]
+    if kind is Eq:
+        return And(*zero)
+    if kind is Ne:
+        return Not(And(*zero))
+    strict = Lt if kind in (Lt, Le) else Gt
+    cases: list[Boolean] = []
+    for i, (A, B) in enumerate(values):
+        cases.append(And(*zero[:i], _sign_with_sqrt(strict, A, B, root.r)))
+    if kind in (Le, Ge):
+        cases.append(And(*zero))
+    return Or(*cases)
+
+
+def _at_minus_infinity_quadratic(atom: Relational, coefficients: tuple[Expr, Expr, Expr]) -> Boolean:
+    """The atom ``a x**2 + b x + c rel 0`` at ``x = -oo``: the sign of the
+    leading coefficient, ``-b`` when ``a = 0``."""
+    a, b, c = coefficients
+    kind = _kind(atom)
+    if kind is Eq:
+        return And(Eq(a, 0), Eq(b, 0), Eq(c, 0))
+    if kind is Ne:
+        return Or(Ne(a, 0), Ne(b, 0), Ne(c, 0))
+    strict = Lt if kind in (Lt, Le) else Gt
+    reverse = Gt if strict is Lt else Lt
+    result = Or(_relation(strict, a), And(Eq(a, 0), _relation(reverse, b)),
+                And(Eq(a, 0), Eq(b, 0), _relation(kind, c)))
+    return as_boolean(result)
+
+
+def eliminate_quadratic(formula: Boolean, x: Symbol) -> Boolean:
+    """`\\exists x\\, \\varphi` for a formula of degree at most two in ``x``.
+
+    Examples
+    ========
+
+    >>> from sympy import Eq
+    >>> from sympy.abc import x, a, b, c
+    >>> from sympy_extras.polys.virtual_substitution import eliminate_quadratic
+    >>> eliminate_quadratic(Eq(x**2 + b*x + c, 0), x)
+    b**2 >= 4*c
+    >>> eliminate_quadratic((x**2 < a) & (x > 1), x)
+    a > 1
+    """
+    formula = as_boolean(as_boolean(formula).to_nnf(simplify=False))
+    if not formula.has(x):
+        return formula
+    atoms = _atoms(formula)
+    coefficients: dict[Relational, tuple[Expr, Expr, Expr]] = {}
+    for atom in atoms:
+        triple = _quadratic_coefficients(atom, x)
+        if triple is None:
+            raise ValueError("%s has degree more than 2 in %s" % (atom, x))
+        coefficients[atom] = triple
+    disjuncts: list[Boolean] = [
+        _substitute(formula, {atom: _at_minus_infinity_quadratic(atom, triple)
+                              for atom, triple in coefficients.items()})]
+    for atom, (a, b, c) in coefficients.items():
+        if a == 0 and b == 0:
+            continue
+        shifted = _kind(atom) in (Lt, Gt, Ne)
+        roots: list[_Root] = []
+        if b != 0 or a != 0:
+            # the linear root when a vanishes
+            roots.append(_Root(as_expr(-c), S.Zero, S.Zero, b, And(Eq(a, 0), Ne(b, 0))))
+        if a != 0:
+            r = as_expr((b**2 - 4*a*c).expand())
+            for sign in (S.One, S.NegativeOne):
+                roots.append(_Root(as_expr(-b), sign, r, as_expr(2*a), And(Ne(a, 0), r >= 0)))
+        for root in roots:
+            replacements: dict[Relational, Boolean] = {}
+            for other, triple in coefficients.items():
+                if shifted:
+                    replacements[other] = _at_algebraic_plus_epsilon(other, triple, root)
+                else:
+                    replacements[other] = _at_algebraic(other, triple, root)
+            disjuncts.append(And(root.guard, _substitute(formula, replacements)))
+    return _clean(Or(*disjuncts))
+
+
+def virtual_substitution_elimination(formula: Boolean, prefix: QuantifierPrefix, max_atoms: int = 12,
+                                     max_free: int = 2) -> tuple[Boolean, QuantifierPrefix]:
+    """Eliminate, innermost first, the quantified variables in which the
+    formula is linear or quadratic; the remaining prefix is returned with
+    the partially eliminated formula. The quadratic case is used with at
+    most ``max_atoms`` relations and ``max_free`` free variables (it
+    squares the degrees and its results are only simplified afterwards by
+    the decomposition, which handles two free variables).
+
+    >>> from sympy import Eq
+    >>> from sympy.abc import x, y, b, c
+    >>> from sympy_extras.polys.virtual_substitution import virtual_substitution_elimination
+    >>> virtual_substitution_elimination(Eq(x**2 + b*x + c, 0), [('exists', x)])
+    (b**2 >= 4*c, [])
+    >>> virtual_substitution_elimination(x**2 + b*x + c > 0, [('forall', x)])
+    (b**2 < 4*c, [])
+    """
+    remaining = list(prefix)
+    current = as_boolean(formula)
+    bound = {v for _, v in prefix}
+    free = len([s for s in current.free_symbols if s not in bound])
+    while remaining:
+        kind, v = remaining[-1]
+        if is_linear_in(current, v):
+            eliminate = eliminate_linear
+        elif is_quadratic_in(current, v) and len(_atoms(current)) <= max_atoms and free <= max_free:
+            eliminate = eliminate_quadratic
+        else:
+            break
+        remaining.pop()
+        if kind == 'exists':
+            current = eliminate(current, v)
+        else:
+            current = _clean(Not(eliminate(Not(current), v)))
+    return current, remaining

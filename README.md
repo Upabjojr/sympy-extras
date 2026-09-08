@@ -134,7 +134,7 @@ x + log(x*y) - 1
 >>> ask(element(n**2 + n, S.Integers), element(n, S.Integers))
 True
 >>> resolve(ForAll(x, x**2 + b*x + c > 0))
-b**2 - 4*c < 0
+b**2 < 4*c
 >>> resolve(Exists(y, Eq(x**2 + y**2, 1) & (y > x)))
 (x >= -1) & (x < CRootOf(2*x**2 - 1, 1))
 >>> satisfiable((x**2 + y**2 < 1) & (x + y > 1))
@@ -154,7 +154,7 @@ numerical checks and the solver time limits are governed by
 `TautologyQ` and `FindInstance`. See
 [docs/assumptions.md](docs/assumptions.md).
 
-### Karr's algorithm for summation (`sympy_extras.concrete`)
+### Summation: Karr, Zeilberger, q-analogues (`sympy_extras.concrete`)
 
 SymPy sums hypergeometric terms with Gosper's algorithm but has no
 implementation of Karr's algorithm, its extension to summands containing
@@ -374,6 +374,9 @@ sympy_extras/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation
         zeilberger.py        Zeilberger's algorithm, WZ certificates, definite sums
+        qhyper.py            q-Pochhammer symbols, q-Gosper, q-Zeilberger
+        rational.py          Abramov's decomposition of rational summands
+        zeilberger.py        Zeilberger's algorithm, WZ certificates, definite sums
     solvers/
         lie.py               jet spaces, prolongation, determining equations, symmetries
         pde.py               pde_symmetries, similarity_reduction, pdsolve_lie
@@ -394,7 +397,7 @@ sympy_extras/
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
         orderings.py         WeightOrder, BlockOrder
-        virtual_substitution.py  linear quantifier elimination (Loos-Weispfenning)
+        virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution
         comprehensive.py     comprehensive Gröbner systems, reduction over the complex numbers
         roots.py             roots in radicals through functional decomposition
         cad/

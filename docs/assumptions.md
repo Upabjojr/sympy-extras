@@ -256,9 +256,9 @@ predicates implied by the assumptions.
 ```python
 >>> from sympy_extras.assumptions import ForAll, Exists, resolve
 >>> resolve(ForAll(x, x**2 + b*x + c > 0))
-b**2 - 4*c < 0
+b**2 < 4*c
 >>> resolve(Exists(x, Eq(x**2 + a*x + b, 0)))
-a**2 - 4*b >= 0
+a**2 >= 4*b
 >>> resolve(Exists(y, Eq(x**2 + y**2, 1) & (y > x)))
 (x >= -1) & (x < CRootOf(2*x**2 - 1, 1))
 >>> resolve(ForAll(x, Exists(y, y > x)))
@@ -272,8 +272,9 @@ True
 
 Quantifiers may appear anywhere in the formula: it is put in prenex form
 (bound variables are renamed when they clash) before the elimination.
-Variables occurring linearly are eliminated first by virtual substitution
-(Loos–Weispfenning), without any decomposition. With `domain=S.Integers`
+Variables occurring linearly or quadratically are eliminated first by
+virtual substitution (Loos–Weispfenning, Weispfenning), without any
+decomposition. With `domain=S.Integers`
 the formula must be one of Presburger arithmetic (linear relations and
 divisibilities `Eq(Mod(e, k), 0)`) and Cooper's algorithm is used; with
 `domain=S.Complexes` it is a combination of equations and inequations and

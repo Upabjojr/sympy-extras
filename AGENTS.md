@@ -33,6 +33,49 @@ The project is at version 0.x and **does not guarantee support against
 breaking changes** for now. Public functions may be renamed, moved or
 removed in any release. Every user-visible change goes into `CHANGELOG.md`.
 
+## Standing instructions from the maintainer
+
+These were given while the project was being built and apply to every
+change:
+
+- **Never copy code** from SymPy, Mathematica, Maxima, Maple or any other
+  system: their licenses do not allow it. Published results, test data
+  and algorithm descriptions are facts and may be used; implementations
+  are written from the literature and stated in the module docstring
+  with references.
+- **Algorithms that need no change stay in SymPy.** SymPy is a dependency:
+  call it (`solveset`, `dsolve`, `groebner`, `roots`, `gosper_sum`,
+  `limit`, ...) and only add what is missing or must be rewritten
+  (assumptions as statements, the CAD, decision procedures). The tables
+  in `docs/reduce.md` say for each algorithm of Mathematica's
+  implementation notes whether it lives in SymPy, here, or nowhere yet.
+- **Assumptions are mathematical statements** (`x > 0`, `element(x,
+  S.Integers)`), not `Q` predicates or `Symbol` flags; every function
+  that takes assumptions accepts them in this form.
+- **Verify against independent sources at scale**: datasets and
+  benchmark drivers live in `benchmarks/` (Kamke's ODEs from Maxima's
+  test suite, SMT-LIB QF_NRA, random equations against numerical
+  oracles); random samples are pulled from them and wrong results are
+  fixed, not worked around. Results go into `benchmarks/README.md`.
+- **Numerical checks are optional**: `sympy_extras.settings` has a global
+  switch (`numerical_checks`), the precision and the time limit, with
+  the `configure` context manager; exact results must not depend on
+  them, they only prune candidates and verify.
+- **Report SymPy bugs and limitations in this repository's issue
+  tracker** (issue #25 collects them with snippets and the workaround
+  used here), so that they can be reported upstream; work around them
+  in this package rather than waiting.
+- **Time limits everywhere**: SymPy routines that may not terminate run
+  under `sympy_extras._timeout.attempt` with the limit of the settings.
+- **Merge into `master`**: this is a private experimental repository, the
+  development branch is fast-forwarded into `master` after every
+  verified change (tests, doctests, mypy, pyflakes); the changelog and
+  the docs are updated in the same commit.
+- **Track the remaining work in issues**: what is not implemented or
+  only partially (issues #23 and #24 for the Mathematica lists) is
+  written down there with the reasons, and updated when progress is
+  made.
+
 ## Layout
 
 The package mirrors SymPy's layout: code extending `sympy.polys` goes in

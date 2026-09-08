@@ -20,7 +20,7 @@ sympy-extras, or nowhere yet.
 | Non-polynomial equations: change of variables and polynomial side conditions | `solveset` (`_transolve`, `_solve_trig`, `_solve_radical`) | `solvers.transcendental`: kernels with side conditions, inverse-image database, assumptions on parameters, Lambert W fallback |
 | `Reduce` over the reals: cylindrical algebraic decomposition | — | `polys.cad`, `resolve` |
 | `Reduce` over the complex numbers: Gröbner bases | — | `polys.comprehensive`: comprehensive Gröbner systems (Kapur–Sun–Wang), `resolve(domain=S.Complexes)` |
-| Linear quantifier elimination (Loos–Weispfenning virtual substitution) | — | `polys.virtual_substitution`, used first by `resolve` |
+| Linear and quadratic quantifier elimination (Loos–Weispfenning and Weispfenning virtual substitution) | — | `polys.virtual_substitution` (linear and quadratic cases), used first by `resolve` |
 | Linear Diophantine equations: Hermite normal form | `diophantine` (single equations), `hermite_normal_form` | `solvers.integers.linear_diophantine_system` (systems, with parameters) |
 | Linear Diophantine inequalities: Contejean–Devie | — | `solvers.integers.hilbert_basis`, `minimal_nonnegative_solutions` |
 | Presburger arithmetic (quantified linear integer formulas) | — | `solvers.integers.cooper`, `resolve(domain=S.Integers)` |
@@ -43,7 +43,7 @@ Only what SymPy lacks is implemented here.
 | Linear ODE systems with rational coefficients: Abramov–Bronstein elimination | — | `solvers.linear_systems`: cyclic vector, `rational_system_solutions`, `dsolve_linear_system` |
 | Nonlinear ODEs: Riccati, Bernoulli, Abel, Chini, Clairaut, d'Alembert, exact and integrating factors, Lie symmetries | `dsolve` hints (no Abel, Chini, d'Alembert) | Lie symmetries of any order (`solvers.ode`); Abel, Chini and d'Alembert–Lagrange equations (`solvers.first_order`) |
 | PDEs: separation of variables and symmetry reduction (Göktaş), first order nonlinear complete integrals (Legendre, Euler transformations), Germundsson's trigonometric power methods | `pde_separate`, first order linear `pdsolve` | symmetry reductions (`solvers.pde`), complete integrals by Charpit's method (`solvers.charpit`) |
-| Sums: rational, hypergeometric (Gosper, Zeilberger), q-rational, Adamchik's hypergeometric closed forms, polygamma series by integral representations, Dirichlet series by pattern matching | `summation` (polynomial, rational, Gosper, hypergeometric closed forms) | Karr's algorithm (`concrete.karr`), Zeilberger's algorithm and WZ certificates (`concrete.zeilberger`); q-analogues, polygamma and Dirichlet series: issue tracker |
+| Sums: rational, hypergeometric (Gosper, Zeilberger), q-rational, Adamchik's hypergeometric closed forms, polygamma series by integral representations, Dirichlet series by pattern matching | `summation` (polynomial, rational, Gosper, hypergeometric closed forms) | Abramov's rational decomposition (`concrete.rational`), Karr's algorithm (`concrete.karr`), Zeilberger's algorithm and WZ certificates (`concrete.zeilberger`), q-Gosper and q-Zeilberger (`concrete.qhyper`); polygamma and Dirichlet series: issue tracker |
 | Products: polynomial, rational, q-rational, hypergeometric, periodic classes | `product` (polynomial, rational, hypergeometric) | — |
 | Series by recursive composition of expansions | `series`, `fps`, `ring_series` | — |
 | Limits from series and other methods (exp-log, Gruntz) | `limit` (Gruntz), `limit_seq` | — |
@@ -72,8 +72,20 @@ y > 0
 
 ```
 
-`resolve` eliminates the linear variables first (innermost outwards) and
-leaves the others to the cylindrical algebraic decomposition.
+`resolve` eliminates the linear and quadratic variables first (innermost
+outwards) and leaves the others to the cylindrical algebraic
+decomposition, which also simplifies the result when at most two free
+variables remain.
+
+```python
+>>> from sympy.abc import c
+>>> resolve(ForAll(x, x**2 + b*x + c > 0))
+b**2 < 4*c
+>>> from sympy_extras.polys.virtual_substitution import eliminate_quadratic
+>>> eliminate_quadratic((x**2 < a) & (x > 1), x)
+a > 1
+
+```
 
 ## Reduction over the complex numbers
 

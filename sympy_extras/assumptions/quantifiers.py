@@ -126,7 +126,7 @@ class ForAll(Quantifier):
     >>> sorted(f.free_symbols, key=str)
     [b, c]
     >>> resolve(f)
-    b**2 - 4*c < 0
+    b**2 < 4*c
     """
     quantifier = 'forall'
 
@@ -141,7 +141,7 @@ class Exists(Quantifier):
     >>> from sympy.abc import a, b, x
     >>> from sympy_extras.assumptions import Exists, resolve
     >>> resolve(Exists(x, Eq(x**2 + a*x + b, 0)))
-    a**2 - 4*b >= 0
+    a**2 >= 4*b
     >>> resolve(Exists([a, b], Eq(x**2 + a*x + b, 0) & (a > 0)))
     True
     """
