@@ -51,11 +51,13 @@ special functions were added the same run gave 28 verified, 2 partial and
 30 failed.
 
 `kamke_odes.py --collections kamke1 --limit 60 --timeout 15` with the
-Abel/Chini/Lagrange solvers tried after `dsolve` ("extras"): `dsolve` 23
-verified; extras add 1 (a Chini equation), `dsolve_lie` 2; combined 26
-verified, 9 unverified, 15 failed, 10 timeouts. The first order part of
-Kamke is dominated by Riccati and Abel equations without a constant
-invariant, which no closed-form method solves.
+Riccati/Abel/Chini/Lagrange solvers tried after `dsolve` ("extras"):
+`dsolve` 23 verified; extras add 8 (7 Riccati equations linearised and
+solved in Bessel or hypergeometric functions, one verified numerically,
+and a Chini equation), `dsolve_lie` 1; combined 32 verified, 7
+unverified, 12 failed, 9 timeouts (24 verified before the extras). What
+remains are Abel equations without a constant invariant and equations
+with arbitrary functions `f(x)`, `g(x)`.
 
 `kamke_odes.py --collections kamke2 --limit 40 --timeout 15` (the first 40
 second order equations, almost all linear with special function
