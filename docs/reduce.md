@@ -50,7 +50,7 @@ Only what SymPy lacks is implemented here.
 | PDEs: separation of variables and symmetry reduction (Göktaş), first order nonlinear complete integrals (Legendre, Euler transformations), Germundsson's trigonometric power methods | `pde_separate`, first order linear `pdsolve` | symmetry reductions (`solvers.pde`), complete integrals by Charpit's method (`solvers.charpit`) |
 | Sums: rational, hypergeometric (Gosper, Zeilberger), q-rational, Adamchik's hypergeometric closed forms, polygamma series by integral representations, Dirichlet series by pattern matching | `summation` (polynomial, rational, Gosper, hypergeometric closed forms, `zeta` and Hurwitz `zeta`) | Abramov's rational decomposition (`concrete.rational`), Karr's algorithm (`concrete.karr`), Zeilberger's algorithm and WZ certificates (`concrete.zeilberger`), q-Gosper and q-Zeilberger (`concrete.qhyper`), Dirichlet series of the arithmetic functions by pattern matching (`concrete.dirichlet`), polygamma series (`concrete.eulersums`) |
 | Polygamma series by integral representations | — | `concrete.eulersums`: Euler sums `S(p, q)` in zeta values (Euler, Borwein–Borwein–Girgensohn / Flajolet–Salvy), `polygamma_series`, the integral representation for a symbolic exponent |
-| Convergence testing: d'Alembert and Raabe tests | `Sum.is_convergent` (no parameters) | `concrete.convergence`: `sum_convergence` and `product_convergence` with conditions on the parameters (ratio, Raabe, Bertrand, root, power comparison, Leibniz, integral tests) |
+| Convergence testing: d'Alembert and Raabe tests | `Sum.is_convergent` (no parameters) | `concrete.convergence`: `sum_convergence` and `product_convergence` with conditions on the parameters (ratio, Raabe, Bertrand, root, power comparison, Leibniz, Dirichlet, integral tests) |
 | Products: polynomial, rational, q-rational, hypergeometric, periodic classes | `product` (polynomial, rational, hypergeometric) | convergence of infinite products (`product_convergence`) |
 | Series by recursive composition of expansions | `series`, `fps`, `ring_series` | — |
 | Limits from series and other methods (exp-log, Gruntz) | `limit` (Gruntz), `limit_seq` | — |
@@ -184,6 +184,25 @@ ConditionSet(x, a > 0, {log(a)})
 SymPy's `solveset` returns `{-1, 2}` for the third equation over the
 reals, although the logarithms are not real at `-1`.
 
+A **periodic inequality** is solved over one period and the solutions are
+tiled over the region asked for: explicitly when the region meets a few
+periods, and as a condition on `Mod(x, T)` when it meets infinitely many.
+
+```python
+>>> from sympy import Rational, Union, Interval, acos
+>>> solve(sin(x) > 0, x, (x > 0) & (x < 10))
+Union(Interval.open(0, pi), Interval.open(2*pi, 3*pi))
+>>> solve(cos(x) < Rational(1, 3), x, (x > 0) & (x < 2))
+Interval.open(acos(1/3), 2)
+>>> solve(sin(x) > 0, x, domain=S.Reals)
+ConditionSet(x, Contains(Mod(x, 2*pi), Interval.open(0, pi)), Reals)
+
+```
+
+SymPy's `solveset(sin(x) > 0, x, S.Reals)` is `Interval.open(0, pi)`: it
+answers over one period, so that `-6` and `7`, which do satisfy the
+inequality, are outside the set it returns.
+
 ## Transcendental root objects
 
 An equation in one real unknown which neither `solveset` nor the kernel
@@ -220,8 +239,9 @@ Union(Interval.open(-oo, 0), Interval.open(0, oo))
 Mathematica's `SumConvergence`: the condition on the parameters under
 which the series converges, from the ratio test (d'Alembert), Raabe's and
 Bertrand's tests on its boundary, the root test, the comparison with the
-`p`-series, Leibniz's test for alternating series and the integral test,
-with the boundary points of a parametric ratio examined one by one.
+`p`-series, Leibniz's test for alternating series, Dirichlet's test for a
+bounded oscillating factor and the integral test, with the boundary points
+of a parametric ratio examined one by one.
 `product_convergence` reduces an infinite product to the series of
 `term - 1` or of `log(term)`. `limit_seq` takes the assumptions on the
 parameters like `limit`.
@@ -237,6 +257,9 @@ parameters like `limit`.
 p > 1
 >>> sum_convergence((-1)**n*n**p, n)
 p < 0
+>>> from sympy import sin
+>>> sum_convergence(sin(n)/n, n)                # Dirichlet's test
+True
 >>> product_convergence(1 + x/n**2, n)
 True
 >>> limit_seq(a**n, n, assumptions=a > 0)

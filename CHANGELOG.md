@@ -17,6 +17,15 @@ First release.
   and checked by `benchmarks/comparison.py`; the sympy-extras side is
   doctested.
 
+- `benchmarks/fuzz.py`: a randomised driver which cross-checks one part of
+  the package at a time (`convergence`, `parametric-convergence`, `sums`,
+  `isolation`, `solve`, `ask`, `limits`, `thue`, `ode`, `refine`) against
+  an oracle which shares no code with it -- partial sums computed term by
+  term with mpmath, brute force enumeration, sign changes on a fine grid,
+  sampling of the solution set, `checkodesol`, or SymPy asked the
+  parameter-free question a parametric answer specialises to. The three
+  bugs listed under *Fixed* come from it.
+
 - The remaining items of the implementation notes: `sympy_extras.solvers.thue_equation`
   (Thue equations by Baker's method: units of the order by enumeration
   and saturation, Baker–Wüstholz, de Weger's reduction with an exact
@@ -220,6 +229,41 @@ First release.
   bounded and raises `NotImplementedError` instead of running for hours.
   The module was renamed from `solvers.thue` to `solvers.thue_equation` so
   that it does not shadow the `thue` function.
+
+- `sympy_extras.assumptions.solve` no longer passes on the answer SymPy's
+  `solveset` gives for a periodic inequality, which covers a single period
+  (`solveset(sin(x) > 0, x, S.Reals)` is `Interval.open(0, pi)`, so `-6`
+  and `7` were reported as non-solutions). The solutions over one period
+  are tiled over the region asked for: explicitly when it meets a few
+  periods, and as a condition on `Mod(x, T)` when it meets infinitely
+  many. Equations keep the `ImageSet` family `solveset` returns.
+
+- `sympy_extras.assumptions.limit` no longer answers `0` for
+  `limit(a**x, x, oo)` whenever `a < 1`: the sign of `log(a)` decides the
+  limit only for `a > 0`, and the case split now covers a non-positive
+  base, where the limit is `0` for `|a| < 1`, `nan` for `a = -1` and
+  `zoo` for `a < -1`.
+
+- `sympy_extras.concrete.sum_convergence` decides the series with a
+  bounded oscillating factor by Dirichlet's test instead of falling back
+  on SymPy: `sum_convergence(sin(n)/n, n)` is `True`, where
+  `Sum(sin(n)/n, (n, 1, oo)).is_convergent()` is `False`.
+
+- `sympy_extras.assumptions.limit` no longer asks the cylindrical
+  algebraic decomposition for the sign of the bounds of an oscillating
+  factor: `limit(sin(x)*x**a, x, oo)` raised
+  `PolynomialError: polynomial with rational coefficients expected`, and
+  a formula whose conditions compare an `AccumBounds` with zero is not an
+  answer. The unevaluated limit is returned for the cases which stay
+  undecided. `to_polynomial` no longer takes an expression without free
+  symbols which is not a rational number (an `AccumBounds`, an
+  unevaluated limit) for a polynomial: `Poly` turns it into a generator
+  of its own.
+
+These were found by `benchmarks/fuzz.py`, a randomised driver added in
+this release which cross-checks each part of the package against an
+oracle sharing no code with it, and while following up the cases it
+reported; each of them has a regression test.
 
 The CAD code was originally proposed to SymPy in the pull requests
 [sympy/sympy#30422](https://github.com/sympy/sympy/pull/30422),

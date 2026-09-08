@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from sympy import (S, Q, Eq, Ne, And, Or, Not, Implies, Xor, ITE, Interval,
-    FiniteSet, Union, Intersection, Complement, Contains, Symbol, Rational, true, false)
+    FiniteSet, Union, Intersection, Complement, Contains, Symbol, Rational, sqrt, true, false)
+from sympy.calculus.accumulationbounds import AccumBounds
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
@@ -9,7 +10,7 @@ from sympy.abc import x, y, z
 
 from sympy_extras.assumptions import element, Facts
 from sympy_extras.assumptions.facts import (normalize, conjuncts, to_predicates,
-    to_polynomial, predicates_consistent)
+    to_polynomial, predicates_consistent, _is_polynomial)
 
 
 def test_element() -> None:
@@ -182,3 +183,14 @@ def test_facts() -> None:
     g = Facts(x > 0).with_reals([x, y])
     assert g.real == {x, y}
     assert Facts(x > 0).with_reals([x]).real == {x}
+
+
+def test_only_rational_constants_are_polynomial() -> None:
+    # Poly turns an expression without free symbols which is not a number
+    # into a generator of its own: AccumBounds(-1, 1) > 0 passed for a
+    # polynomial relation and the CAD raised PolynomialError on it
+    assert _is_polynomial(AccumBounds(-1, 1), {x}) is False
+    assert to_polynomial(AccumBounds(-1, 1) > 0, {x}) is None
+    assert _is_polynomial(sqrt(2), {x}) is False
+    assert _is_polynomial(Rational(3, 4), {x}) is True
+    assert _is_polynomial(x**2 - 1, {x}) is True

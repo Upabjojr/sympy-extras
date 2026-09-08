@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sympy import (factorial, binomial, log, sqrt, sin, cos, exp, Abs, Eq, And, Or, S, Sum, oo,
-    Rational)
+    pi, Rational)
 from sympy.abc import n, x, p
 
 from sympy_extras.concrete.convergence import sum_convergence, product_convergence, is_convergent
@@ -82,3 +82,20 @@ def test_product_convergence() -> None:
     assert product_convergence(2, n) is S.false
     assert product_convergence(1, n) is S.true
     assert product_convergence(1 + Abs(x)/n, n) == Eq(x, 0)
+
+
+def test_dirichlet_test() -> None:
+    # a bounded oscillating factor times a factor decreasing to zero
+    # converges; sympy's Sum(sin(n)/n, (n, 1, oo)).is_convergent() says
+    # that this series diverges, and the answer used to be taken from it
+    assert sum_convergence(sin(n)/n, n) is S.true
+    assert sum_convergence(cos(n)/n, n) is S.true
+    assert sum_convergence(sin(2*n)/n, n) is S.true
+    assert sum_convergence(sin(n)/sqrt(n), n) is S.true
+    assert sum_convergence(sin(n)/log(n + 1), n) is S.true
+    assert sum_convergence(sin(pi*n/3)/n, n) is S.true
+    # the factor is constant when the frequency is a multiple of 2*pi
+    assert sum_convergence(cos(2*pi*n)/n, n) is S.false
+    # and the terms have to tend to zero
+    assert sum_convergence(sin(n), n) is S.false
+    assert sum_convergence(n*sin(n), n) is S.false

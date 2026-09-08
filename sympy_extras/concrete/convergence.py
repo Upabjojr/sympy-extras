@@ -63,7 +63,7 @@ from sympy.core.sympify import sympify
 from sympy.functions.elementary.complexes import Abs
 from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.piecewise import Piecewise
-from sympy.functions.elementary.trigonometric import cos
+from sympy.functions.elementary.trigonometric import cos, sin
 from sympy.integrals.integrals import Integral, integrate
 from sympy.logic.boolalg import Boolean, BooleanTrue, BooleanFalse, And, Or, true, false
 from sympy.series.limits import Limit
@@ -276,6 +276,44 @@ def _alternating(term: Expr, n: Symbol) -> Optional[Expr]:
     return as_expr(Mul(*rest))
 
 
+def _oscillating(term: Expr, n: Symbol) -> Optional[Expr]:
+    """``b_n`` when ``term`` is ``sin(c*n + d)*b_n`` or ``cos(c*n + d)*b_n``.
+
+    The partial sums of such a factor are bounded, by summing the
+    geometric series of ``exp(I*c*n)``, as soon as ``c`` is not a multiple
+    of ``2*pi`` (which would make the factor constant).
+    """
+    factors = term.args if isinstance(term, Mul) else (term,)
+    rest: list[Expr] = []
+    found = False
+    for factor in factors:
+        f = as_expr(factor)
+        if not found and isinstance(f, (sin, cos)):
+            argument = as_expr(f.args[0])
+            c = as_expr(argument.diff(n))
+            if n not in free_symbols(c) and as_expr(argument - c*n).diff(n) == 0 \
+                    and c.is_real and as_expr(c/(2*pi)).is_integer is False:
+                found = True
+                continue
+        rest.append(f)
+    if not found:
+        return None
+    return as_expr(Mul(*rest))
+
+
+def _dirichlet_test(term: Expr, ctx: _Context) -> Condition:
+    """Dirichlet's test: a factor with bounded partial sums times a factor
+    decreasing to zero gives a convergent series.
+
+    This is what decides ``sum sin(n)/n``, which converges although
+    SymPy's ``Sum(sin(n)/n, (n, 1, oo)).is_convergent()`` says otherwise.
+    """
+    b = _oscillating(term, ctx.n)
+    if b is None:
+        return None
+    return true if _decreasing_to_zero(b, ctx) is true else None
+
+
 def _constant_sign(term: Expr, ctx: _Context) -> Truth:
     """Whether the terms have eventually a constant sign."""
     # SymPy's own knowledge, with n a positive integer and the
@@ -433,6 +471,9 @@ def _last_resort(term: Expr, ctx: _Context) -> Condition:
         decreasing = _decreasing_to_zero(b, ctx)
         if decreasing is true:
             return true
+    dirichlet = _dirichlet_test(term, ctx)
+    if dirichlet is not None:
+        return dirichlet
     integral = _integral_test(term, ctx)
     if integral is not None:
         return integral

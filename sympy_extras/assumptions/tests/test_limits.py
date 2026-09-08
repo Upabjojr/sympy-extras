@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from sympy import exp, oo, log, Piecewise, Eq, S, sqrt, sin, O
+from sympy import exp, oo, log, Piecewise, Eq, S, sqrt, sin, O, Rational
+from sympy.calculus.accumulationbounds import AccumBounds
 from sympy.abc import a, b, x
 
 from sympy_extras.assumptions import limit, series, element
@@ -62,3 +63,42 @@ def test_limit_seq_with_assumptions() -> None:
     assert isinstance(result.subs(a, -2), Limit)
     assert limit_seq(n**a, n, assumptions=a < 0) == 0
     assert limit_seq(n**a, n) == Piecewise((oo, a > 0), (1, Eq(a, 0)), (0, a < 0))
+
+
+def test_limit_of_a_power_with_a_negative_base() -> None:
+    # the sign of log(a) decides limit(a**x, x, oo) only for a > 0: the
+    # case split used to claim the limit is 0 for every a < 1, which is
+    # wrong for a <= -1, where |a**x| does not tend to zero
+    assert limit(a**x, x, oo, assumptions=a < -1) is S.ComplexInfinity
+    assert limit(a**x, x, oo, assumptions=Eq(a, -1)) is S.NaN
+    assert limit(a**x, x, oo, assumptions=(a > -1) & (a < 0)) == 0
+    assert limit(a**x, x, oo, assumptions=Eq(a, 0)) == 0
+    assert limit(2*a**x, x, oo, assumptions=a < -1) is S.ComplexInfinity
+    general = limit(a**x, x, oo)
+    assert general.subs(a, -3) is S.ComplexInfinity
+    assert general.subs(a, Rational(-1, 2)) == 0
+    assert general.subs(a, -1) is S.NaN
+    assert general.subs(a, 2) is oo
+    assert general.subs(a, Rational(1, 2)) == 0
+    # the exponent decides which way the modulus goes
+    assert limit(a**x, x, -oo, assumptions=a < -1) == 0
+    assert limit(a**(-x), x, oo, assumptions=a < -1) == 0
+    assert limit(a**(-x), x, oo, assumptions=(a > -1) & (a < 0)) is S.ComplexInfinity
+    assert limit(a**(2*x), x, oo, assumptions=a < -1) is S.ComplexInfinity
+    # asking SymPy for the sign of log(a) with a < 0 gives a sign of a
+    # non-real number, which raised TypeError: Invalid comparison of
+    # non-real I instead of leaving the limit unevaluated
+    unevaluated = limit(a**x*x, x, oo)
+    assert unevaluated.subs(a, 2) is oo and unevaluated.subs(a, Rational(1, 2)) == 0
+
+
+def test_limit_of_an_oscillating_expression() -> None:
+    # the sign of the bounds of an oscillating factor is not a case to
+    # split on: asking the CAD for it raised PolynomialError, and the
+    # conditions of the answer compared an AccumBounds with zero
+    result = limit(sin(x)*x**a, x, oo)
+    assert isinstance(result, Piecewise)
+    assert not any(pair.args[1].has(AccumBounds) for pair in result.args)
+    assert result.subs(a, -1) == 0
+    assert result.subs(a, 0) == AccumBounds(-1, 1)
+    assert limit(sin(x)/x, x, oo) == 0

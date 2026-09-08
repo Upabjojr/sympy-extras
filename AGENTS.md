@@ -26,6 +26,9 @@ authorship:
   may be used as test data (they are facts), but their code must not be
   copied: the licenses do not allow it. Such tests live in the
   `test_*_known.py` files;
+- **every bug which is found gets a unit test which fails before the fix
+  and passes after it**, in the `tests/` directory next to the code (see
+  *Regression tests* below);
 - the provenance of the code (which model, which pull request it was ported
   from) is stated in the commit message.
 
@@ -218,6 +221,39 @@ When SymPy gains annotations, tighten the configuration (enable
 the relaxations. Issue #15 tracks what cannot be checked yet and the
 planned typed core layer independent of SymPy objects.
 
+## Regression tests for every bug
+
+A bug which is fixed without a test comes back. Whenever a wrong result, a
+crash, a hang or a state leak is found in this package — by a user, by a
+benchmark driver, by a doctest of the documentation, or while working on
+something else — the fix comes with a test:
+
+1. **Write the test first**, as the smallest input which shows the wrong
+   behaviour, and check that it fails on the unfixed code. A test which
+   passes before the fix is testing something else.
+2. **Put it next to the code it covers**, in the `tests/` directory of the
+   subpackage, in the test function which covers that feature or in a new
+   one named after the symptom (`test_precision_is_restored`,
+   `test_extraneous_roots_are_dropped`).
+3. **Say what the bug was**, in one comment line above the assertion: what
+   was returned before, and why it was wrong. The comment is what makes
+   the test readable in a year.
+4. **Check the property, not the printed form**, whenever the two differ:
+   a solution is checked by substitution, a sum against its partial sums,
+   a sign against a sample point. A test which pins a printed expression
+   fails on every harmless change of form and gets weakened or deleted.
+5. **A bug found in SymPy** (not in this package) gets an entry in the
+   issue tracker and, if the package works around it, a test of the
+   workaround with the SymPy behaviour quoted in the comment, so that the
+   workaround can be removed when SymPy fixes it.
+
+The randomised drivers in `benchmarks/` (`fuzz.py`, `solve_random.py`,
+`logic_random.py`, `verify_random.py`, `qf_nra.py`) exist to find these
+cases: they cross-check the results against independent oracles
+(numerical evaluation, brute force search, substitution). When one of them
+reports a failure, the fix and its unit test follow; the driver itself is
+not a substitute for the test.
+
 ## Running the tests
 
 ```
@@ -270,6 +306,8 @@ was already published. See the `Releasing` section of `README.md`.
 - Do not change SymPy's behaviour from this package (no monkeypatching).
 - Do not add dependencies beyond SymPy without a discussion.
 - Do not delete or weaken a test to make the suite pass.
+- Do not fix a bug without adding the test which fails on the unfixed code
+  (see *Regression tests for every bug*).
 - Do not silently drop the provenance of ported code.
 - Do not add an unannotated function, an untyped container, a new `Any`,
   a `cast`, a `getattr` or a `# type: ignore`, and do not weaken the mypy

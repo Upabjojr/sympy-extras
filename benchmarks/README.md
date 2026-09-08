@@ -13,6 +13,7 @@ repository).
 | `solve_random.py` | random polynomial equations with sign assumptions; with `--transcendental N`, random equations in `exp`, `log`, `sin`, `cos`, `sqrt` on random intervals | `solve` against `Poly.real_roots`, or against sign changes on a fine grid refined with `nsolve`, and high-precision evaluation |
 | `verify_random.py` | a random sample of the Kamke collection | `solve_ode` (`dsolve`, then the symmetry method); every solution verified with `checkodesol` and numerically (implicit solutions by implicit differentiation and `nsolve`); a solution failing the numerical check is reported as WRONG |
 | `logic_random.py` | random Boolean combinations of polynomial relations in one or two real variables with random assumptions | `simplify`, `refine`, `ask`, `satisfiable` against evaluation at random points satisfying the assumptions; for one variable the CAD decides the equivalence of the simplified formula |
+| `fuzz.py` | random inputs for one part of the package at a time (`convergence`, `parametric-convergence`, `sums`, `isolation`, `solve`, `ask`, `limits`, `thue`, `ode`, `refine`) | every answer against an oracle which shares no code with it: partial sums with mpmath, brute force enumeration, sign changes on a grid, sampling of the solution set, `checkodesol`, or SymPy on a parameter-free instance of a parametric answer |
 | `qf_nra.py` | SMT-LIB `QF_NRA`, Meti-Tarski family (7713 problems with `:status`, cloned sparsely from the `dreal/benchmarks` mirror on GitHub) | `satisfiable` against the status (models re-evaluated); `simplify` and `refine` over the reals against the status and random points |
 
 ## Results (SymPy 1.14, one core, 15 s per step)
@@ -107,3 +108,24 @@ wrong answer; `satisfiable` decided 8 of 20 (12 undecided within the
 limit), `simplify` and `refine` finished 7 of 20 (13 timeouts). The
 Meti-Tarski problems have 3 variables and coefficients with 7-8 digits,
 which is where this CAD is slow (#10).
+
+`fuzz.py` (2025-09, SymPy 1.14), several hundred cases per section over
+the seeds 3, 5, 6, 11, 12, 21, 22, 31, 41, 51 and 61, found the bugs below, each
+fixed with the regression test named next to it (the last two while
+following up a case the driver reported):
+
+| Section | Case | Bug | Test |
+|---|---|---|---|
+| `solve` | `solve(sin(x) > 0, x, domain=S.Reals)` gave `Interval.open(0, pi)` | SymPy's `solveset` answers a periodic inequality over one period only, and the answer was passed on; the solutions over one period are now tiled over the region | `test_solve_periodic_inequality` |
+| `limits` | `limit(a**x, x, oo)` gave `0` for every `a < 1` | the sign of `log(a)` decides the limit only for `a > 0`; the case split now covers `a <= 0`, where the limit is `zoo` for `a < -1` and `nan` for `a = -1` | `test_limit_of_a_power_with_a_negative_base` |
+| `convergence` | `sum_convergence(sin(n)/n, n)` gave `False` | the answer came from SymPy's `Sum(sin(n)/n, (n, 1, oo)).is_convergent()`, which is wrong; Dirichlet's test now decides it | `test_dirichlet_test` |
+| `isolation`, `thue` | (earlier runs) the global precision of mpmath left raised by the Thue solver, and an enumeration without a budget | `at_precision`, `_ENUMERATION_BUDGET` | `test_precision_is_restored`, `test_short_vectors` |
+| (follow-up) | `limit(sin(x)*x**a, x, oo)` raised `PolynomialError` | the sign of the bounds of an oscillating factor is not a case to split on | `test_limit_of_an_oscillating_expression` |
+| (follow-up) | `to_polynomial(AccumBounds(-1, 1) > 0, {x})` was a polynomial relation | `Poly` turns an expression without free symbols which is not a number into a generator of its own | `test_only_rational_constants_are_polynomial` |
+
+Four failures reported by the driver were bugs of the driver itself, not
+of the package: a grid point landing exactly on a root counted as two sign
+changes, `4**(-n)` evaluated in machine floats underflowing to zero (which
+made the divergent `sum binomial(2*n, n)/4**n` look convergent), a Thue
+solution outside the brute force box counted as spurious, and the
+residual of a truncated power series solution of an ODE.

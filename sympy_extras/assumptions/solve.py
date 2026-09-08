@@ -7,8 +7,11 @@ from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.relational import Relational, Eq, Ne, Gt, Lt, Ge, Le
 from sympy.core.singleton import S
-from sympy.core.symbol import Symbol
+from sympy.core.symbol import Dummy, Symbol
 from sympy.core.numbers import Rational, Integer
+from sympy.core.mod import Mod
+from sympy.functions.elementary.integers import floor
+from sympy.simplify.simplify import simplify
 from sympy.core.containers import Tuple
 from sympy.core.function import Lambda
 from sympy.core.evalf import N
@@ -20,7 +23,7 @@ from sympy.sets.contains import Contains
 from sympy.sets.conditionset import ConditionSet
 from sympy.sets.fancysets import Reals, Integers, Naturals, Rationals, Complexes, ImageSet
 from sympy.sets.sets import (Set, FiniteSet, Intersection, Complement, Interval,
-    Union as SetUnion, EmptySet, ProductSet)
+    Union as SetUnion, EmptySet, ProductSet, imageset)
 from sympy.solvers.solveset import solveset, nonlinsolve
 
 from sympy_extras._typing import Truth, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
@@ -238,6 +241,13 @@ def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]
             solving_domain = S.Complexes
             if not (isinstance(dom, Reals) and ordered_condition):
                 condition = And(Contains(x, dom), condition)
+    if not parameters and dom.is_subset(S.Reals) is True:
+        # a periodic inequality: SymPy answers over one period only
+        periodic = attempt(lambda: _periodic(formula, x, facts, dom), settings.timeout)
+        if periodic is not None:
+            # the conditions on the unknown which are not a region of the
+            # real line (an integrality) are applied as for any answer
+            return _restrict(periodic, x, condition, facts, formula, real=True)
     result = _solveset(as_boolean(abstracted), x, solving_domain)
     result = as_set(result.xreplace(back_symbols))
     restricted = _restrict(result, x, condition, facts, formula, real=dom.is_subset(S.Reals) is True)
@@ -247,6 +257,124 @@ def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]
         if isolated is not None:
             return isolated
     return restricted
+
+
+def _period(formula: Boolean, x: Symbol) -> Optional[Expr]:
+    """The common period of the relations of a formula in one unknown, or
+    ``None`` when one of them is not periodic."""
+    from sympy.calculus.util import periodicity
+    period: Optional[Expr] = None
+    for atom in formula.atoms(Relational):
+        difference = as_expr(atom.lhs - atom.rhs)
+        if x not in free_symbols(difference):
+            continue
+        value = periodicity(difference, x)
+        if not isinstance(value, Expr) or value.is_positive is not True or value.is_finite is not True:
+            return None
+        if free_symbols(value):
+            return None
+        period = value if period is None else _common_period(period, value)
+        if period is None:
+            return None
+    return period
+
+
+def _common_period(first: Expr, second: Expr) -> Optional[Expr]:
+    """The least common multiple of two periods (``None`` when their
+    ratio is not rational, so that no common period exists)."""
+    ratio = as_expr(simplify(first/second))
+    if not isinstance(ratio, Rational):
+        return None
+    return as_expr(first*ratio.q)
+
+
+def _periodic(formula: Boolean, x: Symbol, facts: Facts, dom: Set) -> Optional[Set]:
+    """A periodic inequality solved over one period and tiled over the
+    region (``None`` when it is not periodic).
+
+    SymPy's ``solveset`` answers a periodic inequality over a single
+    period only -- ``solveset(sin(x) > 0, x, S.Reals)`` is
+    ``Interval.open(0, pi)``, which leaves out every other period -- so
+    the solutions over one period are tiled here instead: explicitly when
+    the region meets a few periods, and through the residue ``Mod(x, T)``
+    when it meets infinitely many.  Equations are left alone: for them
+    ``solveset`` returns the periodic family as an ``ImageSet``.
+    """
+    if free_symbols(formula) != {x} or not formula.atoms(Gt, Lt, Ge, Le):
+        return None
+    if formula.atoms(Eq, Ne):
+        return None
+    period = _period(formula, x)
+    if period is None:
+        return None
+    window = Interval.Ropen(S.Zero, period)
+    base = _base_over_period(formula, x, period)
+    if base is None:
+        return None
+    # the region the solutions are looked for in; when the assumptions do
+    # not describe a region of the real line (an integrality among them)
+    # the relations alone describe one, and the rest is applied afterwards
+    described = domain_of(x, facts.with_reals([x]))
+    if described is None:
+        relations = [c for c in facts.conjuncts
+                     if isinstance(c, Relational) and free_symbols(c) <= {x}]
+        described = domain_of(x, Facts(relations, S.Reals, [x]).with_reals([x]))
+    region = as_set(dom if described is None else Intersection(described, dom))
+    if isinstance(base, EmptySet) or isinstance(region, EmptySet):
+        return S.EmptySet
+    if base == window:
+        return region
+    tiles = _tiles(_pieces(region), period)
+    if tiles is None:
+        return ConditionSet(x, Contains(Mod(x, period), base), region)
+    shift = Dummy('shift')
+    copies = [as_set(imageset(Lambda(shift, shift + k*period), base)) for k in tiles]
+    return as_set(Intersection(SetUnion(*copies), region))
+
+
+#: the largest number of periods tiled explicitly (beyond it the solutions
+#: are described by their residue)
+_TILES = 64
+
+
+def _tiles(pieces: Optional[Sequence[Interval]], period: Expr) -> Optional[range]:
+    """The periods meeting the region, or ``None`` when there are too
+    many of them (or infinitely many)."""
+    if not pieces:
+        return None
+    low = as_expr(min((as_expr(piece.start) for piece in pieces), key=_ordering))
+    high = as_expr(max((as_expr(piece.end) for piece in pieces), key=_ordering))
+    if low.is_finite is not True or high.is_finite is not True:
+        return None
+    first, last = floor(low/period), floor(high/period)
+    if not (isinstance(first, Integer) and isinstance(last, Integer)):
+        return None
+    if last - first + 1 > _TILES:
+        return None
+    return range(int(first), int(last) + 1)
+
+
+def _ordering(point: Expr) -> float:
+    """A key ordering the endpoints of the pieces of a region."""
+    value = N(point, 20)
+    return float(value) if isinstance(value, Expr) and value.is_real and value.is_finite \
+        else (float('-inf') if point is S.NegativeInfinity else float('inf'))
+
+
+def _base_over_period(formula: Boolean, x: Symbol, period: Expr) -> Optional[Set]:
+    """The solutions over one period ``[0, T)``, isolated from the sign of
+    the relation between its roots when that works (the answer does not
+    then depend on SymPy's solving of the inequality), and left to
+    ``solveset`` over the bounded window otherwise."""
+    window = Interval.Ropen(S.Zero, period)
+    facts = Facts([], S.Reals, [x])
+    isolated = attempt(lambda: _isolated(formula, x, facts, Interval(S.Zero, period)), settings.timeout)
+    if isolated is not None:
+        return as_set(Intersection(isolated, window))
+    solved = _solveset(formula, x, window)
+    if solved.has(ConditionSet):
+        return None
+    return solved
 
 
 def _isolated(formula: Boolean, x: Symbol, facts: Facts, dom: Set) -> Optional[Set]:
@@ -259,10 +387,15 @@ def _isolated(formula: Boolean, x: Symbol, facts: Facts, dom: Set) -> Optional[S
     from sympy_extras.solvers.isolation import isolate_real_roots, point_between, compare_points
     if not isinstance(formula, Relational) or free_symbols(formula) != {x}:
         return None
-    region = domain_of(x, facts.with_reals([x]))
-    if region is None:
-        return None
-    region = as_set(Intersection(region, dom))
+    # the region the solutions are looked for in; when the assumptions do
+    # not describe a region of the real line (an integrality among them)
+    # the relations alone describe one, and the rest is applied afterwards
+    described = domain_of(x, facts.with_reals([x]))
+    if described is None:
+        relations = [c for c in facts.conjuncts
+                     if isinstance(c, Relational) and free_symbols(c) <= {x}]
+        described = domain_of(x, Facts(relations, S.Reals, [x]).with_reals([x]))
+    region = as_set(dom if described is None else Intersection(described, dom))
     pieces = _pieces(region)
     if pieces is None:
         return None

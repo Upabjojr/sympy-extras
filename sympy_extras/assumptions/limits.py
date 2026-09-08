@@ -128,10 +128,25 @@ def _cases(e: Expr, facts: Facts, assumptions: Assumptions) -> list[Boolean]:
     """The sign cases of ``e`` compatible with the assumptions (the sign
     of ``log(u)`` is the position of ``u`` with respect to 1)."""
     result: list[Boolean] = []
-    candidates: tuple[Boolean, Boolean, Boolean] = (as_boolean_(e > 0), as_boolean_(Eq(e, 0)), as_boolean_(e < 0))
+    if e.is_extended_real is False or e.has(AccumBounds):
+        # a sign SymPy asked for which is not the sign of a real number:
+        # the logarithm of a negative base, or the bounds of an
+        # oscillating factor. There is no case to distinguish, and the
+        # unevaluated limit is returned instead of a formula whose
+        # conditions compare an AccumBounds with zero
+        return []
+    candidates: tuple[Boolean, ...] = (as_boolean_(e > 0), as_boolean_(Eq(e, 0)), as_boolean_(e < 0))
     if isinstance(e, log):
+        # the sign of log(u) is the position of u with respect to 1, and
+        # only for u > 0: a power of a non-positive base is not covered by
+        # the formula SymPy asks the sign for, and needs its own cases
         u = as_expr(e.args[0])
-        candidates = (as_boolean_(u > 1), as_boolean_(Eq(u, 1)), as_boolean_(u < 1))
+        if _evaluate(normalize(as_boolean_(u > 0)), facts) is True:
+            candidates = (as_boolean_(u > 1), as_boolean_(Eq(u, 1)), as_boolean_(u < 1))
+        else:
+            candidates = (as_boolean_(u > 1), as_boolean_(Eq(u, 1)), as_boolean_(And(u > 0, u < 1)),
+                          as_boolean_(Eq(u, 0)), as_boolean_(And(u > -1, u < 0)),
+                          as_boolean_(Eq(u, -1)), as_boolean_(u < -1))
     for case in candidates:
         case_ = normalize(as_boolean_(case))
         value = _evaluate(case_, facts)
@@ -199,8 +214,53 @@ def _sequence(e: Expr, n: Symbol) -> Expr:
     return as_expr(value)
 
 
+def _nonpositive_base(expr: Expr, x: Symbol, x0: Expr, facts: Facts) -> Optional[Expr]:
+    """The limit of ``c*b**(k*x)`` at infinity when the base is known to be
+    non-positive, where SymPy asks for the sign of ``log(b)`` (which is not
+    real there).
+
+    The modulus of ``b**(k*x)`` is ``|b|**(k*x)`` and its argument turns by
+    ``pi*k`` at every step, so the limit is ``0`` when the modulus tends to
+    zero, ``zoo`` when it tends to infinity, and ``nan`` for ``b = -1``,
+    where the value keeps turning on the unit circle.
+    """
+    if x0 not in (S.Infinity, S.NegativeInfinity):
+        return None
+    coefficient, power = expr.as_independent(x, as_Add=False)
+    if not isinstance(power, Pow):
+        return None
+    base, exponent = as_expr(power.base), as_expr(power.exp)
+    slope = as_expr(exponent.diff(x))
+    if x in free_symbols(base) or x in free_symbols(slope) or as_expr(exponent - slope*x) != 0:
+        return None
+    upwards = _decide_sign(slope, facts)
+    if upwards is None or upwards.is_zero:
+        return None
+    # whether the exponent tends to plus infinity
+    growing = (upwards == 1) == (x0 is S.Infinity)
+    if _evaluate(normalize(as_boolean_(Eq(base, 0))), facts) is True:
+        return S.Zero if growing else S.ComplexInfinity
+    if _evaluate(normalize(as_boolean_(base < 0)), facts) is not True:
+        return None
+    if _evaluate(normalize(as_boolean_(Eq(base, -1))), facts) is True:
+        return S.NaN
+    small = _evaluate(normalize(as_boolean_(And(base > -1, base < 0))), facts)
+    large = _evaluate(normalize(as_boolean_(base < -1)), facts)
+    if small is not True and large is not True:
+        return None
+    if (small is True) == growing:
+        return S.Zero
+    return as_expr(S.ComplexInfinity*coefficient) if coefficient != 1 else S.ComplexInfinity
+
+
 def _limit_under(expr: Expr, x: Symbol, x0: Expr, direction: str, facts: Facts,
                  assumptions: Assumptions, depth: int, engine: Optional[Engine] = None) -> Expr:
+    if engine is None:
+        # the limit of a function of a real variable; a sequence with a
+        # negative base oscillates and is left to ``limit_seq``
+        special = _nonpositive_base(expr, x, x0, facts)
+        if special is not None:
+            return special
     engine_ = engine if engine is not None else _continuous(x0, direction)
     abstracted, back = _abstract(expr, facts, x)
     try:
@@ -223,6 +283,10 @@ def _limit_under(expr: Expr, x: Symbol, x0: Expr, direction: str, facts: Facts,
             result = as_expr(result.xreplace({sign(undecided): decided}))
             return _finish(result, undecided, decided, expr, x, x0, direction, facts, assumptions, depth, engine)
         return _split(expr, x, x0, direction, facts, assumptions, undecided, depth, engine)
+    if undecided is not None:
+        # a sign which could not be decided within the depth: the formula
+        # SymPy returned says nothing, the unevaluated limit says so
+        return as_expr(Limit(expr, x, x0, direction))
     if isinstance(result, Limit) and depth <= 3:
         # an unevaluated limit: try the sign cases of the parameters' atoms
         for parameter in sorted((s for s in free_symbols(expr) if s != x), key=lambda s: s.name):

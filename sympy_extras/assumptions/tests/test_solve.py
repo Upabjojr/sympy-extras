@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from sympy import (S, Eq, sqrt, exp, log, sin, pi, Interval, Union, FiniteSet, Range, Rational,
-    ConditionSet, ImageSet, Q, CRootOf)
+from sympy import (S, Eq, sqrt, exp, log, sin, cos, acos, pi, Interval, Union, FiniteSet, Range,
+    Rational, ConditionSet, ImageSet, Q, CRootOf)
 from sympy.abc import x, y, a, n
 from sympy.testing.pytest import raises
 
@@ -74,3 +74,27 @@ def test_solve_drops_extraneous_roots() -> None:
     assert solve(f, x, (x > 2) & (x < Rational(7, 2))) == S.EmptySet
     assert solve(f, x, domain=S.Reals) == S.EmptySet
     assert solve(sqrt(x + 2) - x, x, domain=S.Reals) == FiniteSet(2)
+
+
+def test_solve_periodic_inequality() -> None:
+    # sympy's solveset answers a periodic inequality over one period only:
+    # solveset(sin(x) > 0, x, S.Reals) is Interval.open(0, pi), which claims
+    # that no negative number and nothing beyond pi is a solution
+    solutions = solve(sin(x) > 0, x, domain=S.Reals)
+    assert solutions.contains(-6) is S.true
+    assert solutions.contains(7) is S.true
+    assert solutions.contains(4) is S.false
+    assert solve(sin(x) > 0, x, (x > 0) & (x < 10)) == \
+        Union(Interval.open(0, pi), Interval.open(2*pi, 3*pi))
+    # a region of less than one period which is not the one solveset uses
+    assert solve(sin(x) > 0, x, (x > 5) & (x < 7)) == Interval.open(2*pi, 7)
+    assert solve(cos(x) < Rational(1, 3), x, (x > 0) & (x < 2)) == \
+        Interval.open(acos(Rational(1, 3)), 2)
+    # the same truncation over the integers gave Range(1, 4, 1)
+    integers = solve(sin(x) > 0, x, element(x, S.Integers))
+    assert [k for k in range(-8, 16) if integers.contains(k) is S.true] == \
+        [-6, -5, -4, 1, 2, 3, 7, 8, 9, 13, 14, 15]
+    # equations keep the periodic family of image sets solveset returns
+    roots = solve(Eq(sin(x), 0), x, domain=S.Reals)
+    assert isinstance(roots, Union) and all(isinstance(part, ImageSet) for part in roots.args)
+    assert roots.contains(-2*pi) is S.true and roots.contains(pi) is S.true

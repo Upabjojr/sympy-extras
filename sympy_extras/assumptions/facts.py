@@ -309,7 +309,10 @@ def _is_polynomial(expr: Expr, symbols: set[Symbol]) -> bool:
     ``symbols`` (which must contain its free symbols)."""
     if not expr.free_symbols <= symbols:
         return False
-    if expr.is_number:
+    if not expr.free_symbols:
+        # a constant is polynomial when it is a rational number; anything
+        # else without free symbols (an ``AccumBounds``, an unevaluated
+        # limit) would become a generator of ``Poly`` and pass for one
         return bool(expr.is_rational)
     try:
         p = Poly(expr, *sorted(free_symbols(expr), key=lambda s: s.name))

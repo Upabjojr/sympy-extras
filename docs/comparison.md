@@ -36,7 +36,8 @@ By area:
 
 Nothing here is a criticism of SymPy's implementations: most of these
 questions need algorithms which are simply not in SymPy, and four are
-bugs worth reporting upstream (they are collected at the end).
+bugs worth reporting upstream (they are collected at the end, with two
+more found by `benchmarks/fuzz.py`).
 
 The setup used throughout:
 
@@ -600,7 +601,7 @@ its principal coefficients, which are what the CAD projection operators
 need; the first one here is the discriminant of the cubic. There is no
 virtual substitution either.
 
-## The four wrong answers, for the record
+## The six wrong answers, for the record
 
 These are worth reporting to SymPy (issue #25 of this repository collects
 these and the other limitations found while building the package):
@@ -611,6 +612,25 @@ these and the other limitations found while building the package):
 | `satisfiable((x**2 + y**2 < 1) & (x*y > Rational(1, 2)))` | a model | unsatisfiable over the reals |
 | `solveset(Eq(log(x) + log(x - 1), log(2)), x, S.Reals)` | `{-1, 2}` | `{2}` |
 | `solveset(2*x**2 + 3*sqrt(x + 6) - 1, x, S.Reals)` | four candidates | empty |
+| `solveset(sin(x) > 0, x, S.Reals)` | `Interval.open(0, pi)` | one interval per period |
+| `Sum(sin(n)/n, (n, 1, oo)).is_convergent()` | `False` | convergent (Dirichlet's test) |
+
+The last two were found by `benchmarks/fuzz.py` and used to be passed on
+by this package; both are fixed here:
+
+```python
+>>> from sympy import sin, pi, Interval, Union, S, Sum, oo
+>>> from sympy.abc import n, x
+>>> solve(sin(x) > 0, x, (x > 0) & (x < 10))
+Union(Interval.open(0, pi), Interval.open(2*pi, 3*pi))
+>>> solve(sin(x) > 0, x, domain=S.Reals)
+ConditionSet(x, Contains(Mod(x, 2*pi), Interval.open(0, pi)), Reals)
+>>> sum_convergence(sin(n)/n, n)
+True
+>>> Sum(sin(n)/n, (n, 1, oo)).is_convergent()
+False
+
+```
 
 Two crashes on well posed input are worth reporting as well:
 `dsolve(y' - y**2 - x, y)` raises `TypeError: bad operand type for unary
