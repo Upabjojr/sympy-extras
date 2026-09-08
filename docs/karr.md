@@ -144,6 +144,48 @@ True
 
 ```
 
+## Rational sums: Abramov's decomposition
+
+`abramov_decomposition(f, k)` writes a rational function as
+`f = g(k+1) - g(k) + h` with `h` of minimal denominator (the irreducible
+factors of the denominator grouped into shift classes and moved to one
+representative each); `f` has a rational indefinite sum exactly when
+`h = 0`, and `rational_sum` uses `g` for the rational part and SymPy's
+polygamma functions for the rest.
+
+```python
+>>> from sympy_extras.concrete import abramov_decomposition, rational_sum
+>>> abramov_decomposition(1/(k*(k + 1)), k)
+RationalDecomposition(-1/k, 0)
+>>> abramov_decomposition(1/k, k)
+RationalDecomposition(0, 1/k)
+>>> rational_sum(1/(k*(k + 2)), (k, 1, n))
+n*(3*n + 5)/(4*(n + 1)*(n + 2))
+
+```
+
+## q-analogues: q-Gosper and q-Zeilberger
+
+`sympy_extras.concrete.qhyper` adds q-Pochhammer symbols
+(`QPochhammer(a, q, k)`, `qbinomial`), the q-Gosper algorithm for
+indefinite sums of q-hypergeometric terms (terms whose ratio
+`t(k+1)/t(k)` is rational in `q**k`) and the q-Zeilberger algorithm for
+their definite sums. SymPy has no q-summation at all.
+
+```python
+>>> from sympy import factor
+>>> from sympy.abc import q, k, n, x
+>>> from sympy_extras.concrete import qgosper_sum, qzeilberger, qbinomial
+>>> factor(qgosper_sum(q**k, (k, 0, n), q))
+(q**(n + 1) - 1)/(q - 1)
+>>> qzeilberger(qbinomial(n, k, q)*q**(k*(k - 1)/2)*x**k, n, k, q).coefficients
+[-q**n*x - 1, 1]
+
+```
+
+The second example is the q-binomial theorem: the sum `S(n)` satisfies
+`S(n + 1) = (1 + x q**n) S(n)`.
+
 ## Reference
 
 - `karr_sum(f, (k, a, b), extensions=(), auto=True)`: the definite sum, or

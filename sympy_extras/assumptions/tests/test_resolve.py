@@ -46,8 +46,8 @@ def test_resolve_one_free_variable() -> None:
 
 
 def test_resolve_several_free_variables() -> None:
-    assert resolve(ForAll(x, x**2 + b*x + c > 0)) == (b**2 - 4*c < 0)
-    assert resolve(Exists(x, Eq(x**2 + a*x + b, 0))) == (a**2 - 4*b >= 0)
+    assert resolve(ForAll(x, x**2 + b*x + c > 0)) == (b**2 < 4*c)
+    assert resolve(Exists(x, Eq(x**2 + a*x + b, 0))) == (a**2 >= 4*b)
     r = resolve(Exists(x, Eq(a*x**2 + b*x + c, 0)))
     ref = And(4*a*c - b**2 <= 0, Or(Eq(c, 0), Ne(a, 0), 4*a*c - b**2 < 0))
     assert _equivalent(r, ref, [a, b, c])
@@ -56,7 +56,9 @@ def test_resolve_several_free_variables() -> None:
     assert r == And(a > 0, 4*a*c - b**2 <= 0)
     assert resolve((x**2 + y**2 < 1) & (x > y)) == And(x - y > 0, x**2 + y**2 - 1 < 0)
     assert resolve(x*y > 0) == Or(And(x < 0, y < 0), And(x > 0, y > 0))
-    raises(NotImplementedError, lambda: resolve(Exists(z, Eq(z**2, x) & (z > y))))
+    # quadratic in z: virtual substitution instead of the decomposition
+    r = resolve(Exists(z, Eq(z**2, x) & (z > y)))
+    assert _equivalent(r, And(x >= 0, Or(y < 0, y**2 < x)), [x, y])
 
 
 def test_resolve_assumptions() -> None:

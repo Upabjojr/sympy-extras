@@ -10,7 +10,7 @@ from sympy.sets.fancysets import Reals, Integers, Complexes
 from sympy.sets.sets import Set
 
 from sympy_extras.polys.cad import quantifier_elimination
-from sympy_extras.polys.virtual_substitution import linear_quantifier_elimination, with_sides
+from sympy_extras.polys.virtual_substitution import virtual_substitution_elimination, with_sides
 
 from .facts import Facts, normalize, to_polynomial
 from sympy_extras._typing import as_boolean, free_symbols, sorted_symbols
@@ -63,10 +63,10 @@ def resolve(formula: Union[Boolean, bool], domain: Optional[Set] = S.Reals,
     intervals with exact endpoints; with more free variables it is written
     with sign conditions on the projection factors of the decomposition,
     and ``NotImplementedError`` is raised when those are not enough.
-    Quantified variables in which the formula is linear are eliminated
-    first by virtual substitution (Loos–Weispfenning), which needs no
-    decomposition; with more than two free variables the result of that
-    step is returned as it is.
+    Quantified variables in which the formula is linear or quadratic are
+    eliminated first by virtual substitution (Loos–Weispfenning,
+    Weispfenning), which needs no decomposition; with more than two free
+    variables the result of that step is returned as it is.
 
     Examples
     ========
@@ -75,7 +75,7 @@ def resolve(formula: Union[Boolean, bool], domain: Optional[Set] = S.Reals,
     >>> from sympy.abc import a, b, c, x, y
     >>> from sympy_extras.assumptions import resolve, ForAll, Exists
     >>> resolve(ForAll(x, x**2 + b*x + c > 0))
-    b**2 - 4*c < 0
+    b**2 < 4*c
     >>> resolve(Exists(x, Eq(a*x**2 + b*x + c, 0) & (a > 0)))
     (a > 0) & (4*a*c - b**2 <= 0)
     >>> resolve(ForAll(x, Exists(y, y > x)))
@@ -128,7 +128,7 @@ def resolve(formula: Union[Boolean, bool], domain: Optional[Set] = S.Reals,
         return true if bool(poly) else false
     # variables occurring linearly are eliminated by virtual substitution,
     # the others by cylindrical algebraic decomposition
-    poly, remaining = linear_quantifier_elimination(poly, prefix)
+    poly, remaining = virtual_substitution_elimination(poly, prefix)
     if isinstance(poly, (BooleanTrue, BooleanFalse)):
         return poly
     eliminated = len(remaining) < len(prefix)

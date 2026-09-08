@@ -32,6 +32,15 @@ First release.
   (`(-1)**(n**2 + n)`, `Mod(n**3 - n, 6)`). The Lambert W fallback of the
   transcendental solver returns both real branches
   (`solve(exp(x) - x - 2, x, x > 0)` was empty).
+- Quadratic virtual substitution (Weispfenning) in
+  `sympy_extras.polys.virtual_substitution` (`eliminate_quadratic`,
+  `virtual_substitution_elimination`), used by `resolve` before the CAD;
+  `sympy_extras.concrete.qhyper` with q-Pochhammer symbols, q-binomial
+  coefficients, the q-Gosper and q-Zeilberger algorithms;
+  `sympy_extras.concrete.rational` with Abramov's decomposition of
+  rational summands and `rational_sum`. `AGENTS.md` records the standing
+  instructions of the maintainer.
+
 - `sympy_extras.solvers.special` (Bessel, Whittaker and hypergeometric
   solutions of second order linear equations recognised through the
   normal-form invariant), `sympy_extras.solvers.first_order` (Abel, Chini
