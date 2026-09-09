@@ -36,7 +36,7 @@ pip install sympy-extras
 
 ```
 
-`sympy-extras` requires Python 3.9 or later and SymPy 1.14 or later.
+`sympy-extras` requires Python 3.10 or later and SymPy 1.14 or later.
 
 To work on the code, clone the repository and install it in editable mode
 with the test dependencies:
