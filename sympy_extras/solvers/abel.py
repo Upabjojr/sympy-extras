@@ -359,6 +359,54 @@ def _quadratic(e: Expr, x: Symbol) -> bool:
         return False
 
 
+def _defines_solution(relation: Expr, coefficients: tuple[Expr, Expr, Expr, Expr], x: Symbol,
+                      f: AppliedUndef, C1: Symbol) -> bool:
+    """Whether ``relation = 0`` defines solutions of the Abel equation.
+
+    Along a solution curve ``F(x, y, C1) = 0`` the derivative is
+    ``y' = -F_x / F_y``, and it must equal ``f3 y**3 + f2 y**2 + f1 y +
+    f0`` there. The identity holds *on the curve only* (unless ``C1`` is
+    isolated), so a point is put on it first: ``x`` and ``C1`` are chosen
+    and ``y`` solved for numerically. The relation is rejected on a
+    confirmed disagreement and kept when nothing could be decided.
+    """
+    from sympy import Rational, N, nsolve
+    import random
+    rng = random.Random(0)
+    Y = Dummy('Y', real=True)
+    F = as_expr(relation.xreplace({f: Y}))
+    F_x, F_y = as_expr(F.diff(x)), as_expr(F.diff(Y))
+    f3, f2, f1, f0 = coefficients
+    implied = as_expr(-F_x/F_y)
+    rhs = as_expr(f3*Y**3 + f2*Y**2 + f1*Y + f0)
+    for _ in range(8):
+        fixed: dict[Basic, Expr] = {x: as_expr(Rational(rng.randint(1, 9), rng.randint(1, 4))),
+                                    C1: as_expr(Rational(rng.randint(-5, 5), rng.randint(1, 3)))}
+        on_line = as_expr(F.xreplace(fixed))
+        if not on_line.has(Y):
+            continue
+        for guess in (Rational(1, 3), Rational(-1, 2), Rational(2), Rational(-3)):
+            try:
+                root = nsolve(on_line, Y, guess, prec=30)
+            except (ValueError, TypeError, ZeroDivisionError, ArithmeticError):
+                continue
+            if not root.is_real:
+                continue
+            point = dict(fixed)
+            point[Y] = as_expr(root)
+            try:
+                left, right = N(implied.xreplace(point), 30), N(rhs.xreplace(point), 30)
+            except (TypeError, ValueError, ZeroDivisionError, ArithmeticError):
+                continue
+            if not (left.is_number and right.is_number and left.is_real and right.is_real):
+                continue
+            if abs(left - right) <= 1e-12*max(1, abs(right)):
+                return True
+            return False
+    # no point could be placed on a curve: nothing was shown either way
+    return True
+
+
 def air_solution(coefficients: CoefficientsLike, x: Symbol, f: AppliedUndef, Q: Optional[Expr] = None) -> Optional[Basic]:
     """An implicit solution of an equation of the AIR class through its
     inverse Riccati equation, or ``None`` when the equation is not
@@ -411,6 +459,10 @@ def air_solution(coefficients: CoefficientsLike, x: Symbol, f: AppliedUndef, Q: 
     constants = sorted((s for s in free_symbols(relation) if s.name.startswith('C')), key=lambda s: s.name)
     if len(constants) == 1 and constants[0] != C1:
         relation = as_expr(relation.xreplace({constants[0]: C1}))
+    if not _defines_solution(relation, (f3, f2, f1, f0), x, f, C1):
+        # the transformation back can collapse to a relation with no x in
+        # it, which implies y' = 0 and is no solution (sympy-extras#38)
+        return None
     if C1 not in free_symbols(relation):
         return Eq(relation, 0)
     # the Riccati solution is linear fractional in C1: isolate it
@@ -483,6 +535,13 @@ def abel_by_invariants(equation: Basic, f: AppliedUndef,
             continue
         u_value = as_expr((f - transformation.Q)/transformation.P)
         pulled = solution.xreplace({U: u_value}).xreplace({t: transformation.xi})
+        relation = as_expr(pulled.lhs - pulled.rhs)
+        # the representative's solution is right; the pull-back can still
+        # collapse to a relation with no x in it, which implies y' = 0 and
+        # solves nothing (sympy-extras#38): it is checked against the
+        # equation before it is returned
+        if not _defines_solution(relation, coefficients, x, f, Symbol('C1')):
+            return None
         return Eq(as_expr(pulled.lhs), as_expr(pulled.rhs))
     return None
 

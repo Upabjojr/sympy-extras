@@ -98,3 +98,31 @@ def test_solve_periodic_inequality() -> None:
     roots = solve(Eq(sin(x), 0), x, domain=S.Reals)
     assert isinstance(roots, Union) and all(isinstance(part, ImageSet) for part in roots.args)
     assert roots.contains(-2*pi) is S.true and roots.contains(pi) is S.true
+
+
+def test_a_quartic_over_the_complexes_does_not_crash() -> None:
+    # sympy-extras#48: the quartic radical form holds a cube root of a
+    # complex number evalf cannot close, and SymPy's positivity handler
+    # then did ``i._prec`` on an Add -- an AttributeError escaped solve.
+    from sympy import Symbol, S
+    y = Symbol('y')
+    for poly in (y**4 + y + 1, y**4 - y**3 - 10*y**2 + 5*y + 24):
+        found = solve([poly], [y], domain=S.Complexes)
+        assert len(found.args) == 4
+        for root in found.args:
+            value = poly.subs(y, root)
+            assert abs(complex(value.evalf(40))) < 1e-25
+
+
+def test_the_same_root_in_two_radical_forms_is_one_solution() -> None:
+    # sympy-extras#50: two quadratics in one unknown share exactly one
+    # root, 3*sqrt(3)/13 + 15/26, and it came back twice in two radical
+    # forms which FiniteSet does not recognise as equal.
+    from sympy import Symbol, S, sqrt, Rational, N
+    y = Symbol('y')
+    e1 = 676*y**2 - 333 - 180*sqrt(3)
+    e2 = 676*y**2 - 4056*y + 756*sqrt(3) + 2007
+    found = solve([e1, e2], [y], domain=S.Complexes)
+    assert len(found.args) == 1
+    root = found.args[0]
+    assert abs(N(root - (Rational(15, 26) + 3*sqrt(3)/13), 30)) < 1e-25

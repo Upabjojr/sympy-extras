@@ -97,3 +97,17 @@ def test_dsolve_linear() -> None:
     # Airy: no Liouvillian solution; Bessel functions of order 1/3
     found = dsolve_linear(y.diff(x, 2) - x*y, y, use_dsolve=False)
     assert len(found) == 2 and all(s.has(besseli) or s.has(besselj) or s.has(besselk) for s in found)
+
+
+def test_a_truncated_series_is_not_accepted_as_a_solution() -> None:
+    # sympy-extras#37: the guard on dsolve's answer checked for Integral
+    # but not for Order, so a truncated power series was returned as two
+    # exact solutions, neither of which satisfies the equation.
+    from sympy import Function, Eq, Order, expand
+    from sympy.abc import x
+    from sympy_extras.solvers import dsolve_linear
+    y = Function('y')(x)
+    ode = Eq(y.diff(x, 2) + (-2*x**2 - x + 1)*y.diff(x) + 3*y, 0)
+    for s in dsolve_linear(ode, y) or []:
+        assert not s.has(Order)
+        assert expand(s.diff(x, 2) + (-2*x**2 - x + 1)*s.diff(x) + 3*s) == 0, s

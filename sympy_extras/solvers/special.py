@@ -109,6 +109,11 @@ def _candidates(r: Expr, x: Symbol) -> list[Expr]:
         if sum(found.values()) != den_poly.degree() or len(found) != 1:
             return []
         return [as_expr(c) for c in found]
+    if num_poly.is_zero:
+        # r = 0: the equation is z'' = 0, with no singular point to
+        # centre a Bessel or Whittaker form on (sympy-extras#42); its
+        # degree would be -oo and its coefficient list [0]
+        return []
     m = num_poly.degree()
     if m == 0:
         return [S.Zero]

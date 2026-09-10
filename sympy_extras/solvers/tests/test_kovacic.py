@@ -80,3 +80,18 @@ def test_dsolve_kovacic() -> None:
     assert dsolve_kovacic(y.diff(x, 2) - x*y, y) is None
     assert dsolve_kovacic(y.diff(x, 2) - y**2, y) is None
     assert dsolve_kovacic(y.diff(x, 2) - exp(x)*y, y) is None
+
+
+def test_case_three_solution_has_no_auxiliary_symbol() -> None:
+    # sympy-extras#31: the placeholder was omega *applied to the
+    # polynomial*, so the solution read as a function of a polynomial in w
+    # and w was a free symbol of it; omega is a function of x, defined by
+    # the KovacicSolution's omega_polynomial.
+    from sympy import Rational, Symbol
+    from sympy.abc import x
+    from sympy_extras.solvers import liouvillian_solution
+    r = -Rational(3, 16)/x**2 - Rational(2, 9)/(x - 1)**2 + Rational(3, 16)/(x*(x - 1))
+    sol = liouvillian_solution(r, x)
+    assert sol is not None and sol.case == 3
+    assert sol.solution.free_symbols == {x}
+    assert Symbol('w') in sol.omega_polynomial.free_symbols

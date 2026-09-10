@@ -63,3 +63,37 @@ def test_zeilberger_sum() -> None:
     # infinite upper limit with vanishing terms
     assert zeilberger_sum(binomial(n, k), (k, 0, oo)) == 2**n
     assert zeilberger_sum(1/(k*(k + 1)), (k, 1, n)) is not None
+
+
+def test_polynomial_times_factorial_does_not_crash() -> None:
+    # sympy-extras#43: SymPy's rsolve raised AttributeError on the
+    # recurrence for this summand, and it escaped zeilberger_sum; the
+    # sum has no hypergeometric closed form, so None (or a recurrence)
+    # is the acceptable answer, a crash is not.
+    from sympy import symbols, factorial, Sum
+    from sympy.core.function import AppliedUndef
+    n, k = symbols('n k', integer=True)
+    result = zeilberger_sum((2*k**2 + k)*factorial(k), (k, 0, n), n)
+    # a recurrence in S(n) is a legitimate answer; a closed form must be right
+    if result is not None and not result.has(Sum) and not result.atoms(AppliedUndef):
+        for value in range(0, 6):
+            direct = sum((2*j**2 + j)*factorial(j) for j in range(0, value + 1))
+            assert result.subs(n, value) == direct
+
+
+def test_zeilberger_sum_never_returns_a_boolean() -> None:
+    # sympy-extras#33: for this summand zeilberger_sum returned the
+    # Boolean False -- a rejected check re-asserted as an answer -- where
+    # the sum is a well defined integer for every n.
+    from sympy import binomial, symbols, Sum
+    n, k = symbols('n k', integer=True)
+    term = (-1)**k*binomial(n, k)*binomial(2*n - 2*k, n)
+    from sympy.core.function import AppliedUndef
+    from sympy import nan
+    result = zeilberger_sum(term, (k, 0, n), n)
+    assert result not in (True, False)
+    assert result is None or not result.has(nan)
+    # a recurrence in S(n) is a legitimate answer; a closed form must be right
+    if result is not None and not result.has(Sum) and not result.atoms(AppliedUndef):
+        for value in range(1, 6):
+            assert result.subs(n, value) == Sum(term.subs(n, value), (k, 0, value)).doit(), value

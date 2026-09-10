@@ -63,6 +63,7 @@ from sympy.functions.combinatorial.factorials import ff
 from sympy.functions.elementary.exponential import exp, exp_polar
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.integrals.integrals import Integral, integrate
+from sympy.series.order import Order
 from sympy.matrices.dense import Matrix
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polyroots import roots
@@ -589,7 +590,9 @@ def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_d
         y = Function('y')(x)
         equation = as_expr(Add(*[c*y.diff(x, i) if i else c*y for i, c in enumerate(L.coefficients)]))
         result = attempt(lambda: dsolve(equation, y), settings.timeout)
-        if isinstance(result, Eq) and not result.rhs.has(Integral):
+        # a truncated power series with an O term is not a solution either
+        # (sympy-extras#37)
+        if isinstance(result, Eq) and not result.rhs.has(Integral, Order):
             rhs = as_expr(expand(as_expr(result.rhs)))
             constants = sorted((s for s in free_symbols(rhs) if s.name.startswith('C')), key=lambda s: s.name)
             for c in constants:

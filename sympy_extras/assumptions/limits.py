@@ -14,6 +14,8 @@ Mathematica's ``GenerateConditions``.
 """
 from __future__ import annotations
 
+import itertools
+
 import re
 from typing import Optional, Union
 
@@ -30,6 +32,7 @@ from sympy.functions.elementary.exponential import exp, log
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.core.mul import Mul
 from sympy.calculus.accumulationbounds import AccumBounds
+from sympy.simplify.simplify import simplify
 from sympy.logic.boolalg import Boolean, And, Or, Not, true
 from sympy.series.limits import Limit, limit as _limit
 from sympy.series.limitseq import limit_seq as _limit_seq
@@ -293,7 +296,88 @@ def _limit_under(expr: Expr, x: Symbol, x0: Expr, direction: str, facts: Facts,
             cases = _cases(parameter, facts, assumptions)
             if len(cases) > 1:
                 return _split(expr, x, x0, direction, facts, assumptions, parameter, depth, engine)
+    if depth <= 3 and not isinstance(result, Limit):
+        # the generic answer need not hold at the degenerate values of a
+        # parameter: (a x + 1)/(b x + 2) -> a/b says nothing at b = 0, where
+        # the limit is +-oo (sympy-extras#30). A parameter at which the
+        # engine's answer for the instance disagrees with the generic one
+        # gets its own cases.
+        degenerate = _degenerate_parameter(result, expr, x, x0, direction, facts, assumptions, engine_)
+        if degenerate is not None:
+            return _split(expr, x, x0, direction, facts, assumptions, degenerate, depth, engine)
+    return _undirected(result, expr, x, x0, direction)
+
+
+def _degenerate_parameter(result: Expr, expr: Expr, x: Symbol, x0: Expr, direction: str, facts: Facts,
+                          assumptions: Assumptions, engine: Engine) -> Optional[Symbol]:
+    """A parameter whose value 0 is not covered by the generic answer."""
+    for parameter in sorted((s for s in free_symbols(expr) if s != x), key=lambda s: s.name):
+        cases = _cases(parameter, facts, assumptions)
+        if len(cases) <= 1:
+            continue                            # its sign is already known
+        generic = as_expr(result.xreplace({parameter: S.Zero}))
+        instance = as_expr(expr.xreplace({parameter: S.Zero}))
+        if generic.has(S.ComplexInfinity, S.NaN):
+            return parameter
+        try:
+            value = attempt(lambda: as_expr(engine(instance, x)), settings.timeout)
+        except (NotImplementedError, ValueError, TypeError):
+            continue
+        if value is None or isinstance(value, Limit) or value.has(AccumBounds):
+            continue
+        if _same_limit(value, generic) is False:
+            return parameter
+    return None
+
+
+def _same_limit(first: Expr, second: Expr) -> Optional[bool]:
+    """Whether two limit values are the same; ``None`` when undecided."""
+    if first == second:
+        return True
+    if first.is_infinite or second.is_infinite:
+        return first == second
+    difference = attempt(lambda: as_expr(simplify(first - second)), settings.timeout)
+    if difference is None:
+        return None
+    if difference == 0:
+        return True
+    if difference.is_number and difference.is_zero is False:
+        return False
+    return None
+
+
+def _undirected(result: Expr, expr: Expr, x: Symbol, x0: Expr, direction: str) -> Expr:
+    """A directed infinity (``oo``, ``-oo``, ``oo*I``, ...) is only right
+    for a function which is real -- or on one ray -- along the approach.
+    ``exp(x**2 + I*x)`` has a diverging modulus and an argument which never
+    settles: the limit is ``zoo``, not ``oo`` (sympy-extras#52). A function
+    which takes complex values on the approach cannot run off along a real
+    ray, so its infinite limit is written ``zoo``."""
+    if not (result.is_infinite and result not in (S.ComplexInfinity, S.NaN)):
+        return result
+    if free_symbols(expr) != {x}:
+        return result                           # parameters: not sampled
+    for sample in _approach_samples(x0, direction):
+        try:
+            value = complex(expr.xreplace({x: sample}).evalf(30))
+        except (TypeError, ValueError, ArithmeticError, OverflowError):
+            return result
+        if abs(value.imag) > 1e-12*max(1.0, abs(value.real)):
+            return S.ComplexInfinity
     return result
+
+
+def _approach_samples(x0: Expr, direction: str) -> list[Expr]:
+    """A few points on the approach to ``x0``."""
+    from sympy.core.numbers import Rational
+    if x0 is S.Infinity:
+        return [Rational(7), Rational(31, 2), Rational(101)]
+    if x0 is S.NegativeInfinity:
+        return [Rational(-7), Rational(-31, 2), Rational(-101)]
+    if not x0.is_number:
+        return []
+    steps = [Rational(1, 10), Rational(1, 100), Rational(1, 1000)]
+    return [as_expr(x0 + (h if direction == '+' else -h)) for h in steps]
 
 
 def _finish(result: Expr, undecided: Expr, decided: Expr, expr: Expr, x: Symbol, x0: Expr, direction: str,
@@ -353,10 +437,60 @@ def _split(expr: Expr, x: Symbol, x0: Expr, direction: str, facts: Facts, assump
         if case is true:
             return _limit_under(expr, x, x0, direction, case_facts, And(*extra), depth + 1, engine)
         value = _limit_under(expr, x, x0, direction, case_facts, And(*extra), depth + 1, engine)
+        value = _verified_piece(value, case, expr, x, x0, direction, case_facts, And(*extra), depth, engine)
         pieces.append((value, case))
     if not pieces:
         return Limit(expr, x, x0, direction)
     return _piecewise(pieces)
+
+
+def _verified_piece(value: Expr, case: Boolean, expr: Expr, x: Symbol, x0: Expr, direction: str,
+                    facts: Facts, assumptions: Assumptions, depth: int, engine: Optional[Engine]) -> Expr:
+    """The piece, checked at a point of its case against the engine on the
+    instance. A wrong piece -- ``log(x**a + x**b)/log(x)`` split on the sign
+    of ``b`` alone gives ``b`` where the answer is ``max(a, b)``
+    (sympy-extras#28) -- is refined on the differences of the parameters,
+    and left as the unevaluated limit when that does not settle it."""
+    if isinstance(value, (Limit, Piecewise)) or value.has(AccumBounds) or depth > 3:
+        return value
+    parameters = sorted((s for s in free_symbols(expr) if s != x), key=lambda s: s.name)
+    engine_ = engine if engine is not None else _continuous(x0, direction)
+    # several points of the case: one can agree with a wrong piece by
+    # accident (a = b = 2 satisfies both b and max(a, b))
+    wrong = False
+    for point in _points_of(case, parameters, 4):
+        try:
+            instance = attempt(lambda: as_expr(engine_(as_expr(expr.xreplace(point)), x)), settings.timeout)
+        except (NotImplementedError, ValueError, TypeError):
+            continue
+        if instance is None or isinstance(instance, Limit) or instance.has(AccumBounds):
+            continue
+        if _same_limit(instance, as_expr(value.xreplace(point))) is False:
+            wrong = True
+            break
+    if not wrong:
+        return value
+    for first, second in itertools.combinations(parameters, 2):
+        difference = as_expr(first - second)
+        if len(_cases(difference, facts, assumptions)) > 1:
+            return _split(expr, x, x0, direction, facts, assumptions, difference, depth + 1, engine)
+    return as_expr(Limit(expr, x, x0, direction))
+
+
+def _points_of(case: Boolean, parameters: list[Symbol], count: int) -> list[dict[Symbol, Expr]]:
+    """Up to ``count`` rational points of the parameters at which the case
+    holds, spread over the candidate values."""
+    from sympy.core.numbers import Rational
+    candidates = [Rational(2), Rational(1, 2), Rational(-1), Rational(3), Rational(-5, 2), Rational(0),
+                  Rational(1), Rational(5), Rational(-3)]
+    found: list[dict[Symbol, Expr]] = []
+    for choice in itertools.product(candidates, repeat=len(parameters)):
+        point = dict(zip(parameters, choice))
+        if case.xreplace(point) is true:
+            found.append(point)
+            if len(found) >= count:
+                break
+    return found
 
 
 def _piecewise(pieces: list[tuple[Expr, Boolean]]) -> Expr:

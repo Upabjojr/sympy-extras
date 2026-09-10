@@ -54,6 +54,7 @@ from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, cancel, factor, lcm_list
 from sympy.series.limits import limit
 from sympy.core.relational import Eq
+from sympy.core.numbers import nan, zoo
 from sympy.simplify.combsimp import combsimp
 from sympy.simplify.gammasimp import gammasimp
 from sympy.simplify.simplify import simplify
@@ -419,7 +420,7 @@ def zeilberger_sum(term: Expr, limits: Sequence[Union[Symbol, Expr, int]], n: Op
     if solution is None:
         try:
             solved = rsolve(recurrence, Sfun(n), initial if initial else None)
-        except (NotImplementedError, ValueError, TypeError):
+        except (NotImplementedError, ValueError, TypeError, AttributeError):
             solved = None
         if solved is not None and solved != 0:
             solution = as_expr(solved)
@@ -432,7 +433,9 @@ def zeilberger_sum(term: Expr, limits: Sequence[Union[Symbol, Expr, int]], n: Op
         if isinstance(direct, Sum):
             break
         if simplify(as_expr(direct - solution.subs(n, value))) != 0:
-            return _Recurrence(recurrence)
+            # an order-zero recurrence a0 S(n) = rhs would only re-assert
+            # the answer the check has just rejected (sympy-extras#33)
+            return None if J == 0 else _Recurrence(recurrence)
     return solution
 
 
@@ -498,5 +501,11 @@ def _value(G: Expr, k: Symbol, at: Expr) -> Expr:
     return as_expr(simplify(value))
 
 
-def _Recurrence(recurrence: Expr) -> Basic:
-    return Eq(recurrence, 0)
+def _Recurrence(recurrence: Expr) -> Optional[Basic]:
+    """The recurrence as an unevaluated equation, or ``None`` when it is
+    not one. ``Eq`` must not be left to evaluate: a recurrence reducing to
+    a nonzero constant would become the Boolean ``False`` and be returned
+    as the sum, and one that is ``nan`` says nothing (sympy-extras#33)."""
+    if recurrence.has(nan, zoo):
+        return None
+    return Eq(recurrence, 0, evaluate=False)

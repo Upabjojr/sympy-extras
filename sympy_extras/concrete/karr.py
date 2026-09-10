@@ -48,13 +48,18 @@ from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
 from sympy.functions.combinatorial.numbers import harmonic
+from sympy.polys.polytools import Poly
+from sympy.core.relational import Eq
+from sympy.logic.boolalg import Boolean, true
+from sympy.core.numbers import Integer
+from sympy.polys.rationaltools import together
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import cancel
 from sympy.simplify.simplify import hypersimp
 
 from sympy.polys.fields import FracElement
 
-from sympy_extras._typing import as_expr, as_symbol, free_symbols, sorted_symbols
+from sympy_extras._typing import as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
 
 from .pisigma import PiSigmaField
 
@@ -239,7 +244,15 @@ def _auto_extensions(f: Expr, k: Symbol) -> list[Expr]:
     f = sympify(f)
     atoms = [a for a in _atoms(f, k) if isinstance(a, (harmonic, Sum))]
     if not atoms:
-        return []
+        # a rational summand with no closed form in the rational functions
+        # sums to harmonic numbers: partial fractions give orders up to
+        # the multiplicity of the poles (sum 1/k is harmonic(n),
+        # sympy-extras#34)
+        numerator, denominator = f.as_numer_denom()
+        if not denominator.has(k) or not f.is_rational_function(k):
+            return []
+        multiplicity = max((int(m) for _, m in Poly(denominator, k).factor_list()[1]), default=0)
+        return [harmonic(k, m) for m in range(1, multiplicity + 1)]
     order = 1
     for a in atoms:
         if isinstance(a, harmonic) and len(a.args) > 1 and a.args[1].is_Integer:
@@ -404,7 +417,45 @@ def karr_sum(f: Union[Expr, int], k: Union[Symbol, Sequence[Union[Symbol, Expr, 
     # g(b + 1) is sigma(g) at b, which keeps the generators unshifted
     upper = field.to_expr(field.sigma(g)).subs(index, b)
     lower = field.to_expr(g).subs(index, a)
-    return factor_terms(cancel(upper.doit() - lower.doit()))
+    closed = as_expr(factor_terms(cancel(upper.doit() - lower.doit())))
+    return _repaired_at_poles(closed, field.to_expr(g), f_, index, a, b)
+
+
+def _repaired_at_poles(closed: Expr, antidifference: Expr, f: Expr, index: Symbol,
+                       a: Expr, b: Expr) -> Expr:
+    """The closed form, with the values where it is false restored.
+
+    The antidifference may carry a denominator in a *parameter* of the
+    summand; at its nonnegative integer roots the antidifference is
+    undefined and the closed form need not hold -- ``sum (-1)**k k**2
+    binomial(n, k)`` is 0 for every ``n`` except 1 and 2, where the
+    unconditional 0 was returned (sympy-extras#35). Those points are
+    evaluated directly and written as a ``Piecewise``.
+    """
+    from sympy.functions.elementary.piecewise import Piecewise
+    from sympy.polys.polyerrors import PolynomialError
+    from sympy.polys.polyroots import roots
+    parameters = sorted(free_symbols(antidifference) - {index}, key=lambda s: s.name)
+    if len(parameters) != 1 or not isinstance(b, Symbol) or b != parameters[0]:
+        return closed
+    parameter = parameters[0]
+    denominator = as_expr(together(antidifference).as_numer_denom()[1])
+    try:
+        poles = roots(Poly(denominator, parameter))
+    except PolynomialError:
+        return closed
+    branches: list[tuple[Expr, Boolean]] = []
+    for pole in sorted(poles, key=lambda r: str(r)):
+        if not (isinstance(pole, Integer) and int(pole) >= 0):
+            continue
+        direct = Sum(f.subs(parameter, pole), (index, a, pole)).doit()
+        if isinstance(direct, Sum) or not isinstance(direct, Expr):
+            continue
+        if cancel(as_expr(direct) - closed.subs(parameter, pole)) != 0:
+            branches.append((as_expr(direct), as_boolean(Eq(parameter, pole))))
+    if not branches:
+        return closed
+    return as_expr(Piecewise(*branches, (closed, true)))
 
 
 def summation(f: Union[Expr, int], *symbols: Union[Symbol, Sequence[Union[Symbol, Expr, int]]],

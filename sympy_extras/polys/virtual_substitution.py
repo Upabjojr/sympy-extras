@@ -179,6 +179,13 @@ def eliminate_linear(formula: Boolean, x: Symbol) -> Boolean:
     formula = as_boolean(as_boolean(formula).to_nnf(simplify=False))
     if not formula.has(x):
         return formula
+    # a top-level equation a x + b = 0 with a nonzero number a pins x: the
+    # one test point is -b/a, and no disjunction is needed. Without this a
+    # system of five linear equations took a minute to say True, all of it
+    # spent on test points that were thrown away (sympy-extras#47).
+    pinned = _pinned_value(formula, x)
+    if pinned is not None:
+        return _clean(as_boolean(formula.xreplace({x: pinned})))
     atoms = _atoms(formula)
     coefficients: dict[Relational, tuple[Expr, Expr]] = {}
     for atom in atoms:
@@ -204,6 +211,22 @@ def eliminate_linear(formula: Boolean, x: Symbol) -> Boolean:
                 replacements[other] = _at_root(other, a, b, c, d)
         disjuncts.append(And(Ne(a, 0), _substitute(formula, replacements)))
     return _clean(Or(*disjuncts))
+
+
+def _pinned_value(formula: Boolean, x: Symbol) -> Optional[Expr]:
+    """``-b/a`` when the formula, or a top-level conjunct of it, is the
+    equation ``a x + b = 0`` with a nonzero numeric ``a``."""
+    conjuncts = list(formula.args) if isinstance(formula, And) else [formula]
+    for atom in conjuncts:
+        if not isinstance(atom, Eq):
+            continue
+        pair = _linear_coefficients(atom, x)
+        if pair is None:
+            continue
+        a, b = pair
+        if a.is_number and a != 0:
+            return as_expr(-b/a)
+    return None
 
 
 def _sides(atom: Relational) -> Boolean:
@@ -423,6 +446,13 @@ def eliminate_quadratic(formula: Boolean, x: Symbol) -> Boolean:
     formula = as_boolean(as_boolean(formula).to_nnf(simplify=False))
     if not formula.has(x):
         return formula
+    # a top-level equation a x + b = 0 with a nonzero number a pins x: the
+    # one test point is -b/a, and no disjunction is needed. Without this a
+    # system of five linear equations took a minute to say True, all of it
+    # spent on test points that were thrown away (sympy-extras#47).
+    pinned = _pinned_value(formula, x)
+    if pinned is not None:
+        return _clean(as_boolean(formula.xreplace({x: pinned})))
     atoms = _atoms(formula)
     coefficients: dict[Relational, tuple[Expr, Expr, Expr]] = {}
     for atom in atoms:

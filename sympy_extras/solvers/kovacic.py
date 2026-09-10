@@ -431,9 +431,16 @@ def _case3(r: Expr, num: Poly, den: Poly, poles: dict[Expr, int], x: Symbol) -> 
 
 
 def _RootOfPlaceholder(polynomial: Expr, w: Symbol) -> Expr:
-    """``omega`` as the unevaluated root of its polynomial."""
-    root = Function('omega')
-    return as_expr(root(polynomial))
+    """``omega`` when its polynomial cannot be solved in radicals: an
+    undefined function of ``x``, whose defining relation is the
+    ``omega_polynomial`` of the :class:`KovacicSolution`.
+
+    It used to be ``omega`` *applied to the polynomial*, which read as a
+    function of a polynomial in the auxiliary ``w`` and left ``w`` among
+    the free symbols of the solution (sympy-extras#31).
+    """
+    [x] = [s for s in polynomial.free_symbols if s != w] or [w]
+    return as_expr(Function('omega')(x))
 
 
 def _algebraic_root(polynomial: Expr, w: Symbol, x: Symbol) -> Optional[Expr]:

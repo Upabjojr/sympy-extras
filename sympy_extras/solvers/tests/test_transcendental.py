@@ -137,3 +137,18 @@ def test_radical_form() -> None:
     assert form is not None and abs(N(form - CRootOf(x**4 - 3*x**2 + 1, 3), 20)) < 1e-15
     assert in_radicals(FiniteSet(CRootOf(x**2 - 2, 0), CRootOf(x**5 - x - 1, 0))) == \
         FiniteSet(-sqrt(2), CRootOf(x**5 - x - 1, 0))
+
+
+def test_a_multiple_angle_is_solved() -> None:
+    # sympy-extras#36: sin(2x) = 1/2 came back None because the double
+    # angle was expanded into sin(x) cos(x) and the kernel never matched;
+    # the solutions are x = pi/12 + k pi and 5 pi/12 + k pi.
+    from sympy import sin, cos, Eq, Rational, pi
+    from sympy.abc import x
+    from sympy_extras.solvers import solve_transcendental
+    for equation, root in ((Eq(sin(2*x), Rational(1, 2)), pi/12),
+                           (Eq(cos(2*x), Rational(1, 2)), pi/6)):
+        found = solve_transcendental(equation, x)
+        assert found is not None, equation
+        assert root in found, (equation, found)
+        assert root + pi in found, (equation, found)

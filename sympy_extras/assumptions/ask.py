@@ -114,7 +114,7 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
         try:
             if _sympy_ask(Q.real(atom.lhs - atom.rhs), facts.predicates) is False:
                 return False
-        except ValueError:
+        except (ValueError, TypeError, AttributeError):
             pass
     membership = _real_membership(atom)
     if membership is not None:
@@ -129,7 +129,7 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
     if predicate is not None:
         try:
             value = _sympy_ask(predicate, facts.predicates)
-        except ValueError:
+        except (ValueError, TypeError, AttributeError):
             value = None
         if value is not None:
             return value

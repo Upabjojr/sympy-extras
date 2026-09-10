@@ -678,6 +678,20 @@ def _solutions_of_linearization(L: Linearization, f: AppliedUndef, x: Symbol) ->
     return results or None
 
 
+def _unknown_under_integral(candidate: Basic, f: AppliedUndef) -> bool:
+    """Whether ``f`` occurs in the integrand of an ``Integral`` over its own
+    argument -- ``Integral(y(x)*..., x)`` -- which is no solution. An
+    integral over a dummy with ``f`` as a limit, ``Integral(exp(t**2/2),
+    (t, y(x)))``, is an ordinary implicit solution and is kept."""
+    x = f.args[0]
+    for integral in candidate.atoms(Integral):
+        if not integral.function.has(f):
+            continue
+        if any(limit[0] == x for limit in integral.limits):
+            return True
+    return False
+
+
 def dsolve_second_order(equation: Basic, f: AppliedUndef, degree: int = 3) -> Optional[list[Basic]]:
     """Solutions of a second order equation through an integrating factor
     (the first integral solved by ``dsolve``, or returned as an implicit
@@ -706,7 +720,13 @@ def dsolve_second_order(equation: Basic, f: AppliedUndef, degree: int = 3) -> Op
         solved = attempt(lambda: dsolve(reduced, f), settings.timeout)
         if solved is None:
             return [reduced]
-        return [solved] if isinstance(solved, Basic) else list(solved)
+        found = [solved] if isinstance(solved, Basic) else list(solved)
+        # an answer with the unknown still under an integral is not a
+        # solution; the first integral itself is the honest reduction
+        # (sympy-extras#29)
+        if any(_unknown_under_integral(s, f) for s in found):
+            return [reduced]
+        return found
     L = attempt(lambda: linearize(Phi, x, y, p), settings.timeout)
     if L is None:
         L = attempt(lambda: rectify_symmetries(Phi, x, y, p, f, degree), settings.timeout)

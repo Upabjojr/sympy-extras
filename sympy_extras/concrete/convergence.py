@@ -50,6 +50,9 @@ from typing import Callable, Optional, Union
 
 from sympy.concrete.summations import Sum
 from sympy.core.expr import Expr
+from sympy.polys.polyerrors import PolynomialError
+from sympy.polys.polytools import Poly
+from sympy.polys.polytools import cancel
 from sympy.core.mul import Mul
 from sympy.core.numbers import pi
 from sympy.core.power import Pow
@@ -479,14 +482,54 @@ def _last_resort(term: Expr, ctx: _Context) -> Condition:
         return integral
     if not free_symbols(term) - {ctx.n}:
         value = attempt(lambda: Sum(term, (ctx.n, ctx.lower, S.Infinity)).is_convergent(), settings.timeout)
-        if value is not None:
-            return true if bool(value) else false
+        # SymPy's is_convergent() answering False means "not shown", not
+        # divergence: it says False for sum sin(n)/n (sympy-extras#41).
+        # Only True is a proof.
+        if value is not None and bool(value):
+            return true
     return None
+
+
+def _oscillates_unboundedly(term: Expr, ctx: _Context) -> bool:
+    """Whether ``term`` is an unbounded factor times ``sin`` or ``cos`` of
+    a linear argument in ``n`` -- ``n*sin(n)``, say -- whose terms cannot
+    tend to zero: for a nonzero ``a``, ``sin(a n + b)`` is bounded away
+    from zero for infinitely many integers ``n`` (identically zero only
+    when ``a`` is an integer multiple of pi and ``sin(b)`` vanishes).
+    ``Sum.is_convergent()`` used to be the source of this verdict, and its
+    ``False`` is not a proof (sympy-extras#41)."""
+    from sympy.functions.elementary.trigonometric import sin, cos
+    from sympy.core.numbers import pi
+    if not isinstance(term, Mul):
+        return False
+    waves = [f for f in term.args if isinstance(f, (sin, cos)) and f.args[0].has(ctx.n)]
+    if len(waves) != 1:
+        return False
+    argument = as_expr(waves[0].args[0])
+    try:
+        linear = Poly(argument, ctx.n)
+    except PolynomialError:
+        return False
+    if linear.degree() != 1:
+        return False
+    a, b = (as_expr(c) for c in linear.all_coeffs())
+    if free_symbols(a) or free_symbols(b) or a == 0:
+        return False
+    turns = as_expr(a/pi)
+    if turns.is_integer:
+        phase = sin(b) if isinstance(waves[0], sin) else cos(b)
+        if phase.is_zero is not False:
+            return False
+    rest = as_expr(term/waves[0])
+    magnitude = _limit(as_expr(Abs(rest)), ctx)
+    return magnitude is not None and magnitude == S.Infinity
 
 
 def _term_test(term: Expr, ctx: _Context) -> Condition:
     """Divergence when the terms do not tend to zero; ``None``
     otherwise."""
+    if _oscillates_unboundedly(term, ctx):
+        return false
     value = _limit(term, ctx)
     if value is None:
         return None
@@ -675,9 +718,33 @@ def product_convergence(term: Union[Expr, int], n: Symbol, assumptions: Assumpti
     absolute = _convergence(magnitude, ctx)
     if absolute is true:
         return true
+    # for an alternating factor the condition for sum |b| is sufficient,
+    # not necessary: prod (1 + (-1)**n/n**a) converges for a > 1/2, not
+    # only for a > 1 (sympy-extras#39). That case has an exact criterion.
+    alternating = _alternating_product(b, ctx)
+    if alternating is not None:
+        return _finish(alternating, ctx)
     if absolute is not None and not isinstance(absolute, (BooleanTrue, BooleanFalse)):
         return _finish(absolute, ctx)
     if absolute is false and _constant_sign(b, ctx) is True:
         return false
     logarithmic = _convergence(as_expr(log(term_)), ctx)
     return _finish(logarithmic, ctx)
+
+
+def _alternating_product(b: Expr, ctx: _Context) -> Condition:
+    """``prod (1 + (-1)**n c(n))`` with ``c > 0`` decreasing to zero: the
+    alternating sum converges by Leibniz, so the product converges exactly
+    when ``sum c**2`` does (``log(1 + b) = b - b**2/2 + O(b**3)``)."""
+    from sympy.core.numbers import NegativeOne
+    c = as_expr(cancel(b/(-1)**ctx.n))
+    if c.has(NegativeOne) and any(isinstance(p, Pow) and p.base == -1 for p in c.atoms(Pow)):
+        return None
+    # positivity of c for n >= 1 is a question about n only: a free
+    # parameter in the exponent stops ctx.decide, but not SymPy's
+    # assumptions on a positive n
+    grows = Dummy('n', integer=True, positive=True)
+    reals = {s: Dummy(s.name, real=True) for s in free_symbols(c) - {ctx.n}}
+    if as_expr(c.xreplace({ctx.n: grows}).xreplace(reals)).is_positive is not True:
+        return None
+    return _convergence(as_expr(c**2), ctx)

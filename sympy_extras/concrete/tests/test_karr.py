@@ -57,8 +57,20 @@ def test_no_closed_form() -> None:
     assert karr_sum(factorial(k)/k, (k, 1, n)) is None
     assert karr_sum(binomial(n, k), (k, 0, n)) is None
     assert karr_sum(harmonic(k)*2**k, (k, 1, n)) is None
-    assert karr_sum(1/k, (k, 1, n)) is None
-    assert karr_term(1/k**2, k) is None
+    # sum 1/k has no closed form in the rational functions, and is
+    # harmonic(n) once the harmonic extension is adjoined (automatic
+    # since sympy-extras#34)
+    assert karr_sum(1/k, (k, 1, n), auto=False) is None
+    assert karr_sum(1/k, (k, 1, n)) == harmonic(n)
+    # 1/k**2 has no antidifference in the rational functions; with the
+    # harmonic extension adjoined automatically (sympy-extras#34) it has
+    # one, which must telescope to the summand
+    assert karr_term(1/k**2, k, auto=False) is None
+    g = karr_term(1/k**2, k)
+    assert g is not None
+    # harmonic(k + 1, 2) - harmonic(k, 2) is 1/(k + 1)**2, which simplify
+    # cannot see symbolically but which is exact at integers
+    assert all(g.subs(k, j + 1) - g.subs(k, j) - Rational(1, j**2) == 0 for j in range(1, 7))
     # with the right extension there is one
     s = karr_sum(harmonic(k)/k, (k, 1, n), extensions=[harmonic(k, 2)])
     assert s is not None
@@ -185,3 +197,27 @@ def test_summation() -> None:
     assert summation(sin(k), (k, 1, n)).has(Sum)
     assert summation(harmonic(k), (k, 1, 3)) == Rational(13, 3)
     assert summation(Sum(1/j**2, (j, 1, k)), (k, 1, n)) == n*harmonic(n, 2) - harmonic(n) + harmonic(n, 2)
+
+
+def test_harmonic_sum_gets_its_extension_automatically() -> None:
+    # sympy-extras#34: the harmonic extension only fired when the summand
+    # already carried a harmonic number, so sum 1/k came back None.
+    from sympy import symbols, harmonic
+    n, k = symbols('n k', integer=True)
+    result = karr_sum(1/k, (k, 1, n))
+    assert result is not None
+    for N in range(1, 7):
+        assert result.subs(n, N) == harmonic(N), N
+
+
+def test_closed_form_is_not_asserted_at_its_own_poles() -> None:
+    # sympy-extras#35: the antidifference has a denominator in n whose
+    # integer roots are exactly where the returned closed form 0 is false:
+    # the sum is -1 at n = 1 and 2 at n = 2.
+    from sympy import symbols, binomial, Sum
+    n, k = symbols('n k', integer=True)
+    term = (-1)**k*k**2*binomial(n, k)
+    result = karr_sum(term, (k, 1, n))
+    if result is not None:
+        for N in range(1, 7):
+            assert result.subs(n, N) == Sum(term.subs(n, N), (k, 1, N)).doit(), N

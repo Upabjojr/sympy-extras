@@ -32,3 +32,6 @@ env/
 # downloaded benchmark data
 benchmarks/.cache/
 benchmarks/results/
+
+# local cross-checking reports (not part of the repository)
+audits/

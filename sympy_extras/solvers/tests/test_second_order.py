@@ -106,3 +106,17 @@ def test_dsolve_second_order() -> None:
     assert isinstance(solution, Eq) and solution.rhs.has(log)
     assert dsolve_second_order(f.diff(x, 2) - f**2, f) is None
     assert sqrt(4) == 2 and cos(0) == 1
+
+
+def test_the_unknown_is_not_left_under_an_integral() -> None:
+    # sympy-extras#29: dsolve's answer to the reduced equation kept y(x)
+    # inside Integral(..., x) and was returned as a solution; the first
+    # integral is the honest reduction when that happens.
+    from sympy import Function, Eq, Integral
+    from sympy.abc import x
+    from sympy_extras.solvers import dsolve_second_order
+    y = Function('y')(x)
+    results = dsolve_second_order(Eq(y.diff(x, 2) + y.diff(x)/x - y, 0), y)
+    assert results is not None
+    for r in results:
+        assert not any(i.has(y) for i in r.atoms(Integral)), r

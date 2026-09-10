@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sympy import exp, oo, log, Piecewise, Eq, S, sqrt, sin, O, Rational
+from sympy import exp, oo, log, Piecewise, Eq, S, sqrt, sin, O, Rational, Limit
 from sympy.calculus.accumulationbounds import AccumBounds
 from sympy.abc import a, b, x
 
@@ -102,3 +102,33 @@ def test_limit_of_an_oscillating_expression() -> None:
     assert result.subs(a, -1) == 0
     assert result.subs(a, 0) == AccumBounds(-1, 1)
     assert limit(sin(x)/x, x, oo) == 0
+
+
+def test_directed_infinity_needs_a_direction() -> None:
+    # sympy-extras#52: the modulus diverges but the argument winds, so
+    # the limit has no direction; oo (and oo*I) name a ray the function
+    # never runs along. Mathematica and Maxima both say zoo.
+    from sympy import I, zoo
+    assert limit(exp(x**2 + I*x), x, oo) is zoo
+    assert limit(sqrt(x)*(x**(1/x) - 1), x, 0, '-') is zoo
+    # the other side is a real limit and stays one
+    assert limit(sqrt(x)*(x**(1/x) - 1), x, 0, '+') == 0
+
+
+def test_degenerate_parameter_values_are_split() -> None:
+    # sympy-extras#30: a/b was returned for every a, b although at b = 0
+    # the limit is +-oo (or 1/2 when a = 0 too); the degenerate values
+    # of a parameter must be their own cases.
+    value = limit((a*x + 1)/(b*x + 2), x, oo)
+    assert value.subs({a: 3, b: 2}) == Rational(3, 2)
+    at_zero = value.subs({a: 3, b: 0})
+    assert at_zero is oo or (isinstance(at_zero, Limit) and True), at_zero
+
+
+def test_the_larger_exponent_wins() -> None:
+    # sympy-extras#28: log(x**a + x**b)/log(x) -> max(a, b), but the
+    # Piecewise split on the sign of b alone and gave b at a = 2, b = 1.
+    value = limit(log(x**a + x**b)/log(x), x, oo)
+    for a0, b0 in ((2, 1), (1, 2), (3, 3), (-1, 2), (2, -1)):
+        at = value.subs({a: a0, b: b0})
+        assert at == max(a0, b0) or isinstance(at, Limit), (a0, b0, at)

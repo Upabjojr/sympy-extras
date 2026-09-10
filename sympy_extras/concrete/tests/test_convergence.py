@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sympy import (factorial, binomial, log, sqrt, sin, cos, exp, Abs, Eq, And, Or, S, Sum, oo,
+from sympy import (true, false, factorial, binomial, log, sqrt, sin, cos, exp, Abs, Eq, And, Or, S, Sum, oo,
     pi, Rational)
 from sympy.abc import n, x, p
 
@@ -99,3 +99,25 @@ def test_dirichlet_test() -> None:
     # and the terms have to tend to zero
     assert sum_convergence(sin(n), n) is S.false
     assert sum_convergence(n*sin(n), n) is S.false
+
+
+def test_product_with_a_sign_changing_factor() -> None:
+    # sympy-extras#39: prod (1 + (-1)**n / n**a) converges iff both
+    # sum (-1)**n/n**a and sum 1/n**(2a) do, i.e. for a > 1/2; the
+    # absolute-convergence condition a > 1 was returned instead.
+    from sympy import Rational
+    from sympy.abc import n, a
+    condition = product_convergence(1 + (-1)**n/n**a, n)
+    assert condition is not None
+    assert condition.subs(a, Rational(3, 4)) is true
+    assert condition.subs(a, Rational(1, 3)) is false
+
+
+def test_conditionally_convergent_series_are_not_called_divergent() -> None:
+    # sympy-extras#41: SymPy's is_convergent() answering False was taken
+    # as proof of divergence, but it means "not shown"; both of these
+    # converge (their terms are sin(n)/n up to an absolutely summable rest).
+    from sympy import sin, log, atan
+    from sympy.abc import n
+    assert sum_convergence(log(1 + sin(n)/n), n) is not false
+    assert sum_convergence(atan(sin(n)/n), n) is not false

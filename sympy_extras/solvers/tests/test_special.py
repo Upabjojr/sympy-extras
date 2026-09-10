@@ -69,3 +69,16 @@ def test_dsolve_linear_uses_special_functions() -> None:
     assert found == [besselj(0, 2*sqrt(a)*sqrt(x)), bessely(0, 2*sqrt(a)*sqrt(x))]
     found = dsolve_linear(y.diff(x, 2) + x*y, y)
     assert len(found) == 2 and all(_residual(y.diff(x, 2) + x*y, s) < 1e-10 for s in found)
+
+
+def test_zero_normal_form_does_not_crash() -> None:
+    # sympy-extras#42: with r = 0 the normal form is z'' = 0, which has
+    # no singular points at all, and the pole bookkeeping indexed an
+    # empty list. None is the acceptable answer, an IndexError is not.
+    from sympy import Symbol, Integer, Function, Eq
+    from sympy_extras.solvers import bessel_solutions, whittaker_solutions, riccati_ode
+    x = Symbol('x')
+    assert bessel_solutions(Integer(0), x) is None
+    assert whittaker_solutions(Integer(0), x) is None
+    y = Function('y')(x)
+    riccati_ode(Eq(y.diff(x), y**2), y)        # must not raise

@@ -251,10 +251,14 @@ def polynomialize(formula: Boolean, x: Symbol) -> Optional[Reduction]:
     # then the half-angle substitution
     w = Dummy('w', real=True)
     c, s = Dummy('c'), Dummy('s')
+    # the multiple angle is expanded around a stand-in for u: expanding
+    # k.func(m*u) with u = 2x turns sin(2x) into 2 sin(x) cos(x), which the
+    # kernel then never matches (sympy-extras#36)
+    v = Dummy('v')
     reduced = rewritten
     for k, m in zip(kernels, multiples):
-        image = as_expr(expand_trig(k.func(int(m)*u)))
-        image = image.xreplace({cos(u): c, sin(u): s})
+        image = as_expr(expand_trig(k.func(int(m)*v)))
+        image = image.xreplace({cos(v): c, sin(v): s})
         reduced = reduced.xreplace({k: image})
     if reduced.has(x):
         return None

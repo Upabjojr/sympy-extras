@@ -76,3 +76,30 @@ def test_solve_ode() -> None:
     eq = y.diff(x, 2) - y.diff(x)**2/y - y.diff(x)/x
     [sol] = solve_ode(eq, y)
     assert checkodesol(eq, sol, y)[0]
+
+
+def test_check_applies_to_the_dsolve_branch() -> None:
+    # sympy-extras#40: the primary branch returned dsolve's output
+    # unconditionally, so check=True changed nothing. Three consequences,
+    # each caught by checkodesol.
+    from sympy import Function, Eq, Order, nan
+    from sympy.abc import x
+    from sympy_extras.solvers import solve_ode
+    y = Function('y')(x)
+    # a truncated power series is not a solution
+    series = Eq(y.diff(x, 2) + (-2*x**2 - x + 1)*y.diff(x) + 3*y, 0)
+    for sol in solve_ode(series, y, check=True):
+        assert not sol.has(Order)
+    # x**3 y' - y**2 - x**4 = 0: dsolve returns y = x**2 (1 - 8 x**2), a
+    # constant-free non-solution whose residual is -64 x**8 - 16 x**6
+    from sympy.solvers.ode import checkodesol
+    wrong = -x**4 + x**3*y.diff(x) - y**2
+    for sol in solve_ode(wrong, y, check=True):
+        assert checkodesol(wrong, sol, y)[0], sol
+    # y = C1 x holds only at C1 = 0 and -1, and was returned as a family;
+    # with the check in place the fallback finds the real general solution
+    homogeneous = y.diff(x) - (2*x**3*y - y**4)/(x**4 - 2*x*y**3)
+    solutions = solve_ode(homogeneous, y, check=True, timeout=10)
+    for sol in solutions:
+        assert not sol.has(nan)
+        assert checkodesol(homogeneous, sol, y)[0], sol

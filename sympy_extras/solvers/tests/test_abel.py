@@ -101,3 +101,22 @@ def test_abel_ode_by_invariants() -> None:
     solution = abel_ode(equation, y)
     assert solution is not None and _implicit_holds(equation, solution)
     assert abel_by_invariants(y.diff(x) - y**3 - exp(x), y) is None
+
+
+def test_a_relation_implying_zero_derivative_is_not_returned() -> None:
+    # sympy-extras#38: for y' = x y**3 + y**2 the relation returned had
+    # no x in it once simplified, so it implied y' = 0: not a solution.
+    # Either no answer or a relation whose implied y' matches the equation.
+    from sympy import Function, Eq, Dummy, Rational, N
+    from sympy.abc import x
+    from sympy_extras.solvers import abel_ode
+    y = Function('y')(x)
+    result = abel_ode(Eq(y.diff(x), x*y**3 + y**2), y)
+    if isinstance(result, Eq):
+        Y = Dummy('Y')
+        F = (result.lhs - result.rhs).subs(y, Y)
+        implied = -F.diff(x)/F.diff(Y)
+        for point in ({x: Rational(3, 2), Y: Rational(1, 3)}, {x: 2, Y: Rational(-1, 2)}):
+            point[Symbol('C1')] = Rational(1, 2)
+            expected = (x*Y**3 + Y**2).subs(point)
+            assert abs(N(implied.subs(point) - expected, 20)) < 1e-10, result

@@ -4,7 +4,7 @@ import itertools
 import random
 
 from sympy import (S, Eq, Ne, Mod, And, Or, Not, Implies, Matrix, Tuple, Lambda, FiniteSet, ImageSet,
-    ConditionSet, Symbol, Integer)
+    ConditionSet, Symbol, Integer, true, false)
 from sympy.abc import x, y, z
 from sympy.core.basic import Basic
 from sympy.logic.boolalg import Boolean
@@ -198,3 +198,90 @@ def test_solve_integers() -> None:
 def test_wrong_types() -> None:
     raises(TypeError, lambda: untyped(cooper)(1, x))
     raises(ValueError, lambda: linear_diophantine_system([Eq(x, 1)], []))
+
+
+def test_mutually_covering_disjuncts_are_both_kept() -> None:
+    # sympy-extras#45 and #51: _drop_covered tested each disjunct against
+    # the *original* list, so two disjuncts pinning the same point covered
+    # each other and were both dropped, losing the point. This
+    # disjunction is satisfiable at x = 0 and came back False.
+    from sympy_extras.solvers.integers import _drop_covered
+    x = Symbol('x', integer=True)
+    kept = _drop_covered(Or(And(Eq(x, 0), Ne(x, 1)), And(Eq(x, 0), Ne(x, 2))))
+    assert kept.subs(x, 0) is true
+
+
+def test_cooper_keeps_the_solution_of_two_equalities() -> None:
+    # sympy-extras#51: y = 0 forces -x + 2 = 0, so the answer is x = 2,
+    # but a positive coefficient >= 2 on the eliminated variable made
+    # cooper return False; the sign-flipped equation was fine.
+    x, y = Symbol('x', integer=True), Symbol('y', integer=True)
+    for sign in (1, -1):
+        eliminated = cooper(And(Eq(y, 0), Eq(sign*(-x + 3*y + 2), 0)), y)
+        assert eliminated.subs(x, 2) is true
+        assert eliminated.subs(x, 3) is false
+
+
+def test_resolve_does_not_depend_on_the_order_of_bound_variables() -> None:
+    # sympy-extras#51: Exists([x, y], F) and Exists([y, x], F) gave
+    # different answers, because one elimination order hit the lost
+    # solution; (2, 0) is a witness so both must be True.
+    x, y = Symbol('x', integer=True), Symbol('y', integer=True)
+    F = And(Eq(y, 0), Eq(x - 3*y - 2, 0))
+    assert resolve(Exists([x, y], F), domain=S.Integers) is true
+    assert resolve(Exists([y, x], F), domain=S.Integers) is true
+
+
+def test_resolve_does_not_call_a_false_universal_true() -> None:
+    # sympy-extras#51 (universal direction): F is false at (1, 1), so the
+    # universal statement is false, yet resolve said True in one variable
+    # order -- the dangerous direction for a decision procedure.
+    x, y = Symbol('x', integer=True), Symbol('y', integer=True)
+    F = Or(Ne(1 - x, 0), (-x + 2*y + 1 <= 0),
+           And(Ne(-x + y - 1, 0), Eq(-2*x - 3*y - 2, 0)))
+    assert F.subs({x: 1, y: 1}) is false
+    assert resolve(ForAll([x, y], F), domain=S.Integers) is false
+    assert resolve(ForAll([y, x], F), domain=S.Integers) is false
+
+
+def test_universal_with_two_equalities_in_the_conclusion() -> None:
+    # sympy-extras#45: forall x, y: (x + y = 0 and x - y = 0) implies
+    # (x = 0 and y = 0) is valid, and resolve returned False because
+    # _drop_covered removed both disjuncts holding at x = 0.
+    x, y = Symbol('x', integer=True), Symbol('y', integer=True)
+    claim = Implies(And(Eq(x + y, 0), Eq(x - y, 0)), And(Eq(x, 0), Eq(y, 0)))
+    assert resolve(ForAll([x, y], claim), domain=S.Integers) is true
+
+
+def test_cooper_numerical_semigroup() -> None:
+    # sympy-extras#27: {2n + 3k : n, k >= 0} is every nonnegative integer
+    # except 1, but the second elimination returned (m >= 0) & (m even),
+    # wrong at m = 3 (n = 0, k = 1) and every odd m >= 3.
+    n, k, m = (Symbol(s, integer=True) for s in 'nkm')
+    condition = resolve(Exists((n, k), And(Eq(2*n + 3*k, m), n >= 0, k >= 0)), S.Integers)
+    for value in range(0, 12):
+        expected = value != 1
+        assert bool(condition.subs(m, value)) is expected, value
+
+
+def test_a_residue_other_than_zero_is_presburger() -> None:
+    # sympy-extras#44: Eq(Mod(x, 3), 1) was refused as not Presburger,
+    # although it is 3 | x - 1; a residue outside [0, k) never holds.
+    x = Symbol('x', integer=True)
+    assert is_presburger(Eq(Mod(x, 3), 1), {x})
+    condition = resolve(Exists([x], And(Eq(Mod(x, 3), 1), x > 0, x < 3)), domain=S.Integers)
+    assert condition is true
+    assert resolve(Exists([x], Eq(Mod(x, 3), 5)), domain=S.Integers) is false
+    assert resolve(ForAll([x], Ne(Mod(x, 3), 7)), domain=S.Integers) is true
+
+
+def test_nonlinear_universal_goals_are_decided_over_the_reals() -> None:
+    # sympy-extras#46: every nonlinear formula was refused over the
+    # integers; a universal statement true over R is true over Z, and an
+    # existential one false over R is false over Z.
+    a, b = Symbol('a', integer=True), Symbol('b', integer=True)
+    assert resolve(ForAll([a], Implies(3 < a, 0 <= a**3 + a)), domain=S.Integers) is true
+    assert resolve(ForAll([a, b], Implies(And(0 < a, 0 < b), 0 < a*b)), domain=S.Integers) is true
+    assert resolve(Exists([a], And(a**2 < 0)), domain=S.Integers) is false
+    # the other directions do not transfer, and are still refused
+    raises(ValueError, lambda: resolve(Exists([a], Eq(a**2, 2)), domain=S.Integers))

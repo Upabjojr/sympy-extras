@@ -329,18 +329,31 @@ def _split_linear(e: Expr, x: Symbol) -> Optional[_Linear]:
 
 
 def _divisibility(atom: Boolean) -> Optional[tuple[int, Expr]]:
-    """``(k, e)`` for an atom ``Eq(Mod(e, k), 0)`` or ``Ne(Mod(e, k), 0)``
-    (``Mod`` may carry an integer factor, extracted by SymPy from the
-    argument: ``c Mod(e, k) = 0`` is ``k | e`` again)."""
-    if isinstance(atom, (Eq, Ne)) and atom.rhs == 0:
-        lhs = atom.lhs
-        if isinstance(lhs, Mul) and len(lhs.args) == 2 and isinstance(lhs.args[0], Integer) \
-                and lhs.args[0] != 0:
+    """``(k, e)`` for an atom ``Eq(Mod(e, k), r)`` or ``Ne(Mod(e, k), r)``
+    with an integer residue ``r``, read as ``k | e - r`` (``Mod`` may
+    carry an integer factor, extracted by SymPy from the argument:
+    ``c Mod(e, k) = 0`` is ``k | e`` again). A residue outside
+    ``0 <= r < k`` is left alone: the atom is then simply false or true,
+    which :func:`_canonical_divisibilities` settles (sympy-extras#44)."""
+    if isinstance(atom, (Eq, Ne)) and isinstance(atom.rhs, Integer):
+        lhs, residue = atom.lhs, int(atom.rhs)
+        if residue == 0 and isinstance(lhs, Mul) and len(lhs.args) == 2 \
+                and isinstance(lhs.args[0], Integer) and lhs.args[0] != 0:
             lhs = lhs.args[1]
         if isinstance(lhs, Mod):
             e, k = lhs.args
-            if isinstance(k, Integer) and int(k) > 0:
-                return int(k), as_expr(e)
+            if isinstance(k, Integer) and int(k) > 0 and 0 <= residue < int(k):
+                return int(k), as_expr(e - residue)
+    return None
+
+
+def _impossible_residue(atom: Boolean) -> Optional[Boolean]:
+    """``Mod(e, k) = r`` with ``r`` outside ``[0, k)`` never holds, and its
+    negation always does."""
+    if isinstance(atom, (Eq, Ne)) and isinstance(atom.rhs, Integer) and isinstance(atom.lhs, Mod):
+        k = atom.lhs.args[1]
+        if isinstance(k, Integer) and int(k) > 0 and not 0 <= int(atom.rhs) < int(k):
+            return false if isinstance(atom, Eq) else true
     return None
 
 
@@ -358,6 +371,10 @@ def _canonical_divisibilities(formula: Boolean) -> Boolean:
         divisibility = _divisibility(atom)
         if divisibility is not None:
             replacements[atom] = _divides(type(atom), *divisibility)
+            continue
+        impossible = _impossible_residue(atom)
+        if impossible is not None:
+            replacements[atom] = impossible
     return _substitute(formula, replacements)
 
 
@@ -366,10 +383,12 @@ def is_presburger(formula: Boolean, integers: set[Symbol]) -> bool:
     with integer coefficients and divisibility conditions
     ``Eq(Mod(e, k), 0)`` in the given integer variables."""
     for atom in formula.atoms(Relational):
-        if _divisibility(atom) is not None:
-            e = _divisibility(atom)
-            if e is None or not _integer_linear(e[1], integers):
+        divisibility = _divisibility(atom)
+        if divisibility is not None:
+            if not _integer_linear(divisibility[1], integers):
                 return False
+            continue
+        if _impossible_residue(atom) is not None:
             continue
         if not _integer_linear(as_expr(atom.lhs - atom.rhs), integers):
             return False
@@ -463,6 +482,10 @@ def cooper(formula: Boolean, x: Symbol) -> Boolean:
     # negations are pushed down to the atoms: the argument below needs a
     # formula which is monotone in its atoms
     formula = as_boolean(as_boolean(formula).to_nnf(simplify=False))
+    # residues first: Mod(e, k) = r is k | e - r, and one outside [0, k)
+    # is a constant (sympy-extras#44); the atom loop below reads the
+    # canonical form only
+    formula = _canonical_divisibilities(formula)
     if not formula.has(x):
         return formula
     normalized, m = _normalize_coefficients(formula, x)
@@ -538,10 +561,18 @@ def cooper(formula: Boolean, x: Symbol) -> Boolean:
 
 
 def _point(disjunct: Boolean) -> Optional[tuple[Symbol, Expr]]:
-    """``(x, e)`` when the disjunct contains an equation ``x = e`` with
-    ``e`` free of ``x``."""
-    for atom in disjunct.atoms(Eq):
-        if isinstance(atom.lhs, Mod):
+    """``(x, e)`` when the disjunct *pins* ``x`` to ``e``: the equation
+    ``x = e`` (``e`` free of ``x``) is the disjunct itself or one of its
+    top-level conjuncts.
+
+    An equation nested deeper -- inside an ``Or`` within the disjunct --
+    does not pin anything: ``(m >= 0 | m = 0) & (m = 0 | 3 | m)`` holds
+    for every multiple of 3, not only at ``m = 0``, and reading it as a
+    point made :func:`_drop_covered` discard it (sympy-extras#27).
+    """
+    conjuncts = list(disjunct.args) if isinstance(disjunct, And) else [disjunct]
+    for atom in conjuncts:
+        if not isinstance(atom, Eq) or isinstance(atom.lhs, Mod):
             continue
         e = as_expr(atom.lhs - atom.rhs)
         for x in sorted(free_symbols(e), key=lambda s: s.name):
@@ -562,7 +593,12 @@ def _drop_covered(formula: Boolean) -> Boolean:
     for i, d in enumerate(disjuncts):
         point = _point(d)
         if point is not None:
-            others = Or(*[o for j, o in enumerate(disjuncts) if j != i])
+            # a disjunct is redundant only when the disjuncts that will
+            # actually remain cover its point: the ones kept so far and
+            # the ones not examined yet. Testing against the original
+            # list let two disjuncts pinning the same point cover each
+            # other, and both were dropped (sympy-extras#45, #51).
+            others = Or(*kept, *disjuncts[i + 1:])
             if as_boolean(others.subs(point[0], point[1])) is true:
                 continue
         kept.append(d)

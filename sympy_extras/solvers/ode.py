@@ -30,6 +30,8 @@ from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.function import AppliedUndef, Derivative, Function, diff, count_ops
 from sympy.core.relational import Eq
+from sympy.core.numbers import nan
+from sympy.series.order import Order
 from sympy.core.symbol import Symbol
 from sympy.integrals.integrals import Integral, integrate
 from sympy.polys.polytools import cancel
@@ -419,6 +421,19 @@ def solve_ode(ode: Equation, y: AppliedUndef, degree: int = 2, check: bool = Tru
     timeout = _limit(timeout)
     sols = attempt(lambda: dsolve(ode, y), timeout)
     found = _solutions(sols) if sols is not None else []
-    if found:
-        return found
+    # ``check`` applies to this branch as well as to the fallback: SymPy's
+    # dsolve returns truncated series (with an O term), answers carrying
+    # nan, and outright non-solutions -- a spurious sign branch, a family
+    # holding for two values of the constant only (sympy-extras#40). What
+    # checkodesol rejects is not returned, and the same answer written
+    # twice is returned once.
+    accepted: list[Eq] = []
+    for candidate in found:
+        if candidate in accepted or candidate.has(Order, nan):
+            continue
+        if check and not _verified(ode, candidate, y, timeout):
+            continue
+        accepted.append(candidate)
+    if accepted:
+        return accepted
     return dsolve_lie(ode, y, degree=degree, check=check, timeout=timeout)

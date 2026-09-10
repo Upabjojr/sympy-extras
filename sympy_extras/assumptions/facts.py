@@ -109,6 +109,43 @@ def _is_atom(formula: Boolean) -> bool:
     return not isinstance(formula, _COMPOUND)
 
 
+def _cleared_denominator(atom: Relational) -> Optional[Boolean]:
+    """The relation with a symbolic denominator cleared, as a polynomial
+    relation with ``den != 0`` alongside; ``None`` when there is none.
+
+    ``x/a = 1`` is ``x - a = 0 and a != 0``; ``p/q > 0`` is ``p q > 0``
+    (which implies ``q != 0``); ``p/q >= 0`` is ``p q >= 0 and q != 0``.
+    The quantifier elimination, ``ask`` and ``refine`` all rejected a
+    parameter in a denominator before (sympy-extras#32).
+    """
+    from sympy.polys.rationaltools import together
+    difference = as_expr(together(as_expr(atom.lhs - atom.rhs)))
+    numerator, denominator = (as_expr(part) for part in difference.as_numer_denom())
+    if not denominator.free_symbols:
+        return None
+    # only a polynomial denominator: the point is polynomial quantifier
+    # elimination, and a transcendental one (exp(-x) - x**2 < 0 has exp(x)
+    # below the line) is left for the solvers that read it as it is
+    symbols = sorted(free_symbols(denominator) | free_symbols(numerator), key=lambda s: s.name)
+    if not (denominator.is_polynomial(*symbols) and numerator.is_polynomial(*symbols)):
+        return None
+    nonzero = Ne(denominator, 0)
+    if isinstance(atom, Eq):
+        return as_boolean(And(Eq(numerator, 0), nonzero))
+    if isinstance(atom, Ne):
+        return as_boolean(And(Ne(numerator, 0), nonzero))
+    product = as_expr(numerator*denominator)
+    if isinstance(atom, Gt):
+        return as_boolean(product > 0)
+    if isinstance(atom, Lt):
+        return as_boolean(product < 0)
+    if isinstance(atom, Ge):
+        return as_boolean(And(product >= 0, nonzero))
+    if isinstance(atom, Le):
+        return as_boolean(And(product <= 0, nonzero))
+    return None
+
+
 def normalize(formula: Union[Boolean, bool]) -> Boolean:
     """Normal form of an assumption or query.
 
@@ -145,6 +182,9 @@ def normalize(formula: Union[Boolean, bool]) -> Boolean:
     if isinstance(formula_, _COMPOUND):
         return as_boolean(formula_.func(*[normalize(as_boolean(arg)) for arg in formula_.args]))
     if isinstance(formula_, Relational):
+        cleared = _cleared_denominator(formula_)
+        if cleared is not None:
+            return normalize(cleared)
         canonical = as_boolean(formula_.canonical)
         if isinstance(canonical, Relational):
             # bounds at infinity, as produced by unbounded intervals

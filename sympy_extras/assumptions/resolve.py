@@ -13,6 +13,9 @@ from sympy_extras.polys.cad import quantifier_elimination
 from sympy_extras.polys.virtual_substitution import virtual_substitution_elimination, with_sides
 
 from .facts import Facts, normalize, to_polynomial
+from sympy_extras.settings import settings
+from sympy_extras._timeout import attempt
+from sympy_extras._typing import QuantifierPrefix
 from sympy_extras._typing import as_boolean, free_symbols, sorted_symbols
 
 from .quantifiers import prenex
@@ -157,6 +160,14 @@ def _resolve_integers(formula: Boolean, assumptions: 'Assumptions') -> Boolean:
     if premise is not true:
         matrix = And(premise, matrix)
     if not is_presburger(matrix, integers):
+        # Z is a subset of R: a universal statement true over the reals is
+        # true over the integers, an existential one false over the reals
+        # is false over them. Neither reverses, so the relaxation can only
+        # confirm; it decides most of the nonlinear goals of the Lean and
+        # Rocq test suites at once (sympy-extras#46).
+        relaxed = _real_relaxation(formula, prefix, assumptions)
+        if relaxed is not None:
+            return relaxed
         raise ValueError(
             "over the integers the formula must be a Boolean combination of linear "
             "relations with integer coefficients and divisibilities: %s" % (matrix,))
@@ -165,6 +176,26 @@ def _resolve_integers(formula: Boolean, assumptions: 'Assumptions') -> Boolean:
         from .refine import _refine_boolean
         result = _refine_boolean(result, facts)
     return result
+
+
+def _real_relaxation(formula: Boolean, prefix: QuantifierPrefix,
+                     assumptions: 'Assumptions') -> Optional[Boolean]:
+    """The truth value of a closed formula with a prefix of one kind that
+    transfers from the reals to the integers, or ``None``."""
+    from sympy.core.mod import Mod
+    kinds = {kind for kind, _ in prefix}
+    if len(kinds) != 1 or formula.has(Mod) or free_symbols(formula) - {v for _, v in prefix}:
+        return None
+    try:
+        over_reals = attempt(lambda: resolve(formula, assumptions=assumptions, domain=S.Reals),
+                             settings.timeout)
+    except (NotImplementedError, ValueError, TypeError):
+        return None
+    if over_reals is true and kinds == {'forall'}:
+        return true
+    if over_reals is false and kinds == {'exists'}:
+        return false
+    return None
 
 
 def _resolve_complexes(formula: Boolean, assumptions: 'Assumptions') -> Boolean:

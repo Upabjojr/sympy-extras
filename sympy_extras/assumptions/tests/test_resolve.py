@@ -80,3 +80,30 @@ def test_resolve_errors() -> None:
     raises(ValueError, lambda: resolve(ForAll(x, sin(x) > 0)))
     raises(ValueError, lambda: resolve(ForAll(x, element(x, S.Integers))))
     raises(ValueError, lambda: resolve(Exists(x, x > symbols('p'))) if False else resolve(Exists(x, symbols('p'))))
+
+
+def test_a_parameter_in_a_denominator_is_cleared() -> None:
+    # sympy-extras#32: resolve, ask and refine rejected Eq(x/a, 1) as not
+    # polynomial; x/a = 1 is x - a = 0 with a != 0.
+    from sympy import Eq
+    from sympy.abc import a, x
+    from sympy_extras.assumptions import resolve, Exists, ForAll
+    condition = resolve(Exists(x, Eq(x/a, 1)))          # a != 0, however written
+    assert condition.subs(a, 0) is false
+    assert condition.subs(a, 2) is true and condition.subs(a, -3) is true
+    # x**2/a > 0 fails at x = 0 whatever a is
+    assert resolve(ForAll(x, x**2/a > 0)) is false
+
+
+def test_a_system_of_linear_equalities_is_a_chain_of_substitutions() -> None:
+    # sympy-extras#47: five equalities took a minute in virtual
+    # substitution and came back True; an equality pins the variable and
+    # needs no test points.
+    from sympy import Symbol, Eq, And, Implies, linsolve
+    from sympy_extras.assumptions import resolve, ForAll
+    from sympy_extras._timeout import attempt
+    vs = [Symbol('v%d' % i) for i in range(5)]
+    eqs = [Eq(sum(vs) + vs[4 - i], 4 + i) for i in range(5)]
+    solution = list(linsolve(eqs, vs))[0]
+    claim = ForAll(vs, Implies(And(*eqs), Eq(vs[-1], solution[-1])))
+    assert attempt(lambda: resolve(claim, domain=S.Reals), 30) is true

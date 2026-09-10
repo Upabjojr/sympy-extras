@@ -30,6 +30,7 @@ from sympy_extras._typing import Truth, as_boolean, as_expr, as_set, free_symbol
 from sympy_extras.polys.cad import solution_set
 from sympy_extras.polys.roots import in_radicals
 from sympy_extras.solvers.transcendental import solve_transcendental
+from sympy.polys.numberfields.minpoly import minimal_polynomial
 from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 
@@ -113,6 +114,35 @@ def _clearly_not_real(e: Basic) -> bool:
     return isinstance(imaginary, Expr) and imaginary.is_number and bool(abs(imaginary) > Rational(1, 10)**(digits*2//3))
 
 
+def _same_number(first: Basic, second: Basic) -> bool:
+    """Whether two constant expressions are the same number: structurally,
+    by simplification, or -- for algebraic numbers written in different
+    radicals -- by a high precision evaluation confirmed by a common
+    minimal polynomial."""
+    if first == second:
+        return True
+    if not (isinstance(first, Expr) and isinstance(second, Expr)):
+        return False
+    if first.free_symbols or second.free_symbols:
+        return False
+    difference = attempt(lambda: as_expr(simplify(first - second)), settings.timeout)
+    if difference is not None and difference == 0:
+        return True
+    try:
+        gap = abs(complex(N(first - second, 60)))
+        scale = max(1.0, abs(complex(N(first, 60))))
+    except (TypeError, ValueError, ArithmeticError, OverflowError):
+        return False
+    if gap > 1e-50*scale:
+        return False
+    if not (first.is_algebraic and second.is_algebraic):
+        return False
+    t = Dummy('t')
+    polynomials = attempt(lambda: (minimal_polynomial(first, t), minimal_polynomial(second, t)),
+                          settings.timeout)
+    return polynomials is not None and polynomials[0] == polynomials[1]
+
+
 def _filter_finite(elements: Sequence[Basic], x: Symbol, condition: Boolean, facts: Facts,
                    formula: Boolean = true, real: bool = False) -> Set:
     """Keep the elements at which the condition holds, and put the
@@ -132,7 +162,11 @@ def _filter_finite(elements: Sequence[Basic], x: Symbol, condition: Boolean, fac
                 continue
         value = _holds_at(condition, {x: e}, facts)
         if value is True:
-            kept.append(e)
+            # the same number in two radical forms is one solution, and a
+            # FiniteSet only merges structurally equal ones
+            # (sympy-extras#50)
+            if not any(_same_number(e, k) for k in kept):
+                kept.append(e)
         elif value is None:
             undecided.append(e)
     result: Set = FiniteSet(*kept) if kept else S.EmptySet

@@ -163,6 +163,17 @@ def _chini(rhs: Expr, x: Symbol, u: Symbol, f: AppliedUndef) -> Optional[Basic]:
     return Eq(as_expr(left.subs(w, w_value)), as_expr(right + C1))
 
 
+def _abel_relation_holds(solution: Basic, coefficients: tuple[Expr, Expr, Expr, Expr], x: Symbol,
+                         f: AppliedUndef) -> bool:
+    """Whether an implicit relation returned for an Abel equation defines
+    solutions of it (see :func:`sympy_extras.solvers.abel._defines_solution`)."""
+    from .abel import _defines_solution
+    if not isinstance(solution, Eq):
+        return True
+    relation = as_expr(solution.lhs - solution.rhs)
+    return _defines_solution(relation, coefficients, x, f, Symbol('C1'))
+
+
 def abel_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     """An implicit solution of Abel's equations ``y' = f3 y**3 + f2 y**2 +
     f1 y + f0`` (first kind) and ``(y + g) y' = f2 y**2 + f1 y + f0``
@@ -196,7 +207,9 @@ def abel_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
             return None
         if constant_invariant(coefficients, x) is not False:
             solution = _abel_first_kind(rhs, x, u, f, f)
-            if solution is not None:
+            # the relation can lose x altogether and imply y' = 0
+            # (sympy-extras#38): it is checked against the equation first
+            if solution is not None and _abel_relation_holds(solution, coefficients, x, f):
                 return solution
         # a non-constant invariant: the integrable classes recognised
         # through the invariants (the AIR class and the representatives)
