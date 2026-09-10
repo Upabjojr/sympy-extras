@@ -6,60 +6,7 @@ The project is at version 0.x: there is **no guarantee of backwards
 compatibility** between releases yet, and any release may rename, move or
 remove public functions. Breaking changes are listed here when they happen.
 
-## Unreleased
-
-### Fixed
-
-Twenty-two defects reported by the cross-checking audit against Wolfram
-Mathematica, brute force and the test suites of Lean, Rocq, Maxima, TPTP
-and REDUCE (issues #27--#52), each with a regression test that fails on the
-unfixed code:
-
-- `resolve` over the integers (#27, #45, #51): `_drop_covered` tested each
-  disjunct against the original list, so two disjuncts pinning the same
-  point covered each other and were both dropped; and it read an equation
-  nested inside a disjunct as pinning a value. Both lost solutions, made
-  the answer depend on the order of the bound variables, and in one
-  direction called a false universal statement true.
-- `resolve` over the integers accepts `Mod(e, k) = r` for a nonzero
-  residue (#44), and decides a nonlinear universal formula true over the
-  reals (or an existential one false there) by the real relaxation
-  instead of refusing it (#46).
-- `resolve`, `ask` and `refine` clear a parameter in a denominator
-  (`x/a = 1` is `x - a = 0` with `a != 0`) instead of rejecting it (#32).
-- Virtual substitution substitutes an equality with a numeric leading
-  coefficient directly: a system of five linear equalities took a minute
-  and now takes a chain of substitutions (#47).
-- `sympy_extras._timeout.attempt` contains `RecursionError` (#49).
-- `solve` no longer raises `AttributeError` on a quartic whose radical form
-  `evalf` cannot close (#48), and returns the same algebraic number written
-  in two radical forms once (#50).
-- `solve_ode` applies its `check` on the `dsolve` branch as well, so
-  truncated series, answers carrying `nan` and non-solutions are dropped
-  (#40); `dsolve_linear` rejects a truncated series (#37);
-  `dsolve_second_order` returns the first integral rather than an answer
-  with the unknown under an integral (#29); `abel_ode` checks a relation
-  against the equation before returning it (#38); `bessel_solutions`,
-  `whittaker_solutions` and `riccati_ode` no longer raise `IndexError` on
-  `z'' = 0` (#42); Kovacic's case 3 writes `omega` as a function of `x`
-  defined by its polynomial rather than applied to it (#31).
-- `zeilberger_sum` never returns a Boolean, and does not re-assert a
-  rejected order-zero answer as a recurrence (#33), nor let an
-  `AttributeError` from `rsolve` escape (#43); `karr_sum` adjoins the
-  harmonic numbers for a rational summand automatically (#34) and repairs
-  a closed form at the integer poles of its antidifference (#35).
-- `sum_convergence` no longer takes `Sum.is_convergent() == False` as a
-  proof of divergence, and proves `n*sin(n)` divergent by its own term
-  test (#41); `product_convergence` decides an alternating factor
-  exactly, `prod (1 + (-1)**n/n**a)` for `a > 1/2` (#39).
-- `limit` splits on the degenerate values of a parameter, `(a x + 1)/(b x
-  + 2)` at `b = 0` (#30); verifies each piece of a case split at points of
-  its case and refines on the differences of the parameters, giving
-  `max(a, b)` for `log(x**a + x**b)/log(x)` (#28); and returns `zoo`, not
-  a directed infinity, where the modulus diverges but the argument does
-  not converge (#52).
-
-## 0.0.1
+## 0.0.1 - 2026-09-10
 
 First release.
 
@@ -317,6 +264,55 @@ These were found by `benchmarks/fuzz.py`, a randomised driver added in
 this release which cross-checks each part of the package against an
 oracle sharing no code with it, and while following up the cases it
 reported; each of them has a regression test.
+
+Twenty-six defects reported by the cross-checking audit against Wolfram
+Mathematica, brute force and the test suites of Lean, Rocq, Maxima, TPTP
+and REDUCE (issues #27--#52), each with a regression test that fails on the
+unfixed code:
+
+- `resolve` over the integers (#27, #45, #51): `_drop_covered` tested each
+  disjunct against the original list, so two disjuncts pinning the same
+  point covered each other and were both dropped; and it read an equation
+  nested inside a disjunct as pinning a value. Both lost solutions, made
+  the answer depend on the order of the bound variables, and in one
+  direction called a false universal statement true.
+- `resolve` over the integers accepts `Mod(e, k) = r` for a nonzero
+  residue (#44), and decides a nonlinear universal formula true over the
+  reals (or an existential one false there) by the real relaxation
+  instead of refusing it (#46).
+- `resolve`, `ask` and `refine` clear a parameter in a denominator
+  (`x/a = 1` is `x - a = 0` with `a != 0`) instead of rejecting it (#32).
+- Virtual substitution substitutes an equality with a numeric leading
+  coefficient directly: a system of five linear equalities took a minute
+  and now takes a chain of substitutions (#47).
+- `sympy_extras._timeout.attempt` contains `RecursionError` (#49).
+- `solve` no longer raises `AttributeError` on a quartic whose radical form
+  `evalf` cannot close (#48), and returns the same algebraic number written
+  in two radical forms once (#50).
+- `solve_ode` applies its `check` on the `dsolve` branch as well, so
+  truncated series, answers carrying `nan` and non-solutions are dropped
+  (#40); `dsolve_linear` rejects a truncated series (#37);
+  `dsolve_second_order` returns the first integral rather than an answer
+  with the unknown under an integral (#29); `abel_ode` checks a relation
+  against the equation before returning it (#38); `bessel_solutions`,
+  `whittaker_solutions` and `riccati_ode` no longer raise `IndexError` on
+  `z'' = 0` (#42); Kovacic's case 3 writes `omega` as a function of `x`
+  defined by its polynomial rather than applied to it (#31).
+- `zeilberger_sum` never returns a Boolean, and does not re-assert a
+  rejected order-zero answer as a recurrence (#33), nor let an
+  `AttributeError` from `rsolve` escape (#43); `karr_sum` adjoins the
+  harmonic numbers for a rational summand automatically (#34) and repairs
+  a closed form at the integer poles of its antidifference (#35).
+- `sum_convergence` no longer takes `Sum.is_convergent() == False` as a
+  proof of divergence, and proves `n*sin(n)` divergent by its own term
+  test (#41); `product_convergence` decides an alternating factor
+  exactly, `prod (1 + (-1)**n/n**a)` for `a > 1/2` (#39).
+- `limit` splits on the degenerate values of a parameter, `(a x + 1)/(b x
+  + 2)` at `b = 0` (#30); verifies each piece of a case split at points of
+  its case and refines on the differences of the parameters, giving
+  `max(a, b)` for `log(x**a + x**b)/log(x)` (#28); and returns `zoo`, not
+  a directed infinity, where the modulus diverges but the argument does
+  not converge (#52).
 
 The CAD code was originally proposed to SymPy in the pull requests
 [sympy/sympy#30422](https://github.com/sympy/sympy/pull/30422),
