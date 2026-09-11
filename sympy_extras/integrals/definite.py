@@ -41,9 +41,10 @@ converges come out of the computation. The steps are
 
 5. **SymPy's** ``integrate`` as the last resort, under the time limit
    of the settings, and only when its result passes a numerical check
-   (``settings.numerical_checks``): ``integrate`` evaluates an
-   antiderivative at the endpoints and sometimes misses a singularity
-   in between or a condition on the parameters.
+   (``settings.numerical_checks``; an answer the quadrature cannot
+   confirm is dropped): ``integrate`` evaluates an antiderivative at
+   the endpoints and sometimes misses a singularity in between, a
+   condition on the parameters, or a branch cut.
 
 The conditions are decided against the assumptions
 (:func:`sympy_extras.assumptions.ask`); what stays undecided is
@@ -246,17 +247,29 @@ def _quadrature(f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[complex]:
         points = [lo, hi - 100, hi - 10, hi - 1, hi]
     else:
         points = [lo, hi]
+    finer: list[mpmath.mpf] = []
+    for p, q in zip(points[:-1], points[1:]):
+        finer.append(p)
+        if p != mpmath.mpf('-inf') and q != mpmath.mpf('inf'):
+            finer.append((p + q) / 2)
+    finer.append(points[-1])
     try:
         with mpmath.workdps(20):
             first = mpmath.quad(g, points, method='tanh-sinh', error=True)
-            second = mpmath.quad(g, points, method='gauss-legendre', error=True)
+            # the same rule on a finer subdivision: an endpoint singularity
+            # (a logarithm, a fractional power) which the Gauss-Legendre
+            # rule cannot resolve is confirmed this way
+            second = mpmath.quad(g, finer, method='tanh-sinh', error=True)
+            third = mpmath.quad(g, points, method='gauss-legendre', error=True)
     except (ValueError, TypeError, ZeroDivisionError, OverflowError, NameError, AttributeError,
             NotImplementedError, mpmath.libmp.NoConvergence):
         return None
     v1, e1 = complex(first[0]), float(abs(first[1]))
-    v2 = complex(second[0])
+    v2, v3 = complex(second[0]), complex(third[0])
     scale = 1 + max(abs(v1), abs(v2))
-    if abs(v1 - v2) > 1e-6 * scale or e1 > 1e-6 * scale:
+    if abs(v1 - v2) > 1e-8 * scale or e1 > 1e-6 * scale:
+        return None
+    if abs(v1 - v3) > 1e-6 * scale and abs(v2 - v3) > 1e-6 * scale and e1 > 1e-12 * scale:
         return None
     return v1
 
@@ -308,15 +321,18 @@ class _Integrator:
     # -- entry point --------------------------------------------------------
 
     def integrate(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int,
-                  fallback: bool = True) -> Optional[ConditionalValue]:
+                  fallback: bool = True, mapped: bool = False) -> Optional[ConditionalValue]:
         """``Integral(f, (x, a, b))``; without ``fallback`` SymPy's
-        ``integrate`` is not tried (the caller tries it on its own form)."""
+        ``integrate`` is not tried (the caller tries it on its own form),
+        and inside a ``mapped`` range the slow methods which work on the
+        original form (creative telescoping, differentiation under the
+        integral sign) are skipped."""
         if depth > _MAX_DEPTH:
             return None
         if a == b:
             return ConditionalValue(S.Zero)
         if self.ask(as_boolean(a > b)) is True:
-            found = self.integrate(f, x, b, a, depth, fallback)
+            found = self.integrate(f, x, b, a, depth, fallback, mapped)
             return None if found is None else found.scaled(S.NegativeOne)
         if f == 0:
             return ConditionalValue(S.Zero)
@@ -331,7 +347,7 @@ class _Integrator:
         constant, rest = f.as_independent(x, as_Add=False)
         constant_, rest_ = as_expr(constant), as_expr(rest)
         if constant_ != 1:
-            found = self.integrate(rest_, x, a, b, depth, fallback)
+            found = self.integrate(rest_, x, a, b, depth, fallback, mapped)
             return None if found is None else found.scaled(constant_)
         found = self._split_branches(f, x, a, b, depth)
         if found is not None:
@@ -345,8 +361,13 @@ class _Integrator:
             # would be wrong, so SymPy is not asked
             return None
         allowed = (free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x}
-        for strategy in (self._canonical, self._trigonometric, self._mapped, self._inversion, self._residues,
-                         self._holonomic, self._parametric, self._antiderivative):
+        strategies = [self._canonical, self._trigonometric, self._mapped, self._inversion, self._residues]
+        if not mapped:
+            # the methods which work on the original form only, and the
+            # slow ones: not inside a mapped range
+            strategies += [self._holonomic, self._parametric]
+        strategies.append(self._antiderivative)
+        for strategy in strategies:
             found = strategy(f, x, a, b, depth)
             if found is not None:
                 if free_symbols(found.value) - allowed or free_symbols(found.condition) - allowed:
@@ -569,17 +590,17 @@ class _Integrator:
         the real line cut at 0."""
         t = Dummy('t', positive=True)
         if a == -oo and b == oo:
-            right = self.integrate(f, x, S.Zero, oo, depth + 1, False)
+            right = self.integrate(f, x, S.Zero, oo, depth + 1, False, True)
             if right is None:
                 return None
-            left = self.integrate(f, x, -oo, S.Zero, depth + 1, False)
+            left = self.integrate(f, x, -oo, S.Zero, depth + 1, False, True)
             return None if left is None else left.add(right)
         if a == -oo:
-            return self.integrate(as_expr(f.subs(x, b - t)), t, S.Zero, oo, depth + 1, False)
+            return self.integrate(as_expr(f.subs(x, b - t)), t, S.Zero, oo, depth + 1, False, True)
         if b == oo:
             if a == 0:
                 return None
-            return self.integrate(_shift(f, x, t, a), t, S.Zero, oo, depth + 1, False)
+            return self.integrate(_shift(f, x, t, a), t, S.Zero, oo, depth + 1, False, True)
         if a == 0:
             if b == 1:
                 return None
@@ -587,11 +608,11 @@ class _Integrator:
             if self.ask(as_boolean(b > 0)) is not True:
                 return None
             g = as_expr(f.subs(x, b * t) * b)
-            return self.integrate(g, t, S.Zero, S.One, depth + 1, False)
+            return self.integrate(g, t, S.Zero, S.One, depth + 1, False, True)
         # (a, b): x = a + (b - a) t
         length = as_expr(b - a)
         g = as_expr(f.subs(x, a + length * t) * length)
-        return self.integrate(g, t, S.Zero, S.One, depth + 1, False)
+        return self.integrate(g, t, S.Zero, S.One, depth + 1, False, True)
 
     def _series_mellin(self, g: Expr, t: Symbol) -> Optional[ConditionalValue]:
         """``Integral(g, (t, 0, oo))`` as the Mellin transform at ``s = 1``
@@ -657,14 +678,14 @@ class _Integrator:
             t = Dummy('t')
             total = ConditionalValue(S.Zero)
             for k in range(ka, kb):
-                piece = self.integrate(as_expr(f.subs(x, t + k * pi / 2)), t, S.Zero, pi / 2, depth + 1, False)
+                piece = self.integrate(as_expr(f.subs(x, t + k * pi / 2)), t, S.Zero, pi / 2, depth + 1, False, True)
                 if piece is None:
                     return None
                 total = total.add(piece)
             return total
         if ka != 0:
             t = Dummy('t')
-            return self.integrate(as_expr(f.subs(x, t + ka * pi / 2)), t, S.Zero, pi / 2, depth + 1, False)
+            return self.integrate(as_expr(f.subs(x, t + ka * pi / 2)), t, S.Zero, pi / 2, depth + 1, False, True)
         u = Dummy('u', positive=True)
         g = as_expr(f.subs(x, asin(sqrt(u))) / (2 * sqrt(u) * sqrt(1 - u)))
         g = _denest(g, self.assumptions)
@@ -695,8 +716,9 @@ class _Integrator:
         found = antiderivative_integral(f, x, a, b, self.assumptions)
         if found is None:
             return None
-        if settings.numerical_checks and verify_numerically(found.value, f, x, a, b, self.assumptions) is False:
-            # SymPy's antiderivatives sometimes hold for positive parameters only
+        if settings.numerical_checks and verify_numerically(found.value, f, x, a, b, self.assumptions) is not True:
+            # the antiderivatives sometimes hold for positive parameters
+            # or principal branches only: kept when confirmed numerically
             return None
         return self._finish(found)
 
@@ -743,10 +765,15 @@ class _Integrator:
             found = self._finish(ConditionalValue(found.value, self._real_parts(found.condition)))
             if found is None:
                 continue
-            if settings.numerical_checks:
+            if settings.numerical_checks and not f.has(DiracDelta):
                 if found.value.has(oo, -oo, zoo, nan):
                     continue
-                if verify_numerically(found.value, f, x, a, b, self.assumptions) is False:
+                if verify_numerically(found.value, f, x, a, b, self.assumptions) is not True:
+                    # an answer of integrate which the quadrature cannot
+                    # confirm is not kept: the branch cuts of the
+                    # antiderivative make such answers wrong too often
+                    # (a delta function cannot be integrated numerically
+                    # and is handled by integrate symbolically)
                     continue
             return ConditionalValue(tidy(found.value, self.assumptions), found.condition)
         return None

@@ -183,3 +183,14 @@ def test_logarithms_of_negative_arguments_are_made_real() -> None:
     from sympy_extras.integrals import integrate_by_ranges
     y = symbols('y')
     assert _same(integrate_by_ranges(1, x**2 + y**2 < c**2, [x, y], c < 0), pi * c**2)
+
+
+def test_unconfirmed_fallback_answers_are_dropped() -> None:
+    # the bug: integrate(log(z**I)**2, (z, 0, 1)) gives -2 from
+    # log(z**I) = I*log(z), which fails below z = exp(-pi) (the principal
+    # branch); the quadrature could not confirm it and the answer was
+    # kept. Mathematica's NIntegrate disagrees with -2.
+    z = symbols('z')
+    with configure(numerical_checks=True):
+        value = definite_integral(log(z**I)**2, (z, 0, 1))
+    assert value != -2
