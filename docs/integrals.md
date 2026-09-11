@@ -497,6 +497,26 @@ pi*(-1 + 5*sqrt(5))/6
 
 ```
 
+A bounded polytope (linear inequalities with rational coefficients,
+parameters allowed in the constant terms) with a polynomial integrand is
+integrated exactly without the decomposition: the vertices are
+enumerated from the facets, the polytope is triangulated by pulling, and
+each simplex is mapped onto the standard simplex where the monomials
+integrate by Dirichlet's formula. With `dimension=n`, `n` an integer or
+a symbol, a radial integrand of the distance `r` integrates in `n`
+dimensions through the area of the unit sphere:
+
+```python
+>>> integrate_by_ranges(x**2 + y**3, (x > 0) & (y > 0) & (x + y < 1) & (x + 2*y < S(3)/2) & (y - x < S(1)/2))
+2521/25920
+>>> n = symbols('n', positive=True, integer=True)
+>>> integrate_by_ranges(1, r < 1, dimension=n)
+pi**(n/2)/gamma(n/2 + 1)
+>>> integrate_by_ranges(exp(-r**2), True, dimension=n)
+pi**(n/2)
+
+```
+
 Several equations give curves (the Gram determinant of the graph
 parametrisation is the line or surface element), and a cell bounded by
 the root of a cubic gets the trigonometric or hyperbolic form of the root
@@ -515,9 +535,14 @@ explicit in another variable:
 
 The Fourier series of the classical table (`log(sin(x))`, `log(cos(x))`,
 `log(tan(x))`, `log(1 - cos(x))`, `x`, `x**2`, `Abs(sin(x))`, ...,
-Gradshteyn–Ryzhik 1.441-1.444) are integrated termwise over their ranges
-of validity, against each other and against harmonics by orthogonality,
-and against another factor through the moments of the harmonics:
+Gradshteyn–Ryzhik 1.441-1.444), the parametric entries `log(P + Q*cos(x))`
+and `1/(P + Q*cos(x))` (the Poisson kernel, GR 1.447-1.448) and the
+series computed for other factors (the coefficients as integrals with a
+symbolic index, in the half-range or full orthogonal systems of `(a, b)`)
+are integrated termwise over their ranges of validity, against each
+other and against harmonics by orthogonality, and against another factor
+through the moments of the harmonics (Parseval's theorem justifies the
+interchange for two square-integrable factors):
 
 ```python
 >>> from sympy import log
@@ -527,6 +552,10 @@ and against another factor through the moments of the harmonics:
 -pi**2*log(2)/8 + 7*zeta(3)/16
 >>> definite_integral(log(sin(x))*log(cos(x)), (x, 0, pi/2))
 pi*(-pi**2 + 24*log(2)**2)/48
+>>> from sympy_extras.integrals.series import fourier_integral
+>>> a = symbols('a', positive=True)
+>>> fourier_integral(x**2/(1 - 2*a*cos(x) + a**2), x, 0, pi, [a < 1]).value
+pi*(-12*polylog(2, -a) - pi**2)/(3*(a**2 - 1))
 
 ```
 

@@ -185,3 +185,59 @@ def test_fourier_through_series_integral() -> None:
     assert series_integral(x * log(sin(x)), x, 0, pi, expand=x) == ConditionalValue(-pi**2 * log(2) / 2)
     from sympy_extras.integrals.series import fourier_integral
     assert fourier_integral(x * log(sin(x)), x, 0, pi, expand=exp(x)) is None
+
+
+def test_parametric_and_computed_fourier_expansions() -> None:
+    from sympy import sin, cos, symbols, Rational
+    from sympy_extras.integrals.series import fourier_expansion, _computed_expansion
+    a = symbols('a', positive=True)
+    # the Poisson kernel and its logarithm, GR 1.447-1.448, with the root
+    # inside the unit circle; numeric P, Q give the root directly
+    e = fourier_expansion(1 / (1 - 2 * a * cos(x) + a**2), x, 0, pi, a < 1)
+    assert e is not None and e.basis == cos(e.index * x) and e.condition is S.true
+    assert (e.coefficient * (1 - a**2) / a**e.index).simplify() == 2
+    assert (e.constant * (1 - a**2)).simplify() == 1
+    e = fourier_expansion(log(1 - 2 * a * cos(x) + a**2), x, -pi, pi, a < 1)
+    assert e is not None and e.coefficient == -2 * a**e.index / e.index and e.constant == 0
+    # without the assumption the condition P > |Q| is carried along
+    e = fourier_expansion(1 / (1 - 2 * a * cos(x) + a**2), x, 0, pi)
+    assert e is not None and e.condition is not S.true
+    e = fourier_expansion(1 / (5 + 3 * cos(x)), x, 0, 2 * pi)
+    assert e is not None and e.coefficient == Rational(-1, 3)**e.index / 2 and e.constant == Rational(1, 4)
+    assert fourier_expansion(1 / (3 + 5 * cos(x)), x, 0, pi) is None
+    # computed coefficients: the half-range cosine series of x**2 on (0, pi)
+    e = fourier_expansion(x**2, x, 0, pi, compute=True)
+    assert e is not None and e.basis == cos(e.index * x) and e.constant == pi**2 / 3
+    assert e.coefficient == 4 * (-1)**e.index / e.index**2
+    # the full series on (-pi, pi) is the same as the table's
+    e = _computed_expansion(x, x, -pi, pi, None)
+    assert e is not None and e.basis == sin(e.index * x) and (e.coefficient + 2 * (-1)**e.index / e.index) == 0
+    # a factor with a harmonic would resonate with the basis: refused
+    assert _computed_expansion(x * sin(x), x, S.Zero, pi, None) is None
+    assert _computed_expansion(x**2, x, S.Zero, oo, None) is None
+
+
+def test_computed_fourier_integrals() -> None:
+    from sympy import sin, cos, symbols, polylog, zeta
+    from sympy_extras.integrals.series import fourier_integral
+    a = symbols('a', positive=True)
+    n = symbols('n', integer=True, positive=True)
+    # a polynomial against a harmonic, GR 2.633
+    assert fourier_integral(x**2 * cos(n * x), x, -pi, pi) == ConditionalValue(4 * (-1)**n * pi / n**2)
+    # the Poisson kernel: GR 3.613.2 and the series 1.447
+    found = fourier_integral(cos(n * x) / (1 - 2 * a * cos(x) + a**2), x, 0, pi, a < 1)
+    assert found is not None and (found.value - pi * a**n / (1 - a**2)).simplify() == 0
+    found = fourier_integral(x**2 / (1 - 2 * a * cos(x) + a**2), x, 0, pi, a < 1)
+    assert found is not None and (found.value - pi * (pi**2 / 3 + 4 * polylog(2, -a)) / (1 - a**2)).simplify() == 0
+    # log(1 - 2 a cos x + a**2): GR 4.224.14-15, both sides of |a| = 1
+    assert fourier_integral(log(1 - 2 * a * cos(x) + a**2), x, 0, pi, a < 1) == ConditionalValue(0)
+    assert fourier_integral(log(1 - 2 * a * cos(x) + a**2), x, 0, pi, a > 1) == ConditionalValue(2 * pi * log(a))
+    found = fourier_integral(x * log(1 - 2 * a * cos(x) + a**2), x, 0, pi, a < 1)
+    assert found is not None and found.value.expand() == 2 * polylog(3, a) - 2 * polylog(3, -a)
+    # without the assumption on a, the condition of the expansion is reported
+    found = fourier_integral(cos(n * x) / (1 - 2 * a * cos(x) + a**2), x, 0, pi)
+    assert found is None or found.condition is not S.true
+    # tabulated and computed factors paired: (pi - x)**2 against log(sin(x))
+    assert fourier_integral((pi - x)**2 * log(sin(x)), x, 0, pi) == ConditionalValue(-pi**3 * log(2) / 3 - pi * zeta(3) / 2)
+    # a factor with a harmonic next to two others is refused (resonance)
+    assert fourier_integral(x * sin(x) * log(sin(x)), x, 0, pi) is None

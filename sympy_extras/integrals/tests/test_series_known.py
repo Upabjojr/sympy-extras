@@ -77,3 +77,21 @@ def test_fourier_log_sine_integrals() -> None:
     _check_range(sin(x) * log(sin(x)), 0, pi, 2 * log(2) - 2)
     # the Clausen function Cl_2(t) = Sum(sin(k t)/k**2) as polylogarithms
     _check_range(log(2 * sin(x / 2)), 0, t, I * (polylog(2, exp(I * t)) - polylog(2, exp(-I * t))) / 2, [t < 6])
+
+
+def test_computed_and_parametric_fourier_integrals() -> None:
+    # GR 3.613.2, 4.224.14, 4.397.6-style values with the Poisson kernel
+    # and computed polynomial series, each checked numerically by
+    # _check_range
+    a = symbols('a', positive=True)
+    n = symbols('n', integer=True, positive=True)
+    _check_range(cos(n * x) / (1 - 2 * a * cos(x) + a**2), 0, pi, pi * a**n / (1 - a**2), [a < 1, n > 0])
+    _check_range(x**2 / (1 - 2 * a * cos(x) + a**2), 0, pi, pi * (pi**2 / 3 + 4 * polylog(2, -a)) / (1 - a**2), [a < 1])
+    _check_range(x * log(1 - 2 * a * cos(x) + a**2), 0, pi, 2 * polylog(3, a) - 2 * polylog(3, -a), [a < 1])
+    _check_range(log(1 - 2 * a * cos(x) + a**2), 0, pi, 2 * pi * log(a), [a > 1])
+    _check_range(1 / (5 + 3 * cos(x)), 0, pi, pi / 4)
+    _check_range(x / (5 + 3 * cos(x)), 0, pi, pi**2 / 8 + (polylog(2, S(1) / 3) - polylog(2, -S(1) / 3)) / 2)
+    _check_range(log(1 + cos(x)) * cos(2 * x), 0, pi, -pi / 2)
+    _check_range(x**3 * log(sin(x)), 0, pi, -pi**4 * log(2) / 4 - 3 * pi**2 * zeta(3) / 4)
+    _check_range(x**2 * log(1 + cos(x)), 0, pi, -pi**3 * log(2) / 3 - 4 * pi * zeta(3))
+    _check_range(x**2 * cos(n * x), -pi, pi, 4 * (-1)**n * pi / n**2, [n > 0])

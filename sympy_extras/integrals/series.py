@@ -110,17 +110,18 @@ from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.complexes import Abs, sign
-from sympy.functions.elementary.exponential import exp, log
+from sympy.functions.elementary.exponential import exp, exp_polar, log
+from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.functions.elementary.integers import ceiling
 from sympy.functions.elementary.trigonometric import cos, sin, tan
 from sympy.functions.special.hyper import hyper
 from sympy.functions.special.zeta_functions import dirichlet_eta, zeta, lerchphi, polylog
 from sympy.functions.special.gamma_functions import polygamma
 from sympy.integrals.integrals import Integral
-from sympy.logic.boolalg import Boolean, true
-from sympy.functions.elementary.piecewise import Piecewise
+from sympy.logic.boolalg import And, Boolean, true
+from sympy.functions.elementary.piecewise import Piecewise, piecewise_fold
 from sympy.simplify.hyperexpand import hyperexpand
-from sympy.simplify.simplify import hypersimp
+from sympy.simplify.simplify import hypersimp, simplify
 from sympy.polys.partfrac import apart
 from sympy.polys.polytools import cancel
 
@@ -164,16 +165,21 @@ class Expansion:
     constant : Expr
         The term of the series outside the sum (the mean of a Fourier
         series); zero by default.
+    condition : Boolean
+        The condition on the parameters under which the expansion holds
+        (``a**2 < 1`` for the series of the Poisson kernel); true by
+        default.
     """
 
     def __init__(self, factor: Expr, coefficient: Expr, index: Dummy, basis: Expr, start: int,
-                 constant: Expr = S.Zero) -> None:
+                 constant: Expr = S.Zero, condition: Boolean = true) -> None:
         self.factor = factor
         self.coefficient = coefficient
         self.index = index
         self.basis = basis
         self.start = start
         self.constant = constant
+        self.condition = condition
 
     def __repr__(self) -> str:
         if self.constant != 0:
@@ -304,8 +310,165 @@ def _within(a: Expr, b: Expr, lower: Expr, upper: Expr, assumptions: Assumptions
     return True
 
 
+def _cosine_kernel(h: Expr, assumptions: Assumptions) -> Optional[tuple[Expr, Expr, Expr, Boolean]]:
+    """``(P, Q, a, condition)`` for ``h = P + Q*cos(u)`` with ``P > |Q|``,
+    written ``(P/(1 + a**2)) * (1 - 2*a*cos(u) + a**2)`` with
+    ``a = (sqrt(P**2 - Q**2) - P)/Q``, the root of ``a**2 + 2*(P/Q)*a + 1``
+    inside the unit circle; ``condition`` is ``P > |Q|`` when the
+    assumptions do not settle it."""
+    if not isinstance(h, Add):
+        return None
+    constant, rest = h.as_independent(_u, as_Add=True)
+    P, rest_ = as_expr(constant), as_expr(rest)
+    Q, harmonic = rest_.as_independent(_u, as_Add=False)
+    if harmonic != cos(_u) or P == 0:
+        return None
+    Q_ = as_expr(Q)
+    condition = as_boolean(P > Abs(Q_))
+    verdict = ask(condition, assumptions)
+    if verdict is False:
+        return None
+    from sympy_extras.assumptions.refine import refine
+    root = as_expr(refine(sqrt(P**2 - Q_**2), assumptions))
+    a = as_expr(cancel((root - P) / Q_))
+    return (P, Q_, a, true if verdict is True else condition)
+
+
+def _parametric_entry(h: Expr, assumptions: Assumptions) -> Optional[tuple[Expr, Expr, Expr, Boolean]]:
+    """``(constant, coefficient, basis, condition)`` of the Fourier series of
+    ``log(P + Q*cos(u))`` and ``1/(P + Q*cos(u))`` for ``P > |Q|``, valid for
+    every ``u`` ([GR]_ 1.447.2, 1.448.1: ``log(1 - 2*a*cos(u) + a**2) =
+    -2*Sum(a**k*cos(k*u)/k)`` and ``1/(1 - 2*a*cos(u) + a**2) = (1 +
+    2*Sum(a**k*cos(k*u)))/(1 - a**2)`` for ``|a| < 1``)."""
+    if isinstance(h, log):
+        found = _cosine_kernel(as_expr(h.args[0]), assumptions)
+        if found is None:
+            return None
+        P, Q, a, condition = found
+        return (as_expr(log(P / (1 + a**2))), as_expr(-2 * a**_k / _k), cos(_k * _u), condition)
+    if isinstance(h, Pow) and h.exp == -1:
+        found = _cosine_kernel(as_expr(h.base), assumptions)
+        if found is None:
+            return None
+        P, Q, a, condition = found
+        scale = as_expr(cancel((1 + a**2) / (P * (1 - a**2))))
+        return (scale, as_expr(2 * scale * a**_k), cos(_k * _u), condition)
+    return None
+
+
+#: the depth of the Fourier coefficient and moment integrals in progress:
+#: no computed expansion is started inside one (the coefficient integral
+#: of ``g`` would ask for the expansion of ``g`` again)
+_nesting = 0
+
+
+def _computed_expansion(g: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions) -> Optional[Expansion]:
+    """The Fourier series of ``g`` on the bounded range ``(a, b)`` with the
+    coefficients computed as integrals with the symbolic index ``k``
+    (:func:`~sympy_extras.integrals.conditional_integral`, the conditions
+    on the parameters kept): the half-range cosine series with the
+    frequencies ``pi*k/(b - a)`` in ``x - a``, then the half-range sine
+    series, then the full series with ``2*pi*k/(b - a)`` (first when
+    ``a != 0``, the half-range systems then carrying the shift), the
+    first whose coefficients come out in closed form; ``None`` otherwise,
+    or when the range is unbounded, or inside another coefficient
+    integral. Each system is a complete orthogonal system of ``L2(a, b)``,
+    so the series converges to ``g`` in ``L2`` for every square-integrable
+    ``g``."""
+    global _nesting
+    if _nesting > 0 or a in (oo, -oo) or b in (oo, -oo):
+        return None
+    if any(t.has(x) for t in g.atoms(sin, cos, tan)):
+        # a harmonic in g resonates with the basis at one index, where
+        # the formula computed for the symbolic index is wrong
+        return None
+    from .antiderivative import antiderivative_integral
+    from .definite import conditional_integral
+    length = as_expr(b - a)
+    k = Dummy('k', integer=True, positive=True)
+    facts: list[Boolean] = [element(k, S.Naturals)]
+    if isinstance(assumptions, (Boolean, bool)):
+        facts.append(as_boolean(assumptions))
+    elif assumptions is not None:
+        facts.extend(as_boolean(s) for s in assumptions)
+    budget = None if settings.timeout is None else settings.timeout / 2
+
+    # the coefficients as integrals over (0, length) in t = x - a, the
+    # canonical range of the driver (the range (-pi, pi) would be cut at 0
+    # and the two halves left unsimplified)
+    t = Dummy('t', positive=True)
+    shifted = as_expr(g.subs(x, a + t))
+
+    def coefficient(weight: Expr) -> Optional[ConditionalValue]:
+        # the antiderivative first (a polynomial times a harmonic integrates
+        # by parts to a clean formula in k, where the driver splits the
+        # range at the quarter periods and leaves sin(k pi/2) behind)
+        integrand = as_expr(shifted * weight)
+        found = antiderivative_integral(integrand, t, S.Zero, length, facts)
+        if found is None:
+            found = conditional_integral(integrand, t, S.Zero, length, facts)
+        if found is None or found.value.has(Integral, Piecewise, nan, zoo, oo, -oo):
+            return None
+        simpler = attempt(lambda: as_expr(simplify(found.value)), settings.timeout / 8 if settings.timeout else None)
+        if simpler is not None and simpler.count_ops() < found.value.count_ops():
+            return ConditionalValue(simpler, found.condition)
+        return found
+
+    def basis_of(weight: Expr) -> Expr:
+        # the weight in x: cos(w (x - a)) = cos(w x) cos(w a) + sin(w x) sin(w a)
+        omega = as_expr(weight.args[0] / t)
+        if isinstance(weight, cos):
+            return as_expr(cos(omega * x) * cos(omega * a) + sin(omega * x) * sin(omega * a))
+        return as_expr(sin(omega * x) * cos(omega * a) - cos(omega * x) * sin(omega * a))
+
+    def systems() -> Optional[Expansion]:
+        mean = coefficient(S.One)
+        if mean is None:
+            return None
+        constant = as_expr(mean.value / length)
+        conditions: list[Boolean] = [mean.condition]
+        half = as_expr(pi * k / length)
+        full = as_expr(2 * pi * k / length)
+        # the half-range systems are complete on (a, b) in the variable x - a
+        systems: list[list[Expr]] = [[as_expr(cos(half * t))], [as_expr(sin(half * t))],
+                                     [as_expr(cos(full * t)), as_expr(sin(full * t))]]
+        if a != 0:
+            systems = systems[2:] + systems[:2]
+        for weights in systems:
+            parts: list[tuple[Expr, Expr]] = []
+            for weight in weights:
+                found = coefficient(weight)
+                if found is None:
+                    break
+                conditions.append(found.condition)
+                parts.append((as_expr(2 * found.value / length), basis_of(weight)))
+            if len(parts) < len(weights):
+                continue
+            nonzero = [(amplitude, basis) for amplitude, basis in parts if amplitude != 0]
+            if not nonzero:
+                if as_expr(g - constant) == 0:
+                    return Expansion(g, S.Zero, k, parts[0][1], 1, constant, as_boolean(And(*conditions)))
+                continue
+            if len(nonzero) == 1:
+                amplitude, basis = nonzero[0]
+                # (-1)**k sin(k x) from the shift: the sign into the coefficient
+                factor, harmonic = basis.as_independent(x, as_Add=False)
+                if not isinstance(basis, Add):
+                    amplitude, basis = as_expr(amplitude * factor), as_expr(harmonic)
+                return Expansion(g, amplitude, k, basis, 1, constant, as_boolean(And(*conditions)))
+            basis = as_expr(Add(*[amplitude * b_ for amplitude, b_ in nonzero]))
+            return Expansion(g, S.One, k, basis, 1, constant, as_boolean(And(*conditions)))
+        return None
+
+    _nesting += 1
+    try:
+        return attempt(systems, budget)
+    finally:
+        _nesting -= 1
+
+
 def fourier_expansion(g: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
-                      assumptions: Assumptions = None) -> Optional[Expansion]:
+                      assumptions: Assumptions = None, compute: bool = False) -> Optional[Expansion]:
     """The Fourier series of ``g`` valid on ``(a, b)`` from the table of the
     classical series, as an :class:`Expansion` with the harmonics
     ``cos(omega(k)*x)``, ``sin(omega(k)*x)`` as basis, the index ``k`` a
@@ -320,21 +483,48 @@ def fourier_expansion(g: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
     ``Abs(cos(u))``, ``sign(sin(u))`` and ``sign(cos(u))`` everywhere
     ([GR]_ 1.441-1.444); a positive constant factor in a logarithm goes
     into the mean (``log(2*sin(x/2))`` on ``(0, 2*pi)`` has mean zero).
+    The parametric entries ``log(P + Q*cos(u))`` and ``1/(P + Q*cos(u))``
+    for ``P > |Q|`` (the Poisson kernel, [GR]_ 1.447-1.448) come next,
+    with the condition ``P > |Q|`` on the expansion when the assumptions
+    do not settle it. With ``compute=True`` a factor outside the table on
+    a bounded range gets its coefficients computed as integrals with the
+    symbolic index (:func:`_computed_expansion`), and so does a
+    polynomial factor, whose tabulated series belong to the periods
+    ``2*pi`` and whose series on ``(a, b)`` itself is cheap.
 
     Examples
     ========
 
-    >>> from sympy import symbols, log, sin, pi
+    >>> from sympy import symbols, log, sin, cos, pi
     >>> from sympy_extras.integrals.series import fourier_expansion
     >>> x = symbols('x')
+    >>> a = symbols('a', positive=True)
     >>> fourier_expansion(log(2*sin(x/2)), x, 0, 2*pi)
     Expansion(log(2*sin(x/2)), -1/_k, cos(_k*x), start=1)
     >>> fourier_expansion(log(sin(x)), x, 0, pi)
     Expansion(log(sin(x)), -1/_k, cos(2*_k*x), start=1, constant=-log(2))
     >>> fourier_expansion(log(sin(x)), x, 0, 2*pi) is None
     True
+    >>> fourier_expansion(1/(1 - 2*a*cos(x) + a**2), x, 0, pi, a < 1)
+    Expansion(1/(a**2 - 2*a*cos(x) + 1), -2*a**_k/(a**2 - 1), cos(_k*x), start=1, constant=-1/(a**2 - 1))
+    >>> fourier_expansion(x**2, x, 0, pi, compute=True)
+    Expansion(x**2, 4*(-1)**_k/_k**2, cos(_k*x), start=1, constant=pi**2/3)
     """
     g_, a_, b_ = as_expr(g), as_expr(a), as_expr(b)
+    polynomial = bool(g_.is_polynomial(x))
+    found = None if compute and polynomial else _tabulated_expansion(g_, x, a_, b_, assumptions)
+    if found is not None or not compute:
+        return found
+    if not g_.has(x) or _harmonic_parts(g_, x) is not None:
+        return None
+    computed = _computed_expansion(g_, x, a_, b_, assumptions)
+    if computed is None and polynomial:
+        return _tabulated_expansion(g_, x, a_, b_, assumptions)
+    return computed
+
+
+def _tabulated_expansion(g_: Expr, x: Symbol, a_: Expr, b_: Expr, assumptions: Assumptions) -> Optional[Expansion]:
+    """The table and the parametric entries of :func:`fourier_expansion`."""
     scaled = _scaled(g_, x)
     if scaled is None:
         return None
@@ -357,6 +547,13 @@ def fourier_expansion(g: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
         coefficient = as_expr(entry.coefficient.xreplace(replacement))
         basis = as_expr(entry.basis.xreplace(replacement))
         return Expansion(g_, coefficient, k, basis, 1, as_expr(entry.constant + shift))
+    parametric = _parametric_entry(h, assumptions)
+    if parametric is not None:
+        constant, coefficient, basis, condition = parametric
+        k = Dummy('k', integer=True, positive=True)
+        replacement = {_u: as_expr(scale * x), _k: k}
+        return Expansion(g_, as_expr(coefficient.xreplace(replacement)), k, as_expr(basis.xreplace(replacement)), 1,
+                         as_expr(constant + shift), condition)
     return None
 
 
@@ -418,7 +615,12 @@ def moments(expansion: Expansion, rest: Expr, x: Symbol, a: Expr, b: Expr,
         facts.append(as_boolean(assumptions))
     elif assumptions is not None:
         facts.extend(as_boolean(s) for s in assumptions)
-    value = attempt(lambda: definite_integral(expansion.basis * rest, (x, a, b), facts), settings.timeout)
+    global _nesting
+    _nesting += 1
+    try:
+        value = attempt(lambda: definite_integral(expansion.basis * rest, (x, a, b), facts), settings.timeout)
+    finally:
+        _nesting -= 1
     if value is None or value.has(Integral, Piecewise, nan, zoo):
         return None
     return value
@@ -504,16 +706,23 @@ def _rational_sum(term: Expr, j: Dummy, start: int) -> Optional[Expr]:
     return _polygamma_form(as_expr(total))
 
 
-def _polylog_sum(term: Expr, j: Dummy, start: int) -> Optional[Expr]:
+def _polylog_sum(term: Expr, j: Dummy, start: int, assumptions: Assumptions = None) -> Optional[Expr]:
     """The sum from ``start`` of ``c * w**j / j**s`` (``|w| <= 1``, ``s >= 1``;
     after the trigonometric functions of ``j`` are written as
     exponentials) through ``polylog(s, w)``: the series of the Clausen
     functions, ``Sum(sin(j*t)/j**2) = (polylog(2, exp(I*t)) - polylog(2,
     exp(-I*t)))/(2*I)``."""
-    rewritten = as_expr(expand_mul(term.rewrite(exp)))
+    pieces: list[tuple[Expr, Expr]] = []
+    for summand in Add.make_args(term):
+        # the part free of the index stays as it is: rewritten and
+        # expanded it would mix with the powers (1/(1 - a**2) times a**j
+        # became a factor 1/(j**2 - j**2*a**2))
+        outer, inner = as_expr(summand).as_independent(j, as_Add=False)
+        for piece in Add.make_args(as_expr(expand_mul(as_expr(inner).rewrite(exp)))):
+            pieces.append((as_expr(outer), as_expr(piece)))
     total: Expr = S.Zero
-    for summand in Add.make_args(rewritten):
-        coefficient: Expr = S.One
+    for outer, summand in pieces:
+        coefficient: Expr = outer
         base: Expr = S.One
         order: Optional[int] = None
         for factor in Mul.make_args(summand):
@@ -538,9 +747,9 @@ def _polylog_sum(term: Expr, j: Dummy, start: int) -> Optional[Expr]:
                 return None
             base *= b_**p
             coefficient *= b_**q
-        if order is None or ask(as_boolean(Abs(base) <= 1)) is not True:
+        if order is None or ask(as_boolean(Abs(base) <= 1), assumptions) is not True:
             return None
-        if order == 1 and ask(Ne(base, 1)) is not True:
+        if order == 1 and ask(Ne(base, 1), assumptions) is not True:
             return None
         value: Expr = as_expr(polylog(order, base))
         for i in range(1, start):
@@ -549,7 +758,7 @@ def _polylog_sum(term: Expr, j: Dummy, start: int) -> Optional[Expr]:
     return as_expr(total)
 
 
-def sum_series(term: Expr, j: Dummy, start: int) -> Optional[Expr]:
+def sum_series(term: Expr, j: Dummy, start: int, assumptions: Assumptions = None) -> Optional[Expr]:
     """``Sum(term, (j, start, oo))`` in closed form by :func:`sympy.summation`,
     through polylogarithms for the trigonometric series ``Sum(sin(j*t)/j**s)``
     of the Clausen functions, by
@@ -567,10 +776,18 @@ def sum_series(term: Expr, j: Dummy, start: int) -> Optional[Expr]:
     Catalan
     """
     total = attempt(lambda: summation(term, (j, start, oo)), settings.timeout)
-    if isinstance(total, Expr) and not total.has(Sum, nan, zoo) and not total.has(oo):
+    if isinstance(total, Expr) and total.has(Piecewise):
+        # the branch of a parametric sum (|a| < 1 for a geometric series)
+        # which the assumptions settle
+        folded = piecewise_fold(total)
+        total = _settled_branch(folded, assumptions) if isinstance(folded, Piecewise) else None
+    if isinstance(total, Expr) and total.has(exp_polar):
+        # polylog(2, a*exp_polar(I*pi)) is polylog(2, -a) off the cut [1, oo)
+        total = as_expr(total.xreplace({node: exp(node.args[0]) for node in total.atoms(exp_polar)}))
+    if isinstance(total, Expr) and not total.has(Sum, nan, zoo, Piecewise) and not total.has(oo):
         return _polygamma_form(as_expr(total))
-    if term.has(sin, cos, exp):
-        clausen = attempt(lambda: _polylog_sum(term, j, start), settings.timeout)
+    if term.has(sin, cos, exp, Pow):
+        clausen = attempt(lambda: _polylog_sum(term, j, start, assumptions), settings.timeout)
         if clausen is not None:
             return clausen
     rational = _rational_sum(term, j, start)
@@ -585,6 +802,19 @@ def sum_series(term: Expr, j: Dummy, start: int) -> Optional[Expr]:
     if isinstance(closed, Expr) and not closed.has(Sum, nan, zoo, oo):
         return as_expr(closed)
     return _hypergeometric_sum(term, j, start)
+
+
+def _settled_branch(total: Piecewise, assumptions: Assumptions) -> Optional[Expr]:
+    """The value of the first branch whose condition the assumptions
+    settle as true, ``None`` when none is settled (a branch refuted is
+    skipped)."""
+    for value, condition in ((as_expr(pair.args[0]), as_boolean(pair.args[1])) for pair in total.args):
+        verdict = ask(condition, assumptions)
+        if verdict is True:
+            return value
+        if verdict is None:
+            return None
+    return None
 
 
 def _justified(term: Expr, j: Dummy, start: int, assumptions: Assumptions) -> Optional[bool]:
@@ -689,13 +919,13 @@ def _primitive(s: _Harmonics, x: Symbol, a: Expr, b: Expr) -> Expr:
     return as_expr(expand_mul(s.coefficient * integral))
 
 
-def _integrated(s: _Harmonics, x: Symbol, a: Expr, b: Expr) -> Optional[Expr]:
+def _integrated(s: _Harmonics, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions = None) -> Optional[Expr]:
     """``Integral(f - constant, (x, a, b))`` of the series ``f`` (termwise
     integration of a Fourier series is always valid, [Zygmund]_ I.2.7)."""
     term = _primitive(s, x, a, b)
     if s.index is None or term == 0:
         return term
-    value = sum_series(term, s.index, s.start)
+    value = sum_series(term, s.index, s.start, assumptions)
     if value is None or value.has(s.index):
         return None
     return value
@@ -790,7 +1020,7 @@ def _fourier_product(s1: _Harmonics, s2: _Harmonics, x: Symbol, a: Expr, b: Expr
     for s, other in ((s1, s2), (s2, s1)):
         if other.constant == 0:
             continue
-        integrated = _integrated(s, x, a, b)
+        integrated = _integrated(s, x, a, b, assumptions)
         if integrated is None:
             return None
         total += other.constant * integrated
@@ -802,7 +1032,7 @@ def _fourier_product(s1: _Harmonics, s2: _Harmonics, x: Symbol, a: Expr, b: Expr
     term, index, start = diagonal
     if index is None or term == 0:
         return as_expr(total + term)
-    value = sum_series(term, index, start)
+    value = sum_series(term, index, start, assumptions)
     if value is None or value.has(index):
         return None
     return as_expr(total + value)
@@ -865,7 +1095,7 @@ def _termwise(expansion: Expansion, rest: Expr, x: Symbol, a: Expr, b: Expr,
         return None
     j = expansion.index
     term = as_expr(expansion.coefficient * moment)
-    value = sum_series(term, j, expansion.start)
+    value = sum_series(term, j, expansion.start, assumptions)
     if value is None or value.has(j):
         return None
     total = as_expr(expansion.constant * mean + value)
@@ -889,8 +1119,15 @@ def fourier_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, assumptio
     orthogonality, and an expanded factor times any rest through the
     moments ``Integral(cos(omega(k)*x)*rest, (x, a, b))`` computed by
     :func:`~sympy_extras.integrals.definite_integral` for the symbolic
-    index; ``None`` when no factor is in the table on ``(a, b)`` or no
-    step closes.
+    index; ``None`` when no factor has a series on ``(a, b)`` or no step
+    closes. The tabulated and parametric series are tried first, then
+    the series with computed coefficients of the factors outside the
+    table (bounded ranges only). The interchange of sum and integral is
+    Parseval's theorem for two square-integrable factors and the
+    ``L2`` convergence of the series against a bounded rest; the moments
+    route checks its own justification (:func:`_justified`) or the value
+    numerically. The conditions of the expansions (``P > |Q|`` for the
+    parametric entries) are those of the value.
 
     Examples
     ========
@@ -899,6 +1136,7 @@ def fourier_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, assumptio
     >>> from sympy_extras.integrals.series import fourier_integral
     >>> x = symbols('x')
     >>> n = symbols('n', integer=True, positive=True)
+    >>> a = symbols('a', positive=True)
     >>> fourier_integral(log(sin(x)), x, 0, pi)
     ConditionalValue(-pi*log(2))
     >>> fourier_integral(log(sin(x))*log(cos(x)), x, 0, pi/2).value.expand()
@@ -907,21 +1145,51 @@ def fourier_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, assumptio
     ConditionalValue(-pi/n)
     >>> fourier_integral(x**2*log(sin(x)), x, 0, pi)
     ConditionalValue(-pi**3*log(2)/3 - pi*zeta(3)/2)
+    >>> fourier_integral(cos(n*x)/(1 - 2*a*cos(x) + a**2), x, 0, pi, a < 1)
+    ConditionalValue(-pi*a**n/(a**2 - 1))
+    >>> fourier_integral(x**2/(1 - 2*a*cos(x) + a**2), x, 0, pi, a < 1)
+    ConditionalValue(pi*(-12*polylog(2, -a) - pi**2)/(3*(a**2 - 1)))
     """
     f_, a_, b_ = as_expr(f), as_expr(a), as_expr(b)
     if ask(as_boolean(a_ < b_), assumptions) is not True:
         return None
     constant, factors = _fourier_factors(f_, x)
     expanded = [fourier_expansion(g, x, a_, b_, assumptions) for g in factors]
+    found = _fourier_routes(f_, constant, factors, expanded, x, a_, b_, assumptions, expand)
+    if found is not None:
+        return found
+    if a_ in (oo, -oo) or b_ in (oo, -oo) or _nesting > 0:
+        return None
+    if all(e is None for e in expanded) and all(_harmonic(g, x, assumptions) is None for g in factors):
+        # nothing trigonometric with integer frequencies to pair with
+        return None
+    # the factors outside the table with computed coefficients; the
+    # polynomial factors too, whose tabulated series belong to other
+    # periods (x**2 on (0, 2*pi) restricted to (0, pi) has sine terms, not
+    # orthogonal there to the cosines of the other factor) and whose
+    # coefficients are cheap
+    computed = [fourier_expansion(g, x, a_, b_, assumptions, compute=True)
+                if e is None or g.is_polynomial(x) else e for g, e in zip(factors, expanded)]
+    if all(e is None or e in expanded for e in computed):
+        return None
+    return _fourier_routes(f_, constant, factors, computed, x, a_, b_, assumptions, expand)
+
+
+def _fourier_routes(f_: Expr, constant: Expr, factors: list[Expr], expanded: list[Optional[Expansion]],
+                    x: Symbol, a_: Expr, b_: Expr, assumptions: Assumptions,
+                    expand: Optional[Expr]) -> Optional[ConditionalValue]:
+    """The routes of :func:`fourier_integral` for given expansions of the
+    factors (``None`` for a factor without one)."""
     if all(e is None for e in expanded):
         return None
     if expand is not None and all(e is None or e.factor != expand for e in expanded):
         return None
+    condition = as_boolean(And(*[e.condition for e in expanded if e is not None]))
     value: Optional[Expr] = None
     if len(factors) == 1 and expanded[0] is not None:
         s = _harmonics(expanded[0], x)
         if s is not None:
-            integrated = _integrated(s, x, a_, b_)
+            integrated = _integrated(s, x, a_, b_, assumptions)
             if integrated is not None:
                 value = as_expr(s.constant * (b_ - a_) + integrated)
     elif len(factors) == 2:
@@ -930,7 +1198,7 @@ def fourier_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, assumptio
         if series[0] is not None and series[1] is not None:
             value = _fourier_product(series[0], series[1], x, a_, b_, assumptions)
     if value is not None:
-        return ConditionalValue(_polygamma_form(tidy(as_expr(constant * value), assumptions)))
+        return ConditionalValue(_polygamma_form(tidy(as_expr(constant * value), assumptions)), condition)
     # an expanded factor against the rest of the integrand, the
     # polynomial factors last (their moments are the easiest)
     seen: set[Expr] = set()
@@ -941,7 +1209,7 @@ def fourier_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, assumptio
         seen.add(g)
         found = _termwise(e, as_expr(f_ / g), x, a_, b_, assumptions)
         if found is not None:
-            return ConditionalValue(_polygamma_form(tidy(found, assumptions)))
+            return ConditionalValue(_polygamma_form(tidy(found, assumptions)), e.condition)
     return None
 
 
@@ -1011,7 +1279,7 @@ def series_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, assumption
             continue
         j = expansion.index
         term = as_expr(expansion.coefficient * moment)
-        value = sum_series(term, j, expansion.start)
+        value = sum_series(term, j, expansion.start, assumptions)
         if value is None or value.free_symbols & {j}:
             continue
         justified = _justified(term, j, expansion.start, assumptions)

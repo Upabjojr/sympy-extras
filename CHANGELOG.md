@@ -207,6 +207,21 @@ remove public functions. Breaking changes are listed here when they happen.
   (`asymptotic_integral(..., uniform=True)`), and steepest descent through
   complex saddle points (`steepest_descent`).
 
+- `IntegralByRanges`: polynomials over bounded polytopes integrated
+  exactly by vertex enumeration, a pulling triangulation and Dirichlet's
+  formula on the standard simplex (ten times faster than the
+  decomposition on a pentagon), and `dimension=n` with a symbolic `n` for
+  radial integrands (the unit ball has volume `pi**(n/2)/gamma(n/2 + 1)`,
+  the Gaussian over `R**n` is `pi**(n/2)`).
+
+- `sympy_extras.integrals.series`: Fourier series computed for factors
+  outside the table (the coefficients as integrals with a symbolic index
+  in the orthogonal systems of the range) and the parametric entries
+  `log(P + Q*cos(x))`, `1/(P + Q*cos(x))` (Gradshteyn–Ryzhik 1.447-1.448):
+  `x**2/(1 - 2*a*cos(x) + a**2)` over `(0, pi)` is
+  `pi*(pi**2/3 + 4*polylog(2, -a))/(1 - a**2)` for `a < 1`,
+  `x*log(1 - 2*a*cos(x) + a**2)` is `2*polylog(3, a) - 2*polylog(3, -a)`.
+
 - `IntegralByRanges`: curves and surfaces given by several equations with
   `measure='hausdorff'` (the Gram determinant of the graph
   parametrisation; Viviani's curve has length `4*sqrt(2)*elliptic_e(1/2)`),

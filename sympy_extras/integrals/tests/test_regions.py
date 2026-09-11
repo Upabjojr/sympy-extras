@@ -292,3 +292,63 @@ def test_cubic_boundaries() -> None:
     assert not isinstance(found, IntegralByRanges)
     expected = mpmath.quad(lambda yy: mpmath.findroot(lambda xx: xx**3 + yy*xx - 1, 0.7)**2/2, [0, 1])
     assert abs(float(N(found)) - float(expected)) < 1e-12
+
+
+def test_polynomials_over_polytopes_agree_with_the_decomposition() -> None:
+    # the polytope route (vertices from the facets, the pulling
+    # triangulation, Dirichlet's formula on each simplex) is taken before
+    # the decomposition and must agree with it
+    from sympy import And, Symbol
+    from sympy_extras.assumptions.facts import normalize
+    from sympy_extras.integrals.regions import _polytope, _decomposed
+    z = Symbol('z')
+    pentagon = (x > 0) & (y > 0) & (x + y < 3) & (x < 2) & (y < 2)
+    cube = (x > -1) & (x < 1) & (y > -1) & (y < 1) & (z > -1) & (z < 1)
+    octahedron = And(*[s1 * x + s2 * y + s3 * z < 1 for s1 in (1, -1) for s2 in (1, -1) for s3 in (1, -1)])
+    cases = [(S.One, pentagon), (x * y, pentagon), (x**2 + y**3, pentagon), ((x + y)**4, pentagon),
+             (S.One, (x > 0) & (y > 0) & (x + y < 1) & (x < 2 * y)), (x * y * z, cube & (x + y + z < 1)),
+             (x**2, octahedron)]
+    for f, condition in cases:
+        names = sorted(condition.free_symbols, key=str)
+        node = IntegralByRanges(f, condition)
+        found = _polytope(f, normalize(condition), names, [])
+        expected = _decomposed(node, f, normalize(condition), names, None, [])
+        assert found is not None and expected is not None and found == expected, (f, condition, found, expected)
+    assert integrate_by_ranges(x**2 + y**3, pentagon) == Rational(142, 15)
+    assert integrate_by_ranges(1, octahedron) == Rational(4, 3)
+    # parameters in the constant terms, decided under the assumptions
+    a, b = symbols('a b', positive=True)
+    assert integrate_by_ranges(x * y, (x > 0) & (x < a) & (y > 0) & (y < b), [x, y]) == a**2 * b**2 / 4
+    c = Symbol('c')
+    assert _polytope(S.One, normalize((x > 0) & (x < c) & (y > 0) & (y < 1)), [x, y], []) is None
+    assert _polytope(S.One, normalize((x > 0) & (x < c) & (y > 0) & (y < 1)), [x, y], [as_expr(c) > 0]) == c
+    # not a bounded polytope, not a polynomial, empty: the route declines or gives 0
+    assert _polytope(S.One, normalize((x > 0) & (y > 0) & (y < 1)), [x, y], []) is None
+    assert _polytope(exp(x), normalize((x > 0) & (x < 1) & (y > 0) & (y < 1)), [x, y], []) is None
+    assert _polytope(S.One, normalize((x > 0) & (y > 0) & (x**2 + y < 1)), [x, y], []) is None
+    assert _polytope(S.One, normalize((x > 1) & (x < 0) & (y > 0) & (y < 1)), [x, y], []) == 0
+
+
+def test_symbolic_dimension() -> None:
+    from sympy import gamma, Integral, Symbol
+    r = Symbol('r')
+    n = symbols('n', positive=True, integer=True)
+    R = symbols('R', positive=True)
+    assert integrate_by_ranges(1, r < R, [r], dimension=n) == pi**(n / 2) * R**n / gamma(n / 2 + 1)
+    assert integrate_by_ranges(exp(-r**2), S.true, [r], dimension=n) == pi**(n / 2)
+    assert integrate_by_ranges(1, (r > 1) & (r < 2), [r], dimension=4) == 15 * pi**2 / 2
+    # the radial variable is the symbol r of the condition when not given
+    assert integrate_by_ranges(1, r < 1, dimension=3) == 4 * pi / 3
+    assert integrate_by_ranges(1, r < 1, dimension=2) == pi
+    node = IntegralByRanges(r**2, r < 1, [r], dimension=n)
+    assert node.dimension == n and node.measure == 'lebesgue' and node.variables == (r,)
+    assert node.doit() == pi**(n / 2) * n / (2 * gamma(n / 2 + 2))   # 2 pi^(n/2) / ((n + 2) Gamma(n/2))
+    # the polar route in any integer dimension, from the variables
+    w = Symbol('w')
+    assert integrate_by_ranges(1, x**2 + y**2 + z**2 + w**2 < 1) == pi**2 / 2
+    # a condition which is not a bound on r, or an empty range, stays unevaluated
+    assert isinstance(integrate_by_ranges(1, Eq(r, 1), [r], dimension=n), IntegralByRanges)
+    assert isinstance(integrate_by_ranges(1, (r > 2) & (r < 1), [r], dimension=n), IntegralByRanges)
+    assert isinstance(integrate_by_ranges(exp(r**2), S.true, [r], dimension=n), IntegralByRanges)
+    assert not Integral(1, (r, 0, 1)).has(IntegralByRanges)
+    raises(ValueError, lambda: IntegralByRanges(1, (x > 0) & (y > 0), dimension=n))

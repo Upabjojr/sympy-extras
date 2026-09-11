@@ -63,9 +63,30 @@ Four routes are tried around the decomposition [Apostol]_:
   whole line, and the outer integral over an infinite range is again a
   matter for :func:`~sympy_extras.integrals.definite_integral`.
 
-Integrals over polytopes are computed through the decomposition as any
-polynomial region; the formulas of Lasserre and Brion for polynomial
-integrands over polytopes [Lasserre]_ are not used.
+A polynomial over a bounded polytope (a conjunction of inequalities
+linear in the variables, with parameters allowed in the constant terms)
+is integrated exactly without the decomposition [Lasserre]_
+[Baldoni]_: the vertices are enumerated from the facets, the polytope
+is triangulated by the pulling triangulation from a vertex (cones from
+the vertex over the pulling triangulations of the facets not containing
+it), each simplex is mapped affinely onto the standard simplex and the
+monomials are integrated by Dirichlet's formula `\\int_\\Delta u^a\\, du =
+\\prod a_i! / (|a| + d)!`, times the Jacobian of the map. The
+exponential integrals of Brion's theorem [Lasserre]_ are the generating
+function of the same sums; the simplex formula of [Baldoni]_ for powers
+of linear forms is the case of a single monomial after the map. The
+route is taken before the decomposition and agrees with it (the tests
+compare the two).
+
+With ``dimension=n``, ``n`` an integer or a symbol, a radial integrand
+`f(r)` over a ball, an annulus or the whole space of `\\mathbb{R}^n`,
+described by a condition on the radial variable `r` alone (`r < R`,
+`(a < r) \\wedge (r < R)`, ``True``), is
+`\\frac{2\\pi^{n/2}}{\\Gamma(n/2)} \\int f(r)\\, r^{n-1}\\, dr`, the area of the
+unit sphere times the radial integral; the decomposition is skipped, so
+the dimension may be symbolic (the volume `\\pi^{n/2}/\\Gamma(n/2 + 1)` of
+the unit ball). With an integer dimension and the condition written in
+the variables, the polar route below applies in any dimension.
 
 The bounds solved for the last variable need not be linear in it: a
 relation which :func:`sympy_extras.assumptions.solve` turns into an
@@ -132,6 +153,17 @@ pi/2
 >>> integrate_by_ranges(1, (x > 0) & (y > 0) & (y < exp(-x)))
 1
 
+A polynomial over a polytope, and a radial integrand in a symbolic
+dimension:
+
+>>> integrate_by_ranges((x + y)**4, (x > 0) & (y > 0) & (x + y < 1) & (x < 2*y))
+1/9
+>>> n = symbols('n', positive=True, integer=True)
+>>> integrate_by_ranges(1, r < 1, [r], dimension=n)
+pi**(n/2)/gamma(n/2 + 1)
+>>> integrate_by_ranges(exp(-r**2), True, [r], dimension=n)
+pi**(n/2)
+
 The length of the unit circle and the area of the unit sphere, with the
 Hausdorff measure:
 
@@ -162,6 +194,9 @@ References
    Proceedings of the AMS 126 (1998), pp. 2433-2441; M. Brion, *Points
    entiers dans les polyèdres convexes*, Annales scientifiques de l'ENS
    21 (1988), pp. 653-663.
+.. [Baldoni] V. Baldoni, N. Berline, J. A. De Loera, M. Köppe, M. Vergne,
+   *How to integrate a polynomial over a simplex*, Mathematics of
+   Computation 80 (2011), pp. 297-325.
 .. [Collins] G. E. Collins, *Quantifier elimination for real closed
    fields by cylindrical algebraic decomposition*, Automata Theory and
    Formal Languages, Lecture Notes in Computer Science 33, Springer,
@@ -173,14 +208,14 @@ References
 """
 from __future__ import annotations
 
-from itertools import permutations
+from itertools import combinations, permutations
 from typing import Optional, Sequence
 
 from sympy.core.basic import Basic
 from sympy.core.containers import Tuple
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
-from sympy.core.numbers import Rational, nan, oo, zoo
+from sympy.core.numbers import Integer, Rational, nan, oo, zoo
 from sympy.core.power import Pow
 from sympy.core.relational import Eq, Ge, Gt, Le, Lt, Relational
 from sympy.core.singleton import S
@@ -189,6 +224,8 @@ from sympy.functions.elementary.complexes import Abs, im, re, sign
 from sympy.functions.elementary.hyperbolic import acosh, asinh, cosh, sinh
 from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.functions.elementary.trigonometric import acos, cos
+from sympy.functions.combinatorial.factorials import factorial
+from sympy.functions.special.gamma_functions import gamma
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.core.numbers import pi
 from sympy.integrals.integrals import Integral
@@ -199,6 +236,7 @@ from sympy.simplify.simplify import simplify
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, factor
 from sympy.solvers.solvers import solve as sympy_solve
+from sympy.solvers.simplex import linprog
 
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
@@ -257,11 +295,14 @@ class IntegralByRanges(Expr):
 
     def __new__(cls, integrand: ExprLike, condition: object,
                 variables: Optional[Sequence[Symbol]] = None,
-                measure: str = 'lebesgue') -> IntegralByRanges:
+                measure: str = 'lebesgue',
+                dimension: Optional[ExprLike] = None) -> IntegralByRanges:
         integrand_ = as_expr(integrand)
         condition_ = as_boolean(condition)
         if variables is None:
             names = sorted_symbols(free_symbols(condition_))
+            if dimension is not None:
+                names = [_radial_symbol(names)]
         else:
             names = [as_symbol(v) for v in variables]
         if not names:
@@ -269,8 +310,12 @@ class IntegralByRanges(Expr):
         if measure not in _MEASURES:
             raise ValueError("measure must be one of %s, got %r" % (", ".join(_MEASURES), measure))
         args: list[Basic] = [integrand_, condition_, Tuple(*names)]
-        if measure != _MEASURES[0]:
+        if measure != _MEASURES[0] or dimension is not None:
             args.append(Str(measure))
+        if dimension is not None:
+            if len(names) != 1:
+                raise ValueError("with a dimension the integral is radial, in one variable")
+            args.append(as_expr(dimension))
         obj = Expr.__new__(cls, *args)
         if not isinstance(obj, IntegralByRanges):
             raise TypeError("unexpected construction of IntegralByRanges")
@@ -301,10 +346,31 @@ class IntegralByRanges(Expr):
             raise TypeError("the measure of IntegralByRanges must be a Str")
         return str(name)
 
+    @property
+    def dimension(self) -> Optional[Expr]:
+        """The dimension of the space of a radial integral, ``None`` for
+        an integral in the variables themselves."""
+        if len(self.args) < 5:
+            return None
+        return as_expr(self.args[4])
+
     def doit(self, assumptions: Assumptions = None, **hints: object) -> Expr:
         """The value, or the integral unchanged when it cannot be computed."""
         return integrate_by_ranges(self.integrand, self.condition, self.variables, assumptions,
-                                   self.measure)
+                                   self.measure, self.dimension)
+
+
+def _radial_symbol(names: Sequence[Symbol]) -> Symbol:
+    """The radial variable among the symbols of a condition: the one
+    named ``r``, or the only one."""
+    for name in names:
+        if name.name == 'r':
+            return name
+    if len(names) == 1:
+        return names[0]
+    if not names:
+        return Symbol('r')
+    raise ValueError("the radial variable of a condition in %s must be given" % (list(names),))
 
 
 class _Bound:
@@ -670,10 +736,9 @@ def _radial_integrand(f: Expr, names: Sequence[Symbol], rho: Symbol) -> Optional
 
 
 def _radial(f: Expr, formula: Boolean, names: Sequence[Symbol], assumptions: list[Boolean]) -> Optional[Expr]:
-    """The integral over a disc, an annulus or a ball of a function of the
-    distance to the origin, in polar (spherical) coordinates."""
-    if len(names) not in (2, 3):
-        return None
+    """The integral over a disc, an annulus or a ball (in any dimension)
+    of a function of the distance to the origin, in polar (spherical)
+    coordinates."""
     atoms = _atoms(formula)
     if atoms is None or not atoms:
         return None
@@ -710,8 +775,7 @@ def _radial(f: Expr, formula: Boolean, names: Sequence[Symbol], assumptions: lis
         if ask(as_boolean(lower >= 0), inner) is not True or ask(as_boolean(lower < upper), inner) is not True:
             return None
         start = as_expr(sqrt(lower))
-    dimension = len(names)
-    measure = 2 * pi * rho if dimension == 2 else 4 * pi * rho**2
+    measure = _sphere_area(Integer(len(names))) * rho**(len(names) - 1)
     radius = as_expr(sqrt(upper))
     refined = attempt(lambda: as_expr(refine(radius, inner)), settings.timeout)
     if refined is not None:
@@ -1125,10 +1189,295 @@ def _solved_bounds(f: Expr, formula: Boolean, names: Sequence[Symbol],
     return as_expr(total)
 
 
+# ---------------------------------------------------------------------------
+# Radial integrals in a symbolic dimension
+
+def _sphere_area(n: Expr) -> Expr:
+    """The area `2 pi^{n/2} / Gamma(n/2)` of the unit sphere of
+    `\\mathbb{R}^n`."""
+    return as_expr(2 * pi**(n / 2) / gamma(n / 2))
+
+
+def _symbolic_radial(f: Expr, formula: Boolean, r: Symbol, n: Expr,
+                     assumptions: list[Boolean]) -> Optional[Expr]:
+    """``Integral(f(r), R^n)`` over the ball, annulus or whole space that
+    ``formula`` describes through bounds on the radial variable ``r``:
+    the area of the unit sphere times ``Integral(f * r**(n - 1), (r, a, R))``.
+
+    >>> from sympy import symbols, exp
+    >>> from sympy_extras.integrals.regions import _symbolic_radial
+    >>> r, n = symbols('r n', positive=True)
+    >>> _symbolic_radial(exp(-r), True, r, n, [])
+    2**n*pi**(n/2 - 1/2)*gamma(n/2 + 1/2)
+    """
+    if as_boolean(formula) is true:
+        atoms: list[Relational] = []
+    else:
+        found = _atoms(formula)
+        if found is None:
+            return None
+        atoms = found
+    lower: Optional[Expr] = None
+    upper: Optional[Expr] = None
+    for atom in atoms:
+        bound = _linear_bound(atom, r, assumptions)
+        if bound is None:
+            return None
+        is_upper, value = bound
+        if is_upper:
+            if upper is not None:
+                return None
+            upper = value
+        else:
+            if lower is not None:
+                return None
+            lower = value
+    inner: list[Boolean] = list(assumptions) + [as_boolean(n > 0)]
+    start = S.Zero if lower is None else lower
+    if lower is not None and ask(as_boolean(lower >= 0), inner) is not True:
+        return None
+    end = oo if upper is None else upper
+    if upper is not None and ask(as_boolean(start < upper), inner) is not True:
+        return None
+    if f.has(r) and ask(as_boolean(r > 0), inner) is None:
+        rho = Dummy('rho', positive=True)
+        f = as_expr(f.xreplace({r: rho}))
+        start, end, r = as_expr(start.xreplace({r: rho})), as_expr(end.xreplace({r: rho})), rho
+    value = definite_integral(as_expr(f * r**(n - 1)), (r, start, end), inner)
+    if value.has(Integral, IntegralByRanges):
+        return None
+    total = as_expr(_sphere_area(n) * value)
+    tidy = attempt(lambda: as_expr(simplify(total)), settings.timeout)
+    return total if tidy is None else tidy
+
+
+# ---------------------------------------------------------------------------
+# Polynomials over polytopes
+
+class _Polytope:
+    """A bounded polytope ``A x <= b`` with rational ``A``, ``b`` free of
+    the variables, and its vertices."""
+
+    def __init__(self, rows: list[list[Rational]], rhs: list[Expr], vertices: list[list[Expr]]) -> None:
+        self.rows = rows
+        self.rhs = rhs
+        self.vertices = vertices
+
+    def on_facet(self, vertex: int, facet: int) -> bool:
+        """Whether the vertex lies on the hyperplane of the facet."""
+        value = as_expr(sum(a * v for a, v in zip(self.rows[facet], self.vertices[vertex])) - self.rhs[facet])
+        return as_expr(value.expand()) == 0
+
+
+def _linear_rows(atoms: Sequence[Relational], names: Sequence[Symbol]) \
+        -> Optional[tuple[list[list[Rational]], list[Expr]]]:
+    """The inequalities as rows ``a . x <= b``: ``None`` when one is not
+    linear in the variables with rational coefficients (parameters are
+    allowed in the constant terms only)."""
+    rows: list[list[Rational]] = []
+    rhs: list[Expr] = []
+    for atom in atoms:
+        difference = as_expr(atom.lhs) - as_expr(atom.rhs)
+        if isinstance(atom, (Gt, Ge)):
+            difference = -difference
+        try:
+            poly = Poly(difference, *names)
+        except PolynomialError:
+            return None
+        if poly.total_degree() > 1:
+            return None
+        row: list[Rational] = []
+        for v in names:
+            coefficient = as_expr(poly.coeff_monomial(v))
+            if not isinstance(coefficient, Rational):
+                return None
+            row.append(coefficient)
+        if all(c == 0 for c in row):
+            return None
+        constant = as_expr(poly.coeff_monomial(S.One))
+        rows.append(row)
+        rhs.append(as_expr(-constant))
+    return rows, rhs
+
+
+def _bounded(rows: list[list[Rational]]) -> Optional[bool]:
+    """Whether ``A x <= b`` is bounded: no direction ``d != 0`` with
+    ``A d <= 0`` (the extreme value of each coordinate over the recession
+    cone cut to the unit cube is 0), by linear programming."""
+    d = len(rows[0])
+    A = Matrix(rows)
+    zero = Matrix([0] * len(rows))
+    for j in range(d):
+        for orientation in (1, -1):
+            c = [0] * d
+            c[j] = -orientation
+            found = attempt(lambda: linprog(c, A, zero, bounds=(-1, 1)), settings.timeout)
+            if found is None:
+                return None
+            if as_expr(found[0]) < 0:
+                return False
+    return True
+
+
+def _vertices(rows: list[list[Rational]], rhs: list[Expr],
+              assumptions: list[Boolean]) -> Optional[list[list[Expr]]]:
+    """The vertices of ``A x <= b``: the intersections of ``d`` facet
+    hyperplanes which satisfy the other inequalities, decided under the
+    assumptions on the parameters (``None`` when undecided)."""
+    d = len(rows[0])
+    vertices: list[list[Expr]] = []
+    for subset in combinations(range(len(rows)), d):
+        M = Matrix([rows[i] for i in subset])
+        if M.det() == 0:
+            continue
+        point = M.LUsolve(Matrix([rhs[i] for i in subset]))
+        coordinates = [as_expr(point[k]).expand() for k in range(d)]
+        feasible = True
+        for i in range(len(rows)):
+            if i in subset:
+                continue
+            slack = as_expr(sum(a * v for a, v in zip(rows[i], coordinates)) - rhs[i]).expand()
+            if slack.is_number:
+                if slack.is_positive:
+                    feasible = False
+                    break
+                continue
+            verdict = ask(as_boolean(slack <= 0), assumptions)
+            if verdict is None:
+                return None
+            if verdict is False:
+                feasible = False
+                break
+        if feasible and coordinates not in vertices:
+            vertices.append(coordinates)
+    return vertices
+
+
+def _affine_rank(points: Sequence[Sequence[Expr]]) -> int:
+    """The dimension of the affine hull of the points."""
+    if len(points) < 2:
+        return 0
+    base = points[0]
+    M = Matrix([[as_expr(p[k] - base[k]) for k in range(len(base))] for p in points[1:]])
+    return int(M.rank(simplify=True))
+
+
+def _pulling(polytope: _Polytope, face: list[int], k: int) -> list[list[int]]:
+    """The pulling triangulation of a face of dimension ``k`` given by
+    its vertices: cones from the first vertex over the triangulations of
+    the facets of the face not containing it."""
+    if k == 0:
+        return [[face[0]]]
+    apex = face[0]
+    simplices: list[list[int]] = []
+    seen: set[frozenset[int]] = set()
+    for facet in range(len(polytope.rows)):
+        if polytope.on_facet(apex, facet):
+            continue
+        on_facet = [v for v in face if polytope.on_facet(v, facet)]
+        key = frozenset(on_facet)
+        if len(on_facet) < k or key in seen:
+            continue
+        if _affine_rank([polytope.vertices[v] for v in on_facet]) != k - 1:
+            continue
+        seen.add(key)
+        for simplex in _pulling(polytope, on_facet, k - 1):
+            simplices.append([apex] + simplex)
+    return simplices
+
+
+def _simplex_integral(f: Poly, names: Sequence[Symbol], vertices: Sequence[Sequence[Expr]],
+                      assumptions: list[Boolean]) -> Optional[Expr]:
+    """``Integral(f, simplex)`` by the affine map ``x = s0 + sum (s_i - s0)
+    u_i`` from the standard simplex and Dirichlet's formula
+    ``Integral(u**a) = prod(a_i!) / (|a| + d)!``; ``None`` when the sign
+    of the Jacobian is undecided."""
+    d = len(names)
+    base = vertices[0]
+    us = [Dummy('u%d' % i) for i in range(d)]
+    substitution: dict[Symbol, Expr] = {}
+    for k, v in enumerate(names):
+        substitution[v] = as_expr(base[k] + sum((vertices[i + 1][k] - base[k]) * us[i] for i in range(d)))
+    jacobian = as_expr(Matrix([[as_expr(vertices[i + 1][k] - base[k]) for k in range(d)]
+                               for i in range(d)]).det().expand())
+    if jacobian == 0:
+        return S.Zero
+    if jacobian.is_number:
+        if not jacobian.is_extended_real:
+            return None
+        volume = as_expr(Abs(jacobian))
+    elif ask(as_boolean(jacobian > 0), assumptions) is True:
+        volume = jacobian
+    elif ask(as_boolean(jacobian < 0), assumptions) is True:
+        volume = -jacobian
+    else:
+        return None
+    try:
+        pulled = Poly(as_expr(f.as_expr().xreplace(substitution)).expand(), *us)
+    except PolynomialError:
+        return None
+    total: Expr = S.Zero
+    for monomial, coefficient in pulled.terms():
+        weight = as_expr(Mul(*[factorial(a) for a in monomial]) / factorial(sum(monomial) + d))
+        total = total + as_expr(coefficient) * weight
+    return as_expr(volume * total)
+
+
+def _polytope(f: Expr, formula: Boolean, names: Sequence[Symbol], assumptions: list[Boolean]) -> Optional[Expr]:
+    """A polynomial over a bounded polytope, summed over the simplices of
+    the pulling triangulation; ``None`` when the region is not a bounded
+    polytope with the vertices decided, or the integrand not a polynomial.
+
+    >>> from sympy import symbols
+    >>> from sympy_extras.integrals.regions import _polytope
+    >>> from sympy_extras.assumptions.facts import normalize
+    >>> x, y = symbols('x y')
+    >>> _polytope(x*y, normalize((x > 0) & (y > 0) & (x + y < 1)), [x, y], [])
+    1/24
+    """
+    atoms = _atoms(formula)
+    if atoms is None or not atoms:
+        return None
+    if any(atom.has(*[v for v in names]) is False for atom in atoms):
+        return None
+    linear = _linear_rows(atoms, names)
+    if linear is None:
+        return None
+    rows, rhs = linear
+    try:
+        poly = Poly(f, *names)
+    except PolynomialError:
+        return None
+    if any(as_expr(c).has(*names) for c in poly.coeffs()):
+        return None
+    if _bounded(rows) is not True:
+        return None
+    vertices = _vertices(rows, rhs, assumptions)
+    if vertices is None:
+        return None
+    if not vertices:
+        return S.Zero
+    d = len(names)
+    if _affine_rank(vertices) < d:
+        return S.Zero
+    polytope = _Polytope(rows, rhs, vertices)
+    total: Expr = S.Zero
+    for simplex in _pulling(polytope, list(range(len(vertices))), d):
+        if len(simplex) != d + 1:
+            return None
+        value = _simplex_integral(poly, names, [vertices[i] for i in simplex], assumptions)
+        if value is None:
+            return None
+        total = total + value
+    tidy = attempt(lambda: as_expr(factor(total)), settings.timeout)
+    return as_expr(total.expand()) if tidy is None else tidy
+
+
 def integrate_by_ranges(integrand: ExprLike, condition: object,
                         variables: Optional[Sequence[Symbol]] = None,
                         assumptions: Assumptions = None,
-                        measure: str = 'lebesgue') -> Expr:
+                        measure: str = 'lebesgue',
+                        dimension: Optional[ExprLike] = None) -> Expr:
     """The integral of ``integrand`` over the region ``condition``.
 
     Parameters
@@ -1154,6 +1503,12 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
         equation, and the integral is taken on the hypersurface it
         describes (the length of a curve, the area of a surface), see the
         module documentation.
+    dimension : int, Integer or Symbol, optional
+        A radial integral in `\\mathbb{R}^n`: the condition bounds the
+        radial variable alone (``r < R``, ``(a < r) & (r < R)``, ``True``
+        for the whole space), which is the variable given, the symbol
+        named ``r`` of the condition or its only symbol, and the
+        integrand is a function of it; the dimension may be symbolic.
 
     Returns
     =======
@@ -1195,8 +1550,20 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     asinh(2)/4 + sqrt(5)/2
     >>> integrate_by_ranges(1, Eq(z, x**2 + y**2) & (z < 1), measure='hausdorff')
     pi*(-1 + 5*sqrt(5))/6
+
+    The volume of the cube ``|x|, |y|, |z| < 1`` cut by ``x + y + z < 1``
+    (a polytope, without the decomposition) and the volume of the ball
+    of radius ``R`` in ``n`` dimensions:
+
+    >>> cube = (x > -1) & (x < 1) & (y > -1) & (y < 1) & (z > -1) & (z < 1)
+    >>> integrate_by_ranges(1, cube & (x + y + z < 1))
+    20/3
+    >>> from sympy import symbols
+    >>> n, R = symbols('n R', positive=True)
+    >>> integrate_by_ranges(1, r < R, [r], dimension=n)
+    pi**(n/2)*R**n/gamma(n/2 + 1)
     """
-    node = IntegralByRanges(integrand, condition, variables, measure)
+    node = IntegralByRanges(integrand, condition, variables, measure, dimension)
     f, formula, names = node.integrand, normalize(node.condition), node.variables
     extra: list[Boolean] = []
     if assumptions is not None:
@@ -1205,6 +1572,9 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     if measure == 'hausdorff':
         surface = _hausdorff(f, formula, names, assumptions, extra)
         return node if surface is None else surface
+    if dimension is not None:
+        symbolic = _symbolic_radial(f, formula, names[0], as_expr(dimension), extra)
+        return node if symbolic is None else symbolic
     radial = _radial(f, formula, names, extra)
     if radial is not None:
         return radial
@@ -1214,6 +1584,9 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     cylindrical = _cylindrical(f, formula, names, extra)
     if cylindrical is not None:
         return cylindrical
+    polytope = _polytope(f, formula, names, extra)
+    if polytope is not None:
+        return polytope
     found = _decomposed(node, f, formula, names, assumptions, extra)
     if found is not None:
         return found

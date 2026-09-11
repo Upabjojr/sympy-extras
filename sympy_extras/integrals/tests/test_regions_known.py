@@ -101,3 +101,25 @@ def test_curves_in_space_and_dirichlet_volumes() -> None:
     assert abs(float(N(found)) - float(mpmath.quad(lambda t: (1 - t**3)**(mpmath.mpf(1)/3), [0, 1]))) < 1e-12
     # the circle z = 1 on the paraboloid z = x**2 + y**2 has length 2 pi
     assert integrate_by_ranges(1, Eq(z, x**2 + y**2) & Eq(z, 1), measure='hausdorff') == 2*pi
+
+
+def test_polytopes_and_balls_in_any_dimension() -> None:
+    # the cross-polytope |x| + |y| + |z| < 1 has volume 4/3 and second
+    # moment 2/15 (Stewart 15.6 exercises); the volume of the unit ball
+    # of R^n is pi^(n/2)/Gamma(n/2 + 1) (Apostol vol. II, 11.33): pi, 4 pi/3,
+    # pi^2/2 for n = 2, 3, 4, 8 pi^2/15 for n = 5
+    from sympy import And, gamma, symbols as symbols_
+    octahedron = And(*[s1 * x + s2 * y + s3 * z < 1 for s1 in (1, -1) for s2 in (1, -1) for s3 in (1, -1)])
+    assert integrate_by_ranges(1, octahedron) == Rational(4, 3)
+    assert integrate_by_ranges(x**2, octahedron) == Rational(2, 15)
+    # the cube cut by a plane through three vertices: 8 - 1/6 * 8... the corner
+    # x + y + z > 1 of [-1, 1]^3 has volume 4/3
+    cube = (x > -1) & (x < 1) & (y > -1) & (y < 1) & (z > -1) & (z < 1)
+    assert integrate_by_ranges(1, cube & (x + y + z < 1)) == Rational(20, 3)
+    r, n = symbols_('r n', positive=True)
+    ball = integrate_by_ranges(1, r < 1, [r], dimension=n)
+    assert ball == pi**(n / 2) / gamma(n / 2 + 1)
+    assert [ball.subs(n, k) for k in (2, 3, 4, 5)] == [pi, 4 * pi / 3, pi**2 / 2, 8 * pi**2 / 15]
+    # the Gaussian integral over R^n and the exponential one (Apostol 11.28)
+    assert integrate_by_ranges(exp(-r**2), True, [r], dimension=n) == pi**(n / 2)
+    assert (integrate_by_ranges(exp(-r), True, [r], dimension=n) - 2 * pi**(n / 2) * gamma(n) / gamma(n / 2)).subs(n, 3) == 0
