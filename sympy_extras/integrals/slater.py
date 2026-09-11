@@ -374,10 +374,10 @@ def _expand_meijerg(g: MeijerG, assumptions: Assumptions) -> Optional[Conditiona
         elif inside is False:
             # |z| = 1: the series of the |z| < 1 case, continued analytically
             # by hyperexpand when it evaluates the hypergeometric functions;
-            # only when every series converges there (Re(sum b - sum a) > 0):
-            # the Gauss summation of a divergent 2F1 at 1 is meaningless, and
-            # the singularities of the terms cancel in the sum (the bug:
-            # Integral(airyai(x)**2, (x, 0, oo)) came out as zoo)
+            # only where every term is regular: at z = 1 itself a 2F1 with
+            # Re(sum b - sum a) <= 0 is singular, the Gauss summation of it
+            # meaningless, and the singularities of the terms cancel in the
+            # sum (the bug: Integral(airyai(x)**2, (x, 0, oo)) came out as zoo)
             series = _slater_series(g)
             if series is not None:
                 if not all(_converges_on_the_circle(h, assumptions) for h in series.atoms(hyper)):
@@ -409,10 +409,11 @@ def _expand_meijerg(g: MeijerG, assumptions: Assumptions) -> Optional[Conditiona
 
 
 def _converges_on_the_circle(h: hyper, assumptions: Assumptions) -> bool:
-    """Whether the hypergeometric series converges at its argument on
-    ``|z| = 1``: for ``pFq`` with ``p = q + 1``, ``Re(sum(b) - sum(a)) > 0``
-    at ``z = 1`` and ``> -1`` elsewhere on the circle (a polynomial, one of
-    the ``a`` a non-positive integer, always converges)."""
+    """Whether the hypergeometric function is regular at its argument on
+    ``|z| = 1``, so that the value ``hyperexpand`` gives there is its
+    analytic continuation: ``pFq`` with ``p = q + 1`` is analytic off
+    ``[1, oo)``, and at ``z = 1`` itself needs ``Re(sum(b) - sum(a)) > 0``
+    (a polynomial, one of the ``a`` a non-positive integer, always is)."""
     ap = [as_expr(a) for a in h.ap]
     bq = [as_expr(b) for b in h.bq]
     if any(a.is_integer and a.is_nonpositive for a in ap):
@@ -421,8 +422,9 @@ def _converges_on_the_circle(h: hyper, assumptions: Assumptions) -> bool:
         return True
     if len(ap) > len(bq) + 1:
         return False
-    bound = S.Zero if as_expr(h.argument) == 1 else S.NegativeOne
-    excess = as_expr(re(Add(*bq) - Add(*ap)) - bound)
+    if as_expr(h.argument) != 1:
+        return True
+    excess = as_expr(re(Add(*bq) - Add(*ap)))
     return excess.is_positive is True or ask(as_boolean(excess > 0), assumptions) is True
 
 
