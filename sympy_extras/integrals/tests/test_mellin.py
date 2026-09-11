@@ -128,9 +128,12 @@ def test_decompose_integrand() -> None:
     assert p is not None
     assert (p.constant, p.alpha, p.log_power) == (3, a, 2)
     assert [m.kernel.name for m in p.matches] == ['exp', 'sin']
-    # a square of a function is two kernels
-    p = decompose_integrand(besselj(nu, x)**2, x)
+    # a square of a function is two kernels, unless the product is a kernel
+    # of its own (two Bessel functions of one argument)
+    p = decompose_integrand(sin(x)**2, x)
     assert p is not None and len(p.matches) == 2
+    p = decompose_integrand(besselj(nu, x)**2, x)
+    assert p is not None and [m.kernel.name for m in p.matches] == ['besselj*besselj']
     # three kernels are too many, an unknown factor is refused
     assert decompose_integrand(exp(-x) * sin(x) * cos(x), x) is None
     assert decompose_integrand(exp(-x) * log(x + 2) / (x + 1), x) is None
