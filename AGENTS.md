@@ -116,6 +116,8 @@ sympy_extras/
         brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)
         recognize.py         PSLQ recognition of constants and integrals (an oracle, off by default)
         risch/               the transcendental Risch algorithm ported from Aaron Meurer's SymPy pull requests
+        trager.py            Trager's algorithm for integrands rational in x and one square root of a polynomial
+        summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals
         tests/
     polys/
         euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)

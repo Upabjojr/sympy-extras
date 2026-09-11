@@ -59,7 +59,8 @@ from typing import Optional
 
 from sympy.calculus.singularities import singularities
 from sympy.core.expr import Expr
-from sympy.core.numbers import nan, oo, zoo
+from sympy.core.numbers import Rational, nan, oo, zoo
+from sympy.core.power import Pow
 from sympy.core.relational import Relational
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
@@ -95,6 +96,9 @@ def antiderivative(f: Expr, x: Symbol) -> Optional[Expr]:
     found = _risch(f, x)
     if found is not None and not found.has(Integral):
         return found
+    found = _trager(f, x)
+    if found is not None:
+        return found
     # a quarter of the time limit: the heuristics of integrate may spend
     # it all, and the other methods of the driver still need their share
     budget = None if settings.timeout is None else settings.timeout / 4
@@ -118,6 +122,18 @@ def _risch(f: Expr, x: Symbol) -> Optional[Expr]:
         return None
     budget = None if settings.timeout is None else settings.timeout / 4
     return attempt(lambda: risch_antiderivative(f, x), budget)
+
+
+def _trager(f: Expr, x: Symbol) -> Optional[Expr]:
+    """The antiderivative by Trager's algorithm (:mod:`.trager`) for an
+    integrand rational in ``x`` and one square root of a polynomial,
+    ``None`` otherwise."""
+    if not any(isinstance(node, Pow) and isinstance(node.exp, Rational) and node.exp.q == 2 and node.has(x)
+               for node in f.atoms(Pow)):
+        return None
+    from .trager import trager_antiderivative
+    budget = None if settings.timeout is None else settings.timeout / 4
+    return attempt(lambda: trager_antiderivative(f, x), budget)
 
 
 def _points_in(points: list[Expr], x: Symbol, a: Expr, b: Expr,

@@ -175,6 +175,16 @@ remove public functions. Breaking changes are listed here when they happen.
   conditions are decided by their real parts (`exp(-a*x)*sin(b*x)*
   besselj(0, x)` over `(0, oo)`).
 
+- `sympy_extras.integrals.trager`: Trager's algorithm for integrands
+  rational in `x` and one square root of a polynomial (the Hermite
+  reduction with the integral basis, the Rothstein–Trager resultant of
+  the residues, logarithms of prescribed divisor by Newton lifting,
+  torsion up to Mazur's bound on curves of genus one),
+  `trager_antiderivative`, `trager_reduce` and
+  `is_nonelementary_algebraic`; `definite_integral` takes the
+  antiderivative from it (`(x**2 - 1)/((x**2 + 1)*sqrt(x**4 + 1))` over
+  `(0, 1)` is `-sqrt(2)*pi/8`).
+
 - `sympy_extras.integrals.summability`: Abel, Cesàro `(C, k)` and Gaussian
   means of divergent oscillatory integrals, `definite_integral(...,
   summability='abel')` (`sin(x)` over `(0, oo)` is 1, `x*sin(x)` is 0 by

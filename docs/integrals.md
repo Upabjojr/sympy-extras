@@ -391,6 +391,38 @@ True
 
 ```
 
+## Trager's algorithm (`sympy_extras.integrals.trager`)
+
+`trager_antiderivative(f, x)` integrates a function rational in `x` and
+in one square root `y = sqrt(P(x))`: the integrand is written
+`A(x) + B(x)*y`, the rational part goes to the rational integration, and
+the algebraic part through Trager's Hermite reduction with the integral
+basis `{1, y/d}` (`d` the product of the repeated factors of `P`), which
+leaves a remainder with simple poles only; the logarithmic part is found
+from the Rothstein–Trager resultant of the residues, with a
+logarithm `log(u + v*y)` of prescribed divisor built by Newton lifting
+and a linear system, the torsion orders on a curve of genus one tried
+up to Mazur's bound. `trager_reduce` returns the elementary part and the
+remainder, `is_nonelementary_algebraic` decides the cases it can prove
+(a nonzero remainder without residues is a differential of the first
+kind). `definite_integral` uses the antiderivative through the
+one-sided limits of the antiderivative route.
+
+```python
+>>> from sympy import symbols, sqrt, log
+>>> from sympy_extras.integrals import trager_antiderivative, is_nonelementary_algebraic, definite_integral
+>>> x = symbols('x')
+>>> trager_antiderivative(x/sqrt(x**4 + 1), x)
+log(x**2 + sqrt(x**4 + 1))/2
+>>> trager_antiderivative(1/(x*sqrt(x**2 + 1)), x)
+-log((sqrt(x**2 + 1) + 1)/x)
+>>> is_nonelementary_algebraic(1/sqrt(x**3 + 1), x)
+True
+>>> definite_integral((x**2 - 1)/((x**2 + 1)*sqrt(x**4 + 1)), (x, 0, 1))
+-sqrt(2)*pi/8
+
+```
+
 ## Integrals over regions: `IntegralByRanges`
 
 `IntegralByRanges(f, condition)` is the integral of `f` over the region of

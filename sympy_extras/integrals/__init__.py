@@ -22,6 +22,7 @@ from .algebraic import algebraic_integral, euler_substitutions, binomial_differe
 from .reduction import hermite_reduce, reduction_telescoper, reduction_ode, reduction_integral
 from .validated import validated_integral
 from .risch import risch_antiderivative, is_nonelementary
+from .trager import trager_antiderivative, trager_reduce, is_nonelementary_algebraic
 from .parametric import parametric_integral
 from .brackets import ramanujan_master_theorem, method_of_brackets, mellin_transform_series
 from .recognize import recognize_constant, recognize_integral
@@ -31,7 +32,7 @@ __all__ = ['ConditionalValue', 'GammaQuotient', 'MellinTransform', 'mellin_trans
     'slater_expansion', 'mellin_barnes', 'MeijerG', 'mellin_integrate', 'definite_integral',
     'conditional_integral', 'verify_numerically', 'IntegralByRanges', 'integrate_by_ranges', 'residue_integral', 'antiderivative_integral',
     'parametric_integral', 'almkvist_zeilberger', 'holonomic_ode', 'holonomic_integral', 'DifferentialTelescoper', 'ramanujan_master_theorem', 'method_of_brackets',
-    'mellin_transform_series', 'recognize_constant', 'recognize_integral', 'risch_antiderivative',
+    'mellin_transform_series', 'recognize_constant', 'recognize_integral', 'risch_antiderivative', 'trager_antiderivative', 'trager_reduce', 'is_nonelementary_algebraic',
     'is_nonelementary', 'principal_value_integral', 'mean_value_integral', 'laurent_coefficient', 'contour_integral', 'rectangular_integral',
     'sector_integral', 'indented_integral', 'frullani', 'glasser', 'transformation_integral', 'laplace_rules', 'laplace_integral',
     'laplace_of_convolution', 'chyzak', 'dfinite_ode', 'dfinite_integral', 'DFiniteTelescoper', 'asymptotic_integral', 'watson_lemma', 'laplace_method',
