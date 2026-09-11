@@ -60,6 +60,23 @@ remove public functions. Breaking changes are listed here when they happen.
   by a per-module mypy override (an exception to the typing rule, see
   issue #15).
 
+- `sympy_extras.integrals.periodic`: the integral of a trigonometric
+  integrand over whole periods as `2*pi*k` times the constant Laurent
+  coefficient of its form in `exp(I*x)` (`exp(cos(x))*cos(sin(x))` over a
+  period is `2*pi`, `exp(a*cos(x))*cos(n*x)` is `2*pi*besseli(n, a)`).
+
+- `IntegralByRanges` integrates radial integrands over discs, annuli and
+  balls in polar and spherical coordinates, and regions whose conditions
+  are linear in the last variable (`y < exp(x)`) by Fubini's theorem with
+  the bounds solved for it, before the cylindrical decomposition.
+
+- `definite_integral` reads the integrand in rewritten forms (trigonometric
+  products as sums, hyperbolic functions as exponentials, inverse
+  hyperbolic functions as logarithms, orthogonal polynomials expanded),
+  knows the Mellin transform of `log(1 - x)` on `(0, 1)`, computes Cauchy
+  principal values with `principal_value=True`, and handles symbolic
+  endpoints through the antiderivative (items of issue #53).
+
 - The benchmark driver `definite_integrals` of sympy-extras-benchmarks
   gained `--extras` to run `definite_integral` on the four integration
   datasets; the results are in `benchmarks/README.md`.

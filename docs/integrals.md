@@ -92,6 +92,28 @@ gamma(k + 1)**2/gamma(2*k + 2)
 
 ```
 
+The integrand is also read in rewritten forms: products and powers of
+`sin` and `cos` as sums, hyperbolic functions as exponentials, inverse
+hyperbolic functions as logarithms, orthogonal polynomials expanded;
+`log(1 - x)` on `(0, 1)` is a kernel of its own. With
+`principal_value=True` a divergent integral with a simple pole inside the
+range gets its Cauchy principal value, from the antiderivative with the
+symmetric limits at the pole taken as one limit; symbolic endpoints go
+through the antiderivative with limits under the assumptions.
+
+```python
+>>> from sympy import sinh, atanh
+>>> definite_integral(exp(-a*x)*sinh(b*x), (x, 0, oo), a > b)
+b/((a - b)*(a + b))
+>>> definite_integral(x*atanh(x), (x, 0, 1))
+1/2
+>>> definite_integral(1/(x - 1), (x, 0, 3), principal_value=True)
+log(2)
+>>> definite_integral(exp(-x), (x, a, b))
+-exp(-b) + exp(-a)
+
+```
+
 Singular integrands and kinks:
 
 ```python
@@ -124,6 +146,12 @@ The driver tries, after the Mellin method and the residues:
   `sympy_extras.concrete.zeilberger`, and the way to integrals of
   products of special functions which are not Meijer G-functions (the
   general D-finite case, Chyzak's algorithm, is not implemented).
+- **The mean value of a periodic integrand** (`sympy_extras.integrals.periodic`):
+  `Integral(f, (x, c, c + 2*pi*k))` is `2*pi*k` times the constant
+  Laurent coefficient of `f` written in `z = exp(I*x)`, read off or summed
+  from the Taylor coefficients of the factors (`exp(cos(x))*cos(sin(x))`
+  gives `2*pi`, `exp(a*cos(x))*cos(n*x)` gives `2*pi*besseli(n, a)`);
+  rational functions of `sin` and `cos` go to the residues instead.
 - **Differentiation under the integral sign**
   (`sympy_extras.integrals.parametric`): `I'(p)` is a simpler integral
   (a factor `1/x` disappears against `exp(-p x)`, a logarithm against
@@ -172,6 +200,8 @@ pi*log(p + 1)/2
 log(p + 1)
 >>> definite_integral(1/(2 + cos(x)), (x, 0, 2*pi))
 2*sqrt(3)*pi/3
+>>> definite_integral(exp(cos(x))*cos(sin(x)), (x, 0, 2*pi))
+2*pi
 >>> from sympy_extras.integrals import ramanujan_master_theorem, recognize_integral
 >>> s = symbols('s')
 >>> ramanujan_master_theorem(exp(-x**2), x, s)
@@ -227,7 +257,13 @@ algebraic functions of the earlier variables, so the integral over a
 region is the sum over the full-dimensional cells where the condition
 holds of iterated integrals with explicit bounds, computed innermost
 first by `definite_integral`. Parameters of the condition come first in
-the variable order and give a case distinction on their cells.
+the variable order and give a case distinction on their cells. Two
+shortcuts come before the decomposition: a disc, annulus or ball with an
+integrand depending on the distance from the origin only is integrated in
+polar or spherical coordinates, and a condition whose relations are
+linear in the last variable (`y < exp(x)`, `y*exp(x) < 1`, which the CAD
+cannot take) is integrated by Fubini's theorem with the bounds solved
+for that variable and the crossings of the bounds found by `solve`.
 
 ```python
 >>> from sympy import symbols, exp
@@ -243,6 +279,10 @@ pi
 4*pi/3
 >>> integrate_by_ranges(1, x**2 + y**2 < r**2, [x, y], r > 0)
 pi*r**2
+>>> integrate_by_ranges(exp(-x**2 - y**2), x**2 + y**2 < 1)
+-pi*exp(-1) + pi
+>>> integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y < exp(x)))
+-1 + E
 
 ```
 

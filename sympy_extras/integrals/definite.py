@@ -96,6 +96,10 @@ from sympy.functions.elementary.exponential import exp, log
 from sympy.functions.elementary.miscellaneous import Max, Min, sqrt
 from sympy.functions.elementary.piecewise import Piecewise, piecewise_fold
 from sympy.functions.elementary.trigonometric import TrigonometricFunction, asin, sin, cos
+from sympy.functions.elementary.hyperbolic import HyperbolicFunction, InverseHyperbolicFunction
+from sympy.functions.special.polynomials import OrthogonalPolynomial
+from sympy.core.function import expand_func, expand_log
+from sympy.simplify.fu import TR8
 from sympy.functions.special.delta_functions import Heaviside, DiracDelta
 from sympy.integrals.integrals import Integral, integrate
 from sympy.series.limits import limit
@@ -124,7 +128,8 @@ _MAX_DEPTH = 6
 
 
 def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = None,
-                      conds: str = 'piecewise', recognize: bool = False) -> Expr:
+                      conds: str = 'piecewise', recognize: bool = False,
+                      principal_value: bool = False) -> Expr:
     """``Integral(f, (x, a, b))`` under assumptions on the parameters.
 
     Parameters
@@ -146,6 +151,10 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
         guess a closed form from a high-precision numerical value with
         PSLQ (:mod:`.recognize`): the result is a conjecture checked to
         forty-five digits, not a proof, hence off by default.
+    principal_value : bool
+        Cauchy's principal value when the integrand has a singularity
+        inside the range at which the integral diverges
+        (:func:`~sympy_extras.integrals.antiderivative.principal_value_integral`).
 
     Returns
     =======
@@ -173,7 +182,7 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
     f_ = as_expr(f)
     if conds not in ('piecewise', 'none'):
         raise ValueError("conds must be 'piecewise' or 'none', got %r" % (conds,))
-    found = conditional_integral(f_, x, a, b, assumptions)
+    found = conditional_integral(f_, x, a, b, assumptions, principal_value)
     if (found is None or found.value.has(nan)) and recognize:
         from .recognize import recognize_integral
         guessed = recognize_integral(f_, (x, a, b), assumptions)
@@ -188,7 +197,8 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
 
 
 def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
-                         assumptions: Assumptions = None) -> Optional[ConditionalValue]:
+                         assumptions: Assumptions = None,
+                         principal_value: bool = False) -> Optional[ConditionalValue]:
     """The value of ``Integral(f, (x, a, b))`` with the condition on the
     parameters under which it holds, or ``None``.
 
@@ -196,7 +206,7 @@ def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
     settings, so that SymPy's ``integrate`` gets the other half when they
     fail; a value they find under a condition the assumptions do not
     settle is kept unless SymPy finds an unconditional one."""
-    integrator = _Integrator(assumptions)
+    integrator = _Integrator(assumptions, principal_value=principal_value)
     if not _real_bounds(a, b):
         return integrator._sympy(f, x, a, b)
     budget = None if settings.timeout is None else settings.timeout / 2
@@ -311,9 +321,11 @@ class _Integrator:
     """The strategies, sharing the assumptions; ``parametric`` allows
     differentiation under the integral sign (off inside that method)."""
 
-    def __init__(self, assumptions: Assumptions, parametric: bool = True) -> None:
+    def __init__(self, assumptions: Assumptions, parametric: bool = True,
+                 principal_value: bool = False) -> None:
         self.assumptions = assumptions
         self.parametric = parametric
+        self.principal_value = principal_value
 
     def ask(self, query: Boolean) -> Optional[bool]:
         return ask(query, self.assumptions)
@@ -358,10 +370,15 @@ class _Integrator:
         if singular:
             # a singularity inside the range whose pieces could not be
             # integrated: an antiderivative evaluated at the endpoints
-            # would be wrong, so SymPy is not asked
+            # would be wrong, so SymPy is not asked; the principal value
+            # is computed when asked for
+            if self.principal_value and depth == 0:
+                from .antiderivative import principal_value_integral
+                return self._finish(principal_value_integral(f, x, a, b, self.assumptions))
             return None
         allowed = (free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x}
-        strategies = [self._canonical, self._trigonometric, self._mapped, self._inversion, self._residues]
+        strategies = [self._canonical, self._mean_value, self._trigonometric, self._mapped, self._inversion,
+                      self._residues]
         if not mapped:
             # the methods which work on the original form only, and the
             # slow ones: not inside a mapped range
@@ -693,6 +710,15 @@ class _Integrator:
             return None
         return self._finish(self._mellin_on(g, u, 'lower'))
 
+    def _mean_value(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """A trigonometric integrand over whole periods as `2 pi k` times
+        the constant Laurent coefficient of its form in ``exp(I x)``
+        (:mod:`.periodic`)."""
+        from .periodic import mean_value_integral
+        if not f.has(TrigonometricFunction) or a in (-oo, oo) or b in (-oo, oo):
+            return None
+        return self._finish(mean_value_integral(f, x, a, b, self.assumptions))
+
     def _residues(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         from .residues import residue_integral
         return self._finish(residue_integral(f, x, a, b, self.assumptions))
@@ -812,14 +838,29 @@ def _from_sympy(value: Expr, x: Symbol) -> Optional[ConditionalValue]:
 
 
 def _forms(g: Expr, t: Symbol, assumptions: Assumptions) -> list[Expr]:
-    """The integrand as it is and in expanded forms."""
+    """The integrand as it is and in the forms the Mellin table reads:
+    expanded, denested, products and powers of ``sin`` and ``cos``
+    written as sums (``sin(x)**2`` is ``1/2 - cos(2 x)/2``), hyperbolic
+    functions as exponentials, inverse hyperbolic functions as
+    logarithms, orthogonal polynomials expanded."""
     forms = [g]
-    expanded = as_expr(g.expand())
-    if expanded != g:
-        forms.append(expanded)
-    denested = _denest(g, assumptions)
-    if denested not in forms:
-        forms.append(denested)
+
+    def add(e: Expr) -> None:
+        if e not in forms:
+            forms.append(e)
+
+    add(as_expr(g.expand()))
+    add(_denest(g, assumptions))
+    if g.has(sin, cos):
+        add(as_expr(TR8(g).expand()))
+    if g.has(HyperbolicFunction):
+        add(as_expr(g.rewrite(exp).expand()))
+    if g.has(InverseHyperbolicFunction):
+        rewritten = as_expr(g.rewrite(log).expand())
+        add(rewritten)
+        add(as_expr(expand_log(rewritten, force=True)))
+    if g.has(OrthogonalPolynomial):
+        add(as_expr(expand_func(g).expand()))
     return forms
 
 

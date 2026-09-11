@@ -32,6 +32,22 @@ iterated integral with explicit bounds:
    is a ``Piecewise`` whose conditions are the sign conditions of the
    projection polynomials on each parameter cell.
 
+Two routes are tried around the decomposition [Apostol]_:
+
+* **polar coordinates** first: a disc or an annulus (`r_1^2 < x^2 + y^2 <
+  R^2`, or the ball in three variables) with an integrand depending on the
+  point only through `x^2 + y^2` is `2\\pi \\int_{r_1}^R g(\\rho)\\, \\rho\\, d\\rho`
+  (`4\\pi \\int g(\\rho)\\, \\rho^2\\, d\\rho` for the ball);
+* **bounds solved for the last variable** when the decomposition does not
+  apply (a condition which is not polynomial, `y < \\exp(x)`) or fails: a
+  conjunction of relations linear in the last variable `y` describes, over
+  each point of the other variables, the interval `\\max(\\text{lower}) < y <
+  \\min(\\text{upper})`; the range of the other variables is cut where the
+  two bounds cross (with :func:`sympy_extras.assumptions.solve`), the
+  inner integral is computed with :func:`~sympy_extras.integrals.definite_integral`
+  and the outer integral by the same function on the remaining variables
+  (Fubini's theorem).
+
 Examples
 ========
 
@@ -46,10 +62,18 @@ pi
 1/24
 >>> integrate_by_ranges(1, x**2 + y**2 < r**2, [x, y], r > 0)
 pi*r**2
+>>> from sympy import exp
+>>> integrate_by_ranges(exp(-x**2 - y**2), x**2 + y**2 < 1)
+-pi*exp(-1) + pi
+>>> integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y < exp(x)))
+-1 + E
 
 References
 ==========
 
+.. [Apostol] T. M. Apostol, *Calculus*, vol. II, 2nd ed., Wiley, 1969,
+   sections 11.11 (regions between two graphs, Fubini's theorem) and
+   11.27–11.29 (polar coordinates).
 .. [Collins] G. E. Collins, *Quantifier elimination for real closed
    fields by cylindrical algebraic decomposition*, Automata Theory and
    Formal Languages, Lecture Notes in Computer Science 33, Springer,
@@ -69,12 +93,16 @@ from sympy.core.expr import Expr
 from sympy.core.mul import Mul
 from sympy.core.numbers import Rational, oo
 from sympy.core.power import Pow
-from sympy.core.relational import Eq, Gt, Lt
+from sympy.core.relational import Eq, Ge, Gt, Le, Lt, Relational
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
+from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.functions.elementary.piecewise import Piecewise
+from sympy.core.numbers import pi
 from sympy.integrals.integrals import Integral
 from sympy.logic.boolalg import And, Boolean, Or, true
+from sympy.sets.sets import EmptySet, FiniteSet, Interval, Set, Union
+from sympy.simplify.simplify import simplify
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, factor
 from sympy.solvers.solvers import solve as sympy_solve
@@ -83,11 +111,13 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
 from sympy_extras.assumptions.facts import normalize
+from sympy_extras.assumptions.solve import solve
 from sympy_extras.assumptions.refine import refine
 from sympy_extras.polys.cad.lifting import CAD, CADCell, cylindrical_algebraic_decomposition
 from sympy_extras.polys.cad.qe import _compile
 from sympy_extras.polys.cad.samplepoints import RealAlgebraic, compare_real
 from sympy_extras.settings import settings
+from .conditions import numerically_equal
 from .definite import definite_integral
 
 __all__ = ['IntegralByRanges', 'integrate_by_ranges']
@@ -376,6 +406,270 @@ def _ancestor_at(cell: CADCell, level: int) -> CADCell:
     return current
 
 
+
+def _atoms(formula: Boolean) -> Optional[list[Relational]]:
+    """The relations of a conjunction of strict or weak inequalities;
+    ``None`` for any other formula (equations, disjunctions)."""
+    parts = list(formula.args) if isinstance(formula, And) else [formula]
+    atoms: list[Relational] = []
+    for part in parts:
+        if not isinstance(part, (Lt, Le, Gt, Ge)):
+            return None
+        atoms.append(part)
+    return atoms
+
+
+def _radial_atom(atom: Relational, names: Sequence[Symbol]) -> Optional[tuple[bool, Expr]]:
+    """``(upper, value)`` when the relation bounds ``x**2 + y**2 (+ z**2)``:
+    ``upper`` for a bound from above (``rho**2 < value``), else from
+    below; ``None`` when the relation is not of that form."""
+    difference = as_expr(atom.lhs) - as_expr(atom.rhs)
+    radius = as_expr(sum(v**2 for v in names))
+    try:
+        poly = Poly(difference, *names)
+    except PolynomialError:
+        return None
+    coefficient = as_expr(poly.coeff_monomial(names[0]**2))
+    if coefficient == 0 or coefficient.has(*names):
+        return None
+    rest = as_expr((difference - coefficient * radius).expand())
+    if rest.has(*names):
+        return None
+    # coefficient * rho**2 + rest  <  0  (or <=, >, >=)
+    bound = as_expr(-rest / coefficient)
+    less = isinstance(atom, (Lt, Le))
+    positive = coefficient.is_positive is True
+    negative = coefficient.is_negative is True
+    if not positive and not negative:
+        return None
+    return (less == positive, bound)
+
+
+def _radial_integrand(f: Expr, names: Sequence[Symbol], rho: Symbol) -> Optional[Expr]:
+    """``g(rho)`` with ``f == g(sqrt(x**2 + y**2 + ...))``, or ``None``
+    when ``f`` is not a function of the distance to the origin."""
+    radius = sqrt(as_expr(sum(v**2 for v in names)))
+    on_axis: dict[Symbol, Expr] = {names[0]: radius}
+    for v in names[1:]:
+        on_axis[v] = S.Zero
+    candidate = as_expr(f.xreplace(on_axis))
+    if candidate.has(S.NaN, S.ComplexInfinity):
+        return None
+    difference = as_expr(f - candidate)
+    simpler = attempt(lambda: as_expr(simplify(difference)), settings.timeout)
+    if simpler is None or simpler != 0:
+        if not numerically_equal(f, candidate, [as_boolean(v > 0) for v in names]):
+            return None
+    axis: dict[Symbol, Expr] = {names[0]: rho}
+    for v in names[1:]:
+        axis[v] = S.Zero
+    return as_expr(f.xreplace(axis))
+
+
+def _radial(f: Expr, formula: Boolean, names: Sequence[Symbol], assumptions: list[Boolean]) -> Optional[Expr]:
+    """The integral over a disc, an annulus or a ball of a function of the
+    distance to the origin, in polar (spherical) coordinates."""
+    if len(names) not in (2, 3):
+        return None
+    atoms = _atoms(formula)
+    if atoms is None or not atoms:
+        return None
+    lower: Optional[Expr] = None
+    upper: Optional[Expr] = None
+    for atom in atoms:
+        found = _radial_atom(atom, names)
+        if found is None:
+            return None
+        is_upper, value = found
+        if is_upper:
+            if upper is not None:
+                return None
+            upper = value
+        else:
+            if lower is not None:
+                return None
+            lower = value
+    if upper is None:
+        return None
+    rho = Dummy('rho', positive=True)
+    g = _radial_integrand(f, names, rho)
+    if g is None:
+        return None
+    positive = ask(as_boolean(upper > 0), assumptions)
+    if positive is False:
+        return S.Zero
+    inner: list[Boolean] = list(assumptions)
+    if positive is None:
+        inner.append(as_boolean(upper > 0))
+    if lower is None:
+        start: Expr = S.Zero
+    else:
+        if ask(as_boolean(lower >= 0), inner) is not True or ask(as_boolean(lower < upper), inner) is not True:
+            return None
+        start = as_expr(sqrt(lower))
+    dimension = len(names)
+    measure = 2 * pi * rho if dimension == 2 else 4 * pi * rho**2
+    radius = as_expr(sqrt(upper))
+    refined = attempt(lambda: as_expr(refine(radius, inner)), settings.timeout)
+    if refined is not None:
+        radius = refined
+    value = definite_integral(as_expr(g * measure), (rho, start, radius), inner)
+    if value.has(Integral, IntegralByRanges):
+        return None
+    tidy = attempt(lambda: as_expr(refine(value, inner)), settings.timeout)
+    if tidy is not None:
+        value = tidy
+    if positive is None:
+        return as_expr(Piecewise((value, as_boolean(upper > 0)), (S.Zero, True)))
+    return value
+
+
+def _linear_bound(atom: Relational, y: Symbol, assumptions: list[Boolean]) -> Optional[tuple[bool, Expr]]:
+    """``(upper, bound)`` for a relation linear in ``y``: ``y < bound``
+    (``upper``) or ``y > bound``; ``None`` when the relation is not linear
+    in ``y`` or the sign of the coefficient of ``y`` is not known."""
+    difference = as_expr(atom.lhs) - as_expr(atom.rhs)
+    try:
+        poly = Poly(difference, y)
+    except PolynomialError:
+        return None
+    if poly.degree() != 1:
+        return None
+    coefficients = [as_expr(c) for c in poly.all_coeffs()]
+    p, q = coefficients[0], coefficients[1]
+    # p*y + q < 0  (Lt, Le) or > 0 (Gt, Ge)
+    less = isinstance(atom, (Lt, Le))
+    positive = p.is_positive is True or ask(as_boolean(p > 0), assumptions) is True
+    negative = p.is_negative is True or ask(as_boolean(p < 0), assumptions) is True
+    if not positive and not negative:
+        return None
+    bound = as_expr(-q / p)
+    return (less == positive, bound)
+
+
+def _extreme(bounds: list[Expr], largest: bool, assumptions: list[Boolean]) -> Optional[Expr]:
+    """The largest (smallest) of the bounds, when the assumptions order
+    them; ``None`` otherwise."""
+    best = bounds[0]
+    for other in bounds[1:]:
+        if ask(as_boolean(other >= best if largest else other <= best), assumptions) is True:
+            best = other
+        elif ask(as_boolean(other <= best if largest else other >= best), assumptions) is not True:
+            return None
+    return best
+
+
+def _interval_conditions(where: Set, x: Symbol) -> Optional[list[Boolean]]:
+    """A set of real numbers as a list of conjunctions ``a < x < b``, one
+    per interval (points are dropped: measure zero); ``None`` for a set
+    which is not a union of intervals."""
+    if where is S.Reals:
+        return [true]
+    if isinstance(where, EmptySet) or where is S.EmptySet:
+        return []
+    if isinstance(where, FiniteSet):
+        return []
+    if isinstance(where, Interval):
+        parts: list[Boolean] = []
+        if where.left != -oo:
+            parts.append(as_boolean(x > as_expr(where.left)))
+        if where.right != oo:
+            parts.append(as_boolean(x < as_expr(where.right)))
+        return [as_boolean(And(*parts))]
+    if isinstance(where, Union):
+        pieces: list[Boolean] = []
+        for member in where.args:
+            found = _interval_conditions(as_set_(member), x)
+            if found is None:
+                return None
+            pieces.extend(found)
+        return pieces
+    return None
+
+
+def as_set_(value: Basic) -> Set:
+    if not isinstance(value, Set):
+        raise TypeError("a set is expected, got %s" % (value,))
+    return value
+
+
+def _solved_bounds(f: Expr, formula: Boolean, names: Sequence[Symbol],
+                   assumptions: list[Boolean]) -> Optional[Expr]:
+    """The integral through the bounds of the last variable solved from
+    the relations linear in it (Fubini), see the module documentation."""
+    atoms = _atoms(formula)
+    if atoms is None or not atoms:
+        return None
+    y = names[-1]
+    outer_names = list(names[:-1])
+    outer_atoms: list[Boolean] = []
+    lowers: list[Expr] = []
+    uppers: list[Expr] = []
+    outer_assumptions: list[Boolean] = list(assumptions)
+    for atom in atoms:
+        if not atom.has(y):
+            outer_atoms.append(atom)
+            outer_assumptions.append(atom)
+    for atom in atoms:
+        if not atom.has(y):
+            continue
+        found = _linear_bound(atom, y, outer_assumptions)
+        if found is None:
+            return None
+        is_upper, bound = found
+        (uppers if is_upper else lowers).append(bound)
+    lower: Expr = S.NegativeInfinity
+    upper: Expr = S.Infinity
+    if lowers:
+        found_lower = _extreme(lowers, True, outer_assumptions)
+        if found_lower is None:
+            return None
+        lower = found_lower
+    if uppers:
+        found_upper = _extreme(uppers, False, outer_assumptions)
+        if found_upper is None:
+            return None
+        upper = found_upper
+    if not outer_names:
+        if outer_atoms:
+            return None
+        value = definite_integral(f, (y, lower, upper), assumptions)
+        return None if value.has(Integral, IntegralByRanges) else value
+    # where the two bounds are in the right order
+    pieces: list[Boolean] = [true]
+    if lower != -oo and upper != oo:
+        ordered = ask(as_boolean(lower < upper), outer_assumptions)
+        if ordered is False:
+            return S.Zero
+        if ordered is None:
+            if len(outer_names) != 1:
+                return None
+            x = outer_names[0]
+            where = attempt(lambda: solve(as_boolean(lower < upper), x, outer_assumptions, domain=S.Reals),
+                            settings.timeout)
+            if where is None:
+                return None
+            found_pieces = _interval_conditions(as_set_(where), x)
+            if found_pieces is None:
+                return None
+            pieces = found_pieces
+    inner_assumptions = outer_assumptions + [as_boolean(y > lower)] * (lower != -oo) \
+        + [as_boolean(y < upper)] * (upper != oo)
+    inner = definite_integral(f, (y, lower, upper), inner_assumptions)
+    if inner.has(Integral, IntegralByRanges):
+        return None
+    total: Expr = S.Zero
+    for piece in pieces:
+        condition = as_boolean(And(*outer_atoms, piece))
+        if condition is true:
+            return None                                     # the other variables are unbounded
+        value = integrate_by_ranges(inner, condition, outer_names, assumptions)
+        if value.has(Integral, IntegralByRanges):
+            return None
+        total = total + value
+    return as_expr(total)
+
+
 def integrate_by_ranges(integrand: ExprLike, condition: object,
                         variables: Optional[Sequence[Symbol]] = None,
                         assumptions: Assumptions = None) -> Expr:
@@ -387,7 +681,9 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     integrand : Expr
     condition : Boolean
         A Boolean combination of polynomial relations (``<``, ``<=``,
-        ``>``, ``>=``, ``Eq``, ``Ne``) with rational coefficients.
+        ``>``, ``>=``, ``Eq``, ``Ne``) with rational coefficients, for
+        the decomposition; or a conjunction of inequalities linear in the
+        last variable (``y < exp(x)``), solved for it.
     variables : list of Symbol, optional
         The integration variables, in the order of the decomposition
         (the last one is integrated first); by default every symbol of
@@ -406,11 +702,15 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     Examples
     ========
 
-    >>> from sympy import symbols, pi
+    >>> from sympy import symbols, pi, exp, log
     >>> from sympy_extras.integrals.regions import integrate_by_ranges
     >>> x, y, z, r = symbols('x y z r')
     >>> integrate_by_ranges(x**2, x**2 + y**2 < 1)
     pi/4
+    >>> integrate_by_ranges(1/(1 + x**2 + y**2), x**2 + y**2 < 3)
+    2*pi*log(2)
+    >>> integrate_by_ranges(1, (x > 1) & (x < 2) & (y > 0) & (y < log(x)))
+    -1 + log(4)
     >>> integrate_by_ranges(1, x**2 + y**2 + z**2 < 1)
     4*pi/3
     >>> integrate_by_ranges(1, (0 < x) & (x < y) & (y < x**2) & (x < 2))
@@ -426,6 +726,25 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     """
     node = IntegralByRanges(integrand, condition, variables)
     f, formula, names = node.integrand, normalize(node.condition), node.variables
+    extra: list[Boolean] = []
+    if assumptions is not None:
+        extra = [as_boolean(a) for a in ([assumptions] if isinstance(assumptions, (Boolean, bool))
+                                         else assumptions)]
+    radial = _radial(f, formula, names, extra)
+    if radial is not None:
+        return radial
+    found = _decomposed(node, f, formula, names, assumptions, extra)
+    if found is not None:
+        return found
+    solved = _solved_bounds(f, formula, names, extra)
+    return node if solved is None else solved
+
+
+def _decomposed(node: IntegralByRanges, f: Expr, formula: Boolean, names: Sequence[Symbol],
+                assumptions: Assumptions, extra: list[Boolean]) -> Optional[Expr]:
+    """The integral through the cylindrical algebraic decomposition, or
+    ``None`` when the condition is not polynomial, a bound has no explicit
+    form or an inner integral is not computed."""
     parameters = sorted_symbols(free_symbols(formula) - set(names))
     gens: list[Symbol] = parameters + list(names)
     polys: list[Poly] = []
@@ -434,7 +753,7 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
         compiled = _compile(formula, gens, polys, index)
         cad = cylindrical_algebraic_decomposition(polys, gens)
     except (ValueError, PolynomialError, TypeError):
-        return node
+        return None
     m = len(parameters)
     values: dict[CADCell, Expr] = {}
     for cell in cad.cells:
@@ -444,18 +763,14 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
             continue                                        # a section: measure zero
         stack = _stack(cell, cad, m + 1)
         if stack is None:
-            return node
+            return None
         base = _ancestor_at(cell, m) if m else cell
-        extra: list[Boolean] = []
-        if assumptions is not None:
-            extra = [as_boolean(a) for a in ([assumptions] if isinstance(assumptions, (Boolean, bool))
-                                             else assumptions)]
         parameter_condition = _parameter_condition(cell, cad, m) if m else true
         if m and ask(parameter_condition, assumptions) is False:
             continue
         found = _iterated(f, names, stack, extra + ([parameter_condition] if m else []))
         if found is None:
-            return node
+            return None
         value: Expr = found
         if m:
             refined = attempt(lambda: as_expr(refine(value, extra + [parameter_condition])), settings.timeout)

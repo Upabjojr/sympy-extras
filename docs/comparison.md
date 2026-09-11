@@ -712,7 +712,7 @@ integrals are computed innermost first, the way Mathematica's
 
 ```python
 >>> IntegralByRanges(1, x**2 + y**2 < c**2, [x, y]).doit()
-Piecewise((pi*c**2, (c > 0) | (c < 0)), (0, True))
+Piecewise((pi*c**2, c**2 > 0), (0, True))
 
 ```
 

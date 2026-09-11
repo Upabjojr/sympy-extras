@@ -37,3 +37,15 @@ def test_simplices() -> None:
 def test_gaussian_half_plane() -> None:
     # Integral(exp(-x**2 - y**2)) over the upper half plane is half of pi
     assert integrate_by_ranges(exp(-x**2 - y**2), y > 0, [x, y]) == pi/2
+
+
+def test_polar_and_type_one_regions() -> None:
+    # Apostol II 11.28: Integral(exp(-x**2 - y**2)) over the disc of radius a is pi (1 - exp(-a**2))
+    a = symbols('a', positive=True)
+    from sympy import simplify
+    assert simplify(integrate_by_ranges(exp(-x**2 - y**2), x**2 + y**2 < a**2, [x, y]) - pi*(1 - exp(-a**2))) == 0
+    # Apostol II 11.11 (regions between two graphs): the area under y = exp(x)
+    # on [0, 1] is e - 1, and the area between y = x**2 and y = sqrt(x) is 1/3
+    from sympy import E, sqrt
+    assert simplify(integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y < exp(x))) - (E - 1)) == 0
+    assert integrate_by_ranges(1, (x > 0) & (x < 1) & (y > x**2) & (y < sqrt(x))) == Rational(1, 3)

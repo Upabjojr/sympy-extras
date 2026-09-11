@@ -123,3 +123,14 @@ def test_poles_lie_on_the_right_sides_of_the_strips() -> None:
                    M._expint_kernel(Integer(2)), M._besselj_kernel(third), M._bessely_kernel(third),
                    M._besselk_kernel(third), M._exp_besseli_kernel(third), M._log_power_lower_kernel(third)]:
         assert poles_separated(kernel.quotient) is True, kernel.name
+
+
+def test_log_one_minus_kernel() -> None:
+    # Erdelyi, Tables of Integral Transforms I, 6.6 (7): the Mellin transform of
+    # log(1 - x) on (0, 1) is -(psi(1 + s) + EulerGamma)/s
+    q = M._log_one_minus_kernel().quotient
+    approx = mpmath.quad(lambda t: t**0.5 * mpmath.log(1 - t), [0, 1])
+    assert abs(float(q.as_expr(Rational(3, 2)).evalf(20)) - float(approx)) < 1e-12
+    from sympy_extras.integrals.mellin import decompose_integrand
+    p = decompose_integrand(log(1 - x**2), x, 'lower')
+    assert p is not None and p.matches[0].kernel.name.startswith('log(1 - x)') and p.matches[0].gamma == 2

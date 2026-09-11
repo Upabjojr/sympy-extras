@@ -194,3 +194,38 @@ def test_unconfirmed_fallback_answers_are_dropped() -> None:
     with configure(numerical_checks=True):
         value = definite_integral(log(z**I)**2, (z, 0, 1))
     assert value != -2
+
+
+def test_trigonometric_products_hyperbolic_and_polynomials() -> None:
+    from sympy import sinh, cosh, laguerre, atanh
+    # products and powers of sin and cos are written as sums (TR8)
+    assert _same(definite_integral(exp(-a * x) * sin(x) * cos(x), (x, 0, oo)), 1 / (a**2 + 4))
+    assert _same(definite_integral(exp(-a * x) * sin(x)**2, (x, 0, oo)), 2 / (a * (a**2 + 4)))
+    # hyperbolic functions as exponentials, with the condition a > b
+    assert _same(definite_integral(exp(-a * x) * sinh(b * x), (x, 0, oo), a > b), b / (a**2 - b**2))
+    assert _same(definite_integral(exp(-x) * cosh(x / 2), (x, 0, oo)), Rational(4, 3))
+    # orthogonal polynomials expanded: Integral(exp(-x) L_2(x)) = 0 (orthogonality to L_0)
+    assert definite_integral(exp(-x) * laguerre(2, x), (x, 0, oo)) == 0
+    # inverse hyperbolic functions as logarithms, and the log(1 - x) kernel on (0, 1)
+    assert _same(definite_integral(x * atanh(x), (x, 0, 1)), S.Half)
+    assert definite_integral(log(1 - x), (x, 0, 1)) == -1
+
+
+def test_principal_values() -> None:
+    # Cauchy principal values from the antiderivative, the symmetric
+    # limits at the pole taken as one limit
+    assert definite_integral(1 / x, (x, -1, 2), principal_value=True) == log(2)
+    assert definite_integral(1 / (x - 1), (x, 0, 3), principal_value=True) == log(2)
+    assert _same(definite_integral(x / (x**2 - 1), (x, 0, 2), principal_value=True), log(3) / 2)
+    # a double pole has no principal value
+    assert definite_integral(1 / x**2, (x, -1, 1), principal_value=True).has(Integral)
+    # without the flag nothing is claimed
+    assert definite_integral(1 / x, (x, -1, 2)).has(Integral)
+
+
+def test_symbolic_endpoints() -> None:
+    # symbolic endpoints go through the antiderivative with the limits
+    # under the assumptions
+    assert _same(definite_integral(exp(-x), (x, a, b)), exp(-a) - exp(-b))
+    assert _same(definite_integral(1 / x, (x, a, b), a < b), log(b / a))
+    assert _same(definite_integral(cos(x), (x, a, 2 * a)), sin(2 * a) - sin(a))

@@ -62,7 +62,7 @@ from sympy.core.expr import Expr
 from sympy.core.numbers import nan, oo, zoo
 from sympy.core.relational import Relational
 from sympy.core.singleton import S
-from sympy.core.symbol import Symbol
+from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.trigonometric import atan, acot
 from sympy.functions.elementary.complexes import Abs, sign
@@ -81,7 +81,8 @@ from sympy_extras.assumptions.solve import solve
 from sympy_extras.settings import settings
 from .conditions import ConditionalValue
 
-__all__ = ['antiderivative', 'discontinuities', 'antiderivative_integral', 'one_sided_limit', 'select_branch']
+__all__ = ['antiderivative', 'discontinuities', 'antiderivative_integral', 'one_sided_limit', 'select_branch',
+           'principal_value_integral']
 
 
 def antiderivative(f: Expr, x: Symbol) -> Optional[Expr]:
@@ -307,4 +308,71 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
         if right is None or left is None:
             return None
         total = total + (right - left)
+    return ConditionalValue(as_expr(total))
+
+
+def principal_value_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
+                             assumptions: Assumptions = None) -> Optional[ConditionalValue]:
+    """Cauchy's principal value of ``Integral(f, (x, a, b))`` from an
+    antiderivative ``F``: with `c_1, \\ldots, c_n` the singularities of
+    ``f`` and the discontinuities of ``F`` inside the range,
+
+    .. math::
+
+        \\mathrm{PV}\\int_a^b f\\, dx = \\lim_{x \\to b^-} F - \\lim_{x \\to a^+} F
+        - \\sum_i \\lim_{\\epsilon \\to 0^+} \\left( F(c_i + \\epsilon) - F(c_i - \\epsilon) \\right),
+
+    the symmetric limits at each point taken as one limit, in which the
+    divergent parts of a simple pole cancel (``log(epsilon)`` for
+    ``1/x``) while a stronger singularity leaves an infinite limit, and
+    ``None`` is returned. For a convergent integral the value is the
+    integral itself.
+
+    Examples
+    ========
+
+    >>> from sympy import symbols, log
+    >>> from sympy_extras.integrals.antiderivative import principal_value_integral
+    >>> x = symbols('x')
+    >>> principal_value_integral(1/x, x, -1, 2)
+    ConditionalValue(log(2))
+    >>> principal_value_integral(1/x**2, x, -1, 1) is None
+    True
+    """
+    a, b = as_expr(a), as_expr(b)
+    F = antiderivative(f, x)
+    if F is None:
+        return None
+    if F.has(Piecewise):
+        F = select_branch(F, x, a, b, assumptions)
+        if F is None:
+            return None
+    points = discontinuities(F, x, a, b, assumptions)
+    if points is None:
+        return None
+    singular = attempt(lambda: singularities(f, x, Interval.open(a, b)), settings.timeout)
+    if singular is None:
+        return None
+    singular_set = as_set(singular)
+    if isinstance(singular_set, FiniteSet):
+        singular_points = [as_expr(p) for p in singular_set]
+    elif singular_set is S.EmptySet:
+        singular_points = []
+    else:
+        return None
+    inside = _points_in(singular_points + points, x, a, b, assumptions)
+    if inside is None:
+        return None
+    right = one_sided_limit(F, x, b, '-', assumptions)
+    left = one_sided_limit(F, x, a, '+', assumptions)
+    if right is None or left is None:
+        return None
+    total: Expr = right - left
+    epsilon = Dummy('epsilon', positive=True)
+    for c in inside:
+        jump = attempt(lambda: limit(F.subs(x, c + epsilon) - F.subs(x, c - epsilon), epsilon, 0,
+                                     assumptions=assumptions), settings.timeout)
+        if jump is None or jump.has(oo, -oo, zoo, nan, Limit) or jump.free_symbols - F.free_symbols:
+            return None
+        total = total - jump
     return ConditionalValue(as_expr(total))

@@ -86,7 +86,7 @@ from sympy.functions.elementary.miscellaneous import Max, Min, sqrt
 from sympy.functions.elementary.trigonometric import sin, cos, atan
 from sympy.functions.special.bessel import besselj, bessely, besseli, besselk
 from sympy.functions.special.error_functions import erf, erfc, Ei, expint, Si, Ci
-from sympy.functions.special.gamma_functions import gamma
+from sympy.functions.special.gamma_functions import gamma, polygamma
 from sympy.functions.special.zeta_functions import zeta, dirichlet_eta, lerchphi
 from sympy.functions.special.delta_functions import Heaviside
 from sympy.logic.boolalg import And, Boolean, true
@@ -543,6 +543,13 @@ def _log_power_lower_kernel(k: Expr) -> Kernel:
                   GammaQuotient(1, [], [(k + 1, 0)], [], 0, oo, k > -1, _S**(-k - 1)), (k,), _positive_real(BETA))
 
 
+def _log_one_minus_kernel() -> Kernel:
+    # log(1 - x) on (0, 1): -(psi(1 + s) + EulerGamma)/s, Re s > 0 (Erdelyi 6.6 (7))
+    return Kernel('log(1 - x) theta(1 - x)',
+                  GammaQuotient(-1, [], [], [], 0, oo, True, (polygamma(0, _S + 1) + S.EulerGamma) / _S), (),
+                  _positive_real(BETA))
+
+
 def _bose_kernel() -> Kernel:
     # 1/(e^x - 1): Gamma(s) zeta(s), Re s > 1
     return Kernel('1/(exp(x) - 1)', GammaQuotient(1, [], [(0, 1)], [], 1, oo, True, zeta(_S)), (), _positive_real(BETA))
@@ -667,7 +674,7 @@ def _negated_monomial(e: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
     return (beta, g)
 
 
-def _match_function(f: Expr, x: Symbol) -> Optional[Match]:
+def _match_function(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Optional[Match]:
     """A function application recognised as a kernel."""
     if not isinstance(f, Function):
         return None
@@ -695,6 +702,10 @@ def _match_function(f: Expr, x: Symbol) -> Optional[Match]:
                 found = _positive_monomial(rest_, x)
                 if found is not None:
                     return Match(KERNELS['log(1 + x)'], found[0], found[1])
+                found = _negated_monomial(rest_, x)
+                if found is not None and cutoff == 'lower' and found[0] == 1 and found[1].is_positive:
+                    # log(1 - x^gamma) on (0, 1)
+                    return Match(_log_one_minus_kernel(), S.One, found[1], S.One, True)
         return None
     if isinstance(f, Ei) and len(args) == 1:
         found = _negated_monomial(args[0], x)
@@ -853,7 +864,7 @@ def mellin_kernel(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Optional[
         return _match_power(f, x, cutoff)
     if isinstance(f, Add):
         return _match_add(f, x)
-    return _match_function(f, x)
+    return _match_function(f, x, cutoff)
 
 
 def mellin_transform(f: ExprLike, x: Symbol, s: Symbol) -> Optional[MellinTransform]:

@@ -260,6 +260,9 @@ def numerically_equal(a: Expr, b: Expr, assumptions: Assumptions = None, samples
             right = complex(as_expr(b.xreplace(values)).evalf(30))
         except (TypeError, ValueError):
             return False
+        if left != left or right != right:
+            # nan compares unequal to itself: not a value
+            return False
         if abs(left - right) > 1e-12 * (1 + abs(left) + abs(right)):
             return False
     return True
