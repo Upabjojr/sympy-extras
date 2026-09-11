@@ -38,10 +38,12 @@ The package implements the four pieces:
   `1 + x`, `(1 - x)**b` on `(0, 1)`, `sin`, `cos`, `atan`, `log(1 + x)`,
   `erf`, `erfc`, `E1`, `E_n`, `Si`, `Ci`, the Bessel functions `J`, `Y`,
   `K` and `exp(-x)*I`, the step functions, `(-log(x))**k` on `(0, 1)`,
-  `1/(exp(x) - 1)`, `1/(exp(x) + 1)`, `1/sinh`, `1/cosh`, and the
-  differences `exp(-x) - 1`, `cos(x) - 1`, `sin(x) - x`, `atan(x) - pi/2`
-  whose transforms continue the strips), and the matching of an integrand
-  against it (`mellin_transform`, `mellin_kernel`);
+  `1/(exp(x) - 1)`, `1/(exp(x) + 1)`, `1/sinh`, `1/cosh`, the Airy
+  function `Ai`, the polylogarithms `Li_n(-x)`, the Fresnel integrals `S`
+  and `C`, `erfc(x)*exp(x**2)`, and the differences `exp(-x) - 1`,
+  `cos(x) - 1`, `sin(x) - x`, `atan(x) - pi/2` whose transforms continue
+  the strips), and the matching of an integrand against it
+  (`mellin_transform`, `mellin_kernel`);
 - `sympy_extras.integrals.slater`: the Mellin–Barnes integral of a quotient
   as a G-function (`mellin_barnes`, through Gauss's multiplication formula
   when the coefficients of `s` are not `±1`) and Slater's theorem
@@ -266,8 +268,15 @@ The driver tries, after the Mellin method and the residues:
 - **Asymptotic expansions** (`sympy_extras.integrals.asymptotic`,
   `asymptotic_integral`): for a parametric integral without a closed form,
   the first terms as the parameter grows, by Watson's lemma
-  (`exp(-t*x)*phi(x)`), Laplace's method (`phi*exp(t*h)` with a maximum
-  inside or at an endpoint, to any order) and the stationary phase
+  (`exp(-t*x)*phi(x)`), Laplace's method (`phi*exp(t*h)` with the maxima
+  inside or at the endpoints, of any order, several maxima of equal
+  height added, to any number of terms), the stationary phase, the
+  uniform Airy and error-function expansions of Chester–Friedman–Ursell
+  for stationary points which coalesce (`asymptotic_integral(...,
+  uniform=True)`; the Airy integral `cos(t*(x**3/3 - a*x))` gives
+  `2*pi*t**(-1/3)*airyai(-a*t**(2/3))` exactly) and steepest descent
+  through the complex saddle points of `exp(t*h)` when the deformation
+  of the contour is justified (`steepest_descent`);
   (`phi*exp(I*t*h)`, leading term), with the order term.
 - **Validated numerical integration** (`sympy_extras.integrals.validated`,
   `definite_integral(..., numeric=True)`): when no closed form is found and
@@ -282,6 +291,15 @@ The driver tries, after the Mellin method and the residues:
   remainder, infinite ranges by the exponential or rational map, with
   oscillatory tails integrated by parts (Bonnet's bound). Thirty digits of
   the Gaussian on `(0, 1)`, twenty of `1/(1 + x**2)` on `(0, oo)`.
+- **Summability of divergent oscillatory integrals**
+  (`sympy_extras.integrals.summability`, `definite_integral(...,
+  summability='abel')`, `'cesaro'`, `'gaussian'`): the Abel mean
+  `lim Integral(f*exp(-eps*x))`, the Cesàro means `(C, k)` with the
+  kernel `(1 - x/R)**k` and the Gaussian mean, each through the inner
+  integral under `eps > 0` and the limit under the assumptions; a value
+  is kept only when the limit is finite and free of the regulator, so
+  `sin(x)**2` over `(0, oo)` has none, and a convergent integral keeps its
+  value (Hardy, *Divergent series*, ch. 4-5).
 - **Symbolic-numeric recognition** (`sympy_extras.integrals.recognize`,
   `definite_integral(..., recognize=True)`): a high-precision quadrature
   and an integer relation (PSLQ) with a basis of constants propose a
@@ -443,6 +461,22 @@ pi*(-1 + 5*sqrt(5))/6
 
 ```
 
+Several equations give curves (the Gram determinant of the graph
+parametrisation is the line or surface element), and a cell bounded by
+the root of a cubic gets the trigonometric or hyperbolic form of the root
+when it is real, or the variables are reordered so that the bound is
+explicit in another variable:
+
+```python
+>>> integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1) & Eq(z, 0), measure='hausdorff')
+2*pi
+>>> integrate_by_ranges(1, Eq(y, x**2) & Eq(z, x) & (x > 0) & (x < 1), measure='hausdorff')
+(asinh(sqrt(2)) + sqrt(6))/2
+>>> integrate_by_ranges(1, (x > 0) & (y > 0) & (x**3 + y**3 < 1))
+2**(1/3)*gamma(1/6)*gamma(1/3)/(12*sqrt(pi))
+
+```
+
 The Fourier series of the classical table (`log(sin(x))`, `log(cos(x))`,
 `log(tan(x))`, `log(1 - cos(x))`, `x`, `x**2`, `Abs(sin(x))`, ...,
 Gradshteyn–Ryzhik 1.441-1.444) are integrated termwise over their ranges
@@ -468,8 +502,11 @@ Tracked in issue #53 of the repository, with the alternatives worth adding.
   Mellin–Barnes integral, not a G-function) unless one of them is
   trigonometric or hyperbolic, and functions outside the
   table (`sinh`, `cosh` and `besseli` without the exponential which makes
-  them decay, inverse hyperbolic functions, `LambertW`, ...): the driver
-  falls back to SymPy.
+  them decay, inverse hyperbolic functions, `LambertW`, the Struve
+  functions, which SymPy lacks, ...): the driver falls back to SymPy.
+- A G-function on the unit circle `|z| = 1` (products of two kernels with
+  equal scales, `airyai(x)**2`) whose Slater series diverge there: the
+  analytic continuation of the sum is not attempted.
 - The logarithmic cases of Slater's theorem (parameters of the G-function
   differing by integers) are computed as limits of the general case, which
   SymPy's `limit` does not always manage.
@@ -477,9 +514,10 @@ Tracked in issue #53 of the repository, with the alternatives worth adding.
 - Complex parameters: the conditions are written for real parameters
   (an inequality on a parameter states that it is real); a parameter which
   may be complex gets a condition on its argument, `Abs(arg(a)) < pi/2`.
-- Region integrals whose cell boundaries have no explicit form (roots of
-  polynomials of degree five or more in the last variable), and regions
-  described by non-polynomial conditions.
+- Region integrals whose cell boundaries have no explicit form in any
+  order of the variables (roots of polynomials of degree five or more
+  with parametric coefficients), and regions described by non-polynomial
+  conditions which are not monotone in the last variable.
 
 ## References
 

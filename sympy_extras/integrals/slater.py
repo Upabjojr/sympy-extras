@@ -71,13 +71,15 @@ from typing import Optional, Sequence
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
 from sympy.core.power import Pow
+from sympy.core.add import Add
 from sympy.core.numbers import Integer, Rational, nan, pi, oo, zoo
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy
 from sympy.series.limits import Limit, limit
-from sympy.functions.elementary.complexes import Abs, arg as arg_
+from sympy.functions.elementary.complexes import Abs, arg as arg_, re
 from sympy.functions.elementary.piecewise import Piecewise
-from sympy.functions.special.gamma_functions import gamma
+from sympy.functions.elementary.exponential import exp
+from sympy.functions.special.gamma_functions import gamma, lowergamma
 from sympy.functions.special.hyper import hyper, meijerg
 from sympy.logic.boolalg import And, Boolean, true
 from sympy.simplify.hyperexpand import hyperexpand
@@ -284,7 +286,38 @@ def _hyperexpand(e: Expr) -> Expr:
         # SymPy 1.14: meijerg._eval_evalf fails on some arguments
         # (AttributeError: 'NoneType' object has no attribute 'has')
         return e
-    return e if expanded is None else expanded
+    result = e if expanded is None else expanded
+    if result.has(hyper):
+        result = _incomplete_gamma_forms(result)
+    return result
+
+
+def _incomplete_gamma_forms(e: Expr) -> Expr:
+    """``1F1(1; b; z)``, which ``hyperexpand`` leaves alone, written
+    ``(b - 1) z**(1 - b) exp(z) lowergamma(b - 1, z)`` (DLMF 8.5.1) for
+    ``b`` not an integer below 2 and ``z`` not negative.
+
+    >>> from sympy import hyper, symbols, Rational
+    >>> from sympy_extras.integrals.slater import _incomplete_gamma_forms
+    >>> z = symbols('z')
+    >>> _incomplete_gamma_forms(hyper((1,), (Rational(5, 3),), z))
+    2*exp(z)*lowergamma(2/3, z)/(3*z**(2/3))
+    """
+    replacement: dict[Expr, Expr] = {}
+    for h in e.atoms(hyper):
+        ap = [as_expr(a) for a in h.ap]
+        bq = [as_expr(b) for b in h.bq]
+        if ap == [S.One] and len(bq) == 1:
+            b = bq[0]
+            z = as_expr(h.argument)
+            if (b - 1).is_integer and (b - 1).is_nonpositive or z.is_negative:
+                # a negative argument gives lowergamma of a polar number,
+                # which no branch resolves: the series stays as it is
+                continue
+            replacement[as_expr(h)] = (b - 1) * z**(1 - b) * exp(z) * lowergamma(b - 1, z)
+    if not replacement:
+        return e
+    return as_expr(e.xreplace(replacement))
 
 
 def slater_expansion(g: Expr, assumptions: Assumptions = None) -> Expr:
@@ -340,11 +373,17 @@ def _expand_meijerg(g: MeijerG, assumptions: Assumptions) -> Optional[Conditiona
             series = _slater_series(g.reflected())
         elif inside is False:
             # |z| = 1: the series of the |z| < 1 case, continued analytically
-            # by hyperexpand when it evaluates the hypergeometric functions
+            # by hyperexpand when it evaluates the hypergeometric functions;
+            # only when every series converges there (Re(sum b - sum a) > 0):
+            # the Gauss summation of a divergent 2F1 at 1 is meaningless, and
+            # the singularities of the terms cancel in the sum (the bug:
+            # Integral(airyai(x)**2, (x, 0, oo)) came out as zoo)
             series = _slater_series(g)
             if series is not None:
+                if not all(_converges_on_the_circle(h, assumptions) for h in series.atoms(hyper)):
+                    return None
                 series = _hyperexpand(series)
-                if series.has(hyper):
+                if series.has(hyper) or series.has(zoo, nan):
                     return None
         else:
             small = _slater_series(g)
@@ -367,6 +406,24 @@ def _expand_meijerg(g: MeijerG, assumptions: Assumptions) -> Optional[Conditiona
             return None
         return ConditionalValue(g.prefactor * expanded)
     return ConditionalValue(g.prefactor * _hyperexpand(series))
+
+
+def _converges_on_the_circle(h: hyper, assumptions: Assumptions) -> bool:
+    """Whether the hypergeometric series converges at its argument on
+    ``|z| = 1``: for ``pFq`` with ``p = q + 1``, ``Re(sum(b) - sum(a)) > 0``
+    at ``z = 1`` and ``> -1`` elsewhere on the circle (a polynomial, one of
+    the ``a`` a non-positive integer, always converges)."""
+    ap = [as_expr(a) for a in h.ap]
+    bq = [as_expr(b) for b in h.bq]
+    if any(a.is_integer and a.is_nonpositive for a in ap):
+        return True
+    if len(ap) < len(bq) + 1:
+        return True
+    if len(ap) > len(bq) + 1:
+        return False
+    bound = S.Zero if as_expr(h.argument) == 1 else S.NegativeOne
+    excess = as_expr(re(Add(*bq) - Add(*ap)) - bound)
+    return excess.is_positive is True or ask(as_boolean(excess > 0), assumptions) is True
 
 
 def _same(a: Expr, b: Expr, assumptions: Assumptions) -> bool:

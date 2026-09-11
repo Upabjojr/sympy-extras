@@ -283,3 +283,16 @@ def test_argument_conditions_of_complex_scales_are_decided() -> None:
     # a divergent integral has no value, whatever ran before
     assert definite_integral(x**Rational(-3, 2) * exp(-x), (x, 0, oo)) == Integral(x**Rational(-3, 2) * exp(-x), (x, 0, oo))
     assert definite_integral(x**Rational(-3, 2) * exp(-x), (x, 0, oo), regularize=True) == -2 * sqrt(pi)
+
+
+def test_summability_and_unsigned_infinities() -> None:
+    # the summability keyword routes to the Abel, Cesaro or Gaussian means;
+    # a value zoo or nan from a method is refused
+    from sympy import airyai, zoo
+    assert definite_integral(sin(x), (x, 0, oo), summability='abel') == 1
+    assert definite_integral(x * sin(x), (x, 0, oo), summability='cesaro') == 0
+    assert definite_integral(sin(x)**2, (x, 0, oo), summability='abel') == Integral(sin(x)**2, (x, 0, oo))
+    assert definite_integral(exp(-x), (x, 0, oo), summability='gaussian') == 1
+    raises(ValueError, lambda: definite_integral(sin(x), (x, 0, oo), summability='borel'))
+    value = definite_integral(airyai(x)**2, (x, 0, oo))
+    assert value != zoo and not value.has(zoo)

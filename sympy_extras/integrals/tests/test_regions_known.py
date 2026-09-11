@@ -84,3 +84,20 @@ def test_regions_under_curves_solved_for_the_last_variable() -> None:
     from sympy import log, simplify
     assert integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y**2 < x)) == Rational(2, 3)
     assert simplify(integrate_by_ranges(1, (x > 1) & (x < 2) & (y > 0) & (exp(y) < x)) - (2*log(2) - 1)) == 0
+
+
+def test_curves_in_space_and_dirichlet_volumes() -> None:
+    # Viviani's curve (Stewart 13.1, exercise on the sphere-cylinder intersection):
+    # the length Integral(sqrt(1 + cos(t)**2), (t, 0, 2 pi)) = 4 sqrt(2) E(1/2)
+    from sympy import Eq, N, gamma
+    import mpmath
+    found = integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1) & Eq(x**2 + y**2, x), measure='hausdorff')
+    assert abs(float(N(found)) - float(4*mpmath.sqrt(2)*mpmath.ellipe(0.5))) < 1e-12
+    # Apostol II 11.9: the area of {x**3 + y**3 < 1, x > 0, y > 0} is
+    # Integral((1 - x**3)**(1/3), (x, 0, 1)) = B(1/3, 4/3)/3 = Gamma(1/3) Gamma(4/3)/(3 Gamma(5/3))
+    found = integrate_by_ranges(1, (x**3 + y**3 < 1) & (x > 0) & (y > 0))
+    exact = gamma(Rational(1, 3))*gamma(Rational(4, 3))/(3*gamma(Rational(5, 3)))
+    assert abs(float(N(found - exact))) < 1e-12
+    assert abs(float(N(found)) - float(mpmath.quad(lambda t: (1 - t**3)**(mpmath.mpf(1)/3), [0, 1]))) < 1e-12
+    # the circle z = 1 on the paraboloid z = x**2 + y**2 has length 2 pi
+    assert integrate_by_ranges(1, Eq(z, x**2 + y**2) & Eq(z, 1), measure='hausdorff') == 2*pi

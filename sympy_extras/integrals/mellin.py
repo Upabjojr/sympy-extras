@@ -85,10 +85,10 @@ from sympy.functions.elementary.exponential import exp, log
 from sympy.functions.elementary.hyperbolic import sinh, cosh
 from sympy.functions.elementary.miscellaneous import Max, Min, sqrt
 from sympy.functions.elementary.trigonometric import sin, cos, atan
-from sympy.functions.special.bessel import besselj, bessely, besseli, besselk
-from sympy.functions.special.error_functions import erf, erfc, Ei, expint, Si, Ci
+from sympy.functions.special.bessel import besselj, bessely, besseli, besselk, airyai
+from sympy.functions.special.error_functions import erf, erfc, Ei, expint, Si, Ci, fresnels, fresnelc
 from sympy.functions.special.gamma_functions import gamma, polygamma
-from sympy.functions.special.zeta_functions import zeta, dirichlet_eta, lerchphi
+from sympy.functions.special.zeta_functions import zeta, dirichlet_eta, lerchphi, polylog
 from sympy.functions.special.delta_functions import Heaviside
 from sympy.logic.boolalg import And, Boolean, true
 
@@ -508,6 +508,51 @@ def _exp_besseli_kernel(nu: Expr) -> Kernel:
                   (nu,), _positive_real(BETA))
 
 
+def _airyai_kernel() -> Kernel:
+    # Ai(x): 3^{(2s - 7)/6} Gamma(s/3) Gamma((s + 1)/3) / (2 pi), Re s > 0 (Mathematica; DLMF 9.10.17
+    # after the multiplication formula)
+    return Kernel('airyai', GammaQuotient(3**Rational(-7, 6) / (2 * pi), [(3, Rational(2, 3))],
+                                          [(0, Rational(1, 3)), (Rational(1, 3), Rational(1, 3))], [], 0, oo),
+                  (), _positive_real(BETA))
+
+
+def _polylog_kernel(n: Expr) -> Kernel:
+    # Li_n(-x): (-1)^n pi / (s^n sin(pi s)) = -Gamma(1 + s) Gamma(-s)^(n + 1) / Gamma(1 - s)^n, -1 < Re s < 0
+    # (n = 1 is -log(1 + x); the poles at 0, 1, ... to the right, at -1, -2, ... to the left; the transform
+    # is negative on the strip for every n, checked against quadrature for n = 1, 2, 3)
+    count = int(n)
+    return Kernel('polylog(n, -x)', GammaQuotient(S.NegativeOne, [], [(1, 1)] + [(0, -1)] * (count + 1),
+                                                  [(1, -1)] * count, -1, 0),
+                  (n,), _cut_plane(BETA))
+
+
+def _fresnels_kernel() -> Kernel:
+    # S(x): -(pi/2)^{-(1 + s)/2} Gamma((3 + s)/2) sin(pi (1 + s)/4) / (s (1 + s)) (Mathematica), taken in
+    # -1 < Re s < 0: sin(pi (1 + s)/4) = pi / (Gamma((1 + s)/4) Gamma((3 - s)/4)) and
+    # 1/(s (1 + s)) = -Gamma(-s) Gamma(1 + s) / (Gamma(1 - s) Gamma(2 + s))
+    return Kernel('fresnels', GammaQuotient(sqrt(2 * pi), [(pi / 2, -_HALF)],
+                                            [(Rational(3, 2), _HALF), (0, -1), (1, 1)],
+                                            [(Rational(1, 4), Rational(1, 4)), (Rational(3, 4), -Rational(1, 4)),
+                                             (1, -1), (2, 1)], -1, 0),
+                  (), _positive_real(BETA), -1)
+
+
+def _fresnelc_kernel() -> Kernel:
+    # C(x): -(pi/2)^{-(1 + s)/2} Gamma((3 + s)/2) cos(pi (1 + s)/4) / (s (1 + s)), -1 < Re s < 0
+    # (Mathematica); cos(pi (1 + s)/4) = pi / (Gamma((3 + s)/4) Gamma((1 - s)/4))
+    return Kernel('fresnelc', GammaQuotient(sqrt(2 * pi), [(pi / 2, -_HALF)],
+                                            [(Rational(3, 2), _HALF), (0, -1), (1, 1)],
+                                            [(Rational(3, 4), Rational(1, 4)), (Rational(1, 4), -Rational(1, 4)),
+                                             (1, -1), (2, 1)], -1, 0),
+                  (), _positive_real(BETA), -1)
+
+
+def _erfc_exp_kernel() -> Kernel:
+    # erfc(x) e^{x^2}: Gamma(s) Gamma((1 - s)/2) / (2^s sqrt(pi)), 0 < Re s < 1 (Mathematica)
+    return Kernel('erfc(x)*exp(x**2)', GammaQuotient(1 / sqrt(pi), [(_HALF, 1)], [(0, 1), (_HALF, -_HALF)], [], 0, 1),
+                  (), _positive_real(BETA))
+
+
 def _si_kernel() -> Kernel:
     # Si(x): -Gamma(s) sin(pi s/2) / s, -1 < Re s < 0, with the double pole at 0 to the right:
     # -pi Gamma(1 + s) Gamma(-s)^2 / (Gamma(s/2) Gamma(1 - s/2) Gamma(1 - s)^2)
@@ -581,7 +626,8 @@ KERNELS: dict[str, Kernel] = {k.name: k for k in [
     _exp_kernel(), _exp_minus_one_kernel(), _log1p_kernel(), _sin_kernel(), _sin_minus_x_kernel(),
     _cos_kernel(), _cos_minus_one_kernel(), _atan_kernel(), _atan_minus_kernel(), _erfc_kernel(),
     _erf_kernel(), _e1_kernel(), _si_kernel(), _si_minus_kernel(), _ci_kernel(), _theta_lower_kernel(),
-    _theta_upper_kernel(), _bose_kernel(), _fermi_kernel(), _csch_kernel(), _sech_kernel()]}
+    _theta_upper_kernel(), _bose_kernel(), _fermi_kernel(), _csch_kernel(), _sech_kernel(),
+    _airyai_kernel(), _fresnels_kernel(), _fresnelc_kernel(), _erfc_exp_kernel()]}
 
 
 # ---------------------------------------------------------------------------
@@ -691,7 +737,8 @@ def _match_function(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Optiona
             return Match(KERNELS['exp'], found[0], found[1])
         return None
     one_argument: dict[type[Function], str] = {
-        sin: 'sin', cos: 'cos', atan: 'atan', erf: 'erf', erfc: 'erfc', Si: 'Si', Ci: 'Ci'}
+        sin: 'sin', cos: 'cos', atan: 'atan', erf: 'erf', erfc: 'erfc', Si: 'Si', Ci: 'Ci',
+        airyai: 'airyai', fresnels: 'fresnels', fresnelc: 'fresnelc'}
     for cls, name in one_argument.items():
         if isinstance(f, cls) and len(args) == 1:
             found = _positive_monomial(args[0], x)
@@ -722,6 +769,12 @@ def _match_function(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Optiona
         found = _positive_monomial(args[1], x)
         if found is not None and not args[0].has(x):
             return Match(_expint_kernel(args[0]), found[0], found[1])
+        return None
+    if isinstance(f, polylog) and len(args) == 2:
+        n = args[0]
+        found = _negated_monomial(args[1], x)
+        if found is not None and isinstance(n, Integer) and n > 0:
+            return Match(_polylog_kernel(n), found[0], found[1])
         return None
     two_arguments: dict[type[Function], str] = {besselj: 'J', bessely: 'Y', besselk: 'K'}
     for cls, name in two_arguments.items():
@@ -947,6 +1000,46 @@ def _exp_besseli(factors: list[Expr], x: Symbol) -> list[Expr]:
     return factors
 
 
+def _erfc_exp(factors: list[Expr], x: Symbol) -> list[Expr]:
+    """``erfc(b x^g) exp(c x^(2g))`` with ``c = b**2`` rewritten as the
+    kernel ``erfc(u) exp(u**2)`` of the table at ``u = b x^g`` (a symbol
+    standing for it); with ``c != b**2`` the exponential
+    ``exp((c - b**2) x^(2g))`` stays as a factor."""
+    for i, factor in enumerate(factors):
+        if isinstance(factor, erfc) and len(factor.args) == 1:
+            inner = _positive_monomial(as_expr(factor.args[0]), x)
+            if inner is None:
+                continue
+            for j, other in enumerate(factors):
+                if isinstance(other, exp) and len(other.args) == 1:
+                    outer = _positive_monomial(as_expr(other.args[0]), x)
+                    if outer is None or outer[1] != 2 * inner[1]:
+                        continue
+                    difference = as_expr(outer[0] - inner[0]**2)
+                    rest = [f for k, f in enumerate(factors) if k not in (i, j)]
+                    if difference != 0:
+                        rest.append(exp(difference * x**outer[1]))
+                    return rest + [_CombinedErfc(inner[0], inner[1])]
+    return factors
+
+
+class _CombinedErfc(Expr):
+    """A placeholder for ``erfc(b x^g) exp(b^2 x^(2g))`` in a list of
+    factors (never part of a returned expression)."""
+
+    def __new__(cls, beta: Expr, gamma_: Expr) -> _CombinedErfc:
+        obj = Expr.__new__(cls, beta, gamma_)
+        return obj
+
+    @property
+    def beta(self) -> Expr:
+        return as_expr(self.args[0])
+
+    @property
+    def power(self) -> Expr:
+        return as_expr(self.args[1])
+
+
 class _CombinedBesseli(Expr):
     """A placeholder for ``exp(-b x^g) besseli(nu, b x^g)`` in a list of
     factors (never part of a returned expression)."""
@@ -990,9 +1083,14 @@ def decompose_integrand(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Opt
             factors.append(e)
     if any(isinstance(e, besseli) for e in factors):
         factors = _exp_besseli(factors, x)
+    if any(isinstance(e, erfc) for e in factors):
+        factors = _erfc_exp(factors, x)
     for e in factors:
         if isinstance(e, _CombinedBesseli):
             matches.append(Match(_exp_besseli_kernel(e.nu), e.beta, e.power))
+            continue
+        if isinstance(e, _CombinedErfc):
+            matches.append(Match(KERNELS['erfc(x)*exp(x**2)'], e.beta, e.power))
             continue
         if not e.has(x):
             constant = constant * e

@@ -85,6 +85,27 @@ def test_kernel_matching() -> None:
     assert mellin_kernel(erf(x**2 + 1), x) is None
 
 
+def test_new_special_function_kernels() -> None:
+    from sympy import airyai, polylog, fresnels, fresnelc, erfc
+    found = mellin_kernel(airyai(2 * x), x)
+    assert found is not None and found.kernel.name == 'airyai' and found.beta == 2
+    found = mellin_kernel(polylog(2, -3 * x**2), x)
+    assert found is not None and found.kernel.name == 'polylog(n, -x)' and (found.beta, found.gamma) == (3, 2)
+    assert mellin_kernel(polylog(2, 3 * x), x) is None
+    assert mellin_kernel(polylog(S.Half, -x), x) is None
+    found = mellin_kernel(fresnels(x), x)
+    assert found is not None and found.kernel.name == 'fresnels'
+    found = mellin_kernel(fresnelc(x**3), x)
+    assert found is not None and found.kernel.name == 'fresnelc' and found.gamma == 3
+    # erfc(b x) exp(b^2 x^2) is one kernel; the exponential left over stays a factor
+    product = decompose_integrand(erfc(2 * x) * exp(4 * x**2), x)
+    assert product is not None and [m.kernel.name for m in product.matches] == ['erfc(x)*exp(x**2)']
+    assert product.matches[0].beta == 2
+    product = decompose_integrand(erfc(x) * exp(x**2 / 2) / x, x)
+    assert product is not None and sorted(m.kernel.name for m in product.matches) == ['erfc(x)*exp(x**2)', 'exp']
+    assert product.alpha == -1
+
+
 def test_cutoff_kernels() -> None:
     # (1 - x)**a on (0, 1) is the Beta kernel and carries the cutoff
     p = decompose_integrand((1 - x)**a * x**2, x, 'lower')

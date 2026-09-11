@@ -175,6 +175,31 @@ remove public functions. Breaking changes are listed here when they happen.
   conditions are decided by their real parts (`exp(-a*x)*sin(b*x)*
   besselj(0, x)` over `(0, oo)`).
 
+- `sympy_extras.integrals.summability`: Abel, Cesàro `(C, k)` and Gaussian
+  means of divergent oscillatory integrals, `definite_integral(...,
+  summability='abel')` (`sin(x)` over `(0, oo)` is 1, `x*sin(x)` is 0 by
+  `(C, 2)`, `sin(x)**2` has no mean).
+
+- `sympy_extras.integrals.mellin`: kernels for the Airy function `Ai`, the
+  polylogarithms `Li_n(-x)`, the Fresnel integrals `S` and `C` and
+  `erfc(x)*exp(x**2)`, checked against Mathematica and quadrature; the
+  Laplace transform of `Ai` comes out as real confluent series (the
+  `lowergamma` of a polar argument `hyperexpand` writes is rewritten).
+
+- `sympy_extras.integrals.asymptotic`: Laplace's method with several
+  maxima and maxima of any order, the uniform Airy and error-function
+  expansions of Chester–Friedman–Ursell for coalescing stationary points
+  (`asymptotic_integral(..., uniform=True)`), and steepest descent through
+  complex saddle points (`steepest_descent`).
+
+- `IntegralByRanges`: curves and surfaces given by several equations with
+  `measure='hausdorff'` (the Gram determinant of the graph
+  parametrisation; Viviani's curve has length `4*sqrt(2)*elliptic_e(1/2)`),
+  cubic cell boundaries in trigonometric or hyperbolic form, and the
+  reordering of the variables when a bound has no explicit form
+  (`x**3 + y**3 < 1` in the first quadrant has area
+  `2**(1/3)*gamma(1/6)*gamma(1/3)/(12*sqrt(pi))`).
+
 - The benchmark driver `definite_integrals` of sympy-extras-benchmarks
   gained `--extras` to run `definite_integral` on the four integration
   datasets; the results are in `benchmarks/README.md`.
@@ -192,6 +217,11 @@ remove public functions. Breaking changes are listed here when they happen.
 - `ask(element(e, S.Reals))` no longer answers `True` for an expression in
   real variables which is not a polynomial with rational coefficients
   (`(a + I*b)**2` with `a` and `b` real).
+
+- Slater's expansion on the unit circle `|z| = 1` is used only when every
+  hypergeometric series converges there: `Integral(airyai(x)**2, (x, 0,
+  oo))` came out as `zoo` from Gauss's summation of divergent series, and
+  the driver now refuses a value `zoo` or `nan` from any method.
 
 ## 0.0.1 - 2026-09-10
 

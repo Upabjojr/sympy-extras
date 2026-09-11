@@ -74,8 +74,8 @@ interval of `y` with explicit endpoints (`y^2 < e^x` with `y > 0` into
 x^{1/3}`) contributes its endpoints to the bounds.
 
 With ``measure='hausdorff'`` the integral is taken with respect to the
-`(n-1)`-dimensional Hausdorff measure on the hypersurface described by
-the *one equation* of the condition, cut by its inequalities: the length
+`(n-k)`-dimensional Hausdorff measure on the variety described by the
+`k` *equations* of the condition, cut by its inequalities: the length
 of a curve and the area of a surface, with the integrand weighted along
 them (Mathematica integrates over ``ImplicitRegion`` this way). The
 cells of the decomposition on which the condition holds are then the
@@ -88,9 +88,22 @@ length `\\int \\sqrt{1 + \\varphi'(x)^2}\\, dx` of a graph `y = \\varphi(x)`, th
 area `\\int\\int \\sqrt{1 + \\varphi_x^2 + \\varphi_y^2}\\, dx\\, dy` of a graph
 `z = \\varphi(x, y)`; the outer integral over the base cell is again an
 integral over a region, so that a surface over a disc is done in polar
-coordinates. When a root has no explicit branch, or the condition has no
-equation or more than one (a curve in space as the intersection of two
-surfaces), the integral is left unevaluated.
+coordinates. With `k` equations (a curve in space as the intersection of
+two surfaces) the cells are sections at `k` levels, each section
+variable an explicit branch with the earlier ones substituted, and the
+weight is the Gram determinant `\\sqrt{\\det(I + G^T G)}` of the graph
+parametrisation, `G` the Jacobian of the branches with respect to the
+free variables (`\\sqrt{1 + x'(t)^2 + y'(t)^2}` for a curve `(x(t), y(t),
+t)`). When a root has no explicit branch, or the condition has no
+equation, the integral is left unevaluated.
+
+A bound which is a root of a cubic in the last variable is written in
+Viète's trigonometric or hyperbolic form (:func:`_trigonometric_roots`),
+real where Cardano's formula needs complex radicals; a bound without an
+explicit form in the last variable is retried with the variables in
+another order, where it may be explicit (`x^3 + x y < 1` is `y < (1 -
+x^3)/x`), and a numeric bound is an algebraic number (``CRootOf``) in
+the value.
 
 Examples
 ========
@@ -128,6 +141,16 @@ Hausdorff measure:
 >>> integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1), measure='hausdorff')
 4*pi
 
+The length of the circle `z = 1` on the paraboloid `z = x^2 + y^2`, a
+curve in space given by two equations, and the area under the cubic
+`y = x^3 - x` between its root and `x = 0`, with the variables ordered
+so that the boundary root is in the last variable:
+
+>>> integrate_by_ranges(1, Eq(z, x**2 + y**2) & Eq(z, 1), measure='hausdorff')
+2*pi
+>>> integrate_by_ranges(1, (x > 0) & (y > 0) & (y < 1) & (x**3 - x - y < 0), [y, x])
+-CRootOf(x**3 - x - 1, 0)**4/4 - 1/4 + CRootOf(x**3 - x - 1, 0)**2/2 + CRootOf(x**3 - x - 1, 0)
+
 References
 ==========
 
@@ -150,22 +173,27 @@ References
 """
 from __future__ import annotations
 
+from itertools import permutations
 from typing import Optional, Sequence
 
 from sympy.core.basic import Basic
 from sympy.core.containers import Tuple
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
-from sympy.core.numbers import Rational, oo
+from sympy.core.numbers import Rational, nan, oo, zoo
 from sympy.core.power import Pow
 from sympy.core.relational import Eq, Ge, Gt, Le, Lt, Relational
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Str, Symbol
+from sympy.functions.elementary.complexes import Abs, im, re, sign
+from sympy.functions.elementary.hyperbolic import acosh, asinh, cosh, sinh
 from sympy.functions.elementary.miscellaneous import sqrt
+from sympy.functions.elementary.trigonometric import acos, cos
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.core.numbers import pi
 from sympy.integrals.integrals import Integral
 from sympy.logic.boolalg import And, Boolean, Or, true
+from sympy.matrices.dense import Matrix, eye
 from sympy.sets.sets import EmptySet, FiniteSet, Interval, Set, Union
 from sympy.simplify.simplify import simplify
 from sympy.polys.polyerrors import PolynomialError
@@ -333,30 +361,71 @@ def _explicit_root(bound: _Bound, parent: CADCell, gens: Sequence[Symbol]) -> Op
     point = {g: p for g, p in zip(gens[:-1], parent.point)}
     if not equation.has(*gens[:-1]) if len(gens) > 1 else True:
         return as_expr(bound.value)
-    candidates = attempt(lambda: sympy_solve(equation, x), settings.timeout)
-    if candidates is None or not isinstance(candidates, list):
-        return None
     target = as_expr(bound.value).evalf(30)
-    matches: list[Expr] = []
-    for candidate in candidates:
-        c = as_expr(candidate)
-        value = as_expr(c.xreplace(point)).evalf(30)
-        if value.is_real is False or not value.is_number:
+    trigonometric = _trigonometric_roots(bound.poly, x)
+    for candidates in (trigonometric, attempt(lambda: sympy_solve(equation, x), settings.timeout)):
+        if not isinstance(candidates, list):
             continue
-        difference = as_expr(abs(value - target))
-        if difference.is_number and difference < _TOLERANCE:
-            matches.append(c)
-    if len(matches) != 1:
+        matches: list[Expr] = []
+        for candidate in candidates:
+            c = as_expr(candidate)
+            value = as_expr(c.xreplace(point)).evalf(30)
+            if not value.is_number or value.has(nan, zoo, oo):
+                continue                                    # a form for the other sign of p
+            real_part, imaginary_part = as_expr(re(value)), as_expr(im(value))
+            if not (imaginary_part.is_number and imaginary_part.is_comparable
+                    and abs(imaginary_part) < _TOLERANCE):
+                continue                                    # Cardano's form of a real root has a tiny imaginary part
+            difference = as_expr(abs(real_part - target))
+            if difference.is_number and difference.is_comparable and difference < _TOLERANCE:
+                matches.append(c)
+        if len(matches) == 1:
+            return matches[0]
+    return None
+
+
+def _trigonometric_roots(poly: Poly, x: Symbol) -> Optional[list[Expr]]:
+    """The roots of a cubic in ``x`` in Viète's trigonometric and
+    hyperbolic forms for the depressed cubic ``t**3 + p*t + q``: the three
+    real roots ``2*sqrt(-p/3)*cos(acos(3*q*sqrt(-3/p)/(2*p))/3 - 2*pi*k/3)``
+    where Cardano's formula needs complex radicals (the *casus
+    irreducibilis*), the single real root ``-2*sqrt(p/3)*sinh(asinh(3*q*
+    sqrt(3/p)/(2*p))/3)`` for ``p > 0`` and ``-2*sign(q)*sqrt(-p/3)*cosh(
+    acosh(-3*Abs(q)*sqrt(-3/p)/(2*p))/3)`` for ``p < 0``, all shifted by
+    ``-b/(3*a)``; the candidates which are real at the sample point are
+    selected by the caller. ``None`` for another degree.
+
+    >>> from sympy import symbols, Poly
+    >>> from sympy_extras.integrals.regions import _trigonometric_roots
+    >>> x = symbols('x')
+    >>> [r.evalf(6) for r in _trigonometric_roots(Poly(x**3 - 3*x + 1, x), x)[:3]]
+    [1.53209, 0.347296, -1.87939]
+    >>> _trigonometric_roots(Poly(x**3 + x - 1, x), x)[3].evalf(6)
+    0.682328
+    """
+    if poly.degree(x) != 3:
         return None
-    return matches[0]
+    coefficients = [as_expr(c) for c in Poly(poly.as_expr(), x).all_coeffs()]
+    a, b, c, d = coefficients
+    p = as_expr((3 * a * c - b**2) / (3 * a**2))
+    q = as_expr((2 * b**3 - 9 * a * b * c + 27 * a**2 * d) / (27 * a**3))
+    if p == 0:
+        return None
+    shift = -b / (3 * a)
+    radius = 2 * sqrt(-p / 3)
+    angle = acos(3 * q * sqrt(-3 / p) / (2 * p)) / 3
+    found = [as_expr(radius * cos(angle - 2 * pi * k / 3) + shift) for k in range(3)]
+    found.append(as_expr(-2 * sqrt(p / 3) * sinh(asinh(3 * q * sqrt(3 / p) / (2 * p)) / 3) + shift))
+    found.append(as_expr(-2 * sign(q) * sqrt(-p / 3) * cosh(acosh(-3 * Abs(q) * sqrt(-3 / p) / (2 * p)) / 3) + shift))
+    return found
 
 
-def _stack(cell: CADCell, cad: CAD, first: int, skip: int = 0,
+def _stack(cell: CADCell, cad: CAD, first: int, skip: Sequence[int] = (),
            replace: Optional[dict[Symbol, Expr]] = None) -> Optional[_Stack]:
     """The explicit bounds of a cell in the levels from ``first``
-    (1-based) upwards, all of them sectors but the level ``skip`` (a
-    section, left out; ``0`` for none), whose variable is replaced in
-    the bounds of the later levels by ``replace``."""
+    (1-based) upwards, all of them sectors but the levels ``skip``
+    (sections, left out), whose variables are replaced in the bounds of
+    the later levels by ``replace``."""
     ancestors: list[CADCell] = []
     current: Optional[CADCell] = cell
     while current is not None and current.level > 0:
@@ -365,7 +434,7 @@ def _stack(cell: CADCell, cad: CAD, first: int, skip: int = 0,
     ancestors.reverse()
     bounds: list[tuple[Expr, Expr]] = []
     for level in range(first, len(cad.gens) + 1):
-        if level == skip:
+        if level in skip:
             continue
         node = ancestors[level - 1]
         parent = node.parent
@@ -388,7 +457,7 @@ def _stack(cell: CADCell, cad: CAD, first: int, skip: int = 0,
             if found is None:
                 return None
             upper = found
-        if replace and level > skip:
+        if replace:
             lower = as_expr(lower.xreplace(replace))
             upper = as_expr(upper.xreplace(replace))
         bounds.append((lower, upper))
@@ -1149,7 +1218,25 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     if found is not None:
         return found
     solved = _solved_bounds(f, formula, names, extra)
-    return node if solved is None else solved
+    if solved is not None:
+        return solved
+    for order in _other_orders(names):
+        # a bound with no explicit form in the last variable (a root of
+        # x**3 + x*y - 1 in x) may be explicit in another (y = (1 - x**3)/x)
+        found = attempt(lambda: _decomposed(node, f, formula, order, assumptions, extra), settings.timeout)
+        if found is not None:
+            return found
+    return node
+
+
+def _other_orders(names: Sequence[Symbol]) -> list[list[Symbol]]:
+    """The other orders of the variables to try: every permutation of up
+    to three variables, the reversed order beyond."""
+    if len(names) < 2:
+        return []
+    if len(names) > 3:
+        return [list(reversed(names))]
+    return [list(order) for order in permutations(names) if list(order) != list(names)]
 
 
 def _decomposed(node: IntegralByRanges, f: Expr, formula: Boolean, names: Sequence[Symbol],
@@ -1173,13 +1260,13 @@ def _decomposed(node: IntegralByRanges, f: Expr, formula: Boolean, names: Sequen
             continue
         if any(i % 2 == 0 for i in cell.index[m:]):
             continue                                        # a section: measure zero
-        stack = _stack(cell, cad, m + 1)
-        if stack is None:
-            return None
         base = _ancestor_at(cell, m) if m else cell
         parameter_condition = _parameter_condition(cell, cad, m) if m else true
         if m and ask(parameter_condition, assumptions) is False:
-            continue
+            continue                                        # a refuted case: its bounds need no explicit form
+        stack = _stack(cell, cad, m + 1)
+        if stack is None:
+            return None
         found = _iterated(f, names, stack, extra + ([parameter_condition] if m else []))
         if found is None:
             return None
@@ -1243,46 +1330,49 @@ def _pruned(condition: Boolean) -> Boolean:
 def _section_value(cell: CADCell, cad: CAD, m: int, f: Expr, names: Sequence[Symbol],
                    assumptions: list[Boolean]) -> Optional[Expr]:
     """The integral of ``f`` with the Hausdorff measure over a cell of
-    dimension `n - 1` which is a section at one level `k`: the variable
-    `x_k` is the explicit branch `\\varphi` of the root and the integral of
-    `f \\sqrt{1 + |\\nabla \\varphi|^2}` is taken over the other variables of the
-    cell; ``None`` when the branch is not explicit or the integral is not
-    computed."""
+    dimension `n - k` which is a section at `k` levels: each section
+    variable is the explicit branch `\\varphi_i` of its root, the earlier
+    section variables substituted, and the integral of `f \\sqrt{\\det(I +
+    G^T G)}` (`G` the Jacobian of the branches with respect to the free
+    variables, the Gram determinant of the graph parametrisation; `1 +
+    |\\nabla \\varphi|^2` for one equation) is taken over the free variables
+    of the cell; ``None`` when a branch is not explicit or the integral
+    is not computed."""
     n = len(cad.gens)
     sections = [level for level in range(m + 1, n + 1) if cell.index[level - 1] % 2 == 0]
-    if len(sections) != 1:
+    if not sections:
         return None
-    k = sections[0]
-    node = _ancestor_at(cell, k)
-    parent = node.parent
-    gens = cad.gens[:k]
-    roots = _root_sequence(parent, cad.projection[k - 1], gens) if parent is not None else []
-    position = node.index[-1] // 2 - 1
-    if not 0 <= position < len(roots) or parent is None:
-        return None
-    phi = _explicit_root(roots[position], parent, gens)
-    if phi is None:
-        return None
-    earlier = list(names[:k - m - 1])
-    x_k = names[k - m - 1]
-    rest = earlier + list(names[k - m:])
-    gradient: Expr = S.One
-    for v in earlier:
-        gradient = gradient + as_expr(phi.diff(v))**2
-    simpler = attempt(lambda: as_expr(simplify(gradient)), settings.timeout)
+    branches: dict[Symbol, Expr] = {}
+    for k in sections:
+        node = _ancestor_at(cell, k)
+        parent = node.parent
+        gens = cad.gens[:k]
+        roots = _root_sequence(parent, cad.projection[k - 1], gens) if parent is not None else []
+        position = node.index[-1] // 2 - 1
+        if not 0 <= position < len(roots) or parent is None:
+            return None
+        phi = _explicit_root(roots[position], parent, gens)
+        if phi is None:
+            return None
+        branches[names[k - m - 1]] = as_expr(phi.xreplace(branches))
+    solved = [names[k - m - 1] for k in sections]
+    rest = [v for v in names if v not in solved]
+    jacobian = Matrix([[as_expr(branches[v].diff(u)) for u in rest] for v in solved])
+    gram = as_expr((eye(len(rest)) + jacobian.T * jacobian).det()) if rest else S.One
+    simpler = attempt(lambda: as_expr(simplify(gram)), settings.timeout)
     if simpler is not None:
-        gradient = simpler
-    g = as_expr(f.xreplace({x_k: phi}) * sqrt(gradient))
+        gram = simpler
+    g = as_expr(f.xreplace(branches) * sqrt(gram))
     if not rest:
         return g                                            # a point: the counting measure
-    stack = _stack(cell, cad, m + 1, k, {x_k: phi})
+    stack = _stack(cell, cad, m + 1, sections, branches)
     if stack is None:
         return None
     facts = list(assumptions)
     for v, (lower, upper) in zip(rest, stack.bounds):
         facts.extend([as_boolean(v > lower)] * (lower != -oo) + [as_boolean(v < upper)] * (upper != oo))
     g = _split_roots(g, facts)                              # sqrt(-1/(x**2 - 1)) sqrt(1 - x**2) = 1 on (-1, 1)
-    if k == n and len(rest) >= 2:
+    if sections == [n] and len(rest) >= 2:
         # the base cell as a region (a disc under a surface goes to polar coordinates)
         condition = _pruned(_cell_condition(cell, cad, m + 1, n - 1))
         found = integrate_by_ranges(g, condition, rest, assumptions)
@@ -1293,14 +1383,15 @@ def _section_value(cell: CADCell, cad: CAD, m: int, f: Expr, names: Sequence[Sym
 
 def _hausdorff(f: Expr, formula: Boolean, names: Sequence[Symbol],
                assumptions: Assumptions, extra: list[Boolean]) -> Optional[Expr]:
-    """The integral with the `(n-1)`-dimensional Hausdorff measure on the
-    hypersurface of the equation of the condition, through the
-    decomposition: the sum of :func:`_section_value` over the sections
-    of dimension `n - 1` on which the condition holds; ``None`` when the
-    condition has not exactly one equation, a branch is not explicit or
-    an integral is not computed."""
+    """The integral with the `(n-k)`-dimensional Hausdorff measure on the
+    variety of the `k` equations of the condition, through the
+    decomposition: the sum of :func:`_section_value` over the cells of
+    dimension `n - k` on which the condition holds; ``None`` when the
+    condition has no equation, a branch is not explicit or an integral
+    is not computed."""
     parts = list(formula.args) if isinstance(formula, And) else [formula]
-    if sum(1 for part in parts if isinstance(part, Eq)) != 1:
+    equations = sum(1 for part in parts if isinstance(part, Eq))
+    if equations == 0:
         return None
     if not all(isinstance(part, (Eq, Lt, Le, Gt, Ge)) for part in parts):
         return None
@@ -1318,8 +1409,8 @@ def _hausdorff(f: Expr, formula: Boolean, names: Sequence[Symbol],
     for cell in cad.cells:
         if not compiled(cell.signs):
             continue
-        if sum(1 for i in cell.index[m:] if i % 2 == 0) != 1:
-            continue                                        # not of dimension n - 1: measure zero
+        if sum(1 for i in cell.index[m:] if i % 2 == 0) != equations:
+            continue                                        # not of dimension n - k: measure zero
         base = _ancestor_at(cell, m) if m else cell
         parameter_condition = _parameter_condition(cell, cad, m) if m else true
         if m and ask(parameter_condition, assumptions) is False:

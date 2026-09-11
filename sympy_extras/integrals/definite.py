@@ -130,7 +130,8 @@ _MAX_DEPTH = 6
 def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = None,
                       conds: str = 'piecewise', recognize: bool = False,
                       principal_value: bool = False, finite_part: bool = False,
-                      numeric: bool = False, digits: int = 15, regularize: bool = False) -> Expr:
+                      numeric: bool = False, digits: int = 15, regularize: bool = False,
+                      summability: Optional[str] = None) -> Expr:
     """``Integral(f, (x, a, b))`` under assumptions on the parameters.
 
     Parameters
@@ -171,6 +172,11 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
         of the formula, analytic in the exponents, beyond the strips of
         convergence, where the integral itself diverges
         (``Integral(x**(-3/2)*exp(-x), (x, 0, oo))`` gives ``gamma(-1/2)``).
+    summability : str or None
+        ``'abel'``, ``'cesaro'`` or ``'gaussian'``: the integral taken in
+        the sense of that summability method (:mod:`.summability`),
+        ``Integral(sin(x), (x, 0, oo))`` being 1 in each; a convergent
+        integral keeps its value.
 
     Returns
     =======
@@ -198,7 +204,11 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
     f_ = as_expr(f)
     if conds not in ('piecewise', 'none'):
         raise ValueError("conds must be 'piecewise' or 'none', got %r" % (conds,))
-    found = conditional_integral(f_, x, a, b, assumptions, principal_value, finite_part, regularize)
+    if summability is not None:
+        from .summability import summable_integral
+        found = summable_integral(f_, x, a, b, summability, assumptions)
+    else:
+        found = conditional_integral(f_, x, a, b, assumptions, principal_value, finite_part, regularize)
     if (found is None or found.value.has(nan)) and recognize:
         from .recognize import recognize_integral
         guessed = recognize_integral(f_, (x, a, b), assumptions)
@@ -659,7 +669,7 @@ class _Integrator:
     # -- the methods on a plain piece ---------------------------------------
 
     def _finish(self, found: Optional[ConditionalValue]) -> Optional[ConditionalValue]:
-        if found is None:
+        if found is None or found.value.has(zoo, nan):
             return None
         condition = decide(found.condition, self.assumptions)
         if condition is None:

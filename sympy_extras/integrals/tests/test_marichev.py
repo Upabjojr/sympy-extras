@@ -165,3 +165,21 @@ def test_three_kernels_through_the_exponential_form() -> None:
     assert found is not None
     numeric = found.value.subs({a: 2, b: 1})
     assert abs(N(numeric) - N(Integral(exp(-2 * x) * cos(x) * exp(-x**2), (x, 0, oo)))) < 1e-10
+
+
+def test_airy_products_and_polar_incomplete_gammas() -> None:
+    # sympy-extras: Integral(airyai(x)**2, (x, 0, oo)) came out as zoo, the
+    # Slater series at |z| = 1 summed by Gauss's formula term by term
+    # although the terms diverge there; now refused
+    from sympy import airyai, hyper, lowergamma, exp_polar, I, N, Integral
+    from sympy_extras.integrals.marichev import polar_lowergamma
+    assert mellin_integrate(airyai(x)**2, x) is None
+    assert mellin_integrate(airyai(x), x) is not None
+    # the Laplace transform of Ai: hyperexpand's lowergamma of a polar
+    # argument rewritten as a real confluent series
+    found = mellin_integrate(exp(-a * x) * airyai(x), x)
+    assert found is not None and not found.value.has(exp_polar, lowergamma) and found.value.has(hyper)
+    assert abs(N(found.value.subs(a, 2)) - N(Integral(exp(-2 * x) * airyai(x), (x, 0, oo)))) < 1e-10
+    w = symbols('w', positive=True)
+    rewritten = polar_lowergamma(lowergamma(Rational(1, 3), w * exp_polar(I * pi)))
+    assert rewritten == 3 * S.NegativeOne**Rational(1, 3) * w**Rational(1, 3) * hyper((Rational(1, 3),), (Rational(4, 3),), w)

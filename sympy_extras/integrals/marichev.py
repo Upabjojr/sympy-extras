@@ -78,9 +78,9 @@ from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.complexes import polar_lift, unpolarify, principal_branch, re, im
 from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.exponential import exp_polar
-from sympy.functions.special.gamma_functions import polygamma
+from sympy.functions.special.gamma_functions import polygamma, lowergamma
 from sympy.functions.special.zeta_functions import lerchphi, dirichlet_eta
-from sympy.functions.special.hyper import meijerg
+from sympy.functions.special.hyper import meijerg, hyper
 from sympy.core.function import expand_func
 from sympy.core.power import Pow
 from sympy.core.numbers import Integer
@@ -128,6 +128,8 @@ def tidy(value: Expr, assumptions: Assumptions = None, condition: Boolean = true
     # a quarter of the budget for each simplification: ``trigsimp`` of a
     # sine of a complex argument factors over Q(i) for half a minute
     limit = None if settings.timeout is None else settings.timeout / 4
+    if result.has(lowergamma) and result.has(exp_polar):
+        result = polar_lowergamma(result)
     if result.has(exp_polar, polar_lift, principal_branch):
         unpolar = attempt(lambda: as_expr(unpolarify(result)), limit)
         if unpolar is not None:
@@ -162,7 +164,37 @@ def tidy(value: Expr, assumptions: Assumptions = None, condition: Boolean = true
         refined = attempt(lambda: as_expr(refine(result, facts)), limit)
         if refined is not None and _size(refined) <= _size(result):
             result = refined
+    if result.has(lowergamma) and result.has(exp_polar):
+        # simplify's hyperexpand brings the polar form back
+        result = polar_lowergamma(result)
     return result
+
+
+def polar_lowergamma(value: Expr) -> Expr:
+    """``lowergamma(a, w*exp_polar(I*pi))``, which ``hyperexpand`` writes
+    for ``1F1(1; a + 1; -w)`` and no branch resolves, as the real form
+    ``(-1)**a * w**a * hyper((a,), (a + 1,), w) / a`` (the series of the
+    incomplete gamma function, DLMF 8.7.1, at the polar argument; the
+    phase ``(-1)**a`` combines with the one of the coefficient).
+
+    >>> from sympy import lowergamma, exp_polar, I, pi, symbols, Rational
+    >>> from sympy_extras.integrals.marichev import polar_lowergamma
+    >>> w = symbols('w', positive=True)
+    >>> polar_lowergamma(lowergamma(Rational(1, 3), w*exp_polar(I*pi)))
+    3*(-1)**(1/3)*w**(1/3)*hyper((1/3,), (4/3,), w)
+    """
+    replacement: dict[Expr, Expr] = {}
+    for node in value.atoms(lowergamma):
+        a, argument = as_expr(node.args[0]), as_expr(node.args[1])
+        polar, w = argument.as_independent(exp_polar, as_Add=False)
+        polar_, w_ = as_expr(polar), as_expr(w)
+        if isinstance(polar_, exp_polar) and polar_.args[0] == I * pi and w_.is_positive:
+            replacement[as_expr(node)] = S.NegativeOne**a * w_**a * hyper((a,), (a + 1,), w_) / a
+        elif isinstance(w_, exp_polar) and w_.args[0] == I * pi and polar_.is_positive:
+            replacement[as_expr(node)] = S.NegativeOne**a * polar_**a * hyper((a,), (a + 1,), polar_) / a
+    if not replacement:
+        return value
+    return as_expr(value.xreplace(replacement))
 
 
 def right_half_plane_powers(value: Expr, assumptions: Assumptions = None) -> Expr:

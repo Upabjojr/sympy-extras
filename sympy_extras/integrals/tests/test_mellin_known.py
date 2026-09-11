@@ -4,6 +4,8 @@ closed forms), SymPy's ``mellin_transform`` where it has one, and
 numerical quadrature."""
 from __future__ import annotations
 
+from typing import Callable
+
 import mpmath
 
 from sympy import (Integer, Symbol, symbols, exp, sin, cos, log, sqrt, besselj, oo, gamma, pi,
@@ -121,8 +123,38 @@ def test_poles_lie_on_the_right_sides_of_the_strips() -> None:
     third = Rational(1, 3)
     for kernel in [M._power_kernel(third), M._beta_kernel(third), M._beta_upper_kernel(third),
                    M._expint_kernel(Integer(2)), M._besselj_kernel(third), M._bessely_kernel(third),
-                   M._besselk_kernel(third), M._exp_besseli_kernel(third), M._log_power_lower_kernel(third)]:
+                   M._besselk_kernel(third), M._exp_besseli_kernel(third), M._log_power_lower_kernel(third),
+                   M._polylog_kernel(Integer(1)), M._polylog_kernel(Integer(3))]:
         assert poles_separated(kernel.quotient) is True, kernel.name
+
+
+def test_airy_polylog_fresnel_and_erfc_kernels() -> None:
+    # Mathematica's MellinTransform (Ai, Li_2, S, C, erfc(x) exp(x^2)) and
+    # quadrature: the transform of Li_n(-x) is negative on its strip for
+    # every n (the bug: the first drafts had a sign alternating with n,
+    # from the (-s)^n of the closed form read as s^n)
+    mpmath.mp.dps = 20
+
+    def check(kernel: M.Kernel, f: Callable[[mpmath.mpf], mpmath.mpf], point: Rational, tolerance: float,
+              cuts: list[object]) -> None:
+        exact = float(kernel.quotient.as_expr(point).evalf(20))
+        approx = mpmath.quad(lambda t: t**(float(point) - 1) * f(t), cuts)
+        assert abs(exact - float(approx)) < tolerance, (kernel.name, point, exact, approx)
+
+    check(M._airyai_kernel(), mpmath.airyai, Rational(17, 10), 1e-12, [0, 1, mpmath.inf])
+    assert abs(_value('airyai', Rational(3, 10)) - 1.0703613413320555124) < 1e-12
+    check(M._polylog_kernel(Integer(1)), lambda t: -mpmath.log(1 + t), -S.Half, 1e-9, [0, 1, mpmath.inf])
+    check(M._polylog_kernel(Integer(2)), lambda t: mpmath.polylog(2, -t), -S.Half, 1e-8, [0, 1, mpmath.inf])
+    check(M._polylog_kernel(Integer(3)), lambda t: mpmath.polylog(3, -t), -S.Half, 1e-6, [0, 1, mpmath.inf])
+    assert simplify(M._polylog_kernel(Integer(2)).quotient.as_expr(s) - pi / (s**2 * sin(pi * s))) == 0
+    cuts = mpmath.linspace(0, 60, 121) + [mpmath.inf]
+    check(M._fresnels_kernel(), mpmath.fresnels, Rational(-7, 10), 1e-4, cuts)
+    check(M._fresnelc_kernel(), mpmath.fresnelc, Rational(-7, 10), 1e-4, cuts)
+    # erfc(t) exp(t^2) ~ (1 - 1/(2 t^2)) / (sqrt(pi) t): the tail beyond 30 in closed form
+    point = Rational(3, 10)
+    head = mpmath.quad(lambda t: t**(float(point) - 1) * mpmath.exp(t**2 + mpmath.log(mpmath.erfc(t))), [0, 1, 10, 30])
+    tail = (30**(float(point) - 1) / (1 - float(point)) - 30**(float(point) - 3) / (2 * (3 - float(point)))) / mpmath.sqrt(mpmath.pi)
+    assert abs(float(M._erfc_exp_kernel().quotient.as_expr(point).evalf(20)) - float(head + tail)) < 1e-6
 
 
 def test_log_one_minus_kernel() -> None:

@@ -225,11 +225,8 @@ def test_hausdorff_measure() -> None:
                  pi*(5*sqrt(5) - 1)/6)
     # in one variable the measure counts the points: x**2 at x = +-2
     assert integrate_by_ranges(x**2, Eq(x**2, 4), measure='hausdorff') == 8
-    # left unevaluated: no equation, two equations (a curve in space), a
-    # root without an explicit branch (a quintic)
+    # left unevaluated: no equation, a root without an explicit branch (a quintic)
     assert isinstance(integrate_by_ranges(1, x**2 + y**2 < 1, measure='hausdorff'), IntegralByRanges)
-    assert isinstance(integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1) & Eq(z, 0), measure='hausdorff'),
-                      IntegralByRanges)
     assert isinstance(integrate_by_ranges(1, Eq(y**5 + y + x, 0) & (x > 0) & (x < 1), measure='hausdorff'),
                       IntegralByRanges)
     raises(ValueError, lambda: IntegralByRanges(1, Eq(x**2 + y**2, 1), measure='counting'))
@@ -240,3 +237,58 @@ def test_hausdorff_measure_sphere() -> None:
     # the two hemispheres z = +-sqrt(1 - x**2 - y**2) over the unit disc, each
     # Integral(1/sqrt(1 - rho**2)) over the disc = 2 pi Integral(rho/sqrt(1 - rho**2), (rho, 0, 1)) = 2 pi
     assert integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1), measure='hausdorff') == 4*pi
+
+
+def _quad(f: object, a: float, b: float) -> float:
+    import mpmath
+    return float(mpmath.quad(f, [a, b]))
+
+
+def test_curves_in_space() -> None:
+    # two equations: the 1-dimensional Hausdorff measure on the intersection
+    # of two surfaces, the Gram determinant sqrt(1 + x'(t)**2 + y'(t)**2)
+    from sympy import N, asinh
+    # the equator of the unit sphere and the circle z = 1 on the paraboloid
+    assert integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1) & Eq(z, 0), measure='hausdorff') == 2*pi
+    assert integrate_by_ranges(1, Eq(z, x**2 + y**2) & Eq(z, 1), measure='hausdorff') == 2*pi
+    # the twisted curve (x, x**2, x) over 0 < x < 1: Integral(sqrt(2 + 4 x**2), (x, 0, 1))
+    found = integrate_by_ranges(1, Eq(y, x**2) & Eq(z, x) & (x > 0) & (x < 1), measure='hausdorff')
+    assert _same(found, (asinh(sqrt(2)) + sqrt(6))/2)
+    assert abs(float(N(found)) - _quad(lambda t: (2 + 4*t**2)**0.5, 0, 1)) < 1e-12
+    # Viviani's curve, the sphere cut by the cylinder x**2 + y**2 = x:
+    # (cos(t)**2, cos(t) sin(t), sin(t)) has speed sqrt(1 + cos(t)**2), the length
+    # Integral(sqrt(1 + cos(t)**2), (t, 0, 2 pi)) = 4 sqrt(2) E(1/2) = 7.6404...
+    found = integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1) & Eq(x**2 + y**2, x), measure='hausdorff')
+    assert not isinstance(found, IntegralByRanges) and abs(float(N(found)) - 7.640395578055424) < 1e-12
+    # three equations in three variables: a point, the counting measure
+    assert integrate_by_ranges(x*y, Eq(x, 1) & Eq(y, 2) & Eq(z, 3), measure='hausdorff') == 2
+
+
+def test_cubic_boundaries() -> None:
+    # a bound which is a root of a cubic with a parametric coefficient:
+    # Cardano's form for one real root, Viete's trigonometric form for three
+    from sympy import CRootOf, N, Poly, cos, real_roots
+    from sympy_extras.integrals.regions import _trigonometric_roots
+    a = symbols('a', positive=True)
+    area = integrate_by_ranges(1, (x > 0) & (x**3 + a*x < 1), [x])
+    assert not isinstance(area, IntegralByRanges)
+    assert abs(N(area.subs(a, 1)) - CRootOf(x**3 + x - 1, 0).evalf()) < 1e-12
+    area = integrate_by_ranges(1, (x > 0) & (x < 1) & (x**3 - a*x + 1 > 0), [x], assumptions=[a > 2, a < 3])
+    assert area.has(cos)
+    assert abs(N(area.subs(a, Rational(5, 2))) - CRootOf(x**3 - Rational(5, 2)*x + 1, 1).evalf()) < 1e-12
+    roots = _trigonometric_roots(Poly(x**3 - 3*x + 1, x), x)
+    assert roots is not None
+    assert sorted(float(N(r_)) for r_ in roots[:3]) == sorted(float(r_.evalf()) for r_ in real_roots(Poly(x**3 - 3*x + 1, x)))
+    assert _trigonometric_roots(Poly(x**2 - 2, x), x) is None
+    # a bound with no explicit form in the last variable, explicit in the
+    # other: the region under the cubic y = x**3 - x cut by y < 1 with y
+    # first, and x**3 + x*y < 1 (y = (1 - x**3)/x) with the integrand x
+    found = integrate_by_ranges(1, (x > 0) & (y > 0) & (y < 1) & (x**3 - x - y < 0), [y, x])
+    assert found.has(CRootOf)
+    import mpmath
+    expected = mpmath.quad(lambda yy: mpmath.findroot(lambda xx: xx**3 - xx - yy, 1.3), [0, 1])
+    assert abs(float(N(found)) - float(expected)) < 1e-12
+    found = integrate_by_ranges(x, (x > 0) & (y > 0) & (y < 1) & (x**3 + y*x < 1), [y, x])
+    assert not isinstance(found, IntegralByRanges)
+    expected = mpmath.quad(lambda yy: mpmath.findroot(lambda xx: xx**3 + yy*xx - 1, 0.7)**2/2, [0, 1])
+    assert abs(float(N(found)) - float(expected)) < 1e-12
