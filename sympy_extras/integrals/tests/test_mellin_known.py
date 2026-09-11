@@ -166,3 +166,33 @@ def test_log_one_minus_kernel() -> None:
     from sympy_extras.integrals.mellin import decompose_integrand
     p = decompose_integrand(log(1 - x**2), x, 'lower')
     assert p is not None and p.matches[0].kernel.name.startswith('log(1 - x)') and p.matches[0].gamma == 2
+
+
+def test_bessel_product_kernels() -> None:
+    # products of two Bessel functions of the same argument as one kernel:
+    # Mathematica's MellinTransform, its NIntegrate (ExtrapolatingOscillatory)
+    # at sample points, and quadrature for the decaying products
+    from sympy_extras.integrals.mellin import poles_separated
+    third = Rational(1, 3)
+    kernels = [M._bessel_product_kernel('JJ', S.Zero, S.One), M._bessel_product_kernel('JJ', S.Half, Rational(3, 2)),
+               M._bessel_product_kernel('KK', S.Zero, S.One), M._bessel_product_kernel('KK', third, third),
+               M._bessel_product_kernel('IK', S.One, S.Zero), M._bessel_product_kernel('JY', S.One, S.One),
+               M._bessel_product_kernel('JK', S.Zero, S.Zero), M._bessel_product_kernel('JK', S.Half, S.Half)]
+    for kernel in kernels:
+        assert poles_separated(kernel.quotient) is True, kernel.name
+
+    def value(kernel: M.Kernel, point: Rational) -> float:
+        return float(kernel.quotient.as_expr(point).evalf(20))
+
+    assert abs(value(kernels[0], -S.Half) - 1.0975065212915833) < 1e-8
+    assert abs(value(kernels[1], Rational(-3, 2)) - 0.51583047638837877) < 1e-10
+    assert abs(value(kernels[5], S.Half) - (-0.82312885006837007)) < 1e-5
+    assert abs(value(M._bessel_product_kernel('JY', S.Zero, S.Zero), S.Half) - (-2.4693886103128770)) < 1e-5
+    mpmath.mp.dps = 20
+    assert value(kernels[2], Integer(3)) == 0.5 and value(kernels[6], Integer(2)) == 0.5
+    approx = mpmath.quad(lambda t: t**0.5 * mpmath.besselk(0, t) * mpmath.besselk(1, t), [0, 1, mpmath.inf])
+    assert abs(value(kernels[2], Rational(3, 2)) - float(approx)) < 1e-9
+    approx = mpmath.quad(lambda t: t**(-1.5) * mpmath.besseli(1, t) * mpmath.besselk(0, t), [0, 1, mpmath.inf])
+    assert abs(value(kernels[4], -S.Half) - float(approx)) < 1e-9
+    approx = mpmath.quad(lambda t: t**(-0.5) * mpmath.besselj(0.5, t) * mpmath.besselk(0.5, t), [0, 1, mpmath.inf])
+    assert abs(value(kernels[7], S.Half) - float(approx)) < 1e-9

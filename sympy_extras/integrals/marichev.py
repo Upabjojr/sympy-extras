@@ -81,6 +81,7 @@ from sympy.functions.elementary.exponential import exp_polar
 from sympy.functions.special.gamma_functions import polygamma, lowergamma
 from sympy.functions.special.zeta_functions import lerchphi, dirichlet_eta
 from sympy.functions.special.hyper import meijerg, hyper
+from sympy.functions.special.elliptic_integrals import elliptic_k, elliptic_e, elliptic_f, elliptic_pi
 from sympy.core.function import expand_func
 from sympy.core.power import Pow
 from sympy.core.numbers import Integer
@@ -130,6 +131,8 @@ def tidy(value: Expr, assumptions: Assumptions = None, condition: Boolean = true
     limit = None if settings.timeout is None else settings.timeout / 4
     if result.has(lowergamma) and result.has(exp_polar):
         result = polar_lowergamma(result)
+    if result.has(exp_polar) and result.has(elliptic_k, elliptic_e, elliptic_f, elliptic_pi):
+        result = polar_elliptic(result)
     if result.has(exp_polar, polar_lift, principal_branch):
         unpolar = attempt(lambda: as_expr(unpolarify(result)), limit)
         if unpolar is not None:
@@ -168,6 +171,31 @@ def tidy(value: Expr, assumptions: Assumptions = None, condition: Boolean = true
         # simplify's hyperexpand brings the polar form back
         result = polar_lowergamma(result)
     return result
+
+
+def polar_elliptic(value: Expr) -> Expr:
+    """The parameter ``m*exp_polar(I*pi)`` of a Legendre elliptic function
+    (``hyperexpand`` writes ``elliptic_k(4*exp_polar(I*pi)/a**2)`` for the
+    Laplace transform of ``J_0(x)**2``) written ``-m``: the functions are
+    analytic in the parameter off ``[1, oo)``, so the negative axis needs
+    no branch.
+
+    >>> from sympy import elliptic_k, exp_polar, I, pi, symbols
+    >>> from sympy_extras.integrals.marichev import polar_elliptic
+    >>> a = symbols('a', positive=True)
+    >>> polar_elliptic(elliptic_k(4*exp_polar(I*pi)/a**2))
+    elliptic_k(-4/a**2)
+    """
+    replacement: dict[Expr, Expr] = {}
+    for node in value.atoms(elliptic_k, elliptic_e, elliptic_f, elliptic_pi):
+        m = as_expr(node.args[-1])
+        polar, rest = m.as_independent(exp_polar, as_Add=False)
+        polar_, rest_ = as_expr(polar), as_expr(rest)
+        if isinstance(rest_, exp_polar) and rest_.args[0] == I * pi and polar_.is_extended_real:
+            replacement[m] = -polar_
+    if not replacement:
+        return value
+    return as_expr(value.xreplace(replacement))
 
 
 def polar_lowergamma(value: Expr) -> Expr:

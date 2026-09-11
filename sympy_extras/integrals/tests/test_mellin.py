@@ -166,3 +166,19 @@ def test_wrong_types_are_rejected() -> None:
     raises(TypeError, lambda: untyped(GammaQuotient)(1, [], [(0, 1)], [], 0, oo, [1]))
     raises(TypeError, lambda: untyped(GammaQuotient)([1], [], [(0, 1)], [], 0, oo))
     raises(ValueError, lambda: untyped(GammaQuotient)(1, [], [(0, a)], [], 0, oo))
+
+
+def test_bessel_products_are_one_kernel() -> None:
+    from sympy import besselk, bessely
+    product = decompose_integrand(exp(-x) * besselj(0, 2 * x) * besselj(1, 2 * x), x)
+    assert product is not None and [m.kernel.name for m in product.matches] == ['exp', 'besselj*besselj']
+    assert product.matches[1].beta == 2 and product.matches[1].kernel.parameters == (0, 1)
+    product = decompose_integrand(x * besselk(0, x)**2, x)
+    assert product is not None and [m.kernel.name for m in product.matches] == ['besselk*besselk'] and product.alpha == 1
+    product = decompose_integrand(besseli(1, x**2) * besselk(0, x**2), x)
+    assert product is not None and product.matches[0].kernel.name == 'besseli*besselk' and product.matches[0].gamma == 2
+    # unequal orders of J Y, or different arguments, are not one kernel
+    product = decompose_integrand(besselj(0, x) * bessely(1, x), x)
+    assert product is not None and len(product.matches) == 2
+    product = decompose_integrand(besselj(0, x) * besselj(0, 2 * x), x)
+    assert product is not None and len(product.matches) == 2

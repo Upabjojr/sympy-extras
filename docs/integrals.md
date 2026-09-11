@@ -40,7 +40,11 @@ The package implements the four pieces:
   `K` and `exp(-x)*I`, the step functions, `(-log(x))**k` on `(0, 1)`,
   `1/(exp(x) - 1)`, `1/(exp(x) + 1)`, `1/sinh`, `1/cosh`, the Airy
   function `Ai`, the polylogarithms `Li_n(-x)`, the Fresnel integrals `S`
-  and `C`, `erfc(x)*exp(x**2)`, and the differences `exp(-x) - 1`,
+  and `C`, `erfc(x)*exp(x**2)`, the products of two Bessel functions of
+  one argument `J_mu*J_nu`, `K_mu*K_nu`, `I_mu*K_nu`, `J_nu*Y_nu`,
+  `J_nu*K_nu` as one kernel each (so `exp(-a*x)*besselj(0, x)**2` is a
+  product of two, `2*elliptic_k(-4/a**2)/(pi*a)`), and the differences
+  `exp(-x) - 1`,
   `cos(x) - 1`, `sin(x) - x`, `atan(x) - pi/2` whose transforms continue
   the strips), and the matching of an integrand against it
   (`mellin_transform`, `mellin_kernel`);

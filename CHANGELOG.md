@@ -191,8 +191,13 @@ remove public functions. Breaking changes are listed here when they happen.
   `(C, 2)`, `sin(x)**2` has no mean).
 
 - `sympy_extras.integrals.mellin`: kernels for the Airy function `Ai`, the
-  polylogarithms `Li_n(-x)`, the Fresnel integrals `S` and `C` and
-  `erfc(x)*exp(x**2)`, checked against Mathematica and quadrature; the
+  polylogarithms `Li_n(-x)`, the Fresnel integrals `S` and `C`,
+  `erfc(x)*exp(x**2)` and the products of two Bessel functions of one
+  argument (`J_mu*J_nu`, `K_mu*K_nu`, `I_mu*K_nu`, `J_nu*Y_nu`,
+  `J_nu*K_nu`, so that `exp(-a*x)*besselj(0, x)**2` over `(0, oo)` is
+  `2*elliptic_k(-4/a**2)/(pi*a)` and `x**2*besselk(nu, x)**2` is
+  `pi**2*(1 - 4*nu**2)/(32*cos(pi*nu))`), checked against Mathematica and
+  quadrature; the
   Laplace transform of `Ai` comes out as real confluent series (the
   `lowergamma` of a polar argument `hyperexpand` writes is rewritten).
 

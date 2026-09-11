@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from sympy import (symbols, exp, sin, cos, log, sqrt, besselj, oo, gamma, pi, S, Rational,
-                   EulerGamma, simplify, zeta, Integer)
+                   EulerGamma, simplify, zeta, Integer, I, erf)
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
@@ -120,7 +120,8 @@ def test_unrecognised_integrands() -> None:
     assert mellin_integrate(exp(x), x) is None
     assert mellin_integrate(sin(x + 1), x) is None
     # three kernels none of which is trigonometric: no exponential form
-    assert mellin_integrate(exp(-x) * besselj(0, x) * besselj(1, x), x) is None
+    # (two Bessel functions of one argument are one kernel, so erf here)
+    assert mellin_integrate(exp(-x) * besselj(0, x) * erf(x), x) is None
     assert mellin_integrate(x**k, x) is None
     # the trigonometric factors of three kernels go through exponentials
     found = mellin_integrate(exp(-x) * sin(x) * cos(x), x)
@@ -183,3 +184,17 @@ def test_airy_products_and_polar_incomplete_gammas() -> None:
     w = symbols('w', positive=True)
     rewritten = polar_lowergamma(lowergamma(Rational(1, 3), w * exp_polar(I * pi)))
     assert rewritten == 3 * S.NegativeOne**Rational(1, 3) * w**Rational(1, 3) * hyper((Rational(1, 3),), (Rational(4, 3),), w)
+
+
+def test_bessel_products_through_the_driver() -> None:
+    from sympy import besselk, elliptic_k, exp_polar, N, Integral
+    from sympy_extras.integrals import definite_integral
+    from sympy_extras.integrals.marichev import polar_elliptic
+    assert definite_integral(besselj(1, x)**2 / x, (x, 0, oo)) == S.Half
+    assert definite_integral(x * besselk(0, x)**2, (x, 0, oo)) == S.Half
+    # the Laplace transform of J_0**2 is an elliptic integral of a negative
+    # parameter, written without a polar number
+    found = definite_integral(exp(-a * x) * besselj(0, x)**2, (x, 0, oo))
+    assert found.has(elliptic_k) and not found.has(exp_polar)
+    assert abs(N(found.subs(a, 2)) - N(Integral(exp(-2 * x) * besselj(0, x)**2, (x, 0, oo)))) < 1e-10
+    assert polar_elliptic(elliptic_k(4 * exp_polar(I * pi) / a**2)) == elliptic_k(-4 / a**2)

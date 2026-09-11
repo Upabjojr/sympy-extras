@@ -79,7 +79,7 @@ from sympy.core.mul import Mul
 from sympy.core.numbers import Integer, Rational, oo, pi
 from sympy.core.power import Pow
 from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
+from sympy.core.symbol import Dummy, Str, Symbol
 from sympy.functions.elementary.complexes import Abs, arg as arg_
 from sympy.functions.elementary.exponential import exp, log
 from sympy.functions.elementary.hyperbolic import sinh, cosh
@@ -547,6 +547,45 @@ def _fresnelc_kernel() -> Kernel:
                   (), _positive_real(BETA), -1)
 
 
+def _bessel_product_kernel(kind: str, mu: Expr, nu: Expr) -> Kernel:
+    """The kernel of a product of two Bessel functions of the same
+    argument (Mathematica's ``MellinTransform``, checked against
+    quadrature): ``'JJ'`` for ``J_mu J_nu``, ``'KK'`` for ``K_mu K_nu``,
+    ``'IK'`` for ``I_mu K_nu``, ``'JY'`` for ``J_nu Y_nu`` and ``'JK'`` for
+    ``J_nu K_nu`` (the last two with equal orders)."""
+    if kind == 'JJ':
+        # 2^{s-1} Gamma(1 - s) Gamma((mu + nu + s)/2)
+        #   / (Gamma(1 + (mu - nu - s)/2) Gamma(1 + (nu - mu - s)/2) Gamma(1 + (mu + nu - s)/2)),
+        # -Re(mu + nu) < Re s < 1
+        return Kernel('besselj*besselj', GammaQuotient(
+            _HALF, [(2, 1)], [(1, -1), ((mu + nu) / 2, _HALF)],
+            [(1 + (mu - nu) / 2, -_HALF), (1 + (nu - mu) / 2, -_HALF), (1 + (mu + nu) / 2, -_HALF)],
+            -(mu + nu), 1), (mu, nu), _positive_real(BETA))
+    if kind == 'KK':
+        # 2^{s-3} Gamma((s - mu - nu)/2) Gamma((s + mu - nu)/2) Gamma((s - mu + nu)/2) Gamma((s + mu + nu)/2)
+        #   / Gamma(s), Re s > |Re(mu - nu)|, |Re(mu + nu)|
+        return Kernel('besselk*besselk', GammaQuotient(
+            Rational(1, 8), [(2, 1)],
+            [(-(mu + nu) / 2, _HALF), ((mu - nu) / 2, _HALF), ((nu - mu) / 2, _HALF), ((mu + nu) / 2, _HALF)],
+            [(0, 1)], _max(Abs(mu - nu), Abs(mu + nu)), oo), (mu, nu), _right_half_plane(BETA))
+    if kind == 'IK':
+        # 2^{s-2} Gamma(1 - s) Gamma((mu - nu + s)/2) Gamma((mu + nu + s)/2)
+        #   / (Gamma(1 + (mu - nu - s)/2) Gamma(1 + (mu + nu - s)/2)), -Re(mu -+ nu) < Re s < 1
+        return Kernel('besseli*besselk', GammaQuotient(
+            Rational(1, 4), [(2, 1)], [(1, -1), ((mu - nu) / 2, _HALF), ((mu + nu) / 2, _HALF)],
+            [(1 + (mu - nu) / 2, -_HALF), (1 + (mu + nu) / 2, -_HALF)],
+            _max(nu - mu, -(mu + nu)), 1), (mu, nu), _positive_real(BETA))
+    if kind == 'JY':
+        # -Gamma(nu + s/2) Gamma(s/2) / (2 sqrt(pi) Gamma(1 + nu - s/2) Gamma(1/2 + s/2)), -2 min(0, Re nu) < Re s < 2
+        return Kernel('besselj*bessely', GammaQuotient(
+            -1 / (2 * sqrt(pi)), [], [(nu, _HALF), (0, _HALF)], [(1 + nu, -_HALF), (_HALF, _HALF)],
+            _max(S.Zero, -2 * nu), 2), (nu,), _positive_real(BETA))
+    # 'JK': 2^{s-3} Gamma(nu/2 + s/4) Gamma(s/2) / Gamma(1 + nu/2 - s/4), Re s > 0, -2 Re nu
+    return Kernel('besselj*besselk', GammaQuotient(
+        Rational(1, 8), [(2, 1)], [(nu / 2, Rational(1, 4)), (0, _HALF)], [(1 + nu / 2, -Rational(1, 4))],
+        _max(S.Zero, -2 * nu), oo), (nu,), _positive_real(BETA))
+
+
 def _erfc_exp_kernel() -> Kernel:
     # erfc(x) e^{x^2}: Gamma(s) Gamma((1 - s)/2) / (2^s sqrt(pi)), 0 < Re s < 1 (Mathematica)
     return Kernel('erfc(x)*exp(x**2)', GammaQuotient(1 / sqrt(pi), [(_HALF, 1)], [(0, 1), (_HALF, -_HALF)], [], 0, 1),
@@ -1000,6 +1039,68 @@ def _exp_besseli(factors: list[Expr], x: Symbol) -> list[Expr]:
     return factors
 
 
+_BESSEL_PAIRS: dict[tuple[type[Function], type[Function]], str] = {
+    (besselj, besselj): 'JJ', (besselk, besselk): 'KK', (besseli, besselk): 'IK',
+    (besselj, bessely): 'JY', (besselj, besselk): 'JK'}
+
+
+def _bessel_products(factors: list[Expr], x: Symbol) -> list[Expr]:
+    """Two Bessel functions of the same argument ``b x^g`` (``J_mu J_nu``,
+    ``K_mu K_nu``, ``I_mu K_nu``, ``J_nu Y_nu``, ``J_nu K_nu``) replaced by
+    the placeholder of their product, a kernel of the table."""
+    for i, first in enumerate(factors):
+        if not isinstance(first, (besselj, bessely, besseli, besselk)) or len(first.args) != 2:
+            continue
+        inner = _positive_monomial(as_expr(first.args[1]), x)
+        if inner is None or as_expr(first.args[0]).has(x):
+            continue
+        for j, second in enumerate(factors):
+            if j == i or not isinstance(second, (besselj, bessely, besseli, besselk)) or len(second.args) != 2:
+                continue
+            if as_expr(second.args[0]).has(x) or as_expr(second.args[1]) != as_expr(first.args[1]):
+                continue
+            pair = (type(first), type(second))
+            kind = _BESSEL_PAIRS.get(pair)
+            if kind is None:
+                continue
+            mu, nu = as_expr(first.args[0]), as_expr(second.args[0])
+            if kind in ('JY', 'JK') and mu != nu:
+                continue
+            rest = [f for k, f in enumerate(factors) if k not in (i, j)]
+            return rest + [_CombinedBessel(kind, mu, nu, inner[0], inner[1])]
+    return factors
+
+
+class _CombinedBessel(Expr):
+    """A placeholder for a product of two Bessel functions of the argument
+    ``b x^g`` in a list of factors (never part of a returned expression)."""
+
+    def __new__(cls, kind: str, mu: Expr, nu: Expr, beta: Expr, gamma_: Expr) -> _CombinedBessel:
+        obj = Expr.__new__(cls, Str(kind), mu, nu, beta, gamma_)
+        return obj
+
+    @property
+    def pair(self) -> str:
+        """``'JJ'``, ``'KK'``, ``'IK'``, ``'JY'`` or ``'JK'``."""
+        return str(self.args[0])
+
+    @property
+    def mu(self) -> Expr:
+        return as_expr(self.args[1])
+
+    @property
+    def nu(self) -> Expr:
+        return as_expr(self.args[2])
+
+    @property
+    def beta(self) -> Expr:
+        return as_expr(self.args[3])
+
+    @property
+    def power(self) -> Expr:
+        return as_expr(self.args[4])
+
+
 def _erfc_exp(factors: list[Expr], x: Symbol) -> list[Expr]:
     """``erfc(b x^g) exp(c x^(2g))`` with ``c = b**2`` rewritten as the
     kernel ``erfc(u) exp(u**2)`` of the table at ``u = b x^g`` (a symbol
@@ -1081,11 +1182,16 @@ def decompose_integrand(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Opt
             factors.extend([as_expr(e.base)] * int(e.exp))
         else:
             factors.append(e)
+    if sum(isinstance(e, (besselj, bessely, besseli, besselk)) for e in factors) >= 2:
+        factors = _bessel_products(factors, x)
     if any(isinstance(e, besseli) for e in factors):
         factors = _exp_besseli(factors, x)
     if any(isinstance(e, erfc) for e in factors):
         factors = _erfc_exp(factors, x)
     for e in factors:
+        if isinstance(e, _CombinedBessel):
+            matches.append(Match(_bessel_product_kernel(e.pair, e.mu, e.nu), e.beta, e.power))
+            continue
         if isinstance(e, _CombinedBesseli):
             matches.append(Match(_exp_besseli_kernel(e.nu), e.beta, e.power))
             continue
