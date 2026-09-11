@@ -66,6 +66,7 @@ from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.exponential import log
 from sympy.polys.partfrac import apart
+from sympy.polys.polyerrors import PolynomialError
 from sympy.series.limits import Limit
 from sympy.calculus.accumulationbounds import AccumBounds
 
@@ -129,7 +130,11 @@ def frullani(f: Expr, x: Symbol, assumptions: Assumptions = None) -> Optional[Co
 
 def _glasser_map(u: Expr, x: Symbol, assumptions: Assumptions) -> Optional[list[tuple[Expr, Expr]]]:
     """``[(a_i, b_i)]`` when ``u == x - sum(a_i/(x - b_i))`` with ``a_i > 0``."""
-    decomposed = attempt(lambda: as_expr(apart(u, x)), settings.timeout)
+    try:
+        decomposed = attempt(lambda: as_expr(apart(u, x)), settings.timeout)
+    except PolynomialError:
+        # not a rational function of x (exp(x) among the generators)
+        return None
     if decomposed is None:
         return None
     poles: list[tuple[Expr, Expr]] = []

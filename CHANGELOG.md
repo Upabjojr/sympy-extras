@@ -60,6 +60,33 @@ remove public functions. Breaking changes are listed here when they happen.
   by a per-module mypy override (an exception to the typing rule, see
   issue #15).
 
+- `sympy_extras.integrals.elliptic`: square roots of cubics and quartics
+  reduced to Legendre's elliptic integrals (Byrd–Friedman's substitutions,
+  complete and incomplete forms, `elliptic_pi` for simple poles).
+
+- `sympy_extras.integrals.series`: series expansion of a factor and termwise
+  integration with the series summed in closed form (`summation`, the
+  Zeilberger and polygamma-series algorithms, hypergeometric closed forms).
+
+- `sympy_extras.integrals.asymptotic`: asymptotic expansions of parametric
+  integrals (Watson's lemma, Laplace's method to any order, the leading
+  term of the stationary phase), `asymptotic_integral`.
+
+- `sympy_extras.integrals.dfinite`: Chyzak's algorithm (creative
+  telescoping for D-finite integrands by Koutschan's ansatz on the closure
+  of the factors), `chyzak`, `dfinite_ode`, `dfinite_integral`, tried by
+  `definite_integral` for parametric integrands which are not
+  hyperexponential.
+
+- `sympy_extras.integrals.laplace`: the operational rules of the Laplace
+  transform (division and multiplication by `t`, the shifts, periodic
+  integrands, convolutions) for `g(t)*exp(-s*t)` over `(0, oo)`.
+
+- `sympy_extras.integrals.contours`: the rectangular contour for
+  `x**n*exp(k*x)*R(exp(c*x))` over the real line, the sector contour for
+  `x**a/(b + c*x**n)` with symbolic exponents, and the indented contour
+  for `R(x)*sin(k*x)` with simple real poles cancelled by the sine.
+
 - `sympy_extras.integrals.transformations`: Frullani's theorem and Glasser's
   master theorem (with the Cauchy–Schlömilch transformation), applied by
   `definite_integral` before the range is cut at singularities.

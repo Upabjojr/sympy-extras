@@ -426,12 +426,17 @@ class _Integrator:
                 return self._finish(principal_value_integral(f, x, a, b, self.assumptions))
             return None
         allowed = (free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x}
-        strategies = [self._canonical, self._mean_value, self._trigonometric, self._mapped, self._inversion,
-                      self._residues]
+        strategies = [self._canonical, self._mean_value, self._elliptic, self._trigonometric, self._mapped,
+                      self._inversion, self._residues, self._contours]
+        if a == -oo and b == oo and f.has(HyperbolicFunction):
+            # the rectangular contour gives pi**3/4 for x**2/cosh(x) where
+            # the Mellin table gives polylogarithms at +-I
+            strategies.remove(self._contours)
+            strategies.insert(0, self._contours)
         if not mapped:
             # the methods which work on the original form only, and the
             # slow ones: not inside a mapped range
-            strategies += [self._holonomic, self._parametric]
+            strategies += [self._holonomic, self._laplace, self._parametric, self._series, self._dfinite]
         strategies.append(self._antiderivative)
         for strategy in strategies:
             try:
@@ -804,6 +809,36 @@ class _Integrator:
             return None
         return self._finish(found)
 
+    def _elliptic(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """Square roots of cubics and quartics reduced to Legendre's
+        elliptic integrals (:mod:`.elliptic`)."""
+        from .elliptic import elliptic_integral
+        if not any(isinstance(node, Pow) and isinstance(node.exp, Rational) and node.exp.q == 2
+                   for node in f.atoms(Pow)):
+            return None
+        return self._finish(elliptic_integral(f, x, a, b, self.assumptions))
+
+    def _series(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """Series expansion of a factor and termwise integration, the
+        series summed in closed form (:mod:`.series`)."""
+        from .series import series_integral
+        if depth > 0 or a != 0 or b not in (S.One, oo) and not b.is_positive:
+            return None
+        return self._finish(series_integral(f, x, a, b, self.assumptions))
+
+    def _laplace(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """The operational rules of the Laplace transform
+        (:mod:`.laplace`) for ``g(x)*exp(-s*x)`` over ``(0, oo)``."""
+        from .laplace import laplace_integral
+        if depth > 1 or a != 0 or b != oo or not f.has(exp):
+            return None
+        return self._finish(laplace_integral(f, x, a, b, self.assumptions))
+
+    def _contours(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """Rectangular, sector and indented contours (:mod:`.contours`)."""
+        from .contours import contour_integral
+        return self._finish(contour_integral(f, x, a, b, self.assumptions))
+
     def _transformations(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Frullani's theorem and Glasser's master theorem
         (:mod:`.transformations`)."""
@@ -823,6 +858,19 @@ class _Integrator:
         if len(parameters) != 1 or not is_hyperexponential(f, x, parameters[0]):
             return None
         return self._finish(holonomic_integral(f, x, a, b, parameters[0], self.assumptions))
+
+    def _dfinite(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """Chyzak's algorithm (:mod:`.dfinite`): creative telescoping for
+        a D-finite integrand with one parameter which is not
+        hyperexponential."""
+        from .dfinite import dfinite_integral
+        from .telescoping import is_hyperexponential
+        if not self.parametric or depth > 1:
+            return None
+        parameters = sorted_symbols(free_symbols(f) - {x} - free_symbols(a) - free_symbols(b))
+        if len(parameters) != 1 or is_hyperexponential(f, x, parameters[0]):
+            return None
+        return self._finish(dfinite_integral(f, x, a, b, parameters[0], self.assumptions))
 
     def _parametric(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Differentiation under the integral sign (:mod:`.parametric`),

@@ -146,6 +146,19 @@ The driver tries, after the Mellin method and the residues:
   `sympy_extras.concrete.zeilberger`, and the way to integrals of
   products of special functions which are not Meijer G-functions (the
   general D-finite case, Chyzak's algorithm, is not implemented).
+- **The rules of the Laplace transform** (`sympy_extras.integrals.laplace`):
+  for `g(t)*exp(-s*t)` over `(0, oo)`, division by `t` (the transform
+  integrated from `s` to `oo`), multiplication by `t**n` (derivatives of the
+  transform), the shifts `Heaviside(t - a)` and `exp(c*t)`, periodic
+  integrands (`Abs(sin(t))` gives `coth(pi*s/2)/(s**2 + 1)`) and
+  convolutions `Integral(p(u)*q(t - u), (u, 0, t))` (the product of the
+  transforms), each piece transformed by the other methods.
+- **More contours** (`sympy_extras.integrals.contours`): the rectangle of
+  height `2*pi/c` for `x**n*exp(k*x)*R(exp(c*x))` over the real line
+  (`x**2/cosh(x)` is `pi**3/4`, `exp(a*x)/(1 + exp(x))` is `pi/sin(pi*a)`),
+  the sector of angle `2*pi/n` for `x**a/(b + c*x**n)` over `(0, oo)` with
+  symbolic `a` and `n`, and the indented contour for `R(x)*sin(k*x)` with
+  simple real poles cancelled by the sine.
 - **Frullani's theorem and Glasser's master theorem**
   (`sympy_extras.integrals.transformations`): `(f(a x) - f(b x))/x` over
   `(0, oo)` is `(f(0) - f(oo)) log(b/a)`, and `F(x - sum(a_i/(x - b_i)))`
@@ -157,6 +170,27 @@ The driver tries, after the Mellin method and the residues:
   from the Taylor coefficients of the factors (`exp(cos(x))*cos(sin(x))`
   gives `2*pi`, `exp(a*cos(x))*cos(n*x)` gives `2*pi*besseli(n, a)`);
   rational functions of `sin` and `cos` go to the residues instead.
+- **Elliptic integrals** (`sympy_extras.integrals.elliptic`): square roots
+  of cubics and quartics with real roots, `R(x)/sqrt(P(x))` and
+  `R(x)*sqrt(P(x))` over a cell between the roots, reduced by the
+  substitutions of Byrd–Friedman to Legendre's `elliptic_k`, `elliptic_e`,
+  `elliptic_pi` and the incomplete `elliptic_f` (SymPy's parameter
+  `m = k**2`); `Integral(1/sqrt(1 - x**4), (x, 0, 1))` gives
+  `elliptic_k(1/2)`, the lemniscate constant.
+- **Series expansion and termwise integration**
+  (`sympy_extras.integrals.series`): one factor expanded in its formal
+  power series (or a geometric series of exponentials), the moments of the
+  rest integrated in closed form in the index, and the series summed by
+  `summation`, the Zeilberger and polygamma-series algorithms of
+  `sympy_extras.concrete`, or a hypergeometric closed form; the interchange
+  is justified by absolute convergence or checked numerically.
+  `Integral(log(x)*log(1 - x), (x, 0, 1))` gives `2 - pi**2/6`.
+- **Chyzak's algorithm** (`sympy_extras.integrals.dfinite`): creative
+  telescoping for D-finite integrands beyond the hyperexponential ones
+  (Bessel functions, orthogonal polynomials, their products), by
+  Koutschan's ansatz on the closure of the factors; `dfinite_ode` gives
+  the equation of the parametric integral and `dfinite_integral` solves
+  it (`exp(-t*x)*besselj(0, x)` over `(0, oo)` gives `1/sqrt(1 + t**2)`).
 - **Differentiation under the integral sign**
   (`sympy_extras.integrals.parametric`): `I'(p)` is a simpler integral
   (a factor `1/x` disappears against `exp(-p x)`, a logarithm against
@@ -184,6 +218,12 @@ The driver tries, after the Mellin method and the residues:
   is summed. The theorem is checked against the table on the kernels both
   know; the method of brackets is a heuristic and is used only where its
   series converge.
+- **Asymptotic expansions** (`sympy_extras.integrals.asymptotic`,
+  `asymptotic_integral`): for a parametric integral without a closed form,
+  the first terms as the parameter grows, by Watson's lemma
+  (`exp(-t*x)*phi(x)`), Laplace's method (`phi*exp(t*h)` with a maximum
+  inside or at an endpoint, to any order) and the stationary phase
+  (`phi*exp(I*t*h)`, leading term), with the order term.
 - **Symbolic-numeric recognition** (`sympy_extras.integrals.recognize`,
   `definite_integral(..., recognize=True)`): a high-precision quadrature
   and an integer relation (PSLQ) with a basis of constants propose a
@@ -199,6 +239,13 @@ The driver tries, after the Mellin method and the residues:
 Eq(2*t*I(t) + Derivative(I(t), t), 0)
 >>> definite_integral(exp(-x**2)*cos(2*t*x), (x, 0, oo))
 sqrt(pi)*exp(-t**2)/2
+>>> from sympy import besselj
+>>> definite_integral(exp(-t*x)*besselj(0, x), (x, 0, oo))
+1/sqrt(t**2 + 1)
+>>> definite_integral(1/sqrt(1 - x**4), (x, 0, 1))
+sqrt(pi)*gamma(1/4)/(4*gamma(3/4))
+>>> definite_integral(log(x)*log(1 - x), (x, 0, 1))
+2 - pi**2/6
 >>> definite_integral(atan(p*x)/(x*(1 + x**2)), (x, 0, oo))
 pi*log(p + 1)/2
 >>> definite_integral((x**p - 1)/log(x), (x, 0, 1))
@@ -209,12 +256,24 @@ log(p + 1)
 2*pi
 >>> definite_integral(exp(-(x - 1/x)**2), (x, 0, oo))
 sqrt(pi)/2
+>>> from sympy import cosh, Abs
+>>> definite_integral(x**2/cosh(x), (x, -oo, oo))
+pi**3/4
+>>> s = symbols('s', positive=True)
+>>> definite_integral(Abs(sin(x))*exp(-s*x), (x, 0, oo))
+1/((s**2 + 1)*tanh(pi*s/2))
+>>> n = symbols('n', positive=True)
+>>> definite_integral(1/(1 + x**n), (x, 0, oo), n > 1)
+pi/(n*sin(pi/n))
 >>> from sympy_extras.integrals import ramanujan_master_theorem, recognize_integral
 >>> s = symbols('s')
 >>> ramanujan_master_theorem(exp(-x**2), x, s)
 MellinTransform(gamma(s/2)/2, (0, oo))
 >>> recognize_integral(1/(x**3 + 1), (x, 0, 1))
 log(2)/3 + sqrt(3)*pi/9
+>>> from sympy_extras.integrals import asymptotic_integral
+>>> asymptotic_integral(exp(-t*x)/(1 + x), x, 0, oo, t)
+2/t**3 - 1/t**2 + 1/t + O(t**(-4), (t, oo))
 
 ```
 

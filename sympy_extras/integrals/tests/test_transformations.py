@@ -55,3 +55,11 @@ def test_through_the_driver() -> None:
     # range first and the residue route gave a page of radicals for pi
     assert definite_integral(1 / (1 + (x - 1 / (x - 1))**2), (x, -oo, oo)) == pi
     assert transformation_integral(exp(-x), x, S.Zero, S.One) is None
+
+
+def test_non_rational_maps_are_refused() -> None:
+    # the bug: apart raised PolynomialError on x + exp(x) (the candidate
+    # map of an integrand in exp(x)), which crashed the driver
+    k = symbols('k')
+    assert glasser(x * exp(x) * exp(k * x) / (exp(x) + 3), x, -oo, oo) is None
+    assert transformation_integral(exp(-(x + exp(x))**2), x, -oo, oo) is None
