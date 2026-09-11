@@ -174,6 +174,12 @@ The driver tries, after the Mellin method and the residues:
   from the Taylor coefficients of the factors (`exp(cos(x))*cos(sin(x))`
   gives `2*pi`, `exp(a*cos(x))*cos(n*x)` gives `2*pi*besseli(n, a)`);
   rational functions of `sin` and `cos` go to the residues instead.
+- **A table** (`sympy_extras.integrals.tables`): fifty-eight entries of
+  Gradshteyn and Ryzhik which no algorithm here reproduces (the Poisson
+  and Fejér kernels, `sin(a x)**3/x**3`, `x*log(sin(x))`, `log(gamma(x))`,
+  products of Bessel functions, ...), matched with their conditions on the
+  parameters and checked numerically at sample values in the tests; tried
+  first because it is cheap.
 - **Elliptic integrals** (`sympy_extras.integrals.elliptic`): square roots
   of cubics and quartics with real roots, `R(x)/sqrt(P(x))` and
   `R(x)*sqrt(P(x))` over a cell between the roots, reduced by the
@@ -243,9 +249,11 @@ The driver tries, after the Mellin method and the residues:
 Eq(2*t*I(t) + Derivative(I(t), t), 0)
 >>> definite_integral(exp(-x**2)*cos(2*t*x), (x, 0, oo))
 sqrt(pi)*exp(-t**2)/2
->>> from sympy import besselj
+>>> from sympy import besselj, gamma
 >>> definite_integral(exp(-t*x)*besselj(0, x), (x, 0, oo))
 1/sqrt(t**2 + 1)
+>>> definite_integral(log(gamma(x)), (x, 0, 1))
+log(2*pi)/2
 >>> definite_integral(1/sqrt(1 - x**4), (x, 0, 1))
 sqrt(pi)*gamma(1/4)/(4*gamma(3/4))
 >>> definite_integral(log(x)*log(1 - x), (x, 0, 1))
@@ -326,13 +334,15 @@ algebraic functions of the earlier variables, so the integral over a
 region is the sum over the full-dimensional cells where the condition
 holds of iterated integrals with explicit bounds, computed innermost
 first by `definite_integral`. Parameters of the condition come first in
-the variable order and give a case distinction on their cells. Two
-shortcuts come before the decomposition: a disc, annulus or ball with an
-integrand depending on the distance from the origin only is integrated in
-polar or spherical coordinates, and a condition whose relations are
-linear in the last variable (`y < exp(x)`, `y*exp(x) < 1`, which the CAD
-cannot take) is integrated by Fubini's theorem with the bounds solved
-for that variable and the crossings of the bounds found by `solve`.
+the variable order and give a case distinction on their cells. Shortcuts come before the decomposition: a disc, annulus or ball (or an
+ellipse, ellipsoid or shifted disc, scaled to one) with an integrand
+depending on the distance from the centre only is integrated in polar or
+spherical coordinates, a cylinder-like region (a disc condition in `x`, `y`
+and bounds on `z` linear in `z`) in cylindrical coordinates, and a
+condition whose relations are linear in the last variable (`y < exp(x)`,
+`y*exp(x) < 1`, which the CAD cannot take) is integrated by Fubini's
+theorem with the bounds solved for that variable, the crossings of the
+bounds found by `solve`, and unbounded outer variables allowed.
 
 ```python
 >>> from sympy import symbols, exp
@@ -352,6 +362,10 @@ pi*r**2
 -pi*exp(-1) + pi
 >>> integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y < exp(x)))
 -1 + E
+>>> integrate_by_ranges(1, x**2/4 + y**2/9 < 1)
+6*pi
+>>> integrate_by_ranges(1, (x**2 + y**2 < 1) & (z > x**2 + y**2) & (z < 1))
+pi/2
 
 ```
 

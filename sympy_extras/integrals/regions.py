@@ -32,12 +32,25 @@ iterated integral with explicit bounds:
    is a ``Piecewise`` whose conditions are the sign conditions of the
    projection polynomials on each parameter cell.
 
-Two routes are tried around the decomposition [Apostol]_:
+Four routes are tried around the decomposition [Apostol]_:
 
 * **polar coordinates** first: a disc or an annulus (`r_1^2 < x^2 + y^2 <
   R^2`, or the ball in three variables) with an integrand depending on the
   point only through `x^2 + y^2` is `2\\pi \\int_{r_1}^R g(\\rho)\\, \\rho\\, d\\rho`
   (`4\\pi \\int g(\\rho)\\, \\rho^2\\, d\\rho` for the ball);
+* **an affine change of variables** to the polar case: an ellipse or an
+  ellipsoid, and any region `\\sum c_i x_i^2 + \\sum b_i x_i < v` with
+  coefficients of one sign (a diagonal quadratic form, the square
+  completed), is the image of a disc or ball under `x_i = u_i/\\sqrt{c_i} -
+  b_i/(2 c_i)`, with the Jacobian `\\prod c_i^{-1/2}`; the polar route is
+  applied to the transformed integrand when it depends on `\\sum u_i^2`
+  only (the area `\\pi a b` of the ellipse `x^2/a^2 + y^2/b^2 < 1`);
+* **cylindrical coordinates** in three variables: a disc or annulus
+  condition on `x^2 + y^2` (or none) together with bounds on `z` which are
+  linear in `z` and depend on `x, y` only through `x^2 + y^2`, and an
+  integrand `g(x^2 + y^2, z)`, give `2\\pi \\int \\int g(\\rho^2, z)\\, \\rho\\, dz\\, d\\rho`,
+  the range of `\\rho` being where the bounds on `z` are in the right order
+  (the paraboloid `0 < z < x^2 + y^2 < 1`, the cone `\\sqrt{x^2 + y^2} < z < 1`);
 * **bounds solved for the last variable** when the decomposition does not
   apply (a condition which is not polynomial, `y < \\exp(x)`) or fails: a
   conjunction of relations linear in the last variable `y` describes, over
@@ -46,7 +59,13 @@ Two routes are tried around the decomposition [Apostol]_:
   two bounds cross (with :func:`sympy_extras.assumptions.solve`), the
   inner integral is computed with :func:`~sympy_extras.integrals.definite_integral`
   and the outer integral by the same function on the remaining variables
-  (Fubini's theorem).
+  (Fubini's theorem); an outer variable without bounds ranges over the
+  whole line, and the outer integral over an infinite range is again a
+  matter for :func:`~sympy_extras.integrals.definite_integral`.
+
+Integrals over polytopes are computed through the decomposition as any
+polynomial region; the formulas of Lasserre and Brion for polynomial
+integrands over polytopes [Lasserre]_ are not used.
 
 Examples
 ========
@@ -67,6 +86,13 @@ pi*r**2
 -pi*exp(-1) + pi
 >>> integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y < exp(x)))
 -1 + E
+>>> a, b = symbols('a b', positive=True)
+>>> integrate_by_ranges(1, x**2/a**2 + y**2/b**2 < 1, [x, y])
+pi*a*b
+>>> integrate_by_ranges(1, (x**2 + y**2 < 1) & (z > 0) & (z < x**2 + y**2))
+pi/2
+>>> integrate_by_ranges(1, (x > 0) & (y > 0) & (y < exp(-x)))
+1
 
 References
 ==========
@@ -74,6 +100,10 @@ References
 .. [Apostol] T. M. Apostol, *Calculus*, vol. II, 2nd ed., Wiley, 1969,
    sections 11.11 (regions between two graphs, Fubini's theorem) and
    11.27–11.29 (polar coordinates).
+.. [Lasserre] J. B. Lasserre, *Integration on a convex polytope*,
+   Proceedings of the AMS 126 (1998), pp. 2433-2441; M. Brion, *Points
+   entiers dans les polyèdres convexes*, Annales scientifiques de l'ENS
+   21 (1988), pp. 653-663.
 .. [Collins] G. E. Collins, *Quantifier elimination for real closed
    fields by cylindrical algebraic decomposition*, Automata Theory and
    Formal Languages, Lecture Notes in Computer Science 33, Springer,
@@ -288,6 +318,15 @@ def _stack(cell: CADCell, cad: CAD, first: int) -> Optional[_Stack]:
     return _Stack(cell, bounds)
 
 
+def _ask(query: Boolean, assumptions: list[Boolean]) -> Optional[bool]:
+    """``ask`` which treats contradictory assumptions (an empty cell of
+    the decomposition under its parameter condition) as undecided."""
+    try:
+        return ask(query, assumptions)
+    except ValueError:
+        return None
+
+
 def _split_roots(expr: Expr, assumptions: list[Boolean]) -> Expr:
     """Square roots (and other rational powers) of products with factors
     known positive under the assumptions split into powers of the
@@ -308,9 +347,9 @@ def _split_roots(expr: Expr, assumptions: list[Boolean]) -> Expr:
         sign = 1
         for f in factors:
             f_ = as_expr(f)
-            if f_.is_positive or (not f_.is_number and ask(as_boolean(f_ > 0), assumptions) is True):
+            if f_.is_positive or (not f_.is_number and _ask(as_boolean(f_ > 0), assumptions) is True):
                 positive.append(f_)
-            elif f_.is_negative or (not f_.is_number and ask(as_boolean(f_ < 0), assumptions) is True):
+            elif f_.is_negative or (not f_.is_number and _ask(as_boolean(f_ < 0), assumptions) is True):
                 positive.append(-f_)
                 sign = -sign
             else:
@@ -358,10 +397,15 @@ def _iterated(integrand: Expr, variables: Sequence[Symbol], stack: _Stack,
             inner.append(as_boolean(x > lower))
         if upper != oo:
             inner.append(as_boolean(x < upper))
+        if any(part is S.false for part in inner):
+            return S.Zero                                   # an empty cell under its parameter condition
         piece = _split_roots(value, inner)
-        result = definite_integral(piece, (x, lower, upper), outer)
+        try:
+            result = definite_integral(piece, (x, lower, upper), outer)
+        except ValueError:
+            return S.Zero                                   # contradictory bounds: an empty cell
         if result.has(Integral, IntegralByRanges) and lower == -upper and upper != oo \
-                and ask(as_boolean(upper > 0), outer) is True:
+                and _ask(as_boolean(upper > 0), outer) is True:
             u = Dummy('u')
             rescaled = _split_roots(as_expr(value.subs(x, upper * u) * upper),
                                     outer + [as_boolean(upper > 0), as_boolean(u > -1), as_boolean(u < 1)])
@@ -524,6 +568,228 @@ def _radial(f: Expr, formula: Boolean, names: Sequence[Symbol], assumptions: lis
     return value
 
 
+def _form_atom(atom: Relational, names: Sequence[Symbol],
+               assumptions: list[Boolean]) -> Optional[tuple[bool, list[Expr], list[Expr], Expr]]:
+    """``(upper, coefficients, shifts, value)`` when the relation bounds a
+    diagonal quadratic form with the square completed,
+    ``sum(c_i*(x_i + s_i)**2) < value`` (``upper``) or ``> value``, with
+    all ``c_i`` positive under the assumptions; ``None`` otherwise (a
+    cross term, a coefficient of unknown sign, a missing square)."""
+    difference = as_expr(atom.lhs) - as_expr(atom.rhs)
+    try:
+        poly = Poly(difference, *names)
+    except PolynomialError:
+        return None
+    if poly.total_degree() != 2:
+        return None
+    coefficients: list[Expr] = []
+    linear: list[Expr] = []
+    for i, v in enumerate(names):
+        square = [0] * len(names)
+        square[i] = 2
+        c = as_expr(poly.coeff_monomial(v**2))
+        b = as_expr(poly.coeff_monomial(v))
+        if c == 0:
+            return None
+        coefficients.append(c)
+        linear.append(b)
+    for monomial, _ in poly.terms():
+        if sum(monomial) == 2 and max(monomial) == 1:
+            return None                                     # a cross term
+    sign_: Optional[bool] = None
+    for c in coefficients:
+        positive = c.is_positive is True or ask(as_boolean(c > 0), assumptions) is True
+        negative = c.is_negative is True or ask(as_boolean(c < 0), assumptions) is True
+        if not positive and not negative:
+            return None
+        if sign_ is None:
+            sign_ = positive
+        elif sign_ != positive:
+            return None
+    assert sign_ is not None
+    if not sign_:
+        coefficients = [-c for c in coefficients]
+        linear = [-b for b in linear]
+        difference = -difference
+    less = isinstance(atom, (Lt, Le))
+    shifts = [as_expr(b / (2 * c)) for b, c in zip(linear, coefficients)]
+    completed = as_expr(sum(c * (v + t)**2 for c, v, t in zip(coefficients, names, shifts)))
+    rest = as_expr((difference - completed).expand())
+    if rest.has(*names):
+        return None
+    return (less == sign_, coefficients, shifts, as_expr(-rest))
+
+
+def _scaled_radial(f: Expr, formula: Boolean, names: Sequence[Symbol],
+                   assumptions: list[Boolean]) -> Optional[Expr]:
+    """The integral over an ellipse or ellipsoid (a diagonal quadratic
+    form bounded from above, and from below by a proportional one) of a
+    function which is radial after the affine change of variables
+    ``x_i = u_i/sqrt(c_i) - s_i``, through :func:`_radial`."""
+    if len(names) not in (2, 3):
+        return None
+    atoms = _atoms(formula)
+    if atoms is None or not atoms:
+        return None
+    upper: Optional[tuple[list[Expr], list[Expr], Expr]] = None
+    lower: Optional[tuple[list[Expr], list[Expr], Expr]] = None
+    for atom in atoms:
+        found = _form_atom(atom, names, assumptions)
+        if found is None:
+            return None
+        is_upper, coefficients, shifts, value = found
+        if is_upper:
+            if upper is not None:
+                return None
+            upper = (coefficients, shifts, value)
+        else:
+            if lower is not None:
+                return None
+            lower = (coefficients, shifts, value)
+    if upper is None:
+        return None
+    coefficients, shifts, value = upper
+    if all(c == 1 for c in coefficients) and all(t == 0 for t in shifts):
+        return None                                         # the polar route already looked at it
+    us = [Dummy(v.name) for v in names]
+    substitution: dict[Expr, Expr] = {}
+    jacobian: Expr = S.One
+    for v, u_, c, t in zip(names, us, coefficients, shifts):
+        substitution[v] = as_expr(u_ / sqrt(c) - t)
+        jacobian = jacobian / sqrt(c)
+    radius = as_expr(sum(u_**2 for u_ in us))
+    parts: list[Boolean] = [as_boolean(radius < value)]
+    if lower is not None:
+        low_coefficients, low_shifts, low_value = lower
+        ratio = as_expr(low_coefficients[0] / coefficients[0])
+        for c, d in zip(coefficients, low_coefficients):
+            if as_expr(d - ratio * c).simplify() != 0:
+                return None
+        if any(as_expr(t - t_).simplify() != 0 for t, t_ in zip(shifts, low_shifts)):
+            return None
+        if ask(as_boolean(ratio > 0), assumptions) is not True:
+            return None
+        parts.append(as_boolean(radius > low_value / ratio))
+    g = as_expr(f.xreplace(substitution) * jacobian)
+    return _radial(g, as_boolean(And(*parts)), us, assumptions)
+
+
+def _cylindrical(f: Expr, formula: Boolean, names: Sequence[Symbol],
+                 assumptions: list[Boolean]) -> Optional[Expr]:
+    """The integral in cylindrical coordinates: a disc or annulus condition
+    on ``x**2 + y**2`` (or none), bounds on ``z`` linear in ``z`` which
+    depend on ``x, y`` through ``x**2 + y**2`` only, and an integrand
+    ``g(x**2 + y**2, z)``, see the module documentation."""
+    if len(names) != 3:
+        return None
+    atoms = _atoms(formula)
+    if atoms is None or not atoms:
+        return None
+    x, y, z = names
+    plane = (x, y)
+    lower_radius: Optional[Expr] = None
+    upper_radius: Optional[Expr] = None
+    lowers: list[Expr] = []
+    uppers: list[Expr] = []
+    rho = Dummy('rho', positive=True)
+    for atom in atoms:
+        if not atom.has(z):
+            found = _radial_atom(atom, plane)
+            if found is None:
+                return None
+            is_upper, value = found
+            if is_upper:
+                if upper_radius is not None:
+                    return None
+                upper_radius = value
+            else:
+                if lower_radius is not None:
+                    return None
+                lower_radius = value
+            continue
+        bound = _linear_bound(atom, z, assumptions)
+        if bound is None:
+            return None
+        is_upper, expression = bound
+        radial = _radial_integrand(expression, plane, rho) if expression.has(x, y) else expression
+        if radial is None:
+            return None
+        (uppers if is_upper else lowers).append(radial)
+    g = _radial_integrand(f, plane, rho) if f.has(x, y) else f
+    if g is None:
+        return None
+    inner_assumptions: list[Boolean] = list(assumptions)
+    lower_z: Expr = S.NegativeInfinity
+    upper_z: Expr = S.Infinity
+    if lowers:
+        found_lower = _extreme(lowers, True, inner_assumptions)
+        if found_lower is None:
+            return None
+        lower_z = found_lower
+    if uppers:
+        found_upper = _extreme(uppers, False, inner_assumptions)
+        if found_upper is None:
+            return None
+        upper_z = found_upper
+    # the range of rho: inside the annulus, where the bounds on z are ordered
+    conditions: list[Boolean] = []
+    if upper_radius is not None:
+        if ask(as_boolean(upper_radius > 0), assumptions) is not True:
+            return None
+        conditions.append(as_boolean(rho < sqrt(upper_radius)))
+    if lower_radius is not None:
+        if ask(as_boolean(lower_radius >= 0), assumptions) is not True:
+            return None
+        conditions.append(as_boolean(rho > sqrt(lower_radius)))
+    if lower_z != -oo and upper_z != oo:
+        conditions.append(as_boolean(lower_z < upper_z))
+    if not conditions:
+        return None
+    where = attempt(lambda: solve(as_boolean(And(*conditions)), rho, assumptions + [as_boolean(rho > 0)],
+                                  domain=S.Reals), settings.timeout)
+    if where is None:
+        return None
+    pieces = _interval_conditions(as_set_(where), rho)
+    if pieces is None:
+        return None
+    total: Expr = S.Zero
+    for piece in pieces:
+        limits = _piece_limits(piece, rho)
+        if limits is None:
+            return None
+        start, stop = limits
+        rho_assumptions = assumptions + [as_boolean(rho > start), as_boolean(rho < stop)] \
+            if stop != oo else assumptions + [as_boolean(rho > start)]
+        inner = definite_integral(as_expr(g * rho), (z, lower_z, upper_z), rho_assumptions)
+        if inner.has(Integral, IntegralByRanges):
+            return None
+        value = definite_integral(as_expr(2 * pi * inner), (rho, start, stop), assumptions)
+        if value.has(Integral, IntegralByRanges):
+            return None
+        total = total + value
+    return as_expr(total)
+
+
+def _piece_limits(piece: Boolean, rho: Symbol) -> Optional[tuple[Expr, Expr]]:
+    """``(start, stop)`` of a conjunction ``rho > start & rho < stop``
+    (``0`` and ``oo`` when a side is missing)."""
+    start: Expr = S.Zero
+    stop: Expr = S.Infinity
+    parts = list(piece.args) if isinstance(piece, And) else ([] if piece is true else [piece])
+    for part in parts:
+        if isinstance(part, (Gt, Ge)) and part.lhs == rho:
+            start = as_expr(part.rhs)
+        elif isinstance(part, (Lt, Le)) and part.lhs == rho:
+            stop = as_expr(part.rhs)
+        elif isinstance(part, (Lt, Le)) and part.rhs == rho:
+            start = as_expr(part.lhs)
+        elif isinstance(part, (Gt, Ge)) and part.rhs == rho:
+            stop = as_expr(part.lhs)
+        else:
+            return None
+    return (start, stop)
+
+
 def _linear_bound(atom: Relational, y: Symbol, assumptions: list[Boolean]) -> Optional[tuple[bool, Expr]]:
     """``(upper, bound)`` for a relation linear in ``y``: ``y < bound``
     (``upper``) or ``y > bound``; ``None`` when the relation is not linear
@@ -662,10 +928,17 @@ def _solved_bounds(f: Expr, formula: Boolean, names: Sequence[Symbol],
     for piece in pieces:
         condition = as_boolean(And(*outer_atoms, piece))
         if condition is true:
-            return None                                     # the other variables are unbounded
-        value = integrate_by_ranges(inner, condition, outer_names, assumptions)
-        if value.has(Integral, IntegralByRanges):
-            return None
+            # the other variables are unbounded: the whole line each,
+            # innermost first
+            value = inner
+            for v in reversed(outer_names):
+                value = definite_integral(value, (v, -oo, oo), assumptions)
+                if value.has(Integral, IntegralByRanges):
+                    return None
+        else:
+            value = integrate_by_ranges(inner, condition, outer_names, assumptions)
+            if value.has(Integral, IntegralByRanges):
+                return None
         total = total + value
     return as_expr(total)
 
@@ -683,7 +956,9 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
         A Boolean combination of polynomial relations (``<``, ``<=``,
         ``>``, ``>=``, ``Eq``, ``Ne``) with rational coefficients, for
         the decomposition; or a conjunction of inequalities linear in the
-        last variable (``y < exp(x)``), solved for it.
+        last variable (``y < exp(x)``), solved for it; discs, ellipses,
+        balls and cylinders with radial integrands take the shortcuts of
+        the module documentation.
     variables : list of Symbol, optional
         The integration variables, in the order of the decomposition
         (the last one is integrated first); by default every symbol of
@@ -733,6 +1008,12 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     radial = _radial(f, formula, names, extra)
     if radial is not None:
         return radial
+    scaled = _scaled_radial(f, formula, names, extra)
+    if scaled is not None:
+        return scaled
+    cylindrical = _cylindrical(f, formula, names, extra)
+    if cylindrical is not None:
+        return cylindrical
     found = _decomposed(node, f, formula, names, assumptions, extra)
     if found is not None:
         return found

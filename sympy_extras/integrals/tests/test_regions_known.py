@@ -49,3 +49,16 @@ def test_polar_and_type_one_regions() -> None:
     from sympy import E, sqrt
     assert simplify(integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y < exp(x))) - (E - 1)) == 0
     assert integrate_by_ranges(1, (x > 0) & (x < 1) & (y > x**2) & (y < sqrt(x))) == Rational(1, 3)
+
+
+def test_ellipses_cylinders_and_cones() -> None:
+    from sympy import sqrt, symbols as _symbols
+    a, b, c = _symbols('a b c', positive=True)
+    # Apostol 11.28, Example 1: the area of the ellipse is pi a b
+    assert integrate_by_ranges(1, x**2/a**2 + y**2/b**2 < 1, [x, y]) == pi*a*b
+    # the volume of the ellipsoid, 4 pi a b c/3 (Apostol 11.30)
+    assert integrate_by_ranges(1, x**2/a**2 + y**2/b**2 + z**2/c**2 < 1, [x, y, z]) == 4*pi*a*b*c/3
+    # Stewart 15.7: the volume under the paraboloid z = x**2 + y**2 over the unit disc is pi/2,
+    # and the volume of the cone sqrt(x**2 + y**2) < z < 1 is pi/3
+    assert integrate_by_ranges(1, (x**2 + y**2 < 1) & (z > 0) & (z < x**2 + y**2)) == pi/2
+    assert integrate_by_ranges(1, (sqrt(x**2 + y**2) < z) & (z < 1)) == pi/3

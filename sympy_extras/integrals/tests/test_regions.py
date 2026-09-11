@@ -129,3 +129,53 @@ def test_bounds_solved_for_the_last_variable() -> None:
     # nothing to solve: y not linear, x unbounded
     assert isinstance(integrate_by_ranges(1, (x > 0) & (y > 0) & (y < exp(x))), IntegralByRanges)
     assert isinstance(integrate_by_ranges(1, (x > 0) & (x < 1) & (y**2 < exp(x)) & (y > 0)), IntegralByRanges)
+
+
+def test_affine_scaling_to_polar_coordinates() -> None:
+    a, b, c = symbols('a b c', positive=True)
+    # the ellipse x**2/a**2 + y**2/b**2 < 1 is the image of the unit disc
+    # under (x, y) = (a u, b v), with Jacobian a b: area pi a b
+    assert integrate_by_ranges(1, x**2/a**2 + y**2/b**2 < 1, [x, y]) == pi*a*b
+    # Integral(x**2) = a**2 b Integral(u**2, disc) = pi a**3 b/4
+    assert integrate_by_ranges(x**2, x**2/a**2 + y**2/b**2 < 1, [x, y]) == pi*a**3*b/4
+    # the ellipsoid: 4 pi a b c/3
+    assert integrate_by_ranges(1, x**2/a**2 + y**2/b**2 + z**2/c**2 < 1, [x, y, z]) == 4*pi*a*b*c/3
+    # numeric semi-axes 3 and 2, and a disc with the square to complete:
+    # x**2 + y**2 - 2x < 3 is the disc of radius 2 about (1, 0)
+    assert integrate_by_ranges(1, 4*x**2 + 9*y**2 < 36) == 6*pi
+    assert integrate_by_ranges(1, x**2 + y**2 - 2*x < 3) == 4*pi
+    # an elliptic annulus: 3 pi a b
+    assert integrate_by_ranges(1, (x**2/a**2 + y**2/b**2 > 1) & (x**2/a**2 + y**2/b**2 < 4), [x, y]) == 3*pi*a*b
+    # a scaled integrand which is not radial goes to the decomposition:
+    # x*y is odd, the integral over the ellipse is 0
+    assert integrate_by_ranges(x*y, x**2/4 + y**2 < 1) == 0
+
+
+def test_cylindrical_coordinates() -> None:
+    R, h = symbols('R h', positive=True)
+    # the cylinder: pi R**2 h
+    assert integrate_by_ranges(1, (x**2 + y**2 < R**2) & (z > 0) & (z < h), [x, y, z]) == pi*R**2*h
+    # under the paraboloid z = x**2 + y**2 over the unit disc:
+    # 2 pi Integral(rho**3, (rho, 0, 1)) = pi/2
+    assert integrate_by_ranges(1, (x**2 + y**2 < 1) & (z > 0) & (z < x**2 + y**2)) == pi/2
+    # the cone sqrt(x**2 + y**2) < z < 1, integrand z: 2 pi Integral(rho (1 - rho**2)/2) = pi/4;
+    # the range of rho comes from the order of the bounds on z
+    assert integrate_by_ranges(z, (sqrt(x**2 + y**2) < z) & (z < 1)) == pi/4
+    # the paraboloid x**2 + y**2 < z < 4: 2 pi Integral(rho (4 - rho**2), (rho, 0, 2)) = 8 pi
+    assert integrate_by_ranges(1, (x**2 + y**2 < z) & (z < 4)) == 8*pi
+    # a radial integrand: Integral(rho**2) over the cylinder of radius 1 and height 2
+    assert integrate_by_ranges(x**2 + y**2, (x**2 + y**2 < 1) & (z > 0) & (z < 2)) == pi
+
+
+def test_unbounded_outer_variables() -> None:
+    # Fubini with the outer variable on a half line or the whole line
+    # Integral(Integral(exp(-x - y), (y, 0, x)), (x, 0, oo)) = Integral(exp(-x)(1 - exp(-x))) = 1/2
+    assert integrate_by_ranges(exp(-x - y), (0 < x) & (0 < y) & (y < x)) == S.Half
+    # the area under exp(-x) on (0, oo): 1
+    assert integrate_by_ranges(1, (x > 0) & (y > 0) & (y < exp(-x))) == 1
+    # the area under 1/x**2 on (1, oo): 1
+    assert integrate_by_ranges(1, (x > 1) & (0 < y) & (y < 1/x**2)) == 1
+    # the whole line for the outer variable (named explicitly, since by
+    # default the variables are the symbols of the condition):
+    # Integral(exp(-x**2)*(1 - 0)) over R = sqrt(pi)
+    assert integrate_by_ranges(exp(-x**2), (y > 0) & (y < 1), [x, y]) == sqrt(pi)

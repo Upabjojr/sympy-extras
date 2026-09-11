@@ -60,6 +60,14 @@ remove public functions. Breaking changes are listed here when they happen.
   the package (issue #54), with the annotations of Aaron Meurer's branch
   `risch-typing` (sympy/sympy#30282) as the starting point.
 
+- `IntegralByRanges` scales ellipses, ellipsoids and shifted discs to the
+  radial case, integrates cylinder-like regions in cylindrical coordinates,
+  and allows unbounded outer variables in the Fubini route.
+
+- `sympy_extras.integrals.tables`: fifty-eight entries of Gradshteyn and
+  Ryzhik with their conditions, matched first by `definite_integral`, each
+  checked numerically in the tests.
+
 - `definite_integral(..., finite_part=True)`: Hadamard's finite part of a
   divergent integral, from the antiderivative with the divergent terms of
   the excision at each singularity dropped.

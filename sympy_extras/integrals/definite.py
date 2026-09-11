@@ -435,8 +435,8 @@ class _Integrator:
                 return self._finish(principal_value_integral(f, x, a, b, self.assumptions))
             return None
         allowed = (free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x}
-        strategies = [self._canonical, self._mean_value, self._elliptic, self._trigonometric, self._mapped,
-                      self._inversion, self._residues, self._contours]
+        strategies = [self._table, self._canonical, self._mean_value, self._elliptic, self._trigonometric,
+                      self._mapped, self._inversion, self._residues, self._contours]
         if a == -oo and b == oo and f.has(HyperbolicFunction):
             # the rectangular contour gives pi**3/4 for x**2/cosh(x) where
             # the Mellin table gives polylogarithms at +-I
@@ -817,6 +817,12 @@ class _Integrator:
             # or principal branches only: kept when confirmed numerically
             return None
         return self._finish(found)
+
+    def _table(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """The table of Gradshteyn and Ryzhik (:mod:`.tables`), cheap and
+        first."""
+        from .tables import table_integral
+        return self._finish(table_integral(f, x, a, b, self.assumptions))
 
     def _elliptic(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Square roots of cubics and quartics reduced to Legendre's
