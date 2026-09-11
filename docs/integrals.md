@@ -266,9 +266,16 @@ The driver tries, after the Mellin method and the residues:
 - **Validated numerical integration** (`sympy_extras.integrals.validated`,
   `definite_integral(..., numeric=True)`): when no closed form is found and
   the integral has no parameters, a value with a proved error bound from
-  composite Simpson's rule with the fourth derivative enclosed in interval
-  arithmetic, panels refined where the bound is largest, square-root
-  endpoint singularities and infinite ranges transformed away.
+  composite Simpson's rule or the five-point Gauss–Legendre rule, whichever
+  bound is smaller on each panel, the derivatives enclosed in interval
+  arithmetic in centred form (the Taylor shift to the midpoint of the
+  panel), panels refined where the bound is largest; algebraic and
+  logarithmic endpoint singularities (`x**alpha` with `alpha > -1`,
+  `log(x)`) bounded by their closed forms or transformed away by a power
+  substitution, removable singularities (`sin(x)/x`) by the Taylor
+  remainder, infinite ranges by the exponential or rational map, with
+  oscillatory tails integrated by parts (Bonnet's bound). Thirty digits of
+  the Gaussian on `(0, 1)`, twenty of `1/(1 + x**2)` on `(0, oo)`.
 - **Symbolic-numeric recognition** (`sympy_extras.integrals.recognize`,
   `definite_integral(..., recognize=True)`): a high-precision quadrature
   and an integer relation (PSLQ) with a basis of constants propose a
@@ -324,7 +331,7 @@ log(2)/3 + sqrt(3)*pi/9
 >>> asymptotic_integral(exp(-t*x)/(1 + x), x, 0, oo, t)
 2/t**3 - 1/t**2 + 1/t + O(t**(-4), (t, oo))
 >>> definite_integral(x**x, (x, 0, 1), numeric=True, digits=6)
-0.783430609
+0.783430391
 
 ```
 

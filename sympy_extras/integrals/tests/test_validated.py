@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 
-from sympy import symbols, exp, sqrt, pi, erf, cos, oo, Rational, Integer, S, Float, log
+from sympy import symbols, exp, sqrt, pi, erf, cos, sin, oo, Rational, Integer, S, Float, log
 
 from sympy_extras._typing import as_expr
 from sympy_extras.integrals.validated import validated_integral, enclosure
@@ -33,8 +33,55 @@ def test_infinite_range() -> None:
     # x = t/(1 - t) makes 1/(1 + x**2) into 1/(2 t**2 - 2 t + 1) on (0, 1)
     found = validated_integral(1 / (1 + x**2), x, 0, oo, 12)
     assert found is not None and _holds(found[0], found[1], pi / 2) and found[1] < Float('1e-12')
-    # exp(-x) transformed is unbounded near t = 1 for the interval evaluator
-    assert validated_integral(exp(-x), x, 0, oo) is None or True
+    # the twenty digits need the Gauss rule: Simpson would take millions of panels
+    found = validated_integral(1 / (1 + x**2), x, 0, oo, 20)
+    assert found is not None and _holds(found[0], found[1], pi / 2) and found[1] < Float('1e-20')
+
+
+def test_exponential_decay() -> None:
+    # x = -log(1 - t) makes exp(-x) into 1 and x*exp(-x) into -log(1 - t),
+    # a logarithmic singularity at t = 1 bounded by the endpoint model
+    for f, exact in [(exp(-x), 1), (x * exp(-x), 1), (x**2 * exp(-2 * x), Rational(1, 4)),
+                     (exp(-x) * sin(x), Rational(1, 2))]:
+        found = validated_integral(f, x, 0, oo)
+        assert found is not None and _holds(found[0], found[1], exact) and found[1] < Float('1e-14'), f
+    # the Gaussian decay: x = sqrt(s) on [1, oo) first
+    found = validated_integral(exp(-x**2), x, 0, oo)
+    assert found is not None and _holds(found[0], found[1], sqrt(pi) / 2) and found[1] < Float('1e-15')
+    found = validated_integral(exp(-x**2), x, -oo, oo, 12)
+    assert found is not None and _holds(found[0], found[1], sqrt(pi)) and found[1] < Float('1e-12')
+
+
+def test_thirty_digits_on_a_smooth_integrand() -> None:
+    # the five-point Gauss rule with the bound from the tenth derivative
+    found = validated_integral(exp(-x**2), x, 0, 1, 30)
+    assert found is not None and found[1] < Float('1e-30')
+    assert _holds(found[0], found[1], sqrt(pi) * erf(1) / 2)
+
+
+def test_power_singularities() -> None:
+    # x = u**q removes (x - a)**(p/q); the endpoint model would also do
+    for f, exact in [(x**Rational(-1, 2), 2), (x**Rational(-1, 3), Rational(3, 2)),
+                     ((1 - x)**Rational(-2, 3), 3), (x**Rational(-1, 2) * (1 - x)**Rational(-1, 2), pi)]:
+        found = validated_integral(f, x, 0, 1)
+        assert found is not None and _holds(found[0], found[1], exact) and found[1] < Float('1e-15'), f
+
+
+def test_logarithmic_singularities() -> None:
+    # bounded near 0 by Integral(|c| v**alpha |log v|**j, (v, 0, h))
+    for f, exact in [(log(x), -1), (log(x)**2, 2), (x * log(x), Rational(-1, 4)),
+                     (log(1 - x), -1), (sqrt(x) * log(x), Rational(-4, 9))]:
+        found = validated_integral(f, x, 0, 1)
+        assert found is not None and _holds(found[0], found[1], exact) and found[1] < Float('1e-15'), f
+
+
+def test_oscillatory_tail() -> None:
+    # sin(x)/x: the removable singularity at 0 through the Taylor remainder,
+    # the tail integrated by parts and bounded by Bonnet's theorem
+    found = validated_integral(sin(x) / x, x, 0, oo, 8)
+    assert found is not None and _holds(found[0], found[1], pi / 2) and found[1] < Float('1e-8')
+    found = validated_integral(cos(x) / (1 + x**2), x, 0, oo, 8)
+    assert found is not None and _holds(found[0], found[1], pi / (2 * exp(1))) and found[1] < Float('1e-8')
 
 
 def test_square_root_singularities() -> None:
@@ -60,9 +107,9 @@ def test_the_bernoulli_integral() -> None:
     # Integral(x**x, (x, 0, 1)) = 0.7834305107121344... (no closed form);
     # the fourth derivative is unbounded at 0, so the first panel is bounded
     # by the range x**x in [0, 1] and shrunk towards 0
-    found = validated_integral(x**x, x, 0, 1, 6)
+    found = validated_integral(x**x, x, 0, 1, 10)
     assert found is not None
-    assert _holds(found[0], found[1], Float('0.7834305107121344')) and found[1] < Float('1e-5')
+    assert _holds(found[0], found[1], Float('0.7834305107121344')) and found[1] < Float('1e-10')
 
 
 def test_error_bounds_are_never_optimistic() -> None:
@@ -74,7 +121,6 @@ def test_error_bounds_are_never_optimistic() -> None:
         exact = sum((c * Rational(2**(k + 1) - 1, k + 1) for k, c in enumerate(coefficients)), S.Zero)
         found = validated_integral(f, x, 1, 2, 12)
         assert found is not None and _holds(found[0], found[1], exact), f
-    # a transcendental one against the antiderivative
     # a transcendental one against the antiderivative
     # ((x - 1) sin(x) + x cos(x)) exp(x)/2 - exp(x) cos(x)/2 ... taken from integrate
     from sympy import integrate

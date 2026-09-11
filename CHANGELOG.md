@@ -61,9 +61,14 @@ remove public functions. Breaking changes are listed here when they happen.
   `risch-typing` (sympy/sympy#30282) as the starting point.
 
 - `sympy_extras.integrals.validated`: validated numerical integration
-  (composite Simpson with the fourth derivative enclosed in interval
-  arithmetic, a proved error bound), `definite_integral(..., numeric=True)`
-  as the answer of last resort for integrals without parameters.
+  (composite Simpson and five-point Gauss–Legendre with the derivatives
+  enclosed in interval arithmetic in centred form, a proved error bound;
+  algebraic and logarithmic endpoint singularities bounded by closed
+  forms or removed by power substitutions, removable singularities by the
+  Taylor remainder, infinite ranges by the exponential and rational maps
+  with oscillatory tails integrated by parts), `definite_integral(...,
+  numeric=True)` as the answer of last resort for integrals without
+  parameters; thirty digits of `exp(-x**2)` on `(0, 1)` in a second.
 
 - `sympy_extras.integrals.reduction`: reduction-based creative telescoping
   for hyperexponential integrands (Hermite reduction with the shell of
