@@ -10,8 +10,13 @@
 # copyright the SymPy Development Team) applies to this file: see
 # LICENSE-SymPy in this directory.
 """This module implements tools for integrating rational functions. """
+# Type annotations for sympy-extras (strict mypy), after Aaron Meurer's branch
+# risch-typing, sympy/sympy#30282, where the functions coincide.
 from __future__ import annotations
 
+from typing import Optional, Union
+
+from sympy.core.expr import Expr
 from sympy.core.function import Lambda
 from sympy.core.numbers import I
 from sympy.core.singleton import S
@@ -23,8 +28,11 @@ from sympy.polys.polytools import cancel
 from sympy.polys.rootoftools import RootSum
 from sympy.polys import Poly, resultant, ZZ
 
+from sympy_extras._typing import as_expr
 
-def ratint(f, x, **flags):
+
+def ratint(f: Union[Expr, tuple[Expr, Expr]], x: Symbol, *, symbol: Union[str, Symbol] = 't',
+           real: Optional[bool] = None) -> Expr:
     """
     Performs indefinite integration of rational functions.
 
@@ -59,11 +67,11 @@ def ratint(f, x, **flags):
 
     """
     if isinstance(f, tuple):
-        p, q = f
+        numerator, denominator = f
     else:
-        p, q = f.as_numer_denom()
+        numerator, denominator = f.as_numer_denom()
 
-    p, q = Poly(p, x, composite=False, field=True), Poly(q, x, composite=False, field=True)
+    p, q = Poly(numerator, x, composite=False, field=True), Poly(denominator, x, composite=False, field=True)
 
     coeff, p, q = p.cancel(q)
     poly, p = p.div(q)
@@ -71,22 +79,20 @@ def ratint(f, x, **flags):
     result = poly.integrate(x).as_expr()
 
     if p.is_zero:
-        return coeff*result
+        return as_expr(coeff*result)
 
     g, h = ratint_ratpart(p, q, x)
 
-    P, Q = h.as_numer_denom()
+    P_expr, Q_expr = h.as_numer_denom()
 
-    P = Poly(P, x)
-    Q = Poly(Q, x)
+    P = Poly(P_expr, x)
+    Q = Poly(Q_expr, x)
 
-    q, r = P.div(Q)
+    quotient, r = P.div(Q)
 
-    result += g + q.integrate(x).as_expr()
+    result += g + quotient.integrate(x).as_expr()
 
     if not r.is_zero:
-        symbol = flags.get('symbol', 't')
-
         if not isinstance(symbol, Symbol):
             t = Dummy(symbol)
         else:
@@ -94,12 +100,9 @@ def ratint(f, x, **flags):
 
         L = ratint_logpart(r, Q, x, t)
 
-        real = flags.get('real')
-
         if real is None:
             if isinstance(f, tuple):
-                p, q = f
-                atoms = p.atoms() | q.atoms()
+                atoms = f[0].atoms() | f[1].atoms()
             else:
                 atoms = f.atoms()
 
@@ -110,30 +113,30 @@ def ratint(f, x, **flags):
             else:
                 real = True
 
-        eps = S.Zero
+        eps: Expr = S.Zero
 
         if not real:
-            for h, q in L:
-                _, h = h.primitive()
+            for h_part, q_part in L:
+                _, h_part = h_part.primitive()
                 eps += RootSum(
-                    q, Lambda(t, t*log(h.as_expr())), quadratic=True)
+                    q_part, Lambda(t, t*log(h_part.as_expr())), quadratic=True)
         else:
-            for h, q in L:
-                _, h = h.primitive()
-                R = log_to_real(h, q, x, t)
+            for h_part, q_part in L:
+                _, h_part = h_part.primitive()
+                R = log_to_real(h_part, q_part, x, t)
 
                 if R is not None:
                     eps += R
                 else:
                     eps += RootSum(
-                        q, Lambda(t, t*log(h.as_expr())), quadratic=True)
+                        q_part, Lambda(t, t*log(h_part.as_expr())), quadratic=True)
 
         result += eps
 
-    return coeff*result
+    return as_expr(coeff*result)
 
 
-def ratint_ratpart(f, g, x):
+def ratint_ratpart(f: Union[Poly, Expr], g: Union[Poly, Expr], x: Symbol) -> tuple[Expr, Expr]:
     """
     Horowitz-Ostrogradsky algorithm.
 
@@ -193,10 +196,11 @@ def ratint_ratpart(f, g, x):
     rat_part = cancel(A/u.as_expr(), x)
     log_part = cancel(B/v.as_expr(), x)
 
-    return rat_part, log_part
+    return as_expr(rat_part), as_expr(log_part)
 
 
-def ratint_logpart(f, g, x, t=None):
+def ratint_logpart(f: Union[Poly, Expr], g: Union[Poly, Expr], x: Symbol,
+                   t: Optional[Symbol] = None) -> list[tuple[Poly, Poly]]:
     r"""
     Lazard-Rioboo-Trager algorithm.
 
@@ -250,12 +254,13 @@ def ratint_logpart(f, g, x, t=None):
 
     assert res, "BUG: resultant(%s, %s) cannot be zero" % (a, b)
 
-    R_map, H = {}, []
+    R_map: dict[int, Poly] = {}
+    H: list[tuple[Poly, Poly]] = []
 
     for r in R:
         R_map[r.degree()] = r
 
-    def _include_sign(c, sqf):
+    def _include_sign(c: Expr, sqf: list[tuple[Poly, int]]) -> None:
         if c.is_extended_real and (c < 0) == True:
             h, k = sqf[0]
             c_poly = c.as_poly(h.gens)
@@ -293,7 +298,7 @@ def ratint_logpart(f, g, x, t=None):
     return H
 
 
-def log_to_atan(f, g):
+def log_to_atan(f: Poly, g: Poly) -> Expr:
     """
     Convert complex logarithms to real arctangents.
 
@@ -333,16 +338,16 @@ def log_to_atan(f, g):
     p, q = f.div(g)
 
     if q.is_zero:
-        return 2*atan(p.as_expr())
+        return as_expr(2*atan(p.as_expr()))
     else:
         s, t, h = g.gcdex(-f)
         u = (f*s + g*t).quo(h)
         A = 2*atan(u.as_expr())
 
-        return A + log_to_atan(s, t)
+        return as_expr(A + log_to_atan(s, t))
 
 
-def _roots_real_complex(poly):
+def _roots_real_complex(poly: Poly) -> Optional[tuple[dict[Expr, int], dict[tuple[Expr, Expr], int]]]:
     """Try to separate real and complex roots of a polynomial.
 
     Returns expressions for all roots counting multiplicity or None.
@@ -355,8 +360,8 @@ def _roots_real_complex(poly):
     if sum(rs.values()) != poly.degree():
         return None
 
-    reals = {}
-    complexes = {}
+    reals: dict[Expr, int] = {}
+    complexes: dict[tuple[Expr, Expr], int] = {}
 
     remaining = list(rs)
 
@@ -376,7 +381,7 @@ def _roots_real_complex(poly):
     return reals, complexes
 
 
-def log_to_real(h, q, x, t, complex_only=False):
+def log_to_real(h: Poly, q: Poly, x: Symbol, t: Symbol, complex_only: bool = False) -> Optional[Expr]:
     r"""
     Convert complex logarithms to real functions.
 
@@ -435,7 +440,7 @@ def log_to_real(h, q, x, t, complex_only=False):
 
     a, b = H_map.get(S.One, S.Zero), H_map.get(I, S.Zero)
 
-    result = S.Zero
+    result: Expr = S.Zero
 
     for r_u, r_v in complexes:
 
@@ -452,4 +457,4 @@ def log_to_real(h, q, x, t, complex_only=False):
     for r in reals:
         result += r*log(h.as_expr().subs(t, r))
 
-    return result
+    return as_expr(result)

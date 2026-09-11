@@ -31,20 +31,37 @@ k[t].
 See Chapter 6 of "Symbolic Integration I: Transcendental Functions" by
 Manuel Bronstein.  See also the docstring of risch.py.
 """
+# Type annotations for sympy-extras (strict mypy), after Aaron Meurer's branch
+# risch-typing, sympy/sympy#30282, where the functions coincide.
 from __future__ import annotations
 
 from operator import mul
 from functools import reduce
+from typing import Optional, Union
 
 from sympy.core import oo
-from sympy.core.symbol import Dummy
+from sympy.core.expr import Expr
+from sympy.core.symbol import Dummy, Symbol
 
 from sympy.polys import Poly, gcd, ZZ, cancel
 
-from .risch import (gcdex_diophantine, frac_in, derivation,
+from .risch import (gcdex_diophantine, frac_in, derivation, DifferentialExtension,
     splitfactor, NonElementaryIntegralException, DecrementLevel, recognize_log_derivative)
 
-def order_at(a, p, t):
+#: a degree bound: an integer, or ``oo`` (and SymPy's integers)
+Degree = Union[int, Expr]
+
+
+def finite(n: Degree) -> int:
+    """The degree bound as a Python integer; ``ValueError`` for ``oo``
+    (the algorithms iterating over the degrees need a finite bound)."""
+    if isinstance(n, int):
+        return n
+    if n == oo or not n.is_Integer:
+        raise ValueError("a finite degree bound is needed, got %s" % (n,))
+    return int(n)
+
+def order_at(a: Poly, p: Poly, t: Symbol) -> Degree:
     """
     Computes the order of a at p, with respect to t.
 
@@ -89,7 +106,7 @@ def order_at(a, p, t):
     return n
 
 
-def order_at_oo(a, d, t):
+def order_at_oo(a: Poly, d: Poly, t: Symbol) -> Degree:
     """
     Computes the order of a/d at oo (infinity), with respect to t.
 
@@ -104,7 +121,8 @@ def order_at_oo(a, d, t):
     return d.degree(t) - a.degree(t)
 
 
-def weak_normalizer(a, d, DE, z=None):
+def weak_normalizer(a: Poly, d: Poly, DE: DifferentialExtension,
+                    z: Optional[Symbol] = None) -> tuple[Poly, tuple[Poly, Poly]]:
     """
     Weak normalization.
 
@@ -157,7 +175,8 @@ def weak_normalizer(a, d, DE, z=None):
     return (q, (sn, sd))
 
 
-def normal_denom(fa, fd, ga, gd, DE):
+def normal_denom(fa: Poly, fd: Poly, ga: Poly, gd: Poly, DE: DifferentialExtension
+                 ) -> tuple[Poly, tuple[Poly, Poly], tuple[Poly, Poly], Poly]:
     """
     Normal part of the denominator.
 
@@ -196,7 +215,8 @@ def normal_denom(fa, fd, ga, gd, DE):
     return (a, (ba, bd), (ca, cd), h)
 
 
-def _special_denom_cancel_bound(a, ba, bd, n, DE, case):
+def _special_denom_cancel_bound(a: Poly, ba: Poly, bd: Poly, n: Degree, DE: DifferentialExtension,
+                                case: str) -> Degree:
     """
     Sharpen the bound n on the special part of the denominator in the
     possible-cancellation case nu_p(b) == 0.
@@ -261,7 +281,8 @@ def _special_denom_cancel_bound(a, ba, bd, n, DE, case):
     return n
 
 
-def special_denom(a, ba, bd, ca, cd, DE, case='auto'):
+def special_denom(a: Poly, ba: Poly, bd: Poly, ca: Poly, cd: Poly, DE: DifferentialExtension,
+                  case: str = 'auto') -> tuple[Poly, Poly, Poly, Poly]:
     """
     Special part of the denominator.
 
@@ -327,7 +348,8 @@ def special_denom(a, ba, bd, ca, cd, DE, case='auto'):
     return (A, B, C, h)
 
 
-def bound_degree(a, b, cQ, DE, case='auto', parametric=False):
+def bound_degree(a: Poly, b: Poly, cQ: Union[Poly, list[Poly]], DE: DifferentialExtension,
+                 case: str = 'auto', parametric: bool = False) -> Degree:
     """
     Bound on polynomial solutions.
 
@@ -356,7 +378,7 @@ def bound_degree(a, b, cQ, DE, case='auto', parametric=False):
     db = b.degree(DE.t)
 
     # The parametric and regular cases are identical, except for this part
-    if parametric:
+    if isinstance(cQ, list):
         dc = max(i.degree(DE.t) for i in cQ)
     else:
         dc = cQ.degree(DE.t)
@@ -388,10 +410,10 @@ def bound_degree(a, b, cQ, DE, case='auto', parametric=False):
                 except NonElementaryIntegralException:
                     A = None
                 if A is not None:
-                    (za, zd), m = A
-                    if len(m) != 1:
+                    (za, zd), m_list = A
+                    if len(m_list) != 1:
                         raise ValueError("Length of m should be 1")
-                    m = m[0].as_expr()
+                    m = m_list[0].as_expr()
                     if m.is_Integer:
                         n = max(n, m)
 
@@ -401,9 +423,9 @@ def bound_degree(a, b, cQ, DE, case='auto', parametric=False):
                     # if beta == m*Dt + Dw for w in k and m in ZZ:
                         # n = max(n, m)
                 from .prde import is_log_deriv_k_t_radical_in_field
-                A = is_log_deriv_k_t_radical_in_field(alphaa, alphad, DE)
-                if A is not None:
-                    aa, z = A
+                radical = is_log_deriv_k_t_radical_in_field(alphaa, alphad, DE)
+                if radical is not None:
+                    aa, z = radical
                     if aa == 1:
                         beta = -(a*derivation(z, DE, basic=True).as_poly(t1) +
                             b*z.as_poly(t1)).LC()/(z.as_expr()*a.LC())
@@ -415,10 +437,10 @@ def bound_degree(a, b, cQ, DE, case='auto', parametric=False):
                         except NonElementaryIntegralException:
                             A = None
                         if A is not None:
-                            (za, zd), m = A
-                            if len(m) != 1:
+                            (za, zd), m_list = A
+                            if len(m_list) != 1:
                                 raise ValueError("Length of m should be 1")
-                            m = m[0].as_expr()
+                            m = m_list[0].as_expr()
                             if m.is_Integer:
                                 n = max(n, m)
 
@@ -430,13 +452,13 @@ def bound_degree(a, b, cQ, DE, case='auto', parametric=False):
             etaa, etad = frac_in(DE.d.quo(Poly(DE.t, DE.t)), DE.T[DE.level - 1])
             with DecrementLevel(DE):
                 alphaa, alphad = frac_in(alpha, DE.t)
-                A = parametric_log_deriv(alphaa, alphad, etaa, etad, DE)
-                if A is not None:
+                found = parametric_log_deriv(alphaa, alphad, etaa, etad, DE)
+                if found is not None:
                     # if alpha == m*Dt/t + Dz/z for z in k* and m in ZZ:
                         # n = max(n, m)
-                    a, m, z = A
-                    if a == 1:
-                        n = max(n, m)
+                    a_found, m_found, z_found = found
+                    if a_found == 1:
+                        n = max(n, m_found)
 
     elif case in ('tan', 'other_nonlinear'):
         delta = DE.d.degree(DE.t)
@@ -456,7 +478,8 @@ def bound_degree(a, b, cQ, DE, case='auto', parametric=False):
     return n
 
 
-def spde(a, b, c, n, DE):
+def spde(a: Poly, b: Poly, c: Poly, n: Degree, DE: DifferentialExtension
+         ) -> tuple[Poly, Poly, Degree, Poly, Poly]:
     """
     Rothstein's Special Polynomial Differential Equation algorithm.
 
@@ -528,7 +551,7 @@ def spde(a, b, c, n, DE):
         beta += alpha * r
         alpha *= a
 
-def no_cancel_b_large(b, c, n, DE):
+def no_cancel_b_large(b: Poly, c: Poly, n: Degree, DE: DifferentialExtension) -> Poly:
     """
     Poly Risch Differential Equation - No cancellation: deg(b) large enough.
 
@@ -561,7 +584,8 @@ def no_cancel_b_large(b, c, n, DE):
     return q
 
 
-def no_cancel_b_small(b, c, n, DE):
+def no_cancel_b_small(b: Poly, c: Poly, n: Degree, DE: DifferentialExtension
+                      ) -> Union[Poly, tuple[Poly, Poly, Poly]]:
     """
     Poly Risch Differential Equation - No cancellation: deg(b) small enough.
 
@@ -611,7 +635,8 @@ def no_cancel_b_small(b, c, n, DE):
 
 
 # TODO: better name for this function
-def no_cancel_equal(b, c, n, DE):
+def no_cancel_equal(b: Poly, c: Poly, n: Degree, DE: DifferentialExtension
+                    ) -> Union[Poly, tuple[Poly, Degree, Poly]]:
     """
     Poly Risch Differential Equation - No cancellation: deg(b) == deg(D) - 1
 
@@ -666,7 +691,7 @@ def no_cancel_equal(b, c, n, DE):
     return q
 
 
-def cancel_primitive(b, c, n, DE):
+def cancel_primitive(b: Poly, c: Poly, n: Degree, DE: DifferentialExtension) -> Poly:
     """
     Poly Risch Differential Equation - Cancellation: Primitive case.
 
@@ -736,7 +761,7 @@ def cancel_primitive(b, c, n, DE):
     return q
 
 
-def cancel_exp(b, c, n, DE):
+def cancel_exp(b: Poly, c: Poly, n: Degree, DE: DifferentialExtension) -> Poly:
     """
     Poly Risch Differential Equation - Cancellation: Hyperexponential case.
 
@@ -830,7 +855,7 @@ def cancel_exp(b, c, n, DE):
     return q
 
 
-def cancel_tan(b0, c, n, DE):
+def cancel_tan(b0: Poly, c: Poly, n: Degree, DE: DifferentialExtension) -> Poly:
     """
     Poly Risch Differential Equation - Cancellation: Tangent case.
 
@@ -921,7 +946,7 @@ def cancel_tan(b0, c, n, DE):
     return p*h + r
 
 
-def _no_cancel_equal_applies(b, n, DE):
+def _no_cancel_equal_applies(b: Poly, n: Degree, DE: DifferentialExtension) -> bool:
     """
     Whether no_cancel_equal() decides the deg(b) == deg(Dt) - 1 case.
 
@@ -966,7 +991,7 @@ def _no_cancel_equal_applies(b, n, DE):
         "parameters in solve_poly_rde().")
 
 
-def solve_poly_rde(b, c, n, DE):
+def solve_poly_rde(b: Poly, c: Poly, n: Degree, DE: DifferentialExtension) -> Poly:
     """
     Solve a Polynomial Risch Differential Equation with degree bound ``n``.
 
@@ -1006,12 +1031,12 @@ def solve_poly_rde(b, c, n, DE):
     elif DE.d.degree(DE.t) >= 2 and b.degree(DE.t) == DE.d.degree(DE.t) - 1 and \
             _no_cancel_equal_applies(b, n, DE):
 
-        R = no_cancel_equal(b, c, n, DE)
+        found = no_cancel_equal(b, c, n, DE)
 
-        if isinstance(R, Poly):
-            return R
+        if isinstance(found, Poly):
+            return found
         else:
-            h, m, C = R
+            h, m, C = found
             # XXX: Or should it be rischDE()?
             y = solve_poly_rde(b, C, m, DE)
             return h + y
@@ -1063,7 +1088,7 @@ def solve_poly_rde(b, c, n, DE):
                     "cases are not yet implemented (%s)." % DE.case)
 
 
-def rischDE(fa, fd, ga, gd, DE):
+def rischDE(fa: Poly, fd: Poly, ga: Poly, gd: Poly, DE: DifferentialExtension) -> tuple[Poly, Poly]:
     """
     Solve a Risch Differential Equation: Dy + f*y == g.
 

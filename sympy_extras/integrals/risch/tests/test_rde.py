@@ -17,7 +17,7 @@ from sympy.abc import x, t, z, n
 t0, t1, t2, k = symbols('t:3 k')
 
 
-def test_order_at():
+def test_order_at() -> None:
     a = Poly(t**4, t)
     b = Poly((t**2 + 1)**3*t, t)
     c = Poly((t**2 + 1)**6*t, t)
@@ -40,7 +40,7 @@ def test_order_at():
         order_at_oo(Poly(t - 1, t), Poly(1, t), t) == -1
     assert order_at_oo(Poly(0, t), Poly(1, t), t) is oo
 
-def test_weak_normalizer():
+def test_weak_normalizer() -> None:
     a = Poly((1 + x)*t**5 + 4*t**4 + (-1 - 3*x)*t**3 - 4*t**2 + (-2 + 2*x)*t, t)
     d = Poly(t**4 - 3*t**2 + 2, t)
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
@@ -58,7 +58,7 @@ def test_weak_normalizer():
     assert weak_normalizer(r[1][0], r[1][1], DE, z) == (Poly(1, t), r[1])
 
 
-def test_normal_denom():
+def test_normal_denom() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
     raises(NonElementaryIntegralException, lambda: normal_denom(Poly(1, x), Poly(1, x),
     Poly(1, x), Poly(x, x), DE))
@@ -70,7 +70,7 @@ def test_normal_denom():
         Poly(1, t)), Poly(t, t))
 
 
-def test_special_denom():
+def test_special_denom() -> None:
     # TODO: add more tests here
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
     assert special_denom(Poly(1, t), Poly(t**2, t), Poly(1, t), Poly(t**2 - 1, t),
@@ -140,7 +140,7 @@ def test_special_denom():
     assert _special_denom_cancel_bound(Poly(1, t), Poly(2*t, t),
         Poly(1, t), 0, DE, 'tan') == -1
 
-def test_bound_degree_fail():
+def test_bound_degree_fail() -> None:
     # Primitive
     DE = DifferentialExtension(extension={'D': [Poly(1, x),
         Poly(t0/x**2, t0), Poly(1/x, t)]})
@@ -149,7 +149,7 @@ def test_bound_degree_fail():
         t), DE) == 3
 
 
-def test_bound_degree():
+def test_bound_degree() -> None:
     # Base
     DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
     assert bound_degree(Poly(1, x), Poly(-2*x, x), Poly(1, x), DE) == 0
@@ -167,7 +167,7 @@ def test_bound_degree():
     assert bound_degree(Poly(t, t), Poly((t - 1)*(t**2 + 1), t), Poly(1, t), DE) == 0
 
 
-def test_bound_degree_rational_z():
+def test_bound_degree_rational_z() -> None:
     # Primitive case with deg(a) == deg(b) and alpha == 1/(x*(x + 1)) ==
     # Dz/z for z == x/(x + 1) -- a proper ratio in k*, so derivation(z, DE)
     # inside bound_degree() needs basic=True (z is not polynomial in the
@@ -186,7 +186,7 @@ def test_bound_degree_rational_z():
         y/(x*(x + 1)) - (x + 1 - t)/(x*(x + 1))) == 0
 
 
-def test_bound_degree_undecidable():
+def test_bound_degree_undecidable() -> None:
     # Exp case with deg(a) == deg(b) and alpha == -lc(b)/lc(a) == 1/(x + 1):
     # deciding whether alpha == m*Dt/t + Dz/z requires log(x + 1), which is
     # not in the tower, so parametric_log_deriv() cannot decide and
@@ -202,7 +202,7 @@ def test_bound_degree_undecidable():
         Poly(-t1/(x + 1), t1, field=True), [Poly(1, t1)], DE, parametric=True))
 
 
-def test_spde():
+def test_spde() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)]})
     raises(NonElementaryIntegralException, lambda: spde(Poly(t, t), Poly((t - 1)*(t**2 + 1), t), Poly(1, t), 0, DE))
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
@@ -247,7 +247,7 @@ def test_spde():
         (Poly(t/2, t, domain='QQ'), Poly(t/2, t, domain='QQ'), oo,
          Poly(1, t, domain='ZZ'), Poly(0, t, domain='ZZ'))
 
-def test_solve_poly_rde_no_cancel():
+def test_solve_poly_rde_no_cancel() -> None:
     # deg(b) large
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1 + t**2, t)]})
     assert solve_poly_rde(Poly(t**2 + 1, t), Poly(t**3 + (x + 1)*t**2 + t + x + 2, t),
@@ -278,7 +278,7 @@ def test_solve_poly_rde_no_cancel():
         (Poly(0, t), 3, Poly(t**2 + 1, t))
 
 
-def test_solve_poly_rde_cancel():
+def test_solve_poly_rde_cancel() -> None:
     # exp
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
     assert cancel_exp(Poly(2*x, t), Poly(2*x, t), 0, DE) == \
@@ -369,7 +369,7 @@ def test_solve_poly_rde_cancel():
         Poly(0, t), Poly(t/x, t), 1, DE))
 
 
-def test_cancel_tan():
+def test_cancel_tan() -> None:
     # t = tan(x)
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)]})
     # Example 6.6.1: Dq + (1 - t)*q == -2*(x + 1)*t - 2*x with n == 1
@@ -467,7 +467,7 @@ def test_cancel_tan():
         Poly(1, t), 2, DE))
 
 
-def test_rischDE():
+def test_rischDE() -> None:
     # TODO: Add more tests for rischDE, including ones from the text
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
     DE.decrement_level()

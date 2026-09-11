@@ -56,9 +56,9 @@ remove public functions. Breaking changes are listed here when they happen.
   on SymPy 1.14 with the tests of the branches, under SymPy's BSD licence
   with attribution; `risch_antiderivative` and `is_nonelementary` are the
   typed entry points and the antiderivative method of `definite_integral`
-  uses it first. The ported modules are excluded from the strict typing
-  by a per-module mypy override (an exception to the typing rule, see
-  issue #15).
+  uses it first. The ported modules are strictly typed like the rest of
+  the package (issue #54), with the annotations of Aaron Meurer's branch
+  `risch-typing` (sympy/sympy#30282) as the starting point.
 
 - `sympy_extras.integrals.elliptic`: square roots of cubics and quartics
   reduced to Legendre's elliptic integrals (Byrd–Friedman's substitutions,

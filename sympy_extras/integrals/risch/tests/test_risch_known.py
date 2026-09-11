@@ -7,17 +7,18 @@ from __future__ import annotations
 from sympy import symbols, tan, exp, log, atan, cancel, together, diff, S, sin, cos
 from sympy.integrals.integrals import Integral
 
+from sympy_extras._typing import as_expr
 from sympy_extras.integrals.risch import risch_antiderivative, is_nonelementary
 
 x = symbols('x')
 
 
 def _check(f: object, expected: object) -> None:
-    found = risch_antiderivative(S(f), x)
+    found = risch_antiderivative(as_expr(f), x)
     assert found is not None, f
-    assert cancel(together(diff(found, x) - S(f))) == 0, (f, found)
+    assert cancel(together(diff(found, x) - as_expr(f))) == 0, (f, found)
     if expected is not None:
-        assert found == S(expected), (found, expected)
+        assert found == as_expr(expected), (found, expected)
 
 
 def test_hypertangent_towers() -> None:

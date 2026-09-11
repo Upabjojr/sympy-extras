@@ -46,20 +46,22 @@ a with sqrt(a) not in k(t), but the integration algorithm only ever
 generates a == -1, and the hypertangent case of Section 8.4 requires
 it.
 """
+# Type annotations for sympy-extras (strict mypy).
 from __future__ import annotations
 
+from sympy.core.expr import Expr
 from sympy.core.numbers import I, oo
 from .polymatrix import PolyMatrix as Matrix
 from sympy.polys.polytools import Poly, cancel
 
 from .prde import (is_deriv_in_field, is_log_deriv_k_t_radical_in_field,
     parametric_log_deriv, param_rischDE, real_imag)
-from .rde import rischDE
+from .rde import rischDE, Degree
 from .risch import (DecrementLevel, NonElementaryIntegralException,
-    derivation, frac_in)
+    DifferentialExtension, derivation, frac_in)
 
 
-def conjugate_expr(e):
+def conjugate_expr(e: Expr) -> Expr:
     """
     The complex conjugate of ``e``, an expression whose only nonreal
     subexpression is an explicit ``I``.
@@ -76,7 +78,7 @@ def conjugate_expr(e):
     return e.subs(I, -I)
 
 
-def real_imag_expr(e):
+def real_imag_expr(e: Expr) -> tuple[Expr, Expr]:
     """
     The real and imaginary parts of ``e``, an expression whose only
     nonreal subexpression is an explicit ``I``.
@@ -91,7 +93,8 @@ def real_imag_expr(e):
     return (cancel((e + conj)/2), cancel((e - conj)/(2*I)))
 
 
-def coupled_DE_system(f1, f2, g1, g2, DE):
+def coupled_DE_system(f1: tuple[Poly, Poly], f2: tuple[Poly, Poly], g1: tuple[Poly, Poly], g2: tuple[Poly, Poly],
+                      DE: DifferentialExtension) -> tuple[tuple[Poly, Poly], tuple[Poly, Poly]]:
     """
     Solve a Coupled Differential System: Dy1 + f1*y1 - f2*y2 == g1,
     Dy2 + f2*y1 + f1*y2 == g2.
@@ -128,7 +131,8 @@ def coupled_DE_system(f1, f2, g1, g2, DE):
     return (frac_in(y1, DE.t, cancel=True), frac_in(y2, DE.t, cancel=True))
 
 
-def param_coupled_DE_system(f1, f2, G, DE):
+def param_coupled_DE_system(f1: tuple[Poly, Poly], f2: tuple[Poly, Poly], G: list[tuple[tuple[Poly, Poly], tuple[Poly, Poly]]],
+                            DE: DifferentialExtension) -> tuple[list[tuple[tuple[Poly, Poly], tuple[Poly, Poly]]], Matrix]:
     """
     Solve a Parametric Coupled Differential System.
 
@@ -187,7 +191,7 @@ def param_coupled_DE_system(f1, f2, G, DE):
         H.append((frac_in(-y2, DE.t, cancel=True),
             frac_in(y1, DE.t, cancel=True)))
 
-    def entry(i, j):
+    def entry(i: int, j: int) -> Expr:
         if i < A.rows:
             # Real part of row i: A1c*c + A1d*d1 - A2d*d2 == 0.
             if j < m + rc:
@@ -202,7 +206,8 @@ def param_coupled_DE_system(f1, f2, G, DE):
     return (H, Matrix(2*A.rows, m + 2*rc, entry, DE.t))
 
 
-def coupled_DE_cancel_prim(b1, b2, c1, c2, DE, n):
+def coupled_DE_cancel_prim(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: DifferentialExtension,
+                           n: Degree) -> tuple[Poly, Poly]:
     """
     Coupled Differential System - Cancellation: Primitive case.
 
@@ -298,7 +303,8 @@ def coupled_DE_cancel_prim(b1, b2, c1, c2, DE, n):
     return (q1, q2)
 
 
-def coupled_DE_cancel_exp(b1, b2, c1, c2, DE, n):
+def coupled_DE_cancel_exp(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: DifferentialExtension,
+                          n: Degree) -> tuple[Poly, Poly]:
     """
     Coupled Differential System - Cancellation: Hyperexponential case.
 
@@ -332,7 +338,8 @@ def coupled_DE_cancel_exp(b1, b2, c1, c2, DE, n):
         A = parametric_log_deriv(ba, bd, etaa, etad, DE)
 
     if A is not None:
-        a, m, z = A
+        a, m, z_found = A
+        z = z_found.as_expr() if isinstance(z_found, Poly) else z_found
         if a == 1:
             # b1 + b2*sqrt(-1) == Dz/z + m*Dt/t, so
             # D(z*t**m*q) == z*t**m*(Dq + b*q) for
@@ -424,7 +431,8 @@ def coupled_DE_cancel_exp(b1, b2, c1, c2, DE, n):
     return (q1, q2)
 
 
-def coupled_DE_cancel_tan(b0, b2, c1, c2, DE, n):
+def coupled_DE_cancel_tan(b0: Poly, b2: Poly, c1: Poly, c2: Poly, DE: DifferentialExtension,
+                          n: Degree) -> tuple[Poly, Poly]:
     """
     Coupled Differential System - Cancellation: Hypertangent case.
 

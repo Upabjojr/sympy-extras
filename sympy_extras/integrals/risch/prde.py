@@ -25,16 +25,21 @@ right hand side of the equation (i.e., gi in k(t)), and Q is a list of terms on
 the right hand side of the equation (i.e., qi in k[t]).  See the docstring of
 each function for more information.
 """
+# Type annotations for sympy-extras (strict mypy), after Aaron Meurer's branch
+# risch-typing, sympy/sympy#30282, where the functions coincide.
 from __future__ import annotations
 import itertools
 from functools import reduce
+from typing import Optional, Sequence, Union
 
 from sympy.core.intfunc import ilcm, igcd
 from sympy.core import Dummy, Add, Mul, Pow, S
+from sympy.core.expr import Expr
 from sympy.core.numbers import I, oo
-from .rde import (order_at, order_at_oo, weak_normalizer,
+from sympy.core.symbol import Symbol
+from .rde import (order_at, order_at_oo, weak_normalizer, Degree, finite,
     bound_degree, _special_denom_cancel_bound, _no_cancel_equal_applies)
-from .risch import (gcdex_diophantine, frac_in, derivation,
+from .risch import (gcdex_diophantine, frac_in, derivation, DifferentialExtension,
     residue_reduce, splitfactor, residue_reduce_derivation, DecrementLevel)
 from sympy.polys import Poly, lcm, cancel, sqf_list
 from .polymatrix import PolyMatrix as Matrix
@@ -44,7 +49,8 @@ zeros = Matrix.zeros
 eye = Matrix.eye
 
 
-def prde_normal_denom(fa, fd, G, DE):
+def prde_normal_denom(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: DifferentialExtension
+                      ) -> tuple[Poly, tuple[Poly, Poly], list[tuple[Poly, Poly]], Poly]:
     """
     Parametric Risch Differential Equation - Normal part of the denominator.
 
@@ -78,7 +84,7 @@ def prde_normal_denom(fa, fd, G, DE):
 
     return (a, (ba, bd), G, h)
 
-def real_imag(ba, bd, gen):
+def real_imag(ba: Poly, bd: Poly, gen: Symbol) -> tuple[Poly, Poly, Poly]:
     """
     Helper function, to get the real and imaginary part of a rational function
     evaluated at sqrt(-1) without actually evaluating it at sqrt(-1).
@@ -91,22 +97,24 @@ def real_imag(ba, bd, gen):
     of the numerator ba[1] is the imaginary part and bd is the denominator
     of the rational function.
     """
-    bd = bd.as_poly(gen).as_dict()
-    ba = ba.as_poly(gen).as_dict()
-    denom_real = [value if key[0] % 4 == 0 else -value if key[0] % 4 == 2 else 0 for key, value in bd.items()]
-    denom_imag = [value if key[0] % 4 == 1 else -value if key[0] % 4 == 3 else 0 for key, value in bd.items()]
+    bd_dict = bd.as_poly(gen).as_dict()
+    ba_dict = ba.as_poly(gen).as_dict()
+    denom_real = [value if key[0] % 4 == 0 else -value if key[0] % 4 == 2 else 0 for key, value in bd_dict.items()]
+    denom_imag = [value if key[0] % 4 == 1 else -value if key[0] % 4 == 3 else 0 for key, value in bd_dict.items()]
     bd_real = sum(denom_real, S.Zero)
     bd_imag = sum(denom_imag, S.Zero)
-    num_real = [value if key[0] % 4 == 0 else -value if key[0] % 4 == 2 else 0 for key, value in ba.items()]
-    num_imag = [value if key[0] % 4 == 1 else -value if key[0] % 4 == 3 else 0 for key, value in ba.items()]
+    num_real = [value if key[0] % 4 == 0 else -value if key[0] % 4 == 2 else 0 for key, value in ba_dict.items()]
+    num_imag = [value if key[0] % 4 == 1 else -value if key[0] % 4 == 3 else 0 for key, value in ba_dict.items()]
     ba_real = sum(num_real, S.Zero)
     ba_imag = sum(num_imag, S.Zero)
-    ba = (Poly(ba_real*bd_real + ba_imag*bd_imag, gen), Poly(ba_imag*bd_real - ba_real*bd_imag, gen))
-    bd = Poly(bd_real*bd_real + bd_imag*bd_imag, gen)
-    return (ba[0], ba[1], bd)
+    real_part = Poly(ba_real*bd_real + ba_imag*bd_imag, gen)
+    imag_part = Poly(ba_imag*bd_real - ba_real*bd_imag, gen)
+    denominator = Poly(bd_real*bd_real + bd_imag*bd_imag, gen)
+    return (real_part, imag_part, denominator)
 
 
-def prde_special_denom(a, ba, bd, G, DE, case='auto'):
+def prde_special_denom(a: Poly, ba: Poly, bd: Poly, G: list[tuple[Poly, Poly]], DE: DifferentialExtension,
+                       case: str = 'auto') -> tuple[Poly, Poly, list[tuple[Poly, Poly]], Poly]:
     """
     Parametric Risch Differential Equation - Special part of the denominator.
 
@@ -172,7 +180,7 @@ def prde_special_denom(a, ba, bd, G, DE, case='auto'):
     return (A, B, G, h)
 
 
-def prde_linear_constraints(a, b, G, DE):
+def prde_linear_constraints(a: Poly, b: Poly, G: list[tuple[Poly, Poly]], DE: DifferentialExtension) -> tuple[tuple[Poly, ...], Matrix]:
     """
     Parametric Risch Differential Equation - Generate linear constraints on the constants.
 
@@ -207,7 +215,7 @@ def prde_linear_constraints(a, b, G, DE):
     qs, _ = list(zip(*Q))
     return (qs, M)
 
-def poly_linear_constraints(p, d):
+def poly_linear_constraints(p: Sequence[Poly], d: Poly) -> tuple[tuple[Poly, ...], Matrix]:
     """
     Given p = [p1, ..., pm] in k[t]^m and d in k[t], return
     q = [q1, ..., qm] in k[t]^m and a matrix M with entries in k such
@@ -229,7 +237,7 @@ def poly_linear_constraints(p, d):
 
     return q, M
 
-def constant_system(A, u, DE):
+def constant_system(A: Matrix, u: Matrix, DE: DifferentialExtension) -> tuple[Matrix, Matrix]:
     """
     Generate a system for the constant solutions.
 
@@ -323,7 +331,8 @@ def constant_system(A, u, DE):
     return (A, u)
 
 
-def prde_spde(a, b, Q, n, DE):
+def prde_spde(a: Poly, b: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtension
+              ) -> tuple[Poly, Poly, list[Poly], list[Poly], Degree]:
     """
     Special Polynomial Differential Equation algorithm: Parametric Version.
 
@@ -344,13 +353,12 @@ def prde_spde(a, b, Q, n, DE):
     A = a
     B = b + derivation(a, DE)
     Qq = [zi - derivation(ri, DE) for ri, zi in zip(R, Z)]
-    R = list(R)
     n1 = n - a.degree(DE.t)
 
-    return (A, B, Qq, R, n1)
+    return (A, B, Qq, list(R), n1)
 
 
-def prde_no_cancel_b_large(b, Q, n, DE):
+def prde_no_cancel_b_large(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtension) -> tuple[list[Poly], Matrix]:
     """
     Parametric Poly Risch Differential Equation - No cancellation: deg(b) large enough.
 
@@ -371,7 +379,7 @@ def prde_no_cancel_b_large(b, Q, n, DE):
     m = len(Q)
     H = [Poly(0, DE.t)]*m
 
-    for N, i in itertools.product(range(n, -1, -1), range(m)):  # [n, ..., 0]
+    for N, i in itertools.product(range(finite(n), -1, -1), range(m)):  # [n, ..., 0]
         si = Q[i].nth(N + db)/b.LC()
         sitn = Poly(si*DE.t**N, DE.t)
         H[i] = H[i] + sitn
@@ -389,7 +397,7 @@ def prde_no_cancel_b_large(b, Q, n, DE):
     return (H, A)
 
 
-def prde_no_cancel_b_small(b, Q, n, DE):
+def prde_no_cancel_b_small(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtension) -> tuple[list[Poly], Matrix]:
     """
     Parametric Poly Risch Differential Equation - No cancellation: deg(b) small enough.
 
@@ -409,7 +417,7 @@ def prde_no_cancel_b_small(b, Q, n, DE):
     m = len(Q)
     H = [Poly(0, DE.t)]*m
 
-    for N, i in itertools.product(range(n, 0, -1), range(m)):  # [n, ..., 1]
+    for N, i in itertools.product(range(finite(n), 0, -1), range(m)):  # [n, ..., 1]
         si = Q[i].nth(N + DE.d.degree(DE.t) - 1)/(N*DE.d.LC())
         sitn = Poly(si*DE.t**N, DE.t)
         H[i] = H[i] + sitn
@@ -451,7 +459,7 @@ def prde_no_cancel_b_small(b, Q, n, DE):
         # Transform fractions (fa, fd) in f into constant
         # polynomials fa/fd in k[t].
         # (Is there a better way?)
-        f = [Poly(fa.as_expr()/fd.as_expr(), t, field=True)
+        f_polys = [Poly(fa.as_expr()/fd.as_expr(), t, field=True)
              for fa, fd in f]
         B = Matrix.from_Matrix(B.to_Matrix(), t)
     else:
@@ -460,7 +468,7 @@ def prde_no_cancel_b_small(b, Q, n, DE):
         # Sum(ci*qi) == 0 in which case the solutions are
         # y = d1*f1 for f1 = 1 and any d1 in Const(k) = k.
 
-        f = [Poly(1, t, field=True)]  # r = 1
+        f_polys = [Poly(1, t, field=True)]  # r = 1
         B = Matrix([[qi.TC() for qi in Q] + [S.Zero]], DE.t)
         # The condition for solvability is
         # B*Matrix([c1, ..., cm, d1]) == 0
@@ -483,16 +491,16 @@ def prde_no_cancel_b_small(b, Q, n, DE):
 
     # Build combined constraint matrix with m + r + m columns.
 
-    r = len(f)
+    r = len(f_polys)
     I = eye(m, DE.t)
     A = A.row_join(zeros(A.rows, r + m, DE.t))
     B = B.row_join(zeros(B.rows, m, DE.t))
     C = I.row_join(zeros(m, r, DE.t)).row_join(-I)
 
-    return f + H, A.col_join(B).col_join(C)
+    return f_polys + H, A.col_join(B).col_join(C)
 
 
-def prde_no_cancel_b_equal(b, Q, n, DE):
+def prde_no_cancel_b_equal(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtension) -> tuple[list[Poly], Matrix]:
     """
     Parametric Poly Risch Differential Equation - No cancellation: deg(b) == delta(t) - 1
 
@@ -543,7 +551,7 @@ def prde_no_cancel_b_equal(b, Q, n, DE):
 
     H = [Poly(0, DE.t)]*m
 
-    for N in range(n, M, -1):  # [n, ..., M + 1]
+    for N in range(finite(n), M, -1):  # [n, ..., M + 1]
         u = cancel(N*lam + b.LC())  # nonzero, since N != -lc(b)/lam
         for i in range(m):
             si = Q[i].nth(N + delta - 1)/u
@@ -582,7 +590,7 @@ def prde_no_cancel_b_equal(b, Q, n, DE):
     return (H + f, top.col_join(bottom))
 
 
-def prde_cancel_liouvillian(b, Q, n, DE):
+def prde_cancel_liouvillian(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtension) -> tuple[list[Poly], Matrix]:
     """
     Parametric Poly Risch Differential Equation - Cancellation: Liouvillian case.
 
@@ -609,15 +617,16 @@ def prde_cancel_liouvillian(b, Q, n, DE):
         with DecrementLevel(DE):
             ba, bd = frac_in(b, DE.t, field=True)
 
-    for i in range(n, -1, -1):
+    M: Matrix = eye(0, DE.t)
+    for i in range(finite(n), -1, -1):
         if DE.case == 'exp': # this re-checking can be avoided
             with DecrementLevel(DE):
                 ba, bd = frac_in(b.as_expr() + i*eta, DE.t, field=True)
         with DecrementLevel(DE):
             Qy = [frac_in(q.nth(i), DE.t, field=True) for q in Q]
-            fi, Ai = param_rischDE(ba, bd, Qy, DE)
+            fi_fractions, Ai = param_rischDE(ba, bd, Qy, DE)
         fi = [Poly(fa.as_expr()/fd.as_expr(), DE.t, field=True)
-                for fa, fd in fi]
+                for fa, fd in fi_fractions]
         Ai = Ai.set_gens(DE.t)
 
         ri = len(fi)
@@ -627,7 +636,8 @@ def prde_cancel_liouvillian(b, Q, n, DE):
         else:
             M = Ai.col_join(M.row_join(zeros(M.rows, ri, DE.t)))
 
-        Fi, hi = [None]*ri, [None]*ri
+        Fi: list[Poly] = []
+        hi: list[Poly] = []
 
         # Substituting q == d*h + q_rest into Dq + b*q == Sum(ci*qi)
         # leaves the residual equation
@@ -636,9 +646,9 @@ def prde_cancel_liouvillian(b, Q, n, DE):
         # the b*h term is misprinted as a minus in the 1st edition).
         for j in range(ri):
             hji = fi[j] * (DE.t**i).as_poly(fi[j].gens)
-            hi[j] = hji
+            hi.append(hji)
             # building up Sum(dji*(D(fji*t^i) + b*fji*t^i))
-            Fi[j] = -(derivation(hji, DE) + b*hji)
+            Fi.append(-(derivation(hji, DE) + b*hji))
 
         H += hi
         # in the next loop instead of Q it has
@@ -648,7 +658,7 @@ def prde_cancel_liouvillian(b, Q, n, DE):
     return (H, M)
 
 
-def prde_cancel_tan(b0, Q, n, DE):
+def prde_cancel_tan(b0: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtension) -> tuple[list[Poly], Matrix]:
     """
     Parametric Poly Risch Differential Equation - Cancellation: Tangent case.
 
@@ -752,7 +762,7 @@ def prde_cancel_tan(b0, Q, n, DE):
     return (H, M)
 
 
-def param_poly_rischDE(a, b, q, n, DE):
+def param_poly_rischDE(a: Poly, b: Poly, q: list[Poly], n: Degree, DE: DifferentialExtension) -> tuple[list[Poly], Matrix]:
     """Polynomial solutions of a parametric Risch differential equation.
 
     Explanation
@@ -904,7 +914,8 @@ def param_poly_rischDE(a, b, q, n, DE):
     return h, A
 
 
-def _prde_normalized_solve(A, B, G, gamma, DE, n=None):
+def _prde_normalized_solve(A: Poly, B: Poly, G: list[tuple[Poly, Poly]], gamma: Poly, DE: DifferentialExtension,
+                           n: Optional[Degree] = None) -> tuple[list[tuple[Poly, Poly]], Matrix]:
     """
     Common tail of param_rischDE() and limited_integrate().
 
@@ -978,7 +989,7 @@ def _prde_normalized_solve(A, B, G, gamma, DE, n=None):
         # bound.
         n = bound_degree(a, b, r, DE, parametric=True)
 
-    h, B = param_poly_rischDE(a, b, r, n, DE)
+    h, relation_B = param_poly_rischDE(a, b, r, n, DE)
 
     # h = [h1, ..., hv] in k[t]^v and and B is a matrix with u + v
     # columns and entries in Const(k) such that
@@ -990,15 +1001,15 @@ def _prde_normalized_solve(A, B, G, gamma, DE, n=None):
 
     ## Build combined relation matrix with m + u + v columns.
 
-    A = -eye(m, DE.t)
+    relation = -eye(m, DE.t)
     for vj in V:
-        A = A.row_join(vj)
-    A = A.row_join(zeros(m, len(h), DE.t))
-    A = A.col_join(zeros(B.rows, m, DE.t).row_join(B))
+        relation = relation.row_join(vj)
+    relation = relation.row_join(zeros(m, len(h), DE.t))
+    relation = relation.col_join(zeros(relation_B.rows, m, DE.t).row_join(relation_B))
 
     ## Eliminate d1, ..., du.
 
-    W = A.nullspace()
+    W = relation.nullspace()
 
     # W = [w1, ..., wt] where each wl is a column matrix with
     # entries blk (k = 1, ..., m + u + v) in Const(k).
@@ -1027,7 +1038,7 @@ def _prde_normalized_solve(A, B, G, gamma, DE, n=None):
     return [hk.cancel(gamma, include=True) for hk in h], C
 
 
-def param_rischDE(fa, fd, G, DE):
+def param_rischDE(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: DifferentialExtension) -> tuple[list[tuple[Poly, Poly]], Matrix]:
     """
     Solve a Parametric Risch Differential Equation: Dy + f*y == Sum(ci*Gi, (i, 1, m)).
 
@@ -1067,7 +1078,8 @@ def param_rischDE(fa, fd, G, DE):
     return _prde_normalized_solve(A, B, G, gamma, DE)
 
 
-def limited_integrate_reduce(fa, fd, G, DE):
+def limited_integrate_reduce(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: DifferentialExtension
+                             ) -> tuple[Poly, Poly, Poly, Degree, tuple[Poly, Poly], list[tuple[Poly, Poly]]]:
     """
     Simpler version of step 1 & 2 for the limited integration problem.
 
@@ -1127,7 +1139,8 @@ def limited_integrate_reduce(fa, fd, G, DE):
     return (hn, b, a, N, (a*hn*fa).cancel(fd, include=True), V)
 
 
-def limited_integrate(fa, fd, G, DE):
+def limited_integrate(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: DifferentialExtension
+                      ) -> Optional[tuple[tuple[Poly, Poly], list[Poly]]]:
     """
     Solves the limited integration problem:  f = Dv + Sum(ci*wi, (i, 1, n))
 
@@ -1161,16 +1174,16 @@ def limited_integrate(fa, fd, G, DE):
     w = W[0]/W[0][0]
     r = len(hs)
     m = len(w) - r - 1
-    C = list(w[1: m + 1])
+    constants = list(w[1: m + 1])
     y = sum((w[m + 1 + i]*hs[i][0].as_expr()/hs[i][1].as_expr()
             for i in range(r)), S.Zero)
     y_num, y_den = y.as_numer_denom()
     Ya, Yd = Poly(y_num, DE.t), Poly(y_den, DE.t)
     Y = Ya*Poly(1/Yd.LC(), DE.t), Yd.monic()
-    return Y, C
+    return Y, constants
 
 
-def is_deriv_in_field(fa, fd, DE):
+def is_deriv_in_field(fa: Poly, fd: Poly, DE: DifferentialExtension) -> Optional[tuple[Poly, Poly]]:
     """
     Checks if f can be written as the derivative of an element of k(t).
 
@@ -1200,7 +1213,8 @@ def is_deriv_in_field(fa, fd, DE):
     return (va, vd)
 
 
-def parametric_log_deriv_heu(fa, fd, wa, wd, DE, c1=None):
+def parametric_log_deriv_heu(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: DifferentialExtension,
+                             c1: Optional[Symbol] = None) -> Optional[tuple[Degree, Degree, Union[Poly, Expr]]]:
     """
     Parametric logarithmic derivative heuristic.
 
@@ -1278,7 +1292,7 @@ def parametric_log_deriv_heu(fa, fd, wa, wd, DE, c1=None):
 
         Q, v = Qv
 
-        if Q.is_zero or v.is_zero:
+        if Q == 0 or v.is_zero:
             return None
 
         return (Q*N, Q*M, v)
@@ -1345,7 +1359,7 @@ def parametric_log_deriv_heu(fa, fd, wa, wd, DE, c1=None):
 
             Q, v = Qv
 
-            if Q.is_zero or v.is_zero:
+            if Q == 0 or v.is_zero:
                 return None
 
             return (Q*N, Q*M, v)
@@ -1374,13 +1388,14 @@ def parametric_log_deriv_heu(fa, fd, wa, wd, DE, c1=None):
 
     Q, v = Qv
 
-    if Q.is_zero or v.is_zero:
+    if Q == 0 or v.is_zero:
         return None
 
     return (Q*N, Q*M, v)
 
 
-def parametric_log_deriv_structure(fa, fd, wa, wd, DE):
+def parametric_log_deriv_structure(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: DifferentialExtension
+                                   ) -> Optional[tuple[Degree, Degree, Union[Poly, Expr]]]:
     """
     Parametric logarithmic derivative problem via the structure theorems.
 
@@ -1432,10 +1447,10 @@ def parametric_log_deriv_structure(fa, fd, wa, wd, DE):
     # so solve it explicitly, setting any free parameters to zero.
     Am = A.to_Matrix()
     um = u.to_Matrix()
-    if not (all(i.is_Rational for i in Am) and
-            all(i.is_Rational for i in um)):
+    if not (all(i.is_Rational for i in Am.flat()) and
+            all(i.is_Rational for i in um.flat())):
         if not all(derivation(i, DE, basic=True).is_zero for i in Am.vec()) \
-                or not all(derivation(i, DE, basic=True).is_zero for i in um):
+                or not all(derivation(i, DE, basic=True).is_zero for i in um.flat()):
             # The system could not be reduced to one over the constants
             return None
         raise NotImplementedError("Cannot work with non-rational "
@@ -1471,7 +1486,8 @@ def parametric_log_deriv_structure(fa, fd, wa, wd, DE):
     return (n, m, v)
 
 
-def parametric_log_deriv(fa, fd, wa, wd, DE):
+def parametric_log_deriv(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: DifferentialExtension
+                         ) -> Optional[tuple[Degree, Degree, Union[Poly, Expr]]]:
     """
     Solves the parametric logarithmic derivative problem.
 
@@ -1498,7 +1514,7 @@ def parametric_log_deriv(fa, fd, wa, wd, DE):
     return A
 
 
-def _structure_system_solve(lhs, rhs, DE):
+def _structure_system_solve(lhs: Matrix, rhs: Matrix, DE: DifferentialExtension) -> Optional[list[Expr]]:
     """
     Find a constant solution x of the structure system lhs*x == rhs.
 
@@ -1522,7 +1538,7 @@ def _structure_system_solve(lhs, rhs, DE):
     if not A:
         return None
     um = u.to_Matrix()
-    if not all(derivation(i, DE, basic=True).is_zero for i in um):
+    if not all(derivation(i, DE, basic=True).is_zero for i in um.flat()):
         # No constant solution
         return None
     from sympy.matrices import Matrix as EMatrix
@@ -1556,7 +1572,7 @@ def _structure_system_solve(lhs, rhs, DE):
     return list(xs)
 
 
-def _tower_has_I(DE, *exprs):
+def _tower_has_I(DE: DifferentialExtension, *exprs: Union[Expr, Poly]) -> bool:
     """
     Checks if sqrt(-1) appears explicitly in exprs or in the derivations
     of the tower at or below the current level.
@@ -1566,7 +1582,8 @@ def _tower_has_I(DE, *exprs):
         any(d.as_expr().has(I) for d in DE.D[:top + 1]))
 
 
-def _structure_tower(DE, *exprs, real=False):
+def _structure_tower(DE: DifferentialExtension, *exprs: Union[Expr, Poly],
+                     real: bool = False) -> tuple[list[int], list[int], list[int], list[int]]:
     """
     The index sets E, L, T and A of the tower at the current level.
 
@@ -1601,7 +1618,7 @@ def _structure_tower(DE, *exprs, real=False):
     return E, L, T, A
 
 
-def _structure_solve(parts, rhs, DE):
+def _structure_solve(parts: Sequence[Expr], rhs: Expr, DE: DifferentialExtension) -> Optional[list[Expr]]:
     """
     Solves the structure equation Sum(ri*parts[i]) == rhs for ri in QQ.
 
@@ -1634,7 +1651,7 @@ def _structure_solve(parts, rhs, DE):
     return u
 
 
-def is_deriv_k(fa, fd, DE):
+def is_deriv_k(fa: Poly, fd: Poly, DE: DifferentialExtension) -> Optional[tuple[list[tuple[Expr, Expr]], Expr, Expr]]:
     r"""
     Checks if Df/f is the derivative of an element of k(t).
 
@@ -1736,7 +1753,8 @@ def is_deriv_k(fa, fd, DE):
     return (ans, result, const)
 
 
-def is_log_deriv_k_t_radical(fa, fd, DE, Df=True):
+def is_log_deriv_k_t_radical(fa: Poly, fd: Poly, DE: DifferentialExtension,
+                             Df: bool = True) -> Optional[tuple[list[tuple[Expr, Expr]], Expr, Degree, Expr]]:
     r"""
     Checks if Df is the logarithmic derivative of a k(t)-radical.
 
@@ -1836,7 +1854,7 @@ def is_log_deriv_k_t_radical(fa, fd, DE, Df=True):
     return (ans, result, n, const)
 
 
-def is_deriv_k_atan(fa, fd, DE):
+def is_deriv_k_atan(fa: Poly, fd: Poly, DE: DifferentialExtension) -> Optional[tuple[list[tuple[Expr, Expr]], Expr]]:
     r"""
     Checks if Df/(f**2 + 1) is the derivative of an element of k(t).
 
@@ -1928,7 +1946,8 @@ def is_deriv_k_atan(fa, fd, DE):
     return (ans, result)
 
 
-def is_log_deriv_k_t_radical_tan(fa, fd, DE):
+def is_log_deriv_k_t_radical_tan(fa: Poly, fd: Poly, DE: DifferentialExtension
+                                 ) -> Optional[tuple[list[tuple[Expr, Expr]], Expr, Degree, Expr]]:
     r"""
     Checks if sqrt(-1)*Df is the logarithmic derivative of a
     k(t)(sqrt(-1))-radical.
@@ -2016,7 +2035,8 @@ def is_log_deriv_k_t_radical_tan(fa, fd, DE):
     return (ans, result, n, const)
 
 
-def is_log_deriv_k_t_radical_in_field(fa, fd, DE, case='auto', z=None):
+def is_log_deriv_k_t_radical_in_field(fa: Poly, fd: Poly, DE: DifferentialExtension, case: str = 'auto',
+                                      z: Optional[Symbol] = None) -> Optional[tuple[Degree, Expr]]:
     """
     Checks if f can be written as the logarithmic derivative of a k(t)-radical.
 
@@ -2049,8 +2069,8 @@ def is_log_deriv_k_t_radical_in_field(fa, fd, DE, case='auto', z=None):
     fa, fd = fa.cancel(fd, include=True)
 
     # f must be simple
-    n, s = splitfactor(fd, DE)
-    if not s.is_one:
+    dn, ds = splitfactor(fd, DE)
+    if not ds.is_one:
         pass
 
     z = z or Dummy('z')
@@ -2072,7 +2092,7 @@ def is_log_deriv_k_t_radical_in_field(fa, fd, DE, case='auto', z=None):
 
     # [(a, i), ...], where i*log(a) is a term in the log-part of the integral
     # of f
-    respolys, residues = list(zip(*roots)) or [[], []]
+    respolys, residues = list(zip(*roots)) or [(), ()]
     # Note: this might be empty, but everything below should work find in that
     # case (it should be the same as if it were [[1, 1]])
     residueterms = [(H[j][1].subs(z, i), i) for j in range(len(H)) for
@@ -2098,21 +2118,20 @@ def is_log_deriv_k_t_radical_in_field(fa, fd, DE, case='auto', z=None):
         with DecrementLevel(DE):
             pa, pd = frac_in(p, DE.t, cancel=True)
             wa, wd = frac_in((wa, wd), DE.t)
-            A = parametric_log_deriv(pa, pd, wa, wd, DE)
-        if A is None:
+            found = parametric_log_deriv(pa, pd, wa, wd, DE)
+        if found is None:
             return None
-        n, e, u = A
-        if isinstance(u, Poly):
-            u = u.as_expr()
+        n, e, u_found = found
+        u = u_found.as_expr() if isinstance(u_found, Poly) else u_found
         u *= DE.t**e
 
     elif case == 'primitive':
         with DecrementLevel(DE):
             pa, pd = frac_in(p, DE.t)
-            A = is_log_deriv_k_t_radical_in_field(pa, pd, DE, case='auto')
-        if A is None:
+            radical = is_log_deriv_k_t_radical_in_field(pa, pd, DE, case='auto')
+        if radical is None:
             return None
-        n, u = A
+        n, u = radical
 
     elif case == 'base':
         # TODO: we can use more efficient residue reduction from ratint()
@@ -2141,15 +2160,17 @@ def is_log_deriv_k_t_radical_in_field(fa, fd, DE, case='auto', z=None):
         ratio = cancel(b/(2*eta))
         if not ratio.is_Rational:
             return None
+        na: Degree
+        v: Expr
         if a == 0:
             na, v = S.One, S.One
         else:
             with DecrementLevel(DE):
                 aa, ad = frac_in(a, DE.t)
-                A = is_log_deriv_k_t_radical_in_field(aa, ad, DE, case='auto')
-            if A is None:
+                radical = is_log_deriv_k_t_radical_in_field(aa, ad, DE, case='auto')
+            if radical is None:
                 return None
-            na, v = A
+            na, v = radical
         n = S.One*ilcm(na, ratio.q)
         u = v**(n/na)*(DE.t**2 + 1)**(n*ratio)
 

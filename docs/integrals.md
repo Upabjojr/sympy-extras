@@ -290,10 +290,9 @@ transcendental algorithm, experimental) and #30282 (type annotations)
 are documented there and not ported. The port is self-contained on
 SymPy 1.14 and keeps the tests of the branches. `risch_antiderivative`
 returns an antiderivative or `None` (nonelementary, or a case still
-unimplemented); `is_nonelementary` is the decision. The ported modules
-are not strictly typed: they are excluded from mypy's checks by a
-per-module override in `pyproject.toml`, an exception to the typing
-rule of `AGENTS.md` made for ported code.
+unimplemented); `is_nonelementary` is the decision. The ported modules are strictly
+typed like the rest of the package, with the annotations of Aaron
+Meurer's branch `risch-typing` (sympy/sympy#30282) as the starting point.
 
 ```python
 >>> from sympy import symbols, tan, exp, log

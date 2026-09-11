@@ -9,6 +9,8 @@
 # self-contained on the released SymPy. SymPy's licence (BSD 3-clause,
 # copyright the SymPy Development Team) applies to this file: see
 # LICENSE-SymPy in this directory.
+# Type annotations for sympy-extras (strict mypy), after Aaron Meurer's
+# branch risch-typing, sympy/sympy#30282, where the functions coincide.
 """
 The Risch Algorithm for transcendental function integration.
 
@@ -35,10 +37,13 @@ will return the fraction (fa, fd). Other variable names probably come
 from the names used in Bronstein's book.
 """
 from __future__ import annotations
-from types import GeneratorType
+from types import GeneratorType, TracebackType
 from functools import reduce
+from typing import Callable, Iterable, Iterator, Literal, Optional, Sequence, TypeVar, Union, overload
 
 from sympy.core.add import Add
+from sympy.core.basic import Basic
+from sympy.core.expr import Expr
 from sympy.core.function import Lambda, count_ops, expand, expand_trig
 from sympy.core.exprtools import factor_terms
 from sympy.core.mul import Mul
@@ -65,8 +70,25 @@ from sympy.polys.polytools import (real_roots, cancel, Poly, gcd,
 from sympy.polys.rootoftools import RootSum
 from sympy.utilities.iterables import numbered_symbols
 
+from sympy_extras._typing import ExprLike, as_expr
 
-def integer_powers(exprs):
+#: the type of an extension of the tower, exts[i] describing T[i + 1]
+_Extension = Literal['exp', 'log', 'tan', 'atan']
+#: the case of a derivation, as classified by get_case()
+_Case = Literal['base', 'primitive', 'exp', 'tan', 'other_linear',
+    'other_nonlinear']
+#: an element of k(t): an expression, a polynomial or a fraction (fa, fd)
+_Fraction = Union[Expr, Poly, tuple[Union[Expr, Poly], Union[Expr, Poly]]]
+
+_T = TypeVar('_T')
+
+
+def _arg(e: Basic) -> Expr:
+    """The (first) argument of the function application ``e``."""
+    return as_expr(e.args[0])
+
+
+def integer_powers(exprs: Iterable[Expr]) -> list[tuple[Expr, list[tuple[Expr, Expr]]]]:
     """
     Rewrites a list of expressions as integer multiples of each other.
 
@@ -107,7 +129,7 @@ def integer_powers(exprs):
     # cancel(a/b).is_Rational is sufficient for this.  If it is a multiple, we
     # add its multiple to the dictionary.
 
-    terms = {}
+    terms: dict[Expr, list[tuple[Expr, Expr]]] = {}
     for term in exprs:
         for trm, trm_list in terms.items():
             a = cancel(term/trm)
@@ -122,7 +144,7 @@ def integer_powers(exprs):
     # integer multiples such that each term can be written as an integer
     # multiple of the base term, and the content of the integers is 1.
 
-    newterms = {}
+    newterms: dict[Expr, list[tuple[Expr, Expr]]] = {}
     for term, term_list in terms.items():
         common_denom = reduce(ilcm, [i.as_numer_denom()[1] for _, i in
             term_list])
@@ -133,7 +155,8 @@ def integer_powers(exprs):
     return sorted(iter(newterms.items()), key=lambda item: item[0].sort_key())
 
 
-def _half_angle_to_sincos(expr, tang, theta, x=None):
+def _half_angle_to_sincos(expr: Expr, tang: Expr, theta: Expr,
+        x: Optional[Symbol] = None) -> Expr:
     """
     Rewrite the rational functions of ``tang`` == tan(theta/2) in ``expr``
     as rational functions of sin(theta) and cos(theta).
@@ -169,10 +192,10 @@ def _half_angle_to_sincos(expr, tang, theta, x=None):
     T, s, c = Dummy('T'), Dummy('s'), Dummy('c')
     sincos = {s: sin(theta), c: cos(theta)}
 
-    def dropconst(e):
+    def dropconst(e: Expr) -> Expr:
         return Add(*[i for i in Add.make_args(e) if i.has(x)])
 
-    def forms(e, top=False):
+    def forms(e: Expr, top: bool = False) -> list[Expr]:
         # The candidate forms of the rational function e of T: the
         # sine/cosine forms, then the tangent form
         n, d = fraction(cancel(e))
@@ -181,7 +204,7 @@ def _half_angle_to_sincos(expr, tang, theta, x=None):
         # t == s/(1 + c), with the powers of 1 + c cleared
         n, d = [Add(*[coeff*s**k*(1 + c)**(m - k)
             for (k,), coeff in p.terms()]) for p in (n, d)]
-        cands = []
+        cands: list[Expr] = []
         for lin, other in ((s, c), (c, s)):
             G = Poly(lin**2 + other**2 - 1, lin, other)
             nl = Poly(n, lin, other).rem(G)
@@ -193,7 +216,7 @@ def _half_angle_to_sincos(expr, tang, theta, x=None):
                 nl = Poly(nl.as_expr()*conj, lin, other).rem(G)
                 dl = Poly(dl.as_expr()*conj, lin, other).rem(G)
                 cands.append(nl.as_expr()/dl.as_expr())
-        out = []
+        out: list[Expr] = []
         for i in cands:
             ni, di = fraction(cancel(i))
             if not di.has(s, c):
@@ -212,7 +235,7 @@ def _half_angle_to_sincos(expr, tang, theta, x=None):
         out.append(e.xreplace({T: tang}))
         return out
 
-    def pick(cands, key=count_ops):
+    def pick(cands: Sequence[_T], key: Callable[[_T], Expr] = count_ops) -> _T:
         # The first shortest sine/cosine form, unless the tangent form is
         # strictly shorter
         best = min(cands[:-1], key=key)
@@ -220,57 +243,62 @@ def _half_angle_to_sincos(expr, tang, theta, x=None):
             return cands[-1]
         return best
 
-    def rational(e, top=False):
+    def rational(e: Expr, top: bool = False) -> Expr:
         return pick(forms(e, top))
 
-    def logterm(coeff, p):
+    def logterm(coeff: Expr, p: Expr) -> Expr:
         # coeff*log(p) up to a constant: a constant factor and a constant
         # numerator are pulled out of p
-        def strip(q):
+        def strip(q: Expr) -> tuple[Expr, Expr]:
             n, d = [factor_terms(i.primitive()[1]).as_independent(x,
                 as_Add=False)[1] for i in fraction(q)]
             if not n.has(x):
                 return (S.NegativeOne, d)
             return (S.One, n/d)
-        sgn, p = pick([strip(q) for q in forms(p)], lambda i: count_ops(i[1]))
-        return sgn*coeff*log(p)
+        sgn, stripped = pick([strip(q) for q in forms(p)],
+            lambda i: count_ops(i[1]))
+        return sgn*coeff*log(stripped)
 
-    def rw(e):
+    def rw(e: Expr) -> Expr:
         if not e.has(T):
             return e
         if e.is_rational_function(T):
             return rational(e)
+        args = [as_expr(i) for i in e.args]
         if e.is_Add or e.is_Mul:
-            rat, rest = [], []
-            for i in e.args:
+            rat: list[Expr] = []
+            rest: list[Expr] = []
+            for i in args:
                 if i.has(T) and i.is_rational_function(T):
                     rat.append(i)
                 else:
                     rest.append(rw(i))
             if rat:
                 rest.append(rational(e.func(*rat)))
-            return e.func(*rest)
-        if isinstance(e, atan) and e.args[0].is_polynomial(T):
-            return e.xreplace({T: tang})
-        return e.func(*[rw(i) for i in e.args])
+            return as_expr(e.func(*rest))
+        if isinstance(e, atan) and args[0].is_polynomial(T):
+            return as_expr(e.xreplace({T: tang}))
+        return as_expr(e.func(*[rw(i) for i in args]))
 
-    def top(e):
-        rat, logs, rest = [], [], []
+    def top(e: Expr) -> Expr:
+        rat: list[Expr] = []
+        logs: list[tuple[Expr, Expr]] = []
+        rest: list[Expr] = []
         for i in Add.make_args(e):
             coeff, l = i.as_independent(T)
             if not i.has(T):
                 rest.append(i)
             elif i.is_rational_function(T):
                 rat.append(i)
-            elif (isinstance(l, log) and l.args[0].is_polynomial(T) and
+            elif (isinstance(l, log) and _arg(l).is_polynomial(T) and
                     not coeff.has(x)):
-                logs.append((coeff, l.args[0]))
+                logs.append((coeff, _arg(l)))
             else:
                 rest.append(rw(i))
         if rat:
             rest.append(rational(Add(*rat), top=True))
         # Group the logarithms by commensurable coefficients
-        groups = []
+        groups: list[tuple[Expr, list[tuple[Expr, Expr]]]] = []
         for coeff, p in logs:
             for group in groups:
                 ratio = coeff/group[0]
@@ -284,7 +312,7 @@ def _half_angle_to_sincos(expr, tang, theta, x=None):
                     groups.append((coeff, [(S.One, p)]))
         for r, items in groups:
             separate = Add(*[logterm(r*n, p) for n, p in items])
-            l = ilcm(1, *[n.q for n, p in items])
+            l = ilcm(1, *[n.as_numer_denom()[1] for n, p in items])
             combined = logterm(r/l, Mul(*[p**(n*l) for n, p in items]))
             if count_ops(combined) <= count_ops(separate):
                 rest.append(combined)
@@ -354,7 +382,35 @@ class DifferentialExtension:
         'backsubs', 'sincos_args', 'exts', 'extargs', 'cases', 'case', 't',
         'd', 'newf', 'level', 'ts', 'dummy')
 
-    def __init__(self, f=None, x=None, handle_first='log', dummy=False, extension=None, rewrite_complex=None):
+    # When the extension flag is used, attributes not given in the extension
+    # dictionary are None at runtime (see __getattr__), but the algorithms
+    # assume they are set, so they are annotated with the types they have when
+    # the extension is fully built.
+    f: Expr
+    origf: Expr
+    x: Symbol
+    T: list[Symbol]
+    D: list[Poly]
+    fa: Poly
+    fd: Poly
+    Tfuncs: list[Lambda]
+    backsubs: list[tuple[Expr, Expr]]
+    sincos_args: set[Expr]
+    exts: list[_Extension]
+    extargs: list[Expr]
+    cases: list[_Case]
+    case: _Case
+    t: Symbol
+    d: Poly
+    newf: Expr
+    level: int
+    ts: Iterator[Symbol]
+    dummy: bool
+
+    def __init__(self, f: Optional[Expr] = None, x: Optional[Symbol] = None,
+            handle_first: str = 'log', dummy: bool = False,
+            extension: Optional[dict[str, object]] = None,
+            rewrite_complex: Optional[bool] = None) -> None:
         """
         Tries to build a transcendental extension tower from ``f`` with respect to ``x``.
 
@@ -418,7 +474,8 @@ class DifferentialExtension:
         # rewritten integrand, where the original functions are gone
         self.sincos_args = set()
         self.reset()
-        exp_new_extension, log_new_extension = True, True
+        exp_new_extension: Optional[bool] = True
+        log_new_extension = True
 
         # case of 'automatic' choosing
         if rewrite_complex is None:
@@ -442,14 +499,16 @@ class DifferentialExtension:
                     "rewrite_complex=True.")
             self._rewrite_trig()
 
-        exps = set()
-        pows = set()
-        numpows = set()
-        sympows = set()
-        logs = set()
-        symlogs = set()
-        tans = set()
-        atans = set()
+        # The sets of the original are lists here (update_sets() takes any
+        # iterable and returns a list)
+        exps: list[exp] = []
+        pows: list[Pow] = []
+        numpows: list[Pow] = []
+        sympows: list[Pow] = []
+        logs: list[log] = []
+        symlogs: list[log] = []
+        tans: list[tan] = []
+        atans: list[atan] = []
         tan_new_extension, atan_new_extension = True, True
 
         while True:
@@ -491,12 +550,12 @@ class DifferentialExtension:
                 log_new_extension = self._log_part(logs)
 
             tans = update_sets(tans, self.newf.atoms(tan),
-                lambda i: i.args[0].is_rational_function(*self.T) and
-                i.args[0].has(*self.T))
+                lambda i: _arg(i).is_rational_function(*self.T) and
+                _arg(i).has(*self.T))
             tan_new_extension = self._tan_part(tans)
             atans = update_sets(atans, self.newf.atoms(atan),
-                lambda i: i.args[0].is_rational_function(*self.T) and
-                i.args[0].has(*self.T))
+                lambda i: _arg(i).is_rational_function(*self.T) and
+                _arg(i).has(*self.T))
             atan_new_extension = self._atan_part(atans)
 
         self.fa, self.fd = frac_in(self.newf, self.t)
@@ -504,7 +563,7 @@ class DifferentialExtension:
 
         return
 
-    def _rewrite_trig(self):
+    def _rewrite_trig(self) -> None:
         """
         Rewrite the real trigonometric functions of x in terms of tan and
         atan, which are the functions the tower is built from.
@@ -522,19 +581,19 @@ class DifferentialExtension:
         """
         # xreplace() does not descend into the replacements, so nested
         # functions (e.g. acot(sin(x))) take several passes.
-        acots = {}
+        acots: dict[Expr, Expr] = {}
         while True:
-            reps = {}
+            reps: dict[Expr, Expr] = {}
             for i in self.newf.atoms(sin, cos, sec, csc, cot):
                 if i.has(self.x):
                     reps[i] = i.rewrite(tan)
                     if not isinstance(i, cot):
-                        self.sincos_args.add(i.args[0])
+                        self.sincos_args.add(_arg(i))
             for i in self.newf.atoms(acot):
                 if i.has(self.x):
                     if i not in acots:
                         branch_const = Dummy('acot_branch')
-                        new = atan(1/i.args[0])
+                        new = atan(1/_arg(i))
                         self.backsubs.append((branch_const, i - new))
                         acots[i] = new + branch_const
                     reps[i] = acots[i]
@@ -542,14 +601,27 @@ class DifferentialExtension:
                 return
             self.newf = self.newf.xreplace(reps)
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str) -> None:
         # Avoid AttributeErrors when debugging
         if attr not in self.__slots__:
             raise AttributeError("%s has no attribute %s" % (repr(self), repr(attr)))
         return None
 
-    def _rewrite_exps_pows(self, exps, pows, numpows,
-            sympows, log_new_extension):
+    def _attributes(self) -> list[tuple[str, object]]:
+        """The (name, value) pairs of the attributes in __slots__ (an
+        attribute that is not set is None, see __getattr__)."""
+        return [('f', self.f), ('origf', self.origf), ('x', self.x),
+            ('T', self.T), ('D', self.D), ('fa', self.fa), ('fd', self.fd),
+            ('Tfuncs', self.Tfuncs), ('backsubs', self.backsubs),
+            ('sincos_args', self.sincos_args), ('exts', self.exts),
+            ('extargs', self.extargs), ('cases', self.cases),
+            ('case', self.case), ('t', self.t), ('d', self.d),
+            ('newf', self.newf), ('level', self.level), ('ts', self.ts),
+            ('dummy', self.dummy)]
+
+    def _rewrite_exps_pows(self, exps: list[exp], pows: list[Pow],
+            numpows: list[Pow], sympows: list[Pow], log_new_extension: bool
+            ) -> tuple[list[exp], list[Pow], list[Pow], list[Pow], bool]:
         """
         Rewrite exps/pows for better processing.
         """
@@ -567,11 +639,11 @@ class DifferentialExtension:
         # _exp_part code can generate terms of this form, so we do need to
         # do this at each pass (or else modify it to not do that).
 
-        ratpows = [i for i in self.newf.atoms(Pow)
-                   if (isinstance(i.base, exp) and i.exp.is_Rational)]
-
-        ratpows_repl = [
-            (i, i.base.base**(i.exp*i.base.exp)) for i in ratpows]
+        ratpows_repl: list[tuple[Pow, Expr]] = []
+        for i in self.newf.atoms(Pow):
+            base = i.base
+            if isinstance(base, exp) and i.exp.is_Rational:
+                ratpows_repl.append((i, base.base**(i.exp*base.exp)))
         # exp(u)**q == exp(q*u) is exact for integer q, but for
         # fractional q the left side is a principal root that differs
         # from exp(q*u) by a locally constant root of unity off the real
@@ -587,7 +659,7 @@ class DifferentialExtension:
         # component), restored exactly on backsubstitution -- which also
         # keeps integrands mixing exp(u)**q with exp(q*u) itself
         # pointwise correct.
-        subs_map = {}
+        subs_map: dict[Expr, Expr] = {}
         for i, j in ratpows_repl:
             if i.exp.is_Integer:
                 self.backsubs.append((j, i))
@@ -680,16 +752,17 @@ class DifferentialExtension:
 
         return exps, pows, numpows, sympows, log_new_extension
 
-    def _rewrite_logs(self, logs, symlogs):
+    def _rewrite_logs(self, logs: list[log], symlogs: list[log]
+            ) -> tuple[list[log], list[log]]:
         """
         Rewrite logs for better processing.
         """
         atoms = self.newf.atoms(log)
         logs = update_sets(logs, atoms,
-            lambda i: i.args[0].is_rational_function(*self.T) and
-            i.args[0].has(*self.T))
+            lambda i: _arg(i).is_rational_function(*self.T) and
+            _arg(i).has(*self.T))
         symlogs = update_sets(symlogs, atoms,
-            lambda i: i.has(*self.T) and i.args[0].is_Pow and
+            lambda i: i.has(*self.T) and isinstance(i.args[0], Pow) and
             i.args[0].base.is_rational_function(*self.T) and
             not i.args[0].exp.is_Integer)
 
@@ -714,7 +787,7 @@ class DifferentialExtension:
 
         return logs, symlogs
 
-    def _auto_attrs(self):
+    def _auto_attrs(self) -> None:
         """
         Set attributes that are generated automatically.
         """
@@ -729,7 +802,7 @@ class DifferentialExtension:
         self.d = self.D[self.level]
         self.case = self.cases[self.level]
 
-    def _exp_part(self, exps):
+    def _exp_part(self, exps: list[exp]) -> Optional[bool]:
         """
         Try to build an exponential extension.
 
@@ -825,6 +898,7 @@ class DifferentialExtension:
                 self.exts.append('exp')
                 self.D.append(darg.as_poly(self.t, expand=False)*Poly(self.t,
                     self.t, expand=False))
+                i: Symbol
                 if self.dummy:
                     i = Dummy("i")
                 else:
@@ -838,7 +912,7 @@ class DifferentialExtension:
             return None
         return new_extension
 
-    def _log_part(self, logs):
+    def _log_part(self, logs: list[log]) -> bool:
         """
         Try to build a logarithmic extension.
 
@@ -855,7 +929,7 @@ class DifferentialExtension:
         """
         from .prde import is_deriv_k
         new_extension = False
-        logargs = [i.args[0] for i in logs]
+        logargs = [_arg(i) for i in logs]
         for arg in ordered(logargs):
             # The log case is easier, because whenever a logarithm is algebraic
             # over the base field, it is of the form a1*t1 + ... an*tn + c,
@@ -873,7 +947,8 @@ class DifferentialExtension:
                 # single tower logarithm with coefficient one and a
                 # positive constant: log(c*w) == log(c) + log(w) for
                 # c > 0 on the whole complex plane.
-                if (u is not self.x and u in self.T and const.is_positive and
+                if (isinstance(u, Symbol) and u is not self.x and u in self.T
+                        and const.is_positive and
                         self.exts[self.T.index(u) - 1] == 'log'):
                     self.newf = self.newf.xreplace({log(arg): log(const) + u})
                     continue
@@ -908,6 +983,7 @@ class DifferentialExtension:
                 self.exts.append('log')
                 self.D.append(cancel(darg.as_expr()/arg).as_poly(self.t,
                     expand=False))
+                i: Symbol
                 if self.dummy:
                     i = Dummy("i")
                 else:
@@ -918,7 +994,7 @@ class DifferentialExtension:
 
         return new_extension
 
-    def _tan_part(self, tans):
+    def _tan_part(self, tans: list[tan]) -> bool:
         """
         Try to build a hypertangent extension.
 
@@ -941,13 +1017,14 @@ class DifferentialExtension:
         # that, unlike the exponential case, the rewriting through tan(g)
         # is an exact identity wherever the functions are defined, so no
         # branch constants are needed.
-        split = {}
-        for i in tans:
-            c, g = i.args[0].as_independent(*self.T, as_Add=True)
-            split.setdefault(g, []).append((i, c))
+        split: dict[Expr, list[tuple[tan, Expr]]] = {}
+        for ti in tans:
+            c, g = _arg(ti).as_independent(*self.T, as_Add=True)
+            split.setdefault(g, []).append((ti, c))
         for g, others in integer_powers(list(split)):
             ga, gd = frac_in(g, self.t)
             A = is_log_deriv_k_t_radical_tan(ga, gd, self)
+            tang: Expr
             if A is None:
                 darga = (gd*derivation(Poly(ga, self.t), self) -
                     ga*derivation(Poly(gd, self.t), self))
@@ -960,6 +1037,7 @@ class DifferentialExtension:
                 self.exts.append('tan')
                 self.D.append(darg.as_poly(self.t, expand=False)*Poly(
                     self.t**2 + 1, self.t, expand=False))
+                i: Symbol
                 if self.dummy:
                     i = Dummy("i")
                 else:
@@ -977,9 +1055,9 @@ class DifferentialExtension:
                 # integer ri; each termi is either the argument of a
                 # tangent generator (tan(termi) is that generator) or an
                 # arc-tangent generator (tan(termi) is its argument).
-                tanterms = []
+                tanterms: list[tuple[Expr, Expr]] = []
                 for term, r in ans:
-                    if term in self.T:
+                    if isinstance(term, Symbol) and term in self.T:
                         tanterms.append((self.extargs[self.T.index(term) - 1], r))
                     else:
                         tanterms.append((self.T[self.extargs.index(term) + 1], r))
@@ -992,7 +1070,7 @@ class DifferentialExtension:
         return new_extension
 
     @staticmethod
-    def _tan_combination(tanterms, c):
+    def _tan_combination(tanterms: list[tuple[Expr, Expr]], c: Expr) -> Expr:
         """
         tan(Sum(ri*ai) + c) as a rational function of the tan(ai), which
         are given as the list of tuples (tan(ai), ri) with integer ri.
@@ -1003,11 +1081,11 @@ class DifferentialExtension:
         if c != 0:
             arg += cd
         new = expand_trig(tan(arg))
-        reps = {tan(y): i for (i, _), y in zip(tanterms, ys)}
+        reps: dict[Expr, Expr] = {tan(y): i for (i, _), y in zip(tanterms, ys)}
         reps[tan(cd)] = tan(c)
-        return new.xreplace(reps)
+        return as_expr(new.xreplace(reps))
 
-    def _atan_part(self, atans):
+    def _atan_part(self, atans: list[atan]) -> bool:
         """
         Try to build an arc-tangent extension.
 
@@ -1023,7 +1101,7 @@ class DifferentialExtension:
         """
         from .prde import is_deriv_k_atan
         new_extension = False
-        for arg in ordered({i.args[0] for i in atans}):
+        for arg in ordered({_arg(i) for i in atans}):
             arga, argd = frac_in(arg, self.t)
             A = is_deriv_k_atan(arga, argd, self)
             if A is not None:
@@ -1053,6 +1131,7 @@ class DifferentialExtension:
             self.exts.append('atan')
             self.D.append(cancel(darg/(arg**2 + 1)).as_poly(self.t,
                 expand=False))
+            i: Symbol
             if self.dummy:
                 i = Dummy("i")
             else:
@@ -1064,7 +1143,8 @@ class DifferentialExtension:
         return new_extension
 
     @property
-    def _important_attrs(self):
+    def _important_attrs(self) -> tuple[Poly, Poly, list[Poly], list[Symbol],
+            list[Lambda], list[tuple[Expr, Expr]], list[_Extension], list[Expr]]:
         """
         Returns some of the more important attributes of self.
 
@@ -1083,14 +1163,14 @@ class DifferentialExtension:
     # eval(repr(DE)) == DE, where DE is the DifferentialExtension object,
     # also this printing is supposed to contain all the important
     # attributes of a DifferentialExtension object
-    def __repr__(self):
+    def __repr__(self) -> str:
         # no need to have GeneratorType object printed in it
-        r = [(attr, getattr(self, attr)) for attr in self.__slots__
-                if not isinstance(getattr(self, attr), GeneratorType)]
+        r = [(attr, value) for attr, value in self._attributes()
+                if not isinstance(value, GeneratorType)]
         return self.__class__.__name__ + '(dict(%r))' % (r)
 
     # fancy printing of DifferentialExtension object
-    def __str__(self):
+    def __str__(self) -> str:
         return (self.__class__.__name__ + '({fa=%s, fd=%s, D=%s})' %
                 (self.fa, self.fd, self.D))
 
@@ -1098,14 +1178,15 @@ class DifferentialExtension:
     # f1 = f2 = log(x) at different places in code execution
     # may return D1 != D2 as True, since 'level' or other attribute
     # may differ
-    def __eq__(self, other):
-        for attr in self.__class__.__slots__:
-            d1, d2 = getattr(self, attr), getattr(other, attr)
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DifferentialExtension):
+            return NotImplemented
+        for (_, d1), (_, d2) in zip(self._attributes(), other._attributes()):
             if not (isinstance(d1, GeneratorType) or d1 == d2):
                 return False
         return True
 
-    def reset(self):
+    def reset(self) -> None:
         """
         Reset self to an initial state.  Used by __init__.
         """
@@ -1126,7 +1207,7 @@ class DifferentialExtension:
         self.Tfuncs = []
         self.newf = self.f
 
-    def restore_sincos(self, expr, drop_constants=False):
+    def restore_sincos(self, expr: Expr, drop_constants: bool = False) -> Expr:
         """
         Rewrite the half-angle tangents that _rewrite_trig() introduced
         back through the sines and cosines of the original angles.
@@ -1154,9 +1235,9 @@ class DifferentialExtension:
         if not self.sincos_args:
             return expr
         s = list(zip(reversed(self.T), reversed([f(self.x) for f in self.Tfuncs])))
-        usertans = self.origf.atoms(tan) | {tan(i.args[0])
+        usertans = self.origf.atoms(tan) | {tan(_arg(i))
             for i in self.origf.atoms(cot)}
-        done = []
+        done: list[tuple[Expr, Expr]] = []
         for i in self.indices('tan'):
             g = self.extargs[i - 1].subs(s)
             for tang, theta in done:
@@ -1174,7 +1255,7 @@ class DifferentialExtension:
             expr = Add(*[i for i in Add.make_args(expr) if i.has(self.x)])
         return expr
 
-    def indices(self, extension):
+    def indices(self, extension: _Extension) -> list[int]:
         """
         Parameters
         ==========
@@ -1204,7 +1285,7 @@ class DifferentialExtension:
         """
         return [i for i, ext in enumerate(self.exts, 1) if ext == extension]
 
-    def increment_level(self):
+    def increment_level(self) -> None:
         """
         Increment the level of self.
 
@@ -1225,7 +1306,7 @@ class DifferentialExtension:
         self.case = self.cases[self.level]
         return None
 
-    def decrement_level(self):
+    def decrement_level(self) -> None:
         """
         Decrease the level of self.
 
@@ -1247,7 +1328,7 @@ class DifferentialExtension:
         return None
 
 
-def update_sets(seq, atoms, func):
+def update_sets(seq: Iterable[_T], atoms: set[_T], func: Callable[[_T], bool]) -> list[_T]:
     s = set(seq)
     s = atoms.intersection(s)
     new = atoms - s
@@ -1261,14 +1342,18 @@ class DecrementLevel:
     """
     __slots__ = ('DE',)
 
-    def __init__(self, DE):
+    DE: DifferentialExtension
+
+    def __init__(self, DE: DifferentialExtension) -> None:
         self.DE = DE
         return
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         self.DE.decrement_level()
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type: Optional[type[BaseException]],
+            exc_value: Optional[BaseException],
+            traceback: Optional[TracebackType]) -> None:
         self.DE.increment_level()
 
 
@@ -1285,7 +1370,7 @@ class NonElementaryIntegralException(Exception):
     pass
 
 
-def gcdex_diophantine(a, b, c):
+def gcdex_diophantine(a: Poly, b: Poly, c: Poly) -> tuple[Poly, Poly]:
     """
     Extended Euclidean Algorithm, Diophantine version.
 
@@ -1310,7 +1395,8 @@ def gcdex_diophantine(a, b, c):
     return (s, t)
 
 
-def frac_in(f, t, *, cancel=False, **kwargs):
+def frac_in(f: _Fraction, t: Symbol, *, cancel: bool = False,
+        field: Optional[bool] = None) -> tuple[Poly, Poly]:
     """
     Returns the tuple (fa, fd), where fa and fd are Polys in t.
 
@@ -1320,21 +1406,25 @@ def frac_in(f, t, *, cancel=False, **kwargs):
     This is a common idiom in the Risch Algorithm functions, so we abstract
     it out here. ``f`` should be a basic expression, a Poly, or a tuple (fa, fd),
     where fa and fd are either basic expressions or Polys, and f == fa/fd.
-    **kwargs are applied to Poly.
+    ``field``, when given, is passed on to Poly.
     """
+    g: Union[Expr, Poly]
     if isinstance(f, tuple):
         fa, fd = f
-        f = fa.as_expr()/fd.as_expr()
-    fa, fd = f.as_expr().as_numer_denom()
-    fa, fd = fa.as_poly(t, **kwargs), fd.as_poly(t, **kwargs)
-    if cancel:
-        fa, fd = fa.cancel(fd, include=True)
-    if fa is None or fd is None:
+        g = fa.as_expr()/fd.as_expr()
+    else:
+        g = f
+    opts: dict[str, bool] = {} if field is None else {'field': field}
+    numer, denom = g.as_expr().as_numer_denom()
+    fa_poly, fd_poly = numer.as_poly(t, **opts), denom.as_poly(t, **opts)
+    if fa_poly is None or fd_poly is None:
         raise ValueError("Could not turn %s into a fraction in %s." % (f, t))
-    return (fa, fd)
+    if cancel:
+        fa_poly, fd_poly = fa_poly.cancel(fd_poly, include=True)
+    return (fa_poly, fd_poly)
 
 
-def as_poly_1t(p, t, z):
+def as_poly_1t(p: Union[Expr, Poly], t: Symbol, z: Symbol) -> Poly:
     """
     (Hackish) way to convert an element ``p`` of K[t, 1/t] to K[t, z].
 
@@ -1380,7 +1470,19 @@ def as_poly_1t(p, t, z):
     return ans
 
 
-def derivation(p, DE, coefficientD=False, basic=False):
+@overload
+def derivation(p: Union[Poly, Expr], DE: DifferentialExtension,
+        coefficientD: bool = False, basic: Literal[False] = False) -> Poly: ...
+@overload
+def derivation(p: Union[Poly, Expr], DE: DifferentialExtension,
+        coefficientD: bool = False, *, basic: Literal[True]) -> Expr: ...
+@overload
+def derivation(p: Union[Poly, Expr], DE: DifferentialExtension,
+        coefficientD: bool = False, *, basic: bool) -> Union[Poly, Expr]: ...
+
+
+def derivation(p: Union[Poly, Expr], DE: DifferentialExtension,
+        coefficientD: bool = False, basic: bool = False) -> Union[Poly, Expr]:
     """
     Computes Dp.
 
@@ -1401,8 +1503,9 @@ def derivation(p, DE, coefficientD=False, basic=False):
 
     See Definition 3.2.2 in Section 3.2 of Bronstein's book.
     """
+    r: Union[Poly, Expr]
     if basic:
-        r = 0
+        r = S.Zero
     else:
         r = Poly(0, DE.t)
 
@@ -1422,9 +1525,9 @@ def derivation(p, DE, coefficientD=False, basic=False):
             pv = p.as_expr()
 
         if basic:
-            r += d.as_expr()*pv.diff(v)
+            r = r + d.as_expr()*pv.diff(v)
         else:
-            r += (d.as_expr()*pv.diff(v).as_expr()).as_poly(t)
+            r = r + (d.as_expr()*pv.diff(v).as_expr()).as_poly(t)
 
     if basic:
         r = cancel(r)
@@ -1434,7 +1537,7 @@ def derivation(p, DE, coefficientD=False, basic=False):
     return r
 
 
-def get_case(d, t):
+def get_case(d: Poly, t: Symbol) -> _Case:
     """
     Returns the type of the derivation d.
 
@@ -1454,7 +1557,8 @@ def get_case(d, t):
     return 'other_linear'
 
 
-def splitfactor(p, DE, coefficientD=False, z=None):
+def splitfactor(p: Poly, DE: DifferentialExtension, coefficientD: bool = False,
+        z: Optional[Symbol] = None) -> tuple[Poly, Poly]:
     """
     Splitting factorization.
 
@@ -1467,7 +1571,7 @@ def splitfactor(p, DE, coefficientD=False, z=None):
 
     This is ``SplitFactor`` from Section 3.5 of Bronstein's book.
     """
-    kinv = [1/x for x in DE.T[:DE.level]]
+    kinv: list[Expr] = [1/x for x in DE.T[:DE.level]]
     if z:
         kinv.append(z)
 
@@ -1497,7 +1601,9 @@ def splitfactor(p, DE, coefficientD=False, z=None):
         return (p, One)
 
 
-def splitfactor_sqf(p, DE, coefficientD=False, z=None, basic=False):
+def splitfactor_sqf(p: Poly, DE: DifferentialExtension, coefficientD: bool = False,
+        z: Optional[Symbol] = None, basic: bool = False
+        ) -> tuple[tuple[tuple[Poly, int], ...], tuple[tuple[Poly, int], ...]]:
     """
     Splitting Square-free Factorization.
 
@@ -1513,12 +1619,12 @@ def splitfactor_sqf(p, DE, coefficientD=False, z=None, basic=False):
     """
     # TODO: This algorithm appears to be faster in every case
     # TODO: Verify this and splitfactor() for multiple extensions
-    kkinv = [1/x for x in DE.T[:DE.level]] + DE.T[:DE.level]
+    kkinv: list[Expr] = [1/x for x in DE.T[:DE.level]] + DE.T[:DE.level]
     if z:
         kkinv = [z]
 
-    S = []
-    N = []
+    special: list[tuple[Poly, int]] = []
+    normal: list[tuple[Poly, int]] = []
     p_sqf = p.sqf_list_include()
     if p.is_zero:
         return (((p, 1),), ())
@@ -1530,14 +1636,15 @@ def splitfactor_sqf(p, DE, coefficientD=False, z=None, basic=False):
         Si = Poly(Si, DE.t)
         Ni = pi.exquo(Si)
         if not Si.is_one:
-            S.append((Si, i))
+            special.append((Si, i))
         if not Ni.is_one:
-            N.append((Ni, i))
+            normal.append((Ni, i))
 
-    return (tuple(N), tuple(S))
+    return (tuple(normal), tuple(special))
 
 
-def canonical_representation(a, d, DE):
+def canonical_representation(a: Poly, d: Poly, DE: DifferentialExtension
+        ) -> tuple[Poly, tuple[Poly, Poly], tuple[Poly, Poly]]:
     """
     Canonical Representation.
 
@@ -1566,7 +1673,8 @@ def canonical_representation(a, d, DE):
     return (q, (b, ds), (c, dn))
 
 
-def hermite_reduce(a, d, DE):
+def hermite_reduce(a: Poly, d: Poly, DE: DifferentialExtension
+        ) -> tuple[tuple[Poly, Poly], tuple[Poly, Poly], tuple[Poly, Poly]]:
     """
     Hermite Reduction - Mack's Linear Version.
 
@@ -1624,7 +1732,7 @@ def hermite_reduce(a, d, DE):
     return ((ga, gd), (r, d), (rra, rrd))
 
 
-def polynomial_reduce(p, DE):
+def polynomial_reduce(p: Poly, DE: DifferentialExtension) -> tuple[Poly, Poly]:
     """
     Polynomial Reduction.
 
@@ -1648,7 +1756,8 @@ def polynomial_reduce(p, DE):
     return (q, p)
 
 
-def laurent_series(a, d, F, n, DE):
+def laurent_series(a: Poly, d: Poly, F: Poly, n: int, DE: DifferentialExtension
+        ) -> tuple[Poly, Poly, list[Poly]]:
     """
     Contribution of ``F`` to the full partial fraction decomposition of A/D.
 
@@ -1706,7 +1815,9 @@ def laurent_series(a, d, F, n, DE):
 
     # initialization
     F_store = F
-    V, DE_D_list, H_list= [], [], []
+    V: list[Expr] = []
+    DE_D_list: list[Poly] = []
+    H_list: list[Poly] = []
 
     for j in range(0, n):
     # jth derivative of z would be substituted with dfnth/(j+1) where dfnth =(d^n)f/(dx)^n
@@ -1754,7 +1865,8 @@ def laurent_series(a, d, F, n, DE):
     return (delta_a, delta_d, H_list)
 
 
-def recognize_derivative(a, d, DE, z=None):
+def recognize_derivative(a: Poly, d: Poly, DE: DifferentialExtension,
+        z: Optional[Symbol] = None) -> bool:
     """
     Compute the squarefree factorization of the denominator of f
     and for each Di the polynomial H in K[x] (see Theorem 2.7.1), using the
@@ -1776,13 +1888,13 @@ def recognize_derivative(a, d, DE, z=None):
     Np, Sp = splitfactor_sqf(d, DE, coefficientD=True, z=z)
 
     # Degree-zero (content) factors are not poles
-    Np = [(s, n) for s, n in Np if s.degree(DE.t) > 0]
-    if any(n == 1 for s, n in Np):
+    normal = [(s, n) for s, n in Np if s.degree(DE.t) > 0]
+    if any(n == 1 for s, n in normal):
         # A simple pole at a normal prime always has a nonzero residue
         # (nu_p(Dv) == nu_p(v) - 1 <= -2 for any pole of Dv at a normal p),
         # so f is not the derivative of a rational function.
         return False
-    undecidable_special = []
+    undecidable_special: list[Poly] = []
     for s, n in Sp:
         sp = s.as_poly(DE.t)
         # Special irreducible factors (p divides Dp): the Laurent
@@ -1805,7 +1917,7 @@ def recognize_derivative(a, d, DE, z=None):
             flag = False
             break
     else:
-        if Np:
+        if normal:
             # The Laurent series machinery above is only justified for
             # factors with constant roots (Theorem 2.7.1 is stated for
             # K[x] with the roots algebraic over the constant field K);
@@ -1820,7 +1932,8 @@ def recognize_derivative(a, d, DE, z=None):
     return flag
 
 
-def recognize_log_derivative(a, d, DE, z=None):
+def recognize_log_derivative(a: Poly, d: Poly, DE: DifferentialExtension,
+        z: Optional[Symbol] = None) -> bool:
     """
     Necessary conditions for f == a/d to be Dv/v for some v in k(t)*.
 
@@ -1870,14 +1983,16 @@ def recognize_log_derivative(a, d, DE, z=None):
         # all integers.  This covers complex and irrational real roots with
         # the same degree count, and is much faster than isolating the real
         # roots.
-        s = s.as_poly(z)
-        r = s.ground_roots()
+        sz = s.as_poly(z)
+        roots = sz.ground_roots()
 
-        if sum(r.values()) != s.degree() or not all(j.is_Integer for j in r):
+        if sum(roots.values()) != sz.degree() or not all(j.is_Integer for j in roots):
             return False
     return True
 
-def residue_reduce(a, d, DE, z=None, invert=True):
+def residue_reduce(a: Poly, d: Poly, DE: DifferentialExtension,
+        z: Optional[Symbol] = None, invert: bool = True
+        ) -> tuple[list[tuple[Poly, Poly]], bool]:
     """
     Lazard-Rioboo-Rothstein-Trager resultant reduction.
 
@@ -1920,7 +2035,8 @@ def residue_reduce(a, d, DE, z=None, invert=True):
     else:
         r, R = q.resultant(d, includePRS=True)
 
-    R_map, H = {}, []
+    R_map: dict[int, Poly] = {}
+    H: list[tuple[Poly, Poly]] = []
     for i in R:
         R_map[i.degree()] = i
 
@@ -1947,7 +2063,7 @@ def residue_reduce(a, d, DE, z=None, invert=True):
             if invert:
                 h_lc = Poly(Poly(h, DE.t).LC(), DE.t, field=True, expand=False)
                 inv = Poly(h_lc, z, field=True).invert(s)
-                coeffs = [S.One]
+                coeffs: list[Expr] = [S.One]
 
                 for coeff in h.coeffs()[1:]:
                     L = reduced(inv*coeff.as_poly(inv.gens), [s])[1]
@@ -1962,7 +2078,8 @@ def residue_reduce(a, d, DE, z=None, invert=True):
     return (H, b)
 
 
-def residue_reduce_to_basic(H, DE, z):
+def residue_reduce_to_basic(H: list[tuple[Poly, Poly]], DE: DifferentialExtension,
+        z: Symbol) -> Expr:
     """
     Converts the tuple returned by residue_reduce() into a Basic expression.
 
@@ -1979,9 +2096,9 @@ def residue_reduce_to_basic(H, DE, z):
     s = list(zip(reversed(DE.T), reversed([f(DE.x) for f in DE.Tfuncs])))
     real_tower = not any(f(DE.x).has(I) for f in DE.Tfuncs)
 
-    result = S.Zero
+    result: Expr = S.Zero
     for a in H:
-        real = None
+        real: Optional[Expr] = None
         if real_tower and not (a[0].as_expr().has(I) or a[1].as_expr().has(I)):
             real = log_to_real(a[1], a[0].as_poly(z), DE.t, z)
         if real is not None:
@@ -1993,7 +2110,8 @@ def residue_reduce_to_basic(H, DE, z):
     return result
 
 
-def residue_reduce_derivation(H, DE, z):
+def residue_reduce_derivation(H: list[tuple[Poly, Poly]], DE: DifferentialExtension,
+        z: Symbol) -> Expr:
     """
     Computes the derivation of an expression returned by residue_reduce().
 
@@ -2002,11 +2120,12 @@ def residue_reduce_derivation(H, DE, z):
     """
     # TODO: verify that this is correct for multiple extensions
     i = Dummy('i')
-    return S(sum(RootSum(a[0].as_poly(z), Lambda(i, i*derivation(a[1],
-        DE).as_expr().subs(z, i)/a[1].as_expr().subs(z, i))) for a in H))
+    return Add(*[RootSum(a[0].as_poly(z), Lambda(i, i*derivation(a[1],
+        DE).as_expr().subs(z, i)/a[1].as_expr().subs(z, i))) for a in H])
 
 
-def integrate_primitive_polynomial(p, DE):
+def integrate_primitive_polynomial(p: Poly, DE: DifferentialExtension
+        ) -> tuple[Poly, Poly, bool]:
     """
     Integration of primitive polynomials.
 
@@ -2055,7 +2174,8 @@ def integrate_primitive_polynomial(p, DE):
         q = q + q0
 
 
-def integrate_primitive(a, d, DE, z=None):
+def integrate_primitive(a: Poly, d: Poly, DE: DifferentialExtension,
+        z: Optional[Symbol] = None) -> tuple[Expr, Expr, bool]:
     """
     Integration of primitive functions.
 
@@ -2108,7 +2228,8 @@ def integrate_primitive(a, d, DE, z=None):
     return (ret, i, b)
 
 
-def integrate_hyperexponential_polynomial(p, DE, z):
+def integrate_hyperexponential_polynomial(p: Poly, DE: DifferentialExtension,
+        z: Symbol) -> tuple[Poly, Poly, bool]:
     """
     Integration of hyperexponential polynomials.
 
@@ -2169,7 +2290,8 @@ def integrate_hyperexponential_polynomial(p, DE, z):
     return (qa, qd, b)
 
 
-def integrate_hyperexponential(a, d, DE, z=None, conds='piecewise'):
+def integrate_hyperexponential(a: Poly, d: Poly, DE: DifferentialExtension,
+        z: Optional[Symbol] = None, conds: str = 'piecewise') -> tuple[Expr, Expr, bool]:
     """
     Integration of hyperexponential functions.
 
@@ -2238,7 +2360,8 @@ def integrate_hyperexponential(a, d, DE, z=None, conds='piecewise'):
     return (ret, i, b)
 
 
-def integrate_hypertangent_polynomial(p, DE):
+def integrate_hypertangent_polynomial(p: Poly, DE: DifferentialExtension
+        ) -> tuple[Poly, Poly]:
     """
     Integration of hypertangent polynomials.
 
@@ -2260,7 +2383,8 @@ def integrate_hypertangent_polynomial(p, DE):
     return (q, c)
 
 
-def integrate_hypertangent_reduced(pa, pd, DE):
+def integrate_hypertangent_reduced(pa: Poly, pd: Poly, DE: DifferentialExtension
+        ) -> tuple[Poly, Poly, bool]:
     """
     Integration of hypertangent reduced elements.
 
@@ -2319,7 +2443,8 @@ def integrate_hypertangent_reduced(pa, pd, DE):
         qa, qd = (qa*q0d + q0a*qd).cancel(qd*q0d, include=True)
 
 
-def integrate_hypertangent(a, d, DE, z=None):
+def integrate_hypertangent(a: Poly, d: Poly, DE: DifferentialExtension,
+        z: Optional[Symbol] = None) -> tuple[Expr, Expr, bool]:
     """
     Integration of hypertangent functions.
 
@@ -2376,16 +2501,17 @@ def integrate_hypertangent(a, d, DE, z=None):
     p = pp - derivation(q2, DE)
     if derivation(c, DE).is_zero:
         # p - c*D(t**2 + 1)/(t**2 + 1) == p - 2*c*eta*t is in k
-        c = c.as_expr()
+        c_expr = c.as_expr()
         eta = DE.d.exquo(Poly(DE.t**2 + 1, DE.t)).as_expr()
-        ret += c*log(DE.t**2 + 1).subs(s)
-        i = cancel((p - Poly(2*c*eta*DE.t, DE.t)).as_expr())
+        ret += c_expr*log(DE.t**2 + 1).subs(s)
+        i = cancel((p - Poly(2*c_expr*eta*DE.t, DE.t)).as_expr())
         return (ret, i, True)
     i = NonElementaryIntegral(cancel(p.as_expr()).subs(s), DE.x)
     return (ret, i, False)
 
 
-def integrate_nonlinear_no_specials(a, d, DE, z=None):
+def integrate_nonlinear_no_specials(a: Poly, d: Poly, DE: DifferentialExtension,
+        z: Optional[Symbol] = None) -> tuple[Expr, bool]:
     """
     Integration of nonlinear monomials with no specials.
 
@@ -2485,9 +2611,26 @@ class NonElementaryIntegral(Integral):
     pass
 
 
-def risch_integrate(f, x, extension=None, handle_first='log',
-                    separate_integral=False, rewrite_complex=None,
-                    conds='piecewise'):
+@overload
+def risch_integrate(f: ExprLike, x: Symbol, extension: Optional[DifferentialExtension] = None,
+        handle_first: str = 'log', separate_integral: Literal[False] = False,
+        rewrite_complex: Optional[bool] = None, conds: str = 'piecewise') -> Expr: ...
+@overload
+def risch_integrate(f: ExprLike, x: Symbol, extension: Optional[DifferentialExtension] = None,
+        handle_first: str = 'log', *, separate_integral: Literal[True],
+        rewrite_complex: Optional[bool] = None, conds: str = 'piecewise'
+        ) -> tuple[Expr, Expr]: ...
+@overload
+def risch_integrate(f: ExprLike, x: Symbol, extension: Optional[DifferentialExtension] = None,
+        handle_first: str = 'log', *, separate_integral: bool,
+        rewrite_complex: Optional[bool] = None, conds: str = 'piecewise'
+        ) -> Union[Expr, tuple[Expr, Expr]]: ...
+
+
+def risch_integrate(f: ExprLike, x: Symbol, extension: Optional[DifferentialExtension] = None,
+        handle_first: str = 'log', separate_integral: bool = False,
+        rewrite_complex: Optional[bool] = None, conds: str = 'piecewise'
+        ) -> Union[Expr, tuple[Expr, Expr]]:
     r"""
     The Risch Integration Algorithm.
 
@@ -2598,13 +2741,13 @@ def risch_integrate(f, x, extension=None, handle_first='log',
     Bronstein's book (there is no single corresponding pseudocode
     function).
     """
-    f = S(f)
+    f = as_expr(f)
 
     DE = extension or DifferentialExtension(f, x, handle_first=handle_first,
             dummy=True, rewrite_complex=rewrite_complex)
     fa, fd = DE.fa, DE.fd
 
-    result = S.Zero
+    result: Expr = S.Zero
     for case in reversed(DE.cases):
         if not fa.expr.has(DE.t) and not fd.expr.has(DE.t) and not case == 'base':
             DE.decrement_level()
@@ -2651,4 +2794,6 @@ def risch_integrate(f, x, extension=None, handle_first='log',
                 if isinstance(i, NonElementaryIntegral):
                     return (result, i)
                 else:
-                    return (result, 0)
+                    return (result, S.Zero)
+    # Not reached: the cases end with the 'base' case, which returns
+    raise NotImplementedError("The differential extension has no base case.")

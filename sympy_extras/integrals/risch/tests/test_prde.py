@@ -16,6 +16,8 @@ from sympy_extras.integrals.risch.polymatrix import PolyMatrix as Matrix
 from sympy.testing.pytest import raises
 
 from sympy.core import Add, Dummy
+from sympy.core.expr import Expr
+from sympy_extras._typing import as_expr
 from sympy.matrices import MutableDenseMatrix
 from sympy.core.numbers import I, Rational, oo
 from sympy.functions.elementary.exponential import exp
@@ -28,7 +30,7 @@ from sympy.abc import x, t, n, y
 t0, t1, t2, t3, k = symbols('t:4 k')
 
 
-def test_prde_normal_denom():
+def test_prde_normal_denom() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1 + t**2, t)]})
     fa = Poly(1, t)
     fd = Poly(x, t)
@@ -47,7 +49,7 @@ def test_prde_normal_denom():
         Poly(1, t, domain='ZZ[x]'))], Poly(t + 1, t))
 
 
-def test_prde_special_denom():
+def test_prde_special_denom() -> None:
     a = Poly(t + 1, t)
     ba = Poly(t**2, t)
     bd = Poly(1, t)
@@ -84,7 +86,7 @@ def test_prde_special_denom():
         [(Poly(-2*t**2 + t, t), Poly(1, t))], Poly(t**2 + 1, t))
 
 
-def test_prde_linear_constraints():
+def test_prde_linear_constraints() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
     G = [(Poly(2*x**3 + 3*x + 1, x), Poly(x**2 - 1, x)), (Poly(1, x), Poly(x - 1, x)),
         (Poly(1, x), Poly(x + 1, x))]
@@ -102,7 +104,7 @@ def test_prde_linear_constraints():
         ((Poly(0, t, domain='QQ[x]'), Poly(0, t, domain='QQ[x]')), Matrix([[2*x, -x]], t))
 
 
-def test_constant_system():
+def test_constant_system() -> None:
     A = Matrix([[-(x + 3)/(x - 1), (x + 1)/(x - 1), 1],
                 [-x - 3, x + 1, x - 1],
                 [2*(x + 3)/(x - 1), 0, 0]], t)
@@ -139,7 +141,7 @@ def test_constant_system():
         for i in range(B.rows) for j in range(B.cols))
 
 
-def test_prde_spde():
+def test_prde_spde() -> None:
     D = [Poly(x, t), Poly(-x*t, t)]
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)]})
     # TODO: when bound_degree() can handle this, test degree bound from that too
@@ -149,7 +151,7 @@ def test_prde_spde():
         [Poly(-x**2, t, domain='ZZ(x)'), Poly(0, t, domain='ZZ(x)')], n - 1)
 
 
-def test_prde_no_cancel():
+def test_prde_no_cancel() -> None:
     # b large
     DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
     assert prde_no_cancel_b_large(Poly(1, x), [Poly(x**2, x), Poly(1, x)], 2, DE) == \
@@ -197,7 +199,7 @@ def test_prde_no_cancel():
     assert (Matrix([q])*V[0][:6, :])[0] == Poly(x - S.Half, t, domain='QQ(x)')
 
 
-def test_prde_no_cancel_b_equal():
+def test_prde_no_cancel_b_equal() -> None:
     # deg(b) == delta(t) - 1, with t == tan-like (Dt == t**2 + 1)
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)]})
     # -lc(b)/lc(Dt) == -1 is not a positive integer, so the loop runs to
@@ -232,11 +234,11 @@ def test_prde_no_cancel_b_equal():
     matched = set()
     for v in A.nullspace():
         c1 = v[0].as_expr()
-        y = Poly(Add(*[(v[1 + j]*h[j]).as_expr() for j in range(len(h))]),
+        ysol = Poly(Add(*[(v[1 + j]*h[j]).as_expr() for j in range(len(h))]),
             t, field=True)
-        assert cancel((derivation(y, DE) + b*y).as_expr()
+        assert cancel((derivation(ysol, DE) + b*ysol).as_expr()
             - c1*(t**4 + 3*t**2)) == 0
-        matched.add((c1, y.as_expr()))
+        matched.add((c1, ysol.as_expr()))
     assert (1, t**3) in matched
     assert (0, t**2 + 1) in matched
     # A cancellation degree above the bound n is unattainable, so the
@@ -249,15 +251,15 @@ def test_prde_no_cancel_b_equal():
     matched = set()
     for v in A.nullspace():
         c1 = v[0].as_expr()
-        y = Poly(Add(*[(v[1 + j]*h[j]).as_expr() for j in range(len(h))]),
+        ysol = Poly(Add(*[(v[1 + j]*h[j]).as_expr() for j in range(len(h))]),
             t, field=True)
-        assert cancel((derivation(y, DE) + b*y).as_expr()
+        assert cancel((derivation(ysol, DE) + b*ysol).as_expr()
             - c1*(-t**2 + t + 1)) == 0
-        matched.add((c1, y.as_expr()))
+        matched.add((c1, ysol.as_expr()))
     assert (1, t) in matched
 
 
-def test_prde_cancel_liouvillian():
+def test_prde_cancel_liouvillian() -> None:
     ### 1. case == 'primitive'
     # used when integrating f = log(x) - log(x - 1)
     # Not taken from 'the' book
@@ -300,16 +302,17 @@ def test_prde_cancel_liouvillian():
     assert found
 
 
-def test_prde_cancel_tan():
+def test_prde_cancel_tan() -> None:
     # t = tan(x)
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)]})
     b = Poly(1 - t, t)
     Q = [Poly(t**3 + t**2 - 2*x*t - 2*x, t)]
 
-    def solutions(h, A, b, Q):
+    def solutions(h: list[Poly], A: Matrix, b: Poly, Q: list[Poly]
+            ) -> list[tuple[list[Expr], Poly]]:
         # Every nullspace vector of A must produce a solution of
         # Dq + b*q == Sum(ci*qi); return the (c, q) pairs.
-        sols = []
+        sols: list[tuple[list[Expr], Poly]] = []
         for v in A.nullspace():
             cs = [v[i].as_expr() for i in range(len(Q))]
             q = Poly(Add(*[(v[len(Q) + j]*h[j]).as_expr()
@@ -349,7 +352,7 @@ def test_prde_cancel_tan():
         oo, DE))
 
 
-def test_param_poly_rischDE():
+def test_param_poly_rischDE() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
     a = Poly(x**2 - x, x, field=True)
     b = Poly(1, x, field=True)
@@ -373,7 +376,7 @@ def test_param_poly_rischDE():
     assert a*derivation(p, DE) + b*p == Poly(x**2 - 5*x + 3, x, domain='QQ')
 
 
-def test_param_rischDE():
+def test_param_rischDE() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
     p1, px = Poly(1, x, field=True), Poly(x, x, field=True)
     G = [(p1, px), (p1, p1), (px, p1)]  # [1/x, 1, x]
@@ -400,7 +403,7 @@ def test_param_rischDE():
     assert y.diff(t) - y/(t + x) == 0   # Dy + f*y = 0*G0 + 0*G1
 
 
-def test_limited_integrate_reduce():
+def test_limited_integrate_reduce() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)]})
     assert limited_integrate_reduce(Poly(x, t), Poly(t**2, t), [(Poly(x, t),
     Poly(t, t))], DE) == \
@@ -424,7 +427,7 @@ def test_limited_integrate_reduce():
     assert cancel(lhs - rhs) == 0
 
 
-def test_limited_integrate():
+def test_limited_integrate() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
     G = [(Poly(x, x), Poly(x + 1, x))]
     assert limited_integrate(Poly(-(1 + x + 5*x**2 - 3*x**3), x),
@@ -441,7 +444,7 @@ def test_limited_integrate():
         ((Poly(y*x**2, x), Poly(1, x, domain='QQ')), [])
 
 
-def test_is_log_deriv_k_t_radical():
+def test_is_log_deriv_k_t_radical() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x)], 'exts': [],
         'extargs': []})
     assert is_log_deriv_k_t_radical(Poly(2*x, x), Poly(1, x), DE) is None
@@ -484,7 +487,7 @@ def test_is_log_deriv_k_t_radical():
     assert is_log_deriv_k_t_radical(Poly(t2, t2), Poly(1, t2), DE) is None
 
 
-def test_structure_theorem_guards():
+def test_structure_theorem_guards() -> None:
     # The structure theorems need every monomial of the tower labeled
     # (len(exts) == len(D) - 1)
     for D in ([Poly(1, x), Poly(1/x, t1), Poly(t2, t2)],
@@ -540,7 +543,7 @@ def test_structure_theorem_guards():
         Poly(1, x), DE))
 
 
-def test_is_deriv_k():
+def test_is_deriv_k() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t1), Poly(1/(x + 1), t2)],
         'exts': ['log', 'log'], 'extargs': [x, x + 1]})
     assert is_deriv_k(Poly(2*x**2 + 2*x, t2), Poly(1, t2), DE) == \
@@ -601,7 +604,7 @@ def test_is_deriv_k():
     assert is_deriv_k(Poly(t1, t2), Poly(1, t2), DE) is None
 
 
-def test_is_deriv_k_atan():
+def test_is_deriv_k_atan() -> None:
     # atan(x) is a monomial over QQ(x) (Example 1 of Bronstein's 1989
     # paper, equation (4) with an empty sum)
     DE = DifferentialExtension(extension={'D': [Poly(1, x)], 'exts': [],
@@ -640,7 +643,7 @@ def test_is_deriv_k_atan():
         ([(x, 1), (t1, 1)], t1 + x)
 
 
-def test_is_log_deriv_k_t_radical_tan():
+def test_is_log_deriv_k_t_radical_tan() -> None:
     # tan(x) is a monomial over QQ(x); tan(1) is a constant
     DE = DifferentialExtension(extension={'D': [Poly(1, x)], 'exts': [],
         'extargs': []})
@@ -686,7 +689,7 @@ def test_is_log_deriv_k_t_radical_tan():
     assert is_log_deriv_k_t_radical_tan(Poly(t, t), Poly(1, t), DE) is None
 
 
-def test_is_log_deriv_k_t_radical_in_field():
+def test_is_log_deriv_k_t_radical_in_field() -> None:
     # NOTE: any potential constant factor in the second element of the result
     # doesn't matter, because it cancels in Da/a.
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)]})
@@ -750,7 +753,7 @@ def test_is_log_deriv_k_t_radical_in_field():
         Poly(1, t2), DE) == (1, t1**2*t2**2 + t1**2 + t2**2 + 1)
 
 
-def test_parametric_log_deriv_structure():
+def test_parametric_log_deriv_structure() -> None:
     # The heuristic fails on all of these (z in k at a primitive level);
     # the structure-theorem method (equation (7.44)) decides them.
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)],
@@ -787,12 +790,12 @@ def test_parametric_log_deriv_structure():
         A = parametric_log_deriv_structure(fa, fd, wa, wd, DE)
         assert A is not None
         n, m, v = A
-        assert n > 0 and n.is_Integer and m.is_Integer
-        vv = v.subs(t1, exp(x))  # t1 == exp(x) in this extension
+        assert n > 0 and as_expr(n).is_Integer and as_expr(m).is_Integer
+        vv = v.as_expr().subs(t1, exp(x))  # t1 == exp(x) in this extension
         assert cancel(n*f - m*w - vv.diff(x)/vv) == 0
 
 
-def test_is_deriv_in_field():
+def test_is_deriv_in_field() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
     assert is_deriv_in_field(Poly(2*x, x), Poly(1, x), DE) == \
         (Poly(x**2, x), Poly(1, x, domain='QQ'))
@@ -814,7 +817,7 @@ def test_is_deriv_in_field():
     assert cancel(derivation(vp, DE).as_expr() - (2*x + 1)*t**2) == 0
 
 
-def test_parametric_log_deriv():
+def test_parametric_log_deriv() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)]})
     assert parametric_log_deriv_heu(Poly(5*t**2 + t - 6, t), Poly(2*x*t**2, t),
     Poly(-1, t), Poly(x*t**2, t), DE) == \

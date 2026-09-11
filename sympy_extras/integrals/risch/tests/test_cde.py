@@ -1,6 +1,7 @@
 """Most of these tests come from the examples in Bronstein's book."""
 from __future__ import annotations
 
+from sympy.core.expr import Expr
 from sympy.core.numbers import oo
 from sympy.core.singleton import S
 from sympy.polys.polytools import Poly, cancel
@@ -14,7 +15,8 @@ from sympy.testing.pytest import raises
 from sympy.abc import x, t
 
 
-def _check(q1, q2, b1e, b2e, c1e, c2e, DE):
+def _check(q1: Poly, q2: Poly, b1e: Expr, b2e: Expr, c1e: Expr, c2e: Expr,
+        DE: DifferentialExtension) -> None:
     """(q1, q2) solves Dq1 + b1*q1 - b2*q2 == c1, Dq2 + b2*q1 + b1*q2 == c2."""
     q1e, q2e = q1.as_expr(), q2.as_expr()
     assert simplify(derivation(q1, DE).as_expr() +
@@ -23,7 +25,7 @@ def _check(q1, q2, b1e, b2e, c1e, c2e, DE):
         b2e*q1e + b1e*q2e - c2e) == 0
 
 
-def test_coupled_DE_system():
+def test_coupled_DE_system() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
     one = Poly(1, x)
     # From the integration of tan(x**2) (Section 5.10):
@@ -47,7 +49,7 @@ def test_coupled_DE_system():
     assert cancel(y2a.as_expr()/y2d.as_expr()) == 2*x + 1
 
 
-def test_param_coupled_DE_system():
+def test_param_coupled_DE_system() -> None:
     DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
     one = Poly(1, x)
     # The inner system of Example 8.4.1, parametrized:
@@ -70,7 +72,7 @@ def test_param_coupled_DE_system():
     assert found
 
 
-def test_coupled_DE_cancel_prim():
+def test_coupled_DE_cancel_prim() -> None:
     # t = log(x)
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)]})
     # b == b1 + b2*sqrt(-1) == Dz/z for z == x + sqrt(-1); the system
@@ -96,7 +98,7 @@ def test_coupled_DE_cancel_prim():
         Poly(0, t), Poly(1, t), Poly(1/x + t, t), Poly(t, t), DE, 1))
 
 
-def test_coupled_DE_cancel_exp():
+def test_coupled_DE_cancel_exp() -> None:
     # t = exp(x)
     DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
     # b == Dz/z + m*Dt/t for z == x + sqrt(-1) and m == 1; the system
@@ -122,7 +124,7 @@ def test_coupled_DE_cancel_exp():
         Poly(0, t), Poly(1, t), Poly(2/x, t), Poly(2*t, t), DE, 1))
 
 
-def test_coupled_DE_cancel_tan():
+def test_coupled_DE_cancel_tan() -> None:
     # Example 8.4.1: t = tan(x), from the integration of (8.12); the
     # system (8.15) with b0 == 0, b2 == 4*x, n == 2 has the solution
     # (t - 1, 2*x)
