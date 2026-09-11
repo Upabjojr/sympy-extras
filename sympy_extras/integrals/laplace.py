@@ -314,8 +314,8 @@ def laplace_rules(f: ExprLike, t: Symbol, s: ExprLike, assumptions: Assumptions 
     >>> s, a = symbols('s a', positive=True)
     >>> laplace_rules(sin(a*t)/t, t, s)
     ConditionalValue(atan(a/s))
-    >>> laplace_rules(Heaviside(t - 1)*cos(t), t, s)
-    ConditionalValue((s*cos(1) - sin(1))*exp(-s)/(s**2 + 1))
+    >>> laplace_rules(Heaviside(t - 1)*exp(-t), t, s)
+    ConditionalValue(exp(-s - 1)/(s + 1))
     """
     f_, s_ = as_expr(f), as_expr(s)
     if isinstance(f_, Add):
