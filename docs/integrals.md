@@ -98,7 +98,9 @@ hyperbolic functions as logarithms, orthogonal polynomials expanded;
 `log(1 - x)` on `(0, 1)` is a kernel of its own. With
 `principal_value=True` a divergent integral with a simple pole inside the
 range gets its Cauchy principal value, from the antiderivative with the
-symmetric limits at the pole taken as one limit; symbolic endpoints go
+symmetric limits at the pole taken as one limit, and with
+`finite_part=True` Hadamard's finite part (the divergent terms of the
+excision dropped, so a double pole is regularised); symbolic endpoints go
 through the antiderivative with limits under the assumptions.
 
 ```python
@@ -109,6 +111,8 @@ b/((a - b)*(a + b))
 1/2
 >>> definite_integral(1/(x - 1), (x, 0, 3), principal_value=True)
 log(2)
+>>> definite_integral(1/x**2, (x, -1, 1), finite_part=True)
+-2
 >>> definite_integral(exp(-x), (x, a, b))
 -exp(-b) + exp(-a)
 

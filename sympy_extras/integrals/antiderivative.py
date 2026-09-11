@@ -72,6 +72,8 @@ from sympy.integrals.integrals import Integral, integrate
 from sympy.logic.boolalg import Boolean
 from sympy.sets.sets import FiniteSet, Interval
 from sympy.series.limits import Limit
+from sympy.series.series import series
+from sympy.core.add import Add
 
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set
@@ -82,7 +84,7 @@ from sympy_extras.settings import settings
 from .conditions import ConditionalValue
 
 __all__ = ['antiderivative', 'discontinuities', 'antiderivative_integral', 'one_sided_limit', 'select_branch',
-           'principal_value_integral']
+           'principal_value_integral', 'finite_part_integral']
 
 
 def antiderivative(f: Expr, x: Symbol) -> Optional[Expr]:
@@ -378,6 +380,89 @@ def principal_value_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
         jump = attempt(lambda: limit(F.subs(x, c + epsilon) - F.subs(x, c - epsilon), epsilon, 0,
                                      assumptions=assumptions), settings.timeout)
         if jump is None or jump.has(oo, -oo, zoo, nan, Limit) or jump.free_symbols - F.free_symbols:
+            return None
+        total = total - jump
+    return ConditionalValue(as_expr(total))
+
+
+def _finite_part(jump: Expr, epsilon: Symbol) -> Optional[Expr]:
+    """The constant term of the expansion of ``jump`` at ``epsilon = 0``,
+    the terms in negative powers of ``epsilon`` and in ``log(epsilon)``
+    dropped (Hadamard's finite part)."""
+    expansion = attempt(lambda: as_expr(series(jump, epsilon, 0, 1).removeO()), settings.timeout)
+    if expansion is None:
+        return None
+    constant: Expr = S.Zero
+    for term in Add.make_args(as_expr(expansion.expand())):
+        term_ = as_expr(term)
+        if not term_.has(epsilon):
+            constant = constant + term_
+    if constant.has(nan, zoo, oo, -oo):
+        return None
+    return constant
+
+
+def finite_part_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
+                         assumptions: Assumptions = None) -> Optional[ConditionalValue]:
+    """Hadamard's finite part of ``Integral(f, (x, a, b))``: as in
+    :func:`principal_value_integral`, but the divergent terms of the
+    symmetric excision at each singularity (``1/epsilon``,
+    ``log(epsilon)``) are dropped instead of required to cancel, which
+    regularises a double pole (``Integral(1/x**2, (x, -1, 1))`` has the
+    finite part ``-2``) [Hadamard]_.
+
+    Examples
+    ========
+
+    >>> from sympy import symbols, log
+    >>> from sympy_extras.integrals.antiderivative import finite_part_integral
+    >>> x = symbols('x')
+    >>> finite_part_integral(1/x**2, x, -1, 1)
+    ConditionalValue(-2)
+    >>> finite_part_integral(1/x, x, -1, 2)
+    ConditionalValue(log(2))
+
+    References
+    ==========
+
+    .. [Hadamard] J. Hadamard, *Lectures on Cauchy's problem in linear
+       partial differential equations*, Yale University Press, 1923,
+       chapter on the "partie finie"; the modern account in Estrada and
+       Kanwal, *Singular Integral Equations*, Birkhäuser, 2000, chapter 2.
+    """
+    a, b = as_expr(a), as_expr(b)
+    F = antiderivative(f, x)
+    if F is None:
+        return None
+    if F.has(Piecewise):
+        F = select_branch(F, x, a, b, assumptions)
+        if F is None:
+            return None
+    points = discontinuities(F, x, a, b, assumptions)
+    if points is None:
+        return None
+    singular = attempt(lambda: singularities(f, x, Interval.open(a, b)), settings.timeout)
+    if singular is None:
+        return None
+    singular_set = as_set(singular)
+    if isinstance(singular_set, FiniteSet):
+        singular_points = [as_expr(p) for p in singular_set]
+    elif singular_set is S.EmptySet:
+        singular_points = []
+    else:
+        return None
+    inside = _points_in(singular_points + points, x, a, b, assumptions)
+    if inside is None:
+        return None
+    right = one_sided_limit(F, x, b, '-', assumptions)
+    left = one_sided_limit(F, x, a, '+', assumptions)
+    if right is None or left is None:
+        return None
+    total: Expr = right - left
+    epsilon = Dummy('epsilon', positive=True)
+    for c in inside:
+        jump = _finite_part(as_expr(F.subs(x, c + epsilon) - F.subs(x, c - epsilon)), epsilon)
+        if jump is None or jump.free_symbols - F.free_symbols:
             return None
         total = total - jump
     return ConditionalValue(as_expr(total))

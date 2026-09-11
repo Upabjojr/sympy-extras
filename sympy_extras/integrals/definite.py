@@ -129,7 +129,7 @@ _MAX_DEPTH = 6
 
 def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = None,
                       conds: str = 'piecewise', recognize: bool = False,
-                      principal_value: bool = False) -> Expr:
+                      principal_value: bool = False, finite_part: bool = False) -> Expr:
     """``Integral(f, (x, a, b))`` under assumptions on the parameters.
 
     Parameters
@@ -155,6 +155,10 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
         Cauchy's principal value when the integrand has a singularity
         inside the range at which the integral diverges
         (:func:`~sympy_extras.integrals.antiderivative.principal_value_integral`).
+    finite_part : bool
+        Hadamard's finite part of a divergent integral, the divergent
+        terms of the excision at each singularity dropped
+        (:func:`~sympy_extras.integrals.antiderivative.finite_part_integral`).
 
     Returns
     =======
@@ -182,7 +186,7 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
     f_ = as_expr(f)
     if conds not in ('piecewise', 'none'):
         raise ValueError("conds must be 'piecewise' or 'none', got %r" % (conds,))
-    found = conditional_integral(f_, x, a, b, assumptions, principal_value)
+    found = conditional_integral(f_, x, a, b, assumptions, principal_value, finite_part)
     if (found is None or found.value.has(nan)) and recognize:
         from .recognize import recognize_integral
         guessed = recognize_integral(f_, (x, a, b), assumptions)
@@ -198,7 +202,8 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
 
 def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
                          assumptions: Assumptions = None,
-                         principal_value: bool = False) -> Optional[ConditionalValue]:
+                         principal_value: bool = False,
+                         finite_part: bool = False) -> Optional[ConditionalValue]:
     """The value of ``Integral(f, (x, a, b))`` with the condition on the
     parameters under which it holds, or ``None``.
 
@@ -207,7 +212,7 @@ def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
     fail; a value they find under a condition the assumptions do not
     settle is kept unless SymPy finds an unconditional one."""
     f, a, b = _with_equalities(f, a, b, x, assumptions)
-    integrator = _Integrator(assumptions, principal_value=principal_value)
+    integrator = _Integrator(assumptions, principal_value=principal_value, finite_part=finite_part)
     if not _real_bounds(a, b) or _nested_complex_powers(f):
         return integrator._sympy(f, x, a, b)
     budget = None if settings.timeout is None else settings.timeout / 2
@@ -364,10 +369,11 @@ class _Integrator:
     differentiation under the integral sign (off inside that method)."""
 
     def __init__(self, assumptions: Assumptions, parametric: bool = True,
-                 principal_value: bool = False) -> None:
+                 principal_value: bool = False, finite_part: bool = False) -> None:
         self.assumptions = assumptions
         self.parametric = parametric
         self.principal_value = principal_value
+        self.finite_part = finite_part
 
     def ask(self, query: Boolean) -> Optional[bool]:
         return ask(query, self.assumptions)
@@ -421,6 +427,9 @@ class _Integrator:
             # integrated: an antiderivative evaluated at the endpoints
             # would be wrong, so SymPy is not asked; the principal value
             # is computed when asked for
+            if self.finite_part and depth == 0:
+                from .antiderivative import finite_part_integral
+                return self._finish(finite_part_integral(f, x, a, b, self.assumptions))
             if self.principal_value and depth == 0:
                 from .antiderivative import principal_value_integral
                 return self._finish(principal_value_integral(f, x, a, b, self.assumptions))

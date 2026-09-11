@@ -60,6 +60,10 @@ remove public functions. Breaking changes are listed here when they happen.
   the package (issue #54), with the annotations of Aaron Meurer's branch
   `risch-typing` (sympy/sympy#30282) as the starting point.
 
+- `definite_integral(..., finite_part=True)`: Hadamard's finite part of a
+  divergent integral, from the antiderivative with the divergent terms of
+  the excision at each singularity dropped.
+
 - `sympy_extras.integrals.elliptic`: square roots of cubics and quartics
   reduced to Legendre's elliptic integrals (Byrd–Friedman's substitutions,
   complete and incomplete forms, `elliptic_pi` for simple poles).

@@ -76,3 +76,15 @@ def test_piecewise_antiderivatives_take_the_branch_of_the_range() -> None:
     assert select_branch(F, t, S.Zero, S(2)) is None
     found = antiderivative_integral(sqrt(t) * sqrt(2 * t * c - 2 * c), t, S.Zero, S.One, c < 0)
     assert found is None or found.value != 0
+
+
+def test_hadamard_finite_parts() -> None:
+    # Estrada-Kanwal ch. 2: the finite part drops the divergent terms of
+    # the symmetric excision; a simple pole gives the principal value
+    from sympy_extras.integrals.antiderivative import finite_part_integral
+    assert finite_part_integral(1 / x**2, x, S.NegativeOne, S.One) == ConditionalValue(-2)
+    assert finite_part_integral(1 / x, x, S.NegativeOne, S(2)) == ConditionalValue(log(2))
+    # [-1/(2 (x - 1)**2)] between 0 and 3: -1/8 + 1/2
+    assert finite_part_integral(1 / (x - 1)**3, x, S.Zero, S(3)) == ConditionalValue(S(3) / 8)
+    # a convergent integral is unchanged
+    assert finite_part_integral(exp(-a * x), x, S.Zero, oo, a > 0) == ConditionalValue(1 / a)
