@@ -14,6 +14,7 @@ repository).
 | `verify_random.py` | a random sample of the Kamke collection | `solve_ode` (`dsolve`, then the symmetry method); every solution verified with `checkodesol` and numerically (implicit solutions by implicit differentiation and `nsolve`); a solution failing the numerical check is reported as WRONG |
 | `logic_random.py` | random Boolean combinations of polynomial relations in one or two real variables with random assumptions | `simplify`, `refine`, `ask`, `satisfiable` against evaluation at random points satisfying the assumptions; for one variable the CAD decides the equivalence of the simplified formula |
 | `fuzz.py` | random inputs for one part of the package at a time (`convergence`, `parametric-convergence`, `sums`, `isolation`, `solve`, `ask`, `limits`, `thue`, `ode`, `refine`) | every answer against an oracle which shares no code with it: partial sums with mpmath, brute force enumeration, sign changes on a grid, sampling of the solution set, `checkodesol`, or SymPy on a parameter-free instance of a parametric answer |
+| `definite_integrals` (in [sympy-extras-benchmarks](https://github.com/Upabjojr/sympy-extras-benchmarks)) | the definite integrals of Maxima's test suite (`rtestint`, `rtest_integrate`, Wester, the Laplace transforms of `rtest_laplace` and `specint`), of REDUCE's DEFINT tests, of FriCAS's `mapleok` collection and of holpy's worked problems: 1141 integrals with the facts of each source | `definite_integral` with `--extras` (SymPy's `integrate` without it) against numerical quadrature at random values of the parameters, and Mathematica's `NIntegrate` (`--wolfram`) where the quadrature is not trusted |
 | `qf_nra.py` | SMT-LIB `QF_NRA`, Meti-Tarski family (7713 problems with `:status`, cloned sparsely from the `dreal/benchmarks` mirror on GitHub) | `satisfiable` against the status (models re-evaluated); `simplify` and `refine` over the reals against the status and random points |
 
 ## Results (SymPy 1.14, one core, 15 s per step)
@@ -129,3 +130,30 @@ changes, `4**(-n)` evaluated in machine floats underflowing to zero (which
 made the divergent `sum binomial(2*n, n)/4**n` look convergent), a Thue
 solution outside the brute force box counted as spurious, and the
 residual of a truncated power series solution of an ODE.
+
+## Definite integrals (SymPy 1.14, 30 s per integral, 4 workers)
+
+`python -m sympy_extras_benchmarks definite_integrals --extras --timeout 30
+--wolfram ...` in sympy-extras-benchmarks, on the 1141 definite integrals of
+the four datasets, sympy-extras at commit 43f2064 (the Mellin method,
+residues, the mean value of periodic integrands, creative telescoping,
+differentiation under the integral sign, the antiderivative with one-sided
+limits through the Risch port, the region shortcuts) against SymPy 1.14's
+`integrate` alone:
+
+| | correct (quadrature) | correct (Mathematica) | wrong (Mathematica) | unevaluated | no answer in 30 s | crash |
+|---|---|---|---|---|---|---|
+| SymPy 1.14 `integrate` | 533 | 149 | 34 | 221 | 74 | 1 |
+| `definite_integral` | 565 | 176 | 1 | 358 | 21 | 0 |
+
+"Correct (Mathematica)" are the results the quadrature could not confirm
+(oscillation, singularities) and Mathematica's `NIntegrate` did; "wrong"
+are contradicted by it. SymPy's wrong answers are the branch cuts of its
+antiderivatives on the complex-valued FriCAS integrands (`acoth(z)` on
+`(0, 1)`, `log(z**I)`); `definite_integral` keeps an answer of `integrate`
+only when the quadrature confirms it, which moves such cases to
+"unevaluated". The one remaining wrong answer, `(z**(I/2))**I` over
+`(0, 1)`, comes from SymPy combining the exponents of a positive base
+(issue #25) and is refused by the commit after the run. By dataset
+(`definite_integral` / `integrate`): Maxima 401 / 362 correct, REDUCE
+67 / 72, FriCAS 55 / 43, holpy 218 / 205.

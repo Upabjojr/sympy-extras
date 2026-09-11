@@ -60,6 +60,10 @@ remove public functions. Breaking changes are listed here when they happen.
   by a per-module mypy override (an exception to the typing rule, see
   issue #15).
 
+- `sympy_extras.integrals.transformations`: Frullani's theorem and Glasser's
+  master theorem (with the Cauchy–Schlömilch transformation), applied by
+  `definite_integral` before the range is cut at singularities.
+
 - `sympy_extras.integrals.periodic`: the integral of a trigonometric
   integrand over whole periods as `2*pi*k` times the constant Laurent
   coefficient of its form in `exp(I*x)` (`exp(cos(x))*cos(sin(x))` over a

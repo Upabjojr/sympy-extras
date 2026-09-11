@@ -146,6 +146,11 @@ The driver tries, after the Mellin method and the residues:
   `sympy_extras.concrete.zeilberger`, and the way to integrals of
   products of special functions which are not Meijer G-functions (the
   general D-finite case, Chyzak's algorithm, is not implemented).
+- **Frullani's theorem and Glasser's master theorem**
+  (`sympy_extras.integrals.transformations`): `(f(a x) - f(b x))/x` over
+  `(0, oo)` is `(f(0) - f(oo)) log(b/a)`, and `F(x - sum(a_i/(x - b_i)))`
+  over the real line (or over `(0, oo)` for an even `F`, the
+  Cauchy–Schlömilch transformation) integrates like `F` itself.
 - **The mean value of a periodic integrand** (`sympy_extras.integrals.periodic`):
   `Integral(f, (x, c, c + 2*pi*k))` is `2*pi*k` times the constant
   Laurent coefficient of `f` written in `z = exp(I*x)`, read off or summed
@@ -202,6 +207,8 @@ log(p + 1)
 2*sqrt(3)*pi/3
 >>> definite_integral(exp(cos(x))*cos(sin(x)), (x, 0, 2*pi))
 2*pi
+>>> definite_integral(exp(-(x - 1/x)**2), (x, 0, oo))
+sqrt(pi)/2
 >>> from sympy_extras.integrals import ramanujan_master_theorem, recognize_integral
 >>> s = symbols('s')
 >>> ramanujan_master_theorem(exp(-x**2), x, s)

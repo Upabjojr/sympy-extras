@@ -406,6 +406,13 @@ class _Integrator:
         found = self._split_branches(f, x, a, b, depth)
         if found is not None:
             return found
+        if not mapped:
+            # the identities which change the integrand act on the whole
+            # range, before it is cut at singularities (Glasser's map has
+            # poles inside)
+            found = self._transformations(f, x, a, b, depth)
+            if found is not None:
+                return found
         singular, found = self._split_singularities(f, x, a, b, depth)
         if found is not None:
             return found
@@ -796,6 +803,14 @@ class _Integrator:
             # or principal branches only: kept when confirmed numerically
             return None
         return self._finish(found)
+
+    def _transformations(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """Frullani's theorem and Glasser's master theorem
+        (:mod:`.transformations`)."""
+        from .transformations import transformation_integral
+        if depth > 1:
+            return None
+        return self._finish(transformation_integral(f, x, a, b, self.assumptions))
 
     def _holonomic(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Creative telescoping (:mod:`.telescoping`) for a hyperexponential
