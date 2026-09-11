@@ -114,7 +114,9 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
         try:
             if _sympy_ask(Q.real(atom.lhs - atom.rhs), facts.predicates) is False:
                 return False
-        except (ValueError, TypeError, AttributeError):
+        except (ValueError, TypeError, AttributeError, AssertionError):
+            # AssertionError: SymPy 1.14's LRA solver asserts on a term
+            # without symbols in the encoded CNF (lra_theory.py line 319)
             pass
     membership = _real_membership(atom)
     if membership is not None:
@@ -129,7 +131,7 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
     if predicate is not None:
         try:
             value = _sympy_ask(predicate, facts.predicates)
-        except (ValueError, TypeError, AttributeError):
+        except (ValueError, TypeError, AttributeError, AssertionError):
             value = None
         if value is not None:
             return value

@@ -96,7 +96,12 @@ def antiderivative(f: Expr, x: Symbol) -> Optional[Expr]:
     # a quarter of the time limit: the heuristics of integrate may spend
     # it all, and the other methods of the driver still need their share
     budget = None if settings.timeout is None else settings.timeout / 4
-    value = attempt(lambda: as_expr(integrate(f, x, risch=False)), budget)
+    try:
+        value = attempt(lambda: as_expr(integrate(f, x, risch=False)), budget)
+    except (AttributeError, ZeroDivisionError, AssertionError):
+        # SymPy 1.14: the cache wrapper of meijerint fails on a lazy
+        # exception message ('LazyExceptionMessage' has no 'startswith')
+        return None
     if value is None or value.has(Integral):
         return None
     return value

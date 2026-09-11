@@ -88,7 +88,7 @@ from sympy.core.expr import Expr
 from sympy.core.mul import Mul
 from sympy.core.numbers import Integer, Rational, nan, oo, pi, zoo
 from sympy.core.power import Pow
-from sympy.core.relational import Relational
+from sympy.core.relational import Eq, Relational
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.complexes import Abs, sign, re, im
@@ -206,8 +206,9 @@ def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
     settings, so that SymPy's ``integrate`` gets the other half when they
     fail; a value they find under a condition the assumptions do not
     settle is kept unless SymPy finds an unconditional one."""
+    f, a, b = _with_equalities(f, a, b, x, assumptions)
     integrator = _Integrator(assumptions, principal_value=principal_value)
-    if not _real_bounds(a, b):
+    if not _real_bounds(a, b) or _nested_complex_powers(f):
         return integrator._sympy(f, x, a, b)
     budget = None if settings.timeout is None else settings.timeout / 2
     found = attempt(lambda: integrator.integrate(f, x, a, b, 0, False), budget)
@@ -217,6 +218,47 @@ def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
     if fallback is not None and (found is None or fallback.condition is true):
         return fallback
     return found
+
+
+def _with_equalities(f: Expr, a: Expr, b: Expr, x: Symbol, assumptions: Assumptions) -> tuple[Expr, Expr, Expr]:
+    """The integrand and bounds with the equalities among the assumptions
+    (``Eq(n, m)``, a symbol equal to an expression) substituted: a
+    formula valid for generic parameters may fail on the equality (the
+    bug: ``sin(m x) sin(n x)`` over a period came out as ``-pi m/(2 n)``
+    under ``Eq(n, m)``, from the generic antiderivative ``sin((m - n) x)
+    /(m - n)``; the value is ``pi``)."""
+    items: list[Boolean] = []
+    if isinstance(assumptions, (Basic, bool)):
+        items.append(as_boolean(assumptions))
+    elif assumptions is not None:
+        items.extend(as_boolean(s) for s in assumptions)
+    replacement: dict[Expr, Expr] = {}
+    for item in items:
+        for atom in ([item] if isinstance(item, Eq) else list(item.atoms(Eq)) if isinstance(item, And) else []):
+            lhs, rhs = as_expr(atom.lhs), as_expr(atom.rhs)
+            if isinstance(lhs, Symbol) and lhs != x and not rhs.has(lhs, x):
+                replacement[lhs] = rhs
+            elif isinstance(rhs, Symbol) and rhs != x and not lhs.has(rhs, x):
+                replacement[rhs] = lhs
+    if not replacement:
+        return f, a, b
+    return as_expr(f.xreplace(replacement)), as_expr(a.xreplace(replacement)), as_expr(b.xreplace(replacement))
+
+
+def _nested_complex_powers(f: Expr) -> bool:
+    """Whether ``f`` has a power of a power with a non-real exponent,
+    ``(x**(I/2))**I``: SymPy combines the exponents of a positive base
+    (``x**(-1/2)``), which the principal branches do not allow when the
+    inner argument leaves ``(-pi, pi]``, so the methods which substitute
+    a positive variable are not used (the bug: the integral of
+    ``(z**(I/2))**I`` over ``(0, 1)`` came out as 2, the value of
+    ``z**(-1/2)``; Mathematica's NIntegrate disagrees)."""
+    for node in f.atoms(Pow):
+        base, exponent = as_expr(node.base), as_expr(node.exp)
+        if exponent.is_extended_real is False and isinstance(base, Pow) \
+                and as_expr(base.exp).is_extended_real is False:
+            return True
+    return False
 
 
 def _real_bounds(a: Expr, b: Expr) -> bool:
@@ -385,7 +427,14 @@ class _Integrator:
             strategies += [self._holonomic, self._parametric]
         strategies.append(self._antiderivative)
         for strategy in strategies:
-            found = strategy(f, x, a, b, depth)
+            try:
+                found = strategy(f, x, a, b, depth)
+            except (ZeroDivisionError, AttributeError, AssertionError, OverflowError):
+                # SymPy's internals fail on some inputs (a division by zero
+                # in mpmath inside evalf, an AttributeError in the cache
+                # wrapper of meijerint, an assertion in the LRA solver):
+                # the method is skipped
+                found = None
             if found is not None:
                 if free_symbols(found.value) - allowed or free_symbols(found.condition) - allowed:
                     # a constant of integration or a dummy leaked from a method

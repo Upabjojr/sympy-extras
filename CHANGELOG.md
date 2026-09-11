@@ -70,6 +70,12 @@ remove public functions. Breaking changes are listed here when they happen.
   are linear in the last variable (`y < exp(x)`) by Fubini's theorem with
   the bounds solved for it, before the cylindrical decomposition.
 
+- `definite_integral` substitutes the equalities among the assumptions
+  before integrating (a formula valid for generic parameters fails on
+  `Eq(n, m)`), and contains the internal failures of SymPy 1.14 met on the
+  datasets (the assertion of the LRA solver reached through `ask`, the
+  cache wrapper of `meijerint`, a division by zero in `evalf`).
+
 - `definite_integral` reads the integrand in rewritten forms (trigonometric
   products as sums, hyperbolic functions as exponentials, inverse
   hyperbolic functions as logarithms, orthogonal polynomials expanded),

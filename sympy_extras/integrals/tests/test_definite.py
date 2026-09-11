@@ -1,7 +1,7 @@
 """Tests of the definite integration driver."""
 from __future__ import annotations
 
-from sympy import (symbols, exp, sin, cos, log, sqrt, oo, pi, S, Rational, Abs, Heaviside, Piecewise, Integral, I,
+from sympy import (symbols, exp, sin, cos, log, sqrt, oo, pi, S, Rational, Abs, Heaviside, Piecewise, Integral, I, Eq,
                    sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan)
 from sympy.testing.pytest import raises
 
@@ -229,3 +229,36 @@ def test_symbolic_endpoints() -> None:
     assert _same(definite_integral(exp(-x), (x, a, b)), exp(-a) - exp(-b))
     assert _same(definite_integral(1 / x, (x, a, b), a < b), log(b / a))
     assert _same(definite_integral(cos(x), (x, a, 2 * a)), sin(2 * a) - sin(a))
+
+
+def test_equalities_among_the_assumptions_are_substituted() -> None:
+    # the bug: Integral(sin(m x) sin(n x), (x, 0, 2 pi)) under Eq(n, m) came
+    # out as -pi*m/(2*n) from the generic antiderivative sin((m - n) x)/(m - n)
+    m, n = symbols('m n', integer=True)
+    value = definite_integral(sin(m * x) * sin(n * x), (x, 0, 2 * pi), Eq(n, m))
+    assert value.subs(m, 3) == pi
+
+
+def test_sympy_internal_failures_are_contained() -> None:
+    # SymPy 1.14 raises inside these: an AssertionError of the LRA solver
+    # (lra_theory.py, a term without symbols) reached through ask, an
+    # AttributeError of the cache wrapper of meijerint (a lazy exception
+    # message) through integrate, a ZeroDivisionError of mpmath through
+    # evalf; each was a crash of the driver
+    from sympy import Heaviside
+    T, w, u, v, n = symbols('T w u v n')
+    value = definite_integral(sin(x)**2 / (sin(x) + cos(x)), (x, 0, pi / 2))
+    assert verify_numerically(value, sin(x)**2 / (sin(x) + cos(x)), x, S.Zero, pi / 2) is not False
+    value = definite_integral(cos(T + w) / (cos(T) / 2 + 1)**2, (T, 0, 2 * pi))
+    assert _same(value, -8 * sqrt(3) * pi * cos(w) / 9) or value.has(Integral)
+    definite_integral((-a + u)**n * exp(-u * v) * Heaviside(-a + u, 0), (u, 0, oo))
+
+
+def test_nested_complex_powers_keep_their_branches() -> None:
+    # the bug: (z**(I/2))**I substituted with a positive variable becomes
+    # z**(-1/2) in SymPy, and the integral over (0, 1) came out as 2; on
+    # the principal branches the integrand is exp(-2 pi) z**(-1/2) below
+    # z = exp(-2 pi), and Mathematica's NIntegrate gives 1.9963
+    z = symbols('z')
+    value = definite_integral((z**(I / 2))**I, (z, 0, 1))
+    assert value != 2
