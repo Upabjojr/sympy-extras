@@ -60,6 +60,21 @@ remove public functions. Breaking changes are listed here when they happen.
   the package (issue #54), with the annotations of Aaron Meurer's branch
   `risch-typing` (sympy/sympy#30282) as the starting point.
 
+- `sympy_extras.integrals.validated`: validated numerical integration
+  (composite Simpson with the fourth derivative enclosed in interval
+  arithmetic, a proved error bound), `definite_integral(..., numeric=True)`
+  as the answer of last resort for integrals without parameters.
+
+- `sympy_extras.integrals.reduction`: reduction-based creative telescoping
+  for hyperexponential integrands (Hermite reduction with the shell of
+  integer residues and the polynomial reduction of Bostan–Chen–Chyzak–Li–Xin),
+  minimal-order telescopers without a certificate bound, tried before the
+  ansatz of `telescoping`.
+
+- `sympy_extras.integrals.algebraic`: algebraic integrands of genus zero
+  by rationalising substitutions (Euler's substitutions, roots of Möbius
+  functions, Chebyshev's binomial differentials).
+
 - `IntegralByRanges` scales ellipses, ellipsoids and shifted discs to the
   radial case, integrates cylinder-like regions in cylindrical coordinates,
   and allows unbounded outer variables in the Fubini route.

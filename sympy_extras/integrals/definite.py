@@ -129,7 +129,8 @@ _MAX_DEPTH = 6
 
 def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = None,
                       conds: str = 'piecewise', recognize: bool = False,
-                      principal_value: bool = False, finite_part: bool = False) -> Expr:
+                      principal_value: bool = False, finite_part: bool = False,
+                      numeric: bool = False, digits: int = 15) -> Expr:
     """``Integral(f, (x, a, b))`` under assumptions on the parameters.
 
     Parameters
@@ -159,6 +160,12 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
         Hadamard's finite part of a divergent integral, the divergent
         terms of the excision at each singularity dropped
         (:func:`~sympy_extras.integrals.antiderivative.finite_part_integral`).
+    numeric : bool
+        When every symbolic method fails and the integral has no
+        parameters, a ``Float`` with ``digits`` correct digits, proved by
+        validated integration in interval arithmetic
+        (:func:`~sympy_extras.integrals.validated.validated_integral`);
+        ``None`` there leaves the integral unevaluated.
 
     Returns
     =======
@@ -192,6 +199,11 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
         guessed = recognize_integral(f_, (x, a, b), assumptions)
         if guessed is not None:
             return guessed
+    if (found is None or found.value.has(nan)) and numeric:
+        from .validated import validated_integral
+        enclosed = validated_integral(f_, x, a, b, digits, assumptions)
+        if enclosed is not None:
+            return enclosed[0]
     if found is None or found.value.has(nan):
         return as_expr(Integral(f_, (x, a, b)))
     found = ConditionalValue(tidy(found.value, assumptions, found.condition), found.condition)
@@ -436,7 +448,7 @@ class _Integrator:
             return None
         allowed = (free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x}
         strategies = [self._table, self._canonical, self._mean_value, self._elliptic, self._trigonometric,
-                      self._mapped, self._inversion, self._residues, self._contours]
+                      self._mapped, self._inversion, self._residues, self._contours, self._algebraic]
         if a == -oo and b == oo and f.has(HyperbolicFunction):
             # the rectangular contour gives pi**3/4 for x**2/cosh(x) where
             # the Mellin table gives polylogarithms at +-I
@@ -833,6 +845,16 @@ class _Integrator:
             return None
         return self._finish(elliptic_integral(f, x, a, b, self.assumptions))
 
+    def _algebraic(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """Rationalising substitutions for algebraic integrands of genus
+        zero (:mod:`.algebraic`): Euler's substitutions, Möbius roots,
+        Chebyshev's binomial differentials."""
+        from .algebraic import algebraic_integral
+        if depth > 1 or not any(isinstance(node, Pow) and isinstance(node.exp, Rational) and not node.exp.is_integer
+                                and node.base.has(x) for node in f.atoms(Pow)):
+            return None
+        return self._finish(algebraic_integral(f, x, a, b, self.assumptions))
+
     def _series(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Series expansion of a factor and termwise integration, the
         series summed in closed form (:mod:`.series`)."""
@@ -866,13 +888,19 @@ class _Integrator:
         """Creative telescoping (:mod:`.telescoping`) for a hyperexponential
         integrand with one parameter: the integral satisfies a linear
         ODE in the parameter, solved with initial conditions."""
+        from .reduction import reduction_integral
         from .telescoping import holonomic_integral, is_hyperexponential
         if not self.parametric or depth > 1:
             return None
         parameters = sorted_symbols(free_symbols(f) - {x} - free_symbols(a) - free_symbols(b))
         if len(parameters) != 1 or not is_hyperexponential(f, x, parameters[0]):
             return None
-        return self._finish(holonomic_integral(f, x, a, b, parameters[0], self.assumptions))
+        # the reduction-based telescoper first (minimal order, no bound
+        # on the certificate), the ansatz as the fallback
+        found = reduction_integral(f, x, a, b, parameters[0], self.assumptions)
+        if found is None:
+            found = holonomic_integral(f, x, a, b, parameters[0], self.assumptions)
+        return self._finish(found)
 
     def _dfinite(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Chyzak's algorithm (:mod:`.dfinite`): creative telescoping for

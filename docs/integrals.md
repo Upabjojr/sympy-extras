@@ -147,9 +147,10 @@ The driver tries, after the Mellin method and the residues:
   equation, `holonomic_integral` solves it with `dsolve` and fixes the
   constants at a value of the parameter where the integral is computed
   directly. This is the continuous analogue of Zeilberger's algorithm of
-  `sympy_extras.concrete.zeilberger`, and the way to integrals of
-  products of special functions which are not Meijer G-functions (the
-  general D-finite case, Chyzak's algorithm, is not implemented).
+  `sympy_extras.concrete.zeilberger`. `sympy_extras.integrals.reduction`
+  finds the same telescopers by Hermite reduction (Bostan, Chen, Chyzak, Li
+  and Xin): the reduced forms are canonical, so the order is minimal and no
+  bound on the certificate is needed; it is tried first, the ansatz second.
 - **The rules of the Laplace transform** (`sympy_extras.integrals.laplace`):
   for `g(t)*exp(-s*t)` over `(0, oo)`, division by `t` (the transform
   integrated from `s` to `oo`), multiplication by `t**n` (derivatives of the
@@ -187,6 +188,12 @@ The driver tries, after the Mellin method and the residues:
   `elliptic_pi` and the incomplete `elliptic_f` (SymPy's parameter
   `m = k**2`); `Integral(1/sqrt(1 - x**4), (x, 0, 1))` gives
   `elliptic_k(1/2)`, the lemniscate constant.
+- **Algebraic integrands of genus zero** (`sympy_extras.integrals.algebraic`):
+  Euler's substitutions for `R(x, sqrt(a*x**2 + b*x + c))`, `t**n = M(x)`
+  for roots of a Möbius function, and Chebyshev's three integrable cases
+  of the binomial differential `x**m*(a + b*x**n)**p`; the rational
+  integral in the new variable goes back to the driver (Trager's
+  algorithm for the general algebraic case is not implemented).
 - **Series expansion and termwise integration**
   (`sympy_extras.integrals.series`): one factor expanded in its formal
   power series (or a geometric series of exponentials), the moments of the
@@ -234,6 +241,12 @@ The driver tries, after the Mellin method and the residues:
   (`exp(-t*x)*phi(x)`), Laplace's method (`phi*exp(t*h)` with a maximum
   inside or at an endpoint, to any order) and the stationary phase
   (`phi*exp(I*t*h)`, leading term), with the order term.
+- **Validated numerical integration** (`sympy_extras.integrals.validated`,
+  `definite_integral(..., numeric=True)`): when no closed form is found and
+  the integral has no parameters, a value with a proved error bound from
+  composite Simpson's rule with the fourth derivative enclosed in interval
+  arithmetic, panels refined where the bound is largest, square-root
+  endpoint singularities and infinite ranges transformed away.
 - **Symbolic-numeric recognition** (`sympy_extras.integrals.recognize`,
   `definite_integral(..., recognize=True)`): a high-precision quadrature
   and an integer relation (PSLQ) with a basis of constants propose a
@@ -258,6 +271,8 @@ log(2*pi)/2
 sqrt(pi)*gamma(1/4)/(4*gamma(3/4))
 >>> definite_integral(log(x)*log(1 - x), (x, 0, 1))
 2 - pi**2/6
+>>> definite_integral(sqrt(x)/(1 + x)**2, (x, 0, oo))
+pi/2
 >>> definite_integral(atan(p*x)/(x*(1 + x**2)), (x, 0, oo))
 pi*log(p + 1)/2
 >>> definite_integral((x**p - 1)/log(x), (x, 0, 1))
@@ -286,6 +301,8 @@ log(2)/3 + sqrt(3)*pi/9
 >>> from sympy_extras.integrals import asymptotic_integral
 >>> asymptotic_integral(exp(-t*x)/(1 + x), x, 0, oo, t)
 2/t**3 - 1/t**2 + 1/t + O(t**(-4), (t, oo))
+>>> definite_integral(x**x, (x, 0, 1), numeric=True, digits=6)
+0.783430609
 
 ```
 
