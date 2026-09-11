@@ -67,6 +67,31 @@ Integrals over polytopes are computed through the decomposition as any
 polynomial region; the formulas of Lasserre and Brion for polynomial
 integrands over polytopes [Lasserre]_ are not used.
 
+The bounds solved for the last variable need not be linear in it: a
+relation which :func:`sympy_extras.assumptions.solve` turns into an
+interval of `y` with explicit endpoints (`y^2 < e^x` with `y > 0` into
+`y < e^{x/2}`, `e^y < x` into `y < \\log x`, `y^3 < x` into `y <
+x^{1/3}`) contributes its endpoints to the bounds.
+
+With ``measure='hausdorff'`` the integral is taken with respect to the
+`(n-1)`-dimensional Hausdorff measure on the hypersurface described by
+the *one equation* of the condition, cut by its inequalities: the length
+of a curve and the area of a surface, with the integrand weighted along
+them (Mathematica integrates over ``ImplicitRegion`` this way). The
+cells of the decomposition on which the condition holds are then the
+sections of dimension `n - 1`, on each of which one variable `x_k` is an
+explicit branch `x_k = \\varphi(x_1, \\ldots, x_{k-1})` of a root of the
+equation (:func:`_explicit_root`), and the integral is the integral of
+`f(\\ldots, \\varphi, \\ldots) \\sqrt{1 + \\sum_j (\\partial \\varphi / \\partial x_j)^2}`
+over the cell of the other variables [Apostol]_ (chapter 12): the arc
+length `\\int \\sqrt{1 + \\varphi'(x)^2}\\, dx` of a graph `y = \\varphi(x)`, the
+area `\\int\\int \\sqrt{1 + \\varphi_x^2 + \\varphi_y^2}\\, dx\\, dy` of a graph
+`z = \\varphi(x, y)`; the outer integral over the base cell is again an
+integral over a region, so that a surface over a disc is done in polar
+coordinates. When a root has no explicit branch, or the condition has no
+equation or more than one (a curve in space as the intersection of two
+surfaces), the integral is left unevaluated.
+
 Examples
 ========
 
@@ -94,12 +119,22 @@ pi/2
 >>> integrate_by_ranges(1, (x > 0) & (y > 0) & (y < exp(-x)))
 1
 
+The length of the unit circle and the area of the unit sphere, with the
+Hausdorff measure:
+
+>>> from sympy import Eq
+>>> integrate_by_ranges(1, Eq(x**2 + y**2, 1), measure='hausdorff')
+2*pi
+>>> integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1), measure='hausdorff')
+4*pi
+
 References
 ==========
 
 .. [Apostol] T. M. Apostol, *Calculus*, vol. II, 2nd ed., Wiley, 1969,
    sections 11.11 (regions between two graphs, Fubini's theorem) and
-   11.27–11.29 (polar coordinates).
+   11.27–11.29 (polar coordinates); chapter 12 (the area of a surface
+   given as a graph, surface integrals).
 .. [Lasserre] J. B. Lasserre, *Integration on a convex polytope*,
    Proceedings of the AMS 126 (1998), pp. 2433-2441; M. Brion, *Points
    entiers dans les polyèdres convexes*, Annales scientifiques de l'ENS
@@ -125,7 +160,7 @@ from sympy.core.numbers import Rational, oo
 from sympy.core.power import Pow
 from sympy.core.relational import Eq, Ge, Gt, Le, Lt, Relational
 from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
+from sympy.core.symbol import Dummy, Str, Symbol
 from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.core.numbers import pi
@@ -155,6 +190,11 @@ __all__ = ['IntegralByRanges', 'integrate_by_ranges']
 #: the numerical tolerance for matching a branch to a root at the sample point
 _TOLERANCE = 1e-20
 
+#: the measures of integration: the Lebesgue measure of `\\mathbb{R}^n` and
+#: the `(n-1)`-dimensional Hausdorff measure on the hypersurface of the
+#: equation of the condition
+_MEASURES = ('lebesgue', 'hausdorff')
+
 
 class IntegralByRanges(Expr):
     """The integral of ``integrand`` over the region described by
@@ -164,10 +204,15 @@ class IntegralByRanges(Expr):
     The constructor does not evaluate: :meth:`doit` (or
     :func:`integrate_by_ranges`) computes the integral.
 
+    ``measure='hausdorff'`` integrates with respect to the
+    `(n-1)`-dimensional Hausdorff measure on the hypersurface given by
+    the equation of the condition (arc length, surface area), see the
+    module documentation.
+
     Examples
     ========
 
-    >>> from sympy import symbols
+    >>> from sympy import symbols, Eq
     >>> from sympy_extras.integrals.regions import IntegralByRanges
     >>> x, y = symbols('x y')
     >>> region = IntegralByRanges(x*y, (x > 0) & (x < y) & (y < 1))
@@ -175,10 +220,16 @@ class IntegralByRanges(Expr):
     (x*y, (x > 0) & (x < y) & (y < 1), (x, y))
     >>> region.doit()
     1/8
+    >>> circle = IntegralByRanges(1, Eq(x**2 + y**2, 1), measure='hausdorff')
+    >>> circle.measure == 'hausdorff'
+    True
+    >>> circle.doit()
+    2*pi
     """
 
     def __new__(cls, integrand: ExprLike, condition: object,
-                variables: Optional[Sequence[Symbol]] = None) -> IntegralByRanges:
+                variables: Optional[Sequence[Symbol]] = None,
+                measure: str = 'lebesgue') -> IntegralByRanges:
         integrand_ = as_expr(integrand)
         condition_ = as_boolean(condition)
         if variables is None:
@@ -187,7 +238,12 @@ class IntegralByRanges(Expr):
             names = [as_symbol(v) for v in variables]
         if not names:
             raise ValueError("no integration variable: the condition has no symbols")
-        obj = Expr.__new__(cls, integrand_, condition_, Tuple(*names))
+        if measure not in _MEASURES:
+            raise ValueError("measure must be one of %s, got %r" % (", ".join(_MEASURES), measure))
+        args: list[Basic] = [integrand_, condition_, Tuple(*names)]
+        if measure != _MEASURES[0]:
+            args.append(Str(measure))
+        obj = Expr.__new__(cls, *args)
         if not isinstance(obj, IntegralByRanges):
             raise TypeError("unexpected construction of IntegralByRanges")
         return obj
@@ -207,9 +263,20 @@ class IntegralByRanges(Expr):
             raise TypeError("the variables of IntegralByRanges must be a Tuple")
         return tuple(as_symbol(v) for v in names.args)
 
+    @property
+    def measure(self) -> str:
+        """``'lebesgue'`` or ``'hausdorff'``."""
+        if len(self.args) < 4:
+            return _MEASURES[0]
+        name = self.args[3]
+        if not isinstance(name, Str):
+            raise TypeError("the measure of IntegralByRanges must be a Str")
+        return str(name)
+
     def doit(self, assumptions: Assumptions = None, **hints: object) -> Expr:
         """The value, or the integral unchanged when it cannot be computed."""
-        return integrate_by_ranges(self.integrand, self.condition, self.variables, assumptions)
+        return integrate_by_ranges(self.integrand, self.condition, self.variables, assumptions,
+                                   self.measure)
 
 
 class _Bound:
@@ -284,9 +351,12 @@ def _explicit_root(bound: _Bound, parent: CADCell, gens: Sequence[Symbol]) -> Op
     return matches[0]
 
 
-def _stack(cell: CADCell, cad: CAD, first: int) -> Optional[_Stack]:
-    """The explicit bounds of a cell of full dimension in the levels from
-    ``first`` (1-based) upwards."""
+def _stack(cell: CADCell, cad: CAD, first: int, skip: int = 0,
+           replace: Optional[dict[Symbol, Expr]] = None) -> Optional[_Stack]:
+    """The explicit bounds of a cell in the levels from ``first``
+    (1-based) upwards, all of them sectors but the level ``skip`` (a
+    section, left out; ``0`` for none), whose variable is replaced in
+    the bounds of the later levels by ``replace``."""
     ancestors: list[CADCell] = []
     current: Optional[CADCell] = cell
     while current is not None and current.level > 0:
@@ -295,9 +365,13 @@ def _stack(cell: CADCell, cad: CAD, first: int) -> Optional[_Stack]:
     ancestors.reverse()
     bounds: list[tuple[Expr, Expr]] = []
     for level in range(first, len(cad.gens) + 1):
+        if level == skip:
+            continue
         node = ancestors[level - 1]
         parent = node.parent
         if parent is None:
+            return None
+        if node.is_section:
             return None
         gens = cad.gens[:level]
         roots = _root_sequence(parent, cad.projection[level - 1], gens)
@@ -314,6 +388,9 @@ def _stack(cell: CADCell, cad: CAD, first: int) -> Optional[_Stack]:
             if found is None:
                 return None
             upper = found
+        if replace and level > skip:
+            lower = as_expr(lower.xreplace(replace))
+            upper = as_expr(upper.xreplace(replace))
         bounds.append((lower, upper))
     return _Stack(cell, bounds)
 
@@ -342,23 +419,28 @@ def _split_roots(expr: Expr, assumptions: list[Boolean]) -> Expr:
             return node
         base = as_expr(factor(node.base))
         factors = list(base.args) if isinstance(base, Mul) else [base]
-        positive: list[Expr] = []
+        positive: list[tuple[Expr, Expr]] = []             # (a factor known positive, its exponent)
         rest: list[Expr] = []
         sign = 1
         for f in factors:
             f_ = as_expr(f)
+            power: Expr = S.One
+            if isinstance(f, Pow) and as_expr(f.exp).is_integer:
+                # a reciprocal (x - 1)**-1 is split by the sign of x - 1
+                f_, power = as_expr(f.base), as_expr(f.exp)
             if f_.is_positive or (not f_.is_number and _ask(as_boolean(f_ > 0), assumptions) is True):
-                positive.append(f_)
+                positive.append((f_, power))
             elif f_.is_negative or (not f_.is_number and _ask(as_boolean(f_ < 0), assumptions) is True):
-                positive.append(-f_)
-                sign = -sign
+                positive.append((-f_, power))
+                if as_expr(power).is_odd:
+                    sign = -sign
             else:
-                rest.append(f_)
+                rest.append(f_**power)
         if not positive:
             return node
         result: Expr = S.One
-        for f_ in positive:
-            result = result * f_**exponent
+        for f_, power in positive:
+            result = result * f_**(power * exponent)
         remaining = as_expr(sign * Mul(*rest))
         return result * remaining**exponent
 
@@ -419,13 +501,21 @@ def _iterated(integrand: Expr, variables: Sequence[Symbol], stack: _Stack,
 def _parameter_condition(cell: CADCell, cad: CAD, levels: int) -> Boolean:
     """The sign conditions of the projection polynomials of the first
     ``levels`` levels at the ancestor of ``cell`` of that level."""
+    return _cell_condition(cell, cad, 1, levels)
+
+
+def _cell_condition(cell: CADCell, cad: CAD, first: int, last: int) -> Boolean:
+    """The sign conditions of the projection polynomials of the levels
+    ``first`` to ``last`` (1-based) at the ancestor of ``cell`` of level
+    ``last``."""
+    levels = last
     parts: list[Boolean] = []
     ancestor: Optional[CADCell] = cell
     while ancestor is not None and ancestor.level > levels:
         ancestor = ancestor.parent
     if ancestor is None:
         return true
-    for level in range(1, levels + 1):
+    for level in range(first, levels + 1):
         gens = cad.gens[:level]
         for poly in cad.projection[level - 1]:
             sign = ancestor.sample.sign(poly, gens) if len(ancestor.sample) == level else \
@@ -813,6 +903,29 @@ def _linear_bound(atom: Relational, y: Symbol, assumptions: list[Boolean]) -> Op
     return (less == positive, bound)
 
 
+def _solved_bound(atom: Relational, y: Symbol, assumptions: list[Boolean]) -> Optional[list[tuple[bool, Expr]]]:
+    """The bounds ``(upper, bound)`` on ``y`` from a relation: the one of
+    :func:`_linear_bound` when the relation is linear in ``y``, else the
+    finite endpoints of the interval of ``y`` which
+    :func:`sympy_extras.assumptions.solve` finds under the assumptions
+    (``y**2 < x`` with ``x > 0`` gives ``-sqrt(x) < y < sqrt(x)``,
+    ``exp(y) < x`` gives ``y < log(x)``); ``None`` when the solution is
+    not one interval."""
+    linear = _linear_bound(atom, y, assumptions)
+    if linear is not None:
+        return [linear]
+    where = attempt(lambda: solve(atom, y, assumptions, domain=S.Reals), settings.timeout)
+    if not isinstance(where, Interval):
+        return None
+    found: list[tuple[bool, Expr]] = []
+    left, right = as_expr(where.left), as_expr(where.right)
+    if left != -oo:
+        found.append((False, left))
+    if right != oo:
+        found.append((True, right))
+    return found
+
+
 def _extreme(bounds: list[Expr], largest: bool, assumptions: list[Boolean]) -> Optional[Expr]:
     """The largest (smallest) of the bounds, when the assumptions order
     them; ``None`` otherwise."""
@@ -862,7 +975,7 @@ def as_set_(value: Basic) -> Set:
 def _solved_bounds(f: Expr, formula: Boolean, names: Sequence[Symbol],
                    assumptions: list[Boolean]) -> Optional[Expr]:
     """The integral through the bounds of the last variable solved from
-    the relations linear in it (Fubini), see the module documentation."""
+    the relations (Fubini), see the module documentation."""
     atoms = _atoms(formula)
     if atoms is None or not atoms:
         return None
@@ -879,11 +992,11 @@ def _solved_bounds(f: Expr, formula: Boolean, names: Sequence[Symbol],
     for atom in atoms:
         if not atom.has(y):
             continue
-        found = _linear_bound(atom, y, outer_assumptions)
+        found = _solved_bound(atom, y, outer_assumptions)
         if found is None:
             return None
-        is_upper, bound = found
-        (uppers if is_upper else lowers).append(bound)
+        for is_upper, bound in found:
+            (uppers if is_upper else lowers).append(bound)
     lower: Expr = S.NegativeInfinity
     upper: Expr = S.Infinity
     if lowers:
@@ -945,7 +1058,8 @@ def _solved_bounds(f: Expr, formula: Boolean, names: Sequence[Symbol],
 
 def integrate_by_ranges(integrand: ExprLike, condition: object,
                         variables: Optional[Sequence[Symbol]] = None,
-                        assumptions: Assumptions = None) -> Expr:
+                        assumptions: Assumptions = None,
+                        measure: str = 'lebesgue') -> Expr:
     """The integral of ``integrand`` over the region ``condition``.
 
     Parameters
@@ -966,6 +1080,11 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     assumptions : Boolean or list of Booleans, optional
         Assumptions on the parameters; the cases of the parameter space
         they refute are dropped.
+    measure : ``'lebesgue'`` (default) or ``'hausdorff'``
+        With the Hausdorff measure the condition must contain exactly one
+        equation, and the integral is taken on the hypersurface it
+        describes (the length of a curve, the area of a surface), see the
+        module documentation.
 
     Returns
     =======
@@ -998,13 +1117,25 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
 
     >>> integrate_by_ranges(1, x**2 + y**2 < r**2, [x, y]).subs(r, -2)
     4*pi
+
+    The length of the arc of the parabola ``y = x**2`` over ``0 < x < 1``
+    and the area of the paraboloid ``z = x**2 + y**2`` below ``z = 1``:
+
+    >>> from sympy import Eq
+    >>> integrate_by_ranges(1, Eq(y, x**2) & (x > 0) & (x < 1), measure='hausdorff')
+    asinh(2)/4 + sqrt(5)/2
+    >>> integrate_by_ranges(1, Eq(z, x**2 + y**2) & (z < 1), measure='hausdorff')
+    pi*(-1 + 5*sqrt(5))/6
     """
-    node = IntegralByRanges(integrand, condition, variables)
+    node = IntegralByRanges(integrand, condition, variables, measure)
     f, formula, names = node.integrand, normalize(node.condition), node.variables
     extra: list[Boolean] = []
     if assumptions is not None:
         extra = [as_boolean(a) for a in ([assumptions] if isinstance(assumptions, (Boolean, bool))
                                          else assumptions)]
+    if measure == 'hausdorff':
+        surface = _hausdorff(f, formula, names, assumptions, extra)
+        return node if surface is None else surface
     radial = _radial(f, formula, names, extra)
     if radial is not None:
         return radial
@@ -1058,6 +1189,13 @@ def _decomposed(node: IntegralByRanges, f: Expr, formula: Boolean, names: Sequen
             if refined is not None:
                 value = refined
         values[base] = as_expr(values.get(base, S.Zero) + value)
+    return _cases(values, cad, m, assumptions)
+
+
+def _cases(values: dict[CADCell, Expr], cad: CAD, m: int, assumptions: Assumptions) -> Expr:
+    """The sum of the values of the cells over the parameter cells, as a
+    ``Piecewise`` over the sign conditions of the parameter cells (the
+    plain sum without parameters, ``m == 0``)."""
     if m == 0:
         total: Expr = S.Zero
         for value in values.values():
@@ -1087,3 +1225,112 @@ def _decomposed(node: IntegralByRanges, f: Expr, formula: Boolean, names: Sequen
         branches.append((value, cond))
     return as_expr(Piecewise(*branches))
 
+
+
+def _pruned(condition: Boolean) -> Boolean:
+    """The conjunction without the atoms implied by the others (the sign
+    conditions of the projection polynomials of a cell repeat what the
+    higher levels say: ``x**2 < 1`` under ``x**2 + y**2 < 1``)."""
+    parts = [as_boolean(a) for a in (condition.args if isinstance(condition, And) else [condition])]
+    kept = list(parts)
+    for part in parts:
+        rest = [other for other in kept if other is not part]
+        if rest and _ask(part, rest) is True:
+            kept = rest
+    return as_boolean(And(*kept))
+
+
+def _section_value(cell: CADCell, cad: CAD, m: int, f: Expr, names: Sequence[Symbol],
+                   assumptions: list[Boolean]) -> Optional[Expr]:
+    """The integral of ``f`` with the Hausdorff measure over a cell of
+    dimension `n - 1` which is a section at one level `k`: the variable
+    `x_k` is the explicit branch `\\varphi` of the root and the integral of
+    `f \\sqrt{1 + |\\nabla \\varphi|^2}` is taken over the other variables of the
+    cell; ``None`` when the branch is not explicit or the integral is not
+    computed."""
+    n = len(cad.gens)
+    sections = [level for level in range(m + 1, n + 1) if cell.index[level - 1] % 2 == 0]
+    if len(sections) != 1:
+        return None
+    k = sections[0]
+    node = _ancestor_at(cell, k)
+    parent = node.parent
+    gens = cad.gens[:k]
+    roots = _root_sequence(parent, cad.projection[k - 1], gens) if parent is not None else []
+    position = node.index[-1] // 2 - 1
+    if not 0 <= position < len(roots) or parent is None:
+        return None
+    phi = _explicit_root(roots[position], parent, gens)
+    if phi is None:
+        return None
+    earlier = list(names[:k - m - 1])
+    x_k = names[k - m - 1]
+    rest = earlier + list(names[k - m:])
+    gradient: Expr = S.One
+    for v in earlier:
+        gradient = gradient + as_expr(phi.diff(v))**2
+    simpler = attempt(lambda: as_expr(simplify(gradient)), settings.timeout)
+    if simpler is not None:
+        gradient = simpler
+    g = as_expr(f.xreplace({x_k: phi}) * sqrt(gradient))
+    if not rest:
+        return g                                            # a point: the counting measure
+    stack = _stack(cell, cad, m + 1, k, {x_k: phi})
+    if stack is None:
+        return None
+    facts = list(assumptions)
+    for v, (lower, upper) in zip(rest, stack.bounds):
+        facts.extend([as_boolean(v > lower)] * (lower != -oo) + [as_boolean(v < upper)] * (upper != oo))
+    g = _split_roots(g, facts)                              # sqrt(-1/(x**2 - 1)) sqrt(1 - x**2) = 1 on (-1, 1)
+    if k == n and len(rest) >= 2:
+        # the base cell as a region (a disc under a surface goes to polar coordinates)
+        condition = _pruned(_cell_condition(cell, cad, m + 1, n - 1))
+        found = integrate_by_ranges(g, condition, rest, assumptions)
+        if not found.has(Integral, IntegralByRanges):
+            return found
+    return _iterated(g, rest, stack, assumptions)
+
+
+def _hausdorff(f: Expr, formula: Boolean, names: Sequence[Symbol],
+               assumptions: Assumptions, extra: list[Boolean]) -> Optional[Expr]:
+    """The integral with the `(n-1)`-dimensional Hausdorff measure on the
+    hypersurface of the equation of the condition, through the
+    decomposition: the sum of :func:`_section_value` over the sections
+    of dimension `n - 1` on which the condition holds; ``None`` when the
+    condition has not exactly one equation, a branch is not explicit or
+    an integral is not computed."""
+    parts = list(formula.args) if isinstance(formula, And) else [formula]
+    if sum(1 for part in parts if isinstance(part, Eq)) != 1:
+        return None
+    if not all(isinstance(part, (Eq, Lt, Le, Gt, Ge)) for part in parts):
+        return None
+    parameters = sorted_symbols(free_symbols(formula) - set(names))
+    gens: list[Symbol] = parameters + list(names)
+    polys: list[Poly] = []
+    index: dict[Poly, int] = {}
+    try:
+        compiled = _compile(formula, gens, polys, index)
+        cad = cylindrical_algebraic_decomposition(polys, gens)
+    except (ValueError, PolynomialError, TypeError):
+        return None
+    m = len(parameters)
+    values: dict[CADCell, Expr] = {}
+    for cell in cad.cells:
+        if not compiled(cell.signs):
+            continue
+        if sum(1 for i in cell.index[m:] if i % 2 == 0) != 1:
+            continue                                        # not of dimension n - 1: measure zero
+        base = _ancestor_at(cell, m) if m else cell
+        parameter_condition = _parameter_condition(cell, cad, m) if m else true
+        if m and ask(parameter_condition, assumptions) is False:
+            continue
+        found = _section_value(cell, cad, m, f, names, extra + ([parameter_condition] if m else []))
+        if found is None:
+            return None
+        value: Expr = found
+        if m:
+            refined = attempt(lambda: as_expr(refine(value, extra + [parameter_condition])), settings.timeout)
+            if refined is not None:
+                value = refined
+        values[base] = as_expr(values.get(base, S.Zero) + value)
+    return _cases(values, cad, m, assumptions)

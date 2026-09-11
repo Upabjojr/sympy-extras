@@ -62,3 +62,25 @@ def test_ellipses_cylinders_and_cones() -> None:
     # and the volume of the cone sqrt(x**2 + y**2) < z < 1 is pi/3
     assert integrate_by_ranges(1, (x**2 + y**2 < 1) & (z > 0) & (z < x**2 + y**2)) == pi/2
     assert integrate_by_ranges(1, (sqrt(x**2 + y**2) < z) & (z < 1)) == pi/3
+
+
+def test_arc_lengths_and_surface_areas() -> None:
+    # Stewart 8.1: the length of the arc of y = x**2 from 0 to 1 is sqrt(5)/2 + asinh(2)/4
+    # (= sqrt(5)/2 + log(2 + sqrt(5))/4), and the circumference of the unit circle is 2 pi
+    from sympy import Eq, asinh, simplify, sqrt
+    assert simplify(integrate_by_ranges(1, Eq(y, x**2) & (x > 0) & (x < 1), measure='hausdorff')
+                    - (sqrt(5)/2 + asinh(2)/4)) == 0
+    assert integrate_by_ranges(1, Eq(x**2 + y**2, 1), measure='hausdorff') == 2*pi
+    # Stewart 16.6: the area of the unit sphere is 4 pi, and the area of the
+    # paraboloid z = x**2 + y**2 under z = 1 is pi (5 sqrt(5) - 1)/6
+    assert integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1), measure='hausdorff') == 4*pi
+    assert simplify(integrate_by_ranges(1, Eq(z, x**2 + y**2) & (z < 1), measure='hausdorff')
+                    - pi*(5*sqrt(5) - 1)/6) == 0
+
+
+def test_regions_under_curves_solved_for_the_last_variable() -> None:
+    # Apostol II 11.11: the area under y = sqrt(x) on [0, 1] is 2/3, written with
+    # the bound y**2 < x; the area under y = log(x) on [1, 2] written with exp(y) < x
+    from sympy import log, simplify
+    assert integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y**2 < x)) == Rational(2, 3)
+    assert simplify(integrate_by_ranges(1, (x > 1) & (x < 2) & (y > 0) & (exp(y) < x)) - (2*log(2) - 1)) == 0

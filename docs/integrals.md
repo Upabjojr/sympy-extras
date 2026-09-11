@@ -92,6 +92,28 @@ gamma(k + 1)**2/gamma(2*k + 2)
 
 ```
 
+A trigonometric or hyperbolic factor next to two kernels is written as
+exponentials with complex scales, `sin(b x)` as `(exp(I b x) -
+exp(-I b x))/(2 I)`, and each term is a product of two kernels; the
+condition on the argument of the complex scale, `Abs(arg(a + I b)) <
+pi/2`, is decided by its real part. With `regularize=True` the strips of
+convergence are dropped and the gamma quotient is continued analytically:
+Hadamard's finite part of a divergent Mellin-type integral (Marichev's
+regularisation).
+
+```python
+>>> from sympy import besselj, I
+>>> definite_integral(exp(-a*x)*sin(b*x)*besselj(0, x), (x, 0, oo))
+I/(2*sqrt((a + I*b)**2 + 1)) - I/(2*sqrt((a - I*b)**2 + 1))
+>>> definite_integral(exp(-2*x)*cos(x)*besselj(0, x), (x, 0, oo))
+2**(3/4)*sqrt(sqrt(2) + 2)/8
+>>> definite_integral(x**(-S(3)/2)*exp(-x), (x, 0, oo))
+Integral(exp(-x)/x**(3/2), (x, 0, oo))
+>>> definite_integral(x**(-S(3)/2)*exp(-x), (x, 0, oo), regularize=True)
+-2*sqrt(pi)
+
+```
+
 The integrand is also read in rewritten forms: products and powers of
 `sin` and `cos` as sums, hyperbolic functions as exponentials, inverse
 hyperbolic functions as logarithms, orthogonal polynomials expanded;
@@ -386,12 +408,52 @@ pi/2
 
 ```
 
+With `measure='hausdorff'` the integral is taken with respect to the
+`(n-1)`-dimensional Hausdorff measure on the hypersurface given by one
+equation among the conditions (a curve in the plane, a surface in space):
+the section of the decomposition is the explicit branch of the root, the
+integrand is multiplied by the surface element `sqrt(1 + |grad phi|**2)`
+and the remaining variables are integrated as before. Bounds which are
+not polynomial but monotone in the last variable (`y**2 < exp(x)`) are
+solved for it.
+
+```python
+>>> from sympy import Eq, log
+>>> integrate_by_ranges(1, Eq(x**2 + y**2, 1), measure='hausdorff')
+2*pi
+>>> integrate_by_ranges(y, Eq(x**2 + y**2, 1) & (y > 0), measure='hausdorff')
+2
+>>> integrate_by_ranges(1, Eq(z, x**2 + y**2) & (z < 1), measure='hausdorff')
+pi*(-1 + 5*sqrt(5))/6
+>>> integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y**2 < exp(x)))
+-2 + 2*exp(1/2)
+
+```
+
+The Fourier series of the classical table (`log(sin(x))`, `log(cos(x))`,
+`log(tan(x))`, `log(1 - cos(x))`, `x`, `x**2`, `Abs(sin(x))`, ...,
+Gradshteyn–Ryzhik 1.441-1.444) are integrated termwise over their ranges
+of validity, against each other and against harmonics by orthogonality,
+and against another factor through the moments of the harmonics:
+
+```python
+>>> from sympy import log
+>>> definite_integral(log(sin(x)), (x, 0, pi))
+-pi*log(2)
+>>> definite_integral(x*log(sin(x)), (x, 0, pi/2))
+-pi**2*log(2)/8 + 7*zeta(3)/16
+>>> definite_integral(log(sin(x))*log(cos(x)), (x, 0, pi/2))
+pi*(-pi**2 + 24*log(2)**2)/48
+
+```
+
 ## What is not done
 
 Tracked in issue #53 of the repository, with the alternatives worth adding.
 
 - Products of three or more functions of the table (a double
-  Mellin–Barnes integral, not a G-function), and functions outside the
+  Mellin–Barnes integral, not a G-function) unless one of them is
+  trigonometric or hyperbolic, and functions outside the
   table (`sinh`, `cosh` and `besseli` without the exponential which makes
   them decay, inverse hyperbolic functions, `LambertW`, ...): the driver
   falls back to SymPy.

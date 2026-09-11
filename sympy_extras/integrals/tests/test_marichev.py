@@ -119,8 +119,12 @@ def test_reduce_positive_powers() -> None:
 def test_unrecognised_integrands() -> None:
     assert mellin_integrate(exp(x), x) is None
     assert mellin_integrate(sin(x + 1), x) is None
-    assert mellin_integrate(exp(-x) * sin(x) * cos(x), x) is None
+    # three kernels none of which is trigonometric: no exponential form
+    assert mellin_integrate(exp(-x) * besselj(0, x) * besselj(1, x), x) is None
     assert mellin_integrate(x**k, x) is None
+    # the trigonometric factors of three kernels go through exponentials
+    found = mellin_integrate(exp(-x) * sin(x) * cos(x), x)
+    assert found is not None and found.value == Rational(1, 5)
 
 
 def test_integrate_product_with_no_kernel() -> None:
@@ -130,3 +134,34 @@ def test_integrate_product_with_no_kernel() -> None:
 
 def test_wrong_types_are_rejected() -> None:
     raises(TypeError, lambda: untyped(mellin_integrate)([1], x))
+
+
+def test_analytic_regularisation() -> None:
+    # regularize=True drops the strip of convergence and keeps the
+    # analytic continuation of the gamma quotient: the Hadamard finite
+    # parts of divergent Mellin-type integrals
+    assert mellin_integrate(x**Rational(-3, 2) * exp(-x), x) is None
+    found = mellin_integrate(x**Rational(-3, 2) * exp(-x), x, regularize=True)
+    assert found is not None and found.value == -2 * sqrt(pi)
+    found = mellin_integrate(sqrt(x) / (x + 1), x, regularize=True)
+    assert found is not None and found.value == -pi
+
+
+def test_three_kernels_through_the_exponential_form() -> None:
+    # a trigonometric factor next to two kernels is written as
+    # exponentials with complex scales, two kernels per term; the
+    # exponentials linear in x are combined, exp(-x**2) is kept apart
+    from sympy import I, N, Integral
+    from sympy_extras.integrals.marichev import exponential_form, right_half_plane_powers
+    form = exponential_form(exp(-a * x) * sin(b * x) / (1 + x**2), x)
+    assert form.count(exp) == 2 and form.count(x**2 + 1) == 2
+    assert form.expand() == (exp(-a * x) * (exp(I * b * x) - exp(-I * b * x)) / (2 * I * (x**2 + 1))).expand()
+    form = exponential_form(exp(-a * x) * cos(b * x) * exp(-x**2), x)
+    assert form.count(exp) == 4 and all(isinstance(e, exp) for e in form.atoms(exp))
+    # sqrt((a + I b)**2) is a + I b: the real part is positive
+    assert right_half_plane_powers(sqrt((a + I * b)**2) / (a + I * b)) == 1
+    assert right_half_plane_powers(sqrt((-a + I * b)**2)) == sqrt((-a + I * b)**2)
+    found = mellin_integrate(exp(-a * x) * cos(b * x) * exp(-x**2), x)
+    assert found is not None
+    numeric = found.value.subs({a: 2, b: 1})
+    assert abs(N(numeric) - N(Integral(exp(-2 * x) * cos(x) * exp(-x**2), (x, 0, oo)))) < 1e-10

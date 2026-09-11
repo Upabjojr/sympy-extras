@@ -126,9 +126,27 @@ def test_bounds_solved_for_the_last_variable() -> None:
     assert _decomposed(node, x*y, normalize(polynomial), (x, y), None, []) == Rational(1, 12)
     # a coefficient of y whose sign is known on the range of x
     assert _same(integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y*exp(x) < 1)), 1 - exp(-1))
-    # nothing to solve: y not linear, x unbounded
+    # nothing to solve: x unbounded, the area under exp infinite
     assert isinstance(integrate_by_ranges(1, (x > 0) & (y > 0) & (y < exp(x))), IntegralByRanges)
-    assert isinstance(integrate_by_ranges(1, (x > 0) & (x < 1) & (y**2 < exp(x)) & (y > 0)), IntegralByRanges)
+
+
+def test_bounds_solved_from_relations_not_linear_in_the_last_variable() -> None:
+    from sympy import E, log
+    from sympy_extras.integrals.regions import _solved_bound
+    # exp(y) < x is y < log(x): Integral(log(x), (x, 1, 2)) = 2 log 2 - 1
+    assert _same(integrate_by_ranges(1, (x > 1) & (x < 2) & (y > 0) & (exp(y) < x)), 2*log(2) - 1)
+    # y**2 < x with y > 0 is y < sqrt(x): Integral(sqrt(x), (x, 0, 1)) = 2/3
+    assert integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y**2 < x)) == Rational(2, 3)
+    # y**2 < exp(x) is y < exp(x/2): Integral(exp(x/2), (x, 0, 1)) = 2 (sqrt(e) - 1)
+    assert _same(integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y**2 < exp(x))), 2*(sqrt(E) - 1))
+    # y**3 < x is y < x**(1/3): Integral(x**(1/3), (x, 0, 1)) = 3/4
+    assert integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y**3 < x)) == Rational(3, 4)
+    # the bounds of one relation: both endpoints of y**2 < x, one of exp(y) < x
+    assert _solved_bound(y**2 < x, y, [x > 0, x < 1]) == [(False, -sqrt(x)), (True, sqrt(x))]
+    assert _solved_bound(exp(y) < x, y, [x > 1, x < 2]) == [(True, log(x))]
+    # a relation whose solution set is not one interval (the bug: the
+    # solved bounds took any set for an interval)
+    assert _solved_bound(y**2 > x, y, [x > 0, x < 1]) is None
 
 
 def test_affine_scaling_to_polar_coordinates() -> None:
@@ -179,3 +197,46 @@ def test_unbounded_outer_variables() -> None:
     # default the variables are the symbols of the condition):
     # Integral(exp(-x**2)*(1 - 0)) over R = sqrt(pi)
     assert integrate_by_ranges(exp(-x**2), (y > 0) & (y < 1), [x, y]) == sqrt(pi)
+
+
+def test_hausdorff_measure() -> None:
+    from sympy import Eq, asinh
+    # the length of the unit circle, the two arcs y = +-sqrt(1 - x**2) over -1 < x < 1,
+    # each Integral(sqrt(1 + x**2/(1 - x**2)), (x, -1, 1)) = Integral(1/sqrt(1 - x**2)) = pi
+    assert integrate_by_ranges(1, Eq(x**2 + y**2, 1), measure='hausdorff') == 2*pi
+    node = IntegralByRanges(1, Eq(x**2 + y**2, 1), measure='hausdorff')
+    assert node.measure == 'hausdorff' and node.doit() == 2*pi
+    assert IntegralByRanges(1, x**2 + y**2 < 1).measure == 'lebesgue'
+    assert node != IntegralByRanges(1, Eq(x**2 + y**2, 1))
+    # the arc of the parabola y = x**2 over 0 < x < 1:
+    # Integral(sqrt(1 + 4 x**2), (x, 0, 1)) = sqrt(5)/2 + asinh(2)/4
+    assert _same(integrate_by_ranges(1, Eq(y, x**2) & (x > 0) & (x < 1), measure='hausdorff'),
+                 sqrt(5)/2 + asinh(2)/4)
+    # the integrand y along the upper unit semicircle: Integral(sqrt(1 - x**2)/sqrt(1 - x**2), (x, -1, 1)) = 2
+    assert integrate_by_ranges(y, Eq(x**2 + y**2, 1) & (y > 0), measure='hausdorff') == 2
+    # line segments: y = 2 x over 0 < x < 1 has length sqrt(5), and a
+    # vertical segment (the section at the first level) has length 2
+    assert integrate_by_ranges(1, Eq(y, 2*x) & (x > 0) & (x < 1), measure='hausdorff') == sqrt(5)
+    assert integrate_by_ranges(1, Eq(x, 1) & (y > 0) & (y < 2), measure='hausdorff') == 2
+    assert integrate_by_ranges(x + y, Eq(x, 1) & (y > 0) & (y < 2), measure='hausdorff') == 4
+    # the paraboloid z = x**2 + y**2 below z = 1: the area
+    # 2 pi Integral(rho sqrt(1 + 4 rho**2), (rho, 0, 1)) = pi (5 sqrt(5) - 1)/6
+    assert _same(integrate_by_ranges(1, Eq(z, x**2 + y**2) & (z < 1), measure='hausdorff'),
+                 pi*(5*sqrt(5) - 1)/6)
+    # in one variable the measure counts the points: x**2 at x = +-2
+    assert integrate_by_ranges(x**2, Eq(x**2, 4), measure='hausdorff') == 8
+    # left unevaluated: no equation, two equations (a curve in space), a
+    # root without an explicit branch (a quintic)
+    assert isinstance(integrate_by_ranges(1, x**2 + y**2 < 1, measure='hausdorff'), IntegralByRanges)
+    assert isinstance(integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1) & Eq(z, 0), measure='hausdorff'),
+                      IntegralByRanges)
+    assert isinstance(integrate_by_ranges(1, Eq(y**5 + y + x, 0) & (x > 0) & (x < 1), measure='hausdorff'),
+                      IntegralByRanges)
+    raises(ValueError, lambda: IntegralByRanges(1, Eq(x**2 + y**2, 1), measure='counting'))
+
+
+def test_hausdorff_measure_sphere() -> None:
+    from sympy import Eq
+    # the two hemispheres z = +-sqrt(1 - x**2 - y**2) over the unit disc, each
+    # Integral(1/sqrt(1 - rho**2)) over the disc = 2 pi Integral(rho/sqrt(1 - rho**2), (rho, 0, 1)) = 2 pi
+    assert integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1), measure='hausdorff') == 4*pi

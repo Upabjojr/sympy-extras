@@ -66,12 +66,16 @@ from __future__ import annotations
 from typing import Optional
 
 from sympy.core.add import Add
+from sympy.core.mul import Mul
+from sympy.functions.elementary.trigonometric import sin, cos
+from sympy.functions.elementary.hyperbolic import sinh, cosh
+from sympy.functions.elementary.exponential import exp
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.numbers import I, nan, oo, pi, zoo
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.complexes import polar_lift, unpolarify, principal_branch
+from sympy.functions.elementary.complexes import polar_lift, unpolarify, principal_branch, re, im
 from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.exponential import exp_polar
 from sympy.functions.special.gamma_functions import polygamma
@@ -92,6 +96,7 @@ from sympy.logic.boolalg import And, Boolean, true
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.facts import element
 from sympy_extras.assumptions.refine import refine
 from sympy_extras.settings import settings
 from .conditions import ConditionalValue, decide
@@ -120,25 +125,28 @@ def tidy(value: Expr, assumptions: Assumptions = None, condition: Boolean = true
     time limit of the settings; ``refine`` uses the assumptions and the
     condition under which the value holds."""
     result = value
+    # a quarter of the budget for each simplification: ``trigsimp`` of a
+    # sine of a complex argument factors over Q(i) for half a minute
+    limit = None if settings.timeout is None else settings.timeout / 4
     if result.has(exp_polar, polar_lift, principal_branch):
-        unpolar = attempt(lambda: as_expr(unpolarify(result)), settings.timeout)
+        unpolar = attempt(lambda: as_expr(unpolarify(result)), limit)
         if unpolar is not None:
             result = unpolar
     if result.has(meijerg):
         return result
     if result.has(polygamma):
-        expanded = attempt(lambda: as_expr(expand_func(result)), settings.timeout)
+        expanded = attempt(lambda: as_expr(expand_func(result)), limit)
         if expanded is not None and _size(expanded) < _size(result):
             result = expanded
     if result.has(lerchphi, dirichlet_eta):
         # the Dirichlet functions at integers are logarithms and constants
-        expanded = attempt(lambda: as_expr(simplify(expand_func(result))), settings.timeout)
+        expanded = attempt(lambda: as_expr(simplify(expand_func(result))), limit)
         if expanded is not None and not expanded.has(lerchphi, dirichlet_eta):
             result = expanded
-    simpler = attempt(lambda: as_expr(simplify(gammasimp(result))), settings.timeout)
+    simpler = attempt(lambda: as_expr(simplify(gammasimp(result))), limit)
     if simpler is not None and _size(simpler) <= _size(result):
         result = simpler
-    factored = attempt(lambda: as_expr(factor_terms(factor(result))), settings.timeout)
+    factored = attempt(lambda: as_expr(factor_terms(factor(result))), limit)
     if factored is not None and _size(factored) < _size(result):
         result = factored
     facts: list[Boolean] = [] if condition is true else [condition]
@@ -148,11 +156,43 @@ def tidy(value: Expr, assumptions: Assumptions = None, condition: Boolean = true
         facts.extend(as_boolean(a) for a in assumptions)
     if result.has(log):
         result = real_logarithms(result, facts)
+    if result.has(I):
+        result = right_half_plane_powers(result, facts)
     if facts:
-        refined = attempt(lambda: as_expr(refine(result, facts)), settings.timeout)
+        refined = attempt(lambda: as_expr(refine(result, facts)), limit)
         if refined is not None and _size(refined) <= _size(result):
             result = refined
     return result
+
+
+def right_half_plane_powers(value: Expr, assumptions: Assumptions = None) -> Expr:
+    """``(w**2)**p`` with ``w`` a non-real number of positive real part
+    under the assumptions written ``w**(2*p)`` (``sqrt((a + I*b)**2)`` is
+    ``a + I*b`` for ``a > 0``): the principal argument of ``w**2`` is
+    twice the one of ``w`` when ``|arg w| < pi/2``.
+
+    >>> from sympy import I, sqrt, symbols
+    >>> from sympy_extras.integrals.marichev import right_half_plane_powers
+    >>> a, b = symbols('a b', positive=True)
+    >>> right_half_plane_powers(sqrt((a + I*b)**2)/(a + I*b))
+    1
+    """
+    replacement: dict[Expr, Expr] = {}
+    for node in value.atoms(Pow):
+        base, exponent = as_expr(node.base), as_expr(node.exp)
+        if not (isinstance(base, Pow) and base.exp == 2) or exponent.is_integer:
+            continue
+        w = as_expr(base.base)
+        if w.is_extended_real or ask(element(w, S.Reals), assumptions):
+            continue
+        real_part = as_expr(re(w))
+        if real_part.has(re, im):
+            continue
+        if ask(as_boolean(real_part > 0), assumptions) is True:
+            replacement[as_expr(node)] = w**(2 * exponent)
+    if not replacement:
+        return value
+    return as_expr(value.xreplace(replacement))
 
 
 def real_logarithms(value: Expr, assumptions: Assumptions = None) -> Expr:
@@ -214,15 +254,18 @@ def _two_kernels(product: Product, assumptions: Assumptions) -> Optional[Conditi
                             And(nonempty, integrand.condition, line, expanded.condition))
 
 
-def integrate_product(product: Product, assumptions: Assumptions = None) -> Optional[ConditionalValue]:
+def integrate_product(product: Product, assumptions: Assumptions = None,
+                      regularize: bool = False) -> Optional[ConditionalValue]:
     """``Integral(product, (x, 0, oo))`` for a decomposed integrand, see
-    the module documentation; ``None`` when the method does not apply."""
+    the module documentation; ``None`` when the method does not apply.
+    With ``regularize`` the strip conditions are dropped (the analytic
+    continuation of the value)."""
     if not product.matches:
         return None
     if product.log_power > 0:
         alpha = Dummy('alpha', real=True)
         shifted = Product(product.constant, alpha, 0, product.matches)
-        found = integrate_product(shifted, assumptions)
+        found = integrate_product(shifted, assumptions, regularize)
         if found is None:
             return None
         value = found.value
@@ -231,8 +274,61 @@ def integrate_product(product: Product, assumptions: Assumptions = None) -> Opti
         return ConditionalValue(value.subs(alpha, product.alpha),
                                 as_boolean(found.condition.subs(alpha, product.alpha)))
     if len(product.matches) == 1:
-        return _one_kernel(product, assumptions)
-    return _two_kernels(product, assumptions)
+        found = _one_kernel(product, assumptions)
+    else:
+        found = _two_kernels(product, assumptions)
+    if found is None or not regularize:
+        return found
+    # keep the conditions on the parameters of the kernels, drop the strips
+    kept = [m.quotient(assumptions).condition for m in product.matches]
+    return ConditionalValue(found.value, as_boolean(And(*kept)))
+
+
+def exponential_form(term: Expr, x: Symbol) -> Expr:
+    """The trigonometric and hyperbolic factors of ``term`` written as
+    exponentials, so that a product of three kernels (``exp(-a x) sin(b x)
+    J_0(c x)``) becomes a sum of products of two (the exponential with
+    the complex scale ``a - I b``, whose condition ``Re(a - I b) > 0`` is
+    decided by the real part). The exponentials of one term are combined
+    into one (``exp(-a x)*exp(I b x)`` is ``exp((-a + I b) x)``)."""
+    factors = [as_expr(u) for u in Mul.make_args(term)]
+    sums: list[Expr] = []
+    others: list[Expr] = []
+    for piece in factors:
+        if piece.has(x) and isinstance(piece, (sin, cos, sinh, cosh)):
+            sums.append(as_expr(piece.rewrite(exp)))
+        else:
+            others.append(piece)
+    if not sums:
+        return term
+    rest = Mul(*others)
+    summands = Add.make_args(as_expr(Mul(*sums).expand()))
+    return as_expr(Add(*[_combine_linear_exponentials(as_expr(u) * rest, x) for u in summands]))
+
+
+def _combine_linear_exponentials(term: Expr, x: Symbol) -> Expr:
+    """The exponentials of ``term`` whose arguments are linear in ``x``
+    combined into one (``exp(-a x)*exp(I b x)`` is ``exp((-a + I b) x)``),
+    the others (``exp(-x**2)``, a kernel of its own) left alone.
+
+    >>> from sympy import exp, I, symbols
+    >>> from sympy_extras.integrals.marichev import _combine_linear_exponentials
+    >>> x, a, b = symbols('x a b')
+    >>> _combine_linear_exponentials(exp(-a*x)*exp(I*b*x)*exp(-x**2), x)
+    exp(-x**2)*exp(x*(-a + I*b))
+    """
+    linear: list[Expr] = []
+    others: list[Expr] = []
+    for piece in Mul.make_args(term):
+        factor_ = as_expr(piece)
+        if isinstance(factor_, exp) and factor_.has(x) and as_expr(factor_.args[0]).diff(x).has(x) is False:
+            linear.append(as_expr(factor_.args[0]))
+        else:
+            others.append(factor_)
+    if len(linear) < 2:
+        return term
+    argument = as_expr(factor_terms(Add(*linear)))
+    return as_expr(Mul(*others) * exp(argument))
 
 
 def reduce_positive_powers(f: Expr, x: Symbol) -> Expr:
@@ -274,7 +370,7 @@ def reduce_positive_powers(f: Expr, x: Symbol) -> Expr:
 
 
 def mellin_integrate(f: ExprLike, x: Symbol, assumptions: Assumptions = None,
-                     cutoff: Optional[str] = None) -> Optional[ConditionalValue]:
+                     cutoff: Optional[str] = None, regularize: bool = False) -> Optional[ConditionalValue]:
     """``Integral(f, (x, 0, oo))`` by the Marichev–Adamchik method, or
     over ``(0, 1)`` with ``cutoff='lower'`` and over ``(1, oo)`` with
     ``cutoff='upper'``.
@@ -291,6 +387,13 @@ def mellin_integrate(f: ExprLike, x: Symbol, assumptions: Assumptions = None,
         Assumptions on the parameters, used to decide the conditions and
         to simplify the result.
     cutoff : ``'lower'``, ``'upper'`` or None
+    regularize : bool
+        Analytic (Riesz) regularisation: the value of the formula, which
+        is analytic in the exponents, is returned beyond the strips of
+        convergence too (the integral diverges there, and the value is
+        its analytic continuation, e.g. ``Integral(x**(-3/2)*exp(-x),
+        (x, 0, oo))`` is ``gamma(-1/2)``); the conditions on the
+        parameters of the kernels are kept.
 
     Returns
     =======
@@ -317,13 +420,19 @@ def mellin_integrate(f: ExprLike, x: Symbol, assumptions: Assumptions = None,
     terms = [as_expr(t) for t in Add.make_args(reduce_positive_powers(as_expr(f), x))]
     total: Optional[ConditionalValue] = None
     for term in terms:
-        product = decompose_integrand(term, x, cutoff)
-        if product is None:
-            return None
-        found = integrate_product(product, assumptions)
-        if found is None:
-            return None
-        total = found if total is None else total.add(found)
+        pieces = [term]
+        if decompose_integrand(term, x, cutoff) is None:
+            # three kernels with trigonometric or hyperbolic factors:
+            # exponentials with complex scales, two kernels per piece
+            pieces = [as_expr(u) for u in Add.make_args(exponential_form(term, x))]
+        for piece in pieces:
+            product = decompose_integrand(piece, x, cutoff)
+            if product is None:
+                return None
+            found = integrate_product(product, assumptions, regularize)
+            if found is None:
+                return None
+            total = found if total is None else total.add(found)
     if total is None:
         return None
     condition = decide(total.condition, assumptions)

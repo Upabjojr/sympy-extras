@@ -194,3 +194,18 @@ def test_only_rational_constants_are_polynomial() -> None:
     assert _is_polynomial(sqrt(2), {x}) is False
     assert _is_polynomial(Rational(3, 4), {x}) is True
     assert _is_polynomial(x**2 - 1, {x}) is True
+
+
+def test_real_variables_do_not_make_a_complex_expression_real() -> None:
+    # the translation to polynomial relations took Contains(e, Reals) for
+    # true whenever the variables of e were real: (a + I b)**2 with a, b
+    # real is not real, and the argument condition of a Mellin kernel
+    # with the complex scale (a + I b)**2 was rewritten as (a + I b)**2 > 0
+    from sympy import I
+    from sympy_extras.assumptions import ask
+    a, b = Symbol('a', positive=True), Symbol('b', positive=True)
+    assert ask(Contains((a + I * b)**2, S.Reals)) is None
+    assert ask(Contains(a + I * b, S.Reals)) is False
+    assert ask(Contains(a * b - 3, S.Reals)) is True
+    assert to_polynomial(Contains(x**2 + I, S.Reals), {x}) is None
+    assert to_polynomial(Contains(x**2 + 1, S.Reals), {x}) is true

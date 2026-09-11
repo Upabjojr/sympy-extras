@@ -3,14 +3,17 @@
 numerically."""
 from __future__ import annotations
 
-from sympy import symbols, log, exp, oo, pi, S, atan, Catalan, polygamma, zeta, simplify
+from sympy import symbols, log, exp, oo, pi, S, atan, Catalan, polygamma, zeta, simplify, sin, cos, tan, I, polylog
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras.assumptions.ask import Assumptions
 from sympy_extras.integrals.definite import verify_numerically
 from sympy_extras.integrals.series import series_integral
 
 x = symbols('x')
 p = symbols('p', positive=True)
+n = symbols('n', integer=True, positive=True)
+t = symbols('t', positive=True)
 
 
 def _check(f: object, b: object, expected: object) -> None:
@@ -43,3 +46,34 @@ def test_exponential_and_catalan() -> None:
     _check(x**2 * exp(-x) / (exp(x) - 1), oo, 2 * zeta(3) - 2)
     # Catalan's constant (GR 4.531.1)
     _check(atan(x) / x, 1, Catalan)
+
+
+def _check_range(f: ExprLike, a: ExprLike, b: ExprLike, expected: ExprLike,
+                 assumptions: Assumptions = None) -> None:
+    found = series_integral(as_expr(f), x, as_expr(a), as_expr(b), assumptions)
+    assert found is not None, f
+    assert simplify(found.value - as_expr(expected)) == 0, (f, found.value)
+    assert verify_numerically(found.value, as_expr(f), x, as_expr(a), as_expr(b), assumptions) is not False
+
+
+def test_fourier_log_sine_integrals() -> None:
+    # GR 4.224.3, 4.224.6, 4.224.7: the log-sine integrals
+    _check_range(log(sin(x)), 0, pi, -pi * log(2))
+    _check_range(log(sin(x)), 0, pi / 2, -pi * log(2) / 2)
+    _check_range(log(1 + cos(x)), 0, pi, -pi * log(2))
+    _check_range(log(tan(x)), 0, pi / 2, 0)
+    _check_range(log(2 * cos(x / 2)), -pi, pi, 0)
+    # GR 4.224.9, 4.224.11 and [BorweinStraub]: moments of log(sin x)
+    _check_range(x * log(sin(x)), 0, pi, -pi**2 * log(2) / 2)
+    _check_range(x * log(sin(x)), 0, pi / 2, -pi**2 * log(2) / 8 + 7 * zeta(3) / 16)
+    _check_range(x**2 * log(sin(x)), 0, pi, -pi**3 * log(2) / 3 - pi * zeta(3) / 2)
+    _check_range(x**2 * log(2 * sin(x / 2)), 0, 2 * pi, -4 * pi * zeta(3))
+    # GR 4.225.1: the square and the product
+    _check_range(log(sin(x))**2, 0, pi, pi * log(2)**2 + pi**3 / 12)
+    _check_range(log(sin(x)) * log(cos(x)), 0, pi / 2, pi * log(2)**2 / 2 - pi**3 / 48)
+    # GR 4.384.3: the Fourier coefficients themselves
+    _check_range(log(2 * sin(x / 2)) * cos(n * x), 0, 2 * pi, -pi / n)
+    # GR 4.226.1
+    _check_range(sin(x) * log(sin(x)), 0, pi, 2 * log(2) - 2)
+    # the Clausen function Cl_2(t) = Sum(sin(k t)/k**2) as polylogarithms
+    _check_range(log(2 * sin(x / 2)), 0, t, I * (polylog(2, exp(I * t)) - polylog(2, exp(-I * t))) / 2, [t < 6])

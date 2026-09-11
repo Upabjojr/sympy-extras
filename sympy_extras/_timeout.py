@@ -36,6 +36,7 @@ def time_limit(seconds: Optional[float]) -> Iterator[None]:
     if seconds is None or seconds <= 0 or not _supported():
         yield
         return
+    _complete_sympy_tables()
 
     def handler(signum: int, frame: object) -> None:
         raise TimeLimitExceeded()
@@ -53,6 +54,32 @@ def time_limit(seconds: Optional[float]) -> Iterator[None]:
         if outer_remaining > 0:
             left = outer_remaining - (time.monotonic() - started)
             signal.setitimer(signal.ITIMER_REAL, max(left, 1e-3))
+
+
+_tables_complete = False
+
+
+def _complete_sympy_tables() -> None:
+    """Build SymPy's table of Meijer G-function representations before a
+    limit is set: SymPy builds it on first use (``_rewrite_single`` of
+    :mod:`sympy.integrals.meijerint`), and a limit hit during the build
+    left the global table truncated to the entries built so far, after
+    which every later integration of an exponential went astray (the bug:
+    ``mellin_transform(exp(-x), x, s)`` came out as ``uppergamma(s, 0)``
+    on the whole plane once an integration had been interrupted, and a
+    divergent integral got a value from it). The table is built apart and
+    installed only when complete, so that an outer limit firing during
+    the build leaves nothing behind."""
+    global _tables_complete
+    if _tables_complete:
+        return
+    import sympy.integrals.meijerint as meijerint
+    table: dict[object, object] = {}
+    meijerint._create_lookup_table(table)
+    # the module global is declared ``None`` and rebound by SymPy on
+    # first use: rebound through the module namespace
+    vars(meijerint)['_lookup_table'] = table
+    _tables_complete = True
 
 
 def attempt(f: Callable[[], T], seconds: Optional[float]) -> Optional[T]:

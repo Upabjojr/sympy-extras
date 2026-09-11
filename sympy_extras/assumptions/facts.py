@@ -370,7 +370,9 @@ def _relational_of_atom(atom: Boolean, real: set[Symbol]) -> Optional[Boolean]:
         return None
     if isinstance(atom, Contains):
         x, domain = atom.args
-        if isinstance(domain, Reals) and x.free_symbols <= real:
+        if isinstance(domain, Reals) and isinstance(x, Expr) and _is_polynomial(x, real):
+            # a polynomial with rational coefficients in real variables;
+            # (a + I*b)**2 has real variables and is not real
             return true
         return None
     if isinstance(atom, AppliedPredicate):

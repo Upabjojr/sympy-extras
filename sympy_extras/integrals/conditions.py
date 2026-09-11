@@ -35,9 +35,9 @@ from sympy.core.add import Add
 from sympy.core.basic import Basic
 from sympy.core.relational import Ge, Gt, Le, Lt, Ne
 from sympy.core.singleton import S
-from sympy.functions.elementary.complexes import Abs, arg
+from sympy.functions.elementary.complexes import Abs, arg, re, im
 from sympy.functions.elementary.piecewise import Piecewise
-from sympy.logic.boolalg import And, Boolean, true, false
+from sympy.logic.boolalg import And, Or, Boolean, true, false
 
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
@@ -108,13 +108,25 @@ def decide(condition: Boolean, assumptions: Assumptions) -> Optional[Boolean]:
     parts: Sequence[Boolean] = condition.args if isinstance(condition, And) else (condition,)
     remaining: list[Boolean] = []
     for part in parts:
-        part_ = canonical(real_form(as_boolean(part), assumptions))
+        part_ = _settled(part, assumptions)
         verdict = ask(part_, assumptions)
         if verdict is False:
             return None
         if verdict is None:
             remaining.append(part_)
     return as_boolean(And(*remaining))
+
+
+def _settled(part: Boolean, assumptions: Assumptions) -> Boolean:
+    """A conjunct in its real form, canonical; a disjunction of such
+    (``|arg z| <= 2 pi`` or ``|arg z| < 2 pi``) is true when one of its
+    alternatives is."""
+    if isinstance(part, Or):
+        alternatives = [_settled(as_boolean(alternative), assumptions) for alternative in part.args]
+        if any(alternative is true for alternative in alternatives):
+            return true
+        return as_boolean(Or(*alternatives))
+    return canonical(real_form(as_boolean(part), assumptions))
 
 
 def canonical(condition: Boolean) -> Boolean:
@@ -147,6 +159,27 @@ def real_form(condition: Boolean, assumptions: Assumptions) -> Boolean:
         bound = as_expr(condition.rhs)
         if bound.is_positive and positive(e, assumptions):
             return true
+        if bound.is_positive and ((bound - pi).is_positive or (bound == pi and isinstance(condition, Le))):
+            # the argument of any number lies in (-pi, pi]
+            return true
+        if bound == pi and isinstance(e, Pow) and e.exp == 2 \
+                and not (e.base.is_extended_real or ask(element(e.base, S.Reals), assumptions)):
+            # |arg w**2| < pi unless w**2 <= 0, that is unless w is
+            # imaginary: decided by the sign of the real part
+            real_part = as_expr(re(as_expr(e.base)))
+            if not real_part.has(re, im) and (ask(as_boolean(real_part > 0), assumptions) is True
+                                              or ask(as_boolean(real_part < 0), assumptions) is True):
+                return true
+        if bound == pi / 2 and not (e.is_extended_real or ask(element(e, S.Reals), assumptions)):
+            # |arg e| < pi/2 is Re e > 0: decided when the real part is an
+            # expression in real parameters (a - I b with a > 0)
+            real_part = as_expr(re(e))
+            if not real_part.has(re, im):
+                verdict = ask(as_boolean(real_part > 0), assumptions)
+                if verdict is True:
+                    return true
+                if verdict is False:
+                    return false
         if e.is_extended_real or ask(element(e, S.Reals), assumptions):
             if bound.is_positive and (bound - pi).is_positive:
                 return true
@@ -171,6 +204,8 @@ def positive(e: Expr, assumptions: Assumptions) -> bool:
         return True
     if e.is_positive is True:
         return True
+    if e.is_extended_real is False:
+        return False
     return ask(as_boolean(e > 0), assumptions) is True
 
 

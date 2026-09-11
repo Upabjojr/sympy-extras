@@ -472,6 +472,25 @@ MellinTransform(gamma(s)*gamma(1 - s), (0, 1))
 1/24
 >>> IntegralByRanges(1, x**2 + y**2 < b**2, [x, y]).doit()
 pi*b**2
+>>> from sympy import Eq
+>>> IntegralByRanges(1, Eq(x**2 + y**2, 1), measure='hausdorff').doit()
+2*pi
+
+```
+
+Three kernels with a trigonometric factor go through exponentials with
+complex scales, `regularize=True` gives Hadamard's finite part of a
+divergent Mellin-type integral, and the Fourier series of the classical
+table are integrated termwise:
+
+```python
+>>> from sympy import besselj, I
+>>> definite_integral(exp(-2*x)*cos(x)*besselj(0, x), (x, 0, oo))
+2**(3/4)*sqrt(sqrt(2) + 2)/8
+>>> definite_integral(x**(-S(3)/2)*exp(-x), (x, 0, oo), regularize=True)
+-2*sqrt(pi)
+>>> definite_integral(x*log(sin(x)), (x, 0, pi/2))
+-pi**2*log(2)/8 + 7*zeta(3)/16
 
 ```
 

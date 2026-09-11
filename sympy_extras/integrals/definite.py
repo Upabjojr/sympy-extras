@@ -130,7 +130,7 @@ _MAX_DEPTH = 6
 def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = None,
                       conds: str = 'piecewise', recognize: bool = False,
                       principal_value: bool = False, finite_part: bool = False,
-                      numeric: bool = False, digits: int = 15) -> Expr:
+                      numeric: bool = False, digits: int = 15, regularize: bool = False) -> Expr:
     """``Integral(f, (x, a, b))`` under assumptions on the parameters.
 
     Parameters
@@ -166,6 +166,11 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
         validated integration in interval arithmetic
         (:func:`~sympy_extras.integrals.validated.validated_integral`);
         ``None`` there leaves the integral unevaluated.
+    regularize : bool
+        Analytic (Riesz) regularisation of the Mellin method: the value
+        of the formula, analytic in the exponents, beyond the strips of
+        convergence, where the integral itself diverges
+        (``Integral(x**(-3/2)*exp(-x), (x, 0, oo))`` gives ``gamma(-1/2)``).
 
     Returns
     =======
@@ -193,7 +198,7 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
     f_ = as_expr(f)
     if conds not in ('piecewise', 'none'):
         raise ValueError("conds must be 'piecewise' or 'none', got %r" % (conds,))
-    found = conditional_integral(f_, x, a, b, assumptions, principal_value, finite_part)
+    found = conditional_integral(f_, x, a, b, assumptions, principal_value, finite_part, regularize)
     if (found is None or found.value.has(nan)) and recognize:
         from .recognize import recognize_integral
         guessed = recognize_integral(f_, (x, a, b), assumptions)
@@ -215,7 +220,8 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
 def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
                          assumptions: Assumptions = None,
                          principal_value: bool = False,
-                         finite_part: bool = False) -> Optional[ConditionalValue]:
+                         finite_part: bool = False,
+                         regularize: bool = False) -> Optional[ConditionalValue]:
     """The value of ``Integral(f, (x, a, b))`` with the condition on the
     parameters under which it holds, or ``None``.
 
@@ -224,7 +230,8 @@ def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
     fail; a value they find under a condition the assumptions do not
     settle is kept unless SymPy finds an unconditional one."""
     f, a, b = _with_equalities(f, a, b, x, assumptions)
-    integrator = _Integrator(assumptions, principal_value=principal_value, finite_part=finite_part)
+    integrator = _Integrator(assumptions, principal_value=principal_value, finite_part=finite_part,
+                             regularize=regularize)
     if not _real_bounds(a, b) or _nested_complex_powers(f):
         return integrator._sympy(f, x, a, b)
     budget = None if settings.timeout is None else settings.timeout / 2
@@ -381,11 +388,13 @@ class _Integrator:
     differentiation under the integral sign (off inside that method)."""
 
     def __init__(self, assumptions: Assumptions, parametric: bool = True,
-                 principal_value: bool = False, finite_part: bool = False) -> None:
+                 principal_value: bool = False, finite_part: bool = False,
+                 regularize: bool = False) -> None:
         self.assumptions = assumptions
         self.parametric = parametric
         self.principal_value = principal_value
         self.finite_part = finite_part
+        self.regularize = regularize
 
     def ask(self, query: Boolean) -> Optional[bool]:
         return ask(query, self.assumptions)
@@ -661,7 +670,7 @@ class _Integrator:
         """The Marichev–Adamchik method on ``g``, tried as it is and
         expanded."""
         for candidate in _forms(g, t, self.assumptions):
-            found = mellin_integrate(candidate, t, self.assumptions, cutoff)
+            found = mellin_integrate(candidate, t, self.assumptions, cutoff, self.regularize)
             if found is not None:
                 return found
         return None
@@ -859,7 +868,13 @@ class _Integrator:
         """Series expansion of a factor and termwise integration, the
         series summed in closed form (:mod:`.series`)."""
         from .series import series_integral
-        if depth > 0 or a != 0 or b not in (S.One, oo) and not b.is_positive:
+        if depth > 0:
+            return None
+        if a != 0:
+            # a Fourier series on a bounded range, (-pi, pi) or (0, t)
+            if a in (oo, -oo) or b in (oo, -oo) or not f.has(log, TrigonometricFunction):
+                return None
+        elif b not in (S.One, oo) and not b.is_positive:
             return None
         return self._finish(series_integral(f, x, a, b, self.assumptions))
 

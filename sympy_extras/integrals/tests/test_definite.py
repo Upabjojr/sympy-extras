@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from sympy import (symbols, exp, sin, cos, log, sqrt, oo, pi, S, Rational, Abs, Heaviside, Piecewise, Integral, I, Eq,
-                   sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan)
+                   sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan, besselj)
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
@@ -262,3 +262,24 @@ def test_nested_complex_powers_keep_their_branches() -> None:
     z = symbols('z')
     value = definite_integral((z**(I / 2))**I, (z, 0, 1))
     assert value != 2
+
+
+def test_argument_conditions_of_complex_scales_are_decided() -> None:
+    # sympy-extras: |arg z| <= 2 pi holds for every z, |arg w**2| < pi
+    # unless w is imaginary, |arg w| < pi/2 when Re w > 0; a disjunction
+    # of settled alternatives is settled
+    from sympy import arg, And, Or, true
+    from sympy_extras.integrals.conditions import decide, real_form
+    w = a + I * b
+    assert real_form(Abs(arg(w**2)) < 2 * pi, ()) is true
+    assert real_form(Abs(arg(w**2)) <= pi, ()) is true
+    assert real_form(Abs(arg(w**2)) < pi, ()) is true
+    assert real_form(Abs(arg(w)) < pi / 2, ()) is true
+    assert real_form(Abs(arg(-w)) < pi / 2, ()) is S.false
+    assert decide(And(Or(Abs(arg(w**2)) <= 2 * pi, Abs(arg(w**2)) < 2 * pi), Abs(arg(w)) < pi / 2), ()) is true
+    # the three-kernel products through the exponential form
+    value = definite_integral(exp(-a * x) * sin(b * x) * besselj(0, x), (x, 0, oo))
+    assert value == I / (2 * sqrt((a + I * b)**2 + 1)) - I / (2 * sqrt((a - I * b)**2 + 1))
+    # a divergent integral has no value, whatever ran before
+    assert definite_integral(x**Rational(-3, 2) * exp(-x), (x, 0, oo)) == Integral(x**Rational(-3, 2) * exp(-x), (x, 0, oo))
+    assert definite_integral(x**Rational(-3, 2) * exp(-x), (x, 0, oo), regularize=True) == -2 * sqrt(pi)

@@ -93,7 +93,22 @@ remove public functions. Breaking changes are listed here when they happen.
 
 - `sympy_extras.integrals.series`: series expansion of a factor and termwise
   integration with the series summed in closed form (`summation`, the
-  Zeilberger and polygamma-series algorithms, hypergeometric closed forms).
+  Zeilberger and polygamma-series algorithms, hypergeometric closed forms);
+  Fourier series of the classical table (`log(sin(x))`, `log(cos(x))`,
+  `log(tan(x))`, `log(1 - cos(x))`, `x`, `x**2`, `Abs(sin(x))`, ...,
+  Gradshteyn–Ryzhik 1.441-1.444) integrated termwise, against each other
+  and against harmonics by orthogonality, and against any other factor
+  through the moments of the harmonics, with the Clausen sums as
+  polylogarithms and the rational sums by partial fractions
+  (`x*log(sin(x))` over `(0, pi/2)` is `-pi**2*log(2)/8 + 7*zeta(3)/16`).
+
+- `IntegralByRanges(..., measure='hausdorff')`: integrals over curves and
+  surfaces given by one equation among the conditions (the surface measure
+  `sqrt(1 + |grad phi|**2)` on the explicit branch of the section of the
+  CAD), `Eq(x**2 + y**2, 1)` has length `2*pi` and the paraboloid
+  `Eq(z, x**2 + y**2)`, `z < 1` area `pi*(5*sqrt(5) - 1)/6`; cells bounded
+  by monotone non-polynomial conditions (`y**2 < exp(x)`) solved for the
+  bounds.
 
 - `sympy_extras.integrals.asymptotic`: asymptotic expansions of parametric
   integrals (Watson's lemma, Laplace's method to any order, the leading
@@ -141,9 +156,32 @@ remove public functions. Breaking changes are listed here when they happen.
   principal values with `principal_value=True`, and handles symbolic
   endpoints through the antiderivative (items of issue #53).
 
+- `definite_integral(..., regularize=True)`: analytic regularisation of
+  the Marichev–Adamchik method, the strips of convergence dropped and the
+  gamma quotient continued analytically (Hadamard's finite part of a
+  divergent Mellin-type integral, `x**(-3/2)*exp(-x)` over `(0, oo)` is
+  `-2*sqrt(pi)`); products of three kernels one of which is trigonometric
+  or hyperbolic, through exponentials with complex scales whose argument
+  conditions are decided by their real parts (`exp(-a*x)*sin(b*x)*
+  besselj(0, x)` over `(0, oo)`).
+
 - The benchmark driver `definite_integrals` of sympy-extras-benchmarks
   gained `--extras` to run `definite_integral` on the four integration
   datasets; the results are in `benchmarks/README.md`.
+
+### Fixed
+
+- `sympy_extras._timeout` builds SymPy's table of Meijer G-function
+  representations before setting a time limit: a limit hit during the
+  build left the global table truncated, after which every later
+  integration of an exponential went astray (the Mellin transform of
+  `exp(-x)` came out as `uppergamma(s, 0)` on the whole plane, and the
+  divergent `x**(-3/2)*exp(-x)` over `(0, oo)` got the value `-2*sqrt(pi)`
+  after an interrupted integration).
+
+- `ask(element(e, S.Reals))` no longer answers `True` for an expression in
+  real variables which is not a polynomial with rational coefficients
+  (`(a + I*b)**2` with `a` and `b` real).
 
 ## 0.0.1 - 2026-09-10
 

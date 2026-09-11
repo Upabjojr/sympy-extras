@@ -72,6 +72,7 @@ from __future__ import annotations
 from typing import Optional, Sequence
 
 from sympy.core.add import Add
+from sympy.core.exprtools import factor_terms
 from sympy.core.expr import Expr
 from sympy.core.function import Function
 from sympy.core.mul import Mul
@@ -640,6 +641,11 @@ def monomial(e: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
     >>> monomial(x + 1, x) is None
     True
     """
+    if isinstance(e, Add):
+        # -a*x - I*b*x is x*(-a - I*b)
+        e = as_expr(factor_terms(e))
+        if isinstance(e, Add):
+            return None
     coefficient, rest = e.as_independent(x, as_Add=False)
     coefficient_, rest_ = as_expr(coefficient), as_expr(rest)
     if rest_ == x:
