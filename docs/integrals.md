@@ -209,7 +209,13 @@ The driver tries, after the Mellin method and the residues:
   substitutions of Byrd–Friedman to Legendre's `elliptic_k`, `elliptic_e`,
   `elliptic_pi` and the incomplete `elliptic_f` (SymPy's parameter
   `m = k**2`); `Integral(1/sqrt(1 - x**4), (x, 0, 1))` gives
-  `elliptic_k(1/2)`, the lemniscate constant.
+  `elliptic_k(1/2)`, the lemniscate constant. Radicands with a pair of
+  complex roots (Byrd–Friedman 240, 241) are mapped onto `cos(theta)` by
+  the bilinear substitution, any polynomial or rational numerator is
+  reduced by the recurrences 310-318 (incomplete powers, multiple poles),
+  the organising principle being Carlson's symmetric `R_F` (DLMF 19.25,
+  19.29): `Integral(1/sqrt(x**3 + 1), (x, 0, oo))` is
+  `gamma(1/6)*gamma(1/3)/(3*sqrt(pi))`.
 - **Algebraic integrands of genus zero** (`sympy_extras.integrals.algebraic`):
   Euler's substitutions for `R(x, sqrt(a*x**2 + b*x + c))`, `t**n = M(x)`
   for roots of a Möbius function, and Chebyshev's three integrable cases

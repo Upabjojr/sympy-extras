@@ -3,7 +3,9 @@
 by quadrature."""
 from __future__ import annotations
 
-from sympy import symbols, sqrt, S, gamma, pi, elliptic_k, elliptic_e, simplify, Rational
+import random
+
+from sympy import symbols, sqrt, S, gamma, pi, elliptic_k, elliptic_e, simplify, Rational, oo, Expr
 
 from sympy_extras.integrals.definite import verify_numerically
 from sympy_extras.integrals.elliptic import elliptic_integral
@@ -46,3 +48,65 @@ def test_byrd_friedman_tables() -> None:
     assert verify_numerically(found.value, 1 / sqrt((3 - x) * (2 - x) * (x - 1) * x), x, S.One, S(2)) is True
     # the value is 2.1565156... (quadrature at 20 digits: 2.15651564749791)
     assert abs(float(found.value.evalf(15)) - 2.15651564749791) < 1e-10
+
+
+def _agree(found: Expr, reference: Expr, samples: int = 4) -> None:
+    """``found == reference`` at random values of the parameters."""
+    rng = random.Random(str(reference))
+    for _ in range(samples):
+        values = {}
+        for symbol in sorted(reference.free_symbols, key=str):
+            values[symbol] = Rational(rng.randint(1, 40), rng.randint(1, 10))
+        difference = (found - reference).subs(values).evalf(20)
+        assert abs(complex(difference)) < 1e-15, (values, difference)
+
+
+def test_byrd_friedman_complex_roots() -> None:
+    # BF 241.00: Integral(1/sqrt((a - x)(x - b)((x - p)**2 + q**2)), (x, b, a)) = 2 g K(m)
+    # with A**2 = (a - p)**2 + q**2, B**2 = (b - p)**2 + q**2, g = 1/sqrt(A B),
+    # m = ((a - b)**2 - (A - B)**2)/(4 A B)
+    b, d, p, q = symbols('b d p q', positive=True)
+    a = b + d
+    A, B = sqrt((a - p)**2 + q**2), sqrt((b - p)**2 + q**2)
+    m = ((a - b)**2 - (A - B)**2) / (4 * A * B)
+    f = 1 / sqrt((a - x) * (x - b) * ((x - p)**2 + q**2))
+    found = elliptic_integral(f, x, b, a)
+    assert found is not None
+    _agree(found.value, 2 * elliptic_k(m) / sqrt(A * B))
+    assert verify_numerically(found.value, f, x, b, a, samples=3) is True
+    # BF 240.00: Integral(1/sqrt((x - a)((x - p)**2 + q**2)), (x, a, oo)) = 2 K(m)/sqrt(A),
+    # m = (A - (a - p))/(2 A)
+    a = symbols('a', positive=True)
+    A = sqrt((a - p)**2 + q**2)
+    f = 1 / sqrt((x - a) * ((x - p)**2 + q**2))
+    found = elliptic_integral(f, x, a, oo)
+    assert found is not None
+    _agree(found.value, 2 * elliptic_k((A - (a - p)) / (2 * A)) / sqrt(A))
+    assert verify_numerically(found.value, f, x, a, oo, samples=3) is True
+    # and on the other side of the root, m = (A + (a - p))/(2 A)
+    f = 1 / sqrt((a - x) * ((x - p)**2 + q**2))
+    found = elliptic_integral(f, x, -oo, a)
+    assert found is not None
+    _agree(found.value, 2 * elliptic_k((A + (a - p)) / (2 * A)) / sqrt(A))
+
+
+def test_dlmf_complex_roots() -> None:
+    # DLMF 5.12.3 through the beta function: Integral(1/sqrt(1 + x**4), (x, 0, oo))
+    # = B(1/4, 1/4)/4 = Gamma(1/4)**2/(4 sqrt(pi)); the cubic
+    # Integral(1/sqrt(1 + x**3), (x, 0, oo)) = B(1/3, 1/6)/3 = Gamma(1/3) Gamma(1/6)/(3 sqrt(pi)),
+    # and Integral(1/sqrt(1 + x**3), (x, -1, 0)) is half of it
+    found = elliptic_integral(1 / sqrt(1 + x**4), x, 0, oo)
+    assert found is not None
+    assert abs(float((found.value - gamma(Rational(1, 4))**2 / (4 * sqrt(pi))).evalf(20))) < 1e-15
+    cubic = gamma(Rational(1, 3)) * gamma(Rational(1, 6)) / (3 * sqrt(pi))
+    found = elliptic_integral(1 / sqrt(1 + x**3), x, 0, oo)
+    assert found is not None and abs(float((found.value - cubic).evalf(20))) < 1e-15
+    found = elliptic_integral(1 / sqrt(1 + x**3), x, -1, 0)
+    assert found is not None and abs(float((found.value - cubic / 2).evalf(20))) < 1e-15
+    found = elliptic_integral(1 / sqrt(1 + x**3), x, -1, oo)
+    assert found is not None and abs(float((found.value - 3 * cubic / 2).evalf(20))) < 1e-15
+    # the quartic of the task: 2 K(m)/sqrt(A B) with A = sqrt(10), B = sqrt(5), m = (2 + sqrt(2))/4
+    found = elliptic_integral(1 / sqrt((x**2 + 1) * (x + 2) * (3 - x)), x, -2, 3)
+    assert found is not None
+    assert simplify(found.value - 2 * elliptic_k((2 + sqrt(2)) / 4) / sqrt(sqrt(50))) == 0
+    assert abs(float(found.value.evalf(20)) - 1.8051605293435436544) < 1e-15

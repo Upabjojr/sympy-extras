@@ -34,6 +34,43 @@ cubic. Trigonometric integrands `Q(\\sin^2\\theta)(1 - m\\sin^2\\theta)^{\\pm 1/
 over `(0, \\phi)` are read directly. The order of symbolic roots is
 decided by :func:`sympy_extras.assumptions.ask` under the assumptions.
 
+When two roots of `P` are complex, `P = \\lambda (a - x)(x - b)((x - p)^2 + q^2)`
+on the cell `(b, a)` (or `P = \\lambda (x - a)((x - p)^2 + q^2)` beyond the
+single real root of a cubic), the reduction of Byrd–Friedman 241 and
+240 maps the cell onto `t = \\cos\\theta \\in (-1, 1)` through the bilinear
+substitution
+
+.. math::
+
+    x = \\frac{aB + bA - t\\,(aB - bA)}{A + B + t\\,(A - B)}, \\qquad
+    A^2 = (a - p)^2 + q^2, \\quad B^2 = (b - p)^2 + q^2,
+
+(`x = a + A(1 - t)/(1 + t)` for the cubic), for which
+`P(x)\\, dt^2 = \\lambda AB\\, X'(t)^2 (1 - t^2)(1 - m + m t^2)\\, dt^2` with
+`m = ((a - b)^2 - (A - B)^2)/(4AB)` (`m = (A - a + p)/(2A)` for the
+cubic): `dx/\\sqrt{P} = d\\theta/\\sqrt{\\lambda AB (1 - m\\sin^2\\theta)}`. The
+rational prefactor `G(t)` left by `R` is split into its even and odd
+parts in `t`: the even part is a rational function of
+`s = \\sin^2\\theta = 1 - t^2` and gives the Legendre form above, the odd
+part is `t\\, G_o(t^2)` and its integral in `s` is elementary (it
+vanishes over the whole cell). A quartic with a complex pair beyond
+its extreme real root is inverted first, `u = 1/(x - r)`. The split
+mirrors a pole of `R` at `t_p` to `-t_p`: a range containing the
+mirror image of a pole of the cell, but not the pole, is left alone
+(``None``), the two halves being divergent there.
+
+The organising principle behind the tables is Carlson's symmetric
+integral `R_F(x, y, z) = \\frac12\\int_0^\\infty dt/\\sqrt{(t + x)(t + y)(t + z)}`
+[Carlson]_, [DLMF]_ (19.25): the complete integral of `dx/\\sqrt{P}`
+over a cell of the real roots is `2 R_F` of the three differences of
+the other roots from the cell (DLMF 19.29.4–19.29.7), whatever their
+reality, and Legendre's functions are its special values
+`K(m) = R_F(0, 1 - m, 1)`, `F(\\phi \\mid m) = \\sin\\phi\\, R_F(\\cos^2\\phi, 1 - m\\sin^2\\phi, 1)`
+(DLMF 19.25.1, 19.25.5). The substitutions above are the changes of
+variable that bring the Carlson arguments to Legendre's; the results
+are written with SymPy's ``elliptic_k``, ``elliptic_e``, ``elliptic_f``
+and ``elliptic_pi``.
+
 Examples
 ========
 
@@ -53,9 +90,15 @@ References
 
 .. [Byrd] P. F. Byrd, M. D. Friedman, *Handbook of Elliptic Integrals
    for Engineers and Scientists*, 2nd ed., Springer, 1971, chapter 2
-   (the substitutions) and the tables 230–260 and 310–340.
+   (the substitutions), the tables 230–260 (240 and 241 for the complex
+   roots) and 310–340.
+.. [Carlson] B. C. Carlson, *Numerical computation of real or complex
+   elliptic integrals*, Numerical Algorithms 10 (1995), 13–26;
+   *A table of elliptic integrals of the third kind*, Mathematics of
+   Computation 51 (1988), 267–280.
 .. [DLMF] NIST Digital Library of Mathematical Functions, chapter 19,
-   sections 19.2 (Legendre's integrals) and 19.29 (reduction of
+   sections 19.2 (Legendre's integrals), 19.25 (Legendre's integrals
+   as symmetric integrals) and 19.29 (reduction of
    `\\int R(x, \\sqrt{P})\\, dx`), https://dlmf.nist.gov/19.
 .. [GR] I. S. Gradshteyn, I. M. Ryzhik, *Table of Integrals, Series,
    and Products*, 7th ed., sections 3.13–3.16.
@@ -68,10 +111,13 @@ from sympy.core.add import Add
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
 from sympy.core.numbers import Rational, oo, pi
+from sympy.core.relational import Eq
+from sympy.functions.elementary.complexes import im, re
 from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.miscellaneous import sqrt
+from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.trigonometric import TrigonometricFunction, asin, sin
 from sympy.functions.special.elliptic_integrals import elliptic_k, elliptic_e, elliptic_f, elliptic_pi
 from sympy.polys.partfrac import apart
@@ -80,9 +126,11 @@ from sympy.polys.polytools import Poly, cancel, factor_list
 from sympy.polys.rootoftools import ComplexRootOf
 from sympy.solvers.solvers import solve as sympy_solve
 
+from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols
 from sympy.logic.boolalg import Boolean
 from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.settings import settings
 from .conditions import ConditionalValue, plain_symbols, with_symbol_facts
 
 __all__ = ['elliptic_integral', 'radicand', 'real_roots', 'legendre_reduction', 'Reduction']
@@ -90,12 +138,27 @@ __all__ = ['elliptic_integral', 'radicand', 'real_roots', 'legendre_reduction', 
 
 def _ask(query: Boolean, assumptions: Assumptions) -> Optional[bool]:
     """``ask`` with the flags of the symbols (``positive=True``) turned
-    into statements on plain symbols, which the CAD can use."""
+    into statements on plain symbols, which the CAD can use, within a
+    budget (``None`` when the time is up)."""
     symbols = free_symbols(query)
     plain = plain_symbols(symbols)
+    budget = None if settings.timeout is None else settings.timeout / 4
     if not plain:
-        return ask(query, assumptions)
-    return ask(as_boolean(query.xreplace(plain)), with_symbol_facts(assumptions, symbols, plain))
+        return attempt(lambda: ask(query, assumptions), budget)
+    return attempt(lambda: ask(as_boolean(query.xreplace(plain)), with_symbol_facts(assumptions, symbols, plain)), budget)
+
+
+def _with_facts(assumptions: Assumptions, facts: Sequence[Boolean]) -> Assumptions:
+    """The assumptions together with more facts."""
+    if not facts:
+        return assumptions
+    combined: list[Boolean] = list(facts)
+    if isinstance(assumptions, (Boolean, bool)):
+        combined.append(as_boolean(assumptions))
+    elif assumptions is not None:
+        combined.extend(as_boolean(a) for a in assumptions)
+    return combined
+
 
 _HALF = S.Half
 #: how many times the substitutions may be chained (an even radicand,
@@ -228,7 +291,12 @@ def real_roots(P: Expr, x: Symbol, assumptions: Assumptions = None) -> Optional[
             solutions = sympy_solve(factor_.subs(x, w), w)
             for r in solutions:
                 r_ = as_expr(r)
-                if _ask(as_boolean(r_ - r_ >= 0), assumptions) is not True and r_.is_extended_real is not True:
+                if r_.is_extended_real is False:
+                    return None
+                # p + I q with real symbols: real only where q vanishes
+                imaginary = as_expr(im(r_))
+                if imaginary != 0 and not imaginary.has(im, re) \
+                        and _ask(as_boolean(Eq(imaginary, 0)), assumptions) is not True:
                     return None
                 found.append(r_)
     if len(found) != poly.degree():
@@ -260,7 +328,12 @@ def _less(a: Expr, b: Expr, assumptions: Assumptions) -> Optional[bool]:
     # the sign of a quotient is the sign of the product of its parts, a
     # polynomial question the assumptions can decide (1 < 1/k**2 under k < 1)
     numerator, denominator = as_expr(cancel(b - a)).as_numer_denom()
-    return _ask(as_boolean(as_expr(numerator) * as_expr(denominator) > 0), assumptions)
+    try:
+        query = as_boolean(as_expr(numerator) * as_expr(denominator) > 0)
+    except TypeError:
+        # a comparison of numbers that are not real
+        return None
+    return _ask(query, assumptions)
 
 
 def _position(point: Expr, roots: Sequence[Expr], assumptions: Assumptions) -> Optional[int]:
@@ -464,19 +537,142 @@ def _square_root(expr: Expr, s: Symbol) -> Optional[Expr]:
 # ---------------------------------------------------------------------------
 # The reduction to K, E and Pi
 
-def _complete_power(j: int, m: Expr) -> Expr:
-    """``J_j(m) = Integral(sin(theta)**(2 j)/sqrt(1 - m sin(theta)**2), (theta, 0, pi/2))``."""
-    values: list[Expr] = [as_expr(elliptic_k(m)), as_expr((elliptic_k(m) - elliptic_e(m)) / m)]
-    for k in range(1, j):
-        values.append(as_expr((2 * k * (1 + m) * values[k] - (2 * k - 1) * values[k - 1]) / ((2 * k + 1) * m)))
-    return values[j]
+class _Radical:
+    """The antiderivatives of ``s**j/sqrt(W(s))`` and of
+    ``1/((alpha s + beta) sqrt(W(s)))`` for one radicand ``W``, normalised
+    at ``s = 0``: for Legendre's ``W = s (1 - s)(1 - m s)`` they are the
+    elliptic integrals, for ``W = s (1 - m s)`` they are elementary."""
+
+    def __init__(self, m: Expr) -> None:
+        self.m = m
+
+    def W(self, s: Expr) -> Expr:
+        raise NotImplementedError
+
+    def power(self, j: int, upper: Expr) -> Expr:
+        raise NotImplementedError
+
+    def simple_pole(self, c: Expr, alpha: Expr, beta: Expr, upper: Expr, assumptions: Assumptions) -> Optional[Expr]:
+        raise NotImplementedError
+
+
+class _Legendre(_Radical):
+    """``W = s (1 - s)(1 - m s)``: ``ds/sqrt(W) = 2 dtheta/sqrt(1 - m sin(theta)**2)``
+    with ``s = sin(theta)**2``."""
+
+    def W(self, s: Expr) -> Expr:
+        return as_expr(s * (1 - s) * (1 - self.m * s))
+
+    def power(self, j: int, upper: Expr) -> Expr:
+        """``Integral(s**j/sqrt(W), (s, 0, upper)) = 2 J_j`` with
+        ``J_j = Integral(sin(theta)**(2 j)/sqrt(1 - m sin(theta)**2), (theta, 0, phi))``,
+        ``sin(phi)**2 == upper``: ``J_0 = F``, ``J_1 = (F - E)/m`` and
+        the recurrence of Byrd–Friedman 310–318, which integrating
+        ``d/dtheta (sin(theta)**(2j-1) cos(theta) sqrt(1 - m sin(theta)**2))``
+        gives with its boundary term,
+
+            (2j + 1) m J_{j+1} = 2j (1 + m) J_j - (2j - 1) J_{j-1}
+                                 + sin(phi)**(2j-1) cos(phi) sqrt(1 - m sin(phi)**2)
+
+        (the term vanishes for the complete integrals, ``phi = pi/2``).
+        For a negative ``j`` the recurrence is read downwards and the
+        result is the antiderivative regularised at ``phi = 0``: the
+        boundary terms ``s**(j-1) sqrt(s (1 - s)(1 - m s))``,
+        ``s = sin(phi)**2``, are the half-integer powers of ``s`` that
+        diverge there, so the value at a point is the integral from
+        ``0`` up to those powers, and the difference of two values is
+        the integral between the points."""
+        m = self.m
+        if upper == 1:
+            F: Expr = as_expr(elliptic_k(m))
+            E: Expr = as_expr(elliptic_e(m))
+        else:
+            phi = as_expr(asin(sqrt(upper)))
+            F, E = as_expr(elliptic_f(phi, m)), as_expr(elliptic_e(phi, m))
+        # sin(phi)**(2k-1) cos(phi) sqrt(1 - m sin(phi)**2) = s**(k-1) sqrt(W(s))
+        boundary = as_expr(sqrt(self.W(upper)))
+        values: dict[int, Expr] = {0: F, 1: as_expr((F - E) / m)}
+        for k in range(1, j):
+            values[k + 1] = as_expr((2 * k * (1 + m) * values[k] - (2 * k - 1) * values[k - 1]
+                                     + upper**(k - 1) * boundary) / ((2 * k + 1) * m))
+        for k in range(0, j, -1):
+            values[k - 1] = as_expr((2 * k * (1 + m) * values[k] - (2 * k + 1) * m * values[k + 1]
+                                     + upper**(k - 1) * boundary) / (2 * k - 1))
+        return as_expr(2 * values[j])
+
+    def simple_pole(self, c: Expr, alpha: Expr, beta: Expr, upper: Expr, assumptions: Assumptions) -> Optional[Expr]:
+        """``c/(alpha s + beta) = (c/beta)/(1 - n s)`` with ``n = -alpha/beta``:
+        the third kind, ``2 (c/beta) Pi(n; phi | m)``."""
+        n = as_expr(cancel(-alpha / beta))
+        if upper == 1:
+            return as_expr(2 * c / beta * elliptic_pi(n, self.m))
+        return as_expr(2 * c / beta * elliptic_pi(n, asin(sqrt(upper)), self.m))
+
+
+class _Elementary(_Radical):
+    """``W = s (1 - m s)``, the radicand left by the odd part of the
+    cosine map: the integrals are elementary."""
+
+    def W(self, s: Expr) -> Expr:
+        return as_expr(s * (1 - self.m * s))
+
+    def power(self, j: int, upper: Expr) -> Expr:
+        """``I_j = Integral(s**j/sqrt(s (1 - m s)), (s, 0, u))``:
+        ``I_0 = 2 asin(sqrt(m u))/sqrt(m)`` and, from
+        ``d/ds (s**j sqrt(W)) = ((j + 1/2) s**j - (j + 1) m s**(j+1))/sqrt(W)``,
+        ``(j + 1) m I_{j+1} = (j + 1/2) I_j - u**j sqrt(W(u))``, read
+        downwards for the negative powers (regularised at ``0`` as in
+        :meth:`_Legendre.power`)."""
+        m = self.m
+        boundary = as_expr(sqrt(self.W(upper)))
+        values: dict[int, Expr] = {0: as_expr(2 * asin(sqrt(m * upper)) / sqrt(m))}
+        for k in range(0, j):
+            values[k + 1] = as_expr(((k + _HALF) * values[k] - upper**k * boundary) / ((k + 1) * m))
+        for k in range(-1, j - 1, -1):
+            values[k] = as_expr(((k + 1) * m * values[k + 1] + upper**k * boundary) / (k + _HALF))
+        return values[j]
+
+    def simple_pole(self, c: Expr, alpha: Expr, beta: Expr, upper: Expr, assumptions: Assumptions) -> Optional[Expr]:
+        """``Integral(c/((alpha s + beta) sqrt(s (1 - m s))), (s, 0, u))``
+        through ``t = 1/(s - p)``, ``p = -beta/alpha`` (outside the range):
+        ``ds/((s - p) sqrt(W)) = -sign(s - p) dt/sqrt(A t**2 + B t + C)`` with
+        ``A = W(p)``, ``B = W'(p)``, ``C = -m`` and ``B**2 - 4 A C = 1``, a
+        logarithm when ``A > 0`` (``0 < p < 1/m``) and an arcsine when
+        ``A < 0``. The value is an antiderivative continued through the
+        pole (the sign of ``s - p`` is that at the point, the constant
+        that at ``0``): it is used in differences of points on the same
+        side."""
+        m = self.m
+        p = as_expr(cancel(-beta / alpha))
+        A = as_expr(cancel(self.W(p)))
+        B = as_expr(1 - 2 * m * p)
+        t = Dummy('t')
+        quadratic = A * t**2 + B * t - m
+        # sign(s - p) at the point
+        far = _ask(as_boolean(upper > p), assumptions)
+        if far is None:
+            return None
+        sigma: Expr = S.One if far else S.NegativeOne
+        if _ask(as_boolean(A > 0), assumptions) is True:
+            # 0 < p < 1/m: (2 A t + B)**2 - 4 A (A t**2 + B t + C) = 1 makes
+            # log|2 A t + B + 2 sqrt(A) sqrt(...)| the primitive, and 2 A t + B
+            # has the sign of s - p
+            at_upper = as_expr(log(sigma * (2 * A * t + B + 2 * sqrt(A) * sqrt(quadratic))) / sqrt(A))
+            at_zero = as_expr(log(-(2 * A * t + B + 2 * sqrt(A) * sqrt(quadratic))) / sqrt(A))
+        elif _ask(as_boolean(A < 0), assumptions) is True:
+            at_upper = as_expr(-asin(2 * A * t + B) / sqrt(-A))
+            at_zero = at_upper
+        else:
+            return None
+        value = at_upper.subs(t, 1 / (upper - p)) - at_zero.subs(t, -1 / p)
+        return as_expr(-sigma * c / alpha * value)
 
 
 def legendre_reduction(reduction: Reduction, assumptions: Assumptions = None) -> Optional[Expr]:
     """``Integral(Q(s)/sqrt(s*(1 - s)*(1 - m*s)), (s, lower, upper))`` in
     Legendre's integrals, from the partial fractions of ``Q``; ``None``
-    for a multiple pole, a pole inside the range (a divergent integral)
-    or an incomplete integral with a power of ``s`` above the first.
+    for a divergent integral (a pole of ``Q`` inside the range or at an
+    endpoint that is a root of the radicand).
 
     Examples
     ========
@@ -491,61 +687,121 @@ def legendre_reduction(reduction: Reduction, assumptions: Assumptions = None) ->
     2*(-elliptic_e(m) + elliptic_k(m))/m
     """
     Q, m, s = reduction.Q, reduction.m, reduction.s
+    lower, upper = as_expr(reduction.lower), as_expr(reduction.upper)
+    if lower == 0 and _pole_at_zero(Q, s):
+        return None
     total: Expr = S.Zero
-    for bound, sign in ((reduction.upper, S.One), (reduction.lower, S.NegativeOne)):
-        if bound == 0:
-            continue
-        value = _from_zero(Q, m, s, as_expr(bound), assumptions)
+    radical = _Legendre(m)
+    for bound, sign in ((upper, S.One), (lower, S.NegativeOne)):
+        value = _from_zero(Q, s, bound, radical, assumptions, lower, upper)
         if value is None:
             return None
         total = total + sign * value
     return as_expr(total)
 
 
-def _from_zero(Q: Expr, m: Expr, s: Symbol, upper: Expr, assumptions: Assumptions) -> Optional[Expr]:
-    complete = upper == 1
-    phi = as_expr(asin(sqrt(upper)))
+def _pole_at_zero(Q: Expr, s: Symbol) -> bool:
+    _, denominator = as_expr(cancel(Q)).as_numer_denom()
+    return as_expr(denominator).subs(s, 0) == 0
+
+
+def _from_zero(Q: Expr, s: Symbol, point: Expr, radical: _Radical, assumptions: Assumptions,
+               lower: Expr, upper: Expr) -> Optional[Expr]:
+    """The antiderivative of ``Q(s)/sqrt(W(s))`` at ``s = point``,
+    normalised to vanish at ``s = 0``: the integral from ``0`` when it
+    converges, and with a pole of ``Q`` at ``0`` the regularised value
+    of :meth:`_Radical.power`. The value is used in the difference of
+    two points, ``lower`` and ``upper``: ``None`` when a pole of ``Q``
+    other than ``0`` may lie between them (a divergent integral); a
+    pole between ``0`` and ``lower`` is allowed, the antiderivatives
+    continue through it with the same constant on the far side."""
+    if point == 0:
+        return S.Zero
     try:
         parts = apart(Q, s)
     except (PolynomialError, NotImplementedError):
         return None
     total: Expr = S.Zero
     for term in Add.make_args(parts):
-        term_ = as_expr(term)
-        numerator, denominator = term_.as_numer_denom()
-        numerator_, denominator_ = as_expr(numerator), as_expr(denominator)
-        if not denominator_.has(s):
-            # a polynomial term c s^j
-            polynomial = Poly(term_, s)
-            for (j,), c in polynomial.terms():
-                c_ = as_expr(c)
-                if complete:
-                    total = total + 2 * c_ * _complete_power(j, m)
-                elif j == 0:
-                    total = total + 2 * c_ * elliptic_f(phi, m)
-                elif j == 1:
-                    total = total + 2 * c_ * (elliptic_f(phi, m) - elliptic_e(phi, m)) / m
-                else:
-                    return None
-            continue
-        pole_poly = Poly(denominator_, s)
-        if pole_poly.degree() != 1 or numerator_.has(s):
+        value = _term_from_zero(as_expr(term), s, point, radical, assumptions, lower, upper)
+        if value is None:
             return None
-        # c/(alpha s + beta) = -(c/beta)/(1 - n s) with n = -alpha/beta
-        alpha, beta = as_expr(pole_poly.coeff_monomial(s)), as_expr(pole_poly.coeff_monomial(1))
-        if beta == 0:
-            return None
-        pole = as_expr(-beta / alpha)
-        inside = _ask(as_boolean(pole > 0), assumptions) is not False and _ask(as_boolean(pole < upper), assumptions) is not False
-        if inside:
-            return None
-        n = as_expr(cancel(-alpha / beta))
-        c = as_expr(numerator_ / beta)
-        if complete:
-            total = total + 2 * c * elliptic_pi(n, m)
-        else:
-            total = total + 2 * c * elliptic_pi(n, phi, m)
+        total = total + value
     return as_expr(total)
+
+
+def _term_from_zero(term: Expr, s: Symbol, upper: Expr, radical: _Radical, assumptions: Assumptions,
+                    range_lower: Expr, range_upper: Expr) -> Optional[Expr]:
+    """One partial fraction: a power ``c s**j``, a simple pole
+    ``c/(alpha s + beta)`` or a multiple pole, reduced to lower ones by
+    integrating ``d/ds (sqrt(W)/D**(k-1))``, ``D = alpha s + beta``:
+    ``Integral(N/(D**k sqrt(W)), (s, 0, u)) = 2 sqrt(W(u))/D(u)**(k-1)``
+    with ``N = W' D - 2 (k - 1) alpha W``, whose leading partial fraction
+    is ``N(p)/D**k`` at the pole ``p``."""
+    numerator, denominator = term.as_numer_denom()
+    numerator_, denominator_ = as_expr(numerator), as_expr(denominator)
+    if not denominator_.has(s):
+        total: Expr = S.Zero
+        for (j,), c in Poly(term, s).terms():
+            total = total + as_expr(c) * radical.power(j, upper)
+        return total
+    pole_poly = Poly(denominator_, s)
+    _, factors = factor_list(denominator_, s)
+    if len(factors) != 1:
+        return None
+    linear, k = factors[0]
+    linear_poly = Poly(linear, s)
+    if linear_poly.degree() != 1:
+        return None
+    alpha, beta = as_expr(linear_poly.coeff_monomial(s)), as_expr(linear_poly.coeff_monomial(1))
+    scale = as_expr(cancel(pole_poly.LC() / alpha**k))
+    if numerator_.has(s):
+        # N(s)/D**k with symbolic coefficients, which apart leaves whole:
+        # N in powers of D gives the terms c_j/D**(k - j)
+        u = Dummy('u')
+        expansion = Poly(as_expr((numerator_ / scale).subs(s, (u - beta) / alpha)).expand(), u)
+        total = S.Zero
+        for (j,), c in expansion.terms():
+            if j >= k:
+                part: Optional[Expr] = _term_from_zero(as_expr(c * linear**(j - k)), s, upper, radical, assumptions,
+                                                       range_lower, range_upper)
+            else:
+                part = _pole_from_zero(as_expr(c), alpha, beta, k - j, s, upper, radical, assumptions,
+                                       range_lower, range_upper)
+            if part is None:
+                return None
+            total = total + part
+        return as_expr(total)
+    return _pole_from_zero(as_expr(numerator_ / scale), alpha, beta, k, s, upper, radical, assumptions,
+                           range_lower, range_upper)
+
+
+def _pole_from_zero(c: Expr, alpha: Expr, beta: Expr, k: int, s: Symbol, upper: Expr, radical: _Radical,
+                    assumptions: Assumptions, range_lower: Expr, range_upper: Expr) -> Optional[Expr]:
+    """``c/(alpha s + beta)**k`` from :func:`_term_from_zero`."""
+    if beta == 0:
+        # c/(alpha s)**k: the negative powers, regularised at s = 0
+        return as_expr(c / alpha**k * radical.power(-k, upper))
+    # no zero of D on [lower, upper]: D(lower) D(upper) > 0, a question
+    # without division (alpha may vanish for symbolic parameters, when
+    # the pole is at infinity)
+    if _ask(as_boolean((alpha * range_lower + beta) * (alpha * range_upper + beta) > 0), assumptions) is not True:
+        return None
+    pole = as_expr(-beta / alpha)
+    if k == 1:
+        return radical.simple_pole(c, alpha, beta, upper, assumptions)
+    W = radical.W(as_expr(s))
+    D = as_expr(alpha * s + beta)
+    N = as_expr(W.diff(s) * D - 2 * (k - 1) * alpha * W)
+    leading = as_expr(cancel(N.subs(s, pole)))
+    if leading == 0:
+        return None
+    rest = as_expr(cancel((N - leading) / D**k))
+    lower_orders = _from_zero(rest, s, upper, radical, assumptions, range_lower, range_upper)
+    if lower_orders is None:
+        return None
+    boundary = as_expr(2 * sqrt(radical.W(upper)) / D.subs(s, upper)**(k - 1))
+    return as_expr(c / leading * (boundary - lower_orders))
 
 
 # ---------------------------------------------------------------------------
@@ -554,11 +810,13 @@ def _from_zero(Q: Expr, m: Expr, s: Symbol, upper: Expr, assumptions: Assumption
 def elliptic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
                       assumptions: Assumptions = None) -> Optional[ConditionalValue]:
     """``Integral(f, (x, a, b))`` for ``f = R(x) * P(x)**(+-1/2)``, ``P`` a
-    cubic or a quartic with real roots, in Legendre's elliptic integrals;
-    also the trigonometric forms ``Q(sin(x)**2) * (1 - m sin(x)**2)**(+-1/2)``
-    over ``(0, phi)``. ``None`` when the integral is not of this kind, the
-    roots are not all real or cannot be ordered, or the range crosses a
-    root of ``P`` (cut it there first).
+    cubic or a quartic with real roots, or with one pair of complex
+    roots, in Legendre's elliptic integrals; also the trigonometric
+    forms ``Q(sin(x)**2) * (1 - m sin(x)**2)**(+-1/2)`` over ``(0, phi)``.
+    ``None`` when the integral is not of this kind, the roots cannot be
+    ordered (or the complex pair is not a rational quadratic factor),
+    the range crosses a root of ``P`` (cut it there first) or the
+    integral diverges at a pole of ``R``.
 
     Examples
     ========
@@ -570,6 +828,10 @@ def elliptic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
     ConditionalValue(elliptic_k(1/4))
     >>> elliptic_integral(x/sqrt(x*(1 - x)*(4 - x)), x, 0, S.Half)
     ConditionalValue(-4*elliptic_e(pi/4, 1/4) + 4*elliptic_f(pi/4, 1/4))
+    >>> elliptic_integral(1/sqrt(x**3 + 1), x, 0, oo)
+    ConditionalValue(-3**(3/4)*elliptic_f(asin(sqrt(2)*3**(1/4)/sqrt(sqrt(3) + 2)), sqrt(3)/4 + 1/2)/3 + 2*3**(3/4)*elliptic_k(sqrt(3)/4 + 1/2)/3)
+    >>> elliptic_integral(1/sqrt((x**2 + 1)*(x + 2)*(3 - x)), x, -2, 3)
+    ConditionalValue(2**(3/4)*sqrt(5)*elliptic_k(sqrt(2)/4 + 1/2)/5)
     """
     f_, a_, b_ = as_expr(f), as_expr(a), as_expr(b)
     if f_.has(TrigonometricFunction):
@@ -592,7 +854,8 @@ def _reduce(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions, dept
         return even.scaled(constant_)
     roots = real_roots(P, x, assumptions)
     if roots is None:
-        return None
+        complex_ = _complex_reduction(R, P, e, x, a, b, assumptions, depth)
+        return None if complex_ is None else complex_.scaled(constant_)
     lo_cell, hi_cell = _position(a, roots, assumptions), _position(b, roots, assumptions)
     if lo_cell is None or hi_cell is None:
         return None
@@ -661,6 +924,297 @@ def _inverted_reduction(R: Expr, P: Expr, e: Expr, x: Symbol, roots: Sequence[Ex
     if not P_u.is_polynomial(u):
         return None
     return _reduce(g, u, lower, upper, assumptions, depth + 1)
+
+
+# ---------------------------------------------------------------------------
+# Two complex roots
+
+class _ComplexFactors:
+    """``P = lam * prod(x - r) * ((x - p)**2 + q2)`` with one or two real
+    roots ``r`` in increasing order and ``q2 > 0``."""
+
+    def __init__(self, lam: Expr, roots: list[Expr], p: Expr, q2: Expr) -> None:
+        self.lam = lam
+        self.roots = roots
+        self.p = p
+        self.q2 = q2
+
+
+def _complex_factors(P: Expr, x: Symbol, assumptions: Assumptions) -> Optional[_ComplexFactors]:
+    """The factors of a cubic or a quartic with exactly one pair of
+    complex roots, read from ``factor_list`` (a numeric polynomial whose
+    quadratic factor is not rational is not recognised)."""
+    try:
+        coefficient, factors = factor_list(P, x)
+    except PolynomialError:
+        return None
+    lam: Expr = as_expr(coefficient)
+    roots: list[Expr] = []
+    quadratic: Optional[tuple[Expr, Expr]] = None
+    for factor, multiplicity in factors:
+        factor_ = as_expr(factor)
+        if not factor_.has(x):
+            lam = lam * factor_**multiplicity
+            continue
+        if multiplicity != 1:
+            return None
+        poly = Poly(factor_, x)
+        degree = poly.degree()
+        lead = as_expr(poly.LC())
+        if degree == 1:
+            roots.append(as_expr(cancel(-poly.coeff_monomial(1) / lead)))
+        elif degree == 2 and quadratic is None:
+            c1, c0 = as_expr(poly.coeff_monomial(x) / lead), as_expr(poly.coeff_monomial(1) / lead)
+            quadratic = (as_expr(cancel(c1)), as_expr(cancel(c0)))
+        else:
+            return None
+        lam = lam * lead
+    if quadratic is None or len(roots) not in (1, 2):
+        return None
+    c1, c0 = quadratic
+    p = as_expr(-c1 / 2)
+    q2 = as_expr(cancel(c0 - p**2))
+    if _ask(as_boolean(q2 > 0), assumptions) is not True:
+        return None
+    if len(roots) == 2:
+        below = _less(roots[0], roots[1], assumptions)
+        if below is None:
+            return None
+        if not below:
+            roots.reverse()
+    return _ComplexFactors(as_expr(cancel(lam)), roots, p, q2)
+
+
+class _CosineMap:
+    """The cell mapped onto ``t = cos(theta)`` in ``(-1, 1)``: ``x = X(t)``,
+    ``P(X(t)) = lam * X'(t)**2 * (1 - t**2) * (1 - m + m t**2) / g2``
+    with ``sigma`` the sign of ``X'`` on the range and ``preimage`` the
+    inverse map (``-1`` at the infinite end of a half-line). Symbolic
+    radicals ``A = sqrt((a - p)**2 + q**2)`` are positive symbols in
+    the map, so that the sign questions are polynomial: the values are
+    restored in the result."""
+
+    def __init__(self, X: Expr, m: Expr, g2: Expr, sigma: Expr, t: Symbol, preimage: Expr,
+                 infinite: Optional[Expr], radicals: dict[Symbol, Expr], facts: list[Boolean]) -> None:
+        self.X = X
+        self.m = m
+        self.g2 = g2
+        self.sigma = sigma
+        self.t = t
+        self._preimage = preimage
+        self._infinite = infinite
+        #: the symbols standing for the radicals A, B of symbolic
+        #: parameters, and what is known about them (the triangle
+        #: inequalities of the distances to the complex root)
+        self.radicals = radicals
+        self.facts = facts
+
+    def preimage(self, y: Expr, x: Symbol) -> Expr:
+        if y == self._infinite:
+            return S.NegativeOne
+        return as_expr(cancel(self._preimage.subs(x, y)))
+
+
+def _cosine_map(factors: _ComplexFactors, cell: int, t: Symbol, x: Symbol) -> Optional[_CosineMap]:
+    """Byrd–Friedman 241 for the cell between the real roots of a quartic
+    and 240 for the half-lines of a cubic."""
+    p, q2 = factors.p, factors.q2
+    radicals: dict[Symbol, Expr] = {}
+    facts: list[Boolean] = []
+    if len(factors.roots) == 2:
+        if cell != 1:
+            return None
+        b, a = factors.roots
+        A = _radical(as_expr((a - p)**2 + q2), radicals)
+        B = _radical(as_expr((b - p)**2 + q2), radicals)
+        if radicals:
+            # the sides a - b, A, B of the triangle with the complex root
+            facts.extend([as_boolean((a - b)**2 > (A - B)**2), as_boolean((a - b)**2 < (A + B)**2)])
+        X = as_expr((a * B + b * A - t * (a * B - b * A)) / (A + B + t * (A - B)))
+        m = as_expr(cancel(((a - b)**2 - (A - B)**2) / (4 * A * B)))
+        preimage = as_expr((a * B + b * A - x * (A + B)) / (a * B - b * A + x * (A - B)))
+        return _CosineMap(X, m, as_expr(1 / (A * B)), S.NegativeOne, t, preimage, None, radicals, facts)
+    a = factors.roots[0]
+    A = _radical(as_expr((a - p)**2 + q2), radicals)
+    if radicals:
+        facts.append(as_boolean(A**2 > (a - p)**2))
+    if cell == 1:
+        # (a, oo): x = a + A (1 - t)/(1 + t), decreasing from oo to a
+        r = (x - a) / A
+        return _CosineMap(as_expr(a + A * (1 - t) / (1 + t)), as_expr(cancel((A - (a - p)) / (2 * A))), as_expr(1 / A),
+                          S.NegativeOne, t, as_expr((1 - r) / (1 + r)), oo, radicals, facts)
+    if cell == -1:
+        # (-oo, a): x = a - A (1 - t)/(1 + t), increasing from -oo to a
+        r = (a - x) / A
+        return _CosineMap(as_expr(a - A * (1 - t) / (1 + t)), as_expr(cancel((A + (a - p)) / (2 * A))), as_expr(1 / A),
+                          S.One, t, as_expr((1 - r) / (1 + r)), -oo, radicals, facts)
+    return None
+
+
+def _radical(square: Expr, radicals: dict[Symbol, Expr]) -> Expr:
+    """``sqrt(square)``: a positive symbol recorded in ``radicals`` when
+    the square has symbols."""
+    if not square.free_symbols:
+        return sqrt(square)
+    symbol = Dummy('A', positive=True)
+    radicals[symbol] = sqrt(square)
+    return symbol
+
+
+def _parity_parts(G: Expr, t: Symbol, w: Symbol) -> Optional[tuple[Expr, Expr]]:
+    """``(G_e, G_o)`` with ``G(t) == G_e(t**2) + t G_o(t**2)``."""
+    numerator, denominator = as_expr(cancel(G)).as_numer_denom()
+    numerator_, denominator_ = as_expr(numerator), as_expr(denominator)
+    if not numerator_.is_polynomial(t) or not denominator_.is_polynomial(t):
+        return None
+    mirrored = as_expr(denominator_.subs(t, -t))
+    numerator_ = as_expr((numerator_ * mirrored).expand())
+    denominator_ = as_expr((denominator_ * mirrored).expand())
+    even = as_expr(((numerator_ + numerator_.subs(t, -t)) / 2).expand())
+    odd = as_expr(cancel((numerator_ - numerator_.subs(t, -t)) / (2 * t)))
+    parts: list[Expr] = []
+    for polynomial in (even, odd, denominator_):
+        converted: Expr = S.Zero
+        for (k,), c in Poly(polynomial, t).terms():
+            if k % 2:
+                return None
+            converted = converted + as_expr(c) * w**(k // 2)
+        parts.append(converted)
+    return (as_expr(cancel(parts[0] / parts[2])), as_expr(cancel(parts[1] / parts[2])))
+
+
+def _complex_reduction(R: Expr, P: Expr, e: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions,
+                       depth: int) -> Optional[ConditionalValue]:
+    """The integral over a part of a cell of a radicand with two complex
+    roots, through the cosine map: the even part of the rational
+    prefactor in ``s = 1 - t**2`` is a Legendre form, the odd part is
+    elementary in ``s``."""
+    factors = _complex_factors(P, x, assumptions)
+    if factors is None:
+        return None
+    roots = factors.roots
+    lo_cell, hi_cell = _position(a, roots, assumptions), _position(b, roots, assumptions)
+    if lo_cell is None or hi_cell is None:
+        return None
+    cell = lo_cell if lo_cell % 2 else lo_cell + 1
+    if hi_cell not in (cell, cell + 1):
+        return None
+    if len(roots) == 2 and cell in (-1, 3):
+        return _inverted_reduction(R, P, e, x, roots, a, b, cell, assumptions, depth)
+    # the sign of P on the cell: lam (x - r1)(x - r2) q(x) between the
+    # roots, lam (x - a) q(x) beyond the root of a cubic
+    lam = factors.lam if cell == 2 * len(roots) - 1 else as_expr(-factors.lam)
+    if _ask(as_boolean(lam > 0), assumptions) is not True:
+        return None
+    t = Dummy('t')
+    mapping = _cosine_map(factors, cell, t, x)
+    if mapping is None:
+        return None
+    X, m = mapping.X, mapping.m
+    assumptions = _with_facts(assumptions, mapping.facts)
+    t0, t1 = mapping.preimage(a, x), mapping.preimage(b, x)
+    # P(X)^e = (lam/g2)^e (sigma X')^(2e) ((1 - t^2)(1 - m + m t^2))^e, the
+    # rest of the integrand is R(X) X' dt
+    Xp = as_expr(X.diff(t))
+    root = sqrt(lam / mapping.g2)
+    if e == -_HALF:
+        G = as_expr(R.subs(x, X) * Xp / (root * mapping.sigma * Xp))
+    else:
+        G = as_expr(R.subs(x, X) * Xp * root * mapping.sigma * Xp * (1 - t**2) * (1 - m + m * t**2))
+    G = as_expr(cancel(G))
+    if not G.is_rational_function(t):
+        return None
+    parts = _CosineParts(G, t, m, assumptions)
+    value = parts.between(t0, t1)
+    if value is None:
+        return None
+    return ConditionalValue(as_expr(value.xreplace(mapping.radicals)))
+
+
+class _CosineParts:
+    """``Integral(G(t)/sqrt((1 - t**2)(1 - m + m t**2)), (t, t0, t1))`` for
+    ``-1 <= t0 < t1 <= 1`` from the even and the odd part of ``G``,
+    ``G(t) = G_e(t**2) + t G_o(t**2)``, in ``s = 1 - t**2``: on a range of
+    one sign ``sigma``, with ``u = |t|`` running from ``u0`` to ``u1``,
+
+        sigma (F_e(1 - u0**2) - F_e(1 - u1**2)) + F_o(1 - u0**2) - F_o(1 - u1**2)
+
+    with ``F_e`` the antiderivative of ``G_e(1 - s)/(2 sqrt(s (1 - s)(1 - m s)))``
+    and ``F_o`` that of ``G_o(1 - s)/(2 sqrt(s (1 - m s)))``, elementary,
+    both from :func:`_from_zero`; a range of both signs is cut at
+    ``t = 0``. When ``G`` has a pole at ``t = -1`` (the image of the
+    infinite end of a half-line) both parts diverge at ``s = 0`` and
+    only their sum is finite at the other end ``t = 1``: the values at
+    ``0`` are then the regularised ones, which drop the same
+    half-integer powers of ``s`` from both. At the end where ``G``
+    itself has the pole the integral diverges."""
+
+    def __init__(self, G: Expr, t: Symbol, m: Expr, assumptions: Assumptions) -> None:
+        self.m = m
+        self.assumptions = assumptions
+        self.s = Dummy('s', positive=True)
+        w = Dummy('w', positive=True)
+        parts = _parity_parts(G, t, w)
+        self.valid = parts is not None
+        if parts is None:
+            self.Q_e: Expr = S.Zero
+            self.Q_o: Expr = S.Zero
+        else:
+            self.Q_e = as_expr(cancel(parts[0].subs(w, 1 - self.s) / 2))
+            self.Q_o = as_expr(cancel(parts[1].subs(w, 1 - self.s) / 2))
+        _, denominator = as_expr(cancel(G)).as_numer_denom()
+        #: the ends of the cell where G has a pole, and the integral diverges
+        self.poles = [end for end in (S.One, S.NegativeOne) if as_expr(denominator).subs(t, end) == 0]
+
+    def between(self, t0: Expr, t1: Expr) -> Optional[Expr]:
+        if not self.valid or t0 in self.poles or t1 in self.poles:
+            return None
+        if {t0, t1} == {S.One, S.NegativeOne}:
+            # the whole cell: twice the complete integral of the even part
+            value = self._piece(S.Zero, S.One, S.One, even_only=True)
+            return None if value is None else as_expr(2 * t1 * value)
+        signs = [self._sign(t0), self._sign(t1)]
+        if None in signs:
+            return None
+        if signs[0] == 0 or signs[1] == 0 or signs[0] == signs[1]:
+            sigma = S.One if S.One in signs else S.NegativeOne
+            return self._piece(as_expr(sigma * t0), as_expr(sigma * t1), sigma)
+        # a range of both signs, cut at t = 0
+        first = self._piece(as_expr(signs[0] * t0), S.Zero, as_expr(signs[0]))
+        second = self._piece(S.Zero, as_expr(signs[1] * t1), as_expr(signs[1]))
+        if first is None or second is None:
+            return None
+        return as_expr(first + second)
+
+    def _sign(self, tau: Expr) -> Optional[Expr]:
+        if tau == 0:
+            return S.Zero
+        if _ask(as_boolean(tau > 0), self.assumptions) is True:
+            return S.One
+        if _ask(as_boolean(tau < 0), self.assumptions) is True:
+            return S.NegativeOne
+        return None
+
+    def _piece(self, u0: Expr, u1: Expr, sigma: Expr, even_only: bool = False) -> Optional[Expr]:
+        """The integral over ``t`` from ``sigma u0`` to ``sigma u1``, with
+        ``u0, u1`` in ``[0, 1]`` (of the even part alone when asked)."""
+        s0, s1 = as_expr(cancel(1 - u0**2)), as_expr(cancel(1 - u1**2))
+        if s0 == s1:
+            return S.Zero
+        increasing = _ask(as_boolean(s0 < s1), self.assumptions)
+        if increasing is None:
+            return None
+        lower, upper = (s0, s1) if increasing else (s1, s0)
+        total: Expr = S.Zero
+        for Q, radical, weight in ((self.Q_e, _Legendre(self.m), sigma), (self.Q_o, _Elementary(self.m), S.One)):
+            if Q == 0 or (even_only and radical.W(S.Half) != _Legendre(self.m).W(S.Half)):
+                continue
+            at_s0 = _from_zero(Q, self.s, s0, radical, self.assumptions, lower, upper)
+            at_s1 = _from_zero(Q, self.s, s1, radical, self.assumptions, lower, upper)
+            if at_s0 is None or at_s1 is None:
+                return None
+            total = total + weight * (at_s0 - at_s1)
+        return as_expr(total)
 
 
 def _trigonometric(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions) -> Optional[ConditionalValue]:

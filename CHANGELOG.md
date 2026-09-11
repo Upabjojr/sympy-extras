@@ -94,7 +94,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 - `sympy_extras.integrals.elliptic`: square roots of cubics and quartics
   reduced to Legendre's elliptic integrals (Byrd–Friedman's substitutions,
-  complete and incomplete forms, `elliptic_pi` for simple poles).
+  complete and incomplete forms, `elliptic_pi` for simple poles);
+  radicands with a pair of complex roots (Byrd–Friedman 240, 241, the
+  bilinear substitution onto `cos(theta)`), polynomial and rational
+  numerators by the recurrences 310-318 (incomplete powers, multiple
+  poles), symbolic parameters with the triangle inequalities as facts;
+  `1/sqrt(x**3 + 1)` over `(0, oo)` is `gamma(1/6)*gamma(1/3)/(3*sqrt(pi))`.
 
 - `sympy_extras.integrals.series`: series expansion of a factor and termwise
   integration with the series summed in closed form (`summation`, the
