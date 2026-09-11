@@ -97,7 +97,8 @@ from sympy.functions.elementary.piecewise import Piecewise, piecewise_fold
 from sympy.functions.elementary.trigonometric import TrigonometricFunction, asin, sin, cos
 from sympy.functions.special.delta_functions import Heaviside, DiracDelta
 from sympy.integrals.integrals import Integral, integrate
-from sympy.logic.boolalg import Boolean, true
+from sympy.series.limits import limit
+from sympy.logic.boolalg import And, Boolean, true
 from sympy.sets.sets import FiniteSet, Interval, Set
 from sympy.simplify.powsimp import powdenest
 from sympy.utilities.lambdify import lambdify
@@ -122,7 +123,7 @@ _MAX_DEPTH = 6
 
 
 def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = None,
-                      conds: str = 'piecewise') -> Expr:
+                      conds: str = 'piecewise', recognize: bool = False) -> Expr:
     """``Integral(f, (x, a, b))`` under assumptions on the parameters.
 
     Parameters
@@ -139,6 +140,11 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
         What to do with the conditions the assumptions do not settle:
         return a ``Piecewise`` with the unevaluated integral as the
         other branch (the default), or assume that they hold.
+    recognize : bool
+        When every method fails and the integral has no parameters,
+        guess a closed form from a high-precision numerical value with
+        PSLQ (:mod:`.recognize`): the result is a conjecture checked to
+        forty-five digits, not a proof, hence off by default.
 
     Returns
     =======
@@ -167,6 +173,11 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
     if conds not in ('piecewise', 'none'):
         raise ValueError("conds must be 'piecewise' or 'none', got %r" % (conds,))
     found = conditional_integral(f_, x, a, b, assumptions)
+    if (found is None or found.value.has(nan)) and recognize:
+        from .recognize import recognize_integral
+        guessed = recognize_integral(f_, (x, a, b), assumptions)
+        if guessed is not None:
+            return guessed
     if found is None or found.value.has(nan):
         return as_expr(Integral(f_, (x, a, b)))
     found = ConditionalValue(tidy(found.value, assumptions, found.condition), found.condition)
@@ -284,10 +295,12 @@ def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
 # The integrator
 
 class _Integrator:
-    """The strategies, sharing the assumptions."""
+    """The strategies, sharing the assumptions; ``parametric`` allows
+    differentiation under the integral sign (off inside that method)."""
 
-    def __init__(self, assumptions: Assumptions) -> None:
+    def __init__(self, assumptions: Assumptions, parametric: bool = True) -> None:
         self.assumptions = assumptions
+        self.parametric = parametric
 
     def ask(self, query: Boolean) -> Optional[bool]:
         return ask(query, self.assumptions)
@@ -331,9 +344,14 @@ class _Integrator:
             # integrated: an antiderivative evaluated at the endpoints
             # would be wrong, so SymPy is not asked
             return None
-        for strategy in (self._canonical, self._trigonometric, self._mapped, self._inversion, self._residues):
+        allowed = (free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x}
+        for strategy in (self._canonical, self._trigonometric, self._mapped, self._inversion, self._residues,
+                         self._holonomic, self._parametric, self._antiderivative):
             found = strategy(f, x, a, b, depth)
             if found is not None:
+                if free_symbols(found.value) - allowed or free_symbols(found.condition) - allowed:
+                    # a constant of integration or a dummy leaked from a method
+                    continue
                 return found
         if fallback:
             return self._sympy(f, x, a, b, depth)
@@ -522,7 +540,7 @@ class _Integrator:
     def _mellin_on(self, g: Expr, t: Symbol, cutoff: Optional[str]) -> Optional[ConditionalValue]:
         """The Marichev–Adamchik method on ``g``, tried as it is and
         expanded."""
-        for candidate in _forms(g, t):
+        for candidate in _forms(g, t, self.assumptions):
             found = mellin_integrate(candidate, t, self.assumptions, cutoff)
             if found is not None:
                 return found
@@ -535,6 +553,8 @@ class _Integrator:
             found = self._mellin_on(f.subs(x, t), t, None)
             if found is None and f.has(exp):
                 found = self._exponential_substitution(f, x, a, b)
+            if found is None:
+                found = self._series_mellin(as_expr(f.subs(x, t)), t)
             return self._finish(found)
         if a == 0 and b == 1:
             return self._finish(self._mellin_on(f.subs(x, t), t, 'lower'))
@@ -573,6 +593,29 @@ class _Integrator:
         g = as_expr(f.subs(x, a + length * t) * length)
         return self.integrate(g, t, S.Zero, S.One, depth + 1, False)
 
+    def _series_mellin(self, g: Expr, t: Symbol) -> Optional[ConditionalValue]:
+        """``Integral(g, (t, 0, oo))`` as the Mellin transform at ``s = 1``
+        found by Ramanujan's master theorem or the method of brackets
+        (:mod:`.brackets`), for factors outside the table."""
+        from .brackets import mellin_transform_series
+        s = Dummy('s')
+        found = mellin_transform_series(g, t, s)
+        if found is None:
+            return None
+        value = as_expr(found.transform.subs(s, 1))
+        if value.has(nan, zoo, oo, -oo):
+            value_ = attempt(lambda: as_expr(limit(found.transform, s, 1)), settings.timeout)
+            if value_ is None or value_.has(nan, zoo, oo, -oo):
+                return None
+            value = value_
+        lower, upper = found.strip
+        parts: list[Boolean] = []
+        if lower != -oo:
+            parts.append(as_boolean(lower < 1))
+        if upper != oo:
+            parts.append(as_boolean(upper > 1))
+        return ConditionalValue(value, as_boolean(And(*parts, found.condition)))
+
     def _exponential_substitution(self, f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[ConditionalValue]:
         """``t = exp(c x)`` for an integrand in ``exp(c_i x)`` with all
         ``c_i`` integer multiples of ``c``: the real line becomes
@@ -581,7 +624,7 @@ class _Integrator:
         if c is None:
             return None
         u = Dummy('u', positive=True)
-        g = as_expr(powdenest(f.subs(x, log(u) / c) / (c * u), force=True))
+        g = _denest(as_expr(f.subs(x, log(u) / c) / (c * u)), self.assumptions)
         if g.has(log(u)) and not _log_powers_only(g, u):
             return None
         if a == 0:
@@ -596,7 +639,7 @@ class _Integrator:
         if (a, b) not in ((S.One, oo), (S.Zero, S.One)):
             return None
         u = Dummy('u', positive=True)
-        g = as_expr(powdenest(f.subs(x, 1 / u) / u**2, force=True))
+        g = _denest(as_expr(f.subs(x, 1 / u) / u**2), self.assumptions)
         cutoff = 'lower' if b == oo else 'upper'
         return self._finish(self._mellin_on(g, u, cutoff))
 
@@ -624,7 +667,7 @@ class _Integrator:
             return self.integrate(as_expr(f.subs(x, t + ka * pi / 2)), t, S.Zero, pi / 2, depth + 1, False)
         u = Dummy('u', positive=True)
         g = as_expr(f.subs(x, asin(sqrt(u))) / (2 * sqrt(u) * sqrt(1 - u)))
-        g = as_expr(powdenest(g, force=True))
+        g = _denest(g, self.assumptions)
         if g.has(asin):
             return None
         return self._finish(self._mellin_on(g, u, 'lower'))
@@ -642,6 +685,44 @@ class _Integrator:
             if isinstance(p, Symbol) and (p.is_extended_real or self.ask(element(p, S.Reals)) is True):
                 replacement[as_expr(node)] = p if isinstance(node, re) else S.Zero
         return as_boolean(condition.xreplace(replacement)) if replacement else condition
+
+    def _antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """An antiderivative evaluated by one-sided limits at the
+        endpoints and at its discontinuities (:mod:`.antiderivative`)."""
+        from .antiderivative import antiderivative_integral
+        if a.has(x) or b.has(x):
+            return None
+        found = antiderivative_integral(f, x, a, b, self.assumptions)
+        if found is None:
+            return None
+        if settings.numerical_checks and verify_numerically(found.value, f, x, a, b, self.assumptions) is False:
+            # SymPy's antiderivatives sometimes hold for positive parameters only
+            return None
+        return self._finish(found)
+
+    def _holonomic(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """Creative telescoping (:mod:`.telescoping`) for a hyperexponential
+        integrand with one parameter: the integral satisfies a linear
+        ODE in the parameter, solved with initial conditions."""
+        from .telescoping import holonomic_integral, is_hyperexponential
+        if not self.parametric or depth > 1:
+            return None
+        parameters = sorted_symbols(free_symbols(f) - {x} - free_symbols(a) - free_symbols(b))
+        if len(parameters) != 1 or not is_hyperexponential(f, x, parameters[0]):
+            return None
+        return self._finish(holonomic_integral(f, x, a, b, parameters[0], self.assumptions))
+
+    def _parametric(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """Differentiation under the integral sign (:mod:`.parametric`),
+        for each parameter of the integrand in turn."""
+        from .parametric import candidate_parameters, parametric_integral
+        if not self.parametric or depth > 1:
+            return None
+        for p in candidate_parameters(f, x):
+            found = parametric_integral(f, x, a, b, p, self.assumptions, depth)
+            if found is not None:
+                return self._finish(found)
+        return None
 
     def _sympy(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int = 0) -> Optional[ConditionalValue]:
         """SymPy's ``integrate`` under the time limit, checked numerically."""
@@ -703,16 +784,41 @@ def _from_sympy(value: Expr, x: Symbol) -> Optional[ConditionalValue]:
     return ConditionalValue(value)
 
 
-def _forms(g: Expr, t: Symbol) -> list[Expr]:
+def _forms(g: Expr, t: Symbol, assumptions: Assumptions) -> list[Expr]:
     """The integrand as it is and in expanded forms."""
     forms = [g]
     expanded = as_expr(g.expand())
     if expanded != g:
         forms.append(expanded)
-    denested = as_expr(powdenest(g, force=True))
+    denested = _denest(g, assumptions)
     if denested not in forms:
         forms.append(denested)
     return forms
+
+
+def _denest(g: Expr, assumptions: Assumptions) -> Expr:
+    """``powdenest(g, force=True)`` done honestly: the forced denesting
+    takes every symbol positive (``sqrt(c**2)`` becomes ``c``), so a
+    parameter known negative is first written ``-d`` with ``d`` positive,
+    and a parameter of unknown sign blocks the forced form (the bug: the
+    area of the disc ``x**2 + y**2 < c**2`` came out as 0 for ``c < 0``)."""
+    replacement: dict[Expr, Expr] = {}
+    back: dict[Expr, Expr] = {}
+    for p in sorted_symbols(free_symbols(g)):
+        if p.is_positive:
+            continue
+        if ask(as_boolean(p > 0), assumptions) is True:
+            d = Dummy(p.name, positive=True)
+            replacement[p] = d
+            back[d] = p
+        elif ask(as_boolean(p < 0), assumptions) is True:
+            d = Dummy(p.name, positive=True)
+            replacement[p] = -d
+            back[d] = -p
+        else:
+            return as_expr(powdenest(g))
+    denested = as_expr(powdenest(g.xreplace(replacement), force=True))
+    return as_expr(denested.xreplace(back))
 
 
 def _shift(f: Expr, x: Symbol, t: Symbol, a: Expr) -> Expr:

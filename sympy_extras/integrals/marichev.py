@@ -68,10 +68,11 @@ from typing import Optional
 from sympy.core.add import Add
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
-from sympy.core.numbers import nan, oo, zoo
+from sympy.core.numbers import I, nan, oo, pi, zoo
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.complexes import polar_lift, unpolarify, principal_branch
+from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.exponential import exp_polar
 from sympy.functions.special.gamma_functions import polygamma
 from sympy.functions.special.zeta_functions import lerchphi, dirichlet_eta
@@ -90,14 +91,14 @@ from sympy.logic.boolalg import And, Boolean, true
 
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.assumptions.ask import Assumptions, ask
 from sympy_extras.assumptions.refine import refine
 from sympy_extras.settings import settings
 from .conditions import ConditionalValue, decide
 from .mellin import GammaQuotient, Product, decompose_integrand
 from .slater import expand_meijerg, line_conditions, mellin_barnes
 
-__all__ = ['mellin_integrate', 'integrate_product', 'evaluate_quotient', 'tidy']
+__all__ = ['mellin_integrate', 'integrate_product', 'evaluate_quotient', 'tidy', 'real_logarithms']
 
 
 def evaluate_quotient(quotient: GammaQuotient, point: Expr) -> Optional[Expr]:
@@ -145,11 +146,31 @@ def tidy(value: Expr, assumptions: Assumptions = None, condition: Boolean = true
         facts.append(as_boolean(assumptions))
     elif assumptions is not None:
         facts.extend(as_boolean(a) for a in assumptions)
+    if result.has(log):
+        result = real_logarithms(result, facts)
     if facts:
         refined = attempt(lambda: as_expr(refine(result, facts)), settings.timeout)
         if refined is not None and _size(refined) <= _size(result):
             result = refined
     return result
+
+
+def real_logarithms(value: Expr, assumptions: Assumptions = None) -> Expr:
+    """``log(u)`` with ``u`` negative under the assumptions written
+    ``log(-u) + I*pi``, so that the imaginary parts of a real value cancel
+    (the bug: ``I*c**2*(log(c**2) - log(-c**2))``, SymPy's value of the
+    area of a disc of radius ``-c``, was left as it was and then refined
+    to 0 under ``c < 0``)."""
+    replacement: dict[Expr, Expr] = {}
+    for node in value.atoms(log):
+        argument = as_expr(node.args[0])
+        if ask(as_boolean(argument < 0), assumptions) is True:
+            replacement[as_expr(node)] = log(-argument) + I * pi
+    if not replacement:
+        return value
+    rewritten = as_expr(value.xreplace(replacement))
+    simpler = attempt(lambda: as_expr(simplify(rewritten)), settings.timeout)
+    return rewritten if simpler is None else simpler
 
 
 def _size(e: Expr) -> int:

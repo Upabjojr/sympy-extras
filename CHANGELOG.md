@@ -33,6 +33,33 @@ remove public functions. Breaking changes are listed here when they happen.
   into cylindrical cells by the CAD, with parameters giving a case
   distinction.
 
+- The other methods of definite integration: `sympy_extras.integrals.telescoping`
+  (the Almkvist–Zeilberger algorithm: creative telescoping for
+  hyperexponential integrands, the ODE of a parametric integral and its
+  solution with initial conditions), `sympy_extras.integrals.parametric`
+  (differentiation under the integral sign, with the constant fixed at a
+  value of the parameter), `sympy_extras.integrals.antiderivative` (an
+  antiderivative evaluated by one-sided limits at the endpoints, at the
+  singularities of the integrand and at the discontinuities of the
+  antiderivative), all tried by `definite_integral` before SymPy's
+  `integrate`; `sympy_extras.integrals.brackets` (Ramanujan's master
+  theorem from the formal power series of a factor, the method of brackets
+  for products of two series) as a second source of Mellin transforms;
+  `sympy_extras.integrals.recognize` (a closed form conjectured from a
+  high-precision quadrature by PSLQ, `definite_integral(...,
+  recognize=True)`, off by default).
+
+- `sympy_extras.integrals.risch`: the transcendental Risch algorithm
+  ported from Aaron Meurer's unmerged SymPy pull requests sympy/sympy#30180,
+  #30221 (the remaining exp-log cases of Bronstein) and #30292 (the
+  hypertangent cases and the coupled differential system), self-contained
+  on SymPy 1.14 with the tests of the branches, under SymPy's BSD licence
+  with attribution; `risch_antiderivative` and `is_nonelementary` are the
+  typed entry points and the antiderivative method of `definite_integral`
+  uses it first. The ported modules are excluded from the strict typing
+  by a per-module mypy override (an exception to the typing rule, see
+  issue #15).
+
 - The benchmark driver `definite_integrals` of sympy-extras-benchmarks
   gained `--extras` to run `definite_integral` on the four integration
   datasets; the results are in `benchmarks/README.md`.

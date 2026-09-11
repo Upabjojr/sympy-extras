@@ -1,7 +1,7 @@
 """Tests of the definite integration driver."""
 from __future__ import annotations
 
-from sympy import (symbols, exp, sin, cos, log, sqrt, oo, pi, S, Rational, Abs, Heaviside, Piecewise, Integral,
+from sympy import (symbols, exp, sin, cos, log, sqrt, oo, pi, S, Rational, Abs, Heaviside, Piecewise, Integral, I,
                    sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan)
 from sympy.testing.pytest import raises
 
@@ -160,3 +160,26 @@ def test_complex_segments_go_to_sympy_and_are_checked() -> None:
     # integral, off by 2*I*pi from the value 2.5708 - 2.1416*I of the
     # segment; the check rejects it and the integral is returned
     assert definite_integral(log(z) / z**2, (z, -I, -1)).has(Integral)
+
+
+def test_leaked_constants_are_rejected() -> None:
+    # the bug: the creative telescoping route returned 16*I*C1/3 for the
+    # inner integral of the ball volume, the constant of integration of
+    # dsolve unresolved; a value with symbols absent from the input is
+    # not an answer and the next method is tried
+    from sympy_extras.integrals import integrate_by_ranges
+    y, z = symbols('y z')
+    assert integrate_by_ranges(1, x**2 + y**2 + z**2 < 1) == 4 * pi / 3
+
+
+def test_logarithms_of_negative_arguments_are_made_real() -> None:
+    # the bug: SymPy's value I*c**2*(log(c**2) - log(-c**2)) of the area
+    # of the disc of radius -c (c < 0) was kept as it was, and the region
+    # integral then refined it to 0
+    c = symbols('c')
+    from sympy_extras.integrals.marichev import real_logarithms
+    assert real_logarithms(I * c**2 * (log(c**2) - log(-c**2)), c < 0) == pi * c**2
+    assert _same(definite_integral(2 * sqrt(c**2 - x**2), (x, c, -c), c < 0), pi * c**2)
+    from sympy_extras.integrals import integrate_by_ranges
+    y = symbols('y')
+    assert _same(integrate_by_ranges(1, x**2 + y**2 < c**2, [x, y], c < 0), pi * c**2)

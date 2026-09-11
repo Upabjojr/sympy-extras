@@ -412,8 +412,12 @@ of a table of Mellin transforms is a Meijer G-function (Parseval's formula
 for the Mellin transform), written as hypergeometric functions by Slater's
 theorem. The strips of the transforms are the convergence conditions on
 the parameters, decided against the assumptions or reported in a
-`Piecewise`. SymPy's `integrate` is the last resort, and its answer is
-accepted only when a numerical check passes. `IntegralByRanges` integrates
+`Piecewise`. Creative telescoping (Almkvist–Zeilberger), differentiation
+under the integral sign, an antiderivative from the Risch algorithm (ported
+from Aaron Meurer's unmerged SymPy pull requests) evaluated by one-sided
+limits at every discontinuity, Ramanujan's master theorem and the method
+of brackets come next; SymPy's `integrate` is the last resort, and its
+answer is accepted only when a numerical check passes. `IntegralByRanges` integrates
 over a region described by polynomial inequalities, decomposed into stacks
 of intervals by the cylindrical algebraic decomposition. See
 [docs/integrals.md](docs/integrals.md).
@@ -529,6 +533,12 @@ sympy_extras/
         residues.py          rational, Fourier and trigonometric integrals by residues
         definite.py          definite_integral: splitting, range mappings, verified fallback
         regions.py           IntegralByRanges: integrals over semialgebraic regions (CAD)
+        telescoping.py       Almkvist–Zeilberger creative telescoping (holonomic integrals)
+        parametric.py        differentiation under the integral sign
+        antiderivative.py    antiderivatives evaluated by one-sided limits
+        brackets.py          Ramanujan's master theorem, method of brackets
+        recognize.py         PSLQ recognition of integrals (an oracle)
+        risch/               Risch algorithm ported from Aaron Meurer's SymPy pull requests
     solvers/
         lie.py               jet spaces, prolongation, determining equations, symmetries
         pde.py               pde_symmetries, similarity_reduction, pdsolve_lie

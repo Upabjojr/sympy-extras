@@ -108,6 +108,112 @@ Integral(1/x, (x, -1, 2))
 
 ```
 
+## The other methods
+
+The driver tries, after the Mellin method and the residues:
+
+- **Creative telescoping** (`sympy_extras.integrals.telescoping`): for a
+  hyperexponential integrand `F(x, t)` (both logarithmic derivatives
+  rational), the Almkvist–Zeilberger algorithm finds `a_0(t), ..., a_J(t)`
+  and a rational certificate `R` with `sum(a_j * d^j F/dt^j) = d(R F)/dx`,
+  so that the integral `I(t)` satisfies the linear ODE
+  `sum(a_j I^(j)) = [R F]` between the bounds. `holonomic_ode` returns the
+  equation, `holonomic_integral` solves it with `dsolve` and fixes the
+  constants at a value of the parameter where the integral is computed
+  directly. This is the continuous analogue of Zeilberger's algorithm of
+  `sympy_extras.concrete.zeilberger`, and the way to integrals of
+  products of special functions which are not Meijer G-functions (the
+  general D-finite case, Chyzak's algorithm, is not implemented).
+- **Differentiation under the integral sign**
+  (`sympy_extras.integrals.parametric`): `I'(p)` is a simpler integral
+  (a factor `1/x` disappears against `exp(-p x)`, a logarithm against
+  `x**p`), integrated by the other methods, integrated back in `p`, with
+  the constant fixed at `p = 0`, `1` or at infinity; the interchange is
+  checked numerically when `settings.numerical_checks` is on.
+- **An antiderivative evaluated by one-sided limits**
+  (`sympy_extras.integrals.antiderivative`): the range is cut at the
+  singularities of the integrand *and* at the discontinuities of the
+  antiderivative (the jumps of `atan` and `log` across branch cuts, which
+  Rioboo's and Jeffrey–Rich's constructions repair for rational and
+  trigonometric integrands), and the pieces are summed with one-sided
+  limits under the assumptions; an infinite limit exposes a divergence.
+  The antiderivative comes from the Risch port
+  (`sympy_extras.integrals.risch`, Aaron Meurer's unmerged SymPy pull
+  requests, see below) or from SymPy's `integrate`.
+
+- **Ramanujan's master theorem and the method of brackets**
+  (`sympy_extras.integrals.brackets`): for a factor outside the Mellin
+  table, the coefficients of its Taylor series as a function of the index
+  (from SymPy's formal power series) give the Mellin transform directly,
+  `Integral(x**(s-1) f(x), (x, 0, oo)) = gamma(s) phi(-s)` for
+  `f = sum(phi(k) (-x)**k/k!)`; for a product of two series the bracket
+  rule of Gonzalez and Moll eliminates one index and the remaining series
+  is summed. The theorem is checked against the table on the kernels both
+  know; the method of brackets is a heuristic and is used only where its
+  series converge.
+- **Symbolic-numeric recognition** (`sympy_extras.integrals.recognize`,
+  `definite_integral(..., recognize=True)`): a high-precision quadrature
+  and an integer relation (PSLQ) with a basis of constants propose a
+  closed form, re-checked at forty-five digits. A conjecture, not a proof:
+  off by default.
+
+```python
+>>> from sympy import symbols, exp, sin, log, atan, cos, oo, pi
+>>> from sympy_extras.integrals import definite_integral, holonomic_ode, parametric_integral
+>>> x = symbols('x')
+>>> p, t = symbols('p t', positive=True)
+>>> holonomic_ode(exp(-x**2)*cos(2*t*x), x, 0, oo, t)
+Eq(2*t*I(t) + Derivative(I(t), t), 0)
+>>> definite_integral(exp(-x**2)*cos(2*t*x), (x, 0, oo))
+sqrt(pi)*exp(-t**2)/2
+>>> definite_integral(atan(p*x)/(x*(1 + x**2)), (x, 0, oo))
+pi*log(p + 1)/2
+>>> definite_integral((x**p - 1)/log(x), (x, 0, 1))
+log(p + 1)
+>>> definite_integral(1/(2 + cos(x)), (x, 0, 2*pi))
+2*sqrt(3)*pi/3
+>>> from sympy_extras.integrals import ramanujan_master_theorem, recognize_integral
+>>> s = symbols('s')
+>>> ramanujan_master_theorem(exp(-x**2), x, s)
+MellinTransform(gamma(s/2)/2, (0, oo))
+>>> recognize_integral(1/(x**3 + 1), (x, 0, 1))
+log(2)/3 + sqrt(3)*pi/9
+
+```
+
+## The Risch algorithm (`sympy_extras.integrals.risch`)
+
+The transcendental Risch algorithm of SymPy, extended by Aaron Meurer's
+unmerged pull requests: sympy/sympy#30180 and #30221 (the remaining
+exp-log cases of Bronstein's book: the cancellation cases of the Risch
+differential equation and the parametric problems), #30292 (the
+hypertangent cases, with the coupled differential system of `cde.py`),
+ported into `sympy_extras/integrals/risch/` with SymPy's BSD licence and
+the attribution in every file; #30239 (radicals through the
+transcendental algorithm, experimental) and #30282 (type annotations)
+are documented there and not ported. The port is self-contained on
+SymPy 1.14 and keeps the tests of the branches. `risch_antiderivative`
+returns an antiderivative or `None` (nonelementary, or a case still
+unimplemented); `is_nonelementary` is the decision. The ported modules
+are not strictly typed: they are excluded from mypy's checks by a
+per-module override in `pyproject.toml`, an exception to the typing
+rule of `AGENTS.md` made for ported code.
+
+```python
+>>> from sympy import symbols, tan, exp, log
+>>> from sympy_extras.integrals import risch_antiderivative, is_nonelementary
+>>> x = symbols('x')
+>>> risch_antiderivative(tan(x)**5, x)
+log(tan(x)**2 + 1)/2 + tan(x)**4/4 - tan(x)**2/2
+>>> risch_antiderivative(exp(x)/((exp(x) + 1)**2 + 1), x)
+atan(exp(x) + 1)
+>>> risch_antiderivative(1/(x*(log(x)**2 + 1)), x)
+atan(log(x))
+>>> is_nonelementary(exp(-x**2), x)
+True
+
+```
+
 ## Integrals over regions: `IntegralByRanges`
 
 `IntegralByRanges(f, condition)` is the integral of `f` over the region of

@@ -110,6 +110,12 @@ sympy_extras/
         definite.py          definite_integral: splitting, range mappings, the verified SymPy fallback
         regions.py           IntegralByRanges: integrals over semialgebraic regions through the CAD
         conditions.py        ConditionalValue: values with the conditions under which they hold
+        telescoping.py       Almkvist–Zeilberger creative telescoping, holonomic_ode, holonomic_integral
+        parametric.py        differentiation under the integral sign (Feynman's trick)
+        antiderivative.py    antiderivatives evaluated by one-sided limits at every discontinuity
+        brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)
+        recognize.py         PSLQ recognition of constants and integrals (an oracle, off by default)
+        risch/               the transcendental Risch algorithm ported from Aaron Meurer's SymPy pull requests
         tests/
     polys/
         euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)

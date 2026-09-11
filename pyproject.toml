@@ -95,6 +95,15 @@ module = ["mpmath", "mpmath.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# ported from SymPy (Aaron Meurer's Risch pull requests, sympy/sympy#30221
+# and #30292): SymPy's own code, typed progressively, see issue #15
+module = ["sympy_extras.integrals.risch.risch", "sympy_extras.integrals.risch.rde",
+    "sympy_extras.integrals.risch.prde", "sympy_extras.integrals.risch.cde",
+    "sympy_extras.integrals.risch.rationaltools", "sympy_extras.integrals.risch.polymatrix",
+    "sympy_extras.integrals.risch.tests.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
 # the tests compare SymPy numbers with Python literals on purpose
 module = ["sympy_extras.*.tests.*", "sympy_extras.*.*.tests.*"]
 strict_equality = false
