@@ -88,6 +88,7 @@ from sympy_extras.polys.euclidtools import psc
 from sympy_extras.polys.cad import quantifier_elimination, solution_set
 from sympy_extras.polys.virtual_substitution import eliminate_linear
 from sympy_extras.concrete.qhyper import qpochhammer, qbinomial
+from sympy_extras.integrals import definite_integral, IntegralByRanges, mellin_transform as xmellin
 from sympy.solvers.ode import dsolve
 from sympy.series.limitseq import limit_seq
 from sympy.polys import ring, QQ, ZZ, grevlex, lex
@@ -538,6 +539,74 @@ CASES: list[Case] = [
          "eliminate_linear((x > y) & (x < 1), x)",
          "'no counterpart'",
          'error'),
+]
+
+
+CASES += [
+    # ------------------------------------------------------------ integration
+    Case('Definite integration',
+         'A singularity inside the range',
+         "definite_integral(1/x, (x, -1, 2))",
+         "integrate(1/x, (x, -1, 2))",
+         'undecided',
+         'The integral diverges; SymPy returns `nan`. `definite_integral` cuts the range at the '
+         'singularities it finds and claims nothing when a piece diverges, so the unevaluated '
+         'integral comes back.'),
+    Case('Definite integration',
+         'Powers of trigonometric functions: Beta integrals',
+         "definite_integral(sqrt(sin(x)), (x, 0, pi/2))",
+         "integrate(sqrt(sin(x)), (x, 0, pi/2))",
+         'undecided',
+         'The substitution `x = asin(sqrt(u))` turns powers of `sin` and `cos` over a quarter '
+         'period into a Beta integral, one kernel of the Mellin table.'),
+    Case('Definite integration',
+         'A periodic integrand with kinks',
+         "definite_integral(sqrt(1 - cos(x)), (x, 0, 2*pi))",
+         "integrate(sqrt(1 - cos(x)), (x, 0, 2*pi))",
+         'undecided',
+         '`1 - cos(x)` is `2*sin(x/2)**2` and the square root is `sqrt(2)*|sin(x/2)|`.'),
+    Case('Definite integration',
+         'Logarithms and powers on the unit interval',
+         "definite_integral(x**Rational(1, 3)/sqrt(-log(x)), (x, 0, 1))",
+         "integrate(x**Rational(1, 3)/sqrt(-log(x)), (x, 0, 1))",
+         'undecided',
+         '`(-log(x))**k` on `(0, 1)` has the Mellin transform `gamma(k + 1)/s**(k + 1)`.'),
+    Case('Definite integration',
+         'Integrands in exp(x) over the real line',
+         "definite_integral(x*exp(x)*exp(k*x)/(exp(x) + 3), (x, -oo, oo), (k > -1) & (k < 0))",
+         "integrate(x*exp(x)*exp(k*x)/(exp(x) + 3), (x, -oo, oo))",
+         'undecided',
+         'The substitution `u = exp(x)` gives `log(u)*u**k/(u + 3)` over `(0, oo)`: a power of '
+         '`x` times a kernel, and the logarithm is a derivative with respect to the exponent.'),
+    Case('Definite integration',
+         'A Laplace transform with a product of two kernels',
+         "definite_integral(exp(-s*x)*sin(a*x)/x, (x, 0, oo), (s > 0) & (a > 0))",
+         "integrate(exp(-s*x)*sin(a*x)/x, (x, 0, oo))",
+         'partial',
+         'Parseval\'s formula for the Mellin transform turns the product into a Meijer '
+         'G-function, which Slater\'s theorem expands; the assumptions decide the conditions. '
+         'SymPy returns a `Piecewise` with conditions on `arg(a)` and `arg(s)` and the value '
+         'written with `sqrt(a**2/s**2)`.'),
+    Case('Definite integration',
+         'The Mellin transform of atan',
+         "xmellin(atan(x), x, s)",
+         "mellin_transform(atan(x), x, s)",
+         'undecided',
+         'The table of transforms with their strips of convergence; SymPy has no entry for `atan`.'),
+    Case('Definite integration',
+         'An integral over a region described by inequalities',
+         "IntegralByRanges(x*y, (x > 0) & (y > 0) & (x + y < 1)).doit()",
+         "'no counterpart'",
+         'error',
+         'The region is decomposed into stacks of intervals by the cylindrical algebraic '
+         'decomposition and the iterated integrals are computed innermost first, the way '
+         'Mathematica\'s `Integrate[f, {x, y} ∈ region]` works.'),
+    Case('Definite integration',
+         'The area of a disc of parametric radius',
+         "IntegralByRanges(1, x**2 + y**2 < c**2, [x, y]).doit()",
+         "'no counterpart'",
+         'error',
+         'The parameter is the first variable of the decomposition and gives the case distinction.'),
 ]
 
 

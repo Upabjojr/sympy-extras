@@ -56,6 +56,21 @@ Only what SymPy lacks is implemented here.
 | Limits from series and other methods (exp-log, Gruntz) | `limit` (Gruntz), `limit_seq` | — |
 | Assumptions in limits and series through `Refine`/`Simplify` | Symbol assumptions only | `assumptions.limit`, `assumptions.limit_seq`, `assumptions.series` with statement assumptions and case distinctions |
 
+## Integration
+
+Mathematica's notes on `Integrate`: "Many other definite integrals are
+done using Marichev–Adamchik Mellin transform methods. The results are
+often initially expressed in terms of Meijer G functions, which are
+converted into hypergeometric functions using Slater's theorem and then
+simplified."
+
+| Algorithm (Mathematica) | SymPy | sympy-extras |
+| --- | --- | --- |
+| Indefinite integrals: Risch, heuristics, tables | `integrate` (Risch for exp-log, `heurisch`, `manualintegrate`, tables of Meijer G-functions) | — |
+| Definite integrals with singularities: Marichev–Adamchik Mellin transform methods, Meijer G-functions converted by Slater's theorem | `meijerint_definite` (a table of G-function representations, conditions often unresolved, no splitting at singularities) | `integrals.mellin`, `integrals.slater`, `integrals.marichev`: Mellin transforms as gamma quotients with their strips (the convergence conditions), Parseval's formula, Slater's theorem with the assumptions deciding `\|z\| < 1`; `integrals.definite`: splitting at kinks and singularities, range mappings, changes of variable, the numerically checked fallback to `integrate` |
+| Contour integration: residues | `integrate` (rational functions over the real line) | `integrals.residues`: rational functions times powers, exponentials and trigonometric functions over `(0, oo)` and the real line, rational functions of `sin` and `cos` over a period |
+| Integrals over regions (`Integrate[f, {x, y} ∈ region]`, `Boole`): cylindrical algebraic decomposition | — | `integrals.regions`: `IntegralByRanges`, the region decomposed into stacks of intervals by the CAD, parameters as a case distinction |
+
 ## Linear quantifier elimination
 
 Variables which occur linearly in a formula are eliminated by virtual

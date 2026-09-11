@@ -6,6 +6,37 @@ The project is at version 0.x: there is **no guarantee of backwards
 compatibility** between releases yet, and any release may rename, move or
 remove public functions. Breaking changes are listed here when they happen.
 
+## Unreleased
+
+### Added
+
+- `sympy_extras.integrals`: definite integration by the Marichev–Adamchik
+  method. `sympy_extras.integrals.mellin` represents Mellin transforms as
+  quotients of gamma functions with their strips of convergence
+  (`GammaQuotient`, a table of thirty kernels checked against Mathematica,
+  SymPy and quadrature, `mellin_transform`); `slater` turns a quotient into
+  a Meijer G-function (Gauss's multiplication formula for rational
+  coefficients of `s`) and expands the G-function by Slater's theorem with
+  the `|z| < 1` case distinction decided by the assumptions
+  (`mellin_barnes`, `slater_expansion`); `marichev` integrates over
+  `(0, oo)`, `(0, 1)` and `(1, oo)` a power of `x` times at most two kernels
+  (Parseval's formula) with logarithms as derivatives in the exponent
+  (`mellin_integrate`); `residues` does rational, Fourier-type and
+  trigonometric integrals by the residue theorem; `definite`
+  (`definite_integral`) cuts the range at the kinks of `Abs`, `sign`,
+  `Heaviside`, `Max`, `Min` and `Piecewise` and at the singularities inside
+  it, maps ranges and changes variables, and asks SymPy's `integrate` last,
+  keeping its answer only when a numerical check passes. The conditions
+  on the parameters are returned in a `Piecewise` or decided by the
+  assumptions. `regions` (`IntegralByRanges`, `integrate_by_ranges`)
+  integrates over regions described by polynomial inequalities, decomposed
+  into cylindrical cells by the CAD, with parameters giving a case
+  distinction.
+
+- The benchmark driver `definite_integrals` of sympy-extras-benchmarks
+  gained `--extras` to run `definite_integral` on the four integration
+  datasets; the results are in `benchmarks/README.md`.
+
 ## 0.0.1 - 2026-09-10
 
 First release.

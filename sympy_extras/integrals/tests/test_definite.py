@@ -1,0 +1,162 @@
+"""Tests of the definite integration driver."""
+from __future__ import annotations
+
+from sympy import (symbols, exp, sin, cos, log, sqrt, oo, pi, S, Rational, Abs, Heaviside, Piecewise, Integral,
+                   sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan)
+from sympy.testing.pytest import raises
+
+from sympy_extras._testing import untyped
+from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras.assumptions import element
+from sympy_extras.integrals import definite_integral, conditional_integral, verify_numerically, ConditionalValue
+from sympy_extras.settings import configure
+
+x, k, t = symbols('x k t')
+a, b, s = symbols('a b s', positive=True)
+
+
+def _same(u: ExprLike, v: ExprLike) -> bool:
+    return simplify(as_expr(u) - as_expr(v)) == 0
+
+
+def test_trivial_ranges() -> None:
+    assert definite_integral(exp(-x), (x, 2, 2)) == 0
+    # swapped bounds change the sign
+    assert definite_integral(exp(-x), (x, oo, 0)) == -1
+    # a constant integrand
+    assert definite_integral(a, (x, 1, 3)) == 2 * a
+    assert definite_integral(3 * exp(-x), (x, 0, oo)) == 3
+
+
+def test_conditions_are_reported_or_decided() -> None:
+    value = definite_integral(x**k / (x + 3), (x, 0, oo))
+    assert isinstance(value, Piecewise)
+    first, condition = value.args[0].args
+    assert first == -3**k * pi / sin(pi * k) and condition == ((k > -1) & (k < 0))
+    assert value.args[1].args[0] == Integral(x**k / (x + 3), (x, 0, oo))
+    assert definite_integral(x**k / (x + 3), (x, 0, oo), (k > -1) & (k < 0)) == -3**k * pi / sin(pi * k)
+    assert definite_integral(x**k / (x + 3), (x, 0, oo), conds='none') == -3**k * pi / sin(pi * k)
+    # refuted: the integral diverges, nothing is claimed
+    value = definite_integral(x**k / (x + 3), (x, 0, oo), k > 1)
+    assert isinstance(value, Integral)
+    found = conditional_integral(x**k / (x + 3), x, S.Zero, oo)
+    assert isinstance(found, ConditionalValue) and found.condition == ((k > -1) & (k < 0))
+    raises(ValueError, lambda: definite_integral(exp(-x), (x, 0, oo), conds='maybe'))
+
+
+def test_the_bug_sympy_drops_the_upper_condition() -> None:
+    # SymPy's integrate gives Piecewise((-3**k*pi/sin(pi*k), k > -1), ...):
+    # the antiderivative is evaluated at 0 with its condition and the
+    # divergence at oo for k >= 0 is missed
+    found = conditional_integral(x**k / (x + 3), x, S.Zero, oo)
+    assert found is not None and found.condition.subs(k, S.Half) is S.false
+
+
+def test_splitting_at_the_kinks() -> None:
+    # Integral(|x - 1|/sqrt(x), (x, 0, 2)) = 4/3 + (4/3 - 2 sqrt(2)/3)
+    assert _same(definite_integral(Abs(x - 1) / sqrt(x), (x, 0, 2)), Rational(8, 3) - 2 * sqrt(2) / 3)
+    # -1/2 over (0, 1) and 4 over (1, 3)
+    assert definite_integral(sign(x - 1) * x, (x, 0, 3)) == Rational(7, 2)
+    assert definite_integral(Heaviside(x - 1) * exp(-x), (x, 0, oo)) == exp(-1)
+    assert definite_integral(Max(x, 1), (x, 0, 2)) == Rational(5, 2)
+    assert definite_integral(Min(x, 1), (x, 0, 2)) == Rational(3, 2)
+    assert definite_integral(Piecewise((x, x < 1), (1, True)), (x, 0, 2)) == Rational(3, 2)
+    # sqrt(u**2) is |u|
+    assert definite_integral(sqrt((x - 1)**2), (x, 0, 2)) == 1
+    # the kinks of a periodic function inside a finite range
+    assert _same(definite_integral(sqrt(1 - cos(x)), (x, 0, 2 * pi)), 4 * sqrt(2))
+
+
+def test_singularities_inside_the_range() -> None:
+    # the bug (SymPy): integrate(1/(x*sqrt((x + 1)**2)), (x, -oo, -2)) is
+    # unevaluated and the antiderivative approach ignores |x + 1|
+    assert definite_integral(1 / (x * sqrt((x + 1)**2)), (x, -oo, -2)) == -log(2)
+    assert definite_integral(1 / (x * sqrt((x + 1)**2)), (x, 1, oo)) == log(2)
+    # a non-integrable singularity inside: nothing is claimed (SymPy's
+    # integrate returns log(2) + I*pi)
+    with configure(numerical_checks=True):
+        value = definite_integral(1 / x, (x, -1, 2))
+    assert value.has(Integral)
+    # an integrable one
+    assert definite_integral(1 / sqrt(Abs(x)), (x, -1, 1)) == 4
+
+
+def test_ranges_are_mapped() -> None:
+    assert _same(definite_integral(x**2 * exp(-x), (x, 1, oo)), 5 * exp(-1))
+    assert _same(definite_integral(exp(-x**2), (x, 1, 3)), sqrt(pi) * (erf(3) - erf(1)) / 2)
+    assert _same(definite_integral(exp(-Abs(x)), (x, -oo, oo)), 2)
+    assert _same(definite_integral(exp(-x), (x, -oo, 0)), oo) is False
+    assert _same(definite_integral(exp(x), (x, -oo, 0)), 1)
+    # x = log(u) for a function of exp(x) on the real line
+    assert _same(definite_integral(exp(x / 4) / (9 * exp(x / 2) + 4), (x, -oo, oo)), pi / 3)
+    value = definite_integral(x * exp(x) * exp(k * x) / (exp(x) + 3), (x, -oo, oo), (k > -1) & (k < 0))
+    assert verify_numerically(value, x * exp(x) * exp(k * x) / (exp(x) + 3), x, -oo, oo, (k > -1) & (k < 0))
+    # x = 1/u between (1, oo) and (0, 1)
+    assert _same(definite_integral(log(1 + 1 / x**2), (x, 1, oo)), pi / 2 - log(2))
+
+
+def test_trigonometric_beta_integrals() -> None:
+    assert _same(definite_integral(sqrt(sin(x)), (x, 0, pi / 2)), 2 * sqrt(pi) * gamma(Rational(3, 4)) / gamma(Rational(1, 4)))
+    assert _same(definite_integral(sin(x)**Rational(1, 3) * cos(x)**Rational(1, 3), (x, 0, pi / 2)),
+                 gamma(Rational(2, 3))**2 / (2 * gamma(Rational(4, 3))))
+    assert _same(definite_integral(1 / sqrt(sin(x) * cos(x)), (x, 0, pi / 2)), gamma(Rational(1, 4))**2 / (2 * sqrt(pi)))
+    # a range of several quarter periods
+    assert _same(definite_integral(sin(x)**2, (x, 0, 2 * pi)), pi)
+    assert _same(definite_integral(Abs(cos(x)), (x, 0, pi)), 2)
+    # log(sin x) over (0, pi/2) is a Beta integral differentiated
+    assert _same(definite_integral(log(sin(x)), (x, 0, pi / 2)), -pi * log(2) / 2)
+
+
+def test_logarithms_and_powers() -> None:
+    assert _same(definite_integral(x**a * log(x), (x, 0, 1)), -1 / (a + 1)**2)
+    assert _same(definite_integral(log(1 - x) / x, (x, 0, 1)), -pi**2 / 6)
+    assert _same(definite_integral((-log(x))**k, (x, 0, 1), k > -1), gamma(k + 1))
+    assert _same(definite_integral(x**Rational(1, 3) / sqrt(-log(x)), (x, 0, 1)), sqrt(3 * pi) / 2)
+    assert _same(definite_integral(x**k * (1 - x)**k, (x, 0, 1), k > -1), gamma(k + 1)**2 / gamma(2 * k + 2))
+    assert _same(definite_integral(exp(-x**2) * log(x), (x, 0, oo)), -sqrt(pi) * (EulerGamma + 2 * log(2)) / 4)
+
+
+def test_parameters_with_assumptions() -> None:
+    assert _same(definite_integral(exp(-s * x) * sin(a * x) / x, (x, 0, oo)), atan(a / s))
+    assert _same(definite_integral(exp(-a * x) * cos(k * x), (x, 0, oo), element(k, S.Reals)), a / (a**2 + k**2))
+    value = definite_integral(exp(-a * x) * cos(k * x), (x, 0, oo))
+    assert isinstance(value, Piecewise)
+
+
+def test_sympy_fallback_is_checked_numerically() -> None:
+    # an integral no method here handles goes to SymPy...
+    assert definite_integral(DiracDelta(x - 1) * exp(-x), (x, 0, oo)) == exp(-1)
+    # ...whose answer is checked: integrate(1/x, (x, -1, 2)) = log(2) + I*pi
+    # would be accepted without the check (the quadrature cannot settle
+    # the principal value, but the singularity inside the range stops the
+    # fallback anyway)
+    with configure(numerical_checks=False):
+        assert definite_integral(1 / x, (x, -1, 2)).has(Integral)
+
+
+def test_verify_numerically() -> None:
+    assert verify_numerically(S.One, exp(-x), x, S.Zero, oo) is True
+    assert verify_numerically(S(2), exp(-x), x, S.Zero, oo) is False
+    assert verify_numerically(1 / a, exp(-a * x), x, S.Zero, oo) is True
+    assert verify_numerically(1 / a**2, exp(-a * x), x, S.Zero, oo) is False
+    # nothing to check: the quadrature is not trusted (an oscillating integrand)
+    assert verify_numerically(pi / 2, sin(x) / x, x, S.Zero, oo) is None
+
+
+def test_wrong_types_are_rejected() -> None:
+    raises(TypeError, lambda: untyped(definite_integral)([1], (x, 0, 1)))
+    raises(TypeError, lambda: untyped(definite_integral)(exp(-x), (x, 0, [1])))
+
+
+def test_complex_segments_go_to_sympy_and_are_checked() -> None:
+    # a complex bound is the straight segment between the bounds, which
+    # only SymPy's antiderivatives handle; the numerical check
+    # parametrises the segment
+    z = symbols('z')
+    from sympy import I
+    assert definite_integral(z**2, (z, -I, I)) == -2 * I / 3
+    assert verify_numerically(-2 * I / 3, z**2, z, -I, I) is True
+    # the bug: SymPy's integrate gives 1 + pi/2 + I + I*pi for the second
+    # integral, off by 2*I*pi from the value 2.5708 - 2.1416*I of the
+    # segment; the check rejects it and the integral is returned
+    assert definite_integral(log(z) / z**2, (z, -I, -1)).has(Integral)

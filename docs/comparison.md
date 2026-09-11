@@ -1,7 +1,7 @@
 # What sympy-extras answers and SymPy does not
 
-Seventy questions, each put to SymPy alone and to `sympy-extras` on top of
-it. The results below were produced by
+Seventy-nine questions, each put to SymPy alone and to `sympy-extras` on
+top of it. The results below were produced by
 [`benchmarks/comparison.py`](../benchmarks/comparison.py), which asks both
 libraries and prints what they return, against **SymPy 1.14.0** and
 sympy-extras 0.0.1. Regenerate the raw material with
@@ -18,9 +18,9 @@ labelled by what SymPy does with the question:
 
 | | | count |
 | --- | --- | --- |
-| **no answer** | SymPy raises (`NotImplementedError`, `ValueError`, `KeyError`, `TypeError`) or has no counterpart | 37 |
-| **undecided** | it returns the question unevaluated: `Sum(...)`, `ConditionSet`, `None`, an unchanged expression | 20 |
-| **partial** | it answers, but less completely (a truncated series instead of a solution, one branch of two) | 9 |
+| **no answer** | SymPy raises (`NotImplementedError`, `ValueError`, `KeyError`, `TypeError`) or has no counterpart | 39 |
+| **undecided** | it returns the question unevaluated: `Sum(...)`, `ConditionSet`, `None`, `nan`, an unchanged expression | 26 |
+| **partial** | it answers, but less completely (a truncated series instead of a solution, one branch of two, a value under conditions it cannot resolve) | 10 |
 | **wrong** | it returns something which is not correct | 4 |
 
 By area:
@@ -33,6 +33,7 @@ By area:
 | [Sums, products and series](#sums-products-and-series) | 14 | Karr, Zeilberger, q-analogues, convergence with parameters, Euler and Dirichlet series |
 | [Limits and series expansions](#limits-and-series-expansions) | 5 | limits with statement assumptions and case distinctions |
 | [Polynomials and ideals](#polynomials-and-ideals) | 8 | ideal operations, the Gröbner walk, subresultant coefficients |
+| [Definite integration](#definite-integration) | 9 | Mellin transforms as gamma quotients, Parseval's formula and Slater's theorem (the Marichev–Adamchik method), splitting at kinks and singularities, region integrals through the CAD |
 
 Nothing here is a criticism of SymPy's implementations: most of these
 questions need algorithms which are simply not in SymPy, and four are
@@ -57,6 +58,8 @@ The setup used throughout:
 >>> from sympy_extras.polys.euclidtools import psc
 >>> from sympy_extras.polys.groebnerwalk import groebner_walk
 >>> from sympy_extras.polys.virtual_substitution import eliminate_linear
+>>> from sympy_extras.integrals import definite_integral, IntegralByRanges
+>>> from sympy_extras.integrals import mellin_transform as xmellin
 >>> f = Function('y')(x)
 >>> g = Function('u')(x, y)
 
@@ -600,6 +603,121 @@ SymPy has `subresultants` (the polynomial remainder sequence) but not
 its principal coefficients, which are what the CAD projection operators
 need; the first one here is the discriminant of the cubic. There is no
 virtual substitution either.
+
+## Definite integration
+
+### A singularity inside the range
+
+```python
+>>> definite_integral(1/x, (x, -1, 2))
+Integral(1/x, (x, -1, 2))
+
+```
+
+SymPy: `integrate(1/x, (x, -1, 2))` -> `nan`. The integral diverges;
+`definite_integral` cuts the range at the singularities it finds inside
+it and claims nothing when a piece diverges, so the unevaluated integral
+comes back instead of a number.
+
+### Powers of trigonometric functions: Beta integrals
+
+```python
+>>> definite_integral(sqrt(sin(x)), (x, 0, pi/2))
+2*sqrt(pi)*gamma(3/4)/gamma(1/4)
+
+```
+
+SymPy: `integrate(sqrt(sin(x)), (x, 0, pi/2))` -> `Integral(sqrt(sin(x)), (x, 0, pi/2))`.
+The substitution `x = asin(sqrt(u))` turns powers of `sin` and `cos` over
+a quarter period into a Beta integral, one kernel of the Mellin table.
+
+### A periodic integrand with kinks
+
+```python
+>>> definite_integral(sqrt(1 - cos(x)), (x, 0, 2*pi))
+4*sqrt(2)
+
+```
+
+SymPy: `integrate(sqrt(1 - cos(x)), (x, 0, 2*pi))` -> `Integral(sqrt(1 - cos(x)), (x, 0, 2*pi))`.
+`1 - cos(x)` is `2*sin(x/2)**2` and the square root is
+`sqrt(2)*Abs(sin(x/2))`, whose kinks are found before integrating.
+
+### Logarithms and powers on the unit interval
+
+```python
+>>> definite_integral(x**Rational(1, 3)/sqrt(-log(x)), (x, 0, 1))
+sqrt(3)*sqrt(pi)/2
+
+```
+
+SymPy: `integrate(x**Rational(1, 3)/sqrt(-log(x)), (x, 0, 1))` -> `Integral(x**(1/3)/sqrt(-log(x)), (x, 0, 1))`.
+`(-log(x))**k` on `(0, 1)` has the Mellin transform `gamma(k + 1)/s**(k + 1)`.
+
+### Integrands in exp(x) over the real line
+
+```python
+>>> definite_integral(x*exp(x)*exp(k*x)/(exp(x) + 3), (x, -oo, oo), (k > -1) & (k < 0))
+3**k*pi*(polygamma(0, -k) - polygamma(0, k + 1) - log(3))/sin(pi*k)
+
+```
+
+SymPy: `integrate(x*exp(x)*exp(k*x)/(exp(x) + 3), (x, -oo, oo))` -> `Integral(x*exp(x)*exp(k*x)/(exp(x) + 3), (x, -oo, oo))`.
+The substitution `u = exp(x)` gives `log(u)*u**k/(u + 3)` over `(0, oo)`:
+a power of `u` times a kernel of the table, and the logarithm is a
+derivative with respect to the exponent. The condition on `k` is the
+strip of the Mellin transform of `1/(1 + u)`.
+
+### A Laplace transform with a product of two kernels
+
+```python
+>>> definite_integral(exp(-s*x)*sin(a*x)/x, (x, 0, oo), (s > 0) & (a > 0))
+atan(a/s)
+
+```
+
+SymPy: `integrate(exp(-s*x)*sin(a*x)/x, (x, 0, oo))` -> `Piecewise((a*atan(sqrt(a**2/s**2))/(s*sqrt(a**2/s**2)), (Eq(Abs(arg(a)), 0) & (Abs(arg(s)) < pi/2)) | ...), (Integral(...), True))`.
+Parseval's formula for the Mellin transform turns the product into a
+Meijer G-function, which Slater's theorem expands; the assumptions decide
+the conditions, where SymPy leaves conditions on `arg(a)` and `arg(s)`
+and the value written with `sqrt(a**2/s**2)`.
+
+### The Mellin transform of atan
+
+```python
+>>> xmellin(atan(x), x, s)
+MellinTransform(gamma(-s)*gamma(1/2 - s/2)*gamma(s/2 + 1/2)/(2*gamma(1 - s)), (-1, 0))
+
+```
+
+SymPy: `mellin_transform(atan(x), x, s)` -> `MellinTransform(atan(x), x, s)`.
+The table of transforms comes with the strips of convergence, which are
+the convergence conditions of the integrals; SymPy has no entry for
+`atan`.
+
+### An integral over a region described by inequalities
+
+```python
+>>> IntegralByRanges(x*y, (x > 0) & (y > 0) & (x + y < 1)).doit()
+1/24
+
+```
+
+No counterpart in SymPy. The region is decomposed into stacks of
+intervals by the cylindrical algebraic decomposition and the iterated
+integrals are computed innermost first, the way Mathematica's
+`Integrate[f, {x, y} ∈ region]` works.
+
+### The area of a disc of parametric radius
+
+```python
+>>> IntegralByRanges(1, x**2 + y**2 < c**2, [x, y]).doit()
+Piecewise((pi*c**2, (c > 0) | (c < 0)), (0, True))
+
+```
+
+No counterpart in SymPy. The parameter is the first variable of the
+decomposition and gives the case distinction.
 
 ## The six wrong answers, for the record
 

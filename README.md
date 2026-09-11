@@ -402,6 +402,75 @@ p > 1
 
 ```
 
+### Definite integration: the Marichev–Adamchik method, integrals over regions (`sympy_extras.integrals`)
+
+`definite_integral` computes definite integrals without antiderivatives,
+the way Mathematica and REDUCE's DEFINT do: the range is cut at the kinks
+and the singularities of the integrand, mapped onto `(0, oo)`, `(0, 1)` or
+`(1, oo)`, and the integral of a power of `x` times at most two functions
+of a table of Mellin transforms is a Meijer G-function (Parseval's formula
+for the Mellin transform), written as hypergeometric functions by Slater's
+theorem. The strips of the transforms are the convergence conditions on
+the parameters, decided against the assumptions or reported in a
+`Piecewise`. SymPy's `integrate` is the last resort, and its answer is
+accepted only when a numerical check passes. `IntegralByRanges` integrates
+over a region described by polynomial inequalities, decomposed into stacks
+of intervals by the cylindrical algebraic decomposition. See
+[docs/integrals.md](docs/integrals.md).
+
+```python
+>>> from sympy import symbols, exp, sin, cos, sqrt, Abs, log, oo, pi, S
+>>> from sympy_extras.assumptions import element
+>>> from sympy_extras.integrals import definite_integral, IntegralByRanges, mellin_transform
+>>> x, y, k, s = symbols('x y k s')
+>>> a, b = symbols('a b', positive=True)
+>>> definite_integral(x**k/(x + 3), (x, 0, oo))
+Piecewise((-3**k*pi/sin(pi*k), (k > -1) & (k < 0)), (Integral(x**k/(x + 3), (x, 0, oo)), True))
+>>> definite_integral(exp(-a*x)*sin(b*x)/x, (x, 0, oo))
+atan(b/a)
+>>> definite_integral(exp(-a*x)*cos(k*x), (x, 0, oo), element(k, S.Reals))
+a/(a**2 + k**2)
+>>> definite_integral(x**k*(1 - x)**k, (x, 0, 1), k > -1)
+gamma(k + 1)**2/gamma(2*k + 2)
+>>> definite_integral(log(x)**2/(1 + x**2), (x, 0, oo))
+pi**3/8
+>>> definite_integral(x**(S(1)/3)/sqrt(-log(x)), (x, 0, 1))
+sqrt(3)*sqrt(pi)/2
+
+```
+
+Singular integrands, kinks and trigonometric powers, where an
+antiderivative evaluated at the endpoints goes wrong or does not exist:
+
+```python
+>>> definite_integral(1/(x*sqrt((x + 1)**2)), (x, -oo, -2))
+-log(2)
+>>> definite_integral(1/x, (x, -1, 2))
+Integral(1/x, (x, -1, 2))
+>>> definite_integral(Abs(x - 1)/sqrt(x), (x, 0, 2))
+2*(4 - sqrt(2))/3
+>>> definite_integral(sqrt(sin(x)), (x, 0, pi/2))
+2*sqrt(pi)*gamma(3/4)/gamma(1/4)
+>>> definite_integral(sqrt(1 - cos(x)), (x, 0, 2*pi))
+4*sqrt(2)
+>>> definite_integral(x*exp(x)*exp(k*x)/(exp(x) + 3), (x, -oo, oo), (k > -1) & (k < 0))
+3**k*pi*(polygamma(0, -k) - polygamma(0, k + 1) - log(3))/sin(pi*k)
+
+```
+
+The Mellin transforms come with their strips, and the region integrals
+with a case distinction on the parameters:
+
+```python
+>>> mellin_transform(1/(1 + x), x, s)
+MellinTransform(gamma(s)*gamma(1 - s), (0, 1))
+>>> IntegralByRanges(x*y, (x > 0) & (y > 0) & (x + y < 1)).doit()
+1/24
+>>> IntegralByRanges(1, x**2 + y**2 < b**2, [x, y]).doit()
+pi*b**2
+
+```
+
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
@@ -453,6 +522,13 @@ sympy_extras/
         qhyper.py            q-Pochhammer symbols, q-Gosper, q-Zeilberger
         rational.py          Abramov's decomposition of rational summands
         zeilberger.py        Zeilberger's algorithm, WZ certificates, definite sums
+    integrals/
+        mellin.py            Mellin transforms as gamma quotients, the table of kernels
+        slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem
+        marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo)
+        residues.py          rational, Fourier and trigonometric integrals by residues
+        definite.py          definite_integral: splitting, range mappings, verified fallback
+        regions.py           IntegralByRanges: integrals over semialgebraic regions (CAD)
     solvers/
         lie.py               jet spaces, prolongation, determining equations, symmetries
         pde.py               pde_symmetries, similarity_reduction, pdsolve_lie

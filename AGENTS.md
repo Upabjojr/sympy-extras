@@ -102,6 +102,15 @@ sympy_extras/
         pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver
         karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation
         tests/
+    integrals/               definite integration extending sympy.integrals
+        mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels
+        slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem
+        marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo)
+        residues.py          rational, Fourier and trigonometric integrals by the residue theorem
+        definite.py          definite_integral: splitting, range mappings, the verified SymPy fallback
+        regions.py           IntegralByRanges: integrals over semialgebraic regions through the CAD
+        conditions.py        ConditionalValue: values with the conditions under which they hold
+        tests/
     polys/
         euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)
         ideals.py            Ideal: operations and invariants on top of sympy.groebner
