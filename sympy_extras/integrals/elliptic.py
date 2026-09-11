@@ -59,6 +59,26 @@ mirrors a pole of `R` at `t_p` to `-t_p`: a range containing the
 mirror image of a pole of the cell, but not the pole, is left alone
 (``None``), the two halves being divergent there.
 
+When no root is real, `P = \\lambda\\, ((x - p_1)^2 + q_1^2)((x - p_2)^2 + q_2^2)`
+is positive on the whole line, and the reduction of Byrd–Friedman 267
+maps the line onto `\\theta \\in (-\\pi/2, \\pi/2)`: the bilinear
+substitution `x = (\\beta + \\alpha t)/(1 + t)`, with `\\alpha > \\beta` the
+roots of `z^2 - u z + v` for `(\\beta - p_i)(\\alpha - p_i) = -q_i^2` (the
+shift `x = p + t` when the quadratics share their centre), sends both
+quadratics to `(A_i t^2 + B_i)/(1 + t)^2`, and `t = \\lambda\\tan\\theta`
+with `\\lambda^2 = B_1/A_1` gives `P\\, dt^2 = \\lambda B_1 B_2 (1 - m\\sin^2\\theta)
+X'(t)^2 dt^2/\\cos^4\\theta` with `m = 1 - A_2 B_1/(A_1 B_2)` (the labels
+chosen so that `0 < m < 1`). In `s = \\sin^2\\theta` the even part of the
+rational prefactor in `t` is a Legendre form and the odd part a rational
+function times `1/\\sqrt{1 - m s}`, elementary; the range is cut at the
+pole `x = \\alpha` of the map (`\\theta = \\pm\\pi/2`) and at `t = 0`. A
+numeric radicand whose quadratic factors are irrational (`x^4 + x - 1`,
+`x^4 + x + 1`) is factored through its roots: the real ones and the real
+parts and moduli of the complex ones are ``CRootOf`` of their own
+minimal polynomials (from resultants), carried through the reduction as
+dummies whose sign questions are decided numerically at sixty digits,
+and restored at the end; the values are exact but large.
+
 The organising principle behind the tables is Carlson's symmetric
 integral `R_F(x, y, z) = \\frac12\\int_0^\\infty dt/\\sqrt{(t + x)(t + y)(t + z)}`
 [Carlson]_, [DLMF]_ (19.25): the complete integral of `dx/\\sqrt{P}`
@@ -91,7 +111,7 @@ References
 .. [Byrd] P. F. Byrd, M. D. Friedman, *Handbook of Elliptic Integrals
    for Engineers and Scientists*, 2nd ed., Springer, 1971, chapter 2
    (the substitutions), the tables 230–260 (240 and 241 for the complex
-   roots) and 310–340.
+   roots, 267 for two complex pairs) and 310–340.
 .. [Carlson] B. C. Carlson, *Numerical computation of real or complex
    elliptic integrals*, Numerical Algorithms 10 (1995), 13–26;
    *A table of elliptic integrals of the third kind*, Mathematics of
@@ -110,9 +130,10 @@ from typing import Optional, Sequence
 from sympy.core.add import Add
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
-from sympy.core.numbers import Rational, oo, pi
-from sympy.core.relational import Eq
-from sympy.functions.elementary.complexes import im, re
+from sympy.core.numbers import Float, Rational, oo, pi
+from sympy.core.parameters import evaluate
+from sympy.core.relational import Eq, Ge, Gt, Le, Lt
+from sympy.functions.elementary.complexes import conjugate, im, re
 from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
@@ -122,8 +143,10 @@ from sympy.functions.elementary.trigonometric import TrigonometricFunction, asin
 from sympy.functions.special.elliptic_integrals import elliptic_k, elliptic_e, elliptic_f, elliptic_pi
 from sympy.polys.partfrac import apart
 from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly, cancel, factor_list
+from sympy.polys.polytools import Poly, cancel, factor_list, resultant
+from sympy.simplify.radsimp import radsimp
 from sympy.polys.rootoftools import ComplexRootOf
+from sympy.integrals.integrals import Integral, integrate
 from sympy.solvers.solvers import solve as sympy_solve
 
 from sympy_extras._timeout import attempt
@@ -139,13 +162,68 @@ __all__ = ['elliptic_integral', 'radicand', 'real_roots', 'legendre_reduction', 
 def _ask(query: Boolean, assumptions: Assumptions) -> Optional[bool]:
     """``ask`` with the flags of the symbols (``positive=True``) turned
     into statements on plain symbols, which the CAD can use, within a
-    budget (``None`` when the time is up)."""
+    budget (``None`` when the time is up). The algebraic numbers of a
+    numeric radicand (``CRootOf`` roots, their real and imaginary parts,
+    the radicals of the maps) travel as dummies whose values are the
+    equalities ``Eq(dummy, value)`` among the assumptions: a query on
+    them alone is decided numerically, at sixty digits with a margin
+    (``None`` within it), and the equalities are dropped for the CAD."""
+    values, rest = _numeric_values(assumptions)
     symbols = free_symbols(query)
+    if values and symbols and symbols <= set(values):
+        return _decide_numerically(query, values)
     plain = plain_symbols(symbols)
     budget = None if settings.timeout is None else settings.timeout / 4
     if not plain:
-        return attempt(lambda: ask(query, assumptions), budget)
-    return attempt(lambda: ask(as_boolean(query.xreplace(plain)), with_symbol_facts(assumptions, symbols, plain)), budget)
+        return attempt(lambda: ask(query, rest), budget)
+    return attempt(lambda: ask(as_boolean(query.xreplace(plain)), with_symbol_facts(rest, symbols, plain)), budget)
+
+
+def _numeric_values(assumptions: Assumptions) -> tuple[dict[Symbol, Expr], Assumptions]:
+    """The values ``Eq(dummy, value)`` among the assumptions, and the
+    other assumptions."""
+    if assumptions is None or isinstance(assumptions, (Boolean, bool)):
+        return ({}, assumptions)
+    values: dict[Symbol, Expr] = {}
+    rest: list[Boolean] = []
+    for item in assumptions:
+        item_ = as_boolean(item)
+        if isinstance(item_, Eq) and isinstance(item_.lhs, Dummy) and isinstance(item_.rhs, Expr):
+            values[item_.lhs] = item_.rhs
+        else:
+            rest.append(item_)
+    return (values, rest)
+
+
+def _numeric(e: Expr, values: dict[Symbol, Expr]) -> Expr:
+    """``e`` with the dummies replaced by their values (which may refer
+    to other dummies) until none is left."""
+    result = e
+    for _ in range(8):
+        if not result.atoms(Dummy):
+            break
+        result = as_expr(result.xreplace(values))
+    return result
+
+
+def _decide_numerically(query: Boolean, values: dict[Symbol, Expr]) -> Optional[bool]:
+    if isinstance(query, Eq):
+        difference = as_expr(_numeric(as_expr(query.lhs - query.rhs), values))
+        return True if difference == 0 else None
+    if not isinstance(query, (Gt, Ge, Lt, Le)):
+        return None
+    difference = _numeric(as_expr(query.lhs - query.rhs), values)
+    if difference.free_symbols:
+        return None
+    approximation = difference.evalf(60)
+    if not isinstance(approximation, Float):
+        return None
+    if abs(approximation) < Float(10)**(-40):
+        return None
+    positive = approximation > 0
+    if isinstance(query, (Gt, Ge)):
+        return bool(positive)
+    return not positive
 
 
 def _with_facts(assumptions: Assumptions, facts: Sequence[Boolean]) -> Assumptions:
@@ -267,7 +345,12 @@ def real_roots(P: Expr, x: Symbol, assumptions: Assumptions = None) -> Optional[
         return None
     found: list[Expr] = []
     if not poly.free_symbols_in_domain:
-        all_roots = poly.all_roots()
+        try:
+            all_roots = poly.all_roots()
+        except NotImplementedError:
+            # sorted roots are not supported over EX (coefficients with
+            # CRootOf, from the inversion of a numeric quartic)
+            return None
         for r in all_roots:
             r_ = as_expr(r)
             if r_.is_real is not True:
@@ -810,13 +893,15 @@ def _pole_from_zero(c: Expr, alpha: Expr, beta: Expr, k: int, s: Symbol, upper: 
 def elliptic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
                       assumptions: Assumptions = None) -> Optional[ConditionalValue]:
     """``Integral(f, (x, a, b))`` for ``f = R(x) * P(x)**(+-1/2)``, ``P`` a
-    cubic or a quartic with real roots, or with one pair of complex
-    roots, in Legendre's elliptic integrals; also the trigonometric
+    cubic or a quartic with real roots, with one pair of complex roots,
+    or with two (a quartic without real roots, over any range of the
+    line), in Legendre's elliptic integrals; also the trigonometric
     forms ``Q(sin(x)**2) * (1 - m sin(x)**2)**(+-1/2)`` over ``(0, phi)``.
     ``None`` when the integral is not of this kind, the roots cannot be
-    ordered (or the complex pair is not a rational quadratic factor),
-    the range crosses a root of ``P`` (cut it there first) or the
-    integral diverges at a pole of ``R``.
+    ordered, the range crosses a root of ``P`` (cut it there first), the
+    integral diverges at a pole of ``R``, or the range holds the mirror
+    image of a pole of ``R`` (or of infinity) under the even-odd split
+    of the complex cases without the pole itself.
 
     Examples
     ========
@@ -832,6 +917,10 @@ def elliptic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
     ConditionalValue(-3**(3/4)*elliptic_f(asin(sqrt(2)*3**(1/4)/sqrt(sqrt(3) + 2)), sqrt(3)/4 + 1/2)/3 + 2*3**(3/4)*elliptic_k(sqrt(3)/4 + 1/2)/3)
     >>> elliptic_integral(1/sqrt((x**2 + 1)*(x + 2)*(3 - x)), x, -2, 3)
     ConditionalValue(2**(3/4)*sqrt(5)*elliptic_k(sqrt(2)/4 + 1/2)/5)
+    >>> elliptic_integral(1/sqrt((x**2 + 1)*(x**2 + 4)), x, -oo, oo)
+    ConditionalValue(elliptic_k(3/4))
+    >>> elliptic_integral(1/((x**2 + 2)*sqrt((x**2 + 1)*(x**2 + 4))), x, 0, oo)
+    ConditionalValue(-elliptic_pi(1/2, 3/4)/4 + elliptic_k(3/4)/2)
     """
     f_, a_, b_ = as_expr(f), as_expr(a), as_expr(b)
     if f_.has(TrigonometricFunction):
@@ -855,6 +944,8 @@ def _reduce(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions, dept
     roots = real_roots(P, x, assumptions)
     if roots is None:
         complex_ = _complex_reduction(R, P, e, x, a, b, assumptions, depth)
+        if complex_ is None:
+            complex_ = _two_pairs_reduction(R, P, e, x, a, b, assumptions)
         return None if complex_ is None else complex_.scaled(constant_)
     lo_cell, hi_cell = _position(a, roots, assumptions), _position(b, roots, assumptions)
     if lo_cell is None or hi_cell is None:
@@ -899,30 +990,49 @@ def _even_reduction(R: Expr, P: Expr, e: Expr, x: Symbol, a: Expr, b: Expr, assu
 
 
 def _inverted_reduction(R: Expr, P: Expr, e: Expr, x: Symbol, roots: Sequence[Expr], a: Expr, b: Expr,
-                        cell: int, assumptions: Assumptions, depth: int) -> Optional[ConditionalValue]:
+                        cell: int, assumptions: Assumptions, depth: int,
+                        factors: Optional[_ComplexFactors] = None) -> Optional[ConditionalValue]:
     """A quartic beyond its extreme root through ``u = 1/(x - r)``, which
-    leaves a cubic in ``u`` over ``(0, oo)`` (or a part of it)."""
+    leaves a cubic in ``u`` over ``(0, oo)`` (or a part of it). With the
+    ``factors`` of a radicand with a complex pair the cubic is built from
+    them, ``lam (r - r') C (u + 1/(r - r')) ((u - p')**2 + q'**2)`` with
+    ``C = (r - p)**2 + q**2``, ``p' = -(r - p)/C``, ``q'**2 = q**2/C**2``
+    (``cancel`` does not read the relation of a ``CRootOf`` root)."""
     u = Dummy('u', positive=True)
-    if cell == 2 * len(roots) - 1:
-        r = roots[-1]
-        X = r + 1 / u
+    upper_cell = cell == 2 * len(roots) - 1
+    r = roots[-1] if upper_cell else roots[0]
+    X = r + 1 / u if upper_cell else r - 1 / u
+    factors_u: Optional[_ComplexFactors] = None
+    if factors is None:
         # dx = -du/u**2, P(r + 1/u) = u**(-4) P_u(u)
         P_u = as_expr(cancel(P.subs(x, X) * u**4))
-        R_u = as_expr(cancel(R.subs(x, X)))
-        g = as_expr(R_u * P_u**e * u**(-4 * e - 2))
+    else:
+        other = factors.roots[0] if upper_cell else factors.roots[1]
+        # (x - other) = ((r - other) u +- 1)/u, (x - p)**2 + q**2 = C ((u - p')**2 + q'**2)/u**2
+        C = as_expr((r - factors.p)**2 + factors.q2)
+        p_u = as_expr(-(r - factors.p) / C) if upper_cell else as_expr((r - factors.p) / C)
+        q2_u = as_expr(factors.q2 / C**2)
+        root_u = as_expr(-1 / (r - other))
+        lam_u = as_expr(factors.lam * (r - other) * C)
+        P_u = as_expr(lam_u * (u - root_u) * ((u - p_u)**2 + q2_u))
+        factors_u = _ComplexFactors(lam_u, [root_u], p_u, q2_u, factors.facts)
+    R_u = as_expr(cancel(R.subs(x, X)))
+    g = as_expr(R_u * P_u**e * u**(-4 * e - 2))
+    if upper_cell:
         # x from a to b means u from 1/(b - r) down to 1/(a - r): the sign of dx flips the bounds
         lower = S.Zero if b == oo else as_expr(1 / (b - r))
         upper = oo if a == r else as_expr(1 / (a - r))
     else:
-        r = roots[0]
-        X = r - 1 / u
-        P_u = as_expr(cancel(P.subs(x, X) * u**4))
-        R_u = as_expr(cancel(R.subs(x, X)))
-        g = as_expr(R_u * P_u**e * u**(-4 * e - 2))
         lower = S.Zero if a == -oo else as_expr(1 / (r - a))
         upper = oo if b == r else as_expr(1 / (r - b))
     if not P_u.is_polynomial(u):
         return None
+    if factors_u is not None:
+        # straight to the cosine map: re-reading the radicand would split
+        # the positive constant of the leading coefficient off P_u, which
+        # the factors carry already
+        return _complex_reduction(as_expr(R_u * u**(-4 * e - 2)), P_u, e, u, lower, upper, assumptions, depth + 1,
+                                  factors_u)
     return _reduce(g, u, lower, upper, assumptions, depth + 1)
 
 
@@ -931,13 +1041,44 @@ def _inverted_reduction(R: Expr, P: Expr, e: Expr, x: Symbol, roots: Sequence[Ex
 
 class _ComplexFactors:
     """``P = lam * prod(x - r) * ((x - p)**2 + q2)`` with one or two real
-    roots ``r`` in increasing order and ``q2 > 0``."""
+    roots ``r`` in increasing order and ``q2 > 0``; ``facts`` are the
+    values of the dummies standing for algebraic numbers (see
+    :func:`_ask`)."""
 
-    def __init__(self, lam: Expr, roots: list[Expr], p: Expr, q2: Expr) -> None:
+    def __init__(self, lam: Expr, roots: list[Expr], p: Expr, q2: Expr,
+                 facts: Optional[list[Boolean]] = None) -> None:
         self.lam = lam
         self.roots = roots
         self.p = p
         self.q2 = q2
+        self.facts: list[Boolean] = [] if facts is None else facts
+
+
+#: the size (in characters of the printed form, with the algebraic
+#: numbers as dummies) beyond which a value in ``CRootOf`` is not built:
+#: the printed value would run to hundreds of kilobytes
+_ROOTOF_SIZE = 2500
+
+
+def _restore(value: Expr, radicals: dict[Symbol, Expr], facts: Sequence[Boolean]) -> Optional[Expr]:
+    """The value with the radicals and the dummies of algebraic numbers
+    replaced by their expressions; ``None`` for a value in ``CRootOf``
+    beyond :data:`_ROOTOF_SIZE`. A value in ``CRootOf`` is built without
+    evaluation: SymPy's assumptions on every sum and power of such
+    numbers cost a minute of ``evalf`` per kilobyte and add nothing to a
+    value which is exact as it stands."""
+    values, _ = _numeric_values(list(facts))
+    if any(v.has(ComplexRootOf) for v in values.values()):
+        compact = attempt(lambda: as_expr(radsimp(value)), settings.timeout / 8 if settings.timeout else None)
+        if compact is not None and len(str(compact)) < len(str(value)):
+            value = compact
+        if len(str(value)) > _ROOTOF_SIZE:
+            return None
+        with evaluate(False):
+            result = as_expr(value.xreplace(radicals))
+            return _numeric(result, values)
+    result = as_expr(value.xreplace(radicals))
+    return _numeric(result, values)
 
 
 def _complex_factors(P: Expr, x: Symbol, assumptions: Assumptions) -> Optional[_ComplexFactors]:
@@ -951,6 +1092,8 @@ def _complex_factors(P: Expr, x: Symbol, assumptions: Assumptions) -> Optional[_
     lam: Expr = as_expr(coefficient)
     roots: list[Expr] = []
     quadratic: Optional[tuple[Expr, Expr]] = None
+    pair: Optional[tuple[Expr, Expr]] = None
+    facts: list[Boolean] = []
     for factor, multiplicity in factors:
         factor_ = as_expr(factor)
         if not factor_.has(x):
@@ -966,23 +1109,35 @@ def _complex_factors(P: Expr, x: Symbol, assumptions: Assumptions) -> Optional[_
         elif degree == 2 and quadratic is None:
             c1, c0 = as_expr(poly.coeff_monomial(x) / lead), as_expr(poly.coeff_monomial(1) / lead)
             quadratic = (as_expr(cancel(c1)), as_expr(cancel(c0)))
+        elif degree in (3, 4) and quadratic is None and pair is None and not roots \
+                and not poly.free_symbols_in_domain:
+            # an irreducible numeric factor: its real roots and the
+            # quadratic of its conjugate pair, as dummies with values
+            numeric = _numeric_factors(poly.monic())
+            if numeric is None or len(numeric.pairs) != 1:
+                return None
+            roots.extend(numeric.reals)
+            pair = numeric.pairs[0]
+            facts = numeric.facts
         else:
             return None
         lam = lam * lead
-    if quadratic is None or len(roots) not in (1, 2):
+    if quadratic is not None:
+        c1, c0 = quadratic
+        p = as_expr(-c1 / 2)
+        pair = (p, as_expr(cancel(c0 - p**2)))
+    if pair is None or len(roots) not in (1, 2):
         return None
-    c1, c0 = quadratic
-    p = as_expr(-c1 / 2)
-    q2 = as_expr(cancel(c0 - p**2))
-    if _ask(as_boolean(q2 > 0), assumptions) is not True:
+    p, q2 = pair
+    if _ask(as_boolean(q2 > 0), _with_facts(assumptions, facts)) is not True:
         return None
     if len(roots) == 2:
-        below = _less(roots[0], roots[1], assumptions)
+        below = _less(roots[0], roots[1], _with_facts(assumptions, facts))
         if below is None:
             return None
         if not below:
             roots.reverse()
-    return _ComplexFactors(as_expr(cancel(lam)), roots, p, q2)
+    return _ComplexFactors(as_expr(cancel(lam)), roots, p, q2, facts)
 
 
 class _CosineMap:
@@ -1025,8 +1180,8 @@ def _cosine_map(factors: _ComplexFactors, cell: int, t: Symbol, x: Symbol) -> Op
         if cell != 1:
             return None
         b, a = factors.roots
-        A = _radical(as_expr((a - p)**2 + q2), radicals)
-        B = _radical(as_expr((b - p)**2 + q2), radicals)
+        A = _radical(as_expr((a - p)**2 + q2), radicals, facts)
+        B = _radical(as_expr((b - p)**2 + q2), radicals, facts)
         if radicals:
             # the sides a - b, A, B of the triangle with the complex root
             facts.extend([as_boolean((a - b)**2 > (A - B)**2), as_boolean((a - b)**2 < (A + B)**2)])
@@ -1035,7 +1190,7 @@ def _cosine_map(factors: _ComplexFactors, cell: int, t: Symbol, x: Symbol) -> Op
         preimage = as_expr((a * B + b * A - x * (A + B)) / (a * B - b * A + x * (A - B)))
         return _CosineMap(X, m, as_expr(1 / (A * B)), S.NegativeOne, t, preimage, None, radicals, facts)
     a = factors.roots[0]
-    A = _radical(as_expr((a - p)**2 + q2), radicals)
+    A = _radical(as_expr((a - p)**2 + q2), radicals, facts)
     if radicals:
         facts.append(as_boolean(A**2 > (a - p)**2))
     if cell == 1:
@@ -1051,13 +1206,15 @@ def _cosine_map(factors: _ComplexFactors, cell: int, t: Symbol, x: Symbol) -> Op
     return None
 
 
-def _radical(square: Expr, radicals: dict[Symbol, Expr]) -> Expr:
+def _radical(square: Expr, radicals: dict[Symbol, Expr], facts: list[Boolean]) -> Expr:
     """``sqrt(square)``: a positive symbol recorded in ``radicals`` when
-    the square has symbols."""
+    the square has symbols, its value among the ``facts`` (for the
+    numeric decisions of :func:`_ask`)."""
     if not square.free_symbols:
         return sqrt(square)
     symbol = Dummy('A', positive=True)
     radicals[symbol] = sqrt(square)
+    facts.append(as_boolean(Eq(symbol, sqrt(square))))
     return symbol
 
 
@@ -1084,15 +1241,17 @@ def _parity_parts(G: Expr, t: Symbol, w: Symbol) -> Optional[tuple[Expr, Expr]]:
 
 
 def _complex_reduction(R: Expr, P: Expr, e: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions,
-                       depth: int) -> Optional[ConditionalValue]:
+                       depth: int, factors: Optional[_ComplexFactors] = None) -> Optional[ConditionalValue]:
     """The integral over a part of a cell of a radicand with two complex
     roots, through the cosine map: the even part of the rational
     prefactor in ``s = 1 - t**2`` is a Legendre form, the odd part is
     elementary in ``s``."""
-    factors = _complex_factors(P, x, assumptions)
+    if factors is None:
+        factors = _complex_factors(P, x, assumptions)
     if factors is None:
         return None
     roots = factors.roots
+    assumptions = _with_facts(assumptions, factors.facts)
     lo_cell, hi_cell = _position(a, roots, assumptions), _position(b, roots, assumptions)
     if lo_cell is None or hi_cell is None:
         return None
@@ -1100,7 +1259,8 @@ def _complex_reduction(R: Expr, P: Expr, e: Expr, x: Symbol, a: Expr, b: Expr, a
     if hi_cell not in (cell, cell + 1):
         return None
     if len(roots) == 2 and cell in (-1, 3):
-        return _inverted_reduction(R, P, e, x, roots, a, b, cell, assumptions, depth)
+        numeric = factors if factors.facts else None
+        return _inverted_reduction(R, P, e, x, roots, a, b, cell, assumptions, depth, numeric)
     # the sign of P on the cell: lam (x - r1)(x - r2) q(x) between the
     # roots, lam (x - a) q(x) beyond the root of a cubic
     lam = factors.lam if cell == 2 * len(roots) - 1 else as_expr(-factors.lam)
@@ -1128,7 +1288,8 @@ def _complex_reduction(R: Expr, P: Expr, e: Expr, x: Symbol, a: Expr, b: Expr, a
     value = parts.between(t0, t1)
     if value is None:
         return None
-    return ConditionalValue(as_expr(value.xreplace(mapping.radicals)))
+    restored = _restore(value, mapping.radicals, factors.facts + mapping.facts)
+    return None if restored is None else ConditionalValue(restored)
 
 
 class _CosineParts:
@@ -1215,6 +1376,452 @@ class _CosineParts:
                 return None
             total = total + weight * (at_s0 - at_s1)
         return as_expr(total)
+
+
+# ---------------------------------------------------------------------------
+# Four complex roots
+
+class _Numeric:
+    """The roots of a numeric polynomial as dummies: the real roots
+    (increasing), the pairs ``(p, q**2)`` of the conjugate complex roots
+    ``p +- I q``, and the ``facts`` giving their values (``CRootOf`` or
+    radicals, ``re(r)`` and ``im(r)**2``); the polynomial machinery is
+    kept away from the algebraic numbers, whose minimal polynomials it
+    would otherwise compute, and the questions are decided numerically
+    by :func:`_ask`."""
+
+    def __init__(self, reals: list[Expr], pairs: list[tuple[Expr, Expr]], facts: list[Boolean]) -> None:
+        self.reals = reals
+        self.pairs = pairs
+        self.facts = facts
+
+
+def _numeric_factors(poly: Poly) -> Optional[_Numeric]:
+    reals: list[Expr] = []
+    pairs: list[tuple[Expr, Expr]] = []
+    facts: list[Boolean] = []
+    try:
+        remaining = [as_expr(r) for r in poly.all_roots()]
+    except NotImplementedError:
+        return None
+    while remaining:
+        r = remaining.pop(0)
+        if r.is_real is True:
+            if r.is_rational:
+                reals.append(r)
+                continue
+            c = Dummy('r', real=True)
+            facts.append(as_boolean(Eq(c, r)))
+            reals.append(c)
+            continue
+        if r.is_real is None:
+            return None
+        partner = as_expr(conjugate(r))
+        if partner not in remaining:
+            return None
+        remaining.remove(partner)
+        p, q2 = Dummy('p', real=True), Dummy('q2', positive=True)
+        real_part, modulus2 = _algebraic_parts(poly, r)
+        facts.append(as_boolean(Eq(p, real_part)))
+        facts.append(as_boolean(Eq(q2, modulus2 - real_part**2)))
+        pairs.append((p, q2))
+    return _Numeric(reals, pairs, facts)
+
+
+def _algebraic_parts(poly: Poly, r: Expr) -> tuple[Expr, Expr]:
+    """``(re(r), |r|**2)`` of a complex root ``r`` of the numeric ``poly``
+    as ``CRootOf`` of their own minimal polynomials, from the resultants
+    whose roots are the half sums ``(r_i + r_j)/2`` and the products
+    ``r_i r_j`` of the roots, the right root picked numerically at forty
+    digits (the roots of the squarefree resultants are distinct);
+    ``re(r)`` and ``re(r)**2 + im(r)**2`` themselves when this fails."""
+    x = as_expr(poly.gen)
+    y, z = Dummy('y'), Dummy('z')
+    P = poly.as_expr()
+    n = poly.degree()
+    targets = (as_expr(re(r)), as_expr(re(r)**2 + im(r)**2))
+    found: list[Expr] = []
+    for image, target in ((P.subs(x, 2 * z - y), targets[0]), (as_expr((y**n * P.subs(x, z / y)).expand()), targets[1])):
+        try:
+            resultant_ = Poly(resultant(P.subs(x, y), image, y), z).sqf_part()
+            candidates = [as_expr(c) for c in resultant_.real_roots()]
+        except (PolynomialError, NotImplementedError):
+            return targets
+        if not candidates:
+            return targets
+        value = target.evalf(40)
+        distances = sorted((abs(c.evalf(40) - value), c) for c in candidates)
+        if len(distances) > 1 and distances[1][0] < Float(10)**(-20):
+            return targets
+        if distances[0][0] > Float(10)**(-30):
+            return targets
+        found.append(distances[0][1])
+    return (found[0], found[1])
+
+
+class _TwoPairs:
+    """``P = lam * ((x - p1)**2 + q1**2) * ((x - p2)**2 + q2**2)``, with
+    the values of the dummies of algebraic numbers in ``facts``."""
+
+    def __init__(self, lam: Expr, pairs: list[tuple[Expr, Expr]], facts: list[Boolean]) -> None:
+        self.lam = lam
+        self.pairs = pairs
+        self.facts = facts
+
+
+def _two_pairs(P: Expr, x: Symbol, assumptions: Assumptions) -> Optional[_TwoPairs]:
+    """A quartic with no real roots as the product of two positive
+    definite quadratics (rational ones from ``factor_list``, numeric
+    irrational ones from the conjugate pairs of roots)."""
+    try:
+        coefficient, factors = factor_list(P, x)
+    except PolynomialError:
+        return None
+    lam: Expr = as_expr(coefficient)
+    pairs: list[tuple[Expr, Expr]] = []
+    facts: list[Boolean] = []
+    for factor, multiplicity in factors:
+        factor_ = as_expr(factor)
+        if not factor_.has(x):
+            lam = lam * factor_**multiplicity
+            continue
+        if multiplicity != 1:
+            return None
+        poly = Poly(factor_, x)
+        lead = as_expr(poly.LC())
+        lam = lam * lead
+        if poly.degree() == 2:
+            c1, c0 = as_expr(cancel(poly.coeff_monomial(x) / lead)), as_expr(cancel(poly.coeff_monomial(1) / lead))
+            p = as_expr(-c1 / 2)
+            pairs.append((p, as_expr(cancel(c0 - p**2))))
+        elif poly.degree() == 4 and not poly.free_symbols_in_domain:
+            numeric = _numeric_factors(poly.monic())
+            if numeric is None or numeric.reals:
+                return None
+            pairs.extend(numeric.pairs)
+            facts.extend(numeric.facts)
+        else:
+            return None
+    if len(pairs) != 2:
+        return None
+    for _, q2 in pairs:
+        if _ask(as_boolean(q2 > 0), _with_facts(assumptions, facts)) is not True:
+            return None
+    return _TwoPairs(as_expr(cancel(lam)), pairs, facts)
+
+
+class _TangentMap:
+    """The real line mapped onto ``theta`` in ``(-pi/2, pi/2)``: ``x = X(t)``
+    with ``t = lambda tan(theta)``, chosen so that
+    ``P(X(t)) dt**2 = lam B1 B2 (1 - m sin(theta)**2) X'(t)**2 dt**2 / cos(theta)**4``
+    (Byrd–Friedman 267). ``X`` is the bilinear map ``(beta + alpha t)/(1 + t)``
+    with the pencil parameters ``alpha > beta`` for which both quadratics
+    become ``A_i t**2 + B_i`` (up to ``(1 + t)**2``), or the shift
+    ``p + t`` when the quadratics share their centre; ``pole`` is the
+    ``x`` sent to ``t = oo`` (``None`` for the shift), ``infinite`` the
+    ``t`` of ``x = +-oo``, ``lam_`` the scale ``lambda``."""
+
+    def __init__(self, X: Expr, Xp: Expr, preimage: Expr, pole: Optional[Expr], infinite: Expr,
+                 lam_: Expr, m: Expr, B1B2: Expr, bilinear: bool, radicals: dict[Symbol, Expr],
+                 facts: list[Boolean]) -> None:
+        self.X = X
+        self.Xp = Xp
+        self._preimage = preimage
+        self.pole = pole
+        self.infinite = infinite
+        self.lam_ = lam_
+        self.m = m
+        self.B1B2 = B1B2
+        self.bilinear = bilinear
+        self.radicals = radicals
+        self.facts = facts
+
+    def preimage(self, y: Expr, x: Symbol) -> Expr:
+        if y in (oo, -oo):
+            return self.infinite if self.bilinear else y
+        return as_expr(cancel(self._preimage.subs(x, y)))
+
+
+def _named(value: Expr, facts: list[Boolean], numeric: bool) -> Expr:
+    """``value`` itself, or with ``numeric`` a positive dummy standing for
+    it with its value among the facts: the algebraic numbers of a numeric
+    radicand are decided numerically anyway, and the named quantities keep
+    the result compact."""
+    if not numeric or not value.free_symbols:
+        return value
+    symbol = Dummy('c', positive=True)
+    facts.append(as_boolean(Eq(symbol, value)))
+    return symbol
+
+
+def _tangent_map(pairs: list[tuple[Expr, Expr]], t: Symbol, x: Symbol,
+                 assumptions: Assumptions, numeric: bool = False) -> Optional[_TangentMap]:
+    (p1, q1), (p2, q2) = pairs
+    radicals: dict[Symbol, Expr] = {}
+    facts: list[Boolean] = []
+    if as_expr(cancel(p1 - p2)) == 0:
+        # (t**2 + q1**2)(t**2 + q2**2): A_i = 1, B_i = q_i**2
+        X = as_expr(p1 + t)
+        A: list[Expr] = [S.One, S.One]
+        B: list[Expr] = [q1, q2]
+        preimage: Expr = as_expr(x - p1)
+        Xp: Expr = S.One
+        pole: Optional[Expr] = None
+        infinite: Expr = oo
+        bilinear = False
+    else:
+        # (beta - p_i)(alpha - p_i) = -q_i**2: alpha + beta = u, alpha beta = v
+        c1, c2 = p1**2 + q1, p2**2 + q2
+        u = as_expr(cancel((c1 - c2) / (p1 - p2)))
+        v = as_expr(cancel(p1 * u - c1))
+        d = _radical(as_expr(cancel(u**2 - 4 * v)), radicals, facts)
+        if radicals:
+            facts.append(as_boolean(d**2 > (u - 2 * p1)**2))
+        alpha, beta = as_expr((u + d) / 2), as_expr((u - d) / 2)
+        if numeric:
+            # alpha > beta named, alpha - beta = d kept
+            alpha_, beta_ = Dummy('alpha', real=True), Dummy('beta', real=True)
+            facts.extend([as_boolean(Eq(alpha_, alpha)), as_boolean(Eq(beta_, beta))])
+            alpha, beta = alpha_, beta_
+        X = as_expr((beta + alpha * t) / (1 + t))
+        A = [_named(as_expr((alpha - p1)**2 + q1), facts, numeric), _named(as_expr((alpha - p2)**2 + q2), facts, numeric)]
+        B = [_named(as_expr((beta - p1)**2 + q1), facts, numeric), _named(as_expr((beta - p2)**2 + q2), facts, numeric)]
+        preimage = as_expr((x - beta) / (alpha - x))
+        Xp = as_expr((alpha - beta) / (1 + t)**2)
+        pole = alpha
+        infinite = S.NegativeOne
+        bilinear = True
+    assumptions = _with_facts(assumptions, facts)
+    # labels with A2 B1 < A1 B2, so that 0 < m < 1
+    ordered = _ask(as_boolean(A[1] * B[0] < A[0] * B[1]), assumptions)
+    if ordered is None:
+        return None
+    if not ordered:
+        A.reverse()
+        B.reverse()
+        if _ask(as_boolean(A[1] * B[0] < A[0] * B[1]), assumptions) is not True:
+            return None
+    # the radicals as positive symbols, so that the rational prefactors
+    # stay rational functions of symbols (apart over EX takes minutes)
+    lam_ = _radical(as_expr(cancel(B[0] / A[0])), radicals, facts)
+    m = as_expr(cancel(1 - A[1] * B[0] / (A[0] * B[1])))
+    return _TangentMap(X, Xp, preimage, pole, infinite, lam_, m, as_expr(B[0] * B[1]), bilinear, radicals, facts)
+
+
+def _two_pairs_reduction(R: Expr, P: Expr, e: Expr, x: Symbol, a: Expr, b: Expr,
+                         assumptions: Assumptions) -> Optional[ConditionalValue]:
+    """The integral over a range of the real line of a radicand with two
+    pairs of complex roots (positive everywhere), through the tangent
+    map: with ``s = sin(theta)**2`` the even part of the rational
+    prefactor in ``t`` is a Legendre form and the odd part is a rational
+    function times ``1/sqrt(1 - m s)``, elementary. The range is cut at
+    the pole of the bilinear map (``theta = +-pi/2``)."""
+    factors = _two_pairs(P, x, assumptions)
+    if factors is None:
+        return None
+    assumptions = _with_facts(assumptions, factors.facts)
+    if _ask(as_boolean(factors.lam > 0), assumptions) is not True:
+        return None
+    if _ask(as_boolean(a < b), assumptions) is not True:
+        return None
+    t = Dummy('t')
+    mapping = _tangent_map(factors.pairs, t, x, assumptions, bool(factors.facts))
+    if mapping is None:
+        return None
+    assumptions = _with_facts(assumptions, mapping.facts)
+    pieces: list[tuple[Expr, Expr]] = [(a, b)]
+    if mapping.pole is not None:
+        inside = _position_of(mapping.pole, a, b, assumptions)
+        if inside is None:
+            return None
+        if inside:
+            pieces = [(a, mapping.pole), (mapping.pole, b)]
+    lam_, m = mapping.lam_, mapping.m
+    root = _radical(as_expr(cancel(factors.lam * mapping.B1B2)), mapping.radicals, mapping.facts)
+    assumptions = _with_facts(assumptions, mapping.facts)
+    # P(X)^e = lam^e (B1 B2)^e (1 - m s)^e (1 - s)^(-2e) (1 + t)^(-4e), dt = lam_ ds/(2 (1 - s) sqrt(s (1 - s)))
+    G = as_expr(R.subs(x, mapping.X) * mapping.Xp)
+    if mapping.bilinear:
+        G = as_expr(G * ((1 + t)**2)**(-2 * e))
+    G = as_expr(cancel(G))
+    if not G.is_rational_function(t):
+        return None
+    w = Dummy('w', positive=True)
+    parts = _parity_parts(G, t, w)
+    if parts is None:
+        return None
+    s = Dummy('s', positive=True)
+    G_e = as_expr(parts[0].subs(w, lam_**2 * s / (1 - s)))
+    G_o = as_expr(parts[1].subs(w, lam_**2 * s / (1 - s)))
+    if e == -_HALF:
+        C0 = as_expr(lam_ / root)
+        Q = as_expr(cancel(C0 * G_e / 2))
+        H = as_expr(cancel(C0 * lam_ * G_o / (2 * (1 - s))))
+    else:
+        C0 = as_expr(lam_ * root)
+        Q = as_expr(cancel(C0 * G_e * (1 - m * s) / (2 * (1 - s)**2)))
+        H = as_expr(cancel(C0 * lam_ * G_o * (1 - m * s) / (2 * (1 - s)**3)))
+    parts_ = _TangentParts(Q, H, s, m, lam_, assumptions)
+    total: Expr = S.Zero
+    for lo, hi in pieces:
+        if lo == mapping.pole:
+            t0: Expr = -oo
+        else:
+            t0 = mapping.preimage(lo, x)
+        if hi == mapping.pole:
+            t1: Expr = oo
+        else:
+            t1 = mapping.preimage(hi, x)
+        value = parts_.between(t0, t1)
+        if value is None:
+            return None
+        total = total + value
+    restored = _restore(total, mapping.radicals, factors.facts + mapping.facts)
+    return None if restored is None else ConditionalValue(restored)
+
+
+def _position_of(point: Expr, a: Expr, b: Expr, assumptions: Assumptions) -> Optional[bool]:
+    """Whether ``point`` lies strictly inside ``(a, b)``; ``None`` when
+    undecided."""
+    if a == -oo:
+        below: Optional[bool] = True
+    else:
+        below = _ask(as_boolean(a < point), assumptions)
+        if below is None and _ask(as_boolean(a >= point), assumptions) is True:
+            below = False
+    if b == oo:
+        above: Optional[bool] = True
+    else:
+        above = _ask(as_boolean(point < b), assumptions)
+        if above is None and _ask(as_boolean(point >= b), assumptions) is True:
+            above = False
+    if below is None or above is None:
+        return None
+    return below and above
+
+
+class _TangentParts:
+    """``Integral((Q(s) + odd) ..., theta)`` over ``t`` from ``t0`` to ``t1``
+    (``t = lambda tan(theta)``, ``s = sin(theta)**2 = t**2/(lambda**2 + t**2)``):
+    on a range of one sign ``sigma``, with ``u = |t|`` from ``u0`` to ``u1``,
+
+        sigma (F_e(s1) - F_e(s0)) + F_o(s1) - F_o(s0)
+
+    with ``F_e`` the antiderivative of ``Q(s)/sqrt(s (1 - s)(1 - m s))``
+    (Legendre, from :func:`_from_zero`) and ``F_o`` that of
+    ``H(s)/sqrt(1 - m s)``, elementary through ``v = sqrt(1 - m s)``; a
+    range of both signs is cut at ``t = 0``."""
+
+    def __init__(self, Q: Expr, H: Expr, s: Symbol, m: Expr, lam_: Expr, assumptions: Assumptions) -> None:
+        self.Q = Q
+        self.H = H
+        self.s = s
+        self.m = m
+        self.lam_ = lam_
+        self.assumptions = assumptions
+
+    def between(self, t0: Expr, t1: Expr) -> Optional[Expr]:
+        signs = [self._sign(t0), self._sign(t1)]
+        if None in signs:
+            return None
+        if signs[0] == 0 or signs[1] == 0 or signs[0] == signs[1]:
+            sigma = S.One if S.One in signs else S.NegativeOne
+            return self._piece(as_expr(sigma * t0), as_expr(sigma * t1), sigma)
+        first = self._piece(as_expr(signs[0] * t0), S.Zero, as_expr(signs[0]))
+        second = self._piece(S.Zero, as_expr(signs[1] * t1), as_expr(signs[1]))
+        if first is None or second is None:
+            return None
+        return as_expr(first + second)
+
+    def _sign(self, tau: Expr) -> Optional[Expr]:
+        if tau == 0:
+            return S.Zero
+        if tau == oo:
+            return S.One
+        if tau == -oo:
+            return S.NegativeOne
+        if _ask(as_boolean(tau > 0), self.assumptions) is True:
+            return S.One
+        if _ask(as_boolean(tau < 0), self.assumptions) is True:
+            return S.NegativeOne
+        return None
+
+    def _s(self, u: Expr) -> Expr:
+        if u == oo:
+            return S.One
+        return as_expr(cancel(u**2 / (self.lam_**2 + u**2)))
+
+    def _piece(self, u0: Expr, u1: Expr, sigma: Expr) -> Optional[Expr]:
+        s0, s1 = self._s(u0), self._s(u1)
+        if s0 == s1:
+            return S.Zero
+        increasing = _ask(as_boolean(s0 < s1), self.assumptions)
+        if increasing is None:
+            return None
+        lower, upper = (s0, s1) if increasing else (s1, s0)
+        total: Expr = S.Zero
+        if self.Q != 0:
+            at_s0 = _from_zero(self.Q, self.s, s0, _Legendre(self.m), self.assumptions, lower, upper)
+            at_s1 = _from_zero(self.Q, self.s, s1, _Legendre(self.m), self.assumptions, lower, upper)
+            if at_s0 is None or at_s1 is None:
+                return None
+            total = total + sigma * (at_s1 - at_s0)
+        if self.H != 0:
+            if not _poles_outside(self.H, self.s, lower, upper, self.assumptions):
+                return None
+            F = _odd_antiderivative(self.H, self.s, self.m)
+            if F is None:
+                return None
+            total = total + F.subs(self.s, s1) - F.subs(self.s, s0)
+        return as_expr(total)
+
+
+def _poles_outside(H: Expr, s: Symbol, lower: Expr, upper: Expr, assumptions: Assumptions) -> bool:
+    """Whether no pole of the rational function ``H`` lies on the closed
+    range (``False`` when undecided)."""
+    _, denominator = as_expr(cancel(H)).as_numer_denom()
+    denominator_ = as_expr(denominator)
+    if not denominator_.has(s):
+        return True
+    try:
+        _, factors = factor_list(denominator_, s)
+    except PolynomialError:
+        return False
+    for factor, _ in factors:
+        factor_ = as_expr(factor)
+        if not factor_.has(s):
+            continue
+        poly = Poly(factor_, s)
+        if poly.degree() <= 2:
+            w = Dummy('w')
+            candidates = [as_expr(r) for r in sympy_solve(factor_.subs(s, w), w)]
+        elif poly.domain.is_QQ or poly.domain.is_ZZ:
+            candidates = [as_expr(r) for r in poly.real_roots()]
+        else:
+            return False
+        for p in candidates:
+            if p.is_extended_real is False:
+                continue
+            if p.is_extended_real is None and _ask(as_boolean(Eq(im(p), 0)), assumptions) is False:
+                continue
+            if _ask(as_boolean((p - lower) * (p - upper) > 0), assumptions) is not True:
+                return False
+    return True
+
+
+def _odd_antiderivative(H: Expr, s: Symbol, m: Expr) -> Optional[Expr]:
+    """An antiderivative of ``H(s)/sqrt(1 - m s)``: with ``v = sqrt(1 - m s)``
+    the integrand is the rational function ``-2 H((1 - v**2)/m)/m`` of
+    ``v``, integrated exactly."""
+    v = Dummy('v', positive=True)
+    rational = as_expr(cancel(-2 * H.subs(s, (1 - v**2) / m) / m))
+    if not rational.is_rational_function(v):
+        return None
+    budget = None if settings.timeout is None else settings.timeout / 4
+    F = attempt(lambda: as_expr(integrate(rational, v)), budget)
+    if F is None or F.has(Integral):
+        return None
+    return as_expr(F.subs(v, sqrt(1 - m * s)))
 
 
 def _trigonometric(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions) -> Optional[ConditionalValue]:

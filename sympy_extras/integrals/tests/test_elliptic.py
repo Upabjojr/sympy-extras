@@ -288,8 +288,10 @@ def test_complex_roots_with_poles() -> None:
 
 
 def test_complex_roots_are_read_from_the_factors() -> None:
-    # an irreducible quartic with two real roots is not recognised
-    assert elliptic_integral(1 / sqrt(x**4 + x - 1), x, 1, 2) is None
+    # an irreducible quartic with two real roots: through its roots, the
+    # value exact in CRootOf and checked numerically
+    found = elliptic_integral(1 / sqrt(x**4 + x - 1), x, 1, 2)
+    assert found is not None and abs(float(found.value.evalf(20)) - 0.480945611403827) < 1e-10
     # complex roots of a symbolic quadratic factor need the sign of the discriminant
     c = symbols('c', real=True)
     found = elliptic_integral(1 / sqrt((1 - x**2) * (x**2 + c)), x, -1, 1, c > 0)
@@ -307,3 +309,60 @@ def test_elementary_parts() -> None:
         hi = Rational(rng.randint(int(10 * lo) + 1, 30), 10)
         value = _verified(x / sqrt(P), lo, hi)
         assert value.has(elliptic_f) or value.has(log) or value.has(asin)
+
+
+def test_two_complex_pairs() -> None:
+    # Byrd-Friedman 267: a quartic without real roots, positive on the
+    # line, through the tangent map
+    from sympy import N, CRootOf, Dummy, Eq, Symbol
+    from sympy_extras.integrals.elliptic import _decide_numerically, _restore
+    found = elliptic_integral(1 / sqrt((x**2 + 1) * (x**2 + 4)), x, -oo, oo)
+    assert found is not None and found.value == elliptic_k(Rational(3, 4))
+    found = elliptic_integral(1 / sqrt((x**2 + 1) * (x**2 + 4)), x, 0, 1)
+    assert found is not None and found.value == elliptic_f(pi / 4, Rational(3, 4)) / 2
+    # a range of both signs of theta and one across the pole of the map
+    found = elliptic_integral(1 / sqrt((x**2 + 1) * (x**2 + 4)), x, -3, 2)
+    assert found is not None and verify_numerically(found.value, 1 / sqrt((x**2 + 1) * (x**2 + 4)), x, S(-3), S(2)) is True
+    f = 1 / sqrt((x**2 + x + 1) * (x**2 - x + 2))
+    found = elliptic_integral(f, x, -oo, oo)
+    assert found is not None and verify_numerically(found.value, f, x, -oo, oo) is True
+    # the odd part is elementary: a pole of R outside the range and its
+    # mirror image outside too
+    f = 1 / ((x - 5) * sqrt((x**2 + 1) * (x**2 + 4)))
+    found = elliptic_integral(f, x, 6, oo)
+    assert found is not None and found.value.has(log) and verify_numerically(found.value, f, x, S(6), oo) is True
+    f = x / sqrt((x**2 + 1) * (x**2 + 4))
+    found = elliptic_integral(f, x, -3, 2)
+    assert found is not None and not found.value.has(elliptic_k, elliptic_f) \
+        and verify_numerically(found.value, f, x, S(-3), S(2)) is True
+    # the mirror image of a pole (x = oo for x**2/sqrt(P) at t = -1, mirrored
+    # to t = 1) inside the range without the pole: refused, never wrong
+    assert elliptic_integral(x**2 / sqrt((x**2 + x + 1) * (x**2 - x + 2)), x, -1, 3) is None
+    assert elliptic_integral(1 / ((x - 5) * sqrt((x**2 + 1) * (x**2 + 4))), x, -oo, 2) is None
+    # a negative leading coefficient: the radicand is negative everywhere
+    assert elliptic_integral(1 / sqrt(-(x**2 + 1) * (x**2 + 4)), x, 0, 1) is None
+    # the numeric decisions on the dummies of algebraic numbers
+    c: Symbol = Dummy('c', real=True)
+    values = {c: as_expr(CRootOf(x**4 + x - 1, 1))}
+    assert _decide_numerically(c > S.Half, values) is True and _decide_numerically(c > 1, values) is False
+    assert _decide_numerically(c > c, values) is None
+    assert _restore(c**2, {}, [Eq(c, CRootOf(x**4 + x - 1, 1))]) == CRootOf(x**4 + x - 1, 1)**2
+    assert abs(float(N(_restore(c**2, {}, [Eq(c, CRootOf(x**4 + x - 1, 1))]))) - 0.5249) < 1e-3
+
+
+def test_irrational_quadratic_factors() -> None:
+    # a numeric quartic irreducible over Q: two real roots as CRootOf and
+    # the quadratic of the complex pair with CRootOf coefficients (the
+    # real part and the modulus from resultants), the value exact
+    from sympy import CRootOf
+    f = 1 / sqrt(x**4 + x - 1)
+    found = elliptic_integral(f, x, 1, oo)
+    assert found is not None and found.value.has(CRootOf) and found.value.has(elliptic_f)
+    assert abs(float(found.value.evalf(20)) - 0.976386972777772) < 1e-12
+    # no real root at all
+    f = 1 / sqrt(x**4 + x + 1)
+    found = elliptic_integral(f, x, -oo, oo)
+    assert found is not None and found.value.has(CRootOf) and abs(float(found.value.evalf(20)) - 3.90212557565417) < 1e-12
+    # a radical case comes out in radicals
+    found = elliptic_integral(1 / sqrt(x**4 + 1), x, -oo, oo)
+    assert found is not None and not found.value.has(CRootOf) and abs(float(found.value.evalf(20)) - 3.70814935460274) < 1e-12

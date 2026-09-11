@@ -99,7 +99,11 @@ remove public functions. Breaking changes are listed here when they happen.
   bilinear substitution onto `cos(theta)`), polynomial and rational
   numerators by the recurrences 310-318 (incomplete powers, multiple
   poles), symbolic parameters with the triangle inequalities as facts;
-  `1/sqrt(x**3 + 1)` over `(0, oo)` is `gamma(1/6)*gamma(1/3)/(3*sqrt(pi))`.
+  `1/sqrt(x**3 + 1)` over `(0, oo)` is `gamma(1/6)*gamma(1/3)/(3*sqrt(pi))`;
+  quartics with no real roots (Byrd–Friedman 267, the bilinear map and
+  `t = lambda*tan(theta)`; `1/sqrt((x**2 + 1)*(x**2 + 4))` over the real
+  line is `elliptic_k(3/4)`) and the irrational quadratic factors of
+  numeric quartics from their `CRootOf` roots.
 
 - `sympy_extras.integrals.series`: series expansion of a factor and termwise
   integration with the series summed in closed form (`summation`, the

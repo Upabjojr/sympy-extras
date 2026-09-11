@@ -221,7 +221,13 @@ The driver tries, after the Mellin method and the residues:
   reduced by the recurrences 310-318 (incomplete powers, multiple poles),
   the organising principle being Carlson's symmetric `R_F` (DLMF 19.25,
   19.29): `Integral(1/sqrt(x**3 + 1), (x, 0, oo))` is
-  `gamma(1/6)*gamma(1/3)/(3*sqrt(pi))`.
+  `gamma(1/6)*gamma(1/3)/(3*sqrt(pi))`. Quartics with no real roots
+  (Byrd–Friedman 267) go through the bilinear map sending both quadratic
+  factors to `(A*t**2 + B)/(1 + t)**2` and `t = lambda*tan(theta)`:
+  `Integral(1/sqrt((x**2 + 1)*(x**2 + 4)), (x, -oo, oo))` is
+  `elliptic_k(3/4)`; the irrational quadratic factors of a numeric
+  quartic (`x**4 + x - 1`) are built from its `CRootOf` roots, the
+  algebraic numbers travelling as dummies decided numerically.
 - **Algebraic integrands of genus zero** (`sympy_extras.integrals.algebraic`):
   Euler's substitutions for `R(x, sqrt(a*x**2 + b*x + c))`, `t**n = M(x)`
   for roots of a Möbius function, and Chebyshev's three integrable cases

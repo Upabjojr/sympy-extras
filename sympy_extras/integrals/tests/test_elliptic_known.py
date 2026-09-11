@@ -110,3 +110,36 @@ def test_dlmf_complex_roots() -> None:
     assert found is not None
     assert simplify(found.value - 2 * elliptic_k((2 + sqrt(2)) / 4) / sqrt(sqrt(50))) == 0
     assert abs(float(found.value.evalf(20)) - 1.8051605293435436544) < 1e-15
+
+
+def test_quartics_without_real_roots() -> None:
+    # BF 267 and DLMF 19.29: two complex pairs; the values against
+    # mpmath quadrature (comments: independent closed forms)
+    from sympy import lambdify
+    import mpmath
+    cases: list[tuple[Expr, Expr, Expr, float]] = [
+        # BF 267.00 / GR 3.152: Integral(1/sqrt((x**2 + 1)(x**2 + 4)), (x, -oo, oo)) = K(3/4)
+        (1 / sqrt((x**2 + 1) * (x**2 + 4)), -oo, oo, 2.15651564749964),
+        (1 / sqrt((x**2 + 1) * (x**2 + 4)), S.Zero, S.One, 0.425611874535593),
+        # Integral(1/sqrt(x**4 + 1), (x, -oo, oo)) = Gamma(1/4)**2/(2 sqrt(pi)) = 3.7081493546...
+        (1 / sqrt(x**4 + 1), -oo, oo, float(gamma(Rational(1, 4))**2 / (2 * sqrt(pi)))),
+        (1 / sqrt((x**2 + x + 1) * (x**2 - x + 2)), -oo, oo, 2.76590295459261),
+        (1 / ((x**2 + 2) * sqrt((x**2 + 1) * (x**2 + 4))), S.Zero, oo, 0.269564455937455),
+        (1 / sqrt(x**4 + 4 * x**2 + 5), S.Zero, oo, 1.06474458157166),
+        (1 / sqrt(x**4 + x - 1), S.One, oo, 0.976386972777772),
+        (1 / sqrt(x**4 + x + 1), S.Zero, S(2), 1.17174369865324),
+    ]
+    for f, a, b, reference in cases:
+        found = elliptic_integral(f, x, a, b)
+        assert found is not None, f
+        value = found.value.evalf(20)
+        assert abs(complex(value) - reference) < 1e-10, (f, value)
+        g = lambdify(x, f, 'mpmath')
+        lower = -mpmath.inf if a == -oo else mpmath.mpf(float(a))
+        upper = mpmath.inf if b == oo else mpmath.mpf(float(b))
+        points = [q for q in (lower, mpmath.mpf(0), mpmath.mpf(1), upper) if lower <= q <= upper]
+        assert abs(complex(value) - complex(mpmath.quad(g, sorted(set(points), key=float)))) < 1e-10, f
+    # Gamma(1/4)**2/(2 sqrt(pi)) exactly, after simplification
+    found = elliptic_integral(1 / sqrt(x**4 + 1), x, -oo, oo)
+    assert found is not None
+    assert abs(float((found.value - gamma(Rational(1, 4))**2 / (2 * sqrt(pi))).evalf(20))) < 1e-15
