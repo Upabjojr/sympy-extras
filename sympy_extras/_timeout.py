@@ -85,10 +85,14 @@ def _complete_sympy_tables() -> None:
 def attempt(f: Callable[[], T], seconds: Optional[float]) -> Optional[T]:
     """The value of ``f()`` computed within ``seconds``, or ``None`` when
     the time is up or SymPy gives up (``NotImplementedError``,
-    ``ValueError``, ``TypeError``, or a ``RecursionError`` from deep
-    inside SymPy, which is a way of giving up too)."""
+    ``ValueError``, ``TypeError``, a ``PolynomialError`` raised on an
+    expression its polynomial routines cannot take, or a
+    ``RecursionError`` from deep inside SymPy, which is a way of giving
+    up too)."""
+    from sympy.polys.polyerrors import BasePolynomialError
     try:
         with time_limit(seconds):
             return f()
-    except (TimeLimitExceeded, NotImplementedError, ValueError, TypeError, RecursionError):
+    except (TimeLimitExceeded, NotImplementedError, ValueError, TypeError, RecursionError,
+            BasePolynomialError):
         return None

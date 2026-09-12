@@ -33,3 +33,16 @@ def test_sympy_tables_are_complete_after_an_interrupted_build() -> None:
     assert attempt(lambda: 1, 5) == 1
     table = meijerint._lookup_table
     assert table is not None and sum(len(entries) for entries in table.values()) > 40
+
+
+def test_attempt_contains_a_polynomial_error() -> None:
+    # sympy-extras: SymPy's singularities() raises PolynomialError from
+    # CRootOf on a polynomial in two symbols, and it escaped attempt() as
+    # a crash, so integrate_by_ranges(1, Or(x**2 + y**2 < 1,
+    # (x - 1)**2 + y**2 < 1)) died instead of trying another route
+    from sympy.polys.polyerrors import PolynomialError
+
+    def raiser() -> int:
+        raise PolynomialError("only univariate polynomials are allowed")
+
+    assert attempt(raiser, 5) is None
