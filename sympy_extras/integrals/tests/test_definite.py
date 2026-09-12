@@ -296,3 +296,22 @@ def test_summability_and_unsigned_infinities() -> None:
     raises(ValueError, lambda: definite_integral(sin(x), (x, 0, oo), summability='borel'))
     value = definite_integral(airyai(x)**2, (x, 0, oo))
     assert value != zoo and not value.has(zoo)
+
+
+def test_sums_are_integrated_term_by_term() -> None:
+    # the antiderivative SymPy finds for the difference of the two arcs is
+    # a complex Piecewise whose branches give nan at the endpoints, and no
+    # other method takes a sum of two distinct radicals; each term is
+    # elementary, and the slice of the union of two discs between their
+    # intersection points is exactly this integrand
+    from sympy_extras.integrals.definite import _Integrator
+    g = sqrt(x) * sqrt(2 - x) - sqrt(1 - x) * sqrt(x + 1)
+    assert _same(definite_integral(g, (x, S.Half, 1)), sqrt(3) / 4 - pi / 12)
+    assert _same(definite_integral(sqrt(x) * sqrt(2 - x) + sqrt(1 - x) * sqrt(x + 1), (x, S.Half, 1)), pi / 4)
+    # a product which expands to a few terms
+    assert _same(definite_integral((sqrt(x) + sqrt(1 - x))**2, (x, 0, 1)), 1 + pi / 4)
+    # terms which diverge separately and cancel in the sum give no
+    # termwise value; the whole integrand still has one
+    integrator = _Integrator(())
+    assert integrator._termwise(1 / x - 1 / (x + x**2), x, S.Zero, S.One, 0) is None
+    assert definite_integral(1 / x - 1 / (x + x**2), (x, 0, 1)) == log(2)

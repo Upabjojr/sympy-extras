@@ -98,7 +98,7 @@ from sympy.functions.elementary.piecewise import Piecewise, piecewise_fold
 from sympy.functions.elementary.trigonometric import TrigonometricFunction, asin, sin, cos
 from sympy.functions.elementary.hyperbolic import HyperbolicFunction, InverseHyperbolicFunction
 from sympy.functions.special.polynomials import OrthogonalPolynomial
-from sympy.core.function import expand_func, expand_log
+from sympy.core.function import expand, expand_func, expand_log
 from sympy.simplify.fu import TR8
 from sympy.functions.special.delta_functions import Heaviside, DiracDelta
 from sympy.integrals.integrals import Integral, integrate
@@ -125,6 +125,8 @@ Limits = tuple[Symbol, ExprLike, ExprLike]
 
 #: the depth of the recursive splitting
 _MAX_DEPTH = 6
+#: the most terms a sum is integrated term by term
+_TERMWISE_LIMIT = 8
 
 
 def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = None,
@@ -478,6 +480,7 @@ class _Integrator:
             # slow ones: not inside a mapped range
             strategies += [self._holonomic, self._laplace, self._parametric, self._series, self._dfinite]
         strategies.append(self._antiderivative)
+        strategies.append(self._termwise)
         for strategy in strategies:
             try:
                 found = strategy(f, x, a, b, depth)
@@ -848,6 +851,35 @@ class _Integrator:
             # or principal branches only: kept when confirmed numerically
             return None
         return self._finish(found)
+
+    def _termwise(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """A sum integrated term by term when the whole defeats every
+        method: the antiderivative of ``sqrt(x)*sqrt(2 - x) - sqrt(1 -
+        x)*sqrt(x + 1)`` is a complex ``Piecewise`` whose branches give
+        ``nan`` at the endpoints, while each term is elementary. The value
+        is kept only when every term has a finite value (terms which
+        diverge separately may cancel in the sum, ``1/x - 1/(x + x**2)``
+        near 0) and the sum passes the numerical check; a product which
+        expands to a few terms is tried in the expanded form."""
+        terms = [as_expr(term) for term in Add.make_args(f)]
+        if len(terms) < 2:
+            expanded = as_expr(expand(f))
+            terms = [as_expr(term) for term in Add.make_args(expanded)]
+            if len(terms) < 2 or len(terms) > _TERMWISE_LIMIT:
+                return None
+        elif len(terms) > _TERMWISE_LIMIT:
+            return None
+        total: Optional[ConditionalValue] = None
+        for term in terms:
+            found = self.integrate(term, x, a, b, depth + 1, False, False)
+            if found is None or found.value.has(oo, -oo, zoo, nan):
+                return None
+            total = found if total is None else total.add(found)
+        if total is None:
+            return None
+        if settings.numerical_checks and verify_numerically(total.value, f, x, a, b, self.assumptions) is False:
+            return None
+        return self._finish(total)
 
     def _table(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """The table of Gradshteyn and Ryzhik (:mod:`.tables`), cheap and

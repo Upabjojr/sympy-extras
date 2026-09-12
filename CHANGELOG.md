@@ -179,6 +179,15 @@ remove public functions. Breaking changes are listed here when they happen.
   conditions are decided by their real parts (`exp(-a*x)*sin(b*x)*
   besselj(0, x)` over `(0, oo)`).
 
+- `definite_integral` integrates a sum term by term when the whole
+  defeats every method, keeping the value only when every term is finite
+  and the total passes the numerical check: the difference of two arcs
+  `sqrt(x)*sqrt(2 - x) - sqrt(1 - x)*sqrt(x + 1)` on `(1/2, 1)`, whose
+  antiderivative is a complex `Piecewise`, is `sqrt(3)/4 - pi/12`, and the
+  union and symmetric difference of two overlapping discs in
+  `IntegralByRanges` now evaluate (`4*pi/3 + sqrt(3)/2` and
+  `2*pi/3 + sqrt(3)`).
+
 - `sympy_extras.integrals.trager`: Trager's algorithm for integrands
   rational in `x` and one square root of a polynomial (the Hermite
   reduction with the integral basis, the Rothstein–Trager resultant of

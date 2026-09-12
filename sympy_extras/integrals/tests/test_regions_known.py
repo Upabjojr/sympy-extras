@@ -4,7 +4,7 @@ chapter 15; Apostol, *Calculus* vol. II, chapter 11) and the examples of
 the documentation of Mathematica's ``Integrate`` over regions."""
 from __future__ import annotations
 
-from sympy import Rational, exp, pi, symbols
+from sympy import Rational, exp, pi, sqrt, symbols
 
 from sympy_extras.integrals.regions import integrate_by_ranges
 
@@ -123,3 +123,16 @@ def test_polytopes_and_balls_in_any_dimension() -> None:
     # the Gaussian integral over R^n and the exponential one (Apostol 11.28)
     assert integrate_by_ranges(exp(-r**2), True, [r], dimension=n) == pi**(n / 2)
     assert (integrate_by_ranges(exp(-r), True, [r], dimension=n) - 2 * pi**(n / 2) * gamma(n) / gamma(n / 2)).subs(n, 3) == 0
+
+
+def test_unions_of_overlapping_discs() -> None:
+    # two unit discs with centres a distance 1 apart: the lens has area
+    # 2 pi/3 - sqrt(3)/2, so the union has 2 pi minus the lens and the
+    # symmetric difference 2 pi minus twice the lens (the bug: the slice
+    # between the intersection points, the difference of two arcs, was
+    # left unevaluated by definite_integral)
+    from sympy import Or, Xor
+    x, y = symbols('x y')
+    lens = 2 * pi / 3 - sqrt(3) / 2
+    assert integrate_by_ranges(1, Or(x**2 + y**2 < 1, (x - 1)**2 + y**2 < 1)) == 2 * pi - lens
+    assert integrate_by_ranges(1, Xor(x**2 + y**2 < 1, (x - 1)**2 + y**2 < 1)) == 2 * pi - 2 * lens

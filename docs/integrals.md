@@ -310,6 +310,13 @@ The driver tries, after the Mellin method and the residues:
   is kept only when the limit is finite and free of the regulator, so
   `sin(x)**2` over `(0, oo)` has none, and a convergent integral keeps its
   value (Hardy, *Divergent series*, ch. 4-5).
+- **Term by term**: a sum which defeats every method is integrated term
+  by term, the value kept only when every term is finite (terms which
+  diverge separately may cancel in the sum) and the total passes the
+  numerical check; the difference of two circular arcs,
+  `sqrt(x)*sqrt(2 - x) - sqrt(1 - x)*sqrt(x + 1)` on `(1/2, 1)`, whose
+  antiderivative is a complex `Piecewise`, gives `sqrt(3)/4 - pi/12`, and
+  with it the union of two overlapping discs in `IntegralByRanges`.
 - **Symbolic-numeric recognition** (`sympy_extras.integrals.recognize`,
   `definite_integral(..., recognize=True)`): a high-precision quadrature
   and an integer relation (PSLQ) with a basis of constants propose a
