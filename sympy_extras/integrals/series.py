@@ -391,7 +391,10 @@ def _computed_expansion(g: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assum
         facts.append(as_boolean(assumptions))
     elif assumptions is not None:
         facts.extend(as_boolean(s) for s in assumptions)
-    budget = None if settings.timeout is None else settings.timeout / 2
+    # the whole limit: the half-range coefficients of x**2 on (0, pi) take
+    # a dozen seconds under load, and half the limit let the full system
+    # win by timing (the tests then saw a different, valid, expansion)
+    budget = settings.timeout
 
     # the coefficients as integrals over (0, length) in t = x - a, the
     # canonical range of the driver (the range (-pi, pi) would be cut at 0
