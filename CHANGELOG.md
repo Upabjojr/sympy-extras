@@ -179,6 +179,20 @@ remove public functions. Breaking changes are listed here when they happen.
   conditions are decided by their real parts (`exp(-a*x)*sin(b*x)*
   besselj(0, x)` over `(0, oo)`).
 
+- `sympy_extras.integrals.radicals`: real antiderivatives of
+  `x**n * Q**(m/2)` with `Q` quadratic, by the reduction formulas of
+  Gradshteyn–Ryzhik 2.26, tried before the Risch port and SymPy and early
+  in the driver; with them, and three fixes on the way (the leak guard of
+  the one-sided limits refused the symbol of a symbolic bound, the
+  singularity search could not form an interval with symbolic ends, and
+  the sampler of the numerical check had no point under an irrational
+  bound such as `x > -sqrt(2)/2`), the slices of a region between
+  algebraic bounds evaluate: `Integral(2*sqrt(1 - y**2), (y,
+  -sqrt(1 - x**2), x))` is `asin(x) + asin(sqrt(1 - x**2))` for
+  `-sqrt(2)/2 < x < 0`, and the three intersecting cylinders, with no
+  axis of symmetry, have volume `8*(2 - sqrt(2))` through the
+  decomposition in half a minute.
+
 - `definite_integral` integrates a sum term by term when the whole
   defeats every method, keeping the value only when every term is finite
   and the total passes the numerical check: the difference of two arcs
@@ -219,6 +233,25 @@ remove public functions. Breaking changes are listed here when they happen.
   expansions of Chester–Friedman–Ursell for coalescing stationary points
   (`asymptotic_integral(..., uniform=True)`), and steepest descent through
   complex saddle points (`steepest_descent`).
+
+- `sympy_extras.integrals.axisymmetric`: region integrals with a
+  rotational symmetry reduced to their profile in the half-plane of the
+  radius (the group of variables entering through the sum of their
+  squares only, decided by the infinitesimal rotations, becomes `rho > 0`
+  with the weight of the unit sphere `S**(k-1)` times `rho**(k-1)`), for
+  the Lebesgue and the Hausdorff measure: two balls a distance 1 apart
+  meet in `5*pi/12`, the ball cut by the paraboloid `z = x**2 + y**2` has
+  volume `5*pi*(3 - sqrt(5))/12`, the cap `z > 1/2` of the unit sphere
+  area `pi`, two unit spheres meet in a circle of length `sqrt(3)*pi`,
+  and two unit 4-balls a distance 1 apart in `pi*(8*pi - 9*sqrt(3))/24`,
+  each in a second or two where the decomposition took twenty seconds or
+  timed out; a ball cut by planes with a common normal goes through the
+  frame along the normal, scaled so that the offsets stay rational (the
+  slab `-1 < x + y + z < 1` of the unit ball has volume
+  `16*sqrt(3)*pi/27`, the unit sphere meets the plane `x + y + z = 1` in a
+  circle of length `2*sqrt(6)*pi/3`). Numeric cell bounds of degree at most four are written in
+  radicals rather than as `CRootOf` (the bug: `definite_integral` left an
+  integral up to `CRootOf(4*x**2 - 3, 1)` unevaluated).
 
 - `IntegralByRanges`: polynomials over bounded polytopes integrated
   exactly by vertex enumeration, a pulling triangulation and Dirichlet's

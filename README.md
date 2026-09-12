@@ -560,6 +560,8 @@ sympy_extras/
         risch/               Risch algorithm ported from Aaron Meurer's SymPy pull requests
         trager.py            Trager's algorithm for algebraic functions (one square root)
         summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals
+        axisymmetric.py      region integrals with a rotational symmetry reduced to their profile
+        radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic
     solvers/
         lie.py               jet spaces, prolongation, determining equations, symmetries
         pde.py               pde_symmetries, similarity_reduction, pdsolve_lie

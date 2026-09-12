@@ -93,6 +93,12 @@ def antiderivative(f: Expr, x: Symbol) -> Optional[Expr]:
     SymPy's ``integrate`` otherwise, under the time limit; ``None`` when
     none is found (an unevaluated ``Integral`` in the result counts as
     none)."""
+    from .radicals import quadratic_radical_antiderivative
+    found = quadratic_radical_antiderivative(f, x)
+    if found is not None:
+        # a real form (SymPy writes the arcsine of sqrt(1 - x**2) as a
+        # complex logarithm, whose limits at algebraic bounds fail)
+        return found
     found = _risch(f, x)
     if found is not None and not found.has(Integral):
         return found
@@ -272,10 +278,17 @@ def one_sided_limit(F: Expr, x: Symbol, point: Expr, direction: str,
         value = attempt(lambda: limit(F, x, point, assumptions=assumptions), settings.timeout)
     else:
         value = attempt(lambda: limit(F, x, point, direction, assumptions=assumptions), settings.timeout)
+        if (value is None or value.has(Limit)) and not point.is_number:
+            # a symbolic point, where limit gives up: the value of F there
+            # when it is finite (the bug: the arcsine of a real antiderivative
+            # had no limit at the algebraic bound -sqrt(1 - x**2) of a cell)
+            value = as_expr(F.subs(x, point))
     if value is None or value.has(oo, -oo, zoo, nan, Limit, Piecewise):
         return None
-    if value.free_symbols - F.free_symbols:
-        # a dummy of an unevaluated inner limit leaked
+    if value.free_symbols - F.free_symbols - point.free_symbols:
+        # a dummy of an unevaluated inner limit leaked (the symbols of a
+        # symbolic point are its own: the bug refused every limit at the
+        # algebraic bound -sqrt(1 - x**2) of a cell)
         return None
     return value
 
@@ -311,6 +324,11 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     if points is None:
         return None
     singular = attempt(lambda: singularities(f, x, Interval.open(a, b)), settings.timeout)
+    if singular is None and not (a.is_number and b.is_number):
+        # SymPy cannot form an interval with symbolic ends (the algebraic
+        # bounds -sqrt(1 - x**2) < y < x of a cell): the singularities on
+        # the line, placed against the bounds by _points_in below
+        singular = attempt(lambda: singularities(f, x, S.Reals), settings.timeout)
     if singular is None:
         return None
     singular_set = as_set(singular)
@@ -374,6 +392,11 @@ def principal_value_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     if points is None:
         return None
     singular = attempt(lambda: singularities(f, x, Interval.open(a, b)), settings.timeout)
+    if singular is None and not (a.is_number and b.is_number):
+        # SymPy cannot form an interval with symbolic ends (the algebraic
+        # bounds -sqrt(1 - x**2) < y < x of a cell): the singularities on
+        # the line, placed against the bounds by _points_in below
+        singular = attempt(lambda: singularities(f, x, S.Reals), settings.timeout)
     if singular is None:
         return None
     singular_set = as_set(singular)
@@ -458,6 +481,11 @@ def finite_part_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     if points is None:
         return None
     singular = attempt(lambda: singularities(f, x, Interval.open(a, b)), settings.timeout)
+    if singular is None and not (a.is_number and b.is_number):
+        # SymPy cannot form an interval with symbolic ends (the algebraic
+        # bounds -sqrt(1 - x**2) < y < x of a cell): the singularities on
+        # the line, placed against the bounds by _points_in below
+        singular = attempt(lambda: singularities(f, x, S.Reals), settings.timeout)
     if singular is None:
         return None
     singular_set = as_set(singular)

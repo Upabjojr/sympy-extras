@@ -38,6 +38,8 @@ from sympy.core.singleton import S
 from sympy.functions.elementary.complexes import Abs, arg, re, im
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.logic.boolalg import And, Or, Boolean, true, false
+from sympy.polys.polyerrors import PolynomialError
+from sympy.polys.polytools import Poly
 
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
@@ -267,7 +269,15 @@ def sample_values(symbols: Sequence[Symbol], assumptions: Assumptions,
         return {s: Rational(rng.randint(3, 19), 4) for s in symbols}
     instances = find_instance(facts.formula, [plain.get(s, s) for s in symbols])
     if not instances:
-        return None
+        # irrational bounds (x > -sqrt(2)/2, a cell of a region) are beyond
+        # the solver: the same region shrunk to rational bounds
+        rationalised = [_rational_relation(a) for a in _items(assumptions)]
+        if rationalised == list(_items(assumptions)):
+            return None
+        facts = Facts(with_symbol_facts(rationalised, symbols, plain), symbols=[plain.get(s, s) for s in symbols])
+        instances = find_instance(facts.formula, [plain.get(s, s) for s in symbols])
+        if not instances:
+            return None
     witness = instances[0]
     values: dict[Symbol, Expr] = {}
     for s in symbols:
@@ -278,6 +288,46 @@ def sample_values(symbols: Sequence[Symbol], assumptions: Assumptions,
         if ask(as_boolean(facts.formula.xreplace({plain.get(s, s): v for s, v in moved.items()}))) is True:
             return moved
     return values
+
+
+def _items(assumptions: Assumptions) -> list[Boolean]:
+    if assumptions is None:
+        return []
+    if isinstance(assumptions, (Boolean, bool)):
+        return [as_boolean(assumptions)]
+    return [as_boolean(a) for a in assumptions]
+
+
+def _rational_relation(relation: Boolean) -> Boolean:
+    """An inequality whose constant term is an irrational number replaced
+    by the same inequality with the constant approximated by a rational
+    on the safe side (``x > -sqrt(2)/2`` becomes ``x > -0.7071...`` plus a
+    margin), so that the solvers, which take rational coefficients, can
+    find points inside the region; other statements unchanged.
+
+    >>> from sympy import symbols, sqrt
+    >>> from sympy_extras.integrals.conditions import _rational_relation
+    >>> x = symbols('x')
+    >>> _rational_relation(x > -sqrt(2)/2).rhs.evalf(8), _rational_relation(x < 1)
+    (-0.70710678, x < 1)
+    """
+    if not isinstance(relation, (Lt, Le, Gt, Ge)):
+        return relation
+    expression = as_expr(relation.lhs) - as_expr(relation.rhs)
+    variables = sorted_symbols(free_symbols(expression))
+    constant, rest = expression.as_independent(*variables, as_Add=True)
+    constant_, rest_ = as_expr(constant), as_expr(rest)
+    if constant_.is_rational is not False or not constant_.is_real:
+        return relation
+    try:
+        if not all(as_expr(c).is_rational for c in Poly(rest_, *variables).coeffs()):
+            return relation
+    except PolynomialError:
+        return relation
+    approximation = Rational(str(constant_.evalf(20)))
+    margin = Rational(1, 10**12)
+    shifted = approximation - margin if isinstance(relation, (Gt, Ge)) else approximation + margin
+    return as_boolean(relation.func(rest_, -shifted))
 
 
 def numerically_equal(a: Expr, b: Expr, assumptions: Assumptions = None, samples: int = 3) -> bool:

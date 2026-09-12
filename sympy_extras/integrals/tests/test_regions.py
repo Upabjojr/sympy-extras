@@ -352,3 +352,21 @@ def test_symbolic_dimension() -> None:
     assert isinstance(integrate_by_ranges(exp(r**2), S.true, [r], dimension=n), IntegralByRanges)
     assert not Integral(1, (r, 0, 1)).has(IntegralByRanges)
     raises(ValueError, lambda: IntegralByRanges(1, (x > 0) & (y > 0), dimension=n))
+
+
+def test_numeric_root_bounds_are_written_in_radicals() -> None:
+    # the bug: the bound of a cell came out as CRootOf(4*x**2 - 3, 1)
+    # where sqrt(3)/2 was meant, and definite_integral left the integral
+    # up to it unevaluated (the area of a cap through its profile died on
+    # Integral(2*pi*r/sqrt(1 - r**2), (r, 0, CRootOf(4*r**2 - 3, 1))))
+    from sympy import CRootOf, Eq, S, pi
+    from sympy_extras.integrals.regions import _radical_form
+    r, z = symbols('r z')
+    assert _radical_form(CRootOf(4 * r**2 - 3, 1)) == sqrt(3) / 2
+    assert _radical_form(CRootOf(r**2 + r - 1, 1)) == (sqrt(5) - 1) / 2
+    # a quintic has no radicals, and a cubic with three real roots keeps
+    # its CRootOf rather than a form with I
+    assert _radical_form(CRootOf(r**5 - r - 1, 0)) == CRootOf(r**5 - r - 1, 0)
+    assert _radical_form(CRootOf(r**3 - 3 * r + 1, 0)) == CRootOf(r**3 - 3 * r + 1, 0)
+    profile = Eq(r**2 + z**2, 1) & (z > S.Half) & (r > 0)
+    assert integrate_by_ranges(2 * pi * r, profile, [z, r], measure='hausdorff') == pi

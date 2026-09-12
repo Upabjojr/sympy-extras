@@ -88,3 +88,15 @@ def test_hadamard_finite_parts() -> None:
     assert finite_part_integral(1 / (x - 1)**3, x, S.Zero, S(3)) == ConditionalValue(S(3) / 8)
     # a convergent integral is unchanged
     assert finite_part_integral(exp(-a * x), x, S.Zero, oo, a > 0) == ConditionalValue(1 / a)
+
+
+def test_limits_at_symbolic_points() -> None:
+    # the bug: the leak guard of one_sided_limit refused every value with
+    # a symbol of the point itself, and singularities() could not form an
+    # interval with symbolic ends
+    from sympy import asin, sqrt, symbols
+    x, y = symbols('x y')
+    F = y * sqrt(1 - y**2) + asin(y)
+    assert one_sided_limit(F, y, x, '-', [x > -sqrt(2) / 2, x < 0]) == x * sqrt(1 - x**2) + asin(x)
+    found = antiderivative_integral(2 * sqrt(1 - y**2), y, -sqrt(1 - x**2), x, [x > -sqrt(2) / 2, x < 0])
+    assert found is not None and found.value.has(asin)

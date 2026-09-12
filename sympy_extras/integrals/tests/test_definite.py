@@ -315,3 +315,17 @@ def test_sums_are_integrated_term_by_term() -> None:
     integrator = _Integrator(())
     assert integrator._termwise(1 / x - 1 / (x + x**2), x, S.Zero, S.One, 0) is None
     assert definite_integral(1 / x - 1 / (x + x**2), (x, 0, 1)) == log(2)
+
+
+def test_sampling_under_irrational_bounds() -> None:
+    # the bug: sample_values had no point for x > -sqrt(2)/2 (the solver
+    # takes rational coefficients), verify_numerically reported nothing
+    # and the driver rejected a correct value
+    import random
+    from sympy_extras.integrals.conditions import sample_values, _rational_relation
+    values = sample_values([x], [x > -sqrt(2) / 2, x < 0], random.Random(0))
+    assert values is not None and -sqrt(2) / 2 < values[x] < 0
+    from sympy import Gt
+    rewritten = _rational_relation(x > -sqrt(2) / 2)
+    assert isinstance(rewritten, Gt) and rewritten.rhs.is_rational and rewritten.rhs > -sqrt(2) / 2
+    assert _rational_relation(x < 1) == (x < 1)

@@ -215,7 +215,8 @@ from sympy.core.basic import Basic
 from sympy.core.containers import Tuple
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
-from sympy.core.numbers import Integer, Rational, nan, oo, zoo
+from sympy.core.numbers import I, Integer, Rational, nan, oo, zoo
+from sympy.polys.rootoftools import CRootOf, rootof
 from sympy.core.power import Pow
 from sympy.core.relational import Eq, Ge, Gt, Le, Lt, Relational
 from sympy.core.singleton import S
@@ -234,7 +235,7 @@ from sympy.matrices.dense import Matrix, eye
 from sympy.sets.sets import EmptySet, FiniteSet, Interval, Set, Union
 from sympy.simplify.simplify import simplify
 from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly, factor
+from sympy.polys.polytools import Poly, degree, factor
 from sympy.solvers.solvers import solve as sympy_solve
 from sympy.solvers.simplex import linprog
 
@@ -250,6 +251,7 @@ from sympy_extras.polys.cad.samplepoints import RealAlgebraic, compare_real
 from sympy_extras.settings import settings
 from .conditions import numerically_equal
 from .definite import definite_integral
+from .axisymmetric import axisymmetric_integral
 
 __all__ = ['IntegralByRanges', 'integrate_by_ranges']
 
@@ -426,7 +428,7 @@ def _explicit_root(bound: _Bound, parent: CADCell, gens: Sequence[Symbol]) -> Op
     equation = as_expr(bound.poly.as_expr())
     point = {g: p for g, p in zip(gens[:-1], parent.point)}
     if not equation.has(*gens[:-1]) if len(gens) > 1 else True:
-        return as_expr(bound.value)
+        return _radical_form(as_expr(bound.value))
     target = as_expr(bound.value).evalf(30)
     trigonometric = _trigonometric_roots(bound.poly, x)
     for candidates in (trigonometric, attempt(lambda: sympy_solve(equation, x), settings.timeout)):
@@ -448,6 +450,32 @@ def _explicit_root(bound: _Bound, parent: CADCell, gens: Sequence[Symbol]) -> Op
         if len(matches) == 1:
             return matches[0]
     return None
+
+
+def _radical_form(root: Expr) -> Expr:
+    """A numeric ``CRootOf`` of degree at most four written in radicals
+    when the radicals are real and short, else the ``CRootOf`` itself
+    (the bug: the bound ``CRootOf(4*x**2 - 3, 1)`` of a cell stayed a
+    ``CRootOf`` where ``sqrt(3)/2`` was meant, and ``definite_integral``
+    left the integral up to it unevaluated).
+
+    >>> from sympy import CRootOf, symbols
+    >>> from sympy_extras.integrals.regions import _radical_form
+    >>> x = symbols('x')
+    >>> _radical_form(CRootOf(4*x**2 - 3, 1))
+    sqrt(3)/2
+    >>> _radical_form(CRootOf(x**5 - x - 1, 0))
+    CRootOf(x**5 - x - 1, 0)
+    """
+    if not isinstance(root, CRootOf):
+        return root
+    expression, index = as_expr(root.args[0]), int(as_expr(root.args[1]))
+    if degree(expression) > 4:
+        return root
+    candidate = attempt(lambda: as_expr(rootof(expression, index, radicals=True)), settings.timeout)
+    if candidate is None or isinstance(candidate, CRootOf) or candidate.has(I) or len(str(candidate)) > 200:
+        return root
+    return candidate
 
 
 def _trigonometric_roots(poly: Poly, x: Symbol) -> Optional[list[Expr]]:
@@ -1570,6 +1598,9 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
         extra = [as_boolean(a) for a in ([assumptions] if isinstance(assumptions, (Boolean, bool))
                                          else assumptions)]
     if measure == 'hausdorff':
+        revolved = axisymmetric_integral(f, formula, names, extra, measure=node.measure)
+        if revolved is not None:
+            return revolved
         surface = _hausdorff(f, formula, names, assumptions, extra)
         return node if surface is None else surface
     if dimension is not None:
@@ -1587,6 +1618,9 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     polytope = _polytope(f, formula, names, extra)
     if polytope is not None:
         return polytope
+    revolved = axisymmetric_integral(f, formula, names, extra)
+    if revolved is not None:
+        return revolved
     found = _decomposed(node, f, formula, names, assumptions, extra)
     if found is not None:
         return found

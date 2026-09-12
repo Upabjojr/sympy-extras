@@ -136,3 +136,33 @@ def test_unions_of_overlapping_discs() -> None:
     lens = 2 * pi / 3 - sqrt(3) / 2
     assert integrate_by_ranges(1, Or(x**2 + y**2 < 1, (x - 1)**2 + y**2 < 1)) == 2 * pi - lens
     assert integrate_by_ranges(1, Xor(x**2 + y**2 < 1, (x - 1)**2 + y**2 < 1)) == 2 * pi - 2 * lens
+
+
+def test_quadric_intersections() -> None:
+    # volumes and areas of intersections of quadrics checked against
+    # closed forms and mpmath quadrature (the union of two balls needs
+    # the termwise integration of a sum of radicals, the slab and wedge
+    # the decomposition, the 4-ball cases the revolution of three
+    # variables)
+    import mpmath
+    from sympy import And, Eq, Not, S, sqrt, N
+    x, y, z, w = symbols('x y z w')
+    ball = x**2 + y**2 + z**2 < 1
+    assert integrate_by_ranges(1, And(ball, z > -S.Half, z < S.Half)) == 11 * pi / 12
+    assert integrate_by_ranges(1, And(ball, x > 0, y > 0)) == pi / 3
+    assert integrate_by_ranges(1, And(x**2 + y**2 < 1, y**2 + z**2 < 1)) == Rational(16, 3)        # Steinmetz
+    # the tricylinder, no axis of symmetry: the decomposition with the
+    # real antiderivatives of the radicals on its cells
+    tricylinder = integrate_by_ranges(1, And(x**2 + y**2 < 1, y**2 + z**2 < 1, x**2 + z**2 < 1))
+    assert tricylinder.equals(8 * (2 - sqrt(2)))
+    assert integrate_by_ranges(1, And(ball, Not((x - 1)**2 + y**2 + z**2 < 1))) == 4 * pi / 3 - 5 * pi / 12
+    ball4 = x**2 + y**2 + z**2 + w**2 < 1
+    assert integrate_by_ranges(1, And(x**2 + y**2 + z**2 + w**2 < 4, Not(ball4))) == 15 * pi**2 / 2
+    assert integrate_by_ranges(1, And(ball4, x**2 + y**2 < Rational(1, 4))) == 7 * pi**2 / 32
+    cap4 = integrate_by_ranges(1, And(ball4, w > S.Half))
+    assert abs(float(N(cap4)) - float(mpmath.quad(lambda t: 4 * mpmath.pi / 3 * (1 - t**2)**1.5, [0.5, 1]))) < 1e-12
+    circle = integrate_by_ranges(1, And(Eq(x**2 + y**2 + z**2, 1), Eq(x + y + z, 1)), measure='hausdorff')
+    assert circle == 2 * sqrt(6) * pi / 3
+    area = integrate_by_ranges(1, And(Eq(z, x**2 + y**2), ball), measure='hausdorff')
+    a = (sqrt(5) - 1) / 2
+    assert abs(float(N(area - pi / 6 * ((1 + 4 * a)**Rational(3, 2) - 1)))) < 1e-12

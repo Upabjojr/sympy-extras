@@ -310,6 +310,15 @@ The driver tries, after the Mellin method and the residues:
   is kept only when the limit is finite and free of the regulator, so
   `sin(x)**2` over `(0, oo)` has none, and a convergent integral keeps its
   value (Hardy, *Divergent series*, ch. 4-5).
+- **Radicals of quadratics** (`sympy_extras.integrals.radicals`): the
+  real antiderivatives of `x**n * Q**(m/2)`, `Q` a quadratic and `m` odd,
+  by the reduction formulas of Gradshteyn–Ryzhik 2.26, in arcsines and
+  hyperbolic arcsines where SymPy writes complex logarithms (whose limits
+  at an algebraic bound fail); tried first by the antiderivative route
+  and early by the driver, since these are the integrands the cells of a
+  region bounded by circles, spheres and cylinders leave:
+  `Integral(2*sqrt(1 - y**2), (y, -sqrt(1 - x**2), x))` for
+  `-sqrt(2)/2 < x < 0` is `asin(x) + asin(sqrt(1 - x**2))`.
 - **Term by term**: a sum which defeats every method is integrated term
   by term, the value kept only when every term is finite (terms which
   diverge separately may cancel in the sum) and the total passes the
@@ -507,6 +516,43 @@ solved for it.
 pi*(-1 + 5*sqrt(5))/6
 >>> integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y**2 < exp(x)))
 -2 + 2*exp(1/2)
+
+```
+
+A region with a rotational symmetry, one whose relations and integrand
+see a group of two or more variables only through the sum of their
+squares, is reduced to its profile in the half-plane of the radius
+(`sympy_extras.integrals.axisymmetric`): the group becomes one variable
+`rho > 0` with the weight `2*pi**(k/2)/gamma(k/2)*rho**(k - 1)`, the area
+of the unit sphere `S**(k-1)`, and the profile, one dimension smaller and
+bounded by conics, goes back to the decomposition. Invariance is decided
+exactly by the infinitesimal rotations `u*dP/dv - v*dP/du = 0`. Two
+balls, a ball cut by a paraboloid, a cylinder or a plane, their unions
+and differences, and the same in four dimensions come out in a second
+or two; with `measure='hausdorff'` the same weight gives the areas of
+caps and of paraboloids and the lengths of circles of intersection. A
+ball cut by planes with a common normal is a body of revolution about
+that normal: the frame along it, scaled by the normal's length so that
+the offsets stay rational, is a similarity, and the integral is that in
+the new frame times `|a|**(-d)`, `d` the dimension of the measure:
+
+```python
+>>> ball = x**2 + y**2 + z**2 < 1
+>>> integrate_by_ranges(1, ball & ((x - 1)**2 + y**2 + z**2 < 1))
+5*pi/12
+>>> integrate_by_ranges(1, ball & (z > x**2 + y**2))
+5*pi*(3 - sqrt(5))/12
+>>> integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1) & (z > S(1)/2), measure='hausdorff')
+pi
+>>> integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1) & Eq((x - 1)**2 + y**2 + z**2, 1), measure='hausdorff')
+sqrt(3)*pi
+>>> w = symbols('w')
+>>> integrate_by_ranges(1, (x**2 + y**2 + z**2 + w**2 < 1) & ((x - 1)**2 + y**2 + z**2 + w**2 < 1))
+pi*(-9*sqrt(3) + 8*pi)/24
+>>> integrate_by_ranges(1, ball & (x + y + z > -1) & (x + y + z < 1))
+16*sqrt(3)*pi/27
+>>> integrate_by_ranges(1, Eq(x**2 + y**2 + z**2, 1) & Eq(x + y + z, 1), measure='hausdorff')
+2*sqrt(6)*pi/3
 
 ```
 

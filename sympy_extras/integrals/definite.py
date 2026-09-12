@@ -468,8 +468,9 @@ class _Integrator:
                 return self._finish(principal_value_integral(f, x, a, b, self.assumptions))
             return None
         allowed = (free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x}
-        strategies = [self._table, self._canonical, self._mean_value, self._elliptic, self._trigonometric,
-                      self._mapped, self._inversion, self._residues, self._contours, self._algebraic]
+        strategies = [self._table, self._radicals, self._canonical, self._mean_value, self._elliptic,
+                      self._trigonometric, self._mapped, self._inversion, self._residues, self._contours,
+                      self._algebraic]
         if a == -oo and b == oo and f.has(HyperbolicFunction):
             # the rectangular contour gives pi**3/4 for x**2/cosh(x) where
             # the Mellin table gives polylogarithms at +-I
@@ -836,6 +837,18 @@ class _Integrator:
             if isinstance(p, Symbol) and (p.is_extended_real or self.ask(element(p, S.Reals)) is True):
                 replacement[as_expr(node)] = p if isinstance(node, re) else S.Zero
         return as_boolean(condition.xreplace(replacement)) if replacement else condition
+
+    def _radicals(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """``x**n * Q**(m/2)`` with ``Q`` quadratic (:mod:`.radicals`): the
+        real antiderivative of the table evaluated at the endpoints, cheap
+        and early, before the methods which spend the budget on the sums
+        of radicals the cells of a region leave (the bug: the slices of
+        the cylinders reached the antiderivative route, the last one, with
+        no time left)."""
+        from .radicals import quadratic_radical_antiderivative
+        if a.has(x) or b.has(x) or quadratic_radical_antiderivative(f, x) is None:
+            return None
+        return self._antiderivative(f, x, a, b, depth)
 
     def _antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """An antiderivative evaluated by one-sided limits at the
