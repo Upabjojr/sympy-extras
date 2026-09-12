@@ -563,6 +563,8 @@ sympy_extras/
         axisymmetric.py      region integrals with a rotational symmetry reduced to their profile
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic
         indefinite.py        indefinite integration by the typed methods in turn, every antiderivative checked
+        trigonometric.py     products and rational functions of trigonometric and hyperbolic functions
+        heurisch.py          the heuristic Risch integrator, typed, verified, with an extended candidate table
     solvers/
         lie.py               jet spaces, prolongation, determining equations, symmetries
         pde.py               pde_symmetries, similarity_reduction, pdsolve_lie

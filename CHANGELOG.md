@@ -179,6 +179,30 @@ remove public functions. Breaking changes are listed here when they happen.
   conditions are decided by their real parts (`exp(-a*x)*sin(b*x)*
   besselj(0, x)` over `(0, oo)`).
 
+- `sympy_extras.integrals.heurisch`: a strictly typed port of SymPy's
+  heuristic Risch integrator (Bronstein's poor man's integrator), every
+  result verified by differentiation, floating-point coefficients
+  refused, the logarithms of conjugates written as arctangents, the
+  candidate table always on and extended to the error functions of any
+  completed square, `Ei`, `Si` and `Ci`, the degree bound raised once
+  before giving up, the component order deterministic; sixty-six
+  integrands of Gradshteyn–Ryzhik's chapter 2 families verify in twelve
+  seconds, among them `1/sqrt(2*x - x**2)`, `1/sqrt(x**2 + 2*x + 5)` and
+  `x**2*sqrt(x**2 + 1)`, which SymPy's `heurisch` leaves. Tried by
+  `indefinite_integral` before SymPy's.
+
+- `sympy_extras.integrals.trigonometric`: a typed integrator for products
+  of powers of trigonometric and hyperbolic functions (the raising and
+  lowering formulas, `tan`, `sec`, `csc`, `cot` and their hyperbolic
+  counterparts), rational functions of `sin` and `cos` by `t = tan(x/2)`
+  and of `sinh`, `cosh` by `u = exp(x)` through the typed rational
+  integrator, products with polynomials and exponentials, and
+  polynomials times inverse trigonometric and hyperbolic functions by
+  parts, every result checked by differentiation (SymPy's `trigintegrate`
+  as the starting point); `tan(x)/(1 + sin(x))` and
+  `cos(x)**2/(1 + sin(x)**2)`, unevaluated or timed out in SymPy, take a
+  second. Tried by `indefinite_integral` before the Risch algorithm.
+
 - `sympy_extras.integrals.indefinite`: `indefinite_integral(f, x)`, the
   antiderivative by the typed methods of the package in turn (rational
   functions, radicals of a quadratic, the Risch algorithm, the heuristic

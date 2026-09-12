@@ -16,11 +16,14 @@ The order of the methods:
 1. rational functions by Hermite reduction and the Lazard–Rioboo–Trager
    logarithmic part (:mod:`.risch.rationaltools`);
 2. radicals of a quadratic, `x^n Q^{m/2}` (:mod:`.radicals`);
-3. the transcendental Risch algorithm (:mod:`.risch`), which also proves
+3. products of powers of trigonometric and hyperbolic functions, their
+   rational functions and their products with polynomials, exponentials
+   and inverse functions (:mod:`.trigonometric`);
+4. the transcendental Risch algorithm (:mod:`.risch`), which also proves
    non-elementarity;
-4. the heuristic Risch integrator (SymPy's ``heurisch``);
-5. Trager's algorithm for one square root of a polynomial (:mod:`.trager`);
-6. SymPy's rule-based ``manualintegrate``, its Meijer G-function route
+5. the heuristic Risch integrator (:mod:`.heurisch`, then SymPy's);
+6. Trager's algorithm for one square root of a polynomial (:mod:`.trager`);
+7. SymPy's rule-based ``manualintegrate``, its Meijer G-function route
    and its ``integrate``.
 
 Examples
@@ -179,12 +182,21 @@ def _radicals(f: Expr, x: Symbol) -> Optional[Expr]:
     return attempt(lambda: quadratic_radical_antiderivative(f, x), _budget())
 
 
+def _trigonometric(f: Expr, x: Symbol) -> Optional[Expr]:
+    from .trigonometric import trigonometric_antiderivative
+    return attempt(lambda: trigonometric_antiderivative(f, x), _budget())
+
+
 def _risch(f: Expr, x: Symbol) -> Optional[Expr]:
     from .risch import risch_antiderivative
     return attempt(lambda: risch_antiderivative(f, x), _budget())
 
 
 def _heurisch(f: Expr, x: Symbol) -> Optional[Expr]:
+    from .heurisch import heurisch_cases
+    found = attempt(lambda: heurisch_cases(f, x), _budget())
+    if found is not None:
+        return found
     found = attempt(lambda: as_expr(heurisch_wrapper(f, x)), _budget())
     return None if found is None or found.has(Integral) else found
 
@@ -211,7 +223,7 @@ def _sympy(f: Expr, x: Symbol) -> Optional[Expr]:
 
 #: the methods in the order they are tried
 METHODS: list[tuple[str, Method]] = [
-    ('rational', _rational), ('radicals', _radicals), ('risch', _risch),
+    ('rational', _rational), ('radicals', _radicals), ('trigonometric', _trigonometric), ('risch', _risch),
     ('heurisch', _heurisch), ('trager', _trager), ('manual', _manual), ('meijer', _meijer), ('sympy', _sympy)]
 
 
@@ -271,7 +283,7 @@ def indefinite_integral(f: ExprLike, x: Symbol, assumptions: Assumptions = None)
     >>> indefinite_integral(1/(x*(log(x)**2 + 1)), x)
     atan(log(x))
     >>> indefinite_integral(tan(x)**3, x)
-    -log(tan(x)**2 + 1)/2 + tan(x)**2/2
+    log(cos(x)) + tan(x)**2/2
     """
     f_ = as_expr(f)
     found = verified_antiderivative(f_, x, assumptions)

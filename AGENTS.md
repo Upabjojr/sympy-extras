@@ -121,6 +121,8 @@ sympy_extras/
         axisymmetric.py      region integrals with a rotational symmetry (bodies and surfaces of revolution) reduced to their profile
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic (Gradshteyn-Ryzhik 2.26), for the slices of regions
         indefinite.py        indefinite_integral: the typed methods in turn, then SymPy's, each antiderivative checked by differentiation
+        trigonometric.py     powers, products and rational functions of trigonometric and hyperbolic functions, inverse functions by parts
+        heurisch.py          typed port of SymPy's heuristic Risch integrator (BSD, see risch/LICENSE-SymPy), every result verified
         tests/
     polys/
         euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)
