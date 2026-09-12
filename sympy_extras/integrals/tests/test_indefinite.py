@@ -1,7 +1,7 @@
 """Tests of the verified indefinite integration driver."""
 from __future__ import annotations
 
-from sympy import symbols, sqrt, exp, sin, cos, log, tan, atan, asin, Integral, I, diff, simplify, erf
+from sympy import symbols, sqrt, exp, sin, cos, log, tan, atan, asin, Integral, I, S, diff, simplify, erf
 
 from sympy_extras._typing import as_expr
 from sympy_extras.integrals import indefinite_integral, verified_antiderivative, is_antiderivative
@@ -72,3 +72,17 @@ def test_antiderivatives_wrong_for_negative_x_are_refused() -> None:
     assert is_antiderivative(-asinh(1 / x), 1 / (x * sqrt(x**2 + 1)), x, [x > 0]) is not False
     found = indefinite_integral(1 / (x * sqrt(x**2 + 1)), x)
     assert found.has(Integral) or is_antiderivative(found, 1 / (x * sqrt(x**2 + 1)), x) is True
+
+
+def test_the_census_cases_are_never_returned_wrong() -> None:
+    # the census of SymPy 1.14 on 1165 published indefinite integrals
+    # (sympy-extras-benchmarks, indefinite_integrals): nine wrong answers
+    # from the Meijer G route, right for x > 0 and wrong for x < 0, and a
+    # nan from manualintegrate; the driver either verifies or declines
+    from sympy import besselk, asin, nan
+    cases = [exp(-x**3), x * exp(-x**3), 1 / (x * sqrt(x**2 + 1)), 1 / (x * sqrt(x**2 - 1)), besselk(7, x),
+             x**2 * asin(sqrt(1 - x**2) / (3 * sqrt(S(1) / 9 - x**2 / 9)))]
+    for f in cases:
+        found = indefinite_integral(f, x)
+        assert not found.has(nan), f
+        assert found.has(Integral) or is_antiderivative(found, f, x) is True, (f, found)
