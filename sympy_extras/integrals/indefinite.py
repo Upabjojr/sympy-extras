@@ -75,7 +75,14 @@ Method = Callable[[Expr, Symbol], Optional[Expr]]
 
 
 def _budget() -> Optional[float]:
+    """A quarter of the limit for a typed method (they answer or decline
+    fast) and half for SymPy's routes, which need it: under a 20 s limit
+    the elliptic and Piecewise answers of ``integrate`` missed a quarter."""
     return None if settings.timeout is None else settings.timeout / 4
+
+
+def _long_budget() -> Optional[float]:
+    return None if settings.timeout is None else settings.timeout / 2
 
 
 def is_antiderivative(F: ExprLike, f: ExprLike, x: Symbol, assumptions: Assumptions = None) -> Optional[bool]:
@@ -108,8 +115,10 @@ def is_antiderivative(F: ExprLike, f: ExprLike, x: Symbol, assumptions: Assumpti
     # the sampler above draws positive points: the census of SymPy's
     # mistakes found nine antiderivatives right for x > 0 and wrong for
     # x < 0 (polar incomplete gammas, -asinh(1/x), Bessel forms), so
-    # the difference is evaluated on both sides of 0 as well
-    return _vanishes_on_both_sides(difference, x, assumptions)
+    # the difference is evaluated on both sides of 0 as well, where the
+    # integrand is real (a complex integrand, log(x) asin(x) for x < 0,
+    # is met with branches the two sides need not share)
+    return _vanishes_on_both_sides(difference, f_, x, assumptions)
 
 
 def _items(assumptions: Assumptions) -> list[Boolean]:
@@ -120,10 +129,11 @@ def _items(assumptions: Assumptions) -> list[Boolean]:
     return [as_boolean(a) for a in assumptions]
 
 
-def _vanishes_on_both_sides(difference: Expr, x: Symbol, assumptions: Assumptions) -> bool:
+def _vanishes_on_both_sides(difference: Expr, f: Expr, x: Symbol, assumptions: Assumptions) -> bool:
     """Whether ``difference`` vanishes at fixed real points of both signs
-    (the parameters sampled under the assumptions), where it is a finite
-    real or complex number; a point where it is undefined is skipped."""
+    (the parameters sampled under the assumptions) where ``f`` is a
+    finite real number; a point where ``f`` is undefined or not real is
+    skipped."""
     parameters = sorted_symbols(free_symbols(difference) - {x})
     values: dict[Symbol, Expr] = {}
     if parameters:
@@ -135,6 +145,13 @@ def _vanishes_on_both_sides(difference: Expr, x: Symbol, assumptions: Assumption
     for point in (Rational(-37, 10), Rational(-13, 10), Rational(-2, 5), Rational(3, 5), Rational(19, 10)):
         # a point the assumptions on x exclude (x > 0) is not a test
         if any(fact.xreplace(values).xreplace({x: point}) == false for fact in facts):
+            continue
+        at_point = as_expr(f.xreplace(values).xreplace({x: point}))
+        sample = attempt(lambda: at_point.evalf(30), _budget())
+        if sample is None or not sample.is_number or sample.has(nan, zoo, oo, -oo):
+            continue
+        imaginary = as_expr(Abs(im(sample)))
+        if not imaginary.is_comparable or imaginary > Rational(1, 10**20):
             continue
         value = as_expr(difference.xreplace(values).xreplace({x: point}))
         number = attempt(lambda: value.evalf(30), _budget())
@@ -250,17 +267,17 @@ def _trager(f: Expr, x: Symbol) -> Optional[Expr]:
 
 
 def _manual(f: Expr, x: Symbol) -> Optional[Expr]:
-    found = attempt(lambda: as_expr(manualintegrate(f, x)), _budget())
+    found = attempt(lambda: as_expr(manualintegrate(f, x)), _long_budget())
     return None if found is None or found.has(Integral) else found
 
 
 def _meijer(f: Expr, x: Symbol) -> Optional[Expr]:
-    found = attempt(lambda: as_expr(integrate(f, x, meijerg=True, risch=False)), _budget())
+    found = attempt(lambda: as_expr(integrate(f, x, meijerg=True, risch=False)), _long_budget())
     return None if found is None or found.has(Integral) else found
 
 
 def _sympy(f: Expr, x: Symbol) -> Optional[Expr]:
-    found = attempt(lambda: as_expr(integrate(f, x, risch=False)), _budget())
+    found = attempt(lambda: as_expr(integrate(f, x, risch=False)), _long_budget())
     return None if found is None or found.has(Integral) else found
 
 
