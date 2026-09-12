@@ -23,7 +23,9 @@ The order of the methods:
    non-elementarity;
 5. the heuristic Risch integrator (:mod:`.heurisch`, then SymPy's);
 6. Trager's algorithm for one square root of a polynomial (:mod:`.trager`);
-7. SymPy's rule-based ``manualintegrate``, its Meijer G-function route
+7. the methods above again on the canonical forms of the integrand and
+   on the integrands of its substitutions (:mod:`.rewriting`);
+8. SymPy's rule-based ``manualintegrate``, its Meijer G-function route
    and its ``integrate``.
 
 Examples
@@ -275,6 +277,31 @@ def _trager(f: Expr, x: Symbol) -> Optional[Expr]:
     return attempt(lambda: trager_antiderivative(f, x), _budget())
 
 
+#: the methods tried on a rewritten form or a substituted integrand
+TYPED = ['rational', 'radicals', 'trigonometric', 'risch', 'heurisch', 'trager']
+
+
+def _rewriting(f: Expr, x: Symbol) -> Optional[Expr]:
+    """The typed methods on the canonical forms of ``f`` and on the
+    integrands of its substitutions (:mod:`.rewriting`): a power of a
+    positive base as an exponential, hyperbolic functions as
+    exponentials, inverse hyperbolic functions as logarithms; ``x = t**k``
+    for fractional powers, ``u = exp(c*x)`` for rational functions of an
+    exponential, ``x = exp(t)`` for rational functions of a logarithm."""
+    from .rewriting import rewritten_forms, power_substitutions, substitute_back
+    forms = attempt(lambda: rewritten_forms(f, x), _budget())
+    for form in forms or []:
+        found = verified_antiderivative(form, x, methods=TYPED)
+        if found is not None:
+            return found[0]
+    substitutions = attempt(lambda: power_substitutions(f, x), _budget())
+    for substitution in substitutions or []:
+        found = verified_antiderivative(substitution.integrand, substitution.variable, methods=TYPED)
+        if found is not None:
+            return substitute_back(found[0], substitution.variable, substitution.back)
+    return None
+
+
 def _manual(f: Expr, x: Symbol) -> Optional[Expr]:
     found = attempt(lambda: as_expr(manualintegrate(f, x)), _long_budget())
     return None if found is None or found.has(Integral) else found
@@ -286,14 +313,15 @@ def _meijer(f: Expr, x: Symbol) -> Optional[Expr]:
 
 
 def _sympy(f: Expr, x: Symbol) -> Optional[Expr]:
-    found = attempt(lambda: as_expr(integrate(f, x, risch=False)), _long_budget())
+    found = attempt(lambda: as_expr(integrate(f, x)), _long_budget())
     return None if found is None or found.has(Integral) else found
 
 
 #: the methods in the order they are tried
 METHODS: list[tuple[str, Method]] = [
     ('rational', _rational), ('radicals', _radicals), ('trigonometric', _trigonometric), ('risch', _risch),
-    ('heurisch', _heurisch), ('trager', _trager), ('manual', _manual), ('meijer', _meijer), ('sympy', _sympy)]
+    ('heurisch', _heurisch), ('trager', _trager), ('rewriting', _rewriting), ('manual', _manual), ('meijer', _meijer),
+    ('sympy', _sympy)]
 
 
 def verified_antiderivative(f: ExprLike, x: Symbol, assumptions: Assumptions = None,

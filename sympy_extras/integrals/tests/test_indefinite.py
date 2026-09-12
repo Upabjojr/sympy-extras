@@ -86,3 +86,15 @@ def test_the_census_cases_are_never_returned_wrong() -> None:
         found = indefinite_integral(f, x)
         assert not found.has(nan), f
         assert found.has(Integral) or is_antiderivative(found, f, x) is True, (f, found)
+
+
+def test_rewriting_and_substitutions_are_tried() -> None:
+    # fractional powers of x go through x = t**k, powers of positive bases
+    # and hyperbolic functions through exponentials, all by the typed
+    # methods and verified against the original integrand
+    from sympy import cosh, S
+    found = verified_antiderivative(1 / (x**(S(1) / 3) + sqrt(x)), x)
+    assert found is not None and found[1] == 'rewriting' and is_antiderivative(found[0], 1 / (x**(S(1) / 3) + sqrt(x)), x) is True
+    found = verified_antiderivative(2**x * cosh(x), x)
+    assert found is not None and found[1] in ('heurisch', 'rewriting')
+    assert is_antiderivative(found[0], 2**x * cosh(x), x) is True

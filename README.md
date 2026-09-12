@@ -565,6 +565,7 @@ sympy_extras/
         indefinite.py        indefinite integration by the typed methods in turn, every antiderivative checked
         trigonometric.py     products and rational functions of trigonometric and hyperbolic functions
         heurisch.py          the heuristic Risch integrator, typed, verified, with an extended candidate table
+        rewriting.py         canonical forms and substitutions tried before SymPy's routes
     solvers/
         lie.py               jet spaces, prolongation, determining equations, symmetries
         pde.py               pde_symmetries, similarity_reduction, pdsolve_lie

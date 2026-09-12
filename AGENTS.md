@@ -123,6 +123,7 @@ sympy_extras/
         indefinite.py        indefinite_integral: the typed methods in turn, then SymPy's, each antiderivative checked by differentiation
         trigonometric.py     powers, products and rational functions of trigonometric and hyperbolic functions, inverse functions by parts
         heurisch.py          typed port of SymPy's heuristic Risch integrator (BSD, see risch/LICENSE-SymPy), every result verified
+        rewriting.py         canonical forms (exponentials, logarithms of inverse hyperbolic functions) and substitutions x = t**k, u = exp(c x), x = exp(t)
         tests/
     polys/
         euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)

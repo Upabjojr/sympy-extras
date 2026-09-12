@@ -27,6 +27,7 @@ from .axisymmetric import axisymmetric_integral, rotation_group
 from .indefinite import indefinite_integral, verified_antiderivative, is_antiderivative
 from .trigonometric import trigonometric_antiderivative
 from .heurisch import heurisch_antiderivative, heurisch_cases
+from .rewriting import rewritten_forms, power_substitutions
 from .parametric import parametric_integral
 from .brackets import ramanujan_master_theorem, method_of_brackets, mellin_transform_series
 from .recognize import recognize_constant, recognize_integral
@@ -36,7 +37,7 @@ __all__ = ['ConditionalValue', 'GammaQuotient', 'MellinTransform', 'mellin_trans
     'slater_expansion', 'mellin_barnes', 'MeijerG', 'mellin_integrate', 'definite_integral',
     'conditional_integral', 'verify_numerically', 'IntegralByRanges', 'integrate_by_ranges', 'residue_integral', 'antiderivative_integral',
     'parametric_integral', 'almkvist_zeilberger', 'holonomic_ode', 'holonomic_integral', 'DifferentialTelescoper', 'ramanujan_master_theorem', 'method_of_brackets',
-    'mellin_transform_series', 'recognize_constant', 'recognize_integral', 'risch_antiderivative', 'trager_antiderivative', 'trager_reduce', 'is_nonelementary_algebraic', 'axisymmetric_integral', 'rotation_group', 'indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'trigonometric_antiderivative', 'heurisch_antiderivative', 'heurisch_cases',
+    'mellin_transform_series', 'recognize_constant', 'recognize_integral', 'risch_antiderivative', 'trager_antiderivative', 'trager_reduce', 'is_nonelementary_algebraic', 'axisymmetric_integral', 'rotation_group', 'indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'trigonometric_antiderivative', 'heurisch_antiderivative', 'heurisch_cases', 'rewritten_forms', 'power_substitutions',
     'is_nonelementary', 'principal_value_integral', 'mean_value_integral', 'laurent_coefficient', 'contour_integral', 'rectangular_integral',
     'sector_integral', 'indented_integral', 'frullani', 'glasser', 'transformation_integral', 'laplace_rules', 'laplace_integral',
     'laplace_of_convolution', 'chyzak', 'dfinite_ode', 'dfinite_integral', 'DFiniteTelescoper', 'asymptotic_integral', 'watson_lemma', 'laplace_method',

@@ -179,6 +179,16 @@ remove public functions. Breaking changes are listed here when they happen.
   conditions are decided by their real parts (`exp(-a*x)*sin(b*x)*
   besselj(0, x)` over `(0, oo)`).
 
+- `sympy_extras.integrals.rewriting`: canonical forms of an integrand
+  (powers of positive bases and of exponentials as one exponential,
+  hyperbolic functions as exponentials, inverse hyperbolic functions as
+  real-branch logarithms, radicals of products combined where the
+  radicands are nonnegative, `Abs` by a sign the assumptions fix) and the
+  substitutions `x = t**k`, `u = exp(c*x)`, `x = exp(t)` with their back
+  substitution, each checked against the integrand; `indefinite_integral`
+  runs the typed methods on them before SymPy's routes
+  (`1/(x**(1/3) + sqrt(x))`, `sqrt(x)/(1 + x)`, `2**x*cosh(x)`).
+
 - `sympy_extras.integrals.heurisch`: a strictly typed port of SymPy's
   heuristic Risch integrator (Bronstein's poor man's integrator), every
   result verified by differentiation, floating-point coefficients
