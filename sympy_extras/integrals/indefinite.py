@@ -46,10 +46,13 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 from sympy.core.expr import Expr
-from sympy.core.numbers import I, nan, oo, zoo
+import random
+
+from sympy.core.numbers import I, Rational, nan, oo, zoo
 from sympy.core.add import Add
 from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.complexes import im
+from sympy.logic.boolalg import Boolean, false
+from sympy.functions.elementary.complexes import Abs, im
 from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.trigonometric import atan
 from sympy.functions.elementary.exponential import exp_polar
@@ -61,10 +64,10 @@ from sympy.simplify.simplify import simplify
 from sympy.simplify.simplify import logcombine
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions
 from sympy_extras.settings import settings
-from .conditions import numerically_equal
+from .conditions import numerically_equal, sample_values
 
 __all__ = ['indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'real_form', 'conjugate_logarithms']
 
@@ -100,7 +103,47 @@ def is_antiderivative(F: ExprLike, f: ExprLike, x: Symbol, assumptions: Assumpti
     simpler = attempt(lambda: as_expr(simplify(reduced if reduced is not None else difference)), _budget())
     if simpler is not None and simpler == 0:
         return True
-    return numerically_equal(as_expr(F_.diff(x)), f_, assumptions)
+    if numerically_equal(as_expr(F_.diff(x)), f_, assumptions) is not True:
+        return False
+    # the sampler above draws positive points: the census of SymPy's
+    # mistakes found nine antiderivatives right for x > 0 and wrong for
+    # x < 0 (polar incomplete gammas, -asinh(1/x), Bessel forms), so
+    # the difference is evaluated on both sides of 0 as well
+    return _vanishes_on_both_sides(difference, x, assumptions)
+
+
+def _items(assumptions: Assumptions) -> list[Boolean]:
+    if assumptions is None:
+        return []
+    if isinstance(assumptions, (Boolean, bool)):
+        return [as_boolean(assumptions)]
+    return [as_boolean(a) for a in assumptions]
+
+
+def _vanishes_on_both_sides(difference: Expr, x: Symbol, assumptions: Assumptions) -> bool:
+    """Whether ``difference`` vanishes at fixed real points of both signs
+    (the parameters sampled under the assumptions), where it is a finite
+    real or complex number; a point where it is undefined is skipped."""
+    parameters = sorted_symbols(free_symbols(difference) - {x})
+    values: dict[Symbol, Expr] = {}
+    if parameters:
+        found = sample_values(parameters, assumptions, random.Random(str(difference)))
+        if found is None:
+            return True
+        values = found
+    facts = _items(assumptions)
+    for point in (Rational(-37, 10), Rational(-13, 10), Rational(-2, 5), Rational(3, 5), Rational(19, 10)):
+        # a point the assumptions on x exclude (x > 0) is not a test
+        if any(fact.xreplace(values).xreplace({x: point}) == false for fact in facts):
+            continue
+        value = as_expr(difference.xreplace(values).xreplace({x: point}))
+        number = attempt(lambda: value.evalf(30), _budget())
+        if number is None or not number.is_number or number.has(nan, zoo, oo, -oo):
+            continue
+        magnitude = as_expr(Abs(number))
+        if magnitude.is_comparable and magnitude > Rational(1, 10**15):
+            return False
+    return True
 
 
 def real_form(F: Expr, f: Expr, x: Symbol, assumptions: Assumptions = None) -> Expr:

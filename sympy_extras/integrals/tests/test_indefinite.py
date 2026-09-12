@@ -60,3 +60,15 @@ def test_real_forms_are_preferred() -> None:
     assert kept.has(I)
     assert not indefinite_integral(1 / (x**2 + 1), x).has(I)
     assert not indefinite_integral(1 / (x**4 + 1), x).has(I)
+
+
+def test_antiderivatives_wrong_for_negative_x_are_refused() -> None:
+    # the census of SymPy's mistakes: -asinh(1/x) is an antiderivative of
+    # 1/(x*sqrt(x**2 + 1)) for x > 0 only (Maxima's reference is
+    # -asinh(1/Abs(x))), and the sampler of the check drew positive
+    # points only
+    from sympy import asinh
+    assert is_antiderivative(-asinh(1 / x), 1 / (x * sqrt(x**2 + 1)), x) is False
+    assert is_antiderivative(-asinh(1 / x), 1 / (x * sqrt(x**2 + 1)), x, [x > 0]) is not False
+    found = indefinite_integral(1 / (x * sqrt(x**2 + 1)), x)
+    assert found.has(Integral) or is_antiderivative(found, 1 / (x * sqrt(x**2 + 1)), x) is True
