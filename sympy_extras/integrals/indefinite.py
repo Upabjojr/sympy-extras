@@ -16,16 +16,20 @@ The order of the methods:
 1. rational functions by Hermite reduction and the Lazard–Rioboo–Trager
    logarithmic part (:mod:`.risch.rationaltools`);
 2. radicals of a quadratic, `x^n Q^{m/2}` (:mod:`.radicals`);
-3. products of powers of trigonometric and hyperbolic functions, their
+3. powers times exponentials of powers, `x^{v-1} e^{a x^n + b}`, by the
+   incomplete gamma function and its elementary and error-function
+   cases, polynomials times `e^{a x^2 + b x + c}`, and rational functions
+   and binomials of an exponential (:mod:`.exponential`);
+4. products of powers of trigonometric and hyperbolic functions, their
    rational functions and their products with polynomials, exponentials
    and inverse functions (:mod:`.trigonometric`);
-4. the transcendental Risch algorithm (:mod:`.risch`), which also proves
+5. the transcendental Risch algorithm (:mod:`.risch`), which also proves
    non-elementarity;
-5. the heuristic Risch integrator (:mod:`.heurisch`, then SymPy's);
-6. Trager's algorithm for one square root of a polynomial (:mod:`.trager`);
-7. the methods above again on the canonical forms of the integrand and
+6. the heuristic Risch integrator (:mod:`.heurisch`, then SymPy's);
+7. Trager's algorithm for one square root of a polynomial (:mod:`.trager`);
+8. the methods above again on the canonical forms of the integrand and
    on the integrands of its substitutions (:mod:`.rewriting`);
-8. SymPy's rule-based ``manualintegrate``, its Meijer G-function route
+9. SymPy's rule-based ``manualintegrate``, its Meijer G-function route
    and its ``integrate``.
 
 Examples
@@ -253,6 +257,11 @@ def _radicals(f: Expr, x: Symbol) -> Optional[Expr]:
     return attempt(lambda: quadratic_radical_antiderivative(f, x), _budget())
 
 
+def _exponential(f: Expr, x: Symbol) -> Optional[Expr]:
+    from .exponential import exponential_antiderivative
+    return attempt(lambda: exponential_antiderivative(f, x), _budget())
+
+
 def _trigonometric(f: Expr, x: Symbol) -> Optional[Expr]:
     from .trigonometric import trigonometric_antiderivative
     return attempt(lambda: trigonometric_antiderivative(f, x), _budget())
@@ -278,7 +287,7 @@ def _trager(f: Expr, x: Symbol) -> Optional[Expr]:
 
 
 #: the methods tried on a rewritten form or a substituted integrand
-TYPED = ['rational', 'radicals', 'trigonometric', 'risch', 'heurisch', 'trager']
+TYPED = ['rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'heurisch', 'trager']
 
 
 def _rewriting(f: Expr, x: Symbol) -> Optional[Expr]:
@@ -296,9 +305,15 @@ def _rewriting(f: Expr, x: Symbol) -> Optional[Expr]:
             return found[0]
     substitutions = attempt(lambda: power_substitutions(f, x), _budget())
     for substitution in substitutions or []:
-        found = verified_antiderivative(substitution.integrand, substitution.variable, methods=TYPED)
-        if found is not None:
-            return substitute_back(found[0], substitution.variable, substitution.back)
+        g, t = substitution.integrand, substitution.variable
+        # the substituted integrand in its canonical forms too:
+        # d**(a*z + b*sqrt(z)) becomes 2*t*d**(a*t**2 + b*t), an exponential
+        # of a quadratic once the power of d is written as one
+        candidates = [g] + (attempt(lambda: rewritten_forms(g, t), _budget()) or [])
+        for candidate in candidates:
+            found = verified_antiderivative(candidate, t, methods=TYPED)
+            if found is not None:
+                return substitute_back(found[0], t, substitution.back)
     return None
 
 
@@ -319,7 +334,8 @@ def _sympy(f: Expr, x: Symbol) -> Optional[Expr]:
 
 #: the methods in the order they are tried
 METHODS: list[tuple[str, Method]] = [
-    ('rational', _rational), ('radicals', _radicals), ('trigonometric', _trigonometric), ('risch', _risch),
+    ('rational', _rational), ('radicals', _radicals), ('exponential', _exponential), ('trigonometric', _trigonometric),
+    ('risch', _risch),
     ('heurisch', _heurisch), ('trager', _trager), ('rewriting', _rewriting), ('manual', _manual), ('meijer', _meijer),
     ('sympy', _sympy)]
 
@@ -335,7 +351,7 @@ def verified_antiderivative(f: ExprLike, x: Symbol, assumptions: Assumptions = N
     >>> from sympy_extras.integrals.indefinite import verified_antiderivative
     >>> x = symbols('x')
     >>> verified_antiderivative(x*exp(x), x)
-    ((x - 1)*exp(x), 'risch')
+    (x*exp(x) - exp(x), 'exponential')
     """
     f_ = as_expr(f)
     for name, method in METHODS:

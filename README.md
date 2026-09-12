@@ -566,6 +566,7 @@ sympy_extras/
         trigonometric.py     products and rational functions of trigonometric and hyperbolic functions
         heurisch.py          the heuristic Risch integrator, typed, verified, with an extended candidate table
         rewriting.py         canonical forms and substitutions tried before SymPy's routes
+        exponential.py       powers times exponentials of powers by the incomplete gamma function, exponential-rational integrands
     solvers/
         lie.py               jet spaces, prolongation, determining equations, symmetries
         pde.py               pde_symmetries, similarity_reduction, pdsolve_lie

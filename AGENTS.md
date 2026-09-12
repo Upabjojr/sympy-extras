@@ -124,6 +124,7 @@ sympy_extras/
         trigonometric.py     powers, products and rational functions of trigonometric and hyperbolic functions, inverse functions by parts
         heurisch.py          typed port of SymPy's heuristic Risch integrator (BSD, see risch/LICENSE-SymPy), every result verified
         rewriting.py         canonical forms (exponentials, logarithms of inverse hyperbolic functions) and substitutions x = t**k, u = exp(c x), x = exp(t)
+        exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
         tests/
     polys/
         euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)

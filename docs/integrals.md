@@ -430,7 +430,14 @@ simplifies to zero, or vanishes at random points under the assumptions),
 after a rewriting to a real form when it carries `I` for a real
 integrand, and the `Integral` is returned unevaluated otherwise.
 `verified_antiderivative` returns the antiderivative with the name of the
-method which found it. Before SymPy's routes the typed methods are tried
+method which found it. Powers times exponentials of powers,
+`x**(v - 1)*exp(a*x**n + b)` with a symbolic `v`, go through the
+incomplete gamma function (`sympy_extras.integrals.exponential`), in the
+real form `-(-a)**(-s)*uppergamma(s, -a*x**n)/n` for `a < 0` and the
+confluent series `x**v*hyper((s,), (s + 1,), a*x**n)/v` otherwise, with
+the elementary, `Ei` and error-function cases reduced to; polynomials
+times `exp(a*x**2 + b*x + c)` by the completed square; rational functions
+and binomials of an exponential by `u = exp(c*x)`. Before SymPy's routes the typed methods are tried
 again on the canonical forms of the integrand and on the integrands of
 its substitutions (`sympy_extras.integrals.rewriting`): a power of a
 positive base as an exponential, `exp(X)**v` as `exp(v*X)`, hyperbolic

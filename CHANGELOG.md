@@ -179,6 +179,19 @@ remove public functions. Breaking changes are listed here when they happen.
   conditions are decided by their real parts (`exp(-a*x)*sin(b*x)*
   besselj(0, x)` over `(0, oo)`).
 
+- `sympy_extras.integrals.exponential`: `x**(v - 1)*exp(a*x**n + b)` with
+  a symbolic `v` by the incomplete gamma function in real forms (no polar
+  numbers: `uppergamma` for `a < 0`, the confluent series
+  `x**v*hyper((s,), (s + 1,), a*x**n)/v` otherwise), reduced to the
+  elementary, `Ei` and error-function cases where they apply
+  (`x**2*exp(x**2)` is `x*exp(x**2)/2 - sqrt(pi)*erfi(x)/4`); polynomials
+  times `exp(a*x**2 + b*x + c)` by the completed square; rational
+  functions and binomials of an exponential by `u = exp(c*x)` through the
+  typed rational integrator; every result checked by differentiation and
+  fourteen against Mathematica. Tried by `indefinite_integral` after the
+  radical table (the census's largest open family, 501 integrands with
+  symbolic exponents).
+
 - `sympy_extras.integrals.rewriting`: canonical forms of an integrand
   (powers of positive bases and of exponentials as one exponential,
   hyperbolic functions as exponentials, inverse hyperbolic functions as
