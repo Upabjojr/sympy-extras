@@ -6,7 +6,7 @@ The project is at version 0.x: there is **no guarantee of backwards
 compatibility** between releases yet, and any release may rename, move or
 remove public functions. Breaking changes are listed here when they happen.
 
-## Unreleased
+## 0.0.2 - 2026-09-12
 
 ### Added
 

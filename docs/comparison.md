@@ -4,7 +4,7 @@ Seventy-nine questions, each put to SymPy alone and to `sympy-extras` on
 top of it. The results below were produced by
 [`benchmarks/comparison.py`](../benchmarks/comparison.py), which asks both
 libraries and prints what they return, against **SymPy 1.14.0** and
-sympy-extras 0.0.1. Regenerate the raw material with
+sympy-extras 0.0.2. Regenerate the raw material with
 
 ```
 python benchmarks/comparison.py                 # a table
