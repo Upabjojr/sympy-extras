@@ -120,6 +120,7 @@ sympy_extras/
         summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals
         axisymmetric.py      region integrals with a rotational symmetry (bodies and surfaces of revolution) reduced to their profile
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic (Gradshteyn-Ryzhik 2.26), for the slices of regions
+        indefinite.py        indefinite_integral: the typed methods in turn, then SymPy's, each antiderivative checked by differentiation
         tests/
     polys/
         euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)

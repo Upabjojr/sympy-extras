@@ -179,6 +179,15 @@ remove public functions. Breaking changes are listed here when they happen.
   conditions are decided by their real parts (`exp(-a*x)*sin(b*x)*
   besselj(0, x)` over `(0, oo)`).
 
+- `sympy_extras.integrals.indefinite`: `indefinite_integral(f, x)`, the
+  antiderivative by the typed methods of the package in turn (rational
+  functions, radicals of a quadratic, the Risch algorithm, the heuristic
+  Risch integrator, Trager's algorithm) and SymPy's routes last, every
+  candidate checked by differentiation (`is_antiderivative`) and
+  rewritten to a real form when it carries `I` for a real integrand;
+  the `Integral` is returned unevaluated rather than a wrong
+  antiderivative.
+
 - `sympy_extras.integrals.radicals`: real antiderivatives of
   `x**n * Q**(m/2)` with `Q` quadratic, by the reduction formulas of
   Gradshteyn–Ryzhik 2.26, tried before the Risch port and SymPy and early
