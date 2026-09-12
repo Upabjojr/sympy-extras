@@ -729,26 +729,38 @@ class _Elementary(_Radical):
         p = as_expr(cancel(-beta / alpha))
         A = as_expr(cancel(self.W(p)))
         B = as_expr(1 - 2 * m * p)
-        t = Dummy('t')
-        quadratic = A * t**2 + B * t - m
         # sign(s - p) at the point
         far = _ask(as_boolean(upper > p), assumptions)
         if far is None:
             return None
         sigma: Expr = S.One if far else S.NegativeOne
+        # the primitive written at the point s itself: with t = 1/(s - p),
+        # W quadratic gives A t**2 + B t - m = W(s)/(s - p)**2 exactly and
+        # 2 A t + B = (2 A + B (s - p))/(s - p); at s = 0, a root of W, the
+        # radical vanishes and 2 A + B (0 - p) = p, so the values at 0 are
+        # exact (the bug: sqrt(W(0)) written as a nested radical which
+        # SymPy does not see is 0 left log(-(-1 + 2 sqrt(A) epsilon)) for
+        # the later rationalisation to trip over, giving log(-1) or zoo at
+        # random from the random points of the factorisation inside it)
+        W_upper = as_expr(cancel(self.W(upper)))
+        radical = S.Zero if W_upper == 0 else as_expr(sqrt(W_upper))
+        linear = as_expr(2 * A + B * (upper - p))
         if _ask(as_boolean(A > 0), assumptions) is True:
-            # 0 < p < 1/m: (2 A t + B)**2 - 4 A (A t**2 + B t + C) = 1 makes
+            # 0 < p < 1/m: (2 A t + B)**2 - 4 A (A t**2 + B t - m) = 1 makes
             # log|2 A t + B + 2 sqrt(A) sqrt(...)| the primitive, and 2 A t + B
-            # has the sign of s - p
-            at_upper = as_expr(log(sigma * (2 * A * t + B + 2 * sqrt(A) * sqrt(quadratic))) / sqrt(A))
-            at_zero = as_expr(log(-(2 * A * t + B + 2 * sqrt(A) * sqrt(quadratic))) / sqrt(A))
+            # has the sign of s - p: the primitive at s is
+            # log((2 A + B (s - p) + 2 sigma sqrt(A) sqrt(W(s)))/(sigma (s - p)))
+            # /sqrt(A), continued through the pole with sigma the sign of
+            # s - p at the point, and 0 at s = 0
+            at_upper = as_expr(log((linear + 2 * sigma * sqrt(A) * radical) / (sigma * (upper - p))) / sqrt(A))
+            at_zero: Expr = S.Zero
         elif _ask(as_boolean(A < 0), assumptions) is True:
-            at_upper = as_expr(-asin(2 * A * t + B) / sqrt(-A))
-            at_zero = at_upper
+            # -asin(2 A t + B)/sqrt(-A), which is asin(1)/sqrt(-A) at s = 0
+            at_upper = as_expr(-asin(linear / (upper - p)) / sqrt(-A))
+            at_zero = as_expr(pi / (2 * sqrt(-A)))
         else:
             return None
-        value = at_upper.subs(t, 1 / (upper - p)) - at_zero.subs(t, -1 / p)
-        return as_expr(-sigma * c / alpha * value)
+        return as_expr(-sigma * c / alpha * (at_upper - at_zero))
 
 
 def legendre_reduction(reduction: Reduction, assumptions: Assumptions = None) -> Optional[Expr]:

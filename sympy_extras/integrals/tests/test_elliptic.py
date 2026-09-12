@@ -366,3 +366,23 @@ def test_irrational_quadratic_factors() -> None:
     # a radical case comes out in radicals
     found = elliptic_integral(1 / sqrt(x**4 + 1), x, -oo, oo)
     assert found is not None and not found.value.has(CRootOf) and abs(float(found.value.evalf(20)) - 3.70814935460274) < 1e-12
+
+
+def test_simple_poles_are_deterministic_and_real() -> None:
+    # sympy-extras: the primitive of the odd part at s = 0 was written
+    # with sqrt(W(0)) as a nested radical SymPy does not see is 0, and the
+    # later rationalisation, whose factorisation picks random evaluation
+    # points, turned log(-(-1 + 2 sqrt(A) epsilon)) into log(1), log(-1)
+    # or zoo from run to run; the values at the roots of W are now exact
+    import sympy.core.random as srandom
+    from sympy import srepr, zoo, N
+    f = x / sqrt((x - 3) * (x - 2) * (x**2 + 1))
+    forms = set()
+    for seed in range(4):
+        srandom.seed(seed)
+        found = elliptic_integral(f, x, S(3), S(5))
+        assert found is not None and not found.value.has(zoo)
+        value = complex(N(found.value, 20))
+        assert abs(value.imag) < 1e-15 and abs(value.real - 2.2023730715772790) < 1e-12
+        forms.add(srepr(found.value))
+    assert len(forms) == 1

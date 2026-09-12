@@ -261,6 +261,15 @@ remove public functions. Breaking changes are listed here when they happen.
   real variables which is not a polynomial with rational coefficients
   (`(a + I*b)**2` with `a` and `b` real).
 
+- `sympy_extras.integrals.elliptic` evaluates the elementary primitive of
+  the odd part exactly at the roots of the radicand: the value at `s = 0`
+  was written with `sqrt(W(0))` as a nested radical SymPy does not see is
+  zero, and the later rationalisation, whose factorisation draws random
+  evaluation points, turned it into `log(1)`, `log(-1)` or `zoo` from run
+  to run (the integral of `x/sqrt((x - 3)*(x - 2)*(x**2 + 1))` over
+  `(3, 5)` came out with a spurious `pi*I` or as `nan` in about one run
+  in three).
+
 - Slater's expansion on the unit circle `|z| = 1` is used only when every
   hypergeometric series converges there: `Integral(airyai(x)**2, (x, 0,
   oo))` came out as `zoo` from Gauss's summation of divergent series, and
