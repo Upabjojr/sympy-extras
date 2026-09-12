@@ -67,7 +67,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions
 from sympy_extras.settings import settings
-from .conditions import numerically_equal, sample_values
+from .conditions import sample_values
 
 __all__ = ['indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'real_form', 'conjugate_logarithms']
 
@@ -110,14 +110,12 @@ def is_antiderivative(F: ExprLike, f: ExprLike, x: Symbol, assumptions: Assumpti
     simpler = attempt(lambda: as_expr(simplify(reduced if reduced is not None else difference)), _budget())
     if simpler is not None and simpler == 0:
         return True
-    if numerically_equal(as_expr(F_.diff(x)), f_, assumptions) is not True:
-        return False
-    # the sampler above draws positive points: the census of SymPy's
-    # mistakes found nine antiderivatives right for x > 0 and wrong for
-    # x < 0 (polar incomplete gammas, -asinh(1/x), Bessel forms), so
-    # the difference is evaluated on both sides of 0 as well, where the
-    # integrand is real (a complex integrand, log(x) asin(x) for x < 0,
-    # is met with branches the two sides need not share)
+    # numerically, at points of both signs and several scales where the
+    # integrand is real: the census of SymPy's mistakes found nine
+    # antiderivatives right for x > 0 and wrong for x < 0 (polar
+    # incomplete gammas, -asinh(1/x), Bessel forms), and a complex
+    # integrand (1/sqrt(1 - x**2) beyond 1, log(x) asin(x) for x < 0) is
+    # met with branches the two sides need not share
     return _vanishes_on_both_sides(difference, f_, x, assumptions)
 
 
@@ -129,20 +127,30 @@ def _items(assumptions: Assumptions) -> list[Boolean]:
     return [as_boolean(a) for a in assumptions]
 
 
-def _vanishes_on_both_sides(difference: Expr, f: Expr, x: Symbol, assumptions: Assumptions) -> bool:
-    """Whether ``difference`` vanishes at fixed real points of both signs
-    (the parameters sampled under the assumptions) where ``f`` is a
-    finite real number; a point where ``f`` is undefined or not real is
-    skipped."""
+#: the points where the difference of the derivatives is evaluated: both
+#: signs, and the scales 1/20, 1/2, 2 and 4, so that a domain such as
+#: (-1, 1) or (0, 1) gets several
+_POINTS = (Rational(-37, 10), Rational(-19, 10), Rational(-13, 10), Rational(-2, 5), Rational(-1, 20),
+           Rational(1, 20), Rational(3, 5), Rational(13, 10), Rational(19, 10), Rational(41, 10))
+
+
+def _vanishes_on_both_sides(difference: Expr, f: Expr, x: Symbol,
+                            assumptions: Assumptions) -> Optional[bool]:
+    """Whether ``difference`` vanishes at the fixed real points of
+    :data:`_POINTS` (the parameters sampled under the assumptions) where
+    ``f`` is a finite real number; a point where ``f`` is undefined, not
+    real, or excluded by the assumptions on ``x`` is skipped, and
+    ``None`` is the verdict when fewer than two points remain."""
     parameters = sorted_symbols(free_symbols(difference) - {x})
     values: dict[Symbol, Expr] = {}
     if parameters:
         found = sample_values(parameters, assumptions, random.Random(str(difference)))
         if found is None:
-            return True
+            return None
         values = found
     facts = _items(assumptions)
-    for point in (Rational(-37, 10), Rational(-13, 10), Rational(-2, 5), Rational(3, 5), Rational(19, 10)):
+    tested = 0
+    for point in _POINTS:
         # a point the assumptions on x exclude (x > 0) is not a test
         if any(fact.xreplace(values).xreplace({x: point}) == false for fact in facts):
             continue
@@ -160,7 +168,8 @@ def _vanishes_on_both_sides(difference: Expr, f: Expr, x: Symbol, assumptions: A
         magnitude = as_expr(Abs(number))
         if magnitude.is_comparable and magnitude > Rational(1, 10**15):
             return False
-    return True
+        tested += 1
+    return True if tested >= 2 else None
 
 
 def real_form(F: Expr, f: Expr, x: Symbol, assumptions: Assumptions = None) -> Expr:
