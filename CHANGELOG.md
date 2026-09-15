@@ -242,6 +242,12 @@ remove public functions. Breaking changes are listed here when they happen.
   `a > 0`, `v > a` (`exp(-u*v)*besselk(0, a*u)` over `(0, oo)` stayed a
   `Piecewise`).
 
+- `tidy` writes `besseli(-n, z) - besseli(n, z)` as `2*sin(pi*n)*besselk(n, z)/pi`
+  (the definition of `K_n` for a non-integer order), so that the value
+  of `t**(n - 1)*exp(-a/t - s*t)` over `(0, oo)` is
+  `2*a**(n/2)*besselk(n, 2*sqrt(a*s))/s**(n/2)` (Maxima's `specint` 174)
+  and not a quotient by `sin(pi*n)`, `0/0` at every integer order.
+
 - `real_logarithms` crashed on a logarithm with a complex argument (the
   relation `argument < 0` cannot be formed: Wester's
   `x*exp(-p*x**2 + 2*x*(atan(43*sqrt(771)/2313)/3 + pi/6))`); such

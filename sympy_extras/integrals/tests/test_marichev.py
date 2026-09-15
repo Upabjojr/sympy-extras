@@ -223,3 +223,18 @@ def test_the_logarithmic_case_of_slater_on_one_side() -> None:
     assert simplify(definite_integral(exp(-s * t) * erf(sqrt(t)), (t, 0, oo)) - 1 / (s * sqrt(s + 1))) == 0
     value = definite_integral(exp(a * t) * exp(-s * t) * erf(sqrt(a * t)), (t, 0, oo), s > a)
     assert simplify(value - sqrt(a / s) / (s - a)) == 0
+
+
+
+def test_bessel_k_forms_cancel_the_sine_of_the_order() -> None:
+    # the Mellin value of t**(n - 1)*exp(-a/t - s*t) over (0, oo) came as
+    # pi*(besseli(-n, z) - besseli(n, z))/sin(pi*n), 0/0 at integer orders
+    # (Maxima's specint 174 records 2*a**(n/2)*besselk(n, 2*sqrt(a*s))/s**(n/2))
+    from sympy import besselk, besseli, sin
+    from sympy_extras.integrals import definite_integral
+    from sympy_extras.integrals.marichev import bessel_k_forms
+    n, z, a, s, t = symbols('n z a s t', positive=True)
+    assert bessel_k_forms(pi * (besseli(-n, z) - besseli(n, z)) / sin(pi * n)) == 2 * besselk(n, z)
+    value = definite_integral(t**(n - 1) * exp(-a / t) * exp(-s * t), (t, 0, oo))
+    assert value.has(besselk) and not value.has(besseli, sin)
+    assert simplify(value - 2 * a**(n / 2) * besselk(n, 2 * sqrt(a) * sqrt(s)) / s**(n / 2)) == 0

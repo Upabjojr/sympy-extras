@@ -85,11 +85,12 @@ from sympy.functions.special.elliptic_integrals import elliptic_k, elliptic_e, e
 from sympy.core.function import expand_func
 from sympy.core.power import Pow
 from sympy.core.numbers import Integer
+from sympy.functions.special.bessel import besseli, besselk
 from sympy.functions.elementary.integers import ceiling
 from .mellin import monomial
 from sympy.series.limits import Limit, limit
 from sympy.simplify.gammasimp import gammasimp
-from sympy.polys.polytools import factor
+from sympy.polys.polytools import cancel, factor
 from sympy.core.exprtools import factor_terms
 from sympy.simplify.simplify import simplify
 from sympy.logic.boolalg import And, Boolean, true
@@ -139,6 +140,8 @@ def tidy(value: Expr, assumptions: Assumptions = None, condition: Boolean = true
             result = unpolar
     if result.has(meijerg):
         return result
+    if result.has(besseli):
+        result = bessel_k_forms(result)
     if result.has(polygamma):
         expanded = attempt(lambda: as_expr(expand_func(result)), limit)
         if expanded is not None and _size(expanded) < _size(result):
@@ -253,6 +256,36 @@ def right_half_plane_powers(value: Expr, assumptions: Assumptions = None) -> Exp
     if not replacement:
         return value
     return as_expr(value.xreplace(replacement))
+
+
+def bessel_k_forms(value: Expr) -> Expr:
+    """``besseli(-n, z)`` written as ``besseli(n, z) + 2*sin(pi*n)*besselk(n, z)/pi``
+    where ``besseli(n, z)`` occurs too (the definition of the modified
+    Bessel function of the second kind for a non-integer order), so that
+    the ``sin(pi*n)`` of the Mellin method's value cancels: the value is then right at integer orders
+    too, where the difference is `0/0` (the bug: the census's numerical
+    check of `t**(n - 1)*exp(-a/t - s*t)` over `(0, oo)` divided by
+    ``sin(pi*n)`` at an integer sample of ``n``).
+
+    >>> from sympy import symbols, besseli, sin, pi
+    >>> from sympy_extras.integrals.marichev import bessel_k_forms
+    >>> n, z = symbols('n z')
+    >>> bessel_k_forms(pi*(besseli(-n, z) - besseli(n, z))/sin(pi*n))
+    2*besselk(n, z)
+    """
+    orders = {(as_expr(node.args[0]), as_expr(node.args[1])) for node in value.atoms(besseli)}
+    replacement: dict[Expr, Expr] = {}
+    for order, argument in orders:
+        if (-order, argument) in orders and order.could_extract_minus_sign():
+            # I_{-nu} = I_nu + (2/pi) sin(nu pi) K_nu for the order written
+            # with the minus sign
+            replacement[besseli(order, argument)] = (besseli(-order, argument)
+                                                     + 2 * sin(-pi * order) * besselk(-order, argument) / pi)
+    if not replacement:
+        return value
+    rewritten = as_expr(cancel(value.xreplace(replacement)))
+    simpler = attempt(lambda: as_expr(simplify(gammasimp(rewritten))), settings.timeout)
+    return rewritten if simpler is None else simpler
 
 
 def real_logarithms(value: Expr, assumptions: Assumptions = None) -> Expr:
