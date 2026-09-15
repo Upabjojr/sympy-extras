@@ -65,7 +65,7 @@ from typing import Optional
 from sympy.core.add import Add
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
-from sympy.core.numbers import Rational
+from sympy.core.numbers import Integer, Rational
 from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
@@ -77,6 +77,7 @@ from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 
 from sympy_extras._typing import as_boolean, as_expr
+from sympy_extras.assumptions.ask import Assumptions, ask
 from .conditions import numerically_equal
 
 __all__ = ['quadratic_radical_antiderivative']
@@ -85,11 +86,18 @@ __all__ = ['quadratic_radical_antiderivative']
 class _Table:
     """The antiderivatives of ``x**n * Q**(m/2)`` for one quadratic ``Q``."""
 
-    def __init__(self, a: Expr, b: Expr, c: Expr, x: Symbol) -> None:
+    def __init__(self, a: Expr, b: Expr, c: Expr, x: Symbol, assumptions: Assumptions = None) -> None:
         self.a, self.b, self.c, self.x = a, b, c, x
         self.Q = as_expr(a * x**2 + b * x + c)
         self.discriminant = as_expr(b**2 - 4 * a * c)
+        self.assumptions = assumptions
         self.memo: dict[tuple[int, int], Optional[Expr]] = {}
+
+    def positive(self, e: Expr) -> bool:
+        return e.is_positive is True or ask(as_boolean(e > 0), self.assumptions) is True
+
+    def negative(self, e: Expr) -> bool:
+        return e.is_negative is True or ask(as_boolean(e < 0), self.assumptions) is True
 
     def power(self, m: int) -> Optional[Expr]:
         """``Integral(Q**(m/2), x)`` for odd ``m``."""
@@ -99,14 +107,14 @@ class _Table:
                 return None
             return as_expr(Q**(Rational(m, 2) + 1) / (b * (Rational(m, 2) + 1)))
         if m == -1:
-            if a.is_negative:
-                if not self.discriminant.is_positive:
+            if self.negative(a):
+                if not self.positive(self.discriminant):
                     return None
                 return as_expr(-asin((2 * a * x + b) / sqrt(self.discriminant)) / sqrt(-a))
-            if a.is_positive:
-                if self.discriminant.is_negative:
+            if self.positive(a):
+                if self.negative(self.discriminant):
                     return as_expr(asinh((2 * a * x + b) / sqrt(-self.discriminant)) / sqrt(a))
-                if self.discriminant.is_positive:
+                if self.positive(self.discriminant):
                     # the argument keeps its sign on each component of Q > 0
                     # (it vanishes only at a root of Q): a primitive up to the
                     # constant I*pi on the component where it is negative
@@ -133,7 +141,8 @@ class _Table:
                        - m * self.discriminant * previous / (4 * a * (m + 1)))
 
     def moment(self, n: int, m: int) -> Optional[Expr]:
-        """``Integral(x**n * Q**(m/2), x)`` for ``n >= 0`` and odd ``m``."""
+        """``Integral(x**n * Q**(m/2), x)`` for an integer ``n`` of either
+        sign and odd ``m``."""
         key = (n, m)
         if key in self.memo:
             return self.memo[key]
@@ -146,6 +155,8 @@ class _Table:
         a, b, c, x, Q = self.a, self.b, self.c, self.x, self.Q
         if n == 0:
             return self.power(m)
+        if n < 0:
+            return self._negative(n, m)
         if a == 0:
             # x = (Q - c)/b
             if b == 0:
@@ -172,6 +183,44 @@ class _Table:
             return None
         return as_expr((higher - b * first - c * second) / a)
 
+    def _negative(self, n: int, m: int) -> Optional[Expr]:
+        """``Integral(Q**(m/2)/x**k, x)`` with ``k = -n >= 1``: GR 2.266 for
+        ``1/(x*sqrt(Q))``, whose form depends on the sign of the constant
+        term ``c`` (the substitution ``x = 1/t`` makes it ``Q**(-1/2)`` for
+        the quadratic ``c*t**2 + b*t + a``); the other powers of ``Q`` at
+        ``k = 1`` by ``Q = a*x**2 + b*x + c`` taken out of or into the
+        radical; and the recurrence of the moments solved for the lowest
+        power of ``x`` for ``k >= 2`` (``c*(n + 1)`` its coefficient)."""
+        a, b, c, x, Q = self.a, self.b, self.c, self.x, self.Q
+        if c == 0:
+            return None                                     # x divides Q: a half-integer power of x
+        if n == -1:
+            if m == -1:
+                if self.positive(c):
+                    # a primitive up to the constant I*pi on x < 0, as the m = -1 logarithm above
+                    return as_expr(-log((2 * sqrt(c) * sqrt(Q) + b * x + 2 * c) / x) / sqrt(c))
+                if self.negative(c) and self.positive(self.discriminant):
+                    # sqrt(x**2), whose derivative SymPy takes for a symbol not declared real (Abs gives re and im)
+                    return as_expr(asin((2 * c + b * x) / (sqrt(x**2) * sqrt(self.discriminant))) / sqrt(-c))
+                return None
+            if m > 0:
+                # Q**(m/2)/x = x*Q**(m/2 - 1)*a + Q**(m/2 - 1)*b + Q**(m/2 - 1)*c/x
+                first, second, third = self.moment(1, m - 2), self.moment(0, m - 2), self.moment(-1, m - 2)
+                if first is None or second is None or third is None:
+                    return None
+                return as_expr(a * first + b * second + c * third)
+            # Q**(m/2 + 1)/x = a*x*Q**(m/2) + b*Q**(m/2) + c*Q**(m/2)/x, solved for the last
+            higher, first, second = self.moment(-1, m + 2), self.moment(1, m), self.moment(0, m)
+            if higher is None or first is None or second is None:
+                return None
+            return as_expr((higher - a * first - b * second) / c)
+        # d/dx[x**(n+1) Q**(m/2+1)] = Q**(m/2) (a (n+m+3) x**(n+2) + b (n+2+m/2) x**(n+1) + c (n+1) x**n)
+        first, second = self.moment(n + 1, m), self.moment(n + 2, m)
+        if first is None or second is None:
+            return None
+        return as_expr((x**(n + 1) * Q**(Rational(m, 2) + 1) - b * (n + 2 + Rational(m, 2)) * first
+                        - a * (n + m + 3) * second) / (c * (n + 1)))
+
 
 def _terms(term: Expr, x: Symbol) -> Optional[list[tuple[Expr, int, Optional[Expr], int]]]:
     """The terms ``(coefficient, n, Q, m)`` with ``term == sum(coefficient *
@@ -182,6 +231,7 @@ def _terms(term: Expr, x: Symbol) -> Optional[list[tuple[Expr, int, Optional[Exp
     polynomial: Expr = S.One
     base: Optional[Expr] = None
     m = 0
+    shift = 0
     radicals: list[tuple[Expr, int]] = []
     for factor in Mul.make_args(term):
         f = as_expr(factor)
@@ -191,12 +241,22 @@ def _terms(term: Expr, x: Symbol) -> Optional[list[tuple[Expr, int, Optional[Exp
         if isinstance(f, Pow) and isinstance(f.exp, Rational) and f.exp.q == 2:
             radicals.append((as_expr(f.base), int(f.exp.p)))
             continue
+        if isinstance(f, Pow) and f.base == x and isinstance(f.exp, Integer):
+            shift += int(f.exp)                             # x**(-2): a negative power of x
+            continue
+        if isinstance(f, Pow) and isinstance(f.exp, Integer) and f.exp < 0 and as_expr(f.base).is_polynomial(x):
+            radicals.append((as_expr(f.base), 2 * int(f.exp)))   # Q**(-2)*Q**(-1/2) is Q**(-5/2)
+            continue
         if f.is_polynomial(x):
             polynomial = polynomial * f
             continue
         return None
+    if len(radicals) > 1 and len({r for r, _ in radicals}) == 1:
+        radicals = [(radicals[0][0], sum(p for _, p in radicals))]
     if len(radicals) == 1:
         base, m = radicals[0]
+        if m % 2 == 0:
+            return None                                     # a rational function, not a radical
     elif len(radicals) > 1:
         # sqrt(1 - x) sqrt(1 + x) is sqrt(1 - x**2) where both are real:
         # radicals of linear factors with positive odd exponents multiplied
@@ -214,17 +274,20 @@ def _terms(term: Expr, x: Symbol) -> Optional[list[tuple[Expr, int, Optional[Exp
         return None
     found: list[tuple[Expr, int, Optional[Expr], int]] = []
     for (n,), c in poly.terms():
-        found.append((as_expr(coefficient * c), int(n), base, m))
+        found.append((as_expr(coefficient * c), int(n) + shift, base, m))
     return found
 
 
-def quadratic_radical_antiderivative(f: Expr, x: Symbol) -> Optional[Expr]:
+def quadratic_radical_antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
     """A real antiderivative of a sum of terms ``c * x**n * Q**(m/2)``, one
-    quadratic (or linear) ``Q`` for all the radical terms, ``m`` odd; the
-    terms without a radical are monomials. ``None`` when ``f`` is not of
-    that form, when a case of the table is not covered (a radicand of
-    unknown sign of leading coefficient, a perfect square) or when the
-    result does not check by differentiation.
+    quadratic (or linear) ``Q`` for all the radical terms, ``m`` odd and
+    ``n`` an integer of either sign; the terms without a radical are
+    monomials. The signs the table needs (of the leading coefficient, of
+    the discriminant, of the constant term for a negative ``n``) are those
+    of the symbols or decided under the ``assumptions``. ``None`` when
+    ``f`` is not of that form, when a case of the table is not covered (a
+    sign undecided, a perfect square) or when the result does not check
+    by differentiation.
 
     >>> from sympy import symbols, sqrt
     >>> from sympy_extras.integrals.radicals import quadratic_radical_antiderivative
@@ -260,11 +323,11 @@ def quadratic_radical_antiderivative(f: Expr, x: Symbol) -> Optional[Expr]:
             return None
         a, b, c = (as_expr(poly.coeff_monomial(x**2)), as_expr(poly.coeff_monomial(x)),
                    as_expr(poly.coeff_monomial(1)))
-        table = _Table(a, b, c, x)
+        table = _Table(a, b, c, x, assumptions)
     total: Expr = S.Zero
     for coefficient, n, radicand, m in terms:
         if radicand is None:
-            total = total + coefficient * x**(n + 1) / (n + 1)
+            total = total + (coefficient * log(x) if n == -1 else coefficient * x**(n + 1) / (n + 1))
             continue
         if table is None or m % 2 == 0:
             return None
@@ -275,6 +338,10 @@ def quadratic_radical_antiderivative(f: Expr, x: Symbol) -> Optional[Expr]:
     # checked where the radicand is positive: elsewhere the integrand is
     # imaginary and the branches of the two sides need not agree
     facts = [as_boolean(table.Q > 0)] if table is not None else []
+    if isinstance(assumptions, (list, tuple)):
+        facts.extend(as_boolean(item) for item in assumptions)
+    elif assumptions is not None:
+        facts.append(as_boolean(assumptions))
     if not numerically_equal(as_expr(total.diff(x)), f_, facts):
         return None
     return as_expr(total)

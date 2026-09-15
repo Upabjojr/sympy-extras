@@ -404,7 +404,7 @@ def algebraic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
     >>> from sympy_extras.integrals.algebraic import algebraic_integral
     >>> x = symbols('x')
     >>> algebraic_integral(1/sqrt(x**2 + 1), x, 0, 1)
-    ConditionalValue(log(1/(-1 + sqrt(2))))
+    ConditionalValue(-log(-1 + sqrt(2)))
     >>> algebraic_integral(x**3*sqrt(x**2 + 1), x, 0, 1)
     ConditionalValue(2*(1 + sqrt(2))/15)
     >>> algebraic_integral(cbrt(x)/(1 + x), x, 0, 1)

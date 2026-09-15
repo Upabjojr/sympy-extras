@@ -16,6 +16,29 @@ remove public functions. Breaking changes are listed here when they happen.
   `x**(v - 1)*exp(a*x**n)` may be a symbol `n`, and a combined exponent
   such as `b*x**2*log(a) + c*x**2*log(h)` is read as one monomial.
 
+- `sympy_extras.integrals.radicals`: negative powers of `x` in the table,
+  `Q**(m/2)/x**k`, by the recurrence of the moments solved for the lowest
+  power and the two forms of `1/(x*sqrt(Q))` (GR 2.266, a logarithm for a
+  positive constant term of `Q`, an arcsine for a negative one, checked
+  in Mathematica on both sides of zero); the signs the table needs are
+  decided under the assumptions, which `indefinite_integral` now hands
+  to the typed methods (the exponential and radical tables) and not only
+  to the check; integer powers of the radicand merge into the radical
+  (`Q**(-2)/sqrt(Q)` is `Q**(-5/2)`).
+
+- `sympy_extras.integrals.rewriting`: the substitution `s = x**2` for an
+  odd integrand with a radical (`1/(r*sqrt(-a**2 + 2*h*r**2 - 2*k*r**4))`
+  goes to the radical table in `s`), `u = exp(c*x)` for algebraic as well
+  as rational functions of exponentials (`exp(c*z)/(a + b*exp(2*c*z))**(5/2)`,
+  the multiples `c*z`, `2*c*z` of one symbolic coefficient and constants
+  in the arguments accepted), and the substitutions of the first
+  canonical form tried too (`sqrt(a + b*c**(d*z))`, whose exponential
+  appears once `c**(d*z)` is written as one); `implied_assumptions`
+  lists the facts the forms assume (`c > 0` for `c**(d*z)`), under which
+  the dispatcher verifies what it finds through them. 84 of
+  the 100 unevaluated integrals of the census with a recorded
+  antiderivative integrate now.
+
 - `sympy_extras.integrals.rewriting`: `a**g(x)` is written `exp(g(x)*log(a))`
   for a parameter `a` not known non-positive (a real `a` is positive
   wherever such a power is real on an interval), `exp(X)**v` and
@@ -25,9 +48,7 @@ remove public functions. Breaking changes are listed here when they happen.
   `log(u + sqrt(u - 1)*sqrt(u + 1))` being real for `u < -1` too, where it
   is another branch). The parameters of Maxima's test suite carry no
   assumptions, and its symbolic exponential families were stuck on these
-  gates: 72 of the 100 unevaluated integrals of the census which
-  have a recorded antiderivative now integrate (none did), checked by
-  differentiation.
+  gates.
 
 ### Fixed
 
@@ -45,7 +66,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 - `numerically_equal` compared the values as Python complex numbers, and
   `abs()` overflowed for the 1e300 of `exp(A*x**r)` at a sampled point,
-  refusing a right antiderivative; it compares SymPy floats now.
+  refusing a right antiderivative; it compares SymPy floats now. The
+  check also draws points inside the real domain of the integrand
+  (the radicands and logarithm arguments positive, from the sampler of
+  the assumptions) when its fixed points miss a parameter-dependent
+  interval, and samples the parameters again when a sample leaves it
+  undecided.
 
 ## 0.0.2 - 2026-09-12
 

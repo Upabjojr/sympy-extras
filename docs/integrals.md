@@ -422,7 +422,8 @@ True
 `indefinite_integral(f, x)` is the antiderivative by the typed methods
 of the package in turn, rational functions by Hermite reduction and the
 Lazard–Rioboo–Trager logarithmic part, radicals of a quadratic by the
-reduction formulas, the transcendental Risch algorithm, the heuristic
+reduction formulas (negative powers of `x` too, the signs of the cases
+decided under the assumptions), the transcendental Risch algorithm, the heuristic
 Risch integrator, Trager's algorithm, and SymPy's rule-based and
 Meijer G routes as the last resort; a candidate is returned only when it
 checks as an antiderivative (`is_antiderivative`: `F' - f` cancels or
@@ -476,7 +477,7 @@ x*sqrt(1 - x**2)/2 + asin(x)/2
 >>> indefinite_integral(1/(x*(log(x)**2 + 1)), x)
 atan(log(x))
 >>> verified_antiderivative(sqrt(x**2 + 1)/x, x)
-(sqrt(x**2 + 1) - log((sqrt(x**2 + 1) + 1)/x), 'trager')
+(sqrt(x**2 + 1) - log((2*sqrt(x**2 + 1) + 2)/x), 'radicals')
 
 ```
 

@@ -187,3 +187,24 @@ def test_nested_powers_of_the_variable() -> None:
     a, p, r, z = symbols('a p r z')
     assert rewritten_forms(exp(a*(z**r)**p), z) == [exp(a*z**(p*r))]
     assert rewritten_forms((z**r)**p, z) == [z**(p*r)]
+
+
+def test_the_even_and_algebraic_exponential_substitutions() -> None:
+    # Maxima's rtestint 107 and 113: an odd integrand with an even quartic
+    # under the radical goes to s = x**2; rtest_integrate 463 and 530:
+    # radicals of exponentials go to u = exp(c*x), the result algebraic in
+    # u for the radical table (exp(x + 14) has a constant in its argument,
+    # exp(2*c*z) and exp(c*z) are multiples of one coefficient)
+    from sympy import Rational, exp, sqrt, symbols
+    from sympy_extras.integrals.rewriting import power_substitutions
+    a, b, c, h, k, r, x, z = symbols('a b c h k r x z')
+    [s] = power_substitutions(1 / (r * sqrt(-a**2 + 2 * h * r**2 - 2 * k * r**4)), r)
+    assert s.back == r**2 and s.integrand == 1 / (2 * s.variable * sqrt(-2 * s.variable**2 * k + 2 * s.variable * h - a**2))
+    [s] = power_substitutions(sqrt(a + b * exp(c * z)), z)
+    assert s.back == exp(c * z) and s.integrand == sqrt(a + b * s.variable) / (c * s.variable)
+    [s] = power_substitutions(exp(c * z) / (a + b * exp(2 * c * z))**Rational(5, 2), z)
+    assert s.back == exp(c * z) and s.integrand == 1 / (c * (a + b * s.variable**2)**Rational(5, 2))
+    [s] = power_substitutions(sqrt(exp(2 * x) + exp(x + 14) + 1), x)
+    assert s.back == exp(x)
+    # an even integrand, or no radical: no even substitution
+    assert power_substitutions(x**2 / sqrt(1 - x**4), x) == []

@@ -57,7 +57,7 @@ from sympy.functions.elementary.complexes import polar_lift
 from sympy.functions.elementary.exponential import exp, exp_polar, log
 from sympy.functions.elementary.hyperbolic import HyperbolicFunction, InverseHyperbolicFunction
 from sympy.logic.boolalg import Boolean
-from sympy.polys.polytools import cancel
+from sympy.polys.polytools import factor, cancel
 from sympy.simplify.powsimp import powsimp
 
 from sympy_extras._timeout import attempt
@@ -66,7 +66,7 @@ from sympy_extras.assumptions.ask import Assumptions, ask
 from sympy_extras.assumptions.facts import element
 from sympy_extras.settings import settings
 
-__all__ = ['Substitution', 'rewritten_forms', 'power_substitutions', 'substitute_back']
+__all__ = ['Substitution', 'rewritten_forms', 'power_substitutions', 'substitute_back', 'implied_assumptions']
 
 #: the most forms and substitutions returned
 _LIMIT = 5
@@ -133,6 +133,32 @@ def _may_be_positive(e: Expr, assumptions: Assumptions) -> bool:
     return e.is_positive is not False and ask(as_boolean(e > 0), assumptions) is not False
 
 
+def implied_assumptions(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -> list[Boolean]:
+    """The facts the canonical forms of ``f`` assume beyond the given
+    assumptions: ``a > 0`` for each base ``a`` written as an exponential
+    on the strength of the contract alone (``sqrt(a + b*c**(d*z))`` is
+    real only for ``c > 0``, and a check which samples ``c`` of both
+    signs would find the integrand real nowhere).
+
+    >>> from sympy import symbols
+    >>> from sympy_extras.integrals.rewriting import implied_assumptions
+    >>> c, d, z = symbols('c d z')
+    >>> implied_assumptions(c**(d*z), z)
+    [c > 0]
+    """
+    f_ = as_expr(f)
+    found: list[Boolean] = []
+    for node in f_.atoms(Pow):
+        base, exponent = as_expr(node.base), as_expr(node.exp)
+        if not exponent.has(x) or base.has(x) or base == S.Exp1 or not base.free_symbols:
+            continue
+        if not _positive(base, assumptions) and _may_be_positive(base, assumptions):
+            fact = as_boolean(base > 0)
+            if fact not in found:
+                found.append(fact)
+    return found
+
+
 def _bases_to_exponentials(f: Expr, x: Symbol, assumptions: Assumptions) -> Expr:
     """``a**g`` with ``a`` free of ``x`` and ``g`` varying with ``x`` as
     ``exp(g*log(a))``, ``exp(X)**v`` (and ``(exp(X)*exp(Y)*k)**v`` with a
@@ -162,8 +188,8 @@ def _bases_to_exponentials(f: Expr, x: Symbol, assumptions: Assumptions) -> Expr
             return x**(as_expr(base.exp) * exponent)
         arguments: list[Expr] = []
         rest: Expr = S.One
-        for factor in Mul.make_args(base):
-            f_ = as_expr(factor)
+        for part in Mul.make_args(base):
+            f_ = as_expr(part)
             if isinstance(f_, exp) and _may_be_real(as_expr(f_.args[0]), assumptions):
                 arguments.append(as_expr(f_.args[0]))
             elif not f_.has(x) and _may_be_positive(f_, assumptions):
@@ -224,8 +250,8 @@ def _recombined_radicals(f: Expr, x: Symbol, assumptions: Assumptions) -> Expr:
             return node
         radicals: list[tuple[Expr, Rational]] = []
         rest: list[Expr] = []
-        for factor in node.args:
-            factor_ = as_expr(factor)
+        for part in node.args:
+            factor_ = as_expr(part)
             if isinstance(factor_, Pow) and isinstance(factor_.exp, Rational) and factor_.exp.q > 1 \
                     and factor_.has(x) and _nonnegative(as_expr(factor_.base), x, assumptions):
                 radicals.append((as_expr(factor_.base), factor_.exp))
@@ -378,20 +404,33 @@ def _exponential_generator(f: Expr, x: Symbol) -> Optional[Expr]:
     coefficients: list[Rational] = []
     symbolic: list[Expr] = []
     for node in f.atoms(exp):
-        argument = as_expr(node.args[0])
-        coefficient, rest = argument.as_independent(x, as_Add=False)
+        _, argument = as_expr(node.args[0]).as_independent(x, as_Add=True)   # exp(x + 14): the constant aside
+        coefficient, rest = as_expr(argument).as_independent(x, as_Add=False)
         if as_expr(rest) != x:
             return None
         if isinstance(coefficient, Rational):
             coefficients.append(coefficient)
         else:
             symbolic.append(as_expr(coefficient))
-    if symbolic and (coefficients or len(set(symbolic)) > 1):
+    if symbolic and coefficients:
         return None
     if symbolic:
-        return symbolic[0]
+        # c*x and 2*c*x: the multiples of one symbolic coefficient
+        first = symbolic[0]
+        for other in symbolic[1:]:
+            ratio = as_expr(cancel(other / first))
+            if not isinstance(ratio, Rational):
+                return None
+            coefficients.append(ratio)
+        coefficients.append(Rational(1))
+        return as_expr(first * _generator(coefficients))
     if not coefficients:
         return None
+    return _generator(coefficients)
+
+
+def _generator(coefficients: list[Rational]) -> Rational:
+    """The positive rational of which every coefficient is an integer multiple."""
     numerator = 0
     denominator = 1
     for c in coefficients:
@@ -409,9 +448,49 @@ def _exponential_substitution(f: Expr, x: Symbol) -> Optional[Substitution]:
     u = Dummy('u', positive=True)
     g = attempt(lambda: as_expr(cancel(powsimp(as_expr(f.subs(x, log(u) / c) / (c * u)), force=True))),
                 settings.timeout)
-    if g is None or not g.is_rational_function(u):
+    if g is None or not _algebraic_in(g, u):
         return None
+    if not g.is_rational_function(u):
+        # the radical table reads Q**(-5/2), not the expanded denominator cancel leaves
+        factored = attempt(lambda: as_expr(factor(g)), settings.timeout)
+        if factored is not None:
+            g = factored
     return Substitution(g, u, as_expr(exp(c * x)), as_expr(log(u) / c))
+
+
+def _algebraic_in(g: Expr, u: Symbol) -> bool:
+    """Whether ``g`` is a rational function of ``u`` and of rational powers
+    of polynomials in ``u`` (``sqrt(a + b*u)/u``, for the radical table)."""
+    if g.is_rational_function(u):
+        return True
+    for node in g.atoms(Pow):
+        if node.has(u) and isinstance(node.exp, Rational) and not node.exp.is_integer:
+            if not as_expr(node.base).is_polynomial(u):
+                return False
+    replaced = g
+    for node in g.atoms(Pow):
+        if node.has(u) and isinstance(node.exp, Rational) and not node.exp.is_integer:
+            replaced = as_expr(replaced.xreplace({node: Dummy('p')}))
+    return bool(replaced.is_rational_function(u))
+
+
+def _even_substitution(f: Expr, x: Symbol) -> Optional[Substitution]:
+    """``s = x**2``, ``ds = 2*x*dx``, for an odd ``f`` (``f(-x) = -f(x)``):
+    ``f = x*g(x**2)`` and the integral is that of ``g(s)/2``, an identity
+    on both sides of zero; for ``1/(x*sqrt(a + b*x**2 + c*x**4))``, an
+    even quartic under the radical, the radical table in ``s``."""
+    if not f.has(x) or not any(isinstance(p, Pow) and p.has(x) and isinstance(p.exp, Rational) and p.exp.q == 2
+                               for p in f.atoms(Pow)):
+        return None
+    odd = attempt(lambda: as_expr(cancel(as_expr(f.subs(x, -x) + f))), settings.timeout)
+    if odd is None or odd != 0:
+        return None
+    s = Dummy('s', positive=True)
+    g = attempt(lambda: as_expr(cancel(powsimp(as_expr(f.subs(x, sqrt(s)) / (2 * sqrt(s))), force=True))),
+                settings.timeout)
+    if g is None or g.has(sqrt(s)):
+        return None
+    return Substitution(g, s, as_expr(x**2), as_expr(sqrt(s)))
 
 
 def _logarithmic_substitution(f: Expr, x: Symbol) -> Optional[Substitution]:
@@ -433,9 +512,10 @@ def _logarithmic_substitution(f: Expr, x: Symbol) -> Optional[Substitution]:
 def power_substitutions(f: ExprLike, x: Symbol) -> list[Substitution]:
     """The substitutions which clear the fractional powers of ``x`` or of a
     linear ``a*x + b`` (``base = t**k``, ``k`` the least common denominator
-    of their exponents), then ``u = exp(c*x)`` for a rational function of
-    exponentials and ``x = exp(t)`` for a rational function of ``log(x)``
-    times a power of ``x``; most promising first, at most three, each new
+    of their exponents), then ``u = exp(c*x)`` for a rational or algebraic
+    function of exponentials, ``x = exp(t)`` for a rational function of
+    ``log(x)`` times a power of ``x``, and ``s = x**2`` for an odd
+    integrand with a radical; most promising first, at most three, each new
     integrand simplified with ``cancel`` and ``powsimp``.
 
     >>> from sympy import symbols, sqrt, exp, log, S
@@ -456,7 +536,7 @@ def power_substitutions(f: ExprLike, x: Symbol) -> list[Substitution]:
         s = _power_substitution(f_, x, base, k)
         if s is not None:
             found.append(s)
-    for maker in (_exponential_substitution, _logarithmic_substitution):
+    for maker in (_exponential_substitution, _logarithmic_substitution, _even_substitution):
         if len(found) >= _SUBSTITUTIONS:
             break
         s = maker(f_, x)

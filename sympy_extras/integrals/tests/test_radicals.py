@@ -77,3 +77,27 @@ def test_symbolic_algebraic_bounds() -> None:
     # the symmetric slice: [y sqrt(1 - y**2)/2 + asin(y)/2] between -+sqrt(1 - x**2), with sqrt(x**2) = x
     found = definite_integral(sqrt(1 - y**2), (y, -sqrt(1 - x**2), sqrt(1 - x**2)), [x > 0, x < 1])
     assert not found.has(Integral) and simplify(found - (x * sqrt(1 - x**2) + asin(sqrt(1 - x**2)))) == 0
+
+
+def test_negative_powers_of_x() -> None:
+    # Maxima's rtestint 20-30: Q**(m/2)/x**k by the recurrence solved for
+    # the lowest power, from 1/(x*sqrt(Q)) (GR 2.266: a logarithm for a
+    # positive constant term, an arcsine for a negative one, checked in
+    # Mathematica on both sides of zero) and from Q taken out of the radical
+    from sympy_extras.integrals.indefinite import is_antiderivative
+    assert quadratic_radical_antiderivative(1 / (x * sqrt(x**2 + 1)), x) == -log((2 * sqrt(x**2 + 1) + 2) / x)
+    assert quadratic_radical_antiderivative(1 / (x * sqrt(x**2 - 1)), x) == -asin(1 / sqrt(x**2))
+    for f in [1 / (x * sqrt(1 - x**2)), 1 / (x**2 * sqrt(1 - x**2)), (1 - x**2)**Rational(3, 2) / x,
+              1 / (x * (x**2 + 1)**Rational(3, 2)), 1 / (x**3 * sqrt(x**2 + 1)) + 1 / x, sqrt(x**2 + 2 * x + 5) / x**2,
+              1 / (x**2 * (1 - x**2)**Rational(3, 2))]:
+        F = quadratic_radical_antiderivative(f, x)
+        assert F is not None and is_antiderivative(F, f, x) is True, f
+    # the signs from the assumptions, as the census records them
+    a, b, c = symbols('a b c')
+    Q = a + b * x + c * x**2
+    facts = [a > 0, b > 0, c > 0, 4 * a * c - b**2 > 0]
+    for f in [sqrt(Q) / x, sqrt(Q) / x**2, 1 / (x**2 * sqrt(Q)), 1 / (x**3 * sqrt(Q))]:
+        F = quadratic_radical_antiderivative(f, x, facts)
+        assert F is not None and is_antiderivative(F, f, x, facts) is True, f
+    assert quadratic_radical_antiderivative(sqrt(Q) / x, x) is None       # the sign of a undecided
+    assert quadratic_radical_antiderivative(sqrt(b * x + c * x**2) / x, x, [b > 0, c > 0]) is None  # x divides Q

@@ -15,7 +15,7 @@ def test_classic_integrands_by_the_typed_methods() -> None:
     expected = {
         sqrt(1 - x**2): 'radicals', x / (x**2 + 1): 'rational', x * exp(x): 'exponential',
         tan(x)**3: 'trigonometric', 1 / (x * (log(x)**2 + 1)): 'risch', 1 / (x**3 + 1): 'rational',
-        sqrt(x**2 + 1) / x: 'trager', x**2 * atan(x): 'trigonometric', 1 / sqrt(x**2 + 1): 'radicals',
+        sqrt(x**2 + 1) / x: 'radicals', x**2 * atan(x): 'trigonometric', 1 / sqrt(x**2 + 1): 'radicals',
         x / sqrt(x**4 + 1): 'trager', exp(x) * sin(x): 'trigonometric', log(x)**2: 'risch'}
     for f, method in expected.items():
         found = verified_antiderivative(f, x)
@@ -43,7 +43,7 @@ def test_wrong_candidates_are_refused(monkeypatch: object) -> None:
     # driver moves on, and returns the Integral when nothing checks
     import pytest
     assert isinstance(monkeypatch, pytest.MonkeyPatch)
-    wrong = [('wrong', lambda f, v: as_expr(cos(v)))]
+    wrong = [('wrong', lambda f, v, assumptions: as_expr(cos(v)))]
     monkeypatch.setattr(module, 'METHODS', wrong)
     assert indefinite_integral(sin(x), x) == Integral(sin(x), x)
     assert verified_antiderivative(sin(x), x) is None
@@ -126,3 +126,16 @@ def test_the_numerical_check_survives_huge_values() -> None:
     huge = Float(3e307) * (1 + I)
     assert numerically_equal(huge, huge) is True
     assert numerically_equal(huge, Float(2e307) * (1 + I)) is False
+
+
+def test_the_assumptions_reach_the_typed_methods() -> None:
+    # Maxima's rtestint 20 and 29 record their signs as facts, not as
+    # assumptions on the symbols; the radical table decides its cases from them
+    a, b, c = symbols('a b c')
+    Q = a + b * x + c * x**2
+    facts = [a > 0, b > 0, c > 0, 4 * a * c - b**2 > 0]
+    for f in (sqrt(Q) / x, 1 / (x**2 * sqrt(Q))):
+        found = verified_antiderivative(f, x, facts)
+        assert found is not None and found[1] == 'radicals', f
+        assert is_antiderivative(found[0], f, x, facts) is True
+    assert indefinite_integral(sqrt(Q) / x, x).has(Integral)

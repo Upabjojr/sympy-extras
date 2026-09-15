@@ -54,6 +54,7 @@ from typing import Callable, Optional
 from sympy.core.expr import Expr
 import random
 
+from sympy.core.power import Pow
 from sympy.core.numbers import I, Rational, nan, oo, zoo
 from sympy.core.add import Add
 from sympy.core.singleton import S
@@ -80,7 +81,7 @@ from .conditions import sample_values
 
 __all__ = ['indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'real_form', 'conjugate_logarithms']
 
-Method = Callable[[Expr, Symbol], Optional[Expr]]
+Method = Callable[[Expr, Symbol, Assumptions], Optional[Expr]]
 
 
 def _budget() -> Optional[float]:
@@ -154,13 +155,15 @@ def _vanishes_on_both_sides(difference: Expr, f: Expr, x: Symbol, assumptions: A
     :data:`_POINTS` (the parameters sampled under the assumptions) where
     ``f`` is a finite real number; a point where ``f`` is undefined, not
     real, or excluded by the assumptions on ``x`` is skipped, and
-    ``None`` is the verdict when fewer than two points remain. With
-    ``both_signs`` the verdict ``True`` also needs tested points of both
-    signs, the parameters sampled again (up to three times) to find
-    them."""
+    ``None`` is the verdict when fewer than two points remain, the
+    parameters sampled again (up to three times) when a sample leaves
+    it undecided. With ``both_signs`` the verdict ``True`` also needs
+    tested points of both signs."""
     parameters = sorted_symbols(free_symbols(difference) - {x})
     facts = _items(assumptions)
-    samples = 3 if both_signs and parameters else 1
+    # a sample of the parameters may leave nothing to test (the integrand
+    # real nowhere: c**(d*z) with c drawn negative): up to three samples
+    samples = 3 if parameters else 1
     for index in range(samples):
         values: dict[Symbol, Expr] = {}
         if parameters:
@@ -169,7 +172,13 @@ def _vanishes_on_both_sides(difference: Expr, f: Expr, x: Symbol, assumptions: A
             if found is None:
                 return None
             values = found
-        verdict, signs = _tested_points(difference, f, x, values, facts)
+        verdict, signs = _tested_points(difference, f, x, values, facts, list(_POINTS))
+        if verdict is None:
+            # an integrand real on a parameter-dependent interval the fixed
+            # points miss: sqrt(-2*k*s**2 + 2*h*s - a**2)
+            extra = _domain_points(f, x, values, random.Random(str(difference)))
+            if extra:
+                verdict, signs = _tested_points(difference, f, x, values, facts, list(_POINTS) + extra)
         if verdict is False:
             return False
         if verdict is True and (not both_signs or len(signs) == 2):
@@ -177,13 +186,40 @@ def _vanishes_on_both_sides(difference: Expr, f: Expr, x: Symbol, assumptions: A
     return None
 
 
+def _domain_points(f: Expr, x: Symbol, values: dict[Symbol, Expr], rng: random.Random,
+                   count: int = 6) -> list[Expr]:
+    """Points where the radicands and the arguments of the logarithms of
+    ``f`` (the parameters at ``values``) are positive, from the sampler of
+    the assumptions; none when ``f`` has neither."""
+    conditions: list[Boolean] = []
+    for node in f.atoms(Pow):
+        exponent = as_expr(node.exp)
+        if isinstance(exponent, Rational) and not exponent.is_integer and node.base.has(x):
+            conditions.append(as_boolean(as_expr(node.base).xreplace(values) > 0))
+    for node in f.atoms(log):
+        if node.args[0].has(x):
+            conditions.append(as_boolean(as_expr(node.args[0]).xreplace(values) > 0))
+    if not conditions:
+        return []
+    points: list[Expr] = []
+    for _ in range(count):
+        found = attempt(lambda: sample_values([x], conditions, rng), _budget())
+        if not found or x not in found:
+            break
+        point = as_expr(found[x])
+        if point not in points:
+            points.append(point)
+    return points
+
+
 def _tested_points(difference: Expr, f: Expr, x: Symbol, values: dict[Symbol, Expr],
-                   facts: list[Boolean]) -> tuple[Optional[bool], set[int]]:
+                   facts: list[Boolean], points: list[Expr]) -> tuple[Optional[bool], set[int]]:
     """The verdict of :func:`_vanishes_on_both_sides` at one sample of the
-    parameters, with the signs of the points which were tested."""
+    parameters and the given points, with the signs of the points which
+    were tested."""
     tested = 0
     signs: set[int] = set()
-    for point in _POINTS:
+    for point in points:
         # a point the assumptions on x exclude (x > 0) is not a test
         if any(fact.xreplace(values).xreplace({x: point}) == false for fact in facts):
             continue
@@ -282,34 +318,34 @@ def conjugate_logarithms(F: Expr, x: Symbol) -> Expr:
     return as_expr(Add(*others))
 
 
-def _rational(f: Expr, x: Symbol) -> Optional[Expr]:
+def _rational(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     from .risch.rationaltools import ratint
     if not f.is_rational_function(x):
         return None
     return attempt(lambda: as_expr(ratint(f, x)), _budget())
 
 
-def _radicals(f: Expr, x: Symbol) -> Optional[Expr]:
+def _radicals(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     from .radicals import quadratic_radical_antiderivative
-    return attempt(lambda: quadratic_radical_antiderivative(f, x), _budget())
+    return attempt(lambda: quadratic_radical_antiderivative(f, x, assumptions), _budget())
 
 
-def _exponential(f: Expr, x: Symbol) -> Optional[Expr]:
+def _exponential(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     from .exponential import exponential_antiderivative
-    return attempt(lambda: exponential_antiderivative(f, x), _budget())
+    return attempt(lambda: exponential_antiderivative(f, x, assumptions), _budget())
 
 
-def _trigonometric(f: Expr, x: Symbol) -> Optional[Expr]:
+def _trigonometric(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     from .trigonometric import trigonometric_antiderivative
     return attempt(lambda: trigonometric_antiderivative(f, x), _budget())
 
 
-def _risch(f: Expr, x: Symbol) -> Optional[Expr]:
+def _risch(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     from .risch import risch_antiderivative
     return attempt(lambda: risch_antiderivative(f, x), _budget())
 
 
-def _heurisch(f: Expr, x: Symbol) -> Optional[Expr]:
+def _heurisch(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     from .heurisch import heurisch_cases
     found = attempt(lambda: heurisch_cases(f, x), _budget())
     if found is not None:
@@ -318,7 +354,7 @@ def _heurisch(f: Expr, x: Symbol) -> Optional[Expr]:
     return None if found is None or found.has(Integral) else found
 
 
-def _trager(f: Expr, x: Symbol) -> Optional[Expr]:
+def _trager(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     from .trager import trager_antiderivative
     return attempt(lambda: trager_antiderivative(f, x), _budget())
 
@@ -327,44 +363,55 @@ def _trager(f: Expr, x: Symbol) -> Optional[Expr]:
 TYPED = ['rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'heurisch', 'trager']
 
 
-def _rewriting(f: Expr, x: Symbol) -> Optional[Expr]:
+def _rewriting(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     """The typed methods on the canonical forms of ``f`` and on the
     integrands of its substitutions (:mod:`.rewriting`): a power of a
     base not known non-positive as an exponential, hyperbolic functions
     as exponentials, inverse hyperbolic functions as logarithms; ``x = t**k``
     for fractional powers, ``u = exp(c*x)`` for rational functions of an
     exponential, ``x = exp(t)`` for rational functions of a logarithm."""
-    from .rewriting import rewritten_forms, power_substitutions, substitute_back
-    forms = attempt(lambda: rewritten_forms(f, x), _budget())
+    from .rewriting import rewritten_forms, power_substitutions, substitute_back, implied_assumptions
+    forms = attempt(lambda: rewritten_forms(f, x, assumptions), _budget())
+    # the forms hold under the facts they assume (c > 0 for c**(d*z)), and
+    # so does an antiderivative found through them
+    implied = _items(assumptions) + (attempt(lambda: implied_assumptions(f, x, assumptions), _budget()) or [])
     for form in forms or []:
-        found = verified_antiderivative(form, x, methods=TYPED)
+        found = verified_antiderivative(form, x, implied, methods=TYPED)
         if found is not None:
             return found[0]
-    substitutions = attempt(lambda: power_substitutions(f, x), _budget())
-    for substitution in substitutions or []:
+    # the substitutions of f and of its first canonical form: sqrt(a + b*c**(d*z))
+    # has its exponential, for u = exp(d*z*log(c)), only once c**(d*z) is written as one
+    substitutions = list(attempt(lambda: power_substitutions(f, x), _budget()) or [])
+    for form in (forms or [])[:1]:
+        for extra in attempt(lambda: power_substitutions(form, x), _budget()) or []:
+            if all(extra.back != s.back for s in substitutions):
+                substitutions.append(extra)
+    for substitution in substitutions:
         g, t = substitution.integrand, substitution.variable
         # the substituted integrand in its canonical forms too:
         # d**(a*z + b*sqrt(z)) becomes 2*t*d**(a*t**2 + b*t), an exponential
         # of a quadratic once the power of d is written as one
-        candidates = [g] + (attempt(lambda: rewritten_forms(g, t), _budget()) or [])
+        # the facts about the parameters hold in the new variable, those about x do not
+        inner = [item for item in implied if not item.has(x)]
+        candidates = [g] + (attempt(lambda: rewritten_forms(g, t, inner), _budget()) or [])
         for candidate in candidates:
-            found = verified_antiderivative(candidate, t, methods=TYPED)
+            found = verified_antiderivative(candidate, t, inner, methods=TYPED)
             if found is not None:
                 return substitute_back(found[0], t, substitution.back)
     return None
 
 
-def _manual(f: Expr, x: Symbol) -> Optional[Expr]:
+def _manual(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     found = attempt(lambda: as_expr(manualintegrate(f, x)), _long_budget())
     return None if found is None or found.has(Integral) else found
 
 
-def _meijer(f: Expr, x: Symbol) -> Optional[Expr]:
+def _meijer(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     found = attempt(lambda: as_expr(integrate(f, x, meijerg=True, risch=False)), _long_budget())
     return None if found is None or found.has(Integral) else found
 
 
-def _sympy(f: Expr, x: Symbol) -> Optional[Expr]:
+def _sympy(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     found = attempt(lambda: as_expr(integrate(f, x)), _long_budget())
     return None if found is None or found.has(Integral) else found
 
@@ -395,7 +442,7 @@ def verified_antiderivative(f: ExprLike, x: Symbol, assumptions: Assumptions = N
         if methods is not None and name not in methods:
             continue
         try:
-            found = method(f_, x)
+            found = method(f_, x, assumptions)
         except (AttributeError, ZeroDivisionError, AssertionError, OverflowError, RecursionError):
             # SymPy's internals fail on some inputs
             found = None
@@ -421,8 +468,9 @@ def indefinite_integral(f: ExprLike, x: Symbol, assumptions: Assumptions = None)
     f : Expr
     x : Symbol
     assumptions : Boolean or list of Booleans, optional
-        Assumptions on the parameters, used by the numerical part of the
-        check (the points are sampled under them).
+        Assumptions on the parameters: the typed methods which decide
+        signs take them (the exponential and radical tables), and the
+        numerical part of the check samples its points under them.
 
     Examples
     ========
