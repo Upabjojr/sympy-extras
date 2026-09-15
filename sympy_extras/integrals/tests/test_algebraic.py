@@ -83,7 +83,8 @@ def test_values_are_checked() -> None:
 
 
 def test_divergent_and_foreign_integrands() -> None:
-    assert algebraic_integral(1 / sqrt(x**2 + 1), x, S.Zero, oo) is None
+    # asinh(x) at oo: the divergence is reported as such
+    assert algebraic_integral(1 / sqrt(x**2 + 1), x, S.Zero, oo) == ConditionalValue(oo)
     assert algebraic_integral(exp(-x), x, S.Zero, oo) is None
     assert isinstance(rationalised_integral, object)
     assert isinstance(ConditionalValue(1), ConditionalValue)

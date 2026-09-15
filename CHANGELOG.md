@@ -20,7 +20,10 @@ remove public functions. Breaking changes are listed here when they happen.
   oscillatory divergence (`cos(x)` over `(0, oo)`, `AccumBounds` as the
   limit) stay unevaluated. The pieces of a split range add up to the
   infinity likewise; the principal value and the finite part still need
-  finite limits at the endpoints.
+  finite limits at the endpoints. An infinite limit is checked against
+  the sign of the integrand near the point (SymPy's limit of the
+  antiderivative of `x*Shi(x)` at `oo` is `-oo`, where the function
+  grows like `x*exp(x)/4`).
 
 - `sympy_extras.integrals.dirichlet`: trigonometric sums over powers of
   `x` on the half-lines and the real line, the Dirichlet, Frullani and

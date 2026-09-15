@@ -55,13 +55,14 @@ References
 """
 from __future__ import annotations
 
+import random
 from typing import Optional
 
 from sympy.calculus.accumulationbounds import AccumBounds
 from sympy.calculus.singularities import singularities
 from sympy.core.expr import Expr
 from sympy.core.function import Function, expand
-from sympy.core.numbers import nan, oo, zoo
+from sympy.core.numbers import Integer, Rational, nan, oo, zoo
 from sympy.core.relational import Relational
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
@@ -82,13 +83,13 @@ from sympy.series.series import series
 from sympy.core.add import Add
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set
+from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
 from sympy_extras.assumptions.facts import element
 from sympy_extras.assumptions.limits import limit
 from sympy_extras.assumptions.solve import solve
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue
+from .conditions import ConditionalValue, sample_values
 
 __all__ = ['antiderivative', 'discontinuities', 'antiderivative_integral', 'one_sided_limit', 'select_branch',
            'principal_value_integral', 'finite_part_integral']
@@ -427,11 +428,51 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
         left = one_sided_limit(F, x, lower, '+', assumptions)
         if right is None or left is None:
             return None
+        # an infinite limit is checked against the sign of the integrand
+        # near the point (SymPy's limit of x**2*Shi(x)/2 - x*cosh(x)/2 +
+        # sinh(x)/2 at oo is -oo; the function grows like x*exp(x)/4)
+        if right in (oo, -oo) and not _integrand_has_sign(f, x, upper, '-', right, assumptions):
+            return None
+        if left in (oo, -oo) and not _integrand_has_sign(f, x, lower, '+', -left, assumptions):
+            return None
         total = total + (right - left)
     if total.has(nan, zoo):
         # oo - oo: infinities of both signs, nothing is claimed
         return None
     return ConditionalValue(as_expr(total))
+
+
+def _integrand_has_sign(f: Expr, x: Symbol, point: Expr, side: str, infinity: Expr,
+                        assumptions: Assumptions) -> bool:
+    """Whether ``f`` has the sign of ``infinity`` (``oo`` or ``-oo``) at
+    three points approaching ``point`` from ``side``, the parameters
+    sampled under the assumptions: the sign of the integrand near a
+    point where its integral is claimed to diverge to that infinity.
+    ``True`` when nothing can be checked (no sample of the parameters, a
+    complex value)."""
+    parameters = sorted_symbols((free_symbols(f) | free_symbols(point)) - {x})
+    values = sample_values(parameters, assumptions, random.Random(str((f, point)))) if parameters else {}
+    if values is None:
+        return True
+    g, p = as_expr(f.xreplace(values)), as_expr(point.xreplace(values))
+    if p is oo:
+        samples: list[Expr] = [Integer(10), Integer(100), Integer(1000)]
+    elif p is -oo:
+        samples = [Integer(-10), Integer(-100), Integer(-1000)]
+    else:
+        step = 1 if side == '+' else -1
+        samples = [p + step * Rational(1, 10**k) for k in (2, 4, 6)]
+    sign = 1 if infinity is oo else -1
+    for sample in samples:
+        try:
+            value = as_expr(g.subs(x, sample).evalf(15))
+        except (TypeError, ValueError, ZeroDivisionError, OverflowError):
+            return True
+        if not value.is_number or value.is_extended_real is not True:
+            return True
+        if value * sign < 0:
+            return False
+    return True
 
 
 def principal_value_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,

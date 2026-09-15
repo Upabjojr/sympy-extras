@@ -445,6 +445,11 @@ def test_divergence_to_a_signed_infinity() -> None:
     assert definite_integral(exp(x), (x, 0, oo)) == oo
     assert definite_integral(1 / (x + 1), (x, 0, oo)) == oo
     assert definite_integral(x / (x**2 + 1), (x, 0, oo)) == oo
+    # SymPy's limit of the antiderivative of x*Shi(x) at oo is -oo where the
+    # function grows like x*exp(x)/4: the sign of the integrand near the
+    # point refuses the claim (the census: Reduce's defint 28 came out -oo)
+    from sympy import Shi
+    assert definite_integral(x * Shi(x), (x, 0, oo)) != -oo
     # infinities of both signs, and an oscillation: unevaluated
     assert definite_integral(1 / x, (x, -1, 1)).has(Integral)
     assert definite_integral(cos(x), (x, 0, oo)).has(Integral)
