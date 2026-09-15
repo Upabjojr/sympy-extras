@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from sympy import (symbols, exp, sin, cos, log, sqrt, oo, pi, S, Rational, Abs, Heaviside, Piecewise, Integral, I, Eq,
-                   sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan, besselj)
+                   sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan, asin, besselj, Si, E, tan,
+                   sinh)
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
@@ -139,8 +140,11 @@ def test_verify_numerically() -> None:
     assert verify_numerically(S(2), exp(-x), x, S.Zero, oo) is False
     assert verify_numerically(1 / a, exp(-a * x), x, S.Zero, oo) is True
     assert verify_numerically(1 / a**2, exp(-a * x), x, S.Zero, oo) is False
-    # nothing to check: the quadrature is not trusted (an oscillating integrand)
-    assert verify_numerically(pi / 2, sin(x) / x, x, S.Zero, oo) is None
+    # an oscillating integrand: the plain rules are not trusted, the
+    # oscillatory quadrature (period by period) is
+    assert verify_numerically(pi / 2, sin(x) / x, x, S.Zero, oo) is True
+    assert verify_numerically(pi / 2, sin(x) / x, x, S(2), oo) is False
+    assert verify_numerically(pi / 2 - Si(2), sin(x) / x, x, S(2), oo) is True
 
 
 def test_wrong_types_are_rejected() -> None:
@@ -329,3 +333,46 @@ def test_sampling_under_irrational_bounds() -> None:
     rewritten = _rational_relation(x > -sqrt(2) / 2)
     assert isinstance(rewritten, Gt) and rewritten.rhs.is_rational and rewritten.rhs > -sqrt(2) / 2
     assert _rational_relation(x < 1) == (x < 1)
+
+
+def test_powers_and_logarithms_split_by_the_signs_of_their_factors() -> None:
+    # (u v)**r = u**r v**r and log(u v) = log(u) + log(v) for u > 0 on the
+    # piece: the square roots of squares (Maxima's test suite), the
+    # trigonometric squares, the logarithm of a product
+    assert _same(definite_integral((1 - cos(x))**Rational(3, 2), (x, 0, 2 * pi)), 16 * sqrt(2) / 3)
+    cardioid = a**2 * (1 - cos(t))**2 * sqrt(a**2 * (1 - cos(t))**2 + a**2 * sin(t)**2)
+    assert _same(definite_integral(cardioid, (t, 0, 2 * pi)), 256 * a**3 / 15)
+    assert definite_integral(sqrt(tan(x)**2 + 1) * sin(x), (x, 0, pi / 3)) == log(2)
+    assert definite_integral(sqrt(x**2 + 2 * x + 1) / x, (x, 1, E)) == E
+    assert definite_integral(sqrt(x**2 + 2 * x + 1) / x, (x, -E, -1)) == 2 - E
+    assert _same(definite_integral(sqrt(x - 2 + 1 / x), (x, 0, 2)), 2 * (4 - sqrt(2)) / 3)
+    assert _same(definite_integral(sqrt(1 + (x - 474)**2 / (107669 - (x - 474)**2)), (x, 181, 474)),
+                 sqrt(107669) * asin(293 / sqrt(107669)))
+    assert _same(definite_integral(log(sin(x) / x), (x, 0, pi / 2)), pi * (1 - log(pi)) / 2)
+    assert _same(definite_integral(log(x**2) / sqrt(1 - x**2), (x, -1, 1)), -2 * pi * log(2))
+    assert _same(definite_integral((x - x**2)**k, (x, 0, 1), k > -1), gamma(k + 1)**2 / gamma(2 * k + 2))
+    # a factor of unknown sign stays in the remainder: nothing is claimed
+    from sympy_extras.integrals.definite import _Integrator
+    integrator = _Integrator(None)
+    piece = integrator._branch(sqrt((x - k) * x), x, S(2), S(3), frozenset(), True)
+    assert piece == sqrt(x) * sqrt(x - k)
+    piece = integrator._branch(log(x**2 * (x - 1)), x, S(0), S(1), frozenset(), True)
+    assert piece == 2 * log(x) + log(1 - x) + log(-1)
+
+
+def test_exponentials_are_combined() -> None:
+    # the bug: exp(-a t) exp(-s t) went through Parseval's formula as two
+    # kernels, with the condition a > 0 instead of a + s > 0
+    assert definite_integral(exp(-k * t) * exp(-s * t), (t, 0, oo), k + s > 0) == 1 / (k + s)
+    found = definite_integral(t**(a - 1) * exp(-k * t) * exp(-s * t), (t, 0, oo), k + s > 0)
+    assert found == gamma(a) / (k + s)**a
+    assert definite_integral((exp(4 * x) - exp(-4 * x))**2, (x, 0, 1)) == sinh(8) / 4 - 2
+
+
+def test_oscillatory_tails_are_verified() -> None:
+    # sin(x)/x over (2, oo): the antiderivative is Si, and the numerical
+    # check needs the oscillatory quadrature
+    assert definite_integral(sin(x) / x, (x, 2, oo)) == pi / 2 - Si(2)
+    # the series route summed a wrong formal power series of SymPy for
+    # 1/(x**2 + x + 1) to log(4) - 1 (HOL-Py's euler_log_sin06)
+    assert _same(definite_integral((1 - x) / (x**2 + x + 1), (x, 0, 1)), sqrt(3) * pi / 6 - log(3) / 2)

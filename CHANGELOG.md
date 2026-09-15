@@ -10,6 +10,53 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.integrals.dirichlet`: trigonometric sums over powers of
+  `x` on the half-lines and the real line, the Dirichlet, Frullani and
+  Borwein integrals. `g(x)/x**n` with `g` a sum (or a product, written as
+  a sum) of sines and cosines which vanishes to order `n` at 0 is brought
+  by `n - 1` integrations by parts to `g^(n-1)(x)/x`, whose integral is
+  `-sum(A_k*log(w_k)) + pi/2*sum(B_k)` (Dirichlet's integral for the sines,
+  Frullani's theorem for the cosines): `sin(x)**3/x**3` is `3*pi/8`,
+  `(cos(x) - cos(2*x))/x` is `log(2)`, the products of the sinc functions
+  of `x/(2*k + 1)` give `pi/2` up to `k = 6` and
+  `467807924713440738696537864469*pi/935615849440640907310521750000` at
+  `k = 7` (Borwein and Borwein); a sum which does not vanish to the order,
+  or has a constant term over `x`, is refused as divergent (Maxima answers
+  `pi/2` for `exp(I*x)*sin(x)/x` over the real line, whose imaginary part
+  `sin(x)**2/x` diverges).
+
+- `sympy_extras.integrals.definite`: the powers and logarithms of a
+  product are split over the factors whose sign on the piece is known
+  (`(u*v)**r = u**r*v**r` and `log(u*v) = log(u) + log(v)` for `u > 0`),
+  the range cut at the zeros of the factors first: the square roots of
+  squares in general (`sqrt(x**2 + 2*x + 1)/x` over `(1, E)`,
+  `sqrt(x - 2 + 1/x)` over `(0, 2)`, `sqrt(1 + u**2/(c - u**2))`), the
+  trigonometric squares after `trigsimp` and the half-angle formulas
+  (`(1 - cos(x))**(3/2)`, `sqrt(tan(x)**2 + 1)*sin(x)`, the arc length of the
+  cardioid `sqrt(a**2*(1 - cos(t))**2 + a**2*sin(t)**2)`), the logarithm
+  of a product (`log(sin(x)/x)` over `(0, pi/2)`, `log(x**2)/sqrt(1 - x**2)`
+  over `(-1, 1)`) and `(x - x**2)**k`. The squares are rewritten before the
+  other methods, the rest after those which read a radicand whole; the
+  Beta substitution of the trigonometric route takes the signed form
+  (`(-cos(t))**(2/3)` on `(0, pi/2)`). Eleven of the definite census's
+  unevaluated integrals (Maxima's `rtest_integrate`, Wester, HOL-Py).
+
+- `sympy_extras.integrals.definite`: the zeros of `sin(w*x + c)` and
+  `cos(w*x + c)` inside a numeric range are enumerated instead of solved
+  (seconds per call, and a `ConditionSet` under an assumption on another
+  symbol); the assumptions handed to the solver for the zeros of a factor
+  are those on its own symbols. A finite range is also mapped reflected
+  onto `(0, 1)` when the direct map fails (`log(-x)/sqrt(1 - x**2)` over
+  `(-1, 0)`). The numerical check uses mpmath's oscillatory quadrature
+  when the plain rules disagree on a half-line (`sin(x)/x` over `(2, oo)`
+  is `pi/2 - Si(2)` now: the value was found and dropped as unconfirmed).
+
+- `sympy_extras.integrals.antiderivative`: a polynomial in `x` and in
+  exponentials, sines, cosines and hyperbolic functions of linear
+  arguments goes to `integrate` before the Risch port, which spent seven
+  seconds on the gcds over `pi` in `sin(pi*t/4 + pi/4)**3`, on every
+  quarter period of a trigonometric integral.
+
 - `sympy_extras.integrals.exponential`: `(a*x + b)**w*exp(c*x + d)` by the
   shift `t = a*x + b` to the incomplete gamma family (`exp(c*x)/(a*x + b)**k`
   is the exponential integral `E_k`, DLMF 8.19.3); the exponent of
@@ -112,6 +159,24 @@ remove public functions. Breaking changes are listed here when they happen.
   the assumptions) when its fixed points miss a parameter-dependent
   interval, and samples the parameters again when a sample leaves it
   undecided.
+
+- `taylor_coefficient` took the formula of `fps` as valid from the first
+  term: for `(exp(4*x) - exp(-4*x))**2` the formula holds from `k = 3`
+  and gives 2 at `k = 0`, where the series has no term, so the series
+  route made the integral over `(0, 1)` `sinh(8)/4`, 2 too much
+  (`sinh(8)/4 - 2` is right), and for `1/(x**2 + x + 1)` `fps` answers
+  `(-1)**k`, the series of `1/(x + 1)`, which made the integral of
+  `(1 - x)/(x**2 + x + 1)` over `(0, 1)` `log(4) - 1` (HOL-Py's
+  `euler_log_sin06`; `sqrt(3)*pi/6 - log(3)/2` is right). The formula is
+  now checked term by term against the Taylor expansion from `series`
+  and refused on a mismatch; `fps` failing inside its hypergeometric
+  algorithm (a `KeyError` on `2**(-x)`) is a refusal too, not a crash.
+
+- `definite_integral(exp(-a*t)*exp(-s*t), (t, 0, oo), a + s > 0)` went
+  through Parseval's formula with two exponential kernels and answered
+  under the condition `a > 0` (`(a > 0) & (s/a > 0)` in a `Piecewise`)
+  instead of `1/(a + s)`: the exponential factors of a product are
+  combined first.
 
 ## 0.0.2 - 2026-09-12
 

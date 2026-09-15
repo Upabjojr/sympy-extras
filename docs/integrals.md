@@ -197,6 +197,31 @@ The driver tries, after the Mellin method and the residues:
   `(0, oo)` is `(f(0) - f(oo)) log(b/a)`, and `F(x - sum(a_i/(x - b_i)))`
   over the real line (or over `(0, oo)` for an even `F`, the
   Cauchy–Schlömilch transformation) integrates like `F` itself.
+- **Trigonometric sums over powers of `x`** (`sympy_extras.integrals.dirichlet`):
+  `g(x)/x**n` over `(0, oo)` or the real line for a trigonometric sum `g`
+  (a product of sines and cosines is written as one by the product
+  formulas) which vanishes to order `n` at 0 — the Dirichlet, Frullani
+  and Borwein integrals. Integrating by parts `n - 1` times leaves
+  `g^(n-1)(x)/x`, a sum without constant term, whose integral is
+  `-sum(A_k log(w_k)) + pi/2 sum(B_k)` for the cosine and sine coefficients:
+  `sin(x)**3/x**3` is `3 pi/8`, `(cos(x) - cos(2 x))/x` is `log(2)`, the
+  product of the sinc functions of `x/(2k + 1)` up to `k = 6` is `pi/2` and
+  the next one is not (`467807924713440738696537864469 pi/935615849440640907310521750000`),
+  out of the computation and not of a table.
+- **Powers and logarithms split by the signs of their factors** (in the
+  driver): `(u v)**r = u**r v**r` and `log(u v) = log(u) + log(v)` for
+  `u > 0`, so on a piece of the range where no factor of the radicand (or
+  of the argument of the logarithm) changes sign, the factors of known
+  sign come out one by one — the square roots of squares
+  (`sqrt(x**2 + 2 x + 1)` is `x + 1` or `-x - 1`, `sqrt(x - 2 + 1/x)` on
+  `(0, 1)` is `(1 - x)/sqrt(x)`), the trigonometric squares
+  (`(1 - cos(x))**(3/2)` is `2 sqrt(2) sin(x/2)**3` on `(0, 2 pi)`,
+  `sqrt(tan(x)**2 + 1)` is `1/cos(x)` on `(0, pi/3)`, the cardioid's
+  `sqrt(a**2 (1 - cos(t))**2 + a**2 sin(t)**2)`), the logarithm of a
+  product (`log(sin(x)/x)` on `(0, pi/2)`, `log(x**2)` as `2 log(-x)` on
+  the negative axis), `(x - x**2)**k` as `x**k (1 - x)**k`. The squares
+  are rewritten before the other methods, the rest after those which read
+  a radicand whole (the radical table, the elliptic reductions).
 - **The mean value of a periodic integrand** (`sympy_extras.integrals.periodic`):
   `Integral(f, (x, c, c + 2*pi*k))` is `2*pi*k` times the constant
   Laurent coefficient of `f` written in `z = exp(I*x)`, read off or summed

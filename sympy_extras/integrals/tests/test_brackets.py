@@ -105,3 +105,20 @@ def test_method_of_brackets_gives_up() -> None:
 
 def test_wrong_types_are_rejected() -> None:
     raises(TypeError, lambda: untyped(mellin_transform_series)([1], x, s))
+
+
+def test_formulas_which_fail_below_their_start_are_refused() -> None:
+    # the bug: the formula of fps for (exp(4 x) - exp(-4 x))**2 holds from
+    # k = 3 and gives 2 at k = 0, where the series has no term; the
+    # integral over (0, 1) came out 2 too much
+    from sympy_extras.integrals.series import series_integral
+    f = (exp(4 * x) - exp(-4 * x))**2
+    assert taylor_coefficient(f, x) is None
+    assert series_integral(f, x, 0, 1) is None
+    # a formula infinite below its start is still taken (the callers start
+    # the sum where it is finite)
+    assert taylor_coefficient(log(1 - x), x) is not None
+    # the bug: fps gives (-1)**k for 1/(x**2 + x + 1), the series of
+    # 1/(x + 1); the coefficients are checked against the Taylor expansion
+    assert taylor_coefficient(1 / (x**2 + x + 1), x) is None
+    assert series_integral((1 - x) / (x**2 + x + 1), x, 0, 1) is None

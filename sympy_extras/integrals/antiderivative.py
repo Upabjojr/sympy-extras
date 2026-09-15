@@ -59,13 +59,16 @@ from typing import Optional
 
 from sympy.calculus.singularities import singularities
 from sympy.core.expr import Expr
+from sympy.core.function import Function
 from sympy.core.numbers import Rational, nan, oo, zoo
 from sympy.core.power import Pow
 from sympy.core.relational import Relational
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.exponential import log
-from sympy.functions.elementary.trigonometric import atan, acot
+from sympy.functions.elementary.exponential import exp, log
+from sympy.functions.elementary.hyperbolic import sinh, cosh
+from sympy.functions.elementary.trigonometric import atan, acot, sin, cos
+from sympy.polys.polytools import degree
 from sympy.functions.elementary.complexes import Abs, sign
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.functions.special.delta_functions import Heaviside
@@ -99,6 +102,14 @@ def antiderivative(f: Expr, x: Symbol) -> Optional[Expr]:
         # a real form (SymPy writes the arcsine of sqrt(1 - x**2) as a
         # complex logarithm, whose limits at algebraic bounds fail)
         return found
+    if _elementary_polynomial(f, x):
+        # a polynomial in x and in exponentials and trigonometric functions
+        # of linear arguments: integrate does it at once, where the Risch
+        # port spends seconds on gcds over the constants of the arguments
+        # (sin(pi*t/4 + pi/4)**3 took 7 s, on every quarter period)
+        found = attempt(lambda: as_expr(integrate(f, x, risch=False)), settings.timeout)
+        if found is not None and not found.has(Integral):
+            return found
     found = _risch(f, x)
     if found is not None and not found.has(Integral):
         return found
@@ -117,6 +128,23 @@ def antiderivative(f: Expr, x: Symbol) -> Optional[Expr]:
     if value is None or value.has(Integral):
         return None
     return value
+
+
+def _elementary_polynomial(f: Expr, x: Symbol) -> bool:
+    """Whether ``f`` is a polynomial in ``x`` and in sines, cosines,
+    exponentials and hyperbolic functions of arguments linear in ``x``."""
+    replacement: dict[Expr, Expr] = {}
+    for node in f.atoms(Function):
+        if not node.has(x):
+            continue
+        if not isinstance(node, (sin, cos, exp, sinh, cosh)) or len(node.args) != 1:
+            return False
+        argument = as_expr(node.args[0])
+        if not argument.is_polynomial(x) or degree(argument, x) != 1:
+            return False
+        replacement[node] = Dummy()
+    substituted = as_expr(f.xreplace(replacement))
+    return bool(substituted.is_polynomial(x, *replacement.values()))
 
 
 def _risch(f: Expr, x: Symbol) -> Optional[Expr]:

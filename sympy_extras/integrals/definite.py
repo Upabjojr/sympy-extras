@@ -11,12 +11,18 @@ converges come out of the computation. The steps are
 1. **Splitting.** The range is cut at the points where the integrand is
    not analytic: the zeros of the arguments of ``Abs``, ``sign``,
    ``Heaviside`` and ``Max``/``Min``, the conditions of a ``Piecewise``,
-   and the singularities of the integrand inside the range (poles,
-   branch points), found with :func:`sympy_extras.assumptions.solve` and
-   :func:`sympy.calculus.singularities.singularities`. On each piece the
-   integrand is replaced by its analytic branch. The integral over a
-   piece with a singular endpoint is an improper integral, whose
-   convergence is part of the conditions.
+   the zeros of the factors of a radicand or of the argument of a
+   logarithm, and the singularities of the integrand inside the range
+   (poles, branch points), found with :func:`sympy_extras.assumptions.solve`
+   and :func:`sympy.calculus.singularities.singularities`. On each piece
+   the integrand is replaced by its analytic branch, and a power or a
+   logarithm of a product is split over the factors whose sign on the
+   piece is known (``(u*v)**r`` is ``u**r * v**r`` for ``u > 0``):
+   ``sqrt(x**2 + 2*x + 1)`` is ``x + 1`` or ``-x - 1``, ``(1 - cos(x))**(3/2)``
+   is ``2*sqrt(2)*sin(x/2)**3`` on ``(0, 2*pi)``, ``log(sin(x)/x)`` is
+   ``log(sin(x)) - log(x)`` on ``(0, pi/2)``. The integral over a piece
+   with a singular endpoint is an improper integral, whose convergence is
+   part of the conditions.
 
 2. **The Marichev–Adamchik method** (:mod:`.marichev`): the range is
    mapped onto `(0, \\infty)`, `(0, 1)` or `(1, \\infty)` by a linear change
@@ -93,15 +99,21 @@ from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.complexes import Abs, sign, re, im
 from sympy.functions.elementary.exponential import exp, log
+from sympy.functions.elementary.integers import ceiling, floor, frac
 from sympy.functions.elementary.miscellaneous import Max, Min, sqrt
 from sympy.functions.elementary.piecewise import Piecewise, piecewise_fold
-from sympy.functions.elementary.trigonometric import TrigonometricFunction, asin, sin, cos
+from sympy.functions.elementary.trigonometric import (TrigonometricFunction, asin, sin, cos, tan, cot, sec,
+                                                      csc)
 from sympy.functions.elementary.hyperbolic import HyperbolicFunction, InverseHyperbolicFunction
 from sympy.functions.special.polynomials import OrthogonalPolynomial
-from sympy.core.function import expand, expand_func, expand_log
+from sympy.core.function import count_ops, expand, expand_func, expand_log
 from sympy.simplify.fu import TR8
+from sympy.simplify.trigsimp import trigsimp
 from sympy.functions.special.delta_functions import Heaviside, DiracDelta
 from sympy.integrals.integrals import Integral, integrate
+from sympy.polys.polyerrors import PolynomialError
+from sympy.polys.polytools import degree, factor
+from sympy.polys.rationaltools import together
 from sympy.series.limits import limit
 from sympy.logic.boolalg import And, Boolean, true
 from sympy.sets.sets import FiniteSet, Interval, Set
@@ -114,7 +126,7 @@ from sympy_extras.assumptions.ask import Assumptions, ask
 from sympy_extras.assumptions.facts import element
 from sympy_extras.assumptions.solve import solve
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue, decide, sample_values
+from .conditions import ConditionalValue, _items, decide, sample_values
 from .marichev import mellin_integrate, tidy
 from .mellin import monomial
 
@@ -356,10 +368,50 @@ def _quadrature(f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[complex]:
     v2, v3 = complex(second[0]), complex(third[0])
     scale = 1 + max(abs(v1), abs(v2))
     if abs(v1 - v2) > 1e-8 * scale or e1 > 1e-6 * scale:
-        return None
+        return _oscillatory_quadrature(f, x, lo, hi)
     if abs(v1 - v3) > 1e-6 * scale and abs(v2 - v3) > 1e-6 * scale and e1 > 1e-12 * scale:
-        return None
+        return _oscillatory_quadrature(f, x, lo, hi)
     return v1
+
+
+def _oscillatory_quadrature(f: Expr, x: Symbol, lo: mpmath.mpf, hi: mpmath.mpf) -> Optional[complex]:
+    """``Integral(f, (x, lo, hi))`` over a half-line by mpmath's
+    ``quadosc`` when ``f`` oscillates (a sine or cosine of ``k*x``): the
+    integral summed period by period with Richardson extrapolation,
+    trusted when two choices of the period agree (``sin(x)/x`` over
+    ``(2, oo)``, where the plain rules do not converge)."""
+    if lo == mpmath.mpf('-inf') and hi == mpmath.mpf('inf'):
+        left = _oscillatory_quadrature(as_expr(f.subs(x, -x)), x, mpmath.mpf(0), hi)
+        right = _oscillatory_quadrature(f, x, mpmath.mpf(0), hi)
+        return None if left is None or right is None else left + right
+    if lo == mpmath.mpf('-inf'):
+        return _oscillatory_quadrature(as_expr(f.subs(x, -x)), x, -hi, mpmath.mpf('inf'))
+    if hi != mpmath.mpf('inf'):
+        return None
+    frequencies: list[Rational] = []
+    for node in f.atoms(sin, cos):
+        found = monomial(as_expr(node.args[0]), x)
+        if found is None or found[1] != 1 or not isinstance(found[0], Rational):
+            return None
+        frequencies.append(abs(found[0]))
+    if not frequencies:
+        return None
+    numerator, denominator = 0, 1
+    for k in frequencies:
+        numerator = gcd(numerator, int(k.p))
+        denominator = lcm(denominator, int(k.q))
+    period = 2 * mpmath.pi * denominator / numerator
+    g: Callable[[mpmath.mpf], mpmath.mpf] = lambdify(x, f, 'mpmath')
+    try:
+        with mpmath.workdps(20):
+            first = complex(mpmath.quadosc(g, [lo, hi], period=period))
+            second = complex(mpmath.quadosc(g, [lo, hi], period=2 * period))
+    except (ValueError, TypeError, ZeroDivisionError, OverflowError, NameError, AttributeError,
+            NotImplementedError, mpmath.libmp.NoConvergence):
+        return None
+    if abs(first - second) > 1e-8 * (1 + abs(first)):
+        return None
+    return first
 
 
 def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
@@ -407,9 +459,32 @@ class _Integrator:
         self.principal_value = principal_value
         self.finite_part = finite_part
         self.regularize = regularize
+        #: the factored arguments of the powers and logarithms, by argument
+        self._factored: dict[Expr, Optional[tuple[Expr, list[tuple[Expr, int]], bool]]] = {}
+        #: the zeros of the factors inside the ranges seen
+        self._zero_cache: dict[tuple[Expr, Expr, Expr], Optional[list[Expr]]] = {}
 
     def ask(self, query: Boolean) -> Optional[bool]:
         return ask(query, self.assumptions)
+
+    def _factors_of(self, base: Expr, x: Symbol) -> Optional[tuple[Expr, list[tuple[Expr, int]], bool]]:
+        if base not in self._factored:
+            self._factored[base] = _factored(base, x)
+        return self._factored[base]
+
+    def _nodes(self, f: Expr, x: Symbol, full: bool) -> list[tuple[Expr, Expr, list[tuple[Expr, int]]]]:
+        """The powers and logarithms of ``f`` to split, with the constant
+        and the factors of their arguments; without ``full`` only those
+        whose argument has a square (``sqrt((x - 1)**2)``, ``(1 -
+        cos(x))**(3/2)``), which are rewritten before the other methods;
+        with it every one, for the late splitting."""
+        found: list[tuple[Expr, Expr, list[tuple[Expr, int]]]] = []
+        for node in _signed_nodes(f, x):
+            base = as_expr(node.base if isinstance(node, Pow) else node.args[0])
+            factored = self._factors_of(base, x)
+            if factored is not None and (full or factored[2]):
+                found.append((node, factored[0], factored[1]))
+        return found
 
     # -- entry point --------------------------------------------------------
 
@@ -436,6 +511,7 @@ class _Integrator:
         f = as_expr(piecewise_fold(f)) if f.has(Piecewise) else f
         if f.has(DiracDelta):
             return self._sympy(f, x, a, b)
+        f = _combined_exponentials(f)
         # constants out
         constant, rest = f.as_independent(x, as_Add=False)
         constant_, rest_ = as_expr(constant), as_expr(rest)
@@ -468,7 +544,7 @@ class _Integrator:
                 return self._finish(principal_value_integral(f, x, a, b, self.assumptions))
             return None
         allowed = (free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x}
-        strategies = [self._table, self._radicals, self._canonical, self._mean_value, self._elliptic,
+        strategies = [self._table, self._dirichlet, self._radicals, self._canonical, self._mean_value, self._elliptic,
                       self._trigonometric, self._mapped, self._inversion, self._residues, self._contours,
                       self._algebraic]
         if a == -oo and b == oo and f.has(HyperbolicFunction):
@@ -476,6 +552,7 @@ class _Integrator:
             # the Mellin table gives polylogarithms at +-I
             strategies.remove(self._contours)
             strategies.insert(0, self._contours)
+        strategies.append(self._split_powers)
         if not mapped:
             # the methods which work on the original form only, and the
             # slow ones: not inside a mapped range
@@ -528,12 +605,25 @@ class _Integrator:
 
     def _zeros(self, u: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[list[Expr]]:
         """The zeros of ``u`` in ``(a, b)``."""
+        key = (u, a, b)
+        if key not in self._zero_cache:
+            self._zero_cache[key] = self._solve_zeros(u, x, a, b)
+        return self._zero_cache[key]
+
+    def _solve_zeros(self, u: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[list[Expr]]:
+        zeros = _trigonometric_zeros(u, x, a, b)
+        if zeros is not None:
+            return zeros
         bounds: list[Boolean] = []
         if a != -oo:
             bounds.append(as_boolean(x > a))
         if b != oo:
             bounds.append(as_boolean(x < b))
-        assumptions = _with(self.assumptions, bounds)
+        # the assumptions on the parameters of u only: an unrelated one
+        # (a > 0 for the zeros of sin(t/2)) turns the solver's answer from
+        # the empty set into a ConditionSet on the bounds
+        relevant = [item for item in _items(self.assumptions) if free_symbols(item) & free_symbols(u)]
+        assumptions = _with(relevant, bounds)
         try:
             found = attempt(lambda: solve(u, x, assumptions, domain=S.Reals), settings.timeout)
         except (ValueError, TypeError):
@@ -553,11 +643,15 @@ class _Integrator:
             return as_expr(a + 1)
         return as_expr((a + b) / 2)
 
-    def _branch(self, f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[Expr]:
+    def _branch(self, f: Expr, x: Symbol, a: Expr, b: Expr, unplaced: frozenset[Expr] = frozenset(),
+                full: bool = False) -> Optional[Expr]:
         """``f`` with ``Abs``, ``sign``, ``Heaviside``, ``Max``, ``Min`` and
         ``Piecewise`` of arguments depending on ``x`` replaced by their
-        branch on ``(a, b)``, decided at a sample point; ``None`` when a
-        sign is undecided."""
+        branch on ``(a, b)``, decided at a sample point, and the powers
+        and logarithms of products split over the factors whose sign on
+        ``(a, b)`` is known (:meth:`_signed`); ``None`` when a sign of the
+        former is undecided. The factors in ``unplaced`` are those whose
+        zeros could not be found, so their sample sign says nothing."""
         sample = self._sample(a, b)
         result = f
 
@@ -569,6 +663,10 @@ class _Integrator:
                 return -1
             return None
 
+        for node, constant, factors in self._nodes(result, x, full):
+            rewritten = self._signed(node, constant, factors, sign_of, unplaced, full)
+            if rewritten is not None:
+                result = as_expr(result.xreplace({node: rewritten}))
         for node in sorted(result.atoms(Abs, sign, Heaviside), key=lambda n: str(n)):
             u = as_expr(node.args[0])
             if not u.has(x):
@@ -610,8 +708,65 @@ class _Integrator:
             result = as_expr(result.xreplace({node: chosen}))
         return result
 
-    def _breakpoints(self, f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[list[Expr]]:
-        """The points of ``(a, b)`` where a branch of ``f`` changes."""
+    def _signed(self, node: Expr, constant: Expr, factors: list[tuple[Expr, int]],
+                sign_of: Callable[[Expr], Optional[int]], unplaced: frozenset[Expr],
+                full: bool) -> Optional[Expr]:
+        """A power ``P**r`` or a logarithm ``log(P)`` with ``P`` a product
+        of factors of known sign on the piece split over the factors, or
+        ``None`` when nothing is known.
+
+        ``(u*v)**r = u**r * v**r`` and ``log(u*v) = log(u) + log(v)`` hold
+        for ``u > 0`` and any ``v`` (the argument of the product is the
+        argument of ``v``), so the factors known positive on the piece,
+        with their multiplicities, and the positive constant come out one
+        by one, a factor known negative as ``(-g)**e`` with the sign
+        ``(-1)**e`` kept with the remainder, and the factors whose sign is
+        unknown stay together in the remainder, which is ``(-1)**r`` at
+        most when every sign is known: ``sqrt(c*u**2)`` is ``sqrt(c)*(s*u)``
+        with the sign ``s`` of ``u`` on the piece, ``sqrt(x - 2 + 1/x)`` on
+        ``(0, 1)`` is ``(1 - x)/sqrt(x)``, ``log(x**2)`` is ``2*log(-x)`` on
+        the negative axis. Without ``full`` only the factors of even
+        multiplicity and the positive constant come out (the square roots
+        of squares), the other factors staying together for the methods
+        which read a radicand as a whole."""
+        exponent = as_expr(node.exp) if isinstance(node, Pow) else S.One
+        positive: list[tuple[Expr, int]] = []
+        remainder: list[Expr] = []
+        total_sign = S.One
+        for g, e in factors:
+            if g in unplaced or (not full and e % 2):
+                remainder.append(g**e)
+                continue
+            s = sign_of(g)
+            if s is None:
+                remainder.append(g**e)
+                continue
+            positive.append((s * g, e))
+            total_sign *= Integer(s)**e
+        if constant != 1:
+            if self.ask(as_boolean(constant > 0)) is True:
+                positive.append((constant, 1))
+            elif self.ask(as_boolean(constant < 0)) is True:
+                positive.append((-constant, 1))
+                total_sign = -total_sign
+            else:
+                remainder.append(constant)
+        if not positive:
+            return None
+        rest = as_expr(total_sign * Mul(*remainder))
+        if isinstance(node, Pow):
+            rewritten = as_expr(Mul(*[Pow(g, e * exponent) for g, e in positive]) * (rest**exponent if rest != 1 else 1))
+        else:
+            rewritten = as_expr(Add(*[e * log(g) for g, e in positive]) + (log(rest) if rest != 1 else 0))
+        return None if rewritten == node else rewritten
+
+    def _breakpoints(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                     full: bool = False) -> Optional[tuple[list[Expr], frozenset[Expr]]]:
+        """The points of ``(a, b)`` where a branch of ``f`` changes: the
+        zeros of the arguments of ``Abs`` and the like, and of the factors
+        of the powers and logarithms to split (:meth:`_signed`); with the
+        factors whose zeros could not be found, which are not split.
+        ``None`` when a zero of the former cannot be placed."""
         points: list[Expr] = []
         arguments: list[Expr] = []
         for node in f.atoms(Abs, sign, Heaviside):
@@ -630,31 +785,82 @@ class _Integrator:
             if zeros is None:
                 return None
             points.extend(zeros)
-        return self._points_in(FiniteSet(*points), a, b) if points else []
+        unplaced: set[Expr] = set()
+        for _, _, factors in self._nodes(f, x, full):
+            for g, e in factors:
+                if not full and e % 2:
+                    continue
+                zeros = self._zeros(g, x, a, b)
+                if zeros is None:
+                    unplaced.add(g)
+                else:
+                    points.extend(zeros)
+        placed = self._points_in(FiniteSet(*points), a, b) if points else []
+        if placed is None:
+            return None
+        return placed, frozenset(unplaced)
 
     def _split_at(self, f: Expr, x: Symbol, a: Expr, b: Expr, points: Sequence[Expr], depth: int,
-                  branch: bool) -> Optional[ConditionalValue]:
+                  branch: bool, unplaced: frozenset[Expr] = frozenset(),
+                  full: bool = False) -> Optional[ConditionalValue]:
         bounds = [a] + list(points) + [b]
         total = ConditionalValue(S.Zero)
         for lo, hi in zip(bounds[:-1], bounds[1:]):
-            piece = self._branch(f, x, lo, hi) if branch else f
+            piece = self._branch(f, x, lo, hi, unplaced, full) if branch else f
             if piece is None:
                 return None
-            found = self.integrate(piece, x, lo, hi, depth + 1)
+            # the late splitting is a rewriting: its pieces skip the slow
+            # methods and SymPy, which the original form gets afterwards
+            found = self.integrate(piece, x, lo, hi, depth + 1, not full, full)
             if found is None or found.value.has(oo, -oo, zoo, nan):
                 # a divergent piece: nothing is claimed about the whole
                 return None
             total = total.add(found)
         return total
 
+    def _split_signs(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int,
+                     full: bool) -> Optional[ConditionalValue]:
+        """The range cut where a branch of ``f`` changes, each piece
+        integrated in its branch; ``None`` when there is nothing to cut or
+        to rewrite."""
+        if not f.atoms(Abs, sign, Heaviside, Max, Min, Piecewise) and not self._nodes(f, x, full):
+            return None
+        found = self._breakpoints(f, x, a, b, full)
+        if found is None:
+            return None
+        points, unplaced = found
+        if not points:
+            piece = self._branch(f, x, a, b, unplaced, full)
+            if piece is None or piece == f:
+                return None
+            return self.integrate(piece, x, a, b, depth + 1, not full, full)
+        return self._split_at(f, x, a, b, points, depth, True, unplaced, full)
+
+    def _signed_form(self, f: Expr, x: Symbol, a: Expr, b: Expr) -> Expr:
+        """``f`` with its powers and logarithms split by the signs of
+        their factors on ``(a, b)`` when no factor changes sign inside,
+        else ``f`` itself: ``(-cos(t))**(2/3)`` on ``(0, pi/2)`` is
+        ``(-1)**(2/3)*cos(t)**(2/3)``, which the substitution of the Beta
+        integral reads."""
+        if not self._nodes(f, x, True):
+            return f
+        found = self._breakpoints(f, x, a, b, True)
+        if found is None or found[0]:
+            return f
+        piece = self._branch(f, x, a, b, found[1], True)
+        return f if piece is None else piece
+
     def _split_branches(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
-        f = _square_roots_of_squares(f)
-        if not f.atoms(Abs, sign, Heaviside, Max, Min, Piecewise):
-            return None
-        points = self._breakpoints(f, x, a, b)
-        if points is None:
-            return None
-        return self._split_at(f, x, a, b, points, depth, True)
+        """The branches of ``Abs`` and the like, and the square roots of
+        squares, before the methods."""
+        return self._split_signs(f, x, a, b, depth, False)
+
+    def _split_powers(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """The powers and logarithms of products split over their factors
+        of known sign (``sqrt(x*(4 - x))`` as ``sqrt(x)*sqrt(4 - x)`` on
+        ``(0, 4)``, ``log(sin(x)/x)`` as ``log(sin(x)) - log(x)`` on
+        ``(0, pi/2)``), after the methods which read them whole."""
+        return self._split_signs(f, x, a, b, depth, True)
 
     def _split_singularities(self, f: Expr, x: Symbol, a: Expr, b: Expr,
                              depth: int) -> tuple[bool, Optional[ConditionalValue]]:
@@ -731,9 +937,16 @@ class _Integrator:
                 return None
             g = as_expr(f.subs(x, b * t) * b)
             return self.integrate(g, t, S.Zero, S.One, depth + 1, False, True)
-        # (a, b): x = a + (b - a) t
+        # (a, b): x = a + (b - a) t, and reflected, x = b - (b - a) t, when
+        # that fails: the singular end of log(-x)/sqrt(1 - x**2) over
+        # (-1, 0) is at 0, which the reflection sends to t = 0 where the
+        # Mellin method reads it
         length = as_expr(b - a)
         g = as_expr(f.subs(x, a + length * t) * length)
+        found = self.integrate(g, t, S.Zero, S.One, depth + 1, False, True)
+        if found is not None:
+            return found
+        g = as_expr(f.subs(x, b - length * t) * length)
         return self.integrate(g, t, S.Zero, S.One, depth + 1, False, True)
 
     def _series_mellin(self, g: Expr, t: Symbol) -> Optional[ConditionalValue]:
@@ -809,6 +1022,7 @@ class _Integrator:
             t = Dummy('t')
             return self.integrate(as_expr(f.subs(x, t + ka * pi / 2)), t, S.Zero, pi / 2, depth + 1, False, True)
         u = Dummy('u', positive=True)
+        f = self._signed_form(f, x, S.Zero, pi / 2)
         g = as_expr(f.subs(x, asin(sqrt(u))) / (2 * sqrt(u) * sqrt(1 - u)))
         g = _denest(g, self.assumptions)
         if g.has(asin):
@@ -893,6 +1107,15 @@ class _Integrator:
         if settings.numerical_checks and verify_numerically(total.value, f, x, a, b, self.assumptions) is False:
             return None
         return self._finish(total)
+
+    def _dirichlet(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """Trigonometric sums over powers of ``x`` on the half-lines and
+        the real line (:mod:`.dirichlet`): the Dirichlet, Frullani and
+        Borwein integrals."""
+        from .dirichlet import dirichlet_integral
+        if a not in (S.Zero, -oo) or b not in (S.Zero, oo) or not f.has(sin, cos, exp):
+            return None
+        return self._finish(dirichlet_integral(f, x, a, b, self.assumptions))
 
     def _table(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """The table of Gradshteyn and Ryzhik (:mod:`.tables`), cheap and
@@ -1165,33 +1388,141 @@ def _log_powers_only(g: Expr, u: Symbol) -> bool:
     return True
 
 
-def _square_roots_of_squares(f: Expr) -> Expr:
-    """``sqrt(c*u**2)`` with a positive constant ``c`` written as
-    ``sqrt(c)*Abs(u)``, after ``1 - cos(u)`` and ``1 + cos(u)`` are
-    written as ``2*sin(u/2)**2`` and ``2*cos(u/2)**2``."""
-    def half_angle(node: Basic) -> Basic:
-        if isinstance(node, Add) and len(node.args) == 2:
-            terms = [as_expr(t) for t in node.args]
-            for constant, other in ((terms[0], terms[1]), (terms[1], terms[0])):
-                if constant == 1 and isinstance(other, cos):
-                    return 2 * cos(as_expr(other.args[0]) / 2)**2
-                if constant == 1 and isinstance(other, Mul) and len(other.args) == 2 \
-                        and other.args[0] == -1 and isinstance(other.args[1], cos):
-                    return 2 * sin(as_expr(other.args[1].args[0]) / 2)**2
-        return node
+def _trigonometric_zeros(u: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[list[Expr]]:
+    """The zeros of ``sin(w*x + c)`` or ``cos(w*x + c)`` with numeric
+    ``w`` and ``c`` inside a bounded numeric range ``(a, b)``, enumerated
+    (``solve`` spends seconds on them, and answers with a ConditionSet
+    under an assumption on another symbol); ``None`` for any other
+    ``u`` or range."""
+    if not isinstance(u, (sin, cos)) or not (a.is_number and b.is_number) or a in (-oo, oo) or b in (-oo, oo):
+        return None
+    argument = as_expr(u.args[0])
+    if not argument.is_polynomial(x) or degree(argument, x) != 1:
+        return None
+    w, c = as_expr(argument.coeff(x)), as_expr(argument.subs(x, 0))
+    if not (w.is_number and c.is_number and w.is_real and c.is_real) or w == 0:
+        return None
+    # the zeros are at w x + c = k pi, or k pi + pi/2 for the cosine
+    shift = S.Zero if isinstance(u, sin) else pi / 2
+    ends = sorted([float(as_expr((w * a + c - shift) / pi).evalf()), float(as_expr((w * b + c - shift) / pi).evalf())])
+    if ends[1] - ends[0] > 1000:
+        return None
+    zeros: list[Expr] = []
+    for k in range(int(ends[0]) - 1, int(ends[1]) + 2):
+        point = as_expr((k * pi + shift - c) / w)
+        above, below = as_expr(point - a).is_positive, as_expr(b - point).is_positive
+        if above is None or below is None:
+            return None
+        if above and below:
+            zeros.append(point)
+    return sorted(zeros, key=lambda p: float(p.evalf()))
 
-    def rewrite(node: Basic) -> Basic:
-        if isinstance(node, Pow) and node.exp == S.Half:
-            base = as_expr(node.base)
-            constant, rest = base.as_independent(*free_symbols(base), as_Add=False)
-            constant_, rest_ = as_expr(constant), as_expr(rest)
-            if isinstance(rest_, Pow) and rest_.exp == 2 and constant_.is_positive:
-                return sqrt(constant_) * Abs(rest_.base)
-        return node
 
-    if not f.has(Pow):
+def _combined_exponentials(f: Expr) -> Expr:
+    """The exponential factors of each product combined into one,
+    ``exp(-a*t)*exp(-s*t)`` into ``exp(-(a + s)*t)``: the identity
+    ``exp(u)*exp(v) = exp(u + v)`` holds everywhere, and the methods read
+    one exponential (the bug: the product went through Parseval's formula
+    as two kernels, with the condition ``a > 0`` on each instead of
+    ``a + s > 0`` on the sum)."""
+    def combine(node: Basic) -> Basic:
+        exponentials = [as_expr(part) for part in node.args if isinstance(part, exp)]
+        if len(exponentials) < 2:
+            return node
+        rest = [as_expr(part) for part in node.args if not isinstance(part, exp)]
+        return Mul(*rest) * exp(Add(*[as_expr(e.args[0]) for e in exponentials]))
+
+    if not f.has(exp):
         return f
-    g = f
-    if g.has(cos):
-        g = as_expr(g.replace(lambda n: isinstance(n, Add), half_angle))
-    return as_expr(g.replace(lambda n: isinstance(n, Pow), rewrite))
+    return as_expr(f.replace(lambda n: isinstance(n, Mul), combine))
+
+
+def _trigonometric_squares(base: Expr) -> Expr:
+    """The trigonometric sums which are squares written as such, so that
+    a power of the sum splits over the factors: ``c - c*cos(u)`` is
+    ``2*c*sin(u/2)**2`` and ``c + c*cos(u)`` is ``2*c*cos(u/2)**2`` (the
+    half-angle formulas), and a sum which ``trigsimp`` turns into a product
+    or a power is taken in that form (``tan(u)**2 + 1`` is ``cos(u)**(-2)``,
+    the cardioid's ``a**2*(1 - cos(t))**2 + a**2*sin(t)**2`` is
+    ``2*a**2*(1 - cos(t))``)."""
+    def half_angle(node: Basic) -> Basic:
+        if not isinstance(node, Add) or len(node.args) != 2:
+            return node
+        terms = [as_expr(t) for t in node.args]
+        for constant, other in ((terms[0], terms[1]), (terms[1], terms[0])):
+            if constant.has(TrigonometricFunction):
+                continue
+            cosines = [as_expr(part) for part in Mul.make_args(other) if isinstance(part, cos)]
+            if len(cosines) != 1:
+                continue
+            coefficient = as_expr(other / cosines[0])
+            u = as_expr(cosines[0].args[0])
+            if coefficient == constant:
+                return 2 * constant * cos(u / 2)**2
+            if coefficient == -constant:
+                return 2 * constant * sin(u / 2)**2
+        return node
+
+    g = base
+    if isinstance(g, Add):
+        # the whole sum first: the cardioid's is a product for trigsimp
+        # only before its 1 - cos(t) is written as a square
+        simplified = as_expr(trigsimp(g))
+        if not isinstance(simplified, Add):
+            g = simplified
+    return as_expr(g.replace(lambda n: isinstance(n, Add), half_angle))
+
+
+#: the largest base of a power factored for its signs
+_FACTOR_LIMIT = 200
+
+
+def _factored(base: Expr, x: Symbol) -> Optional[tuple[Expr, list[tuple[Expr, int]], bool]]:
+    """``base`` as a constant times powers of factors depending on ``x``
+    with integer exponents: the trigonometric squares written as such,
+    the numerator and the denominator factored over the rationals; and
+    whether a square appeared (a factor of multiplicity two or more, a
+    trigonometric square). Each factor is continuous, so that it keeps
+    one sign between its zeros; ``None`` when a factor has poles
+    (``tan``, a negative power of ``x`` inside it) or the base is too
+    large to factor."""
+    if count_ops(base) > _FACTOR_LIMIT:
+        return None
+    g = _trigonometric_squares(base) if base.has(TrigonometricFunction) else base
+    squares = g != base
+    try:
+        factored = attempt(lambda: as_expr(factor(together(g))), settings.timeout)
+    except (PolynomialError, ValueError, TypeError):
+        return None
+    if factored is None:
+        return None
+    constant, rest = factored.as_independent(x, as_Add=False)
+    factors: list[tuple[Expr, int]] = []
+    for part in Mul.make_args(as_expr(rest)):
+        b, e = part.as_base_exp()
+        b_, e_ = as_expr(b), as_expr(e)
+        if not isinstance(e_, Integer):
+            # a radical factor, continuous where it is real
+            b_, e_ = as_expr(part), S.One
+        if b_.has(tan, cot, sec, csc, Piecewise, floor, ceiling, frac, sign, Heaviside) or any(
+                isinstance(node, Pow) and node.base.has(x) and as_expr(node.exp).is_negative
+                for node in b_.atoms(Pow)):
+            return None
+        factors.append((b_, int(e_)))
+        squares = squares or abs(int(e_)) >= 2
+    return as_expr(constant), factors, squares
+
+
+def _signed_nodes(f: Expr, x: Symbol) -> list[Expr]:
+    """The powers with a non-integer exponent and the logarithms whose
+    argument depends on ``x``, the candidates of :meth:`_Integrator._signed`."""
+    found: list[Expr] = []
+    for node in sorted(f.atoms(Pow, log), key=lambda n: str(n)):
+        if isinstance(node, Pow):
+            base, exponent = as_expr(node.base), as_expr(node.exp)
+            if isinstance(exponent, Integer) or not base.has(x):
+                continue
+        elif not node.args[0].has(x):
+            continue
+        found.append(node)
+    return found

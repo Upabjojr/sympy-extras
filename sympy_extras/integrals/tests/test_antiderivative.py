@@ -100,3 +100,19 @@ def test_limits_at_symbolic_points() -> None:
     assert one_sided_limit(F, y, x, '-', [x > -sqrt(2) / 2, x < 0]) == x * sqrt(1 - x**2) + asin(x)
     found = antiderivative_integral(2 * sqrt(1 - y**2), y, -sqrt(1 - x**2), x, [x > -sqrt(2) / 2, x < 0])
     assert found is not None and found.value.has(asin)
+
+
+def test_polynomials_in_elementary_functions_go_to_integrate_first() -> None:
+    # the Risch port spent seconds on the gcds over pi in the arguments of
+    # sin(pi*t/4 + pi/4)**3, on every quarter period of a trigonometric
+    # integral; integrate does these at once
+    from sympy import sin, cos, sinh, diff, simplify
+    from sympy_extras.integrals.antiderivative import _elementary_polynomial
+    t = symbols('t')
+    assert _elementary_polynomial(sin(pi * t / 4 + pi / 4)**3, t)
+    assert _elementary_polynomial(t**2 * exp(2 * t) * cos(t) + sinh(3 * t - 1), t)
+    assert not _elementary_polynomial(sin(t**2), t)
+    assert not _elementary_polynomial(sin(t) / t, t)
+    assert not _elementary_polynomial(log(t) * cos(t), t)
+    F = antiderivative(sin(pi * t / 4 + pi / 4)**3, t)
+    assert F is not None and simplify(diff(F, t) - sin(pi * t / 4 + pi / 4)**3) == 0

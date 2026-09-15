@@ -197,7 +197,12 @@ def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
     """
     if f.is_polynomial(x):
         return None
-    series = attempt(lambda: fps(f, x), settings.timeout)
+    try:
+        series = attempt(lambda: fps(f, x), settings.timeout)
+    except (KeyError, IndexError, ValueError, TypeError):
+        # fps fails inside its hypergeometric algorithm on some inputs
+        # (a KeyError popping the symbol of a constant)
+        return None
     if not isinstance(series, FormalPowerSeries):
         return None
     k = series.ak.variables[0]
@@ -210,6 +215,7 @@ def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
     value, m, r = found
     # the independent terms must agree with the formula
     independent = as_expr(series.ind)
+    present: set[int] = set()
     for term in Add.make_args(independent):
         if term == 0:
             continue
@@ -225,6 +231,42 @@ def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
         if not isinstance(power, Integer) or (int(power) - r) % m != 0:
             return None
         if simplify(as_expr(value.subs(k, power)) - as_expr(coefficient)) != 0:
+            return None
+        present.add(int(power))
+    # and the whole must agree with the Taylor expansion by the other
+    # algorithm for the first terms: fps is not to be trusted alone. Its
+    # formula for (exp(4*x) - exp(-4*x))**2 holds from k = 3 and gives 2
+    # at k = 0, where the series has no term (the bug: the integral over
+    # (0, 1) came out as sinh(8)/4, 2 too much), and its formula for
+    # 1/(x**2 + x + 1) is (-1)**k, the series of 1/(x + 1) (the bug: the
+    # integral of (1 - x)/(x**2 + x + 1) over (0, 1) came out as
+    # log(4) - 1, an eighth too much)
+    first = as_expr(series.ak.start)
+    if not isinstance(first, Integer):
+        return None
+    terms = max(6, int(first) + 2 * m)
+    try:
+        truncated = attempt(lambda: as_expr(f.series(x, 0, terms).removeO()), settings.timeout)
+    except (PoleError, ValueError, TypeError, NotImplementedError):
+        return None
+    if truncated is None:
+        return None
+    # the one formula returned must give every coefficient of its residue
+    # class, the ones below the start of fps included; where it is
+    # infinite (-x**k/k for log(1 - x) at k = 0) the callers start the sum
+    # after it, so the coefficient must be zero there
+    for k0 in range(terms):
+        actual = as_expr(truncated.coeff(x, k0)) if k0 else as_expr(truncated.subs(x, 0))
+        if (k0 - r) % m:
+            predicted: Expr = S.Zero
+        else:
+            try:
+                predicted = as_expr(value.subs(k, k0))
+            except (ValueError, TypeError):
+                return None
+            if predicted.is_finite is False:
+                predicted = S.Zero
+        if simplify(predicted - actual) != 0:
             return None
     j = Dummy('j', integer=True, nonnegative=True)
     try:
