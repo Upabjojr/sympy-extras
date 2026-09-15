@@ -100,14 +100,20 @@ __all__ = ['antiderivative', 'discontinuities', 'antiderivative_integral', 'one_
 _METHODS = ['rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'trager', 'sympy']
 
 
-def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
+#: the heuristic methods, tried late and under a larger budget
+_LATE_METHODS = ['heurisch', 'rewriting', 'manual', 'meijer', 'sympy']
+
+
+def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bool = False) -> Optional[Expr]:
     """An antiderivative of ``f`` by the radical table, by ``integrate``
     for a polynomial in elementary functions, and by the verified methods
     of :mod:`.indefinite` otherwise, under an eighth of the time limit;
     ``None`` when none is found (an unevaluated ``Integral`` in the result
     counts as none). The assumptions on the parameters reach the checks
     (``1/(cosh(n*t)**2 + 1)`` has an antiderivative for ``n > 0``, none
-    that checks for a general ``n``)."""
+    that checks for a general ``n``). With ``late`` the heuristic methods
+    are tried instead, under a quarter of the time limit (the second pass
+    of the definite driver, after its slow methods)."""
     from .radicals import quadratic_radical_antiderivative
     found = quadratic_radical_antiderivative(f, x)
     if found is not None:
@@ -137,9 +143,11 @@ def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None) -> Optio
     # route is tried on every piece of every mapped range, and the other
     # methods of the driver need their share (log(sin(x)/x) over
     # (0, pi/2) lost its budget to the failures on its pieces)
-    budget = None if settings.timeout is None else settings.timeout / 8
+    share = 4 if late else 8
+    budget = None if settings.timeout is None else settings.timeout / share
     try:
-        verified = attempt(lambda: verified_antiderivative(f, x, assumptions, _METHODS), budget)
+        verified = attempt(lambda: verified_antiderivative(f, x, assumptions, _LATE_METHODS if late else _METHODS),
+                           budget)
     except (AttributeError, ZeroDivisionError, AssertionError):
         # SymPy 1.14: the cache wrapper of meijerint fails on a lazy
         # exception message ('LazyExceptionMessage' has no 'startswith')
@@ -353,7 +361,7 @@ def one_sided_limit(F: Expr, x: Symbol, point: Expr, direction: str,
 
 
 def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
-                            assumptions: Assumptions = None) -> Optional[ConditionalValue]:
+                            assumptions: Assumptions = None, late: bool = False) -> Optional[ConditionalValue]:
     """``Integral(f, (x, a, b))`` from an antiderivative ``F``, cut at the
     discontinuities of ``F`` and the singularities of ``f`` inside the
     range and evaluated by one-sided limits; ``None`` when there is no
@@ -372,7 +380,7 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     ConditionalValue(pi)
     """
     a, b = as_expr(a), as_expr(b)
-    F = antiderivative(f, x, assumptions)
+    F = antiderivative(f, x, assumptions, late)
     if F is None:
         return None
     if F.has(Piecewise):

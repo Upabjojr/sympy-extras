@@ -128,6 +128,15 @@ def _settled(part: Boolean, assumptions: Assumptions) -> Boolean:
         if any(alternative is true for alternative in alternatives):
             return true
         return as_boolean(Or(*alternatives))
+    if isinstance(part, And):
+        # an alternative which is a conjunction (the Mellin conditions on
+        # two scales, (|arg a| <= pi/2 & |arg v| < pi/2) | ...): true when
+        # every conjunct is
+        conjuncts = [_settled(as_boolean(conjunct), assumptions) for conjunct in part.args]
+        decided = [conjunct if conjunct is true else ask(conjunct, assumptions) for conjunct in conjuncts]
+        if all(verdict is True or verdict is true for verdict in decided):
+            return true
+        return as_boolean(And(*[conjunct for conjunct, verdict in zip(conjuncts, decided) if verdict is not True]))
     return canonical(real_form(as_boolean(part), assumptions))
 
 

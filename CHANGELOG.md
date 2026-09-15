@@ -69,7 +69,10 @@ remove public functions. Breaking changes are listed here when they happen.
   the assumptions is dropped (`(log(3 - 2*sqrt(2)) + I*pi)/(2*n)` for
   `n > 0`, which SymPy leaves intersected with the range), and the
   arguments of a logarithm known positive on the range are not solved
-  for zeros.
+  for zeros. A second pass after the slow methods tries the heuristics
+  (the Risch–Norman method, the substitutions, SymPy's manual and Meijer
+  routes) under a quarter of the limit: `t*exp(-sqrt(t))*log(t)` over
+  `(x, oo)` has an antiderivative in exponential integrals from SymPy.
 
 - `sympy_extras.integrals.definite`: the common factors of a sum come out
   with the constants (`log(t + 1)/(a**2*t**2 + a**2)` is
@@ -199,7 +202,27 @@ remove public functions. Breaking changes are listed here when they happen.
   through Parseval's formula with two exponential kernels and answered
   under the condition `a > 0` (`(a > 0) & (s/a > 0)` in a `Piecewise`)
   instead of `1/(a + s)`: the exponential factors of a product are
-  combined first.
+  combined first, and the expanded form the Mellin method reads keeps
+  them whole (`expand` wrote `exp(-(a + s)*t)` as the two factors again:
+  `(1 - 2*a*t)*exp(-(a + s)*t)/sqrt(t)` is `s/(a + s)**(3/2)` under
+  `a + s > 0`, with no condition on `a`).
+
+- `sympy_extras._timeout.TimeLimitExceeded` is a `BaseException`: SymPy's
+  routines catch `Exception` in places (the heuristics of `integrate`,
+  the simplifiers), and the limit, once swallowed there, was gone for the
+  rest of the computation (integrals ran for hundreds of seconds under a
+  limit of twenty).
+
+- `sympy_extras.integrals.conditions.decide` settles an alternative which
+  is a conjunction: the Mellin conditions on two scales come as
+  `(Abs(arg(a)) <= pi/2 & Abs(arg(v)) < pi/2) | ...`, left undecided under
+  `a > 0`, `v > a` (`exp(-u*v)*besselk(0, a*u)` over `(0, oo)` stayed a
+  `Piecewise`).
+
+- `real_logarithms` crashed on a logarithm with a complex argument (the
+  relation `argument < 0` cannot be formed: Wester's
+  `x*exp(-p*x**2 + 2*x*(atan(43*sqrt(771)/2313)/3 + pi/6))`); such
+  arguments are left alone.
 
 ## 0.0.2 - 2026-09-12
 

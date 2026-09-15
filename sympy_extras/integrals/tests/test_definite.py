@@ -399,3 +399,20 @@ def test_periodic_laplace_rule_with_a_symbolic_frequency() -> None:
     assert decide((Abs(arg(I + s / k)) < pi / 2) & (Abs(arg(-I + s / k)) < pi / 2), [s > 0, k > 0]) is S.true
     value = definite_integral(exp(-s * t) * Abs(sin(k * t)), (t, 0, oo), k > 0)
     assert _same(value, k * coth(pi * s / (2 * k)) / (k**2 + s**2))
+
+
+def test_mellin_conditions_on_combined_exponentials_and_two_scales() -> None:
+    # the expanded form kept exp(-(a + s)*t) whole (Mathematica:
+    # s/(a + s)**(3/2) under a + s > 0, no condition on a)
+    from sympy import acosh, besselk
+    from sympy_extras.integrals.conditions import decide
+    value = definite_integral((1 - 2 * k * t) * exp(-k * t) * exp(-s * t) / (sqrt(pi) * sqrt(t)), (t, 0, oo), k + s > 0)
+    assert _same(value, s / (k + s)**Rational(3, 2))
+    # an alternative which is a conjunction is settled (the conditions of
+    # Parseval's formula on two scales)
+    condition = ((Abs(arg(k)) <= pi / 2) & (Abs(arg(s)) < pi / 2)) | ((Abs(arg(s)) <= pi / 2) & (Abs(arg(k)) < pi / 2))
+    assert decide(condition, [k > 0, s > k]) is S.true
+    value = definite_integral(exp(-s * t) * besselk(0, k * t), (t, 0, oo), [k > 0, s > k])
+    assert not value.has(Piecewise)
+    assert verify_numerically(value, exp(-s * t) * besselk(0, k * t), t, S.Zero, oo, [k > 0, s > k]) is True
+    assert _same(value.subs({k: 1, s: 2}), acosh(2) / sqrt(3))

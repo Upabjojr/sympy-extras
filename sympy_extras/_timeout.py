@@ -18,8 +18,14 @@ __all__ = ['TimeLimitExceeded', 'time_limit', 'attempt']
 T = TypeVar('T')
 
 
-class TimeLimitExceeded(Exception):
-    """Raised inside :func:`time_limit` when the time is up."""
+class TimeLimitExceeded(BaseException):
+    """Raised inside :func:`time_limit` when the time is up.
+
+    A ``BaseException``, like ``KeyboardInterrupt``: SymPy's routines
+    catch ``Exception`` in places (the heuristics of ``integrate``, the
+    simplifiers), and the limit, once swallowed there, was gone for the
+    rest of the computation (the bug: integrals ran for hundreds of
+    seconds under a limit of twenty)."""
 
 
 def _supported() -> bool:

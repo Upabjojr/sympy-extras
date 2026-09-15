@@ -565,6 +565,11 @@ class _Integrator:
             # slow ones: not inside a mapped range
             strategies += [self._holonomic, self._laplace, self._parametric, self._series, self._dfinite]
         strategies.append(self._termwise)
+        if depth == 0:
+            # the heuristics last, on the integral as given only (a quarter
+            # of the limit on every piece of every range ate the budget of
+            # log(sin(x)/x) over (0, pi/2) before the splitting of the log)
+            strategies.append(self._late_antiderivative)
         for strategy in strategies:
             try:
                 found = strategy(f, x, a, b, depth)
@@ -1070,13 +1075,15 @@ class _Integrator:
             return None
         return self._antiderivative(f, x, a, b, depth)
 
-    def _antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+    def _antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int,
+                        late: bool = False) -> Optional[ConditionalValue]:
         """An antiderivative evaluated by one-sided limits at the
-        endpoints and at its discontinuities (:mod:`.antiderivative`)."""
+        endpoints and at its discontinuities (:mod:`.antiderivative`):
+        by the exact methods first, by the heuristics ``late``."""
         from .antiderivative import antiderivative_integral
         if a.has(x) or b.has(x):
             return None
-        found = antiderivative_integral(f, x, a, b, self.assumptions)
+        found = antiderivative_integral(f, x, a, b, self.assumptions, late)
         if found is None:
             return None
         if settings.numerical_checks and verify_numerically(found.value, f, x, a, b, self.assumptions) is not True:
@@ -1084,6 +1091,14 @@ class _Integrator:
             # or principal branches only: kept when confirmed numerically
             return None
         return self._finish(found)
+
+    def _late_antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                             depth: int) -> Optional[ConditionalValue]:
+        """The antiderivative by the heuristic methods (the Risch–Norman
+        method, the substitutions, SymPy's manual and Meijer routes), last
+        of all: ``t*exp(-sqrt(t))*log(t)`` over ``(x, oo)`` has one in
+        exponential integrals from SymPy in seconds."""
+        return self._antiderivative(f, x, a, b, depth, True)
 
     def _termwise(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """A sum integrated term by term when the whole defeats every
@@ -1303,7 +1318,10 @@ def _forms(g: Expr, t: Symbol, assumptions: Assumptions) -> list[Expr]:
         if e not in forms:
             forms.append(e)
 
-    add(as_expr(g.expand()))
+    # the exponentials kept whole: expand writes exp(-(a + s)*t) as
+    # exp(-a*t)*exp(-s*t), two kernels for Parseval's formula with the
+    # condition a > 0 on each where a + s > 0 is the one
+    add(as_expr(g.expand(power_exp=False)))
     add(_denest(g, assumptions))
     if g.has(sin, cos):
         add(as_expr(TR8(g).expand()))

@@ -198,3 +198,13 @@ def test_bessel_products_through_the_driver() -> None:
     assert found.has(elliptic_k) and not found.has(exp_polar)
     assert abs(N(found.subs(a, 2)) - N(Integral(exp(-2 * x) * besselj(0, x)**2, (x, 0, oo)))) < 1e-10
     assert polar_elliptic(elliptic_k(4 * exp_polar(I * pi) / a**2)) == elliptic_k(-4 / a**2)
+
+
+def test_real_logarithms_skip_complex_arguments() -> None:
+    # the crash: the relation argument < 0 cannot be formed for a complex
+    # argument (Wester's x*exp(-p*x**2 + 2*x*(atan(43*sqrt(771)/2313)/3 + pi/6)))
+    from sympy import I, log, sqrt, pi, symbols
+    from sympy_extras.integrals.marichev import real_logarithms
+    c = symbols('c')
+    value = log(1 + 43 * sqrt(771) * I / 2313) + log(-c**2)
+    assert real_logarithms(value, [c > 0]) == log(1 + 43 * sqrt(771) * I / 2313) + log(c**2) + I * pi

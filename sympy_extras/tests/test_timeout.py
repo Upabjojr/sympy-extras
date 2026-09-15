@@ -46,3 +46,24 @@ def test_attempt_contains_a_polynomial_error() -> None:
         raise PolynomialError("only univariate polynomials are allowed")
 
     assert attempt(raiser, 5) is None
+
+
+def test_the_limit_survives_a_bare_except() -> None:
+    # the bug: TimeLimitExceeded was an Exception, and SymPy's routines
+    # catch Exception in places; once swallowed there the limit was gone
+    # for the rest of the computation (integrals ran for hundreds of
+    # seconds under a limit of twenty)
+    import time
+
+    def swallowing() -> int:
+        started = time.monotonic()
+        while time.monotonic() - started < 5:
+            try:
+                time.sleep(0.01)
+            except Exception:
+                pass
+        return 1
+
+    started = time.monotonic()
+    assert attempt(swallowing, 0.2) is None
+    assert time.monotonic() - started < 2

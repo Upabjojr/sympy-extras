@@ -264,7 +264,15 @@ def real_logarithms(value: Expr, assumptions: Assumptions = None) -> Expr:
     replacement: dict[Expr, Expr] = {}
     for node in value.atoms(log):
         argument = as_expr(node.args[0])
-        if ask(as_boolean(argument < 0), assumptions) is True:
+        if argument.is_extended_real is False:
+            # a complex argument, 1 + 43*sqrt(771)*I/2313 (the crash: the
+            # relation argument < 0 cannot be formed)
+            continue
+        try:
+            negative = ask(as_boolean(argument < 0), assumptions)
+        except TypeError:
+            continue
+        if negative is True:
             replacement[as_expr(node)] = log(-argument) + I * pi
     if not replacement:
         return value
