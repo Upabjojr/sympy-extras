@@ -286,9 +286,10 @@ The driver tries, after the Mellin method and the residues:
   Rioboo's and Jeffrey–Rich's constructions repair for rational and
   trigonometric integrands), and the pieces are summed with one-sided
   limits under the assumptions; an infinite limit exposes a divergence.
-  The antiderivative comes from the Risch port
-  (`sympy_extras.integrals.risch`, Aaron Meurer's unmerged SymPy pull
-  requests, see below) or from SymPy's `integrate`.
+  The antiderivative comes from the verified methods of
+  `sympy_extras.integrals.indefinite` (the radical table first, SymPy's
+  `integrate` at once for a polynomial in elementary functions of linear
+  arguments), under the assumptions and an eighth of the time limit.
 
 - **Ramanujan's master theorem and the method of brackets**
   (`sympy_extras.integrals.brackets`): for a factor outside the Mellin

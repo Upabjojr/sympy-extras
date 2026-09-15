@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from sympy import (symbols, exp, sin, cos, log, sqrt, oo, pi, S, Rational, Abs, Heaviside, Piecewise, Integral, I, Eq,
-                   sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan, asin, besselj, Si, E, tan,
+                   sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan, asin, besselj, Si, E, tan, arg, cosh,
                    sinh)
 from sympy.testing.pytest import raises
 
@@ -376,3 +376,26 @@ def test_oscillatory_tails_are_verified() -> None:
     # the series route summed a wrong formal power series of SymPy for
     # 1/(x**2 + x + 1) to log(4) - 1 (HOL-Py's euler_log_sin06)
     assert _same(definite_integral((1 - x) / (x**2 + x + 1), (x, 0, 1)), sqrt(3) * pi / 6 - log(3) / 2)
+
+
+def test_the_antiderivative_route_takes_the_verified_methods() -> None:
+    # 1/(cosh(n t)**2 + 1): the Risch port gives up and integrate answers a
+    # Piecewise in tanh; the trigonometric integrator has a logarithmic
+    # form, which checks under n > 0 (HOL-Py's Chapter3Practice)
+    n = symbols('n')
+    value = definite_integral(1 / (cosh(n * t)**2 + 1), (t, 0, 1), n > 0)
+    assert not value.has(Integral) and verify_numerically(value, 1 / (cosh(n * t)**2 + 1), t, S.Zero, S.One, n > 0)
+    # the common factor of the denominator comes out before the constants:
+    # log(t + 1)/(a**2 t**2 + a**2) is log(t + 1)/(t**2 + 1) over a**2
+    # (HOL-Py's trick2e)
+    assert _same(definite_integral(log(a + t) / (a**2 + t**2), (t, 0, a)), pi * (2 * log(a) + log(2)) / (8 * a))
+
+
+def test_periodic_laplace_rule_with_a_symbolic_frequency() -> None:
+    # the period 2 pi/Abs(k) of Abs(sin(k t)) under k > 0, and the condition
+    # Abs(arg(s/k + I)) < pi/2 of the pieces decided by the real part s/k
+    from sympy import coth
+    from sympy_extras.integrals.conditions import decide
+    assert decide((Abs(arg(I + s / k)) < pi / 2) & (Abs(arg(-I + s / k)) < pi / 2), [s > 0, k > 0]) is S.true
+    value = definite_integral(exp(-s * t) * Abs(sin(k * t)), (t, 0, oo), k > 0)
+    assert _same(value, k * coth(pi * s / (2 * k)) / (k**2 + s**2))

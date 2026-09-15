@@ -62,7 +62,7 @@ from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.exponential import exp
-from sympy.functions.elementary.complexes import arg, re, im
+from sympy.functions.elementary.complexes import Abs, arg, re, im
 from sympy.functions.elementary.trigonometric import atan
 from sympy.core.numbers import pi
 from sympy.simplify.simplify import simplify
@@ -215,6 +215,15 @@ def _periodic_rule(f: Expr, t: Symbol, s: Expr, assumptions: Assumptions) -> Opt
         return None
     period = attempt(lambda: periodicity(f, t), settings.timeout)
     if period is None or not isinstance(period, Expr) or period == 0 or period.has(t):
+        return None
+    # 2*pi/Abs(k) for sin(k*t): the sign of k is in the assumptions
+    for node in period.atoms(Abs):
+        argument = as_expr(node.args[0])
+        if ask(as_boolean(argument > 0), assumptions) is True:
+            period = as_expr(period.xreplace({node: argument}))
+        elif ask(as_boolean(argument < 0), assumptions) is True:
+            period = as_expr(period.xreplace({node: -argument}))
+    if period.has(Abs):
         return None
     u = Dummy('u', positive=True)
     piece = conditional_integral(f * exp(-u * t), t, S.Zero, as_expr(period), _renamed(assumptions, s, u))

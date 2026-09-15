@@ -106,6 +106,7 @@ from sympy.functions.elementary.trigonometric import (TrigonometricFunction, asi
                                                       csc)
 from sympy.functions.elementary.hyperbolic import HyperbolicFunction, InverseHyperbolicFunction
 from sympy.functions.special.polynomials import OrthogonalPolynomial
+from sympy.core.exprtools import factor_terms
 from sympy.core.function import count_ops, expand, expand_func, expand_log
 from sympy.simplify.fu import TR8
 from sympy.simplify.trigsimp import trigsimp
@@ -512,8 +513,9 @@ class _Integrator:
         if f.has(DiracDelta):
             return self._sympy(f, x, a, b)
         f = _combined_exponentials(f)
-        # constants out
-        constant, rest = f.as_independent(x, as_Add=False)
+        # constants out, the common factors of sums pulled first
+        # (log(t + 1)/(a**2*t**2 + a**2) is log(t + 1)/(t**2 + 1) over a**2)
+        constant, rest = as_expr(factor_terms(f)).as_independent(x, as_Add=False)
         constant_, rest_ = as_expr(constant), as_expr(rest)
         if constant_ != 1:
             found = self.integrate(rest_, x, a, b, depth, fallback, mapped)
@@ -553,11 +555,15 @@ class _Integrator:
             strategies.remove(self._contours)
             strategies.insert(0, self._contours)
         strategies.append(self._split_powers)
+        # the antiderivative, bounded by a quarter of the time limit and
+        # checked numerically, before the slow methods: 1/(cosh(n*t)**2 + 1)
+        # over (0, 1) has one in a second, and differentiation under the
+        # integral sign spent the whole budget first
+        strategies.append(self._antiderivative)
         if not mapped:
             # the methods which work on the original form only, and the
             # slow ones: not inside a mapped range
             strategies += [self._holonomic, self._laplace, self._parametric, self._series, self._dfinite]
-        strategies.append(self._antiderivative)
         strategies.append(self._termwise)
         for strategy in strategies:
             try:
@@ -1463,14 +1469,22 @@ def _trigonometric_squares(base: Expr) -> Expr:
                 return 2 * constant * sin(u / 2)**2
         return node
 
-    g = base
-    if isinstance(g, Add):
-        # the whole sum first: the cardioid's is a product for trigsimp
-        # only before its 1 - cos(t) is written as a square
-        simplified = as_expr(trigsimp(g))
-        if not isinstance(simplified, Add):
-            g = simplified
-    return as_expr(g.replace(lambda n: isinstance(n, Add), half_angle))
+    def squares(node: Expr) -> Expr:
+        # the outer sums first, the constants factored out or not (the
+        # cardioid's a**2*((1 - cos(t))**2 + sin(t)**2) as well as the
+        # expanded sum): trigsimp gives 2 - 2*cos(t), a square by the
+        # half-angle formula, only while its 1 - cos(t) is not yet written
+        # as one
+        if isinstance(node, Add) and node.has(TrigonometricFunction):
+            found = as_expr(trigsimp(node))
+            found = as_expr(found.replace(lambda n: isinstance(n, Add), half_angle))
+            if not isinstance(found, Add):
+                return found
+        if not node.args:
+            return node
+        return as_expr(node.func(*[squares(as_expr(argument)) for argument in node.args]))
+
+    return as_expr(squares(base).replace(lambda n: isinstance(n, Add), half_angle))
 
 
 #: the largest base of a power factored for its signs

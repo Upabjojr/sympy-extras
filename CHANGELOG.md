@@ -53,9 +53,32 @@ remove public functions. Breaking changes are listed here when they happen.
 
 - `sympy_extras.integrals.antiderivative`: a polynomial in `x` and in
   exponentials, sines, cosines and hyperbolic functions of linear
-  arguments goes to `integrate` before the Risch port, which spent seven
-  seconds on the gcds over `pi` in `sin(pi*t/4 + pi/4)**3`, on every
-  quarter period of a trigonometric integral.
+  arguments goes to `integrate` before anything else (the Risch port
+  spent seven seconds on the gcds over `pi` in `sin(pi*t/4 + pi/4)**3`,
+  on every quarter period of a trigonometric integral), and the
+  antiderivatives of the definite route come from the exact verified
+  methods of `sympy_extras.integrals.indefinite` (the tables, the
+  trigonometric integrator, the Risch port, Trager's algorithm, SymPy's
+  `integrate` last; the heuristics spend their budget on every piece of
+  every mapped range) under the assumptions, in an eighth of the time
+  limit: `1/(cosh(n*t)**2 + 1)` over `(0, 1)` for
+  `n > 0`, where the Risch port gives up and `integrate` answers a
+  `Piecewise` in `tanh`. The route runs before the slow methods
+  (differentiation under the integral sign spent the whole budget
+  first), a singularity of the antiderivative off the real line under
+  the assumptions is dropped (`(log(3 - 2*sqrt(2)) + I*pi)/(2*n)` for
+  `n > 0`, which SymPy leaves intersected with the range), and the
+  arguments of a logarithm known positive on the range are not solved
+  for zeros.
+
+- `sympy_extras.integrals.definite`: the common factors of a sum come out
+  with the constants (`log(t + 1)/(a**2*t**2 + a**2)` is
+  `log(t + 1)/(t**2 + 1)` over `a**2`, and `log(a + t)/(a**2 + t**2)` over
+  `(0, a)` is `pi*log(2*a**2)/(8*a)`); the periodic rule of the Laplace
+  transform takes a period `2*pi/Abs(k)` under the sign of `k`, and a
+  condition `Abs(arg(e)) < pi/2` is decided by the real part of `e` with
+  the parameters the assumptions make real (`exp(-s*t)*Abs(sin(k*t))`
+  over `(0, oo)` is `k*coth(pi*s/(2*k))/(k**2 + s**2)`).
 
 - `sympy_extras.integrals.exponential`: `(a*x + b)**w*exp(c*x + d)` by the
   shift `t = a*x + b` to the incomplete gamma family (`exp(c*x)/(a*x + b)**k`

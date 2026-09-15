@@ -149,6 +149,27 @@ def canonical(condition: Boolean) -> Boolean:
     return condition
 
 
+def _real_part(e: Expr, assumptions: Assumptions) -> Expr:
+    """``re(e)`` with the parameters the assumptions make real taken as
+    such: ``re(s/k + I)`` stays ``re(s/k)`` for plain symbols, and is
+    ``s/k`` under ``s > 0`` and ``k > 0`` (the bug: the condition
+    ``Abs(arg(s/k + I)) < pi/2`` of the periodic Laplace rule stayed
+    undecided under those assumptions)."""
+    real_part = as_expr(re(e))
+    if not real_part.has(re, im):
+        return real_part
+    replacement: dict[Expr, Expr] = {}
+    back: dict[Expr, Expr] = {}
+    for p in sorted_symbols(free_symbols(e)):
+        if p.is_extended_real or ask(element(p, S.Reals), assumptions):
+            d = Dummy(p.name, real=True)
+            replacement[p] = d
+            back[d] = p
+    if not replacement:
+        return real_part
+    return as_expr(as_expr(re(e.xreplace(replacement))).xreplace(back))
+
+
 def real_form(condition: Boolean, assumptions: Assumptions) -> Boolean:
     """A condition on the argument of a parameter, ``Abs(arg(e)) < c``
     (also non-strict), rewritten for a real ``e`` under the assumptions:
@@ -168,14 +189,14 @@ def real_form(condition: Boolean, assumptions: Assumptions) -> Boolean:
                 and not (e.base.is_extended_real or ask(element(e.base, S.Reals), assumptions)):
             # |arg w**2| < pi unless w**2 <= 0, that is unless w is
             # imaginary: decided by the sign of the real part
-            real_part = as_expr(re(as_expr(e.base)))
+            real_part = _real_part(as_expr(e.base), assumptions)
             if not real_part.has(re, im) and (ask(as_boolean(real_part > 0), assumptions) is True
                                               or ask(as_boolean(real_part < 0), assumptions) is True):
                 return true
         if bound == pi / 2 and not (e.is_extended_real or ask(element(e, S.Reals), assumptions)):
             # |arg e| < pi/2 is Re e > 0: decided when the real part is an
             # expression in real parameters (a - I b with a > 0)
-            real_part = as_expr(re(e))
+            real_part = _real_part(e, assumptions)
             if not real_part.has(re, im):
                 verdict = ask(as_boolean(real_part > 0), assumptions)
                 if verdict is True:
