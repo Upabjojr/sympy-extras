@@ -41,6 +41,29 @@ remove public functions. Breaking changes are listed here when they happen.
   (`(-cos(t))**(2/3)` on `(0, pi/2)`). Eleven of the definite census's
   unevaluated integrals (Maxima's `rtest_integrate`, Wester, HOL-Py).
 
+- `sympy_extras.integrals.definite`: a quotient of sums of sines and
+  cosines is written with the sums as products and cancelled
+  (`(sin(19*x) + sin(20*x))/(cos(19*x) + cos(20*x))` is `tan(39*x/2)`,
+  HOL-Py's MIT 2019); the factors of a radicand or of the argument of a
+  logarithm keep rational exponents, so that `log(sqrt(1 - u))` on
+  `(0, 1)` is `log(1 - u)/2`, and the Beta substitution of the
+  trigonometric route takes the signed form after the substitution too
+  and hands the substituted integral to the other methods when the
+  Mellin table has no entry (`log(1/cos(x))*cos(x)/sin(x)` over
+  `(0, pi/2)` is `pi**2/24`, by the dilogarithm antiderivative of
+  `-log(1 - u)/(4*u)`). SymPy's `integrate`, the last resort, runs under
+  a quarter of the limit for each of its two forms (it ran under the
+  whole limit twice: 75 s under a limit of 30).
+
+- `sympy_extras.integrals.slater`: the logarithmic case of Slater's
+  theorem on one side of `|z| = 1` only, with the argument undecided,
+  takes SymPy's expansion of the G-function as the one formula for both
+  sides (the Parseval integrand of `exp(-s*t)*erf(sqrt(t))`, whose `b`'s
+  differ by an integer): the Laplace transforms of `erf(sqrt(a*t))` come
+  out, `1/(s*sqrt(s + 1))` and `sqrt(a/s)/(s - a)` for `exp(a*t)*erf(sqrt(a*t))`
+  under `s > a > 0` (Maxima's `specint` 48, 50, 54, 225; checked in
+  Mathematica).
+
 - `sympy_extras.integrals.definite`: the zeros of `sin(w*x + c)` and
   `cos(w*x + c)` inside a numeric range are enumerated instead of solved
   (seconds per call, and a `ConditionSet` under an assumption on another

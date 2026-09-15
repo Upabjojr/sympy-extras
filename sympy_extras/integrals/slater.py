@@ -389,7 +389,16 @@ def _expand_meijerg(g: MeijerG, assumptions: Assumptions) -> Optional[Conditiona
             small = _slater_series(g)
             large = _slater_series(g.reflected())
             if small is None or large is None:
-                return None
+                # the logarithmic case on one side (the Parseval integrand
+                # of exp(-s*t)*erf(sqrt(t)) has b's differing by an integer):
+                # SymPy's expansion, one formula on both sides
+                try:
+                    expanded = _hyperexpand(g.as_sympy())
+                except ValueError:
+                    return None
+                if expanded.has(meijerg, hyper):
+                    return None
+                return ConditionalValue(g.prefactor * expanded)
             small, large = _hyperexpand(small), _hyperexpand(large)
             if _same(small, large, assumptions):
                 # one formula on both sides of |z| = 1, hence on it as well

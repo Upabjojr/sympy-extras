@@ -108,12 +108,12 @@ from sympy.functions.elementary.hyperbolic import HyperbolicFunction, InverseHyp
 from sympy.functions.special.polynomials import OrthogonalPolynomial
 from sympy.core.exprtools import factor_terms
 from sympy.core.function import count_ops, expand, expand_func, expand_log
-from sympy.simplify.fu import TR8
+from sympy.simplify.fu import TR8, TR9
 from sympy.simplify.trigsimp import trigsimp
 from sympy.functions.special.delta_functions import Heaviside, DiracDelta
 from sympy.integrals.integrals import Integral, integrate
 from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import degree, factor
+from sympy.polys.polytools import cancel, degree, factor
 from sympy.polys.rationaltools import together
 from sympy.series.limits import limit
 from sympy.logic.boolalg import And, Boolean, true
@@ -461,25 +461,25 @@ class _Integrator:
         self.finite_part = finite_part
         self.regularize = regularize
         #: the factored arguments of the powers and logarithms, by argument
-        self._factored: dict[Expr, Optional[tuple[Expr, list[tuple[Expr, int]], bool]]] = {}
+        self._factored: dict[Expr, Optional[tuple[Expr, list[tuple[Expr, Rational]], bool]]] = {}
         #: the zeros of the factors inside the ranges seen
         self._zero_cache: dict[tuple[Expr, Expr, Expr], Optional[list[Expr]]] = {}
 
     def ask(self, query: Boolean) -> Optional[bool]:
         return ask(query, self.assumptions)
 
-    def _factors_of(self, base: Expr, x: Symbol) -> Optional[tuple[Expr, list[tuple[Expr, int]], bool]]:
+    def _factors_of(self, base: Expr, x: Symbol) -> Optional[tuple[Expr, list[tuple[Expr, Rational]], bool]]:
         if base not in self._factored:
             self._factored[base] = _factored(base, x)
         return self._factored[base]
 
-    def _nodes(self, f: Expr, x: Symbol, full: bool) -> list[tuple[Expr, Expr, list[tuple[Expr, int]]]]:
+    def _nodes(self, f: Expr, x: Symbol, full: bool) -> list[tuple[Expr, Expr, list[tuple[Expr, Rational]]]]:
         """The powers and logarithms of ``f`` to split, with the constant
         and the factors of their arguments; without ``full`` only those
         whose argument has a square (``sqrt((x - 1)**2)``, ``(1 -
         cos(x))**(3/2)``), which are rewritten before the other methods;
         with it every one, for the late splitting."""
-        found: list[tuple[Expr, Expr, list[tuple[Expr, int]]]] = []
+        found: list[tuple[Expr, Expr, list[tuple[Expr, Rational]]]] = []
         for node in _signed_nodes(f, x):
             base = as_expr(node.base if isinstance(node, Pow) else node.args[0])
             factored = self._factors_of(base, x)
@@ -513,6 +513,7 @@ class _Integrator:
         if f.has(DiracDelta):
             return self._sympy(f, x, a, b)
         f = _combined_exponentials(f)
+        f = _sums_to_products(f, x)
         # constants out, the common factors of sums pulled first
         # (log(t + 1)/(a**2*t**2 + a**2) is log(t + 1)/(t**2 + 1) over a**2)
         constant, rest = as_expr(factor_terms(f)).as_independent(x, as_Add=False)
@@ -719,7 +720,7 @@ class _Integrator:
             result = as_expr(result.xreplace({node: chosen}))
         return result
 
-    def _signed(self, node: Expr, constant: Expr, factors: list[tuple[Expr, int]],
+    def _signed(self, node: Expr, constant: Expr, factors: list[tuple[Expr, Rational]],
                 sign_of: Callable[[Expr], Optional[int]], unplaced: frozenset[Expr],
                 full: bool) -> Optional[Expr]:
         """A power ``P**r`` or a logarithm ``log(P)`` with ``P`` a product
@@ -741,11 +742,11 @@ class _Integrator:
         of squares), the other factors staying together for the methods
         which read a radicand as a whole."""
         exponent = as_expr(node.exp) if isinstance(node, Pow) else S.One
-        positive: list[tuple[Expr, int]] = []
+        positive: list[tuple[Expr, Rational]] = []
         remainder: list[Expr] = []
         total_sign = S.One
         for g, e in factors:
-            if g in unplaced or (not full and e % 2):
+            if g in unplaced or (not full and not _even(e)):
                 remainder.append(g**e)
                 continue
             s = sign_of(g)
@@ -756,9 +757,9 @@ class _Integrator:
             total_sign *= Integer(s)**e
         if constant != 1:
             if self.ask(as_boolean(constant > 0)) is True:
-                positive.append((constant, 1))
+                positive.append((constant, S.One))
             elif self.ask(as_boolean(constant < 0)) is True:
-                positive.append((-constant, 1))
+                positive.append((-constant, S.One))
                 total_sign = -total_sign
             else:
                 remainder.append(constant)
@@ -799,7 +800,7 @@ class _Integrator:
         unplaced: set[Expr] = set()
         for _, _, factors in self._nodes(f, x, full):
             for g, e in factors:
-                if not full and e % 2:
+                if not full and not _even(e):
                     continue
                 zeros = self._zeros(g, x, a, b)
                 if zeros is None:
@@ -1036,9 +1037,17 @@ class _Integrator:
         f = self._signed_form(f, x, S.Zero, pi / 2)
         g = as_expr(f.subs(x, asin(sqrt(u))) / (2 * sqrt(u) * sqrt(1 - u)))
         g = _denest(g, self.assumptions)
+        # and after the substitution: -log(cos(x)) is -log(sqrt(1 - u)),
+        # which is -log(1 - u)/2 on (0, 1)
+        g = self._signed_form(g, u, S.Zero, S.One)
         if g.has(asin):
             return None
-        return self._finish(self._mellin_on(g, u, 'lower'))
+        found = self._finish(self._mellin_on(g, u, 'lower'))
+        if found is not None:
+            return found
+        # the other methods on the substituted form: -log(1 - u)/(4*u), from
+        # log(1/cos(x))*cos(x)/sin(x), has a dilogarithm antiderivative
+        return self.integrate(g, u, S.Zero, S.One, depth + 1, False, True)
 
     def _mean_value(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """A trigonometric integrand over whole periods as `2 pi k` times
@@ -1244,9 +1253,13 @@ class _Integrator:
     def _sympy(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int = 0) -> Optional[ConditionalValue]:
         """SymPy's ``integrate`` under the time limit, checked numerically."""
         limits = (x, a, b)
+        # a quarter of the time limit for each of the two forms: SymPy's
+        # half of the limit in all (each ran under the whole limit, and an
+        # integral no method takes cost 75 s under a limit of 30)
+        budget = None if settings.timeout is None else settings.timeout / 4
         for keywords in ({}, {'meijerg': True}):
             try:
-                value = attempt(lambda: as_expr(integrate(f, limits, **keywords)), settings.timeout)
+                value = attempt(lambda: as_expr(integrate(f, limits, **keywords)), budget)
             except AttributeError:
                 # SymPy 1.14: meijerg._eval_evalf raises AttributeError
                 # ('NoneType' object has no attribute 'has') on some
@@ -1461,6 +1474,29 @@ def _combined_exponentials(f: Expr) -> Expr:
     return as_expr(f.replace(lambda n: isinstance(n, Mul), combine))
 
 
+def _sums_to_products(f: Expr, x: Symbol) -> Expr:
+    """A quotient of sums of sines and cosines of multiples of ``x`` with
+    the sums written as products (the sum-to-product formulas, ``TR9``)
+    and cancelled: ``(sin(19*x) + sin(20*x))/(cos(19*x) + cos(20*x))`` is
+    ``tan(39*x/2)``; ``f`` itself when nothing cancels."""
+    numerator, denominator = f.as_numer_denom()
+    numerator_, denominator_ = as_expr(numerator), as_expr(denominator)
+
+    def trigonometric_sum(e: Expr) -> bool:
+        if not isinstance(e, Add):
+            return False
+        for term in e.args:
+            _, rest = as_expr(term).as_independent(x, as_Add=False)
+            if not isinstance(rest, (sin, cos)) or not as_expr(rest.args[0]).is_polynomial(x):
+                return False
+        return True
+
+    if not (trigonometric_sum(numerator_) or trigonometric_sum(denominator_)):
+        return f
+    rewritten = as_expr(cancel(as_expr(TR9(numerator_)) / as_expr(TR9(denominator_))))
+    return rewritten if count_ops(rewritten) < count_ops(f) else f
+
+
 def _trigonometric_squares(base: Expr) -> Expr:
     """The trigonometric sums which are squares written as such, so that
     a power of the sum splits over the factors: ``c - c*cos(u)`` is
@@ -1509,11 +1545,13 @@ def _trigonometric_squares(base: Expr) -> Expr:
 _FACTOR_LIMIT = 200
 
 
-def _factored(base: Expr, x: Symbol) -> Optional[tuple[Expr, list[tuple[Expr, int]], bool]]:
+def _factored(base: Expr, x: Symbol) -> Optional[tuple[Expr, list[tuple[Expr, Rational]], bool]]:
     """``base`` as a constant times powers of factors depending on ``x``
-    with integer exponents: the trigonometric squares written as such,
-    the numerator and the denominator factored over the rationals; and
-    whether a square appeared (a factor of multiplicity two or more, a
+    with integer or rational exponents (a radical factor, ``sqrt(1 - v)``
+    in ``log(sqrt(1 - v))``, keeps its base and its exponent): the
+    trigonometric squares written as such, the numerator and the
+    denominator factored over the rationals; and whether a square
+    appeared (a factor of integer multiplicity two or more, a
     trigonometric square). Each factor is continuous, so that it keeps
     one sign between its zeros; ``None`` when a factor has poles
     (``tan``, a negative power of ``x`` inside it) or the base is too
@@ -1529,20 +1567,28 @@ def _factored(base: Expr, x: Symbol) -> Optional[tuple[Expr, list[tuple[Expr, in
     if factored is None:
         return None
     constant, rest = factored.as_independent(x, as_Add=False)
-    factors: list[tuple[Expr, int]] = []
+    factors: list[tuple[Expr, Rational]] = []
     for part in Mul.make_args(as_expr(rest)):
         b, e = part.as_base_exp()
         b_, e_ = as_expr(b), as_expr(e)
-        if not isinstance(e_, Integer):
-            # a radical factor, continuous where it is real
+        if not isinstance(e_, Rational):
+            # a symbolic power, continuous where it is real, as one factor
             b_, e_ = as_expr(part), S.One
         if b_.has(tan, cot, sec, csc, Piecewise, floor, ceiling, frac, sign, Heaviside) or any(
                 isinstance(node, Pow) and node.base.has(x) and as_expr(node.exp).is_negative
                 for node in b_.atoms(Pow)):
             return None
-        factors.append((b_, int(e_)))
-        squares = squares or abs(int(e_)) >= 2
+        if not isinstance(e_, Rational):
+            return None
+        factors.append((b_, e_))
+        squares = squares or (isinstance(e_, Integer) and abs(int(e_)) >= 2)
     return as_expr(constant), factors, squares
+
+
+def _even(e: Rational) -> bool:
+    """Whether a multiplicity is an even integer (the square roots of
+    squares are rewritten before the other methods)."""
+    return isinstance(e, Integer) and int(e) % 2 == 0
 
 
 def _signed_nodes(f: Expr, x: Symbol) -> list[Expr]:

@@ -208,3 +208,18 @@ def test_real_logarithms_skip_complex_arguments() -> None:
     c = symbols('c')
     value = log(1 + 43 * sqrt(771) * I / 2313) + log(-c**2)
     assert real_logarithms(value, [c > 0]) == log(1 + 43 * sqrt(771) * I / 2313) + log(c**2) + I * pi
+
+
+
+def test_the_logarithmic_case_of_slater_on_one_side() -> None:
+    # the Parseval integrand of exp(-s*t)*erf(sqrt(t)) has b's differing by
+    # an integer on the |z| < 1 side, where Slater's series is missing and
+    # SymPy's expansion gives one formula on both sides: the Laplace
+    # transform of erf(sqrt(t)) is 1/(s*sqrt(s + 1)) (Mathematica:
+    # Sqrt[a/s]/(s - a) for exp(a*t)*erf(sqrt(a*t)) under s > a > 0)
+    from sympy import erf, sqrt, simplify
+    from sympy_extras.integrals import definite_integral
+    s, a, t = symbols('s a t', positive=True)
+    assert simplify(definite_integral(exp(-s * t) * erf(sqrt(t)), (t, 0, oo)) - 1 / (s * sqrt(s + 1))) == 0
+    value = definite_integral(exp(a * t) * exp(-s * t) * erf(sqrt(a * t)), (t, 0, oo), s > a)
+    assert simplify(value - sqrt(a / s) / (s - a)) == 0

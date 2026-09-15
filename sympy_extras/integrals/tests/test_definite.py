@@ -416,3 +416,16 @@ def test_mellin_conditions_on_combined_exponentials_and_two_scales() -> None:
     assert not value.has(Piecewise)
     assert verify_numerically(value, exp(-s * t) * besselk(0, k * t), t, S.Zero, oo, [k > 0, s > k]) is True
     assert _same(value.subs({k: 1, s: 2}), acosh(2) / sqrt(3))
+
+
+
+def test_sums_of_sines_as_products_and_radical_factors_of_logarithms() -> None:
+    # (sin(19x) + sin(20x))/(cos(19x) + cos(20x)) is tan(39x/2) by the
+    # sum-to-product formulas (HOL-Py's MIT 2019; Mathematica agrees with
+    # the recorded value)
+    f = (sin(19 * x) + sin(20 * x)) / (cos(19 * x) + cos(20 * x))
+    assert _same(definite_integral(f, (x, 0, pi / 100)), -2 * log(cos(39 * pi / 200)) / 39)
+    # log(1/cos(x)) is -log(cos(x)) on (0, pi/2), and -log(sqrt(1 - u)) after
+    # the Beta substitution is -log(1 - u)/2: the radical factor of the
+    # argument keeps its exponent (HOL-Py's LogFunction02; Mathematica: pi**2/24)
+    assert _same(definite_integral(log(1 / cos(x)) * cos(x) / sin(x), (x, 0, pi / 2)), pi**2 / 24)
