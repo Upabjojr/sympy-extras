@@ -74,6 +74,23 @@ def test_antiderivatives_wrong_for_negative_x_are_refused() -> None:
     assert found.has(Integral) or is_antiderivative(found, 1 / (x * sqrt(x**2 + 1)), x) is True
 
 
+def test_complex_form_candidates_need_both_signs() -> None:
+    # the Meijer route gives exp(a*z**r) a polar incomplete gamma which is
+    # an antiderivative for z > 0 and the negative of one for z < 0 (with
+    # r = 2 both sides are real); the check draws r non-integer, so z < 0
+    # is complex and skipped, and the candidate passed on z > 0 alone
+    from sympy import exp_polar, gamma, lowergamma, pi
+    a, r, z = symbols('a r z')
+    polar = exp(-I * pi / r) * gamma(1 / r) * lowergamma(1 / r, a * z**r * exp_polar(I * pi)) \
+        / (a**(1 / r) * r**2 * gamma(1 + 1 / r))
+    assert is_antiderivative(polar, exp(a * z**r), z) is not True
+    assert is_antiderivative(polar.subs(r, 2), exp(a * z**2), z) is False
+    found = indefinite_integral(exp(a * z**r), z)
+    assert not found.has(exp_polar)
+    # a real-form candidate right on one side of a one-sided integrand is still accepted
+    assert is_antiderivative(x * log(x) - x, log(x), x) is True
+
+
 def test_the_census_cases_are_never_returned_wrong() -> None:
     # the census of SymPy 1.14 on 1165 published indefinite integrals
     # (sympy-extras-benchmarks, indefinite_integrals): nine wrong answers
@@ -98,3 +115,14 @@ def test_rewriting_and_substitutions_are_tried() -> None:
     found = verified_antiderivative(2**x * cosh(x), x)
     assert found is not None and found[1] in ('heurisch', 'rewriting')
     assert is_antiderivative(found[0], 2**x * cosh(x), x) is True
+
+
+def test_the_numerical_check_survives_huge_values() -> None:
+    # exp(A*x**r) at a sampled point is 1e300 and more: abs() of a Python
+    # complex overflowed in numerically_equal, and a right antiderivative
+    # of the incomplete gamma family was refused
+    from sympy import Float
+    from sympy_extras.integrals.conditions import numerically_equal
+    huge = Float(3e307) * (1 + I)
+    assert numerically_equal(huge, huge) is True
+    assert numerically_equal(huge, Float(2e307) * (1 + I)) is False

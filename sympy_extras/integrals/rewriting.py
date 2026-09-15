@@ -43,14 +43,18 @@ from typing import Optional
 
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
+from sympy.functions.elementary.miscellaneous import sqrt
+from sympy.functions.elementary.hyperbolic import acosh, asech
+from sympy.core.add import Add
 from sympy.core.function import expand
 from sympy.core.mul import Mul
-from sympy.core.numbers import Rational
+from sympy.core.numbers import I, Rational
 from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.complexes import Abs
-from sympy.functions.elementary.exponential import exp, log
+from sympy.functions.elementary.complexes import polar_lift
+from sympy.functions.elementary.exponential import exp, exp_polar, log
 from sympy.functions.elementary.hyperbolic import HyperbolicFunction, InverseHyperbolicFunction
 from sympy.logic.boolalg import Boolean
 from sympy.polys.polytools import cancel
@@ -110,22 +114,65 @@ def _positive(e: Expr, assumptions: Assumptions) -> bool:
     return ask(as_boolean(e > 0), assumptions) is True
 
 
+def _may_be_real(e: Expr, assumptions: Assumptions) -> bool:
+    """Whether nothing says ``e`` is not real: the parameters are real by
+    the contract of the module, so a symbolic ``e`` without ``I`` may be."""
+    if e.has(I, exp_polar, polar_lift) or e.is_extended_real is False:
+        return False
+    return ask(element(e, S.Reals), assumptions) is not False
+
+
+def _may_be_positive(e: Expr, assumptions: Assumptions) -> bool:
+    """Whether ``e`` is positive, or a symbolic real which nothing says is
+    not positive (the ``a`` of ``a**g(x)``, positive wherever the power is
+    real on an interval)."""
+    if _positive(e, assumptions):
+        return True
+    if not e.free_symbols or not _may_be_real(e, assumptions):
+        return False
+    return e.is_positive is not False and ask(as_boolean(e > 0), assumptions) is not False
+
+
 def _bases_to_exponentials(f: Expr, x: Symbol, assumptions: Assumptions) -> Expr:
-    """``a**g`` with a positive ``a`` free of ``x`` as ``exp(g*log(a))``,
-    and ``exp(X)**v`` as ``exp(v*X)`` for a real ``v`` and a real ``X``."""
+    """``a**g`` with ``a`` free of ``x`` and ``g`` varying with ``x`` as
+    ``exp(g*log(a))``, ``exp(X)**v`` (and ``(exp(X)*exp(Y)*k)**v`` with a
+    constant ``k``, as SymPy writes ``exp(c*t + g)**v`` after a
+    substitution) as ``exp(v*X)`` for a ``v`` free of ``x``, and
+    ``(x**r)**p`` as ``x**(r*p)``, each wherever the power is real on an
+    interval with the parameters real: a real ``a`` with ``a**g`` real
+    for every ``x`` of an interval is positive (``g`` is not
+    integer-valued there), a real ``exp(X)`` with a real ``X`` is
+    positive, and ``(x**r)**p`` is real on an interval for ``x > 0``. A
+    base known non-positive or non-real, or an exponent known non-real,
+    is left alone."""
     def rewrite(node: Basic) -> Basic:
         if not isinstance(node, Pow):
             return node
         base, exponent = as_expr(node.base), as_expr(node.exp)
-        if not exponent.has(x):
-            if isinstance(base, exp) and _real_in(exponent, x, assumptions) and _real_in(as_expr(base.args[0]), x, assumptions):
-                return exp(exponent * base.args[0])
+        if exponent.has(x):
+            if base.has(x) or base == S.Exp1:
+                return node
+            if _may_be_positive(base, assumptions):
+                return exp(exponent * log(base))
             return node
-        if base.has(x) or base == S.Exp1:
+        if not _may_be_real(exponent, assumptions):
             return node
-        if _positive(base, assumptions):
-            return exp(exponent * log(base))
-        return node
+        if isinstance(base, Pow) and base.base == x and not as_expr(base.exp).has(x) \
+                and _may_be_real(as_expr(base.exp), assumptions):
+            return x**(as_expr(base.exp) * exponent)
+        arguments: list[Expr] = []
+        rest: Expr = S.One
+        for factor in Mul.make_args(base):
+            f_ = as_expr(factor)
+            if isinstance(f_, exp) and _may_be_real(as_expr(f_.args[0]), assumptions):
+                arguments.append(as_expr(f_.args[0]))
+            elif not f_.has(x) and _may_be_positive(f_, assumptions):
+                rest = rest * f_
+            else:
+                return node
+        if not arguments:
+            return node
+        return exp(exponent * Add(*arguments)) * rest**exponent
 
     return as_expr(f.replace(lambda n: isinstance(n, Pow), rewrite))
 
@@ -137,9 +184,23 @@ def _hyperbolic_to_exponentials(f: Expr) -> Expr:
 
 
 def _inverse_hyperbolic_to_logarithms(f: Expr) -> Expr:
+    """The inverse hyperbolic functions as logarithms of their real
+    branches: SymPy's ``acosh(u)`` is ``log(u + sqrt(u - 1)*sqrt(u + 1))``,
+    a form which is real for ``u < -1`` too, where it is not the function's
+    branch; on the real domain ``u >= 1`` the product is ``sqrt(u**2 - 1)``,
+    and ``asech(u)`` on ``0 < u <= 1`` is ``log((1 + sqrt(1 - u**2))/u)``."""
     if not f.has(InverseHyperbolicFunction):
         return f
-    return as_expr(f.rewrite(log))
+    def real_branch(node: Basic) -> Basic:
+        if isinstance(node, acosh):
+            u = as_expr(node.args[0])
+            return log(u + sqrt(u**2 - 1))
+        if isinstance(node, asech):
+            u = as_expr(node.args[0])
+            return log((1 + sqrt(1 - u**2)) / u)
+        return node
+    branches = as_expr(f.replace(lambda n: isinstance(n, (acosh, asech)), real_branch))
+    return as_expr(branches.rewrite(log))
 
 
 def _combined_exponentials(f: Expr) -> Expr:
@@ -224,8 +285,9 @@ def rewritten_forms(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -> 
     """Canonical forms of ``f`` for integration in ``x``, each equal to
     ``f`` wherever ``f`` is real (``x`` real, the parameters real, and the
     signs the assumptions give): ``a**g(x)`` as ``exp(g(x)*log(a))`` for a
-    number or a parameter known positive, ``exp(X)**v`` as ``exp(v*X)``
-    for real ``v`` and ``X``, products of exponentials combined,
+    positive number or a parameter not known non-positive (a real
+    parameter is positive wherever ``a**g(x)`` is real on an interval),
+    ``exp(X)**v`` as ``exp(v*X)`` for a ``v`` not known non-real, products of exponentials combined,
     hyperbolic functions as exponentials, inverse hyperbolic functions as
     logarithms (their real branches, which agree with the functions on
     the real domains), radicals of products with radicands known

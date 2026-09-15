@@ -6,6 +6,47 @@ The project is at version 0.x: there is **no guarantee of backwards
 compatibility** between releases yet, and any release may rename, move or
 remove public functions. Breaking changes are listed here when they happen.
 
+## Unreleased
+
+### Added
+
+- `sympy_extras.integrals.exponential`: `(a*x + b)**w*exp(c*x + d)` by the
+  shift `t = a*x + b` to the incomplete gamma family (`exp(c*x)/(a*x + b)**k`
+  is the exponential integral `E_k`, DLMF 8.19.3); the exponent of
+  `x**(v - 1)*exp(a*x**n)` may be a symbol `n`, and a combined exponent
+  such as `b*x**2*log(a) + c*x**2*log(h)` is read as one monomial.
+
+- `sympy_extras.integrals.rewriting`: `a**g(x)` is written `exp(g(x)*log(a))`
+  for a parameter `a` not known non-positive (a real `a` is positive
+  wherever such a power is real on an interval), `exp(X)**v` and
+  `(exp(X)*exp(Y)*k)**v` as one exponential for a `v` not known non-real,
+  `(x**r)**p` as `x**(r*p)`, and `acosh(u)`, `asech(u)` as the logarithms of
+  their real branches (`log(u + sqrt(u**2 - 1))`, SymPy's
+  `log(u + sqrt(u - 1)*sqrt(u + 1))` being real for `u < -1` too, where it
+  is another branch). The parameters of Maxima's test suite carry no
+  assumptions, and its symbolic exponential families were stuck on these
+  gates: 72 of the 100 unevaluated integrals of the census which
+  have a recorded antiderivative now integrate (none did), checked by
+  differentiation.
+
+### Fixed
+
+- `is_antiderivative` trusted a candidate in complex form (`I`, a polar
+  number the real-form rewriting could not clear) on points of one sign
+  only: with a non-integer sample of the `r` of `exp(a*x**r)` every
+  `x < 0` is complex and skipped, and SymPy's polar incomplete gamma, an
+  antiderivative for `x > 0` and the negative of one for `x < 0`, passed.
+  Such a candidate now needs tested points of both signs, the parameters
+  sampled again to find them. The numerical check also took a point where
+  the integrand is `-2e-48 + 4e-49*I` as real (the imaginary part below
+  an absolute threshold while a fifth of the value) and its vanishing
+  difference as a test: the imaginary part must be negligible next to
+  the value as well, and a negligible value is no test.
+
+- `numerically_equal` compared the values as Python complex numbers, and
+  `abs()` overflowed for the 1e300 of `exp(A*x**r)` at a sampled point,
+  refusing a right antiderivative; it compares SymPy floats now.
+
 ## 0.0.2 - 2026-09-12
 
 ### Added

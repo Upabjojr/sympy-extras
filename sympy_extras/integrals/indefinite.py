@@ -56,12 +56,15 @@ import random
 
 from sympy.core.numbers import I, Rational, nan, oo, zoo
 from sympy.core.add import Add
+from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.logic.boolalg import Boolean, false
 from sympy.functions.elementary.complexes import Abs, im
+from sympy.functions.elementary.miscellaneous import Max
 from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.trigonometric import atan
 from sympy.functions.elementary.exponential import exp_polar
+from sympy.functions.elementary.complexes import polar_lift
 from sympy.integrals.integrals import Integral, integrate
 from sympy.integrals.heurisch import heurisch_wrapper
 from sympy.integrals.manualintegrate import manualintegrate
@@ -121,8 +124,13 @@ def is_antiderivative(F: ExprLike, f: ExprLike, x: Symbol, assumptions: Assumpti
     # antiderivatives right for x > 0 and wrong for x < 0 (polar
     # incomplete gammas, -asinh(1/x), Bessel forms), and a complex
     # integrand (1/sqrt(1 - x**2) beyond 1, log(x) asin(x) for x < 0) is
-    # met with branches the two sides need not share
-    return _vanishes_on_both_sides(difference, f_, x, assumptions)
+    # met with branches the two sides need not share. A candidate still
+    # in complex form (the real-form rewriting failed) is trusted only
+    # when the points reach both sides: a non-integer sample of the r of
+    # exp(a*x**r) makes x < 0 complex, hides it from the check, and let
+    # the polar incomplete gamma of the Meijer route through
+    return _vanishes_on_both_sides(difference, f_, x, assumptions,
+                                   both_signs=F_.has(I, exp_polar, polar_lift))
 
 
 def _items(assumptions: Assumptions) -> list[Boolean]:
@@ -140,22 +148,41 @@ _POINTS = (Rational(-37, 10), Rational(-19, 10), Rational(-13, 10), Rational(-2,
            Rational(1, 20), Rational(3, 5), Rational(13, 10), Rational(19, 10), Rational(41, 10))
 
 
-def _vanishes_on_both_sides(difference: Expr, f: Expr, x: Symbol,
-                            assumptions: Assumptions) -> Optional[bool]:
+def _vanishes_on_both_sides(difference: Expr, f: Expr, x: Symbol, assumptions: Assumptions,
+                            both_signs: bool = False) -> Optional[bool]:
     """Whether ``difference`` vanishes at the fixed real points of
     :data:`_POINTS` (the parameters sampled under the assumptions) where
     ``f`` is a finite real number; a point where ``f`` is undefined, not
     real, or excluded by the assumptions on ``x`` is skipped, and
-    ``None`` is the verdict when fewer than two points remain."""
+    ``None`` is the verdict when fewer than two points remain. With
+    ``both_signs`` the verdict ``True`` also needs tested points of both
+    signs, the parameters sampled again (up to three times) to find
+    them."""
     parameters = sorted_symbols(free_symbols(difference) - {x})
-    values: dict[Symbol, Expr] = {}
-    if parameters:
-        found = sample_values(parameters, assumptions, random.Random(str(difference)))
-        if found is None:
-            return None
-        values = found
     facts = _items(assumptions)
+    samples = 3 if both_signs and parameters else 1
+    for index in range(samples):
+        values: dict[Symbol, Expr] = {}
+        if parameters:
+            seed = str(difference) if index == 0 else '%s#%d' % (difference, index)
+            found = sample_values(parameters, assumptions, random.Random(seed))
+            if found is None:
+                return None
+            values = found
+        verdict, signs = _tested_points(difference, f, x, values, facts)
+        if verdict is False:
+            return False
+        if verdict is True and (not both_signs or len(signs) == 2):
+            return True
+    return None
+
+
+def _tested_points(difference: Expr, f: Expr, x: Symbol, values: dict[Symbol, Expr],
+                   facts: list[Boolean]) -> tuple[Optional[bool], set[int]]:
+    """The verdict of :func:`_vanishes_on_both_sides` at one sample of the
+    parameters, with the signs of the points which were tested."""
     tested = 0
+    signs: set[int] = set()
     for point in _POINTS:
         # a point the assumptions on x exclude (x > 0) is not a test
         if any(fact.xreplace(values).xreplace({x: point}) == false for fact in facts):
@@ -164,18 +191,28 @@ def _vanishes_on_both_sides(difference: Expr, f: Expr, x: Symbol,
         sample = attempt(lambda: at_point.evalf(30), _budget())
         if sample is None or not sample.is_number or sample.has(nan, zoo, oo, -oo):
             continue
+        size = as_expr(Abs(sample))
         imaginary = as_expr(Abs(im(sample)))
-        if not imaginary.is_comparable or imaginary > Rational(1, 10**20):
+        if not size.is_comparable or not imaginary.is_comparable:
+            continue
+        # a negligible value of the integrand is no test (its derivative
+        # candidate is negligible too), and the imaginary part must be
+        # negligible both in itself and next to the value: exp(a*x**r) at
+        # x = -37/10 is -2e-48 + 4e-49*I, below an absolute threshold
+        # while a fifth of the value, and bessely(11, x) at x < 0 is
+        # 2.6e13 + 2e-15*I, negligible next to the value while not real
+        if size < Rational(1, 10**20) or imaginary > Rational(1, 10**20) or imaginary > size / 10**20:
             continue
         value = as_expr(difference.xreplace(values).xreplace({x: point}))
         number = attempt(lambda: value.evalf(30), _budget())
         if number is None or not number.is_number or number.has(nan, zoo, oo, -oo):
             continue
         magnitude = as_expr(Abs(number))
-        if magnitude.is_comparable and magnitude > Rational(1, 10**15):
-            return False
+        if magnitude.is_comparable and magnitude > Max(S.One, size) / 10**15:
+            return False, signs
         tested += 1
-    return True if tested >= 2 else None
+        signs.add(1 if point > 0 else -1)
+    return (True if tested >= 2 else None), signs
 
 
 def real_form(F: Expr, f: Expr, x: Symbol, assumptions: Assumptions = None) -> Expr:
@@ -293,8 +330,8 @@ TYPED = ['rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'heuri
 def _rewriting(f: Expr, x: Symbol) -> Optional[Expr]:
     """The typed methods on the canonical forms of ``f`` and on the
     integrands of its substitutions (:mod:`.rewriting`): a power of a
-    positive base as an exponential, hyperbolic functions as
-    exponentials, inverse hyperbolic functions as logarithms; ``x = t**k``
+    base not known non-positive as an exponential, hyperbolic functions
+    as exponentials, inverse hyperbolic functions as logarithms; ``x = t**k``
     for fractional powers, ``u = exp(c*x)`` for rational functions of an
     exponential, ``x = exp(t)`` for rational functions of a logarithm."""
     from .rewriting import rewritten_forms, power_substitutions, substitute_back

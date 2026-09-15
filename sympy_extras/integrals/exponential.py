@@ -7,7 +7,7 @@ The integrands of Maxima's test suite with symbolic exponents,
 SymPy's Meijer route writes the first family as polar incomplete gamma
 functions which are right for `x > 0` and wrong for `x < 0`.
 
-1. `c\, x^{v-1} e^{a x^n + b}` with `s = v/n`. For `a < 0` (known), the
+1. `c\, x^{v-1} e^{a x^n + b}` with `s = v/n`, `n` a number or a symbol. For `a < 0` (known), the
    incomplete gamma form of DLMF 8.2.4
 
    .. math::
@@ -35,7 +35,11 @@ functions which are right for `x > 0` and wrong for `x < 0`.
 2. `x^m e^{a x^2 + b x + c}` with `m` a nonnegative integer, by completing
    the square and shifting `x = t - b/(2a)`, each term then of the first
    form.
-3. Rational functions of `e^{c x}` by `u = e^{c x}`, `dx = du/(c u)`,
+3. `(a x + b)^w e^{c x + d}` by the shift `t = a x + b`, which makes it
+   `t^w e^{c t/a + d - b c/a}/a`, of the first form (`e^{c x}/(a x + b)^k`
+   is the exponential integral `E_k`, DLMF 8.19.3), and a polynomial
+   times an exponential of a quadratic in `t` of the second.
+4. Rational functions of `e^{c x}` by `u = e^{c x}`, `dx = du/(c u)`,
    through the rational integrator, and `(a + b e^{c x})^{p} R(e^{c x})`
    with a rational `p = m/q` by `t^q = a + b e^{c x}`, which makes the
    integrand rational in `t`.
@@ -71,6 +75,7 @@ from typing import Optional
 
 from sympy.core.add import Add
 from sympy.core.expr import Expr
+from sympy.core.exprtools import factor_terms
 from sympy.core.mul import Mul
 from sympy.core.numbers import Integer, Rational, pi
 from sympy.core.power import Pow
@@ -194,12 +199,13 @@ def _monomial_exponential(term: Expr, x: Symbol) -> Optional[tuple[Expr, Expr, E
     if exponent is None:
         return None
     constant, rest = exponent.as_independent(x, as_Add=True)
-    a, monomial = as_expr(rest).as_independent(x, as_Add=False)
+    # b*x**2*log(a) + c*x**2*log(h), the combined exponent of a**(b*x**2)*h**(c*x**2), is one monomial
+    a, monomial = as_expr(factor_terms(rest)).as_independent(x, as_Add=False)
     a_, monomial_ = as_expr(a), as_expr(monomial)
     if monomial_ == x:
         n: Expr = S.One
-    elif isinstance(monomial_, Pow) and monomial_.base == x and isinstance(monomial_.exp, Rational):
-        n = as_expr(monomial_.exp)
+    elif isinstance(monomial_, Pow) and monomial_.base == x and not as_expr(monomial_.exp).has(x):
+        n = as_expr(monomial_.exp)                          # a number, or a symbolic exponent r
     else:
         return None
     if a_ == 0 or n == 0:
@@ -404,8 +410,46 @@ def _binomial_in(integrand: Expr, u: Symbol) -> Optional[Expr]:
     return as_expr(G.subs(t, base**Rational(1, q)))
 
 
+def _linear_bases(f: Expr, x: Symbol) -> list[Expr]:
+    """The bases ``a*x + b`` other than ``x`` of the powers of ``f`` whose
+    exponent is free of ``x``, without repetition."""
+    found: list[Expr] = []
+    for node in f.atoms(Pow):
+        base, exponent = as_expr(node.base), as_expr(node.exp)
+        if exponent.has(x) or not base.has(x) or base == x:
+            continue
+        poly = base.as_poly(x)
+        if poly is not None and poly.degree() == 1 and base not in found:
+            found.append(base)
+    return found
+
+
+def _shifted_exponential(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
+    """``Integral(f, x)`` through ``t = a*x + b`` for a power of a linear
+    ``a*x + b`` in ``f``: ``(a*x + b)**w * exp(c*x + d)`` is
+    ``t**w * exp(c*t/a + d - b*c/a) / a``, of the first form
+    (``exp(c*x)/(a*x + b)**k`` is the exponential integral ``E_k``, DLMF
+    8.19.3), and a polynomial in ``t`` times an exponential of a quadratic
+    is of the second."""
+    for base in _linear_bases(f, x):
+        poly = base.as_poly(x)
+        if poly is None:
+            continue
+        a, b = as_expr(poly.coeff_monomial(x)), as_expr(poly.coeff_monomial(1))
+        t = Dummy('t')
+        shifted = as_expr(f.subs(x, (t - b) / a) / a)
+        for route in (power_exponential, _quadratic_exponential):
+            found = attempt(lambda: route(shifted, t, assumptions), _budget())
+            if found is None:
+                continue
+            candidate = as_expr(found.subs(t, base))
+            if _checks(candidate, f, x, _facts(assumptions)):
+                return candidate
+    return None
+
+
 def exponential_antiderivative(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
-    """An antiderivative of ``f`` by the three routes of the module
+    """An antiderivative of ``f`` by the four routes of the module
     documentation, in that order, each result checked by differentiation;
     ``None`` when none applies.
 
@@ -418,7 +462,7 @@ def exponential_antiderivative(f: ExprLike, x: Symbol, assumptions: Assumptions 
     f_ = as_expr(f)
     if not f_.has(exp):
         return None
-    for route in (power_exponential, _quadratic_exponential, exponential_rational):
+    for route in (power_exponential, _quadratic_exponential, _shifted_exponential, exponential_rational):
         found = attempt(lambda: route(f_, x, assumptions), _budget())
         if found is not None:
             return found

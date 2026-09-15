@@ -113,3 +113,32 @@ def test_the_generator_of_the_exponentials_has_a_canonical_sign() -> None:
         srandom.seed(seed)
         F = exponential_rational((exp(x) + 1)**Rational(1, 3) / exp(x), x)
         assert F is not None and _checks(F, (exp(x) + 1)**Rational(1, 3) / exp(x)), seed
+
+
+def test_a_linear_shift_reaches_the_exponential_integrals() -> None:
+    # Maxima's rtest_integrate 114-118 and 133-134: exp(c*z)/(a*z + b)**k
+    # and (a*z + b)**w*exp(c*z + d) go through t = a*z + b to the first
+    # form, the exponential integral E_k and the incomplete gamma
+    from sympy import Ei, diff, exp, simplify, symbols
+    from sympy_extras.integrals.exponential import exponential_antiderivative
+    from sympy_extras.integrals.indefinite import is_antiderivative
+    a, b, c, d, w, z = symbols('a b c d w z')
+    F = exponential_antiderivative(exp(2*z)/(z + 1)**2, z)
+    assert F is not None and F.has(Ei) and simplify(diff(F, z) - exp(2*z)/(z + 1)**2) == 0
+    for f in (exp(c*z)/(a*z + b)**2, exp(c*z)/(a*z + b)**3, (a*z + b)**w*exp(c*z + d)):
+        F = exponential_antiderivative(f, z)
+        assert F is not None and is_antiderivative(F, f, z) is True, f
+
+
+def test_symbolic_exponents_and_summed_exponents() -> None:
+    # Maxima's rtest_integrate 7, 78 and 274: a**(b*z**r) with a symbolic
+    # r, once written as an exponential, is the incomplete gamma family
+    # with n = r, and a**(b*z**2)*h**(c*z**2) combines into an exponential
+    # whose exponent is a sum, one monomial after factoring
+    from sympy import exp, log, symbols
+    from sympy_extras.integrals.exponential import power_exponential
+    from sympy_extras.integrals.indefinite import is_antiderivative
+    A, a, b, c, h, r, v, z = symbols('A a b c h r v z')
+    for f in (z**(v - 1)*exp(A*z**r), exp(A*z**r), exp(b*z**2*log(a) + c*z**2*log(h))):
+        F = power_exponential(f, z)
+        assert F is not None and is_antiderivative(F, f, z) is True, f

@@ -436,12 +436,15 @@ incomplete gamma function (`sympy_extras.integrals.exponential`), in the
 real form `-(-a)**(-s)*uppergamma(s, -a*x**n)/n` for `a < 0` and the
 confluent series `x**v*hyper((s,), (s + 1,), a*x**n)/v` otherwise, with
 the elementary, `Ei` and error-function cases reduced to; polynomials
-times `exp(a*x**2 + b*x + c)` by the completed square; rational functions
-and binomials of an exponential by `u = exp(c*x)`. Before SymPy's routes the typed methods are tried
+times `exp(a*x**2 + b*x + c)` by the completed square; `(a*x + b)**w*exp(c*x + d)`
+by the shift `t = a*x + b` (`exp(c*x)/(a*x + b)**k` is the exponential
+integral `E_k`); rational functions and binomials of an exponential by
+`u = exp(c*x)`. Before SymPy's routes the typed methods are tried
 again on the canonical forms of the integrand and on the integrands of
 its substitutions (`sympy_extras.integrals.rewriting`): a power of a
-positive base as an exponential, `exp(X)**v` as `exp(v*X)`, hyperbolic
-functions as exponentials, inverse hyperbolic functions as logarithms,
+base not known non-positive as an exponential (a real base is positive
+wherever such a power is real on an interval), `exp(X)**v` as
+`exp(v*X)`, `(x**r)**p` as `x**(r*p)`, hyperbolic functions as exponentials, inverse hyperbolic functions as logarithms,
 each form valid where the integrand is real; `x = t**k` for fractional
 powers of `x` or of a linear factor, `u = exp(c*x)` for rational
 functions of an exponential, `x = exp(t)` for rational functions of a

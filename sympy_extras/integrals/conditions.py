@@ -29,7 +29,7 @@ from typing import Iterable, Optional, Sequence
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
 from sympy.core.power import Pow
-from sympy.core.numbers import Rational, pi
+from sympy.core.numbers import Rational, nan, oo, pi, zoo
 from sympy.core.symbol import Dummy, Symbol
 from sympy.core.add import Add
 from sympy.core.basic import Basic
@@ -340,15 +340,17 @@ def numerically_equal(a: Expr, b: Expr, assumptions: Assumptions = None, samples
         values = sample_values(symbols, assumptions, rng)
         if values is None:
             return False
-        try:
-            left = complex(as_expr(a.xreplace(values)).evalf(30))
-            right = complex(as_expr(b.xreplace(values)).evalf(30))
-        except (TypeError, ValueError):
+        left = as_expr(as_expr(a.xreplace(values)).evalf(30))
+        right = as_expr(as_expr(b.xreplace(values)).evalf(30))
+        if not left.is_number or not right.is_number or left.has(nan, zoo, oo, -oo) or right.has(nan, zoo, oo, -oo):
             return False
-        if left != left or right != right:
-            # nan compares unequal to itself: not a value
+        # SymPy's floats, not Python's: exp(A*x**r) at a sampled point is
+        # 1e300 and more, where abs() of a Python complex overflows
+        gap = as_expr(Abs(left - right).evalf(30))
+        scale = as_expr((1 + Abs(left) + Abs(right)).evalf(30))
+        if not gap.is_comparable or not scale.is_comparable:
             return False
-        if abs(left - right) > 1e-12 * (1 + abs(left) + abs(right)):
+        if gap > scale / 10**12:
             return False
     return True
 

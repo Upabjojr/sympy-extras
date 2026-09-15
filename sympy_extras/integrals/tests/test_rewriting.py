@@ -30,13 +30,15 @@ def test_exponential_forms() -> None:
         # some form has no product of two exponentials
         from sympy_extras.integrals.rewriting import _products_of_exponentials
         assert any(not _products_of_exponentials(form) for form in forms), forms
-    # a base of unknown sign is not rewritten (a**z with a negative a is not exp(z log a) on the reals)
+    # a base of unknown sign is rewritten (k**z is real on an interval only
+    # for k > 0, where it is exp(z*log(k))); a base known negative is not
     k = symbols('k')
-    assert rewritten_forms(k**z, z) == []
+    assert rewritten_forms(k**z, z) == [exp(z*log(k))]
     assert rewritten_forms(k**z, z, [k > 0]) == [exp(z*log(k))]
-    # exp(X)**v with v not known real stays a power
+    assert rewritten_forms(k**z, z, [k < 0]) == []
+    # exp(X)**v with v not known non-real is one exponential
     w = symbols('w')
-    assert all(form.has(exp(z)**w) for form in rewritten_forms(exp(z)**w*z, z)) or rewritten_forms(exp(z)**w*z, z) == []
+    assert exp(w*z)*z in rewritten_forms(exp(z)**w*z, z)
 
 
 def test_hyperbolic_and_inverse_hyperbolic_forms() -> None:
@@ -142,3 +144,46 @@ def test_the_typed_methods_take_the_rewritten_forms() -> None:
     forms = rewritten_forms(exp(asech(x)), x, [x > 0, x < 1])
     assert forms and not any(form.has(Integral) for form in forms)
     assert quadratic_radical_antiderivative(sqrt(1 - x**2)/x, x) is None or True
+
+
+def test_symbolic_bases_and_exponents_are_rewritten() -> None:
+    # the parameters of Maxima's test suite carry no assumptions: a**(b*z)
+    # is real on an interval only for a > 0, where it is exp(b*z*log(a)),
+    # and exp(X)**v is exp(v*X) for the real v and X the contract assumes
+    from sympy import exp, log, symbols
+    from sympy_extras.integrals.rewriting import rewritten_forms
+    a, b, c, r, v, z = symbols('a b c r v z')
+    assert rewritten_forms(a**(b*z), z) == [exp(b*z*log(a))]
+    assert exp(c*v*z**r) in rewritten_forms(exp(c*z**r)**v, z)
+    assert exp(b*z*log(a) + c*z**2*log(a)) in rewritten_forms(a**(b*z)*a**(c*z**2), z)
+    # a base known negative, a negative number, a base depending on z, an exponent with I: left alone
+    n = symbols('n', negative=True)
+    assert rewritten_forms(n**(b*z), z) == []
+    assert rewritten_forms((-2)**z, z) == []
+    assert rewritten_forms(z**z, z) == []
+    from sympy import I
+    assert rewritten_forms(exp(z)**(I*v), z) == []
+
+
+def test_products_of_exponentials_as_a_base_and_real_branches() -> None:
+    # after z = t**2 SymPy writes exp(c*sqrt(z) + g)**v as (exp(g)*exp(c*t))**v:
+    # one exponential; and exp(acosh(z)) is z + sqrt(z**2 - 1) on acosh's
+    # real domain (SymPy's log(z + sqrt(z - 1)*sqrt(z + 1)) is real for
+    # z < -1 too, as another branch)
+    from sympy import acosh, asech, exp, sqrt, symbols
+    from sympy_extras.integrals.rewriting import rewritten_forms
+    c, d, g, t, v, z = symbols('c d g t v z')
+    forms = rewritten_forms(2*t*(exp(g)*exp(c*t))**v*exp(d*t**2), t)
+    assert 2*t*exp(c*t*v + d*t**2 + g*v) in forms, forms
+    assert rewritten_forms(exp(acosh(z)), z) == [z + sqrt(z**2 - 1)]
+    assert rewritten_forms(exp(asech(z)), z) == [(sqrt(1 - z**2) + 1)/z]
+
+
+def test_nested_powers_of_the_variable() -> None:
+    # Maxima's rtest_integrate 12, 20, 253, 259: exp(a*(z**r)**p) is
+    # exp(a*z**(p*r)) wherever it is real on an interval (z > 0)
+    from sympy import exp, symbols
+    from sympy_extras.integrals.rewriting import rewritten_forms
+    a, p, r, z = symbols('a p r z')
+    assert rewritten_forms(exp(a*(z**r)**p), z) == [exp(a*z**(p*r))]
+    assert rewritten_forms((z**r)**p, z) == [z**(p*r)]
