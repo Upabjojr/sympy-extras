@@ -44,6 +44,7 @@ from sympy.core.expr import Expr
 from sympy.core.symbol import Dummy, Symbol
 
 from sympy.polys import Poly, gcd, ZZ, cancel
+from sympy.polys.polyroots import roots
 
 from .risch import (gcdex_diophantine, frac_in, derivation, DifferentialExtension,
     splitfactor, NonElementaryIntegralException, DecrementLevel, recognize_log_derivative)
@@ -121,6 +122,21 @@ def order_at_oo(a: Poly, d: Poly, t: Symbol) -> Degree:
     return d.degree(t) - a.degree(t)
 
 
+def _rational_roots(p: Poly) -> Optional[list[Expr]]:
+    """The real roots of ``p`` with multiplicity when its coefficients are
+    numbers; with parameters in them (``ZZ[v]``, where ``real_roots`` is
+    not available) the roots ``roots`` finds, ``None`` when it does not
+    find them all. Only whether every root is a rational number matters
+    to the caller, and a root with a parameter in it is not one for a
+    generic value of the parameter."""
+    if p.domain.is_ZZ or p.domain.is_QQ:
+        return list(p.real_roots())
+    found = roots(p.as_expr(), p.gen)
+    if sum(found.values()) != p.degree():
+        return None
+    return [r for r, k in found.items() for _ in range(k)]
+
+
 def weak_normalizer(a: Poly, d: Poly, DE: DifferentialExtension,
                     z: Optional[Symbol] = None) -> tuple[Poly, tuple[Poly, Poly]]:
     """
@@ -162,7 +178,8 @@ def weak_normalizer(a: Poly, d: Poly, DE: DifferentialExtension,
     if not r.expr.has(z):
         return (Poly(1, DE.t), (a, d))
 
-    N = [i for i in r.real_roots() if i in ZZ and i > 0]
+    # with parameters in the coefficients the positive integer roots among those found (the rest need no normalizing)
+    N = [i for i in (_rational_roots(r) or []) if i in ZZ and i > 0]
 
     q = reduce(mul, [gcd(a - Poly(n, DE.t)*derivation(d1, DE), d1) for n in N],
         Poly(1, DE.t))

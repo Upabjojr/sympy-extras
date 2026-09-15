@@ -65,7 +65,7 @@ from sympy.integrals.heurisch import _symbols
 from .rationaltools import log_to_real
 from sympy.simplify.radsimp import fraction
 from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import (real_roots, cancel, Poly, gcd,
+from sympy.polys.polytools import (cancel, Poly, gcd,
     reduced)
 from sympy.polys.rootoftools import RootSum
 from sympy.utilities.iterables import numbered_symbols
@@ -1855,7 +1855,9 @@ def laurent_series(a: Poly, d: Poly, F: Poly, n: int, DE: DifferentialExtension
             # H_list return value covers all zeros, since it is not
             # evaluated at the roots).
             H = (QBC*F_stard).rem(F_stara)
-            alphas = real_roots(F_stara)
+            from .rde import _rational_roots
+            # with parameters in the coefficients, the roots found which are not known non-real
+            alphas = [a for a in (_rational_roots(F_stara) or []) if a.is_extended_real is not False]
             for alpha in list(alphas):
                 # delta += H(alpha)/(t - alpha)**(n - j)
                 pa = Poly((DE.t - alpha)**(n - j), DE.t)

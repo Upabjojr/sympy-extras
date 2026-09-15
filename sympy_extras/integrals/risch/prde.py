@@ -37,7 +37,7 @@ from sympy.core import Dummy, Add, Mul, Pow, S
 from sympy.core.expr import Expr
 from sympy.core.numbers import I, oo
 from sympy.core.symbol import Symbol
-from .rde import (order_at, order_at_oo, weak_normalizer, Degree, finite,
+from .rde import (_rational_roots, order_at, order_at_oo, weak_normalizer, Degree, finite,
     bound_degree, _special_denom_cancel_bound, _no_cancel_equal_applies)
 from .risch import (gcdex_diophantine, frac_in, derivation, DifferentialExtension,
     residue_reduce, splitfactor, residue_reduce_derivation, DecrementLevel)
@@ -1643,9 +1643,15 @@ def _structure_solve(parts: Sequence[Expr], rhs: Expr, DE: DifferentialExtension
     if u is None:
         return None
     if not all(i.is_Rational for i in u):
-        # TODO: But maybe we can tell if they're not rational, like
-        # log(2)/log(3). Also, there should be an option to continue
-        # anyway, even if the result might potentially be wrong.
+        # A coefficient with a symbol in it (the v of exp(v*log(x)), a
+        # parameter of the integrand) is a constant transcendental over QQ
+        # for a generic value: the equation has no rational solution, and
+        # rhs is not a rational combination of parts (exp(v*log(x)) is a
+        # new monomial). A numeric coefficient such as log(2)/log(3) may
+        # or may not be rational, and deciding it would need a QQ-basis of
+        # the constant field (the discussion after Corollary 9.3.1).
+        if all(i.is_Rational or i.free_symbols for i in u):
+            return None
         raise NotImplementedError("Cannot work with non-rational "
             "coefficients in this case.")
     return u
@@ -2083,8 +2089,8 @@ def is_log_deriv_k_t_radical_in_field(fa: Poly, fd: Poly, DE: DifferentialExtens
         # Bronstein's book, page 255), so most likely this indicates a bug.
         return None
 
-    roots = [(i, i.real_roots()) for i, _ in H]
-    if not all(len(j) == i.degree() and all(k.is_Rational for k in j) for
+    roots = [(i, _rational_roots(i)) for i, _ in H]
+    if not all(j is not None and len(j) == i.degree() and all(k.is_Rational for k in j) for
                i, j in roots):
         # If f is the logarithmic derivative of a k(t)-radical, then all the
         # roots of the resultant must be rational numbers.

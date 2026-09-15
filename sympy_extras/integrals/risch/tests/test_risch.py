@@ -1309,3 +1309,18 @@ def test_issue_23948() -> None:
         *log(-x**2 - 2*x*log(x) - x + exp(x) - log(x)**2 + log(5))**2)
 
     assert risch_integrate(f, x) == F
+
+
+def test_parameters_in_the_constant_field() -> None:
+    # FriCAS's integ.input: exp(v*log(x)), x**(v - 1)*a**(b*x) with symbolic
+    # v, a, b; the structure equation's solution has a symbol in it (no
+    # rational solution for a generic value: a new monomial, not a
+    # NotImplementedError), and the rational roots of a polynomial with
+    # parameters in its coefficients come from roots(), real_roots
+    # refusing ZZ[v]
+    from sympy import symbols, exp, log
+    from sympy_extras.integrals.risch.risch import risch_integrate, NonElementaryIntegral
+    a, b, v, x = symbols('a b v x')
+    for f in (exp(v*log(-log(x))), (a*x + a)*exp(a*log(x))/(a*x*log(x) + b*x),
+              exp(b*x*log(a) + (v - 1)*log(x)), x*exp(v*log(-log(x**2 + 1)))):
+        assert isinstance(risch_integrate(f, x), NonElementaryIntegral), f

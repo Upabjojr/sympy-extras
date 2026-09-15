@@ -16,6 +16,46 @@ remove public functions. Breaking changes are listed here when they happen.
   `x**(v - 1)*exp(a*x**n)` may be a symbol `n`, and a combined exponent
   such as `b*x**2*log(a) + c*x**2*log(h)` is read as one monomial.
 
+- `sympy_extras.integrals.heurisch`: the special functions the structure of
+  the differential tower allows, after Cherry's theorems on integration in
+  finite terms with error functions and logarithmic integrals, as
+  candidates of the Risch–Norman method with their derivatives registered
+  in terms of the components: `Ei(k*(theta + c))` for a factor
+  `alpha*theta + beta` of the denominator under `exp(theta)` or `theta =
+  log(h)` (`exp(x)/(x + 1)**2`, `x/(log(x) + 1)`, the logarithmic integral
+  `Ei(log(exp(2*x) + exp(x)))`), `erf(u)` and `erfi(u)` when `-theta` or
+  `theta` is `u**2 + c` with `exp(c)` in the field, from the total exponent
+  of a term or of one factor (`erf(x + exp(x))`, `erf(exp(x))`,
+  `erf(x - 1)`, `erfi(x + 1/2)`), and `polylog(2, -exp(theta))` where
+  `exp(theta) + 1` divides the denominator (`x/(exp(x) + 1)`). Two
+  weaknesses of the method itself, SymPy's too, removed on the way: the
+  components are substituted from the largest to the smallest whatever the
+  mapping tried (substituting `exp(x)` before `exp(exp(2*x))` turned the
+  inner argument into a power of the symbol and lost the outer component;
+  `log(log(x))/x` and the nested exponentials were never integrated), and
+  every family of rationally related exponentials is represented by one
+  base of which the others are powers, exponentials of sums written as
+  products of exponentials of their terms (`exp(2*x)` is `exp(x)**2` to
+  the method now). `exp(x**2)*exp(x)` and `log(log(x))/x`, pinned as
+  refusals, integrate.
+
+- `sympy_extras.integrals.risch`: parameters in the constant field. The
+  structure theorem's equation with a symbolic coefficient in its solution
+  (the `v` of `exp(v*log(x))`) has no rational solution for a generic
+  value: the monomial is new, and `x**(v - 1)*a**(b*x)` is proved
+  non-elementary instead of raising `NotImplementedError`; the rational
+  roots of a polynomial with parameters in its coefficients (`ZZ[v]`,
+  where `real_roots` is not available) come from `roots`, in the weak
+  normalizer, the residues and the recognition of logarithmic derivatives
+  of radicals. Nine of the FriCAS suite's parametric cases are decided.
+
+- `sympy_extras.integrals.exponential`: a plain linear factor is a shift too
+  (`(x + 1)*exp(-x**3 - 3*x**2 - 3*x)` is `t*exp(-t**3)`), and the
+  incomplete gamma form `-uppergamma(s, -a*x**n)`, real where `-a*x**n > 0`
+  only, is used for an even `n` or under `x > 0`; the confluent form,
+  real on the whole line, otherwise (the dispatcher's check had refused
+  the gamma form at `x < -1`).
+
 - `sympy_extras.integrals.radicals`: negative powers of `x` in the table,
   `Q**(m/2)/x**k`, by the recurrence of the moments solved for the lowest
   power and the two forms of `1/(x*sqrt(Q))` (GR 2.266, a logarithm for a

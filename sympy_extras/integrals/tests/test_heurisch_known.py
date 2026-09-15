@@ -89,6 +89,7 @@ def test_gr_2_7_logarithmic() -> None:
     assert _same(heurisch_antiderivative(1 / (x * log(x)**2), x), -1 / log(x))
     assert _checks(log(x)**3) and _checks(log(x) / x**3) and _checks(log(x + 1) / x**2) and _checks(x * log(x**2 + 1))
     assert _checks(log(x)**2 / x) and _checks(log(x)**2 / x**2)
-    # log(log(x))/x needs log(x)*log(log(x)) - log(x), beyond the degree
-    # bound of the polynomial part here as in SymPy
-    assert heurisch_antiderivative(log(log(x)) / x, x) is None
+    # log(log(x))/x: log(x)*log(log(x)) - log(x), found once the components are
+    # substituted from the largest to the smallest (SymPy's heurisch, which
+    # substitutes log(x) before log(log(x)) in some orders, gives up)
+    assert _same(heurisch_antiderivative(log(log(x)) / x, x), log(x) * log(log(x)) - log(x))

@@ -142,3 +142,21 @@ def test_symbolic_exponents_and_summed_exponents() -> None:
     for f in (z**(v - 1)*exp(A*z**r), exp(A*z**r), exp(b*z**2*log(a) + c*z**2*log(h))):
         F = power_exponential(f, z)
         assert F is not None and is_antiderivative(F, f, z) is True, f
+
+
+def test_linear_factors_shift_and_the_confluent_form_for_odd_powers() -> None:
+    # (x + 1)*exp(-(x + 1)**3) through t = x + 1 (a plain linear factor is a
+    # shift); the incomplete gamma form -uppergamma(s, -a*x**n) is real for
+    # -a*x**n > 0 only, so for an odd n without x > 0 the confluent form,
+    # real on the whole line
+    from sympy import exp, hyper, symbols, uppergamma
+    from sympy_extras.integrals.exponential import exponential_antiderivative
+    from sympy_extras.integrals.indefinite import is_antiderivative
+    x = symbols('x')
+    f = (x + 1) * exp(-x**3 - 3 * x**2 - 3 * x)
+    F = exponential_antiderivative(f, x)
+    assert F is not None and F.has(hyper) and not F.has(uppergamma) and is_antiderivative(F, f, x) is True
+    G = exponential_antiderivative(x * exp(-x**3), x, [x > 0])
+    assert G is not None and G.has(uppergamma) and is_antiderivative(G, x * exp(-x**3), x, [x > 0]) is True
+    H = exponential_antiderivative(x * exp(-x**4), x)   # an even power: the gamma form, real everywhere (erfc here)
+    assert H is not None and not H.has(hyper) and is_antiderivative(H, x * exp(-x**4), x) is True

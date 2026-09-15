@@ -75,6 +75,8 @@ References
 """
 from __future__ import annotations
 
+import math
+
 from collections import defaultdict
 from functools import reduce
 from itertools import permutations
@@ -83,6 +85,9 @@ from typing import Iterator, Optional, Sequence
 from sympy.core.add import Add
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
+from sympy.simplify.powsimp import powsimp
+from sympy.core.function import expand, expand_mul, expand_power_exp
+from sympy.functions.special.zeta_functions import polylog
 from sympy.core.function import Derivative, Function
 from sympy.core.mul import Mul
 from sympy.core.numbers import Float, I, Rational, pi
@@ -107,7 +112,7 @@ from sympy.polys.constructor import construct_domain
 from sympy.polys.monomials import itermonomials
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polyroots import root_factors
-from sympy.polys.polytools import cancel, factor_list, gcd, lcm, quo
+from sympy.polys.polytools import Poly, cancel, factor_list, gcd, lcm, quo
 from sympy.polys.rings import PolyRing
 from sympy.polys.solvers import solve_lin_sys
 from sympy.simplify.radsimp import collect
@@ -226,7 +231,9 @@ class _DiffCache:
             self.cache[f] = as_expr(d0 * dz)
             self.cache[as_expr(type(f)(n - 1, z))] = as_expr(d1 * dz)
         else:
-            self.cache[f] = as_expr(cancel(f.diff(self.x)))
+            # exponentials of sums as products of exponentials of their terms,
+            # the canonical form of the integrand (see _heurisch)
+            self.cache[f] = as_expr(expand_power_exp(cancel(f.diff(self.x))))
         return self.cache[f]
 
 
@@ -254,30 +261,14 @@ def _special_candidates(terms: set[Expr], x: Symbol, cache: _DiffCache, f: Expr)
                 found.add(as_expr(x * (li(A * x**B) - (A * x**B)**(-1 / B) * Ei((B + 1) * log(A * x**B) / B))))
         elif isinstance(g, exp):
             argument = as_expr(g.args[0])
+            # (the error functions come from the tower, _tower_candidates, with
+            # their derivatives registered in terms of the components: the
+            # derivative SymPy takes of erf(x - 1) has exp(-(x - 1)**2), a
+            # component the ring cannot relate to exp(-x**2 + 2*x))
             match = argument.match(a * x**2)
-            if match is not None:
-                A = as_expr(match[a])
-                if A.is_positive:
-                    found.add(as_expr(erfi(sqrt(A) * x)))
-                else:
-                    found.add(as_expr(erf(sqrt(-A) * x)))
-                    if with_erf:
-                        # the product of two such exponentials
-                        found.add(as_expr(erf(sqrt(2) * sqrt(-A) * x)))
-            match = argument.match(a * x**2 + b * x + c)
-            if match is not None and match[a] != 0:
-                A, B, C = as_expr(match[a]), as_expr(match[b]), as_expr(match[c])
-                if A.is_positive:
-                    found.add(as_expr(sqrt(pi / 4 * (-A)) * exp(C - B**2 / (4 * A)) * erfi(sqrt(A) * x + B / (2 * sqrt(A)))))
-                elif A.is_negative:
-                    found.add(as_expr(sqrt(pi / 4 * (-A)) * exp(C - B**2 / (4 * A)) * erf(sqrt(-A) * x - B / (2 * sqrt(-A)))))
-            match = argument.match(a * log(x)**2)
-            if match is not None:
-                A = as_expr(match[a])
-                if A.is_positive:
-                    found.add(as_expr(erfi(sqrt(A) * log(x) + 1 / (2 * sqrt(A)))))
-                if A.is_negative:
-                    found.add(as_expr(erf(sqrt(-A) * log(x) - 1 / (2 * sqrt(-A)))))
+            if match is not None and with_erf and as_expr(match[a]).is_negative:
+                # the product of two such exponentials
+                found.add(as_expr(erf(sqrt(2) * sqrt(-as_expr(match[a])) * x)))
             match = argument.match(a * x**b)
             if over_x and match is not None and match[a] != 0 and as_expr(match[b]).is_nonzero:
                 found.add(as_expr(Ei(as_expr(match[a]) * x**as_expr(match[b]))))
@@ -323,6 +314,215 @@ def _special_candidates(terms: set[Expr], x: Symbol, cache: _DiffCache, f: Expr)
                     primitive = as_expr(log(2 * sqrt(A) * sqrt(base) + 2 * A * x + B) / sqrt(A))
                     cache.cache[primitive] = as_expr(1 / sqrt(base))
                     found.add(primitive)
+    return found
+
+
+def _denominator(q: Expr) -> int:
+    """The denominator of a rational number, 1 for anything else."""
+    return int(q.q) if isinstance(q, Rational) else 1
+
+
+def _exponential_family(g: Expr) -> tuple[Expr, Rational]:
+    """``(w, q)`` with ``g == exp(q*w)``, ``w`` the argument without its
+    rational content and sign (``exp(2*x)`` and ``exp(-x)`` belong to the
+    family of ``x``, with ``q = 2`` and ``q = -1``)."""
+    content, primitive = as_expr(g.args[0]).as_content_primitive()
+    w, q = as_expr(primitive), as_expr(content)
+    if w.could_extract_minus_sign():
+        w, q = as_expr(-w), as_expr(-q)
+    return (w, q if isinstance(q, Rational) else S.One)
+
+
+def _exponential_bases(terms: set[Expr]) -> set[Expr]:
+    """The terms with each family of rationally related exponentials
+    represented by one base, ``exp(w/d)`` for the least common denominator
+    ``d`` of their multiples, of which the others are integer powers: the
+    derivative of ``exp(-exp(2*x))`` brings in ``exp(2*x)``, which the
+    method must know is ``exp(x)**2`` (``subs`` writes it so once the base
+    is the component)."""
+    families: dict[Expr, list[tuple[Expr, Rational]]] = {}
+    for g in terms:
+        if isinstance(g, exp):
+            w, q = _exponential_family(g)
+            families.setdefault(w, []).append((g, q))
+    result = {g for g in terms if not isinstance(g, exp)}
+    for w, members in families.items():
+        d = 1
+        for _, q in members:
+            d = math.lcm(d, _denominator(q))
+        result.add(as_expr(exp(w / d)))
+    return result
+
+
+def _degree_in(e: Expr, g: Expr) -> int:
+    """The degree of ``e`` in the component ``g`` (``exp(2*x)`` counts as
+    ``exp(x)**2``), 0 when ``e`` is not polynomial in it."""
+    d = Dummy('g')
+    replaced = as_expr(powsimp(e, combine='exp').replace(lambda n: n == g, lambda n: d))
+    try:
+        return int(Poly(replaced, d).degree())
+    except (PolynomialError, ValueError, TypeError):
+        return 0
+
+
+def _square_root_form(e: Expr, x: Symbol, terms: set[Expr]) -> Optional[tuple[Expr, Expr]]:
+    """``(u, c)`` with ``e == u**2 + c``, ``u`` built from the components of
+    ``e`` and ``c`` a constant or an exponent whose exponential is built
+    from the components in ``terms``: ``e`` a perfect square times a
+    positive constant (``(x + exp(x))**2``), or quadratic in one component
+    with a constant leading coefficient, the square completed
+    (``-x**2 - 2*x*exp(x) - exp(2*x) + 5``, and ``(x + exp(x))**2 - x``
+    with ``exp(-x)`` among the components); ``None`` otherwise."""
+    expanded = as_expr(expand(e))
+    # the exponentials as powers of one dummy each: exp(2*x) is exp(x)**2 (subs sees it)
+    # each family of exponentials as powers of one dummy standing for the
+    # square root of its base, exp(w/(2*d)): exp(2*x) is then d**4 and a square
+    dummies: dict[Expr, Symbol] = {}
+    families: dict[Expr, int] = {}
+    for g in components(expanded, x):
+        if isinstance(g, exp):
+            w, q = _exponential_family(g)
+            families[w] = math.lcm(families.get(w, 1), _denominator(q))
+    for w, d in families.items():
+        dummies[as_expr(exp(w / (2 * d)))] = Dummy('e')
+    reduced = expanded
+    for g, dummy in dummies.items():
+        reduced = as_expr(reduced.subs(g, dummy))
+    back = {dummy: g for g, dummy in dummies.items()}
+    gens = sorted((g for g in components(reduced, x) if not isinstance(g, exp)), key=str) + list(dummies.values())
+    if not gens:
+        return None
+    try:
+        constant, factors = factor_list(reduced, *gens)
+    except (PolynomialError, ValueError, TypeError):
+        return None
+    if factors and all(k % 2 == 0 for _, k in factors):
+        c0 = as_expr(constant)
+        if c0.is_positive:
+            u: Expr = sqrt(c0)
+            for base, k in factors:
+                u = u * as_expr(base)**(k // 2)
+            return (as_expr(u.xreplace(back)), S.Zero)
+    for v in gens:
+        try:
+            poly = Poly(reduced, v)
+        except (PolynomialError, ValueError, TypeError):
+            continue
+        if poly.degree() != 2:
+            continue
+        A, B = as_expr(poly.coeff_monomial(v**2)).xreplace(back), as_expr(poly.coeff_monomial(v)).xreplace(back)
+        v = as_expr(back[v]) if isinstance(v, Symbol) and v in back else v
+        if A.has(x) or not A.is_positive:
+            continue
+        # the square completed with the whole linear coefficient, or with its
+        # part in the other generators only: (x + exp(x))**2 - x has the
+        # coefficient 2*exp(x) - 1, and the remainder -x is an offset whose
+        # exponential exp(-x) is in the field
+        number, rest = B.as_coeff_Add()
+        for linear in ([B] if number == 0 or rest == 0 else [B, as_expr(rest)]):
+            u = as_expr(sqrt(A) * (v + linear / (2 * A)))
+            c = as_expr(cancel(expand(e) - expand(u**2)))
+            if c.has(x) and not (components(as_expr(exp(c)), x) - {x} <= terms
+                                 or components(as_expr(exp(-c)), x) - {x} <= terms):
+                continue
+            return (u, c)
+    return None
+
+
+def _tower_candidates(terms: set[Expr], x: Symbol, cache: _DiffCache, f: Expr) -> set[Expr]:
+    """The special functions the structure of the tower allows (Cherry's
+    theorems on integration in finite terms with error functions and
+    logarithmic integrals), their derivatives registered in the cache in
+    terms of the components: for an exponential ``exp(theta)`` and for a
+    logarithm ``theta = log(h)``, ``Ei(theta + c)`` when a factor
+    ``alpha*theta + beta`` of the denominator gives ``c = beta/alpha``
+    (``Ei(x + 1)`` for ``exp(x)/(x + 1)**2``, ``Ei(log(x) + 1)`` for
+    ``1/(log(x) + 1)``, the logarithmic integral); ``erf(u)`` when
+    ``-theta`` is ``u**2 + c`` (``erf(x + exp(x))``) and ``erfi(u)`` when
+    ``theta`` is; ``polylog(2, -exp(theta))`` and ``polylog(2, exp(theta))``
+    when ``exp(theta) + 1`` or ``exp(theta) - 1`` divides the denominator
+    or their logarithms appear. Every candidate is one more component,
+    and the caller verifies whatever it finds."""
+    found: set[Expr] = set()
+    denominator = as_expr(f.as_numer_denom()[1])
+    try:
+        factors = [as_expr(q) for q, _ in factor_list(denominator)[1]]
+    except (PolynomialError, ValueError, TypeError):
+        factors = [denominator]
+    logarithms = {as_expr(g.args[0]) for g in f.atoms(log)}
+    for g in list(terms):
+        if isinstance(g, exp):
+            theta = as_expr(g.args[0])
+            exponential: Expr = g
+        elif isinstance(g, log):
+            theta = g
+            exponential = as_expr(g.args[0])                # exp(log(h)) is h
+        else:
+            continue
+        dtheta = as_expr(cancel(theta.diff(x)))
+        if dtheta == 0:
+            continue
+        numerator = as_expr(f.as_numer_denom()[0])
+        # the multiples k the degrees allow: up to the degree of the numerator in
+        # the exponential, one more for a logarithm (x/(log(x) + 1) is
+        # exp(2*theta)*theta'/(theta + 1) with theta = log(x)), and negative ones
+        # only where the exponential divides the denominator
+        above = _degree_in(numerator, exponential) + (0 if isinstance(g, exp) else 1)
+        below = _degree_in(denominator, exponential)
+        multiples = list(range(1, max(above, 1) + 1)) + list(range(-1, -below - 1, -1))
+        for q in factors:
+            if not q.has(x):
+                continue
+            alpha = as_expr(cancel(q.diff(x) / dtheta))
+            if alpha == 0 or alpha.has(x):
+                continue
+            beta = as_expr(cancel(q - alpha * theta))
+            if beta.has(x):
+                continue
+            c = as_expr(beta / alpha)
+            # exp(k*theta)*theta'/(theta + c) is the derivative of Ei(k*(theta + c))*exp(-k*c):
+            # the multiples k up to the degree of the integrand in the exponential
+            for k in multiples:
+                candidate = as_expr(Ei(k * (theta + c)))
+                cache.cache[candidate] = as_expr(exp(k * c) * exponential**k * dtheta / (theta + c))
+                found.add(candidate)
+        if not isinstance(g, exp):
+            continue
+        for offset, argument in ((1, -g), (-1, g)):
+            if any(as_expr(cancel(q - offset - g)) == 0 or as_expr(cancel(q + offset + g)) == 0 for q in factors) \
+                    or any(as_expr(cancel(h - offset - g)) == 0 or as_expr(cancel(h + offset + g)) == 0 for h in logarithms):
+                candidate = as_expr(polylog(2, argument))
+                cache.cache[candidate] = as_expr(-log(1 - argument) * dtheta)
+                found.add(candidate)
+    # the error functions from the total exponent of each term of f, the sum of
+    # the arguments of its exponential factors (exp(-x**2)*exp(2*x) in the
+    # canonical form of the integrand is exp(-(x - 1)**2 + 1))
+    exponents: list[Expr] = []
+    for term in Add.make_args(f):
+        theta_term: Expr = S.Zero
+        for factor in Mul.make_args(term):
+            piece = as_expr(factor)
+            if isinstance(piece, exp):
+                theta_term = theta_term + as_expr(piece.args[0])
+                exponents.append(as_expr(piece.args[0]))     # a single factor too: exp(x)*exp(-exp(2*x)) needs erf(exp(x))
+            elif isinstance(piece, Pow) and isinstance(piece.base, exp) and not as_expr(piece.exp).has(x):
+                theta_term = theta_term + as_expr(piece.exp) * as_expr(piece.base.args[0])
+        if theta_term != 0:
+            exponents.append(theta_term)
+    for theta_term in exponents:
+        for sign_, function in ((-1, erf), (1, erfi)):
+            form = _square_root_form(as_expr(sign_ * theta_term), x, terms)
+            if form is None:
+                continue
+            u, c = form
+            candidate = as_expr(function(u))
+            # erf(u)' = 2/sqrt(pi) u' exp(-u**2) with -u**2 = theta + c, erfi(u)' = 2/sqrt(pi) u' exp(u**2)
+            # with u**2 = theta - c: the factor exp(-sign*c), a constant or a product of components
+            # (exp(-x) for (1 + exp(-x))*exp(-(x + exp(x))**2 + x)), beside the exponentials of the
+            # term in the canonical form; the products are distributed (exp(x)*exp(-x) is 1)
+            cache.cache[candidate] = as_expr(expand_mul(expand_power_exp(
+                2 / sqrt(pi) * u.diff(x) * exp(-sign_ * c) * exp(theta_term))))
+            found.add(candidate)
     return found
 
 
@@ -420,8 +620,8 @@ def heurisch_antiderivative(f: ExprLike, x: Symbol, hints: Optional[Sequence[Exp
     asinh(x)
     >>> heurisch_antiderivative(log(x)**2/x**3, x)
     -log(x)**2/(2*x**2) - log(x)/(2*x**2) - 1/(4*x**2)
-    >>> heurisch_antiderivative(exp(x**2)*exp(x), x) is None
-    True
+    >>> heurisch_antiderivative(exp(x**2)*exp(x), x)
+    sqrt(pi)*exp(-1/4)*erfi(x + 1/2)/2
     """
     f_ = as_expr(f)
     if f_.has(Float) or f_.has(*_REFUSED):
@@ -453,6 +653,10 @@ def _heurisch(f: Expr, x: Symbol, rewrite: bool, hints: list[Expr],
     permutations of the components."""
     if not f.has_free(x):
         return as_expr(f * x)
+    # exponentials of sums as products of exponentials of their terms, so that
+    # exp(-(x + exp(x))**2 + x) and exp(-(x + exp(x))**2) share their components
+    # (the derivatives are written the same way by the cache)
+    f = as_expr(expand_power_exp(f))
     indep: Expr = S.One
     if not f.is_Add:
         independent, dependent = f.as_independent(x)
@@ -470,9 +674,11 @@ def _heurisch(f: Expr, x: Symbol, rewrite: bool, hints: list[Expr],
     terms = components(f, x)
     cache = _DiffCache(x)
     terms |= _special_candidates(terms, x, cache, f)
+    terms |= _tower_candidates(terms, x, cache, f)
     terms |= set(hints)
     for g in list(terms):
         terms |= components(cache.get(g), x)
+    terms = _exponential_bases(terms)
     ordered_terms: list[Expr] = [as_expr(t) for t in ordered(terms)]
     V = _symbols('x', len(ordered_terms))
     # the components from the largest to the smallest, x last
@@ -498,7 +704,13 @@ def _heurisch(f: Expr, x: Symbol, rewrite: bool, hints: list[Expr],
         unnecessary_permutations = unnecessary_permutations or []
 
     def _substitute(expr: Expr) -> Expr:
-        return as_expr(expr.subs(current))
+        # from the largest component to the smallest, whatever the order of
+        # the mapping: substituting exp(x) first turns the exp(2*x) inside
+        # exp(exp(2*x)) into a power of the symbol, and the outer component
+        # is never found again (the mapping's order labels the symbols, the
+        # permutations being over the variable order of the ring)
+        largest_first = sorted(current, key=lambda pair: (-pair[0].count_ops(), str(pair[0])))
+        return as_expr(expr.subs(largest_first))
 
     current: list[tuple[Expr, Symbol]] = []
     diffs: list[Expr] = []

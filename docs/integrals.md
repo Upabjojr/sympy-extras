@@ -398,7 +398,11 @@ transcendental algorithm, experimental) and #30282 (type annotations)
 are documented there and not ported. The port is self-contained on
 SymPy 1.14 and keeps the tests of the branches. `risch_antiderivative`
 returns an antiderivative or `None` (nonelementary, or a case still
-unimplemented); `is_nonelementary` is the decision. The ported modules are strictly
+unimplemented); `is_nonelementary` is the decision. Parameters may
+appear in the constant field: a symbolic coefficient in the solution of
+a structure equation means a new monomial (`x**v` for a symbolic `v`),
+and the rational roots of a polynomial with parameters in its
+coefficients are found by `roots`. The ported modules are strictly
 typed like the rest of the package, with the annotations of Aaron
 Meurer's branch `risch-typing` (sympy/sympy#30282) as the starting point.
 
@@ -460,10 +464,23 @@ exponentials, and polynomials times inverse functions by parts:
 `cos(x)**2/(1 + sin(x)**2)`, on which it spends its time limit, take a
 second each. The heuristic Risch integrator
 (`sympy_extras.integrals.heurisch`, `heurisch_antiderivative`, a typed
-port of SymPy's with its candidate table always on and extended to the
-error functions of any completed square, `Ei`, `Si` and `Ci`) verifies
-every result by differentiation, refuses floating-point coefficients,
-and writes the logarithms of conjugates as arctangents; `heurisch_cases`
+port of SymPy's with its candidate table always on) takes from the
+differential tower the special functions Cherry's structure theorems
+allow, their derivatives registered in terms of the components:
+`Ei(k*(theta + c))` for a factor `alpha*theta + beta` of the denominator
+under `exp(theta)` or `theta = log(h)` (`exp(x)/(x + 1)**2` is
+`Ei(x + 1)` up to elementary terms, `x/(log(x) + 1)` is
+`exp(-2)*Ei(2*log(x) + 2)`, the logarithmic integral), `erf(u)` and
+`erfi(u)` for an exponent `-theta` or `theta` equal to `u**2 + c` with
+`exp(c)` in the field (`erf(x + exp(x))`, `erf(exp(x))`), the
+dilogarithm where `exp(theta) + 1` divides the denominator
+(`x/(exp(x) + 1)`), besides `Si` and `Ci`; the components are
+substituted from the largest to the smallest and each family of
+rationally related exponentials is one base of which the others are
+powers, so that `log(log(x))/x` and the nested exponentials integrate
+where SymPy's method gives up. It verifies every result by
+differentiation, refuses floating-point coefficients, and writes the
+logarithms of conjugates as arctangents; `heurisch_cases`
 splits the parameters as SymPy's wrapper does. Sixty-six integrands of
 Gradshteyn–Ryzhik's chapter 2 families, rational to Lambert W, integrate
 in twelve seconds together.

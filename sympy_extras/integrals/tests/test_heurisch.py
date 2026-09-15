@@ -109,8 +109,11 @@ def test_refusals_and_verification() -> None:
     assert heurisch_antiderivative(Abs(x), x) is None
     assert heurisch_antiderivative(sign(x) * x, x) is None
     assert heurisch_antiderivative(Float(1.5) * x, x) is None
-    # no elementary antiderivative: refused, never an unevaluated integral
-    assert heurisch_antiderivative(exp(x**2) * exp(x), x) is None
+    # no elementary antiderivative: the error function the tower allows
+    # (exp(x**2 + x) is exp((x + 1/2)**2 - 1/4)), or refused, never an
+    # unevaluated integral
+    from sympy import erfi, sqrt, pi
+    assert heurisch_antiderivative(exp(x**2) * exp(x), x) == sqrt(pi) * exp(-S(1) / 4) * erfi(x + S(1) / 2) / 2
     assert heurisch_antiderivative(exp(x) / log(x), x) is None
     # an integrand free of x
     assert heurisch_antiderivative(y, x) == x * y
@@ -140,3 +143,27 @@ def test_beyond_the_method() -> None:
     assert heurisch_antiderivative(1 / (x * sqrt(x**2 + 1)), x) is None
     F = heurisch_antiderivative(x**2 * sqrt(x**2 + 1), x)
     assert F is not None and simplify(F - ((x + 2 * x**3) * sqrt(1 + x**2) - asinh(x)) / 8) == 0
+
+
+def test_the_special_functions_of_the_tower() -> None:
+    # Cherry's structure: Ei(theta + c) for a factor theta + c of the
+    # denominator (the logarithmic integral for a logarithm), erf(u) for a
+    # perfect square -theta = u**2 + c with exp(c) in the field, the
+    # dilogarithm for exp(theta) + 1 in the denominator; the FriCAS suite's
+    # cases which FriCAS integrates in these functions
+    from sympy import erfi, polylog
+    from sympy_extras.integrals.indefinite import is_antiderivative
+    expected = {
+        exp(x) / (x + 1)**2: Ei, 1 / (log(x) + 1): Ei, x / (log(x) + 1): Ei,
+        (2 * exp(2 * x) + exp(x)) / log(exp(2 * x) + exp(x)): Ei, exp(-x) / (x + 2): Ei,
+        x / (exp(x) + 1): polylog, exp(x) * exp(-exp(2 * x)): erf, (exp(x) + 1) * exp(-(x + exp(x))**2): erf,
+        x * exp(-x**2 + 2 * x): erf, exp(x**2 + 1): erfi, exp(-log(x)**2) / x: erf}
+    for f, function in expected.items():
+        F = heurisch_antiderivative(f, x)
+        assert F is not None and F.has(function) and is_antiderivative(F, f, x) is True, f
+    assert heurisch_antiderivative(1 / (log(x) + 1), x) == exp(-1) * Ei(log(x) + 1)
+    assert heurisch_antiderivative(exp(x) * exp(-exp(2 * x)), x) == sqrt(pi) * erf(exp(x)) / 2
+    # the components from the largest to the smallest: log(log(x))/x and the
+    # nested exponentials need log(x), exp(2*x) left inside their outer
+    # functions until those are mapped
+    assert heurisch_antiderivative(log(log(x)) / x, x) == log(x) * log(log(x)) - log(x)

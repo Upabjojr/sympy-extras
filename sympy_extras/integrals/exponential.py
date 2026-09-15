@@ -164,6 +164,9 @@ def _power_exponential_raw(v: Expr, a: Expr, n: Expr, x: Symbol, assumptions: As
         return as_expr(x**v * exp(a * x**2) / v - 2 * a * higher / v)
     negative = ask(as_boolean(a < 0), assumptions)
     positive = ask(as_boolean(a > 0), assumptions)
+    # the incomplete gamma form is real where -a*x**n > 0: for every x when n is
+    # even, for x > 0 otherwise (x*exp(-x**3) at x < -1 needs the confluent form)
+    real_everywhere = (isinstance(n, Integer) and n % 2 == 0) or ask(as_boolean(x > 0), assumptions) is True
     if n == 2 and v == 1:
         below = as_expr(sqrt(pi) * erf(sqrt(-a) * x) / (2 * sqrt(-a)))
         above = as_expr(sqrt(pi) * erfi(sqrt(a) * x) / (2 * sqrt(a)))
@@ -172,7 +175,7 @@ def _power_exponential_raw(v: Expr, a: Expr, n: Expr, x: Symbol, assumptions: As
         if positive is True:
             return above
         return as_expr(Piecewise((below, a < 0), (above, True)))
-    if negative is True:
+    if negative is True and real_everywhere:
         return as_expr(-(-a)**(-s) * uppergamma(s, -a * x**n) / n)
     # the confluent form, an identity of power series for every a
     return as_expr(x**v * hyper((s,), (s + 1,), a * x**n) / v)
@@ -420,6 +423,11 @@ def _linear_bases(f: Expr, x: Symbol) -> list[Expr]:
             continue
         poly = base.as_poly(x)
         if poly is not None and poly.degree() == 1 and base not in found:
+            found.append(base)
+    # a plain linear factor too: (x + 1)*exp(-x**3 - 3*x**2 - 3*x) is t*exp(-t**3)
+    for factor in Mul.make_args(f):
+        base = as_expr(factor)
+        if base.has(x) and base != x and base.is_polynomial(x) and Poly(base, x).degree() == 1 and base not in found:
             found.append(base)
     return found
 
