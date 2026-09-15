@@ -39,8 +39,8 @@ Examples
 ConditionalValue(2*sqrt(3)*pi/3)
 >>> integrate(1/(2 + cos(x)), (x, 0, 2*pi))
 2*sqrt(3)*pi/3
->>> antiderivative_integral(1/x**2, x, -1, 1) is None
-True
+>>> antiderivative_integral(1/x**2, x, -1, 1)
+ConditionalValue(oo)
 
 References
 ==========
@@ -57,6 +57,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from sympy.calculus.accumulationbounds import AccumBounds
 from sympy.calculus.singularities import singularities
 from sympy.core.expr import Expr
 from sympy.core.function import Function, expand
@@ -339,8 +340,10 @@ def select_branch(F: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions
 def one_sided_limit(F: Expr, x: Symbol, point: Expr, direction: str,
                     assumptions: Assumptions = None) -> Optional[Expr]:
     """``lim F(x)`` as ``x`` tends to ``point`` from the side ``'+'`` or
-    ``'-'`` (``F(point)`` when ``F`` is continuous there), ``None`` when
-    the limit is infinite or cannot be found."""
+    ``'-'`` (``F(point)`` when ``F`` is continuous there); ``oo`` or
+    ``-oo`` for a signed infinity, and ``None`` when the limit does not
+    exist (an oscillation, ``AccumBounds``), is complex infinite, or
+    cannot be found."""
     if point in (oo, -oo):
         value = attempt(lambda: limit(F, x, point, assumptions=assumptions), settings.timeout)
     else:
@@ -350,7 +353,11 @@ def one_sided_limit(F: Expr, x: Symbol, point: Expr, direction: str,
             # when it is finite (the bug: the arcsine of a real antiderivative
             # had no limit at the algebraic bound -sqrt(1 - x**2) of a cell)
             value = as_expr(F.subs(x, point))
-    if value is None or value.has(oo, -oo, zoo, nan, Limit, Piecewise):
+    if value is None:
+        return None
+    if value in (oo, -oo):
+        return value
+    if value.has(oo, -oo, zoo, nan, Limit, Piecewise, AccumBounds):
         return None
     if value.free_symbols - F.free_symbols - point.free_symbols:
         # a dummy of an unevaluated inner limit leaked (the symbols of a
@@ -364,9 +371,12 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
                             assumptions: Assumptions = None, late: bool = False) -> Optional[ConditionalValue]:
     """``Integral(f, (x, a, b))`` from an antiderivative ``F``, cut at the
     discontinuities of ``F`` and the singularities of ``f`` inside the
-    range and evaluated by one-sided limits; ``None`` when there is no
-    antiderivative, a point cannot be placed, or a limit is infinite
-    (the integral diverges) or unknown.
+    range and evaluated by one-sided limits; ``oo`` or ``-oo`` when
+    the limits are infinite of one sign (the integral diverges to it, as
+    ``1/x**2`` over ``(-1, 1)``); ``None`` when there is no
+    antiderivative, a point cannot be placed, a limit is unknown, or the
+    infinities cancel (``1/x`` over ``(-1, 1)``, where the principal
+    value is another question).
 
     Examples
     ========
@@ -378,6 +388,8 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     ConditionalValue(2*pi/3)
     >>> antiderivative_integral(1/(1 + x**2), x, -oo, oo)
     ConditionalValue(pi)
+    >>> antiderivative_integral(1/x, x, 0, 1)
+    ConditionalValue(oo)
     """
     a, b = as_expr(a), as_expr(b)
     F = antiderivative(f, x, assumptions, late)
@@ -416,6 +428,9 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
         if right is None or left is None:
             return None
         total = total + (right - left)
+    if total.has(nan, zoo):
+        # oo - oo: infinities of both signs, nothing is claimed
+        return None
     return ConditionalValue(as_expr(total))
 
 
@@ -478,7 +493,9 @@ def principal_value_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
         return None
     right = one_sided_limit(F, x, b, '-', assumptions)
     left = one_sided_limit(F, x, a, '+', assumptions)
-    if right is None or left is None:
+    if right is None or left is None or right in (oo, -oo) or left in (oo, -oo):
+        # the principal value and the finite part take finite limits at
+        # the endpoints only
         return None
     total: Expr = right - left
     epsilon = Dummy('epsilon', positive=True)
@@ -567,7 +584,9 @@ def finite_part_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
         return None
     right = one_sided_limit(F, x, b, '-', assumptions)
     left = one_sided_limit(F, x, a, '+', assumptions)
-    if right is None or left is None:
+    if right is None or left is None or right in (oo, -oo) or left in (oo, -oo):
+        # the principal value and the finite part take finite limits at
+        # the endpoints only
         return None
     total: Expr = right - left
     epsilon = Dummy('epsilon', positive=True)

@@ -10,6 +10,18 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `definite_integral` reports a divergence to a signed infinity: an
+  infinite one-sided limit of the antiderivative at an endpoint or at a
+  singularity, of one sign over the whole range, gives `oo` or `-oo`
+  (`1/x` over `(0, 1)`, `1/x**2` over `(-1, 1)`, `exp(x)` over `(0, oo)`,
+  `x/(x**2 + 1)` over `(0, oo)`), a claim refused when the quadrature of
+  the integral converges; infinities of both signs (`1/x` over `(-1, 1)`,
+  whose principal value is `principal_value=True`'s question) and an
+  oscillatory divergence (`cos(x)` over `(0, oo)`, `AccumBounds` as the
+  limit) stay unevaluated. The pieces of a split range add up to the
+  infinity likewise; the principal value and the finite part still need
+  finite limits at the endpoints.
+
 - `sympy_extras.integrals.dirichlet`: trigonometric sums over powers of
   `x` on the half-lines and the real line, the Dirichlet, Frullani and
   Borwein integrals. `g(x)/x**n` with `g` a sum (or a product, written as

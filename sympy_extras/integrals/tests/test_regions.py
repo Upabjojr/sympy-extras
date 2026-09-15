@@ -1,7 +1,7 @@
 """Tests of the integrals over regions (:mod:`sympy_extras.integrals.regions`)."""
 from __future__ import annotations
 
-from sympy import Eq, Integral, Piecewise, Rational, S, exp, pi, sqrt, symbols
+from sympy import Eq, Integral, Piecewise, Rational, S, exp, oo, pi, sqrt, symbols
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
@@ -62,9 +62,10 @@ def test_parameters() -> None:
 
 
 def test_unevaluated() -> None:
-    # the region between y = x and y = x**2 for x > 1 is unbounded: no value
+    # the region between y = x and y = x**2 for x > 1 is unbounded: the
+    # area diverges to oo, which is what is reported
     node = integrate_by_ranges(1, (0 < x) & (x < y) & (y < x**2))
-    assert isinstance(node, IntegralByRanges)
+    assert node == oo
     # a condition which is not polynomial is left alone
     assert isinstance(integrate_by_ranges(1, exp(x) < y), IntegralByRanges)
     # an inner integral SymPy cannot do stays unevaluated rather than wrong
@@ -127,7 +128,7 @@ def test_bounds_solved_for_the_last_variable() -> None:
     # a coefficient of y whose sign is known on the range of x
     assert _same(integrate_by_ranges(1, (x > 0) & (x < 1) & (y > 0) & (y*exp(x) < 1)), 1 - exp(-1))
     # nothing to solve: x unbounded, the area under exp infinite
-    assert isinstance(integrate_by_ranges(1, (x > 0) & (y > 0) & (y < exp(x))), IntegralByRanges)
+    assert integrate_by_ranges(1, (x > 0) & (y > 0) & (y < exp(x))) == oo
 
 
 def test_bounds_solved_from_relations_not_linear_in_the_last_variable() -> None:

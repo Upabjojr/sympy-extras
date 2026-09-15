@@ -32,8 +32,11 @@ def test_one_sided_limits() -> None:
     assert one_sided_limit(F, x, pi, '-') == pi
     assert one_sided_limit(F, x, pi, '+') == -pi
     assert one_sided_limit(atan(x), x, oo, '-') == pi / 2
-    # an infinite limit is None: the integral diverges
-    assert one_sided_limit(-1 / x, x, S.Zero, '+') is None
+    # an infinite limit of one sign is returned: the integral diverges to it
+    assert one_sided_limit(-1 / x, x, S.Zero, '+') == -oo
+    # an oscillation is None
+    from sympy import sin
+    assert one_sided_limit(sin(x), x, oo, '-') is None
 
 
 def test_jumps_are_subtracted() -> None:
@@ -46,9 +49,13 @@ def test_jumps_are_subtracted() -> None:
     assert found == ConditionalValue(2 * pi / 3)
 
 
-def test_divergent_integrals_are_not_evaluated() -> None:
-    # integrate(1/x**2, (x, -1, 1)) evaluated at the endpoints would give -2
-    assert antiderivative_integral(1 / x**2, x, S.NegativeOne, S.One) is None
+def test_divergent_integrals_are_signed_infinities_or_none() -> None:
+    # integrate(1/x**2, (x, -1, 1)) evaluated at the endpoints would give -2:
+    # the one-sided limits at 0 are infinite, of one sign
+    assert antiderivative_integral(1 / x**2, x, S.NegativeOne, S.One) == ConditionalValue(oo)
+    assert antiderivative_integral(-1 / x**2, x, S.NegativeOne, S.One) == ConditionalValue(-oo)
+    # infinities of both signs: nothing is claimed (the principal value is
+    # another question)
     assert antiderivative_integral(1 / x, x, S.NegativeOne, S(2)) is None
 
 

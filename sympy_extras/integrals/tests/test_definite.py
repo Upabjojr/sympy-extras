@@ -86,7 +86,7 @@ def test_ranges_are_mapped() -> None:
     assert _same(definite_integral(x**2 * exp(-x), (x, 1, oo)), 5 * exp(-1))
     assert _same(definite_integral(exp(-x**2), (x, 1, 3)), sqrt(pi) * (erf(3) - erf(1)) / 2)
     assert _same(definite_integral(exp(-Abs(x)), (x, -oo, oo)), 2)
-    assert _same(definite_integral(exp(-x), (x, -oo, 0)), oo) is False
+    assert definite_integral(exp(-x), (x, -oo, 0)) == oo
     assert _same(definite_integral(exp(x), (x, -oo, 0)), 1)
     # x = log(u) for a function of exp(x) on the real line
     assert _same(definite_integral(exp(x / 4) / (9 * exp(x / 2) + 4), (x, -oo, oo)), pi / 3)
@@ -222,7 +222,9 @@ def test_principal_values() -> None:
     assert definite_integral(1 / (x - 1), (x, 0, 3), principal_value=True) == log(2)
     assert _same(definite_integral(x / (x**2 - 1), (x, 0, 2), principal_value=True), log(3) / 2)
     # a double pole has no principal value
-    assert definite_integral(1 / x**2, (x, -1, 1), principal_value=True).has(Integral)
+    # a non-integrable singularity of one sign has no principal value: the
+    # integral diverges to oo, which is what is reported
+    assert definite_integral(1 / x**2, (x, -1, 1), principal_value=True) == oo
     # without the flag nothing is claimed
     assert definite_integral(1 / x, (x, -1, 2)).has(Integral)
 
@@ -285,7 +287,7 @@ def test_argument_conditions_of_complex_scales_are_decided() -> None:
     value = definite_integral(exp(-a * x) * sin(b * x) * besselj(0, x), (x, 0, oo))
     assert value == I / (2 * sqrt((a + I * b)**2 + 1)) - I / (2 * sqrt((a - I * b)**2 + 1))
     # a divergent integral has no value, whatever ran before
-    assert definite_integral(x**Rational(-3, 2) * exp(-x), (x, 0, oo)) == Integral(x**Rational(-3, 2) * exp(-x), (x, 0, oo))
+    assert definite_integral(x**Rational(-3, 2) * exp(-x), (x, 0, oo)) == oo
     assert definite_integral(x**Rational(-3, 2) * exp(-x), (x, 0, oo), regularize=True) == -2 * sqrt(pi)
 
 
@@ -429,3 +431,21 @@ def test_sums_of_sines_as_products_and_radical_factors_of_logarithms() -> None:
     # the Beta substitution is -log(1 - u)/2: the radical factor of the
     # argument keeps its exponent (HOL-Py's LogFunction02; Mathematica: pi**2/24)
     assert _same(definite_integral(log(1 / cos(x)) * cos(x) / sin(x), (x, 0, pi / 2)), pi**2 / 24)
+
+
+
+def test_divergence_to_a_signed_infinity() -> None:
+    # an infinite one-sided limit of the antiderivative at an endpoint or
+    # a singularity, of one sign: the integral diverges to it (Maxima's
+    # rtestint answers "divergent" for these)
+    assert definite_integral(1 / x, (x, 0, 1)) == oo
+    assert definite_integral(-1 / x, (x, 0, 1)) == -oo
+    assert definite_integral(x**-2, (x, -1, 1)) == oo
+    assert definite_integral(x**-2, (x, 0, oo)) == oo
+    assert definite_integral(exp(x), (x, 0, oo)) == oo
+    assert definite_integral(1 / (x + 1), (x, 0, oo)) == oo
+    assert definite_integral(x / (x**2 + 1), (x, 0, oo)) == oo
+    # infinities of both signs, and an oscillation: unevaluated
+    assert definite_integral(1 / x, (x, -1, 1)).has(Integral)
+    assert definite_integral(cos(x), (x, 0, oo)).has(Integral)
+    assert definite_integral(sin(x) + cos(x), (x, 0, oo)).has(Integral)

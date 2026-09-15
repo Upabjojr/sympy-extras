@@ -285,7 +285,9 @@ The driver tries, after the Mellin method and the residues:
   antiderivative (the jumps of `atan` and `log` across branch cuts, which
   Rioboo's and Jeffrey–Rich's constructions repair for rational and
   trigonometric integrands), and the pieces are summed with one-sided
-  limits under the assumptions; an infinite limit exposes a divergence.
+  limits under the assumptions; an infinite limit of one sign exposes a
+  divergence, reported as `oo` or `-oo` (`1/x` over `(0, 1)`), while
+  infinities of both signs and oscillations leave the integral unevaluated.
   The antiderivative comes from the verified methods of
   `sympy_extras.integrals.indefinite` (the radical table first, SymPy's
   `integrate` at once for a polynomial in elementary functions of linear

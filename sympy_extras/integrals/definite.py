@@ -196,8 +196,13 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
     Returns
     =======
 
-    The value, a ``Piecewise`` on the conditions, or the unevaluated
-    ``Integral`` when no method applies.
+    The value, a ``Piecewise`` on the conditions, ``oo`` or ``-oo`` when
+    the integral diverges to a signed infinity (an infinite one-sided
+    limit of an antiderivative at an endpoint or a singularity, as for
+    ``1/x`` over ``(0, 1)``; an oscillatory divergence, ``cos(x)`` over
+    ``(0, oo)``, and infinities of both signs, ``1/x`` over ``(-1, 1)``,
+    are left unevaluated), or the unevaluated ``Integral`` when no
+    method applies.
 
     Examples
     ========
@@ -214,6 +219,8 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
     -1/(a + 1)**2
     >>> definite_integral(log(1 - x)/x, (x, 0, 1))
     -pi**2/6
+    >>> definite_integral(1/x, (x, 0, 1))
+    oo
     """
     x, a, b = limits[0], as_expr(limits[1]), as_expr(limits[2])
     f_ = as_expr(f)
@@ -415,6 +422,26 @@ def _oscillatory_quadrature(f: Expr, x: Symbol, lo: mpmath.mpf, hi: mpmath.mpf) 
     return first
 
 
+def _quadrature_converges(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions = None) -> bool:
+    """Whether the quadrature of ``Integral(f, (x, a, b))`` gives a
+    number of a plausible size at some sample of the parameters: the
+    check of a claimed divergence (``1/x`` over ``(0, 1)`` gives none;
+    ``exp(x)`` over ``(0, oo)`` gives ``inf`` and ``x**2*log(x + 1)`` a
+    number of the order of ``1e74``, which are no convergence)."""
+    if f.has(DiracDelta):
+        return False
+    parameters = sorted_symbols((free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x})
+    rng = random.Random(str((f, a, b)))
+    for _ in range(2 if parameters else 1):
+        values = sample_values(parameters, assumptions, rng)
+        if values is None:
+            return False
+        found = _quadrature(f.xreplace(values), x, as_expr(a.xreplace(values)), as_expr(b.xreplace(values)))
+        if found is not None and abs(found) < 1e8:
+            return True
+    return False
+
+
 def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
                        assumptions: Assumptions = None, samples: int = 2) -> Optional[bool]:
     """Whether ``value`` agrees with a numerical quadrature of
@@ -437,7 +464,10 @@ def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
             continue
         try:
             ours = complex(as_expr(value.xreplace(values)).evalf(20))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, ZeroDivisionError, OverflowError):
+            # mpmath raises ZeroDivisionError on a hypergeometric series at
+            # a pole (SymPy's value of Maxima's specint 174 at an integer
+            # sample of the order): nothing is checked
             return None
         if abs(ours - expected) > 1e-6 * (1 + abs(expected)):
             return False
@@ -824,10 +854,13 @@ class _Integrator:
             # the late splitting is a rewriting: its pieces skip the slow
             # methods and SymPy, which the original form gets afterwards
             found = self.integrate(piece, x, lo, hi, depth + 1, not full, full)
-            if found is None or found.value.has(oo, -oo, zoo, nan):
-                # a divergent piece: nothing is claimed about the whole
+            if found is None or found.value.has(zoo, nan):
                 return None
+            # a piece divergent to a signed infinity makes the whole so,
+            # unless another cancels it (oo - oo below)
             total = total.add(found)
+        if total.value.has(zoo, nan):
+            return None
         return total
 
     def _split_signs(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int,
@@ -1095,6 +1128,14 @@ class _Integrator:
         found = antiderivative_integral(f, x, a, b, self.assumptions, late)
         if found is None:
             return None
+        if found.value in (oo, -oo):
+            # a divergence to a signed infinity, from an infinite one-sided
+            # limit of the antiderivative: refused when the quadrature
+            # converges (a wrong antiderivative, a branch cut taken for a
+            # pole), kept otherwise
+            if settings.numerical_checks and _quadrature_converges(f, x, a, b, self.assumptions):
+                return None
+            return self._finish(found)
         if settings.numerical_checks and verify_numerically(found.value, f, x, a, b, self.assumptions) is not True:
             # the antiderivatives sometimes hold for positive parameters
             # or principal branches only: kept when confirmed numerically
