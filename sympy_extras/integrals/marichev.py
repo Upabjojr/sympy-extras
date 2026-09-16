@@ -102,7 +102,7 @@ from sympy_extras.assumptions.facts import element
 from sympy_extras.assumptions.refine import refine
 from sympy_extras.settings import settings
 from .conditions import ConditionalValue, decide
-from .mellin import GammaQuotient, Product, decompose_integrand
+from .mellin import BETA_LOWER, GammaQuotient, Match, Product, _beta_kernel, decompose_integrand
 from .slater import expand_meijerg, line_conditions, mellin_barnes
 
 __all__ = ['mellin_integrate', 'integrate_product', 'evaluate_quotient', 'tidy', 'real_logarithms']
@@ -363,9 +363,34 @@ def integrate_product(product: Product, assumptions: Assumptions = None,
     continuation of the value)."""
     if not product.matches:
         return None
+    if product.one_minus_power > 0:
+        # log(1 - x)**m is the m-th derivative of (1 - x)**(b - 1) in b:
+        # the Beta kernel's parameter made a symbol, the integral
+        # differentiated, the parameter put back (t**2*(1 - t)**2*log(t)**2
+        # *log(1 - t)**2 over (0, 1), Maxima's rtestint 206)
+        beta = Dummy('beta', positive=True)
+        matches: list[Match] = []
+        parameter: Optional[Expr] = None
+        for m in product.matches:
+            if m.kernel.name == BETA_LOWER and parameter is None:
+                parameter = as_expr(m.kernel.parameters[0])
+                matches.append(Match(_beta_kernel(beta), m.beta, m.gamma, m.constant, m.cutoff))
+            else:
+                matches.append(m)
+        if parameter is None:
+            return None
+        shifted = Product(product.constant, product.alpha, product.log_power, matches)
+        found = integrate_product(shifted, assumptions, regularize)
+        if found is None:
+            return None
+        value = found.value
+        for _ in range(product.one_minus_power):
+            value = as_expr(value.diff(beta))
+        return ConditionalValue(as_expr(value.subs(beta, parameter)),
+                                as_boolean(found.condition.subs(beta, parameter)))
     if product.log_power > 0:
         alpha = Dummy('alpha', real=True)
-        shifted = Product(product.constant, alpha, 0, product.matches)
+        shifted = Product(product.constant, alpha, 0, product.matches, product.one_minus_power)
         found = integrate_product(shifted, assumptions, regularize)
         if found is None:
             return None

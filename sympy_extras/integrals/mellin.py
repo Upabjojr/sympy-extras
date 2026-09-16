@@ -397,9 +397,13 @@ def _power_kernel(a: Expr) -> Kernel:
                   _cut_plane(BETA))
 
 
+#: the name of the Beta kernel on (0, 1)
+BETA_LOWER = '(1 - x)**(b - 1) theta(1 - x)'
+
+
 def _beta_kernel(b: Expr) -> Kernel:
     # (1 - x)^{b-1} on (0, 1): Gamma(s) Gamma(b) / Gamma(s + b), Re s > 0, Re b > 0
-    return Kernel('(1 - x)**(b - 1) theta(1 - x)',
+    return Kernel(BETA_LOWER,
                   GammaQuotient(1, [], [(0, 1), (b, 0)], [(b, 1)], 0, oo, b > 0), (b,),
                   _positive_real(BETA))
 
@@ -1011,13 +1015,17 @@ def mellin_transform(f: ExprLike, x: Symbol, s: Symbol) -> Optional[MellinTransf
 
 
 class Product:
-    """An integrand ``constant * x**alpha * log(x)**n * k_1(...) * k_2(...)``."""
+    """An integrand ``constant * x**alpha * log(x)**n * k_1(...) * k_2(...)``,
+    on ``(0, 1)`` with a factor ``log(1 - x)**m`` as well (``one_minus_power``),
+    the m-th derivative of the Beta kernel ``(1 - x)**(b - 1)`` in ``b``."""
 
-    def __init__(self, constant: Expr, alpha: Expr, log_power: int, matches: Sequence[Match]) -> None:
+    def __init__(self, constant: Expr, alpha: Expr, log_power: int, matches: Sequence[Match],
+                 one_minus_power: int = 0) -> None:
         self.constant = constant
         self.alpha = alpha
         self.log_power = log_power
         self.matches = tuple(matches)
+        self.one_minus_power = one_minus_power
 
     def __repr__(self) -> str:
         return "Product(%s, x**%s, log**%s, %s)" % (self.constant, self.alpha, self.log_power,
@@ -1191,6 +1199,7 @@ def decompose_integrand(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Opt
     constant: Expr = S.One
     alpha: Expr = S.Zero
     log_power = 0
+    one_minus_power = 0
     matches: list[Match] = []
     factors: list[Expr] = []
     for factor in (f.args if isinstance(f, Mul) else [f]):
@@ -1233,13 +1242,26 @@ def decompose_integrand(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Opt
                 and isinstance(e.exp, Integer) and e.exp > 0:
             log_power += int(e.exp)
             continue
+        if cutoff == 'lower' and isinstance(e, log) and e.args[0] == 1 - x:
+            one_minus_power += 1
+            continue
+        if cutoff == 'lower' and isinstance(e, Pow) and isinstance(e.base, log) and e.base.args[0] == 1 - x \
+                and isinstance(e.exp, Integer) and e.exp > 0:
+            one_minus_power += int(e.exp)
+            continue
         found = mellin_kernel(e, x, cutoff)
         if found is None:
             return None
         matches.append(found)
+    if one_minus_power and cutoff == 'lower' and not any(m.cutoff for m in matches):
+        # log(1 - x)**m alone: the step function theta(1 - x) is the Beta
+        # kernel (1 - x)**(b - 1) at b = 1, which the derivatives in b need
+        matches.append(Match(_beta_kernel(S.One), S.One, S.One, S.One, True))
+    if one_minus_power and not any(m.kernel.name == BETA_LOWER and m.gamma == 1 for m in matches):
+        return None
     if cutoff is not None and not any(m.cutoff for m in matches):
         name = 'theta(1 - x)' if cutoff == 'lower' else 'theta(x - 1)'
         matches.append(Match(KERNELS[name], S.One, S.One, S.One, True))
     if len(matches) > 2:
         return None
-    return Product(constant, alpha, log_power, matches)
+    return Product(constant, alpha, log_power, matches, one_minus_power)

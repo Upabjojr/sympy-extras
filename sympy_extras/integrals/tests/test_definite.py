@@ -484,3 +484,15 @@ def test_laplace_transforms_of_laguerre_polynomials_of_symbolic_degree() -> None
     value = definite_integral(exp(-s * t) * laguerre(n, t), (t, 0, oo), s > 1)
     assert _same(value.subs({n: 3, s: 5}), Rational(4**3, 5**4))
     assert _same(value.subs({n: Rational(5, 2), s: 3}), (2**Rational(5, 2)) / 3**Rational(7, 2))
+
+
+
+def test_powers_of_log_of_one_minus_x_are_derivatives_of_the_beta_exponent() -> None:
+    # Maxima's rtestint 206 (Mathematica: (12135541 - 200 pi**2 (3739 + 30 pi**2)
+    # - 3384000 zeta(3))/16200000), and the simplest cases
+    from sympy import zeta
+    assert _same(definite_integral(t * (1 - t) * log(1 - t), (t, 0, 1)), -Rational(5, 36))
+    assert _same(definite_integral(log(1 - t)**2, (t, 0, 1)), 2)
+    assert _same(definite_integral(log(t) * log(1 - t), (t, 0, 1)), 2 - pi**2 / 6)
+    value = definite_integral(t**2 * (1 - t)**2 * log(t)**2 * log(1 - t)**2, (t, 0, 1))
+    assert _same(value, (12135541 - 200 * pi**2 * (3739 + 30 * pi**2) - 3384000 * zeta(3)) / 16200000)

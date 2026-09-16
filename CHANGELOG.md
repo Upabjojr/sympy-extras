@@ -42,6 +42,13 @@ remove public functions. Breaking changes are listed here when they happen.
   forms of the Mellin method: the Laplace transform of `laguerre(n, t)`
   is `(s - 1)**n/s**(n + 1)` for `s > 1` (Maxima's `specint` 42, 43).
 
+- `sympy_extras.integrals.marichev`: `log(1 - x)**m` on `(0, 1)` as the
+  m-th derivative of the Beta kernel `(1 - x)**(b - 1)` in `b` (the step
+  function of the range being that kernel at `b = 1`), as `log(x)**n` is
+  the derivative in the exponent of `x`: `t**2*(1 - t)**2*log(t)**2*log(1 - t)**2`
+  over `(0, 1)` is `(12135541 - 200*pi**2*(3739 + 30*pi**2) - 3384000*zeta(3))/16200000`
+  (Maxima's `rtestint` 206; checked in Mathematica).
+
 - `sympy_extras.integrals.dirichlet`: trigonometric sums over powers of
   `x` on the half-lines and the real line, the Dirichlet, Frullani and
   Borwein integrals. `g(x)/x**n` with `g` a sum (or a product, written as
