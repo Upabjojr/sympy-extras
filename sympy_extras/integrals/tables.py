@@ -203,6 +203,15 @@ TABLE: list[TableEntry] = [
     TableEntry(log(X) * log(1 + X), 0, 1, 2 - pi**2 / 12 - 2 * log(2), true, 'GR 4.221.2'),
     TableEntry(loggamma(X), 0, 1, log(2 * pi) / 2, true, 'GR 6.441.1'),
     TableEntry(log(gamma(X)), 0, 1, log(2 * pi) / 2, true, 'GR 6.441.1'),
+    # Kummer's Fourier series of log Gamma on (0, 1): the coefficients
+    TableEntry(loggamma(X) * cos(2 * pi * N * X), 0, 1, 1 / (4 * N), _natural(N) & (N > 0), 'GR 6.443.1',
+               ({N: Integer(1)}, {N: Integer(3)})),
+    TableEntry(log(gamma(X)) * cos(2 * pi * N * X), 0, 1, 1 / (4 * N), _natural(N) & (N > 0), 'GR 6.443.1',
+               ({N: Integer(2)}, {N: Integer(3)})),
+    TableEntry(loggamma(X) * sin(2 * pi * N * X), 0, 1, (S.EulerGamma + log(2 * pi * N)) / (2 * pi * N),
+               _natural(N) & (N > 0), 'GR 6.443.3', ({N: Integer(1)}, {N: Integer(3)})),
+    TableEntry(log(gamma(X)) * sin(2 * pi * N * X), 0, 1, (S.EulerGamma + log(2 * pi * N)) / (2 * pi * N),
+               _natural(N) & (N > 0), 'GR 6.443.3', ({N: Integer(2)}, {N: Integer(3)})),
     # ------------------------------------------------- inverse trigonometric, GR 4.5
     TableEntry(atan(X) / X, 0, 1, S.Catalan, true, 'GR 4.531.1'),
     TableEntry(atan(X)**2 / X**2, 0, oo, pi * log(2), true, 'GR 4.535.1'),

@@ -61,6 +61,11 @@ remove public functions. Breaking changes are listed here when they happen.
   `(log(a) + expint(1, a*t))*exp((a - s)*t)` over `(0, oo)` is
   `log(s)/(s - a)` in seconds (Maxima's `specint` 118).
 
+- `sympy_extras.integrals.tables`: the coefficients of Kummer's Fourier
+  series of `log(gamma(x))` on `(0, 1)`, `1/(4*n)` against `cos(2*pi*n*x)`
+  and `(EulerGamma + log(2*pi*n))/(2*pi*n)` against `sin(2*pi*n*x)` (GR
+  6.443; Wester's `log(gamma(x))*cos(6*pi*x)` is `1/12`).
+
 - `sympy_extras.integrals.dirichlet`: trigonometric sums over powers of
   `x` on the half-lines and the real line, the Dirichlet, Frullani and
   Borwein integrals. `g(x)/x**n` with `g` a sum (or a product, written as

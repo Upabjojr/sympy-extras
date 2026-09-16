@@ -2,7 +2,7 @@
 distinctions."""
 from __future__ import annotations
 
-from sympy import symbols, sin, cos, log, pi, oo, S, besselj, atan, Min, Wild
+from sympy import symbols, sin, cos, log, pi, oo, S, Rational, besselj, atan, Min, Wild
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
@@ -50,6 +50,16 @@ def test_values() -> None:
     assert found == ConditionalValue(pi * Min(a, b) / 2)
     found = table_integral(besselj(2, x) * besselj(1, x) / x, x, 0, oo)
     assert found is not None and found.value == 2 * sin(pi / 2) / (3 * pi)
+
+
+def test_kummer_series_of_log_gamma() -> None:
+    # Wester's log(gamma(x))*cos(6*pi*x) over (0, 1) is 1/12: the third
+    # cosine coefficient of Kummer's series (Mathematica: 0.0833333...
+    # numerically, no closed form)
+    from sympy import gamma, log, EulerGamma
+    from sympy_extras.integrals import definite_integral
+    assert definite_integral(log(gamma(x)) * cos(6 * pi * x), (x, 0, 1)) == Rational(1, 12)
+    assert definite_integral(log(gamma(x)) * sin(6 * pi * x), (x, 0, 1)) == (EulerGamma + log(6 * pi)) / (6 * pi)
 
 
 def test_case_distinctions() -> None:
