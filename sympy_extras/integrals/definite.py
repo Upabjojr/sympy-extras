@@ -105,7 +105,8 @@ from sympy.functions.elementary.piecewise import Piecewise, piecewise_fold
 from sympy.functions.elementary.trigonometric import (TrigonometricFunction, asin, sin, cos, tan, cot, sec,
                                                       csc)
 from sympy.functions.elementary.hyperbolic import HyperbolicFunction, InverseHyperbolicFunction
-from sympy.functions.special.polynomials import OrthogonalPolynomial
+from sympy.functions.special.hyper import hyper
+from sympy.functions.special.polynomials import OrthogonalPolynomial, laguerre
 from sympy.core.exprtools import factor_terms
 from sympy.core.function import count_ops, expand, expand_func, expand_log
 from sympy.simplify.fu import TR8, TR9
@@ -1424,6 +1425,13 @@ def _forms(g: Expr, t: Symbol, assumptions: Assumptions) -> list[Expr]:
         add(as_expr(expand_log(rewritten, force=True)))
     if g.has(OrthogonalPolynomial):
         add(as_expr(expand_func(g).expand()))
+        # a Laguerre polynomial of symbolic degree by Kummer's transformation,
+        # laguerre(n, u) = 1F1(-n; 1; u) = exp(u)*1F1(n + 1; 1; -u): the
+        # confluent kernel of the Mellin table with a negative argument
+        # (the Laplace transform of laguerre(n, t) is (s - 1)**n/s**(n + 1))
+        add(_combined_exponentials(as_expr(g.replace(
+            lambda node: isinstance(node, laguerre) and not as_expr(node.args[0]).is_Integer,
+            lambda node: exp(as_expr(node.args[1])) * hyper([as_expr(node.args[0]) + 1], [1], -as_expr(node.args[1]))))))
     return forms
 
 

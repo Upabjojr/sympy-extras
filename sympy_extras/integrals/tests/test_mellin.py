@@ -185,3 +185,16 @@ def test_bessel_products_are_one_kernel() -> None:
     assert product is not None and len(product.matches) == 2
     product = decompose_integrand(besselj(0, x) * besselj(0, 2 * x), x)
     assert product is not None and len(product.matches) == 2
+
+
+
+def test_the_confluent_hypergeometric_kernel() -> None:
+    # 1F1(a; b; -x): Gamma(b) Gamma(s) Gamma(a - s)/(Gamma(a) Gamma(b - s)) on 0 < Re s < Re a
+    from sympy import hyper, gamma, Rational, oo, Integral
+    a, b, s = symbols('a b s', positive=True)
+    x = symbols('x', positive=True)
+    found = mellin_transform(hyper([a], [b], -x), x, s)
+    assert found is not None and found.strip == (0, a)
+    assert found.transform == gamma(b) * gamma(s) * gamma(a - s) / (gamma(a) * gamma(b - s))
+    value = found.transform.subs({s: Rational(4, 3), a: 2, b: Rational(3, 2)})
+    assert abs(float(value) - float(Integral(x**Rational(1, 3)*hyper([2], [Rational(3, 2)], -x), (x, 0, oo)).evalf())) < 1e-9

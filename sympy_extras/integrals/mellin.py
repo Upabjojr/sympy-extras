@@ -88,6 +88,7 @@ from sympy.functions.elementary.trigonometric import sin, cos, atan
 from sympy.functions.special.bessel import besselj, bessely, besseli, besselk, airyai
 from sympy.functions.special.error_functions import erf, erfc, Ei, expint, Si, Ci, fresnels, fresnelc
 from sympy.functions.special.gamma_functions import gamma, polygamma
+from sympy.functions.special.hyper import hyper
 from sympy.functions.special.zeta_functions import zeta, dirichlet_eta, lerchphi, polylog
 from sympy.functions.special.delta_functions import Heaviside
 from sympy.logic.boolalg import And, Boolean, true
@@ -482,6 +483,14 @@ def _expint_kernel(n: Expr) -> Kernel:
                   _right_half_plane(BETA))
 
 
+def _hyper1f1_kernel(a: Expr, b: Expr) -> Kernel:
+    # 1F1(a; b; -x): Gamma(b) Gamma(s) Gamma(a - s) / (Gamma(a) Gamma(b - s)), 0 < Re s < Re a
+    # ([Marichev]_ table, the transform of Kummer's function of a negative
+    # argument; the decay (beta x)**(-a) at infinity needs Re beta > 0)
+    return Kernel('hyper1f1', GammaQuotient(gamma(b) / gamma(a), [], [(0, 1), (a, -1)], [(b, -1)], 0, a), (a, b),
+                  _right_half_plane(BETA))
+
+
 def _besselj_kernel(nu: Expr) -> Kernel:
     # J_nu(x): 2^{s-1} Gamma((nu + s)/2) / Gamma(1 + (nu - s)/2), -Re nu < Re s < 3/2
     return Kernel('besselj', GammaQuotient(_HALF, [(2, 1)], [(nu / 2, _HALF)], [(1 + nu / 2, -_HALF)], -nu, Rational(3, 2)),
@@ -768,6 +777,16 @@ def _negated_monomial(e: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
 def _match_function(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Optional[Match]:
     """A function application recognised as a kernel."""
     if not isinstance(f, Function):
+        return None
+    # before the arguments are read as expressions: those of hyper are tuples
+    if isinstance(f, hyper) and len(f.ap) == 1 and len(f.bq) == 1:
+        # Kummer's function of a negative argument, 1F1(a; b; -beta x**gamma):
+        # the Laguerre polynomials of symbolic degree come as
+        # exp(t)*1F1(n + 1; 1; -t) (Kummer's transformation)
+        found = _negated_monomial(as_expr(f.argument), x)
+        a, b = as_expr(f.ap[0]), as_expr(f.bq[0])
+        if found is not None and not a.has(x) and not b.has(x):
+            return Match(_hyper1f1_kernel(a, b), found[0], found[1])
         return None
     args = [as_expr(a) for a in f.args]
     if isinstance(f, exp) and len(args) == 1:

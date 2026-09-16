@@ -34,6 +34,14 @@ remove public functions. Breaking changes are listed here when they happen.
   exponentials combined (the three-exponential Laplace transform of
   `specint` 18 answered under `a > 0` and the like instead of `a + s > 0`).
 
+- `sympy_extras.integrals.mellin`: Kummer's confluent hypergeometric
+  function of a negative argument, `1F1(a; b; -beta*x**gamma)`, as a kernel
+  of the table (`Gamma(b)*Gamma(s)*Gamma(a - s)/(Gamma(a)*Gamma(b - s))` on
+  `0 < Re s < Re a`), and the Laguerre polynomials of symbolic degree
+  written `exp(u)*1F1(n + 1; 1; -u)` by Kummer's transformation among the
+  forms of the Mellin method: the Laplace transform of `laguerre(n, t)`
+  is `(s - 1)**n/s**(n + 1)` for `s > 1` (Maxima's `specint` 42, 43).
+
 - `sympy_extras.integrals.dirichlet`: trigonometric sums over powers of
   `x` on the half-lines and the real line, the Dirichlet, Frullani and
   Borwein integrals. `g(x)/x**n` with `g` a sum (or a product, written as

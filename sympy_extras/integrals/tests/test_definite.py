@@ -472,3 +472,15 @@ def test_sums_whose_terms_diverge_separately_are_regularised() -> None:
     f = ((-a + c) * exp(-b * t) + (a - b) * exp(-c * t) + (b - c) * exp(-a * t)) * exp(-s * t) / ((-a + b) * (-a + c) * (b - c))
     value = definite_integral(f, (t, 0, oo), c + s > 0)
     assert not value.has(Piecewise) and _same(value, 1 / ((a + s) * (b + s) * (c + s)))
+
+
+
+def test_laplace_transforms_of_laguerre_polynomials_of_symbolic_degree() -> None:
+    # Maxima's specint 42: laguerre(n, t) is exp(t)*1F1(n + 1; 1; -t) by
+    # Kummer's transformation, and the confluent kernel of the Mellin table
+    # gives (s - 1)**n/s**(n + 1) for s > 1 (Mathematica agrees)
+    from sympy import laguerre
+    n = symbols('n', positive=True)
+    value = definite_integral(exp(-s * t) * laguerre(n, t), (t, 0, oo), s > 1)
+    assert _same(value.subs({n: 3, s: 5}), Rational(4**3, 5**4))
+    assert _same(value.subs({n: Rational(5, 2), s: 3}), (2**Rational(5, 2)) / 3**Rational(7, 2))
