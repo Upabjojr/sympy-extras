@@ -96,8 +96,9 @@ from typing import Optional, Sequence
 from sympy.core.expr import Expr
 from sympy.core.function import Derivative, Function, expand, expand_trig
 from sympy.core.mul import Mul
-from sympy.core.numbers import I, Integer, Rational, nan, oo, pi, zoo
-from sympy.core.relational import Ne
+from sympy.core.numbers import Float, I, Integer, Rational, nan, oo, pi, zoo
+from sympy.core.relational import (Equality, GreaterThan, LessThan, Ne, Relational, StrictGreaterThan,
+                                   StrictLessThan, Unequality)
 from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
@@ -191,7 +192,8 @@ def poles(q: Poly) -> Optional[list[_Pole]]:
         return []
     parametric = any(free_symbols(as_expr(c)) for c in q.coeffs())
     found = attempt(lambda: roots(q), settings.timeout)
-    if found is not None and sum(found.values()) == q.degree():
+    if found is not None and sum(found.values()) == q.degree() \
+            and (parametric or not any(_unwieldy(as_expr(r)) for r in found)):
         return [_Pole(as_expr(r), int(m)) for r, m in found.items()]
     if parametric:
         return None
@@ -208,6 +210,13 @@ def poles(q: Poly) -> Optional[list[_Pole]]:
     if sum(p.multiplicity for p in result) != q.degree():
         return None
     return result
+
+
+def _unwieldy(root: Expr) -> bool:
+    """Whether a root in radicals is too large to work with: the roots
+    of x**4 + x**2 + x + 1 are nested cube roots of complex numbers, for
+    which ``ComplexRootOf`` is the better form."""
+    return root.count_ops() > 60
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +239,13 @@ class _Locator:
             return True
         if q is false:
             return False
+        if not free_symbols(q):
+            # a question about numbers (the imaginary part of a root of
+            # x**4 + x**2 + x + 1 in radicals, or a ComplexRootOf): the
+            # sides evaluated
+            verdict = _numerically(q)
+            if verdict is not None:
+                return verdict
         # a question about radicals of the parameters is expensive for the
         # exact decision procedures: the sample is consulted first, and
         # the value found with it is verified numerically afterwards
@@ -349,6 +365,32 @@ class _Locator:
         return self.decide(as_boolean(re(point) > 0))
 
 
+def _numerically(q: Boolean) -> Optional[bool]:
+    """A relation between numbers decided by evaluation: ``None`` when
+    the difference of the sides is not clearly of one sign (an equality
+    is never confirmed this way, only refuted)."""
+    if not isinstance(q, Relational):
+        return None
+    try:
+        difference = as_expr(as_expr(q.lhs - q.rhs).evalf(50))
+    except (TypeError, ValueError, ZeroDivisionError, OverflowError):
+        return None
+    if not difference.is_comparable or difference.is_extended_real is not True:
+        return None
+    if abs(difference) < Float('1e-40'):
+        return None
+    positive = bool(difference > 0)
+    if isinstance(q, (StrictGreaterThan, GreaterThan)):
+        return positive
+    if isinstance(q, (StrictLessThan, LessThan)):
+        return not positive
+    if isinstance(q, Equality):
+        return False
+    if isinstance(q, Unequality):
+        return True
+    return None
+
+
 def _has_radicals(q: Boolean) -> bool:
     """Whether the question involves non-polynomial functions of the
     parameters (radicals, absolute values, ...)."""
@@ -417,22 +459,25 @@ def _branch_log(point: Expr, imaginary_sign: int) -> Expr:
 
 def _tidy(value: Expr, assumptions: Assumptions) -> Expr:
     """The value simplified, with the imaginary parts which cancel for
-    real parameters removed."""
+    real parameters removed; each simplification under an eighth of the
+    time limit (``simplify`` on the roots of x**4 + x**2 + x + 1 took the
+    whole budget of the definite driver)."""
     result = value
+    budget = None if settings.timeout is None else settings.timeout / 8
     parameters = sorted_symbols(free_symbols(result))
     reals = {s: Dummy(s.name, real=True) for s in parameters
              if s.is_extended_real or ask(element(s, S.Reals), assumptions)}
     if reals and result.has(I):
         back = {d: s for s, d in reals.items()}
         expanded = attempt(lambda: as_expr(expand(result.xreplace(dict(reals.items())), complex=True)),
-                           settings.timeout)
+                           budget)
         if expanded is not None and not expanded.has(I):
             result = as_expr(expanded.xreplace(dict(back.items())))
-    simpler = attempt(lambda: as_expr(simplify(cancel(result))), settings.timeout)
+    simpler = attempt(lambda: as_expr(simplify(cancel(result))), budget)
     if simpler is not None and _size(simpler) <= _size(result):
         result = simpler
     if result.has(I) and not reals and not parameters:
-        simpler = attempt(lambda: as_expr(simplify(expand(result, complex=True))), settings.timeout)
+        simpler = attempt(lambda: as_expr(simplify(expand(result, complex=True))), budget)
         if simpler is not None and not simpler.has(I):
             result = simpler
     return result

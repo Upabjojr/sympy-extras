@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import mpmath
 
-from sympy import Expr, symbols, oo, lambdify
+from typing import Optional
+
+from sympy import Expr, symbols, oo, lambdify, exp, I
+from sympy.core.power import Pow
 from sympy.core.symbol import Wild
 
 from sympy_extras._typing import as_expr
@@ -21,15 +24,46 @@ def _frequency(entry: TableEntry, sample: dict[Wild, Expr]) -> float:
     return max(scales)
 
 
+def _chirp(f: Expr) -> Optional[tuple[float, float]]:
+    """``(c, n)`` for an integrand oscillating as ``exp(+-I*c*x**n)`` with
+    ``n != 1`` (the zeros of the oscillation are then ``(k*pi/c)**(1/n)``,
+    not equally spaced)."""
+    for node in f.atoms(exp):
+        argument = as_expr(node.args[0])
+        coefficient, rest = argument.as_independent(x, as_Add=False)
+        if not as_expr(coefficient).has(I) or not isinstance(rest, Pow) or rest.base != x:
+            continue
+        n = float(as_expr(rest.exp))
+        if n != 1:
+            return abs(float(as_expr(coefficient / I))), n
+    return None
+
+
 def _quadrature(f: Expr, lower: Expr, upper: Expr, oscillatory: bool, omega: float) -> complex:
     g = lambdify(x, f, 'mpmath')
     lo = float(lower)
     if upper == oo:
+        chirp = _chirp(f)
+        if chirp is not None:
+            # u = x**n makes the oscillation periodic, with a decaying
+            # amplitude, which quadosc extrapolates well
+            c, n = chirp
+
+            def h(u: float) -> complex:
+                return g(u**(1 / n)) * u**(1 / n - 1) / n
+
+            # the end at 0 (a singular amplitude) by plain quadrature
+            real = mpmath.quad(lambda u: mpmath.re(h(u)), [lo**n, 1]) \
+                + mpmath.quadosc(lambda u: mpmath.re(h(u)), [1, mpmath.inf], omega=c)
+            imaginary = mpmath.quad(lambda u: mpmath.im(h(u)), [lo**n, 1]) \
+                + mpmath.quadosc(lambda u: mpmath.im(h(u)), [1, mpmath.inf], omega=c)
+            return complex(real + 1j * imaginary)
         if oscillatory:
-            head = mpmath.quad(g, [lo, 1, 10, 40])
+            head = mpmath.quad(g, [lo] + [p for p in (1, 10, 40) if p > lo])
             tail = mpmath.quadosc(g, [40, mpmath.inf], omega=omega)
             return complex(head + tail)
-        return complex(mpmath.quad(g, [lo, 1, 10, 100, mpmath.inf]))
+        # the breakpoints beyond the lower end only (a range from k = 3)
+        return complex(mpmath.quad(g, [lo] + [p for p in (1, 10, 100) if p > lo] + [mpmath.inf]))
     if lower == -oo:
         return complex(mpmath.quad(g, [-mpmath.inf, -10, 0, 10, mpmath.inf]))
     return complex(mpmath.quad(g, [lo, float(upper)]))
@@ -45,7 +79,8 @@ def test_every_entry_numerically() -> None:
         for sample in entry.samples:
             f = entry.integrand(x, sample)
             expected = _value(entry, sample)
-            approx = _quadrature(f, entry.lower, entry.upper, entry.oscillatory, _frequency(entry, sample))
+            lower, upper = entry.range(sample)
+            approx = _quadrature(f, lower, upper, entry.oscillatory, _frequency(entry, sample))
             # the oscillatory tails are extrapolated: a looser tolerance,
             # still far below any transcription error (a factor 2 or pi)
             tolerance = 1e-4 if entry.oscillatory else 1e-6
@@ -61,4 +96,5 @@ def test_finite_ranges_with_the_package_check() -> None:
         for sample in entry.samples:
             f = entry.integrand(x, sample)
             value = as_expr(entry.value.xreplace(dict(sample)))
-            assert verify_numerically(value, f, x, entry.lower, entry.upper) is not False, (entry, sample)
+            lower, upper = entry.range(sample)
+            assert verify_numerically(value, f, x, lower, upper) is not False, (entry, sample)

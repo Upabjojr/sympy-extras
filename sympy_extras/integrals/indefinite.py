@@ -443,8 +443,9 @@ def verified_antiderivative(f: ExprLike, x: Symbol, assumptions: Assumptions = N
             continue
         try:
             found = method(f_, x, assumptions)
-        except (AttributeError, ZeroDivisionError, AssertionError, OverflowError, RecursionError):
-            # SymPy's internals fail on some inputs
+        except (AttributeError, ZeroDivisionError, AssertionError, OverflowError, RecursionError, IndexError):
+            # SymPy's internals fail on some inputs (an IndexError in the
+            # rational integrator on nested algebraic coefficients)
             found = None
         if found is None or found.has(Integral, nan, zoo, oo, -oo):
             continue

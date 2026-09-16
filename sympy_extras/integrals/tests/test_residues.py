@@ -213,3 +213,13 @@ def test_residue_integral_dispatch() -> None:
     assert residue_integral(S.One, x, -oo, oo) is None
     assert _same(_value(residue_integral(1 / (x**2 + 1), x, S.Zero, oo)), pi / 2)
     assert _same(_value(residue_integral(Abs(3) / (2 + cos(x)), x, S.Zero, 2 * pi)), 6 * pi / sqrt(3))
+
+
+def test_numeric_questions_about_the_poles_are_decided_by_evaluation() -> None:
+    # the roots of x**4 + x**2 + x + 1 are nested cube roots of complex
+    # numbers in radicals: taken as ComplexRootOf, their half-plane decided
+    # numerically (Wester's problem 22)
+    x = Symbol('x', real=True)
+    found = real_line_integral(1 / (x**4 + x**2 + x + 1), x)
+    assert found is not None and found.value.has(ComplexRootOf)
+    assert abs(complex(found.value.evalf(20)) - mpmath.quad(lambda u: 1 / (u**4 + u**2 + u + 1), [-mpmath.inf, mpmath.inf])) < 1e-10

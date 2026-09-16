@@ -228,12 +228,15 @@ The driver tries, after the Mellin method and the residues:
   from the Taylor coefficients of the factors (`exp(cos(x))*cos(sin(x))`
   gives `2*pi`, `exp(a*cos(x))*cos(n*x)` gives `2*pi*besseli(n, a)`);
   rational functions of `sin` and `cos` go to the residues instead.
-- **A table** (`sympy_extras.integrals.tables`): fifty-eight entries of
-  Gradshteyn and Ryzhik which no algorithm here reproduces (the Poisson
+- **A table** (`sympy_extras.integrals.tables`): seventy-six entries of
+  Gradshteyn and Ryzhik, of Abramowitz and Stegun's Laplace transforms
+  and of the literature which no algorithm here reproduces (the Poisson
   and Fejér kernels, `sin(a x)**3/x**3`, `x*log(sin(x))`, `log(gamma(x))`,
-  products of Bessel functions, ...), matched with their conditions on the
-  parameters and checked numerically at sample values in the tests; tried
-  first because it is cheap.
+  products of Bessel functions, the transforms over `(k, oo)` of the
+  Bessel functions of `sqrt(t**2 - k**2)`, Fresnel's integrals, Ahmed's
+  integral, ...), matched with their conditions on the parameters and
+  checked numerically at sample values in the tests; tried first because
+  it is cheap, term by term for a sum.
 - **Elliptic integrals** (`sympy_extras.integrals.elliptic`): square roots
   of cubics and quartics with real roots, `R(x)/sqrt(P(x))` and
   `R(x)*sqrt(P(x))` over a cell between the roots, reduced by the
@@ -253,6 +256,15 @@ The driver tries, after the Mellin method and the residues:
   `elliptic_k(3/4)`; the irrational quadratic factors of a numeric
   quartic (`x**4 + x - 1`) are built from its `CRootOf` roots, the
   algebraic numbers travelling as dummies decided numerically.
+- **Substitutions of the definite driver**: `u = q(x)**(1/n)` for the
+  radical `q(x)**(k/n)` of the integrand, `q` a polynomial of degree at
+  most two, nonnegative and monotone on the range (`z*sqrt(sqrt(z**2 - 1) +
+  1)` over `(1, sqrt(2))` is `u*sqrt(u + 1)` over `(0, 1)`; the ends of the
+  range simplified through their square roots); `u = x + c` for a radical
+  of `(x + c)**2 - d`; `t = tan(k*x)` on a range inside `(-pi/2, pi/2)/k`
+  and Weierstrass's `t = tan(k*x/2)` inside `(-pi, pi)/k`, when the
+  integrand becomes algebraic in `t` (`sqrt(tan(x))` over `(0, pi/2)`,
+  `sqrt(tan(x) + sec(x))*sec(x)` over `(0, pi/4)`).
 - **Algebraic integrands of genus zero** (`sympy_extras.integrals.algebraic`):
   Euler's substitutions for `R(x, sqrt(a*x**2 + b*x + c))`, `t**n = M(x)`
   for roots of a Möbius function, and Chebyshev's three integrable cases
@@ -288,10 +300,18 @@ The driver tries, after the Mellin method and the residues:
   limits under the assumptions; an infinite limit of one sign exposes a
   divergence, reported as `oo` or `-oo` (`1/x` over `(0, 1)`), while
   infinities of both signs and oscillations leave the integral unevaluated.
+  The same verdict is read off the leading term of the integrand at an
+  end of the range before any method runs (`c*(x - end)**p` with `p <= -1`
+  and a real `c` of known sign: `-sin(x)*tan(x)*csc(x - 1)` over `(0, 1)`
+  is `oo`), the other end integrable or divergent to the same infinity.
   The antiderivative comes from the verified methods of
-  `sympy_extras.integrals.indefinite` (the radical table first, SymPy's
-  `integrate` at once for a polynomial in elementary functions of linear
-  arguments), under the assumptions and an eighth of the time limit.
+  `sympy_extras.integrals.indefinite` (the radical table first, with the
+  Euler substitutions for a rational function of `x` and `sqrt(Q)` of
+  another shape; SymPy's `integrate` at once for a polynomial in
+  elementary functions of linear arguments, and by parts for such a
+  polynomial times `log(x)`), under the assumptions and an eighth of the
+  time limit; its logarithms of real arguments are taken of the absolute
+  values before the limits.
 
 - **Ramanujan's master theorem and the method of brackets**
   (`sympy_extras.integrals.brackets`): for a factor outside the Mellin

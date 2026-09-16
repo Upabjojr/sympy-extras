@@ -47,8 +47,12 @@ def test_products_of_radicals_of_linear_factors() -> None:
     for f in [sqrt(1 - y)**3 * sqrt(y + 1), y**2 * sqrt(1 - y) * sqrt(y + 1), sqrt(2 - y) * sqrt(y) * (y + 1)]:
         F = quadratic_radical_antiderivative(f, y)
         assert F is not None and numerically_equal(diff(F, y), f, [as_boolean(y > 0), as_boolean(y < 1)]), f
-    # a reciprocal radical or a quadratic factor in the product: not one radicand
-    assert quadratic_radical_antiderivative(sqrt(1 - y) / sqrt(1 + y), y) is None
+    # a reciprocal radical: not one radicand for the table, the two square
+    # roots combined into sqrt(1 - y**2) by the Euler route
+    F = quadratic_radical_antiderivative(sqrt(1 - y) / sqrt(1 + y), y)
+    assert F is not None and numerically_equal(diff(F, y), sqrt(1 - y) / sqrt(1 + y),
+                                               [as_boolean(y > 0), as_boolean(y < 1)])
+    # a quadratic factor in the product: not one radicand
     assert quadratic_radical_antiderivative(sqrt(1 - y) * sqrt(1 + y**2), y) is None
 
 
@@ -100,4 +104,25 @@ def test_negative_powers_of_x() -> None:
         F = quadratic_radical_antiderivative(f, x, facts)
         assert F is not None and is_antiderivative(F, f, x, facts) is True, f
     assert quadratic_radical_antiderivative(sqrt(Q) / x, x) is None       # the sign of a undecided
-    assert quadratic_radical_antiderivative(sqrt(b * x + c * x**2) / x, x, [b > 0, c > 0]) is None  # x divides Q
+    # x divides Q: not in the table, found by an Euler substitution
+    F = quadratic_radical_antiderivative(sqrt(b * x + c * x**2) / x, x, [b > 0, c > 0])
+    assert F is not None and is_antiderivative(F, sqrt(b * x + c * x**2) / x, x, [b > 0, c > 0]) is True
+
+
+def test_euler_substitutions_for_rational_functions_of_a_radical() -> None:
+    # not of the form x**n*Q**(m/2): the Euler substitutions make the
+    # integrand a rational function (Maxima's rtest_integrate 854, FriCAS's
+    # in1186a and in143a, a linear radical)
+    from sympy_extras.integrals.radicals import euler_substitution_antiderivative
+    for f in (1 / ((x + 3) * sqrt(x**2 - 1)), sqrt(x**2 + x) / (x**2 + 1)**2, sqrt(x + 1) / (x**2 + 1),
+              1 / ((x + 2) * sqrt(1 - x**2)), sqrt(x**2 + 1) / (x - 1)):
+        F = euler_substitution_antiderivative(as_expr(f), x)
+        assert F is not None, f
+        difference = as_expr(F.diff(x) - f)
+        for point in (Rational(3, 2), Rational(7, 3)) if f.has(sqrt(x**2 - 1)) else (Rational(1, 3), Rational(3, 4)):
+            assert abs(N(difference.subs(x, point), 20)) < 1e-15, (f, point)
+        # reached through the public function
+        assert quadratic_radical_antiderivative(as_expr(f), x) is not None
+    assert euler_substitution_antiderivative(1 / (x * sqrt(1 - x**2) + sqrt(1 - x**2)), x) == -sqrt(1 - x**2) / (x + 1)
+    # a cubic radicand is not a quadratic one
+    assert euler_substitution_antiderivative(1 / ((x + 1) * sqrt(x**3 + 1)), x) is None

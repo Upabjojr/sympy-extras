@@ -1004,14 +1004,20 @@ def mellin_transform(f: ExprLike, x: Symbol, s: Symbol) -> Optional[MellinTransf
     MellinTransform(gamma(s/2 - 1/4)/2, (1/2, oo))
     >>> mellin_transform(1/(1 + x)**a, x, s)
     MellinTransform(gamma(s)*gamma(a - s)/gamma(a), (0, a))
+    >>> mellin_transform(exp(-x)*log(x), x, s)
+    MellinTransform(gamma(s)*polygamma(0, s), (0, oo))
     """
     product = decompose_integrand(as_expr(f), x)
-    if product is None:
+    if product is None or product.one_minus_power:
         return None
     quotient = product.quotient()
     if quotient is None:
         return None
-    return MellinTransform(quotient.as_expr(s), quotient.strip, quotient.condition)
+    transform = quotient.as_expr(s)
+    if product.log_power:
+        # log(x)**n * g(x): the n-th derivative of the transform of g
+        transform = as_expr(transform.diff(s, product.log_power))
+    return MellinTransform(transform, quotient.strip, quotient.condition)
 
 
 class Product:

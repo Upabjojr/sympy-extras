@@ -37,6 +37,19 @@ and, for the powers of `x`, from `d/dx\,[x^{n-1} Q^{m/2+1}]`,
 
 with `a x^2 = Q - b x - c_0` when the leading coefficient of that
 relation vanishes. A linear `Q` (`a = 0`) goes through `x = (Q - c_0)/b`.
+A rational function of `x` and `\sqrt{Q}` which is not of that form
+(`1/((x + 3)\sqrt{x^2 - 1})`, `\sqrt{x^2 + x}/(x^2 + 1)^2`) goes through
+an Euler substitution [Euler]_, which makes it a rational function of the
+new variable `t`:
+
+.. math::
+
+    \sqrt{Q} = t - \sqrt{a}\, x \quad (a > 0), \qquad
+    \sqrt{Q} = t\, (x - r_1) \quad (Q = a (x - r_1)(x - r_2)), \qquad
+    \sqrt{Q} = x t + \sqrt{c_0} \quad (c_0 > 0),
+
+and a linear `Q` through `t = \sqrt{Q}` itself.
+
 Every antiderivative is checked by differentiation at random points
 before it is returned.
 
@@ -57,6 +70,9 @@ References
 .. [GR] I. S. Gradshteyn and I. M. Ryzhik, *Table of Integrals, Series,
    and Products*, 7th ed., Academic Press, 2007, 2.26 (integrals of
    `x^n R^{\pm 1/2}` with `R = a + b x + c x^2`).
+.. [Euler] L. Euler, *Institutionum calculi integralis*, vol. 1, 1768,
+   sections 88–91; G. M. Fichtenholz, *Differential- und
+   Integralrechnung II*, section 282 (the three Euler substitutions).
 """
 from __future__ import annotations
 
@@ -68,19 +84,23 @@ from sympy.core.mul import Mul
 from sympy.core.numbers import Integer, Rational
 from sympy.core.power import Pow
 from sympy.core.singleton import S
-from sympy.core.symbol import Symbol
+from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.hyperbolic import asinh
 from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.functions.elementary.trigonometric import asin
 from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly
+from sympy.polys.polyroots import roots
+from sympy.polys.polytools import Poly, cancel
 
+from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_boolean, as_expr
+from sympy_extras.assumptions import element
 from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.settings import settings
 from .conditions import numerically_equal
 
-__all__ = ['quadratic_radical_antiderivative']
+__all__ = ['quadratic_radical_antiderivative', 'euler_substitution_antiderivative']
 
 
 class _Table:
@@ -278,7 +298,8 @@ def _terms(term: Expr, x: Symbol) -> Optional[list[tuple[Expr, int, Optional[Exp
     return found
 
 
-def quadratic_radical_antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
+def quadratic_radical_antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None,
+                                     euler: bool = True) -> Optional[Expr]:
     """A real antiderivative of a sum of terms ``c * x**n * Q**(m/2)``, one
     quadratic (or linear) ``Q`` for all the radical terms, ``m`` odd and
     ``n`` an integer of either sign; the terms without a radical are
@@ -287,7 +308,9 @@ def quadratic_radical_antiderivative(f: Expr, x: Symbol, assumptions: Assumption
     of the symbols or decided under the ``assumptions``. ``None`` when
     ``f`` is not of that form, when a case of the table is not covered (a
     sign undecided, a perfect square) or when the result does not check
-    by differentiation.
+    by differentiation. A rational function of ``x`` and ``sqrt(Q)`` of
+    another form goes through :func:`euler_substitution_antiderivative`
+    (not with ``euler=False``: the table alone).
 
     >>> from sympy import symbols, sqrt
     >>> from sympy_extras.integrals.radicals import quadratic_radical_antiderivative
@@ -300,6 +323,13 @@ def quadratic_radical_antiderivative(f: Expr, x: Symbol, assumptions: Assumption
     True
     """
     f_ = as_expr(f)
+    found_ = _table_antiderivative(f_, x, assumptions)
+    if found_ is not None or not euler:
+        return found_
+    return euler_substitution_antiderivative(f_, x, assumptions)
+
+
+def _table_antiderivative(f_: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     terms: list[tuple[Expr, int, Optional[Expr], int]] = []
     for summand in Add.make_args(f_):
         found = _terms(as_expr(summand), x)
@@ -345,3 +375,140 @@ def quadratic_radical_antiderivative(f: Expr, x: Symbol, assumptions: Assumption
     if not numerically_equal(as_expr(total.diff(x)), f_, facts):
         return None
     return as_expr(total)
+
+
+def _radicand(f: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
+    """``(Q, g)`` with ``f == g(x, R)`` for ``R = sqrt(Q)``, ``Q`` a
+    polynomial of degree one or two in ``x`` and ``g`` rational in ``x``
+    and in the dummy ``R``; ``None`` for another shape (two radicands,
+    a radicand of higher degree, a transcendental function)."""
+    R = Dummy('R', positive=True)
+    radicands: list[Expr] = []
+    degrees: dict[Expr, int] = {}
+    replacement: dict[Pow, Expr] = {}
+    for node in f.atoms(Pow):
+        base, exponent = as_expr(node.base), as_expr(node.exp)
+        if not base.has(x) or not isinstance(exponent, Rational) or exponent.q == 1:
+            continue
+        if exponent.q != 2 or not base.is_polynomial(x):
+            return None
+        try:
+            degree = Poly(base, x).degree()
+        except PolynomialError:
+            return None
+        if degree not in (1, 2):
+            return None
+        if base not in radicands:
+            radicands.append(base)
+            degrees[base] = degree
+        replacement[node] = base**((exponent.p - exponent.p % 2) // 2) * R**(exponent.p % 2)
+    if len(radicands) == 1:
+        Q = radicands[0]
+    elif len(radicands) == 2 and all(degrees[base] == 1 for base in radicands):
+        # sqrt(1 + x)*(1 - x)**(-3/2): the square roots of the two linear
+        # factors multiplied into the square root of their product, R =
+        # sqrt(1 - x**2) (where both factors are positive), the powers
+        # sqrt(1 + x)**m*sqrt(1 - x)**n being R**n*sqrt(1 + x)**(m - n)
+        # with m - n even
+        Q = as_expr((radicands[0] * radicands[1]).expand())
+        first, second = radicands
+        roots = {first: Dummy('S', positive=True), second: Dummy('T', positive=True)}
+        for node in list(replacement):
+            base, exponent = as_expr(node.base), as_expr(node.exp)
+            if not isinstance(exponent, Rational):
+                return None
+            replacement[node] = base**((exponent.p - exponent.p % 2) // 2) * roots[base]**(exponent.p % 2)
+        g = as_expr(f.xreplace(replacement))
+        # sqrt(first)*sqrt(second) is R; sqrt(first)**2 is first
+        g = as_expr(g.subs(roots[second], R / roots[first]))
+        g = as_expr(g.subs(roots[first]**2, first))
+        g = as_expr(g.subs(roots[first]**(-2), 1 / first))
+        if g.has(roots[first]) or not g.is_rational_function(x, R):
+            return None
+        return Q, as_expr(g.subs(R, Symbol('R')))
+    else:
+        return None
+    g = as_expr(f.xreplace(replacement))
+    if not g.is_rational_function(x, R):
+        return None
+    return Q, as_expr(g.subs(R, Symbol('R')))
+
+
+def euler_substitution_antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
+    """An antiderivative of a rational function of ``x`` and ``sqrt(Q)``
+    for one polynomial ``Q`` of degree one or two, by the substitution
+    ``t = sqrt(Q)`` for a linear ``Q`` and by an Euler substitution for
+    a quadratic one, which make the integrand a rational function of
+    ``t``: ``sqrt(Q) = t - sqrt(a)*x`` for a positive leading coefficient
+    ``a``, ``sqrt(Q) = t*(x - r)`` for a real root ``r``, ``sqrt(Q) = x*t +
+    sqrt(c)`` for a positive constant term ``c`` (the signs those of the
+    numbers or decided under the ``assumptions``). ``None`` when ``f`` is
+    not of that form, when no substitution applies, or when the result
+    does not check by differentiation.
+
+    >>> from sympy import symbols, sqrt
+    >>> from sympy_extras.integrals.radicals import euler_substitution_antiderivative
+    >>> x = symbols('x')
+    >>> euler_substitution_antiderivative(1/((x + 3)*sqrt(x**2 - 1)), x)
+    sqrt(2)*log(x + sqrt(x**2 - 1) - 2*sqrt(2) + 3)/4 - sqrt(2)*log(x + sqrt(x**2 - 1) + 2*sqrt(2) + 3)/4
+    >>> euler_substitution_antiderivative(sqrt(x + 1)/x, x)
+    2*sqrt(x + 1) + log(sqrt(x + 1) - 1) - log(sqrt(x + 1) + 1)
+    """
+    from .risch.rationaltools import ratint
+    f_ = as_expr(f)
+    found = _radicand(f_, x)
+    if found is None:
+        return None
+    Q, g = found
+    R = Symbol('R')
+    poly = Poly(Q, x)
+    t = Dummy('t', positive=True)
+    a, b, c = (as_expr(poly.coeff_monomial(x**2)), as_expr(poly.coeff_monomial(x)),
+               as_expr(poly.coeff_monomial(1)))
+
+    def positive(e: Expr) -> bool:
+        return e.is_positive is True or ask(as_boolean(e > 0), assumptions) is True
+
+    # x and sqrt(Q) as rational functions of t, and t in x
+    candidates: list[tuple[Expr, Expr, Expr]] = []
+    if a == 0:
+        if b == 0:
+            return None
+        candidates.append((as_expr((t**2 - c) / b), t, as_expr(sqrt(Q))))
+    else:
+        if positive(a):
+            # sqrt(Q) = t - sqrt(a) x: b x + c = t**2 - 2 sqrt(a) t x
+            x_t = as_expr((t**2 - c) / (2 * sqrt(a) * t + b))
+            candidates.append((x_t, as_expr(t - sqrt(a) * x_t), as_expr(sqrt(Q) + sqrt(a) * x)))
+        real_roots = [as_expr(r) for r in roots(poly)
+                      if as_expr(r).is_extended_real is True
+                      or (as_expr(r).is_extended_real is None and ask(element(as_expr(r), S.Reals), assumptions))]
+        if len(real_roots) == 2:
+            # sqrt(Q) = t (x - r1): a (x - r2) = t**2 (x - r1)
+            r1, r2 = real_roots
+            x_t = as_expr((a * r2 - t**2 * r1) / (a - t**2))
+            candidates.append((x_t, as_expr(t * (x_t - r1)), as_expr(sqrt(Q) / (x - r1))))
+        if positive(c):
+            # sqrt(Q) = x t + sqrt(c): a x + b = x t**2 + 2 t sqrt(c)
+            x_t = as_expr((2 * t * sqrt(c) - b) / (a - t**2))
+            candidates.append((x_t, as_expr(x_t * t + sqrt(c)), as_expr((sqrt(Q) - sqrt(c)) / x)))
+    facts = [as_boolean(Q > 0)]
+    if isinstance(assumptions, (list, tuple)):
+        facts.extend(as_boolean(item) for item in assumptions)
+    elif assumptions is not None:
+        facts.append(as_boolean(assumptions))
+    for x_t, root_t, back in candidates:
+        h = as_expr(cancel(g.subs({x: x_t, R: root_t}) * x_t.diff(t)))
+        if not h.is_rational_function(t):
+            continue
+        try:
+            primitive = attempt(lambda: as_expr(ratint(h, t)), settings.timeout)
+        except (IndexError, ValueError, NotImplementedError, ZeroDivisionError):
+            # the rational integrator's internals fail on some inputs
+            continue
+        if primitive is None:
+            continue
+        result = as_expr(primitive.subs(t, back))
+        if numerically_equal(as_expr(result.diff(x)), f_, facts):
+            return result
+    return None

@@ -519,3 +519,132 @@ def test_laplace_transforms_of_hermite_polynomials_of_symbolic_degree() -> None:
     assert not odd.has(Integral, Piecewise)
     direct = definite_integral(exp(-s * t) * hermite(3, sqrt(t)), (t, 0, oo))
     assert _same(odd.subs(n, 1), direct)
+
+
+def test_constants_over_infinite_ranges_diverge_to_their_infinity() -> None:
+    assert definite_integral(1, (x, 0, oo)) == oo
+    assert definite_integral(-2, (x, -oo, 3)) == -oo
+    assert definite_integral(a, (x, -oo, oo)) == oo
+    assert definite_integral(k, (x, 0, oo)) == Integral(k, (x, 0, oo))
+
+
+def test_divergence_from_the_leading_term_at_an_end() -> None:
+    # -sin(z)*tan(z)*csc(z - 1) over (0, 1) is sin(1)*tan(1)/(1 - z) near
+    # 1 (FriCAS's in1214a); the rational antiderivative with the
+    # constants sin(1), cos(1) was out of reach
+    from sympy import csc, cot
+    z = symbols('z', real=True)
+    assert definite_integral(-sin(z) * tan(z) * csc(z - 1), (z, 0, 1)) == oo
+    assert definite_integral(-sin(z)**2 * cot(z - 1), (z, 0, 1)) == oo
+    assert definite_integral(sin(x) / x**3, (x, -1, 1)) == oo
+    assert definite_integral(1 / (x - 1)**2, (x, 0, 1)) == oo
+    # opposite infinities at the two sides: the principal value's question
+    assert definite_integral(1 / x, (x, -1, 1)) == Integral(1 / x, (x, -1, 1))
+    assert definite_integral(1 / (x**2 - 1), (x, 0, 2)) == Integral(1 / (x**2 - 1), (x, 0, 2))
+    # integrable ends are untouched
+    assert definite_integral(log(x), (x, 0, 1)) == -1
+    assert definite_integral(x**Rational(-4, 5), (x, 0, 1)) == 5
+
+
+def test_radicals_of_polynomials_made_the_variable() -> None:
+    # u = sqrt(z**2 - 1): z*sqrt(sqrt(z**2 - 1) + 1) is u*sqrt(u + 1)
+    # (FriCAS's in295ba); u = sqrt(z) for log(1 - z)*atanh(sqrt(z)) (in1314a),
+    # u = z**(1/3) for z**(1/3)/(z**2 + 1)
+    from sympy import atanh
+    z = symbols('z', real=True)
+    assert _same(definite_integral(z * sqrt(sqrt(z**2 - 1) + 1), (z, 1, sqrt(2))), 4 * (1 + sqrt(2)) / 15)
+    assert _same(definite_integral(log(1 - z) * atanh(sqrt(z)), (z, 0, 1)), log(4) - 3)
+    value = definite_integral(z**Rational(1, 3) / (z**2 + 1), (z, 0, 8))
+    assert not value.has(Integral) and verify_numerically(value, z**Rational(1, 3) / (z**2 + 1), z, S.Zero, S(8)) is True
+    # the Euler substitutions in the definite route (Maxima's rtest_integrate
+    # 854 and 856, FriCAS's in1186a)
+    for f, lo, hi in ((1 / ((x + 3) * sqrt(x**2 - 1)), S(-5), S(-4)), (1 / ((x + 3) * sqrt(x**2 - 1)), S(2), S(3)),
+                      (sqrt(x**2 + x) / (x**2 + 1)**2, S.Zero, S.One)):
+        value = definite_integral(f, (x, lo, hi))
+        assert not value.has(Integral) and verify_numerically(value, f, x, lo, hi) is True, f
+
+
+def test_tangent_and_weierstrass_substitutions() -> None:
+    # sqrt(tan(x)) over (0, pi/2) is sqrt(t)/(1 + t**2) over (0, oo);
+    # sqrt(tan(x) + sec(x))*sec(x) over (0, pi/4) is 2/(sqrt(1 + t)*(1 - t)**(3/2))
+    # over (0, sqrt(2) - 1) for t = tan(x/2): 2*sqrt(1 + sqrt(2)) - 2
+    from sympy import sec
+    assert _same(definite_integral(sqrt(tan(x)), (x, 0, pi / 2)), sqrt(2) * pi / 2)
+    value = definite_integral(sqrt(tan(x) + sec(x)) * sec(x), (x, 0, pi / 4))
+    assert not value.has(Integral) and abs(value.evalf(20) - (2 * sqrt(1 + sqrt(2)) - 2).evalf(20)) < 1e-15
+    value = definite_integral(sin(x)**2 * sqrt(tan(x)), (x, 0, 1))
+    assert not value.has(Integral) and verify_numerically(value, sin(x)**2 * sqrt(tan(x)), x, S.Zero, S.One) is True
+
+
+def test_the_incomplete_gamma_function_by_the_exponential_substitution() -> None:
+    # exp(-a*exp(-u))*exp(-u*v) over (0, oo) is lowergamma(v, a)/a**v for
+    # t = exp(-u) (Maxima's laplace 42): the nested exponential follows the
+    # inner one, and exp(v*log(t)) is written t**v
+    from sympy import lowergamma
+    v = symbols('v', positive=True)
+    u = symbols('u', real=True)
+    assert _same(definite_integral(exp(-a * exp(-u)) * exp(-u * v), (u, 0, oo)), lowergamma(v, a) / a**v)
+
+
+def test_the_simplification_of_an_answer_of_integrate_is_checked() -> None:
+    # integrate gives 6*log(-exp_polar(I*pi)) + 17*exp(-1) - 6*Ei(exp_polar(I*pi)) + 6*I*pi
+    # for u**3*exp(-u)*log(u) over (1, oo), right numerically; the tidied
+    # form turned the first term into 2*I*pi
+    u = symbols('u', real=True)
+    value = definite_integral(u**3 * exp(-u) * log(u), (u, 1, oo))
+    assert abs(complex(value.evalf(20)) - 7.5702541062876) < 1e-10
+
+
+def test_laplace_transforms_over_a_shifted_range_from_the_table() -> None:
+    # Maxima's specint 137, 110, 113 and 115: the Heaviside function cuts
+    # the range at k, where the table's entries over (k, oo) match
+    from sympy import besselk, besseli
+    nu = symbols('nu', positive=True)
+    H = Heaviside(t - k, 0)
+    assert definite_integral(exp(-s * t) * H / sqrt(t**2 - k**2), (t, 0, oo), k > 0) == besselk(0, k * s)
+    assert _same(definite_integral(exp(-s * t) * H * besselj(0, a * sqrt(t**2 - k**2)), (t, 0, oo), k > 0),
+                 exp(-k * sqrt(a**2 + s**2)) / sqrt(a**2 + s**2))
+    assert _same(definite_integral(a * k * exp(-s * t) * H * besselj(1, a * sqrt(t**2 - k**2)) / sqrt(t**2 - k**2),
+                                   (t, 0, oo), k > 0),
+                 exp(-k * s) - exp(-k * sqrt(a**2 + s**2)))
+    value = definite_integral(((t - k) / (t + k))**(nu / 2) * exp(-s * t) * H * besselj(nu, a * sqrt(t**2 - k**2)),
+                              (t, 0, oo), k > 0)
+    assert _same(value, a**nu * exp(-k * sqrt(a**2 + s**2)) / (sqrt(a**2 + s**2) * (s + sqrt(a**2 + s**2))**nu))
+    # I_0 needs s > a
+    value = definite_integral(exp(-s * t) * H * besseli(0, a * sqrt(t**2 - k**2)), (t, 0, oo), (k > 0) & (s > a))
+    assert _same(value, exp(-k * sqrt(s**2 - a**2)) / sqrt(s**2 - a**2))
+
+
+def test_laplace_transforms_of_the_error_function_from_the_table() -> None:
+    # Maxima's specint 106, 107, 108 (Abramowitz and Stegun 29.3.82, 83,
+    # 89; checked in Mathematica): the sums term by term from the table,
+    # the constant exp(a*k) kept out of the combined exponential
+    from sympy import erfc
+    part = exp(a * k) * exp(a**2 * t) * erfc(a * sqrt(t) + k / (2 * sqrt(t)))
+    assert _same(definite_integral(part * exp(-s * t), (t, 0, oo), k > 0),
+                 exp(-k * sqrt(s)) / (sqrt(s) * (a + sqrt(s))))
+    assert _same(definite_integral((erfc(k / (2 * sqrt(t))) - part) * exp(-s * t), (t, 0, oo), k > 0),
+                 a * exp(-k * sqrt(s)) / (s * (a + sqrt(s))))
+    gaussian = exp(-k**2 / (4 * t)) / (sqrt(pi) * sqrt(t))
+    assert _same(definite_integral((gaussian - a * part) * exp(-s * t), (t, 0, oo), k > 0),
+                 exp(-k * sqrt(s)) / (a + sqrt(s)))
+    # the completed square: besselj(0, a*sqrt(t**2 + 2*k*t)) is
+    # besselj(0, a*sqrt(u**2 - k**2)) for u = t + k over (k, oo) (specint 112)
+    value = definite_integral(exp(-s * t) * besselj(0, a * sqrt(t**2 + 2 * k * t)), (t, 0, oo), k > 0)
+    assert _same(value, exp(k * (s - sqrt(a**2 + s**2))) / sqrt(a**2 + s**2))
+
+
+def test_a_nested_power_of_a_symbolic_exponent_is_not_flattened() -> None:
+    # (cos(z)**a)**(1/a) over (0, pi) is cos(z) only for |a| <= 1: the
+    # Weierstrass route flattened ((-sin(x))**a)**(1/a) to -sin(x) and gave
+    # 0 for every a (Mathematica: 0.63... at a = 24/5)
+    from sympy import cos
+    z, a_ = symbols('z a')
+    value = definite_integral((cos(z)**a_)**(1 / a_), (z, 0, pi))
+    assert value != 0
+
+
+def test_fresnel_type_integrals_and_ahmeds_integral() -> None:
+    assert _same(definite_integral(exp(-I * x**2), (x, 0, oo)), sqrt(pi) * exp(-I * pi / 4) / 2)
+    assert _same(definite_integral(exp(-I * x**3), (x, 0, oo)), gamma(Rational(4, 3)) * exp(-I * pi / 6))
+    assert definite_integral(atan(sqrt(x**2 + 2)) / ((x**2 + 1) * sqrt(x**2 + 2)), (x, 0, 1)) == 5 * pi**2 / 96

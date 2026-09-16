@@ -1,7 +1,7 @@
 """Tests of the antiderivative-with-limits method."""
 from __future__ import annotations
 
-from sympy import symbols, cos, pi, oo, sqrt, exp, log, atan, tan, S, integrate, floor
+from sympy import symbols, cos, pi, oo, sqrt, exp, log, atan, tan, S, integrate, floor, Rational
 
 from sympy_extras.integrals.antiderivative import (antiderivative, discontinuities, one_sided_limit,
                                                    antiderivative_integral)
@@ -123,3 +123,30 @@ def test_polynomials_in_elementary_functions_go_to_integrate_first() -> None:
     assert not _elementary_polynomial(log(t) * cos(t), t)
     F = antiderivative(sin(pi * t / 4 + pi / 4)**3, t)
     assert F is not None and simplify(diff(F, t) - sin(pi * t / 4 + pi / 4)**3) == 0
+
+
+def test_infinite_limits_absorb_finite_terms() -> None:
+    # sin(x)/x**3 over (0, 1): the limits give -Si(1)/2 + oo, which SymPy
+    # keeps as a sum (the finiteness of Si(1) is not known to it)
+    from sympy import sin
+    assert antiderivative_integral(sin(x) / x**3, x, 0, 1) == ConditionalValue(oo)
+
+
+def test_logarithms_of_real_arguments_are_taken_of_their_absolute_values() -> None:
+    # sin(x)**2*cot(x - 1) over (0, 1): the antiderivative has
+    # log(sin(x)/tan(1) - cos(x)), of a negative argument on the range,
+    # whose infinite limit at 1 the complex values made zoo
+    from sympy import sin, cot
+    assert antiderivative_integral(sin(x)**2 * cot(x - 1), x, 0, 1) == ConditionalValue(-oo)
+    assert antiderivative_integral(1 / x, x, -3, -1) == ConditionalValue(-log(3))
+
+
+def test_a_logarithm_times_a_polynomial_exponential_by_parts() -> None:
+    # u**3*exp(-u)*log(u): G*log(u) - Integral(G/u), the last an
+    # exponential integral (integrate took six seconds)
+    import time
+    from sympy import Ei
+    started = time.monotonic()
+    F = antiderivative(x**3 * exp(-x) * log(x), x)
+    assert F is not None and F.has(Ei) and time.monotonic() - started < 5
+    assert abs((F.diff(x) - x**3 * exp(-x) * log(x)).subs(x, Rational(3, 2)).evalf(20)) < 1e-15

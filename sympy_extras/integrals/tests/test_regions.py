@@ -66,8 +66,9 @@ def test_unevaluated() -> None:
     # area diverges to oo, which is what is reported
     node = integrate_by_ranges(1, (0 < x) & (x < y) & (y < x**2))
     assert node == oo
-    # a condition which is not polynomial is left alone
-    assert isinstance(integrate_by_ranges(1, exp(x) < y), IntegralByRanges)
+    # the region exp(x) < y is unbounded to the left: its area is oo (a
+    # constant over an infinite range)
+    assert integrate_by_ranges(1, exp(x) < y) == oo
     # an inner integral SymPy cannot do stays unevaluated rather than wrong
     node = integrate_by_ranges(exp(-x**2/y), x**2 + y**2 < 1)
     assert isinstance(node, IntegralByRanges) or not node.has(Integral) or node.has(Integral)

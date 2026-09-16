@@ -61,6 +61,7 @@ from typing import Optional
 from sympy.calculus.accumulationbounds import AccumBounds
 from sympy.calculus.singularities import singularities
 from sympy.core.expr import Expr
+from sympy.core.mul import Mul
 from sympy.core.function import Function, expand
 from sympy.core.numbers import Integer, Rational, nan, oo, zoo
 from sympy.core.relational import Relational
@@ -69,7 +70,7 @@ from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.exponential import exp, log
 from sympy.functions.elementary.hyperbolic import sinh, cosh
 from sympy.functions.elementary.trigonometric import atan, acot, sin, cos
-from sympy.polys.polytools import degree
+from sympy.polys.polytools import cancel, degree
 from sympy.functions.elementary.complexes import Abs, im, sign
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.functions.special.delta_functions import Heaviside
@@ -77,7 +78,7 @@ from sympy.integrals.integrals import Integral, integrate
 from sympy.logic.boolalg import Boolean
 from sympy.sets.conditionset import ConditionSet
 from sympy.sets.fancysets import ImageSet
-from sympy.sets.sets import FiniteSet, Interval
+from sympy.sets.sets import FiniteSet, Intersection, Interval, Set
 from sympy.series.limits import Limit
 from sympy.series.series import series
 from sympy.core.add import Add
@@ -91,7 +92,8 @@ from sympy_extras.assumptions.solve import solve
 from sympy_extras.settings import settings
 from .conditions import ConditionalValue, sample_values
 
-__all__ = ['antiderivative', 'discontinuities', 'antiderivative_integral', 'one_sided_limit', 'select_branch',
+__all__ = ['antiderivative', 'quick_shape', 'by_parts_shape', 'discontinuities', 'antiderivative_integral', 'one_sided_limit',
+           'select_branch',
            'principal_value_integral', 'finite_part_integral']
 
 
@@ -134,6 +136,9 @@ def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bo
         found = attempt(lambda: as_expr(integrate(g, x, risch=False)), settings.timeout)
         if found is not None and not found.has(Integral):
             return found
+    found = _logarithm_by_parts(f, x)
+    if found is not None:
+        return found
     # the exact typed methods of indefinite integration in their order
     # (the tables, the trigonometric integrator, the Risch port, Trager's
     # algorithm, SymPy's integrate last), every candidate checked by
@@ -174,6 +179,45 @@ def _elementary_polynomial(f: Expr, x: Symbol) -> bool:
         replacement[node] = Dummy()
     substituted = as_expr(f.xreplace(replacement))
     return bool(substituted.is_polynomial(x, *replacement.values()))
+
+
+def quick_shape(f: Expr, x: Symbol) -> bool:
+    """Whether ``f`` is of a shape the antiderivative comes at once for: a
+    polynomial in ``x`` and in elementary functions of linear arguments,
+    or such a polynomial with exponentials times ``log(x)``."""
+    return _elementary_polynomial(f, x) or by_parts_shape(f, x)
+
+
+def by_parts_shape(f: Expr, x: Symbol) -> bool:
+    """Whether ``f`` is a polynomial in ``x`` and exponentials times ``log(x)``."""
+    logarithms = [as_expr(factor) for factor in Mul.make_args(f) if isinstance(factor, log)]
+    if len(logarithms) != 1 or logarithms[0] != log(x):
+        return False
+    g = as_expr(f / log(x))
+    return not g.has(log) and _elementary_polynomial(g, x) and bool(g.has(exp))
+
+
+def _logarithm_by_parts(f: Expr, x: Symbol) -> Optional[Expr]:
+    """``g(x)*log(x)`` for a polynomial ``g`` in ``x`` and in exponentials
+    of linear arguments, by parts: ``G*log(x) - Integral(G/x)`` with ``G``
+    the antiderivative of ``g``, the last an exponential integral
+    (``u**3*exp(-u)*log(u)`` in two seconds, where ``integrate`` took
+    six). ``None`` for another shape."""
+    if not by_parts_shape(f, x):
+        return None
+    g = as_expr(f / log(x))
+    # on a plain dummy: integrate is four times slower on a symbol
+    # declared positive (the assumptions are consulted at every step)
+    plain = Dummy(x.name)
+    g = as_expr(g.subs(x, plain))
+    budget = None if settings.timeout is None else settings.timeout / 8
+    G = attempt(lambda: as_expr(integrate(g, plain, risch=False)), budget)
+    if G is None or G.has(Integral):
+        return None
+    H = attempt(lambda: as_expr(integrate(cancel(G / plain), plain, risch=False)), budget)
+    if H is None or H.has(Integral):
+        return None
+    return as_expr((G * log(plain) - H).subs(plain, x))
 
 
 def _not_real(p: Expr, assumptions: Assumptions) -> bool:
@@ -400,6 +444,7 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
         F = select_branch(F, x, a, b, assumptions)
         if F is None:
             return None
+    F = _real_logarithms(F, x)
     points = discontinuities(F, x, a, b, assumptions)
     if points is None:
         return None
@@ -411,12 +456,8 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
         singular = attempt(lambda: singularities(f, x, S.Reals), settings.timeout)
     if singular is None:
         return None
-    singular_set = as_set(singular)
-    if isinstance(singular_set, FiniteSet):
-        singular_points = [as_expr(p) for p in singular_set]
-    elif singular_set is S.EmptySet:
-        singular_points = []
-    else:
+    singular_points = _singular_points(as_set(singular))
+    if singular_points is None:
         return None
     more = _points_in(singular_points + points, x, a, b, assumptions)
     if more is None:
@@ -439,7 +480,56 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     if total.has(nan, zoo):
         # oo - oo: infinities of both signs, nothing is claimed
         return None
-    return ConditionalValue(as_expr(total))
+    return ConditionalValue(_absorbed(as_expr(total)))
+
+
+def _real_logarithms(F: Expr, x: Symbol) -> Expr:
+    """``log(u)`` written ``log(Abs(u))`` for the real arguments ``u``
+    depending on ``x``: the same antiderivative where ``u`` keeps its
+    sign, real where ``u`` is negative (``log(sin(x)/tan(1) - cos(x))``
+    on ``(0, 1)`` is ``log(-u) + I*pi``, whose infinite limit at 1 the
+    complex values make ``zoo``)."""
+    real = Dummy(x.name, real=True)
+    return as_expr(F.replace(
+        lambda node: isinstance(node, log) and node.has(x) and not isinstance(node.args[0], Abs)
+        and as_expr(node.args[0]).subs(x, real).is_extended_real is True,
+        lambda node: log(Abs(as_expr(node.args[0])))))
+
+
+def _singular_points(singular_set: Set) -> Optional[list[Expr]]:
+    """The points of a set of singularities: those of a finite set, none
+    of the empty set, and those of the finite part of ``Intersection({0},
+    Interval.open(sqrt(x), oo))`` (SymPy's answer for a parameter ``x`` not
+    declared positive), which the placement against the bounds decides
+    under the assumptions; ``None`` for another kind of set."""
+    if isinstance(singular_set, Intersection) and len(singular_set.args) == 2:
+        finite = [arg for arg in singular_set.args if isinstance(arg, FiniteSet)]
+        intervals = [arg for arg in singular_set.args if isinstance(arg, Interval)]
+        if len(finite) == 1 and len(intervals) == 1:
+            singular_set = finite[0]
+    if isinstance(singular_set, FiniteSet):
+        return [as_expr(p) for p in singular_set]
+    if singular_set is S.EmptySet:
+        return []
+    return None
+
+
+def _absorbed(total: Expr) -> Expr:
+    """``total`` with the finite numbers of a sum absorbed into its
+    infinity: SymPy keeps ``-Si(1)/2 + oo`` as a sum (the finiteness of
+    ``Si(1)`` is not known to it), which is ``oo`` (``sin(x)/x**3`` over
+    ``(0, 1)``)."""
+    if total in (oo, -oo) or not total.has(oo, -oo):
+        return total
+    infinite = [term for term in Add.make_args(total) if term.has(oo, -oo)]
+    finite = [term for term in Add.make_args(total) if not term.has(oo, -oo)]
+    if not finite or not all(term.is_number for term in finite):
+        return total
+    if all(term == oo for term in infinite):
+        return oo
+    if all(term == -oo for term in infinite):
+        return -oo
+    return total
 
 
 def _integrand_has_sign(f: Expr, x: Symbol, point: Expr, side: str, infinity: Expr,
@@ -522,12 +612,8 @@ def principal_value_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
         singular = attempt(lambda: singularities(f, x, S.Reals), settings.timeout)
     if singular is None:
         return None
-    singular_set = as_set(singular)
-    if isinstance(singular_set, FiniteSet):
-        singular_points = [as_expr(p) for p in singular_set]
-    elif singular_set is S.EmptySet:
-        singular_points = []
-    else:
+    singular_points = _singular_points(as_set(singular))
+    if singular_points is None:
         return None
     inside = _points_in(singular_points + points, x, a, b, assumptions)
     if inside is None:
@@ -613,12 +699,8 @@ def finite_part_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
         singular = attempt(lambda: singularities(f, x, S.Reals), settings.timeout)
     if singular is None:
         return None
-    singular_set = as_set(singular)
-    if isinstance(singular_set, FiniteSet):
-        singular_points = [as_expr(p) for p in singular_set]
-    elif singular_set is S.EmptySet:
-        singular_points = []
-    else:
+    singular_points = _singular_points(as_set(singular))
+    if singular_points is None:
         return None
     inside = _points_in(singular_points + points, x, a, b, assumptions)
     if inside is None:

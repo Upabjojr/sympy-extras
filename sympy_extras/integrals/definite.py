@@ -109,18 +109,19 @@ from sympy.functions.special.hyper import hyper
 from sympy.functions.special.gamma_functions import gamma
 from sympy.functions.special.polynomials import OrthogonalPolynomial, hermite, laguerre
 from sympy.core.exprtools import factor_terms
-from sympy.core.function import count_ops, expand, expand_func, expand_log
+from sympy.core.function import PoleError, count_ops, expand, expand_func, expand_log, expand_trig
 from sympy.simplify.fu import TR8, TR9
 from sympy.simplify.trigsimp import trigsimp
 from sympy.functions.special.delta_functions import Heaviside, DiracDelta
 from sympy.integrals.integrals import Integral, integrate
 from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import cancel, degree, factor
+from sympy.polys.polytools import Poly, cancel, degree, factor
 from sympy.polys.rationaltools import together
 from sympy.series.limits import limit
 from sympy.logic.boolalg import And, Boolean, true
 from sympy.sets.sets import FiniteSet, Interval, Set
 from sympy.simplify.powsimp import powdenest
+from sympy.simplify.simplify import nsimplify
 from sympy.utilities.lambdify import lambdify
 
 from sympy_extras._timeout import attempt
@@ -438,10 +439,39 @@ def _quadrature_converges(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Ass
         values = sample_values(parameters, assumptions, rng)
         if values is None:
             return False
-        found = _quadrature(f.xreplace(values), x, as_expr(a.xreplace(values)), as_expr(b.xreplace(values)))
+        g, lower, upper = f.xreplace(values), as_expr(a.xreplace(values)), as_expr(b.xreplace(values))
+        if _grows_like_a_pole(g, x, lower, '+') or _grows_like_a_pole(g, x, upper, '-'):
+            # a logarithmic divergence is slow: the quadrature of
+            # -sin(x)**2*cot(x - 1) over (0, 1) gives a moderate number
+            continue
+        found = _quadrature(g, x, lower, upper)
         if found is not None and abs(found) < 1e8:
             return True
     return False
+
+
+def _grows_like_a_pole(g: Expr, x: Symbol, point: Expr, side: str) -> bool:
+    """Whether ``|g(point + h)| * h`` does not shrink with ``h`` on the
+    given side of a finite ``point`` (``g`` free of parameters), as it
+    does for an integrable singularity ``h**(-p)`` with ``p < 1``: the
+    integrand is then not integrable there, whatever a quadrature says."""
+    if point in (oo, -oo) or not point.is_number:
+        return False
+    step = 1 if side == '+' else -1
+    sizes: list[float] = []
+    for k in (3, 5, 7):
+        h = Rational(1, 10**k)
+        try:
+            value = as_expr(g.subs(x, point + step * h).evalf(20))
+        except (TypeError, ValueError, ZeroDivisionError, OverflowError):
+            return False
+        if not value.is_number or not value.is_comparable:
+            return False
+        try:
+            sizes.append(abs(complex(value)) * float(h))
+        except (TypeError, ValueError, OverflowError):
+            return False
+    return sizes[0] > 0 and sizes[1] >= 0.9 * sizes[0] and sizes[2] >= 0.9 * sizes[1]
 
 
 def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
@@ -539,12 +569,17 @@ class _Integrator:
             return ConditionalValue(S.Zero)
         if not f.has(x):
             if a in (-oo, oo) or b in (-oo, oo):
+                # a constant over an infinite range: its sign's infinity
+                if self.ask(as_boolean(f > 0)) is True:
+                    return ConditionalValue(oo)
+                if self.ask(as_boolean(f < 0)) is True:
+                    return ConditionalValue(-oo)
                 return None
             return ConditionalValue(f * (b - a))
         f = as_expr(piecewise_fold(f)) if f.has(Piecewise) else f
         if f.has(DiracDelta):
             return self._sympy(f, x, a, b)
-        f = _combined_exponentials(f)
+        f = _combined_exponentials(f, x)
         f = _sums_to_products(f, x)
         # constants out, the common factors of sums pulled first
         # (log(t + 1)/(a**2*t**2 + a**2) is log(t + 1)/(t**2 + 1) over a**2)
@@ -579,10 +614,32 @@ class _Integrator:
                 return self._finish(principal_value_integral(f, x, a, b, self.assumptions))
             return None
         allowed = (free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x}
-        strategies = [self._table, self._dirichlet, self._radicals, self._canonical, self._regularized_termwise,
-                      self._mean_value, self._elliptic,
-                      self._trigonometric, self._mapped, self._inversion, self._residues, self._contours,
-                      self._algebraic]
+        # a divergence read off the leading term at an end of the range,
+        # before the methods spend the budget on an integral which has
+        # no value
+        found = self._asymptotic_divergence(f, x, a, b)
+        if found is not None:
+            return found
+        strategies = [self._table, self._table_termwise, self._dirichlet, self._radicals,
+                      self._quick_antiderivative, self._canonical,
+                      self._regularized_termwise,
+                      self._mean_value, self._elliptic, self._trigonometric]
+        if not mapped and depth == 0:
+            # the substitutions on the integral as given only: inside a
+            # mapped range, or on a term of a sum, they would be tried again
+            # on the same integral, with the constants of the map (the
+            # acoth(sqrt(t + 1) - 1) piece of a sum over (1, 2) lost the
+            # budget that way)
+            strategies += [self._radical_substitution, self._completed_square, self._tangent_substitution]
+        # the residues of a rational function before the range is cut at 0
+        # (the quartic of Wester's problem 22 lost its budget on the
+        # half-lines); a logarithm with a parameter in the keyhole route
+        # spent 15 s where the mapped range had the value
+        rational = bool(f.is_rational_function(x))
+        strategies += [self._residues] if rational else []
+        strategies += [self._mapped, self._inversion]
+        strategies += [] if rational else [self._residues]
+        strategies += [self._contours, self._algebraic]
         if a == -oo and b == oo and f.has(HyperbolicFunction):
             # the rectangular contour gives pi**3/4 for x**2/cosh(x) where
             # the Mellin table gives polylogarithms at +-I
@@ -1028,7 +1085,7 @@ class _Integrator:
         if c is None:
             return None
         u = Dummy('u', positive=True)
-        g = _denest(as_expr(f.subs(x, log(u) / c) / (c * u)), self.assumptions)
+        g = _denest(_powers_of_logarithms(as_expr(f.subs(x, log(u) / c) / (c * u)), u), self.assumptions)
         if g.has(log(u)) and not _log_powers_only(g, u):
             return None
         if a == 0:
@@ -1118,7 +1175,29 @@ class _Integrator:
         from .radicals import quadratic_radical_antiderivative
         if a.has(x) or b.has(x) or quadratic_radical_antiderivative(f, x) is None:
             return None
-        return self._antiderivative(f, x, a, b, depth)
+        # under a quarter of the time limit: the Euler substitutions give
+        # antiderivatives in arctangents of radicals whose discontinuities
+        # can take seconds to place (sqrt(1 - x**2)/(x**2 + 1) over (-1, 1),
+        # which another route has in a second)
+        return self._under_budget(lambda: self._antiderivative(f, x, a, b, depth), 4)
+
+    def _quick_antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                              depth: int) -> Optional[ConditionalValue]:
+        """The antiderivative route early, for the shapes it answers at
+        once (a polynomial in elementary functions of linear arguments,
+        with a ``log(x)`` factor by parts): ``u**3*exp(-u)*log(u)`` over
+        ``(sqrt(x), oo)`` in two seconds, where the mapped range spent
+        seven on the shifted form first."""
+        from .antiderivative import quick_shape, by_parts_shape
+        if a.has(x) or b.has(x) or not quick_shape(f, x):
+            return None
+        if (a in (-oo, oo) or b in (-oo, oo)) and not by_parts_shape(f, x):
+            # a polynomial in exponentials over an infinite range is a
+            # Laplace transform, which the Mellin routes settle with their
+            # conditions; the limits at infinity of the antiderivative
+            # spent the budget on Maxima's specint 32 first
+            return None
+        return self._under_budget(lambda: self._antiderivative(f, x, a, b, depth), 4)
 
     def _antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int,
                         late: bool = False) -> Optional[ConditionalValue]:
@@ -1144,6 +1223,270 @@ class _Integrator:
             # or principal branches only: kept when confirmed numerically
             return None
         return self._finish(found)
+
+    def _radical_substitution(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                              depth: int) -> Optional[ConditionalValue]:
+        """``u = q(x)**(1/n)`` for the radical ``q(x)**(k/n)`` of ``f``, ``q``
+        a polynomial of degree at most two, nonnegative and monotone on
+        the range: ``x**(1/3)`` and ``x**(2/3)`` become ``u`` and ``u**2``
+        with ``x = u**3``, ``sqrt(z + 1)/(z**2 + 1)`` a rational function of
+        ``u = sqrt(z + 1)``, ``z*sqrt(sqrt(z**2 - 1) + 1)`` over ``(1,
+        sqrt(2))`` is ``u*sqrt(u + 1)`` over ``(0, 1)`` for ``u = sqrt(z**2
+        - 1)``. Taken when the integrand has fewer radicals in ``u`` than
+        in ``x``."""
+        if isinstance(f, Add):
+            # a sum is integrated term by term instead: the substitution
+            # in log(z**(1/3) + 1) - acoth(sqrt(z) - 1) took the budget the
+            # terms had their values under
+            return None
+        found = _radical_base(f, x)
+        if found is None:
+            return None
+        q, n = found
+        u = Dummy('u', positive=True)
+        inverse = self._radical_inverse(q, n, x, u, a, b)
+        if inverse is None:
+            return None
+        x_u, lower, upper = inverse
+        # the logarithms expanded for the positive u: log(u**2) is 2*log(u),
+        # which the antiderivative route reads at once
+        g = _denest(as_expr(expand_log(f.subs(x, x_u) * x_u.diff(u))), self.assumptions)
+        if g.has(x) or len(_radical_bases(g, u)) >= len(_radical_bases(f, x)):
+            return None
+        return self._under_budget(lambda: self.integrate(g, u, lower, upper, depth + 1, False, True))
+
+    def _under_budget(self, compute: Callable[[], Optional[ConditionalValue]],
+                      share: int = 2) -> Optional[ConditionalValue]:
+        """``compute()`` under the time limit divided by ``share``: the
+        integral in the new variable of a substitution must not spend the
+        whole budget (``u = z**(1/6)`` for ``log(z**(1/3) + 1) -
+        acoth(sqrt(z) - 1)`` over ``(1, 2)`` did, where the sum term by
+        term had the value)."""
+        budget = None if settings.timeout is None else settings.timeout / share
+        return attempt(compute, budget)
+
+    def _radical_inverse(self, q: Expr, n: int, x: Symbol, u: Symbol, a: Expr,
+                         b: Expr) -> Optional[tuple[Expr, Expr, Expr]]:
+        """``x`` in ``u = q(x)**(1/n)`` on ``(a, b)``, and the range of ``u``;
+        ``None`` when ``q`` is not known nonnegative and monotone there."""
+        try:
+            poly = Poly(q, x)
+        except PolynomialError:
+            return None
+        if poly.degree() == 1:
+            p, r = as_expr(poly.coeff_monomial(x)), as_expr(poly.coeff_monomial(1))
+            ends: list[Expr] = []
+            for end in (a, b):
+                if end in (oo, -oo):
+                    if self.ask(as_boolean(p * end > 0)) is not True:
+                        return None
+                    ends.append(oo)
+                    continue
+                value = as_expr(q.subs(x, end))
+                if self.ask(as_boolean(value >= 0)) is not True:
+                    return None
+                ends.append(_simplest_root(as_expr(value**Rational(1, n))))
+            return as_expr((u**n - r) / p), ends[0], ends[1]
+        if poly.degree() != 2 or n != 2 or not (a.is_number and b.is_number):
+            return None
+        # the range on one side of the vertex, where q is monotone, and
+        # the branch of the inverse which takes a sample point back
+        A, B, C = (as_expr(poly.coeff_monomial(x**2)), as_expr(poly.coeff_monomial(x)),
+                   as_expr(poly.coeff_monomial(1)))
+        vertex = as_expr(-B / (2 * A))
+        if not (self.ask(as_boolean(a >= vertex)) is True or self.ask(as_boolean(b <= vertex)) is True):
+            return None
+        ends = []
+        for end in (a, b):
+            if end in (oo, -oo):
+                if self.ask(as_boolean(A > 0)) is not True:
+                    return None
+                ends.append(oo)
+                continue
+            value = as_expr(q.subs(x, end))
+            if self.ask(as_boolean(value >= 0)) is not True:
+                return None
+            ends.append(as_expr(sqrt(value)))
+        sample = self._sample(a, b)
+        for sign_ in (S.One, S.NegativeOne):
+            x_u = as_expr((-B + sign_ * sqrt(B**2 - 4 * A * (C - u**2))) / (2 * A))
+            back = as_expr(x_u.subs(u, sqrt(q.subs(x, sample))))
+            if self.ask(as_boolean(Eq(back, sample))) is True:
+                return x_u, ends[0], ends[1]
+        return None
+
+    def _completed_square(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                          depth: int) -> Optional[ConditionalValue]:
+        """``u = x + c`` for a radical of a quadratic ``(x + c)**2 - d``
+        with a linear term: ``exp(-s*t)*besselj(0, a*sqrt(t**2 + 2*k*t))``
+        over ``(0, oo)`` is ``exp(s*k)*exp(-s*u)*besselj(0, a*sqrt(u**2 -
+        k**2))`` over ``(k, oo)``, a table entry."""
+        if isinstance(f, Add) or (a not in (-oo, oo) and b not in (-oo, oo)):
+            # a finite range is mapped onto (0, 1) instead, where the
+            # Mellin method reads log(x)/sqrt(4*x - x**2) over (0, 4)
+            return None
+        found = _radical_base(f, x)
+        if found is None:
+            return None
+        q, _ = found
+        try:
+            poly = Poly(q, x)
+        except PolynomialError:
+            return None
+        if poly.degree() != 2:
+            return None
+        A, B = as_expr(poly.coeff_monomial(x**2)), as_expr(poly.coeff_monomial(x))
+        if B == 0:
+            return None
+        c = as_expr(B / (2 * A))
+        u = Dummy('u', real=True)
+        g = as_expr(expand(f.subs(x, u - c)))
+        g = as_expr(g.replace(lambda node: isinstance(node, Pow) and node.has(u),
+                              lambda node: Pow(expand(as_expr(node.base)), as_expr(node.exp))))
+        lower = as_expr(a + c) if a not in (-oo, oo) else a
+        upper = as_expr(b + c) if b not in (-oo, oo) else b
+        return self._under_budget(lambda: self.integrate(g, u, lower, upper, depth + 1, False, True))
+
+    def _tangent_substitution(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                              depth: int) -> Optional[ConditionalValue]:
+        """``t = tan(k*x)`` on a range inside ``(-pi/2, pi/2)/k``, where the
+        cosine is positive, and ``t = tan(k*x/2)`` on one inside ``(-pi,
+        pi)/k`` (Weierstrass), for an integrand in trigonometric functions
+        of ``k*x`` (the arguments expanded first): the integrand becomes
+        algebraic in ``t`` over ``(tan(k*a), tan(k*b))``, ``sqrt(tan(x))``
+        over ``(0, 1)`` is ``sqrt(t)/(1 + t**2)`` over ``(0, tan(1))`` and
+        ``sqrt(tan(x) + sec(x))*sec(x)`` over ``(0, pi/4)`` is
+        ``2/(sqrt(1 + t)*(1 - t)**(3/2))`` over ``(0, sqrt(2) - 1)``."""
+        if isinstance(f, Add) or not f.has(TrigonometricFunction) or a in (-oo, oo) or b in (-oo, oo):
+            return None
+        # a rational function of the trigonometric functions has an
+        # antiderivative by the trigonometric method, in a better form
+        # (-2*log(cos(x))/39 for tan(39*x/2), where the substitution gives
+        # log(tan(x)**2 + 1)/39)
+        placeholders = {node: Dummy() for node in f.atoms(TrigonometricFunction) if node.has(x)}
+        if as_expr(f.xreplace(placeholders)).is_rational_function(x, *placeholders.values()):
+            return None
+        g = f
+        if any(monomial(as_expr(node.args[0]), x) is None for node in f.atoms(TrigonometricFunction)
+               if node.has(x)):
+            g = as_expr(expand_trig(f))
+        k: Optional[Expr] = None
+        for node in g.atoms(TrigonometricFunction):
+            if not node.has(x):
+                continue
+            found = monomial(as_expr(node.args[0]), x)
+            if found is None or found[1] != 1 or (k is not None and found[0] != k):
+                return None
+            k = found[0]
+        if k is None or self.ask(as_boolean(k > 0)) is not True:
+            return None
+        for half in (False, True):
+            width = pi if half else pi / 2
+            if self.ask(as_boolean(k * a >= -width)) is not True or self.ask(as_boolean(k * b <= width)) is not True:
+                continue
+            t = Dummy('t', positive=True) if self.ask(as_boolean(a >= 0)) is True else Dummy('t', real=True)
+            if half:
+                sine, cosine = 2 * t / (1 + t**2), (1 - t**2) / (1 + t**2)
+                jacobian = 2 / (k * (1 + t**2))
+            else:
+                sine, cosine = t / sqrt(1 + t**2), 1 / sqrt(1 + t**2)
+                jacobian = 1 / (k * (1 + t**2))
+            replacement: dict[Expr, Expr] = {}
+            for node in g.atoms(TrigonometricFunction):
+                if not node.has(x):
+                    continue
+                if isinstance(node, sin):
+                    replacement[node] = as_expr(sine)
+                elif isinstance(node, cos):
+                    replacement[node] = as_expr(cosine)
+                elif isinstance(node, tan):
+                    replacement[node] = as_expr(sine / cosine)
+                elif isinstance(node, cot):
+                    replacement[node] = as_expr(cosine / sine)
+                elif isinstance(node, sec):
+                    replacement[node] = as_expr(1 / cosine)
+                elif isinstance(node, csc):
+                    replacement[node] = as_expr(1 / sine)
+                else:
+                    return None
+            lower = _tangent_of(as_expr(k * a / 2 if half else k * a))
+            upper = _tangent_of(as_expr(k * b / 2 if half else k * b))
+            h = as_expr(g.xreplace(replacement) * jacobian)
+            # the radicands factored (sqrt(2*t/(1 - t**2) + (1 + t**2)/(1 - t**2))
+            # is sqrt((1 + t)**2/(1 - t**2))), then denested
+            h = as_expr(h.replace(lambda node: isinstance(node, Pow) and isinstance(node.exp, Rational)
+                                  and node.exp.q != 1 and node.has(t),
+                                  lambda node: Pow(factor(together(as_expr(node.base))), as_expr(node.exp))))
+            h = _denest(h, self.assumptions)
+            # the nested powers of a base positive on the range of t
+            # flattened, sqrt(1/(1 - t**2)) is (1 - t**2)**(-1/2), which the
+            # radical table reads (not ((-sin(x))**a)**(1/a), which is not
+            # -sin(x) for a general a: the bug gave 0 for its integral)
+            h = _flattened_powers(h, t, lower, upper)
+            if h.has(x) or not _algebraic(h, t):
+                # log(sin(x)) would become log(t/sqrt(1 + t**2)): nothing
+                # gained, and the budget lost on it
+                continue
+            value = self._under_budget(lambda: self.integrate(h, t, lower, upper, depth + 1, False, True))
+            if value is not None:
+                return value
+        return None
+
+    def _asymptotic_divergence(self, f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[ConditionalValue]:
+        """``oo`` or ``-oo`` when the leading term of ``f`` at a finite end
+        of the range is ``c*(x - end)**p`` with ``p <= -1`` and a real ``c``
+        of known sign (``-sin(x)*tan(x)*csc(x - 1)`` over ``(0, 1)`` is
+        ``sin(1)*tan(1)/(1 - x)`` near 1, whose integral is ``oo``), the
+        other end integrable or divergent to the same infinity; ``None``
+        otherwise (a divergence at both ends to opposite infinities is
+        the principal value's question)."""
+        if f.has(Piecewise, Heaviside, Abs, sign) or self.regularize or self.finite_part:
+            # a regularised value or a finite part is another question
+            return None
+        verdicts: list[Expr] = []
+        for end, side in ((a, '+'), (b, '-')):
+            if end in (-oo, oo) or not end.is_number or _finite_at(f, x, end):
+                continue
+            verdict = self._divergence_at(f, x, end, side)
+            if verdict is None:
+                continue
+            verdicts.append(verdict)
+        if not verdicts or len(set(verdicts)) > 1:
+            return None
+        # nothing is claimed while the integrand may be singular elsewhere
+        # in the range (the range has been cut at the singularities found;
+        # a singularity not found would make the verdict unfounded)
+        singular = attempt(lambda: singularities(f, x, Interval.open(a, b)),
+                           settings.timeout / 8 if settings.timeout else None)
+        if singular is None or as_set(singular) is not S.EmptySet:
+            return None
+        if settings.numerical_checks and _quadrature_converges(f, x, a, b, self.assumptions):
+            return None
+        return ConditionalValue(verdicts[0])
+
+    def _divergence_at(self, f: Expr, x: Symbol, end: Expr, side: str) -> Optional[Expr]:
+        """The signed infinity the integral of ``f`` diverges to at ``end``
+        by its leading term there, ``None`` for an integrable end or an
+        undecided one."""
+        h = Dummy('h', positive=True)
+        g = as_expr(f.subs(x, end + h if side == '+' else end - h))
+        budget = None if settings.timeout is None else settings.timeout / 8
+        try:
+            found = attempt(lambda: g.leadterm(h), budget)
+        except (ValueError, NotImplementedError, PoleError, TypeError):
+            return None
+        if found is None:
+            return None
+        coefficient, exponent = as_expr(found[0]), as_expr(found[1])
+        if coefficient.has(h) or not exponent.is_number or exponent.is_extended_real is not True or exponent > -1:
+            return None
+        if exponent == -1 and coefficient.has(log):
+            return None
+        if self.ask(as_boolean(coefficient > 0)) is True:
+            return oo
+        if self.ask(as_boolean(coefficient < 0)) is True:
+            return -oo
+        return None
 
     def _late_antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr,
                              depth: int) -> Optional[ConditionalValue]:
@@ -1230,6 +1573,26 @@ class _Integrator:
         first."""
         from .tables import table_integral
         return self._finish(table_integral(f, x, a, b, self.assumptions))
+
+    def _table_termwise(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+        """A sum every term of which the table has (up to a constant),
+        before the methods: the Laplace transform of ``erfc(k/(2*sqrt(t)))
+        - exp(a*k)*exp(a**2*t)*erfc(a*sqrt(t) + k/(2*sqrt(t)))`` (Maxima's
+        ``specint`` 107) is the difference of two entries, which the
+        term-by-term route at the end of the chain reached with no budget
+        left."""
+        from .tables import table_integral
+        terms = Add.make_args(as_expr(expand(f, power_exp=False)))
+        if len(terms) < 2 or len(terms) > _TERMWISE_LIMIT:
+            return None
+        total = ConditionalValue(S.Zero)
+        for term in terms:
+            constant, rest = as_expr(_combined_exponentials(as_expr(term), x)).as_independent(x, as_Add=False)
+            found = table_integral(as_expr(rest), x, a, b, self.assumptions)
+            if found is None:
+                return None
+            total = total.add(found.scaled(as_expr(constant)))
+        return self._finish(total)
 
     def _elliptic(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Square roots of cubics and quartics reduced to Legendre's
@@ -1361,7 +1724,14 @@ class _Integrator:
                     # (a delta function cannot be integrated numerically
                     # and is handled by integrate symbolically)
                     continue
-            return ConditionalValue(tidy(found.value, self.assumptions), found.condition)
+            tidied = tidy(found.value, self.assumptions)
+            if tidied != found.value and settings.numerical_checks and not f.has(DiracDelta) \
+                    and verify_numerically(tidied, f, x, a, b, self.assumptions) is False:
+                # the simplification is checked too: it turned the
+                # log(-exp_polar(I*pi)) of integrate's answer for
+                # u**3*exp(-u)*log(u) over (1, oo) into 2*I*pi
+                tidied = found.value
+            return ConditionalValue(tidied, found.condition)
         return None
 
 
@@ -1443,6 +1813,132 @@ def _forms(g: Expr, t: Symbol, assumptions: Assumptions) -> list[Expr]:
     return forms
 
 
+def _simplest_root(e: Expr) -> Expr:
+    """A number ``e`` with a root of higher order written through the
+    square roots it contains when it is such a combination, checked to
+    50 digits: ``(sqrt(5) - 2)**(1/3)`` is ``(sqrt(5) - 1)/2`` (the end of
+    the range of ``log(1 - z**(1/3) - z**(2/3))`` in ``u = z**(1/3)``)."""
+    if not e.is_number or not e.has(Pow):
+        return e
+    square_roots = [as_expr(node) for node in e.atoms(Pow)
+                    if as_expr(node.exp) == S.Half and as_expr(node.base).is_Integer]
+    higher = [node for node in e.atoms(Pow) if isinstance(node.exp, Rational) and node.exp.q > 2]
+    if not higher or not square_roots:
+        return e
+    try:
+        candidate = as_expr(nsimplify(e, square_roots, tolerance=1e-30, full=True))
+    except (TypeError, ValueError, RecursionError):
+        return e
+    if candidate.has(*higher) or any(isinstance(node.exp, Rational) and node.exp.q > 2 for node in candidate.atoms(Pow)):
+        return e
+    difference = as_expr((candidate - e).evalf(50))
+    # a zero Float of a large negative exponent (0.e-160) is not
+    # "comparable" to SymPy: compared as a float
+    if difference.is_Float and abs(float(difference)) < 1e-45:
+        return candidate
+    return e
+
+
+def _finite_at(f: Expr, x: Symbol, point: Expr) -> bool:
+    """Whether ``f`` takes a finite value at ``point`` (no divergence to
+    look for there): the leading term is computed at the other points."""
+    try:
+        value = as_expr(f.subs(x, point))
+    except (TypeError, ValueError, ZeroDivisionError):
+        return False
+    if value.has(oo, -oo, zoo, nan):
+        return False
+    if value.is_number:
+        try:
+            numeric = as_expr(value.evalf(15))
+        except (TypeError, ValueError, ZeroDivisionError, OverflowError):
+            return False
+        return numeric.is_number and not numeric.has(oo, -oo, zoo, nan) and numeric.is_finite is not False
+    return value.is_finite is True
+
+
+def _flattened_powers(h: Expr, t: Symbol, lower: Expr, upper: Expr) -> Expr:
+    """``(u**p)**q`` written ``u**(p*q)`` for rational ``p``, ``q`` and a
+    base ``u`` positive on ``(lower, upper)``, and ``(-1/(t - 1))**q`` as
+    ``(1 - t)**(-q)``: the identity holds for a positive base, not for
+    ``((-sin(x))**a)**(1/a)`` (which is ``-sin(x)`` only for ``|a| <= 1``)."""
+    facts = [as_boolean(t > lower)] if lower not in (-oo, oo) else []
+    facts += [as_boolean(t < upper)] if upper not in (-oo, oo) else []
+
+    def positive(u: Expr) -> bool:
+        return u.is_positive is True or ask(as_boolean(u > 0), facts) is True
+
+    def flatten(node: Basic) -> Basic:
+        if not isinstance(node, Pow):
+            return node
+        base, exponent = as_expr(node.base), as_expr(node.exp)
+        if isinstance(base, Mul) and len(base.args) == 2 and base.args[0] == S.NegativeOne:
+            inner = base.args[1]
+            if isinstance(inner, Pow) and as_expr(inner.exp).is_Integer and as_expr(inner.exp) % 2 == 1 \
+                    and isinstance(inner.base, Add):
+                base = Pow(expand(-as_expr(inner.base)), as_expr(inner.exp))
+        if isinstance(base, Pow) and isinstance(exponent, Rational) and isinstance(base.exp, Rational) \
+                and positive(as_expr(base.base)):
+            return Pow(as_expr(base.base), as_expr(base.exp) * exponent)
+        return node
+
+    return as_expr(h.replace(lambda node: isinstance(node, Pow) and isinstance(node.base, (Pow, Mul)), flatten))
+
+
+def _algebraic(h: Expr, t: Symbol) -> bool:
+    """Whether ``h`` is a rational function of ``t`` and of powers of
+    polynomials in ``t`` with rational exponents."""
+    replacement: dict[Expr, Expr] = {}
+    for node in h.atoms(Pow):
+        base, exponent = as_expr(node.base), as_expr(node.exp)
+        if base.has(t) and isinstance(exponent, Rational) and exponent.q != 1:
+            if not base.is_rational_function(t):
+                return False
+            replacement[node] = Dummy()
+    return bool(as_expr(h.xreplace(replacement)).is_rational_function(t, *replacement.values()))
+
+
+def _tangent_of(v: Expr) -> Expr:
+    """``tan(v)``, the infinities at ``+-pi/2`` (where SymPy gives ``zoo``)."""
+    if v == pi / 2:
+        return oo
+    if v == -pi / 2:
+        return -oo
+    return as_expr(tan(v))
+
+
+def _radical_bases(f: Expr, x: Symbol) -> list[Expr]:
+    """The distinct bases of the powers of ``f`` with a rational exponent
+    which is not an integer, depending on ``x``."""
+    bases: list[Expr] = []
+    for node in f.atoms(Pow):
+        base, exponent = as_expr(node.base), as_expr(node.exp)
+        if base.has(x) and isinstance(exponent, Rational) and exponent.q != 1 and base not in bases:
+            bases.append(base)
+    return bases
+
+
+def _radical_base(f: Expr, x: Symbol) -> Optional[tuple[Expr, int]]:
+    """``(q, n)`` for the substitution ``u = q**(1/n)``: the one radical
+    base of ``f`` which is a polynomial in ``x`` of degree at most two,
+    with ``n`` the common denominator of its exponents."""
+    bases = _radical_bases(f, x)
+    polynomial = [base for base in bases if base.is_polynomial(x)]
+    if len(polynomial) != 1:
+        return None
+    q = polynomial[0]
+    try:
+        if Poly(q, x).degree() > 2:
+            return None
+    except PolynomialError:
+        return None
+    n = 1
+    for node in f.atoms(Pow):
+        if as_expr(node.base) == q and isinstance(node.exp, Rational):
+            n = lcm(n, int(node.exp.q))
+    return (q, n) if n > 1 else None
+
+
 def _denest(g: Expr, assumptions: Assumptions) -> Expr:
     """``powdenest(g, force=True)`` done honestly: the forced denesting
     takes every symbol positive (``sqrt(c**2)`` becomes ``c``), so a
@@ -1489,6 +1985,10 @@ def _exponential_generator(f: Expr, x: Symbol, negative: bool) -> Optional[Expr]
     symbolic = 0
     for node in f.atoms(exp):
         argument = as_expr(node.args[0])
+        if argument.has(exp) and any(inner.has(x) for inner in argument.atoms(exp)):
+            # exp(-a*exp(-u)): the inner exponential is the one substituted,
+            # the outer follows (exp(-a*t) for t = exp(-u))
+            continue
         found = monomial(argument, x)
         if found is None or found[1] != 1:
             return None
@@ -1509,6 +2009,25 @@ def _exponential_generator(f: Expr, x: Symbol, negative: bool) -> Optional[Expr]
     if coefficients and all(k > 0 for k in coefficients):
         return c
     return -c if negative else c
+
+
+def _powers_of_logarithms(g: Expr, u: Symbol) -> Expr:
+    """``exp(c*log(u) + rest)`` written ``u**c*exp(rest)`` for ``c`` free of
+    ``u``, which SymPy leaves as it is: ``exp(-v*x)`` at ``x = -log(u)``
+    is ``u**v``."""
+    def rewrite(node: Basic) -> Basic:
+        argument = as_expr(node.args[0])
+        power: Expr = S.One
+        rest: list[Expr] = []
+        for term in Add.make_args(argument):
+            coefficient, factor = as_expr(term).as_independent(log(u), as_Add=False)
+            if as_expr(factor) == log(u) and not as_expr(coefficient).has(u):
+                power = power * u**as_expr(coefficient)
+            else:
+                rest.append(as_expr(term))
+        return power * exp(Add(*rest))
+
+    return as_expr(g.replace(lambda node: isinstance(node, exp) and node.has(log(u)), rewrite))
 
 
 def _log_powers_only(g: Expr, u: Symbol) -> bool:
@@ -1570,18 +2089,21 @@ def _hermite_as_kummer(node: Basic, assumptions: Assumptions) -> Basic:
     return node
 
 
-def _combined_exponentials(f: Expr) -> Expr:
+def _combined_exponentials(f: Expr, x: Optional[Symbol] = None) -> Expr:
     """The exponential factors of each product combined into one,
     ``exp(-a*t)*exp(-s*t)`` into ``exp(-(a + s)*t)``: the identity
     ``exp(u)*exp(v) = exp(u + v)`` holds everywhere, and the methods read
     one exponential (the bug: the product went through Parseval's formula
     as two kernels, with the condition ``a > 0`` on each instead of
-    ``a + s > 0`` on the sum)."""
+    ``a + s > 0`` on the sum). With ``x`` the exponentials free of it are
+    left alone: a constant ``exp(a*k)`` is taken out of the integral, and
+    the table's patterns do not carry it."""
     def combine(node: Basic) -> Basic:
-        exponentials = [as_expr(part) for part in node.args if isinstance(part, exp)]
+        exponentials = [as_expr(part) for part in node.args
+                        if isinstance(part, exp) and (x is None or part.has(x))]
         if len(exponentials) < 2:
             return node
-        rest = [as_expr(part) for part in node.args if not isinstance(part, exp)]
+        rest = [as_expr(part) for part in node.args if as_expr(part) not in exponentials]
         return Mul(*rest) * exp(Add(*[as_expr(e.args[0]) for e in exponentials]))
 
     if not f.has(exp):

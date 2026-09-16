@@ -54,6 +54,99 @@ remove public functions. Breaking changes are listed here when they happen.
   over `(0, 1)` is `(12135541 - 200*pi**2*(3739 + 30*pi**2) - 3384000*zeta(3))/16200000`
   (Maxima's `rtestint` 206; checked in Mathematica).
 
+- `sympy_extras.integrals.radicals`: the Euler substitutions
+  (`euler_substitution_antiderivative`, reached through
+  `quadratic_radical_antiderivative`) for a rational function of `x` and
+  `sqrt(Q)` which is not of the form `x**n*Q**(m/2)`: `sqrt(Q) = t -
+  sqrt(a)*x`, `sqrt(Q) = t*(x - r)` for a real root, `sqrt(Q) = x*t +
+  sqrt(c)`, and `t = sqrt(Q)` for a linear `Q`; the integrand is rational
+  in `t`. `1/((x + 3)*sqrt(x**2 - 1))` over `(2, 3)`, `sqrt(x**2 +
+  x)/(x**2 + 1)**2` and `sqrt(x + 1)/(x**2 + 1)` over `(0, 1)` (Maxima's
+  `rtest_integrate` 854, 856; FriCAS's in1186a, in143a).
+
+- `sympy_extras.integrals.definite`: a divergence read off the leading
+  term of the integrand at an end of the range (`c*(x - end)**p` with `p
+  <= -1` and a real `c` of known sign), before the methods spend the
+  budget: `-sin(x)*tan(x)*csc(x - 1)` over `(0, 1)` is `oo`, as `sin(x)/x**3`
+  over `(-1, 1)`; opposite infinities at the two sides stay unevaluated
+  (the principal value's question). A constant over an infinite range is
+  its sign's infinity. The quadrature check of a claimed divergence no
+  longer trusts a moderate number where the integrand grows like a pole
+  at an end (a logarithmic divergence is slow).
+
+- `sympy_extras.integrals.definite`: the substitution `u = q(x)**(1/n)`
+  for the radical `q(x)**(k/n)` of the integrand, `q` a polynomial of
+  degree at most two, nonnegative and monotone on the range:
+  `z*sqrt(sqrt(z**2 - 1) + 1)` over `(1, sqrt(2))` is `u*sqrt(u + 1)` over
+  `(0, 1)`, `4*(1 + sqrt(2))/15` (FriCAS's in295ba); `log(1 -
+  z)*atanh(sqrt(z))` over `(0, 1)` is `log(4) - 3` (in1314a); the ends of
+  the range simplified through their square roots (`(sqrt(5) - 2)**(1/3)`
+  is `(sqrt(5) - 1)/2`). And `u = x + c` for a radical of `(x + c)**2 - d`.
+
+- `sympy_extras.integrals.definite`: `t = tan(k*x)` on a range inside
+  `(-pi/2, pi/2)/k` and the Weierstrass substitution `t = tan(k*x/2)` on
+  one inside `(-pi, pi)/k`, when the integrand becomes algebraic in `t`:
+  `sqrt(tan(x))` over `(0, pi/2)` is `sqrt(2)*pi/2`, `sqrt(tan(x) +
+  sec(x))*sec(x)` over `(0, pi/4)` is `2*sqrt(1 + sqrt(2)) - 2`, the
+  FriCAS integrals of `sin(z)**2*sqrt(tan(z))` and the like over `(0, 1)`
+  have their elementary values.
+
+- `sympy_extras.integrals.residues`: a question about numbers (the
+  half-plane of a root of `x**4 + x**2 + x + 1`, which SymPy writes as
+  nested cube roots of complex numbers) is decided by evaluation, and
+  such roots are taken as `ComplexRootOf`; the residue route is tried
+  before the range is cut at 0, and the simplifications of a value run
+  under an eighth of the time limit. `1/(x**4 + x**2 + x + 1)` over the
+  real line has its exact value (Wester's problem 22).
+
+- `sympy_extras.integrals.antiderivative`: the limits are taken of a
+  real antiderivative, `log(u)` written `log(Abs(u))` for a real argument
+  (`log(sin(x)/tan(1) - cos(x))` on `(0, 1)`, whose complex values made
+  the infinite limit at 1 `zoo`); the finite numbers of a sum with an
+  infinity are absorbed (`-Si(1)/2 + oo`); a polynomial in `x` and
+  exponentials times `log(x)` is integrated by parts (`u**3*exp(-u)*log(u)`
+  in two seconds, `integrate` took six). `t*exp(-sqrt(t))*log(t)` over
+  `(x, oo)` (Maxima's `rtestint` 201) has its value in exponential
+  integrals.
+
+- `sympy_extras.integrals.definite`: the exponential substitution follows
+  the inner exponential of `exp(-a*exp(-u))` and writes `exp(v*log(t))`
+  as `t**v`: `exp(-a*exp(-u))*exp(-u*v)` over `(0, oo)` is
+  `lowergamma(v, a)/a**v` (Maxima's `laplace` 42). The simplification of
+  an answer of `integrate` is checked numerically too (it turned the
+  `log(-exp_polar(I*pi))` of `u**3*exp(-u)*log(u)` over `(1, oo)` into
+  `2*I*pi`). The exponentials free of the variable are not combined into
+  those depending on it.
+
+- `sympy_extras.integrals.tables`: an entry's range may start at a
+  parameter; the Laplace transforms over `(k, oo)` of `1/sqrt(t**2 -
+  k**2)` (`besselk(0, k*s)`, GR 3.364.3) and of the Bessel functions of
+  `sqrt(t**2 - k**2)` (Abramowitz and Stegun 29.3.91-96, checked in
+  Mathematica), reached through the Heaviside function of the census's
+  entries (Maxima's `specint` 109-115, 137); the transforms of
+  `erfc(k/(2*sqrt(t)))` and of `exp(a**2*t)*erfc(a*sqrt(t) + k/(2*sqrt(t)))`
+  (AS 29.3.83, 29.3.89; `specint` 106-108); `exp(-I*c*x**n)` and
+  `x**(a - 1)*exp(-I*c*x**n)` over `(0, oo)` (the rotated Gamma integral,
+  Fresnel's integrals for `n = 2`); Ahmed's integral, `5*pi**2/96`.
+  The radicals of products split by the driver (`sqrt(x - k)*sqrt(x + k)`)
+  are recombined for the lookup.
+
+- `sympy_extras.integrals.mellin`: `mellin_transform` honours the powers
+  of `log(x)` of the integrand (the derivatives of the transform), which
+  it dropped.
+
+- `sympy_extras.integrals.definite`: the antiderivative route early for
+  the shapes it answers at once (a polynomial in elementary functions of
+  linear arguments over a finite range, a polynomial in exponentials
+  times `log(x)`); the substitutions of the driver on the integral as
+  given only, under half the time limit, and not on sums; the early
+  radical route under a quarter of it. The nested powers of the tangent
+  substitution are flattened only for a base positive on the range with
+  rational exponents (`((-sin(x))**a)**(1/a)` is not `-sin(x)`: a census
+  run gave 0 for its integral over `(0, pi)`). The singularities SymPy
+  leaves as `Intersection({0}, Interval(sqrt(x), oo))` for a parameter
+  not declared positive are placed under the assumptions.
+
 - `sympy_extras.integrals.slater`: the logarithmic case of Slater's
   theorem takes SymPy's expansion of the G-function when the limit of the
   perturbed series does not come within an eighth of the time limit (it

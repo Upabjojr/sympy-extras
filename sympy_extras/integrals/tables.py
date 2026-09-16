@@ -45,6 +45,7 @@ from typing import Optional
 
 from sympy.core.expr import Expr
 from sympy.core.numbers import Integer, Rational, oo, pi
+from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol, Wild
 from sympy.functions.combinatorial.factorials import factorial
@@ -52,7 +53,7 @@ from sympy.functions.elementary.exponential import exp, log
 from sympy.functions.elementary.hyperbolic import cosh, coth, sinh, tanh
 from sympy.functions.elementary.miscellaneous import Min, sqrt
 from sympy.functions.elementary.trigonometric import atan, cos, cot, sin, tan
-from sympy.functions.special.bessel import besselj
+from sympy.functions.special.bessel import besseli, besselj, besselk
 from sympy.functions.special.error_functions import erf, erfc
 from sympy.functions.special.gamma_functions import gamma, loggamma
 from sympy.functions.special.zeta_functions import zeta
@@ -66,7 +67,7 @@ from sympy_extras.assumptions.ask import Assumptions
 from sympy_extras.assumptions.facts import element
 from .conditions import ConditionalValue, decide
 
-__all__ = ['TableEntry', 'TABLE', 'lookup', 'table_integral', 'X', 'A', 'B', 'N', 'M']
+__all__ = ['TableEntry', 'TABLE', 'lookup', 'table_integral', 'X', 'A', 'B', 'N', 'M', 'C', 'K']
 
 #: the integration variable of the patterns
 X = Dummy('x')
@@ -75,6 +76,11 @@ A = Wild('a', exclude=[X])
 B = Wild('b', exclude=[X])
 N = Wild('n', exclude=[X])
 M = Wild('m', exclude=[X])
+#: a coefficient which is not imaginary: exp(-I*c*x**n) must not match
+#: exp(-v*x) with c = -I*v
+C = Wild('c', exclude=[X, S.ImaginaryUnit])
+#: the parameter of a range ``(K, oo)``
+K = Wild('k', exclude=[X, S.ImaginaryUnit])
 
 #: a sample of parameter values (for the numerical checks of the tests)
 Sample = dict[Wild, Expr]
@@ -89,7 +95,9 @@ class TableEntry:
     pattern : Expr
         The integrand in :data:`X` and the Wild parameters.
     lower, upper : Expr
-        The range.
+        The range; the lower end may be the parameter :data:`K` (the
+        Laplace transforms of functions of ``sqrt(x**2 - k**2)`` over
+        ``(k, oo)``).
     value : Expr
         The value in the parameters.
     condition : Boolean
@@ -122,6 +130,10 @@ class TableEntry:
     def integrand(self, x: Symbol, sample: Sample) -> Expr:
         """The integrand in ``x`` at the sample values."""
         return as_expr(self.pattern.xreplace(dict(sample)).xreplace({X: x}))
+
+    def range(self, sample: Sample) -> tuple[Expr, Expr]:
+        """The range at the sample values."""
+        return as_expr(self.lower.xreplace(dict(sample))), as_expr(self.upper.xreplace(dict(sample)))
 
 
 def _positive(*symbols: Wild) -> Boolean:
@@ -212,8 +224,68 @@ TABLE: list[TableEntry] = [
                _natural(N) & (N > 0), 'GR 6.443.3', ({N: Integer(1)}, {N: Integer(3)})),
     TableEntry(log(gamma(X)) * sin(2 * pi * N * X), 0, 1, (S.EulerGamma + log(2 * pi * N)) / (2 * pi * N),
                _natural(N) & (N > 0), 'GR 6.443.3', ({N: Integer(2)}, {N: Integer(3)})),
+    # ------------------------------------------------- oscillatory exponentials, GR 3.381 continued
+    # exp(-I*c*x**n) over (0, oo): the Gamma integral rotated by -pi/(2n)
+    # (Fresnel's integrals for n = 2), conditionally convergent for n > a
+    TableEntry(exp(-S.ImaginaryUnit * C * X**N), 0, oo,
+               gamma(1 + 1 / N) * exp(-S.ImaginaryUnit * pi / (2 * N)) / C**(1 / N),
+               (C > 0) & (N > 1), 'GR 3.381.4, rotated', ({C: Integer(1), N: Integer(2)}, {C: Integer(2), N: Integer(3)}),
+               True),
+    TableEntry(exp(S.ImaginaryUnit * C * X**N), 0, oo,
+               gamma(1 + 1 / N) * exp(S.ImaginaryUnit * pi / (2 * N)) / C**(1 / N),
+               (C > 0) & (N > 1), 'GR 3.381.4, rotated', ({C: Integer(1), N: Integer(2)}, {C: Integer(2), N: Integer(3)}),
+               True),
+    TableEntry(X**(A - 1) * exp(-S.ImaginaryUnit * C * X**N), 0, oo,
+               gamma(A / N) * exp(-S.ImaginaryUnit * pi * A / (2 * N)) / (N * C**(A / N)),
+               (C > 0) & (A > 0) & (N > A), 'GR 3.381.4, rotated',
+               ({A: Rational(3, 2), C: Integer(2), N: Integer(3)}, {A: Rational(1, 2), C: Integer(1), N: Integer(2)}),
+               True),
+    TableEntry(X**(A - 1) * exp(S.ImaginaryUnit * C * X**N), 0, oo,
+               gamma(A / N) * exp(S.ImaginaryUnit * pi * A / (2 * N)) / (N * C**(A / N)),
+               (C > 0) & (A > 0) & (N > A), 'GR 3.381.4, rotated',
+               ({A: Rational(3, 2), C: Integer(2), N: Integer(3)}, {A: Rational(1, 2), C: Integer(1), N: Integer(2)}),
+               True),
+    # ------------------------------------------------- Laplace transforms over (k, oo), AS 29.3
+    # (Abramowitz and Stegun, chapter 29, table 29.3, entries 91-96: the
+    # transforms of functions of sqrt(t**2 - k**2) which vanish below k;
+    # the exponential exp(C*X) carries the transform variable, s = -C)
+    TableEntry(exp(C * X) / sqrt(X**2 - K**2), K, oo, besselk(0, -C * K), (C < 0) & (K > 0), 'GR 3.364.3',
+               ({C: Integer(-2), K: Integer(1)}, {C: Rational(-1, 2), K: Integer(3)})),
+    TableEntry(exp(C * X) * besselj(0, A * sqrt(X**2 - K**2)), K, oo,
+               exp(-K * sqrt(C**2 + A**2)) / sqrt(C**2 + A**2), (C < 0) & (K > 0) & (A > 0), 'AS 29.3.91',
+               ({A: Integer(1), C: Integer(-3), K: _HALF}, {A: Integer(2), C: Integer(-1), K: Integer(1)})),
+    TableEntry(exp(C * X) * besseli(0, A * sqrt(X**2 - K**2)), K, oo,
+               exp(-K * sqrt(C**2 - A**2)) / sqrt(C**2 - A**2), (C + A < 0) & (K > 0) & (A > 0), 'AS 29.3.92',
+               ({A: Integer(1), C: Integer(-3), K: _HALF}, {A: Integer(2), C: Integer(-5), K: Integer(1)})),
+    # (the constant a*k of the table's entries is taken out by the driver)
+    TableEntry(exp(C * X) * besselj(1, A * sqrt(X**2 - K**2)) / sqrt(X**2 - K**2), K, oo,
+               (exp(C * K) - exp(-K * sqrt(C**2 + A**2))) / (A * K), (C < 0) & (K > 0) & (A > 0), 'AS 29.3.93',
+               ({A: Integer(1), C: Integer(-3), K: _HALF}, {A: Integer(2), C: Integer(-1), K: Integer(1)})),
+    TableEntry(exp(C * X) * besseli(1, A * sqrt(X**2 - K**2)) / sqrt(X**2 - K**2), K, oo,
+               (exp(-K * sqrt(C**2 - A**2)) - exp(C * K)) / (A * K), (C + A < 0) & (K > 0) & (A > 0), 'AS 29.3.94',
+               ({A: Integer(1), C: Integer(-3), K: _HALF}, {A: Integer(2), C: Integer(-5), K: Integer(1)})),
+    TableEntry(((X - K) / (X + K))**(N / 2) * exp(C * X) * besselj(N, A * sqrt(X**2 - K**2)), K, oo,
+               A**N * exp(-K * sqrt(C**2 + A**2)) / (sqrt(C**2 + A**2) * (sqrt(C**2 + A**2) - C)**N),
+               (C < 0) & (K > 0) & (A > 0) & (N > -1), 'AS 29.3.96',
+               ({A: Integer(1), C: Integer(-3), K: _HALF, N: Rational(3, 2)}, {A: Integer(2), C: Integer(-1), K: Integer(1), N: Integer(2)})),
+    # ------------------------------------------------- Laplace transforms of the error function, AS 29.3
+    # exp(-k**2/(4*t))*exp(-s*t)/sqrt(t): the constant 1/sqrt(pi) taken
+    # out by the driver, the two exponentials combined
+    TableEntry(exp(C * X - K**2 / (4 * X)) / sqrt(X), 0, oo, sqrt(pi) * exp(-K * sqrt(-C)) / sqrt(-C),
+               (C < 0) & (K > 0), 'AS 29.3.82', ({C: Integer(-2), K: Integer(1)}, {C: Rational(-1, 2), K: Integer(3)})),
+    TableEntry(exp(C * X) * erfc(K / (2 * sqrt(X))), 0, oo, exp(-K * sqrt(-C)) / (-C), (C < 0) & (K > 0), 'AS 29.3.83',
+               ({C: Integer(-2), K: Integer(1)}, {C: Rational(-1, 2), K: Integer(3)})),
+    # exp(a*k)*exp(a**2*t)*erfc(a*sqrt(t) + k/(2*sqrt(t))) with the
+    # constant exp(a*k) taken out and exp(a**2*t)*exp(-s*t) combined
+    TableEntry(exp(C * X) * erfc(A * sqrt(X) + K / (2 * sqrt(X))), 0, oo,
+               exp(-K * (A + sqrt(A**2 - C))) / (sqrt(A**2 - C) * (sqrt(A**2 - C) + A)),
+               (C < A**2) & (K > 0) & (A > 0), 'AS 29.3.89',
+               ({A: Integer(1), C: Integer(-2), K: Integer(1)}, {A: Integer(2), C: Integer(3), K: _HALF})),
     # ------------------------------------------------- inverse trigonometric, GR 4.5
     TableEntry(atan(X) / X, 0, 1, S.Catalan, true, 'GR 4.531.1'),
+    # Ahmed's integral (American Mathematical Monthly 109, 2002, problem
+    # 10884; Z. Ahmed, "Definitely an integral", 2002)
+    TableEntry(atan(sqrt(X**2 + 2)) / ((X**2 + 1) * sqrt(X**2 + 2)), 0, 1, 5 * pi**2 / 96, true, 'Ahmed 2002'),
     TableEntry(atan(X)**2 / X**2, 0, oo, pi * log(2), true, 'GR 4.535.1'),
     TableEntry(atan(A * X) * atan(B * X) / X**2, 0, oo,
                pi * ((A + B) * log(A + B) - A * log(A) - B * log(B)) / 2, _positive(A, B), 'GR 4.536.1',
@@ -259,7 +331,12 @@ def _forms(g: Expr) -> list[Expr]:
     """The integrand as given and in the rewritten forms the patterns
     may need."""
     forms = [g]
-    for candidate in (as_expr(powsimp(g)), as_expr(g.expand()), as_expr(trigsimp(g))):
+    # the radicals of products recombined: the definite driver splits
+    # sqrt(x**2 - k**2) into sqrt(x - k)*sqrt(x + k) over (k, oo)
+    combined = as_expr(powsimp(g, force=True))
+    combined = as_expr(combined.replace(lambda node: isinstance(node, Pow) and node.has(X),
+                                        lambda node: Pow(as_expr(node.base).expand(), as_expr(node.exp))))
+    for candidate in (as_expr(powsimp(g)), as_expr(g.expand()), as_expr(trigsimp(g)), combined):
         if candidate not in forms:
             forms.append(candidate)
     return forms
@@ -288,12 +365,24 @@ def lookup(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
     lower, upper = as_expr(a), as_expr(b)
     forms = _forms(as_expr(g))
     for entry in TABLE:
-        if entry.lower != lower or entry.upper != upper:
+        if entry.upper != upper:
             continue
+        range_match: dict[Wild, Expr] = {}
+        if entry.lower != lower:
+            if not entry.lower.has(Wild) or lower.has(x):
+                continue
+            found = lower.match(entry.lower)
+            if found is None:
+                continue
+            range_match = {key: as_expr(value) for key, value in found.items() if isinstance(key, Wild)}
         for candidate in forms:
             match = candidate.match(entry.pattern)
             if match is None:
                 continue
+            if any(key in match and as_expr(match[key]) != value for key, value in range_match.items()):
+                continue
+            match = dict(match)
+            match.update(range_match)
             values: dict[Wild, Expr] = {}
             for key, value in match.items():
                 if not isinstance(key, Wild):
@@ -303,7 +392,12 @@ def lookup(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
                     break
                 values[key] = value_
             else:
-                condition = decide(as_boolean(entry.condition.xreplace(dict(values))), assumptions)
+                try:
+                    condition = decide(as_boolean(entry.condition.xreplace(dict(values))), assumptions)
+                except TypeError:
+                    # a parameter matched by a non-real number (exp(-x) is
+                    # exp(-I*c*x) for c = -I): the entry does not apply
+                    continue
                 if condition is None:
                     # refuted: another entry may hold (the other case of a
                     # case distinction)
