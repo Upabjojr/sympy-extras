@@ -504,7 +504,12 @@ def test_laplace_transforms_of_hermite_polynomials_of_symbolic_degree() -> None:
     # hermite(2n + 1, sqrt(t)) through Kummer's function; the values at
     # integer degrees agree with the direct transforms
     from sympy import hermite
-    n = symbols('n', positive=True)
+    n = symbols('n', integer=True, positive=True)
+    # the parity of the degree must be known: hermite(m, u) with a plain
+    # symbol m is left alone (the census's specint 105 came out wrong when
+    # it was read as an even degree)
+    m = symbols('m', positive=True)
+    assert definite_integral(exp(-s * t) * hermite(m, sqrt(t)) / sqrt(t), (t, 0, oo), s > 1).has(Integral)
     even = definite_integral(exp(-s * t) * hermite(2 * n, sqrt(t)) / sqrt(t), (t, 0, oo), s > 1)
     assert not even.has(Integral, Piecewise)
     for degree in (1, 2):

@@ -1439,7 +1439,7 @@ def _forms(g: Expr, t: Symbol, assumptions: Assumptions) -> list[Expr]:
         if g.has(hermite):
             add(_combined_exponentials(as_expr(g.replace(
                 lambda node: isinstance(node, hermite) and not as_expr(node.args[0]).is_Integer,
-                _hermite_as_kummer))))
+                lambda node: _hermite_as_kummer(node, assumptions)))))
     return forms
 
 
@@ -1549,21 +1549,22 @@ def _trigonometric_zeros(u: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[list[
     return sorted(zeros, key=lambda p: float(p.evalf()))
 
 
-def _hermite_as_kummer(node: Basic) -> Basic:
-    """``hermite(2*n, u)`` or ``hermite(2*n + 1, u)`` with a symbolic ``n``
-    through Kummer's function of a negative argument, ``exp(u**2)`` times
-    ``1F1(n + 1/2; 1/2; -u**2)`` or ``2*u*1F1(n + 3/2; 3/2; -u**2)`` with
-    the factor ``(-1)**n*(2n)!/n!`` or ``(-1)**n*(2n + 1)!/n!``; the node
-    itself when the parity of the degree is not written in it."""
+def _hermite_as_kummer(node: Basic, assumptions: Assumptions) -> Basic:
+    """``hermite(2*n, u)`` or ``hermite(2*n + 1, u)`` with ``n`` an integer
+    under the assumptions, through Kummer's function of a negative
+    argument: ``exp(u**2)`` times ``1F1(n + 1/2; 1/2; -u**2)`` or
+    ``2*u*1F1(n + 3/2; 3/2; -u**2)`` with the factor ``(-1)**n*(2n)!/n!``
+    or ``(-1)**n*(2n + 1)!/n!``. The node itself when the parity of the
+    degree is not known (the bug: ``hermite(n, u)`` was read as the even
+    degree ``2*(n/2)``, and Maxima's ``specint`` 105 came out wrong)."""
     degree, u = as_expr(node.args[0]), as_expr(node.args[1])
-    half, rest = as_expr(degree / 2).as_coeff_Add()
-    if half.is_integer:
-        n = as_expr(degree / 2)
-        return (as_expr(S.NegativeOne**n) * gamma(2 * n + 1) / gamma(n + 1) * exp(u**2)
-                * hyper([n + S.Half], [S.Half], -u**2))
-    half, rest = as_expr((degree - 1) / 2).as_coeff_Add()
-    if half.is_integer:
-        n = as_expr((degree - 1) / 2)
+    for shift in (S.Zero, S.One):
+        n = as_expr((degree - shift) / 2)
+        if n.is_integer is not True and ask(element(n, S.Integers), assumptions) is not True:
+            continue
+        if shift == 0:
+            return (as_expr(S.NegativeOne**n) * gamma(2 * n + 1) / gamma(n + 1) * exp(u**2)
+                    * hyper([n + S.Half], [S.Half], -u**2))
         return (as_expr(S.NegativeOne**n) * gamma(2 * n + 2) / gamma(n + 1) * 2 * u * exp(u**2)
                 * hyper([n + Rational(3, 2)], [Rational(3, 2)], -u**2))
     return node

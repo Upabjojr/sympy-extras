@@ -65,6 +65,8 @@ References
 """
 from __future__ import annotations
 
+import random
+
 from math import lcm
 from typing import Optional, Sequence
 
@@ -72,11 +74,12 @@ from sympy.core.expr import Expr
 from sympy.core.mul import Mul
 from sympy.core.power import Pow
 from sympy.core.add import Add
+from sympy.core.function import Function
 from sympy.core.numbers import Integer, Rational, nan, pi, oo, zoo
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy
 from sympy.series.limits import Limit, limit
-from sympy.functions.elementary.complexes import Abs, arg as arg_, re
+from sympy.functions.elementary.complexes import Abs, arg as arg_, im, re
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.functions.elementary.exponential import exp
 from sympy.functions.special.gamma_functions import gamma, lowergamma
@@ -86,10 +89,10 @@ from sympy.simplify.hyperexpand import hyperexpand
 from sympy.simplify.simplify import simplify
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import as_boolean, as_expr
+from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue, numerically_equal
+from .conditions import ConditionalValue, numerically_equal, sample_values
 from .mellin import GammaFactor, GammaQuotient
 
 __all__ = ['MeijerG', 'mellin_barnes', 'slater_expansion', 'expand_meijerg']
@@ -268,15 +271,28 @@ def _logarithmic_case(g: MeijerG, coincident: list[int]) -> Optional[Expr]:
     bm = [b + (coincident.index(i) + 1) * epsilon if i in coincident else b for i, b in enumerate(g.bm)]
     perturbed = MeijerG(g.prefactor, g.an, g.ap, bm, g.bq, g.z)
     series = _slater_series(perturbed)
-    if series is None:
+    value: Optional[Expr] = None
+    if series is not None:
+        expanded = _hyperexpand(series)
+        if not expanded.has(hyper):
+            # an eighth of the time limit: the limit (gruntz on the perturbed
+            # hypergeometric sum) took a minute for the Parseval integrand
+            # of expint(1, a*t)*exp(-(s - a)*t), where SymPy's expansion of
+            # the G-function below is immediate; the limit first, since its
+            # forms are the real ones (acosh(s/k)/sqrt(s**2 - k**2) for the
+            # transform of besselk(0, k*t), where the expansion gives
+            # (pi/2 - asin(s/k))/sqrt(k**2 - s**2), real by a cancellation)
+            budget = None if settings.timeout is None else settings.timeout / 8
+            value = attempt(lambda: as_expr(limit(expanded, epsilon, 0)), budget)
+    if value is not None and not value.has(oo, zoo, nan, Limit):
+        return value
+    try:
+        direct = _hyperexpand(g.as_sympy())
+    except ValueError:
         return None
-    expanded = _hyperexpand(series)
-    if expanded.has(hyper):
+    if direct.has(meijerg, hyper) or direct.has(oo, zoo, nan):
         return None
-    value = attempt(lambda: as_expr(limit(expanded, epsilon, 0)), settings.timeout)
-    if value is None or value.has(oo, zoo, nan) or value.has(Limit):
-        return None
-    return value
+    return direct
 
 
 def _hyperexpand(e: Expr) -> Expr:
@@ -401,8 +417,15 @@ def _expand_meijerg(g: MeijerG, assumptions: Assumptions) -> Optional[Conditiona
                 return ConditionalValue(g.prefactor * expanded)
             small, large = _hyperexpand(small), _hyperexpand(large)
             if _same(small, large, assumptions):
-                # one formula on both sides of |z| = 1, hence on it as well
-                return ConditionalValue(g.prefactor * small)
+                # one formula on both sides of |z| = 1, hence on it as well:
+                # the one real as written at a sample of the parameters (the
+                # small side's (pi/2 - asin(s/k))/sqrt(k**2 - s**2) is real by
+                # a cancellation of imaginary parts for s > k); neither
+                # real as written, the sides stay apart for the assumptions
+                # to choose from
+                choice = _real_choice(small, large, assumptions)
+                if choice is not None:
+                    return ConditionalValue(g.prefactor * choice)
             return ConditionalValue(g.prefactor * Piecewise((small, Abs(g.z) < 1), (large, True)),
                                     as_boolean(Abs(g.z) > 1) | as_boolean(Abs(g.z) < 1))
     if series is None:
@@ -435,6 +458,33 @@ def _converges_on_the_circle(h: hyper, assumptions: Assumptions) -> bool:
         return True
     excess = as_expr(re(Add(*bq) - Add(*ap)))
     return excess.is_positive is True or ask(as_boolean(excess > 0), assumptions) is True
+
+
+def _real_choice(small: Expr, large: Expr, assumptions: Assumptions) -> Optional[Expr]:
+    """``small``, the expansion for ``|z| < 1``, as the one formula for
+    both sides when it is real as written at a sample of the parameters
+    (every function in it evaluates real) or the value itself is complex
+    (complex scales); ``None`` when the value is real by a cancellation of
+    imaginary parts only, so that the caller keeps the two sides apart
+    for the assumptions to choose from (``(pi/2 - asin(s/k))/sqrt(k**2 - s**2)``
+    for ``s > k``, where the other side gives ``acosh(s/k)/sqrt(s**2 - k**2)``)."""
+    parameters = sorted_symbols(free_symbols(small) | free_symbols(large))
+    values = sample_values(parameters, assumptions, random.Random(str((small, large)))) if parameters else {}
+    if values is None:
+        return small
+    number = attempt(lambda: as_expr(small.xreplace(values).evalf(20)), settings.timeout)
+    if number is None or not number.is_number:
+        return small
+    try:
+        # a zero of unknown precision (0.e-26) is not comparable: as floats
+        imaginary, size = abs(float(im(number))), abs(complex(number))
+    except (TypeError, ValueError):
+        return small
+    if imaginary >= 1e-12 * (1 + size):
+        return small
+    if any(as_expr(atom.xreplace(values).evalf(20)).is_extended_real is False for atom in small.atoms(Function)):
+        return None
+    return small
 
 
 def _same(a: Expr, b: Expr, assumptions: Assumptions) -> bool:

@@ -41,9 +41,11 @@ remove public functions. Breaking changes are listed here when they happen.
   written `exp(u)*1F1(n + 1; 1; -u)` by Kummer's transformation among the
   forms of the Mellin method: the Laplace transform of `laguerre(n, t)`
   is `(s - 1)**n/s**(n + 1)` for `s > 1` (Maxima's `specint` 42, 43); the
-  Hermite polynomials of a symbolic degree `2n` or `2n + 1` likewise, by
-  `H_{2n}(u) = (-1)**n*(2n)!/n!*1F1(-n; 1/2; u**2)` and its odd companion
-  (`specint` 64, 65).
+  Hermite polynomials of a symbolic degree `2n` or `2n + 1`, `n` an integer
+  under the assumptions, likewise, by `H_{2n}(u) = (-1)**n*(2n)!/n!*1F1(-n; 1/2; u**2)`
+  and its odd companion (`specint` 64, 65); a degree of unknown parity is
+  left alone (the census's `specint` 105 came out wrong when `hermite(n, u)`
+  was read as an even degree).
 
 - `sympy_extras.integrals.marichev`: `log(1 - x)**m` on `(0, 1)` as the
   m-th derivative of the Beta kernel `(1 - x)**(b - 1)` in `b` (the step
@@ -51,6 +53,13 @@ remove public functions. Breaking changes are listed here when they happen.
   the derivative in the exponent of `x`: `t**2*(1 - t)**2*log(t)**2*log(1 - t)**2`
   over `(0, 1)` is `(12135541 - 200*pi**2*(3739 + 30*pi**2) - 3384000*zeta(3))/16200000`
   (Maxima's `rtestint` 206; checked in Mathematica).
+
+- `sympy_extras.integrals.slater`: the logarithmic case of Slater's
+  theorem takes SymPy's expansion of the G-function when the limit of the
+  perturbed series does not come within an eighth of the time limit (it
+  took a minute on the Parseval integrand of `expint(1, a*t)*exp(-(s - a)*t)`):
+  `(log(a) + expint(1, a*t))*exp((a - s)*t)` over `(0, oo)` is
+  `log(s)/(s - a)` in seconds (Maxima's `specint` 118).
 
 - `sympy_extras.integrals.dirichlet`: trigonometric sums over powers of
   `x` on the half-lines and the real line, the Dirichlet, Frullani and

@@ -238,3 +238,20 @@ def test_bessel_k_forms_cancel_the_sine_of_the_order() -> None:
     value = definite_integral(t**(n - 1) * exp(-a / t) * exp(-s * t), (t, 0, oo))
     assert value.has(besselk) and not value.has(besseli, sin)
     assert simplify(value - 2 * a**(n / 2) * besselk(n, 2 * sqrt(a) * sqrt(s)) / s**(n / 2)) == 0
+
+
+
+def test_the_logarithmic_case_takes_the_expansion_before_the_limit() -> None:
+    # the Parseval integrand of expint(1, a*t)*exp(-(s - a)*t) is a
+    # logarithmic case; the perturbation and the limit took a minute
+    import time
+    from sympy import expint, log
+    from sympy_extras.integrals import definite_integral
+    s, a, t = symbols('s a t', positive=True)
+    started = time.monotonic()
+    value = mellin_integrate(expint(1, a * t) * exp(-(s - a) * t), t, [s > a])
+    assert value is not None and simplify(value.value - log(s / a) / (s - a)) == 0
+    assert time.monotonic() - started < 20
+    # Maxima's specint 118, Mathematica: log(s)/(s - a)
+    found = definite_integral((log(a) + expint(1, a * t)) * exp(a * t) * exp(-s * t), (t, 0, oo), s > a)
+    assert simplify(found - log(s) / (s - a)) == 0
