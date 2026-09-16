@@ -496,3 +496,21 @@ def test_powers_of_log_of_one_minus_x_are_derivatives_of_the_beta_exponent() -> 
     assert _same(definite_integral(log(t) * log(1 - t), (t, 0, 1)), 2 - pi**2 / 6)
     value = definite_integral(t**2 * (1 - t)**2 * log(t)**2 * log(1 - t)**2, (t, 0, 1))
     assert _same(value, (12135541 - 200 * pi**2 * (3739 + 30 * pi**2) - 3384000 * zeta(3)) / 16200000)
+
+
+
+def test_laplace_transforms_of_hermite_polynomials_of_symbolic_degree() -> None:
+    # Maxima's specint 64 and 65: hermite(2n, sqrt(t))/sqrt(t) and
+    # hermite(2n + 1, sqrt(t)) through Kummer's function; the values at
+    # integer degrees agree with the direct transforms
+    from sympy import hermite
+    n = symbols('n', positive=True)
+    even = definite_integral(exp(-s * t) * hermite(2 * n, sqrt(t)) / sqrt(t), (t, 0, oo), s > 1)
+    assert not even.has(Integral, Piecewise)
+    for degree in (1, 2):
+        direct = definite_integral(exp(-s * t) * hermite(2 * degree, sqrt(t)) / sqrt(t), (t, 0, oo))
+        assert _same(even.subs(n, degree), direct), degree
+    odd = definite_integral(exp(-s * t) * hermite(2 * n + 1, sqrt(t)), (t, 0, oo), s > 1)
+    assert not odd.has(Integral, Piecewise)
+    direct = definite_integral(exp(-s * t) * hermite(3, sqrt(t)), (t, 0, oo))
+    assert _same(odd.subs(n, 1), direct)

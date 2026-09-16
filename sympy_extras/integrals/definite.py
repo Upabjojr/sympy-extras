@@ -106,7 +106,8 @@ from sympy.functions.elementary.trigonometric import (TrigonometricFunction, asi
                                                       csc)
 from sympy.functions.elementary.hyperbolic import HyperbolicFunction, InverseHyperbolicFunction
 from sympy.functions.special.hyper import hyper
-from sympy.functions.special.polynomials import OrthogonalPolynomial, laguerre
+from sympy.functions.special.gamma_functions import gamma
+from sympy.functions.special.polynomials import OrthogonalPolynomial, hermite, laguerre
 from sympy.core.exprtools import factor_terms
 from sympy.core.function import count_ops, expand, expand_func, expand_log
 from sympy.simplify.fu import TR8, TR9
@@ -1432,6 +1433,13 @@ def _forms(g: Expr, t: Symbol, assumptions: Assumptions) -> list[Expr]:
         add(_combined_exponentials(as_expr(g.replace(
             lambda node: isinstance(node, laguerre) and not as_expr(node.args[0]).is_Integer,
             lambda node: exp(as_expr(node.args[1])) * hyper([as_expr(node.args[0]) + 1], [1], -as_expr(node.args[1]))))))
+        # and a Hermite polynomial of symbolic degree 2n or 2n + 1, by
+        # H_{2n}(u) = (-1)**n (2n)!/n! 1F1(-n; 1/2; u**2) and
+        # H_{2n+1}(u) = (-1)**n (2n + 1)!/n! 2u 1F1(-n; 3/2; u**2), then Kummer
+        if g.has(hermite):
+            add(_combined_exponentials(as_expr(g.replace(
+                lambda node: isinstance(node, hermite) and not as_expr(node.args[0]).is_Integer,
+                _hermite_as_kummer))))
     return forms
 
 
@@ -1539,6 +1547,26 @@ def _trigonometric_zeros(u: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[list[
         if above and below:
             zeros.append(point)
     return sorted(zeros, key=lambda p: float(p.evalf()))
+
+
+def _hermite_as_kummer(node: Basic) -> Basic:
+    """``hermite(2*n, u)`` or ``hermite(2*n + 1, u)`` with a symbolic ``n``
+    through Kummer's function of a negative argument, ``exp(u**2)`` times
+    ``1F1(n + 1/2; 1/2; -u**2)`` or ``2*u*1F1(n + 3/2; 3/2; -u**2)`` with
+    the factor ``(-1)**n*(2n)!/n!`` or ``(-1)**n*(2n + 1)!/n!``; the node
+    itself when the parity of the degree is not written in it."""
+    degree, u = as_expr(node.args[0]), as_expr(node.args[1])
+    half, rest = as_expr(degree / 2).as_coeff_Add()
+    if half.is_integer:
+        n = as_expr(degree / 2)
+        return (as_expr(S.NegativeOne**n) * gamma(2 * n + 1) / gamma(n + 1) * exp(u**2)
+                * hyper([n + S.Half], [S.Half], -u**2))
+    half, rest = as_expr((degree - 1) / 2).as_coeff_Add()
+    if half.is_integer:
+        n = as_expr((degree - 1) / 2)
+        return (as_expr(S.NegativeOne**n) * gamma(2 * n + 2) / gamma(n + 1) * 2 * u * exp(u**2)
+                * hyper([n + Rational(3, 2)], [Rational(3, 2)], -u**2))
+    return node
 
 
 def _combined_exponentials(f: Expr) -> Expr:

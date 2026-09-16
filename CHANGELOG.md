@@ -40,7 +40,10 @@ remove public functions. Breaking changes are listed here when they happen.
   `0 < Re s < Re a`), and the Laguerre polynomials of symbolic degree
   written `exp(u)*1F1(n + 1; 1; -u)` by Kummer's transformation among the
   forms of the Mellin method: the Laplace transform of `laguerre(n, t)`
-  is `(s - 1)**n/s**(n + 1)` for `s > 1` (Maxima's `specint` 42, 43).
+  is `(s - 1)**n/s**(n + 1)` for `s > 1` (Maxima's `specint` 42, 43); the
+  Hermite polynomials of a symbolic degree `2n` or `2n + 1` likewise, by
+  `H_{2n}(u) = (-1)**n*(2n)!/n!*1F1(-n; 1/2; u**2)` and its odd companion
+  (`specint` 64, 65).
 
 - `sympy_extras.integrals.marichev`: `log(1 - x)**m` on `(0, 1)` as the
   m-th derivative of the Beta kernel `(1 - x)**(b - 1)` in `b` (the step
