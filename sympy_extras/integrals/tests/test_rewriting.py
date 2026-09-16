@@ -223,7 +223,10 @@ def test_identities_valid_on_the_positive_axis_only_need_the_assumption() -> Non
     from sympy_extras.integrals.indefinite import verified_antiderivative
     from sympy_extras.integrals.rewriting import _inverse_hyperbolic_to_logarithms
     z, r, c, v = symbols('z r c v')
-    assert verified_antiderivative(exp_(c * (z**r)**(1 / r))**v, z) is None
+    # without z > 0 the nested power is kept: the antiderivative of the
+    # exponential module with (z**r)**(1/r) in it holds everywhere
+    found = verified_antiderivative(exp_(c * (z**r)**(1 / r))**v, z)
+    assert found is not None and found[0].has((z**r)**(1 / r)) and not found[0].has(exp_(c * v * z))
     found = verified_antiderivative(exp_(c * (z**r)**(1 / r))**v, z, [z > 0])
     assert found is not None and found[0] == exp_(c * v * z) / (c * v)
     assert verified_antiderivative(exp_(acosh(z)), z) is None

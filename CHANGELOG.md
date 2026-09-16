@@ -150,6 +150,22 @@ remove public functions. Breaking changes are listed here when they happen.
   residues: `1/(x**4 + 2*x**2*cosh(2*a) + 1)` over `(0, oo)` is
   `pi/(4*cosh(a))` for a real `a` (HOL-Py's partialFraction 1).
 
+- `sympy_extras.integrals.exponential`: three routes of integration in
+  terms of the incomplete gamma function, the exponential integral and
+  the error function. A nested power `(x**r)**p` in the exponent or the
+  prefactor (`exp(a*(x**r)**p)`, `exp(a*x)/sqrt(x**3)`, `exp(a*sqrt(x**2))`)
+  is integrated with the nested power kept, `-x*V*u**(-s)*uppergamma(s, u)/d`
+  for `u = -a*W`, an identity everywhere (the derivative of a nested
+  power of formal degree `d` is `d*W/x`), where `x**(r*p)` would hold on
+  the positive axis only; a rational function times `exp(c*x)` whose
+  denominator has simple roots, symbolic ones too, through
+  `exp(c*r)*Ei(c*(x - r))` (`exp(c*z)/(a*z**2 + b)`); and
+  `exp(alpha*x**2 + beta/x**2)` through the pair of error functions
+  `erf(A*x +- B/x)`. Maxima's `rtest_integrate` 12-22, 65, 125, 126, 145,
+  147 and their kin; `d**(...)` reaches them through the rewriting route,
+  and `exp(c*(z**r)**(1/r))**v` no longer needs `z > 0` for an
+  antiderivative (the nested power is kept in it).
+
 - `sympy_extras.integrals.marichev`: the derivative in the order of a
   modified Bessel function at 0, which the limit of the logarithmic case
   of Slater's theorem leaves, is written `-besselk(0, z)` (DLMF 10.38.6):

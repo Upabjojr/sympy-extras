@@ -160,3 +160,47 @@ def test_linear_factors_shift_and_the_confluent_form_for_odd_powers() -> None:
     assert G is not None and G.has(uppergamma) and is_antiderivative(G, x * exp(-x**3), x, [x > 0]) is True
     H = exponential_antiderivative(x * exp(-x**4), x)   # an even power: the gamma form, real everywhere (erfc here)
     assert H is not None and not H.has(hyper) and is_antiderivative(H, x * exp(-x**4), x) is True
+
+
+def test_nested_powers_by_the_incomplete_gamma_function() -> None:
+    # Maxima's rtest_integrate 20, 14, 22, 65: (z**r)**p is not z**(r*p) off
+    # the positive axis, but the Gamma form with the nested power kept is
+    # an antiderivative everywhere (checked by differentiation)
+    from sympy import uppergamma, diff, cancel
+    from sympy_extras.integrals.exponential import nested_power_exponential
+    z, a, r, p = symbols('z a r p')
+    F = nested_power_exponential(exp(a * (z**r)**p), z)
+    assert F == -z * uppergamma(1 / (p * r), -a * (z**r)**p) / (p * r * (-a * (z**r)**p)**(1 / (p * r)))
+    assert nested_power_exponential(exp(a * sqrt(z**2)), z) == z * exp(a * sqrt(z**2)) / (a * sqrt(z**2))
+    # a nested power in the prefactor
+    F = nested_power_exponential(exp(a * z) / sqrt(z**3), z)
+    assert F is not None and cancel(diff(F, z) - exp(a * z) / sqrt(z**3)) == 0
+    # a plain power is the module's first route, not this one
+    assert nested_power_exponential(exp(a * z**2), z) is None
+    assert exponential_antiderivative(z**2 * exp(a * (z**r)**p), z) is not None
+
+
+def test_rational_functions_times_an_exponential_by_the_exponential_integral() -> None:
+    # Maxima's rtest_integrate 125, 126: the roots of the denominator symbolic
+    from sympy import diff, simplify
+    from sympy_extras.integrals.exponential import rational_exponential
+    z, a, b, c = symbols('z a b c')
+    F = rational_exponential(exp(c * z) / (a * z**2 + b), z)
+    assert F is not None and F.has(Ei) and simplify(diff(F, z) - exp(c * z) / (a * z**2 + b)) == 0
+    assert rational_exponential(exp(c * z) / (z**2 - 1), z) == exp(c) * Ei(c * (z - 1)) / 2 - exp(-c) * Ei(c * (z + 1)) / 2
+    # a repeated root is not handled here
+    assert rational_exponential(exp(z) / (z - 1)**2, z) is None
+
+
+def test_exponentials_of_a_square_and_its_reciprocal_by_the_error_function() -> None:
+    # Maxima's rtest_integrate 145, 147: d**(a*z**2 + b/z**2) through the
+    # dispatcher's rewriting, exp(-x**2 - 1/x**2) directly
+    from sympy import diff, simplify, erf
+    from sympy_extras.integrals.exponential import reciprocal_square_exponential
+    from sympy_extras.integrals.indefinite import indefinite_integral
+    x, z, a, b, d = symbols('x z a b d')
+    F = reciprocal_square_exponential(exp(-x**2 - 1 / x**2), x)
+    assert F == sqrt(pi) * (exp(-2) * erf(x - 1 / x) + exp(2) * erf(x + 1 / x)) / 4
+    F = reciprocal_square_exponential(exp(a * z**2 + b / z**2), z)
+    assert F is not None and simplify(diff(F, z) - exp(a * z**2 + b / z**2)) == 0
+    assert indefinite_integral(d**(a * z**2 + b / z**2), z).has(erf)

@@ -504,7 +504,15 @@ the elementary, `Ei` and error-function cases reduced to; polynomials
 times `exp(a*x**2 + b*x + c)` by the completed square; `(a*x + b)**w*exp(c*x + d)`
 by the shift `t = a*x + b` (`exp(c*x)/(a*x + b)**k` is the exponential
 integral `E_k`); rational functions and binomials of an exponential by
-`u = exp(c*x)`. Before SymPy's routes the typed methods are tried
+`u = exp(c*x)`; a nested power `(x**r)**p` in the exponent or the
+prefactor (`exp(a*(x**r)**p)`, `exp(a*x)/sqrt(x**3)`) with the nested
+power kept, `-x*V*u**(-s)*uppergamma(s, u)/d` for `u = -a*W`, `d` the
+formal degree of `W` and `s = (q + 1)/d` for that of the prefactor `V`, an
+identity everywhere where `x**(r*p)` holds on the positive axis only; a
+rational function times `exp(c*x)` through `exp(c*r)*Ei(c*(x - r))` at
+the simple roots `r` of its denominator, symbolic ones too; and
+`exp(alpha*x**2 + beta/x**2)` through the pair `erf(A*x +- B/x)`. Before
+SymPy's routes the typed methods are tried
 again on the canonical forms of the integrand and on the integrands of
 its substitutions (`sympy_extras.integrals.rewriting`): a power of a
 base not known non-positive as an exponential (a real base is positive
