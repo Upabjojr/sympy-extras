@@ -25,6 +25,15 @@ remove public functions. Breaking changes are listed here when they happen.
   antiderivative of `x*Shi(x)` at `oo` is `-oo`, where the function
   grows like `x*exp(x)/4`).
 
+- `sympy_extras.integrals.definite`: a sum over `(0, oo)` whose terms
+  diverge separately is integrated term by term with the analytic (Riesz)
+  regularisation of the Mellin method, the cancellation of the
+  divergences confirmed numerically (`(exp(-b*t) - exp(-a*t))*exp(-s*t)/
+  (2*sqrt(pi)*t**(3/2))` is `sqrt(a + s) - sqrt(b + s)`, Maxima's `specint`
+  45); the expanded form the Mellin method reads has each term's
+  exponentials combined (the three-exponential Laplace transform of
+  `specint` 18 answered under `a > 0` and the like instead of `a + s > 0`).
+
 - `sympy_extras.integrals.dirichlet`: trigonometric sums over powers of
   `x` on the half-lines and the real line, the Dirichlet, Frullani and
   Borwein integrals. `g(x)/x**n` with `g` a sum (or a product, written as

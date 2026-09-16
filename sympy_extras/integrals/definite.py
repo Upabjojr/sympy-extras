@@ -577,7 +577,8 @@ class _Integrator:
                 return self._finish(principal_value_integral(f, x, a, b, self.assumptions))
             return None
         allowed = (free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x}
-        strategies = [self._table, self._dirichlet, self._radicals, self._canonical, self._mean_value, self._elliptic,
+        strategies = [self._table, self._dirichlet, self._radicals, self._canonical, self._regularized_termwise,
+                      self._mean_value, self._elliptic,
                       self._trigonometric, self._mapped, self._inversion, self._residues, self._contours,
                       self._algebraic]
         if a == -oo and b == oo and f.has(HyperbolicFunction):
@@ -1179,6 +1180,40 @@ class _Integrator:
             return None
         return self._finish(total)
 
+    def _regularized_termwise(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                              depth: int) -> Optional[ConditionalValue]:
+        """A sum over ``(0, oo)`` whose terms diverge separately, by the
+        analytic (Riesz) regularisation of the Mellin method on each
+        term: the value of the formula, analytic in the exponents, beyond
+        the strip where the term's own integral converges. The
+        divergences cancel in the sum when the whole converges, which the
+        numerical check must confirm: ``(exp(-b*t) - exp(-a*t))*exp(-s*t)/
+        (2*sqrt(pi)*t**(3/2))`` is ``sqrt(a + s) - sqrt(b + s)``, each term
+        alone divergent at 0 and regularised to ``gamma(-1/2)`` times a
+        power (Maxima's ``specint`` 45)."""
+        if a != 0 or b != oo:
+            return None
+        terms = [as_expr(term) for term in Add.make_args(as_expr(expand(f, power_exp=False)))]
+        if len(terms) < 2 or len(terms) > _TERMWISE_LIMIT:
+            return None
+        t = Dummy('t', positive=True)
+        total: Optional[ConditionalValue] = None
+        for term in terms:
+            found = None
+            for candidate in _forms(as_expr(term.subs(x, t)), t, self.assumptions):
+                found = mellin_integrate(candidate, t, self.assumptions, None, True)
+                if found is not None:
+                    break
+            if found is None:
+                return None
+            total = found if total is None else total.add(found)
+        if total is None or total.value.has(oo, -oo, zoo, nan):
+            return None
+        if not settings.numerical_checks or verify_numerically(total.value, f, x, a, b, self.assumptions) is not True:
+            # the cancellation of the divergences is what the check confirms
+            return None
+        return self._finish(total)
+
     def _dirichlet(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Trigonometric sums over powers of ``x`` on the half-lines and
         the real line (:mod:`.dirichlet`): the Dirichlet, Frullani and
@@ -1374,8 +1409,10 @@ def _forms(g: Expr, t: Symbol, assumptions: Assumptions) -> list[Expr]:
 
     # the exponentials kept whole: expand writes exp(-(a + s)*t) as
     # exp(-a*t)*exp(-s*t), two kernels for Parseval's formula with the
-    # condition a > 0 on each where a + s > 0 is the one
-    add(as_expr(g.expand(power_exp=False)))
+    # condition a > 0 on each where a + s > 0 is the one; and a sum of
+    # products of exponentials (the census's three-exponential Laplace
+    # transform) has each term's exponentials combined
+    add(_combined_exponentials(as_expr(g.expand(power_exp=False))))
     add(_denest(g, assumptions))
     if g.has(sin, cos):
         add(as_expr(TR8(g).expand()))

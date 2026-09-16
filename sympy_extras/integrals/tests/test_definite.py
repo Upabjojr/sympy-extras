@@ -454,3 +454,21 @@ def test_divergence_to_a_signed_infinity() -> None:
     assert definite_integral(1 / x, (x, -1, 1)).has(Integral)
     assert definite_integral(cos(x), (x, 0, oo)).has(Integral)
     assert definite_integral(sin(x) + cos(x), (x, 0, oo)).has(Integral)
+
+
+
+def test_sums_whose_terms_diverge_separately_are_regularised() -> None:
+    # Maxima's specint 45: each term is t**(-3/2) at 0, the difference is
+    # not; the Riesz regularisation of each Mellin transform gives
+    # gamma(-1/2) times a power, and the sum is checked numerically
+    f = (exp(-b * t) - exp(-a * t)) * exp(-s * t) / (2 * sqrt(pi) * sqrt(t**3))
+    assert _same(definite_integral(f, (t, 0, oo)), sqrt(a + s) - sqrt(b + s))
+    # a sum which diverges as a whole is not regularised (the check fails):
+    # it diverges to oo, which is what is reported
+    assert definite_integral((exp(-a * t) + exp(-b * t)) / t**2, (t, 0, oo)) == oo
+    # specint 18: the three exponentials, each combined with exp(-s*t) in
+    # the expanded form, under a + s > 0 and the like only
+    c = symbols('c')
+    f = ((-a + c) * exp(-b * t) + (a - b) * exp(-c * t) + (b - c) * exp(-a * t)) * exp(-s * t) / ((-a + b) * (-a + c) * (b - c))
+    value = definite_integral(f, (t, 0, oo), c + s > 0)
+    assert not value.has(Piecewise) and _same(value, 1 / ((a + s) * (b + s) * (c + s)))
