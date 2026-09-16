@@ -167,26 +167,29 @@ def test_symbolic_bases_and_exponents_are_rewritten() -> None:
 
 def test_products_of_exponentials_as_a_base_and_real_branches() -> None:
     # after z = t**2 SymPy writes exp(c*sqrt(z) + g)**v as (exp(g)*exp(c*t))**v:
-    # one exponential; and exp(acosh(z)) is z + sqrt(z**2 - 1) on acosh's
-    # real domain (SymPy's log(z + sqrt(z - 1)*sqrt(z + 1)) is real for
-    # z < -1 too, as another branch)
+    # one exponential; and exp(acosh(z)), exp(asech(z)) are algebraic in
+    # SymPy's logarithm forms, the functions' branches on the whole real line
     from sympy import acosh, asech, exp, sqrt, symbols
     from sympy_extras.integrals.rewriting import rewritten_forms
     c, d, g, t, v, z = symbols('c d g t v z')
     forms = rewritten_forms(2*t*(exp(g)*exp(c*t))**v*exp(d*t**2), t)
     assert 2*t*exp(c*t*v + d*t**2 + g*v) in forms, forms
-    assert rewritten_forms(exp(acosh(z)), z) == [z + sqrt(z**2 - 1)]
-    assert rewritten_forms(exp(asech(z)), z) == [(sqrt(1 - z**2) + 1)/z]
+    # SymPy's branch form: sqrt(z - 1)*sqrt(z + 1), which is -sqrt(z**2 - 1)
+    # for z < -1, as acosh(z) = acosh(-z) + I*pi there
+    assert rewritten_forms(exp(acosh(z)), z) == [z + sqrt(z - 1) * sqrt(z + 1)]
+    assert rewritten_forms(exp(asech(z)), z) == [sqrt(-1 + 1/z) * sqrt(1 + 1/z) + 1/z]
 
 
 def test_nested_powers_of_the_variable() -> None:
     # Maxima's rtest_integrate 12, 20, 253, 259: exp(a*(z**r)**p) is
-    # exp(a*z**(p*r)) wherever it is real on an interval (z > 0)
+    # exp(a*z**(p*r)) for z > 0, and not without the assumption (at z < 0
+    # with an even r, (z**r)**(1/r) is -z)
     from sympy import exp, symbols
     from sympy_extras.integrals.rewriting import rewritten_forms
     a, p, r, z = symbols('a p r z')
-    assert rewritten_forms(exp(a*(z**r)**p), z) == [exp(a*z**(p*r))]
-    assert rewritten_forms((z**r)**p, z) == [z**(p*r)]
+    assert rewritten_forms(exp(a*(z**r)**p), z, [z > 0]) == [exp(a*z**(p*r))]
+    assert rewritten_forms((z**r)**p, z, [z > 0]) == [z**(p*r)]
+    assert rewritten_forms(exp(a*(z**r)**p), z) == []
 
 
 def test_the_even_and_algebraic_exponential_substitutions() -> None:
@@ -208,3 +211,23 @@ def test_the_even_and_algebraic_exponential_substitutions() -> None:
     assert s.back == exp(x)
     # an even integrand, or no radical: no even substitution
     assert power_substitutions(x**2 / sqrt(1 - x**4), x) == []
+
+
+def test_identities_valid_on_the_positive_axis_only_need_the_assumption() -> None:
+    # the census's rtest_integrate 254/257/259: (z**r)**(1/r) is z for z > 0
+    # only (at z < 0 with an even r it is -z), so the nested power is not
+    # combined without z > 0; and SymPy's acosh(u) is acosh(-u) + I*pi for
+    # u < -1, where the hand form log(u + sqrt(u**2 - 1)) was acosh(-u)
+    # (rtest_integrate 182 came out with the wrong sign of the radical there)
+    from sympy import acosh, exp as exp_, log as log_
+    from sympy_extras.integrals.indefinite import verified_antiderivative
+    from sympy_extras.integrals.rewriting import _inverse_hyperbolic_to_logarithms
+    z, r, c, v = symbols('z r c v')
+    assert verified_antiderivative(exp_(c * (z**r)**(1 / r))**v, z) is None
+    found = verified_antiderivative(exp_(c * (z**r)**(1 / r))**v, z, [z > 0])
+    assert found is not None and found[0] == exp_(c * v * z) / (c * v)
+    assert verified_antiderivative(exp_(acosh(z)), z) is None
+    found = verified_antiderivative(exp_(acosh(z)), z, [z > 1])
+    assert found is not None and found[1] == 'rewriting'
+    u = symbols('u')
+    assert _inverse_hyperbolic_to_logarithms(acosh(u)) == log_(u + sqrt(u - 1) * sqrt(u + 1))

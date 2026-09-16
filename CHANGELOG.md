@@ -224,6 +224,18 @@ remove public functions. Breaking changes are listed here when they happen.
   interval, and samples the parameters again when a sample leaves it
   undecided.
 
+- `sympy_extras.integrals.rewriting` combined the nested power
+  `(z**r)**p` into `z**(r*p)` without `z > 0`, and wrote `acosh(u)` as
+  `log(u + sqrt(u**2 - 1))`, which is `acosh(-u)` for `u < -1` where the
+  function is `acosh(-u) + I*pi`: the census's `exp(c*(z**r)**(1/r))**v`
+  came out as `exp(c*v*z)/(c*v)`, wrong at `z < 0` for an even `r`, and
+  `exp(acosh(z))` with the wrong sign of the radical for `z < -1`. The
+  identity needs the assumption now, and the inverse hyperbolic functions
+  take SymPy's logarithm forms, the functions' branches on the whole real
+  line. (Both passed the check because the integrand is complex at the
+  negative test points for a generic exponent, and SymPy's assumptions
+  cannot tell `exp(acosh(z))` real for `z < -1`.)
+
 - `taylor_coefficient` took the formula of `fps` as valid from the first
   term: for `(exp(4*x) - exp(-4*x))**2` the formula holds from `k = 3`
   and gives 2 at `k = 0`, where the series has no term, so the series

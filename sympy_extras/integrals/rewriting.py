@@ -44,7 +44,7 @@ from typing import Optional
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.functions.elementary.miscellaneous import sqrt
-from sympy.functions.elementary.hyperbolic import acosh, asech
+
 from sympy.core.add import Add
 from sympy.core.function import expand
 from sympy.core.mul import Mul
@@ -184,7 +184,11 @@ def _bases_to_exponentials(f: Expr, x: Symbol, assumptions: Assumptions) -> Expr
         if not _may_be_real(exponent, assumptions):
             return node
         if isinstance(base, Pow) and base.base == x and not as_expr(base.exp).has(x) \
-                and _may_be_real(as_expr(base.exp), assumptions):
+                and _may_be_real(as_expr(base.exp), assumptions) \
+                and ask(as_boolean(x > 0), assumptions) is True:
+            # (x**r)**p is x**(r*p) for x > 0 only: at x < 0 with an even
+            # integer r, (x**r)**(1/r) is -x (the bug: the census's
+            # exp(c*(z**r)**(1/r))**v came out as exp(c*v*z)/(c*v))
             return x**(as_expr(base.exp) * exponent)
         arguments: list[Expr] = []
         rest: Expr = S.One
@@ -210,23 +214,16 @@ def _hyperbolic_to_exponentials(f: Expr) -> Expr:
 
 
 def _inverse_hyperbolic_to_logarithms(f: Expr) -> Expr:
-    """The inverse hyperbolic functions as logarithms of their real
-    branches: SymPy's ``acosh(u)`` is ``log(u + sqrt(u - 1)*sqrt(u + 1))``,
-    a form which is real for ``u < -1`` too, where it is not the function's
-    branch; on the real domain ``u >= 1`` the product is ``sqrt(u**2 - 1)``,
-    and ``asech(u)`` on ``0 < u <= 1`` is ``log((1 + sqrt(1 - u**2))/u)``."""
+    """The inverse hyperbolic functions as logarithms, in SymPy's forms,
+    which are the functions' branches on the whole real line: ``acosh(u)``
+    is ``log(u + sqrt(u - 1)*sqrt(u + 1))``, which for ``u < -1`` is
+    ``acosh(-u) + I*pi`` as the function is (the bug: the hand form
+    ``log(u + sqrt(u**2 - 1))`` is ``acosh(-u)`` there, and the integral of
+    ``exp(acosh(z))`` came out with the wrong sign of the radical for
+    ``z < -1``)."""
     if not f.has(InverseHyperbolicFunction):
         return f
-    def real_branch(node: Basic) -> Basic:
-        if isinstance(node, acosh):
-            u = as_expr(node.args[0])
-            return log(u + sqrt(u**2 - 1))
-        if isinstance(node, asech):
-            u = as_expr(node.args[0])
-            return log((1 + sqrt(1 - u**2)) / u)
-        return node
-    branches = as_expr(f.replace(lambda n: isinstance(n, (acosh, asech)), real_branch))
-    return as_expr(branches.rewrite(log))
+    return as_expr(f.rewrite(log))
 
 
 def _combined_exponentials(f: Expr) -> Expr:
