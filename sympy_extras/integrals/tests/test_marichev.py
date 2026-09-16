@@ -255,3 +255,16 @@ def test_the_logarithmic_case_takes_the_expansion_before_the_limit() -> None:
     # Maxima's specint 118, Mathematica: log(s)/(s - a)
     found = definite_integral((log(a) + expint(1, a * t)) * exp(a * t) * exp(-s * t), (t, 0, oo), s > a)
     assert simplify(found - log(s) / (s - a)) == 0
+
+
+def test_the_order_derivative_of_a_bessel_function_at_zero_is_the_k_function() -> None:
+    # the limit of the logarithmic case leaves d/dnu I_nu(z) at nu = 0,
+    # which is -K_0(z): exp(-k**2/(4*t))*exp(-s*t)/(2*t) over (0, oo) is
+    # besselk(0, k*sqrt(s)) (Maxima's specint 138)
+    from sympy import Subs, Derivative, besseli, besselk, Dummy
+    from sympy_extras.integrals import definite_integral
+    from sympy_extras.integrals.marichev import bessel_k_forms
+    nu, z = Dummy('nu'), symbols('z', positive=True)
+    assert bessel_k_forms(-2 * Subs(Derivative(besseli(nu, z), nu), nu, 0)) == 2 * besselk(0, z)
+    k, s, t = symbols('k s t', positive=True)
+    assert definite_integral(exp(-k**2 / (4 * t)) * exp(-s * t) / (2 * t), (t, 0, oo)) == besselk(0, k * sqrt(s))

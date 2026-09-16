@@ -63,11 +63,14 @@ from sympy.calculus.singularities import singularities
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
 from sympy.core.function import Function, expand
-from sympy.core.numbers import Integer, Rational, nan, oo, zoo
+from sympy.core.numbers import Integer, Rational, nan, oo, pi, zoo
 from sympy.core.relational import Relational
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.exponential import exp, log
+from sympy.functions.elementary.miscellaneous import sqrt
+from sympy.functions.special.error_functions import erf
+from sympy.simplify.powsimp import powsimp
 from sympy.functions.elementary.hyperbolic import sinh, cosh
 from sympy.functions.elementary.trigonometric import atan, acot, sin, cos
 from sympy.polys.polytools import cancel, degree
@@ -139,6 +142,9 @@ def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bo
     found = _logarithm_by_parts(f, x)
     if found is not None:
         return found
+    found = _error_function_by_parts(f, x)
+    if found is not None:
+        return found
     # the exact typed methods of indefinite integration in their order
     # (the tables, the trigonometric integrator, the Risch port, Trager's
     # algorithm, SymPy's integrate last), every candidate checked by
@@ -185,7 +191,12 @@ def quick_shape(f: Expr, x: Symbol) -> bool:
     """Whether ``f`` is of a shape the antiderivative comes at once for: a
     polynomial in ``x`` and in elementary functions of linear arguments,
     or such a polynomial with exponentials times ``log(x)``."""
-    return _elementary_polynomial(f, x) or by_parts_shape(f, x)
+    return _elementary_polynomial(f, x) or by_parts_shape(f, x) or _error_function_shape(f, x)
+
+
+def _error_function_shape(f: Expr, x: Symbol) -> bool:
+    errors = [as_expr(factor) for factor in Mul.make_args(f) if isinstance(factor, erf)]
+    return len(errors) == 1 and _elementary_polynomial(as_expr(f / errors[0]), x)
 
 
 def by_parts_shape(f: Expr, x: Symbol) -> bool:
@@ -195,6 +206,41 @@ def by_parts_shape(f: Expr, x: Symbol) -> bool:
         return False
     g = as_expr(f / log(x))
     return not g.has(log) and _elementary_polynomial(g, x) and bool(g.has(exp))
+
+
+def _error_function_by_parts(f: Expr, x: Symbol) -> Optional[Expr]:
+    """``g(x)*erf(k*x)`` for a polynomial ``g`` in ``x`` and in elementary
+    functions of linear arguments, by parts: ``G*erf(k*x) -
+    2*k/sqrt(pi)*Integral(G*exp(-k**2*x**2))``, the last integrated term
+    by term with the exponentials combined (``exp(-w**2 - w)`` completes
+    its square at once, where ``integrate`` spent a minute on
+    ``cosh(u - w)*exp(-w**2)``): ``sinh(u - w)*erf(w)`` over ``(0, u)``
+    (Maxima's ``laplace`` 57). ``None`` for another shape."""
+    errors = [as_expr(factor) for factor in Mul.make_args(f) if isinstance(factor, erf)]
+    if len(errors) != 1:
+        return None
+    argument = as_expr(errors[0].args[0])
+    k, variable = argument.as_independent(x, as_Add=False)
+    if as_expr(variable) != x or as_expr(k).has(x):
+        return None
+    g = as_expr(f / errors[0])
+    if g.has(erf) or not _elementary_polynomial(g, x):
+        return None
+    plain = Dummy(x.name)
+    g = as_expr(g.subs(x, plain))
+    budget = None if settings.timeout is None else settings.timeout / 8
+    G = attempt(lambda: as_expr(integrate(g, plain, risch=False)), budget)
+    if G is None or G.has(Integral):
+        return None
+    remainder = as_expr(expand(G.rewrite(exp) * exp(-as_expr(k)**2 * plain**2)))
+    H: Expr = S.Zero
+    for term in Add.make_args(remainder):
+        combined = as_expr(powsimp(as_expr(term), combine='exp'))
+        piece = attempt(lambda: as_expr(integrate(combined, plain, risch=False)), budget)
+        if piece is None or piece.has(Integral):
+            return None
+        H = H + piece
+    return as_expr((G * erf(as_expr(k) * plain) - 2 * as_expr(k) / sqrt(pi) * H).subs(plain, x))
 
 
 def _logarithm_by_parts(f: Expr, x: Symbol) -> Optional[Expr]:

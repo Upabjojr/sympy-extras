@@ -82,7 +82,7 @@ from sympy.functions.special.gamma_functions import polygamma, lowergamma
 from sympy.functions.special.zeta_functions import lerchphi, dirichlet_eta
 from sympy.functions.special.hyper import meijerg, hyper
 from sympy.functions.special.elliptic_integrals import elliptic_k, elliptic_e, elliptic_f, elliptic_pi
-from sympy.core.function import expand_func
+from sympy.core.function import Derivative, Subs, expand_func
 from sympy.core.power import Pow
 from sympy.core.numbers import Integer
 from sympy.functions.special.bessel import besseli, besselk
@@ -258,6 +258,17 @@ def right_half_plane_powers(value: Expr, assumptions: Assumptions = None) -> Exp
     return as_expr(value.xreplace(replacement))
 
 
+def _order_derivative_at_zero(node: Basic) -> bool:
+    """``Subs(Derivative(besseli(nu, z), nu), nu, 0)``."""
+    if not isinstance(node, Subs) or len(node.args) != 3 or node.args[2] != (S.Zero,):
+        return False
+    derivative = node.args[0]
+    if not isinstance(derivative, Derivative) or not isinstance(derivative.expr, besseli):
+        return False
+    variables = derivative.variables
+    return len(variables) == 1 and variables[0] == derivative.expr.args[0] and node.args[1] == (variables[0],)
+
+
 def bessel_k_forms(value: Expr) -> Expr:
     """``besseli(-n, z)`` written as ``besseli(n, z) + 2*sin(pi*n)*besselk(n, z)/pi``
     where ``besseli(n, z)`` occurs too (the definition of the modified
@@ -273,6 +284,10 @@ def bessel_k_forms(value: Expr) -> Expr:
     >>> bessel_k_forms(pi*(besseli(-n, z) - besseli(n, z))/sin(pi*n))
     2*besselk(n, z)
     """
+    # the derivative in the order at 0, which the limit of the logarithmic
+    # case of Slater's theorem leaves: d/dnu I_nu(z) at nu = 0 is -K_0(z)
+    # (DLMF 10.38.6); exp(-k**2/(4*t) - s*t)/t over (0, oo) is 2*K_0(k*sqrt(s))
+    value = as_expr(value.replace(_order_derivative_at_zero, lambda node: -besselk(0, as_expr(node.args[0].args[0].args[1]))))
     orders = {(as_expr(node.args[0]), as_expr(node.args[1])) for node in value.atoms(besseli)}
     replacement: dict[Expr, Expr] = {}
     for order, argument in orders:

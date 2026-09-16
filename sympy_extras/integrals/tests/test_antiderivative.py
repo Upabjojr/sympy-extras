@@ -150,3 +150,17 @@ def test_a_logarithm_times_a_polynomial_exponential_by_parts() -> None:
     F = antiderivative(x**3 * exp(-x) * log(x), x)
     assert F is not None and F.has(Ei) and time.monotonic() - started < 5
     assert abs((F.diff(x) - x**3 * exp(-x) * log(x)).subs(x, Rational(3, 2)).evalf(20)) < 1e-15
+
+
+def test_the_error_function_times_a_polynomial_exponential_by_parts() -> None:
+    # sinh(u - w)*erf(w) over (0, u) (Maxima's laplace 57): G*erf(w) minus
+    # the Gaussian remainder, term by term with the exponentials combined
+    from sympy import sinh, erf, Rational, Integral
+    from sympy_extras.integrals import verify_numerically
+    u, w = symbols('u w', positive=True)
+    F = antiderivative(sinh(u - w) * erf(w), w)
+    assert F is not None
+    assert abs((F.diff(w) - sinh(u - w) * erf(w)).subs({u: Rational(13, 10), w: Rational(3, 7)}).evalf(20)) < 1e-15
+    from sympy_extras.integrals import definite_integral
+    value = definite_integral(sinh(u - w) * erf(w), (w, 0, u))
+    assert not value.has(Integral) and verify_numerically(value, sinh(u - w) * erf(w), w, S.Zero, u) is True

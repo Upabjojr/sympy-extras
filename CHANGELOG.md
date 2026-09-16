@@ -135,6 +135,33 @@ remove public functions. Breaking changes are listed here when they happen.
   of `log(x)` of the integrand (the derivatives of the transform), which
   it dropped.
 
+- `sympy_extras.integrals.definite`: the Euler-constant integrals. A sum
+  over `(0, oo)` whose terms' Mellin transforms have poles at `s = 1`
+  (`exp(-u)/u` is `gamma(s - 1)`, `1/(exp(u) - 1)` is `gamma(s)*zeta(s)`)
+  is the limit at 1 of the transforms summed, with `zeta` expanded about
+  1 through the Stieltjes constants (SymPy has no series for it there):
+  `1/(exp(x) - 1) - exp(-x)/x` over `(0, oo)` is `EulerGamma`. An
+  integrand over `(0, 1)` with `log(x)` inside a function or a
+  denominator goes through `x = exp(-u)`: Wester's problem 30,
+  `-log(log(1/t)) + 1/log(t) + 1/(1 - t)` over `(0, 1)`, is `2*EulerGamma`.
+  `atan(u) + atan(1/u)` is `pi/2` where `u` is positive on the range
+  (Maxima's `rtestint` 75). The hyperbolic functions and exponentials of
+  a parameter of a rational function are made a positive symbol for the
+  residues: `1/(x**4 + 2*x**2*cosh(2*a) + 1)` over `(0, oo)` is
+  `pi/(4*cosh(a))` for a real `a` (HOL-Py's partialFraction 1).
+
+- `sympy_extras.integrals.marichev`: the derivative in the order of a
+  modified Bessel function at 0, which the limit of the logarithmic case
+  of Slater's theorem leaves, is written `-besselk(0, z)` (DLMF 10.38.6):
+  `exp(-k**2/(4*t))*exp(-s*t)/(2*t)` over `(0, oo)` is `besselk(0, k*sqrt(s))`
+  (Maxima's `specint` 138).
+
+- `sympy_extras.integrals.antiderivative`: a polynomial in elementary
+  functions of linear arguments times `erf(k*x)` by parts, the Gaussian
+  remainder integrated term by term with the exponentials combined
+  (`integrate` spent a minute on `cosh(u - w)*exp(-w**2)` and gave up):
+  `sinh(u - w)*erf(w)` over `(0, u)` (Maxima's `laplace` 57).
+
 - `sympy_extras.integrals.definite`: the antiderivative route early for
   the shapes it answers at once (a polynomial in elementary functions of
   linear arguments over a finite range, a polynomial in exponentials

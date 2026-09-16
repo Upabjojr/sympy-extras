@@ -102,14 +102,16 @@ from sympy.functions.elementary.exponential import exp, log
 from sympy.functions.elementary.integers import ceiling, floor, frac
 from sympy.functions.elementary.miscellaneous import Max, Min, sqrt
 from sympy.functions.elementary.piecewise import Piecewise, piecewise_fold
-from sympy.functions.elementary.trigonometric import (TrigonometricFunction, asin, sin, cos, tan, cot, sec,
+from sympy.functions.elementary.trigonometric import (TrigonometricFunction, asin, atan, sin, cos, tan, cot, sec,
                                                       csc)
 from sympy.functions.elementary.hyperbolic import HyperbolicFunction, InverseHyperbolicFunction
 from sympy.functions.special.hyper import hyper
 from sympy.functions.special.gamma_functions import gamma
+from sympy.functions.special.zeta_functions import stieltjes, zeta
+from sympy.functions.combinatorial.factorials import factorial
 from sympy.functions.special.polynomials import OrthogonalPolynomial, hermite, laguerre
 from sympy.core.exprtools import factor_terms
-from sympy.core.function import PoleError, count_ops, expand, expand_func, expand_log, expand_trig
+from sympy.core.function import Function, PoleError, count_ops, expand, expand_func, expand_log, expand_trig
 from sympy.simplify.fu import TR8, TR9
 from sympy.simplify.trigsimp import trigsimp
 from sympy.functions.special.delta_functions import Heaviside, DiracDelta
@@ -117,7 +119,7 @@ from sympy.integrals.integrals import Integral, integrate
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, cancel, degree, factor
 from sympy.polys.rationaltools import together
-from sympy.series.limits import limit
+from sympy.series.limits import Limit, limit
 from sympy.logic.boolalg import And, Boolean, true
 from sympy.sets.sets import FiniteSet, Interval, Set
 from sympy.simplify.powsimp import powdenest
@@ -132,7 +134,7 @@ from sympy_extras.assumptions.solve import solve
 from sympy_extras.settings import settings
 from .conditions import ConditionalValue, _items, decide, sample_values
 from .marichev import mellin_integrate, tidy
-from .mellin import monomial
+from .mellin import mellin_transform, monomial
 
 __all__ = ['definite_integral', 'conditional_integral', 'verify_numerically', 'Limits']
 
@@ -581,6 +583,7 @@ class _Integrator:
             return self._sympy(f, x, a, b)
         f = _combined_exponentials(f, x)
         f = _sums_to_products(f, x)
+        f = self._arctangent_pairs(f, x, a, b)
         # constants out, the common factors of sums pulled first
         # (log(t + 1)/(a**2*t**2 + a**2) is log(t + 1)/(t**2 + 1) over a**2)
         constant, rest = as_expr(factor_terms(f)).as_independent(x, as_Add=False)
@@ -624,6 +627,7 @@ class _Integrator:
                       self._quick_antiderivative, self._canonical,
                       self._regularized_termwise,
                       self._mean_value, self._elliptic, self._trigonometric]
+        strategies += [self._logarithmic_substitution, self._parameter_exponentials]
         if not mapped and depth == 0:
             # the substitutions on the integral as given only: inside a
             # mapped range, or on a term of a sum, they would be tried again
@@ -1181,6 +1185,43 @@ class _Integrator:
         # which another route has in a second)
         return self._under_budget(lambda: self._antiderivative(f, x, a, b, depth), 4)
 
+    def _arctangent_pairs(self, f: Expr, x: Symbol, a: Expr, b: Expr) -> Expr:
+        """``atan(u) + atan(1/u)`` written ``pi/2`` where ``u`` is positive
+        on the range (``-pi/2`` where negative): ``(atan(x**(1/3)) +
+        atan(x**(-1/3)))*log(x)/(x**2 + 1)`` over ``(0, oo)`` is
+        ``pi/2*log(x)/(x**2 + 1)``, which is 0 (Maxima's ``rtestint`` 75)."""
+        if not f.has(atan):
+            return f
+        sign_: Optional[int] = None
+        if self.ask(as_boolean(a >= 0)) is True:
+            sign_ = 1
+        elif self.ask(as_boolean(b <= 0)) is True:
+            sign_ = -1
+        if sign_ is None:
+            return f
+        signed = Dummy(x.name, positive=True)
+
+        def pairs(node: Basic) -> Basic:
+            terms = [as_expr(term) for term in node.args]
+            for i, first in enumerate(terms):
+                if not isinstance(first, atan) or not first.has(x):
+                    continue
+                u = as_expr(first.args[0])
+                for j, second in enumerate(terms):
+                    if j <= i or not isinstance(second, atan):
+                        continue
+                    v = as_expr(second.args[0])
+                    if as_expr(cancel(u * v - 1)) != 0:
+                        continue
+                    positive = as_expr(u.subs(x, sign_ * signed)).is_positive
+                    if positive is None:
+                        continue
+                    rest = [term for k, term in enumerate(terms) if k not in (i, j)]
+                    return Add(*rest, pi / 2 if positive else -pi / 2)
+            return node
+
+        return as_expr(f.replace(lambda node: isinstance(node, Add) and node.has(atan), pairs))
+
     def _quick_antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr,
                               depth: int) -> Optional[ConditionalValue]:
         """The antiderivative route early, for the shapes it answers at
@@ -1550,14 +1591,117 @@ class _Integrator:
                 if found is not None:
                     break
             if found is None:
-                return None
+                total = None
+                break
             total = found if total is None else total.add(found)
+        at_one = False
         if total is None or total.value.has(oo, -oo, zoo, nan):
+            # a term whose transform has a pole at s = 1 (exp(-u)/u is
+            # gamma(s - 1), 1/(exp(u) - 1) is gamma(s)*zeta(s)): the
+            # transforms summed as functions of s, whose poles cancel, and
+            # the limit at 1, with zeta expanded about 1 (SymPy has no
+            # series for it there): the Euler-constant integrals
+            total = self._transforms_at_one(terms, x, t)
+            if total is None:
+                return None
+            at_one = True
+        if not settings.numerical_checks:
             return None
-        if not settings.numerical_checks or verify_numerically(total.value, f, x, a, b, self.assumptions) is not True:
-            # the cancellation of the divergences is what the check confirms
+        verdict = verify_numerically(total.value, f, x, a, b, self.assumptions)
+        if verdict is not True and not (at_one and verdict is None):
+            # the cancellation of the divergences is what the check
+            # confirms; the cancelled poles of the transforms confirm it
+            # exactly where the quadrature of the sum is inconclusive
+            # (-1/u + 1/(1 - exp(-u)) near 0)
             return None
         return self._finish(total)
+
+    def _transforms_at_one(self, terms: Sequence[Expr], x: Symbol, t: Symbol) -> Optional[ConditionalValue]:
+        """The limit at ``s = 1`` of the sum of the Mellin transforms of the
+        ``terms`` (the integral over ``(0, oo)`` of the sum, where each term
+        alone diverges), ``None`` when a transform is missing or the limit
+        is not finite."""
+        s = Dummy('s')
+        summed: Expr = S.Zero
+        condition: Boolean = true
+        for term in terms:
+            transform = None
+            for candidate in _forms(as_expr(term.subs(x, t)), t, self.assumptions):
+                transform = mellin_transform(candidate, t, s)
+                if transform is not None:
+                    break
+            if transform is None:
+                return None
+            summed = summed + transform.transform
+            condition = as_boolean(And(condition, transform.condition))
+        expanded = _zeta_about_one(summed, s)
+        budget = None if settings.timeout is None else settings.timeout / 4
+        value = attempt(lambda: as_expr(limit(expanded, s, 1)), budget)
+        if value is None or value.has(oo, -oo, zoo, nan, Limit) or value.has(s):
+            return None
+        return ConditionalValue(value, condition)
+
+    def _logarithmic_substitution(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                                  depth: int) -> Optional[ConditionalValue]:
+        """``x = exp(-u)`` for an integrand over ``(0, 1)`` with ``log(x)``
+        inside a function or a denominator: ``-log(log(1/x)) + 1/log(x) +
+        1/(1 - x)`` becomes ``(-log(u) - 1/u + 1/(1 - exp(-u)))*exp(-u)``
+        over ``(0, oo)``, a sum of Euler-constant integrals (Wester's
+        problem 30, ``2*EulerGamma``)."""
+        if a != 0 or b != 1 or not _logarithm_inside(f, x):
+            return None
+        u = Dummy('u', positive=True)
+        g = as_expr(expand_log(f.subs(x, exp(-u)) * exp(-u), force=True))
+        found = self._under_budget(lambda: self.integrate(g, u, S.Zero, oo, depth + 1, False, True))
+        if found is None:
+            return None
+        if settings.numerical_checks and verify_numerically(found.value, f, x, a, b, self.assumptions) is False:
+            # checked on the form as given, whose quadrature is the sounder
+            return None
+        return found
+
+    def _parameter_exponentials(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                                depth: int) -> Optional[ConditionalValue]:
+        """The exponentials (and hyperbolic functions) of the parameters
+        of a rational function of ``x`` made a positive symbol ``y``:
+        ``1/(x**4 + 2*x**2*cosh(2*a) + 1)`` is ``1/((x**2 + y)*(x**2 + 1/y))``
+        for ``y = exp(2*a)``, whose integral over ``(0, oo)`` the residues
+        give as ``pi*sqrt(y)/(2*(y + 1))``; the parameters must be real."""
+        # the hyperbolic functions of the parameters only (rewrite(exp)
+        # on the whole would write x**4 as exp(4*log(x)))
+        g = as_expr(f.replace(lambda node: isinstance(node, HyperbolicFunction) and not node.has(x),
+                              lambda node: node.rewrite(exp)))
+        exponentials = [node for node in g.atoms(exp) if not node.has(x)]
+        if not exponentials or not g.is_rational_function(x):
+            return None
+        arguments = [as_expr(node.args[0]) for node in exponentials]
+        parameters = sorted_symbols(set().union(*[free_symbols(arg) for arg in arguments]))
+        if len(parameters) != 1:
+            return None
+        p = parameters[0]
+        coefficients: list[Rational] = []
+        for arg in arguments:
+            c = as_expr(arg / p)
+            if c.has(p) or not isinstance(c, Rational):
+                return None
+            coefficients.append(c)
+        # y = exp(g*p) for the generator g of the coefficients
+        numerator = 0
+        denominator = 1
+        for c in coefficients:
+            numerator = gcd(numerator, int(c.p))
+            denominator = lcm(denominator, int(c.q))
+        generator = Rational(numerator, denominator)
+        y = Dummy('y', positive=True)
+        h = as_expr(g.xreplace({node: y**as_expr(c / generator) for node, c in zip(exponentials, coefficients)}))
+        if h.has(p):
+            return None
+        found = self._under_budget(lambda: self.integrate(h, x, a, b, depth + 1, False, True))
+        if found is None:
+            return None
+        real = self.ask(element(p, S.Reals))
+        condition = as_boolean(And(found.condition, true if real else element(p, S.Reals)))
+        return ConditionalValue(as_expr(found.value.subs(y, exp(generator * p))), condition)
 
     def _dirichlet(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Trigonometric sums over powers of ``x`` on the half-lines and
@@ -1790,6 +1934,9 @@ def _forms(g: Expr, t: Symbol, assumptions: Assumptions) -> list[Expr]:
         add(as_expr(TR8(g).expand()))
     if g.has(HyperbolicFunction):
         add(as_expr(g.rewrite(exp).expand()))
+    if g.has(exp):
+        # exp(-u)/(1 - exp(-u)) is 1/(exp(u) - 1), a kernel of the table
+        add(as_expr(cancel(g)))
     if g.has(InverseHyperbolicFunction):
         rewritten = as_expr(g.rewrite(log).expand())
         add(rewritten)
@@ -1837,6 +1984,30 @@ def _simplest_root(e: Expr) -> Expr:
     if difference.is_Float and abs(float(difference)) < 1e-45:
         return candidate
     return e
+
+
+def _logarithm_inside(f: Expr, x: Symbol) -> bool:
+    """Whether ``log(x)`` (or ``log(1/x)``) sits inside another function
+    or a denominator of ``f``: ``log(log(1/x))``, ``1/log(x)`` (not
+    ``log(1 + x)``, nor ``log(x)**2``, which the Mellin method reads)."""
+    logarithms = (log(x), log(1 / x))
+    for node in f.atoms(Function):
+        if any(node.has(item) for item in logarithms) and node not in logarithms:
+            return True
+    for node in f.atoms(Pow):
+        exponent = as_expr(node.exp)
+        if as_expr(node.base) in logarithms and (exponent.is_negative or exponent.is_Integer is False):
+            return True
+    return False
+
+
+def _zeta_about_one(e: Expr, s: Symbol) -> Expr:
+    """``zeta(s)`` in ``e`` replaced by its Laurent expansion about 1,
+    ``1/(s - 1) + sum((-1)**n*stieltjes(n)*(s - 1)**n/n!, n >= 0)`` to the
+    second order (SymPy has no series for ``zeta`` at 1): enough for a
+    limit at 1 where a simple pole cancels."""
+    expansion = 1 / (s - 1) + sum(((-1)**n * stieltjes(n) * (s - 1)**n / factorial(n) for n in range(3)), S.Zero)
+    return as_expr(e.replace(lambda node: isinstance(node, zeta) and node.args == (s,), lambda node: expansion))
 
 
 def _finite_at(f: Expr, x: Symbol, point: Expr) -> bool:

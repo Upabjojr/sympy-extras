@@ -265,6 +265,18 @@ The driver tries, after the Mellin method and the residues:
   and Weierstrass's `t = tan(k*x/2)` inside `(-pi, pi)/k`, when the
   integrand becomes algebraic in `t` (`sqrt(tan(x))` over `(0, pi/2)`,
   `sqrt(tan(x) + sec(x))*sec(x)` over `(0, pi/4)`).
+- **Euler-constant integrals**: a sum over `(0, oo)` whose terms diverge
+  separately is integrated term by term with the Riesz regularisation of
+  the Mellin method, or, where a term's transform has a pole at `s = 1`
+  (`exp(-u)/u`, `1/(exp(u) - 1)`), as the limit at 1 of the transforms
+  summed, `zeta` expanded about 1 through the Stieltjes constants:
+  `1/(exp(x) - 1) - exp(-x)/x` over `(0, oo)` is `EulerGamma`; an integrand
+  over `(0, 1)` with `log(x)` inside a function goes through `x = exp(-u)`
+  first (Wester's `-log(log(1/t)) + 1/log(t) + 1/(1 - t)` is `2*EulerGamma`).
+  The hyperbolic functions of a parameter of a rational function are made
+  a positive symbol for the residues (`1/(x**4 + 2*x**2*cosh(2*a) + 1)`
+  over `(0, oo)` is `pi/(4*cosh(a))`), and `atan(u) + atan(1/u)` is `pi/2`
+  where `u` is positive on the range.
 - **Algebraic integrands of genus zero** (`sympy_extras.integrals.algebraic`):
   Euler's substitutions for `R(x, sqrt(a*x**2 + b*x + c))`, `t**n = M(x)`
   for roots of a Möbius function, and Chebyshev's three integrable cases
@@ -309,9 +321,9 @@ The driver tries, after the Mellin method and the residues:
   Euler substitutions for a rational function of `x` and `sqrt(Q)` of
   another shape; SymPy's `integrate` at once for a polynomial in
   elementary functions of linear arguments, and by parts for such a
-  polynomial times `log(x)`), under the assumptions and an eighth of the
-  time limit; its logarithms of real arguments are taken of the absolute
-  values before the limits.
+  polynomial times `log(x)` or `erf(k*x)`), under the assumptions and an
+  eighth of the time limit; its logarithms of real arguments are taken of
+  the absolute values before the limits.
 
 - **Ramanujan's master theorem and the method of brackets**
   (`sympy_extras.integrals.brackets`): for a factor outside the Mellin

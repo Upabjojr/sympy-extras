@@ -648,3 +648,20 @@ def test_fresnel_type_integrals_and_ahmeds_integral() -> None:
     assert _same(definite_integral(exp(-I * x**2), (x, 0, oo)), sqrt(pi) * exp(-I * pi / 4) / 2)
     assert _same(definite_integral(exp(-I * x**3), (x, 0, oo)), gamma(Rational(4, 3)) * exp(-I * pi / 6))
     assert definite_integral(atan(sqrt(x**2 + 2)) / ((x**2 + 1) * sqrt(x**2 + 2)), (x, 0, 1)) == 5 * pi**2 / 96
+
+
+def test_the_last_gaps_of_the_census() -> None:
+    # atan(u) + atan(1/u) is pi/2 for u > 0 (Maxima's rtestint 75)
+    assert definite_integral((atan(x**Rational(-1, 3)) + atan(x**Rational(1, 3))) * log(x) / (x**2 + 1),
+                             (x, 0, oo)) == 0
+    # the parameter's cosh as an exponential made a positive symbol, the
+    # rational function integrated by residues (HOL-Py's partialFraction 1)
+    assert _same(definite_integral(1 / (x**4 + 2 * x**2 * cosh(2 * a) + 1), (x, 0, oo)), pi / (4 * cosh(a)))
+    plain = symbols('c')
+    value = definite_integral(1 / (x**4 + 2 * x**2 * cosh(2 * plain) + 1), (x, 0, oo))
+    assert isinstance(value, Piecewise) and value.args[0].args[1] == element(plain, S.Reals)
+    # Wester's problem 30: the Euler-constant integrals, x = exp(-u) and the
+    # transforms summed with zeta expanded about 1
+    assert definite_integral(-log(log(1 / t)) + 1 / log(t) + 1 / (1 - t), (t, 0, 1)) == 2 * EulerGamma
+    assert definite_integral(1 / (exp(x) - 1) - exp(-x) / x, (x, 0, oo)) == EulerGamma
+    assert definite_integral(1 / (exp(x) - 1) + exp(-x) / x, (x, 0, oo)) == oo
