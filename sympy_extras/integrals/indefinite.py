@@ -25,10 +25,12 @@ The order of the methods:
    and inverse functions (:mod:`.trigonometric`);
 5. the transcendental Risch algorithm (:mod:`.risch`), which also proves
    non-elementarity;
-6. the heuristic Risch integrator (:mod:`.heurisch`, then SymPy's);
-7. Trager's algorithm for one square root of a polynomial (:mod:`.trager`);
-8. the methods above again on the canonical forms of the integrand and
-   on the integrands of its substitutions (:mod:`.rewriting`);
+6. the methods above again on the canonical forms of the integrand and
+   on the integrands of its substitutions (:mod:`.rewriting`), before
+   the heuristics: `x = t**3` makes an integrand in `x**(1/3)`, `exp(x)`
+   and `log(x)` a tower the Risch algorithm settles at once;
+7. the heuristic Risch integrator (:mod:`.heurisch`, then SymPy's);
+8. Trager's algorithm for one square root of a polynomial (:mod:`.trager`);
 9. SymPy's rule-based ``manualintegrate``, its Meijer G-function route
    and its ``integrate``.
 
@@ -420,7 +422,7 @@ def _sympy(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
 METHODS: list[tuple[str, Method]] = [
     ('rational', _rational), ('radicals', _radicals), ('exponential', _exponential), ('trigonometric', _trigonometric),
     ('risch', _risch),
-    ('heurisch', _heurisch), ('trager', _trager), ('rewriting', _rewriting), ('manual', _manual), ('meijer', _meijer),
+    ('rewriting', _rewriting), ('heurisch', _heurisch), ('trager', _trager), ('manual', _manual), ('meijer', _meijer),
     ('sympy', _sympy)]
 
 

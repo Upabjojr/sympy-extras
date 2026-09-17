@@ -188,8 +188,9 @@ def test_rational_functions_times_an_exponential_by_the_exponential_integral() -
     F = rational_exponential(exp(c * z) / (a * z**2 + b), z)
     assert F is not None and F.has(Ei) and simplify(diff(F, z) - exp(c * z) / (a * z**2 + b)) == 0
     assert rational_exponential(exp(c * z) / (z**2 - 1), z) == exp(c) * Ei(c * (z - 1)) / 2 - exp(-c) * Ei(c * (z + 1)) / 2
-    # a repeated root is not handled here
-    assert rational_exponential(exp(z) / (z - 1)**2, z) is None
+    # a repeated root by the by-parts reduction
+    from sympy import E
+    assert rational_exponential(exp(z) / (z - 1)**2, z) == E * Ei(z - 1) - exp(z) / (z - 1)
 
 
 def test_exponentials_of_a_square_and_its_reciprocal_by_the_error_function() -> None:
@@ -204,3 +205,42 @@ def test_exponentials_of_a_square_and_its_reciprocal_by_the_error_function() -> 
     F = reciprocal_square_exponential(exp(a * z**2 + b / z**2), z)
     assert F is not None and simplify(diff(F, z) - exp(a * z**2 + b / z**2)) == 0
     assert indefinite_integral(d**(a * z**2 + b / z**2), z).has(erf)
+
+
+def test_repeated_roots_in_the_exponential_integral_route() -> None:
+    # Maxima's rtest_integrate 127, 128, 131, 132 (Mathematica gives the
+    # same Ei forms): the Laurent coefficients at a repeated symbolic root
+    # and the by-parts reduction of exp(c*x)/(x - r)**k
+    from sympy import diff, simplify, E
+    from sympy_extras.integrals.exponential import rational_exponential
+    z, a, b, c = symbols('z a b c')
+    assert rational_exponential(exp(z) / (z - 1)**2, z) == E * Ei(z - 1) - exp(z) / (z - 1)
+    F = rational_exponential(exp(c * z) / (a * z**2 + b)**2, z)
+    assert F is not None and F.has(Ei) and simplify(diff(F, z) - exp(c * z) / (a * z**2 + b)**2) == 0
+
+
+def test_the_error_function_of_a_composite_argument() -> None:
+    # FriCAS's integ 121 and 132 (Mathematica: erfi(x + 1/x) and
+    # erfi(1 + x + log(x)**2), both times sqrt(pi)/2): the square read off
+    # the exponent by factoring, with the constant kept in it
+    from sympy import erfi, log, diff, simplify
+    from sympy_extras.integrals.exponential import composite_gaussian
+    x = symbols('x')
+    assert composite_gaussian((1 - 1 / x**2) * exp(-(x + 1 / x)**2), x) == sqrt(pi) * erf((x**2 + 1) / x) / 2
+    F = composite_gaussian((x**2 - 1) * exp((x**4 + 2 * x**2 + 1) / x**2) / x**2, x)
+    assert F == sqrt(pi) * erfi((x**2 + 1) / x) / 2
+    f = (x + 2 * log(x)) * exp(x**2 + 2 * x + (2 * x + 2) * log(x)**2 + log(x)**4 + 1) / x
+    F = composite_gaussian(f, x)
+    assert F == sqrt(pi) * erfi(x + log(x)**2 + 1) / 2 and simplify(diff(F, x) - f) == 0
+    # exp((x + 1/x)**2)/x**2 has no g' factor: with h = x - 1/x, whose
+    # square is g**2 - 4, it is a pair of error functions (FriCAS's integ
+    # 122; Mathematica gives the same pair)
+    F = composite_gaussian(exp((x + 1 / x)**2) / x**2, x)
+    assert F == -sqrt(pi) * erfi((x**2 + 1) / x) / 4 + sqrt(pi) * exp(4) * erfi(x - 1 / x) / 4
+    # a sum with a plain monomial, and the logarithmic substitution with
+    # powers of x (FriCAS's integ 200, 127, 128)
+    from sympy_extras.integrals.indefinite import verified_antiderivative
+    found = verified_antiderivative((1 - exp(-x**2))**2 / x**3, x)
+    assert found is not None and found[1] == 'exponential' and found[0].has(Ei)
+    found = verified_antiderivative(exp(-log(x)**2 - 1) / x**3, x)
+    assert found is not None and found[0] == sqrt(pi) * erf(log(x) + 1) / 2

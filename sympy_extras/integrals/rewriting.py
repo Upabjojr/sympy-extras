@@ -501,9 +501,24 @@ def _logarithmic_substitution(f: Expr, x: Symbol) -> Optional[Substitution]:
     if g is None or g.has(log):
         return None
     L = Dummy('L')
-    if not as_expr(f.subs(log(x), L)).is_rational_function(L):
+    if not as_expr(f.subs(log(x), L)).is_rational_function(L) and not _exponential_polynomial(g, t):
+        # exp(-log(x)**2 - 1)/x**3 is exp(-t**2 - 2*t - 1): a rational function
+        # of t and of exponentials of polynomials in t
         return None
     return Substitution(g, t, as_expr(log(x)), as_expr(exp(t)))
+
+
+def _exponential_polynomial(g: Expr, t: Symbol) -> bool:
+    """Whether ``g`` is a rational function of ``t`` and of exponentials of
+    polynomials in ``t``."""
+    replacement: dict[Expr, Expr] = {}
+    for node in g.atoms(exp):
+        if not node.has(t):
+            continue
+        if not as_expr(node.args[0]).is_polynomial(t):
+            return False
+        replacement[as_expr(node)] = Dummy()
+    return bool(as_expr(g.xreplace(replacement)).is_rational_function(t, *replacement.values()))
 
 
 def power_substitutions(f: ExprLike, x: Symbol) -> list[Substitution]:

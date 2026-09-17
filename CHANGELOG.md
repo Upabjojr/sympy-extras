@@ -164,7 +164,25 @@ remove public functions. Breaking changes are listed here when they happen.
   `erf(A*x +- B/x)`. Maxima's `rtest_integrate` 12-22, 65, 125, 126, 145,
   147 and their kin; `d**(...)` reaches them through the rewriting route,
   and `exp(c*(z**r)**(1/r))**v` no longer needs `z > 0` for an
-  antiderivative (the nested power is kept in it).
+  antiderivative (the nested power is kept in it). Compared with
+  Mathematica on the classes still open: the repeated roots of the `Ei`
+  route are now integrated too (the Laurent coefficients at a repeated
+  symbolic root, the by-parts reduction of `exp(c*x)/(x - r)**k`), the
+  error function of a composite argument `k*g'*exp(a*g**2 + c)` with
+  `g` read off the exponent by factoring (`(1 - 1/x**2)*exp(-(x + 1/x)**2)`
+  is `sqrt(pi)*erf(x + 1/x)/2`, FriCAS's integ 121, 132; `exp((x + 1/x)**2)/x**2`
+  a pair of imaginary error functions of `x +- 1/x`, integ 122), a sum with a
+  plain monomial in `power_exponential`, and the logarithmic
+  substitution `x = exp(t)` for a function of `log(x)` with exponentials
+  and powers of `x` (`exp(-log(x)**2 - 1)/x**3` is `sqrt(pi)*erf(log(x) + 1)/2`);
+  Mathematica has no closed form for `z**n*exp(a*sqrt(z) + b*z)` with a
+  symbolic `n` either.
+
+- `sympy_extras.integrals.indefinite`: the rewriting route (the methods
+  on the canonical forms and the substitutions) before the heuristics:
+  `x = t**3` makes `(3*x**2 + 4*x + (3*x + 1)*log(x) + 3)*exp(x)/x**(2/3)`
+  a tower the Risch algorithm settles in a tenth of a second, where the
+  heuristic integrator took thirteen (FriCAS's integ 34, 36, 39).
 
 - `sympy_extras.integrals.marichev`: the derivative in the order of a
   modified Bessel function at 0, which the limit of the logarithmic case

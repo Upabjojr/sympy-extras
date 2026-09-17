@@ -78,6 +78,7 @@ from sympy.core.expr import Expr
 from sympy.core.exprtools import factor_terms
 from sympy.core.mul import Mul
 from sympy.core.numbers import Integer, Rational, pi
+from sympy.functions.combinatorial.factorials import factorial
 from sympy.core.power import Pow
 from sympy.core.function import expand
 from sympy.core.singleton import S
@@ -92,7 +93,9 @@ from sympy.logic.boolalg import Boolean
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polyroots import roots
 from sympy.polys.polytools import Poly, cancel, gcd
+from sympy.polys.polytools import factor as factored_form
 from sympy.simplify.powsimp import powsimp
+from sympy.solvers.solvers import solve
 from sympy.simplify.simplify import simplify
 
 from sympy_extras._timeout import attempt
@@ -237,7 +240,22 @@ def power_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -
     combined = as_expr(powsimp(expand(f_), combine='exp'))
     total: Expr = S.Zero
     for term in Add.make_args(combined):
-        found = _monomial_exponential(as_expr(term), x)
+        term_ = as_expr(term)
+        if not term_.has(exp):
+            # a term without an exponential: a monomial ((1 - exp(-x**2))**2/x**3 expanded)
+            coefficient, monomial = term_.as_independent(x, as_Add=False)
+            monomial_ = as_expr(monomial)
+            if monomial_ == 1:
+                total = total + coefficient * x
+            elif monomial_ == x:
+                total = total + coefficient * x**2 / 2
+            elif isinstance(monomial_, Pow) and monomial_.base == x and not as_expr(monomial_.exp).has(x):
+                e = as_expr(monomial_.exp)
+                total = total + (coefficient * log(x) if e == -1 else coefficient * x**(e + 1) / (e + 1))
+            else:
+                return None
+            continue
+        found = _monomial_exponential(term_, x)
         if found is None:
             return None
         c, v, a, n = found
@@ -472,7 +490,8 @@ def exponential_antiderivative(f: ExprLike, x: Symbol, assumptions: Assumptions 
     if not f_.has(exp):
         return None
     for route in (power_exponential, _quadratic_exponential, _shifted_exponential, exponential_rational,
-                  nested_power_exponential, rational_exponential, reciprocal_square_exponential):
+                  nested_power_exponential, rational_exponential, reciprocal_square_exponential,
+                  composite_gaussian):
         found = attempt(lambda: route(f_, x, assumptions), _budget())
         if found is not None:
             return found
@@ -626,7 +645,7 @@ def rational_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = None
     if Q.degree() < 1:
         return None
     found = roots(Q)
-    if sum(found.values()) != Q.degree() or any(multiplicity != 1 for multiplicity in found.values()):
+    if sum(found.values()) != Q.degree():
         return None
     quotient, remainder = P.div(Q)
     total: Expr = S.Zero
@@ -635,15 +654,131 @@ def rational_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = None
         if polynomial is None:
             return None
         total = total + polynomial
-    derivative = Q.diff()
     c_ = as_expr(c)
-    for root in found:
-        residue = as_expr(remainder.as_expr().subs(x, root) / derivative.as_expr().subs(x, root))
-        total = total + residue * exp(d) * exp(c_ * root) * Ei(c_ * (x - root))
+    leading = as_expr(Q.LC())
+    for root, multiplicity in found.items():
+        # the Laurent coefficients at the root, A_j = ((x - r)**m R)^(m - j)(r)/(m - j)!,
+        # with (x - r)**m R written through the other roots (no cancellation
+        # of a symbolic radical is needed then)
+        others: Expr = leading
+        for other, other_multiplicity in found.items():
+            if other != root:
+                others = others * (x - other)**other_multiplicity
+        stripped = as_expr(remainder.as_expr() / others)
+        for j in range(multiplicity, 0, -1):
+            order = multiplicity - j
+            coefficient = as_expr(stripped.diff(x, order).subs(x, root) / factorial(order)) if order else \
+                as_expr(stripped.subs(x, root))
+            coefficient = as_expr(cancel(coefficient))
+            if coefficient == 0:
+                continue
+            total = total + coefficient * exp(d) * _exponential_over_power(c_, root, j, x)
     facts = _facts(assumptions)
     if not _checks(total, f_, x, facts):
         return None
     return as_expr(total)
+
+
+def _exponential_over_power(c: Expr, r: Expr, k: int, x: Symbol) -> Expr:
+    """``Integral(exp(c*x)/(x - r)**k, x)``: ``exp(c*r)*Ei(c*(x - r))`` for
+    ``k = 1``, and by parts, ``-exp(c*x)/((k - 1)*(x - r)**(k - 1)) +
+    c/(k - 1)*Integral(exp(c*x)/(x - r)**(k - 1))``, above."""
+    if k == 1:
+        return as_expr(exp(c * r) * Ei(c * (x - r)))
+    return as_expr(-exp(c * x) / ((k - 1) * (x - r)**(k - 1)) + c / (k - 1) * _exponential_over_power(c, r, k - 1, x))
+
+
+# ---------------------------------------------------------------------------
+# k g'(x) exp(a g(x)**2 + c): the error function of a composite argument
+
+def composite_gaussian(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
+    """``Integral(f, x)`` for ``f == k*g'(x)*exp(a*g(x)**2 + c)`` with ``g``
+    a polynomial in ``x``, ``1/x`` and ``log(x)`` read off the exponent by
+    factoring (``exp((x + 1/x)**2)*(1 - 1/x**2)`` is ``exp((x**4 + 2*x**2 +
+    1)/x**2)*(x**2 - 1)/x**2`` in FriCAS's suite): ``k*sqrt(pi)*exp(c)*
+    erf(sqrt(-a)*g)/(2*sqrt(-a))``, checked by differentiation. ``None``
+    for another shape.
+
+    >>> from sympy import symbols, exp, log
+    >>> from sympy_extras.integrals.exponential import composite_gaussian
+    >>> x = symbols('x')
+    >>> composite_gaussian((1 - 1/x**2)*exp(-(x + 1/x)**2), x)
+    sqrt(pi)*erf((x**2 + 1)/x)/2
+    >>> composite_gaussian((x + 2*log(x))*exp(x**2 + 2*x + (2*x + 2)*log(x)**2 + log(x)**4 + 1)/x, x)
+    sqrt(pi)*erfi(x + log(x)**2 + 1)/2
+    >>> composite_gaussian(exp((x + 1/x)**2)/x**2, x)
+    -sqrt(pi)*erfi((x**2 + 1)/x)/4 + sqrt(pi)*exp(4)*erfi(x - 1/x)/4
+    """
+    f_ = as_expr(f)
+    exponentials = [as_expr(node) for node in f_.atoms(exp) if node.has(x)]
+    if len(exponentials) != 1:
+        return None
+    L = Dummy('L')
+    argument = as_expr(expand(as_expr(exponentials[0].args[0]).subs(log(x), L)))
+    numerator, denominator = as_expr(cancel(argument)).as_numer_denom()
+    if not as_expr(denominator).is_polynomial(x) or not as_expr(numerator).is_polynomial(x, L):
+        return None
+    constant, dependent = argument.as_independent(x, L, as_Add=True)
+    rest = as_expr(cancel(f_ / exponentials[0]))
+    facts = _facts(assumptions)
+    # the whole exponent a square first ((x + 1/x)**2 has the constant 2
+    # in it), then the part depending on x
+    for c, body in ((S.Zero, argument), (as_expr(constant), as_expr(dependent))):
+        try:
+            factored = as_expr(factored_form(body))
+        except PolynomialError:
+            continue
+        a, square = factored.as_independent(x, L, as_Add=False)
+        a_ = as_expr(a)
+        if a_ == 0 or a_.has(x):
+            continue
+        g: Expr = S.One
+        for piece in Mul.make_args(as_expr(square)):
+            piece_ = as_expr(piece)
+            if not (isinstance(piece_, Pow) and as_expr(piece_.exp).is_Integer and as_expr(piece_.exp) % 2 == 0):
+                g = S.Zero
+                break
+            g = g * as_expr(piece_.base)**(as_expr(piece_.exp) / 2)
+        if g == 0:
+            continue
+        g = as_expr(g.subs(L, log(x)))
+        k = as_expr(cancel(rest / g.diff(x)))
+        if not k.has(x):
+            total = as_expr(k * _gaussian_primitive(a_, g, c))
+            if _checks(total, f_, x, facts):
+                return total
+        # g = u + v with u*v constant: h = u - v has h**2 = g**2 - 4*u*v, so
+        # a rest which is p*u' + q*v' is (p + q)/2*g' + (p - q)/2*h', and
+        # exp(g**2)/x**2 (FriCAS's integ 122) is a pair of error functions
+        terms = Add.make_args(as_expr(expand(g)))
+        if len(terms) == 2:
+            u, v = as_expr(terms[0]), as_expr(terms[1])
+            product = as_expr(cancel(u * v))
+            if not product.has(x) and u.has(x) and v.has(x):
+                p_, q_ = Dummy('p'), Dummy('q')
+                difference = as_expr(cancel(rest - p_ * u.diff(x) - q_ * v.diff(x)))
+                numerator = as_expr(difference.as_numer_denom()[0])
+                try:
+                    solution = solve(Poly(numerator, x).coeffs(), [p_, q_], dict=True)
+                except (PolynomialError, NotImplementedError, ValueError):
+                    solution = []
+                if solution and not any(as_expr(value).has(x) for value in solution[0].values()):
+                    pv, qv = as_expr(solution[0].get(p_, S.Zero)), as_expr(solution[0].get(q_, S.Zero))
+                    h = as_expr(u - v)
+                    total = as_expr((pv + qv) / 2 * _gaussian_primitive(a_, g, c)
+                                    + (pv - qv) / 2 * _gaussian_primitive(a_, h, as_expr(c + 4 * a_ * product)))
+                    if _checks(total, f_, x, facts):
+                        return total
+    return None
+
+
+def _gaussian_primitive(a: Expr, g: Expr, c: Expr) -> Expr:
+    """``Integral(g'*exp(a*g**2 + c))``: the imaginary error function for
+    a known positive ``a``, the error function of ``sqrt(-a)*g`` otherwise."""
+    if a.is_positive:
+        return as_expr(sqrt(pi) * exp(c) * erfi(sqrt(a) * g) / (2 * sqrt(a)))
+    A = sqrt(-a)
+    return as_expr(sqrt(pi) * exp(c) * erf(A * g) / (2 * A))
 
 
 # ---------------------------------------------------------------------------

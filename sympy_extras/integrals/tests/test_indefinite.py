@@ -16,7 +16,7 @@ def test_classic_integrands_by_the_typed_methods() -> None:
         sqrt(1 - x**2): 'radicals', x / (x**2 + 1): 'rational', x * exp(x): 'exponential',
         tan(x)**3: 'trigonometric', 1 / (x * (log(x)**2 + 1)): 'risch', 1 / (x**3 + 1): 'rational',
         sqrt(x**2 + 1) / x: 'radicals', x**2 * atan(x): 'trigonometric', 1 / sqrt(x**2 + 1): 'radicals',
-        x / sqrt(x**4 + 1): 'trager', exp(x) * sin(x): 'trigonometric', log(x)**2: 'risch'}
+        x / sqrt(x**4 + 1): 'rewriting', exp(x) * sin(x): 'trigonometric', log(x)**2: 'risch'}
     for f, method in expected.items():
         found = verified_antiderivative(f, x)
         assert found is not None and found[1] == method, (f, found)
