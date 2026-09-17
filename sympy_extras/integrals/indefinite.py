@@ -466,8 +466,8 @@ def _sympy(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
 #: the methods in the order they are tried
 METHODS: list[tuple[str, Method]] = [
     ('rational', _rational), ('radicals', _radicals), ('exponential', _exponential), ('trigonometric', _trigonometric),
-    ('risch', _risch),
-    ('rewriting', _rewriting), ('heurisch', _heurisch), ('trager', _trager), ('manual', _manual), ('meijer', _meijer),
+    ('risch', _risch), ('trager', _trager),
+    ('rewriting', _rewriting), ('heurisch', _heurisch), ('manual', _manual), ('meijer', _meijer),
     ('sympy', _sympy)]
 
 

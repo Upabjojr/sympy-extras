@@ -287,8 +287,9 @@ The driver tries, after the Mellin method and the residues:
   exponent beyond the index extracted with their sign, one region each
   (`((x - 1)**2*(x + 1))**(1/3)/x**2` is `(x - 1)*((x + 1)/(x - 1))**(1/3)/x**2`
   for `x > 1` and `(1 - x)*((x + 1)/(1 - x))**(1/3)/x**2` for `x < 1`, the
-  antiderivative a `Piecewise`). Trager's algorithm handles the general
-  case of one square root.
+  antiderivative a `Piecewise`; a nested radical has its innermost root
+  substituted first and the substitutions of the result composed with
+  it). Trager's algorithm handles the general case of one square root.
 - **Series expansion and termwise integration**
   (`sympy_extras.integrals.series`): one factor expanded in its formal
   power series (or a geometric series of exponentials), the moments of the
@@ -593,10 +594,24 @@ when the integrand is rational in it, and the answer is written back in
 the original roots (`y = sqrt(x + 1)*sqrt(x + 2)` satisfies `y**2 = P`
 and `y' = P'/(2*y)` everywhere, whereas `sqrt(P)` is `-y` below `-2`);
 a perfect-square radicand `sqrt(d**2)` is `d*sign(d)`, the antiderivative
-of the rational integrand on each component.
+of the rational integrand on each component, and a square root of a
+rational function `P/Q` is `y/Q` with `y = Q*sqrt(P/Q)`, `y**2 = P*Q`.
+The logarithmic part runs over the field of the parameters; residues
+algebraic over them (`sqrt(b - 2*sqrt(a*c))/(4*sqrt(a*c))` for
+`sqrt(a + b*x**2 + c*x**4)/(a - c*x**4)`) are made rational by
+reparametrizing (`a = alpha**2`, `b` solved from `beta**2 = b -
+2*sqrt(a*c)`), the algorithm rerun over the new parameters and the
+answer written back. A root `y = P**(1/n)` of index three and more of a
+squarefree polynomial integrates by components in the basis `1, y, ...,
+y**(n - 1)`: the derivative of `R*y**k` stays in the component `y**k`, so
+each is a Risch differential equation `R' + k*P'/(n*P)*R = A_k` over the
+rational functions (`x**5*(x**3 + 1)**(2/3)`); a component without a
+rational solution is left undecided (its integral may have logarithms
+of algebraic functions, which the genus-zero substitutions find when
+the radical is one of a Möbius function or a binomial).
 
 ```python
->>> from sympy import symbols, sqrt, log
+>>> from sympy import symbols, sqrt, log, Rational
 >>> from sympy_extras.integrals import trager_antiderivative, is_nonelementary_algebraic, definite_integral
 >>> x = symbols('x')
 >>> trager_antiderivative(x/sqrt(x**4 + 1), x)
@@ -605,6 +620,11 @@ log(x**2 + sqrt(x**4 + 1))/2
 -log((sqrt(x**2 + 1) + 1)/x)
 >>> trager_antiderivative(sqrt(x**2 + 2*x + 1)/(x + 3), x)
 (x - 2*log(x + 3))*sign(x + 1)
+>>> a = symbols('a')
+>>> trager_antiderivative(1/sqrt(x**2 + a), x)
+log(x + sqrt(a + x**2))
+>>> trager_antiderivative(x**5*(x**3 + 1)**Rational(2, 3), x)
+(x**3 + 1)**(2/3)*(x**6/8 + x**3/20 - 3/40)
 >>> is_nonelementary_algebraic(1/sqrt(x**3 + 1), x)
 True
 >>> definite_integral((x**2 - 1)/((x**2 + 1)*sqrt(x**4 + 1)), (x, 0, 1))

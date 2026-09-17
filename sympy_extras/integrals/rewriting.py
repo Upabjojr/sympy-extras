@@ -688,6 +688,40 @@ def power_substitutions(f: ExprLike, x: Symbol) -> list[Substitution]:
         regions = _moebius_substitutions(f_, x)
         if all(region.back != other.back for region in regions for other in found):
             found.extend(regions)
+    if len(found) < _SUBSTITUTIONS:
+        for s in _nested_substitutions(f_, x):
+            if all(s.back != other.back for other in found):
+                found.append(s)
+    return found
+
+
+def _nested_substitutions(f: Expr, x: Symbol) -> list[Substitution]:
+    """The substitutions of a nested radical: the innermost radical of a
+    linear polynomial substituted first (``x = t**2`` for ``sqrt(1 -
+    sqrt(x))``), the substitutions of the result (``u**2 = 1 - t``)
+    composed with it."""
+    radicals = [node for node in f.atoms(Pow) if isinstance(node.exp, Rational) and node.exp.q > 1 and node.has(x)]
+    if not any(any(other != node and as_expr(node.base).has(other) for other in radicals) for node in radicals):
+        return []
+    found: list[Substitution] = []
+    for node in radicals:
+        base = as_expr(node.base)
+        if any(other != node and base.has(other) for other in radicals):
+            continue
+        poly = base.as_poly(x)
+        if poly is None or poly.degree() != 1:
+            continue
+        k = node.exp.q
+        t = Dummy('t', positive=True)
+        a, b = as_expr(poly.coeff_monomial(x)), as_expr(poly.coeff_monomial(1))
+        forward = as_expr((t**k - b) / a)
+        g = attempt(lambda: as_expr(cancel(powsimp(as_expr(f.subs(x, forward) * k * t**(k - 1) / a), force=True))),
+                    settings.timeout)
+        if g is None:
+            continue
+        for s in power_substitutions(g, t):
+            found.append(Substitution(s.integrand, s.variable, as_expr(s.back.subs(t, base**Rational(1, k))),
+                                      as_expr(forward.subs(t, s.forward)), s.facts))
     return found
 
 

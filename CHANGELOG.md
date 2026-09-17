@@ -19,7 +19,24 @@ remove public functions. Breaking changes are listed here when they happen.
   `d*sign(d)` on each component (`sqrt(x**2 + 2*x + 1)/(x + 3)` is
   `(x - 2*log(x + 3))*sign(x + 1)`, Maxima's rtestint 10 with
   `(b**2/(4*c) + b*x + c*x**2)**(-3/2)`), and `is_antiderivative` ignores
-  the jump of a `sign` factor in the derivative.
+  the jump of a `sign` factor in the derivative. The logarithmic part
+  runs over the field of the parameters (`1/sqrt(x**2 + a)`, FriCAS's
+  tests 301 and 19), and residues algebraic over the parameters are made
+  rational by reparametrizing (`a = alpha**2` for `sqrt(a)`, `b` solved
+  from `beta**2 = b - 2*sqrt(a*c)`), the algorithm rerun over
+  `QQ<I>(alpha, beta, ...)` and the answer written back
+  (`sqrt(a + b*x**2 + c*x**4)/(a - c*x**4)`, FriCAS's test 295; the
+  inverse modulo a polynomial by the extended Euclidean algorithm, as
+  `Poly.invert` reports a zero divisor over that field). A square root
+  of a rational function `P/Q` is handled as `y/Q` with `y**2 = P*Q`
+  (`sqrt((x + 1)/x)/x`). A root `y = P**(1/n)` of index three and more of
+  a squarefree polynomial integrates by components: the derivative of
+  `R*y**k` stays in the component `y**k`, so each is a Risch
+  differential equation over the rational functions
+  (`x**5*(x**3 + 1)**(2/3)`, `x**2*(x**3 + a)**(1/3)`); components without
+  a rational solution are left undecided. Trager's algorithm now runs
+  before the rewriting route, which spent the budget of FriCAS's tests
+  294 and 307 on substitutions.
 
 - `sympy_extras.integrals.rewriting`: the substitutions `t**n = M(x)` for
   a radical of a Möbius function and Chebyshev's cases of the binomial
@@ -30,7 +47,10 @@ remove public functions. Breaking changes are listed here when they happen.
   integrated as `(x - 1)*((x + 1)/(x - 1))**(1/3)/x**2` for `x > 1` and
   as `(1 - x)*((x + 1)/(1 - x))**(1/3)/x**2` for `x < 1`, and the two
   antiderivatives assembled into a `Piecewise` (FriCAS's integration
-  test 293). `Substitution` carries the `facts` of its region.
+  test 293). `Substitution` carries the `facts` of its region. A nested
+  radical has its innermost root of a linear polynomial substituted
+  first and the substitutions of the result composed with it
+  (`sqrt(1 - sqrt(x))/(x**2 - 1)`: `x = t**2`, then `u**2 = 1 - t`).
 
 - `sympy_extras.integrals.radicals`: an odd power of a quadratic under
   the square root, `sqrt(Q**3)`, is `Q*sqrt(Q)` for the radical table

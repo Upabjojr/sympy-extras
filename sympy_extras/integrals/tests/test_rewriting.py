@@ -280,5 +280,22 @@ def test_binomial_substitutions() -> None:
         found = verified_antiderivative(f_, x)
         assert found is not None, f
         assert is_antiderivative(found[0], f_, x) is True
-    found = verified_antiderivative(as_expr(sqrt(x**4 + 1) / x**5), x)
+    found = verified_antiderivative(as_expr(sqrt(x**4 + 1) / x**5), x, methods=['rewriting'])
     assert found is not None and found[1] == 'rewriting'
+
+
+def test_nested_radicals() -> None:
+    # sqrt(1 - sqrt(x)): x = t**2 first, then u**2 = 1 - t, composed
+    from sympy_extras.integrals import is_antiderivative, verified_antiderivative
+    x = symbols('x')
+    f = as_expr(sqrt(1 - sqrt(x)) / (x**2 - 1))
+    found = power_substitutions(f, x)
+    assert len(found) == 1 and found[0].back == sqrt(1 - sqrt(x))
+    assert found[0].integrand.is_rational_function(found[0].variable)
+    assert _checks(found[0], f, x)
+    result = verified_antiderivative(f, x)
+    assert result is not None and result[1] == 'rewriting'
+    assert is_antiderivative(result[0], f, x, [x > 0, x < 1]) is True
+    g = as_expr(sqrt(1 + sqrt(x)) * x)
+    result = verified_antiderivative(g, x)
+    assert result is not None and is_antiderivative(result[0], g, x, [x > 0]) is True
