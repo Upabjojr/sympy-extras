@@ -70,13 +70,17 @@ import random
 from typing import Optional
 
 from sympy.core.add import Add
+from sympy.core.function import Derivative, expand
+from sympy.core.mul import Mul
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.numbers import Rational
 from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
+from sympy.functions.elementary.complexes import sign as sign_function
 from sympy.functions.elementary.exponential import log
+from sympy.functions.special.delta_functions import DiracDelta
 from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.polys.domains import QQ
 from sympy.polys.domains.domain import Domain
@@ -155,6 +159,15 @@ def _parse(f: Expr, x: Symbol) -> Optional[_Radical]:
             if not base.is_polynomial(x):
                 return None
             bases.add(base)
+    if len(bases) > 1:
+        # sqrt(1 - 3*x**2)*sqrt(1 - x**2) is sqrt((1 - 3*x**2)*(1 - x**2))
+        # where both radicands are positive, the real domain of the
+        # integrand (on which the antiderivative is verified): the
+        # integrand must be rational in x and in the product of the roots
+        combined = _combined_roots(f, x, sorted(bases, key=str))
+        if combined is None:
+            return None
+        return _parse(combined, x)
     if len(bases) != 1:
         return None
     [base] = bases
@@ -193,6 +206,48 @@ def _parse(f: Expr, x: Symbol) -> Optional[_Radical]:
             domain = domain.unify(Poly(part, x).domain)
     field = domain.get_field()
     return _Radical(x, P.set_domain(field), A, B)
+
+
+def _combined_roots(f: Expr, x: Symbol, bases: list[Expr]) -> Optional[Expr]:
+    """``f`` with its several square roots written through the one root of
+    the product of the radicands, when every monomial of ``f`` in the
+    roots has either all of them or none (the parity of each exponent
+    reduced by ``sqrt(P)**2 = P``); ``None`` otherwise."""
+    Y = [Dummy('Y%d' % i) for i in range(len(bases))]
+    replacement: dict[Expr, Expr] = {}
+    for node in f.atoms(Pow):
+        exponent = as_expr(node.exp)
+        base = as_expr(node.base)
+        if base in bases and isinstance(exponent, Rational) and exponent.q == 2:
+            i = bases.index(base)
+            k = int(exponent.p)
+            replacement[as_expr(node)] = base**((k - k % 2) // 2) * Y[i]**(k % 2)
+    g = as_expr(f.xreplace(replacement))
+    if not g.is_rational_function(x, *Y):
+        return None
+    numerator, denominator = fraction(cancel(g))
+    y = Dummy('y')
+    product = as_expr(Mul(*bases))
+    rewritten: list[Expr] = []
+    for part in (numerator, denominator):
+        try:
+            poly = Poly(part, *Y)
+        except _FAILURES:
+            return None
+        total: Expr = S.Zero
+        for monomial, coefficient in poly.terms():
+            parities = [e % 2 for e in monomial]
+            factor: Expr = S.One
+            for i, e in enumerate(monomial):
+                factor = factor * bases[i]**((e - e % 2) // 2)
+            if all(parities):
+                total = total + as_expr(coefficient) * factor * y
+            elif not any(parities):
+                total = total + as_expr(coefficient) * factor
+            else:
+                return None
+        rewritten.append(total)
+    return as_expr((rewritten[0] / rewritten[1]).subs(y, sqrt(product)))
 
 
 def _reduce_modulo_curve(N: Poly, P: Poly, x: Symbol) -> tuple[Expr, Expr]:
@@ -619,13 +674,18 @@ def _integrate(f: Expr, x: Symbol, logarithms: bool) -> Optional[_Result]:
         rational_part, rational_logs = ratint_ratpart(rest, q, x)
         rational_part = as_expr(rational_part + quotient.integrate(x).as_expr())
     if Q.degree() == 0:
-        # sqrt(P) is d*sqrt(c): a rational integrand
+        # sqrt(P) is d*sqrt(c) where d > 0 and -d*sqrt(c) where d < 0: a
+        # rational integrand on each component, the antiderivative
+        # carrying sign(d) ((b**2/(4*c) + b*x + c*x**2)**(-3/2) is
+        # c**(-3/2)*Abs(x + b/(2*c))**(-3))
         constant = as_expr(sqrt(Q.as_expr()))
         g = as_expr(radical.B * radical.d.as_expr() * constant)
         empty = _Reduction([], Poly(0, x, domain=Q.domain), Poly(1, x, domain=Q.domain), Poly(0, x, domain=Q.domain))
         extra = ratint(g, x) if logarithms else S.Zero
-        remainder = _Pair(S.Zero if logarithms else g, S.Zero, Q.as_expr(), x)
-        return _Result(radical, as_expr(rational_part + extra), rational_logs, empty, [], remainder, False)
+        orientation = sign_function(radical.d.as_expr()) if radical.d.degree() >= 1 else S.One
+        remainder = _Pair(S.Zero if logarithms else g * orientation, S.Zero, Q.as_expr(), x)
+        return _Result(radical, as_expr(rational_part + orientation * extra), rational_logs, empty, [], remainder,
+                       False)
     M, D = radical.algebraic_numerator()
     reduction = _hermite(M, D, Q, x)
     r, D = reduction.r, reduction.D
@@ -720,17 +780,24 @@ def _logarithmic_part(reduction: _Reduction, Q: Poly, x: Symbol,
 def _verified(F: Expr, f: Expr, x: Symbol, P: Expr) -> bool:
     """Whether ``F'`` agrees with ``f`` numerically at points where the
     radicand is positive."""
-    derivative = as_expr(F.diff(x))
+    # sign(d) in F differentiates to a delta function, which is 0 at every
+    # sample point off the zeros of d
+    derivative = as_expr(F.diff(x).replace(
+        lambda node: isinstance(node, DiracDelta) or (isinstance(node, Derivative) and isinstance(node.expr, sign_function)),
+        lambda node: S.Zero))
     rng = random.Random(str(f))
     parameters = sorted(f.free_symbols - {x}, key=str)
+    # every square root of the integrand as given must be real at the
+    # sample (sqrt(x + 1)*sqrt(x + 2) is -sqrt((x + 1)*(x + 2)) below -2)
+    radicands = [P] + [as_expr(node.base) for node in f.atoms(Pow)
+                       if node.has(x) and isinstance(node.exp, Rational) and node.exp.q == 2]
     checked = 0
     for _ in range(40):
         values: dict[Basic | complex, Expr | complex] = {
             parameter: Rational(rng.randint(-400, 400), 100) for parameter in parameters}
         values[x] = Rational(rng.randint(-400, 400), 100)
         try:
-            radicand = as_expr(P.subs(values)).evalf(30)
-            if not radicand.is_positive:
+            if any(not as_expr(radicand.subs(values)).evalf(30).is_positive for radicand in radicands):
                 continue
             expected = f.subs(values).evalf(30)
             found = derivative.subs(values).evalf(30)
@@ -774,11 +841,34 @@ def trager_reduce(f: ExprLike, x: Symbol) -> Optional[tuple[Expr, Expr]]:
     result = attempt(lambda: _integrate(f_, x, True), settings.timeout)
     if result is None:
         return None
-    F = as_expr(result.elementary())
-    h = result.remainder_expr()
+    F = _original_roots(as_expr(result.elementary()), f_, x, result.radical.P.as_expr())
+    h = _original_roots(result.remainder_expr(), f_, x, result.radical.P.as_expr())
     if not _verified(F, as_expr(f_ - h), x, result.radical.P.as_expr()):
         return None
     return F, h
+
+
+def _original_roots(F: Expr, f: Expr, x: Symbol, P: Expr) -> Expr:
+    """``F`` with the root of the product of the radicands of ``f`` written
+    as the product of its roots when ``f`` has several: ``y = sqrt(x + 1) *
+    sqrt(x + 2)`` satisfies ``y**2 = P`` and ``y' = P'/(2*y)`` for every
+    ``x``, so the algebra in ``sqrt(P)`` holds for it, whereas ``sqrt(P)``
+    itself is ``-y`` below ``-2``."""
+    bases = sorted({as_expr(node.base) for node in f.atoms(Pow) if node.has(x)
+                    and isinstance(node.exp, Rational) and node.exp.q == 2 and as_expr(node.base).is_polynomial(x)},
+                   key=str)
+    if len(bases) < 2:
+        return F
+    y = as_expr(Mul(*[sqrt(base) for base in bases]))
+    P_ = expand(P)
+
+    def restore(node: Expr) -> Expr:
+        if isinstance(node, Pow) and isinstance(node.exp, Rational) and node.exp.q == 2 and expand(as_expr(node.base)) == P_:
+            k = int(node.exp.p)
+            return as_expr(as_expr(node.base)**((k - k % 2) // 2) * y**(k % 2))
+        return node
+
+    return as_expr(F.replace(lambda node: isinstance(node, Pow), restore))
 
 
 def trager_antiderivative(f: ExprLike, x: Symbol) -> Optional[Expr]:

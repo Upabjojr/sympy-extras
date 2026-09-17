@@ -242,6 +242,27 @@ class _Table:
                         - a * (n + m + 3) * second) / (c * (n + 1)))
 
 
+def _odd_power(base: Expr, x: Symbol) -> tuple[Expr, int]:
+    """``(R, k)`` with ``base == R**k`` for an odd ``k`` (``k = 1`` and the
+    base itself when it is not a power of one polynomial)."""
+    try:
+        poly = Poly(base, x)
+    except PolynomialError:
+        return base, 1
+    if poly.degree() < 2:
+        return base, 1
+    content, factors = poly.sqf_list()
+    if len(factors) != 1:
+        return base, 1
+    root, k = factors[0]
+    if k % 2 == 0 or k == 1:
+        return base, 1
+    R = as_expr(content**Rational(1, k) * root.as_expr()) if content == 1 else None
+    if R is None:
+        return base, 1
+    return R, int(k)
+
+
 def _terms(term: Expr, x: Symbol) -> Optional[list[tuple[Expr, int, Optional[Expr], int]]]:
     """The terms ``(coefficient, n, Q, m)`` with ``term == sum(coefficient *
     x**n * Q**(m/2))``, ``Q`` the base of the radical (``None`` and ``m = 0``
@@ -259,7 +280,11 @@ def _terms(term: Expr, x: Symbol) -> Optional[list[tuple[Expr, int, Optional[Exp
             coefficient = coefficient * f
             continue
         if isinstance(f, Pow) and isinstance(f.exp, Rational) and f.exp.q == 2:
-            radicals.append((as_expr(f.base), int(f.exp.p)))
+            # sqrt(Q**3) is Q**(3/2): an odd power of one polynomial under the
+            # root is the root of the polynomial to that power (where the
+            # radicand is positive, so is Q; an even power would need Abs)
+            base, power = _odd_power(as_expr(f.base), x)
+            radicals.append((base, int(f.exp.p) * power))
             continue
         if isinstance(f, Pow) and f.base == x and isinstance(f.exp, Integer):
             shift += int(f.exp)                             # x**(-2): a negative power of x
@@ -392,6 +417,8 @@ def _radicand(f: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
             continue
         if exponent.q != 2 or not base.is_polynomial(x):
             return None
+        base, power = _odd_power(base, x)
+        p_ = exponent.p * power
         try:
             degree = Poly(base, x).degree()
         except PolynomialError:
@@ -401,7 +428,7 @@ def _radicand(f: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
         if base not in radicands:
             radicands.append(base)
             degrees[base] = degree
-        replacement[node] = base**((exponent.p - exponent.p % 2) // 2) * R**(exponent.p % 2)
+        replacement[node] = base**((p_ - p_ % 2) // 2) * R**(p_ % 2)
     if len(radicands) == 1:
         Q = radicands[0]
     elif len(radicands) == 2 and all(degrees[base] == 1 for base in radicands):
@@ -417,7 +444,9 @@ def _radicand(f: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
             base, exponent = as_expr(node.base), as_expr(node.exp)
             if not isinstance(exponent, Rational):
                 return None
-            replacement[node] = base**((exponent.p - exponent.p % 2) // 2) * roots[base]**(exponent.p % 2)
+            base, power = _odd_power(base, x)
+            p_ = exponent.p * power
+            replacement[node] = base**((p_ - p_ % 2) // 2) * roots[base]**(p_ % 2)
         g = as_expr(f.xreplace(replacement))
         # sqrt(first)*sqrt(second) is R; sqrt(first)**2 is first
         g = as_expr(g.subs(roots[second], R / roots[first]))

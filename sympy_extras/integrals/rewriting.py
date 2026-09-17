@@ -48,7 +48,7 @@ from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.core.add import Add
 from sympy.core.function import expand
 from sympy.core.mul import Mul
-from sympy.core.numbers import I, Rational
+from sympy.core.numbers import I, Integer, Rational
 from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
@@ -57,7 +57,9 @@ from sympy.functions.elementary.complexes import polar_lift
 from sympy.functions.elementary.exponential import exp, exp_polar, log
 from sympy.functions.elementary.hyperbolic import HyperbolicFunction, InverseHyperbolicFunction
 from sympy.logic.boolalg import Boolean
-from sympy.polys.polytools import factor, cancel
+from sympy.polys.polyerrors import PolynomialError
+from sympy.simplify.radsimp import fraction
+from sympy.polys.polytools import Poly, factor, cancel
 from sympy.simplify.powsimp import powsimp
 
 from sympy_extras._timeout import attempt
@@ -78,11 +80,16 @@ class Substitution:
     ``f(x) dx = g(t) dt``, ``variable`` the new symbol ``t``, ``back`` the
     expression of ``t`` in ``x`` and ``forward`` that of ``x`` in ``t``."""
 
-    def __init__(self, integrand: Expr, variable: Symbol, back: Expr, forward: Expr) -> None:
+    def __init__(self, integrand: Expr, variable: Symbol, back: Expr, forward: Expr,
+                 facts: Optional[list[Boolean]] = None) -> None:
         self.integrand = integrand
         self.variable = variable
         self.back = back
         self.forward = forward
+        #: the facts about ``x`` under which the substitution holds (the
+        #: extracted factor of a radicand positive): an antiderivative
+        #: found through it is right on that region
+        self.facts = list(facts or [])
 
     def __repr__(self) -> str:
         return "Substitution(%s, %s, back=%s)" % (self.integrand, self.variable, self.back)
@@ -471,6 +478,125 @@ def _algebraic_in(g: Expr, u: Symbol) -> bool:
     return bool(replaced.is_rational_function(u))
 
 
+def _moebius_substitutions(f: Expr, x: Symbol) -> list[Substitution]:
+    """``t**n = (a*x + b)/(c*x + d)`` for radicals which are rational powers
+    of one Möbius function (:func:`.algebraic.moebius_root`): the curve
+    has genus zero, the integrand becomes rational in ``t``.
+    ``((x - 1)**2*(x + 1))**(1/3)`` is ``(x - 1)*((x + 1)/(x - 1))**(1/3)``
+    where ``x > 1`` and ``(1 - x)*((x + 1)/(1 - x))**(1/3)`` where ``x < 1``
+    (the cube extracted with the sign of the factor): one substitution
+    per region, each carrying its fact."""
+    from .algebraic import moebius_root
+    found_all: list[Substitution] = []
+    for g, facts in _extracted_powers(f, x):
+        found = moebius_root(g, x)
+        if found is None:
+            continue
+        t = found.t
+        h = attempt(lambda: as_expr(cancel(as_expr(g.xreplace(found.radicals)).subs(x, found.x_of_t)
+                                           * found.x_of_t.diff(t))), settings.timeout)
+        if h is None or not h.is_rational_function(t) or h.has(x):
+            continue
+        found_all.append(Substitution(h, t, found.t_of_x, found.x_of_t, facts))
+    return found_all
+
+
+def _extracted_powers(f: Expr, x: Symbol) -> list[tuple[Expr, list[Boolean]]]:
+    """``f`` with its radical ``(R**k*S)**(p/n)`` written ``R**((k - r)*p/n) *
+    (S*R**r)**(p/n)``, ``r`` the remainder of ``k`` by ``n`` which leaves a
+    Möbius function under the root: ``((x - 1)**2*(x + 1))**(1/3)`` is
+    ``(x - 1)*((x + 1)/(x - 1))**(1/3)``, an identity where the extracted
+    factor is positive, and ``(1 - x)*((x + 1)/(1 - x))**(1/3)`` where it
+    is negative (``R**k`` is ``(-1)**k*(-R)**k``, the sign into the
+    content); one rewriting per region with its facts, none when nothing
+    is extracted or ``f`` has not exactly one such radical."""
+    atoms = [node for node in f.atoms(Pow) if isinstance(node.exp, Rational) and node.exp.q > 1
+             and node.has(x) and as_expr(node.base).is_polynomial(x)]
+    if len(atoms) != 1:
+        return []
+    node = atoms[0]
+    base, exponent = as_expr(node.base), node.exp
+    if not isinstance(exponent, Rational):
+        return []
+    n = exponent.q
+    try:
+        content, factors = Poly(base, x).factor_list()
+    except PolynomialError:
+        return []
+    if len(factors) < 2:
+        return []
+    # each factor's exponent k written q*n + r with r in [0, n) or in
+    # (-n, 0]: the choice which leaves a Möbius function (numerator and
+    # denominator of degree at most one) inside the root
+    remainders: Optional[list[int]] = None
+    for signs in range(2**len(factors)):
+        found: list[int] = []
+        inside: Expr = as_expr(content)
+        for i, (piece, k) in enumerate(factors):
+            r = k % n
+            if r and (signs >> i) & 1:
+                r -= n
+            found.append(r)
+            inside = inside * piece.as_expr()**r
+        numerator, denominator = fraction(cancel(inside))
+        if (any(k != r for (_, k), r in zip(factors, found))
+                and all(Poly(part, x).degree() <= 1 for part in (numerator, denominator))):
+            remainders = found
+            break
+    if remainders is None:
+        return []
+    extracted = [i for i, ((_, k), r) in enumerate(zip(factors, remainders)) if k != r]
+    results: list[tuple[Expr, list[Boolean]]] = []
+    for signs in range(2**len(extracted)):
+        outside: Expr = S.One
+        inside = as_expr(content)
+        facts: list[Boolean] = []
+        for i, ((piece, k), r) in enumerate(zip(factors, remainders)):
+            factor_ = piece.as_expr()
+            if i in extracted and (signs >> extracted.index(i)) & 1:
+                factor_ = -factor_
+                inside = inside * (-1)**k
+            if k != r:
+                outside = outside * factor_**((k - r) // n)
+                facts.append(as_boolean(factor_ > 0))
+            inside = inside * factor_**r
+        rewritten = as_expr(f.xreplace({node: outside**(exponent * n) * inside**exponent}))
+        results.append((rewritten, facts))
+    return results
+
+def _binomial_substitution(f: Expr, x: Symbol) -> Optional[Substitution]:
+    """Chebyshev's second and third cases for ``x**m*(a + b*x**n)**p``:
+    ``t**s = a + b*x**n`` when ``(m + 1)/n`` is an integer and ``t**s = a*x**(-n)
+    + b`` when ``(m + 1)/n + p`` is (``s`` the denominator of ``p``); the
+    first case, ``x = t**k``, is the power substitution above."""
+    from .algebraic import binomial_differential
+    found = binomial_differential(f, x)
+    if found is None:
+        return None
+    C, m, a, b, n, p = found
+    if not all(isinstance(e, Rational) for e in (m, n, p)) or n == 0 or isinstance(p, Integer):
+        return None
+    m_, n_, p_ = Rational(m), Rational(n), Rational(p)
+    q = (m_ + 1) / n_
+    t = Dummy('t', positive=True)
+    s = p_.q
+    if q.is_integer:
+        g = as_expr(C * Rational(s, 1) / (n_ * b) * t**(s - 1) * t**(s * p_) * ((t**s - a) / b)**int(q - 1))
+        back = as_expr((a + b * x**n_)**Rational(1, s))
+        forward = as_expr(((t**s - a) / b)**(1 / n_))
+    elif (q + p_).is_integer:
+        exponent = -int(q + p_) - 1
+        g = as_expr(-C * Rational(s, 1) / (n_ * a) * t**(s - 1 + s * p_) * ((t**s - b) / a)**exponent)
+        back = as_expr((a * x**(-n_) + b)**Rational(1, s))
+        forward = as_expr(((t**s - b) / a)**(-1 / n_))
+    else:
+        return None
+    g = as_expr(cancel(g))
+    if not g.is_rational_function(t):
+        return None
+    return Substitution(g, t, back, forward)
+
+
 def _even_substitution(f: Expr, x: Symbol) -> Optional[Substitution]:
     """``s = x**2``, ``ds = 2*x*dx``, for an odd ``f`` (``f(-x) = -f(x)``):
     ``f = x*g(x**2)`` and the integral is that of ``g(s)/2``, an identity
@@ -548,12 +674,20 @@ def power_substitutions(f: ExprLike, x: Symbol) -> list[Substitution]:
         s = _power_substitution(f_, x, base, k)
         if s is not None:
             found.append(s)
-    for maker in (_exponential_substitution, _logarithmic_substitution, _even_substitution):
+    for maker in (_exponential_substitution, _logarithmic_substitution, _even_substitution,
+                  _binomial_substitution):
         if len(found) >= _SUBSTITUTIONS:
             break
         s = maker(f_, x)
-        if s is not None:
+        # t**2 = 2*x + 1 for x*sqrt(2*x + 1) is Chebyshev's first case and
+        # the power substitution above: once
+        if s is not None and all(s.back != other.back for other in found):
             found.append(s)
+    if len(found) < _SUBSTITUTIONS:
+        # one substitution per region, all of them or none
+        regions = _moebius_substitutions(f_, x)
+        if all(region.back != other.back for region in regions for other in found):
+            found.extend(regions)
     return found
 
 

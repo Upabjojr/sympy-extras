@@ -281,8 +281,14 @@ The driver tries, after the Mellin method and the residues:
   Euler's substitutions for `R(x, sqrt(a*x**2 + b*x + c))`, `t**n = M(x)`
   for roots of a Möbius function, and Chebyshev's three integrable cases
   of the binomial differential `x**m*(a + b*x**n)**p`; the rational
-  integral in the new variable goes back to the driver (Trager's
-  algorithm for the general algebraic case is not implemented).
+  integral in the new variable goes back to the driver, and the
+  indefinite driver reaches the last two through the substitutions of
+  `sympy_extras.integrals.rewriting`, a polynomial radicand's factors of
+  exponent beyond the index extracted with their sign, one region each
+  (`((x - 1)**2*(x + 1))**(1/3)/x**2` is `(x - 1)*((x + 1)/(x - 1))**(1/3)/x**2`
+  for `x > 1` and `(1 - x)*((x + 1)/(1 - x))**(1/3)/x**2` for `x < 1`, the
+  antiderivative a `Piecewise`). Trager's algorithm handles the general
+  case of one square root.
 - **Series expansion and termwise integration**
   (`sympy_extras.integrals.series`): one factor expanded in its formal
   power series (or a geometric series of exponentials), the moments of the
@@ -581,7 +587,13 @@ up to Mazur's bound. `trager_reduce` returns the elementary part and the
 remainder, `is_nonelementary_algebraic` decides the cases it can prove
 (a nonzero remainder without residues is a differential of the first
 kind). `definite_integral` uses the antiderivative through the
-one-sided limits of the antiderivative route.
+one-sided limits of the antiderivative route. Several square roots of
+polynomials are combined into the root of the product of the radicands
+when the integrand is rational in it, and the answer is written back in
+the original roots (`y = sqrt(x + 1)*sqrt(x + 2)` satisfies `y**2 = P`
+and `y' = P'/(2*y)` everywhere, whereas `sqrt(P)` is `-y` below `-2`);
+a perfect-square radicand `sqrt(d**2)` is `d*sign(d)`, the antiderivative
+of the rational integrand on each component.
 
 ```python
 >>> from sympy import symbols, sqrt, log
@@ -591,6 +603,8 @@ one-sided limits of the antiderivative route.
 log(x**2 + sqrt(x**4 + 1))/2
 >>> trager_antiderivative(1/(x*sqrt(x**2 + 1)), x)
 -log((sqrt(x**2 + 1) + 1)/x)
+>>> trager_antiderivative(sqrt(x**2 + 2*x + 1)/(x + 3), x)
+(x - 2*log(x + 3))*sign(x + 1)
 >>> is_nonelementary_algebraic(1/sqrt(x**3 + 1), x)
 True
 >>> definite_integral((x**2 - 1)/((x**2 + 1)*sqrt(x**4 + 1)), (x, 0, 1))

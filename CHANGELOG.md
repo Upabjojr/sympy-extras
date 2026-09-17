@@ -10,6 +10,33 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.integrals.trager`: several square roots of polynomials
+  are combined into the one root of the product of the radicands when
+  the integrand is rational in it (`sqrt(x + 1)*sqrt(x + 2)/x`), and the
+  answer is written back in the original roots, which the algebra in
+  `y**2 = P` holds for on every side (`sqrt(P)` is minus their product
+  below `-2`); a perfect-square radicand `sqrt(d**2)` integrates as
+  `d*sign(d)` on each component (`sqrt(x**2 + 2*x + 1)/(x + 3)` is
+  `(x - 2*log(x + 3))*sign(x + 1)`, Maxima's rtestint 10 with
+  `(b**2/(4*c) + b*x + c*x**2)**(-3/2)`), and `is_antiderivative` ignores
+  the jump of a `sign` factor in the derivative.
+
+- `sympy_extras.integrals.rewriting`: the substitutions `t**n = M(x)` for
+  a radical of a Möbius function and Chebyshev's cases of the binomial
+  differential reach the indefinite driver through `power_substitutions`
+  (`sqrt(x**4 + 1)/x**5` through `t**2 = 1 + x**(-4)`). A polynomial
+  radicand's factors with exponents beyond the index are extracted with
+  their sign, one region each: `((x - 1)**2*(x + 1))**(1/3)/x**2` is
+  integrated as `(x - 1)*((x + 1)/(x - 1))**(1/3)/x**2` for `x > 1` and
+  as `(1 - x)*((x + 1)/(1 - x))**(1/3)/x**2` for `x < 1`, and the two
+  antiderivatives assembled into a `Piecewise` (FriCAS's integration
+  test 293). `Substitution` carries the `facts` of its region.
+
+- `sympy_extras.integrals.radicals`: an odd power of a quadratic under
+  the square root, `sqrt(Q**3)`, is `Q*sqrt(Q)` for the radical table
+  (Maxima's rtestint with symbolic coefficients, under the facts which
+  make `Q` positive).
+
 - `definite_integral` reports a divergence to a signed infinity: an
   infinite one-sided limit of the antiderivative at an endpoint or at a
   singularity, of one sign over the whole range, gives `oo` or `-oo`
@@ -397,6 +424,17 @@ remove public functions. Breaking changes are listed here when they happen.
   gates.
 
 ### Fixed
+
+- `sympy_extras._timeout`: the special-function patterns of SymPy's
+  `manualintegrate` are built before a limit is set, like the Meijer G
+  table. SymPy builds them on first use, the wildcards first and the
+  patterns after, and a limit hit in between left the wildcards in
+  place and the patterns empty: the next call doubled the wildcards
+  and every special-function rule (`exp(exp(x))` to `Ei(exp(x))`)
+  failed for the rest of the process. The recursion marks which a limit
+  or an error leaves in the cache of `integral_steps` (the integrand
+  it was working on, `DontKnowRule` for it ever after) are cleared
+  before a limit is set as well.
 
 - `is_antiderivative` trusted a candidate in complex form (`I`, a polar
   number the real-form rewriting could not clear) on points of one sign

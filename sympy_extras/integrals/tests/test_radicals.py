@@ -126,3 +126,21 @@ def test_euler_substitutions_for_rational_functions_of_a_radical() -> None:
     assert euler_substitution_antiderivative(1 / (x * sqrt(1 - x**2) + sqrt(1 - x**2)), x) == -sqrt(1 - x**2) / (x + 1)
     # a cubic radicand is not a quadratic one
     assert euler_substitution_antiderivative(1 / ((x + 1) * sqrt(x**3 + 1)), x) is None
+
+
+def test_odd_powers_of_a_quadratic_under_the_root() -> None:
+    # sqrt(Q**3) is Q*sqrt(Q) where Q > 0: the radical table's entries
+    # for the odd powers of sqrt(Q) (Maxima's rtestint with symbolic
+    # coefficients)
+    from sympy_extras.integrals import is_antiderivative, verified_antiderivative
+    from sympy_extras.integrals.radicals import _odd_power
+    a, b, c = symbols('a b c')
+    Q = as_expr(a + b * x + c * x**2)
+    assert _odd_power(as_expr(Q**3), x) == (Q, 3)
+    assert _odd_power(as_expr(Q**2), x) == (Q**2, 1)
+    assert _odd_power(as_expr(x**2 + 1), x) == (x**2 + 1, 1)
+    facts = [a > 0, b > 0, c > 0, 4 * a * c - b**2 > 0]
+    f = as_expr(sqrt(Q**3) / x)
+    found = verified_antiderivative(f, x, facts)
+    assert found is not None and found[1] == 'radicals'
+    assert is_antiderivative(found[0], f, x, facts) is True

@@ -61,9 +61,12 @@ from sympy.core.numbers import I, Rational, nan, oo, zoo
 from sympy.core.add import Add
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
-from sympy.logic.boolalg import Boolean, false
-from sympy.functions.elementary.complexes import Abs, im
+from sympy.logic.boolalg import And, Boolean, false, true
+from sympy.core.function import Derivative
+from sympy.functions.elementary.complexes import Abs, im, sign
+from sympy.functions.special.delta_functions import DiracDelta
 from sympy.functions.elementary.miscellaneous import Max
+from sympy.functions.elementary.piecewise import Piecewise
 from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.trigonometric import atan
 from sympy.functions.elementary.exponential import exp_polar
@@ -80,6 +83,7 @@ from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, so
 from sympy_extras.assumptions.ask import Assumptions
 from sympy_extras.settings import settings
 from .conditions import sample_values
+from .rewriting import Substitution
 
 __all__ = ['indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'real_form', 'conjugate_logarithms']
 
@@ -115,7 +119,7 @@ def is_antiderivative(F: ExprLike, f: ExprLike, x: Symbol, assumptions: Assumpti
     F_, f_ = as_expr(F), as_expr(f)
     if F_.has(Integral, nan, zoo):
         return None
-    difference = as_expr(F_.diff(x) - f_)
+    difference = as_expr(_almost_everywhere(F_.diff(x)) - f_)
     reduced = attempt(lambda: as_expr(cancel(difference)), _budget())
     if reduced is not None and reduced == 0:
         return True
@@ -134,6 +138,23 @@ def is_antiderivative(F: ExprLike, f: ExprLike, x: Symbol, assumptions: Assumpti
     # the polar incomplete gamma of the Meijer route through
     return _vanishes_on_both_sides(difference, f_, x, assumptions,
                                    both_signs=F_.has(I, exp_polar, polar_lift))
+
+
+def _almost_everywhere(derivative: Expr) -> Expr:
+    """``derivative`` away from the points where a ``sign`` factor jumps:
+    its derivative (an unevaluated ``Derivative`` for an argument not
+    known real, a ``DiracDelta`` otherwise) is zero there, and a numeric
+    check at random points never meets the jump.
+
+    >>> from sympy import symbols, sign
+    >>> from sympy_extras.integrals.indefinite import _almost_everywhere
+    >>> x = symbols('x')
+    >>> _almost_everywhere((x**2*sign(x)/2).diff(x))
+    x*sign(x)
+    """
+    return as_expr(derivative.replace(
+        lambda node: isinstance(node, DiracDelta) or (isinstance(node, Derivative) and isinstance(node.expr, sign)),
+        lambda node: S.Zero))
 
 
 def _items(assumptions: Assumptions) -> list[Boolean]:
@@ -372,7 +393,7 @@ def _rewriting(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     as exponentials, inverse hyperbolic functions as logarithms; ``x = t**k``
     for fractional powers, ``u = exp(c*x)`` for rational functions of an
     exponential, ``x = exp(t)`` for rational functions of a logarithm."""
-    from .rewriting import rewritten_forms, power_substitutions, substitute_back, implied_assumptions
+    from .rewriting import rewritten_forms, power_substitutions, implied_assumptions
     forms = attempt(lambda: rewritten_forms(f, x, assumptions), _budget())
     # the forms hold under the facts they assume (c > 0 for c**(d*z)), and
     # so does an antiderivative found through them
@@ -388,18 +409,42 @@ def _rewriting(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
         for extra in attempt(lambda: power_substitutions(form, x), _budget()) or []:
             if all(extra.back != s.back for s in substitutions):
                 substitutions.append(extra)
+    # the facts about the parameters hold in the new variable, those about x do not
+    inner = [item for item in implied if not item.has(x)]
     for substitution in substitutions:
-        g, t = substitution.integrand, substitution.variable
-        # the substituted integrand in its canonical forms too:
-        # d**(a*z + b*sqrt(z)) becomes 2*t*d**(a*t**2 + b*t), an exponential
-        # of a quadratic once the power of d is written as one
-        # the facts about the parameters hold in the new variable, those about x do not
-        inner = [item for item in implied if not item.has(x)]
-        candidates = [g] + (attempt(lambda: rewritten_forms(g, t, inner), _budget()) or [])
-        for candidate in candidates:
-            found = verified_antiderivative(candidate, t, inner, methods=TYPED)
-            if found is not None:
-                return substitute_back(found[0], t, substitution.back)
+        if substitution.facts:
+            continue
+        F = _substituted(f, x, substitution, inner)
+        if F is not None:
+            return F
+    # the substitutions holding on a region each (a radicand's factor
+    # extracted with its sign): the antiderivatives assembled piecewise
+    # when every region has one
+    pieces: list[tuple[Expr, Boolean]] = []
+    for substitution in substitutions:
+        if not substitution.facts:
+            continue
+        F = _substituted(f, x, substitution, inner)
+        if F is None or is_antiderivative(F, f, x, implied + substitution.facts) is not True:
+            return None
+        pieces.append((F, as_boolean(And(*substitution.facts))))
+    if pieces:
+        return as_expr(Piecewise(*pieces[:-1], (pieces[-1][0], true)))
+    return None
+
+
+def _substituted(f: Expr, x: Symbol, substitution: Substitution, inner: list[Boolean]) -> Optional[Expr]:
+    """The antiderivative of ``f`` through ``substitution``, the typed
+    methods on the substituted integrand and on its canonical forms:
+    ``d**(a*z + b*sqrt(z))`` becomes ``2*t*d**(a*t**2 + b*t)``, an
+    exponential of a quadratic once the power of ``d`` is written as one."""
+    from .rewriting import rewritten_forms, substitute_back
+    g, t = substitution.integrand, substitution.variable
+    candidates = [g] + (attempt(lambda: rewritten_forms(g, t, inner), _budget()) or [])
+    for candidate in candidates:
+        found = verified_antiderivative(candidate, t, inner, methods=TYPED)
+        if found is not None:
+            return substitute_back(found[0], t, substitution.back)
     return None
 
 

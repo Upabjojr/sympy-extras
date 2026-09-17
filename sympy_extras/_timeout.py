@@ -43,6 +43,7 @@ def time_limit(seconds: Optional[float]) -> Iterator[None]:
         yield
         return
     _complete_sympy_tables()
+    _restore_manualintegrate()
 
     def handler(signum: int, frame: object) -> None:
         raise TimeLimitExceeded()
@@ -63,6 +64,47 @@ def time_limit(seconds: Optional[float]) -> Iterator[None]:
 
 
 _tables_complete = False
+
+
+def _restore_manualintegrate() -> None:
+    """Build the special-function patterns of SymPy's ``manualintegrate``
+    before a limit is set: ``special_function_rule`` builds them on first
+    use, extending its list of wildcards first and its list of patterns
+    after, and a limit hit in between left the wildcards in place and
+    the patterns empty, so that the next call extended the wildcards
+    again and every special-function rule (``exp(exp(x))`` to ``Ei``)
+    matched the wrong wildcards for the rest of the process (the bug:
+    two census entries lost after a slow one in the same worker). The
+    lists are rebuilt apart and installed only when complete.
+
+    ``integral_steps`` marks the integrand it works on with ``None`` in
+    its cache against recursion and removes the mark when done; a limit
+    or an error inside leaves the mark, and that integrand (``exp(x)/x``
+    met inside ``exp(exp(x))``) is ``DontKnowRule`` for the rest of the
+    process. The marks are cleared before a limit is set: no
+    ``manualintegrate`` is on the stack then, the limits being set around
+    its calls, not inside them."""
+    import sympy.integrals.manualintegrate as manual
+    from sympy.core.symbol import Dummy
+    from sympy.functions.elementary.exponential import exp
+    manual._integral_cache.clear()
+    patterns, wilds = manual._special_function_patterns, manual._wilds
+    if patterns and len(wilds) == 5:
+        return
+    fresh_patterns: list[object] = []
+    fresh_wilds: list[object] = []
+    vars(manual)['_special_function_patterns'] = fresh_patterns
+    vars(manual)['_wilds'] = fresh_wilds
+    try:
+        u = Dummy('u')
+        manual.special_function_rule(manual.IntegralInfo(exp(u) / u, u))
+    except BaseException:
+        vars(manual)['_special_function_patterns'] = []
+        vars(manual)['_wilds'] = []
+        raise
+    if not (fresh_patterns and len(fresh_wilds) == 5):
+        vars(manual)['_special_function_patterns'] = []
+        vars(manual)['_wilds'] = []
 
 
 def _complete_sympy_tables() -> None:

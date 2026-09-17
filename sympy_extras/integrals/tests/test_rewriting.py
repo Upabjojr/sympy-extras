@@ -220,6 +220,7 @@ def test_identities_valid_on_the_positive_axis_only_need_the_assumption() -> Non
     # u < -1, where the hand form log(u + sqrt(u**2 - 1)) was acosh(-u)
     # (rtest_integrate 182 came out with the wrong sign of the radical there)
     from sympy import acosh, exp as exp_, log as log_
+    from sympy_extras.integrals import is_antiderivative
     from sympy_extras.integrals.indefinite import verified_antiderivative
     from sympy_extras.integrals.rewriting import _inverse_hyperbolic_to_logarithms
     z, r, c, v = symbols('z r c v')
@@ -229,8 +230,55 @@ def test_identities_valid_on_the_positive_axis_only_need_the_assumption() -> Non
     assert found is not None and found[0].has((z**r)**(1 / r)) and not found[0].has(exp_(c * v * z))
     found = verified_antiderivative(exp_(c * (z**r)**(1 / r))**v, z, [z > 0])
     assert found is not None and found[0] == exp_(c * v * z) / (c * v)
-    assert verified_antiderivative(exp_(acosh(z)), z) is None
+    # exp(acosh(z)) is z + sqrt(z - 1)*sqrt(z + 1) for every z, and the
+    # answer in the product of the two roots (Trager's combined roots)
+    # holds wherever the integrand is real
+    found = verified_antiderivative(exp_(acosh(z)), z)
+    assert found is not None and found[1] == 'rewriting'
+    assert is_antiderivative(found[0], exp_(acosh(z)), z, [z > 1]) is True
     found = verified_antiderivative(exp_(acosh(z)), z, [z > 1])
     assert found is not None and found[1] == 'rewriting'
     u = symbols('u')
     assert _inverse_hyperbolic_to_logarithms(acosh(u)) == log_(u + sqrt(u - 1) * sqrt(u + 1))
+
+
+def test_moebius_substitutions_by_region() -> None:
+    # ((x - 1)**2*(x + 1))**(1/3) is (x - 1)*((x + 1)/(x - 1))**(1/3) for
+    # x > 1 and (1 - x)*((x + 1)/(1 - x))**(1/3) for x < 1: a rational
+    # integrand in t**3 = (x + 1)/(x - 1) on each region, the
+    # antiderivative piecewise
+    from sympy import Piecewise, Rational
+    from sympy_extras.integrals import is_antiderivative, verified_antiderivative
+    from sympy_extras.integrals.rewriting import _extracted_powers
+    x = symbols('x')
+    f = as_expr(((x - 1)**2 * (x + 1))**Rational(1, 3) / x**2)
+    regions = _extracted_powers(f, x)
+    assert [facts for _, facts in regions] == [[as_boolean(x - 1 > 0)], [as_boolean(1 - x > 0)]]
+    assert regions[0][0] == (x - 1) * ((x + 1) / (x - 1))**Rational(1, 3) / x**2
+    assert regions[1][0] == (1 - x) * ((x + 1) / (1 - x))**Rational(1, 3) / x**2
+    substitutions = power_substitutions(f, x)
+    assert [s.facts for s in substitutions] == [[as_boolean(x - 1 > 0)], [as_boolean(1 - x > 0)]]
+    assert all(s.integrand.is_rational_function(s.variable) for s in substitutions)
+    found = verified_antiderivative(f, x)
+    assert found is not None and found[1] == 'rewriting' and isinstance(found[0], Piecewise)
+    assert is_antiderivative(found[0], f, x) is True
+    assert is_antiderivative(found[0], f, x, [x > 1]) is True
+    assert is_antiderivative(found[0], f, x, [x > -1, x < 1]) is True
+    # an odd exponent extracted: one region, the factor's sign fixed
+    g = as_expr(sqrt(x**3 * (x + 2)) / x)
+    assert all(len(facts) == 2 for _, facts in _extracted_powers(g, x))
+    # nothing to extract
+    assert _extracted_powers(as_expr(sqrt(x**2 + 1) / x), x) == []
+
+
+def test_binomial_substitutions() -> None:
+    # Chebyshev's cases: sqrt(x**4 + 1)/x**5 is rational in t**2 = 1 + x**(-4)
+    from sympy_extras.integrals import is_antiderivative, verified_antiderivative
+    x = symbols('x')
+    for f in (sqrt(x**4 + 1) / x**5, x**5 * sqrt(x**3 + 1), x**2 * (1 + x**3)**(S(2) / 3)):
+        f_ = as_expr(f)
+        found = verified_antiderivative(f_, x)
+        assert found is not None, f
+        assert is_antiderivative(found[0], f_, x) is True
+    found = verified_antiderivative(as_expr(sqrt(x**4 + 1) / x**5), x)
+    assert found is not None and found[1] == 'rewriting'
