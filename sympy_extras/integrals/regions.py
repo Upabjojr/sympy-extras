@@ -246,7 +246,7 @@ from sympy.solvers.simplex import linprog
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
-from sympy_extras.assumptions.facts import normalize
+from sympy_extras.assumptions.facts import element, normalize
 from sympy_extras.assumptions.solve import solve
 from sympy_extras.assumptions.refine import refine
 from sympy_extras.polys.cad.lifting import CAD, CADCell, cylindrical_algebraic_decomposition
@@ -293,6 +293,13 @@ class IntegralByRanges(Expr):
     (x*y, (x > 0) & (x < y) & (y < 1), (x, y))
     >>> region.doit()
     1/8
+
+    The integration variables are those of the condition, less the
+    ``parameters``; or they are given as ``variables``:
+
+    >>> a = symbols('a')
+    >>> IntegralByRanges(1, x**2 + y**2 < a**2, parameters=[a]).variables
+    (x, y)
     >>> circle = IntegralByRanges(1, Eq(x**2 + y**2, 1), measure='hausdorff')
     >>> circle.measure == 'hausdorff'
     True
@@ -303,15 +310,20 @@ class IntegralByRanges(Expr):
     def __new__(cls, integrand: ExprLike, condition: object,
                 variables: Optional[Sequence[Symbol]] = None,
                 measure: str = 'lebesgue',
-                dimension: Optional[ExprLike] = None) -> IntegralByRanges:
+                dimension: Optional[ExprLike] = None,
+                parameters: Optional[Sequence[Symbol]] = None) -> IntegralByRanges:
         integrand_ = as_expr(integrand)
         condition_ = as_boolean(condition)
+        excluded = [as_symbol(p) for p in parameters] if parameters is not None else []
         if variables is None:
-            names = sorted_symbols(free_symbols(condition_))
+            names = [v for v in sorted_symbols(free_symbols(condition_)) if v not in excluded]
             if dimension is not None:
                 names = [_radial_symbol(names)]
         else:
             names = [as_symbol(v) for v in variables]
+            clash = [v for v in names if v in excluded]
+            if clash:
+                raise ValueError("%s cannot be both an integration variable and a parameter" % (clash[0],))
         if not names:
             raise ValueError("no integration variable: the condition has no symbols")
         if isinstance(measure, Str):
@@ -667,6 +679,13 @@ def _iterated(integrand: Expr, variables: Sequence[Symbol], stack: _Stack,
         piece = _split_roots(value, inner)
         try:
             result = definite_integral(piece, (x, lower, upper), outer)
+            if piece != value and (result.has(I, Integral, IntegralByRanges) or _unwieldy(result)):
+                # the split roots sqrt(-a - x)*sqrt(-a + x) under a < 0 gave
+                # a complex form of pi*a**2/2 where the product sqrt((a - x)*(a + x)) gives it plainly
+                unsplit = definite_integral(value, (x, lower, upper), outer)
+                if not unsplit.has(Integral, IntegralByRanges) and (result.has(Integral, IntegralByRanges)
+                                                                       or unsplit.count_ops() < result.count_ops()):
+                    result = unsplit
         except ValueError:
             return S.Zero                                   # contradictory bounds: an empty cell
         if result.has(Integral, IntegralByRanges) and lower == -upper and upper != oo \
@@ -679,6 +698,13 @@ def _iterated(integrand: Expr, variables: Sequence[Symbol], stack: _Stack,
             return None
         value = result
     return value
+
+
+def _unwieldy(value: Expr) -> bool:
+    """Whether ``value`` has logarithms of radicals or more than a few
+    dozen operations, the marks of an antiderivative taken along a
+    complex branch."""
+    return value.count_ops() > 40 or any(node.args[0].has(Pow) for node in value.atoms(log))
 
 
 def _parameter_condition(cell: CADCell, cad: CAD, levels: int, explicit: bool = False) -> Boolean:
@@ -886,8 +912,31 @@ def _radial(f: Expr, formula: Boolean, names: Sequence[Symbol], assumptions: lis
     if tidy is not None:
         value = tidy
     if positive is None:
-        return as_expr(Piecewise((value, as_boolean(upper > 0)), (S.Zero, True)))
+        return _conditional(value, upper, assumptions)
     return value
+
+
+def _conditional(value: Expr, bound: Expr, assumptions: list[Boolean]) -> Expr:
+    """``value`` where ``bound > 0`` and ``0`` elsewhere (the region is
+    empty): the plain ``value`` when ``bound`` is never negative and
+    ``value`` vanishes wherever ``bound`` does (the disc of radius
+    ``Abs(a)``: ``pi*a**2`` for every ``a``, ``0`` at ``a = 0`` included),
+    the ``Piecewise`` otherwise.
+
+    >>> from sympy import symbols, pi
+    >>> from sympy_extras.integrals.regions import _conditional
+    >>> a = symbols('a')
+    >>> _conditional(pi*a**2, a**2, []), _conditional(a, a, [])
+    (pi*a**2, Piecewise((a, a > 0), (0, True)))
+    """
+    parameters = sorted_symbols(free_symbols(bound))
+    # the parameters are real (a**2 >= 0 is undecided for a complex a)
+    if ask(as_boolean(bound >= 0), assumptions + [element(p, S.Reals) for p in parameters]) is True:
+        zeros = attempt(lambda: sympy_solve(bound, parameters, dict=True), settings.timeout) if parameters else []
+        if isinstance(zeros, list) and all(
+                isinstance(zero, dict) and as_expr(simplify(as_expr(value.xreplace(zero)))) == 0 for zero in zeros):
+            return value
+    return as_expr(Piecewise((value, as_boolean(bound > 0)), (S.Zero, True)))
 
 
 def _form_atom(atom: Relational, names: Sequence[Symbol],
@@ -1585,7 +1634,7 @@ def _polytope(f: Expr, formula: Boolean, names: Sequence[Symbol], assumptions: l
 
     >>> from sympy import symbols
     >>> from sympy_extras.integrals.regions import _polytope
-    >>> from sympy_extras.assumptions.facts import normalize
+    >>> from sympy_extras.assumptions.facts import element, normalize
     >>> x, y = symbols('x y')
     >>> _polytope(x*y, normalize((x > 0) & (y > 0) & (x + y < 1)), [x, y], [])
     1/24
@@ -1632,7 +1681,8 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
                         variables: Optional[Sequence[Symbol]] = None,
                         assumptions: Assumptions = None,
                         measure: str = 'lebesgue',
-                        dimension: Optional[ExprLike] = None) -> Expr:
+                        dimension: Optional[ExprLike] = None,
+                        parameters: Optional[Sequence[Symbol]] = None) -> Expr:
     """The integral of ``integrand`` over the region ``condition``.
 
     Parameters
@@ -1649,7 +1699,13 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     variables : list of Symbol, optional
         The integration variables, in the order of the decomposition
         (the last one is integrated first); by default every symbol of
-        the condition. The other symbols are parameters.
+        the condition other than the ``parameters``. The other symbols
+        are parameters.
+    parameters : list of Symbol, optional
+        The symbols which are not integrated over, when ``variables`` is
+        not given: ``x**2 + y**2 < a**2`` with ``parameters=[a]`` is the
+        disc of radius ``Abs(a)``, where without either the region is the
+        unbounded solid in ``(a, x, y)``.
     assumptions : Boolean or list of Booleans, optional
         Assumptions on the parameters; the cases of the parameter space
         they refute are dropped.
@@ -1691,11 +1747,20 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     >>> integrate_by_ranges(1, x**2 + y**2 < r**2, [x, y], r > 0)
     pi*r**2
 
-    Without the assumption the answer is a ``Piecewise`` over the three
-    cells ``r < 0``, ``r = 0`` and ``r > 0`` of the parameter space:
+    Without the assumption the cells ``r < 0``, ``r = 0`` and ``r > 0`` of
+    the parameter space are integrated apart, and their values agree
+    (``pi*r**2`` is ``0`` at ``r = 0``), so the answer is one expression;
+    a parameter is told from the variables by ``parameters`` as well:
 
-    >>> integrate_by_ranges(1, x**2 + y**2 < r**2, [x, y]).subs(r, -2)
-    4*pi
+    >>> integrate_by_ranges(1, x**2 + y**2 < r**2, parameters=[r])
+    pi*r**2
+    >>> integrate_by_ranges(1, x**2 + y**2 < r**2)
+    oo
+
+    The cases stay apart where the values differ:
+
+    >>> integrate_by_ranges(1, (x > 0) & (x < r), parameters=[r])
+    Piecewise((0, Eq(r, 0) | (r < 0)), (r, True))
 
     The length of the arc of the parabola ``y = x**2`` over ``0 < x < 1``
     and the area of the paraboloid ``z = x**2 + y**2`` below ``z = 1``:
@@ -1718,7 +1783,7 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     >>> integrate_by_ranges(1, r < R, [r], dimension=n)
     pi**(n/2)*R**n/gamma(n/2 + 1)
     """
-    node = IntegralByRanges(integrand, condition, variables, measure, dimension)
+    node = IntegralByRanges(integrand, condition, variables, measure, dimension, parameters)
     f, formula, names = node.integrand, normalize(node.condition), node.variables
     if node.measure == _MEASURES[0] and dimension is None:
         formula = _full_measure(formula, names)
@@ -1849,19 +1914,22 @@ def _cases(values: dict[CADCell, Expr], cad: CAD, m: int, assumptions: Assumptio
         for value in values.values():
             total = total + value
         return as_expr(total)
-    cases: list[tuple[Expr, Boolean]] = []
+    cases: list[tuple[Expr, Boolean, CADCell]] = []
     for base in cad.cells_at(m):
         cond = _parameter_condition(base, cad, m, explicit=True)
         if ask(cond, assumptions) is False:
             continue
-        cases.append((values.get(base, S.Zero), cond))
+        cases.append((values.get(base, S.Zero), cond, base))
     if not cases:
         return S.Zero
     if len(cases) == 1:
         return cases[0][0]
+    whole = _one_expression(cases)
+    if whole is not None:
+        return whole
     grouped: dict[Expr, list[Boolean]] = {}
     order: list[Expr] = []
-    for value, cond in cases:
+    for value, cond, _ in cases:
         if value not in grouped:
             grouped[value] = []
             order.append(value)
@@ -1873,6 +1941,33 @@ def _cases(values: dict[CADCell, Expr], cad: CAD, m: int, assumptions: Assumptio
         branches.append((value, cond))
     return as_expr(Piecewise(*branches))
 
+
+
+def _one_expression(cases: list[tuple[Expr, Boolean, CADCell]]) -> Optional[Expr]:
+    """The common value of the cases when the full-dimensional parameter
+    cells all have the same value and each lower-dimensional cell's
+    value is that expression at the cell (``pi*a**2`` on ``a < 0`` and on
+    ``a > 0``, ``0 = pi*0**2`` at ``a = 0``: the disc of radius ``Abs(a)``
+    is ``pi*a**2`` for every ``a``); ``None`` when the cases differ or a
+    lower-dimensional cell has no explicit equations."""
+    sectors = [value for value, _, base in cases if all(i % 2 for i in base.index)]
+    if not sectors or any(value != sectors[0] for value in sectors[1:]):
+        return None
+    common = sectors[0]
+    for value, condition, base in cases:
+        if all(i % 2 for i in base.index):
+            continue
+        substitutions: dict[Symbol, Expr] = {}
+        for atom in (condition.args if isinstance(condition, And) else [condition]):
+            if isinstance(atom, Eq) and isinstance(atom.lhs, Symbol):
+                substitutions[atom.lhs] = as_expr(atom.rhs)
+        if not substitutions:
+            return None
+        restricted = attempt(lambda: as_expr(simplify(as_expr(common.xreplace(substitutions))
+                                                      - as_expr(value.xreplace(substitutions)))), settings.timeout)
+        if restricted is None or restricted != 0:
+            return None
+    return common
 
 
 def _pruned(condition: Boolean) -> Boolean:

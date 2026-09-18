@@ -801,6 +801,15 @@ pi*(-12*polylog(2, -a) - pi**2)/(3*(a**2 - 1))
 
 ```
 
+The integration variables are those of the condition unless `variables`
+lists them or `parameters` names the symbols to leave alone:
+`integrate_by_ranges(1, x**2 + y**2 < a**2, parameters=[a])` is `pi*a**2`,
+where the bare call integrates over `a` as well and finds the unbounded
+solid infinite. The cases of the parameters come back as one expression
+when their values agree (`pi*a**2` on both sides of `a = 0`, and `0`
+there), as a `Piecewise` otherwise (`Piecewise((pi*a, a > 0), (0, True))`
+for `x**2 + y**2 < a`).
+
 Some conventions of the region integrals. Under the Lebesgue measure the
 equations and non-equations in the integration variables are dropped
 before any route runs (`Ne(p, 0)` holds and `Eq(p, 0)` fails up to a set

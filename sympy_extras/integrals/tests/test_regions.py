@@ -50,9 +50,10 @@ def test_measure_zero_and_empty() -> None:
 
 
 def test_parameters() -> None:
-    # the disc of radius r: the cells r < 0, r = 0 and r > 0 of the parameter space
+    # the disc of radius r: the cells r < 0, r = 0 and r > 0 of the
+    # parameter space agree (pi*r**2 is 0 at r = 0), one expression
     value = integrate_by_ranges(1, x**2 + y**2 < r**2, [x, y])
-    assert isinstance(value, Piecewise)
+    assert value == pi*r**2
     assert value.subs(r, 2) == 4*pi
     assert value.subs(r, -2) == 4*pi
     assert value.subs(r, 0) == 0
@@ -512,3 +513,36 @@ def test_a_precision_failure_leaves_the_integral_unevaluated() -> None:
     assert attempt(lambda: 1 / 0, 1) is None
     found = integrate_by_ranges(1, (x > -3) & (y > -3) & (x < 3) & (y < 3) & (2 * x**2 * y - x * y**2 + 2 < 0), [x, y])
     assert found.is_number or isinstance(found, IntegralByRanges)
+
+
+def test_parameters_are_told_from_the_variables() -> None:
+    # the disc of radius Abs(a): without either list the region is the
+    # unbounded solid in (a, x, y)
+    a, b = symbols('a b')
+    assert integrate_by_ranges(1, x**2 + y**2 < a**2) == oo
+    assert integrate_by_ranges(1, x**2 + y**2 < a**2, parameters=[a]) == pi * a**2
+    assert integrate_by_ranges(1, x**2 + y**2 < a**2, [x, y]) == pi * a**2
+    assert integrate_by_ranges(x**2 + y**2, x**2 + y**2 < a**2, parameters=[a]) == pi * a**4 / 2
+    assert integrate_by_ranges(1, x**2 + y**2 + z**2 < a**2, parameters=[a]) == 4 * pi * a**2 * abs(a) / 3
+    assert integrate_by_ranges(1, x**2 + y**2 < a**2 + b**2, parameters=[a, b]) == pi * (a**2 + b**2)
+    assert IntegralByRanges(1, x**2 + y**2 < a**2, parameters=[a]).variables == (x, y)
+    raises(ValueError, lambda: IntegralByRanges(1, x**2 + y**2 < a**2, [x, a], parameters=[a]))
+    # the cases stay apart where the values differ
+    found = integrate_by_ranges(1, x**2 + y**2 < a, parameters=[a])
+    assert found == Piecewise((pi * a, a > 0), (0, True))
+    found = integrate_by_ranges(1, (x > 0) & (x < a), parameters=[a])
+    assert found.subs(a, 2) == 2 and found.subs(a, -2) == 0
+    found = integrate_by_ranges(x, (x**2 + y**2 < a**2) & (x > 0), parameters=[a])
+    assert found.subs(a, 2) == Rational(16, 3) and found.subs(a, -2) == Rational(16, 3) and found.subs(a, 0) == 0
+
+
+def test_agreeing_cases_are_one_expression() -> None:
+    # through the decomposition too: the half disc is pi*a**2/2 on a < 0
+    # and on a > 0, and 0 at a = 0, where pi*a**2/2 is 0; the split roots
+    # sqrt(-a - x)*sqrt(-a + x) under a < 0 gave a complex form of the
+    # same value, and the product form is taken instead
+    from sympy import I
+    a = symbols('a')
+    found = integrate_by_ranges(1, (x**2 + y**2 < a**2) & (x > 0), parameters=[a])
+    assert found == pi * a**2 / 2 and not found.has(I)
+    assert integrate_by_ranges(1, (x > a) & (x < a + 1) & (y > 0) & (y < 1), parameters=[a]) == 1

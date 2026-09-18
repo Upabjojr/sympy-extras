@@ -10,6 +10,17 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `integrate_by_ranges` and `IntegralByRanges` take `parameters`, the
+  symbols not integrated over, as an alternative to listing the
+  `variables`: `integrate_by_ranges(1, x**2 + y**2 < a**2, parameters=[a])`
+  is `pi*a**2`, where without either list the region is the unbounded
+  solid in `(a, x, y)`. The cases of the parameters are returned as one
+  expression when their values agree (`pi*a**2` on `a < 0` and on `a > 0`,
+  `0` at `a = 0`), for the radial routes and for the decomposition alike,
+  and an inner integral whose split roots (`sqrt(-a - x)*sqrt(-a + x)`
+  under `a < 0`) give a complex form is retried with the product of the
+  roots.
+
 - `sympy_extras.integrals.trager`: several square roots of polynomials
   are combined into the one root of the product of the radicands when
   the integrand is rational in it (`sqrt(x + 1)*sqrt(x + 2)/x`), and the
