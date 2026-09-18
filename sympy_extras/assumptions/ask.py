@@ -238,6 +238,13 @@ def _bounded_cad_ask(formula: Boolean, facts: Facts) -> Truth:
     abstraction = polynomial_abstraction(normalize(formula), facts.real)
     if abstraction is None:
         return None
+    # the bounds of log(u) hold for u > 0: the facts must put every
+    # point there (the bug: log(x) < 0 was True under -1 < x < 1, the
+    # points with x <= 0, where log(x) is not real, dropped by the
+    # constraint u > 0)
+    for requirement in abstraction.requirements:
+        if _cad_ask(normalize(requirement), facts) is not True:
+            return None
     try:
         extended = Facts(facts.conjuncts + abstraction.constraints
                          + [Contains(t, S.Reals) for t in abstraction.variables])

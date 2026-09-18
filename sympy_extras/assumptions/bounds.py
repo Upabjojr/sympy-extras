@@ -113,12 +113,19 @@ class Abstraction:
         new variables.
     variables : list of Symbol
         The new variables.
+    requirements : list of Boolean
+        The conditions under which the replaced applications are real
+        (``u > 0`` for ``log(u)``, ``u >= 0`` for a root), which the
+        facts must imply for the abstraction to speak about every point
+        they allow.
     """
 
-    def __init__(self, formula: Boolean, constraints: list[Boolean], variables: list[Symbol]) -> None:
+    def __init__(self, formula: Boolean, constraints: list[Boolean], variables: list[Symbol],
+                 requirements: Optional[list[Boolean]] = None) -> None:
         self.formula = formula
         self.constraints = constraints
         self.variables = variables
+        self.requirements = list(requirements or [])
 
     def __repr__(self) -> str:
         return "Abstraction(%s, %s)" % (self.formula, self.constraints)
@@ -128,6 +135,7 @@ class _Abstractor:
     def __init__(self, real: set[Symbol]) -> None:
         self.real = real
         self.constraints: list[Boolean] = []
+        self.requirements: list[Boolean] = []
         self.variables: list[Symbol] = []
         self.known: dict[Expr, Symbol] = {}
 
@@ -153,6 +161,8 @@ class _Abstractor:
             if isinstance(e, Abs):
                 self.constraints.extend([t >= 0, Or(Eq(t, inner), Eq(t, -inner))])
             else:
+                if isinstance(e, log):
+                    self.requirements.append(as_boolean(inner > 0))
                 self.constraints.extend(_RULES[type(e)](t, inner))
             self.known[e] = t
             return t
@@ -163,6 +173,7 @@ class _Abstractor:
             p, q = int(e.exp.p), int(e.exp.q)
             t = self._fresh('t')
             # a real root of a nonnegative base (the reality of the power)
+            self.requirements.append(as_boolean(inner >= 0 if p > 0 else inner > 0))
             self.constraints.extend([inner >= 0, t >= 0, Eq(t**q, inner**p)] if p > 0
                                     else [inner > 0, t > 0, Eq(t**q*inner**(-p), 1)])
             self.known[e] = t
@@ -222,4 +233,4 @@ def polynomial_abstraction(formula: Boolean, real: set[Symbol], max_variables: i
     result = abstractor.formula(formula)
     if result is None or not abstractor.variables or len(abstractor.variables) > max_variables:
         return None
-    return Abstraction(result, abstractor.constraints, abstractor.variables)
+    return Abstraction(result, abstractor.constraints, abstractor.variables, abstractor.requirements)

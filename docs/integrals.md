@@ -801,6 +801,24 @@ pi*(-12*polylog(2, -a) - pi**2)/(3*(a**2 - 1))
 
 ```
 
+Some conventions of the region integrals. Under the Lebesgue measure the
+equations and non-equations in the integration variables are dropped
+before any route runs (`Ne(p, 0)` holds and `Eq(p, 0)` fails up to a set
+of measure zero), so a box cut along a curve costs what the box costs;
+the Hausdorff measure keeps them, and takes the dimension of the variety
+from the decomposition, so that dependent equations (`Eq(y, x) & Eq(x -
+y, 0)`) describe the same curve as one of them. A bound solved for the
+last variable restricts the others to where it is real: `y < log(x)`
+means `x > 0`, `y > x**(1/3)` means `x >= 0` (SymPy's principal root). The
+radial routes accept an integrand as a function of the distance only
+when it agrees with its value on the axis at points of every orthant and
+under finite rotations (`Heaviside(x)` is not radial). The cases of a
+parameter are labelled by the roots of the projection polynomials in
+explicit form (`a > sqrt(2)`), which tell the cells apart where the signs
+of the polynomials do not. An unevaluated `IntegralByRanges` is an
+ordinary expression: its integration variables are bound, and it can be
+substituted, copied and pickled.
+
 ## What is not done
 
 Tracked in issue #53 of the repository, with the alternatives worth adding.

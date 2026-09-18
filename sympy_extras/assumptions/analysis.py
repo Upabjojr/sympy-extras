@@ -496,6 +496,32 @@ def signs_multivariate(f: Expr, symbols: list[Symbol], facts: Facts) -> Optional
     return None
 
 
+def _real_on(f: Expr, x: Optional[Symbol], domain: Optional[Set], facts: Facts,
+             symbols: Optional[list[Symbol]] = None) -> bool:
+    """Whether the logarithms and rational powers of ``f`` are real on the
+    whole domain: the argument of a logarithm positive, the base of a
+    root nonnegative (the bug: ``2 - x**(1/3)`` was found positive on
+    ``-1 < x < 1``, where the principal root is not real for ``x < 0``)."""
+    from sympy.functions.elementary.exponential import log
+    from sympy.core.power import Pow
+    from sympy.core.numbers import Rational
+    checks: list[tuple[Expr, Signs]] = []
+    for node in f.atoms(log):
+        checks.append((as_expr(node.args[0]), frozenset([1])))
+    for node in f.atoms(Pow):
+        exponent = node.exp
+        if isinstance(exponent, Rational) and not exponent.is_integer and node.base.free_symbols:
+            checks.append((as_expr(node.base), frozenset([0, 1]) if exponent > 0 else frozenset([1])))
+    for inner, allowed in checks:
+        if x is not None and domain is not None:
+            signs = sign_on(inner, x, domain)
+        else:
+            signs = signs_multivariate(inner, symbols or [], facts)
+        if signs is None or not signs <= allowed:
+            return False
+    return True
+
+
 def decide_relational(atom: Relational, facts: Facts) -> Truth:
     """Truth of a relation between expressions of one real variable under
     the facts, by the sign analysis of the difference of its sides.
@@ -530,9 +556,14 @@ def decide_relational(atom: Relational, facts: Facts) -> Truth:
         domain = domain_of(x, facts)
         if domain is None or isinstance(domain, EmptySet):
             return None
+        if not _real_on(f, x, domain, facts):
+            return None
         signs = sign_on(f, x, domain)
     else:
-        signs = signs_multivariate(f, sorted(symbols, key=lambda v: v.name), facts)
+        ordered = sorted(symbols, key=lambda v: v.name)
+        if not _real_on(f, None, None, facts, ordered):
+            return None
+        signs = signs_multivariate(f, ordered, facts)
     if signs is None:
         return None
     kind = type(atom)

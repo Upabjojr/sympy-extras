@@ -125,3 +125,16 @@ def test_tilted_planes_through_the_aligned_frame() -> None:
     assert aligned_frame(as_expr(1), And(ball, x + y + z > 0, x - y > 0), [x, y, z]) is None
     # through the entry point
     assert integrate_by_ranges(1, And(ball, x + y + z > 0)) == 2 * pi / 3
+
+
+def test_finite_rotations_refuse_piecewise_constant_integrands() -> None:
+    # sympy-extras#57: the derivative test alone accepted them
+    from sympy import Heaviside, Piecewise, exp
+    from sympy_extras.integrals.axisymmetric import rotation_invariant, _invariant
+    assert rotation_invariant(x**2 + y**2, [x, y])
+    assert rotation_invariant(exp(-(x**2 + y**2)) * z, [x, y])
+    assert not rotation_invariant(Heaviside(x), [x, y])
+    assert not rotation_invariant(Piecewise((1, x * y > 0), (0, True)), [x, y])
+    assert not _invariant(Piecewise((1, x * y > 0), (0, True)), [x, y])
+    assert not _invariant(Heaviside(x), [x, y])
+    assert _invariant((x**2 + y**2)**2, [x, y])

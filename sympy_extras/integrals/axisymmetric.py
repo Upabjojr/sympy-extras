@@ -53,11 +53,14 @@ References
 """
 from __future__ import annotations
 
+import random
 from itertools import combinations
 from typing import Optional, Sequence
 
 from sympy.core.expr import Expr
-from sympy.core.numbers import pi
+from sympy.core.numbers import Integer, Rational, pi
+from sympy.core.singleton import S
+from sympy.functions.elementary.complexes import Abs
 from sympy.core.relational import Eq, Relational
 from sympy.core.symbol import Dummy, Symbol
 from sympy.core.function import expand
@@ -69,17 +72,61 @@ from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, cancel
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols
+from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.settings import settings
 from .conditions import numerically_equal
 
-__all__ = ['axisymmetric_integral', 'rotation_group']
+__all__ = ['axisymmetric_integral', 'rotation_group', 'rotation_invariant']
+
+
+def rotation_invariant(e: Expr, group: Sequence[Symbol], samples: int = 3) -> bool:
+    """Whether ``e`` takes the same value at random rational points and at
+    their images under rotations in the coordinate planes of ``group``,
+    the rotations exact (``cos, sin = (1 - t**2)/(1 + t**2), 2*t/(1 +
+    t**2)`` with ``t`` rational: the angles 37, 90, 127 and 143 degrees,
+    so that a quadrant indicator cannot keep every sample in its
+    quadrant). A finite test: the derivative test of
+    :func:`_invariant` is blind to a function constant off a set of
+    measure zero (``Heaviside(x)``, ``Piecewise((1, x*y > 0), (0,
+    True))``), whose derivative vanishes at every sample.
+
+    >>> from sympy import symbols, Heaviside
+    >>> from sympy_extras.integrals.axisymmetric import rotation_invariant
+    >>> x, y = symbols('x y')
+    >>> rotation_invariant(x**2 + y**2, [x, y]), rotation_invariant(Heaviside(x), [x, y])
+    (True, False)
+    """
+    rng = random.Random(str((e, tuple(group))))
+    others = sorted_symbols(free_symbols(e) - set(group))
+    for _ in range(samples):
+        point: dict[Symbol, Expr] = {v: Rational(rng.randint(-300, 300), 100) for v in list(group) + others}
+        base = as_expr(as_expr(e.xreplace(point)).evalf(30))
+        if not base.is_number:
+            return False
+        for u, v in combinations(group, 2):
+            for t in (Rational(1, 3), S.One, Integer(2), Integer(3)):
+                c, s = (1 - t**2) / (1 + t**2), 2 * t / (1 + t**2)
+                rotated = dict(point)
+                rotated[u], rotated[v] = as_expr(c * point[u] - s * point[v]), as_expr(s * point[u] + c * point[v])
+                value = as_expr(as_expr(e.xreplace(rotated)).evalf(30))
+                if not value.is_number:
+                    return False
+                gap = as_expr(Abs(base - value).evalf(30))
+                scale = as_expr((1 + Abs(base) + Abs(value)).evalf(30))
+                if not gap.is_comparable or not scale.is_comparable or gap > scale / 10**12:
+                    return False
+    return True
 
 
 def _invariant(e: Expr, group: Sequence[Symbol]) -> bool:
     """Whether ``e`` depends on the variables of ``group`` through the sum
     of their squares only: annihilated by every infinitesimal rotation
-    ``u d/dv - v d/du``."""
+    ``u d/dv - v d/du``, and unchanged by finite rotations at random
+    points (the derivative test alone accepted ``Heaviside(x)`` and
+    ``Piecewise((1, x*y > 0), (0, True))``, constant off a set of
+    measure zero)."""
+    if not rotation_invariant(e, group):
+        return False
     for u, v in combinations(group, 2):
         generator = as_expr(u * e.diff(v) - v * e.diff(u))
         if generator == 0:

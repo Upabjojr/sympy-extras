@@ -445,6 +445,67 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `sympy_extras._timeout.attempt` contains `ArithmeticError` too:
+  `PrecisionExhausted` (SymPy's `evalf` unable to decide a sign inside
+  `integrate`), a division by zero or an overflow come back as "not
+  computed" instead of crashing `definite_integral` and
+  `integrate_by_ranges` (#55).
+
+- `integrate_by_ranges` no longer takes a non-radial integrand as
+  radial: the comparison with the value on the axis is sampled in
+  every orthant and under finite rotations, not on the positive orthant
+  alone, where `Heaviside(x)`, `sign(x)` and `Abs(x)` agree with their
+  radial candidates (`Heaviside(x)` over the unit disc is `pi/2`, not
+  `pi`; #56). The axisymmetric route checks the invariance under finite
+  rotations as well as under the infinitesimal ones, which a function
+  constant off a set of measure zero passes (`Piecewise((1, x*y > 0), (0,
+  True))` over the disc and `Heaviside(x)` on the circle with the
+  Hausdorff measure gave `0` and `2*pi`; #57).
+
+- `integrate_by_ranges` with `measure='hausdorff'` takes the dimension
+  of the variety from the decomposition instead of from the number of
+  equations, so that dependent equations (`Eq(y, x) & Eq(x - y, 0)`,
+  `Eq(y, x) & Eq(y**2, x**2)`, the cylinder through the equator of the
+  sphere) measure their curve instead of `0` (#58).
+
+- `integrate_by_ranges` restricts the outer variables to where a solved
+  bound is real: `y < log(x)` on `-1 < x < 1` means `0 < x < 1` (the
+  integral of `exp(y)` there is `1/2`, not `0`; areas came out complex
+  and the cube root `y > x**(1/3)` was taken real for `x < 0`; #59).
+
+- `ask` answers `None`, not `True`, for `log(x) < 0` and `x**(1/3) < 2`
+  under `-1 < x < 1`: the polynomial bounds of a logarithm or a root
+  hold where it is real, and the facts must imply that (`u > 0` for
+  `log(u)`, `u >= 0` for a root) before the abstraction is trusted, and
+  the sign analysis declines a difference with a logarithm or a root not
+  real on the whole domain (#61).
+
+- The cylindrical route of `integrate_by_ranges` starts the radial range
+  at the origin: `solve` gave `(-sqrt(a), sqrt(a))` for `rho**2 < a` with
+  `a` symbolic, and the integrand, odd in `rho`, integrated to `0` (the
+  volume under the paraboloid `z < a` with `a > 0` is `pi*a**2/2`; #60).
+
+- The `Piecewise` of `integrate_by_ranges` labels the cells of the
+  parameters by their roots in explicit form (`a > sqrt(2)`) instead of
+  by the signs of the projection polynomials, which do not tell `a <
+  -sqrt(2)` from `a > sqrt(2)`: the value of one cell was attached to the
+  other whenever a projection polynomial with two real roots did not
+  factor over the rationals (`(x**2 < 2) & (x < a)` at `a = 2` gave `0`
+  instead of `2*sqrt(2)`, the disc of radius `sqrt(2)` cut by `x < a`
+  likewise; #62).
+
+- `integrate_by_ranges` drops the equations and non-equations in the
+  integration variables under the Lebesgue measure (`Ne(p, 0)` is true,
+  `Eq(p, 0)` false, up to a set of measure zero): a box cut along the
+  curve of a `Ne` was decomposed along it, with algebraic bounds whose
+  logarithms ran out of memory (#63). `real_logarithms` decides the sign
+  of a numeric argument numerically instead of expanding it.
+
+- `IntegralByRanges` with `measure='hausdorff'` or a `dimension` can be
+  rebuilt from its arguments, so `subs`, `xreplace`, `copy.deepcopy` and
+  pickling work; the integration variables are bound (`free_symbols`
+  excludes them, `subs` leaves them alone; #64).
+
 - `sympy_extras._timeout`: the special-function patterns of SymPy's
   `manualintegrate` are built before a limit is set, like the Meijer G
   table. SymPy builds them on first use, the wildcards first and the

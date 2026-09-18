@@ -372,3 +372,143 @@ def test_numeric_root_bounds_are_written_in_radicals() -> None:
     assert _radical_form(CRootOf(r**3 - 3 * r + 1, 0)) == CRootOf(r**3 - 3 * r + 1, 0)
     profile = Eq(r**2 + z**2, 1) & (z > S.Half) & (r > 0)
     assert integrate_by_ranges(2 * pi * r, profile, [z, r], measure='hausdorff') == pi
+
+
+def test_non_radial_integrands_are_not_taken_as_radial() -> None:
+    # sympy-extras#56: Heaviside(x) agrees with 1 = Heaviside(rho) on the
+    # positive orthant, where the numerical comparison sampled
+    from sympy import Heaviside, sign, Abs
+    from sympy_extras.integrals.regions import _radial_integrand
+    disc = x**2 + y**2 < 1
+    assert integrate_by_ranges(Heaviside(x), disc) == pi / 2
+    assert integrate_by_ranges(sign(x) * (x**2 + y**2), disc) == 0
+    assert integrate_by_ranges(Abs(x) - x + 1, disc) == pi + Rational(4, 3)
+    assert integrate_by_ranges(Heaviside(x), 2 * x**2 + y**2 < 1) == sqrt(2) * pi / 4
+    assert integrate_by_ranges(Heaviside(x), x**2 + y**2 + z**2 < 1) == 2 * pi / 3
+    assert integrate_by_ranges(Heaviside(x), (x**2 + y**2 < 1) & (z > 0) & (z < 1)) == pi / 2
+    rho = symbols('rho', positive=True)
+    assert _radial_integrand(as_expr(Heaviside(x)), [x, y], rho) is None
+    assert _radial_integrand(as_expr(exp(-x**2 - y**2)), [x, y], rho) == exp(-rho**2)
+
+
+def test_piecewise_constant_integrands_are_not_taken_as_axisymmetric() -> None:
+    # sympy-extras#57: the derivative of Piecewise((1, x*y > 0), (0, True))
+    # vanishes almost everywhere, and the axisymmetric route took the
+    # value on the axis; the finite rotations refuse it
+    from sympy import Heaviside
+    found = integrate_by_ranges(Piecewise((1, x * y > 0), (0, True)), x**2 + y**2 < 1)
+    assert found == pi / 2 or isinstance(found, IntegralByRanges)
+    assert integrate_by_ranges(Heaviside(x), Eq(x**2 + y**2, 1), measure='hausdorff') == pi
+
+
+def test_hausdorff_measure_with_dependent_equations() -> None:
+    # sympy-extras#58: the dimension of the variety comes from the
+    # decomposition, not from the number of equations
+    assert integrate_by_ranges(1, Eq(y, x) & Eq(x - y, 0) & (x > 0) & (x < 1), measure='hausdorff') == sqrt(2)
+    assert integrate_by_ranges(1, Eq(y, x) & Eq(y**2, x**2) & (x > 0) & (x < 1), measure='hausdorff') == sqrt(2)
+    assert integrate_by_ranges(1, Eq(z, 0) & Eq(x**2 + y**2 + z**2, 1) & Eq(x**2 + y**2, 1),
+                               measure='hausdorff') == 2 * pi
+
+
+def test_solved_bounds_hold_where_they_are_real() -> None:
+    # sympy-extras#59: y < log(x) restricts x to x > 0, and the inner
+    # integral was taken over -1 < x < 1
+    from sympy import log, sin
+    from sympy_extras.integrals.regions import _reality_conditions
+    box = (x > -1) & (x < 1)
+    assert integrate_by_ranges(exp(y), box & (y < log(x))) == S.Half
+    assert integrate_by_ranges(exp(2 * y), box & (y < log(x))) == Rational(1, 6)
+    assert integrate_by_ranges(exp(y), box & (y < log(-x))) == S.Half
+    assert integrate_by_ranges(exp(y), (x > -2) & (x < 1) & (y < log(x + 1) - 1)) == 2 * exp(-1)
+    assert integrate_by_ranges(1, box & (y > log(x)) & (y < 0)) == 1
+    assert integrate_by_ranges(1, box & (y > log(x)) & (y < 1)) == 2
+    # the principal cube root is real for x >= 0 only
+    assert integrate_by_ranges(1, box & (y > x**Rational(1, 3)) & (y < 2)) == Rational(5, 4)
+    # a lower bound dominated by another still restricts the outer range
+    assert integrate_by_ranges(x, box & (y > 0) & (y < 2) & (y > log(x))) == 1
+    assert _reality_conditions(as_expr(log(x + 1) - 1)) == [x + 1 > 0]
+    assert set(_reality_conditions(as_expr(x**Rational(1, 3) + sqrt(x - 1))) or []) == {x >= 0, x - 1 >= 0}
+    assert _reality_conditions(as_expr(exp(x) + sin(x))) == []
+    assert _reality_conditions(as_expr(x**y)) is None
+
+
+def test_cylindrical_range_starts_at_the_origin() -> None:
+    # sympy-extras#60: solve gave (-sqrt(a), sqrt(a)) for rho**2 < a with a
+    # symbolic, and the odd integrand 2*pi*rho*(a - rho**2) integrated to 0
+    a = symbols('a')
+    paraboloid = (z > x**2 + y**2) & (z < a)
+    assert integrate_by_ranges(1, paraboloid, [x, y, z], [a > 0]) == pi * a**2 / 2
+    assert integrate_by_ranges(1, paraboloid, [x, y, z], [a > 0, a < 1]) == pi * a**2 / 2
+    assert integrate_by_ranges(z, paraboloid, [x, y, z], [a > 0]) == pi * a**3 / 3
+    assert integrate_by_ranges(1, (z > x**2 + y**2) & (z < 2 * a), [x, y, z], [a > 0]) == 2 * pi * a**2
+    assert integrate_by_ranges(1, (z > 0) & (z < a - x**2 - y**2), [x, y, z], [a > 0]) == pi * a**2 / 2
+    assert integrate_by_ranges(1, (z > x**2 + y**2) & (z < a - x**2 - y**2), [x, y, z], [a > 0]) == pi * a**2 / 4
+    assert integrate_by_ranges(x**2 + y**2, paraboloid, [x, y, z], [a > 0]) == pi * a**3 / 6
+
+
+def test_parameter_cells_are_labelled_by_their_roots() -> None:
+    # sympy-extras#62: the sign of a**2 - 2 is the same on a < -sqrt(2) and
+    # on a > sqrt(2), and the value of one cell was attached to the other
+    a = symbols('a')
+    found = integrate_by_ranges(1, (x**2 < 2) & (x < a), [x])
+    assert [found.subs(a, v) for v in (-3, 0, 2)] == [0, sqrt(2), 2 * sqrt(2)]
+    assert integrate_by_ranges(1, (x**2 < 2) & (x < a), [x], [a > 2]) == 2 * sqrt(2)
+    found = integrate_by_ranges(1, (x**2 < 2) & (x > a), [x])
+    assert [found.subs(a, v) for v in (-2, 0, 3)] == [2 * sqrt(2), sqrt(2), 0]
+    found = integrate_by_ranges(x**2, (x**2 < 2) & (x < a), [x])
+    assert found.subs(a, 2) == 4 * sqrt(2) / 3
+    found = integrate_by_ranges(1, (x**2 + y**2 < 2) & (x < a), [x, y])
+    assert [found.subs(a, v) for v in (-3, 0, 2)] == [0, pi, 2 * pi]
+    found = integrate_by_ranges(1, (x**2 + y**2 + z**2 < 1) & (x + y + z < a), [x, y, z], [a > 0])
+    assert found.subs(a, 2) == 4 * pi / 3
+    found = integrate_by_ranges(1, (x**2 + y**2 < 3) & (y > a), [x, y])
+    assert [found.subs(a, v) for v in (-3, 3)] == [3 * pi, 0]
+    # the unit disc, whose projection factors, as before
+    found = integrate_by_ranges(1, (x**2 + y**2 < 1) & (x < a), [x, y])
+    assert [found.subs(a, v) for v in (-2, 0, 2)] == [0, pi / 2, pi]
+
+
+def test_measure_zero_relations_are_dropped() -> None:
+    # sympy-extras#63: a box cut along the curve of a Ne was decomposed
+    # along it and ran out of memory
+    from sympy import Ne
+    from sympy_extras._typing import as_boolean
+    from sympy_extras.integrals.regions import _full_measure
+    box = (x > -1) & (x < 2) & (y > -1) & (y < 2)
+    assert integrate_by_ranges(x**2 * y, box & Ne(2 * x**2 + x * y + y - 1, 0)) == Rational(9, 2)
+    assert integrate_by_ranges(1, Eq(x, y) & (x > 0) & (x < 1)) == 0
+    a = symbols('a')
+    assert _full_measure(as_boolean((x > 0) & Ne(x * y - 1, 0) & Eq(a, 1)), [x, y]) == as_boolean((x > 0) & Eq(a, 1))
+    # the Hausdorff measure keeps its equations
+    assert integrate_by_ranges(1, Eq(x, y) & (x > 0) & (x < 1), measure='hausdorff') == sqrt(2)
+
+
+def test_the_node_is_rebuilt_from_its_arguments() -> None:
+    # sympy-extras#64: the measure is stored as a Str and was refused on
+    # the way back; the integration variables are bound
+    import copy
+    import pickle
+    a = symbols('a')
+    n = symbols('n', positive=True)
+    r = symbols('r')
+    nodes = [IntegralByRanges(1, x**2 + y**2 < a, [x, y]),
+             IntegralByRanges(1, Eq(x**2 + y**2, a), [x, y], measure='hausdorff'),
+             IntegralByRanges(1, r < a, [r], dimension=n)]
+    for node in nodes:
+        assert node.func(*node.args) == node
+        assert node.subs(a, 1).func(*node.subs(a, 1).args) == node.subs(a, 1)
+        assert node.xreplace({a: 1}) == node.subs(a, 1)
+        assert copy.deepcopy(node) == node
+        assert pickle.loads(pickle.dumps(node)) == node
+        assert node.free_symbols == {a} | ({n} if node.dimension is not None else set())
+    assert nodes[0].subs(a, 1).doit() == pi
+    assert nodes[1].measure == 'hausdorff' and nodes[2].subs(n, 3).dimension == 3
+    assert nodes[0].subs(x, y) == nodes[0]
+
+
+def test_a_precision_failure_leaves_the_integral_unevaluated() -> None:
+    # sympy-extras#55: PrecisionExhausted escaped attempt
+    from sympy_extras._timeout import attempt
+    assert attempt(lambda: 1 / 0, 1) is None
+    found = integrate_by_ranges(1, (x > -3) & (y > -3) & (x < 3) & (y < 3) & (2 * x**2 * y - x * y**2 + 2 < 0), [x, y])
+    assert found.is_number or isinstance(found, IntegralByRanges)

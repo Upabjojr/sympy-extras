@@ -134,13 +134,19 @@ def attempt(f: Callable[[], T], seconds: Optional[float]) -> Optional[T]:
     """The value of ``f()`` computed within ``seconds``, or ``None`` when
     the time is up or SymPy gives up (``NotImplementedError``,
     ``ValueError``, ``TypeError``, a ``PolynomialError`` raised on an
-    expression its polynomial routines cannot take, or a
-    ``RecursionError`` from deep inside SymPy, which is a way of giving
-    up too)."""
+    expression its polynomial routines cannot take, a ``RecursionError``
+    from deep inside SymPy, which is a way of giving up too, or an
+    ``ArithmeticError``: ``PrecisionExhausted`` when ``evalf`` cannot
+    decide a sign, a division by zero, an overflow).
+
+    >>> from sympy_extras._timeout import attempt
+    >>> attempt(lambda: 1/0, 1) is None
+    True
+    """
     from sympy.polys.polyerrors import BasePolynomialError
     try:
         with time_limit(seconds):
             return f()
     except (TimeLimitExceeded, NotImplementedError, ValueError, TypeError, RecursionError,
-            BasePolynomialError):
+            BasePolynomialError, ArithmeticError):
         return None

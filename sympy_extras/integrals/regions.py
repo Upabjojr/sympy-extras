@@ -221,16 +221,20 @@ from sympy.core.power import Pow
 from sympy.core.relational import Eq, Ge, Gt, Le, Lt, Relational
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Str, Symbol
+from sympy.core.function import Function
+from sympy.core.relational import Ne
 from sympy.functions.elementary.complexes import Abs, im, re, sign
-from sympy.functions.elementary.hyperbolic import acosh, asinh, cosh, sinh
+from sympy.functions.elementary.exponential import exp, log
+from sympy.functions.elementary.hyperbolic import acosh, asinh, atanh, cosh, sinh, tanh
+from sympy.functions.elementary.integers import ceiling, floor
 from sympy.functions.elementary.miscellaneous import sqrt
-from sympy.functions.elementary.trigonometric import acos, cos
+from sympy.functions.elementary.trigonometric import acos, asin, atan, cos, sin, tan
 from sympy.functions.combinatorial.factorials import factorial
 from sympy.functions.special.gamma_functions import gamma
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.core.numbers import pi
 from sympy.integrals.integrals import Integral
-from sympy.logic.boolalg import And, Boolean, Or, true
+from sympy.logic.boolalg import And, Boolean, Or, false, true
 from sympy.matrices.dense import Matrix, eye
 from sympy.sets.sets import EmptySet, FiniteSet, Interval, Set, Union
 from sympy.simplify.simplify import simplify
@@ -250,6 +254,7 @@ from sympy_extras.polys.cad.qe import _compile
 from sympy_extras.polys.cad.samplepoints import RealAlgebraic, compare_real
 from sympy_extras.settings import settings
 from .conditions import numerically_equal
+from .axisymmetric import rotation_invariant
 from .definite import definite_integral
 from .axisymmetric import axisymmetric_integral
 
@@ -309,6 +314,8 @@ class IntegralByRanges(Expr):
             names = [as_symbol(v) for v in variables]
         if not names:
             raise ValueError("no integration variable: the condition has no symbols")
+        if isinstance(measure, Str):
+            measure = str(measure)                          # rebuilt from its arguments (subs, copy, pickle)
         if measure not in _MEASURES:
             raise ValueError("measure must be one of %s, got %r" % (", ".join(_MEASURES), measure))
         args: list[Basic] = [integrand_, condition_, Tuple(*names)]
@@ -355,6 +362,19 @@ class IntegralByRanges(Expr):
         if len(self.args) < 5:
             return None
         return as_expr(self.args[4])
+
+    @property
+    def free_symbols(self) -> set[Basic]:
+        """The symbols of the integrand and the condition other than the
+        integration variables, which are bound."""
+        symbols: set[Basic] = set(self.integrand.free_symbols) | set(self.condition.free_symbols)
+        if self.dimension is not None:
+            symbols |= set(self.dimension.free_symbols)
+        return symbols - set(self.variables)
+
+    def _eval_subs(self, old: Basic, new: Basic) -> Optional[Basic]:
+        # a bound variable is not substituted
+        return self if old in self.variables else None
 
     def doit(self, assumptions: Assumptions = None, **hints: object) -> Expr:
         """The value, or the integral unchanged when it cannot be computed."""
@@ -661,16 +681,25 @@ def _iterated(integrand: Expr, variables: Sequence[Symbol], stack: _Stack,
     return value
 
 
-def _parameter_condition(cell: CADCell, cad: CAD, levels: int) -> Boolean:
-    """The sign conditions of the projection polynomials of the first
-    ``levels`` levels at the ancestor of ``cell`` of that level."""
-    return _cell_condition(cell, cad, 1, levels)
+def _parameter_condition(cell: CADCell, cad: CAD, levels: int, explicit: bool = False) -> Boolean:
+    """The condition of the parameter cell of ``cell``: the sign
+    conditions of the projection polynomials of the first ``levels``
+    levels, which the integrals of the cell take as assumptions; with
+    ``explicit``, the cell bounded by its roots in explicit form (``a >
+    sqrt(2)``) where they have one, for the labels of the ``Piecewise``:
+    the signs alone do not tell the cells apart (``a**2 - 2 > 0`` holds
+    on ``a < -sqrt(2)`` and on ``a > sqrt(2)``, and the value of one was
+    attached to the other), and the explicit bounds are poor assumptions
+    (the integral over ``(-sqrt(2), a)`` under ``a < sqrt(2)`` was not
+    computed)."""
+    return _cell_condition(cell, cad, 1, levels, explicit=explicit)
 
 
-def _cell_condition(cell: CADCell, cad: CAD, first: int, last: int) -> Boolean:
+def _cell_condition(cell: CADCell, cad: CAD, first: int, last: int, explicit: bool = False) -> Boolean:
     """The sign conditions of the projection polynomials of the levels
     ``first`` to ``last`` (1-based) at the ancestor of ``cell`` of level
-    ``last``."""
+    ``last``; with ``explicit``, each level's variable between its roots
+    in explicit form instead, where the roots have one."""
     levels = last
     parts: list[Boolean] = []
     ancestor: Optional[CADCell] = cell
@@ -679,10 +708,15 @@ def _cell_condition(cell: CADCell, cad: CAD, first: int, last: int) -> Boolean:
     if ancestor is None:
         return true
     for level in range(first, levels + 1):
+        node = _ancestor_at(ancestor, level)
+        if explicit:
+            found = _explicit_cell(node, cad, level)
+            if found is not None:
+                parts.extend(found)
+                continue
         gens = cad.gens[:level]
         for poly in cad.projection[level - 1]:
-            sign = ancestor.sample.sign(poly, gens) if len(ancestor.sample) == level else \
-                _ancestor_at(ancestor, level).sample.sign(poly, gens)
+            sign = node.sample.sign(poly, gens)
             expression = as_expr(poly.as_expr())
             if sign > 0:
                 parts.append(as_boolean(Gt(expression, 0)))
@@ -691,6 +725,41 @@ def _cell_condition(cell: CADCell, cad: CAD, first: int, last: int) -> Boolean:
             else:
                 parts.append(as_boolean(Eq(expression, 0)))
     return as_boolean(And(*parts))
+
+
+def _explicit_cell(node: CADCell, cad: CAD, level: int) -> Optional[list[Boolean]]:
+    """The relations placing the variable of ``level`` in the cell
+    ``node`` of that level: between its neighbouring roots for a sector,
+    equal to its root for a section, the roots as expressions in the
+    earlier variables; ``None`` when a root has no explicit form."""
+    parent = node.parent
+    if parent is None:
+        return None
+    gens = cad.gens[:level]
+    x = gens[-1]
+    roots = _root_sequence(parent, cad.projection[level - 1], gens)
+    parts: list[Boolean] = []
+    if node.is_section:
+        position = node.index[-1] // 2 - 1
+        if not 0 <= position < len(roots):
+            return None
+        root = _explicit_root(roots[position], parent, gens)
+        if root is None:
+            return None
+        parts.append(as_boolean(Eq(x, root)))
+        return parts
+    position = (node.index[-1] - 1) // 2
+    if position >= 1:
+        lower = _explicit_root(roots[position - 1], parent, gens)
+        if lower is None:
+            return None
+        parts.append(as_boolean(x > lower))
+    if position < len(roots):
+        upper = _explicit_root(roots[position], parent, gens)
+        if upper is None:
+            return None
+        parts.append(as_boolean(x < upper))
+    return parts
 
 
 def _ancestor_at(cell: CADCell, level: int) -> CADCell:
@@ -755,7 +824,9 @@ def _radial_integrand(f: Expr, names: Sequence[Symbol], rho: Symbol) -> Optional
     difference = as_expr(f - candidate)
     simpler = attempt(lambda: as_expr(simplify(difference)), settings.timeout)
     if simpler is None or simpler != 0:
-        if not numerically_equal(f, candidate, [as_boolean(v > 0) for v in names]):
+        # at points of every orthant, and under rotations: Heaviside(x)
+        # agrees with 1 = Heaviside(rho) on the positive orthant alone
+        if not numerically_equal(f, candidate) or not rotation_invariant(f, names):
             return None
     axis: dict[Symbol, Expr] = {names[0]: rho}
     for v in names[1:]:
@@ -1000,6 +1071,9 @@ def _cylindrical(f: Expr, formula: Boolean, names: Sequence[Symbol],
                                   domain=S.Reals), settings.timeout)
     if where is None:
         return None
+    # rho > 0 is not applied by solve to rho**2 < a with a symbolic:
+    # the interval (-sqrt(a), sqrt(a)) made the odd integrand vanish
+    where = as_set_(where).intersect(Interval.open(S.Zero, S.Infinity))
     pieces = _interval_conditions(as_set_(where), rho)
     if pieces is None:
         return None
@@ -1158,6 +1232,16 @@ def _solved_bounds(f: Expr, formula: Boolean, names: Sequence[Symbol],
             return None
         for is_upper, bound in found:
             (uppers if is_upper else lowers).append(bound)
+    # the region lies where the bounds are real: y < log(x) restricts x
+    # to x > 0 (the bug: the inner integral was taken over -1 < x < 1)
+    for bound in lowers + uppers:
+        conditions = _reality_conditions(bound)
+        if conditions is None:
+            return None
+        for condition in conditions:
+            if condition is not true and condition not in outer_atoms:
+                outer_atoms.append(condition)
+                outer_assumptions.append(condition)
     lower: Expr = S.NegativeInfinity
     upper: Expr = S.Infinity
     if lowers:
@@ -1219,6 +1303,49 @@ def _solved_bounds(f: Expr, formula: Boolean, names: Sequence[Symbol],
 
 # ---------------------------------------------------------------------------
 # Radial integrals in a symbolic dimension
+
+#: functions real at every real argument
+_REAL_FUNCTIONS = (exp, sin, cos, tan, sinh, cosh, tanh, atan, asinh, Abs, sign, floor, ceiling)
+
+
+def _reality_conditions(e: Expr) -> Optional[list[Boolean]]:
+    """The conditions under which ``e`` is real: ``u > 0`` for ``log(u)``,
+    ``u >= 0`` for a rational power ``u**(p/q)`` (SymPy's principal root
+    is not real for ``u < 0``, whatever ``q``), ``-1 <= u <= 1`` for
+    ``asin``, ``acos``, and so on; ``None`` for a function whose reality
+    is not known.
+
+    >>> from sympy import symbols, log, sqrt, exp, Rational
+    >>> from sympy_extras.integrals.regions import _reality_conditions
+    >>> x = symbols('x')
+    >>> _reality_conditions(log(x + 1) - 1), _reality_conditions(exp(x))
+    ([x + 1 > 0], [])
+    >>> sorted(_reality_conditions(x**Rational(1, 3) + sqrt(x - 1)), key=str)
+    [x - 1 >= 0, x >= 0]
+    """
+    conditions: list[Boolean] = []
+    for node in e.atoms(Function):
+        if not node.args:
+            continue
+        argument = as_expr(node.args[0])
+        if isinstance(node, log):
+            conditions.append(as_boolean(argument > 0))
+        elif isinstance(node, (asin, acos)):
+            conditions.extend([as_boolean(argument >= -1), as_boolean(argument <= 1)])
+        elif isinstance(node, acosh):
+            conditions.append(as_boolean(argument >= 1))
+        elif isinstance(node, atanh):
+            conditions.extend([as_boolean(argument > -1), as_boolean(argument < 1)])
+        elif not isinstance(node, _REAL_FUNCTIONS):
+            return None
+    for node in sorted(e.atoms(Pow), key=str):
+        base, exponent = as_expr(node.base), as_expr(node.exp)
+        if isinstance(exponent, Rational) and not exponent.is_integer and base.free_symbols:
+            conditions.append(as_boolean(base >= 0 if exponent > 0 else base > 0))
+        elif exponent.free_symbols and base.is_positive is not True:
+            return None
+    return conditions
+
 
 def _sphere_area(n: Expr) -> Expr:
     """The area `2 pi^{n/2} / Gamma(n/2)` of the unit sphere of
@@ -1593,6 +1720,10 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
     """
     node = IntegralByRanges(integrand, condition, variables, measure, dimension)
     f, formula, names = node.integrand, normalize(node.condition), node.variables
+    if node.measure == _MEASURES[0] and dimension is None:
+        formula = _full_measure(formula, names)
+        if formula is false:
+            return S.Zero
     extra: list[Boolean] = []
     if assumptions is not None:
         extra = [as_boolean(a) for a in ([assumptions] if isinstance(assumptions, (Boolean, bool))
@@ -1634,6 +1765,29 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
         if found is not None:
             return found
     return node
+
+
+def _full_measure(formula: Boolean, names: Sequence[Symbol]) -> Boolean:
+    """The condition without its equations and non-equations in the
+    integration variables (``Eq(p, 0)`` false, ``Ne(p, 0)`` true): they
+    change the set on a union of hypersurfaces, of Lebesgue measure zero
+    (the bug: a box cut along the curve of a ``Ne`` was decomposed along
+    it, with algebraic bounds whose logarithms ran out of memory).
+    Relations in the parameters alone are kept.
+
+    >>> from sympy import symbols, Ne, Eq
+    >>> from sympy_extras.integrals.regions import _full_measure
+    >>> x, y, a = symbols('x y a')
+    >>> _full_measure((x > 0) & Ne(x*y - 1, 0) & Eq(a, 1), [x, y])
+    Eq(a, 1) & (x > 0)
+    """
+    replacements: dict[Boolean, Boolean] = {}
+    for atom in formula.atoms(Eq, Ne):
+        if free_symbols(as_expr(atom.lhs - atom.rhs)) & set(names):
+            replacements[as_boolean(atom)] = false if isinstance(atom, Eq) else true
+    if not replacements:
+        return formula
+    return as_boolean(formula.xreplace(replacements))
 
 
 def _other_orders(names: Sequence[Symbol]) -> list[list[Symbol]]:
@@ -1697,7 +1851,7 @@ def _cases(values: dict[CADCell, Expr], cad: CAD, m: int, assumptions: Assumptio
         return as_expr(total)
     cases: list[tuple[Expr, Boolean]] = []
     for base in cad.cells_at(m):
-        cond = _parameter_condition(base, cad, m)
+        cond = _parameter_condition(base, cad, m, explicit=True)
         if ask(cond, assumptions) is False:
             continue
         cases.append((values.get(base, S.Zero), cond))
@@ -1791,11 +1945,13 @@ def _section_value(cell: CADCell, cad: CAD, m: int, f: Expr, names: Sequence[Sym
 def _hausdorff(f: Expr, formula: Boolean, names: Sequence[Symbol],
                assumptions: Assumptions, extra: list[Boolean]) -> Optional[Expr]:
     """The integral with the `(n-k)`-dimensional Hausdorff measure on the
-    variety of the `k` equations of the condition, through the
+    variety of the equations of the condition, through the
     decomposition: the sum of :func:`_section_value` over the cells of
-    dimension `n - k` on which the condition holds; ``None`` when the
-    condition has no equation, a branch is not explicit or an integral
-    is not computed."""
+    the largest dimension `n - k` on which the condition holds (`k` the
+    number of equations when they are independent; ``Eq(y, x) & Eq(x -
+    y, 0)`` is a curve, not a point: the bug gave it length 0); ``None``
+    when the condition has no equation, a branch is not explicit or an
+    integral is not computed."""
     parts = list(formula.args) if isinstance(formula, And) else [formula]
     equations = sum(1 for part in parts if isinstance(part, Eq))
     if equations == 0:
@@ -1813,10 +1969,14 @@ def _hausdorff(f: Expr, formula: Boolean, names: Sequence[Symbol],
         return None
     m = len(parameters)
     values: dict[CADCell, Expr] = {}
-    for cell in cad.cells:
-        if not compiled(cell.signs):
-            continue
-        if sum(1 for i in cell.index[m:] if i % 2 == 0) != equations:
+    holding = [cell for cell in cad.cells if compiled(cell.signs)]
+    if not holding:
+        return S.Zero
+    codimension = min(sum(1 for i in cell.index[m:] if i % 2 == 0) for cell in holding)
+    if codimension == 0:
+        return None
+    for cell in holding:
+        if sum(1 for i in cell.index[m:] if i % 2 == 0) != codimension:
             continue                                        # not of dimension n - k: measure zero
         base = _ancestor_at(cell, m) if m else cell
         parameter_condition = _parameter_condition(cell, cad, m) if m else true

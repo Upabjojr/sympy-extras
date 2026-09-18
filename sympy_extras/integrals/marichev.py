@@ -316,6 +316,13 @@ def real_logarithms(value: Expr, assumptions: Assumptions = None) -> Expr:
             # a complex argument, 1 + 43*sqrt(771)*I/2313 (the crash: the
             # relation argument < 0 cannot be formed)
             continue
+        if not argument.free_symbols:
+            # a number: its sign numerically (SymPy's relation expands an
+            # algebraic number with thousands of digits, and ran out of memory)
+            numeric = attempt(lambda: as_expr(argument.evalf(50)), settings.timeout)
+            if numeric is not None and numeric.is_Float and numeric < -1e-40:
+                replacement[as_expr(node)] = log(-argument) + I * pi
+            continue
         try:
             negative = ask(as_boolean(argument < 0), assumptions)
         except TypeError:

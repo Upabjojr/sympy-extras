@@ -154,3 +154,21 @@ def test_ask_linear() -> None:
     assert _linear_ask(x**2 + y < 3, (x < 1) & (y < 1), [x, y]) is None
     # a contradictory premise decides nothing
     assert _linear_ask(x < 3, (x < 1) & (x > 2), [x]) is None
+
+
+def test_relations_are_undecided_where_a_function_is_not_real() -> None:
+    # sympy-extras#61: the bounds of log(u) hold for u > 0, and the points
+    # with u <= 0 were dropped by the constraint; the sign analysis found
+    # 2 - x**(1/3) positive on -1 < x < 1
+    from sympy import log, Rational, sqrt, exp
+    assert ask(log(x) < 0, [x > -1, x < 1]) is None
+    assert ask(log(x) < 0, [x > -1, x < 0]) is False
+    assert ask(log(x) <= 1, [x > -1, x < 1]) is None
+    assert ask(log(x) < x, [x > -1, x < 1]) is None
+    assert ask(x**Rational(1, 3) < 2, [x > -1, x < 1]) is None
+    assert ask(sqrt(x) < 2, [x > -1, x < 1]) is None
+    # where they are real, as before
+    assert ask(log(x) < 0, [x > 0, x < 1]) is True
+    assert ask(log(x) > 0, x > 1) is True
+    assert ask(x**Rational(1, 3) < 2, [x > 0, x < 1]) is True
+    assert ask(exp(x) > 2, x > 1) is True
