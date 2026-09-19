@@ -564,6 +564,45 @@ the Janet basis of its determining equations:
 
 See [docs/differential.md](docs/differential.md).
 
+### Triangular decompositions: regular chains (`sympy_extras.polys.regularchains`)
+
+`triangularize` solves a system of polynomial equations by writing its
+zeros as a union of *regular chains*: triangular systems which are solved
+one variable after the other. Unlike a lexicographic Gröbner basis it works
+in any dimension, separates the components, and discusses the parameters
+(the symbols put last); `solve_poly_system` refuses the first system below.
+
+```python
+>>> from sympy.abc import a, b, c, p, q, x, y, z
+>>> from sympy_extras.polys.regularchains import triangularize
+>>> triangularize([x*z - y, y*z - x], x, y, z)
+[RegularChain([y, x], x, y, z), RegularChain([z + 1, x + y], x, y, z), RegularChain([z - 1, x - y], x, y, z)]
+>>> for chain in triangularize([a*x**2 + b*x + c], x, a, b, c):
+...     print(chain.polys, chain.initials)
+[a*x**2 + b*x + c] [a]
+[a, b*x + c] [1, b]
+[c, b, a] [1, 1, 1]
+
+```
+
+The solutions of a chain are its zeros where no initial (leading
+coefficient) vanishes. The decomposition in the sense of Lazard (the
+default) describes all the zeros; the one in the sense of Kalkbrener only
+the generic points of every component, here the double roots of a cubic:
+
+```python
+>>> f = x**3 + p*x + q
+>>> triangularize([f, f.diff(x)], x, p, q, mode='kalkbrener')
+[RegularChain([4*p**3 + 27*q**2, 2*p*x + 3*q], x, p, q)]
+
+```
+
+`RegularChain` decides the membership in its saturated ideal by
+pseudo-division (`contains`, `reduce`), splits itself where a polynomial is
+a zero divisor (`regularize`, `intersect`, `regular_gcd`: the D5 principle)
+and computes its isolated solutions (`numerical_solutions`). See
+[docs/regularchains.md](docs/regularchains.md).
+
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
@@ -673,6 +712,10 @@ sympy_extras/
             janet.py         Janet bases of linear systems of partial differential equations
             polynomial.py    differential polynomials, Ritt's reduction
             rosenfeld_groebner.py  the Rosenfeld–Gröbner algorithm
+        regularchains/
+            recursive.py     polynomials in their main variable: lazy pseudo-division, subresultant chains
+            operations.py    regularize, regular gcd, intersect, extend; the decompositions
+            regularchain.py  RegularChain, triangularize, regular_gcd
 
 ```
 

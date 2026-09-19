@@ -6,8 +6,9 @@ from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.testing.pytest import raises
 
-from sympy_extras.polys.differential import (DifferentialPolynomial, RadicalDifferentialIdeal, janet_basis,
-    rosenfeld_groebner)
+from sympy_extras.polys.differential import (DifferentialPolynomial, RadicalDifferentialIdeal,
+    RegularDifferentialSystem, janet_basis, rosenfeld_groebner)
+from sympy_extras.polys.ideals import Ideal
 from sympy_extras.polys.differential.rosenfeld_groebner import _characteristic_set, _delta_polynomials
 
 x, y, t, c, g = symbols('x y t c g')
@@ -220,3 +221,48 @@ def test_functions_of_fewer_variables() -> None:
     assert not ideal.contains(w) and not ideal.contains(a.diff(x))
     assert len(ideal) == 2
     assert all(e != 0 for c in ideal.components for e in c.equations)
+
+
+def _contains_by_groebner(component: RegularDifferentialSystem, expr: Expr) -> bool:
+    """Membership in `[A] : H^\\infty` through the Gröbner basis of `(A) :
+    H^\\infty`, independently of the regular chains."""
+    ring = component.ring
+    partial = DifferentialPolynomial.from_expr(ring, expr).partial_remainder(component.chain)
+    jets = set(partial.jets())
+    for q in component.chain + component.nonzero:
+        jets |= q.jets()
+    ordered = [component._symbols.symbol(jet) for jet in sorted(jets, key=ring.rank_key, reverse=True)]
+    return Ideal(component.saturation(), *ordered, domain=ring.domain).contains(component._symbols.expr(partial))
+
+
+def test_regular_chains_of_the_components() -> None:
+    X, Y, L = Function('X')(t), Function('Y')(t), Function('L')(t)
+    w, v = Function('w')(x, y), Function('v')(x, y)
+    pendulum = rosenfeld_groebner([X.diff(t, 2) + L*X, Y.diff(t, 2) + L*Y + g, X**2 + Y**2 - 1], [L, X, Y])
+    candidates: dict[str, tuple[RadicalDifferentialIdeal, list[Expr]]] = {
+        'pendulum': (pendulum, [X*X.diff(t) + Y*Y.diff(t), L - X.diff(t)**2 - Y.diff(t)**2 + g*Y,
+            L.diff(t) + 3*g*Y.diff(t), L.diff(t) - 3*g*Y.diff(t), X.diff(t), L - g*Y, Y**2 - 1, X*Y.diff(t, 3)]),
+        'singular': (rosenfeld_groebner([u.diff(x)**2 - 4*u], [u]),
+            [u.diff(x, 2) - 2, u.diff(x), u, u.diff(x, 3), u.diff(x)**3 - 4*u*u.diff(x)]),
+        'clairaut': (rosenfeld_groebner([u - x*u.diff(x) - u.diff(x)**2], [u]),
+            [u.diff(x, 2), x**2 + 4*u, x + 2*u.diff(x), u.diff(x, 2)*(x + 2*u.diff(x))]),
+        'partial': (rosenfeld_groebner([w.diff(x)**2 - 4*w, w.diff(x, y)*v.diff(y) - w + 1,
+            v.diff(x, 2) - w.diff(x)], [w, v]), [w.diff(y)**2 - 2*w, w.diff(x, 2) - 2, v.diff(y) - w.diff(y), w]),
+    }
+    for ideal, exprs in candidates.values():
+        for component in ideal.components:
+            chains = component.regular_chains()
+            assert chains
+            leaders = {component._symbols.symbol(p.leader()) for p in component.chain}
+            for chain in chains:
+                # as many polynomials as equations, with the leaders as main variables
+                assert set(chain.main_variables) == leaders
+            # the two membership tests agree: pseudo-division by the chains
+            # and the Gröbner basis of the saturation
+            for expr in exprs:
+                assert component.contains(expr) == _contains_by_groebner(component, expr)
+    # a condition on the variable alone is no component: x is invertible
+    ideal = rosenfeld_groebner([x*u.diff(x)*(u.diff(x) - 1)], [u])
+    assert all(len(component.regular_chains()) == 1 for component in ideal.components)
+    assert sorted(str(component.equations) for component in ideal.components) == \
+        ['[Derivative(u(x), x) - 1]', '[Derivative(u(x), x)]']

@@ -21,9 +21,11 @@ conditions hold), and `H_k` contains the initials and the separants of
 * **Rosenfeld's lemma**: a differential polynomial `p` lies in
   `[A] : H^\\infty` exactly when its partial remainder by `A` lies in the
   ideal `(A) : H^\\infty` of a polynomial ring in finitely many
-  derivatives. That ideal is computed here by a Gröbner basis
-  (:class:`sympy_extras.polys.ideals.Ideal`), which decides the membership
-  and detects the systems without solutions;
+  derivatives. The systems without solutions are detected by a Gröbner
+  basis of that ideal (:class:`sympy_extras.polys.ideals.Ideal`), and the
+  membership is decided by pseudo-division by the regular chains of its
+  triangular decomposition (:mod:`sympy_extras.polys.regularchains`,
+  :meth:`RegularDifferentialSystem.regular_chains`);
 * **Lazard's lemma**: `(A) : H^\\infty`, hence `[A] : H^\\infty`, is
   radical.
 
@@ -80,6 +82,7 @@ from sympy.polys.polytools import Poly, factor_list
 
 from sympy_extras._typing import as_expr, free_symbols
 from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.regularchains import RegularChain, triangularize
 
 from .polynomial import DifferentialPolynomial
 from .ring import DifferentialRing, Equation, Jet, Terms
@@ -146,6 +149,7 @@ class RegularDifferentialSystem:
         self.nonzero: list[DifferentialPolynomial] = inequations
         self._symbols: _JetSymbols = _JetSymbols(ring)
         self._basis: Optional[list[Expr]] = None
+        self._chains: Optional[list[RegularChain]] = None
 
     def __repr__(self) -> str:
         return "RegularDifferentialSystem(%s, %s)" % (self.equations, self.inequations)
@@ -187,6 +191,37 @@ class RegularDifferentialSystem:
             self._basis = ideal.exprs
         return self._basis
 
+    def _ordered(self, jets: set[Jet]) -> list[Symbol]:
+        """The symbols of the derivatives by decreasing rank, then the
+        variables and the parameters."""
+        ordered = [self._symbols.symbol(jet) for jet in sorted(jets, key=self.ring.rank_key, reverse=True)]
+        return ordered + list(self.ring.variables) + list(self.ring.parameters)
+
+    def regular_chains(self) -> list[RegularChain]:
+        """Squarefree regular chains `C_i`, in symbols standing for the
+        derivatives ordered by the ranking, with `(A) : H^\\infty = \\bigcap
+        \\operatorname{sat}(C_i)`: the triangular decomposition in the sense
+        of Kalkbrener of the zeros of `A` on which `H` does not vanish
+        identically.
+
+        The main variables of every chain are the leaders of `A` (the ideal
+        is unmixed, the other derivatives being algebraically independent
+        modulo each of its primes, by Lazard's lemma), and membership in the
+        ideal is decided by pseudo-division by the chains, without a Gröbner
+        basis. The variables and the parameters are the smallest variables
+        of the polynomial ring; a chain with a condition on them alone is
+        dropped, since they are invertible in the field of coefficients.
+        """
+        if self._chains is None:
+            jets: set[Jet] = set()
+            for p in self.chain + self.nonzero:
+                jets |= p.jets()
+            coefficients = set(self.ring.variables) | set(self.ring.parameters)
+            chains = triangularize([self._symbols.expr(p) for p in self.chain], *self._ordered(jets),
+                inequations=[self._symbols.expr(h) for h in self.nonzero], mode='kalkbrener')
+            self._chains = [T for T in chains if not coefficients & set(T.main_variables)]
+        return self._chains
+
     @property
     def is_consistent(self) -> bool:
         """Whether the system has solutions: `1 \\notin (A) : H^\\infty`."""
@@ -205,13 +240,15 @@ class RegularDifferentialSystem:
         p = DifferentialPolynomial.from_expr(self.ring, expr)
         if not p.remainder(self.chain):
             return True
+        # Rosenfeld's lemma: the partial remainder is in (A) : H^oo, which
+        # is the intersection of the saturated ideals of the chains
         partial = p.partial_remainder(self.chain)
-        basis = self.saturation()
         jets: set[Jet] = set(partial.jets())
         for q in self.chain + self.nonzero:
             jets |= q.jets()
-        ordered = [self._symbols.symbol(jet) for jet in sorted(jets, key=self.ring.rank_key, reverse=True)]
-        return Ideal(basis, *ordered, domain=self.ring.domain).contains(self._symbols.expr(partial))
+        target = self._symbols.expr(partial)
+        symbols = self._ordered(jets)
+        return all(T.with_symbols(*symbols).contains(target) for T in self.regular_chains())
 
     def __contains__(self, expr: Equation) -> bool:
         return self.contains(expr)

@@ -10,6 +10,31 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.regularchains`: triangular decompositions of
+  polynomial systems into regular chains. `triangularize(equations,
+  *symbols, inequations=..., mode=...)` writes the zeros of a system with
+  rational coefficients as the union of the quasi-components of squarefree
+  regular chains (`mode='lazard'`, the default), or of their closures
+  (`mode='kalkbrener'`, the generic points of every component, by
+  discarding the chains of height greater than the number of equations);
+  it works in any dimension, separates the components, and discusses the
+  values of the parameters, which are the symbols put last. `RegularChain`
+  has `polys`, `main_variables`, `free_variables`, `initials`, `height`,
+  `dimension`, `degree`, the membership in the saturated ideal by
+  pseudo-division (`reduce`, `contains`), `saturated_ideal`, `is_regular`,
+  `regularize`, `intersect` and `numerical_solutions` (all the points of
+  a chain without free variables, each once); `regular_gcd` computes
+  regular gcds modulo a chain from the subresultant chain. The algorithm
+  is the incremental one of Chen and Moreno Maza, written recursively from
+  the top of the chain; chains contained in another one are removed and
+  the chains of isolated points are made disjoint. Verified against
+  Gröbner bases (saturated ideals, radical membership, covering of the
+  zeros) on fixed and random systems. See `docs/regularchains.md`.
+- `RegularDifferentialSystem.regular_chains()`: the regular chains whose
+  saturated ideals intersect in `(A) : H^oo`, with the leaders as main
+  variables. `contains` of the components of `rosenfeld_groebner` now
+  decides membership by pseudo-division by these chains instead of a
+  Gröbner basis (both tests are compared in the unit tests).
 - `sympy_extras.polys.differential`: differential elimination, the
   differential counterpart of Gröbner bases. `DifferentialRing` holds the
   derivatives of the unknown functions and a ranking (orderly, or an

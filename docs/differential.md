@@ -130,8 +130,14 @@ component is a *regular differential system*: equations `A = 0` which are
 autoreduced and coherent, and inequations `H != 0` which contain the
 initials and separants of `A`. By Rosenfeld's lemma the membership in the
 differential ideal `[A] : H^oo` is decided in a polynomial ring with
-finitely many derivatives, where a Gröbner basis is computed; by Lazard's
-lemma that ideal is radical.
+finitely many derivatives, and by Lazard's lemma the ideal `(A) : H^oo`
+there is radical. It is the intersection of the saturated ideals of the
+regular chains of `component.regular_chains()`
+([triangular decomposition](regularchains.md) in the sense of Kalkbrener,
+the derivatives being ordered by the ranking), whose main variables are
+the leaders of `A`: membership is decided by pseudo-division by these
+chains. `component.saturation()` still gives the Gröbner basis of the
+ideal, which is used to detect the systems without solutions.
 
 The general and the singular solutions of `u'^2 = 4 u` (the parabolas
 `(x + c)^2` and their envelope `0`):
@@ -189,10 +195,10 @@ False
 - The rankings are orderly inside blocks of functions.
 - Janet bases of dense systems with polynomial coefficients can have very
   large intermediate coefficients.
-- The components of `rosenfeld_groebner` may be redundant, and they are
-  regular differential systems, not characteristic sets of prime
-  components: equations are split along their factors over the
-  rationals, but no decomposition into regular chains is made, so that
+- The components of `rosenfeld_groebner` may be redundant. They are
+  regular differential systems; `regular_chains()` decomposes each of them
+  into regular chains for the membership test, but these are not returned
+  as regular differential chains with normal forms of their own, so that
   `reduce`-like normal forms exist for Janet bases only.
 
 ## References

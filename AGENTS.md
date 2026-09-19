@@ -147,6 +147,11 @@ sympy_extras/
             polynomial.py    DifferentialPolynomial: leader, initial, separant, Ritt's reduction
             rosenfeld_groebner.py  rosenfeld_groebner: regular differential systems of polynomial ODEs and PDEs
             tests/
+        regularchains/       triangular decompositions of polynomial systems
+            recursive.py     polynomials in their main variable: initial, lazy pseudo-division, subresultant chains
+            operations.py    Chain, Decomposer: regularize, regular_gcd, intersect, extend, triangularize (Lazard, Kalkbrener)
+            regularchain.py  RegularChain, triangularize, regular_gcd (the public interface on expressions)
+            tests/           oracle.py checks the decompositions with Gröbner bases
 docs/                        longer documentation per module
 .github/workflows/           tests.yml (CI), release.yml (PyPI publishing on tags)
 conftest.py                  pytest configuration (SymPy-style doctest display)
