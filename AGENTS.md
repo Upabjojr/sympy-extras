@@ -126,6 +126,9 @@ sympy_extras/
         rewriting.py         canonical forms (exponentials, logarithms of inverse hyperbolic functions) and substitutions x = t**k, u = exp(c x), x = exp(t)
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
         tests/
+    simplify/
+        structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
+        tests/
     polys/
         euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)
         ideals.py            Ideal: operations and invariants on top of sympy.groebner

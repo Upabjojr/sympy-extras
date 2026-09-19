@@ -494,6 +494,36 @@ table are integrated termwise:
 
 ```
 
+### A zero test for elementary expressions (`sympy_extras.simplify`)
+
+`is_zero`, `equal` and `canonical_form` decide identities between
+elementary expressions by the Risch–Rosenlicht structure theorem: the
+expression is written as a rational function of exponentials, logarithms
+and roots which are proven algebraically independent, so it vanishes
+exactly when its numerator does. `True` is a proof, and the branches are
+part of the question: an identity between logarithms or roots holds on the
+region of the assumptions.
+
+```python
+>>> from sympy import symbols, exp, log, sqrt, sin, cos, atan, pi, Rational
+>>> from sympy_extras.simplify import is_zero, canonical_form
+>>> x, y = symbols('x y')
+>>> is_zero(sin(x + y) - sin(x)*cos(y) - cos(x)*sin(y)), is_zero(exp(x) - x - 1)
+(True, False)
+>>> is_zero(log(x**2) - 2*log(x)), is_zero(log(x**2) - 2*log(x), x > 0)
+(False, True)
+>>> is_zero(atan(x) + atan(1/x) - pi/2, x > 0)
+True
+>>> is_zero(pi/4 - 4*atan(Rational(1, 5)) + atan(Rational(1, 239)))
+True
+>>> canonical_form((sqrt(x) + 1)**2 - x - 1)
+2*sqrt(x)
+
+```
+
+SymPy's `simplify` leaves Machin's formula as it is and its `equals` samples
+it. See [docs/simplify.md](docs/simplify.md).
+
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
@@ -582,6 +612,9 @@ sympy_extras/
         kovacic.py           Kovacic's algorithm (Liouvillian solutions of second order linear ODEs)
         linear_ode.py        polynomial, rational, hyperexponential solutions; reduction of order
         charpit.py           complete integrals of first order nonlinear PDEs
+    simplify/
+        structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
+        tests/
     polys/
         euclidtools.py       principal subresultant coefficients
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals

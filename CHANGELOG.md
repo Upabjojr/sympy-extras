@@ -10,6 +10,32 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.simplify`: a canonical form and a zero test for
+  elementary expressions by the Risch–Rosenlicht structure theorem
+  (`canonical_form`, `is_zero`, `equal`, `ElementaryTower`). An expression
+  is written as a rational function of generators proven algebraically
+  independent: a new `exp(a)` is dependent exactly when `a` is a rational
+  combination of the arguments of the exponentials and of the logarithms
+  of the tower plus a constant, a new `log(v)` when `v'/v` is one of their
+  derivatives, both linear systems over the rationals; roots `exp(z/q)`
+  are the algebraic generators, certified by Kummer theory (the exponent
+  vectors of the irreducible factors of the radicands, a Smith normal
+  form); `pi` is `-I*log(-1)`, the logarithm of a rational number is that
+  of its primes, and the logarithm of an algebraic number is looked for
+  as a multiplicative relation found by PSLQ and verified exactly
+  (Machin's and Gauss's arctangent formulas, `I**I = exp(-pi/2)`,
+  `sqrt(5 + 2*sqrt(6)) = sqrt(2) + sqrt(3)`). A dependent logarithm is
+  resolved only where the assumptions fix its branch (`log(x**2) =
+  2*log(x)` for `x > 0`, `atan(x) + atan(1/x) = pi/2` for `x > 0`, by the
+  constant pinned at a sample point of a convex region on which no
+  argument crosses the cut), and leaves the tower uncertified otherwise:
+  `True` is always a proof, `False` is proved by the independence of the
+  generators which the expression involves (`ElementaryTower.certifies`;
+  Schanuel's conjecture for the constants) or witnessed by a sample
+  point. The number field grows by primitive elements and is kept below
+  degree 32 (`NotElementary` beyond, and `is_zero` then answers from a
+  sample point). `is_antiderivative` asks it first, within two seconds.
+
 - `integrate_by_ranges` and `IntegralByRanges` take `parameters`, the
   symbols not integrated over, as an alternative to listing the
   `variables`: `integrate_by_ranges(1, x**2 + y**2 < a**2, parameters=[a])`
@@ -455,6 +481,12 @@ remove public functions. Breaking changes are listed here when they happen.
   gates.
 
 ### Fixed
+
+- `ask` answers `None`, not `True`, for `exp(-I*x) > 0` on `-1 < x < 1`:
+  the sign analysis took the value `1` at `0` and the absence of zeros
+  for a sign, where a complex-valued expression has none. Found by the
+  fuzz of `sympy_extras.simplify`, which had split `log(u*exp(-I*x))` as
+  if the exponential were positive.
 
 - `sympy_extras._timeout.attempt` contains `ArithmeticError` too:
   `PrecisionExhausted` (SymPy's `evalf` unable to decide a sign inside

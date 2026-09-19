@@ -172,3 +172,14 @@ def test_relations_are_undecided_where_a_function_is_not_real() -> None:
     assert ask(log(x) > 0, x > 1) is True
     assert ask(x**Rational(1, 3) < 2, [x > 0, x < 1]) is True
     assert ask(exp(x) > 2, x > 1) is True
+
+
+def test_a_complex_valued_expression_has_no_sign() -> None:
+    # the sign analysis found exp(-I*x) > 0 on -1 < x < 1 (its value at 0
+    # is 1 and it has no zero); found by the fuzz of sympy_extras.simplify,
+    # which then split log(u*exp(-I*x)) as if exp(-I*x) were positive
+    from sympy import I, exp, sin
+    assert ask(exp(-I * x) > 0, [x > -1, x < 1]) is None
+    assert ask(exp(I * x) + 2 > 0, [x > 0]) is None
+    assert ask(exp(-x) > 0, [x > -1, x < 1]) is True
+    assert ask(sin(x) + 2 > 0, [x > -1, x < 1]) is True

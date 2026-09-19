@@ -504,7 +504,11 @@ def _real_on(f: Expr, x: Optional[Symbol], domain: Optional[Set], facts: Facts,
     ``-1 < x < 1``, where the principal root is not real for ``x < 0``)."""
     from sympy.functions.elementary.exponential import log
     from sympy.core.power import Pow
-    from sympy.core.numbers import Rational
+    from sympy.core.numbers import I, Rational
+    if f.has(I):
+        # a sign is a property of real values (the bug: exp(-I*x) > 0 was
+        # True on -1 < x < 1, from its value 1 at 0 and the absence of zeros)
+        return False
     checks: list[tuple[Expr, Signs]] = []
     for node in f.atoms(log):
         checks.append((as_expr(node.args[0]), frozenset([1])))

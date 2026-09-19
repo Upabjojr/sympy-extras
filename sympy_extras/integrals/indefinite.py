@@ -123,6 +123,10 @@ def is_antiderivative(F: ExprLike, f: ExprLike, x: Symbol, assumptions: Assumpti
     reduced = attempt(lambda: as_expr(cancel(difference)), _budget())
     if reduced is not None and reduced == 0:
         return True
+    # exactly, by the structure theorem: a proof where the heuristics of
+    # simplify and the sample points below are evidence
+    if attempt(lambda: _exactly_zero(difference, assumptions), _EXACT_SECONDS) is True:
+        return True
     simpler = attempt(lambda: as_expr(simplify(reduced if reduced is not None else difference)), _budget())
     if simpler is not None and simpler == 0:
         return True
@@ -138,6 +142,22 @@ def is_antiderivative(F: ExprLike, f: ExprLike, x: Symbol, assumptions: Assumpti
     # the polar incomplete gamma of the Meijer route through
     return _vanishes_on_both_sides(difference, f_, x, assumptions,
                                    both_signs=F_.has(I, exp_polar, polar_lift))
+
+
+#: the budget of the exact zero test of :func:`is_antiderivative`
+_EXACT_SECONDS = 2.0
+
+
+def _exactly_zero(difference: Expr, assumptions: Assumptions) -> bool:
+    """Whether ``difference`` is zero in the tower of the structure
+    theorem (:mod:`sympy_extras.simplify.structure`); ``False`` when it is
+    not, or not elementary."""
+    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
+    tower = ElementaryTower(assumptions)
+    try:
+        return tower.vanishes(tower.element(difference))
+    except (NotElementary, ZeroDivisionError):
+        return False
 
 
 def _almost_everywhere(derivative: Expr) -> Expr:
