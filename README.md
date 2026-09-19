@@ -524,6 +524,46 @@ True
 SymPy's `simplify` leaves Machin's formula as it is and its `equals` samples
 it. See [docs/simplify.md](docs/simplify.md).
 
+### Differential elimination: Janet bases and Rosenfeld–Gröbner (`sympy_extras.polys.differential`)
+
+The differential counterpart of Gröbner bases. `janet_basis` completes a
+linear system of partial differential equations with all its
+integrability conditions: it decides consistency and the membership of a
+consequence, and counts the solutions without solving. `rosenfeld_groebner`
+splits a polynomial system of ordinary or partial differential equations
+into regular differential systems, which separates the general solution
+from the singular ones, finds the hidden constraints of
+differential-algebraic systems and eliminates unknowns.
+
+```python
+>>> from sympy import Function, symbols
+>>> from sympy_extras.polys.differential import janet_basis, rosenfeld_groebner
+>>> x, y, z = symbols('x y z')
+>>> u = Function('u')(x, y, z)
+>>> J = janet_basis([u.diff(z, 2) + y*u.diff(x, 2), u.diff(y, 2)], [u])
+>>> J.dimension, J.contains(u.diff(z, 4))
+(12, True)
+>>> p = Function('p')(x)
+>>> I = rosenfeld_groebner([p.diff(x)**2 - 4*p], [p])
+>>> [c.equations for c in I.components]
+[[-4*p(x) + Derivative(p(x), x)**2], [p(x)]]
+>>> I.components[0].contains(p.diff(x, 2) - 2)
+True
+
+```
+
+The size of the symmetry algebra of a differential equation follows from
+the Janet basis of its determining equations:
+
+```python
+>>> from sympy_extras.solvers import symmetry_janet_basis
+>>> symmetry_janet_basis(p.diff(x, 2), p).dimension
+8
+
+```
+
+See [docs/differential.md](docs/differential.md).
+
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
@@ -628,6 +668,11 @@ sympy_extras/
             samplepoints.py  exact real algebraic sample points
             lifting.py       lifting phase, cylindrical_algebraic_decomposition
             qe.py            quantifier elimination and decision
+        differential/
+            ring.py          DifferentialRing: derivatives and rankings
+            janet.py         Janet bases of linear systems of partial differential equations
+            polynomial.py    differential polynomials, Ritt's reduction
+            rosenfeld_groebner.py  the Rosenfeld–Gröbner algorithm
 
 ```
 

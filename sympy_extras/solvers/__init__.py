@@ -6,7 +6,7 @@ arithmetic; transcendental equations reduced to polynomial ones; real roots
 of transcendental functions isolated exactly; linear differential-algebraic
 equations with constant coefficients; Thue equations; integrating factors,
 linearisation and Abel invariants for ordinary differential equations."""
-from .lie import JetSpace, Symmetry, symmetries, check_symmetry
+from .lie import JetSpace, Symmetry, symmetries, check_symmetry, determining_system, symmetry_janet_basis
 from .pde import pde_symmetries, similarity_reduction, pdsolve_lie, Reduction
 from .ode import (ode_symmetries, canonical_coordinates, reduce_order,
     dsolve_lie, solve_ode, ReducedODE)
@@ -29,7 +29,7 @@ from .thue_equation import thue, units_of_order, elements_of_norm, ThueEquation
 from .second_order import (integrating_factor_xy, integrating_factor_p, is_linearizable, linearize,
     rectify_symmetries, dsolve_second_order, FirstIntegral, Linearization)
 
-__all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
+__all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry', 'determining_system', 'symmetry_janet_basis',
     'pde_symmetries', 'similarity_reduction', 'pdsolve_lie', 'Reduction',
     'ode_symmetries', 'canonical_coordinates', 'reduce_order', 'dsolve_lie',
     'solve_ode', 'ReducedODE',

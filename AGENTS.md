@@ -141,6 +141,12 @@ sympy_extras/
             lifting.py       lifting phase, cylindrical_algebraic_decomposition, CAD, CADCell
             qe.py            quantifier_elimination, decide, sample_points, solution_set
             tests/
+        differential/        differential algebra
+            ring.py          DifferentialRing: derivatives, rankings (orderly, elimination by blocks), conversion
+            janet.py         janet_basis, JanetBasis: linear systems of PDEs, Hilbert series, series solutions
+            polynomial.py    DifferentialPolynomial: leader, initial, separant, Ritt's reduction
+            rosenfeld_groebner.py  rosenfeld_groebner: regular differential systems of polynomial ODEs and PDEs
+            tests/
 docs/                        longer documentation per module
 .github/workflows/           tests.yml (CI), release.yml (PyPI publishing on tags)
 conftest.py                  pytest configuration (SymPy-style doctest display)

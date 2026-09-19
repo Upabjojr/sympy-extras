@@ -139,3 +139,29 @@ def test_nonlinear_leading_derivative() -> None:
     eq = u.diff(t) - u.diff(x)**Rational(1, 2)
     syms = symmetries(eq, u, degree=1)
     assert all(check_symmetry(eq, u, s) for s in syms)
+
+
+def test_the_size_of_the_symmetry_algebra_by_a_janet_basis() -> None:
+    from sympy import oo
+    from sympy_extras.solvers import determining_system, symmetry_janet_basis
+    y = Function('y')(x)
+    # known dimensions (Lie; Olver, Applications of Lie Groups, section 2.4 and
+    # chapter 2 examples): the projective group for y'' = 0, the maximal 7 for
+    # a third order equation, 2 for Blasius, 5 for Burgers, 4 for Korteweg-de Vries
+    assert symmetry_janet_basis(y.diff(x, 2), y).dimension == 8
+    assert symmetry_janet_basis(y.diff(x, 3), y).dimension == 7
+    assert symmetry_janet_basis(y.diff(x, 3) + y*y.diff(x, 2), y).dimension == 2
+    assert symmetry_janet_basis(u.diff(t) + u*u.diff(x) - u.diff(x, 2), u).dimension == 5
+    assert symmetry_janet_basis(u.diff(t) + u*u.diff(x) + u.diff(x, 3), u).dimension == 4
+    # a linear equation: its solutions can be added, the algebra is infinite
+    heat = symmetry_janet_basis(u.diff(t) - u.diff(x, 2), u)
+    assert heat.dimension == oo
+    system, unknowns, variables = determining_system(y.diff(x, 2) - y**2, y)
+    assert len(unknowns) == 2 and len(variables) == 2
+    basis = symmetry_janet_basis(y.diff(x, 2) - y**2, y)
+    # the translation of x and the scaling (x, y) -> (c x, y/c**2)
+    assert basis.dimension == 2
+    assert len(symmetries(y.diff(x, 2) - y**2, y)) == 2
+    # the polynomial ansatz of degree two finds all the symmetries exactly
+    # when their number is the dimension
+    assert len(symmetries(u.diff(t) + u*u.diff(x) - u.diff(x, 2), u)) == 5

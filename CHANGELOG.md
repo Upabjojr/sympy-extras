@@ -10,6 +10,39 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.differential`: differential elimination, the
+  differential counterpart of Gröbner bases. `DifferentialRing` holds the
+  derivatives of the unknown functions and a ranking (orderly, or an
+  elimination ranking by blocks of functions). `janet_basis` computes the
+  Janet basis of a linear system of partial differential equations with
+  coefficients rational in the variables (Janet's algorithm with the
+  completion to involution, free of fractions): `reduce`, `contains`,
+  `is_consistent`, the `dimension` of the solution space, the
+  `parametric_derivatives`, `hilbert_function`, `hilbert_series`,
+  `hilbert_polynomial` (from Janet's decomposition of the complement of
+  the leaders) and `series_solution`; right-hand sides, constant
+  parameters and functions of fewer variables are handled, and an
+  elimination ranking gives compatibility conditions (`curl A = B`
+  implies `div B = 0`). `rosenfeld_groebner` writes the radical
+  differential ideal of a polynomial system of ordinary or partial
+  differential equations, with inequations, as an intersection of regular
+  differential systems (Boulier, Lazard, Ollivier, Petitot): Ritt's
+  reduction with splittings on initials, separants and factors, the
+  coherence by Delta-polynomials, and the membership by Rosenfeld's lemma
+  and a Gröbner basis of the saturation. It separates general from
+  singular solutions (`u'^2 = 4u`, Clairaut), finds the hidden
+  constraints and the equilibria of the pendulum, eliminates its
+  coordinates, and reproduces the component of the example of the 1995
+  paper. `DifferentialPolynomial` exposes leaders, initials, separants and
+  the reductions. The Janet bases are checked against an oracle of linear
+  algebra (the jets of the solutions of the prolonged system at a point)
+  on fixed and random systems. See `docs/differential.md`.
+- `sympy_extras.solvers.determining_system` and `symmetry_janet_basis`:
+  the determining equations of the point symmetries of a differential
+  equation as a linear system of partial differential equations (no
+  ansatz), and its Janet basis, whose dimension is the dimension of the
+  symmetry algebra: 8 for `y'' = 0`, 7 for `y''' = 0`, 2 for Blasius, 5
+  for Burgers, 4 for Korteweg–de Vries, infinite for the heat equation.
 - The zero test of `sympy_extras.simplify` is put to work where the
   package decided equality by evidence. `ask` proves a relation whose two
   sides are the same elementary function on the region of the

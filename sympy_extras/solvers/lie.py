@@ -39,7 +39,7 @@ from typing import Optional, Sequence, Union
 from sympy.core.add import Add
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
-from sympy.core.function import AppliedUndef, Derivative, diff, expand, expand_power_exp
+from sympy.core.function import AppliedUndef, Derivative, Function, diff, expand, expand_power_exp
 from sympy.core.relational import Eq
 from sympy.core.singleton import S
 from sympy.core.power import Pow
@@ -56,9 +56,11 @@ from sympy.solvers.solveset import linear_eq_to_matrix
 from sympy.solvers.solvers import solve
 
 from sympy_extras._typing import Monomial, as_expr, free_symbols
+from sympy_extras.polys.differential.janet import JanetBasis, janet_basis
 
 __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
-    'infinitesimal_condition', 'determining_equations']
+    'infinitesimal_condition', 'determining_equations', 'determining_system',
+    'symmetry_janet_basis']
 
 #: an expression of a differential equation: ``Eq`` or expression ``= 0``
 Equation = Union[Expr, Eq]
@@ -581,6 +583,96 @@ def determining_equations(equations: Union[Equation, Sequence[Equation]],
         variables = set(jets.x) | set(jets.u) | {jets.jet(a, J) for a, J in jets.jets_in(condition)}
         linear.extend(_split(condition, unknowns, variables))
     return jets, unknowns, xi, eta, linear
+
+
+def determining_system(equations: Union[Equation, Sequence[Equation]],
+                       functions: Union[AppliedUndef, Sequence[AppliedUndef]]
+                       ) -> tuple[list[Expr], list[AppliedUndef], list[Symbol]]:
+    """The determining equations of the point symmetries as a linear
+    system of partial differential equations, without an ansatz.
+
+    Returns the equations (expressions which vanish), the unknown
+    functions `\\xi^1, \\ldots, \\xi^p, \\eta^1, \\ldots, \\eta^q` and
+    their arguments, the symbols of the independent and dependent
+    variables of the :class:`JetSpace`. The differential equations must
+    be polynomial in the derivatives which remain once the leading ones
+    are eliminated.
+
+    Examples
+    ========
+
+    >>> from sympy import Function, symbols
+    >>> from sympy_extras.solvers.lie import determining_system
+    >>> x = symbols('x')
+    >>> y = Function('y')(x)
+    >>> system, unknowns, variables = determining_system(y.diff(x, 2), y)
+    >>> unknowns
+    [xi0(x, y), eta0(x, y)]
+    >>> len(system)
+    4
+    """
+    jets, eqs = _prepare(equations, functions)
+    base: list[Symbol] = list(jets.x) + list(jets.u)
+    xi = [Function('xi%d' % i)(*base) for i in range(jets.p)]
+    eta = [Function('eta%d' % a)(*base) for a in range(jets.q)]
+    unknowns: list[AppliedUndef] = []
+    for f in xi + eta:
+        if not isinstance(f, AppliedUndef):
+            raise TypeError("an applied function is expected, got %s" % (f,))
+        unknowns.append(f)
+    conditions = _condition(jets, eqs, Symmetry(jets, xi, eta))
+    system: list[Expr] = []
+    for condition in conditions:
+        condition = as_expr(expand(condition))
+        gens = [jets.jet(a, J) for a, J in jets.jets_in(condition) if sum(J) > 0]
+        if not gens:
+            if condition != 0:
+                system.append(condition)
+            continue
+        try:
+            coefficients = Poly(condition, *gens).coeffs()
+        except PolynomialError:
+            raise NotImplementedError("the invariance condition is not polynomial in the derivatives") from None
+        system.extend(as_expr(c) for c in coefficients)
+    return system, unknowns, base
+
+
+def symmetry_janet_basis(equations: Union[Equation, Sequence[Equation]],
+                         functions: Union[AppliedUndef, Sequence[AppliedUndef]]) -> JanetBasis:
+    """The Janet basis of the determining equations of the point
+    symmetries: the size of the symmetry algebra without solving them.
+
+    The dimension of the basis is the dimension of the Lie algebra of the
+    point symmetries (``oo`` for a linear equation, whose solutions can be
+    added to a solution); the coefficients of the differential equations
+    must be rational in the variables.
+
+    Examples
+    ========
+
+    The free particle `y'' = 0` has the eight symmetries of the projective
+    group, the Blasius equation two, the Korteweg-de Vries equation four:
+
+    >>> from sympy import Function, symbols
+    >>> from sympy_extras.solvers.lie import symmetry_janet_basis
+    >>> x, t = symbols('x t')
+    >>> y = Function('y')(x)
+    >>> symmetry_janet_basis(y.diff(x, 2), y).dimension
+    8
+    >>> symmetry_janet_basis(y.diff(x, 3) + y*y.diff(x, 2), y).dimension
+    2
+    >>> u = Function('u')(x, t)
+    >>> symmetry_janet_basis(u.diff(t) + u*u.diff(x) + u.diff(x, 3), u).dimension
+    4
+
+    References
+    ==========
+
+    .. [Schwarz] F. Schwarz, Algorithmic Lie Theory for Solving Ordinary
+       Differential Equations, Chapman & Hall 2008.
+    """
+    system, unknowns, base = determining_system(equations, functions)
+    return janet_basis(system, unknowns, variables=base)
 
 
 def _nullspace(equations: Sequence[Expr], unknowns: Sequence[Symbol]) -> MutableDenseMatrix:
