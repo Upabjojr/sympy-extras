@@ -14,7 +14,7 @@ from sympy.core.numbers import Rational
 from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.sets.contains import Contains
-from sympy.core.relational import Relational, Gt, Lt, Ge, Le
+from sympy.core.relational import Relational, Eq, Ne, Gt, Lt, Ge, Le
 from sympy.core.symbol import Symbol
 from sympy.functions.elementary.complexes import Abs
 from sympy.functions.elementary.exponential import exp, log
@@ -141,12 +141,102 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
             return bool(value)
     value = _cad_ask(atom, facts)
     if value is None and isinstance(atom, Relational):
+        # the two sides equal as elementary functions: a proof
+        value = _structure_ask(atom, facts)
+    if value is None and isinstance(atom, Relational):
         # expressions beyond polynomials: calculus and interval arithmetic
         from .analysis import decide_relational
         value = decide_relational(atom, facts)
     if value is None:
         value = _bounded_cad_ask(atom, facts)
     return value
+
+
+#: the budget of the structure theorem inside ``ask``, and its depth: the
+#: tower asks about the signs of the arguments it meets, and those
+#: questions do not start a tower of their own
+_STRUCTURE_SECONDS = 6.0
+_structure_depth = 0
+
+
+def _structure_ask(atom: Relational, facts: Facts) -> Truth:
+    """The truth of a relation whose two sides are the same elementary
+    function on the region of the facts, by the zero test of
+    :mod:`sympy_extras.simplify.structure`: ``Eq`` holds, ``Ne``, ``Gt`` and
+    ``Lt`` fail, ``Ge`` and ``Le`` hold where the sides are real. A
+    difference which is not identically zero decides nothing (it may
+    vanish somewhere), except between constants, where it is a number
+    other than zero.
+
+    >>> from sympy import Eq, atan, pi, Rational, symbols, log
+    >>> from sympy_extras.assumptions import ask
+    >>> x = symbols('x')
+    >>> ask(Eq(4*atan(Rational(1, 5)) - atan(Rational(1, 239)), pi/4))
+    True
+    >>> ask(Eq(log(x**2), 2*log(x)), x > 0), ask(Eq(log(x**2), 2*log(x)))
+    (True, None)
+    """
+    global _structure_depth
+    if _structure_depth > 0 or not isinstance(atom, (Eq, Ne, Gt, Ge, Lt, Le)):
+        return None
+    difference = as_expr(atom.lhs - atom.rhs)
+    if not (difference.atoms(Function) or any(not as_expr(p.exp).is_integer for p in difference.atoms(Pow))
+            or difference.has(S.Pi, S.Exp1)):
+        return None                                         # polynomial: the decomposition's business
+    from sympy_extras._timeout import attempt
+    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
+    if difference.free_symbols and _clearly_not_zero(difference, facts):
+        return None                                         # the common case, told at one point
+
+    def decide() -> Optional[bool]:
+        """``True`` for identically zero, ``False`` for a constant other
+        than zero, ``None`` otherwise."""
+        tower = ElementaryTower(list(facts.conjuncts) or None)
+        try:
+            value = tower.element(difference)
+        except (NotElementary, ZeroDivisionError):
+            return None
+        if tower.vanishes(value):
+            return True
+        if not difference.free_symbols and tower.certifies(value):
+            return False
+        return None
+
+    _structure_depth += 1
+    try:
+        zero = attempt(decide, _STRUCTURE_SECONDS)
+    finally:
+        _structure_depth -= 1
+    if zero is None:
+        return None
+    if isinstance(atom, Eq):
+        return zero
+    if isinstance(atom, Ne):
+        return not zero
+    if not zero:
+        return None                                         # the sign of a nonzero constant is not told here
+    if isinstance(atom, (Gt, Lt)):
+        return False
+    return True if _realness(as_expr(atom.lhs), facts) is True else None
+
+
+def _clearly_not_zero(difference: Expr, facts: Facts) -> bool:
+    """Whether ``difference`` has a value away from zero at one point of
+    the region of the facts: then it is not identically zero there, and
+    the tower has nothing to prove."""
+    import random
+    symbols = sorted_symbols(free_symbols(difference))
+    values: Optional[dict[Symbol, Expr]] = {s: Rational(3 + 2 * i, 7 + i) for i, s in enumerate(symbols)}
+    if facts.conjuncts:
+        from sympy_extras.integrals.conditions import sample_values
+        values = sample_values(symbols, list(facts.conjuncts), random.Random(str(difference)))
+    if values is None:
+        return False
+    try:
+        value = as_expr(difference.xreplace(values)).evalf(20)
+        return bool(value.is_number and value.is_finite and abs(complex(value)) > 1e-12)
+    except (TypeError, ValueError, ZeroDivisionError, ArithmeticError):
+        return False
 
 
 def _real_membership(atom: Boolean) -> Optional[Expr]:

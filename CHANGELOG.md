@@ -10,6 +10,24 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- The zero test of `sympy_extras.simplify` is put to work where the
+  package decided equality by evidence. `ask` proves a relation whose two
+  sides are the same elementary function on the region of the
+  assumptions (`Eq(4*atan(1/5) - atan(1/239), pi/4)`, `Eq(log(x**2),
+  2*log(x))` under `x > 0`, `Eq(asin(x), atan(x/sqrt(1 - x**2)))` on
+  `(-1, 1)`; `>=` and `<=` hold and `>`, `<`, `Ne` fail between identical
+  real sides; between constants a proved difference answers too).
+  `simplify` with assumptions returns zero, the canonical form, or what
+  SymPy's transformations give when told to disregard the signs
+  (`powsimp`, `powdenest`, `logcombine`, `expand_log` with `force=True`,
+  `simplify` on positive symbols), each kept only when it is smaller and
+  *proved* equal: `atan(x) + atan(1/x)` is `pi/2` under `x > 0` and
+  unchanged without it, `sqrt(x - 1)*sqrt(x + 1)` is `sqrt(x**2 - 1)`
+  under `x > 1`, Machin's combination is `pi/4`. `numerically_equal`
+  gives agreement at its sample points a second opinion: two expressions
+  which the structure theorem proves different are different
+  (`exp(-10**6*x**2 - 50)` and `0` agree to every digit at the samples).
+
 - `sympy_extras.simplify`: a canonical form and a zero test for
   elementary expressions by the Risch–Rosenlicht structure theorem
   (`canonical_form`, `is_zero`, `equal`, `ElementaryTower`). An expression
@@ -32,7 +50,10 @@ remove public functions. Breaking changes are listed here when they happen.
   `True` is always a proof, `False` is proved by the independence of the
   generators which the expression involves (`ElementaryTower.certifies`;
   Schanuel's conjecture for the constants) or witnessed by a sample
-  point. The number field grows by primitive elements and is kept below
+  point; once a dependent generator is in the tower, the exponentials and
+  logarithms adjoined after it are uncertified too, the linear system
+  which would prove them independent being read over generators which
+  are not. The number field grows by primitive elements and is kept below
   degree 32 (`NotElementary` beyond, and `is_zero` then answers from a
   sample point). `is_antiderivative` asks it first, within two seconds.
 

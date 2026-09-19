@@ -726,6 +726,73 @@ def simplify(expr: Union[Expr, Boolean, bool], assumptions: Assumptions = None,
     refined = refiner.refine_expr(expr_)
     simplified = refiner.through_sympy(refined, lambda e: sympify(_sympy_simplify(e, **kwargs)))
     simplified = refiner.refine_expr(simplified)
-    if _size(simplified) <= _size(refined):
-        return simplified
-    return refined
+    best = simplified if _size(simplified) <= _size(refined) else refined
+    if isinstance(best, Expr):
+        return _proved_simplification(best, facts)
+    return best
+
+
+#: the budget of the proofs of :func:`_proved_simplification`
+_PROOF_SECONDS = 5.0
+
+
+def _proved_simplification(expr: Expr, facts: Facts) -> Expr:
+    """``expr`` or a smaller expression *proved* equal to it on the region
+    of the facts by the structure theorem
+    (:mod:`sympy_extras.simplify.structure`): zero when it vanishes, its
+    canonical form, or what SymPy's transformations give when they are
+    told to disregard the signs (``powsimp``, ``powdenest``,
+    ``logcombine``, ``expand_log`` with ``force=True``, ``simplify`` with
+    every symbol positive), which are right on part of the plane only and
+    are kept where the proof says so.
+
+    >>> from sympy import atan, Rational, sqrt, asin, log, symbols
+    >>> from sympy_extras.assumptions import simplify
+    >>> x, y = symbols('x y')
+    >>> simplify(4*atan(Rational(1, 5)) - atan(Rational(1, 239)))
+    pi/4
+    >>> simplify(asin(x) - atan(x/sqrt(1 - x**2)), (x > -1) & (x < 1))
+    0
+    >>> simplify(atan(x) + atan(1/x), x > 0), simplify(atan(x) + atan(1/x))
+    (pi/2, atan(1/x) + atan(x))
+    >>> simplify(log(x*y) - log(y), x > 0)
+    log(x)
+    """
+    from sympy.simplify.powsimp import powdenest, powsimp
+    from sympy.simplify.simplify import logcombine, posify
+    from sympy.core.function import expand_log
+    from sympy_extras._timeout import attempt
+    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
+
+    def forced() -> list[Expr]:
+        positive, back = posify(expr)
+        found = [powsimp(expr, force=True), powdenest(expr, force=True), logcombine(expr, force=True),
+                 expand_log(expr, force=True), as_expr(_sympy_simplify(positive)).xreplace(back)]
+        return [as_expr(c) for c in found]
+
+    def work() -> Expr:
+        tower = ElementaryTower(list(facts.conjuncts) or None)
+        try:
+            value = tower.element(expr)
+        except (NotElementary, ZeroDivisionError):
+            return expr
+        if tower.vanishes(value):
+            return S.Zero
+        best = expr
+        canonical = tower.to_expr(value)
+        if _size(canonical) < _size(best):
+            best = canonical                                # equal by construction
+        for candidate in forced():
+            if _size(candidate) >= _size(best) or candidate == expr:
+                continue
+            try:
+                if tower.vanishes(tower.element(candidate) - value):
+                    best = candidate
+            except (NotElementary, ZeroDivisionError):
+                continue
+        return best
+
+    if not (expr.atoms(Function) or any(not as_expr(p.exp).is_integer for p in expr.atoms(Pow)) or expr.has(pi)):
+        return expr
+    found = attempt(work, _PROOF_SECONDS)
+    return expr if found is None else found

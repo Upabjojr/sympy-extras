@@ -295,7 +295,10 @@ def test_simplify_assumptions() -> None:
     assert simplify(Integral(Abs(x), (x, 0, 1)), x > 0) == Integral(x, (x, 0, 1))
     # the result is never larger than the refined expression
     assert simplify(sqrt(x) + 1, x > 0) == sqrt(x) + 1
-    assert simplify(sqrt(x - 1)*sqrt(x + 1), x > 1) == sqrt(x - 1)*sqrt(x + 1)
+    # the product of the roots is the smaller form, proved equal for x > 1
+    # by the structure theorem; without the assumption it is kept
+    assert simplify(sqrt(x - 1)*sqrt(x + 1), x > 1) == sqrt(x**2 - 1)
+    assert simplify(sqrt(x - 1)*sqrt(x + 1)) == sqrt(x - 1)*sqrt(x + 1)
     # keyword arguments go to sympy.simplify
     assert simplify(sqrt(x**2) + x, x > 0, ratio=1) == 2*x
 
@@ -337,3 +340,24 @@ def test_refine_parity() -> None:
     assert refine(Mod(n**2, 4), integers) == Mod(n**2, 4)
     assert refine(Mod(n**2 + n, 2)) == Mod(n**2 + n, 2)
     assert refine(Mod(2*n*m + 1, 2), both) == 1
+
+
+def test_simplifications_which_are_proved() -> None:
+    # SymPy's forced transformations are right on part of the plane; the
+    # structure theorem (sympy_extras.simplify) keeps them where it proves
+    # them, and finds constants and zeros which no rewriting finds
+    from sympy import Rational, asin, atan, log, pi, sqrt, symbols
+    from sympy_extras.assumptions import simplify as simplify_
+    u, v = symbols('u v')
+    assert simplify_(4 * atan(Rational(1, 5)) - atan(Rational(1, 239))) == pi / 4
+    assert simplify_(asin(u) - atan(u / sqrt(1 - u**2)), (u > -1) & (u < 1)) == 0
+    assert simplify_(atan(u) + atan(1 / u), u > 0) == pi / 2
+    assert simplify_(atan(u) + atan(1 / u), u < 0) == -pi / 2
+    assert simplify_(atan(u) + atan(1 / u)) == atan(u) + atan(1 / u)
+    assert simplify_(log(u * v) - log(v), u > 0) == log(u)           # one positive factor is enough
+    assert simplify_(log(u * v) - log(v)) == log(u * v) - log(v)
+    assert simplify_(sqrt(u) * sqrt(v), [u > 0, v > 0]) == sqrt(u * v)
+    assert simplify_(sqrt(u) * sqrt(v)) == sqrt(u) * sqrt(v)
+    assert simplify_(log(u**2), u > 0) == 2 * log(u) and simplify_(log(u**2)) == log(u**2)
+    assert simplify_(sqrt(5 + 2 * sqrt(6)) - sqrt(2) - sqrt(3)) == 0
+    assert simplify_(log(3 + 2 * sqrt(2)) - 2 * log(1 + sqrt(2))) == 0

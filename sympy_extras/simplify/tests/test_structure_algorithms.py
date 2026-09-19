@@ -489,3 +489,46 @@ def test_numbers_which_sympy_does_not_convert() -> None:
     assert tower.as_number(b - tower.element(2 * I + 1 + sqrt(3) * I)) == 0
     assert is_zero((-8)**Rational(1, 3) - 1 - sqrt(3) * I) is True
     assert is_zero((-27)**Rational(1, 3) + 3) is False                       # the principal root is not -3
+
+
+def test_the_second_opinion_of_numerically_equal() -> None:
+    # agreement at three sample points is evidence; two expressions which
+    # the structure theorem proves different are different
+    from sympy_extras.integrals.conditions import _provably_different, numerically_equal
+    tiny = as_expr(exp(-10**6 * x**2 - 50))
+    assert numerically_equal(tiny, S.Zero) is False                  # 1e-22 and less at every sample
+    assert numerically_equal(exp(x), as_expr(exp(x) + Rational(1, 10**30))) is False
+    assert numerically_equal(as_expr(sin(x)**2 + cos(x)**2), S.One) is True
+    assert numerically_equal(as_expr(log(x**2)), as_expr(2 * log(x)), [x > 0]) is True
+    assert numerically_equal(x, y) is False
+    assert _provably_different(exp(x), as_expr(exp(x) + 1), None)
+    assert not _provably_different(exp(x), exp(x), None)
+    assert _provably_different(gamma(x), as_expr(gamma(x) + 1), None)          # SymPy leaves the difference 1
+    assert not _provably_different(gamma(x), as_expr(2 * gamma(x) + 1), None)  # not elementary: no opinion
+    assert not _provably_different(as_expr(log(x**2)), as_expr(2 * log(x)), None)  # uncertified: no opinion
+
+
+def test_nothing_is_independent_after_a_dependent_generator() -> None:
+    # the bug: with log(x) and the dependent log(x**2) in the tower,
+    # exp(v*log(x**2)/2) was certified independent of exp(v*log(x)), and the
+    # antiderivative -uppergamma(v/2, -a*x**2)/(2*(-a)**(v/2)) of
+    # x**(v - 1)*exp(a*x**2) was "proved" wrong, its derivative being
+    # written with (-a*x**2)**(v/2 - 1)
+    from sympy_extras.integrals.conditions import _provably_different, numerically_equal
+    v = Symbol('v', positive=True)
+    a = Symbol('a', negative=True)
+    derivative = as_expr(-a * x * (-a * x**2)**(v / 2 - 1) * exp(a * x**2) / (-a)**(v / 2))
+    integrand = as_expr(x**(v - 1) * exp(a * x**2))
+    tower = ElementaryTower()
+    u = tower.element(derivative - integrand)
+    assert not tower.vanishes(u) and not tower.certifies(u)
+    assert not _provably_different(derivative, integrand, None)
+    assert numerically_equal(derivative, integrand) is True
+    assert is_zero(derivative - integrand, x > 0) is True
+    # every exponential and logarithm after the dependent one is uncertified
+    tower = ElementaryTower()
+    tower.element(log(x) + log(x**2))
+    before = len(tower.generators)
+    tower.element(exp(y) + log(y + 1))
+    assert all(not g.certified for g in tower.generators[before:] if g.kind in (EXPONENTIAL, LOGARITHM))
+    assert tower.certifies(tower.element(log(x) + x))        # what came before stays certified

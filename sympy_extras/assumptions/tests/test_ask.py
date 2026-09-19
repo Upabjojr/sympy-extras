@@ -183,3 +183,43 @@ def test_a_complex_valued_expression_has_no_sign() -> None:
     assert ask(exp(I * x) + 2 > 0, [x > 0]) is None
     assert ask(exp(-x) > 0, [x > -1, x < 1]) is True
     assert ask(sin(x) + 2 > 0, [x > -1, x < 1]) is True
+
+
+def test_equalities_between_elementary_functions_are_proved() -> None:
+    # by the structure theorem (sympy_extras.simplify): two sides which are
+    # the same function on the region; sampling and the sign analysis are
+    # evidence, this is a proof
+    from sympy import Rational, asin, atan, cos, exp, log, pi, sin, sqrt
+    machin = 4 * atan(Rational(1, 5)) - atan(Rational(1, 239))
+    assert ask(Eq(machin, pi / 4)) is True and ask(Ne(machin, pi / 4)) is False
+    assert ask(Eq(4 * atan(Rational(1, 5)) - atan(Rational(1, 238)), pi / 4)) is False
+    assert ask(Eq(sqrt(5 + 2 * sqrt(6)), sqrt(2) + sqrt(3))) is True
+    assert ask(Eq(log(x**2), 2 * log(x)), x > 0) is True
+    assert ask(Eq(log(x**2), 2 * log(x))) is None               # not identical, and equal for x > 0
+    assert ask(Eq(log(x * y), log(x) + log(y)), [x > 0, y > 0]) is True
+    assert ask(Eq(asin(x), atan(x / sqrt(1 - x**2))), [x > -1, x < 1]) is True
+    assert ask(Eq(atan(x) + atan(1 / x), pi / 2), x > 0) is True
+    assert ask(Eq(atan(x) + atan(1 / x), pi / 2), x < 0) is False or \
+        ask(Eq(atan(x) + atan(1 / x), pi / 2), x < 0) is None
+    # inequalities between identical sides
+    assert ask(sin(x)**2 + cos(x)**2 >= 1, x > 0) is True
+    assert ask(sin(x)**2 + cos(x)**2 > 1, x > 0) is False
+    assert ask(exp(x + y) <= exp(x) * exp(y), [x > 0, y > 0]) is True
+    assert ask(exp(x + y) < exp(x) * exp(y), [x > 0, y > 0]) is False
+    # a difference which is not identically zero decides nothing by itself
+    assert ask(Eq(exp(x), 1 + x)) is None
+    # and what the other methods decided is as before
+    assert ask(exp(x) > 0, x > 1) is True and ask(Eq(exp(x), 1), x > 0) is False
+
+
+def test_the_structure_theorem_does_not_call_itself() -> None:
+    # the tower asks about the signs of the arguments it meets; those
+    # questions do not start a tower of their own (a depth counter), and
+    # the question comes back
+    from sympy import exp, log, sqrt
+    import importlib
+    from sympy_extras.assumptions import ask as ask_
+    module = importlib.import_module('sympy_extras.assumptions.ask')     # the package exports the function ask
+    assert ask_(Eq(log((exp(x) + 1) * (exp(x) + 2)), log(exp(x) + 1) + log(exp(x) + 2)), x > 0) is True
+    assert ask_(Eq(sqrt((exp(x) + 1)**2), exp(x) + 1), x > 0) is True
+    assert vars(module)['_structure_depth'] == 0

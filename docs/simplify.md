@@ -130,6 +130,35 @@ False
 `exp(2*x)` is the square of `exp(x)`; and `log(2*x)` is `log(2) + log(x)`
 for every `x`, the factor `2` being positive.
 
+## Where the package uses it
+
+- `is_antiderivative` asks it first: `F' - f` zero in the tower is a
+  proof, where `simplify` and the sample points are evidence.
+- `sympy_extras.assumptions.ask` proves relations whose sides are the same
+  function on the region: `Eq` holds, `Ne`, `>` and `<` fail, `>=` and `<=`
+  hold between real sides. A difference which is not identically zero
+  decides nothing (it may vanish somewhere), except between constants.
+- `sympy_extras.assumptions.simplify` returns zero, the canonical form or
+  one of SymPy's forced transformations (`powsimp`, `powdenest`,
+  `logcombine`, `expand_log` with `force=True`, `simplify` on positive
+  symbols) when it is smaller and proved equal on the region.
+- `numerically_equal`, the sampling test behind the definite integrator,
+  answers `False` when the tower proves the two expressions different.
+
+```python
+>>> from sympy import Eq
+>>> from sympy_extras.assumptions import ask, simplify
+>>> ask(Eq(4*atan(Rational(1, 5)) - atan(Rational(1, 239)), pi/4))
+True
+>>> ask(Eq(log(x**2), 2*log(x)), x > 0), ask(Eq(log(x**2), 2*log(x)))
+(True, None)
+>>> simplify(atan(x) + atan(1/x), x > 0), simplify(atan(x) + atan(1/x))
+(pi/2, atan(1/x) + atan(x))
+>>> simplify(sqrt(x - 1)*sqrt(x + 1), x > 1), simplify(sqrt(x - 1)*sqrt(x + 1))
+(sqrt(x**2 - 1), sqrt(x - 1)*sqrt(x + 1))
+
+```
+
 ## Limitations
 
 - The elementary functions only: `gamma`, `erf`, `Abs`, `Piecewise`,

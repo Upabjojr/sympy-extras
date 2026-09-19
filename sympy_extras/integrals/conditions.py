@@ -41,6 +41,7 @@ from sympy.logic.boolalg import And, Or, Boolean, true, false
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 
+from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
 from sympy_extras.assumptions.facts import Facts, element
@@ -360,10 +361,48 @@ def _rational_relation(relation: Boolean) -> Boolean:
     return as_boolean(relation.func(rest_, -shifted))
 
 
+#: the budget of the second opinion of :func:`numerically_equal`, and the
+#: size (in operations) beyond which it is not asked
+_EXACT_SECONDS = 1.0
+_EXACT_SIZE = 120
+
+
+def _provably_different(a: Expr, b: Expr, assumptions: Assumptions) -> bool:
+    """Whether the structure theorem
+    (:mod:`sympy_extras.simplify.structure`) proves that ``a - b`` is not
+    identically zero: a nonzero canonical form in generators which are
+    independent. ``False`` when it proves nothing (equal, not elementary,
+    uncertified, too large, out of time)."""
+    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
+    difference = as_expr(a - b)
+    if difference == 0 or difference.count_ops() > _EXACT_SIZE:
+        return False
+
+    def decide() -> bool:
+        tower = ElementaryTower(assumptions)
+        try:
+            value = tower.element(difference)
+        except (NotElementary, ZeroDivisionError):
+            return False
+        return not tower.vanishes(value) and tower.certifies(value)
+
+    return attempt(decide, _EXACT_SECONDS) is True
+
+
 def numerically_equal(a: Expr, b: Expr, assumptions: Assumptions = None, samples: int = 3) -> bool:
     """Whether ``a`` and ``b`` agree numerically at ``samples`` random
     values of their symbols satisfying the assumptions (see
-    :func:`sample_values`); ``False`` when a value cannot be computed."""
+    :func:`sample_values`); ``False`` when a value cannot be computed.
+    Agreement at the samples is evidence, and gets a second opinion: the
+    answer is ``False`` when the structure theorem proves the two
+    different (``exp(-10**6*x**2)`` and ``0`` agree to every digit at
+    points away from the origin)."""
+    if not _samples_agree(a, b, assumptions, samples):
+        return False
+    return not _provably_different(a, b, assumptions)
+
+
+def _samples_agree(a: Expr, b: Expr, assumptions: Assumptions, samples: int) -> bool:
     symbols = sorted_symbols(free_symbols(a) | free_symbols(b))
     rng = random.Random(str((a, b)))
     for _ in range(samples if symbols else 1):

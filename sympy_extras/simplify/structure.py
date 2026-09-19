@@ -762,7 +762,17 @@ class ElementaryTower:
                 return False
         return True
 
+    def _sound(self) -> bool:
+        """Whether every generator so far is certified: the independence
+        of a new exponential or logarithm is read from a linear system
+        over the generators, and means nothing once one of them is not
+        what it seems (the bug: after ``log(x)`` and the dependent
+        ``log(x**2)``, ``exp(v*log(x**2)/2)`` passed for independent of
+        ``exp(v*log(x))``, the two logarithms being unrelated formally)."""
+        return all(g.certified for g in self.generators)
+
     def _new_exponential(self, a: Element, certified: bool = True) -> Element:
+        certified = certified and self._sound()
         expression = exp(self.to_expr(a))
         position = self._add_generator(Generator(EXPONENTIAL, Dummy('e'), expression, a, certified))
         theta = self._generator_element(position)
@@ -1073,6 +1083,7 @@ class ElementaryTower:
         return self._positive(pair.e) if pair.logarithmic else self._real(pair.z)
 
     def _new_logarithm(self, v: Element, certified: bool) -> Element:
+        certified = certified and self._sound()
         expression = log(self.to_expr(v))
         position = self._add_generator(Generator(LOGARITHM, Dummy('l'), expression, v, certified))
         L = self._generator_element(position)
