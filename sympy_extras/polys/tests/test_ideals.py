@@ -196,3 +196,29 @@ def test_change_order() -> None:
     # trivial ideals
     assert Ideal([], x, y).change_order('lex') == []
     assert Ideal([x, y], x, y).change_order('lex') == [Poly(x, x, y, domain=QQ), Poly(y, x, y, domain=QQ)]
+
+
+def test_lexicographic_bases_in_dimension_zero_are_converted() -> None:
+    # a basis for lex or grlex of an ideal of dimension zero comes from the
+    # one for grevlex by FGLM (Katsura-4 for lex: a quarter of a second,
+    # against a minute directly); it is the basis of the direct computation
+    from sympy.polys.groebnertools import groebner as direct
+    from sympy.polys.orderings import grlex, lex
+    systems = [([x**2 - y, y**2 - 1, z*x - 2], True), ([x**2*(x - 1), (y - x)**2, z**3 - y], True),
+               ([x**3 - 2*x*y + S(1)/3, x**2*y - 2*y**2 + x, z**2 - x*y], True),
+               ([x*z - y**2, x**2 - y*z], False),            # dimension one: not converted
+               ([x, x + 1, y*z], False)]                     # the whole ring: nothing to convert
+    for gens, converted in systems:
+        for order in (lex, grlex):
+            I = Ideal(gens, x, y, z)
+            R = I.ring(order)
+            expected = sorted(direct([R.from_expr(g) for g in gens], R), key=lambda g: R.order(g.LM), reverse=True)
+            assert (I._converted_basis(order) is not None) == converted, gens
+            assert I._basis(order) == expected, gens
+    a, b, c, e, f = symbols('a b c e f')
+    u = [a, b, c, e, f]
+    katsura = [a + 2*b + 2*c + 2*e + 2*f - 1] + \
+        [sum(u[abs(i)]*u[abs(m - i)] for i in range(-4, 5) if abs(m - i) <= 4) - u[m] for m in range(4)]
+    K = Ideal(katsura, *u)
+    last = K.groebner_basis('lex')[-1]
+    assert K.vector_space_dimension() == 16 and last.free_symbols == {f} and last.degree(f) == 16

@@ -329,8 +329,12 @@ of the table are: SymPy's `grevlex` basis converted by SymPy's FGLM
 (`Ideal.change_order('lex')`) took 0.6 s + 1.8 s for Katsura-5 and 49.8 s
 + 25.2 s for cyclic-6, less than the modular algorithm for `lex` (these
 conversions are also what the two large modular `lex` bases were checked
-against, and found equal). `Ideal.groebner_basis('lex')` does not take
-that way by itself.
+against, and found equal). `Ideal` takes that way by itself: a basis for
+`lex` or `grlex` of an ideal of dimension zero (a power of every variable
+among the leading monomials of the `grevlex` basis) is converted from the
+`grevlex` basis by FGLM, Katsura-4 in a quarter of a second. The modular
+algorithm remains what computes the `lex` and elimination bases of the
+ideals of positive dimension, where FGLM does not apply.
 
 Hence the rule of `Ideal`, which computes its bases through
 `sympy_extras.polys.modulargroebner.groebner`: SymPy's direct computation

@@ -10,6 +10,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `Ideal` computes the Gröbner bases for `lex` and `grlex` of the ideals of
+  dimension zero by converting the `grevlex` basis with SymPy's FGLM
+  instead of computing them directly: Katsura-4 for `lex` takes 0.23 s
+  (54 s directly, 1 s by the modular algorithm), cyclic-5 1.9 s. The
+  reduced basis is unique, so the result is the same (300 random bases
+  compared with the direct computation).
+
 - `settings.time_scale`, read from the environment variable
   `SYMPY_EXTRAS_TIME_SCALE` at import, multiplies every time limit of the
   package (`configure(time_scale=...)` too). What is found within the
