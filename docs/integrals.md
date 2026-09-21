@@ -92,7 +92,7 @@ atan(b/a)
 >>> definite_integral(x**k*(1 - x)**k, (x, 0, 1), k > -1)
 gamma(k + 1)**2/gamma(2*k + 2)
 >>> definite_integral(log(1 + 7/x**2), (x, 1, oo))
--log(8) + 2*sqrt(7)*atan(sqrt(7))
+-log(8) - 2*sqrt(7)*atan(sqrt(7)/7) + sqrt(7)*pi
 >>> definite_integral(x*exp(x)*exp(k*x)/(exp(x) + 3), (x, -oo, oo), (k > -1) & (k < 0))
 3**k*pi*(polygamma(0, -k) - polygamma(0, k + 1) - log(3))/sin(pi*k)
 
@@ -113,8 +113,8 @@ regularisation).
 I/(2*sqrt((a + I*b)**2 + 1)) - I/(2*sqrt((a - I*b)**2 + 1))
 >>> definite_integral(exp(-2*x)*cos(x)*besselj(0, x), (x, 0, oo))
 2**(3/4)*sqrt(sqrt(2) + 2)/8
->>> definite_integral(x**(-S(3)/2)*exp(-x), (x, 0, oo))
-Integral(exp(-x)/x**(3/2), (x, 0, oo))
+>>> definite_integral(x**(-S(3)/2)*exp(-x), (x, 0, oo))          # divergent
+oo
 >>> definite_integral(x**(-S(3)/2)*exp(-x), (x, 0, oo), regularize=True)
 -2*sqrt(pi)
 

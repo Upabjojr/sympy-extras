@@ -608,19 +608,27 @@ class _Integrator:
             if found is not None:
                 return found
         singular, found = self._split_singularities(f, x, a, b, depth)
+        if singular and depth == 0 and (self.finite_part or self.principal_value) \
+                and (found is None or found.value.has(oo, -oo, zoo)):
+            # a singularity inside the range whose pieces diverge, or
+            # could not be integrated: the finite part or the principal
+            # value which was asked for, and not the infinite value of the
+            # integral (the bug: 1/x**2 over (-1, 1) with finite_part=True
+            # came out oo since the divergences are reported)
+            regular: Optional[ConditionalValue]
+            if self.finite_part:
+                from .antiderivative import finite_part_integral
+                regular = self._finish(finite_part_integral(f, x, a, b, self.assumptions))
+            else:
+                from .antiderivative import principal_value_integral
+                regular = self._finish(principal_value_integral(f, x, a, b, self.assumptions))
+            if regular is not None:
+                return regular
         if found is not None:
             return found
         if singular:
-            # a singularity inside the range whose pieces could not be
-            # integrated: an antiderivative evaluated at the endpoints
-            # would be wrong, so SymPy is not asked; the principal value
-            # is computed when asked for
-            if self.finite_part and depth == 0:
-                from .antiderivative import finite_part_integral
-                return self._finish(finite_part_integral(f, x, a, b, self.assumptions))
-            if self.principal_value and depth == 0:
-                from .antiderivative import principal_value_integral
-                return self._finish(principal_value_integral(f, x, a, b, self.assumptions))
+            # an antiderivative evaluated at the endpoints would be wrong
+            # with a singularity inside the range, so SymPy is not asked
             return None
         allowed = (free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x}
         # a divergence read off the leading term at an end of the range,

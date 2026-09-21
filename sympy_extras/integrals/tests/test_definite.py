@@ -434,6 +434,18 @@ def test_sums_of_sines_as_products_and_radical_factors_of_logarithms() -> None:
 
 
 
+def test_finite_parts_of_integrals_which_diverge_to_infinity() -> None:
+    # the bug: since the divergences to a signed infinity are reported
+    # (b1298b2), the infinite value of the pieces was returned before the
+    # finite part which was asked for: oo for the first one
+    assert definite_integral(1 / x**2, (x, -1, 1), finite_part=True) == -2
+    assert definite_integral(1 / x**2, (x, -1, 1)) == oo
+    assert definite_integral(1 / (x - 1)**3, (x, 0, 3), finite_part=True) == Rational(3, 8)
+    assert definite_integral(1 / x, (x, -1, 2), principal_value=True) == log(2)
+    # no principal value: the divergence is still reported
+    assert definite_integral(1 / (x - 1)**2, (x, 0, 3), principal_value=True) == oo
+
+
 def test_divergence_to_a_signed_infinity() -> None:
     # an infinite one-sided limit of the antiderivative at an endpoint or
     # a singularity, of one sign: the integral diverges to it (Maxima's

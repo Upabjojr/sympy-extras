@@ -712,12 +712,14 @@ integrals are computed innermost first, the way Mathematica's
 
 ```python
 >>> IntegralByRanges(1, x**2 + y**2 < c**2, [x, y]).doit()
-Piecewise((pi*c**2, c**2 > 0), (0, True))
+pi*c**2
 
 ```
 
 No counterpart in SymPy. The parameter is the first variable of the
-decomposition and gives the case distinction.
+decomposition and gives the case distinction (`c != 0`, and an empty disc
+for `c = 0`), which is not written when one expression, here `pi*c**2`,
+is right in every case.
 
 ## The six wrong answers, for the record
 

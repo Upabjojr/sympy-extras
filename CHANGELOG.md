@@ -644,6 +644,16 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `definite_integral(1/x**2, (x, -1, 1), finite_part=True)` came out `oo`
+  instead of `-2` since the divergences to a signed infinity are reported:
+  the infinite value of the pieces was returned before the finite part (or
+  the principal value) which was asked for was computed. The example was
+  in `docs/integrals.md`, whose doctests had not been run in full: three
+  other outputs of the documentation which had changed form, all of them
+  right (`pi*c**2` for the area of a disc of radius `c` without its case
+  distinction, `oo` for a divergent integral, an arctangent written
+  otherwise), are brought up to date.
+
 - `Ideal.is_maximal()` raised `NotImplementedError` ("no separating linear
   form was found") when none of five fixed linear forms separated the
   zeros, as for the five points `(0, 0), (1, -1), (2, -1), (3, -1), (2,
