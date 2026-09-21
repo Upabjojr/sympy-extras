@@ -28,6 +28,17 @@ timeout : float or None
     The default time limit, in seconds, of every step handed to SymPy by
     the solvers (``dsolve``, ``integrate``, ``solve``, the verifications);
     ``None`` for no limit.
+modular_groebner : bool
+    Whether the Gröbner bases of :class:`~sympy_extras.polys.ideals.Ideal`
+    over the rationals are computed by the modular algorithm
+    (:mod:`sympy_extras.polys.modulargroebner`) when SymPy's direct
+    computation does not finish within ``groebner_direct_time``. The
+    results are the same, reduced and proven, either way.
+groebner_direct_time : float
+    The seconds given to SymPy's direct computation of a Gröbner basis
+    before the modular algorithm takes over (0.25, and twenty times as
+    long for the graded orders, where the modular algorithm seldom pays
+    off); zero or less to go to the modular algorithm at once.
 """
 from __future__ import annotations
 
@@ -44,6 +55,8 @@ class Settings:
         self.numerical_checks: bool = True
         self.precision: int = 30
         self.timeout: Optional[float] = 30.0
+        self.modular_groebner: bool = True
+        self.groebner_direct_time: float = 0.25
 
     def __repr__(self) -> str:
         return "Settings(numerical_checks=%r, precision=%r, timeout=%r)" % (
@@ -55,10 +68,13 @@ settings = Settings()
 
 @contextmanager
 def configure(numerical_checks: Optional[bool] = None, precision: Optional[int] = None,
-              timeout: Optional[float] = None, no_timeout: bool = False) -> Iterator[Settings]:
+              timeout: Optional[float] = None, no_timeout: bool = False,
+              modular_groebner: Optional[bool] = None,
+              groebner_direct_time: Optional[float] = None) -> Iterator[Settings]:
     """Temporarily change the settings (``no_timeout=True`` removes the
     time limit, since ``timeout=None`` means "leave unchanged" here)."""
     previous = (settings.numerical_checks, settings.precision, settings.timeout)
+    previous_groebner = (settings.modular_groebner, settings.groebner_direct_time)
     if numerical_checks is not None:
         settings.numerical_checks = numerical_checks
     if precision is not None:
@@ -67,7 +83,12 @@ def configure(numerical_checks: Optional[bool] = None, precision: Optional[int] 
         settings.timeout = timeout
     if no_timeout:
         settings.timeout = None
+    if modular_groebner is not None:
+        settings.modular_groebner = modular_groebner
+    if groebner_direct_time is not None:
+        settings.groebner_direct_time = groebner_direct_time
     try:
         yield settings
     finally:
         settings.numerical_checks, settings.precision, settings.timeout = previous
+        settings.modular_groebner, settings.groebner_direct_time = previous_groebner

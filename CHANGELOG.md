@@ -10,6 +10,41 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.modulargroebner`: reduced Gröbner bases over the
+  rationals by the modular algorithm of E. Arnold (J. Symbolic Comput. 35,
+  2003). `modular_groebner(polys, ring, primes=None, trace=None)` returns
+  what `sympy.polys.groebnertools.groebner(polys, ring)` returns (monic
+  over `QQ`, primitive over `ZZ`, by decreasing leading monomials; other
+  domains go to SymPy), computed from the reduced bases modulo primes
+  (SymPy's `groebner` over `GF(p)`), with the unlucky primes discarded by
+  comparing the leading monomials (fewer of them in the first degree where
+  they differ, or smaller ones, is unlucky), the Chinese remainder theorem
+  (`chinese_remainder`), Wang's rational reconstruction
+  (`rational_reconstruction`) and a verification over the rationals which
+  proves the result: the input reduces to zero modulo the candidate and
+  the candidate is a Gröbner basis (critical pairs by the criteria of
+  Gebauer and Möller, fraction-free reductions). Arnold's theorem needs a
+  homogeneous ideal, and is false without: `x*(z + 210*y + 1), x*(z +
+  420*y + 2)` has the image `<x>` modulo 2, 3, 5 and 7, and `[x]` passes
+  both tests. The input is therefore homogenised, the basis computed and
+  proven for "total degree, then the given order", and the new variable
+  set to 1; this also makes the images for `lex` ten to twenty-five times
+  cheaper than the images of the input (Katsura-4, cyclic-5). The primes are the primes below `2**1024`
+  in decreasing order (`default_primes`; the time of an image hardly
+  depends on the size of the prime with the pure Python ground types, and
+  the number of images does), nothing is random, and `ModularTrace` records
+  the primes used, skipped and discarded. `Ideal` computes its bases
+  through the dispatcher `groebner` of the module: SymPy's direct
+  computation for `settings.groebner_direct_time` seconds (0.25; twenty
+  times as long for `grevlex` and `grlex`), then the modular algorithm;
+  `settings.modular_groebner` turns it off. Measured (CPU seconds, one run
+  each on a loaded machine, see `docs/ideals.md`): Katsura-4 `lex` 54.5 s
+  by SymPy and 0.98 s modular, cyclic-5 `lex` 14.7 s and 0.64 s, Katsura-5
+  and cyclic-6 `lex` more than 300 s and 137 s, 122 s; for `grevlex` the
+  modular algorithm is 1.7 to 2.8 times slower below a second and on a par
+  on cyclic-6 (44.3 s and 38.6 s), which is why the graded orders go to it
+  last.
+
 - Radicals and prime components of polynomial ideals of any dimension,
   over the rationals (sympy-extras#11): `Ideal.radical()` and
   `Ideal.is_radical()` no longer require dimension zero, and

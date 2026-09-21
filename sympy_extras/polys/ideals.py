@@ -57,7 +57,6 @@ from sympy.functions.combinatorial.factorials import binomial
 from sympy.polys.domains import QQ
 from sympy.polys.domains.domain import Domain
 from sympy.polys.fglmtools import matrix_fglm
-from sympy.polys.groebnertools import groebner as _groebner
 from sympy.polys.matrices import DomainMatrix
 from sympy.polys.monomials import monomial_divides
 from sympy.polys.orderings import MonomialOrder, grevlex, lex
@@ -68,6 +67,7 @@ from sympy.matrices.dense import MutableDenseMatrix
 from sympy_extras._typing import Monomial, OrderSpec, as_symbol, free_symbols, sorted_symbols
 
 from .groebnerwalk import groebner_walk
+from .modulargroebner import groebner as _groebner
 from .orderings import as_order, elimination_order
 
 __all__ = ['Ideal', 'hilbert_numerator']

@@ -206,6 +206,10 @@ matrices; in any dimension, through regular chains, the radical, its
 equidimensional parts, the minimal primes and the tests for radical and
 prime ideals. The Gröbner walk converts bases between orders for ideals of
 any dimension.
+Over the rationals, the bases which SymPy does not compute in a quarter of
+a second are computed by the modular algorithm of Arnold
+(`sympy_extras.polys.modulargroebner`): modulo large primes, on the
+homogenised input, with a verification which proves the result.
 
 ```python
 >>> from sympy.abc import x, y, z, t
@@ -219,6 +223,11 @@ Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)
 [x**2 - y*z, x*y**2 - y*z**2, x*z - y**2, y**4 - y*z**3]
 >>> Ideal([x**2 + y**2 - 1, x - y**2], x, y).is_maximal()
 True
+>>> from sympy import QQ, ring, lex
+>>> from sympy_extras.polys.modulargroebner import modular_groebner
+>>> R, u, v, w = ring("u,v,w", QQ, lex)
+>>> modular_groebner([u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w], R)
+[u + v - 2*w, v**2 - 2*v*w + 1/3*w, w**2 - 2/15*w - 1/5]
 
 ```
 
@@ -716,6 +725,7 @@ sympy_extras/
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
         idealdecomposition.py  radical, equidimensional parts, minimal primes in any dimension
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
+        modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold)
         orderings.py         WeightOrder, BlockOrder
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution
         comprehensive.py     comprehensive Gröbner systems, reduction over the complex numbers

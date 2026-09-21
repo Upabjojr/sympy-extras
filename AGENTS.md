@@ -133,6 +133,7 @@ sympy_extras/
         euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)
         ideals.py            Ideal: operations and invariants on top of sympy.groebner
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
+        modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ modulo primes, proven (Arnold)
         orderings.py         WeightOrder, BlockOrder, elimination_order (hashable monomial orders)
         tests/
         cad/                 cylindrical algebraic decomposition
