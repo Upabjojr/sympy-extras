@@ -157,9 +157,10 @@ def test_zero_dimensional() -> None:
     assert Ideal([x - 1, y - 2], x, y).is_maximal()
     assert Ideal([x**2 - 1, y - 2], x, y).is_prime() is False
     assert not Ideal([x, x + 1], x, y).is_maximal()
-    raises(NotImplementedError, lambda: Ideal([x*y], x, y).radical())
     raises(NotImplementedError, lambda: Ideal([x*y], x, y).standard_monomials())
-    raises(NotImplementedError, lambda: Ideal([x*y], x, y).is_maximal())
+    # an ideal of positive dimension is not maximal (and its radical is in
+    # test_idealdecomposition)
+    assert Ideal([x*y], x, y).is_maximal() is False
     # a nontrivial system: x**2 + y**2 - 1, x - y**2 has 4 solutions
     K = Ideal([x**2 + y**2 - 1, x - y**2], x, y)
     assert K.vector_space_dimension() == 4 and K.degree() == 4

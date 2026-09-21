@@ -201,9 +201,11 @@ primality and dimension unimplemented. The `Ideal` class adds elimination
 ideals (with hashable block orders, which SymPy's product orders are not),
 intersections, quotients, saturations, radical membership, the Krull
 dimension, Hilbert series and polynomial, the degree, and for
-zero-dimensional ideals the standard monomials, multiplication matrices,
-the radical and the tests for radical, prime and maximal ideals. The
-Gröbner walk converts bases between orders for ideals of any dimension.
+zero-dimensional ideals the standard monomials and multiplication
+matrices; in any dimension, through regular chains, the radical, its
+equidimensional parts, the minimal primes and the tests for radical and
+prime ideals. The Gröbner walk converts bases between orders for ideals of
+any dimension.
 
 ```python
 >>> from sympy.abc import x, y, z, t
@@ -712,6 +714,7 @@ sympy_extras/
     polys/
         euclidtools.py       principal subresultant coefficients
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
+        idealdecomposition.py  radical, equidimensional parts, minimal primes in any dimension
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
         orderings.py         WeightOrder, BlockOrder
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution

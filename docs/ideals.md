@@ -25,15 +25,21 @@ This package adds, on top of SymPy's Gröbner basis engine:
   and the **degree**, from the leading term ideal;
 - for zero-dimensional ideals: the standard monomials, the dimension of the
   quotient algebra, multiplication matrices, the univariate polynomial in
-  each variable, the **radical** (Seidenberg's lemma) and tests for
-  **radical**, **prime** and **maximal** ideals;
+  each variable, the **radical** (Seidenberg's lemma) and the test for
+  **maximal** ideals;
+- in any dimension, over the rationals: the **radical**, its
+  **equidimensional parts**, the **minimal primes**, the **height** and
+  the tests for **radical** and **prime** ideals, through triangular
+  decompositions into squarefree regular chains
+  ([regularchains.md](regularchains.md));
 - the **Gröbner walk**, converting a Gröbner basis between orders for
   ideals of any dimension (`change_order` uses FGLM when the ideal is
   zero-dimensional and the walk otherwise).
 
-Not done here: general (positive-dimensional) radicals and primary
-decomposition, F4, modular Gröbner bases and strong Gröbner bases over the
-integers.
+Not done here: primary decomposition (the primary components and the
+embedded primes; only the minimal primes are computed), the depth,
+decompositions over other fields than the rationals (algebraic numbers,
+finite fields), F4 and strong Gröbner bases over the integers.
 
 ## Examples
 
@@ -89,6 +95,45 @@ Matrix([[0, 0, 0, 1], [1, 0, 0, 0], [0, 1, 0, -1], [0, 0, 1, 0]])
 (True, True)
 >>> Ideal([x**2, y**2 - 2*y + 1], x, y).radical()
 Ideal([x, y - 1], x, y)
+
+```
+
+## Radicals and prime components in any dimension
+
+The zeros of an ideal are the union of the closures of the quasi-components
+of regular chains (a triangular decomposition in the sense of Kalkbrener).
+The chains of this package are squarefree, their saturated ideals are then
+radical and unmixed, and the radical of the ideal is their intersection;
+the parts of each dimension, cleared of what lies in a part of greater
+dimension, are the equidimensional parts. No Gröbner basis of the ideal
+itself is needed.
+
+```python
+>>> K = Ideal([x**2*z - y**2*z, x**3*y - x*y**3, z**2*(x - y)], x, y, z)
+>>> K.radical()
+Ideal([x**3*y - x*y**3, x*z - y*z], x, y, z)
+>>> K.equidimensional_parts()
+[Ideal([x - y], x, y, z), Ideal([x**2*y + x*y**2, z], x, y, z)]
+>>> K.minimal_primes()
+[Ideal([x - y], x, y, z), Ideal([x + y, z], x, y, z), Ideal([x, z], x, y, z), Ideal([y, z], x, y, z)]
+>>> K.is_radical(), K.is_prime(), K.height()
+(False, False, 1)
+
+```
+
+The prime components of the saturated ideal of a chain with free variables
+`u` are found in dimension zero over `Q(u)`, without a Gröbner basis over
+that field: a linear form in the other variables which separates the zeros
+is found among `x1 + t*x2 + t**2*x3 + ...`, its minimal polynomial over
+`Q[u]` is the generator of an elimination ideal, and to each irreducible
+factor answers the prime which is the saturation by the other factors.
+The primes are those over the rationals: `x**2 - 2*y**2` is one.
+
+```python
+>>> Ideal([x**2 - z, y**2 - z], x, y, z).minimal_primes()
+[Ideal([y**2 - z, x + y], x, y, z), Ideal([y**2 - z, x - y], x, y, z)]
+>>> Ideal([x**2 - 2*y**2], x, y).is_prime()
+True
 
 ```
 
@@ -153,8 +198,12 @@ direct computation for the target order.
   `hilbert_series(t)`, `hilbert_polynomial(d)`;
 - zero-dimensional ideals: `standard_monomials(order)`,
   `vector_space_dimension()`, `multiplication_matrix(f, order)`,
-  `univariate(x)`, `radical()`, `is_radical()`, `is_prime()`,
-  `is_maximal()`.
+  `univariate(x)`, `is_maximal()`;
+- any dimension: `radical()`, `is_radical()`, `equidimensional_parts()`,
+  `minimal_primes()`, `is_prime()`, `height()` (the functions `radical`,
+  `equidimensional_parts` and `minimal_primes` of
+  `sympy_extras.polys.idealdecomposition` compute them from the chains, in
+  dimension zero too).
 
 `hilbert_numerator(monomials, t)` computes the numerator of the Hilbert
 series of a monomial ideal. `groebner_walk`, `extended_groebner` and
@@ -167,5 +216,11 @@ series of a monomial ideal. `groebner_walk`, `extended_groebner` and
   walk*, J. Symbolic Computation 24 (1997) 465-469.
 - D. Cox, J. Little, D. O'Shea, *Ideals, Varieties, and Algorithms*, 4th
   ed., Springer, 2015 (elimination, Hilbert functions, Seidenberg's lemma).
+- E. Hubert, *Notes on triangular sets and triangulation-decomposition
+  algorithms I: polynomial systems*, LNCS 2630 (2003) (the saturated ideal
+  of a squarefree regular chain is radical and unmixed).
+- T. Becker, V. Weispfenning, *Gröbner bases*, Springer, 1993, chapter 8
+  (separating forms, primality in dimension zero, extension and
+  contraction).
 - W. Vasconcelos, *Computational Methods in Commutative Algebra and
   Algebraic Geometry*, Springer, 1998.

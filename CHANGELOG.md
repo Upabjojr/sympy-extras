@@ -10,6 +10,23 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- Radicals and prime components of polynomial ideals of any dimension,
+  over the rationals (sympy-extras#11): `Ideal.radical()` and
+  `Ideal.is_radical()` no longer require dimension zero, and
+  `Ideal.equidimensional_parts()`, `Ideal.minimal_primes()`,
+  `Ideal.height()` are new, as `Ideal.is_prime()` in positive dimension
+  (`sympy_extras.polys.idealdecomposition`, new). The radical is the
+  intersection of the saturated ideals of the squarefree regular chains of
+  a triangular decomposition in the sense of Kalkbrener; the primes of a
+  chain come from the irreducible factors of the minimal polynomial of a
+  separating linear form over the free variables, by eliminations and
+  saturations over the rationals. Verified on random ideals built from
+  known primes (irreducible hypersurfaces, linear varieties, kernels of
+  parametrizations, maximal ideals), with powers, products and embedded
+  components.
+- `Ideal.saturate` by one polynomial is a single elimination
+  (Rabinowitsch) instead of iterated quotients.
+
 - `solve(..., cases=True)` (`sympy_extras.assumptions`) discusses the
   values of the parameters of a polynomial system, as Mathematica's
   `Reduce` does (sympy-extras#21): `a*x = b` gives `{b/a}` for `a != 0` and
@@ -626,6 +643,14 @@ remove public functions. Breaking changes are listed here when they happen.
   gates.
 
 ### Fixed
+
+- `Ideal.is_maximal()` raised `NotImplementedError` ("no separating linear
+  form was found") when none of five fixed linear forms separated the
+  zeros, as for the five points `(0, 0), (1, -1), (2, -1), (3, -1), (2,
+  1)`: the forms `x1 + t*x2 + t**2*x3 + ...` are now tried for as many `t`
+  as it takes, and one of the first `(n - 1) d (d - 1)/2 + 1` separates `d`
+  points. It returns `False` for an ideal of positive dimension, which
+  raised too.
 
 - The numerical checks of the package no longer rest on a value which a
   rounding error decides (`sympy_extras._numeric`: `reliable_form`,
