@@ -10,6 +10,24 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `solve(..., cases=True)` (`sympy_extras.assumptions`) discusses the
+  values of the parameters of a polynomial system, as Mathematica's
+  `Reduce` does (sympy-extras#21): `a*x = b` gives `{b/a}` for `a != 0` and
+  every `x` for `a = b = 0`, as a union of `ConditionSet(unknowns,
+  condition on the parameters, solutions)`; the assumptions choose among
+  the cases. Over the complex numbers the cases are those of
+  `sympy_extras.solvers.parametric.parametric_cases` (new): a triangular
+  decomposition in the sense of Lazard with the parameters as the smallest
+  variables, the polynomials of a chain in the parameters being the
+  equations of the case, its initials the inequations, and those in the
+  unknowns solved one after the other (degree one and two; left as
+  equations beyond). Over the reals, with inequalities too, they are the
+  cells of `sympy_extras.polys.cad.cylindrical_cases` (new), a cylindrical
+  decomposition with the parameters first: `x**2 <= a` is
+  `Interval(-sqrt(a), sqrt(a))` for `a >= 0`. Verified by substitution of
+  rational values of the parameters in random systems, and by the
+  quantifier elimination over the complex numbers (comprehensive Gröbner
+  systems), which proves the cases equivalent to the system.
 - `sympy_extras.polys.cad.cylindrical`: cylindrical descriptions of
   semialgebraic sets, the output of Mathematica's
   `CylindricalDecomposition` and `Reduce`. `cylindrical_formula(formula,

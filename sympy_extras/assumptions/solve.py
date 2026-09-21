@@ -29,7 +29,7 @@ from sympy.sets.sets import (Set, FiniteSet, Intersection, Complement, Interval,
 from sympy.solvers.solveset import solveset, nonlinsolve
 
 from sympy_extras._typing import Truth, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
-from sympy_extras.polys.cad import cylindrical_formula, cylindrical_set, solution_set
+from sympy_extras.polys.cad import cylindrical_cases, cylindrical_formula, cylindrical_set, solution_set
 from sympy_extras.polys.roots import in_radicals
 from sympy_extras.solvers.transcendental import solve_transcendental
 from sympy.polys.numberfields.minpoly import minimal_polynomial
@@ -558,6 +558,70 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
     return result
 
 
+def _parametric(statements: Sequence[Boolean], symbols: Sequence[Symbol], facts: Facts,
+                domain: Optional[Set]) -> Optional[Set]:
+    """The solutions with the cases of the parameters (``cases=True``), or
+    ``None`` when the system has no parameter, is not a conjunction of
+    polynomial relations of the kind its domain allows, or the
+    decomposition does not end in time."""
+    relations: list[Boolean] = []
+    for s in statements:
+        relations.extend(conjuncts(normalize(s)))
+    parameters = sorted_symbols(set().union(*[free_symbols(c) for c in relations]) - set(symbols)) if relations else []
+    if not parameters:
+        return None
+    unknown: Basic = symbols[0] if len(symbols) == 1 else Tuple(*symbols)
+    dom = _domain_set(facts, symbols, domain)
+
+    def informative(c: Boolean) -> bool:
+        return not (isinstance(c, Contains) and c.args[1] == S.Reals)
+
+    hypotheses = [c for c in facts.conjuncts if informative(c)]
+    pieces: list[Set] = []
+    if dom == S.Reals:
+        system = And(*relations, *[c for c in hypotheses if free_symbols(c) <= set(parameters) | set(symbols)])
+        discussed = attempt(lambda: cylindrical_cases(system, parameters, list(symbols)), settings.timeout)
+        if discussed is None:
+            return None
+        for condition, found in discussed:
+            pieces.append(_under(unknown, condition, found, facts))
+        return as_set(SetUnion(*pieces)) if pieces else S.EmptySet
+    if not isinstance(dom, Complexes) or not all(isinstance(c, (Eq, Ne)) for c in relations):
+        return None
+    equations = [as_expr(c.lhs - c.rhs) for c in relations if isinstance(c, Eq)]
+    inequations = [as_expr(c.lhs - c.rhs) for c in relations if isinstance(c, Ne)]
+    if not equations:
+        return None
+    from sympy_extras.solvers.parametric import parametric_cases
+    found_cases = attempt(lambda: parametric_cases(equations, list(symbols), parameters, inequations), settings.timeout)
+    if found_cases is None:
+        return None
+    space: Set = S.Complexes if len(symbols) == 1 else ProductSet(*[S.Complexes] * len(symbols))
+    for case in found_cases:
+        condition = case.condition
+        if case.solutions is None:
+            solutions: Set = ConditionSet(unknown, And(*[Eq(e, 0) for e in case.equations]), space)
+        elif len(symbols) == 1:
+            values = [point.args[0] for point in case.solutions.args]
+            solutions = space if symbols[0] in values else FiniteSet(*values)
+        else:
+            solutions = case.solutions
+        pieces.append(_under(unknown, And(condition, *[c for c in hypotheses if free_symbols(c) & set(symbols)]),
+                             solutions, facts))
+    return as_set(SetUnion(*pieces)) if pieces else S.EmptySet
+
+
+def _under(unknown: Basic, condition: Boolean, solutions: Set, facts: Facts) -> Set:
+    """The solutions of a case: nothing when the facts refute its
+    condition, the solutions themselves when they prove it."""
+    holds = _evaluate(normalize(as_boolean(condition)), facts) if free_symbols(condition) else None
+    if condition == true or holds is True:
+        return solutions
+    if condition == false or holds is False:
+        return S.EmptySet
+    return ConditionSet(unknown, condition, solutions)
+
+
 def _cylindrical(equations: Sequence[Expr], conditions: Sequence[Boolean], symbols: Sequence[Symbol],
                  facts: Facts) -> Optional[Set]:
     """The real solutions of a system of polynomial equations and
@@ -716,7 +780,7 @@ def _integer_linear_system(equations: Sequence[Expr], conditions: Sequence[Boole
 
 def solve(equations: Union[Statement, Sequence[Statement]],
           symbols: Union[None, Symbol, Sequence[Symbol]] = None,
-          assumptions: Assumptions = None, domain: Optional[Set] = None) -> Set:
+          assumptions: Assumptions = None, domain: Optional[Set] = None, cases: bool = False) -> Set:
     """Solve equations and inequalities under assumptions, the counterpart
     of Mathematica's ``Solve[eqns, vars, dom]`` with ``Assumptions``.
 
@@ -736,6 +800,20 @@ def solve(equations: Union[Statement, Sequence[Statement]],
         The set the unknowns belong to (``S.Reals``, ``S.Integers``, ...).
         Without it the unknowns are real when the assumptions say so and
         complex otherwise.
+    cases : bool
+        Whether the values of the parameters are discussed, as
+        Mathematica's ``Reduce`` does, for a system of polynomial
+        relations with rational coefficients: the result is a union of
+        sets ``ConditionSet(unknowns, condition on the parameters,
+        solutions)``, one for each case (the values of the parameters with
+        no solution are in none). Over the complex numbers, for equations
+        and inequations, the cases are those of a triangular decomposition
+        (:func:`~sympy_extras.solvers.parametric.parametric_cases`); over
+        the reals (``domain=S.Reals``, the parameters are then real
+        numbers too), with inequalities as well, those of a cylindrical
+        decomposition with the parameters first
+        (:func:`~sympy_extras.polys.cad.cylindrical_cases`). Without it
+        the solutions are the generic ones: ``{b/a}`` for ``a*x = b``.
 
     Returns
     =======
@@ -793,6 +871,10 @@ def solve(equations: Union[Statement, Sequence[Statement]],
     ConditionSet((x, y), (x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2)), ProductSet(Reals, Reals))
     >>> solve([Eq(x**2 + y**2, a), x > y], [x, y], a > 0, domain=S.Reals)
     ConditionSet((x, y), ..., ProductSet(Reals, Reals))
+    >>> solve(a*x - 1, x, cases=True)
+    ConditionSet(x, Ne(a, 0), {1/a})
+    >>> solve(Eq(x**2, a), x, domain=S.Reals, cases=True)
+    ConditionSet(x, a >= 0, {-sqrt(a), sqrt(a)})
     >>> solve(Eq(3*x + 5*y, 22), [x, y], (x >= 0) & (y >= 0), domain=S.Integers)
     {(4, 2)}
     >>> solve(Eq(3*x + 5*y, 22), [x, y], domain=S.Integers)
@@ -813,6 +895,10 @@ def solve(equations: Union[Statement, Sequence[Statement]],
         facts = _facts(assumptions, domain, all_symbols | set(unknowns))
     except ValueError:
         return S.EmptySet
+    if cases:
+        discussed = _parametric(statements, unknowns, facts, domain)
+        if discussed is not None:
+            return discussed
     if len(unknowns) == 1:
         x = unknowns[0]
         formula = normalize(And(*statements))

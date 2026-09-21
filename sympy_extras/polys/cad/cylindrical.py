@@ -66,7 +66,7 @@ from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import ComplexRootOf
 from sympy.printing.printer import Printer
 from sympy.sets.conditionset import ConditionSet
-from sympy.sets.sets import FiniteSet, ProductSet, Set, Union as SetUnion
+from sympy.sets.sets import FiniteSet, Interval, ProductSet, Set, Union as SetUnion
 
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import QuantifierSpec, as_expr, as_symbol
@@ -76,7 +76,7 @@ from .lifting import CAD, CADCell
 from .qe import CellTruth, _truth_values
 from .samplepoints import RealAlgebraic, _SortKey, compare_real
 
-__all__ = ['IndexedRoot', 'cylindrical_formula', 'cylindrical_set']
+__all__ = ['IndexedRoot', 'cylindrical_formula', 'cylindrical_set', 'cylindrical_cases']
 
 #: the seconds given to SymPy to tell whether two bounds meet
 _PROOF_SECONDS = 2.0
@@ -525,7 +525,7 @@ def described_by_root_functions(cad: CAD, free: Sequence[Symbol], cells: Sequenc
     return _formula(_described(cad, len(free), cells), free, 1)
 
 
-def _isolated(description: _Description, x: Symbol) -> tuple[list[tuple[Expr, ...]], _Description]:
+def _isolated(description: _Description, gens: Sequence[Symbol]) -> tuple[list[tuple[Expr, ...]], _Description]:
     """The points of the description whose coordinates are all numbers,
     and the description without them."""
     if isinstance(description, bool):
@@ -534,9 +534,9 @@ def _isolated(description: _Description, x: Symbol) -> tuple[list[tuple[Expr, ..
     rest: list[_Run] = []
     for run in description:
         if run.point and run.lower is not None and run.lower.is_number and run.inner is not True:
-            inner = _specialized(run.inner, x, run.lower, True)
+            inner = _specialized(run.inner, gens[0], run.lower, True)
             if inner is not None and _all_points(inner):
-                points.extend((run.lower,) + tail for tail in _points(inner))
+                points.extend((run.lower,) + tail for tail in _points(inner, gens[1:]))
                 continue
         rest.append(run)
     return points, (rest if rest else False)
@@ -549,10 +549,17 @@ def _all_points(description: _Description) -> bool:
                for run in description)
 
 
-def _points(description: _Description) -> list[tuple[Expr, ...]]:
+def _points(description: _Description, gens: Sequence[Symbol]) -> list[tuple[Expr, ...]]:
+    """The points of a description whose runs are all points: a coordinate
+    is a function of the ones before, whose values are put in it."""
     if isinstance(description, bool):
         return [()]
-    return [(as_expr(run.lower),) + tail for run in description for tail in _points(run.inner)]
+    found: list[tuple[Expr, ...]] = []
+    for run in description:
+        value = as_expr(run.lower)
+        for tail in _points(run.inner, gens[1:]):
+            found.append((value,) + tuple(as_expr(coordinate.subs(gens[0], value)) for coordinate in tail))
+    return found
 
 
 def cylindrical_set(formula: Union[Boolean, bool], gens: Sequence[Symbol], method: Optional[str] = None) -> Set:
@@ -579,9 +586,94 @@ def cylindrical_set(formula: Union[Boolean, bool], gens: Sequence[Symbol], metho
     space = ProductSet(*[S.Reals] * len(free))
     if description is True:
         return space
-    points, rest = _isolated(description, free[0])
+    points, rest = _isolated(description, free)
     finite: Set = FiniteSet(*[Tuple(*point) for point in points]) if points else S.EmptySet
     if rest is False:
         return finite
     region = ConditionSet(Tuple(*free), _formula(rest, free, 1), space)
     return SetUnion(finite, region) if points else region
+
+
+def _as_set(description: _Description, gens: Sequence[Symbol]) -> Set:
+    """The set of the points ``gens`` of a description: a finite set when
+    every coordinate is given, a union of intervals for one variable, a
+    condition set otherwise."""
+    space: Set = S.Reals if len(gens) == 1 else ProductSet(*[S.Reals] * len(gens))
+    if isinstance(description, bool):
+        return space if description else S.EmptySet
+    if _every_run_is_a_point(description):
+        points = _points(description, gens)
+        return FiniteSet(*[point[0] if len(gens) == 1 else Tuple(*point) for point in points])
+    if len(gens) == 1:
+        pieces: list[Set] = []
+        for run in description:
+            if run.point:
+                pieces.append(FiniteSet(as_expr(run.lower)))
+            else:
+                pieces.append(Interval(S.NegativeInfinity if run.lower is None else run.lower,
+                                       S.Infinity if run.upper is None else run.upper,
+                                       not run.lower_closed, not run.upper_closed))
+        return SetUnion(*pieces)
+    return ConditionSet(Tuple(*gens), _formula(description, gens, 1), space)
+
+
+def _every_run_is_a_point(description: _Description) -> bool:
+    if isinstance(description, bool):
+        return description
+    return all(run.point and _every_run_is_a_point(run.inner) for run in description)
+
+
+def cylindrical_cases(formula: Union[Boolean, bool], parameters: Sequence[Symbol], unknowns: Sequence[Symbol],
+                      method: Optional[str] = None) -> list[tuple[Boolean, Set]]:
+    """The real solutions in the ``unknowns`` of a formula in polynomial
+    relations, for every real value of its ``parameters``: pairs of a
+    condition on the parameters (cylindrical: the first one between
+    numbers, the second one between functions of the first) and of the set
+    of the solutions under it, in terms of the parameters. The values of
+    the parameters for which there is no solution are in no pair.
+
+    Examples
+    ========
+
+    >>> from sympy import Eq
+    >>> from sympy.abc import a, x
+    >>> from sympy_extras.polys.cad import cylindrical_cases
+    >>> cylindrical_cases(Eq(x**2, a), [a], [x])
+    [(a >= 0, {-sqrt(a), sqrt(a)})]
+    >>> cylindrical_cases(x**2 <= a, [a], [x])
+    [(a >= 0, Interval(-sqrt(a), sqrt(a)))]
+    >>> cylindrical_cases(Eq(a*x, 1), [a], [x])
+    [((a > 0) | (a < 0), {1/a})]
+    """
+    names = [as_symbol(p) for p in parameters]
+    variables = [as_symbol(u) for u in unknowns]
+    free, description = _description(formula, names + variables, (), method)
+    if free != names + variables:
+        raise ValueError("the parameters and the unknowns are the symbols of the formula")
+    cases: list[tuple[Boolean, Set]] = []
+
+    def walk(current: _Description, level: int, conditions: list[Boolean]) -> None:
+        if level == len(names):
+            found = _as_set(current, variables)
+            if found != S.EmptySet:
+                cases.append((And(*conditions), found))
+            return
+        if isinstance(current, bool):
+            if current:
+                walk(True, len(names), conditions)
+            return
+        for run in current:
+            walk(run.inner, level + 1, conditions + [_formula([_Run(run.lower, run.lower_closed, run.upper,
+                                                                  run.upper_closed, True)], names, level + 1)])
+
+    walk(description, 0, [])
+    # the cases with one set of solutions are one case
+    merged: list[tuple[Boolean, Set]] = []
+    for condition, found in cases:
+        for position, (other, same) in enumerate(merged):
+            if same == found:
+                merged[position] = (Or(other, condition), found)
+                break
+        else:
+            merged.append((condition, found))
+    return merged

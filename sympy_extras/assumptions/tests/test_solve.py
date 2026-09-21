@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sympy import (S, Eq, sqrt, exp, log, sin, cos, acos, pi, Interval, Union, FiniteSet, Range,
-    Rational, ConditionSet, ImageSet, Q, CRootOf, Expr, And, Or, ProductSet, symbols)
+    Rational, ConditionSet, ImageSet, Q, CRootOf, Expr, And, Or, ProductSet, symbols, Ne)
 from sympy.abc import x, y, a, n
 from sympy.testing.pytest import raises
 
@@ -209,3 +209,39 @@ def test_points_which_do_not_satisfy_the_equations_are_refuted() -> None:
     found = solve([-2*x**2*y + 2*z - 3, 3*x**2*y - 2*y**2 + 2], [x, y, z])
     assert isinstance(found, ConditionSet) or all(isinstance(value, Expr) for point in found.args
         for value in point.args)
+
+
+def test_the_cases_of_the_parameters() -> None:
+    # sympy-extras#21: solve(a*x - 1, x) is {1/a}, the generic solution; with
+    # cases=True the values of the parameters are discussed, as Reduce does
+    assert solve(a*x - 1, x) == FiniteSet(1/a)
+    assert solve(a*x - 1, x, cases=True) == ConditionSet(x, Ne(a, 0), FiniteSet(1/a))
+    b, c = symbols('b c')
+    assert solve(a*x - b, x, cases=True) == Union(
+        ConditionSet(x, Ne(a, 0), FiniteSet(b/a)), ConditionSet(x, And(Eq(a, 0), Eq(b, 0)), S.Complexes))
+    # the assumptions choose among the cases
+    assert solve(a*x - b, x, a > 0, cases=True) == FiniteSet(b/a)
+    assert solve(a*x - b, x, Eq(a, 0), cases=True) == ConditionSet(x, And(Eq(a, 0), Eq(b, 0)), S.Complexes)
+    quadratic = solve(a*x**2 + b*x + c, x, cases=True)
+    assert isinstance(quadratic, Union) and len(quadratic.args) == 3
+    assert ConditionSet(x, And(Eq(a, 0), Ne(b, 0)), FiniteSet(-c/b)) in quadratic.args
+    system = solve([a*x + y - 1, x + a*y - 1], [x, y], cases=True)
+    assert system == Union(ConditionSet((x, y), Eq(a, 1), FiniteSet((1 - y, y))),
+                           ConditionSet((x, y), Ne(a + 1, 0), FiniteSet((1/(a + 1), 1/(a + 1)))))
+    # no parameter: as without cases
+    assert solve(x**2 - 2, x, cases=True) == FiniteSet(-sqrt(2), sqrt(2))
+
+
+def test_the_cases_of_real_parameters() -> None:
+    # over the reals the cases are cells of the space of the parameters
+    assert solve(Eq(x**2, a), x, domain=S.Reals, cases=True) == ConditionSet(x, a >= 0, FiniteSet(-sqrt(a), sqrt(a)))
+    assert solve(x**2 <= a, x, domain=S.Reals, cases=True) == ConditionSet(x, a >= 0, Interval(-sqrt(a), sqrt(a)))
+    assert solve(Eq(x**2, a), x, a > 0, domain=S.Reals, cases=True) == FiniteSet(-sqrt(a), sqrt(a))
+    assert solve(Eq(x**2, a), x, a < 0, domain=S.Reals, cases=True) == S.EmptySet
+    b = symbols('b')
+    assert solve(Eq(a*x, b), x, domain=S.Reals, cases=True) == Union(
+        ConditionSet(x, Or(a > 0, a < 0), FiniteSet(b/a)), ConditionSet(x, And(Eq(a, 0), Eq(b, 0)), S.Reals))
+    found = solve([Eq(x*y, a), Eq(x + y, 1)], [x, y], domain=S.Reals, cases=True)
+    assert isinstance(found, Union)
+    assert ConditionSet((x, y), Eq(a, Rational(1, 4)), FiniteSet((Rational(1, 2), Rational(1, 2)))) in found.args
+    assert ConditionSet((x, y), Eq(a, 0), FiniteSet((0, 1), (1, 0))) in found.args

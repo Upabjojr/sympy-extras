@@ -2,7 +2,8 @@
 :mod:`sympy.solvers`: Lie point symmetries of ODEs and PDEs, similarity
 reductions and the solution of ODEs through their symmetries; linear
 Diophantine systems, nonnegative integer solutions and Presburger
-arithmetic; transcendental equations reduced to polynomial ones; real roots
+arithmetic; transcendental equations reduced to polynomial ones; polynomial
+systems with the cases of their parameters; real roots
 of transcendental functions isolated exactly; linear differential-algebraic
 equations with constant coefficients; Thue equations; integrating factors,
 linearisation and Abel invariants for ordinary differential equations."""
@@ -14,6 +15,7 @@ from .integers import (hermite_normal_form_with_transform, linear_diophantine_sy
     hilbert_basis, minimal_nonnegative_solutions, cooper, presburger_quantifier_elimination,
     is_presburger)
 from .transcendental import solve_transcendental, polynomialize
+from .parametric import ParametricCase, parametric_cases
 from .kovacic import liouvillian_solution, dsolve_kovacic, KovacicSolution
 from .linear_ode import (LinearOperator, polynomial_solutions, rational_solutions,
     hyperexponential_solutions, reduce_order_linear, dsolve_linear)
@@ -35,7 +37,7 @@ __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry', 'determining_
     'solve_ode', 'ReducedODE',
     'hermite_normal_form_with_transform', 'linear_diophantine_system', 'hilbert_basis',
     'minimal_nonnegative_solutions', 'cooper', 'presburger_quantifier_elimination',
-    'is_presburger', 'solve_transcendental', 'polynomialize',
+    'is_presburger', 'solve_transcendental', 'polynomialize', 'ParametricCase', 'parametric_cases',
     'liouvillian_solution', 'dsolve_kovacic', 'KovacicSolution', 'LinearOperator', 'polynomial_solutions',
     'rational_solutions', 'hyperexponential_solutions', 'reduce_order_linear', 'dsolve_linear',
     'complete_integral', 'check_complete_integral',

@@ -217,6 +217,11 @@ outermost first.
 - `cylindrical_set(formula, gens, method=None)`: the same as a set, the
   points with numerical coordinates in a `FiniteSet` and the rest in a
   `ConditionSet`.
+- `cylindrical_cases(formula, parameters, unknowns, method=None)`: the real
+  solutions in the unknowns for every real value of the parameters, as
+  pairs of a cylindrical condition on the parameters and the set of the
+  solutions under it (a finite set, a union of intervals for one unknown,
+  a `ConditionSet` otherwise); the cases with one set are joined.
 - `IndexedRoot(f, t, k)`: the `k`-th distinct real root (from 0) of the
   polynomial `f` in `t`, a function of the other symbols of `f`.
 

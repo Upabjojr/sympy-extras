@@ -107,6 +107,58 @@ ConditionSet((x, y), (a > 0) & (x < sqrt(a)) & (x > -sqrt(a)) & (y < sqrt(a - x*
 
 ```
 
+### The cases of the parameters
+
+`solve` gives the generic solutions, like `Solve`: `{b/a}` for `a*x = b`.
+With `cases=True` the values of the parameters are discussed, like
+`Reduce`, for polynomial relations with rational coefficients, and the
+result is a union of sets `ConditionSet(unknowns, condition on the
+parameters, solutions)`; the assumptions choose among the cases.
+
+```python
+>>> from sympy.abc import b
+>>> solve(a*x - b, x, cases=True)
+Union(ConditionSet(x, Eq(a, 0) & Eq(b, 0), Complexes), ConditionSet(x, Ne(a, 0), {b/a}))
+>>> solve(a*x - b, x, a > 0, cases=True)
+{b/a}
+>>> solve([a*x + y - 1, x + a*y - 1], [x, y], cases=True)
+Union(ConditionSet((x, y), Eq(a, 1), {(1 - y, y)}), ConditionSet((x, y), Ne(a + 1, 0), {(1/(a + 1), 1/(a + 1))}))
+>>> solve(x**2 <= a, x, domain=S.Reals, cases=True)
+ConditionSet(x, a >= 0, Interval(-sqrt(a), sqrt(a)))
+
+```
+
+Over the complex numbers (equations and inequations) the cases are read
+from a triangular decomposition in the sense of Lazard with the parameters
+as the smallest variables (`sympy_extras.solvers.parametric.parametric_cases`,
+on `sympy_extras.polys.regularchains`): the zeros of the system are the
+union of the quasi-components of the regular chains, and in a chain the
+polynomials in the parameters alone are the equations of the case, the
+initials its inequations, and the polynomials in the unknowns give them
+one after the other (a division for degree one, the quadratic formula for
+degree two; a chain with a polynomial of higher degree in an unknown is
+left as its equations, and an unknown which the chain does not constrain
+stands for itself, as in `nonlinsolve`). An inequation in the unknowns
+which the rest of its case implies is not written; one in the parameters
+always is, since the written solution `1/(a + 1)` needs it even when the
+equations imply it. The cases may overlap, and their number depends on the
+order of the variables.
+
+Over the reals (`domain=S.Reals`; the parameters are real too), with
+inequalities as well, they are the cells of a cylindrical decomposition
+with the parameters first (`sympy_extras.polys.cad.cylindrical_cases`):
+the conditions bound the first parameter by numbers and the next ones by
+functions of those before, the solutions of one unknown are intervals and
+points with endpoints in the parameters, and the cases with the same
+solutions are joined.
+
+Verified by substitution (at rational values of the parameters the points
+of the cases which hold are the solutions of the system with the values
+put in, for random systems of one and two equations with one and two
+parameters) and by the quantifier elimination over the complex numbers of
+`resolve`, which works with comprehensive Gröbner systems and proves the
+cases equivalent to the system.
+
 ## Transcendental equations and integer systems
 
 `solve` reduces equations and inequalities in which the unknown occurs

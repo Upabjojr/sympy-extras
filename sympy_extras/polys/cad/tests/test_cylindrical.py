@@ -9,12 +9,12 @@ from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.logic.boolalg import And, Boolean, Or, false, true
 from sympy.polys.rootoftools import CRootOf
 from sympy.sets.conditionset import ConditionSet
-from sympy.sets.sets import FiniteSet, ProductSet, Union
+from sympy.sets.sets import FiniteSet, Interval, ProductSet, Union
 from sympy.testing.pytest import raises
 from sympy.abc import a, x, y, z
 
 from sympy_extras._typing import as_boolean, as_expr
-from sympy_extras.polys.cad import IndexedRoot, cylindrical_formula, cylindrical_set
+from sympy_extras.polys.cad import IndexedRoot, cylindrical_cases, cylindrical_formula, cylindrical_set
 from sympy_extras.polys.cad.qe import _truth_values
 
 
@@ -128,3 +128,18 @@ def test_cylindrical_sets() -> None:
     assert region == ConditionSet((x, y), condition, plane)
     assert condition.subs({x: Rational(1, 2), y: Rational(3, 4)}) == true
     assert condition.subs({x: Rational(1, 2), y: Rational(1, 4)}) == false
+
+
+def test_the_cases_of_the_parameters() -> None:
+    assert cylindrical_cases(Eq(x**2, a), [a], [x]) == [(a >= 0, FiniteSet(-sqrt(a), sqrt(a)))]
+    assert cylindrical_cases(x**2 <= a, [a], [x]) == [(a >= 0, Interval(-sqrt(a), sqrt(a)))]
+    # the cases with one set of solutions are one case
+    assert cylindrical_cases(Eq(a*x, 1), [a], [x]) == [(Or(a > 0, a < 0), FiniteSet(1/a))]
+    # a coordinate is a function of the ones before: their values are put
+    # in it (the bug: the points came out as (sqrt(2)*sqrt(a)/2, x))
+    found = cylindrical_cases(Eq(x, y) & Eq(x**2 + y**2, a), [a], [x, y])
+    half = sqrt(2)*sqrt(a)/2
+    assert found == [(Eq(a, 0), FiniteSet((0, 0))), (a > 0, FiniteSet((-half, -half), (half, half)))]
+    [(condition, region)] = cylindrical_cases(x**2 + y**2 < a, [a], [x, y])
+    assert condition == (a > 0) and isinstance(region, ConditionSet)
+    assert cylindrical_cases(x**2 < a, [a], [x]) == [(a > 0, Interval.open(-sqrt(a), sqrt(a)))]
