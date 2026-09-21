@@ -216,3 +216,24 @@ def test_outside_the_elementary_functions() -> None:
     raises(TypeError, lambda: untyped(canonical_form)([1]))
     tower, other = ElementaryTower(), ElementaryTower()
     raises(ValueError, lambda: tower.element(x) + other.element(x))
+
+
+def test_a_sample_point_on_a_branch_cut_is_no_witness() -> None:
+    # the bug: atan(x)**(1/3) and its form in logarithms are equal everywhere,
+    # but at the real sample point x = -3 the base of the second one is a
+    # negative number whose imaginary part, exactly zero, evaluated to 1e-41
+    # of either sign: the cube root took the other branch, the difference
+    # came out as 1.87*I and is_zero answered False. Found by evaluating the
+    # verdicts of a fuzz with Mathematica; such a point is skipped now
+    from sympy_extras.simplify.structure import _near_a_cut
+    third = Rational(1, 3)
+    logarithmic = 2**Rational(2, 3) * (I * (log(1 - I * x) - log(1 + I * x)))**third / 2
+    assert is_zero(atan(x)**third - logarithmic) is not False
+    exponential = 2**Rational(5, 6) * (-I * (exp(I * x) - exp(-I * x)))**Rational(1, 6) / 2
+    assert is_zero(sin(x)**Rational(1, 6) - exponential) is not False
+    assert _near_a_cut(as_expr(logarithmic.subs(x, -3))) is True
+    assert _near_a_cut(as_expr((atan(x)**third).subs(x, -3))) is False      # an exact negative base
+    assert _near_a_cut(as_expr(logarithmic.subs(x, Rational(1, 3) + I / 2))) is False
+    # the witnesses of the differences which are not zero are still found
+    assert is_zero(sqrt(x**2) - x) is False and is_zero(log(x**2) - 2 * log(x)) is False
+    assert is_zero(atan(x)**third - logarithmic - Rational(1, 1000)) is False

@@ -173,6 +173,17 @@ True
   that there is none): such towers are uncertified.
 - `False` answers for constants rest on Schanuel's conjecture when no
   sample point is involved; `certified` says which.
+- A sample point is a witness only where its value does not depend on a
+  rounding error: a point at which the argument of a logarithm, of a
+  fractional power or of an inverse function has a real or imaginary part
+  which is not zero but has no significant digit is skipped (the argument
+  lies on an axis, where the cuts are, on the side the rounding chooses).
+  `atan(x)**(1/3)` and its form in logarithms are equal everywhere, and
+  their difference evaluated to `1.87*I` at `x = -3`. Found with
+  Mathematica, which evaluated the verdicts and the canonical forms of two
+  random batches at points of five regions (462 of them; the one
+  difference left is a true one, `log(1/(3*x)) + log(x) + log(3)` on the
+  negative axis, where Mathematica's points were not).
 - The number field grows by primitive elements, whose cost explodes with
   the degree: it is kept below degree 32, and an expression with more
   unrelated radicals and roots of unity raises `NotElementary`.

@@ -1489,6 +1489,53 @@ def equal(a: object, b: object, assumptions: Assumptions = None) -> Optional[boo
     return is_zero(as_expr(a) - as_expr(b), assumptions)
 
 
+def _near_a_cut(e: Expr) -> bool:
+    """Whether the numerical value of the constant ``e`` depends on a
+    rounding error: the argument of a logarithm, of a fractional power or
+    of an inverse function has a real or an imaginary part which is not
+    zero but has no significant digit, so that the argument lies on an
+    axis, where the cuts are, on a side which the rounding chooses.
+
+    The bug: ``atan(x)**(1/3)`` and its form in logarithms, ``(I*(log(1 -
+    I*x) - log(1 + I*x))/2)**(1/3)``, are equal everywhere, and at ``x = -3``
+    the base of the second one is a negative number whose imaginary part
+    came out as ``1e-41`` of either sign: the difference evaluated to
+    ``1.87*I`` and ``is_zero`` answered ``False`` (found by evaluating the
+    verdicts with Mathematica)."""
+    cut_functions = (log, asin, acos, atan, acot, asinh, acosh, atanh, acoth)
+    for node in _subexpressions(e):
+        if isinstance(node, Pow):
+            if node.exp.is_integer:
+                continue
+            argument = as_expr(node.base)
+        elif isinstance(node, cut_functions):
+            argument = as_expr(node.args[0])
+        else:
+            continue
+        real_part: Expr = as_expr(argument.evalf(40))
+        imaginary_part: Expr = S.Zero
+        if not argument.is_extended_real or argument.has(Float):
+            parts = real_part.as_real_imag()
+            real_part, imaginary_part = as_expr(parts[0]), as_expr(parts[1])
+        if not (real_part.is_number and imaginary_part.is_number):
+            return True
+        size = abs(complex(real_part)) + abs(complex(imaginary_part))
+        for part in (real_part, imaginary_part):
+            if part != 0 and abs(complex(part)) < 1e-25 * size:
+                return True
+    return False
+
+
+def _subexpressions(e: Expr) -> list[Expr]:
+    found: list[Expr] = []
+    stack: list[Expr] = [e]
+    while stack:
+        node = stack.pop()
+        found.append(node)
+        stack.extend(as_expr(arg) for arg in node.args if isinstance(arg, Expr))
+    return found
+
+
 def _witness(e: Expr, assumptions: Assumptions) -> bool:
     """Whether ``e`` is clearly not zero at a sample point of the region."""
     if not settings.numerical_checks:
@@ -1523,7 +1570,10 @@ def _witness(e: Expr, assumptions: Assumptions) -> bool:
                 if assumptions is None or all(as_boolean(fact).xreplace(flipped) is S.true for fact in (
                         [assumptions] if isinstance(assumptions, (Boolean, bool)) else list(assumptions))):
                     values = flipped
-        number = attempt(lambda: as_expr(as_expr(e.xreplace(values)).evalf(40)), settings.timeout)
+        at_point = as_expr(e.xreplace(values))
+        if attempt(lambda: _near_a_cut(at_point), settings.timeout) is not False:
+            continue
+        number = attempt(lambda: as_expr(at_point.evalf(40)), settings.timeout)
         if number is None or not number.is_number or not number.is_finite:
             continue
         size = abs(complex(number))

@@ -561,6 +561,17 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `is_zero` (`sympy_extras.simplify`) answered `False` for differences which
+  are identically zero, `atan(x)**(1/3)` minus its form in logarithms and
+  `sin(x)**(1/6)` minus its form in exponentials: the witness was the real
+  sample point `x = -3`, where the base of the second power is a negative
+  number whose imaginary part, exactly zero, evaluates to `1e-41` of either
+  sign, so that the root took the other branch. A sample point at which
+  the argument of a logarithm, of a fractional power or of an inverse
+  function has a real or imaginary part without a significant digit is no
+  witness any more (the answer is `None` there). Found by evaluating the
+  verdicts of a random batch with Mathematica.
+
 - `definite_integral` returned, in some runs, the right real value minus
   `2*I*pi` (or `zoo`) for the integral of `x/2 + sqrt(x**2 + 8)/2 -
   sqrt(x**2 + 4*x + 2)` from a root of the second radicand, and
