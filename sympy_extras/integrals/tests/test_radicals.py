@@ -144,3 +144,13 @@ def test_odd_powers_of_a_quadratic_under_the_root() -> None:
     found = verified_antiderivative(f, x, facts)
     assert found is not None and found[1] == 'radicals'
     assert is_antiderivative(found[0], f, x, facts) is True
+
+
+def test_a_sum_of_radicals_of_different_quadratics() -> None:
+    # the bug (issue #65): one radicand was allowed for the whole sum, so the
+    # difference of two conics which a cell of a region leaves was refused and
+    # reached SymPy's integrate after every other method had spent its time
+    f = as_expr(x / 2 + sqrt(x**2 + 8) / 2 - sqrt(x**2 + 4 * x + 2))
+    F = quadratic_radical_antiderivative(f, x, euler=False)
+    assert F is not None and not F.has(Integral) and simplify(diff(F, x) - f) == 0
+    assert _checks(x * sqrt(1 - x**2) + 3 / sqrt(x**2 + x + 1) - sqrt(2 * x + 3))

@@ -325,8 +325,8 @@ def _terms(term: Expr, x: Symbol) -> Optional[list[tuple[Expr, int, Optional[Exp
 
 def quadratic_radical_antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None,
                                      euler: bool = True) -> Optional[Expr]:
-    """A real antiderivative of a sum of terms ``c * x**n * Q**(m/2)``, one
-    quadratic (or linear) ``Q`` for all the radical terms, ``m`` odd and
+    """A real antiderivative of a sum of terms ``c * x**n * Q**(m/2)``, each
+    ``Q`` quadratic or linear (the terms need not share it), ``m`` odd and
     ``n`` an integer of either sign; the terms without a radical are
     monomials. The signs the table needs (of the leading coefficient, of
     the discriminant, of the constant term for a negative ``n``) are those
@@ -344,6 +344,8 @@ def quadratic_radical_antiderivative(f: Expr, x: Symbol, assumptions: Assumption
     asin(x - 1)
     >>> quadratic_radical_antiderivative(x**3*sqrt(x**2 + 1) + x, x)
     x**2*(x**2 + 1)**(3/2)/5 + x**2/2 - 2*(x**2 + 1)**(3/2)/15
+    >>> quadratic_radical_antiderivative(sqrt(x**2 + 8) - 2*sqrt(x**2 + 4*x + 2), x)
+    x*sqrt(x**2 + 8)/2 - (2*x + 4)*sqrt(x**2 + 4*x + 2)/2 + 2*log(2*x + 2*sqrt(x**2 + 4*x + 2) + 4) + 4*asinh(sqrt(2)*x/4)
     >>> quadratic_radical_antiderivative(sqrt(x**3 + 1), x) is None
     True
     """
@@ -361,38 +363,37 @@ def _table_antiderivative(f_: Expr, x: Symbol, assumptions: Assumptions) -> Opti
         if found is None:
             return None
         terms.extend(found)
-    bases: list[Expr] = []
+    # one table for each radicand: the cells of a region between two
+    # conics leave sqrt(x**2 + 8)/2 - sqrt(x**2 + 4*x + 2), which was refused
+    # for its two radicands and reached SymPy's integrate, the last resort,
+    # after the whole budget (issue #65)
+    tables: dict[Expr, _Table] = {}
     for _, _, radicand, _ in terms:
-        if radicand is not None and radicand not in bases:
-            bases.append(radicand)
-    if len(bases) > 1:
-        return None
-    table: Optional[_Table] = None
-    if bases:
-        base = bases[0]
+        if radicand is None or radicand in tables:
+            continue
         try:
-            poly = Poly(base, x)
+            poly = Poly(radicand, x)
         except PolynomialError:
             return None
         if poly.degree() > 2 or poly.degree() < 1:
             return None
         a, b, c = (as_expr(poly.coeff_monomial(x**2)), as_expr(poly.coeff_monomial(x)),
                    as_expr(poly.coeff_monomial(1)))
-        table = _Table(a, b, c, x, assumptions)
+        tables[radicand] = _Table(a, b, c, x, assumptions)
     total: Expr = S.Zero
     for coefficient, n, radicand, m in terms:
         if radicand is None:
             total = total + (coefficient * log(x) if n == -1 else coefficient * x**(n + 1) / (n + 1))
             continue
-        if table is None or m % 2 == 0:
+        if m % 2 == 0:
             return None
-        value = table.moment(n, m)
+        value = tables[radicand].moment(n, m)
         if value is None:
             return None
         total = total + coefficient * value
     # checked where the radicand is positive: elsewhere the integrand is
     # imaginary and the branches of the two sides need not agree
-    facts = [as_boolean(table.Q > 0)] if table is not None else []
+    facts = [as_boolean(table.Q > 0) for table in tables.values()]
     if isinstance(assumptions, (list, tuple)):
         facts.extend(as_boolean(item) for item in assumptions)
     elif assumptions is not None:

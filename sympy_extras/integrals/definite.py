@@ -92,7 +92,7 @@ from sympy.core.add import Add
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
-from sympy.core.numbers import Integer, Rational, nan, oo, pi, zoo
+from sympy.core.numbers import Float, Integer, Rational, nan, oo, pi, zoo
 from sympy.core.power import Pow
 from sympy.core.relational import Eq, Relational
 from sympy.core.singleton import S
@@ -497,8 +497,11 @@ def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
         if expected is None:
             continue
         try:
-            ours = complex(as_expr(value.xreplace(values)).evalf(20))
-        except (TypeError, ValueError, ZeroDivisionError, OverflowError):
+            exact = _hidden_zeros_resolved(as_expr(value.xreplace(values)))
+            if exact is None:
+                return None
+            ours = complex(exact.evalf(20))
+        except (TypeError, ValueError, ZeroDivisionError, OverflowError, RecursionError):
             # mpmath raises ZeroDivisionError on a hypergeometric series at
             # a pole (SymPy's value of Maxima's specint 174 at an integer
             # sample of the order): nothing is checked
@@ -507,6 +510,55 @@ def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
             return False
         verdict = True
     return verdict
+
+
+def _hidden_zeros_resolved(value: Expr) -> Optional[Expr]:
+    """The constant ``value`` with the sums which are exactly zero written
+    0, or ``None`` when a sum without a significant digit is not decided.
+
+    ``evalf`` gives such a sum a rounding error of either sign, which
+    under a root next to a branch cut chooses the branch: SymPy's
+    ``integrate`` answered issue #65 with ``-log(-2*sqrt(2) - 2*sqrt(z)) -
+    I*pi`` where ``z = -6 + (-2 + sqrt(2))**2 + 4*sqrt(2)`` is 0, a value
+    off by ``-2*I*pi`` which evaluated to the right real number at twenty
+    digits (to the wrong one at fifteen and at fifty), passed the
+    numerical check and came out wrong after simplification."""
+    if value.has(Float) or free_symbols(value):
+        return value
+    undecided = False
+
+    def resolve(node: Expr) -> Expr:
+        nonlocal undecided
+        try:
+            total = abs(complex(node.evalf(20)))
+            scale = max(abs(complex(as_expr(term).evalf(20))) for term in node.args)
+        except (TypeError, ValueError, ZeroDivisionError, OverflowError):
+            return node
+        if total > 1e-12 * scale:
+            return node
+        zero = attempt(lambda: node.is_zero, 2)
+        if zero is True:
+            return S.Zero
+        if zero is None:
+            undecided = True
+        return node
+
+    def walk(node: Basic, exposed: bool) -> Basic:
+        # only a sum under a function or a fractional power is exposed to a
+        # branch cut: the value of an integral which is itself zero (the
+        # area left of x = a at the sample a = -sqrt(2), asin(-1) + pi/2) is
+        # a sum without a significant digit too, and harmless
+        if not node.args:
+            return node
+        inside = exposed or isinstance(node, Function) or (isinstance(node, Pow) and not node.exp.is_integer)
+        args = [walk(arg, inside) for arg in node.args]
+        rebuilt = node if all(new is old for new, old in zip(args, node.args)) else node.func(*args)
+        if exposed and isinstance(rebuilt, Add) and rebuilt.is_number:
+            return resolve(rebuilt)
+        return rebuilt
+
+    resolved = as_expr(walk(value, False))
+    return None if undecided else resolved
 
 
 # ---------------------------------------------------------------------------

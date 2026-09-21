@@ -665,3 +665,31 @@ def test_the_last_gaps_of_the_census() -> None:
     assert definite_integral(-log(log(1 / t)) + 1 / log(t) + 1 / (1 - t), (t, 0, 1)) == 2 * EulerGamma
     assert definite_integral(1 / (exp(x) - 1) - exp(-x) / x, (x, 0, oo)) == EulerGamma
     assert definite_integral(1 / (exp(x) - 1) + exp(-x) / x, (x, 0, oo)) == oo
+
+
+def test_a_hidden_zero_next_to_a_branch_cut() -> None:
+    # the bug (issue #65): SymPy's integrate gives this integral a value off
+    # by -2*I*pi, with the logarithm of -2*sqrt(2) - 2*sqrt(z) where z is an
+    # exact zero that evalf gives a rounding error of either sign: at twenty
+    # digits the wrong value evaluated to the right one and passed the
+    # numerical check (then simplification showed what it was), in the runs
+    # in which the time limits let SymPy's answer through
+    from sympy_extras.integrals.definite import _hidden_zeros_resolved
+    f = x / 2 + sqrt(x**2 + 8) / 2 - sqrt(x**2 + 4 * x + 2)
+    lower, upper = -2 + sqrt(2), Rational(2, 3) - sqrt(10) / 3
+    z = -6 + (-2 + sqrt(2))**2 + 4 * sqrt(2)
+    right = as_expr(definite_integral(f, (x, lower, upper)))
+    assert not right.has(Integral) and abs(complex(right.evalf(20)) - 0.13532790340124318) < 1e-14
+    wrong = right + 2 * log(-2 * sqrt(2) - 2 * sqrt(z), evaluate=False) - 2 * log(2 * sqrt(2)) + 2 * I * pi
+    assert verify_numerically(wrong, as_expr(f), x, as_expr(lower), as_expr(upper)) is False
+    assert verify_numerically(right, as_expr(f), x, as_expr(lower), as_expr(upper)) is True
+    assert _hidden_zeros_resolved(as_expr(sqrt(z) + 1)) == 1
+    # a sum without a significant digit which is not decided: nothing is checked
+    assert _hidden_zeros_resolved(as_expr(sqrt(sin(1)**2 + cos(1)**2 - 1) + 1)) is None
+    # but a value which is itself zero is not exposed to a branch cut (the
+    # first version refused asin(-1) + pi/2 with the -1 a CRootOf, the area of
+    # a disk left of x = a at the sample a = -sqrt(2), and the parametric
+    # area was lost)
+    from sympy import CRootOf
+    root = CRootOf(x**2 - 2, 0)
+    assert _hidden_zeros_resolved(as_expr(asin(sqrt(2) * root / 2) + pi / 2)) is not None

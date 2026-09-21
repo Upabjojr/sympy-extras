@@ -561,6 +561,23 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `definite_integral` returned, in some runs, the right real value minus
+  `2*I*pi` (or `zoo`) for the integral of `x/2 + sqrt(x**2 + 8)/2 -
+  sqrt(x**2 + 4*x + 2)` from a root of the second radicand, and
+  `integrate_by_ranges` a complex area for the region whose cell it is
+  (issue #65). Two causes. The answer of SymPy's `integrate`, exactly
+  wrong by `-2*I*pi`, passed the numerical check: it has the logarithm of
+  `-2*sqrt(2) - 2*sqrt(z)` with `z` a sum which is exactly zero, to which
+  `evalf` gives a rounding error whose sign chooses the branch (SymPy
+  decides the sign of such a number at random, issue #25); `verify_numerically`
+  now writes the sums which are exactly zero as 0 before it evaluates a
+  value, and checks nothing when such a sum is not decided. And the
+  integral reached SymPy only when the time limits had stopped the
+  methods of the package, which is what changed from run to run:
+  `quadratic_radical_antiderivative` allowed one radicand for a whole
+  sum, and now takes a sum of radicals of different quadratics, so that
+  the integral is answered at once by the table.
+
 - `ask` answers `None`, not `True`, for `exp(-I*x) > 0` on `-1 < x < 1`:
   the sign analysis took the value `1` at `0` and the absence of zeros
   for a sign, where a complex-valued expression has none. Found by the
