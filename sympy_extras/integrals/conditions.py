@@ -41,6 +41,7 @@ from sympy.logic.boolalg import And, Or, Boolean, true, false
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 
+from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
@@ -409,9 +410,13 @@ def _samples_agree(a: Expr, b: Expr, assumptions: Assumptions, samples: int) -> 
         values = sample_values(symbols, assumptions, rng)
         if values is None:
             return False
-        left = as_expr(as_expr(a.xreplace(values)).evalf(30))
-        right = as_expr(as_expr(b.xreplace(values)).evalf(30))
-        if not left.is_number or not right.is_number or left.has(nan, zoo, oo, -oo) or right.has(nan, zoo, oo, -oo):
+        # values which a rounding error decides are no evidence (the bug:
+        # log(-2*sqrt(2) - 2*sqrt(z)) with z a sum which is exactly zero
+        # was found different from log(2*sqrt(2)) + I*pi, which it is, the
+        # rounding of z putting the argument below the cut at thirty
+        # digits, and SymPy's log of it raised RecursionError in other runs)
+        left, right = reliable_value(a, 30, values), reliable_value(b, 30, values)
+        if left is None or right is None or left.has(nan, zoo, oo, -oo) or right.has(nan, zoo, oo, -oo):
             return False
         # SymPy's floats, not Python's: exp(A*x**r) at a sampled point is
         # 1e300 and more, where abs() of a Python complex overflows

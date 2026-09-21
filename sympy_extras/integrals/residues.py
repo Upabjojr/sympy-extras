@@ -114,6 +114,7 @@ from sympy.polys.rootoftools import ComplexRootOf
 from sympy.series.limits import limit
 from sympy.simplify.simplify import simplify
 
+from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import TimeLimitExceeded, attempt, time_limit
 from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
@@ -337,8 +338,10 @@ class _Locator:
     def inside_unit_circle(self, point: Expr) -> Optional[bool]:
         """Whether ``|point| < 1``; ``None`` on the circle or undecided."""
         if isinstance(point, ComplexRootOf) or not free_symbols(point):
-            value = Abs(point.evalf(30))
-            distance = value - 1
+            number = reliable_value(point, 30)
+            if number is None:
+                return None
+            distance = Abs(number) - 1
             if abs(distance) < Rational(1, 10**20):
                 return None
             return bool(distance < 0)
@@ -371,9 +374,11 @@ def _numerically(q: Boolean) -> Optional[bool]:
     is never confirmed this way, only refuted)."""
     if not isinstance(q, Relational):
         return None
-    try:
-        difference = as_expr(as_expr(q.lhs - q.rhs).evalf(50))
-    except (TypeError, ValueError, ZeroDivisionError, OverflowError):
+    # not by a value whose branch a rounding error chooses (see
+    # reliable_form): the sign of im(log(-2*sqrt(2) - 2*sqrt(z))) with z a
+    # sum which is exactly zero is the sign of that error
+    difference = reliable_value(as_expr(q.lhs - q.rhs), 50)
+    if difference is None:
         return None
     if not difference.is_comparable or difference.is_extended_real is not True:
         return None

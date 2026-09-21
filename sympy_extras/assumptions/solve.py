@@ -34,6 +34,7 @@ from sympy_extras.polys.roots import in_radicals
 from sympy_extras.solvers.transcendental import solve_transcendental
 from sympy.polys.numberfields.minpoly import minimal_polynomial
 from sympy.polys.polytools import Poly, cancel
+from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 
@@ -110,8 +111,11 @@ def _clearly_not_real(e: Basic) -> bool:
     if not settings.numerical_checks:
         return False
     digits = settings.precision
-    value = N(e, digits)
-    if not (isinstance(value, Expr) and value.is_number and value.is_finite):
+    # a value whose branch a rounding error chooses is not "clearly"
+    # anything (the bug: log(-2*sqrt(2) - 2*sqrt(z)) - I*pi with z a sum
+    # which is exactly zero, a real number, was found not real)
+    value = reliable_value(e, digits) if isinstance(e, Expr) else None
+    if value is None:
         return False
     imaginary = N(im(value), digits)
     return isinstance(imaginary, Expr) and imaginary.is_number and bool(abs(imaginary) > Rational(1, 10)**(digits*2//3))
@@ -131,10 +135,15 @@ def _same_number(first: Basic, second: Basic) -> bool:
     difference = attempt(lambda: as_expr(simplify(first - second)), settings.timeout)
     if difference is not None and difference == 0:
         return True
+    # two conjugates have the same minimal polynomial, and are told apart
+    # by their values only: not by values whose branch a rounding error
+    # chooses (see reliable_form)
+    apart, size = reliable_value(as_expr(first - second), 60), reliable_value(first, 60)
+    if apart is None or size is None:
+        return False
     try:
-        gap = abs(complex(N(first - second, 60)))
-        scale = max(1.0, abs(complex(N(first, 60))))
-    except (TypeError, ValueError, ArithmeticError, OverflowError):
+        gap, scale = abs(complex(apart)), max(1.0, abs(complex(size)))
+    except (TypeError, ValueError, OverflowError):
         return False
     if gap > 1e-50*scale:
         return False
@@ -189,8 +198,8 @@ def _numeric_root(instance: Boolean) -> Truth:
         return None
     digits = settings.precision
     for c in equations:
-        residual = N(as_expr(c.lhs - c.rhs), digits)
-        if not (isinstance(residual, Expr) and residual.is_number and residual.is_finite):
+        residual = reliable_value(as_expr(c.lhs - c.rhs), digits)
+        if residual is None:
             return None
         if abs(residual) > Rational(1, 10)**(digits*2//3):
             return False

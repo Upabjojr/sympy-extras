@@ -40,6 +40,7 @@ from typing import Callable
 from sympy.sets.sets import Set
 
 from sympy_extras._typing import as_expr, free_symbols
+from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 
@@ -358,9 +359,12 @@ def _undirected(result: Expr, expr: Expr, x: Symbol, x0: Expr, direction: str) -
     if free_symbols(expr) != {x}:
         return result                           # parameters: not sampled
     for sample in _approach_samples(x0, direction):
+        number = reliable_value(expr, 30, {x: sample})
+        if number is None:
+            return result
         try:
-            value = complex(expr.xreplace({x: sample}).evalf(30))
-        except (TypeError, ValueError, ArithmeticError, OverflowError):
+            value = complex(number)
+        except (TypeError, ValueError, OverflowError):
             return result
         if abs(value.imag) > 1e-12*max(1.0, abs(value.real)):
             return S.ComplexInfinity

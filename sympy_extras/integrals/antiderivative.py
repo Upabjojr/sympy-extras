@@ -86,6 +86,7 @@ from sympy.series.limits import Limit
 from sympy.series.series import series
 from sympy.core.add import Add
 
+from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
@@ -601,10 +602,10 @@ def _integrand_has_sign(f: Expr, x: Symbol, point: Expr, side: str, infinity: Ex
     sign = 1 if infinity is oo else -1
     for sample in samples:
         try:
-            value = as_expr(g.subs(x, sample).evalf(15))
-        except (TypeError, ValueError, ZeroDivisionError, OverflowError):
+            value = reliable_value(as_expr(g.subs(x, sample)), 15)
+        except ZeroDivisionError:
             return True
-        if not value.is_number or value.is_extended_real is not True:
+        if value is None or value.is_extended_real is not True:
             return True
         if value * sign < 0:
             return False

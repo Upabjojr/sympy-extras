@@ -149,6 +149,7 @@ from sympy.polys.rootoftools import ComplexRootOf
 from sympy.integrals.integrals import Integral, integrate
 from sympy.solvers.solvers import solve as sympy_solve
 
+from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols
 from sympy.logic.boolalg import Boolean
@@ -215,7 +216,7 @@ def _decide_numerically(query: Boolean, values: dict[Symbol, Expr]) -> Optional[
     difference = _numeric(as_expr(query.lhs - query.rhs), values)
     if difference.free_symbols:
         return None
-    approximation = difference.evalf(60)
+    approximation = reliable_value(difference, 60)
     if not isinstance(approximation, Float):
         return None
     if abs(approximation) < Float(10)**(-40):

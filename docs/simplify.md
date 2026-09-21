@@ -174,10 +174,13 @@ True
 - `False` answers for constants rest on Schanuel's conjecture when no
   sample point is involved; `certified` says which.
 - A sample point is a witness only where its value does not depend on a
-  rounding error: a point at which the argument of a logarithm, of a
-  fractional power or of an inverse function has a real or imaginary part
-  which is not zero but has no significant digit is skipped (the argument
-  lies on an axis, where the cuts are, on the side the rounding chooses).
+  rounding error (`sympy_extras._numeric.reliable_value`, which the other
+  numerical checks of the package use too): the constant sums, and their
+  real and imaginary parts, which have no significant digit are written 0
+  when SymPy proves them zero, and a point at which the argument of a
+  logarithm, of a fractional power or of an inverse function still has a
+  part which is a rounding error is skipped (the argument lies on an axis,
+  where the cuts are, on the side the rounding chooses).
   `atan(x)**(1/3)` and its form in logarithms are equal everywhere, and
   their difference evaluated to `1.87*I` at `x = -3`. Found with
   Mathematica, which evaluated the verdicts and the canonical forms of two

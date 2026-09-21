@@ -215,7 +215,7 @@ from sympy.core.basic import Basic
 from sympy.core.containers import Tuple
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
-from sympy.core.numbers import I, Integer, Rational, nan, oo, zoo
+from sympy.core.numbers import I, Integer, Rational, oo
 from sympy.polys.rootoftools import CRootOf, rootof
 from sympy.core.power import Pow
 from sympy.core.relational import Eq, Ge, Gt, Le, Lt, Relational
@@ -243,6 +243,7 @@ from sympy.polys.polytools import Poly, degree, factor
 from sympy.solvers.solvers import solve as sympy_solve
 from sympy.solvers.simplex import linprog
 
+from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
@@ -469,9 +470,11 @@ def _explicit_root(bound: _Bound, parent: CADCell, gens: Sequence[Symbol]) -> Op
         matches: list[Expr] = []
         for candidate in candidates:
             c = as_expr(candidate)
-            value = as_expr(c.xreplace(point)).evalf(30)
-            if not value.is_number or value.has(nan, zoo, oo):
-                continue                                    # a form for the other sign of p
+            value = reliable_value(c, 30, point)
+            if value is None:
+                # a form for the other sign of p, or a value whose branch a
+                # rounding error chooses (see reliable_form)
+                continue
             real_part, imaginary_part = as_expr(re(value)), as_expr(im(value))
             if not (imaginary_part.is_number and imaginary_part.is_comparable
                     and abs(imaginary_part) < _TOLERANCE):

@@ -25,6 +25,7 @@ from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or,
     Not, Implies, Equivalent, Xor, ITE, true, false)
 from sympy.sets.sets import Set
 
+from sympy_extras._numeric import reliable_value
 from sympy_extras._typing import Truth, as_boolean, as_expr, free_symbols, sorted_symbols
 
 from sympy_extras.polys.cad import truth_tables
@@ -232,10 +233,13 @@ def _clearly_not_zero(difference: Expr, facts: Facts) -> bool:
         values = sample_values(symbols, list(facts.conjuncts), random.Random(str(difference)))
     if values is None:
         return False
+    # a value whose branch a rounding error chooses shows nothing (the
+    # bug: log(-2*sqrt(2) - 2*sqrt(z)) - log(2*sqrt(2)) - I*pi with z a sum
+    # which is exactly zero came out as -2*I*pi, "clearly not zero")
+    value = reliable_value(difference, 20, values)
     try:
-        value = as_expr(difference.xreplace(values)).evalf(20)
-        return bool(value.is_number and value.is_finite and abs(complex(value)) > 1e-12)
-    except (TypeError, ValueError, ZeroDivisionError, ArithmeticError):
+        return value is not None and abs(complex(value)) > 1e-12
+    except (TypeError, ValueError, OverflowError):
         return False
 
 

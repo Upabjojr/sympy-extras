@@ -49,8 +49,8 @@ from sympy.sets.fancysets import ImageSet
 from sympy.sets.sets import Set, FiniteSet, Interval, Union as SetUnion, Intersection, EmptySet
 from sympy.core.function import expand, expand_trig, expand_log
 
-from sympy.core.evalf import N
 
+from sympy_extras._numeric import reliable_form, reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import Truth, as_boolean, as_expr, as_set
 from sympy_extras.settings import settings
@@ -664,16 +664,26 @@ def _real_root(e: Expr, x: Symbol, v: Expr) -> Truth:
     """Whether the candidate is a real root of ``e``: ``False`` when it is
     not real or the residual is clearly nonzero (with the numerical
     checks), ``None`` when this cannot be told."""
+    # the sums which are exactly zero are written 0 first: SymPy's is_real
+    # of log(-2*sqrt(2) - 2*sqrt(z)) - I*pi, with z such a sum, is True in
+    # some runs and False in others (sympy-extras#25), and a value whose
+    # branch a rounding error chooses tells nothing (the bug: this root of
+    # x - log(2*sqrt(2)) was refused in some runs)
+    if settings.numerical_checks:
+        form = reliable_form(v, settings.precision)
+        if form is None:
+            return None
+        v = form
     real = v.is_real
     if real is None and settings.numerical_checks:
-        value = N(v, settings.precision)
-        real = bool(value.is_real) if isinstance(value, Expr) and value.is_number else None
+        value = reliable_value(v, settings.precision)
+        real = bool(value.is_real) if value is not None else None
     if real is False:
         return False
     if not settings.numerical_checks:
         return None
-    residual = N(e.subs(x, v), settings.precision)
-    if isinstance(residual, Expr) and residual.is_number and residual.is_finite:
+    residual = reliable_value(as_expr(e.subs(x, v)), settings.precision)
+    if residual is not None:
         if abs(residual) > Rational(1, 10)**(settings.precision*2//3):
             return False
         return True

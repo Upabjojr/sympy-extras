@@ -88,6 +88,7 @@ from sympy.logic.boolalg import And, Boolean, true
 from sympy.simplify.hyperexpand import hyperexpand
 from sympy.simplify.simplify import simplify
 
+from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
@@ -472,8 +473,8 @@ def _real_choice(small: Expr, large: Expr, assumptions: Assumptions) -> Optional
     values = sample_values(parameters, assumptions, random.Random(str((small, large)))) if parameters else {}
     if values is None:
         return small
-    number = attempt(lambda: as_expr(small.xreplace(values).evalf(20)), settings.timeout)
-    if number is None or not number.is_number:
+    number = attempt(lambda: reliable_value(small, 20, values), settings.timeout)
+    if number is None:
         return small
     try:
         # a zero of unknown precision (0.e-26) is not comparable: as floats

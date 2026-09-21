@@ -338,6 +338,12 @@ was already published. See the `Releasing` section of `README.md`.
   `dsolve`, `solve`, `simplify` on unbounded input, `checkodesol`) without
   a time limit: wrap it with `sympy_extras._timeout.attempt`, as the
   solvers do, so that every public function returns.
+- Do not decide anything from a plain `evalf` of a closed form (a value
+  against a quadrature, a difference at a sample point, a residual, a
+  sign): evaluate it with `sympy_extras._numeric.reliable_value`, which
+  writes the sums which are exactly zero 0 and returns `None` for a value
+  whose branch a rounding error chooses (sympy-extras#65), and treat
+  `None` as "nothing was checked".
 - Benchmarks against external collections live in `benchmarks/`, download
   their data on first use into `benchmarks/.cache/` (never committed) and
   are not part of the test suite; the unit tests must stay fast.

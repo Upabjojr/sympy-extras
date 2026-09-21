@@ -78,6 +78,7 @@ from sympy.polys.polytools import cancel
 from sympy.simplify.simplify import simplify
 from sympy.simplify.simplify import logcombine
 
+from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions
@@ -282,9 +283,12 @@ def _tested_points(difference: Expr, f: Expr, x: Symbol, values: dict[Symbol, Ex
         # 2.6e13 + 2e-15*I, negligible next to the value while not real
         if size < Rational(1, 10**20) or imaginary > Rational(1, 10**20) or imaginary > size / 10**20:
             continue
-        value = as_expr(difference.xreplace(values).xreplace({x: point}))
-        number = attempt(lambda: value.evalf(30), _budget())
-        if number is None or not number.is_number or number.has(nan, zoo, oo, -oo):
+        # a point where the rounding chooses the side of a branch cut is no
+        # test (see reliable_form)
+        at_both = dict(values)
+        at_both[x] = point
+        number = attempt(lambda: reliable_value(difference, 30, at_both), _budget())
+        if number is None or number.has(nan, zoo, oo, -oo):
             continue
         magnitude = as_expr(Abs(number))
         if magnitude.is_comparable and magnitude > Max(S.One, size) / 10**15:

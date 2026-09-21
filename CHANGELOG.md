@@ -577,6 +577,34 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- The numerical checks of the package no longer rest on a value which a
+  rounding error decides (`sympy_extras._numeric`: `reliable_form`,
+  `reliable_value`). A constant sum which is exactly zero evaluates to a
+  rounding error of either sign, which under a root next to a branch cut
+  chooses the branch (`log(-2*sqrt(2) - 2*sqrt(z))` with `z = -6 + (-2 +
+  sqrt(2))**2 + 4*sqrt(2)`, which is 0, is `log(2*sqrt(2))` plus `I*pi` at
+  15 and 50 digits, minus `I*pi` at 20, 30 and 100), and `evalf` gives the
+  part of an argument which is exactly zero as a small number with all its
+  digits "significant" (`5.7e-29` at twenty digits, `-1.3e-48` at forty).
+  The two guards written for sympy-extras#65 (`definite_integral`) and for
+  the zero test (`is_zero`) are one routine now: the sums under a function
+  or a fractional power which have no significant digit are written 0 when
+  SymPy proves them zero (their real or imaginary part alone too), the
+  parts of the arguments of logarithms, fractional powers and inverse
+  functions which differ at a higher precision are rounding errors, and a
+  value which still depends on one is refused. It is applied before the
+  values of the symbols are substituted as well (SymPy's `log` of such a
+  sum gives `zoo` or raises `RecursionError` in some runs). Found wrong in
+  some runs before it: `numerically_equal` (the right closed form found
+  different, `RecursionError` in other runs), the refutation of an
+  identity at a point in `ask`, the solutions of `solve` "clearly not
+  real" or "not satisfying their equation", the real roots of
+  `solve_transcendental` (a root refused: SymPy's `is_real` of such a
+  number is random too). Also through it: the antiderivative check of
+  `integrate`, the forms of the roots in `integrate_by_ranges`, the signs
+  decided numerically in `sympy_extras.integrals.residues`, `elliptic`,
+  `slater` and `antiderivative`, the direction of an infinite limit.
+
 - `is_zero` (`sympy_extras.simplify`) answered `False` for differences which
   are identically zero, `atan(x)**(1/3)` minus its form in logarithms and
   `sin(x)**(1/6)` minus its form in exponentials: the witness was the real
