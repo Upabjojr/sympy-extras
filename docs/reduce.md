@@ -19,7 +19,7 @@ sympy-extras, or nowhere yet.
 | Polynomial equations: explicit formulas to degree four, `Factor`, `Decompose`, cyclotomic and other special polynomials | `roots` (formulas, binomials, cyclotomic, quintics, functional decomposition), `factor` | — |
 | Systems of polynomial equations: Gröbner bases | `groebner`, `solve_poly_system`, `nonlinsolve` | `Ideal` (elimination, saturation, radicals; `polys.ideals`) |
 | Non-polynomial equations: change of variables and polynomial side conditions | `solveset` (`_transolve`, `_solve_trig`, `_solve_radical`) | `solvers.transcendental`: kernels with side conditions, inverse-image database, assumptions on parameters, Lambert W fallback (both real branches) |
-| `Reduce` over the reals: cylindrical algebraic decomposition | — | `polys.cad`, `resolve` |
+| `Reduce` over the reals: cylindrical algebraic decomposition | — | `polys.cad`, `resolve`; the cylindrical output of `Reduce` and `CylindricalDecomposition` (bounds which are root functions, parametric `Root` objects): `cylindrical_formula`, `cylindrical_set`, `IndexedRoot`, and `solve` for systems of inequalities in several unknowns |
 | `Reduce` over the complex numbers: Gröbner bases | — | `polys.comprehensive`: comprehensive Gröbner systems (Kapur–Sun–Wang), `resolve(domain=S.Complexes)` |
 | Linear and quadratic quantifier elimination (Loos–Weispfenning and Weispfenning virtual substitution) | — | `polys.virtual_substitution` (linear and quadratic cases), used first by `resolve` |
 | Linear Diophantine equations: Hermite normal form | `diophantine` (single equations), `hermite_normal_form` | `solvers.integers.linear_diophantine_system` (systems, with parameters) |

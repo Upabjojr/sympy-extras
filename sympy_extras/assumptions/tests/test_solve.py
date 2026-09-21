@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sympy import (S, Eq, sqrt, exp, log, sin, cos, acos, pi, Interval, Union, FiniteSet, Range,
-    Rational, ConditionSet, ImageSet, Q, CRootOf, Expr)
+    Rational, ConditionSet, ImageSet, Q, CRootOf, Expr, And, Or, ProductSet, symbols)
 from sympy.abc import x, y, a, n
 from sympy.testing.pytest import raises
 
@@ -54,7 +54,43 @@ def test_solve_systems() -> None:
     assert solve([x**2 + y**2 - 1, x - y], [x, y], x < 0) == FiniteSet((-sqrt(2)/2, -sqrt(2)/2))
     assert solve([x**2 + y**2 + 1, x - y], [x, y], domain=S.Reals) == S.EmptySet
     assert solve([x + y - 3, x - y - 1], [x, y], element(x, S.Integers)) == FiniteSet((2, 1))
+    # inequalities in several unknowns are solved over the reals only
     raises(NotImplementedError, lambda: solve([x > y, y > 0], [x, y]))
+
+
+def test_systems_of_inequalities_in_several_unknowns() -> None:
+    # sympy-extras#21: these raised NotImplementedError; the set is now
+    # described cylindrically, the first unknown between numbers, the second
+    # one between functions of the first
+    plane = ProductSet(S.Reals, S.Reals)
+    assert solve([x > y, y > 0], [x, y], domain=S.Reals) == ConditionSet((x, y), And(x > 0, y > 0, y < x), plane)
+    assert solve([x**2 + y**2 <= 1, x + y >= 1], [x, y], domain=S.Reals) == ConditionSet(
+        (x, y), And(x >= 0, x <= 1, y >= 1 - x, y <= sqrt(1 - x**2)), plane)
+    assert solve([x**2 + y**2 < 0], [x, y], domain=S.Reals) == S.EmptySet
+    assert solve([x**2 + y**2 <= 0], [x, y], domain=S.Reals) == FiniteSet((0, 0))
+    assert solve([x**2 + y**2 >= 0, x**2 >= 0], [x, y], domain=S.Reals) == plane
+    # real unknowns need no domain
+    u, v = symbols('u v', real=True)
+    assert solve([u*v > 1, u + v < 0], [u, v]) == ConditionSet((u, v), And(u < 0, v < 1/u), plane)
+    # the parameter is bounded first, within the assumptions
+    found = solve([x**2 + y**2 < a], [x, y], domain=S.Reals)
+    assert found == ConditionSet((x, y), And(a > 0, x > -sqrt(a), x < sqrt(a), y > -sqrt(a - x**2),
+                                             y < sqrt(a - x**2)), plane)
+    assert solve([x**2 + y**2 < a], [x, y], a < 0, domain=S.Reals) == S.EmptySet
+
+
+def test_real_solutions_in_positive_dimension() -> None:
+    # nonlinsolve gave the families x = sqrt(1 - y**2) for every complex y,
+    # twice, under a condition Contains(..., Reals) which was not evaluated
+    plane = ProductSet(S.Reals, S.Reals)
+    circle = solve([Eq(x**2 + y**2, 1)], [x, y], domain=S.Reals)
+    assert circle == ConditionSet((x, y), And(x >= -1, x <= 1, Or(Eq(y, sqrt(1 - x**2)), Eq(y, -sqrt(1 - x**2)))), plane)
+    half = solve([Eq(x**2 + y**2, 1), x > 0], [x, y], domain=S.Reals)
+    assert half == ConditionSet((x, y), And(x > 0, x <= 1, Or(Eq(y, sqrt(1 - x**2)), Eq(y, -sqrt(1 - x**2)))), plane)
+    # finitely many solutions: the points, as before
+    assert solve([Eq(x**2 + y**2, 1), Eq(x, y), x > 0], [x, y], domain=S.Reals) == FiniteSet((sqrt(2)/2, sqrt(2)/2))
+    # over the complex numbers, as before
+    assert isinstance(solve([Eq(x**2 + y**2, 1)], [x, y]), FiniteSet)
 
 
 def test_solve_errors() -> None:

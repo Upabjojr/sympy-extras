@@ -158,7 +158,9 @@ def test_quantifier_elimination_several_variables() -> None:
     assert qe(Eq(x**3 + p*x + q, 0), [('exists', x)], free=[p, q]) == S.true
     # the projection factors of two free variables may not suffice: for
     # x >= 0 the condition is y < sqrt(x), and no factor vanishes there
-    raises(NotImplementedError, lambda: qe(Eq(z**2, x) & (z > y), [('exists', z)], free=[x, y]))
+    # (sympy-extras#9: NotImplementedError was raised; the root functions
+    # of the factors describe the set)
+    assert qe(Eq(z**2, x) & (z > y), [('exists', z)], free=[x, y]) == And(x >= 0, y < sqrt(x))
 
 
 def test_sample_points() -> None:

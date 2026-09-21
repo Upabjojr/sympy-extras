@@ -98,6 +98,66 @@ False
 
 ```
 
+### Cylindrical descriptions
+
+The set where a formula holds is a union of cells, and a cell is
+cylindrical: its first coordinate lies between two real algebraic numbers
+(or is one), its second coordinate between two consecutive real roots of
+the projection polynomials of level two over the point below (or is one
+of them), and so on. The $k$-th real root of a projection polynomial is a
+continuous function on the cell below (delineability), so that the true
+cells are described by bounds which are *root functions*: this is the
+output of Mathematica's `CylindricalDecomposition` and `Reduce`, and a
+solution formula for any number of free variables (the signs of the
+projection factors do not always tell the true cells from the false ones:
+`quantifier_elimination` writes its answer this way when they do not).
+
+```python
+>>> from sympy.abc import z
+>>> from sympy_extras.polys.cad import cylindrical_formula, cylindrical_set, IndexedRoot
+>>> cylindrical_formula(x**2 + y**2 <= 1, [x, y])
+(x >= -1) & (x <= 1) & (y <= sqrt(1 - x**2)) & (y >= -sqrt(1 - x**2))
+>>> cylindrical_formula(Eq(z**2, x) & (z > y), [x, y], [('exists', z)])
+(x >= 0) & (y < sqrt(x))
+>>> cylindrical_set((x**2 + y**2 <= 1) & (x + y >= 1), [x, y])
+ConditionSet((x, y), (x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2)), ProductSet(Reals, Reals))
+
+```
+
+A root function is written explicitly when the polynomial has degree one
+or two in its variable on the cell (its coefficients have constant signs
+there, which tell the degree and the branch of the quadratic formula), and
+as `IndexedRoot(f, t, k)` otherwise: the $k$-th distinct real root of $f$
+in $t$, from 0, the counterpart of Mathematica's parametric `Root`. It
+becomes a number when the other symbols are given values:
+
+```python
+>>> cylindrical_formula((y**3 - 3*y + x > 0) & (x > 2), [x, y])
+(x > 2) & (y > IndexedRoot(x + y**3 - 3*y, y, 0))
+>>> IndexedRoot(y**3 - 3*y + x, y, 0).subs(x, 3).evalf(10)       # a CRootOf
+-2.103803403
+
+```
+
+Consecutive cells of a stack with the same description of their higher
+coordinates are joined, and a section joins a neighbour whose description,
+at the section, is its own (the closed disc above is one piece: at
+`x = -1` and `x = 1` the two bounds of `y` meet, and what the open
+interval of `x` says there is the point which the section is; a bound
+written with an `IndexedRoot` is not extended to the boundary this way,
+since roots may meet there and the index changes). At a section which is a
+number the higher bounds are evaluated. `cylindrical_set` returns the
+points with numerical coordinates as a finite set and the rest as a
+`ConditionSet`.
+
+Verified on random formulas: the description has the truth value of the
+formula at the sample point of every cell of the decomposition and at the
+points of a rational grid (three batches of random formulas in two and
+three variables, of degree up to four in the last one), and Mathematica
+proves the equivalence of the formula and its description
+(`Resolve[ForAll[vars, Equivalent[...]], Reals]`) for 60 random formulas
+whose bounds are explicit.
+
 The number of cells grows quickly with the number of variables and the
 degrees: this implementation is meant for problems with a few variables
 and moderate degrees.
@@ -137,8 +197,9 @@ outermost first.
   a quantifier-free formula in the free variables equivalent to the input
   over the reals, or `S.true`/`S.false` when every variable is quantified.
   With more than one free variable the result is written with sign
-  conditions on the projection factors, and `NotImplementedError` is raised
-  when those are not enough to describe the solution set.
+  conditions on the projection factors, and with their root functions
+  (`cylindrical_formula`) when those are not enough to describe the
+  solution set.
 - `decide(formula, quantifiers, method=None)`: the truth value of a formula
   with all its variables quantified.
 - `solution_set(formula, x, quantifiers=(), method=None)`: the set of values
@@ -146,6 +207,18 @@ outermost first.
   union of intervals and points with exact endpoints.
 - `sample_points(formula, gens, method=None)`: one exact point in every
   cell on which a quantifier-free formula holds.
+
+### Cylindrical descriptions (`sympy_extras.polys.cad.cylindrical`)
+
+- `cylindrical_formula(formula, gens, quantifiers=(), method=None)`: the
+  set of the points `gens` at which the (quantified) formula holds, as a
+  disjunction of conjunctions which bound the first variable by numbers,
+  the second by root functions of the first, and so on.
+- `cylindrical_set(formula, gens, method=None)`: the same as a set, the
+  points with numerical coordinates in a `FiniteSet` and the rest in a
+  `ConditionSet`.
+- `IndexedRoot(f, t, k)`: the `k`-th distinct real root (from 0) of the
+  polynomial `f` in `t`, a function of the other symbols of `f`.
 
 ### Projection (`sympy_extras.polys.cad.projection`)
 

@@ -16,8 +16,10 @@ from .lifting import (cylindrical_algebraic_decomposition, CAD, CADCell,
     NotWellOriented)
 from .qe import (quantifier_elimination, decide, sample_points, solution_set,
     truth_tables)
+from .cylindrical import IndexedRoot, cylindrical_formula, cylindrical_set
 
 __all__ = ['projection_sets', 'mccallum_projection', 'hong_projection',
     'squarefree_basis', 'SamplePoint', 'cylindrical_algebraic_decomposition',
     'CAD', 'CADCell', 'NotWellOriented', 'quantifier_elimination', 'decide',
-    'sample_points', 'solution_set', 'truth_tables']
+    'sample_points', 'solution_set', 'truth_tables', 'IndexedRoot',
+    'cylindrical_formula', 'cylindrical_set']

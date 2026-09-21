@@ -88,6 +88,25 @@ Union(Interval.open(-oo, -sqrt(2)), Interval.open(sqrt(2), 3))
 
 ```
 
+Over the reals, a system of polynomial inequalities in several unknowns
+(with or without equations), and a system of equations with infinitely
+many solutions, are described cylindrically, as Mathematica's `Reduce`
+does: the points with algebraic coordinates as a finite set, and the rest
+as a `ConditionSet` whose condition bounds the first unknown by numbers,
+the second by functions of the first, and so on
+(`sympy_extras.polys.cad.cylindrical_set`, see [docs/cad.md](cad.md)). The
+parameters are bounded before the unknowns, within the assumptions.
+
+```python
+>>> solve([x**2 + y**2 <= 1, x + y >= 1], [x, y], domain=S.Reals)
+ConditionSet((x, y), (x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2)), ProductSet(Reals, Reals))
+>>> solve([x**2 + y**2 < a], [x, y], domain=S.Reals)
+ConditionSet((x, y), (a > 0) & (x < sqrt(a)) & (x > -sqrt(a)) & (y < sqrt(a - x**2)) & (y > -sqrt(a - x**2)), ProductSet(Reals, Reals))
+>>> solve([x**2 + y**2 <= 0], [x, y], domain=S.Reals)
+{(0, 0)}
+
+```
+
 ## Transcendental equations and integer systems
 
 `solve` reduces equations and inequalities in which the unknown occurs

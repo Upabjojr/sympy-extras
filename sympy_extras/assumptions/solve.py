@@ -19,7 +19,7 @@ from sympy.core.function import Lambda
 from sympy.core.evalf import N
 from sympy.functions.elementary.complexes import im
 from sympy.core.sympify import sympify
-from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or,
+from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or, false,
     Not, true)
 from sympy.sets.contains import Contains
 from sympy.sets.conditionset import ConditionSet
@@ -29,7 +29,7 @@ from sympy.sets.sets import (Set, FiniteSet, Intersection, Complement, Interval,
 from sympy.solvers.solveset import solveset, nonlinsolve
 
 from sympy_extras._typing import Truth, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
-from sympy_extras.polys.cad import solution_set
+from sympy_extras.polys.cad import cylindrical_formula, cylindrical_set, solution_set
 from sympy_extras.polys.roots import in_radicals
 from sympy_extras.solvers.transcendental import solve_transcendental
 from sympy.polys.numberfields.minpoly import minimal_polynomial
@@ -491,15 +491,19 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
                 conditions.append(c)
     conditions.extend(c for c in facts.conjuncts if free_symbols(c) & set(symbols))
     condition = And(*conditions)
+    dom = _domain_set(facts, symbols, domain)
+    real = dom.is_subset(S.Reals) is True
     if not equations:
-        raise NotImplementedError("systems of inequalities in several variables are not solved; "
-                                  "use resolve for a description of the solution set")
+        region = _cylindrical(equations, conditions, symbols, facts) if real and dom == S.Reals else None
+        if region is None:
+            raise NotImplementedError("systems of inequalities in several unknowns are solved over the reals "
+                                      "(domain=S.Reals, or real unknowns), for polynomial relations with "
+                                      "rational coefficients, within the time limit")
+        return region
     if isinstance(domain, Integers) or set(symbols) <= facts.integer:
         integer = _integer_linear_system(equations, conditions, symbols, facts)
         if integer is not None:
             return integer
-    dom = _domain_set(facts, symbols, domain)
-    real = dom.is_subset(S.Reals) is True
     # a polynomial system with finitely many solutions: the exact points of
     # its regular chains, all of them by construction. nonlinsolve leaves an
     # unknown free when it cannot solve for it: {(x, -sqrt(2)), (x, sqrt(2))}
@@ -507,6 +511,15 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
     # three equations with twelve solutions, after 37 s where the chains
     # take two
     solutions = _by_regular_chains(equations, symbols, real, True)
+    if solutions is None and real and dom == S.Reals:
+        # real solutions in positive dimension: the cylindrical description
+        # of the set, which has the conditions for the solutions to be real
+        # and the inequalities in it (nonlinsolve gives families over the
+        # complex numbers, x = sqrt(1 - y**2) for every y, under a condition
+        # which is not evaluated)
+        region = _cylindrical(equations, conditions, symbols, facts)
+        if region is not None:
+            return region
     unsolved = False
     unchecked = solutions is None
     if solutions is None:
@@ -543,6 +556,37 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
     if undecided:
         result = SetUnion(result, ConditionSet(tuple(symbols), And(condition, membership), FiniteSet(*undecided)))
     return result
+
+
+def _cylindrical(equations: Sequence[Expr], conditions: Sequence[Boolean], symbols: Sequence[Symbol],
+                 facts: Facts) -> Optional[Set]:
+    """The real solutions of a system of polynomial equations and
+    inequalities with rational coefficients, from a cylindrical algebraic
+    decomposition (:func:`~sympy_extras.polys.cad.cylindrical_set`): the
+    isolated points, and a condition set which bounds the first unknown by
+    numbers, the second by functions of the first, and so on. The
+    parameters come before the unknowns, with what the assumptions say of
+    them, and the condition bounds them first. ``None`` when the system is
+    not of this kind or the decomposition does not end in time."""
+    # every variable of the decomposition is a real number: the memberships
+    # in the reals say nothing more
+    def informative(c: Boolean) -> bool:
+        return not (isinstance(c, Contains) and c.args[1] == S.Reals)
+
+    system = And(*[c for c in conditions if informative(c)], *[Eq(e, 0) for e in equations])
+    parameters = sorted_symbols(free_symbols(system) - set(symbols))
+    hypotheses = [c for c in facts.conjuncts
+                  if informative(c) and free_symbols(c) and free_symbols(c) <= set(parameters)]
+
+    def decompose() -> Set:
+        if not parameters:
+            return cylindrical_set(system, list(symbols))
+        formula = cylindrical_formula(And(system, *hypotheses), parameters + list(symbols))
+        if formula == false:
+            return S.EmptySet
+        return ConditionSet(Tuple(*symbols), formula, ProductSet(*[S.Reals] * len(symbols)))
+
+    return attempt(decompose, settings.timeout)
 
 
 def _refuted(solutions: FiniteSet, equations: Sequence[Expr], symbols: Sequence[Symbol]) -> bool:
@@ -711,6 +755,18 @@ def solve(equations: Union[Statement, Sequence[Statement]],
     (:mod:`sympy_extras.polys.regularchains`), and another one is returned
     as a ``ConditionSet`` of its equations.
 
+    Over the reals (``domain=S.Reals``, or real unknowns), a system of
+    polynomial inequalities in several unknowns, with or without
+    equations, and a system of equations with infinitely many solutions,
+    are described cylindrically
+    (:func:`~sympy_extras.polys.cad.cylindrical_set`): the points with
+    algebraic coordinates as a finite set, and the rest as a
+    ``ConditionSet`` whose condition bounds the first unknown by numbers,
+    the second one by functions of the first, and so on (explicit roots of
+    polynomials of degree at most two, :class:`~sympy_extras.polys.cad.IndexedRoot`
+    beyond). The parameters of the system are bounded before the unknowns,
+    within what the assumptions say of them.
+
     Examples
     ========
 
@@ -733,6 +789,10 @@ def solve(equations: Union[Statement, Sequence[Statement]],
     EmptySet
     >>> solve([x**2 + y**2 - 1, x - y], [x, y], x > 0)
     {(sqrt(2)/2, sqrt(2)/2)}
+    >>> solve([x**2 + y**2 <= 1, x + y >= 1], [x, y], domain=S.Reals)
+    ConditionSet((x, y), (x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2)), ProductSet(Reals, Reals))
+    >>> solve([Eq(x**2 + y**2, a), x > y], [x, y], a > 0, domain=S.Reals)
+    ConditionSet((x, y), ..., ProductSet(Reals, Reals))
     >>> solve(Eq(3*x + 5*y, 22), [x, y], (x >= 0) & (y >= 0), domain=S.Integers)
     {(4, 2)}
     >>> solve(Eq(3*x + 5*y, 22), [x, y], domain=S.Integers)

@@ -10,6 +10,38 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.cad.cylindrical`: cylindrical descriptions of
+  semialgebraic sets, the output of Mathematica's
+  `CylindricalDecomposition` and `Reduce`. `cylindrical_formula(formula,
+  gens, quantifiers=())` writes the set where a (quantified) formula holds
+  as a disjunction of conjunctions which bound the first variable by
+  numbers, the second one by root functions of the first, and so on (the
+  `k`-th real root of a projection polynomial is a continuous function on
+  the cell below); `cylindrical_set` gives the points with numerical
+  coordinates as a `FiniteSet` and the rest as a `ConditionSet`. A root
+  function is explicit for a polynomial of degree one or two on the cell
+  (the signs of its coefficients there tell the degree and the branch) and
+  an `IndexedRoot(f, t, k)` otherwise, the counterpart of Mathematica's
+  parametric `Root`: the `k`-th distinct real root, a number once the
+  other symbols have values. Consecutive cells with one description are
+  joined, and a section joins the neighbour whose description at the
+  section is its own (the closed disc is one piece). Verified at the
+  sample points of every cell and on a rational grid for random formulas
+  (degree up to four in the last variable), and by Mathematica, which
+  proves 60 random descriptions equivalent to their formulas.
+- `solve` (`sympy_extras.assumptions`) answers systems of polynomial
+  inequalities in several unknowns over the reals, which raised
+  `NotImplementedError` (sympy-extras#21), and the real solutions of
+  systems with infinitely many of them, with this description
+  (`nonlinsolve` gave the families `x = sqrt(1 - y**2)` for every complex
+  `y`, under a condition which was not evaluated); the parameters are
+  bounded before the unknowns, within the assumptions.
+- `quantifier_elimination` and `resolve` with several free variables
+  write their answer with root functions when the signs of the projection
+  factors do not describe the solution set, where they raised
+  `NotImplementedError` (sympy-extras#9): `Exists(z, z**2 = x and z > y)`
+  is `(x >= 0) & (y < sqrt(x))`.
+
 - `RegularChain.solutions(real=False)`: the points of a chain without free
   variables, exactly (`sympy_extras.polys.regularchains.solutions`).
   Rational numbers, root objects (`CRootOf`, in radicals where

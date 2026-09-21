@@ -95,6 +95,19 @@ True
 
 ```
 
+A set in several variables is described cylindrically, the first variable
+between numbers, the second between root functions of the first, and so
+on, as Mathematica's `CylindricalDecomposition` and `Reduce` do (explicit
+roots up to degree two, `IndexedRoot` beyond; `solve` answers systems of
+inequalities in several unknowns this way):
+
+```python
+>>> from sympy_extras.polys.cad import cylindrical_formula
+>>> cylindrical_formula((x**2 + y**2 <= 1) & (x + y >= 1), [x, y])
+(x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2))
+
+```
+
 The implementation follows the classical two phases, projection (McCallum's
 operator by default, Hong's as a fallback when the input is not
 well-oriented) and lifting with exact real algebraic sample points kept in a

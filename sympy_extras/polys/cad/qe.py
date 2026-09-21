@@ -410,8 +410,10 @@ def quantifier_elimination(formula: Union[Boolean, bool], quantifiers: Quantifie
     the input over the reals. With one free variable it describes a union
     of intervals with exact endpoints; with more the formula is built from
     sign conditions on the projection factors of the decomposition, and
-    ``NotImplementedError`` is raised if those factors are not enough to
-    express it.
+    when those factors are not enough to express it, from their root
+    functions (the cylindrical description of
+    :func:`~sympy_extras.polys.cad.cylindrical_formula`, which bounds each
+    free variable by functions of the ones before).
 
     Examples
     ========
@@ -429,6 +431,9 @@ def quantifier_elimination(formula: Union[Boolean, bool], quantifiers: Quantifie
     False
     >>> qe(Eq(y, x**2), [('forall', x), ('exists', y)])
     True
+    >>> from sympy.abc import z
+    >>> qe(Eq(z**2, x) & (z > y), [('exists', z)], free=[x, y])
+    (x >= 0) & (y < sqrt(x))
     """
     cad, free_vars, value, cells = _truth_values(formula, free, quantifiers, method)
     if not free_vars:
@@ -442,8 +447,10 @@ def quantifier_elimination(formula: Union[Boolean, bool], quantifiers: Quantifie
         return _as_relational(result, free_vars[0])
     formula_ = _sign_formula(cad, cells, len(free_vars))
     if formula_ is None:
-        raise NotImplementedError(
-            "the solution set is not described by the signs of the projection factors")
+        # the signs of the projection factors do not tell the true cells
+        # from the false ones (sympy-extras#9): their root functions do
+        from .cylindrical import described_by_root_functions
+        return described_by_root_functions(cad, free_vars, cells)
     return formula_
 
 
