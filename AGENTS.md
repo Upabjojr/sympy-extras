@@ -310,7 +310,13 @@ python -m pyflakes sympy_extras conftest.py
 ```
 
 Run everything before committing; a change is not done until the tests,
-mypy and pyflakes pass.
+mypy and pyflakes pass. Run the documentation examples as a whole, not
+page by page: stale examples hid a regression for a week. After a push,
+look at the result of the continuous integration (`gh run list`): its
+machines are slower, it runs with `SYMPY_EXTRAS_TIME_SCALE=3`
+(`settings.time_scale` multiplies every time limit), and a test which only
+fails there is a computation too close to its time limit; on a loaded
+machine a test can fail for the same reason.
 
 ## Adding a new algorithm
 

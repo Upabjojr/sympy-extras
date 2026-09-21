@@ -10,6 +10,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `settings.time_scale`, read from the environment variable
+  `SYMPY_EXTRAS_TIME_SCALE` at import, multiplies every time limit of the
+  package (`configure(time_scale=...)` too). What is found within the
+  limits depends on the speed of the machine; a slower machine gets the
+  answers of a faster one with a larger factor.
+
 - `sympy_extras.polys.modulargroebner`: reduced Gröbner bases over the
   rationals by the modular algorithm of E. Arnold (J. Symbolic Comput. 35,
   2003). `modular_groebner(polys, ring, primes=None, trace=None)` returns
@@ -678,6 +684,15 @@ remove public functions. Breaking changes are listed here when they happen.
   gates.
 
 ### Fixed
+
+- The continuous integration had failed on every push since 18 September:
+  `definite_integral(log(sin(x)/x), (x, 0, pi/2))` takes 9 s of its limit
+  of 15 s on the machine where the limits were chosen, and came out
+  unevaluated on GitHub's machines (reproduced with `time_scale=0.4`). Its
+  test failed, and the examples of the documentation, a later step, were
+  skipped, which is how four stale examples went unnoticed. The workflow
+  runs with `SYMPY_EXTRAS_TIME_SCALE=3`, and runs the documentation also
+  when a test has failed.
 
 - `definite_integral(1/x**2, (x, -1, 1), finite_part=True)` came out `oo`
   instead of `-2` since the divergences to a signed infinity are reported:

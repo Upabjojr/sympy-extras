@@ -97,3 +97,39 @@ def test_the_limit_survives_a_bare_except() -> None:
     started = time.monotonic()
     assert attempt(swallowing, 0.2) is None
     assert time.monotonic() - started < 2
+
+
+def test_the_limits_are_scaled_for_a_slower_machine() -> None:
+    # the bug: the continuous integration, on machines about half as fast,
+    # failed for a week on an integral which takes 9 s of its limit of 15 s
+    # on the machine where the limits were chosen, and came out unevaluated
+    # there; the examples of the documentation, which run after the tests,
+    # went unchecked meanwhile. settings.time_scale, set from the
+    # environment, multiplies every limit
+    import time
+    from sympy.testing.pytest import raises
+    from sympy_extras.settings import _time_scale_of_the_environment, configure, settings
+
+    def half_a_second() -> int:
+        started = time.monotonic()
+        while time.monotonic() - started < 0.5:
+            pass
+        return 1
+
+    with configure(time_scale=1.0):
+        assert attempt(half_a_second, 0.1) is None
+    with configure(time_scale=50.0):
+        assert attempt(half_a_second, 0.1) == 1
+    assert settings.time_scale == _time_scale_of_the_environment()
+    raises(ValueError, lambda: configure(time_scale=0.0).__enter__())
+    import os
+    previous = os.environ.get('SYMPY_EXTRAS_TIME_SCALE')
+    try:
+        for given, expected in [('3', 3.0), ('0.5', 0.5), ('', 1.0), ('fast', 1.0), ('-2', 1.0), ('inf', 1.0)]:
+            os.environ['SYMPY_EXTRAS_TIME_SCALE'] = given
+            assert _time_scale_of_the_environment() == expected
+    finally:
+        if previous is None:
+            del os.environ['SYMPY_EXTRAS_TIME_SCALE']
+        else:
+            os.environ['SYMPY_EXTRAS_TIME_SCALE'] = previous

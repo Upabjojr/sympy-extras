@@ -23,9 +23,19 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[test]"
+      # the time limits of the package were chosen on a faster machine:
+      # without the factor an integral which takes 9 s of its 15 s there
+      # is left unevaluated here, and its test fails
       - name: Run the tests and doctests
+        env:
+          SYMPY_EXTRAS_TIME_SCALE: "3"
         run: python -m pytest
+      # also when a test has failed: the examples went unchecked for a
+      # week behind one failing test
       - name: Run the examples in the documentation
+        if: success() || failure()
+        env:
+          SYMPY_EXTRAS_TIME_SCALE: "3"
         run: python -m pytest --doctest-glob='*.md' README.md docs
 
   typecheck:

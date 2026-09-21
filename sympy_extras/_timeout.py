@@ -38,10 +38,14 @@ def time_limit(seconds: Optional[float]) -> Iterator[None]:
     non-positive value); :class:`TimeLimitExceeded` is raised in the body
     when the time is up. Nested limits are honoured: the outer one is
     restored, with the elapsed time subtracted, when the inner body ends.
+    The seconds are multiplied by ``settings.time_scale``, which a slower
+    machine sets to get the answers of a faster one.
     """
     if seconds is None or seconds <= 0 or not _supported():
         yield
         return
+    from sympy_extras.settings import settings
+    seconds = seconds * settings.time_scale
     _complete_sympy_tables()
     _restore_manualintegrate()
 

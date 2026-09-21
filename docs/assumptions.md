@@ -148,6 +148,14 @@ Settings(numerical_checks=True, precision=30, timeout=30.0)
 
 ```
 
+Every time limit of the package is multiplied by `settings.time_scale`,
+which is read from the environment variable `SYMPY_EXTRAS_TIME_SCALE` at
+import (1 by default). What is found within the limits depends on the
+speed of the machine: an integral which takes 9 s of its 15 s on one
+machine is left unevaluated on a machine half as fast, and
+`SYMPY_EXTRAS_TIME_SCALE=2` there gives the same answers. The continuous
+integration runs with 3.
+
 ## Examples
 
 ### Asking
