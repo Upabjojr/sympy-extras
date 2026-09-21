@@ -1,6 +1,7 @@
 """Solving equations and inequalities under assumptions."""
 from __future__ import annotations
 
+import random
 from typing import Optional, Sequence, Union
 
 from sympy.core.basic import Basic
@@ -11,6 +12,7 @@ from sympy.core.symbol import Dummy, Symbol
 from sympy.core.numbers import Rational, Integer
 from sympy.core.mod import Mod
 from sympy.functions.elementary.integers import floor
+from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.simplify.simplify import simplify
 from sympy.core.containers import Tuple
 from sympy.core.function import Lambda
@@ -31,6 +33,7 @@ from sympy_extras.polys.cad import solution_set
 from sympy_extras.polys.roots import in_radicals
 from sympy_extras.solvers.transcendental import solve_transcendental
 from sympy.polys.numberfields.minpoly import minimal_polynomial
+from sympy.polys.polytools import Poly, cancel
 from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 
@@ -486,11 +489,35 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
         integer = _integer_linear_system(equations, conditions, symbols, facts)
         if integer is not None:
             return integer
-    try:
-        solutions = nonlinsolve(equations, list(symbols))
-    except (NotImplementedError, ValueError, TypeError):
-        raise NotImplementedError("the system cannot be solved")
     dom = _domain_set(facts, symbols, domain)
+    real = dom.is_subset(S.Reals) is True
+    # a polynomial system with finitely many solutions: the exact points of
+    # its regular chains, all of them by construction. nonlinsolve leaves an
+    # unknown free when it cannot solve for it: {(x, -sqrt(2)), (x, sqrt(2))}
+    # for [x**5 - x - 1 - y, y**2 - 2], and x, y polynomials in a free z for
+    # three equations with twelve solutions, after 37 s where the chains
+    # take two
+    solutions = _by_regular_chains(equations, symbols, real, True)
+    unsolved = False
+    unchecked = solutions is None
+    if solutions is None:
+        try:
+            solutions = nonlinsolve(equations, list(symbols))
+        except (NotImplementedError, ValueError, TypeError):
+            unsolved = True
+    # the points of the chains are not substituted back: they are exact, and
+    # evalf spends the whole time limit on a residual which is exactly zero
+    # at a root object (the bug: 34 s for two quadratic equations)
+    if solutions is None or (unchecked and isinstance(solutions, FiniteSet) and _refuted(solutions, equations, symbols)):
+        # the points of nonlinsolve are substituted back, and a system they
+        # do not satisfy goes through the chains, with their families
+        solutions = _by_regular_chains(equations, symbols, real, False)
+        if solutions is None:
+            if unsolved:
+                raise NotImplementedError("the system cannot be solved")
+            # a refuted answer is not returned: the system as it is
+            return ConditionSet(Tuple(*symbols), And(condition, *[Eq(e, 0) for e in equations]),
+                                ProductSet(*[dom] * len(symbols)))
     if not isinstance(solutions, FiniteSet):
         return ConditionSet(tuple(symbols), condition, solutions) if condition is not true else solutions
     kept: list[Basic] = []
@@ -507,6 +534,86 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
     if undecided:
         result = SetUnion(result, ConditionSet(tuple(symbols), And(condition, membership), FiniteSet(*undecided)))
     return result
+
+
+def _refuted(solutions: FiniteSet, equations: Sequence[Expr], symbols: Sequence[Symbol]) -> bool:
+    """Whether a point of ``solutions`` clearly does not satisfy the
+    equations: the residuals are evaluated numerically, at random rational
+    values of the symbols left in the point."""
+    rng = random.Random(0)
+    if any(not isinstance(value, Expr) for point in solutions.args for value in point.args):
+        # nonlinsolve puts sets among the coordinates: (-sqrt(...), -sqrt(3*z/2
+        # - 5/4), Interval.open(-oo, 5/6)) for two equations in x, y, z
+        return True
+
+    def check() -> bool:
+        for point in solutions.args:
+            values: dict[Basic, Basic] = {s: v for s, v in zip(symbols, point.args)}
+            for e in equations:
+                residual = as_expr(e.xreplace(values))
+                free = sorted_symbols(free_symbols(residual))
+                for _ in range(2 if free else 1):
+                    sample: dict[Basic, Basic] = {s: Rational(rng.randint(2, 40), rng.randint(2, 9)) for s in free}
+                    terms = [as_expr(as_expr(term.xreplace(values)).xreplace(sample)) for term in e.expand().as_ordered_terms()]
+                    scale = sum(abs(complex(term.evalf(15))) for term in terms)
+                    if abs(complex(as_expr(residual.xreplace(sample)).evalf(15))) > 1e-8 * (1 + scale):
+                        return True
+        return False
+
+    try:
+        return attempt(check, settings.timeout) is True
+    except ZeroDivisionError:
+        return False
+
+
+def _by_regular_chains(equations: Sequence[Expr], symbols: Sequence[Symbol], real: bool,
+                       isolated: bool) -> Optional[Set]:
+    """The solutions of a polynomial system with rational coefficients and
+    no parameter, from its triangular decomposition: the points of the
+    chains without free variables, exactly, and for a chain with free
+    variables whose polynomials have degree at most two in their main
+    variables the families it parametrizes, the free variables standing for
+    themselves as in ``nonlinsolve`` (not with ``isolated``: the systems
+    with finitely many solutions only); ``None`` otherwise."""
+    from sympy_extras.polys.regularchains import triangularize
+    try:
+        chains = attempt(lambda: triangularize(list(equations), *symbols), settings.timeout)
+    except ZeroDivisionError:
+        chains = None
+    if chains is None or (isolated and any(chain.dimension for chain in chains)):
+        return None
+    points: list[Tuple] = []
+    for chain in chains:
+        if chain.dimension == 0:
+            found = attempt(lambda: chain.solutions(real), settings.timeout)
+            if found is None:
+                return None
+            points.extend(Tuple(*[solution[s] for s in symbols]) for solution in found)
+            continue
+        families: list[dict[Basic, Basic]] = [{}]
+        for p, v in zip(chain.polys, chain.main_variables):
+            poly = Poly(p, v)
+            if poly.degree() > 2:
+                return None
+            extended: list[dict[Basic, Basic]] = []
+            for family in families:
+                coefficients = [as_expr(as_expr(c).xreplace(family)) for c in poly.all_coeffs()]
+                if len(coefficients) == 2:
+                    values = [as_expr(cancel(-coefficients[1] / coefficients[0]))]
+                else:
+                    a, b, c = coefficients
+                    root = sqrt(as_expr(cancel(b**2 - 4 * a * c)))
+                    values = [as_expr((-b - root) / (2 * a)), as_expr((-b + root) / (2 * a))]
+                for value in values:
+                    longer = dict(family)
+                    longer[v] = value
+                    extended.append(longer)
+            families = extended
+        found_ = [Tuple(*[family.get(s, s) for s in symbols]) for family in families]
+        if _refuted(FiniteSet(*found_), equations, symbols):
+            return None
+        points.extend(found_)
+    return FiniteSet(*points)
 
 
 def _integer_linear_system(equations: Sequence[Expr], conditions: Sequence[Boolean],
@@ -588,7 +695,12 @@ def solve(equations: Union[Statement, Sequence[Statement]],
     solutions are kept when the assumptions hold at them, dropped when
     they fail and collected in a
     :class:`~sympy.sets.conditionset.ConditionSet` when this cannot be
-    decided.
+    decided. The points of ``nonlinsolve`` are substituted back in the
+    equations: a polynomial system with rational coefficients which they
+    do not satisfy (``nonlinsolve`` leaves free an unknown it cannot solve
+    for) is solved by a triangular decomposition into regular chains
+    (:mod:`sympy_extras.polys.regularchains`), and another one is returned
+    as a ``ConditionSet`` of its equations.
 
     Examples
     ========

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from sympy import (S, Eq, sqrt, exp, log, sin, cos, acos, pi, Interval, Union, FiniteSet, Range,
-    Rational, ConditionSet, ImageSet, Q, CRootOf)
+    Rational, ConditionSet, ImageSet, Q, CRootOf, Expr)
 from sympy.abc import x, y, a, n
 from sympy.testing.pytest import raises
 
 from sympy_extras.assumptions import solve, element
 from sympy_extras._testing import untyped
+from sympy_extras._typing import as_expr
 
 
 def test_solve_univariate_polynomial() -> None:
@@ -126,3 +127,49 @@ def test_the_same_root_in_two_radical_forms_is_one_solution() -> None:
     assert len(found.args) == 1
     root = found.args[0]
     assert abs(N(root - (Rational(15, 26) + 3*sqrt(3)/13), 30)) < 1e-25
+
+
+def test_an_unknown_nonlinsolve_leaves_free_is_solved_by_regular_chains() -> None:
+    # the bug: nonlinsolve answers [x**5 - x - 1 - y, y**2 - 2] with
+    # {(x, -sqrt(2)), (x, sqrt(2))}, the unknown x left free because its
+    # quintic over sqrt(2) is not solved, and solve returned it; the points
+    # are now substituted back, and a system they do not satisfy goes through
+    # a triangular decomposition and the exact solutions of its chains
+    from sympy.abc import z
+    system = [x**5 - x - 1 - y, y**2 - 2]
+    found = solve(system, [x, y])
+    assert isinstance(found, FiniteSet) and len(found) == 10
+    assert all(not point.free_symbols for point in found.args)
+    real = solve(system, [x, y], domain=S.Reals)
+    assert isinstance(real, FiniteSet) and sorted(str(point.args[1]) for point in real.args) == \
+        ['-sqrt(2)', '-sqrt(2)', '-sqrt(2)', 'sqrt(2)']
+    for point in real.args:
+        u, v = as_expr(point.args[0]), as_expr(point.args[1])
+        assert abs(complex((u**5 - u - 1 - v).evalf(15))) < 1e-12
+    # three equations with six solutions, which nonlinsolve gives as one
+    # point with x and y polynomials in a free z
+    system = [-2*x*y**2*z**2 + x*y*z + 2*z - 2, x**2 + 2*z + 2, 2*x**2 + y**2*z**2 + 3]
+    found = solve(system, [x, y, z])
+    assert isinstance(found, FiniteSet) and len(found) == 6
+    assert all(not point.free_symbols for point in found.args)
+    # the families nonlinsolve finds are kept as they are
+    assert solve([x*z - y, y*z - x], [x, y, z]) == FiniteSet((0, 0, z), (-y, y, -1), (y, y, 1))
+
+
+def test_points_which_do_not_satisfy_the_equations_are_refuted() -> None:
+    import sys
+    module = sys.modules['sympy_extras.assumptions.solve']
+    equations = [x**5 - x - 1 - y, y**2 - 2]
+    assert module._refuted(FiniteSet((x, sqrt(2))), equations, [x, y]) is True
+    root = CRootOf(x**10 - 2*x**6 - 2*x**5 + x**2 + 2*x - 1, 3)
+    assert module._refuted(FiniteSet((root, sqrt(2))), equations, [x, y]) is False
+    assert module._refuted(FiniteSet((root, -sqrt(2))), equations, [x, y]) is True
+    # a family with a free unknown which does satisfy its equation
+    assert module._refuted(FiniteSet((1/y, y)), [x*y - 1], [x, y]) is False
+    # the bug: nonlinsolve puts sets among the coordinates of its points for
+    # these two equations in three unknowns, (..., -sqrt(3*z/2 - 5/4),
+    # Interval.open(-oo, 5/6)), and substituting them raised AttributeError
+    from sympy.abc import z
+    found = solve([-2*x**2*y + 2*z - 3, 3*x**2*y - 2*y**2 + 2], [x, y, z])
+    assert isinstance(found, ConditionSet) or all(isinstance(value, Expr) for point in found.args
+        for value in point.args)

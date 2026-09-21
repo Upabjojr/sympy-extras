@@ -10,6 +10,22 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `RegularChain.solutions(real=False)`: the points of a chain without free
+  variables, exactly (`sympy_extras.polys.regularchains.solutions`).
+  Rational numbers, root objects (`CRootOf`, in radicals where
+  `sympy_extras.polys.roots` writes them so) and rational functions of
+  them: a polynomial of degree one in its main variable gives its
+  coordinate by a division (written as a root object of its own polynomial
+  when it involves root objects: `FiniteSet` sorts its elements, and the
+  sort key of a sum of root objects evaluates them), and the roots of a polynomial whose
+  coefficients are algebraic numbers are root objects of an iterated
+  resultant of the chain, told from its other roots numerically (simple
+  roots, matched with the numerical roots and these with the isolating
+  intervals of the root objects; the residuals are not evaluated with
+  `evalf`, which takes a minute on one which is exactly zero at a complex
+  root object of degree ten). `real=True` keeps the real points, a root object being real or
+  not exactly. Checked against `numerical_solutions`.
+
 - `sympy_extras.polys.regularchains`: triangular decompositions of
   polynomial systems into regular chains. `triangularize(equations,
   *symbols, inequations=..., mode=...)` writes the zeros of a system with
@@ -571,6 +587,22 @@ remove public functions. Breaking changes are listed here when they happen.
   function has a real or imaginary part without a significant digit is no
   witness any more (the answer is `None` there). Found by evaluating the
   verdicts of a random batch with Mathematica.
+
+- `solve` returned `{(x, -sqrt(2)), (x, sqrt(2))}` for `[x**5 - x - 1 - y,
+  y**2 - 2]`, the unknown `x` left free: `nonlinsolve` leaves an unknown
+  it cannot solve for as it is (and gives `x`, `y` as polynomials in a free
+  `z` for three equations in three unknowns with finitely many solutions,
+  after 37 s for one with twelve). A polynomial system with rational
+  coefficients, no parameter and finitely many solutions is now solved by
+  its triangular decomposition first (`RegularChain.solutions`, the real
+  points only over the reals: all the solutions by construction, in 2 s
+  for the system above). For the other systems the points of `nonlinsolve`
+  are substituted back in the equations, numerically at random values of
+  the symbols they keep; a system they do not satisfy goes through the
+  chains too (a chain with free variables whose polynomials have degree
+  one in their main variables gives the family it parametrizes), and is
+  returned as a `ConditionSet` of its equations when that is not possible,
+  instead of the wrong points.
 
 - `definite_integral` returned, in some runs, the right real value minus
   `2*I*pi` (or `zoo`) for the integral of `x/2 + sqrt(x**2 + 8)/2 -

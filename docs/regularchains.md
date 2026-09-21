@@ -36,7 +36,8 @@ Here:
 - `RegularChain`: a triangular system with `polys`, `main_variables`,
   `free_variables`, `initials`, `dimension`, `degree`; membership in its
   saturated ideal (`reduce`, `contains`), `is_regular`, `regularize`,
-  `intersect`, `saturated_ideal` and `numerical_solutions`;
+  `intersect`, `saturated_ideal`, and its isolated points exactly
+  (`solutions`) and numerically (`numerical_solutions`);
 - `regular_gcd(p, q, x, chain)`: greatest common divisors of polynomials
   whose coefficients are algebraic over the chain, with the case
   distinctions they need.
@@ -202,6 +203,51 @@ False
 
 ```
 
+`solutions` gives the same points exactly, and with `real=True` the real
+ones, a root object being real or not exactly. The chain is solved from the
+bottom. The roots of a polynomial whose coefficients at the point found so
+far are rational are root objects (`CRootOf`), in radicals where
+`sympy_extras.polys.roots` writes them so; a polynomial of degree one in its
+main variable gives its coordinate by a division (every coordinate but the
+first one, for a system in shape position), written as a root object of its
+own polynomial when it involves root objects; the roots of another polynomial,
+whose coefficients are algebraic numbers, are roots of a polynomial with
+rational coefficients, an iterated resultant of the chain, and they are
+told from its other roots numerically: the chain being squarefree they are
+simple roots, which are matched with the numerical roots of the resultant,
+themselves matched with the root objects by their isolating intervals
+(`NotImplementedError` when the match is not clear at the working
+precision). SymPy does not solve the second system below:
+`solve_poly_system` answers `[]` and `nonlinsolve` answers `{(x, -sqrt(2)),
+(x, sqrt(2))}`, the unknown left free.
+
+```python
+>>> for chain in triangularize([x**2 + y + z - 1, x + y**2 + z - 1, x + y + z**2 - 1], x, y, z):
+...     print(chain.solutions())
+[{z: -sqrt(2) - 1, y: -sqrt(2) - 1, x: -sqrt(2) - 1}, {z: -1 + sqrt(2), y: -1 + sqrt(2), x: -1 + sqrt(2)}]
+[{z: 0, y: 0, x: 1}]
+[{z: 0, y: 1, x: 0}]
+[{z: 1, y: 0, x: 0}]
+>>> [chain] = triangularize([x**5 - x - 1 - y, y**2 - 2], x, y)
+>>> len(chain.solutions())
+10
+>>> for solution in chain.solutions(real=True):
+...     print(solution)
+{y: -sqrt(2), x: CRootOf(x**10 - 2*x**6 - 2*x**5 + x**2 + 2*x - 1, 0)}
+{y: -sqrt(2), x: CRootOf(x**10 - 2*x**6 - 2*x**5 + x**2 + 2*x - 1, 1)}
+{y: -sqrt(2), x: CRootOf(x**10 - 2*x**6 - 2*x**5 + x**2 + 2*x - 1, 2)}
+{y: sqrt(2), x: CRootOf(x**10 - 2*x**6 - 2*x**5 + x**2 + 2*x - 1, 3)}
+
+```
+
+`sympy_extras.assumptions.solve` solves this way the polynomial systems
+with rational coefficients, no parameter and finitely many solutions. For
+the other systems it substitutes the points of `nonlinsolve` back in the
+equations, and a polynomial system they do not satisfy goes through the
+chains too (the family of a chain with free variables is returned when its
+polynomials have degree one in their main variables, the free variables
+standing for themselves as in `nonlinsolve`).
+
 ## Computing modulo a chain
 
 Modulo the saturated ideal of a squarefree regular chain the ring of
@@ -291,6 +337,20 @@ difference. Published decompositions (the example of the RegularChains
 library of Maple, the cyclic and Katsura systems, discriminants) are in
 `tests/test_regularchains_known.py`.
 
+The decompositions were also checked with Mathematica 12.2, which decides
+by quantifier elimination over the complex numbers whether the zeros of the
+system are the union of the quasi-components (`Resolve[ForAll[vars,
+Equivalent[system, chains]], Complexes]`): true for the 63 systems tried
+(the systems of the tests, among them those with parameters, and random
+ones with components of several dimensions, 13 with inequations). In the
+sense of Kalkbrener, for 35 systems: every quasi-component is in the zero
+set, and the products of generators of the saturated ideals (computed by
+Mathematica as elimination ideals) vanish on it (34 systems, one with too
+many products). The exact solutions: for 30 systems with finitely many
+solutions the number of complex solutions (`NSolve`) and the real points
+(`Solve` over the reals, to nine digits) agree, as does `solve` over the
+reals.
+
 ## Limitations
 
 - The coefficients are rational numbers; parameters are variables. There
@@ -307,8 +367,15 @@ library of Maple, the cyclic and Katsura systems, discriminants) are in
   handful of solutions per variable. Large polynomials are not factored
   (SymPy's factorization stalls on them), only divided by the irreducible
   factors met before.
-- Real solutions (real root isolation of a chain, `RealTriangularize`)
-  and the comprehensive triangular decomposition are not implemented.
+- The exact solutions tell the roots over an algebraic point apart
+  numerically (simple roots, matched at forty digits and more), not by a
+  computation in the algebraic number field; a chain with free variables
+  has no closed form unless its polynomials have degree one in their main
+  variables, and parameters are not supported in `solve` through chains.
+- The real points of a chain without free variables are selected
+  (`solutions(real=True)`); semi-algebraic systems (`RealTriangularize`),
+  sample points of the real components of positive dimension and the
+  comprehensive triangular decomposition are not implemented.
 
 ## References
 

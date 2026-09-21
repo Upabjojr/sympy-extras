@@ -600,7 +600,9 @@ the generic points of every component, here the double roots of a cubic:
 `RegularChain` decides the membership in its saturated ideal by
 pseudo-division (`contains`, `reduce`), splits itself where a polynomial is
 a zero divisor (`regularize`, `intersect`, `regular_gcd`: the D5 principle)
-and computes its isolated solutions (`numerical_solutions`). See
+and computes its isolated solutions, exactly (`solutions`, the real ones
+with `real=True`) and numerically (`numerical_solutions`); `solve` uses
+them for the polynomial systems `nonlinsolve` answers wrongly. See
 [docs/regularchains.md](docs/regularchains.md).
 
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)

@@ -84,6 +84,7 @@ from sympy_extras.polys.ideals import Ideal
 
 from .operations import Chain, Decomposer
 from .recursive import degree, initial, main_variable, normalize
+from .solutions import exact_solutions
 
 __all__ = ['RegularChain', 'triangularize', 'regular_gcd']
 
@@ -384,6 +385,52 @@ class RegularChain:
                     following.append(extended)
             solutions = following
         return [{v: as_expr(value.n(n, chop=True)) for v, value in solution.items()} for solution in solutions]
+
+    def solutions(self, real: bool = False) -> list[dict[Symbol, Expr]]:
+        """The points of a chain without free variables, exactly.
+
+        The coordinates are rational numbers, root objects (``CRootOf``,
+        in radicals where the package writes them so) and rational
+        functions of them, see :mod:`.solutions`: the chain is solved from
+        the bottom; a polynomial of degree one in its main variable gives
+        its coordinate by a division (written as a root object of its own
+        polynomial when it involves root objects), and the roots of another one, whose
+        coefficients are algebraic numbers, are root objects of a
+        polynomial with rational coefficients (an iterated resultant)
+        which are told from its other roots numerically.
+
+        Parameters
+        ==========
+
+        real : bool
+            The real points only; whether a root object is real is decided
+            exactly.
+
+        Raises
+        ======
+
+        ValueError
+            When the chain has free variables.
+        NotImplementedError
+            When the roots are not told apart at the working precision.
+
+        Examples
+        ========
+
+        >>> from sympy.abc import x, y
+        >>> from sympy_extras.polys.regularchains import triangularize
+        >>> [chain] = triangularize([x**2 + y**2 - 5, x*y - 1], x, y)
+        >>> chain.solutions()[0]
+        {y: CRootOf(x**4 - 5*x**2 + 1, 0), x: CRootOf(x**4 - 5*x**2 + 1, 1)}
+        >>> [chain] = triangularize([x**5 - x - 1 - y, y**2 - 2], x, y)
+        >>> len(chain.solutions()), chain.solutions(real=True)[0]
+        (10, {y: -sqrt(2), x: CRootOf(x**10 - 2*x**6 - 2*x**5 + x**2 + 2*x - 1, 0)})
+        """
+        if self.dimension:
+            raise ValueError("the chain has the free variables %s: its solutions are not isolated"
+                % self.free_variables)
+        return exact_solutions(self.polys, self.main_variables, real,
+            lambda v: self.saturated_ideal().univariate(v))
 
     # ------------------------------------------------------------------
     # operations
