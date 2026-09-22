@@ -110,7 +110,13 @@ def test_rewriting_and_substitutions_are_tried() -> None:
     # and hyperbolic functions through exponentials, all by the typed
     # methods and verified against the original integrand
     from sympy import cosh, S
+    # (Trager's algorithm, tried first, integrates it on the curve y**6 = x
+    # since the logarithmic part of the roots of index n; the rewriting
+    # route is the one which does it without that)
     found = verified_antiderivative(1 / (x**(S(1) / 3) + sqrt(x)), x)
+    assert found is not None and found[1] in ('trager', 'rewriting')
+    assert is_antiderivative(found[0], 1 / (x**(S(1) / 3) + sqrt(x)), x) is True
+    found = verified_antiderivative(1 / (x**(S(1) / 3) + sqrt(x)), x, methods=['rewriting'])
     assert found is not None and found[1] == 'rewriting' and is_antiderivative(found[0], 1 / (x**(S(1) / 3) + sqrt(x)), x) is True
     found = verified_antiderivative(2**x * cosh(x), x)
     assert found is not None and found[1] in ('heurisch', 'rewriting')

@@ -10,6 +10,24 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- Trager's algorithm integrates the logarithmic part of a root of index
+  three or more, `y = P**(1/n)` with `P` squarefree over the rationals:
+  a component `A_k*y**k` without a rational antiderivative goes through
+  the Hermite reduction on the curve `y**n = P`, the residues at the
+  places above the roots of the denominator and at the points at
+  infinity, and a function of the curve with the torsion divisor of each
+  orbit of places found by linear algebra over the number field of the
+  residues (the general form over a rational basis of the residues when
+  the orbits are not torsion by themselves), the differential minus the
+  logarithmic derivatives checked to vanish exactly on the curve and the
+  answer written in real form. `1/(x*(x**4 + 1)**(1/4))` is
+  `log(y - 1)/4 - log(y + 1)/4 + atan(y)/2` with `y = (x**4 + 1)**(1/4)`,
+  `1/(x**3 + 1)**(1/3)` and `1/(x*(x**5 + 1)**(1/5))` integrate, and
+  `x/(x**3 + 1)**(1/3)` (a double pole at infinity) or
+  `1/(x*(x**3 + x + 1)**(1/3))` (a divisor not found torsion) stay
+  undecided. Parameters, residue norms of degree three or more and
+  number fields of degree above twelve are left to the other methods.
+
 - `Ideal` computes the Gröbner bases for `lex` and `grlex` of the ideals of
   dimension zero by converting the `grevlex` basis with SymPy's FGLM
   instead of computing them directly: Katsura-4 for `lex` takes 0.23 s

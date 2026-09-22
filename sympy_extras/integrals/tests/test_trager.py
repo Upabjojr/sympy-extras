@@ -196,13 +196,13 @@ def test_roots_of_index_three_and_more() -> None:
         assert F is not None and is_antiderivative(F, f, x) is True, f
     found = verified_antiderivative(as_expr(x**2 * (x**3 + a)**Rational(1, 3)), x)
     assert found is not None and found[1] == 'trager'
-    # no rational solution: undecided (the binomial substitution integrates it)
+    # no rational solution: the logarithmic part on the curve (this was
+    # left undecided, and found by the binomial substitution only)
     g = as_expr(1 / (x * (x**3 + 1)**Rational(1, 3)))
-    assert trager_antiderivative(g, x) is None
-    reduced = trager_reduce(g, x)
-    assert reduced is not None and reduced[0] == 0 and simplify(reduced[1] - g) == 0
+    G = trager_antiderivative(g, x)
+    assert G is not None and is_antiderivative(G, g, x) is True
     found = verified_antiderivative(g, x)
-    assert found is not None and found[1] == 'rewriting'
+    assert found is not None and found[1] == 'trager'
     # the components: 1/(1 + y) is (1 - y + y**2)/(1 + P) for y**3 = P
     parsed = _root_components(as_expr(1 / (1 + (x**3 + 1)**Rational(1, 3))), x)
     assert parsed is not None
@@ -212,6 +212,86 @@ def test_roots_of_index_three_and_more() -> None:
     assert _root_components(as_expr((x**2 * (x + 1))**Rational(1, 3)), x) is None
     assert _root_components(as_expr(sqrt(x**3 + 1)), x) is None
     assert _root_components(as_expr((x + 1)**Rational(1, 3) * (x + 2)**Rational(1, 3)), x) is None
+
+
+def test_logarithmic_part_of_roots_of_index_n() -> None:
+    # the logarithmic part on y**n = P: a function of the curve with the
+    # torsion divisor of an orbit of places, in the resolvent form whose
+    # real part has logarithms and arctangents of the root
+    from sympy import Rational, atan
+    from sympy_extras.integrals import is_antiderivative, verified_antiderivative
+    R = Rational
+    elementary = [
+        1 / (x * (x**3 + 1)**R(1, 3)),              # the places above x = 0, an orbit of order 3
+        (x**3 + 1)**R(1, 3) / x,                    # a rational part first
+        1 / (x**3 + 1)**R(1, 3),                    # the residues at the three points at infinity
+        1 / (x * (x**4 + 1)**R(1, 4)),              # index four
+        1 / (x * (x**4 + 1)**R(3, 4)),
+        1 / (x * (x**2 + 1)**R(1, 4)),
+        1 / (x**4 + 1)**R(1, 4),
+        1 / (x * (x**5 + 1)**R(1, 5)),              # index five, the field of the fifth roots of unity
+        1 / (x * (x**6 + 1)**R(1, 6)),
+        1 / (x * (x**2 + 1)**R(1, 3)),              # genus one, m = 6 with (y - 1)**3 the cube of a function
+        1 / (x * (x**4 + 1)**R(1, 3)),
+        1 / (x * (x**3 + 2)**R(1, 3)),              # residues 2**(-1/3) times the roots of unity
+        1 / ((x - 1) * (x**3 + 1)**R(1, 3)),        # a pole away from the binomial structure
+        1 / (x**4 * (x**3 + 1)**R(1, 3)),           # a multiple pole: Hermite reduction first
+        (x**3 + 1)**R(1, 3) / x**4,
+        1 / (x * sqrt(x**4 + 1)) + 1 / (x * (x**4 + 1)**R(1, 4)),   # y**2 = sqrt(P): the square root case
+    ]
+    for f in elementary:
+        F = trager_antiderivative(f, x)
+        assert F is not None and is_antiderivative(F, f, x) is True, f
+        assert not F.has(I), f
+    F = trager_antiderivative(1 / (x * (x**4 + 1)**R(1, 4)), x)
+    assert F is not None and F.has(atan) and F.has(log)
+    found = verified_antiderivative(as_expr(1 / (x**3 + 1)**R(1, 3)), x)
+    assert found is not None and found[1] == 'trager'
+    # not elementary: a double pole at infinity after the reduction (x/y,
+    # also what is left of 1/((x + 1)*y) after the ramified pole at x = -1
+    # is removed), a differential of the first kind, and the divisor of
+    # a non-binomial radicand which is not torsion within the bound: the
+    # component stays in the remainder, no antiderivative is returned
+    for g in [x / (x**3 + 1)**R(1, 3), 1 / (x**2 * (x**3 + 1)**R(1, 3)), 1 / ((x + 1) * (x**3 + 1)**R(1, 3)),
+              1 / (x**4 + 1)**R(3, 4), 1 / (x * (x**3 + x + 1)**R(1, 3))]:
+        assert trager_antiderivative(g, x) is None, g
+        reduced = trager_reduce(g, x)
+        assert reduced is not None and simplify(reduced[1] - g + reduced[0].diff(x)) == 0, g
+    # parameters: the residues would be algebraic over the parameters
+    assert trager_antiderivative(1 / (x * (x**3 + a)**R(1, 3)), x) is None
+    assert trager_antiderivative(a / (x * (x**3 + 1)**R(1, 3)), x) is None
+
+
+def test_hermite_reduction_and_residues_on_the_curve_of_index_n() -> None:
+    from sympy import Rational, Poly, QQ
+    from sympy_extras.integrals.trager import _hermite_index_n, _residue_at_infinity, _rational_basis
+    P = Poly(x**3 + 1, x, domain=QQ)
+    y = (x**3 + 1)**Rational(1, 3)
+    # 1/(x**4*y) = y**2/(x**4*P): the pole of order four at 0 lowered to a
+    # simple one by the exact part, the remainder with simple poles
+    A = as_expr(1 / (x**4 * (x**3 + 1)))
+    reduced = _hermite_index_n(A, P, 3, 2, x)
+    assert reduced is not None
+    terms, M, D = reduced
+    assert D.as_expr() == x and all(T.as_expr() != 1 for _, T in terms)
+    exact = sum((S_.as_expr() * y**2 / T.as_expr() for S_, T in terms), S.Zero)
+    assert simplify(exact.diff(x) + M.as_expr() * y**2 / (D.as_expr() * (x**3 + 1)) - A * y**2) == 0
+    # the pole of order two at infinity of x*y**2/P dx = x/y dx, which no
+    # function of the curve removes: also what is left of 1/(x**2*y) once
+    # the double pole at 0 is removed, and of 1/((x + 1)*y) once the
+    # ramified pole at x = -1 (a root of P) is
+    for A in [x / (x**3 + 1), 1 / (x**2 * (x**3 + 1)), 1 / ((x + 1) * (x**3 + 1))]:
+        assert _hermite_index_n(as_expr(A), P, 3, 2, x) is None, A
+    # y**2/P dx = dx/y has the residue -s**2 at the point at infinity where
+    # y ~ s*x, s**3 = 1: kappa = 1; 1/(x*y) has none there
+    one = Poly(1, x, domain=QQ)
+    assert _residue_at_infinity(one, one, P, 3, 2) == 1
+    assert _residue_at_infinity(one, Poly(x, x, domain=QQ), P, 3, 2) == 0
+    # the residues 1, zeta, zeta**2 span a plane over the rationals
+    K = QQ.algebraic_field(Rational(-1, 2) + sqrt(3) * I / 2)
+    zeta = K.from_sympy(Rational(-1, 2) + sqrt(3) * I / 2)
+    basis = _rational_basis([K.one, zeta, zeta**2], K)
+    assert basis is not None and basis[0] == [0, 1] and basis[1] == [[1, 0], [0, 1], [-1, -1]]
 
 
 def test_the_inverse_modulo_a_polynomial_over_the_gaussian_parametric_field() -> None:

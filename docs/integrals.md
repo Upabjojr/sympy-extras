@@ -605,10 +605,27 @@ answer written back. A root `y = P**(1/n)` of index three and more of a
 squarefree polynomial integrates by components in the basis `1, y, ...,
 y**(n - 1)`: the derivative of `R*y**k` stays in the component `y**k`, so
 each is a Risch differential equation `R' + k*P'/(n*P)*R = A_k` over the
-rational functions (`x**5*(x**3 + 1)**(2/3)`); a component without a
-rational solution is left undecided (its integral may have logarithms
-of algebraic functions, which the genus-zero substitutions find when
-the radical is one of a Möbius function or a binomial).
+rational functions (`x**5*(x**3 + 1)**(2/3)`). A component without a
+rational solution goes through Trager's three steps on the curve
+`y**n = P` (over the rationals: the residues of a parametric integrand
+would be algebraic over the parameters): the Hermite reduction with the
+integral basis `1, y, ..., y**(n - 1)` (the multiple poles, the poles at
+the ramified points, which carry no residue, and the polynomial part at
+infinity), the residues at the places above the roots of the
+denominator (the `n`-th roots of the roots of a resultant, the branch
+of each place recovered from `y**k`) and at the points at infinity when
+`n` divides `deg P`, and, for each orbit of places under `y -> zeta*y`, a
+function `v` with divisor `m*(Q_0 - sum(Q_l)/n)` found by linear algebra
+over the number field of the residues, the multiple `m` tried up to the
+torsion bound; the orbit contributes `sum(rho_l/m*log(v(x, zeta**l*y)))`,
+whose real part is the answer in logarithms and arctangents of the root
+(Trager's general form over a rational basis of the residues is searched
+when the orbits are not torsion by themselves). The differential minus
+the logarithmic derivatives found must vanish exactly on the curve, and
+the antiderivative is verified by differentiation; a component with a
+pole of order two or more at infinity after the reduction, a
+differential of the first kind, or a divisor not found torsion within
+the bound is left undecided, never answered.
 
 ```python
 >>> from sympy import symbols, sqrt, log, Rational
@@ -625,6 +642,12 @@ log(x**2 + sqrt(x**4 + 1))/2
 log(x + sqrt(a + x**2))
 >>> trager_antiderivative(x**5*(x**3 + 1)**Rational(2, 3), x)
 (x**3 + 1)**(2/3)*(x**6/8 + x**3/20 - 3/40)
+>>> trager_antiderivative(1/(x*(x**4 + 1)**Rational(1, 4)), x)
+log((x**4 + 1)**(1/4) - 1)/4 - log((x**4 + 1)**(1/4) + 1)/4 + atan((x**4 + 1)**(1/4))/2
+>>> trager_antiderivative(1/(x**3 + 1)**Rational(1, 3), x)
+-log(x - (x**3 + 1)**(1/3))/3 + log(x**2 + x*(x**3 + 1)**(1/3) + (x**3 + 1)**(2/3))/6 - sqrt(3)*atan(sqrt(3)*(x**3 + 1)**(1/3)/(2*x + (x**3 + 1)**(1/3)))/3
+>>> trager_antiderivative(x/(x**3 + 1)**Rational(1, 3), x) is None
+True
 >>> is_nonelementary_algebraic(1/sqrt(x**3 + 1), x)
 True
 >>> definite_integral((x**2 - 1)/((x**2 + 1)*sqrt(x**4 + 1)), (x, 0, 1))
