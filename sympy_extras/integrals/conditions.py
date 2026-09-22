@@ -398,35 +398,104 @@ def numerically_equal(a: Expr, b: Expr, assumptions: Assumptions = None, samples
     answer is ``False`` when the structure theorem proves the two
     different (``exp(-10**6*x**2)`` and ``0`` agree to every digit at
     points away from the origin)."""
-    if not _samples_agree(a, b, assumptions, samples):
+    if _samples_verdict(a, b, assumptions, true, samples, patient=False) is not True:
         return False
     return not _provably_different(a, b, assumptions)
 
 
-def _samples_agree(a: Expr, b: Expr, assumptions: Assumptions, samples: int) -> bool:
+def numerical_verdict(a: Expr, b: Expr, assumptions: Assumptions = None, condition: Boolean = true,
+                      samples: int = 3) -> Optional[bool]:
+    """The verdict of a numerical comparison of ``a`` and ``b`` at
+    ``samples`` random values of their symbols satisfying the assumptions
+    and the condition: ``False`` when the two differ at a sample where
+    both have a reliable value (see
+    :func:`sympy_extras._numeric.reliable_value`), ``True`` when they
+    agree at every sample, ``None`` when nothing was checked or a sample
+    could not be (no values satisfying the condition were found, a value
+    could not be computed or is decided by a rounding error).
+
+    Unlike :func:`numerically_equal`, which answers ``False`` when it
+    cannot compare, this tells "different" from "unknown": it is the test
+    of a step which is kept unless it is found wrong, as the last
+    simplification of a verified value (:func:`~.marichev.checked_tidy`).
+
+    Examples
+    ========
+
+    >>> from sympy import symbols, log, sqrt, I, pi, gamma
+    >>> from sympy_extras.integrals.conditions import numerical_verdict
+    >>> a = symbols('a')
+    >>> numerical_verdict(sqrt(a**2), a, a > 0), numerical_verdict(sqrt(a**2), a, a < 0)
+    (True, False)
+    >>> numerical_verdict(log(-a), log(a) + I*pi, None, a > 0)
+    True
+    >>> numerical_verdict(gamma(a - a), gamma(a - a) + 1) is None
+    True
+    """
+    return _samples_verdict(a, b, assumptions, condition, samples, patient=True)
+
+
+def _samples_verdict(a: Expr, b: Expr, assumptions: Assumptions, condition: Boolean, samples: int,
+                     patient: bool) -> Optional[bool]:
+    """``False`` at the first sample where ``a`` and ``b`` differ,
+    ``None`` when a sample could not be taken or compared (at the first
+    one unless ``patient``, which goes on looking for a difference),
+    ``True`` when they agree at every sample."""
     symbols = sorted_symbols(free_symbols(a) | free_symbols(b))
     rng = random.Random(str((a, b)))
+    verdict: Optional[bool] = True
     for _ in range(samples if symbols else 1):
+        values = _sample_under(symbols, assumptions, condition, rng)
+        outcome = None if values is None else _agree_at(a, b, values)
+        if outcome is False:
+            return False
+        if outcome is None:
+            if not patient or values is None:
+                return None
+            verdict = None
+    return verdict
+
+
+def _sample_under(symbols: Sequence[Symbol], assumptions: Assumptions, condition: Boolean,
+                  rng: random.Random) -> Optional[dict[Symbol, Expr]]:
+    """Values of the symbols satisfying the assumptions and the condition:
+    an instance of both when the solver finds one, otherwise (the
+    condition is beyond it: ``re(a) > 0``, ``Abs(arg(a)) < pi/2``) values
+    satisfying the assumptions at which the condition evaluates to true."""
+    if condition is true:
+        return sample_values(symbols, assumptions, rng)
+    if condition is false:
+        return None
+    together = sample_values(symbols, [condition] + _items(assumptions), rng)
+    if together is not None:
+        return together
+    for _ in range(4):
         values = sample_values(symbols, assumptions, rng)
         if values is None:
-            return False
-        # values which a rounding error decides are no evidence (the bug:
-        # log(-2*sqrt(2) - 2*sqrt(z)) with z a sum which is exactly zero
-        # was found different from log(2*sqrt(2)) + I*pi, which it is, the
-        # rounding of z putting the argument below the cut at thirty
-        # digits, and SymPy's log of it raised RecursionError in other runs)
-        left, right = reliable_value(a, 30, values), reliable_value(b, 30, values)
-        if left is None or right is None or left.has(nan, zoo, oo, -oo) or right.has(nan, zoo, oo, -oo):
-            return False
-        # SymPy's floats, not Python's: exp(A*x**r) at a sampled point is
-        # 1e300 and more, where abs() of a Python complex overflows
-        gap = as_expr(Abs(left - right).evalf(30))
-        scale = as_expr((1 + Abs(left) + Abs(right)).evalf(30))
-        if not gap.is_comparable or not scale.is_comparable:
-            return False
-        if gap > scale / 10**12:
-            return False
-    return True
+            return None
+        if condition.xreplace(values) is true:
+            return values
+    return None
+
+
+def _agree_at(a: Expr, b: Expr, values: dict[Symbol, Expr]) -> Optional[bool]:
+    """Whether ``a`` and ``b`` have the same value at the sample; ``None``
+    when one of them has no reliable finite value there."""
+    # values which a rounding error decides are no evidence (the bug:
+    # log(-2*sqrt(2) - 2*sqrt(z)) with z a sum which is exactly zero
+    # was found different from log(2*sqrt(2)) + I*pi, which it is, the
+    # rounding of z putting the argument below the cut at thirty
+    # digits, and SymPy's log of it raised RecursionError in other runs)
+    left, right = reliable_value(a, 30, values), reliable_value(b, 30, values)
+    if left is None or right is None or left.has(nan, zoo, oo, -oo) or right.has(nan, zoo, oo, -oo):
+        return None
+    # SymPy's floats, not Python's: exp(A*x**r) at a sampled point is
+    # 1e300 and more, where abs() of a Python complex overflows
+    gap = as_expr(Abs(left - right).evalf(30))
+    scale = as_expr((1 + Abs(left) + Abs(right)).evalf(30))
+    if not gap.is_comparable or not scale.is_comparable:
+        return None
+    return not bool(gap > scale / 10**12)
 
 
 def combine(values: Iterable[ConditionalValue]) -> ConditionalValue:

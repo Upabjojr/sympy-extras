@@ -101,7 +101,7 @@ from sympy_extras.assumptions.ask import Assumptions, ask
 from sympy_extras.assumptions.facts import element
 from sympy_extras.assumptions.refine import refine
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue, decide
+from .conditions import ConditionalValue, decide, numerical_verdict
 from .mellin import BETA_LOWER, GammaQuotient, Match, Product, _beta_kernel, decompose_integrand
 from .slater import expand_meijerg, line_conditions, mellin_barnes
 
@@ -174,6 +174,42 @@ def tidy(value: Expr, assumptions: Assumptions = None, condition: Boolean = true
         # simplify's hyperexpand brings the polar form back
         result = polar_lowergamma(result)
     return result
+
+
+def checked_tidy(value: Expr, assumptions: Assumptions = None, condition: Boolean = true) -> Expr:
+    """:func:`tidy` with a safety net: the tidied value when it cannot be
+    told from ``value`` numerically, ``value`` itself when the two differ
+    at values of the parameters satisfying the assumptions and the
+    condition (:func:`~.conditions.numerical_verdict`).
+
+    The simplifications of :func:`tidy` (``unpolarify``, ``simplify``,
+    ``refine``, the rewriting of logarithms and powers) move values across
+    branch cuts when they go wrong, and they come after the value was
+    checked against a quadrature: this is the check of that last step.
+    Only a difference which was seen rejects the tidied form; when nothing
+    could be compared, or not within a quarter of the time limit of the
+    settings, it is kept, and so it is when the numerical checks of the
+    settings are off.
+
+    Examples
+    ========
+
+    >>> from sympy import symbols, exp_polar, log, sqrt
+    >>> from sympy_extras.integrals.marichev import checked_tidy
+    >>> a = symbols('a')
+    >>> checked_tidy(sqrt(a**2) + log(a*exp_polar(0)), a > 0)
+    a + log(a)
+    """
+    tidied = tidy(value, assumptions, condition)
+    if tidied == value or not settings.numerical_checks:
+        return tidied
+    # under a time limit, as the simplifications are: the sampling asks
+    # the solver for an instance of the assumptions and the condition
+    limit = None if settings.timeout is None else settings.timeout / 4
+    verdict = attempt(lambda: numerical_verdict(value, tidied, assumptions, condition), limit)
+    if verdict is False:
+        return value
+    return tidied
 
 
 def polar_elliptic(value: Expr) -> Expr:

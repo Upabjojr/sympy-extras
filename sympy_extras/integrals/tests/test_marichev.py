@@ -1,16 +1,22 @@
 """Tests of the Marichev–Adamchik integrator over (0, oo), (0, 1) and (1, oo)."""
 from __future__ import annotations
 
+import pytest
 from sympy import (symbols, exp, sin, cos, log, sqrt, besselj, oo, gamma, pi, S, Rational,
-                   EulerGamma, simplify, zeta, Integer, I, erf)
+                   EulerGamma, simplify, zeta, Integer, I, erf, Eq, re, exp_polar)
+from sympy.core.expr import Expr
+from sympy.logic.boolalg import Boolean, true, false
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
 from sympy_extras._typing import ExprLike, as_expr
 from sympy_extras.assumptions import element
-from sympy_extras.integrals.conditions import ConditionalValue
+from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.integrals import marichev
+from sympy_extras.integrals.conditions import ConditionalValue, numerical_verdict, numerically_equal
 from sympy_extras.integrals.marichev import (mellin_integrate, evaluate_quotient, reduce_positive_powers,
-                                             integrate_product)
+                                             integrate_product, checked_tidy)
+from sympy_extras.settings import configure
 from sympy_extras.integrals.mellin import GammaQuotient, decompose_integrand
 
 x, k, s = symbols('x k s')
@@ -268,3 +274,43 @@ def test_the_order_derivative_of_a_bessel_function_at_zero_is_the_k_function() -
     assert bessel_k_forms(-2 * Subs(Derivative(besseli(nu, z), nu), nu, 0)) == 2 * besselk(0, z)
     k, s, t = symbols('k s t', positive=True)
     assert definite_integral(exp(-k**2 / (4 * t)) * exp(-s * t) / (2 * t), (t, 0, oo)) == besselk(0, k * sqrt(s))
+
+
+def test_the_verdict_of_a_comparison_tells_different_from_unknown() -> None:
+    # different where both have a value, under the assumptions and the
+    # condition the samples are taken in
+    assert numerical_verdict(sqrt(k**2), k, k > 0) is True
+    assert numerical_verdict(sqrt(k**2), k, k < 0) is False
+    assert numerical_verdict(log(-k), log(k) + I * pi, None, k > 0) is True
+    assert numerical_verdict(log(-k), log(k) - I * pi, None, k > 0) is False
+    # a condition the solver has no instance of is sampled by rejection
+    assert numerical_verdict(sqrt(k**2), k, None, re(k) > 0) is True
+    # nothing is compared at a pole, nor without a sample: unknown, which
+    # numerically_equal reports as "not equal"
+    assert numerical_verdict(gamma(-k), gamma(-k) + 1, Eq(k, 2)) is None
+    assert numerical_verdict(k, k + 1, None, (k > 0) & (k < 0)) is None
+    assert numerical_verdict(k, k + 1, None, false) is None
+    assert numerically_equal(gamma(-k), gamma(-k), Eq(k, 2)) is False
+    # a difference at a later sample is still looked for after a sample
+    # which could not be compared
+    assert numerical_verdict(S.One, S(2)) is False
+
+
+def test_a_tidied_value_which_differs_is_refused(monkeypatch: object) -> None:
+    # the simplification of a verified value was returned unchecked (it
+    # once turned log(-exp_polar(I*pi)) into 2*I*pi): a wrong tidy, which
+    # this one is on purpose, must not reach the caller
+    assert isinstance(monkeypatch, pytest.MonkeyPatch)
+    assert checked_tidy(sqrt(a**2) + log(a * exp_polar(0))) == a + log(a)
+
+    def wrong(value: Expr, assumptions: Assumptions = None, condition: Boolean = true) -> Expr:
+        return as_expr(value + 1)
+
+    monkeypatch.setattr(marichev, 'tidy', wrong)
+    assert checked_tidy(1 / a) == 1 / a
+    assert checked_tidy(log(-k), None, k < 0) == log(-k)
+    # only a difference which was seen rejects: nothing is compared at the
+    # pole, and nothing at all when the numerical checks are off
+    assert checked_tidy(gamma(-k), Eq(k, 2)) == gamma(-k) + 1
+    with configure(numerical_checks=False):
+        assert checked_tidy(1 / a) == 1 / a + 1

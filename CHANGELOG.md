@@ -692,6 +692,27 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `definite_integral` checks its last step too: the verified value went
+  through `tidy` (`unpolarify`, `simplify`, `refine`, the rewriting of
+  logarithms and powers) and the tidied form was returned unchecked, the
+  only step after the quadrature on the way to the caller (the same
+  simplification once turned `log(-exp_polar(I*pi))` into `2*I*pi` in the
+  method which asks SymPy's `integrate`, which guards it since). The new
+  `sympy_extras.integrals.marichev.checked_tidy` compares the tidied value
+  with the untidied one at values of the parameters satisfying the
+  assumptions and the condition of the value, under a quarter of the time
+  limit, and keeps the untidied one when they differ; it needs no new
+  quadrature. The comparison is the new
+  `sympy_extras.integrals.conditions.numerical_verdict`, which tells
+  "different" (`False`) from "nothing could be compared" (`None`: no
+  sample, a pole, a value a rounding error decides), where
+  `numerically_equal` answers `False` to both; a condition the solver has
+  no instance of (`re(a) > 0`) is sampled by rejection. Only a difference
+  which was seen rejects the tidied form, and nothing is compared when the
+  numerical checks are off. The guard did not fire in the tests of
+  `sympy_extras/integrals` (160 comparisons) nor in the census of 1141
+  definite integrals (232 comparisons): no value changes.
+
 - The continuous integration had failed on every push since 18 September:
   `definite_integral(log(sin(x)/x), (x, 0, pi/2))` takes 9 s of its limit
   of 15 s on the machine where the limits were chosen, and came out

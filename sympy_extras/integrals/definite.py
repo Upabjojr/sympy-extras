@@ -134,7 +134,7 @@ from sympy_extras.assumptions.facts import element
 from sympy_extras.assumptions.solve import solve
 from sympy_extras.settings import settings
 from .conditions import ConditionalValue, _items, decide, sample_values
-from .marichev import mellin_integrate, tidy
+from .marichev import checked_tidy, mellin_integrate, tidy
 from .mellin import mellin_transform, monomial
 
 __all__ = ['definite_integral', 'conditional_integral', 'verify_numerically', 'Limits']
@@ -249,7 +249,9 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
             return enclosed[0]
     if found is None or found.value.has(nan):
         return as_expr(Integral(f_, (x, a, b)))
-    found = ConditionalValue(tidy(found.value, assumptions, found.condition), found.condition)
+    # the last step, checked like the ones before it: the simplification
+    # is kept unless it is found to change the value
+    found = ConditionalValue(checked_tidy(found.value, assumptions, found.condition), found.condition)
     if conds == 'none':
         return found.value
     return found.as_piecewise(Integral(f_, (x, a, b)))

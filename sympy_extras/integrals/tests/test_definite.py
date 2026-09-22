@@ -705,3 +705,25 @@ def test_a_hidden_zero_next_to_a_branch_cut() -> None:
     from sympy import CRootOf
     root = CRootOf(x**2 - 2, 0)
     assert reliable_form(as_expr(asin(sqrt(2) * root / 2) + pi / 2)) is not None
+
+
+def test_the_last_simplification_is_checked(monkeypatch: object) -> None:
+    # the value of definite_integral went through tidy after its check
+    # against the quadrature, and the tidied form was returned unchecked: a
+    # tidy which changes the value (this one adds 1) must not be believed
+    import pytest
+    from sympy.core.expr import Expr
+    from sympy.logic.boolalg import Boolean, true
+    from sympy_extras.assumptions.ask import Assumptions
+    from sympy_extras.integrals import marichev
+    assert isinstance(monkeypatch, pytest.MonkeyPatch)
+
+    def wrong(value: Expr, assumptions: Assumptions = None, condition: Boolean = true) -> Expr:
+        return as_expr(value + 1)
+
+    monkeypatch.setattr(marichev, 'tidy', wrong)
+    assert definite_integral(x**2, (x, 0, a)) == a**3 / 3
+    assert definite_integral(1 / (x**2 + a**2), (x, -oo, oo)) == pi / a
+    assert definite_integral(x**2, (x, 0, 3)) == 9
+    with configure(numerical_checks=False):
+        assert definite_integral(x**2, (x, 0, a)) == a**3 / 3 + 1
