@@ -73,7 +73,7 @@ The setup used throughout:
 >>> resolve(ForAll(x, x**2 + b*x + c > 0))
 b**2 < 4*c
 >>> resolve(Exists(x, Eq(a*x**2 + b*x + c, 0)))
-Eq(c, 0) | (4*a*c - b**2 < 0) | ((a > 0) & Eq(4*a*c - b**2, 0)) | ((a < 0) & (4*a*c - b**2 <= 0))
+Eq(c, 0) | (4*a*c - b**2 < 0) | (Ne(b, 0) & (4*a*c - b**2 <= 0))
 
 ```
 

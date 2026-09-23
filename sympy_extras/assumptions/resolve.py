@@ -65,9 +65,9 @@ def resolve(formula: Union[Boolean, bool], domain: Optional[Set] = S.Reals,
     over the reals. With one free variable the result describes a union of
     intervals with exact endpoints; with more free variables it is written
     with sign conditions on the projection factors of the decomposition,
-    and with their root functions when those are not enough (the
-    cylindrical description of
-    :func:`~sympy_extras.polys.cad.cylindrical_formula`).
+    augmented with the derivatives of the factors when those are not
+    enough (Hong's solution formula construction, see
+    :func:`~sympy_extras.polys.cad.quantifier_elimination`).
     Quantified variables in which the formula is linear or quadratic are
     eliminated first by virtual substitution (Loos–Weispfenning,
     Weispfenning), which needs no decomposition; with more than two free

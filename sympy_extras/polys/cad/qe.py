@@ -7,9 +7,25 @@ cell of the decomposition of the space of the free variables is obtained by
 propagating the truth values of the cells of the full decomposition
 downwards, since every polynomial, and so every atom of the formula, has a
 constant sign on every cell.
+
+With several free variables the answer is a formula in the signs of the
+projection factors of the free levels (a solution formula), which is
+found when no true cell of the space of the free variables has the sign
+vector of a false one; when one does, the projection is augmented after
+Hong [1]_ with the derivatives of the factors which vanish between the
+two cells, and the space of the free variables is decomposed again
+(:func:`_separating_refinement`).
+
+References
+==========
+
+.. [1] H. Hong, Simple solution formula construction in cylindrical
+       algebraic decomposition based quantifier elimination, ISSAC 1992,
+       pp. 177-188.
 """
 from __future__ import annotations
 
+from itertools import combinations
 from typing import Callable, Optional, Sequence, Union
 
 from sympy.core.expr import Expr
@@ -26,7 +42,7 @@ from sympy_extras._typing import (QuantifierPrefix, QuantifierSpec, Sign,
 
 from .lifting import (CAD, CADCell, Lifting, NotWellOriented, _factor_signs,
     cylindrical_algebraic_decomposition, lifting_for)
-from .projection import _to_polys, projection_sets
+from .projection import _PROJECTIONS, _to_polys, augmented_projection_sets, projection_sets
 
 #: the truth value of a formula on a cell
 CellTruth = tuple[CADCell, bool]
@@ -464,34 +480,360 @@ _SIGN_RELATIONS: dict[frozenset[int], type] = {
 }
 
 
+#: the true and the false cells of the space of the free variables with
+#: one sign vector of the projection factors
+_SignClasses = dict[tuple[Sign, ...], tuple[list[CADCell], list[CADCell]]]
+
+
+def _sign_classes(cells: Sequence[CellTruth]) -> _SignClasses:
+    """The cells grouped by the signs of the projection factors of their
+    levels, the true ones and the false ones apart."""
+    classes: _SignClasses = {}
+    for cell, value in cells:
+        trues, falses = classes.setdefault(_sign_vector(cell), ([], []))
+        (trues if value else falses).append(cell)
+    return classes
+
+
+def _conflicts(classes: _SignClasses) -> list[tuple[CADCell, CADCell]]:
+    """The pairs of a true and a false cell with the same sign vector:
+    the signs of the projection factors do not tell them apart."""
+    return [(t, f) for trues, falses in classes.values() for t in trues for f in falses]
+
+
+def _ancestors(cell: CADCell) -> list[CADCell]:
+    """The cell and the cells below it, from level 1 up."""
+    chain: list[CADCell] = []
+    current: Optional[CADCell] = cell
+    while current is not None and current.level > 0:
+        chain.append(current)
+        current = current.parent
+    chain.reverse()
+    return chain
+
+
+def _separating_factors(cad: CAD, a: CADCell, b: CADCell) -> tuple[int, list[Poly]]:
+    """The first level at which two cells with the same sign vector lie
+    in different cells (of one stack, since the cells below are the
+    same), and the projection factors of that level which vanish on the
+    sections of the stack between the two, these included: by Thom's
+    lemma the signs of such a factor and of its derivatives of all orders
+    tell the two apart, so that a round of derivatives of these factors
+    adds a polynomial to the projection as long as the conflict lasts."""
+    chain_a, chain_b = _ancestors(a), _ancestors(b)
+    for level, (cell_a, cell_b) in enumerate(zip(chain_a, chain_b), start=1):
+        if cell_a.index != cell_b.index:
+            break
+    else:
+        raise ValueError("the cells are one cell")  # pragma: no cover
+    stack = cad.cells_at(1) if cell_a.parent is None else cad.children(cell_a.parent)
+    low, high = sorted([cell_a.index[-1], cell_b.index[-1]])
+    factors: list[Poly] = []
+    for cell in stack:
+        if cell.is_section and low <= cell.index[-1] <= high:
+            for i, sign in enumerate(cell._signs):
+                if sign == 0 and cad.projection[level - 1][i] not in factors:
+                    factors.append(cad.projection[level - 1][i])
+    return level, factors
+
+
+def _inherited_truth(lifting: Lifting, counts: Sequence[int], truth: dict[tuple[int, ...], bool],
+                     k: int) -> list[CellTruth]:
+    """The truth values of the cells of level ``k`` of a lifting which
+    refines the decomposition whose cells have the values ``truth`` (by
+    their indices): the first ``counts[j]`` factors of level ``j + 1`` of
+    the refining projection are those of the refined one, so that a cell
+    of the refinement is a section of the refined decomposition when one
+    of them vanishes there (and not identically over the cell below), and
+    the index of the cell of the refined decomposition which contains it
+    counts those sections."""
+    found: list[CellTruth] = []
+
+    def walk(parent: CADCell, index: tuple[int, ...]) -> None:
+        stack = lifting.stack(parent)
+        count = counts[parent.level]
+        # a factor with the sign 0 on a sector vanishes identically over
+        # the parent, and has no section
+        kept = [i for i in range(count) if any(cell._signs[i] != 0 for cell in stack)]
+        below = 0
+        for child in stack:
+            if any(child._signs[i] == 0 for i in kept):
+                below += 1
+                child_index = index + (2 * below,)
+            else:
+                child_index = index + (2 * below + 1,)
+            if child.level == k:
+                found.append((child, truth[child_index]))
+            else:
+                walk(child, child_index)
+
+    walk(lifting.root, ())
+    return found
+
+
+#: the rounds of augmentation of the projection which are tried
+_ROUNDS = 16
+
+
+def _separating_refinement(cad: CAD, cells: Sequence[CellTruth], k: int) -> Optional[tuple[CAD, list[CellTruth]]]:
+    """A refinement of the decomposition of the space of the first ``k``
+    variables (the free ones) on which the signs of the projection factors
+    tell the true cells from the false ones, with its cells and their
+    truth values, by the augmented projection of Hong [1]_: as long as a
+    true and a false cell have the same sign vector, polynomials are added
+    to the projection factor sets of the free levels and the space is
+    decomposed again, each cell of the refinement taking the truth value
+    of the cell of the previous decomposition which contains it. The
+    polynomials added are, at the first round, the full projection of the
+    level above the free space (the reduced projection for an equational
+    constraint leaves out resultants and discriminants which the formula
+    may need), and then the derivatives of the projection factors which
+    vanish between two cells with one sign vector, at the first level
+    where the two lie in different cells (Brown's choice of the
+    polynomials which resolve a conflict [2]_): the signs of a factor
+    and of its derivatives of all orders tell two cells of one stack
+    apart (Thom's lemma), so that the rounds end. ``None`` if they do
+    not within :data:`_ROUNDS`.
+
+    References
+    ==========
+
+    .. [1] H. Hong, Simple solution formula construction in cylindrical
+           algebraic decomposition based quantifier elimination, ISSAC
+           1992, pp. 177-188.
+    .. [2] C. W. Brown, Solution formula construction for truth invariant
+           CAD's, PhD thesis, University of Delaware, 1999.
+    """
+    gens = list(cad.gens)
+    free = gens[:k]
+    projection = [list(level) for level in cad.projection[:k]]
+    truth = {cell.index: value for cell, value in cells}
+    counts = [len(level) for level in projection]
+    method = cad.method
+    current, current_cells = cad, list(cells)
+    differentiated: set[Poly] = set()
+    extra: list[Poly] = []
+    above_added = False
+    for _ in range(_ROUNDS):
+        conflicts = _conflicts(_sign_classes(current_cells))
+        if not conflicts:
+            return current, current_cells
+        added: list[Poly] = []
+        if not above_added and k < len(gens):
+            above_added = True
+            operator = _PROJECTIONS[method]
+            for g in operator(cad.projection[k], gens[k]):
+                g = Poly(g.as_expr(), *free)
+                if not g.is_ground and g not in projection[_free_level(g, free) - 1] and g not in added:
+                    added.append(g)
+        if not added:
+            for t, f in conflicts:
+                level, factors = _separating_factors(current, t, f)
+                for g in factors:
+                    if g not in differentiated:
+                        differentiated.add(g)
+                        derivative = g.diff(free[level - 1])
+                        if not derivative.is_ground:
+                            added.append(derivative)
+        if not added:
+            return None  # pragma: no cover
+        extra.extend(added)
+        while True:
+            refined = augmented_projection_sets(projection, free, extra, method)
+            lifting = lifting_for(refined, free, method)
+            try:
+                levels = lifting.lift_all()
+            except NotWellOriented:
+                if method == 'hong':
+                    raise
+                method = 'hong'
+                continue
+            break
+        current_cells = _inherited_truth(lifting, counts, truth, k)
+        current = CAD(gens, cad.polys, refined + [list(level) for level in cad.projection[k:]], method,
+                      levels + [[] for _ in gens[k:]])
+    return None
+
+
+def _free_level(g: Poly, free: Sequence[Symbol]) -> int:
+    """The last of the ``free`` variables which ``g`` depends on, from 1."""
+    for j in range(len(free), 0, -1):
+        if g.degree(free[j - 1]) > 0:
+            return j
+    return 0
+
+
 def _sign_formula(cad: CAD, cells: Sequence[CellTruth], k: int) -> Optional[Boolean]:
     """A formula in the projection factors of the first ``k`` levels that
     holds exactly on the true cells, or ``None`` if the truth of the cells
-    is not determined by the signs of those factors."""
+    is not determined by the signs of those factors: a disjunction of
+    prime implicants (conjunctions of sign conditions which hold on no
+    false cell) covering the true cells with the fewest conditions
+    (:func:`_prime_implicants`, :func:`_minimum_cover`), or a greedy
+    cover when the prime implicants are too many."""
     factors = [f for level in cad.projection[:k] for f in level]
-    true_vectors: set[tuple[Sign, ...]] = set()
-    false_vectors: set[tuple[Sign, ...]] = set()
-    for cell, value in cells:
-        (true_vectors if value else false_vectors).add(_sign_vector(cell))
-    if true_vectors & false_vectors:
+    classes = _sign_classes(cells)
+    if _conflicts(classes):
         return None
+    true_vectors = {vector for vector, (trues, _) in classes.items() if trues}
+    false_vectors = {vector for vector, (_, falses) in classes.items() if falses}
     if not true_vectors:
         return S.false
     if not false_vectors:
         return S.true
 
+    trues = sorted(true_vectors)
+    falses = sorted(false_vectors)
+    primes = _prime_implicants(trues, falses)
+    if primes is None:
+        cover = _greedy_implicants(trues, falses)
+    else:
+        cover = _minimum_cover(primes, trues)
+    terms: list[Boolean] = []
+    for implicant in cover:
+        atoms = [_SIGN_RELATIONS[_SIGNS_OF[mask]](factors[i].as_expr(), 0)
+                 for i, mask in enumerate(implicant) if mask != _ALL]
+        terms.append(And(*atoms))
+    return Or(*terms)
+
+
+#: the allowed signs of a factor as a bit mask: bit 0 for -1, bit 1 for 0
+#: and bit 2 for 1
+_BIT: dict[Sign, int] = {-1: 1, 0: 2, 1: 4}
+_ALL = 7
+_SIGNS_OF: dict[int, frozenset[int]] = {mask: frozenset(s for s, bit in _BIT.items() if mask & bit)
+                                        for mask in range(1, 8)}
+#: an implicant: the allowed signs of every factor, a conjunction of sign
+#: conditions
+_Implicant = tuple[int, ...]
+#: the transversals and the prime implicants beyond which the greedy
+#: minimisation is used instead
+_PRIME_LIMIT = 4000
+
+
+def _covers(implicant: _Implicant, vector: Sequence[Sign]) -> bool:
+    return all(mask & _BIT[s] for mask, s in zip(implicant, vector))
+
+
+def _atoms(implicant: _Implicant) -> int:
+    return sum(1 for mask in implicant if mask != _ALL)
+
+
+def _minimal_transversals(edges: Sequence[frozenset[int]], limit: int) -> Optional[list[frozenset[int]]]:
+    """The minimal hitting sets of the hyperedges ``edges`` (Berge's
+    algorithm: the minimal transversals of the first edges are extended
+    edge by edge), or ``None`` when more than ``limit`` of them appear on
+    the way."""
+    transversals: list[frozenset[int]] = [frozenset()]
+    for edge in edges:
+        hitting = [t for t in transversals if t & edge]
+        extended: list[frozenset[int]] = []
+        for t in transversals:
+            if t & edge:
+                continue
+            for e in edge:
+                candidate = t | {e}
+                if any(h < candidate for h in hitting) or candidate in extended:
+                    continue
+                extended.append(candidate)
+        extended = [c for c in extended if not any(d < c for d in extended)]
+        transversals = hitting + extended
+        if len(transversals) > limit:
+            return None
+    return transversals
+
+
+def _prime_implicants(trues: Sequence[tuple[Sign, ...]], falses: Sequence[tuple[Sign, ...]]
+                      ) -> Optional[list[_Implicant]]:
+    """The prime implicants: the conjunctions of sign conditions which
+    hold on no false vector and on a true one, and which no condition
+    can be dropped or widened from. An implicant which holds on a true
+    vector `v` excludes, for every false vector, one of its signs which
+    differ from those of `v`: the sets of the pairs (factor, sign) which
+    a false vector offers are hyperedges, and the prime implicants
+    holding on `v` are their minimal transversals. ``None`` when there
+    are more than :data:`_PRIME_LIMIT` of them, or of the transversals
+    on the way."""
+    if not trues:
+        return []
+    m = len(trues[0])
+    found: dict[_Implicant, None] = {}
+    for v in trues:
+        edges_found: set[frozenset[int]] = set()
+        for f in falses:
+            edges_found.add(frozenset(3 * i + f[i] + 1 for i in range(m) if f[i] != v[i]))
+        edges = sorted(edges_found, key=len)
+        # an edge containing another is hit whenever the other is
+        edges = [e for e in edges if not any(d < e for d in edges)]
+        transversals = _minimal_transversals(edges, _PRIME_LIMIT)
+        if transversals is None:
+            return None
+        for t in transversals:
+            masks = [_ALL] * m
+            for code in t:
+                masks[code // 3] &= ~(1 << (code % 3))
+            found[tuple(masks)] = None
+        if len(found) > _PRIME_LIMIT:
+            return None
+    return list(found)
+
+
+#: the number of prime implicants up to which the cover is found exactly
+_EXACT_COVER = 18
+
+
+def _minimum_cover(primes: Sequence[_Implicant], trues: Sequence[tuple[Sign, ...]]) -> list[_Implicant]:
+    """A cover of the true vectors by prime implicants with the fewest
+    sign conditions (then the fewest implicants): a greedy cover without
+    its redundant members, bettered by every smaller cover when the
+    primes are at most :data:`_EXACT_COVER`."""
+    full = (1 << len(trues)) - 1
+    coverage = [sum(1 << j for j, v in enumerate(trues) if _covers(p, v)) for p in primes]
+
+    def union(indices: Sequence[int]) -> int:
+        total = 0
+        for i in indices:
+            total |= coverage[i]
+        return total
+
+    def cost(indices: Sequence[int]) -> tuple[int, int]:
+        return sum(_atoms(primes[i]) for i in indices), len(indices)
+
+    order = sorted(range(len(primes)), key=lambda i: (-bin(coverage[i]).count('1'), _atoms(primes[i]), primes[i]))
+    chosen: list[int] = []
+    covered = 0
+    while covered != full:
+        best = max(order, key=lambda i: (bin(coverage[i] & ~covered).count('1'), -_atoms(primes[i])))
+        chosen.append(best)
+        covered |= coverage[best]
+    for i in list(chosen):
+        rest = [j for j in chosen if j != i]
+        if union(rest) == full:
+            chosen = rest
+    best_cost = cost(chosen)
+    if len(primes) <= _EXACT_COVER:
+        for size in range(1, len(chosen) + 1):
+            for combination in combinations(order, size):
+                if union(combination) == full and cost(combination) < best_cost:
+                    best_cost, chosen = cost(combination), list(combination)
+    return [primes[i] for i in sorted(chosen, key=lambda i: primes[i])]
+
+
+def _greedy_implicants(trues: Sequence[tuple[Sign, ...]], falses: Sequence[tuple[Sign, ...]]) -> list[_Implicant]:
+    """A cover of the true vectors by implicants, when the prime
+    implicants are too many: each true sign vector is a conjunction of
+    sign conditions; conjunctions differing in one factor are merged,
+    then the redundant conditions dropped, until nothing changes, and
+    the implicants whose true vectors the others cover are removed."""
     Conditions = dict[int, frozenset[int]]
 
     def covers(conditions: Conditions, vector: tuple[Sign, ...]) -> bool:
         return all(vector[i] in allowed for i, allowed in conditions.items())
 
     def consistent(conditions: Conditions) -> bool:
-        return not any(covers(conditions, v) for v in false_vectors)
+        return not any(covers(conditions, v) for v in falses)
 
-    # each true sign vector is a conjunction of sign conditions; merge
-    # conjunctions differing in one factor, then drop redundant conditions,
-    # and repeat until nothing changes
-    implicants: list[Conditions] = [{i: frozenset([s]) for i, s in enumerate(v)} for v in sorted(true_vectors)]
+    implicants: list[Conditions] = [{i: frozenset([s]) for i, s in enumerate(v)} for v in trues]
     while True:
         merged = True
         while merged:
@@ -527,9 +869,9 @@ def _sign_formula(cad: CAD, cells: Sequence[CellTruth], k: int) -> Optional[Bool
         if reduced == implicants:
             break
         implicants = reduced
-    # drop implicants whose true cells are all covered by the others
+
     def covered(conditions: Conditions) -> set[tuple[Sign, ...]]:
-        return {v for v in true_vectors if covers(conditions, v)}
+        return {v for v in trues if covers(conditions, v)}
 
     final = list(reduced)
     dropped = True
@@ -542,12 +884,11 @@ def _sign_formula(cad: CAD, cells: Sequence[CellTruth], k: int) -> Optional[Bool
                 final.remove(conditions)
                 dropped = True
                 break
-    terms: list[Boolean] = []
+    m = len(trues[0]) if trues else 0
+    result: list[_Implicant] = []
     for conditions in final:
-        atoms = [_SIGN_RELATIONS[allowed](factors[i].as_expr(), 0)
-                 for i, allowed in sorted(conditions.items())]
-        terms.append(And(*atoms))
-    return Or(*terms)
+        result.append(tuple(sum(_BIT[s] for s in conditions[i]) if i in conditions else _ALL for i in range(m)))
+    return result
 
 
 class _Tables(_Compiled):
@@ -648,11 +989,14 @@ def quantifier_elimination(formula: Union[Boolean, bool], quantifiers: Quantifie
     quantifier-free formula in the free variables which is equivalent to
     the input over the reals. With one free variable it describes a union
     of intervals with exact endpoints; with more the formula is built from
-    sign conditions on the projection factors of the decomposition, and
-    when those factors are not enough to express it, from their root
-    functions (the cylindrical description of
-    :func:`~sympy_extras.polys.cad.cylindrical_formula`, which bounds each
-    free variable by functions of the ones before).
+    sign conditions on the projection factors of the decomposition (a
+    minimum cover of the true cells by prime implicants), and when those
+    factors do not tell the true cells from the false ones the projection
+    is augmented with the derivatives of the factors until they do
+    (Hong's solution formula construction, :func:`_separating_refinement`;
+    the root functions of the cylindrical description of
+    :func:`~sympy_extras.polys.cad.cylindrical_formula` are the last
+    resort, should the augmentation not end).
 
     Examples
     ========
@@ -663,7 +1007,7 @@ def quantifier_elimination(formula: Union[Boolean, bool], quantifiers: Quantifie
     >>> qe(x**2 + b*x + c > 0, [('forall', x)])
     b**2 - 4*c < 0
     >>> qe(Eq(a*x**2 + b*x + c, 0), [('exists', x)])
-    Eq(c, 0) | (4*a*c - b**2 < 0) | ((a > 0) & Eq(4*a*c - b**2, 0)) | ((a < 0) & (4*a*c - b**2 <= 0))
+    Eq(c, 0) | (4*a*c - b**2 < 0) | (Ne(b, 0) & (4*a*c - b**2 <= 0))
     >>> qe(Eq(x**2 + y**2, 1), [('exists', y)])
     (x >= -1) & (x <= 1)
     >>> qe(x**2 + y**2 < 1, [('forall', x), ('exists', y)])
@@ -672,7 +1016,7 @@ def quantifier_elimination(formula: Union[Boolean, bool], quantifiers: Quantifie
     True
     >>> from sympy.abc import z
     >>> qe(Eq(z**2, x) & (z > y), [('exists', z)], free=[x, y])
-    (x >= 0) & (y < sqrt(x))
+    ((x >= 0) & (y < 0)) | (x - y**2 > 0)
     """
     cad, free_vars, value, cells = _truth_values(formula, free, quantifiers, method, partial)
     if not free_vars:
@@ -687,7 +1031,14 @@ def quantifier_elimination(formula: Union[Boolean, bool], quantifiers: Quantifie
     formula_ = _sign_formula(cad, cells, len(free_vars))
     if formula_ is None:
         # the signs of the projection factors do not tell the true cells
-        # from the false ones (sympy-extras#9): their root functions do
+        # from the false ones (sympy-extras#9): the augmented projection
+        # adds the polynomials whose signs do
+        refined = _separating_refinement(cad, cells, len(free_vars))
+        if refined is not None:
+            cad, cells = refined
+            formula_ = _sign_formula(cad, cells, len(free_vars))
+    if formula_ is None:
+        # the root functions of the factors describe the set
         from .cylindrical import described_by_root_functions
         return described_by_root_functions(cad, free_vars, cells)
     return formula_

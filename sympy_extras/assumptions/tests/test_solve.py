@@ -245,3 +245,20 @@ def test_the_cases_of_real_parameters() -> None:
     assert isinstance(found, Union)
     assert ConditionSet((x, y), Eq(a, Rational(1, 4)), FiniteSet((Rational(1, 2), Rational(1, 2)))) in found.args
     assert ConditionSet((x, y), Eq(a, 0), FiniteSet((0, 1), (1, 0))) in found.args
+
+
+def test_the_cases_of_real_parameters_beyond_the_projection_factors() -> None:
+    # sympy-extras#9: the signs of the projection factors of the
+    # parameters do not describe where the solutions are (a - b**2 has one
+    # sign on both sides of the parabola); the cases are cylindrical
+    # descriptions, which never needed them, and the condition of each
+    # case holds exactly where its solutions are
+    from sympy.abc import b
+    found = solve(Eq(x**2, a) & (x > b), x, domain=S.Reals, cases=True)
+    assert isinstance(found, Union) and len(found.args) == 2
+    # (ConditionSet.subs leaves a symbol of the condition alone: xreplace)
+    assert found.xreplace({a: 4, b: 1}) == FiniteSet(2)
+    assert found.xreplace({a: 4, b: -3}) == FiniteSet(-2, 2)
+    assert found.xreplace({a: 4, b: 2}) == S.EmptySet
+    assert found.subs(a, -1) == S.EmptySet
+    assert found.xreplace({a: 0, b: -1}) == FiniteSet(0)

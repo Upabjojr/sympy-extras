@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import random
+from typing import Optional, Sequence
+
+from sympy.core.basic import Basic
+from sympy.core.expr import Expr
 from sympy.core.numbers import Rational
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import Boolean
@@ -12,9 +17,10 @@ from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import CRootOf
 from sympy.sets.sets import Interval, FiniteSet, Union
-from sympy_extras._typing import QuantifierSpec
+from sympy_extras._typing import QuantifierSpec, as_boolean
 from sympy_extras.polys.cad.qe import (quantifier_elimination, decide,
-    sample_points, solution_set, _truth_values)
+    sample_points, solution_set, _truth_values, CellTruth)
+from sympy_extras.polys.cad.lifting import CAD
 from sympy.testing.pytest import raises
 from sympy.abc import a, b, c, d, e, x, y, z
 
@@ -124,13 +130,14 @@ def test_quantifier_elimination_several_variables() -> None:
     r = qe(Eq(a*x**2 + b*x + c, 0), [('exists', x)])
     ref = And(4*a*c - b**2 <= 0, Or(Eq(c, 0), Ne(a, 0), 4*a*c - b**2 < 0))
     assert _equivalent(r, ref, [a, b, c])
-    assert r == Or(Eq(c, 0), 4*a*c - b**2 < 0, And(a > 0, Eq(4*a*c - b**2, 0)),
-                   And(a < 0, 4*a*c - b**2 <= 0))
+    # a minimum cover of the true cells by prime implicants (the greedy
+    # merge gave four terms, (a > 0 & D = 0) and (a < 0 & D <= 0) apart)
+    assert r == Or(Eq(c, 0), 4*a*c - b**2 < 0, And(Ne(b, 0), 4*a*c - b**2 <= 0))
     # no real root, QEPCAD: 4 a c - b^2 >= 0 /\ c /= 0 /\ [ b = 0 \/ 4 a c - b^2 > 0 ]
     r = qe(Ne(a*x**2 + b*x + c, 0), [('forall', x)])
     ref = And(4*a*c - b**2 >= 0, Ne(c, 0), Or(Eq(b, 0), 4*a*c - b**2 > 0))
     assert _equivalent(r, ref, [a, b, c])
-    assert r == Or(And(Eq(a, 0), Eq(b, 0), Ne(c, 0)), 4*a*c - b**2 > 0)
+    assert r == Or(4*a*c - b**2 > 0, And(Eq(b, 0), Ne(c, 0), 4*a*c - b**2 >= 0))
     # a positive value of the general quadratic; Redlog answers
     # a > 0 or (b < 0 and a = 0) or (a = 0 and (b > 0 or (c > 0 and b = 0)))
     # or (a < 0 and 4*a*c - b^2 < 0)
@@ -158,11 +165,6 @@ def test_quantifier_elimination_several_variables() -> None:
     # the depressed cubic has a real root for every p, q
     p, q = symbols('p q')
     assert qe(Eq(x**3 + p*x + q, 0), [('exists', x)], free=[p, q]) == S.true
-    # the projection factors of two free variables may not suffice: for
-    # x >= 0 the condition is y < sqrt(x), and no factor vanishes there
-    # (sympy-extras#9: NotImplementedError was raised; the root functions
-    # of the factors describe the set)
-    assert qe(Eq(z**2, x) & (z > y), [('exists', z)], free=[x, y]) == And(x >= 0, y < sqrt(x))
 
 
 def test_sample_points() -> None:
@@ -202,7 +204,9 @@ def test_sign_formula_minimization() -> None:
     # a formula that needs the sign of two factors
     assert qe(x*y > 0, [], free=[x, y]) == Or(And(x < 0, y < 0), And(x > 0, y > 0))
     r = qe(x*y >= 0, [], free=[x, y])
-    assert r == Or(Eq(y, 0), And(x >= 0, y > 0), And(x <= 0, y <= 0))
+    # the greedy merge gave three terms, Eq(y, 0) | (x >= 0 & y > 0) |
+    # (x <= 0 & y <= 0); the prime implicants cover the true cells with two
+    assert r == Or(And(x >= 0, y >= 0), And(x <= 0, y <= 0))
     assert _equivalent(r, x*y >= 0, [x, y])
     # merged signs
     r = qe(Ne(x*y, 0), [], free=[x, y])
@@ -319,3 +323,150 @@ def test_equational_constraint_in_the_formula() -> None:
     # every polynomial: no reduction
     plain, _, _, _ = _truth_values(formula, [a, b, x, y], [], None)
     assert plain.projection == full.projection
+
+
+def _agrees_at_random_points(formula: Boolean, prefix: QuantifierSpec, answer: Boolean,
+                             free: list[Symbol], points: int, seed: int) -> None:
+    """The answer has the truth value of the quantified formula at random
+    rational points of the space of the free variables (decide answers
+    the formula with the values put in, which has no free variable)."""
+    rng = random.Random(seed)
+    for _ in range(points):
+        values: dict[Basic | complex, Basic | complex] = {v: Rational(rng.randint(-20, 20), rng.randint(1, 5)) for v in free}
+        got = as_boolean(answer.subs(values))
+        assert got in (S.true, S.false), (answer, values)
+        assert bool(got) is decide(as_boolean(formula.subs(values)), prefix), (formula, values)
+
+
+def test_solution_formula_by_the_augmented_projection() -> None:
+    # sympy-extras#9: the projection factors of two free variables may not
+    # tell the true cells from the false ones. For x >= 0 the condition is
+    # y < sqrt(x): the factor y**2 - x is positive on both sides of the
+    # parabola and no factor vanishes on y = 0. NotImplementedError was
+    # raised, then the answer was written with the root function sqrt(x);
+    # Hong's augmented projection adds the derivative y of the factor and
+    # the answer is a formula in polynomial sign conditions
+    from sympy_extras.polys.cad.qe import _separating_refinement, _sign_formula
+    formula: Boolean = Eq(z**2, x) & (z > y)
+    prefix: QuantifierSpec = [('exists', z)]
+    answer = qe(formula, prefix, free=[x, y])
+    assert answer == Or(And(x >= 0, y < 0), x - y**2 > 0)
+    assert qe(formula, prefix, free=[x, y], partial=False) == answer
+    assert qe(formula, prefix, free=[x, y], method='hong') == answer
+    assert _equivalent(answer, And(x >= 0, Or(y < 0, y**2 < x)), [x, y])
+    _agrees_at_random_points(formula, prefix, answer, [x, y], 300, 9)
+    # the refinement: every cell of the refined decomposition takes the
+    # truth value of the cell of the first one which contains it; the
+    # refined projection has the derivative and its cells are more
+    cad, _, _, cells = _truth_values(formula, [x, y], prefix, None)
+    assert _sign_formula(cad, cells, 2) is None
+    refined = _separating_refinement(cad, cells, 2)
+    assert refined is not None
+    cad_, cells_ = refined
+    assert [f.as_expr() for f in cad_.projection[1]] == [x - y**2, y] and cad_.projection[0] == cad.projection[0]
+    assert len(cells_) > len(cells)
+    for cell, value in cells_:
+        if all(coordinate.is_Rational for coordinate in cell.point):
+            assert decide(formula.subs(dict(zip([x, y], cell.point))), prefix) is value
+    # the order of the free variables: the same set
+    answer_ = qe(formula, prefix, free=[y, x])
+    assert _equivalent(answer_, answer, [x, y])
+    # roots of higher degree: the derivatives of x - y**4 and of the cubic
+    # (the second derivative is needed for y - 1 below)
+    formula = Eq(z**4, x) & (z > y)
+    answer = qe(formula, prefix, free=[x, y])
+    assert answer == Or(And(x >= 0, y < 0), x - y**4 > 0)
+    _agrees_at_random_points(formula, prefix, answer, [x, y], 200, 10)
+    formula = Eq(z**3 - 3*z, x) & (z > y)
+    answer = qe(formula, prefix, free=[x, y])
+    assert answer == Or(And(x + 2 >= 0, y - 1 < 0), x - y**3 + 3*y > 0)
+    _agrees_at_random_points(formula, prefix, answer, [x, y], 200, 11)
+    # a bound between two root functions
+    formula = (x**2 + y**2 + z**2 < 1) & (z > x + y)
+    answer = qe(formula, prefix, free=[x, y])
+    assert _equivalent(answer, Or(2*x**2 + 2*x*y + 2*y**2 < 1, And(x + y < 0, x**2 + y**2 < 1)), [x, y])
+    _agrees_at_random_points(formula, prefix, answer, [x, y], 200, 12)
+    # the examples of the docs are described by the projection factors
+    # themselves: the refinement is not needed and the answers do not change
+    assert qe(Eq(a*x**2 + b*x + c, 0), [('exists', x)]) == Or(Eq(c, 0), 4*a*c - b**2 < 0,
+                                                              And(Ne(b, 0), 4*a*c - b**2 <= 0))
+    assert qe(x**2 + y**2 < 1, [], free=[x, y]) == (x**2 + y**2 - 1 < 0)
+
+
+def test_inherited_truth_of_the_refined_cells() -> None:
+    # the cells of the refinement are mapped to the cells of the coarser
+    # decomposition by counting the sections of the old factors: a factor
+    # which vanishes identically over the cell below has no section (the
+    # refined stack over x = 0 has the double root y = 0 of x - y**2 and
+    # the root of y, one section)
+    from sympy_extras.polys.cad.lifting import Lifting
+    from sympy_extras.polys.cad.projection import augmented_projection_sets, projection_sets
+    from sympy_extras.polys.cad.qe import _inherited_truth
+    projection = projection_sets([x - y**2, x*y], [x, y])
+    lifting = Lifting(projection, [x, y], 'mccallum')
+    levels = lifting.lift_all()
+    truth = {cell.index: bool(cell.point[1] < 0) for cell in levels[1]}
+    refined = augmented_projection_sets(projection, [x, y], [y - 1, x - 1])
+    refined_lifting = Lifting(refined, [x, y], 'mccallum')
+    cells = _inherited_truth(refined_lifting, [len(level) for level in projection], truth, 2)
+    assert len(cells) > len(levels[1])
+    assert all(value is bool(cell.point[1] < 0) for cell, value in cells)
+    assert [cell.point for cell, _ in cells if cell.point[0] == 0] == [(0, -1), (0, 0), (0, S.Half), (0, 1), (0, 2)]
+
+
+def test_solution_formulas_at_random_points() -> None:
+    # random formulas with two free variables and one bound one, of
+    # degree two: an equation of degree two in the bound variable with a
+    # bound on it (the kind whose solution set the projection factors do
+    # not describe), or a Boolean combination of sparse relations; the
+    # answers are formulas in polynomial sign conditions, compared with
+    # decide at random rational points, and some take the augmented
+    # projection
+    from sympy_extras.polys.cad import qe as qe_module
+    from sympy_extras.polys.cad.cylindrical import IndexedRoot
+    rng = random.Random(2024)
+    gens = [x, y, z]
+
+    def polynomial(variables: list[Symbol], degree: int, terms: int) -> Expr:
+        monomials = [S.One] + list(variables)
+        if degree >= 2:
+            monomials += [g*h for i, g in enumerate(variables) for h in variables[i:]]
+        chosen = rng.sample(monomials, rng.randint(1, min(terms, len(monomials))))
+        return sum([rng.choice([-3, -2, -1, 1, 2, 3])*m for m in chosen], S.Zero)
+
+    def relation(p: Expr) -> Boolean:
+        return rng.choice([p < 0, p > 0, Eq(p, 0), p <= 0, Ne(p, 0)])
+
+    def structured() -> Boolean:
+        p = z**2 + polynomial([x, y], 2, 2)
+        if rng.random() < 0.5:
+            p += polynomial([x, y], 1, 2)*z
+        bound = z - polynomial([x, y], rng.choice([1, 2]), 2)
+        return And(Eq(p, 0), rng.choice([bound < 0, bound > 0, bound <= 0, bound >= 0]))
+
+    def combination() -> Boolean:
+        atoms = [relation(polynomial(gens, 2, 3)) for _ in range(rng.choice([1, 2, 2]))]
+        formula: Boolean = atoms[0]
+        for other in atoms[1:]:
+            formula = rng.choice([And, Or])(formula, other)
+        return formula
+
+    refinements = 0
+    original = qe_module._separating_refinement
+
+    def counted(cad: CAD, cells: Sequence[CellTruth], k: int) -> Optional[tuple[CAD, list[CellTruth]]]:
+        nonlocal refinements
+        refinements += 1
+        return original(cad, cells, k)
+
+    qe_module._separating_refinement = counted
+    try:
+        for i in range(10):
+            formula = structured() if i % 2 == 0 else combination()
+            prefix: QuantifierSpec = [(rng.choice(['exists', 'forall']), z)]
+            answer = qe(formula, prefix, free=[x, y])
+            assert not answer.has(IndexedRoot) and not answer.has(sqrt(x)), answer
+            _agrees_at_random_points(formula, prefix, answer, [x, y], 30, i)
+    finally:
+        qe_module._separating_refinement = original
+    assert refinements > 0

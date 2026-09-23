@@ -10,6 +10,31 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- Solution formulas by Hong's augmented projection (sympy-extras#9):
+  when the signs of the projection factors of the free variables do not
+  tell the true cells from the false ones, `quantifier_elimination` adds
+  the derivatives of the factors which vanish between two such cells (at
+  the first level where they lie in different cells of one stack, Brown's
+  choice) to the projection factor sets, projects the levels below again
+  and decomposes the space of the free variables again, each cell of the
+  finer decomposition taking the truth value of the cell which contains
+  it, until the signs separate them (Thom's lemma ends the rounds); with
+  an equational constraint the first round adds the resultants and
+  discriminants which the reduced projection left out. `Exists z: z**2 =
+  x and z > y` is now `((x >= 0) & (y < 0)) | (x - y**2 > 0)`, a formula
+  in polynomial sign conditions, where the answer was written with the
+  root function `sqrt(x)` (and `NotImplementedError` was raised before
+  that). `augmented_projection_sets` is the new projection function. The
+  formulas are checked against `decide` at hundreds of random rational
+  points per formula, and on random formulas with two free variables.
+  The sign formula is a minimum cover of the true cells by prime
+  implicants (the minimal transversals of the sets of the sign
+  conditions which exclude each false cell, the cover with the fewest
+  conditions searched exactly for up to 18 prime implicants) instead of
+  a greedy merge: the solvability of the general quadratic is
+  `Eq(c, 0) | (4*a*c - b**2 < 0) | (Ne(b, 0) & (4*a*c - b**2 <= 0))`
+  where it had four terms.
+
 - Partial cylindrical algebraic decompositions (Collins–Hong) for the
   formulas: `decide`, `quantifier_elimination`, `solution_set`,
   `sample_points`, `truth_tables` (which `ask` uses; its cells are now

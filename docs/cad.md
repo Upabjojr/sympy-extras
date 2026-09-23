@@ -79,7 +79,7 @@ Quantifiers are eliminated by propagating the truth of a formula from the
 cells of the full decomposition down to the cells of the space of the free
 variables. With a single free variable the result is a union of intervals
 with exact endpoints; with more free variables it is a formula in the
-polynomials computed by the projection.
+polynomials computed by the projection (a *solution formula*, see below).
 
 ```python
 >>> from sympy import Eq
@@ -98,6 +98,47 @@ False
 
 ```
 
+### Solution formulas
+
+With several free variables the answer is a Boolean combination of sign
+conditions on the projection factors of the free levels: the true cells
+of the space of the free variables have sign vectors which no false cell
+has, and a formula which holds on those sign vectors and on no other is
+found by merging them (a greedy minimisation: cells differing in the
+sign of one factor are joined, redundant conditions dropped, and covered
+terms removed). The signs of the projection factors do not always tell
+the true cells from the false ones: for `Exists z: z**2 = x and z > y`
+the condition is `y < sqrt(x)` on `x >= 0`, the resultant `x - y**2` is
+positive on both sides of the parabola and no factor vanishes on
+`y = 0`. The projection is then *augmented*, after Hong (ISSAC 1992):
+as long as a true and a false cell have the same sign vector, the
+derivatives of the projection factors which vanish between the two (at
+the first level where they lie in different cells of one stack; the
+choice of Brown's thesis) are added to the projection factor sets, the
+levels below are projected again, and the space of the free variables is
+decomposed again, every cell of the finer decomposition taking the truth
+value of the cell which contains it. Two cells of one stack are told
+apart by the signs of a factor and of its derivatives of all orders
+(Thom's lemma), so the rounds end; with an equational constraint the
+first round adds the resultants and discriminants which the reduced
+projection left out. Here the derivative `y` of `x - y**2` does it:
+
+```python
+>>> from sympy.abc import z
+>>> quantifier_elimination(Eq(z**2, x) & (z > y), [('exists', z)], free=[x, y])
+((x >= 0) & (y < 0)) | (x - y**2 > 0)
+>>> quantifier_elimination(Eq(z**4, x) & (z > y), [('exists', z)], free=[x, y])
+((x >= 0) & (y < 0)) | (x - y**4 > 0)
+
+```
+
+The formula is verified against `decide` on the formula with rational
+values put for the free variables, at random points (hundreds of points
+per test formula, and on random formulas with two free and one or two
+bound variables of degree two). When the rounds do not end (they should,
+by Thom's lemma; a bound of sixteen guards against a mistake), the answer
+is written with the root functions of the cylindrical description below.
+
 ### Cylindrical descriptions
 
 The set where a formula holds is a union of cells, and a cell is
@@ -108,9 +149,9 @@ of them), and so on. The $k$-th real root of a projection polynomial is a
 continuous function on the cell below (delineability), so that the true
 cells are described by bounds which are *root functions*: this is the
 output of Mathematica's `CylindricalDecomposition` and `Reduce`, and a
-solution formula for any number of free variables (the signs of the
-projection factors do not always tell the true cells from the false ones:
-`quantifier_elimination` writes its answer this way when they do not).
+description of the solution set for any number of free variables which
+needs no augmented projection (`quantifier_elimination` writes its answer
+this way only when the augmentation does not end).
 
 ```python
 >>> from sympy.abc import z
@@ -262,9 +303,10 @@ outermost first.
   a quantifier-free formula in the free variables equivalent to the input
   over the reals, or `S.true`/`S.false` when every variable is quantified.
   With more than one free variable the result is written with sign
-  conditions on the projection factors, and with their root functions
-  (`cylindrical_formula`) when those are not enough to describe the
-  solution set.
+  conditions on the projection factors, augmented by Hong's method with
+  the derivatives of the factors when those are not enough to describe
+  the solution set (and with their root functions, `cylindrical_formula`,
+  should the augmentation not end).
 - `decide(formula, quantifiers, method=None, partial=True)`: the truth
   value of a formula with all its variables quantified.
 - `solution_set(formula, x, quantifiers=(), method=None, partial=True)`:
@@ -299,6 +341,10 @@ outermost first.
   projection factor sets $P_1, \ldots, P_n$ for all levels; `equational`
   is one of `polys` which the formula implies to vanish, for the reduced
   projection of the last level.
+- `augmented_projection_sets(projection, gens, extra, method='mccallum')`:
+  the sets with the factors of the polynomials `extra` added at their
+  levels and the levels below projected again (every set contains the
+  one it comes from), for the solution formulas.
 - `mccallum_projection(polys, x, equational=())`: McCallum's projection
   of a squarefree basis with respect to `x` (coefficients, discriminants,
   pairwise resultants); with `equational`, the factors of an equational
@@ -344,5 +390,9 @@ outermost first.
   for quantifier elimination*, J. Symbolic Comput. 12 (1991), pp. 299-328.
 - S. McCallum, *On projection in CAD-based quantifier elimination with
   equational constraint*, ISSAC 1999, pp. 145-149.
+- H. Hong, *Simple solution formula construction in cylindrical algebraic
+  decomposition based quantifier elimination*, ISSAC 1992, pp. 177-188.
+- C. W. Brown, *Solution formula construction for truth invariant CAD's*,
+  PhD thesis, University of Delaware, 1999.
 - G. E. Collins, R. Loos, *Real zeros of polynomials*, in: Computer
   Algebra: Symbolic and Algebraic Computation, Springer, 1982, pp. 83-94.

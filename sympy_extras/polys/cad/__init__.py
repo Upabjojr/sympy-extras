@@ -9,7 +9,7 @@ of formulas built on top of it are in :mod:`sympy_extras.polys.cad.qe`.
 """
 from __future__ import annotations
 
-from .projection import (projection_sets, mccallum_projection,
+from .projection import (projection_sets, mccallum_projection, augmented_projection_sets,
     hong_projection, squarefree_basis)
 from .samplepoints import SamplePoint
 from .lifting import (cylindrical_algebraic_decomposition, CAD, CADCell,
@@ -22,4 +22,4 @@ __all__ = ['projection_sets', 'mccallum_projection', 'hong_projection',
     'squarefree_basis', 'SamplePoint', 'cylindrical_algebraic_decomposition',
     'CAD', 'CADCell', 'NotWellOriented', 'quantifier_elimination', 'decide',
     'sample_points', 'solution_set', 'truth_tables', 'IndexedRoot',
-    'cylindrical_formula', 'cylindrical_set', 'cylindrical_cases']
+    'cylindrical_formula', 'cylindrical_set', 'cylindrical_cases', 'augmented_projection_sets']

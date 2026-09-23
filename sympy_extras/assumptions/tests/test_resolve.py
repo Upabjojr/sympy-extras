@@ -6,6 +6,7 @@ from sympy.testing.pytest import raises
 from sympy.abc import a, b, c, x, y, z
 
 from sympy_extras.assumptions import resolve, ForAll, Exists, element
+from sympy_extras.polys.cad import decide
 from sympy_extras.polys.cad.tests.test_qe import _equivalent
 
 
@@ -107,3 +108,19 @@ def test_a_system_of_linear_equalities_is_a_chain_of_substitutions() -> None:
     solution = list(linsolve(eqs, vs))[0]
     claim = ForAll(vs, Implies(And(*eqs), Eq(vs[-1], solution[-1])))
     assert attempt(lambda: resolve(claim, domain=S.Reals), 30) is true
+
+
+def test_resolve_by_the_augmented_projection() -> None:
+    # sympy-extras#9: the projection factors of the free variables do not
+    # describe the solution set (x - y**4 has one sign on both sides of
+    # the curve); NotImplementedError was raised, then the answer was
+    # written with a root function. The augmented projection of the
+    # decomposition adds the derivative of the factor: a formula in
+    # polynomial sign conditions (the quartic is beyond the virtual
+    # substitution, so the decomposition answers)
+    r = resolve(Exists(z, Eq(z**4, x) & (z > y)))
+    assert r == Or(And(x >= 0, y < 0), x - y**4 > 0)
+    r = resolve(Exists(z, Eq(z**3 - 3*z, x) & (z > y)))
+    assert _equivalent(r, Or(And(x >= -2, y < 1), x - y**3 + 3*y > 0), [x, y])
+    for values in [{x: 0, y: -1}, {x: 0, y: 1}, {x: 5, y: -3}, {x: 5, y: 2}, {x: -3, y: -2}]:
+        assert bool(r.subs(values)) is decide(Eq(z**3 - 3*z, x).subs(values) & (z > y).subs(values), [('exists', z)])

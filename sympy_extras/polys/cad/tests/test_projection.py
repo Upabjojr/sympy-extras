@@ -153,3 +153,28 @@ def test_equational_constraint() -> None:
     # Hong's projection has no reduced form
     assert projection_sets([circle, line], [x, y], method='hong', equational=y - x) == \
         projection_sets([circle, line], [x, y], method='hong')
+
+
+def test_augmented_projection_sets() -> None:
+    from sympy_extras.polys.cad.projection import augmented_projection_sets
+    projection = projection_sets([x - y**2, y - x], [x, y])
+    assert projection == [[Poly(x, x), Poly(x - 1, x)], [Poly(x - y**2, x, y), Poly(x - y, x, y)]]
+    # the factors are added at their levels and the new ones projected:
+    # every set contains the one it comes from
+    augmented = augmented_projection_sets(projection, [x, y], [2*y, (x - 2)*(y - 3)])
+    assert augmented == [[Poly(x, x), Poly(x - 1, x), Poly(x - 2, x), Poly(x - 9, x), Poly(x - 3, x)],
+                         [Poly(x - y**2, x, y), Poly(x - y, x, y), Poly(y, x, y), Poly(y - 3, x, y)]]
+    # nothing new: the sets are the same
+    assert augmented_projection_sets(projection, [x, y], [x - 1, x - y]) == projection
+    assert augmented_projection_sets(projection, [x, y], [7]) == projection
+    # three levels: the projection of a new factor of the top level (its
+    # resultant with x*y*z - 1 and its coefficient) reaches the levels below
+    three = projection_sets([x*y*z - 1], [x, y, z])
+    augmented = augmented_projection_sets(three, [x, y, z], [z - x*y])
+    assert Poly(x*y - 1, x, y) in augmented[1] and Poly(x*y + 1, x, y) in augmented[1] \
+        and augmented[0] == [Poly(x, x)]
+    assert all(set(old) <= set(new) for old, new in zip(three, augmented))
+    with_hong = augmented_projection_sets(three, [x, y, z], [z - x*y], method='hong')
+    assert all(set(old) <= set(new) for old, new in zip(augmented, with_hong))
+    raises(ValueError, lambda: augmented_projection_sets(three, [x, y], [z]))
+    raises(ValueError, lambda: augmented_projection_sets(three, [x, y, z], [z], method='collins'))

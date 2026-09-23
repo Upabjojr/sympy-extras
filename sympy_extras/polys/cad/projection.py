@@ -353,3 +353,74 @@ def projection_sets(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbo
             if j and g not in levels[j - 1]:
                 levels[j - 1].append(g)
     return result
+
+
+def augmented_projection_sets(projection: Sequence[Sequence[Poly]], gens: Sequence[Symbol],
+                              extra: Iterable[Union[ExprLike, Poly]], method: str = 'mccallum') -> list[list[Poly]]:
+    """The projection factor sets ``projection`` (``P_1, ..., P_n`` for
+    the variables ``gens``, as :func:`projection_sets` gives them) with
+    the irreducible factors of the polynomials ``extra`` added at their
+    levels, and the levels below re-projected: from the top level down,
+    the projection of the factors which are new at a level is added to
+    the levels below (with McCallum's operator their coefficients and
+    discriminants and their resultants with every factor of the level,
+    with Hong's the projection of the whole level). Every set contains
+    the one it comes from, so that a decomposition sign-invariant for the
+    result refines one for ``projection``: this is the augmented
+    projection of Collins and Hong for the solution formulas, with the
+    derivatives of the factors for ``extra`` [1]_.
+
+    Examples
+    ========
+
+    >>> from sympy.abc import x, y
+    >>> from sympy_extras.polys.cad import projection_sets
+    >>> from sympy_extras.polys.cad.projection import augmented_projection_sets
+    >>> projection = projection_sets([x - y**2], [x, y])
+    >>> projection
+    [[Poly(x, x, domain='ZZ')], [Poly(x - y**2, x, y, domain='ZZ')]]
+    >>> augmented_projection_sets(projection, [x, y], [2*y])
+    [[Poly(x, x, domain='ZZ')], [Poly(x - y**2, x, y, domain='ZZ'), Poly(y, x, y, domain='ZZ')]]
+    >>> augmented_projection_sets(projection, [x, y], [y - 1])
+    [[Poly(x, x, domain='ZZ'), Poly(x - 1, x, domain='ZZ')], [Poly(x - y**2, x, y, domain='ZZ'), Poly(y - 1, x, y, domain='ZZ')]]
+
+    References
+    ==========
+
+    .. [1] H. Hong, Simple solution formula construction in cylindrical
+           algebraic decomposition based quantifier elimination, ISSAC
+           1992, pp. 177-188.
+    """
+    try:
+        project = _PROJECTIONS[method]
+    except KeyError:
+        raise ValueError("unknown projection method %r" % (method,))
+    gens = list(gens)
+    n = len(gens)
+    if len(projection) != n:
+        raise ValueError("expected %d projection factor sets" % n)
+    levels: list[list[Poly]] = [list(level) for level in projection]
+    new: list[list[Poly]] = [[] for _ in gens]
+
+    def add(g: Poly) -> None:
+        g = Poly(g.as_expr(), *gens)
+        j = _level(g, gens)
+        if j:
+            g = Poly(g.as_expr(), *gens[:j])
+            if g not in levels[j - 1]:
+                levels[j - 1].append(g)
+                new[j - 1].append(g)
+
+    for f in _to_polys(extra, gens):
+        for g in _factors(f):
+            add(g)
+    for k in range(n, 1, -1):
+        if not new[k - 1]:
+            continue
+        if method == 'mccallum':
+            projected = mccallum_projection(levels[k - 1], gens[k - 1], new[k - 1])
+        else:
+            projected = project(levels[k - 1], gens[k - 1])
+        for g in projected:
+            add(g)
+    return levels
