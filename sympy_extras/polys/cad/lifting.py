@@ -12,6 +12,7 @@ the sign of every input polynomial on a cell is read off its sample point.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import Iterable, Iterator, Optional, Sequence, Union
 
 from sympy.core.expr import Expr
@@ -22,7 +23,7 @@ from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 
 from .projection import projection_sets, _to_polys
-from .samplepoints import (SamplePoint, RealAlgebraic, compare_real,
+from .samplepoints import (SamplePoint, Specialization, RealAlgebraic, _order,
     rational_between, rational_below, rational_above)
 from sympy_extras._typing import ExprLike, Sign
 
@@ -49,24 +50,36 @@ class CADCell:
         times a rational number) for the sections.
     sample : SamplePoint
         The same sample point with its coordinates in a common algebraic
-        field, for exact sign evaluations.
+        field, for exact sign evaluations. It is computed when it is first
+        asked for: the signs of the projection factors on a cell are known
+        from the roots of the stack, and the field of a section, which
+        takes a primitive element, is only needed to lift over it.
     parent : CADCell or None
         The cell of the previous level over which this cell lies.
     """
 
-    __slots__ = ('index', 'point', 'sample', 'parent', '_signs', 'signs')
+    __slots__ = ('index', 'point', '_sample', 'parent', '_signs', 'signs')
 
-    def __init__(self, index: tuple[int, ...], point: tuple[Expr, ...], sample: SamplePoint,
+    def __init__(self, index: tuple[int, ...], point: tuple[Expr, ...], sample: Optional[SamplePoint],
                  parent: Optional[CADCell], signs: tuple[Sign, ...]) -> None:
         self.index = index
         self.point = point
-        self.sample = sample
+        self._sample = sample
         self.parent = parent
         # signs of the projection factors of this level at the sample point
         self._signs = signs
         # signs of the input polynomials, filled by CAD for the top level
         # (empty for the cells of the lower levels)
         self.signs: tuple[Sign, ...] = ()
+
+    @property
+    def sample(self) -> SamplePoint:
+        if self._sample is None:
+            if self.parent is None:
+                self._sample = SamplePoint()
+            else:
+                self._sample = self.parent.sample.extend(self.point[-1])
+        return self._sample
 
     @property
     def level(self) -> int:
@@ -116,6 +129,11 @@ class CAD:
         The cells of `\\mathbb{R}^n`, in lexicographic order of their indices.
         The ``signs`` attribute of each cell is the tuple of signs of the
         input polynomials on the cell.
+
+    A decomposition made by the functions of
+    :mod:`sympy_extras.polys.cad.qe` for a quantified formula is partial:
+    it has the cells which the answer took, all of them in the space of the
+    free variables only.
     """
 
     def __init__(self, gens: Sequence[Symbol], polys: list[Poly], projection: list[list[Poly]],
@@ -126,6 +144,11 @@ class CAD:
         self.method = method
         self._levels = levels
         self.cells = levels[-1]
+        self._children: dict[CADCell, list[CADCell]] = {}
+        for level in levels:
+            for cell in level:
+                if cell.parent is not None:
+                    self._children.setdefault(cell.parent, []).append(cell)
 
     def __len__(self) -> int:
         return len(self.cells)
@@ -144,76 +167,186 @@ class CAD:
 
     def children(self, cell: CADCell) -> list[CADCell]:
         """The cells of the next level lying over ``cell``."""
-        if cell.level >= len(self.gens):
-            return []
-        return [c for c in self._levels[cell.level] if c.parent is cell]
+        return list(self._children.get(cell, []))
 
 
 def _merge_roots(roots: Sequence[Union[RealAlgebraic, int]], new: Sequence[Union[RealAlgebraic, int]]) -> list[Union[RealAlgebraic, int]]:
     """Merge the sorted lists of distinct real roots ``roots`` and ``new``."""
-    result: list[Union[RealAlgebraic, int]] = []
-    i = j = 0
-    while i < len(roots) and j < len(new):
-        c = compare_real(roots[i], new[j])
-        if c < 0:
-            result.append(roots[i])
-            i += 1
-        elif c > 0:
-            result.append(new[j])
-            j += 1
+    values = list(roots) + list(new)
+    return [values[group[0]] for group in _order(values)]
+
+
+#: a section of a stack: the root and the indices of the projection factors
+#: of the level which vanish there
+_Section = tuple[Union[RealAlgebraic, int], frozenset[int]]
+
+
+def _sections(roots: Sequence[tuple[Union[RealAlgebraic, int], int]]) -> list[_Section]:
+    """The sections of a stack, in increasing order, from the roots of its
+    polynomials paired with the indices of the polynomials: a root of
+    several polynomials is one section."""
+    values = [root for root, _ in roots]
+    return [(values[group[0]], frozenset(roots[i][1] for i in group)) for group in _order(values)]
+
+
+class Lifting:
+    """The lifting phase, one stack at a time and on demand: the partial
+    decompositions of :mod:`sympy_extras.polys.cad.qe` only ask for the
+    stacks which the truth value of the formula depends on [1]_.
+
+    The signs of the projection factors on the cells of a stack are read
+    off the real roots of the factors over the sample point of the parent
+    cell: a factor vanishes on the sections which are its roots, has the
+    sign of its leading coefficient above its last root and changes sign at
+    its roots of odd multiplicity. No polynomial is evaluated at the sample
+    point of a cell of the stack, which is only computed (a primitive
+    element for a section over a cell with algebraic coordinates) when a
+    stack is built over the cell.
+
+    Examples
+    ========
+
+    >>> from sympy.abc import x, y
+    >>> from sympy_extras.polys.cad import projection_sets
+    >>> from sympy_extras.polys.cad.lifting import Lifting
+    >>> lifting = Lifting(projection_sets([x**2 + y**2 - 1], [x, y]), [x, y], 'mccallum')
+    >>> line = lifting.stack(lifting.root)
+    >>> [cell.point for cell in line]
+    [(-2,), (-1,), (0,), (1,), (2,)]
+    >>> [(cell.point, cell.index) for cell in lifting.stack(line[2])]
+    [((0, -2), (3, 1)), ((0, -1), (3, 2)), ((0, 0), (3, 3)), ((0, 1), (3, 4)), ((0, 2), (3, 5))]
+    >>> lifting.lifted
+    10
+
+    References
+    ==========
+
+    .. [1] G. E. Collins, H. Hong, Partial cylindrical algebraic
+           decomposition for quantifier elimination, J. Symbolic Comput. 12
+           (1991), pp. 299-328.
+    """
+
+    def __init__(self, projection: Sequence[Sequence[Poly]], gens: Sequence[Symbol], method: str) -> None:
+        self.projection = [list(level) for level in projection]
+        self.gens = tuple(gens)
+        self.method = method
+        self.root = CADCell((), (), SamplePoint(), None, ())
+        self._stacks: dict[CADCell, list[CADCell]] = {}
+        #: the number of cells built so far
+        self.lifted = 0
+
+    def is_lifted(self, parent: CADCell) -> bool:
+        """Whether the stack over ``parent`` was built."""
+        return parent in self._stacks
+
+    def stack(self, parent: CADCell) -> list[CADCell]:
+        """The cells of the next level over ``parent``, from the lowest
+        one up. :class:`NotWellOriented` is raised when a factor of
+        McCallum's projection vanishes identically over a cell of positive
+        dimension."""
+        found = self._stacks.get(parent)
+        if found is not None:
+            return found
+        k = parent.level + 1
+        if k > len(self.gens):
+            raise ValueError("the cell is of the last level")
+        polys = self.projection[k - 1]
+        level_gens = self.gens[:k]
+        sample = parent.sample
+        specializations: list[Specialization] = []
+        roots_found: list[tuple[Union[RealAlgebraic, int], int]] = []
+        for i, f in enumerate(polys):
+            specialized = sample.specialization(f, level_gens)
+            if specialized.degree < 0 and self.method == 'mccallum' and parent.dimension > 0:
+                raise NotWellOriented("%s vanishes identically on a cell of dimension %d"
+                                      % (f.as_expr(), parent.dimension))
+            specializations.append(specialized)
+            roots_found.extend((r, i) for r, _ in specialized.roots)
+        sections = _sections(roots_found)
+        roots = [root for root, _ in sections]
+        values: list[Union[Expr, int]] = []
+        if not roots:
+            values.append(Rational(0))
         else:
-            result.append(roots[i])
-            i += 1
-            j += 1
-    result.extend(roots[i:])
-    result.extend(new[j:])
-    return result
-
-
-def _lift(projection: Sequence[Sequence[Poly]], gens: Sequence[Symbol], method: str) -> list[list[CADCell]]:
-    """Build the cells of all levels from the projection factor sets."""
-    root = CADCell((), (), SamplePoint(), None, ())
-    levels: list[list[CADCell]] = []
-    current = [root]
-    for k, polys in enumerate(projection, start=1):
-        level_gens = gens[:k]
+            values.append(rational_below(roots[0]))
+            for j, root_ in enumerate(roots):
+                values.append(root_)
+                if j + 1 < len(roots):
+                    values.append(rational_between(root_, roots[j + 1]))
+            values.append(rational_above(roots[-1]))
+        # the number of the roots of each factor below the current cell
+        passed = [0] * len(polys)
         cells: list[CADCell] = []
-        for parent in current:
-            roots: list[Union[RealAlgebraic, int]] = []
-            nullified: set[int] = set()
-            for i, f in enumerate(polys):
-                r = parent.sample.real_roots(f, level_gens)
-                if r is None:
-                    if method == 'mccallum' and parent.dimension > 0:
-                        raise NotWellOriented(
-                            "%s vanishes identically on a cell of dimension %d"
-                            % (f.as_expr(), parent.dimension))
-                    nullified.add(i)
+        for j, value in enumerate(values, start=1):
+            vanishing: frozenset[int] = sections[j // 2 - 1][1] if j % 2 == 0 else frozenset()
+            signs: list[Sign] = []
+            for i, specialized in enumerate(specializations):
+                if i in vanishing:
+                    signs.append(0)
+                    passed[i] += 1
                 else:
-                    roots = _merge_roots(roots, r)
-            values: list[tuple[Union[Expr, int], Optional[Union[RealAlgebraic, int]]]] = []
-            if not roots:
-                values.append((Rational(0), None))
-            else:
-                values.append((rational_below(roots[0]), None))
-                for j, root_ in enumerate(roots):
-                    values.append((root_, root_))
-                    if j + 1 < len(roots):
-                        values.append((rational_between(root_, roots[j + 1]), None))
-                values.append((rational_above(roots[-1]), None))
-            for j, (value, section_root) in enumerate(values, start=1):
-                sample = parent.sample.extend(value)
-                signs: list[Sign] = []
-                for i, f in enumerate(polys):
-                    if i in nullified:
-                        signs.append(0)
-                    else:
-                        signs.append(sample.sign(f, level_gens))
-                cells.append(CADCell(parent.index + (j,), parent.point + (sympify(value),),
-                                     sample, parent, tuple(signs)))
-        levels.append(cells)
-        current = cells
-    return levels
+                    signs.append(specialized.sign_before(passed[i]))
+            cells.append(CADCell(parent.index + (j,), parent.point + (sympify(value),), None, parent, tuple(signs)))
+        self._stacks[parent] = cells
+        self.lifted += len(cells)
+        return cells
+
+    def levels(self) -> list[list[CADCell]]:
+        """The cells built so far, by level, in lexicographic order of
+        their indices."""
+        result: list[list[CADCell]] = []
+        current = [self.root]
+        for _ in self.gens:
+            cells = [cell for parent in current if parent in self._stacks for cell in self._stacks[parent]]
+            result.append(cells)
+            current = cells
+        return result
+
+    def lift_all(self) -> list[list[CADCell]]:
+        """Build every stack: the full decomposition."""
+        current = [self.root]
+        for _ in self.gens:
+            current = [cell for parent in current for cell in self.stack(parent)]
+        return self.levels()
+
+
+#: the key of a lifting: the projection factor sets, the variables and the
+#: projection operator
+_LiftingKey = tuple[tuple[tuple[Poly, ...], ...], tuple[Symbol, ...], str]
+
+#: the liftings of the last questions, for the ones which come back with the
+#: same projection factor sets (the theory checks of ``satisfiable`` and the
+#: handlers of ``refine`` ask about the same polynomials many times); a
+#: stack is the same whenever it is built, so the answers do not depend on
+#: what was asked before
+_liftings: OrderedDict[_LiftingKey, Lifting] = OrderedDict()
+
+#: how many liftings are kept
+_KEPT = 64
+
+
+def lifting_for(projection: Sequence[Sequence[Poly]], gens: Sequence[Symbol], method: str) -> Lifting:
+    """The :class:`Lifting` of the projection factor sets ``projection``:
+    the one of an earlier question with the same sets, whose stacks are
+    kept, or a new one. The last :data:`_KEPT` liftings are kept.
+
+    >>> from sympy.abc import x, y
+    >>> from sympy_extras.polys.cad import projection_sets
+    >>> from sympy_extras.polys.cad.lifting import lifting_for
+    >>> projection = projection_sets([x**2 + y**2 - 1], [x, y])
+    >>> lifting_for(projection, [x, y], 'mccallum') is lifting_for(projection, [x, y], 'mccallum')
+    True
+    """
+    key: _LiftingKey = (tuple(tuple(level) for level in projection), tuple(gens), method)
+    found = _liftings.get(key)
+    if found is None:
+        found = Lifting(projection, gens, method)
+        _liftings[key] = found
+        while len(_liftings) > _KEPT:
+            _liftings.popitem(last=False)
+    else:
+        _liftings.move_to_end(key)
+    return found
 
 
 def _level_of(f: Poly, gens: Sequence[Symbol]) -> int:
@@ -319,7 +452,7 @@ def cylindrical_algebraic_decomposition(polys: Iterable[Union[ExprLike, Poly]], 
     for m in methods:
         projection = projection_sets(polys, gens, method=m)
         try:
-            levels = _lift(projection, gens, m)
+            levels = Lifting(projection, gens, m).lift_all()
         except NotWellOriented:
             if m == methods[-1]:
                 raise

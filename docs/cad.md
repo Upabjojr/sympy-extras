@@ -158,6 +158,66 @@ proves the equivalence of the formula and its description
 (`Resolve[ForAll[vars, Equivalent[...]], Reals]`) for 60 random formulas
 whose bounds are explicit.
 
+### Partial decompositions
+
+The functions on formulas (`decide`, `quantifier_elimination`,
+`solution_set`, `sample_points`, `truth_tables`, `cylindrical_formula`,
+`cylindrical_set`, `cylindrical_cases`) build a *partial* decomposition, after Collins and
+Hong: the stacks are lifted one at a time, on demand, and a stack is only
+built when the truth value of the formula over its base cell is not yet
+known. The formula is evaluated as soon as the signs of the projection
+factors of the levels reached determine it (trial evaluation, in
+three-valued logic), an `exists` is settled by one true cell of the
+stack and a `forall` by one false one, the sectors being tried first
+(their sample points are rational, lifting over a section takes an
+algebraic extension). The space of the free variables is decomposed as
+before (more coarsely with an equational constraint, see below), so
+that the solution formulas are the same. The signs of the
+projection factors on a stack are read off the real roots and their
+multiplicities over the base cell, so that a sample point is only
+computed in its algebraic field when a stack is built over it.
+
+`partial=False` builds the full decomposition and propagates the truth
+values from its top cells, as `cylindrical_algebraic_decomposition`
+always does: it is the reference implementation, kept for checking, and
+gives the same answers.
+
+When the formula implies that a polynomial vanishes (it is an equation,
+or an equation is one of the terms of its conjunction) and that
+polynomial has positive degree in the last variable, which is
+quantified, the projection of the last level is McCallum's reduced one
+(ISSAC 1999): the coefficients and discriminants of the factors of the
+constraint, and their resultants with the other polynomials, instead of
+the discriminants of the others and all the pairwise resultants. The
+other polynomials are then sign-invariant on the sections of the
+constraint, where the formula can hold, and not on the sectors, where
+it is false. Fewer polynomials are projected, so the space of the free
+variables is decomposed more coarsely and a solution formula may be
+written with fewer factors: it describes the same set. `Exists x, y:
+x**2 + y**2 = 1 and y = a*x + b` takes 646 cells instead of 3638.
+
+The real roots of a polynomial over a sample point with algebraic
+coordinates are found among the real roots of its norm (a polynomial
+over the rationals, whose roots are `CRootOf` objects): each candidate
+is kept or dropped by counting the roots of the polynomial in its
+isolating interval with a Sturm sequence over the field, whose signs are
+decided exactly by interval arithmetic on the generator. The roots of
+the polynomials of a stack are then merged by their isolating intervals,
+and two roots are compared exactly (by refining the intervals) only when
+the intervals overlap. On a benchmark of 95 random and classical
+formulas in two and three variables of degree two and three, these
+changes together take the time from 951 to 53 CPU seconds, the number
+of formulas which a minute does not settle from 11 to 0, and, on the 84
+formulas answered by both, the time from 293 to 13 seconds and the
+number of cells from 29,600 to 16,800; the answers are the same.
+
+The liftings of the last 64 questions are kept, keyed on the projection
+factor sets, the variables and the projection operator: a question about
+the same polynomials (the theory checks of `satisfiable`, the handlers
+of `refine` and `ask` do this many times) reuses the stacks built so far.
+A stack is the same whenever it is built, so the answers do not depend
+on the questions asked before.
+
 The number of cells grows quickly with the number of variables and the
 degrees: this implementation is meant for problems with a few variables
 and moderate degrees.
@@ -178,6 +238,11 @@ docstrings of the functions contain the details and more examples.
   (the projection factor sets $P_1, \ldots, P_n$), `method` and `cells`
   (the cells of $\mathbb{R}^n$ in lexicographic order of their indices),
   and the methods `cells_at(level)` and `children(cell)`.
+- `Lifting(projection, gens, method)`: the lifting phase one stack at a
+  time: `stack(cell)` builds (once) the cells over `cell`, `lift_all()`
+  every stack, `levels()` lists the cells built so far and `lifted`
+  counts them; `lifting_for(projection, gens, method)` is the lifting
+  kept from an earlier question with the same sets, or a new one.
 - `CADCell`: a cell, with `index`, `point` (the exact sample point as
   SymPy expressions), `sample` (the same point as a `SamplePoint`),
   `parent`, `signs` (the signs of the input polynomials on the cell),
@@ -193,31 +258,34 @@ rational coefficients. Quantifier prefixes are lists of pairs
 `(kind, variables)` with `kind` equal to `'exists'` or `'forall'`,
 outermost first.
 
-- `quantifier_elimination(formula, quantifiers=(), free=None, method=None)`:
+- `quantifier_elimination(formula, quantifiers=(), free=None, method=None, partial=True)`:
   a quantifier-free formula in the free variables equivalent to the input
   over the reals, or `S.true`/`S.false` when every variable is quantified.
   With more than one free variable the result is written with sign
   conditions on the projection factors, and with their root functions
   (`cylindrical_formula`) when those are not enough to describe the
   solution set.
-- `decide(formula, quantifiers, method=None)`: the truth value of a formula
-  with all its variables quantified.
-- `solution_set(formula, x, quantifiers=(), method=None)`: the set of values
-  of the free variable `x` for which the quantified formula holds, as a
-  union of intervals and points with exact endpoints.
-- `sample_points(formula, gens, method=None)`: one exact point in every
-  cell on which a quantifier-free formula holds.
+- `decide(formula, quantifiers, method=None, partial=True)`: the truth
+  value of a formula with all its variables quantified.
+- `solution_set(formula, x, quantifiers=(), method=None, partial=True)`:
+  the set of values of the free variable `x` for which the quantified
+  formula holds, as a union of intervals and points with exact endpoints.
+- `sample_points(formula, gens, method=None, partial=True)`: one exact
+  point in every cell on which a quantifier-free formula holds.
+
+`partial=False` builds the full decomposition instead of the partial one
+(see above).
 
 ### Cylindrical descriptions (`sympy_extras.polys.cad.cylindrical`)
 
-- `cylindrical_formula(formula, gens, quantifiers=(), method=None)`: the
+- `cylindrical_formula(formula, gens, quantifiers=(), method=None, partial=True)`: the
   set of the points `gens` at which the (quantified) formula holds, as a
   disjunction of conjunctions which bound the first variable by numbers,
   the second by root functions of the first, and so on.
-- `cylindrical_set(formula, gens, method=None)`: the same as a set, the
+- `cylindrical_set(formula, gens, method=None, partial=True)`: the same as a set, the
   points with numerical coordinates in a `FiniteSet` and the rest in a
   `ConditionSet`.
-- `cylindrical_cases(formula, parameters, unknowns, method=None)`: the real
+- `cylindrical_cases(formula, parameters, unknowns, method=None, partial=True)`: the real
   solutions in the unknowns for every real value of the parameters, as
   pairs of a cylindrical condition on the parameters and the set of the
   solutions under it (a finite set, a union of intervals for one unknown,
@@ -227,11 +295,14 @@ outermost first.
 
 ### Projection (`sympy_extras.polys.cad.projection`)
 
-- `projection_sets(polys, gens, method='mccallum')`: the projection factor
-  sets $P_1, \ldots, P_n$ for all levels.
-- `mccallum_projection(polys, x)`: McCallum's projection of a squarefree
-  basis with respect to `x` (coefficients, discriminants, pairwise
-  resultants).
+- `projection_sets(polys, gens, method='mccallum', equational=None)`: the
+  projection factor sets $P_1, \ldots, P_n$ for all levels; `equational`
+  is one of `polys` which the formula implies to vanish, for the reduced
+  projection of the last level.
+- `mccallum_projection(polys, x, equational=())`: McCallum's projection
+  of a squarefree basis with respect to `x` (coefficients, discriminants,
+  pairwise resultants); with `equational`, the factors of an equational
+  constraint among `polys`, the reduced projection of McCallum (1999).
 - `hong_projection(polys, x)`: Hong's projection (leading coefficients and
   principal subresultant coefficients of the reducta).
 - `squarefree_basis(polys, gens)`: the finest squarefree basis of the input,
@@ -242,7 +313,10 @@ outermost first.
 - `SamplePoint`: a point with real algebraic coordinates kept in a single
   field $\mathbb{Q}(\theta)$, built one coordinate at a time with
   `extend(root)`; `sign(poly, gens)` and `real_roots(poly, gens)` evaluate
-  polynomials at the point exactly.
+  polynomials at the point exactly, and `specialization(poly, gens)` gives
+  the degree, the sign of the leading coefficient and the real roots with
+  their multiplicities of a polynomial in one more variable over the point
+  (a `Specialization`, kept on the point).
 - `compare_real(a, b)`: exact comparison of real algebraic numbers given as
   rationals or real `CRootOf` roots.
 - `rational_between(a, b)`, `rational_below(a)`, `rational_above(a)`,
@@ -266,3 +340,9 @@ outermost first.
   Decomposition, Springer, 1998, pp. 242-268.
 - H. Hong, *An improvement of the projection operator in cylindrical
   algebraic decomposition*, ISSAC 1990, pp. 261-264.
+- G. E. Collins, H. Hong, *Partial cylindrical algebraic decomposition
+  for quantifier elimination*, J. Symbolic Comput. 12 (1991), pp. 299-328.
+- S. McCallum, *On projection in CAD-based quantifier elimination with
+  equational constraint*, ISSAC 1999, pp. 145-149.
+- G. E. Collins, R. Loos, *Real zeros of polynomials*, in: Computer
+  Algebra: Symbolic and Algebraic Computation, Springer, 1982, pp. 83-94.

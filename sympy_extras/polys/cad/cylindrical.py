@@ -74,7 +74,7 @@ from sympy_extras.polys.roots import radical_form
 
 from .lifting import CAD, CADCell
 from .qe import CellTruth, _truth_values
-from .samplepoints import RealAlgebraic, _SortKey, compare_real
+from .samplepoints import RealAlgebraic, _SortKey, _order
 
 __all__ = ['IndexedRoot', 'cylindrical_formula', 'cylindrical_set', 'cylindrical_cases']
 
@@ -261,15 +261,9 @@ def _root_sequence(parent: CADCell, polys: Sequence[Poly], gens: Sequence[Symbol
             continue
         degree = _degree_over(poly, parent, gens)[0]
         for index, value in enumerate(roots):
-            for position, other in enumerate(found):
-                if compare_real(value, other.value) == 0:
-                    if degree < other.degree:
-                        found[position] = _Root(poly, index, value, degree)
-                    break
-            else:
-                found.append(_Root(poly, index, value, degree))
-    found.sort(key=lambda root: _SortKey(root.value))
-    return found
+            found.append(_Root(poly, index, value, degree))
+    return [min((found[i] for i in group), key=lambda root: root.degree)
+            for group in _order([root.value for root in found])]
 
 
 def _root_function(root: _Root, parent: CADCell, gens: Sequence[Symbol]) -> Expr:
@@ -382,7 +376,9 @@ def _stack(cad: CAD, children: dict[CADCell, list[CADCell]], truth: dict[CADCell
     cells = children.get(parent, [])
     descriptions: list[_Description] = []
     for cell in cells:
-        if level == last:
+        if cell in truth:
+            # a cell of the last level, or one which a partial decomposition
+            # did not lift: the formula has one truth value over it
             descriptions.append(truth[cell])
         else:
             descriptions.append(_stack(cad, children, truth, cell, level + 1, last))
@@ -459,7 +455,8 @@ def _formula(description: _Description, gens: Sequence[Symbol], level: int) -> B
 
 
 def cylindrical_formula(formula: Union[Boolean, bool], gens: Sequence[Symbol],
-                        quantifiers: QuantifierSpec = (), method: Optional[str] = None) -> Boolean:
+                        quantifiers: QuantifierSpec = (), method: Optional[str] = None,
+                        partial: bool = True) -> Boolean:
     """A cylindrical description of the set of the real points
     ``gens`` at which the formula (with its ``quantifiers``, over other
     variables) holds: a disjunction of conjunctions which bound the first
@@ -490,14 +487,16 @@ def cylindrical_formula(formula: Union[Boolean, bool], gens: Sequence[Symbol],
     >>> cylindrical_formula((y**3 - 3*y + x > 0) & (x > 1), [x, y])
     (Eq(x, 2) & ((y > 1) | ((y > -2) & (y < 1)))) | ((x > 2) & (y > IndexedRoot(x + y**3 - 3*y, y, 0))) | ((x > 1) & (x < 2) & ((y > IndexedRoot(x + y**3 - 3*y, y, 2)) | ((y > IndexedRoot(x + y**3 - 3*y, y, 0)) & (y < IndexedRoot(x + y**3 - 3*y, y, 1)))))
     """
-    free, description = _description(formula, gens, quantifiers, method)
+    free, description = _description(formula, gens, quantifiers, method, partial)
     return _formula(description, free, 1)
 
 
 def _description(formula: Union[Boolean, bool], gens: Sequence[Symbol], quantifiers: QuantifierSpec,
-                 method: Optional[str]) -> tuple[list[Symbol], _Description]:
+                 method: Optional[str], partial: bool = True) -> tuple[list[Symbol], _Description]:
     variables = [as_symbol(g) for g in gens]
-    cad, free, _, cells = _truth_values(formula, variables, quantifiers, method)
+    # a cell over which the formula has one truth value is not lifted: the
+    # description of the stack over it is that truth value
+    cad, free, _, cells = _truth_values(formula, variables, quantifiers, method, partial, 'both')
     if not free:
         raise ValueError("the formula has no free variable among %s" % (variables,))
     return free, _described(cad, len(free), cells)
@@ -562,7 +561,8 @@ def _points(description: _Description, gens: Sequence[Symbol]) -> list[tuple[Exp
     return found
 
 
-def cylindrical_set(formula: Union[Boolean, bool], gens: Sequence[Symbol], method: Optional[str] = None) -> Set:
+def cylindrical_set(formula: Union[Boolean, bool], gens: Sequence[Symbol], method: Optional[str] = None,
+                    partial: bool = True) -> Set:
     """The set of the real points ``gens`` at which the formula holds:
     its isolated points with algebraic coordinates as a finite set, and
     the rest as a condition set with the cylindrical description of
@@ -582,7 +582,7 @@ def cylindrical_set(formula: Union[Boolean, bool], gens: Sequence[Symbol], metho
     >>> cylindrical_set(x**2 + y**2 < 0, [x, y])
     EmptySet
     """
-    free, description = _description(formula, gens, (), method)
+    free, description = _description(formula, gens, (), method, partial)
     space = ProductSet(*[S.Reals] * len(free))
     if description is True:
         return space
@@ -624,7 +624,7 @@ def _every_run_is_a_point(description: _Description) -> bool:
 
 
 def cylindrical_cases(formula: Union[Boolean, bool], parameters: Sequence[Symbol], unknowns: Sequence[Symbol],
-                      method: Optional[str] = None) -> list[tuple[Boolean, Set]]:
+                      method: Optional[str] = None, partial: bool = True) -> list[tuple[Boolean, Set]]:
     """The real solutions in the ``unknowns`` of a formula in polynomial
     relations, for every real value of its ``parameters``: pairs of a
     condition on the parameters (cylindrical: the first one between
@@ -647,7 +647,7 @@ def cylindrical_cases(formula: Union[Boolean, bool], parameters: Sequence[Symbol
     """
     names = [as_symbol(p) for p in parameters]
     variables = [as_symbol(u) for u in unknowns]
-    free, description = _description(formula, names + variables, (), method)
+    free, description = _description(formula, names + variables, (), method, partial)
     if free != names + variables:
         raise ValueError("the parameters and the unknowns are the symbols of the formula")
     cases: list[tuple[Boolean, Set]] = []

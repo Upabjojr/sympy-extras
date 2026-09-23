@@ -134,3 +134,22 @@ def test_projection_sets() -> None:
         [Poly(x - 2, x), Poly(x + 2, x)], [Poly(9*x**2 + 4*y**2 - 36, x, y)]]
     assert projection_sets([Rational(1, 2)*x - y], [x, y]) == [
         [], [Poly(x - 2*y, x, y)]]
+
+
+def test_equational_constraint() -> None:
+    # McCallum's reduced projection: the coefficients and discriminant of
+    # the constraint and its resultants with the others only
+    circle, line = Poly(x**2 + y**2 - 1, x, y), Poly(y - x, x, y)
+    assert mccallum_projection([circle, line], y) == [Poly(x - 1, x), Poly(x + 1, x), Poly(2*x**2 - 1, x)]
+    assert mccallum_projection([circle, line], y, equational=[line]) == [Poly(2*x**2 - 1, x)]
+    assert mccallum_projection([circle, line], y, equational=[circle]) == [
+        Poly(x - 1, x), Poly(x + 1, x), Poly(2*x**2 - 1, x)]
+    raises(ValueError, lambda: mccallum_projection([circle], y, equational=[line]))
+    assert projection_sets([circle, line], [x, y], equational=y - x) == [[Poly(2*x**2 - 1, x)], [circle, Poly(x - y, x, y)]]
+    # a constraint with a factor which does not depend on the last variable
+    # is not one of the last level: nothing is reduced
+    assert projection_sets([circle, (x - 2)*(y - x)], [x, y], equational=(x - 2)*(y - x)) == \
+        projection_sets([circle, (x - 2)*(y - x)], [x, y])
+    # Hong's projection has no reduced form
+    assert projection_sets([circle, line], [x, y], method='hong', equational=y - x) == \
+        projection_sets([circle, line], [x, y], method='hong')

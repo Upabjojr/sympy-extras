@@ -10,6 +10,61 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- Partial cylindrical algebraic decompositions (Collins–Hong) for the
+  formulas: `decide`, `quantifier_elimination`, `solution_set`,
+  `sample_points`, `truth_tables` (which `ask` uses; its cells are now
+  the ones on which every formula is determined, of any level),
+  `cylindrical_formula`, `cylindrical_set` and
+  `cylindrical_cases` lift the stacks which the truth value of the formula
+  depends on and no other (trial evaluation of the formula on the signs
+  known at a cell, an `exists` settled by one true cell and a `forall` by
+  one false one, sectors before sections), and the signs of the projection
+  factors on a stack are read off the roots and their multiplicities over
+  its base, so that the algebraic field of a sample point is only built to
+  lift over it. The answers are those of the full decomposition, which
+  `partial=False` still builds (the reference). `Lifting` (the stacks on
+  demand) and `SamplePoint.specialization` are the new pieces.
+
+- McCallum's reduced projection for an equational constraint (ISSAC
+  1999): when the formula is an equation, or has one among the terms of
+  its conjunction, whose polynomial depends on the last variable, and
+  that variable is quantified, the projection of the last level takes the
+  coefficients and discriminants of the factors of that polynomial and
+  their resultants with the other polynomials only
+  (`projection_sets(..., equational=f)`,
+  `mccallum_projection(..., equational=E)`); the space of the free
+  variables is decomposed more coarsely, and a solution formula may be
+  written with fewer factors (the same set). `Exists x, y: x**2 + y**2 =
+  1 and y = a*x + b` takes 646 cells and 0.2 s instead of 3638 cells and
+  3.7 s.
+
+- The liftings of the last 64 questions are kept, keyed on the projection
+  factor sets, the variables and the projection operator
+  (`lifting_for`): the theory checks of `satisfiable` and the handlers of
+  `refine` ask about the same polynomials many times (1146 of the 1484
+  liftings of the assumptions tests repeat an earlier one). A stack is
+  the same whenever it is built, so the answers do not depend on the
+  questions asked before.
+
+- The real roots of a polynomial over an algebraic sample point are found
+  among the roots of its norm by Sturm counts over the field, whose signs
+  are decided by interval arithmetic (Collins–Loos); SymPy's `real_roots`
+  over an algebraic field evaluated the polynomial at every candidate
+  with growing precision (which was most of the time of a
+  decomposition). The roots of the polynomials of a stack are merged by
+  their isolating intervals, compared exactly only when the intervals
+  overlap, and `compare_real` refines the wider interval; two roots of
+  one polynomial written differently (`CRootOf(x**2 - 2, 1)` and
+  `2*CRootOf(2*x**2 - 1, 1)`) are now told equal by their indices among
+  the roots of their minimal polynomial, where the refinement never
+  ended. Together, on 95 random and classical formulas in two and three
+  variables: 951 to 53 CPU seconds, 11 to 0 formulas over a minute, and
+  on the 84 answered by both 293 to 13 seconds and 29,600 to 16,800
+  cells, with the same 84 answers; on 336 further random formulas every
+  answer of the previous code is reproduced (229 identical, 2 proven
+  equivalent at the sample points of a decomposition and on a rational
+  grid, 91 which the previous code did not give in 20 s).
+
 - Trager's algorithm integrates the logarithmic part of a root of index
   three or more, `y = P**(1/n)` with `P` squarefree over the rationals:
   a component `A_k*y**k` without a rational antiderivative goes through

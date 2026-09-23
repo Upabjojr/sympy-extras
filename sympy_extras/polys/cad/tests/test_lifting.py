@@ -3,6 +3,7 @@ from __future__ import annotations
 from sympy.core.numbers import Rational
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import CRootOf
+from sympy.sets.sets import Interval
 from sympy_extras.polys.cad.lifting import (cylindrical_algebraic_decomposition, CAD,
     CADCell, NotWellOriented, _merge_roots)
 from sympy_extras.polys.cad.samplepoints import SamplePoint, compare_real
@@ -238,3 +239,69 @@ def test_errors() -> None:
     raises(ValueError, lambda: cylindrical_algebraic_decomposition([x], [x], method='collins'))
     raises(Exception, lambda: cylindrical_algebraic_decomposition([x + z], [x, y]))
     raises(Exception, lambda: cylindrical_algebraic_decomposition([x**Rational(1, 2)], [x]))
+
+
+def test_lifting_on_demand() -> None:
+    from sympy_extras.polys.cad.lifting import Lifting
+    from sympy_extras.polys.cad.projection import projection_sets
+    polys = [x**2 + y**2 + z**2 - 1, z - x*y]
+    projection = projection_sets(polys, [x, y, z])
+    lifting = Lifting(projection, [x, y, z], 'mccallum')
+    line = lifting.stack(lifting.root)
+    assert lifting.lifted == len(line) and lifting.is_lifted(lifting.root)
+    assert not lifting.is_lifted(line[0])
+    # a stack is built once
+    assert lifting.stack(lifting.root) is line
+    # the stacks built so far, by level
+    assert lifting.levels() == [line, [], []]
+    over = lifting.stack(line[2])
+    assert lifting.levels() == [line, over, []]
+    assert lifting.lifted == len(line) + len(over)
+    # a lifting of every stack is the full decomposition, cell by cell
+    cad = cylindrical_algebraic_decomposition(polys, [x, y, z])
+    levels = lifting.lift_all()
+    assert [[c.index for c in level] for level in levels] == [[c.index for c in cad.cells_at(k)] for k in (1, 2, 3)]
+    assert [[c.point for c in level] for level in levels] == [[c.point for c in cad.cells_at(k)] for k in (1, 2, 3)]
+    assert [[c._signs for c in level] for level in levels] == [[c._signs for c in cad.cells_at(k)] for k in (1, 2, 3)]
+    raises(ValueError, lambda: lifting.stack(levels[-1][0]))
+
+
+def test_signs_from_the_roots() -> None:
+    # the signs of the projection factors on the cells of a stack are read
+    # off the roots and their multiplicities, not evaluated at the sample
+    # points: a factor with a double root does not change sign there
+    cad = cylindrical_algebraic_decomposition([(y - x)**2*(y + 1)*(x**2 + y**2 - 4), y**3 - x], [x, y])
+    # the sample point of a cell of the last level is computed when it is
+    # asked for
+    cell = cad.cells[0]
+    assert cell._sample is None
+    assert cell.sample.as_exprs() == cell.point
+    assert cell._sample is not None
+    _check_signs(cad)
+    _check_structure(cad)
+
+
+def test_liftings_are_kept() -> None:
+    from sympy_extras.polys.cad.lifting import lifting_for, _liftings, _KEPT
+    from sympy_extras.polys.cad.projection import projection_sets
+    from sympy_extras.polys.cad.qe import decide, sample_points, solution_set
+    projection = projection_sets([x**2 + y**2 - 1, x - y], [x, y])
+    lifting = lifting_for(projection, [x, y], 'mccallum')
+    assert lifting_for(projection, [x, y], 'mccallum') is lifting
+    assert lifting_for(projection, [x, y], 'hong') is not lifting
+    assert lifting_for(projection, [y, x], 'mccallum') is not lifting
+    # the last _KEPT are kept
+    for k in range(_KEPT + 5):
+        lifting_for(projection_sets([x - k, y], [x, y]), [x, y], 'mccallum')
+    assert len(_liftings) == _KEPT
+    assert lifting_for(projection, [x, y], 'mccallum') is not lifting
+    # the answers do not depend on the questions asked before with the same
+    # polynomials: the stacks kept are the ones a fresh lifting builds
+    formula = (x**2 + y**2 < 1) & (x > y)
+    points = sample_points(formula, [x, y])
+    assert decide(formula, [('exists', [x, y])]) is True
+    assert solution_set(formula, x, [("exists", y)]) == Interval.open(CRootOf(2*x**2 - 1, 0), 1)
+    assert sample_points(formula, [x, y]) == points
+    _liftings.clear()
+    assert sample_points(formula, [x, y]) == points
+    assert solution_set(formula, x, [("exists", y)]) == Interval.open(CRootOf(2*x**2 - 1, 0), 1)

@@ -12,6 +12,7 @@ element whenever a new algebraic coordinate is added.
 """
 from __future__ import annotations
 
+from functools import cmp_to_key
 from itertools import count
 from typing import Optional, Sequence, Union
 
@@ -20,6 +21,7 @@ from sympy.core.numbers import Rational
 from sympy.core.symbol import Dummy, Symbol
 from sympy.core.sympify import sympify
 from sympy.polys.densetools import dup_eval
+from sympy.polys.rootisolation import dup_sturm
 from sympy.polys.domains import QQ
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
@@ -90,12 +92,30 @@ def _minpoly(r: RealAlgebraic) -> Poly:
     return p
 
 
+def _root_index(a: RealAlgebraic, p: Poly) -> int:
+    """The index, from 0, of the real algebraic number ``a`` among the real
+    roots of its minimal polynomial ``p`` in increasing order."""
+    while True:
+        lo, hi = _bounds(a)
+        if p.count_roots(lo, hi) == 1:
+            return int(p.count_roots(None, lo))
+        _refine(a)
+
+
 def compare_real(a: Union[RealAlgebraic, int], b: Union[RealAlgebraic, int]) -> Sign:
     """Compare two real algebraic numbers exactly.
 
     ``a`` and ``b`` must be :class:`~.Rational` numbers, real
     :class:`~.ComplexRootOf` roots or products of the two. Returns ``-1``,
     ``0`` or ``1``.
+
+    The isolating intervals are refined, the wider one first, until they
+    are disjoint. Two roots of one polynomial written differently (a
+    rational multiple of a root of a scaled polynomial: the form
+    :func:`~.real_roots` gives depends on the polynomial it was asked
+    about, not only on the root) are told equal by their indices among the
+    roots of their common minimal polynomial: refinement alone would never
+    end.
 
     Examples
     ========
@@ -107,18 +127,67 @@ def compare_real(a: Union[RealAlgebraic, int], b: Union[RealAlgebraic, int]) -> 
     -1
     >>> compare_real(CRootOf(x**2 - 2, 1), CRootOf(x**3 - 2, 0))
     1
+    >>> compare_real(CRootOf(x**2 - 2, 1), 2*CRootOf(2*x**2 - 1, 1))
+    0
     """
     if a == b:
         return 0
-    while True:
+    for step in count():
         alo, ahi = _bounds(a)
         blo, bhi = _bounds(b)
         if ahi < blo:
             return -1
         if bhi < alo:
             return 1
-        _refine(a)
-        _refine(b)
+        if alo == ahi and blo == bhi:
+            return 0
+        if step == 8 and isinstance(a, Expr) and isinstance(b, Expr):
+            if _split(a)[1] is not None and _split(b)[1] is not None:
+                ma, mb = _minpoly(a), _minpoly(b)
+                if ma.all_coeffs() == mb.all_coeffs() and _root_index(a, ma) == _root_index(b, mb):
+                    return 0
+        if ahi - alo >= bhi - blo:
+            _refine(a)
+        else:
+            _refine(b)
+    raise RuntimeError("unreachable")  # pragma: no cover
+
+
+def _order(values: Sequence[Union[RealAlgebraic, int]]) -> list[list[int]]:
+    """The positions of the real algebraic numbers ``values`` in increasing
+    order, the positions of equal numbers grouped together.
+
+    The order of two numbers whose isolating intervals are disjoint is read
+    off the intervals; only the others are compared exactly, which refines
+    their intervals. This is what a stack needs to merge the roots of its
+    polynomials: the intervals are computed once per number, not once per
+    comparison.
+
+    >>> from sympy import CRootOf
+    >>> from sympy.abc import x
+    >>> from sympy_extras.polys.cad.samplepoints import _order
+    >>> _order([1, CRootOf(x**2 - 2, 1), 0, CRootOf(x**2 - 2, 1), CRootOf(x**2 - 2, 0)])
+    [[4], [2], [0], [1, 3]]
+    """
+    bounds = [_bounds(v) for v in values]
+
+    def compare(i: int, j: int) -> int:
+        (alo, ahi), (blo, bhi) = bounds[i], bounds[j]
+        if ahi < blo:
+            return -1
+        if bhi < alo:
+            return 1
+        c = compare_real(values[i], values[j])
+        bounds[i], bounds[j] = _bounds(values[i]), _bounds(values[j])
+        return c
+
+    groups: list[list[int]] = []
+    for i in sorted(range(len(values)), key=cmp_to_key(compare)):
+        if groups and compare(groups[-1][-1], i) == 0:
+            groups[-1].append(i)
+        else:
+            groups.append([i])
+    return groups
 
 
 def _floor(q: DomainElement) -> int:
@@ -350,6 +419,130 @@ def _join(theta: RealAlgebraic, beta: RealAlgebraic) -> tuple[ComplexRootOf, Dom
     return gamma, K, theta_K, beta_K
 
 
+def _separate(candidates: Sequence[RealAlgebraic]) -> None:
+    """Refine the isolating intervals of the real algebraic numbers
+    ``candidates``, which are pairwise distinct, until they are pairwise
+    disjoint (the roots of different polynomials may have overlapping
+    intervals)."""
+    while True:
+        bounds = [_bounds(r) for r in candidates]
+        crowded: set[int] = set()
+        for i in range(len(candidates)):
+            for j in range(i + 1, len(candidates)):
+                if not (bounds[i][1] < bounds[j][0] or bounds[j][1] < bounds[i][0]):
+                    crowded.add(i)
+                    crowded.add(j)
+        if not crowded:
+            return
+        for i in crowded:
+            _refine(candidates[i])
+
+
+def _variations(sturm: Sequence[Sequence[DomainElement]], value: DomainElement, theta: RealAlgebraic,
+                K: Domain) -> int:
+    """The number of sign variations of the Sturm sequence ``sturm`` over
+    `\\mathbb{Q}(\\theta)` at the rational ``value``, the signs decided
+    exactly."""
+    signs = [_sign_in_field(theta, dup_eval(f, K.convert(value, QQ), K)) for f in sturm]
+    nonzero = [sign for sign in signs if sign]
+    return sum(1 for a, b in zip(nonzero, nonzero[1:]) if a != b)
+
+
+def _real_roots_over(theta: RealAlgebraic, f: Poly) -> list[tuple[RealAlgebraic, int]]:
+    """The distinct real roots, with their multiplicities and in increasing
+    order, of the univariate polynomial ``f`` over the field
+    `\\mathbb{Q}(\\theta)`, ``theta`` a real :class:`~.ComplexRootOf`.
+
+    The roots are among the real roots of the norm of each squarefree
+    factor (a polynomial over the rationals); each candidate is kept or
+    dropped by counting the roots of the factor in its isolating interval
+    with a Sturm sequence over the field, whose signs are decided by
+    interval arithmetic on ``theta`` [1]_. This is exact, and much faster
+    than the numerical filtering of SymPy's ``real_roots`` over an
+    algebraic field, which evaluates the polynomial at every candidate
+    with growing precision.
+
+    References
+    ==========
+
+    .. [1] G. E. Collins, R. Loos, Real zeros of polynomials, in: Computer
+           Algebra: Symbolic and Algebraic Computation, Springer, 1982,
+           pp. 83-94 (Sturm sequences over real algebraic number fields).
+    """
+    K = f.domain
+    found: list[tuple[RealAlgebraic, int]] = []
+    for g, multiplicity in f.sqf_list()[1]:
+        if g.degree() < 1:
+            continue
+        candidates: list[RealAlgebraic] = [r for r, _ in g.lift().real_roots(multiple=False, radicals=False)]
+        if not candidates:
+            continue
+        rep = g.rep.to_list()
+        sturm = dup_sturm(rep, K)
+        _separate(candidates)
+        total = 0
+        for r in candidates:
+            c, root = _split(r)
+            if root is None:
+                if not dup_eval(rep, K.convert(c, QQ), K):
+                    found.append((r, int(multiplicity)))
+                    total += 1
+                continue
+            lo, hi = _bounds(r)
+            # the endpoints are not roots of the norm, so not of g: the
+            # count is of the open interval, which holds one root of the
+            # norm and so at most one of g
+            count = _variations(sturm, lo, theta, K) - _variations(sturm, hi, theta, K)
+            if count == 1:
+                found.append((r, int(multiplicity)))
+                total += 1
+            elif count:
+                raise PolynomialError("%d roots of %s in the isolating interval of %s" % (count, g, r))
+        if total != _variations(sturm, _bounds(candidates[0])[0] - 1, theta, K) - \
+                _variations(sturm, _bounds(candidates[-1])[1] + 1, theta, K):
+            raise PolynomialError("the real roots of %s are not among those of its norm" % (g,))
+    return [found[group[0]] for group in _order([root for root, _ in found])]
+
+
+class Specialization:
+    """A polynomial with the coordinates of a sample point put for all its
+    variables but the last: what the lifting phase needs to know of it.
+
+    Attributes
+    ==========
+
+    degree : int
+        The degree in the last variable at the point, ``-1`` for a
+        polynomial which vanishes identically there.
+    leading_sign : int
+        The sign of the leading coefficient at the point (0 for the zero
+        polynomial).
+    roots : list of pairs
+        The distinct real roots in increasing order, each with its
+        multiplicity.
+
+    The sign of the polynomial on the line over the point follows from
+    these: it is ``leading_sign`` beyond the last root and changes at the
+    roots of odd multiplicity (see :meth:`sign_before`).
+    """
+
+    __slots__ = ('degree', 'leading_sign', 'roots')
+
+    def __init__(self, degree: int, leading_sign: Sign, roots: Sequence[tuple[RealAlgebraic, int]]) -> None:
+        self.degree = degree
+        self.leading_sign = leading_sign
+        self.roots = list(roots)
+
+    def sign_before(self, position: int) -> Sign:
+        """The sign of the polynomial between its roots of index
+        ``position - 1`` and ``position`` (below the first root for 0,
+        above the last one for ``len(roots)``)."""
+        if not 0 <= position <= len(self.roots):
+            raise ValueError("there are %d roots" % len(self.roots))
+        odd = sum(multiplicity for _, multiplicity in self.roots[position:]) % 2
+        return -self.leading_sign if odd else self.leading_sign
+
+
 class SamplePoint:
     """A point with real algebraic coordinates.
 
@@ -377,13 +570,17 @@ class SamplePoint:
     0
     """
 
-    __slots__ = ('field', 'theta', 'coords')
+    __slots__ = ('field', 'theta', 'coords', '_specializations')
 
     def __init__(self, field: Domain = QQ, theta: Optional[RealAlgebraic] = None,
                  coords: Sequence[DomainElement] = ()) -> None:
         self.field = field
         self.theta = theta
         self.coords = tuple(coords)
+        # the polynomials already specialized at the point: the lifting
+        # phase, the cylindrical descriptions and the region integrals ask
+        # for the roots of the same polynomials over the same point
+        self._specializations: dict[tuple[Poly, tuple[Symbol, ...]], Specialization] = {}
 
     def __len__(self) -> int:
         return len(self.coords)
@@ -457,6 +654,54 @@ class SamplePoint:
             return int(value > 0) - int(value < 0)
         return _sign_in_field(self.theta, value)
 
+    def specialization(self, poly: Union[ExprLike, Poly], gens: Sequence[Symbol]) -> Specialization:
+        """The polynomial ``poly`` in the last generator of ``gens``,
+        after substituting the point for the other generators: its degree,
+        the sign of its leading coefficient and its distinct real roots
+        with their multiplicities (a :class:`Specialization`). The result
+        is kept: the point does not change.
+
+        >>> from sympy import CRootOf
+        >>> from sympy.abc import x, y
+        >>> from sympy_extras.polys.cad.samplepoints import SamplePoint
+        >>> q = SamplePoint().extend(CRootOf(x**2 - 2, 1))
+        >>> s = q.specialization((x**2 - y**2 - 1)*(1 - y)*(x**2 - 3), [x, y])
+        >>> s.degree, s.leading_sign, s.roots
+        (3, -1, [(-1, 1), (1, 2)])
+        >>> [s.sign_before(i) for i in range(3)]      # of -(y + 1)*(y - 1)**2
+        [1, -1, -1]
+        """
+        gens = tuple(gens)
+        if len(gens) != len(self.coords) + 1:
+            raise ValueError("expected %d generators" % (len(self.coords) + 1))
+        if not isinstance(poly, Poly) or poly.gens != gens:
+            poly = Poly(poly, *gens)
+        key = (poly, gens)
+        found = self._specializations.get(key)
+        if found is not None:
+            return found
+        f = self._evaluate(poly, gens)
+        if not isinstance(f, Poly):
+            raise ValueError("expected %d generators" % (len(self.coords) + 1))
+        if f.is_zero:
+            result = Specialization(-1, 0, [])
+        else:
+            leading = f.rep.LC()
+            theta = self.theta
+            pairs: list[tuple[RealAlgebraic, int]] = []
+            if theta is None:
+                leading_sign: Sign = int(leading > 0) - int(leading < 0)
+                if f.degree() > 0:
+                    pairs = [(r, int(m)) for r, m in f.real_roots(multiple=False, radicals=False)]
+                    pairs = [pairs[group[0]] for group in _order([r for r, _ in pairs])]
+            else:
+                leading_sign = _sign_in_field(theta, leading)
+                if f.degree() > 0:
+                    pairs = _real_roots_over(theta, f)
+            result = Specialization(f.degree(), leading_sign, pairs)
+        self._specializations[key] = result
+        return result
+
     def real_roots(self, poly: Union[ExprLike, Poly], gens: Sequence[Symbol]) -> Optional[list[RealAlgebraic]]:
         """Sorted distinct real roots of ``poly`` in the last generator of
         ``gens``, after substituting the point for the other generators.
@@ -464,15 +709,10 @@ class SamplePoint:
         Returns ``None`` if the polynomial vanishes identically at the
         point.
         """
-        if len(gens) != len(self.coords) + 1:
-            raise ValueError("expected %d generators" % (len(self.coords) + 1))
-        f = self._evaluate(poly, gens)
-        if f.is_zero:
+        found = self.specialization(poly, gens)
+        if found.degree < 0:
             return None
-        if f.degree() <= 0:
-            return []
-        roots = [r for r, _ in f.real_roots(multiple=False, radicals=False)]
-        return sorted(roots, key=_SortKey)
+        return [r for r, _ in found.roots]
 
 
 class _SortKey:

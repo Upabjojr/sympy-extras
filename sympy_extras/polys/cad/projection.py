@@ -22,6 +22,13 @@ Two operators are implemented:
   and on their principal subresultant coefficients. It is always correct but
   produces many more polynomials.
 
+When the formula implies that one of the polynomials vanishes (an
+*equational constraint*), McCallum's projection is reduced to the
+coefficients and discriminants of the factors of that polynomial and to
+their resultants with the others [3]_: the other polynomials are then
+sign-invariant on the sections of the constraint, which is where the
+formula can hold. See :func:`mccallum_projection`.
+
 References
 ==========
 
@@ -30,11 +37,13 @@ References
        Algebraic Decomposition, Springer, 1998, pp. 242-268.
 .. [2] H. Hong, An improvement of the projection operator in cylindrical
        algebraic decomposition, ISSAC 1990, pp. 261-264.
+.. [3] S. McCallum, On projection in CAD-based quantifier elimination with
+       equational constraint, ISSAC 1999, pp. 145-149.
 """
 from __future__ import annotations
 
 from itertools import combinations
-from typing import Iterable, Sequence, Union
+from typing import Iterable, Optional, Sequence, Union
 
 from sympy.core.symbol import Symbol
 from sympy.polys.densebasic import dmp_strip, dmp_zero_p
@@ -175,7 +184,7 @@ def _collect(items: Iterable[Union[Poly, DomainElement]]) -> list[Poly]:
     return result
 
 
-def mccallum_projection(polys: Iterable[Poly], x: Symbol) -> list[Poly]:
+def mccallum_projection(polys: Iterable[Poly], x: Symbol, equational: Iterable[Poly] = ()) -> list[Poly]:
     """McCallum's projection of ``polys`` with respect to ``x``.
 
     ``polys`` must be a squarefree basis (pairwise coprime squarefree
@@ -189,6 +198,17 @@ def mccallum_projection(polys: Iterable[Poly], x: Symbol) -> list[Poly]:
     degree to be invariant on each cell, and if some coefficient is a nonzero
     constant the polynomial cannot vanish identically anywhere.
 
+    ``equational`` is a subset `E` of ``polys`` such that the formula
+    implies that one of them vanishes (the factors of an equational
+    constraint): the projection is then reduced to the coefficients and
+    discriminants of the elements of `E`, their pairwise resultants and
+    their resultants with the other polynomials [3]_. Over a cell of a
+    decomposition order-invariant for the reduced projection on which no
+    element of `E` vanishes identically, the elements of `E` are
+    delineable and every other polynomial is sign-invariant on each of
+    their sections, which is where the formula can hold; the other
+    polynomials are not sign-invariant on the sectors.
+
     Examples
     ========
 
@@ -199,10 +219,19 @@ def mccallum_projection(polys: Iterable[Poly], x: Symbol) -> list[Poly]:
     [Poly(x - 1, x, domain='ZZ'), Poly(x + 1, x, domain='ZZ')]
     >>> mccallum_projection([Poly(x*y - 1, x, y), Poly(y - x, x, y)], y)
     [Poly(x, x, domain='ZZ'), Poly(x - 1, x, domain='ZZ'), Poly(x + 1, x, domain='ZZ')]
+    >>> mccallum_projection([Poly(x*y - 1, x, y), Poly(y - x, x, y)], y, equational=[Poly(y - x, x, y)])
+    [Poly(x - 1, x, domain='ZZ'), Poly(x + 1, x, domain='ZZ')]
     """
     polys = [_main_first(f, x) for f in polys]
+    constraints = [_main_first(f, x) for f in equational]
+    if constraints:
+        if any(e not in polys for e in constraints):
+            raise ValueError("the equational constraints must be among the polynomials")
+    else:
+        constraints = polys
+    others = [f for f in polys if f not in constraints]
     items: list[Union[Poly, DomainElement]] = []
-    for f in polys:
+    for f in constraints:
         for c in _coefficients(f):
             if not _is_constant(c):
                 items.append(c)
@@ -210,8 +239,11 @@ def mccallum_projection(polys: Iterable[Poly], x: Symbol) -> list[Poly]:
                 break
         if f.degree() >= 2:
             items.append(f.discriminant())
-    for f, g in combinations(polys, 2):
+    for f, g in combinations(constraints, 2):
         items.append(f.resultant(g))
+    for f in constraints:
+        for g in others:
+            items.append(f.resultant(g))
     return _collect(items)
 
 
@@ -258,7 +290,7 @@ _PROJECTIONS = {
 
 
 def projection_sets(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbol],
-                    method: str = 'mccallum') -> list[list[Poly]]:
+                    method: str = 'mccallum', equational: Optional[Union[ExprLike, Poly]] = None) -> list[list[Poly]]:
     """Projection factor sets of ``polys`` for the variables ``gens``.
 
     The last generator is projected first. Returns a list
@@ -268,7 +300,14 @@ def projection_sets(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbo
     ``P_{k+1}`` together with the factors of the input (and of the
     projections of higher levels) that only depend on ``gens[:k]``.
 
-    ``method`` is ``'mccallum'`` (default) or ``'hong'``.
+    ``method`` is ``'mccallum'`` (default) or ``'hong'``. With McCallum's
+    projection, ``equational`` may be one of ``polys`` which the formula
+    to be decided implies to vanish: the projection of the last level is
+    reduced to its factors (see :func:`mccallum_projection`), when they
+    all depend on the last generator. The cells of the decomposition are
+    then not sign-invariant for the other polynomials of the last level
+    off the sections of the constraint, and the lower levels have fewer
+    polynomials.
 
     Examples
     ========
@@ -277,6 +316,8 @@ def projection_sets(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbo
     >>> from sympy_extras.polys.cad import projection_sets
     >>> projection_sets([x**2 + y**2 - 1, x - y], [x, y])
     [[Poly(x - 1, x, domain='ZZ'), Poly(x + 1, x, domain='ZZ'), Poly(2*x**2 - 1, x, domain='ZZ')], [Poly(x**2 + y**2 - 1, x, y, domain='ZZ'), Poly(x - y, x, y, domain='ZZ')]]
+    >>> projection_sets([x**2 + y**2 - 1, x - y], [x, y], equational=x - y)
+    [[Poly(2*x**2 - 1, x, domain='ZZ')], [Poly(x**2 + y**2 - 1, x, y, domain='ZZ'), Poly(x - y, x, y, domain='ZZ')]]
     """
     try:
         project = _PROJECTIONS[method]
@@ -289,6 +330,12 @@ def projection_sets(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbo
 
     levels = squarefree_basis(polys, gens)
     n = len(gens)
+    constraints: list[Poly] = []
+    if equational is not None and method == 'mccallum':
+        [constraint] = _to_polys([equational], gens)
+        factors = _factors(constraint)
+        if factors and all(_level(g, gens) == n for g in factors):
+            constraints = factors
 
     result: list[list[Poly]] = [[] for _ in range(n)]
     for k in range(n, 0, -1):
@@ -296,7 +343,11 @@ def projection_sets(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbo
         result[k - 1] = current
         if k == 1:
             break
-        for g in project(current, gens[k - 1]):
+        if k == n and constraints:
+            projected = mccallum_projection(current, gens[k - 1], [Poly(f.as_expr(), *gens[:k]) for f in constraints])
+        else:
+            projected = project(current, gens[k - 1])
+        for g in projected:
             g = Poly(g.as_expr(), *gens)
             j = _level(g, gens)
             if j and g not in levels[j - 1]:

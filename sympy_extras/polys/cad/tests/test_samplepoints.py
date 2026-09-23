@@ -313,3 +313,58 @@ def test_sample_point() -> None:
     assert pp.sign(x*y*z - 5, [x, y, z]) == 1
     vals = [e.evalf(20) for e in pp.as_exprs()]
     assert all(abs(v - sqrt(n).evalf(20)) < 1e-15 for v, n in zip(vals, [2, 3, 5]))
+
+
+def test_specialization() -> None:
+    from sympy_extras.polys.cad.samplepoints import Specialization
+    p = SamplePoint().extend(CRootOf(x**2 - 2, 1))
+    s = p.specialization((y**2 - x**2)*(y - 1)**2*(y**2 + 1), [x, y])
+    assert s.degree == 6 and s.leading_sign == 1
+    assert [(compare_real(r, v), m) for (r, m), v in zip(s.roots, [CRootOf(x**2 - 2, 0), Rational(1), CRootOf(x**2 - 2, 1)])] == [(0, 1), (0, 2), (0, 1)]
+    assert [s.sign_before(i) for i in range(4)] == [1, -1, -1, 1]
+    raises(ValueError, lambda: s.sign_before(4))
+    # a polynomial which vanishes at the point
+    s = p.specialization((x**2 - 2)*y, [x, y])
+    assert s.degree == -1 and s.leading_sign == 0 and s.roots == [] and s.sign_before(0) == 0
+    # a constant, positive and negative
+    assert p.specialization(x**2 - 1, [x, y]).degree == 0
+    assert p.specialization(x**2 - 1, [x, y]).leading_sign == 1
+    assert p.specialization(1 - x**3, [x, y]).leading_sign == -1
+    # the result is kept
+    assert p.specialization(y - x, [x, y]) is p.specialization(y - x, [x, y])
+    assert isinstance(p.specialization(y - x, [x, y]), Specialization)
+    # a rational point
+    s = SamplePoint().extend(Rational(1, 2)).specialization(-(2*y - 1)**3*(y + x), [x, y])
+    assert s.degree == 4 and s.leading_sign == -1 and s.roots == [(-Rational(1, 2), 1), (Rational(1, 2), 3)]
+    assert [s.sign_before(i) for i in range(3)] == [-1, 1, -1]
+
+
+def test_equal_roots_written_differently() -> None:
+    from sympy_extras.polys.cad.samplepoints import _order
+    # the same number as a root of x**2 - 2 and as twice a root of
+    # 2*x**2 - 1 (the form real_roots gives depends on the polynomial it
+    # was asked about): compare_real refined the two intervals forever,
+    # since they never become disjoint; the indices among the roots of the
+    # common minimal polynomial tell that they are equal
+    a, b = CRootOf(x**2 - 2, 1), 2*CRootOf(2*x**2 - 1, 1)
+    assert a != b and compare_real(a, b) == 0 and compare_real(b, a) == 0
+    assert compare_real(CRootOf(x**2 - 2, 0), 2*CRootOf(2*x**2 - 1, 1)) == -1
+    assert compare_real(-CRootOf(x**2 - 2, 0), 2*CRootOf(2*x**2 - 1, 1)) == 0
+    assert _order([a, 1, b, CRootOf(x**2 - 2, 0), Rational(3, 2), Rational(3, 2)]) == [[3], [1], [0, 2], [4, 5]]
+    assert _order([]) == [] and _order([0]) == [[0]]
+
+
+def test_real_roots_over_an_algebraic_field() -> None:
+    # the real roots of a polynomial over QQ<theta> by the Sturm counts of
+    # the candidates, the roots of the norm, against the direct evaluation
+    from sympy_extras.polys.cad.samplepoints import _real_roots_over
+    theta = CRootOf(x**3 - 3*x + 1, 2)
+    K = QQ.algebraic_field(theta)
+    for f in [(y - x)*(y + x)*(y**2 - x - 3), (y**2 - 2)*(y - x)**2*(y**2 + 1), y**4 - x*y**2 - 1, (3*y - x**2)**3]:
+        poly = Poly(f, x, y).set_domain(K).eval(x, K.unit)
+        found = _real_roots_over(theta, poly)
+        assert all(compare_real(r, s) < 0 for (r, _), (s, _) in zip(found, found[1:]))
+        assert all(abs(f.subs({x: theta, y: r}).evalf(50)) < 1e-40 for r, _ in found)
+        direct = Poly(f.subs(x, theta), y, extension=True).real_roots(multiple=False)
+        assert [m for _, m in found] == [m for _, m in direct]
+        assert all(abs(r.evalf(50) - s.evalf(50)) < 1e-40 for (r, _), (s, _) in zip(found, direct))
