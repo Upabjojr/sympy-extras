@@ -19,7 +19,8 @@ SymPy's Gröbner basis routines:
   test for maximal ideals;
 * in any dimension, over the rationals: the radical, its equidimensional
   parts, the minimal primes and the tests for radical and prime ideals,
-  through regular chains (:mod:`sympy_extras.polys.idealdecomposition`);
+  through regular chains, and the primary decomposition with the
+  associated primes (:mod:`sympy_extras.polys.idealdecomposition`);
 * conversion between monomial orders with FGLM (zero-dimensional) or the
   Gröbner walk (:mod:`sympy_extras.polys.groebnerwalk`).
 
@@ -47,7 +48,8 @@ Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)
 """
 from __future__ import annotations
 
-from typing import Iterable, Optional, Sequence, Union
+from itertools import product
+from typing import Iterable, Iterator, Optional, Sequence, Union
 
 from sympy.core.expr import Expr
 from sympy.core.singleton import S
@@ -64,13 +66,13 @@ from sympy.polys.polytools import Poly
 from sympy.polys.rings import ring as _ring, PolyElement, PolyRing
 from sympy.matrices.dense import MutableDenseMatrix
 
-from sympy_extras._typing import Monomial, OrderSpec, as_symbol, free_symbols, sorted_symbols
+from sympy_extras._typing import DomainElement, Monomial, OrderSpec, as_symbol, free_symbols, sorted_symbols
 
 from .groebnerwalk import groebner_walk
 from .modulargroebner import groebner as _groebner
 from .orderings import as_order, elimination_order
 
-__all__ = ['Ideal', 'hilbert_numerator']
+__all__ = ['Ideal', 'hilbert_numerator', 'separating_forms']
 
 
 def _is_graded(order: OrderSpec) -> bool:
@@ -89,6 +91,45 @@ def hilbert_numerator(monomials: Iterable[Sequence[int]], t: Symbol) -> Poly:
     """
     monomials = _minimal_monomials([tuple(m) for m in monomials])
     return Poly(_hilbert_numerator(monomials, t), t)
+
+
+def separating_forms(variables: Sequence[Symbol], points: int) -> Iterator[Expr]:
+    r"""Linear forms $x_1 + c_2 x_2 + \cdots + c_n x_n$ with small integer
+    coefficients, by increasing height $\max |c_i|$, among which one takes
+    different values at any ``points`` distinct points (with coordinates in
+    any field of characteristic zero).
+
+    The forms which take the same value at two of the points are the zeros
+    of an affine function of $(c_2, \ldots, c_n)$, not zero, for each of
+    the $D = p(p - 1)/2$ pairs; their product has degree at most $D$ and
+    does not vanish on the whole grid $\{-H, \ldots, H\}^{n - 1}$ as soon
+    as $2H + 1 > D$ (Schwartz–Zippel), so that the search ends at the
+    height $H = \lceil D/2 \rceil$. The coefficients of each height are
+    enumerated in the order ``0, 1, -1, 2, -2, ...``: the first forms are
+    ``x1``, then the sums and differences of two variables.
+
+    >>> from sympy.abc import x, y, z
+    >>> from sympy_extras.polys.ideals import separating_forms
+    >>> list(separating_forms([x, y], 3))
+    [x, x + y, x - y, x + 2*y, x - 2*y]
+    >>> [f for f, _ in zip(separating_forms([x, y, z], 10), range(5))]
+    [x, x + z, x - z, x + y, x + y + z]
+    """
+    if len(variables) < 2:
+        # one variable separates distinct points by itself
+        yield variables[0] if variables else S.Zero
+        return
+    pairs = points*(points - 1)//2
+    bound = (pairs + 1)//2
+    for height in range(bound + 1):
+        values = [0] + [v for k in range(1, height + 1) for v in (k, -k)]
+        for tail in product(values, repeat=len(variables) - 1):
+            if height and max(abs(c) for c in tail) != height:
+                continue
+            form: Expr = variables[0]
+            for c, v in zip(tail, variables[1:]):
+                form += c*v
+            yield form
 
 
 def _minimal_monomials(monomials: Iterable[Monomial]) -> list[Monomial]:
@@ -339,7 +380,21 @@ class Ideal:
         G = _groebner(gens, R) if gens else []
         indices = set(range(len(eliminated)))
         kept = [g for g in G if all(all(m[i] == 0 for i in indices) for m in g.monoms())]
-        return Ideal([g.as_expr() for g in kept], *keep, domain=self.domain, order=self.order)
+        result = Ideal([g.as_expr() for g in kept], *keep, domain=self.domain, order=self.order)
+        if self.order == grevlex:
+            # the elements of the basis without the eliminated variables are
+            # the reduced basis of the elimination ideal for the order of
+            # the second block, grevlex: no need to compute it again
+            k = len(eliminated)
+            result._set_basis([{m[k:]: c for m, c in g.terms()} for g in kept])
+        return result
+
+    def _set_basis(self, basis: Sequence[dict[Monomial, DomainElement]]) -> None:
+        """Record the reduced Gröbner basis for the default order, known
+        from another computation, given as dictionaries of terms."""
+        R = self.ring()
+        G = [R.from_dict(g) for g in basis if g]
+        self._bases[self.order] = sorted(G, key=lambda g: R.order(g.LM), reverse=True)
 
     def intersect(self, other: Ideal) -> Ideal:
         """The intersection with ``other``, as $(tI + (1 - t)J) \\cap K[x]$."""
@@ -662,7 +717,10 @@ class Ideal:
 
     def reduced(self) -> Ideal:
         """The same ideal generated by its reduced Gröbner basis."""
-        return self._new([g.as_expr() for g in self._basis()])
+        G = self._basis()
+        result = self._new([g.as_expr() for g in G])
+        result._set_basis([dict(g) for g in G])
+        return result
 
     def is_radical(self) -> bool:
         """Whether the ideal equals its radical.
@@ -712,11 +770,48 @@ class Ideal:
         from .idealdecomposition import minimal_primes
         return minimal_primes(self)
 
+    def primary_decomposition(self) -> list[tuple[Ideal, Ideal]]:
+        """An irredundant primary decomposition, as pairs of a primary
+        ideal and its associated prime, by decreasing dimension of the
+        primes (:func:`~sympy_extras.polys.idealdecomposition.primary_decomposition`).
+
+        >>> from sympy.abc import x, y
+        >>> from sympy_extras.polys.ideals import Ideal
+        >>> Ideal([x**2*y, x*y**2], x, y).primary_decomposition()
+        [(Ideal([x], x, y), Ideal([x], x, y)), (Ideal([y], x, y), Ideal([y], x, y)), (Ideal([x**2, y**2], x, y), Ideal([x, y], x, y))]
+        """
+        from .idealdecomposition import primary_decomposition
+        return primary_decomposition(self)
+
+    def associated_primes(self) -> list[Ideal]:
+        """The associated primes, minimal and embedded, by decreasing
+        dimension (:func:`~sympy_extras.polys.idealdecomposition.associated_primes`).
+
+        >>> from sympy.abc import x, y, z
+        >>> from sympy_extras.polys.ideals import Ideal
+        >>> Ideal([x**2, x*y, x*z], x, y, z).associated_primes()
+        [Ideal([x], x, y, z), Ideal([x, y, z], x, y, z)]
+        """
+        from .idealdecomposition import associated_primes
+        return associated_primes(self)
+
+    def is_primary(self) -> bool:
+        """Whether the ideal is primary
+        (:func:`~sympy_extras.polys.idealdecomposition.is_primary`).
+
+        >>> from sympy.abc import x, y
+        >>> from sympy_extras.polys.ideals import Ideal
+        >>> Ideal([x**2, y**2], x, y).is_primary(), Ideal([x**2, x*y], x, y).is_primary()
+        (True, False)
+        """
+        from .idealdecomposition import is_primary
+        return is_primary(self)
+
     def is_maximal(self) -> bool:
         """Whether the ideal is maximal, i.e. $K[x]/I$ is a field: the
         ideal has dimension zero, is radical, and the minimal polynomial
         of a separating linear form (one with degree the dimension of
-        $K[x]/I$) is irreducible.
+        $K[x]/I$, found by :func:`separating_forms`) is irreducible.
 
         >>> from sympy.abc import x, y
         >>> from sympy_extras.polys.ideals import Ideal
@@ -733,12 +828,8 @@ class Ideal:
         if dim == 1:
             return True
         y = Dummy('y')
-        n = len(self.symbols)
-        # the forms which do not separate two of the dim zeros lie on a
-        # hyperplane for each pair, and a hyperplane has at most n - 1 of
-        # the points (1, t, t**2, ...): one of these separates
-        for t in range(1, (n - 1)*dim*(dim - 1)//2 + 2):
-            ell = sum(t**i*s for i, s in enumerate(self.symbols))
+        # one of the forms separates the dim zeros (see separating_forms)
+        for ell in separating_forms(self.symbols, dim):
             p = self.minimal_polynomial(ell, y)
             if p.degree() < dim:
                 continue

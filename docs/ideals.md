@@ -31,15 +31,16 @@ This package adds, on top of SymPy's Gröbner basis engine:
   **equidimensional parts**, the **minimal primes**, the **height** and
   the tests for **radical** and **prime** ideals, through triangular
   decompositions into squarefree regular chains
-  ([regularchains.md](regularchains.md));
+  ([regularchains.md](regularchains.md)), and the **primary
+  decomposition**, the **associated primes** (embedded ones included) and
+  the test for **primary** ideals (Gianni–Trager–Zacharias);
 - the **Gröbner walk**, converting a Gröbner basis between orders for
   ideals of any dimension (`change_order` uses FGLM when the ideal is
   zero-dimensional and the walk otherwise);
 - **modular Gröbner bases** over the rationals, proven, which `Ideal` uses
   for the bases SymPy does not compute in a quarter of a second.
 
-Not done here: primary decomposition (the primary components and the
-embedded primes; only the minimal primes are computed), the depth,
+Not done here: the depth,
 decompositions over other fields than the rationals (algebraic numbers,
 finite fields), F4 and strong Gröbner bases over the integers.
 
@@ -126,7 +127,9 @@ Ideal([x**3*y - x*y**3, x*z - y*z], x, y, z)
 The prime components of the saturated ideal of a chain with free variables
 `u` are found in dimension zero over `Q(u)`, without a Gröbner basis over
 that field: a linear form in the other variables which separates the zeros
-is found among `x1 + t*x2 + t**2*x3 + ...`, its minimal polynomial over
+is found among `x1 + c2*x2 + c3*x3 + ...` with small integer coefficients
+(`separating_forms`, by increasing height, up to a height at which one of
+them is sure to separate the zeros), its minimal polynomial over
 `Q[u]` is the generator of an elimination ideal, and to each irreducible
 factor answers the prime which is the saturation by the other factors.
 The primes are those over the rationals: `x**2 - 2*y**2` is one.
@@ -138,6 +141,71 @@ The primes are those over the rationals: `x**2 - 2*y**2` is one.
 True
 
 ```
+
+## Primary decomposition
+
+`primary_decomposition()` returns an irredundant primary decomposition as
+pairs `(Q, P)` of a primary ideal and its prime, by decreasing dimension;
+`associated_primes()` the primes, the embedded ones included, and
+`is_primary()` tests an ideal. The line `x = 0` of the plane with an
+embedded point at the origin, and a plane with an embedded line and an
+embedded point on it:
+
+```python
+>>> Ideal([x**2, x*y], x, y).primary_decomposition()
+[(Ideal([x], x, y), Ideal([x], x, y)), (Ideal([x**2, y], x, y), Ideal([x, y], x, y))]
+>>> L = Ideal([x], x, y, z).intersect(Ideal([x**2, y], x, y, z)).intersect(Ideal([x**3, y**3, z], x, y, z))
+>>> L.associated_primes()
+[Ideal([x], x, y, z), Ideal([x, y], x, y, z), Ideal([x, y, z], x, y, z)]
+>>> L.minimal_primes()
+[Ideal([x], x, y, z)]
+>>> L.is_primary(), Ideal([x**2, y**3], x, y).is_primary()
+(False, True)
+
+```
+
+The algorithm is the reduction of Gianni, Trager and Zacharias to
+dimension zero. For a maximal independent set `u` of variables (as many as
+the dimension, with `I ∩ K[u] = 0`, read off the leading monomials), the
+extension of `I` to `K(u)[x]` has dimension zero; its contraction back to
+`K[x]` is the saturation `I : h**oo` by the leading coefficients `h` in
+`K[u]` of a Gröbner basis for a block order with `x > u`, and it is the
+intersection of the primary components whose primes do not meet `K[u]`,
+all of them minimal. With `I : h**m = I : h**oo`, the ideal is `(I :
+h**oo) ∩ (I + (h**m))`, and the decomposition goes on with the larger
+ideal `I + (h**m)`, where the embedded components are found. The
+contraction is split into its primary components by separators, as in
+Shimoyama and Yokoyama's algorithm rather than by a decomposition over
+`K(u)`: its minimal primes `P_i` are known (from the regular chains), and
+saturating by a polynomial which lies in the other primes and not in
+`P_i` leaves the `P_i`-primary component. The components are merged by
+prime, and those which contain the intersection of the others are
+dropped.
+
+The prime of the monomial curve `(t**3, t**4, t**5)` has a square with an
+embedded component at the origin; its primary component is the symbolic
+square, which contains a quintic not in `P**2`:
+
+```python
+>>> P = Ideal([x - t**3, y - t**4, z - t**5], t, x, y, z).eliminate([t])
+>>> (Q, prime), (E, M) = (P**2).primary_decomposition()
+>>> prime == P, M
+(True, Ideal([x, y, z], x, y, z))
+>>> f = x**5 - 3*x**2*y*z + x*y**3 + z**3
+>>> Q.contains(f), (P**2).contains(f)
+(True, False)
+
+```
+
+The decompositions are checked, in the tests, by computations which do
+not use the algorithm: the intersection of the components is the ideal,
+each component has the prime as its radical and is not changed by
+saturations by polynomials outside it, no component can be left out, and
+the minimal ones among the primes are the minimal primes of the regular
+chains; on textbook examples (thirteen with embedded primes) and on random
+intersections and products of ideals which are primary by construction
+(powers of ideals of linear forms, complete intersections with a prime
+radical, over rational and irrational points).
 
 The twisted cubic in `P^3` has the classical invariants (Macaulay2's
 documentation examples):
@@ -369,7 +437,12 @@ SymPy.
   `minimal_primes()`, `is_prime()`, `height()` (the functions `radical`,
   `equidimensional_parts` and `minimal_primes` of
   `sympy_extras.polys.idealdecomposition` compute them from the chains, in
-  dimension zero too).
+  dimension zero too), `primary_decomposition()`, `associated_primes()`,
+  `is_primary()` (and the functions of the same names, with
+  `independent_set`, in `sympy_extras.polys.idealdecomposition`).
+
+`separating_forms(variables, points)` enumerates the linear forms with
+small integer coefficients among which one separates any `points` points.
 
 `modular_groebner(polys, ring, primes=None, trace=None)`, `groebner(polys,
 ring)` (the dispatcher used by `Ideal`), `rational_reconstruction(a, m,
@@ -403,5 +476,12 @@ series of a monomial ideal. `groebner_walk`, `extended_groebner` and
 - T. Becker, V. Weispfenning, *Gröbner bases*, Springer, 1993, chapter 8
   (separating forms, primality in dimension zero, extension and
   contraction).
+- P. Gianni, B. Trager, G. Zacharias, *Gröbner bases and primary
+  decomposition of polynomial ideals*, J. Symbolic Computation 6 (1988)
+  149-167.
+- T. Shimoyama, K. Yokoyama, *Localization and primary decomposition of
+  polynomial ideals*, J. Symbolic Computation 22 (1996) 247-277.
+- H. Kredel, V. Weispfenning, *Computing dimension and independent sets
+  for polynomial ideals*, J. Symbolic Computation 6 (1988) 231-247.
 - W. Vasconcelos, *Computational Methods in Commutative Algebra and
   Algebraic Geometry*, Springer, 1998.

@@ -204,7 +204,8 @@ dimension, Hilbert series and polynomial, the degree, and for
 zero-dimensional ideals the standard monomials and multiplication
 matrices; in any dimension, through regular chains, the radical, its
 equidimensional parts, the minimal primes and the tests for radical and
-prime ideals. The Gröbner walk converts bases between orders for ideals of
+prime ideals, and the primary decomposition with the embedded primes
+(Gianni–Trager–Zacharias). The Gröbner walk converts bases between orders for ideals of
 any dimension.
 Over the rationals, the bases which SymPy does not compute in a quarter of
 a second are computed by the modular algorithm of Arnold
@@ -223,6 +224,8 @@ Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)
 [x**2 - y*z, x*y**2 - y*z**2, x*z - y**2, y**4 - y*z**3]
 >>> Ideal([x**2 + y**2 - 1, x - y**2], x, y).is_maximal()
 True
+>>> Ideal([x**2, x*y], x, y).primary_decomposition()
+[(Ideal([x], x, y), Ideal([x], x, y)), (Ideal([x**2, y], x, y), Ideal([x, y], x, y))]
 >>> from sympy import QQ, ring, lex
 >>> from sympy_extras.polys.modulargroebner import modular_groebner
 >>> R, u, v, w = ring("u,v,w", QQ, lex)
@@ -723,7 +726,7 @@ sympy_extras/
     polys/
         euclidtools.py       principal subresultant coefficients
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
-        idealdecomposition.py  radical, equidimensional parts, minimal primes in any dimension
+        idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
         modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold)
         orderings.py         WeightOrder, BlockOrder

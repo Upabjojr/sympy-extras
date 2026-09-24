@@ -10,6 +10,28 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- Primary decomposition of polynomial ideals over the rationals in any
+  dimension (sympy-extras#11): `primary_decomposition`,
+  `associated_primes` (the embedded primes included), `is_primary` and
+  `independent_set` in `sympy_extras.polys.idealdecomposition`, and the
+  `Ideal` methods `primary_decomposition()`, `associated_primes()` and
+  `is_primary()`. The reduction of Gianni, Trager and Zacharias: a maximal
+  independent set `u`, the contraction of the extension to `Q(u)[x]` as a
+  saturation by the leading coefficients of a Gröbner basis for a block
+  order, and the recursion on `I + (h**m)`; the contraction is split by
+  separators between its minimal primes, as in Shimoyama and Yokoyama's
+  algorithm, and the components are made irredundant.
+  `(x**2, x*y)` is `(x) ∩ (x**2, y)`, and the square of the prime of the
+  monomial curve `(t**3, t**4, t**5)` has an embedded component at the
+  origin. Checked by intersection, radicals, saturations outside each
+  prime, irredundancy and the minimal primes, on textbook examples and
+  random intersections of ideals which are primary by construction.
+- `separating_forms` in `sympy_extras.polys.ideals`: linear forms with
+  small integer coefficients by increasing height, up to a height at which
+  one of them separates any given number of points (Schwartz–Zippel);
+  `is_maximal` and the minimal primes search them, instead of the forms
+  `x1 + t*x2 + t**2*x3 + ...`, whose coefficients grow as powers.
+
 - `definite_integral` returns the conditions under which its value holds
   when the endpoints, or the positions of the singularities and kinks of
   the integrand, depend on parameters: a singularity (a kink) whose
