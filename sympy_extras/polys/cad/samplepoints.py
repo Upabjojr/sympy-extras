@@ -190,6 +190,39 @@ def _order(values: Sequence[Union[RealAlgebraic, int]]) -> list[list[int]]:
     return groups
 
 
+def rational_real_roots(f: Poly) -> list[tuple[RealAlgebraic, int]]:
+    """The distinct real roots of the univariate polynomial ``f`` over
+    ``QQ``, in increasing order, with their multiplicities.
+
+    Each irreducible factor is isolated on its own and the roots of the
+    factors are merged by :func:`_order`. ``Poly.real_roots`` makes the
+    isolating intervals of all the factors disjoint together
+    (``ComplexRootOf._reals_sorted``), and with the intervals SymPy keeps
+    from earlier questions that refinement did not end: the whole test
+    suite hung there, in a decomposition which takes seven seconds alone.
+
+    >>> from sympy import Poly
+    >>> from sympy.abc import x
+    >>> from sympy_extras.polys.cad.samplepoints import rational_real_roots
+    >>> [(r.evalf(5), m) for r, m in rational_real_roots(Poly((2*x - 1)**2*(x**2 - 2)*(x**2 + 1), x))]
+    [(-1.4142, 1), (0.50000, 2), (1.4142, 1)]
+    """
+    values: list[RealAlgebraic] = []
+    multiplicities: list[int] = []
+    for g, m in f.factor_list()[1]:
+        if g.degree() < 1:
+            continue
+        if g.degree() == 1:
+            b, a = g.all_coeffs()
+            values.append(Rational(-a, b))
+            multiplicities.append(int(m))
+            continue
+        for r in g.real_roots(radicals=False):
+            values.append(r)
+            multiplicities.append(int(m))
+    return [(values[group[0]], sum(multiplicities[i] for i in group)) for group in _order(values)]
+
+
 def _floor(q: DomainElement) -> int:
     return q.numerator // q.denominator
 
@@ -474,7 +507,7 @@ def _real_roots_over(theta: RealAlgebraic, f: Poly) -> list[tuple[RealAlgebraic,
     for g, multiplicity in f.sqf_list()[1]:
         if g.degree() < 1:
             continue
-        candidates: list[RealAlgebraic] = [r for r, _ in g.lift().real_roots(multiple=False, radicals=False)]
+        candidates: list[RealAlgebraic] = [r for r, _ in rational_real_roots(g.lift())]
         if not candidates:
             continue
         rep = g.rep.to_list()
@@ -692,8 +725,7 @@ class SamplePoint:
             if theta is None:
                 leading_sign: Sign = int(leading > 0) - int(leading < 0)
                 if f.degree() > 0:
-                    pairs = [(r, int(m)) for r, m in f.real_roots(multiple=False, radicals=False)]
-                    pairs = [pairs[group[0]] for group in _order([r for r, _ in pairs])]
+                    pairs = rational_real_roots(f)
             else:
                 leading_sign = _sign_in_field(theta, leading)
                 if f.degree() > 0:

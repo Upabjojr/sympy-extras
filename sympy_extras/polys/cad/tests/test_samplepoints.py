@@ -368,3 +368,39 @@ def test_real_roots_over_an_algebraic_field() -> None:
         direct = Poly(f.subs(x, theta), y, extension=True).real_roots(multiple=False)
         assert [m for _, m in found] == [m for _, m in direct]
         assert all(abs(r.evalf(50) - s.evalf(50)) < 1e-40 for (r, _), (s, _) in zip(found, direct))
+
+
+def test_the_roots_of_each_factor_are_isolated_alone() -> None:
+    # the whole test suite hung twice in a stack of
+    # test_the_description_holds_on_the_cells_where_the_formula_does (seven
+    # seconds alone): SamplePoint.specialization took the roots of a
+    # polynomial with several factors from Poly.real_roots, which makes the
+    # isolating intervals of all the factors disjoint together
+    # (ComplexRootOf._reals_sorted, RealInterval.refine_disjoint), and with
+    # the intervals SymPy had kept from the earlier tests that loop did not
+    # end. The roots of each irreducible factor are now isolated alone and
+    # merged by _order, so SymPy never compares intervals of two factors.
+    from unittest.mock import patch
+    from sympy.polys.rootisolation import RealInterval
+    from sympy.polys.rootoftools import ComplexRootOf
+    from sympy_extras.polys.cad.samplepoints import rational_real_roots
+    original = ComplexRootOf._reals_sorted
+    factors_seen: list[int] = []
+
+    def spy(cls: type[ComplexRootOf], reals: list[tuple[RealInterval, Poly, int]]
+            ) -> list[tuple[RealInterval, Poly, int]]:
+        factors_seen.append(len({f for _, f, _ in reals}))
+        return original(reals)
+
+    f = Poly((2*y - 1)**2 * (y**2 - 2) * (2*y**2 - 1) * (y**3 - 3*y + 1) * y, y)
+    with patch.object(ComplexRootOf, '_reals_sorted', classmethod(spy)):
+        found = rational_real_roots(f)
+        point = SamplePoint().extend(Rational(1, 3))
+        specialized = point.specialization(f.as_expr() + 0*x, [x, y])
+    assert factors_seen and max(factors_seen) == 1
+    assert [m for _, m in found] == [1, 1, 1, 1, 1, 2, 1, 1, 1]
+    values = [r for r, _ in found]
+    assert all(compare_real(a, b) < 0 for a, b in zip(values, values[1:]))
+    assert [m for _, m in specialized.roots] == [m for _, m in found]
+    # the same roots as SymPy's own, when SymPy finishes
+    assert values == [r for r, _ in f.real_roots(multiple=False, radicals=False)]

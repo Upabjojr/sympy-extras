@@ -74,7 +74,7 @@ from sympy_extras.polys.roots import radical_form
 
 from .lifting import CAD, CADCell
 from .qe import CellTruth, _truth_values
-from .samplepoints import RealAlgebraic, _SortKey, _order
+from .samplepoints import RealAlgebraic, _order, rational_real_roots
 
 __all__ = ['IndexedRoot', 'cylindrical_formula', 'cylindrical_set', 'cylindrical_cases']
 
@@ -204,8 +204,7 @@ def _numerical_root(expression: Expr, t: Symbol, index: int) -> Optional[Expr]:
         return None
     if poly.degree() < 1:
         return None
-    roots = [as_expr(r) for r, _ in poly.real_roots(multiple=False, radicals=False)]
-    roots.sort(key=_SortKey)
+    roots = [as_expr(r) for r, _ in rational_real_roots(poly)]
     if index >= len(roots):
         return None
     root = roots[index]

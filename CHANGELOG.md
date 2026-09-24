@@ -818,6 +818,19 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- The cylindrical algebraic decomposition could hang in SymPy's real root
+  isolation: the real roots of a polynomial with several factors over a
+  rational sample point came from `Poly.real_roots`, which refines the
+  isolating intervals of all the factors against one another
+  (`ComplexRootOf._reals_sorted`), and with intervals SymPy had cached
+  from earlier questions that refinement did not end (the whole test
+  suite hung twice in a decomposition which takes seven seconds alone).
+  The roots of each irreducible factor are now isolated alone and merged
+  by the exact comparison of the package
+  (`sympy_extras.polys.cad.samplepoints.rational_real_roots`), in the
+  stacks, the sample points over algebraic fields and the indexed roots
+  of the cylindrical descriptions.
+
 - `definite_integral` checks its last step too: the verified value went
   through `tidy` (`unpolarify`, `simplify`, `refine`, the rewriting of
   logarithms and powers) and the tidied form was returned unchecked, the
