@@ -10,6 +10,34 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `definite_integral` returns the conditions under which its value holds
+  when the endpoints, or the positions of the singularities and kinks of
+  the integrand, depend on parameters: a singularity (a kink) whose
+  position against an endpoint the assumptions do not settle splits the
+  parameters into cases (below both endpoints, above both, between them
+  in either order, at most two such points), each case integrated under
+  its condition added to the assumptions, checked numerically at samples
+  of the parameters within the case, and the cases with the same value
+  (or whose value checks under the other's condition) joined; the value
+  is a `Piecewise` of the cases with the unevaluated integral as the last
+  branch, for the divergent and the undecided cases, and the value alone
+  when the assumptions prove the condition. `1/x` over `(a, b)` is
+  `-log(a) + log(b)` for `(a > 0) & (b > 0) | (a < 0) & (b < 0)` (it
+  came out unconditionally, SymPy's answer checked at positive samples
+  only, where it diverges for `a < 0 < b`), `1/(x - c)` over `(0, 1)` is
+  `log((c - 1)/c)` for `(c < 0) | (c > 1)`, `1/(x**2 - 1)` over `(a, b)`
+  with `b > a` has its three finite cases (the endpoints both below
+  `-1`, both between `-1` and `1`, or both above `1`) and `Abs(x)` over
+  `(a, b)` its three by the signs of the endpoints, where both were left
+  unevaluated. The singularities are placed against symbolic endpoints
+  under the assumptions (SymPy's `singularities` leaves `{0}` intersected
+  with `(a, b)`, which was read as no singularity), also by the
+  leading-term divergence verdict, SymPy's `integrate` is not asked on
+  the whole range while a position is undecided, and the cases of the
+  parameters get the whole time limit. `ConditionalValue.as_piecewise`
+  keeps the branches of a value which is a `Piecewise` of cases,
+  `ConditionalValue.cases` and `mapped` read and transform them, and
+  `antiderivative_integral` takes an antiderivative already `known`.
 - Solution formulas by Hong's augmented projection (sympy-extras#9):
   when the signs of the projection factors of the free variables do not
   tell the true cells from the false ones, `quantifier_elimination` adds

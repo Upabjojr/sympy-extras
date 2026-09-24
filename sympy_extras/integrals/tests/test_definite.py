@@ -1,14 +1,21 @@
 """Tests of the definite integration driver."""
 from __future__ import annotations
 
+import random
+
 from sympy import (symbols, exp, sin, cos, log, sqrt, oo, pi, S, Rational, Abs, Heaviside, Piecewise, Integral, I, Eq,
                    sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan, asin, besselj, Si, E, tan, arg, cosh,
                    sinh)
+from sympy.core.basic import Basic
+from sympy.core.expr import Expr
+from sympy.core.symbol import Symbol
+from sympy.logic.boolalg import And, Boolean, Not, Or
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions import element
+from sympy_extras.assumptions.ask import Assumptions
 from sympy_extras.integrals import definite_integral, conditional_integral, verify_numerically, ConditionalValue
 from sympy_extras.settings import configure
 
@@ -727,3 +734,147 @@ def test_the_last_simplification_is_checked(monkeypatch: object) -> None:
     assert definite_integral(x**2, (x, 0, 3)) == 9
     with configure(numerical_checks=False):
         assert definite_integral(x**2, (x, 0, a)) == a**3 / 3 + 1
+
+
+def _cases_agree_with_quadrature(f: ExprLike, limits: tuple[Symbol, ExprLike, ExprLike],
+                                 assumptions: Assumptions = None, samples: int = 20,
+                                 integrals: int = 3) -> list[tuple[Expr, Boolean]]:
+    """The evaluated branches of the ``Piecewise`` returned by
+    ``definite_integral`` (those without the unevaluated integral), each
+    with the condition under which it is taken (its own and the negation
+    of the earlier ones), or the value alone, each checked at ``samples``
+    random rational values of the parameters within its condition and the
+    assumptions: the value there, through ``reliable_value``, agrees with
+    mpmath's quadrature of the integrand on the numeric range, and at the
+    first ``integrals`` samples with ``definite_integral`` on that
+    range."""
+    from sympy_extras._numeric import reliable_value
+    from sympy_extras.integrals.definite import _quadrature
+    variable, lower, upper = limits[0], as_expr(limits[1]), as_expr(limits[2])
+    f_ = as_expr(f)
+    value = definite_integral(f_, limits, assumptions)
+    branches: list[tuple[Expr, Boolean]] = []
+    if isinstance(value, Piecewise):
+        earlier: list[Boolean] = []
+        for pair in value.args:
+            branch, condition = as_expr(pair.args[0]), as_boolean(pair.args[1])
+            if not branch.has(Integral):
+                branches.append((branch, as_boolean(And(condition, *[Not(c) for c in earlier]))))
+            earlier.append(condition)
+    else:
+        branches.append((as_expr(value), as_boolean(True)))
+    assert branches
+    facts: list[Boolean] = []
+    if isinstance(assumptions, (Basic, bool)):
+        facts.append(as_boolean(assumptions))
+    elif assumptions is not None:
+        facts.extend(as_boolean(item) for item in assumptions)
+    parameters = sorted_symbols((free_symbols(f_) | free_symbols(lower) | free_symbols(upper)) - {variable})
+    rng = random.Random(str((f_, limits, assumptions)))
+    for branch, condition in branches:
+        assert not branch.has(Integral, Piecewise)
+        checked = 0
+        for _ in range(5000):
+            values: dict[Symbol, Expr] = {p: Rational(rng.randint(-40, 40), rng.randint(1, 8)) for p in parameters}
+            if not all(as_boolean(fact.xreplace(values)) is S.true for fact in facts + [condition]):
+                continue
+            numeric, lo, hi = as_expr(f_.xreplace(values)), as_expr(lower.xreplace(values)), as_expr(upper.xreplace(values))
+            ours = reliable_value(branch, 20, values)
+            assert ours is not None, (branch, values)
+            # the quadrature, which cannot resolve a kink inside the range
+            # (its rules disagree on Abs(x) over (-10, 3/8)), and then the
+            # integral on the numeric range, split there
+            references: list[complex] = []
+            expected = _quadrature(numeric, variable, lo, hi)
+            if expected is not None:
+                references.append(expected)
+            if checked < integrals or expected is None:
+                direct = reliable_value(as_expr(definite_integral(numeric, (variable, lo, hi))), 20)
+                assert direct is not None, (numeric, lo, hi)
+                references.append(complex(direct))
+            for reference in references:
+                assert abs(complex(ours) - reference) <= 1e-8 * (1 + abs(reference)), (branch, values, ours, reference)
+            checked += 1
+            if checked == samples:
+                break
+        assert checked == samples, (branch, condition, checked)
+    return branches
+
+
+def test_singularities_whose_position_depends_on_the_parameters() -> None:
+    # the bug: 1/x over (p, q) for plain p and q came out as -log(p) + log(q),
+    # SymPy's answer checked at positive samples of p and q only, where the
+    # integral diverges for p < 0 < q: the value holds when 0 is not between
+    # the endpoints, and that condition is reported
+    p, q, c = symbols('p q c')
+    value = definite_integral(1 / x, (x, p, q))
+    assert isinstance(value, Piecewise) and value.args[-1].args[0] == Integral(1 / x, (x, p, q))
+    branches = _cases_agree_with_quadrature(1 / x, (x, p, q))
+    assert len(branches) == 1
+    condition = branches[0][1]
+    assert condition.subs({p: 1, q: 2}) is S.true and condition.subs({p: -2, q: -1}) is S.true
+    assert condition.subs({p: 2, q: 1}) is S.true
+    assert condition.subs({p: -1, q: 2}) is S.false and condition.subs({p: 2, q: -1}) is S.false
+    assert condition.subs({p: 0, q: 2}) is S.false
+    # the condition proved by the assumptions: the value alone
+    assert definite_integral(1 / x, (x, p, q), (p > 0) & (q > p)) == -log(p) + log(q)
+    # the same bug with the singularity moving: 1/(x - c) over (0, 1) came
+    # out as -log(-c) + log(1 - c) for a plain c, which diverges for
+    # 0 <= c <= 1
+    value = definite_integral(1 / (x - c), (x, 0, 1))
+    assert isinstance(value, Piecewise) and value.args[-1].args[0] == Integral(1 / (x - c), (x, 0, 1))
+    branches = _cases_agree_with_quadrature(1 / (x - c), (x, 0, 1))
+    assert len(branches) == 1
+    condition = branches[0][1]
+    assert condition.subs(c, -1) is S.true and condition.subs(c, 2) is S.true
+    for inside in (0, S.Half, 1):
+        assert condition.subs(c, inside) is S.false
+
+
+def test_the_cases_of_two_singularities_against_the_endpoints() -> None:
+    # the bug: 1/(x**2 - 1) over (p, q) with q > p was left unevaluated,
+    # the singularities at -1 and 1 not placed against symbolic endpoints;
+    # the finite cases are the endpoints both below -1, both between -1
+    # and 1, or both above 1, the others divergent
+    p, q = symbols('p q')
+    branches = _cases_agree_with_quadrature(1 / (x**2 - 1), (x, p, q), q > p)
+    condition = Or(*[c for _, c in branches])
+    for finite in ((2, 3), (-S.Half, S.Half), (-3, -2), (Rational(3, 2), 10)):
+        assert condition.subs({p: finite[0], q: finite[1]}) is S.true, finite
+    for divergent in ((0, 2), (-2, 0), (-2, 2), (-1, 0), (0, 1), (1, 2), (-3, -1)):
+        assert condition.subs({p: divergent[0], q: divergent[1]}) is S.false, divergent
+
+
+def test_a_kink_whose_position_depends_on_the_parameters() -> None:
+    # the bug: Abs(x) over (p, q) with q > p was left unevaluated, the kink
+    # at 0 not placed against symbolic endpoints; the three cases by the
+    # sign of the endpoints, the closed ones at 0 included
+    p, q = symbols('p q')
+    value = definite_integral(Abs(x), (x, p, q), q > p)
+    # the three cases cover every pair of endpoints, so the unevaluated
+    # branch may be dropped (Piecewise simplifies a condition given the
+    # negation of the earlier ones); (the bug: the cases came back as a
+    # Piecewise nested in the Piecewise on their disjunction, the
+    # relations of the two written differently, then simplified)
+    assert isinstance(value, Piecewise) and not any(pair.args[0].has(Piecewise) for pair in value.args)
+    assert sum(1 for pair in value.args if not pair.args[0].has(Integral)) == 3
+    assert value.subs({p: 1, q: 3}) == 4 and value.subs({p: -3, q: -1}) == 4
+    assert value.subs({p: -1, q: 2}) == Rational(5, 2)
+    assert value.subs({p: 0, q: 2}) == 2 and value.subs({p: -2, q: 0}) == 2
+    branches = _cases_agree_with_quadrature(Abs(x), (x, p, q), q > p)
+    assert len(branches) == 3
+    # a condition the assumptions prove keeps the value alone
+    assert definite_integral(Abs(x), (x, p, q), (p > 0) & (q > p)) == q**2 / 2 - p**2 / 2
+    assert definite_integral(1 / sqrt(1 - x**2), (x, p, q), (p > -1) & (q > p) & (q < 1)) == -asin(p) + asin(q)
+
+
+def test_points_not_known_real_are_not_cases_of_the_parameters() -> None:
+    # the regression: the singularities +-I*y of x/(x**2 + y**2) for a plain
+    # y, which SymPy leaves intersected with (p, q), were taken for points
+    # whose position the assumptions do not settle, the budget went to the
+    # cases of I*y against the endpoints and the methods never ran (Wester's
+    # problem 48 came back unevaluated)
+    p, q, y = symbols('p q y')
+    value = definite_integral(x / (x**2 + y**2), (x, p, q), [p > 0, q > 0])
+    assert not value.has(Integral)
+    assert _same(value.subs({p: 1, q: 2, y: 3}), (log(13) - log(10)) / 2)

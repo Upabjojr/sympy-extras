@@ -460,7 +460,8 @@ def one_sided_limit(F: Expr, x: Symbol, point: Expr, direction: str,
 
 
 def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
-                            assumptions: Assumptions = None, late: bool = False) -> Optional[ConditionalValue]:
+                            assumptions: Assumptions = None, late: bool = False,
+                            known: Optional[Expr] = None) -> Optional[ConditionalValue]:
     """``Integral(f, (x, a, b))`` from an antiderivative ``F``, cut at the
     discontinuities of ``F`` and the singularities of ``f`` inside the
     range and evaluated by one-sided limits; ``oo`` or ``-oo`` when
@@ -468,7 +469,9 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     ``1/x**2`` over ``(-1, 1)``); ``None`` when there is no
     antiderivative, a point cannot be placed, a limit is unknown, or the
     infinities cancel (``1/x`` over ``(-1, 1)``, where the principal
-    value is another question).
+    value is another question). An antiderivative already ``known`` is
+    used instead of computing one (the cases of the parameters of the
+    definite driver share it).
 
     Examples
     ========
@@ -484,7 +487,7 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     ConditionalValue(oo)
     """
     a, b = as_expr(a), as_expr(b)
-    F = antiderivative(f, x, assumptions, late)
+    F = antiderivative(f, x, assumptions, late) if known is None else known
     if F is None:
         return None
     if F.has(Piecewise):

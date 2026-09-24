@@ -24,7 +24,7 @@ ConditionalValue(a + 1/a, (a > 0) & (a < 1))
 from __future__ import annotations
 
 import random
-from typing import Iterable, Optional, Sequence
+from typing import Callable, Iterable, Optional, Sequence
 
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
@@ -94,10 +94,42 @@ class ConditionalValue:
 
     def as_piecewise(self, otherwise: ExprLike) -> Expr:
         """The value where the condition holds and ``otherwise`` elsewhere;
-        the value alone when the condition is ``S.true``."""
+        the value alone when the condition is ``S.true``. A value which is
+        itself a ``Piecewise`` of cases, the condition being the
+        disjunction of theirs (see :meth:`cases`), keeps its branches,
+        with ``otherwise`` as the last one.
+
+        >>> from sympy import symbols, Piecewise, Or
+        >>> from sympy_extras.integrals.conditions import ConditionalValue
+        >>> a = symbols('a')
+        >>> ConditionalValue(Piecewise((a, a > 1), (-a, a < 0)), Or(a > 1, a < 0)).as_piecewise(0)
+        Piecewise((a, a > 1), (-a, a < 0), (0, True))
+        """
         if self.condition is true:
             return self.value
+        branches = self.cases()
+        if branches is not None:
+            return as_expr(Piecewise(*[(v, c) for v, c in branches], (as_expr(otherwise), True)))
         return as_expr(Piecewise((self.value, self.condition), (as_expr(otherwise), True)))
+
+    def cases(self) -> Optional[list[tuple[Expr, Boolean]]]:
+        """The ``(value, condition)`` pairs of a value which is a
+        ``Piecewise`` of cases whose conditions the condition is the
+        disjunction of; ``None`` for any other value."""
+        if not isinstance(self.value, Piecewise):
+            return None
+        pairs = [(as_expr(pair.args[0]), as_boolean(pair.args[1])) for pair in self.value.args]
+        if any(condition is true for _, condition in pairs) or self.condition != Or(*[c for _, c in pairs]):
+            return None
+        return pairs
+
+    def mapped(self, function: Callable[[Expr, Boolean], Expr]) -> ConditionalValue:
+        """The value with ``function`` applied to it and its condition,
+        case by case for a value which is a ``Piecewise`` of cases."""
+        branches = self.cases()
+        if branches is None:
+            return ConditionalValue(function(self.value, self.condition), self.condition)
+        return ConditionalValue(Piecewise(*[(function(v, c), c) for v, c in branches], evaluate=False), self.condition)
 
 
 def decide(condition: Boolean, assumptions: Assumptions) -> Optional[Boolean]:

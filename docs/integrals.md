@@ -162,6 +162,28 @@ Integral(1/x, (x, -1, 2))
 
 ```
 
+When the endpoints, or the positions of the singularities and kinks of
+the integrand, depend on parameters, the value holds under a condition
+the assumptions may not settle: whether each such point lies below both
+endpoints, above both, or between them (in either order of the
+endpoints) becomes a case of the parameters, each integrated under its
+condition and checked numerically at samples of the parameters within
+it; the cases with the same value are joined, and the divergent and the
+undecided ones are left to the unevaluated branch of the `Piecewise`.
+The condition is dropped when the assumptions prove it, and the order
+of the endpoints alone needs no case.
+
+```python
+>>> p, q, c = symbols('p q c')
+>>> definite_integral(1/x, (x, p, q))
+Piecewise((-log(p) + log(q), ((p > 0) & (q > 0)) | ((p < 0) & (q < 0))), (Integral(1/x, (x, p, q)), True))
+>>> definite_integral(1/(x - c), (x, 0, 1))
+Piecewise((-log(-c) + log(1 - c), (c > 1) | (c < 0)), (Integral(1/(-c + x), (x, 0, 1)), True))
+>>> definite_integral(1/x, (x, p, q), (p > 0) & (q > p))
+-log(p) + log(q)
+
+```
+
 ## The other methods
 
 The driver tries, after the Mellin method and the residues:

@@ -82,6 +82,7 @@ pi**3/8
 from __future__ import annotations
 
 import random
+from itertools import product
 from math import gcd, lcm
 from typing import Callable, Optional, Sequence
 
@@ -94,7 +95,7 @@ from sympy.core.expr import Expr
 from sympy.core.mul import Mul
 from sympy.core.numbers import Integer, Rational, nan, oo, pi, zoo
 from sympy.core.power import Pow
-from sympy.core.relational import Eq, Relational
+from sympy.core.relational import Eq, Ge, Gt, Le, Lt, Relational
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
 from sympy.functions.elementary.complexes import Abs, sign, re, im
@@ -120,8 +121,9 @@ from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, cancel, degree, factor
 from sympy.polys.rationaltools import together
 from sympy.series.limits import Limit, limit
-from sympy.logic.boolalg import And, Boolean, true
-from sympy.sets.sets import FiniteSet, Interval, Set
+from sympy.logic.boolalg import And, Boolean, Not, Or, true
+from sympy.sets.conditionset import ConditionSet
+from sympy.sets.sets import FiniteSet, Intersection, Interval, Set
 from sympy.simplify.powsimp import powdenest
 from sympy.simplify.simplify import nsimplify
 from sympy.utilities.lambdify import lambdify
@@ -131,6 +133,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
 from sympy_extras.assumptions.facts import element
+from sympy_extras.assumptions.sat import satisfiable
 from sympy_extras.assumptions.solve import solve
 from sympy_extras.settings import settings
 from .conditions import ConditionalValue, _items, decide, sample_values
@@ -146,6 +149,14 @@ Limits = tuple[Symbol, ExprLike, ExprLike]
 _MAX_DEPTH = 6
 #: the most terms a sum is integrated term by term
 _TERMWISE_LIMIT = 8
+#: the most points whose position against the endpoints the assumptions
+#: do not settle for which the cases of the parameters are enumerated
+#: (four positions each when the order of the endpoints is unknown)
+_MAX_CASE_POINTS = 2
+
+#: the points of a range which lie strictly inside it, sorted, and those
+#: whose position against an endpoint the assumptions do not settle
+_Placement = tuple[list[Expr], list[Expr]]
 
 
 def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = None,
@@ -250,8 +261,9 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
     if found is None or found.value.has(nan):
         return as_expr(Integral(f_, (x, a, b)))
     # the last step, checked like the ones before it: the simplification
-    # is kept unless it is found to change the value
-    found = ConditionalValue(checked_tidy(found.value, assumptions, found.condition), found.condition)
+    # is kept unless it is found to change the value (case by case for
+    # the cases of the parameters)
+    found = found.mapped(lambda value, condition: checked_tidy(value, assumptions, condition))
     if conds == 'none':
         return found.value
     return found.as_piecewise(Integral(f_, (x, a, b)))
@@ -274,9 +286,18 @@ def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
                              regularize=regularize)
     if not _real_bounds(a, b) or _nested_complex_powers(f):
         return integrator._sympy(f, x, a, b)
-    budget = None if settings.timeout is None else settings.timeout / 2
+    # a singularity or a kink whose position against the endpoints the
+    # assumptions do not settle: the cases of the parameters get the whole
+    # time limit, and SymPy's integrate is not asked on the whole range
+    # (the bug: 1/x over (a, b) came out as -log(a) + log(b) for plain a
+    # and b, integrate's answer checked at positive samples only, where
+    # the integral diverges for a < 0 < b)
+    parametric = integrator._parametric_points(f, x, a, b)
+    budget = None if settings.timeout is None else settings.timeout / (1 if parametric else 2)
     found = attempt(lambda: integrator.integrate(f, x, a, b, 0, False), budget)
     if found is not None and found.condition is true:
+        return found
+    if parametric:
         return found
     fallback = integrator._sympy(f, x, a, b)
     if fallback is not None and (found is None or fallback.condition is true):
@@ -526,16 +547,22 @@ class _Integrator:
 
     def __init__(self, assumptions: Assumptions, parametric: bool = True,
                  principal_value: bool = False, finite_part: bool = False,
-                 regularize: bool = False) -> None:
+                 regularize: bool = False, cases: bool = True) -> None:
         self.assumptions = assumptions
         self.parametric = parametric
         self.principal_value = principal_value
         self.finite_part = finite_part
         self.regularize = regularize
+        #: whether a singularity or a kink whose position the assumptions
+        #: do not settle splits the parameters into cases (:meth:`_cases`);
+        #: off in the integrator of a case, which must not split again
+        self.cases = cases
         #: the factored arguments of the powers and logarithms, by argument
         self._factored: dict[Expr, Optional[tuple[Expr, list[tuple[Expr, Rational]], bool]]] = {}
-        #: the zeros of the factors inside the ranges seen
-        self._zero_cache: dict[tuple[Expr, Expr, Expr], Optional[list[Expr]]] = {}
+        #: the zeros of the factors placed against the ranges seen
+        self._zero_cache: dict[tuple[Expr, Expr, Expr], Optional[_Placement]] = {}
+        #: the singularities of the integrands placed against the ranges seen
+        self._singular_cache: dict[tuple[Expr, Expr, Expr], Optional[_Placement]] = {}
 
     def ask(self, query: Boolean) -> Optional[bool]:
         return ask(query, self.assumptions)
@@ -599,9 +626,14 @@ class _Integrator:
         if constant_ != 1:
             found = self.integrate(rest_, x, a, b, depth, fallback, mapped)
             return None if found is None else found.scaled(constant_)
-        found = self._split_branches(f, x, a, b, depth)
+        parametric, found = self._split_branches(f, x, a, b, depth)
         if found is not None:
             return found
+        if parametric:
+            # a kink whose position the assumptions do not settle: the cases
+            # of the parameters are the answer, or nothing is (a method on
+            # the whole range would be checked at samples of one case)
+            return None
         if not mapped:
             # the identities which change the integrand act on the whole
             # range, before it is cut at singularities (Glasser's map has
@@ -706,36 +738,64 @@ class _Integrator:
         ``None`` when a point cannot be placed."""
         if not isinstance(points, FiniteSet):
             return None
+        placed = self._place([as_expr(p) for p in points], a, b)
+        if placed is None or placed[1]:
+            return None
+        return placed[0]
+
+    def _place(self, points: Sequence[Expr], a: Expr, b: Expr) -> Optional[_Placement]:
+        """The points which lie strictly inside ``(a, b)``, sorted, and
+        those whose position against an endpoint the assumptions do not
+        settle (``0`` against ``(a, b)`` for plain ``a`` and ``b``); the
+        points known to lie outside are dropped, and so are those known
+        not real. ``None`` when two points inside cannot be ordered."""
         inside: list[Expr] = []
+        undecided: list[Expr] = []
         for p in points:
-            p_ = as_expr(p)
-            if not p_.is_extended_real and self.ask(as_boolean(p_ - p_ >= 0)) is not True:
-                if p_.is_real is False:
-                    continue
+            if p.is_real is False or p in inside or p in undecided:
+                continue
+            if p.is_extended_real is not True and not _real_for_real_parameters(p) \
+                    and self.ask(element(p, S.Reals)) is not True:
+                # a point not known real (I*y for a plain y, sqrt(-c) for a
+                # plain c): neither placed nor a case of the parameters
+                # (the regression: x/(x**2 + y**2) over (a, b) spent the
+                # budget on the cases of I*y against the endpoints, and the
+                # methods never ran); a plain c is a case, the parameters
+                # being taken real
                 return None
-            below = self.ask(as_boolean(p_ > a)) if a != -oo else True
-            above = self.ask(as_boolean(p_ < b)) if b != oo else True
+            below = self.ask(as_boolean(p > a)) if a != -oo else True
+            above = self.ask(as_boolean(p < b)) if b != oo else True
+            if below is False or above is False:
+                continue
             if below is None or above is None:
-                return None
-            if below and above:
-                inside.append(p_)
+                undecided.append(p)
+            else:
+                inside.append(p)
         for i in range(len(inside)):
             for j in range(i + 1, len(inside)):
                 if self.ask(as_boolean(inside[i] < inside[j])) is None:
                     return None
-        return sorted(inside, key=lambda p: [0 if self.ask(as_boolean(p < q)) else 1 for q in inside])
+        return sorted(inside, key=lambda p: [0 if self.ask(as_boolean(p < q)) else 1 for q in inside]), undecided
 
     def _zeros(self, u: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[list[Expr]]:
-        """The zeros of ``u`` in ``(a, b)``."""
+        """The zeros of ``u`` in ``(a, b)``; ``None`` when they cannot be
+        found or one cannot be placed."""
+        placed = self._zero_placement(u, x, a, b)
+        if placed is None or placed[1]:
+            return None
+        return placed[0]
+
+    def _zero_placement(self, u: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[_Placement]:
+        """The zeros of ``u`` placed against ``(a, b)`` (:meth:`_place`)."""
         key = (u, a, b)
         if key not in self._zero_cache:
             self._zero_cache[key] = self._solve_zeros(u, x, a, b)
         return self._zero_cache[key]
 
-    def _solve_zeros(self, u: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[list[Expr]]:
+    def _solve_zeros(self, u: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[_Placement]:
         zeros = _trigonometric_zeros(u, x, a, b)
         if zeros is not None:
-            return zeros
+            return zeros, []
         bounds: list[Boolean] = []
         if a != -oo:
             bounds.append(as_boolean(x > a))
@@ -752,9 +812,62 @@ class _Integrator:
             return None
         if found is None:
             return None
-        if found is S.EmptySet:
-            return []
-        return self._points_in(as_set(found), a, b)
+        candidates = _candidate_points(as_set(found), x, a, b)
+        if candidates is None:
+            return None
+        return self._place(candidates, a, b)
+
+    def _singular_placement(self, f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[_Placement]:
+        """The singularities of ``f`` placed against ``(a, b)``
+        (:meth:`_place`); ``None`` when they cannot be found or listed."""
+        key = (f, a, b)
+        if key not in self._singular_cache:
+            found = attempt(lambda: singularities(f, x, Interval.open(a, b)), settings.timeout)
+            candidates = None if found is None else _candidate_points(as_set(found), x, a, b)
+            self._singular_cache[key] = None if candidates is None else self._place(candidates, a, b)
+        return self._singular_cache[key]
+
+    def _kink_placement(self, f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[_Placement]:
+        """The points of ``(a, b)`` where a branch of ``Abs``, ``sign``,
+        ``Heaviside``, ``Max``, ``Min`` or ``Piecewise`` in ``f`` changes,
+        placed (:meth:`_place`); ``None`` when a zero cannot be found."""
+        arguments: list[Expr] = []
+        for node in f.atoms(Abs, sign, Heaviside):
+            arguments.append(as_expr(node.args[0]))
+        for node in f.atoms(Max, Min):
+            if len(node.args) == 2:
+                arguments.append(as_expr(node.args[0]) - as_expr(node.args[1]))
+        for node in f.atoms(Piecewise):
+            for _, condition in _pairs(node):
+                for atom in condition.atoms(Relational):
+                    arguments.append(as_expr(atom.lhs) - as_expr(atom.rhs))
+        inside: list[Expr] = []
+        undecided: list[Expr] = []
+        for u in arguments:
+            if not u.has(x):
+                continue
+            placed = self._zero_placement(u, x, a, b)
+            if placed is None:
+                return None
+            inside.extend(placed[0])
+            undecided.extend(p for p in placed[1] if p not in undecided)
+        return inside, undecided
+
+    def _parametric_points(self, f: Expr, x: Symbol, a: Expr, b: Expr) -> bool:
+        """Whether ``f`` has a kink or, without kinks, a singularity whose
+        position against ``(a, b)`` the assumptions do not settle: the
+        integral is then a question of cases of the parameters, which
+        :meth:`_cases` answers, and no method on the whole range is
+        trusted."""
+        if not self.cases or not (free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x}:
+            return False
+        kinks = self._kink_placement(f, x, a, b)
+        if kinks is not None and kinks[1]:
+            return True
+        if f.atoms(Abs, sign, Heaviside, Max, Min, Piecewise):
+            return False
+        singular = self._singular_placement(f, x, a, b)
+        return singular is not None and bool(singular[1])
 
     def _sample(self, a: Expr, b: Expr) -> Expr:
         if a == -oo and b == oo:
@@ -883,30 +996,18 @@ class _Integrator:
         return None if rewritten == node else rewritten
 
     def _breakpoints(self, f: Expr, x: Symbol, a: Expr, b: Expr,
-                     full: bool = False) -> Optional[tuple[list[Expr], frozenset[Expr]]]:
+                     full: bool = False) -> Optional[tuple[list[Expr], frozenset[Expr], list[Expr]]]:
         """The points of ``(a, b)`` where a branch of ``f`` changes: the
         zeros of the arguments of ``Abs`` and the like, and of the factors
         of the powers and logarithms to split (:meth:`_signed`); with the
-        factors whose zeros could not be found, which are not split.
-        ``None`` when a zero of the former cannot be placed."""
-        points: list[Expr] = []
-        arguments: list[Expr] = []
-        for node in f.atoms(Abs, sign, Heaviside):
-            arguments.append(as_expr(node.args[0]))
-        for node in f.atoms(Max, Min):
-            if len(node.args) == 2:
-                arguments.append(as_expr(node.args[0]) - as_expr(node.args[1]))
-        for node in f.atoms(Piecewise):
-            for _, condition in _pairs(node):
-                for atom in condition.atoms(Relational):
-                    arguments.append(as_expr(atom.lhs) - as_expr(atom.rhs))
-        for u in arguments:
-            if not u.has(x):
-                continue
-            zeros = self._zeros(u, x, a, b)
-            if zeros is None:
-                return None
-            points.extend(zeros)
+        factors whose zeros could not be found, which are not split, and
+        the zeros of the former whose position against an endpoint the
+        assumptions do not settle. ``None`` when a zero of the former
+        cannot be found, or two of them cannot be ordered."""
+        kinks = self._kink_placement(f, x, a, b)
+        if kinks is None:
+            return None
+        points: list[Expr] = list(kinks[0])
         unplaced: set[Expr] = set()
         for _, _, factors in self._nodes(f, x, full):
             for g, e in factors:
@@ -920,7 +1021,7 @@ class _Integrator:
         placed = self._points_in(FiniteSet(*points), a, b) if points else []
         if placed is None:
             return None
-        return placed, frozenset(unplaced)
+        return placed, frozenset(unplaced), list(kinks[1])
 
     def _split_at(self, f: Expr, x: Symbol, a: Expr, b: Expr, points: Sequence[Expr], depth: int,
                   branch: bool, unplaced: frozenset[Expr] = frozenset(),
@@ -944,22 +1045,29 @@ class _Integrator:
         return total
 
     def _split_signs(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int,
-                     full: bool) -> Optional[ConditionalValue]:
+                     full: bool) -> tuple[bool, Optional[ConditionalValue]]:
         """The range cut where a branch of ``f`` changes, each piece
         integrated in its branch; ``None`` when there is nothing to cut or
-        to rewrite."""
+        to rewrite. A kink whose position against an endpoint the
+        assumptions do not settle makes the integral a question of cases
+        of the parameters (:meth:`_cases`), which is reported as the first
+        item: no method on the whole range answers it."""
         if not f.atoms(Abs, sign, Heaviside, Max, Min, Piecewise) and not self._nodes(f, x, full):
-            return None
+            return False, None
         found = self._breakpoints(f, x, a, b, full)
         if found is None:
-            return None
-        points, unplaced = found
+            return False, None
+        points, unplaced, undecided = found
+        if undecided:
+            if not self.cases or full:
+                return False, None
+            return True, self._cases(f, x, a, b, [(p, False) for p in undecided], depth)
         if not points:
             piece = self._branch(f, x, a, b, unplaced, full)
             if piece is None or piece == f:
-                return None
-            return self.integrate(piece, x, a, b, depth + 1, not full, full)
-        return self._split_at(f, x, a, b, points, depth, True, unplaced, full)
+                return False, None
+            return False, self.integrate(piece, x, a, b, depth + 1, not full, full)
+        return False, self._split_at(f, x, a, b, points, depth, True, unplaced, full)
 
     def _signed_form(self, f: Expr, x: Symbol, a: Expr, b: Expr) -> Expr:
         """``f`` with its powers and logarithms split by the signs of
@@ -970,14 +1078,16 @@ class _Integrator:
         if not self._nodes(f, x, True):
             return f
         found = self._breakpoints(f, x, a, b, True)
-        if found is None or found[0]:
+        if found is None or found[0] or found[2]:
             return f
         piece = self._branch(f, x, a, b, found[1], True)
         return f if piece is None else piece
 
-    def _split_branches(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
+    def _split_branches(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                        depth: int) -> tuple[bool, Optional[ConditionalValue]]:
         """The branches of ``Abs`` and the like, and the square roots of
-        squares, before the methods."""
+        squares, before the methods; whether the kinks made the integral
+        a question of cases of the parameters, and the value."""
         return self._split_signs(f, x, a, b, depth, False)
 
     def _split_powers(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
@@ -985,21 +1095,176 @@ class _Integrator:
         of known sign (``sqrt(x*(4 - x))`` as ``sqrt(x)*sqrt(4 - x)`` on
         ``(0, 4)``, ``log(sin(x)/x)`` as ``log(sin(x)) - log(x)`` on
         ``(0, pi/2)``), after the methods which read them whole."""
-        return self._split_signs(f, x, a, b, depth, True)
+        return self._split_signs(f, x, a, b, depth, True)[1]
 
     def _split_singularities(self, f: Expr, x: Symbol, a: Expr, b: Expr,
                              depth: int) -> tuple[bool, Optional[ConditionalValue]]:
-        """Whether singularities were found inside the range, and the sum
-        of the integrals over the pieces between them."""
+        """Whether singularities were found inside the range, or their
+        position against an endpoint is a question of cases of the
+        parameters (:meth:`_cases`), and the sum of the integrals over the
+        pieces between them, or the cases."""
         if f.atoms(Abs, sign, Heaviside, Max, Min, Piecewise):
             return False, None
-        found = attempt(lambda: singularities(f, x, Interval.open(a, b)), settings.timeout)
-        if found is None:
+        placed = self._singular_placement(f, x, a, b)
+        if placed is None:
             return False, None
-        points = self._points_in(as_set(found), a, b)
+        points, undecided = placed
+        if undecided:
+            if not self.cases:
+                return False, None
+            return True, self._cases(f, x, a, b, [(p, True) for p in undecided], depth)
         if not points:
             return False, None
         return True, self._split_at(f, x, a, b, points, depth, False)
+
+    # -- the cases of the parameters ----------------------------------------
+
+    def _cases(self, f: Expr, x: Symbol, a: Expr, b: Expr, points: Sequence[tuple[Expr, bool]],
+               depth: int) -> Optional[ConditionalValue]:
+        """The integral for every position of the ``points`` (each with
+        whether it is a singularity of ``f`` or a kink) against the
+        endpoints which the assumptions do not settle: below both, above
+        both, or between them, in either order of the endpoints; the
+        combinations the assumptions refute are dropped. Each case is
+        integrated under its condition added to the assumptions
+        (:meth:`_case_value`), checked numerically at samples of the
+        parameters within the case, and the cases with the same value, or
+        whose value checks under the other's condition, are joined. The
+        value is a ``Piecewise`` of the cases (or the value of a single
+        one) under the disjunction of their conditions; ``None`` when no
+        case has a finite value (the divergent cases, and those no method
+        answers, are for the other branch of the ``Piecewise`` of the
+        caller)."""
+        from .antiderivative import antiderivative
+        if len(points) > _MAX_CASE_POINTS:
+            return None
+        alternatives = [_positions(p, a, b, singular) for p, singular in points]
+        cases: list[tuple[Boolean, list[Expr], bool]] = []
+        for combination in product(*alternatives):
+            conjuncts: list[Boolean] = []
+            for c, _ in combination:
+                if isinstance(c, And):
+                    conjuncts.extend(as_boolean(part) for part in c.args)
+                else:
+                    conjuncts.append(c)
+            condition = self._reduced(conjuncts)
+            if condition is None:
+                continue
+            inside = [p for (p, _), (_, position) in zip(points, combination) if position != 0]
+            cases.append((condition, inside, any(position < 0 for _, position in combination)))
+        if not cases:
+            return None
+        # the antiderivative once for every case (its limits differ)
+        known = antiderivative(f, x, self.assumptions)
+        budget = None if settings.timeout is None else settings.timeout / 4
+        results: list[tuple[Boolean, Expr]] = []
+        for condition, inside, reversed_ in cases:
+            candidates = [value for _, value in sorted(results, key=lambda item: count_ops(item[1]))]
+            found = attempt(lambda: self._case_value(f, x, a, b, inside, reversed_, _with(self.assumptions, [condition]),
+                                                     depth, known, candidates), budget)
+            if found is None or found.value.has(oo, -oo, zoo, nan):
+                continue
+            case = _canonical_relations(as_boolean(And(condition, found.condition)))
+            if settings.numerical_checks \
+                    and verify_numerically(found.value, f, x, a, b, _with(self.assumptions, [case])) is False:
+                continue
+            results.append((case, found.value))
+        joined = self._joined(results, f, x, a, b)
+        if not joined:
+            return None
+        if len(joined) == 1:
+            return ConditionalValue(joined[0][1], joined[0][0])
+        # unevaluated: Piecewise simplifies a condition given the negation of
+        # the earlier ones, and the conditions of the cases must stay those
+        # of their disjunction (ConditionalValue.cases reads them back)
+        return ConditionalValue(Piecewise(*[(v, c) for c, v in joined], evaluate=False), Or(*[c for c, _ in joined]))
+
+    def _reduced(self, conjuncts: Sequence[Boolean]) -> Optional[Boolean]:
+        """The conjunction of the conditions without those which follow
+        from the others and the assumptions (``c > 0`` next to ``c > 1``),
+        or ``None`` when the conjunction is unsatisfiable under the
+        assumptions (``c < 0`` next to ``c > 1``), both by the SAT solver
+        with the theory of the reals (:func:`~sympy_extras.assumptions.satisfiable`,
+        which :func:`ask` on a conjunction without assumptions leaves
+        undecided, and which answers in half its time)."""
+        kept = list(conjuncts)
+        if satisfiable(as_boolean(And(*kept)), self.assumptions) is False:
+            return None
+        for part in list(kept):
+            others = [q for q in kept if q != part]
+            related: set[Symbol] = set()
+            for q in others + _items(self.assumptions):
+                related |= free_symbols(q)
+            if not free_symbols(part) & related:
+                # nothing relates the part to the others: not implied
+                continue
+            if satisfiable(as_boolean(Not(part)), _with(self.assumptions, others)) is False:
+                kept.remove(part)
+        return as_boolean(And(*kept))
+
+    def _case_value(self, f: Expr, x: Symbol, a: Expr, b: Expr, inside: Sequence[Expr], reversed_: bool,
+                    assumptions: Assumptions, depth: int, known: Optional[Expr],
+                    candidates: Sequence[Expr]) -> Optional[ConditionalValue]:
+        """The integral in one case, under its assumptions. A point
+        ``inside`` the range (the endpoints in their order of the case)
+        at which the ``known`` antiderivative has an infinite one-sided
+        limit makes the integral divergent: ``None`` at once. Otherwise
+        the values of the earlier cases (``candidates``, the simplest
+        first) are tried, each accepted when it agrees with the quadrature
+        at samples of the parameters within the case (``-log(a) + log(b)``
+        for ``1/x`` holds for negative ``a`` and ``b`` too); then SymPy's
+        ``integrate``, checked the same way; then the antiderivative with
+        limits on each piece between the points inside; then every method
+        on the whole range."""
+        from .antiderivative import _real_logarithms, one_sided_limit
+        integrator = _Integrator(assumptions, self.parametric, self.principal_value, self.finite_part,
+                                 self.regularize, cases=False)
+        lower, upper = (b, a) if reversed_ else (a, b)
+        ordered = integrator._place(list(inside), lower, upper)
+        if ordered is not None and ordered[0] and known is not None:
+            real = _real_logarithms(known, x)
+            for s in ordered[0]:
+                for side in ('-', '+'):
+                    if one_sided_limit(real, x, s, side, assumptions) in (oo, -oo):
+                        return None
+        for candidate in candidates:
+            if settings.numerical_checks \
+                    and verify_numerically(candidate, f, x, a, b, assumptions, samples=3) is True:
+                return ConditionalValue(candidate)
+        found = integrator._sympy(f, x, a, b, depth)
+        if found is not None and not found.value.has(Piecewise):
+            return found
+        if ordered is not None and not ordered[1]:
+            bounds = [lower] + ordered[0] + [upper]
+            total: Optional[ConditionalValue] = ConditionalValue(S.Zero)
+            for lo, hi in zip(bounds[:-1], bounds[1:]):
+                piece = integrator._antiderivative(f, x, lo, hi, depth, known=known)
+                if piece is not None and piece.value.has(oo, -oo, zoo, nan):
+                    return None
+                total = None if piece is None or total is None else total.add(piece)
+            if total is not None:
+                return total.scaled(S.NegativeOne) if reversed_ else total
+        return integrator.integrate(f, x, a, b, depth)
+
+    def _joined(self, results: Sequence[tuple[Boolean, Expr]], f: Expr, x: Symbol, a: Expr,
+                b: Expr) -> list[tuple[Boolean, Expr]]:
+        """The cases with equal values joined under the disjunction of
+        their conditions, the simplest value first: a case joins an
+        earlier one when the values are the same expression, or when the
+        earlier value agrees with the quadrature at samples of the
+        parameters within the case (``-log(a) + log(b)`` for ``1/x`` over
+        ``(a, b)`` holds for negative ``a`` and ``b`` too, where the case
+        found ``-log(-a) + log(-b)``)."""
+        joined: list[tuple[Boolean, Expr]] = []
+        for condition, value in sorted(results, key=lambda item: (count_ops(item[1]), str(item[1]))):
+            for i, (earlier, candidate) in enumerate(joined):
+                if candidate == value or (settings.numerical_checks and verify_numerically(
+                        candidate, f, x, a, b, _with(self.assumptions, [condition]), samples=3) is True):
+                    joined[i] = (as_boolean(Or(earlier, condition)), candidate)
+                    break
+            else:
+                joined.append((condition, value))
+        return joined
 
     # -- the methods on a plain piece ---------------------------------------
 
@@ -1257,14 +1522,15 @@ class _Integrator:
         return self._under_budget(lambda: self._antiderivative(f, x, a, b, depth), 4)
 
     def _antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int,
-                        late: bool = False) -> Optional[ConditionalValue]:
+                        late: bool = False, known: Optional[Expr] = None) -> Optional[ConditionalValue]:
         """An antiderivative evaluated by one-sided limits at the
         endpoints and at its discontinuities (:mod:`.antiderivative`):
-        by the exact methods first, by the heuristics ``late``."""
+        by the exact methods first, by the heuristics ``late``, or the one
+        ``known`` already."""
         from .antiderivative import antiderivative_integral
         if a.has(x) or b.has(x):
             return None
-        found = antiderivative_integral(f, x, a, b, self.assumptions, late)
+        found = antiderivative_integral(f, x, a, b, self.assumptions, late, known)
         if found is None:
             return None
         if found.value in (oo, -oo):
@@ -1512,10 +1778,17 @@ class _Integrator:
             return None
         # nothing is claimed while the integrand may be singular elsewhere
         # in the range (the range has been cut at the singularities found;
-        # a singularity not found would make the verdict unfounded)
+        # a singularity not found would make the verdict unfounded), the
+        # singularities placed against symbolic endpoints under the
+        # assumptions (SymPy leaves {0} intersected with (a, 0), which is
+        # empty for a < 0)
         singular = attempt(lambda: singularities(f, x, Interval.open(a, b)),
                            settings.timeout / 8 if settings.timeout else None)
-        if singular is None or as_set(singular) is not S.EmptySet:
+        if singular is None:
+            return None
+        candidates = _candidate_points(as_set(singular), x, a, b)
+        placed = None if candidates is None else self._place(candidates, a, b)
+        if placed is None or placed[0] or placed[1]:
             return None
         if settings.numerical_checks and _quadrature_converges(f, x, a, b, self.assumptions):
             return None
@@ -1910,6 +2183,87 @@ def _with(assumptions: Assumptions, extra: Sequence[Boolean]) -> Assumptions:
     elif assumptions is not None:
         items.extend(as_boolean(a) for a in assumptions)
     return items
+
+
+def _candidate_points(found: Set, x: Symbol, a: Expr, b: Expr) -> Optional[list[Expr]]:
+    """The points of a set of zeros or singularities on the range ``(a,
+    b)``, their position against the endpoints left to the placement:
+    those of a finite set, none of the empty set, and those of the finite
+    part of ``Intersection({0}, Interval.open(a, b))`` (SymPy's answer of
+    ``singularities`` for symbolic endpoints) or of ``ConditionSet(x, (x >
+    a) & (x < b), {c})`` (the answer of the solver, the condition being
+    the bounds); ``None`` for another kind of set."""
+    if isinstance(found, Intersection) and len(found.args) == 2:
+        finite = [part for part in found.args if isinstance(part, FiniteSet)]
+        intervals = [part for part in found.args if isinstance(part, Interval)]
+        if len(finite) == 1 and len(intervals) == 1:
+            found = finite[0]
+    if isinstance(found, ConditionSet) and isinstance(found.base_set, FiniteSet) \
+            and not free_symbols(as_boolean(found.condition)) - {x} - free_symbols(a) - free_symbols(b):
+        found = found.base_set
+    if isinstance(found, FiniteSet):
+        return [as_expr(p) for p in found]
+    if found is S.EmptySet:
+        return []
+    return None
+
+
+def _positions(s: Expr, a: Expr, b: Expr, singular: bool) -> list[tuple[Boolean, int]]:
+    """The positions of the point ``s`` against the endpoints of ``(a, b)``
+    as conditions on the parameters, each with ``0`` for outside the
+    range, ``1`` for between ``a < s < b`` and ``-1`` for between ``b < s
+    < a``: below both endpoints, above both, and between them in either
+    order; the bounds on the outside are strict for a ``singular`` point
+    (the integral at ``s = a`` is another question, for the other branch
+    of the ``Piecewise``) and closed for a kink, where the integrand is
+    continuous. An infinite endpoint drops the positions beyond it.
+
+    >>> from sympy import symbols, oo
+    >>> from sympy_extras.integrals.definite import _positions
+    >>> a, b = symbols('a b')
+    >>> _positions(0, a, b, True)
+    [((a > 0) & (b > 0), 0), ((a < 0) & (b < 0), 0), ((b > 0) & (a < 0), 1), ((a > 0) & (b < 0), -1)]
+    >>> _positions(0, a, oo, False)
+    [(a >= 0, 0), (a < 0, 1)]
+    """
+    below_a = Lt(s, a) if singular else Le(s, a)
+    below_b = Lt(s, b) if singular else Le(s, b)
+    above_a = Gt(s, a) if singular else Ge(s, a)
+    above_b = Gt(s, b) if singular else Ge(s, b)
+    found: list[tuple[Boolean, int]] = []
+    if a != -oo:
+        found.append((as_boolean(And(below_a, true if b == oo else below_b)), 0))
+    if b != oo:
+        found.append((as_boolean(And(true if a == -oo else above_a, above_b)), 0))
+    found.append((as_boolean(And(true if a == -oo else Gt(s, a), true if b == oo else Lt(s, b))), 1))
+    if a != -oo and b != oo:
+        found.append((as_boolean(And(Lt(s, a), Gt(s, b))), -1))
+    return [(_canonical_relations(condition), position) for condition, position in found]
+
+
+def _real_for_real_parameters(p: Expr) -> bool:
+    """Whether ``p`` is real once its symbols are taken real: a plain
+    ``c`` is, ``I*y`` is not, and ``sqrt(-c)`` is not known to be.
+
+    >>> from sympy import symbols, I, sqrt
+    >>> from sympy_extras.integrals.definite import _real_for_real_parameters
+    >>> c, y = symbols('c y')
+    >>> _real_for_real_parameters(c), _real_for_real_parameters(I*y), _real_for_real_parameters(sqrt(-c))
+    (True, False, False)
+    """
+    replacement = {s: Dummy(s.name, real=True) for s in sorted_symbols(free_symbols(p))}
+    return as_expr(p.xreplace(replacement)).is_extended_real is True
+
+
+def _canonical_relations(condition: Boolean) -> Boolean:
+    """The relations of a condition in SymPy's canonical form (``a >= 0``
+    for ``0 <= a``), the form ``Piecewise`` gives its conditions: the
+    conditions of the cases and their disjunction must stay the same
+    expressions (the bug: the value of ``Abs(x)`` over ``(a, b)`` came
+    back as a ``Piecewise`` nested in the ``Piecewise`` on the condition,
+    the disjunction written with ``0 <= a``)."""
+    return as_boolean(condition.replace(lambda node: isinstance(node, Relational),
+                                        lambda node: node.canonical))
 
 
 def _from_sympy(value: Expr, x: Symbol) -> Optional[ConditionalValue]:
