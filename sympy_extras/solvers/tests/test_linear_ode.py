@@ -111,3 +111,18 @@ def test_a_truncated_series_is_not_accepted_as_a_solution() -> None:
     for s in dsolve_linear(ode, y) or []:
         assert not s.has(Order)
         assert expand(s.diff(x, 2) + (-2*x**2 - x + 1)*s.diff(x) + 3*s) == 0, s
+
+
+def test_second_order_reduction_before_kovacic() -> None:
+    import time
+    from sympy import log
+    from sympy_extras.solvers.linear_ode import _solve_operator
+    # the rational solution (x - 1)/x gives the second one, with a log, by
+    # a reduction of order; Kovacic's algorithm used to run first and to
+    # take the whole time limit (30 s) on this operator (the scalar
+    # equation of a gauge transformed system in test_linear_systems)
+    L = LinearOperator([x**2 - 4, -x**3 + 4*x, x**4 - x**3 + 4*x**2], x)
+    start = time.time()
+    found = _solve_operator(L, Function('y')(x), True, True)
+    assert time.time() - start < 15
+    assert len(found) == 2 and all(cancel(L(s)) == 0 for s in found) and found[1].has(log)

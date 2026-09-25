@@ -371,9 +371,11 @@ exponential parts from the Newton polygon (`dsolve_linear`), Bessel,
 Whittaker and hypergeometric solutions recognised through the normal
 form (`special_solutions`), factorisation of linear differential
 operators by Beke's algorithm (`factor_operator`, used by
-`dsolve_linear` for equations of order three and more), systems through
-a cyclic vector (`dsolve_linear_system`), and Abel, Chini and d'Alembert–Lagrange first
-order equations (`dsolve_first_order`). See
+`dsolve_linear` for equations of order three and more), systems
+`Y' = A Y + b` through a cyclic vector, with rational solutions by
+Barkatou's method and variation of constants (`dsolve_system`), and Abel,
+Chini and d'Alembert–Lagrange first order equations
+(`dsolve_first_order`). See
 [docs/solvers.md](docs/solvers.md); the Kamke benchmark results are in
 [benchmarks/README.md](benchmarks/README.md).
 
@@ -741,7 +743,7 @@ sympy_extras/
         linear_ode.py        polynomial/rational/hyperexponential solutions, reduction of order, operator arithmetic
         factorization.py     factorisation of linear differential operators (Beke), solving through the factors
         special.py           Bessel, Whittaker, hypergeometric solutions
-        linear_systems.py    cyclic vector, systems Y' = A Y
+        linear_systems.py    systems Y' = A Y + b: cyclic vectors, rational solutions, variation of constants
         first_order.py       Abel, Chini, d'Alembert-Lagrange equations
         charpit.py           complete integrals of first order PDEs
         kovacic.py           Kovacic's algorithm (Liouvillian solutions of second order linear ODEs)

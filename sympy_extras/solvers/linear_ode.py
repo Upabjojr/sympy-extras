@@ -1105,6 +1105,13 @@ def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_d
         by_factors = _solve_by_factorization(L, f, use_kovacic, use_dsolve)
         if len(by_factors) > len(found):
             found = by_factors
+    if len(found) == 1 and n == 2:
+        # the reduction of order by a known solution gives the second one
+        # by quadratures; when they are evaluated Kovacic's algorithm
+        # (which can take the whole time limit) is not needed
+        reduced_found = _by_reduction(L, f, found, use_kovacic, use_dsolve, factorize)
+        if reduced_found is not None and len(reduced_found) == 2 and not reduced_found[1].has(Integral):
+            return reduced_found
     if len(found) < n and n == 2 and use_kovacic:
         from .kovacic import dsolve_kovacic
         y = Function('y')(x)
@@ -1120,19 +1127,10 @@ def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_d
         if special:
             found = _independent(found + special, x)
     if found and len(found) < n:
-        # reduction of order by the first solution
-        y1 = found[0]
-        try:
-            M = reduce_order_linear(L, y1)
-        except ValueError:
+        reduced_found = _by_reduction(L, f, found, use_kovacic, use_dsolve, factorize)
+        if reduced_found is None:
             return found
-        reduced = _solve_operator(M, f, use_kovacic, use_dsolve, factorize)
-        for v in reduced:
-            w = attempt(lambda: integrate(v, x, conds='none'), settings.timeout)
-            if w is None or w.has(Integral, Piecewise, exp_polar):
-                # the quadrature is left unevaluated
-                w = Integral(v, x)
-            found = _independent(found + [as_expr(cancel(y1*w)) if (y1*w).is_rational_function(x) else as_expr(y1*w)], x)
+        found = reduced_found
     if len(found) < n and use_dsolve:
         from sympy.solvers.ode import dsolve
         y = Function('y')(x)
@@ -1148,6 +1146,27 @@ def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_d
                 if part != 0 and not part.has(*constants):
                     found = _independent(found + [part], x)
     return found[:n]
+
+
+def _by_reduction(L: LinearOperator, f: AppliedUndef, found: list[Expr], use_kovacic: bool, use_dsolve: bool,
+                  factorize: bool) -> Optional[list[Expr]]:
+    """``found`` extended by the solutions of the operator reduced by the
+    first solution (``y1 * Integral(v)`` for its solutions ``v``), ``None``
+    when the first one is not a solution."""
+    x = L.x
+    y1 = found[0]
+    try:
+        M = reduce_order_linear(L, y1)
+    except ValueError:
+        return None
+    reduced = _solve_operator(M, f, use_kovacic, use_dsolve, factorize)
+    for v in reduced:
+        w = attempt(lambda: integrate(v, x, conds='none'), settings.timeout)
+        if w is None or w.has(Integral, Piecewise, exp_polar):
+            # the quadrature is left unevaluated
+            w = Integral(v, x)
+        found = _independent(found + [as_expr(cancel(y1*w)) if (y1*w).is_rational_function(x) else as_expr(y1*w)], x)
+    return found
 
 
 def _solve_by_factorization(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_dsolve: bool) -> list[Expr]:

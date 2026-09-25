@@ -10,6 +10,35 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- Linear systems `Y' = A Y + b` with rational function coefficients
+  (sympy-extras#24), in `sympy_extras.solvers.linear_systems`.
+  `dsolve_system(A, x, b=None)` returns a `LinearSystemSolution`: a
+  fundamental matrix, a particular solution and a `complete` flag
+  (`True` when every solution is `fundamental * C + particular`, `None`
+  when fewer than `n` independent solutions were found). The system is
+  reduced to a scalar equation by a cyclic vector (`cyclic_reduction`,
+  `CyclicReduction`: the unit vectors, then seeded random vectors with
+  constant and polynomial entries, each checked, after Katz and
+  Churchill–Kovacic), whose solutions, found by `dsolve_linear`'s solvers
+  and so by Beke's factorisation for the order three and more, map back
+  to the system; SymPy's `linodesolve` is tried when they fall short.
+  `rational_system_solutions` is now Barkatou's direct method: pole
+  bounds from the negative integer eigenvalues of the residues at the
+  simple poles (through a resultant at irrational poles), no rational
+  solution when the leading matrix at a higher order pole or at
+  infinity is invertible, the scalar equation's bounds otherwise, and a
+  linear system for the numerators; the rational particular solutions
+  of inhomogeneous systems come from the augmented system.
+  `hyperexponential_system_solutions` maps the hyperexponential
+  solutions of the scalar equation. Inhomogeneous systems are solved by
+  variation of constants with Cramer's rule and Liouville's formula.
+  `dsolve_linear_system` now returns the columns of `dsolve_system`.
+  Verified by substitution on textbook systems, systems whose scalar
+  equation has order three and four (one through the factorisation into
+  three factors), and seeded random gauge transformations `Y = P Z` of
+  known systems, against the elimination method for the rational
+  solutions.
+
 - Definite summation by creative telescoping in ΠΣ-fields (sympy-extras#3),
   in the new module `sympy_extras.concrete.creative`, following Schneider
   (*Symbolic summation assists combinatorics*, 2007; *A refined difference
@@ -921,6 +950,12 @@ remove public functions. Breaking changes are listed here when they happen.
   gates.
 
 ### Fixed
+
+- `dsolve_linear` (and the scalar solver behind the systems) reduces the
+  order of a second order equation by a known rational or
+  hyperexponential solution before running Kovacic's algorithm, which
+  could take the whole time limit (30 s) on an equation whose second
+  solution is a quadrature, such as `x*log(x) + ...`.
 
 - `PiSigmaField.solve` stopped the recursion over the coefficients of a
   Π-extension at the first exponent without a solution, so the

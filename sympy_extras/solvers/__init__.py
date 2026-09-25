@@ -7,7 +7,9 @@ systems with the cases of their parameters; real roots
 of transcendental functions isolated exactly; linear differential-algebraic
 equations with constant coefficients; Thue equations; integrating factors,
 linearisation and Abel invariants for ordinary differential equations;
-factorisation of linear differential operators (Beke's algorithm)."""
+factorisation of linear differential operators (Beke's algorithm); linear
+systems with rational coefficients (cyclic vectors, Barkatou's rational
+solutions, variation of constants)."""
 from .lie import JetSpace, Symmetry, symmetries, check_symmetry, determining_system, symmetry_janet_basis
 from .pde import pde_symmetries, similarity_reduction, pdsolve_lie, Reduction
 from .ode import (ode_symmetries, canonical_coordinates, reduce_order,
@@ -26,7 +28,9 @@ from .factorization import (OperatorFactorization, factor_operator, right_factor
 from .charpit import complete_integral, check_complete_integral
 from .special import special_solutions, bessel_solutions, whittaker_solutions, hypergeometric_solutions, whittaker_m
 from .first_order import riccati_ode, chini_ode, abel_ode, lagrange_ode, dsolve_first_order
-from .linear_systems import cyclic_vector, system_to_scalar, dsolve_linear_system, rational_system_solutions
+from .linear_systems import (cyclic_vector, cyclic_reduction, system_to_scalar, dsolve_linear_system,
+    rational_system_solutions, hyperexponential_system_solutions, dsolve_system, CyclicReduction,
+    LinearSystemSolution)
 from .dae import core_nilpotent_decomposition, dae_index, dsolve_dae, dae_matrices, check_dae, DAESolution
 from .isolation import TranscendentalRoot, isolate_real_roots, real_roots_of
 from .abel import (abel_invariants, abel_equivalence, abel_by_invariants, air_solution, particular_solution,
@@ -49,7 +53,8 @@ __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry', 'determining_
     'complete_integral', 'check_complete_integral',
     'special_solutions', 'bessel_solutions', 'whittaker_solutions', 'hypergeometric_solutions',
     'whittaker_m', 'riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order',
-    'cyclic_vector', 'system_to_scalar', 'dsolve_linear_system', 'rational_system_solutions',
+    'cyclic_vector', 'cyclic_reduction', 'system_to_scalar', 'dsolve_linear_system', 'rational_system_solutions',
+    'hyperexponential_system_solutions', 'dsolve_system', 'CyclicReduction', 'LinearSystemSolution',
     'core_nilpotent_decomposition', 'dae_index', 'dsolve_dae', 'dae_matrices', 'check_dae', 'DAESolution',
     'TranscendentalRoot', 'isolate_real_roots', 'real_roots_of',
     'integrating_factor_xy', 'integrating_factor_p', 'is_linearizable', 'linearize', 'rectify_symmetries',

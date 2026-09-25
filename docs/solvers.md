@@ -226,10 +226,10 @@ SymPy lacks:
   `2F1`. Airy, parabolic cylinder, Hermite, Kummer, Legendre and
   Chebyshev equations with symbolic parameters are all covered. This is
   the "solutions through Mellin transforms" of Mathematica's notes.
-- **Systems** `Y' = A(x) Y` (`sympy_extras.solvers.linear_systems`):
+- **Systems** `Y' = A(x) Y + b(x)` (`sympy_extras.solvers.linear_systems`):
   a cyclic vector turns the system into a scalar equation solved by the
-  same machinery; `rational_system_solutions` is the elimination method
-  for rational solutions of systems (Abramov–Bronstein).
+  same machinery, rational solutions by Barkatou's method, variation of
+  constants; see [Linear systems](#linear-systems-with-rational-coefficients).
 
 ```python
 >>> from sympy import Matrix, Function
@@ -319,6 +319,73 @@ equations for high orders), the eigenring, and hyperexponential solutions
 at irregular finite singular points (so right factors whose solutions
 have essential singularities at finite points are only found for second
 order operators, through Kovacic's algorithm).
+
+## Linear systems with rational coefficients
+
+`sympy_extras.solvers.linear_systems` solves `Y' = A(x) Y + b(x)` with `A`
+an `n x n` matrix of rational functions. SymPy's `dsolve` solves systems
+with constant coefficients, systems whose matrix commutes with its
+antiderivative, and a few special types of two and three equations.
+
+- **Cyclic vectors** (`cyclic_reduction`, `cyclic_vector`,
+  `system_to_scalar`): for a row vector `c`, `u = c Y` has the derivatives
+  `u^(k) = c_k Y`, `c_{k+1} = c_k A + c_k'`; when `c_0, ..., c_{n-1}` are
+  independent (`c` is *cyclic*) `u` satisfies a scalar equation of order
+  `n` and `Y = M^-1 (u, u', ..., u^(n-1))` maps its solutions to those of
+  the system. The unit vectors are tried first, then seeded random
+  vectors with constant and then polynomial entries (a generic vector is
+  cyclic: Katz, Churchill–Kovacic); every choice is checked.
+- **`dsolve_system(A, x, b=None)`** returns a `LinearSystemSolution`: the
+  `fundamental` matrix (its columns are independent solutions), a
+  `particular` solution, and `complete`, `True` when every solution is
+  `fundamental * C + particular` and `None` when the solvers found fewer
+  than `n` columns. The scalar equation goes through `dsolve_linear`'s
+  solvers, so equations of order three and more are factored (Beke), and
+  SymPy's `linodesolve` is tried when they fall short.
+- **Rational solutions** (`rational_system_solutions`, Barkatou 1999): the
+  pole order of a rational solution at a simple pole of `A` is bounded by
+  the negative integer eigenvalues of the residue (found over Q through a
+  resultant for irrational poles), and its degree by the integer
+  eigenvalues of `lim x A` at infinity; at a higher order pole with an
+  invertible leading matrix there is no rational solution at all.
+  Otherwise the bound comes from the scalar equation of a cyclic vector
+  (Moser's reduction is not implemented). The numerators then solve a
+  linear system. The inhomogeneous system has a rational particular
+  solution when the augmented system `(Y, 1)` has one.
+- **Hyperexponential solutions** (`hyperexponential_system_solutions`):
+  those of the scalar equation, mapped back.
+- **Inhomogeneous systems**: a rational particular solution first, then
+  variation of constants `Y = Phi Integral(Phi^-1 b)` by Cramer's rule, with
+  `det Phi` from Liouville's formula.
+
+```python
+>>> from sympy import Matrix, symbols, simplify, exp
+>>> from sympy_extras.solvers import dsolve_system, rational_system_solutions
+>>> A = Matrix([[0, 1], [2/x**2, 0]])
+>>> S = dsolve_system(A, x)
+>>> S.fundamental
+Matrix([[1/x, x**2], [-1/x**2, 2*x]])
+>>> S.complete
+True
+>>> rational_system_solutions(Matrix([[-1/x, 0], [1, 0]]), x)
+[Matrix([
+[0],
+[1]])]
+>>> b = Matrix([2*exp(-x), 3*x])
+>>> S = dsolve_system(Matrix([[-2, 1], [1, -2]]), x, b)
+>>> residual = S.particular.diff(x) - Matrix([[-2, 1], [1, -2]])*S.particular - b
+>>> residual.applyfunc(simplify).T
+Matrix([[0, 0]])
+
+```
+
+Not implemented: Moser's and Barkatou's reductions (super-irreducible and
+simple forms), so the local bounds at irregular singular points come from
+the scalar equation, whose cyclic vector may add apparent singularities
+and large coefficients; Barkatou's companion block diagonal form for
+systems that decompose; exponential solutions computed on the system
+itself (the generalised exponents of a system); and the local data at
+irregular points (formal solutions, Stokes phenomena).
 
 ## First order equations of Riccati, Abel, Chini and d'Alembert–Lagrange type
 
