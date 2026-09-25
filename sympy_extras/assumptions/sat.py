@@ -9,7 +9,10 @@ implied by the chosen literals must be consistent (checked with the known
 facts of :mod:`sympy.assumptions`) and the polynomial relations between
 real variables must have a common real solution, found by cylindrical
 algebraic decomposition, which also provides a witness. This is the lazy
-approach of SMT solvers.
+approach of SMT solvers. When the equations among the relations have
+finitely many complex solutions, the absence of a real solution is proved
+first by counting them with Hermite's quadratic form
+(:mod:`sympy_extras.polys.hermite`), without a decomposition.
 
 As in Mathematica's ``Reduce`` and ``FindInstance``, inequalities are
 statements about real numbers: a variable appearing in an inequality of the
@@ -43,6 +46,8 @@ from sympy_extras._typing import Truth, as_boolean, as_expr, as_symbol, free_sym
 from sympy_extras.polys.cad import (sample_points as _cad_sample_points,
     solution_set as _cad_solution_set)
 from sympy_extras.polys.cad.samplepoints import compare_real, _floor_scaled
+from sympy_extras.polys.hermite import decide_zero_dimensional
+from sympy_extras._timeout import attempt
 
 from typing import Literal, overload
 
@@ -59,6 +64,10 @@ __all__ = ['satisfiable', 'tautology', 'find_instance']
 Model = dict[Basic, Union[bool, Expr]]
 #: a witness point
 Witness = dict[Symbol, Expr]
+
+#: the seconds given to the count of real solutions of a zero-dimensional
+#: system before the decomposition of the space is used instead
+_HERMITE_TIME_LIMIT = 2.0
 
 
 def _abstract(formula: Boolean) -> tuple[Boolean, dict[Dummy, Boolean]]:
@@ -163,6 +172,19 @@ def _integer_witness(formula: Boolean, points: Sequence[Witness], integer: set[S
     return None
 
 
+def _without_real_solution(formula: Boolean, gens: Sequence[Symbol]) -> bool:
+    """Whether a conjunction of polynomial relations whose equations have
+    finitely many complex solutions is proved to have no real solution by
+    counting them with Hermite's quadratic form, which is much cheaper than
+    a decomposition of the space when there is none (every cell must then
+    be visited); ``False`` when this does not apply or takes too long, and
+    the decomposition decides."""
+    if len(gens) < 2:
+        return False
+    decided = attempt(lambda: decide_zero_dimensional(formula, gens), _HERMITE_TIME_LIMIT)
+    return decided is False
+
+
 def _theory_check(literals: Sequence[Boolean], facts: Facts) -> Union[Witness, bool, None]:
     """Check the conjunction of theory literals for consistency.
 
@@ -226,6 +248,8 @@ def _theory_check(literals: Sequence[Boolean], facts: Facts) -> Union[Witness, b
     if polynomial:
         formula = And(*polynomial)
         gens = sorted_symbols(free_symbols(formula))
+        if set(gens) <= real and _without_real_solution(formula, gens):
+            return False
         points = _cad_sample_points(formula, gens)
         if not points:
             return False if set(gens) <= real else None

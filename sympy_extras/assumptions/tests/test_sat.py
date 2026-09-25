@@ -190,3 +190,19 @@ def test_find_instance() -> None:
                     Or(x > 2, x < -2) & (x**2 < 9), Ne(x, 0) & (x**3 < 1)]:
         for witness in _instances(find_instance(formula, sorted(formula.free_symbols, key=str), count=20)):
             assert _holds(formula, witness)
+
+
+def test_zero_dimensional_systems_without_real_solution() -> None:
+    from sympy_extras.assumptions.sat import _without_real_solution
+    reals = element(x, S.Reals) & element(y, S.Reals) & element(z, S.Reals)
+    # x, y, z are the roots of t**3 - 3*t**2 + 3*t - 1 = (t - 1)**3, all 1
+    system = Eq(x**2 + y**2 + z**2, 3) & Eq(x*y + y*z + z*x, 3) & Eq(x*y*z, 1)
+    assert _without_real_solution(system & (x - y > 0), [x, y, z])
+    assert satisfiable(system & (x - y > 0), assumptions=reals) is False
+    model = _model(satisfiable(system & (x + y > 1), assumptions=reals))
+    assert model[x] == model[y] == model[z] == 1
+    # no conclusion when the equations have infinitely many solutions, and
+    # none without the reality of the variables (complex solutions exist)
+    assert not _without_real_solution(Eq(x**2 + y**2, -1) & (x > 0), [x, y])
+    assert satisfiable(Eq(x**2 + y**2, -1) & Eq(x, y)) is None
+    assert satisfiable(Eq(x**2 + y**2, -1) & Eq(x, y), assumptions=reals) is False

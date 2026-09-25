@@ -132,6 +132,7 @@ sympy_extras/
     polys/
         euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)
         ideals.py            Ideal: operations and invariants on top of sympy.groebner
+        hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
         modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ modulo primes, proven (Arnold)
         orderings.py         WeightOrder, BlockOrder, elimination_order (hashable monomial orders)

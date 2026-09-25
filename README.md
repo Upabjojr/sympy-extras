@@ -207,6 +207,12 @@ equidimensional parts, the minimal primes and the tests for radical and
 prime ideals, and the primary decomposition with the embedded primes
 (Gianni–Trager–Zacharias). The Gröbner walk converts bases between orders for ideals of
 any dimension.
+The real solutions of a zero-dimensional system, and the signs of other
+polynomials at them, are counted without solving the system by the
+signature of Hermite's quadratic form on the quotient algebra
+(`sympy_extras.polys.hermite`, Pedersen–Roy–Szpirglas, with the sign
+determination of Ben-Or–Kozen–Reif); `satisfiable` uses it to prove that
+such a system has no real solution before trying a CAD.
 Over the rationals, the bases which SymPy does not compute in a quarter of
 a second are computed by the modular algorithm of Arnold
 (`sympy_extras.polys.modulargroebner`): modulo large primes, on the
@@ -226,6 +232,11 @@ Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)
 True
 >>> Ideal([x**2, x*y], x, y).primary_decomposition()
 [(Ideal([x], x, y), Ideal([x], x, y)), (Ideal([x**2, y], x, y), Ideal([x, y], x, y))]
+>>> from sympy_extras.polys.hermite import count_real_solutions, sign_determination
+>>> count_real_solutions([x**2 + y**2 - 1, x - y], x, y)
+2
+>>> sign_determination([x**2 - 1, y**2 - 1], [x + y, x], x, y)
+{(-1, -1): 1, (0, -1): 1, (0, 1): 1, (1, 1): 1}
 >>> from sympy import QQ, ring, lex
 >>> from sympy_extras.polys.modulargroebner import modular_groebner
 >>> R, u, v, w = ring("u,v,w", QQ, lex)
@@ -730,6 +741,7 @@ sympy_extras/
         euclidtools.py       principal subresultant coefficients
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
         idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension
+        hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
         modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold)
         orderings.py         WeightOrder, BlockOrder

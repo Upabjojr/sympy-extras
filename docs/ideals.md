@@ -1,7 +1,8 @@
 # Polynomial ideals and Gröbner bases
 
 Modules: `sympy_extras.polys.ideals`, `sympy_extras.polys.groebnerwalk`,
-`sympy_extras.polys.modulargroebner`, `sympy_extras.polys.orderings`
+`sympy_extras.polys.modulargroebner`, `sympy_extras.polys.orderings`,
+`sympy_extras.polys.hermite`
 
 ## What SymPy has and what is added here
 
@@ -27,6 +28,9 @@ This package adds, on top of SymPy's Gröbner basis engine:
   quotient algebra, multiplication matrices, the univariate polynomial in
   each variable, the **radical** (Seidenberg's lemma) and the test for
   **maximal** ideals;
+- for zero-dimensional ideals over the rationals: the number of **real
+  solutions** and the **signs** of other polynomials at them, counted
+  without solving, by Hermite's quadratic form and sign determination;
 - in any dimension, over the rationals: the **radical**, its
   **equidimensional parts**, the **minimal primes**, the **height** and
   the tests for **radical** and **prime** ideals, through triangular
@@ -98,6 +102,68 @@ Matrix([[0, 0, 0, 1], [1, 0, 0, 0], [0, 1, 0, -1], [0, 0, 1, 0]])
 (True, True)
 >>> Ideal([x**2, y**2 - 2*y + 1], x, y).radical()
 Ideal([x, y - 1], x, y)
+
+```
+
+## Counting real solutions
+
+For a zero-dimensional ideal `I` over the rationals and a polynomial `g`,
+the quadratic form `(p, q) -> Tr(g*p*q)` on the quotient algebra
+`Q[x]/I`, `Tr` the trace of the multiplication matrix, is *Hermite's
+quadratic form*. Its signature is the number of distinct real solutions
+at which `g > 0` minus the number at which `g < 0` (the *Tarski query* of
+`g`), and its rank the number of distinct complex solutions at which
+`g != 0` (Pedersen, Roy and Szpirglas; Basu, Pollack and Roy, Theorem
+4.102). The multiplicities do not count. With `g = 1` it counts the real
+solutions; the queries of `1`, `g` and `g**2` give the numbers of real
+solutions at which `g` is zero, positive and negative.
+
+```python
+>>> from sympy.abc import x, y
+>>> from sympy_extras.polys.hermite import (count_real_solutions,
+...     count_complex_solutions, real_sign_counts, tarski_query)
+>>> count_real_solutions([x**2 + y**2 - 1, x - y], x, y)
+2
+>>> count_real_solutions([x**2 + y**2 - 1, x + y - 2], x, y), count_complex_solutions([x**2 + y**2 - 1, x + y - 2], x, y)
+(0, 2)
+>>> count_real_solutions([(x - 1)**3*(x + 2), y**2], x, y)
+2
+>>> real_sign_counts([x**3 - x, y - x**2], x - y, x, y)
+SignCounts(zero=2, positive=0, negative=1)
+>>> tarski_query([x**3 - x, y - x**2], 2*y - 1, x, y)
+1
+
+```
+
+For several polynomials, `sign_determination` gives every realizable sign
+condition with its number of real solutions, by the scheme of Ben-Or,
+Kozen and Reif (Basu–Pollack–Roy, Algorithm 10.11): the polynomials are
+added one at a time, the Tarski queries of the products of their powers
+are computed for at most three times as many products as there are
+realizable conditions so far, and the conditions of count zero are
+dropped.
+
+```python
+>>> from sympy_extras.polys.hermite import sign_determination
+>>> sign_determination([x**2 - 1, y**2 - 1], [x + y, x], x, y)
+{(-1, -1): 1, (0, -1): 1, (0, 1): 1, (1, 1): 1}
+
+```
+
+The matrices are exact over the rationals and the signature is found by
+Lagrange's reduction of the symmetric matrix to a diagonal one by
+congruence; no floating point number is involved. `decide_zero_dimensional`
+decides whether a conjunction of equations with finitely many solutions
+and of inequalities and inequations has a real solution, and
+`satisfiable` uses it (for two or more variables known to be real, within
+two seconds) to answer `False` before building a cylindrical algebraic
+decomposition, which must visit every cell to prove that there is none.
+
+```python
+>>> from sympy import Eq
+>>> from sympy_extras.polys.hermite import decide_zero_dimensional
+>>> decide_zero_dimensional(Eq(x**2 + y**2, 1) & Eq(x*y, 1), [x, y])
+False
 
 ```
 
@@ -441,6 +507,14 @@ SymPy.
   `is_primary()` (and the functions of the same names, with
   `independent_set`, in `sympy_extras.polys.idealdecomposition`).
 
+`count_real_solutions(system, *gens)`, `count_complex_solutions(system,
+*gens)`, `tarski_query(system, g, *gens)`, `real_sign_counts(system, g,
+*gens)` (a `SignCounts(zero, positive, negative)`), `sign_determination(system,
+polys, *gens)`, `hermite_matrix(system, g, *gens)` and
+`decide_zero_dimensional(formula, gens, max_dimension=64)` are in
+`sympy_extras.polys.hermite`; `system` is an `Ideal` or a list of
+polynomials with rational coefficients.
+
 `separating_forms(variables, points)` enumerates the linear forms with
 small integer coefficients among which one separates any `points` points.
 
@@ -455,6 +529,15 @@ series of a monomial ideal. `groebner_walk`, `extended_groebner` and
 `BlockOrder` and `elimination_order` in `sympy_extras.polys.orderings`.
 
 ## References
+
+- P. Pedersen, M.-F. Roy, A. Szpirglas, *Counting real zeros in the
+  multivariate case*, in Computational Algebraic Geometry, Progress in
+  Mathematics 109, Birkhäuser, 1993, 203-224.
+- S. Basu, R. Pollack, M.-F. Roy, *Algorithms in Real Algebraic Geometry*,
+  2nd ed., Springer, 2006 (Hermite's quadratic form, Theorem 4.102; sign
+  determination, Section 10.3).
+- M. Ben-Or, D. Kozen, J. Reif, *The complexity of elementary algebra and
+  geometry*, J. Computer and System Sciences 32 (1986) 251-264.
 
 - E. A. Arnold, *Modular algorithms for computing Gröbner bases*,
   J. Symbolic Computation 35 (2003) 403-419.

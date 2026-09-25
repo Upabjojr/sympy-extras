@@ -10,6 +10,23 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- Real solutions of zero-dimensional polynomial systems counted without
+  solving them (sympy-extras#16): `count_real_solutions`,
+  `count_complex_solutions`, `tarski_query`, `real_sign_counts`,
+  `sign_determination`, `hermite_matrix` and `decide_zero_dimensional` in
+  the new module `sympy_extras.polys.hermite`. The signature of Hermite's
+  quadratic form `Tr(g*p*q)` on the quotient algebra counts the distinct
+  real solutions with `g > 0` minus those with `g < 0`
+  (Pedersen–Roy–Szpirglas), computed exactly over the rationals by
+  Lagrange's reduction; several polynomials go through the sign
+  determination of Ben-Or, Kozen and Reif (Basu–Pollack–Roy, Algorithm
+  10.11). `satisfiable` (and so `tautology`) now proves that a
+  conjunction whose equations have finitely many complex solutions has no
+  real solution this way before building a cylindrical algebraic
+  decomposition (15 times faster on `x**2 + y**2 + z**2 = 3, xy + yz + zx
+  = 3, xyz = 1, x > y`). Checked against the cells of the CAD on random
+  systems, against SymPy's real roots in one variable and through the
+  shape lemma in three.
 - Factorisation of linear ordinary differential operators with rational
   function coefficients (sympy-extras#24), in the new module
   `sympy_extras.solvers.factorization`. `LinearOperator` is now an element
