@@ -346,8 +346,10 @@ Kovacic's algorithm (`dsolve_kovacic`), polynomial, rational and
 hyperexponential solutions of linear equations of any order with
 exponential parts from the Newton polygon (`dsolve_linear`), Bessel,
 Whittaker and hypergeometric solutions recognised through the normal
-form (`special_solutions`), systems through a cyclic vector
-(`dsolve_linear_system`), and Abel, Chini and d'Alembert–Lagrange first
+form (`special_solutions`), factorisation of linear differential
+operators by Beke's algorithm (`factor_operator`, used by
+`dsolve_linear` for equations of order three and more), systems through
+a cyclic vector (`dsolve_linear_system`), and Abel, Chini and d'Alembert–Lagrange first
 order equations (`dsolve_first_order`). See
 [docs/solvers.md](docs/solvers.md); the Kamke benchmark results are in
 [benchmarks/README.md](benchmarks/README.md).
@@ -712,7 +714,8 @@ sympy_extras/
         integers.py          Hermite normal form, Contejean-Devie, Cooper's algorithm
         transcendental.py    transcendental equations reduced to polynomial ones
         kovacic.py           Kovacic's algorithm
-        linear_ode.py        polynomial/rational/hyperexponential solutions, reduction of order
+        linear_ode.py        polynomial/rational/hyperexponential solutions, reduction of order, operator arithmetic
+        factorization.py     factorisation of linear differential operators (Beke), solving through the factors
         special.py           Bessel, Whittaker, hypergeometric solutions
         linear_systems.py    cyclic vector, systems Y' = A Y
         first_order.py       Abel, Chini, d'Alembert-Lagrange equations

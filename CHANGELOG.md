@@ -10,6 +10,44 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- Factorisation of linear ordinary differential operators with rational
+  function coefficients (sympy-extras#24), in the new module
+  `sympy_extras.solvers.factorization`. `LinearOperator` is now an element
+  of the Ore ring `Q(x)[D]`: composition (`*`), `+`, `-`, `right_divmod`
+  (Euclidean division on the right), `adjoint`, `exterior_power` and
+  `symmetric_power` (the associated operators, in scalar form through a
+  cyclic vector), `monic`, `primitive`, and `gcrd` and `lclm` in
+  `linear_ode`. `right_factor(L, k)` finds a right factor of any order
+  by Beke's algorithm (Beke 1894, in the form of Schwarz 1989 and
+  Bronstein 1994): the Wronskian minors of the solutions of a factor are
+  a hyperexponential solution of the `k`-th associated equation, the
+  coefficients of the factor are their ratios, and when several
+  hyperexponential solutions differ by rational factors the
+  Grassmann–Plücker relations select the decomposable combinations;
+  every candidate is checked by an exact right division.
+  `left_factor` takes the adjoint, and `factor_operator` returns an
+  `OperatorFactorization` (unit and monic factors, whose product is the
+  operator exactly) with each factor marked irreducible when every
+  search was exhaustive: `hyperexponential_search` (new) says when the
+  hyperexponential solutions may be incomplete (irregular finite
+  singular points, irrational exponents, conjugate singular points with
+  exponents of different classes), and Kovacic's algorithm decides
+  second order factors. `dsolve_linear` solves equations of order three
+  and more through the factors: the solutions of the right factor, then
+  for each solution of the left factor a solution of the inhomogeneous
+  right factor by variation of parameters (`variation_of_parameters`,
+  `solve_factored`), with the Wronskian from Abel's identity and the
+  integrals left unevaluated when SymPy cannot do them. On 28 linear
+  equations of order 3 to 7 (products of Airy, Bessel, Whittaker,
+  Euler and first order operators, the symmetric square of Airy's
+  operator, and the three homogeneous ones of order three and more of
+  the Postel–Zimmermann collection) the number with a full basis went
+  from 9 to 25 (the other three have an irreducible third order
+  factor), every solution verified by substitution
+  and the Wronskians nonzero. The hyperexponential ansatz takes one
+  exponent per class modulo the integers at each singular point and
+  skips the combinations the exponents at infinity exclude.
+
 - Primary decomposition of polynomial ideals over the rationals in any
   dimension (sympy-extras#11): `primary_decomposition`,
   `associated_primes` (the embedded primes included), `is_primary` and
@@ -840,6 +878,22 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- The indicial polynomial at the roots of a factor `q` of the leading
+  coefficient of a linear operator missed the factor `q'(c)**k` of each
+  coefficient divisible by `q**k`, so the local exponents at the roots
+  of a factor which is not monic and linear (`2*x + 1`, `x**2 + 2`) were
+  wrong: `(2x + 1)**2 y'' - 8 y = 0` got the exponents `(1 +- sqrt(33))/2`
+  instead of `2, -1`, and `rational_solutions` and
+  `hyperexponential_solutions` missed `1/(2x + 1)`.
+- The exponential parts at infinity of `hyperexponential_solutions`
+  followed terms of any degree at every level of the recursion (each
+  level transforming the operator again): an operator of order four did
+  not finish in five minutes. The terms after the first now have lower
+  degrees, which is also what makes the search exhaustive.
+- `dsolve_linear` compared solutions with unevaluated integrals through
+  `is_constant`, which simplified the integrals and could run SymPy's
+  heuristic integrator for minutes; such ratios are now taken as not
+  constant.
 - The cylindrical algebraic decomposition could hang in SymPy's real root
   isolation: the real roots of a polynomial with several factors over a
   rational sample point came from `Poly.real_roots`, which refines the

@@ -209,6 +209,14 @@ SymPy lacks:
   operator (`hyperexponential_solutions` finds `exp(P(x))` times the
   Fuchsian ansatz, so `y'' - 2x y' + 4y = 0` gives `x**2 - 1/2` and
   `exp(x**2)` times a polynomial is found where it exists).
+- **Factorisation of operators** (`sympy_extras.solvers.factorization`):
+  the arithmetic of the Ore ring `Q(x)[D]` on `LinearOperator`
+  (composition, right division, `gcrd`, `lclm`, adjoint, exterior and
+  symmetric powers), right factors of any order by Beke's algorithm,
+  left factors through the adjoint, `factor_operator` for a complete
+  factorisation with proofs of irreducibility, and `dsolve_linear`
+  solving equations of order three and more through the factors (see
+  below).
 - **Special functions** (`sympy_extras.solvers.special`): equations
   equivalent to the Bessel, Whittaker (confluent hypergeometric) or
   Gauss hypergeometric equations are recognised through the invariant
@@ -240,6 +248,77 @@ SymPy lacks:
 [   x]])]
 
 ```
+
+### Factorisation of linear differential operators
+
+`LinearOperator` is an element of the Ore ring `K[D]`, `K = Q(x)` (extended
+by the constants of the coefficients), where `D a = a D + a'`: `*` is the
+composition, `right_divmod` the Euclidean division on the right, and
+`gcrd`, `lclm` the greatest common right divisor (the common solutions)
+and the least common left multiple (the sums of solutions).
+
+A right factor `R` of order `k` of `L` is determined by the Wronskian
+matrix of `k` solutions: `R(y) = Wr(y_1, ..., y_k, y)/Wr(y_1, ..., y_k)`,
+whose coefficients are ratios of `k x k` minors of the Wronskian matrix
+of `L`. The minors satisfy a linear system (the `k`-th exterior power,
+`L.exterior_power(k)` in scalar form), and `R` has rational coefficients
+exactly when the minors are hyperexponential; the vector must also be
+decomposable (the Grassmann–Plücker relations), which is a system of
+quadratic equations when several hyperexponential solutions differ by
+rational factors. This is **Beke's algorithm** (1894), in the form of
+Schwarz (1989) and Bronstein (1994). `right_factor(L, k)` finds a right
+factor, `left_factor(L, k)` a left one (the adjoint of a right factor of
+the adjoint), and `factor_operator(L)` a factorisation into factors which
+are proven irreducible when every search was exhaustive
+(`hyperexponential_search` says when it is not: irregular finite
+singular points, irrational exponents); for second order factors
+Kovacic's algorithm decides it.
+
+`dsolve_linear` uses the factorisation for equations of order three and
+more: the solutions of the right factor, then for each solution `z` of
+the left factor a solution of `R(y) = z` by variation of parameters,
+with the integrals left unevaluated when SymPy cannot evaluate them.
+
+```python
+>>> from sympy import Function
+>>> from sympy_extras.solvers import (LinearOperator, factor_operator, right_factor,
+...     left_factor, gcrd, lclm, dsolve_linear)
+>>> D = LinearOperator([0, 1], x)
+>>> A = LinearOperator([-x, 0, 1], x)          # Airy: y'' - x y
+>>> B = LinearOperator([1, 1/x, 1], x)         # Bessel of order 0
+>>> F = factor_operator(B*A)
+>>> F.factors, F.irreducible
+([LinearOperator([1, 1/x, 1], x), LinearOperator([-x, 0, 1], x)], [True, True])
+>>> F.expand() == B*A
+True
+>>> right_factor((D - LinearOperator([1/x], x))*A, 2) == A
+True
+>>> left_factor(A*(D - LinearOperator([1/x], x)), 2) == A
+True
+>>> gcrd(A*D, B*D)
+LinearOperator([0, 1], x)
+>>> lclm(D - LinearOperator([1], x), D).coefficients
+[0, -1, 1]
+>>> y = Function('y')(x)
+>>> equation = ((D - LinearOperator([1], x))*A)(y)
+>>> equation
+x*y(x) - x*Derivative(y(x), x) - y(x) - Derivative(y(x), (x, 2)) + Derivative(y(x), (x, 3))
+>>> len(dsolve_linear(equation, y))
+3
+
+```
+
+The third solution of the last equation solves `y'' - x y = exp(x)`, written
+with integrals of Airy functions (as modified Bessel functions). Before the
+factorisation, `dsolve_linear` found no solution of this equation: it has
+no hyperexponential solution to reduce the order with.
+
+Not implemented: van Hoeij's local method (factors from the generalised
+exponents at one singular point, much faster than the associated
+equations for high orders), the eigenring, and hyperexponential solutions
+at irregular finite singular points (so right factors whose solutions
+have essential singularities at finite points are only found for second
+order operators, through Kovacic's algorithm).
 
 ## First order equations of Riccati, Abel, Chini and d'Alembert–Lagrange type
 

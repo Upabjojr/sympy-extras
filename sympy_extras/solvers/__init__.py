@@ -6,7 +6,8 @@ arithmetic; transcendental equations reduced to polynomial ones; polynomial
 systems with the cases of their parameters; real roots
 of transcendental functions isolated exactly; linear differential-algebraic
 equations with constant coefficients; Thue equations; integrating factors,
-linearisation and Abel invariants for ordinary differential equations."""
+linearisation and Abel invariants for ordinary differential equations;
+factorisation of linear differential operators (Beke's algorithm)."""
 from .lie import JetSpace, Symmetry, symmetries, check_symmetry, determining_system, symmetry_janet_basis
 from .pde import pde_symmetries, similarity_reduction, pdsolve_lie, Reduction
 from .ode import (ode_symmetries, canonical_coordinates, reduce_order,
@@ -18,7 +19,10 @@ from .transcendental import solve_transcendental, polynomialize
 from .parametric import ParametricCase, parametric_cases
 from .kovacic import liouvillian_solution, dsolve_kovacic, KovacicSolution
 from .linear_ode import (LinearOperator, polynomial_solutions, rational_solutions,
-    hyperexponential_solutions, reduce_order_linear, dsolve_linear)
+    hyperexponential_solutions, hyperexponential_search, reduce_order_linear, dsolve_linear, gcrd, lclm,
+    log_derivative)
+from .factorization import (OperatorFactorization, factor_operator, right_factor, left_factor,
+    variation_of_parameters, solve_factored)
 from .charpit import complete_integral, check_complete_integral
 from .special import special_solutions, bessel_solutions, whittaker_solutions, hypergeometric_solutions, whittaker_m
 from .first_order import riccati_ode, chini_ode, abel_ode, lagrange_ode, dsolve_first_order
@@ -40,6 +44,8 @@ __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry', 'determining_
     'is_presburger', 'solve_transcendental', 'polynomialize', 'ParametricCase', 'parametric_cases',
     'liouvillian_solution', 'dsolve_kovacic', 'KovacicSolution', 'LinearOperator', 'polynomial_solutions',
     'rational_solutions', 'hyperexponential_solutions', 'reduce_order_linear', 'dsolve_linear',
+    'hyperexponential_search', 'gcrd', 'lclm', 'log_derivative', 'OperatorFactorization', 'factor_operator',
+    'right_factor', 'left_factor', 'variation_of_parameters', 'solve_factored',
     'complete_integral', 'check_complete_integral',
     'special_solutions', 'bessel_solutions', 'whittaker_solutions', 'hypergeometric_solutions',
     'whittaker_m', 'riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order',
