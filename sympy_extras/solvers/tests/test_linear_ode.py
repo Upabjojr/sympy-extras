@@ -126,3 +126,36 @@ def test_second_order_reduction_before_kovacic() -> None:
     found = _solve_operator(L, Function('y')(x), True, True)
     assert time.time() - start < 15
     assert len(found) == 2 and all(cancel(L(s)) == 0 for s in found) and found[1].has(log)
+
+
+def test_equation_whose_reduction_sympy_cannot_solve() -> None:
+    # the bug (an audit against Mathematica 12.2): dsolve_linear raised
+    # IndexError on y'''' + y'''/(x + 2) + q*y'' = 0: the equation in y'
+    # left after the reduction by 1 went to SymPy's dsolve, whose power
+    # series for the equation in y'' came out as Eq(g(x), O(1)), and
+    # dsolve(Eq(f(x).diff(x), O(1)), f(x)) raises IndexError (SymPy 1.14).
+    # The solutions of the equation in y'' are not Liouvillian (Kovacic),
+    # so 1 and x are all the closed forms: a partial basis
+    q = (3*x**3 + 16*x**2 + 28*x + 17)/(x**4 + 6*x**3 + 13*x**2 + 12*x + 4)
+    L = LinearOperator([S.Zero, S.Zero, q, 1/(x + 2), S.One], x)
+    solutions = dsolve_linear(L(y), y)
+    assert len(solutions) == 2 and all(_solves(L, s) for s in solutions)
+    assert simplify(solutions[1]/solutions[0]).has(x)
+
+
+def test_sympy_dsolve_index_error_gives_a_partial_basis(monkeypatch: object) -> None:
+    # the workaround of the SymPy bug above, where it is not avoided:
+    # SymPy's dsolve raising IndexError leaves the solutions found
+    import pytest
+    import sympy.solvers.ode
+    assert isinstance(monkeypatch, pytest.MonkeyPatch)
+
+    def failing(equation: object, f: object) -> object:
+        raise IndexError('list index out of range')
+
+    monkeypatch.setattr(sympy.solvers.ode, 'dsolve', failing)
+    # the equation in y'' of the test above: no Liouvillian solution, so
+    # dsolve is asked
+    q = (3*x**3 + 16*x**2 + 28*x + 17)/(x**4 + 6*x**3 + 13*x**2 + 12*x + 4)
+    L = LinearOperator([q, 1/(x + 2), S.One], x)
+    assert dsolve_linear(L(y), y) == []

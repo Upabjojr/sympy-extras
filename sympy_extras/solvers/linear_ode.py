@@ -1126,16 +1126,29 @@ def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_d
         special = attempt(lambda: special_solutions(equation, y), settings.timeout)
         if special:
             found = _independent(found + special, x)
+    reduced_by_constant = False
     if found and len(found) < n:
+        reduced_by_constant = not found[0].has(x)
         reduced_found = _by_reduction(L, f, found, use_kovacic, use_dsolve, factorize)
         if reduced_found is None:
             return found
         found = reduced_found
-    if len(found) < n and use_dsolve:
+    # an equation without y reduced by the constant solution is the
+    # equation in y' which SymPy's dsolve would reduce it to (its hint
+    # nth_order_reducible), and which the reduction has already handed to
+    # dsolve: asking again is wasted
+    if len(found) < n and use_dsolve and not (reduced_by_constant and L.coefficients[0] == 0):
         from sympy.solvers.ode import dsolve
         y = Function('y')(x)
         equation = as_expr(Add(*[c*y.diff(x, i) if i else c*y for i, c in enumerate(L.coefficients)]))
-        result = attempt(lambda: dsolve(equation, y), settings.timeout)
+        try:
+            result = attempt(lambda: dsolve(equation, y), settings.timeout)
+        except IndexError:
+            # SymPy 1.14: the reduced equation's power series truncated to
+            # Eq(g(x), O(1)), then dsolve(Eq(f(x).diff(x), O(1)), f(x))
+            # raises IndexError in the matcher of the hint factorable
+            # (sympy-extras#25): nothing found by dsolve
+            result = None
         # a truncated power series with an O term is not a solution either
         # (sympy-extras#37)
         if isinstance(result, Eq) and not result.rhs.has(Integral, Order):

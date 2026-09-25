@@ -951,6 +951,18 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `dsolve_linear` raised `IndexError` on `y'''' + y'''/(x + 2) + q*y'' = 0`
+  with `q = (3*x**3 + 16*x**2 + 28*x + 17)/((x + 1)**2*(x + 2)**2)` (found
+  by an audit against Mathematica 12.2). The equation in `y'` left after
+  the reduction by the solution 1 went to SymPy's `dsolve`, which reduces
+  it to the equation in `y''` again, and fails there: its power series
+  comes out as `Eq(g(x), O(1))`, and `dsolve(Eq(f(x).diff(x), O(1)), f(x))`
+  raises `IndexError`. An equation without `y` that was reduced by a
+  constant solution is no longer given to `dsolve`, whose reduction would
+  repeat it. An `IndexError` from `dsolve` leaves the solutions found. The
+  result is `[1, x]`, a partial basis: the equation in `y''` has no
+  Liouvillian solution.
+
 - `definite_integral` with singularities or kinks whose position depends on
   the parameters (found by an audit against Mathematica 12.2):
   `1/(x**2 - c)` over `(0, 1)` with `c > 0` had a case under
