@@ -878,3 +878,54 @@ def test_points_not_known_real_are_not_cases_of_the_parameters() -> None:
     value = definite_integral(x / (x**2 + y**2), (x, p, q), [p > 0, q > 0])
     assert not value.has(Integral)
     assert _same(value.subs({p: 1, q: 2, y: 3}), (log(13) - log(10)) / 2)
+
+
+def test_cases_of_a_radical_singularity_are_possible_ones() -> None:
+    # the bug (an audit against Mathematica 12.2): 1/(x**2 - c) over (0, 1)
+    # with c > 0 came out with a branch under sqrt(c) < 0, a condition
+    # which never holds, its value on the wrong branch of the logarithm
+    # ((2*pi*I - log(3))/4 at c = 4): the SAT solver leaves relations of
+    # sqrt(c) undecided, and the impossible case had no sample to be
+    # checked at; the helper finds no sample for such a branch
+    c = symbols('c')
+    value = definite_integral(1 / (x**2 - c), (x, 0, 1), [c > 0])
+    branches = _cases_agree_with_quadrature(1 / (x**2 - c), (x, 0, 1), [c > 0])
+    condition = Or(*[condition for _, condition in branches])
+    assert condition.subs(c, 4) is S.true and condition.subs(c, Rational(1, 4)) is S.false
+    assert _same(value.subs(c, 4), -log(3) / 4)
+
+
+def test_cases_of_singularities_listed_as_a_union() -> None:
+    # the bug: 1/((x - a)*(x - b)) over (0, 1) with a < b was left
+    # unevaluated: SymPy lists the singularities as a Union of the
+    # intersections of {a} and {b} with the range, which was not read
+    a_, b_ = symbols('a b')
+    branches = _cases_agree_with_quadrature(1 / ((x - a_) * (x - b_)), (x, 0, 1), [a_ < b_], samples=5)
+    condition = Or(*[condition for _, condition in branches])
+    for finite in ((-2, -1), (2, 3), (-1, 2)):
+        assert condition.subs({a_: finite[0], b_: finite[1]}) is S.true, finite
+    for divergent in ((S.Half, 2), (-1, S.Half), (Rational(1, 4), Rational(3, 4))):
+        assert condition.subs({a_: divergent[0], b_: divergent[1]}) is S.false, divergent
+
+
+def test_cases_of_a_real_cube_root_singularity() -> None:
+    # the bug: 1/(x**3 - c**3) over (0, 1) with c > 0 was left
+    # unevaluated: SymPy writes the real singularity c as
+    # Abs(c**3)**(1/3)*sign(c**3), whose position the solvers could not
+    # decide, and the cases found no value
+    c = symbols('c')
+    branches = _cases_agree_with_quadrature(1 / (x**3 - c**3), (x, 0, 1), [c > 0], samples=5)
+    condition = Or(*[condition for _, condition in branches])
+    assert condition.subs(c, 2) is S.true and condition.subs(c, S.Half) is S.false
+
+
+def test_cases_of_a_kink_without_an_antiderivative() -> None:
+    # the bug: log(Abs(x - c)) over (0, 1) came back with the case c >= 1
+    # only: the antiderivative, not found for the whole integrand, was
+    # sought again on each piece of every case, and the cases c <= 0 and
+    # 0 < c < 1 (where the integral converges) ran out of their time
+    c = symbols('c')
+    branches = _cases_agree_with_quadrature(log(Abs(x - c)), (x, 0, 1), samples=5)
+    condition = Or(*[condition for _, condition in branches])
+    for point in (-2, -S.Half, Rational(1, 3), S.Half, 2):
+        assert condition.subs(c, point) is S.true, point

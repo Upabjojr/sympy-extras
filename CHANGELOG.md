@@ -951,6 +951,24 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `definite_integral` with singularities or kinks whose position depends on
+  the parameters (found by an audit against Mathematica 12.2):
+  `1/(x**2 - c)` over `(0, 1)` with `c > 0` had a case under
+  `sqrt(c) < 0`, which never holds. Its value was on the wrong branch of
+  the logarithm. The SAT solver leaves the relations of a radical
+  undecided, so the conjuncts are now also asked one by one. The
+  integrals of `1/((x - a)*(x - b))` with `a < b` (SymPy lists the
+  singularities as a `Union`), of `1/(x**3 - c**3)` with `c > 0` (the
+  point `c` written `Abs(c**3)**(1/3)*sign(c**3)`) and of `log(Abs(x - c))`
+  (the antiderivative sought again on every piece, the absolute value
+  kept in the cases without a kink inside, the cases out of time) over
+  `(0, 1)` were left unevaluated, or had only some of their convergent
+  cases. A pole of a rational integrand inside the range now makes a case
+  divergent at once. A closed bound of a case is made strict where its
+  value is undefined (`c*log(-c)` at `c = 0`). The quadrature of the
+  numerical checks splits at the points inside the range and no longer
+  returns an infinite value.
+
 - `dsolve_linear` (and the scalar solver behind the systems) reduces the
   order of a second order equation by a known rational or
   hyperexponential solution before running Kovacic's algorithm, which

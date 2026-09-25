@@ -81,6 +81,7 @@ pi**3/8
 """
 from __future__ import annotations
 
+import cmath
 import random
 from itertools import product
 from math import gcd, lcm
@@ -123,7 +124,7 @@ from sympy.polys.rationaltools import together
 from sympy.series.limits import Limit, limit
 from sympy.logic.boolalg import And, Boolean, Not, Or, true
 from sympy.sets.conditionset import ConditionSet
-from sympy.sets.sets import FiniteSet, Intersection, Interval, Set
+from sympy.sets.sets import FiniteSet, Intersection, Interval, Set, Union
 from sympy.simplify.powsimp import powdenest
 from sympy.simplify.simplify import nsimplify
 from sympy.utilities.lambdify import lambdify
@@ -363,10 +364,14 @@ def _real_bounds(a: Expr, b: Expr) -> bool:
 # ---------------------------------------------------------------------------
 # Numerical verification
 
-def _quadrature(f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[complex]:
+def _quadrature(f: Expr, x: Symbol, a: Expr, b: Expr, inside: Sequence[Expr] = ()) -> Optional[complex]:
     """``Integral(f, (x, a, b))`` by mpmath's quadrature, trusted only when
     two rules agree; a complex bound means the straight segment from
-    ``a`` to ``b``, parametrised by ``x = a + (b - a) t``."""
+    ``a`` to ``b``, parametrised by ``x = a + (b - a) t``. The numeric
+    points ``inside`` a finite real range (singularities, kinks) are
+    nodes of the subdivision. ``None`` for an infinite value, which checks
+    nothing (the bug: ``log(Abs(x - 1/2))`` over ``(0, 1)`` came out as
+    ``-oo``, the midpoint of the rules at the singularity)."""
     if not _real_bounds(a, b):
         if a in (-oo, oo) or b in (-oo, oo) or a.free_symbols or b.free_symbols:
             return None
@@ -383,7 +388,14 @@ def _quadrature(f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[complex]:
     elif lo == mpmath.mpf('-inf'):
         points = [lo, hi - 100, hi - 10, hi - 1, hi]
     else:
-        points = [lo, hi]
+        nodes: list[mpmath.mpf] = []
+        for p in inside:
+            if p.is_real is True and not p.free_symbols:
+                node = mpmath.mpf(str(as_expr(p).evalf(20)))
+                if min(lo, hi) < node < max(lo, hi) and node not in nodes:
+                    nodes.append(node)
+        # in the direction of the integration (a reversed range stays so)
+        points = [lo] + sorted(nodes, reverse=bool(hi < lo)) + [hi]
     finer: list[mpmath.mpf] = []
     for p, q in zip(points[:-1], points[1:]):
         finer.append(p)
@@ -403,6 +415,8 @@ def _quadrature(f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[complex]:
         return None
     v1, e1 = complex(first[0]), float(abs(first[1]))
     v2, v3 = complex(second[0]), complex(third[0])
+    if not (cmath.isfinite(v1) and cmath.isfinite(v2)):
+        return None
     scale = 1 + max(abs(v1), abs(v2))
     if abs(v1 - v2) > 1e-8 * scale or e1 > 1e-6 * scale:
         return _oscillatory_quadrature(f, x, lo, hi)
@@ -501,12 +515,14 @@ def _grows_like_a_pole(g: Expr, x: Symbol, point: Expr, side: str) -> bool:
 
 
 def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
-                       assumptions: Assumptions = None, samples: int = 2) -> Optional[bool]:
+                       assumptions: Assumptions = None, samples: int = 2,
+                       inside: Sequence[Expr] = ()) -> Optional[bool]:
     """Whether ``value`` agrees with a numerical quadrature of
     ``Integral(f, (x, a, b))`` at ``samples`` random values of the
     parameters satisfying the assumptions: ``False`` when they disagree
     where the quadrature is trusted, ``True`` when they agree there,
-    ``None`` when nothing could be checked."""
+    ``None`` when nothing could be checked. The points ``inside`` the
+    range (singularities, kinks) subdivide it for the quadrature."""
     if f.has(DiracDelta):
         return None
     parameters = sorted_symbols((free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x})
@@ -517,7 +533,7 @@ def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
         if values is None:
             return None
         expected = _quadrature(f.xreplace(values), x, as_expr(a.xreplace(values)),
-                               as_expr(b.xreplace(values)))
+                               as_expr(b.xreplace(values)), [as_expr(p.xreplace(values)) for p in inside])
         if expected is None:
             continue
         # a value next to a branch cut on a side which a rounding error
@@ -1165,8 +1181,17 @@ class _Integrator:
             if found is None or found.value.has(oo, -oo, zoo, nan):
                 continue
             case = _canonical_relations(as_boolean(And(condition, found.condition)))
-            if settings.numerical_checks \
-                    and verify_numerically(found.value, f, x, a, b, _with(self.assumptions, [case])) is False:
+            if found.condition is not true and isinstance(case, And):
+                # without the conjuncts the others imply ((c <= 0) & (c < 0)
+                # & (1/c < 0) for log(Abs(x - c)) over (0, 1))
+                reduced = self._reduced([as_boolean(part) for part in
+                                         sorted(case.args, key=count_ops, reverse=True)])
+                if reduced is None:
+                    continue
+                case = _canonical_relations(reduced)
+            case = _strict_where_undefined(case, found.value)
+            if settings.numerical_checks and verify_numerically(
+                    found.value, f, x, a, b, _with(self.assumptions, [case]), inside=inside) is False:
                 continue
             results.append((case, found.value))
         joined = self._joined(results, f, x, a, b)
@@ -1188,6 +1213,12 @@ class _Integrator:
         which :func:`ask` on a conjunction without assumptions leaves
         undecided, and which answers in half its time)."""
         kept = list(conjuncts)
+        # a conjunct refuted on its own: the SAT solver leaves the
+        # relations of a radical undecided (the bug: 1/(x**2 - c) over (0,
+        # 1) with c > 0 had a case under sqrt(c) < 0, which never holds,
+        # with no sample to check its value at), where ask decides them
+        if any(self.ask(part) is False for part in kept):
+            return None
         if satisfiable(as_boolean(And(*kept)), self.assumptions) is False:
             return None
         for part in list(kept):
@@ -1217,6 +1248,15 @@ class _Integrator:
         limits on each piece between the points inside; then every method
         on the whole range."""
         from .antiderivative import _real_logarithms, one_sided_limit
+        if inside and f.is_rational_function(x):
+            # a pole of a rational integrand inside the range: divergent,
+            # decided at once (the bug: 1/((x - a)*(x - b)) over (0, 1)
+            # with a < b spent the time of the finite cases on the limits
+            # of an antiderivative whose logarithms had unsimplified
+            # arguments, and came back unevaluated)
+            denominator = as_expr(cancel(f).as_numer_denom()[1])
+            if any(as_expr(cancel(denominator.subs(x, s))) == 0 for s in inside):
+                return None
         integrator = _Integrator(assumptions, self.parametric, self.principal_value, self.finite_part,
                                  self.regularize, cases=False)
         lower, upper = (b, a) if reversed_ else (a, b)
@@ -1229,12 +1269,26 @@ class _Integrator:
                         return None
         for candidate in candidates:
             if settings.numerical_checks \
-                    and verify_numerically(candidate, f, x, a, b, assumptions, samples=3) is True:
+                    and verify_numerically(candidate, f, x, a, b, assumptions, samples=3, inside=inside) is True:
                 return ConditionalValue(candidate)
+        if not inside and f.atoms(Abs, sign, Heaviside, Max, Min, Piecewise):
+            # no kink inside the range in this case: the integrand on its
+            # branch there (log(Abs(x - c)) is log(x - c) over (0, 1) for
+            # c <= 0, which SymPy integrates at once, where it spent the
+            # budget of the case on the absolute value)
+            kinks = integrator._kink_placement(f, x, lower, upper)
+            if kinks is not None and not kinks[0] and not kinks[1]:
+                branch = integrator._branch(f, x, lower, upper)
+                if branch is not None:
+                    f = branch
         found = integrator._sympy(f, x, a, b, depth)
         if found is not None and not found.value.has(Piecewise):
             return found
-        if ordered is not None and not ordered[1]:
+        if ordered is not None and not ordered[1] and known is not None:
+            # the antiderivative on the pieces, when there is one: sought
+            # again on every piece of every case, it took the budget of the
+            # cases (the bug: log(Abs(x - c)) over (0, 1) came back with
+            # the case c >= 1 only)
             bounds = [lower] + ordered[0] + [upper]
             total: Optional[ConditionalValue] = ConditionalValue(S.Zero)
             for lo, hi in zip(bounds[:-1], bounds[1:]):
@@ -2201,11 +2255,63 @@ def _candidate_points(found: Set, x: Symbol, a: Expr, b: Expr) -> Optional[list[
     if isinstance(found, ConditionSet) and isinstance(found.base_set, FiniteSet) \
             and not free_symbols(as_boolean(found.condition)) - {x} - free_symbols(a) - free_symbols(b):
         found = found.base_set
+    if isinstance(found, Union):
+        # the union of the intersections of the points with the range (the
+        # regression: 1/((x - a)*(x - b)) over (0, 1) was left unevaluated)
+        points: list[Expr] = []
+        for part in found.args:
+            listed = _candidate_points(as_set(part), x, a, b)
+            if listed is None:
+                return None
+            points.extend(p for p in listed if p not in points)
+        return points
     if isinstance(found, FiniteSet):
-        return [as_expr(p) for p in found]
+        return [_real_odd_roots(as_expr(p)) for p in found]
     if found is S.EmptySet:
         return []
     return None
+
+
+def _real_odd_roots(p: Expr) -> Expr:
+    """The point ``p`` with every real odd root ``Abs(w)**(1/n)*sign(w)``
+    of a perfect power ``w = v**n`` written ``v``, for real parameters:
+    SymPy's ``singularities`` writes the real zero ``c`` of ``x**3 -
+    c**3`` so, whose relations with the endpoints the solvers cannot
+    decide.
+
+    >>> from sympy import symbols, Abs, sign, Rational
+    >>> from sympy_extras.integrals.definite import _real_odd_roots
+    >>> c = symbols('c')
+    >>> _real_odd_roots(Abs(8*c**3)**Rational(1, 3)*sign(8*c**3))
+    2*c
+    >>> _real_odd_roots(Abs(-c**3)**Rational(1, 3)*sign(-c**3))
+    -c
+    >>> _real_odd_roots(Abs(c + 1)**Rational(1, 3)*sign(c + 1))
+    Abs(c + 1)**(1/3)*sign(c + 1)
+    """
+    def root(node: Basic) -> Optional[Expr]:
+        if not isinstance(node, Mul):
+            return None
+        powers = [f for f in node.args if isinstance(f, Pow) and isinstance(f.base, Abs)
+                  and isinstance(f.exp, Rational) and f.exp.p == 1 and f.exp.q % 2 == 1]
+        signs = [f for f in node.args if isinstance(f, sign)]
+        for power in powers:
+            assert isinstance(power, Pow)
+            exponent = power.exp
+            assert isinstance(exponent, Rational)
+            w = as_expr(as_expr(power.base).args[0])
+            n = int(exponent.q)
+            if sign(w) not in signs:
+                continue
+            for s in (S.One, S.NegativeOne):
+                v = as_expr(powdenest(as_expr(s * w)**Rational(1, n), force=True))
+                if not v.has(Pow) or all(e.exp.is_integer for e in v.atoms(Pow)):
+                    rest = [f for f in node.args if f != power and f != sign(w)]
+                    return as_expr(Mul(s * v, *rest))
+        return None
+
+    return as_expr(p.replace(lambda node: root(node) is not None,
+                             lambda node: root(node)))
 
 
 def _positions(s: Expr, a: Expr, b: Expr, singular: bool) -> list[tuple[Boolean, int]]:
@@ -2239,6 +2345,38 @@ def _positions(s: Expr, a: Expr, b: Expr, singular: bool) -> list[tuple[Boolean,
     if a != -oo and b != oo:
         found.append((as_boolean(And(Lt(s, a), Gt(s, b))), -1))
     return [(_canonical_relations(condition), position) for condition, position in found]
+
+
+def _strict_where_undefined(condition: Boolean, value: Expr) -> Boolean:
+    """The condition with a closed bound ``u <= v`` on one parameter,
+    linear, made strict when ``value`` is not defined at ``u = v``: the
+    value of ``log(Abs(x - c))`` over ``(0, 1)`` for ``c <= 0`` has
+    ``c*log(-c)``, which is ``nan`` at ``c = 0``.
+
+    >>> from sympy import symbols, log
+    >>> from sympy_extras.integrals.definite import _strict_where_undefined
+    >>> c = symbols('c')
+    >>> _strict_where_undefined(c <= 0, c*log(-c) - 1)
+    c < 0
+    >>> _strict_where_undefined(c <= 0, c - 1)
+    c <= 0
+    """
+    replacements: dict[Relational, Boolean] = {}
+    for atom in condition.atoms(Le, Ge):
+        assert isinstance(atom, Relational)
+        lhs, rhs = as_expr(atom.lhs), as_expr(atom.rhs)
+        difference = as_expr(lhs - rhs)
+        symbols = sorted_symbols(free_symbols(difference))
+        if len(symbols) != 1 or not difference.is_polynomial(symbols[0]):
+            continue
+        p = Poly(difference, symbols[0])
+        if p.degree() != 1:
+            continue
+        point = as_expr(-p.nth(0) / p.nth(1))
+        at = as_expr(value.subs(symbols[0], point))
+        if at.has(nan, zoo, oo, -oo):
+            replacements[atom] = as_boolean(Lt(lhs, rhs) if isinstance(atom, Le) else Gt(lhs, rhs))
+    return as_boolean(condition.xreplace(replacements)) if replacements else condition
 
 
 def _real_for_real_parameters(p: Expr) -> bool:
