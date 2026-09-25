@@ -221,3 +221,46 @@ def test_closed_form_is_not_asserted_at_its_own_poles() -> None:
     if result is not None:
         for N in range(1, 7):
             assert result.subs(n, N) == Sum(term.subs(n, N), (k, 1, N)).doit(), N
+
+
+def test_homogeneous_pi_solutions_of_a_single_exponent_are_found() -> None:
+    # sigma(g) = a*g in a Pi-extension t is solved by c*t**j for one
+    # exponent j; the recursion over the exponents stopped at the first
+    # exponent without a solution and returned [], so binomial(n + 1, k)
+    # was not recognised as binomial(n, k)*(n + 1)/(n + 1 - k) and became
+    # a second, algebraically dependent Pi-extension.
+    F = PiSigmaField(k, params=[n])
+    t = F.add_pi((n - k)/(k + 1), binomial(n, k))
+    sols = F.solve(F.from_expr((n + 1 - k)/(k + 1)), [])
+    assert sols is not None and len(sols) == 1
+    [(c, g)] = sols
+    assert c == [] and g != F.zero
+    assert F.sigma(g) == F.from_expr((n + 1 - k)/(k + 1))*g
+    assert F.level_of(g) == 1 and F.as_poly_in(g, 1, laurent=True) is not None
+    field, element = build_pisigma_field(binomial(n + 1, k)*binomial(n, k), k)
+    assert len(field.extensions) == 1
+    assert field.to_expr(element).has(t) is False
+
+
+def test_parameterized_solutions_have_small_constants() -> None:
+    # the bases of the successive steps of the recursion were composed
+    # without normalisation: the parameterized telescoping of the shifts
+    # binomial(n + i, k)**2*harmonic(k) gave constants of degree 530 in n
+    # (and took two minutes) for a relation whose coefficients have degree 3.
+    F = PiSigmaField(k, params=[n])
+    t = F.add_pi((n - k)/(k + 1), binomial(n, k))
+    h = F.add_sigma(1/(k + 1), harmonic(k))
+    fs = [F.from_expr(t**2*h), F.from_expr((n + 1)**2/(n + 1 - k)**2*t**2*h),
+          F.from_expr((n + 1)**2*(n + 2)**2/((n + 1 - k)**2*(n + 2 - k)**2)*t**2*h)]
+    sols = F.solve(F.one, fs)
+    assert sols is not None
+    relations = [(c, g) for c, g in sols if any(c)]
+    assert len(relations) == 1
+    [(c, g)] = relations
+    # FracElement equality is not canonical over the ground field Q(n): the
+    # difference is compared with zero
+    assert F.sigma(g) - g - sum((F.field(ci)*fi for ci, fi in zip(c, fs)), F.zero) == F.zero
+    for ci in c:
+        value = F.C.to_sympy(ci)
+        numerator, denominator = value.as_numer_denom()
+        assert numerator.as_poly(n).degree() <= 3 and denominator.as_poly(n).degree() <= 3

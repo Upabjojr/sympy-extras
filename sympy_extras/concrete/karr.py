@@ -465,7 +465,8 @@ def summation(f: Union[Expr, int], *symbols: Union[Symbol, Sequence[Union[Symbol
 
     The sum is first evaluated by SymPy; if it is not, and it is a sum over
     a single index of a summand in the scope of :func:`karr_sum`, Karr's
-    algorithm is tried.
+    algorithm is tried, and when that fails for a summand depending on a
+    limit, creative telescoping (:func:`~.creative.definite_sum`).
 
     Examples
     ========
@@ -479,6 +480,8 @@ def summation(f: Union[Expr, int], *symbols: Union[Symbol, Sequence[Union[Symbol
     n*harmonic(n) - n + harmonic(n)
     >>> summation(harmonic(k)/k, (k, 1, n))
     (harmonic(n)**2 + harmonic(n, 2))/2
+    >>> summation(harmonic(k)/(n + 1 - k), (k, 1, n))
+    harmonic(n + 1)**2 - harmonic(n + 1, 2)
     """
     result = as_expr(_sympy_summation(f, *symbols, **kwargs))
     if not result.has(Sum):
@@ -494,6 +497,13 @@ def _karr_on_sums(expr: Expr, extensions: Sequence[Expr], auto: bool) -> Expr:
         try:
             value = karr_sum(s.function, (k, a, b), extensions, auto)
         except ValueError:
-            return s
+            value = None
+        if value is None and free_symbols(s.function) & (free_symbols(a) | free_symbols(b)) - {k}:
+            # the summand depends on a limit: creative telescoping
+            from sympy_extras._timeout import attempt
+            from sympy_extras.settings import settings
+            from .creative import definite_sum
+            value = attempt(lambda: definite_sum(s.function, (k, a, b), extensions=extensions),
+                            settings.timeout)
         return s if value is None else value
     return as_expr(expr.replace(lambda e: isinstance(e, Sum), evaluate))

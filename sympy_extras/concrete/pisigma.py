@@ -68,7 +68,8 @@ from sympy.polys.fields import field as _field, FracElement, FracField
 from sympy.polys.rings import PolyElement
 from sympy.polys.matrices import DomainMatrix
 from sympy.core.exprtools import factor_terms
-from sympy.polys.polytools import Poly, factor_list
+from sympy.polys.polytools import Poly, cancel, factor_list
+from sympy.polys.rationaltools import together
 
 from sympy_extras._typing import DomainElement
 
@@ -354,8 +355,9 @@ class PiSigmaField:
                     for j in range(ncols)]
         M = DomainMatrix([[self.C.convert(c) for c in row] for row in rows],
                          (len(rows), ncols), self.C)
-        N = M.nullspace().to_Matrix()
-        return [[self.C.from_sympy(N[r, c]) for c in range(N.cols)] for r in range(N.rows)]
+        # the basis stays in the domain (a round trip through SymPy
+        # expressions was the slowest step with parameters in the constants)
+        return [list(row) for row in M.nullspace().to_list()]
 
     # ------------------------------------------------------------------
     # the solver
@@ -432,15 +434,46 @@ class PiSigmaField:
 
     def _dispersion(self, A: PolyElement, B: PolyElement) -> int:
         """The largest ``h >= 0`` with ``gcd(A(k), B(k + h)) != 1`` for
-        univariate polynomials ``A``, ``B`` (ring elements), or ``-1``."""
-        k, h = self.k, Dummy('h')
-        pa = Poly(A.as_expr(), k)
-        pb = Poly(B.as_expr().subs(k, k + h), k)
-        if pa.degree() <= 0 or pb.degree() <= 0:
-            return -1
-        res = Poly(pa.resultant(pb), h)
-        roots = self._integer_roots(res, h)
-        return max(roots) if roots else -1
+        univariate polynomials ``A``, ``B`` (ring elements), or ``-1``.
+
+        An irreducible factor ``p`` of ``A`` and ``q`` of ``B`` of the same
+        degree ``d`` can only satisfy ``q(k + h) ~ p(k)`` for the ``h``
+        which matches the second coefficients, ``(b_p - b_q)/d`` for the
+        monic factors; the candidate is then checked. (A resultant in
+        ``h`` was used before: with parameters in the constants it was
+        the most expensive step of creative telescoping.)"""
+        k = self.k
+        factors_a = self._factors_in_k(A)
+        factors_b = self._factors_in_k(B)
+        best = -1
+        for p in factors_a:
+            cp = p.all_coeffs()
+            d = p.degree()
+            for q in factors_b:
+                if q.degree() != d:
+                    continue
+                cq = q.all_coeffs()
+                shift = cancel((cp[1]/cp[0] - cq[1]/cq[0])/d)
+                if not (shift.is_Integer and shift >= 0 and int(shift) > best):
+                    continue
+                shifted = Poly(q.as_expr().subs(k, k + shift), k)
+                if (shifted*cp[0] - p*shifted.LC()).is_zero:
+                    best = int(shift)
+        return best
+
+    def _factors_in_k(self, p: PolyElement) -> list[Poly]:
+        """The irreducible factors of positive degree in ``k`` of a
+        univariate polynomial (a ring element), over the constants."""
+        k = self.k
+        expr = p.as_expr()
+        if not expr.has(k):
+            return []
+        numerator = together(expr).as_numer_denom()[0]
+        result: list[Poly] = []
+        for factor, _ in factor_list(numerator)[1]:
+            if factor.has(k):
+                result.append(Poly(factor, k))
+        return result
 
     def _universal_denominator(self, p1: PolyElement, p0: PolyElement) -> PolyElement:
         """Abramov's universal denominator of the rational solutions of
@@ -521,7 +554,7 @@ class PiSigmaField:
             for j in range(D + 1):
                 if v[j]:
                     p += ring.from_dict({(j,) + (0,)*(ring.ngens - 1): v[j]})
-            g = self.field(p)/self.field(U)
+            g = self._monic(self.field(p)/self.field(U))
             sols.append((list(v[D + 1:]), g))
         return sols
 
@@ -546,6 +579,37 @@ class PiSigmaField:
                 result += self.field(c)*e
         return result
 
+    def _monic(self, f: FracElement) -> FracElement:
+        r"""``f`` with a denominator whose leading coefficient is one.
+
+        SymPy cancels the fractions over a ground field such as
+        $\mathbb{Q}(n)$ only up to a unit, and the units of the successive
+        operations accumulate (denominators like ``2**500``, which made
+        the linear algebra of creative telescoping slow); equal elements
+        need not compare equal either."""
+        lc = f.denom.LC
+        if lc == self.field.domain.one:
+            return f
+        return f.raw_new(f.numer.quo_ground(lc), f.denom.quo_ground(lc))
+
+    def _normalize_basis(self, cmap: list[list[Constant]], G: dict[int, list[FracElement]], s: int, r: int) -> None:
+        """Scale every basis vector so that its first nonzero constant is
+        one, in place. The bases of the successive steps are composed, and
+        without the scaling the constants grow with every step: with a
+        parameter ``n`` in the constants the recurrence of creative
+        telescoping for ``binomial(n, k)**2*harmonic(k)`` came out as
+        polynomials of degree 530 in ``n`` instead of 3."""
+        for m in range(s):
+            pivot = next((cmap[i][m] for i in range(r) if cmap[i][m]), None)
+            if pivot is None or pivot == self.C.one:
+                continue
+            inverse = self.C.one/pivot
+            for i in range(r):
+                cmap[i][m] = cmap[i][m]*inverse
+            scale = self.field(inverse)
+            for coeffs in G.values():
+                coeffs[m] = self._monic(coeffs[m]*scale)
+
     def _solve_steps(self, level: int, steps: Sequence[tuple[int, FracElement, Rhs]], r: int) -> Solutions:
         """Common driver of the $\\Sigma$ and $\\Pi$ cases.
 
@@ -565,8 +629,10 @@ class PiSigmaField:
             sols = self.solve(a_j, R, level=level - 1)
             if sols is None:
                 return None
-            if not sols:
-                return []
+            # an empty basis forces the unknowns so far to zero, but the
+            # coefficients still to come may have homogeneous solutions of
+            # their own (sigma(g) = a g in a Pi-extension is solved by
+            # c*t**j for one exponent j only): the recursion goes on
             p = len(sols)
             V = [v for v, _ in sols]
             G[j] = [g for _, g in sols]
@@ -576,6 +642,7 @@ class PiSigmaField:
             cmap = [[sum((cmap[i][l]*V[m][l] for l in range(s)), zero) for m in range(p)]
                     for i in range(r)]
             s = p
+            self._normalize_basis(cmap, G, s, r)
         t = self.gens[level]
         result: list[Solution] = []
         for m in range(s):

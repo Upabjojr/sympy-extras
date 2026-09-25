@@ -10,6 +10,33 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- Definite summation by creative telescoping in ΠΣ-fields (sympy-extras#3),
+  in the new module `sympy_extras.concrete.creative`, following Schneider
+  (*Symbolic summation assists combinatorics*, 2007; *A refined difference
+  field theory for symbolic summation*, 2008) and Zeilberger (1991).
+  `creative_telescoping(f, k, n, order=4)` writes the shifts `f(n + i, k)`
+  in one ΠΣ-field of `k` over `Q(n)` (the hypergeometric part of the
+  summand as a Π-extension, harmonic numbers and nested sums as
+  Σ-extensions) and finds with Karr's parameterized telescoping the
+  polynomials `c_i(n)` and the certificate `g` of
+  `sum_i c_i(n) f(n + i, k) = g(n, k + 1) - g(n, k)`, for the least order
+  (`CreativeTelescoper`, with `recurrence()` and an exact `check()`).
+  `definite_sum(f, (k, a, b))` for limits `m*n + s` sums the relation over
+  the range common to the shifted sums, moves its ends past the poles of
+  the certificate and adds the terms left out, solves the recurrence in
+  d'Alembertian terms (a hypergeometric solution from `rsolve_hyper`
+  reduces the order; first order recurrences by a product and a sum,
+  evaluated by Karr's algorithm or left unevaluated), splits recurrences
+  in steps of `d > 1` into residue classes of `n`, fixes the constants
+  from the directly computed sum and checks the closed form against it at
+  further `n` (exactly or with `reliable_value`), with a `Piecewise` for
+  the small `n` where it fails. `sum binomial(n, k) H_k = 2**n (H_n -
+  sum_{j<=n} 1/(j 2**j))`, `sum binomial(n, k)**2 H_k = binomial(2n, n)
+  (2 H_n - H_{2n})`, `sum H_k/(n + 1 - k) = H_{n+1}**2 - H_{n+1}^(2)` and
+  Paule and Schneider's `sum (1 + 3 (n - 2k) H_k) binomial(n, k)**3 =
+  (-1)**n` are found. `summation` tries it when Karr's algorithm fails on
+  a summand depending on a limit.
+
 - Real solutions of zero-dimensional polynomial systems counted without
   solving them (sympy-extras#16): `count_real_solutions`,
   `count_complex_solutions`, `tarski_query`, `real_sign_counts`,
@@ -895,6 +922,20 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `PiSigmaField.solve` stopped the recursion over the coefficients of a
+  Π-extension at the first exponent without a solution, so the
+  homogeneous equation `sigma(g) = a g`, solved by `c t**j` for a single
+  `j`, had no solution: `binomial(n + 1, k)` was not recognised as a
+  multiple of `binomial(n, k)` and became a second extension.
+- The bases of the successive steps of `PiSigmaField.solve` are
+  normalised: composed without it, the constants of the parameterized
+  telescoping of `binomial(n + i, k)**2 H_k` had degree 530 in `n`
+  (instead of 3) and took two minutes.
+- The dispersion of the universal denominator in `PiSigmaField` is
+  found from the irreducible factors (a factor `q(k + h)` equal to a
+  factor `p(k)` fixes `h` by the second coefficients) instead of a
+  resultant in `h`, which took two thirds of the four minutes of the
+  creative telescoping of `(1 + 3 (n - 2k) H_k) binomial(n, k)**3`.
 - The indicial polynomial at the roots of a factor `q` of the leading
   coefficient of a linear operator missed the factor `q'(c)**k` of each
   coefficient divisible by `q**k`, so the local exponents at the roots

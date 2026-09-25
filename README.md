@@ -191,7 +191,19 @@ True
 ```
 
 `summation` runs SymPy's summation first and Karr's algorithm on what is
-left. See [docs/karr.md](docs/karr.md).
+left. Definite sums whose summand depends on the upper limit are evaluated
+by creative telescoping in the same ΠΣ-fields (`definite_sum`, Schneider's
+extension of Zeilberger's algorithm), with harmonic numbers in the summand:
+
+```python
+>>> from sympy import binomial
+>>> from sympy_extras.concrete import definite_sum
+>>> definite_sum(binomial(n, k)**2*harmonic(k), (k, 0, n))
+(2*harmonic(n) - harmonic(2*n))*binomial(2*n, n)
+
+```
+
+See [docs/karr.md](docs/karr.md).
 
 ### Polynomial ideals and the Gröbner walk (`sympy_extras.polys.ideals`)
 
@@ -692,6 +704,7 @@ sympy_extras/
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation
+        creative.py          creative_telescoping, definite_sum
         zeilberger.py        Zeilberger's algorithm, WZ certificates, definite sums
         qhyper.py            q-Pochhammer symbols, q-Gosper, q-Zeilberger
         rational.py          Abramov's decomposition of rational summands

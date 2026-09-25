@@ -144,6 +144,70 @@ True
 
 ```
 
+## Definite sums in ΠΣ-fields: creative telescoping
+
+`sympy_extras.concrete.creative` extends creative telescoping from
+hypergeometric terms to the summands of Karr's algorithm, following
+Schneider (*Symbolic summation assists combinatorics*, 2007). The shifts
+`f(n + i, k)` of the summand are written in one ΠΣ-field of `k` whose
+constants are the rational functions of `n`: the hypergeometric part of
+the summand is a Π-extension (`binomial(n + 1, k)` is
+`binomial(n, k)*(n + 1)/(n + 1 - k)`), harmonic numbers and nested sums
+are Σ-extensions. Karr's parameterized telescoping then gives the
+recurrence `sum_i c_i(n) f(n + i, k) = g(n, k + 1) - g(n, k)` with its
+certificate `g`, for the least order (`creative_telescoping`).
+
+```python
+>>> from sympy import binomial, harmonic, symbols
+>>> from sympy_extras.concrete import creative_telescoping, definite_sum
+>>> n, k = symbols('n k')
+>>> Z = creative_telescoping(binomial(n, k)*harmonic(k), k, n)
+>>> Z.coefficients
+[4*n + 4, -4*n - 6, n + 2]
+>>> Z.check()
+True
+>>> definite_sum(binomial(n, k)*harmonic(k), (k, 0, n))
+2**n*(harmonic(n) - Sum(1/(2**j*j), (j, 1, n)))
+>>> definite_sum(binomial(n, k)**2*harmonic(k), (k, 0, n))
+(2*harmonic(n) - harmonic(2*n))*binomial(2*n, n)
+>>> definite_sum(harmonic(k)/(n + 1 - k), (k, 1, n))
+harmonic(n + 1)**2 - harmonic(n + 1, 2)
+>>> definite_sum((1 + 3*(n - 2*k)*harmonic(k))*binomial(n, k)**3, (k, 0, n))
+(-1)**n
+
+```
+
+`definite_sum(f, (k, a, b))` takes limits `m*n + s`. The relation is
+summed over the range common to all the shifted sums, whose ends are moved
+inwards past the poles of the certificate's representation (the
+certificate of `binomial(n, k)` has the factor `1/(k - n - 1)`), and the
+terms left out are added explicitly. The recurrence is solved in
+d'Alembertian terms: a hypergeometric solution of the homogeneous
+recurrence (SymPy's `rsolve_hyper`) reduces the order, a first order
+recurrence is a product and a sum, and the sums are evaluated with Karr's
+algorithm or left unevaluated when they have no closed form in their field
+(the `Sum` above). A recurrence in steps of two gives a result for each
+residue class of `n`. The constants come from the sum computed directly,
+and the closed form is compared with the sum at further values of `n`;
+where it fails for small `n` the result is a `Piecewise`:
+
+```python
+>>> definite_sum((-1)**k*binomial(n, k)*harmonic(k), (k, 0, n))
+Piecewise((0, Eq(n, 0)), (-1/n, True))
+>>> definite_sum((-1)**k*binomial(n, k)**2, (k, 0, n))
+Piecewise((I**n*binomial(n, n/2), Eq(Mod(n, 2), 0)), (0, True))
+
+```
+
+`None` means that no certified closed form was found: there is no
+recurrence of order at most `order` (4) in the field, its solutions are
+not d'Alembertian (Apéry's numbers), a pole of the certificate lies inside
+the summation range (`sum binomial(n, 2*k)` up to `n`, whose summand
+vanishes from `n/2` on), or the summand is outside the field
+(`harmonic(n + k)`: `n` may only occur in the hypergeometric and rational
+parts). `summation` tries `definite_sum` when Karr's algorithm fails on a
+summand depending on a limit.
+
 ## Rational sums: Abramov's decomposition
 
 `abramov_decomposition(f, k)` writes a rational function as
@@ -196,6 +260,11 @@ The second example is the q-binomial theorem: the sum `S(n)` satisfies
   followed by Karr's algorithm.
 - `build_pisigma_field(f, k, extensions=())`: the field and the element
   representing `f`.
+- `creative_telescoping(f, k, n, order=4, extensions=())`: a
+  `CreativeTelescoper` with the `coefficients` `c_i(n)`, the `certificate`
+  `g(n, k)`, `recurrence()` and `check()`, or `None`.
+- `definite_sum(f, (k, a, b), n=None, order=4, extensions=())`: the
+  definite sum by creative telescoping, or `None`.
 - `PiSigmaField(k, params)`: the tower, with `add_sigma(beta, expr)`,
   `add_pi(alpha, expr)`, `sigma(f, power=1)`, `solve(a, fs)`,
   `telescope(f)`, `from_expr`, `to_expr`.
@@ -207,5 +276,13 @@ The second example is the q-binomial theorem: the sum `S(n)` satisfies
   (1985) 303-315.
 - C. Schneider, *Symbolic summation assists combinatorics*, Séminaire
   Lotharingien de Combinatoire 56 (2007), B56b.
+- C. Schneider, *A refined difference field theory for symbolic
+  summation*, J. Symbolic Computation 43 (2008) 611-644.
+- D. Zeilberger, *The method of creative telescoping*, J. Symbolic
+  Computation 11 (1991) 195-204.
+- S. A. Abramov, M. Petkovšek, *D'Alembertian solutions of linear
+  differential and difference equations*, ISSAC 1994.
+- P. Paule, C. Schneider, *Computer proofs of a new family of harmonic
+  number identities*, Adv. Appl. Math. 31 (2003) 359-378.
 - S. A. Abramov, *Rational solutions of linear difference and q-difference
   equations with polynomial coefficients*, ISSAC 1995.
