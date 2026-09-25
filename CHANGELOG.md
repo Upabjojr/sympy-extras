@@ -951,6 +951,16 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `definite_sum` could return an unevaluated `Sum` whose limits are
+  reversed for small `n` (found by an audit against Mathematica 12.2).
+  `sum k*binomial(n, k)*harmonic(k)` had `Sum(1/(2**j*j*(j + 1)), (j, 2,
+  n - 1))` for every `n >= 1`, so the sum ran from 2 to 0 at `n = 1`. The
+  result was right only under SymPy's reversed-limit (Karr) convention,
+  not under the empty-sum reading. The lower limit of such a sum is now
+  lowered, with the terms taken out added back, so that the limits are in
+  order from the first `n` possible. The `n` at which a sum is still
+  reversed become cases of the `Piecewise`.
+
 - `dsolve_linear` raised `IndexError` on `y'''' + y'''/(x + 2) + q*y'' = 0`
   with `q = (3*x**3 + 16*x**2 + 28*x + 17)/((x + 1)**2*(x + 2)**2)` (found
   by an audit against Mathematica 12.2). The equation in `y'` left after

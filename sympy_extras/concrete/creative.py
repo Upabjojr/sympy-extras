@@ -946,6 +946,53 @@ def _definite_sum(f: Expr, k: Symbol, n: Symbol, lower: tuple[int, int], upper: 
     return as_expr(Piecewise(*pieces, *branches))
 
 
+def _reversed_at(expr: Expr, n: Symbol, v: int) -> bool:
+    """Whether an unevaluated ``Sum`` of ``expr`` has, at ``n = v``, an
+    upper limit below its lower limit minus one: SymPy reads such a sum
+    by Karr's convention (``Sum(t, (j, 2, 0)) = -t(1)``), where the
+    empty-sum reading gives 0, so the closed form is not given there."""
+    for node in expr.atoms(Sum):
+        assert isinstance(node, Sum)
+        for limit in node.limits:
+            length = as_expr(as_expr(limit[2] - limit[1] + 1).subs(n, v))
+            if length.is_number and length.is_negative is True:
+                return True
+    return False
+
+
+def _sums_ordered_from(expr: Expr, n: Symbol, start: int) -> Optional[Expr]:
+    r"""``expr`` with the lower limit ``a`` of every ``Sum(t, (j, a,
+    b(n)))`` (``a`` a constant, ``b`` increasing in ``n``) lowered to
+    ``b(start) + 1`` when it is above, by $\sum_{j=a}^{b} t(j) =
+    \sum_{j=b(start)+1}^{b} t(j) - \sum_{j=b(start)+1}^{a-1} t(j)$ (an
+    identity under Karr's convention), so that the sums are ordered for
+    every ``n >= start``; ``None`` when a term taken out is not
+    defined."""
+    replacements: dict[Sum, Expr] = {}
+    for node in expr.atoms(Sum):
+        assert isinstance(node, Sum)
+        if len(node.limits) != 1:
+            continue
+        j, lo, hi = node.limits[0]
+        if not isinstance(j, Symbol) or not isinstance(lo, Integer) or not as_expr(hi).is_polynomial(n):
+            continue
+        upper = as_expr(hi)
+        if Poly(upper, n).degree() > 1 or Poly(upper, n).LC() < 0:
+            continue
+        bottom = as_expr(upper.subs(n, start)) + 1
+        if not isinstance(bottom, Integer) or bottom >= lo:
+            continue
+        term = as_expr(node.function)
+        taken: list[Expr] = []
+        for t in range(int(bottom), int(lo)):
+            value = as_expr(term.subs(j, t))
+            if not _finite(value):
+                return None
+            taken.append(value)
+        replacements[node] = as_expr(Sum(term, (j, bottom, upper)) - Add(*taken))
+    return as_expr(expr.xreplace(replacements)) if replacements else expr
+
+
 def _solve_and_check(c: list[Expr], rhs: Expr, n: Symbol, n0: int, direct: Callable[[int], Optional[Expr]]
                      ) -> Optional[tuple[Expr, list[tuple[int, Expr]]]]:
     """The solution of the recurrence with the initial values of the sum
@@ -986,11 +1033,30 @@ def _solve_and_check(c: list[Expr], rhs: Expr, n: Symbol, n0: int, direct: Calla
             return None
         solution = as_expr(solution.xreplace(dict(zip(constants, values))))
     solution = _simplest(solution, n)
+    last = n0 + r + _CHECKS
+    if solution.has(Sum):
+        # the unevaluated sums ordered from the first n possible on (the
+        # bug: sum k binomial(n, k) H_k had Sum(..., (j, 2, n - 1)), from
+        # 2 to 0 at n = 1, a value by Karr's convention only); the n
+        # where one is still reversed are cases of the Piecewise
+        for start in range(0, last):
+            lowered = _sums_ordered_from(solution, n, start)
+            if lowered is not None:
+                if lowered != solution:
+                    solution = _simplest(lowered, n)
+                break
+        if _reversed_at(solution, n, last) or _reversed_at(solution, n, last + 100):
+            return None
     # the check: from n0 on the recurrence determines the values, below
     # n0 the closed form may fail
     exceptions: list[tuple[int, Expr]] = []
-    for v in range(0, n0 + r + _CHECKS):
+    for v in range(0, last):
         expected = direct(v)
+        if _reversed_at(solution, n, v):
+            if expected is None:
+                return None
+            exceptions.append((v, expected))
+            continue
         at = attempt(lambda: as_expr(solution.subs(n, v).doit()), _STEP_SECONDS)
         agree = None if expected is None or at is None or not _finite(at) else _agree(expected, at)
         if v >= n0:

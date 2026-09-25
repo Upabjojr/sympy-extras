@@ -18,12 +18,26 @@ def _direct(f: Expr, lower: Expr, upper: Expr, value: int) -> Expr:
     return as_expr(sum((f.subs(n, value).subs(k, i).doit() for i in range(lo, hi + 1)), Integer(0)))
 
 
+def _assert_ordered_sums(value: Expr, at: int) -> None:
+    """Every unevaluated ``Sum`` in ``value`` has an upper limit at least
+    its lower limit minus one (an empty sum at most)."""
+    for node in value.atoms(Sum):
+        assert isinstance(node, Sum)
+        for limit in node.limits:
+            length = as_expr(limit[2] - limit[1] + 1)
+            assert not (length.is_number and length < 0), (node, at)
+
+
 def _check(result: Optional[Expr], f: Expr, lower: Expr, upper: Expr, values: Sequence[int] = range(0, 9),
            parameters: Optional[dict[Symbol, Expr]] = None) -> None:
     """The closed form agrees with the direct sum for several n (at
-    rational values of the other parameters)."""
+    rational values of the other parameters), and its unevaluated sums
+    have ordered limits there: SymPy's ``doit`` reads ``Sum(t, (j, 2,
+    0))`` by Karr's convention, as ``-t(1)``, where the empty-sum reading
+    (Mathematica's) gives 0."""
     assert result is not None, f
     for value in values:
+        _assert_ordered_sums(as_expr(result.subs(n, value)), value)
         direct = _direct(f, lower, upper, value)
         closed = as_expr(result.subs(n, value).doit())
         difference = as_expr(direct - closed)
@@ -111,6 +125,20 @@ def test_harmonic_number_identities() -> None:
     # sum (-1)**k binomial(n, k) H_k**2 = (n H_n - 2)/n**2 for n >= 1
     f = (-1)**k*binomial(n, k)*harmonic(k)**2
     _check(definite_sum(f, (k, 0, n)), f, Integer(0), n)
+
+
+def test_unevaluated_sums_have_ordered_limits() -> None:
+    # the bug (an audit against Mathematica 12.2): sum k binomial(n, k) H_k
+    # came out as 2**n*(4*n*H_n + 4*n*Sum(1/(2**j*j*(j + 1)), (j, 2, n - 1))
+    # - 3*n + 4)/8 for every n >= 1, the Sum from 2 to 0 at n = 1; its
+    # value, 1, holds by Karr's convention for reversed limits only, the
+    # empty sum giving 3/2
+    f = k*binomial(n, k)*harmonic(k)
+    result = definite_sum(f, (k, 0, n))
+    assert result is not None and result.has(Sum)
+    _check(result, f, Integer(0), n)
+    closed = as_expr(result.subs(n, 1))
+    assert closed.doit() == 1
 
 
 def test_no_certified_closed_form() -> None:
