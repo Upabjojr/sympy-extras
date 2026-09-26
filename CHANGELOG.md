@@ -951,6 +951,20 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `definite_integral(y**x, (x, 0, 2))` returned `Piecewise((2*log(y), y
+  <= 0), ((y**2 - 1)/log(y), True))`, wrong for every `y <= 0` (at `y =
+  -2` it gave `1.386 + 6.283*I` for the principal value `0.2009 -
+  0.9106*I`, at `y = -1` `2*pi*I` for 0); the same for `c*y**x`,
+  `y**(2*x)`, `x*y**x` and other ranges. Differentiation under the
+  integral sign took SymPy's value of `x*y**x` over the range, whose
+  branch for `y <= 0` is wrong (SymPy writes the condition `Ne(log(y), 0)`
+  of the antiderivative as `(y > 0) & Ne(y, 1)` and gives the value at `y
+  = 1` elsewhere), and the numerical check had sampled `y > 0` only.
+  `verify_numerically` now also checks each branch of a `Piecewise` value
+  at a sample of its own region, and `sample_values` moves a witness on
+  the upper boundary of the region (`y = 0` for `y <= 0`) inside. The
+  value is now `(y**2 - 1)/log(y)`, right for every `y` but the removable
+  point `y = 1`; `x*y**x` and `y**x` over `(-1, 2)` are left unevaluated.
 - `solve` dropped real solutions of a system when `nonlinsolve` gave
   several families of solutions whose conditions could not be decided.
   The condition set around them required the coordinates of the last

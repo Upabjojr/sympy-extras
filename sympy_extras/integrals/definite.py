@@ -541,17 +541,83 @@ def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
         # does one which cannot be computed: mpmath raises
         # ZeroDivisionError on a hypergeometric series at a pole (SymPy's
         # value of Maxima's specint 174 at an integer sample of the order)
-        number = reliable_value(value, 20, values)
-        if number is None:
+        agrees = _agrees(value, expected, values)
+        if agrees is None:
             return None
-        try:
-            ours = complex(number)
-        except (TypeError, ValueError, OverflowError):
-            return None
-        if abs(ours - expected) > 1e-6 * (1 + abs(expected)):
+        if not agrees:
             return False
         verdict = True
+    # every branch of a Piecewise value at a sample of its own region: the
+    # samples above satisfy the assumptions only, and fall in one branch
+    # (the bug: SymPy's value of x*y**x over (0, 2), whose branch for
+    # y <= 0 is 2, was accepted from samples y > 0, and the value of
+    # y**x over (0, 2) differentiated under the integral sign came out
+    # 2*log(y) for y <= 0)
+    # (a sample on the boundary of the region, where the branch may not
+    # be evaluated, gives way to another)
+    for region in _branch_regions(value, parameters):
+        for _ in range(_BRANCH_SAMPLES):
+            values = sample_values(parameters, _with(assumptions, [region]), rng)
+            if values is None:
+                break
+            expected = _quadrature(f.xreplace(values), x, as_expr(a.xreplace(values)),
+                                   as_expr(b.xreplace(values)), [as_expr(p.xreplace(values)) for p in inside])
+            agrees = None if expected is None else _agrees(value, expected, values)
+            if agrees is False:
+                return False
+            if agrees is True:
+                break
     return verdict
+
+
+#: the branches of a ``Piecewise`` value checked at a sample of their own
+#: region by :func:`verify_numerically`
+_BRANCHES_CHECKED = 4
+
+#: the samples tried in the region of a branch until one checks it
+_BRANCH_SAMPLES = 3
+
+
+def _agrees(value: Expr, expected: complex, values: dict[Symbol, Expr]) -> Optional[bool]:
+    """Whether ``value`` at the sample ``values`` agrees with the
+    quadrature ``expected``; ``None`` when its number cannot be trusted
+    (:func:`~sympy_extras._numeric.reliable_value`) or computed."""
+    number = reliable_value(value, 20, values)
+    if number is None:
+        return None
+    try:
+        ours = complex(number)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return abs(ours - expected) <= 1e-6 * (1 + abs(expected))
+
+
+def _branch_regions(value: Expr, parameters: Sequence[Symbol]) -> list[Boolean]:
+    """The regions of the parameters in which each branch of a
+    ``Piecewise`` value is taken (its condition and the negation of the
+    earlier ones), for the first ``_BRANCHES_CHECKED`` branches, those
+    whose region depends on the parameters; none for a value without a
+    ``Piecewise``.
+
+    >>> from sympy import symbols, Piecewise, log, Ne
+    >>> from sympy_extras.integrals.definite import _branch_regions
+    >>> y = symbols('y')
+    >>> _branch_regions(Piecewise(((y**2 - 1)/log(y), (y > 0) & Ne(y, 1)), (2, True)), [y])
+    [(y > 0) & Ne(y, 1), ~((y > 0) & Ne(y, 1))]
+    """
+    if not value.has(Piecewise):
+        return []
+    folded = as_expr(piecewise_fold(value))
+    if not isinstance(folded, Piecewise):
+        return []
+    regions: list[Boolean] = []
+    earlier: list[Boolean] = []
+    for _, condition in _pairs(folded)[:_BRANCHES_CHECKED]:
+        region = as_boolean(And(condition, *[Not(c) for c in earlier]))
+        if free_symbols(region) & set(parameters):
+            regions.append(region)
+        earlier.append(condition)
+    return regions
 
 
 # ---------------------------------------------------------------------------

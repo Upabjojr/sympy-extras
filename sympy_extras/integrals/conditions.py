@@ -347,10 +347,15 @@ def sample_values(symbols: Sequence[Symbol], assumptions: Assumptions,
     for s in symbols:
         p = plain.get(s, s)
         values[s] = as_expr(witness[p]) if p in witness else Rational(rng.randint(3, 19), 4)
-    for _ in range(4):
-        moved = {s: as_expr(v + Rational(rng.randint(1, 9), 8)) for s, v in values.items()}
-        if ask(as_boolean(facts.formula.xreplace({plain.get(s, s): v for s, v in moved.items()}))) is True:
-            return moved
+    # up, and then down: a witness on the upper boundary of the region
+    # (y = 0 for y <= 0) cannot be moved up (the bug: the branch for
+    # y <= 0 of a Piecewise value was checked at y = 0 only, where it
+    # cannot be evaluated, and a wrong one was accepted)
+    for direction in (1, -1):
+        for _ in range(4):
+            moved = {s: as_expr(v + direction * Rational(rng.randint(1, 9), 8)) for s, v in values.items()}
+            if ask(as_boolean(facts.formula.xreplace({plain.get(s, s): v for s, v in moved.items()}))) is True:
+                return moved
     return values
 
 

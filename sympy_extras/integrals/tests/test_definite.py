@@ -5,7 +5,7 @@ import random
 
 from sympy import (symbols, exp, sin, cos, log, sqrt, oo, pi, S, Rational, Abs, Heaviside, Piecewise, Integral, I, Eq,
                    sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan, asin, besselj, Si, E, tan, arg, cosh,
-                   sinh)
+                   sinh, Ne, lambdify)
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
@@ -929,3 +929,43 @@ def test_cases_of_a_kink_without_an_antiderivative() -> None:
     condition = Or(*[condition for _, condition in branches])
     for point in (-2, -S.Half, Rational(1, 3), S.Half, 2):
         assert condition.subs(c, point) is S.true, point
+
+
+def test_exponentials_of_a_parameter_base_on_every_branch() -> None:
+    # the bug: y**x over (0, 2) came out Piecewise((2*log(y), y <= 0),
+    # ((y**2 - 1)/log(y), True)): differentiation under the integral sign
+    # took SymPy's value of x*y**x over (0, 2), whose branch for y <= 0
+    # is 2 (SymPy turns Ne(log(y), 0) into (y > 0) & Ne(y, 1)), and the
+    # numerical check sampled y > 0 only; the principal value at y = -2
+    # is 0.2009 - 0.9106*I, not 1.386 + 6.283*I, and 0 at y = -1, not 2*pi*I
+    import mpmath
+    from sympy_extras._numeric import reliable_value
+    y = symbols('y')
+    for f, lower, upper in ((y**x, 0, 2), (y**x, 0, 1), (y**x, 1, 3), (3 * y**x, 0, 2),
+                            (y**(2 * x), 0, 2), (x * y**x, 0, 2), (y**x, -1, 2)):
+        value = as_expr(definite_integral(f, (x, lower, upper)))
+        # y = 1 is the removable singularity of (y**b - y**a)/log(y), left
+        # generic as for (exp(k) - 1)/k
+        for sample in (-2, -1, Rational(-1, 2), Rational(1, 2), 2, 3):
+            if value.has(Integral):
+                continue
+            ours = reliable_value(value, 20, {y: S(sample)})
+            assert ours is not None, (f, sample)
+            g = lambdify(x, f.subs(y, sample), 'mpmath')
+            expected = complex(mpmath.quad(g, [lower, upper]))
+            assert abs(complex(ours) - expected) < 1e-10 * (1 + abs(expected)), (f, sample, ours, expected)
+        if lower >= 0 and not value.has(Integral):
+            # 0**x vanishes almost everywhere on the range
+            assert value.xreplace({y: S.Zero}) == 0, f
+    assert definite_integral(y**x, (x, 0, 2)) == (y**2 - 1) / log(y)
+
+
+def test_every_branch_of_a_piecewise_value_is_verified() -> None:
+    # the bug: a Piecewise value was checked at samples of the assumptions
+    # only, all in its first branch, so that the wrong branch 2 of SymPy's
+    # value of x*y**x over (0, 2) for y <= 0 passed
+    y = symbols('y')
+    wrong = Piecewise(((y**2 * (2 * log(y) - 1) + 1) / log(y)**2, (y > 0) & Ne(y, 1)), (2, True))
+    right = Piecewise(((y**2 * (2 * log(y) - 1) + 1) / log(y)**2, Ne(y, 1)), (2, True))
+    assert verify_numerically(wrong, x * y**x, x, S.Zero, S(2)) is False
+    assert verify_numerically(right, x * y**x, x, S.Zero, S(2)) is True
