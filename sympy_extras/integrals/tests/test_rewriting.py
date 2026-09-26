@@ -299,3 +299,20 @@ def test_nested_radicals() -> None:
     g = as_expr(sqrt(1 + sqrt(x)) * x)
     result = verified_antiderivative(g, x)
     assert result is not None and is_antiderivative(result[0], g, x, [x > 0]) is True
+
+
+def test_the_heuristic_on_the_exponentials_of_hyperbolic_functions() -> None:
+    # the bug: once the heuristic on the canonical forms came after the one
+    # on the integrand (for acoth(sqrt(x)), whose logarithmic form it spent
+    # 15 s on), sinh(a + b*log(c*x**n))**2 (FriCAS integ 10) went through
+    # both budgets of the heuristic on the sinh, which fails, before its
+    # exponentials, on which it answers in a few seconds: the census ran
+    # out of its 20 s. The rewriting route tries the heuristic on the
+    # exponentials of hyperbolic functions again
+    from sympy_extras.integrals import is_antiderivative, verified_antiderivative
+    x, n = symbols('x n')
+    a_, b_, c_ = symbols('a b c')
+    f = as_expr(sinh(a_ + b_ * log(c_ * x**n))**2)
+    found = verified_antiderivative(f, x, methods=['rewriting'])
+    assert found is not None and found[1] == 'rewriting'
+    assert is_antiderivative(found[0], f, x) is True

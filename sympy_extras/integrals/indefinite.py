@@ -30,7 +30,8 @@ The order of the methods:
    the heuristics: `x = t**3` makes an integrand in `x**(1/3)`, `exp(x)`
    and `log(x)` a tower the Risch algorithm settles at once;
 7. the heuristic Risch integrator (:mod:`.heurisch`, then SymPy's), on
-   the integrand and then on its canonical forms;
+   the integrand and then on its canonical forms (on the exponentials of
+   hyperbolic functions already in 6, after the substitutions);
 8. Trager's algorithm for one square root of a polynomial (:mod:`.trager`);
 9. SymPy's rule-based ``manualintegrate``, its Meijer G-function route
    and its ``integrate``.
@@ -71,6 +72,7 @@ from sympy.functions.elementary.piecewise import Piecewise
 from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.trigonometric import atan
 from sympy.functions.elementary.exponential import exp_polar
+from sympy.functions.elementary.hyperbolic import HyperbolicFunction, InverseHyperbolicFunction
 from sympy.functions.elementary.complexes import polar_lift
 from sympy.integrals.integrals import Integral, integrate
 from sympy.integrals.heurisch import heurisch_wrapper
@@ -414,6 +416,13 @@ TYPED = ['rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'heuri
 _FAST_TYPED = [name for name in TYPED if name != 'heurisch']
 
 
+def _hyperbolic(f: Expr) -> bool:
+    """Whether ``f`` has hyperbolic functions and no inverse ones: its
+    canonical forms are then exponentials, on which the heuristic is
+    tried in :func:`_rewriting` rather than in :func:`_rewritten_heurisch`."""
+    return f.has(HyperbolicFunction) and not f.has(InverseHyperbolicFunction)
+
+
 def _rewriting(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     """The typed methods on the canonical forms of ``f`` and on the
     integrands of its substitutions (:mod:`.rewriting`): a power of a
@@ -452,6 +461,16 @@ def _rewriting(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
         F = _substituted(f, x, substitution, inner)
         if F is not None:
             return F
+    # hyperbolic functions (without inverse ones) are the exception: the
+    # heuristic on their exponentials answers, where on the integrand as
+    # given it spends both of its budgets and fails (the bug:
+    # sinh(a + b*log(c*x**n))**2, FriCAS integ 10, ran out of 20 s once the
+    # heuristic on the forms came after the one on the integrand)
+    if _hyperbolic(f):
+        for form in forms or []:
+            found = verified_antiderivative(form, x, implied, methods=['heurisch'])
+            if found is not None:
+                return found[0]
     # the substitutions holding on a region each (a radicand's factor
     # extracted with its sign): the antiderivatives assembled piecewise
     # when every region has one
@@ -470,8 +489,12 @@ def _rewriting(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
 
 def _rewritten_heurisch(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     """The heuristic Risch integrator on the canonical forms of ``f``
-    (:mod:`.rewriting`), after it failed on ``f`` itself."""
+    (:mod:`.rewriting`), after it failed on ``f`` itself; not again on
+    the exponential forms of hyperbolic functions, which
+    :func:`_rewriting` tried."""
     from .rewriting import rewritten_forms, implied_assumptions
+    if _hyperbolic(f):
+        return None
     forms = attempt(lambda: rewritten_forms(f, x, assumptions), _budget())
     implied = _items(assumptions) + (attempt(lambda: implied_assumptions(f, x, assumptions), _budget()) or [])
     for form in forms or []:

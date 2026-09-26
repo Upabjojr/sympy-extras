@@ -985,6 +985,13 @@ remove public functions. Breaking changes are listed here when they happen.
   methods on the rewritten forms, then the substitutions. The heuristic
   on the rewritten forms is now a method of its own, `rewritten
   heurisch`, tried after `heurisch`.
+- That reordering left `sinh(a + b*log(c*x**n))**2` (FriCAS integ 10)
+  unevaluated under a 20 s limit: the heuristic spent both of its
+  budgets on the `sinh` and failed before it came to the exponentials,
+  on which it answers in a few seconds. For integrands with hyperbolic
+  functions and no inverse ones, whose rewritten forms are exponentials,
+  the rewriting route tries the heuristic on the forms again, after the
+  substitutions.
 - The integral over the real line added its two halves under the
   conjunction of their conditions, even when the halves hold on
   disjoint regions. For `exp(-(x - mu)**2/(2*sigma**2))`, one half holds
