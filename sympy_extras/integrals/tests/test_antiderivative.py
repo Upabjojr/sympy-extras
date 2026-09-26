@@ -164,3 +164,19 @@ def test_the_error_function_times_a_polynomial_exponential_by_parts() -> None:
     from sympy_extras.integrals import definite_integral
     value = definite_integral(sinh(u - w) * erf(w), (w, 0, u))
     assert not value.has(Integral) and verify_numerically(value, sinh(u - w) * erf(w), w, S.Zero, u) is True
+
+
+def test_the_late_heuristic_is_tried_on_the_integrand_before_its_rewritten_forms() -> None:
+    # the bug: the heuristic Risch integrator on the logarithmic form of
+    # acoth(sqrt(x)) (or of acosh(x)) spent up to 15 s and failed before it
+    # was tried on the integrand as given, or the substitution x = t**2,
+    # which answer in a second: the late antiderivative ran out of its
+    # budget, and FriCAS's mapleok in2485a, log(1 - sqrt(z)) - acoth(sqrt(z))
+    # over (0, 1), was left unevaluated
+    from sympy import acoth, acosh
+    from sympy_extras.integrals.indefinite import is_antiderivative
+    from sympy_extras.settings import configure
+    for f in (log(1 - sqrt(x)) - acoth(sqrt(x)), acosh(x)):
+        with configure(timeout=12):
+            F = antiderivative(f, x, late=True)
+        assert F is not None and is_antiderivative(F, f, x) is True, f

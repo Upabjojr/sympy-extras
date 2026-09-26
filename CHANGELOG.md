@@ -965,6 +965,34 @@ remove public functions. Breaking changes are listed here when they happen.
   the upper boundary of the region (`y = 0` for `y <= 0`) inside. The
   value is now `(y**2 - 1)/log(y)`, right for every `y` but the removable
   point `y = 1`; `x*y**x` and `y**x` over `(-1, 2)` are left unevaluated.
+- Integrals whose numerical check had been passing vacuously were left
+  unevaluated once `nan` and infinite quadratures stopped counting as
+  agreement. `2**log(z)` and `3**log(z)` from `-I` to `I` pass through the
+  branch point `0` at the midpoint, which is a node of the rules. The
+  quadrature on a complex segment now subdivides it where the arguments
+  of its functions cross an axis. For `sqrt(z)*acoth((1 - z)/(z + 1))`
+  over `(0, 1)`, the argument of `acoth` rounds to its singularity at the
+  nodes next to an end. A non-finite value at such a node now counts as
+  0, while one elsewhere still makes the quadrature untrusted. Their
+  values (`2/9 - I*pi/3` for the second) are now checked and returned.
+- The late antiderivative tried the heuristic Risch integrator on the
+  rewritten logarithmic forms of `acoth(sqrt(x))` and `acosh(x)` before
+  trying it on the integrand itself or the substitution `x = t**2`. That
+  took up to 15 s and failed. `log(1 - sqrt(z)) - acoth(sqrt(z))` and
+  `cos(sqrt(z) - 1) + acoth(sqrt(z))` over `(0, 1)` ran out of their
+  budget, and `acosh(x)` over `(-3, -2)` did too when the machine was
+  loaded. The rewriting route of `indefinite` now tries the fast typed
+  methods on the rewritten forms, then the substitutions. The heuristic
+  on the rewritten forms is now a method of its own, `rewritten
+  heurisch`, tried after `heurisch`.
+- The integral over the real line added its two halves under the
+  conjunction of their conditions, even when the halves hold on
+  disjoint regions. For `exp(-(x - mu)**2/(2*sigma**2))`, one half holds
+  for `mu < 0` and the other for `mu > 0`. The sum is undefined at
+  `mu = 0` and cancelled to `0`, so the result was `Piecewise((0, ...),
+  (Integral(...), True))`. Such a sum is now dropped when its condition
+  is false at every random real sample of the parameters, and SymPy's
+  `sqrt(2)*sqrt(pi)*sigma` is returned instead.
 - `solve` dropped real solutions of a system when `nonlinsolve` gave
   several families of solutions whose conditions could not be decided.
   The condition set around them required the coordinates of the last

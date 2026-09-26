@@ -122,7 +122,7 @@ from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, cancel, degree, factor
 from sympy.polys.rationaltools import together
 from sympy.series.limits import Limit, limit
-from sympy.logic.boolalg import And, Boolean, Not, Or, true
+from sympy.logic.boolalg import And, Boolean, Not, Or, false, true
 from sympy.sets.conditionset import ConditionSet
 from sympy.sets.sets import FiniteSet, Intersection, Interval, Set, Union
 from sympy.simplify.powsimp import powdenest
@@ -137,7 +137,8 @@ from sympy_extras.assumptions.facts import element
 from sympy_extras.assumptions.sat import satisfiable
 from sympy_extras.assumptions.solve import solve
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue, _items, decide, sample_values
+from .conditions import (ConditionalValue, _items, decide, plain_symbols, sample_values,
+                         with_symbol_facts)
 from .marichev import checked_tidy, mellin_integrate, tidy
 from .mellin import mellin_transform, monomial
 
@@ -376,8 +377,24 @@ def _quadrature(f: Expr, x: Symbol, a: Expr, b: Expr, inside: Sequence[Expr] = (
         if a in (-oo, oo) or b in (-oo, oo) or a.free_symbols or b.free_symbols:
             return None
         t = Dummy('t', real=True)
-        return _quadrature(as_expr(f.subs(x, a + (b - a) * t) * (b - a)), t, S.Zero, S.One)
+        g_ = as_expr(f.subs(x, a + (b - a) * t) * (b - a))
+        return _quadrature(g_, t, S.Zero, S.One, _axis_crossings(g_, t))
     g: Callable[[mpmath.mpf], mpmath.mpf] = lambdify(x, f, 'mpmath')
+    # the nodes where the integrand is not finite, taken as 0: a node next
+    # to an end of a piece rounds the argument of the integrand onto its
+    # singularity (the bug: acoth((1 - u**2)/(1 + u**2)), log-singular at
+    # u = 0, is acoth(1) = oo at the nodes u < 1e-10 of the rules, and
+    # the quadrature of u**2 times it came out oo, so that nothing was
+    # checked), which carries no weight; one elsewhere does, and then the
+    # quadrature is not trusted
+    singular: list[mpmath.mpf] = []
+
+    def finite(u: mpmath.mpf) -> mpmath.mpf:
+        value = g(u)
+        if mpmath.isfinite(value):
+            return value
+        singular.append(u)
+        return mpmath.mpf(0)
     lo = mpmath.mpf('-inf') if a == -oo else mpmath.mpf(str(as_expr(a).evalf(20)))
     hi = mpmath.mpf('inf') if b == oo else mpmath.mpf(str(as_expr(b).evalf(20)))
     points: list[mpmath.mpf] = [lo]
@@ -404,15 +421,20 @@ def _quadrature(f: Expr, x: Symbol, a: Expr, b: Expr, inside: Sequence[Expr] = (
     finer.append(points[-1])
     try:
         with mpmath.workdps(20):
-            first = mpmath.quad(g, points, method='tanh-sinh', error=True)
+            first = mpmath.quad(finite, points, method='tanh-sinh', error=True)
             # the same rule on a finer subdivision: an endpoint singularity
             # (a logarithm, a fractional power) which the Gauss-Legendre
             # rule cannot resolve is confirmed this way
-            second = mpmath.quad(g, finer, method='tanh-sinh', error=True)
-            third = mpmath.quad(g, points, method='gauss-legendre', error=True)
+            second = mpmath.quad(finite, finer, method='tanh-sinh', error=True)
+            third = mpmath.quad(finite, points, method='gauss-legendre', error=True)
     except (ValueError, TypeError, ZeroDivisionError, OverflowError, NameError, AttributeError,
             NotImplementedError, mpmath.libmp.NoConvergence):
         return None
+    ends = [p for p in finer if mpmath.isfinite(p)]
+    for u in singular:
+        if not any(abs(u - p) < mpmath.mpf('1e-10') * (1 + abs(p)) for p in ends) \
+                and not (abs(u) > 10**10 and not (mpmath.isfinite(lo) and mpmath.isfinite(hi))):
+            return None
     v1, e1 = complex(first[0]), float(abs(first[1]))
     v2, v3 = complex(second[0]), complex(third[0])
     if not (cmath.isfinite(v1) and cmath.isfinite(v2)):
@@ -423,6 +445,47 @@ def _quadrature(f: Expr, x: Symbol, a: Expr, b: Expr, inside: Sequence[Expr] = (
     if abs(v1 - v3) > 1e-6 * scale and abs(v2 - v3) > 1e-6 * scale and e1 > 1e-12 * scale:
         return _oscillatory_quadrature(f, x, lo, hi)
     return v1
+
+
+def _axis_crossings(g: Expr, t: Symbol) -> list[Expr]:
+    """The points of ``(0, 1)`` where the argument of a function in
+    ``g``, or the base of a fractional power, polynomial in the real ``t``,
+    crosses the real or the imaginary axis: the branch points and the
+    crossings of the branch cuts on a segment of the complex plane, where
+    the integrand jumps, for the subdivision of its quadrature (the bug:
+    ``2**log(z)`` from ``-I`` to ``I`` passes through the branch point
+    ``0`` at the midpoint, a node of the rules, and its quadrature was
+    ``nan``, so that nothing was checked).
+
+    >>> from sympy import Dummy, I, log
+    >>> from sympy_extras.integrals.definite import _axis_crossings
+    >>> t = Dummy('t', real=True)
+    >>> _axis_crossings(2*I*2**log(2*I*t - I), t)
+    [1/2]
+    """
+    found: list[Expr] = []
+    for node in g.atoms(Function, Pow):
+        if isinstance(node, Pow):
+            if as_expr(node.exp).is_integer:
+                continue
+            arguments = [as_expr(node.base)]
+        else:
+            arguments = [as_expr(u) for u in node.args]
+        for u in arguments:
+            if not u.has(t) or not u.is_polynomial(t):
+                continue
+            for part in as_expr(expand(u)).as_real_imag():
+                try:
+                    p = Poly(as_expr(part), t)
+                except PolynomialError:
+                    continue
+                if p.is_zero or p.degree() < 1 or p.degree() > 4 or not p.domain.is_QQ and not p.domain.is_ZZ:
+                    continue
+                for r in p.real_roots():
+                    root = as_expr(r)
+                    if bool(0 < root) and bool(root < 1) and root not in found:
+                        found.append(root)
+    return found
 
 
 def _oscillatory_quadrature(f: Expr, x: Symbol, lo: mpmath.mpf, hi: mpmath.mpf) -> Optional[complex]:
@@ -1432,7 +1495,18 @@ class _Integrator:
             if right is None:
                 return None
             left = self.integrate(f, x, -oo, S.Zero, depth + 1, False, True)
-            return None if left is None else left.add(right)
+            if left is None:
+                return None
+            total = left.add(right)
+            # halves which hold on disjoint regions (the bug: the halves of
+            # exp(-(x - mu)**2/(2*sigma**2)) hold for mu < 0 and mu > 0,
+            # |arg(-mu/sigma**2)| < pi/2 and |arg(mu/sigma**2)| < pi/2,
+            # and their sum, undefined at mu = 0, cancelled to 0 under the
+            # conjunction, which no sample could check)
+            parameters = sorted_symbols((free_symbols(f) | free_symbols(total.condition)) - {x})
+            if _holds_nowhere(total.condition, parameters, self.assumptions):
+                return None
+            return total
         if a == -oo:
             return self.integrate(as_expr(f.subs(x, b - t)), t, S.Zero, oo, depth + 1, False, True)
         if b == oo:
@@ -2286,6 +2360,43 @@ class _Integrator:
                 tidied = found.value
             return ConditionalValue(tidied, found.condition)
         return None
+
+
+#: the random points at which a condition must be false before it is
+#: taken to hold nowhere
+_NOWHERE_POINTS = 8
+
+
+def _holds_nowhere(condition: Boolean, symbols: Sequence[Symbol], assumptions: Assumptions) -> bool:
+    """Whether ``condition`` is false at random real points of every
+    sign satisfying the assumptions and the flags of the symbols, at
+    ``_NOWHERE_POINTS`` of them at least, where it is decided at every
+    one; ``False`` when it holds at one, or cannot be decided.
+
+    >>> from sympy import symbols, Abs, arg, pi
+    >>> from sympy_extras.integrals.definite import _holds_nowhere
+    >>> mu, s = symbols('mu sigma')
+    >>> _holds_nowhere((Abs(arg(mu/s**2)) < pi/2) & (Abs(arg(-mu/s**2)) < pi/2), [mu, s], None)
+    True
+    >>> _holds_nowhere(Abs(arg(mu/s**2)) < pi/2, [mu, s], None)
+    False
+    """
+    if condition is true or not symbols:
+        return False
+    plain = plain_symbols(symbols)
+    facts = with_symbol_facts(assumptions, symbols, plain)
+    rng = random.Random(str(condition))
+    tested = 0
+    for _ in range(4 * _NOWHERE_POINTS):
+        values = {s: Rational(rng.choice((-1, 1)) * rng.randint(1, 19), rng.randint(1, 4)) for s in symbols}
+        at = {plain.get(s, s): v for s, v in values.items()}
+        if not all(as_boolean(fact.xreplace(at)) is true for fact in facts):
+            continue
+        verdict = as_boolean(condition.xreplace(values))
+        if verdict is not false:
+            return False
+        tested += 1
+    return tested >= _NOWHERE_POINTS
 
 
 def _pairs(node: Piecewise) -> list[tuple[Expr, Boolean]]:

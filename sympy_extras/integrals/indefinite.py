@@ -29,7 +29,8 @@ The order of the methods:
    on the integrands of its substitutions (:mod:`.rewriting`), before
    the heuristics: `x = t**3` makes an integrand in `x**(1/3)`, `exp(x)`
    and `log(x)` a tower the Risch algorithm settles at once;
-7. the heuristic Risch integrator (:mod:`.heurisch`, then SymPy's);
+7. the heuristic Risch integrator (:mod:`.heurisch`, then SymPy's), on
+   the integrand and then on its canonical forms;
 8. Trager's algorithm for one square root of a polynomial (:mod:`.trager`);
 9. SymPy's rule-based ``manualintegrate``, its Meijer G-function route
    and its ``integrate``.
@@ -409,6 +410,9 @@ def _trager(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
 #: the methods tried on a rewritten form or a substituted integrand
 TYPED = ['rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'heurisch', 'trager']
 
+#: the typed methods without the heuristic, which answer or decline fast
+_FAST_TYPED = [name for name in TYPED if name != 'heurisch']
+
 
 def _rewriting(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     """The typed methods on the canonical forms of ``f`` and on the
@@ -422,8 +426,15 @@ def _rewriting(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     # the forms hold under the facts they assume (c > 0 for c**(d*z)), and
     # so does an antiderivative found through them
     implied = _items(assumptions) + (attempt(lambda: implied_assumptions(f, x, assumptions), _budget()) or [])
+    # the heuristic comes after the substitutions, and after itself on
+    # the integrand (:func:`_rewritten_heurisch`): on the logarithms of
+    # acoth(sqrt(z)) or acosh(z) it spent up to 15 s and failed, where
+    # the substitution z = t**2, or the heuristic on the integrand as
+    # given, answer in a tenth of that (the bug: the antiderivative of
+    # log(1 - sqrt(z)) - acoth(sqrt(z)), FriCAS's mapleok in2485a, ran out
+    # of the budget of the definite integrator)
     for form in forms or []:
-        found = verified_antiderivative(form, x, implied, methods=TYPED)
+        found = verified_antiderivative(form, x, implied, methods=_FAST_TYPED)
         if found is not None:
             return found[0]
     # the substitutions of f and of its first canonical form: sqrt(a + b*c**(d*z))
@@ -454,6 +465,19 @@ def _rewriting(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
         pieces.append((F, as_boolean(And(*substitution.facts))))
     if pieces:
         return as_expr(Piecewise(*pieces[:-1], (pieces[-1][0], true)))
+    return None
+
+
+def _rewritten_heurisch(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
+    """The heuristic Risch integrator on the canonical forms of ``f``
+    (:mod:`.rewriting`), after it failed on ``f`` itself."""
+    from .rewriting import rewritten_forms, implied_assumptions
+    forms = attempt(lambda: rewritten_forms(f, x, assumptions), _budget())
+    implied = _items(assumptions) + (attempt(lambda: implied_assumptions(f, x, assumptions), _budget()) or [])
+    for form in forms or []:
+        found = verified_antiderivative(form, x, implied, methods=['heurisch'])
+        if found is not None:
+            return found[0]
     return None
 
 
@@ -491,7 +515,8 @@ def _sympy(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
 METHODS: list[tuple[str, Method]] = [
     ('rational', _rational), ('radicals', _radicals), ('exponential', _exponential), ('trigonometric', _trigonometric),
     ('risch', _risch), ('trager', _trager),
-    ('rewriting', _rewriting), ('heurisch', _heurisch), ('manual', _manual), ('meijer', _meijer),
+    ('rewriting', _rewriting), ('heurisch', _heurisch), ('rewritten heurisch', _rewritten_heurisch),
+    ('manual', _manual), ('meijer', _meijer),
     ('sympy', _sympy)]
 
 

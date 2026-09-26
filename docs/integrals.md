@@ -550,7 +550,8 @@ wherever such a power is real on an interval), `exp(X)**v` as
 each form valid where the integrand is real; `x = t**k` for fractional
 powers of `x` or of a linear factor, `u = exp(c*x)` for rational
 functions of an exponential, `x = exp(t)` for rational functions of a
-logarithm. The trigonometric integrator
+logarithm; the heuristic Risch integrator comes to the forms only
+after it failed on the integrand itself. The trigonometric integrator
 (`sympy_extras.integrals.trigonometric`, `trigonometric_antiderivative`)
 covers the products of powers of trigonometric and hyperbolic functions
 by the raising and lowering formulas, rational functions of `sin` and

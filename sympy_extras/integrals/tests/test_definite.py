@@ -5,7 +5,7 @@ import random
 
 from sympy import (symbols, exp, sin, cos, log, sqrt, oo, pi, S, Rational, Abs, Heaviside, Piecewise, Integral, I, Eq,
                    sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan, asin, besselj, Si, E, tan, arg, cosh,
-                   sinh, Ne, lambdify)
+                   sinh, Ne, lambdify, acoth)
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
@@ -969,3 +969,57 @@ def test_every_branch_of_a_piecewise_value_is_verified() -> None:
     right = Piecewise(((y**2 * (2 * log(y) - 1) + 1) / log(y)**2, Ne(y, 1)), (2, True))
     assert verify_numerically(wrong, x * y**x, x, S.Zero, S(2)) is False
     assert verify_numerically(right, x * y**x, x, S.Zero, S(2)) is True
+
+
+def test_quadrature_on_a_segment_through_a_branch_point() -> None:
+    # the bug: 2**log(z) and 3**log(z) from -I to I were left unevaluated:
+    # the segment passes through the branch point 0 at its midpoint, a
+    # node of the rules, and the quadrature was nan; the value (in the
+    # principal branch, 2*I*cos(pi*log(c)/2)/(1 + log(c)) for c**log(z))
+    # was accepted before only because nan compared as agreeing
+    import mpmath
+    from sympy_extras.integrals.definite import _quadrature
+    z = symbols('z')
+    for c in (2, 3):
+        f = S(c)**log(z)
+        segment = mpmath.quad(lambda u: mpmath.power(c, mpmath.log(-1j + 2j * u)) * 2j, [0, 0.5, 1])
+        found = _quadrature(f, z, -I, I)
+        assert found is not None and abs(found - complex(segment)) < 1e-12
+        value = definite_integral(f, (z, -I, I))
+        assert not value.has(Integral), value
+        assert abs(complex(value.evalf(20)) - complex(segment)) < 1e-12, value
+
+
+def test_quadrature_ignores_the_rounding_onto_an_endpoint_singularity() -> None:
+    # the bug: sqrt(z)*acoth((1 - z)/(z + 1)) over (0, 1) (FriCAS's
+    # mapleok in1947a) was left unevaluated: after z = u**2 the argument
+    # of acoth rounds to 1 at the nodes next to u = 0, the integrand is oo
+    # there, and the quadrature came out oo (accepted before only because
+    # oo compared as agreeing); acoth((1 - z)/(1 + z)) is -log(z)/2 - I*pi/2
+    # on (0, 1), so the value is 2/9 - I*pi/3
+    import mpmath
+    from sympy_extras.integrals.definite import _quadrature
+    z, u = symbols('z u')
+    found = _quadrature(u**2 * acoth((1 - u**2) / (u**2 + 1)), u, S.Zero, S.One)
+    assert found is not None and abs(found - complex(Rational(1, 9) - I * pi / 6)) < 1e-12
+    expected = mpmath.quad(lambda v: 2 * v**2 * (mpmath.log(2 / (1 - v**2)) - mpmath.log(-2 * v**2 / (1 - v**2))) / 2,
+                           [0, 1])
+    value = definite_integral(sqrt(z) * acoth((1 - z) / (z + 1)), (z, 0, 1))
+    assert not value.has(Integral), value
+    assert abs(complex(value.evalf(20)) - complex(expected)) < 1e-12, value
+    # a value which is not finite away from the ends of the pieces still
+    # makes the quadrature untrusted
+    assert _quadrature(1 / (u - Rational(1, 3)) ** 2, u, S.Zero, S.One) is None
+
+
+def test_halves_of_the_real_line_on_disjoint_regions() -> None:
+    # the bug: the halves of exp(-(x - mu)**2) over (-oo, 0) and (0, oo)
+    # hold for mu > 0 and for mu < 0 (|arg(mu)| < pi/2, |arg(-mu)| < pi/2);
+    # their sum was returned under the conjunction, which holds nowhere,
+    # and cancelled to 0 (REDUCE's defint 93, exp(-(x - mu)**2/(2*sigma**2))
+    # over the real line, came out Piecewise((0, ...), (Integral, True))),
+    # where the integral is sqrt(pi)
+    from sympy_extras.integrals.definite import _Integrator
+    mu = symbols('mu')
+    found = _Integrator(None)._mapped(exp(-(x - mu)**2), x, -oo, oo, 0)
+    assert found is None or abs(complex(found.value.subs(mu, 1).evalf(20)) - complex(sqrt(pi).evalf(20))) < 1e-12, found

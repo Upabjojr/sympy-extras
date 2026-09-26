@@ -109,7 +109,7 @@ _METHODS = ['rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'tr
 
 
 #: the heuristic methods, tried late and under a larger budget
-_LATE_METHODS = ['heurisch', 'rewriting', 'manual', 'meijer', 'sympy']
+_LATE_METHODS = ['heurisch', 'rewriting', 'rewritten heurisch', 'manual', 'meijer', 'sympy']
 
 
 def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bool = False) -> Optional[Expr]:
