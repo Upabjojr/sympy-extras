@@ -262,3 +262,20 @@ def test_the_cases_of_real_parameters_beyond_the_projection_factors() -> None:
     assert found.xreplace({a: 4, b: 2}) == S.EmptySet
     assert found.subs(a, -1) == S.EmptySet
     assert found.xreplace({a: 0, b: -1}) == FiniteSet(0)
+
+
+def test_each_point_of_a_family_has_its_own_memberships() -> None:
+    # the bug: the solutions nonlinsolve gives, (y**(1/3), y) and
+    # (Abs(y)**(1/3)*sign(y), y), were collected under the condition
+    # Contains(-y**(1/3)/2 + sqrt(3)*I*y**(1/3)/2, Interval(-10, 10)): the
+    # memberships of the complex branch examined last, which is real at no
+    # point but the origin, so that (1, 1) and (-2, -8) were not solutions
+    found = solve(Eq(x**3, y), [x, y], domain=Interval(-10, 10))
+    assert isinstance(found, ConditionSet)
+    assert found.condition.free_symbols <= {x, y}
+    for value in [-8, -1, Rational(1, 8), 1, 8]:
+        root = -Rational(-value)**Rational(1, 3) if value < 0 else Rational(value)**Rational(1, 3)
+        assert found.condition.xreplace({x: root, y: value}) == S.true
+    assert found.contains((1, 1)) != S.false
+    # outside of the domain
+    assert found.condition.xreplace({x: 3, y: 27}) == S.false

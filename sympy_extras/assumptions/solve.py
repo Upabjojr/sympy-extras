@@ -554,7 +554,14 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
             undecided.append(point)
     result: Set = FiniteSet(*kept) if kept else S.EmptySet
     if undecided:
-        result = SetUnion(result, ConditionSet(tuple(symbols), And(condition, membership), FiniteSet(*undecided)))
+        # the memberships in the domain are those of the unknowns, which the
+        # condition set gives the coordinates of each point in turn (the
+        # bug: the memberships of the coordinates of the last point, left
+        # over from the loop, were the condition of every point, and the
+        # real branch of x**3 = 1 - y**3 - y**2 was dropped because a
+        # complex one is not real)
+        inside = And(*[Contains(s, dom) for s in symbols]) if not isinstance(dom, Complexes) else true
+        result = SetUnion(result, ConditionSet(tuple(symbols), And(condition, inside), FiniteSet(*undecided)))
     return result
 
 

@@ -951,6 +951,17 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `solve` dropped real solutions of a system when `nonlinsolve` gave
+  several families of solutions whose conditions could not be decided.
+  The condition set around them required the coordinates of the last
+  family, a complex branch of the cube root, to be in the domain, and
+  applied this to every family.
+  So `solve([x**2 - y**3 > 0, Eq(x**3 + y**3 + y**2 - 1, 0)], [x, y],
+  domain=S.Reals)` did not contain `(1, 0)`, and `solve(Eq(x**3, y),
+  [x, y], domain=Interval(-10, 10))` did not contain `(1, 1)`. The
+  condition now requires the unknowns to be in the domain, and the
+  condition set checks this for the coordinates of each family.
+
 - `definite_sum` could return an unevaluated `Sum` whose limits are
   reversed for small `n` (found by an audit against Mathematica 12.2).
   `sum k*binomial(n, k)*harmonic(k)` had `Sum(1/(2**j*j*(j + 1)), (j, 2,
