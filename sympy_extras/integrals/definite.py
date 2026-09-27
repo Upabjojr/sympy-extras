@@ -130,8 +130,8 @@ from sympy.simplify.simplify import nsimplify
 from sympy.utilities.lambdify import lambdify
 
 from sympy_extras._numeric import reliable_value
-from sympy_extras._special_values import (Point, condition_point, equality_points, point_assumptions,
-                                           with_special_values)
+from sympy_extras._special_values import (Point, condition_point, defined_problem, equality_points,
+                                           point_assumptions, with_special_values)
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
@@ -218,7 +218,9 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
         found is undefined (``0/0``, a division by zero, ``log(0)``) get
         cases of their own, the integral computed again at each
         (:mod:`sympy_extras._special_values`): ``y**x`` over ``(0, 2)``
-        is ``(y**2 - 1)/log(y)`` except at ``y = 1``, where it is ``2``.
+        is ``(y**2 - 1)/log(y)`` except at ``y = 1``, where it is ``2``;
+        a point where the integrand is not defined (``a**(b*x)`` at ``a =
+        0``, ``DiracDelta(a*x)`` at ``a = 0``) gets no case.
         On by default; the methods which integrate over the parameters
         afterwards (the regions) turn it off, the values on a set of
         measure zero being of no use there.
@@ -295,7 +297,8 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
         return _checked_limit(result, point, g, x, lower, upper, at) or value
 
     def defined(point: Point) -> bool:
-        return not any(as_expr(e.xreplace(point)).has(nan, zoo) for e in (f_, a, b))
+        return defined_problem(as_expr(f_.xreplace(point)), [x]) \
+            and not any(as_expr(e.xreplace(point)).has(nan, zoo) for e in (a, b))
 
     return with_special_values(result, parameters, assumptions, at_point, defined)
 

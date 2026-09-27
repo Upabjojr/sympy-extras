@@ -13,7 +13,7 @@ import time
 from contextlib import contextmanager
 from typing import Callable, Iterator, Optional, TypeVar
 
-__all__ = ['TimeLimitExceeded', 'time_limit', 'attempt']
+__all__ = ['TimeLimitExceeded', 'time_limit', 'attempt', 'remaining_time']
 
 T = TypeVar('T')
 
@@ -65,6 +65,30 @@ def time_limit(seconds: Optional[float]) -> Iterator[None]:
         if outer_remaining > 0:
             left = outer_remaining - (time.monotonic() - started)
             signal.setitimer(signal.ITIMER_REAL, max(left, 1e-3))
+
+
+def remaining_time() -> Optional[float]:
+    """The seconds left of the enclosing :func:`time_limit`, in the units
+    of the settings (divided by ``settings.time_scale``), or ``None`` when
+    no limit is running (or limits are not supported here): a computation
+    which is optional (the special values of the parameters of a result
+    already found) takes a share of it rather than a fixed time which may
+    exceed it.
+
+    >>> from sympy_extras._timeout import remaining_time, time_limit
+    >>> remaining_time() is None
+    True
+    >>> with time_limit(10):
+    ...     0 < (remaining_time() or 0) <= 10
+    True
+    """
+    if not _supported():
+        return None
+    left = signal.getitimer(signal.ITIMER_REAL)[0]
+    if left <= 0:
+        return None
+    from sympy_extras.settings import settings
+    return float(left) / settings.time_scale
 
 
 _tables_complete = False

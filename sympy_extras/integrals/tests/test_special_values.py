@@ -4,7 +4,8 @@ each is checked against the integral computed at the point, by the
 quadrature or by hand, and the generic branch against the quadrature."""
 from __future__ import annotations
 
-from sympy import (Abs, Eq, Integral, Piecewise, Rational, S, cos, diff, exp, limit, log, pi, sin, simplify, symbols)
+from sympy import (Abs, DiracDelta, Eq, Integral, Piecewise, Rational, S, cos, diff, exp, limit, log, oo, pi, sin,
+                   simplify, symbols)
 from sympy.core.expr import Expr
 
 from sympy_extras._typing import as_expr
@@ -114,3 +115,32 @@ def test_indefinite_integrals_in_sympys_form() -> None:
     assert isinstance(F, Piecewise) and F.args[0].args[1] == Eq(a, 0) & Eq(b, 0)
     for point in ({a: 0, b: 0}, {a: 1, b: 1}, {a: -1, b: 1}, {a: 2, b: 3}):
         assert simplify(diff(F.subs(point), x) - f.subs(point)) == 0
+
+
+def test_no_case_where_the_problem_is_undefined() -> None:
+    z = symbols('z')
+    # the bug: Piecewise((Ei(b*z*log(a)), Ne(a, 0)), (Integral(0**(b*z)/z, z), True)):
+    # at a = 0 the integrand 0**(b*z) is 0 or zoo according to the sign of
+    # b*z, no function of z to integrate, and the unevaluated case made the
+    # whole answer unevaluated
+    F = indefinite_integral(a**(b * z) / z, z)
+    assert not F.has(Integral)
+    assert simplify((diff(F, z) - a**(b * z) / z).subs({a: 2, b: 3}).rewrite(exp)) == 0
+    # the bug: a case for DiracDelta(0), the integrand at a = 0, which is
+    # no function either: Piecewise((Integral(exp(-u*v)*DiracDelta(0), (u, 0, oo)), Eq(a, 0)), ...)
+    u, v = symbols('u v')
+    value = definite_integral(exp(-u * v) * DiracDelta(a * u), (u, 0, oo))
+    assert not value.has(Integral)
+
+
+def test_the_cases_of_an_antiderivative_are_computed() -> None:
+    e = symbols('e')
+    # the bug: a case Integral(0**(1/x)/x**3, x) at e = 0, where e**(1/x) is
+    # undefined for x < 0, computed for seventeen seconds, and under the
+    # twenty seconds of the census Piecewise((..., Ne(e, 1)),
+    # (Integral(x**(-3), x), True)): e = 0 had taken the time of e = 1
+    F = indefinite_integral(e**(1 / x) / x**3, x)
+    assert not F.has(Integral)
+    assert F.subs(e, 1) == -1 / (2 * x**2)
+    assert simplify(diff(F.subs(e, 2), x) - 2**(1 / x) / x**3) == 0
+

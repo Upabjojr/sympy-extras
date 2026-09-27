@@ -78,6 +78,9 @@ change:
   a limit (`sympy_extras._special_values`, used by `definite_integral`,
   `indefinite_integral` and the summation functions); SymPy's own cases
   (`x**n` at `n = -1`) are kept, and the numerical checks check them.
+  No case where the problem is not defined (`a**(b*z)` at `a = 0`,
+  `defined_problem`), no unevaluated case of an antiderivative, and the
+  cases stay cheap: a budget of their own, a tenth of the time limit.
 - **Merge into `master`**: this is a private experimental repository, the
   development branch is fast-forwarded into `master` after every
   verified change (tests, doctests, mypy, pyflakes); the changelog and

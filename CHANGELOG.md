@@ -39,7 +39,21 @@ remove public functions. Breaking changes are listed here when they happen.
   branches of isolated values (`Eq(y, 1)`) by substituting the point into
   the value and the integrand, which the samples of the regions of the
   branches never reach (a wrong value of `sin(a*x)*sin(b*x)` at `a = b =
-  0` passed the check before).
+  0` passed the check before). A point where the problem itself is not
+  defined gets no case (`sympy_extras._special_values.defined_problem`:
+  `nan` or `zoo` in the integrand there, an unevaluated `0**e`, as
+  `a**(b*z)` at `a = 0`, or a `DiracDelta` of a constant), and
+  `indefinite_integral` gives no case for a point whose antiderivative is
+  not found (`keep_unevaluated=False`): `a**(b*z)/z` is `Ei(b*z*log(a))`,
+  not `Piecewise((Ei(b*z*log(a)), Ne(a, 0)), (Integral(0**(b*z)/z, z),
+  True))`. The cases have a budget of their own (a tenth of
+  `settings.timeout`, at most half of what is left of an enclosing time
+  limit, read by the new `sympy_extras._timeout.remaining_time`), and
+  candidates which are a parameter or linear in the parameters are not
+  factored: with the whole time limit of the settings for the points,
+  a hundred antiderivatives of the census were lost to unevaluated
+  cases and to the time limit (`e**(1/x)/x**3` came back with an
+  unevaluated case at `e = 1` after twenty seconds).
 
 - Linear systems `Y' = A Y + b` with rational function coefficients
   (sympy-extras#24), in `sympy_extras.solvers.linear_systems`.

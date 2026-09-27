@@ -82,7 +82,7 @@ from sympy.simplify.simplify import simplify
 from sympy.simplify.simplify import logcombine
 
 from sympy_extras._numeric import reliable_value
-from sympy_extras._special_values import Point, with_special_values
+from sympy_extras._special_values import Point, defined_problem, with_special_values
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions
@@ -600,7 +600,9 @@ def indefinite_integral(f: ExprLike, x: Symbol, assumptions: Assumptions = None,
         (:mod:`sympy_extras._special_values`), in the form of SymPy's
         ``integrate``: ``exp(k*x)`` gives ``Piecewise((exp(k*x)/k, Ne(k,
         0)), (x, True))``; a value with several cases lists them first,
-        each under its equations.
+        each under its equations. A point where the integrand is not
+        defined (``a**(b*x)`` at ``a = 0``), or whose antiderivative is
+        not found, gets no case.
 
     Examples
     ========
@@ -636,6 +638,10 @@ def _indefinite(f: Expr, x: Symbol, assumptions: Assumptions, special_values: bo
         return _indefinite(as_expr(f.xreplace(point)), x, at, True, False)
 
     def defined(point: Point) -> bool:
-        return not as_expr(f.xreplace(point)).has(nan, zoo)
+        return defined_problem(as_expr(f.xreplace(point)), [x])
 
-    return with_special_values(found[0], parameters, assumptions, at_point, defined, sympy_style=sympy_style)
+    # (a point whose antiderivative is not found gets no case: an
+    # unevaluated Integral in a case made the whole answer unevaluated,
+    # the integral of a**(b*z)/z at a = 0 among them)
+    return with_special_values(found[0], parameters, assumptions, at_point, defined, sympy_style=sympy_style,
+                               keep_unevaluated=False)

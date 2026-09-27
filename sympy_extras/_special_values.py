@@ -55,10 +55,32 @@ The mechanism is independent of the problem (:func:`with_special_values`):
    into one ``Piecewise``: the conditions ``Eq(a, b) & Eq(b, 0)`` become
    ``Eq(a, 0) & Eq(b, 0)``, and the cases with more equations come first.
 
-The costs are bounded: at most ``_MAX_POINTS`` points per value, the
-candidates found under a short time limit, and the problems at the
-points solved under the time limit of the caller (a point whose problem
-is not solved in time is not listed).
+4. **A point where the problem is not defined gets no case**: the
+   caller's ``defined`` tells, and :func:`defined_problem` is the rule of
+   the integrals: the integrand at the point must be a function of the
+   variable on a set of positive measure, so a point which leaves in it
+   ``nan``, ``zoo``, a power ``0**e`` which SymPy leaves unevaluated (the
+   sign of ``e`` unknown: ``a**(b*z)`` at ``a = 0`` is ``0`` or ``zoo``
+   according to the sign of ``b*z``, ``e**(1/x)`` at ``e = 0`` is not
+   defined for ``x < 0``) or a ``DiracDelta`` of a constant
+   (``DiracDelta(a*u)`` at ``a = 0``) is left out, and so is the problem
+   which would be solved again there. A caller may also refuse the cases
+   whose value at the point is unevaluated (``keep_unevaluated``): the
+   antiderivatives do, an unevaluated ``Integral`` in a case making the
+   whole answer unevaluated for a value of the parameters of no interest
+   to most users, while a definite integral keeps it, the honest value of
+   a problem which is defined there.
+
+The costs are bounded, the cases being an addition to a result already
+found: at most ``_MAX_POINTS`` points per value, and the whole work (the
+candidates, their factorisations and solutions, the problems at the
+points) done within a budget of its own, ``_BUDGET_SHARE`` of the time
+limit of the settings and at most ``_REMAINING_SHARE`` of what is left of
+an enclosing time limit (:func:`~sympy_extras._timeout.remaining_time`),
+so that the cases never make a solved problem miss its time limit; the
+points not reached in time, and those whose problem is not solved in
+time, are not listed. A candidate which is a parameter itself (``1/k``)
+or linear in one is read off without factorisation.
 
 Examples
 ========
@@ -77,6 +99,7 @@ import time
 from typing import Callable, Optional, Sequence
 
 from sympy.core.basic import Basic
+from sympy.core.traversal import preorder_traversal
 from sympy.core.expr import Expr
 from sympy.core.mul import Mul
 from sympy.core.numbers import nan, oo, zoo
@@ -88,6 +111,7 @@ from sympy.concrete.products import Product
 from sympy.concrete.summations import Sum
 from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.piecewise import Piecewise
+from sympy.functions.special.delta_functions import DiracDelta
 from sympy.functions.special.zeta_functions import zeta
 from sympy.integrals.integrals import Integral
 from sympy.logic.boolalg import And, Boolean, Or, false, true
@@ -96,14 +120,14 @@ from sympy.polys.polyroots import roots
 from sympy.sets.sets import FiniteSet
 from sympy.solvers.solveset import solveset
 
-from sympy_extras._timeout import attempt
+from sympy_extras._timeout import attempt, remaining_time
 from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions
 from sympy_extras.assumptions.sat import satisfiable
 from sympy_extras.settings import settings
 
 __all__ = ['Point', 'special_points', 'with_special_values', 'point_condition', 'condition_point', 'point_assumptions',
-           'undefined_at', 'equality_points']
+           'undefined_at', 'equality_points', 'defined_problem']
 
 #: the values of some parameters, ``{a: b, b: 0}``
 Point = dict[Symbol, Expr]
@@ -116,18 +140,48 @@ Compute = Callable[[Point, Assumptions], Optional[Expr]]
 _MAX_POINTS = 4
 #: the seconds given to the factorisation or the solution of one candidate
 _CANDIDATE_SECONDS = 2.0
+#: the share of ``settings.timeout`` given to the special values of one
+#: value (the candidates and the problems at the points together)
+_BUDGET_SHARE = 0.1
+#: the largest share of what is left of an enclosing time limit they take
+_REMAINING_SHARE = 0.5
 #: the largest degree of a polynomial in one parameter whose irrational
 #: real roots are listed (explicit square roots)
 _MAX_RADICAL_DEGREE = 2
 
 
-def special_points(value: Expr, parameters: Sequence[Symbol], assumptions: Assumptions = None) -> list[Point]:
+class _Deadline:
+    """The end of a budget of seconds (in the units of the settings, like
+    the time limits), or no end for ``None``."""
+
+    def __init__(self, seconds: Optional[float]) -> None:
+        self.end: Optional[float] = None if seconds is None else time.monotonic() + seconds * settings.time_scale
+
+    def left(self, cap: Optional[float] = None) -> Optional[float]:
+        """The seconds left, at most ``cap``; ``None`` for no limit at all
+        (no end and no cap). A value which is not positive means that the
+        time is up (a non-positive limit means no limit to
+        :func:`~sympy_extras._timeout.attempt`, so the callers stop
+        instead)."""
+        if self.end is None:
+            return cap
+        left = (self.end - time.monotonic()) / settings.time_scale
+        return left if cap is None else min(cap, left)
+
+    def up(self) -> bool:
+        left = self.left()
+        return left is not None and left <= 0
+
+
+def special_points(value: Expr, parameters: Sequence[Symbol], assumptions: Assumptions = None,
+                   seconds: Optional[float] = None) -> list[Point]:
     """The candidate special values of the ``parameters`` for ``value``:
     the points where a denominator, the argument of a logarithm or
     ``s - 1`` for ``zeta(s)`` vanishes, when they are described by
     equations in one parameter each (see the module documentation);
     real values only, those the assumptions and the flags of the
-    symbols refute left out.
+    symbols refute left out. With ``seconds``, the candidates found
+    within that many seconds (those not reached are left out).
 
     >>> from sympy import symbols, exp, sin
     >>> from sympy_extras._special_values import special_points
@@ -139,11 +193,18 @@ def special_points(value: Expr, parameters: Sequence[Symbol], assumptions: Assum
     >>> special_points(1/(a**2 + 1), [a]), special_points(1/sin(a), [a])
     ([], [])
     """
+    return _special_points(value, parameters, assumptions, _Deadline(seconds))
+
+
+def _special_points(value: Expr, parameters: Sequence[Symbol], assumptions: Assumptions,
+                    deadline: _Deadline) -> list[Point]:
     wanted = set(parameters)
     found: list[Point] = []
     for part in _undefined_parts(value, wanted):
-        for point in _zeros(part, wanted):
-            if point not in found and point_assumptions(point, assumptions) is not None:
+        if deadline.up():
+            break
+        for point in _zeros(part, wanted, deadline):
+            if point not in found and _point_assumptions(point, assumptions, deadline) is not None:
                 found.append(point)
     return sorted(found, key=lambda point: str(sorted(point.items(), key=str)))
 
@@ -177,28 +238,43 @@ def _undefined_parts(e: Expr, parameters: set[Symbol]) -> list[Expr]:
     return parts
 
 
-def _zeros(part: Expr, parameters: set[Symbol]) -> list[Point]:
+def _zeros(part: Expr, parameters: set[Symbol], deadline: _Deadline) -> list[Point]:
     """The zeros of ``part`` in the parameters which are points of the
     form of the module documentation, factor by factor; a factor with
-    another symbol (the variable of integration) gives none."""
-    factored = attempt(lambda: as_expr(factor(part)), _CANDIDATE_SECONDS)
-    if factored is None:
-        factored = part
+    another symbol (the variable of integration) gives none. A part
+    which is a parameter, or is linear in the parameters, is not
+    factored (the factorisation of every candidate made the cases cost
+    more than the integrals of the census)."""
+    symbols = free_symbols(part)
+    if not symbols & parameters:
+        return []
+    if isinstance(part, Symbol):
+        return [{part: S.Zero}]
+    factors: list[Basic] = []
+    if symbols <= parameters and part.is_polynomial(*sorted_symbols(symbols)) \
+            and Poly(part, *sorted_symbols(symbols)).total_degree() == 1:
+        factors = [part]
+    else:
+        seconds = deadline.left(_CANDIDATE_SECONDS)
+        if seconds is not None and seconds <= 0:
+            return []
+        factored = attempt(lambda: as_expr(factor(part)), seconds)
+        factors = list(Mul.make_args(part if factored is None else factored))
     points: list[Point] = []
-    for factor_ in Mul.make_args(factored):
+    for factor_ in factors:
         g = as_expr(factor_)
         if isinstance(g, Pow) and as_expr(g.exp).is_positive:
             g = as_expr(g.base)
-        symbols = sorted_symbols(free_symbols(g))
-        if not symbols or set(symbols) - parameters:
+        g_symbols = sorted_symbols(free_symbols(g))
+        if not g_symbols or set(g_symbols) - parameters:
             continue
-        for point in _factor_zeros(g, symbols):
+        for point in _factor_zeros(g, g_symbols, deadline):
             if _real_for_real_parameters(list(point.values())[0]) and point not in points:
                 points.append(point)
     return points
 
 
-def _factor_zeros(g: Expr, symbols: list[Symbol]) -> list[Point]:
+def _factor_zeros(g: Expr, symbols: list[Symbol], deadline: _Deadline) -> list[Point]:
     """The zeros of an irreducible factor: ``p = v`` for the first
     parameter ``p`` in which it is linear (with a numerical coefficient
     first, then with any), the real roots of a polynomial in one
@@ -213,13 +289,19 @@ def _factor_zeros(g: Expr, symbols: list[Symbol]) -> list[Point]:
         if len(symbols) != 1:
             return []
         p, polynomial = polynomials[0]
-        found = attempt(lambda: roots(polynomial, filter='R'), _CANDIDATE_SECONDS)
+        seconds = deadline.left(_CANDIDATE_SECONDS)
+        if seconds is not None and seconds <= 0:
+            return []
+        found = attempt(lambda: roots(polynomial, filter='R'), seconds)
         if not found:
             return []
         return [{p: as_expr(r)} for r in found
                 if polynomial.degree() <= _MAX_RADICAL_DEGREE or as_expr(r).is_rational]
     for p in symbols:
-        solutions = attempt(lambda: solveset(g, p, S.Reals), _CANDIDATE_SECONDS)
+        seconds = deadline.left(_CANDIDATE_SECONDS)
+        if seconds is not None and seconds <= 0:
+            return []
+        solutions = attempt(lambda: solveset(g, p, S.Reals), seconds)
         if isinstance(solutions, FiniteSet) and 0 < len(solutions) <= _MAX_POINTS:
             return [{p: as_expr(v)} for v in solutions]
     return []
@@ -257,6 +339,10 @@ def point_assumptions(point: Point, assumptions: Assumptions) -> Optional[list[B
     >>> point_assumptions({a: 0}, a > 0) is None
     True
     """
+    return _point_assumptions(point, assumptions, _Deadline(None))
+
+
+def _point_assumptions(point: Point, assumptions: Assumptions, deadline: _Deadline) -> Optional[list[Boolean]]:
     if any(as_boolean(Eq(p, v)) is false for p, v in point.items()):
         return None
     items: list[Boolean] = []
@@ -276,7 +362,9 @@ def point_assumptions(point: Point, assumptions: Assumptions) -> Optional[list[B
             return None
         if at is not true:
             substituted.append(at)
-    if substituted and attempt(lambda: satisfiable(as_boolean(And(*substituted))), _CANDIDATE_SECONDS) is False:
+    seconds = deadline.left(_CANDIDATE_SECONDS)
+    if substituted and (seconds is None or seconds > 0) \
+            and attempt(lambda: satisfiable(as_boolean(And(*substituted))), seconds) is False:
         # (s > s under k = s, for s > k: the relations of plain symbols do
         # not evaluate)
         return None
@@ -415,23 +503,61 @@ def condition_point(condition: Boolean) -> Optional[Point]:
     return point
 
 
+def defined_problem(integrand: Expr, variables: Sequence[Symbol]) -> bool:
+    """Whether ``integrand``, a problem with a point of the parameters
+    substituted, is still defined as a function of the ``variables`` (the
+    variables of integration) on a set of positive measure (the rule of
+    the module documentation): not when ``nan`` or ``zoo`` appears
+    (``log(0)``, a division by zero), when a power ``0**e`` stays
+    unevaluated (SymPy evaluates it for an exponent of known sign, so
+    that its value, ``0``, ``1`` or ``zoo``, depends on the sign of an
+    ``e`` which is not known: ``a**(b*z)`` at ``a = 0``), or when a
+    ``DiracDelta`` of an expression free of the variables remains (the
+    delta of a constant, ``DiracDelta(a*u)`` at ``a = 0``, is no
+    function).
+
+    >>> from sympy import symbols, DiracDelta, Integer
+    >>> from sympy_extras._special_values import defined_problem
+    >>> a, b, z = symbols('a b z')
+    >>> defined_problem((a**(b*z)/z).subs(a, 0), [z]), defined_problem((a**(b*z)/z).subs(a, 1), [z])
+    (False, True)
+    >>> defined_problem(DiracDelta(a*z).subs(a, 0), [z]), defined_problem(Integer(0)**2*z, [z])
+    (False, True)
+    """
+    if integrand.has(nan, zoo):
+        return False
+    wanted = set(variables)
+    for node in preorder_traversal(integrand):
+        if isinstance(node, Pow) and as_expr(node.base).is_zero:
+            return False
+        if isinstance(node, DiracDelta) and not free_symbols(as_expr(node.args[0])) & wanted:
+            return False
+    return True
+
+
 def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: Assumptions,
                         compute: Compute, defined: Optional[Callable[[Point], bool]] = None,
-                        sympy_style: bool = False, budget: Optional[float] = None) -> Expr:
+                        sympy_style: bool = False, budget: Optional[float] = None,
+                        keep_unevaluated: bool = True) -> Expr:
     """``value`` with a case for each isolated value of the ``parameters``
     at which the branch it takes there is undefined (see the module
     documentation), computed by ``compute(point, assumptions at the
     point)``; ``defined(point)`` tells whether the problem itself is
     defined at the point (points where it is not are left out, and so
-    are those where ``compute`` gives ``nan`` or ``zoo``).
+    are those where ``compute`` gives ``nan`` or ``zoo``, and, unless
+    ``keep_unevaluated``, those where it leaves an unevaluated
+    ``Integral``, ``Sum`` or ``Product``).
 
     The cases come first, as ``(value at the point, Eq(p, v))``, the
     branches of ``value`` after them; with ``sympy_style`` a single case
     for a value which is not a ``Piecewise`` is written the way SymPy's
     ``integrate`` writes it, ``Piecewise((generic, Ne(p, v)), (special,
-    True))``. ``budget`` bounds the seconds spent on the problems at the
-    points (the time limit of the settings when ``None``); a point whose
-    problem takes longer, or which ``compute`` cannot solve, is left out.
+    True))``. ``budget`` bounds the seconds spent on the whole (the
+    candidates and the problems at the points); when ``None``,
+    ``_BUDGET_SHARE`` of the time limit of the settings, and never more
+    than ``_REMAINING_SHARE`` of what is left of an enclosing time limit.
+    The points not reached in time, those whose problem takes longer and
+    those which ``compute`` cannot solve are left out.
 
     >>> from sympy import symbols, exp, Integer
     >>> from sympy_extras._special_values import with_special_values
@@ -443,32 +569,35 @@ def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: 
     """
     if not parameters:
         return value
+    limit = budget
+    if limit is None and settings.timeout is not None:
+        limit = _BUDGET_SHARE * settings.timeout
+    enclosing = remaining_time()
+    if enclosing is not None:
+        limit = _REMAINING_SHARE * enclosing if limit is None else min(limit, _REMAINING_SHARE * enclosing)
+    deadline = _Deadline(limit)
     branches = _branches(value)
     points: list[Point] = []
     for e, _ in branches:
         if _unevaluated(e):
             continue
-        for point in special_points(e, parameters, assumptions):
+        for point in _special_points(e, parameters, assumptions, deadline):
             if point not in points:
                 points.append(point)
-    limit = settings.timeout if budget is None else budget
-    started = time.monotonic()
     cases: list[tuple[Expr, Boolean, int]] = []
     listed = 0
     for point in points:
-        if listed >= _MAX_POINTS:
+        if listed >= _MAX_POINTS or deadline.up():
             break
-        at = point_assumptions(point, assumptions)
+        at = _point_assumptions(point, assumptions, deadline)
         failing = None if at is None else _taken_undefined(branches, point)
         if failing is None:
             continue
         if defined is not None and not defined(point):
             continue
-        remaining: Optional[float] = None
-        if limit is not None:
-            remaining = limit - (time.monotonic() - started) / settings.time_scale
-            if remaining <= 0:
-                break
+        remaining = deadline.left()
+        if remaining is not None and remaining <= 0:
+            break
         special = attempt(lambda: compute(point, at), remaining)
         if special is None or special.has(nan, zoo):
             # (the problem at the point has no value either: the sum of
@@ -479,6 +608,8 @@ def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: 
             # the problem at the point does not settle either, or where it
             # diverges: on the boundary of a region of divergence (1/x over
             # (p, q) at p = 0) rather than isolated
+            continue
+        if not keep_unevaluated and _unevaluated(special):
             continue
         listed += 1
         for case in _flattened(special, point):
@@ -492,4 +623,3 @@ def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: 
         generic = as_boolean(Or(*[Ne(p, v) for p, v in sorted(single.items(), key=lambda item: item[0].name)]))
         return as_expr(Piecewise((value, generic), (cases[0][0], True)))
     return as_expr(Piecewise(*[(e, condition) for e, condition, _ in cases], *branches))
-

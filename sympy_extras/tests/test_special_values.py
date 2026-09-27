@@ -2,13 +2,16 @@
 (:mod:`sympy_extras._special_values`)."""
 from __future__ import annotations
 
+import time
 from typing import Optional
 
-from sympy import Eq, Integer, Piecewise, Rational, exp, log, nan, sin, sqrt, symbols, zeta
+from sympy import DiracDelta, Eq, Integer, Integral, Piecewise, Rational, exp, log, nan, sin, sqrt, symbols, zeta
 from sympy.core.expr import Expr
 
-from sympy_extras._special_values import (Point, condition_point, equality_points, point_assumptions,
-                                          special_points, undefined_at, with_special_values)
+from sympy_extras._special_values import (Point, condition_point, defined_problem, equality_points,
+                                          point_assumptions, special_points, undefined_at, with_special_values)
+from sympy_extras._timeout import time_limit
+from sympy_extras.settings import configure, settings
 from sympy_extras._typing import as_expr
 from sympy_extras.assumptions.ask import Assumptions
 
@@ -82,3 +85,48 @@ def test_nested_cases_are_flattened_the_most_specific_first() -> None:
                                  sympy_style=True)
     assert isinstance(single, Piecewise) and single.args[1].args == (1, True)
     assert single.subs(k, 0) == 1 and single.subs(k, Rational(1, 2)) == 2 * exp(Rational(1, 2))
+
+
+def test_problems_undefined_at_the_point() -> None:
+    z, u = symbols('z u')
+    # 0**(b*z) is 0 or zoo according to the sign of b*z: no case at a = 0
+    # for a**(b*z)/z (the bug: an unevaluated Integral(0**(b*z)/z, z) case)
+    assert not defined_problem(as_expr((a**(b * z) / z).subs(a, 0)), [z])
+    assert defined_problem(as_expr((a**(b * z) / z).subs(a, 1)), [z])
+    assert not defined_problem(as_expr(log(a * z).subs(a, 0)), [z])
+    # the delta of a constant is no function (the bug: a case
+    # Integral(exp(-u*v)*DiracDelta(0), (u, 0, oo)) at a = 0)
+    assert not defined_problem(as_expr(DiracDelta(a * u).subs(a, 0)), [u])
+    assert defined_problem(as_expr(DiracDelta(a * u).subs(a, 1)), [u])
+
+
+def test_unevaluated_values_at_the_points_can_be_refused() -> None:
+    generic = as_expr((y**2 - 1) / log(y))
+
+    def unevaluated(point: Point, assumptions: Assumptions) -> Optional[Expr]:
+        return as_expr(Integral(x**y, x))
+
+    assert with_special_values(generic, [y], None, unevaluated, keep_unevaluated=False) == generic
+    assert with_special_values(generic, [y], None, unevaluated) == Piecewise((Integral(x**y, x), Eq(y, 1)),
+                                                                             (generic, True))
+
+
+def test_the_special_values_have_a_budget_of_their_own() -> None:
+    generic = as_expr((y**2 - 1) / log(y))
+
+    def endless(point: Point, assumptions: Assumptions) -> Optional[Expr]:
+        while True:
+            pass
+
+    # the bug: the problems at the points had the whole time limit of the
+    # settings (thirty seconds), more than the time limit of the census
+    # (twenty) under which the integral had been solved
+    with configure(timeout=10):
+        started = time.monotonic()
+        assert with_special_values(generic, [y], None, endless) == generic
+        assert time.monotonic() - started < 5 * settings.time_scale
+    # and at most half of what is left of an enclosing limit
+    with time_limit(4):
+        started = time.monotonic()
+        assert with_special_values(generic, [y], None, endless, budget=100) == generic
+        assert time.monotonic() - started < 3 * settings.time_scale

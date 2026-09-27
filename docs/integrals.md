@@ -202,8 +202,21 @@ two parameters nest (`Eq(a, b)`, then `Eq(a, 0) & Eq(b, 0)` first). Values
 excluded by the assumptions or the flags of the symbols, non-real values,
 and sets of special values which are not of this form (`a**2 + b**2 = 0`,
 the infinitely many zeros of `sin(a)` or the poles of `gamma`) get no
-case; the points are at most four per value, and their integrals share the
-time limit of the settings. `special_values=False` turns the cases off
+case, and neither do the points where the problem itself is not defined:
+the integrand there must be a function of the variable on a set of
+positive measure, which it is not when `nan` or `zoo` appears in it
+(`log(0)`, a division by zero), when a power `0**e` stays unevaluated (the
+sign of `e` unknown: `a**(b*x)` at `a = 0` is `0` or `zoo` according to the
+sign of `b*x`) or when a `DiracDelta` of a constant remains
+(`DiracDelta(a*u)` at `a = 0`). An unevaluated integral at a point where
+the problem is defined is kept as its case, the honest value there. The
+cases are an addition to a value already found and cost little: the
+points are at most four per value, candidates which are a parameter or
+linear in the parameters are read off without factorisation, and the
+whole work has a budget of its own, a tenth of the time limit of the
+settings and at most half of what is left of an enclosing time limit,
+so that the cases never make a solved problem miss its time limit (the
+points not reached in time get no case). `special_values=False` turns the cases off
 (the region integrals do, their inner integrals being integrated over the
 parameters). The numerical checks substitute each such point into the
 value and the integrand, since no sample of a region falls on it.
@@ -636,13 +649,19 @@ The isolated values of the parameters at which the antiderivative is
 undefined get cases as in the definite integrals, written as SymPy's
 `integrate` writes them: a single case as `Piecewise((generic, Ne(k,
 0)), (special, True))`, several ones first, each under its equations.
-`verified_antiderivative` returns the generic antiderivative alone.
+A point whose antiderivative is not found gets no case: an unevaluated
+`Integral` in a case would make the whole answer unevaluated for the
+sake of one value of the parameters, and the generic antiderivative is
+returned alone. `verified_antiderivative` returns the generic
+antiderivative alone.
 
 ```python
 >>> from sympy import exp, sin
 >>> a, b, k = symbols('a b k')
 >>> indefinite_integral(exp(k*x), x)
 Piecewise((exp(k*x)/k, Ne(k, 0)), (x, True))
+>>> indefinite_integral(a**(b*x)/x, x)
+Ei(b*x*log(a))
 >>> indefinite_integral(sin(a*x)*sin(b*x), x)
 Piecewise((0, Eq(a, 0) & Eq(b, 0)), (-(b*x - sin(b*x)*cos(b*x))/(2*b), Eq(a, -b)), ((b*x - sin(b*x)*cos(b*x))/(2*b), Eq(a, b)), ((-sin(x*(a + b))/(a + b) + sin(x*(a - b))/(a - b))/2, True))
 
