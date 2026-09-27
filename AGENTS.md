@@ -75,8 +75,8 @@ change:
   problem is defined (`(y**2 - 1)/log(y)` for the integral of `y**x`
   over `(0, 2)`, at `y = 1`) comes with `Piecewise` cases for them,
   `Eq(y, 1)` first, the value computed at the point rather than taken as
-  a limit (`sympy_extras._special_values`, used by `definite_integral`
-  and `indefinite_integral`); SymPy's own cases
+  a limit (`sympy_extras._special_values`, used by `definite_integral`,
+  `indefinite_integral` and the summation functions); SymPy's own cases
   (`x**n` at `n = -1`) are kept, and the numerical checks check them.
 - **Merge into `master`**: this is a private experimental repository, the
   development branch is fast-forwarded into `master` after every

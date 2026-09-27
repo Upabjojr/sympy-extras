@@ -35,7 +35,7 @@ in terms of rational functions of $n$ and $2^n$.
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence, Union
+from typing import Callable, Optional, Sequence, Union
 
 from sympy.concrete.products import Product
 from sympy.concrete.summations import Sum, summation as _sympy_summation
@@ -51,13 +51,16 @@ from sympy.functions.combinatorial.numbers import harmonic
 from sympy.polys.polytools import Poly
 from sympy.core.relational import Eq
 from sympy.logic.boolalg import Boolean, true
-from sympy.core.numbers import Integer
+from sympy.core.numbers import Integer, nan, zoo
 from sympy.polys.rationaltools import together
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import cancel
 from sympy.simplify.simplify import hypersimp
 
 from sympy.polys.fields import FracElement
+
+from sympy_extras._special_values import Point, with_special_values
+from sympy_extras.assumptions.ask import Assumptions
 
 from sympy_extras._typing import as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
 
@@ -418,7 +421,38 @@ def karr_sum(f: Union[Expr, int], k: Union[Symbol, Sequence[Union[Symbol, Expr, 
     upper = field.to_expr(field.sigma(g)).subs(index, b)
     lower = field.to_expr(g).subs(index, a)
     closed = as_expr(factor_terms(cancel(upper.doit() - lower.doit())))
-    return _repaired_at_poles(closed, field.to_expr(g), f_, index, a, b)
+    repaired = _repaired_at_poles(closed, field.to_expr(g), f_, index, a, b)
+    lower_, upper_ = a, b
+
+    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
+        return karr_sum(as_expr(f_.xreplace(point)), (index, lower_, upper_), extensions, auto)
+
+    return with_sum_special_values(repaired, f_, [index], [a, b], at_point)
+
+
+def with_sum_special_values(value: Expr, f: Expr, indices: Sequence[Symbol], limits: Sequence[Expr],
+                            compute: Callable[[Point, Assumptions], Optional[Expr]]) -> Expr:
+    """The value of a sum of ``f`` with a case for each isolated value of
+    the parameters of the summand (not the ``indices``, nor the symbols
+    of the ``limits``, whose small values the algorithms settle
+    themselves) at which it is undefined, the sum computed again there
+    by ``compute`` (:mod:`sympy_extras._special_values`): the sum of
+    ``y**k`` is ``n + 1`` at ``y = 1``.
+
+    >>> from sympy.abc import k, n, y
+    >>> from sympy_extras.concrete import karr_sum
+    >>> karr_sum(y**k, (k, 0, n))
+    Piecewise((n + 1, Eq(y, 1)), ((y*y**n - 1)/(y - 1), True))
+    """
+    excluded: set[Symbol] = set(indices)
+    for limit in limits:
+        excluded |= free_symbols(limit)
+    parameters = sorted(free_symbols(f) - excluded, key=lambda s: s.name)
+
+    def defined(point: Point) -> bool:
+        return not as_expr(f.xreplace(point)).has(nan, zoo)
+
+    return with_special_values(value, parameters, None, compute, defined)
 
 
 def _repaired_at_poles(closed: Expr, antidifference: Expr, f: Expr, index: Symbol,
@@ -484,9 +518,23 @@ def summation(f: Union[Expr, int], *symbols: Union[Symbol, Sequence[Union[Symbol
     harmonic(n + 1)**2 - harmonic(n + 1, 2)
     """
     result = as_expr(_sympy_summation(f, *symbols, **kwargs))
-    if not result.has(Sum):
-        return result
-    return _karr_on_sums(result, extensions, auto)
+    if result.has(Sum):
+        result = _karr_on_sums(result, extensions, auto)
+    indices: list[Symbol] = []
+    limits: list[Expr] = []
+    for spec in symbols:
+        if isinstance(spec, Symbol):
+            indices.append(spec)
+        else:
+            indices.append(as_symbol(spec[0]))
+            limits.extend(as_expr(e) for e in spec[1:])
+
+    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
+        at_symbols = [spec if isinstance(spec, Symbol) else tuple(as_expr(sympify(e)).xreplace(point) for e in spec)
+                      for spec in symbols]
+        return summation(as_expr(sympify(f)).xreplace(point), *at_symbols, extensions=extensions, auto=auto, **kwargs)
+
+    return with_sum_special_values(result, as_expr(sympify(f)), indices, limits, at_point)
 
 
 def _karr_on_sums(expr: Expr, extensions: Sequence[Expr], auto: bool) -> Expr:

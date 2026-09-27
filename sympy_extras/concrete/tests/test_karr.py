@@ -3,14 +3,14 @@ from __future__ import annotations
 from typing import Iterable, Optional
 
 from sympy import (Sum, Product, Expr, harmonic, factorial, binomial, Rational,
-    RisingFactorial, sin, sqrt, simplify, cancel)
+    RisingFactorial, sin, sqrt, simplify, cancel, Eq, symbols)
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy.abc import k, n, j, x
+from sympy.abc import a, k, n, j, x
 
 from sympy_extras.concrete import (karr_term, karr_sum, summation,
-    build_pisigma_field, PiSigmaField)
+    build_pisigma_field, PiSigmaField, definite_sum)
 
 
 def _check(f: Expr, closed: Optional[Expr], lower: int = 1, values: Iterable[int] = range(1, 7)) -> None:
@@ -110,7 +110,24 @@ def test_hypergeometric_and_rational() -> None:
     s = karr_sum(n*k + 1/(k*(k + 1)), (k, 1, n))
     _check(n*k + 1/(k*(k + 1)), s)
     s = karr_sum(x**k, (k, 0, n))
-    assert simplify(s - (x**(n + 1) - 1)/(x - 1)) == 0
+    assert s is not None
+    assert simplify(s.subs(x, 2) - (2**(n + 1) - 1)) == 0
+    # the value at x = 1, where the closed form is 0/0, as a case
+    assert s.subs(x, 1) == n + 1
+
+
+def test_isolated_values_of_the_parameters() -> None:
+    # the bug: the sum of y**k was (y*y**n - 1)/(y - 1), which is 0/0 at
+    # y = 1, where the sum is n + 1
+    y = symbols('y')
+    for s in (karr_sum(y**k, (k, 0, n)), summation(y**k, (k, 0, n)), definite_sum(y**k, (k, 0, n))):
+        assert s is not None
+        assert s.subs({y: 1, n: 5}) == 6 and s.subs({y: 2, n: 5}) == 63
+    s = summation(k*y**k, (k, 0, n))
+    assert s.subs({y: 1, n: 4}) == 10
+    # a point where the sum itself is undefined (the term 1/0 at k = 0 for
+    # a = 0) gets no case
+    assert not summation(1/((k + a)*(k + a + 1)), (k, 0, n)).has(Eq)
 
 
 def test_nested_sums_and_products() -> None:

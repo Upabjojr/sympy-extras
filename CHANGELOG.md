@@ -30,7 +30,9 @@ remove public functions. Breaking changes are listed here when they happen.
   quadrature confirms it; `log(Abs(x - c))` over `(0, 1)`, unevaluated at
   `c = 0` and `c = 1` between its cases, is `-1` there. `indefinite_integral`
   writes the cases as SymPy's `integrate` does (`Piecewise((exp(k*x)/k,
-  Ne(k, 0)), (x, True))`). The new
+  Ne(k, 0)), (x, True))`), and `karr_sum`, `summation` and
+  `definite_sum` get them for the parameters of the summand
+  (`Piecewise((n + 1, Eq(y, 1)), ((y*y**n - 1)/(y - 1), True))`). The new
   keyword `special_values=False` of `definite_integral` and
   `indefinite_integral` turns the cases off; the region integrals turn
   them off for their inner integrals. `verify_numerically` checks the

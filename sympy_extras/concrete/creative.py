@@ -109,11 +109,13 @@ from sympy.solvers.recurr import rsolve_hyper
 from sympy.solvers.solveset import linsolve
 
 from sympy_extras._numeric import reliable_value
+from sympy_extras._special_values import Point
+from sympy_extras.assumptions.ask import Assumptions
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
 from sympy_extras.settings import settings
 
-from .karr import _Builder, _atoms, _auto_extensions, karr_sum
+from .karr import _Builder, _atoms, _auto_extensions, karr_sum, with_sum_special_values
 from .pisigma import PiSigmaField
 
 __all__ = ['CreativeTelescoper', 'creative_telescoping', 'definite_sum']
@@ -829,6 +831,13 @@ def definite_sum(f: Union[Expr, int], limits: Sequence[Union[Symbol, Expr, int]]
     2**n*(harmonic(n) - Sum(1/(2**j*j), (j, 1, n)))
     >>> definite_sum(binomial(n, k)**2*harmonic(k), (k, 0, n))
     (2*harmonic(n) - harmonic(2*n))*binomial(2*n, n)
+
+    The isolated values of the other parameters at which the closed form
+    is undefined get cases of their own, the sum computed again there:
+
+    >>> y = symbols('y')
+    >>> definite_sum(y**k, (k, 0, n))
+    Piecewise((n + 1, Eq(y, 1)), ((y*y**n - 1)/(y - 1), True))
     """
     f_ = as_expr(f)
     k_, a_, b_ = limits
@@ -864,7 +873,13 @@ def definite_sum(f: Union[Expr, int], limits: Sequence[Union[Symbol, Expr, int]]
         result = total
     if result is None:
         return None
-    return as_expr((u*result).xreplace({N: n, K: k}))
+    value = as_expr((u*result).xreplace({N: n, K: k}))
+    limit_symbol = n
+
+    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
+        return definite_sum(as_expr(f_.xreplace(point)), (k, a, b), limit_symbol, order, extensions)
+
+    return with_sum_special_values(value, f_, [k, n], [a, b], at_point)
 
 
 def _definite_sum(f: Expr, k: Symbol, n: Symbol, lower: tuple[int, int], upper: tuple[int, int],
