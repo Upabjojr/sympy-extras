@@ -105,7 +105,7 @@ __all__ = ['antiderivative', 'quick_shape', 'by_parts_shape', 'discontinuities',
 #: the exact ones, which fail fast; the heuristics (the Risch–Norman
 #: method, the substitutions, SymPy's manual and Meijer routes) spend
 #: their whole budget on every piece of every mapped range
-_METHODS = ['rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'trager', 'sympy']
+_METHODS = ['rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'trager', 'binomial', 'sympy']
 
 
 #: the heuristic methods, tried late and under a larger budget

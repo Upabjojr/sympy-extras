@@ -80,6 +80,19 @@ def test_nonelementary_integrals_are_left_alone() -> None:
     assert is_nonelementary_algebraic(1 / ((x - 1) * sqrt(x**3 + 1)), x) is None
 
 
+def test_binomial_differentials_by_chebyshev() -> None:
+    from sympy import Rational, cbrt
+    # sqrt(x**7/(1 - 5*x**2)), a curve of genus one, and sqrt(x)/(1 + x**(1/3)),
+    # not a square root of a polynomial, were not decided (None): Chebyshev's
+    # criterion settles x**m*(a + b*x**n)**p, here m = 7/2, n = 2, p = -1/2
+    # ((m + 1)/n = 9/4 and 9/4 + p = 7/4 are not integers) and p = -1
+    assert is_nonelementary_algebraic(sqrt(x**7 / (1 - 5 * x**2)), x) is True
+    assert is_nonelementary_algebraic(cbrt(x) * sqrt(1 + x**2), x) is True
+    assert is_nonelementary_algebraic(x**2 * (1 - x**4)**Rational(-2, 3), x) is True
+    assert is_nonelementary_algebraic(sqrt(x) / (1 + cbrt(x)), x) is False
+    assert is_nonelementary_algebraic(sqrt(x**6 / (1 + x**2)), x) is False
+
+
 def test_integrands_outside_the_scope() -> None:
     assert trager_antiderivative(exp(x) * sqrt(x), x) is None
     # two roots: the product of the radicands (test_several_roots_are_combined_and_restored)

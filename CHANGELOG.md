@@ -10,6 +10,25 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- The binomial differentials `x**m*(a + b*x**n)**p` whose integral is
+  not elementary get a closed form: `indefinite_integral(sqrt(1 + x**3), x)`
+  is `x*hyper((-1/2, 1/3), (4/3,), -x**3)`, and
+  `sqrt(t**7/(1 - 5*t**2))`, which it returned unevaluated, is
+  `f*2*t*sqrt(1 - 5*t**2)*hyper((1/2, 9/4), (13/4,), 5*t**2)/9` with a
+  real case in `1/(5*t**2)` for `t < -1/sqrt(5)`, where `f` is real on
+  the cut of `2F1`. The new `binomial_exponents` recognises the
+  integrand up to a locally constant factor, powers of products and
+  quotients of `x` and the binomial nested in any way (the split
+  `t**(7/2)*(1 - 5*t**2)**(-1/2)` differs from `f` by a sign for
+  `t < -1/sqrt(5)`), and the antiderivative, written `f*H`, holds for
+  every branch; `chebyshev_elementary` is Chebyshev's criterion, which
+  gates the new method (tried right after Trager's algorithm, so that it
+  never preempts an elementary answer) and now settles
+  `is_nonelementary_algebraic` for these integrands both ways (it
+  answered `None` for `sqrt(t**7/(1 - 5*t**2))`, of genus one, and for
+  `sqrt(x)/(1 + x**(1/3))`). The definite integrator's antiderivative
+  route tries the method too.
+
 - Results with parameters carry their own cases for the isolated values
   of the parameters at which the generic closed form is undefined (a
   maintainer's decision: the package left them out until now). A new

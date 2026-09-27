@@ -2055,8 +2055,25 @@ def is_nonelementary_algebraic(f: ExprLike, x: Symbol) -> Optional[bool]:
     True
     >>> is_nonelementary_algebraic((2*x**2 + 1)/((x**2 + 1)*sqrt(x**4 + x**2 + 1)), x)
     True
+
+    A binomial differential ``x**m*(a + b*x**n)**p`` with rational
+    exponents, nonzero numbers ``a``, ``b`` and no parameter (up to a
+    locally constant factor, :func:`.algebraic.binomial_exponents`) is
+    settled both ways by Chebyshev's criterion
+    (:func:`.algebraic.chebyshev_elementary`), of any genus and any root:
+
+    >>> is_nonelementary_algebraic(sqrt(x**7/(1 - 5*x**2)), x)
+    True
+    >>> from sympy import cbrt
+    >>> is_nonelementary_algebraic(sqrt(x)/(1 + cbrt(x)), x)
+    False
     """
+    from .algebraic import binomial_exponents, chebyshev_elementary
     f_ = as_expr(f)
+    binomial = binomial_exponents(f_, x)
+    if binomial is not None and free_symbols(f_) <= {x}:
+        # (a parameter in a constant factor could vanish)
+        return not chebyshev_elementary(binomial)
     result = attempt(lambda: _integrate(f_, x, True), settings.timeout)
     if result is None:
         return None

@@ -632,6 +632,21 @@ splits the parameters as SymPy's wrapper does. Sixty-six integrands of
 Gradshteyn–Ryzhik's chapter 2 families, rational to Lambert W, integrate
 in twelve seconds together.
 
+A binomial differential `x**m*(a + b*x**n)**p` with rational exponents
+whose integral Chebyshev's criterion proves non-elementary (none of
+`p`, `(m + 1)/n`, `(m + 1)/n + p` an integer) gets the Gauss
+hypergeometric closed form, right after Trager's algorithm. The
+integrand may be any locally constant multiple of it, powers of products
+and quotients of `x` and the binomial nested in any way
+(`binomial_exponents`): `sqrt(x**7/(1 - 5*x**2))` is not
+`x**(7/2)*(1 - 5*x**2)**(-1/2)` for `x < -1/sqrt(5)`, but has the same
+logarithmic derivative, and the antiderivative is written `f*H` with
+`H = x*(1 - z)**(-p)*2F1(-p, (m + 1)/n; (m + 1)/n + 1; z)/(m + 1)`,
+`z = -b*x**n/a`, which holds for every branch of `f`; where `f` is real
+on `z > 1`, the cut of `2F1`, a case in `1/z` gives the real form there.
+`is_nonelementary_algebraic` decides these integrands by the same
+criterion, both ways.
+
 ```python
 >>> from sympy import symbols, sqrt, log, tan
 >>> from sympy_extras.integrals import indefinite_integral, verified_antiderivative
@@ -642,6 +657,10 @@ x*sqrt(1 - x**2)/2 + asin(x)/2
 atan(log(x))
 >>> verified_antiderivative(sqrt(x**2 + 1)/x, x)
 (sqrt(x**2 + 1) - log((2*sqrt(x**2 + 1) + 2)/x), 'radicals')
+>>> indefinite_integral(sqrt(1 + x**3), x)
+x*hyper((-1/2, 1/3), (4/3,), -x**3)
+>>> indefinite_integral(sqrt(x**7/(1 - 5*x**2)), x)
+Piecewise((2*sqrt(5)*x*sqrt(x**7/(1 - 5*x**2))*sqrt(5 - 1/x**2)*hyper((-7/4, 1/2), (-3/4,), 1/(5*x**2))/35, x < -sqrt(5)/5), (2*x*sqrt(x**7/(1 - 5*x**2))*sqrt(1 - 5*x**2)*hyper((1/2, 9/4), (13/4,), 5*x**2)/9, True))
 
 ```
 

@@ -18,7 +18,8 @@ from .asymptotic import asymptotic_integral, watson_lemma, laplace_method, stati
 from .elliptic import elliptic_integral
 from .series import series_integral
 from .tables import table_integral, lookup, TABLE, TableEntry
-from .algebraic import algebraic_integral, euler_substitutions, binomial_differential
+from .algebraic import (algebraic_integral, euler_substitutions, binomial_differential, binomial_exponents,
+                        chebyshev_elementary, binomial_hypergeometric_antiderivative)
 from .reduction import hermite_reduce, reduction_telescoper, reduction_ode, reduction_integral
 from .validated import validated_integral
 from .risch import risch_antiderivative, is_nonelementary
@@ -43,4 +44,5 @@ __all__ = ['ConditionalValue', 'GammaQuotient', 'MellinTransform', 'mellin_trans
     'sector_integral', 'indented_integral', 'frullani', 'glasser', 'transformation_integral', 'laplace_rules', 'laplace_integral',
     'laplace_of_convolution', 'chyzak', 'dfinite_ode', 'dfinite_integral', 'DFiniteTelescoper', 'asymptotic_integral', 'watson_lemma', 'laplace_method',
     'stationary_phase', 'elliptic_integral', 'series_integral', 'table_integral', 'lookup', 'TABLE', 'TableEntry', 'algebraic_integral', 'euler_substitutions',
-    'binomial_differential', 'hermite_reduce', 'reduction_telescoper', 'reduction_ode', 'reduction_integral', 'validated_integral']
+    'binomial_differential', 'binomial_exponents', 'chebyshev_elementary', 'binomial_hypergeometric_antiderivative',
+    'hermite_reduce', 'reduction_telescoper', 'reduction_ode', 'reduction_integral', 'validated_integral']

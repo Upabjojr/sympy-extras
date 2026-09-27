@@ -26,6 +26,22 @@ substitutions `x = t^k` (`k` the common denominator of `m` and `n`),
 `t^s = a + b x^n` and `t^s = a x^{-n} + b` (`s` the denominator of `p`)
 make the integrand rational in the three cases.
 
+The criterion depends only on the logarithmic derivative
+`m/x + p n b x^{n-1}/(a + b x^n)`, which an integrand such as
+`\\sqrt{x^7/(1 - 5 x^2)}` shares with `x^{7/2} (1 - 5 x^2)^{-1/2}` although the
+two differ by a factor `-1` for `x < -1/\\sqrt 5` (:func:`binomial_exponents`).
+In the non-elementary case, `H = x (1 - z)^{-p}\\, {}_2F_1(-p, q; q + 1;
+z)/(m + 1)` with `q = (m + 1)/n` and `z = -b x^n/a` solves `H' + (f'/f) H = 1`:
+with `(1 - z)^{-p} {}_2F_1(-p, q; q + 1; z) = (1 - z)\\, {}_2F_1(1, q + p + 1;
+q + 1; z)` (Euler's transformation [DLMF]_ 15.8.1) the equation becomes,
+coefficient by coefficient of the series in `z`, the contiguous relation
+`(k + q + 1)\\, c_{k+1} = (k + q + p + 1)\\, c_k` of the terms of the second
+series, so that `f H` is an antiderivative of `f` for every branch of
+`f` (:func:`binomial_hypergeometric_antiderivative`). On `0 < x` small
+with `a > 0` it is `a^p x^{m+1}\\, {}_2F_1(-p, q; q + 1; z)/(m + 1)`, the
+binomial series of `(1 - z)^p` integrated term by term (the derivation
+here, not a table).
+
 **Roots of a Möbius function**: `\\bigl((a x + b)/(c x + d)\\bigr)^{r/n}` (and
 of a linear function, `c = 0`) with `t^n = (a x + b)/(c x + d)`, so that
 `x = (d t^n - b)/(a - c t^n)`.
@@ -57,6 +73,9 @@ References
 .. [Chebyshev] P. L. Chebyshev, *Sur l'intégration des différentielles
    irrationnelles*, Journal de mathématiques pures et appliquées 18 (1853)
    87–111.
+.. [DLMF] NIST Digital Library of Mathematical Functions, chapter 15
+   (hypergeometric function), https://dlmf.nist.gov/15.8, Euler's
+   transformation 15.8.1.
 .. [Trager] B. M. Trager, *Integration of algebraic functions*, PhD
    thesis, MIT, 1984; M. Bronstein, *Symbolic Integration I*, 2nd ed.,
    Springer, 2005, chapter 2 (the general algebraic case, not implemented).
@@ -73,7 +92,13 @@ from sympy.core.numbers import Integer, Rational, nan, zoo
 from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
+from sympy.functions.elementary.complexes import Abs
+from sympy.functions.elementary.integers import ceiling
 from sympy.functions.elementary.miscellaneous import sqrt
+from sympy.functions.elementary.piecewise import Piecewise
+from sympy.functions.special.gamma_functions import gamma
+from sympy.functions.special.hyper import hyper
+from sympy.logic.boolalg import Boolean, true
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, cancel
 from sympy.series.limits import Limit
@@ -87,7 +112,8 @@ from .conditions import ConditionalValue
 from .marichev import tidy
 
 __all__ = ['algebraic_integral', 'euler_substitution', 'euler_substitutions', 'binomial_differential', 'moebius_root',
-           'rationalised_integral', 'Rationalisation']
+           'rationalised_integral', 'Rationalisation', 'BinomialDifferential', 'binomial_exponents',
+           'chebyshev_elementary', 'binomial_hypergeometric_antiderivative']
 
 
 class Rationalisation:
@@ -345,6 +371,272 @@ def _binomial_integral(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assump
         # Chebyshev: not elementary
         return None
     return _transformed(f, x, a, b, Rationalisation(t, S.Zero, as_expr(t_of_x), {}), assumptions, g)
+
+
+class BinomialDifferential:
+    """The exponents and coefficients of ``x**m*(a + b*x**n)**p``, ``n > 0``,
+    of which an integrand is a locally constant multiple (see
+    :func:`binomial_exponents`); ``a`` and ``b`` as the integrand writes
+    them (``5*x**2 - 1`` gives ``a = -1``, ``b = 5``)."""
+
+    def __init__(self, m: Rational, a: Expr, b: Expr, n: Rational, p: Rational) -> None:
+        self.m = m
+        self.a = a
+        self.b = b
+        self.n = n
+        self.p = p
+
+    def __repr__(self) -> str:
+        return "BinomialDifferential(x**(%s)*(%s + %s*x**(%s))**(%s))" % (self.m, self.a, self.b, self.n, self.p)
+
+
+#: a binomial ``a + b*x**n`` raised to ``e``, as ``(a, b, n, e)``
+_BinomialPower = tuple[Expr, Expr, Rational, Rational]
+
+
+def _binomial_powers(e: Expr, x: Symbol) -> Optional[tuple[Rational, list[_BinomialPower]]]:
+    """``(m, [(a, b, n, e), ...])`` with the logarithmic derivative of ``e``
+    that of ``x**m*prod((a + b*x**n)**e)``, ``n > 0``; ``None`` when ``e``
+    is not a product of rational powers of ``x`` and of binomials."""
+    if not e.has(x):
+        return (Rational(0), [])
+    if e == x:
+        return (Rational(1), [])
+    if isinstance(e, Pow):
+        exponent = as_expr(e.exp)
+        if not isinstance(exponent, Rational):
+            return None
+        inner = _binomial_powers(as_expr(e.base), x)
+        if inner is None:
+            return None
+        # (u**r)'/u**r = r*u'/u for the principal power, wherever u is off its cut
+        m, powers = inner
+        return (Rational(m * exponent), [(a, b, n, Rational(k * exponent)) for a, b, n, k in powers])
+    if isinstance(e, Mul):
+        total = Rational(0)
+        collected: list[_BinomialPower] = []
+        for factor in e.args:
+            found = _binomial_powers(as_expr(factor), x)
+            if found is None:
+                return None
+            total = Rational(total + found[0])
+            collected.extend(found[1])
+        return (total, collected)
+    if isinstance(e, Add):
+        # the terms c*x**k, grouped by k
+        terms: dict[Rational, Expr] = {}
+        for term in e.args:
+            coefficient, monomial = as_expr(term).as_independent(x, as_Add=False)
+            c, monomial_ = as_expr(coefficient), as_expr(monomial)
+            k: Expr
+            if monomial_ == 1:
+                k = S.Zero
+            elif monomial_ == x:
+                k = S.One
+            elif isinstance(monomial_, Pow) and monomial_.base == x and isinstance(monomial_.exp, Rational):
+                k = as_expr(monomial_.exp)
+            else:
+                return None
+            if not isinstance(k, Rational):
+                return None
+            terms[k] = as_expr(terms.get(k, S.Zero) + c)
+        present = sorted(k for k, c in terms.items() if c != 0)
+        if len(present) == 1:
+            return (present[0], [])
+        if len(present) != 2:
+            return None
+        # c1*x**k1 + c2*x**k2 = x**k1*(c1 + c2*x**(k2 - k1)), k1 < k2
+        k1, k2 = present
+        return (k1, [(terms[k1], terms[k2], Rational(k2 - k1), Rational(1))])
+    return None
+
+
+def binomial_exponents(f: ExprLike, x: Symbol) -> Optional[BinomialDifferential]:
+    """The binomial differential ``x**m*(a + b*x**n)**p`` (``m``, ``n``, ``p``
+    rational, ``a`` and ``b`` nonzero numbers) of which ``f`` is a locally
+    constant multiple, ``None`` when ``f`` is none.
+
+    ``f`` is a product of rational powers of ``x``, of the binomial and of
+    products and quotients of them, nested in any way:
+    ``sqrt(x**7/(1 - 5*x**2))`` is ``x**(7/2)*(1 - 5*x**2)**(-1/2)`` for
+    ``0 < x < 1/sqrt(5)`` and ``-x**(7/2)*(1 - 5*x**2)**(-1/2)`` (the two
+    principal powers imaginary) for ``x < -1/sqrt(5)``: the split is not
+    an identity, but ``f`` and the split form have the same logarithmic
+    derivative ``m/x + p*n*b*x**(n - 1)/(a + b*x**n)`` wherever both are
+    analytic, and their quotient is constant on every interval where
+    neither crosses a branch cut. Chebyshev's criterion
+    (:func:`chebyshev_elementary`) and an antiderivative ``f*H`` with ``H``
+    solving ``H' + (f'/f)*H = 1`` depend on nothing else.
+
+    Examples
+    ========
+
+    >>> from sympy import symbols, sqrt, cbrt
+    >>> from sympy_extras.integrals.algebraic import binomial_exponents
+    >>> x = symbols('x')
+    >>> binomial_exponents(sqrt(x**7/(1 - 5*x**2)), x)
+    BinomialDifferential(x**(7/2)*(1 + -5*x**(2))**(-1/2))
+    >>> binomial_exponents(cbrt(x**2*(x**3 + 1))/x, x)
+    BinomialDifferential(x**(-1/3)*(1 + 1*x**(3))**(1/3))
+    >>> binomial_exponents(sqrt(1 + 1/x**2), x)
+    BinomialDifferential(x**(-1)*(1 + 1*x**(2))**(1/2))
+    >>> binomial_exponents(sqrt(1 + x**2)*sqrt(1 - x**2), x) is None
+    True
+    """
+    f_ = as_expr(f)
+    found = _binomial_powers(f_, x)
+    if found is None:
+        return None
+    m, powers = found
+    # the binomials proportional to each other are one: (1 - 5*x**2) and (5*x**2 - 1)
+    merged: list[_BinomialPower] = []
+    for a, b, n, e in powers:
+        for i, (a0, b0, n0, e0) in enumerate(merged):
+            if n0 == n and as_expr(cancel(a * b0 - a0 * b)) == 0:
+                merged[i] = (a0, b0, n0, Rational(e0 + e))
+                break
+        else:
+            merged.append((a, b, n, e))
+    remaining = [power for power in merged if power[3] != 0]
+    if len(remaining) != 1:
+        return None
+    a, b, n, p = remaining[0]
+    if not (a.is_number and b.is_number) or a.is_zero is not False or b.is_zero is not False \
+            or a.is_finite is not True or b.is_finite is not True:
+        return None
+    return BinomialDifferential(m, a, b, n, p)
+
+
+def chebyshev_elementary(binomial: BinomialDifferential) -> bool:
+    """Chebyshev's criterion: the integral of ``x**m*(a + b*x**n)**p``
+    (``m``, ``n``, ``p`` rational, ``a``, ``b`` nonzero) is elementary if
+    and only if ``p``, ``(m + 1)/n`` or ``(m + 1)/n + p`` is an integer.
+
+    >>> from sympy import symbols, sqrt
+    >>> from sympy_extras.integrals.algebraic import binomial_exponents, chebyshev_elementary
+    >>> x = symbols('x')
+    >>> chebyshev_elementary(binomial_exponents(x**3*sqrt(x**2 + 1), x))
+    True
+    >>> chebyshev_elementary(binomial_exponents(sqrt(x**3 + 1), x))
+    False
+    """
+    q = Rational(binomial.m + 1) / binomial.n
+    return binomial.p.q == 1 or q.q == 1 or Rational(q + binomial.p).q == 1
+
+
+def _scaled_power(a: Expr, b: Expr, w: Expr, p: Rational) -> Expr:
+    """``(1 + b*w/a)**(-p)``, written ``|a|**p*(±(a + b*w))**(-p)`` when the
+    sign of ``a`` is known (an identity: a positive factor leaves a
+    principal power), so that it cancels against a power of ``a + b*w`` in
+    the integrand."""
+    if a.is_extended_positive is True:
+        return as_expr(a**p * (a + b * w)**(-p))
+    if a.is_extended_negative is True:
+        return as_expr((-a)**p * (-a - b * w)**(-p))
+    return as_expr((1 + b * w / a)**(-p))
+
+
+def _real_at(f: Expr, x: Symbol, point: Expr) -> bool:
+    """Whether ``f`` is exactly real at the rational ``point`` (``False``
+    when SymPy cannot tell)."""
+    value = attempt(lambda: as_expr(f.xreplace({x: point})), settings.timeout)
+    return value is not None and value.is_extended_real is True
+
+
+def binomial_hypergeometric_antiderivative(f: ExprLike, x: Symbol) -> Optional[Expr]:
+    """An antiderivative of a locally constant multiple of the binomial
+    differential ``x**m*(a + b*x**n)**p`` (:func:`binomial_exponents`) whose
+    integral Chebyshev's criterion proves non-elementary, by the Gauss
+    hypergeometric function; ``None`` otherwise.
+
+    With ``q = (m + 1)/n`` and ``z = -b*x**n/a``, ``H = x*(1 - z)**(-p)*
+    2F1(-p, q; q + 1; z)/(m + 1)`` solves ``H' + (m/x + p*n*b*x**(n - 1)/(a +
+    b*x**n))*H = 1`` (the series of ``2F1`` term by term, then analytic
+    continuation), so ``f*H`` is an antiderivative of ``f`` for every
+    branch of ``f`` off the cut ``z > 1`` of ``2F1``; where ``f`` is
+    real on ``z > 1`` the same construction on ``x**(m + n*p)*(b +
+    a*x**(-n))**p``, in ``1/z``, gives a real antiderivative, returned as
+    a case of a ``Piecewise``, shifted by the constant which joins the
+    two cases at ``z = 1`` when ``f`` is real and integrable on both
+    sides (Gauss's sum of ``2F1`` at 1).
+
+    Examples
+    ========
+
+    >>> from sympy import symbols, sqrt
+    >>> from sympy_extras.integrals.algebraic import binomial_hypergeometric_antiderivative
+    >>> x = symbols('x')
+    >>> binomial_hypergeometric_antiderivative(sqrt(x**3 + 1), x)
+    x*hyper((-1/2, 1/3), (4/3,), -x**3)
+    >>> binomial_hypergeometric_antiderivative(x**3*sqrt(x**2 + 1), x) is None
+    True
+    >>> binomial_hypergeometric_antiderivative(sqrt(x**7/(1 - 5*x**2)), x)
+    Piecewise((2*sqrt(5)*x*sqrt(x**7/(1 - 5*x**2))*sqrt(5 - 1/x**2)*hyper((-7/4, 1/2), (-3/4,), 1/(5*x**2))/35, x < -sqrt(5)/5), (2*x*sqrt(x**7/(1 - 5*x**2))*sqrt(1 - 5*x**2)*hyper((1/2, 9/4), (13/4,), 5*x**2)/9, True))
+    """
+    f_ = as_expr(f)
+    binomial = binomial_exponents(f_, x)
+    if binomial is None or chebyshev_elementary(binomial):
+        return None
+    m, a, b, n, p = binomial.m, binomial.a, binomial.b, binomial.n, binomial.p
+    q = Rational(m + 1) / n
+    ratio = as_expr(-b / a)
+    z = as_expr(ratio * x**n)
+    # x**m*(a + b*x**n)**p is x**(m + n*p)*(b + a*x**(-n))**p up to a locally
+    # constant factor: exponents m + n*p, -n, and q' = -(q + p), not an integer
+    m2, q2 = Rational(m + n * p), Rational(-(q + p))
+    inner_factor = as_expr(f_ * _scaled_power(a, b, as_expr(x**n), p))
+    outer_factor = as_expr(f_ * _scaled_power(b, a, as_expr(x**(-n)), p))
+    # m + 1 and q + 1 are not zero: q is not an integer
+    inside = as_expr(x * inner_factor / (m + 1) * hyper([-p, q], [q + 1], z))
+    outside = as_expr(x * outer_factor / (m2 + 1) * hyper([-p, q2], [q2 + 1], as_expr(1 / z)))
+    if ratio.is_extended_real is not True:
+        return inside
+    pieces: list[tuple[Expr, Boolean]] = []
+    for side in (1, -1):
+        if side == -1 and n.q != 1:
+            # a principal power of a negative x: z is not real
+            continue
+        if as_expr(ratio * side**n).is_extended_positive is not True:
+            continue
+        boundary = as_expr(Abs(ratio)**(-1 / n))
+        beyond = as_expr(side * ceiling(2 * boundary))
+        within = as_expr(side * Rational(1, int(ceiling(2 / boundary))))
+        if not _real_at(f_, x, beyond):
+            # the first form holds there too, on the cut of 2F1 (with a
+            # constant imaginary part where f is not real)
+            continue
+        piece = outside
+        if _real_at(f_, x, within) and p > -1:
+            # f real and integrable on both sides of z = 1: the case in 1/z
+            # shifted to join the first form there
+            joined = _joined(x, as_expr(side * boundary), side, inner_factor, outer_factor, m, q, m2, q2, p)
+            if joined is None:
+                continue
+            piece = as_expr(outside + joined)
+        pieces.append((piece, as_boolean(x > boundary if side == 1 else x < -boundary)))
+    if not pieces:
+        return inside
+    return as_expr(Piecewise(*pieces, (inside, true)))
+
+
+def _joined(x: Symbol, point: Expr, side: int, inner_factor: Expr, outer_factor: Expr,
+            m: Rational, q: Rational, m2: Rational, q2: Rational, p: Rational) -> Optional[Expr]:
+    """The constant which makes ``x*outer_factor*2F1(-p, q2; q2 + 1;
+    1/z)/(m2 + 1)`` beyond ``point`` (where ``z = 1``) continue ``x*
+    inner_factor*2F1(-p, q; q + 1; z)/(m + 1)`` before it, for ``p > -1``:
+    both series converge at 1 (Gauss's sum ``2F1(-p, q; q + 1; 1) =
+    Gamma(q + 1)*Gamma(p + 1)/Gamma(q + p + 1)``), the factors have finite
+    one-sided limits; ``None`` when a limit is not found."""
+    before, after = ('-', '+') if side == 1 else ('+', '-')
+    inner = attempt(lambda: limit(inner_factor, x, point, before), settings.timeout)
+    outer = attempt(lambda: limit(outer_factor, x, point, after), settings.timeout)
+    if inner is None or outer is None or not inner.is_number or not outer.is_number \
+            or inner.has(nan, zoo, Limit) or outer.has(nan, zoo, Limit) \
+            or inner.is_finite is not True or outer.is_finite is not True:
+        return None
+    first = point * inner * gamma(q + 1) * gamma(p + 1) / (gamma(q + p + 1) * (m + 1))
+    second = point * outer * gamma(q2 + 1) * gamma(p + 1) / (gamma(q2 + p + 1) * (m2 + 1))
+    return as_expr(first - second)
 
 
 # ---------------------------------------------------------------------------

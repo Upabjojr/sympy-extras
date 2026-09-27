@@ -5,7 +5,8 @@ from sympy import symbols, sqrt, cbrt, S, oo, pi, Rational, simplify, log, asinh
 
 from sympy_extras._typing import ExprLike, as_expr
 from sympy_extras.integrals.algebraic import (algebraic_integral, euler_substitutions, moebius_root,
-                                              binomial_differential, rationalised_integral)
+                                              binomial_differential, rationalised_integral, binomial_exponents,
+                                              chebyshev_elementary, binomial_hypergeometric_antiderivative)
 from sympy_extras.integrals.conditions import ConditionalValue
 from sympy_extras.integrals.definite import verify_numerically
 
@@ -54,6 +55,99 @@ def test_binomial_differential() -> None:
     assert binomial_differential(cbrt(x) / (1 + x), x) == (1, Rational(1, 3), 1, 1, 1, -1)
     assert binomial_differential(x**2 * exp(x), x) is None
     assert binomial_differential(sqrt(x**2 + x + 1), x) is None
+
+
+def test_binomial_differentials_up_to_a_constant_factor() -> None:
+    # sqrt(x**7/(1 - 5*x**2)) is x**(7/2)*(1 - 5*x**2)**(-1/2) only for
+    # 0 < x < 1/sqrt(5): binomial_differential, which needs the identity,
+    # found nothing, and neither the criterion nor the hypergeometric form
+    # was tried; the logarithmic derivative is that of the split form
+    # wherever both are analytic
+    for f, (m, n, p) in [(sqrt(x**7 / (1 - 5 * x**2)), (Rational(7, 2), 2, Rational(-1, 2))),
+                         (sqrt(x**7 / (5 * x**2 - 1)), (Rational(7, 2), 2, Rational(-1, 2))),
+                         (sqrt(x - x**3), (S.Half, 2, S.Half)),
+                         (cbrt(x**2 * (x**3 + 1)) / x, (Rational(-1, 3), 3, Rational(1, 3))),
+                         (sqrt(1 + 1 / x**2), (-1, 2, S.Half)),
+                         (sqrt(x) / (1 + cbrt(x)), (S.Half, Rational(1, 3), -1))]:
+        found = binomial_exponents(f, x)
+        assert found is not None and (found.m, found.n, found.p) == (m, n, p), f
+        split = x**found.m * (found.a + found.b * x**found.n)**found.p
+        assert simplify(f.diff(x) / f - split.diff(x) / split) == 0, f
+    assert binomial_exponents(sqrt(1 + x**2) * sqrt(1 - x**2), x) is None
+    assert binomial_exponents(sqrt(1 + x**2 + x**4), x) is None
+    assert binomial_exponents(x**2 * exp(x), x) is None
+    # the two powers of one binomial cancel: no binomial is left
+    assert binomial_exponents(sqrt(1 + x**2) / sqrt(2 + 2 * x**2), x) is None
+    # a coefficient which may vanish is no binomial for the criterion
+    assert binomial_exponents(sqrt(a + x**3), x) is None
+
+
+def test_chebyshev_criterion() -> None:
+    elementary = [x**3 * sqrt(1 + x**2), 1 / (x * sqrt(1 + x**3)), sqrt(x) / (1 + cbrt(x)),
+                  1 / (x**2 * sqrt(1 + x**2)), sqrt(x**6 / (1 + x**2))]
+    nonelementary = [sqrt(1 + x**3), cbrt(x) * sqrt(1 + x**2), sqrt(x**7 / (1 - 5 * x**2)), sqrt(x - x**3),
+                     x**2 * (1 - x**4)**Rational(-2, 3)]
+    for f in elementary + nonelementary:
+        found = binomial_exponents(f, x)
+        assert found is not None and chebyshev_elementary(found) is (f in elementary), f
+
+
+def _real_antiderivative_at(F: ExprLike, f: ExprLike, point: ExprLike) -> bool:
+    """Whether ``F' - f`` vanishes at ``point`` to 30 digits and ``F`` is
+    real there."""
+    from sympy import im
+    from sympy_extras._numeric import reliable_value
+    F_, f_ = as_expr(F), as_expr(f)
+    difference = reliable_value(as_expr(F_.diff(x) - f_), 30, {x: as_expr(point)})
+    value = reliable_value(F_, 30, {x: as_expr(point)})
+    return difference is not None and abs(difference) < 1e-25 and value is not None \
+        and abs(as_expr(im(value))) < 1e-25
+
+
+def test_hypergeometric_antiderivatives_of_binomials() -> None:
+    from sympy import hyper
+    # sqrt(x**7/(1 - 5*x**2)) is real on 0 < x < 1/sqrt(5) and on x < -1/sqrt(5):
+    # a real antiderivative on each, by 2F1 in z = 5*x**2 and in 1/z
+    f = sqrt(x**7 / (1 - 5 * x**2))
+    F = binomial_hypergeometric_antiderivative(f, x)
+    assert F is not None and F.has(hyper)
+    for point in [Rational(1, 20), Rational(1, 5), Rational(1, 3), Rational(2, 5),
+                  Rational(-1, 2), Rational(-7, 10), -1, -3]:
+        assert _real_antiderivative_at(F, f, point), point
+    # the value on (0, 1/sqrt(5)) is (2/9)*x**(9/2)*2F1(1/2, 9/4; 13/4; 5*x**2)
+    expected = Rational(2, 9) * x**Rational(9, 2) * hyper([S.Half, Rational(9, 4)], [Rational(13, 4)], 5 * x**2)
+    assert abs(as_expr((F - expected).subs(x, Rational(1, 3))).evalf(30)) < 1e-25
+    # the same where f is real on z > 1 only on the side x > 0
+    f = sqrt(x**3 / (5 * x**2 - 1))
+    F = binomial_hypergeometric_antiderivative(f, x)
+    assert F is not None
+    for point in [Rational(-1, 3), Rational(-1, 10), 1, 3]:
+        assert _real_antiderivative_at(F, f, point), point
+    for f, points in [(sqrt(1 + x**3), [Rational(-9, 10), Rational(1, 2), 2, 5]),
+                      (cbrt(x) * sqrt(1 + x**2), [Rational(1, 10), 1, 3]),
+                      (sqrt(x - x**3), [Rational(1, 2), Rational(9, 10), -2, -5]),
+                      (1 / (x**2 * sqrt(1 + x**3)), [Rational(-1, 2), Rational(1, 2), 3]),
+                      (x**2 * (1 - x**4)**Rational(-2, 3), [Rational(1, 2), Rational(-1, 2)]),
+                      ((x**2 - 4)**Rational(-5, 4), [3, -3, 10])]:
+        F = binomial_hypergeometric_antiderivative(f, x)
+        assert F is not None and F.has(hyper), f
+        for point in points:
+            assert _real_antiderivative_at(F, f, point), (f, point)
+    # (x*(1 - x**2)**2)**(1/4) is real and continuous across x = 1, where
+    # z = x**2 = 1: the first form beyond it, on the cut of 2F1, jumped there
+    # by -0.54 - 0.60*I; the case in 1/x**2 is joined by Gauss's sum
+    f = (x * (1 - x**2)**2)**Rational(1, 4)
+    F = binomial_hypergeometric_antiderivative(f, x)
+    assert F is not None
+    for point in [Rational(1, 2), Rational(99, 100), Rational(101, 100), 3]:
+        assert _real_antiderivative_at(F, f, point), point
+    from sympy_extras._numeric import reliable_value
+    below = reliable_value(F, 30, {x: 1 - Rational(1, 10**6)})
+    above = reliable_value(F, 30, {x: 1 + Rational(1, 10**6)})
+    assert below is not None and above is not None and abs(above - below) < 1e-6
+    # the elementary ones are left to the elementary methods
+    for f in [x**3 * sqrt(1 + x**2), 1 / (x * sqrt(1 + x**3)), sqrt(x) / (1 + cbrt(x))]:
+        assert binomial_hypergeometric_antiderivative(f, x) is None
 
 
 def test_the_three_cases_of_chebyshev() -> None:

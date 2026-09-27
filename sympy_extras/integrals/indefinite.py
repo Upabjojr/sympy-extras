@@ -32,7 +32,11 @@ The order of the methods:
 7. the heuristic Risch integrator (:mod:`.heurisch`, then SymPy's), on
    the integrand and then on its canonical forms (on the exponentials of
    hyperbolic functions already in 6, after the substitutions);
-8. Trager's algorithm for one square root of a polynomial (:mod:`.trager`);
+8. Trager's algorithm for one square root of a polynomial (:mod:`.trager`),
+   and right after it the Gauss hypergeometric antiderivative of a
+   binomial differential `x^m (a + b x^n)^p` whose integral Chebyshev's
+   criterion proves non-elementary (:mod:`.algebraic`): it cannot
+   preempt an elementary answer, and saves the heuristics their budget;
 9. SymPy's rule-based ``manualintegrate``, its Meijer G-function route
    and its ``integrate``.
 
@@ -410,6 +414,11 @@ def _trager(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     return attempt(lambda: trager_antiderivative(f, x), _budget())
 
 
+def _binomial(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
+    from .algebraic import binomial_hypergeometric_antiderivative
+    return attempt(lambda: binomial_hypergeometric_antiderivative(f, x), _budget())
+
+
 #: the methods tried on a rewritten form or a substituted integrand
 TYPED = ['rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'heurisch', 'trager']
 
@@ -538,7 +547,7 @@ def _sympy(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
 #: the methods in the order they are tried
 METHODS: list[tuple[str, Method]] = [
     ('rational', _rational), ('radicals', _radicals), ('exponential', _exponential), ('trigonometric', _trigonometric),
-    ('risch', _risch), ('trager', _trager),
+    ('risch', _risch), ('trager', _trager), ('binomial', _binomial),
     ('rewriting', _rewriting), ('heurisch', _heurisch), ('rewritten heurisch', _rewritten_heurisch),
     ('manual', _manual), ('meijer', _meijer),
     ('sympy', _sympy)]

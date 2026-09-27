@@ -149,3 +149,25 @@ def test_the_assumptions_reach_the_typed_methods() -> None:
     # a or c is negative and right there too
     F = indefinite_integral(sqrt(Q) / x, x)
     assert not F.has(Integral) and is_antiderivative(F, sqrt(Q) / x, x, facts) is True
+
+
+def test_nonelementary_binomial_differentials() -> None:
+    from sympy import Rational, cbrt, hyper, im
+    from sympy_extras._numeric import reliable_value
+    # sqrt(t**7/(1 - 5*t**2)) came back unevaluated: its integral is not
+    # elementary (Chebyshev), and the hypergeometric form was not tried
+    f = sqrt(x**7 / (1 - 5 * x**2))
+    F = indefinite_integral(f, x)
+    assert not F.has(Integral) and F.has(hyper)
+    # real and an antiderivative on both intervals where f is real
+    for point in [Rational(1, 5), Rational(1, 3), Rational(-1, 2), -2]:
+        difference = reliable_value(as_expr(F.diff(x) - f), 30, {x: point})
+        value = reliable_value(F, 30, {x: point})
+        assert difference is not None and abs(difference) < 1e-25, point
+        assert value is not None and abs(as_expr(im(value))) < 1e-25, point
+    found = verified_antiderivative(sqrt(1 + x**3), x)
+    assert found is not None and found[1] == 'binomial'
+    # the elementary binomial differentials keep their elementary antiderivatives
+    for g in [x**3 * sqrt(1 + x**2), 1 / (x * sqrt(1 + x**3)), sqrt(x) / (1 + cbrt(x))]:
+        G = indefinite_integral(g, x)
+        assert not G.has(Integral) and not G.has(hyper), g
