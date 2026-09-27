@@ -171,3 +171,21 @@ def test_nonelementary_binomial_differentials() -> None:
     for g in [x**3 * sqrt(1 + x**2), 1 / (x * sqrt(1 + x**3)), sqrt(x) / (1 + cbrt(x))]:
         G = indefinite_integral(g, x)
         assert not G.has(Integral) and not G.has(hyper), g
+
+
+def test_an_enclosing_limit_stops_the_integration() -> None:
+    # the bug: under an enclosing limit of half a second (the census runs
+    # every integral under one), each inner attempt() took the expiry for
+    # its method failing, and indefinite_integral returned the integral
+    # unevaluated -- a verdict of "cannot" for an integral it solves in
+    # twenty seconds -- instead of stopping; the expiry now goes to the
+    # owner of the enclosing limit
+    import time
+    from sympy_extras._timeout import attempt
+    from sympy_extras.settings import settings
+    a, b, c = symbols('a b c')
+    f = sqrt((a + b*x + c*x**2)**3) / x**2
+    facts = [4*a*c - b**2 > 0, c > 0, a > 0, b > 0]
+    started = time.monotonic()
+    assert attempt(lambda: indefinite_integral(f, x, facts), 0.5) is None
+    assert time.monotonic() - started < 3 * settings.time_scale

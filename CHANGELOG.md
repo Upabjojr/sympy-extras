@@ -1038,6 +1038,28 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- A time limit which expired during a time-limited step inside it was
+  taken by that step for its own: the internal `attempt` returned `None`
+  ("this method failed"), the caller went on without the step, and every
+  later `attempt` failed at once the same way, so that the computation
+  finished with a fallback instead of stopping.
+  `indefinite_integral(sqrt((a + b*x + c*x**2)**3)/x**2, x, facts)` under
+  an enclosing limit of 0.3–1.7 s returned the integral unevaluated (a
+  verdict of "cannot" for an integral it solves in twenty seconds), and
+  a census integral got a case valued as an unevaluated `Integral`. The
+  limits running now form a stack in `sympy_extras._timeout`; the
+  exception carries the limit which expired (the outermost one when
+  several have), each owner catches only its own expiry
+  (`TimeLimitExceeded.expired`, with the `Deadline` which `time_limit`
+  yields), `attempt(f, None)` lets an enclosing expiry through, and a
+  limit entered after an enclosing one has expired (its exception
+  swallowed on the way) raises that expiry at once. The signal handler
+  raises nothing while a limit is being entered or left (it defers
+  itself out of the machinery of the limits): an expiry raised there
+  escaped the cleanup and left the timer armed, or the limit's handler
+  installed, after the limit was gone. The residue
+  integrator's own limit around `ask` let an enclosing expiry through
+  too, instead of marking its questions slow.
 - `definite_integral(x**n, (x, 0, 1))` returned `1/(n + 1)` with no
   condition, finite for `n < -1` where the integral diverges: SymPy's
   `integrate(..., meijerg=True)` gives `gamma(n + 1)/gamma(n + 2)` without

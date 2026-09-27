@@ -133,3 +133,126 @@ def test_the_limits_are_scaled_for_a_slower_machine() -> None:
             del os.environ['SYMPY_EXTRAS_TIME_SCALE']
         else:
             os.environ['SYMPY_EXTRAS_TIME_SCALE'] = previous
+
+
+def _spin(seconds: float) -> int:
+    """Busy for ``seconds`` (a computation which does not sleep)."""
+    import time
+    started = time.monotonic()
+    while time.monotonic() - started < seconds:
+        pass
+    return 1
+
+
+def test_an_enclosing_limit_goes_to_its_owner() -> None:
+    # the bug: an inner attempt() cut short by the enclosing limit took the
+    # expiry for its own and returned None, and the caller went on without
+    # the step (a census integral got a case valued as an unevaluated
+    # Integral); the expiry goes to the owner of the enclosing limit
+    import time
+    went_on: list[bool] = []
+
+    def outer() -> int:
+        inner = attempt(lambda: _spin(5), 3)
+        went_on.append(inner is None)
+        return 1
+
+    started = time.monotonic()
+    assert attempt(outer, 0.3) is None
+    assert went_on == []
+    assert time.monotonic() - started < 2
+
+
+def test_an_inner_limit_alone_gives_none() -> None:
+    # an inner limit which expires before the enclosing one is the inner
+    # step failing: None there, and the enclosing computation goes on
+    assert attempt(lambda: (attempt(lambda: _spin(5), 0.1), 'went on'), 5) == (None, 'went on')
+
+
+def test_nested_limits_each_take_their_own_expiry() -> None:
+    # three limits: the middle one expires during the innermost, so the
+    # innermost lets it through, the middle one gives None and the
+    # outermost goes on
+    went_on: list[str] = []
+
+    def middle() -> int:
+        attempt(lambda: _spin(5), 4)
+        went_on.append('middle')
+        return 1
+
+    def outer() -> str:
+        found = attempt(middle, 0.3)
+        went_on.append('outer')
+        return 'outer' if found is None else 'wrong'
+
+    assert attempt(outer, 10) == 'outer'
+    assert went_on == ['outer']
+
+
+def test_an_attempt_without_a_limit_lets_the_enclosing_one_through() -> None:
+    # the bug: attempt(f, None), which sets no limit of its own, still took
+    # the expiry of the enclosing limit for f failing
+    went_on: list[bool] = []
+
+    def outer() -> int:
+        went_on.append(attempt(lambda: _spin(5), None) is None)
+        return 1
+
+    assert attempt(outer, 0.3) is None
+    assert went_on == []
+
+
+def test_an_expiry_swallowed_on_the_way_is_raised_again() -> None:
+    # the bug: code which swallows the expiry of the enclosing limit (as
+    # SymPy's catch-all handlers would) went on with every later attempt()
+    # failing at once, each taking the re-armed expiry for its own; a limit
+    # entered after its enclosing one has expired raises that expiry
+    from sympy_extras._timeout import TimeLimitExceeded
+    went_on: list[bool] = []
+
+    def swallowing() -> int:
+        try:
+            _spin(5)
+        except TimeLimitExceeded:
+            pass
+        went_on.append(attempt(lambda: 1, 5) is None)
+        return 1
+
+    assert attempt(swallowing, 0.3) is None
+    assert went_on == []
+
+
+def test_the_limit_of_the_owner_is_restored() -> None:
+    # after an inner limit, the enclosing one keeps its own deadline
+    import time
+    from sympy_extras._timeout import remaining_time, time_limit
+    with time_limit(10):
+        assert attempt(lambda: _spin(5), 0.1) is None
+        left = remaining_time()
+        assert left is not None and 9 < left * 1 <= 10
+    assert remaining_time() is None
+    started = time.monotonic()
+    assert attempt(lambda: _spin(5), 0.2) is None
+    assert time.monotonic() - started < 2
+
+
+def test_limits_entered_as_the_enclosing_one_expires_leave_nothing_behind() -> None:
+    # the bug: an expiry raised while a limit was being entered or left
+    # (between pushing it on the stack of limits and arming the timer)
+    # escaped its cleanup: the limit stayed on the stack, the timer was
+    # armed again after the handler had been restored, and SIGALRM killed
+    # the process (the documentation run died with exit code 142); before
+    # the stack, the same race let the expiry out of the owner's attempt()
+    import signal
+    from sympy_extras import _timeout
+
+    def churn() -> int:
+        while True:
+            attempt(lambda: attempt(lambda: 1, 5), 5)
+
+    handler = signal.getsignal(signal.SIGALRM)
+    for _ in range(100):
+        assert attempt(churn, 0.01) is None
+        assert signal.getitimer(signal.ITIMER_REAL)[0] == 0
+        assert signal.getsignal(signal.SIGALRM) == handler
+        assert _timeout._running == []

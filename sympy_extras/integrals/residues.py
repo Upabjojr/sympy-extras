@@ -115,7 +115,7 @@ from sympy.series.limits import limit
 from sympy.simplify.simplify import simplify
 
 from sympy_extras._numeric import reliable_value
-from sympy_extras._timeout import TimeLimitExceeded, attempt, time_limit
+from sympy_extras._timeout import Deadline, TimeLimitExceeded, attempt, time_limit
 from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
 from sympy_extras.assumptions.facts import Facts, element
@@ -256,10 +256,15 @@ class _Locator:
                 return verdict
         if self._slow:
             return None
+        deadline: Optional[Deadline] = None
         try:
-            with time_limit(settings.timeout):
+            with time_limit(settings.timeout) as deadline:
                 verdict = ask(q, self.assumptions)
-        except TimeLimitExceeded:
+        except TimeLimitExceeded as expiry:
+            # an enclosing limit which expires is not this question being
+            # slow: it goes on to the code which set it
+            if not expiry.expired(deadline):
+                raise
             self._slow = True
             return None
         if verdict is not None:

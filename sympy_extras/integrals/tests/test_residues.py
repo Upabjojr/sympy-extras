@@ -223,3 +223,31 @@ def test_numeric_questions_about_the_poles_are_decided_by_evaluation() -> None:
     found = real_line_integral(1 / (x**4 + x**2 + x + 1), x)
     assert found is not None and found.value.has(ComplexRootOf)
     assert abs(complex(found.value.evalf(20)) - mpmath.quad(lambda u: 1 / (u**4 + u**2 + u + 1), [-mpmath.inf, mpmath.inf])) < 1e-10
+
+
+def test_an_enclosing_limit_is_not_a_slow_question() -> None:
+    # the bug: the residue integrator asks the assumptions under a limit of
+    # its own and took the expiry of an enclosing limit for its question
+    # being slow, marking every later question slow and going on without
+    # the answer; the expiry goes to the owner of the enclosing limit
+    import time
+    from sympy_extras._timeout import attempt
+    from sympy.logic.boolalg import Boolean
+    from sympy_extras.assumptions.ask import Assumptions, ask
+    from sympy_extras.integrals import residues
+
+    def slow(q: Boolean, assumptions: Assumptions) -> Optional[bool]:
+        started = time.monotonic()
+        while time.monotonic() - started < 5:
+            pass
+        return None
+
+    locator = residues._Locator([k > 0])
+    assert vars(residues)['ask'] is ask
+    vars(residues)['ask'] = slow
+    try:
+        with configure(numerical_checks=False):
+            assert attempt(lambda: (locator.decide(k + c > 0), 'went on'), 0.3) is None
+    finally:
+        vars(residues)['ask'] = ask
+    assert not locator._slow
