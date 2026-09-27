@@ -10,6 +10,35 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- Results with parameters carry their own cases for the isolated values
+  of the parameters at which the generic closed form is undefined (a
+  maintainer's decision: the package left them out until now). A new
+  internal module, `sympy_extras._special_values`, finds the candidates
+  (zeros of denominators, of the arguments of logarithms, `s = 1` for
+  `zeta(s)`) described by equations `Eq(p, v)` in one parameter each,
+  keeps those at which the branch taken is undefined (or is the
+  unevaluated fallback between cases, when the problem there has a
+  finite value: `1/x` over `(p, q)` gets no case `p = 0`, on the
+  boundary of the divergence), solves the problem again at each
+  point and flattens the nested cases of several parameters, the most
+  specific first. `definite_integral` returns
+  `Piecewise((2, Eq(y, 1)), ((y**2 - 1)/log(y), True))` for `y**x` over
+  `(0, 2)` and `Piecewise((1, Eq(k, 0)), ((exp(k) - 1)/k, True))` for
+  `exp(k*x)` over `(0, 1)`; the value at the point is computed, not taken
+  as a limit (`k/(k**2 + x**2)` over `(0, 1)` is `0` at `k = 0`, between
+  the limits `pi/2` and `-pi/2`), with the limit as a fallback when the
+  quadrature confirms it; `log(Abs(x - c))` over `(0, 1)`, unevaluated at
+  `c = 0` and `c = 1` between its cases, is `-1` there. `indefinite_integral`
+  writes the cases as SymPy's `integrate` does (`Piecewise((exp(k*x)/k,
+  Ne(k, 0)), (x, True))`). The new
+  keyword `special_values=False` of `definite_integral` and
+  `indefinite_integral` turns the cases off; the region integrals turn
+  them off for their inner integrals. `verify_numerically` checks the
+  branches of isolated values (`Eq(y, 1)`) by substituting the point into
+  the value and the integrand, which the samples of the regions of the
+  branches never reach (a wrong value of `sin(a*x)*sin(b*x)` at `a = b =
+  0` passed the check before).
+
 - Linear systems `Y' = A Y + b` with rational function coefficients
   (sympy-extras#24), in `sympy_extras.solvers.linear_systems`.
   `dsolve_system(A, x, b=None)` returns a `LinearSystemSolution`: a
@@ -951,6 +980,15 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `definite_integral(x**n, (x, 0, 1))` returned `1/(n + 1)` with no
+  condition, finite for `n < -1` where the integral diverges: SymPy's
+  `integrate(..., meijerg=True)` gives `gamma(n + 1)/gamma(n + 2)` without
+  its condition, which the numerical check confirmed at positive samples
+  only, and an unconditional answer of SymPy replaced the conditional
+  value of the package's methods (`n > -1`). Such an answer is now also
+  checked at samples where that condition fails, and dropped when the
+  quadrature disagrees there or has no finite value; the value is
+  `Piecewise((1/(n + 1), n > -1), (Integral(x**n, (x, 0, 1)), True))`.
 - `definite_integral(y**x, (x, 0, 2))` returned `Piecewise((2*log(y), y
   <= 0), ((y**2 - 1)/log(y), True))`, wrong for every `y <= 0` (at `y =
   -2` it gave `1.386 + 6.283*I` for the principal value `0.2009 -

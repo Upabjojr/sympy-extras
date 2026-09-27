@@ -621,7 +621,8 @@ def moments(expansion: Expansion, rest: Expr, x: Symbol, a: Expr, b: Expr,
     global _nesting
     _nesting += 1
     try:
-        value = attempt(lambda: definite_integral(expansion.basis * rest, (x, a, b), facts), settings.timeout)
+        value = attempt(lambda: definite_integral(expansion.basis * rest, (x, a, b), facts, special_values=False),
+                        settings.timeout)
     finally:
         _nesting -= 1
     if value is None or value.has(Integral, Piecewise, nan, zoo):
@@ -1090,7 +1091,7 @@ def _termwise(expansion: Expansion, rest: Expr, x: Symbol, a: Expr, b: Expr,
         return None
     mean: Optional[Expr] = S.Zero
     if expansion.constant != 0:
-        mean = attempt(lambda: definite_integral(rest, (x, a, b), assumptions), settings.timeout)
+        mean = attempt(lambda: definite_integral(rest, (x, a, b), assumptions, special_values=False), settings.timeout)
         if mean is None or mean.has(Integral, Piecewise, nan, zoo):
             return None
     moment = moments(expansion, rest, x, a, b, assumptions)

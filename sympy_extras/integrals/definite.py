@@ -130,6 +130,8 @@ from sympy.simplify.simplify import nsimplify
 from sympy.utilities.lambdify import lambdify
 
 from sympy_extras._numeric import reliable_value
+from sympy_extras._special_values import (Point, condition_point, equality_points, point_assumptions,
+                                           with_special_values)
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
@@ -165,7 +167,7 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
                       conds: str = 'piecewise', recognize: bool = False,
                       principal_value: bool = False, finite_part: bool = False,
                       numeric: bool = False, digits: int = 15, regularize: bool = False,
-                      summability: Optional[str] = None) -> Expr:
+                      summability: Optional[str] = None, special_values: bool = True) -> Expr:
     """``Integral(f, (x, a, b))`` under assumptions on the parameters.
 
     Parameters
@@ -211,11 +213,21 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
         the sense of that summability method (:mod:`.summability`),
         ``Integral(sin(x), (x, 0, oo))`` being 1 in each; a convergent
         integral keeps its value.
+    special_values : bool
+        Whether the isolated values of the parameters at which the value
+        found is undefined (``0/0``, a division by zero, ``log(0)``) get
+        cases of their own, the integral computed again at each
+        (:mod:`sympy_extras._special_values`): ``y**x`` over ``(0, 2)``
+        is ``(y**2 - 1)/log(y)`` except at ``y = 1``, where it is ``2``.
+        On by default; the methods which integrate over the parameters
+        afterwards (the regions) turn it off, the values on a set of
+        measure zero being of no use there.
 
     Returns
     =======
 
-    The value, a ``Piecewise`` on the conditions, ``oo`` or ``-oo`` when
+    The value, a ``Piecewise`` on the conditions (the isolated special
+    values of the parameters first, as ``Eq(p, v)``), ``oo`` or ``-oo`` when
     the integral diverges to a signed infinity (an infinite one-sided
     limit of an antiderivative at an endpoint or a singularity, as for
     ``1/x`` over ``(0, 1)``; an oscillatory divergence, ``cos(x)`` over
@@ -266,9 +278,45 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
     # is kept unless it is found to change the value (case by case for
     # the cases of the parameters)
     found = found.mapped(lambda value, condition: checked_tidy(value, assumptions, condition))
-    if conds == 'none':
-        return found.value
-    return found.as_piecewise(Integral(f_, (x, a, b)))
+    result = found.value if conds == 'none' else found.as_piecewise(Integral(f_, (x, a, b)))
+    if not special_values:
+        return result
+    parameters = sorted_symbols((free_symbols(f_) | free_symbols(a) | free_symbols(b)) - {x})
+
+    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
+        g, lower, upper = (as_expr(e.xreplace(point)) for e in (f_, a, b))
+        value = definite_integral(g, (x, lower, upper), at, conds, recognize, principal_value, finite_part,
+                                  numeric, digits, regularize, summability)
+        if not value.has(Integral):
+            return value
+        # the limit of the generic value, when the integral at the point
+        # is not found: accepted when the quadrature confirms it (the
+        # value may differ from the limit)
+        return _checked_limit(result, point, g, x, lower, upper, at) or value
+
+    def defined(point: Point) -> bool:
+        return not any(as_expr(e.xreplace(point)).has(nan, zoo) for e in (f_, a, b))
+
+    return with_special_values(result, parameters, assumptions, at_point, defined)
+
+
+def _checked_limit(value: Expr, point: Point, g: Expr, x: Symbol, a: Expr, b: Expr,
+                   assumptions: Assumptions) -> Optional[Expr]:
+    """The limit of the branch of ``value`` taken at the point (one
+    parameter), when it is finite and agrees with the quadrature of
+    ``Integral(g, (x, a, b))``, ``g`` the integrand at the point;
+    ``None`` otherwise."""
+    if len(point) != 1 or not settings.numerical_checks:
+        return None
+    ((p, v),) = point.items()
+    for e, condition in (_pairs(value) if isinstance(value, Piecewise) else [(value, true)]):
+        if e.has(Integral) or as_boolean(condition.xreplace(point)) is false:
+            continue
+        found = attempt(lambda: as_expr(limit(e, p, v, '+-')), None if settings.timeout is None else settings.timeout / 4)
+        if found is None or not found.is_finite or found.has(Limit):
+            return None
+        return found if verify_numerically(found, g, x, a, b, assumptions) is True else None
+    return None
 
 
 def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
@@ -302,6 +350,16 @@ def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
     if parametric:
         return found
     fallback = integrator._sympy(f, x, a, b)
+    if fallback is not None and found is not None and fallback.condition is true and settings.numerical_checks \
+            and not _holds_outside(fallback.value, found.condition, f, x, a, b, assumptions):
+        # an unconditional answer of SymPy against a condition of the
+        # methods of the package: checked where that condition fails, the
+        # samples of the other check falling where both hold (the bug:
+        # integrate(x**n, (x, 0, 1), meijerg=True) is gamma(n + 1)/gamma(n + 2)
+        # with no condition, which the samples n > 0 confirmed, and it
+        # replaced 1/(n + 1) for n > -1: a finite value where the integral
+        # diverges)
+        return found
     if fallback is not None and (found is None or fallback.condition is true):
         return fallback
     return found
@@ -630,6 +688,23 @@ def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
                 return False
             if agrees is True:
                 break
+    # the isolated values of the parameters, Eq(y, 1): no sample of a
+    # region falls on them, and the value there is checked with the point
+    # substituted into the value and the integral (the cases of isolated
+    # values the package adds, and those of SymPy's answers)
+    for point in equality_points(value, parameters)[:_BRANCHES_CHECKED]:
+        at = point_assumptions(point, assumptions)
+        if at is None or as_expr(f.xreplace(point)).has(nan, zoo):
+            continue
+        try:
+            special = as_expr(value.xreplace(point))
+        except TypeError:
+            continue
+        agrees_there = verify_numerically(special, as_expr(f.xreplace(point)), x, as_expr(a.xreplace(point)),
+                                          as_expr(b.xreplace(point)), at, 1,
+                                          [as_expr(p.xreplace(point)) for p in inside])
+        if agrees_there is False:
+            return False
     return verdict
 
 
@@ -677,10 +752,19 @@ def _branch_regions(value: Expr, parameters: Sequence[Symbol]) -> list[Boolean]:
     earlier: list[Boolean] = []
     for _, condition in _pairs(folded)[:_BRANCHES_CHECKED]:
         region = as_boolean(And(condition, *[Not(c) for c in earlier]))
-        if free_symbols(region) & set(parameters):
+        # (a branch at isolated values, Eq(y, 1), has no region to sample:
+        # its points are checked apart)
+        if free_symbols(region) & set(parameters) and not _isolated(condition):
             regions.append(region)
         earlier.append(condition)
     return regions
+
+
+def _isolated(condition: Boolean) -> bool:
+    """Whether a condition holds at isolated points only: equations
+    ``Eq(p, v)``, conjunctions and disjunctions of them."""
+    disjuncts = condition.args if isinstance(condition, Or) else (condition,)
+    return all(bool(condition_point(as_boolean(d))) for d in disjuncts)
 
 
 # ---------------------------------------------------------------------------
@@ -2397,6 +2481,48 @@ def _holds_nowhere(condition: Boolean, symbols: Sequence[Symbol], assumptions: A
             return False
         tested += 1
     return tested >= _NOWHERE_POINTS
+
+
+#: the samples outside a condition at which a value is checked
+_OUTSIDE_SAMPLES = 2
+
+
+def _holds_outside(value: Expr, condition: Boolean, f: Expr, x: Symbol, a: Expr, b: Expr,
+                   assumptions: Assumptions) -> bool:
+    """Whether ``value`` agrees with the quadrature of ``Integral(f, (x,
+    a, b))`` at random real samples of the parameters satisfying the
+    assumptions where ``condition`` is false, at ``_OUTSIDE_SAMPLES`` of
+    them: ``False`` at a sample where they disagree, or where the
+    quadrature has no finite value (the integral diverges there, or
+    cannot be checked); ``True`` when they agree, or when no sample
+    falls outside the condition. The samples are drawn at random and
+    the condition evaluated at each, since the negation of a condition
+    on arguments, ``Abs(arg(-k)) < pi/2``, is beyond the solvers which
+    find instances."""
+    parameters = sorted_symbols((free_symbols(f) | free_symbols(a) | free_symbols(b)) - {x})
+    if not parameters:
+        return True
+    plain = plain_symbols(parameters)
+    facts = with_symbol_facts(assumptions, parameters, plain)
+    rng = random.Random(str((f, condition)))
+    checked = 0
+    for _ in range(4 * _NOWHERE_POINTS):
+        values = {s: Rational(rng.choice((-1, 1)) * rng.randint(1, 19), rng.randint(1, 4)) for s in parameters}
+        at = {plain.get(s, s): v for s, v in values.items()}
+        try:
+            if not all(as_boolean(fact.xreplace(at)) is true for fact in facts) \
+                    or as_boolean(condition.xreplace(values)) is not false:
+                continue
+        except TypeError:
+            continue
+        expected = _quadrature(as_expr(f.xreplace(values)), x, as_expr(a.xreplace(values)),
+                               as_expr(b.xreplace(values)))
+        if expected is None or _agrees(value, expected, values) is False:
+            return False
+        checked += 1
+        if checked >= _OUTSIDE_SAMPLES:
+            break
+    return True
 
 
 def _pairs(node: Piecewise) -> list[tuple[Expr, Boolean]]:

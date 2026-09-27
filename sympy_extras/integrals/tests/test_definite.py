@@ -957,7 +957,8 @@ def test_exponentials_of_a_parameter_base_on_every_branch() -> None:
         if lower >= 0 and not value.has(Integral):
             # 0**x vanishes almost everywhere on the range
             assert value.xreplace({y: S.Zero}) == 0, f
-    assert definite_integral(y**x, (x, 0, 2)) == (y**2 - 1) / log(y)
+    # (with the case y = 1 of its own, where the generic value is 0/0)
+    assert definite_integral(y**x, (x, 0, 2)) == Piecewise((2, Eq(y, 1)), ((y**2 - 1) / log(y), True))
 
 
 def test_every_branch_of_a_piecewise_value_is_verified() -> None:

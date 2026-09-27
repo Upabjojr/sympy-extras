@@ -506,7 +506,8 @@ def _initial_values(F: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol, t0: Expr, o
     values: list[Expr] = []
     for j in range(order):
         integrand = as_expr(diff(F, t, j).subs(t, t0))
-        value = attempt(lambda: definite_integral(integrand, (x, a, b), assumptions), settings.timeout)
+        value = attempt(lambda: definite_integral(integrand, (x, a, b), assumptions, special_values=False),
+                        settings.timeout)
         if value is None or value.has(Integral, Piecewise, nan, zoo, oo, -oo):
             return None
         values.append(value)

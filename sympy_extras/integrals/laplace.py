@@ -104,7 +104,8 @@ def transform(f: Expr, t: Symbol, u: Symbol, assumptions: Assumptions = None) ->
     (which does not use the rules of this module again), ``None`` when
     it is not found or comes with an undecided condition."""
     from .definite import definite_integral
-    value = attempt(lambda: definite_integral(f * exp(-u * t), (t, S.Zero, oo), assumptions), settings.timeout)
+    value = attempt(lambda: definite_integral(f * exp(-u * t), (t, S.Zero, oo), assumptions, special_values=False),
+                    settings.timeout)
     if value is None or value.has(Integral, Piecewise):
         return None
     return value

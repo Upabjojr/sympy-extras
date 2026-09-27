@@ -82,6 +82,7 @@ from sympy.simplify.simplify import simplify
 from sympy.simplify.simplify import logcombine
 
 from sympy_extras._numeric import reliable_value
+from sympy_extras._special_values import Point, with_special_values
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions
@@ -577,7 +578,8 @@ def verified_antiderivative(f: ExprLike, x: Symbol, assumptions: Assumptions = N
     return None
 
 
-def indefinite_integral(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -> Expr:
+def indefinite_integral(f: ExprLike, x: Symbol, assumptions: Assumptions = None,
+                        special_values: bool = True) -> Expr:
     """``Integral(f, x)`` by the methods of the module documentation, each
     result checked before it is returned; the unevaluated ``Integral``
     when none gives an antiderivative which checks.
@@ -591,6 +593,14 @@ def indefinite_integral(f: ExprLike, x: Symbol, assumptions: Assumptions = None)
         Assumptions on the parameters: the typed methods which decide
         signs take them (the exponential and radical tables), and the
         numerical part of the check samples its points under them.
+    special_values : bool
+        Whether the isolated values of the parameters at which the
+        antiderivative found is undefined get cases of their own, the
+        integrand integrated again at each
+        (:mod:`sympy_extras._special_values`), in the form of SymPy's
+        ``integrate``: ``exp(k*x)`` gives ``Piecewise((exp(k*x)/k, Ne(k,
+        0)), (x, True))``; a value with several cases lists them first,
+        each under its equations.
 
     Examples
     ========
@@ -602,9 +612,30 @@ def indefinite_integral(f: ExprLike, x: Symbol, assumptions: Assumptions = None)
     atan(log(x))
     >>> indefinite_integral(tan(x)**3, x)
     log(cos(x)) + tan(x)**2/2
+    >>> from sympy import exp
+    >>> k = symbols('k')
+    >>> indefinite_integral(x*exp(k*x), x)
+    Piecewise((x*exp(k*x)/k - exp(k*x)/k**2, Ne(k, 0)), (x**2/2, True))
     """
-    f_ = as_expr(f)
-    found = verified_antiderivative(f_, x, assumptions)
+    return _indefinite(as_expr(f), x, assumptions, special_values, True)
+
+
+def _indefinite(f: Expr, x: Symbol, assumptions: Assumptions, special_values: bool, sympy_style: bool) -> Expr:
+    """:func:`indefinite_integral`; the cases of the special values in
+    SymPy's form with ``sympy_style``, and each under its equations
+    otherwise (inside the case of another value, where the cases are
+    flattened into the outer ``Piecewise``)."""
+    found = verified_antiderivative(f, x, assumptions)
     if found is None:
-        return as_expr(Integral(f_, x))
-    return found[0]
+        return as_expr(Integral(f, x))
+    if not special_values:
+        return found[0]
+    parameters = sorted_symbols(free_symbols(f) - {x})
+
+    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
+        return _indefinite(as_expr(f.xreplace(point)), x, at, True, False)
+
+    def defined(point: Point) -> bool:
+        return not as_expr(f.xreplace(point)).has(nan, zoo)
+
+    return with_special_values(found[0], parameters, assumptions, at_point, defined, sympy_style=sympy_style)

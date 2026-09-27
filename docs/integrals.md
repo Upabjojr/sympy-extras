@@ -184,6 +184,41 @@ Piecewise((-log(-c) + log(1 - c), (c > 1) | (c < 0)), (Integral(1/(-c + x), (x, 
 
 ```
 
+The isolated values of the parameters at which the value found is
+undefined get cases of their own, before the generic one
+(`sympy_extras._special_values`): the zeros of the denominators, of the
+arguments of the logarithms and of `s - 1` in `zeta(s)`, when they are
+described by equations `Eq(p, v)` in one parameter each (a factor linear
+in a parameter, `a - b` or `a*b - 1`, the real roots of a polynomial in
+one parameter, the finite real solutions of a transcendental factor, `y =
+1` for `log(y)`), and the branch taken there is undefined (`0/0`, a
+division by zero, `log(0)`) or is the unevaluated integral between the
+cases of a singularity. The integral is computed again at each such point,
+with the point substituted: the value there is not always the limit of
+the generic formula (`k/(k**2 + x**2)` over `(0, 1)` is `0` at `k = 0`,
+where the limits are `pi/2` and `-pi/2`). The problem at the point has
+fewer parameters and gets its own special values, so that the cases of
+two parameters nest (`Eq(a, b)`, then `Eq(a, 0) & Eq(b, 0)` first). Values
+excluded by the assumptions or the flags of the symbols, non-real values,
+and sets of special values which are not of this form (`a**2 + b**2 = 0`,
+the infinitely many zeros of `sin(a)` or the poles of `gamma`) get no
+case; the points are at most four per value, and their integrals share the
+time limit of the settings. `special_values=False` turns the cases off
+(the region integrals do, their inner integrals being integrated over the
+parameters). The numerical checks substitute each such point into the
+value and the integrand, since no sample of a region falls on it.
+
+```python
+>>> y, k = symbols('y k')
+>>> definite_integral(y**x, (x, 0, 2))
+Piecewise((2, Eq(y, 1)), ((y**2 - 1)/log(y), True))
+>>> definite_integral(exp(k*x), (x, 0, 1))
+Piecewise((1, Eq(k, 0)), ((exp(k) - 1)/k, True))
+>>> definite_integral(exp(k*x), (x, 0, 1), k > 0)
+(exp(k) - 1)/k
+
+```
+
 ## The other methods
 
 The driver tries, after the Mellin method and the residues:
@@ -597,6 +632,22 @@ atan(log(x))
 
 ```
 
+The isolated values of the parameters at which the antiderivative is
+undefined get cases as in the definite integrals, written as SymPy's
+`integrate` writes them: a single case as `Piecewise((generic, Ne(k,
+0)), (special, True))`, several ones first, each under its equations.
+`verified_antiderivative` returns the generic antiderivative alone.
+
+```python
+>>> from sympy import exp, sin
+>>> a, b, k = symbols('a b k')
+>>> indefinite_integral(exp(k*x), x)
+Piecewise((exp(k*x)/k, Ne(k, 0)), (x, True))
+>>> indefinite_integral(sin(a*x)*sin(b*x), x)
+Piecewise((0, Eq(a, 0) & Eq(b, 0)), (-(b*x - sin(b*x)*cos(b*x))/(2*b), Eq(a, -b)), ((b*x - sin(b*x)*cos(b*x))/(2*b), Eq(a, b)), ((-sin(x*(a + b))/(a + b) + sin(x*(a - b))/(a - b))/2, True))
+
+```
+
 ## Trager's algorithm (`sympy_extras.integrals.trager`)
 
 `trager_antiderivative(f, x)` integrates a function rational in `x` and
@@ -892,6 +943,13 @@ Tracked in issue #53 of the repository, with the alternatives worth adding.
   differing by integers) are computed as limits of the general case, which
   SymPy's `limit` does not always manage.
 - Principal values of divergent integrals.
+- Special values of the parameters which are not isolated values
+  `Eq(p, v)` of the form above: a curve such as `a**2 + b**2 = 0` given
+  by no equation linear in one parameter, the infinitely many poles of
+  `gamma`, `tan` or of the parameters of a hypergeometric function, the
+  complex zeros of a denominator; and values at which the generic formula
+  is defined but wrong without a condition saying so (a coefficient of
+  the integrand vanishing there).
 - Complex parameters: the conditions are written for real parameters
   (an inequality on a parameter states that it is real); a parameter which
   may be complex gets a condition on its argument, `Abs(arg(a)) < pi/2`.

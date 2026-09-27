@@ -681,11 +681,11 @@ def _iterated(integrand: Expr, variables: Sequence[Symbol], stack: _Stack,
             return S.Zero                                   # an empty cell under its parameter condition
         piece = _split_roots(value, inner)
         try:
-            result = definite_integral(piece, (x, lower, upper), outer)
+            result = definite_integral(piece, (x, lower, upper), outer, special_values=False)
             if piece != value and (result.has(I, Integral, IntegralByRanges) or _unwieldy(result)):
                 # the split roots sqrt(-a - x)*sqrt(-a + x) under a < 0 gave
                 # a complex form of pi*a**2/2 where the product sqrt((a - x)*(a + x)) gives it plainly
-                unsplit = definite_integral(value, (x, lower, upper), outer)
+                unsplit = definite_integral(value, (x, lower, upper), outer, special_values=False)
                 if not unsplit.has(Integral, IntegralByRanges) and (result.has(Integral, IntegralByRanges)
                                                                        or unsplit.count_ops() < result.count_ops()):
                     result = unsplit
@@ -696,7 +696,7 @@ def _iterated(integrand: Expr, variables: Sequence[Symbol], stack: _Stack,
             u = Dummy('u')
             rescaled = _split_roots(as_expr(value.subs(x, upper * u) * upper),
                                     outer + [as_boolean(upper > 0), as_boolean(u > -1), as_boolean(u < 1)])
-            result = definite_integral(rescaled, (u, S.NegativeOne, S.One), outer)
+            result = definite_integral(rescaled, (u, S.NegativeOne, S.One), outer, special_values=False)
         if result.has(Integral, IntegralByRanges):
             return None
         value = result
@@ -908,7 +908,7 @@ def _radial(f: Expr, formula: Boolean, names: Sequence[Symbol], assumptions: lis
     refined = attempt(lambda: as_expr(refine(radius, inner)), settings.timeout)
     if refined is not None:
         radius = refined
-    value = definite_integral(as_expr(g * measure), (rho, start, radius), inner)
+    value = definite_integral(as_expr(g * measure), (rho, start, radius), inner, special_values=False)
     if value.has(Integral, IntegralByRanges):
         return None
     tidy = attempt(lambda: as_expr(refine(value, inner)), settings.timeout)
@@ -1137,10 +1137,10 @@ def _cylindrical(f: Expr, formula: Boolean, names: Sequence[Symbol],
         start, stop = limits
         rho_assumptions = assumptions + [as_boolean(rho > start), as_boolean(rho < stop)] \
             if stop != oo else assumptions + [as_boolean(rho > start)]
-        inner = definite_integral(as_expr(g * rho), (z, lower_z, upper_z), rho_assumptions)
+        inner = definite_integral(as_expr(g * rho), (z, lower_z, upper_z), rho_assumptions, special_values=False)
         if inner.has(Integral, IntegralByRanges):
             return None
-        value = definite_integral(as_expr(2 * pi * inner), (rho, start, stop), assumptions)
+        value = definite_integral(as_expr(2 * pi * inner), (rho, start, stop), assumptions, special_values=False)
         if value.has(Integral, IntegralByRanges):
             return None
         total = total + value
@@ -1309,7 +1309,7 @@ def _solved_bounds(f: Expr, formula: Boolean, names: Sequence[Symbol],
     if not outer_names:
         if outer_atoms:
             return None
-        value = definite_integral(f, (y, lower, upper), assumptions)
+        value = definite_integral(f, (y, lower, upper), assumptions, special_values=False)
         return None if value.has(Integral, IntegralByRanges) else value
     # where the two bounds are in the right order
     pieces: list[Boolean] = [true]
@@ -1331,7 +1331,7 @@ def _solved_bounds(f: Expr, formula: Boolean, names: Sequence[Symbol],
             pieces = found_pieces
     inner_assumptions = outer_assumptions + [as_boolean(y > lower)] * (lower != -oo) \
         + [as_boolean(y < upper)] * (upper != oo)
-    inner = definite_integral(f, (y, lower, upper), inner_assumptions)
+    inner = definite_integral(f, (y, lower, upper), inner_assumptions, special_values=False)
     if inner.has(Integral, IntegralByRanges):
         return None
     total: Expr = S.Zero
@@ -1342,7 +1342,7 @@ def _solved_bounds(f: Expr, formula: Boolean, names: Sequence[Symbol],
             # innermost first
             value = inner
             for v in reversed(outer_names):
-                value = definite_integral(value, (v, -oo, oo), assumptions)
+                value = definite_integral(value, (v, -oo, oo), assumptions, special_values=False)
                 if value.has(Integral, IntegralByRanges):
                     return None
         else:
@@ -1450,7 +1450,7 @@ def _symbolic_radial(f: Expr, formula: Boolean, r: Symbol, n: Expr,
         rho = Dummy('rho', positive=True)
         f = as_expr(f.xreplace({r: rho}))
         start, end, r = as_expr(start.xreplace({r: rho})), as_expr(end.xreplace({r: rho})), rho
-    value = definite_integral(as_expr(f * r**(n - 1)), (r, start, end), inner)
+    value = definite_integral(as_expr(f * r**(n - 1)), (r, start, end), inner, special_values=False)
     if value.has(Integral, IntegralByRanges):
         return None
     total = as_expr(_sphere_area(n) * value)
