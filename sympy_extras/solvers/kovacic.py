@@ -516,11 +516,16 @@ def _second_solution(y1: Expr, p: Expr, x: Symbol) -> Optional[Expr]:
     return as_expr(y1*Integral(integrand, x))
 
 
-def dsolve_kovacic(equation: Basic, f: AppliedUndef) -> Optional[list[Expr]]:
+def dsolve_kovacic(equation: Basic, f: AppliedUndef, special_values: bool = True) -> Optional[list[Expr]]:
     """The Liouvillian solutions of a second order linear homogeneous
     equation ``a y'' + b y' + c y = 0`` with rational coefficients: a list
     with one or two independent solutions, or ``None`` when there is no
     Liouvillian solution (or the equation is not of that form).
+
+    With ``special_values``, the solutions of an equation with parameters
+    get cases for the isolated values of the parameters at which they are
+    undefined or dependent, as in
+    :func:`~sympy_extras.solvers.linear_ode.dsolve_linear`.
 
     Examples
     ========
@@ -534,6 +539,14 @@ def dsolve_kovacic(equation: Basic, f: AppliedUndef) -> Optional[list[Expr]]:
     >>> dsolve_kovacic(y.diff(x, 2) - x*y, y) is None
     True
     """
+    found = _dsolve_kovacic(equation, f)
+    if not special_values or found is None:
+        return found
+    from ._special_values import as_zero, basis_cases
+    return basis_cases(found, as_zero(equation), f, lambda at: dsolve_kovacic(at, f))
+
+
+def _dsolve_kovacic(equation: Basic, f: AppliedUndef) -> Optional[list[Expr]]:
     x_ = f.args[0]
     if not isinstance(x_, Symbol):
         raise ValueError("the function must depend on a symbol")

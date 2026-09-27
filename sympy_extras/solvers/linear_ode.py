@@ -1055,7 +1055,7 @@ def _proportional(s: Expr, k: Expr, x: Symbol) -> bool:
 
 
 def dsolve_linear(equation: Basic, f: AppliedUndef, use_kovacic: bool = True,
-                  use_dsolve: bool = True) -> list[Expr]:
+                  use_dsolve: bool = True, special_values: bool = True) -> list[Expr]:
     """Independent solutions of a homogeneous linear equation with
     rational coefficients: rational and hyperexponential solutions,
     Kovacic's algorithm for the second order, and reduction of order by
@@ -1063,6 +1063,15 @@ def dsolve_linear(equation: Basic, f: AppliedUndef, use_kovacic: bool = True,
     solvers and to SymPy's ``dsolve``). The list is empty when nothing
     is found and shorter than the order when the solution space is not
     exhausted.
+
+    With ``special_values``, for an equation with parameters, each
+    solution becomes a ``Piecewise`` with a case, first, for every
+    isolated value of the parameters at which the solutions found are
+    undefined or dependent (their Wronskian vanishes: two roots of the
+    indicial or characteristic polynomial coincide), the equation solved
+    again there (:mod:`sympy_extras.solvers._special_values`); the
+    ``i``-th solution of the list at the point is the ``i``-th solution of
+    the equation there.
 
     Examples
     ========
@@ -1075,9 +1084,21 @@ def dsolve_linear(equation: Basic, f: AppliedUndef, use_kovacic: bool = True,
     [x**2 + 2*x + 2, exp(x)]
     >>> dsolve_linear(x**2*y.diff(x, 2) + 4*x*y.diff(x) + 2*y, y)
     [x**(-2), 1/x]
+    >>> from sympy import symbols
+    >>> a, b = symbols('a b')
+    >>> dsolve_linear(y.diff(x, 2) - (a + b)*y.diff(x) + a*b*y, y)
+    [exp(b*x), Piecewise((x*exp(b*x), Eq(a, b)), (exp(a*x), True))]
     """
     L = LinearOperator.from_equation(equation, f)
-    return _solve_operator(L, f, use_kovacic, use_dsolve)
+    found = _solve_operator(L, f, use_kovacic, use_dsolve)
+    if not special_values:
+        return found
+    from ._special_values import as_zero, basis_cases
+
+    def solve_at(at: Expr) -> Optional[list[Expr]]:
+        return dsolve_linear(at, f, use_kovacic, use_dsolve)
+
+    return basis_cases(found, as_zero(equation), f, solve_at)
 
 
 def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_dsolve: bool,
@@ -1116,7 +1137,7 @@ def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_d
         from .kovacic import dsolve_kovacic
         y = Function('y')(x)
         equation = as_expr(Add(*[c*y.diff(x, i) if i else c*y for i, c in enumerate(L.coefficients)]))
-        liouvillian = attempt(lambda: dsolve_kovacic(equation, y), settings.timeout)
+        liouvillian = attempt(lambda: dsolve_kovacic(equation, y, special_values=False), settings.timeout)
         if liouvillian:
             found = _independent(found + liouvillian, x)
     if len(found) < n and n == 2:

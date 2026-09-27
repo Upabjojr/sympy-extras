@@ -28,7 +28,12 @@ The mechanism is independent of the problem (:func:`with_special_values`):
    infinitely many points) gives none: those values are not listed.
    Only real values are listed (the conditions of the package are
    written for real parameters), and only those the assumptions and the
-   flags of the symbols allow.
+   flags of the symbols allow. A caller may add candidates where the
+   formula is defined but degenerate (``degenerate``): the zeros of the
+   Wronskian of the fundamental system in a general solution of an ODE,
+   ``C1*exp(a*x) + C2*exp(b*x)`` at ``a = b``
+   (:mod:`sympy_extras.solvers._special_values`); they are kept when the
+   branch taken there is the degenerate one.
 
 2. **A candidate is kept** when the branch of the value taken there is
    undefined at it: its conditions are evaluated at the point in turn
@@ -198,9 +203,16 @@ def special_points(value: Expr, parameters: Sequence[Symbol], assumptions: Assum
 
 def _special_points(value: Expr, parameters: Sequence[Symbol], assumptions: Assumptions,
                     deadline: _Deadline) -> list[Point]:
+    return _points_of(_undefined_parts(value, set(parameters)), parameters, assumptions, deadline)
+
+
+def _points_of(parts: Sequence[Expr], parameters: Sequence[Symbol], assumptions: Assumptions,
+               deadline: _Deadline) -> list[Point]:
+    """The zeros of the ``parts`` in the ``parameters`` which are points
+    (see :func:`_zeros`), those the assumptions refute left out."""
     wanted = set(parameters)
     found: list[Point] = []
-    for part in _undefined_parts(value, wanted):
+    for part in parts:
         if deadline.up():
             break
         for point in _zeros(part, wanted, deadline):
@@ -263,7 +275,7 @@ def _zeros(part: Expr, parameters: set[Symbol], deadline: _Deadline) -> list[Poi
     points: list[Point] = []
     for factor_ in factors:
         g = as_expr(factor_)
-        if isinstance(g, Pow) and as_expr(g.exp).is_positive:
+        while isinstance(g, Pow) and as_expr(g.exp).is_positive:
             g = as_expr(g.base)
         g_symbols = sorted_symbols(free_symbols(g))
         if not g_symbols or set(g_symbols) - parameters:
@@ -427,6 +439,21 @@ def _taken_undefined(branches: Sequence[tuple[Expr, Boolean]], point: Point) -> 
     return None
 
 
+def _taken_branch(branches: Sequence[tuple[Expr, Boolean]], point: Point) -> Optional[int]:
+    """The index of the branch taken at the point: the first whose
+    condition is not false there, when it is true there; ``None`` when
+    the point leaves it undecided."""
+    for index, (_, condition) in enumerate(branches):
+        try:
+            at = as_boolean(condition.xreplace(point))
+        except TypeError:
+            return None
+        if at is false:
+            continue
+        return index if at is true else None
+    return None
+
+
 def _flattened(special: Expr, point: Point) -> list[tuple[Expr, Boolean, int]]:
     """The value at the point as cases ``(value, condition, equations)``:
     the branches of a ``Piecewise`` under the point's equations and their
@@ -538,7 +565,8 @@ def defined_problem(integrand: Expr, variables: Sequence[Symbol]) -> bool:
 def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: Assumptions,
                         compute: Compute, defined: Optional[Callable[[Point], bool]] = None,
                         sympy_style: bool = False, budget: Optional[float] = None,
-                        keep_unevaluated: bool = True) -> Expr:
+                        keep_unevaluated: bool = True,
+                        degenerate: Optional[Callable[[Expr], list[Expr]]] = None) -> Expr:
     """``value`` with a case for each isolated value of the ``parameters``
     at which the branch it takes there is undefined (see the module
     documentation), computed by ``compute(point, assumptions at the
@@ -559,6 +587,13 @@ def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: 
     The points not reached in time, those whose problem takes longer and
     those which ``compute`` cannot solve are left out.
 
+    ``degenerate(e)``, for a branch ``e`` of ``value``, gives expressions
+    whose zeros in the parameters are points where ``e`` is defined but
+    is not the value of the problem (the Wronskian of the fundamental
+    system of a general solution of an ODE, which vanishes where two
+    characteristic roots coincide): those points are candidates too, and
+    are kept when the branch taken there is ``e``.
+
     >>> from sympy import symbols, exp, Integer
     >>> from sympy_extras._special_values import with_special_values
     >>> k = symbols('k')
@@ -578,10 +613,22 @@ def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: 
     deadline = _Deadline(limit)
     branches = _branches(value)
     points: list[Point] = []
-    for e, _ in branches:
+    # the points where a branch is degenerate, with the index of the branch
+    degenerate_at: list[tuple[Point, int]] = []
+    for index, (e, _) in enumerate(branches):
         if _unevaluated(e):
             continue
         for point in _special_points(e, parameters, assumptions, deadline):
+            if point not in points:
+                points.append(point)
+        seconds = deadline.left(_CANDIDATE_SECONDS)
+        if degenerate is None or (seconds is not None and seconds <= 0):
+            continue
+        branch = e
+        callback = degenerate
+        parts = attempt(lambda: callback(branch), seconds)
+        for point in _points_of(parts or [], parameters, assumptions, deadline):
+            degenerate_at.append((point, index))
             if point not in points:
                 points.append(point)
     cases: list[tuple[Expr, Boolean, int]] = []
@@ -591,6 +638,8 @@ def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: 
             break
         at = _point_assumptions(point, assumptions, deadline)
         failing = None if at is None else _taken_undefined(branches, point)
+        if failing is None and at is not None and (point, _taken_branch(branches, point)) in degenerate_at:
+            failing = 'undefined'
         if failing is None:
             continue
         if defined is not None and not defined(point):

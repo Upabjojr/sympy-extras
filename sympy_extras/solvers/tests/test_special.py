@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sympy import Function, Symbol, symbols, N, besselj, bessely, hyper, sqrt, Rational, Basic, S, exp
+from sympy import Eq, Function, Piecewise, Symbol, symbols, N, besselj, bessely, hyper, log, sqrt, Rational, Basic, S, exp
 from sympy.core.expr import Expr
 
 from sympy_extras.solvers.special import (special_solutions, bessel_solutions, whittaker_solutions,
@@ -65,8 +65,13 @@ def test_hypergeometric() -> None:
 
 
 def test_dsolve_linear_uses_special_functions() -> None:
-    found = dsolve_linear(x*y.diff(x, 2) + y.diff(x) + a*y, y)
+    found = dsolve_linear(x*y.diff(x, 2) + y.diff(x) + a*y, y, special_values=False)
     assert found == [besselj(0, 2*sqrt(a)*sqrt(x)), bessely(0, 2*sqrt(a)*sqrt(x))]
+    # at a = 0 the Bessel functions are 1 and bessely(0, 0), infinite: the
+    # equation there, x*y'' + y' = 0, has the solutions 1 and log(x)
+    found = dsolve_linear(x*y.diff(x, 2) + y.diff(x) + a*y, y)
+    assert found == [Piecewise((1, Eq(a, 0)), (besselj(0, 2*sqrt(a)*sqrt(x)), True)),
+                     Piecewise((log(x), Eq(a, 0)), (bessely(0, 2*sqrt(a)*sqrt(x)), True))]
     found = dsolve_linear(y.diff(x, 2) + x*y, y)
     assert len(found) == 2 and all(_residual(y.diff(x, 2) + x*y, s) < 1e-10 for s in found)
 

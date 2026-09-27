@@ -89,6 +89,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_expr, free_symbols
 from sympy_extras.settings import settings
 from .lie import Symmetry
+from ._special_values import solution_cases
 
 __all__ = ['second_order_rhs', 'integrating_factor_xy', 'integrating_factor_p', 'is_linearizable',
            'linearize', 'rectify_symmetries', 'commuting_pair', 'transformed_rhs', 'dsolve_second_order',
@@ -692,12 +693,16 @@ def _unknown_under_integral(candidate: Basic, f: AppliedUndef) -> bool:
     return False
 
 
-def dsolve_second_order(equation: Basic, f: AppliedUndef, degree: int = 3) -> Optional[list[Basic]]:
+def dsolve_second_order(equation: Basic, f: AppliedUndef, degree: int = 3,
+                        special_values: bool = True) -> Optional[list[Basic]]:
     """Solutions of a second order equation through an integrating factor
     (the first integral solved by ``dsolve``, or returned as an implicit
     first order equation), through its linearisation, or through two
     commuting symmetries (polynomial infinitesimals of degree at most
-    ``degree``); ``None`` when none applies.
+    ``degree``); ``None`` when none applies. With ``special_values``, a
+    single explicit solution of an equation with parameters gets cases
+    for the isolated values of the parameters at which it is undefined
+    or no longer general (:mod:`sympy_extras.solvers._special_values`).
 
     Examples
     ========
@@ -711,6 +716,15 @@ def dsolve_second_order(equation: Basic, f: AppliedUndef, degree: int = 3) -> Op
     >>> dsolve_second_order(y.diff(x, 2) + 3*y*y.diff(x) + y**3, y)
     [Eq(y(x), 2*(C2 + x)/(2*C1 + 2*C2*x + x**2))]
     """
+    found = _dsolve_second_order(equation, f, degree)
+    if special_values and found:
+        cased = solution_cases(found, equation, f, lambda at: dsolve_second_order(at, f, degree) or [])
+        if cased is not None:
+            return [cased]
+    return found
+
+
+def _dsolve_second_order(equation: Basic, f: AppliedUndef, degree: int) -> Optional[list[Basic]]:
     Phi, x, y, p = second_order_rhs(equation, f)
     for method in (integrating_factor_xy, integrating_factor_p):
         first_integral = attempt(lambda: method(Phi, x, y, p), settings.timeout)

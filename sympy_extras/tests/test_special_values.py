@@ -130,3 +130,33 @@ def test_the_special_values_have_a_budget_of_their_own() -> None:
         started = time.monotonic()
         assert with_special_values(generic, [y], None, endless, budget=100) == generic
         assert time.monotonic() - started < 3 * settings.time_scale
+
+
+def test_degenerate_points_are_candidates_of_their_own() -> None:
+    C1, C2 = symbols('C1 C2')
+    generic = as_expr(C1*exp(a*x) + C2*exp(b*x))
+    repeated = as_expr((C1 + C2*x)*exp(b*x))
+
+    def at_point(point: Point, assumptions: Assumptions) -> Optional[Expr]:
+        return repeated
+
+    def wronskian(branch: Expr) -> list[Expr]:
+        # (the branches without the constants are no families)
+        return [as_expr((b - a)*exp((a + b)*x))] if branch.has(C1) else []
+
+    # a value defined everywhere gets no case without the hook, and the
+    # zeros of what the hook gives (free of x) with it
+    assert with_special_values(generic, [a, b], None, at_point) == generic
+    assert with_special_values(generic, [a, b], None, at_point, degenerate=wronskian) \
+        == Piecewise((repeated, Eq(a, b)), (generic, True))
+    # a point where another branch is taken is not degenerate
+    piecewise = as_expr(Piecewise((b, Eq(a, b)), (generic, True)))
+    assert with_special_values(piecewise, [a, b], None, at_point, degenerate=wronskian) == piecewise
+
+
+def test_zeros_under_nested_powers() -> None:
+    # the bug: only one power was taken off a factor, so that the zeros of
+    # the base (a - b)**2 of sqrt((a - b)**2) were not found (the
+    # Wronskian of the Liouvillian solutions of y'' - (a + b)*y' + a*b*y
+    # has this factor)
+    assert special_points(as_expr(log(sqrt((a - b)**2))), [a, b]) == [{a: b}]

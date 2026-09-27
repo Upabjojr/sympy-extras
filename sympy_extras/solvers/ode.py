@@ -43,6 +43,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 from sympy_extras._typing import as_expr, free_symbols
 
+from ._special_values import solution_cases
 from .lie import Equation, JetSpace, Symmetry, symmetries, _as_zero, _leading_derivatives
 
 __all__ = ['ode_symmetries', 'canonical_coordinates', 'reduce_order',
@@ -355,7 +356,7 @@ def _solve_reduced(ode: Equation, y: AppliedUndef, reduction: ReducedODE, check:
 
 def dsolve_lie(ode: Equation, y: AppliedUndef, degree: int = 2, basis: Sequence[Expr] = (),
                symmetries_: Optional[Sequence[Symmetry]] = None, check: bool = True,
-               timeout: Optional[float] = DEFAULT_TIMEOUT) -> list[Eq]:
+               timeout: Optional[float] = DEFAULT_TIMEOUT, special_values: bool = True) -> list[Eq]:
     """Solve an ordinary differential equation through its point
     symmetries.
 
@@ -367,7 +368,10 @@ def dsolve_lie(ode: Equation, y: AppliedUndef, degree: int = 2, basis: Sequence[
     written in the original variables. With ``check`` only the solutions
     verified by :func:`sympy.solvers.ode.checkodesol` are returned. Every
     step handed to SymPy is abandoned after ``timeout`` seconds (by default
-    the ``timeout`` of :data:`sympy_extras.settings.settings`).
+    the ``timeout`` of :data:`sympy_extras.settings.settings`). With
+    ``special_values``, a single explicit general solution gets cases for
+    the isolated values of the parameters at which it is undefined or no
+    longer general, as in :func:`solve_ode`.
 
     Examples
     ========
@@ -399,14 +403,28 @@ def dsolve_lie(ode: Equation, y: AppliedUndef, degree: int = 2, basis: Sequence[
                 solutions.append(sol)
         if solutions:
             break
+    if special_values and symmetries_ is None:
+        cased = solution_cases(solutions, ode, y, lambda at: dsolve_lie(at, y, degree, basis, None, check, timeout))
+        if cased is not None:
+            return [cased]
     return solutions
 
 
 def solve_ode(ode: Equation, y: AppliedUndef, degree: int = 2, check: bool = True,
-              timeout: Optional[float] = DEFAULT_TIMEOUT) -> list[Eq]:
+              timeout: Optional[float] = DEFAULT_TIMEOUT, special_values: bool = True) -> list[Eq]:
     """Solve an ordinary differential equation with :func:`sympy.dsolve`
     and, when that fails or takes more than ``timeout`` seconds, through
     its point symmetries (:func:`dsolve_lie`).
+
+    With ``special_values``, a single explicit general solution of an
+    equation with parameters gets a case of its own, first, for each
+    isolated value of the parameters at which it is undefined (the
+    resonance of ``y' - k*y = exp(x)`` at ``k = 1``) or no longer general
+    (the repeated characteristic root of ``y'' - (a + b)*y' + a*b*y = 0``
+    at ``a = b``, where the Wronskian of the fundamental system vanishes);
+    the equation is solved again at the point and the solution there is
+    checked (:mod:`sympy_extras.solvers._special_values`). A point where
+    the order of the equation drops gets no case.
 
     Examples
     ========
@@ -417,8 +435,21 @@ def solve_ode(ode: Equation, y: AppliedUndef, degree: int = 2, check: bool = Tru
     >>> y = Function('y')(x)
     >>> solve_ode(y.diff(x, 2) - y.diff(x)**2/y - y.diff(x)/x, y)
     [Eq(y(x), exp(C1*x**2/2 + C2))]
+    >>> from sympy import exp
+    >>> k = symbols('k')
+    >>> solve_ode(y.diff(x) - k*y - exp(x), y)
+    [Eq(y(x), Piecewise(((C1 + x)*exp(x), Eq(k, 1)), (C1*exp(k*x) - exp(x)/(k - 1), True)))]
     """
     timeout = _limit(timeout)
+    found = _solve_ode(ode, y, degree, check, timeout)
+    if special_values:
+        cased = solution_cases(found, ode, y, lambda at: solve_ode(at, y, degree, check, timeout))
+        if cased is not None:
+            return [cased]
+    return found
+
+
+def _solve_ode(ode: Equation, y: AppliedUndef, degree: int, check: bool, timeout: Optional[float]) -> list[Eq]:
     sols = attempt(lambda: dsolve(ode, y), timeout)
     found = _solutions(sols) if sols is not None else []
     # ``check`` applies to this branch as well as to the fallback: SymPy's
@@ -436,4 +467,4 @@ def solve_ode(ode: Equation, y: AppliedUndef, degree: int = 2, check: bool = Tru
         accepted.append(candidate)
     if accepted:
         return accepted
-    return dsolve_lie(ode, y, degree=degree, check=check, timeout=timeout)
+    return dsolve_lie(ode, y, degree=degree, check=check, timeout=timeout, special_values=False)

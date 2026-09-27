@@ -449,6 +449,55 @@ Eq(u(x, y), a*b + a*x + b*y)
 
 ```
 
+## Isolated values of the parameters
+
+A general solution of an ODE with parameters, found for generic values
+of them, may fail at isolated values in two ways: it is **undefined**
+there (the resonance of `y' - k*y = exp(x)` at `k = 1`, where
+`exp(x)/(1 - k)` divides by zero), or it is defined but **no longer
+general** (`C1*exp(a*x) + C2*exp(b*x)` for `y'' - (a + b)*y' + a*b*y = 0`
+at `a = b`, a repeated characteristic root, where both exponentials are
+the same function). `solve_ode`, `dsolve_lie`, `dsolve_first_order`,
+`riccati_ode`, `dsolve_second_order`, `dsolve_linear` and
+`dsolve_kovacic` give such values cases of their own, first, as the
+integrals and the sums do (`sympy_extras._special_values`):
+
+- the candidates are the zeros of the denominators (and of the
+  arguments of logarithms) of the solution, and the zeros of the
+  Jacobian determinant of `(y, y', ..., y^(m-1))` with respect to the
+  `m` constants: for a solution linear in the constants it is the
+  Wronskian of the fundamental system, which vanishes where the roots
+  of the characteristic or indicial polynomial coincide (the square
+  root of its discriminant is a factor), and for a nonlinear family,
+  such as the Riccati solution `-(u1' + C1*u2')/(u1 + C1*u2)`, it
+  vanishes where a constant disappears;
+- the equation is solved again at each point, by the same solver, and
+  the solution there is checked: it satisfies the equation (the residual
+  simplified to zero, or zero at sample points to 30 digits by
+  `reliable_value`), carries the same constants and is general;
+- a point where the equation is undefined or where its order drops
+  (`k*y'' + y' = 0` at `k = 0`, a singular perturbation) gets no case;
+  the work has a budget of a tenth of the time limit.
+
+`dsolve_linear` and `dsolve_kovacic` return a list of functions: the
+`i`-th function becomes a `Piecewise` whose case at a point is the
+`i`-th solution of the equation there. `special_values=False` turns
+the cases off.
+
+```python
+>>> from sympy import Function, symbols, exp, sin
+>>> from sympy_extras.solvers import solve_ode, dsolve_linear
+>>> x, k, a = symbols('x k a')
+>>> y = Function('y')(x)
+>>> solve_ode(y.diff(x) - k*y - exp(x), y)
+[Eq(y(x), Piecewise(((C1 + x)*exp(x), Eq(k, 1)), (C1*exp(k*x) - exp(x)/(k - 1), True)))]
+>>> solve_ode(y.diff(x, 2) + k**2*y - sin(x), y)
+[Eq(y(x), Piecewise((C2*sin(x) + (C1 - x/2)*cos(x), Eq(k, -1) | Eq(k, 1)), (C1 + C2*x - sin(x), Eq(k, 0)), (C1*exp(-I*k*x) + C2*exp(I*k*x) + sin(x)/(k**2 - 1), True)))]
+>>> dsolve_linear(x**2*y.diff(x, 2) + a*x*y.diff(x) + 4*y, y)[1]
+Piecewise((x**2*log(x), Eq(a, -3)), (log(x)/x**2, Eq(a, 5)), (exp(-(a + sqrt(a**2 - 2*a - 15) - 1)*log(x)/2), True))
+
+```
+
 ## Limitations
 
 - The ansatz is polynomial (plus the functions given in `basis`). Linear

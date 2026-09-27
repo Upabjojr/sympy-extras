@@ -55,6 +55,7 @@ from sympy.solvers.ode import dsolve
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_expr
 from sympy_extras.settings import settings
+from ._special_values import solution_cases
 
 __all__ = ['riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order']
 
@@ -320,7 +321,7 @@ def lagrange_ode(equation: Basic, f: AppliedUndef) -> Optional[list[Basic]]:
     return [Eq(x, X_value), Eq(f, as_expr(simplify(X_value*Fp + Gp)))]
 
 
-def riccati_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
+def riccati_ode(equation: Basic, f: AppliedUndef, special_values: bool = True) -> Optional[Basic]:
     """The general solution of a Riccati equation ``y' = a(x) y**2 + b(x) y
     + c(x)`` with rational coefficients through the linear equation
     ``u'' - (a'/a + b) u' + a c u = 0`` (``y = -u'/(a u)``), solved by
@@ -328,6 +329,12 @@ def riccati_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     algorithm and the special functions): ``y = -(u1' + C1 u2')/(a (u1 +
     C1 u2))``. ``None`` when the linear equation is not solved. SymPy's
     Riccati hints need a rational particular solution.
+
+    With ``special_values``, the solution of an equation with parameters
+    gets cases for the isolated values of the parameters at which it is
+    undefined or loses its constant (``u1, u2`` dependent there), the
+    equation solved again at each
+    (:mod:`sympy_extras.solvers._special_values`).
 
     Examples
     ========
@@ -339,6 +346,19 @@ def riccati_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     >>> riccati_ode(y.diff(x) + y**2 - 2/x**2, y)
     Eq(y(x), (2*C1*x**3 - 1)/(C1*x**4 + x))
     """
+    found = _riccati(equation, f)
+    if special_values and found is not None:
+        cased = solution_cases([found], equation, f, lambda at: _solutions_of(riccati_ode(at, f)))
+        if cased is not None:
+            return cased
+    return found
+
+
+def _solutions_of(solution: Optional[Basic]) -> list[Basic]:
+    return [] if solution is None else [solution]
+
+
+def _riccati(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     from .linear_ode import dsolve_linear
     F, x, u, p = _derivative_polynomial(equation, f)
     rhs = _explicit_rhs(F, p)
@@ -361,7 +381,7 @@ def riccati_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     from .special import special_solutions
     solutions = attempt(lambda: special_solutions(linear, w), settings.timeout)
     if not solutions:
-        solutions = attempt(lambda: dsolve_linear(linear, w), settings.timeout)
+        solutions = attempt(lambda: dsolve_linear(linear, w, special_values=False), settings.timeout)
     if not solutions:
         return None
     C1 = Symbol('C1')
@@ -379,13 +399,21 @@ def riccati_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     return Eq(f, value)
 
 
-def dsolve_first_order(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
+def dsolve_first_order(equation: Basic, f: AppliedUndef, special_values: bool = True) -> Optional[Basic]:
     """The Riccati general solution, the Chini/Abel implicit solution or
     the Lagrange parametric solution (as a list) of a first order
-    equation, else ``None``."""
-    for method in (riccati_ode, abel_ode, chini_ode):
+    equation, else ``None``. With ``special_values``, an explicit
+    solution of an equation with parameters gets cases for the isolated
+    values of the parameters at which it is undefined or loses its
+    constant (:mod:`sympy_extras.solvers._special_values`)."""
+    for method in (_riccati, abel_ode, chini_ode):
         solution = attempt(lambda: method(equation, f), settings.timeout)
         if solution is not None:
+            if special_values and isinstance(solution, Eq):
+                cased = solution_cases([solution], equation, f,
+                                       lambda at: _solutions_of(dsolve_first_order(at, f)))
+                if cased is not None:
+                    return cased
             return solution
     parametric = attempt(lambda: lagrange_ode(equation, f), settings.timeout)
     if parametric:

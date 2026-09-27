@@ -10,6 +10,29 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- The ODE solvers give the isolated values of the parameters their own
+  cases, as the integrals and the sums do (the maintainer's decision of
+  2026-09-27): `solve_ode`, `dsolve_lie`, `dsolve_first_order`,
+  `riccati_ode`, `dsolve_second_order`, `dsolve_linear` and
+  `dsolve_kovacic` take `special_values=True`. A general solution gets
+  a case, first, at the points where it is undefined
+  (`solve_ode(y' - k*y - exp(x))` has `(C1 + x)*exp(x)` at `k = 1`, the
+  resonance) and at those where it is defined but no longer general: the
+  zeros of the Jacobian determinant of `(y, ..., y^(m-1))` with respect
+  to the constants, the Wronskian of the fundamental system for a linear
+  equation, which vanishes where characteristic or indicial roots
+  coincide (`C1*exp(a*x) + C2*exp(b*x)` at `a = b`, `y'' + k**2*y =
+  sin(x)` at `k = 0`, the Euler equation `x**2*y'' + a*x*y' + 4*y = 0` at
+  `a = -3` and `a = 5`, the Riccati solution through it losing its
+  constant). The equation is solved again at each point and the solution
+  checked by substitution (symbolically, else at sample points through
+  `reliable_value`) and for generality; points where the order drops get
+  no case. `dsolve_linear` and `dsolve_kovacic` return each function as
+  a `Piecewise` of the `i`-th solutions at the points. The mechanism is
+  `sympy_extras.solvers._special_values`, on a new `degenerate` hook of
+  `with_special_values`; the zeros of a factor under nested powers
+  (`sqrt((a - b)**2)`) are now found there too.
+
 - The binomial differentials `x**m*(a + b*x**n)**p` whose integral is
   not elementary get a closed form: `indefinite_integral(sqrt(1 + x**3), x)`
   is `x*hyper((-1/2, 1/3), (4/3,), -x**3)`, and

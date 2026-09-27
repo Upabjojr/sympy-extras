@@ -76,7 +76,10 @@ change:
   over `(0, 2)`, at `y = 1`) comes with `Piecewise` cases for them,
   `Eq(y, 1)` first, the value computed at the point rather than taken as
   a limit (`sympy_extras._special_values`, used by `definite_integral`,
-  `indefinite_integral` and the summation functions); SymPy's own cases
+  `indefinite_integral`, the summation functions and the ODE solvers,
+  for which a general solution that is defined but no longer general,
+  its Wronskian zero at a repeated characteristic root, counts as
+  undefined); SymPy's own cases
   (`x**n` at `n = -1`) are kept, and the numerical checks check them.
   No case where the problem is not defined (`a**(b*z)` at `a = 0`,
   `defined_problem`), no unevaluated case of an antiderivative, and the
