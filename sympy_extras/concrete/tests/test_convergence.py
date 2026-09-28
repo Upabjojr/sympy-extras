@@ -121,3 +121,25 @@ def test_conditionally_convergent_series_are_not_called_divergent() -> None:
     from sympy.abc import n
     assert sum_convergence(log(1 + sin(n)/n), n) is not false
     assert sum_convergence(atan(sin(n)/n), n) is not false
+
+
+def test_oscillating_factors_bounded_by_a_rational_majorant() -> None:
+    # The dominated-convergence check of the termwise Fourier integral of
+    # x*log(sin(x)) over (0, pi/2) asks for sum |(-1)**k - 1|/(4*k**3):
+    # the ratio and root tests find no limit, and the fallbacks took about
+    # 2.6 s to leave it undecided, which pushed the integral past its time
+    # limit under load.  Bounding |(-1)**k - 1| by 2 decides it at once.
+    import time
+    from sympy import Abs, cos, sin, sqrt
+    from sympy.abc import n, x
+    start = time.perf_counter()
+    assert sum_convergence(Abs((-1)**n - 1)/(4*n**3), n) is true
+    assert time.perf_counter() - start < 1
+    assert sum_convergence(((-1)**n - 1)/n**2, n) is true
+    assert sum_convergence((sin(n) + 3)/(n**2 + 1), n) is true
+    assert sum_convergence(cos(n**2)*sin(n)/(n*sqrt(n)*sqrt(n)), n) is true
+    # the majorant only proves convergence; the other tests still decide
+    assert sum_convergence(cos(n)/n, n) is true
+    # factors with parameters are left to the tests with conditions (x
+    # may be complex, and then cos(x*n) is unbounded)
+    assert sum_convergence(cos(x*n)/n**2, n) is not true

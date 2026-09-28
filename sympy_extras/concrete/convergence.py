@@ -8,6 +8,9 @@ the classical tests are run with the parameters carrying assumptions
 parameters under which `\\sum_{n \\ge n_0} a_n` converges, the counterpart
 of Mathematica's ``SumConvergence``:
 
+0. a *comparison* of `|a_n|` with a rational function of `n` decaying
+   at least like `1/n^2`, after the oscillating factors `(-1)^e`,
+   `\\cos e`, `\\sin e` are bounded by `1`;
 1. the *term test*: `a_n \\not\\to 0` means divergence;
 2. **d'Alembert's ratio test** with `r = \\lim |a_{n+1}/a_n|`: absolute
    convergence for `r < 1`, divergence for `r > 1`; when `r` depends on
@@ -53,6 +56,7 @@ from sympy.core.expr import Expr
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 from sympy.polys.polytools import cancel
+from sympy.core.add import Add
 from sympy.core.mul import Mul
 from sympy.core.numbers import pi
 from sympy.core.power import Pow
@@ -317,6 +321,73 @@ def _dirichlet_test(term: Expr, ctx: _Context) -> Condition:
     return true if _decreasing_to_zero(b, ctx) is true else None
 
 
+def _real_polynomial(e: Expr, n: Symbol) -> bool:
+    """Whether ``e`` is a polynomial in ``n`` with real number coefficients."""
+    if not free_symbols(e) <= {n}:
+        return False
+    try:
+        return all(as_expr(c).is_real is True for c in Poly(e, n).coeffs())
+    except PolynomialError:
+        return False
+
+
+def _majorant(term: Expr, n: Symbol) -> Optional[Expr]:
+    """An expression bounding ``|term|`` from above, with the oscillating
+    factors ``(-1)**e``, ``cos(e)`` and ``sin(e)`` (``e`` a real polynomial
+    in ``n``) replaced by ``1`` and the factors free of ``n`` dropped;
+    ``None`` when the structure gives no bound."""
+    if n not in free_symbols(term):
+        return as_expr(Abs(term)) if term.is_number else None
+    if not term.has(sin, cos) and not any(isinstance(p, Pow) and p.base == S.NegativeOne
+                                          for p in term.atoms(Pow)):
+        return as_expr(Abs(term))
+    if isinstance(term, Abs):
+        return _majorant(as_expr(term.args[0]), n)
+    if isinstance(term, (sin, cos)):
+        return S.One if _real_polynomial(as_expr(term.args[0]), n) else None
+    if isinstance(term, Pow):
+        base, exponent = as_expr(term.base), as_expr(term.exp)
+        if base == S.NegativeOne:
+            return S.One if _real_polynomial(exponent, n) else None
+        if exponent.is_Integer and int(exponent) > 0:
+            bound = _majorant(base, n)
+            return None if bound is None else as_expr(bound**exponent)
+        return None
+    if isinstance(term, (Mul, Add)):
+        bounds: list[Expr] = []
+        for arg in term.args:
+            a = as_expr(arg)
+            if isinstance(term, Mul) and n not in free_symbols(a):
+                continue
+            bound = _majorant(a, n)
+            if bound is None:
+                return None
+            bounds.append(bound)
+        return as_expr(Mul(*bounds)) if isinstance(term, Mul) else as_expr(Add(*bounds))
+    return None
+
+
+def _rational_comparison(term: Expr, ctx: _Context) -> Condition:
+    """Absolute convergence by comparison with a rational majorant of
+    ``|a_n|`` (:func:`_majorant`) decaying at least like ``1/n**2``;
+    ``None`` otherwise.
+
+    Bounding ``|(-1)**n - 1|`` by ``2`` decides at once series such as the
+    Fourier coefficients ``((-1)**n - 1)/n**3``, on which the ratio and
+    root tests find no limit.
+    """
+    bound = _majorant(term, ctx.n)
+    if bound is None or not free_symbols(bound) <= {ctx.n}:
+        return None
+    rational = as_expr(bound.replace(lambda e: isinstance(e, Abs), lambda e: e.args[0]))
+    numerator, denominator = (as_expr(p) for p in cancel(rational).as_numer_denom())
+    try:
+        excess = Poly(denominator, ctx.n).degree() - Poly(numerator, ctx.n).degree()
+    except PolynomialError:
+        return None
+    return true if excess >= 2 else None
+
+
 def _constant_sign(term: Expr, ctx: _Context) -> Truth:
     """Whether the terms have eventually a constant sign."""
     # SymPy's own knowledge, with n a positive integer and the
@@ -561,6 +632,8 @@ def _convergence(term: Expr, ctx: _Context) -> Condition:
             if nonzero is None:
                 return None
             return Or(zero, nonzero)
+    if _rational_comparison(term, ctx) is true:
+        return true
     return _ratio_test(term, ctx)
 
 

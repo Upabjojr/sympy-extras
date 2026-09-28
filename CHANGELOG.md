@@ -1038,6 +1038,15 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `sum_convergence` spent seconds on series with oscillating factors such
+  as `Abs((-1)**n - 1)/(4*n**3)`, where the ratio and root tests find no
+  limit, and still left them undecided. The termwise Fourier integral of
+  `x*log(sin(x))` over `(0, pi/2)` asks exactly this, and the README
+  example came back unevaluated under load. The factors `(-1)**e`,
+  `cos(e)` and `sin(e)` are now bounded by `1`, and a rational majorant
+  decaying like `1/n**2` proves absolute convergence at once; the
+  integral takes 4 s instead of 10.
+
 - A time limit which expired during a time-limited step inside it was
   taken by that step for its own: the internal `attempt` returned `None`
   ("this method failed"), the caller went on without the step, and every
