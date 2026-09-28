@@ -60,7 +60,11 @@ from sympy.simplify.gammasimp import gammasimp
 from sympy.simplify.simplify import simplify
 from sympy.solvers.recurr import rsolve
 
+from sympy_extras._special_values import Point
 from sympy_extras._typing import as_expr
+from sympy_extras.assumptions.ask import Assumptions
+
+from .karr import summation, with_sum_special_values
 
 __all__ = ['zeilberger', 'wz_certificate', 'wz_prove', 'zeilberger_sum', 'Telescoper']
 
@@ -327,7 +331,7 @@ def _finite_sum(term: Expr, k: Symbol, n: Symbol, value: int) -> Optional[Expr]:
 
 
 def zeilberger_sum(term: Expr, limits: Sequence[Union[Symbol, Expr, int]], n: Optional[Symbol] = None,
-                   max_order: int = 4) -> Optional[Basic]:
+                   max_order: int = 4, special_values: bool = True) -> Optional[Basic]:
     """A closed form of the definite sum ``sum_{k=lo}^{hi} term`` with
     ``lo`` an integer and ``hi`` either ``n`` (plus an integer) or
     ``oo``, through the recurrence of Zeilberger's algorithm (with the
@@ -352,21 +356,60 @@ def zeilberger_sum(term: Expr, limits: Sequence[Union[Symbol, Expr, int]], n: Op
     Eq((n + 1)**3*S(n) + (n + 2)**3*S(n + 2) - (2*n + 3)*(17*n**2 + 51*n + 39)*S(n + 1), 0)
     >>> zeilberger_sum(1/(k*(k + 1)), (k, 1, n))
     n/(n + 1)
+
+    With ``special_values`` (the default) a closed form gets a case for
+    each isolated value of the parameters of the summand (other than
+    ``n``) at which it is undefined, the sum computed again there
+    (:func:`~sympy_extras.concrete.karr.with_sum_special_values`); a
+    recurrence gets none, being an identity in the parameters:
+
+    >>> y = symbols('y')
+    >>> zeilberger_sum(y**k, (k, 0, n))
+    Piecewise((n + 1, Eq(y, 1)), ((y**(n + 1) - 1)/(y - 1), True))
     """
     k_, lo_, hi_ = limits
     k = k_ if isinstance(k_, Symbol) else Symbol(str(k_))
-    lo, hi = sympify(lo_), sympify(hi_)
+    lo, hi = as_expr(sympify(lo_)), as_expr(sympify(hi_))
     F = sympify(term)
     if not isinstance(F, Expr):
         raise TypeError("an expression is expected")
     if n is None:
         candidates = sorted((s for s in F.free_symbols if s != k and isinstance(s, Symbol)), key=lambda s: s.name)
-        inside = [s for s in candidates if hi.has(s)] or candidates
-        if not inside and isinstance(hi, Symbol):
-            inside = [hi]
+        inside = [s for s in candidates if hi.has(s)]
+        if not inside:
+            # the upper limit itself when it is a symbol (the sum of y**k
+            # up to n is a sum in n, not in the parameter y)
+            inside = [hi] if isinstance(hi, Symbol) and hi != k else candidates
         if len(inside) != 1:
             raise ValueError("the summation variable n must be given")
         n = inside[0]
+    solution = _zeilberger_sum(F, k, lo, hi, n, max_order)
+    if not special_values or not isinstance(solution, Expr):
+        return solution
+    F_, n_ = F, n
+
+    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
+        return _sum_at_point(as_expr(F_.xreplace(point)), k, lo, hi, n_, max_order)
+
+    return with_sum_special_values(solution, F, [k, n], [lo, hi], at_point)
+
+
+def _sum_at_point(F: Expr, k: Symbol, lo: Expr, hi: Expr, n: Symbol, max_order: int) -> Optional[Expr]:
+    """The sum at a point of the parameters: by :func:`zeilberger_sum`
+    (with the cases of the parameters left), else by
+    :func:`~sympy_extras.concrete.karr.summation` when Zeilberger's
+    algorithm gives no closed form there."""
+    try:
+        found = zeilberger_sum(F, (k, lo, hi), n, max_order)
+    except (ValueError, NotImplementedError):
+        found = None
+    if isinstance(found, Expr):
+        return found
+    return summation(F, (k, lo, hi))
+
+
+def _zeilberger_sum(F: Expr, k: Symbol, lo: Expr, hi: Expr, n: Symbol, max_order: int) -> Optional[Basic]:
+    """:func:`zeilberger_sum` without the cases of the parameters."""
     Z = zeilberger(F, n, k, max_order=max_order)
     if Z is None:
         return None

@@ -240,7 +240,7 @@ their definite sums. SymPy has no q-summation at all.
 >>> from sympy import factor
 >>> from sympy.abc import q, k, n, x
 >>> from sympy_extras.concrete import qgosper_sum, qzeilberger, qbinomial
->>> factor(qgosper_sum(q**k, (k, 0, n), q))
+>>> factor(qgosper_sum(q**k, (k, 0, n), q, special_values=False))
 (q**(n + 1) - 1)/(q - 1)
 >>> qzeilberger(qbinomial(n, k, q)*q**(k*(k - 1)/2)*x**k, n, k, q).coefficients
 [-q**n*x - 1, 1]
@@ -250,21 +250,96 @@ their definite sums. SymPy has no q-summation at all.
 The second example is the q-binomial theorem: the sum `S(n)` satisfies
 `S(n + 1) = (1 + x q**n) S(n)`.
 
+## Isolated values of the parameters
+
+A closed form in parameters may be undefined at isolated values of them
+where the sum itself is defined: the sum of `y**k` is `(y**(n + 1) -
+1)/(y - 1)`, `0/0` at `y = 1`, where it is `n + 1`. Every summation
+function returning a closed form gives such values a case of their own,
+first, the sum computed again with the point substituted (not a limit
+of the generic formula), as `definite_integral` and the ODE solvers do
+(`sympy_extras._special_values`); `special_values=False` turns the cases
+off (the functions pass it to one another for their inner sums).
+
+```python
+>>> from sympy import symbols, binomial, log
+>>> from sympy_extras.concrete import dirichlet_series, qgosper_term
+>>> y, s = symbols('y s')
+>>> k, n = symbols('k n')
+>>> zeilberger_sum(k*y**k, (k, 0, n), n)
+Piecewise((n*(n + 1)/2, Eq(y, 1)), ((-n*y**(n + 1) + n*y**(n + 2) + y - y**(n + 1))/(y - 1)**2, True))
+>>> karr_term(y**k, k)
+Piecewise((k, Eq(y, 1)), (y**k/(y - 1), True))
+>>> qgosper_sum(q**(2*k), (k, 0, n), q)
+Piecewise((n + 1, Eq(q, -1) | Eq(q, 1)), (q**(2*n + 2)/((q - 1)*(q + 1)) - 1/((q - 1)*(q + 1)), True))
+>>> qgosper_term(q**k, k, q)
+Piecewise((k, Eq(q, 1)), (q**k/(q - 1), True))
+>>> definite_sum(binomial(n, k)*y**k/(k + 1), (k, 0, n))
+Piecewise((1, Eq(y, 0)), ((y*(y + 1)**n + (y + 1)**n - 1)/(y*(n + 1)), True))
+>>> dirichlet_series((-1)**(n + 1)/n**s, n)
+(Piecewise((log(2), Eq(s, 1)), ((1 - 2**(1 - s))*zeta(s), True)), re(s) > 0)
+
+```
+
+- **The candidates** are the zeros of the denominators, of the arguments
+  of logarithms and `s - 1` for `zeta(s)` in the closed form which are
+  isolated values `Eq(p, v)` of one parameter: `y = 1` above, `q = 1`
+  and `q = -1` for `1/((q - 1)*(q + 1))`, `a = b` for the sum of
+  `1/((k + a)*(k + b))`, where the two poles of the summand merge (the
+  difference of the poles, a factor of the resultant of the two factors
+  of the denominator, is the denominator of the partial fractions, so
+  that no other detection is needed: a closed form which is defined at a
+  point is a continuous function of the parameters there, and so is the
+  sum over a finite range). The q-analogues get the case `q = 1`, where
+  they become ordinary sums, computed by `summation` and `karr_term`.
+- **No case where the sum is undefined**: a point at which the summand
+  is `nan` or `zoo`, has a pole at an integer of the range (`1/((k +
+  a)*(k + b))` from `k = 0` at `a = 0`: the term `1/0`), or lies
+  outside the region of convergence of a series (`s = 1` for
+  `1/zeta(s)`, which converges for `re(s) > 1`), gets none.
+- **Powers of zero**: a summand which has `0**(c*k + d)` at the point
+  (`binomial(n, k)*y**k/(k + 1)` at `y = 0`) is summed by the values of
+  the powers, `1` at the lower limit when the exponent vanishes there and
+  `0` beyond, instead of by the algorithms, which do not take it.
+- **Each case is checked**, with the numerical checks of the settings,
+  against the sum computed term by term for three values of the upper
+  limit (an antidifference against the summand at three values of the
+  index), the other parameters at sample values, through
+  `reliable_value`; a case which disagrees is left out.
+- **Nested cases** are flattened: the sum of `q**k*(a; q)_k` is
+  `(1 - (a; q)_{n+1})/a`, whose case `a = 0`, the sum of `q**k`, has
+  its own case `q = 1`, written `Eq(a, 0) & Eq(q, 1)` first.
+- **What gets no cases**: the recurrences and certificates of
+  `zeilberger`, `creative_telescoping`, `qzeilberger`, `wz_certificate`
+  and the recurrence returned by `zeilberger_sum` are identities in the
+  field of rational functions of the parameters, not values, and
+  `abramov_decomposition` is such an identity too; `euler_sum` has no
+  parameters; `polygamma_series` has them only in a constant factor; the
+  exponent `s` of `polygamma_integral_representation` gives no case at
+  `s = 1`, where the series diverges.
+
 ## Reference
 
-- `karr_sum(f, (k, a, b), extensions=(), auto=True)`: the definite sum, or
-  `None`; with `k` a symbol, the indefinite sum.
-- `karr_term(f, k, extensions=(), auto=True)`: `g` with
-  `g(k + 1) - g(k) == f(k)`, or `None`.
-- `summation(f, *limits, extensions=(), auto=True)`: SymPy's summation
-  followed by Karr's algorithm.
+- `karr_sum(f, (k, a, b), extensions=(), auto=True, special_values=True)`:
+  the definite sum, or `None`; with `k` a symbol, the indefinite sum.
+- `karr_term(f, k, extensions=(), auto=True, special_values=True)`: `g`
+  with `g(k + 1) - g(k) == f(k)`, or `None`.
+- `summation(f, *limits, extensions=(), auto=True, special_values=True)`:
+  SymPy's summation followed by Karr's algorithm.
 - `build_pisigma_field(f, k, extensions=())`: the field and the element
   representing `f`.
 - `creative_telescoping(f, k, n, order=4, extensions=())`: a
   `CreativeTelescoper` with the `coefficients` `c_i(n)`, the `certificate`
   `g(n, k)`, `recurrence()` and `check()`, or `None`.
-- `definite_sum(f, (k, a, b), n=None, order=4, extensions=())`: the
-  definite sum by creative telescoping, or `None`.
+- `definite_sum(f, (k, a, b), n=None, order=4, extensions=(),
+  special_values=True)`: the definite sum by creative telescoping, or
+  `None`.
+- `zeilberger_sum(term, (k, lo, hi), n=None, max_order=4,
+  special_values=True)`, `rational_sum(f, (k, lo, hi),
+  special_values=True)`, `qgosper_sum(term, (k, lo, hi), q,
+  special_values=True)`, `qgosper_term(term, k, q, special_values=True)`,
+  `dirichlet_series(term, n, lower=1, special_values=True)`: the cases of
+  the isolated values of the parameters as above.
 - `PiSigmaField(k, params)`: the tower, with `add_sigma(beta, expr)`,
   `add_pi(alpha, expr)`, `sigma(f, power=1)`, `solve(a, fs)`,
   `telescope(f)`, `from_expr`, `to_expr`.

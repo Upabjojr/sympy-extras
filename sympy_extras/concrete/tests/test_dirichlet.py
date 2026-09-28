@@ -26,8 +26,8 @@ def test_closed_forms() -> None:
     assert dirichlet_series(divisor_sigma(n)/n**s, n) == (zeta(s)*zeta(s - 1), re(s) > 2)
     assert dirichlet_series(divisor_sigma(n, 2)/n**s, n) == (zeta(s)*zeta(s - 2), re(s) > 3)
     assert dirichlet_series(divisor_sigma(n, 0)/n**s, n) == (zeta(s)**2, re(s) > 1)
-    assert dirichlet_series((-1)**(n + 1)/n**s, n) == ((1 - 2**(1 - s))*zeta(s), re(s) > 0)
-    assert dirichlet_series((-1)**n/n**s, n) == (-(1 - 2**(1 - s))*zeta(s), re(s) > 0)
+    assert dirichlet_series((-1)**(n + 1)/n**s, n, special_values=False) == ((1 - 2**(1 - s))*zeta(s), re(s) > 0)
+    assert dirichlet_series((-1)**n/n**s, n, special_values=False) == (-(1 - 2**(1 - s))*zeta(s), re(s) > 0)
     assert dirichlet_series(log(n)/n**s, n) == (-Derivative(zeta(s), s), re(s) > 1)
     assert dirichlet_series(log(n)**2/n**s, n) == (Derivative(zeta(s), (s, 2)), re(s) > 1)
     assert dirichlet_series(3*mobius(n)*n**(-s), n) == (3/zeta(s), re(s) > 1)
@@ -55,3 +55,23 @@ def test_against_partial_sums() -> None:
     assert dirichlet_series(log(n)/n**4, n) is None
     expected = -Float(mpmath.zeta(4, derivative=1), 15)
     assert abs(_partial(log(n)/n**4, 400) - expected) < 1e-5
+
+
+def test_isolated_values_of_the_parameters() -> None:
+    from sympy import Eq, Piecewise
+    # the bug: the alternating series was (1 - 2**(1 - s))*zeta(s), 0*zoo
+    # at s = 1, where it converges to log(2)
+    found = dirichlet_series((-1)**(n + 1)/n**s, n)
+    assert found is not None
+    value, condition = found
+    assert condition == (re(s) > 0)
+    assert isinstance(value, Piecewise) and value.args[0] == (log(2), Eq(s, 1))
+    assert abs(float(N(value.subs(s, 1))) - float(mpmath.nsum(lambda j: (-1)**(j + 1)/j, [1, mpmath.inf]))) < 1e-12
+    found = dirichlet_series((-1)**n/n**s, n, 2)
+    assert found is not None
+    value = found[0]
+    assert value.subs(s, 1) == 1 - log(2)
+    # the points outside the region of convergence get no case: zeta(1) in
+    # 1/zeta(s) (at s = 1, re(s) > 1 is false) and in zeta(s - 1)/zeta(s)
+    assert dirichlet_series(mobius(n)/n**s, n) == (1/zeta(s), re(s) > 1)
+    assert dirichlet_series(totient(n)/n**s, n) == (zeta(s - 1)/zeta(s), re(s) > 2)

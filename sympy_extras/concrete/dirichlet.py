@@ -50,9 +50,13 @@ from sympy.functions.elementary.complexes import re
 from sympy.functions.elementary.exponential import log
 from sympy.functions.elementary.miscellaneous import Max
 from sympy.functions.special.zeta_functions import zeta
-from sympy.logic.boolalg import Boolean
+from sympy.logic.boolalg import Boolean, false
 
+from sympy_extras._special_values import Point
 from sympy_extras._typing import as_boolean, as_expr
+from sympy_extras.assumptions.ask import Assumptions
+
+from .karr import summation, with_sum_special_values
 
 __all__ = ['dirichlet_series', 'DirichletSum']
 
@@ -108,10 +112,19 @@ def _closed_form(f: Expr, n: Symbol, s: Expr) -> Optional[DirichletSum]:
     return None
 
 
-def dirichlet_series(term: Union[Expr, int], n: Symbol, lower: Union[Expr, int] = 1) -> Optional[DirichletSum]:
+def dirichlet_series(term: Union[Expr, int], n: Symbol, lower: Union[Expr, int] = 1,
+                     special_values: bool = True) -> Optional[DirichletSum]:
     """The closed form of ``Sum(term, (n, lower, oo))`` for a Dirichlet
     series with recognised coefficients, with its condition of
     convergence; ``None`` when the summand is not recognised.
+
+    With ``special_values`` (the default) the closed form gets a case for
+    each isolated value of the parameters at which it is undefined while
+    the series converges there, the series summed again at the point
+    (:func:`~sympy_extras.concrete.karr.summation`): the alternating
+    series at ``s = 1``, where ``(1 - 2**(1 - s))*zeta(s)`` is ``0*zoo``,
+    is ``log(2)``. The points outside the region of convergence (``s =
+    1`` for ``1/zeta(s)``) get none.
 
     Examples
     ========
@@ -126,7 +139,7 @@ def dirichlet_series(term: Union[Expr, int], n: Symbol, lower: Union[Expr, int] 
     >>> dirichlet_series(divisor_sigma(n)/n**s, n)
     (zeta(s)*zeta(s - 1), re(s) > 2)
     >>> dirichlet_series((-1)**(n + 1)/n**s, n)
-    ((1 - 2**(1 - s))*zeta(s), re(s) > 0)
+    (Piecewise((log(2), Eq(s, 1)), ((1 - 2**(1 - s))*zeta(s), True)), re(s) > 0)
     >>> dirichlet_series(log(n)/n**s, n)
     (-Derivative(zeta(s), s), re(s) > 1)
     >>> dirichlet_series(mobius(n)/n**2, n, 2)
@@ -150,4 +163,16 @@ def dirichlet_series(term: Union[Expr, int], n: Symbol, lower: Union[Expr, int] 
         result = as_expr(result - head)
     if not condition.free_symbols:
         condition = as_boolean(condition)
-    return as_expr(result.doit()), condition
+    value = as_expr(result.doit())
+    if not special_values:
+        return value, condition
+    region = condition
+
+    def converges(point: Point) -> bool:
+        return as_boolean(region.xreplace(point)) is not false
+
+    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
+        return summation(as_expr(term_.xreplace(point)), (n, lower_, S.Infinity))
+
+    return with_sum_special_values(value, term_, [n], [lower_, S.Infinity], at_point, keep_unevaluated=False,
+                                   defined=converges), condition

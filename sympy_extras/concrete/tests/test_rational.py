@@ -53,3 +53,24 @@ def test_rational_sum() -> None:
         assert simplify(total.subs(n, value) - Sum(1/(k*(k + 2)), (k, 1, value)).doit()) == 0
     total = rational_sum(1/k, (k, 1, n))
     assert total.has(polygamma) or total.has(Sum) or total.has(__import__('sympy').harmonic)
+
+
+def test_isolated_values_of_the_parameters() -> None:
+    from sympy import Eq, Piecewise
+    from sympy_extras.concrete.tests.cases import check_sum_cases
+    a, b = symbols('a b')
+    # the bug: the sum of 1/((k + a)*(k + b)) had the denominator a - b,
+    # undefined where the two poles merge; the sum of 1/(k + b)**2 there
+    term = 1/((k + a)*(k + b))
+    value = rational_sum(term, (k, 0, n))
+    assert check_sum_cases(value, term, k, 0, n, n) == 1
+    assert isinstance(value, Piecewise) and value.args[0].args[1] == Eq(a, b)
+    # a = 0 and b = 0, where the summand has the pole k = 0 inside the
+    # range, get no case
+    assert not value.has(Eq(a, 0)) and not value.has(Eq(b, 0))
+    term = 1/((k + a)*(k + a + b))
+    value = rational_sum(term, (k, 1, n))
+    assert check_sum_cases(value, term, k, 1, n, n) == 1
+    assert not isinstance(rational_sum(1/((k + a)*(k + b)), (k, 0, n), special_values=False), Piecewise)
+    # a rational sum whose only candidate, a = 0, puts a pole in the range
+    assert not rational_sum(1/((k + a)*(k + a + 1)), (k, 0, n)).has(Eq)

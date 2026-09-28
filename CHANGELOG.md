@@ -10,6 +10,30 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- The remaining summation functions give the isolated values of the
+  parameters their own cases, as `karr_sum`, `summation` and
+  `definite_sum` do: `zeilberger_sum` (`Piecewise((n + 1, Eq(y, 1)),
+  ((y**(n + 1) - 1)/(y - 1), True))` for `y**k`), `rational_sum` (`a =
+  b` for `1/((k + a)*(k + b))`, where the poles merge), `qgosper_sum` and
+  `qgosper_term` (`q = 1` and `q = -1` for `q**(2*k)`, where the
+  q-analogue is an ordinary sum, computed by `summation` and
+  `karr_term`), `karr_term` and the indefinite `karr_sum` (`k` at
+  `y = 1` for `y**k`), and `dirichlet_series` (`log(2)` at `s = 1` for
+  the alternating series, where `(1 - 2**(1 - s))*zeta(s)` is `0*zoo`;
+  points outside the region of convergence get none). All of them, and
+  `karr_sum`, `summation` and `definite_sum`, take `special_values=True`;
+  the inner sums of the package pass `False`. A point where the summand
+  has a pole at an integer of the range (`a = 0` for `1/((k + a)*(k +
+  b))` from `k = 0`) gets no case; a summand with powers of zero at the
+  point (`binomial(n, k)*y**k/(k + 1)` at `y = 0`) is summed by their
+  values; each case is compared, with the numerical checks of the
+  settings, with the sum computed term by term (an antidifference with
+  its summand) through `reliable_value`, and left out when it disagrees.
+  The recurrences and certificates (`zeilberger`, `qzeilberger`,
+  `creative_telescoping`, the recurrence of `zeilberger_sum`) and
+  `abramov_decomposition` are identities in the parameters and get no
+  cases. `QPochhammer(0, q, k)` is `1`.
+
 - The ODE solvers give the isolated values of the parameters their own
   cases, as the integrals and the sums do (the maintainer's decision of
   2026-09-27): `solve_ode`, `dsolve_lie`, `dsolve_first_order`,
@@ -1037,6 +1061,14 @@ remove public functions. Breaking changes are listed here when they happen.
   gates.
 
 ### Fixed
+
+- `zeilberger_sum(y**k, (k, 0, n))` took the parameter `y` for the
+  variable of the sum (and raised `ValueError`, `y**k` not being
+  hypergeometric in `y`) instead of the upper limit `n`.
+
+- `qgosper_sum` returned `nan` as the sum of `qbinomial(k, 2, q)*q**k`
+  from `k = 0`, its antidifference being `0*zoo` there; it returns
+  `None`.
 
 - `sum_convergence` spent seconds on series with oscillating factors such
   as `Abs((-1)**n - 1)/(4*n**3)`, where the ratio and root tests find no

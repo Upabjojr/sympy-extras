@@ -97,3 +97,26 @@ def test_zeilberger_sum_never_returns_a_boolean() -> None:
     if result is not None and not result.has(Sum) and not result.atoms(AppliedUndef):
         for value in range(1, 6):
             assert result.subs(n, value) == Sum(term.subs(n, value), (k, 0, value)).doit(), value
+
+
+def test_isolated_values_of_the_parameters() -> None:
+    from sympy import Piecewise, Symbol
+    from sympy_extras.concrete.tests.cases import check_sum_cases
+    y = Symbol('y')
+    m = Symbol('m')
+    # the bug: the upper limit m was not taken for the variable of the
+    # sum when it is not in the summand; y was, and y**k was "not
+    # hypergeometric in y"
+    value = zeilberger_sum(y**k, (k, 0, m))
+    # the closed form (y**(m + 1) - 1)/(y - 1) is 0/0 at y = 1, where the
+    # sum is m + 1
+    assert check_sum_cases(as_expr(value), y**k, k, 0, m, m) == 1
+    value = zeilberger_sum(k*y**k, (k, 0, n), n)
+    assert check_sum_cases(as_expr(value), k*y**k, k, 0, n, n) == 1
+    assert as_expr(value).subs(y, 1) == n*(n + 1)/2
+    assert not isinstance(zeilberger_sum(k*y**k, (k, 0, n), n, special_values=False), Piecewise)
+    # a closed form defined for every value of the parameter gets no case
+    assert zeilberger_sum(binomial(n, k)*x**k, (k, 0, n)) == (x + 1)**n
+    # nor does a recurrence, an identity in the parameters
+    recurrence = zeilberger_sum(binomial(n, k)**2*binomial(n + k, k)**2, (k, 0, n))
+    assert isinstance(recurrence, Eq)

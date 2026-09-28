@@ -41,7 +41,7 @@ def _check_sum(term: object, lo: int, hi_values: list[int], q_value: Rational) -
 
 
 def test_qgosper() -> None:
-    z = qgosper_term(q**k, k, q)
+    z = qgosper_term(q**k, k, q, special_values=False)
     assert z is not None and normal_in(as_expr(z.subs(k, k + 1) - z - q**k), k, q) == 0
     _check_sum(q**k, 0, [0, 1, 4], Rational(1, 3))
     _check_sum(q**(2*k), 1, [1, 3], Rational(2, 5))
@@ -78,3 +78,33 @@ def test_qzeilberger() -> None:
     for kv in range(0, 3):
         difference = (t2 - G2.subs(k, k + 1) + G2).subs({q: Rational(1, 3), n: 3}).subs(k, kv)
         assert abs(N(difference, 20)) < 1e-15
+
+
+def test_isolated_values_of_the_parameters() -> None:
+    from sympy import Eq, Piecewise
+    from sympy_extras.concrete.tests.cases import check_antidifference_cases, check_sum_cases
+    # the bug: the sum of q**(2*k) was (q**(2*n + 2) - 1)/((q - 1)*(q + 1)),
+    # undefined at q = 1 and q = -1, where the sum is n + 1
+    value = qgosper_sum(q**(2*k), (k, 0, n), q)
+    assert check_sum_cases(value, q**(2*k), k, 0, n, n) == 2
+    assert value is not None and value.subs(q, 1) == n + 1 and value.subs(q, -1) == n + 1
+    assert check_antidifference_cases(qgosper_term(q**k, k, q), q**k, k) == 1
+    assert not isinstance(qgosper_sum(q**k, (k, 0, n), q, special_values=False), Piecewise)
+    # a case inside a case: (1 - (a; q)_{n+1})/a at a = 0, the sum of q**k,
+    # which has its own at q = 1
+    t = q**k*qpochhammer(a, q, k)
+    value = qgosper_sum(t, (k, 0, n), q)
+    assert check_sum_cases(value, t, k, 0, n, n) == 2
+    assert isinstance(value, Piecewise) and value.args[0].args == (n + 1, Eq(a, 0) & Eq(q, 1))
+    # the closed form at q = 1, (1 - (a; 1)_{n+1})/a, is defined: no case
+    # q = 1 for a generic a
+    assert len(value.args) == 3 and value.args[1].args[1] == Eq(a, 0)
+
+
+def test_undefined_antidifference_at_a_limit() -> None:
+    # the bug: nan was returned as the sum of qbinomial(k, 2, q)*q**k from
+    # k = 0, the antidifference being 0*zoo at k = 0 ((q; q)_{k - 2} is
+    # infinite there)
+    assert qgosper_sum(qbinomial(k, S(2), q)*q**k, (k, 0, n), q) is None
+    # (0; q)_k is 1, which the case a = 0 above needs
+    assert QPochhammer(0, q, k) == 1

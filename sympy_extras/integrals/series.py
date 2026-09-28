@@ -802,7 +802,7 @@ def sum_series(term: Expr, j: Dummy, start: int, assumptions: Assumptions = None
     value = attempt(lambda: polygamma_series(shifted, n, max(start, 1)), settings.timeout)
     if value is not None and start >= 1:
         return value
-    closed = attempt(lambda: zeilberger_sum(shifted, (n, start, oo)), settings.timeout)
+    closed = attempt(lambda: zeilberger_sum(shifted, (n, start, oo), special_values=False), settings.timeout)
     if isinstance(closed, Expr) and not closed.has(Sum, nan, zoo, oo):
         return as_expr(closed)
     return _hypergeometric_sum(term, j, start)

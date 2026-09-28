@@ -42,7 +42,7 @@ from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.function import Function, expand
 from sympy.core.mul import Mul
-from sympy.core.numbers import Integer
+from sympy.core.numbers import Integer, nan, zoo
 from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
@@ -51,7 +51,11 @@ from sympy.matrices.dense import Matrix
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, cancel, factor, gcd
 
+from sympy_extras._special_values import Point
 from sympy_extras._typing import as_expr
+from sympy_extras.assumptions.ask import Assumptions
+
+from .karr import karr_term, summation, with_sum_special_values
 
 __all__ = ['QPochhammer', 'qpochhammer', 'qbinomial', 'q_ratio', 'normal_in', 'qgosper_term',
            'qgosper_sum', 'qzeilberger', 'QTelescoper']
@@ -65,14 +69,16 @@ class QPochhammer(Function):
     >>> from sympy_extras.concrete.qhyper import QPochhammer
     >>> QPochhammer(a, q, 2)
     (1 - a)*(-a*q + 1)
-    >>> QPochhammer(a, q, k)
-    QPochhammer(a, q, k)
+    >>> QPochhammer(a, q, k), QPochhammer(0, q, k)
+    (QPochhammer(a, q, k), 1)
     """
 
     @classmethod
     def eval(cls, a: Expr, q: Expr, k: Expr) -> Optional[Expr]:
         if isinstance(k, Integer) and int(k) >= 0:
             return as_expr(Mul(*[1 - a*q**i for i in range(int(k))]))
+        if a == 0:
+            return S.One
         if isinstance(k, Integer):
             # (a; q)_{-m} = 1/prod_{i=1}^{m} (1 - a q**(-i))
             return as_expr(1/Mul(*[1 - a*q**(-i) for i in range(1, -int(k) + 1)]))
@@ -323,9 +329,15 @@ def _solve_qgosper(ratio: Expr, Q: Symbol, q: Symbol, P: Expr, unknowns: list[Sy
     return certificate, {}
 
 
-def qgosper_term(term: Expr, k: Symbol, q: Symbol) -> Optional[Expr]:
+def qgosper_term(term: Expr, k: Symbol, q: Symbol, special_values: bool = True) -> Optional[Expr]:
     """``z(k)`` with ``z(k+1) - z(k) = term``, a q-hypergeometric term, or
     ``None`` when there is none.
+
+    With ``special_values`` (the default) the isolated values of the
+    parameters (``q`` among them) at which ``z`` is undefined get cases
+    of their own, the antidifference computed again there, by Karr's
+    algorithm (:func:`~sympy_extras.concrete.karr.karr_term`) at a value
+    of ``q``; the cases without a closed form are left out.
 
     Examples
     ========
@@ -333,6 +345,8 @@ def qgosper_term(term: Expr, k: Symbol, q: Symbol) -> Optional[Expr]:
     >>> from sympy.abc import q, k
     >>> from sympy_extras.concrete.qhyper import qgosper_term
     >>> qgosper_term(q**k, k, q)
+    Piecewise((k, Eq(q, 1)), (q**k/(q - 1), True))
+    >>> qgosper_term(q**k, k, q, special_values=False)
     q**k/(q - 1)
     """
     t = as_expr(sympify(term))
@@ -345,12 +359,30 @@ def qgosper_term(term: Expr, k: Symbol, q: Symbol) -> Optional[Expr]:
         return None
     certificate, _ = solved
     z = as_expr(certificate.subs(Q, q**k)*t)
-    return as_expr(factor(z)) if z.is_rational_function(q**k) else z
+    z = as_expr(factor(z)) if z.is_rational_function(q**k) else z
+    if not special_values:
+        return z
+
+    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
+        at_term = as_expr(t.xreplace(point))
+        if q in point:
+            return karr_term(at_term, k)
+        return qgosper_term(at_term, k, q)
+
+    return with_sum_special_values(z, t, [k], [], at_point, keep_unevaluated=False)
 
 
-def qgosper_sum(term: Expr, limits: Sequence[Union[Symbol, Expr, int]], q: Symbol) -> Optional[Expr]:
+def qgosper_sum(term: Expr, limits: Sequence[Union[Symbol, Expr, int]], q: Symbol,
+                special_values: bool = True) -> Optional[Expr]:
     """``sum_{k=lo}^{hi} term`` in closed form by the q-Gosper algorithm,
     or ``None``.
+
+    With ``special_values`` (the default) the isolated values of the
+    parameters of the term (``q`` among them) at which the closed form
+    is undefined get cases of their own, the sum computed again there,
+    by :func:`~sympy_extras.concrete.karr.summation` at a value of ``q``
+    (``q = 1``, where the q-analogue becomes an ordinary sum); the cases
+    without a closed form are left out.
 
     Examples
     ========
@@ -358,15 +390,34 @@ def qgosper_sum(term: Expr, limits: Sequence[Union[Symbol, Expr, int]], q: Symbo
     >>> from sympy import factor
     >>> from sympy.abc import q, k, n
     >>> from sympy_extras.concrete.qhyper import qgosper_sum
-    >>> factor(qgosper_sum(q**k, (k, 0, n), q))
+    >>> factor(qgosper_sum(q**k, (k, 0, n), q, special_values=False))
     (q**(n + 1) - 1)/(q - 1)
+    >>> qgosper_sum(q**(2*k), (k, 0, n), q)
+    Piecewise((n + 1, Eq(q, -1) | Eq(q, 1)), (q**(2*n + 2)/((q - 1)*(q + 1)) - 1/((q - 1)*(q + 1)), True))
     """
-    k_, lo, hi = limits
+    k_, lo_, hi_ = limits
     k = k_ if isinstance(k_, Symbol) else Symbol(str(k_))
-    z = qgosper_term(term, k, q)
+    lo, hi = as_expr(sympify(lo_)), as_expr(sympify(hi_))
+    t = as_expr(sympify(term))
+    z = qgosper_term(t, k, q, special_values=False)
     if z is None:
         return None
-    return as_expr(z.subs(k, sympify(hi) + 1) - z.subs(k, sympify(lo)))
+    value = as_expr(z.subs(k, hi + 1) - z.subs(k, lo))
+    if value.has(nan, zoo):
+        # an antidifference undefined at a limit (the bug: nan was
+        # returned as the sum of qbinomial(k, 2, q)*q**k from k = 0, the
+        # symbol (q; q)_{k - 2} infinite at k = 0)
+        return None
+    if not special_values:
+        return value
+
+    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
+        at_term = as_expr(t.xreplace(point))
+        if q in point:
+            return summation(at_term, (k, lo, hi))
+        return qgosper_sum(at_term, (k, lo, hi), q)
+
+    return with_sum_special_values(value, t, [k], [lo, hi], at_point, keep_unevaluated=False)
 
 
 def qzeilberger(term: Expr, n: Symbol, k: Symbol, q: Symbol, max_order: int = 3) -> Optional[QTelescoper]:

@@ -40,7 +40,11 @@ from sympy.core.sympify import sympify
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, cancel, factor_list, div
 
+from sympy_extras._special_values import Point
 from sympy_extras._typing import as_expr
+from sympy_extras.assumptions.ask import Assumptions
+
+from .karr import with_sum_special_values
 
 __all__ = ['abramov_decomposition', 'rational_sum', 'RationalDecomposition']
 
@@ -199,10 +203,23 @@ def _partial_terms(proper: Expr, k: Symbol) -> list[tuple[Expr, Expr, int]]:
     return result
 
 
-def rational_sum(f: Union[Expr, int], limits: Sequence[Union[Symbol, Expr, int]]) -> Expr:
+def rational_sum(f: Union[Expr, int], limits: Sequence[Union[Symbol, Expr, int]], special_values: bool = True) -> Expr:
     """``sum_{k=lo}^{hi} f`` for a rational function: the rational part in
     closed form and the remainder summed by SymPy (polygamma functions)
     or left as a ``Sum``.
+
+    With ``special_values`` (the default) the isolated values of the
+    parameters of ``f`` at which the sum is undefined get cases of their
+    own, the sum computed again there
+    (:func:`~sympy_extras.concrete.karr.with_sum_special_values`). Where
+    two poles of ``f`` merge (``k = -a`` and ``k = -b`` at ``a = b``) the
+    partial fractions of the generic sum have the difference of the
+    poles, a factor of the resultant of the factors of the denominator,
+    in their denominators, so that these points are found among the
+    zeros of the denominators of the value; the generic value, a
+    continuous function of the parameters wherever it is defined, needs
+    no other case. A point where a pole of ``f`` falls on an integer of
+    the range (``a = 0`` below, the term ``1/0`` at ``k = 0``) gets none.
 
     Examples
     ========
@@ -213,13 +230,29 @@ def rational_sum(f: Union[Expr, int], limits: Sequence[Union[Symbol, Expr, int]]
     n/(n + 1)
     >>> rational_sum(1/(k*(k + 2)), (k, 1, n))
     n*(3*n + 5)/(4*(n + 1)*(n + 2))
+    >>> from sympy import N
+    >>> from sympy.abc import a, b
+    >>> s = rational_sum(1/((k + a)*(k + b)), (k, 0, n))
+    >>> s.args[0].cond
+    Eq(a, b)
+    >>> N(s.subs({a: 1, b: 1, n: 2}), 6)     # 1 + 1/4 + 1/9 = 49/36
+    1.36111
     """
-    k_, lo, hi = limits
+    k_, lo_, hi_ = limits
     k = k_ if isinstance(k_, Symbol) else Symbol(str(k_))
-    decomposition = abramov_decomposition(f, k)
+    lo, hi = as_expr(sympify(lo_)), as_expr(sympify(hi_))
+    f_ = as_expr(sympify(f))
+    decomposition = abramov_decomposition(f_, k)
     g, h = decomposition.g, decomposition.h
-    total = as_expr(g.subs(k, sympify(hi) + 1) - g.subs(k, sympify(lo)))
+    total = as_expr(g.subs(k, hi + 1) - g.subs(k, lo))
     if h != 0:
-        total = as_expr(total + summation(h, (k, sympify(lo), sympify(hi))))
+        total = as_expr(total + summation(h, (k, lo, hi)))
     from sympy.polys.polytools import factor
-    return as_expr(factor(cancel(total))) if total.is_rational_function() else total
+    value = as_expr(factor(cancel(total))) if total.is_rational_function() else total
+    if not special_values:
+        return value
+
+    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
+        return rational_sum(as_expr(f_.xreplace(point)), (k, lo, hi))
+
+    return with_sum_special_values(value, f_, [k], [lo, hi], at_point)

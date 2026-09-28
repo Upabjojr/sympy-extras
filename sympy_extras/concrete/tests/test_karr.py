@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Iterable, Optional
 
 from sympy import (Sum, Product, Expr, harmonic, factorial, binomial, Rational,
-    RisingFactorial, sin, sqrt, simplify, cancel, Eq, symbols)
+    RisingFactorial, sin, sqrt, simplify, cancel, Eq, S, symbols)
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
@@ -11,6 +11,8 @@ from sympy.abc import a, k, n, j, x
 
 from sympy_extras.concrete import (karr_term, karr_sum, summation,
     build_pisigma_field, PiSigmaField, definite_sum)
+from sympy_extras.concrete.karr import with_sum_special_values
+from sympy_extras.concrete.tests.cases import check_antidifference_cases, check_sum_cases
 
 
 def _check(f: Expr, closed: Optional[Expr], lower: int = 1, values: Iterable[int] = range(1, 7)) -> None:
@@ -128,6 +130,39 @@ def test_isolated_values_of_the_parameters() -> None:
     # a point where the sum itself is undefined (the term 1/0 at k = 0 for
     # a = 0) gets no case
     assert not summation(1/((k + a)*(k + a + 1)), (k, 0, n)).has(Eq)
+
+
+def test_isolated_values_of_indefinite_sums() -> None:
+    # the bug: the antidifference of y**k was y**k/(y - 1), undefined at
+    # y = 1, where it is k
+    y = symbols('y')
+    for value in (karr_term(y**k, k), karr_sum(y**k, k)):
+        assert check_antidifference_cases(value, y**k, k) == 1
+        assert value is not None and value.subs(y, 1) == k
+    assert karr_term(y**k, k, special_values=False) == y**k/(y - 1)
+    assert karr_sum(y**k, (k, 0, n), special_values=False) == (y*y**n - 1)/(y - 1)
+
+
+def test_zero_powers_at_a_point_are_summed() -> None:
+    # the bug: the sum of binomial(n, k)*y**k/(k + 1), ((y + 1)**(n + 1) -
+    # 1)/(y*(n + 1)), got no case at y = 0 (the summand 0**k*... at the
+    # point, which the algorithms do not take), where the sum is 1
+    y = symbols('y')
+    term = binomial(n, k)*y**k/(k + 1)
+    value = definite_sum(term, (k, 0, n))
+    assert check_sum_cases(value, term, k, 0, n, n) == 1
+    assert value is not None and value.subs(y, 0) == 1
+
+
+def test_wrong_cases_are_left_out() -> None:
+    # a case which disagrees with the sum computed term by term (here a
+    # wrong value given by the callback) is not listed
+    y = symbols('y')
+    generic = (y**(n + 1) - 1)/(y - 1)
+    assert with_sum_special_values(generic, y**k, [k], [S.Zero, n], lambda point, at: n + 2) == generic
+    assert with_sum_special_values(y**k/(y - 1), y**k, [k], [], lambda point, at: 2*k) == y**k/(y - 1)
+    right = with_sum_special_values(generic, y**k, [k], [S.Zero, n], lambda point, at: n + 1)
+    assert check_sum_cases(right, y**k, k, 0, n, n) == 1
 
 
 def test_nested_sums_and_products() -> None:

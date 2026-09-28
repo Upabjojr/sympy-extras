@@ -629,11 +629,11 @@ def _sum(term: Expr, j: Symbol, lo: Expr, hi: Expr) -> Expr:
 
     def karr(t: Expr) -> Optional[Expr]:
         def compute() -> Optional[Expr]:
-            value = karr_sum(t, (j, lo, hi))
+            value = karr_sum(t, (j, lo, hi), special_values=False)
             if value is None:
                 extra = _harmonic_extensions(t, j)
                 if extra:
-                    value = karr_sum(t, (j, lo, hi), extra)
+                    value = karr_sum(t, (j, lo, hi), extra, special_values=False)
             if value is None:
                 return None
             # g(n) - g(0) for the sum up to n - 1 has harmonic(n - 1),
@@ -802,7 +802,7 @@ def _agree(direct: Expr, value: Expr) -> Optional[bool]:
 
 
 def definite_sum(f: Union[Expr, int], limits: Sequence[Union[Symbol, Expr, int]], n: Optional[Symbol] = None,
-                 order: int = 4, extensions: Sequence[Expr] = ()) -> Optional[Expr]:
+                 order: int = 4, extensions: Sequence[Expr] = (), special_values: bool = True) -> Optional[Expr]:
     r"""The definite sum $\sum_{k=a}^{b} f(n, k)$ by creative telescoping
     in a $\Pi\Sigma$-field, or ``None``.
 
@@ -833,7 +833,8 @@ def definite_sum(f: Union[Expr, int], limits: Sequence[Union[Symbol, Expr, int]]
     (2*harmonic(n) - harmonic(2*n))*binomial(2*n, n)
 
     The isolated values of the other parameters at which the closed form
-    is undefined get cases of their own, the sum computed again there:
+    is undefined get cases of their own, the sum computed again there
+    (unless ``special_values`` is false):
 
     >>> y = symbols('y')
     >>> definite_sum(y**k, (k, 0, n))
@@ -874,10 +875,13 @@ def definite_sum(f: Union[Expr, int], limits: Sequence[Union[Symbol, Expr, int]]
     if result is None:
         return None
     value = as_expr((u*result).xreplace({N: n, K: k}))
+    if not special_values:
+        return value
     limit_symbol = n
 
     def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
-        return definite_sum(as_expr(f_.xreplace(point)), (k, a, b), limit_symbol, order, extensions)
+        return definite_sum(as_expr(f_.xreplace(point)), (k, a, b), limit_symbol, order,
+                            [as_expr(e.xreplace(point)) for e in extensions])
 
     return with_sum_special_values(value, f_, [k, n], [a, b], at_point)
 

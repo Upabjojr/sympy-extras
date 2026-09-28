@@ -456,8 +456,8 @@ Dixon's identity. There is no Wilf–Zeilberger certificate machinery.
 ### q-analogues
 
 ```python
->>> factor(qgosper_sum(q**k, (k, 0, n), q))
-(q**(n + 1) - 1)/(q - 1)
+>>> qgosper_sum(q**k, (k, 0, n), q)
+Piecewise((n + 1, Eq(q, 1)), (q**(n + 1)/(q - 1) - 1/(q - 1), True))
 >>> qzeilberger(qbinomial(n, k, q)*q**(k*(k - 1)/2)*x**k, n, k, q).coefficients
 [-q**n*x - 1, 1]
 
