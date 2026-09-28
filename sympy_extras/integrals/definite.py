@@ -858,6 +858,12 @@ class _Integrator:
         if constant_ != 1:
             found = self.integrate(rest_, x, a, b, depth, fallback, mapped)
             return None if found is None else found.scaled(constant_)
+        if not mapped:
+            # before the powers are split into their factors and the range
+            # is mapped, which hide the binomial
+            found = self._binomial_differential(f, x, a, b, depth)
+            if found is not None:
+                return found
         parametric, found = self._split_branches(f, x, a, b, depth)
         if found is not None:
             return found
@@ -2098,6 +2104,68 @@ class _Integrator:
         if self.ask(as_boolean(coefficient < 0)) is True:
             return -oo
         return None
+
+    def _binomial_differential(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                               depth: int) -> Optional[ConditionalValue]:
+        """A binomial differential ``x**m*(a + b*x**n)**p`` without
+        parameters whose integral Chebyshev's criterion proves
+        non-elementary, over a finite range, by its hypergeometric
+        antiderivative (:func:`.algebraic.binomial_hypergeometric_antiderivative`)
+        evaluated by one-sided limits on the pieces of the range between
+        the points where ``z = -b*x**n/a`` is 1 (one case of the
+        antiderivative on each), under half the time limit: on the
+        integrand as given, before the powers are split into their
+        factors and the range is mapped to ``(0, 1)``, after which
+        ``(2 - t)**(7/2)/sqrt(5*t**2 - 20*t + 16)`` is no binomial any more
+        (the regression: ``sqrt(t**7/(1 - 5*t**2))`` over ``(-1, -1/2)``
+        spent the time limit on its mapped pieces and stayed
+        unevaluated). The recognition is structural and cheap, and the
+        table, the Marichev–Adamchik method and Legendre's
+        elliptic forms, cheap too, are tried first as in the order of the
+        strategies."""
+        from .algebraic import binomial_exponents, chebyshev_elementary
+        from .indefinite import verified_antiderivative
+        if free_symbols(f) != {x} or a.has(x) or b.has(x) or a.is_finite is not True or b.is_finite is not True:
+            return None
+        if not any(isinstance(node, Pow) and isinstance(node.exp, Rational) and not node.exp.is_integer
+                   and node.base.has(x) for node in f.atoms(Pow)):
+            return None
+        binomial = binomial_exponents(f, x)
+        if binomial is None or chebyshev_elementary(binomial):
+            return None
+        ratio = as_expr(-binomial.b / binomial.a)
+        if ratio.is_extended_real is not True:
+            return None
+        # the points where z = ratio*x**n is 1, where the cases of the
+        # antiderivative meet: the range is cut there, so that one case
+        # holds on each piece
+        boundary = as_expr(Abs(ratio)**(-1 / binomial.n))
+        candidates = [as_expr(side * boundary) for side in (1, -1)
+                      if (side == 1 or binomial.n.q == 1) and as_expr(ratio * side**binomial.n).is_extended_positive]
+        cuts = self._points_in(FiniteSet(*candidates), a, b)
+        if cuts is None:
+            return None
+        for cheap in (self._table, self._canonical, self._elliptic):
+            # in the order of the strategies: 1/sqrt(1 - x**4) over (0, 1)
+            # is a beta function by the Marichev–Adamchik method, sqrt(x - x**3)
+            # over (0, 1) complete elliptic integrals, at once
+            found = cheap(f, x, a, b, depth)
+            if found is not None:
+                return found
+
+        def compute() -> Optional[ConditionalValue]:
+            known = verified_antiderivative(f, x, self.assumptions, ['binomial'])
+            if known is None:
+                return None
+            bounds = [a] + cuts + [b]
+            total = ConditionalValue(S.Zero)
+            for lower, upper in zip(bounds[:-1], bounds[1:]):
+                piece = self._antiderivative(f, x, lower, upper, depth, known=known[0])
+                if piece is None:
+                    return None
+                total = total.add(piece)
+            return self._finish(total)
+        return self._under_budget(compute)
 
     def _late_antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr,
                              depth: int) -> Optional[ConditionalValue]:

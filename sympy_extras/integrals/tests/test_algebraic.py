@@ -78,8 +78,15 @@ def test_binomial_differentials_up_to_a_constant_factor() -> None:
     assert binomial_exponents(x**2 * exp(x), x) is None
     # the two powers of one binomial cancel: no binomial is left
     assert binomial_exponents(sqrt(1 + x**2) / sqrt(2 + 2 * x**2), x) is None
-    # a coefficient which may vanish is no binomial for the criterion
-    assert binomial_exponents(sqrt(a + x**3), x) is None
+    # coefficients in parameters: sqrt(t**7/(p - q*t**2)) was no binomial,
+    # and its integral was left unevaluated; the criterion holds for all
+    # nonzero values, the zeros being the cases of the callers
+    p, q = symbols('p q')
+    found = binomial_exponents(sqrt(x**7 / (p - q * x**2)), x)
+    assert found is not None and (found.m, found.n, found.p) == (Rational(7, 2), 2, Rational(-1, 2))
+    assert (found.a, found.b) == (p, -q) and not chebyshev_elementary(found)
+    found = binomial_exponents(sqrt(a + x**3), x)
+    assert found is not None and (found.a, found.b) == (a, 1)
 
 
 def test_chebyshev_criterion() -> None:
@@ -148,6 +155,48 @@ def test_hypergeometric_antiderivatives_of_binomials() -> None:
     # the elementary ones are left to the elementary methods
     for f in [x**3 * sqrt(1 + x**2), 1 / (x * sqrt(1 + x**3)), sqrt(x) / (1 + cbrt(x))]:
         assert binomial_hypergeometric_antiderivative(f, x) is None
+
+
+def test_hypergeometric_antiderivatives_with_parameters() -> None:
+    from itertools import product
+    from sympy import I, Piecewise, cbrt, hyper, im
+    from sympy_extras._numeric import reliable_value
+    # binomials with parameters in their coefficients came back as None
+    # (and their integrals unevaluated): the real cases depend on the sign
+    # of z = -b*x**n/a, now conditions on it, checked here for every sign
+    # of the parameters on points of every real interval
+    p, q, c = symbols('p q c')
+    points = [Rational(-3), Rational(-6, 5), Rational(-1, 2), Rational(-1, 5),
+              Rational(1, 5), Rational(1, 2), Rational(6, 5), Rational(3)]
+    for f, parameters in [(sqrt(x**7 / (p - q * x**2)), [p, q]), (sqrt(1 + c * x**3), [c]),
+                          (cbrt(x) * sqrt(p + x**2), [p]), (cbrt(x) * sqrt(p + q * sqrt(x)), [p, q]),
+                          ((p + q * x**3)**Rational(-2, 3), [p, q])]:
+        F = binomial_hypergeometric_antiderivative(f, x)
+        assert F is not None and F.has(hyper), f
+        for signs in product((1, -1), repeat=len(parameters)):
+            values = {s: sign * size for s, sign, size in zip(parameters, signs, (Rational(1, 2), Rational(5, 4)))}
+            g, G = as_expr(f.subs(values)), as_expr(F.subs(values))
+            for point in points:
+                value = reliable_value(g, 30, {x: point})
+                if value is None:
+                    continue
+                difference = reliable_value(as_expr(G.diff(x) - g), 30, {x: point})
+                assert difference is not None and abs(difference) < 1e-25, (f, values, point)
+                if abs(as_expr(im(value))) < 1e-25:
+                    # real where f is: each case is f times a real function
+                    antiderivative = reliable_value(G, 30, {x: point})
+                    assert antiderivative is not None and abs(as_expr(im(antiderivative))) < 1e-25, (f, values, point)
+        # each case an antiderivative off the real line and for complex parameters
+        cases = [as_expr(pair.args[0]) for pair in F.args] if isinstance(F, Piecewise) else [F]
+        values = {s: Rational(1, 2) + (k + 1) * I for k, s in enumerate(parameters)}
+        for case in cases:
+            for point in [Rational(1, 3) + I / 2, -2 + I]:
+                difference = reliable_value(as_expr(case.diff(x) - f), 30, {**values, x: point})
+                assert difference is not None and abs(difference) < 1e-25, (f, case, point)
+    # parameters declared positive settle the sign of z: no case
+    u, v = symbols('u v', positive=True)
+    F = binomial_hypergeometric_antiderivative(sqrt(x**7 / (u + v * x**2)), x)
+    assert F is not None and not F.has(Piecewise)
 
 
 def test_the_three_cases_of_chebyshev() -> None:

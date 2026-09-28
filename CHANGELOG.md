@@ -76,6 +76,30 @@ remove public functions. Breaking changes are listed here when they happen.
   `sqrt(x)/(1 + x**(1/3))`). The definite integrator's antiderivative
   route tries the method too.
 
+- The non-elementary binomial differentials with parameters in their
+  coefficients integrate too: `sqrt(t**7/(a - b*t**2))`,
+  `sqrt(1 + c*x**3)` and `x**(1/3)*sqrt(a + x**2)`, left unevaluated
+  (`binomial_exponents` took numbers only), get the hypergeometric form
+  in `z = -b*x**n/a` and the real case in `1/z` under the condition
+  `z > 1` itself (`b*t**2/a > 1`), which covers every sign of the
+  parameters; each case is `f` times a function real there (checked
+  for all signs on every real interval, and for complex values). The
+  value `a = 0`, where `z` is undefined and the integrand a monomial,
+  gets its own case through the special values; at `b = 0` the generic
+  form holds. The exponents must still be rational numbers, and the
+  cases with parameters are not joined at `z = 1`.
+- `definite_integral(sqrt(t**7/(1 - 5*t**2)), (t, -1, -1/2))` stayed
+  unevaluated: the driver split the powers into their factors and
+  mapped the range to `(0, 1)` before its antiderivative route, which
+  then saw no binomial differential. A proven non-elementary binomial
+  differential over a finite range is now integrated first, on the
+  integrand as given (after the table and the elliptic forms), with
+  the range cut where `z = 1` so that one case of the antiderivative
+  holds on each piece: `(x*(1 - x**2)**2)**(1/4)` over `(0, 2)` and
+  `(1/2, 3)`, `(x**2 - 4)**(-5/4)` over `(3, 10)`, `sqrt(x - x**3)` over
+  `(-3, -1)` and `sqrt(x**3/(5*x**2 - 1))` over `(1, 3)`, all unevaluated
+  before, agree with mpmath's quadrature and Mathematica's `NIntegrate`.
+
 - Results with parameters carry their own cases for the isolated values
   of the parameters at which the generic closed form is undefined (a
   maintainer's decision: the package left them out until now). A new

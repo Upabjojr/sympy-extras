@@ -173,6 +173,37 @@ def test_nonelementary_binomial_differentials() -> None:
         assert not G.has(Integral) and not G.has(hyper), g
 
 
+def test_binomial_differentials_with_parameters_and_their_special_values() -> None:
+    from sympy import Eq, Piecewise, Rational, cbrt, hyper
+    from sympy_extras._numeric import reliable_value
+    a, b = symbols('a b')
+    # sqrt(t**7/(a - b*t**2)) and x**(1/3)*sqrt(a + x**2) came back
+    # unevaluated (the binomial coefficients had to be numbers); at a = 0,
+    # where z = b*x**2/a is undefined, the integrand is a monomial and gets
+    # its own case, and at b = 0 the generic form holds (z = 0)
+    for f in [sqrt(x**7 / (a - b * x**2)), cbrt(x) * sqrt(a + x**2)]:
+        F = indefinite_integral(f, x)
+        assert isinstance(F, Piecewise) and F.has(hyper), f
+        special, condition = as_expr(F.args[0].args[0]), F.args[0].args[1]
+        assert condition == Eq(a, 0), F
+        assert not special.has(hyper)
+        at_zero = as_expr(f.subs(a, 0))
+        for values in [{a: Rational(1, 2), b: Rational(5, 4)}, {a: Rational(-1, 2), b: Rational(5, 4)},
+                       {a: Rational(1, 2), b: Rational(-5, 4)}, {a: Rational(-3), b: Rational(-5, 4)},
+                       {a: Rational(3), b: S.Zero}]:
+            g, G = as_expr(f.subs(values)), as_expr(F.subs(values))
+            for point in [Rational(-2), Rational(-1, 3), Rational(1, 3), Rational(2)]:
+                if reliable_value(g, 30, {x: point}) is None:
+                    continue
+                difference = reliable_value(as_expr(G.diff(x) - g), 30, {x: point})
+                assert difference is not None and abs(difference) < 1e-25, (f, values, point)
+        # (where the integrand at a = 0 is real, as the checks of the
+        # package: x**(1/3)*sqrt(x**2) is not for x < 0)
+        for point in [Rational(1, 3), Rational(2)]:
+            difference = reliable_value(as_expr(special.diff(x) - at_zero), 30, {b: Rational(-5, 4), x: point})
+            assert difference is not None and abs(difference) < 1e-25, (f, point)
+
+
 def test_an_enclosing_limit_stops_the_integration() -> None:
     # the bug: under an enclosing limit of half a second (the census runs
     # every integral under one), each inner attempt() took the expiry for

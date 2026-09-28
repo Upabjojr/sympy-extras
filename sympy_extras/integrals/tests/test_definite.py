@@ -1024,3 +1024,26 @@ def test_halves_of_the_real_line_on_disjoint_regions() -> None:
     mu = symbols('mu')
     found = _Integrator(None)._mapped(exp(-(x - mu)**2), x, -oo, oo, 0)
     assert found is None or abs(complex(found.value.subs(mu, 1).evalf(20)) - complex(sqrt(pi).evalf(20))) < 1e-12, found
+
+
+def test_nonelementary_binomial_differentials_before_the_range_is_mapped() -> None:
+    from sympy import hyper
+    from sympy_extras._numeric import reliable_value
+    t = symbols('t')
+    # the bug: the range was split at the factors of the radicands and
+    # mapped to (0, 1) before the antiderivative route, which then saw
+    # (2 - t)**(7/2)/sqrt(5*t**2 - 20*t + 16), no binomial differential,
+    # and the value stayed unevaluated (antiderivative_integral has it);
+    # the value is Mathematica's NIntegrate (20 digits)
+    value = definite_integral(sqrt(t**7 / (1 - 5 * t**2)), (t, -1, Rational(-1, 2)))
+    assert value.has(hyper), value
+    number = reliable_value(value, 25)
+    assert number is not None and abs(number - Rational('0.14558284510455127843538')) < 1e-18
+    # across z = x**2 = 1, where the cases of the antiderivative meet (the
+    # range is cut there); mpmath's quadrature on (0, 1, 2)
+    value = definite_integral((t * (1 - t**2)**2)**Rational(1, 4), (t, 0, 2))
+    number = reliable_value(value, 25)
+    assert number is not None and abs(number - Rational('1.8068100787572723457302')) < 1e-18, value
+    # the elliptic forms, cheap, keep their turn first
+    value = definite_integral(sqrt(t - t**3), (t, 0, 1))
+    assert not value.has(hyper, Integral), value

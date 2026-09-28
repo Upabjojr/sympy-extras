@@ -40,7 +40,10 @@ series, so that `f H` is an antiderivative of `f` for every branch of
 `f` (:func:`binomial_hypergeometric_antiderivative`). On `0 < x` small
 with `a > 0` it is `a^p x^{m+1}\\, {}_2F_1(-p, q; q + 1; z)/(m + 1)`, the
 binomial series of `(1 - z)^p` integrated term by term (the derivation
-here, not a table).
+here, not a table). The same construction on `x^{m + n p} (b + a
+x^{-n})^p`, in `1/z`, is real where `z > 1`; with parameters in `a` and
+`b` the two are cases of the condition `z > 1` itself, whatever the
+signs of the parameters.
 
 **Roots of a Möbius function**: `\\bigl((a x + b)/(c x + d)\\bigr)^{r/n}` (and
 of a linear function, `c = 0`) with `t^n = (a x + b)/(c x + d)`, so that
@@ -98,13 +101,13 @@ from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.functions.special.gamma_functions import gamma
 from sympy.functions.special.hyper import hyper
-from sympy.logic.boolalg import Boolean, true
+from sympy.logic.boolalg import And, Boolean, false, true
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, cancel
 from sympy.series.limits import Limit
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr
+from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
 from sympy_extras.assumptions.limits import limit
 from sympy_extras.settings import settings
@@ -453,8 +456,12 @@ def _binomial_powers(e: Expr, x: Symbol) -> Optional[tuple[Rational, list[_Binom
 
 def binomial_exponents(f: ExprLike, x: Symbol) -> Optional[BinomialDifferential]:
     """The binomial differential ``x**m*(a + b*x**n)**p`` (``m``, ``n``, ``p``
-    rational, ``a`` and ``b`` nonzero numbers) of which ``f`` is a locally
-    constant multiple, ``None`` when ``f`` is none.
+    rational, ``a`` and ``b`` nonzero numbers or expressions in parameters
+    which are not identically zero) of which ``f`` is a locally constant
+    multiple, ``None`` when ``f`` is none. The exponents must be explicit
+    rational numbers; the coefficients may vanish at isolated values of
+    the parameters, where the integrand is a monomial (the callers'
+    cases).
 
     ``f`` is a product of rational powers of ``x``, of the binomial and of
     products and quotients of them, nested in any way:
@@ -482,6 +489,9 @@ def binomial_exponents(f: ExprLike, x: Symbol) -> Optional[BinomialDifferential]
     BinomialDifferential(x**(-1)*(1 + 1*x**(2))**(1/2))
     >>> binomial_exponents(sqrt(1 + x**2)*sqrt(1 - x**2), x) is None
     True
+    >>> a, b = symbols('a b')
+    >>> binomial_exponents(sqrt(x**7/(a - b*x**2)), x)
+    BinomialDifferential(x**(7/2)*(a + -b*x**(2))**(-1/2))
     """
     f_ = as_expr(f)
     found = _binomial_powers(f_, x)
@@ -501,10 +511,19 @@ def binomial_exponents(f: ExprLike, x: Symbol) -> Optional[BinomialDifferential]
     if len(remaining) != 1:
         return None
     a, b, n, p = remaining[0]
-    if not (a.is_number and b.is_number) or a.is_zero is not False or b.is_zero is not False \
-            or a.is_finite is not True or b.is_finite is not True:
+    if not all(_nonzero_coefficient(c) for c in (a, b)):
         return None
     return BinomialDifferential(m, a, b, n, p)
+
+
+def _nonzero_coefficient(c: Expr) -> bool:
+    """Whether ``c`` is a coefficient of a binomial: a nonzero finite
+    number, or an expression in parameters not known to vanish or to be
+    infinite (zero at isolated values of the parameters only, which are
+    the callers' cases)."""
+    if c.is_number:
+        return c.is_zero is False and c.is_finite is True
+    return c.is_zero is not True and c.is_finite is not False
 
 
 def chebyshev_elementary(binomial: BinomialDifferential) -> bool:
@@ -560,6 +579,15 @@ def binomial_hypergeometric_antiderivative(f: ExprLike, x: Symbol) -> Optional[E
     two cases at ``z = 1`` when ``f`` is real and integrable on both
     sides (Gauss's sum of ``2F1`` at 1).
 
+    With parameters in ``a`` and ``b`` (the exponents stay rational
+    numbers), the case in ``1/z`` holds where ``z > 1``, a condition on
+    ``x`` and the parameters which covers every sign of them (taken
+    real), and the form in ``z`` elsewhere; each is ``f`` times a
+    function real there. These cases are not joined at ``z = 1``. The
+    isolated values ``a = 0`` and ``b = 0``, where the integrand is a
+    monomial, are the callers' cases: the form in ``z`` holds at ``b =
+    0`` and the case in ``1/z`` at ``a = 0``.
+
     Examples
     ========
 
@@ -572,6 +600,9 @@ def binomial_hypergeometric_antiderivative(f: ExprLike, x: Symbol) -> Optional[E
     True
     >>> binomial_hypergeometric_antiderivative(sqrt(x**7/(1 - 5*x**2)), x)
     Piecewise((2*sqrt(5)*x*sqrt(x**7/(1 - 5*x**2))*sqrt(5 - 1/x**2)*hyper((-7/4, 1/2), (-3/4,), 1/(5*x**2))/35, x < -sqrt(5)/5), (2*x*sqrt(x**7/(1 - 5*x**2))*sqrt(1 - 5*x**2)*hyper((1/2, 9/4), (13/4,), 5*x**2)/9, True))
+    >>> c = symbols('c')
+    >>> binomial_hypergeometric_antiderivative(sqrt(1 + c*x**3), x)
+    Piecewise((2*x*sqrt(c*x**3 + 1)*hyper((-5/6, -1/2), (1/6,), -1/(c*x**3))/(5*sqrt(1 + 1/(c*x**3))), c*x**3 < -1), (x*hyper((-1/2, 1/3), (4/3,), -c*x**3), True))
     """
     f_ = as_expr(f)
     binomial = binomial_exponents(f_, x)
@@ -589,6 +620,8 @@ def binomial_hypergeometric_antiderivative(f: ExprLike, x: Symbol) -> Optional[E
     # m + 1 and q + 1 are not zero: q is not an integer
     inside = as_expr(x * inner_factor / (m + 1) * hyper([-p, q], [q + 1], z))
     outside = as_expr(x * outer_factor / (m2 + 1) * hyper([-p, q2], [q2 + 1], as_expr(1 / z)))
+    if not ratio.is_number:
+        return _parametric_cases(inside, outside, ratio, x, n)
     if ratio.is_extended_real is not True:
         return inside
     pieces: list[tuple[Expr, Boolean]] = []
@@ -617,6 +650,38 @@ def binomial_hypergeometric_antiderivative(f: ExprLike, x: Symbol) -> Optional[E
     if not pieces:
         return inside
     return as_expr(Piecewise(*pieces, (inside, true)))
+
+
+def _parametric_cases(inside: Expr, outside: Expr, ratio: Expr, x: Symbol, n: Rational) -> Expr:
+    """The antiderivative when ``z = ratio*x**n`` has parameters: the case in
+    ``1/z`` where ``z > 1`` (for real values of the parameters, whatever
+    their signs), the form in ``z`` elsewhere. Both are antiderivatives
+    wherever they are analytic, which the first is for ``z > 1`` and the
+    second off ``z >= 1``, and each is ``f`` times a function real there,
+    so real where ``f`` is. The cases are not joined at ``z = 1`` (the
+    constant of Gauss's sum would need the one-sided limits of ``f``
+    there, in the parameters): an antiderivative on each interval, which
+    jumps at ``z = 1``. ``ratio`` not real for real parameters: the form
+    in ``z`` alone."""
+    real: dict[Symbol, Expr] = {s: Dummy(s.name, real=True, nonzero=True) for s in sorted_symbols(free_symbols(ratio))}
+    if as_expr(ratio.xreplace(real)).is_extended_real is not True:
+        return inside
+    condition: Boolean
+    if n.q == 1:
+        # z real for every real x: z > 1 on one side (n odd) or on both (n even)
+        if n.p % 2 == 0 and ratio.is_extended_nonpositive is True:
+            return inside
+        condition = as_boolean(ratio * x**n > 1)
+    else:
+        # z not real for x < 0 (a principal power of a negative x); written
+        # with Abs(x) so that no case compares a complex number, and false
+        # at ratio = 0 (where the form in z is defined)
+        if ratio.is_extended_nonpositive is True:
+            return inside
+        condition = as_boolean(And(x > 0, ratio * Abs(x)**n > 1))
+    if condition == false:
+        return inside
+    return as_expr(Piecewise((outside, condition), (inside, true)))
 
 
 def _joined(x: Symbol, point: Expr, side: int, inner_factor: Expr, outer_factor: Expr,

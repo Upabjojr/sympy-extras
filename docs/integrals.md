@@ -645,7 +645,16 @@ logarithmic derivative, and the antiderivative is written `f*H` with
 `z = -b*x**n/a`, which holds for every branch of `f`; where `f` is real
 on `z > 1`, the cut of `2F1`, a case in `1/z` gives the real form there.
 `is_nonelementary_algebraic` decides these integrands by the same
-criterion, both ways.
+criterion, both ways. The coefficients `a` and `b` may have parameters
+(the exponents stay rational numbers): the case in `1/z` is then taken
+under the condition `z > 1` itself, which covers every sign of the
+parameters, and `a = 0`, where `z` is undefined and the integrand a
+monomial, gets its own case. The definite integrator tries these
+antiderivatives on the integrand as given, before its ranges are split
+and mapped (which hide the binomial), cut where `z = 1`:
+`sqrt(t**7/(1 - 5*t**2))` over `(-1, -1/2)` is
+`(16*sqrt(5)*hyper((-7/4, 1/2), (-3/4,), 1/5) - sqrt(10)*hyper((-7/4,
+1/2), (-3/4,), 4/5))/280 = 0.14558…`.
 
 ```python
 >>> from sympy import symbols, sqrt, log, tan
@@ -661,6 +670,10 @@ atan(log(x))
 x*hyper((-1/2, 1/3), (4/3,), -x**3)
 >>> indefinite_integral(sqrt(x**7/(1 - 5*x**2)), x)
 Piecewise((2*sqrt(5)*x*sqrt(x**7/(1 - 5*x**2))*sqrt(5 - 1/x**2)*hyper((-7/4, 1/2), (-3/4,), 1/(5*x**2))/35, x < -sqrt(5)/5), (2*x*sqrt(x**7/(1 - 5*x**2))*sqrt(1 - 5*x**2)*hyper((1/2, 9/4), (13/4,), 5*x**2)/9, True))
+>>> from sympy import Rational
+>>> a = symbols('a')
+>>> indefinite_integral((a + x**3)**Rational(-2, 3), x)
+Piecewise((-x/(x**3)**(2/3), Eq(a, 0)), (-x*(a/x**3 + 1)**(2/3)*hyper((1/3, 2/3), (4/3,), -a/x**3)/(a + x**3)**(2/3), x**3/a < -1), (x*(1 + x**3/a)**(2/3)*hyper((1/3, 2/3), (4/3,), -x**3/a)/(a + x**3)**(2/3), True))
 
 ```
 
