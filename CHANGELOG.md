@@ -10,6 +10,33 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.solvers.darboux`: Darboux polynomials and the
+  Prelle–Singer procedure for first order equations `y' = P(x, y)/Q(x,
+  y)` with polynomial `P` and `Q`, which SymPy's `dsolve` does not have.
+  `darboux_polynomials` finds the irreducible Darboux polynomials of the
+  field `Q d/dx + P d/dy` up to a degree bound with their cofactors (the
+  highest degree part from the factors of `x P_d - y Q_d`, the charts of
+  the forms when that vanishes, the rest by linear propagation and a
+  parametric Gaussian elimination with case splits on the pivots, whose
+  leaves are zero-dimensional systems in the cofactor coefficients
+  solved for their points in the coefficient field), `exponential_factors`
+  the factors `exp(A/B)` with `B` a product of Darboux polynomials,
+  `darboux_integrating_factor` a product of their powers with `R (Q dy -
+  P dx)` exact, `darboux_first_integral` a first integral (a vanishing
+  combination of the cofactors, else the quadrature of the integrating
+  factor, checked by `D I = 0`), and `prelle_singer` the implicit
+  solution `Eq(I(x, y), C1)`, which `dsolve_first_order` tries after the
+  Riccati, Abel and Chini classes. The degree bound is raised one by one
+  and the search stops at the first degree with a first integral; the
+  coefficients may lie in an algebraic extension (`extension=`) or
+  contain parameters; rational first integrals come out as rational
+  functions, elementary ones with logarithms and arctangents (the
+  quadrature is done with real symbols), Liouvillian ones through `erf`
+  and the like. Lotka–Volterra's `x - log(x) + y - log(y)`, the
+  pencil `(x**2 + y)/(y**2 + x)` from its reducible members, `y' = (x +
+  y)/(x - y)` through `x**2 + y**2`, the linear equation `y' = x y + 1`
+  through the factor `exp(-x**2/2)`.
+
 - The remaining summation functions give the isolated values of the
   parameters their own cases, as `karr_sum`, `summation` and
   `definite_sum` do: `zeilberger_sum` (`Piecewise((n + 1, Eq(y, 1)),

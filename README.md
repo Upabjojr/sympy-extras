@@ -373,9 +373,15 @@ form (`special_solutions`), factorisation of linear differential
 operators by Beke's algorithm (`factor_operator`, used by
 `dsolve_linear` for equations of order three and more), systems
 `Y' = A Y + b` through a cyclic vector, with rational solutions by
-Barkatou's method and variation of constants (`dsolve_system`), and Abel,
+Barkatou's method and variation of constants (`dsolve_system`), Abel,
 Chini and d'Alembert–Lagrange first order equations
-(`dsolve_first_order`). See
+(`dsolve_first_order`), and first order equations `y' = P(x, y)/Q(x, y)`
+with polynomial `P`, `Q` solved by the Prelle–Singer procedure
+(`prelle_singer`): the Darboux polynomials and exponential factors of the
+field up to a degree bound, a Darboux integrating factor from a linear
+system for their exponents, and the first integral by quadrature
+(`darboux_polynomials`, `darboux_integrating_factor`,
+`darboux_first_integral`). See
 [docs/solvers.md](docs/solvers.md); the Kamke benchmark results are in
 [benchmarks/README.md](benchmarks/README.md).
 
@@ -388,6 +394,9 @@ Chini and d'Alembert–Lagrange first order equations
 [x**2 + 2*x + 2, exp(x)]
 >>> special_solutions(x**2*y.diff(x, 2) + x*y.diff(x) + (x**2 - n**2)*y, y)
 [besselj(n, x), bessely(n, x)]
+>>> from sympy_extras.solvers import prelle_singer
+>>> prelle_singer(x*(1 - y)*y.diff(x) - y*(x - 1), y)          # Lotka–Volterra
+Eq(-x - y(x) + log(x) + log(y(x)), C1)
 
 ```
 

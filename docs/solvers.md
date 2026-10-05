@@ -427,6 +427,58 @@ True
 
 ```
 
+## Darboux polynomials and the Prelle–Singer procedure
+
+`sympy_extras.solvers.darboux` solves `y' = P(x, y)/Q(x, y)` with
+polynomial `P` and `Q` by Darboux's method: the *Darboux polynomials*
+of the field `D = Q d/dx + P d/dy` (`D f = g f` with a polynomial
+cofactor `g`, their zero sets are solution curves) and the
+*exponential factors* `exp(A/B)` (`D(A/B)` a polynomial) are searched up
+to a degree bound, and a linear system for the exponents gives either a
+first integral `prod f_i**c_i exp(...)` at once (a vanishing combination
+of the cofactors) or a Darboux integrating factor `R` (`sum c_i g_i = -div
+D`), whose quadrature is the first integral. Prelle and Singer proved
+that an equation with an elementary first integral has such an
+integrating factor with rational exponents, Singer that a Liouvillian
+first integral comes with exponential factors: within the degree bound
+the procedure is complete. The Darboux polynomials of degree `N` are
+found from their highest degree part (a product of factors of `x P_d -
+y Q_d`, or any form when that vanishes), the rest by linear propagation
+and a parametric elimination in the few cofactor coefficients left.
+SymPy's `dsolve` has nothing of the kind; `dsolve_first_order` tries it
+after the Riccati, Abel and Chini classes.
+
+```python
+>>> from sympy_extras.solvers import (darboux_polynomials, darboux_integrating_factor,
+...     darboux_first_integral, prelle_singer)
+>>> from sympy.abc import x
+>>> from sympy import Symbol
+>>> Y = Symbol('y')
+>>> darboux_polynomials(Y*(x - 1), x*(1 - Y), x, Y)             # Lotka–Volterra
+[DarbouxPolynomial(y, x - 1), DarbouxPolynomial(x, 1 - y)]
+>>> darboux_integrating_factor(Y*(x - 1), x*(1 - Y), x, Y)
+1/(x*y)
+>>> darboux_first_integral(Y*(x - 1), x*(1 - Y), x, Y)
+-x - y + log(x) + log(y)
+>>> darboux_first_integral(x + Y, x - Y, x, Y)                  # x**2 + y**2 is Darboux
+-log(x**2 + y**2)/2 - atan(x/y)
+>>> darboux_first_integral(x*Y + 1, 1, x, Y)                    # the factor exp(-x**2/2)
+y*exp(-x**2/2) - sqrt(2)*sqrt(pi)*erf(sqrt(2)*x/2)/2
+>>> prelle_singer(y.diff(x) - (x + y)/(x - y), y)
+Eq(-log(x**2 + y(x)**2)/2 - atan(x/y(x)), C1)
+>>> prelle_singer(y.diff(x) - y**2 - x, y) is None              # Airy's Riccati equation
+True
+
+```
+
+The bound (`degree`, 4 by default) is raised one by one and the search
+stops at the first degree which gives a first integral; the coefficients
+may lie in an algebraic extension (`extension=I` finds `x + I*y` and
+`x - I*y` rather than their product) or contain parameters. Every step
+runs under the time limit of the settings; a field with a rational first
+integral of high degree, whose Darboux polynomials come in families,
+is the expensive case.
+
 ## First order nonlinear PDEs
 
 `sympy_extras.solvers.charpit.complete_integral` finds complete

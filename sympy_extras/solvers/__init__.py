@@ -9,7 +9,8 @@ equations with constant coefficients; Thue equations; integrating factors,
 linearisation and Abel invariants for ordinary differential equations;
 factorisation of linear differential operators (Beke's algorithm); linear
 systems with rational coefficients (cyclic vectors, Barkatou's rational
-solutions, variation of constants)."""
+solutions, variation of constants); Darboux polynomials and the
+Prelle–Singer procedure for first order equations ``y' = P/Q``."""
 from .lie import JetSpace, Symmetry, symmetries, check_symmetry, determining_system, symmetry_janet_basis
 from .pde import pde_symmetries, similarity_reduction, pdsolve_lie, Reduction
 from .ode import (ode_symmetries, canonical_coordinates, reduce_order,
@@ -38,6 +39,8 @@ from .abel import (abel_invariants, abel_equivalence, abel_by_invariants, air_so
 from .thue_equation import thue, units_of_order, elements_of_norm, ThueEquation
 from .second_order import (integrating_factor_xy, integrating_factor_p, is_linearizable, linearize,
     rectify_symmetries, dsolve_second_order, FirstIntegral, Linearization)
+from .darboux import (DarbouxPolynomial, ExponentialFactor, darboux_polynomials, exponential_factors,
+    darboux_integrating_factor, darboux_first_integral, prelle_singer)
 
 __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry', 'determining_system', 'symmetry_janet_basis',
     'pde_symmetries', 'similarity_reduction', 'pdsolve_lie', 'Reduction',
@@ -60,4 +63,6 @@ __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry', 'determining_
     'integrating_factor_xy', 'integrating_factor_p', 'is_linearizable', 'linearize', 'rectify_symmetries',
     'dsolve_second_order', 'FirstIntegral', 'Linearization',
     'abel_invariants', 'abel_equivalence', 'abel_by_invariants', 'air_solution', 'particular_solution',
-    'AbelInvariants', 'AbelTransformation', 'thue', 'units_of_order', 'elements_of_norm', 'ThueEquation']
+    'AbelInvariants', 'AbelTransformation', 'thue', 'units_of_order', 'elements_of_norm', 'ThueEquation',
+    'DarbouxPolynomial', 'ExponentialFactor', 'darboux_polynomials', 'exponential_factors',
+    'darboux_integrating_factor', 'darboux_first_integral', 'prelle_singer']

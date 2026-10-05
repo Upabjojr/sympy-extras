@@ -61,6 +61,17 @@ unverified, 12 failed, 9 timeouts (24 verified before the extras). What
 remains are Abel equations without a constant invariant and equations
 with arbitrary functions `f(x)`, `g(x)`.
 
+The Prelle–Singer procedure (`prelle_singer`, tried by
+`dsolve_first_order` after the Riccati, Abel and Chini classes) alone on
+all 406 first order equations of `kamke1`, 15 s per step, 60 s per
+equation, on a loaded machine: 158 equations are of the form `y' = P(x,
+y)/Q(x, y)` with polynomial `P`, `Q` (the others have arbitrary
+functions, radicals or exponentials); 115 of them get an implicit
+solution `I(x, y) = C1`, every one confirmed by `checkodesol` (with
+`solve_for_func=False`; none wrong), in 0.11 s median; the remaining 43
+get nothing within the degree bound 4 and the time limit (Abel and
+Riccati equations without Liouvillian first integrals, mostly).
+
 `kamke_odes.py --collections kamke2 --limit 40 --timeout 15` (the first 40
 second order equations, almost all linear with special function
 solutions):

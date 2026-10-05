@@ -400,13 +400,17 @@ def _riccati(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
 
 
 def dsolve_first_order(equation: Basic, f: AppliedUndef, special_values: bool = True) -> Optional[Basic]:
-    """The Riccati general solution, the Chini/Abel implicit solution or
-    the Lagrange parametric solution (as a list) of a first order
+    """The Riccati general solution, the Chini/Abel implicit solution,
+    the implicit solution of an equation ``y' = P(x, y)/Q(x, y)`` with
+    polynomial ``P``, ``Q`` from the first integral of the Prelle–Singer
+    procedure (:func:`~sympy_extras.solvers.darboux.prelle_singer`)
+    or the Lagrange parametric solution (as a list) of a first order
     equation, else ``None``. With ``special_values``, an explicit
     solution of an equation with parameters gets cases for the isolated
     values of the parameters at which it is undefined or loses its
     constant (:mod:`sympy_extras.solvers._special_values`)."""
-    for method in (_riccati, abel_ode, chini_ode):
+    from .darboux import prelle_singer
+    for method in (_riccati, abel_ode, chini_ode, prelle_singer):
         solution = attempt(lambda: method(equation, f), settings.timeout)
         if solution is not None:
             if special_values and isinstance(solution, Eq):
