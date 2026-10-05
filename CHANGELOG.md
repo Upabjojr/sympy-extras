@@ -24,14 +24,19 @@ remove public functions. Breaking changes are listed here when they happen.
   `darboux_integrating_factor` a product of their powers with `R (Q dy -
   P dx)` exact, `darboux_first_integral` a first integral (a vanishing
   combination of the cofactors, else the quadrature of the integrating
-  factor, checked by `D I = 0`), and `prelle_singer` the implicit
-  solution `Eq(I(x, y), C1)`, which `dsolve_first_order` tries after the
-  Riccati, Abel and Chini classes. The degree bound is raised one by one
-  and the search stops at the first degree with a first integral; the
-  coefficients may lie in an algebraic extension (`extension=`) or
-  contain parameters; rational first integrals come out as rational
+  factor, checked by `D I = 0`), and `prelle_singer` the solution,
+  explicit when the first integral is rational in `y` with one root
+  (`Eq(y(x), C1*x + 1/(2*x))`), else implicit, `Eq(I(x, y), C1)`, which
+  `dsolve_first_order` tries after the Riccati, Abel and Chini classes.
+  The degree bound is raised one by one and the search stops at the
+  first degree with a first integral; the coefficients may lie in an
+  algebraic extension (`extension=`, and over the rationals the search
+  is repeated over the roots of an irreducible quadratic factor of `x
+  P_d - y Q_d` when nothing is found) or contain parameters; rational first integrals come out as rational
   functions, elementary ones with logarithms and arctangents (the
-  quadrature is done with real symbols), Liouvillian ones through `erf`
+  quadrature is done with real symbols, and every antiderivative is
+  checked by differentiation: SymPy's `integrate(a/(a*y**2 - b), y)` is
+  `0` for real `a`, `b`, `y`, issue #25), Liouvillian ones through `erf`
   and the like. Lotka–Volterra's `x - log(x) + y - log(y)`, the
   pencil `(x**2 + y)/(y**2 + x)` from its reducible members, `y' = (x +
   y)/(x - y)` through `x**2 + y**2`, the linear equation `y' = x y + 1`

@@ -151,6 +151,11 @@ def test_parameters_and_extensions() -> None:
     found = darboux_polynomials(sqrt(2)*y, x, x, y, degree=1)
     assert {d.polynomial for d in found} >= {x, y}
     assert {d.cofactor for d in found} == {1, sqrt(2)}
+    # over Q(i) the lines x - I y and x + I y with conjugate cofactors
+    # (the linear systems over an algebraic field got SymPy numbers among
+    # their entries and failed with AttributeError)
+    found = darboux_polynomials(-(2*x**2 + x*y + y**2), x*(y - x), x, y, degree=1, extension=I)
+    assert {d.polynomial for d in found} == {x, x - I*y, x + I*y}
 
 
 def test_prelle_singer_implicit_solutions() -> None:
@@ -166,8 +171,9 @@ def test_prelle_singer_implicit_solutions() -> None:
     ]
     for equation in equations:
         solution = prelle_singer(equation, f)
-        assert isinstance(solution, Eq) and solution.rhs == C1, equation
-        assert not solution.lhs.has(x.diff) and solution.lhs.has(f)
+        assert isinstance(solution, Eq), equation
+        # explicit (the linear equation, through erf) or Eq(I, C1)
+        assert solution.lhs == f or (solution.rhs == C1 and solution.lhs.has(f))
         checked = checkodesol(equation, solution, f, solve_for_func=False)
         assert checked[0] is True, (equation, solution, checked)
 
@@ -197,10 +203,16 @@ def test_vector_field_parsing() -> None:
 
 
 def test_degree_bound_raised_one_by_one() -> None:
-    # y' = (x + y)/(x - y) needs the Darboux polynomial x**2 + y**2: with
-    # degree one, nothing (and no exponential factor either)
-    assert darboux_first_integral(x + y, x - y, x, y, degree=1) is None
-    assert darboux_first_integral(x + y, x - y, x, y, degree=2) is not None
+    # y' = (x + y)/(x - y) needs the Darboux polynomial x**2 + y**2 over
+    # the rationals: with degree one the search over Q(i) (the roots of
+    # x**2 + y**2) gives the complex Darboux first integral
+    # (x + I y)/(x - I y)**I instead; with degree two, the real one
+    from sympy_extras.solvers.darboux import _field_of, _first_integral_over
+    assert _first_integral_over(_field_of(x + y, x - y, x, y), 1) is None
+    complex_form = darboux_first_integral(x + y, x - y, x, y, degree=1)
+    assert complex_form is not None and complex_form.has(I) and _is_first_integral(x + y, x - y, complex_form)
+    real_form = darboux_first_integral(x + y, x - y, x, y, degree=2)
+    assert real_form is not None and not real_form.has(I)
     # the pencil's first integral is found with its lines already: the
     # quotient of two exponential factors with linear denominators
     f1, f2 = x**2 + y, y**2 + x
@@ -217,3 +229,45 @@ def test_rational_first_integral_from_the_cofactors() -> None:
     assert I_ is not None and _dependent(I_, (x**2 + y**2 + 1)/x)
     I_ = darboux_first_integral(x*y - 1, x**2, x, y, degree=2)
     assert I_ is not None and _dependent(I_, y/x - Rational(1, 2)/x**2)
+
+
+def test_explicit_when_the_relation_is_rational() -> None:
+    f = Function('y')(x)
+    C1 = Symbol('C1')
+    # a relation rational in y with one root: solved for y
+    solution = prelle_singer(x**2*f.diff(x) - x*f + 1, f)
+    assert isinstance(solution, Eq) and solution.lhs == f and not solution.rhs.has(f)
+    assert checkodesol(x**2*f.diff(x) - x*f + 1, solution, f)[0] is True
+    # linear in y through erf: explicit too
+    solution = prelle_singer(f.diff(x) - x*f - 1, f)
+    assert isinstance(solution, Eq) and solution.lhs == f and solution.rhs.has(erf)
+    # a transcendental relation stays implicit (solve would cut it to
+    # one branch of LambertW)
+    solution = prelle_singer(x*(1 - f)*f.diff(x) - f*(x - 1), f)
+    assert isinstance(solution, Eq) and solution.rhs == C1 and solution.lhs.has(log)
+
+
+def test_quadratic_extension_of_the_top_part() -> None:
+    from sympy_extras.solvers.darboux import _field_of, _quadratic_extension
+    # x P_d - y Q_d = (x**2 + y**2) * ... : the search over the rationals
+    # is repeated over Q(i), where the conjugate lines appear
+    P, Q = -(2*x**2 + x*y + y**2), x*(y - x)
+    extension = _quadratic_extension(_field_of(P, Q, x, y))
+    assert extension is not None and cancel(extension**2 + 4) == 0
+    found = darboux_polynomials(P, Q, x, y, degree=1, extension=extension)
+    assert {d.polynomial for d in found} == {x, x - I*y, x + I*y}
+    # no quadratic factor: no extension
+    assert _quadratic_extension(_field_of(y*(x - 1), x*(1 - y), x, y)) is None
+
+
+def test_parameters_with_undecided_signs() -> None:
+    # Kamke 1.23, y' = b - a y**2: integrated with real parameters, the
+    # quadrature is a Piecewise on the sign of a b without a generic
+    # branch, and the equation lost its solution; the complex symbols
+    # give the logarithms
+    f = Function('y')(x)
+    b = Symbol('b')
+    equation = f.diff(x) + a*f**2 - b
+    solution = prelle_singer(equation, f)
+    assert isinstance(solution, Eq)
+    assert checkodesol(equation, solution, f, solve_for_func=False)[0] is True

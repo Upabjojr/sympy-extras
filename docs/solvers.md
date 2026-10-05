@@ -466,6 +466,8 @@ after the Riccati, Abel and Chini classes.
 y*exp(-x**2/2) - sqrt(2)*sqrt(pi)*erf(sqrt(2)*x/2)/2
 >>> prelle_singer(y.diff(x) - (x + y)/(x - y), y)
 Eq(-log(x**2 + y(x)**2)/2 - atan(x/y(x)), C1)
+>>> prelle_singer(x**2*y.diff(x) - x*y + 1, y)                  # explicit when rational in y
+Eq(y(x), C1*x + 1/(2*x))
 >>> prelle_singer(y.diff(x) - y**2 - x, y) is None              # Airy's Riccati equation
 True
 
@@ -474,7 +476,12 @@ True
 The bound (`degree`, 4 by default) is raised one by one and the search
 stops at the first degree which gives a first integral; the coefficients
 may lie in an algebraic extension (`extension=I` finds `x + I*y` and
-`x - I*y` rather than their product) or contain parameters. Every step
+`x - I*y` rather than their product; over the rationals the search is
+repeated over the roots of an irreducible quadratic factor of
+`x P_d - y Q_d` when nothing is found) or contain parameters. The
+solution is explicit when the first integral is rational in `y` with
+one root, implicit otherwise (a transcendental relation is not cut to
+one branch). Every step
 runs under the time limit of the settings; a field with a rational first
 integral of high degree, whose Darboux polynomials come in families,
 is the expensive case.

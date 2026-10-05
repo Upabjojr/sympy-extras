@@ -399,12 +399,14 @@ def _linear_rows(equations: Sequence[Poly], gens: Sequence[Symbol],
             continue
         row: list[DomainElement] = [K.zero]*len(gens)
         constant: DomainElement = K.zero
+        # ``terms`` gives the coefficients as expressions: back to the
+        # domain (over an algebraic field the matrix got ``One`` entries)
         for monomial, coefficient in equation.terms():
             if sum(monomial) == 0:
-                constant = coefficient
+                constant = K.from_sympy(coefficient)
             else:
                 position = monomial.index(1)
-                row[index[equation.gens[position]]] = coefficient
+                row[index[equation.gens[position]]] = K.from_sympy(coefficient)
         rows.append(row)
         rhs.append(-constant)
     return rows, rhs
@@ -1100,6 +1102,12 @@ def _denominators(field: _Field, polynomials: Sequence[tuple[Poly, Poly]],
     return result
 
 
+def _native_terms(p: Poly, K: Domain) -> dict[_Monomial, DomainElement]:
+    """The terms of a polynomial in ``x, y`` with the coefficients as
+    elements of ``K``."""
+    return {(monomial[0], monomial[1]): K.from_sympy(coefficient) for monomial, coefficient in p.terms()}
+
+
 def _exponential_with_denominator(field: _Field, B: Poly, g_B: Poly, bound: int) -> list[tuple[Poly, Poly]]:
     """The exponential factors ``exp(A/B)`` with ``deg A <= bound`` and
     their cofactors ``L``: the nullspace of ``(A, L) -> D A - g_B A - L B``,
@@ -1112,10 +1120,10 @@ def _exponential_with_denominator(field: _Field, B: Poly, g_B: Poly, bound: int)
     columns: list[dict[_Monomial, DomainElement]] = []
     for i, j in a_monomials:
         monomial = Poly.from_dict({(i, j): K.one}, x, y, domain=K)
-        columns.append(dict((field.apply(monomial) - g_B*monomial).terms()))
+        columns.append(_native_terms(field.apply(monomial) - g_B*monomial, K))
     for i, j in l_monomials:
         monomial = Poly.from_dict({(i, j): K.one}, x, y, domain=K)
-        columns.append(dict((-B*monomial).terms()))
+        columns.append(_native_terms(-B*monomial, K))
     image: list[_Monomial] = sorted({monomial for column in columns for monomial in column})
     rows: list[list[DomainElement]] = [[column.get(monomial, K.zero) for column in columns] for monomial in image]
     solved = _solve_affine(rows, [K.zero]*len(rows), len(columns), K)
@@ -1313,9 +1321,14 @@ def darboux_integrating_factor(P: ExprLike, Q: ExprLike, x: Symbol, y: Symbol, d
 
 def _integrate(e: Expr, v: Symbol, x: Symbol, y: Symbol) -> Optional[Expr]:
     """``Integral(e, v)`` by SymPy within half of the time left, with
-    ``x``, ``y`` and the parameters real (the logarithms of a rational
-    integrand come out real: ``atan((x + y)/a)`` rather than ``I*log(x +
-    y - I*a)/2 - I*log(x + y + I*a)/2``), or ``None``."""
+    ``x``, ``y`` and the parameters real first (the logarithms of a
+    rational integrand come out real: ``atan((x + y)/a)`` rather than
+    ``I*log(x + y - I*a)/2 - I*log(x + y + I*a)/2``), then with complex
+    symbols when that gives no antiderivative: a ``Piecewise`` on the
+    signs of the parameters without a generic branch, or a wrong one
+    (SymPy's ``integrate(a/(a*y**2 - b), y)`` is ``0`` for real ``a``,
+    ``b``, ``y``; every antiderivative is checked by differentiation);
+    ``None`` when neither is an antiderivative in closed form."""
     from sympy.integrals.integrals import integrate
     real = {s: Dummy(s.name, real=True) for s in e.free_symbols if isinstance(s, Symbol)}
     real.setdefault(x, Dummy(x.name, real=True))
@@ -1324,12 +1337,29 @@ def _integrate(e: Expr, v: Symbol, x: Symbol, y: Symbol) -> Optional[Expr]:
     limit = remaining_time()
     budget = settings.timeout if limit is None else limit/2
     result = attempt(lambda: integrate(e.xreplace(real), real[v], conds='none'), budget)
+    if result is not None:
+        generic = _generic_branch(as_expr(result))
+        if generic is not None:
+            candidate = as_expr(generic.xreplace(back))
+            if _is_antiderivative(candidate, e, v):
+                return candidate
+    limit = remaining_time()
+    budget = settings.timeout if limit is None else limit/2
+    result = attempt(lambda: integrate(e, v, conds='none'), budget)
     if result is None:
         return None
     generic = _generic_branch(as_expr(result))
-    if generic is None or generic.has(Derivative) or _has_integral(generic):
+    if generic is None or not _is_antiderivative(generic, e, v):
         return None
-    return as_expr(generic.xreplace(back))
+    return generic
+
+
+def _is_antiderivative(F: Expr, e: Expr, v: Symbol) -> bool:
+    """Whether ``F`` is an antiderivative of ``e`` in closed form: no
+    integral or derivative left, and ``F' - e`` zero."""
+    if F.has(Derivative) or _has_integral(F):
+        return False
+    return _is_zero(as_expr(F.diff(v) - e))
 
 
 def _generic_branch(e: Expr) -> Optional[Expr]:
@@ -1423,7 +1453,21 @@ def darboux_first_integral(P: ExprLike, Q: ExprLike, x: Symbol, y: Symbol, degre
 def _first_integral(field: _Field, degree: int) -> Optional[Expr]:
     """The first integral with the Darboux polynomials of the lowest
     degree which gives one (the Prelle–Singer loop: the bound is raised
-    one by one up to ``degree``)."""
+    one by one up to ``degree``); over the rationals, when nothing is
+    found and ``x P_d - y Q_d`` has irreducible quadratic factors, the
+    search is repeated over the field of their roots (the conjugate
+    lines with their own exponents)."""
+    integral = _first_integral_over(field, degree)
+    if integral is not None or not field.K.is_QQ:
+        return integral
+    extension = _quadratic_extension(field)
+    if extension is None:
+        return None
+    extended = _field_of(field.P.as_expr(), field.Q.as_expr(), field.x, field.y, extension)
+    return _first_integral_over(extended, degree)
+
+
+def _first_integral_over(field: _Field, degree: int) -> Optional[Expr]:
     polynomials: dict[Expr, tuple[Poly, Poly]] = {}
     for N in range(1, degree + 1):
         _add_darboux(field, N, polynomials)
@@ -1437,6 +1481,28 @@ def _first_integral(field: _Field, degree: int) -> Optional[Expr]:
         integral = _first_integral_from_factor(field, R)
         if integral is not None and not _is_constant_integral(integral, field.x, field.y):
             return _tidy(integral)
+    return None
+
+
+def _quadratic_extension(field: _Field) -> Optional[Expr]:
+    """The square root of the discriminant of an irreducible quadratic
+    factor of ``x P_d - y Q_d`` (the first one), or ``None``."""
+    from sympy.functions.elementary.miscellaneous import sqrt
+    _, _, H = _top_parts(field)
+    if H.is_zero:
+        return None
+    x, y = field.x, field.y
+    for h, _ in H.factor_list()[1]:
+        if _total_degree(h) != 2:
+            continue
+        quadratic = Poly(h.as_expr().subs(y, 1), x)
+        if quadratic.degree() != 2:
+            quadratic = Poly(h.as_expr().subs(x, 1), y)
+        discriminant = as_expr(quadratic.discriminant())
+        if discriminant.is_Rational and discriminant >= 0:
+            # reducible, or a double line: nothing new
+            continue
+        return as_expr(sqrt(discriminant))
     return None
 
 
@@ -1479,6 +1545,8 @@ def prelle_singer(equation: Basic, f: AppliedUndef, degree: int = 4, extension: 
     Eq(-log(x**2 + y(x)**2)/2 - atan(x/y(x)), C1)
     >>> prelle_singer(x*(1 - y)*y.diff(x) - y*(x - 1), y)
     Eq(-x - y(x) + log(x) + log(y(x)), C1)
+    >>> prelle_singer(x**2*y.diff(x) - x*y + 1, y)
+    Eq(y(x), C1*x + 1/(2*x))
     """
     parsed = vector_field(equation, f)
     if parsed is None:
@@ -1491,4 +1559,27 @@ def prelle_singer(equation: Basic, f: AppliedUndef, degree: int = 4, extension: 
     integral = attempt(lambda: _first_integral(field, degree), settings.timeout)
     if integral is None:
         return None
-    return Eq(integral.xreplace({y: f}), Symbol('C1'))
+    C1 = Symbol('C1')
+    implicit = Eq(integral.xreplace({y: f}), C1)
+    explicit = _explicit(integral, x, y, C1)
+    if explicit is None:
+        return implicit
+    return Eq(f, explicit.xreplace({y: f}))
+
+
+def _explicit(integral: Expr, x: Symbol, y: Symbol, C1: Symbol) -> Optional[Expr]:
+    """``y`` from ``I(x, y) = C1`` when ``I`` is a rational function of
+    ``y`` and the equation has one root in ``y`` (``C1 x + 1/(2 x)`` for
+    ``(2 x y - 1)/(2 x**2) = C1``), else ``None``: a transcendental
+    relation is left implicit rather than cut to one branch (``-LambertW(
+    -exp(C1 + x)/x)`` for the Lotka–Volterra integral)."""
+    from sympy.solvers.solvers import solve
+    if not integral.is_rational_function(y):
+        return None
+    solutions = attempt(lambda: solve(Eq(integral, C1), y), _share_of_time())
+    if not isinstance(solutions, list) or len(solutions) != 1:
+        return None
+    solution = solutions[0]
+    if not isinstance(solution, Expr) or solution.has(y):
+        return None
+    return solution
