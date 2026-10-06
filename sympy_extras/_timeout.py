@@ -177,7 +177,13 @@ def time_limit(seconds: Optional[float]) -> Iterator[Optional[Deadline]]:
     signal.setitimer(signal.ITIMER_REAL, max(end - started, 1e-4))
     try:
         _Bookkeeping.busy = False
-        _raise_if_expired()
+        # an enclosing limit which expired is raised at once; this one,
+        # when it is shorter than its own entry, expires in the body,
+        # once the owner holds its Deadline (raised here, the expiry was
+        # nobody's: attempt let it through instead of returning None)
+        expired = _outermost_expired(time.monotonic())
+        if expired is not None and expired is not deadline:
+            raise TimeLimitExceeded(expired)
         yield deadline
     finally:
         _Bookkeeping.busy = True

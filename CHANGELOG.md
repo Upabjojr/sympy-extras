@@ -1122,6 +1122,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- A time limit shorter than its own entry (the `1e-6` s budget of the
+  direct Gröbner computation before the modular one takes over)
+  raised its expiry before its owner held the `Deadline`, so that
+  `attempt` let `TimeLimitExceeded` through instead of returning
+  `None`; the expiry of the limit itself now happens in its body.
+
 - `zeilberger_sum(y**k, (k, 0, n))` took the parameter `y` for the
   variable of the sum (and raised `ValueError`, `y**k` not being
   hypergeometric in `y`) instead of the upper limit `n`.

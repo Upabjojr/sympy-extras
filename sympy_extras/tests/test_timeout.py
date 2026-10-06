@@ -256,3 +256,16 @@ def test_limits_entered_as_the_enclosing_one_expires_leave_nothing_behind() -> N
         assert signal.getitimer(signal.ITIMER_REAL)[0] == 0
         assert signal.getsignal(signal.SIGALRM) == handler
         assert _timeout._running == []
+
+
+def test_a_limit_shorter_than_its_entry_is_the_owners() -> None:
+    # a limit which expired while being entered raised its expiry before
+    # the owner had its Deadline: attempt could not tell it was its own
+    # and let TimeLimitExceeded through, instead of returning None (the
+    # Gröbner dispatcher's direct computation under 1e-6 s killed its
+    # caller, sympy-extras CI of 2026-10-06)
+    for seconds in (1e-9, 1e-7, 1e-6):
+        for _ in range(20):
+            assert attempt(lambda: sum(range(10**5)), seconds) in (None, sum(range(10**5)))
+    # inside an enclosing limit with time left, the same
+    assert attempt(lambda: attempt(lambda: sum(range(10**5)), 1e-9), 5) in (None, sum(range(10**5)))
