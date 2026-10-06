@@ -17,9 +17,11 @@ remove public functions. Breaking changes are listed here when they happen.
   field `Q d/dx + P d/dy` up to a degree bound with their cofactors (the
   highest degree part from the factors of `x P_d - y Q_d`, the charts of
   the forms when that vanishes, the rest by linear propagation and a
-  parametric Gaussian elimination with case splits on the pivots, whose
-  leaves are zero-dimensional systems in the cofactor coefficients
-  solved for their points in the coefficient field), `exponential_factors`
+  parametric Gaussian elimination with case splits on the pivots, the
+  parameters being the smaller of the two blocks of unknowns left, the
+  cofactor's or the polynomial's, whose leaves are zero-dimensional
+  systems solved for their points in the coefficient field),
+  `exponential_factors`
   the factors `exp(A/B)` with `B` a product of Darboux polynomials,
   `darboux_integrating_factor` a product of their powers with `R (Q dy -
   P dx)` exact, `darboux_first_integral` a first integral (a vanishing
@@ -27,8 +29,10 @@ remove public functions. Breaking changes are listed here when they happen.
   factor, checked by `D I = 0`), and `prelle_singer` the solution,
   explicit when the first integral is rational in `y` with one root
   (`Eq(y(x), C1*x + 1/(2*x))`), else implicit, `Eq(I(x, y), C1)`, which
-  `dsolve_first_order` tries after the Riccati, Abel and Chini classes.
-  The degree bound is raised one by one and the search stops at the
+  `dsolve_first_order` tries after the Riccati, Abel and Chini classes
+  (and `solve_ode` tries `dsolve_first_order` for a first order
+  equation `dsolve` does not solve, before the symmetry method). The
+  degree bound is raised one by one and the search stops at the
   first degree with a first integral; the coefficients may lie in an
   algebraic extension (`extension=`, and over the rationals the search
   is repeated over the roots of an irreducible quadratic factor of `x

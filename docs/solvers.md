@@ -30,7 +30,9 @@ symmetry method for higher order.
   `s`, an equation of order `n` becomes one of order `n - 1` for
   `v = ds/dr` (a quadrature for `n = 1`), solved by `dsolve`; the
   solutions are verified with `checkodesol`. `solve_ode` runs `dsolve`
-  first and the symmetry method when it fails.
+  first, then, for a first order equation, the solvers of
+  `dsolve_first_order` (Riccati, Abel, Chini, Prelle–Singer), and the
+  symmetry method when they fail.
 
 Every step handed to SymPy (integration, `dsolve`, `solve`, the checks)
 runs under a time limit (`timeout` argument, 30 s by default) so that the

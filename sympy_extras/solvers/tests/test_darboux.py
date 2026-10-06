@@ -271,3 +271,13 @@ def test_parameters_with_undecided_signs() -> None:
     solution = prelle_singer(equation, f)
     assert isinstance(solution, Eq)
     assert checkodesol(equation, solution, f, solve_for_func=False)[0] is True
+
+
+def test_solve_ode_reaches_the_first_order_solvers() -> None:
+    # Kamke 1.236, x (y + 4) y' = 2 x + y**2 + 2 y: dsolve fails, the
+    # Prelle-Singer procedure gives x (x - 2 y - 4)/(x - y)**2 = C1
+    from sympy_extras.solvers import solve_ode
+    f = Function('y')(x)
+    equation = x*(f + 4)*f.diff(x) - 2*x - f**2 - 2*f
+    solutions = solve_ode(equation, f)
+    assert len(solutions) == 1 and checkodesol(equation, solutions[0], f, solve_for_func=False)[0] is True

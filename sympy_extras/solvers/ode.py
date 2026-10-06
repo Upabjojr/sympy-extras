@@ -413,8 +413,11 @@ def dsolve_lie(ode: Equation, y: AppliedUndef, degree: int = 2, basis: Sequence[
 def solve_ode(ode: Equation, y: AppliedUndef, degree: int = 2, check: bool = True,
               timeout: Optional[float] = DEFAULT_TIMEOUT, special_values: bool = True) -> list[Eq]:
     """Solve an ordinary differential equation with :func:`sympy.dsolve`
-    and, when that fails or takes more than ``timeout`` seconds, through
-    its point symmetries (:func:`dsolve_lie`).
+    and, when that fails or takes more than ``timeout`` seconds, with the
+    first order solvers of the package for an equation of first order
+    (:func:`~sympy_extras.solvers.first_order.dsolve_first_order`: the
+    Riccati, Abel and Chini classes and the Prelle–Singer procedure) and
+    through its point symmetries (:func:`dsolve_lie`).
 
     With ``special_values``, a single explicit general solution of an
     equation with parameters gets a case of its own, first, for each
@@ -467,4 +470,24 @@ def _solve_ode(ode: Equation, y: AppliedUndef, degree: int, check: bool, timeout
         accepted.append(candidate)
     if accepted:
         return accepted
+    first = _first_order(ode, y, check, timeout)
+    if first is not None:
+        return [first]
     return dsolve_lie(ode, y, degree=degree, check=check, timeout=timeout, special_values=False)
+
+
+def _first_order(ode: Equation, y: AppliedUndef, check: bool, timeout: Optional[float]) -> Optional[Eq]:
+    """The solution of a first order equation by the first order solvers
+    (an ``Eq``, explicit or implicit; a parametric solution is left to
+    the symmetry method), verified when ``check``."""
+    from .first_order import dsolve_first_order
+    equation = _as_zero(ode)
+    orders = [max((int(n) for _, n in d.variable_count), default=0) for d in equation.atoms(Derivative) if d.expr == y]
+    if not orders or max(orders) != 1:
+        return None
+    found = attempt(lambda: dsolve_first_order(ode, y, special_values=False), timeout)
+    if not isinstance(found, Eq):
+        return None
+    if check and not _verified(ode, found, y, timeout):
+        return None
+    return found

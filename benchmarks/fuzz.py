@@ -9,8 +9,8 @@ is checked by substituting numbers into it and asking SymPy the resulting
 parameter-free question).
 
 The sections are ``convergence``, ``parametric-convergence``, ``sums``,
-``isolation``, ``solve``, ``ask``, ``limits``, ``thue``, ``ode`` and
-``refine``.
+``isolation``, ``solve``, ``ask``, ``limits``, ``thue``, ``ode``,
+``darboux`` and ``refine``.
 
     python benchmarks/fuzz.py                       # every section
     python benchmarks/fuzz.py convergence sums      # some sections
@@ -35,6 +35,7 @@ from sympy import (Add, Eq, Expr, Function, I, Integer, Interval, Mul, N, Pow, R
 from sympy.core.function import AppliedUndef
 from sympy.core.relational import Equality
 from sympy.logic.boolalg import Boolean, BooleanTrue, BooleanFalse, And, true
+from sympy.polys.polytools import Poly, cancel
 
 from sympy_extras._timeout import attempt, time_limit, TimeLimitExceeded
 from sympy_extras._typing import as_boolean, as_expr
@@ -612,6 +613,81 @@ def ode_case(rng: random.Random) -> tuple[str, Check]:
 
 
 # ---------------------------------------------------------------------------
+# Darboux polynomials and the Prelle–Singer procedure
+
+def _random_polynomial(rng: random.Random, degree: int) -> Expr:
+    """A random polynomial in ``x, y`` of the given total degree with
+    small integer coefficients, not a constant."""
+    monomials = [x**i*y**j for i in range(degree + 1) for j in range(degree + 1 - i)]
+    while True:
+        polynomial = as_expr(sum(rng.choice([-2, -1, 0, 0, 1, 2])*m for m in monomials))
+        if polynomial.is_number:
+            continue
+        if Poly(polynomial, x, y).total_degree() == degree:
+            return polynomial
+
+
+def _known_first_integral(rng: random.Random) -> Expr:
+    """A first integral of Darboux type: a combination of logarithms of
+    random polynomials, a quotient of two, or logarithms with a rational
+    exponential part."""
+    kind = rng.choice(['logarithmic', 'logarithmic', 'rational', 'exponential'])
+    factors = [_random_polynomial(rng, rng.choice([1, 1, 2])) for _ in range(rng.choice([1, 2, 2, 3]))]
+    if kind == 'logarithmic':
+        return as_expr(sum(rng.choice([-3, -2, -1, 1, 2, 3])*log(f) for f in factors))
+    if kind == 'rational':
+        return as_expr(factors[0]/factors[-1]) if len(factors) > 1 else as_expr(factors[0])
+    if len(factors) == 1:
+        return _random_polynomial(rng, 2)
+    logarithms = sum(rng.choice([-2, -1, 1, 2])*log(f) for f in factors[1:])
+    return as_expr(logarithms + _random_polynomial(rng, 1)/factors[0])
+
+
+def _field_of_integral(integral: Expr) -> Optional[tuple[Expr, Expr]]:
+    """``(P, Q)`` with ``Q I_x + P I_y = 0``: the equation ``y' = P/Q``
+    whose solutions are the level curves of ``I``; ``None`` when ``I``
+    does not depend on ``y`` or the degrees exceed five."""
+    from sympy import fraction, together
+    I_y = together(integral.diff(y))
+    if I_y == 0:
+        return None
+    numerator, denominator = fraction(cancel(-together(integral.diff(x))/I_y))
+    P, Q = as_expr(numerator), as_expr(denominator)
+    if max(Poly(P, x, y).total_degree(), Poly(Q, x, y).total_degree()) > 5:
+        return None
+    return P, Q
+
+
+def darboux_case(rng: random.Random) -> tuple[str, Check]:
+    """A field built from a known first integral of Darboux type: the
+    procedure must find a first integral, which must be a function of
+    the known one (their Jacobian vanishes) and be annihilated by the
+    field."""
+    integral = _known_first_integral(rng)
+    field = _field_of_integral(integral)
+    while field is None:
+        integral = _known_first_integral(rng)
+        field = _field_of_integral(integral)
+    P, Q = field
+    label = 'darboux_first_integral(%s, %s) for the level curves of %s' % (P, Q, integral)
+
+    def check() -> Optional[str]:
+        from sympy_extras.solvers import darboux_first_integral
+        found = attempt(lambda: darboux_first_integral(P, Q, x, y), TIMEOUT)
+        if found is None:
+            return 'no first integral found'
+        if cancel(Q*found.diff(x) + P*found.diff(y)) != 0:
+            residual = attempt(lambda: simplify(as_expr(Q*found.diff(x) + P*found.diff(y))), TIMEOUT)
+            if residual != 0:
+                return '%s is not a first integral (D I = %s)' % (found, residual)
+        jacobian = cancel(found.diff(x)*integral.diff(y) - found.diff(y)*integral.diff(x))
+        if jacobian != 0:
+            return '%s is independent of the known first integral' % (found,)
+        return None
+    return label, check
+
+
+# ---------------------------------------------------------------------------
 # refinement and simplification under assumptions
 
 def _refine_expression(rng: random.Random) -> tuple[Expr, Boolean]:
@@ -681,6 +757,7 @@ SECTIONS: dict[str, Generator] = {
     'limits': limits_case,
     'thue': thue_case,
     'ode': ode_case,
+    'darboux': darboux_case,
     'refine': refine_case,
 }
 

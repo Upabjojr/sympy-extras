@@ -415,13 +415,17 @@ def _linear_rows(equations: Sequence[Poly], gens: Sequence[Symbol],
 class _Propagation:
     """The linear equations of a bilinear system solved and substituted
     until only nonlinear ones remain: the values of the solved unknowns
-    as affine expressions in the free ones."""
+    as affine expressions in the free ones. The pivots are taken in the
+    first block of columns first (``a`` unless ``b_first``), so that the
+    unknowns of the first block are expressed through those of the
+    second and the remainder stays linear in the first block."""
 
-    def __init__(self, equations: list[Poly], a: list[Symbol], b: list[Symbol], K: Domain) -> None:
+    def __init__(self, equations: list[Poly], a: list[Symbol], b: list[Symbol], K: Domain,
+                 b_first: bool = False) -> None:
         self.K = K
         self.a = list(a)
         self.b = list(b)
-        self.gens: list[Symbol] = self.a + self.b
+        self.gens: list[Symbol] = self.b + self.a if b_first else self.a + self.b
         self.values: dict[Symbol, Expr] = {}
         self.equations = equations
         self.consistent = True
@@ -683,16 +687,19 @@ class _ParametricElimination:
         return row
 
 
-def _cofactor_points(propagation: _Propagation) -> Optional[list[dict[Symbol, Expr]]]:
-    """The values of the free cofactor unknowns on the solutions of the
-    nonlinear remainder, which is linear in the polynomial unknowns with
-    coefficients polynomial in the cofactor unknowns: the parametric
-    elimination gives the conditions on the cofactor unknowns at its
-    leaves, zero-dimensional systems (the cofactors of bounded degree are
-    finitely many) solved one by one; ``None`` when the elimination or a
-    system could not be finished."""
+def _parameter_points(propagation: _Propagation, parameters: list[Symbol],
+                      unknowns: list[Symbol]) -> Optional[list[dict[Symbol, Expr]]]:
+    """The values of the ``parameters`` (the free cofactor unknowns, or
+    the free polynomial unknowns when they are fewer) on the solutions
+    of the nonlinear remainder, which is linear in the ``unknowns`` with
+    coefficients polynomial in the parameters: the parametric
+    elimination gives the conditions on the parameters at its leaves,
+    zero-dimensional systems (the cofactors of bounded degree are
+    finitely many, and so are the polynomials with a given cofactor up
+    to the affine families) solved one by one; ``None`` when the
+    elimination or a system could not be finished."""
     K = propagation.K
-    a, b = propagation.a, propagation.b
+    a, b = unknowns, parameters
     if not b:
         return [{}]
     ring = PolyRing(tuple(b), K)
@@ -758,13 +765,23 @@ def _at(e: PolyElement, values: list[DomainElement], ring: PolyRing,
     return value
 
 
+#: the number of combinations of factors up to which a leaf system is
+#: solved case by case rather than at once
+_CASES = 12
+
+
 def _leaf_points(equations: list[PolyElement], gens: list[Symbol], K: Domain) -> list[list[DomainElement]]:
     """The solutions in ``K`` of the equations of a leaf in its free
     unknowns ``gens`` (none when a system is not zero-dimensional or not
     solved in time). The equations are products of minors: each is
-    factored, and the cases, one factor per equation, are solved as soon
-    as the factors chosen form a zero-dimensional system, the remaining
-    equations being checked at its points."""
+    factored and the factors which divide a nonzero polynomial are
+    dropped. With few combinations of factors, and factors of at most
+    half the degree of the equations, the cases, one factor per
+    equation, are solved one by one (trivariate minors of degree
+    fifteen, whose Gröbner basis is slow); otherwise the products of
+    the remaining factors are solved at once (a dicritical chart with
+    five polynomial unknowns and equations of degree five, where the
+    two cases cost seven times the whole)."""
     if not gens:
         return [[]] if all(e == 0 for e in equations) else []
     cases: list[list[Poly]] = []
@@ -774,7 +791,16 @@ def _leaf_points(equations: list[PolyElement], gens: list[Symbol], K: Domain) ->
             return []
         cases.append(factors)
     cases.sort(key=len)
-    points = attempt(lambda: _points_of_cases(cases, [], gens, K), _share_of_time())
+    combinations = 1
+    for factors in cases:
+        combinations *= len(factors)
+    highest = max(f.total_degree() for factors in cases for f in factors)
+    degree = max(_degree(e) for e in equations)
+    if combinations <= _CASES and 2*highest <= degree:
+        points = attempt(lambda: _points_of_cases(cases, [], gens, K), _share_of_time())
+    else:
+        products = [as_expr(Mul(*[f.as_expr() for f in factors])) for factors in cases]
+        points = attempt(lambda: _points_in_domain(products, gens, K), _share_of_time())
     return [] if points is None else points
 
 
@@ -788,13 +814,9 @@ def _factors(e: Expr, gens: list[Symbol], K: Domain) -> list[Poly]:
 def _points_of_cases(cases: list[list[Poly]], chosen: list[Poly], gens: list[Symbol],
                      K: Domain) -> list[list[DomainElement]]:
     """The points of the cases, one factor of each equation of ``cases``
-    added to ``chosen`` in turn."""
-    if len(chosen) >= len(gens):
-        points = _points_in_domain([as_expr(p.as_expr()) for p in chosen], gens, K)
-        if points is not None:
-            # the remaining equations hold at the point when a factor does
-            return [point for point in points
-                    if all(any(_evaluated_poly(f, point, K) == K.zero for f in factors) for factors in cases)]
+    added to ``chosen`` in turn, each complete case solved at once (a
+    Gröbner basis of a subsystem, positive-dimensional as a rule, cost
+    more than the whole)."""
     if not cases:
         points = _points_in_domain([as_expr(p.as_expr()) for p in chosen], gens, K)
         return [] if points is None else points
@@ -915,23 +937,31 @@ def _nonzero_entries(vector: list[DomainElement]) -> int:
 
 def _chart_solutions(unknowns: _Unknowns) -> list[tuple[Poly, Poly]]:
     """The Darboux polynomials of one chart with their cofactors, a few
-    members of each affine family."""
+    members of each affine family. The bilinear remainder is linear in
+    the polynomial unknowns for fixed cofactor unknowns and the other
+    way round: the elimination takes as parameters whichever free block
+    is the smaller (the cofactor of a field of degree five has ten
+    lower coefficients, a polynomial of degree one has one)."""
     field = unknowns.field
     K = field.K
-    propagation = _Propagation(unknowns.equations(), unknowns.a, unknowns.b, K)
+    equations = unknowns.equations()
+    propagation = _Propagation(equations, unknowns.a, unknowns.b, K)
     if not propagation.consistent:
         return []
+    parameters, free = propagation.b, propagation.a
     if propagation.equations:
-        points = _cofactor_points(propagation)
+        swapped = _Propagation(equations, unknowns.a, unknowns.b, K, b_first=True)
+        if swapped.consistent and len(swapped.a) < len(propagation.b):
+            propagation, parameters, free = swapped, swapped.a, swapped.b
+        points = _parameter_points(propagation, parameters, free)
         if points is None:
             return []
     else:
         points = [{}]
     found: list[tuple[Poly, Poly]] = []
     for point in points:
-        # at a cofactor the remaining equations are linear in the
-        # polynomial unknowns
-        free = [gen for gen in propagation.a if gen not in point]
+        # at a point of the parameters the remaining equations are linear
+        # in the other block
         equations = [_unknown_poly(as_expr(equation.as_expr().xreplace(point)).expand(), free, K)
                      for equation in propagation.equations]
         equations = [equation for equation in equations if not equation.is_zero]
@@ -947,9 +977,7 @@ def _chart_solutions(unknowns: _Unknowns) -> list[tuple[Poly, Poly]]:
         for member in _members(particular, basis, K):
             values = dict(point)
             values.update({gen: as_expr(K.to_sympy(value)) for gen, value in zip(free, member)})
-            # the free cofactor unknowns left by the propagation but absent
-            # from the point (none unless the system was linear)
-            for gen in propagation.b:
+            for gen in parameters:
                 values.setdefault(gen, S.Zero)
             f_expr = Add(*[c*field.x**i*field.y**j
                            for (i, j), c in _evaluated(unknowns.f_terms, propagation, values).items()])

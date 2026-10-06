@@ -13,7 +13,7 @@ repository).
 | `solve_random.py` | random polynomial equations with sign assumptions; with `--transcendental N`, random equations in `exp`, `log`, `sin`, `cos`, `sqrt` on random intervals | `solve` against `Poly.real_roots`, or against sign changes on a fine grid refined with `nsolve`, and high-precision evaluation |
 | `verify_random.py` | a random sample of the Kamke collection | `solve_ode` (`dsolve`, then the symmetry method); every solution verified with `checkodesol` and numerically (implicit solutions by implicit differentiation and `nsolve`); a solution failing the numerical check is reported as WRONG |
 | `logic_random.py` | random Boolean combinations of polynomial relations in one or two real variables with random assumptions | `simplify`, `refine`, `ask`, `satisfiable` against evaluation at random points satisfying the assumptions; for one variable the CAD decides the equivalence of the simplified formula |
-| `fuzz.py` | random inputs for one part of the package at a time (`convergence`, `parametric-convergence`, `sums`, `isolation`, `solve`, `ask`, `limits`, `thue`, `ode`, `refine`) | every answer against an oracle which shares no code with it: partial sums with mpmath, brute force enumeration, sign changes on a grid, sampling of the solution set, `checkodesol`, or SymPy on a parameter-free instance of a parametric answer |
+| `fuzz.py` | random inputs for one part of the package at a time (`convergence`, `parametric-convergence`, `sums`, `isolation`, `solve`, `ask`, `limits`, `thue`, `ode`, `darboux`, `refine`) | every answer against an oracle which shares no code with it: partial sums with mpmath, brute force enumeration, sign changes on a grid, sampling of the solution set, `checkodesol`, SymPy on a parameter-free instance of a parametric answer, or the known first integral a field was built from |
 | `definite_integrals` (in [sympy-extras-benchmarks](https://github.com/Upabjojr/sympy-extras-benchmarks)) | the definite integrals of Maxima's test suite (`rtestint`, `rtest_integrate`, Wester, the Laplace transforms of `rtest_laplace` and `specint`), of REDUCE's DEFINT tests, of FriCAS's `mapleok` collection and of holpy's worked problems: 1141 integrals with the facts of each source | `definite_integral` with `--extras` (SymPy's `integrate` without it) against numerical quadrature at random values of the parameters, and Mathematica's `NIntegrate` (`--wolfram`) where the quadrature is not trusted |
 | `qf_nra.py` | SMT-LIB `QF_NRA`, Meti-Tarski family (7713 problems with `:status`, cloned sparsely from the `dreal/benchmarks` mirror on GitHub) | `satisfiable` against the status (models re-evaluated); `simplify` and `refine` over the reals against the status and random points |
 
@@ -71,6 +71,19 @@ solution `I(x, y) = C1`, every one confirmed by `checkodesol` (with
 `solve_for_func=False`; none wrong), in 0.11 s median; the remaining 43
 get nothing within the degree bound 4 and the time limit (Abel and
 Riccati equations without Liouvillian first integrals, mostly).
+
+`fuzz.py darboux --count 100` (2026-10-06): fields `y' = P/Q` built from
+a random first integral of Darboux type (logarithms of random
+polynomials of degree one or two, a quotient of two, or logarithms with
+a rational exponential part), degrees up to five: 99 of 100 get a
+first integral within the driver's 25 s, each annihilated by the field
+and a function of the known one; the hundredth, a dicritical field of
+degree five, gets its first integral in about 30 s (the Gröbner basis
+of one leaf of the elimination, 11 equations of degree five in five
+unknowns). The first run of the driver found two fields of degree five
+without an answer: the elimination with the ten lower coefficients of
+the cofactor as parameters did not finish, which is why the parameters
+are now the smaller block of unknowns.
 
 `kamke_odes.py --collections kamke2 --limit 40 --timeout 15` (the first 40
 second order equations, almost all linear with special function
