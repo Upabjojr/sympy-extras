@@ -21,6 +21,17 @@ remove public functions. Breaking changes are listed here when they happen.
   in `x`, `y` along a branch, whose valuation is the order of the
   function at the place. The foundation of the integral bases and of
   Trager's algorithm on a general curve.
+- `sympy_extras.polys.functionfields`: `FunctionField(F, x, y)`, the
+  function field `K(x)[y]/(F)` of a plane curve with arithmetic,
+  derivatives and traces of its elements; `integral_basis` by Trager's
+  algorithm (the Round 2 algorithm: the trace radical and its idealizer
+  as column echelon forms of polynomial matrices over `K[x]`, no number
+  field, parameters allowed), in Hermite normal form; the local basis
+  at infinity (the integral basis of the curve in `1/x`), the pole
+  orders at infinity, and `normal_basis`, an integral basis normal at
+  infinity in Trager's sense, by reducing the leading forms. Checked
+  against the bases of the literature and against an independent
+  maximality test through the Puiseux expansions.
 
 ## 0.0.3 - 2026-10-06
 
