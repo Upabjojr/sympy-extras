@@ -6,6 +6,22 @@ The project is at version 0.x: there is **no guarantee of backwards
 compatibility** between releases yet, and any release may rename, move or
 remove public functions. Breaking changes are listed here when they happen.
 
+## Unreleased
+
+### Added
+
+- `sympy_extras.polys.puiseux`: Puiseux expansions of the branches of a
+  plane curve `F(x, y) = 0` above a point or above infinity by the
+  Newton polygon algorithm (`puiseux_expansions`), the conjugate
+  branches represented once over the number field of their
+  coefficients (Duval's rational Puiseux expansions, the scaling `x - a
+  = lambda*t**e` avoiding the `q`-th root of the characteristic root),
+  the remaining terms by Newton's iteration once a root is simple;
+  `PuiseuxExpansion.evaluate` gives the Laurent series of a polynomial
+  in `x`, `y` along a branch, whose valuation is the order of the
+  function at the place. The foundation of the integral bases and of
+  Trager's algorithm on a general curve.
+
 ## 0.0.3 - 2026-10-06
 
 ### Added

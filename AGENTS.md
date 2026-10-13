@@ -150,6 +150,7 @@ sympy_extras/
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
         modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ modulo primes, proven (Arnold)
         orderings.py         WeightOrder, BlockOrder, elimination_order (hashable monomial orders)
+        puiseux.py           Newton–Puiseux expansions of the branches of a plane curve at a point and at infinity, conjugate branches over number fields (Duval)
         tests/
         cad/                 cylindrical algebraic decomposition
             projection.py    projection operators (McCallum, Hong), projection_sets
