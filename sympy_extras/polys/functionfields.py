@@ -148,10 +148,8 @@ class Element:
         """The derivative with respect to `x` (`y' = -F_x/F_y`)."""
         field = self.field
         Kx = field.Kx
-        x = field.x
         # d/dx of sum c_i y^i = sum c_i' y^i + (sum i c_i y^(i-1)) y'
-        plain = Element(field, [Kx.from_sympy(as_expr(Kx.to_sympy(c).diff(x))) if c != Kx.zero else Kx.zero
-                                for c in self.coefficients])
+        plain = Element(field, [_derivative_of_fraction(c, Kx) for c in self.coefficients])
         chain = Element(field, [self.coefficients[i] * Kx.convert(i, QQ) for i in range(1, field.n)])
         return plain + chain * field.derivative_of_y()
 
@@ -169,6 +167,50 @@ class Element:
 
     def __repr__(self) -> str:
         return f"Element({self.as_expr()})"
+
+
+def _strip(a: list[DomainElement], K: Domain) -> list[DomainElement]:
+    """The coefficients (low degree first) without trailing zeros."""
+    while a and a[-1] == K.zero:
+        a = a[:-1]
+    return a
+
+
+def _sub(a: list[DomainElement], b: list[DomainElement], K: Domain) -> list[DomainElement]:
+    n = max(len(a), len(b))
+    return [(a[i] if i < len(a) else K.zero) - (b[i] if i < len(b) else K.zero) for i in range(n)]
+
+
+def _divmod(a: list[DomainElement], b: list[DomainElement], K: Domain
+            ) -> tuple[list[DomainElement], list[DomainElement]]:
+    """Quotient and remainder of the polynomials ``a`` by ``b`` (low
+    degree first, ``b`` nonzero)."""
+    b = _strip(list(b), K)
+    r = _strip(list(a), K)
+    if not b:
+        raise ZeroDivisionError("division by zero")
+    lead = b[-1]
+    q = [K.zero] * max(len(r) - len(b) + 1, 1)
+    while len(r) >= len(b):
+        k = len(r) - len(b)
+        c = r[-1] / lead
+        q[k] = c
+        for i, coefficient in enumerate(b):
+            r[k + i] = r[k + i] - c * coefficient
+        r = _strip(r[:-1], K) if r[-1] == K.zero else _strip(r, K)
+    return q, r
+
+
+def _derivative_of_fraction(c: DomainElement, Kx: FractionField) -> DomainElement:
+    """The derivative of an element of `K(x)` (through the numerator and
+    the denominator: the round trip through expressions fails over a
+    number field)."""
+    if c == Kx.zero:
+        return c
+    n, d = c.numer, c.denom
+    gen = n.ring.gens[0]
+    field = Kx.field
+    return (field(n.diff(gen)) * field(d) - field(n) * field(d.diff(gen))) / (field(d) * field(d))
 
 
 def _poly_mul(a: list[DomainElement], b: list[DomainElement], K: Domain) -> list[DomainElement]:
@@ -201,7 +243,7 @@ class FunctionField:
     Element(x**2 + x)
     """
 
-    def __init__(self, F: ExprLike, x: Symbol, y: Symbol) -> None:
+    def __init__(self, F: ExprLike, x: Symbol, y: Symbol, domain: Optional[Domain] = None) -> None:
         F_ = as_expr(F)
         self.x = x
         self.y = y
@@ -210,7 +252,11 @@ class FunctionField:
         if n < 1:
             raise ValueError(f"{F_} has no root y")
         parameters = sorted_symbols(free_symbols(F_) - {x, y})
-        K: Domain = QQ.frac_field(*parameters) if parameters else QQ
+        K: Domain
+        if domain is not None:
+            K = domain
+        else:
+            K = QQ.frac_field(*parameters) if parameters else QQ
         self.K = K
         self.R: PolynomialRing = K.poly_ring(x)
         self.Kx: FractionField = K.frac_field(x)
@@ -239,6 +285,14 @@ class FunctionField:
         self._inverses: dict[int, DomainMatrix] = {}
 
     # Construction of elements
+
+    def convert(self, e: Element) -> Element:
+        """The element ``e`` of the field of the same curve over a smaller
+        coefficient field, here."""
+        if e.field is self:
+            return e
+        Kx = self.Kx
+        return Element(self, [Kx.from_sympy(as_expr(e.field.Kx.to_sympy(c))) for c in e.coefficients])
 
     def zero(self) -> Element:
         return Element(self, [])
@@ -292,27 +346,35 @@ class FunctionField:
         return work[:n] + [Kx.zero] * max(0, n - len(work))
 
     def invert(self, e: Element) -> Element:
-        """The inverse of ``e`` (the extended Euclidean algorithm modulo
-        `F`, through SymPy's :func:`~sympy.polys.densetools.dup_invert`)."""
-        from sympy.polys.euclidtools import dup_invert
-        from sympy.polys.densebasic import dup_strip
+        """The inverse of ``e``: the extended Euclidean algorithm modulo
+        `F` (written out, since SymPy's ``dup_invert`` fails over the
+        fraction field of a number field)."""
         Kx = self.Kx
-        f = dup_strip(list(reversed(e.coefficients)))
+        f = _strip(list(e.coefficients), Kx)
         if not f:
             raise ZeroDivisionError("inverse of zero")
-        g = dup_invert(f, list(self.F), Kx)
-        return Element(self, list(reversed(g)))
+        g = list(reversed(self.F))  # low degree first, monic
+        # s f + t g = r with r a constant at the end
+        r0, r1 = g, f
+        s0, s1 = [Kx.zero], [Kx.one]
+        while len(r1) > 1:
+            q, r = _divmod(r0, r1, Kx)
+            r0, r1 = r1, _strip(r, Kx)
+            s0, s1 = s1, _strip(_sub(s0, _poly_mul(q, s1, Kx), Kx), Kx)
+            if not r1:
+                raise ZeroDivisionError("not invertible: the curve is reducible")
+        c = r1[0]
+        inverse = [a / c for a in s1]
+        return Element(self, self.reduce(inverse))
 
     def derivative_of_y(self) -> Element:
         """`Y' = -F_x(Y)/F_Y(Y)` for the integral generator."""
         if self._dy is None:
             Kx = self.Kx
-            x = self.x
             n = self.n
             # F(Y) = sum a_k Y^k, a_n = 1: F_x = sum a_k' Y^k, F_Y = sum k a_k Y^(k-1)
             low = list(reversed(self.F))  # a_0 ... a_n
-            F_x = Element(self, [Kx.from_sympy(as_expr(Kx.to_sympy(a).diff(x))) if a != Kx.zero else Kx.zero
-                                 for a in low[:n]])
+            F_x = Element(self, [_derivative_of_fraction(a, Kx) for a in low[:n]])
             F_Y = Element(self, [low[k] * Kx.convert(k, QQ) for k in range(1, n + 1)])
             self._dy = -(F_x * F_Y.inverse())
         return self._dy

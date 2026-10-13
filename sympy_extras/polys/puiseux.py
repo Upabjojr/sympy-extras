@@ -14,34 +14,45 @@ and above `x = \infty` series in `x^{-1/e}`. The *Newton polygon*
 algorithm [Walker]_ finds them term by term: for `P(t, Y) = \sum_i a_i(t)
 Y^i` the points `(i, \operatorname{ord}_t a_i)` are drawn, the edges of
 their lower convex hull with slope `-p/q` carry the roots starting with
-`c\, t^{p/q}`, where `c` is a root of the *characteristic polynomial*
-`\chi(c) = \sum_{(i, v) \text{ on the edge}} \operatorname{lc}(a_i)
-c^{(i - i_0)/q}`, and the roots continue with the Newton polygon of
-`P(s^q, s^p (c + Y_1))/s^{\nu}`, the vertex `(m, 0)` of the new polygon
-holding the `m` roots which share the first term (`m` the multiplicity
-of `c` in `\chi`). When a single root is left (`m = 1`) its remaining
-terms are a power series found by Newton's iteration, since `Y_1 = 0`
-is then a simple root of the reduced equation: the ramification is
-decided in finitely many steps, the discriminant having finite order.
+`c\, t^{p/q}`, where `u = c^q` is a root of the *characteristic
+polynomial* `\chi(u) = \sum_{(i, v) \text{ on the edge}}
+\operatorname{lc}(a_i) u^{(i - i_0)/q}`, and the roots continue with the
+Newton polygon of `P(\lambda s^q, s^p (c + Y_1))/s^{\nu}`, the vertex
+`(m, 0)` of the new polygon holding the `m` roots which share the first
+term (`m` the multiplicity of `u` in `\chi`). When a single root is left
+(`m = 1`) its remaining terms are a power series found by Newton's
+iteration, since `Y_1 = 0` is then a simple root of the reduced
+equation: the ramification is decided in finitely many steps, the
+discriminant having finite order.
 
-**Conjugate branches.** Following [Duval]_, a root `c` of an
-irreducible factor `\psi` of `\chi` over the current coefficient field
-`L` is taken in the extension `L(c)` and its branch stands for the
-`[L(c) : L]` conjugate branches, so that the expansions come in classes:
-the `n` classical series above `a` are the conjugates of the
+**Conjugate branches.** Following [Duval]_, a root `u` of an irreducible
+factor `\psi` of `\chi` over the current coefficient field `L` is taken
+in the extension `L(u)` and its branch stands for the `[L(u) : L]`
+conjugate branches, so that the expansions come in classes: the `n`
+classical series above `a` are the conjugates of the
 :class:`PuiseuxExpansion` objects returned, each counting
-``ramification * conjugates`` of them. The number fields are SymPy's
-:class:`~sympy.polys.domains.AlgebraicField`; a new root is adjoined
-through its minimal polynomial over the rationals (a factor of the norm
-of `\psi`), the root identified numerically among the roots of that
-factor and the identification checked exactly in the new field.
+``ramification * conjugates`` of them. The `q`-th root `c = u^{1/q}` is
+avoided by the scaling `x - a = \lambda t^e`: with `l q - m p = 1` the
+choice `c = u^l`, `\lambda = u^m` keeps the coefficients in `L(u)`.
+
+**Number fields, exactly.** The fields are SymPy's
+:class:`~sympy.polys.domains.AlgebraicField` `\mathbb{Q}(\theta)`, but
+built without any numerical identification of roots: a root `u` of
+`\psi` over `K = \mathbb{Q}(\theta)` is adjoined by taking a primitive
+element `\Theta = \theta + k u` whose minimal polynomial is the
+resultant `\operatorname{Res}_\theta(m_K(\theta), k^d \psi((T -
+\theta)/k; \theta))` (squarefree for a suitable `k`), the image of
+`\theta` in `\mathbb{Q}(\Theta)` being the common root of `m_K(t)` and
+`\psi((\Theta - t)/k; t)`, a gcd (:func:`adjoin_root`). Every
+expansion carries the :class:`Embedding` of the coefficient field of
+the curve into the field of its coefficients.
 
 The expansions carry the point, the ramification index `e`, the field
-of their coefficients and the coefficients `c_k` of `t^k`, `x - a = t^e`
-(`x = t^{-e}` at infinity), known below a stated order; an element of
-`K(x)[y]` evaluated along a branch (:meth:`PuiseuxExpansion.series`) is
-a truncated Laurent series in `t` whose valuation is the order of the
-function at the place.
+of their coefficients and the coefficients `c_k` of `t^k`, `x - a =
+\lambda t^e` (`x = 1/(\lambda t^e)` at infinity), known below a stated
+order; an element of `K(x)[y]` evaluated along a branch
+(:meth:`PuiseuxExpansion.evaluate`) is a truncated Laurent series in `t`
+whose valuation is the order of the function at the place.
 
 References
 ==========
@@ -53,13 +64,14 @@ References
 .. [PoteauxWeimann] A. Poteaux, M. Weimann, *Computing Puiseux series: a
    fast divide and conquer algorithm*, Annales Henri Lebesgue 4 (2021),
    the regularity index and the grouping into conjugacy classes.
+.. [Trager76] B. M. Trager, *Algebraic factoring and rational function
+   integration*, SYMSAC 1976 (norms and primitive elements of towers
+   of number fields).
 """
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Optional
-
-import mpmath
+from typing import Optional, Union
 
 from sympy.core.add import Add
 from sympy.core.expr import Expr
@@ -69,14 +81,15 @@ from sympy.core.symbol import Symbol
 from sympy.polys.domains import QQ
 from sympy.polys.domains.algebraicfield import AlgebraicField
 from sympy.polys.domains.domain import Domain
-from sympy.polys.polyerrors import CoercionFailed
-from sympy.polys.polytools import Poly
+from sympy.polys.matrices import DomainMatrix
+from sympy.polys.polytools import Poly, resultant
 from sympy.polys.rootoftools import rootof
 
 from sympy_extras._typing import DomainElement, ExprLike, as_expr
 
-__all__ = ['PuiseuxExpansion', 'LaurentSeries', 'puiseux_expansions', 'branches_at_infinity',
-           'adjoin_root', 'embed', 'Embedding']
+__all__ = ['PuiseuxExpansion', 'LaurentSeries', 'puiseux_expansions', 'expansions_in_field',
+           'branches_at_infinity', 'adjoin_root', 'Embedding', 'field_of', 'minimal_polynomial_of',
+           'in_subfield', 'generator', 'degree', 'coefficients_in']
 
 
 class LaurentSeries:
@@ -136,6 +149,9 @@ class LaurentSeries:
     def __mul__(self, other: LaurentSeries) -> LaurentSeries:
         v1, v2 = self.valuation(), other.valuation()
         order: Optional[int]
+        if (self.order is None and not self.terms) or (other.order is None and not other.terms):
+            # an exact zero: the product is exactly zero
+            return LaurentSeries(self.K, {}, None)
         if self.order is None and other.order is None:
             order = None
         else:
@@ -143,9 +159,11 @@ class LaurentSeries:
             if other.order is not None:
                 # the unknown part of other, of order >= other.order, times the
                 # known part of self, of valuation >= v1
-                candidates.append(other.order + (v1 if v1 is not None else (self.order if self.order is not None else 0)))
+                candidates.append(other.order + (v1 if v1 is not None
+                                                 else (self.order if self.order is not None else 0)))
             if self.order is not None:
-                candidates.append(self.order + (v2 if v2 is not None else (other.order if other.order is not None else 0)))
+                candidates.append(self.order + (v2 if v2 is not None
+                                                else (other.order if other.order is not None else 0)))
             order = min(candidates)
         terms: dict[int, DomainElement] = {}
         for j, c in self.terms.items():
@@ -170,30 +188,28 @@ class LaurentSeries:
         return result
 
     def inverse(self, order: int) -> LaurentSeries:
-        """The inverse series known below ``t**order`` (relative to the
-        valuation: the quotient is known up to ``order`` terms beyond its
-        valuation)."""
+        """The inverse series, known ``order`` terms beyond its valuation."""
         v = self.valuation()
         if v is None:
             raise ZeroDivisionError("inverse of a series which is zero to its order")
+        K = self.K
         unit = self.shifted(-v)
-        # unit = c0 (1 - u), u of positive valuation: 1/unit = (1 + u + u^2 + ...)/c0
-        c0 = unit.coefficient(0)
-        inv0 = self.K.one / c0
-        u = LaurentSeries.constant(self.K, self.K.one) - unit.scaled(inv0)
-        u = u.truncated(order)
-        result = LaurentSeries.constant(self.K, self.K.one)
-        term = LaurentSeries.constant(self.K, self.K.one)
-        uv = u.valuation()
-        if uv is not None:
-            steps = (order + uv - 1) // uv + 1
-            for _ in range(steps):
-                term = (term * u).truncated(order)
-                if term.is_zero():
-                    break
-                result = result + term
-        result = result.scaled(inv0).truncated(order)
-        return result.shifted(-v)
+        # unit = sum a_k t^k with a_0 != 0: the coefficients b_k of the
+        # inverse by the recurrence a_0 b_k = -sum_{j=1..k} a_j b_{k-j}
+        a = {k: c for k, c in unit.terms.items() if k < order}
+        inv0 = K.one / unit.coefficient(0)
+        b: dict[int, DomainElement] = {0: inv0}
+        for k in range(1, order):
+            total = K.zero
+            for j, a_j in a.items():
+                if 0 < j <= k:
+                    b_prev = b.get(k - j)
+                    if b_prev is not None:
+                        total = total + a_j * b_prev
+            if total != K.zero:
+                b[k] = -inv0 * total
+        known = order if unit.order is None else min(order, unit.order)
+        return LaurentSeries(K, b, known).shifted(-v)
 
     def substituted(self, q: int) -> LaurentSeries:
         """The series with `t` replaced by `t^q`."""
@@ -222,177 +238,260 @@ def _min_order(a: Optional[int], b: Optional[int]) -> Optional[int]:
     return min(a, b)
 
 
+# Number fields
+
 class Embedding:
     """The embedding of a number field ``source`` into a number field
-    ``target`` containing it, through the image of the generator."""
+    ``target`` containing it, given by the image of the generator of
+    the source (not needed for the rationals, nor when the fields are
+    the same)."""
 
-    def __init__(self, source: Domain, target: Domain) -> None:
+    def __init__(self, source: Domain, target: Domain, image: Optional[DomainElement] = None) -> None:
         self.source = source
         self.target = target
-        self.generator: Optional[DomainElement] = None
+        self.image: Optional[DomainElement] = None
         if isinstance(source, AlgebraicField) and source != target:
-            self.generator = target.from_sympy(source.ext)
+            if image is None:
+                raise ValueError("the image of the generator is needed")
+            self.image = image
             self._powers: list[DomainElement] = [target.one]
 
     def __call__(self, c: DomainElement) -> DomainElement:
         if self.source == self.target:
             return c
-        if self.generator is None:
+        if self.image is None:
             # the rationals into any field
             return self.target.convert(c, self.source)
         coefficients = list(reversed(c.to_list()))  # low degree first
         while len(self._powers) < len(coefficients):
-            self._powers.append(self._powers[-1] * self.generator)
+            self._powers.append(self._powers[-1] * self.image)
         total = self.target.zero
         for k, a in enumerate(coefficients):
             if a:
                 total = total + self.target.convert(a, QQ) * self._powers[k]
         return total
 
-
-def embed(c: DomainElement, source: Domain, target: Domain) -> DomainElement:
-    """``c`` of the field ``source`` as an element of ``target``."""
-    return Embedding(source, target)(c)
-
-
-def _numerical_roots(coefficients: list[complex]) -> list[complex]:
-    """The complex roots of the polynomial with the given coefficients
-    (highest degree first)."""
-    degree = len(coefficients) - 1
-    if degree < 1:
-        return []
-    if degree == 1:
-        return [-coefficients[1] / coefficients[0]]
-    with mpmath.workdps(60):
-        found = mpmath.polyroots([mpmath.mpc(c) for c in coefficients], maxsteps=400, extraprec=200)
-    return [complex(r) for r in found]
+    def then(self, other: Embedding) -> Embedding:
+        """The composition with ``other``, an embedding of ``target``."""
+        if other.source != self.target:
+            raise ValueError("the embeddings do not compose")
+        if self.source == self.target:
+            return other
+        if other.source == other.target:
+            return self
+        if self.image is None:
+            return Embedding(self.source, other.target)
+        return Embedding(self.source, other.target, other(self.image))
 
 
-#: numerical values of the generators of the number fields met (a root
-#: object is slow to evaluate: once per field)
-_GENERATOR_VALUES: dict[Domain, complex] = {}
+def generator(K: Domain) -> DomainElement:
+    """The generator of the number field ``K`` (one for the rationals)."""
+    if isinstance(K, AlgebraicField):
+        return K([QQ.one, QQ.zero])
+    return K.one
 
 
-def _numerical(K: Domain, c: DomainElement) -> complex:
-    """``c`` as a complex number (60 digits)."""
+def degree(K: Domain) -> int:
+    """The degree of the number field ``K`` over the rationals."""
+    return int(K.mod.degree()) if isinstance(K, AlgebraicField) else 1
+
+
+def _coefficient_list(c: DomainElement, K: Domain) -> list[DomainElement]:
+    """The rational coordinates of ``c`` in the powers of the generator
+    of ``K``, low degree first, padded to the degree."""
     if not isinstance(K, AlgebraicField):
-        return complex(QQ.to_sympy(c))
-    theta = _GENERATOR_VALUES.get(K)
-    if theta is None:
-        theta = complex(as_expr(K.ext).evalf(60))
-        _GENERATOR_VALUES[K] = theta
-    with mpmath.workdps(60):
-        value = mpmath.mpc(0)
-        for a in c.to_list():
-            value = value * theta + mpmath.mpc(complex(QQ.to_sympy(a)))
-    return complex(value)
+        return [c]
+    coefficients = list(reversed(c.to_list()))
+    return coefficients + [QQ.zero] * (degree(K) - len(coefficients))
 
 
-def _root_indices(factor: Poly, chosen: complex) -> list[int]:
-    """The indices of the roots of ``factor`` in SymPy's order (the real
-    roots increasing, then the complex ones by real and imaginary
-    part), nearest to ``chosen`` first."""
-    values = _numerical_roots([complex(c) for c in factor.all_coeffs()])
-    real = sorted((r.real for r in values if abs(r.imag) < 1e-40))
-    complex_ones = sorted((r for r in values if abs(r.imag) >= 1e-40), key=lambda r: (r.real, r.imag))
-    ordered: list[complex] = [complex(r) for r in real] + complex_ones
-    return sorted(range(len(ordered)), key=lambda i: abs(ordered[i] - chosen))
+def _field_from_polynomial(N: Poly) -> Domain:
+    """`\\mathbb{Q}(\\Theta)` for `\\Theta` a root of the irreducible ``N``,
+    its largest real root when it has one (written in radicals when
+    SymPy can)."""
+    real = N.count_roots()
+    root = as_expr(rootof(N, real - 1 if real > 0 else 0, radicals=True))
+    return QQ.algebraic_field(root)
+
+
+def coefficients_in(p: Poly, K: Domain) -> list[DomainElement]:
+    """The coefficients of ``p`` (highest degree first) as elements of
+    the number field ``K``, the domain of ``p`` being ``K`` or the
+    rationals; SymPy's conversion between two number fields goes through
+    expressions and numerical identification, which this avoids."""
+    if p.domain == K:
+        return list(p.rep.to_list())
+    if p.domain.is_QQ or p.domain.is_ZZ:
+        return [K.convert(c, QQ) for c in Poly(p.as_expr(), *p.gens, domain=QQ).rep.to_list()]
+    raise ValueError(f"coefficients in {p.domain} are not elements of {K}")
+
+
+def _as_polynomial_in(c: DomainElement, theta: Symbol) -> Expr:
+    """An element of a number field as a polynomial in the symbol
+    ``theta`` standing for the generator."""
+    return as_expr(Add(*[QQ.to_sympy(a) * theta**k for k, a in enumerate(reversed(c.to_list()))]))
 
 
 def adjoin_root(K: Domain, psi: list[DomainElement]) -> tuple[Domain, Embedding, DomainElement]:
-    """The field ``L = K(c)`` for a root ``c`` of the polynomial ``psi``
+    """The field ``L = K(u)`` for a root ``u`` of the polynomial ``psi``
     (coefficients in ``K``, highest degree first) irreducible over
-    ``K``, with the embedding of ``K`` into ``L`` and ``c``.
-
-    The minimal polynomial of ``c`` over the rationals is a factor of the
-    norm of ``psi``; the root is identified numerically among the roots
-    of the factors and checked exactly.
+    ``K``, with the embedding of ``K`` into ``L`` and ``u``; exact: no
+    root is evaluated numerically.
 
     >>> from sympy import sqrt, QQ
     >>> from sympy_extras.polys.puiseux import adjoin_root
     >>> K = QQ.algebraic_field(sqrt(2))
-    >>> L, into, c = adjoin_root(K, [K.one, K.zero, -K.from_sympy(sqrt(2))])
-    >>> L.to_sympy(c*c) == L.to_sympy(into(K.from_sympy(sqrt(2))))
+    >>> L, into, u = adjoin_root(K, [K.one, K.zero, -K.from_sympy(sqrt(2))])
+    >>> L.to_sympy(u*u) == L.to_sympy(into(K.from_sympy(sqrt(2))))
     True
     """
-    degree = len(psi) - 1
-    if degree == 1:
+    d = len(psi) - 1
+    if d == 1:
         return K, Embedding(K, K), -psi[1] / psi[0]
-    z = Symbol('z')
+    T = Symbol('T')
     if not isinstance(K, AlgebraicField):
-        norm = Poly([K.to_sympy(c) for c in psi], z, domain=QQ)
+        N = Poly([QQ.to_sympy(c) for c in psi], T, domain=QQ)
+        L = _field_from_polynomial(N)
+        return L, Embedding(QQ, L), generator(L)
+    theta = Symbol('theta')
+    z = Symbol('z')
+    m_K = Poly(K.mod.to_list(), theta).as_expr()
+    psi_expr = as_expr(Add(*[_as_polynomial_in(c, theta) * z**i for i, c in enumerate(reversed(psi))]))
+    k = 0
+    N = Poly(0, T)
+    P: Expr = S.Zero
+    for k in range(0, 2 * d * degree(K) + 3):
+        # Theta = theta + k u: P(T, theta) = k^d psi((T - theta)/k) for k > 0
+        if k == 0:
+            P = as_expr(psi_expr.xreplace({z: T}))
+        else:
+            P = as_expr((psi_expr.xreplace({z: (T - theta) / k}) * k**d).expand())
+        N = Poly(resultant(P, m_K, theta), T, domain=QQ)
+        if N.degree() == d * degree(K) and N.gcd(N.diff(T)).degree() == 0:
+            break
     else:
-        # the norm of psi from K = QQ(theta) to QQ: the resultant in theta
-        # with the minimal polynomial of theta, psi written through the
-        # coefficients of its coefficients in theta
-        theta = Symbol('theta')
-        with_theta = Add(*[Add(*[QQ.to_sympy(a) * theta**k for k, a in enumerate(reversed(c.to_list()))]) * z**i
-                           for i, c in enumerate(reversed(psi))])
-        minimal = Poly(K.mod.to_list(), theta).as_expr()
-        norm = Poly(_resultant_in(as_expr(with_theta), as_expr(minimal), z, theta), z, domain=QQ)
-    _, factors = norm.factor_list()
-    numerical_psi = [_numerical(K, c) for c in psi]
-    # the root followed: a real one, positive, when there is one (the
-    # conjugates give the same branch up to conjugation)
-    candidates = sorted(_numerical_roots(numerical_psi), key=lambda r: (abs(r.imag) > 1e-30, -r.real, abs(r.imag)))
-    chosen = candidates[0]
-    tried: list[tuple[Poly, int]] = []
-    # the factor vanishing at the chosen root first, its nearest root first
-    for factor, _ in sorted(factors, key=lambda fm: abs(complex(fm[0].as_expr().subs(z, chosen)))):
-        for index in _root_indices(factor, chosen):
-            tried.append((factor, index))
-    for factor, index in tried:
-        # in radicals when SymPy writes them (sqrt(2) rather than a root
-        # object), the root object otherwise
-        root = as_expr(rootof(factor, index, radicals=True))
-        try:
-            L = QQ.algebraic_field(K.ext, root) if isinstance(K, AlgebraicField) else QQ.algebraic_field(root)
-            into = Embedding(K, L)
-            c = L.from_sympy(root)
-        except (CoercionFailed, ValueError, NotImplementedError):
-            continue
-        value = L.zero
-        for a in psi:
-            value = value * c + into(a)
-        if value == L.zero:
-            return L, into, c
-    raise ValueError("the root could not be identified exactly")
+        raise ValueError("no primitive element found")
+    L = _field_from_polynomial(N)
+    Theta = generator(L)
+    # the image t of theta: the common root of m_K(t) and P(Theta, t)
+    t = Symbol('t')
+    m_K_L = Poly.from_list([L.convert(c, QQ) for c in Poly(m_K, theta).all_coeffs()], t, domain=L)
+    P_coefficients: dict[int, DomainElement] = {}
+    for (power_T, power_theta), c in Poly(P, T, theta).terms():
+        value = L.convert(c, QQ) * Theta**power_T
+        P_coefficients[power_theta] = P_coefficients.get(power_theta, L.zero) + value
+    highest = max(P_coefficients)
+    P_L = Poly.from_list([P_coefficients.get(i, L.zero) for i in range(highest, -1, -1)], t, domain=L)
+    common = m_K_L.gcd(P_L)
+    if common.degree() != 1:
+        raise ValueError("the image of the generator is not unique")
+    a, b = coefficients_in(common, L)
+    image = -b / a
+    u = Theta if k == 0 else (Theta - image) / L.convert(k, QQ)
+    into = Embedding(K, L, image)
+    value = L.zero
+    for c in psi:
+        value = value * u + into(c)
+    if value != L.zero:
+        raise ValueError("the adjoined root does not satisfy its polynomial")
+    return L, into, u
 
 
-def _resultant_in(p: Expr, q: Expr, z: Symbol, theta: Symbol) -> Expr:
-    """The resultant with respect to ``theta`` of ``p`` and ``q``."""
-    return as_expr(Poly(p, theta).resultant(Poly(q, theta)))
+def field_of(point: Expr) -> tuple[Domain, DomainElement]:
+    """The number field generated by an algebraic number given as an
+    expression, and the number as its element."""
+    if isinstance(point, Rational):
+        return QQ, QQ.convert(point)
+    K = QQ.algebraic_field(point)
+    if K.ext == point:
+        return K, generator(K)
+    return K, K.from_sympy(point)
 
+
+def minimal_polynomial_of(c: DomainElement, K: Domain, T: Symbol) -> Poly:
+    """The minimal polynomial over the rationals of an element of the
+    number field ``K``, exactly (the factor of its characteristic
+    polynomial vanishing at it)."""
+    if not isinstance(K, AlgebraicField):
+        return Poly(T - QQ.to_sympy(c), T, domain=QQ)
+    theta = Symbol('theta')
+    m_K = Poly(K.mod.to_list(), theta).as_expr()
+    characteristic = Poly(resultant(T - _as_polynomial_in(c, theta), m_K, theta), T, domain=QQ)
+    for factor, _ in characteristic.factor_list()[1]:
+        value = K.zero
+        for a in factor.all_coeffs():
+            value = value * c + K.convert(a, QQ)
+        if value == K.zero:
+            return factor
+    raise ValueError("no factor vanishes")
+
+
+def in_subfield(c: DomainElement, L: Domain, into: Embedding) -> Optional[DomainElement]:
+    """``c`` of ``L`` as an element of the subfield ``into.source``
+    (``into`` its embedding into ``L``), ``None`` when it is not in it."""
+    K = into.source
+    if K == L:
+        return c
+    if not isinstance(K, AlgebraicField):
+        coefficients = _coefficient_list(c, L)
+        if any(a != QQ.zero for a in coefficients[1:]):
+            return None
+        return coefficients[0]
+    d = degree(K)
+    columns: list[list[DomainElement]] = []
+    power = L.one
+    for _ in range(d):
+        columns.append(_coefficient_list(power, L))
+        power = power * into(generator(K))
+    target = _coefficient_list(c, L)
+    D = len(target)
+    augmented = DomainMatrix([[columns[j][i] for j in range(d)] + [target[i]] for i in range(D)], (D, d + 1), QQ)
+    reduced, pivots = augmented.rref()
+    if d in pivots:
+        return None
+    rows = reduced.to_list()
+    solution = [QQ.zero] * d
+    for r, p in enumerate(pivots):
+        solution[p] = rows[r][d]
+    return K(list(reversed(solution)))
+
+
+# The expansions
 
 class PuiseuxExpansion:
     """One branch of the curve `F(x, y) = 0` above ``point`` (an
     expression, or ``S.Infinity``): `y = \\sum_k c_k t^k` with `x -
-    \\text{point} = t^e` (`x = t^{-e}` at infinity), the coefficients in
-    the number field ``field`` and known for `k <` ``order``; it stands
-    for ``conjugates`` branches, conjugate under the automorphisms of
-    ``field`` over the field of the point.
+    \\text{point} = \\text{scale} \\cdot t^e` (`x = 1/(\\text{scale}\\, t^e)`
+    at infinity), the coefficients in the number field ``field`` and
+    known for `k <` ``order``; it stands for ``conjugates`` branches,
+    conjugate under the automorphisms of ``field`` over the field of
+    the point. ``embedding`` maps the coefficient field of the curve
+    (extended by the point) into ``field``.
 
     >>> from sympy import symbols
     >>> from sympy_extras.polys.puiseux import puiseux_expansions
     >>> x, y = symbols('x y')
     >>> [b.as_expr(x) for b in puiseux_expansions(y**2 - x**3 - x**2, x, y, 0, order=4)]
-    [-x**3/8 + x**2/2 + x, x**3/8 - x**2/2 - x]
+    [x**3/8 - x**2/2 - x, -x**3/8 + x**2/2 + x]
     >>> branches = puiseux_expansions(y**3 - x**2, x, y, 0, order=2)
     >>> len(branches), branches[0].ramification, branches[0].as_expr(x)
     (1, 3, x**(2/3))
     """
 
-    def __init__(self, point: Expr, ramification: int, field: Domain, series: LaurentSeries,
-                 conjugates: int, x: Symbol, y: Symbol, scale: Optional[DomainElement] = None) -> None:
+    def __init__(self, point: Expr, point_element: Optional[DomainElement], ramification: int, field: Domain,
+                 series: LaurentSeries, conjugates: int, x: Symbol, y: Symbol, scale: DomainElement,
+                 embedding: Embedding) -> None:
         self.point = point
+        #: the point as an element of ``field`` (``None`` at infinity)
+        self.point_element = point_element
         self.ramification = ramification
-        #: `x - \\text{point} = \\text{scale} \\cdot t^e` (`x = 1/(\\text{scale} t^e)` at infinity)
-        self.scale: DomainElement = field.one if scale is None else scale
         self.field = field
         self.series = series
         self.conjugates = conjugates
         self.x = x
         self.y = y
+        self.scale = scale
+        self.embedding = embedding
 
     @property
     def order(self) -> Optional[int]:
@@ -413,39 +512,50 @@ class PuiseuxExpansion:
     def x_series(self) -> LaurentSeries:
         """`x` as a series in `t`."""
         K = self.field
-        if self.at_infinity:
+        if self.point_element is None:
             return LaurentSeries.monomial(K, K.one / self.scale, -self.ramification)
-        return LaurentSeries(K, {0: K.from_sympy(self.point), self.ramification: self.scale}, None)
+        return LaurentSeries(K, {0: self.point_element, self.ramification: self.scale}, None)
 
     def evaluate(self, p: Poly, order: Optional[int] = None) -> LaurentSeries:
-        """The polynomial ``p`` in ``x`` and ``y`` (a :class:`Poly` in
-        ``y`` whose coefficients are polynomials in ``x``, or in ``x``
-        alone, or a constant) along the branch, as a series in `t`."""
+        """The polynomial ``p`` in ``x`` and ``y`` (a :class:`Poly` whose
+        coefficients are rational, or in the coefficient field of the
+        curve) along the branch, as a series in `t`."""
         K = self.field
         xs = self.x_series()
         ys = self.series if order is None else self.series.truncated(order)
-        if p.gens == (self.y,) or self.y in p.gens:
-            py = Poly(p.as_expr(), self.y)
+        convert = self._converter(p)
+        if self.y in p.gens:
             total = LaurentSeries.constant(K, K.zero)
+            py = Poly(p.as_expr(), self.y)
             for coefficient in py.all_coeffs():
-                cx = Poly(coefficient, self.x)
-                total = total * ys + _evaluate_x(cx, xs, K)
+                total = total * ys + _evaluate_x(Poly(coefficient, self.x), xs, K, convert)
             return total
-        return _evaluate_x(Poly(p.as_expr(), self.x), xs, K)
+        return _evaluate_x(Poly(p.as_expr(), self.x), xs, K, convert)
+
+    def _converter(self, p: Poly) -> Embedding:
+        domain = p.domain
+        if isinstance(domain, AlgebraicField):
+            if domain == self.embedding.source:
+                return self.embedding
+            raise ValueError(f"coefficients in {domain} cannot be evaluated along a branch over {self.field}")
+        return Embedding(QQ, self.field)
 
     def __repr__(self) -> str:
         return (f"PuiseuxExpansion(point={self.point}, ramification={self.ramification}, "
                 f"conjugates={self.conjugates}, series={self.as_expr()})")
 
 
-def _evaluate_x(p: Poly, xs: LaurentSeries, K: Domain) -> LaurentSeries:
+def _evaluate_x(p: Poly, xs: LaurentSeries, K: Domain, convert: Embedding) -> LaurentSeries:
     total = LaurentSeries.constant(K, K.zero)
+    source = convert.source
     for coefficient in p.all_coeffs():
-        total = total * xs + LaurentSeries.constant(K, K.from_sympy(as_expr(coefficient)))
+        c = source.from_sympy(as_expr(coefficient)) if isinstance(source, AlgebraicField) \
+            else QQ.from_sympy(as_expr(coefficient))
+        total = total * xs + LaurentSeries.constant(K, convert(c))
     return total
 
 
-# The Newton polygon.
+# The Newton polygon
 
 def _valuation(a: dict[int, DomainElement]) -> Optional[int]:
     return min(a) if a else None
@@ -459,7 +569,6 @@ def _lower_hull(points: list[tuple[int, int]]) -> list[tuple[int, int]]:
         while len(hull) >= 2:
             (x1, y1), (x2, y2) = hull[-2], hull[-1]
             x3, y3 = point
-            # the middle point is above or on the segment: drop it
             if (y2 - y1) * (x3 - x1) >= (y3 - y1) * (x2 - x1):
                 hull.pop()
             else:
@@ -483,13 +592,12 @@ def _poly2_substitute(P: Polynomial2, q: int, p: int, c: DomainElement, scale: D
             scale_powers[k] = scale**k if k >= 0 else (K.one / scale)**(-k)
         return scale_powers[k]
 
-    # (c + Y)^i = sum_j binom(i, j) c^(i-j) Y^j
-    degree = max(P) if P else 0
+    degree_Y = max(P) if P else 0
     powers_of_c: list[DomainElement] = [K.one]
-    for _ in range(degree):
+    for _ in range(degree_Y):
         powers_of_c.append(powers_of_c[-1] * c)
     binomials: list[list[int]] = [[1]]
-    for i in range(1, degree + 1):
+    for i in range(1, degree_Y + 1):
         row = [1]
         for j in range(1, i):
             row.append(binomials[i - 1][j - 1] + binomials[i - 1][j])
@@ -504,7 +612,7 @@ def _poly2_substitute(P: Polynomial2, q: int, p: int, c: DomainElement, scale: D
             for k, coefficient in a.items():
                 exponent = q * k + p * i
                 target[exponent] = target.get(exponent, K.zero) + factor * coefficient * scaled(k)
-    return {i: {k: v for k, v in a.items() if v != K.zero} for i, a in result.items()}
+    return _poly2_clean(result, K)
 
 
 def _poly2_convert(P: Polynomial2, into: Embedding) -> Polynomial2:
@@ -519,16 +627,44 @@ def _poly2_clean(P: Polynomial2, K: Domain) -> Polynomial2:
     return {i: a for i, a in ((i, {k: v for k, v in a.items() if v != K.zero}) for i, a in P.items()) if a}
 
 
-def _poly2_evaluate(P: Polynomial2, Y: LaurentSeries, K: Domain) -> LaurentSeries:
-    degree = max(P) if P else 0
+def _poly2_evaluate(P: Polynomial2, Y: LaurentSeries, K: Domain, order: Optional[int] = None) -> LaurentSeries:
+    """`P(s, Y(s))`, the terms of exponent at least ``order`` dropped
+    along the way when it is given (`Y` of nonnegative valuation)."""
+    degree_Y = max(P) if P else 0
     total = LaurentSeries.constant(K, K.zero)
-    for i in range(degree, -1, -1):
-        total = total * Y + LaurentSeries(K, P.get(i, {}), None)
+    for i in range(degree_Y, -1, -1):
+        coefficients = P.get(i, {})
+        if order is not None:
+            coefficients = {k: c for k, c in coefficients.items() if k < order}
+        total = total * Y + LaurentSeries(K, coefficients, None)
+        if order is not None:
+            total = total.truncated(order)
     return total
 
 
 def _poly2_derivative(P: Polynomial2, K: Domain) -> Polynomial2:
     return _poly2_clean({i - 1: {k: K.convert(i, QQ) * v for k, v in a.items()} for i, a in P.items() if i >= 1}, K)
+
+
+def _poly2_translate(P: Polynomial2, a: DomainElement, K: Domain) -> Polynomial2:
+    """`P(x + a, y)`."""
+    if a == K.zero:
+        return P
+    result: Polynomial2 = {}
+    for i, coefficients in P.items():
+        highest = max(coefficients)
+        shifted: dict[int, DomainElement] = {}
+        for k in range(highest, -1, -1):
+            new: dict[int, DomainElement] = {}
+            for j, c in shifted.items():
+                new[j + 1] = new.get(j + 1, K.zero) + c
+                new[j] = new.get(j, K.zero) + c * a
+            c_k = coefficients.get(k)
+            if c_k is not None:
+                new[0] = new.get(0, K.zero) + c_k
+            shifted = new
+        result[i] = shifted
+    return _poly2_clean(result, K)
 
 
 def _newton_root(P: Polynomial2, K: Domain, order: int) -> LaurentSeries:
@@ -542,12 +678,12 @@ def _newton_root(P: Polynomial2, K: Domain, order: int) -> LaurentSeries:
         # the approximation taken as exact: the value of P at it is then
         # exact and its valuation is the precision reached
         approximation = LaurentSeries(K, root.terms, None)
-        value = _poly2_evaluate(P, approximation, K)
+        value = _poly2_evaluate(P, approximation, K, precision)
         if value.is_zero():
             root = LaurentSeries(K, root.terms, precision)
             continue
-        derivative = _poly2_evaluate(dP, approximation, K)
-        correction = value * derivative.inverse(precision)
+        derivative = _poly2_evaluate(dP, approximation, K, precision)
+        correction = (value * derivative.inverse(precision)).truncated(precision)
         root = (approximation - correction).truncated(precision)
     return root.truncated(order)
 
@@ -555,24 +691,27 @@ def _newton_root(P: Polynomial2, K: Domain, order: int) -> LaurentSeries:
 class _Branch:
     """A branch found by the recursion: the series of `Y` in the final
     variable `u` (`s = scale * u**q`, `s` the variable of the caller),
-    its field, and the number of conjugates."""
+    its field with the embedding of the caller's field, and the number
+    of conjugates."""
 
-    def __init__(self, q: int, scale: DomainElement, series: LaurentSeries, field: Domain, conjugates: int) -> None:
+    def __init__(self, q: int, scale: DomainElement, series: LaurentSeries, field: Domain, conjugates: int,
+                 embedding: Embedding) -> None:
         self.q = q
         self.scale = scale
         self.series = series
         self.field = field
         self.conjugates = conjugates
+        self.embedding = embedding
 
 
 def _characteristic(P: Polynomial2, edge: tuple[tuple[int, int], tuple[int, int]], q: int,
                     K: Domain) -> list[DomainElement]:
-    """The characteristic polynomial of the edge, coefficients highest
-    degree first in `c`."""
+    """The characteristic polynomial of the edge in `u = c^q`,
+    coefficients highest degree first."""
     (i0, v0), (i1, v1) = edge
-    p_over_q = Fraction(v0 - v1, i1 - i0)  # gamma = p/q
-    degree = (i1 - i0) // q
-    coefficients: list[DomainElement] = [K.zero] * (degree + 1)
+    p_over_q = Fraction(v0 - v1, i1 - i0)
+    degree_u = (i1 - i0) // q
+    coefficients: list[DomainElement] = [K.zero] * (degree_u + 1)
     for i in range(i0, i1 + 1):
         if (i - i0) % q:
             continue
@@ -581,9 +720,8 @@ def _characteristic(P: Polynomial2, edge: tuple[tuple[int, int], tuple[int, int]
             continue
         v = _valuation(a)
         assert v is not None
-        # on the edge: v = v0 - gamma (i - i0)
         if Fraction(v) == Fraction(v0) - p_over_q * (i - i0):
-            coefficients[degree - (i - i0) // q] = a[v]
+            coefficients[degree_u - (i - i0) // q] = a[v]
     return coefficients
 
 
@@ -591,12 +729,55 @@ def _factor_over(K: Domain, coefficients: list[DomainElement]) -> list[tuple[lis
     """The irreducible factors over ``K`` of the polynomial with the
     given coefficients (highest first), with multiplicities."""
     z = Symbol('z')
-    p = Poly([K.to_sympy(c) for c in coefficients], z, domain=K)
+    p = Poly.from_list(coefficients, z, domain=K)
     _, factors = p.factor_list()
     result: list[tuple[list[DomainElement], int]] = []
     for factor, multiplicity in factors:
-        result.append(([K.convert(c, factor.domain) for c in factor.rep.to_list()], multiplicity))
+        result.append((coefficients_in(factor, K), multiplicity))
     return result
+
+
+def _bezout(q: int, p: int) -> tuple[int, int]:
+    """``(l, m)`` with ``l*q - m*p == 1`` (``q > 0``, ``gcd(p, q) == 1``),
+    ``m = 0`` when ``q == 1``."""
+    if q == 1:
+        return 1, 0
+    old_r, r = q, p
+    old_s, s_ = 1, 0
+    old_t, t_ = 0, 1
+    while r != 0:
+        quotient = old_r // r
+        old_r, r = r, old_r - quotient * r
+        old_s, s_ = s_, old_s - quotient * s_
+        old_t, t_ = t_, old_t - quotient * t_
+    sign = 1 if old_r == 1 else -1
+    return sign * old_s, -sign * old_t
+
+
+def _root_and_scale(u: DomainElement, q: int, p: int, L: Domain) -> tuple[DomainElement, DomainElement]:
+    """``(c, scale)`` with `c^q = u\\, \\text{scale}^p`: a `q`-th root of `u` in
+    `L` with no scaling when there is one (`u = 1`, a square in `L`),
+    else Duval's `c = u^l`, `\\lambda = u^m` with `l q - m p = 1`, `0 \\le m
+    < q`."""
+    if q > 1:
+        z = Symbol('z')
+        for factor, _ in Poly.from_list([L.one] + [L.zero] * (q - 1) + [-u], z, domain=L).factor_list()[1]:
+            if factor.degree() == 1:
+                a, b = coefficients_in(factor, L)
+                return -b / a, L.one
+    l, m = _bezout(q, p)
+    # the other solutions: (l + p t, m + q t)
+    while m < 0:
+        l, m = l + p, m + q
+    while m >= q:
+        l, m = l - p, m - q
+    return _power(u, l, L), _power(u, m, L)
+
+
+def _power(u: DomainElement, k: int, K: Domain) -> DomainElement:
+    if k >= 0:
+        return u**k
+    return (K.one / u)**(-k)
 
 
 def _expand(P: Polynomial2, K: Domain, follow: int, first: bool, order_x: Fraction,
@@ -610,7 +791,7 @@ def _expand(P: Polynomial2, K: Domain, follow: int, first: bool, order_x: Fracti
     branches: list[_Branch] = []
     if not first and 0 not in P:
         # Y = 0 is an exact root
-        branches.append(_Branch(1, K.one, LaurentSeries(K, {}, None), K, 1))
+        branches.append(_Branch(1, K.one, LaurentSeries(K, {}, None), K, 1, Embedding(K, K)))
         P = {i - 1: a for i, a in P.items() if i >= 1}
         follow -= 1
         if follow == 0:
@@ -633,15 +814,10 @@ def _expand(P: Polynomial2, K: Domain, follow: int, first: bool, order_x: Fracti
             # with l q - m p = 1 the choice c = u^l, lambda = u^m needs no
             # q-th root (Duval)
             L, into, u = adjoin_root(K, psi)
-            l, m = _bezout(q, p)
-            c = _power(u, l, L)
-            scale = _power(u, m, L)
-            P_L = _poly2_convert(P, into)
-            substituted = _poly2_substitute(P_L, q, p, c, scale, L)
-            nu = min(k for a in substituted.values() for k in a)
-            P1 = _poly2_shift(substituted, nu)
-            # the ramification of s relative to x, and the exponent of s
-            # multiplying Y1 in the series of y
+            c, scale = _root_and_scale(u, q, p, L)
+            P1 = _poly2_substitute(_poly2_convert(P, into), q, p, c, scale, L)
+            nu = min(k for a in P1.values() for k in a)
+            P1 = _poly2_shift(P1, nu)
             ramification = ramification_so_far * q
             total_offset = offset * q + p
             if multiplicity == 1:
@@ -649,98 +825,80 @@ def _expand(P: Polynomial2, K: Domain, follow: int, first: bool, order_x: Fracti
                 needed = max(_ceil(order_x * ramification) - total_offset, 1)
                 root = _newton_root(P1, L, needed)
                 series = (LaurentSeries.constant(L, c) + root).shifted(p)
-                branches.append(_Branch(q, scale, series, L, len(psi) - 1))
+                branches.append(_Branch(q, scale, series, L, len(psi) - 1, into))
             else:
                 for sub in _expand(P1, L, multiplicity, False, order_x, ramification, total_offset):
                     # Y = s^p (c + Y1), s = sub.scale u^sub.q, so t = scale s^q
                     # = scale sub.scale^q u^(q sub.q)
-                    deeper = Embedding(L, sub.field)
+                    deeper = sub.embedding
                     series = (LaurentSeries.constant(sub.field, deeper(c)) + sub.series).shifted(p * sub.q)
                     total_scale = deeper(scale) * _power(sub.scale, q, sub.field)
                     branches.append(_Branch(q * sub.q, total_scale, series, sub.field,
-                                            (len(psi) - 1) * sub.conjugates))
+                                            (len(psi) - 1) * sub.conjugates, into.then(deeper)))
     return branches
-
-
-def _bezout(q: int, p: int) -> tuple[int, int]:
-    """``(l, m)`` with ``l*q - m*p == 1`` (``q > 0``, ``gcd(p, q) == 1``),
-    ``m = 0`` when ``q == 1``."""
-    if q == 1:
-        return 1, 0
-    # extended Euclid on (q, p)
-    old_r, r = q, p
-    old_s, s_ = 1, 0
-    old_t, t_ = 0, 1
-    while r != 0:
-        quotient = old_r // r
-        old_r, r = r, old_r - quotient * r
-        old_s, s_ = s_, old_s - quotient * s_
-        old_t, t_ = t_, old_t - quotient * t_
-    # old_s*q + old_t*p = old_r = +-1
-    sign = 1 if old_r == 1 else -1
-    return sign * old_s, -sign * old_t
-
-
-def _power(u: DomainElement, k: int, K: Domain) -> DomainElement:
-    if k >= 0:
-        return u**k
-    return (K.one / u)**(-k)
 
 
 def _ceil(r: Fraction) -> int:
     return -((-r.numerator) // r.denominator)
 
 
-def _poly2_from(F: Poly, x: Symbol, y: Symbol, K: Domain) -> Polynomial2:
-    """``F`` as a dictionary ``{i: {k: coefficient of x**k y**i}}``."""
+def _poly2_from(F: Poly, x: Symbol, y: Symbol, K: Domain, convert: Embedding) -> Polynomial2:
+    """``F`` as a dictionary ``{i: {k: coefficient of x**k y**i}}`` over
+    ``K`` (``convert`` from the domain of ``F``)."""
     P: Polynomial2 = {}
+    source = convert.source
     for (i, k), c in Poly(F.as_expr(), y, x).terms():
-        P.setdefault(i, {})[k] = K.from_sympy(as_expr(c))
+        value = source.from_sympy(as_expr(c)) if isinstance(source, AlgebraicField) else QQ.from_sympy(as_expr(c))
+        P.setdefault(i, {})[k] = convert(value)
     return P
 
 
-def _poly2_translate(P: Polynomial2, a: DomainElement, K: Domain) -> Polynomial2:
-    """`P(x + a, y)`."""
-    if a == K.zero:
-        return P
-    result: Polynomial2 = {}
-    for i, coefficients in P.items():
-        degree = max(coefficients)
-        # Horner: p(x + a) built from the highest coefficient down
-        shifted: dict[int, DomainElement] = {}
-        for k in range(degree, -1, -1):
-            # shifted := shifted * (x + a) + c_k
-            new: dict[int, DomainElement] = {}
-            for j, c in shifted.items():
-                new[j + 1] = new.get(j + 1, K.zero) + c
-                new[j] = new.get(j, K.zero) + c * a
-            c_k = coefficients.get(k)
-            if c_k is not None:
-                new[0] = new.get(0, K.zero) + c_k
-            shifted = new
-        result[i] = shifted
-    return _poly2_clean(result, K)
+def expansions_in_field(F: Poly, x: Symbol, y: Symbol, K: Domain, into: Embedding,
+                        point: Optional[DomainElement], order: int) -> list[PuiseuxExpansion]:
+    """The expansions of `F(x, y) = 0` (``F`` with rational coefficients,
+    or in the source of ``into``) above the element ``point`` of the
+    number field ``K`` (``None`` for infinity), ``into`` the embedding of
+    the coefficient field of ``F`` into ``K``: the conjugacy classes are
+    taken over ``K``, and every expansion carries the embedding of
+    ``K`` into its field."""
+    F_ = as_expr(F.as_expr())
+    n = Poly(F_, y).degree()
+    at_infinity = point is None
+    if at_infinity:
+        d = Poly(F_, x).degree()
+        t = Symbol('t')
+        G = Poly((F_.xreplace({x: 1 / t}) * t**d).expand(), y, t, domain=F.domain)
+        P = _poly2_from(G, t, y, K, into)
+    else:
+        P = _poly2_translate(_poly2_from(Poly(F_, y, x, domain=F.domain), x, y, K, into), point, K)
+    order_x = Fraction(order)
+    found = _expand(P, K, n, True, order_x, 1, 0)
+    result: list[PuiseuxExpansion] = []
+    point_expr = S.Infinity if point is None else as_expr(K.to_sympy(point))
+    for branch in found:
+        series = branch.series.truncated(_ceil(order_x * branch.q)) if branch.series.order is None else branch.series
+        point_element = None if point is None else branch.embedding(point)
+        result.append(PuiseuxExpansion(point_expr, point_element, branch.q, branch.field, series,
+                                       branch.conjugates, x, y, branch.scale, branch.embedding))
+    result.sort(key=_sort_key)
+    return result
 
 
-def _coefficient_field(F: Poly, point: Optional[Expr]) -> Domain:
-    """The field of the coefficients of ``F`` extended by the point."""
-    domain = F.domain
-    generators: list[Expr] = []
-    if isinstance(domain, AlgebraicField):
-        generators.append(as_expr(domain.ext))
-    elif not (domain.is_QQ or domain.is_ZZ):
-        raise ValueError(f"coefficients in {domain} are not supported")
-    if point is not None and not isinstance(point, Rational):
-        generators.append(point)
-    return QQ.algebraic_field(*generators) if generators else QQ
+def _sort_key(b: PuiseuxExpansion) -> tuple[int, int, list[tuple[int, list[DomainElement]]]]:
+    """A deterministic order of the branches which does not print them
+    (printing root objects is slow)."""
+    return (b.ramification, b.conjugates,
+            [(k, _coefficient_list(c, b.field)) for k, c in sorted(b.series.terms.items())])
 
 
-def puiseux_expansions(F: ExprLike, x: Symbol, y: Symbol, point: ExprLike = 0, order: int = 4
+def puiseux_expansions(F: Union[ExprLike, Poly], x: Symbol, y: Symbol, point: ExprLike = 0, order: int = 4
                        ) -> list[PuiseuxExpansion]:
     """The Puiseux expansions of the roots `y` of `F(x, y) = 0` above
     `x = ` ``point`` (an algebraic number, or ``oo``), one per conjugacy
     class, with the coefficients of `(x - a)^{k/e}` known for `k/e <`
-    ``order``.
+    ``order``; a :class:`~sympy.polys.polytools.Poly` keeps its
+    coefficient domain (a number field over which the conjugacy classes
+    are then taken).
 
     >>> from sympy import symbols, oo, sqrt
     >>> from sympy_extras.polys.puiseux import puiseux_expansions
@@ -763,32 +921,31 @@ def puiseux_expansions(F: ExprLike, x: Symbol, y: Symbol, point: ExprLike = 0, o
     >>> b.conjugates, b.field, b.as_expr(x)
     (2, QQ<sqrt(2)>, sqrt(2)*x/4 + sqrt(2))
     """
-    F_ = as_expr(F)
+    FP = F if isinstance(F, Poly) else Poly(as_expr(F), y, x)
     point_ = as_expr(point)
-    FP = Poly(F_, y, x)
-    at_infinity = point_ is S.Infinity
-    K = _coefficient_field(FP, None if at_infinity else point_)
-    n = Poly(F_, y).degree()
-    if at_infinity:
-        # x = 1/t: F(1/t, y) t^d
-        d = Poly(F_, x).degree()
-        t = Symbol('t')
-        G = Poly((F_.xreplace({x: 1 / t}) * t**d).expand(), y, t)
-        P = _poly2_from(Poly(G.as_expr(), y, t), t, y, K)
-    else:
-        P = _poly2_translate(_poly2_from(FP, x, y, K), K.from_sympy(point_), K)
-    order_x = Fraction(order)
-    found = _expand(P, K, n, True, order_x, 1, 0)
-    result: list[PuiseuxExpansion] = []
-    for branch in found:
-        series = branch.series.truncated(_ceil(order_x * branch.q)) if branch.series.order is None else branch.series
-        result.append(PuiseuxExpansion(point_, branch.q, branch.field, series, branch.conjugates, x, y,
-                                       branch.scale))
-    result.sort(key=lambda b: (b.ramification, str(b.as_expr())))
-    return result
+    domain = FP.domain
+    if domain.is_ZZ:
+        FP = FP.set_domain(QQ)
+        domain = QQ
+    if not (domain.is_QQ or isinstance(domain, AlgebraicField)):
+        raise ValueError(f"coefficients in {domain} are not supported")
+    if point_ is S.Infinity:
+        return expansions_in_field(FP, x, y, domain, Embedding(domain, domain), None, order)
+    if isinstance(point_, Rational):
+        return expansions_in_field(FP, x, y, domain, Embedding(domain, domain), domain.convert(point_, QQ), order)
+    if isinstance(domain, AlgebraicField):
+        # the point adjoined to the field of the coefficients
+        T = Symbol('T')
+        K_point, element = field_of(point_)
+        m = minimal_polynomial_of(element, K_point, T)
+        factor = Poly(m.as_expr(), T, domain=domain).factor_list()[1][0][0]
+        K, into, a = adjoin_root(domain, coefficients_in(factor, domain))
+        return expansions_in_field(FP, x, y, K, into, a, order)
+    K, a = field_of(point_)
+    return expansions_in_field(FP, x, y, K, Embedding(QQ, K), a, order)
 
 
-def branches_at_infinity(F: ExprLike, x: Symbol, y: Symbol, order: int = 4) -> list[PuiseuxExpansion]:
+def branches_at_infinity(F: Union[ExprLike, Poly], x: Symbol, y: Symbol, order: int = 4) -> list[PuiseuxExpansion]:
     """The expansions above `x = \\infty`, :func:`puiseux_expansions` with
     ``point=oo``."""
     return puiseux_expansions(F, x, y, S.Infinity, order)

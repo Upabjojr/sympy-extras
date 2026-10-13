@@ -32,6 +32,34 @@ remove public functions. Breaking changes are listed here when they happen.
   infinity in Trager's sense, by reducing the leading forms. Checked
   against the bases of the literature and against an independent
   maximality test through the Puiseux expansions.
+- `sympy_extras.integrals.curves`: Trager's algorithm for the
+  integration of algebraic functions on an arbitrary plane curve.
+  `curve_antiderivative`, `curve_reduce` and `is_nonelementary_on_curve`
+  take an integrand rational in `x` and in any number of nested
+  radicals (`1/(sqrt(x + 1) + sqrt(x - 1))`, `cbrt(x**2*(x + 1))`,
+  `sqrt(x + sqrt(x))`), write it in the function field of a primitive
+  element of the radicals (`AlgebraicIntegrand`), and run Trager's
+  three steps after his change of variable `x = N + 1/z`: the Hermite
+  reduction in an integral basis normal at infinity (the congruence of
+  Bronstein's lazy reduction, solved modulo the squarefree factor), the
+  proof of a nonelementary integral when the reduced integrand keeps a
+  pole at infinity (Trager's theorem) or when the logarithmic
+  derivatives found do not account for it, the residues at the places
+  above the roots of the denominator from the Puiseux expansions, the
+  splitting field of the residues built exactly, and for each element
+  of a rational basis of the residues a function with the prescribed
+  divisor by linear algebra over the rationals on the expansions
+  (multiples up to Mazur's bound for genus one, a heuristic bound
+  beyond). The answer is written back in the original radicals.
+  `trager_antiderivative`, `trager_reduce` and
+  `is_nonelementary_algebraic` fall back to it for integrands beyond one
+  radical, so `indefinite_integral` reaches them. Checked against the
+  worked examples of Bronstein's tutorial and of Kauers (ISSAC 2008).
+- `sympy_extras.polys.puiseux.adjoin_root` and the number fields of the
+  expansions are built exactly: a primitive element by a resultant, its
+  embedding by a gcd, no root evaluated numerically (SymPy's
+  constructions refine complex roots by bisection, which takes minutes
+  at the precisions they ask).
 
 ## 0.0.3 - 2026-10-06
 

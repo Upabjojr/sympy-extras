@@ -33,6 +33,7 @@ The order of the methods:
    the integrand and then on its canonical forms (on the exponentials of
    hyperbolic functions already in 6, after the substitutions);
 8. Trager's algorithm for one square root of a polynomial (:mod:`.trager`),
+   and on the curve of several or nested radicals (:mod:`.curves`),
    and right after it the Gauss hypergeometric antiderivative of a
    binomial differential `x^m (a + b x^n)^p` whose integral Chebyshev's
    criterion proves non-elementary (:mod:`.algebraic`): it cannot

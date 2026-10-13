@@ -781,6 +781,70 @@ True
 
 ```
 
+## Trager's algorithm on a general curve (`sympy_extras.integrals.curves`)
+
+`curve_antiderivative(f, x)` integrates a function rational in `x` and
+in any number of radicals of rational functions of `x`, nested or not,
+of any index: `1/(sqrt(x + 1) + sqrt(x - 1))`, `cbrt(x**2*(x + 1))`
+together with its powers, `sqrt(x + sqrt(x))`. The radicals `g_i` are
+replaced by a primitive element `y = sum k_i g_i` (small integer weights,
+the minimal polynomial `F` of `y` over `Q(x)` by SymPy's
+`minimal_polynomial`, its degree the product of the indices when the
+radicals are independent, which is checked), and the integrand becomes
+an element of the function field `Q(x)[y]/(F)` of
+`sympy_extras.polys.functionfields` (`AlgebraicIntegrand`). Trager's
+change of variable `x = N + 1/z`, with `N` an integer which is neither a
+pole of the integrand nor a root of the discriminant, makes the places
+above `z = oo` unramified with the integrand vanishing there twice, so
+that his theorem applies: after the Hermite reduction in an integral
+basis normal at infinity (the basis of `FunctionField.normal_basis`,
+the reduction solving the congruence `b (U V M/e - (m - 1) U V' I) = A
+mod V` of Bronstein's lazy Hermite reduction at each step), the integral
+is elementary only if the remainder `h` satisfies `h z**2` integral at
+infinity, read off from the degrees of its coordinates and the pole
+orders of the basis; otherwise it is proved not elementary. The residues
+of `h dz` are computed at the places above the roots of its denominator
+from the Puiseux expansions of `sympy_extras.polys.puiseux` (one
+representative of every class of conjugate places, the denominator
+factored over the field of the residues once that field, the splitting
+field of their minimal polynomials, is built exactly). A basis of the
+residues over the rationals gives the divisors `delta_j`; for each, the
+multiples `n delta_j` with `n` up to twelve (Mazur's bound for a curve
+of genus one over the rationals, a heuristic beyond) are tested for
+being the divisor of a function `u = N/den` with `N` in the integral
+basis of bounded degrees, the vanishing orders imposed on the Puiseux
+expansions as linear equations over the rationals. The logarithms found
+must account for `h` exactly in the field, else the integral is proved
+not elementary (a divisor not found torsion within the bound leaves the
+question open). The answer is written back in `x` and the original
+radicals through the monomial basis of the radicals, and
+`indefinite_integral` checks it by differentiation as every candidate.
+`trager_antiderivative`, `trager_reduce` and `is_nonelementary_algebraic`
+fall back to this route for the integrands beyond one radical.
+
+```python
+>>> from sympy import symbols, sqrt, cbrt
+>>> from sympy_extras.integrals.curves import curve_antiderivative, is_nonelementary_on_curve
+>>> x = symbols('x')
+>>> curve_antiderivative(1/(sqrt(x + 1) + sqrt(x - 1)), x)
+(x + 1)**(3/2)/3 - (x - 1)**(3/2)/3
+>>> curve_antiderivative(1/(x*sqrt(1 - x**3)), x)
+log((-x**3 - 2*sqrt(1 - x**3) + 2)/(2*x**3))/3
+>>> is_nonelementary_on_curve(x/sqrt(1 - x**3), x)
+True
+
+```
+
+Parameters are not supported on a general curve (the number fields of
+the residues are over the rationals), and the torsion test is bounded
+rather than decided by reduction modulo primes as in Trager's thesis.
+Fields of degree eight and more (three square roots, a square root with
+a fourth root) are slow: the integral basis by Trager's Round 2
+algorithm and the arithmetic of the branches in large number fields take
+minutes in pure Python, where degree four takes seconds; the answers
+with algebraic residues are written in a primitive element of their
+splitting field rather than as sums over conjugates.
+
 ## Integrals over regions: `IntegralByRanges`
 
 `IntegralByRanges(f, condition)` is the integral of `f` over the region of

@@ -920,8 +920,10 @@ def trager_reduce(f: ExprLike, x: Symbol) -> Optional[tuple[Expr, Expr]]:
     rational part, the exact part of the Hermite reduction and the
     logarithms of the residue classes whose divisors are torsion) and
     ``h`` the remaining integrand, with simple poles only, whose integral
-    is not elementary or not found; ``None`` when ``f`` is not a rational
-    function of ``x`` and of one square root of a polynomial.
+    is not elementary or not found; ``None`` when ``f`` is not an
+    algebraic function of ``x`` (one square root, one root of any index,
+    or several and nested radicals, these through
+    :mod:`sympy_extras.integrals.curves`).
 
     >>> from sympy import symbols, sqrt
     >>> from sympy_extras.integrals.trager import trager_reduce
@@ -940,7 +942,13 @@ def trager_reduce(f: ExprLike, x: Symbol) -> Optional[tuple[Expr, Expr]]:
     g, rational_roots = _polynomial_radicands(f_, x)
     result = attempt(lambda: _integrate(g, x, True), settings.timeout)
     if result is None:
-        return attempt(lambda: _index_n(f_, x), settings.timeout)
+        found = attempt(lambda: _index_n(f_, x), settings.timeout)
+        if found is None:
+            # several or nested radicals, roots of any index together:
+            # Trager's algorithm on the curve of a primitive element
+            from .curves import curve_reduce
+            found = attempt(lambda: curve_reduce(f_, x), settings.timeout)
+        return found
     back: dict[Symbol, Expr] = {}
     original = result.radical.P.as_expr()
     if result.nonelementary is None and result.generators:
@@ -1979,10 +1987,12 @@ def _original_roots(F: Expr, f: Expr, x: Symbol, P: Expr) -> Expr:
 
 def trager_antiderivative(f: ExprLike, x: Symbol) -> Optional[Expr]:
     """An antiderivative of the algebraic function ``f`` (rational in
-    ``x`` and in one square root of a polynomial) by Trager's algorithm,
-    or ``None`` when the integral is not elementary or its logarithmic
-    part is not found; see :func:`trager_reduce` for the elementary
-    part alone.
+    ``x`` and in radicals of rational functions of ``x``: one square
+    root, one root of any index, or several and nested radicals through
+    the general curve of :mod:`sympy_extras.integrals.curves`) by
+    Trager's algorithm, or ``None`` when the integral is not elementary
+    or its logarithmic part is not found; see :func:`trager_reduce` for
+    the elementary part alone.
 
     >>> from sympy import symbols, sqrt, Rational
     >>> from sympy_extras.integrals.trager import trager_antiderivative
@@ -2076,7 +2086,9 @@ def is_nonelementary_algebraic(f: ExprLike, x: Symbol) -> Optional[bool]:
         return not chebyshev_elementary(binomial)
     result = attempt(lambda: _integrate(f_, x, True), settings.timeout)
     if result is None:
-        return None
+        from .curves import is_nonelementary_on_curve
+        verdict = attempt(lambda: is_nonelementary_on_curve(f_, x), settings.timeout)
+        return None if verdict is None else verdict
     if result.nonelementary is False:
         # the antiderivative is kept only when it checks
         return False if trager_antiderivative(f_, x) is not None else None

@@ -98,7 +98,9 @@ def test_integrands_outside_the_scope() -> None:
     # two roots: the product of the radicands (test_several_roots_are_combined_and_restored)
     product = trager_antiderivative(sqrt(x) * sqrt(x + 1), x)
     assert product is not None and product.has(sqrt(x) * sqrt(x + 1))
-    assert trager_antiderivative(sqrt(x) + sqrt(x + 1), x) is None
+    # two independent roots: the general curve (sympy_extras.integrals.curves)
+    F = trager_antiderivative(sqrt(x) + sqrt(x + 1), x)
+    assert F is not None and _derivative_matches(F, sqrt(x) + sqrt(x + 1))
     assert trager_antiderivative(sin(x), x) is None
     assert hermite_reduce_algebraic(sqrt(sqrt(x) + 1), x) is None
     # a parameter: the Hermite reduction only
@@ -140,8 +142,10 @@ def test_several_roots_are_combined_and_restored() -> None:
     assert is_antiderivative(F, f, x) is True
     found = verified_antiderivative(f, x)
     assert found is not None and found[1] == 'trager'
-    # a monomial with one root only is not rational in the product
-    assert trager_antiderivative(sqrt(x + 1) * sqrt(x + 2) + sqrt(x + 1), x) is None
+    # a monomial with one root only is not rational in the product: the
+    # general curve of the two roots takes over
+    F = trager_antiderivative(sqrt(x + 1) * sqrt(x + 2) + sqrt(x + 1), x)
+    assert F is not None and is_antiderivative(F, sqrt(x + 1) * sqrt(x + 2) + sqrt(x + 1), x) is True
     # the product of the radicands of genus one: the elliptic remainder
     found_ = trager_reduce((x**2 - 1) / (x**2 * sqrt((1 - 3 * x**2) * (1 - x**2))), x)
     assert found_ is not None and found_[1] != 0
