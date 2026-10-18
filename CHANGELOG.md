@@ -10,6 +10,26 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.core`: an experimental core proposed as a replacement of
+  `sympy.core`, written from scratch. The classes of the expression tree
+  (`Add`, `Mul`, `Pow`, `Eq`, `Derivative`, ...) build exactly the node
+  they are asked for (`Add(x, x)` has the arguments `(x, x)`), so that
+  their types are honest and the package passes mypy in strict mode
+  without `Any`, `cast` or `# type: ignore`; the evaluation of SymPy's
+  constructors is done by functions of the same name in lower case
+  (`add(x, x)` is `2*x`; `mul`, `pow`, `sub`, `div`, `neg`, `eq`, `lt`,
+  ..., `diff`), which the operators call and which `doit` applies to a
+  tree. The names, methods, evaluated forms, assumptions and printed
+  forms of `sympy.core` are kept (`symbols`, `S`, `sympify`, `args`,
+  `func`, `subs`, `as_coeff_Mul`, the `is_*` queries, `str`, `srepr`);
+  `to_sympy` and `from_sympy` convert in both directions, and
+  `SymPyFunction` wraps the functions of SymPy (`sin`, `exp`, ...) as
+  unevaluated nodes evaluated, differentiated and queried through SymPy.
+  Checked against SymPy on a table of known forms and on random
+  expressions (evaluation, derivatives, expansions, substitutions,
+  numerical values, printing). See `docs/core.md` for the design and
+  the differences.
+
 - `sympy_extras.polys.puiseux`: Puiseux expansions of the branches of a
   plane curve `F(x, y) = 0` above a point or above infinity by the
   Newton polygon algorithm (`puiseux_expansions`), the conjugate

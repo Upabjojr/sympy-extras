@@ -668,6 +668,29 @@ with `real=True`) and numerically (`numerical_solutions`); `solve` uses
 them for the polynomial systems `nonlinsolve` answers wrongly. See
 [docs/regularchains.md](docs/regularchains.md).
 
+### An experimental core: unevaluating classes, evaluating functions (`sympy_extras.core`)
+
+A proposal for a replacement of `sympy.core`, written from scratch: the
+classes build exactly the node they are asked for (`Add(x, x)` has the
+arguments `(x, x)`), so that their types are honest and the package is
+checked by mypy in strict mode; the evaluation of SymPy's constructors is
+done by functions of the same name in lower case (`add(x, x)` is `2*x`),
+which the operators call and which `doit` applies to a tree. Everything
+else keeps SymPy's names, evaluated forms, assumptions and printing, and
+`to_sympy`/`from_sympy` convert in both directions. See `docs/core.md`.
+
+```python
+>>> from sympy_extras.core import Symbol, Add, add, sqrt, Eq, eq, to_sympy
+>>> x = Symbol('x')
+>>> Add(x, x), Add(x, x).args, add(x, x), x + x
+(x + x, (x, x), 2*x, 2*x)
+>>> Eq(x, x), eq(x, x), sqrt(8)*sqrt(2), (x**2 + 2*x + 1).diff(x)
+(Eq(x, x), True, 4, 2*x + 2)
+>>> Add(x, 1, x).doit(), to_sympy(Add(x, x)), to_sympy(Add(x, x), evaluate=False)
+(2*x + 1, 2*x, x + x)
+
+```
+
 ### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
@@ -712,6 +735,7 @@ sympy_extras/
         sat.py               satisfiable, tautology, find_instance
         solve.py             solve with assumptions and a domain
         limits.py            limit and series with assumptions and case distinctions
+    core/                    an experimental core: unevaluating classes, evaluating functions (docs/core.md)
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation
