@@ -2,13 +2,14 @@
 
 ``sympify`` accepts the nodes of this core, Python integers, floats,
 fractions and booleans, strings (parsed by SymPy's parser and converted),
-tuples and lists (which become :class:`~sympy_extras.core.containers.Tuple`)
-and SymPy objects (converted by :func:`~sympy_extras.core.interop.from_sympy`).
+tuples and lists (which become :class:`~sympy_extras.core.containers.Tuple`),
+dictionaries (:class:`~sympy_extras.core.containers.Dict`) and SymPy objects
+(converted by :func:`~sympy_extras.core.interop.from_sympy`).
 """
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Sequence, Union
+from typing import Mapping, Sequence, Union
 
 from sympy.core.basic import Basic as SymPyBasic
 
@@ -17,7 +18,8 @@ from .basic import Basic
 __all__ = ['sympify', 'SympifyError', 'SympifyLike']
 
 #: what ``sympify`` accepts
-SympifyLike = Union[Basic, int, float, Fraction, bool, str, SymPyBasic, Sequence['SympifyLike']]
+SympifyLike = Union[Basic, int, float, Fraction, bool, str, SymPyBasic, Sequence['SympifyLike'],
+    Mapping['SympifyLike', 'SympifyLike']]
 
 
 class SympifyError(ValueError):
@@ -56,8 +58,9 @@ def sympify(a: SympifyLike) -> Basic:
     if isinstance(a, str):
         from sympy.parsing.sympy_parser import parse_expr
         from .interop import from_sympy
+        from .parameters import global_parameters
         try:
-            parsed = parse_expr(a)
+            parsed = parse_expr(a, evaluate=global_parameters.evaluate)
         except (SyntaxError, ValueError, TypeError, NameError) as error:
             raise SympifyError("cannot parse %r: %s" % (a, error)) from None
         if not isinstance(parsed, SymPyBasic):
@@ -68,4 +71,7 @@ def sympify(a: SympifyLike) -> Basic:
         return from_sympy(a)
     if isinstance(a, (tuple, list)):
         return Tuple(*[sympify(item) for item in a])
+    if isinstance(a, Mapping):
+        from .containers import Dict
+        return Dict(*[(sympify(k), sympify(v)) for k, v in a.items()])
     raise SympifyError("cannot convert %r to an expression" % (a,))

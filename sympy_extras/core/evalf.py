@@ -1,12 +1,13 @@
 """Numerical evaluation with mpmath.
 
-``evalf(expr, n)`` evaluates the numerical subexpressions to ``n``
-digits: numbers, the constants ``pi``, ``E`` and ``I``, the sums,
-products and powers of such, and the wrapped functions of SymPy. What
-contains a symbol is rebuilt with the evaluating functions around the
-evaluated parts, as SymPy does (``(x + pi).evalf()`` is
-``x + 3.14159265358979``). A complex value is ``re + im*I`` with two
-floats.
+``evalf(expr, n)`` (also ``N``) evaluates the numerical subexpressions
+to ``n`` digits: numbers, the constants ``pi``, ``E``, ``EulerGamma``,
+``Catalan``, ``GoldenRatio``, ``TribonacciConstant`` and ``I``, the
+sums, products and powers of such, and any other numerical node through
+SymPy (the wrapped functions of SymPy, ``Mod``, ...). What contains a
+symbol is rebuilt with the evaluating functions around the evaluated
+parts, as SymPy does (``(x + pi).evalf()`` is ``x + 3.14159265358979``).
+A complex value is ``re + im*I`` with two floats.
 """
 from __future__ import annotations
 
@@ -18,18 +19,29 @@ from sympy.core.expr import Expr as SymPyExpr
 from sympy.core.numbers import Number as SymPyNumber
 
 from .basic import Basic, SubsMapping
-from .expr import Expr, as_expr
-from .numbers import Exp1, Float, ImaginaryUnit, Number, Pi, dps_to_prec, number_from_fraction
+from .coreerrors import PrecisionExhausted
+from .expr import Expr, UnevaluatedExpr, as_expr
+from .numbers import (AlgebraicNumber, CatalanType, EulerGammaType, Exp1, Float, GoldenRatioType,
+    ImaginaryUnit, Number, Pi, TribonacciConstantType, dps_to_prec, number_from_fraction)
 
-__all__ = ['evalf', 'to_float', 'to_complex', 'numeric_value']
+__all__ = ['evalf', 'N', 'to_float', 'to_complex', 'numeric_value', 'mpf_to_fraction', 'PrecisionExhausted']
 
 _GUARD_BITS = 20
 
 
-def _mpf_to_fraction(x: mpmath.mpf) -> Fraction:
+def mpf_to_fraction(x: mpmath.mpf) -> Fraction:
+    """The exact value of an mpmath float."""
     sign, man, exp, _ = x._mpf_
     value = Fraction(int(man)) * Fraction(2) ** int(exp)
     return -value if int(sign) else value
+
+
+_mpf_to_fraction = mpf_to_fraction
+
+
+def _tribonacci() -> mpmath.mpf:
+    s = mpmath.sqrt(33)
+    return (1 + mpmath.cbrt(19 + 3 * s) + mpmath.cbrt(19 - 3 * s)) / 3
 
 
 def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
@@ -50,8 +62,20 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
             return mpmath.mpc(mpmath.pi)
         if isinstance(e, Exp1):
             return mpmath.mpc(mpmath.e)
+        if isinstance(e, EulerGammaType):
+            return mpmath.mpc(mpmath.euler)
+        if isinstance(e, CatalanType):
+            return mpmath.mpc(mpmath.catalan)
+        if isinstance(e, GoldenRatioType):
+            return mpmath.mpc(mpmath.phi)
+        if isinstance(e, TribonacciConstantType):
+            return mpmath.mpc(_tribonacci())
         if isinstance(e, ImaginaryUnit):
             return mpmath.mpc(0, 1)
+        if isinstance(e, AlgebraicNumber):
+            return numeric_value(e.as_expr(), prec)
+        if isinstance(e, UnevaluatedExpr):
+            return numeric_value(e.expr, prec)
         if isinstance(e, (Add, Mul)):
             parts = [numeric_value(a, prec) for a in e.args]
             if any(p is None for p in parts):
@@ -71,9 +95,9 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
                     return mpmath.mpc(0)
                 return None
             return mpmath.mpc(mpmath.power(b, x))
-        if isinstance(e, AppliedSymPyFunction):
+        if isinstance(e, AppliedSymPyFunction) or (e.args and e.is_number):
             from .interop import to_sympy
-            parts = [numeric_value(a, prec) for a in e.args]
+            parts = [numeric_value(a, prec) for a in e.args if isinstance(a, Expr)]
             if any(p is None for p in parts):
                 return None
             dps = int(mpmath.mp.dps) + 5
@@ -135,6 +159,19 @@ def evalf(e: Expr, n: int = 15, subs: Optional[SubsMapping] = None) -> Expr:
         return e
     args = tuple(evalf(a, n) if isinstance(a, Expr) else a for a in e.args)
     return as_expr(e._evaluated(args))
+
+
+def N(e: Expr, n: int = 15, subs: Optional[SubsMapping] = None) -> Expr:
+    """``e.evalf(n)``.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import N, pi, Symbol
+    >>> N(pi, 20), N(Symbol('x') + pi, 5)
+    (3.1415926535897932385, x + 3.1416)
+    """
+    return evalf(e, n, subs)
 
 
 def to_float(e: Expr) -> float:

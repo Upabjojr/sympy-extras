@@ -28,12 +28,13 @@ from typing import TYPE_CHECKING, Optional
 import mpmath
 from sympy.ntheory import factorint
 
-from .add import Add, add, to_expr
+from .add import Add, add
 from .basic import Basic
-from .expr import Expr, ExprLike, factors_of
+from .expr import Expr, ExprLike, factors_of, to_expr
 from .mul import Mul, mul
-from .numbers import (ComplexInfinity, Float, ImaginaryUnit, Infinity, Integer, I, NaN,
+from .numbers import (ComplexInfinity, Exp1, Float, ImaginaryUnit, Infinity, Integer, I, NaN,
     NegativeInfinity, Number, Rational, nan, number_from_fraction, oo, zoo)
+from .parameters import global_parameters
 from .sorting import ClassKey
 
 if TYPE_CHECKING:
@@ -93,6 +94,19 @@ class Pow(Expr):
             raise TypeError("a power of expressions is expected")
         return pow(b, e)
 
+    def _eval_facts(self) -> dict[str, bool]:
+        from .assumptions import pow_facts
+        return pow_facts(self._base, self._exp)
+
+    def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
+        e = self._exp
+        if isinstance(e, Rational) and e.q == 1 and e.p > 0 and isinstance(self._base, Add):
+            c, p = self._base.as_content_primitive(radical=radical, clear=clear)
+            value = c.exact_value()
+            if value is not None and value != 1:
+                return (number_from_fraction(value ** e.p), pow(p, e))
+        return (Integer(1), self)
+
     def as_base_exp(self) -> tuple[Expr, Expr]:
         # (1/q)**e is seen as q**(-e), as in SymPy
         if isinstance(self._base, Rational) and self._base.p == 1 and self._base.q > 1:
@@ -132,6 +146,12 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
     (I, 2*(-1)**(1/3))
     """
     base, exp = to_expr(b), to_expr(e)
+    if not global_parameters.evaluate:
+        return Pow(base, exp)
+    if base.is_Order or exp.is_Order:
+        import sympy
+        from .interop import expr_from_sympy, to_sympy
+        return expr_from_sympy(sympy.Pow(to_sympy(base), to_sympy(exp)))
     if isinstance(base, Number) and isinstance(exp, Number):
         return number_pow(base, exp)
     if isinstance(exp, Number):
@@ -155,6 +175,11 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
             if exp.is_imaginary:
                 return nan
             return Pow(base, exp)
+    if isinstance(base, Exp1):
+        # E**a is exp(a), evaluated by SymPy's exp (E**0 is 1, E**(I*pi) is -1)
+        import sympy
+        from .function import apply_sympy
+        return apply_sympy(sympy.exp, exp)
     if isinstance(base, ImaginaryUnit) and isinstance(exp, Rational):
         if exp.q == 1:
             return _imaginary_unit_power(exp.p)
@@ -166,7 +191,7 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
         inverse = _gaussian_inverse(base)
         if inverse is not None:
             return inverse
-    if base.is_Pow:
+    if base.is_Pow or _is_exp(base):
         inner_base, inner_exp = base.as_base_exp()
         # (b**p)**q is b**(p*q) for an integer q, and for -1 < p < 1 (then
         # Im(p*Log(b)) stays in (-pi, pi), whatever q is)
@@ -184,6 +209,13 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
     if base.is_commutative is False and not (isinstance(exp, Rational) and exp.q == 1):
         return Pow(base, exp)
     return Pow(base, exp)
+
+
+def _is_exp(e: Expr) -> bool:
+    """Whether ``e`` is an ``exp(...)`` of SymPy (a power of ``E``)."""
+    import sympy
+    from .function import AppliedSymPyFunction
+    return isinstance(e, AppliedSymPyFunction) and e.sympy_class is sympy.exp
 
 
 def _imaginary_unit_power(n: int) -> Expr:
@@ -308,6 +340,8 @@ def number_pow(b: Number, e: Number) -> Expr:
     if vb == 0:
         if ve > 0:
             return Integer(0) if not (isinstance(b, Float) and isinstance(e, Float)) else Float(0)
+        if global_parameters.divide_error:
+            raise ZeroDivisionError("division by zero")
         return zoo
     if isinstance(b, Float) or isinstance(e, Float):
         return _float_pow(b, e)

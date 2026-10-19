@@ -21,9 +21,11 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Optional
 
 from .basic import Basic
-from .expr import Expr, ExprLike
+from .expr import Expr, ExprLike, to_expr
 from .numbers import (ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, Number, Rational,
     nan, number_from_fraction)
+from .operations import AssocOp
+from .parameters import global_parameters
 from .sorting import ArgsKey, ClassKey, SortKey, default_sort_key
 
 if TYPE_CHECKING:
@@ -32,18 +34,7 @@ if TYPE_CHECKING:
 __all__ = ['Add', 'add', 'sub', 'to_expr']
 
 
-def to_expr(a: ExprLike) -> Expr:
-    """``a`` as an expression: Python numbers are converted."""
-    if isinstance(a, Expr):
-        return a
-    from .sympify import sympify
-    b = sympify(a)
-    if not isinstance(b, Expr):
-        raise TypeError("an expression is expected, got %s" % (b,))
-    return b
-
-
-class Add(Expr):
+class Add(AssocOp):
     """An unevaluated sum.
 
     Examples
@@ -60,21 +51,21 @@ class Add(Expr):
     2*x + 1
     """
 
-    __slots__ = ('_args',)
+    __slots__ = ()
 
     is_Add = True
-
-    def __init__(self, *args: ExprLike) -> None:
-        self._args: tuple[Expr, ...] = tuple(to_expr(a) for a in args)
-        Basic.__init__(self)
-
-    @property
-    def args(self) -> tuple[Expr, ...]:
-        return self._args
+    identity = Integer(0)
 
     @classmethod
     def class_key(cls) -> ClassKey:
         return (3, 1, 'Add')
+
+    def _eval_facts(self) -> dict[str, bool]:
+        from .assumptions import add_facts
+        return add_facts(self._args)
+
+    def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
+        return self.primitive()
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return add(*[_as_expr(a) for a in args])
@@ -177,9 +168,13 @@ def add(*args: ExprLike) -> Expr:
     0
     """
     from .mul import mul
+    stack = [to_expr(a) for a in args]
+    if not global_parameters.evaluate:
+        return _raw([t for a in stack for t in (a.args if isinstance(a, Add) else (a,))])
+    if any(t.is_Order for a in stack for t in (a.args if isinstance(a, Add) else (a,))):
+        return _with_orders(stack)
     number: Number = Integer(0)
     coefficients: dict[Expr, Number] = {}
-    stack = [to_expr(a) for a in args]
     for a in stack:
         if isinstance(a, Add):
             stack.extend(a.args)
@@ -222,6 +217,14 @@ def add(*args: ExprLike) -> Expr:
     if len(terms) == 1:
         return terms[0]
     return Add(*terms)
+
+
+def _with_orders(terms: list[Expr]) -> Expr:
+    """A sum with ``Order`` terms, evaluated by SymPy (the absorption of
+    the terms into the order needs the series machinery)."""
+    import sympy
+    from .interop import expr_from_sympy, sympy_expr as _sympy_expr, to_sympy
+    return expr_from_sympy(sympy.Add(*[_sympy_expr(to_sympy(t)) for t in terms]))
 
 
 def _absorbed_in_sum(number: Number, rest: Expr, c: Number) -> bool:

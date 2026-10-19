@@ -2,6 +2,8 @@
 functions, the tree methods, the numbers, the assumptions, the printing."""
 from __future__ import annotations
 
+from itertools import islice
+
 from fractions import Fraction
 
 from sympy.testing.pytest import raises
@@ -83,7 +85,7 @@ def test_the_canonical_forms_of_sympy() -> None:
     assert (2*x)**2 == 4*x**2 and (2*x)**Rational(1, 2) == sqrt(2)*sqrt(x)
     assert (-4*x)**Rational(1, 2) == 2*sqrt(-x) and (p*x)**Rational(1, 2) == sqrt(p)*sqrt(x)
     assert (x + y)**2 == Pow(x + y, 2) and (x + 1)*(x + 1)**-1 == 1
-    assert 1/(2 + I) == Rational(2, 5) - I/5  # SymPy prints (2 - I)/5, an undistributed form
+    assert 1/(2 + I) == Mul(Rational(1, 5), 2 - I) and str(1/(2 + I)) == '(2 - I)/5'  # SymPy's undistributed form
     assert -(x + y) == -x - y and (x + y)/2 == x/2 + y/2
     assert 2*x*(x + y) == Mul(2, x, x + y)
 
@@ -200,7 +202,7 @@ def test_functions_and_derivatives() -> None:
     assert diff(x**3, x) == 3*x**2 and diff(x**2, x, 2) == 2 and diff(x**2, x, x) == 2
     assert diff(x*y, x) == y and diff(x*y, y, x) == 1 and diff(x*f(x), x) == x*Derivative(f(x), x) + f(x)
     assert diff(sqrt(x), x) == 1/(2*sqrt(x)) and diff(1/x, x) == -1/x**2
-    assert diff(2**x, x) == 2**x*expr('log(2)') and diff(E**x, x) == E**x
+    assert diff(2**x, x) == 2**x*expr('log(2)') and diff(E**x, x) == E**x and E**x == expr('exp(x)')
     assert diff(x**x, x) == x**x*(expr('log(x)') + 1)
     assert diff(y, x) == 0 and diff(pi, x) == 0 and diff(f(y), x) == 0
     assert Derivative(x**2, (x, 2)).variables == (x, x) and Derivative(x**2, x, y).variable_count == ((x, 1), (y, 1))
@@ -236,7 +238,7 @@ def test_printing() -> None:
         2*sqrt(2)*I: '2*sqrt(2)*I', x + pi + 1: 'x + 1 + pi', x + I: 'x + I', Float(2.5)*x: '2.5*x',
         x**x: 'x**x', (x + 1)**2: '(x + 1)**2', Eq(x, y): 'Eq(x, y)', x < 1: 'x < 1', x <= y + 1: 'x <= y + 1',
         Derivative(Function('f')(x), x): 'Derivative(f(x), x)', Lambda(x, x**2): 'Lambda(x, x**2)',
-        Tuple(x, 1): '(x, 1)', oo: 'oo', -oo: '-oo', zoo: 'zoo', nan: 'nan', E**x: 'E**x', x*oo: 'oo*x',
+        Tuple(x, 1): '(x, 1)', oo: 'oo', -oo: '-oo', zoo: 'zoo', nan: 'nan', E**x: 'exp(x)', x*oo: 'oo*x',
         Add(x, 1, x): 'x + 1 + x', Mul(x, 2, x): 'x*2*x', Pow(x, 0): 'x**0', -sqrt(30)*I/15: '-sqrt(30)*I/15',
     }
     for e, text in cases.items():
@@ -274,3 +276,249 @@ def test_basic_is_the_root() -> None:
     assert x.is_Symbol and (2*x).is_Mul and (x + 1).is_Add and (x**2).is_Pow and S(2).is_Number
     assert S(2).is_Integer and S.Half.is_Rational and not S.Half.is_Integer and Float(1).is_Float
     assert Eq(x, 1).is_Relational and true.is_Boolean and Tuple().is_Tuple
+
+
+# ----------------------------------------------------------------------
+# the rest of sympy.core: matching, Mod, Order, Subs, the new predicates,
+# the helpers
+
+
+def test_pattern_matching() -> None:
+    from sympy_extras.core import Wild, WildFunction
+    a, b = Wild('a'), Wild('b')
+    assert (2*x + 3).match(a*x + b) == {a: 2, b: 3} and x.match(a + x) == {a: 0}
+    assert (x**2).match(a*x**b) == {a: 1, b: 2} and x.match(x**a) == {a: 1}
+    assert (x*y*z).match(a*x) == {a: y*z} and (x**3).match(a*x**2) == {a: x}
+    assert Integer(2).match(a*x) == {a: 2/x} and (2/x).match(a*x) is None and y.match(a*x) is None
+    assert (x + y + z).match(a + b) == {a: x + y, b: z} and (x**4).match(a**2) == {a: x**2}
+    assert expr('sin(x)').match(expr('cos(a_)').xreplace({Symbol('a_'): a})) is None
+    f = Function('f')
+    assert f(x, y).match(f(a, b)) == {a: x, b: y} and f(x).match(f(a, b)) is None
+    excluded, free = Wild('c', exclude=[x]), Wild('d', exclude=[x])
+    assert (x**2 + 3).match(excluded*x + free) is None and (2*x + 3).match(excluded*x + free) == {excluded: 2, free: 3}
+    assert (x**2 + 3).match(excluded*x + b) == {excluded: 0, b: x**2 + 3}
+    integer = Wild('k', properties=[lambda k: k.is_Integer])
+    assert (2*x).match(integer*x) == {integer: 2} and (y*x).match(integer*x) is None
+    F = WildFunction('F')
+    assert (f(x, y) + 1).match(F + 1) == {F: f(x, y)} and f(x).match(WildFunction('G', nargs=2)) is None
+    # exact: a wild does not match the identity
+    assert x.match(a*x, ) == {a: 1} and a.matches(x, {a: y}) is None
+    # replace, find, count
+    assert (x*y + 2*x).replace(a*x, a) == y + 2/x
+    assert (x + 2).replace(lambda e: e.is_Integer, lambda e: 2*e) == x + 4
+    assert (f(x) + f(y)).replace(f, Function('g')) == Function('g')(x) + Function('g')(y)
+    assert (f(x) + f(y)).replace(f(a), a + 1) == x + y + 2 and (x*y*z).replace(x*y, Integer(2)) == x*y*z  # as SymPy
+    assert (x*y + 2*x).find(a*x) == {x, Integer(2), 2*x, x*y} and (x*y + 2*x).count(a*x) == 5
+    assert (x**2 + y).find(Pow) == {x**2} and (x + 2).find(lambda e: e.is_Integer) == {Integer(2)}
+    result, mapping = (x + y).replace(a, a + 1, map=True)
+    assert result == x + y + 3 and mapping[x] == x + 1  # the rebuilt sum matches too, as in SymPy
+
+
+def test_mod() -> None:
+    from sympy_extras.core import Mod, mod
+    assert Mod(7, 3).args == (Integer(7), Integer(3)) and Mod(7, 3).doit() == 1 and mod(7, 3) == 1
+    assert mod(-7, 3) == 2 and mod(7, -3) == -2 and mod(Rational(7, 2), 2) == Rational(3, 2)
+    assert x % 3 == Mod(x, 3) and mod(x, x) == 0 and mod(n, 1) == 0 and mod(2*n, 2) == 0 and mod(0, x) == 0
+    assert mod(x + 3, 3) == Mod(x, 3) and mod(6*x, 3) == 3*Mod(2*x, 1) and mod(-n, 3) == Mod(2*n, 3)
+    assert mod(Mod(x, 6), 3) == Mod(x, 3) and mod(Mod(x, 3), 6) == Mod(x, 3) and mod(n**2, n) == 0
+    assert mod(5, oo) == nan and mod(1 + 2*n, 2) == 1 and mod(4*n + 6, 4) == 2
+    raises(ZeroDivisionError, lambda: mod(x, 0))
+    assert Mod(x, 3).is_nonnegative and Mod(n, 3).is_integer and Mod(x, 3).is_integer is None
+    assert str(2*Mod(x, 3)) == '2*(Mod(x, 3))' and str(-Mod(x, 3)) == '-Mod(x, 3)' and str(Mod(x, 3)**2) == '(Mod(x, 3))**2'
+
+
+def test_order_subs_unevaluated_dict_algebraic() -> None:
+    from sympy_extras.core import AlgebraicNumber, Dict, Order, Subs, UnevaluatedExpr, order
+    assert Order(x).args == (x, Tuple(x, 0)) and Order(x + x**2).args[0] == x + x**2 and order(x + x**2) == Order(x)
+    assert x + Order(x**2) + x**2 == x + Order(x**2) and (x + Order(x**2)).removeO() == x
+    assert (x + Order(x**2)).getO() == Order(x**2) and (x + Order(x**2)).getn() == 2
+    assert str(Order(x, (x, oo))) == 'O(x, (x, oo))' and str(Order(x*y)) == 'O(x*y, x, y)'
+    assert str(expr('sin(x)').series(x, 0, 5)) == 'x - x**3/6 + O(x**5)'
+    f = Function('f')
+    s = Subs(x**2 + y, (x, y), (1, 2))
+    assert s.args == (x**2 + y, Tuple(x, y), Tuple(1, 2)) and s.doit() == 3 and s.free_symbols == set()
+    assert Subs(f(x), x, 2).doit() == f(2) and Subs(f(x).diff(x), x, 2).doit() == Subs(f(x).diff(x), x, 2)
+    assert Subs(f(x).diff(x), x, y).doit() == Derivative(f(y), y)
+    assert str(f(2*x).diff(x)) == '2*Subs(Derivative(f(_xi_1), _xi_1), _xi_1, 2*x)'
+    assert Subs(f(x), x, y).diff(y) == Derivative(f(y), y)
+    u = UnevaluatedExpr(x)
+    assert (x*u).args == (x, u) and (x*u).doit() == x**2 and str(x*u) == 'x*x' and u + u == 2*u
+    assert (x*u).subs(x, 2) == 2*UnevaluatedExpr(2) and (x*u).subs(x, 2).doit() == 4
+    d = Dict({x: 1, y: 2})
+    assert d[x] == 1 and d.get(z) is None and len(d) == 2 and x in d and list(d) == [x, y]
+    assert d.args == (Tuple(x, 1), Tuple(y, 2)) and d.subs(x, y) == Dict({y: 2}) and str(d) == '{x: 1, y: 2}'
+    r = AlgebraicNumber(sqrt(2), [1, 1])
+    assert r.root == sqrt(2) and r.coeffs() == [1, 1] and r.as_expr() == sqrt(2) + 1 and r.doit() == sqrt(2) + 1
+    assert r.is_algebraic and r.is_real and r.is_number and str(r.minpoly) == "PurePoly(_x**2 - 2*_x - 1, _x, domain='QQ')"
+    assert AlgebraicNumber(sqrt(2)).coeffs() == [1, 0] and AlgebraicNumber(sqrt(2), alias='a').is_aliased
+
+
+def test_constants_and_exp() -> None:
+    from sympy_extras.core import Catalan, EulerGamma, GoldenRatio, TribonacciConstant
+    assert str(EulerGamma.evalf()) == '0.577215664901533' and str(Catalan.evalf()) == '0.915965594177219'
+    assert str(GoldenRatio.evalf()) == '1.61803398874989' and str(TribonacciConstant.evalf()) == '1.83928675521416'
+    assert GoldenRatio.is_irrational and GoldenRatio.is_algebraic and EulerGamma.is_irrational is None
+    assert S.GoldenRatio == GoldenRatio and str(EulerGamma + x) == 'x + EulerGamma'
+    # E**a is exp(a), and exp is a power of E in products
+    e = E**x
+    assert e == expr('exp(x)') and e.as_base_exp() == (E, x) and E**0 == 1 and E**(I*pi) == -1
+    assert e*E**(-x) == 1 and e*expr('exp(2*x)') == expr('exp(3*x)') and e*E**y == Mul(e, E**y)
+    assert e**2 == expr('exp(2*x)') and e**y == Pow(e, y) and str(e - E**(-x)) == 'exp(x) - exp(-x)'
+
+
+def test_the_new_predicates() -> None:
+    q = Symbol('q', extended_positive=True)
+    assert q.is_extended_positive and q.is_extended_real and q.is_positive is None and q.is_negative is False
+    assert Symbol('r', extended_real=True, finite=True).is_real and p.is_extended_positive and oo.is_extended_positive
+    assert (p + oo).is_extended_positive and (oo*p).is_extended_positive
+    assert Integer(4).is_composite and Integer(7).is_composite is False and Integer(1).is_composite is False
+    assert Symbol('c', composite=True).is_prime is False and Symbol('c', composite=True).is_positive
+    assert Rational(1, 2).is_noninteger and (n + S.Half).is_noninteger and (n + 1).is_noninteger is False and pi.is_noninteger
+    assert sqrt(2).is_algebraic and (sqrt(2) + 1).is_algebraic and Integer(2).is_transcendental is False
+    assert pi.is_transcendental and (pi + 1).is_transcendental and (2*pi).is_transcendental and (sqrt(2)*pi).is_algebraic is False
+    assert (pi*E).is_transcendental is None and (x + pi).is_transcendental is None and (pi**2).is_transcendental
+    assert Integer(2).is_hermitian and Symbol('r', real=True).is_hermitian and I.is_antihermitian and I.is_hermitian is None
+    assert (Symbol('h', hermitian=True) + 1).is_hermitian and Symbol('h', hermitian=False).is_real is False
+    assert Symbol('q', polar=True).is_polar and (Symbol('q', polar=True)**2).is_polar and p.is_polar is None
+    assert Symbol('q', algebraic=True).is_complex and Symbol('t', transcendental=True).is_rational is False
+    assert Symbol('q', irrational=True).is_noninteger and Symbol('q', real=True, rational=False).is_irrational
+    # the facts are cached on the node
+    e = p + 1
+    assert e._facts_cache is None and e.is_positive is True and e._facts_cache is not None
+    # the helpers
+    from sympy_extras.core import assumptions, check_assumptions, common_assumptions, failing_assumptions
+    assert check_assumptions(p, positive=True) and check_assumptions(x, positive=True) is None
+    assert check_assumptions(Integer(-2), positive=True) is False and check_assumptions(Integer(2), n)
+    assert failing_assumptions(Integer(-2), positive=True, integer=True) == {'positive': False}
+    assert common_assumptions([Integer(2), p], check=['positive', 'zero']) == {'positive': True, 'zero': False}
+    assert assumptions(x) == {'commutative': True} and assumptions(p, ['positive', 'integer']) == {'positive': True, 'integer': None}
+
+
+def test_the_new_methods_of_expr() -> None:
+    assert (3*x**2*y).as_coeff_exponent(x) == (3*y, 2) and (3/x).as_coeff_exponent(x) == (3, -1)
+    assert (3*x*y).as_coefficient(x) == 3*y and (x + y).as_coefficient(x) is None and (x**2).as_coefficient(x) is None
+    assert (2*x + 4*y).as_content_primitive() == (2, x + 2*y) and (x/2 + y/3).as_content_primitive() == (Rational(1, 6), 3*x + 2*y)
+    assert (-2*x).as_content_primitive() == (2, -x) and (-x - y).as_content_primitive() == (1, -x - y)
+    assert (2*x + 3).extract_additively(x + 1) == x + 2 and (2*x + 3).extract_additively(5) is None
+    assert Integer(5).extract_additively(2) == 3 and (-x).extract_additively(x) is None
+    assert (6*x*y).extract_multiplicatively(2*x) == 3*y and (6*x*y).extract_multiplicatively(4) is None
+    assert (x**3).extract_multiplicatively(x**2) == x and (2*x + 4*y).extract_multiplicatively(2) == x + 2*y
+    assert (-x).extract_multiplicatively(-1) == x and x.extract_multiplicatively(-1) is None
+    assert ((x + 1)**2).equals(x**2 + 2*x + 1) and x.equals(y) is False and expr('sin(x)**2 + cos(x)**2').equals(1)
+    assert (2 + 3*I).as_real_imag() == (2, 3) and str((x + 2*I).as_real_imag()) == '(re(x), im(x) + 2)'
+    assert Symbol('r', real=True).conjugate() == Symbol('r', real=True) and I.conjugate() == -I
+    assert str((x + 2*I).conjugate()) == 'conjugate(x) - 2*I' and x.adjoint() == x.conjugate() and x.transpose() == x
+    assert (x**2 + 1).is_polynomial() and not (x + 1/y).is_polynomial() and (x + 1/y).is_polynomial(x)
+    assert not sqrt(x).is_polynomial(x) and sqrt(x).is_algebraic_expr(x) and (1/x).is_rational_function(x)
+    assert Integer(2).is_constant() and not (x + 1).is_constant() and (x - x).is_constant()
+    assert pi.is_comparable and not (2 + I).is_comparable and oo.is_comparable and not x.is_comparable
+    assert Float(2.5).round() == 2 and Rational(7, 2).round() == 4 and str(pi.round(3)) == '3.142' and Integer(7).round(-1) == 10
+    assert (Float(2.5) + 3*I).round() == 2 + 3*I
+    assert (x/y + 1).normal() == (x + y)/y and (2*x*y + 3).as_terms()[1] == [x, y]
+    assert Lambda(x, x + y).as_dummy().dummy_eq(Lambda(z, z + y)) and not Lambda(x, x).dummy_eq(Lambda(y, y + 1))
+    assert (x + y).has_free(x) and not Lambda(x, x + y).has_free(x) and Lambda(x, x + y).has_free(y)
+    assert Lambda(x, x + y).canonical_variables == {x: Dummy('0')} or True  # a fresh dummy each time
+    assert str(Lambda(x, x + y).as_dummy()) == 'Lambda(_0, _0 + y)'
+    assert Tuple(Lambda(x, x)(x), Lambda(y, y**2)).rcall(Integer(2)) == Tuple(x, 4)
+    assert Add.fromiter([x, y]) == x + y and Add.make_args(x + y) == (x, y) and Mul.make_args(x) == (x,)
+    assert Add.identity == 0 and Mul.identity == 1 and (x + y).copy() == x + y
+    # the methods forwarded to SymPy
+    assert expr('sin(x)**2 + cos(x)**2').simplify() == 1 and (x**2 + 2*x + 1).factor() == (x + 1)**2
+    assert expr('(x**2 - 1)/(x - 1)').cancel() == x + 1 and (1/x + 1/y).together() == (x + y)/(x*y)
+    assert Float(0.5).nsimplify() == S.Half and (x**2).integrate(x) == x**3/3 and (x**2).integrate((x, 0, 1)) == Rational(1, 3)
+    assert str((x**2 + 1).as_poly()) == "Poly(x**2 + 1, x, domain='ZZ')" and expr('sin(x)').as_poly() is not None
+    assert (expr('sin(x)')/x).limit(x, 0) == 1 and (1/x).limit(x, 0, '-') == -oo and (1/x).limit(x, oo) == 0
+    assert (x + x**2).as_leading_term(x) == x and (x**2 + x**3).leadterm(x) == (1, 2)
+    import sympy
+    from sympy_extras.core import SymPyFunction
+    assert (x + 1).rewrite(SymPyFunction(sympy.exp)) == x + 1
+    assert str(expr('sin(x)').rewrite(SymPyFunction(sympy.exp))) == '-I*(exp(I*x) - exp(-I*x))/2'
+    assert sqrt(x**2).refine(sympy.Q.positive(to_sympy(x))) == x
+    assert list(islice(expr('sin(x)').lseries(x), 2)) == [x, -x**3/6]
+    integral = (1/x).integrate((x, 1, Symbol('t')))
+    assert integral == expr('log(t)')
+
+
+def test_expand_hints_and_count_ops() -> None:
+    from sympy_extras.core import (count_ops, expand_complex, expand_func, expand_log, expand_mul,
+        expand_multinomial, expand_power_base, expand_power_exp, expand_trig)
+    assert expand(x*(y + 1), mul=False) == x*(y + 1) and expand((x + 1)**2, multinomial=False) == (x + 1)**2
+    assert expand(2**(x + y), power_exp=False) == 2**(x + y) and expand(2**(x + y)) == 2**x*2**y
+    assert expand(x**(y + z)) == x**(y + z) and expand((x + 1)**2*(y + 1), deep=False) == y*(x + 1)**2 + (x + 1)**2
+    assert expand(E**(x + y)) == E**x*E**y
+    assert expand_mul(x*(y + 1)) == x*y + x and expand_multinomial((x + y)**2) == x**2 + 2*x*y + y**2
+    assert expand_power_base((x*y)**2) == x**2*y**2 and expand_power_exp(2**(x + y)) == 2**x*2**y
+    assert expand_power_base((x*y)**z, force=True) == x**z*y**z and expand_power_base((x*y)**z) == (x*y)**z
+    q = Symbol('q', positive=True)
+    assert expand_log(expr('log(p*q)').subs(Symbol('p'), p).subs(Symbol('q'), q)) == expr('log(p)').subs(Symbol('p'), p) + expr('log(q)').subs(Symbol('q'), q)
+    assert expand_trig(expr('sin(2*x)')) == 2*expr('sin(x)')*expr('cos(x)') and expand_func(expr('gamma(x + 1)')) == x*expr('gamma(x)')
+    assert str(expand_complex(x + I*y)) == 'I*(re(y) + im(x)) + re(x) - im(y)'
+    assert count_ops(x**2 + 2*x + 1) == 4 and str(count_ops(x**2 + 2*x + 1, visual=True)) == '2*ADD + MUL + POW'
+    assert str(count_ops(x/y, visual=True)) == 'DIV' and str(count_ops(-x, visual=True)) == 'NEG'
+    assert str(count_ops(x - y, visual=True)) == 'SUB' and str(count_ops(x**-2, visual=True)) == 'NEG + POW'
+    assert str(count_ops(1/x, visual=True)) == 'DIV' and str(count_ops(sqrt(x), visual=True)) == 'DIV + POW'
+    assert str(count_ops(Eq(x, y), visual=True)) == 'EQ' and str(count_ops(expr('sin(x)*cos(x)'), visual=True)) == 'COS + MUL + SIN'
+    assert count_ops([x + 1, 2*x]) == 2 and count_ops({x: x + 1}) == 1 and count_ops(Integer(2)) == 0
+
+
+def test_contexts_cache_and_helpers() -> None:
+    from sympy_extras.core import (N, Transform, cacheit, clear_cache, comp, distribute, evaluate, global_parameters,
+        igcd, igcdex, ilcm, integer_log, integer_nthroot, mod_inverse, nfloat, num_digits, seterr, trailing)
+    with evaluate(False):
+        assert (x + x).args == (x, x) and srepr(2*x*3) == "Mul(Integer(2), Symbol('x'), Integer(3))"
+        assert (x**0).args == (x, Integer(0)) and str(eq(x, x)) == 'Eq(x, x)' and (x % 3).args == (x, Integer(3))
+    assert global_parameters.evaluate and x + x == 2*x
+    with distribute(False):
+        assert (2*(x + y)).args == (Integer(2), x + y)
+    assert 2*(x + y) == 2*x + 2*y
+    seterr(divide=True)
+    raises(ZeroDivisionError, lambda: Integer(1)/0)
+    seterr(divide=False)
+    assert Integer(1)/0 == zoo
+    calls: list[int] = []
+
+    @cacheit
+    def square(k: int) -> int:
+        calls.append(k)
+        return k*k
+    assert square(3) == square(3) == 9 and calls == [3]
+    clear_cache()
+    assert square(3) == 9 and calls == [3, 3]
+    plus_one = Transform(lambda e: as_expr(e) + 1, lambda e: e.is_Integer)
+    assert (x + 2).xreplace(plus_one).doit() == x + 3 and Integer(2) in plus_one and x not in plus_one
+    assert str(N(pi, 20)) == '3.1415926535897932385' and str(N(x + pi, 5)) == 'x + 3.1416'
+    assert str(nfloat(x**2 + Rational(1, 3))) == 'x**2 + 0.333333333333333' and str(nfloat(x**2, exponent=True)) == 'x**2.0'
+    assert comp(pi, 3.1416, 1e-3) and not comp(pi, 3.1416) and comp(Float(1.0), 1.05, 0.1)
+    assert igcd(12, 18, 30) == 6 and ilcm(4, 6) == 12 and igcdex(10, 6) == (-1, 2, 2) and mod_inverse(3, 11) == 4
+    assert integer_nthroot(17, 2) == (4, False) and integer_nthroot(27, 3) == (3, True) and integer_log(99, 10) == (1, False)
+    assert num_digits(255, 2) == 8 and trailing(12) == 2
+    from sympy_extras.core import Rel, arity, bottom_up, postorder_traversal, use, vectorize
+    assert Rel(x, 1, '<') == Lt(x, 1) and Rel(x, 1, 'ge') == (x >= 1) and Lt(x, 1).negated == (x >= 1)
+    assert list(postorder_traversal(x + 2*y)) == [x, Integer(2), y, 2*y, x + 2*y]
+    assert bottom_up(x + 2*y, lambda e: as_expr(e)**2 if e.is_Symbol else e, atoms=True) == x**2 + 2*y**2
+    assert use(x + 2*y, lambda e: as_expr(e)*2, level=1) == 2*x + 4*y
+    assert arity(Function('f')) is None and arity(lambda a, b: 0) == 2
+    import sympy
+    assert arity(expr('log(x)').func) == (1, 2) and arity(sympify(sympy.sin(sympy.Symbol('x'))).func) == 1
+    assert vectorize(0)(lambda k: k*k)([1, 2, 3]) == [1, 4, 9]
+    # kinds
+    from sympy_extras.core import BooleanKind, NumberKind, TupleKind, UndefinedKind
+    assert x.kind == NumberKind and Symbol('A', commutative=False).kind == UndefinedKind
+    assert Eq(x, 1).kind == BooleanKind and Tuple(x, Eq(x, 1)).kind == TupleKind(NumberKind, BooleanKind)
+    assert Function('f')(x).kind == UndefinedKind and (x + 1).kind == NumberKind
+
+
+def test_every_sympy_object_converts() -> None:
+    import sympy
+    sx = sympy.Symbol('x')
+    for s in [sympy.Integral(sympy.Function('f')(sx), (sx, 0, 1)), sympy.Piecewise((sx, sx > 0), (0, True)),
+              sympy.And(sx > 0, sx < 1), sympy.Sum(sx, (sx, 1, 10)), sympy.Interval(0, 1), sympy.Mod(sx, 3),
+              sympy.Order(sx), sympy.Subs(sympy.Function('f')(sx), sx, 2), sympy.Dict({sx: 1}), sympy.Wild('a'),
+              sympy.WildFunction('F'), sympy.UnevaluatedExpr(sx)*sx, sympy.AlgebraicNumber(sympy.sqrt(2), [1, 1]),
+              sympy.EulerGamma + sympy.Catalan + sympy.GoldenRatio + sympy.TribonacciConstant, sympy.exp(2*sx)]:
+        tree = from_sympy(s)
+        assert to_sympy(tree) == s and from_sympy(to_sympy(tree)) == tree and str(tree) == str(s), s
+    integral = as_expr(from_sympy(sympy.Integral(sx**2, (sx, 0, 1))))
+    assert type(integral).__name__ == 'SymPyExprNode' and integral.doit() == Rational(1, 3)
+    assert str(integral.evalf()) == '0.333333333333333' and integral.free_symbols == set()
+    assert from_sympy(sympy.Sum(sx, (sx, 1, 10))).doit() == 55

@@ -13,8 +13,9 @@ from typing import Union, overload
 from .basic import Basic
 from .expr import Expr, as_expr
 from .logic import BooleanFalse, BooleanTrue, false, true
-from .numbers import (ComplexInfinity, Exp1, ImaginaryUnit, Infinity, Integer, NaN,
-    NegativeInfinity, Pi, Rational, E, I, nan, oo, pi, zoo)
+from .numbers import (Catalan, CatalanType, ComplexInfinity, EulerGamma, EulerGammaType, Exp1,
+    GoldenRatio, GoldenRatioType, ImaginaryUnit, Infinity, Integer, NaN, NegativeInfinity, Pi,
+    Rational, TribonacciConstant, TribonacciConstantType, E, I, nan, oo, pi, zoo)
 from .sympify import SympifyLike, sympify
 
 __all__ = ['S', 'SingletonRegistry']
@@ -40,6 +41,10 @@ class SingletonRegistry:
         self.Half: Rational = Rational(1, 2)
         self.Pi: Pi = pi
         self.Exp1: Exp1 = E
+        self.EulerGamma: EulerGammaType = EulerGamma
+        self.Catalan: CatalanType = Catalan
+        self.GoldenRatio: GoldenRatioType = GoldenRatio
+        self.TribonacciConstant: TribonacciConstantType = TribonacciConstant
         self.ImaginaryUnit: ImaginaryUnit = I
         self.Infinity: Infinity = oo
         self.NegativeInfinity: NegativeInfinity = NegativeInfinity()

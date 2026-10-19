@@ -13,18 +13,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .add import sub, to_expr
+from .add import sub
 from .basic import Basic
-from .expr import Expr, ExprLike
+from .expr import Expr, ExprLike, to_expr
+from .kind import BooleanKind, Kind
 from .logic import Boolean, false, true
 from .numbers import ComplexInfinity, Float, Infinity, NaN, NegativeInfinity, Number, Rational
+from .parameters import global_parameters
 from .sorting import ClassKey
 
 if TYPE_CHECKING:
     from .printing import StrPrinter
 
 __all__ = ['Relational', 'Eq', 'Ne', 'Lt', 'Le', 'Gt', 'Ge', 'Equality', 'Unequality',
-    'StrictLessThan', 'LessThan', 'StrictGreaterThan', 'GreaterThan',
+    'StrictLessThan', 'LessThan', 'StrictGreaterThan', 'GreaterThan', 'Rel',
     'eq', 'ne', 'lt', 'le', 'gt', 'ge']
 
 
@@ -69,6 +71,26 @@ class Relational(Boolean):
     def reversed(self) -> Relational:
         """The relation with the sides exchanged."""
         return _REVERSED[type(self)](self._rhs, self._lhs)
+
+    @property
+    def kind(self) -> Kind:
+        return BooleanKind
+
+    @property
+    def canonical(self) -> Relational:
+        """The relation with the sides ordered canonically (a number on
+        the right, ``<`` rather than ``>``)."""
+        r: Relational = self
+        if isinstance(r, (Gt, Ge)):
+            r = r.reversed
+        if r.lhs.is_Number and not r.rhs.is_Number:
+            r = r.reversed
+        return r
+
+    @property
+    def negated(self) -> Relational:
+        """The relation with the opposite meaning (``Lt`` for ``Ge``)."""
+        return _NEGATED[type(self)](self._lhs, self._rhs)
 
     @classmethod
     def class_key(cls) -> ClassKey:
@@ -139,6 +161,26 @@ StrictGreaterThan = Gt
 GreaterThan = Ge
 
 _REVERSED: dict[type[Relational], type[Relational]] = {Eq: Eq, Ne: Ne, Lt: Gt, Gt: Lt, Le: Ge, Ge: Le}
+_NEGATED: dict[type[Relational], type[Relational]] = {Eq: Ne, Ne: Eq, Lt: Ge, Ge: Lt, Le: Gt, Gt: Le}
+_NAMES: dict[str, type[Relational]] = {
+    '==': Eq, 'eq': Eq, '!=': Ne, '<>': Ne, 'ne': Ne, '<': Lt, 'lt': Lt, '<=': Le, 'le': Le,
+    '>': Gt, 'gt': Gt, '>=': Ge, 'ge': Ge}
+
+
+def Rel(lhs: ExprLike, rhs: ExprLike, rop: str) -> Relational:
+    """The unevaluated relation named by ``rop`` (``'<'``, ``'lt'``, ``'=='``, ...).
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol, Rel
+    >>> x = Symbol('x')
+    >>> Rel(x, 1, '<'), Rel(x, 1, 'ge'), Rel(x, 1, '==')
+    (x < 1, x >= 1, Eq(x, 1))
+    """
+    if rop not in _NAMES:
+        raise ValueError("unknown relation %r" % (rop,))
+    return _NAMES[rop](lhs, rhs)
 
 
 def _decide_equal(a: Expr, b: Expr) -> Basic:
@@ -176,11 +218,15 @@ def eq(a: ExprLike, b: ExprLike) -> Basic:
     >>> eq(x, x), eq(x + 1, x), eq(x, y), eq(2, 2.0)
     (True, False, Eq(x, y), True)
     """
+    if not global_parameters.evaluate:
+        return Eq(a, b)
     return _decide_equal(to_expr(a), to_expr(b))
 
 
 def ne(a: ExprLike, b: ExprLike) -> Basic:
     """The evaluated inequation ``a != b``: ``true``, ``false`` or ``Ne``."""
+    if not global_parameters.evaluate:
+        return Ne(a, b)
     result = _decide_equal(to_expr(a), to_expr(b))
     if result == true:
         return false
@@ -209,6 +255,8 @@ def _order(a: Number, b: Number) -> int:
 
 def _compare(a: ExprLike, b: ExprLike, accepted: tuple[int, ...], cls: type[Relational]) -> Basic:
     lhs, rhs = to_expr(a), to_expr(b)
+    if not global_parameters.evaluate:
+        return cls(lhs, rhs)
     for side in (lhs, rhs):
         if side.is_real is False and side.is_extended_real is not True:
             raise TypeError("invalid comparison of non-real %s" % (side,))

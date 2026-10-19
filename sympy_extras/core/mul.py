@@ -22,25 +22,29 @@ References
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from fractions import Fraction
+from typing import TYPE_CHECKING, Iterable, Optional
 
-from .add import Add, add, to_expr
+from .add import Add, add
 from .basic import Basic
-from .expr import Expr, ExprLike
-from .numbers import ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, Number, Rational, nan
+from .expr import Expr, ExprLike, factors_of, to_expr
+from .numbers import (ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, Number, Rational, nan,
+    number_from_fraction)
+from .operations import AssocOp
+from .parameters import global_parameters
 from .sorting import ClassKey, default_sort_key
 
 if TYPE_CHECKING:
     from .printing import StrPrinter
 
-__all__ = ['Mul', 'mul', 'div', 'neg']
+__all__ = ['Mul', 'mul', 'div', 'neg', 'prod']
 
 #: the passes of ``mul`` on a product whose rebuilt factors need
 #: flattening again (each pass simplifies strictly; the bound is a guard)
 _MAX_PASSES = 8
 
 
-class Mul(Expr):
+class Mul(AssocOp):
     """An unevaluated product.
 
     Examples
@@ -57,21 +61,35 @@ class Mul(Expr):
     2*x**2
     """
 
-    __slots__ = ('_args',)
+    __slots__ = ()
 
     is_Mul = True
-
-    def __init__(self, *args: ExprLike) -> None:
-        self._args: tuple[Expr, ...] = tuple(to_expr(a) for a in args)
-        Basic.__init__(self)
-
-    @property
-    def args(self) -> tuple[Expr, ...]:
-        return self._args
+    identity = Integer(1)
 
     @classmethod
     def class_key(cls) -> ClassKey:
         return (3, 0, 'Mul')
+
+    def _eval_facts(self) -> dict[str, bool]:
+        from .assumptions import mul_facts
+        return mul_facts(self._args)
+
+    def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
+        coefficient, rest = self.as_coeff_Mul()
+        content = Fraction(1)
+        primitives: list[Expr] = []
+        if isinstance(coefficient, Rational):
+            content = abs(coefficient.as_fraction())
+            if coefficient.p < 0:
+                primitives.append(Integer(-1))
+        else:
+            primitives.append(coefficient)
+        for f in factors_of(rest):
+            c, p = f.as_content_primitive(radical=radical, clear=clear)
+            value = c.exact_value()
+            content *= value if value is not None else Fraction(1)
+            primitives.append(p)
+        return (number_from_fraction(content), mul(*primitives))
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return mul(*[_as_expr(a) for a in args])
@@ -103,6 +121,17 @@ class Mul(Expr):
 
     def as_two_terms(self) -> tuple[Expr, Expr]:
         return (self._args[0], _raw(list(self._args[1:])))
+
+    def as_base_exp(self) -> tuple[Expr, Expr]:
+        # x**2*y**2 is (x*y)**2, as in SymPy, when every factor has the
+        # same integer exponent
+        pairs = [f.as_base_exp() for f in self._args]
+        exponents = {e for _, e in pairs}
+        if len(exponents) == 1:
+            exponent = pairs[0][1]
+            if isinstance(exponent, Rational) and exponent.q == 1 and exponent.p != 1:
+                return (mul(*[b for b, _ in pairs]), exponent)
+        return (self, Integer(1))
 
     def as_numer_denom(self) -> tuple[Expr, Expr]:
         parts = [a.as_numer_denom() for a in self._args]
@@ -156,6 +185,10 @@ def mul(*args: ExprLike) -> Expr:
     (0, 1)
     """
     factors = [to_expr(a) for a in args]
+    if not global_parameters.evaluate:
+        return _raw(_flattened(factors))
+    if any(f.is_Order for f in _flattened(factors)):
+        return _with_orders(factors)
     for _ in range(_MAX_PASSES):
         result, again = _mul_pass(factors)
         if again is None:
@@ -266,12 +299,20 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
     one = _is_one(coefficient)
     if one and len(rebuilt) + len(merged) == 1:
         return ((rebuilt + merged)[0], None)
-    if not one and len(rebuilt) == 1 and not merged and coefficient.is_finite_number:
+    if not one and len(rebuilt) == 1 and not merged and coefficient.is_finite_number \
+            and global_parameters.distribute:
         only = rebuilt[0]
         if isinstance(only, Add):
             return (add(*[mul(coefficient, t) for t in only.args]), None)
     factors = ([] if one else [coefficient]) + rebuilt + merged
     return (Mul(*factors), None)
+
+
+def _with_orders(factors: list[Expr]) -> Expr:
+    """A product with ``Order`` factors, evaluated by SymPy."""
+    import sympy
+    from .interop import expr_from_sympy, sympy_expr as _sympy_expr, to_sympy
+    return expr_from_sympy(sympy.Mul(*[_sympy_expr(to_sympy(f)) for f in factors]))
 
 
 def _flattened(args: list[Expr]) -> list[Expr]:
@@ -325,7 +366,24 @@ def div(a: ExprLike, b: ExprLike) -> Expr:
     (x/y, 1/2, 1)
     """
     from .power import pow
-    return mul(a, pow(b, Integer(-1)))
+    numerator = to_expr(a)
+    if isinstance(numerator, Rational) and numerator.p == 1 and numerator.q == 1:
+        return pow(b, Integer(-1))
+    return mul(numerator, pow(b, Integer(-1)))
+
+
+def prod(a: Iterable[ExprLike], start: ExprLike = 1) -> Expr:
+    """The product of the elements of ``a`` times ``start``.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols, prod
+    >>> x, y = symbols('x y')
+    >>> prod([x, y, 2]), prod([], 3)
+    (2*x*y, 3)
+    """
+    return mul(start, *a)
 
 
 def neg(a: ExprLike) -> Expr:

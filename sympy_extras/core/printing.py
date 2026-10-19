@@ -20,7 +20,8 @@ from typing import Sequence
 
 from .basic import Basic
 from .expr import Expr
-from .numbers import Float, ImaginaryUnit, NegativeInfinity, Number, NumberSymbol, Rational, number_from_fraction
+from .numbers import (AlgebraicNumber, Float, ImaginaryUnit, NegativeInfinity, Number, NumberSymbol, Rational,
+    number_from_fraction)
 from .sorting import SortKey, default_sort_key
 
 __all__ = ['sstr', 'srepr', 'StrPrinter', 'ordered_terms']
@@ -105,12 +106,19 @@ class StrPrinter:
         return ''.join(parts)
 
     def print_mul(self, factors: Sequence[Expr]) -> str:
+        from .mod import Mod
         from .power import Pow
         sign = ''
         numerator: list[str] = []
         denominator: list[str] = []
         numerator_exprs: list[Expr] = []
+        # a Mod factor is parenthesized, as SymPy prints 2*(Mod(x, 3)), except in -Mod(x, 3)
+        bare_negation = len(factors) == 2 and isinstance(factors[0], Rational) and factors[0] == -1
         for i, f in enumerate(factors):
+            if isinstance(f, Mod) and not bare_negation:
+                numerator.append('(%s)' % self.doprint(f))
+                numerator_exprs.append(f)
+                continue
             if isinstance(f, Rational) and i == 0:
                 p, q = f.p, f.q
                 if p < 0:
@@ -142,6 +150,9 @@ class StrPrinter:
         return '%s%s/%s' % (sign, num, den)
 
     def print_pow(self, base: Expr, exp: Expr) -> str:
+        from .mod import Mod
+        if isinstance(base, Mod):
+            return '(%s)**%s' % (self.doprint(base), self.parenthesize(exp, PREC_POW, strict=True))
         if isinstance(exp, Rational):
             if exp.p == 1 and exp.q == 2:
                 return 'sqrt(%s)' % self.doprint(base)
@@ -179,11 +190,17 @@ def srepr(e: Basic) -> str:
     >>> srepr(2*x + 1)
     Add(Integer(1), Mul(Integer(2), Symbol('x')))
     """
-    from .function import AppliedSymPyFunction, AppliedUndef
+    from .function import AppliedSymPyFunction, AppliedUndef, WildFunction
     from .numbers import Float
-    from .symbol import Dummy, Symbol
+    from .symbol import Dummy, Symbol, Wild
+    if isinstance(e, Wild):
+        return "Wild(%r)" % e.name
+    if isinstance(e, WildFunction):
+        return "WildFunction(%r)" % e.name
     if isinstance(e, Dummy):
         return "Dummy(%r)" % e.name
+    if isinstance(e, AlgebraicNumber):
+        return "AlgebraicNumber(%s, [%s])" % (srepr(e.root), ', '.join(srepr(c) for c in e.coeffs()))
     if isinstance(e, Symbol):
         assumptions = ''.join(', %s=%r' % kv for kv in e.given_assumptions.items())
         return "Symbol(%r%s)" % (e.name, assumptions)
@@ -202,20 +219,32 @@ def srepr(e: Basic) -> str:
     return '%s(%s)' % (type(e).__name__, ', '.join(srepr(a) for a in e.args))
 
 
+def _decompose_power(f: Expr) -> tuple[Expr, int]:
+    """``(b, n)`` with ``f == b**n`` and ``n`` the integer coefficient of
+    the exponent (``x**(2*y)`` is ``(x**y, 2)``, ``exp(-x)`` is ``(exp(x), -1)``),
+    ``(f, 1)`` when the exponent has no integer coefficient."""
+    from .power import pow
+    b, e = f.as_base_exp()
+    if isinstance(e, Rational) and e.q == 1:
+        return (b, e.p)
+    c, rest = e.as_coeff_Mul()
+    if isinstance(c, Rational) and c.q == 1 and c.p != 1:
+        return (pow(b, rest), c.p)
+    return (f, 1)
+
+
 def _monomial_key(term: Expr, gens: list[Expr]) -> tuple[Fraction, ...]:
     exponents: dict[Expr, Fraction] = {}
     _, rest = term.as_coeff_Mul()
     factors = rest.args if rest.is_Mul else (rest,)
+    from .expr import UnevaluatedExpr
     for f in factors:
-        if not isinstance(f, Expr) or isinstance(f, (ImaginaryUnit, NumberSymbol)):
+        if not isinstance(f, Expr) or isinstance(f, (ImaginaryUnit, NumberSymbol, UnevaluatedExpr)) or f.is_number:
             continue
-        b, e = f.as_base_exp()
+        b, n = _decompose_power(f)
         if isinstance(b, NumberSymbol):
             continue
-        if isinstance(e, Rational) and e.q == 1:
-            exponents[b] = exponents.get(b, Fraction(0)) + Fraction(e.p)
-        else:
-            exponents[f] = exponents.get(f, Fraction(0)) + Fraction(1)
+        exponents[b] = exponents.get(b, Fraction(0)) + Fraction(n)
     return tuple(-exponents.get(g, Fraction(0)) for g in gens)
 
 
@@ -223,13 +252,14 @@ def _generators(term: Expr) -> list[Expr]:
     _, rest = term.as_coeff_Mul()
     factors = rest.args if rest.is_Mul else (rest,)
     gens: list[Expr] = []
+    from .expr import UnevaluatedExpr
     for f in factors:
-        if not isinstance(f, Expr) or isinstance(f, (Number, ImaginaryUnit, NumberSymbol)):
+        if not isinstance(f, Expr) or isinstance(f, (Number, ImaginaryUnit, NumberSymbol, UnevaluatedExpr)) or f.is_number:
             continue
-        b, e = f.as_base_exp()
+        b, _ = _decompose_power(f)
         if isinstance(b, NumberSymbol):
             continue
-        gens.append(b if isinstance(e, Rational) and e.q == 1 else f)
+        gens.append(b)
     return gens
 
 
@@ -246,21 +276,35 @@ def ordered_terms(terms: Sequence[Expr]) -> list[Expr]:
     >>> ordered_terms([y, x*y, x**2, x, Integer(1)])
     [x**2, x*y, x, y, 1]
     """
-    if len(terms) == 2 and isinstance(terms[0], (Number, NumberSymbol)) and terms[1].could_extract_minus_sign():
-        return list(terms)  # SymPy's special case: 1 - x
+    if len(terms) == 2 and isinstance(terms[0], (Number, NumberSymbol)) and terms[0].is_negative is not True \
+            and terms[1].could_extract_minus_sign():
+        return list(terms)  # SymPy's special case: 1 - x (but -x - 2)
     gens: set[Expr] = set()
     for t in terms:
         gens.update(_generators(t))
     ordered_gens = sorted(gens, key=default_sort_key)
-    keys: dict[Expr, tuple[tuple[Fraction, ...], int, SortKey]] = {
+    keys: dict[Expr, tuple[tuple[Fraction, ...], tuple[int, float], SortKey]] = {
         t: (_monomial_key(t, ordered_gens), _constant_rank(t), t.sort_key()) for t in terms}
-    return sorted(terms, key=lambda t: keys[t])
+    plain = sorted([t for t in terms if not t.is_Order], key=lambda t: keys[t])
+    orders = sorted([t for t in terms if t.is_Order], key=lambda t: keys[t])
+    if orders:
+        plain.reverse()  # a series is printed in increasing order: x - x**3/6 + O(x**5)
+    return plain + orders
 
 
-def _constant_rank(term: Expr) -> int:
-    """Among the constant terms: numbers first, ``I`` last."""
-    if isinstance(term, Number):
-        return 0
+def _constant_rank(term: Expr) -> tuple[int, float]:
+    """Among the constant terms, SymPy's order: by increasing value
+    (``1 + sqrt(2) + E + pi``), the terms with ``I`` after them, and the
+    ``UnevaluatedExpr`` terms last."""
+    from .expr import UnevaluatedExpr
+    if isinstance(term, UnevaluatedExpr) or any(isinstance(f, UnevaluatedExpr) for f in term.args):
+        return (3, 0.0)
+    if not term.is_number:
+        return (0, 0.0)
     if term.has(ImaginaryUnit):
-        return 2
-    return 1
+        return (2, 0.0)
+    from .evalf import to_float
+    try:
+        return (1, to_float(term))
+    except (TypeError, ValueError, OverflowError):
+        return (1, 0.0)

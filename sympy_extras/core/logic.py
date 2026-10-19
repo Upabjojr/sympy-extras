@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .basic import Atom, Basic
+from .kind import BooleanKind, Kind
 from .sorting import ClassKey
 
 if TYPE_CHECKING:
@@ -25,6 +26,10 @@ class Boolean(Basic):
     __slots__ = ()
 
     is_Boolean = True
+
+    @property
+    def kind(self) -> Kind:
+        return BooleanKind
 
 
 class BooleanAtom(Boolean, Atom):

@@ -112,9 +112,11 @@ sympy_extras/
         resolve.py           resolve(): quantifier elimination through the CAD
         sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check
         tests/
-    core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Eq, Derivative, ...)
-                             and evaluating functions (add, mul, pow, eq, diff, ...), typed; to_sympy/from_sympy;
-                             see docs/core.md
+    core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, Derivative, Subs,
+                             Order, ...) and evaluating functions (add, mul, pow, mod, eq, diff, order, ...), typed;
+                             Wild/match/replace, the full set of is_* predicates, the Expr methods of SymPy
+                             (series, simplify, integrate, ... through the conversion), to_sympy/from_sympy with
+                             generic wrappers of any SymPy object; see docs/core.md
     concrete/                summation algorithms extending sympy.concrete
         pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver
         karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation

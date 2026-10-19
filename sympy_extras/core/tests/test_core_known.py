@@ -9,7 +9,9 @@ evaluate to is documented by SymPy's behaviour, and ``add``, ``mul`` and
 """
 from __future__ import annotations
 
+import importlib
 import random
+from itertools import islice
 from typing import Callable
 
 import sympy
@@ -99,7 +101,7 @@ def test_known_evaluations() -> None:
         (C.Integer(-2)**third*C.Integer(-3)**third, '(-1)**(2/3)*6**(1/3)'),
         (C.I*C.I, '-1'), (C.I**C.Rational(5, 3), 'I**(5/3)'), (C.I**C.Rational(-1, 3), '-I**(5/3)'),
         (C.I**C.Rational(7, 3), '-I**(1/3)'), (C.I**half, 'sqrt(I)'), (C.I*C.I**C.Rational(5, 3), 'I*I**(5/3)'),
-        (1/(2 + C.I), '2/5 - I/5'), (1/(1 - C.I), '1/2 + I/2'), ((2 + C.I)**-2, '(2 + I)**(-2)'),
+        (1/(2 + C.I), '(2 - I)/5'), (1/(1 - C.I), '(1 + I)/2'), ((2 + C.I)**-2, '(2 + I)**(-2)'),
         ((2*cx)**2, '4*x**2'), ((2*cx)**half, 'sqrt(2)*sqrt(x)'), ((4*cx)**half, '2*sqrt(x)'),
         ((-4*cx)**half, '2*sqrt(-x)'), ((cx*cy)**half, 'sqrt(x*y)'), ((cp*cx)**half, 'sqrt(p)*sqrt(x)'),
         ((cp**2*cx)**half, 'p*sqrt(x)'), ((2*cx)**cy, '(2*x)**y'), ((cp*cx)**cy, '(p*x)**y'),
@@ -278,12 +280,351 @@ def test_symbols_with_assumptions_round_trip() -> None:
             assert c._ask(name) == getattr_(s, name), (assumptions, name)
 
 
-def getattr_(s: sympy.Symbol, name: str) -> bool | None:
-    """SymPy's ``is_<name>`` of a symbol, read without ``getattr``."""
-    queries: dict[str, Callable[[sympy.Symbol], bool | None]] = {
+def getattr_(s: sympy.Basic, name: str) -> bool | None:
+    """SymPy's ``is_<name>`` of an expression, read without ``getattr``."""
+    queries: dict[str, Callable[[sympy.Basic], bool | None]] = {
         'positive': lambda e: e.is_positive, 'negative': lambda e: e.is_negative, 'zero': lambda e: e.is_zero,
         'nonzero': lambda e: e.is_nonzero, 'integer': lambda e: e.is_integer, 'rational': lambda e: e.is_rational,
         'real': lambda e: e.is_real, 'even': lambda e: e.is_even, 'odd': lambda e: e.is_odd,
         'prime': lambda e: e.is_prime, 'finite': lambda e: e.is_finite, 'commutative': lambda e: e.is_commutative,
+        'irrational': lambda e: e.is_irrational, 'imaginary': lambda e: e.is_imaginary, 'complex': lambda e: e.is_complex,
+        'infinite': lambda e: e.is_infinite, 'nonnegative': lambda e: e.is_nonnegative,
+        'nonpositive': lambda e: e.is_nonpositive, 'extended_real': lambda e: e.is_extended_real,
+        'extended_positive': lambda e: e.is_extended_positive, 'extended_negative': lambda e: e.is_extended_negative,
+        'extended_nonnegative': lambda e: e.is_extended_nonnegative,
+        'extended_nonpositive': lambda e: e.is_extended_nonpositive, 'extended_nonzero': lambda e: e.is_extended_nonzero,
+        'hermitian': lambda e: e.is_hermitian, 'antihermitian': lambda e: e.is_antihermitian,
+        'algebraic': lambda e: e.is_algebraic, 'transcendental': lambda e: e.is_transcendental,
+        'composite': lambda e: e.is_composite, 'noninteger': lambda e: e.is_noninteger, 'polar': lambda e: e.is_polar,
     }
     return queries[name](s)
+
+
+# ----------------------------------------------------------------------
+# the rest of sympy.core, against SymPy
+
+_sa = importlib.import_module('sympy.core.assumptions')
+
+
+def _cv(text: str) -> C.Expr:
+    """The expression of this core parsed by SymPy from ``text``."""
+    return C.as_expr(from_sympy(parse(text)))
+
+
+def _match_pairs(got: dict[C.Basic, C.Basic] | None, expected: dict[sympy.Basic, sympy.Basic] | None) -> bool:
+    if got is None or expected is None:
+        return got is None and expected is None
+    by_name = {str(k): v for k, v in expected.items()}
+    if {str(k) for k in got} != set(by_name):
+        return False
+    return all(sympy.simplify(sympy_expr(to_sympy(v)) - sympy_expr(by_name[str(k)])) == 0 for k, v in got.items())
+
+
+def test_known_matches() -> None:
+    """``match`` on the cases of SymPy's behaviour (the ambiguous cases
+    where SymPy's search order gives an odd binding are left out)."""
+    a, b, c = sympy.Wild('a'), sympy.Wild('b'), sympy.Wild('c')
+    cases = ['x|a', 'x|a*x', '2*x|a*x', 'x*y*z|a*x', 'x + y + 1|a + x', 'x|a + x', '2*x + 3|a*x + b', 'x + 1|a*x + b',
+             'x**2|x**a', 'x|x**a', 'x|a**b', 'x**2|a*x**b', '2|a*x', 'sin(x)|sin(a)', 'sin(x)|a', 'sin(x)|cos(a)',
+             '2*sin(x)|a*sin(b)', 'x*y|a*b', 'x + y|a + b', 'x**y|a**b', '3|a', '3*x|a*x', 'x/2|a*x', '2/x|a/x', '2/x|a*x',
+             'x**3|a*x**2', 'x**3*y|x**a*y**b', 'sqrt(x)|x**a', 'exp(2*x)|exp(a*x)', 'exp(x)|exp(a*x)', 'x*y + 1|a*x + b',
+             'x*y + 1|a*x*y + b', '-x|a*x', '-x|a', 'x - 1|a*x + b', '2*x*y|a*x*y', 'x*y*z|a*b*z', 'f(x)|f(a)',
+             'f(x, y)|f(a, b)', 'f(x)|g(a)', 'x + 2|x + a', 'x**2|a*x', '5|a*x + b', 'x|a*x + b', '2*x|a*x + b',
+             'x*(x + 1)|a*(x + b)', '(x + 1)**2|(x + a)**b', 'x + y + z|a + b', 'x*y*z|a*b', 'x|a + b', '1|a + b',
+             '2*x + 3*y|a*x + b*y', '2*x + 3*y|a*x + b', 'I*x|a*x', 'pi*x|a*x', 'x*exp(x)|a*exp(b*x)', 'x*y|x*a',
+             'x**2*y|a*x**b', 'x*y + 2*x|a + x', 'y|a + x', 'y|a*x', 'sqrt(x)|a*x', 'x**y|a*x', '2*x**3|a*x**2',
+             'x**3*y|a*x**2', '2*x|a*x**2', 'x**-3|a*x**-2', 'x**-3|a/x', 'x**2|a*x**-1', '2*x*y|a*x**2', 'pi|a*x',
+             'x + 1|a*x', 'sin(x)|a*x', 'x*y + 2*x|a*x', '0|a + x', '2|a + x', 'x*y|a + x', 'x**2|a + x', 'x**2 + x|a*x',
+             'x|a*b', 'x**2|a*b', 'x|a*x*b', 'x*y|a*x*y*b', 'x*y|a**2*x', '4*x**2|a*b**2', 'x + 1|a + 1', 'sqrt(x)|sqrt(a)',
+             'x*y|a*y', 'x/y|a/y', 'x/y|a/b', 'x**-2|a**-2', '2*x**2|a*x**2', '0|a', '0|a*x', 'x + y|a - b', 'x - y|a - b',
+             '-x|-a', 'x|-a', '2*x|-a', 'x**2|a**2', 'x**4|a**2', '4*x**2|a**2', 'x**2*y**2|a**2', '4|a**2', 'x**2|x**(2*a)',
+             'x**4|x**(2*a)', 'x**2*y|x**(2*a)']
+    for case in cases:
+        subject, pattern = case.split('|')
+        s = parse(subject)
+        from sympy.parsing.sympy_parser import parse_expr
+        p = parse_expr(pattern, local_dict=dict(LOCALS, a=a, b=b, c=c, f=sympy.Function('f'), g=sympy.Function('g')))
+        if not isinstance(p, sympy.Basic):
+            raise TypeError("a pattern is expected, got %r" % (p,))
+        assert _match_pairs(from_sympy(s).match(from_sympy(p)), s.match(p)), case
+    sx_excluded = [sympy.Wild('a', exclude=[sx]), sympy.Wild('b', exclude=[sx])]
+    for subject in ['2*x + 3', 'x**2 + 3', 'x*y', 'x**2', 'x', '3']:
+        p = sx_excluded[0]*sx + sx_excluded[1]
+        assert _match_pairs(from_sympy(parse(subject)).match(from_sympy(p)), parse(subject).match(p)), subject
+    assert _match_pairs(_cv('x*y + 2*x').replace(from_sympy(a*sx), from_sympy(a)).match(from_sympy(a)),
+                        (sx*sy + 2*sx).replace(a*sx, a).match(a))
+    assert {to_sympy(e) for e in _cv('x*y + 2*x').find(from_sympy(a*sx))} == (sx*sy + 2*sx).find(a*sx)
+    assert _cv('x*y + 2*x').count(from_sympy(a*sx)) == (sx*sy + 2*sx).count(a*sx)
+
+
+def test_known_mod() -> None:
+    """``mod`` on the cases of SymPy's ``Mod`` (``Mod(n*(n + 1), 2)`` is left out)."""
+    cases = ['Mod(7, 3)', 'Mod(-7, 3)', 'Mod(7, -3)', 'Mod(Rational(7, 2), 2)', 'Mod(x, 1)', 'Mod(n, 1)', 'Mod(x, x)',
+             'Mod(2*n, 2)', 'Mod(4*n, 2)', 'Mod(n**2, n)', 'Mod(0, x)', 'Mod(Mod(x, 6), 3)', 'Mod(Mod(x, 3), 6)',
+             'Mod(x + 3, 3)', 'Mod(2*x + 6, 2)', 'Mod(-x, 3)', 'Mod(x, -3)', 'Mod(p, p)', 'Mod(6, 4)', 'Mod(n, n)',
+             'Mod(3*n, 3)', 'Mod(x*3, 3)', 'Mod(6*x, 3)', 'Mod(-n, 3)', 'Mod(I, 2)', 'Mod(1 + 2*n, 2)', 'Mod(n + 1, n)',
+             'Mod(x**2, x)', 'Mod(Rational(-7, 2), 2)', 'Mod(7, Rational(3, 2))', 'Mod(x*y, y)', 'Mod(x*y, x)',
+             'Mod(2*x*y, x)', 'Mod(x**2*y, x)', 'Mod(n**2 + n, n)', 'Mod(2*n + 2, 2)', 'Mod(n**3, n)', 'Mod(3*n**2, n)',
+             'Mod(Mod(n, 4), 2)', 'Mod(Mod(n, 2), 4)', 'Mod(Mod(n, 3), 2)', 'Mod(3*x, 3)', 'Mod(x, 2*x)', 'Mod(-x, x)',
+             'Mod(3*x, x)', 'Mod(x + y + 3, 3)', 'Mod(2*x + 3, 2)', 'Mod(x - 3, 3)', 'Mod(x + Rational(7, 2), Rational(3, 2))',
+             'Mod(x + 3*y, 3)', 'Mod(n + 4, 2)', 'Mod(2*n + 4, 4)', 'Mod(4*n + 6, 4)', 'Mod(-4, 3)', 'Mod(4, -3)',
+             'Mod(-4, -3)', 'Mod(3, 5)', 'Mod(0, 3)', 'Mod(3, 3)', 'Mod(x, 3) + Mod(x, 3)', '2*Mod(x, 3)', 'Mod(x, 3)**2',
+             '-Mod(x, 3)', 'Mod(x, 3) + 1']
+    for text in cases:
+        s = parse(text)
+        unevaluated = from_sympy(s)
+        core = _cv(text).doit() if text.startswith('Mod(') else _cv(text)
+        assert agrees(core, s) and str(core) == str(s), (text, core, s)
+        assert to_sympy(unevaluated) == s
+    for text, name in [('Mod(x, 3)', 'integer'), ('Mod(n, 3)', 'integer'), ('Mod(x, 3)', 'nonnegative'),
+                       ('Mod(x, -3)', 'nonpositive'), ('Mod(x, 3)', 'real'), ('Mod(n, 3)', 'finite')]:
+        assert _cv(text)._ask(name) == getattr_(parse(text), name), (text, name)
+
+
+def test_known_count_ops() -> None:
+    for text in ['x**2 + 2*x + 1', 'sin(x)*2', 'x', '2', 'x/y', 'x - y', '-x', 'x**-1', 'sqrt(x)', 'Eq(x, 1)',
+                 'sin(x) + cos(x)', 'x + y + z', 'x**2 + x**3', 'x*y*z', '2*x', 'x/2', 'x**-2', 'x < y', '2*x*y + 3*x + 1',
+                 'x*(x + 1)', 'x**Rational(3, 2)', '2/x', 'x**y', '-2*x', '-x*y', 'Rational(-1, 2)*x', 'Integer(-2)',
+                 'Rational(1, 2)', 'pi + I', 'Float(2.5)', 'x - 1', '1 - x', 'Mod(x, 3)', 'Subs(f(x), x, 2)', 'Order(x)',
+                 'f(x)', 'Derivative(f(x), x)', 'exp(x)*sin(x)', 'x**2*y**2', '1/(x*y)', 'x/(2*y)', '-x/2 + 1', 'x**(-x)',
+                 'x**(x - 1)']:
+        s = parse_expr_any(text)
+        assert (str(C.count_ops(from_sympy(s))), str(C.count_ops(from_sympy(s), visual=True))) == \
+            (str(sympy.count_ops(s)), str(sympy.count_ops(s, visual=True))), text
+
+
+_NAMES = ['extended_positive', 'extended_negative', 'extended_nonnegative', 'extended_nonpositive', 'extended_nonzero',
+          'hermitian', 'antihermitian', 'algebraic', 'transcendental', 'composite', 'noninteger', 'polar', 'positive',
+          'negative', 'zero', 'nonzero', 'integer', 'rational', 'irrational', 'real', 'imaginary', 'complex', 'even',
+          'odd', 'prime', 'finite', 'infinite', 'nonnegative', 'nonpositive', 'extended_real', 'commutative']
+
+
+def test_known_closures_of_every_predicate() -> None:
+    """The closure of each predicate, given true or false, is SymPy's
+    (``nonzero=False`` also gives ``odd=False`` here, which SymPy leaves
+    out although ``odd`` implies ``nonzero``), and the symbols round trip."""
+    for name in _NAMES:
+        for value in (True, False):
+            s = sympy.Symbol('q', **{name: value})
+            c = C.Symbol('q', **{name: value})
+            got = {k: v for k, v in c.assumptions0.items() if v is not None}
+            expected = {str(k): v for k, v in s.assumptions0.items() if v is not None}
+            if name in ('nonzero', 'extended_nonzero') and not value:
+                got.pop('odd')
+            assert got == expected, (name, value)
+            assert from_sympy(s) == c and to_sympy(c) == s, (name, value)
+            for query in _NAMES:
+                if query == 'odd' and name in ('nonzero', 'extended_nonzero') and not value:
+                    continue
+                assert c._ask(query) == getattr_(s, query), (name, value, query)
+
+
+def test_known_facts_of_numbers_and_compounds() -> None:
+    """Every fact this core states is SymPy's; what it leaves unknown is
+    listed when SymPy knows it (a sound subset)."""
+    exprs = ['0', '1', '2', '4', '-3', 'Rational(1, 2)', 'Float(2.5)', 'pi', 'E', 'I', 'oo', '-oo', 'zoo', 'nan',
+             'GoldenRatio', 'EulerGamma', 'Catalan', 'TribonacciConstant', 'sqrt(2)', '2 + I', 'n + 1', '2*n', 'p + 1',
+             'x + Rational(1, 2)', 'n + Rational(1, 2)', 'sqrt(2) + 1', 'sqrt(2)*pi', 'x + 1', 'pi**2', 'pi + 1', '2*pi',
+             'sqrt(pi)', 'pi*E', 'n*pi', 'x*pi', 'x + pi', '2**Rational(1, 3) + pi', 'p + oo', 'oo*p', 'x**2',
+             '2*Symbol("r", real=True)', 'I*Symbol("r", real=True)', 'Symbol("h", hermitian=True) + 1',
+             'Symbol("q", algebraic=True)**2', 'Symbol("q", algebraic=True)**x', 'Symbol("q", algebraic=True)**Rational(1, 3)',
+             'Symbol("q", algebraic=True, nonzero=True)*pi', 'Symbol("q", rational=True) + pi',
+             'Symbol("r", extended_real=True) + 1', 'Symbol("r", extended_real=True)*2',
+             'Symbol("r", extended_positive=True)**2', 'Symbol("r", extended_positive=True)**-1',
+             'Symbol("q", polar=True)*Symbol("w", polar=True)', 'Symbol("q", polar=True)**2', '2*Symbol("q", polar=True)',
+             'x*Symbol("q", polar=True)', 'Mod(n, 3)', 'Symbol("c", composite=True)', 'Abs(x)', 'exp(x)', 'exp(p)',
+             'log(p)', 'sin(x)']
+    unknown_here: list[tuple[str, str]] = []
+    for text in exprs:
+        s = parse(text)
+        c = C.as_expr(from_sympy(s))
+        for name in _NAMES:
+            got, expected = c._ask(name), getattr_(s, name)
+            if got is not None:
+                assert got == expected, (text, name, got, expected)
+            elif expected is not None:
+                unknown_here.append((text, name))
+    assert not unknown_here, unknown_here
+
+
+def test_known_decompositions() -> None:
+    pairs = [('3*x**2', 'x'), ('3*x', 'x'), ('x**2 + x', 'x'), ('3', 'x'), ('3*x**2*y', 'x'), ('3/x', 'x'), ('x**y', 'x'),
+             ('sqrt(x)*3', 'x')]
+    for text, var in pairs:
+        assert tuple(map(to_sympy, _cv(text).as_coeff_exponent(_cv(var)))) == parse(text).as_coeff_exponent(parse(var))
+    for text, other in [('3*x*y', 'x'), ('3*x*y', 'y'), ('3*x*y', 'z'), ('2*E*x', 'E'), ('x + y', 'x'), ('2*x*y', 'x*y'),
+                        ('x**2', 'x'), ('2*x', '2'), ('2*x', 'x + 1'), ('2*x*y', '2*x')]:
+        got = _cv(text).as_coefficient(_cv(other))
+        assert (None if got is None else to_sympy(got)) == parse(text).as_coefficient(parse(other)), (text, other)
+    for text in ['2*x + 4*y', 'x/2 + y/3', '6*x', '-x - y', 'sqrt(8)', 'x**2', '-2*x', '6', '2*x + 1', '2*(x + 1)**2',
+                 '-2*x - 4', '(2*x + 4)**2', 'x', '-6']:
+        assert tuple(map(to_sympy, _cv(text).as_content_primitive())) == parse(text).as_content_primitive(), text
+    for text, other in [('2*x + 3', 'x'), ('2*x + 3', '3'), ('2*x + 3', '5'), ('2*x + 3', 'x + 1'), ('2*x + 3', 'y'),
+                        ('2*x', 'x'), ('x + y', 'x'), ('5', '2'), ('5', '7'), ('-x', 'x'), ('x', '0'), ('x', 'x')]:
+        got = _cv(text).extract_additively(_cv(other))
+        assert (None if got is None else to_sympy(got)) == parse(text).extract_additively(parse(other)), (text, other)
+    for text, other in [('6*x*y', '2'), ('6*x*y', '2*x'), ('6*x*y', 'z'), ('6*x*y', '4'), ('x**2', 'x'), ('x**3', 'x**2'),
+                        ('2*x + 4*y', '2'), ('2*x + 3*y', '2'), ('-x', '-1'), ('x', '-1'), ('6', '4'), ('6', 'Rational(1, 2)'),
+                        ('sqrt(x)', 'x'), ('x*y', 'x'), ('2*x', 'x'), ('x', 'x'), ('3*x', '3*x'), ('-2*x', '2'), ('x/2', '2'),
+                        ('Rational(3, 2)', '3'), ('-6', '2'), ('6', '-2'), ('x**-2', 'x**-1')]:
+        got = _cv(text).extract_multiplicatively(_cv(other))
+        assert (None if got is None else to_sympy(got)) == parse(text).extract_multiplicatively(parse(other)), (text, other)
+    for text, other in [('x + 1', 'x + 1'), ('(x + 1)**2', 'x**2 + 2*x + 1'), ('x + 1', 'x + 2'), ('sqrt(2)*sqrt(3)', 'sqrt(6)'),
+                        ('x', 'y'), ('sin(x)**2 + cos(x)**2', '1'), ('2', '2')]:
+        assert _cv(text).equals(_cv(other)) == parse(text).equals(parse(other)), (text, other)
+    for text in ['x**2 + 1', 'x + 1/y', 'sqrt(x)', 'x**n', '2**x', 'x**y', '2', 'x**-1', 'x**Rational(1, 2) + y**-1']:
+        s, c = parse(text), _cv(text)
+        assert (c.is_polynomial(), c.is_polynomial(cx), c.is_rational_function(cx), c.is_algebraic_expr(cx)) == \
+            (s.is_polynomial(), s.is_polynomial(sx), s.is_rational_function(sx), s.is_algebraic_expr(sx)), text
+    for text in ['x + 1', '2', 'x - x', 'pi']:
+        assert _cv(text).is_constant() == parse(text).is_constant()
+    for text in ['x', 'pi', 'pi + x', '2 + I', 'oo', '2', 'sqrt(2)', 'nan']:
+        assert _cv(text).is_comparable == parse(text).is_comparable, text
+    for text, digits in [('Float(2.5)', None), ('Float(3.14159)', 2), ('pi', 3), ('Float(2.5) + 3*I', None), ('3', None),
+                         ('7', -1), ('Float(1.5)', None), ('Rational(7, 2)', None), ('Float(2.49)', None), ('Float(-2.5)', None)]:
+        assert to_sympy(_cv(text).round(digits)) == parse(text).round(digits), text
+    for text in ['x + 2*I', '2 + 3*I', 'I', 'x', 'Symbol("r", real=True)', 'x*I', '1/x', 'x**2']:
+        assert tuple(map(to_sympy, _cv(text).as_real_imag())) == parse(text).as_real_imag(), text
+    for text in ['x + 2*I', 'x', '2*x*I', 'x**2', 'Symbol("r", real=True)', 'sin(x)', 'pi', 'I']:
+        assert to_sympy(_cv(text).conjugate()) == parse(text).conjugate(), text
+    for text in ['x', 'Symbol("A", commutative=False)', 'Symbol("A", commutative=False)*x', 'I']:
+        assert to_sympy(_cv(text).adjoint()) == parse(text).adjoint() and to_sympy(_cv(text).transpose()) == parse(text).transpose()
+    for text in ['x**2', '2*x*y + 3']:
+        assert [(str(t), r) for t, r in _cv(text).as_terms()[0]] == [(str(t), r) for t, r in parse(text).as_terms()[0]]
+    assert [str(_cv(t).normal()) for t in ['2*x + 1', 'x/y + 1']] == [str(parse(t).normal()) for t in ['2*x + 1', 'x/y + 1']]
+    for text in ['x + y', 'Lambda(x, x + y)']:
+        assert str(from_sympy(parse_expr_any(text)).as_dummy()) == str(parse_expr_any(text).as_dummy())
+    lam = [from_sympy(parse_expr_any(t)) for t in ['Lambda(x, x)', 'Lambda(y, y)', 'Lambda(y, y + 1)']]
+    assert lam[0].dummy_eq(lam[1]) and not lam[0].dummy_eq(lam[2])
+    assert [_cv('x + y').has_free(cx), _cv('x + y + z').has_free(cx + cy), _cv('x + y + z').has_xfree({cx + cy})] == \
+        [(sx + sy).has_free(sx), (sx + sy + sz).has_free(sx + sy), (sx + sy + sz).has_xfree({sx + sy})]
+
+
+def test_known_forwarded_methods() -> None:
+    """The methods which go through SymPy give SymPy's results, and the
+    expansions with hints and the exponential rules agree."""
+    for text, n in [('sin(x)', 5), ('exp(x)', 3), ('1/(1 - x)', 3), ('cos(x)', 4), ('log(1 + x)', 4)]:
+        assert str(_cv(text).series(cx, 0, n)) == str(parse(text).series(sx, 0, n)), text
+    assert to_sympy(_cv('exp(x)').series(cx, 0, 3).removeO()) == sympy.exp(sx).series(sx, 0, 3).removeO()
+    order_term = _cv('exp(x)').series(cx, 0, 3).getO()
+    assert order_term is not None and to_sympy(order_term) == sympy.exp(sx).series(sx, 0, 3).getO()
+    for text, point, direction in [('sin(x)/x', '0', '+'), ('1/x', '0', '-'), ('1/x', 'oo', '+'), ('(1 + 1/x)**x', 'oo', '+')]:
+        assert to_sympy(_cv(text).limit(cx, _cv(point), direction)) == parse(text).limit(sx, parse(point), direction)
+    checks: list[tuple[C.Basic, sympy.Basic]] = [
+        (_cv('sin(x)**2 + cos(x)**2').simplify(), sympy.simplify(parse('sin(x)**2 + cos(x)**2'))),
+        (_cv('x**2 + 2*x + 1').factor(), sympy.factor(parse('x**2 + 2*x + 1'))),
+        (_cv('(x**2 - 1)/(x - 1)').cancel(), sympy.cancel(parse('(x**2 - 1)/(x - 1)'))),
+        (_cv('1/(x*(x + 1))').apart(), sympy.apart(parse('1/(x*(x + 1))'))),
+        (_cv('x*y + x').collect(cx), sympy.collect(parse('x*y + x'), sx)),
+        (_cv('1/x + 1/y').together(), sympy.together(parse('1/x + 1/y'))),
+        (_cv('x**2*x**y').powsimp(), sympy.powsimp(parse('x**2*x**y'))),
+        (_cv('1/(sqrt(2) + 1)').radsimp(), sympy.radsimp(parse('1/(sqrt(2) + 1)'))),
+        (_cv('Float(0.5)').nsimplify(), sympy.nsimplify(0.5)),
+        (_cv('x**2').integrate(cx), sympy.integrate(sx**2, sx)),
+        (_cv('x**2').integrate((cx, 0, 1)), sympy.integrate(sx**2, (sx, 0, 1))),
+        (_cv('x**2 + 1').invert(cx), sympy.invert(sx**2 + 1, sx)),
+        (_cv('gamma(x + 1)/gamma(x)').gammasimp(), sympy.gammasimp(parse('gamma(x + 1)/gamma(x)'))),
+        (_cv('sin(x)').rewrite(C.SymPyFunction(sympy.exp)), sympy.sin(sx).rewrite(sympy.exp)),
+        (_cv('sqrt(x**2)').refine(sympy.Q.positive(sx)), sympy.refine(sympy.sqrt(sx**2), sympy.Q.positive(sx))),
+        (_cv('x + x**2').as_leading_term(cx), (sx + sx**2).as_leading_term(sx)),
+        (_cv('sin(x)').taylor_term(3, cx), sympy.sin(sx).taylor_term(3, sx)),
+        (_cv('exp(x)').nseries(cx, 0, 3), sympy.exp(sx).nseries(sx, 0, 3)),
+        (C.Tuple(*islice(_cv('sin(x)').lseries(cx), 2)), sympy.Tuple(*islice(sympy.sin(sx).lseries(sx), 2))),
+        (C.factor_terms(_cv('2*x + 4*y')), sympy.factor_terms(parse('2*x + 4*y'))),
+        (C.gcd_terms(_cv('x/2 + y/4')), sympy.gcd_terms(parse('x/2 + y/4'))),
+        (C.expand_trig(_cv('sin(2*x)')), sympy.expand_trig(parse('sin(2*x)'))),
+        (C.expand_complex(_cv('x + I*y')), sympy.expand_complex(parse('x + I*y'))),
+        (C.expand_func(_cv('gamma(x + 1)')), sympy.expand_func(parse('gamma(x + 1)'))),
+        (C.expand_power_base(_cv('(x*y)**z'), force=True), sympy.expand_power_base(parse('(x*y)**z'), force=True)),
+    ]
+    for got, expected in checks:
+        assert str(got) == str(expected), (got, expected)
+        assert to_sympy(got) == expected or sympy.expand(sympy_expr(to_sympy(got)) - sympy_expr(expected)) == 0, (got, expected)
+    assert str(_cv('x**2 + 1').as_poly()) == str(parse('x**2 + 1').as_poly())
+    assert tuple(map(to_sympy, _cv('x**2 + x**3').leadterm(cx))) == (sx**2 + sx**3).leadterm(sx)
+    hints: list[tuple[str, dict[str, bool]]] = [
+        ('x*(y + 1)', {'mul': False}), ('(x + 1)**2', {'multinomial': False}), ('x*(y + z)', {}),
+        ('2**(x + y)', {'power_exp': False}), ('2**(x + y)', {}), ('exp(x + y)', {}), ('sin(x + y)', {'trig': True}),
+        ('(x + I*y)**2', {'complex': True}), ('gamma(x + 1)', {'func': True}), ('(x + 1)**2*(y + 1)', {'deep': False}),
+        ('sin((x + 1)**2)', {'deep': False}), ('sin((x + 1)**2)', {}), ('x**(y + z)', {}), ('x**(n + 1)', {})]
+    for text, hint in hints:
+        assert str(_cv(text).expand(**hint)) == str(parse(text).expand(**hint)), (text, hint)
+    for text in ['exp(x)*exp(y)', 'exp(x)*exp(-x)', 'exp(x)**2', 'exp(x)**y', 'exp(x)*exp(2*x)', 'exp(p)**x', 'sqrt(exp(x))',
+                 'exp(-x)*2', 'exp(x) - exp(-x)', 'E**x', 'E**2', 'E**0', 'E**(I*pi)', 'E**log(x)', 'exp(x)/exp(y)',
+                 'x*exp(x)*exp(-x)', 'exp(x)**-1']:
+        assert str(_cv(text)) == str(parse(text)) and agrees(_cv(text), parse(text)), text
+    assert str(cx**2*C.E**cx) == str(sx**2*sympy.E**sx) and str(C.E**cx*C.E**(-cx)) == '1' and str((C.E**cx)**2) == 'exp(2*x)'
+
+
+def test_known_printing_and_round_trips_of_the_new_objects() -> None:
+    for text in ['Mod(x, 3)', '2*Mod(x, 3)', 'Mod(x, 3)**2', '-Mod(x, 3)', 'Mod(x, 3) + 1', 'Order(x)', 'Order(x, (x, oo))',
+                 'Order(x*y)', 'x + Order(x**2)', 'Subs(f(x), x, 2)', 'Subs(x**2 + y, (x, y), (1, 2))', 'Dict({x: 1, y: 2})',
+                 'Wild("a")', 'WildFunction("F")', 'UnevaluatedExpr(x)*x', 'UnevaluatedExpr(2*x) + 1',
+                 'EulerGamma + Catalan + GoldenRatio + TribonacciConstant', 'sin(x)*cos(x)', 'exp(x) - exp(-x)',
+                 'x + exp(x) + log(x) + sin(x)', 're(x) + im(x)', 'Derivative(f(x), x) + f(x)', 'Integral(f(x), (x, 0, 1))',
+                 'Piecewise((x, x > 0), (0, True))', 'Abs(x) + floor(x)', 'x**(2*y) + x**y', 'AlgebraicNumber(sqrt(2), [1, 1])',
+                 'Order(1, (x, 1))', 'O(x**2 + y)', 'x**2 - x + O(x**3)', '2 + x + x**3 + O(x**5)', '1 + pi + I',
+                 'E + pi + 1 + I + GoldenRatio', 'x + pi + I + 2', 'sqrt(2) + 1 + pi + E', 'x - 2*pi + 1', '-pi + I',
+                 '3*pi + 2*I', '1 - pi', '-1 + pi', '-x - 2', 'x**2*y**2', '(2 - I)/5', '1/(-1 + I/4)', 'exp(I*x) - exp(-I*x)',
+                 'sin(x) + sin(x - 1)', '-sin(x) + sin(x + 1)']:
+        s = parse_expr_any(text)
+        tree = from_sympy(s)
+        assert str(tree) == str(s), (text, str(tree), str(s))
+        # to_sympy evaluates: SymPy distributes 16/17 over -1 - I/4 when rebuilding
+        assert same_structure(to_sympy(tree, evaluate=False), s) or (isinstance(tree, C.Expr) and agrees(tree, s)), text
+        assert from_sympy(to_sympy(tree, evaluate=False)) == tree, text
+    for text in ['And(x > 0, x < 1)', 'Sum(x, (x, 1, 10))', 'Interval(0, 1)', 'Function("h", real=True)(x)']:
+        parsed = parse_expr_any(text)
+        tree = from_sympy(parsed)
+        assert to_sympy(tree) == parsed and from_sympy(to_sympy(tree)) == tree, text
+    assert C.as_expr(from_sympy(sympy.Function('f')(2*sx).diff(sx))).dummy_eq(_cv('f(2*x)').diff(cx))
+    for text in ['Subs(f(x), x, 2)', 'Subs(x**2 + y, (x, y), (1, 2))', 'Subs(Derivative(f(x), x), x, 2)',
+                 'Subs(Derivative(f(x), x), x, y)', 'Subs(x, x, 2)', 'Integral(x**2, (x, 0, 1))', 'Sum(x, (x, 1, 10))',
+                 'Mod(7, 3)', 'Order(x + x**2)', 'UnevaluatedExpr(x)**2']:
+        assert str(from_sympy(parse(text)).doit()) == str(parse(text).doit()), text
+    for text in ['f(2*x)', 'f(x**2)', 'f(x, 2*x)', 'Subs(f(x), x, y)', 'Mod(x, 3)', 'UnevaluatedExpr(x)', 'Order(x)']:
+        assert str(_cv(text).diff(cx)) == str(parse(text).diff(sx)), text
+    for text in ['EulerGamma', 'Catalan', 'GoldenRatio', 'TribonacciConstant', 'Mod(7, 3)', 'AlgebraicNumber(sqrt(2), [1, 1])',
+                 'Integral(x**2, (x, 0, 1))']:
+        assert str(C.as_expr(from_sympy(parse(text))).evalf()) == str(parse(text).evalf()), text
+    assert str(C.N(C.pi, 20)) == str(sympy.N(sympy.pi, 20)) and str(C.N(cx + C.pi, 5)) == str(sympy.N(sx + sympy.pi, 5))
+    assert str(C.nfloat(cx**2 + C.Rational(1, 3))) == str(sympy.nfloat(sx**2 + sympy.Rational(1, 3)))
+    assert str(C.nfloat(C.sqrt(2)*cx, 3)) == str(sympy.nfloat(sympy.sqrt(2)*sx, 3))
+    from sympy.core.numbers import comp as sympy_comp
+    for z1, z2, tol in [(C.pi, 3.1416, None), (C.pi, 3.1416, 1e-3), (C.Float(1.0), 1.1, None), (C.Float(1.0), 1.05, 0.1)]:
+        assert C.comp(z1, z2, tol) == sympy_comp(to_sympy(z1), z2, tol)
+    for text in ['Order(x) + x', 'x + Order(x**2)', 'Order(x) + Order(x**2)', 'Order(x)*x', '2*Order(x)', 'Order(x)*Order(x)',
+                 'Order(2*x)', 'Order(x**2 + y)', 'Order(x)**2', 'Order(x) + y']:
+        assert str(_cv(text)) == str(parse(text)), text
+    assert C.Order(cx).contains(cx**2) is True and C.Order(cx**2).contains(cx) is False
+    assert str(C.Rel(cx, 1, '<')) == str(sympy.Rel(sx, 1, '<')) and str(C.Lt(cx, 1).negated) == str(sympy.Lt(sx, 1).negated)
+    assert str(C.Gt(cx, 1).canonical) == str(sympy.Gt(sx, 1).canonical)
+
+
+def parse_expr_any(text: str) -> sympy.Basic:
+    from sympy.parsing.sympy_parser import parse_expr
+    e = parse_expr(text, local_dict=dict(LOCALS, f=sympy.Function('f')))
+    if not isinstance(e, sympy.Basic):
+        raise TypeError("a SymPy object is expected, got %r" % (e,))
+    return e
+
+
+def test_known_helpers() -> None:
+    intfunc = importlib.import_module('sympy.core.intfunc')
+    assert (C.igcd(12, 18, 30), C.ilcm(4, 6), C.igcdex(10, 6), C.mod_inverse(3, 11), C.mod_inverse(-3, 11)) == \
+        (sympy.igcd(12, 18, 30), sympy.ilcm(4, 6), intfunc.igcdex(10, 6), sympy.mod_inverse(3, 11), sympy.mod_inverse(-3, 11))
+    for value, n in [(16, 2), (17, 2), (27, 3), (10**30 + 1, 7), (0, 2), (1, 5), (2**64, 4)]:
+        assert C.integer_nthroot(value, n) == sympy.integer_nthroot(value, n)
+    for value, base in [(100, 10), (99, 10), (1, 2), (7, 2), (3**20, 3)]:
+        assert C.integer_log(value, base) == sympy.integer_log(value, base)
+    assert (C.num_digits(1234), C.num_digits(255, 2), C.trailing(8), C.trailing(12), C.trailing(0), C.isqrt(17)) == \
+        (intfunc.num_digits(1234), intfunc.num_digits(255, 2), intfunc.trailing(8), intfunc.trailing(12), intfunc.trailing(0), intfunc.isqrt(17))
+    assert C.check_assumptions(cp, positive=True) == _sa.check_assumptions(sp, positive=True)
+    assert C.check_assumptions(cx, positive=True) == _sa.check_assumptions(sx, positive=True)
+    assert C.check_assumptions(C.Integer(-2), positive=True) == _sa.check_assumptions(sympy.S(-2), positive=True)
+    assert C.check_assumptions(C.Integer(2), cn) == _sa.check_assumptions(sympy.S(2), sn)
+    assert C.failing_assumptions(C.Integer(-2), positive=True, integer=True) == _sa.failing_assumptions(sympy.S(-2), positive=True, integer=True)
+    assert C.common_assumptions([C.Integer(2), cp], check=['positive', 'zero']) == _sa.common_assumptions([sympy.S(2), sp], check=['positive', 'zero'])
+    assert C.assumptions(cx) == _sa.assumptions(sx) and C.assumptions(cp, ['positive', 'real']) == _sa.assumptions(sp, ['positive', 'real'])
+    for text in ['x', 'Symbol("A", commutative=False)', 'x + 1', 'Eq(x, 1)', '2', 'pi', 'f(x)', 'x < 1', 'Derivative(x**2, x)']:
+        assert str(from_sympy(parse_expr_any(text)).kind) == str(parse_expr_any(text).kind), text

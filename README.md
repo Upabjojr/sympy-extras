@@ -676,8 +676,13 @@ arguments `(x, x)`), so that their types are honest and the package is
 checked by mypy in strict mode; the evaluation of SymPy's constructors is
 done by functions of the same name in lower case (`add(x, x)` is `2*x`),
 which the operators call and which `doit` applies to a tree. Everything
-else keeps SymPy's names, evaluated forms, assumptions and printing, and
-`to_sympy`/`from_sympy` convert in both directions. See `docs/core.md`.
+else keeps SymPy's names, evaluated forms, assumptions and printing: the
+pattern matching (`Wild`, `match`, `replace`), `Mod`, `Subs`, `Order`,
+the full set of `is_*` predicates, the methods of `Expr` (the structural
+ones written here, `series`, `simplify`, `integrate`, ... through the
+conversion to SymPy), the context managers, the cache, the traversals and
+the integer helpers; `to_sympy`/`from_sympy` convert in both directions,
+every object of SymPy included. See `docs/core.md`.
 
 ```python
 >>> from sympy_extras.core import Symbol, Add, add, sqrt, Eq, eq, to_sympy

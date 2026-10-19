@@ -29,6 +29,40 @@ remove public functions. Breaking changes are listed here when they happen.
   expressions (evaluation, derivatives, expansions, substitutions,
   numerical values, printing). See `docs/core.md` for the design and
   the differences.
+- `sympy_extras.core`, the rest of `sympy.core`: pattern matching
+  (`Wild`, `WildFunction`, `match`, `replace`, `find`, `count`), the
+  classes `Mod` (with `mod`), `Subs`, `Order` (with `order`),
+  `UnevaluatedExpr`, `AlgebraicNumber`, `Dict`, the constants
+  `EulerGamma`, `Catalan`, `GoldenRatio`, `TribonacciConstant`, the
+  predicates `extended_*`, `hermitian`, `antihermitian`, `algebraic`,
+  `transcendental`, `composite`, `noninteger`, `polar` with their
+  implications and structural rules, the facts of a node cached on the
+  node, the methods of `Expr` which were missing (`as_coeff_exponent`,
+  `as_coefficient`, `as_content_primitive`, `extract_additively`,
+  `extract_multiplicatively`, `equals`, `as_real_imag`, `conjugate`,
+  `adjoint`, `transpose`, `as_terms`, `round`, `is_polynomial`,
+  `is_rational_function`, `is_algebraic_expr`, `is_constant`,
+  `is_comparable`, `as_dummy`, `dummy_eq`, `has_free`, `rcall`,
+  `removeO`, `getO`, `getn`, and `series`, `nseries`, `lseries`,
+  `limit`, `as_leading_term`, `leadterm`, `simplify`, `factor`,
+  `cancel`, `apart`, `collect`, `together`, `powsimp`, `radsimp`,
+  `trigsimp`, `nsimplify`, `integrate`, `as_poly`, `rewrite`, `refine`,
+  ... which go through SymPy), `expand` with SymPy's hints and the
+  `expand_*` functions, `count_ops`, `nfloat`, `N`, `comp`, `seterr`,
+  `arity`, `FunctionClass`, `Rel`, `evaluate`/`distribute` context
+  managers and `global_parameters`, `cacheit`/`clear_cache`,
+  `Transform`, the kinds, the traversals (`postorder_traversal`,
+  `bottom_up`, `use`, `iterargs`, `iterfreeargs`), the integer helpers
+  (`igcd`, `ilcm`, `igcdex`, `mod_inverse`, `integer_nthroot`,
+  `integer_log`, `num_digits`, `trailing`), `factor_terms`,
+  `gcd_terms`, `factor_nc`, `vectorize`, `var`, `greeks`, the
+  exceptions, `call_highest_priority` and the `_op_priority`
+  dispatch, `random_complex_number`/`verify_numerically`. `E**x` is
+  `exp(x)` and `exp` is a power of `E` in products, as in SymPy. Every
+  object of SymPy now converts (`Integral`, `Piecewise`, `And`, sets,
+  ... become generic wrappers whose `doit` and assumptions are
+  SymPy's). Checked against SymPy on tables of known results for each
+  feature.
 
 - `sympy_extras.polys.puiseux`: Puiseux expansions of the branches of a
   plane curve `F(x, y) = 0` above a point or above infinity by the
