@@ -128,7 +128,27 @@ def mod(p: ExprLike, q: ExprLike) -> Expr:
     reduced = _reduce_terms(a, b)
     if reduced is not None:
         return reduced
+    if isinstance(b, Rational) and b.p == 2 and b.q == 1 and _has_consecutive_factors(a):
+        return Integer(0)
     return Mod(a, b)
+
+
+def _has_consecutive_factors(a: Expr) -> bool:
+    """Whether ``a`` is a product of integers with two factors which differ
+    by an odd integer (``n*(n + 1)`` is even), the rule SymPy applies for
+    the modulus ``2``."""
+    from .add import sub
+    if not a.is_Mul:
+        return False
+    factors = factors_of(a)
+    if any(f.is_integer is not True for f in factors):
+        return False
+    for i, f in enumerate(factors):
+        for g in factors[i + 1:]:
+            d = sub(g, f)
+            if isinstance(d, Rational) and d.q == 1 and d.p % 2 == 1:
+                return True
+    return False
 
 
 def _number_mod(a: Number, b: Number) -> Expr:

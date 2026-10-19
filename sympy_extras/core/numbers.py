@@ -40,7 +40,7 @@ import mpmath
 
 from .basic import Basic
 from .expr import AtomicExpr, Expr, ExprLike, to_expr
-from .sorting import ClassKey, SortKey
+from .sorting import ClassKey, CompareItem, SortKey
 
 if TYPE_CHECKING:
     import sympy
@@ -163,6 +163,14 @@ class Rational(Number):
 
     def _hashable_content(self) -> tuple[Basic, ...]:
         return ()
+
+    def _compare_name(self) -> str:
+        if self.q == 1:
+            return {0: 'Zero', 1: 'One', -1: 'NegativeOne'}.get(self.p, 'Integer')
+        return 'Half' if (self.p, self.q) == (1, 2) else 'Rational'
+
+    def _compare_content(self) -> tuple[CompareItem, ...]:
+        return (self.p, self.q)
 
     def __hash__(self) -> int:
         return hash(Fraction(self.p, self.q))
@@ -338,6 +346,11 @@ class Float(Number):
 
     def _hashable_content(self) -> tuple[Basic, ...]:
         return ()
+
+    def _compare_content(self) -> tuple[CompareItem, ...]:
+        # SymPy compares the sign, the mantissa and the exponent: the
+        # negative floats sort after the positive ones
+        return (int(self._value < 0), abs(self._value), self._prec)
 
     def __hash__(self) -> int:
         return hash(self._value)
@@ -565,6 +578,9 @@ class EulerGammaType(NumberSymbol):
     def name(self) -> str:
         return 'EulerGamma'
 
+    def _compare_name(self) -> str:
+        return 'EulerGamma'
+
 
 class CatalanType(NumberSymbol):
     """Catalan's constant."""
@@ -573,6 +589,9 @@ class CatalanType(NumberSymbol):
 
     @property
     def name(self) -> str:
+        return 'Catalan'
+
+    def _compare_name(self) -> str:
         return 'Catalan'
 
 
@@ -585,6 +604,9 @@ class GoldenRatioType(NumberSymbol):
     def name(self) -> str:
         return 'GoldenRatio'
 
+    def _compare_name(self) -> str:
+        return 'GoldenRatio'
+
 
 class TribonacciConstantType(NumberSymbol):
     """The tribonacci constant, the real root of ``x**3 - x**2 - x - 1``."""
@@ -593,6 +615,9 @@ class TribonacciConstantType(NumberSymbol):
 
     @property
     def name(self) -> str:
+        return 'TribonacciConstant'
+
+    def _compare_name(self) -> str:
         return 'TribonacciConstant'
 
 

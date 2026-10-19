@@ -25,12 +25,13 @@ from typing import TYPE_CHECKING, Iterator, Optional, Sequence, Union
 
 import sympy
 
-from .basic import Atom, Basic, SubsArg, SubsMapping
+from .basic import Atom, Basic, RefineArg, SubsArg, SubsMapping
 from .kind import Kind, NumberKind, UndefinedKind
 from .sorting import ArgsKey, ExpKey, SortKey
 
 if TYPE_CHECKING:
     from .assumptions import Truth
+    from .logic import Boolean
     from .basic import ReplacementRule
     from .function import DiffSpec, FunctionClass
     from .numbers import Number
@@ -252,19 +253,19 @@ class Expr(Basic):
         from .function import apply_sympy
         return apply_sympy(sympy.Abs, self)
 
-    def __lt__(self, other: ExprLike) -> Basic:
+    def __lt__(self, other: ExprLike) -> Boolean:
         from .relational import lt
         return lt(self, other)
 
-    def __le__(self, other: ExprLike) -> Basic:
+    def __le__(self, other: ExprLike) -> Boolean:
         from .relational import le
         return le(self, other)
 
-    def __gt__(self, other: ExprLike) -> Basic:
+    def __gt__(self, other: ExprLike) -> Boolean:
         from .relational import gt
         return gt(self, other)
 
-    def __ge__(self, other: ExprLike) -> Basic:
+    def __ge__(self, other: ExprLike) -> Boolean:
         from .relational import ge
         return ge(self, other)
 
@@ -543,11 +544,9 @@ class Expr(Basic):
                 elif f.is_commutative is False:
                     noncommutative.append(f)
                 else:
-                    b, e = f.as_base_exp()
-                    if e.is_Integer and isinstance(e, Number):
-                        powers[b] = powers.get(b, 0) + int(e)
-                    else:
-                        powers[f] = powers.get(f, 0) + 1
+                    from .printing import _decompose_power
+                    b, n = _decompose_power(f)
+                    powers[b] = powers.get(b, 0) + n
             gens.update(powers)
             rows.append((term, to_complex(coeff), powers, tuple(noncommutative)))
         ordered = sorted(gens, key=default_sort_key)
@@ -804,27 +803,30 @@ class Expr(Basic):
     # ------------------------------------------------------------------
     # structural predicates
 
-    def is_polynomial(self, *syms: Symbol) -> bool:
+    def is_polynomial(self, *syms: Symbol) -> Truth:
         """Whether the expression is a polynomial in ``syms`` (all its
         symbols when none is given): sums, products and nonnegative
-        integer powers.
+        integer powers. As in SymPy, a function of the symbols gives
+        ``None`` by itself and ``False`` inside a sum or a product.
 
         Examples
         ========
 
-        >>> from sympy_extras.core import symbols, sqrt
+        >>> from sympy_extras.core import symbols, sqrt, sympify
         >>> x, y = symbols('x y')
         >>> (x**2 + 1).is_polynomial(), (x + 1/y).is_polynomial(x), (x + 1/y).is_polynomial(), sqrt(x).is_polynomial(x)
         (True, True, False, False)
+        >>> sympify('sin(x)').is_polynomial(x), sympify('sin(x) + 1').is_polynomial(x)
+        (None, False)
         """
         return _is_polynomial_like(self, set(syms) or self.free_symbols, 'polynomial')
 
-    def is_rational_function(self, *syms: Symbol) -> bool:
+    def is_rational_function(self, *syms: Symbol) -> Truth:
         """Whether the expression is a rational function in ``syms``
         (integer powers only)."""
         return _is_polynomial_like(self, set(syms) or self.free_symbols, 'rational')
 
-    def is_algebraic_expr(self, *syms: Symbol) -> bool:
+    def is_algebraic_expr(self, *syms: Symbol) -> Truth:
         """Whether the expression is algebraic in ``syms`` (rational
         powers only)."""
         return _is_polynomial_like(self, set(syms) or self.free_symbols, 'algebraic')
@@ -1011,37 +1013,66 @@ class Expr(Basic):
         from .interop import expr_through_sympy, to_sympy
         return expr_through_sympy(self, lambda s: sympy.limit(s, to_sympy(x), to_sympy(to_expr(xlim)), dir))
 
-    def as_leading_term(self, *symbols: Symbol) -> Expr:
-        """The leading term at zero in the given symbols.
+    def as_leading_term(self, *symbols: Symbol, logx: Optional[Expr] = None, cdir: int = 0) -> Expr:
+        """The leading term at zero in the given symbols (one after the
+        other): the terms of lowest degree of a polynomial, rational or
+        algebraic expression, found structurally; what involves a
+        function is expanded by SymPy's series.
 
         Examples
         ========
 
-        >>> from sympy_extras.core import Symbol
-        >>> x = Symbol('x')
-        >>> (x + x**2).as_leading_term(x)
-        x
+        >>> from sympy_extras.core import Symbol, sympify
+        >>> x, y = Symbol('x'), Symbol('y')
+        >>> (x + x**2).as_leading_term(x), (x + x*y).as_leading_term(x), (x + y + 1).as_leading_term(x)
+        (x, x*y + x, y + 1)
+        >>> (1/(1 + x)).as_leading_term(x), ((1 + x)/x).as_leading_term(x), sympify('sin(x) + x').as_leading_term(x)
+        (1, 1/x, 2*x)
         """
         from .interop import expr_through_sympy, to_sympy
-        return expr_through_sympy(self, lambda s: s.as_leading_term(*[to_sympy(v) for v in symbols]))
+        if logx is not None or cdir or not symbols:
+            return expr_through_sympy(self, lambda s: s.as_leading_term(
+                *[to_sympy(v) for v in symbols], logx=None if logx is None else to_sympy(logx), cdir=cdir))
+        result: Expr = self
+        for s in symbols:
+            found = _leading_term(result, s)
+            if found is None:
+                found = expr_through_sympy(result, lambda e: e.as_leading_term(to_sympy(s)))
+            result = found
+        return result
 
-    def leadterm(self, x: Symbol) -> tuple[Expr, Expr]:
+    def leadterm(self, x: Symbol, logx: Optional[Expr] = None, cdir: int = 0) -> tuple[Expr, Expr]:
         """The leading term as ``(c, e)`` with the term ``c*x**e``.
 
         Examples
         ========
 
         >>> from sympy_extras.core import Symbol
-        >>> x = Symbol('x')
-        >>> (x**2 + x**3).leadterm(x)
-        (1, 2)
+        >>> x, y = Symbol('x'), Symbol('y')
+        >>> (x**2 + x**3).leadterm(x), (x*y + x**2*y).leadterm(x), (x + x*y).leadterm(x), (1/x + 1).leadterm(x)
+        ((1, 2), (y, 1), (y + 1, 1), (1, -1))
         """
-        from .interop import expr_from_sympy, to_sympy
-        s = to_sympy(self)
-        if not isinstance(s, sympy.Expr):
-            raise TypeError("an expression is expected")
-        c, e = s.leadterm(to_sympy(x))
-        return (expr_from_sympy(c), expr_from_sympy(e))
+        from .add import add
+        from .mul import mul
+        from .numbers import Integer
+        from .power import pow
+        lt = self.as_leading_term(x, logx=logx, cdir=cdir)
+        exponent = None
+        for t in terms_of(lt):
+            _, n = t.as_coeff_exponent(x)
+            if exponent is None:
+                exponent = n
+            elif exponent != n:
+                exponent = None
+                break
+        if exponent is None:
+            raise ValueError("cannot compute leadterm(%s, %s). The coefficient should have been free of %s "
+                             "but got %s" % (self, x, x, lt))
+        coefficient = add(*[mul(t, pow(x, mul(Integer(-1), exponent))) for t in terms_of(lt)])
+        if x in coefficient.free_symbols:
+            raise ValueError("cannot compute leadterm(%s, %s). The coefficient should have been free of %s "
+                             "but got %s" % (self, x, x, coefficient))
+        return (coefficient, exponent)
 
     def taylor_term(self, n: int, x: Symbol) -> Expr:
         """The ``n``-th term of the Taylor series at zero."""
@@ -1238,7 +1269,7 @@ class Expr(Basic):
     def rewrite(self, *args: Union[Basic, FunctionClass, type]) -> Expr:
         return as_expr(super().rewrite(*args))
 
-    def refine(self, assumption: object = True) -> Expr:
+    def refine(self, assumption: RefineArg = True) -> Expr:
         return as_expr(super().refine(assumption))
 
     # ------------------------------------------------------------------
@@ -1448,7 +1479,51 @@ class UnevaluatedExpr(Expr):
         return {}
 
 
-def _is_polynomial_like(e: Expr, syms: set[Symbol], kind: str) -> bool:
+def _leading_term(e: Expr, x: Symbol) -> Optional[Expr]:
+    """The leading term of a polynomial, rational or algebraic expression
+    in ``x`` at zero; ``None`` when ``e`` involves a function of ``x``
+    (SymPy's series decide then)."""
+    from .add import Add, add
+    from .mul import Mul, mul
+    from .numbers import Rational
+    from .power import Pow, pow
+    from .symbol import Symbol
+    if x not in e.free_symbols or isinstance(e, Symbol):
+        return e
+    if isinstance(e, Add):
+        leading: list[tuple[Fraction, Expr]] = []
+        for t in e.args:
+            lt = _leading_term(t, x)
+            if lt is None:
+                return None
+            for part in terms_of(lt):
+                _, n = part.as_coeff_exponent(x)
+                if not isinstance(n, Rational):
+                    return None
+                leading.append((n.as_fraction(), part))
+        lowest = min(n for n, _ in leading)
+        return add(*[part for n, part in leading if n == lowest])
+    if isinstance(e, Mul):
+        parts: list[Expr] = []
+        for f in e.args:
+            lt = _leading_term(f, x)
+            if lt is None:
+                return None
+            parts.append(lt)
+        return mul(*parts)
+    if isinstance(e, Pow):
+        if x in e.exp.free_symbols:
+            return None
+        base = _leading_term(e.base, x)
+        return None if base is None else pow(base, e.exp)
+    return None
+
+
+def _is_polynomial_like(e: Expr, syms: set[Symbol], kind: str) -> Truth:
+    """SymPy's three-valued answer: ``None`` for a function of the symbols,
+    ``all`` of the arguments of a sum or a product (``None`` counting as
+    ``False``), and for a power the answer of the base combined with the
+    exponent (``bool`` of it for a polynomial)."""
     from .add import Add
     from .mul import Mul
     from .numbers import Rational
@@ -1459,15 +1534,19 @@ def _is_polynomial_like(e: Expr, syms: set[Symbol], kind: str) -> bool:
     if isinstance(e, Symbol):
         return True
     if isinstance(e, (Add, Mul)):
-        return all(_is_polynomial_like(a, syms, kind) for a in e.args)
+        return all(_is_polynomial_like(a, syms, kind) is True for a in e.args)
     if isinstance(e, Pow):
         exponent = e.exp
-        if exponent.free_symbols & syms or not isinstance(exponent, Rational):
+        if exponent.free_symbols & syms:
             return False
-        if kind == 'polynomial' and not (exponent.q == 1 and exponent.p >= 0):
-            return False
-        if kind == 'rational' and exponent.q != 1:
-            return False
-        return _is_polynomial_like(e.base, syms, kind)
-    return False
+        base = _is_polynomial_like(e.base, syms, kind)
+        if kind == 'polynomial':
+            return bool(base is True and isinstance(exponent, Rational) and exponent.q == 1 and exponent.p >= 0)
+        if base is not True:
+            return base
+        if kind == 'rational':
+            return isinstance(exponent, Rational) and exponent.q == 1
+        return isinstance(exponent, Rational)
+    return None
+
 

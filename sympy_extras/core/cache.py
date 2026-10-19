@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Callable, Generic, Hashable, ParamSpec, Protocol, TypeVar
 
-__all__ = ['cacheit', 'clear_cache', 'Cached']
+__all__ = ['cacheit', 'clear_cache', 'Cached', 'register_clearable']
 
 P = ParamSpec('P')
 R = TypeVar('R')
@@ -77,7 +77,13 @@ def cacheit(function: Callable[P, R]) -> Cached[P, R]:
     return cached
 
 
+def register_clearable(cache: _Clearable) -> None:
+    """Register an object with a ``clear`` method, emptied by :func:`clear_cache`."""
+    _caches.append(cache)
+
+
 def clear_cache() -> None:
-    """Empty every cache made by :func:`cacheit`."""
+    """Empty every cache made by :func:`cacheit` (and the caches of the
+    conversion to and from SymPy)."""
     for c in _caches:
         c.clear()

@@ -19,6 +19,8 @@ See ``docs/core.md`` for the design and the differences with
 from __future__ import annotations
 
 from .add import Add, add, sub
+from .ask import AssumptionKeys, Q, ask
+from .assume import AppliedPredicate, AssumptionsContext, Predicate, assuming, global_assumptions
 from .alphabets import greeks
 from .assumptions import (Truth, assumptions, check_assumptions, common_assumptions, failing_assumptions)
 from .basic import Atom, Basic, preorder_traversal
@@ -35,18 +37,20 @@ from .function import (AppliedSymPyFunction, AppliedUndef, Application, Derivati
 from .interop import SymPyExprNode, SymPyNode, from_sympy, to_sympy
 from .intfunc import igcd, igcdex, ilcm, integer_log, integer_nthroot, isqrt, mod_inverse, num_digits, trailing
 from .kind import BooleanKind, Kind, NumberKind, TupleKind, UndefinedKind
-from .logic import Boolean, BooleanAtom, BooleanFalse, BooleanTrue, false, true
+from .logic import (ITE, And, Boolean, BooleanAtom, BooleanFalse, BooleanFunction, BooleanTrue, Equivalent,
+    Implies, Nand, Nor, Not, Or, Xnor, Xor, and_, equivalent, false, implies, ite, not_, or_, true, xor)
 from .mod import Mod, mod
 from .mul import Mul, div, mul, neg, prod
 from .multidimensional import vectorize
 from .numbers import (AlgebraicNumber, Catalan, ComplexInfinity, EulerGamma, Float, GoldenRatio, ImaginaryUnit,
     Infinity, Integer, NaN, NegativeInfinity, Number, NumberSymbol, Rational, RealNumber, TribonacciConstant,
     E, I, comp, nan, oo, pi, seterr, zoo)
-from .operations import AssocOp
+from .operations import AssocOp, LatticeOp
 from .order import O, Order, order
 from .parameters import distribute, evaluate, global_parameters
 from .power import Pow, cbrt, pow, root, sqrt
 from .printing import srepr, sstr
+from .refine import refine
 from .relational import (Eq, Equality, Ge, GreaterThan, Gt, Le, LessThan, Lt, Ne, Rel, Relational,
     StrictGreaterThan, StrictLessThan, Unequality, eq, ge, gt, le, lt, ne)
 from .rules import Transform
@@ -69,13 +73,17 @@ __all__ = [
     'AppliedSymPyFunction', 'WildFunction', 'apply_sympy', 'arity', 'Lambda', 'Derivative', 'Subs', 'diff',
     'expand', 'expand_mul', 'expand_multinomial', 'expand_power_base', 'expand_power_exp', 'expand_log',
     'expand_func', 'expand_trig', 'expand_complex', 'count_ops', 'nfloat', 'Order', 'order', 'O',
-    'Tuple', 'Dict', 'Boolean', 'BooleanAtom', 'BooleanTrue', 'BooleanFalse', 'true', 'false',
+    'Tuple', 'Dict', 'Boolean', 'BooleanAtom', 'BooleanTrue', 'BooleanFalse', 'true', 'false', 'BooleanFunction',
+    'And', 'Or', 'Not', 'Xor', 'Implies', 'Equivalent', 'ITE', 'and_', 'or_', 'not_', 'xor', 'implies',
+    'equivalent', 'ite', 'Nand', 'Nor', 'Xnor', 'LatticeOp',
     'Relational', 'Eq', 'Ne', 'Lt', 'Le', 'Gt', 'Ge', 'Equality', 'Unequality',
     'StrictLessThan', 'LessThan', 'StrictGreaterThan', 'GreaterThan', 'Rel',
     'eq', 'ne', 'lt', 'le', 'gt', 'ge',
     'S', 'sympify', 'SympifyError', 'to_sympy', 'from_sympy', 'SymPyNode', 'SymPyExprNode', 'sstr', 'srepr',
     'default_sort_key', 'ordered', 'evalf', 'N',
     'assumptions', 'check_assumptions', 'failing_assumptions', 'common_assumptions',
+    'Q', 'ask', 'AssumptionKeys', 'Predicate', 'AppliedPredicate', 'AssumptionsContext', 'global_assumptions',
+    'assuming', 'refine',
     'global_parameters', 'evaluate', 'distribute', 'cacheit', 'clear_cache', 'Transform',
     'Kind', 'NumberKind', 'BooleanKind', 'UndefinedKind', 'TupleKind',
     'BaseCoreError', 'NonCommutativeExpression', 'PoleError', 'PrecisionExhausted',

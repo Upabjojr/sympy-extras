@@ -17,6 +17,7 @@ from typing import Callable
 import sympy
 
 from sympy_extras import core as C
+from sympy_extras._testing import untyped
 from sympy_extras.core import from_sympy, to_sympy
 
 sx, sy, sz = sympy.Symbol('x'), sympy.Symbol('y'), sympy.Symbol('z')
@@ -400,17 +401,14 @@ _NAMES = ['extended_positive', 'extended_negative', 'extended_nonnegative', 'ext
 
 
 def test_known_closures_of_every_predicate() -> None:
-    """The closure of each predicate, given true or false, is SymPy's
-    (``nonzero=False`` also gives ``odd=False`` here, which SymPy leaves
-    out although ``odd`` implies ``nonzero``), and the symbols round trip."""
+    """The closure of each predicate, given true or false, is SymPy's,
+    and the symbols round trip."""
     for name in _NAMES:
         for value in (True, False):
             s = sympy.Symbol('q', **{name: value})
             c = C.Symbol('q', **{name: value})
             got = {k: v for k, v in c.assumptions0.items() if v is not None}
             expected = {str(k): v for k, v in s.assumptions0.items() if v is not None}
-            if name in ('nonzero', 'extended_nonzero') and not value:
-                got.pop('odd')
             assert got == expected, (name, value)
             assert from_sympy(s) == c and to_sympy(c) == s, (name, value)
             for query in _NAMES:
@@ -628,3 +626,209 @@ def test_known_helpers() -> None:
     assert C.assumptions(cx) == _sa.assumptions(sx) and C.assumptions(cp, ['positive', 'real']) == _sa.assumptions(sp, ['positive', 'real'])
     for text in ['x', 'Symbol("A", commutative=False)', 'x + 1', 'Eq(x, 1)', '2', 'pi', 'f(x)', 'x < 1', 'Derivative(x**2, x)']:
         assert str(from_sympy(parse_expr_any(text)).kind) == str(parse_expr_any(text).kind), text
+
+
+# ----------------------------------------------------------------------
+# the logic, the new assumptions, the order of the arguments and the
+# native algorithms, against SymPy
+
+
+def test_known_connectives() -> None:
+    """The evaluating connectives give what SymPy's constructors give,
+    printed the same, on the cases probed (SymPy keeps
+    ``Q.positive(x) & ~Q.positive(x)``, which is mirrored)."""
+    from sympy.logic.boolalg import ITE as SITE
+    S_NS: dict[str, object] = {'x': sx, 'y': sy, 'z': sz, 'And': sympy.And, 'Or': sympy.Or, 'Not': sympy.Not,
+        'Xor': sympy.Xor, 'Implies': sympy.Implies, 'Equivalent': sympy.Equivalent, 'ITE': SITE, 'Eq': sympy.Eq,
+        'Ne': sympy.Ne, 'true': sympy.true, 'Nand': sympy.Nand, 'Nor': sympy.Nor, 'Q': sympy.Q}
+    C_NS: dict[str, object] = {'x': cx, 'y': cy, 'z': cz, 'And': C.and_, 'Or': C.or_, 'Not': C.not_, 'Xor': C.xor,
+        'Implies': C.implies, 'Equivalent': C.equivalent, 'ITE': C.ite, 'Eq': C.Eq, 'Ne': C.Ne, 'true': C.true,
+        'Nand': C.Nand, 'Nor': C.Nor, 'Q': C.Q}
+    cases = ['And(x, y)', 'And(y, x)', 'And(x, And(y, z))', 'And(x, x)', 'And(x, True)', 'And(x, False)',
+        'And(x, Not(x))', 'And()', 'Or()', 'And(x)', 'Or(x, Or(y, z))', 'Or(x, True)', 'Or(x, False)', 'Or(x, Not(x))',
+        'Not(Not(x))', 'Not(True)', 'Not(x > 0)', 'Not(Eq(x, 1))', 'Not(And(x, y))', 'Not(Or(x, y))',
+        'And(x > 0, x < 1)', 'Or(x > 0, Eq(x, 1))', '(x > 0) & (x < 1)', '~(x > 0)', '(x > 0) >> (x < 1)',
+        '(x > 0) ^ (x < 1)', 'x & y', 'x | y', '~x', 'x >> y', 'x << y', 'x ^ y', 'And(z, y, x)', 'And(y > 0, x > 0)',
+        'Or(z, x, y)', 'Xor(x, y)', 'Xor(x, x)', 'Xor(x, True)', 'Xor(x, y, z)', 'Xor()', 'Xor(x, y, x)', 'Xor(x, False)',
+        'Implies(x, y)', 'Implies(True, y)', 'Implies(False, y)', 'Implies(x, True)', 'Implies(x, False)',
+        'Implies(x, x)', 'Equivalent(x, y)', 'Equivalent(x, x)', 'Equivalent(x, True)', 'Equivalent(x, False)',
+        'Equivalent(x, y, z)', 'Equivalent(x, Not(x))', 'Nand(x, y)', 'Nor(x, y)', 'ITE(x, y, z)', 'ITE(True, y, z)',
+        'And(Or(x, y), z)', 'Or(And(x, y), z)', 'Implies(x, y) & z', 'And(x, Implies(y, z))', 'Not(Implies(x, y))',
+        'Xor(x, y) & z', 'And(x, Not(y))', 'Or(x, Not(y))', 'And(x, Eq(y, 1))', 'Or(x, Eq(y, 1))', 'And(x, y) | z',
+        'And(x, y) & z', 'Xor(x, y) | z', 'Not(Xor(x, y))', 'Not(ITE(x, y, z))', 'And(x > 0, x > 1)',
+        'And(Eq(x, 1), Eq(x, 2))', 'Or(x > 0, x >= 0)', 'And(x > 0, x > 0, y)', 'Or(Eq(x, 1), Ne(x, 1))',
+        'And(Eq(x, 1), Ne(x, 1))', 'And(x > 0, Not(x > 0))', 'And(Q.positive(x), Q.real(x))',
+        'And(Q.positive(x), Not(Q.positive(x)))', 'Xor(x, y, Not(y))', 'Xor(x, y, True)', 'And(x, Xor(y, z))',
+        'Equivalent(x, y, y)', 'Equivalent(x, True, y)', 'Equivalent(x, True, False)', 'Equivalent(True, True)',
+        'Xor(x, y, Xor(y, z))', 'Not(Not(Not(x)))', '~(x >= 0)', '~(x <= 0)', 'Not(x).subs(x, y > 0)',
+        'And(x, y, True, True)', 'Or(x, y, False)', 'And(x, y).subs({x: True, y: False})',
+        'And(x > 0, y > 0).subs({x: 1, y: 2})', 'Or(x, y).subs(x, True)', 'Xor(x, y).subs(x, True)',
+        'Equivalent(x, y).subs(x, True)', 'ITE(x, y, z).subs(x, True)', 'Not(x > y).subs(x, 1)', 'And(x > 0, y)',
+        'str(Not(x) & y)', 'str(Not(x & y))', 'str(~(x | y) & z)', 'str(Implies(x, y) | z)', 'str(Nand(x, y) & z)',
+        'str(Or(x, Implies(y, z)))', 'sorted(And(x, y).free_symbols, key=str)', 'And(x, y).count_ops()', 'true & x',
+        'x | False']
+    for text in cases:
+        expected = eval(text, S_NS)
+        got = eval(text, C_NS)
+        if isinstance(got, C.Basic) and isinstance(expected, sympy.Basic):
+            assert to_sympy(got) == expected, (text, got, expected)
+        assert str(got) == str(expected), (text, got, expected)
+
+
+def test_known_ask_and_refine() -> None:
+    """``ask`` and ``refine`` answer as SymPy does on the cases probed:
+    with conjunctive assumptions by the facts, with others by SymPy's
+    solver, the errors included."""
+    sf, cf = sympy.Function('f'), C.Function('f')
+    S_NS: dict[str, object] = dict(vars(sympy), Q=sympy.Q, ask=sympy.ask, refine=sympy.refine, x=sx, y=sy, z=sz, f=sf)
+    C_NS: dict[str, object] = dict(vars(C), x=cx, y=cy, z=cz, f=cf, sin=C.SymPyFunction(sympy.sin),
+        exp=C.SymPyFunction(sympy.exp), Abs=C.SymPyFunction(sympy.Abs), log=C.SymPyFunction(sympy.log),
+        sign=C.SymPyFunction(sympy.sign), re=C.SymPyFunction(sympy.re), im=C.SymPyFunction(sympy.im))
+    cases = ['ask(Q.positive(x), Q.positive(x))', 'ask(Q.positive(x + 1), Q.positive(x))', 'ask(Q.integer(2))',
+        'ask(Q.prime(x), Q.integer(x))', 'ask(Q.even(x), Q.odd(x))', 'ask(Q.positive(x), x > 0)',
+        'ask(x > 0, Q.positive(x))', 'ask(Q.zero(x), x > 0)', 'ask(Q.is_true(x > 0), Q.positive(x))',
+        'ask(Q.real(x), Q.positive(x) & Q.integer(y))', 'ask(Q.positive(x*y), Q.positive(x) & Q.positive(y))',
+        'ask(Q.positive(x*y), Q.positive(x) & Q.negative(y))', 'ask(Q.real(x), Q.imaginary(x))',
+        'ask(Q.integer(x), Q.even(x) | Q.odd(x))', 'ask(Q.positive(pi))', 'ask(Q.even(2*x), Q.integer(x))',
+        'ask(Q.positive(x**2), Q.real(x) & Q.nonzero(x))', 'ask(Q.rational(x), Q.integer(x))',
+        'ask(Q.positive(x), Q.nonnegative(x) & Q.nonzero(x))', 'ask(Q.negative_infinite(-oo))',
+        'ask(Q.positive_infinite(oo))', 'ask(Q.finite(x), Q.real(x))', 'ask(Q.real(x), True)', 'ask(Q.real(x))',
+        'ask(Q.commutative(x))', 'ask(Q.positive(x), Q.positive(x) | Q.negative(x))',
+        'ask(Q.nonzero(x), Q.positive(x) | Q.negative(x))', 'ask(Q.positive(x) & Q.real(x), Q.positive(x))',
+        'ask(Q.positive(x) | Q.real(x), Q.negative(x))', 'ask(Not(Q.positive(x)), Q.negative(x))',
+        'ask(Implies(Q.positive(x), Q.real(x)))', 'ask(Q.positive(x) & Q.negative(x))', 'ask(true)', 'ask(false)',
+        'ask(Eq(x, 1), Eq(x, 1))', 'ask(Q.positive(x), Eq(x, 1))', 'ask(Q.zero(x), Eq(x, 0))',
+        'ask(Q.positive(x - 1), (x > 1))', 'ask(Q.positive(x), Q.positive(x) & Q.positive(y) & (z > 0))',
+        'ask(Q.real(x), Q.positive(y))', 'ask(Q.positive(f(x)), Q.positive(f(x)))', 'ask(Q.positive(exp(x)), Q.real(x))',
+        'ask(Q.positive(x + y), Q.positive(x) & Q.positive(y))', 'ask(Q.positive(x*y), Q.positive(x) & Q.real(y))',
+        'ask(Q.integer(x/2), Q.even(x))', 'ask(Q.integer(x**2), Q.integer(x))', 'ask(Q.negative(-x), Q.positive(x))',
+        'ask(Q.real(x + I), Q.real(x))', 'ask(Q.imaginary(x*I), Q.real(x) & Q.nonzero(x))',
+        'ask(Q.even(x + 1), Q.odd(x))', 'ask(Q.prime(7))', 'ask(Q.composite(8))', 'ask(Q.positive(x), ~Q.negative(x))',
+        'ask(Q.positive(x), ~Q.negative(x) & ~Q.zero(x) & Q.real(x))', 'ask(Q.extended_real(oo))',
+        'ask(Q.positive(x), Q.positive_infinite(x))', 'ask(Q.extended_positive(x), Q.positive_infinite(x))',
+        'ask(Q.finite(x), Q.positive_infinite(x))', 'ask(Q.positive(x).subs(x, 2))', 'ask(Q.gt(x, y), x > y)',
+        'ask(Q.gt(2, 1))', 'ask(Q.eq(x, x))', 'ask(Q.positive(x), Q.is_true(x > 0))',
+        'ask(Q.positive(x), Q.is_true(Q.positive(x)))', 'ask(Q.real(x), Q.positive(x) | Q.negative(x))',
+        'ask(Q.positive(x), Implies(Q.real(x), Q.positive(x)) & Q.real(x))',
+        'ask(Q.positive(x), Q.positive(x) ^ Q.negative(x))', 'ask(Q.real(x), Q.positive(x) ^ Q.negative(x))',
+        'ask(Q.positive(f(x) + 1), Q.positive(f(x)))', 'ask(~Q.positive(x), Q.positive(x))', 'ask(~Q.positive(x))',
+        'ask(Implies(Q.positive(x), Q.negative(x)), Q.positive(x))', 'ask(Xor(Q.positive(x), Q.negative(x)), Q.positive(x))',
+        'ask(Q.positive(x) & Q.negative(y), Q.positive(x))', 'ask(Q.positive(x) | Q.negative(y), Q.negative(y))',
+        'ask(Q.zero(x*y), Q.zero(y))', 'ask(Q.odd(x), ~Q.even(x) & Q.integer(x))',
+        'ask(Q.rational(x), ~Q.irrational(x) & Q.real(x))', 'ask(Q.positive(x), True)',
+        'ask(Q.even(x*y), Q.even(x) & Q.integer(y))', 'ask(Q.odd(x + y), Q.odd(x) & Q.even(y))',
+        'ask(Q.prime(x + 1), Q.prime(x))', 'ask(Q.positive(Abs(x)), Q.nonzero(x))', 'ask(Q.nonnegative(Abs(x)))',
+        'ask(Q.real(sin(x)), Q.real(x))', 'ask(Q.positive(exp(x)))', 'ask(Q.positive(x**2), Q.real(x))',
+        'ask(Q.nonnegative(x**2), Q.real(x))', 'ask(Q.positive(2**x), Q.real(x))', 'ask(Q.integer(x/2), Q.integer(x))',
+        'ask(Q.integer(x/y), Q.integer(x) & Q.integer(y))', 'ask(Q.positive(x - y), Q.positive(x) & Q.negative(y))',
+        'ask(Q.positive(x - y), Q.positive(x) & Q.positive(y))', 'ask(Q.positive(x), Q.positive(x) & ~Q.positive(x))',
+        'ask(Q.positive(x), Q.positive(x) & Q.zero(x))', 'ask(Q.positive(x), Q.even(x) & Q.odd(x))',
+        'ask(Q.positive(x), False)', 'ask(Q.positive(x), Q.positive(x) & Q.negative(y) & Q.positive(y))',
+        'ask(Q.positive(x), x)', 'ask(Q.positive(x), 2)', 'ask(2)', 'ask(Q.positive(x), Q.positive(x) | x)',
+        'ask(Q.positive(x), Q.real(x) & ~Q.real(x))', 'ask(Q.positive(x), Q.positive(x) & Q.negative(x) | Q.zero(x))',
+        'ask(Q.positive(x), Q.integer(x) & Q.irrational(x))', 'refine(sqrt(x**2), Q.positive(x))',
+        'refine(Abs(x), Q.positive(x))', 'refine(sqrt(x**2), Q.real(x))', 'refine(sqrt(x**2), Q.positive(x) & Q.real(y))',
+        'refine(Abs(x) + Abs(y), Q.positive(x) & Q.negative(y))', 'refine((-1)**x, Q.even(x))',
+        'refine((-1)**x, Q.odd(x))', 'refine(exp(log(x)), Q.real(x))', 'refine(Eq(x, 0), Q.positive(x))',
+        'refine(x > 0, Q.negative(x))', 'refine(sign(x), Q.negative(x))', 'refine(re(x), Q.real(x))',
+        'refine(im(x), Q.imaginary(x))', 'refine(Abs(x*y), Q.positive(x))', 'refine(sqrt(x**2), Q.nonnegative(x))',
+        'refine(sqrt(x**4), Q.real(x))']
+
+    def run(ns: dict[str, object], text: str) -> str:
+        try:
+            return str(eval(text, ns))
+        except (TypeError, ValueError) as e:
+            return '%s: %s' % (type(e).__name__, e)
+    for text in cases:
+        assert run(C_NS, text) == run(S_NS, text), text
+
+
+def test_known_order_of_arguments() -> None:
+    """The arguments of sums and products are in SymPy's order, on random
+    expressions; ``compare`` orders the classes as SymPy does."""
+    from functools import cmp_to_key
+
+    from sympy_extras.core.sorting import compare_key
+    checked = 0
+    for s, c in _samples(3, 150):
+        for node in C.postorder_traversal(c):
+            if isinstance(node, (C.Add, C.Mul)):
+                sn = to_sympy(node)
+                if isinstance(sn, (sympy.Add, sympy.Mul)) and len(sn.args) == len(node.args):
+                    assert [str(to_sympy(a)) for a in node.args] == [str(a) for a in sn.args], node
+                    checked += 1
+    assert checked > 100
+    items = [C.Integer(0), C.Integer(1), C.Rational(1, 2), C.oo, C.nan, C.Integer(-1), -C.oo, C.Integer(5),
+        C.Rational(1, 3), C.Float(2.5), C.E, C.pi, C.I, cx, cn, C.Dummy('d'), C.Wild('w'), C.sqrt(cx), cx**2, cx*cy,
+        cx + 1, _cv('Derivative(f(x), x)'), _cv('Integral(f(x), x)'), _cv('Abs(x)'), _cv('factorial(x)'),
+        C.Lambda(cx, cx**2), C.Order(cx), C.Eq(cx, 1), C.Ne(cx, 1), cx > 1, cx < 1, cx >= 1, cx <= 1,
+        C.AlgebraicNumber(C.sqrt(2), [1, 1]), C.Q.positive(cx), cx & cy, C.true, C.false, C.Catalan, C.zoo,
+        C.Dict({cx: 1}), C.equivalent(cx, cy), C.EulerGamma, C.GoldenRatio, C.ite(cx, cy, cx), C.implies(cx, cy),
+        C.Mod(cx, 2), ~cx, cx | cy, _cv('Piecewise((x, x > 0), (0, True))'), C.Subs(_cv('f(x)'), cx, 1),
+        _cv('Sum(x, (x, 1, 2))'), C.TribonacciConstant, C.Tuple(cx), C.UnevaluatedExpr(cx), cx ^ cy,
+        _cv('ceiling(x)'), _cv('exp(x)'), _cv('f(x)'), _cv('floor(x)'), _cv('log(x)'), _cv('sin(x)')]
+    ours = sorted(items, key=compare_key)
+    theirs = sorted([to_sympy(i) for i in items], key=cmp_to_key(sympy.Basic.compare))
+    assert [str(i) for i in ours] == [str(i) for i in theirs]
+
+
+def test_known_native_algorithms() -> None:
+    """``factor_terms``, ``gcd_terms``, ``as_leading_term`` and
+    ``leadterm`` agree with SymPy on the cases probed, ``Mod`` reduces
+    ``n*(n + 1)`` modulo 2 as SymPy does, and the polynomial predicates
+    give SymPy's three-valued answers."""
+    for text in ['x**2 + x', '2*x + 4*y', '2*x + 4*y + 6', 'x*y + x*z', 'x/2 + y/2', 'x/2 + y/4', '-x - y', '-2*x - 4*y',
+                 'x**2*y + x*y**2', '2*x**2 + 4*x**3', 'x*(x + 1) + 2*x', 'sin(x)*x + sin(x)*y', 'x + y', 'x**2 + x + 1',
+                 'x*(2*y + 4*z)', '(2*x + 4*y)**2', '(2*x + 4*y)*(3*x + 6)', 'sqrt(2)*x + sqrt(2)*y', '2*sqrt(2)*x + 4*y',
+                 'x/y + z/y', '2*x/y + 4*z/y', 'x*exp(x) + x', '2*exp(2*x) + 4*exp(x)', 'x**(n+1) + x**n', '2*x - 2',
+                 '(x + 1)*(2*x + 2)', 'x*(x + y) + y*(x + y)', '6*x*y + 9*x*z + 3*x', 'x/3 + 1/3', '-x**2 - x', 'I*x + I*y',
+                 '2*pi*x + 4*pi*y', 'x*(y + 1)/2 + x*(z + 1)/2', 'sqrt(x) + x', 'x**-1 + x**-2', '1/x + 1/y', '2/x + 4/x**2',
+                 'x + x*y', 'f(2*x + 4*y)', 'sin(2*x + 4*y)', 'exp(2*x + 4*y)', 'Eq(2*x + 4, 2*y)', 'x + 1/x', '-x - 1',
+                 '-2*x - 2', 'x/2 + x**2/2', '1/(2*x) + 1/(4*y)', '3/(2*x) + 1/x**2', 'x/(x + 1) + y/(x + 1)',
+                 '-1/x - 1/y', 'exp(x)/x + exp(2*x)/x**2', 'x/2 + y', 'x/2 + 1/x']:
+        s = parse(text) if 'Eq' not in text else sympy.Eq(parse('2*x + 4'), parse('2*y'))
+        c = from_sympy(s)
+        sft, sgt = untyped(sympy.factor_terms), untyped(sympy.gcd_terms)
+        for ours, theirs in [(C.factor_terms(c), sft(s)), (C.gcd_terms(c), sgt(s)),
+                             (C.factor_terms(c, fraction=True), sft(s, fraction=True)),
+                             (C.factor_terms(c, sign=False), sft(s, sign=False)),
+                             (C.gcd_terms(c, fraction=False), sgt(s, fraction=False))]:
+            assert str(ours) == str(theirs), (text, ours, theirs)
+    for text in ['x + x**2', '2*x**2 + x**3', '1 + x', 'x*y + x**2*y', 'x**-1 + x', '1/x + 1/x**2', 'x + y', 'x*(x + 1)',
+                 '(x + 1)**2', 'x**2*(1 + x)', 'sin(x)', 'sin(x) + x', 'exp(x) - 1', 'cos(x) - 1', 'sqrt(x) + x',
+                 '1/(1 + x)', '(1 + x)/x', 'x/(1 + x)', 'x**x', 'x**n', 'y', '2', 'x - x**2', 'x + x*y', 'y*(x + 1)',
+                 'x**2 + 2*x*y + y**2', 'x + y + 1', 'I*x + x**2', '1/x + sin(x)', 'x*exp(x) + x**2', 'x**y',
+                 '(x**2 + x)**2', '(x**2 + x)**(1/2)', '1/sqrt(x + x**2)', '(x + 1)**x', 'f(x)', 'x*f(x)',
+                 'x**2*y + x*y**2 + y**3', '(x + 2)**3', 'x/(x**2 + 1) + 1', '(x + y)/(x - y)', '3*x**2 - 2*x']:
+        se, ce = parse(text), _cv(text)
+        pairs: list[tuple[Callable[[], object], Callable[[], object]]] = [
+            (lambda: ce.as_leading_term(cx), lambda: se.as_leading_term(sx)),
+            (lambda: ce.leadterm(cx), lambda: se.leadterm(sx)),
+            (lambda: ce.as_leading_term(cx, cy), lambda: se.as_leading_term(sx, sy))]
+        for ours_f, theirs_f in pairs:
+            try:
+                expected_text = str(theirs_f())
+            except ValueError:
+                expected_text = 'ValueError'
+            try:
+                got_text = str(ours_f())
+            except ValueError:
+                got_text = 'ValueError'
+            assert got_text == expected_text, (text, got_text, expected_text)
+    for text in ['n*(n + 1)', 'n*(n + 3)', '(n + 1)*(n + 4)', 'n*(n + 2)', 'n**2*(n + 1)', '3*n*(n + 1)', 'n*(n - 1)',
+                 '(n - 1)*(n + 1)', 'n*(n + 1)*(n + 2)', 'n*(n + 1)*y', 'x*(x + 1)', 'n*(2*n + 1)', 'n*(n + 1)*(2*n + 1)']:
+        for q in (2, 3, 4, 6):
+            assert str(C.mod(_cv(text), q)) == str(sympy.Mod(parse(text), q)), (text, q)
+    for text in ['sin(x)', 'sin(x) + 1', '2*sin(x)', 'sin(x)**2', 'sin(y)', 'f(x)', 'x + f(x)', 'sqrt(sin(x))',
+                 'sin(x)/x', 'Abs(x)', 'exp(x)', 'sin(x)**-1', 'sin(x)**y', 'sin(x)**(1/2)', 'f(x)**2', '2**sin(x)',
+                 'x**sin(x)', '(x + sin(x))**2', '1/sin(x)', 'sqrt(x)**2', 'x**-1', 'sqrt(x)', 'x**n', 'x**y', 'x**2.5',
+                 'sin(y)**x', 'sin(y)*x', 'sin(y) + x', 'sin(y)**2', 'y**f(x)', 'f(y)**-1', 'f(y)**x', 'x**2 + 1',
+                 'x + 1/y']:
+        sp_, cp_ = parse(text), _cv(text)
+        answers = (cp_.is_polynomial(), cp_.is_polynomial(cx), cp_.is_rational_function(cx),
+                   cp_.is_algebraic_expr(cx), cp_.is_polynomial(cy), cp_.is_rational_function(cy),
+                   cp_.is_algebraic_expr(cy))
+        sympy_answers = (sp_.is_polynomial(), sp_.is_polynomial(sx), sp_.is_rational_function(sx),
+                         sp_.is_algebraic_expr(sx), sp_.is_polynomial(sy), sp_.is_rational_function(sy),
+                         sp_.is_algebraic_expr(sy))
+        assert answers == sympy_answers, (text, answers, sympy_answers)

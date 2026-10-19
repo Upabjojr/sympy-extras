@@ -49,11 +49,14 @@ Everything a user of SymPy's core relies on keeps its name and its meaning:
 | `Wild`, `WildFunction`, `match`, `matches`, `replace`, `find`, `count` | the same | a backtracking matcher with SymPy's conventions (sums and products as multisets, solving for a lone wild) |
 | `Eq`, `Ne`, `Lt`, `Le`, `Gt`, `Ge` (and the long names), `Rel` | unevaluating classes + `eq`, `ne`, `lt`, `le`, `gt`, `ge` | `x < 1` calls `lt`; `canonical`, `negated`, `reversed` |
 | `S.true`, `S.false` | `true`, `false` | atoms with a truth value |
+| `And`, `Or`, `Not`, `Xor`, `Implies`, `Equivalent`, `ITE`, `Nand`, `Nor`, `Xnor`, `LatticeOp`, `BooleanFunction` | unevaluating classes + `and_`, `or_`, `not_`, `xor`, `implies`, `equivalent`, `ite` | the operators `&`, `\|`, `~`, `^`, `>>`, `<<` of symbols, relations and predicates call the functions; `And(y, x) == And(x, y)`; the printing (`z & (x \| y)`, `~(x & y)`, `Implies(x, y)`) is SymPy's |
+| `Q`, `ask`, `Predicate`, `AppliedPredicate`, `AssumptionsContext`, `global_assumptions`, `assuming`, `refine` | the same | `Q.positive(x)` never evaluates; `ask` reads conjunctive assumptions as facts and answers by the old assumptions, the rest is asked to SymPy's solver; handlers with `Q.positive.register(cls)`; `refine` is SymPy's with this `Q` |
 | `EulerGamma`, `Catalan`, `GoldenRatio`, `TribonacciConstant`, `AlgebraicNumber`, `UnevaluatedExpr`, `Dict`, `RealNumber` | the same | `AlgebraicNumber` keeps the coefficients as given (SymPy reduces them modulo the minimal polynomial) |
 | `sympify`, `SympifyError`, `Tuple`, `evalf`, `N`, `comp`, `seterr`, `default_sort_key`, `ordered` | the same | strings are parsed by SymPy's parser |
 | the `is_*` assumptions | all of SymPy's predicates: the ones above and `extended_positive`, ..., `extended_nonzero`, `hermitian`, `antihermitian`, `algebraic`, `transcendental`, `composite`, `noninteger`, `polar` | a table of implications and structural rules on sums, products and powers; the facts of a node are cached on the node; `assumptions`, `check_assumptions`, `failing_assumptions`, `common_assumptions` |
-| the methods of `Expr` | the same: `as_coeff_Mul`, `as_base_exp`, `as_independent`, `as_coeff_exponent`, `as_coefficient`, `as_content_primitive`, `extract_additively`, `extract_multiplicatively`, `equals`, `as_real_imag`, `conjugate`, `adjoint`, `transpose`, `as_terms`, `round`, `is_polynomial`, `is_rational_function`, `is_algebraic_expr`, `is_constant`, `is_comparable`, `as_dummy`, `dummy_eq`, `has_free`, `rcall`, ... | the structural ones are written here; `series`, `nseries`, `lseries`, `aseries`, `limit`, `as_leading_term`, `leadterm`, `simplify`, `factor`, `cancel`, `apart`, `collect`, `together`, `powsimp`, `radsimp`, `ratsimp`, `trigsimp`, `nsimplify`, `integrate`, `as_poly`, `invert`, `rewrite`, `refine`, `fps`, `fourier_series` convert to SymPy, call it and convert back |
-| `evaluate`, `distribute`, `global_parameters`, `cacheit`, `clear_cache`, `Transform`, the kinds, `preorder_traversal`, `postorder_traversal`, `bottom_up`, `use`, `iterargs`, `iterfreeargs`, `igcd`, `ilcm`, `igcdex`, `mod_inverse`, `integer_nthroot`, `integer_log`, `num_digits`, `trailing`, `factor_terms`, `gcd_terms`, `factor_nc`, `vectorize`, `var`, `greeks`, `call_highest_priority`, `_op_priority`, the exceptions | the same | `with evaluate(False): x + x` gives `Add(x, x)`; `cacheit` keeps the signature of the function |
+| the methods of `Expr` | the same: `as_coeff_Mul`, `as_base_exp`, `as_independent`, `as_coeff_exponent`, `as_coefficient`, `as_content_primitive`, `extract_additively`, `extract_multiplicatively`, `equals`, `as_real_imag`, `conjugate`, `adjoint`, `transpose`, `as_terms`, `round`, `is_polynomial`, `is_rational_function`, `is_algebraic_expr`, `is_constant`, `is_comparable`, `as_dummy`, `dummy_eq`, `has_free`, `rcall`, `as_leading_term`, `leadterm`, `removeO`, `getO`, `getn`, ... | the structural ones are written here (the leading term of a polynomial, rational or algebraic expression too); `series`, `nseries`, `lseries`, `aseries`, `limit`, `simplify`, `factor`, `cancel`, `apart`, `collect`, `together`, `powsimp`, `radsimp`, `ratsimp`, `trigsimp`, `nsimplify`, `integrate`, `as_poly`, `invert`, `rewrite`, `fps`, `fourier_series` and the leading term of a function convert to SymPy, call it and convert back |
+| `evaluate`, `distribute`, `global_parameters`, `cacheit`, `clear_cache`, `Transform`, the kinds, `preorder_traversal`, `postorder_traversal`, `bottom_up`, `use`, `iterargs`, `iterfreeargs`, `igcd`, `ilcm`, `igcdex`, `mod_inverse`, `integer_nthroot`, `integer_log`, `num_digits`, `trailing`, `factor_terms`, `gcd_terms`, `factor_nc`, `vectorize`, `var`, `greeks`, `call_highest_priority`, `_op_priority`, the exceptions | the same | `with evaluate(False): x + x` gives `Add(x, x)`; `cacheit` keeps the signature of the function; `factor_terms` and `gcd_terms` are written here (`factor_nc` and the radicals are SymPy's) |
+| `Basic.compare`, the order of `args` | the same | sums and products store their arguments in the order of SymPy's `compare` (the numbers, then by class, then by content: `(x + y + n).args` is `(x, y, n)` for an integer `n`), `sort_key` is the order of `default_sort_key` |
 | `str`, `srepr` | the same notation | `x**2 + 2*x + 1`, `-x*y/(2*z)`, `sqrt(x)`, `1/x`, `Eq(x, y)`, `x < 1`, `O(x**2)`, `Subs(f(x), x, 2)`, `2*(Mod(x, 3))`, `a_` |
 
 The evaluated forms are SymPy's: `add`, `mul` and `pow` flatten, collect
@@ -168,24 +171,40 @@ substitutions and numerical values.
 * **Pattern matching** follows SymPy's conventions, with structural matches
   searched before solved ones: `(2*x + 3).match(a*x + b)` is `{a: 2, b: 3}`,
   `x.match(a + x)` is `{a: 0}`, `(x**3).match(a*x**2)` is `{a: x}`,
-  `S(2).match(a*x)` is `{a: 2/x}`, `(2/x).match(a*x)` is `None`. In the few
-  ambiguous cases where SymPy's search order gives an odd binding
+  `S(2).match(a*x)` is `{a: 2/x}`, `(2/x).match(a*x)` is `None`,
+  `(x**3).match(x**a*x**b)` is `{a: 0, b: 3}`. In the few ambiguous cases
+  where SymPy's search order gives an odd binding
   (`(x**2 + 2*x).match(a*x**2 + b*x)` is `{a: 2/x, b: x}` in SymPy), the
-  natural one is found here (`{a: 1, b: 2}`).
+  natural one is found here (`{a: 1, b: 2}`); reproducing that order would
+  mean reproducing SymPy's algorithm.
+* **The logic and the new assumptions.** `And`, `Or`, `Not`, `Xor`,
+  `Implies`, `Equivalent` and `ITE` are unevaluating classes (`And` and
+  `Or` derive from `LatticeOp`: equal up to the order of the arguments)
+  with the evaluating functions `and_`, `or_`, `not_`, `xor`, `implies`,
+  `equivalent`, `ite`, which give what SymPy's constructors give;
+  `Q.positive(x)` is an `AppliedPredicate` which never evaluates;
+  `ask(proposition, assumptions)` reads a conjunction of applied predicates
+  as facts about their arguments (closed under the implications, checked
+  for consistency), replaces the arguments by dummies carrying those facts
+  and answers with the old assumptions: `ask(Q.positive(x + 1), Q.positive(x))`
+  is `(_x + 1).is_positive`. The handlers registered on a predicate are
+  consulted first; what stays unanswered (and every question under
+  non-conjunctive assumptions such as `Q.positive(x) | Q.negative(x)`) is
+  asked to SymPy's `ask`, so that the answers are SymPy's. `refine` is
+  SymPy's, with this `Q`. Unlike SymPy, the facts of a symbol with
+  assumptions are used under any assumptions, an inconsistency among the
+  assumptions about any argument of the proposition raises (SymPy ignores
+  the ones about other expressions, and its message differs in the cases
+  its solver finds). As in SymPy, `x & ~x` and `Q.positive(x) & ~Q.positive(x)`
+  are kept, while a relation and its negation give `false`.
 * **Small differences**: SymPy's occasional nested products
-  (`3*sqrt(10)*(-I**(3/2))/40`) come out flat; `Mod(n*(n + 1), 2)` is not
-  reduced to `0`; `sin(x).is_polynomial()` is
-  `False` where SymPy answers `None`; the closure of `nonzero=False` also
-  contains `odd=False` (which follows from `odd` implying `nonzero`; SymPy
-  leaves it out); the arguments of a sum are in this core's canonical order,
-  so `as_terms` lists them in that order; the dummy of a `Subs` made by
-  `diff` is the variable of the original `Subs` rather than a fresh
-  `_xi_1`.
-* **Not included**: the `Q`/`ask` system (the old assumptions are kept, with
-  a sound subset of their rules; `refine` is forwarded to SymPy with
-  SymPy's `Q`), `LatticeOp` (`And`/`Or` belong to `sympy.logic` and convert
-  to generic wrappers), and the `FactKB` machinery (the implications are a
-  plain table).
+  (`3*sqrt(10)*(-I**(3/2))/40`) come out flat; `factor_terms(2*x + 4*y)` is
+  the undistributed product `Mul(2, x + 2*y)` here as in SymPy, which `doit`
+  distributes (SymPy's `Mul` would too); the variable of a `Subs` made by
+  `diff` is the one SymPy makes when its cache is empty (SymPy returns the
+  first equal `Subs` it built, with whatever dummy it had).
+* **Not included**: the `FactKB` machinery (the implications are a plain
+  table) and the SAT solver of `sympy.assumptions` (SymPy's is called).
 
 ## Converting to and from SymPy
 
@@ -218,14 +237,14 @@ sympy_extras/core/
     basic.py         Basic, Atom: the tree, equality, hashing, traversal, xreplace, subs, doit, match, replace, find, as_dummy
     expr.py          Expr: the operators (calling add, mul, pow, mod, lt, ...), the decompositions, the is_* queries,
                      the methods forwarded to SymPy; UnevaluatedExpr
-    sorting.py       the canonical order (sort_key, default_sort_key, ordered)
+    sorting.py       the two orders: compare (the arguments of sums and products) and sort_key (default_sort_key, ordered)
     numbers.py       Integer, Rational, Float, the infinities, pi, E, EulerGamma, Catalan, GoldenRatio,
                      TribonacciConstant, I, AlgebraicNumber; number_add, number_mul, comp, seterr
     symbol.py        Symbol, Dummy, Wild, symbols, var
     matching.py      the matcher behind Basic.match
     assumptions.py   the implications of the assumptions, the structural rules, the cache of facts, is_number,
                      check_assumptions, failing_assumptions, common_assumptions
-    operations.py    AssocOp, the base of Add and Mul
+    operations.py    AssocOp, the base of Add and Mul; LatticeOp, the base of And and Or
     add.py           Add and add
     mul.py           Mul and mul, div, neg, prod
     power.py         Pow and pow, sqrt, cbrt, root; the powers of numbers
@@ -234,7 +253,11 @@ sympy_extras/core/
     function.py      FunctionClass, Function, AppliedUndef, SymPyFunction, WildFunction, Lambda, Derivative, Subs,
                      diff, expand and the expand_* hints, count_ops, nfloat, arity
     relational.py    Eq, Ne, Lt, Le, Gt, Ge, Rel and eq, ne, lt, le, gt, ge
-    logic.py         true, false
+    logic.py         Boolean, true, false, And, Or, Not, Xor, Implies, Equivalent, ITE and and_, or_, not_, xor,
+                     implies, equivalent, ite, Nand, Nor, Xnor
+    assume.py        Predicate, AppliedPredicate, AssumptionsContext, global_assumptions, assuming
+    ask.py           Q (AssumptionKeys) and ask
+    refine.py        refine (SymPy's, with this Q)
     containers.py    Tuple, Dict
     singleton.py     S
     sympify.py       sympify
@@ -247,7 +270,7 @@ sympy_extras/core/
     rules.py         Transform
     traversal.py     postorder_traversal, bottom_up, use, iterargs, iterfreeargs
     intfunc.py       igcd, ilcm, igcdex, mod_inverse, integer_nthroot, integer_log, num_digits, trailing
-    exprtools.py     factor_terms, gcd_terms, factor_nc (through SymPy)
+    exprtools.py     factor_terms, gcd_terms (written here), factor_nc (through SymPy)
     decorators.py    call_highest_priority
     multidimensional.py  vectorize
     random.py        random_complex_number, verify_numerically, test_derivative_numerically
@@ -256,14 +279,45 @@ sympy_extras/core/
     tests/           test_core.py (the design, regressions), test_core_known.py (against SymPy)
 ```
 
+## Performance
+
+Measured against `sympy.core` (SymPy 1.14, one process, the script
+`bench_core.py` of the session which wrote this; times in seconds):
+
+| operation | `sympy.core` | here | ratio |
+| --- | --- | --- | --- |
+| a sum of 300 terms built term by term | 0.105 | 0.131 | 1.2 |
+| a product of 200 factors | 0.019 | 0.057 | 2.9 |
+| `expand((x + y + z)**8)` | 0.0014 | 0.0031 | 2.3 |
+| `diff` of a 21-term polynomial, 10 times | 0.016 | 0.015 | 0.9 |
+| `subs` of 20 different values in that polynomial | 0.025 | 0.014 | 0.6 |
+| `is_positive` of 200 fresh expressions | 0.006 | 0.022 | 3.6 |
+| `match` of `a*x**2 + b*x`, 200 times | 0.60 | 0.27 | 0.4 |
+| 300 random expressions of depth 4 (the fuzz recipe) | 0.029 | 0.055 | 1.9 |
+| `series` of `sin(x)*exp(x)`, 5 times (through SymPy) | 0.142 | 0.140 | 1.0 |
+| `str` of an 84-term polynomial, 5 times | 0.012 | 0.028 | 2.4 |
+| `factor_terms(2*x*y + 4*x*z + 6*x + i)`, 200 times | 0.083 | 0.071 | 0.9 |
+| `as_leading_term` of a cubic, 200 times | 0.18 | 0.05 | 0.3 |
+| `ask(Q.positive(x**2 + i), Q.real(x))`, 50 times | 0.56 | 0.013 | 0.02 |
+
+The arithmetic is within a factor of three of SymPy's (a sum keeps the
+terms it does not change, a power of a sum is expanded by the multinomial
+theorem, the facts and the `compare` key of a node are computed once and
+cached on it); the structural algorithms written here are faster than
+SymPy's, which pay for their generality; the methods forwarded to SymPy
+cost one conversion of the result (the conversion of a node is cached on
+the node, and `from_sympy` keeps a table of what it converted, both
+emptied by `clear_cache`). What remains slower is the generic machinery
+of a Python tree without SymPy's global cache of every constructor call.
+
 ## Open points
 
-* Performance has not been a goal: the facts of a node are cached, but
-  `add` and `mul` sort with a Python key, and the exact number fields of
-  SymPy's `Poly` are not used. A measurement against `sympy.core` on the
-  usual benchmarks is the next step.
 * The structural rules of the assumptions are a sound subset of SymPy's;
-  a question they do not answer gives `None` where SymPy may know.
-* The methods forwarded to SymPy convert the expression on every call; a
-  core which replaced `sympy.core` would have those algorithms work on its
-  own tree.
+  a question they do not answer gives `None` where SymPy may know (`ask`
+  then asks SymPy, the `is_*` properties do not).
+* The methods forwarded to SymPy (`series`, `simplify`, `integrate`, the
+  leading term of a function, `refine`, the SAT part of `ask`) are the
+  algorithms of the other packages of SymPy; a core which replaced
+  `sympy.core` would have those packages work on its own tree.
+* `Mod(n*(n + 1)*(n + 2), 3)` and the like are not reduced, as in SymPy
+  (only the modulus 2 is).

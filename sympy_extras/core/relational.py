@@ -77,6 +77,10 @@ class Relational(Boolean):
         return BooleanKind
 
     @property
+    def binary_symbols(self) -> set[Basic]:
+        return set()
+
+    @property
     def canonical(self) -> Relational:
         """The relation with the sides ordered canonically (a number on
         the right, ``<`` rather than ``>``)."""
@@ -95,6 +99,9 @@ class Relational(Boolean):
     @classmethod
     def class_key(cls) -> ClassKey:
         return (5, 0, cls.__name__)
+
+    def _compare_name(self) -> str:
+        return _SYMPY_NAMES[type(self)]
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         lhs, rhs = args
@@ -167,6 +174,11 @@ _NAMES: dict[str, type[Relational]] = {
     '>': Gt, 'gt': Gt, '>=': Ge, 'ge': Ge}
 
 
+#: the names of the classes in SymPy, for the ``compare`` order
+_SYMPY_NAMES: dict[type[Relational], str] = {Eq: 'Equality', Ne: 'Unequality', Lt: 'StrictLessThan',
+    Le: 'LessThan', Gt: 'StrictGreaterThan', Ge: 'GreaterThan'}
+
+
 def Rel(lhs: ExprLike, rhs: ExprLike, rop: str) -> Relational:
     """The unevaluated relation named by ``rop`` (``'<'``, ``'lt'``, ``'=='``, ...).
 
@@ -183,7 +195,7 @@ def Rel(lhs: ExprLike, rhs: ExprLike, rop: str) -> Relational:
     return _NAMES[rop](lhs, rhs)
 
 
-def _decide_equal(a: Expr, b: Expr) -> Basic:
+def _decide_equal(a: Expr, b: Expr) -> Boolean:
     """``true``, ``false`` or ``None`` as a relation, for ``a == b``."""
     if a == b:
         return true
@@ -207,7 +219,7 @@ def _decide_equal(a: Expr, b: Expr) -> Basic:
     return Eq(a, b)
 
 
-def eq(a: ExprLike, b: ExprLike) -> Basic:
+def eq(a: ExprLike, b: ExprLike) -> Boolean:
     """The evaluated equation ``a == b``: ``true``, ``false`` or ``Eq``.
 
     Examples
@@ -223,7 +235,7 @@ def eq(a: ExprLike, b: ExprLike) -> Basic:
     return _decide_equal(to_expr(a), to_expr(b))
 
 
-def ne(a: ExprLike, b: ExprLike) -> Basic:
+def ne(a: ExprLike, b: ExprLike) -> Boolean:
     """The evaluated inequation ``a != b``: ``true``, ``false`` or ``Ne``."""
     if not global_parameters.evaluate:
         return Ne(a, b)
@@ -253,7 +265,7 @@ def _order(a: Number, b: Number) -> int:
     return (va > vb) - (va < vb)
 
 
-def _compare(a: ExprLike, b: ExprLike, accepted: tuple[int, ...], cls: type[Relational]) -> Basic:
+def _compare(a: ExprLike, b: ExprLike, accepted: tuple[int, ...], cls: type[Relational]) -> Boolean:
     lhs, rhs = to_expr(a), to_expr(b)
     if not global_parameters.evaluate:
         return cls(lhs, rhs)
@@ -274,7 +286,7 @@ def _compare(a: ExprLike, b: ExprLike, accepted: tuple[int, ...], cls: type[Rela
     return true if order in accepted else false
 
 
-def lt(a: ExprLike, b: ExprLike) -> Basic:
+def lt(a: ExprLike, b: ExprLike) -> Boolean:
     """The evaluated ``a < b``: ``true``, ``false`` or ``Lt``.
 
     Examples
@@ -288,17 +300,17 @@ def lt(a: ExprLike, b: ExprLike) -> Basic:
     return _compare(a, b, (-1,), Lt)
 
 
-def le(a: ExprLike, b: ExprLike) -> Basic:
+def le(a: ExprLike, b: ExprLike) -> Boolean:
     """The evaluated ``a <= b``: ``true``, ``false`` or ``Le``."""
     return _compare(a, b, (-1, 0), Le)
 
 
-def gt(a: ExprLike, b: ExprLike) -> Basic:
+def gt(a: ExprLike, b: ExprLike) -> Boolean:
     """The evaluated ``a > b``: ``true``, ``false`` or ``Gt``."""
     return _compare(a, b, (1,), Gt)
 
 
-def ge(a: ExprLike, b: ExprLike) -> Basic:
+def ge(a: ExprLike, b: ExprLike) -> Boolean:
     """The evaluated ``a >= b``: ``true``, ``false`` or ``Ge``."""
     return _compare(a, b, (0, 1), Ge)
 

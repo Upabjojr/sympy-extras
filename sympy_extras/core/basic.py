@@ -35,10 +35,13 @@ from typing import (TYPE_CHECKING, Callable, Iterable, Iterator, Literal, Mappin
     Protocol, Union, overload)
 
 from .kind import Kind, UndefinedKind
-from .sorting import ArgsKey, ClassKey, SortKey
+from .sorting import ArgsKey, ClassKey, CompareItem, CompareKey, SortKey, class_rank
 
 if TYPE_CHECKING:
+    from sympy.core.basic import Basic as SymPyBasic
+
     from .expr import Expr
+    from .logic import Boolean
     from .function import FunctionClass
     from .printing import StrPrinter
     from .symbol import Dummy, Symbol
@@ -80,6 +83,15 @@ class ReplacementRule(Protocol):
     def __getitem__(self, item: Basic) -> Basic: ...
 
 
+#: an assumption for ``refine``: a boolean node, a Python bool or a SymPy boolean
+RefineArg = Union['Boolean', bool, 'SymPyBasic']
+
+
+def _as_boolean(b: object) -> 'Boolean':
+    from .logic import to_boolean
+    return to_boolean(b)
+
+
 class Basic:
     """A node of the expression tree: a class and a tuple of arguments.
 
@@ -100,7 +112,7 @@ class Basic:
     2*x
     """
 
-    __slots__ = ('_hash',)
+    __slots__ = ('_hash', '_compare_key_cache', '_sympy_cache')
 
     # Class flags of SymPy, usable without importing the classes.
     is_Atom: bool = False
@@ -139,6 +151,8 @@ class Basic:
 
     def __init__(self) -> None:
         self._hash: int = hash((type(self).__name__, self._hashable_content()))
+        self._compare_key_cache: Optional[CompareKey] = None
+        self._sympy_cache: Optional[SymPyBasic] = None
         self._after_init()
 
     def _after_init(self) -> None:
@@ -252,10 +266,51 @@ class Basic:
         args: ArgsKey = (len(self.args), tuple(a.sort_key() for a in self.args))
         return (self.class_key(), args, '', (), _ONE_KEY)
 
+    def _compare_name(self) -> str:
+        """The name of the class in SymPy, for the ``compare`` order."""
+        return type(self).__name__
+
+    def _compare_content(self) -> tuple[CompareItem, ...]:
+        """The content of the node in the ``compare`` order: the keys of
+        the arguments by default (SymPy's ``_hashable_content``)."""
+        return tuple(a.compare_key() for a in self.args)
+
+    def compare_key(self) -> CompareKey:
+        """The key of SymPy's ``compare`` order: the rank of the class,
+        then the length of the content, then the content; the order of
+        the arguments of sums and products. Computed once per node.
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import symbols
+        >>> x, y = symbols('x y')
+        >>> x.compare_key() < y.compare_key() < (x**2).compare_key() < (x*y).compare_key()
+        True
+        """
+        cached = self._compare_key_cache
+        if cached is None:
+            content = self._compare_content()
+            cached = (class_rank(self._compare_name()), len(content), content)
+            self._compare_key_cache = cached
+        return cached
+
     def compare(self, other: Basic) -> int:
         """``-1``, ``0`` or ``1`` as ``self`` sorts before, with, or after
-        ``other``."""
-        a, b = self.sort_key(), other.sort_key()
+        ``other`` in the order of the arguments of sums and products (the
+        order of SymPy's ``Basic.compare``: by class, then by content).
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import symbols, Symbol
+        >>> x, y = symbols('x y')
+        >>> x.compare(y), y.compare(x), x.compare(x), x.compare(x**2), Symbol('n', integer=True).compare(y)
+        (-1, 1, 0, -1, 1)
+        """
+        if self is other:
+            return 0
+        a, b = self.compare_key(), other.compare_key()
         if a < b:
             return -1
         if a > b:
@@ -721,21 +776,24 @@ class Basic:
         targets = rewrite_targets(args)
         return through_sympy(self, lambda s: s.rewrite(*targets))
 
-    def refine(self, assumption: object = True) -> Basic:
-        """SymPy's ``refine`` of the node under a SymPy assumption.
+    def refine(self, assumption: RefineArg = True) -> Basic:
+        """The node simplified under the assumption (and the global ones):
+        :func:`~sympy_extras.core.refine.refine`. A SymPy assumption is
+        accepted too.
 
         Examples
         ========
 
-        >>> import sympy
-        >>> from sympy_extras.core import Symbol, sqrt, to_sympy
+        >>> from sympy_extras.core import Symbol, sqrt, Q
         >>> x = Symbol('x')
-        >>> sqrt(x**2).refine(sympy.Q.positive(to_sympy(x)))
-        x
+        >>> sqrt(x**2).refine(Q.positive(x)), sqrt(x**2).refine(Q.real(x))
+        (x, Abs(x))
         """
-        import sympy
-        from .interop import through_sympy
-        return through_sympy(self, lambda s: sympy.refine(s, assumption))
+        from .refine import refine
+        if isinstance(assumption, (Basic, bool)):
+            return refine(self, _as_boolean(assumption))
+        from .interop import from_sympy
+        return refine(self, _as_boolean(from_sympy(assumption)))
 
     def count_ops(self, visual: bool = False) -> Basic:
         """The number of operations of the tree (:func:`~sympy_extras.core.function.count_ops`)."""

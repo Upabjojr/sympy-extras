@@ -6,6 +6,7 @@ from itertools import islice
 
 from fractions import Fraction
 
+import sympy
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
@@ -71,9 +72,9 @@ def test_the_evaluating_functions() -> None:
 
 
 def test_the_canonical_forms_of_sympy() -> None:
-    assert (x + y + x).args == (2*x, y)
+    assert (x + y + x).args == (y, 2*x)  # SymPy's order: the symbols before the products
     assert (2*x + 1).args == (Integer(1), 2*x)
-    assert (x*y*x).args == (x**2, y) and (2*x*y).args == (Integer(2), x, y)
+    assert (x*y*x).args == (y, x**2) and (2*x*y).args == (Integer(2), x, y)
     assert x**2*x**3 == x**5 and x**y*x**(2*y) == x**(3*y) and x**y*x**z == Mul(x**y, x**z)
     assert 2**x*3**x == 6**x and sqrt(2)*sqrt(3) == sqrt(6) and sqrt(2)*sqrt(2) == 2
     assert sqrt(8) == 2*sqrt(2) and sqrt(12) == 2*sqrt(3) and Integer(8)**Rational(1, 3) == 2
@@ -522,3 +523,129 @@ def test_every_sympy_object_converts() -> None:
     assert type(integral).__name__ == 'SymPyExprNode' and integral.doit() == Rational(1, 3)
     assert str(integral.evalf()) == '0.333333333333333' and integral.free_symbols == set()
     assert from_sympy(sympy.Sum(sx, (sx, 1, 10))).doit() == 55
+
+
+def test_the_connectives() -> None:
+    """The connectives are unevaluating classes with evaluating functions,
+    equal up to the order of their arguments, printed as SymPy prints them."""
+    from sympy_extras.core import (ITE, And, Equivalent, Implies, LatticeOp, Nand, Nor, Not, Or, Xnor, Xor, and_,
+        equivalent, implies, ite, not_, or_, xor)
+    assert And(x, x).args == (x, x) and And(x, x).doit() == x and and_(x, x) == x
+    assert And(y, x) == And(x, y) and And(y, x).args == (y, x) and and_(y, x).args == (x, y)
+    assert isinstance(And(x, y), LatticeOp) and And.identity == true and And.zero == false
+    assert and_(x, True, y) == And(x, y) and and_(x, False) == false and and_() == true and or_() == false
+    assert and_(x, not_(x)) == And(x, Not(x)) and or_(x > 0, x <= 0) == true and and_(x > 0, x <= 0) == false
+    assert not_(not_(x)) == x and not_(x > 0) == (x <= 0) and not_(Eq(x, 1)) == Ne(x, 1) and not_(True) == false
+    assert xor(x, x) == false and xor(x, True) == not_(x) and xor(x, y, x) == y and xor(x, xor(y, z)) == Xor(x, y, z)
+    assert implies(True, y) == y and implies(x, False) == not_(x) and implies(x, x) == true
+    assert equivalent(x, True) == x and equivalent(x, False) == not_(x) and equivalent(x, x) == true
+    assert ite(True, y, z) == y and ite(x, y, z).subs(x, False) == z
+    assert Nand(x, y) == not_(and_(x, y)) and Nor(x, y) == not_(or_(x, y)) and Xnor(x, x) == true
+    assert str(x & (y | z)) == 'x & (y | z)' and str((x & y) | z) == 'z | (x & y)' and str(~(x & y)) == '~(x & y)'
+    assert str(implies(x, y) & z) == 'z & (Implies(x, y))' and str(Equivalent(x, y)) == 'Equivalent(x, y)'
+    assert str((x > 0) & Eq(y, 1)) == 'Eq(y, 1) & (x > 0)' and str(ITE(x, y, z)) == 'ITE(x, y, z)'
+    assert srepr(Implies(x, y)) == "Implies(Symbol('x'), Symbol('y'))" and str(x >> y) == 'Implies(x, y)'
+    # the operators of symbols, relations and predicates build the connectives
+    assert (x & y).args == (x, y) and (x | y) == Or(x, y) and ~x == Not(x) and (x ^ y) == Xor(x, y)
+    assert ((x > 0) & (x < 1)).args == (x > 0, x < 1) and (x > 0) >> (x < 1) == Implies(x > 0, x < 1)
+    raises(TypeError, lambda: untyped(And)(x, 2))
+    raises(TypeError, lambda: untyped(and_)(x, x + 1))
+    assert and_(x, y).xreplace({x: true}) == And(true, y) and and_(x, y).xreplace({x: true}).doit() == y
+    assert and_(x, y).subs(x, True) == y and and_(x > 0, y > 0).subs({x: 1, y: 2}) == true
+    assert and_(x, y).binary_symbols == {x, y} and (x > 0).binary_symbols == set()
+    assert from_sympy(to_sympy(and_(x > 0, implies(y, z), xor(x, y)))) == and_(x > 0, implies(y, z), xor(x, y))
+
+
+def test_q_ask_and_refine() -> None:
+    """``Q`` predicates, ``ask`` with facts read from the assumptions and
+    the context, ``refine`` through SymPy with this core's ``Q``."""
+    from sympy_extras.core import (AppliedPredicate, AssumptionsContext, Predicate, Q, ask, assuming,
+        global_assumptions, refine)
+    assert isinstance(Q.positive(x), AppliedPredicate) and Q.positive(x).args == (Q.positive, x)
+    assert Q.positive(x).function == Q.positive and Q.positive(x).arg == x and Q.gt(x, 0).arguments == (x, Integer(0))
+    assert str(Q.positive(x)) == 'Q.positive(x)' and Q.positive(1).doit() == Q.positive(1)  # never evaluates
+    assert Predicate('positive') != Q.positive and Predicate('foo') == Predicate('foo')
+    raises(TypeError, lambda: Q.positive(x, y))
+    assert ask(Q.positive(x + 1), Q.positive(x)) is True and ask(Q.even(x), Q.odd(x)) is False
+    assert ask(Q.prime(x), Q.integer(x)) is None and ask(Q.integer(2)) is True and ask(Q.positive(p)) is True
+    assert ask(x > 0, Q.positive(x)) is True and ask(Q.is_true(x > 0), Q.positive(x)) is True
+    assert ask(Q.positive(x), x > 0) is None  # relations among the assumptions are not used, as in SymPy
+    assert ask(Q.nonzero(x), Q.positive(x) | Q.negative(x)) is True  # SymPy's SAT solver
+    assert ask(Q.positive(x) & Q.real(x), Q.positive(x)) is True and ask(~Q.positive(x), Q.negative(x)) is True
+    assert ask(Q.integer(x/2), Q.even(x)) is True and ask(Q.integer(x/2), Q.odd(x)) is False
+    assert ask(Q.positive_infinite(oo)) is True and ask(Q.positive(x), Q.positive_infinite(x)) is False
+    raises(ValueError, lambda: ask(Q.positive(x), Q.positive(x) & Q.zero(x)))
+    raises(ValueError, lambda: ask(Q.positive(x), False))
+    raises(TypeError, lambda: untyped(ask)(Q.positive(x), x + 1))
+    raises(TypeError, lambda: untyped(ask)(x + 1))
+    # handlers registered on a predicate
+    P = Predicate('mypred')
+
+    @P.register(Symbol)
+    def _(e: Basic, assumptions: Basic) -> bool:
+        return True
+    assert ask(P(x)) is True and ask(P(x + 1)) is None
+    # the context
+    assert ask(Q.positive(x)) is None
+    with assuming(Q.positive(x)):
+        assert ask(Q.positive(x)) is True and ask(Q.positive(x + 1)) is True and Q.positive(x) in global_assumptions
+        assert sqrt(x**2).refine() == x
+    assert ask(Q.positive(x)) is None and len(global_assumptions) == 0
+    context = AssumptionsContext([Q.negative(y)])
+    assert ask(Q.negative(y), context=context) is True and str(context) == 'AssumptionsContext({Q.negative(y)})'
+    assert refine(sqrt(x**2), Q.positive(x)) == x and refine(sqrt(x**2), Q.real(x)) == expr('Abs(x)')
+    assert refine(Eq(x, 0), Q.positive(x)) == false and sqrt(x**2).refine(Q.negative(x)) == -x
+    assert to_sympy(Q.positive(x) & Q.real(y)) == sympy.And(sympy.Q.positive(to_sympy(x)), sympy.Q.real(to_sympy(y)))
+    assert from_sympy(sympy.Q.positive(to_sympy(x))) == Q.positive(x)
+    assert from_sympy(to_sympy(Predicate('foo')(x))) == Predicate('foo')(x)
+
+
+def test_the_order_of_the_arguments() -> None:
+    """Sums and products store their arguments in SymPy's ``compare``
+    order: the numbers first, then by class, then by content."""
+    from sympy_extras.core.sorting import class_rank, compare_key
+    assert (x + y + n).args == (x, y, n) and (y - x).args == (y, -x) and (x + 2*x**2 + 1).args == (1, x, 2*x**2)
+    assert (x*y*n).args == (x, y, n) and (3*pi*I*x).args == (3, pi, I, x) and (sqrt(2)*x).args == (x, sqrt(2))
+    assert x.compare(y) == -1 and y.compare(x) == 1 and x.compare(x) == 0 and n.compare(x) == 1
+    assert Integer(2).compare(Rational(1, 2)) == 1 and Integer(1).compare(Rational(1, 2)) == -1  # One, Half, Integer
+    assert sorted([x**2, x*y, x + 1, Integer(2), pi, x], key=compare_key) == [2, pi, x, x**2, x*y, x + 1]
+    assert class_rank('Symbol') < class_rank('Pow') < class_rank('Mul') < class_rank('Add') < class_rank('Dummy')
+    assert sqrt(x).compare(x**2) == -1 and (1/x).compare(x) == 1  # Half before NegativeOne before Integer
+    # the printing order is the other order (default_sort_key, degrees decreasing)
+    assert str(x + y + n) == 'n + x + y' and str(sqrt(2)*x) == 'sqrt(2)*x' and str(x**2 + x + 1) == 'x**2 + x + 1'
+    assert str(-x - 3*pi*x) == '-3*pi*x - x' and str(1 - x) == '1 - x' and str(1 - pi*x) == '-pi*x + 1'
+    assert str(x + sqrt(x)) == 'sqrt(x) + x' and str(x**Rational(3, 2) + x) == 'x**(3/2) + x'
+    assert str(-n/4**n) == '-n/4**n' and str(Add(y, x)) == 'y + x'  # an unevaluated sum prints as given
+
+
+def test_factor_terms_and_leading_terms() -> None:
+    """``factor_terms`` and ``gcd_terms`` are structural here, and the
+    leading term of a polynomial, rational or algebraic expression too."""
+    from sympy_extras.core import factor_terms, gcd_terms
+    assert factor_terms(2*x + 4*y) == Mul(2, x + 2*y) and factor_terms(2*x + 4*y).args == (2, x + 2*y)
+    assert factor_terms(x**2*y + x*y**2) == x*y*(x + y) and factor_terms(-x - y) == Mul(-1, x + y)
+    assert factor_terms(-x - y, sign=False) == -x - y and factor_terms(-2*x - 2, sign=False) == Mul(-2, x + 1)
+    assert gcd_terms(-2*x - 4*y) == Mul(2, -x - 2*y) and str(gcd_terms(1/x + 1/y)) == '(x + y)/(x*y)'
+    assert str(factor_terms(1/x + 1/x**2)) == '(1 + 1/x)/x' and factor_terms(x/2 + y) == x/2 + y
+    assert str(factor_terms(expr('f(2*x + 4*y)'))) == 'f(2*(x + 2*y))' and str(gcd_terms(2/x + 4/x**2)) == '2*(x + 2)/x**2'
+    assert str(factor_terms(2*x + 4*y).doit()) == '2*x + 4*y'  # the undistributed product is honest about it
+    assert factor_terms([2*x + 4, x]) == [Mul(2, x + 2), x] and factor_terms(Eq(2*x + 4, 2*y)) == Eq(Mul(2, x + 2), 2*y)
+    assert (x + x**2).as_leading_term(x) == x and (x + x*y).as_leading_term(x) == x*y + x
+    assert (x + y + 1).as_leading_term(x) == y + 1 and (1/(1 + x)).as_leading_term(x) == 1
+    assert ((x**2 + x)**Rational(1, 2)).as_leading_term(x) == sqrt(x) and (x**2 + x**3).leadterm(x) == (1, 2)
+    assert (x + x*y).leadterm(x) == (y + 1, 1) and expr('sin(x) + x').as_leading_term(x) == 2*x
+    raises(ValueError, lambda: expr('f(x)').leadterm(x))
+
+
+def test_caches_and_performance_helpers() -> None:
+    """The conversions are cached on the node and in a table, emptied by
+    ``clear_cache``; the expansion of a power uses the multinomial theorem."""
+    from sympy_extras.core import clear_cache
+    e = x**2 + 1
+    s = to_sympy(e)
+    converted = from_sympy(s)
+    assert to_sympy(e) is s and from_sympy(s) is converted and to_sympy(converted) is s
+    clear_cache()
+    assert from_sympy(s) is not converted and from_sympy(s) == converted  # the table is emptied, the nodes keep theirs
+    assert expand((x + y + z)**4) == expand((x + y + z)**2*(x + y + z)**2) and len(expand((x + y + z)**8).args) == 45
+    assert expand((x - 1)**3) == x**3 - 3*x**2 + 3*x - 1 and expand((2*x + 1)**2) == 4*x**2 + 4*x + 1

@@ -678,11 +678,16 @@ done by functions of the same name in lower case (`add(x, x)` is `2*x`),
 which the operators call and which `doit` applies to a tree. Everything
 else keeps SymPy's names, evaluated forms, assumptions and printing: the
 pattern matching (`Wild`, `match`, `replace`), `Mod`, `Subs`, `Order`,
-the full set of `is_*` predicates, the methods of `Expr` (the structural
-ones written here, `series`, `simplify`, `integrate`, ... through the
-conversion to SymPy), the context managers, the cache, the traversals and
-the integer helpers; `to_sympy`/`from_sympy` convert in both directions,
-every object of SymPy included. See `docs/core.md`.
+the full set of `is_*` predicates, the connectives (`And`, `Or`, `Not`,
+... with `and_`, `or_`, `not_`, ...), `Q` and `ask` (conjunctive
+assumptions answered by the old assumptions, the rest by SymPy's solver),
+`refine`, the methods of `Expr` (the structural ones written here,
+`series`, `simplify`, `integrate`, ... through the conversion to SymPy),
+`factor_terms`, the order of the arguments of sums and products, the
+context managers, the cache, the traversals and the integer helpers;
+`to_sympy`/`from_sympy` convert in both directions, every object of SymPy
+included, and the arithmetic runs within a factor of three of
+`sympy.core`. See `docs/core.md`.
 
 ```python
 >>> from sympy_extras.core import Symbol, Add, add, sqrt, Eq, eq, to_sympy

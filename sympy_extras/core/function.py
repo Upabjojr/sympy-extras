@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import inspect
 from fractions import Fraction
-from typing import TYPE_CHECKING, Callable, Iterable, Mapping, Optional, Sequence, Union, overload
+from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Mapping, Optional, Sequence, Union, overload
 
 import sympy
 from sympy.core.basic import Basic as SymPyBasic
@@ -265,6 +265,9 @@ class AppliedUndef(Application):
     def class_key(cls) -> ClassKey:
         return (4, 0, 'AppliedUndef')
 
+    def _compare_name(self) -> str:
+        return self._function.name
+
     def sort_key(self) -> SortKey:
         key = Expr.sort_key(self)
         return ((4, 0, self.name), key[1], key[2], key[3], key[4])
@@ -389,6 +392,9 @@ class AppliedSymPyFunction(Application):
     @classmethod
     def class_key(cls) -> ClassKey:
         return (4, 10000, 'AppliedSymPyFunction')
+
+    def _compare_name(self) -> str:
+        return self._sympy_class.__name__
 
     def sort_key(self) -> SortKey:
         key = Expr.sort_key(self)
@@ -1013,15 +1019,29 @@ def _expand_product(a: Expr, b: Expr) -> Expr:
 
 
 def _expand_power(base: Expr, n: int) -> Expr:
-    result: Expr = Integer(1)
-    square = base
-    while n:
-        if n & 1:
-            result = _expand_product(result, square)
-        n >>= 1
-        if n:
-            square = _expand_product(square, square)
-    return result
+    """``base**n`` expanded by the multinomial theorem: one term per
+    composition of ``n`` into as many parts as ``base`` has terms."""
+    from math import factorial
+    terms = terms_of(base)
+    expanded: list[Expr] = []
+    for exponents in _compositions(n, len(terms)):
+        coefficient = factorial(n)
+        for k in exponents:
+            coefficient //= factorial(k)
+        factors: list[Expr] = [Integer(coefficient)]
+        factors.extend(pow(t, Integer(k)) for t, k in zip(terms, exponents) if k)
+        expanded.append(mul(*factors))
+    return add(*expanded)
+
+
+def _compositions(n: int, parts: int) -> Iterator[tuple[int, ...]]:
+    """The tuples of ``parts`` nonnegative integers with the sum ``n``."""
+    if parts == 1:
+        yield (n,)
+        return
+    for first in range(n, -1, -1):
+        for rest in _compositions(n - first, parts - 1):
+            yield (first,) + rest
 
 
 def expand_mul(expr: ExprLike, deep: bool = True) -> Expr:
@@ -1175,6 +1195,7 @@ def _tally(counts: dict[str, int], name: str, n: int = 1) -> None:
 
 
 def _count(e: CountOpsArg, counts: dict[str, int]) -> None:
+    from .logic import BooleanFunction
     from .mod import Mod
     from .relational import Relational
     if isinstance(e, Mapping):
@@ -1235,7 +1256,7 @@ def _count(e: CountOpsArg, counts: dict[str, int]) -> None:
             _count(e.exp, counts)
         _count(e.base, counts)
         return
-    if isinstance(e, Relational):
+    if isinstance(e, (Relational, BooleanFunction)):
         _tally(counts, type(e).__name__.upper())
         for a in e.args:
             _count(a, counts)

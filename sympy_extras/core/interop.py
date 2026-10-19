@@ -27,25 +27,28 @@ from sympy.core.expr import Expr as SymPyExpr
 from sympy.core.function import AppliedUndef as SymPyAppliedUndef
 from sympy.core.function import Function as SymPyFunctionClass
 from sympy.core.function import UndefinedFunction as SymPyUndefinedFunction
+from sympy.assumptions.assume import AppliedPredicate as SymPyAppliedPredicate
+from sympy.assumptions.assume import Predicate as SymPyPredicate
 from sympy.core.relational import Relational as SymPyRelational
 
 from .add import Add
+from .assume import AppliedPredicate, Predicate
 from .basic import Basic, SubsMapping
 from .containers import Dict, Tuple
 from .expr import Expr, UnevaluatedExpr, as_expr
 from .function import (AppliedSymPyFunction, AppliedUndef, Derivative, Function, FunctionClass, Lambda,
     Subs, SymPyFunction, UndefinedFunction, WildFunction)
-from .logic import BooleanAtom, false, true
+from .logic import ITE, And, Boolean, BooleanAtom, BooleanFunction, Equivalent, Implies, Not, Or, Xor, false, true
 from .mod import Mod
 from .mul import Mul
 from .numbers import (AlgebraicNumber, Catalan, CatalanType, ComplexInfinity, EulerGamma,
     EulerGammaType, Exp1, Float, GoldenRatio, GoldenRatioType, ImaginaryUnit, Infinity, Integer,
-    NaN, NegativeInfinity, Pi, Rational, TribonacciConstant, TribonacciConstantType, E, I, nan,
+    NaN, NegativeInfinity, Number, Pi, Rational, TribonacciConstant, TribonacciConstantType, E, I, nan,
     number_from_fraction, oo, pi, zoo)
 from .order import Order
 from .power import Pow
 from .relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
-from .sorting import ClassKey
+from .sorting import ClassKey, CompareItem
 from .symbol import Dummy, Symbol, Wild
 
 if TYPE_CHECKING:
@@ -58,11 +61,52 @@ __all__ = ['to_sympy', 'from_sympy', 'expr_from_sympy', 'sympy_expr', 'through_s
 #: used in another stays one dummy on both sides
 _dummies_from_sympy: dict[tuple[str, int], Dummy] = {}
 _dummies_to_sympy: dict[tuple[str, int], sympy.Dummy] = {}
+#: the objects of SymPy already converted (cleared when full, and by
+#: ``clear_cache``)
+_from_sympy_cache: dict[SymPyBasic, Basic] = {}
+_FROM_SYMPY_CACHE_SIZE = 20000
+
+
+class _ConversionCache:
+    """The registration of the conversion cache with ``clear_cache``."""
+
+    def clear(self) -> None:
+        _from_sympy_cache.clear()
+        _dummies_from_sympy.clear()
+        _dummies_to_sympy.clear()
 
 _RELATIONAL_TO_SYMPY: dict[type[Relational], type[SymPyRelational]] = {
     Eq: sympy.Eq, Ne: sympy.Ne, Lt: sympy.Lt, Le: sympy.Le, Gt: sympy.Gt, Ge: sympy.Ge}
 _RELATIONAL_FROM_SYMPY: dict[type[SymPyRelational], type[Relational]] = {
     sympy.Eq: Eq, sympy.Ne: Ne, sympy.Lt: Lt, sympy.Le: Le, sympy.Gt: Gt, sympy.Ge: Ge}
+_LOGIC_TO_SYMPY: dict[type[BooleanFunction], Callable[..., SymPyBasic]] = {
+    And: sympy.And, Or: sympy.Or, Not: sympy.Not, Xor: sympy.Xor, Implies: sympy.Implies,
+    Equivalent: sympy.Equivalent, ITE: sympy.ITE}
+#: the predicates of SymPy's ``Q`` by name
+_SYMPY_PREDICATES: dict[str, SymPyPredicate] = {
+    'algebraic': sympy.Q.algebraic, 'antihermitian': sympy.Q.antihermitian, 'commutative': sympy.Q.commutative,
+    'complex': sympy.Q.complex, 'complex_elements': sympy.Q.complex_elements, 'composite': sympy.Q.composite,
+    'diagonal': sympy.Q.diagonal, 'eq': sympy.Q.eq, 'even': sympy.Q.even,
+    'extended_negative': sympy.Q.extended_negative, 'extended_nonnegative': sympy.Q.extended_nonnegative,
+    'extended_nonpositive': sympy.Q.extended_nonpositive, 'extended_nonzero': sympy.Q.extended_nonzero,
+    'extended_positive': sympy.Q.extended_positive, 'extended_real': sympy.Q.extended_real,
+    'finite': sympy.Q.finite, 'fullrank': sympy.Q.fullrank, 'ge': sympy.Q.ge, 'gt': sympy.Q.gt,
+    'hermitian': sympy.Q.hermitian, 'imaginary': sympy.Q.imaginary, 'infinite': sympy.Q.infinite,
+    'integer': sympy.Q.integer, 'integer_elements': sympy.Q.integer_elements, 'invertible': sympy.Q.invertible,
+    'irrational': sympy.Q.irrational, 'is_true': sympy.Q.is_true, 'le': sympy.Q.le,
+    'lower_triangular': sympy.Q.lower_triangular, 'lt': sympy.Q.lt, 'ne': sympy.Q.ne,
+    'negative': sympy.Q.negative, 'negative_infinite': sympy.Q.negative_infinite,
+    'noninteger': sympy.Q.noninteger, 'nonnegative': sympy.Q.nonnegative, 'nonpositive': sympy.Q.nonpositive,
+    'nonzero': sympy.Q.nonzero, 'normal': sympy.Q.normal, 'odd': sympy.Q.odd, 'orthogonal': sympy.Q.orthogonal,
+    'positive': sympy.Q.positive, 'positive_definite': sympy.Q.positive_definite,
+    'positive_infinite': sympy.Q.positive_infinite, 'prime': sympy.Q.prime, 'rational': sympy.Q.rational,
+    'real': sympy.Q.real, 'real_elements': sympy.Q.real_elements, 'singular': sympy.Q.singular,
+    'square': sympy.Q.square, 'symmetric': sympy.Q.symmetric, 'transcendental': sympy.Q.transcendental,
+    'triangular': sympy.Q.triangular, 'unit_triangular': sympy.Q.unit_triangular, 'unitary': sympy.Q.unitary,
+    'upper_triangular': sympy.Q.upper_triangular, 'zero': sympy.Q.zero}
+_LOGIC_FROM_SYMPY: dict[type[SymPyBasic], type[BooleanFunction]] = {
+    sympy.And: And, sympy.Or: Or, sympy.Not: Not, sympy.Xor: Xor, sympy.Implies: Implies,
+    sympy.Equivalent: Equivalent, sympy.ITE: ITE}
 
 
 class _SymPyNodeMixin:
@@ -89,6 +133,12 @@ class _SymPyNodeMixin:
     def _hashable_content(self) -> tuple[Basic, ...]:
         return (Symbol(self._sympy_class.__name__),) + self._node_args
 
+    def _compare_name(self) -> str:
+        return self._sympy_class.__name__
+
+    def _compare_content(self) -> tuple[CompareItem, ...]:
+        return tuple(a.compare_key() for a in self._node_args)
+
     def _sympy(self) -> SymPyBasic:
         return self._sympy_class(*[to_sympy(a) for a in self._node_args])
 
@@ -98,8 +148,7 @@ class _SymPyNodeMixin:
 
 class SymPyNode(_SymPyNodeMixin, Basic):
     """A wrapper of an object of SymPy which is not an expression (a
-    boolean connective, a set, ...): the class of SymPy and the converted
-    arguments.
+    set, ...): the class of SymPy and the converted arguments.
 
     Examples
     ========
@@ -107,9 +156,9 @@ class SymPyNode(_SymPyNodeMixin, Basic):
     >>> import sympy
     >>> from sympy_extras.core import from_sympy, to_sympy, Symbol
     >>> x = sympy.Symbol('x')
-    >>> t = from_sympy(sympy.And(x > 0, x < 1))
-    >>> t, type(t).__name__, t.args, to_sympy(t) == sympy.And(x > 0, x < 1)
-    ((x > 0) & (x < 1), 'SymPyNode', (x > 0, x < 1), True)
+    >>> t = from_sympy(sympy.Interval(0, x))
+    >>> t, type(t).__name__, t.args, to_sympy(t) == sympy.Interval(0, x)
+    (Interval(0, x), 'SymPyNode', (0, x, False, False), True)
     """
 
     __slots__ = ('_sympy_class', '_node_args')
@@ -207,6 +256,18 @@ def to_sympy(e: Basic, evaluate: bool = True) -> SymPyBasic:
     >>> to_sympy(Add(x, x)), to_sympy(Add(x, x), evaluate=False)
     (2*x, x + x)
     """
+    if evaluate:
+        cached = e._sympy_cache
+        if cached is None:
+            cached = _to_sympy(e, True)
+            e._sympy_cache = cached
+        return cached
+    return _to_sympy(e, False)
+
+
+def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
+    """The conversion itself; ``to_sympy`` caches the evaluated form on
+    the node, so that the methods forwarded to SymPy convert a node once."""
     if isinstance(e, Wild):
         return sympy.Wild(e.name, exclude=[to_sympy(x) for x in e.exclude],
                           properties=[_property_on_sympy(p) for p in e.properties], **e.given_assumptions)
@@ -258,6 +319,9 @@ def to_sympy(e: Basic, evaluate: bool = True) -> SymPyBasic:
     if isinstance(e, Add):
         return sympy.Add(*[_sympy_expr(a) for a in args], evaluate=evaluate)
     if isinstance(e, Mul):
+        if evaluate and len(args) == 2 and isinstance(e.args[0], Number) and isinstance(e.args[1], Add):
+            # the undistributed product 2*(x + 2*y) of factor_terms stays one in SymPy
+            return sympy.Mul(*[_sympy_expr(a) for a in args], evaluate=False)
         return sympy.Mul(*[_sympy_expr(a) for a in args], evaluate=evaluate)
     if isinstance(e, Pow):
         return sympy.Pow(*[_sympy_expr(a) for a in args], evaluate=evaluate)
@@ -285,7 +349,19 @@ def to_sympy(e: Basic, evaluate: bool = True) -> SymPyBasic:
         return sympy.Dict({to_sympy(k): to_sympy(v) for k, v in e.items()})
     if isinstance(e, Relational):
         return _RELATIONAL_TO_SYMPY[type(e)](*args, evaluate=evaluate)
+    if isinstance(e, BooleanFunction):
+        return _LOGIC_TO_SYMPY[type(e)](*args, evaluate=evaluate)
+    if isinstance(e, Predicate):
+        return _sympy_predicate(e)
+    if isinstance(e, AppliedPredicate):
+        return _sympy_predicate(e.function)(*[to_sympy(a, evaluate) for a in e.arguments])
     raise TypeError("cannot convert %s to SymPy" % (e,))
+
+
+def _sympy_predicate(p: Predicate) -> SymPyPredicate:
+    if p._defined and p.name in _SYMPY_PREDICATES:
+        return _SYMPY_PREDICATES[p.name]
+    return SymPyPredicate(p.name)
 
 
 def _property_on_sympy(p: Callable[[Basic], bool]) -> Callable[[SymPyBasic], bool]:
@@ -335,6 +411,20 @@ def from_sympy(e: Union[SymPyBasic, int]) -> Basic:
     """
     if isinstance(e, int):
         return Integer(e)
+    cached = _from_sympy_cache.get(e)
+    if cached is not None:
+        return cached
+    converted = _from_sympy(e)
+    if len(_from_sympy_cache) >= _FROM_SYMPY_CACHE_SIZE:
+        _from_sympy_cache.clear()
+    _from_sympy_cache[e] = converted
+    if converted._sympy_cache is None and not isinstance(e, sympy.Float):
+        converted._sympy_cache = e  # the round trip is exact
+    return converted
+
+
+def _from_sympy(e: SymPyBasic) -> Basic:
+    """The conversion itself; ``from_sympy`` caches the results."""
     if isinstance(e, sympy.Wild):
         # SymPy keeps exclude and properties as the last two entries of the
         # hashable content (they are set dynamically on the instance)
@@ -433,6 +523,13 @@ def from_sympy(e: Union[SymPyBasic, int]) -> Basic:
             if isinstance(e, sympy_class):
                 return cls(_expr(e.lhs), _expr(e.rhs))
         raise TypeError("cannot convert the relation %s" % (e,))
+    for sympy_logic, logic_class in _LOGIC_FROM_SYMPY.items():
+        if isinstance(e, sympy_logic):
+            return logic_class(*[_boolean(a) for a in e.args])
+    if isinstance(e, SymPyAppliedPredicate):
+        return AppliedPredicate(_predicate(e.function), *[from_sympy(a) for a in e.arguments])
+    if isinstance(e, SymPyPredicate):
+        return _predicate(e)
     if isinstance(e, SymPyFunctionClass) and all(isinstance(a, SymPyExpr) for a in e.args):
         cls = type(e)
         return AppliedSymPyFunction(cls, *[_expr(a) for a in e.args])
@@ -489,17 +586,18 @@ def rewrite_targets(args: Sequence[Union[Basic, FunctionClass, type]]) -> list[U
 
 def _canonical_order(args: list[Expr], commutative: bool) -> list[Expr]:
     """The arguments of a sum or a product of SymPy in the order the
-    evaluating functions of this core give: the numbers first, then the
-    commutative arguments sorted, then the noncommutative ones as given."""
+    evaluating functions of this core give (SymPy's own order): the
+    numbers first, then the commutative arguments in the ``compare``
+    order, then the noncommutative ones as given."""
     from .numbers import Number
-    from .sorting import default_sort_key
+    from .sorting import compare_key
     numbers = [a for a in args if isinstance(a, Number)]
     others = [a for a in args if not isinstance(a, Number)]
     if commutative:
-        return numbers + sorted(others, key=default_sort_key)
+        return numbers + sorted(others, key=compare_key)
     sortable = [a for a in others if a.is_commutative is not False]
     fixed = [a for a in others if a.is_commutative is False]
-    return numbers + sorted(sortable, key=default_sort_key) + fixed
+    return numbers + sorted(sortable, key=compare_key) + fixed
 
 
 def _dyadic(sign: int, man: int, exp: int) -> Fraction:
@@ -514,9 +612,32 @@ def _expr(e: SymPyBasic) -> Expr:
     return converted
 
 
+def _predicate(p: SymPyBasic) -> Predicate:
+    """The predicate of this core for a predicate of SymPy: the one of
+    ``Q`` with the same name when SymPy's is in its ``Q``."""
+    from .ask import PREDICATES_OF_Q
+    if not isinstance(p, SymPyPredicate):
+        raise TypeError("a predicate is expected, got %s" % (p,))
+    name = str(p.name)
+    if name in PREDICATES_OF_Q and _SYMPY_PREDICATES.get(name) == p:
+        return PREDICATES_OF_Q[name]
+    return Predicate(name)
+
+
+def _boolean(e: SymPyBasic) -> Boolean:
+    converted = from_sympy(e)
+    if not isinstance(converted, Boolean):
+        raise TypeError("a boolean is expected, got %s" % (converted,))
+    return converted
+
+
 def _symbol(e: SymPyBasic) -> Symbol:
     converted = from_sympy(e)
     if not isinstance(converted, Symbol):
         raise TypeError("a symbol is expected, got %s" % (converted,))
     return converted
 
+
+from .cache import register_clearable  # noqa: E402 (the registration needs the class above)
+
+register_clearable(_ConversionCache())

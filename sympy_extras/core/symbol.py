@@ -20,7 +20,8 @@ from typing import TYPE_CHECKING, Callable, Iterable, Sequence, Union
 
 from .basic import Basic
 from .expr import AtomicExpr
-from .sorting import ClassKey
+from .logic import Boolean
+from .sorting import ClassKey, CompareItem
 
 if TYPE_CHECKING:
     from .printing import StrPrinter
@@ -31,7 +32,7 @@ __all__ = ['Symbol', 'Dummy', 'Wild', 'symbols', 'var', 'Assumptions']
 Assumptions = tuple[tuple[str, bool], ...]
 
 
-class Symbol(AtomicExpr):
+class Symbol(AtomicExpr, Boolean):
     """A symbol with a name and optional assumptions.
 
     Examples
@@ -72,6 +73,12 @@ class Symbol(AtomicExpr):
     def _hashable_content(self) -> tuple[Basic, ...]:
         return ()
 
+    def _compare_content(self) -> tuple[CompareItem, ...]:
+        # SymPy's content of a symbol: its name and the closure of its
+        # assumptions, so that the symbols with assumptions sort after the
+        # plain ones
+        return (self.name,) + self._assumptions
+
     def __hash__(self) -> int:
         return hash((self.name, self._assumptions))
 
@@ -91,6 +98,10 @@ class Symbol(AtomicExpr):
     @classmethod
     def class_key(cls) -> ClassKey:
         return (2, 0, 'Symbol')
+
+    @property
+    def binary_symbols(self) -> set[Basic]:
+        return {self}
 
     @property
     def assumptions0(self) -> dict[str, bool]:
@@ -144,6 +155,9 @@ class Dummy(Symbol):
     def __init__(self, name: str = 'Dummy', **assumptions: bool) -> None:
         self.dummy_index: int = next(_dummy_counter)
         Symbol.__init__(self, name, **assumptions)
+
+    def _compare_content(self) -> tuple[CompareItem, ...]:
+        return Symbol._compare_content(self) + (self.dummy_index,)
 
     def __hash__(self) -> int:
         return hash((self.name, self.dummy_index, self._assumptions))
@@ -202,6 +216,9 @@ class Wild(Symbol):
         self.exclude: tuple[Basic, ...] = tuple(exclude)
         self.properties: tuple[WildProperty, ...] = tuple(properties)
         Symbol.__init__(self, name, **assumptions)
+
+    def _compare_content(self) -> tuple[CompareItem, ...]:
+        return Symbol._compare_content(self) + (0, 0)  # SymPy adds the exclusions and the properties
 
     def __hash__(self) -> int:
         return hash((self.name, self.exclude, self.properties, self._assumptions))

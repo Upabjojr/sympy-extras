@@ -225,7 +225,9 @@ def _match_multiset(subject: list[Expr], patterns: list[Basic], bindings: MatchD
     if not patterns:
         yield (bindings, subject)
         return
-    p, rest = patterns[0], patterns[1:]
+    # the pattern terms are tried from the last one, as SymPy does: x**3
+    # against x**a*x**b binds b to 3 and a to 0
+    p, rest = patterns[-1], patterns[:-1]
     # the subject terms of the class of the pattern term are tried first
     order = sorted(range(len(subject)), key=lambda i: type(subject[i]) is not type(p))
     for i in order:

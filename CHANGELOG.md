@@ -63,6 +63,32 @@ remove public functions. Breaking changes are listed here when they happen.
   ... become generic wrappers whose `doit` and assumptions are
   SymPy's). Checked against SymPy on tables of known results for each
   feature.
+- `sympy_extras.core`, the logic, the new assumptions, SymPy's order of
+  the arguments and the performance: `And`, `Or`, `Not`, `Xor`,
+  `Implies`, `Equivalent`, `ITE` as unevaluating classes (`And` and `Or`
+  on `LatticeOp`) with the evaluating functions `and_`, `or_`, `not_`,
+  `xor`, `implies`, `equivalent`, `ite` and the operators `&`, `|`,
+  `~`, `^`, `>>`, `<<` of symbols, relations and predicates; `Q`, `ask`,
+  `Predicate` (with `register`), `AppliedPredicate`,
+  `AssumptionsContext`, `global_assumptions`, `assuming` and `refine`
+  (conjunctive assumptions are read as facts and answered by the old
+  assumptions on dummies carrying them, the rest is asked to SymPy's
+  solver; `refine` is SymPy's with this `Q`). Sums and products store
+  their arguments in the order of SymPy's `Basic.compare` (`compare`
+  and `compare_key` are the same order here), so that `args` and
+  `as_terms` agree with SymPy. `factor_terms`, `gcd_terms`,
+  `as_leading_term` and `leadterm` (for polynomial, rational and
+  algebraic expressions) are written here; `is_polynomial`,
+  `is_rational_function` and `is_algebraic_expr` give SymPy's
+  three-valued answers; `Mod(n*(n + 1), 2)` is `0`; the closure of
+  `nonzero=False` is SymPy's; `TupleKind(NumberKind)` prints as SymPy's.
+  The arithmetic runs within a factor of three of `sympy.core` (the
+  terms of a sum are not rebuilt, powers of sums expand by the
+  multinomial theorem, the compare key and the SymPy form of a node are
+  cached on it; a table in `docs/core.md`). Checked against SymPy on
+  tables of the connectives, of `ask` and `refine`, of the order of the
+  arguments on random expressions and on every class, and of the native
+  algorithms.
 
 - `sympy_extras.polys.puiseux`: Puiseux expansions of the branches of a
   plane curve `F(x, y) = 0` above a point or above infinity by the

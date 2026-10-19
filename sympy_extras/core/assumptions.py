@@ -123,7 +123,6 @@ _RULES: tuple[tuple[str, bool, str, bool], ...] = (
     ('even', True, 'odd', False),
     ('odd', True, 'integer', True),
     ('odd', True, 'even', False),
-    ('odd', True, 'nonzero', True),
     ('prime', True, 'integer', True),
     ('prime', True, 'positive', True),
     ('prime', True, 'composite', False),
@@ -191,6 +190,28 @@ def closure(facts: dict[str, bool]) -> dict[str, bool]:
                 known[c] = vc
                 changed = True
     return known
+
+
+def is_consistent(facts: dict[str, bool]) -> bool:
+    """Whether no implication is contradicted by the facts.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core.assumptions import is_consistent
+    >>> is_consistent({'positive': True, 'integer': True}), is_consistent({'positive': True, 'zero': True})
+    (True, False)
+    >>> is_consistent({'even': True, 'odd': True}), is_consistent({'real': True, 'rational': False, 'irrational': False})
+    (False, False)
+    """
+    known = closure(facts)
+    for a, va, b, vb in _RULES:
+        if known.get(a) == va and known.get(b) == (not vb):
+            return False
+    for a, va, b, vb, c, vc in _PAIR_RULES:
+        if known.get(a) == va and known.get(b) == vb and known.get(c) == (not vc):
+            return False
+    return True
 
 
 #: the order in which facts are tried as generators of a closed set
@@ -395,6 +416,12 @@ def mul_facts(args: tuple[Expr, ...]) -> Facts:
             facts['even'] = True
         elif all(s.get('odd') is True for s in sub):
             facts['odd'] = True
+    elif len(args) == 2 and isinstance(args[0], Rational) and args[0].p == 1 and args[0].q == 2:
+        # SymPy: an even number halved is an integer, an odd one is not
+        if sub[1].get('even') is True:
+            facts['integer'] = True
+        elif sub[1].get('odd') is True:
+            facts.update(integer=False, rational=True)
     imaginary = [s for s in sub if s.get('imaginary') is True]
     if len(imaginary) == 1 and all(s.get('real') is True or s.get('imaginary') is True for s in sub) \
             and all(s.get('zero') is False for s in sub):

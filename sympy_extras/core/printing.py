@@ -22,21 +22,32 @@ from .basic import Basic
 from .expr import Expr
 from .numbers import (AlgebraicNumber, Float, ImaginaryUnit, NegativeInfinity, Number, NumberSymbol, Rational,
     number_from_fraction)
-from .sorting import SortKey, default_sort_key
+from .sorting import SortKey, compare_key, default_sort_key
 
 __all__ = ['sstr', 'srepr', 'StrPrinter', 'ordered_terms']
 
+PREC_XOR = 10
+PREC_IMPLIES = 10
+PREC_OR = 20
+PREC_AND = 30
 PREC_RELATIONAL = 35
 PREC_ADD = 40
 PREC_MUL = 50
 PREC_POW = 60
 PREC_FUNC = 70
+PREC_NOT = 100
 PREC_ATOM = 1000
+#: the arguments of ``|``, ``^`` and ``&`` are parenthesized below these
+#: levels (SymPy's ``BitwiseOr``, ``BitwiseXor``, ``BitwiseAnd``)
+PREC_OR_ARGS = 36
+PREC_XOR_ARGS = 37
+PREC_AND_ARGS = 38
 
 
 def precedence(e: Basic) -> int:
     """The precedence of the printed form of ``e``."""
     from .add import Add
+    from .logic import And, Equivalent, Implies, Not, Or, Xor
     from .mul import Mul
     from .power import Pow
     from .relational import Relational
@@ -47,7 +58,17 @@ def precedence(e: Basic) -> int:
     if isinstance(e, Pow):
         return PREC_POW
     if isinstance(e, Relational):
-        return PREC_RELATIONAL
+        return PREC_FUNC if e.rel_op in ('==', '!=') else PREC_RELATIONAL
+    if isinstance(e, And):
+        return PREC_AND
+    if isinstance(e, Or):
+        return PREC_OR
+    if isinstance(e, Xor):
+        return PREC_XOR
+    if isinstance(e, (Implies, Equivalent)):
+        return PREC_IMPLIES
+    if isinstance(e, Not):
+        return PREC_NOT
     if isinstance(e, Rational):
         if e.p < 0:
             return PREC_ADD
@@ -93,7 +114,9 @@ class StrPrinter:
         return '%s(%s)' % (type(e).__name__, ', '.join(self.doprint(a) for a in e.args))
 
     def print_add(self, terms: Sequence[Expr]) -> str:
-        canonical = list(terms) == sorted(terms, key=default_sort_key)
+        # an evaluated sum (a number first, then the terms in the compare
+        # order) is printed in the printing order; an unevaluated one as given
+        canonical = _in_compare_order(terms)
         parts: list[str] = []
         for i, term in enumerate(ordered_terms(terms) if canonical else terms):
             s = self.parenthesize(term, PREC_ADD)
@@ -108,6 +131,7 @@ class StrPrinter:
     def print_mul(self, factors: Sequence[Expr]) -> str:
         from .mod import Mod
         from .power import Pow
+        factors = _printing_order(factors)
         sign = ''
         numerator: list[str] = []
         denominator: list[str] = []
@@ -134,9 +158,11 @@ class StrPrinter:
                 numerator.append(self.doprint(Float(number_from_fraction(-f.as_fraction()), precision=f.precision)))
                 numerator_exprs.append(f)
                 continue
-            if isinstance(f, Pow) and isinstance(f.exp, Rational) and f.exp.p < 0:
-                minus = Rational(-f.exp.p, f.exp.q)
-                inverse = f.base if minus.p == 1 and minus.q == 1 else Pow(f.base, minus)
+            if isinstance(f, Pow) and _negative_exponent(f.exp):
+                # x**(-2) and 4**(-n) go to the denominator: -n/4**n
+                from .mul import neg
+                minus = neg(f.exp)
+                inverse = f.base if minus.is_Number and minus == 1 else Pow(f.base, minus)
                 denominator.append(self.parenthesize(inverse, PREC_MUL, strict=True))
                 continue
             numerator.append(self.parenthesize(f, PREC_MUL, strict=i > 0 and isinstance(f, Number)))
@@ -220,13 +246,17 @@ def srepr(e: Basic) -> str:
 
 
 def _decompose_power(f: Expr) -> tuple[Expr, int]:
-    """``(b, n)`` with ``f == b**n`` and ``n`` the integer coefficient of
-    the exponent (``x**(2*y)`` is ``(x**y, 2)``, ``exp(-x)`` is ``(exp(x), -1)``),
-    ``(f, 1)`` when the exponent has no integer coefficient."""
+    """``(b, n)`` with ``f == b**n`` and ``n`` an integer: ``x**(2*y)`` is
+    ``(x**y, 2)``, ``exp(-x)`` is ``(exp(x), -1)``, ``x**(3/2)`` is
+    ``(sqrt(x), 3)`` (the generator of a radical is its root, as in
+    SymPy's ``as_terms``), ``(f, 1)`` when the exponent has no integer
+    coefficient."""
     from .power import pow
     b, e = f.as_base_exp()
-    if isinstance(e, Rational) and e.q == 1:
-        return (b, e.p)
+    if isinstance(e, Rational):
+        if e.q == 1:
+            return (b, e.p)
+        return (pow(b, Rational(1, e.q)), e.p)
     c, rest = e.as_coeff_Mul()
     if isinstance(c, Rational) and c.q == 1 and c.p != 1:
         return (pow(b, rest), c.p)
@@ -263,6 +293,32 @@ def _generators(term: Expr) -> list[Expr]:
     return gens
 
 
+def _negative_exponent(e: Expr) -> bool:
+    """Whether the exponent has a negative rational coefficient (``-2``, ``-n``, ``-y/2``)."""
+    c = e.as_coeff_Mul()[0]
+    return isinstance(c, Rational) and c.p < 0
+
+
+def _in_compare_order(args: Sequence[Expr]) -> bool:
+    """Whether the arguments are as an evaluating function stores them: a
+    number first (``zoo`` ranks after the symbols in the compare order,
+    but ``zoo + y`` keeps it first), then the compare order."""
+    rest = args[1:] if args and isinstance(args[0], Number) else args
+    return list(rest) == sorted(rest, key=compare_key)
+
+
+def _printing_order(factors: Sequence[Expr]) -> list[Expr]:
+    """The factors of an evaluated product (its commutative factors in the
+    compare order) in the printing order (``default_sort_key``: the
+    numbers, then ``sqrt(2)``, ``x``, ``sin(x)``, ``cos(x)``); the factors
+    of an unevaluated product as given."""
+    commutative = [f for f in factors if f.is_commutative is not False]
+    if not _in_compare_order(commutative):
+        return list(factors)
+    tail = [f for f in factors if f.is_commutative is False]
+    return sorted(commutative, key=default_sort_key) + tail
+
+
 def ordered_terms(terms: Sequence[Expr]) -> list[Expr]:
     """The terms of a sum in the printing order: decreasing degrees in
     the generators (lexicographically), numbers last.
@@ -276,15 +332,15 @@ def ordered_terms(terms: Sequence[Expr]) -> list[Expr]:
     >>> ordered_terms([y, x*y, x**2, x, Integer(1)])
     [x**2, x*y, x, y, 1]
     """
-    if len(terms) == 2 and isinstance(terms[0], (Number, NumberSymbol)) and terms[0].is_negative is not True \
-            and terms[1].could_extract_minus_sign():
-        return list(terms)  # SymPy's special case: 1 - x (but -x - 2)
+    if len(terms) == 2 and _leads_a_difference(terms[0], terms[1]):
+        return list(terms)  # SymPy's special case: 1 - x, 2 - pi (but -x - 2, -pi*x + 1, -x*y + 1)
     gens: set[Expr] = set()
     for t in terms:
         gens.update(_generators(t))
     ordered_gens = sorted(gens, key=default_sort_key)
-    keys: dict[Expr, tuple[tuple[Fraction, ...], tuple[int, float], SortKey]] = {
-        t: (_monomial_key(t, ordered_gens), _constant_rank(t), t.sort_key()) for t in terms}
+    keys: dict[Expr, tuple[tuple[Fraction, ...], tuple[SortKey, ...], CoefficientRank, SortKey]] = {
+        t: (_monomial_key(t, ordered_gens), _noncommutative_key(t), _coefficient_rank(t), t.sort_key())
+        for t in terms}
     plain = sorted([t for t in terms if not t.is_Order], key=lambda t: keys[t])
     orders = sorted([t for t in terms if t.is_Order], key=lambda t: keys[t])
     if orders:
@@ -292,19 +348,42 @@ def ordered_terms(terms: Sequence[Expr]) -> list[Expr]:
     return plain + orders
 
 
-def _constant_rank(term: Expr) -> tuple[int, float]:
-    """Among the constant terms, SymPy's order: by increasing value
-    (``1 + sqrt(2) + E + pi``), the terms with ``I`` after them, and the
-    ``UnevaluatedExpr`` terms last."""
+#: (UnevaluatedExpr last, (has an imaginary part, its value), (real part, imaginary part))
+CoefficientRank = tuple[int, tuple[bool, float], tuple[float, float]]
+
+
+def _coefficient_rank(term: Expr) -> CoefficientRank:
+    """Among the terms with the same monomial, SymPy's order: by the
+    increasing numerical coefficient (``-3*pi*x - x``, ``x + sqrt(2)*x``,
+    ``1 + sqrt(2) + E + pi``), the terms with an imaginary coefficient
+    after the others (``x + I*x``), the ``UnevaluatedExpr`` terms last."""
+    from .evalf import to_complex
     from .expr import UnevaluatedExpr
+    from .mul import mul
     if isinstance(term, UnevaluatedExpr) or any(isinstance(f, UnevaluatedExpr) for f in term.args):
-        return (3, 0.0)
-    if not term.is_number:
-        return (0, 0.0)
-    if term.has(ImaginaryUnit):
-        return (2, 0.0)
-    from .evalf import to_float
+        return (1, (False, 0.0), (0.0, 0.0))
+    from .expr import factors_of
+    coefficient = mul(*[f for f in factors_of(term) if f.is_number])
     try:
-        return (1, to_float(term))
+        value = to_complex(coefficient)
     except (TypeError, ValueError, OverflowError):
-        return (1, 0.0)
+        return (0, (False, 0.0), (0.0, 0.0))
+    return (0, (value.imag != 0, value.imag), (value.real, value.imag))
+
+
+def _noncommutative_key(term: Expr) -> tuple[SortKey, ...]:
+    """The keys of the noncommutative factors, in order (``A*B`` before ``B*A``)."""
+    from .expr import factors_of
+    return tuple(f.sort_key() for f in factors_of(term) if f.is_commutative is False)
+
+
+def _leads_a_difference(number: Expr, term: Expr) -> bool:
+    """SymPy's special case of a sum of two terms printed as ``1 - x``: a
+    positive finite number (``pi`` too) and a single factor with a
+    negative rational coefficient (``-x``, ``-2*x**2``, ``-sqrt(2)``, but
+    not ``-pi*x`` or ``-x*y``)."""
+    if not isinstance(number, (Number, NumberSymbol)) or number.is_positive is not True \
+            or number.is_finite is not True:
+        return False
+    c, rest = term.as_coeff_Mul()
+    return isinstance(c, Rational) and c.p < 0 and not rest.is_Mul

@@ -26,7 +26,7 @@ from .numbers import (ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity,
     nan, number_from_fraction)
 from .operations import AssocOp
 from .parameters import global_parameters
-from .sorting import ArgsKey, ClassKey, SortKey, default_sort_key
+from .sorting import ArgsKey, ClassKey, SortKey, compare_key
 
 if TYPE_CHECKING:
     from .printing import StrPrinter
@@ -65,7 +65,16 @@ class Add(AssocOp):
         return add_facts(self._args)
 
     def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
-        return self.primitive()
+        c, p = self.primitive()
+        if clear or not isinstance(c, Rational) or c.q == 1 \
+                or all(_as_rational(t.as_coeff_Mul()[0]).q != 1 for t in self._args):
+            return (c, p)
+        # SymPy's clear=False: a denominator is not cleared when a term has an
+        # integer coefficient (x/2 + y stays); the integer content is taken
+        if c.p == 1:
+            return (Integer(1), self)
+        from .mul import mul
+        return (Integer(c.p), add(*[mul(Rational(1, c.p), t) for t in self._args]))
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return add(*[_as_expr(a) for a in args])
@@ -148,6 +157,10 @@ def _as_expr(b: Basic) -> Expr:
     return b
 
 
+def _as_rational(n: Number) -> Rational:
+    return n if isinstance(n, Rational) else Integer(1)
+
+
 def add(*args: ExprLike) -> Expr:
     """The evaluated sum of the arguments.
 
@@ -175,6 +188,9 @@ def add(*args: ExprLike) -> Expr:
         return _with_orders(stack)
     number: Number = Integer(0)
     coefficients: dict[Expr, Number] = {}
+    # the term as given, kept while it is the only one with its rest, so
+    # that it is not rebuilt
+    originals: dict[Expr, Optional[Expr]] = {}
     for a in stack:
         if isinstance(a, Add):
             stack.extend(a.args)
@@ -185,8 +201,10 @@ def add(*args: ExprLike) -> Expr:
         c, rest = a.as_coeff_Mul()
         if rest in coefficients:
             coefficients[rest] = coefficients[rest].number_add(c)
+            originals[rest] = None
         else:
             coefficients[rest] = c
+            originals[rest] = a
     if isinstance(number, NaN):
         return nan
     terms: list[Expr] = []
@@ -199,7 +217,10 @@ def add(*args: ExprLike) -> Expr:
             continue
         if _absorbed_in_sum(number, rest, c):
             continue
-        if isinstance(c, Rational) and c.p == 1 and c.q == 1:
+        original = originals[rest]
+        if original is not None:
+            term = original
+        elif isinstance(c, Rational) and c.p == 1 and c.q == 1:
             term = rest
         else:
             term = mul(c, rest)
@@ -208,7 +229,7 @@ def add(*args: ExprLike) -> Expr:
         terms.append(term)
     if needs_pass:
         return add(number, *terms)
-    terms.sort(key=default_sort_key)
+    terms.sort(key=compare_key)
     nonzero = not (isinstance(number, Rational) and number.p == 0)
     if nonzero:
         terms.insert(0, number)

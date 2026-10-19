@@ -32,7 +32,7 @@ from .numbers import (ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity,
     number_from_fraction)
 from .operations import AssocOp
 from .parameters import global_parameters
-from .sorting import ClassKey, default_sort_key
+from .sorting import ClassKey, compare_key
 
 if TYPE_CHECKING:
     from .printing import StrPrinter
@@ -290,7 +290,7 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
     elif isinstance(coefficient, ComplexInfinity):
         # zoo absorbs the nonzero factors known real or known non-real
         rebuilt = [f for f in rebuilt if not (f.is_zero is False and f.is_extended_real is not None)]
-    rebuilt.sort(key=default_sort_key)
+    rebuilt.sort(key=compare_key)
     if not rebuilt and not merged:
         return (coefficient, None)
     zero = coefficient.exact_value()

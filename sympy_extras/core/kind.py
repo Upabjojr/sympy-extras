@@ -53,7 +53,10 @@ class Kind:
     def __str__(self) -> str:
         if not self.parameters:
             return self.name
-        return '%s(%s)' % (self.name, ', '.join(str(p) for p in self.parameters))
+        inner = ', '.join(str(p) for p in self.parameters)
+        if self.name == 'TupleKind' and len(self.parameters) == 1:
+            inner += ','  # SymPy prints the tuple of element kinds: TupleKind(NumberKind,)
+        return '%s(%s)' % (self.name, inner)
 
     def __repr__(self) -> str:
         return str(self)
