@@ -34,12 +34,12 @@ __all__ = ['ClassKey', 'ArgsKey', 'SortKey', 'CompareKey', 'CompareItem', 'defau
 #: (group, subgroup, class name): groups order numbers before atoms before
 #: compound expressions, as SymPy's ``class_key``
 ClassKey = tuple[int, int, str]
-#: (number of arguments, their keys)
-ArgsKey = tuple[int, tuple['SortKey', ...]]
-#: the key of an exponent: empty for the exponent 1 of a leaf
+#: (number of arguments, their keys), or (1, (name,)) for an atom, (2, (name, index)) for a dummy
+ArgsKey = tuple[int, Union[tuple['SortKey', ...], tuple[str], tuple[str, int]]]
+#: the key of an exponent: empty for a number
 ExpKey = Union[tuple[()], 'SortKey']
-#: (class key, arguments key, name, exponent key, coefficient)
-SortKey = tuple[ClassKey, ArgsKey, str, ExpKey, Fraction]
+#: (class key, arguments key, exponent key, coefficient), as SymPy's
+SortKey = tuple[ClassKey, ArgsKey, ExpKey, Fraction]
 #: an element of the content of a node in the ``compare`` order: the key
 #: of an argument, the name of a symbol, one of its assumptions, the
 #: numerator and denominator of a rational, ...
@@ -101,5 +101,20 @@ def compare_key(item: Basic) -> CompareKey:
 
 
 def ordered(items: Iterable[Basic]) -> list[Basic]:
-    """The expressions sorted by their canonical key."""
-    return sorted(items, key=default_sort_key)
+    """The expressions sorted as SymPy's ``ordered`` sorts them: by their
+    number of nodes, then by their canonical key.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols, ordered
+    >>> x, y = symbols('x y')
+    >>> ordered([x + y, x*y, x**2, y, x])
+    [x, y, x**2, x*y, x + y]
+    """
+    return sorted(items, key=lambda e: (_nodes(e), e.sort_key()))
+
+
+def _nodes(e: Basic) -> int:
+    """The number of nodes of the tree."""
+    return 1 + sum(_nodes(a) for a in e.args)

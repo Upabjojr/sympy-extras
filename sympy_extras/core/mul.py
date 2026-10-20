@@ -23,7 +23,7 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import Callable, TYPE_CHECKING, Iterable, Optional
 
 from .add import Add, add
 from .basic import Basic
@@ -84,8 +84,11 @@ class Mul(AssocOp):
                 primitives.append(Integer(-1))
         else:
             primitives.append(coefficient)
+        # a fractional coefficient takes the content of the sums with it even
+        # with clear=False: (x + 2/3)/(2*n) gives (3*x + 2)/(6*n) in SymPy
+        inner_clear = clear or (isinstance(coefficient, Rational) and coefficient.q != 1)
         for f in factors_of(rest):
-            c, p = f.as_content_primitive(radical=radical, clear=clear)
+            c, p = f.as_content_primitive(radical=radical, clear=inner_clear)
             value = c.exact_value()
             content *= value if value is not None else Fraction(1)
             primitives.append(p)
@@ -139,6 +142,15 @@ class Mul(AssocOp):
 
     def could_extract_minus_sign(self) -> bool:
         return self.as_coeff_Mul()[0].is_negative is True
+
+    def primitive(self) -> tuple[Number, Expr]:
+        # SymPy: the absolute rational coefficient and the rest with the sign
+        c, rest = self.as_coeff_Mul()
+        if not isinstance(c, Rational) or c.p == 0:
+            return (Integer(1), self)
+        if c.p < 0:
+            return (Rational(-c.p, c.q), mul(Integer(-1), rest))
+        return (c, rest)
 
 
 def _raw(factors: list[Expr]) -> Expr:
@@ -205,7 +217,7 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
     """One pass of flattening and collecting; the second component is the
     list of factors to flatten again when a rebuilt factor is a product
     or a number."""
-    from .power import pow
+    pow = _pow
     coefficient: Number = Integer(1)
     collected: _Collected = {}
     noncommutative: list[Expr] = []
@@ -399,3 +411,13 @@ def neg(a: ExprLike) -> Expr:
     """
     return mul(Integer(-1), a)
 
+_POW: Optional[Callable[[ExprLike, ExprLike], Expr]] = None
+
+
+def _pow(b: ExprLike, e: ExprLike) -> Expr:
+    """``pow`` of the sibling module, bound at the first call (it imports this one)."""
+    global _POW
+    if _POW is None:
+        from .power import pow
+        _POW = pow
+    return _POW(b, e)

@@ -151,14 +151,74 @@ def evalf(e: Expr, n: int = 15, subs: Optional[SubsMapping] = None) -> Expr:
         for k, v in subs.items():
             rules[k] = sympify(v)
         e = e.xreplace(rules).doit()
+    if e.is_Number and e == 0:
+        return e  # SymPy keeps an exact zero
     prec = dps_to_prec(n)
     value = numeric_value(e, prec + _GUARD_BITS)
     if value is not None:
         return _from_mpc(value, prec)
-    if not e.args:
+    return _evalf_inside(e, n)
+
+
+def _evalf_inside(e: Expr, n: int) -> Expr:
+    """The numerical evaluation of what a symbolic node contains, with
+    SymPy's conventions: the numerical factors of a product are evaluated
+    as one number (a coefficient ``-1`` is kept), the terms of a sum one
+    by one (``I`` is kept), an integer exponent is kept, a function of a
+    symbolic argument is left as it is (``log(3*z/8 - 3*pi/8)``)."""
+    from .add import Add, add
+    from .function import Application
+    from .mul import Mul, mul
+    from .numbers import ImaginaryUnit, Integer, Rational
+    from .parameters import distribute
+    from .power import Pow
+    if isinstance(e, ImaginaryUnit) or not e.args:
+        return e if not isinstance(e, Rational) or e == 0 else evalf(e, n)
+    if isinstance(e, Add):
+        return add(*[_evalf_term(t, n) for t in e.args])
+    if isinstance(e, Mul):
+        numeric = [f for f in e.args if f.is_number]
+        symbolic = [_evalf_inside(f, n) for f in e.args if not f.is_number]
+        if not numeric:
+            return mul(*symbolic)
+        if all(_is_unit(f) for f in numeric):
+            return mul(*numeric, *symbolic)  # -I*x stays
+        if len(numeric) == 2 and isinstance(numeric[0], Rational) and numeric[0] == -1 and isinstance(numeric[1], Add):
+            with distribute(False):  # SymPy: -(3.33 + I)/(p - 4.0), the sum factor term by term
+                return mul(Integer(-1), _evalf_inside(numeric[1], n), *symbolic)
+        coefficient = mul(*numeric)
+        if isinstance(coefficient, Add):
+            return mul(_evalf_inside(coefficient, n), *symbolic)
+        return mul(evalf(coefficient, n), *symbolic)
+    if isinstance(e, Pow):
+        exponent = e.exp
+        keep = isinstance(exponent, Rational) and exponent.q == 1
+        return as_expr(e._evaluated((_evalf_term(e.base, n), exponent if keep else _evalf_term(exponent, n))))
+    if isinstance(e, Application):
         return e
-    args = tuple(evalf(a, n) if isinstance(a, Expr) else a for a in e.args)
+    args = tuple(_evalf_term(a, n) if isinstance(a, Expr) else a for a in e.args)
     return as_expr(e._evaluated(args))
+
+
+def _evalf_term(e: Expr, n: int) -> Expr:
+    """A term or a base: as a number when it is one, else from inside;
+    ``I``, ``-I`` and ``I**e`` keep the imaginary unit, as in SymPy."""
+    from .mul import Mul
+    from .numbers import ImaginaryUnit
+    from .power import Pow
+    if isinstance(e, ImaginaryUnit) or (isinstance(e, Mul) and all(_is_unit(f) for f in e.args)):
+        return e
+    if isinstance(e, Pow) and isinstance(e.base, ImaginaryUnit):
+        return as_expr(e._evaluated((e.base, _evalf_term(e.exp, n))))
+    if e.is_number:
+        return evalf(e, n)
+    return _evalf_inside(e, n)
+
+
+def _is_unit(f: Expr) -> bool:
+    """Whether ``f`` is ``1``, ``-1`` or ``I``."""
+    from .numbers import ImaginaryUnit, Rational
+    return isinstance(f, ImaginaryUnit) or (isinstance(f, Rational) and f.q == 1 and f.p in (1, -1))
 
 
 def N(e: Expr, n: int = 15, subs: Optional[SubsMapping] = None) -> Expr:

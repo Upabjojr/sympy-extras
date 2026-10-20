@@ -264,7 +264,7 @@ class Basic:
     def sort_key(self) -> SortKey:
         """A key which orders expressions canonically (``default_sort_key``)."""
         args: ArgsKey = (len(self.args), tuple(a.sort_key() for a in self.args))
-        return (self.class_key(), args, '', (), _ONE_KEY)
+        return (self.class_key(), args, (), _ONE_KEY)
 
     def _compare_name(self) -> str:
         """The name of the class in SymPy, for the ``compare`` order."""
@@ -813,7 +813,7 @@ class Atom(Basic):
         return (2, 0, cls.__name__)
 
     def sort_key(self) -> SortKey:
-        return (self.class_key(), (1, ()), str(self), (), _ONE_KEY)
+        return (self.class_key(), (1, (str(self),)), (), _ONE_KEY)
 
 
 def preorder_traversal(node: Basic) -> Iterator[Basic]:

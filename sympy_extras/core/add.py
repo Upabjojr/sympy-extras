@@ -18,14 +18,14 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from .basic import Basic
 from .expr import Expr, ExprLike, to_expr
 from .numbers import (ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, Number, Rational,
     nan, number_from_fraction)
 from .operations import AssocOp
-from .parameters import global_parameters
+from .parameters import distribute, global_parameters
 from .sorting import ArgsKey, ClassKey, SortKey, compare_key
 
 if TYPE_CHECKING:
@@ -65,12 +65,16 @@ class Add(AssocOp):
         return add_facts(self._args)
 
     def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
+        # the content of each term comes out first ((1/4)**n becomes 4**(-n)), as SymPy does
+        rebuilt = [_mul(*t.as_content_primitive(radical=radical, clear=clear)) for t in self._args]
+        if any(r is not t for r, t in zip(rebuilt, self._args)) and rebuilt != list(self._args):
+            total = add(*rebuilt)
+            if isinstance(total, Add) and total != self:
+                return total.as_content_primitive(radical=radical, clear=clear)
         c, p = self.primitive()
-        if clear or not isinstance(c, Rational) or c.q == 1 \
-                or all(_as_rational(t.as_coeff_Mul()[0]).q != 1 for t in self._args):
+        if clear or not isinstance(c, Rational) or c.q == 1 or self._clearable():
             return (c, p)
-        # SymPy's clear=False: a denominator is not cleared when a term has an
-        # integer coefficient (x/2 + y stays); the integer content is taken
+        # SymPy's clear=False: the denominator stays (x/2 + y); the integer content is taken
         if c.p == 1:
             return (Integer(1), self)
         from .mul import mul
@@ -97,7 +101,7 @@ class Add(AssocOp):
         from .printing import ordered_terms
         key = Expr.sort_key(self)
         args: ArgsKey = (len(self._args), tuple(a.sort_key() for a in ordered_terms(self._args)))
-        return (key[0], args, key[2], key[3], key[4])
+        return (key[0], args, key[2], key[3])
 
     def as_coeff_Add(self) -> tuple[Number, Expr]:
         number: Number = Integer(0)
@@ -113,12 +117,41 @@ class Add(AssocOp):
         return (self._args[0], _raw(list(self._args[1:])))
 
     def as_numer_denom(self) -> tuple[Expr, Expr]:
-        from .mul import mul
-        parts = [a.as_numer_denom() for a in self._args]
-        denominator = mul(*[d for _, d in parts])
-        numerators = [mul(n, *[d for j, (_, d) in enumerate(parts) if j != i])
-                      for i, (n, _) in enumerate(parts)]
-        return (add(*numerators), denominator)
+        # the terms with the same denominator are summed first, as SymPy
+        # does: 1 + (x + 1)/(x - 1) gives (2*x, x - 1)
+        mul = _mul
+        content, primitive = self.primitive()
+        if not isinstance(primitive, Add):
+            return mul(content, primitive).as_numer_denom()
+        groups: dict[Expr, list[Expr]] = {}
+        for a in primitive.args:
+            n, d = a.as_numer_denom()
+            groups.setdefault(d, []).append(n)
+        cn, cd = content.as_numer_denom()
+        if len(groups) == 1:
+            # one denominator: the content multiplies each numerator (11 - 11*z, 6)
+            d, ns = next(iter(groups.items()))
+            with distribute(False):
+                return (add(*[mul(cn, n) for n in ns]), mul(cd, d))
+        denominators = list(groups)
+        numerators = [mul(add(*ns), *[e for e in denominators if e is not d]) for d, ns in groups.items()]
+        with distribute(False):  # SymPy: (2*(E*x*y + 1), 2*(E + 3))
+            return (mul(cn, add(*numerators)), mul(cd, *denominators))
+
+    def could_extract_minus_sign(self) -> bool:
+        # SymPy: more negative terms than positive ones, or as many and the
+        # sum sorting before its negation
+        negatives = sum(1 for a in self._args if a.could_extract_minus_sign())
+        positives = len(self._args) - negatives
+        if negatives != positives:
+            return negatives > positives
+        return self.sort_key() < _mul(Integer(-1), self).sort_key()
+
+    def _clearable(self) -> bool:
+        """SymPy's rule for ``clear=False``: a fractional content is taken
+        out only when every term has a fractional coefficient (``x/2 + y/4``
+        gives ``(2*x + y)/4``, ``x/2 + y`` and ``x + 2/3`` stay)."""
+        return all(_as_rational(a.as_coeff_Mul()[0]).q != 1 for a in self._args)
 
     def primitive(self) -> tuple[Number, Expr]:
         from .mul import mul
@@ -180,7 +213,7 @@ def add(*args: ExprLike) -> Expr:
     >>> add()
     0
     """
-    from .mul import mul
+    mul = _mul
     stack = [to_expr(a) for a in args]
     if not global_parameters.evaluate:
         return _raw([t for a in stack for t in (a.args if isinstance(a, Add) else (a,))])
@@ -277,3 +310,14 @@ def sub(a: ExprLike, b: ExprLike) -> Expr:
     """
     from .mul import mul
     return add(a, mul(Integer(-1), b))
+
+_MUL: Optional[Callable[..., Expr]] = None
+
+
+def _mul(*args: ExprLike) -> Expr:
+    """``mul`` of the sibling module, bound at the first call (it imports this one)."""
+    global _MUL
+    if _MUL is None:
+        from .mul import mul
+        _MUL = mul
+    return _MUL(*args)

@@ -686,7 +686,9 @@ assumptions answered by the old assumptions, the rest by SymPy's solver),
 `factor_terms`, the order of the arguments of sums and products, the
 context managers, the cache, the traversals and the integer helpers;
 `to_sympy`/`from_sympy` convert in both directions, every object of SymPy
-included, and the arithmetic runs within a factor of three of
+included; the conventions of the methods (`srepr`, `sort_key`, `evalf`,
+`count_ops`, `extract_multiplicatively`, ...) are SymPy's, checked on
+random expressions, and the arithmetic runs within a factor of two of
 `sympy.core`. See `docs/core.md`.
 
 ```python

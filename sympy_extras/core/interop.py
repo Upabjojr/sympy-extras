@@ -403,7 +403,7 @@ def from_sympy(e: Union[SymPyBasic, int]) -> Basic:
     >>> x = sympy.Symbol('x')
     >>> t = from_sympy(sympy.sin(x)**2 + 1)
     >>> t, srepr(t)
-    (sin(x)**2 + 1, "Add(Integer(1), Pow(sin(Symbol('x')), Integer(2)))")
+    (sin(x)**2 + 1, "Add(Pow(sin(Symbol('x')), Integer(2)), Integer(1))")
     >>> srepr(from_sympy(sympy.Symbol('p', positive=True)))
     Symbol('p', positive=True)
     >>> from_sympy(sympy.Symbol('p', positive=True)).is_positive

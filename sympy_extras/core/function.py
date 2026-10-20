@@ -50,9 +50,9 @@ from .coreerrors import PoleError
 from .expr import AtomicExpr, Expr, ExprLike, UnevaluatedExpr, as_expr, factors_of, terms_of, to_expr
 from .kind import Kind, UndefinedKind
 from .mul import Mul, mul
-from .numbers import Float, Integer, Number, NumberSymbol, Rational
+from .numbers import Exp1, Float, Integer, Number, NumberSymbol, Rational
 from .power import Pow, pow
-from .sorting import ClassKey, SortKey
+from .sorting import ClassKey
 from .symbol import Dummy, Symbol
 
 if TYPE_CHECKING:
@@ -268,9 +268,8 @@ class AppliedUndef(Application):
     def _compare_name(self) -> str:
         return self._function.name
 
-    def sort_key(self) -> SortKey:
-        key = Expr.sort_key(self)
-        return ((4, 0, self.name), key[1], key[2], key[3], key[4])
+    def _sort_class_key(self) -> ClassKey:
+        return (4, 0, self.name)
 
     def _eval_facts(self) -> dict[str, bool]:
         from .assumptions import facts_of
@@ -396,21 +395,29 @@ class AppliedSymPyFunction(Application):
     def _compare_name(self) -> str:
         return self._sympy_class.__name__
 
-    def sort_key(self) -> SortKey:
-        key = Expr.sort_key(self)
-        return ((4, _FUNCTION_RANKS.get(self.name, 10000), self.name), key[1], key[2], key[3], key[4])
+    def _sort_class_key(self) -> ClassKey:
+        return (4, _FUNCTION_RANKS.get(self.name, 10000), self.name)
 
     @property
     def kind(self) -> Kind:
+        from sympy.core.kind import NumberKind as SymPyNumberKind
+
         from .interop import to_sympy
         from .kind import NumberKind
-        return NumberKind if to_sympy(self).kind == NumberKind else UndefinedKind
+        return NumberKind if to_sympy(self).kind is SymPyNumberKind else UndefinedKind
 
     def as_base_exp(self) -> tuple[Expr, Expr]:
         # exp(a) is E**a, as in SymPy (where E**a builds exp(a))
         if self._sympy_class is sympy.exp:
             from .numbers import E
             return (E, self._args[0])
+        return (self, Integer(1))
+
+    def as_numer_denom(self) -> tuple[Expr, Expr]:
+        if self._sympy_class is sympy.exp:
+            arg = self._args[0]
+            if arg.is_negative is True or arg.could_extract_minus_sign():  # exp(-x) is 1/exp(x), as SymPy decides
+                return (Integer(1), apply_sympy(sympy.exp, mul(Integer(-1), arg)))
         return (self, Integer(1))
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
@@ -897,6 +904,7 @@ def diff(expr: ExprLike, *symbols: DiffSpec) -> Expr:
 
 
 def _derivative(e: Expr, s: Symbol) -> Expr:
+    from .interop import expr_through_sympy, to_sympy
     if e == s:
         return Integer(1)
     if s not in e.free_symbols:
@@ -914,25 +922,14 @@ def _derivative(e: Expr, s: Symbol) -> Expr:
     if isinstance(e, Pow):
         b, ex = e.base, e.exp
         if s not in ex.free_symbols:
-            return mul(ex, pow(b, add(ex, Integer(-1))), _derivative(b, s))
+            # SymPy's form (e*db)*b**e/b: x**(-pi/2)/x stays apart from
+            # x**(-pi/2 - 1), and 1/2 is distributed over the inner derivative
+            return mul(mul(ex, _derivative(b, s)), e, pow(b, Integer(-1)))
         log_b = apply_sympy(sympy.log, b)
         return mul(e, add(mul(_derivative(ex, s), log_b), mul(ex, _derivative(b, s), pow(b, Integer(-1)))))
     if isinstance(e, AppliedSymPyFunction):
-        from .interop import expr_from_sympy, to_sympy
-        node = e.sympy_class(*[to_sympy(a) for a in e.args])
-        if not isinstance(node, e.sympy_class):
-            if not isinstance(node, SymPyBasic):
-                raise TypeError("SymPy returned %r" % (node,))
-            return _derivative(expr_from_sympy(node), s)
-        terms = []
-        for i, a in enumerate(e.args):
-            if s not in a.free_symbols:
-                continue
-            partial = node.fdiff(i + 1)
-            if not isinstance(partial, SymPyBasic):
-                raise TypeError("SymPy returned %r" % (partial,))
-            terms.append(mul(expr_from_sympy(partial), _derivative(a, s)))
-        return add(*terms)
+        # the derivative of a function of SymPy is SymPy's (Abs has its own rule)
+        return expr_through_sympy(e, lambda node: sympy.diff(node, to_sympy(s)))
     if isinstance(e, AppliedUndef):
         terms = []
         others_depend = sum(1 for a in e.args if s in a.free_symbols) > 1
@@ -949,7 +946,6 @@ def _derivative(e: Expr, s: Symbol) -> Expr:
     if isinstance(e, Derivative):
         return Derivative(e.expr, *e.variable_count, (s, 1))
     if e.is_Order:
-        from .interop import expr_through_sympy, to_sympy
         return expr_through_sympy(e, lambda o: o.diff(to_sympy(s)))
     if isinstance(e, Subs):
         terms = []
@@ -965,7 +961,7 @@ def _derivative(e: Expr, s: Symbol) -> Expr:
 
 
 def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: bool = True, power_base: bool = True,
-           power_exp: bool = True, log: bool = False, func: bool = False, trig: bool = False,
+           power_exp: bool = True, log: bool = True, func: bool = False, trig: bool = False,
            complex: bool = False) -> Expr:
     """Products distributed over sums (``mul``), integer powers of sums
     expanded (``multinomial``), powers with a sum in the exponent split
@@ -983,35 +979,53 @@ def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: boo
     (2*2**x, x/(x + 1), x*(y + 1))
     """
     e = to_expr(expr)
-    if log or func or trig or complex:
+    if func or trig or complex:
         from .interop import expr_through_sympy
         return expr_through_sympy(e, lambda s: sympy.expand(s, deep=deep, mul=mul, multinomial=multinomial,
                                                             power_base=power_base, power_exp=power_exp, log=log,
                                                             func=func, trig=trig, complex=complex))
-    return _expand(e, deep, mul, multinomial, power_exp)
+    return _expand(e, deep, mul, multinomial, power_exp, log)
 
 
-def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp: bool) -> Expr:
+def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp: bool, log: bool) -> Expr:
     if deep and e.args and not isinstance(e, (Derivative, UnevaluatedExpr)):
-        e = as_expr(e._evaluated(tuple(_expand(a, deep, distribute, multinomial, power_exp)
+        e = as_expr(e._evaluated(tuple(_expand(a, deep, distribute, multinomial, power_exp, log)
                                        if isinstance(a, Expr) else a for a in e.args)))
     if isinstance(e, Mul) and distribute:
         result: Expr = Integer(1)
         for f in e.args:
             result = _expand_product(result, f)
-        return result
+        return add(*[_expanded_denominator(t) for t in terms_of(result)])
     if isinstance(e, Pow):
         b, ex = e.base, e.exp
         if multinomial and isinstance(b, Add) and isinstance(ex, Rational) and ex.q == 1 and ex.p != 0:
             n = abs(ex.p)
             power = _expand_power(b, n)
             return power if ex.p > 0 else pow(power, Integer(-1))
+        if multinomial and isinstance(b, Add) and isinstance(ex, Rational) and ex.q > 1 and ex.p > ex.q:
+            whole = ex.p // ex.q  # (y - x)**(3/2) is (y - x)*sqrt(y - x), distributed
+            rest = Rational(ex.p - whole*ex.q, ex.q)
+            return _expand_product(_expand_power(b, whole), pow(b, rest))
         if power_exp and isinstance(ex, Add) and isinstance(b, Number):
             return mul(*[pow(b, t) for t in ex.args])
     if power_exp and isinstance(e, AppliedSymPyFunction) and e.sympy_class is sympy.exp and isinstance(e.args[0], Add):
         from .numbers import E
         return mul(*[pow(E, t) for t in e.args[0].args])
+    if log and isinstance(e, AppliedSymPyFunction) and e.sympy_class is sympy.log:
+        from .interop import expr_through_sympy
+        return expr_through_sympy(e, sympy.expand_log)
     return e
+
+
+def _expanded_denominator(term: Expr) -> Expr:
+    """A term whose denominator is a product with a sum written over the
+    expanded denominator: ``p/(2*(x - y))`` becomes ``p/(2*x - 2*y)``, as
+    SymPy's expansion does."""
+    numerator, denominator = term.as_numer_denom()
+    if not isinstance(denominator, Mul) or not any(isinstance(f, Add) for f in denominator.args):
+        return term
+    expanded = _expand(denominator, False, True, False, False, False)
+    return mul(numerator, pow(expanded, Integer(-1)))
 
 
 def _expand_product(a: Expr, b: Expr) -> Expr:
@@ -1212,13 +1226,21 @@ def _count(e: CountOpsArg, counts: dict[str, int]) -> None:
         _tally(counts, 'NEG', int(e.p < 0))
         return
     if isinstance(e, Add):
-        for i, t in enumerate(e.as_ordered_terms()):
-            negative = t.could_extract_minus_sign()
-            if i == 0:
-                _tally(counts, 'NEG', int(negative))
-            else:
-                _tally(counts, 'SUB' if negative else 'ADD')
+        # SymPy: every term negative gives NEG and (n - 1) SUB; otherwise a
+        # SUB per negative term and an ADD per positive term but one
+        terms = e.as_ordered_terms()
+        negatives = [t.could_extract_minus_sign() for t in terms]
+        if all(negatives):
+            _tally(counts, 'NEG')
+            _tally(counts, 'SUB', len(terms) - 1)
+        else:
+            _tally(counts, 'SUB', sum(1 for n in negatives if n))
+            _tally(counts, 'ADD', sum(1 for n in negatives if not n) - 1)
+        for t, negative in zip(terms, negatives):
             _count(-t if negative else t, counts)
+        return
+    if isinstance(e, Exp1):
+        _tally(counts, 'EXP')  # SymPy: E is exp(1)
         return
     if isinstance(e, Mul):
         c, rest = e.as_coeff_Mul()
@@ -1236,8 +1258,9 @@ def _count(e: CountOpsArg, counts: dict[str, int]) -> None:
             numerator.append(c)
         for f in factors_of(rest):
             b, ex = f.as_base_exp()
-            if isinstance(ex, Rational) and ex.p < 0:
-                denominator.append(pow(b, Rational(-ex.p, ex.q)))
+            sign = ex.as_coeff_Mul()[0]
+            if isinstance(sign, Rational) and sign.p < 0:
+                denominator.append(pow(b, mul(Integer(-1), ex)))
             else:
                 numerator.append(f)
         _tally(counts, 'MUL', max(len(numerator) - 1, 0))

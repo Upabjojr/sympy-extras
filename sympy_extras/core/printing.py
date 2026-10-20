@@ -24,6 +24,14 @@ from .numbers import (AlgebraicNumber, Float, ImaginaryUnit, NegativeInfinity, N
     number_from_fraction)
 from .sorting import SortKey, compare_key, default_sort_key
 
+# the classes printed here (none of these modules imports this one at module level)
+from .add import Add  # noqa: E402
+from .logic import And, Equivalent, Implies, Not, Or, Xor  # noqa: E402
+from .mod import Mod  # noqa: E402
+from .mul import Mul  # noqa: E402
+from .power import Pow  # noqa: E402
+from .relational import Relational  # noqa: E402
+
 __all__ = ['sstr', 'srepr', 'StrPrinter', 'ordered_terms']
 
 PREC_XOR = 10
@@ -46,15 +54,10 @@ PREC_AND_ARGS = 38
 
 def precedence(e: Basic) -> int:
     """The precedence of the printed form of ``e``."""
-    from .add import Add
-    from .logic import And, Equivalent, Implies, Not, Or, Xor
-    from .mul import Mul
-    from .power import Pow
-    from .relational import Relational
     if isinstance(e, Add):
         return PREC_ADD
     if isinstance(e, Mul):
-        return PREC_ADD if sstr(e).startswith('-') else PREC_MUL
+        return PREC_ADD if e.could_extract_minus_sign() else PREC_MUL
     if isinstance(e, Pow):
         return PREC_POW
     if isinstance(e, Relational):
@@ -129,8 +132,6 @@ class StrPrinter:
         return ''.join(parts)
 
     def print_mul(self, factors: Sequence[Expr]) -> str:
-        from .mod import Mod
-        from .power import Pow
         factors = _printing_order(factors)
         sign = ''
         numerator: list[str] = []
@@ -176,7 +177,6 @@ class StrPrinter:
         return '%s%s/%s' % (sign, num, den)
 
     def print_pow(self, base: Expr, exp: Expr) -> str:
-        from .mod import Mod
         if isinstance(base, Mod):
             return '(%s)**%s' % (self.doprint(base), self.parenthesize(exp, PREC_POW, strict=True))
         if isinstance(exp, Rational):
@@ -213,8 +213,8 @@ def srepr(e: Basic) -> str:
 
     >>> from sympy_extras.core import symbols, srepr
     >>> x = symbols('x')
-    >>> srepr(2*x + 1)
-    Add(Integer(1), Mul(Integer(2), Symbol('x')))
+    >>> srepr(2*x + 1), srepr(-3*x/8)
+    ("Add(Mul(Integer(2), Symbol('x')), Integer(1))", "Mul(Integer(-1), Rational(3, 8), Symbol('x'))")
     """
     from .function import AppliedSymPyFunction, AppliedUndef, WildFunction
     from .numbers import Float
@@ -235,14 +235,19 @@ def srepr(e: Basic) -> str:
             return 'Integer(%d)' % e.p
         return 'Rational(%d, %d)' % (e.p, e.q)
     if isinstance(e, Float):
-        return "Float(%r, precision=%d)" % (str(e), e.precision)
+        return "Float(%r, precision=%d)" % (e.repr_str(), e.precision)
     if isinstance(e, AppliedUndef):
         return "Function(%r)(%s)" % (e.name, ', '.join(srepr(a) for a in e.args))
     if isinstance(e, AppliedSymPyFunction):
         return "%s(%s)" % (e.name, ', '.join(srepr(a) for a in e.args))
     if not e.args:
         return str(e)
-    return '%s(%s)' % (type(e).__name__, ', '.join(srepr(a) for a in e.args))
+    args: Sequence[Basic] = e.args
+    if isinstance(e, Add) and _in_compare_order(e.args):
+        args = ordered_terms(e.args)
+    elif isinstance(e, Mul) and _in_compare_order(e.args):
+        args = e.as_ordered_factors()
+    return '%s(%s)' % (type(e).__name__, ', '.join(srepr(a) for a in args))
 
 
 def _decompose_power(f: Expr) -> tuple[Expr, int]:
@@ -294,9 +299,10 @@ def _generators(term: Expr) -> list[Expr]:
 
 
 def _negative_exponent(e: Expr) -> bool:
-    """Whether the exponent has a negative rational coefficient (``-2``, ``-n``, ``-y/2``)."""
+    """Whether the exponent has a negative numerical coefficient (``-2``,
+    ``-n``, ``-y/2``, ``-0.5``)."""
     c = e.as_coeff_Mul()[0]
-    return isinstance(c, Rational) and c.p < 0
+    return (isinstance(c, Rational) and c.p < 0) or (isinstance(c, Float) and c.as_fraction() < 0)
 
 
 def _in_compare_order(args: Sequence[Expr]) -> bool:

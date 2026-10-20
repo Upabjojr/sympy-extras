@@ -34,7 +34,7 @@ from .expr import Expr, ExprLike, factors_of, to_expr
 from .mul import Mul, mul
 from .numbers import (ComplexInfinity, Exp1, Float, ImaginaryUnit, Infinity, Integer, I, NaN,
     NegativeInfinity, Number, Rational, nan, number_from_fraction, oo, zoo)
-from .parameters import global_parameters
+from .parameters import distribute, global_parameters
 from .sorting import ClassKey
 
 if TYPE_CHECKING:
@@ -98,15 +98,6 @@ class Pow(Expr):
         from .assumptions import pow_facts
         return pow_facts(self._base, self._exp)
 
-    def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
-        e = self._exp
-        if isinstance(e, Rational) and e.q == 1 and e.p > 0 and isinstance(self._base, Add):
-            c, p = self._base.as_content_primitive(radical=radical, clear=clear)
-            value = c.exact_value()
-            if value is not None and value != 1:
-                return (number_from_fraction(value ** e.p), pow(p, e))
-        return (Integer(1), self)
-
     def as_base_exp(self) -> tuple[Expr, Expr]:
         # (1/q)**e is seen as q**(-e), as in SymPy
         if isinstance(self._base, Rational) and self._base.p == 1 and self._base.q > 1:
@@ -116,6 +107,31 @@ class Pow(Expr):
     def _sympystr(self, printer: StrPrinter) -> str:
         return printer.print_pow(self._base, self._exp)
 
+    def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
+        # SymPy: the content of a sum raised to an integer power comes out
+        # ((2*x + 4)**-1 gives (1/2, (x + 2)**-1)); for another exponent the
+        # sum keeps its content as an undistributed product
+        if isinstance(self._base, Rational) and self._base.p == 1 and self._base.q > 1:
+            return (Integer(1), pow(Integer(self._base.q), mul(Integer(-1), self._exp)))  # (1/4)**n is 4**(-n)
+        if not isinstance(self._base, Add):
+            return (Integer(1), self)
+        if not clear and isinstance(self._exp, Rational) and self._exp.p < 0:
+            return (Integer(1), self)  # SymPy keeps 1/(p + 3/2) with clear=False
+        c, p = self._base.as_content_primitive(radical=radical, clear=clear)
+        if c.is_Number and c == 1 or not isinstance(c, Rational):
+            return (Integer(1), self)
+        e = self._exp
+        if isinstance(e, Rational) and e.q == 1:
+            value = c.as_fraction() ** e.p
+            return (number_from_fraction(value), pow(p, e))
+        if isinstance(e, Rational):
+            # sqrt((2*y + 1)/2) is sqrt(2)*sqrt(2*y + 1)/2: the root of the content comes out
+            numeric = pow(c, e)
+            nc, np_ = numeric.as_content_primitive(radical=radical, clear=clear)
+            return (nc, mul(np_, pow(p, e)))
+        with distribute(False):
+            return (Integer(1), Pow(mul(c, p), e))
+
     def as_numer_denom(self) -> tuple[Expr, Expr]:
         e = self._exp
         if isinstance(e, Rational) and e.p < 0:
@@ -123,9 +139,17 @@ class Pow(Expr):
             minus = Rational(-e.p, e.q)
             return (pow(d, minus), pow(n, minus))
         if isinstance(e, Rational):
+            if isinstance(self._base, Add) and e.q > 1:
+                return (self, Integer(1))  # SymPy keeps sqrt(pi*x + x**(-2)) whole
             n, d = self._base.as_numer_denom()
             return (pow(n, e), pow(d, e))
-        return (self, Integer(1))
+        c = e.as_coeff_Mul()[0]
+        if isinstance(c, Rational) and c.p < 0:
+            return (Integer(1), pow(self._base, mul(Integer(-1), e)))  # x**(-pi) is 1/x**pi
+        n, d = self._base.as_numer_denom()
+        if d.is_Number and d == 1:
+            return (self, Integer(1))
+        return (pow(n, e), pow(d, e))  # ((5*x + 4)/5)**n is (5*x + 4)**n / 5**n
 
 
 def pow(b: ExprLike, e: ExprLike) -> Expr:

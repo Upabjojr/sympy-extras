@@ -19,6 +19,7 @@ import sympy
 from sympy_extras import core as C
 from sympy_extras._testing import untyped
 from sympy_extras.core import from_sympy, to_sympy
+from sympy_extras.core.assumptions import ask_structural
 
 sx, sy, sz = sympy.Symbol('x'), sympy.Symbol('y'), sympy.Symbol('z')
 sp = sympy.Symbol('p', positive=True)
@@ -832,3 +833,118 @@ def test_known_native_algorithms() -> None:
                          sp_.is_algebraic_expr(sx), sp_.is_polynomial(sy), sp_.is_rational_function(sy),
                          sp_.is_algebraic_expr(sy))
         assert answers == sympy_answers, (text, answers, sympy_answers)
+
+
+def test_known_methods_on_random_expressions() -> None:
+    """Dozens of methods and properties of ``Expr`` give what SymPy gives
+    on random expressions with functions (the method fuzz of the
+    session): the printed results are compared, a fact known here and
+    unknown to SymPy is allowed."""
+    rng = random.Random(1)
+    sfs = [sympy.sin, sympy.cos, sympy.exp, sympy.log, sympy.Abs]
+    leaves = [(sx, cx), (sy, cy), (sz, cz), (sp, cp), (sn, cn), (sympy.pi, C.pi), (sympy.I, C.I), (sympy.E, C.E)]
+
+    def leaf() -> Pair:
+        r = rng.random()
+        if r < 0.5:
+            return rng.choice(leaves)
+        if r < 0.8:
+            k = rng.randint(-4, 4)
+            return (sympy.Integer(k), C.Integer(k))
+        a, b = rng.randint(-6, 6), rng.randint(1, 6)
+        return (sympy.Rational(a, b), C.Rational(a, b))
+
+    def build(depth: int) -> Pair:
+        if depth == 0 or rng.random() < 0.25:
+            return leaf()
+        op = rng.choice(['add', 'add', 'mul', 'mul', 'pow', 'neg', 'sub', 'div', 'fun'])
+        if op in ('add', 'mul'):
+            parts = [build(depth - 1) for _ in range(rng.randint(2, 3))]
+            if op == 'add':
+                return (sympy_expr(sympy.Add(*[a for a, _ in parts])), C.add(*[b for _, b in parts]))
+            return (sympy_expr(sympy.Mul(*[a for a, _ in parts])), C.mul(*[b for _, b in parts]))
+        if op == 'pow':
+            base = build(depth - 1)
+            r = rng.random()
+            if r < 0.5:
+                k = rng.randint(-2, 3)
+                e: Pair = (sympy.Integer(k), C.Integer(k))
+            elif r < 0.8:
+                q = rng.choice([2, 3])
+                numerator = rng.choice([1, -1, 2])
+                e = (sympy.Rational(numerator, q), C.Rational(numerator, q))
+            else:
+                e = leaf()
+            return (sympy_expr(sympy.Pow(base[0], e[0])), C.pow(base[1], e[1]))
+        if op == 'fun':
+            g = rng.choice(sfs)
+            inner = build(depth - 1)
+            return (sympy_expr(g(inner[0])), C.SymPyFunction(g)(inner[1]).doit())
+        if op == 'neg':
+            inner = build(depth - 1)
+            return (sympy_expr(-inner[0]), -inner[1])
+        left, right = build(depth - 1), build(depth - 1)
+        if op == 'sub':
+            return (sympy_expr(left[0] - right[0]), left[1] - right[1])
+        return (sympy_expr(left[0] / right[0]), left[1] / right[1])
+
+    def shown(v: object) -> str:
+        if isinstance(v, (tuple, list)):
+            return '(' + ', '.join(shown(a) for a in v) + ')'
+        if isinstance(v, (set, frozenset)):
+            return '{' + ', '.join(sorted(str(a) for a in v)) + '}'
+        if isinstance(v, dict):
+            return '{' + ', '.join('%s: %s' % (k, shown(w)) for k, w in sorted(v.items(), key=lambda kv: str(kv[0]))) + '}'
+        return str(v)
+    facts = ['positive', 'real', 'integer', 'zero', 'finite', 'rational', 'nonnegative', 'even', 'imaginary',
+             'algebraic']
+    checks: list[tuple[str, Callable[[sympy.Expr], object], Callable[[C.Expr], object]]] = [
+        ('str', lambda s: s, lambda c: c),
+        ('is_number', lambda s: s.is_number, lambda c: c.is_number),
+        ('srepr', lambda s: sympy.srepr(s), lambda c: C.srepr(c)),
+        ('args', lambda s: s.args, lambda c: c.args),
+        ('round trip', lambda s: True, lambda c: from_sympy(to_sympy(c)) == c),
+        ('free_symbols', lambda s: s.free_symbols, lambda c: c.free_symbols),
+        ('as_coeff_Mul', lambda s: s.as_coeff_Mul(), lambda c: c.as_coeff_Mul()),
+        ('as_coeff_Add', lambda s: s.as_coeff_Add(), lambda c: c.as_coeff_Add()),
+        ('as_base_exp', lambda s: s.as_base_exp(), lambda c: c.as_base_exp()),
+        ('as_independent', lambda s: s.as_independent(sx), lambda c: c.as_independent(cx)),
+        ('primitive', lambda s: s.primitive(), lambda c: c.primitive()),
+        ('as_ordered_factors', lambda s: s.as_ordered_factors(), lambda c: c.as_ordered_factors()),
+        ('as_ordered_terms', lambda s: s.as_ordered_terms(), lambda c: c.as_ordered_terms()),
+        ('as_terms', lambda s: [str(t) for t, _ in s.as_terms()[0]], lambda c: [str(t) for t, _ in c.as_terms()[0]]),
+        ('could_extract_minus_sign', lambda s: s.could_extract_minus_sign(), lambda c: c.could_extract_minus_sign()),
+        ('diff', lambda s: sympy.diff(s, sx), lambda c: C.diff(c, cx)),
+        ('subs', lambda s: s.subs(sx, sy + 1), lambda c: c.subs(cx, cy + 1)),
+        ('subs2', lambda s: s.subs({sx: 2, sy: sz}), lambda c: c.subs({cx: C.Integer(2), cy: cz})),
+        ('has', lambda s: s.has(sx), lambda c: c.has(cx)),
+        ('atoms', lambda s: s.atoms(), lambda c: c.atoms()),
+        ('ordered', lambda s: [str(t) for t in sympy.ordered(sympy.Add.make_args(s) + sympy.Mul.make_args(s))],
+         lambda c: [str(t) for t in C.ordered(C.Add.make_args(c) + C.Mul.make_args(c))]),
+        ('is_constant', lambda s: s.is_constant(), lambda c: c.is_constant()),
+        ('conjugate', lambda s: sympy.conjugate(s), lambda c: c.conjugate()),
+        ('together', lambda s: sympy.together(s), lambda c: c.together()),
+        ('extract_multiplicatively', lambda s: s.extract_multiplicatively(sympy.Integer(2)),
+         lambda c: c.extract_multiplicatively(C.Integer(2))),
+        ('removeO', lambda s: s.removeO(), lambda c: c.removeO()),
+        ('replace', lambda s: s.replace(sx, sy), lambda c: c.replace(cx, cy)),
+        ('kind', lambda s: s.kind, lambda c: c.kind),
+        ('is_comparable', lambda s: s.is_comparable, lambda c: c.is_comparable),
+        ('compare', lambda s: s.compare(sx), lambda c: c.compare(cx)),
+        ('sort_key', lambda s: s.sort_key(), lambda c: c.sort_key()),
+        ('is_polynomial', lambda s: s.is_polynomial(), lambda c: c.is_polynomial()),
+        ('is_rational_function', lambda s: s.is_rational_function(), lambda c: c.is_rational_function()),
+    ]
+    checked = 0
+    for _ in range(60):
+        s, c = build(3)
+        if s.has(sympy.zoo, sympy.nan):
+            continue
+        checked += 1
+        for name, fs, fc in checks:
+            assert shown(fc(c)) == shown(fs(s)), (name, s)
+        for name in facts:
+            expected = getattr_(s, name)
+            got = ask_structural(c, name)
+            assert got == expected or expected is None, (name, s, got, expected)
+    assert checked > 40

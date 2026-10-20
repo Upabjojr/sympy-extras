@@ -24,6 +24,8 @@ References
 """
 from __future__ import annotations
 
+import mpmath
+
 from typing import Callable, Iterable, Optional
 
 from sympy.core.basic import Basic as SymPyBasic
@@ -174,22 +176,42 @@ def closure(facts: dict[str, bool]) -> dict[str, bool]:
     >>> closure({'integer': True, 'even': False})['odd']
     True
     """
-    known = dict(facts)
-    changed = True
-    while changed:
-        changed = False
-        for a, va, b, vb in _RULES:
-            if known.get(a) == va and b not in known:
-                known[b] = vb
-                changed = True
-            if known.get(b) == (not vb) and a not in known:
-                known[a] = not va
-                changed = True
+    known = dict(facts)  # the given facts first, so that a contradiction among them stays visible
+    pending = list(facts.items())
+    while pending:
+        for name, value in pending:
+            if known.get(name) == value:
+                for b, vb in _IMPLIED[(name, value)].items():
+                    known.setdefault(b, vb)
+        pending = []
         for a, va, b, vb, c, vc in _PAIR_RULES:
-            if known.get(a) == va and known.get(b) == vb and c not in known:
+            if c not in known and known.get(a) == va and known.get(b) == vb:
                 known[c] = vc
-                changed = True
+                pending.append((c, vc))
     return known
+
+
+def _implied(name: str, value: bool) -> dict[str, bool]:
+    """Every fact which follows from the single fact by the implications
+    and their contrapositives (the fact itself first)."""
+    found: dict[str, bool] = {name: value}
+    pending = [(name, value)]
+    while pending:
+        a, va = pending.pop()
+        for p, vp, q, vq in _RULES:
+            if (p, vp) == (a, va) and q not in found:
+                found[q] = vq
+                pending.append((q, vq))
+            if (q, not vq) == (a, va) and p not in found:
+                found[p] = not vp
+                pending.append((p, not vp))
+    return found
+
+
+#: the consequences of each single fact, computed once (the closure of a
+#: set of facts is their union, plus the pair rules)
+_IMPLIED: dict[tuple[str, bool], dict[str, bool]] = {
+    (name, value): _implied(name, value) for name in PREDICATES for value in (True, False)}
 
 
 def is_consistent(facts: dict[str, bool]) -> bool:
@@ -380,7 +402,97 @@ def add_facts(args: tuple[Expr, ...]) -> Facts:
                 facts['finite'] = True
             if any(s.get('real') is True and s.get('zero') is False for s in sub):
                 facts['imaginary'] = False
+    # a real part and a single term which is not real: not real, not zero
+    non_real = [s for s in sub if s.get('real') is False and s.get('complex') is True]
+    if len(non_real) == 1 and all(s.get('real') is True or s is non_real[0] for s in sub):
+        facts.update(real=False, extended_real=False, zero=False)
+    if 'positive' not in facts and 'negative' not in facts and all(s.get('real') is True for s in sub):
+        numbers = [a for a in args if is_number(a)]
+        others = [s for a, s in zip(args, sub) if not is_number(a)]
+        sign = _numeric_sign(tuple(numbers)) if numbers else None
+        if sign is not None and not others:
+            facts.update(positive=sign > 0, negative=sign < 0, zero=False)
+        elif sign is not None and sign > 0 and all(s.get('nonnegative') is True for s in others):
+            facts.update(positive=True, zero=False)  # -p - E + 1/2 is negative, as SymPy knows
+        elif sign is not None and sign < 0 and all(s.get('nonpositive') is True for s in others):
+            facts.update(negative=True, zero=False)
+    # the real terms are numbers: the sum is not imaginary (SymPy answers
+    # None when a symbol is among them)
+    if facts.get('imaginary') is False and not all(is_number(a) for a, s in zip(args, sub) if s.get('real') is True):
+        del facts['imaginary']
     return facts
+
+
+def numeric_facts(e: Expr) -> Facts:
+    """The facts of a numerical expression found by evaluating it at two
+    precisions, as SymPy does for numbers: real or not, its sign, purely
+    imaginary; nothing when the value is too small to be trusted.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import I, pi, sympify
+    >>> from sympy_extras.core.assumptions import numeric_facts
+    >>> numeric_facts((-1 - I)**-2), numeric_facts(pi - 3)
+    ({'real': False, 'zero': False, 'imaginary': True}, {'real': True, 'zero': False, 'positive': True, 'negative': False})
+    """
+    from .evalf import numeric_value
+    facts: Facts = {}
+    reals: list[int] = []
+    imaginaries: list[int] = []
+    for prec in (53, 160):
+        with mpmath.workprec(prec):
+            value = numeric_value(e, prec)
+            if value is None:
+                return {}
+            scale = max(abs(value.real), abs(value.imag))
+            if scale == 0:
+                return {}
+            threshold = scale * mpmath.mpf(2) ** (-(prec - 20))
+            reals.append(0 if abs(value.real) <= threshold else (1 if value.real > 0 else -1))
+            imaginaries.append(0 if abs(value.imag) <= threshold else (1 if value.imag > 0 else -1))
+    if reals[0] != reals[1] or imaginaries[0] != imaginaries[1]:
+        return {}
+    if imaginaries[0] != 0:
+        facts.update(real=False, zero=False)
+        if reals[0] == 0:
+            facts['imaginary'] = True
+    elif reals[0] != 0:
+        facts.update(real=True, zero=False, positive=reals[0] > 0, negative=reals[0] < 0)
+    return facts
+
+
+def _numeric_sign(args: tuple[Expr, ...]) -> Optional[int]:
+    """The sign of a sum of real numbers found numerically at two
+    precisions, ``None`` when the sum is too small to be trusted (an
+    exact zero leaves noise)."""
+    from .evalf import numeric_value
+    signs: list[int] = []
+    for prec in (53, 160):
+        total = mpmath.mpf(0)
+        scale = mpmath.mpf(0)
+        with mpmath.workprec(prec):
+            for a in args:
+                value = numeric_value(a, prec)
+                if value is None or value.imag != 0:
+                    return None
+                total += value.real
+                scale = max(scale, abs(value.real))
+            if scale == 0 or abs(total) <= scale * mpmath.mpf(2) ** (-(prec - 20)):
+                return None
+        signs.append(1 if total > 0 else -1)
+    return signs[0] if signs[0] == signs[1] else None
+
+
+def _consecutive_factors(args: tuple[Expr, ...]) -> bool:
+    """Whether two factors differ by an odd integer (``n*(n - 1)`` is even)."""
+    from .add import sub
+    for i, f in enumerate(args):
+        for g in args[i + 1:]:
+            d = sub(g, f)
+            if isinstance(d, Rational) and d.q == 1 and d.p % 2 == 1:
+                return True
+    return False
 
 
 def mul_facts(args: tuple[Expr, ...]) -> Facts:
@@ -399,6 +511,8 @@ def mul_facts(args: tuple[Expr, ...]) -> Facts:
         facts['nonzero'] = True
     if all(s.get('extended_nonzero') is True for s in sub):
         facts['extended_nonzero'] = True
+    if all(s.get('zero') is False for s in sub):
+        facts['zero'] = False
     for prefix in ('', 'extended_'):
         positive, negative = prefix + 'positive', prefix + 'negative'
         nonnegative, nonpositive = prefix + 'nonnegative', prefix + 'nonpositive'
@@ -409,13 +523,16 @@ def mul_facts(args: tuple[Expr, ...]) -> Facts:
                 facts[negative] = negatives % 2 == 1
             elif all(s.get(nonnegative) is True or s.get(nonpositive) is True for s in sub):
                 negatives = sum(1 for s in sub if s.get(nonpositive) is True and s.get(nonnegative) is not True)
-                facts[nonnegative] = negatives % 2 == 0
-                facts[nonpositive] = negatives % 2 == 1
+                facts[nonnegative if negatives % 2 == 0 else nonpositive] = True  # the product may be zero
     if facts.get('integer'):
-        if any(s.get('even') is True for s in sub):
+        if any(s.get('even') is True for s in sub) or _consecutive_factors(args):
             facts['even'] = True
         elif all(s.get('odd') is True for s in sub):
             facts['odd'] = True
+    irrationals = [s for s in sub if s.get('irrational') is True]
+    if len(irrationals) == 1 and all(s is irrationals[0] or (s.get('rational') is True and s.get('zero') is False)
+                                     for s in sub):
+        facts.update(irrational=True, rational=False)  # 3**(2/3)/3
     elif len(args) == 2 and isinstance(args[0], Rational) and args[0].p == 1 and args[0].q == 2:
         # SymPy: an even number halved is an integer, an odd one is not
         if sub[1].get('even') is True:
@@ -436,6 +553,18 @@ def mul_facts(args: tuple[Expr, ...]) -> Facts:
     # factor is polar or positive, and not polar otherwise
     facts['polar'] = any(s.get('polar') is True for s in sub) and \
         all(s.get('polar') is True or s.get('positive') is True for s in sub)
+    if 'real' not in facts and all(is_number(a) for a in args):
+        from .mul import Mul
+        for name, known in numeric_facts(Mul(*args)).items():
+            facts.setdefault(name, known)
+    # nonzero real factors and a single factor which is not real: not real
+    non_real = [s for s in sub if s.get('real') is False and s.get('complex') is True]
+    if len(non_real) == 1 and all((s.get('real') is True and s.get('zero') is False) or s is non_real[0] for s in sub):
+        facts.update(real=False, extended_real=False)
+        if non_real[0].get('zero') is False:
+            facts['zero'] = False
+        if non_real[0].get('imaginary') is False:
+            facts['imaginary'] = False
     return facts
 
 
@@ -465,20 +594,38 @@ def pow_facts(base: Expr, exp: Expr) -> Facts:
         facts.update(nonnegative=True, real=True)
     if b.get('real') and b.get('nonzero') and e.get('even'):
         facts['positive'] = True
-    if b.get('real') and e.get('even'):
-        facts['nonnegative'] = True
+    if b.get('real') and e.get('even') and (e.get('nonnegative') or b.get('nonzero')):
+        facts['nonnegative'] = True  # x**(-2) may be zoo
     if b.get('negative') and e.get('odd'):
         facts['negative'] = True
     if b.get('zero') and e.get('positive'):
         facts['zero'] = True
     if b.get('nonzero') and e.get('real') and e.get('finite'):
-        facts['nonzero'] = True
+        facts['zero'] = False  # nonzero (real and not zero) only when the power is real: (-2)**p is not
+    if b.get('finite') and e.get('negative') and e.get('finite'):
+        facts['zero'] = False  # 1/(p - 4) is never zero
+    if b.get('real') and e.get('integer'):
+        facts['imaginary'] = False
+    if b.get('real') is False and b.get('complex') is True and isinstance(exp, Rational) and exp.q == 1 \
+            and abs(exp.p) == 1:
+        facts.update(real=False, extended_real=False)  # 1/(pi + I)
+    if 'real' not in facts and is_number(base) and is_number(exp):
+        from .power import Pow
+        for name, known in numeric_facts(Pow(base, exp)).items():
+            facts.setdefault(name, known)
     if b.get('finite') and e.get('integer') and e.get('nonnegative'):
         facts['finite'] = True
-    if b.get('positive') and b.get('finite') and e.get('real') and e.get('finite'):
-        facts['finite'] = True
-    if b.get('algebraic') and isinstance(exp, Rational):
+    if b.get('finite') and e.get('positive'):
+        facts['finite'] = True  # sqrt(log(n))
+    if b.get('positive') and b.get('finite') and e.get('finite'):
+        facts['finite'] = True  # p**I
+    if b.get('finite') and b.get('zero') is False and e.get('real') and e.get('finite'):
+        facts['finite'] = True  # 1/sqrt(p + I)
+    if b.get('algebraic') and isinstance(exp, Rational) and (exp.p >= 0 or b.get('zero') is False):
         facts['algebraic'] = True
+    if b.get('real') is False and b.get('complex') is True and isinstance(exp, Rational) and abs(exp.p) == 1 \
+            and exp.q > 1:
+        facts.update(real=False, extended_real=False)  # a root of a non-real number is not real
     if b.get('transcendental') and isinstance(exp, Rational) and exp.p != 0:
         facts.update(transcendental=True, algebraic=False)
     if b.get('polar'):

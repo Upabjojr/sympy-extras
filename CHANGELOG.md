@@ -89,6 +89,26 @@ remove public functions. Breaking changes are listed here when they happen.
   tables of the connectives, of `ask` and `refine`, of the order of the
   arguments on random expressions and on every class, and of the native
   algorithms.
+- `sympy_extras.core`, faster and closer to SymPy: the closure of the
+  facts is read from a table of the consequences of each fact, the hash
+  of a number is computed once, the hot paths import nothing, so that
+  the arithmetic runs within a factor of two of `sympy.core`. A fuzz
+  comparing dozens of methods on random expressions with SymPy fixed
+  their conventions: `srepr` in the printing order with `-1` split,
+  `sort_key` with SymPy's shape, `ordered` by the number of nodes,
+  `could_extract_minus_sign` of sums, `primitive` of numbers,
+  `count_ops` (`E` is `EXP`, a sum of negatives is `NEG + SUB`),
+  `as_ordered_factors`, `extract_multiplicatively`, `as_numer_denom`,
+  `as_content_primitive` of powers, `evalf` keeping integer exponents,
+  `-1`, `I` and functions of symbols, the kind of `exp`, derivatives of
+  SymPy's functions through SymPy, the `log` hint of `expand`, the
+  leading term over a common denominator, `is_polynomial` of powers,
+  SymPy's test on a solved match, `Rational.as_base_exp`,
+  `as_independent` of zero, and the facts of numerical sums, products and
+  powers decided numerically (`11 - 3*E` is positive) plus several
+  structural rules (a single non-real term, roots of non-real numbers,
+  even products of consecutive integers). Checked by a random method
+  test against SymPy.
 
 - `sympy_extras.polys.puiseux`: Puiseux expansions of the branches of a
   plane curve `F(x, y) = 0` above a point or above infinity by the

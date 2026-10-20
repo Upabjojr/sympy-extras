@@ -430,7 +430,7 @@ def _flatten(cls: type[LatticeOp], args: Iterable[BooleanLike]) -> list[Boolean]
 
 
 def _lattice(cls: type[LatticeOp], identity: Boolean, zero: Boolean, args: Iterable[BooleanLike]) -> Boolean:
-    from .sorting import default_sort_key
+    from .sorting import ordered
     kept: list[Boolean] = []
     seen: set[Boolean] = set()
     for a in _flatten(cls, args):
@@ -450,7 +450,7 @@ def _lattice(cls: type[LatticeOp], identity: Boolean, zero: Boolean, args: Itera
         return identity
     if len(kept) == 1:
         return kept[0]
-    return to_boolean(cls(*sorted(kept, key=default_sort_key)))
+    return to_boolean(cls(*ordered(kept)))
 
 
 def and_(*args: BooleanLike) -> Boolean:

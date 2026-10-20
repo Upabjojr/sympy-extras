@@ -176,7 +176,31 @@ substitutions and numerical values.
   where SymPy's search order gives an odd binding
   (`(x**2 + 2*x).match(a*x**2 + b*x)` is `{a: 2/x, b: x}` in SymPy), the
   natural one is found here (`{a: 1, b: 2}`); reproducing that order would
-  mean reproducing SymPy's algorithm.
+  mean reproducing SymPy's algorithm. SymPy's test on a solved binding is
+  applied (the value must not have more operations than the subject:
+  `(-E).match(a*x)` is `{a: -E/x}`, `(2/x).match(a*x)` is `None`), and
+  `S(1).match(a**b)` is `{b: 0}` with `a` free, as in SymPy.
+* **The conventions of the methods are SymPy's**, found by comparing
+  dozens of methods on random expressions: `srepr` lists the arguments in
+  the printing order and splits `-1` from a coefficient (`as_ordered_factors`
+  does too); `sort_key` has SymPy's shape and `ordered` sorts by the number
+  of nodes first; `could_extract_minus_sign` of a sum counts the negative
+  terms and breaks a tie by the sort key (`1 - x` and `-x + y` do, `x - y`
+  does not); `Integer(6).primitive()` is `(6, 1)`; `count_ops` counts `E`
+  as `EXP` and a sum of negative terms as `NEG + SUB`; `evalf` keeps an
+  integer exponent, a coefficient `-1`, `I` and a function of a symbolic
+  argument (`-p + 2*pi*x` becomes `-p + 6.28*x`); `extract_multiplicatively`
+  divides an integer coefficient only by a divisor and a fraction by any
+  rational; `as_numer_denom` sums the terms with the same denominator first;
+  `exp` has `NumberKind` and `sin` has `UndefinedKind`; the derivative of a
+  function of SymPy is SymPy's (`Abs(x)` gives its `re`/`im` form) and the
+  derivative of a power keeps `x**(pi/2)/x` apart; `expand` applies the
+  `log` hint by default and writes `p/(2*(x - y))` as `p/(2*x - 2*y)`.
+  The facts of a numerical sum, product or power are decided numerically at
+  two precisions as SymPy decides them (`11 - 3*E` is positive,
+  `(-1 - I)**-2` is imaginary); here a few more facts are known than in
+  SymPy (`p + cos(4) + 3` is not zero, `(-E)**-2 + Abs(n)` is positive),
+  and `equals(0)` answers `False` where SymPy answers `None`.
 * **The logic and the new assumptions.** `And`, `Or`, `Not`, `Xor`,
   `Implies`, `Equivalent` and `ITE` are unevaluating classes (`And` and
   `Or` derive from `LatticeOp`: equal up to the order of the arguments)
@@ -286,29 +310,31 @@ Measured against `sympy.core` (SymPy 1.14, one process, the script
 
 | operation | `sympy.core` | here | ratio |
 | --- | --- | --- | --- |
-| a sum of 300 terms built term by term | 0.105 | 0.131 | 1.2 |
-| a product of 200 factors | 0.019 | 0.057 | 2.9 |
-| `expand((x + y + z)**8)` | 0.0014 | 0.0031 | 2.3 |
-| `diff` of a 21-term polynomial, 10 times | 0.016 | 0.015 | 0.9 |
-| `subs` of 20 different values in that polynomial | 0.025 | 0.014 | 0.6 |
-| `is_positive` of 200 fresh expressions | 0.006 | 0.022 | 3.6 |
-| `match` of `a*x**2 + b*x`, 200 times | 0.60 | 0.27 | 0.4 |
-| 300 random expressions of depth 4 (the fuzz recipe) | 0.029 | 0.055 | 1.9 |
-| `series` of `sin(x)*exp(x)`, 5 times (through SymPy) | 0.142 | 0.140 | 1.0 |
-| `str` of an 84-term polynomial, 5 times | 0.012 | 0.028 | 2.4 |
-| `factor_terms(2*x*y + 4*x*z + 6*x + i)`, 200 times | 0.083 | 0.071 | 0.9 |
-| `as_leading_term` of a cubic, 200 times | 0.18 | 0.05 | 0.3 |
-| `ask(Q.positive(x**2 + i), Q.real(x))`, 50 times | 0.56 | 0.013 | 0.02 |
+| a sum of 300 terms built term by term | 0.150 | 0.180 | 1.2 |
+| a product of 200 factors | 0.027 | 0.039 | 1.4 |
+| `expand((x + y + z)**8)` | 0.0020 | 0.0035 | 1.7 |
+| `diff` of a 21-term polynomial, 10 times | 0.024 | 0.024 | 1.0 |
+| `subs` of 20 different values in that polynomial | 0.038 | 0.019 | 0.5 |
+| `is_positive` of 200 fresh expressions | 0.009 | 0.022 | 2.4 |
+| `match` of `a*x**2 + b*x`, 200 times | 0.90 | 0.54 | 0.6 |
+| 300 random expressions of depth 4 (the fuzz recipe) | 0.042 | 0.070 | 1.7 |
+| `series` of `sin(x)*exp(x)`, 5 times (through SymPy) | 0.215 | 0.208 | 1.0 |
+| `str` of an 84-term polynomial, 5 times | 0.017 | 0.045 | 2.6 |
+| `factor_terms(2*x*y + 4*x*z + 6*x + i)`, 200 times | 0.123 | 0.101 | 0.8 |
+| `as_leading_term` of a cubic, 200 times | 0.26 | 0.05 | 0.2 |
+| `ask(Q.positive(x**2 + i), Q.real(x))`, 50 times | 0.84 | 0.009 | 0.01 |
 
-The arithmetic is within a factor of three of SymPy's (a sum keeps the
-terms it does not change, a power of a sum is expanded by the multinomial
-theorem, the facts and the `compare` key of a node are computed once and
-cached on it); the structural algorithms written here are faster than
-SymPy's, which pay for their generality; the methods forwarded to SymPy
-cost one conversion of the result (the conversion of a node is cached on
-the node, and `from_sympy` keeps a table of what it converted, both
-emptied by `clear_cache`). What remains slower is the generic machinery
-of a Python tree without SymPy's global cache of every constructor call.
+The arithmetic is within a factor of two of SymPy's on everything but the
+facts and the printing (a sum keeps the terms it does not change, a power
+of a sum is expanded by the multinomial theorem, the closure of the facts
+is read from a table of the consequences of each fact, the hash of a
+number, the facts, the `compare` key and the SymPy form of a node are
+computed once and cached on it, the hot paths import nothing); the
+structural algorithms written here are faster than SymPy's, which pay for
+their generality; the methods forwarded to SymPy cost one conversion of
+the result (`from_sympy` keeps a table of what it converted, emptied by
+`clear_cache`). What remains slower is the generic machinery of a Python
+tree without SymPy's global cache of every constructor call.
 
 ## Open points
 

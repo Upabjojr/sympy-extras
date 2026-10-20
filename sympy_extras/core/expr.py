@@ -27,7 +27,7 @@ import sympy
 
 from .basic import Atom, Basic, RefineArg, SubsArg, SubsMapping
 from .kind import Kind, NumberKind, UndefinedKind
-from .sorting import ArgsKey, ExpKey, SortKey
+from .sorting import ArgsKey, ClassKey, SortKey
 
 if TYPE_CHECKING:
     from .assumptions import Truth
@@ -79,6 +79,18 @@ def factors_of(e: Expr) -> tuple[Expr, ...]:
 
 def _is_number_like(other: object) -> bool:
     return isinstance(other, (Expr, int, float, Fraction)) and not isinstance(other, bool)
+
+
+_ONE: Optional['Number'] = None
+
+
+def _one() -> 'Number':
+    """The number ``1`` (made once; ``numbers`` imports this module)."""
+    global _ONE
+    if _ONE is None:
+        from .numbers import Integer
+        _ONE = Integer(1)
+    return _ONE
 
 
 class Expr(Basic):
@@ -289,15 +301,23 @@ class Expr(Basic):
     def sort_key(self) -> SortKey:
         coeff, rest = self.as_coeff_Mul()
         base, exp = rest.as_base_exp() if rest.is_Pow else (rest, None)
+        args: ArgsKey
         if isinstance(base, Atom):
-            args: ArgsKey = (1, ())
-            name = str(base)
+            args = (1, (base._sort_name(),))
         else:
-            args = (len(base.args), tuple(a.sort_key() for a in base.args))
-            name = ''
-        from .numbers import Integer
-        exp_key: ExpKey = Integer(1).sort_key() if exp is None else exp.sort_key()
-        return (base.class_key(), args, name, exp_key, coeff.sort_value())
+            ordered_args = base.as_ordered_terms() if base.is_Add else \
+                base.as_ordered_factors() if base.is_Mul else list(base.args)
+            args = (len(ordered_args), tuple(a.sort_key() for a in ordered_args))
+        exp_key: SortKey = _one().sort_key() if exp is None else exp.sort_key()
+        return (base._sort_class_key(), args, exp_key, coeff.sort_value())
+
+    def _sort_name(self) -> str:
+        """The name of an atom in its sort key."""
+        return str(self)
+
+    def _sort_class_key(self) -> ClassKey:
+        """The class part of the sort key (the rank of a function of SymPy)."""
+        return self.class_key()
 
     # ------------------------------------------------------------------
     # decomposition
@@ -357,10 +377,9 @@ class Expr(Basic):
         >>> (x**2).as_base_exp()
         (x, 2)
         >>> Rational(1, 2).as_base_exp()
-        (2, -1)
+        (1/2, 1)
         """
-        from .numbers import Integer
-        return (self, Integer(1))
+        return (self, _one())
 
     def as_two_terms(self) -> tuple[Expr, Expr]:
         """The first argument and the rest, for a sum or a product."""
@@ -420,6 +439,8 @@ class Expr(Basic):
         from .numbers import Integer
         if as_Add is None:
             as_Add = self.is_Add
+        if self.is_Number and self == 0:
+            return (self, self)  # SymPy: (0, 0)
         if as_Add:
             if not self.is_Add:
                 return (self, Integer(0)) if not self.has(*symbols) else (Integer(0), self)
@@ -511,9 +532,23 @@ class Expr(Basic):
         return ordered_terms(terms_of(self))
 
     def as_ordered_factors(self) -> list[Expr]:
-        """The factors of a product in canonical order."""
+        """The factors of a product in canonical order, a negative
+        coefficient split into ``-1`` and its absolute value, as SymPy.
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import symbols
+        >>> x, y = symbols('x y')
+        >>> (-3*x*y/4).as_ordered_factors(), (2*x).as_ordered_factors(), x.as_ordered_factors()
+        ([-1, 3/4, x, y], [2, x], [x])
+        """
+        from .numbers import Integer, Number
         from .sorting import default_sort_key
-        return sorted(factors_of(self), key=default_sort_key)
+        factors = list(factors_of(self))
+        if len(factors) > 1 and isinstance(factors[0], Number) and factors[0].is_negative is True and factors[0] != -1:
+            factors[0:1] = [Integer(-1), factors[0].number_mul(Integer(-1))]
+        return sorted(factors, key=default_sort_key)
 
     def as_terms(self) -> tuple[list[tuple[Expr, TermInfo]], list[Expr]]:
         """The terms of a sum with their complex coefficient, the exponents
@@ -646,28 +681,36 @@ class Expr(Basic):
         return add(*[mul(coefficient, rest) for rest, coefficient in terms.items()])
 
     def extract_multiplicatively(self, c: ExprLike) -> Optional[Expr]:
-        """``self / c`` when ``c`` is a factor of ``self`` (of each of its
-        terms, for a sum) without a change of form, else ``None``.
+        """``self / c`` when ``c`` can be taken out without a change of
+        form, else ``None``, with SymPy's rules: an integer coefficient is
+        divided by an integer which divides it, a fraction by any rational
+        (``x/3`` gives ``x/6`` for ``2``, ``x`` gives ``None``), the sign
+        only out of a negative, the terms of a sum one by one after its
+        content.
 
         Examples
         ========
 
-        >>> from sympy_extras.core import symbols, Integer
+        >>> from sympy_extras.core import symbols, Integer, Rational
         >>> x, y = symbols('x y')
         >>> (6*x*y).extract_multiplicatively(2*x), (6*x*y).extract_multiplicatively(4), (x**3).extract_multiplicatively(x**2)
         (3*y, None, x)
         >>> (2*x + 4*y).extract_multiplicatively(2), (-x).extract_multiplicatively(-1), x.extract_multiplicatively(-1)
         (x + 2*y, x, None)
+        >>> (x/3).extract_multiplicatively(2), x.extract_multiplicatively(Rational(1, 3)), (x/2 + y).extract_multiplicatively(2)
+        (x/6, 3*x, x/4 + y/2)
         """
         from .add import Add, add
         from .mul import Mul, mul
-        from .numbers import Integer, Number, Rational, number_from_fraction
+        from .numbers import Infinity, Integer, NegativeInfinity, Number, Rational, number_from_fraction
         from .power import Pow, pow
         other = to_expr(c)
         if other.is_Number and other == 1:
             return self
         if self == other:
             return Integer(1)
+        if self.is_Number and self == 0:
+            return self
         if isinstance(other, Mul):
             result: Optional[Expr] = self
             for f in other.args:
@@ -676,41 +719,56 @@ class Expr(Basic):
                 result = result.extract_multiplicatively(f)
             return result
         if isinstance(self, Add):
+            content, primitive = self.primitive()
+            if not (content.is_Number and content == 1):
+                return Mul(content, primitive).extract_multiplicatively(other)
+            if isinstance(other, Rational) and other.q != 1:
+                return None  # SymPy: a fraction is not taken out of a primitive sum
             parts = [t.extract_multiplicatively(other) for t in self.args]
             if any(p is None for p in parts):
                 return None
             return add(*[p for p in parts if p is not None])
         coefficient, rest = self.as_coeff_Mul()
         if isinstance(other, Number):
+            if isinstance(coefficient, (Infinity, NegativeInfinity)):
+                return self if other.is_positive is True else (None if other.is_negative is not True else mul(Integer(-1), self))
             vc, vo = coefficient.exact_value(), other.exact_value()
             if vc is None or vo is None or vo == 0:
                 return None
-            if vo < 0 and vc >= 0:
+            if (vo < 0 and vc > 0) or (vc.denominator == 1 and vo.denominator == 1 and vc % vo != 0):
+                # the sign comes out of a negative only, an integer is divided by a divisor;
+                # otherwise a factor of the product may take the number (SymPy tries each)
+                if isinstance(self, Mul):
+                    for i, f in enumerate(self.args):
+                        if isinstance(f, Add):
+                            reduced = f.extract_multiplicatively(other)
+                            if reduced is not None:
+                                return mul(*self.args[:i], reduced, *self.args[i + 1:])
                 return None
-            quotient = vc / vo
-            if isinstance(coefficient, Rational) and coefficient.q == 1 and isinstance(other, Rational) \
-                    and quotient.denominator != 1:
-                return None
-            q: Number = number_from_fraction(quotient) if not (coefficient.is_Float or other.is_Float) \
-                else coefficient.number_mul(number_from_fraction(1 / vo))
-            return mul(q, rest)
-        base, exponent = other.as_base_exp()
-        if not isinstance(exponent, Rational):
+            quotient = number_from_fraction(vc / vo)
+            return quotient if rest.is_Number and rest == 1 else mul(quotient, rest)
+        if isinstance(self, Pow) and isinstance(other, Pow) and self.base == other.base:
+            n, d = self.exp.as_coeff_Mul(), other.exp.as_coeff_Mul()
+            if n[1] == d[1] and isinstance(n[0], Rational) and isinstance(d[0], Rational):
+                left = n[0].as_fraction() - d[0].as_fraction()
+                if left != 0 and (left > 0) == (d[0].p > 0):  # x**3 gives x for x**2, x**-2 gives 1/x for 1/x
+                    return pow(self.base, mul(number_from_fraction(left), n[1]))
             return None
-        factors = list(factors_of(rest))
-        for i, f in enumerate(factors):
-            b, e = f.as_base_exp()
-            if b != base or not isinstance(e, Rational):
-                continue
-            ve, vo = e.as_fraction(), exponent.as_fraction()
-            if (ve > 0) != (vo > 0) or abs(ve) < abs(vo):
-                continue
-            remaining = ve - vo
-            del factors[i]
-            if remaining != 0:
-                factors.insert(i, pow(b, number_from_fraction(remaining)))
-            return mul(coefficient, *factors) if not isinstance(self, Pow) or factors or coefficient != 1 \
-                else Integer(1)
+        if isinstance(self, Pow) and self.base == other:
+            e = self.exp.as_coeff_Mul()
+            if isinstance(e[0], Rational) and e[0].as_fraction() > 1 and e[1].is_Number and e[1] == 1:
+                return pow(self.base, e[0].number_add(Integer(-1)))
+            return None
+        if isinstance(self, Mul):
+            factors = list(self.args)
+            for i, f in enumerate(factors):
+                if f == other:
+                    return mul(*factors[:i], *factors[i + 1:])
+                if isinstance(f, (Pow, Add)) or isinstance(other, Pow):
+                    reduced = f.extract_multiplicatively(other)
+                    if reduced is not None:
+                        return mul(*factors[:i], reduced, *factors[i + 1:])
+            return None
         return None
 
     def equals(self, other: ExprLike, failing_expression: bool = False) -> Optional[bool]:
@@ -1276,8 +1334,12 @@ class Expr(Basic):
     # assumptions
 
     def _ask(self, name: str) -> Truth:
-        from .assumptions import ask_structural
-        return ask_structural(self, name)
+        cached = self._facts_cache
+        if cached is None:
+            from .assumptions import closure
+            cached = closure(self._eval_facts())
+            self._facts_cache = cached
+        return cached.get(name)
 
     def _eval_facts(self) -> dict[str, bool]:
         """The facts of the node before their closure (the structural
@@ -1428,8 +1490,7 @@ class AtomicExpr(Atom, Expr):
     __slots__ = ()
 
     def sort_key(self) -> SortKey:
-        from .numbers import Integer
-        return (self.class_key(), (1, ()), str(self), Integer(1).sort_key(), Fraction(1))
+        return (self.class_key(), (1, (str(self),)), _one().sort_key(), Fraction(1))
 
 
 class UnevaluatedExpr(Expr):
@@ -1502,7 +1563,13 @@ def _leading_term(e: Expr, x: Symbol) -> Optional[Expr]:
                     return None
                 leading.append((n.as_fraction(), part))
         lowest = min(n for n, _ in leading)
-        return add(*[part for n, part in leading if n == lowest])
+        lowest_terms = [part for n, part in leading if n == lowest]
+        if len(lowest_terms) > 1 and any(t.as_numer_denom()[1].free_symbols for t in lowest_terms):
+            # SymPy puts the terms of equal degree over a common denominator
+            from .exprtools import gcd_terms
+            combined = gcd_terms(add(*lowest_terms))
+            return combined if isinstance(combined, Expr) else add(*lowest_terms)
+        return add(*lowest_terms)
     if isinstance(e, Mul):
         parts: list[Expr] = []
         for f in e.args:

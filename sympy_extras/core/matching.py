@@ -136,12 +136,10 @@ def _match_assoc(expr: Expr, pattern: Expr, bindings: MatchDict, exact: bool, so
                 lone.append(p)
         else:
             others.append(p)
-    found_any = False
     for found, remaining in _match_multiset(subject, others, bindings, exact, solve, identity):
         unbound = [w for w in lone if w not in found]
         if not unbound:
             if not remaining:
-                found_any = True
                 yield found
             continue
         if exact and not remaining:
@@ -165,9 +163,8 @@ def _match_assoc(expr: Expr, pattern: Expr, bindings: MatchDict, exact: bool, so
                 break
             result[w] = value
         if accepted:
-            found_any = True
             yield result
-    if found_any or not solve:
+    if not solve:
         return
     # solving: w + rest = expr or w*rest = expr with a single lone wild and
     # wild-free other terms, as SymPy does when the subject is not of the
@@ -181,34 +178,23 @@ def _match_assoc(expr: Expr, pattern: Expr, bindings: MatchDict, exact: bool, so
     rest_value = _combine([_as_expr(o) for o in others], is_add)
     if not (expr.is_number or rest_value.free_symbols <= expr.free_symbols):
         return
-    if not is_add and expr.is_Mul and not _bases_present(expr, rest_value):
-        return
     from .add import sub
     from .mul import div
     value = sub(expr, rest_value) if is_add else div(expr, rest_value)
+    if (expr.is_Add or expr.is_Mul) and not _no_more_complex(value, expr):
+        return
     if unbound[0].accepts(value) and not (exact and value == identity):
         yield {**bindings, unbound[0]: value}
 
 
-def _bases_present(expr: Expr, rest: Expr) -> bool:
-    """Whether every factor ``b**e`` of ``rest`` has a factor of ``expr``
-    with the base ``b`` and an exponent of the sign of ``e`` (SymPy solves
-    ``2*x**3`` against ``a*x**2`` but not ``2/x`` against ``a*x``)."""
-    from .numbers import Number, Rational
-    subject = {}
-    for f in factors_of(expr):
-        b, e = f.as_base_exp()
-        subject[b] = e
-    for f in factors_of(rest):
-        if isinstance(f, Number):
-            continue
-        b, e = f.as_base_exp()
-        if b not in subject:
-            return False
-        present = subject[b]
-        if isinstance(e, Rational) and isinstance(present, Rational) and (e.p > 0) != (present.p > 0):
-            return False
-    return True
+def _no_more_complex(value: Expr, expr: Expr) -> bool:
+    """SymPy's test on a solved binding: the value (its sign dropped) must
+    not have more operations than the subject (``2*x**3`` against
+    ``a*x**2`` gives ``2*x``, ``2/x`` against ``a*x`` gives nothing)."""
+    from .function import count_ops
+    from .mul import neg
+    check = neg(value) if value.could_extract_minus_sign() else value
+    return not count_ops(check).compare(count_ops(expr)) > 0
 
 
 def _as_expr(b: Basic) -> Expr:
@@ -253,14 +239,15 @@ def _match_pow(expr: Expr, pattern: Expr, bindings: MatchDict, exact: bool, solv
             if ratio.denominator == 1 and ratio != 1:
                 yield from _matches(pow(expr.base, number_from_fraction(ratio)), pattern.base, bindings, exact, solve)
         return
+    if expr.is_Number and expr == 1:
+        # the identity of a product as the zeroth power of the base (SymPy
+        # binds the exponent to 0 and leaves a wild base free)
+        yield from _matches(Integer(0), pattern.exp, bindings, exact, solve)
     base, exponent = expr.as_base_exp()
     if not (exponent.is_Number and exponent == 1):
         # a product with one exponent, x**2*y**2 as (x*y)**2
         yield from _match_sequence((base, exponent), pattern.args, bindings, exact, solve)
     yield from _match_sequence((expr, Integer(1)), pattern.args, bindings, exact, solve)
-    if expr.is_Number and expr == 1 and not _has_wild(pattern.base):
-        # the identity of a product as the zeroth power of the base
-        yield from _matches(Integer(0), pattern.exp, bindings, exact, solve)
     if solve and isinstance(pattern.exp, Rational) and not _has_wild(pattern.exp) and pattern.exp.p != 0:
         inverse = Rational(pattern.exp.q, pattern.exp.p)
         yield from _matches(pow(expr, inverse), pattern.base, bindings, exact, solve)

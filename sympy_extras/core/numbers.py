@@ -90,10 +90,7 @@ class Number(AtomicExpr):
         return (1, 0, 'Number')
 
     def sort_key(self) -> SortKey:
-        return (self.class_key(), (0, ()), self._sort_name(), (), self.sort_value())
-
-    def _sort_name(self) -> str:
-        return ''
+        return (self.class_key(), (0, ()), (), self.sort_value())
 
     def sort_value(self) -> Fraction:
         """The value used to order numbers (``0`` for the infinities)."""
@@ -154,12 +151,15 @@ class Rational(Number):
             raise ZeroDivisionError("Rational(%s, 0)" % (p,))
         if q < 0:
             p, q = -p, -q
-        g = gcd(p, q)
-        if g > 1:
-            p, q = p // g, q // g
+        if q != 1:
+            g = gcd(p, q)
+            if g > 1:
+                p, q = p // g, q // g
         self.p: int = p
         self.q: int = q
         Basic.__init__(self)
+        # the hash of the Python number with the same value, computed once
+        self._hash = hash(p) if q == 1 else hash(Fraction(p, q))
 
     def _hashable_content(self) -> tuple[Basic, ...]:
         return ()
@@ -173,7 +173,7 @@ class Rational(Number):
         return (self.p, self.q)
 
     def __hash__(self) -> int:
-        return hash(Fraction(self.p, self.q))
+        return self._hash
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Rational):
@@ -215,10 +215,11 @@ class Rational(Number):
     def _sign(self) -> int:
         return (self.p > 0) - (self.p < 0)
 
-    def as_base_exp(self) -> tuple[Expr, Expr]:
-        if self.p == 1 and self.q > 1:
-            return (Integer(self.q), Integer(-1))
-        return (self, Integer(1))
+    def primitive(self) -> tuple[Number, Expr]:
+        # SymPy: the content of a rational is its absolute value, the rest its sign
+        if self.p == 0:
+            return (Integer(1), self)
+        return (Rational(abs(self.p), self.q), Integer(1 if self.p > 0 else -1))
 
     def as_numer_denom(self) -> tuple[Expr, Expr]:
         return (Integer(self.p), Integer(self.q))
@@ -343,6 +344,7 @@ class Float(Number):
         self._value: Fraction = _round_to_prec(exact, prec)
         self._prec: int = prec
         Basic.__init__(self)
+        self._hash = hash(self._value)
 
     def _hashable_content(self) -> tuple[Basic, ...]:
         return ()
@@ -353,7 +355,7 @@ class Float(Number):
         return (int(self._value < 0), abs(self._value), self._prec)
 
     def __hash__(self) -> int:
-        return hash(self._value)
+        return self._hash
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Float):
@@ -397,6 +399,12 @@ class Float(Number):
         with mpmath.workprec(self._prec):
             v = mpmath.mpf(self._value.numerator) / self._value.denominator
             return str(mpmath.nstr(v, self.dps, strip_zeros=False))
+
+    def repr_str(self) -> str:
+        """The digits SymPy's ``srepr`` shows (``'0.10000000000000001'`` at 53 bits)."""
+        from mpmath.libmp import repr_dps
+        with mpmath.workprec(self._prec):
+            return mpmath.nstr(mpmath.mpf(self._value.numerator) / self._value.denominator, repr_dps(self._prec))
 
     def short_str(self) -> str:
         """The value without trailing zeros, as printed inside an expression."""

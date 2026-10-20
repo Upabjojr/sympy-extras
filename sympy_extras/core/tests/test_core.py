@@ -116,7 +116,7 @@ def test_the_tree_methods() -> None:
     assert Lambda(x, x**2)(3) == 9 and Lambda((x, y), x - y)(5, 2) == 3
     assert Lambda(x, x + y).free_symbols == {y}
     assert e.as_coeff_Add() == (1, x**2 + 2*x*y) and (3*x*y).as_coeff_Mul() == (3, x*y)
-    assert (x**3).as_base_exp() == (x, 3) and Rational(1, 2).as_base_exp() == (2, -1)
+    assert (x**3).as_base_exp() == (x, 3) and Rational(1, 2).as_base_exp() == (Rational(1, 2), 1)
     assert (2*x*y).as_independent(x) == (2*y, x) and (x + y + 1).as_independent(x) == (y + 1, x)
     assert e.as_coefficients_dict() == {x**2: 1, x*y: 2, Integer(1): 1}
     assert (x/y).as_numer_denom() == (x, y) and (x + 1/y).as_numer_denom() == (x*y + 1, y)
@@ -244,7 +244,7 @@ def test_printing() -> None:
     }
     for e, text in cases.items():
         assert str(e) == text, (str(e), text)
-    assert srepr(2*x + 1) == "Add(Integer(1), Mul(Integer(2), Symbol('x')))"
+    assert srepr(2*x + 1) == "Add(Mul(Integer(2), Symbol('x')), Integer(1))"  # the printing order, as SymPy's srepr
     assert srepr(Rational(2, 3)**p) == "Pow(Rational(2, 3), Symbol('p', positive=True))"
     assert str(Dummy('t')) == '_t' and Dummy('t') != Dummy('t')
     assert str(symbols('a:3')) == '(a0, a1, a2)' and symbols('x') == x and symbols('x y') == (x, y)
@@ -649,3 +649,54 @@ def test_caches_and_performance_helpers() -> None:
     assert from_sympy(s) is not converted and from_sympy(s) == converted  # the table is emptied, the nodes keep theirs
     assert expand((x + y + z)**4) == expand((x + y + z)**2*(x + y + z)**2) and len(expand((x + y + z)**8).args) == 45
     assert expand((x - 1)**3) == x**3 - 3*x**2 + 3*x - 1 and expand((2*x + 1)**2) == 4*x**2 + 4*x + 1
+
+
+def test_sympy_conventions_of_the_methods() -> None:
+    """The conventions of SymPy's methods found by the method fuzz: the
+    order of ``srepr``, the shape of ``sort_key`` and ``ordered``, the
+    sign of a sum, the content of numbers, ``count_ops``, the split of
+    ``-1`` in ``as_ordered_factors``, ``extract_multiplicatively``,
+    ``as_numer_denom``, ``evalf`` and the facts of numbers."""
+    from sympy_extras.core import Q, count_ops, ordered
+    f = Function('f')
+    assert srepr(-3*x/8) == "Mul(Integer(-1), Rational(3, 8), Symbol('x'))" and srepr(x - 1) == "Add(Symbol('x'), Integer(-1))"
+    assert srepr(Float(0.1)) == "Float('0.10000000000000001', precision=53)"
+    assert x.sort_key() == ((2, 0, 'Symbol'), (1, ('x',)), ((1, 0, 'Number'), (0, ()), (), Fraction(1)), Fraction(1))
+    assert (2*x).sort_key()[3] == 2 and (x**2).sort_key()[2] == Integer(2).sort_key() and Integer(2).sort_key()[3] == 2
+    assert ordered([x - 1, x, Integer(-1), expr('cos(3)')]) == [-1, x, expr('cos(3)'), x - 1]  # fewer nodes first
+    assert (-x + y).could_extract_minus_sign() and not (x - y).could_extract_minus_sign()
+    assert (1 - x).could_extract_minus_sign() and (-x - y + z).could_extract_minus_sign()
+    assert Integer(6).primitive() == (6, 1) and Integer(-3).primitive() == (3, -1) and (-2*x).primitive() == (2, -x)
+    assert count_ops(E, visual=True) == Symbol('EXP') and str(count_ops(-x - y, visual=True)) == 'NEG + SUB'
+    assert str(count_ops(-x + y + z, visual=True)) == 'ADD + SUB' and str(count_ops(2*expr('exp(-1)'), visual=True)) == 'DIV + EXP'
+    assert (-3*x*y/4).as_ordered_factors() == [-1, Rational(3, 4), x, y] and Integer(-3).as_ordered_factors() == [-3]
+    assert x.extract_multiplicatively(2) is None and (x/3).extract_multiplicatively(2) == x/6
+    assert x.extract_multiplicatively(Rational(1, 3)) == 3*x and (x + 1).extract_multiplicatively(2) is None
+    assert (x/2 + y).extract_multiplicatively(2) == x/4 + y/2 and Integer(6).extract_multiplicatively(-2) is None
+    assert (x**-2).extract_multiplicatively(1/x) == 1/x and (x**3).extract_multiplicatively(1/x) is None
+    assert (-(Rational(10, 3) + I)/(p - 4)).extract_multiplicatively(2) == -(Rational(5, 3) + I/2)/(p - 4)
+    assert (1 + (x + 1)/(x - 1)).as_numer_denom() == (2*x, x - 1)
+    assert str((n - p + y - 2 + 1/(x + pi)).as_numer_denom()) == '((x + pi)*(n - p + y - 2) + 1, x + pi)'
+    assert (Rational(11, 6) - 11*z/6).as_numer_denom() == (11 - 11*z, 6) and expr('exp(-x)').as_numer_denom() == (1, expr('exp(x)'))
+    assert (x**-pi).as_numer_denom() == (1, x**pi) and Rational(1, 16).as_base_exp() == (Rational(1, 16), 1)
+    assert Integer(0).as_independent(x) == (0, 0) and expr('exp(x)').kind.name == 'NumberKind' and expr('sin(x)').kind.name == 'UndefinedKind'
+    assert str((x/3).evalf(5)) == '0.33333*x' and str((-p).evalf(5)) == '-p' and str((x**-2).evalf(5)) == 'x**(-2)'
+    assert str((z + I).evalf(5)) == 'z + I' and str((-I*x).evalf(5)) == '-I*x' and str((2*x + 1).evalf(5)) == '2.0*x + 1.0'
+    assert str(expr('log(3*z/8 - 3*pi/8)').evalf(5)) == 'log(3*z/8 - 3*pi/8)' and Integer(0).evalf() == 0
+    assert str(mul(-1, Rational(10, 3) + I, 1/(p - 4)).evalf(5)) == '-(3.3333 + I)/(p - 4.0)'
+    assert str((-(Rational(10, 3) + I)/(p - 4)).evalf(5)) == '(-3.3333 - I)/(p - 4.0)'
+    assert (11 - 3*E).is_positive is True and (pi**2 - 10).is_negative is True and (2 + pi + I).is_real is False
+    assert ((-1 - I)**-2).is_imaginary is True and (E*pi/(pi + I)).is_real is False and (1/(p - 4)).is_zero is False
+    assert (n*(n - 1)).is_even is True and (Integer(3)**Rational(2, 3)/3).is_even is False and ((-2)**p).is_real is None
+    assert (-p - E + Rational(1, 2)).is_negative is True and (2*expr('Abs(x)')).is_zero is None
+    assert ((-p - Rational(3, 5) + pi)**-2).is_positive is None
+    from sympy_extras.core import Wild
+    w, v = Wild('w'), Wild('v')
+    assert Integer(1).match(w**v) == {v: 0} and (-E).match(w*x) == {w: -E/x} and (2/x).match(w*x) is None
+    assert (x**3 + 2*x).match(w*x**3 + v*x) == {w: 1, v: 2}
+    assert str(diff(expr('Abs(x)'), x)) == '(re(x)*Derivative(re(x), x) + im(x)*Derivative(im(x), x))*sign(x)/x'
+    assert str(diff(x**(pi/2), x)) == 'pi*x**(pi/2)/(2*x)' and str(diff(sqrt(pi*x + x**-2), x)) == '(pi/2 - 1/x**3)/sqrt(pi*x + x**(-2))'
+    assert str(expand(expr('log(1/(4096*x**4))'))) == 'log(x**(-4)) - 12*log(2)'
+    assert str(expand(p*y**3/(4*(4 - n)))) == 'p*y**3/(16 - 4*n)' and str(expand(-I*n*x*(y - x)**Rational(3, 2))) == 'I*n*x**2*sqrt(-x + y) - I*n*x*y*sqrt(-x + y)'
+    assert str((1/sqrt(n - x) + E/z).as_leading_term(x)) == '(E*sqrt(n) + z)/(sqrt(n)*z)' and (x + x*y).as_leading_term(x) == x*y + x
+    assert Q.positive(x).sort_key()[0] == (5, 0, 'AppliedPredicate') and f(x).sort_key()[0] == (4, 0, 'f')
