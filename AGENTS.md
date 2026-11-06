@@ -157,6 +157,7 @@ sympy_extras/
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
         f4.py                f4: reduced Gröbner bases by Faugère's F4 over any field (the default direct algorithm)
         modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ modulo primes, proven (Arnold); direct_groebner
+        stronggroebner.py    strong_groebner, strong_reduce: strong Gröbner bases over ZZ (S- and G-polynomials)
         orderings.py         WeightOrder, BlockOrder, elimination_order (hashable monomial orders)
         puiseux.py           Newton–Puiseux expansions of the branches of a plane curve at a point and at infinity, conjugate branches over number fields (Duval)
         functionfields.py    FunctionField: arithmetic in K(x)[y]/(F), integral bases (Trager's Round 2 over K[x]), local bases at infinity, bases normal at infinity

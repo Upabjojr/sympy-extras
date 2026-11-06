@@ -46,11 +46,16 @@ This package adds, on top of SymPy's Gröbner basis engine:
   field; `Ideal` and the modular algorithm compute their bases with it;
 - **modular Gröbner bases** over the rationals, proven, which `Ideal` uses
   for the bases the direct computation does not finish in a quarter of a
-  second.
+  second;
+- **strong Gröbner bases over the integers** (Kandri-Rody–Kapur,
+  Becker–Weispfenning, Lichtblau), which decide membership in ideals of
+  `ZZ[x]`; SymPy's `groebner` with `domain=ZZ` returns the basis over the
+  rationals.
 
 Not done here: the depth,
 decompositions over other fields than the rationals (algebraic numbers,
-finite fields), F5 and strong Gröbner bases over the integers.
+finite fields), F5, and `Ideal` over the integers (it converts the
+coefficients to the rationals).
 
 ## Examples
 
@@ -401,6 +406,44 @@ direct computation of the package, those of the images of the modular
 algorithm included: the modular basis of cyclic-6 for `grevlex` took 10 s
 with F4 images and 56 s with Buchberger images.
 
+## Strong Gröbner bases over the integers
+
+A Gröbner basis over a field decides ideal membership because every
+leading term in the ideal is a multiple of the leading term of a basis
+element. Over `ZZ` the coefficients count: `<2x, 3y>` contains
+`xy = 3 xy - 2 xy` but neither `x` nor `y`, and SymPy's `groebner` with
+`domain=ZZ` returns `[x, y]`, the basis over the rationals, which answers
+membership questions over the integers wrongly. A *strong* Gröbner basis
+`G` of an ideal of `ZZ[x]` (Kandri-Rody and Kapur; the D-Gröbner bases of
+Becker and Weispfenning, chapter 10; Lichtblau) has, for every nonzero
+`f` of the ideal, an element whose leading term divides that of `f`,
+coefficient included; `f` is in the ideal exactly when it reduces to zero
+by `G` (`strong_reduce`, with Euclidean division of the coefficients).
+`strong_groebner(polys, ring)` in `sympy_extras.polys.stronggroebner`
+computes the reduced strong Gröbner basis (unique for the order and the
+remainder convention: positive leading coefficients, remainders in
+`[0, |lc|)`) by Buchberger's algorithm with the S-polynomials (leading
+terms brought to their lcm, coefficients included) and the G-polynomials
+(a Bézout combination whose leading coefficient is the gcd of the two
+leading coefficients); `is_strong_groebner` checks the definition.
+
+```python
+>>> from sympy import ZZ
+>>> from sympy.polys.rings import ring
+>>> from sympy_extras.polys.stronggroebner import strong_groebner, strong_reduce, is_strong_groebner
+>>> R, X, Y = ring('x,y', ZZ, 'lex')
+>>> strong_groebner([2*X, 3*Y], R)
+[x*y, 2*x, 3*y]
+>>> strong_groebner([4, 2*X + 1], R)      # 2x - 1, then 2, then 1 are in the ideal
+[1]
+>>> G = strong_groebner([2*X**2 + Y, 3*X*Y + 1], R)
+>>> G
+[x*y + 3*y**3 + 1, 2*x - 3*y**2, 9*y**3 + 2]
+>>> strong_reduce(2*X - 3*Y**2, G), strong_reduce(X, G), is_strong_groebner(G)
+(0, x, True)
+
+```
+
 ## Modular Gröbner bases
 
 SymPy's Buchberger algorithm over `QQ` spends its time on the intermediate
@@ -602,7 +645,10 @@ polynomials with rational coefficients.
 small integer coefficients among which one separates any `points` points.
 
 `f4(polys, ring)`, `reduced_basis(basis, ring)` and `is_graded(ring)` are
-in `sympy_extras.polys.f4`;
+in `sympy_extras.polys.f4`; `strong_groebner(polys, ring)`,
+`strong_reduce(f, basis)`, `is_strong_groebner(basis)`,
+`s_polynomial_zz(f, g)` and `g_polynomial_zz(f, g)` in
+`sympy_extras.polys.stronggroebner`;
 `modular_groebner(polys, ring, primes=None, trace=None)`, `direct_groebner(polys, ring)`, `groebner(polys,
 ring)` (the dispatcher used by `Ideal`), `rational_reconstruction(a, m,
 bound=None)`, `chinese_remainder(a, m, b, p)`, `default_primes()` and

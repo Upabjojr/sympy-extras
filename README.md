@@ -232,7 +232,11 @@ Katsura and cyclic systems, the same reduced basis) and, over the
 rationals, those which the direct computation does not finish in a quarter
 of a second by the modular algorithm of Arnold
 (`sympy_extras.polys.modulargroebner`): modulo large primes, on the
-homogenised input, with a verification which proves the result.
+homogenised input, with a verification which proves the result. Strong
+Gröbner bases over the integers (`sympy_extras.polys.stronggroebner`)
+decide membership in ideals of `ZZ[x]`, where SymPy's `groebner` with
+`domain=ZZ` gives the basis over the rationals: `<2x, 3y>` contains `xy`
+and neither `x` nor `y`.
 
 ```python
 >>> from sympy.abc import x, y, z, t
@@ -261,6 +265,11 @@ True
 [u + v - 2*w, v**2 - 2*v*w + 1/3*w, w**2 - 2/15*w - 1/5]
 >>> modular_groebner([u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w], R)
 [u + v - 2*w, v**2 - 2*v*w + 1/3*w, w**2 - 2/15*w - 1/5]
+>>> from sympy import ZZ
+>>> from sympy_extras.polys.stronggroebner import strong_groebner
+>>> Z, a, b = ring("a,b", ZZ, lex)
+>>> strong_groebner([2*a, 3*b], Z)
+[a*b, 2*a, 3*b]
 
 ```
 
@@ -834,6 +843,7 @@ sympy_extras/
         hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
         f4.py                Faugère's F4: Gröbner bases by sparse row reduction, over any field
+        stronggroebner.py    strong Gröbner bases over the integers (Kandri-Rody–Kapur, Lichtblau)
         modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold)
         orderings.py         WeightOrder, BlockOrder
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution

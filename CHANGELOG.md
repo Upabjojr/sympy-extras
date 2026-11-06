@@ -10,6 +10,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.stronggroebner`: reduced strong Gröbner bases over
+  the integers (Buchberger's algorithm with S- and G-polynomials and
+  Euclidean reduction of the coefficients), `strong_reduce` for ideal
+  membership in `ZZ[x]` and `is_strong_groebner`. SymPy's `groebner` with
+  `domain=ZZ` returns the basis over the rationals, which is wrong over the
+  integers (`<2x, 3y>` contains `xy` and neither `x` nor `y`).
+
 - `sympy_extras.solvers.recurr`: linear recurrences with polynomial
   coefficients solved beyond SymPy's `rsolve`: polynomial solutions with
   the degree bound from the indicial polynomials, Petkovšek's
