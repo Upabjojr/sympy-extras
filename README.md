@@ -225,8 +225,12 @@ signature of Hermite's quadratic form on the quotient algebra
 (`sympy_extras.polys.hermite`, Pedersen–Roy–Szpirglas, with the sign
 determination of Ben-Or–Kozen–Reif); `satisfiable` uses it to prove that
 such a system has no real solution before trying a CAD.
-Over the rationals, the bases which SymPy does not compute in a quarter of
-a second are computed by the modular algorithm of Arnold
+The bases are computed by Faugère's F4 (`sympy_extras.polys.f4`: the
+S-polynomials of many critical pairs reduced at once by one sparse row
+reduction, two to twenty times faster than SymPy's Buchberger on the
+Katsura and cyclic systems, the same reduced basis) and, over the
+rationals, those which the direct computation does not finish in a quarter
+of a second by the modular algorithm of Arnold
 (`sympy_extras.polys.modulargroebner`): modulo large primes, on the
 homogenised input, with a verification which proves the result.
 
@@ -250,8 +254,11 @@ True
 >>> sign_determination([x**2 - 1, y**2 - 1], [x + y, x], x, y)
 {(-1, -1): 1, (0, -1): 1, (0, 1): 1, (1, 1): 1}
 >>> from sympy import QQ, ring, lex
+>>> from sympy_extras.polys.f4 import f4
 >>> from sympy_extras.polys.modulargroebner import modular_groebner
 >>> R, u, v, w = ring("u,v,w", QQ, lex)
+>>> f4([u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w], R)
+[u + v - 2*w, v**2 - 2*v*w + 1/3*w, w**2 - 2/15*w - 1/5]
 >>> modular_groebner([u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w], R)
 [u + v - 2*w, v**2 - 2*v*w + 1/3*w, w**2 - 2/15*w - 1/5]
 
@@ -803,6 +810,7 @@ sympy_extras/
         idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension
         hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
+        f4.py                Faugère's F4: Gröbner bases by sparse row reduction, over any field
         modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold)
         orderings.py         WeightOrder, BlockOrder
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution

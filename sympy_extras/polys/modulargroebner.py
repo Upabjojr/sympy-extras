@@ -182,7 +182,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import Monomial, OrderKey
 from sympy_extras.settings import settings
 
-__all__ = ['groebner', 'modular_groebner', 'rational_reconstruction', 'chinese_remainder',
+__all__ = ['direct_groebner', 'groebner', 'modular_groebner', 'rational_reconstruction', 'chinese_remainder',
     'default_primes', 'ModularTrace']
 
 #: a polynomial with integer coefficients, by exponent vectors
@@ -601,7 +601,7 @@ def _image(polys: Sequence[IntPoly], symbols: Sequence[Expr], order: MonomialOrd
         field = _fields[p] = GF(p)
     ring = PolyRing(symbols, field, order)
     reduced = [ring.from_dict({m: c % p for m, c in f.items()}) for f in polys]
-    basis = _groebner([f for f in reduced if f], ring)
+    basis = direct_groebner([f for f in reduced if f], ring)
     image: list[tuple[Monomial, IntPoly]] = []
     for g in basis:
         coefficients: IntPoly = {tuple(m): int(field.to_int(c)) % p for m, c in g.items()}
@@ -881,10 +881,32 @@ def modular_groebner(polys: Sequence[PolyElement], ring: PolyRing, primes: Optio
     return result
 
 
+def direct_groebner(polys: Sequence[PolyElement], ring: PolyRing) -> list[PolyElement]:
+    """The reduced Gröbner basis by the direct computation of
+    ``settings.groebner_algorithm``: F4 (:mod:`sympy_extras.polys.f4`)
+    over a field, SymPy's Buchberger otherwise.
+
+    Examples
+    ========
+
+    >>> from sympy import QQ, ZZ, ring, grevlex
+    >>> from sympy_extras.polys.modulargroebner import direct_groebner
+    >>> R, x, y = ring("x,y", QQ, grevlex)
+    >>> direct_groebner([x**2 + y**2 - 1, x*y - 2], R)
+    [y**3 + 2*x - y, x**2 + y**2 - 1, x*y - 2]
+    """
+    nonzero = [f for f in polys if f]
+    if settings.groebner_algorithm == 'f4' and ring.domain.is_Field:
+        from .f4 import f4
+        return f4(nonzero, ring)
+    return list(_groebner(nonzero, ring))
+
+
 def groebner(polys: Sequence[PolyElement], ring: PolyRing) -> list[PolyElement]:
-    """The reduced Gröbner basis of ``polys`` in ``ring``, by SymPy's direct
-    computation or by :func:`modular_groebner`, whichever is expected to be
-    faster; this is what :class:`~sympy_extras.polys.ideals.Ideal` calls.
+    """The reduced Gröbner basis of ``polys`` in ``ring``, by the direct
+    computation (:func:`direct_groebner`) or by :func:`modular_groebner`,
+    whichever is expected to be faster; this is what
+    :class:`~sympy_extras.polys.ideals.Ideal` calls.
 
     Over ``QQ`` and ``ZZ``, SymPy's ``groebner`` is given
     ``settings.groebner_direct_time`` seconds (a quarter of a second), and
@@ -924,12 +946,12 @@ def groebner(polys: Sequence[PolyElement], ring: PolyRing) -> list[PolyElement]:
     """
     nonzero = [f for f in polys if f]
     if not settings.modular_groebner or not _applies(ring):
-        return list(_groebner(nonzero, ring))
+        return direct_groebner(nonzero, ring)
     seconds = settings.groebner_direct_time
     if ring.order in (grevlex, grlex):
         seconds *= GRADED_FACTOR
     if seconds > 0:
-        direct = attempt(lambda: list(_groebner(list(nonzero), ring)), seconds)
+        direct = attempt(lambda: direct_groebner(list(nonzero), ring), seconds)
         if direct is not None:
             return direct
     return modular_groebner(nonzero, ring)

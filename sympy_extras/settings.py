@@ -47,6 +47,11 @@ groebner_direct_time : float
     before the modular algorithm takes over (0.25, and twenty times as
     long for the graded orders, where the modular algorithm seldom pays
     off); zero or less to go to the modular algorithm at once.
+groebner_algorithm : str
+    The algorithm of the direct computation of a Gröbner basis over a
+    field, here and in the images of the modular algorithm: ``'f4'`` (the
+    default, :mod:`sympy_extras.polys.f4`) or ``'buchberger'`` (SymPy's
+    ``groebner``). The reduced basis is the same either way.
 """
 from __future__ import annotations
 
@@ -78,6 +83,7 @@ class Settings:
         self.time_scale: float = _time_scale_of_the_environment()
         self.modular_groebner: bool = True
         self.groebner_direct_time: float = 0.25
+        self.groebner_algorithm: str = 'f4'
 
     def __repr__(self) -> str:
         return "Settings(numerical_checks=%r, precision=%r, timeout=%r)" % (
@@ -92,11 +98,13 @@ def configure(numerical_checks: Optional[bool] = None, precision: Optional[int] 
               timeout: Optional[float] = None, no_timeout: bool = False,
               modular_groebner: Optional[bool] = None,
               groebner_direct_time: Optional[float] = None,
+              groebner_algorithm: Optional[str] = None,
               time_scale: Optional[float] = None) -> Iterator[Settings]:
     """Temporarily change the settings (``no_timeout=True`` removes the
     time limit, since ``timeout=None`` means "leave unchanged" here)."""
     previous = (settings.numerical_checks, settings.precision, settings.timeout)
     previous_groebner = (settings.modular_groebner, settings.groebner_direct_time)
+    previous_algorithm = settings.groebner_algorithm
     previous_scale = settings.time_scale
     if time_scale is not None:
         if not time_scale > 0:
@@ -114,9 +122,14 @@ def configure(numerical_checks: Optional[bool] = None, precision: Optional[int] 
         settings.modular_groebner = modular_groebner
     if groebner_direct_time is not None:
         settings.groebner_direct_time = groebner_direct_time
+    if groebner_algorithm is not None:
+        if groebner_algorithm not in ('f4', 'buchberger'):
+            raise ValueError("groebner_algorithm is 'f4' or 'buchberger', got %r" % (groebner_algorithm,))
+        settings.groebner_algorithm = groebner_algorithm
     try:
         yield settings
     finally:
         settings.numerical_checks, settings.precision, settings.timeout = previous
         settings.modular_groebner, settings.groebner_direct_time = previous_groebner
+        settings.groebner_algorithm = previous_algorithm
         settings.time_scale = previous_scale

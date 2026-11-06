@@ -10,6 +10,15 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.f4`: Faugère's F4 algorithm for reduced Gröbner
+  bases over any field, on SymPy's sparse polynomials with SymPy's sparse
+  row reduction; the normal selection strategy for the graded orders and
+  a selection of the pairs with the smallest lcms for the others. It is
+  the default direct computation of `Ideal` and of the images of the
+  modular algorithm (`settings.groebner_algorithm`, `'f4'` or
+  `'buchberger'`), two to twenty times faster than SymPy's Buchberger on
+  the Katsura and cyclic systems with the same results.
+
 - `sympy_extras.core`: an experimental core proposed as a replacement of
   `sympy.core`, written from scratch. The classes of the expression tree
   (`Add`, `Mul`, `Pow`, `Eq`, `Derivative`, ...) build exactly the node

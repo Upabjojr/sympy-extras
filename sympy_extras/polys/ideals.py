@@ -171,8 +171,9 @@ class Ideal:
     order : str or MonomialOrder
         The order of the Gröbner basis used by default (``'grevlex'``).
 
-    Gröbner bases are computed lazily with :func:`sympy.groebner` and
-    cached per order.
+    Gröbner bases are computed lazily, by Faugère's F4
+    (:mod:`sympy_extras.polys.f4`) or the modular algorithm
+    (:mod:`sympy_extras.polys.modulargroebner`), and cached per order.
     """
 
     def __init__(self, gens: Iterable[Union[Expr, Poly]], *symbols: Symbol,

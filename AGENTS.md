@@ -155,7 +155,8 @@ sympy_extras/
         ideals.py            Ideal: operations and invariants on top of sympy.groebner
         hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
-        modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ modulo primes, proven (Arnold)
+        f4.py                f4: reduced Gröbner bases by Faugère's F4 over any field (the default direct algorithm)
+        modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ modulo primes, proven (Arnold); direct_groebner
         orderings.py         WeightOrder, BlockOrder, elimination_order (hashable monomial orders)
         puiseux.py           Newton–Puiseux expansions of the branches of a plane curve at a point and at infinity, conjugate branches over number fields (Duval)
         functionfields.py    FunctionField: arithmetic in K(x)[y]/(F), integral bases (Trager's Round 2 over K[x]), local bases at infinity, bases normal at infinity

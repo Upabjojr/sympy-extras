@@ -41,12 +41,16 @@ This package adds, on top of SymPy's Gröbner basis engine:
 - the **Gröbner walk**, converting a Gröbner basis between orders for
   ideals of any dimension (`change_order` uses FGLM when the ideal is
   zero-dimensional and the walk otherwise);
+- **Faugère's F4**, the Gröbner basis algorithm which reduces many
+  S-polynomials at once by one row reduction of a sparse matrix, over any
+  field; `Ideal` and the modular algorithm compute their bases with it;
 - **modular Gröbner bases** over the rationals, proven, which `Ideal` uses
-  for the bases SymPy does not compute in a quarter of a second.
+  for the bases the direct computation does not finish in a quarter of a
+  second.
 
 Not done here: the depth,
 decompositions over other fields than the rationals (algebraic numbers,
-finite fields), F4 and strong Gröbner bases over the integers.
+finite fields), F5 and strong Gröbner bases over the integers.
 
 ## Examples
 
@@ -320,6 +324,83 @@ representations lift it to a Gröbner basis of the ideal for the new weight
 order. The initial forms are small, so every step is cheap compared to a
 direct computation for the target order.
 
+## F4
+
+`f4(polys, ring)` in `sympy_extras.polys.f4` returns the reduced Gröbner
+basis of the polynomials of a SymPy `PolyRing` over a field (`QQ`,
+`GF(p)`, an algebraic number field) for the order of the ring, equal to
+what `sympy.polys.groebnertools.groebner` returns (the reduced basis is
+unique, and the result is sorted as SymPy sorts it):
+
+```python
+>>> from sympy import QQ, GF
+>>> from sympy.polys.rings import ring
+>>> from sympy.polys.groebnertools import groebner
+>>> from sympy_extras.polys.f4 import f4
+>>> R, x, y, z = ring('x,y,z', QQ, 'grevlex')
+>>> F = [x**2 + y**2 + z**2 - 1, x + y + z, x*y*z - 1]
+>>> f4(F, R)
+[z**3 - 1/2*z - 1, y**2 + y*z + z**2 - 1/2, x + y + z]
+>>> f4(F, R) == groebner(F, R)
+True
+>>> R, x, y = ring('x,y', GF(7), 'lex')
+>>> f4([x**2 - y, 3*y**2 - x], R) == [x - 3*y**2, y**4 + 3*y]
+True
+
+```
+
+Buchberger's algorithm, SymPy's, reduces the S-polynomials one at a time,
+and every reduction multiplies the same basis elements by the same
+monomials again. Faugère's F4 selects a set of critical pairs, collects
+the two halves of each S-polynomial and, by *symbolic preprocessing*, a
+reducer for every monomial which appears (the basis element with the
+smallest leading monomial dividing it, multiplied up), and writes them as
+a sparse matrix, one row per polynomial and one column per monomial in
+decreasing order, whose reduced row echelon form
+(`sympy.polys.matrices.sdm.sdm_irref`) is computed once. The rows whose
+leading monomial is not among the leading monomials of the rows written
+down are the new basis elements; the critical pairs are updated with the
+criteria of Gebauer and Möller, and the basis is interreduced at the end.
+
+The selection of the pairs decides the running time. For the graded
+orders (`grevlex`, `grlex`) it is Faugère's normal strategy, all the pairs
+whose lcm has the lowest total degree, which builds the Macaulay matrix of
+each degree; for the other orders (`lex`, the elimination and weight
+orders) the lowest total degree says little about the position in the
+order, and the normal strategy built, on Katsura-4 for `lex`, matrices of
+hundreds of columns which yielded three new rows each and had not finished
+after 40 s where SymPy takes 2.5 s; selecting the 16 pairs with the
+smallest lcms in the order instead takes 0.3 s (4 or 32 at a time: 6.4 s
+and 0.5 s; the same 16 restricted to the lowest degree: not finished).
+Whether an order is graded is decided by comparing the squares of the
+variables with the variables.
+
+Timings in seconds of `f4` and of SymPy's `groebner` on the same ring
+elements (SymPy 1.14, pure Python ground types, Python 3.12, one run per
+entry on a shared machine, a limit of 120 s):
+
+| system    | field       | order     |   `f4` | SymPy |
+|-----------|-------------|-----------|-------:|------:|
+| Katsura-4 | `QQ`        | `grevlex` |   0.03 |  0.06 |
+| Katsura-4 | `GF(32003)` | `lex`     |   0.30 |  1.65 |
+| Katsura-4 | `QQ`        | `lex`     |   2.38 | 28.31 |
+| Katsura-5 | `QQ`        | `grevlex` |   0.26 |  0.58 |
+| Katsura-5 | `QQ`        | `lex`     |  > 120 | > 120 |
+| cyclic-5  | `QQ`        | `grevlex` |   0.09 |  0.26 |
+| cyclic-5  | `QQ`        | `lex`     |   2.33 | 35.74 |
+| cyclic-6  | `QQ`        | `grevlex` |   4.49 | 102.6 |
+| Katsura-6 | `QQ`        | `grevlex` |   8.61 | 17.26 |
+| Katsura-7 | `GF(32003)` | `grevlex` |   56.5 | > 120 |
+| cyclic-7  | `GF(32003)` | `grevlex` |  > 120 | > 120 |
+
+On 400 random ideals in two to four variables (one to four polynomials of
+degree up to three, over `QQ`, `GF(7)` and `GF(32003)`, the three orders)
+the two bases were equal every time. `settings.groebner_algorithm`
+(`'f4'`, or `'buchberger'` for SymPy's) chooses the algorithm of every
+direct computation of the package, those of the images of the modular
+algorithm included: the modular basis of cyclic-6 for `grevlex` took 10 s
+with F4 images and 56 s with Buchberger images.
+
 ## Modular Gröbner bases
 
 SymPy's Buchberger algorithm over `QQ` spends its time on the intermediate
@@ -471,10 +552,12 @@ algorithm remains what computes the `lex` and elimination bases of the
 ideals of positive dimension, where FGLM does not apply.
 
 Hence the rule of `Ideal`, which computes its bases through
-`sympy_extras.polys.modulargroebner.groebner`: SymPy's direct computation
-is given `settings.groebner_direct_time` seconds (0.25), twenty times as
-long for `grevlex` and `grlex` (5 s), and the modular algorithm runs if it
-has not finished. On the inputs which SymPy handles in milliseconds the
+`sympy_extras.polys.modulargroebner.groebner`: the direct computation
+(`direct_groebner`, F4 by default, see above; the table above this
+paragraph was measured with SymPy's Buchberger) is given
+`settings.groebner_direct_time` seconds (0.25), twenty times as long for
+`grevlex` and `grlex` (5 s), and the modular algorithm runs if it has not
+finished. On the inputs which SymPy handles in milliseconds the
 modular algorithm costs about twice as much (3.9 ms against 1.7 ms on
 three quadrics in three variables), which is why it is not run first, and
 nothing cheap was found which tells in advance the inputs where it wins;
@@ -518,7 +601,9 @@ polynomials with rational coefficients.
 `separating_forms(variables, points)` enumerates the linear forms with
 small integer coefficients among which one separates any `points` points.
 
-`modular_groebner(polys, ring, primes=None, trace=None)`, `groebner(polys,
+`f4(polys, ring)`, `reduced_basis(basis, ring)` and `is_graded(ring)` are
+in `sympy_extras.polys.f4`;
+`modular_groebner(polys, ring, primes=None, trace=None)`, `direct_groebner(polys, ring)`, `groebner(polys,
 ring)` (the dispatcher used by `Ideal`), `rational_reconstruction(a, m,
 bound=None)`, `chinese_remainder(a, m, b, p)`, `default_primes()` and
 `ModularTrace` are in `sympy_extras.polys.modulargroebner`.
