@@ -10,6 +10,18 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.solvers.recurr`: linear recurrences with polynomial
+  coefficients solved beyond SymPy's `rsolve`: polynomial solutions with
+  the degree bound from the indicial polynomials, Petkovšek's
+  hypergeometric solutions (`rsolve_hypergeometric`, with the
+  Gosper–Petkovšek form `gosper_form` and a basis free of similar terms),
+  the d'Alembertian solutions of Abramov and Petkovšek
+  (`rsolve_dalembertian`: nested sums of hypergeometric terms, found by
+  reduction of order), and `rsolve_linear` for equations written with
+  `y(n + i)`, with particular solutions for hypergeometric right-hand
+  sides and initial values. The harmonic numbers, the derangement numbers
+  and `y(n + 1) = (n + 1) y(n) + 1`, which `rsolve` misses, are solved.
+
 - `sympy_extras.polys.f4`: Faugère's F4 algorithm for reduced Gröbner
   bases over any field, on SymPy's sparse polynomials with SymPy's sparse
   row reduction; the normal selection strategy for the graded orders and

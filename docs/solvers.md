@@ -429,6 +429,85 @@ True
 
 ```
 
+## Linear recurrences: hypergeometric and d'Alembertian solutions
+
+`sympy_extras.solvers.recurr` solves linear recurrences with polynomial
+(or rational) coefficients, `p_d(n) y(n + d) + ... + p_0(n) y(n) = f(n)`.
+SymPy's `rsolve` finds polynomial, rational and hypergeometric solutions
+(Petkovšek's Hyper) and nothing else: for `y(n + 1) = (n + 1) y(n) + 1` it
+returns `None`, and for the recurrence of the harmonic numbers,
+`(n + 2) y(n + 2) = (2n + 3) y(n + 1) - (n + 1) y(n)`, it returns the
+constants and misses `H_n`. The module adds the **d'Alembertian
+solutions** of Abramov and Petkovšek, the nested indefinite sums of
+hypergeometric terms, which are exactly the solutions of the operators
+that factor into first order factors over the rational functions:
+
+- `rsolve_polynomial(coefficients, n)`: the polynomial solutions, with the
+  degree bound from the first nonvanishing polynomial `b_k(e)` of
+  `L[n^e] = sum b_k(e) n^(D + e - k)`;
+- `rsolve_hypergeometric(coefficients, n)`: Petkovšek's algorithm, written
+  from the paper: `a | p_0`, `b | p_d(n - d + 1)` with
+  `gcd(a(n), b(n + h)) = 1` for `h >= 0` (decided by comparing the
+  irreducible factors of `a` and `b` under integer shifts, which is far
+  cheaper than the resultant), `z` from the leading coefficients, `c` a
+  polynomial solution of the auxiliary recurrence; the terms are grouped
+  into similarity classes by the Gosper–Petkovšek form of the quotient of
+  their ratios (`gosper_form`), so that the result is a basis;
+- `rsolve_dalembertian(coefficients, n)`: a hypergeometric solution `h`
+  gives `L = L' (N - r)`, the substitution `y = h sum z` reduces the order
+  by one, and the solutions are `h` and the `h sum_{k < n} z(k)` for the
+  d'Alembertian solutions `z` of the reduced equation; the hypergeometric
+  solutions are listed first and a maximal independent subset is returned
+  (independence decided from the values at `d` consecutive points past
+  the roots of the leading coefficient, which determine a solution);
+- `rsolve_linear(equation, y(n), init=None)`: the equation written with
+  `y(n + i)` (negative shifts and rational coefficients allowed), the
+  general solution with constants `C0, C1, ...`, a particular solution
+  when the right-hand side is a sum of hypergeometric terms (each term
+  `f_j` is annihilated by `N - f_j(n + 1)/f_j(n)`; a d'Alembertian solution
+  `u` of the operator of order `d + 1` has `L u = kappa f_j` with a
+  constant `kappa`, read off at one point), the constants from the initial
+  values; `None` when the d'Alembertian solutions do not span the solution
+  space.
+
+The solutions are written with `factorial`, `RisingFactorial`, `Product`
+(for the irreducible factors of degree two and more), `Sum` and `z**n`;
+the sums SymPy can evaluate without special functions are evaluated
+(`harmonic(n)` for the harmonic numbers, `2**n - n - 1` for
+`y(n + 1) = 2 y(n) + n`; `Sum(1/factorial(k + 1), (k, 0, n - 1))` is kept
+because SymPy writes it with the incomplete gamma function). A product
+whose factor vanishes at a nonnegative integer starts after it, and the
+solution holds from there.
+Every solution is checked by substitution at six consecutive integers
+before it is returned (`is_recurrence_solution`).
+
+```python
+>>> from sympy import Function, Eq
+>>> from sympy.abc import n
+>>> from sympy_extras.solvers import rsolve_linear, rsolve_dalembertian, rsolve_hypergeometric
+>>> u = Function('u')
+>>> rsolve_linear(u(n + 1) - (n + 1)*u(n) - 1, u(n))
+C0*factorial(n) + factorial(n)*Sum(1/factorial(k + 1), (k, 0, n - 1))
+>>> rsolve_linear(Eq((n + 2)*u(n + 2), (2*n + 3)*u(n + 1) - (n + 1)*u(n)), u(n), {u(0): 0, u(1): 1})
+harmonic(n)
+>>> rsolve_linear(u(n + 1) - n*(u(n) + u(n - 1)), u(n), {u(0): 1, u(1): 0})   # derangements
+-factorial(n)*Sum((-1)**k/factorial(k + 1), (k, 0, n - 1)) + factorial(n)
+>>> rsolve_linear(u(n + 2) - u(n + 1) - u(n), u(n), {u(0): 0, u(1): 1})
+-sqrt(5)*(1/2 - sqrt(5)/2)**n/5 + sqrt(5)*(1/2 + sqrt(5)/2)**n/5
+>>> rsolve_hypergeometric([n**2 + 1, -(n + 1)], n)
+[Product(k**2 + 1, (k, 0, n - 1))/factorial(n)]
+>>> rsolve_dalembertian([n + 1, -(n + 3), 1], n)
+[factorial(n), factorial(n)*Sum(1/factorial(k + 1), (k, 0, n - 1))]
+>>> rsolve_dalembertian([-(n + 1), -1, 1], n)    # the involution numbers: no d'Alembertian solution
+[]
+
+```
+
+On random operators `(N - r_3)(N - r_2)(N - r_1)` with ratios made of
+small linear factors, the solver returns the full basis of `d`
+independent solutions (the oracle used in the tests, each solution also
+verified by substitution).
+
 ## Darboux polynomials and the Prelle–Singer procedure
 
 `sympy_extras.solvers.darboux` solves `y' = P(x, y)/Q(x, y)` with

@@ -39,6 +39,8 @@ from .abel import (abel_invariants, abel_equivalence, abel_by_invariants, air_so
 from .thue_equation import thue, units_of_order, elements_of_norm, ThueEquation
 from .second_order import (integrating_factor_xy, integrating_factor_p, is_linearizable, linearize,
     rectify_symmetries, dsolve_second_order, FirstIntegral, Linearization)
+from .recurr import (rsolve_polynomial, rsolve_hypergeometric, rsolve_dalembertian, rsolve_linear, gosper_form,
+    is_recurrence_solution)
 from .darboux import (DarbouxPolynomial, ExponentialFactor, darboux_polynomials, exponential_factors,
     darboux_integrating_factor, darboux_first_integral, prelle_singer)
 
@@ -65,4 +67,6 @@ __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry', 'determining_
     'abel_invariants', 'abel_equivalence', 'abel_by_invariants', 'air_solution', 'particular_solution',
     'AbelInvariants', 'AbelTransformation', 'thue', 'units_of_order', 'elements_of_norm', 'ThueEquation',
     'DarbouxPolynomial', 'ExponentialFactor', 'darboux_polynomials', 'exponential_factors',
-    'darboux_integrating_factor', 'darboux_first_integral', 'prelle_singer']
+    'darboux_integrating_factor', 'darboux_first_integral', 'prelle_singer',
+    'rsolve_polynomial', 'rsolve_hypergeometric', 'rsolve_dalembertian', 'rsolve_linear', 'gosper_form',
+    'is_recurrence_solution']

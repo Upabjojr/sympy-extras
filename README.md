@@ -407,6 +407,28 @@ Eq(-x - y(x) + log(x) + log(y(x)), C1)
 
 ```
 
+Linear recurrences with polynomial coefficients are solved beyond SymPy's
+`rsolve` (`sympy_extras.solvers.recurr`): Petkovšek's hypergeometric
+solutions and the d'Alembertian solutions of Abramov and Petkovšek, the
+nested sums of hypergeometric terms, found by reduction of order; the
+harmonic numbers, the derangement numbers and `y(n + 1) = (n + 1) y(n) + 1`,
+on which `rsolve` returns nothing or misses a solution, are solved, with
+particular solutions for hypergeometric right-hand sides and initial
+values.
+
+```python
+>>> from sympy import Eq
+>>> from sympy_extras.solvers import rsolve_linear
+>>> u = Function('u')
+>>> rsolve_linear(u(n + 1) - (n + 1)*u(n) - 1, u(n))
+C0*factorial(n) + factorial(n)*Sum(1/factorial(k + 1), (k, 0, n - 1))
+>>> rsolve_linear(Eq((n + 2)*u(n + 2), (2*n + 3)*u(n + 1) - (n + 1)*u(n)), u(n), {u(0): 0, u(1): 1})
+harmonic(n)
+>>> rsolve_linear(u(n + 1) - n*(u(n) + u(n - 1)), u(n), {u(0): 1, u(1): 0})   # derangements
+-factorial(n)*Sum((-1)**k/factorial(k + 1), (k, 0, n - 1)) + factorial(n)
+
+```
+
 ### Thue equations, second order integrating factors, Abel invariants, polygamma series
 
 The last items of the notes: `thue` solves Thue equations `F(x, y) = m`
@@ -797,6 +819,7 @@ sympy_extras/
         special.py           Bessel, Whittaker, hypergeometric solutions
         linear_systems.py    systems Y' = A Y + b: cyclic vectors, rational solutions, variation of constants
         first_order.py       Abel, Chini, d'Alembert-Lagrange equations
+        recurr.py            linear recurrences: polynomial, hypergeometric (Petkovšek), d'Alembertian (Abramov–Petkovšek) solutions
         charpit.py           complete integrals of first order PDEs
         kovacic.py           Kovacic's algorithm (Liouvillian solutions of second order linear ODEs)
         linear_ode.py        polynomial, rational, hyperexponential solutions; reduction of order
