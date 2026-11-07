@@ -41,11 +41,42 @@ removed in any release. Every user-visible change goes into `CHANGELOG.md`.
 These were given while the project was being built and apply to every
 change:
 
-- **Never copy code** from SymPy, Mathematica, Maxima, Maple or any other
-  system: their licenses do not allow it. Published results, test data
-  and algorithm descriptions are facts and may be used; implementations
-  are written from the literature and stated in the module docstring
-  with references.
+- **Never copy code** from Mathematica, Maxima, Maple or any other system
+  whose license does not allow it. Published results, test data and
+  algorithm descriptions are facts and may be used; implementations are
+  written from the literature and stated in the module docstring with
+  references.
+- **Code from SymPy may be ported** (decision of the maintainer,
+  2026-11-07, to make sympy-extras independent of SymPy). SymPy is under
+  the BSD 3-clause license, which allows it provided the copyright notice
+  is kept. Every file containing code ported from SymPy, wholly or in
+  part, must:
+  1. carry this notice at the top of the file (before or right after the
+     module docstring), filled in:
+
+     ```python
+     # ---------------------------------------------------------------------
+     # PORTED FROM SYMPY: <sympy/module/path.py>[, <other paths>] (SymPy <version>)
+     # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+     # see sympy_extras/LICENSE-SymPy.
+     # Changes: <strict typing, unevaluating classes, ... in one or two lines>
+     # ---------------------------------------------------------------------
+     ```
+
+  2. say so in the module docstring (one sentence naming the SymPy
+     module);
+  3. mark each ported function, class or method in a file which mixes
+     ported and original code with a comment on the line above it:
+     `# PORTED FROM SYMPY: sympy/module/path.py:<name>`;
+  4. be typed to the rules below (no `Any`, no `cast`, no `getattr`, no
+     `# type: ignore`) and have its own tests: a port is not a copy of
+     SymPy's tests, which are BSD-licensed too and may be ported under
+     the same notice.
+
+  `grep -rn "PORTED FROM SYMPY" sympy_extras` lists every port; the
+  commit message names the SymPy modules and version. Files with
+  original code only carry no notice. `sympy_extras/LICENSE-SymPy` is
+  the license text and must not be removed while any port remains.
 - **Algorithms that need no change stay in SymPy.** SymPy is a dependency:
   call it (`solveset`, `dsolve`, `groebner`, `roots`, `gosper_sum`,
   `limit`, ...) and only add what is missing or must be rewritten
@@ -399,7 +430,9 @@ was already published. See the `Releasing` section of `README.md`.
 - Do not delete or weaken a test to make the suite pass.
 - Do not fix a bug without adding the test which fails on the unfixed code
   (see *Regression tests for every bug*).
-- Do not silently drop the provenance of ported code.
+- Do not silently drop the provenance of ported code, nor the
+  `PORTED FROM SYMPY` notice of a file (keep it when the code is
+  rewritten further; remove it only when nothing of the port remains).
 - Do not add an unannotated function, an untyped container, a new `Any`,
   a `cast`, a `getattr` or a `# type: ignore`, and do not weaken the mypy
   configuration.

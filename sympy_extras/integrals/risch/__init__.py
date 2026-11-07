@@ -1,3 +1,9 @@
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/integrals/risch.py (the subpackage) (SymPy 1.14 and Aaron Meurer's pull requests)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: imports only, so that the subpackage runs on the released SymPy.
+# ---------------------------------------------------------------------
 """The transcendental Risch algorithm, ported from SymPy with Aaron
 Meurer's unmerged extensions.
 

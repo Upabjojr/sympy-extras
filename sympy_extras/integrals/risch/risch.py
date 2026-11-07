@@ -1,3 +1,9 @@
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/integrals/risch.py (SymPy 1.14 and Aaron Meurer's pull requests)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: imports only, so that the subpackage runs on the released SymPy.
+# ---------------------------------------------------------------------
 # Ported from SymPy (sympy.integrals.risch) and from Aaron Meurer's pull
 # requests to SymPy: sympy/sympy#30180 and #30221 ("Risch: Implement most
 # remaining exp-log cases from Bronstein", branch risch-rde-cancellation

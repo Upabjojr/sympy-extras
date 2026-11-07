@@ -1,2 +1,2 @@
-include LICENSE README.md AGENTS.md CLAUDE.md CHANGELOG.md conftest.py
+include LICENSE sympy_extras/LICENSE-SymPy sympy_extras/integrals/risch/LICENSE-SymPy README.md AGENTS.md CLAUDE.md CHANGELOG.md conftest.py
 recursive-include docs *.md

@@ -64,7 +64,7 @@ version = {attr = "sympy_extras.__version__"}
 include = ["sympy_extras*"]
 
 [tool.setuptools.package-data]
-sympy_extras = ["py.typed"]
+sympy_extras = ["py.typed", "LICENSE-SymPy", "integrals/risch/LICENSE-SymPy"]
 
 [tool.pytest.ini_options]
 testpaths = ["sympy_extras"]

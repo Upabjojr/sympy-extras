@@ -73,6 +73,12 @@ References
 .. [GCL] K. Geddes, S. Czapor, G. Labahn, *Algorithms for Computer
    Algebra*, Kluwer, 1992, chapter 12.
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/integrals/heurisch.py (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: strict typing; every result verified by differentiation.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
 import math
