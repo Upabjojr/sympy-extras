@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.functions.combinatorial.factorials`: `Factorial`, `Binomial`,
+  `RisingFactorial`, `FallingFactorial` with the evaluating `factorial`,
+  `binomial`, `rf`, `ff`, ported from SymPy.
 - `sympy_extras.functions.elementary.piecewise`: `Piecewise` and
   `ExprCondPair` with the evaluating `piecewise`, ported from SymPy. The
   core's relations gain SymPy's `canonical` and `reversedsign`; `lt`,

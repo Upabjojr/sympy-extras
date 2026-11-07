@@ -166,6 +166,8 @@ sympy_extras/
             integers.py      Floor, Ceiling, Frac / floor, ceiling, frac, PORTED FROM SYMPY
             miscellaneous.py Max, Min / max_, min_ (variadic DefinedFunction), PORTED FROM SYMPY
             piecewise.py     Piecewise, ExprCondPair / piecewise, PORTED FROM SYMPY
+        combinatorial/
+            factorials.py    Factorial, Binomial, RisingFactorial, FallingFactorial / factorial, binomial, rf, ff, PORTED FROM SYMPY
             trigonometric.py Sin, ..., Csc and the inverses Asin, ..., Acsc / sin, ..., acsc; pi_coeff, peeloff_pi, PORTED FROM SYMPY
             hyperbolic.py    Sinh, ..., Csch and the inverses Asinh, ..., Acsch / sinh, ..., acsch; peeloff_ipi, PORTED FROM SYMPY
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,

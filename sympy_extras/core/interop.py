@@ -682,6 +682,7 @@ def _fill_function_tables() -> None:
         return
     from sympy_extras.functions.elementary.exponential import Exp, Log
     from sympy_extras.functions.elementary import complexes as c, hyperbolic as h, integers as n, trigonometric as t
+    from sympy_extras.functions.combinatorial import factorials as f
     pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
         (Exp, sympy.exp), (Log, sympy.log), (t.Sin, sympy.sin), (t.Cos, sympy.cos), (t.Tan, sympy.tan),
         (t.Cot, sympy.cot), (t.Sec, sympy.sec), (t.Csc, sympy.csc), (t.Asin, sympy.asin), (t.Acos, sympy.acos),
@@ -690,7 +691,9 @@ def _fill_function_tables() -> None:
         (h.Csch, sympy.csch), (h.Asinh, sympy.asinh), (h.Acosh, sympy.acosh), (h.Atanh, sympy.atanh),
         (h.Acoth, sympy.acoth), (h.Asech, sympy.asech), (h.Acsch, sympy.acsch), (c.Re, sympy.re), (c.Im, sympy.im),
         (c.Abs, sympy.Abs), (c.Sign, sympy.sign), (c.Arg, sympy.arg), (c.Conjugate, sympy.conjugate),
-        (c.Atan2, sympy.atan2), (n.Floor, sympy.floor), (n.Ceiling, sympy.ceiling), (n.Frac, sympy.frac)]
+        (c.Atan2, sympy.atan2), (n.Floor, sympy.floor), (n.Ceiling, sympy.ceiling), (n.Frac, sympy.frac),
+        (f.Factorial, sympy.factorial), (f.Binomial, sympy.binomial), (f.RisingFactorial, sympy.RisingFactorial),
+        (f.FallingFactorial, sympy.FallingFactorial)]
     for native, counterpart in pairs:
         _NATIVE_TO_SYMPY[native] = counterpart
         _SYMPY_TO_NATIVE[counterpart] = native

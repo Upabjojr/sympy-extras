@@ -347,6 +347,15 @@ against `oo` or `-oo`. A known gap: `ge(k, 1)` for a positive integer
 `k` stays unevaluated, because the core's sums do not derive that
 `k - 1` is nonnegative.
 
+The combinatorial functions `Factorial`, `Binomial`, `RisingFactorial`,
+`FallingFactorial` with `factorial`, `binomial`, `rf`, `ff` are ported
+from SymPy's `factorials.py` (in `sympy_extras.functions.combinatorial`):
+exact integer values, `factorial(-1) = zoo`, the special cases of
+`binomial`, the product formula for a numerical `n` and integer `k`,
+and `rf`, `ff` expanded for integer `k`. SymPy's answers through `gamma`
+(`binomial(5, 1/2) = 512/(63*pi)`) and the derivatives with `polygamma`
+wait for the gamma functions: the node stays.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a

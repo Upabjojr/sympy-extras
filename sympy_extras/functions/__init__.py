@@ -1,4 +1,6 @@
 """Functions of the typed core (the counterpart of :mod:`sympy.functions`)."""
+from .combinatorial.factorials import (Binomial, Factorial, FallingFactorial, RisingFactorial, binomial, factorial, ff,
+                                       rf)
 from .elementary.complexes import Abs, Arg, Atan2, Conjugate, Im, Re, Sign, abs_, arg, atan2, conjugate, im, re, sign
 from .elementary.exponential import Exp, Log, exp, log
 from .elementary.integers import Ceiling, Floor, Frac, ceiling, floor, frac
@@ -11,6 +13,7 @@ from .elementary.trigonometric import (Acos, Acot, Acsc, Asec, Asin, Atan, Cos, 
 
 __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', 'abs_', 'sign', 'arg', 'conjugate',
            'atan2', 'Exp', 'Log', 'exp', 'log', 'Floor', 'Ceiling', 'Frac', 'floor', 'ceiling', 'frac',
+           'Factorial', 'Binomial', 'RisingFactorial', 'FallingFactorial', 'factorial', 'binomial', 'rf', 'ff',
            'Max', 'Min', 'max_', 'min_', 'ExprCondPair', 'Piecewise', 'piecewise', 'Sin', 'Cos', 'Tan', 'Cot', 'Sec', 'Csc', 'sin', 'cos', 'tan', 'cot', 'sec',
            'csc', 'Asin', 'Acos', 'Atan', 'Acot', 'Asec', 'Acsc', 'asin', 'acos', 'atan', 'acot', 'asec', 'acsc',
            'Sinh', 'Cosh', 'Tanh', 'Coth', 'Sech', 'Csch', 'sinh', 'cosh', 'tanh', 'coth', 'sech', 'csch',
