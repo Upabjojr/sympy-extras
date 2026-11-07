@@ -69,6 +69,7 @@ from sympy.matrices.dense import MutableDenseMatrix
 from sympy_extras._typing import DomainElement, Monomial, OrderSpec, as_symbol, free_symbols, sorted_symbols
 
 from .groebnerwalk import groebner_walk
+from .hilbert import hilbert_numerator
 from .modulargroebner import groebner as _groebner
 from .orderings import as_order, elimination_order
 
@@ -77,20 +78,6 @@ __all__ = ['Ideal', 'hilbert_numerator', 'separating_forms']
 
 def _is_graded(order: OrderSpec) -> bool:
     return as_order(order) in (grevlex, as_order('grlex'))
-
-
-def hilbert_numerator(monomials: Iterable[Sequence[int]], t: Symbol) -> Poly:
-    r"""Numerator $N(t)$ of the Hilbert series $N(t)/(1 - t)^n$ of
-    $K[x_1, \ldots, x_n]/M$ for a monomial ideal $M$ given by the exponent
-    vectors of its generators.
-
-    >>> from sympy.abc import t
-    >>> from sympy_extras.polys.ideals import hilbert_numerator
-    >>> hilbert_numerator([(2, 0), (0, 2)], t)
-    Poly(t**4 - 2*t**2 + 1, t, domain='ZZ')
-    """
-    monomials = _minimal_monomials([tuple(m) for m in monomials])
-    return Poly(_hilbert_numerator(monomials, t), t)
 
 
 def separating_forms(variables: Sequence[Symbol], points: int) -> Iterator[Expr]:
@@ -130,28 +117,6 @@ def separating_forms(variables: Sequence[Symbol], points: int) -> Iterator[Expr]
             for c, v in zip(tail, variables[1:]):
                 form += c*v
             yield form
-
-
-def _minimal_monomials(monomials: Iterable[Monomial]) -> list[Monomial]:
-    minimal: list[Monomial] = []
-    for m in sorted(set(monomials), key=sum):
-        if not any(monomial_divides(u, m) for u in minimal):
-            minimal.append(m)
-    return minimal
-
-
-def _hilbert_numerator(monomials: list[Monomial], t: Symbol) -> Expr:
-    if not monomials:
-        return S.One
-    m = monomials[-1]
-    rest = monomials[:-1]
-    if not rest:
-        return 1 - t**sum(m)
-    # (rest : m) = <u/gcd(u, m)>
-    quotient = _minimal_monomials([tuple(max(a - b, 0) for a, b in zip(u, m)) for u in rest])
-    if any(sum(q) == 0 for q in quotient):
-        return _hilbert_numerator(rest, t)
-    return _hilbert_numerator(rest, t) - t**sum(m)*_hilbert_numerator(quotient, t)
 
 
 class Ideal:

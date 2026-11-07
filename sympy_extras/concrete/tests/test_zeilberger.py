@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sympy import symbols, binomial, factorial, Function, Eq, simplify, combsimp, oo, N
+from sympy import symbols, binomial, factorial, harmonic, Function, Eq, simplify, combsimp, oo, N
 from sympy.testing.pytest import raises
 
 from sympy_extras.concrete.zeilberger import zeilberger, wz_certificate, wz_prove, zeilberger_sum, Telescoper
@@ -120,3 +120,22 @@ def test_isolated_values_of_the_parameters() -> None:
     # nor does a recurrence, an identity in the parameters
     recurrence = zeilberger_sum(binomial(n, k)**2*binomial(n + k, k)**2, (k, 0, n))
     assert isinstance(recurrence, Eq)
+
+
+def test_recurrences_sympy_rsolve_misses() -> None:
+    # the recurrence S(n+1) - S(n) = 1/(n+1) is solved by the d'Alembertian
+    # solver of sympy_extras.solvers.recurr (SymPy's rsolve returns None)
+    assert zeilberger_sum(1/k, (k, 1, n)) == harmonic(n)
+    # the shifts in n of n! (-1)**k/k! are linearly dependent: Zeilberger's
+    # recurrence has certificate 0 and the sum's recurrence comes from the
+    # boundary term alone (it used to give no recurrence at all)
+    Z = zeilberger((-1)**k*factorial(n)/factorial(k), n, k)
+    assert Z is not None and Z.certificate == 0
+    assert [simplify(c) for c in Z.coefficients] == [-n - 1, 1]
+    S = Function('S')
+    result = zeilberger_sum((-1)**k*factorial(n)/factorial(k), (k, 0, n))
+    assert isinstance(result, Eq)
+    assert simplify(as_expr(result.lhs) - (S(n + 1) - (n + 1)*S(n) - (-1)**(n + 1))) == 0
+    # a solution which is itself a sum is no closed form: the recurrence
+    result = zeilberger_sum(factorial(k), (k, 0, n))
+    assert isinstance(result, Eq) and result.has(factorial(n + 1))

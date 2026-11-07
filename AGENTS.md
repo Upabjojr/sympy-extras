@@ -156,6 +156,7 @@ sympy_extras/
         hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
         f4.py                f4: reduced Gröbner bases by Faugère's F4 over any field (the default direct algorithm)
+        hilbert.py           hilbert_numerator, hilbert_series, minimal_generators: Bigatti's algorithm for monomial ideals
         modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ modulo primes, proven (Arnold); direct_groebner
         stronggroebner.py    strong_groebner, strong_reduce: strong Gröbner bases over ZZ (S- and G-polynomials)
         orderings.py         WeightOrder, BlockOrder, elimination_order (hashable monomial orders)

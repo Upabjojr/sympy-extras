@@ -23,7 +23,8 @@ This package adds, on top of SymPy's Gröbner basis engine:
 - an `Ideal` class with **elimination ideals**, intersections, quotients,
   **saturations** and **radical membership**;
 - the **Krull dimension**, the **Hilbert series**, the **Hilbert polynomial**
-  and the **degree**, from the leading term ideal;
+  and the **degree**, from the leading term ideal, the numerator of the
+  series by **Bigatti's algorithm** (`sympy_extras.polys.hilbert`);
 - for zero-dimensional ideals: the standard monomials, the dimension of the
   quotient algebra, multiplication matrices, the univariate polynomial in
   each variable, the **radical** (Seidenberg's lemma) and the test for
@@ -406,6 +407,43 @@ direct computation of the package, those of the images of the modular
 algorithm included: the modular basis of cyclic-6 for `grevlex` took 10 s
 with F4 images and 56 s with Buchberger images.
 
+## Hilbert series by Bigatti's algorithm
+
+The Hilbert series of `K[x]/M` for a monomial ideal `M` is `N(t)/(1-t)^n`,
+and the numerator of any homogeneous ideal is that of its leading term
+ideal for a graded order. The textbook recursion
+`N(M' + (m)) = N(M') - t^deg(m) N(M' : m)` applied to one generator at a time
+is exponential in the number of generators: 300 generators in 12 variables
+took 28 s, 200 in 10 variables 12 s. Bigatti's algorithm applies the same
+recursion to a *pivot* `p = x_j^e` (`x_j` the variable occurring in the
+most generators, `e` the median of its exponents), so that both `M + (p)` and
+`M : p` lose many generators at once, and stops at the ideals with a
+formula: generators in disjoint sets of variables multiply the numerators
+(a complete intersection of pure powers `x_i^{a_i}` gives
+`prod (1 - t^{a_i})`), and pure powers plus one monomial `m` give
+`prod (1 - t^{a_i}) - t^deg(m) prod (1 - t^{a_i - m_i})`. The same ideals
+take 0.07 s and 0.04 s; 800 generators in 15 variables 0.7 s.
+`hilbert_numerator`, `hilbert_series` (reduced, with the Krull dimension as
+the exponent of `1 - t`) and `minimal_generators` are in
+`sympy_extras.polys.hilbert`; `Ideal.hilbert_series`, `dimension`,
+`degree` and `hilbert_polynomial` use them.
+
+```python
+>>> from sympy.abc import t
+>>> from sympy_extras.polys.hilbert import hilbert_numerator, hilbert_series
+>>> hilbert_numerator([(2, 0, 0), (0, 3, 0), (0, 0, 5)], t)
+Poly(-t**10 + t**8 + t**7 - t**3 - t**2 + 1, t, domain='ZZ')
+>>> hilbert_series([(1, 0, 1, 0), (0, 1, 0, 1)], 4, t)
+(t**2 + 2*t + 1)/(1 - t)**2
+
+```
+
+The second example is the Stanley–Reisner ring of the boundary of a
+square (the non-faces are the diagonals), whose `h`-vector `(1, 2, 1)` is the
+numerator. The algorithm is checked against the textbook recursion on 150
+random monomial ideals and against the count of standard monomials degree
+by degree.
+
 ## Strong Gröbner bases over the integers
 
 A Gröbner basis over a field decides ideal membership because every
@@ -654,12 +692,16 @@ ring)` (the dispatcher used by `Ideal`), `rational_reconstruction(a, m,
 bound=None)`, `chinese_remainder(a, m, b, p)`, `default_primes()` and
 `ModularTrace` are in `sympy_extras.polys.modulargroebner`.
 
-`hilbert_numerator(monomials, t)` computes the numerator of the Hilbert
-series of a monomial ideal. `groebner_walk`, `extended_groebner` and
+`hilbert_numerator(monomials, t)`, `hilbert_series(monomials, variables,
+t)` and `minimal_generators(monomials)` in `sympy_extras.polys.hilbert`
+compute the Hilbert series of a monomial ideal by Bigatti's algorithm. `groebner_walk`, `extended_groebner` and
 `initial_form` are in `sympy_extras.polys.groebnerwalk`; `WeightOrder`,
 `BlockOrder` and `elimination_order` in `sympy_extras.polys.orderings`.
 
 ## References
+
+- A. M. Bigatti, *Computation of Hilbert-Poincaré series*, Journal of Pure
+  and Applied Algebra 119 (1997), 237-253.
 
 - P. Pedersen, M.-F. Roy, A. Szpirglas, *Counting real zeros in the
   multivariate case*, in Computational Algebraic Geometry, Progress in

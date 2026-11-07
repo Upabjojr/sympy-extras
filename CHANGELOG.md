@@ -10,6 +10,18 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.hilbert`: the numerator of the Hilbert series of a
+  monomial ideal by Bigatti's algorithm (pivots on the most frequent
+  variable, products over disjoint variables, the pure-powers-plus-one
+  formula), used by `Ideal.hilbert_series`, `dimension`, `degree` and
+  `hilbert_polynomial`; 300 generators in 12 variables in 0.07 s instead
+  of 28 s with the textbook recursion.
+- `zeilberger_sum` solves the recurrence with
+  `sympy_extras.solvers.recurr.rsolve_linear` when SymPy's `rsolve` finds
+  nothing (`sum 1/k` gives `harmonic(n)`), and Zeilberger's algorithm
+  finds the recurrences with certificate 0 (shifts of the term linearly
+  dependent over `K(n)`, as for `n! (-1)**k/k!`), whose sums get a
+  recurrence from the boundary terms alone.
 - `sympy_extras.polys.stronggroebner`: reduced strong Gröbner bases over
   the integers (Buchberger's algorithm with S- and G-polynomials and
   Euclidean reduction of the coefficients), `strong_reduce` for ideal

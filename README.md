@@ -212,9 +212,10 @@ zero-dimensional ideals, but its ideal class leaves saturation, radicals,
 primality and dimension unimplemented. The `Ideal` class adds elimination
 ideals (with hashable block orders, which SymPy's product orders are not),
 intersections, quotients, saturations, radical membership, the Krull
-dimension, Hilbert series and polynomial, the degree, and for
-zero-dimensional ideals the standard monomials and multiplication
-matrices; in any dimension, through regular chains, the radical, its
+dimension, Hilbert series and polynomial (the numerator by Bigatti's
+algorithm, which handles hundreds of generators where the textbook
+recursion takes minutes), the degree, and for zero-dimensional ideals
+the standard monomials and multiplication matrices; in any dimension, through regular chains, the radical, its
 equidimensional parts, the minimal primes and the tests for radical and
 prime ideals, and the primary decomposition with the embedded primes
 (Gianni–Trager–Zacharias). The Gröbner walk converts bases between orders for ideals of
@@ -843,6 +844,7 @@ sympy_extras/
         hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
         f4.py                Faugère's F4: Gröbner bases by sparse row reduction, over any field
+        hilbert.py           Hilbert series of monomial ideals by Bigatti's algorithm
         stronggroebner.py    strong Gröbner bases over the integers (Kandri-Rody–Kapur, Lichtblau)
         modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold)
         orderings.py         WeightOrder, BlockOrder

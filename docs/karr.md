@@ -123,8 +123,10 @@ definite sums of hypergeometric terms `F(n, k)`: a recurrence
 `sum_j a_j(n) S(n + j) = 0` for `S(n) = sum_k F(n, k)` with its rational
 certificate (`zeilberger`), Wilf–Zeilberger certificates proving
 identities `sum_k F(n, k) = f(n)` (`wz_certificate`, `wz_prove`), and
-closed forms of definite sums through the recurrence and SymPy's
-`rsolve` (`zeilberger_sum`). SymPy has Gosper's algorithm for indefinite
+closed forms of definite sums through the recurrence, solved by SymPy's
+`rsolve` or by the hypergeometric and d'Alembertian solver of
+`sympy_extras.solvers.recurr` (`zeilberger_sum`: the harmonic numbers
+`sum_{k=1}^n 1/k` come out as `harmonic(n)`). SymPy has Gosper's algorithm for indefinite
 sums and closed forms of hypergeometric functions for some definite
 ones, but no creative telescoping: Dixon's sum and Apéry's numbers get no
 recurrence from `summation`.

@@ -15,8 +15,9 @@ representation is computed with the `a_j` as unknowns, so that Gosper's
 equation becomes a linear system for the `a_j` and the coefficients of the
 unknown polynomial (Zeilberger's *parametrised Gosper algorithm*). Summing
 over `k` gives a linear recurrence with polynomial coefficients for the
-definite sum `S(n) = \\sum_k F(n, k)`, which SymPy's ``rsolve`` solves in
-closed form when a hypergeometric solution exists. With `J = 1`,
+definite sum `S(n) = \\sum_k F(n, k)`, which SymPy's ``rsolve`` or
+:func:`~sympy_extras.solvers.recurr.rsolve_linear` solves in closed form
+when a hypergeometric or d'Alembertian solution exists. With `J = 1`,
 `a_0 = -1`, `a_1 = 1` (after dividing `F` by a conjectured closed form
 `f(n)`), `R` is the Wilf–Zeilberger certificate proving
 `\\sum_k F(n, k) = f(n)`.
@@ -44,7 +45,7 @@ from sympy.concrete.summations import Sum
 from sympy.core.add import Add
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
-from sympy.core.function import Function
+from sympy.core.function import AppliedUndef, Function
 from sympy.core.numbers import Integer
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
@@ -206,9 +207,11 @@ def _telescope(F: Expr, n: Symbol, k: Symbol, r: Expr, ratios: list[Expr]) -> Op
     B_shift = Poly(as_expr(B.as_expr().subs(k, k - 1)), k)
     degree_c = C.degree() + P_poly.degree()
     d = _gosper_degree_bound(A_, B_shift, degree_c)
-    if d < 0:
-        return None
-    f_coefficients = [Dummy('f%d' % i) for i in range(d + 1)]
+    # d < 0 leaves f = 0: the shifts of the term in n may still be
+    # linearly dependent over K(n) (sum_j a_j F(n+j, k) = 0, certificate 0),
+    # as for F = n! (-1)**k/k!, whose sum satisfies S(n+1) - (n+1) S(n) =
+    # (-1)**(n+1) through the boundary term alone
+    f_coefficients = [Dummy('f%d' % i) for i in range(max(d, -1) + 1)]
     f = Add(*[c*k**i for i, c in enumerate(f_coefficients)])
     equation = as_expr(A_.as_expr()*f.subs(k, k + 1) - B_shift.as_expr()*f - C.as_expr()*P)
     unknowns: list[Expr] = [*f_coefficients, *a]
@@ -335,10 +338,11 @@ def zeilberger_sum(term: Expr, limits: Sequence[Union[Symbol, Expr, int]], n: Op
     """A closed form of the definite sum ``sum_{k=lo}^{hi} term`` with
     ``lo`` an integer and ``hi`` either ``n`` (plus an integer) or
     ``oo``, through the recurrence of Zeilberger's algorithm (with the
-    boundary terms of the telescoping) solved by ``rsolve`` with the
-    initial values computed directly; the recurrence itself (an equation
-    in ``S(n)``) when ``rsolve`` finds no closed form; ``None`` when there
-    is no recurrence.
+    boundary terms of the telescoping) solved by SymPy's ``rsolve`` or by
+    :func:`~sympy_extras.solvers.recurr.rsolve_linear` (hypergeometric
+    and d'Alembertian solutions) with the initial values computed
+    directly; the recurrence itself (an equation in ``S(n)``) when neither
+    finds a closed form; ``None`` when there is no recurrence.
 
     Examples
     ========
@@ -356,6 +360,8 @@ def zeilberger_sum(term: Expr, limits: Sequence[Union[Symbol, Expr, int]], n: Op
     Eq((n + 1)**3*S(n) + (n + 2)**3*S(n + 2) - (2*n + 3)*(17*n**2 + 51*n + 39)*S(n + 1), 0)
     >>> zeilberger_sum(1/(k*(k + 1)), (k, 1, n))
     n/(n + 1)
+    >>> zeilberger_sum(1/k, (k, 1, n))
+    harmonic(n)
 
     With ``special_values`` (the default) a closed form gets a case for
     each isolated value of the parameters of the summand (other than
@@ -468,6 +474,13 @@ def _zeilberger_sum(F: Expr, k: Symbol, lo: Expr, hi: Expr, n: Symbol, max_order
         if solved is not None and solved != 0:
             solution = as_expr(solved)
     if solution is None:
+        # the hypergeometric and d'Alembertian solutions (SymPy's rsolve
+        # misses the harmonic numbers, n! sum 1/k!, ...); a solution which
+        # is itself a sum is no closed form
+        solved = _rsolve_linear(recurrence, Sfun(n), initial)
+        if solved is not None and not solved.has(Sum, Product):
+            solution = solved
+    if solution is None:
         return _Recurrence(recurrence)
     solution = _nicer(as_expr(solution), n)
     # the closed form is checked at a few values
@@ -520,6 +533,23 @@ def _nicer(solution: Expr, n: Symbol) -> Expr:
     candidates.append(as_expr(candidates[-1].rewrite(binomial)))
     candidates.append(as_expr(simplify(candidates[-1])))
     return min(candidates, key=lambda e: (count_ops(e), len(str(e))))
+
+
+def _rsolve_linear(recurrence: Expr, S_n: Expr, initial: dict[Basic, Basic]) -> Optional[Expr]:
+    """:func:`~sympy_extras.solvers.recurr.rsolve_linear` on the recurrence
+    with the initial values, ``None`` on failure."""
+    from sympy_extras.solvers.recurr import rsolve_linear
+    if not isinstance(S_n, AppliedUndef):
+        return None
+    init: dict[AppliedUndef, Union[Expr, int]] = {}
+    for key, value in initial.items():
+        if not isinstance(key, AppliedUndef) or not isinstance(value, Expr):
+            return None
+        init[key] = value
+    try:
+        return rsolve_linear(recurrence, S_n, init if init else None)
+    except (NotImplementedError, ValueError, TypeError, AttributeError, PolynomialError):
+        return None
 
 
 def _start(leading: Expr, n: Symbol) -> int:
