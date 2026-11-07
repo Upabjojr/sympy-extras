@@ -30,6 +30,9 @@ remove public functions. Breaking changes are listed here when they happen.
 - `Poly.sqf_list` in several generators and over `ZZ[a]`/`QQ[a]`
   (`sympy_extras.polys.multisqf`), `sqf`, `sqf_list` and
   `sqf_list_fraction` on expressions, ported from SymPy.
+- `sympy_extras.polys.partfrac.apart`, `Poly.cancel` and division over
+  `ZZ[a]`/`QQ[a]` by a divisor with a numeric leading coefficient, ported
+  from SymPy.
 
 ### Changed
 

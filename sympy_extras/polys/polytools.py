@@ -690,14 +690,92 @@ class Poly:
         return self._same_ring(self._rep.ring.from_dict({(n - i,): c for i, c in enumerate(f) if c}), integral)
 
     def div(self, other: PolyLike) -> tuple[Poly, Poly]:
-        """Division with remainder of univariate polynomials (over ``QQ``
-        when the coefficients are integers, as SymPy's ``auto`` does)."""
+        """Division with remainder of univariate polynomials (SymPy's
+        ``div(auto=True)``: over ``QQ`` when the coefficients are integers;
+        over a polynomial domain only when the leading coefficient of the
+        divisor is a number, SymPy's fraction field ``ZZ(a)`` not being
+        ported)."""
         a, b = self._unified(other)
         if b.is_zero:
             raise ZeroDivisionError('polynomial division by zero')
+        if a._domain.params:
+            return a._div_over_parameters(b)
         q, r = densearith.dup_div(a._univariate_rational(), b._univariate_rational(), QQ)
         integral = a._domain.integral and all(c.denominator == 1 for c in q + r)
         return a._from_univariate(q, integral), a._from_univariate(r, integral)
+
+    def _div_over_parameters(self, b: Poly) -> tuple[Poly, Poly]:
+        if len(self._gens) != 1:
+            raise OperationNotSupported('division of multivariate polynomials is not ported yet')
+        divisor = b._split()
+        top = max(m[0] for m in divisor)
+        lead = divisor[(top,)]
+        if list(lead) != [tuple(0 for _ in self._domain.params)]:
+            raise CoercionFailed('division by %s needs the fraction field (not ported yet)' % (b,))
+        lc = lead[tuple(0 for _ in self._domain.params)]
+        remainder = {m[0]: dict(c) for m, c in self._split().items()}
+        quotient: dict[int, dict[Monomial, Fraction]] = {}
+        while remainder and max(remainder) >= top:
+            d = max(remainder)
+            factor_terms = {pm: c / lc for pm, c in remainder[d].items()}
+            quotient[d - top] = factor_terms
+            for (e,), coefficients in divisor.items():
+                target = remainder.setdefault(e + d - top, {})
+                for pm, c in coefficients.items():
+                    for qm, qc in factor_terms.items():
+                        key = tuple(i + j for i, j in zip(pm, qm))
+                        target[key] = target.get(key, Fraction(0)) - c * qc
+                        if not target[key]:
+                            del target[key]
+                if not target:
+                    del remainder[e + d - top]
+        integral = self._domain.integral and all(c.denominator == 1 for cs in list(quotient.values()) +
+                                                 list(remainder.values()) for c in cs.values())
+        return (self._from_grouped(quotient, integral), self._from_grouped(remainder, integral))
+
+    def _from_grouped(self, grouped: dict[int, dict[Monomial, Fraction]], integral: bool) -> Poly:
+        terms: dict[Monomial, Fraction] = {}
+        for d, coefficients in grouped.items():
+            for pm, c in coefficients.items():
+                if c:
+                    terms[(d,) + pm] = c
+        return self._same_ring(self._rep.ring.from_dict(terms), integral)
+
+    # PORTED FROM SYMPY: sympy/polys/euclidtools.py:dmp_cancel, sympy/polys/polytools.py:Poly.cancel
+    def cancel(self, other: PolyLike) -> tuple[Expr, Poly, Poly]:
+        """``(c, p, q)`` with ``self/other = c p/q`` in lowest terms (SymPy's
+        ``Poly.cancel``): over ``QQ`` the denominators are cleared into the
+        constant ``c``; the signs of the ground leading coefficients of
+        ``p`` and ``q`` are made positive, a single minus sign going into
+        ``c``."""
+        a, b = self._unified(other)
+        if b.is_zero:
+            raise ZeroDivisionError('cancel by a zero polynomial')
+        cp, cq = 1, 1
+        f, g = a, b
+        if not a._domain.integral and not a._domain.params:
+            cq = _denominators_lcm(a._rep)
+            cp = _denominators_lcm(b._rep)
+            f = a._same_ring(a._rep.mul_ground(Fraction(cq)), True)
+            g = b._same_ring(b._rep.mul_ground(Fraction(cp)), True)
+        h = f.gcd(g)
+        p = f._same_ring(f._rep.exquo(h._rep), a._domain.integral)
+        q = g._same_ring(g._rep.exquo(h._rep), a._domain.integral)
+        common = integer_gcd(cp, cq)
+        cp, cq = cp // common, cq // common
+        p_neg, q_neg = p._ground_negative(), q._ground_negative()
+        if p_neg and q_neg:
+            p, q = -p, -q
+        elif p_neg:
+            cp, p = -cp, -p
+        elif q_neg:
+            cp, q = -cp, -q
+        return (number_from_fraction(Fraction(cp, cq)), p, q)
+
+    def _ground_negative(self) -> bool:
+        """Whether the ground leading coefficient (lex in all the variables,
+        SymPy's ``dmp_ground_LC``) is negative."""
+        return bool(self._rep.terms) and self._rep.LC < 0
 
     def quo(self, other: PolyLike) -> Poly:
         return self.div(other)[0]
@@ -1005,10 +1083,19 @@ def lcm(f: PolyLike, g: PolyLike, *gens: ExprLike) -> Expr:
 
 
 def _common_gens(f: PolyLike, g: PolyLike) -> tuple[Expr, ...]:
+    """The generators of ``f`` and ``g`` together (SymPy's
+    ``parallel_poly_from_expr``)."""
     ef = f.as_expr() if isinstance(f, Poly) else to_expr(f)
     eg = g.as_expr() if isinstance(g, Poly) else to_expr(g)
-    _, gens = _decompose_without_gens(add(ef, eg))
+    _, gens = _decompose_without_gens_many([ef, eg])
     return gens
+
+
+def _denominators_lcm(f: PolyElement[Fraction]) -> int:
+    result = 1
+    for c in f.terms.values():
+        result = result * c.denominator // integer_gcd(result, c.denominator)
+    return result
 
 
 def resultant(f: PolyLike, g: PolyLike, *gens: ExprLike) -> Expr:

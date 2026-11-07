@@ -238,6 +238,7 @@ sympy_extras/
         rationaltools.py     together (ported from SymPy)
         multifactor.py       zz_factor, zz_wang: multivariate factorisation over ZZ by Wang's EEZ on sparse PolyElement (ported from SymPy)
         multisqf.py          sqf_list over ZZ, QQ, ZZ[a], QQ[a] in several variables (SqfDomain; ported from SymPy)
+        partfrac.py          apart by undetermined coefficients (ported from SymPy; no full=True, no ZZ(a))
         subresultants.py     dup_psc, dmp_psc, psc: principal subresultant coefficients on SymPy's dense representation (the CAD)
         polyutils.py         dict_from_expr, expr_from_dict: core expressions <-> typed polynomials (no SymPy)
         sqfreetools.py       dup_sqf_list/part/p (Yun, and GF(p))
