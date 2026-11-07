@@ -815,6 +815,8 @@ sympy_extras/
             beta_functions.py Beta and beta (ported from SymPy)
             bessel.py        Bessel, Hankel, spherical Bessel and Airy functions (ported from SymPy)
             polynomials.py   Legendre, Chebyshev, Hermite, Laguerre, Jacobi, Gegenbauer polynomials (ported from SymPy)
+            spherical_harmonics.py Ynm, Znm, Ynm_c (ported from SymPy)
+            tensor_functions.py KroneckerDelta, LeviCivita (ported from SymPy)
             elliptic_integrals.py EllipticK, EllipticF, EllipticE, EllipticPi and elliptic_k, ... (ported from SymPy)
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations

@@ -10,6 +10,8 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `Ynm`, `Znm`, `Ynm_c`, `KroneckerDelta` and `LeviCivita`, ported from
+  SymPy.
 - `jacobi`, `gegenbauer`, `assoc_legendre` and `hermite_prob`, ported from
   SymPy; SymPy's powers of zero, grouping of negative bases under an
   integer exponent, and sign of an integer plus a constant in the core.

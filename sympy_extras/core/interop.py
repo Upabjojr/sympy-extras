@@ -686,6 +686,7 @@ def _fill_function_tables() -> None:
     from sympy_extras.functions.special import delta_functions as d, error_functions as e, gamma_functions as g
     from sympy_extras.functions.special import beta_functions as b, bessel as bs, elliptic_integrals as el
     from sympy_extras.functions.special import polynomials as op, zeta_functions as z
+    from sympy_extras.functions.special import spherical_harmonics as shm, tensor_functions as tens
     from sympy_extras.functions.combinatorial import numbers as cn
     pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
         (Exp, sympy.exp), (Log, sympy.log), (LambertW, sympy.LambertW), (t.Sin, sympy.sin), (t.Cos, sympy.cos), (t.Tan, sympy.tan),
@@ -711,7 +712,8 @@ def _fill_function_tables() -> None:
         (bs.AiryBiPrime, sympy.airybiprime), (op.Legendre, sympy.legendre), (op.ChebyshevT, sympy.chebyshevt),
         (op.ChebyshevU, sympy.chebyshevu), (op.Hermite, sympy.hermite), (op.Laguerre, sympy.laguerre),
         (op.AssocLaguerre, sympy.assoc_laguerre), (op.Jacobi, sympy.jacobi), (op.Gegenbauer, sympy.gegenbauer),
-        (op.AssocLegendre, sympy.assoc_legendre), (op.HermiteProb, sympy.hermite_prob),
+        (op.AssocLegendre, sympy.assoc_legendre), (op.HermiteProb, sympy.hermite_prob), (shm.YnmNode, sympy.Ynm),
+        (shm.ZnmNode, sympy.Znm), (tens.KroneckerDeltaNode, sympy.KroneckerDelta), (tens.LeviCivitaNode, sympy.LeviCivita),
         (e.FresnelS, sympy.fresnels), (e.FresnelC, sympy.fresnelc), (el.EllipticK, sympy.elliptic_k),
         (el.EllipticF, sympy.elliptic_f), (el.EllipticE, sympy.elliptic_e), (el.EllipticPi, sympy.elliptic_pi)]
     for native, counterpart in pairs:

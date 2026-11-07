@@ -494,6 +494,16 @@ of zero with a symbolic exponent (`0**(a/2)` is `0**a`, `0**(-a/2)` is
 integer symbolic exponent (`(-1)**m*2**m` is `(-2)**m`), and the sign of
 an integer plus a constant.
 
+The spherical harmonics (`Ynm`, `Znm`, `Ynm_c`; classes `YnmNode`,
+`ZnmNode`) and the tensor functions (`KroneckerDelta`, `LeviCivita`;
+classes `KroneckerDeltaNode`, `LeviCivitaNode`) are ported from SymPy:
+the minus signs of the harmonics' arguments, their derivatives and
+conjugates; the delta decided from the difference of its indices and
+put in canonical order, the Levi-Civita symbol of integers. Not ported:
+the optional index range of `KroneckerDelta` (a `Tuple` argument, which
+the core's functions, taking expressions, cannot hold), the Fermi level
+assumptions and the trigonometric expansion of `Ynm`.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a
