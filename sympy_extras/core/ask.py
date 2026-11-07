@@ -26,7 +26,7 @@ References
 """
 from __future__ import annotations
 
-from typing import Callable, Iterable, Optional
+from typing import Callable, Final, Iterable, Optional
 
 from .assume import AppliedPredicate, Predicate, global_assumptions
 from .assumptions import PREDICATES, Truth, closure, facts_of, is_consistent, minimal_generators
@@ -180,12 +180,12 @@ class _Facts:
     of propositions under them."""
 
     def __init__(self, assumptions: Boolean, proposition: Boolean) -> None:
-        self.assumptions: Boolean = assumptions
-        self.literals: set[Boolean] = set()
-        self.facts: dict[Basic, dict[str, bool]] = {}
+        self.assumptions: Final[Boolean] = assumptions
+        self.literals: Final[set[Boolean]] = set()
+        self.facts: Final[dict[Basic, dict[str, bool]]] = {}
         for conjunct in And.make_args(assumptions):
             self._add(to_boolean(conjunct), True)
-        self.dummies: dict[Basic, Basic] = {}
+        self.dummies: Final[dict[Basic, Basic]] = {}
         for subject, given in self.facts.items():
             own: dict[str, bool] = dict(subject._assumptions) if isinstance(subject, Symbol) else {}
             # as in SymPy, the facts are checked for consistency when the

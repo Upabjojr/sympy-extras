@@ -11,7 +11,7 @@ SymPy's class names ``Equality``, ``Unequality``, ``StrictLessThan``,
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Final, TYPE_CHECKING
 
 from .add import sub
 from .basic import Basic
@@ -51,8 +51,8 @@ class Relational(Boolean):
     rel_op: str = ''
 
     def __init__(self, lhs: ExprLike, rhs: ExprLike) -> None:
-        self._lhs: Expr = to_expr(lhs)
-        self._rhs: Expr = to_expr(rhs)
+        self._lhs: Final[Expr] = to_expr(lhs)
+        self._rhs: Final[Expr] = to_expr(rhs)
         Basic.__init__(self)
 
     @property

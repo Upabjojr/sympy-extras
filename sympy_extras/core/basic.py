@@ -31,8 +31,8 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import (TYPE_CHECKING, Callable, Iterable, Iterator, Literal, Mapping, Optional,
-    Protocol, Union, overload)
+from typing import (Callable, Final, Iterable, Iterator, Literal, Mapping, Optional, Protocol, TYPE_CHECKING, Union,
+    overload)
 
 from .kind import Kind, UndefinedKind
 from .sorting import ArgsKey, ClassKey, CompareItem, CompareKey, SortKey, class_rank
@@ -150,10 +150,15 @@ class Basic:
     is_symbol: bool = False
 
     def __init__(self) -> None:
-        self._hash: int = hash((type(self).__name__, self._hashable_content()))
+        self._hash: Final[int] = self._compute_hash()
         self._compare_key_cache: Optional[CompareKey] = None
         self._sympy_cache: Optional[SymPyBasic] = None
         self._after_init()
+
+    def _compute_hash(self) -> int:
+        """The hash of the node, computed once at construction (numbers use
+        the hash of the Python number of the same value)."""
+        return hash((type(self).__name__, self._hashable_content()))
 
     def _after_init(self) -> None:
         """A hook run at the end of the construction (``Expr`` resets its

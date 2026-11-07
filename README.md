@@ -798,6 +798,8 @@ sympy_extras/
     functions/
         elementary/
             exponential.py   Exp, Log and exp, log on the typed core (ported from SymPy)
+            trigonometric.py Sin, Cos, Tan and sin, cos, tan (ported from SymPy)
+            hyperbolic.py    Sinh, Cosh, Tanh and sinh, cosh, tanh (ported from SymPy)
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation

@@ -16,7 +16,7 @@ from __future__ import annotations
 import inspect
 import itertools
 import re
-from typing import TYPE_CHECKING, Callable, Iterable, Sequence, Union
+from typing import Callable, Final, Iterable, Sequence, TYPE_CHECKING, Union
 
 from .basic import Basic
 from .expr import AtomicExpr
@@ -63,11 +63,11 @@ class Symbol(AtomicExpr, Boolean):
         for k in assumptions:
             if k not in PREDICATES:
                 raise ValueError("unknown assumption %r" % (k,))
-        self.name: str = name
-        self._given: Assumptions = tuple(sorted((k, bool(v)) for k, v in assumptions.items()))
+        self.name: Final[str] = name
+        self._given: Final[Assumptions] = tuple(sorted((k, bool(v)) for k, v in assumptions.items()))
         closed = closure(dict(self._given))
         closed.setdefault('commutative', True)
-        self._assumptions: Assumptions = tuple(sorted(closed.items()))
+        self._assumptions: Final[Assumptions] = tuple(sorted(closed.items()))
         Basic.__init__(self)
 
     def _hashable_content(self) -> tuple[Basic, ...]:
@@ -153,7 +153,7 @@ class Dummy(Symbol):
     is_Dummy = True
 
     def __init__(self, name: str = 'Dummy', **assumptions: bool) -> None:
-        self.dummy_index: int = next(_dummy_counter)
+        self.dummy_index: Final[int] = next(_dummy_counter)
         Symbol.__init__(self, name, **assumptions)
 
     def _compare_content(self) -> tuple[CompareItem, ...]:
@@ -213,8 +213,8 @@ class Wild(Symbol):
 
     def __init__(self, name: str, exclude: Iterable[Basic] = (), properties: Iterable[WildProperty] = (),
                  **assumptions: bool) -> None:
-        self.exclude: tuple[Basic, ...] = tuple(exclude)
-        self.properties: tuple[WildProperty, ...] = tuple(properties)
+        self.exclude: Final[tuple[Basic, ...]] = tuple(exclude)
+        self.properties: Final[tuple[WildProperty, ...]] = tuple(properties)
         Symbol.__init__(self, name, **assumptions)
 
     def _compare_content(self) -> tuple[CompareItem, ...]:

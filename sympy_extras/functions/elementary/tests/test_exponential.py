@@ -40,9 +40,10 @@ def _arguments() -> list[Expr]:
 def test_evaluation_matches_sympy() -> None:
     for a in _arguments():
         sa = to_sympy(a)
-        assert to_sympy(exp(a)) == sympy.exp(sa), a
+        # without re-evaluation by SymPy, which would hide a difference
+        assert str(to_sympy(exp(a), evaluate=False)) == str(sympy.exp(sa)), a
         if a != 0:
-            assert to_sympy(log(a)) == sympy.log(sa), a
+            assert str(to_sympy(log(a), evaluate=False)) == str(sympy.log(sa)), a
 
 
 def test_log_with_a_base() -> None:
@@ -50,7 +51,8 @@ def test_log_with_a_base() -> None:
                                       (Rational(3, 4), Integer(2)), (Integer(81), Integer(3)), (Integer(10), Integer(10)),
                                       (Integer(7), E)]
     for value, base in cases:
-        assert to_sympy(log(value, base)) == sympy.log(to_sympy(value), to_sympy(base)), (value, base)
+        assert str(to_sympy(log(value, base), evaluate=False)) == str(sympy.log(to_sympy(value), to_sympy(base))), \
+            (value, base)
     assert str(log(5, 1)) == 'zoo' and str(log(1, 1)) == 'nan'
 
 

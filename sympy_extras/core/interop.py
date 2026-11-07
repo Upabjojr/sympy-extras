@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 from functools import partial
-from typing import TYPE_CHECKING, Callable, Optional, Sequence, Union
+from typing import Callable, Optional, Sequence, TYPE_CHECKING, Union
 
 import mpmath
 import sympy
@@ -661,7 +661,11 @@ def _fill_function_tables() -> None:
     if _NATIVE_TO_SYMPY:
         return
     from sympy_extras.functions.elementary.exponential import Exp, Log
-    pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [(Exp, sympy.exp), (Log, sympy.log)]
+    from sympy_extras.functions.elementary.hyperbolic import Cosh, Sinh, Tanh
+    from sympy_extras.functions.elementary.trigonometric import Cos, Sin, Tan
+    pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
+        (Exp, sympy.exp), (Log, sympy.log), (Sin, sympy.sin), (Cos, sympy.cos), (Tan, sympy.tan),
+        (Sinh, sympy.sinh), (Cosh, sympy.cosh), (Tanh, sympy.tanh)]
     for native, counterpart in pairs:
         _NATIVE_TO_SYMPY[native] = counterpart
         _SYMPY_TO_NATIVE[counterpart] = native

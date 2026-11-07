@@ -71,7 +71,23 @@ change:
   4. be typed to the rules below (no `Any`, no `cast`, no `getattr`, no
      `# type: ignore`) and have its own tests: a port is not a copy of
      SymPy's tests, which are BSD-licensed too and may be ported under
-     the same notice.
+     the same notice;
+  5. split every SymPy class which evaluates in its constructor into a
+     **class which never evaluates** and a **lower case function which
+     does**, as the core does for `Add`/`add` and `Mul`/`mul`: `Sin(0)`
+     is the node `sin(0)` and stays so, `sin(0)` (the function) is `0`;
+     `Exp`/`exp`, `Log`/`log`, `Sin`/`sin`, ... The class constructor only
+     checks and stores its arguments; the evaluation rules live in the
+     classmethod `eval` (`DefinedFunction.apply` runs them), and `doit`
+     rebuilds a tree with the functions. Where SymPy's name is the class
+     (`sympy.sin`), our function keeps that name and the class takes the
+     capitalised one;
+  6. keep nodes **immutable after their creation**: every attribute set
+     in a constructor is annotated `Final[...]`, so that mypy rejects any
+     later assignment (a runtime guard in `__setattr__` cost 30-80 % of
+     the speed of the core and was rejected); only the lazily filled
+     caches (`_compare_key_cache`, `_sympy_cache`, `_facts_cache`) are
+     not `Final`, and global settings (`global_parameters`) are not nodes.
 
   `grep -rn "PORTED FROM SYMPY" sympy_extras` lists every port; the
   commit message names the SymPy modules and version. Files with
@@ -146,6 +162,8 @@ sympy_extras/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
         elementary/
             exponential.py   Exp, Log (nodes) and exp, log (evaluating), PORTED FROM SYMPY
+            trigonometric.py Sin, Cos, Tan / sin, cos, tan; pi_coeff, peeloff_pi, PORTED FROM SYMPY
+            hyperbolic.py    Sinh, Cosh, Tanh / sinh, cosh, tanh; peeloff_ipi, PORTED FROM SYMPY
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,
                              Subs, Order, ...) and evaluating functions (add, mul, pow, mod, eq, and_, or_, diff,
                              order, ...), typed; Wild/match/replace, the full set of is_* predicates, Q/ask/refine,

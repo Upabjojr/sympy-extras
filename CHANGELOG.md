@@ -10,6 +10,16 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.functions.elementary.trigonometric` and `hyperbolic`:
+  `Sin`, `Cos`, `Tan`, `Sinh`, `Cosh`, `Tanh` with the evaluating `sin`,
+  ..., `tanh`, ported from SymPy (exact values at rational multiples of
+  `pi`, the imaginary-argument exchanges, peeled multiples of `pi` and
+  `I*pi`, derivatives, facts); 1452 values identical to SymPy's, the
+  half-period shifts of `tan`/`tanh` (SymPy's `cot`/`coth`) excepted.
+- The nodes of the core and of the functions are immutable for mypy:
+  their constructor attributes are `Final` (78 of them). AGENTS.md
+  requires every SymPy class to be ported as a class which never
+  evaluates plus an evaluating function, with `Final` attributes.
 - `sympy_extras.functions`: typed functions of the core on the new base
   class `core.function.DefinedFunction` (unevaluated node, `eval` rules,
   `apply`, `fdiff` with the chain rule in `diff`, `numeric` through

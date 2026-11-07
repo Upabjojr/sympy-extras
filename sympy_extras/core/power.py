@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 from math import floor
-from typing import TYPE_CHECKING, Optional
+from typing import Final, Optional, TYPE_CHECKING
 
 import mpmath
 from sympy_extras.ntheory.factor_ import factorint
@@ -68,8 +68,8 @@ class Pow(Expr):
     is_Pow = True
 
     def __init__(self, base: ExprLike, exp: ExprLike) -> None:
-        self._base: Expr = to_expr(base)
-        self._exp: Expr = to_expr(exp)
+        self._base: Final[Expr] = to_expr(base)
+        self._exp: Final[Expr] = to_expr(exp)
         Basic.__init__(self)
 
     @property

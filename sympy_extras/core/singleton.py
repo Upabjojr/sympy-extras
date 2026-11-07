@@ -8,7 +8,7 @@ identity.
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Union, overload
+from typing import Final, Union, overload
 
 from .basic import Basic
 from .expr import Expr, as_expr
@@ -35,23 +35,23 @@ class SingletonRegistry:
     """
 
     def __init__(self) -> None:
-        self.Zero: Integer = Integer(0)
-        self.One: Integer = Integer(1)
-        self.NegativeOne: Integer = Integer(-1)
-        self.Half: Rational = Rational(1, 2)
-        self.Pi: Pi = pi
-        self.Exp1: Exp1 = E
-        self.EulerGamma: EulerGammaType = EulerGamma
-        self.Catalan: CatalanType = Catalan
-        self.GoldenRatio: GoldenRatioType = GoldenRatio
-        self.TribonacciConstant: TribonacciConstantType = TribonacciConstant
-        self.ImaginaryUnit: ImaginaryUnit = I
-        self.Infinity: Infinity = oo
-        self.NegativeInfinity: NegativeInfinity = NegativeInfinity()
-        self.ComplexInfinity: ComplexInfinity = zoo
-        self.NaN: NaN = nan
-        self.true: BooleanTrue = true
-        self.false: BooleanFalse = false
+        self.Zero: Final[Integer] = Integer(0)
+        self.One: Final[Integer] = Integer(1)
+        self.NegativeOne: Final[Integer] = Integer(-1)
+        self.Half: Final[Rational] = Rational(1, 2)
+        self.Pi: Final[Pi] = pi
+        self.Exp1: Final[Exp1] = E
+        self.EulerGamma: Final[EulerGammaType] = EulerGamma
+        self.Catalan: Final[CatalanType] = Catalan
+        self.GoldenRatio: Final[GoldenRatioType] = GoldenRatio
+        self.TribonacciConstant: Final[TribonacciConstantType] = TribonacciConstant
+        self.ImaginaryUnit: Final[ImaginaryUnit] = I
+        self.Infinity: Final[Infinity] = oo
+        self.NegativeInfinity: Final[NegativeInfinity] = NegativeInfinity()
+        self.ComplexInfinity: Final[ComplexInfinity] = zoo
+        self.NaN: Final[NaN] = nan
+        self.true: Final[BooleanTrue] = true
+        self.false: Final[BooleanFalse] = false
 
     @overload
     def __call__(self, x: Union[Expr, int, float, Fraction]) -> Expr: ...

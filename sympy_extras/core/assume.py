@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from fractions import Fraction
-from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Optional, Union
+from typing import Callable, Final, Iterable, Iterator, Optional, TYPE_CHECKING, Union
 
 from .basic import Basic
 from .logic import Boolean, BooleanLike, to_boolean
@@ -62,21 +62,19 @@ class Predicate(Boolean):
 
     __slots__ = ('name', '_arity', '_defined', '_handlers')
 
-    def __init__(self, name: str, arity: int = 1) -> None:
+    def __init__(self, name: str, arity: int = 1, defined: bool = False) -> None:
         if not isinstance(name, str):
             raise TypeError("the name of a predicate is a string, got %r" % (name,))
-        self.name: str = name
-        self._arity: int = arity
-        self._defined: bool = False
-        self._handlers: list[tuple[type, Handler]] = []
+        self.name: Final[str] = name
+        self._arity: Final[int] = arity
+        self._defined: Final[bool] = defined
+        self._handlers: Final[list[tuple[type, Handler]]] = []
         Basic.__init__(self)
 
     @classmethod
     def _known(cls, name: str, arity: int = 1) -> Predicate:
         """A predicate of ``Q``."""
-        p = cls(name, arity)
-        p._defined = True
-        return p
+        return cls(name, arity, defined=True)
 
     @property
     def args(self) -> tuple[Basic, ...]:
@@ -180,8 +178,8 @@ class AppliedPredicate(Boolean):
     def __init__(self, predicate: Predicate, *args: Basic) -> None:
         if not isinstance(predicate, Predicate):
             raise TypeError("a predicate is expected, got %s" % (predicate,))
-        self._function: Predicate = predicate
-        self._arguments: tuple[Basic, ...] = args
+        self._function: Final[Predicate] = predicate
+        self._arguments: Final[tuple[Basic, ...]] = args
         Basic.__init__(self)
 
     @property
@@ -243,7 +241,7 @@ class AssumptionsContext:
     __slots__ = ('_items',)
 
     def __init__(self, assumptions: Iterable[BooleanLike] = ()) -> None:
-        self._items: set[Boolean] = {to_boolean(a) for a in assumptions}
+        self._items: Final[set[Boolean]] = {to_boolean(a) for a in assumptions}
 
     def add(self, *assumptions: BooleanLike) -> None:
         """Add the assumptions."""

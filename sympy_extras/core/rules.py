@@ -12,7 +12,7 @@ References
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from typing import Callable, Final, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .basic import Basic
@@ -40,8 +40,8 @@ class Transform:
 
     def __init__(self, transform: Callable[[Basic], Basic],
                  filter: Callable[[Basic], bool] = lambda node: True) -> None:
-        self.transform: Callable[[Basic], Basic] = transform
-        self.filter: Callable[[Basic], bool] = filter
+        self.transform: Final[Callable[[Basic], Basic]] = transform
+        self.filter: Final[Callable[[Basic], bool]] = filter
 
     def __contains__(self, item: Basic) -> bool:
         return self.filter(item)

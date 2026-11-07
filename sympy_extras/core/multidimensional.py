@@ -2,7 +2,7 @@
 given in chosen argument positions (``sympy.core.multidimensional``)."""
 from __future__ import annotations
 
-from typing import Callable, Sequence, TypeVar, Union
+from typing import Callable, Final, Sequence, TypeVar, Union
 
 __all__ = ['vectorize']
 
@@ -33,7 +33,7 @@ class vectorize:
     """
 
     def __init__(self, *argnums: int) -> None:
-        self.argnums: tuple[int, ...] = argnums
+        self.argnums: Final[tuple[int, ...]] = argnums
 
     def __call__(self, f: Callable[..., object]) -> Callable[..., object]:
         def wrapped(*args: object) -> object:

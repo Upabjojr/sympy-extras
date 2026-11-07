@@ -39,7 +39,7 @@ import inspect
 
 import mpmath
 from fractions import Fraction
-from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Mapping, Optional, Sequence, Union, overload
+from typing import Callable, Final, Iterable, Iterator, Mapping, Optional, Sequence, TYPE_CHECKING, Union, overload
 
 import sympy
 from sympy.core.basic import Basic as SymPyBasic
@@ -125,7 +125,7 @@ class Application(Expr):
     is_Function = True
 
     def __init__(self, *args: ExprLike) -> None:
-        self._args: tuple[Expr, ...] = tuple(to_expr(a) for a in args)
+        self._args: Final[tuple[Expr, ...]] = tuple(to_expr(a) for a in args)
         Basic.__init__(self)
 
     @property
@@ -165,9 +165,9 @@ class UndefinedFunction(FunctionClass):
         for k in assumptions:
             if k not in PREDICATES:
                 raise ValueError("unknown assumption %r" % (k,))
-        self._name: str = name
-        self._nargs: Optional[frozenset[int]] = _nargs_set(nargs)
-        self._assumptions: tuple[tuple[str, bool], ...] = tuple(sorted(assumptions.items()))
+        self._name: Final[str] = name
+        self._nargs: Final[Optional[frozenset[int]]] = _nargs_set(nargs)
+        self._assumptions: Final[tuple[tuple[str, bool], ...]] = tuple(sorted(assumptions.items()))
 
     @property
     def name(self) -> str:
@@ -227,7 +227,7 @@ class AppliedUndef(Application):
     __slots__ = ('_function',)
 
     def __init__(self, function: UndefinedFunction, *args: ExprLike) -> None:
-        self._function: UndefinedFunction = function
+        self._function: Final[UndefinedFunction] = function
         Application.__init__(self, *args)
 
     @property
@@ -316,7 +316,7 @@ class SymPyFunction(FunctionClass):
     __slots__ = ('sympy_class',)
 
     def __init__(self, sympy_class: type[SymPyFunctionClass]) -> None:
-        self.sympy_class: type[SymPyFunctionClass] = sympy_class
+        self.sympy_class: Final[type[SymPyFunctionClass]] = sympy_class
 
     @property
     def name(self) -> str:
@@ -354,7 +354,7 @@ class AppliedSymPyFunction(Application):
     __slots__ = ('_sympy_class',)
 
     def __init__(self, sympy_class: type[SymPyFunctionClass], *args: ExprLike) -> None:
-        self._sympy_class: type[SymPyFunctionClass] = sympy_class
+        self._sympy_class: Final[type[SymPyFunctionClass]] = sympy_class
         Application.__init__(self, *args)
 
     @property
@@ -450,8 +450,8 @@ class WildFunction(AtomicExpr):
     is_Function = True
 
     def __init__(self, name: str, nargs: NargsSpec = None) -> None:
-        self.name: str = name
-        self._nargs: Optional[frozenset[int]] = _nargs_set(nargs)
+        self.name: Final[str] = name
+        self._nargs: Final[Optional[frozenset[int]]] = _nargs_set(nargs)
         Basic.__init__(self)
 
     @property
@@ -679,8 +679,8 @@ class Lambda(Basic):
             names = tuple(_as_symbol(v) for v in variables)
         else:
             names = tuple(variables)
-        self._variables: tuple[Symbol, ...] = names
-        self._expr: Expr = to_expr(expr)
+        self._variables: Final[tuple[Symbol, ...]] = names
+        self._expr: Final[Expr] = to_expr(expr)
         Basic.__init__(self)
 
     @property
@@ -772,7 +772,7 @@ class Derivative(Expr):
     is_Derivative = True
 
     def __init__(self, expr: ExprLike, *variables: Union[Symbol, tuple[Symbol, int], Tuple]) -> None:
-        self._expr: Expr = to_expr(expr)
+        self._expr: Final[Expr] = to_expr(expr)
         counts: list[VariableCount] = []
         for v in variables:
             if isinstance(v, Symbol):
@@ -781,7 +781,7 @@ class Derivative(Expr):
                 counts.append(_as_count(v))
             else:
                 counts.append((v[0], v[1]))
-        self._counts: tuple[VariableCount, ...] = _merge_counts(counts)
+        self._counts: Final[tuple[VariableCount, ...]] = _merge_counts(counts)
         Basic.__init__(self)
 
     @property
@@ -883,7 +883,7 @@ class Subs(Expr):
 
     def __init__(self, expr: ExprLike, variables: Union[Symbol, Sequence[Symbol], Tuple],
                  point: Union[ExprLike, Sequence[ExprLike], Tuple]) -> None:
-        self._expr: Expr = to_expr(expr)
+        self._expr: Final[Expr] = to_expr(expr)
         if isinstance(variables, Symbol):
             names: tuple[Symbol, ...] = (variables,)
         elif isinstance(variables, Tuple):
@@ -898,8 +898,8 @@ class Subs(Expr):
             values = tuple(to_expr(p) for p in point)
         if len(names) != len(values):
             raise ValueError("Subs needs as many points as variables")
-        self._variables: tuple[Symbol, ...] = names
-        self._point: tuple[Expr, ...] = values
+        self._variables: Final[tuple[Symbol, ...]] = names
+        self._point: Final[tuple[Expr, ...]] = values
         Basic.__init__(self)
 
     @property

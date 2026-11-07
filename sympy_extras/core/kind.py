@@ -14,6 +14,8 @@ References
 """
 from __future__ import annotations
 
+from typing import Final
+
 __all__ = ['Kind', 'NumberKind', 'BooleanKind', 'UndefinedKind', 'TupleKind']
 
 
@@ -33,8 +35,8 @@ class Kind:
     __slots__ = ('name', 'parameters')
 
     def __init__(self, name: str, *parameters: Kind) -> None:
-        self.name: str = name
-        self.parameters: tuple[Kind, ...] = parameters
+        self.name: Final[str] = name
+        self.parameters: Final[tuple[Kind, ...]] = parameters
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Kind):

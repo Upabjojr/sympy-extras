@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 from math import gcd
-from typing import TYPE_CHECKING, Iterable, Optional, Union
+from typing import Final, Iterable, Optional, TYPE_CHECKING, Union
 
 import mpmath
 
@@ -155,11 +155,13 @@ class Rational(Number):
             g = gcd(p, q)
             if g > 1:
                 p, q = p // g, q // g
-        self.p: int = p
-        self.q: int = q
+        self.p: Final[int] = p
+        self.q: Final[int] = q
         Basic.__init__(self)
-        # the hash of the Python number with the same value, computed once
-        self._hash = hash(p) if q == 1 else hash(Fraction(p, q))
+
+    def _compute_hash(self) -> int:
+        # the hash of the Python number with the same value
+        return hash(self.p) if self.q == 1 else hash(Fraction(self.p, self.q))
 
     def _hashable_content(self) -> tuple[Basic, ...]:
         return ()
@@ -341,10 +343,12 @@ class Float(Number):
             exact = Fraction(int(value))
         else:
             exact = Fraction(value)
-        self._value: Fraction = _round_to_prec(exact, prec)
-        self._prec: int = prec
+        self._value: Final[Fraction] = _round_to_prec(exact, prec)
+        self._prec: Final[int] = prec
         Basic.__init__(self)
-        self._hash = hash(self._value)
+
+    def _compute_hash(self) -> int:
+        return hash(self._value)
 
     def _hashable_content(self) -> tuple[Basic, ...]:
         return ()
@@ -759,12 +763,12 @@ class AlgebraicNumber(Expr):
     def __init__(self, expr: ExprLike, coeffs: Optional[Iterable[ExprLike]] = None,
                  alias: Union[str, 'Symbol', None] = None) -> None:
         from .symbol import Symbol
-        self._root: Expr = to_expr(expr)
+        self._root: Final[Expr] = to_expr(expr)
         given = [Integer(1), Integer(0)] if coeffs is None else [_as_rational(to_expr(c)) for c in coeffs]
         while len(given) > 1 and given[0].p == 0:
             del given[0]
-        self._coeffs: tuple[Rational, ...] = tuple(given)
-        self._alias: Optional[Symbol] = Symbol(alias) if isinstance(alias, str) else alias
+        self._coeffs: Final[tuple[Rational, ...]] = tuple(given)
+        self._alias: Final[Optional[Symbol]] = Symbol(alias) if isinstance(alias, str) else alias
         Basic.__init__(self)
 
     @property

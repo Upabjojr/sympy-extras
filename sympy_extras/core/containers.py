@@ -1,7 +1,7 @@
 """Tuples and dictionaries of expressions."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterator, Mapping, Optional, Union, overload
+from typing import Final, Iterator, Mapping, Optional, TYPE_CHECKING, Union, overload
 
 from .basic import Basic
 from .kind import Kind, TupleKind
@@ -35,7 +35,7 @@ class Tuple(Basic):
 
     def __init__(self, *args: SympifyLike) -> None:
         from .sympify import sympify
-        self._args: tuple[Basic, ...] = tuple(sympify(a) for a in args)
+        self._args: Final[tuple[Basic, ...]] = tuple(sympify(a) for a in args)
         Basic.__init__(self)
 
     @property
@@ -113,7 +113,7 @@ class Dict(Basic):
             else:
                 k, v = a
                 pairs.append((sympify(k), sympify(v)))
-        self._pairs: dict[Basic, Basic] = dict(pairs)
+        self._pairs: Final[dict[Basic, Basic]] = dict(pairs)
         Basic.__init__(self)
 
     @property

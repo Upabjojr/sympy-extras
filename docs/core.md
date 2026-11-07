@@ -267,6 +267,24 @@ gives the partial derivatives (the core's `diff` applies the chain rule),
 conversion maps `sympy.exp` and `sympy.log` to `Exp` and `Log` in both
 directions, and `E**x` builds `exp(x)` natively.
 
+The classes never evaluate and the functions do (`Sin(0)` is the node
+`sin(0)`, `sin(0)` is `0`), and the nodes are immutable: the attributes
+set by the constructors are `Final`, so mypy rejects any later
+assignment (a runtime check in `__setattr__` cost 30-80 % of the speed
+of the core and was not kept).
+
+The trigonometric and hyperbolic families (`Sin`, `Cos`, `Tan`, `Sinh`,
+`Cosh`, `Tanh` with `sin`, ..., `tanh`) are ported from SymPy's
+`trigonometric.py` and `hyperbolic.py`: symmetry, the exchange `sin(I*x) =
+I*sinh(x)` and back, the exact values at rational multiples of `pi`
+(SymPy's reductions, product formulas, Chebyshev values and half-angle
+roots), the multiples of `pi` and `I*pi` peeled off sums, derivatives,
+facts. On 1452 values (rational multiples of `pi` with denominators up
+to 30, imaginary arguments, shifted sums) the results are SymPy's
+character for character, except the half-period shifts of `tan` and
+`tanh`, which SymPy writes with `cot` and `coth` (not ported yet). Not
+ported either: `AccumBounds` (`sin(oo)`), the inverse functions.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a
@@ -280,10 +298,12 @@ node unevaluated (the module docstring lists them).
 
 ```python
 >>> from sympy_extras.core import Symbol, Rational, I, pi
->>> from sympy_extras.functions import exp, log, Exp
+>>> from sympy_extras.functions import exp, log, Exp, sin, cos, Sin, sinh
 >>> x = Symbol('x')
 >>> exp(2*log(x)), exp(Rational(7, 3)*pi*I), log(-3), log(24, 2)
 (x**2, exp(I*pi/3), log(3) + I*pi, log(3)/log(2) + 3)
+>>> Sin(0), sin(0), cos(pi/5), sin(x + pi), sin(I*x)
+(sin(0), 0, 1/4 + sqrt(5)/4, -sin(x), I*sinh(x))
 >>> Exp(x).diff(x), (x*log(x)).diff(x)
 (exp(x), log(x) + 1)
 

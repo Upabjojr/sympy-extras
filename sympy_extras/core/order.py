@@ -17,7 +17,7 @@ References
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Union
+from typing import Final, Optional, TYPE_CHECKING, Union
 
 from .basic import Basic
 from .containers import Tuple
@@ -57,7 +57,7 @@ class Order(Expr):
     is_Order = True
 
     def __init__(self, expr: ExprLike, *variables: OrderSpec) -> None:
-        self._expr: Expr = to_expr(expr)
+        self._expr: Final[Expr] = to_expr(expr)
         limits: list[tuple[Symbol, Expr]] = []
         for v in variables:
             if isinstance(v, Symbol):
@@ -72,7 +72,7 @@ class Order(Expr):
         if not limits:
             from .sorting import default_sort_key
             limits = [(s, Integer(0)) for s in sorted(self._expr.free_symbols, key=default_sort_key)]
-        self._limits: tuple[tuple[Symbol, Expr], ...] = tuple(limits)
+        self._limits: Final[tuple[tuple[Symbol, Expr], ...]] = tuple(limits)
         Basic.__init__(self)
 
     @property

@@ -13,7 +13,7 @@ References
 """
 from __future__ import annotations
 
-from typing import Callable, Generic, Hashable, ParamSpec, Protocol, TypeVar
+from typing import Callable, Final, Generic, Hashable, ParamSpec, Protocol, TypeVar
 
 __all__ = ['cacheit', 'clear_cache', 'Cached', 'register_clearable']
 
@@ -33,8 +33,8 @@ class Cached(Generic[P, R]):
     """A memoised callable; the key is the tuple of the arguments."""
 
     def __init__(self, function: Callable[P, R]) -> None:
-        self.function: Callable[P, R] = function
-        self.cache: dict[Hashable, R] = {}
+        self.function: Final[Callable[P, R]] = function
+        self.cache: Final[dict[Hashable, R]] = {}
         self.__doc__ = function.__doc__
         self.__name__ = function.__name__
 

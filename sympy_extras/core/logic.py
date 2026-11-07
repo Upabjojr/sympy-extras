@@ -23,7 +23,7 @@ References
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Union
+from typing import Final, Iterable, TYPE_CHECKING, Union
 
 from .basic import Atom, Basic
 from .kind import BooleanKind, Kind
@@ -135,7 +135,7 @@ class BooleanAtom(Boolean, Atom):
     __slots__ = ('_value',)
 
     def __init__(self, value: bool) -> None:
-        self._value: bool = value
+        self._value: Final[bool] = value
         Basic.__init__(self)
 
     def _hashable_content(self) -> tuple[Basic, ...]:
@@ -219,7 +219,7 @@ class _Connective(BooleanFunction):
     __slots__ = ('_args',)
 
     def __init__(self, *args: BooleanLike) -> None:
-        self._args: tuple[Boolean, ...] = tuple(to_boolean(a) for a in args)
+        self._args: Final[tuple[Boolean, ...]] = tuple(to_boolean(a) for a in args)
         Basic.__init__(self)
 
     @property

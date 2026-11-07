@@ -21,7 +21,7 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import TYPE_CHECKING, Iterator, Optional, Sequence, Union
+from typing import Final, Iterator, Optional, Sequence, TYPE_CHECKING, Union
 
 import sympy
 
@@ -1512,7 +1512,7 @@ class UnevaluatedExpr(Expr):
     __slots__ = ('_expr',)
 
     def __init__(self, expr: ExprLike) -> None:
-        self._expr: Expr = to_expr(expr)
+        self._expr: Final[Expr] = to_expr(expr)
         Basic.__init__(self)
 
     @property

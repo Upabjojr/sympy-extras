@@ -15,7 +15,7 @@ References
 """
 from __future__ import annotations
 
-from typing import ClassVar, Iterable
+from typing import ClassVar, Final, Iterable
 
 from .basic import Basic
 from .expr import Expr, ExprLike, to_expr
@@ -41,7 +41,7 @@ class AssocOp(Expr):
     identity: ClassVar[Expr]
 
     def __init__(self, *args: ExprLike) -> None:
-        self._args: tuple[Expr, ...] = tuple(to_expr(a) for a in args)
+        self._args: Final[tuple[Expr, ...]] = tuple(to_expr(a) for a in args)
         Basic.__init__(self)
 
     @property
@@ -94,7 +94,7 @@ class LatticeOp(Basic):
     zero: ClassVar[Basic]
 
     def __init__(self, *args: Basic) -> None:
-        self._args: tuple[Basic, ...] = args
+        self._args: Final[tuple[Basic, ...]] = args
         Basic.__init__(self)
 
     @property
