@@ -118,12 +118,44 @@ The last line is the gcd of `(x + y)(x - y)` and `(x + y)**2` in `ZZ[y][x]`.
 
 ```
 
+## Real roots
+
+`rootisolation`: Descartes' rule with bisection (Collins–Akritas,
+Rouillier–Zimmermann) isolates the real roots of a square-free polynomial
+with rational coefficients (`dup_isolate_real_roots_sqf`; with
+multiplicities through the square-free decomposition in
+`dup_isolate_real_roots`): the positive roots are brought into `(0, 1)`
+by the Cauchy bound, an interval is kept when the sign variations of
+`(x + 1)**n p(1/(x + 1))` are one, discarded when zero, bisected
+otherwise, with the midpoint checked for an exact root. Each interval is
+open with rational endpoints and holds one root, or is a point for a
+rational root. Sturm sequences count the roots in an interval
+(`dup_count_real_roots`) and `dup_refine_real_root` bisects an isolating
+interval below a width.
+
+```python
+>>> from fractions import Fraction
+>>> from sympy_extras.polys.rootisolation import dup_isolate_real_roots, dup_count_real_roots
+>>> dup_isolate_real_roots([Fraction(1), Fraction(0), Fraction(-2)])
+[((Fraction(-3, 1), Fraction(0, 1)), 1), ((Fraction(0, 1), Fraction(3, 1)), 1)]
+>>> dup_isolate_real_roots([Fraction(1), Fraction(0), Fraction(-2)], Fraction(1, 100))
+[((Fraction(-363, 256), Fraction(-723, 512)), 1), ((Fraction(723, 512), Fraction(363, 256)), 1)]
+>>> dup_count_real_roots([Fraction(1), Fraction(0), Fraction(-2)], Fraction(0), Fraction(3))
+1
+
+```
+
 ## Verification
 
 `polys/tests/test_factor.py` compares the factorisations over `GF(p)`
 (`p = 2, 3, 5, 7, 11, 101`), `ZZ` and `QQ` with SymPy's `factor_list` on
 random products, checks that every factor is irreducible and that the
 products rebuild the input, and the Hensel lifting on hand-made cases.
+`polys/tests/test_rootisolation.py` compares the isolating intervals,
+multiplicities and counts with SymPy's `intervals` and `count_roots` on
+random polynomials (with rational roots at dyadic points thrown in),
+checks that every interval holds exactly one root by sign changes and
+Sturm counts, and the Chebyshev and Wilkinson polynomials.
 `polys/tests/test_dense.py` compares every operation with SymPy's on
 random polynomials over `ZZ`, `QQ` and `GF(7)`, checks the defining
 identities (pseudo-division, Bézout coefficients, inverses modulo a
@@ -141,8 +173,8 @@ determinant, SymPy gives `-1773`).
 
 Factorisation over number fields (Trager) and of multivariate
 polynomials (Wang), the recombination by lattice reduction (van Hoeij;
-the subset search is exponential in the number of modular factors), real
-root isolation, the algebraic number fields, a `Poly` wrapper and the
+the subset search is exponential in the number of modular factors),
+complex root isolation, the algebraic number fields, a `Poly` wrapper and the
 conversion of the algorithms above to this layer; sparse multivariate
 polynomials (the Gröbner basis code uses SymPy's `PolyElement`); a fast
 gcd over `ZZ` (the heuristic gcd) and over `GF(p)`.
