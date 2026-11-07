@@ -67,6 +67,8 @@ class Beta(DefinedFunction):
     """The Euler beta function ``beta(x, y)``, unevaluated (``beta``
     evaluates)."""
 
+    unbranched = True
+
     function_name = 'beta'
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
@@ -156,6 +158,8 @@ class BetaInc(_IncompleteBeta):
     """The generalised incomplete beta function ``betainc(a, b, x1, x2)``
     (no values of its own, as in SymPy)."""
 
+    unbranched = True
+
     function_name = 'betainc'
 
 
@@ -163,6 +167,8 @@ class BetaInc(_IncompleteBeta):
 class BetaIncRegularized(_IncompleteBeta):
     """The regularised incomplete beta function
     ``betainc_regularized(a, b, x1, x2)``."""
+
+    unbranched = True
 
     function_name = 'betainc_regularized'
     regularized = True

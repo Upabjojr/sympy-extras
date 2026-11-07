@@ -105,6 +105,8 @@ def _odd_facts(arg: Expr) -> dict[str, bool]:
 class Sinh(DefinedFunction):
     """The hyperbolic sine, unevaluated (``sinh`` evaluates)."""
 
+    unbranched = True
+
     function_name = 'sinh'
 
     @classmethod
@@ -171,6 +173,8 @@ class Sinh(DefinedFunction):
 # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:cosh
 class Cosh(DefinedFunction):
     """The hyperbolic cosine, unevaluated (``cosh`` evaluates)."""
+
+    unbranched = True
 
     function_name = 'cosh'
 
@@ -241,6 +245,8 @@ class Cosh(DefinedFunction):
 # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:tanh
 class Tanh(DefinedFunction):
     """The hyperbolic tangent, unevaluated (``tanh`` evaluates)."""
+
+    unbranched = True
 
     function_name = 'tanh'
 
@@ -316,6 +322,8 @@ class Tanh(DefinedFunction):
 # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:coth
 class Coth(DefinedFunction):
     """The hyperbolic cotangent, unevaluated (``coth`` evaluates)."""
+
+    unbranched = True
 
     function_name = 'coth'
 
@@ -395,6 +403,8 @@ def _reciprocal_eval(cls: type[DefinedFunction], partner: type[DefinedFunction],
 class Sech(DefinedFunction):
     """The hyperbolic secant, unevaluated (``sech`` evaluates)."""
 
+    unbranched = True
+
     function_name = 'sech'
 
     @classmethod
@@ -425,6 +435,8 @@ class Sech(DefinedFunction):
 # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:csch
 class Csch(DefinedFunction):
     """The hyperbolic cosecant, unevaluated (``csch`` evaluates)."""
+
+    unbranched = True
 
     function_name = 'csch'
 

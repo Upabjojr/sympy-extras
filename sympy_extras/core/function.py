@@ -546,6 +546,9 @@ class DefinedFunction(Application):
     call_nargs: frozenset[int] = frozenset({1})
     #: any number of arguments (``Max``, ``Min``): ``nargs`` is not checked
     variadic: bool = False
+    #: SymPy's ``unbranched``: the function is single-valued, so that
+    #: ``unpolarify`` may strip the polar parts of its arguments
+    unbranched: bool = False
 
     def __init__(self, *args: ExprLike) -> None:
         if not self.variadic and len(args) not in self.nargs:

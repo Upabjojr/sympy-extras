@@ -209,6 +209,8 @@ def _conjugated(cls: type[DefinedFunction], arg: Expr) -> Expr:
 class Sin(DefinedFunction):
     """The sine, unevaluated (``sin`` evaluates)."""
 
+    unbranched = True
+
     function_name = 'sin'
 
     @classmethod
@@ -289,6 +291,8 @@ class Sin(DefinedFunction):
 # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:cos
 class Cos(DefinedFunction):
     """The cosine, unevaluated (``cos`` evaluates)."""
+
+    unbranched = True
 
     function_name = 'cos'
 
@@ -404,6 +408,8 @@ def _tan_table10(n: int) -> Expr:
 class Tan(DefinedFunction):
     """The tangent, unevaluated (``tan`` evaluates)."""
 
+    unbranched = True
+
     function_name = 'tan'
 
     @classmethod
@@ -511,6 +517,8 @@ class Tan(DefinedFunction):
 # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:cot
 class Cot(DefinedFunction):
     """The cotangent, unevaluated (``cot`` evaluates)."""
+
+    unbranched = True
 
     function_name = 'cot'
 
@@ -641,6 +649,8 @@ def _reciprocal_eval(cls: type[DefinedFunction], partner: type[DefinedFunction],
 class Sec(DefinedFunction):
     """The secant, unevaluated (``sec`` evaluates)."""
 
+    unbranched = True
+
     function_name = 'sec'
 
     @classmethod
@@ -670,6 +680,8 @@ class Sec(DefinedFunction):
 # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:csc
 class Csc(DefinedFunction):
     """The cosecant, unevaluated (``csc`` evaluates)."""
+
+    unbranched = True
 
     function_name = 'csc'
 

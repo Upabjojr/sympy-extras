@@ -234,6 +234,10 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
                 return Integer(0)
             sign = Integer(1) if isinstance(coefficient, Infinity) else Integer(-1)
             return mul(oo, pow(mul(sign, direction), exp))
+    if not isinstance(base, Number):
+        own = base._eval_power_node(exp)
+        if own is not None:
+            return own
     if isinstance(base, Infinity) and not isinstance(exp, Number):
         # PORTED FROM SYMPY: sympy/core/numbers.py:Infinity._eval_power
         if exp.is_extended_positive:

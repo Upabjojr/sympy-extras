@@ -60,7 +60,7 @@ from sympy_extras.core.numbers import (ComplexInfinity, E, Exp1, I, Infinity, In
                                        nan, number_from_fraction, oo, pi, zoo)
 from sympy_extras.core.power import pow
 
-__all__ = ['Exp', 'Log', 'LambertW', 'exp', 'log', 'ln', 'lambertw']
+__all__ = ['Exp', 'Log', 'LambertW', 'ExpPolar', 'exp', 'log', 'ln', 'lambertw', 'exp_polar']
 
 
 def _coefficient_of_pi_i(arg: Expr) -> Optional[Expr]:
@@ -91,6 +91,8 @@ class Exp(DefinedFunction):
     >>> Exp(x).as_base_exp(), Exp(-x).as_numer_denom()
     ((E, x), (1, exp(x)))
     """
+
+    unbranched = True
 
     function_name = 'exp'
     nargs = frozenset({1})
@@ -515,3 +517,50 @@ def lambertw(x: ExprLike, k: Optional[ExprLike] = None) -> Expr:
 
 #: SymPy's alias of ``log``
 ln = log
+
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp_polar
+class ExpPolar(DefinedFunction):
+    """The exponential on the Riemann surface of the logarithm,
+    ``exp_polar(z)``: it never evaluates (``exp_polar(2*I*pi)`` is not
+    ``1``), its powers are ``exp_polar(z*b)``, its modulus is
+    ``exp(re(z))``; numerically it is ``exp(z)`` for ``-pi < im(z) <= pi``."""
+
+    function_name = 'exp_polar'
+    unbranched = True
+
+    def _eval_power_node(self, exponent: Expr) -> Optional[Expr]:
+        return exp_polar(mul(self.args[0], exponent))
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp_polar.as_base_exp
+    def as_base_exp(self) -> tuple[Expr, Expr]:
+        """``(exp_polar(1), z)``, so that products collect the exponents
+        (``exp_polar(1)*exp_polar(2)`` is ``exp_polar(3)``, ``exp_polar(x)*
+        exp_polar(-x)`` is ``1``); ``(self, 1)`` for ``exp_polar(0)``."""
+        if self.args[0].is_zero:
+            return (self, Integer(1))
+        return (ExpPolar(Integer(1)), self.args[0])
+
+    def fdiff(self, argindex: int) -> Expr:
+        return self
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        z = values[0]
+        if not -mpmath.pi < mpmath.im(z) <= mpmath.pi:
+            return None
+        value = mpmath.exp(z)
+        if mpmath.im(z) > 0 and mpmath.im(value) < 0:
+            return mpmath.mpc(mpmath.re(value))
+        return mpmath.mpc(value)
+
+    def _eval_facts(self) -> dict[str, bool]:
+        facts: dict[str, bool] = {'commutative': True, 'polar': True, 'zero': False}
+        if facts_of(self.args[0]).get('extended_real'):
+            facts['extended_real'] = True
+        return facts
+
+
+def exp_polar(z: ExprLike) -> Expr:
+    """``exp_polar(z)`` (never evaluates)."""
+    return ExpPolar.apply(to_expr(z))

@@ -93,6 +93,8 @@ class _ErrorFunction(DefinedFunction):
 class Erf(_ErrorFunction):
     """The error function, unevaluated (``erf`` evaluates)."""
 
+    unbranched = True
+
     function_name = 'erf'
 
     @classmethod
@@ -140,6 +142,8 @@ class Erfc(_ErrorFunction):
     """The complementary error function ``1 - erf(x)``, unevaluated
     (``erfc`` evaluates)."""
 
+    unbranched = True
+
     function_name = 'erfc'
 
     @classmethod
@@ -181,6 +185,8 @@ class Erfc(_ErrorFunction):
 class Erfi(_ErrorFunction):
     """The imaginary error function ``-I*erf(I*x)``, unevaluated (``erfi``
     evaluates)."""
+
+    unbranched = True
 
     function_name = 'erfi'
 
@@ -750,6 +756,8 @@ class FresnelS(FresnelIntegral):
     """The Fresnel integral ``fresnels(z)``, unevaluated (``fresnels``
     evaluates)."""
 
+    unbranched = True
+
     function_name = 'fresnels'
     sign = -1
 
@@ -770,6 +778,8 @@ class FresnelS(FresnelIntegral):
 class FresnelC(FresnelIntegral):
     """The Fresnel integral ``fresnelc(z)``, unevaluated (``fresnelc``
     evaluates)."""
+
+    unbranched = True
 
     function_name = 'fresnelc'
     sign = 1

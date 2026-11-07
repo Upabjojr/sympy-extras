@@ -697,7 +697,7 @@ _SYMPY_TO_NATIVE: dict[type[SymPyFunctionClass], type[DefinedFunction]] = {}
 def _fill_function_tables() -> None:
     if _NATIVE_TO_SYMPY:
         return
-    from sympy_extras.functions.elementary.exponential import Exp, LambertW, Log
+    from sympy_extras.functions.elementary.exponential import Exp, ExpPolar, LambertW, Log
     from sympy_extras.functions.elementary import complexes as c, hyperbolic as h, integers as n, trigonometric as t
     from sympy_extras.functions.combinatorial import factorials as f
     from sympy_extras.functions.elementary import miscellaneous as ms
@@ -708,7 +708,9 @@ def _fill_function_tables() -> None:
     from sympy_extras.functions.special import mathieu_functions as mat, singularity_functions as sing
     from sympy_extras.functions.combinatorial import numbers as cn
     pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
-        (Exp, sympy.exp), (Log, sympy.log), (LambertW, sympy.LambertW), (t.Sin, sympy.sin), (t.Cos, sympy.cos), (t.Tan, sympy.tan),
+        (Exp, sympy.exp), (Log, sympy.log), (LambertW, sympy.LambertW), (ExpPolar, sympy.exp_polar),
+        (c.PolarLift, sympy.polar_lift), (c.PeriodicArgument, sympy.periodic_argument),
+        (c.PrincipalBranch, sympy.principal_branch), (t.Sin, sympy.sin), (t.Cos, sympy.cos), (t.Tan, sympy.tan),
         (t.Cot, sympy.cot), (t.Sec, sympy.sec), (t.Csc, sympy.csc), (t.Asin, sympy.asin), (t.Acos, sympy.acos),
         (t.Atan, sympy.atan), (t.Acot, sympy.acot), (t.Asec, sympy.asec), (t.Acsc, sympy.acsc),
         (h.Sinh, sympy.sinh), (h.Cosh, sympy.cosh), (h.Tanh, sympy.tanh), (h.Coth, sympy.coth), (h.Sech, sympy.sech),

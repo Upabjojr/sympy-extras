@@ -955,6 +955,12 @@ class Expr(Basic):
         to fall back."""
         return None
 
+    def _eval_power_node(self, exponent: Expr) -> Optional[Expr]:
+        """SymPy's ``base._eval_power(exponent)``: the power of this node
+        when its class has its own rule (``exp_polar(a)**b`` is
+        ``exp_polar(a*b)``); ``None`` for the general rules."""
+        return None
+
     def _eval_derivative_node(self, s: Symbol) -> Optional[Expr]:
         """The derivative of a node of a class ``diff`` does not know
         (``hyper``, ``meijerg``); ``None`` for ``Derivative(self, s)``."""

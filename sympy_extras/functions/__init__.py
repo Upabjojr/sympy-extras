@@ -1,8 +1,10 @@
 """Functions of the typed core (the counterpart of :mod:`sympy.functions`)."""
 from .combinatorial.factorials import (Binomial, Factorial, Factorial2, FallingFactorial, RisingFactorial, Subfactorial,
                                        binomial, factorial, factorial2, ff, rf, subfactorial)
-from .elementary.complexes import Abs, Arg, Atan2, Conjugate, Im, Re, Sign, abs_, arg, atan2, conjugate, im, re, sign
-from .elementary.exponential import Exp, LambertW, Log, exp, lambertw, ln, log
+from .elementary.complexes import (Abs, Arg, Atan2, Conjugate, Im, PeriodicArgument, PolarLift, PrincipalBranch, Re, Sign,
+                                  abs_, arg, atan2, conjugate, im, periodic_argument, polar_lift, polarify,
+                                  principal_branch, re, sign, unbranched_argument, unpolarify)
+from .elementary.exponential import Exp, ExpPolar, LambertW, Log, exp, exp_polar, lambertw, ln, log
 from .elementary.integers import Ceiling, Floor, Frac, ceiling, floor, frac
 from .elementary.miscellaneous import Max, Min, Rem, cbrt, identity_function, max_, min_, real_root, rem, root
 from .elementary.piecewise import ExprCondPair, Piecewise, piecewise
@@ -41,7 +43,9 @@ from .elementary.trigonometric import (Acos, Acot, Acsc, Asec, Asin, Atan, Cos, 
                                        acsc, asec, asin, atan, cos, cot, csc, sec, sin, sinc, tan)
 
 __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', 'abs_', 'sign', 'arg', 'conjugate',
-           'atan2', 'Exp', 'Log', 'LambertW', 'exp', 'log', 'lambertw', 'cbrt', 'root', 'real_root', 'Floor', 'Ceiling', 'Frac', 'floor', 'ceiling', 'frac',
+           'atan2', 'Exp', 'Log', 'LambertW', 'exp', 'log', 'lambertw', 'ExpPolar', 'exp_polar', 'PolarLift', 'PeriodicArgument',
+           'PrincipalBranch', 'polar_lift', 'periodic_argument', 'unbranched_argument', 'principal_branch', 'polarify',
+           'unpolarify', 'cbrt', 'root', 'real_root', 'Floor', 'Ceiling', 'Frac', 'floor', 'ceiling', 'frac',
            'Factorial', 'Binomial', 'RisingFactorial', 'FallingFactorial', 'factorial', 'binomial', 'rf', 'ff',
            'Subfactorial', 'Factorial2', 'subfactorial', 'factorial2', 'Sinc', 'sinc', 'Rem', 'rem',
            'Catalan', 'catalan', 'Fibonacci', 'Lucas', 'Harmonic', 'Bernoulli', 'fibonacci', 'lucas',

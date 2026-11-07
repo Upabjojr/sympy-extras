@@ -48,12 +48,12 @@ from typing import Optional, Sequence
 
 import mpmath
 
-from sympy_extras.core.add import Add, add
+from sympy_extras.core.add import Add, add, sub
 from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import AppliedUndef, Derivative, DefinedFunction, diff, expand_mul
-from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.mul import Mul, div, mul
 from sympy_extras.core.numbers import (ComplexInfinity, I, ImaginaryUnit, Infinity, Integer, NaN, NegativeInfinity,
                                        Number, Rational, nan, oo, pi)
 from sympy_extras.core.power import Pow, pow, sqrt
@@ -62,7 +62,8 @@ from sympy_extras.functions.elementary.exponential import Exp, exp, log
 from sympy_extras.functions.elementary.trigonometric import atan, cos, sin
 
 __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', 'abs_', 'sign', 'arg', 'conjugate',
-           'atan2', 'as_real_imag', 'conjugate_of']
+           'atan2', 'as_real_imag', 'conjugate_of', 'PolarLift', 'PeriodicArgument', 'PrincipalBranch', 'polar_lift',
+           'periodic_argument', 'unbranched_argument', 'principal_branch', 'polarify', 'unpolarify']
 
 ZERO = Integer(0)
 ONE = Integer(1)
@@ -310,6 +311,8 @@ def _split_real_imag(arg: Expr, real: bool) -> Optional[Expr]:
 class Re(DefinedFunction):
     """The real part, unevaluated (``re`` evaluates)."""
 
+    unbranched = True
+
     function_name = 're'
 
     @classmethod
@@ -352,6 +355,8 @@ class Re(DefinedFunction):
 # PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:im
 class Im(DefinedFunction):
     """The imaginary part, unevaluated (``im`` evaluates)."""
+
+    unbranched = True
 
     function_name = 'im'
 
@@ -482,11 +487,18 @@ class Abs(DefinedFunction):
     """The absolute value, unevaluated (``abs_`` evaluates; Python's
     ``abs()`` of a core expression calls it)."""
 
+    unbranched = True
+
     function_name = 'Abs'
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         [arg] = args
+        from .exponential import ExpPolar
+        if isinstance(arg, ExpPolar):
+            return exp(re(arg.args[0]))  # SymPy: exp_polar._eval_Abs
+        if isinstance(arg, PolarLift):
+            return abs_(arg.args[0])  # SymPy: polar_lift._eval_Abs
         if isinstance(arg, Sign) and arg.args[0].is_zero is False:
             return ONE
         if isinstance(arg, Conjugate):
@@ -861,3 +873,305 @@ def atan2(y: ExprLike, x: ExprLike) -> Expr:
     """``atan2(y, x)``, evaluated."""
     return Atan2.apply(to_expr(y), to_expr(x))
 
+
+
+
+# ---------------------------------------------------------------------
+# the polar numbers
+
+# PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:polar_lift
+class PolarLift(DefinedFunction):
+    """``polar_lift(z)``: ``z`` lifted to the Riemann surface of the
+    logarithm, unevaluated (``polar_lift`` evaluates)."""
+
+    function_name = 'polar_lift'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from .exponential import exp_polar
+        [z] = args
+        if z.is_number:
+            angle = arg(z)
+            if angle in (ZERO, mul(pi, Rational(1, 2)), mul(pi, Rational(-1, 2)), pi):
+                return mul(exp_polar(mul(I, angle)), abs_(z))
+        factors = z.args if isinstance(z, Mul) else (z,)
+        included: list[Expr] = []
+        excluded: list[Expr] = []
+        positive: list[Expr] = []
+        for f in factors:
+            if f.is_polar:
+                included.append(f)
+            elif f.is_positive:
+                positive.append(f)
+            else:
+                excluded.append(f)
+        if len(excluded) < len(factors):
+            if excluded:
+                return mul(mul(*(included + positive)), polar_lift(mul(*excluded)))
+            if included:
+                return mul(*(included + positive))
+            return mul(mul(*positive), exp_polar(ZERO))
+        return None
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return values[0]
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True, 'polar': True}
+
+
+def _unbranched(z: Expr) -> Optional[Expr]:
+    """SymPy's ``periodic_argument._getunbranched``: the argument of ``z``
+    on the Riemann surface of the logarithm, ``None`` when unknown."""
+    from .exponential import ExpPolar, log
+    factors = z.args if isinstance(z, Mul) else (z,)
+    total: Expr = ZERO
+    for a in factors:
+        if not a.is_polar:
+            total = add(total, arg(a))
+        elif isinstance(a, ExpPolar):
+            parts = as_real_imag(a.args[0])
+            if parts is None:
+                return None
+            total = add(total, parts[1])
+        elif isinstance(a, Pow):
+            parts = as_real_imag(a.exp)
+            if parts is None:
+                return None
+            total = add(total, mul(parts[0], unbranched_argument(a.base)), mul(parts[1], log(abs_(a.base))))
+        elif isinstance(a, PolarLift):
+            total = add(total, arg(a.args[0]))
+        else:
+            return None
+    return total
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:periodic_argument
+class PeriodicArgument(DefinedFunction):
+    """The argument of ``z`` reduced into an interval of length ``period``
+    (``oo`` for the unbranched argument), unevaluated
+    (``periodic_argument`` evaluates)."""
+
+    function_name = 'periodic_argument'
+    nargs = frozenset({2})
+    call_nargs = frozenset({2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from sympy_extras.core.logic import true
+        from sympy_extras.core.relational import ge
+        from .integers import Ceiling, ceiling
+        from .trigonometric import Atan
+        z, period = args
+        if not period.is_extended_positive:
+            return None
+        if period == oo and isinstance(z, PrincipalBranch):
+            return periodic_argument(*z.args)
+        if isinstance(z, PolarLift) and ge(period, mul(Integer(2), pi)) == true:
+            return periodic_argument(z.args[0], period)
+        if isinstance(z, Mul):
+            kept = [x for x in z.args if not x.is_positive]
+            if len(kept) != len(z.args):
+                return periodic_argument(mul(*kept), period)
+        unbranched = _unbranched(z)
+        if unbranched is None:
+            return None
+        if unbranched.has(PeriodicArgument) or unbranched.has(Atan2) or unbranched.has(Atan):
+            return None
+        if period == oo:
+            return unbranched
+        n = mul(ceiling(sub(div(unbranched, period), Rational(1, 2))), period)
+        if not n.has(Ceiling):
+            return sub(unbranched, n)
+        return None
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return None
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def unbranched_argument(z: ExprLike) -> Expr:
+    """``periodic_argument(z, oo)``."""
+    return periodic_argument(z, oo)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:principal_branch
+class PrincipalBranch(DefinedFunction):
+    """The polar number ``z`` reduced to the branch of arguments of length
+    ``period``, unevaluated (``principal_branch`` evaluates)."""
+
+    function_name = 'principal_branch'
+    nargs = frozenset({2})
+    call_nargs = frozenset({2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from sympy_extras.core.logic import true
+        from sympy_extras.core.relational import lt
+        from .exponential import ExpPolar, exp_polar
+        x, period = args
+        if isinstance(x, PolarLift):
+            return principal_branch(x.args[0], period)
+        if period == oo:
+            return x
+        whole = periodic_argument(x, oo)
+        branch = periodic_argument(x, period)
+        if whole != branch and not whole.has(PeriodicArgument) and not branch.has(PeriodicArgument):
+            lifted = polar_lift(x)
+            replaced = _replace_polar_lifts(lifted)
+            whole = periodic_argument(replaced, oo)
+            if not replaced.has(PolarLift):
+                result = mul(exp_polar(mul(I, sub(branch, whole))), replaced) if whole != branch else replaced
+                if not result.is_polar and not result.has(ExpPolar):
+                    result = mul(result, exp_polar(ZERO))
+                return result
+        if not x.free_symbols:
+            c: Expr = x
+            rest: tuple[Expr, ...] = ()
+        else:
+            coefficient_part = [f for f in (x.args if isinstance(x, Mul) else (x,)) if not f.free_symbols]
+            c = mul(*coefficient_part)
+            rest = tuple(f for f in (x.args if isinstance(x, Mul) else (x,)) if f.free_symbols)
+        others: list[Expr] = []
+        for y in rest:
+            if y.is_positive:
+                c = mul(c, y)
+            else:
+                others.append(y)
+        angle = periodic_argument(c, period)
+        if angle.has(PeriodicArgument):
+            return None
+        if angle.is_number and (unbranched_argument(c) != angle or (angle == 0 and others and c != ONE)):
+            if angle == 0:
+                return mul(abs_(c), principal_branch(mul(*others), period))
+            return mul(principal_branch(mul(exp_polar(mul(I, angle)), *others), period), abs_(c))
+        if angle.is_number and (lt(abs_(angle), div(period, Integer(2))) == true or angle == div(period, Integer(2))) \
+                and not others:
+            return mul(exp_polar(mul(angle, I)), abs_(c))
+        return None
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return None
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True, 'polar': True}
+
+
+def _replace_polar_lifts(e: Expr) -> Expr:
+    """``polar_lift(expr)`` kept around non-symbols only (SymPy's
+    ``pl.replace(polar_lift, mr)``)."""
+    if isinstance(e, PolarLift):
+        inner = _replace_polar_lifts(e.args[0])
+        return inner if isinstance(inner, Symbol) else polar_lift(inner)
+    if not e.args:
+        return e
+    rebuilt = e._evaluated(tuple(_replace_polar_lifts(a) if isinstance(a, Expr) else a for a in e.args))
+    return rebuilt if isinstance(rebuilt, Expr) else e
+
+
+def polar_lift(z: ExprLike) -> Expr:
+    """``polar_lift(z)``, evaluated."""
+    return PolarLift.apply(to_expr(z))
+
+
+def periodic_argument(z: ExprLike, period: ExprLike) -> Expr:
+    """``periodic_argument(z, period)``, evaluated."""
+    return PeriodicArgument.apply(to_expr(z), to_expr(period))
+
+
+def principal_branch(z: ExprLike, period: ExprLike) -> Expr:
+    """``principal_branch(z, period)``, evaluated."""
+    return PrincipalBranch.apply(to_expr(z), to_expr(period))
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:_polarify
+def _polarify(e: Expr, lift: bool, pause: bool = False) -> Expr:
+    from sympy_extras.core.basic import Atom
+    from sympy_extras.core.numbers import Exp1
+    if e.is_polar:
+        return e
+    if e.is_number and not pause:
+        return polar_lift(e)
+    if isinstance(e, Symbol) and not pause and lift:
+        return polar_lift(e)
+    if isinstance(e, Atom):
+        return e
+    if isinstance(e, Add):
+        rebuilt = add(*[_polarify(a, lift, pause=True) for a in e.args])
+        return polar_lift(rebuilt) if lift else rebuilt
+    if isinstance(e, Pow) and isinstance(e.base, Exp1):
+        return pow(e.base, _polarify(e.exp, lift))
+    if isinstance(e, DefinedFunction):
+        return type(e).apply(*[_polarify(a, lift) for a in e.args])
+    result = e._evaluated(tuple(_polarify(a, lift, pause=pause) if isinstance(a, Expr) else a for a in e.args))
+    return result if isinstance(result, Expr) else e
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:polarify
+def polarify(e: ExprLike, subs: bool = True, lift: bool = False) -> tuple[Expr, dict[Symbol, Symbol]]:
+    """``e`` with its numbers (and, with ``lift``, its symbols) turned into
+    polar numbers; with ``subs`` its symbols are replaced by polar dummies,
+    returned with the map back (as SymPy returns them). Without ``subs``
+    the map is empty."""
+    if lift:
+        subs = False
+    result = _polarify(to_expr(e), lift)
+    if not subs:
+        return (result, {})
+    replacements = {x: Dummy(x.name, polar=True) for x in result.free_symbols if isinstance(x, Symbol)}
+    substituted = result.subs(list(replacements.items()))
+    if not isinstance(substituted, Expr):
+        raise TypeError("an expression is expected")
+    return (substituted, {r: x for x, r in replacements.items()})
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:_unpolarify
+def _unpolarify(e: Basic, exponents_only: bool, pause: bool = False) -> Basic:
+    from sympy_extras.core.basic import Atom
+    from sympy_extras.core.logic import Boolean
+    from sympy_extras.core.relational import Eq, Ne, Relational
+    from .exponential import ExpPolar
+    if isinstance(e, Atom) or not e.args:
+        return e
+    if not pause:
+        if isinstance(e, ExpPolar):
+            inner = _unpolarify(e.args[0], exponents_only)
+            return exp(inner) if isinstance(inner, Expr) else e
+        if isinstance(e, PrincipalBranch) and e.args[1] == mul(Integer(2), pi):
+            return _unpolarify(e.args[0], exponents_only)
+        relation_ok = isinstance(e, Relational) and (not isinstance(e, (Eq, Ne)) or ZERO in e.args)
+        if isinstance(e, (Add, Mul)) or (isinstance(e, Boolean) and not isinstance(e, Relational)) or relation_ok:
+            return e._evaluated(tuple(_unpolarify(a, exponents_only) for a in e.args))
+        if isinstance(e, PolarLift):
+            return _unpolarify(e.args[0], exponents_only)
+    if isinstance(e, Pow):
+        exponent = _unpolarify(e.exp, exponents_only)
+        if not isinstance(exponent, Expr):
+            return e
+        base = _unpolarify(e.base, exponents_only, not (exponent.is_integer and not pause))
+        return pow(base, exponent) if isinstance(base, Expr) else e
+    if isinstance(e, DefinedFunction) and e.unbranched:
+        return e._evaluated(tuple(_unpolarify(a, exponents_only, exponents_only) for a in e.args))
+    return e._evaluated(tuple(_unpolarify(a, exponents_only, True) for a in e.args))
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:unpolarify
+def unpolarify(e: ExprLike, exponents_only: bool = False) -> Expr:
+    """``e`` with its polar numbers turned into ordinary ones where that
+    does not change its value: ``exp_polar`` into ``exp``, ``polar_lift``
+    removed, ``principal_branch(z, 2*pi)`` into ``z``, repeated until
+    nothing changes."""
+    from .exponential import exp_polar
+    current: Basic = to_expr(e)
+    pause = exponents_only
+    while True:
+        result = _unpolarify(current, exponents_only, pause)
+        if result == current:
+            break
+        current = result
+    replaced = current.subs([(exp_polar(ZERO), ONE), (polar_lift(ZERO), ZERO)])
+    if not isinstance(replaced, Expr):
+        raise TypeError("an expression is expected")
+    return replaced

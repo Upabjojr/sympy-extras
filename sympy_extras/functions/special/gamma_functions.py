@@ -80,6 +80,8 @@ def _poles(z: mpmath.mpc) -> bool:
 class Gamma(DefinedFunction):
     """The gamma function, unevaluated (``gamma`` evaluates)."""
 
+    unbranched = True
+
     function_name = 'gamma'
 
     @classmethod
@@ -523,6 +525,8 @@ def uppergamma(a: ExprLike, z: ExprLike) -> Expr:
 class MultiGamma(DefinedFunction):
     """The multivariate gamma function ``multigamma(x, p)``, unevaluated
     (``multigamma`` evaluates for a numerical order ``p``)."""
+
+    unbranched = True
 
     function_name = 'multigamma'
     nargs = frozenset({2})

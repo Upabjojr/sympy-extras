@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- The polar numbers `exp_polar`, `polar_lift`, `periodic_argument`,
+  `unbranched_argument`, `principal_branch`, `polarify`, `unpolarify`,
+  ported from SymPy; `Expr._eval_power_node` and `DefinedFunction.unbranched`.
 - `hn1`, `hn2`, `marcumq`, `chebyshevt_root`, `chebyshevu_root`,
   `jacobi_normalized`, `tribonacci`, `motzkin` and `andre`, ported from
   SymPy.

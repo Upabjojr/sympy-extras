@@ -79,6 +79,8 @@ class MathieuS(MathieuBase):
     """The Mathieu sine ``mathieus(a, q, z)``, unevaluated (``mathieus``
     evaluates)."""
 
+    unbranched = True
+
     function_name = 'mathieus'
 
     @classmethod
@@ -100,6 +102,8 @@ class MathieuS(MathieuBase):
 class MathieuC(MathieuBase):
     """The Mathieu cosine ``mathieuc(a, q, z)``, unevaluated (``mathieuc``
     evaluates)."""
+
+    unbranched = True
 
     function_name = 'mathieuc'
 
@@ -123,6 +127,8 @@ class MathieuSPrime(MathieuBase):
     """The derivative ``mathieusprime(a, q, z)`` of ``mathieus``,
     unevaluated (``mathieusprime`` evaluates)."""
 
+    unbranched = True
+
     function_name = 'mathieusprime'
 
     @classmethod
@@ -145,6 +151,8 @@ class MathieuSPrime(MathieuBase):
 class MathieuCPrime(MathieuBase):
     """The derivative ``mathieucprime(a, q, z)`` of ``mathieuc``,
     unevaluated (``mathieucprime`` evaluates)."""
+
+    unbranched = True
 
     function_name = 'mathieucprime'
 

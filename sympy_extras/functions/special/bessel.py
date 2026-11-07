@@ -432,6 +432,8 @@ class AiryAi(AiryBase):
     """The Airy function ``airyai(z)``, unevaluated (``airyai``
     evaluates)."""
 
+    unbranched = True
+
     function_name = 'airyai'
 
     @classmethod
@@ -457,6 +459,8 @@ class AiryAi(AiryBase):
 class AiryBi(AiryBase):
     """The Airy function ``airybi(z)``, unevaluated (``airybi``
     evaluates)."""
+
+    unbranched = True
 
     function_name = 'airybi'
 
@@ -486,6 +490,8 @@ class AiryAiPrime(AiryBase):
     """The derivative ``airyaiprime(z)`` of ``airyai``, unevaluated
     (``airyaiprime`` evaluates)."""
 
+    unbranched = True
+
     function_name = 'airyaiprime'
 
     @classmethod
@@ -511,6 +517,8 @@ class AiryAiPrime(AiryBase):
 class AiryBiPrime(AiryBase):
     """The derivative ``airybiprime(z)`` of ``airybi``, unevaluated
     (``airybiprime`` evaluates)."""
+
+    unbranched = True
 
     function_name = 'airybiprime'
 

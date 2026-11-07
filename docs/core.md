@@ -445,6 +445,17 @@ Chebyshev roots and `jacobi_normalized` (functions, in `polynomials.py`),
 and `tribonacci`, `motzkin` (with SymPy's shift: `motzkin(n)` is the
 Motzkin number of `n - 1`) and `andre` (in `numbers.py`).
 
+The polar numbers are ported from SymPy: `exp_polar` (`ExpPolar`, in
+`exponential.py`: it never evaluates, its powers are `exp_polar(z*b)`
+through the new `Expr._eval_power_node` hook, products collect it with
+the base `exp_polar(1)` as SymPy's `as_base_exp` makes them), and in
+`complexes.py` `polar_lift`, `periodic_argument`, `unbranched_argument`,
+`principal_branch`, `polarify` and `unpolarify` (with SymPy's
+`unbranched` flag, now on `DefinedFunction` and set on the 35 functions
+SymPy marks). One API difference: `polarify` always returns the pair
+(expression, substitution map), the map empty without `subs`, where
+SymPy returns the expression alone.
+
 The incomplete gamma functions (`LowerGamma`, `UpperGamma` with
 `lowergamma`, `uppergamma`) and the exponential integrals (`Expint`,
 `EiNode` with `expint`, `Ei`) are ported from SymPy: the special values
