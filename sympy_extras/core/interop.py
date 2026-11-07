@@ -683,7 +683,8 @@ def _fill_function_tables() -> None:
     from sympy_extras.functions.elementary.exponential import Exp, Log
     from sympy_extras.functions.elementary import complexes as c, hyperbolic as h, integers as n, trigonometric as t
     from sympy_extras.functions.combinatorial import factorials as f
-    from sympy_extras.functions.special import delta_functions as d, gamma_functions as g, zeta_functions as z
+    from sympy_extras.functions.special import delta_functions as d, error_functions as e, gamma_functions as g
+    from sympy_extras.functions.special import zeta_functions as z
     pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
         (Exp, sympy.exp), (Log, sympy.log), (t.Sin, sympy.sin), (t.Cos, sympy.cos), (t.Tan, sympy.tan),
         (t.Cot, sympy.cot), (t.Sec, sympy.sec), (t.Csc, sympy.csc), (t.Asin, sympy.asin), (t.Acos, sympy.acos),
@@ -697,7 +698,8 @@ def _fill_function_tables() -> None:
         (f.FallingFactorial, sympy.FallingFactorial), (g.Gamma, sympy.gamma), (g.LogGamma, sympy.loggamma),
         (g.PolyGamma, sympy.polygamma), (g.DiGamma, sympy.digamma), (g.TriGamma, sympy.trigamma),
         (d.DiracDelta, sympy.DiracDelta), (d.Heaviside, sympy.Heaviside), (z.Zeta, sympy.zeta),
-        (z.DirichletEta, sympy.dirichlet_eta), (z.PolyLog, sympy.polylog)]
+        (z.DirichletEta, sympy.dirichlet_eta), (z.PolyLog, sympy.polylog), (e.Erf, sympy.erf), (e.Erfc, sympy.erfc),
+        (e.Erfi, sympy.erfi), (e.Erfinv, sympy.erfinv), (e.Erfcinv, sympy.erfcinv)]
     for native, counterpart in pairs:
         _NATIVE_TO_SYMPY[native] = counterpart
         _SYMPY_TO_NATIVE[counterpart] = native

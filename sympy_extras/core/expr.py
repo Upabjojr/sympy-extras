@@ -622,7 +622,8 @@ class Expr(Basic):
     def could_extract_minus_sign(self) -> bool:
         """Whether the expression is printed with a leading minus."""
         c, _ = self.as_coeff_Mul()
-        return c.is_negative is True
+        # SymPy's _coeff_isneg: an extended negative number (-oo*I counts)
+        return c.is_extended_negative is True
 
     def primitive(self) -> tuple[Number, Expr]:
         """The positive rational content of the terms and the rest."""

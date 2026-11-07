@@ -141,7 +141,8 @@ class Mul(AssocOp):
         return (mul(*[n for n, _ in parts]), mul(*[d for _, d in parts]))
 
     def could_extract_minus_sign(self) -> bool:
-        return self.as_coeff_Mul()[0].is_negative is True
+        # SymPy's _coeff_isneg: an extended negative coefficient (-oo*I counts)
+        return self.as_coeff_Mul()[0].is_extended_negative is True
 
     def primitive(self) -> tuple[Number, Expr]:
         # SymPy: the absolute rational coefficient and the rest with the sign

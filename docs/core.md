@@ -390,6 +390,17 @@ now differentiates as SymPy's `Function.fdiff` does (`Derivative(f(x),
 x)`, or `Subs` for a compound argument). Not ported: `lerchphi`,
 `stieltjes`, `riemann_xi`, the polar arguments of `polylog`.
 
+The error functions (`Erf`, `Erfc`, `Erfi`, `Erfinv`, `Erfcinv` with
+`erf`, `erfc`, `erfi`, `erfinv`, `erfcinv`) are ported from SymPy's
+`error_functions.py`: the values at `0` and the infinities, the
+compositions with the inverses, the odd symmetries, derivatives,
+conjugates, SymPy's complex parts and facts. One deliberate difference:
+`erfcinv` of a float is evaluated, where SymPy, without it in mpmath,
+leaves the node. `could_extract_minus_sign` now counts an extended
+negative coefficient, as SymPy's `_coeff_isneg` does (`-oo*I`). Not
+ported: `erf2`, `erf2inv`, the Fresnel, exponential and trigonometric
+integrals.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a

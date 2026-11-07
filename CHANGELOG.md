@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.functions.special.error_functions`: `Erf`, `Erfc`, `Erfi`,
+  `Erfinv`, `Erfcinv` with the evaluating `erf`, `erfc`, `erfi`, `erfinv`,
+  `erfcinv`, ported from SymPy.
 - `sympy_extras.functions.special.zeta_functions`: `Zeta`, `DirichletEta`,
   `PolyLog` with the evaluating `zeta`, `dirichlet_eta`, `polylog`, ported
   from SymPy; `polygamma` gains its zeta values and Gauss' digamma
