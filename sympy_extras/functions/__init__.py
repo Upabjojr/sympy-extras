@@ -16,7 +16,7 @@ from .combinatorial.numbers import (Andre, Motzkin, Tribonacci, andre, motzkin, 
                                    divisor_sigma, euler, fibonacci, genocchi, harmonic, jacobi_symbol, kronecker_symbol,
                                    legendre_symbol, lucas, mobius, partition, primenu, primeomega, primepi,
                                    reduced_totient, totient, udivisor_sigma)
-from .special.bessel import (MarcumQ, SphericalHankel1, SphericalHankel2, hn1, hn2, marcumq, AiryAi, AiryAiPrime, AiryBi, AiryBiPrime, BesselI, BesselJ, BesselK, BesselY, Hankel1,
+from .special.bessel import (jn_zeros, MarcumQ, SphericalHankel1, SphericalHankel2, hn1, hn2, marcumq, AiryAi, AiryAiPrime, AiryBi, AiryBiPrime, BesselI, BesselJ, BesselK, BesselY, Hankel1,
                              Hankel2, SphericalJ, SphericalY, airyai, airyaiprime, airybi, airybiprime, besseli, besselj,
                              besselk, bessely, hankel1, hankel2, jn, yn)
 from .special.beta_functions import Beta, BetaInc, BetaIncRegularized, beta, betainc, betainc_regularized
@@ -28,7 +28,8 @@ from .special.error_functions import (E1, Erf2, Erf2inv, erf2, erf2inv, Chi, Chi
                                       erfcinv, erfi, erfinv, expint, fresnelc, fresnels, li)
 from .special.gamma_functions import (MultiGamma, multigamma, DiGamma, Gamma, LogGamma, LowerGamma, PolyGamma, TriGamma, UpperGamma, digamma,
                                       gamma, loggamma, lowergamma, polygamma, trigamma, uppergamma)
-from .special.hyper import Hyper, MeijerG, hyper, meijerg
+from .special.bsplines import bspline_basis, bspline_basis_set
+from .special.hyper import AppellF1, Hyper, MeijerG, appellf1, hyper, meijerg
 from .special.mathieu_functions import (MathieuC, MathieuCPrime, MathieuS, MathieuSPrime, mathieuc, mathieucprime,
                                         mathieus, mathieusprime)
 from .special.polynomials import (chebyshevt_root, chebyshevu_root, jacobi_normalized, AssocLaguerre, AssocLegendre, ChebyshevT, ChebyshevU, Gegenbauer, Hermite, HermiteProb,
@@ -66,7 +67,8 @@ __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', '
            'HermiteProb', 'jacobi', 'gegenbauer', 'assoc_legendre', 'hermite_prob', 'YnmNode', 'ZnmNode', 'Ynm', 'Znm',
            'Ynm_c', 'KroneckerDeltaNode', 'LeviCivitaNode', 'KroneckerDelta', 'LeviCivita', 'MathieuS', 'MathieuC',
            'MathieuSPrime', 'MathieuCPrime', 'mathieus', 'mathieuc', 'mathieusprime', 'mathieucprime',
-           'SingularityFunctionNode', 'SingularityFunction', 'Hyper', 'MeijerG', 'hyper', 'meijerg', 'LowerGamma', 'UpperGamma', 'lowergamma', 'uppergamma',
+           'SingularityFunctionNode', 'SingularityFunction', 'Hyper', 'MeijerG', 'hyper', 'meijerg', 'AppellF1', 'appellf1',
+           'bspline_basis', 'bspline_basis_set', 'jn_zeros', 'LowerGamma', 'UpperGamma', 'lowergamma', 'uppergamma',
            'Expint', 'EiNode', 'expint', 'Ei', 'SiNode', 'CiNode', 'ShiNode', 'ChiNode', 'LiNode', 'OffsetLiNode', 'Si',
            'Ci', 'Shi', 'Chi', 'li', 'Li', 'Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv', 'Zeta', 'DirichletEta', 'PolyLog', 'zeta', 'dirichlet_eta', 'polylog', 'DiracDelta', 'Heaviside', 'dirac_delta', 'heaviside', 'Gamma', 'LogGamma', 'PolyGamma', 'DiGamma', 'TriGamma', 'gamma', 'loggamma', 'polygamma', 'digamma',
            'trigamma', 'Max', 'Min', 'max_', 'min_', 'ExprCondPair', 'Piecewise', 'piecewise', 'Sin', 'Cos', 'Tan', 'Cot', 'Sec', 'Csc', 'sin', 'cos', 'tan', 'cot', 'sec',

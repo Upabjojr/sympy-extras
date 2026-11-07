@@ -10,6 +10,8 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `bspline_basis`, `bspline_basis_set`, `appellf1` and `jn_zeros`, ported
+  from SymPy.
 - `adjoint`, `transpose` and `piecewise_fold`, ported from SymPy.
 - The polar numbers `exp_polar`, `polar_lift`, `periodic_argument`,
   `unbranched_argument`, `principal_branch`, `polarify`, `unpolarify`,

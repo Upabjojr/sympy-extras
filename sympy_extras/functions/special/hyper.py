@@ -13,7 +13,9 @@ Both have the derivative in the argument (``Derivative`` when a
 parameter depends on the variable: SymPy's derivatives in the
 parameters are not available either), mpmath values, and ``hyper`` its
 radius of convergence. Not ported: ``hyperexpand``, the series,
-``convergence_statement``, the polar arguments and ``appellf1``.
+``convergence_statement`` and the polar arguments. Appell's ``appellf1``
+(a function of the core, its parameters being plain arguments) is here
+too.
 
 Examples
 ========
@@ -53,7 +55,7 @@ from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.sorting import ClassKey, default_sort_key
 from sympy_extras.core.symbol import Symbol
 
-__all__ = ['Hyper', 'MeijerG', 'hyper', 'meijerg']
+__all__ = ['Hyper', 'MeijerG', 'AppellF1', 'hyper', 'meijerg', 'appellf1']
 
 Parameters = Union[Tuple, Sequence[ExprLike]]
 ONE = Integer(1)
@@ -318,3 +320,55 @@ def meijerg(an: Parameters, aother: Parameters, bm: Parameters, bother: Paramete
             if isinstance(d, Rational) and d.q == 1 and d.p > 0:
                 raise ValueError("no parameter a1, ..., an may differ from any b1, ..., bm by a positive integer")
     return MeijerG(lists[0], lists[1], lists[2], lists[3], z)
+
+
+
+# PORTED FROM SYMPY: sympy/functions/special/hyper.py:appellf1
+from sympy_extras.core.function import DefinedFunction  # noqa: E402 (the classes above do not need it)
+
+
+class AppellF1(DefinedFunction):
+    """Appell's hypergeometric function ``appellf1(a, b1, b2, c, x, y)``,
+    unevaluated (``appellf1`` evaluates): the symmetry ``(b1, x) <-> (b2,
+    y)`` put in canonical order, ``1`` at ``x = y = 0``."""
+
+    function_name = 'appellf1'
+    nargs = frozenset({6})
+    call_nargs = frozenset({6})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        a, b1, b2, c, x, y = args
+        if default_sort_key(b1) > default_sort_key(b2):
+            return appellf1(a, b2, b1, c, y, x)
+        if b1 == b2 and default_sort_key(x) > default_sort_key(y):
+            return appellf1(a, b1, b2, c, y, x)
+        if x == 0 and y == 0:
+            return ONE
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        from sympy_extras.core.function import Derivative
+        a, b1, b2, c, x, y = self.args
+        if argindex == 5:
+            return mul(div(mul(a, b1), c), appellf1(add(a, ONE), add(b1, ONE), b2, add(c, ONE), x, y))
+        if argindex == 6:
+            return mul(div(mul(a, b2), c), appellf1(add(a, ONE), b1, add(b2, ONE), add(c, ONE), x, y))
+        parameter = self.args[argindex - 1]
+        if isinstance(parameter, Symbol):
+            return Derivative(self, parameter)
+        return DefinedFunction.fdiff(self, argindex)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        try:
+            return mpmath.mpc(mpmath.appellf1(*values))
+        except (ValueError, ZeroDivisionError, mpmath.libmp.NoConvergence):
+            return None
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def appellf1(a: ExprLike, b1: ExprLike, b2: ExprLike, c: ExprLike, x: ExprLike, y: ExprLike) -> Expr:
+    """``appellf1(a, b1, b2, c, x, y)``, evaluated."""
+    return AppellF1.apply(to_expr(a), to_expr(b1), to_expr(b2), to_expr(c), to_expr(x), to_expr(y))

@@ -819,7 +819,8 @@ sympy_extras/
             tensor_functions.py KroneckerDelta, LeviCivita (ported from SymPy)
             mathieu_functions.py mathieus, mathieuc and their derivatives (ported from SymPy)
             singularity_functions.py SingularityFunction (ported from SymPy)
-            hyper.py         Hyper, MeijerG and hyper, meijerg (ported from SymPy)
+            hyper.py         Hyper, MeijerG, AppellF1 and hyper, meijerg, appellf1 (ported from SymPy)
+            bsplines.py      bspline_basis, bspline_basis_set (ported from SymPy)
             elliptic_integrals.py EllipticK, EllipticF, EllipticE, EllipticPi and elliptic_k, ... (ported from SymPy)
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations

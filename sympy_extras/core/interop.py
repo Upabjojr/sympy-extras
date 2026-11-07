@@ -706,6 +706,7 @@ def _fill_function_tables() -> None:
     from sympy_extras.functions.special import polynomials as op, zeta_functions as z
     from sympy_extras.functions.special import spherical_harmonics as shm, tensor_functions as tens
     from sympy_extras.functions.special import mathieu_functions as mat, singularity_functions as sing
+    from sympy_extras.functions.special import hyper as hy
     from sympy_extras.functions.combinatorial import numbers as cn
     pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
         (Exp, sympy.exp), (Log, sympy.log), (LambertW, sympy.LambertW), (ExpPolar, sympy.exp_polar),
@@ -740,7 +741,7 @@ def _fill_function_tables() -> None:
         (bs.Hankel1, sympy.hankel1), (bs.Hankel2, sympy.hankel2), (bs.SphericalJ, sympy.jn), (bs.SphericalY, sympy.yn),
         (bs.AiryAi, sympy.airyai), (bs.AiryBi, sympy.airybi), (bs.AiryAiPrime, sympy.airyaiprime),
         (bs.AiryBiPrime, sympy.airybiprime), (bs.SphericalHankel1, sympy.hn1), (bs.SphericalHankel2, sympy.hn2),
-        (bs.MarcumQ, sympy.marcumq), (cn.Tribonacci, sympy.tribonacci), (cn.Motzkin, sympy.motzkin),
+        (bs.MarcumQ, sympy.marcumq), (hy.AppellF1, sympy.appellf1), (cn.Tribonacci, sympy.tribonacci), (cn.Motzkin, sympy.motzkin),
         (cn.Andre, sympy.andre), (op.Legendre, sympy.legendre), (op.ChebyshevT, sympy.chebyshevt),
         (op.ChebyshevU, sympy.chebyshevu), (op.Hermite, sympy.hermite), (op.Laguerre, sympy.laguerre),
         (op.AssocLaguerre, sympy.assoc_laguerre), (op.Jacobi, sympy.jacobi), (op.Gegenbauer, sympy.gegenbauer),

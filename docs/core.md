@@ -460,7 +460,11 @@ noncommutative too (it claimed commutativity). `piecewise_fold` brings
 the `Piecewise` of sums, products and functions to the top, combining
 pieces with the same conditions, in SymPy's three `evaluate` modes;
 `piecewise_exclusive` and `piecewise_simplify` wait for the simplification
-of conditions.
+of conditions. The B-spline bases `bspline_basis` and `bspline_basis_set`
+(in `special/bsplines.py`), Appell's `appellf1` (`AppellF1`, in
+`hyper.py`) and the spherical Bessel zeros `jn_zeros` (in `bessel.py`)
+are ported too; `interpolating_spline` needs SymPy's `linsolve` and is
+not.
 
 The incomplete gamma functions (`LowerGamma`, `UpperGamma` with
 `lowergamma`, `uppergamma`) and the exponential integrals (`Expint`,

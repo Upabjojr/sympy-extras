@@ -183,7 +183,8 @@ sympy_extras/
             tensor_functions.py KroneckerDeltaNode, LeviCivitaNode / KroneckerDelta, LeviCivita, PORTED FROM SYMPY
             mathieu_functions.py MathieuS, MathieuC, MathieuSPrime, MathieuCPrime / mathieus, ..., PORTED FROM SYMPY
             singularity_functions.py SingularityFunctionNode / SingularityFunction, PORTED FROM SYMPY
-            hyper.py         Hyper, MeijerG (Expr nodes with parameter lists) / hyper, meijerg, PORTED FROM SYMPY
+            hyper.py         Hyper, MeijerG (Expr nodes with parameter lists), AppellF1 / hyper, meijerg, appellf1, PORTED FROM SYMPY
+            bsplines.py      bspline_basis, bspline_basis_set, PORTED FROM SYMPY
             elliptic_integrals.py EllipticK, EllipticF, EllipticE, EllipticPi / elliptic_k, ..., PORTED FROM SYMPY (Fresnel in error_functions.py)
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,
                              Subs, Order, ...) and evaluating functions (add, mul, pow, mod, eq, and_, or_, diff,

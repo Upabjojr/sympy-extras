@@ -57,7 +57,7 @@ from sympy_extras.core.power import pow
 __all__ = ['BesselBase', 'BesselJ', 'BesselY', 'BesselI', 'BesselK', 'Hankel1', 'Hankel2', 'SphericalJ', 'SphericalY',
            'AiryAi', 'AiryBi', 'AiryAiPrime', 'AiryBiPrime', 'besselj', 'bessely', 'besseli', 'besselk', 'hankel1',
            'hankel2', 'jn', 'yn', 'airyai', 'airybi', 'airyaiprime', 'airybiprime', 'SphericalHankel1', 'SphericalHankel2',
-           'MarcumQ', 'hn1', 'hn2', 'marcumq']
+           'MarcumQ', 'hn1', 'hn2', 'marcumq', 'jn_zeros']
 
 ONE = Integer(1)
 MINUS_ONE = Integer(-1)
@@ -674,3 +674,17 @@ def hn2(nu: ExprLike, z: ExprLike) -> Expr:
 def marcumq(m: ExprLike, a: ExprLike, b: ExprLike) -> Expr:
     """``marcumq(m, a, b)``, evaluated."""
     return MarcumQ.apply(to_expr(m), to_expr(a), to_expr(b))
+
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:jn_zeros (method "sympy")
+def jn_zeros(n: int, k: int, dps: int = 15) -> list[Expr]:
+    """The first ``k`` zeros of the spherical Bessel function ``jn(n, x)``,
+    floats at ``dps`` digits (mpmath's ``besseljzero`` of order ``n + 1/2``)."""
+    from sympy_extras.core.numbers import Float, dps_to_prec
+    prec = dps_to_prec(dps)
+    zeros: list[Expr] = []
+    with mpmath.workprec(prec):
+        for index in range(1, k + 1):
+            zeros.append(Float(str(mpmath.besseljzero(mpmath.mpf(n) + mpmath.mpf(0.5), index)), dps=dps))
+    return zeros
