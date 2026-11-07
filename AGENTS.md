@@ -181,6 +181,8 @@ sympy_extras/
             polynomials.py   Legendre, ChebyshevT, ChebyshevU, Hermite, Laguerre, AssocLaguerre, Jacobi, Gegenbauer, AssocLegendre, HermiteProb / legendre, ..., PORTED FROM SYMPY
             spherical_harmonics.py YnmNode, ZnmNode / Ynm, Znm, Ynm_c, PORTED FROM SYMPY
             tensor_functions.py KroneckerDeltaNode, LeviCivitaNode / KroneckerDelta, LeviCivita, PORTED FROM SYMPY
+            mathieu_functions.py MathieuS, MathieuC, MathieuSPrime, MathieuCPrime / mathieus, ..., PORTED FROM SYMPY
+            singularity_functions.py SingularityFunctionNode / SingularityFunction, PORTED FROM SYMPY
             elliptic_integrals.py EllipticK, EllipticF, EllipticE, EllipticPi / elliptic_k, ..., PORTED FROM SYMPY (Fresnel in error_functions.py)
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,
                              Subs, Order, ...) and evaluating functions (add, mul, pow, mod, eq, and_, or_, diff,

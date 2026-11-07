@@ -504,6 +504,16 @@ the optional index range of `KroneckerDelta` (a `Tuple` argument, which
 the core's functions, taking expressions, cannot hold), the Fermi level
 assumptions and the trigonometric expansion of `Ynm`.
 
+The Mathieu functions (`mathieus`, `mathieuc`, `mathieusprime`,
+`mathieucprime`) and the singularity functions (`SingularityFunction`,
+class `SingularityFunctionNode`) are ported from SymPy: the
+trigonometric limits at `q = 0`, the parities, derivatives and
+conjugates; the values of `<x - a>**n` left and right of the offset and
+at it, the refused arguments and the derivative lowering the exponent.
+The Mathieu functions have no numerical values (neither SymPy nor mpmath
+has them). The comparison brought `Infinity._eval_power` for symbolic
+exponents into the core (`oo**p = oo` for positive `p`).
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a

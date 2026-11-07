@@ -234,6 +234,21 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
                 return Integer(0)
             sign = Integer(1) if isinstance(coefficient, Infinity) else Integer(-1)
             return mul(oo, pow(mul(sign, direction), exp))
+    if isinstance(base, Infinity) and not isinstance(exp, Number):
+        # PORTED FROM SYMPY: sympy/core/numbers.py:Infinity._eval_power
+        if exp.is_extended_positive:
+            return oo
+        if exp.is_extended_negative:
+            return Integer(0)
+        if exp.is_extended_real is False and exp.is_number:
+            from sympy_extras.functions.elementary.complexes import re
+            real = re(exp)
+            if real.is_positive:
+                return zoo
+            if real.is_negative:
+                return Integer(0)
+            if real.is_zero:
+                return nan
     if isinstance(base, Exp1):
         # E**a is exp(a) (E**0 is 1, E**(I*pi) is -1)
         from sympy_extras.functions.elementary.exponential import exp as exponential
