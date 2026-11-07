@@ -202,12 +202,41 @@ def mul(*args: ExprLike) -> Expr:
         return _raw(_flattened(factors))
     if any(f.is_Order for f in _flattened(factors)):
         return _with_orders(factors)
+    two = _two_argument_rule(factors)
+    if two is not None:
+        return two
     for _ in range(_MAX_PASSES):
         result, again = _mul_pass(factors)
         if again is None:
             return result
         factors = again
     return _raw(factors)
+
+
+# PORTED FROM SYMPY: sympy/core/mul.py:Mul.flatten (the 2-arg hack)
+def _two_argument_rule(factors: list[Expr]) -> Optional[Expr]:
+    """SymPy's rule for exactly two factors (the factors ``1`` dropped
+    first), a nonzero rational ``a`` and ``b = r*s`` with ``s`` a sum:
+    ``a*r*s`` stays an undistributed product when ``r != 1`` (``-(1 -
+    x)/5`` for ``1/5`` and ``-(1 - x)``), and ``a`` is distributed over
+    ``s`` when ``r = 1``; ``None`` otherwise."""
+    rest = [f for f in factors if not (isinstance(f, Integer) and f.p == 1)]
+    if len(rest) != 2:
+        return None
+    a, b = rest
+    if isinstance(b, Rational):
+        a, b = b, a
+    if not isinstance(a, Rational) or a.p == 0:
+        return None
+    r, s = b.as_coeff_Mul()
+    if not isinstance(s, Add):
+        return None
+    if not _is_one(r):
+        ar = a.number_mul(r)
+        return s if _is_one(ar) else Mul(ar, s)
+    if global_parameters.distribute and s.is_commutative is not False:
+        return add(*[_keep_coeff(a, t) for t in s.args])
+    return None
 
 
 def _is_one(n: Number) -> bool:

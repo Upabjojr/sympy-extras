@@ -119,7 +119,8 @@ def test_construction_printing_errors() -> None:
 def test_cancel_matches_sympy(seed: int) -> None:
     from sympy_extras.polys.polytools import cancel
     rng = random.Random(seed)
-    atoms: list[sympy.Expr] = [sx, sy, sa, sympy.sin(sx), sympy.exp(sx), 2**sx]
+    atoms: list[sympy.Expr] = [sx, sy, sa, sympy.sin(sx), sympy.exp(sx), 2**sx, sympy.sqrt(2), sympy.sqrt(sx),
+                               sx**sympy.Rational(3, 2)]
 
     def rational(k: int) -> sympy.Expr:
         return sympy.Add(*[rng.randint(-3, 3) * sympy.Rational(rng.choice([1, 2]), rng.choice([1, 3]))

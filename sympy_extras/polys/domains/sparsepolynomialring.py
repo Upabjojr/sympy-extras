@@ -54,7 +54,7 @@ from .domain import Domain
 from .integerring import ZZ, IntegerRing
 from .rationalfield import QQ
 
-__all__ = ['SparsePolynomialRing', 'RationalPolynomialRing', 'IteratedPolynomialRing']
+__all__ = ['SparsePolynomialRing', 'IntegerPolynomialRing', 'RationalPolynomialRing', 'IteratedPolynomialRing']
 
 T = TypeVar('T')
 U = TypeVar('U')
@@ -253,6 +253,34 @@ class SparsePolynomialRing(Domain[PolyElement[T]], Generic[T]):
         return sum(self.ground.size(c) for c in a.terms.values()) or 1
 
 
+class IntegerPolynomialRing(SparsePolynomialRing[int]):
+    """``ZZ[y1, ..., yk]`` with SymPy's gcd of polynomials which are not
+    terms: the heuristic gcd (:func:`~sympy_extras.polys.heuristicgcd.
+    heugcd`) on the deflated polynomials, the subresultant gcd when it
+    fails (the same canonical result, positive leading coefficient).
+
+    >>> from sympy_extras.core import Symbol
+    >>> x, y = Symbol('x'), Symbol('y')
+    >>> R = IntegerPolynomialRing(['x', 'y'])
+    >>> R.to_expr(R.gcd(R.from_expr(x**4 - y**2), R.from_expr(x**6 + y**3)))
+    x**2 + y
+    """
+
+    def __init__(self, names: Sequence[str]) -> None:
+        super().__init__(ZZ, names)
+
+    # PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement._gcd_ZZ (with the deflation of cofactors)
+    def _gcd_general(self, a: PolyElement[int], b: PolyElement[int]) -> PolyElement[int]:
+        from ..heuristicgcd import deflate, heugcd, inflate
+        from ..polyerrors import HeuristicGCDFailed
+        steps, (f, g) = deflate([a, b])
+        try:
+            h = heugcd(f, g)[0]
+        except HeuristicGCDFailed:
+            h = SparsePolynomialRing._gcd_general(self, f, g)
+        return inflate(h, steps)
+
+
 class RationalPolynomialRing(SparsePolynomialRing[Fraction]):
     """``QQ[y1, ..., yk]`` with SymPy's conventions: the ground gcd of
     two rationals is the gcd of the numerators over the lcm of the
@@ -279,7 +307,7 @@ class RationalPolynomialRing(SparsePolynomialRing[Fraction]):
 
     # PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement._gcd_QQ
     def _gcd_general(self, a: PolyElement[Fraction], b: PolyElement[Fraction]) -> PolyElement[Fraction]:
-        Z = SparsePolynomialRing(ZZ, self.names)
+        Z = IntegerPolynomialRing(self.names)
         h = Z._gcd_general(self._cleared(a, Z), self._cleared(b, Z))
         result = self.ring.from_dict({m: Fraction(c) for m, c in h.terms.items()})
         return result.exquo_ground(result.LC)

@@ -70,7 +70,8 @@ from sympy_extras.core.symbol import Symbol
 
 from . import densearith, densebasic, euclidtools, factortools, sqfreetools
 from .domains import QQ, ZZ
-from .domains.sparsepolynomialring import IteratedPolynomialRing, RationalPolynomialRing, SparsePolynomialRing
+from .domains.sparsepolynomialring import (IntegerPolynomialRing, IteratedPolynomialRing, RationalPolynomialRing,
+                                           SparsePolynomialRing)
 from .polyerrors import CoercionFailed, GeneratorsError, GeneratorsNeeded, OperationNotSupported, PolynomialError
 from .polyutils import dict_from_expr
 from .rings import Monomial, PolyElement, PolyRing
@@ -621,8 +622,8 @@ class Poly:
     def _integer_ring(self) -> SparsePolynomialRing[int]:
         names = _internal_names(len(self._gens), len(self._domain.params))
         if not self._domain.params:
-            return SparsePolynomialRing(ZZ, names)
-        return IteratedPolynomialRing(SparsePolynomialRing(ZZ, names[len(self._gens):]), names[:len(self._gens)])
+            return IntegerPolynomialRing(names)
+        return IteratedPolynomialRing(IntegerPolynomialRing(names[len(self._gens):]), names[:len(self._gens)])
 
     def _rational_ring(self) -> SparsePolynomialRing[Fraction]:
         names = _internal_names(len(self._gens), len(self._domain.params))
@@ -958,7 +959,7 @@ def _cancel_reps(f: dict[Monomial, Fraction], g: dict[Monomial, Fraction], n: in
     """``f/g`` in lowest terms over ``ZZ``: ``(p, q)`` with ``f/g = p/q``,
     the integer denominators cleared and their gcd removed, the leading
     coefficient of ``q`` positive."""
-    Z = SparsePolynomialRing(ZZ, _internal_names(n, 0))
+    Z = IntegerPolynomialRing(_internal_names(n, 0))
     if not f:
         return Z.zero, Z.one, Z
     cq = 1
@@ -1017,10 +1018,10 @@ def cancel(f: ExprLike) -> Expr:
     >>> cancel((2*x**2 - 2)/(1 - x**2*y) + 1/x)
     (-2*x**3 + x**2*y + 2*x - 1)/(x**3*y - x)
 
-    Not ported yet: ``signsimp`` before the cancellation, the domains
-    ``ZZ_I``, ``RR`` and ``EX``.
+    Not ported yet: the domains ``ZZ_I``, ``RR`` and ``EX``.
     """
-    e = to_expr(f)
+    from sympy_extras.simplify.signsimp import signsimp
+    e = signsimp(to_expr(f))
     if isinstance(e, Number) or e.is_commutative is False:
         return e
     from sympy_extras.functions.elementary.piecewise import Piecewise
@@ -1034,6 +1035,6 @@ def cancel(f: ExprLike) -> Expr:
     p, q = factored.as_numer_denom()
     gens, (fp, fq) = _joint_rings([_expanded(p), _expanded(q)])
     if not gens:
-        return _expanded(e)
+        return _expanded(factored)
     P, Q, _ = _cancel_reps(fp, fq, len(gens))
     return mul(_expr_of(P, gens), pow(_expr_of(Q, gens), Integer(-1)))
