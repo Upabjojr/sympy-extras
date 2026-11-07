@@ -276,6 +276,10 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
             rebuilt.append(pow(product, exponent))
         elif negatives == 1:
             rebuilt.append(pow(product.number_mul(Integer(-1)), exponent))
+        elif not isinstance(exponent, Number):
+            # an integer symbolic exponent: (-1)**(k*m) is 1 for an even k
+            sign = Integer(1) if negatives % 2 == 0 else Integer(-1)
+            rebuilt.append(pow(product.number_mul(sign), exponent))
         else:
             from .power import minus_one_pow
             if not isinstance(exponent, Rational):
@@ -367,6 +371,8 @@ def _groupable(base: Rational, exponent: Expr, factor: Expr) -> bool:
             return exponent.q > 1
         return not isinstance(exponent, Number)
     if base.p < 0 and isinstance(factor, Pow):
+        if not isinstance(exponent, Number) and exponent.is_integer is True:
+            return True  # SymPy: (-1)**m*2**m is (-2)**m for an integer m
         return isinstance(exponent, Rational) and exponent.q > 2 and exponent.p > 0
     return False
 

@@ -421,6 +421,25 @@ def add_facts(args: tuple[Expr, ...]) -> Facts:
             facts.update(positive=True, zero=False)  # -p - E + 1/2 is negative, as SymPy knows
         elif sign is not None and sign < 0 and all(s.get('nonpositive') is True for s in others):
             facts.update(negative=True, zero=False)
+    # SymPy's _monotonic_sign for an integer term and a rational constant:
+    # k + c >= 1 + c for a positive integer k (m - 1 is nonnegative)
+    if len(args) == 2 and 'positive' not in facts and 'negative' not in facts:
+        from .numbers import Rational
+        constant = [a for a in args if isinstance(a, Rational)]
+        if len(constant) == 1:
+            c = constant[0].as_fraction()
+            other = sub[1] if args[0] is constant[0] else sub[0]
+            if other.get('integer') is True:
+                low = 1 if other.get('positive') else (0 if other.get('nonnegative') else None)
+                high = -1 if other.get('negative') else (0 if other.get('nonpositive') else None)
+                if low is not None and low + c >= 0:
+                    facts.update(nonnegative=True, negative=False, real=True)
+                    if low + c > 0:
+                        facts.update(positive=True, zero=False, nonpositive=False)
+                if high is not None and high + c <= 0:
+                    facts.update(nonpositive=True, positive=False, real=True)
+                    if high + c < 0:
+                        facts.update(negative=True, zero=False, nonnegative=False)
     # the real terms are numbers: the sum is not imaginary (SymPy answers
     # None when a symbol is among them)
     if facts.get('imaginary') is False and not all(is_number(a) for a, s in zip(args, sub) if s.get('real') is True):

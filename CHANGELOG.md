@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `jacobi`, `gegenbauer`, `assoc_legendre` and `hermite_prob`, ported from
+  SymPy; SymPy's powers of zero, grouping of negative bases under an
+  integer exponent, and sign of an integer plus a constant in the core.
 - `legendre`, `chebyshevt`, `chebyshevu`, `hermite`, `laguerre` and
   `assoc_laguerre`, ported from SymPy.
 - `hankel1`, `hankel2`, `jn`, `yn` and the Airy functions, ported from

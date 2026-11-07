@@ -68,3 +68,52 @@ def test_derivatives_conjugates_numbers() -> None:
         assert abs(ours - complex(sympy.N(g(sympy.Integer(5), sympy.Rational(1, 3)), 20))) < 1e-14, f
     sa = sympy.Symbol('a')
     assert same(assoc_laguerre(n, a, x).diff(x), sympy.assoc_laguerre(sn, sa, sx).diff(sx))
+
+
+def test_jacobi_gegenbauer_assoc_legendre_hermite_prob_match_sympy() -> None:
+    from sympy_extras.functions import assoc_legendre, gegenbauer, hermite_prob, jacobi
+    b = Symbol('b')
+    p = Symbol('p', positive=True)
+    parameters: list[Expr] = [Integer(0), Integer(1), Integer(-1), Rational(1, 2), Rational(-1, 2), a, -a, b, Integer(3)]
+    points: list[Expr] = [x, -x, Integer(0), Integer(1), Integer(-1), oo, x + 1]
+    orders: list[Expr] = [Integer(k) for k in range(0, 4)] + [n, m, -m, s]
+    different = []
+
+    def check(name: str, ours: Callable[[], Expr], theirs: Callable[[], sympy.Basic]) -> None:
+        try:
+            expected = theirs()
+        except ValueError:
+            with pytest.raises(ValueError):
+                ours()
+            return
+        value = ours()
+        if not same(value, expected):
+            different.append((name, str(value), str(expected)))
+
+    for order, alpha, z in itertools.product(orders, parameters, points):
+        so, sa, sz = sympy_value(order), sympy_value(alpha), sympy_value(z)
+        check('gegenbauer', lambda: gegenbauer(order, alpha, z), lambda: sympy.gegenbauer(so, sa, sz))
+        if not (z.is_zero and not order.is_Number and alpha != -a and alpha.is_zero is not True):
+            for beta in [alpha, -alpha, b, Integer(2)]:
+                sbeta = sympy_value(beta)
+                theirs_value = None
+                try:
+                    theirs_value = sympy.jacobi(so, sa, sbeta, sz)
+                except ValueError:
+                    pass
+                if theirs_value is not None and theirs_value.has(sympy.hyper):
+                    continue  # jacobi at x = 0: SymPy's hyper, not ported
+                check('jacobi', lambda: jacobi(order, alpha, beta, z), lambda: sympy.jacobi(so, sa, sbeta, sz))
+    for degree, order2, z in itertools.product(orders, [Integer(k) for k in range(-3, 4)] + [m, -m, p], points):
+        sd, so2, sz = sympy_value(degree), sympy_value(order2), sympy_value(z)
+        check('assoc_legendre', lambda: assoc_legendre(degree, order2, z), lambda: sympy.assoc_legendre(sd, so2, sz))
+    for order, z in itertools.product(orders + [Integer(-2)], points):
+        so, sz = sympy_value(order), sympy_value(z)
+        check('hermite_prob', lambda: hermite_prob(order, z), lambda: sympy.hermite_prob(so, sz))
+    assert not different, different[:20]
+    sx, sn, sa, sb = sympy.Symbol('x'), sympy.Symbol('n', integer=True), sympy.Symbol('a'), sympy.Symbol('b')
+    for ours, theirs in [(jacobi(n, a, b, x), sympy.jacobi(sn, sa, sb, sx)), (gegenbauer(n, a, x), sympy.gegenbauer(sn, sa, sx)),
+                         (assoc_legendre(n, m, x), sympy.assoc_legendre(sn, sympy_value(m), sx)),
+                         (hermite_prob(n, x), sympy.hermite_prob(sn, sx))]:
+        assert same(ours.diff(x), theirs.diff(sx)), ours
+        assert same(conjugate(ours), sympy.conjugate(theirs)), ours

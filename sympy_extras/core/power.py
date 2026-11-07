@@ -192,12 +192,22 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
         if isinstance(base, Rational) and base.p == 1 and base.q == 1:
             return Integer(1)
         if isinstance(base, Rational) and base.p == 0:
-            if exp.is_positive:
+            # PORTED FROM SYMPY: sympy/core/numbers.py:Zero._eval_power
+            if exp.is_extended_positive:
                 return Integer(0)
-            if exp.is_negative:
+            if exp.is_extended_negative:
                 return zoo
-            if exp.is_imaginary:
+            if exp.is_extended_real is False:
                 return nan
+            if exp.is_zero:
+                return Integer(1)
+            # the leading number of the exponent is dropped: 0**(-x) is
+            # zoo**x even when x is 0, and 0**(a/2) is 0**a
+            c, rest = exp.as_coeff_Mul()
+            if c.is_negative:
+                return pow(zoo, rest)
+            if not (isinstance(c, Rational) and c.p == 1 and c.q == 1):
+                return pow(base, rest)
             return Pow(base, exp)
     if isinstance(base, Add) and len(base.args) == 2 and any(t.is_infinite for t in base.args):
         # PORTED FROM SYMPY: sympy/core/add.py:Add._eval_power: a literal

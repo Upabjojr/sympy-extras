@@ -343,9 +343,9 @@ integration methods are not ported. For it the core's relations gained
 SymPy's `canonical` and `reversedsign`, and the comparisons `lt`, `le`,
 `gt`, `ge` are now decided from the facts of the difference
 (`gt(p, 0)` is `true` for a positive `p`) and for an extended real
-against `oo` or `-oo`. A known gap: `ge(k, 1)` for a positive integer
-`k` stays unevaluated, because the core's sums do not derive that
-`k - 1` is nonnegative.
+against `oo` or `-oo`; `ge(k, 1)` for a positive integer `k` is `true`
+through the sign of `k - 1` (SymPy's `_monotonic_sign` for an integer
+plus a constant).
 
 The combinatorial functions `Factorial`, `Binomial`, `RisingFactorial`,
 `FallingFactorial` with `factorial`, `binomial`, `rf`, `ff` are ported
@@ -483,8 +483,16 @@ The orthogonal polynomials (`Legendre`, `ChebyshevT`, `ChebyshevU`,
 the polynomial from its three-term recurrence, written as SymPy's
 `Poly.as_expr` writes it; negative orders are reflected; a symbolic
 order takes out `-x` and evaluates at `0`, `1` and `oo`; derivatives and
-conjugates. `jacobi`, `gegenbauer`, `assoc_legendre`, `hermite_prob` are
-not ported.
+conjugates; `jacobi` (built from the binomial sum, its coefficients
+expanded polynomials in `a`, `b`, and SymPy's reductions to the other
+families), `gegenbauer`, `assoc_legendre` (built in a dummy and
+substituted, as SymPy does) and `hermite_prob`. Not ported: `jacobi` at
+`x = 0` (SymPy's `hyper`) and the derivatives in the parameters (SymPy's
+`Sum`). The comparison brought three core rules from SymPy: the powers
+of zero with a symbolic exponent (`0**(a/2)` is `0**a`, `0**(-a/2)` is
+`zoo**a`, `Zero._eval_power`), negative numerical bases grouped under an
+integer symbolic exponent (`(-1)**m*2**m` is `(-2)**m`), and the sign of
+an integer plus a constant.
 
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
