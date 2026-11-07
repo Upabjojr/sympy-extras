@@ -331,6 +331,12 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         return sympy.Function(e.name, **e.function.assumptions)(*args)
     if isinstance(e, AppliedSymPyFunction):
         return e.sympy_class(*args, evaluate=evaluate)
+    if isinstance(e, DefinedFunction) and type(e).variadic:
+        from sympy_extras.functions.elementary.miscellaneous import Max, Min
+        if isinstance(e, Max):
+            return sympy.Max(*args, evaluate=evaluate)
+        if isinstance(e, Min):
+            return sympy.Min(*args, evaluate=evaluate)
     if isinstance(e, DefinedFunction):
         sympy_class = _native_to_sympy().get(type(e))
         if sympy_class is None:
@@ -535,6 +541,10 @@ def _from_sympy(e: SymPyBasic) -> Basic:
         return AppliedPredicate(_predicate(e.function), *[from_sympy(a) for a in e.arguments])
     if isinstance(e, SymPyPredicate):
         return _predicate(e)
+    if isinstance(e, (sympy.Max, sympy.Min)) and all(isinstance(a, SymPyExpr) for a in e.args):
+        from sympy_extras.functions.elementary.miscellaneous import Max, Min
+        lattice = Max if isinstance(e, sympy.Max) else Min
+        return lattice(*[_expr(a) for a in e.args])
     if isinstance(e, SymPyFunctionClass) and all(isinstance(a, SymPyExpr) for a in e.args):
         cls = type(e)
         native = _sympy_to_native().get(cls)

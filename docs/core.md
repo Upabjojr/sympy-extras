@@ -319,6 +319,17 @@ the bounds decided from signs (`floor(p/(p + 1)) = 0`). The `//`
 operator of the core uses them. `frac(oo)` stays unevaluated, because
 SymPy's answer is `AccumBounds(0, 1)`, which is not ported.
 
+`Min` and `Max` (the nodes, with any number of arguments kept as given)
+and `min_`, `max_` (evaluating) are ported from SymPy's
+`miscellaneous.py`: flattening, identity and zero, the removal of
+redundant arguments, common arguments factored, and arguments whose
+order is decided from the facts of their difference reduced to the
+extreme one. `DefinedFunction.variadic` marks such functions. The
+derivative, which SymPy writes with `Heaviside`, stays a `Derivative`.
+One rule is deliberately stricter than SymPy's: `Max(0, x)` is not
+claimed finite and nonnegative from its argument `0`, since `x` may be
+`oo`; the "one argument suffices" facts need all arguments finite.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a

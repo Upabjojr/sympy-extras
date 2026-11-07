@@ -518,9 +518,11 @@ class DefinedFunction(Application):
     nargs: frozenset[int] = frozenset({1})
     #: the numbers of arguments of the evaluating function (``log(x, b)``)
     call_nargs: frozenset[int] = frozenset({1})
+    #: any number of arguments (``Max``, ``Min``): ``nargs`` is not checked
+    variadic: bool = False
 
     def __init__(self, *args: ExprLike) -> None:
-        if len(args) not in self.nargs:
+        if not self.variadic and len(args) not in self.nargs:
             raise TypeError('%s takes %s arguments, %d given' % (self.function_name, sorted(self.nargs), len(args)))
         Application.__init__(self, *args)
 
@@ -658,6 +660,8 @@ def arity(cls: Union[FunctionClass, Callable[..., object]]) -> Union[int, tuple[
     (1, (1, 2), None, 2)
     """
     if isinstance(cls, type) and issubclass(cls, DefinedFunction):
+        if cls.variadic:
+            return None
         accepted = sorted(cls.call_nargs)
         return accepted[0] if len(accepted) == 1 else tuple(accepted)
     if isinstance(cls, FunctionClass):

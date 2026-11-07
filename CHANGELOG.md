@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.functions.elementary.miscellaneous`: `Max`, `Min` with the
+  evaluating `max_`, `min_`, ported from SymPy; `DefinedFunction.variadic`
+  for functions with any number of arguments.
 - `sympy_extras.functions.elementary.integers`: `Floor`, `Ceiling`, `Frac`
   with the evaluating `floor`, `ceiling`, `frac`, ported from SymPy; the
   core's `//` no longer calls SymPy.
