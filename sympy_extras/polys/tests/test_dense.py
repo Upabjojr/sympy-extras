@@ -12,7 +12,9 @@ from sympy_extras.polys.densearith import dup_add, dup_div, dup_exquo, dup_mul, 
 from sympy_extras.polys.densebasic import dup_from_list, dup_strip
 from sympy_extras.polys.densetools import (dup_clear_denoms, dup_compose, dup_diff, dup_eval, dup_integrate,
                                             dup_primitive, dup_shift, dup_trunc)
-from sympy_extras.polys.domains import GF, QQ, ZZ, FractionField, PolynomialRing
+from sympy_extras.polys.domains import GF, QQ, ZZ
+from sympy_extras.polys.domains.fractionfield import FractionField
+from sympy_extras.polys.domains.polynomialring import PolynomialRing
 from sympy_extras.polys.euclidtools import (dup_discriminant, dup_gcd, dup_gcdex, dup_invert, dup_lcm,
                                              dup_qq_gcd, dup_resultant, dup_subresultants)
 from sympy_extras.polys.sqfreetools import dup_sqf_list, dup_sqf_p, dup_sqf_part

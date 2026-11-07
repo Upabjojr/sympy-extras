@@ -34,12 +34,11 @@ References
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar
+from typing import TypeVar
 
 from .densebasic import dup_strip
 
-if TYPE_CHECKING:
-    from .domains.domain import Domain
+from .domains.domain import Domain
 
 __all__ = ['dup_add', 'dup_sub', 'dup_neg', 'dup_mul', 'dup_sqr', 'dup_pow', 'dup_add_term', 'dup_sub_term',
            'dup_mul_term', 'dup_add_ground', 'dup_sub_ground', 'dup_mul_ground', 'dup_quo_ground',

@@ -5,7 +5,8 @@ and the generic dense algorithms run on the tower.
 Examples
 ========
 
->>> from sympy_extras.polys.domains import ZZ, PolynomialRing
+>>> from sympy_extras.polys.domains import ZZ
+>>> from sympy_extras.polys.domains.polynomialring import PolynomialRing
 >>> R = PolynomialRing(ZZ, 'y')
 >>> R
 ZZ[y]

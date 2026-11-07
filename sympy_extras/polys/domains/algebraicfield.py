@@ -9,7 +9,7 @@ Examples
 
 >>> from fractions import Fraction
 >>> from sympy import sqrt
->>> from sympy_extras.polys.domains import AlgebraicField
+>>> from sympy_extras.polys.domains.algebraicfield import AlgebraicField
 >>> K = AlgebraicField([Fraction(1), Fraction(0), Fraction(-2)], sqrt(2))
 >>> K
 QQ<sqrt(2)>

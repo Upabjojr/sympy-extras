@@ -33,7 +33,8 @@ canonical: positive over `ZZ`, monic over a field), `from_int`,
 
 ```python
 >>> from fractions import Fraction
->>> from sympy_extras.polys.domains import ZZ, QQ, GF, PolynomialRing
+>>> from sympy_extras.polys.domains import ZZ, QQ, GF
+>>> from sympy_extras.polys.domains.polynomialring import PolynomialRing
 >>> ZZ.gcdex(12, 18), QQ.invert(Fraction(-2, 3)), GF(7).invert(3)
 ((-1, 1, 6), Fraction(-3, 2), 5)
 >>> R = PolynomialRing(ZZ, 'y')

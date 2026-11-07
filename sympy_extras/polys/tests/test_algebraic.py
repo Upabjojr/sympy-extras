@@ -11,7 +11,7 @@ from sympy.polys.domains import QQ as SQQ
 from sympy_extras._typing import as_expr
 from sympy_extras.polys.densearith import dup_mul, dup_pow
 from sympy_extras.polys.densetools import dup_monic
-from sympy_extras.polys.domains import AlgebraicField
+from sympy_extras.polys.domains.algebraicfield import AlgebraicField
 from sympy_extras.polys.factortools import dup_ext_factor, dup_ext_norm, dup_ext_sqf_norm
 
 x, t = symbols('x t')

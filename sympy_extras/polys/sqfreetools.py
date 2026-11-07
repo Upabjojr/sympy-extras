@@ -32,15 +32,14 @@ References
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar
+from typing import TypeVar
 
 from .densearith import dup_exquo, dup_mul, dup_mul_ground, dup_sub
 from .densebasic import dup_LC, dup_degree
 from .densetools import dup_decompose_content, dup_diff, dup_monic, dup_primitive
 from .euclidtools import dup_gcd
 
-if TYPE_CHECKING:
-    from .domains.domain import Domain
+from .domains.domain import Domain
 
 __all__ = ['dup_sqf_list', 'dup_sqf_part', 'dup_sqf_p', 'dup_sqf_norm_content']
 

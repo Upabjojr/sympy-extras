@@ -5,7 +5,9 @@ the denominator in canonical form).
 Examples
 ========
 
->>> from sympy_extras.polys.domains import ZZ, PolynomialRing, FractionField
+>>> from sympy_extras.polys.domains import ZZ
+>>> from sympy_extras.polys.domains.polynomialring import PolynomialRing
+>>> from sympy_extras.polys.domains.fractionfield import FractionField
 >>> F = FractionField(PolynomialRing(ZZ, 'x'))
 >>> F
 ZZ(x)

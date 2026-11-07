@@ -26,11 +26,10 @@ Examples
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Sequence, TypeVar
+from typing import Sequence, TypeVar
 
 
-if TYPE_CHECKING:
-    from .domains.domain import Domain
+from .domains.domain import Domain
 
 __all__ = ['dup_strip', 'dup_degree', 'dup_LC', 'dup_TC', 'dup_normal', 'dup_from_dict', 'dup_to_dict',
            'dup_from_list', 'dup_convert', 'dup_zero', 'dup_one', 'dup_constant', 'dup_is_zero', 'dup_is_one',

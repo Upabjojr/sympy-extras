@@ -39,14 +39,13 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import TYPE_CHECKING, TypeVar
+from typing import TypeVar
 
 from .densearith import dup_add_term, dup_exquo_ground, dup_mul, dup_mul_ground
 from .densebasic import dup_LC, dup_strip
 
-if TYPE_CHECKING:
-    from .domains.domain import Domain
-    from .domains.rationalfield import RationalField
+from .domains.domain import Domain
+from .domains.rationalfield import RationalField
 
 __all__ = ['dup_diff', 'dup_eval', 'dup_shift', 'dup_compose', 'dup_content', 'dup_primitive', 'dup_monic',
            'dup_clear_denoms', 'dup_trunc', 'dup_integrate', 'dup_mirror', 'dup_scale', 'dup_taylor_shift',

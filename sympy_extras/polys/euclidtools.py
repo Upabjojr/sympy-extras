@@ -49,7 +49,7 @@ from __future__ import annotations
 
 from sympy.polys.densebasic import (dmp_degree, dmp_zero, dmp_zero_p,
     dup_degree)
-from sympy.polys.domains.domain import Domain
+from sympy.polys.domains.domain import Domain as SymPyDomain
 from sympy.polys.euclidtools import dmp_inner_subresultants, dup_inner_subresultants
 from sympy.polys.rings import PolyElement
 
@@ -59,7 +59,7 @@ __all__ = ['dup_gcd', 'dup_qq_gcd', 'dup_lcm', 'dup_gcdex', 'dup_half_gcdex', 'd
            'dup_resultant', 'dup_discriminant', 'dup_euclid', 'dup_prs', "dup_psc", "dmp_psc", "psc"]
 
 
-def dup_psc(f: Dup, g: Dup, K: Domain) -> list[DomainElement]:
+def dup_psc(f: Dup, g: Dup, K: SymPyDomain) -> list[DomainElement]:
     r"""
     Principal subresultant coefficients of two polynomials in `K[x]`.
 
@@ -103,7 +103,7 @@ def dup_psc(f: Dup, g: Dup, K: Domain) -> list[DomainElement]:
     return psc
 
 
-def dmp_psc(f: Dmp, g: Dmp, u: int, K: Domain) -> list[Dmp]:
+def dmp_psc(f: Dmp, g: Dmp, u: int, K: SymPyDomain) -> list[Dmp]:
     """
     Principal subresultant coefficients of two polynomials in `K[X]`.
 
@@ -181,19 +181,17 @@ def psc(f: PolyElement | DomainElement, g: PolyElement | DomainElement) -> list[
 # the typed layer
 
 from fractions import Fraction  # noqa: E402
-from typing import TYPE_CHECKING, TypeVar  # noqa: E402
+from typing import TypeVar  # noqa: E402
 
 from .densearith import dup_div, dup_exquo, dup_exquo_ground, dup_mul, dup_mul_ground, dup_prem, dup_sub  # noqa: E402
 from .densebasic import dup_LC  # noqa: E402
 from .densetools import dup_clear_denoms, dup_diff, dup_monic, dup_primitive  # noqa: E402
-
-if TYPE_CHECKING:
-    from .domains.domain import Domain as TypedDomain
+from .domains.domain import Domain  # noqa: E402
 
 T = TypeVar('T')
 
 
-def dup_euclid(f: list[T], g: list[T], K: TypedDomain[T]) -> list[T]:
+def dup_euclid(f: list[T], g: list[T], K: Domain[T]) -> list[T]:
     """The monic gcd over a field by the Euclidean algorithm (each
     remainder made monic, which keeps the coefficients small over
     ``QQ``)."""
@@ -203,7 +201,7 @@ def dup_euclid(f: list[T], g: list[T], K: TypedDomain[T]) -> list[T]:
     return a
 
 
-def dup_prs(f: list[T], g: list[T], K: TypedDomain[T]) -> list[list[T]]:
+def dup_prs(f: list[T], g: list[T], K: Domain[T]) -> list[list[T]]:
     """The Euclidean polynomial remainder sequence over a field."""
     sequence = [list(f), list(g)]
     while sequence[-1]:
@@ -212,7 +210,7 @@ def dup_prs(f: list[T], g: list[T], K: TypedDomain[T]) -> list[list[T]]:
     return sequence
 
 
-def dup_subresultants(f: list[T], g: list[T], K: TypedDomain[T]) -> list[list[T]]:
+def dup_subresultants(f: list[T], g: list[T], K: Domain[T]) -> list[list[T]]:
     """The subresultant polynomial remainder sequence of ``f`` and ``g``
     over an integral domain (Brown's algorithm): ``r_{i+1} = prem(r_{i-1},
     r_i) / beta_i`` with ``beta_1 = (-1)**(delta_1 + 1)``, ``psi_1 = -1``
@@ -245,7 +243,7 @@ def dup_subresultants(f: list[T], g: list[T], K: TypedDomain[T]) -> list[list[T]
     return sequence
 
 
-def _psi_update(minus_lc: T, psi: T, delta: int, K: TypedDomain[T]) -> T:
+def _psi_update(minus_lc: T, psi: T, delta: int, K: Domain[T]) -> T:
     """``(-lc)**delta / psi**(delta - 1)``, an exact division (``psi``
     itself for ``delta = 0``)."""
     if delta == 0:
@@ -255,7 +253,7 @@ def _psi_update(minus_lc: T, psi: T, delta: int, K: TypedDomain[T]) -> T:
     return K.exquo(K.pow(minus_lc, delta), K.pow(psi, delta - 1))
 
 
-def dup_gcd(f: list[T], g: list[T], K: TypedDomain[T]) -> list[T]:
+def dup_gcd(f: list[T], g: list[T], K: Domain[T]) -> list[T]:
     """The greatest common divisor in canonical form: monic over a field
     (the Euclidean algorithm; :func:`dup_qq_gcd` is faster over ``QQ``),
     and over an integral domain the primitive part of the last
@@ -289,7 +287,7 @@ def dup_qq_gcd(f: list[Fraction], g: list[Fraction]) -> list[Fraction]:
     return dup_monic([Fraction(c) for c in h], QQ)
 
 
-def _canonical(f: list[T], K: TypedDomain[T]) -> list[T]:
+def _canonical(f: list[T], K: Domain[T]) -> list[T]:
     """``f`` times the canonical unit of its leading coefficient."""
     if not f:
         return []
@@ -297,7 +295,7 @@ def _canonical(f: list[T], K: TypedDomain[T]) -> list[T]:
     return list(f) if K.is_one(u) else dup_mul_ground(f, u, K)
 
 
-def dup_lcm(f: list[T], g: list[T], K: TypedDomain[T]) -> list[T]:
+def dup_lcm(f: list[T], g: list[T], K: Domain[T]) -> list[T]:
     """The least common multiple, in canonical form."""
     if not f or not g:
         return []
@@ -306,7 +304,7 @@ def dup_lcm(f: list[T], g: list[T], K: TypedDomain[T]) -> list[T]:
     return dup_monic(quotient, K) if K.is_field else _canonical(quotient, K)
 
 
-def dup_gcdex(f: list[T], g: list[T], K: TypedDomain[T]) -> tuple[list[T], list[T], list[T]]:
+def dup_gcdex(f: list[T], g: list[T], K: Domain[T]) -> tuple[list[T], list[T], list[T]]:
     """``(s, t, h)`` with ``s f + t g = h`` the monic gcd, over a field
     (the extended Euclidean algorithm)."""
     if not K.is_field:
@@ -327,13 +325,13 @@ def dup_gcdex(f: list[T], g: list[T], K: TypedDomain[T]) -> tuple[list[T], list[
     return dup_mul_ground(s0, inverse, K), dup_mul_ground(t0, inverse, K), dup_mul_ground(r0, inverse, K)
 
 
-def dup_half_gcdex(f: list[T], g: list[T], K: TypedDomain[T]) -> tuple[list[T], list[T]]:
+def dup_half_gcdex(f: list[T], g: list[T], K: Domain[T]) -> tuple[list[T], list[T]]:
     """``(s, h)`` with ``s f = h (mod g)``, ``h`` the monic gcd."""
     s, _, h = dup_gcdex(f, g, K)
     return s, h
 
 
-def dup_invert(f: list[T], g: list[T], K: TypedDomain[T]) -> list[T]:
+def dup_invert(f: list[T], g: list[T], K: Domain[T]) -> list[T]:
     """The inverse of ``f`` modulo ``g`` over a field; ``ValueError``
     when they are not coprime."""
     s, h = dup_half_gcdex(f, g, K)
@@ -342,7 +340,7 @@ def dup_invert(f: list[T], g: list[T], K: TypedDomain[T]) -> list[T]:
     return dup_div(s, g, K)[1]
 
 
-def dup_resultant(f: list[T], g: list[T], K: TypedDomain[T]) -> T:
+def dup_resultant(f: list[T], g: list[T], K: Domain[T]) -> T:
     """The resultant, over any integral domain: with ``m = deg f >= n =
     deg g`` and ``r`` the pseudo-remainder of ``f`` by ``g`` of degree
     ``k`` and content ``c`` (``r = lc(g)**(m-n+1) f mod g``),
@@ -371,7 +369,7 @@ def dup_resultant(f: list[T], g: list[T], K: TypedDomain[T]) -> T:
     return K.exquo(numerator, K.pow(lc, n*(m - n + 1)))
 
 
-def dup_discriminant(f: list[T], K: TypedDomain[T]) -> T:
+def dup_discriminant(f: list[T], K: Domain[T]) -> T:
     """``(-1)**(m (m - 1)/2) Res(f, f') / lc(f)`` for ``m = deg f``
     (``0`` for a constant)."""
     m = dup_degree(f)
