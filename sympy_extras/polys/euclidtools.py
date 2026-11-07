@@ -43,6 +43,13 @@ References
 .. [3] D. E. Knuth, *The Art of Computer Programming*, vol. 2, 3rd ed.,
        Addison-Wesley, 1998, Section 4.6.1.
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/polys/euclidtools.py (dup_inner_subresultants,
+# dup_prs_resultant) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: typed; the sign of Res(f, g) for deg f < deg g corrected.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
 from fractions import Fraction
@@ -54,7 +61,8 @@ from .densetools import dup_clear_denoms, dup_diff, dup_monic, dup_primitive
 from .domains.domain import Domain
 
 __all__ = ['dup_gcd', 'dup_qq_gcd', 'dup_lcm', 'dup_gcdex', 'dup_half_gcdex', 'dup_invert', 'dup_subresultants',
-           'dup_resultant', 'dup_discriminant', 'dup_euclid', 'dup_prs']
+           'dup_resultant', 'dup_prs_resultant', 'dup_inner_subresultants', 'dup_discriminant', 'dup_euclid',
+           'dup_prs']
 
 T = TypeVar('T')
 
@@ -235,6 +243,65 @@ def dup_resultant(f: list[T], g: list[T], K: Domain[T]) -> T:
     if (m*n) % 2:
         numerator = K.neg(numerator)
     return K.exquo(numerator, K.pow(lc, n*(m - n + 1)))
+
+
+# PORTED FROM SYMPY: sympy/polys/euclidtools.py:dup_inner_subresultants
+def dup_inner_subresultants(f: list[T], g: list[T], K: Domain[T]) -> tuple[list[list[T]], list[T]]:
+    """The subresultant PRS of ``f`` and ``g`` (the one of higher degree
+    first) and the scalar subresultants ``S`` (``S[0] = 1``), with exact
+    divisions only: the last scalar is the resultant when the sequence
+    ends with a constant."""
+    n, m = dup_degree(f), dup_degree(g)
+    if n < m:
+        f, g = g, f
+        n, m = m, n
+    if not f:
+        return [], []
+    if not g:
+        return [list(f)], [K.one]
+    R: list[list[T]] = [list(f), list(g)]
+    d = n - m
+    b = K.pow(K.neg(K.one), d + 1)
+    h = dup_mul_ground(dup_prem(f, g, K), b, K)
+    lc = dup_LC(g, K)
+    c = K.pow(lc, d)
+    S: list[T] = [K.one, c]
+    c = K.neg(c)
+    while h:
+        k = dup_degree(h)
+        R.append(h)
+        f, g, m, d = g, h, k, m - k
+        b = K.mul(K.neg(lc), K.pow(c, d))
+        h = dup_exquo_ground(dup_prem(f, g, K), b, K)
+        lc = dup_LC(g, K)
+        if d > 1:
+            c = K.exquo(K.pow(K.neg(lc), d), K.pow(c, d - 1))
+        else:
+            c = K.neg(lc)
+        S.append(K.neg(c))
+    return R, S
+
+
+# PORTED FROM SYMPY: sympy/polys/euclidtools.py:dup_prs_resultant
+def dup_prs_resultant(f: list[T], g: list[T], K: Domain[T]) -> T:
+    """The resultant by the subresultant PRS (no gcd computations: the
+    fast route over polynomial rings), the Sylvester determinant of ``f``
+    and ``g`` in this order (SymPy swaps them when ``deg f < deg g``
+    without the sign ``(-1)**(deg f deg g)``).
+
+    >>> from sympy_extras.polys.domains import ZZ
+    >>> dup_prs_resultant([-7, -3], [-2, 6, 1, -6], ZZ)
+    1773
+    """
+    if not f or not g:
+        return K.zero
+    R, S = dup_inner_subresultants(f, g, K)
+    if dup_degree(R[-1]) > 0:
+        return K.zero
+    value = S[-1]
+    if dup_degree(f) < dup_degree(g) and (dup_degree(f) * dup_degree(g)) % 2:
+        value = K.neg(value)
+    return value
 
 
 def dup_discriminant(f: list[T], K: Domain[T]) -> T:

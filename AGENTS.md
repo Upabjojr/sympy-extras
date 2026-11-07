@@ -226,11 +226,13 @@ sympy_extras/
         tests/
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)
     polys/
-        domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, AlgebraicField, PolynomialRing, FractionField); see docs/dense.md
+        domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, AlgebraicField, PolynomialRing, FractionField, SparsePolynomialRing with SymPy's PolyElement gcd, RationalPolynomialRing, IteratedPolynomialRing for dmp_rr_prs_gcd); see docs/dense.md
         densebasic.py        dense univariate polynomials over a Domain[T] (list[T], highest degree first)
         densearith.py        dup_add/mul/pow/div/pdiv/exquo over a Domain[T]
         densetools.py        dup_diff/eval/shift/compose/content/primitive/monic/trunc/clear_denoms
-        euclidtools.py       dup_gcd (Euclid, subresultant PRS), dup_resultant, dup_discriminant, dup_gcdex (typed, no SymPy)
+        euclidtools.py       dup_gcd (Euclid, subresultant PRS), dup_resultant, dup_prs_resultant (ported), dup_discriminant, dup_gcdex (typed, no SymPy)
+        polytools.py         Poly over ZZ, QQ, ZZ[a,..], QQ[a,..] (ported from SymPy, printed as SymPy): gcd, lcm, resultant, factor_list, sqf_list, div; degree, LC, gcd, lcm, resultant, factor_list
+        polyerrors.py        SymPy's polynomial exceptions (ported)
         subresultants.py     dup_psc, dmp_psc, psc: principal subresultant coefficients on SymPy's dense representation (the CAD)
         polyutils.py         dict_from_expr, expr_from_dict: core expressions <-> typed polynomials (no SymPy)
         sqfreetools.py       dup_sqf_list/part/p (Yun, and GF(p))

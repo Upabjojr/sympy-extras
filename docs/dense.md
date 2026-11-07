@@ -67,7 +67,18 @@ the recursive gcd).
   `dup_qq_gcd` (through `ZZ`), `dup_lcm`, `dup_gcdex`, `dup_invert`,
   `dup_subresultants`, `dup_resultant` (the recursive identity on
   pseudo-remainders, with exact divisions in the domain),
-  `dup_discriminant`.
+  `dup_prs_resultant` (SymPy's subresultant PRS resultant, no gcds: the fast
+  route over polynomial rings; SymPy's sign error for `deg f < deg g`
+  corrected), `dup_discriminant`.
+- `polytools.Poly` (ported from SymPy): a polynomial in generators over
+  `ZZ`, `QQ`, `ZZ[a, ...]` or `QQ[a, ...]`, built from a core expression
+  as SymPy builds it (generator order, domain), printed as SymPy prints
+  it, with SymPy's normalisations: the gcd over a polynomial domain is
+  `dmp_rr_prs_gcd` over `SparsePolynomialRing` (SymPy's `PolyElement` gcd,
+  which is not associative over `QQ[a]`, so contents are folded in SymPy's
+  order), factor lists sorted by degree, multiplicity, coefficients. Not
+  ported yet: the domains `EX`, `RR`, fraction fields, `ZZ_I`, algebraic
+  extensions; multivariate division and factorisation.
 - `sqfreetools`: `dup_sqf_list` (Yun's algorithm in characteristic zero;
   over `GF(p)` with the `p`-th roots of the factors of multiplicity
   divisible by `p`), `dup_sqf_part`, `dup_sqf_p`.

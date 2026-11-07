@@ -10,6 +10,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.polytools.Poly` with `degree`, `LC`, `gcd`, `lcm`,
+  `resultant`, `discriminant`, `factor_list`, `sqf_list`, and
+  `sympy_extras.polys.polyerrors`, ported from SymPy onto the typed
+  polynomial layer (domains `ZZ`, `QQ`, `ZZ[a, ...]`, `QQ[a, ...]`);
+  `SparsePolynomialRing`, `RationalPolynomialRing`,
+  `IteratedPolynomialRing` domains and `dup_prs_resultant`.
 - `is_carmichael`, `find_carmichael_numbers_in_range` and
   `find_first_n_carmichaels` in `sympy_extras.ntheory`; `sqrt` and `Id`
   exported from `sympy_extras.functions`.
