@@ -283,8 +283,14 @@ of `pi` and `I*pi` peeled off sums, the reciprocal functions through
 their partners, derivatives, facts. On 2904 values (rational multiples
 of `pi` with denominators up to 30, imaginary arguments, shifted sums)
 the results are SymPy's character for character, compared without
-letting SymPy re-evaluate them. Not ported yet: `AccumBounds`
-(`sin(oo)`), the inverse functions.
+letting SymPy re-evaluate them. The inverse functions (`Asin`, `Acos`,
+`Atan`, `Acot`, `Asec`, `Acsc`, `Asinh`, `Acosh`, `Atanh`, `Acoth`,
+`Asech`, `Acsch` with `asin`, ..., `acsch`) are ported with SymPy's
+tables of known values and the compositions with the direct functions
+(`asin(sin(3)) = pi - 3`, reduced into the principal range): on 3744
+values the results are SymPy's except the three where SymPy answers with
+`AccumBounds` (`atan(zoo)`, `atanh(zoo)`, `asech(zoo)`), not ported yet,
+like `sin(oo)`; `atan2` neither (it needs `re`, `im`, `sign`).
 
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`

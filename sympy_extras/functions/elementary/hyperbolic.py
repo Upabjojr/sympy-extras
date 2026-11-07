@@ -46,11 +46,12 @@ from sympy_extras.core.function import DefinedFunction
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import (ComplexInfinity, I, Infinity, Integer, NaN, NegativeInfinity, Number, Rational,
                                        nan, number_from_fraction, oo, pi, zoo)
-from sympy_extras.core.power import pow
+from sympy_extras.core.power import pow, sqrt
 
 from .trigonometric import imaginary_coefficient
 
 __all__ = ['Sinh', 'Cosh', 'Tanh', 'Coth', 'Sech', 'Csch', 'sinh', 'cosh', 'tanh', 'coth', 'sech', 'csch',
+           'Asinh', 'Acosh', 'Atanh', 'Acoth', 'Asech', 'Acsch', 'asinh', 'acosh', 'atanh', 'acoth', 'asech', 'acsch',
            'peeloff_ipi']
 
 
@@ -110,7 +111,7 @@ class Sinh(DefinedFunction):
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from .trigonometric import sin
         [arg] = args
-        if isinstance(arg, Number):
+        if isinstance(arg, Number) and not isinstance(arg, ComplexInfinity):
             if isinstance(arg, NaN):
                 return nan
             if isinstance(arg, Infinity):
@@ -161,7 +162,7 @@ class Cosh(DefinedFunction):
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from .trigonometric import cos
         [arg] = args
-        if isinstance(arg, Number):
+        if isinstance(arg, Number) and not isinstance(arg, ComplexInfinity):
             if isinstance(arg, NaN):
                 return nan
             if isinstance(arg, (Infinity, NegativeInfinity)):
@@ -215,7 +216,7 @@ class Tanh(DefinedFunction):
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from .trigonometric import tan
         [arg] = args
-        if isinstance(arg, Number):
+        if isinstance(arg, Number) and not isinstance(arg, ComplexInfinity):
             if isinstance(arg, NaN):
                 return nan
             if isinstance(arg, Infinity):
@@ -273,7 +274,7 @@ class Coth(DefinedFunction):
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from .trigonometric import cot
         [arg] = args
-        if isinstance(arg, Number):
+        if isinstance(arg, Number) and not isinstance(arg, ComplexInfinity):
             if isinstance(arg, NaN):
                 return nan
             if isinstance(arg, Infinity):
@@ -398,3 +399,379 @@ def sech(x: ExprLike) -> Expr:
 def csch(x: ExprLike) -> Expr:
     """The hyperbolic cosecant of ``x``, evaluated."""
     return Csch.apply(to_expr(x))
+
+
+# ---------------------------------------------------------------------
+# inverse hyperbolic functions
+
+_ACOSH: dict[Expr, Expr] = {}
+_ACSCH: dict[Expr, Expr] = {}
+_ASECH: dict[Expr, Expr] = {}
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:_acosh_table
+def _acosh_table() -> dict[Expr, Expr]:
+    from .exponential import log
+    if not _ACOSH:
+        s2, s3, s5 = sqrt(Integer(2)), sqrt(Integer(3)), sqrt(Integer(5))
+        half = Rational(1, 2)
+        entries: list[tuple[Expr, Expr]] = [
+            (I, log(I*(1 + s2))), (-I, log(-I*(1 + s2))), (half, pi/3), (-half, pi*Rational(2, 3)),
+            (s2/2, pi/4), (-s2/2, pi*Rational(3, 4)), (1/s2, pi/4), (-1/s2, pi*Rational(3, 4)), (s3/2, pi/6),
+            (-s3/2, pi*Rational(5, 6)), ((s3 - 1)/sqrt(Integer(8)), pi*Rational(5, 12)),
+            (-(s3 - 1)/sqrt(Integer(8)), pi*Rational(7, 12)), (sqrt(2 + s2)/2, pi/8),
+            (-sqrt(2 + s2)/2, pi*Rational(7, 8)), (sqrt(2 - s2)/2, pi*Rational(3, 8)),
+            (-sqrt(2 - s2)/2, pi*Rational(5, 8)), ((1 + s3)/(2*s2), pi/12), (-(1 + s3)/(2*s2), pi*Rational(11, 12)),
+            ((s5 + 1)/4, pi/5), (-(s5 + 1)/4, pi*Rational(4, 5))]
+        _ACOSH.update(entries)
+    return _ACOSH
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:_acsch_table
+def _acsch_table() -> dict[Expr, Expr]:
+    from .exponential import log
+    if not _ACSCH:
+        s2, s3, s5, s6 = sqrt(Integer(2)), sqrt(Integer(3)), sqrt(Integer(5)), sqrt(Integer(6))
+        entries: list[tuple[Expr, Expr]] = [
+            (I, -pi/2), (I*(s2 + s6), -pi/12), (I*(1 + s5), -pi/10), (I*2/sqrt(2 - s2), -pi/8), (I*2, -pi/6),
+            (I*sqrt(2 + 2/s5), -pi/5), (I*s2, -pi/4), (I*(s5 - 1), -3*pi/10), (I*2/s3, -pi/3),
+            (I*2/sqrt(2 + s2), -3*pi/8), (I*sqrt(2 - 2/s5), -2*pi/5), (I*(s6 - s2), -5*pi/12),
+            (Integer(2), -I*log((1 + s5)/2))]
+        _ACSCH.update(entries)
+    return _ACSCH
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:_asech_table
+def _asech_table() -> dict[Expr, Expr]:
+    from .exponential import log
+    if not _ASECH:
+        s2, s3, s5, s6 = sqrt(Integer(2)), sqrt(Integer(3)), sqrt(Integer(5)), sqrt(Integer(6))
+        entries: list[tuple[Expr, Expr]] = [
+            (I, -(pi*I/2) + log(1 + s2)), (-I, (pi*I/2) + log(1 + s2)), (s6 - s2, pi/12), (s2 - s6, 11*pi/12),
+            (sqrt(2 - 2/s5), pi/10), (-sqrt(2 - 2/s5), 9*pi/10), (2/sqrt(2 + s2), pi/8), (-2/sqrt(2 + s2), 7*pi/8),
+            (2/s3, pi/6), (-2/s3, 5*pi/6), (s5 - 1, pi/5), (1 - s5, 4*pi/5), (s2, pi/4), (-s2, 3*pi/4),
+            (sqrt(2 + 2/s5), 3*pi/10), (-sqrt(2 + 2/s5), 7*pi/10), (Integer(2), pi/3), (Integer(-2), 2*pi/3),
+            (sqrt(2*(2 + s2)), 3*pi/8), (-sqrt(2*(2 + s2)), 5*pi/8), (1 + s5, 2*pi/5), (-1 - s5, 3*pi/5),
+            (s6 + s2, 5*pi/12), (-s6 - s2, 7*pi/12), (mul(I, oo), -pi*I/2), (mul(I, NegativeInfinity()), pi*I/2)]
+        _ASECH.update(entries)
+    return _ASECH
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:asinh
+class Asinh(DefinedFunction):
+    """The inverse hyperbolic sine, unevaluated (``asinh`` evaluates)."""
+
+    function_name = 'asinh'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from .exponential import log
+        from .trigonometric import asin
+        [arg] = args
+        if isinstance(arg, Number) and not isinstance(arg, ComplexInfinity):
+            if isinstance(arg, NaN):
+                return nan
+            if isinstance(arg, Infinity):
+                return oo
+            if isinstance(arg, NegativeInfinity):
+                return NegativeInfinity()
+            if isinstance(arg, Rational):
+                if arg.p == 0:
+                    return Integer(0)
+                if arg == 1:
+                    return log(sqrt(Integer(2)) + 1)
+                if arg == -1:
+                    return log(sqrt(Integer(2)) - 1)
+            if arg.is_negative:
+                return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
+        else:
+            if isinstance(arg, ComplexInfinity):
+                return zoo
+            if arg.is_zero:
+                return Integer(0)
+            i_coeff = imaginary_coefficient(arg)
+            if i_coeff is not None:
+                return mul(I, asin(i_coeff))
+            if arg.could_extract_minus_sign():
+                return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
+        if isinstance(arg, Sinh) and arg.args[0].is_number and arg.args[0].is_real:
+            return arg.args[0]
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        return pow(sqrt(pow(self.args[0], Integer(2)) + 1), Integer(-1))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return mpmath.mpc(mpmath.asinh(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acosh
+class Acosh(DefinedFunction):
+    """The inverse hyperbolic cosine, unevaluated (``acosh`` evaluates)."""
+
+    function_name = 'acosh'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [arg] = args
+        if isinstance(arg, Number) and not isinstance(arg, ComplexInfinity):
+            if isinstance(arg, NaN):
+                return nan
+            if isinstance(arg, (Infinity, NegativeInfinity)):
+                return oo
+            if isinstance(arg, Rational):
+                if arg.p == 0:
+                    return pi*I/2
+                if arg == 1:
+                    return Integer(0)
+                if arg == -1:
+                    return pi*I
+        if arg.is_number:
+            found = _acosh_table().get(arg)
+            if found is not None:
+                return mul(found, I) if arg.is_extended_real else found
+        if isinstance(arg, ComplexInfinity):
+            return zoo
+        if arg == mul(I, oo):
+            return oo + I*pi/2
+        if arg == mul(Integer(-1), I, oo):
+            return oo - I*pi/2
+        if arg.is_zero:
+            return pi*I/2
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        x = self.args[0]
+        return pow(mul(sqrt(x - 1), sqrt(x + 1)), Integer(-1))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return mpmath.mpc(mpmath.acosh(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:atanh
+class Atanh(DefinedFunction):
+    """The inverse hyperbolic tangent, unevaluated (``atanh`` evaluates)."""
+
+    function_name = 'atanh'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from .trigonometric import atan
+        [arg] = args
+        if isinstance(arg, Number) and not isinstance(arg, ComplexInfinity):
+            if isinstance(arg, NaN):
+                return nan
+            if isinstance(arg, Rational):
+                if arg.p == 0:
+                    return Integer(0)
+                if arg == 1:
+                    return oo
+                if arg == -1:
+                    return NegativeInfinity()
+            if isinstance(arg, Infinity):
+                return mul(Integer(-1), I, atan(arg))
+            if isinstance(arg, NegativeInfinity):
+                return mul(I, atan(mul(Integer(-1), arg)))
+            if arg.is_negative:
+                return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
+        else:
+            if isinstance(arg, ComplexInfinity):
+                return None  # SymPy: I*AccumBounds(-pi/2, pi/2), not ported
+            i_coeff = imaginary_coefficient(arg)
+            if i_coeff is not None:
+                return mul(I, atan(i_coeff))
+            if arg.could_extract_minus_sign():
+                return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
+        if arg.is_zero:
+            return Integer(0)
+        if isinstance(arg, Tanh) and arg.args[0].is_number and arg.args[0].is_real:
+            return arg.args[0]
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        return pow(1 - pow(self.args[0], Integer(2)), Integer(-1))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        if values[0] in (1, -1):
+            return None
+        return mpmath.mpc(mpmath.atanh(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acoth
+class Acoth(DefinedFunction):
+    """The inverse hyperbolic cotangent, unevaluated (``acoth`` evaluates)."""
+
+    function_name = 'acoth'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from .trigonometric import acot
+        [arg] = args
+        if isinstance(arg, Number) and not isinstance(arg, ComplexInfinity):
+            if isinstance(arg, NaN):
+                return nan
+            if isinstance(arg, (Infinity, NegativeInfinity)):
+                return Integer(0)
+            if isinstance(arg, Rational):
+                if arg.p == 0:
+                    return pi*I/2
+                if arg == 1:
+                    return oo
+                if arg == -1:
+                    return NegativeInfinity()
+            if arg.is_negative:
+                return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
+        else:
+            if isinstance(arg, ComplexInfinity):
+                return Integer(0)
+            i_coeff = imaginary_coefficient(arg)
+            if i_coeff is not None:
+                return mul(Integer(-1), I, acot(i_coeff))
+            if arg.could_extract_minus_sign():
+                return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
+        if arg.is_zero:
+            return pi*I/2
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        return pow(1 - pow(self.args[0], Integer(2)), Integer(-1))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        if values[0] in (1, -1):
+            return None
+        return mpmath.mpc(mpmath.acoth(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:asech
+class Asech(DefinedFunction):
+    """The inverse hyperbolic secant, unevaluated (``asech`` evaluates)."""
+
+    function_name = 'asech'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [arg] = args
+        if isinstance(arg, Number) and not isinstance(arg, ComplexInfinity):
+            if isinstance(arg, NaN):
+                return nan
+            if isinstance(arg, (Infinity, NegativeInfinity)):
+                return pi*I/2
+            if isinstance(arg, Rational):
+                if arg.p == 0:
+                    return oo
+                if arg == 1:
+                    return Integer(0)
+                if arg == -1:
+                    return pi*I
+        if arg.is_number:
+            found = _asech_table().get(arg)
+            if found is not None:
+                return mul(found, I) if arg.is_extended_real else found
+        if isinstance(arg, ComplexInfinity):
+            return None  # SymPy: I*AccumBounds(-pi/2, pi/2), not ported
+        if arg.is_zero:
+            return oo
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        x = self.args[0]
+        return mul(Integer(-1), pow(mul(x, sqrt(1 - pow(x, Integer(2)))), Integer(-1)))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        if values[0] == 0:
+            return None
+        return mpmath.mpc(mpmath.asech(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acsch
+class Acsch(DefinedFunction):
+    """The inverse hyperbolic cosecant, unevaluated (``acsch`` evaluates)."""
+
+    function_name = 'acsch'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from .exponential import log
+        [arg] = args
+        if isinstance(arg, Number) and not isinstance(arg, ComplexInfinity):
+            if isinstance(arg, NaN):
+                return nan
+            if isinstance(arg, (Infinity, NegativeInfinity)):
+                return Integer(0)
+            if isinstance(arg, Rational):
+                if arg.p == 0:
+                    return zoo
+                if arg == 1:
+                    return log(1 + sqrt(Integer(2)))
+                if arg == -1:
+                    return mul(Integer(-1), log(1 + sqrt(Integer(2))))
+        if arg.is_number:
+            found = _acsch_table().get(arg)
+            if found is not None:
+                return mul(found, I)
+        if isinstance(arg, ComplexInfinity):
+            return Integer(0)
+        if arg.is_infinite:
+            return Integer(0)
+        if arg.is_zero:
+            return zoo
+        if arg.could_extract_minus_sign():
+            return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        x = self.args[0]
+        return mul(Integer(-1), pow(mul(pow(x, Integer(2)), sqrt(1 + pow(x, Integer(-2)))), Integer(-1)))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        if values[0] == 0:
+            return None
+        return mpmath.mpc(mpmath.acsch(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def asinh(x: ExprLike) -> Expr:
+    """The inverse hyperbolic sine of ``x``, evaluated."""
+    return Asinh.apply(to_expr(x))
+
+
+def acosh(x: ExprLike) -> Expr:
+    """The inverse hyperbolic cosine of ``x``, evaluated."""
+    return Acosh.apply(to_expr(x))
+
+
+def atanh(x: ExprLike) -> Expr:
+    """The inverse hyperbolic tangent of ``x``, evaluated."""
+    return Atanh.apply(to_expr(x))
+
+
+def acoth(x: ExprLike) -> Expr:
+    """The inverse hyperbolic cotangent of ``x``, evaluated."""
+    return Acoth.apply(to_expr(x))
+
+
+def asech(x: ExprLike) -> Expr:
+    """The inverse hyperbolic secant of ``x``, evaluated."""
+    return Asech.apply(to_expr(x))
+
+
+def acsch(x: ExprLike) -> Expr:
+    """The inverse hyperbolic cosecant of ``x``, evaluated."""
+    return Acsch.apply(to_expr(x))

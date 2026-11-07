@@ -10,6 +10,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- The inverse trigonometric and hyperbolic functions (`Asin`, ...,
+  `Acsc`, `Asinh`, ..., `Acsch` with `asin`, ..., `acsch`), ported from
+  SymPy with its tables of known values and the compositions with the
+  direct functions; 3744 values identical to SymPy's except the three
+  `AccumBounds` answers. `log` of purely imaginary algebraic numbers
+  (`log(I*(1 + sqrt(2)))`) and the infiniteness of products with an
+  infinite factor and nonzero factors (`oo*I`) follow SymPy.
 - The reciprocal functions `Cot`, `Sec`, `Csc`, `Coth`, `Sech`, `Csch`
   (and `cot`, ..., `csch`), ported from SymPy; with them the half-period
   shifts of `tan` and `tanh` give `-cot(x)` and `coth(x)`, and 2904

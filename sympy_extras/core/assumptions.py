@@ -513,6 +513,10 @@ def mul_facts(args: tuple[Expr, ...]) -> Facts:
         facts['extended_nonzero'] = True
     if all(s.get('zero') is False for s in sub):
         facts['zero'] = False
+        # SymPy's Mul._eval_is_infinite: an infinite factor and no factor
+        # which may be zero make an infinite product (oo*I)
+        if any(s.get('infinite') is True for s in sub):
+            facts.update(infinite=True, finite=False)
     for prefix in ('', 'extended_'):
         positive, negative = prefix + 'positive', prefix + 'negative'
         nonnegative, nonpositive = prefix + 'nonnegative', prefix + 'nonpositive'

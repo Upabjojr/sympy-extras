@@ -15,7 +15,8 @@ the node unevaluated:
   ``logcombine`` (``exp(log(x) + log(y))`` is found term by term);
 * ``log(exp(z))`` for a number ``z`` which is not real (SymPy reduces
   the imaginary part into ``(-pi, pi]``);
-* ``log`` of algebraic numbers ``r + i*I`` through the arctangent table.
+* ``log`` of algebraic numbers ``r + i*I`` with ``r != 0`` through the
+  arctangent table (the purely imaginary ones are ported).
 
 Examples
 ========
@@ -52,7 +53,7 @@ import mpmath
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
-from sympy_extras.core.function import DefinedFunction
+from sympy_extras.core.function import DefinedFunction, expand_mul
 from sympy_extras.core.kind import Kind, NumberKind
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import (ComplexInfinity, E, Exp1, I, Infinity, Integer, NaN, NegativeInfinity, Rational,
@@ -277,6 +278,22 @@ class Log(DefinedFunction):
                     if coeff.p >= 0:
                         return add(mul(pi, I, Rational(1, 2)), cls.apply(coeff))
                     return add(mul(Integer(-1), pi, I, Rational(1, 2)), cls.apply(mul(Integer(-1), coeff)))
+        if arg.is_number and arg.is_algebraic:
+            # arg = coeff*(r + i*I) with coeff > 0: the purely imaginary case
+            # (SymPy's further case r != 0 uses the arctangent table, not ported)
+            coefficient, rest = arg.as_independent(I, as_Add=False)
+            if coefficient.is_negative:
+                coefficient, rest = mul(Integer(-1), coefficient), mul(Integer(-1), rest)
+            rest = expand_mul(rest)
+            real_part, imaginary_term = rest.as_independent(I, as_Add=True)
+            imaginary_part = imaginary_term.as_coefficient(I)
+            if coefficient.is_real and imaginary_part is not None and imaginary_part.is_real and real_part.is_real \
+                    and real_part.is_zero:
+                if imaginary_part.is_positive:
+                    return add(mul(pi, I, Rational(1, 2)), cls.apply(mul(coefficient, imaginary_part)))
+                if imaginary_part.is_negative:
+                    return add(mul(Integer(-1), pi, I, Rational(1, 2)),
+                               cls.apply(mul(coefficient, mul(Integer(-1), imaginary_part))))
         return None
 
     def fdiff(self, argindex: int) -> Expr:

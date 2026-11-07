@@ -162,8 +162,8 @@ sympy_extras/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
         elementary/
             exponential.py   Exp, Log (nodes) and exp, log (evaluating), PORTED FROM SYMPY
-            trigonometric.py Sin, Cos, Tan, Cot, Sec, Csc / sin, ..., csc; pi_coeff, peeloff_pi, PORTED FROM SYMPY
-            hyperbolic.py    Sinh, Cosh, Tanh, Coth, Sech, Csch / sinh, ..., csch; peeloff_ipi, PORTED FROM SYMPY
+            trigonometric.py Sin, ..., Csc and the inverses Asin, ..., Acsc / sin, ..., acsc; pi_coeff, peeloff_pi, PORTED FROM SYMPY
+            hyperbolic.py    Sinh, ..., Csch and the inverses Asinh, ..., Acsch / sinh, ..., acsch; peeloff_ipi, PORTED FROM SYMPY
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,
                              Subs, Order, ...) and evaluating functions (add, mul, pow, mod, eq, and_, or_, diff,
                              order, ...), typed; Wild/match/replace, the full set of is_* predicates, Q/ask/refine,
