@@ -698,6 +698,7 @@ def _fill_function_tables() -> None:
     from sympy_extras.functions.elementary.exponential import Exp, LambertW, Log
     from sympy_extras.functions.elementary import complexes as c, hyperbolic as h, integers as n, trigonometric as t
     from sympy_extras.functions.combinatorial import factorials as f
+    from sympy_extras.functions.elementary import miscellaneous as ms
     from sympy_extras.functions.special import delta_functions as d, error_functions as e, gamma_functions as g
     from sympy_extras.functions.special import beta_functions as b, bessel as bs, elliptic_integrals as el
     from sympy_extras.functions.special import polynomials as op, zeta_functions as z
@@ -714,7 +715,8 @@ def _fill_function_tables() -> None:
         (c.Abs, sympy.Abs), (c.Sign, sympy.sign), (c.Arg, sympy.arg), (c.Conjugate, sympy.conjugate),
         (c.Atan2, sympy.atan2), (n.Floor, sympy.floor), (n.Ceiling, sympy.ceiling), (n.Frac, sympy.frac),
         (f.Factorial, sympy.factorial), (f.Binomial, sympy.binomial), (f.RisingFactorial, sympy.RisingFactorial),
-        (f.FallingFactorial, sympy.FallingFactorial), (g.Gamma, sympy.gamma), (g.LogGamma, sympy.loggamma),
+        (f.FallingFactorial, sympy.FallingFactorial), (f.Subfactorial, sympy.subfactorial), (f.Factorial2, sympy.factorial2),
+        (t.Sinc, sympy.sinc), (ms.Rem, sympy.Rem), (g.Gamma, sympy.gamma), (g.LogGamma, sympy.loggamma),
         (g.PolyGamma, sympy.polygamma), (g.DiGamma, sympy.digamma), (g.TriGamma, sympy.trigamma),
         (d.DiracDelta, sympy.DiracDelta), (d.Heaviside, sympy.Heaviside), (z.Zeta, sympy.zeta),
         (z.DirichletEta, sympy.dirichlet_eta), (z.PolyLog, sympy.polylog), (e.Erf, sympy.erf), (e.Erfc, sympy.erfc),

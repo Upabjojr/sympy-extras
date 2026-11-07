@@ -10,6 +10,8 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `subfactorial`, `factorial2`, `sinc` and `Rem`, ported from SymPy; a
+  zero float result is the exact `0`, as in SymPy.
 - `euler`, `bell`, `genocchi` and `partition`, ported from SymPy.
 - `fibonacci`, `lucas`, `harmonic` and `bernoulli`, ported from SymPy.
 - `hyper` and `meijerg` (`Hyper`, `MeijerG`), ported from SymPy; `jacobi`

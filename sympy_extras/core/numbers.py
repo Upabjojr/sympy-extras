@@ -436,7 +436,12 @@ def _mpf_to_fraction(x: mpmath.mpf) -> Fraction:
     return -value if int(sign) else value
 
 
-def _float_from_fraction(value: Fraction, prec: int) -> Float:
+def _float_from_fraction(value: Fraction, prec: int) -> Number:
+    """The float result of an operation on floats; zero is the exact ``0``,
+    as SymPy's ``Float._new`` makes it (``0*2.5`` and ``2.5 - 2.5`` are
+    ``0``)."""
+    if value == 0:
+        return Integer(0)
     return Float(number_from_fraction(value), precision=prec)
 
 

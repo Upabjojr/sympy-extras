@@ -421,7 +421,11 @@ with SymPy's `B_1 = 1/2`, and polynomials), `euler`, `bell`, `genocchi`
 (numbers and polynomials, the Genocchi facts) and `partition` are in the
 same module. Not ported: `betainc`, the incomplete Bell polynomials (a
 tuple argument), `andre`, `tribonacci`, `motzkin` and the other numbers
-of SymPy's `numbers.py`.
+of SymPy's `numbers.py`. `subfactorial` and `factorial2` (with their facts) are in
+`factorials.py`, `sinc` in `trigonometric.py` and `Rem` (`rem`, the
+remainder with the sign of the dividend) in `miscellaneous.py`. A float
+operation whose result is zero now gives the exact `0`, as SymPy's
+`Float._new` does (`0*2.5` and `2.5 - 2.5` are `0`).
 
 The incomplete gamma functions (`LowerGamma`, `UpperGamma` with
 `lowergamma`, `uppergamma`) and the exponential integrals (`Expint`,

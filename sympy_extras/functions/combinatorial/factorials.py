@@ -46,7 +46,8 @@ from sympy_extras.core.numbers import (Infinity, Integer, NaN, NegativeInfinity,
                                        oo, zoo)
 from sympy_extras.core.power import pow
 
-__all__ = ['Factorial', 'Binomial', 'RisingFactorial', 'FallingFactorial', 'factorial', 'binomial', 'rf', 'ff']
+__all__ = ['Factorial', 'Binomial', 'RisingFactorial', 'FallingFactorial', 'Subfactorial', 'Factorial2', 'factorial',
+           'binomial', 'rf', 'ff', 'subfactorial', 'factorial2']
 
 ONE = Integer(1)
 ZERO = Integer(0)
@@ -310,3 +311,122 @@ def ff(x: ExprLike, k: ExprLike) -> Expr:
     return FallingFactorial.apply(to_expr(x), to_expr(k))
 
 
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:subfactorial
+class Subfactorial(DefinedFunction):
+    """The number of derangements ``subfactorial(n)``, unevaluated
+    (``subfactorial`` evaluates)."""
+
+    function_name = 'subfactorial'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [n] = args
+        value = _int(n)
+        if value is not None and value >= 0:
+            if value == 0:
+                return ONE
+            previous, current = 1, 0
+            for i in range(2, value + 1):
+                previous, current = current, (i - 1) * (current + previous)
+            return Integer(current)
+        if isinstance(n, NaN):
+            return nan
+        if isinstance(n, Infinity):
+            return oo
+        return None
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        n = values[0]
+        try:
+            return mpmath.mpc(mpmath.gammainc(n + 1, -1) / mpmath.e)
+        except (ValueError, ZeroDivisionError):
+            return None
+
+    def _eval_facts(self) -> dict[str, bool]:
+        a = facts_of(self.args[0])
+        facts: dict[str, bool] = {'commutative': True}
+        if a.get('odd') and a.get('nonnegative'):
+            facts['even'] = True
+        if a.get('integer') and a.get('nonnegative'):
+            facts.update(integer=True, nonnegative=True)
+        if a.get('even') and a.get('nonnegative'):
+            facts['odd'] = True
+        return facts
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:factorial2
+class Factorial2(DefinedFunction):
+    """The double factorial ``factorial2(n) = n*(n - 2)*(n - 4)*...``,
+    unevaluated (``factorial2`` evaluates)."""
+
+    function_name = 'factorial2'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [n] = args
+        if not n.is_Number:
+            return None
+        value = _int(n)
+        if value is None:
+            raise ValueError("argument must be nonnegative integer or negative odd integer")
+        if value >= 0:
+            if value % 2 == 0:
+                k = Integer(value // 2)
+                return mul(pow(Integer(2), k), factorial(k))
+            return div_(factorial(n), factorial2(sub(n, ONE)))
+        if value % 2:
+            return div_(mul(n, pow(Integer(-1), div_(sub(ONE, n), Integer(2)))), factorial2(mul(Integer(-1), n)))
+        raise ValueError("argument must be nonnegative integer or negative odd integer")
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        try:
+            return mpmath.mpc(mpmath.fac2(values[0]))
+        except (ValueError, ZeroDivisionError):
+            return None
+
+    def _eval_facts(self) -> dict[str, bool]:
+        n = self.args[0]
+        facts: dict[str, bool] = {'commutative': True}
+        if n.is_integer:
+            if n.is_odd:
+                facts['even'] = False
+            elif n.is_even:
+                if n.is_positive:
+                    facts['even'] = True
+                elif n.is_zero:
+                    facts['even'] = False
+            if add(n, ONE).is_nonnegative:
+                facts.update(integer=True, positive=True)
+            elif n.is_odd:
+                integer = add(n, Integer(3)).is_nonnegative
+                if integer is not None:
+                    facts['integer'] = integer
+                positive = div_(add(n, ONE), Integer(2)).is_even
+                if positive is not None:
+                    facts['positive'] = positive
+        if n.is_odd:
+            odd = add(n, Integer(3)).is_nonnegative
+            if odd is not None:
+                facts['odd'] = odd
+        elif n.is_even:
+            if n.is_positive:
+                facts['odd'] = False
+            elif n.is_zero:
+                facts['odd'] = True
+        return facts
+
+
+def div_(a: Expr, b: Expr) -> Expr:
+    return mul(a, pow(b, Integer(-1)))
+
+
+def subfactorial(n: ExprLike) -> Expr:
+    """``subfactorial(n)``, evaluated."""
+    return Subfactorial.apply(to_expr(n))
+
+
+def factorial2(n: ExprLike) -> Expr:
+    """``factorial2(n)``, evaluated."""
+    return Factorial2.apply(to_expr(n))

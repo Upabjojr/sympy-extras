@@ -48,17 +48,18 @@ from typing import Optional, Sequence
 
 import mpmath
 
-from sympy_extras.core.add import Add, add
+from sympy_extras.core.add import Add, add, sub
 from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import DefinedFunction, expand
-from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.mul import Mul, div, mul
 from sympy_extras.core.numbers import (ComplexInfinity, Float, I, Infinity, Integer, NaN, NegativeInfinity, Rational,
                                        nan, number_from_fraction, pi, zoo)
 from sympy_extras.core.power import pow, sqrt
 
 __all__ = ['Sin', 'Cos', 'Tan', 'Cot', 'Sec', 'Csc', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'Asin', 'Acos',
-           'Atan', 'Acot', 'Asec', 'Acsc', 'asin', 'acos', 'atan', 'acot', 'asec', 'acsc', 'pi_coeff', 'peeloff_pi']
+           'Atan', 'Acot', 'Asec', 'Acsc', 'asin', 'acos', 'atan', 'acot', 'asec', 'acsc', 'pi_coeff', 'peeloff_pi',
+           'Sinc', 'sinc']
 
 HALF = Fraction(1, 2)
 
@@ -1184,3 +1185,60 @@ def asec(x: ExprLike) -> Expr:
 def acsc(x: ExprLike) -> Expr:
     """The arccosecant of ``x``, evaluated."""
     return Acsc.apply(to_expr(x))
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:sinc
+class Sinc(DefinedFunction):
+    """The unnormalised cardinal sine ``sinc(x) = sin(x)/x`` (``1`` at
+    ``0``), unevaluated (``sinc`` evaluates)."""
+
+    function_name = 'sinc'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [arg] = args
+        if arg.is_zero:
+            return Integer(1)
+        if isinstance(arg, (Infinity, NegativeInfinity)):
+            return Integer(0)
+        if isinstance(arg, (NaN, ComplexInfinity)):
+            return nan
+        if arg.could_extract_minus_sign():
+            return sinc(mul(Integer(-1), arg))
+        coefficient = pi_coeff(arg)
+        if coefficient is not None:
+            if coefficient.is_integer:
+                if arg.is_zero is False:
+                    return Integer(0)
+            elif mul(Integer(2), coefficient).is_integer:
+                return mul(pow(Integer(-1), sub(coefficient, Rational(1, 2))), pow(arg, Integer(-1)))
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        x = self.args[0]
+        return sub(div(cos(x), x), div(sin(x), pow(x, Integer(2))))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        x = values[0]
+        return mpmath.mpc(1) if x == 0 else mpmath.mpc(mpmath.sin(x) / x)
+
+    def _eval_facts(self) -> dict[str, bool]:
+        a = self.args[0]
+        facts: dict[str, bool] = {'commutative': True}
+        if a.is_extended_real or a.is_imaginary:
+            facts.update(real=True, finite=True)
+        if a.is_infinite:
+            facts['zero'] = True
+        else:
+            rest, multiple = peeloff_pi(a)
+            if rest.is_zero:
+                if multiple.denominator == 1:
+                    facts['zero'] = multiple != 0
+            elif rest.is_Number and multiple.denominator == 1:
+                facts['zero'] = False
+        return facts
+
+
+def sinc(x: ExprLike) -> Expr:
+    """``sinc(x)``, evaluated."""
+    return Sinc.apply(to_expr(x))

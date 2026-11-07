@@ -48,7 +48,7 @@ from sympy_extras.core.numbers import Integer, NaN, NegativeInfinity, oo
 from sympy_extras.core.sorting import default_sort_key
 from sympy_extras.core.symbol import Symbol
 
-__all__ = ['Max', 'Min', 'max_', 'min_', 'cbrt', 'root', 'real_root']
+__all__ = ['Max', 'Min', 'max_', 'min_', 'cbrt', 'root', 'real_root', 'Rem', 'rem']
 
 ZERO = Integer(0)
 
@@ -472,3 +472,46 @@ def _replace_evaluated(e: Basic, rule: dict[Basic, Basic]) -> Basic:
     if args == e.args:
         return e
     return e._evaluated(args)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/miscellaneous.py:Rem
+class Rem(DefinedFunction):
+    """The remainder ``Rem(p, q) = p - q*trunc(p/q)``, with the sign of
+    ``p`` (``Mod`` has the sign of ``q``), unevaluated (``rem``
+    evaluates)."""
+
+    function_name = 'Rem'
+    nargs = frozenset({2})
+    call_nargs = frozenset({2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from sympy_extras.core.numbers import Float, Number, Rational, nan
+        p, q = args
+        if q.is_zero:
+            raise ZeroDivisionError("Division by zero")
+        if isinstance(p, NaN) or isinstance(q, NaN) or p.is_finite is False or q.is_finite is False:
+            return nan
+        if p == ZERO or p == q or p == mul(Integer(-1), q) or (p.is_integer and q == Integer(1)):
+            return ZERO
+        if isinstance(q, Number) and isinstance(p, Number):
+            if isinstance(p, (Rational, Float)) and isinstance(q, (Rational, Float)):
+                quotient = p.as_fraction() / q.as_fraction()
+                truncated = int(quotient)  # Integer(p/q) truncates toward zero
+                return sub(p, mul(Integer(truncated), q))
+        return None
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        p, q = values
+        if mpmath.im(p) != 0 or mpmath.im(q) != 0 or q == 0:
+            return None
+        quotient = mpmath.re(p) / mpmath.re(q)
+        return mpmath.mpc(mpmath.re(p) - int(quotient) * mpmath.re(q))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def rem(p: ExprLike, q: ExprLike) -> Expr:
+    """``Rem(p, q)``, evaluated."""
+    return Rem.apply(to_expr(p), to_expr(q))

@@ -1,10 +1,10 @@
 """Functions of the typed core (the counterpart of :mod:`sympy.functions`)."""
-from .combinatorial.factorials import (Binomial, Factorial, FallingFactorial, RisingFactorial, binomial, factorial, ff,
-                                       rf)
+from .combinatorial.factorials import (Binomial, Factorial, Factorial2, FallingFactorial, RisingFactorial, Subfactorial,
+                                       binomial, factorial, factorial2, ff, rf, subfactorial)
 from .elementary.complexes import Abs, Arg, Atan2, Conjugate, Im, Re, Sign, abs_, arg, atan2, conjugate, im, re, sign
 from .elementary.exponential import Exp, LambertW, Log, exp, lambertw, log
 from .elementary.integers import Ceiling, Floor, Frac, ceiling, floor, frac
-from .elementary.miscellaneous import Max, Min, cbrt, max_, min_, real_root, root
+from .elementary.miscellaneous import Max, Min, Rem, cbrt, max_, min_, real_root, rem, root
 from .elementary.piecewise import ExprCondPair, Piecewise, piecewise
 from .elementary.hyperbolic import (Acosh, Acoth, Acsch, Asech, Asinh, Atanh, Cosh, Coth, Csch, Sech, Sinh, Tanh, acosh,
                                     acoth, acsch, asech, asinh, atanh, cosh, coth, csch, sech, sinh, tanh)
@@ -32,12 +32,13 @@ from .special.singularity_functions import SingularityFunction, SingularityFunct
 from .special.spherical_harmonics import Ynm, Ynm_c, YnmNode, Znm, ZnmNode
 from .special.tensor_functions import KroneckerDelta, KroneckerDeltaNode, LeviCivita, LeviCivitaNode
 from .special.zeta_functions import DirichletEta, PolyLog, Zeta, dirichlet_eta, polylog, zeta
-from .elementary.trigonometric import (Acos, Acot, Acsc, Asec, Asin, Atan, Cos, Cot, Csc, Sec, Sin, Tan, acos, acot,
-                                       acsc, asec, asin, atan, cos, cot, csc, sec, sin, tan)
+from .elementary.trigonometric import (Acos, Acot, Acsc, Asec, Asin, Atan, Cos, Cot, Csc, Sec, Sin, Sinc, Tan, acos, acot,
+                                       acsc, asec, asin, atan, cos, cot, csc, sec, sin, sinc, tan)
 
 __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', 'abs_', 'sign', 'arg', 'conjugate',
            'atan2', 'Exp', 'Log', 'LambertW', 'exp', 'log', 'lambertw', 'cbrt', 'root', 'real_root', 'Floor', 'Ceiling', 'Frac', 'floor', 'ceiling', 'frac',
            'Factorial', 'Binomial', 'RisingFactorial', 'FallingFactorial', 'factorial', 'binomial', 'rf', 'ff',
+           'Subfactorial', 'Factorial2', 'subfactorial', 'factorial2', 'Sinc', 'sinc', 'Rem', 'rem',
            'Catalan', 'catalan', 'Fibonacci', 'Lucas', 'Harmonic', 'Bernoulli', 'fibonacci', 'lucas',
            'harmonic', 'bernoulli', 'Euler', 'Bell', 'Genocchi', 'Partition', 'euler', 'bell', 'genocchi', 'partition',
            'Beta', 'beta', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc', 'EllipticK',
