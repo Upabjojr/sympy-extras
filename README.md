@@ -215,7 +215,10 @@ intersections, quotients, saturations, radical membership, the Krull
 dimension, Hilbert series and polynomial (the numerator by Bigatti's
 algorithm, which handles hundreds of generators where the textbook
 recursion takes minutes), the degree, and for zero-dimensional ideals
-the standard monomials and multiplication matrices; in any dimension, through regular chains, the radical, its
+the standard monomials, multiplication matrices and the rational
+univariate representation of Rouillier (every zero as rational functions
+of one algebraic number, the real zeros as the real roots of one
+polynomial); in any dimension, through regular chains, the radical, its
 equidimensional parts, the minimal primes and the tests for radical and
 prime ideals, and the primary decomposition with the embedded primes
 (Gianni–Trager–Zacharias). The Gröbner walk converts bases between orders for ideals of
@@ -845,6 +848,7 @@ sympy_extras/
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
         f4.py                Faugère's F4: Gröbner bases by sparse row reduction, over any field
         hilbert.py           Hilbert series of monomial ideals by Bigatti's algorithm
+        rur.py               the rational univariate representation of zero-dimensional ideals (Rouillier)
         stronggroebner.py    strong Gröbner bases over the integers (Kandri-Rody–Kapur, Lichtblau)
         modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold)
         orderings.py         WeightOrder, BlockOrder

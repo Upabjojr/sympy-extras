@@ -10,6 +10,17 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.rur`: the rational univariate representation of a
+  zero-dimensional ideal over the rationals (Rouillier's algorithm from
+  the traces on the quotient algebra, Newton's identities for the
+  characteristic polynomial, Hermite's rank for the separating test),
+  with the zeros as `CRootOf` or radical expressions, the real zeros, the
+  multiplicities and the polynomial (shape position) form; `Ideal.rur`.
+- `sympy_extras.polys.hermite` builds the product table of the quotient
+  algebra by FGLM-style normal forms (border monomials in order, vector
+  arithmetic) instead of one polynomial division per pair of standard
+  monomials: the counts of real zeros and the representation of Katsura-5
+  take 2 s instead of 20 s.
 - `sympy_extras.polys.hilbert`: the numerator of the Hilbert series of a
   monomial ideal by Bigatti's algorithm (pivots on the most frequent
   variable, products over disjoint variables, the pure-powers-plus-one

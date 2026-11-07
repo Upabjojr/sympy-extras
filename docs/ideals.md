@@ -27,8 +27,9 @@ This package adds, on top of SymPy's Gröbner basis engine:
   series by **Bigatti's algorithm** (`sympy_extras.polys.hilbert`);
 - for zero-dimensional ideals: the standard monomials, the dimension of the
   quotient algebra, multiplication matrices, the univariate polynomial in
-  each variable, the **radical** (Seidenberg's lemma) and the test for
-  **maximal** ideals;
+  each variable, the **radical** (Seidenberg's lemma), the test for
+  **maximal** ideals and the **rational univariate representation**
+  (Rouillier, `sympy_extras.polys.rur`);
 - for zero-dimensional ideals over the rationals: the number of **real
   solutions** and the **signs** of other polynomials at them, counted
   without solving, by Hermite's quadratic form and sign determination;
@@ -176,6 +177,53 @@ decomposition, which must visit every cell to prove that there is none.
 False
 
 ```
+
+## The rational univariate representation
+
+For a zero-dimensional ideal over the rationals, Rouillier's rational
+univariate representation writes every zero as a rational function of one
+algebraic number: a linear form `u` which separates the zeros, the
+squarefree polynomial `f(t)` of its values, and the coordinates
+`x_i = g_i(t)/g_1(t)` at each root. Everything comes from traces on the
+quotient algebra: the power sums `Tr(u^j)` give the characteristic
+polynomial of `u` by Newton's identities (its squarefree part is `f`), the
+traces `Tr(x_i u^j)` give the numerators through the Horner polynomials of
+`f`, and `u` is separating exactly when the degree of `f` equals the number
+of distinct zeros, the rank of Hermite's quadratic form. The candidates
+are the first forms of `separating_forms`, then random forms, each tested
+modulo a large prime (the squarefree degree can only drop modulo `p`, so
+equality with the number of zeros is a proof); the exact computation is
+done once, for the form found. Cyclic-5 (70 zeros, whose separating form
+is the 124th in the enumeration) takes 4 s. SymPy's `solve_poly_system`
+needs a lexicographic basis in shape position and nests `CRootOf` objects;
+the representation is one algebraic number per zero, the real zeros are
+the real roots of `f`, and the multiplicities are those of the roots of
+the characteristic polynomial.
+
+```python
+>>> from sympy.abc import x, y, t
+>>> from sympy_extras.polys.rur import rur
+>>> R = rur([x**2 + y**2 - 1, x*y], x, y, t=t)
+>>> R.form, R.polynomial
+(x + 2*y, Poly(t**4 - 5*t**2 + 4, t, domain='QQ'))
+>>> R.denominator, R.numerators
+(Poly(4*t**3 - 10*t, t, domain='QQ'), [Poly(2*t**2 - 8, t, domain='QQ'), Poly(4*t**2 - 4, t, domain='QQ')])
+>>> R.polynomials()
+[Poly(-1/3*t**3 + 4/3*t, t, domain='QQ'), Poly(1/6*t**3 - 1/6*t, t, domain='QQ')]
+>>> R.solutions()
+[{x: 0, y: -1}, {x: -1, y: 0}, {x: 1, y: 0}, {x: 0, y: 1}]
+>>> Ideal([x**2 - 2, y - x**3], x, y).rur(t).solutions()
+[{x: -sqrt(2), y: -2*sqrt(2)}, {x: sqrt(2), y: 2*sqrt(2)}]
+
+```
+
+`polynomials()` gives the coordinates as polynomials in `t` (the
+numerators times the inverse of the denominator modulo `f`, the form of a
+lexicographic basis in shape position), `solutions(real=False)` the zeros
+with `CRootOf` roots or radicals, `multiplicity(root)` the multiplicity of
+a zero. The representation is checked on random systems by substituting
+the coordinates into the generators modulo `f`, against Hermite's counts
+of complex and real zeros, and against `solve_poly_system`.
 
 ## Radicals and prime components in any dimension
 
@@ -692,6 +740,10 @@ ring)` (the dispatcher used by `Ideal`), `rational_reconstruction(a, m,
 bound=None)`, `chinese_remainder(a, m, b, p)`, `default_primes()` and
 `ModularTrace` are in `sympy_extras.polys.modulargroebner`.
 
+`rur(system, *gens, t=None)` and `RationalUnivariateRepresentation`
+(attributes `form`, `polynomial`, `characteristic`, `denominator`,
+`numerators`; methods `polynomials`, `solutions`, `coordinates`,
+`multiplicity`) are in `sympy_extras.polys.rur`; `Ideal.rur(t)` calls it.
 `hilbert_numerator(monomials, t)`, `hilbert_series(monomials, variables,
 t)` and `minimal_generators(monomials)` in `sympy_extras.polys.hilbert`
 compute the Hilbert series of a monomial ideal by Bigatti's algorithm. `groebner_walk`, `extended_groebner` and
@@ -702,6 +754,9 @@ compute the Hilbert series of a monomial ideal by Bigatti's algorithm. `groebner
 
 - A. M. Bigatti, *Computation of Hilbert-Poincaré series*, Journal of Pure
   and Applied Algebra 119 (1997), 237-253.
+- F. Rouillier, *Solving zero-dimensional systems through the rational
+  univariate representation*, Applicable Algebra in Engineering,
+  Communication and Computing 9 (1999), 433-461.
 
 - P. Pedersen, M.-F. Roy, A. Szpirglas, *Counting real zeros in the
   multivariate case*, in Computational Algebraic Geometry, Progress in

@@ -49,7 +49,7 @@ Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)
 from __future__ import annotations
 
 from itertools import product
-from typing import Iterable, Iterator, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Iterable, Iterator, Optional, Sequence, Union
 
 from sympy.core.expr import Expr
 from sympy.core.singleton import S
@@ -72,6 +72,9 @@ from .groebnerwalk import groebner_walk
 from .hilbert import hilbert_numerator
 from .modulargroebner import groebner as _groebner
 from .orderings import as_order, elimination_order
+
+if TYPE_CHECKING:
+    from .rur import RationalUnivariateRepresentation
 
 __all__ = ['Ideal', 'hilbert_numerator', 'separating_forms']
 
@@ -609,6 +612,24 @@ class Ideal:
             columns.append(col)
         rows = [[columns[j][i] for j in range(len(monoms))] for i in range(len(monoms))]
         return DomainMatrix(rows, (len(monoms), len(monoms)), R.domain)
+
+    def rur(self, t: Optional[Symbol] = None) -> RationalUnivariateRepresentation:
+        """The rational univariate representation of the ideal
+        (zero-dimensional ideals over the rationals, Rouillier's algorithm,
+        :mod:`sympy_extras.polys.rur`): a separating linear form, the
+        squarefree polynomial in ``t`` of its values at the zeros and the
+        coordinates of the zeros as rational functions of the root.
+
+        >>> from sympy.abc import x, y, t
+        >>> from sympy_extras.polys.ideals import Ideal
+        >>> R = Ideal([x**2 - 2, y - x**3], x, y).rur(t)
+        >>> R.polynomial, R.polynomials()
+        (Poly(t**2 - 2, t, domain='QQ'), [Poly(t, t, domain='QQ'), Poly(2*t, t, domain='QQ')])
+        >>> R.solutions()
+        [{x: -sqrt(2), y: -2*sqrt(2)}, {x: sqrt(2), y: 2*sqrt(2)}]
+        """
+        from .rur import rur
+        return rur(self, t=t)
 
     def minimal_polynomial(self, f: Union[Expr, Poly, PolyElement], y: Optional[Symbol] = None) -> Poly:
         """The monic polynomial ``p`` of least degree with ``p(f)`` in the

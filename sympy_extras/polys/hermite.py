@@ -132,14 +132,85 @@ class _Algebra:
         one = self.ring.domain.one
         self.basis = [self.ring.from_dict({m: one}) for m in self.monomials]
         D = len(self.basis)
+        # the normal forms of the products x_k b_c (the border of the
+        # standard monomials) and then of the products b_i b_j, by linear
+        # algebra on vectors instead of polynomial division: FGLM's scheme
+        border = self._border()
         rows: list[list[Vector]] = [[[] for _ in range(D)] for _ in range(D)]
-        for i in range(D):
-            for j in range(i, D):
-                v = self.coordinates(self.basis[i]*self.basis[j])
+        by_degree = sorted(range(D), key=lambda i: sum(self.monomials[i]))
+        for i in by_degree:
+            m = self.monomials[i]
+            if sum(m) == 0:
+                for j in range(D):
+                    rows[i][j] = self._unit(j)
+                continue
+            k = next(l for l, e in enumerate(m) if e)
+            smaller = self.index[tuple(e - 1 if l == k else e for l, e in enumerate(m))]
+            for j in range(D):
+                v: Vector = [QQ.zero]*D
+                for c, a in enumerate(rows[smaller][j]):
+                    if a:
+                        for l, b in enumerate(border[(k, c)]):
+                            if b:
+                                v[l] += a*b
                 rows[i][j] = v
-                rows[j][i] = v
         self.products = rows
         self.trace = [sum((rows[k][l][l] for l in range(D)), QQ.zero) for k in range(D)]
+
+    def _unit(self, j: int) -> Vector:
+        v: Vector = [QQ.zero]*len(self.monomials)
+        v[j] = QQ.one
+        return v
+
+    def _border(self) -> dict[tuple[int, int], Vector]:
+        """The normal forms of ``x_k b_c`` for every variable ``x_k`` and
+        standard monomial ``b_c``: a unit vector when the product is
+        standard, the tail of the basis element whose leading monomial it
+        is, and otherwise ``x_l`` times the normal form of a smaller
+        nonstandard monomial, in increasing order of the monomials."""
+        n = len(self.ring.gens)
+        D = len(self.monomials)
+        leading: dict[Monomial, PolyElement] = {g.LM: g for g in self.ideal._basis()}
+        forms: dict[Monomial, Vector] = {}
+        pending: list[Monomial] = []
+        for k in range(n):
+            for c, b in enumerate(self.monomials):
+                m = tuple(e + 1 if l == k else e for l, e in enumerate(b))
+                if m not in self.index and m not in forms and m not in pending:
+                    pending.append(m)
+        for m in sorted(pending, key=self.ring.order):
+            if m in leading:
+                g = leading[m]
+                lc = g.LC
+                v: Vector = [QQ.zero]*D
+                for mm, coefficient in g.terms():
+                    if mm != m:
+                        v[self.index[mm]] = -coefficient/lc
+                forms[m] = v
+                continue
+            # m = x_l m' with m' nonstandard: its normal form is x_l times
+            # the normal form of m', whose monomials are smaller than m'
+            for l, e in enumerate(m):
+                if not e:
+                    continue
+                smaller = tuple(f - 1 if i == l else f for i, f in enumerate(m))
+                if smaller not in self.index:
+                    break
+            v = [QQ.zero]*D
+            for c, a in enumerate(forms[smaller]):
+                if a:
+                    product = tuple(f + 1 if i == l else f for i, f in enumerate(self.monomials[c]))
+                    column = self._unit(self.index[product]) if product in self.index else forms[product]
+                    for i, b in enumerate(column):
+                        if b:
+                            v[i] += a*b
+            forms[m] = v
+        border: dict[tuple[int, int], Vector] = {}
+        for k in range(n):
+            for c, b in enumerate(self.monomials):
+                m = tuple(e + 1 if l == k else e for l, e in enumerate(b))
+                border[(k, c)] = self._unit(self.index[m]) if m in self.index else forms[m]
+        return border
 
     def coordinates(self, f: PolyElement) -> Vector:
         """The coordinates of the normal form of ``f``."""
@@ -156,8 +227,20 @@ class _Algebra:
 
     def transposed_multiplication(self, g: PolyElement) -> Rows:
         """The transpose of the matrix of multiplication by ``g``: its row
-        ``j`` holds the coordinates of the normal form of ``g b_j``."""
-        return [self.coordinates(g*b) for b in self.basis]
+        ``j`` holds the coordinates of the normal form of ``g b_j``
+        (through the products of the standard monomials)."""
+        D = len(self.basis)
+        coordinates = self.coordinates(g)
+        rows: Rows = []
+        for j in range(D):
+            v: Vector = [QQ.zero]*D
+            for c, a in enumerate(coordinates):
+                if a:
+                    for l, b in enumerate(self.products[c][j]):
+                        if b:
+                            v[l] += a*b
+            rows.append(v)
+        return rows
 
     def compose(self, form: Vector, transposed: Rows) -> Vector:
         """The linear form ``h -> form(g h)``, for ``transposed`` the
