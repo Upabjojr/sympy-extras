@@ -18,14 +18,16 @@ roots are factored.
 >>> roots(x**4 - 2*x**2 + 1, x), roots(x**2 + 1, x, multiple=True)
 ({1: 2, -1: 2}, [I, -I])
 
-Not ported yet: ``roots_cubic`` and ``roots_quartic`` for irreducible
-cubics and quartics (``NotImplementedError``), quintics, numerical
-coefficients (``nroots``), algebraic coefficients (SymPy's ``EX`` domain
-and ``to_rational_coeffs``), the ``trig`` option.
+Irreducible cubics and quartics are solved by Cardano's and Ferrari's
+formulas (Euler's resolvent when it has a rational root). Not ported
+yet: quintics, numerical coefficients (``nroots``), the algebraic domain
+``EX`` except for binomials (SymPy's ``simplify`` and
+``to_rational_coeffs``), the ``trig`` option.
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/polys/polyroots.py (roots, roots_linear, roots_quadratic,
-# roots_binomial, roots_cyclotomic, _inv_totient_estimate, preprocess_roots,
+# roots_binomial, roots_cubic, roots_quartic, _roots_quartic_euler, roots_cyclotomic,
+# _inv_totient_estimate, preprocess_roots,
 # _integer_basis), sympy/polys/densetools.py (dup_decompose), sympy/polys/factortools.py
 # (dup_cyclotomic_p), sympy/core/mul.py (expand_2arg), sympy/core/add.py
 # (_unevaluated_Add) (SymPy 1.14)
@@ -174,9 +176,13 @@ def roots_quadratic(f: Poly) -> list[Expr]:
 
 # PORTED FROM SYMPY: sympy/polys/polyroots.py:roots_binomial
 def roots_binomial(f: Poly) -> list[Expr]:
-    from sympy_extras.functions import exp, root
     n = f.degree()
-    a, b = f.nth(n), f.nth(0)
+    return _binomial(n, f.nth(n), f.nth(0))
+
+
+def _binomial(n: int, a: Expr, b: Expr) -> list[Expr]:
+    """The roots of ``a x**n + b``."""
+    from sympy_extras.functions import exp, root
     base = mul(Integer(-1), cancel(mul(b, pow(a, Integer(-1)))))
     alpha = root(base, Integer(n))
     if alpha.is_number:
@@ -482,12 +488,152 @@ def _QQ() -> RationalField:
     return QQ
 
 
+def _roots_of_coefficients(coefficients: Sequence[Expr], cubics: bool = True) -> list[Expr]:
+    """SymPy's ``roots([c_n, ..., c_0], multiple=True)``: the roots of the
+    polynomial with these coefficients in a dummy variable."""
+    x = Dummy('x')
+    n = len(coefficients) - 1
+    f = Poly(add(*[mul(c, pow(x, Integer(n - i))) for i, c in enumerate(coefficients)]), x)
+    result = _roots(f, (), cubics, True, None, None, from_list=True)
+    listed: list[Expr] = []
+    for zero in ordered(list(result)):
+        if isinstance(zero, Expr):
+            listed.extend([zero] * result[zero])
+    return listed
+
+
+def _mexpand(e: Expr) -> Expr:
+    """SymPy's ``_mexpand``: ``expand_mul(expand_multinomial(e))``."""
+    from sympy_extras.core.function import expand_mul, expand_multinomial
+    return expand_mul(expand_multinomial(e))
+
+
+def _is_zero_number(e: Expr) -> bool:
+    return isinstance(e, Integer) and e.p == 0
+
+
+def _q(n: int, d: int) -> Expr:
+    return Rational(n, d) if d != 1 else Integer(n)
+
+
+# PORTED FROM SYMPY: sympy/polys/polyroots.py:roots_cubic (trig=False)
 def roots_cubic(f: Poly) -> list[Expr]:
-    raise NotImplementedError('roots_cubic is not ported yet')
+    from sympy_extras.functions import root, sqrt
+    _, a, b, c = f.monic().all_coeffs()
+    if _is_zero_number(c):
+        x1, x2 = _roots_of_coefficients([Integer(1), a, b])
+        return [x1, Integer(0), x2]
+    p = add(b, mul(Integer(-1), pow(a, Integer(2)), _q(1, 3)))
+    q = add(c, mul(Integer(-1), a, b, _q(1, 3)), mul(_q(2, 27), pow(a, Integer(3))))
+    pon3 = mul(p, _q(1, 3))
+    aon3 = mul(a, _q(1, 3))
+    u1: Optional[Expr] = None
+    if _is_zero_number(p):
+        if _is_zero_number(q):
+            return [mul(Integer(-1), aon3)] * 3
+        u1 = mul(Integer(-1), root(q, Integer(3))) if q.is_positive is True else root(mul(Integer(-1), q), Integer(3))
+    elif _is_zero_number(q):
+        y1, y2 = _roots_of_coefficients([Integer(1), Integer(0), p])
+        return [add(t, mul(Integer(-1), aon3)) for t in [y1, Integer(0), y2]]
+    elif q.is_real is True and q.is_negative is True:
+        inner = add(mul(Integer(-1), q, _q(1, 2)), sqrt(add(mul(pow(q, Integer(2)), _q(1, 4)), pow(pon3, Integer(3)))))
+        u1 = mul(Integer(-1), root(inner, Integer(3)))
+    coeff = mul(I, sqrt(Integer(3)), _q(1, 2))
+    if u1 is None:
+        units = [Integer(1), add(_q(-1, 2), coeff), add(_q(-1, 2), mul(Integer(-1), coeff))]
+        bb, cc, dd = a, b, c
+        D0 = add(pow(bb, Integer(2)), mul(Integer(-3), cc))
+        D1 = add(mul(Integer(2), pow(bb, Integer(3))), mul(Integer(-9), bb, cc), mul(Integer(27), dd))
+        C = root(mul(add(D1, sqrt(add(pow(D1, Integer(2)), mul(Integer(-4), pow(D0, Integer(3)))))), _q(1, 2)),
+                 Integer(3))
+        return [mul(Integer(-1), add(bb, mul(uk, C), mul(D0, pow(C, Integer(-1)), pow(uk, Integer(-1)))), _q(1, 3))
+                for uk in units]
+    u2 = mul(u1, add(_q(-1, 2), coeff))
+    u3 = mul(u1, add(_q(-1, 2), mul(Integer(-1), coeff)))
+    minus_aon3 = mul(Integer(-1), aon3)
+    if _is_zero_number(p):
+        return [add(u, minus_aon3) for u in (u1, u2, u3)]
+    return [add(mul(Integer(-1), u), mul(pon3, pow(u, Integer(-1))), minus_aon3) for u in (u1, u2, u3)]
 
 
+# PORTED FROM SYMPY: sympy/polys/polyroots.py:_roots_quartic_euler
+def _roots_quartic_euler(p: Expr, q: Expr, r: Expr, a: Expr) -> Optional[list[Expr]]:
+    from sympy_extras.functions import sqrt
+    x = Dummy('x')
+    eq = add(mul(Integer(64), pow(x, Integer(3))), mul(Integer(32), p, pow(x, Integer(2))),
+             mul(add(mul(Integer(4), pow(p, Integer(2))), mul(Integer(-16), r)), x), mul(Integer(-1), pow(q, Integer(2))))
+    found = _roots(Poly(eq, x), (), False, True, None, None)
+    candidates = [s for s in found if s.is_rational is True and s.is_nonzero is True]
+    if not candidates:
+        return None
+    R = max(candidates, key=lambda s: _rational(s))
+    c1 = sqrt(R)
+    B = mul(Integer(-1), q, c1, pow(mul(Integer(4), R), Integer(-1)))
+    A = add(mul(Integer(-1), R), mul(Integer(-1), p, _q(1, 2)))
+    c2 = sqrt(add(A, B))
+    c3 = sqrt(add(A, mul(Integer(-1), B)))
+    minus_a = mul(Integer(-1), a)
+    return [add(c1, mul(Integer(-1), c2), minus_a), add(mul(Integer(-1), c1), mul(Integer(-1), c3), minus_a),
+            add(mul(Integer(-1), c1), c3, minus_a), add(c1, c2, minus_a)]
+
+
+# PORTED FROM SYMPY: sympy/polys/polyroots.py:roots_quartic
 def roots_quartic(f: Poly) -> list[Expr]:
-    raise NotImplementedError('roots_quartic is not ported yet')
+    from sympy_extras.core.relational import Eq
+    from sympy_extras.functions import Piecewise, sqrt
+    _, a, b, c, d = f.monic().all_coeffs()
+    if _is_zero_number(d):
+        return [Integer(0)] + _roots_of_coefficients([Integer(1), a, b, c])
+    if pow(mul(c, pow(a, Integer(-1))), Integer(2)) == d if not _is_zero_number(a) else False:
+        x = f.gen
+        m = mul(c, pow(a, Integer(-1)))
+        gq = Poly(add(pow(x, Integer(2)), mul(a, x), b, mul(Integer(-2), m)), x)
+        z1, z2 = roots_quadratic(gq)
+        h1 = Poly(add(pow(x, Integer(2)), mul(Integer(-1), z1, x), m), x)
+        h2 = Poly(add(pow(x, Integer(2)), mul(Integer(-1), z2, x), m), x)
+        return roots_quadratic(h1) + roots_quadratic(h2)
+    a2 = pow(a, Integer(2))
+    e = add(b, mul(Integer(-3), a2, _q(1, 8)))
+    ff = _mexpand(add(c, mul(a, add(mul(a2, _q(1, 8)), mul(Integer(-1), b, _q(1, 2))))))
+    aon4 = mul(a, _q(1, 4))
+    g = _mexpand(add(d, mul(Integer(-1), aon4, add(mul(a, add(mul(Integer(3), a2, _q(1, 64)),
+                                                               mul(Integer(-1), b, _q(1, 4)))), c))))
+    minus_aon4 = mul(Integer(-1), aon4)
+    if ff.is_zero is True:
+        y1, y2 = [sqrt(t) for t in _roots_of_coefficients([Integer(1), e, g])]
+        return [add(t, minus_aon4) for t in [mul(Integer(-1), y1), mul(Integer(-1), y2), y1, y2]]
+    if g.is_zero is True:
+        ys = [Integer(0)] + _roots_of_coefficients([Integer(1), Integer(0), e, ff])
+        return [add(t, minus_aon4) for t in ys]
+    solutions = _roots_quartic_euler(e, ff, g, aon4)
+    if solutions:
+        return solutions
+    p = add(mul(Integer(-1), pow(e, Integer(2)), _q(1, 12)), mul(Integer(-1), g))
+    q = add(mul(Integer(-1), pow(e, Integer(3)), _q(1, 108)), mul(e, g, _q(1, 3)), mul(Integer(-1), pow(ff, Integer(2)), _q(1, 8)))
+    TH = _q(1, 3)
+
+    def answers(y: Expr) -> list[Expr]:
+        w = sqrt(add(e, mul(Integer(2), y)))
+        arg1 = add(mul(Integer(3), e), mul(Integer(2), y))
+        arg2 = mul(Integer(2), ff, pow(w, Integer(-1)))
+        result: list[Expr] = []
+        for s in (-1, 1):
+            r0 = sqrt(mul(Integer(-1), add(arg1, mul(Integer(s), arg2))))
+            for t in (-1, 1):
+                result.append(add(mul(add(mul(Integer(s), w), mul(Integer(-t), r0)), _q(1, 2)), minus_aon4))
+        return result
+
+    p = _mexpand(p)
+    y1 = add(mul(e, _q(-5, 6)), mul(Integer(-1), pow(q, TH)))
+    if p.is_zero is True:
+        return answers(y1)
+    r_root = sqrt(add(mul(pow(q, Integer(2)), _q(1, 4)), mul(pow(p, Integer(3)), _q(1, 27))))
+    r = add(mul(Integer(-1), q, _q(1, 2)), r_root)
+    u = pow(r, TH)
+    y2 = add(mul(e, _q(-5, 6)), u, mul(Integer(-1), p, pow(u, Integer(-1)), _q(1, 3)))
+    if p.is_zero is False:
+        return answers(y2)
+    return [Piecewise((a1, Eq(p, Integer(0))), (b2, True)) for a1, b2 in zip(answers(y1), answers(y2))]
 
 
 RootsResult = dict[Expr, int]
@@ -511,7 +657,7 @@ def roots(f: Union[Poly, ExprLike], *gens: ExprLike, cubics: bool = True, quarti
 
 
 def _roots(f0: Union[Poly, ExprLike], gens: Sequence[ExprLike], cubics: bool, quartics: bool,
-           filter: Optional[str], predicate: Optional[RootFilter]) -> RootsResult:
+           filter: Optional[str], predicate: Optional[RootFilter], from_list: bool = False) -> RootsResult:
     try:
         f = f0 if isinstance(f0, Poly) and not gens else Poly(f0 if not isinstance(f0, Poly) else f0.as_expr(), *gens)
     except GeneratorsNeeded:
@@ -519,7 +665,7 @@ def _roots(f0: Union[Poly, ExprLike], gens: Sequence[ExprLike], cubics: bool, qu
     if not isinstance(f0, Poly) and not isinstance(f.gen, Symbol):
         raise PolynomialError('generator must be a Symbol')
     n = f.degree()
-    if f.length() == 2 and n > 2:
+    if not from_list and f.length() == 2 and n > 2:
         rescaled = _rescaled_binomial(f, cubics, quartics, filter, predicate)
         if rescaled is not None:
             return rescaled
@@ -617,9 +763,27 @@ def _try_decompose(f: Poly, cubics: bool, quartics: bool) -> list[Expr]:
             try:
                 h = Poly(shifted, f.gen)
             except CoercionFailed:
-                raise NotImplementedError('roots over the algebraic domain EX are not ported yet')
+                found.extend(_ex_heuristics(shifted, f.gen))
+                continue
             found.extend(_try_heuristics(h, cubics, quartics))
     return found
+
+
+def _ex_heuristics(e: Expr, x: Expr) -> list[Expr]:
+    """SymPy's ``_try_heuristics`` over the domain ``EX`` (algebraic
+    coefficients) for the shapes which need no ``simplify``: monomials and
+    binomials of degree at least two."""
+    from .polytools import _decompose_with_gens
+    coefficients = {m[0]: add(*cs) for m, cs in _decompose_with_gens(e, [x]).items()}
+    coefficients = {k: c for k, c in coefficients.items() if not (isinstance(c, Number) and c == 0)}
+    n = max(coefficients)
+    if n <= 0:
+        return []
+    if len(coefficients) == 1:
+        return [Integer(0)] * n
+    if len(coefficients) == 2 and 0 in coefficients and n >= 2:
+        return _binomial(n, coefficients[n], coefficients[0])
+    raise NotImplementedError('roots over the algebraic domain EX need simplify (not ported yet)')
 
 
 def _try_heuristics(f: Poly, cubics: bool, quartics: bool) -> list[Expr]:

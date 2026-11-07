@@ -1,6 +1,7 @@
 """The typed roots against SymPy (the oracle) on random products of
-factors solvable without the cubic and quartic formulas, compared through
-the printed dictionaries (the order of the roots included)."""
+linear, quadratic, binomial, cyclotomic, cubic and quartic factors,
+compared through the printed dictionaries (the order of the roots
+included)."""
 from __future__ import annotations
 
 import random
@@ -25,7 +26,9 @@ def test_roots_match_sympy(seed: int) -> None:
         lambda: sx**2 + rng.randint(-3, 3) * sx + rng.randint(-3, 3),
         lambda: sx**rng.choice([3, 4, 5, 6]) - rng.choice([1, 2, 8, -1, -16]), lambda: sx + sa, lambda: sx - sa,
         lambda: sx**2 - sa, lambda: sx**2 + sa * sx + 1, lambda: sx**4 + sx**3 + sx**2 + sx + 1,
-        lambda: sx**4 - 2 * sx**2 - 1, lambda: (sx**2 + 1)**2 - 3]
+        lambda: sx**4 - 2 * sx**2 - 1, lambda: (sx**2 + 1)**2 - 3, lambda: sx**3 - sx + rng.randint(1, 3),
+        lambda: sx**3 + 3 * sx + 2, lambda: sx**3 - 2, lambda: sx**4 + sx + 1, lambda: sx**4 - 4 * sx**2 + sx + 1,
+        lambda: sx**3 + sa * sx + 1, lambda: sx**4 + 2 * sx**3 - sx + 3]
     different: list[tuple[str, str, str]] = []
     for _ in range(50):
         e = sympy.expand(sympy.Mul(*[rng.choice(pieces)()**rng.choice([1, 1, 2]) for _ in range(rng.randint(1, 3))])
@@ -35,7 +38,7 @@ def test_roots_match_sympy(seed: int) -> None:
         try:
             ours = roots(expr_from_sympy(e), expr_from_sympy(sx))
         except NotImplementedError:
-            continue  # an irreducible cubic or quartic factor (not ported yet)
+            continue  # SymPy's EX domain with simplify (not ported yet)
         assert isinstance(ours, dict)
         printed = str({to_sympy(k, evaluate=False): v for k, v in ours.items()})
         if printed != str(sympy.roots(e, sx)):

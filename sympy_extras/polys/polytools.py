@@ -660,8 +660,10 @@ class Poly:
         if self.is_zero:
             return self
         lc = self._rep.LC
-        if self._domain.params and len(self._split()[max(self._split())]) > 1:
-            raise OperationNotSupported('monic of a polynomial with a symbolic leading coefficient')
+        if self._domain.params:
+            lead = self._split()[max(self._split())]
+            if list(lead) != [tuple(0 for _ in self._domain.params)]:
+                raise CoercionFailed('monic of %s needs the fraction field (not ported yet)' % (self,))
         return self._same_ring(self._rep.exquo_ground(lc), integral=False if lc != 1 else None)
 
     def content(self) -> Expr:
