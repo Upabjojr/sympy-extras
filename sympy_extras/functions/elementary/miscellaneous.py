@@ -9,8 +9,7 @@ flattened, the identity (``-oo`` for ``max_``) dropped and the zero
 c)))`` is ``Min(a, Max(b, c))``), common arguments factored
 (``Min(Max(x, y), Max(x, z)) = Max(x, Min(y, z))``), and arguments
 whose order is decided (from the facts of their difference) reduced to
-the extreme one. The derivative (SymPy's: with ``Heaviside``) is not
-ported: it stays a ``Derivative``.
+the extreme one. The derivative is SymPy's, with ``Heaviside``.
 
 Examples
 ========
@@ -30,7 +29,7 @@ Examples
 # see sympy_extras/LICENSE-SymPy.
 # Changes: unevaluating classes with evaluating functions (SymPy's
 # evaluate=False is _node), strict typing, the comparisons decided from
-# the facts of the difference; the Heaviside derivative not ported.
+# the facts of the difference.
 # ---------------------------------------------------------------------
 
 from __future__ import annotations
@@ -42,8 +41,9 @@ import mpmath
 from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
-from sympy_extras.core.function import Derivative, DefinedFunction, diff
-from sympy_extras.core.add import sub
+from sympy_extras.core.function import DefinedFunction, diff
+from sympy_extras.core.mul import mul
+from sympy_extras.core.add import add, sub
 from sympy_extras.core.numbers import Integer, NaN, NegativeInfinity, oo
 from sympy_extras.core.sorting import default_sort_key
 from sympy_extras.core.symbol import Symbol
@@ -254,10 +254,26 @@ class MinMaxBase(DefinedFunction):
             x, y = factor_terms(sub(x, y)), ZERO
         return False
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/miscellaneous.py:MinMaxBase._eval_derivative
     def _eval_derivative(self, s: Symbol) -> Optional[Expr]:
-        if all(diff(to_expr(a), s).is_zero for a in self.args):
-            return ZERO
-        return Derivative(self, s)  # SymPy: a sum with Heaviside, not ported
+        terms: list[Expr] = []
+        for i, a in enumerate(self.args):
+            da = diff(to_expr(a), s)
+            if da.is_zero:
+                continue
+            terms.append(mul(self.fdiff(i + 1), da))
+        return add(*terms)
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/miscellaneous.py:Max.fdiff, Min.fdiff
+    def fdiff(self, argindex: int) -> Expr:
+        from sympy_extras.functions.special.delta_functions import heaviside
+        args = [to_expr(a) for a in self.args]
+        i = argindex - 1
+        if len(args) == 2:
+            this, other = args[i], args[1 - i]
+        else:
+            this, other = args[i], type(self).apply(*(args[:i] + args[i + 1:]))
+        return heaviside(sub(this, other) if isinstance(self, Max) else sub(other, this))
 
     def _eval_facts(self) -> dict[str, bool]:
         facts: dict[str, bool] = {}

@@ -18,7 +18,6 @@ unevaluated:
 * the complex expansion of a power with a symbolic exponent relies on
   ``expand``, which in the typed core does not split ``(-p)**(I*r)``
   into ``(-1)**(I*r)*p**(I*r)`` as SymPy's does;
-* ``sign``'s derivative is a ``DiracDelta``: not ported;
 
 Examples
 ========
@@ -452,7 +451,13 @@ class Sign(DefinedFunction):
         return sign(conjugate(self.args[0]))
 
     def _eval_derivative(self, s: Symbol) -> Optional[Expr]:
-        return Derivative(self, s)  # SymPy: 2*Derivative(arg)*DiracDelta(arg), not ported
+        from sympy_extras.functions.special.delta_functions import dirac_delta
+        a = self.args[0]
+        if a.is_extended_real:
+            return mul(Integer(2), diff(a, s), dirac_delta(a))
+        if a.is_imaginary:
+            return mul(Integer(2), diff(a, s), dirac_delta(mul(MINUS_ONE, I, a)))
+        return Derivative(self, s)
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         z = values[0]

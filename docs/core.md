@@ -325,7 +325,7 @@ and `min_`, `max_` (evaluating) are ported from SymPy's
 redundant arguments, common arguments factored, and arguments whose
 order is decided from the facts of their difference reduced to the
 extreme one. `DefinedFunction.variadic` marks such functions. The
-derivative, which SymPy writes with `Heaviside`, stays a `Derivative`.
+derivative is SymPy's, with `Heaviside`.
 One rule is deliberately stricter than SymPy's: `Max(0, x)` is not
 claimed finite and nonnegative from its argument `0`, since `x` may be
 `oo`; the "one argument suffices" facts need all arguments finite.
@@ -368,6 +368,15 @@ theorem for `polygamma(0, p/q)`, `lowergamma`, `uppergamma` and the
 series are not ported. Every ported function of floats is now evaluated
 numerically at their precision (`sin(0.5) = 0.479425538604203`), as
 SymPy's `Function.__new__` does.
+
+`DiracDelta` and `Heaviside` (with the evaluating `dirac_delta` and
+`heaviside`) are ported from SymPy's `delta_functions.py`: zero delta at
+a nonzero argument, the sign of a negative coefficient taken out with
+`(-1)**k`, the step decided from the sign of its argument, `H0 = 1/2` by
+default and not printed, non-real arguments refused. With them `sign`,
+`Min` and `Max` have SymPy's derivatives (`2*DiracDelta(r)`,
+`Heaviside(x - r)`). The expansion of the delta of a polynomial and the
+rewrites are not ported.
 
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`

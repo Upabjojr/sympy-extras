@@ -808,6 +808,7 @@ sympy_extras/
             factorials.py    Factorial, Binomial, RisingFactorial, FallingFactorial (ported from SymPy)
         special/
             gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma (ported from SymPy)
+            delta_functions.py DiracDelta, Heaviside and dirac_delta, heaviside (ported from SymPy)
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation

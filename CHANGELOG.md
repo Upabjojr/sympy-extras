@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.functions.special.delta_functions`: `DiracDelta`,
+  `Heaviside` with the evaluating `dirac_delta`, `heaviside`, ported from
+  SymPy; `sign`, `Min` and `Max` have SymPy's derivatives.
 - `sympy_extras.functions.special.gamma_functions`: `Gamma`, `LogGamma`,
   `PolyGamma`, `DiGamma`, `TriGamma` with the evaluating `gamma`,
   `loggamma`, `polygamma`, `digamma`, `trigamma`, ported from SymPy;
