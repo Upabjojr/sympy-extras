@@ -441,6 +441,19 @@ functions keep SymPy's names) are ported from SymPy's
 I*Shi(x)`), the derivatives, `li`'s conjugate off its branch cut and
 mpmath values.
 
+The Bessel functions (`BesselJ`, `BesselY`, `BesselI`, `BesselK` with
+`besselj`, `bessely`, `besseli`, `besselk`, in `special/bessel.py`) are
+ported from SymPy: the values at zero by the order and at the
+infinities, the minus signs of the argument and of an integer order,
+`I` taken out of the argument for an integer order (`besselj(n, I*x) =
+I**n*besseli(n, x)`), the derivative by the recurrence, conjugates,
+facts and mpmath values. Hankel, spherical and Airy functions and the
+polar branch factors are not ported. The comparison brought SymPy's
+rule for the power of an infinite product into the core
+(`(-oo*I)**(1/2) = oo*sqrt(-I)`, `0` for a negative exponent); the one
+accepted difference is `besseli(I, -oo) = (-1)**I*oo`, where the core
+decides `(-1)**I = exp(-pi) > 0` and gives `oo`.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a

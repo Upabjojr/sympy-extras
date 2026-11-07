@@ -9,6 +9,7 @@ from .elementary.piecewise import ExprCondPair, Piecewise, piecewise
 from .elementary.hyperbolic import (Acosh, Acoth, Acsch, Asech, Asinh, Atanh, Cosh, Coth, Csch, Sech, Sinh, Tanh, acosh,
                                     acoth, acsch, asech, asinh, atanh, cosh, coth, csch, sech, sinh, tanh)
 from .combinatorial.numbers import Catalan, catalan
+from .special.bessel import BesselI, BesselJ, BesselK, BesselY, besseli, besselj, besselk, bessely
 from .special.beta_functions import Beta, beta
 from .special.delta_functions import DiracDelta, Heaviside, dirac_delta, heaviside
 from .special.error_functions import (Chi, ChiNode, Ci, CiNode, Ei, EiNode, Erf, Erfc, Erfcinv, Erfi, Erfinv, Expint, Li,
@@ -23,7 +24,8 @@ from .elementary.trigonometric import (Acos, Acot, Acsc, Asec, Asin, Atan, Cos, 
 __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', 'abs_', 'sign', 'arg', 'conjugate',
            'atan2', 'Exp', 'Log', 'LambertW', 'exp', 'log', 'lambertw', 'cbrt', 'root', 'real_root', 'Floor', 'Ceiling', 'Frac', 'floor', 'ceiling', 'frac',
            'Factorial', 'Binomial', 'RisingFactorial', 'FallingFactorial', 'factorial', 'binomial', 'rf', 'ff',
-           'Catalan', 'catalan', 'Beta', 'beta', 'LowerGamma', 'UpperGamma', 'lowergamma', 'uppergamma',
+           'Catalan', 'catalan', 'Beta', 'beta', 'BesselJ', 'BesselY', 'BesselI', 'BesselK', 'besselj',
+           'bessely', 'besseli', 'besselk', 'LowerGamma', 'UpperGamma', 'lowergamma', 'uppergamma',
            'Expint', 'EiNode', 'expint', 'Ei', 'SiNode', 'CiNode', 'ShiNode', 'ChiNode', 'LiNode', 'OffsetLiNode', 'Si',
            'Ci', 'Shi', 'Chi', 'li', 'Li', 'Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv', 'Zeta', 'DirichletEta', 'PolyLog', 'zeta', 'dirichlet_eta', 'polylog', 'DiracDelta', 'Heaviside', 'dirac_delta', 'heaviside', 'Gamma', 'LogGamma', 'PolyGamma', 'DiGamma', 'TriGamma', 'gamma', 'loggamma', 'polygamma', 'digamma',
            'trigamma', 'Max', 'Min', 'max_', 'min_', 'ExprCondPair', 'Piecewise', 'piecewise', 'Sin', 'Cos', 'Tan', 'Cot', 'Sec', 'Csc', 'sin', 'cos', 'tan', 'cot', 'sec',

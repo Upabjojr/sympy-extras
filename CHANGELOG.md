@@ -10,6 +10,8 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `besselj`, `bessely`, `besseli` and `besselk`, ported from SymPy; the
+  core's `pow` distributes over an infinite product as SymPy's does.
 - `Si`, `Ci`, `Shi`, `Chi`, `li` and `Li`, ported from SymPy.
 - `lowergamma`, `uppergamma`, `expint` and `Ei`, ported from SymPy; the
   core decides the sign of numerical function values by evaluation and

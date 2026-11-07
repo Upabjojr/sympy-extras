@@ -199,6 +199,17 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
             if exp.is_imaginary:
                 return nan
             return Pow(base, exp)
+    if isinstance(base, Mul) and isinstance(exp, Rational) and exp.q != 1:
+        # SymPy's Mul._eval_power with expand_power_base: an infinite
+        # coefficient times a direction c, (c*oo)**e = oo*c**e for e > 0 and
+        # 0 for e < 0 ((-oo*I)**(1/2) is oo*sqrt(-I)), on the principal branch
+        # since arg(c*t) = arg(c) for t > 0
+        coefficient, direction = base.as_coeff_Mul()
+        if isinstance(coefficient, (Infinity, NegativeInfinity)) and direction.is_finite and direction.is_zero is False:
+            if exp.p < 0:
+                return Integer(0)
+            sign = Integer(1) if isinstance(coefficient, Infinity) else Integer(-1)
+            return mul(oo, pow(mul(sign, direction), exp))
     if isinstance(base, Exp1):
         # E**a is exp(a) (E**0 is 1, E**(I*pi) is -1)
         from sympy_extras.functions.elementary.exponential import exp as exponential

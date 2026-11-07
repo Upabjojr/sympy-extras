@@ -684,7 +684,7 @@ def _fill_function_tables() -> None:
     from sympy_extras.functions.elementary import complexes as c, hyperbolic as h, integers as n, trigonometric as t
     from sympy_extras.functions.combinatorial import factorials as f
     from sympy_extras.functions.special import delta_functions as d, error_functions as e, gamma_functions as g
-    from sympy_extras.functions.special import beta_functions as b, zeta_functions as z
+    from sympy_extras.functions.special import beta_functions as b, bessel as bs, zeta_functions as z
     from sympy_extras.functions.combinatorial import numbers as cn
     pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
         (Exp, sympy.exp), (Log, sympy.log), (LambertW, sympy.LambertW), (t.Sin, sympy.sin), (t.Cos, sympy.cos), (t.Tan, sympy.tan),
@@ -703,7 +703,8 @@ def _fill_function_tables() -> None:
         (e.Erfi, sympy.erfi), (e.Erfinv, sympy.erfinv), (e.Erfcinv, sympy.erfcinv), (b.Beta, sympy.beta),
         (cn.Catalan, sympy.catalan), (g.LowerGamma, sympy.lowergamma), (g.UpperGamma, sympy.uppergamma),
         (e.Expint, sympy.expint), (e.EiNode, sympy.Ei), (e.SiNode, sympy.Si), (e.CiNode, sympy.Ci), (e.ShiNode, sympy.Shi),
-        (e.ChiNode, sympy.Chi), (e.LiNode, sympy.li), (e.OffsetLiNode, sympy.Li)]
+        (e.ChiNode, sympy.Chi), (e.LiNode, sympy.li), (e.OffsetLiNode, sympy.Li), (bs.BesselJ, sympy.besselj),
+        (bs.BesselY, sympy.bessely), (bs.BesselI, sympy.besseli), (bs.BesselK, sympy.besselk)]
     for native, counterpart in pairs:
         _NATIVE_TO_SYMPY[native] = counterpart
         _SYMPY_TO_NATIVE[counterpart] = native
