@@ -254,6 +254,41 @@ Add(Pow(Symbol('p', positive=True), Integer(2)), sin(Symbol('x')))
 
 ```
 
+## Functions of the core
+
+The functions of SymPy were wrapped (`SymPyFunction(sympy.sin)`), their
+evaluation run by SymPy. They are being replaced by typed classes in
+`sympy_extras.functions`, on the base class
+`sympy_extras.core.function.DefinedFunction`: the class (`Exp`, `Log`)
+builds the unevaluated node, the classmethod `eval` holds the evaluation
+rules, `apply` (what the lower case `exp`, `log` call) evaluates, `fdiff`
+gives the partial derivatives (the core's `diff` applies the chain rule),
+`numeric` the value with mpmath, and `_eval_facts` the assumptions. The
+conversion maps `sympy.exp` and `sympy.log` to `Exp` and `Log` in both
+directions, and `E**x` builds `exp(x)` natively.
+
+The exponential family is the first one, ported from SymPy's
+`sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
+notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a
+single log factor in a product, sums split term by term; `log` of
+rational numbers, of negative numbers, of multiples of `I`, of `exp` of
+a real argument, `log(x, b)` with the powers of an integer base taken
+out; the derivatives; the facts (real, positive, zero, finite, rational
+and algebraic, the last by Lindemann–Weierstrass). The rules which need
+`logcombine`, `re`/`im` or `AccumBounds` are not ported yet and leave the
+node unevaluated (the module docstring lists them).
+
+```python
+>>> from sympy_extras.core import Symbol, Rational, I, pi
+>>> from sympy_extras.functions import exp, log, Exp
+>>> x = Symbol('x')
+>>> exp(2*log(x)), exp(Rational(7, 3)*pi*I), log(-3), log(24, 2)
+(x**2, exp(I*pi/3), log(3) + I*pi, log(3)/log(2) + 3)
+>>> Exp(x).diff(x), (x*log(x)).diff(x)
+(exp(x), log(x) + 1)
+
+```
+
 ## Layout
 
 ```

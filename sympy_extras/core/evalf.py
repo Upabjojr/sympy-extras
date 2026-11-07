@@ -49,7 +49,7 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
     the working precision ``prec`` (bits), ``None`` when ``e`` contains a
     symbol or something not evaluable."""
     from .add import Add
-    from .function import AppliedSymPyFunction
+    from .function import AppliedSymPyFunction, DefinedFunction
     from .mul import Mul
     from .power import Pow
     with mpmath.workprec(prec):
@@ -95,6 +95,12 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
                     return mpmath.mpc(0)
                 return None
             return mpmath.mpc(mpmath.power(b, x))
+        if isinstance(e, DefinedFunction):
+            values = [numeric_value(a, prec) for a in e.args]
+            known = [v for v in values if v is not None]
+            if len(known) != len(values):
+                return None
+            return e.numeric(known)
         if isinstance(e, AppliedSymPyFunction) or (e.args and e.is_number):
             from .interop import to_sympy
             parts = [numeric_value(a, prec) for a in e.args if isinstance(a, Expr)]

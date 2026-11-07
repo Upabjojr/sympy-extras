@@ -36,7 +36,7 @@ from .assume import AppliedPredicate, Predicate
 from .basic import Basic, SubsMapping
 from .containers import Dict, Tuple
 from .expr import Expr, UnevaluatedExpr, as_expr
-from .function import (AppliedSymPyFunction, AppliedUndef, Derivative, Function, FunctionClass, Lambda,
+from .function import (AppliedSymPyFunction, AppliedUndef, DefinedFunction, Derivative, Function, FunctionClass, Lambda,
     Subs, SymPyFunction, UndefinedFunction, WildFunction)
 from .logic import ITE, And, Boolean, BooleanAtom, BooleanFunction, Equivalent, Implies, Not, Or, Xor, false, true
 from .mod import Mod
@@ -199,7 +199,7 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
     x**3/3
     >>> t = (1/x).integrate((x, 1, Symbol('t')))
     >>> t, type(t).__name__, t.doit()
-    (log(t), 'AppliedSymPyFunction', log(t))
+    (log(t), 'Log', log(t))
     """
 
     __slots__ = ('_sympy_class', '_node_args')
@@ -331,6 +331,11 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         return sympy.Function(e.name, **e.function.assumptions)(*args)
     if isinstance(e, AppliedSymPyFunction):
         return e.sympy_class(*args, evaluate=evaluate)
+    if isinstance(e, DefinedFunction):
+        sympy_class = _native_to_sympy().get(type(e))
+        if sympy_class is None:
+            raise TypeError('no SymPy counterpart of %s' % (e.function_name,))
+        return sympy_class(*args, evaluate=evaluate)
     if isinstance(e, Derivative):
         counts = [(to_sympy(s), n) for s, n in e.variable_count]
         return sympy.Derivative(args[0], *counts)
@@ -532,6 +537,9 @@ def _from_sympy(e: SymPyBasic) -> Basic:
         return _predicate(e)
     if isinstance(e, SymPyFunctionClass) and all(isinstance(a, SymPyExpr) for a in e.args):
         cls = type(e)
+        native = _sympy_to_native().get(cls)
+        if native is not None:
+            return native(*[_expr(a) for a in e.args])
         return AppliedSymPyFunction(cls, *[_expr(a) for a in e.args])
     if isinstance(e, SymPyExpr):
         return SymPyExprNode(type(e), *[from_sympy(a) for a in e.args])
@@ -641,3 +649,29 @@ def _symbol(e: SymPyBasic) -> Symbol:
 from .cache import register_clearable  # noqa: E402 (the registration needs the class above)
 
 register_clearable(_ConversionCache())
+
+
+# the functions of the typed core and their SymPy counterparts (filled on
+# first use: sympy_extras.functions imports the core)
+_NATIVE_TO_SYMPY: dict[type[DefinedFunction], type[SymPyFunctionClass]] = {}
+_SYMPY_TO_NATIVE: dict[type[SymPyFunctionClass], type[DefinedFunction]] = {}
+
+
+def _fill_function_tables() -> None:
+    if _NATIVE_TO_SYMPY:
+        return
+    from sympy_extras.functions.elementary.exponential import Exp, Log
+    pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [(Exp, sympy.exp), (Log, sympy.log)]
+    for native, counterpart in pairs:
+        _NATIVE_TO_SYMPY[native] = counterpart
+        _SYMPY_TO_NATIVE[counterpart] = native
+
+
+def _native_to_sympy() -> dict[type[DefinedFunction], type[SymPyFunctionClass]]:
+    _fill_function_tables()
+    return _NATIVE_TO_SYMPY
+
+
+def _sympy_to_native() -> dict[type[SymPyFunctionClass], type[DefinedFunction]]:
+    _fill_function_tables()
+    return _SYMPY_TO_NATIVE

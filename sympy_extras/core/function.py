@@ -36,6 +36,8 @@ References
 from __future__ import annotations
 
 import inspect
+
+import mpmath
 from fractions import Fraction
 from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Mapping, Optional, Sequence, Union, overload
 
@@ -490,6 +492,112 @@ class WildFunction(AtomicExpr):
         return self.name + '_'
 
 
+class DefinedFunction(Application):
+    """A function of the typed core (``Exp``, ``Log``, ...): the class
+    builds the unevaluated node, the classmethod :meth:`eval` holds the
+    evaluation rules (``None`` when there is nothing to do) and
+    :meth:`apply` (what the lower case functions ``exp``, ``log`` call)
+    returns the evaluated form. A subclass defines ``function_name`` (the
+    printed name, SymPy's), ``nargs``, :meth:`eval`, :meth:`fdiff` (the
+    partial derivatives), :meth:`numeric` (the value from the values of
+    the arguments, with mpmath) and ``_eval_facts``.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions.elementary.exponential import Exp, exp
+    >>> x = Symbol('x')
+    >>> Exp(0), exp(0), Exp(x).diff(x), Exp(1).evalf(10)
+    (exp(0), 1, exp(x), 2.718281828)
+    """
+
+    #: the printed name, SymPy's name of the function
+    function_name: str = 'f'
+    #: the numbers of arguments of the node
+    nargs: frozenset[int] = frozenset({1})
+    #: the numbers of arguments of the evaluating function (``log(x, b)``)
+    call_nargs: frozenset[int] = frozenset({1})
+
+    def __init__(self, *args: ExprLike) -> None:
+        if len(args) not in self.nargs:
+            raise TypeError('%s takes %s arguments, %d given' % (self.function_name, sorted(self.nargs), len(args)))
+        Application.__init__(self, *args)
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        """The evaluated form, or ``None`` when the node stays."""
+        return None
+
+    @classmethod
+    def apply(cls, *args: ExprLike) -> Expr:
+        """The function applied and evaluated (the node itself when
+        ``evaluate(False)`` is in force or no rule applies)."""
+        from .parameters import global_parameters
+        expressions = tuple(to_expr(a) for a in args)
+        if global_parameters.evaluate:
+            value = cls.eval(*expressions)
+            if value is not None:
+                return value
+        return cls(*expressions)
+
+    def fdiff(self, argindex: int) -> Expr:
+        """The partial derivative with respect to the argument number
+        ``argindex`` (from 1)."""
+        return Derivative(self, Dummy('xi'))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        """The value at the numerical values of the arguments (mpmath, at
+        the working precision), ``None`` when undefined."""
+        return None
+
+    @property
+    def func(self) -> Callable[..., Basic]:
+        return type(self)
+
+    @property
+    def name(self) -> str:
+        return self.function_name
+
+    def __hash__(self) -> int:
+        return hash((self.function_name, self._args))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DefinedFunction):
+            if isinstance(other, Basic):
+                return False
+            return NotImplemented
+        return type(self) is type(other) and self._args == other._args
+
+    def __ne__(self, other: object) -> bool:
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return NotImplemented
+        return not result
+
+    @classmethod
+    def class_key(cls) -> ClassKey:
+        # the place of SymPy's applied functions in the order of the arguments
+        return (4, 10000, 'AppliedSymPyFunction')
+
+    def _compare_name(self) -> str:
+        return self.function_name
+
+    def _sort_class_key(self) -> ClassKey:
+        return (4, _FUNCTION_RANKS.get(self.function_name, 10000), self.function_name)
+
+    @property
+    def kind(self) -> Kind:
+        # SymPy's default for a function: UndefinedKind (exp says NumberKind)
+        return UndefinedKind
+
+    def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
+        return type(self).apply(*[as_expr(a) for a in args])
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
 def apply_sympy(sympy_class: type[SymPyFunctionClass], *args: ExprLike) -> Expr:
     """The function of SymPy applied and evaluated by SymPy.
 
@@ -525,6 +633,9 @@ def arity(cls: Union[FunctionClass, Callable[..., object]]) -> Union[int, tuple[
     >>> arity(SymPyFunction(sympy.sin)), arity(SymPyFunction(sympy.log)), arity(Function('f')), arity(lambda a, b: 0)
     (1, (1, 2), None, 2)
     """
+    if isinstance(cls, type) and issubclass(cls, DefinedFunction):
+        accepted = sorted(cls.call_nargs)
+        return accepted[0] if len(accepted) == 1 else tuple(accepted)
     if isinstance(cls, FunctionClass):
         nargs = cls.nargs
         if nargs is None:
@@ -925,8 +1036,18 @@ def _derivative(e: Expr, s: Symbol) -> Expr:
             # SymPy's form (e*db)*b**e/b: x**(-pi/2)/x stays apart from
             # x**(-pi/2 - 1), and 1/2 is distributed over the inner derivative
             return mul(mul(ex, _derivative(b, s)), e, pow(b, Integer(-1)))
-        log_b = apply_sympy(sympy.log, b)
+        from sympy_extras.functions.elementary.exponential import log
+        log_b = log(b)
         return mul(e, add(mul(_derivative(ex, s), log_b), mul(ex, _derivative(b, s), pow(b, Integer(-1)))))
+    if isinstance(e, DefinedFunction):
+        # the chain rule with the partial derivatives of the function
+        chain: list[Expr] = []
+        for i, a in enumerate(e.args):
+            da = _derivative(a, s)
+            if isinstance(da, Rational) and da.p == 0:
+                continue
+            chain.append(mul(e.fdiff(i + 1), da))
+        return add(*chain)
     if isinstance(e, AppliedSymPyFunction):
         # the derivative of a function of SymPy is SymPy's (Abs has its own rule)
         return expr_through_sympy(e, lambda node: sympy.diff(node, to_sympy(s)))
@@ -1008,13 +1129,23 @@ def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp:
             return _expand_product(_expand_power(b, whole), pow(b, rest))
         if power_exp and isinstance(ex, Add) and isinstance(b, Number):
             return mul(*[pow(b, t) for t in ex.args])
-    if power_exp and isinstance(e, AppliedSymPyFunction) and e.sympy_class is sympy.exp and isinstance(e.args[0], Add):
+    if power_exp and _is_exp_node(e) and isinstance(e.args[0], Add):
         from .numbers import E
         return mul(*[pow(E, t) for t in e.args[0].args])
-    if log and isinstance(e, AppliedSymPyFunction) and e.sympy_class is sympy.log:
+    if log and _is_log_node(e):
         from .interop import expr_through_sympy
         return expr_through_sympy(e, sympy.expand_log)
     return e
+
+
+def _is_exp_node(e: Expr) -> bool:
+    from sympy_extras.functions.elementary.exponential import Exp
+    return isinstance(e, Exp) or (isinstance(e, AppliedSymPyFunction) and e.sympy_class is sympy.exp)
+
+
+def _is_log_node(e: Expr) -> bool:
+    from sympy_extras.functions.elementary.exponential import Log
+    return isinstance(e, Log) or (isinstance(e, AppliedSymPyFunction) and e.sympy_class is sympy.log)
 
 
 def _expanded_denominator(term: Expr) -> Expr:

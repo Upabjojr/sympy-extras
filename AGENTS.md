@@ -143,6 +143,9 @@ sympy_extras/
         resolve.py           resolve(): quantifier elimination through the CAD
         sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check
         tests/
+    functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
+        elementary/
+            exponential.py   Exp, Log (nodes) and exp, log (evaluating), PORTED FROM SYMPY
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,
                              Subs, Order, ...) and evaluating functions (add, mul, pow, mod, eq, and_, or_, diff,
                              order, ...), typed; Wild/match/replace, the full set of is_* predicates, Q/ask/refine,

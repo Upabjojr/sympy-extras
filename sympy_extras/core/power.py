@@ -200,10 +200,9 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
                 return nan
             return Pow(base, exp)
     if isinstance(base, Exp1):
-        # E**a is exp(a), evaluated by SymPy's exp (E**0 is 1, E**(I*pi) is -1)
-        import sympy
-        from .function import apply_sympy
-        return apply_sympy(sympy.exp, exp)
+        # E**a is exp(a) (E**0 is 1, E**(I*pi) is -1)
+        from sympy_extras.functions.elementary.exponential import exp as exponential
+        return exponential(exp)
     if isinstance(base, ImaginaryUnit) and isinstance(exp, Rational):
         if exp.q == 1:
             return _imaginary_unit_power(exp.p)
@@ -238,8 +237,9 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
 def _is_exp(e: Expr) -> bool:
     """Whether ``e`` is an ``exp(...)`` of SymPy (a power of ``E``)."""
     import sympy
+    from sympy_extras.functions.elementary.exponential import Exp
     from .function import AppliedSymPyFunction
-    return isinstance(e, AppliedSymPyFunction) and e.sympy_class is sympy.exp
+    return isinstance(e, Exp) or (isinstance(e, AppliedSymPyFunction) and e.sympy_class is sympy.exp)
 
 
 def _imaginary_unit_power(n: int) -> Expr:

@@ -795,6 +795,9 @@ sympy_extras/
         solve.py             solve with assumptions and a domain
         limits.py            limit and series with assumptions and case distinctions
     core/                    an experimental core: unevaluating classes, evaluating functions (docs/core.md)
+    functions/
+        elementary/
+            exponential.py   Exp, Log and exp, log on the typed core (ported from SymPy)
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation

@@ -10,6 +10,14 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.functions`: typed functions of the core on the new base
+  class `core.function.DefinedFunction` (unevaluated node, `eval` rules,
+  `apply`, `fdiff` with the chain rule in `diff`, `numeric` through
+  mpmath, facts). The first family is `Exp`/`Log` with `exp`/`log`,
+  ported from SymPy's `exponential.py` (special values, multiples of
+  `pi*I`, log factors, `log(x, b)`, derivatives, the facts including
+  Lindemann–Weierstrass); the core's conversion maps SymPy's `exp` and
+  `log` to them and `E**x` builds `exp(x)` natively.
 - The typed polynomial layer (domains, dense and sparse polynomials,
   gcd, factorisation, root isolation, F4, strong bases) imports nothing
   from SymPy: elements convert to and from the expressions of the typed
