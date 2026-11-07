@@ -63,7 +63,8 @@ from sympy_extras.functions.elementary.trigonometric import atan, cos, sin
 
 __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', 'abs_', 'sign', 'arg', 'conjugate',
            'atan2', 'as_real_imag', 'conjugate_of', 'PolarLift', 'PeriodicArgument', 'PrincipalBranch', 'polar_lift',
-           'periodic_argument', 'unbranched_argument', 'principal_branch', 'polarify', 'unpolarify']
+           'periodic_argument', 'unbranched_argument', 'principal_branch', 'polarify', 'unpolarify', 'Adjoint',
+           'Transpose', 'adjoint', 'transpose']
 
 ZERO = Integer(0)
 ONE = Integer(1)
@@ -741,7 +742,7 @@ class Conjugate(DefinedFunction):
         return mpmath.mpc(mpmath.conj(values[0]))
 
     def _eval_facts(self) -> dict[str, bool]:
-        return {'commutative': True}
+        return _commutative_like(self.args[0])
 
 
 # ---------------------------------------------------------------------
@@ -1175,3 +1176,122 @@ def unpolarify(e: ExprLike, exponents_only: bool = False) -> Expr:
     if not isinstance(replaced, Expr):
         raise TypeError("an expression is expected")
     return replaced
+
+
+
+# ---------------------------------------------------------------------
+# adjoint and transpose
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr._eval_transpose (and transpose, adjoint)
+def _commutative_like(e: Expr) -> dict[str, bool]:
+    """The commutativity of a node taken from its argument."""
+    commutative = facts_of(e).get('commutative')
+    return {} if commutative is None else {'commutative': commutative}
+
+
+def transpose_of(e: Expr) -> Optional[Expr]:
+    """The transpose by the rules of ``e``'s class (SymPy's
+    ``_eval_transpose``): ``e`` when commutative, the reversed product of
+    the transposes for a product, the sum of the transposes, the power of
+    the transpose for an integer power, its conjugate when hermitian, minus
+    it when antihermitian; ``None`` when unknown."""
+    if isinstance(e, Transpose):
+        return e.args[0]
+    if isinstance(e, Adjoint):
+        return conjugate(e.args[0])
+    if isinstance(e, Conjugate):
+        return adjoint(e.args[0])
+    if e.is_commutative:
+        return e
+    if isinstance(e, Mul):
+        return mul(*[transpose(t) for t in reversed(e.args)])
+    if isinstance(e, Add):
+        return add(*[transpose(t) for t in e.args])
+    if isinstance(e, Pow) and e.exp.is_integer:
+        return pow(transpose(e.base), e.exp)
+    if e.is_commutative:
+        return e
+    if e.is_hermitian:
+        return conjugate(e)
+    if e.is_antihermitian:
+        return mul(MINUS_ONE, conjugate(e))
+    return None
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr._eval_adjoint
+def adjoint_of(e: Expr) -> Optional[Expr]:
+    """The adjoint by the rules of ``e``'s class (SymPy's
+    ``_eval_adjoint``)."""
+    if isinstance(e, Adjoint):
+        return e.args[0]
+    if isinstance(e, Transpose):
+        return conjugate(e.args[0])
+    if isinstance(e, Conjugate):
+        return transpose(e.args[0])
+    if isinstance(e, Mul) and not e.is_commutative:
+        return mul(*[adjoint(t) for t in reversed(e.args)])
+    if isinstance(e, Add) and not e.is_commutative:
+        return add(*[adjoint(t) for t in e.args])
+    if isinstance(e, Pow) and e.exp.is_integer and not e.is_commutative:
+        return pow(adjoint(e.base), e.exp)
+    if e.is_hermitian:
+        return e
+    if e.is_antihermitian:
+        return mul(MINUS_ONE, e)
+    conjugated = conjugate_of(e)
+    if conjugated is not None:
+        return transpose(conjugated)
+    transposed = transpose_of(e)
+    if transposed is not None:
+        return conjugate(transposed)
+    return None
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:transpose
+class Transpose(DefinedFunction):
+    """The transpose, unevaluated (``transpose`` evaluates)."""
+
+    function_name = 'transpose'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        return transpose_of(args[0])
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        return adjoint(self.args[0])
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return _commutative_like(self.args[0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:adjoint
+class Adjoint(DefinedFunction):
+    """The conjugate transpose, unevaluated (``adjoint`` evaluates)."""
+
+    function_name = 'adjoint'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        own = adjoint_of(args[0])
+        if own is not None:
+            return own
+        transposed = transpose_of(args[0])
+        if transposed is not None:
+            return conjugate(transposed)
+        return None
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        return transpose(self.args[0])
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return _commutative_like(self.args[0])
+
+
+def transpose(x: ExprLike) -> Expr:
+    """The transpose of ``x``, evaluated."""
+    return Transpose.apply(to_expr(x))
+
+
+def adjoint(x: ExprLike) -> Expr:
+    """The adjoint (conjugate transpose) of ``x``, evaluated."""
+    return Adjoint.apply(to_expr(x))

@@ -10,8 +10,12 @@ redundant parts of a conjunction, collapses a nested ``Piecewise`` with
 the same condition, and merges successive pairs with the same expression
 (their conditions joined by ``Or``). Substitution re-evaluates. The
 derivative and the conjugate apply to the expressions; the facts are
-those all the expressions agree on. Not ported: ``piecewise_fold``,
-``piecewise_simplify``, the integration and the interval methods.
+those all the expressions agree on. :func:`piecewise_fold` brings the
+``Piecewise`` of a sum, product or function to the top. Not ported:
+``piecewise_simplify``, ``piecewise_exclusive`` (both need the
+simplification of the conditions), the integration and the interval
+methods; ``piecewise_fold`` keeps an ``ITE`` condition as it is where
+SymPy rewrites it in conjunctive normal form.
 
 Examples
 ========
@@ -53,7 +57,7 @@ from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.relational import Ge, Gt, Le, Lt, Relational, _FUNCTIONS, _REVERSED
 from sympy_extras.core.sorting import ClassKey
 
-__all__ = ['ExprCondPair', 'Piecewise', 'piecewise']
+__all__ = ['ExprCondPair', 'Piecewise', 'piecewise', 'piecewise_fold']
 
 PairLike = Union['ExprCondPair', tuple[ExprLike, BooleanLike]]
 
@@ -313,3 +317,120 @@ def _collapse_arguments(args: list[ExprCondPair]) -> list[ExprCondPair]:
         newargs.append(ExprCondPair(expr, cond))
     return newargs
 
+
+
+
+def _has_piecewise(e: Basic) -> bool:
+    stack: list[Basic] = [e]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, Piecewise):
+            return True
+        stack.extend(node.args)
+    return False
+
+
+def _common_prefix(lists: list[list[Boolean]]) -> list[Boolean]:
+    prefix: list[Boolean] = []
+    for items in zip(*lists):
+        if all(item == items[0] for item in items):
+            prefix.append(items[0])
+        else:
+            break
+    return prefix
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:piecewise_fold
+def piecewise_fold(expr: Expr, evaluate: Optional[bool] = True) -> Expr:
+    """The ``Piecewise`` parts of ``expr`` brought to the top: ``x +
+    Piecewise((1, x > 0), (2, True))`` is ``Piecewise((x + 1, x > 0),
+    (x + 2, True))``; Piecewise sums and products with the same conditions
+    are combined pairwise. ``evaluate=None`` drops the repeated conditions
+    and unwraps a single true pair, as SymPy's.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol, gt, true
+    >>> from sympy_extras.functions.elementary.piecewise import piecewise, piecewise_fold
+    >>> x = Symbol('x')
+    >>> piecewise_fold(x*piecewise((1, gt(x, 0)), (2, true)) + 3)
+    Piecewise((x + 3, x > 0), (2*x + 3, True))
+    """
+    from itertools import product
+    from sympy_extras.core.add import Add
+    from sympy_extras.core.mul import Mul
+    from sympy_extras.core.sorting import default_sort_key
+    if not _has_piecewise(expr):
+        return expr
+    new_args: list[tuple[Expr, Boolean]] = []
+    if isinstance(expr, Piecewise):
+        for pair in expr.args:
+            e, c = pair.expr, pair.cond
+            if not isinstance(e, Piecewise):
+                e = piecewise_fold(e)
+            if isinstance(e, Piecewise):
+                new_args.extend([(piecewise_fold(inner.expr), and_(inner.cond, c)) for inner in e.args])
+            else:
+                new_args.append((e, c))
+    else:
+        args: list[Expr]
+        if isinstance(expr, Add) or (isinstance(expr, Mul) and expr.is_commutative):
+            pieces = [a for a in expr.args if isinstance(a, Piecewise)]
+            args = [a for a in expr.args if not isinstance(a, Piecewise)]
+            groups: dict[tuple[Boolean, ...], list[Piecewise]] = {}
+            for piece in pieces:
+                if isinstance(piece, Piecewise):
+                    groups.setdefault(tuple(pair.cond for pair in piece.args), []).append(piece)
+            for key in sorted(groups, key=lambda cs: tuple(default_sort_key(c) for c in cs)):
+                group = groups[key]
+                if len(group) > 1:
+                    pargs = [list(g.args) for g in group]
+                    common = _common_prefix([[pair.cond for pair in a] for a in pargs])
+                    n = len(common)
+                    collected: list[tuple[Expr, BooleanLike]] = []
+                    for i in range(n):
+                        collected.append((_as_expression(expr._evaluated(tuple(a[i].expr for a in pargs))), common[i]))
+                    remains: list[Expr] = []
+                    for a in pargs:
+                        if n == len(a):
+                            continue
+                        if isinstance(a[n].cond, BooleanTrue):
+                            remains.append(a[n].expr)
+                        else:
+                            remains.append(Piecewise(*a[n:]))
+                    if remains:
+                        collected.append((_as_expression(expr._evaluated(tuple(remains))), true))
+                    args.append(Piecewise(*collected))
+                    continue
+                args.extend(group)
+        else:
+            args = [a for a in expr.args if isinstance(a, Expr)]
+        folded = [piecewise_fold(a) for a in args]
+        options: list[list[tuple[Expr, Boolean]]] = [
+            [(pair.expr, pair.cond) for pair in f.args] if isinstance(f, Piecewise) else [(f, true)] for f in folded]
+        for combination in product(*options):
+            expressions = tuple(e for e, _ in combination)
+            conditions: list[Boolean] = [c for _, c in combination]
+            rebuilt = expr._evaluated(expressions)
+            if not isinstance(rebuilt, Expr):
+                raise TypeError("an expression is expected")
+            new_args.append((rebuilt, and_(*conditions)))
+    if evaluate is None:
+        seen: dict[Boolean, Expr] = {}
+        for e, c in reversed(new_args):
+            seen[c] = e
+        new_args = list(reversed([(e, c) for c, e in seen.items()]))
+    result = piecewise(*new_args) if evaluate is not False else Piecewise(*new_args)
+    if evaluate is None and isinstance(result, Piecewise) and len(result.args) == 1 \
+            and isinstance(result.args[0].cond, BooleanTrue):
+        return result.args[0].expr
+    if isinstance(result, Piecewise) and any(_has_piecewise(pair.expr) for pair in result.args):
+        return piecewise_fold(result)
+    return result
+
+
+def _as_expression(e: Basic) -> Expr:
+    if not isinstance(e, Expr):
+        raise TypeError("an expression is expected")
+    return e

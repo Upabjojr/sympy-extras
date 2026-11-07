@@ -1,13 +1,13 @@
 """Functions of the typed core (the counterpart of :mod:`sympy.functions`)."""
 from .combinatorial.factorials import (Binomial, Factorial, Factorial2, FallingFactorial, RisingFactorial, Subfactorial,
                                        binomial, factorial, factorial2, ff, rf, subfactorial)
-from .elementary.complexes import (Abs, Arg, Atan2, Conjugate, Im, PeriodicArgument, PolarLift, PrincipalBranch, Re, Sign,
+from .elementary.complexes import (Adjoint, Transpose, adjoint, transpose, Abs, Arg, Atan2, Conjugate, Im, PeriodicArgument, PolarLift, PrincipalBranch, Re, Sign,
                                   abs_, arg, atan2, conjugate, im, periodic_argument, polar_lift, polarify,
                                   principal_branch, re, sign, unbranched_argument, unpolarify)
 from .elementary.exponential import Exp, ExpPolar, LambertW, Log, exp, exp_polar, lambertw, ln, log
 from .elementary.integers import Ceiling, Floor, Frac, ceiling, floor, frac
 from .elementary.miscellaneous import Max, Min, Rem, cbrt, identity_function, max_, min_, real_root, rem, root
-from .elementary.piecewise import ExprCondPair, Piecewise, piecewise
+from .elementary.piecewise import ExprCondPair, Piecewise, piecewise, piecewise_fold
 from .elementary.hyperbolic import (Acosh, Acoth, Acsch, Asech, Asinh, Atanh, Cosh, Coth, Csch, Sech, Sinh, Tanh, acosh,
                                     acoth, acsch, asech, asinh, atanh, cosh, coth, csch, sech, sinh, tanh)
 from .combinatorial.numbers import (Andre, Motzkin, Tribonacci, andre, motzkin, tribonacci, Bell, Bernoulli, Catalan, DivisorSigma, Euler, Fibonacci, Genocchi, Harmonic,
@@ -45,7 +45,7 @@ from .elementary.trigonometric import (Acos, Acot, Acsc, Asec, Asin, Atan, Cos, 
 __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', 'abs_', 'sign', 'arg', 'conjugate',
            'atan2', 'Exp', 'Log', 'LambertW', 'exp', 'log', 'lambertw', 'ExpPolar', 'exp_polar', 'PolarLift', 'PeriodicArgument',
            'PrincipalBranch', 'polar_lift', 'periodic_argument', 'unbranched_argument', 'principal_branch', 'polarify',
-           'unpolarify', 'cbrt', 'root', 'real_root', 'Floor', 'Ceiling', 'Frac', 'floor', 'ceiling', 'frac',
+           'unpolarify', 'Adjoint', 'Transpose', 'adjoint', 'transpose', 'piecewise_fold', 'cbrt', 'root', 'real_root', 'Floor', 'Ceiling', 'Frac', 'floor', 'ceiling', 'frac',
            'Factorial', 'Binomial', 'RisingFactorial', 'FallingFactorial', 'factorial', 'binomial', 'rf', 'ff',
            'Subfactorial', 'Factorial2', 'subfactorial', 'factorial2', 'Sinc', 'sinc', 'Rem', 'rem',
            'Catalan', 'catalan', 'Fibonacci', 'Lucas', 'Harmonic', 'Bernoulli', 'fibonacci', 'lucas',

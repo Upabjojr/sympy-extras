@@ -338,8 +338,7 @@ coefficient divided out (`-2*x + 1 < 0` is `x > 1/2`), repeated and
 redundant conditions removed, nested `Piecewise` with the same
 condition collapsed, successive pairs with the same expression merged.
 Substitution re-evaluates; the derivative and the conjugate act on the
-expressions. `piecewise_fold`, `piecewise_simplify` and the interval and
-integration methods are not ported. For it the core's relations gained
+expressions. For it the core's relations gained
 SymPy's `canonical` and `reversedsign`, and the comparisons `lt`, `le`,
 `gt`, `ge` are now decided from the facts of the difference
 (`gt(p, 0)` is `true` for a positive `p`) and for an extended real
@@ -454,7 +453,14 @@ the base `exp_polar(1)` as SymPy's `as_base_exp` makes them), and in
 `unbranched` flag, now on `DefinedFunction` and set on the 35 functions
 SymPy marks). One API difference: `polarify` always returns the pair
 (expression, substitution map), the map empty without `subs`, where
-SymPy returns the expression alone.
+SymPy returns the expression alone. `adjoint` and `transpose` (`Adjoint`, `Transpose`, in
+`complexes.py`) follow SymPy's rules, the products of noncommutative
+factors reversed; the conjugate of a noncommutative argument is now
+noncommutative too (it claimed commutativity). `piecewise_fold` brings
+the `Piecewise` of sums, products and functions to the top, combining
+pieces with the same conditions, in SymPy's three `evaluate` modes;
+`piecewise_exclusive` and `piecewise_simplify` wait for the simplification
+of conditions.
 
 The incomplete gamma functions (`LowerGamma`, `UpperGamma` with
 `lowergamma`, `uppergamma`) and the exponential integrals (`Expint`,

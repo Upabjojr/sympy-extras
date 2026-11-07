@@ -710,7 +710,7 @@ def _fill_function_tables() -> None:
     pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
         (Exp, sympy.exp), (Log, sympy.log), (LambertW, sympy.LambertW), (ExpPolar, sympy.exp_polar),
         (c.PolarLift, sympy.polar_lift), (c.PeriodicArgument, sympy.periodic_argument),
-        (c.PrincipalBranch, sympy.principal_branch), (t.Sin, sympy.sin), (t.Cos, sympy.cos), (t.Tan, sympy.tan),
+        (c.PrincipalBranch, sympy.principal_branch), (c.Adjoint, sympy.adjoint), (c.Transpose, sympy.transpose), (t.Sin, sympy.sin), (t.Cos, sympy.cos), (t.Tan, sympy.tan),
         (t.Cot, sympy.cot), (t.Sec, sympy.sec), (t.Csc, sympy.csc), (t.Asin, sympy.asin), (t.Acos, sympy.acos),
         (t.Atan, sympy.atan), (t.Acot, sympy.acot), (t.Asec, sympy.asec), (t.Acsc, sympy.acsc),
         (h.Sinh, sympy.sinh), (h.Cosh, sympy.cosh), (h.Tanh, sympy.tanh), (h.Coth, sympy.coth), (h.Sech, sympy.sech),
