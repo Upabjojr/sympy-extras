@@ -811,7 +811,7 @@ sympy_extras/
             gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma, LowerGamma, UpperGamma (ported from SymPy)
             delta_functions.py DiracDelta, Heaviside and dirac_delta, heaviside (ported from SymPy)
             zeta_functions.py Zeta, DirichletEta, PolyLog and zeta, dirichlet_eta, polylog (ported from SymPy)
-            error_functions.py Erf, Erfc, Erfi, Erfinv, Erfcinv, Expint, EiNode and erf, ..., Ei (ported from SymPy)
+            error_functions.py Erf, ..., Expint, EiNode, SiNode, ..., OffsetLiNode and erf, ..., Ei, Si, ..., Li (ported from SymPy)
             beta_functions.py Beta and beta (ported from SymPy)
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations

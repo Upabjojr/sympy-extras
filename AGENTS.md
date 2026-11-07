@@ -175,7 +175,7 @@ sympy_extras/
             gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma, LowerGamma, UpperGamma / gamma, ..., PORTED FROM SYMPY
             delta_functions.py DiracDelta, Heaviside / dirac_delta, heaviside, PORTED FROM SYMPY
             zeta_functions.py Zeta, DirichletEta, PolyLog / zeta, dirichlet_eta, polylog; Bernoulli numbers, PORTED FROM SYMPY
-            error_functions.py Erf, Erfc, Erfi, Erfinv, Erfcinv, Expint, EiNode / erf, ..., expint, Ei, PORTED FROM SYMPY
+            error_functions.py Erf, ..., Expint, EiNode, SiNode, CiNode, ShiNode, ChiNode, LiNode, OffsetLiNode / erf, ..., Ei, Si, Ci, Shi, Chi, li, Li, PORTED FROM SYMPY
             beta_functions.py Beta / beta, PORTED FROM SYMPY
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,
                              Subs, Order, ...) and evaluating functions (add, mul, pow, mod, eq, and_, or_, diff,

@@ -10,6 +10,7 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `Si`, `Ci`, `Shi`, `Chi`, `li` and `Li`, ported from SymPy.
 - `lowergamma`, `uppergamma`, `expint` and `Ei`, ported from SymPy; the
   core decides the sign of numerical function values by evaluation and
   re-flattens products whose combined power changes its base.

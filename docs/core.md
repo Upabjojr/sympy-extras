@@ -433,6 +433,14 @@ its base is flattened again (`sqrt(I)*sqrt(I)*I` is `-1`, not `I*I`), and
 the sign of a numerical function value is decided by evaluating it, as
 SymPy does (`sin(1)` is positive, `zoo*expint(2, 0)` is `zoo`).
 
+The trigonometric and logarithmic integrals (`Si`, `Ci`, `Shi`, `Chi`,
+`li`, `Li`; the classes are `SiNode`, ..., `OffsetLiNode` since the
+functions keep SymPy's names) are ported from SymPy's
+`error_functions.py`: the values at zero and the infinities, `I` and
+`-1` taken out of the arguments of `Si` and `Shi` (`Si(I*x) =
+I*Shi(x)`), the derivatives, `li`'s conjugate off its branch cut and
+mpmath values.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a

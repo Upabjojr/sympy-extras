@@ -7,7 +7,8 @@ values at ``0``, ``oo``, ``-oo``, along the imaginary infinities, the
 compositions with the inverses, the odd symmetry (``erf(-x) =
 -erf(x)``, ``erfc(-x) = 2 - erfc(x)``), the derivatives, conjugates,
 SymPy's ``real_to_real_as_real_imag`` complex parts and the facts.
-``erfcinv`` of a float is evaluated (as ``erfinv(1 - x)``), where SymPy,
+``Si``, ``Ci``, ``Shi``, ``Chi``, ``li``, ``Li`` and ``expint``, ``Ei``
+are in the same module, as in SymPy. ``erfcinv`` of a float is evaluated (as ``erfinv(1 - x)``), where SymPy,
 lacking it in mpmath, leaves the node. Not
 ported: ``erf2``, ``erf2inv``, the Fresnel, exponential and
 trigonometric integrals of the same module, the rewrites and series.
@@ -43,12 +44,13 @@ from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import DefinedFunction
 from sympy_extras.core.mul import div, mul
-from sympy_extras.core.numbers import I, Infinity, Integer, NaN, NegativeInfinity, Rational, nan, oo, pi
+from sympy_extras.core.numbers import I, Infinity, Integer, NaN, NegativeInfinity, Rational, nan, oo, pi, zoo
 from sympy_extras.core.power import pow, sqrt
 from sympy_extras.functions.elementary.exponential import exp
 
 __all__ = ['Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'Expint', 'EiNode', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv',
-           'expint', 'Ei']
+           'expint', 'Ei', 'TrigonometricIntegral', 'SiNode', 'CiNode', 'ShiNode', 'ChiNode', 'LiNode', 'OffsetLiNode',
+           'Si', 'Ci', 'Shi', 'Chi', 'li', 'Li']
 
 ONE = Integer(1)
 ZERO = Integer(0)
@@ -397,3 +399,292 @@ def Ei(z: ExprLike) -> Expr:
     """The exponential integral ``Ei(z)``, evaluated (the class is
     :class:`EiNode`, since the function keeps SymPy's name)."""
     return EiNode.apply(to_expr(z))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:TrigonometricIntegral
+class TrigonometricIntegral(DefinedFunction):
+    """The common rules of ``Si``, ``Ci``, ``Shi``, ``Chi``: the values at
+    zero and the infinities, ``I`` and ``-1`` taken out of the argument of
+    the odd ones (SymPy takes them out of the even ones only through polar
+    arguments, which the core does not have), the derivative
+    ``trigfunc(z)/z``."""
+
+    #: whether the integrand is odd (sin, sinh): its value at 0 is 0
+    odd: bool = True
+
+    @classmethod
+    def at_zero(cls) -> Expr:
+        raise NotImplementedError
+
+    @classmethod
+    def at_infinity(cls) -> Expr:
+        raise NotImplementedError
+
+    @classmethod
+    def at_negative_infinity(cls) -> Expr:
+        raise NotImplementedError
+
+    @classmethod
+    def minus_factor(cls, z: Expr) -> Expr:
+        raise NotImplementedError
+
+    @classmethod
+    def i_factor(cls, z: Expr, sign: int) -> Expr:
+        raise NotImplementedError
+
+    @classmethod
+    def integrand(cls, z: Expr) -> Expr:
+        raise NotImplementedError
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [z] = args
+        if z.is_zero:
+            return cls.at_zero()
+        if isinstance(z, Infinity):
+            return cls.at_infinity()
+        if isinstance(z, NegativeInfinity):
+            return cls.at_negative_infinity()
+        if cls.odd:
+            rotated = z.extract_multiplicatively(I)
+            if rotated is not None:
+                return cls.i_factor(rotated, 1)
+            negated = z.extract_multiplicatively(MINUS_ONE)
+            if negated is not None:
+                return cls.minus_factor(negated)
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        z = self.args[0]
+        return div(self.integrand(z), z)
+
+    def _eval_facts(self) -> dict[str, bool]:
+        facts: dict[str, bool] = {'commutative': True}
+        if self.odd and self.args[0].is_zero:
+            facts['zero'] = True
+        return facts
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Si
+class SiNode(TrigonometricIntegral):
+    """The sine integral ``Si(z)``, unevaluated (``Si`` evaluates)."""
+
+    function_name = 'Si'
+
+    @classmethod
+    def at_zero(cls) -> Expr:
+        return ZERO
+
+    @classmethod
+    def at_infinity(cls) -> Expr:
+        return mul(pi, HALF)
+
+    @classmethod
+    def at_negative_infinity(cls) -> Expr:
+        return mul(MINUS_ONE, pi, HALF)
+
+    @classmethod
+    def minus_factor(cls, z: Expr) -> Expr:
+        return mul(MINUS_ONE, Si(z))
+
+    @classmethod
+    def i_factor(cls, z: Expr, sign: int) -> Expr:
+        return mul(I, Shi(z), Integer(sign))
+
+    @classmethod
+    def integrand(cls, z: Expr) -> Expr:
+        from sympy_extras.functions.elementary.trigonometric import sin
+        return sin(z)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return mpmath.mpc(mpmath.si(values[0]))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Ci
+class CiNode(TrigonometricIntegral):
+    """The cosine integral ``Ci(z)``, unevaluated (``Ci`` evaluates)."""
+
+    function_name = 'Ci'
+    odd = False
+
+    @classmethod
+    def at_zero(cls) -> Expr:
+        return zoo
+
+    @classmethod
+    def at_infinity(cls) -> Expr:
+        return ZERO
+
+    @classmethod
+    def at_negative_infinity(cls) -> Expr:
+        return mul(I, pi)
+
+    @classmethod
+    def integrand(cls, z: Expr) -> Expr:
+        from sympy_extras.functions.elementary.trigonometric import cos
+        return cos(z)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return None if values[0] == 0 else mpmath.mpc(mpmath.ci(values[0]))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Shi
+class ShiNode(TrigonometricIntegral):
+    """The hyperbolic sine integral ``Shi(z)``, unevaluated (``Shi``
+    evaluates)."""
+
+    function_name = 'Shi'
+
+    @classmethod
+    def at_zero(cls) -> Expr:
+        return ZERO
+
+    @classmethod
+    def at_infinity(cls) -> Expr:
+        return oo
+
+    @classmethod
+    def at_negative_infinity(cls) -> Expr:
+        return NegativeInfinity()
+
+    @classmethod
+    def minus_factor(cls, z: Expr) -> Expr:
+        return mul(MINUS_ONE, Shi(z))
+
+    @classmethod
+    def i_factor(cls, z: Expr, sign: int) -> Expr:
+        return mul(I, Si(z), Integer(sign))
+
+    @classmethod
+    def integrand(cls, z: Expr) -> Expr:
+        from sympy_extras.functions.elementary.hyperbolic import sinh
+        return sinh(z)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return mpmath.mpc(mpmath.shi(values[0]))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Chi
+class ChiNode(TrigonometricIntegral):
+    """The hyperbolic cosine integral ``Chi(z)``, unevaluated (``Chi``
+    evaluates)."""
+
+    function_name = 'Chi'
+    odd = False
+
+    @classmethod
+    def at_zero(cls) -> Expr:
+        return zoo
+
+    @classmethod
+    def at_infinity(cls) -> Expr:
+        return oo
+
+    @classmethod
+    def at_negative_infinity(cls) -> Expr:
+        return oo
+
+    @classmethod
+    def integrand(cls, z: Expr) -> Expr:
+        from sympy_extras.functions.elementary.hyperbolic import cosh
+        return cosh(z)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return None if values[0] == 0 else mpmath.mpc(mpmath.chi(values[0]))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:li
+class LiNode(DefinedFunction):
+    """The logarithmic integral ``li(z)``, unevaluated (``li``
+    evaluates)."""
+
+    function_name = 'li'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [z] = args
+        if z.is_zero:
+            return ZERO
+        if z == ONE:
+            return NegativeInfinity()
+        if isinstance(z, Infinity):
+            return oo
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        from sympy_extras.functions.elementary.exponential import log
+        return div(ONE, log(self.args[0]))
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from sympy_extras.functions.elementary.complexes import conjugate
+        z = self.args[0]
+        if z.is_extended_negative:
+            return None  # the branch cut (-oo, 0)
+        return li(conjugate(z))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return None if values[0] == 1 else mpmath.mpc(mpmath.li(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        facts: dict[str, bool] = {'commutative': True}
+        if self.args[0].is_zero:
+            facts['zero'] = True
+        return facts
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Li
+class OffsetLiNode(DefinedFunction):
+    """The offset logarithmic integral ``Li(z) = li(z) - li(2)``,
+    unevaluated (``Li`` evaluates)."""
+
+    function_name = 'Li'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [z] = args
+        if isinstance(z, Infinity):
+            return oo
+        if z == Integer(2):
+            return ZERO
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        from sympy_extras.functions.elementary.exponential import log
+        return div(ONE, log(self.args[0]))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return None if values[0] == 1 else mpmath.mpc(mpmath.li(values[0], offset=True))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def Si(z: ExprLike) -> Expr:
+    """The sine integral, evaluated (the class is :class:`SiNode`)."""
+    return SiNode.apply(to_expr(z))
+
+
+def Ci(z: ExprLike) -> Expr:
+    """The cosine integral, evaluated (the class is :class:`CiNode`)."""
+    return CiNode.apply(to_expr(z))
+
+
+def Shi(z: ExprLike) -> Expr:
+    """The hyperbolic sine integral, evaluated (the class is :class:`ShiNode`)."""
+    return ShiNode.apply(to_expr(z))
+
+
+def Chi(z: ExprLike) -> Expr:
+    """The hyperbolic cosine integral, evaluated (the class is :class:`ChiNode`)."""
+    return ChiNode.apply(to_expr(z))
+
+
+def li(z: ExprLike) -> Expr:
+    """The logarithmic integral, evaluated (the class is :class:`LiNode`)."""
+    return LiNode.apply(to_expr(z))
+
+
+def Li(z: ExprLike) -> Expr:
+    """The offset logarithmic integral, evaluated (the class is
+    :class:`OffsetLiNode`)."""
+    return OffsetLiNode.apply(to_expr(z))

@@ -11,8 +11,9 @@ from .elementary.hyperbolic import (Acosh, Acoth, Acsch, Asech, Asinh, Atanh, Co
 from .combinatorial.numbers import Catalan, catalan
 from .special.beta_functions import Beta, beta
 from .special.delta_functions import DiracDelta, Heaviside, dirac_delta, heaviside
-from .special.error_functions import (Ei, EiNode, Erf, Erfc, Erfcinv, Erfi, Erfinv, Expint, erf, erfc, erfcinv, erfi,
-                                      erfinv, expint)
+from .special.error_functions import (Chi, ChiNode, Ci, CiNode, Ei, EiNode, Erf, Erfc, Erfcinv, Erfi, Erfinv, Expint, Li,
+                                      LiNode, OffsetLiNode, Shi, ShiNode, Si, SiNode, erf, erfc, erfcinv, erfi, erfinv,
+                                      expint, li)
 from .special.gamma_functions import (DiGamma, Gamma, LogGamma, LowerGamma, PolyGamma, TriGamma, UpperGamma, digamma,
                                       gamma, loggamma, lowergamma, polygamma, trigamma, uppergamma)
 from .special.zeta_functions import DirichletEta, PolyLog, Zeta, dirichlet_eta, polylog, zeta
@@ -23,7 +24,8 @@ __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', '
            'atan2', 'Exp', 'Log', 'LambertW', 'exp', 'log', 'lambertw', 'cbrt', 'root', 'real_root', 'Floor', 'Ceiling', 'Frac', 'floor', 'ceiling', 'frac',
            'Factorial', 'Binomial', 'RisingFactorial', 'FallingFactorial', 'factorial', 'binomial', 'rf', 'ff',
            'Catalan', 'catalan', 'Beta', 'beta', 'LowerGamma', 'UpperGamma', 'lowergamma', 'uppergamma',
-           'Expint', 'EiNode', 'expint', 'Ei', 'Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv', 'Zeta', 'DirichletEta', 'PolyLog', 'zeta', 'dirichlet_eta', 'polylog', 'DiracDelta', 'Heaviside', 'dirac_delta', 'heaviside', 'Gamma', 'LogGamma', 'PolyGamma', 'DiGamma', 'TriGamma', 'gamma', 'loggamma', 'polygamma', 'digamma',
+           'Expint', 'EiNode', 'expint', 'Ei', 'SiNode', 'CiNode', 'ShiNode', 'ChiNode', 'LiNode', 'OffsetLiNode', 'Si',
+           'Ci', 'Shi', 'Chi', 'li', 'Li', 'Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv', 'Zeta', 'DirichletEta', 'PolyLog', 'zeta', 'dirichlet_eta', 'polylog', 'DiracDelta', 'Heaviside', 'dirac_delta', 'heaviside', 'Gamma', 'LogGamma', 'PolyGamma', 'DiGamma', 'TriGamma', 'gamma', 'loggamma', 'polygamma', 'digamma',
            'trigamma', 'Max', 'Min', 'max_', 'min_', 'ExprCondPair', 'Piecewise', 'piecewise', 'Sin', 'Cos', 'Tan', 'Cot', 'Sec', 'Csc', 'sin', 'cos', 'tan', 'cot', 'sec',
            'csc', 'Asin', 'Acos', 'Atan', 'Acot', 'Asec', 'Acsc', 'asin', 'acos', 'atan', 'acot', 'asec', 'acsc',
            'Sinh', 'Cosh', 'Tanh', 'Coth', 'Sech', 'Csch', 'sinh', 'cosh', 'tanh', 'coth', 'sech', 'csch',
