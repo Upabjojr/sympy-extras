@@ -58,3 +58,39 @@ def test_derivatives_and_numbers() -> None:
     for e, s in [(harmonic(n).subs(n, Rational(1, 2)), sympy.harmonic(sympy.Rational(1, 2))),
                  (harmonic(n, Rational(1, 2)).subs(n, Rational(5, 2)), sympy.harmonic(sympy.Rational(5, 2), sympy.Rational(1, 2)))]:
         assert abs(complex(sympy_value(e.evalf(20))) - complex(sympy.N(s, 20))) < 1e-13, e
+
+
+def test_euler_bell_genocchi_partition_match_sympy() -> None:
+    from sympy_extras.core.numbers import Float
+    from sympy_extras.functions import Genocchi, bell, euler, genocchi, partition
+    different: list[tuple[str, ...]] = []
+    m = Symbol('m', integer=True, nonnegative=True)
+    indices: list[Expr] = [Integer(i) for i in range(-2, 15)] + [n, k, m, 2*m, 2*m + 1, Rational(1, 2), oo]
+    for a in indices:
+        sa = sympy_value(a)
+        for ours_f, theirs_f in [(euler, sympy.euler), (bell, sympy.bell), (genocchi, sympy.genocchi),
+                                 (partition, sympy.partition)]:
+            try:
+                theirs = theirs_f(sa)
+            except (ValueError, TypeError) as error:
+                with pytest.raises(type(error)):
+                    ours_f(a)
+                continue
+            ours = ours_f(a)
+            if not same(ours, theirs):
+                different.append((ours_f.__name__, str(a), str(ours), str(theirs)))
+    for degree in range(0, 8):
+        for point in [x, x + 1, Integer(1), Integer(0), Rational(1, 2), Float('0.5')]:
+            for ours_g, theirs_g in [(euler, sympy.euler), (bell, sympy.bell), (genocchi, sympy.genocchi)]:
+                ours_value, theirs_value = ours_g(degree, point), theirs_g(degree, sympy_value(point))
+                if not same(ours_value, theirs_value):
+                    different.append((ours_g.__name__, str(degree), str(point), str(ours_value), str(theirs_value)))
+    assert same(euler(Integer(-1), x), sympy.euler(-1, sympy.Symbol('x')))
+    assert not different, different[:20]
+    for a in [Integer(i) for i in range(0, 12)] + [m, 2*m, 2*m + 1, Integer(8)]:
+        node = Genocchi(a)
+        s = sympy.genocchi(sympy_value(a), evaluate=False)
+        for name in ['integer', 'positive', 'negative', 'even', 'odd', 'prime']:
+            got = node._ask(name)
+            if got is not None:
+                assert got == getattr(s, 'is_' + name), (node, name)

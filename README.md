@@ -806,7 +806,7 @@ sympy_extras/
             hyperbolic.py    Sinh, ..., Csch, Asinh, ..., Acsch and sinh, ..., acsch (ported from SymPy)
         combinatorial/
             factorials.py    Factorial, Binomial, RisingFactorial, FallingFactorial (ported from SymPy)
-            numbers.py       catalan, fibonacci, lucas, harmonic, bernoulli (ported from SymPy)
+            numbers.py       catalan, fibonacci, lucas, harmonic, bernoulli, euler, bell, genocchi, partition (ported from SymPy)
         special/
             gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma, LowerGamma, UpperGamma (ported from SymPy)
             delta_functions.py DiracDelta, Heaviside and dirac_delta, heaviside (ported from SymPy)

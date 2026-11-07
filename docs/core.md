@@ -417,9 +417,11 @@ integers and negative non-integers, with derivatives, facts and mpmath
 values. `fibonacci` (and the Fibonacci polynomials), `lucas`, `harmonic`
 (exact at the integers, through the Bernoulli polynomials for a
 nonpositive integer order, the limits at `oo`) and `bernoulli` (numbers
-with SymPy's `B_1 = 1/2`, and polynomials) are in the same module.
-`betainc`, `euler`, `bell`, `genocchi`, `partition` and the other numbers
-of SymPy's `numbers.py` are not ported.
+with SymPy's `B_1 = 1/2`, and polynomials), `euler`, `bell`, `genocchi`
+(numbers and polynomials, the Genocchi facts) and `partition` are in the
+same module. Not ported: `betainc`, the incomplete Bell polynomials (a
+tuple argument), `andre`, `tribonacci`, `motzkin` and the other numbers
+of SymPy's `numbers.py`.
 
 The incomplete gamma functions (`LowerGamma`, `UpperGamma` with
 `lowergamma`, `uppergamma`) and the exponential integrals (`Expint`,

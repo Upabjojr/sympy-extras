@@ -1,6 +1,8 @@
 """Combinatorial numbers on the typed core: ``Catalan``, ``Fibonacci``,
-``Lucas``, ``Harmonic``, ``Bernoulli`` (unevaluated) and ``catalan``,
-``fibonacci``, ``lucas``, ``harmonic``, ``bernoulli`` (evaluating).
+``Lucas``, ``Harmonic``, ``Bernoulli``, ``Euler``, ``Bell``, ``Genocchi``,
+``Partition`` (unevaluated) and ``catalan``, ``fibonacci``, ``lucas``,
+``harmonic``, ``bernoulli``, ``euler``, ``bell``, ``genocchi``,
+``partition`` (evaluating).
 
 Ported from SymPy's ``sympy.functions.combinatorial.numbers.catalan``:
 ``catalan(n) = 4**n*gamma(n + 1/2)/(gamma(1/2)*gamma(n + 2))`` at the
@@ -11,8 +13,12 @@ values. ``fibonacci(n)`` and the Fibonacci polynomials
 m)`` (exact at the integers, through the Bernoulli polynomials for a
 nonpositive integer ``m``, the limits at ``oo``), ``bernoulli(n)`` (SymPy's
 convention ``B_1 = 1/2``) and the Bernoulli polynomials ``bernoulli(n,
-x)``. Not ported: ``euler``, ``bell``, ``genocchi``, ``andre``,
-``partition``, ``tribonacci`` and the other numbers of the module.
+x)``, the Euler numbers and polynomials (``euler(-1) = pi/2``), the Bell
+numbers and polynomials, the Genocchi numbers and polynomials with their
+facts, the partition numbers. Not ported: the incomplete Bell
+polynomials ``bell(n, k, symbols)`` (a tuple argument, which the core's
+functions, taking expressions, cannot hold), ``andre``, ``tribonacci``,
+``motzkin``, ``divisor_sigma`` and the other numbers of the module.
 
 Examples
 ========
@@ -27,10 +33,13 @@ Examples
 (55, 5, x**3 + 2*x, 18, 25/12, 49/36, -n/2 + (n + 1)**2/2 - 1/2)
 >>> bernoulli(1), bernoulli(6), bernoulli(3, x), bernoulli(n, 1)
 (1/2, 1/42, x**3 - 3*x**2/2 + x/2, bernoulli(n))
+>>> from sympy_extras.functions.combinatorial.numbers import euler, bell, genocchi, partition
+>>> euler(4), euler(3, x), bell(5), bell(3, x), genocchi(6), genocchi(3, x), partition(10)
+(5, x**3 - 3*x**2/2 + 1/4, 52, x**3 + 3*x**2 + x, -3, -3*x**2 + 3*x, 42)
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py (catalan, fibonacci, lucas,
-# harmonic, bernoulli) (SymPy 1.14)
+# harmonic, bernoulli, euler, bell, genocchi, partition) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: an unevaluating class with an evaluating function, strict
@@ -39,6 +48,7 @@ Examples
 
 from __future__ import annotations
 
+from fractions import Fraction
 from typing import Optional, Sequence
 
 import mpmath
@@ -51,8 +61,8 @@ from sympy_extras.core.mul import div, mul
 from sympy_extras.core.numbers import Integer, Rational
 from sympy_extras.core.power import pow
 
-__all__ = ['Catalan', 'Fibonacci', 'Lucas', 'Harmonic', 'Bernoulli', 'catalan', 'fibonacci', 'lucas', 'harmonic',
-           'bernoulli']
+__all__ = ['Catalan', 'Fibonacci', 'Lucas', 'Harmonic', 'Bernoulli', 'Euler', 'Bell', 'Genocchi', 'Partition', 'catalan',
+           'fibonacci', 'lucas', 'harmonic', 'bernoulli', 'euler', 'bell', 'genocchi', 'partition']
 
 HALF = Rational(1, 2)
 
@@ -336,3 +346,266 @@ def bernoulli(n: ExprLike, x: Optional[ExprLike] = None) -> Expr:
     if x is None:
         return Bernoulli.apply(to_expr(n))
     return Bernoulli.apply(to_expr(n), to_expr(x))
+
+
+def _bernoulli_coefficients(n: int) -> list[Fraction]:
+    """The coefficients (by power) of the Bernoulli polynomial ``B_n(x)``
+    with ``b_1 = -1/2``."""
+    from math import comb
+    from sympy_extras.functions.special.zeta_functions import bernoulli_number
+    coefficients = [Fraction(0)] * (n + 1)
+    for k in range(n + 1):
+        b = -Fraction(1, 2) if k == 1 else bernoulli_number(k)
+        coefficients[n - k] = comb(n, k) * b
+    return coefficients
+
+
+def _polynomial(coefficients: Sequence[Fraction], x: Expr) -> Expr:
+    from sympy_extras.core.numbers import number_from_fraction
+    return add(*[mul(number_from_fraction(c), pow(x, Integer(j))) for j, c in enumerate(coefficients) if c])
+
+
+def _euler_coefficients(n: int) -> list[Fraction]:
+    """``E_n(x) = 2/(n + 1)*(B_{n+1}(x) - 2**(n + 1)*B_{n+1}(x/2))``."""
+    b = _bernoulli_coefficients(n + 1)
+    return [Fraction(2, n + 1) * c * (1 - Fraction(2**(n + 1), 2**j)) for j, c in enumerate(b)][:n + 1]
+
+
+def _genocchi_coefficients(n: int) -> list[Fraction]:
+    """``G_n(x) = 2*(2**n*B_n(x/2) - B_n(x))``."""
+    b = _bernoulli_coefficients(n)
+    return [2 * c * (Fraction(2**n, 2**j) - 1) for j, c in enumerate(b)]
+
+
+def _stirling2(n: int, k: int) -> int:
+    from math import comb, factorial as integer_factorial
+    return sum((-1)**i * comb(k, i) * (k - i)**n for i in range(k + 1)) // integer_factorial(k)
+
+
+def _partitions(n: int) -> int:
+    """The number of partitions of ``n`` by Euler's pentagonal recurrence."""
+    p = [1] + [0] * n
+    for m in range(1, n + 1):
+        total, k = 0, 1
+        while True:
+            g1, g2 = k * (3 * k - 1) // 2, k * (3 * k + 1) // 2
+            if g1 > m:
+                break
+            sign = 1 if k % 2 else -1
+            total += sign * p[m - g1]
+            if g2 <= m:
+                total += sign * p[m - g2]
+            k += 1
+        p[m] = total
+    return p[n]
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:euler
+class Euler(DefinedFunction):
+    """The Euler numbers ``euler(n)`` and polynomials ``euler(n, x)``,
+    unevaluated (``euler`` evaluates)."""
+
+    function_name = 'euler'
+    nargs = frozenset({1, 2})
+    call_nargs = frozenset({1, 2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from sympy_extras.core.numbers import pi
+        from sympy_extras.functions.special.gamma_functions import digamma
+        n = args[0]
+        x: Optional[Expr] = args[1] if len(args) > 1 else None
+        if n.is_zero:
+            return Integer(1)
+        if n == Integer(-1):
+            if x is None:
+                return div(pi, Integer(2))
+            return sub(digamma(div(add(x, Integer(1)), Integer(2))), digamma(div(x, Integer(2))))
+        if n.is_integer is False or n.is_nonnegative is False:
+            return None
+        k = _integer(n)
+        if x is None:
+            if n.is_odd and n.is_positive:
+                return Integer(0)
+            if k is not None:
+                return Integer(int(mpmath.eulernum(k, exact=True)))
+            return None
+        if k is not None:
+            return _polynomial(_euler_coefficients(k), x)
+        return None
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        n = values[0]
+        if mpmath.im(n) != 0 or mpmath.re(n) != int(mpmath.re(n)) or mpmath.re(n) < 0:
+            return None
+        k = int(mpmath.re(n))
+        if len(values) == 1:
+            return mpmath.mpc(mpmath.eulernum(k))
+        return mpmath.mpc(mpmath.eulerpoly(k, values[1]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:bell
+class Bell(DefinedFunction):
+    """The Bell numbers ``bell(n)`` and polynomials ``bell(n, x)``,
+    unevaluated (``bell`` evaluates)."""
+
+    function_name = 'bell'
+    nargs = frozenset({1, 2})
+    call_nargs = frozenset({1, 2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from sympy_extras.core.numbers import Infinity, oo
+        n = args[0]
+        x: Optional[Expr] = args[1] if len(args) > 1 else None
+        if isinstance(n, Infinity):
+            if x is None:
+                return oo
+            raise ValueError("Bell polynomial is not defined")
+        if n.is_negative or n.is_integer is False:
+            raise ValueError("a non-negative integer expected")
+        k = _integer(n)
+        if k is None:
+            return None
+        if x is None:
+            return Integer(sum(_stirling2(k, j) for j in range(k + 1)))
+        return add(*[mul(Integer(_stirling2(k, j)), pow(x, Integer(j))) for j in range(k + 1) if _stirling2(k, j)])
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        if len(values) == 1:
+            return mpmath.mpc(mpmath.bell(values[0]))
+        return mpmath.mpc(mpmath.bell(values[0], values[1]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:genocchi
+class Genocchi(DefinedFunction):
+    """The Genocchi numbers ``genocchi(n)`` and polynomials
+    ``genocchi(n, x)``, unevaluated (``genocchi`` evaluates)."""
+
+    function_name = 'genocchi'
+    nargs = frozenset({1, 2})
+    call_nargs = frozenset({1, 2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        n = args[0]
+        x: Optional[Expr] = args[1] if len(args) > 1 else None
+        if x is not None and x == Integer(1):
+            return genocchi(n)
+        if n.is_integer is False or n.is_nonnegative is False:
+            return None
+        k = _integer(n)
+        if x is None:
+            if n.is_odd and sub(n, Integer(1)).is_positive:
+                return Integer(0)
+            if k is not None:
+                return mul(Integer(2), sub(Integer(1), pow(Integer(2), n)), bernoulli(n))
+            return None
+        if k is not None:
+            return _polynomial(_genocchi_coefficients(k), x)
+        return None
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        n = values[0]
+        if len(values) != 1 or mpmath.im(n) != 0 or mpmath.re(n) != int(mpmath.re(n)) or mpmath.re(n) < 0:
+            return None
+        k = int(mpmath.re(n))
+        b = mpmath.bernoulli(k) if k != 1 else mpmath.mpf(0.5)
+        return mpmath.mpc(2 * (1 - 2**k) * b)
+
+    def _eval_facts(self) -> dict[str, bool]:
+        facts: dict[str, bool] = {'commutative': True}
+        if len(self.args) > 1 and self.args[1] != Integer(1):
+            return facts
+        n = self.args[0]
+        if n.is_integer and n.is_nonnegative:
+            facts['integer'] = True
+            half = div(n, Integer(2))
+            if n.is_odd:
+                minus_one_positive = sub(n, Integer(1)).is_positive
+                if minus_one_positive is not None:
+                    facts['negative'] = not minus_one_positive
+                    facts['odd'] = not minus_one_positive
+                    facts['even'] = minus_one_positive
+                facts['positive'] = False
+            else:
+                if n.is_zero or n.is_odd:
+                    facts['positive'] = False
+                elif half.is_even is not None:
+                    facts['positive'] = half.is_even
+                if half.is_odd is not None:
+                    facts['negative'] = half.is_odd
+                if n.is_even:
+                    if n.is_zero is not None:
+                        facts['even'] = n.is_zero
+                        facts['odd'] = not n.is_zero
+        prime = sub(n, Integer(8)).is_zero
+        if prime is not None:
+            facts['prime'] = prime
+        return facts
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:partition
+class Partition(DefinedFunction):
+    """The partition numbers ``partition(n)``, unevaluated (``partition``
+    evaluates)."""
+
+    function_name = 'partition'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [n] = args
+        if n.is_integer is False:
+            raise TypeError("n should be an integer")
+        if n.is_negative is True:
+            return Integer(0)
+        if n.is_zero is True or n == Integer(1):
+            return Integer(1)
+        k = _integer(n)
+        if k is not None:
+            return Integer(_partitions(k))
+        return None
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        n = values[0]
+        if mpmath.im(n) != 0 or mpmath.re(n) != int(mpmath.re(n)):
+            return None
+        return mpmath.mpc(_partitions(int(mpmath.re(n))) if mpmath.re(n) >= 0 else 0)
+
+    def _eval_facts(self) -> dict[str, bool]:
+        facts: dict[str, bool] = {'commutative': True}
+        if self.args[0].is_nonnegative is True:
+            facts['positive'] = True
+        return facts
+
+
+def euler(n: ExprLike, x: Optional[ExprLike] = None) -> Expr:
+    """``euler(n)`` or the polynomial ``euler(n, x)``, evaluated."""
+    if x is None:
+        return Euler.apply(to_expr(n))
+    return Euler.apply(to_expr(n), to_expr(x))
+
+
+def bell(n: ExprLike, x: Optional[ExprLike] = None) -> Expr:
+    """``bell(n)`` or the polynomial ``bell(n, x)``, evaluated."""
+    if x is None:
+        return Bell.apply(to_expr(n))
+    return Bell.apply(to_expr(n), to_expr(x))
+
+
+def genocchi(n: ExprLike, x: Optional[ExprLike] = None) -> Expr:
+    """``genocchi(n)`` or the polynomial ``genocchi(n, x)``, evaluated."""
+    if x is None:
+        return Genocchi.apply(to_expr(n))
+    return Genocchi.apply(to_expr(n), to_expr(x))
+
+
+def partition(n: ExprLike) -> Expr:
+    """``partition(n)``, evaluated."""
+    return Partition.apply(to_expr(n))
