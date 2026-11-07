@@ -160,6 +160,7 @@ sympy_extras/
         galoistools.py       gf_factor, gf_ddf, gf_edf, gf_irreducible_p over FiniteField
         factortools.py       dup_zz_factor, dup_qq_factor (Zassenhaus), dup_zz_hensel_lift, dup_ext_factor (Trager)
         rootisolation.py     dup_isolate_real_roots(_sqf), dup_count_real_roots (Sturm), dup_refine_real_root, over QQ
+        polyclasses.py       DensePoly[T]: rep, domain, gen; the dense algorithms as methods, factorisation and roots through the domain
         ideals.py            Ideal: operations and invariants on top of sympy.groebner
         hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)

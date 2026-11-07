@@ -167,6 +167,10 @@ class AlgebraicField(Domain[list[Fraction]]):
         of its characteristic polynomial."""
         return sqfreetools.dup_sqf_part(self.characteristic_polynomial(a), QQ)
 
+    def factor_dense(self, f: list[list[Fraction]]) -> tuple[list[Fraction], list[tuple[list[list[Fraction]], int]]]:
+        from ..factortools import dup_ext_factor
+        return dup_ext_factor(f, self)
+
     def from_int(self, n: int) -> list[Fraction]:
         return [Fraction(n)] if n else []
 

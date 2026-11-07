@@ -13,7 +13,9 @@ Examples
 """
 from __future__ import annotations
 
+from fractions import Fraction
 from math import gcd
+from typing import Optional
 
 from sympy.core.expr import Expr
 from sympy.core.numbers import Integer
@@ -158,6 +160,19 @@ class IntegerRing(Domain[int]):
                 for j in range(1, dg + 1):
                     remainder[i + j] -= q*g[j]
         return _strip(quotient), _strip(remainder[df - dg + 1:])
+
+    def factor_dense(self, f: list[int]) -> tuple[int, list[tuple[list[int], int]]]:
+        from ..factortools import dup_zz_factor
+        return dup_zz_factor(f, self)
+
+    def isolate_real_roots_dense(self, f: list[int], eps: Optional[Fraction] = None
+                                 ) -> list[tuple[tuple[Fraction, Fraction], int]]:
+        from ..rootisolation import dup_isolate_real_roots
+        return dup_isolate_real_roots([Fraction(c) for c in f], eps)
+
+    def count_real_roots_dense(self, f: list[int], inf: Optional[Fraction], sup: Optional[Fraction]) -> int:
+        from ..rootisolation import dup_count_real_roots
+        return dup_count_real_roots([Fraction(c) for c in f], inf, sup)
 
     def from_int(self, n: int) -> int:
         return n

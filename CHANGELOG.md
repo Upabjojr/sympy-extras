@@ -39,6 +39,9 @@ remove public functions. Breaking changes are listed here when they happen.
   coefficient in the division over a field, the cyclotomic special case
   of the factorisation and Fujiwara's root bound in the real root
   isolation (tighter isolating intervals).
+- `sympy_extras.polys.polyclasses.DensePoly`: the typed polynomial class
+  of the standalone layer, with factorisation and real roots dispatched
+  by the domain (`Domain.factor_dense`, `isolate_real_roots_dense`).
 - `sympy_extras.solvers.irregular`: the exponential parts of the
   solutions of a linear ODE at its irregular finite singular points, from
   the local Newton polygons (the characteristic equation of each edge

@@ -16,6 +16,7 @@ True
 from __future__ import annotations
 
 from fractions import Fraction
+from typing import Optional
 
 from sympy.core.expr import Expr
 from sympy.core.numbers import Rational
@@ -113,6 +114,19 @@ class RationalField(Domain[Fraction]):
 
     def denom(self, a: Fraction) -> int:
         return a.denominator
+
+    def factor_dense(self, f: list[Fraction]) -> tuple[Fraction, list[tuple[list[Fraction], int]]]:
+        from ..factortools import dup_qq_factor
+        return dup_qq_factor(f, self)
+
+    def isolate_real_roots_dense(self, f: list[Fraction], eps: Optional[Fraction] = None
+                                 ) -> list[tuple[tuple[Fraction, Fraction], int]]:
+        from ..rootisolation import dup_isolate_real_roots
+        return dup_isolate_real_roots(f, eps)
+
+    def count_real_roots_dense(self, f: list[Fraction], inf: Optional[Fraction], sup: Optional[Fraction]) -> int:
+        from ..rootisolation import dup_count_real_roots
+        return dup_count_real_roots(f, inf, sup)
 
     def from_int(self, n: int) -> Fraction:
         return Fraction(n)

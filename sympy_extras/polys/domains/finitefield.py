@@ -139,6 +139,10 @@ class FiniteField(Domain[int]):
                     remainder[i + j] -= q*g[j]
         return _strip(quotient), _strip([c % p for c in remainder[df - dg + 1:]])
 
+    def factor_dense(self, f: list[int]) -> tuple[int, list[tuple[list[int], int]]]:
+        from ..galoistools import gf_factor
+        return gf_factor(f, self)
+
     def from_int(self, n: int) -> int:
         return n % self.p
 

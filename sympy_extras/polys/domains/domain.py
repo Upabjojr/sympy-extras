@@ -19,7 +19,8 @@ References
 """
 from __future__ import annotations
 
-from typing import Generic, Iterator, TypeVar
+from fractions import Fraction
+from typing import Generic, Iterator, Optional, TypeVar
 
 from sympy.core.expr import Expr
 
@@ -168,6 +169,24 @@ class Domain(Generic[T]):
         """The quotient and remainder of dense polynomials, for domains
         with ``has_dense_kernels`` (a field, or the division is exact)."""
         raise NotImplementedError
+
+    # -- algorithms which exist for particular domains only: the domain
+    # dispatches to the implementation (the factorisation over ZZ, QQ,
+    # GF(p) and number fields; real roots over ZZ and QQ)
+
+    def factor_dense(self, f: list[T]) -> tuple[T, list[tuple[list[T], int]]]:
+        """The irreducible factorisation of a dense polynomial: the
+        constant and the factors with their multiplicities."""
+        raise NotImplementedError('no factorisation over %s' % self.name)
+
+    def isolate_real_roots_dense(self, f: list[T], eps: Optional[Fraction] = None
+                                 ) -> list[tuple[tuple[Fraction, Fraction], int]]:
+        """Isolating intervals of the real roots with multiplicities
+        (ordered domains of characteristic zero with exact arithmetic)."""
+        raise NotImplementedError('no real root isolation over %s' % self.name)
+
+    def count_real_roots_dense(self, f: list[T], inf: Optional[Fraction], sup: Optional[Fraction]) -> int:
+        raise NotImplementedError('no real root counting over %s' % self.name)
 
     # -- conversions
 

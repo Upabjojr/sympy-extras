@@ -178,6 +178,34 @@ first whatever the order of the arguments, so it is off by the sign
 (`resultant(-7x - 3, -2x**3 + 6x**2 + x - 6)` is `1773` by the Sylvester
 determinant, SymPy gives `-1773`).
 
+## The polynomial class
+
+`polyclasses.DensePoly(rep, domain, gen)` wraps a dense polynomial with
+its domain and variable and exposes the algorithms as methods:
+arithmetic operators, `div`/`quo`/`rem`/`exquo`/`pdiv`, `diff`,
+`integrate`, `eval`, `shift`, `scale`, `compose`, `content`,
+`primitive`, `monic`, `gcd`, `lcm`, `gcdex`, `invert`, `resultant`,
+`discriminant`, `subresultants`, `sqf_list`, `factor_list`,
+`is_irreducible`, `real_root_intervals`, `count_real_roots`, and the
+conversions `from_sympy`/`to_sympy`/`convert`. Factorisation and real
+roots are dispatched by the domain (`Domain.factor_dense`,
+`isolate_real_roots_dense`), so a polynomial over a domain without them
+raises `NotImplementedError` rather than silently converting. A
+polynomial in several variables is a `DensePoly` over a polynomial ring
+domain, and its conversions handle all the variables.
+
+```python
+>>> from sympy.abc import x, y
+>>> from sympy_extras.polys.polyclasses import DensePoly
+>>> f = DensePoly.from_sympy(x**4 - 1, x, ZZ)
+>>> [g.to_sympy() for g, _ in f.factor_list()[1]]
+[x - 1, x + 1, x**2 + 1]
+>>> g = DensePoly.from_sympy(x**2*y - y**3, x, PolynomialRing(ZZ, 'y'))
+>>> g.gcd(DensePoly.from_sympy(x*y + y**2, x, PolynomialRing(ZZ, 'y'))).to_sympy()
+x*y + y**2
+
+```
+
 ## Performance
 
 The generic functions call the domain's methods for every coefficient
@@ -194,8 +222,8 @@ implementation; `x**100 - 1` is immediate.
 
 Factorisation of multivariate polynomials (Wang), the recombination by lattice reduction (van Hoeij;
 the subset search is exponential in the number of modular factors),
-complex root isolation, a `Poly` wrapper and the
-conversion of the algorithms above to this layer; sparse multivariate
+complex root isolation, the conversion of the algorithms above to this
+layer (they still use SymPy's `Poly`); sparse multivariate
 polynomials (the Gröbner basis code uses SymPy's `PolyElement`); a fast
 gcd over `ZZ` (the heuristic gcd) and over `GF(p)`.
 
