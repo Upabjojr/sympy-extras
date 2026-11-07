@@ -806,6 +806,8 @@ sympy_extras/
             hyperbolic.py    Sinh, ..., Csch, Asinh, ..., Acsch and sinh, ..., acsch (ported from SymPy)
         combinatorial/
             factorials.py    Factorial, Binomial, RisingFactorial, FallingFactorial (ported from SymPy)
+        special/
+            gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma (ported from SymPy)
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation

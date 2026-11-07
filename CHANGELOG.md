@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.functions.special.gamma_functions`: `Gamma`, `LogGamma`,
+  `PolyGamma`, `DiGamma`, `TriGamma` with the evaluating `gamma`,
+  `loggamma`, `polygamma`, `digamma`, `trigamma`, ported from SymPy;
+  `binomial` with a non-integer `k` and the derivatives of `factorial` and
+  `binomial` use them. Ported functions of floats evaluate numerically.
 - `sympy_extras.functions.combinatorial.factorials`: `Factorial`, `Binomial`,
   `RisingFactorial`, `FallingFactorial` with the evaluating `factorial`,
   `binomial`, `rf`, `ff`, ported from SymPy.

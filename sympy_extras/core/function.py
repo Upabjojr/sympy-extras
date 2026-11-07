@@ -492,6 +492,32 @@ class WildFunction(AtomicExpr):
         return self.name + '_'
 
 
+# PORTED FROM SYMPY: sympy/core/function.py:Function._should_evalf
+def _float_precision(e: Expr) -> int:
+    """The precision of a ``Float``, or of the floats of a pure complex
+    number ``a + b*I`` with numbers ``a``, ``b``; ``-1`` otherwise."""
+    from .numbers import Float, ImaginaryUnit, Number
+    if isinstance(e, Float):
+        return e.precision
+    if not isinstance(e, Add):
+        return -1
+    real: Optional[Expr] = None
+    imaginary: Optional[Expr] = None
+    for term in e.args:
+        if isinstance(term, Number) and real is None:
+            real = term
+        elif isinstance(term, ImaginaryUnit) and imaginary is None:
+            imaginary = Integer(1)
+        elif isinstance(term, Mul) and len(term.args) == 2 and isinstance(term.args[0], Number) \
+                and isinstance(term.args[1], ImaginaryUnit) and imaginary is None:
+            imaginary = term.args[0]
+        else:
+            return -1
+    if real is None or imaginary is None:
+        return -1
+    return max(p.precision if isinstance(p, Float) else -1 for p in (real, imaginary))
+
+
 class DefinedFunction(Application):
     """A function of the typed core (``Exp``, ``Log``, ...): the class
     builds the unevaluated node, the classmethod :meth:`eval` holds the
@@ -541,6 +567,12 @@ class DefinedFunction(Application):
             value = cls.eval(*expressions)
             if value is not None:
                 return value
+            # PORTED FROM SYMPY: sympy/core/function.py:Function.__new__ (_should_evalf):
+            # a function of floats is evaluated at their largest precision
+            precisions = [_float_precision(a) for a in expressions]
+            if expressions and min(precisions) > 0:
+                from .numbers import prec_to_dps
+                return cls(*expressions).evalf(prec_to_dps(max(precisions)))
         return cls(*expressions)
 
     def fdiff(self, argindex: int) -> Expr:

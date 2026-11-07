@@ -43,8 +43,6 @@ def test_binary_functions_match_sympy() -> None:
     for a, b in itertools.product(values(), repeat=2):
         for ours_f, theirs_f, name in ((binomial, sympy.binomial, 'binomial'), (rf, sympy.rf, 'rf'),
                                        (ff, sympy.ff, 'ff')):
-            if name == 'binomial' and b.is_number and b.is_integer is not True:
-                continue  # SymPy's gamma(n + 1)/(gamma(k + 1)*gamma(n - k + 1)), not ported
             theirs = str(theirs_f(sympy_value(a), sympy_value(b)))
             if 'gamma' in theirs:
                 continue

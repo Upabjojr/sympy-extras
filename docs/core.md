@@ -354,7 +354,20 @@ exact integer values, `factorial(-1) = zoo`, the special cases of
 `binomial`, the product formula for a numerical `n` and integer `k`,
 and `rf`, `ff` expanded for integer `k`. SymPy's answers through `gamma`
 (`binomial(5, 1/2) = 512/(63*pi)`) and the derivatives with `polygamma`
-wait for the gamma functions: the node stays.
+use the gamma functions below.
+
+The gamma functions (`Gamma`, `LogGamma`, `PolyGamma`, `DiGamma`,
+`TriGamma` with `gamma`, `loggamma`, `polygamma`, `digamma`, `trigamma`,
+in `sympy_extras.functions.special`) are ported from SymPy's
+`gamma_functions.py`: `gamma` at the integers and half-integers,
+`loggamma` at the integers and positive half-integers, `polygamma(0, n)`
+with the exact harmonic number, `polygamma(n, z)` for odd `n` at the
+integers and `1/2` with the exact `zeta` at even arguments
+(`trigamma(2) = pi**2/6 - 1`). `zeta` at odd arguments, Gauss' digamma
+theorem for `polygamma(0, p/q)`, `lowergamma`, `uppergamma` and the
+series are not ported. Every ported function of floats is now evaluated
+numerically at their precision (`sin(0.5) = 0.479425538604203`), as
+SymPy's `Function.__new__` does.
 
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`

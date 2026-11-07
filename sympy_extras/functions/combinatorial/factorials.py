@@ -7,9 +7,8 @@ values computed exactly, ``factorial`` of a negative integer is ``zoo``,
 ``binomial`` with ``k`` or ``n - k`` equal to 0 or 1, zero for a negative
 integer ``k``, the product formula for a numerical ``n`` and an integer
 ``k``, ``rf(x, k)`` and ``ff(x, k)`` expanded into products for an
-integer ``k``. Where SymPy answers with ``gamma`` and ``polygamma``
-(``binomial(n, 1/2)``, the derivatives) the node stays: the gamma
-functions are not ported yet.
+integer ``k``, the gamma form for a non-integer numerical ``k``
+(``binomial(5, 1/2) = 512/(63*pi)``), the derivatives with ``polygamma``.
 
 Examples
 ========
@@ -87,6 +86,11 @@ class Factorial(DefinedFunction):
             return Integer(math.factorial(value))
         return None
 
+    def fdiff(self, argindex: int) -> Expr:
+        from sympy_extras.functions.special.gamma_functions import gamma, polygamma
+        n = add(self.args[0], ONE)
+        return mul(gamma(n), polygamma(ZERO, n))
+
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return _gamma_numeric(values[0] + 1)
 
@@ -153,7 +157,17 @@ class Binomial(DefinedFunction):
             return None
         if n_nonnegative is False and n_integer:
             return zoo
-        return None  # SymPy: gamma(n + 1)/(gamma(k + 1)*gamma(n - k + 1)), not ported
+        if k.is_number:
+            from sympy_extras.functions.special.gamma_functions import gamma
+            return mul(gamma(add(n, ONE)), pow(mul(gamma(add(k, ONE)), gamma(add(sub(n, k), ONE))), Integer(-1)))
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        from sympy_extras.functions.special.gamma_functions import polygamma
+        n, k = self.args
+        if argindex == 1:
+            return mul(binomial(n, k), sub(polygamma(ZERO, add(n, ONE)), polygamma(ZERO, add(sub(n, k), ONE))))
+        return mul(binomial(n, k), sub(polygamma(ZERO, add(sub(n, k), ONE)), polygamma(ZERO, add(k, ONE))))
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         n, k = values
