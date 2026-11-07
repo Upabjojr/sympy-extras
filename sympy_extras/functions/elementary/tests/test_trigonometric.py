@@ -12,15 +12,17 @@ from sympy_extras._typing import as_expr as sympy_expr
 from sympy_extras.core import I, Integer, Rational, Symbol, pi, to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.function import DefinedFunction
-from sympy_extras.functions import (Cos, Cosh, Exp, Log, Sin, Sinh, Tan, Tanh, cos, cosh, exp, log, sin, sinh, tan,
-                                    tanh)
+from sympy_extras.functions import (Cos, Cosh, Cot, Coth, Csc, Csch, Exp, Log, Sec, Sech, Sin, Sinh, Tan, Tanh, cos,
+                                    cosh, cot, coth, csc, csch, exp, log, sec, sech, sin, sinh, tan, tanh)
 
 x, y = Symbol('x'), Symbol('y')
 r = Symbol('r', real=True)
 n = Symbol('n', integer=True)
 
 FUNCTIONS: list[tuple[Callable[[Expr], Expr], type[sympy.Function]]] = [
-    (sin, sympy.sin), (cos, sympy.cos), (tan, sympy.tan), (sinh, sympy.sinh), (cosh, sympy.cosh), (tanh, sympy.tanh)]
+    (sin, sympy.sin), (cos, sympy.cos), (tan, sympy.tan), (cot, sympy.cot), (sec, sympy.sec), (csc, sympy.csc),
+    (sinh, sympy.sinh), (cosh, sympy.cosh), (tanh, sympy.tanh), (coth, sympy.coth), (sech, sympy.sech),
+    (csch, sympy.csch)]
 
 FACTS: dict[str, Callable[[sympy.Expr], Optional[bool]]] = {
     'real': lambda s: s.is_real, 'positive': lambda s: s.is_positive, 'negative': lambda s: s.is_negative,
@@ -49,10 +51,7 @@ def test_values_match_sympy() -> None:
         for f, g in FUNCTIONS:
             if str(to_sympy(f(a), evaluate=False)) != str(g(sa)):
                 different.append((f.__name__, str(a)))
-    # the half-period shifts of tan and tanh, which SymPy writes with cot
-    # and coth (not ported yet)
-    assert different == [('tan', 'x + pi/2'), ('tan', 'x - pi/3'), ('tanh', 'x + I*pi/2'),
-                         ('tanh', 'x + 2*I*pi/3')], different
+    assert different == [], different
 
 
 def test_exact_values() -> None:
@@ -89,7 +88,9 @@ def test_classes_never_evaluate() -> None:
     # every ported class builds the node it is given; the function evaluates
     classes: list[tuple[type[DefinedFunction], Callable[[Expr], Expr], Expr]] = [
         (Sin, sin, Integer(0)), (Cos, cos, Integer(0)), (Tan, tan, pi), (Sinh, sinh, Integer(0)),
-        (Cosh, cosh, I*pi), (Tanh, tanh, Integer(0)), (Exp, exp, Integer(0)), (Log, log, Integer(1))]
+        (Cosh, cosh, I*pi), (Tanh, tanh, Integer(0)), (Exp, exp, Integer(0)), (Log, log, Integer(1)),
+        (Cot, cot, pi/4), (Sec, sec, Integer(0)), (Csc, csc, pi/2), (Coth, coth, Integer(0)), (Sech, sech, Integer(0)),
+        (Csch, csch, I*pi/2)]
     for cls, function, argument in classes:
         node = cls(argument)
         assert type(node) is cls and node.args == (argument,), cls

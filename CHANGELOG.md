@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- The reciprocal functions `Cot`, `Sec`, `Csc`, `Coth`, `Sech`, `Csch`
+  (and `cot`, ..., `csch`), ported from SymPy; with them the half-period
+  shifts of `tan` and `tanh` give `-cot(x)` and `coth(x)`, and 2904
+  values of the twelve functions are SymPy's character for character.
+  `thue_equation` takes `primerange` from `sympy_extras.ntheory`.
 - `sympy_extras.functions.elementary.trigonometric` and `hyperbolic`:
   `Sin`, `Cos`, `Tan`, `Sinh`, `Cosh`, `Tanh` with the evaluating `sin`,
   ..., `tanh`, ported from SymPy (exact values at rational multiples of

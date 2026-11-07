@@ -661,11 +661,12 @@ def _fill_function_tables() -> None:
     if _NATIVE_TO_SYMPY:
         return
     from sympy_extras.functions.elementary.exponential import Exp, Log
-    from sympy_extras.functions.elementary.hyperbolic import Cosh, Sinh, Tanh
-    from sympy_extras.functions.elementary.trigonometric import Cos, Sin, Tan
+    from sympy_extras.functions.elementary.hyperbolic import Cosh, Coth, Csch, Sech, Sinh, Tanh
+    from sympy_extras.functions.elementary.trigonometric import Cos, Cot, Csc, Sec, Sin, Tan
     pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
         (Exp, sympy.exp), (Log, sympy.log), (Sin, sympy.sin), (Cos, sympy.cos), (Tan, sympy.tan),
-        (Sinh, sympy.sinh), (Cosh, sympy.cosh), (Tanh, sympy.tanh)]
+        (Cot, sympy.cot), (Sec, sympy.sec), (Csc, sympy.csc), (Sinh, sympy.sinh), (Cosh, sympy.cosh),
+        (Tanh, sympy.tanh), (Coth, sympy.coth), (Sech, sympy.sech), (Csch, sympy.csch)]
     for native, counterpart in pairs:
         _NATIVE_TO_SYMPY[native] = counterpart
         _SYMPY_TO_NATIVE[counterpart] = native

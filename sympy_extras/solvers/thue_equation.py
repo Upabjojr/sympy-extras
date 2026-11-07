@@ -572,7 +572,7 @@ def _saturate(order: _Order, units: list[OrderElement], torsion: Sequence[OrderE
     """Enlarge the system until its index in the unit group is 1: for
     every prime up to ``R'/0.2052`` (Friedman's bound) the p-th roots of
     the products of the units (and roots of unity) are searched."""
-    from sympy.ntheory import primerange
+    from sympy_extras.ntheory.generate import primerange
     while True:
         regulator = _regulator(order, units)
         index_bound = int(floor(regulator/mpmath.mpf('0.2052')))

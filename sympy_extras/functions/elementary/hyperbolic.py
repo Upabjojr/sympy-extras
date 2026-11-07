@@ -6,9 +6,9 @@ The evaluation rules, derivatives and facts are ported from SymPy's
 ``sympy.functions.elementary.hyperbolic``: the values at zero and at the
 infinities, odd and even symmetry, the exchange with the trigonometric
 functions on imaginary arguments, the multiples of ``I*pi`` peeled off
-sums. Not ported yet (the node stays): ``tanh(x + I*pi/2)`` (SymPy:
-``coth(x)``), the compositions with the inverse functions, and the facts
-which need ``as_real_imag``.
+sums; the reciprocal functions ``Coth``, ``Sech``, ``Csch`` through their
+partners. Not ported yet (the node stays): the compositions with the
+inverse functions, and the facts which need ``as_real_imag``.
 
 Examples
 ========
@@ -20,6 +20,9 @@ Examples
 (0, 1, 1, -sinh(x), cosh(x), I*sin(x), -1)
 >>> sinh(x + I*pi), sinh(x).diff(x), tanh(x).diff(x)
 (-sinh(x), cosh(x), 1 - tanh(x)**2)
+>>> from sympy_extras.functions.elementary.hyperbolic import coth, sech, csch
+>>> tanh(x + I*pi/2), coth(0), sech(-x), csch(-x), coth(I*x)
+(coth(x), zoo, sech(x), -csch(x), -I*cot(x))
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py (SymPy 1.14)
@@ -42,12 +45,13 @@ from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import DefinedFunction
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import (ComplexInfinity, I, Infinity, Integer, NaN, NegativeInfinity, Number, Rational,
-                                       nan, number_from_fraction, oo, pi)
+                                       nan, number_from_fraction, oo, pi, zoo)
 from sympy_extras.core.power import pow
 
 from .trigonometric import imaginary_coefficient
 
-__all__ = ['Sinh', 'Cosh', 'Tanh', 'sinh', 'cosh', 'tanh', 'peeloff_ipi']
+__all__ = ['Sinh', 'Cosh', 'Tanh', 'Coth', 'Sech', 'Csch', 'sinh', 'cosh', 'tanh', 'coth', 'sech', 'csch',
+           'peeloff_ipi']
 
 
 # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:_peeloff_ipi
@@ -234,8 +238,9 @@ class Tanh(DefinedFunction):
             return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
         if isinstance(arg, Add):
             rest, m = peeloff_ipi(arg)
-            if m and m.denominator == 1:
-                return cls.apply(rest)  # tanh(x + I*pi/2) = coth(x) is not ported
+            if m:
+                # tanh(x + n*I*pi) = tanh(x), tanh(x + I*pi/2 + n*I*pi) = coth(x)
+                return cls.apply(rest) if m.denominator == 1 else coth(rest)
         if arg.is_zero:
             return Integer(0)
         return None
@@ -258,6 +263,113 @@ class Tanh(DefinedFunction):
         return facts
 
 
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:coth
+class Coth(DefinedFunction):
+    """The hyperbolic cotangent, unevaluated (``coth`` evaluates)."""
+
+    function_name = 'coth'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from .trigonometric import cot
+        [arg] = args
+        if isinstance(arg, Number):
+            if isinstance(arg, NaN):
+                return nan
+            if isinstance(arg, Infinity):
+                return Integer(1)
+            if isinstance(arg, NegativeInfinity):
+                return Integer(-1)
+            if isinstance(arg, Rational) and arg.p == 0:
+                return zoo
+            if arg.is_negative:
+                return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
+            return None
+        if isinstance(arg, ComplexInfinity):
+            return nan
+        i_coeff = imaginary_coefficient(arg)
+        if i_coeff is not None:
+            if i_coeff.could_extract_minus_sign():
+                return mul(I, cot(mul(Integer(-1), i_coeff)))
+            return mul(Integer(-1), I, cot(i_coeff))
+        if arg.could_extract_minus_sign():
+            return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
+        if isinstance(arg, Add):
+            rest, m = peeloff_ipi(arg)
+            if m:
+                # coth(x + n*I*pi) = coth(x), coth(x + I*pi/2 + n*I*pi) = tanh(x)
+                return cls.apply(rest) if m.denominator == 1 else tanh(rest)
+        if arg.is_zero:
+            return zoo
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        return mul(Integer(-1), pow(sinh(self.args[0]), Integer(-2)))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        if mpmath.sinh(values[0]) == 0:
+            return None
+        return mpmath.mpc(mpmath.coth(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:ReciprocalHyperbolicFunction.eval
+def _reciprocal_eval(cls: type[DefinedFunction], partner: type[DefinedFunction], even: bool, arg: Expr) -> Optional[Expr]:
+    if arg.could_extract_minus_sign():
+        flipped = cls.apply(mul(Integer(-1), arg))
+        return flipped if even else mul(Integer(-1), flipped)
+    t = partner.eval(arg)
+    return pow(t, Integer(-1)) if t is not None else None
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:sech
+class Sech(DefinedFunction):
+    """The hyperbolic secant, unevaluated (``sech`` evaluates)."""
+
+    function_name = 'sech'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [arg] = args
+        return _reciprocal_eval(cls, Cosh, True, arg)
+
+    def fdiff(self, argindex: int) -> Expr:
+        return mul(Integer(-1), tanh(self.args[0]), self)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        if mpmath.cosh(values[0]) == 0:
+            return None
+        return mpmath.mpc(mpmath.sech(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:csch
+class Csch(DefinedFunction):
+    """The hyperbolic cosecant, unevaluated (``csch`` evaluates)."""
+
+    function_name = 'csch'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [arg] = args
+        return _reciprocal_eval(cls, Sinh, False, arg)
+
+    def fdiff(self, argindex: int) -> Expr:
+        return mul(Integer(-1), coth(self.args[0]), self)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        if mpmath.sinh(values[0]) == 0:
+            return None
+        return mpmath.mpc(mpmath.csch(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
 def sinh(x: ExprLike) -> Expr:
     """The hyperbolic sine of ``x``, evaluated."""
     return Sinh.apply(to_expr(x))
@@ -271,3 +383,18 @@ def cosh(x: ExprLike) -> Expr:
 def tanh(x: ExprLike) -> Expr:
     """The hyperbolic tangent of ``x``, evaluated."""
     return Tanh.apply(to_expr(x))
+
+
+def coth(x: ExprLike) -> Expr:
+    """The hyperbolic cotangent of ``x``, evaluated."""
+    return Coth.apply(to_expr(x))
+
+
+def sech(x: ExprLike) -> Expr:
+    """The hyperbolic secant of ``x``, evaluated."""
+    return Sech.apply(to_expr(x))
+
+
+def csch(x: ExprLike) -> Expr:
+    """The hyperbolic cosecant of ``x``, evaluated."""
+    return Csch.apply(to_expr(x))

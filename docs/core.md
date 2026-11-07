@@ -273,17 +273,18 @@ set by the constructors are `Final`, so mypy rejects any later
 assignment (a runtime check in `__setattr__` cost 30-80 % of the speed
 of the core and was not kept).
 
-The trigonometric and hyperbolic families (`Sin`, `Cos`, `Tan`, `Sinh`,
-`Cosh`, `Tanh` with `sin`, ..., `tanh`) are ported from SymPy's
-`trigonometric.py` and `hyperbolic.py`: symmetry, the exchange `sin(I*x) =
-I*sinh(x)` and back, the exact values at rational multiples of `pi`
-(SymPy's reductions, product formulas, Chebyshev values and half-angle
-roots), the multiples of `pi` and `I*pi` peeled off sums, derivatives,
-facts. On 1452 values (rational multiples of `pi` with denominators up
-to 30, imaginary arguments, shifted sums) the results are SymPy's
-character for character, except the half-period shifts of `tan` and
-`tanh`, which SymPy writes with `cot` and `coth` (not ported yet). Not
-ported either: `AccumBounds` (`sin(oo)`), the inverse functions.
+The trigonometric and hyperbolic families (`Sin`, `Cos`, `Tan`, `Cot`,
+`Sec`, `Csc`, `Sinh`, `Cosh`, `Tanh`, `Coth`, `Sech`, `Csch` with `sin`,
+..., `csch`) are ported from SymPy's `trigonometric.py` and
+`hyperbolic.py`: symmetry, the exchange `sin(I*x) = I*sinh(x)` and back,
+the exact values at rational multiples of `pi` (SymPy's reductions,
+product formulas, Chebyshev values and half-angle roots), the multiples
+of `pi` and `I*pi` peeled off sums, the reciprocal functions through
+their partners, derivatives, facts. On 2904 values (rational multiples
+of `pi` with denominators up to 30, imaginary arguments, shifted sums)
+the results are SymPy's character for character, compared without
+letting SymPy re-evaluate them. Not ported yet: `AccumBounds`
+(`sin(oo)`), the inverse functions.
 
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`

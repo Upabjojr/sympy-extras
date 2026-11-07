@@ -1,5 +1,6 @@
-"""The trigonometric functions on the typed core: ``Sin``, ``Cos``, ``Tan``
-(unevaluated nodes) and ``sin``, ``cos``, ``tan`` (evaluating).
+"""The trigonometric functions on the typed core: ``Sin``, ``Cos``, ``Tan``,
+``Cot``, ``Sec``, ``Csc`` (unevaluated nodes) and ``sin``, ``cos``, ``tan``,
+``cot``, ``sec``, ``csc`` (evaluating).
 
 The evaluation rules, derivatives and facts are ported from SymPy's
 ``sympy.functions.elementary.trigonometric``: odd and even symmetry, the
@@ -12,7 +13,6 @@ integer and half-integer multiples of ``pi`` peeled off sums. Not ported
 yet, the node stays unevaluated:
 
 * ``sin(oo)``, ``cos(oo)``, ``tan(oo)`` (SymPy returns ``AccumBounds``);
-* ``tan(x + pi/2)`` (SymPy returns ``-cot(x)``; ``cot`` is not ported);
 * the compositions with the inverse functions (``sin(asin(x))``);
 * ``Float`` multiples of ``pi`` (SymPy turns binary fractions into
   rationals).
@@ -29,6 +29,9 @@ Examples
 (-sin(x), -sin(x), I*sinh(x), cosh(x))
 >>> sin(x).diff(x), tan(x).diff(x)
 (cos(x), tan(x)**2 + 1)
+>>> from sympy_extras.functions.elementary.trigonometric import cot, sec, csc
+>>> tan(x + pi/2), cot(pi/6), sec(pi/3), csc(-x), sec(x + pi)
+(-cot(x), sqrt(3), 2, -csc(x), -sec(x))
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py (SymPy 1.14)
@@ -54,7 +57,8 @@ from sympy_extras.core.numbers import (ComplexInfinity, Float, I, Infinity, Inte
                                        nan, number_from_fraction, pi, zoo)
 from sympy_extras.core.power import pow, sqrt
 
-__all__ = ['Sin', 'Cos', 'Tan', 'sin', 'cos', 'tan', 'pi_coeff', 'peeloff_pi']
+__all__ = ['Sin', 'Cos', 'Tan', 'Cot', 'Sec', 'Csc', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'pi_coeff',
+           'peeloff_pi']
 
 HALF = Fraction(1, 2)
 
@@ -422,8 +426,9 @@ class Tan(DefinedFunction):
             return None
         if isinstance(arg, Add):
             rest, m = peeloff_pi(arg)
-            if m and m.denominator == 1:
-                return cls.apply(rest)  # tan(x + n*pi) = tan(x); tan(x + pi/2) = -cot(x) is not ported
+            if m:
+                # tan(x + n*pi) = tan(x), tan(x + pi/2 + n*pi) = -cot(x)
+                return cls.apply(rest) if m.denominator == 1 else mul(Integer(-1), cot(rest))
         if arg.is_zero:
             return Integer(0)
         return None
@@ -450,6 +455,167 @@ class Tan(DefinedFunction):
         return facts
 
 
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:cot
+class Cot(DefinedFunction):
+    """The cotangent, unevaluated (``cot`` evaluates)."""
+
+    function_name = 'cot'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from .hyperbolic import coth
+        [arg] = args
+        if isinstance(arg, NaN) or isinstance(arg, ComplexInfinity):
+            return nan
+        if isinstance(arg, Rational) and arg.p == 0:
+            return zoo
+        if isinstance(arg, (Infinity, NegativeInfinity)):
+            return None
+        if arg.could_extract_minus_sign():
+            return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
+        i_coeff = imaginary_coefficient(arg)
+        if i_coeff is not None:
+            return mul(Integer(-1), I, coth(i_coeff))
+        coefficient = pi_coeff(arg)
+        if coefficient is not None:
+            if coefficient.is_integer:
+                return zoo
+            if not isinstance(coefficient, Rational):
+                narg = mul(coefficient, pi)
+                return cls(narg) if narg != arg else None
+            c = coefficient.as_fraction()
+            q = c.denominator
+            if q in (5, 10):
+                return tan(add(mul(Rational(1, 2), pi), mul(Integer(-1), arg)))
+            if q > 2 and q % 2 == 0:
+                narg = mul(number_from_fraction(2*c), pi)
+                c_value, s_value = cos(narg), cos(add(narg, mul(Rational(-1, 2), pi)))
+                if not isinstance(c_value, Cos) and not isinstance(s_value, Cos):
+                    inverse = pow(s_value, Integer(-1))
+                    return add(inverse, mul(c_value, inverse))
+            p = c.numerator % q
+            table2 = _table2()
+            if q in table2:
+                a, b = table2[q]
+                value_a = cls.apply(mul(number_from_fraction(Fraction(p, a)), pi))
+                value_b = cls.apply(mul(number_from_fraction(Fraction(p, b)), pi))
+                if isinstance(value_a, Cot) or isinstance(value_b, Cot):
+                    return None
+                return mul(add(Integer(1), mul(value_a, value_b)),
+                           pow(add(value_b, mul(Integer(-1), value_a)), Integer(-1)))
+            reduced = ((c + HALF) % 1 - HALF)
+            narg = mul(number_from_fraction(reduced), pi)
+            c_value, s_value = cos(narg), cos(add(narg, mul(Rational(-1, 2), pi)))
+            if not isinstance(c_value, Cos) and not isinstance(s_value, Cos):
+                if s_value == 0:
+                    return zoo
+                return mul(c_value, pow(s_value, Integer(-1)))
+            if narg != arg:
+                return cls(narg)
+            return None
+        if isinstance(arg, Add):
+            rest, m = peeloff_pi(arg)
+            if m:
+                # cot(x + n*pi) = cot(x), cot(x + pi/2 + n*pi) = -tan(x)
+                return cls.apply(rest) if m.denominator == 1 else mul(Integer(-1), tan(rest))
+        if arg.is_zero:
+            return zoo
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        return add(Integer(-1), mul(Integer(-1), pow(self, Integer(2))))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        if mpmath.sin(values[0]) == 0:
+            return None
+        return mpmath.mpc(mpmath.cot(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return _trig_facts(self.args[0])
+
+
+def _reciprocal_value(t: Expr) -> Expr:
+    """``1/t``, written with ``sec`` when ``t`` or ``-t`` is a cosine and
+    with ``csc`` when it is a sine (SymPy's ``(1/t).rewrite(sec)`` and
+    ``(1/t).rewrite(csc)``)."""
+    negated = mul(Integer(-1), t)
+    for partner, reciprocal in ((Cos, Sec), (Sin, Csc)):
+        if isinstance(t, partner):
+            return reciprocal(t.args[0])
+        if isinstance(negated, partner):
+            return mul(Integer(-1), reciprocal(negated.args[0]))
+    return pow(t, Integer(-1))
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:ReciprocalTrigonometricFunction.eval
+def _reciprocal_eval(cls: type[DefinedFunction], partner: type[DefinedFunction], even: bool, arg: Expr) -> Optional[Expr]:
+    """The evaluation of ``sec`` (``partner`` = ``Cos``, even) and ``csc``
+    (``Sin``, odd) through the evaluation of the partner."""
+    if arg.could_extract_minus_sign():
+        flipped = cls.apply(mul(Integer(-1), arg))
+        return flipped if even else mul(Integer(-1), flipped)
+    coefficient = pi_coeff(arg)
+    if coefficient is not None and isinstance(coefficient, Rational) and not mul(Integer(2), coefficient).is_integer:
+        c = coefficient.as_fraction()
+        q = c.denominator
+        p = c.numerator % (2*q)
+        if p > q:
+            return mul(Integer(-1), cls.apply(mul(number_from_fraction(c - 1), pi)))
+        if 2*p > q:
+            narg = mul(number_from_fraction(1 - c), pi)
+            return mul(Integer(-1), cls.apply(narg)) if even else cls.apply(narg)
+    t = partner.eval(arg)
+    if t is None:
+        return None
+    return _reciprocal_value(t)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:sec
+class Sec(DefinedFunction):
+    """The secant, unevaluated (``sec`` evaluates)."""
+
+    function_name = 'sec'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [arg] = args
+        return _reciprocal_eval(cls, Cos, True, arg)
+
+    def fdiff(self, argindex: int) -> Expr:
+        return mul(tan(self.args[0]), self)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        if mpmath.cos(values[0]) == 0:
+            return None
+        return mpmath.mpc(mpmath.sec(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return _trig_facts(self.args[0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:csc
+class Csc(DefinedFunction):
+    """The cosecant, unevaluated (``csc`` evaluates)."""
+
+    function_name = 'csc'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [arg] = args
+        return _reciprocal_eval(cls, Sin, False, arg)
+
+    def fdiff(self, argindex: int) -> Expr:
+        return mul(Integer(-1), cot(self.args[0]), self)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        if mpmath.sin(values[0]) == 0:
+            return None
+        return mpmath.mpc(mpmath.csc(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return _trig_facts(self.args[0])
+
+
 def sin(x: ExprLike) -> Expr:
     """The sine of ``x``, evaluated."""
     return Sin.apply(to_expr(x))
@@ -463,3 +629,18 @@ def cos(x: ExprLike) -> Expr:
 def tan(x: ExprLike) -> Expr:
     """The tangent of ``x``, evaluated."""
     return Tan.apply(to_expr(x))
+
+
+def cot(x: ExprLike) -> Expr:
+    """The cotangent of ``x``, evaluated."""
+    return Cot.apply(to_expr(x))
+
+
+def sec(x: ExprLike) -> Expr:
+    """The secant of ``x``, evaluated."""
+    return Sec.apply(to_expr(x))
+
+
+def csc(x: ExprLike) -> Expr:
+    """The cosecant of ``x``, evaluated."""
+    return Csc.apply(to_expr(x))
