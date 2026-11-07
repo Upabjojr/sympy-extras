@@ -330,6 +330,23 @@ One rule is deliberately stricter than SymPy's: `Max(0, x)` is not
 claimed finite and nonnegative from its argument `0`, since `x` may be
 `oo`; the "one argument suffices" facts need all arguments finite.
 
+`Piecewise` (the node, its pairs kept as given) and `piecewise`
+(evaluating) are ported from SymPy's `piecewise.py` with `ExprCondPair`:
+false conditions and the pairs after a true one dropped, a single true
+pair giving its expression, relations made canonical with the
+coefficient divided out (`-2*x + 1 < 0` is `x > 1/2`), repeated and
+redundant conditions removed, nested `Piecewise` with the same
+condition collapsed, successive pairs with the same expression merged.
+Substitution re-evaluates; the derivative and the conjugate act on the
+expressions. `piecewise_fold`, `piecewise_simplify` and the interval and
+integration methods are not ported. For it the core's relations gained
+SymPy's `canonical` and `reversedsign`, and the comparisons `lt`, `le`,
+`gt`, `ge` are now decided from the facts of the difference
+(`gt(p, 0)` is `true` for a positive `p`) and for an extended real
+against `oo` or `-oo`. A known gap: `ge(k, 1)` for a positive integer
+`k` stays unevaluated, because the core's sums do not derive that
+`k - 1` is nonnegative.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a

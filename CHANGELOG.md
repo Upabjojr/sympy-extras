@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.functions.elementary.piecewise`: `Piecewise` and
+  `ExprCondPair` with the evaluating `piecewise`, ported from SymPy. The
+  core's relations gain SymPy's `canonical` and `reversedsign`; `lt`,
+  `le`, `gt`, `ge` decide from the facts of the difference and against
+  the infinities.
 - `sympy_extras.functions.elementary.miscellaneous`: `Max`, `Min` with the
   evaluating `max_`, `min_`, ported from SymPy; `DefinedFunction.variadic`
   for functions with any number of arguments.

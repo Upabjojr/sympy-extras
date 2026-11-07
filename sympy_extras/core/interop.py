@@ -30,6 +30,7 @@ from sympy.core.function import UndefinedFunction as SymPyUndefinedFunction
 from sympy.assumptions.assume import AppliedPredicate as SymPyAppliedPredicate
 from sympy.assumptions.assume import Predicate as SymPyPredicate
 from sympy.core.relational import Relational as SymPyRelational
+from sympy.functions.elementary.piecewise import ExprCondPair as SymPyExprCondPair
 
 from .add import Add
 from .assume import AppliedPredicate, Predicate
@@ -315,6 +316,12 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         return sympy.AlgebraicNumber(to_sympy(e.root), [to_sympy(c) for c in e.coeffs()], alias=alias)
     if isinstance(e, (SymPyNode, SymPyExprNode)):
         return e._sympy()
+    from sympy_extras.functions.elementary.piecewise import ExprCondPair, Piecewise
+    if isinstance(e, Piecewise):
+        return sympy.Piecewise(*[(to_sympy(p.expr, evaluate), to_sympy(p.cond, evaluate)) for p in e.args],
+                               evaluate=evaluate)
+    if isinstance(e, ExprCondPair):
+        return SymPyExprCondPair(to_sympy(e.expr, evaluate), to_sympy(e.cond, evaluate))
     args = [to_sympy(a, evaluate) for a in e.args]
     if isinstance(e, Add):
         return sympy.Add(*[_sympy_expr(a) for a in args], evaluate=evaluate)
@@ -541,6 +548,9 @@ def _from_sympy(e: SymPyBasic) -> Basic:
         return AppliedPredicate(_predicate(e.function), *[from_sympy(a) for a in e.arguments])
     if isinstance(e, SymPyPredicate):
         return _predicate(e)
+    if isinstance(e, sympy.Piecewise):
+        from sympy_extras.functions.elementary.piecewise import ExprCondPair, Piecewise
+        return Piecewise(*[ExprCondPair(_expr(pair.args[0]), _boolean(pair.args[1])) for pair in e.args])
     if isinstance(e, (sympy.Max, sympy.Min)) and all(isinstance(a, SymPyExpr) for a in e.args):
         from sympy_extras.functions.elementary.miscellaneous import Max, Min
         lattice = Max if isinstance(e, sympy.Max) else Min

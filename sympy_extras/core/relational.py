@@ -81,14 +81,34 @@ class Relational(Boolean):
         return set()
 
     @property
+    def reversedsign(self) -> Relational:
+        """The relation with both sides negated (``-x > -1`` for ``x < 1``)."""
+        from .mul import neg
+        return _REVERSED[type(self)](neg(self._lhs), neg(self._rhs)) if not isinstance(self, (Eq, Ne)) \
+            else type(self)(neg(self._lhs), neg(self._rhs))
+
+    # PORTED FROM SYMPY: sympy/core/relational.py:Relational.canonical
+    @property
     def canonical(self) -> Relational:
-        """The relation with the sides ordered canonically (a number on
-        the right, ``<`` rather than ``>``)."""
+        """A canonical form (SymPy's): a number on the right, otherwise
+        the sides in canonical order, and no minus sign in front of the
+        left side (``-x < 1`` is ``x > -1``)."""
+        from .sorting import default_sort_key
         r: Relational = self
-        if isinstance(r, (Gt, Ge)):
+        if r.rhs.is_number:
+            if r.rhs.is_Number and r.lhs.is_Number and _ge_numbers(r.lhs, r.rhs):
+                r = r.reversed
+        elif r.lhs.is_number:
             r = r.reversed
-        if r.lhs.is_Number and not r.rhs.is_Number:
+        elif sorted(r.args, key=default_sort_key) != list(r.args):
             r = r.reversed
+        if r.lhs.could_extract_minus_sign():
+            return r.reversedsign
+        if not r.rhs.is_number and r.rhs.could_extract_minus_sign():
+            from .mul import neg
+            first = sorted([r.lhs, neg(r.rhs)], key=default_sort_key)[0]
+            if first != r.lhs:
+                return r.reversed.reversedsign
         return r
 
     @property
@@ -247,6 +267,12 @@ def ne(a: ExprLike, b: ExprLike) -> Boolean:
     return Ne(to_expr(a), to_expr(b))
 
 
+def _ge_numbers(a: Expr, b: Expr) -> bool:
+    """``a > b`` for two numbers (SymPy's ``r.lhs > r.rhs`` in
+    ``canonical``)."""
+    return isinstance(a, Number) and isinstance(b, Number) and _order(a, b) == 1
+
+
 def _order(a: Number, b: Number) -> int:
     """``-1``, ``0`` or ``1`` for two real numbers; ``2`` when undecidable."""
     if isinstance(a, (NaN, ComplexInfinity)) or isinstance(b, (NaN, ComplexInfinity)):
@@ -275,12 +301,35 @@ def _compare(a: ExprLike, b: ExprLike, accepted: tuple[int, ...], cls: type[Rela
     order = 2
     if isinstance(lhs, Number) and isinstance(rhs, Number):
         order = _order(lhs, rhs)
+    elif lhs.is_extended_real and rhs.is_extended_real and \
+            (isinstance(rhs, (Infinity, NegativeInfinity)) or isinstance(lhs, (Infinity, NegativeInfinity))):
+        # SymPy's is_ge: every extended real is between -oo and oo
+        if isinstance(rhs, Infinity) or isinstance(lhs, NegativeInfinity):
+            order = {(-1, 0): -1, (1,): -1}.get(accepted, 2)
+        else:
+            order = {(0, 1): 1, (-1,): 1}.get(accepted, 2)
     else:
         difference = sub(lhs, rhs)
         if isinstance(difference, Number) and not isinstance(difference, (Float,)):
             order = _order(difference, Rational(0))
         elif isinstance(difference, Float):
             order = _order(difference, Rational(0))
+        elif not isinstance(difference, NaN):
+            # SymPy's is_gt/is_ge: the sign of the difference from its facts
+            if difference.is_extended_positive:
+                order = 1
+            elif difference.is_extended_negative:
+                order = -1
+            elif difference.is_zero:
+                order = 0
+            elif difference.is_extended_nonnegative and accepted == (0, 1):
+                order = 1
+            elif difference.is_extended_nonpositive and accepted == (-1, 0):
+                order = -1
+            elif difference.is_extended_nonnegative and accepted == (-1,):
+                order = 1
+            elif difference.is_extended_nonpositive and accepted == (1,):
+                order = -1
     if order == 2:
         return cls(lhs, rhs)
     return true if order in accepted else false

@@ -1097,6 +1097,9 @@ def _derivative(e: Expr, s: Symbol) -> Expr:
         return add(*terms)
     if isinstance(e, Derivative):
         return Derivative(e.expr, *e.variable_count, (s, 1))
+    from sympy_extras.functions.elementary.piecewise import Piecewise
+    if isinstance(e, Piecewise):
+        return e.map_expressions(lambda a: _derivative(a, s))
     if e.is_Order:
         return expr_through_sympy(e, lambda o: o.diff(to_sympy(s)))
     if isinstance(e, Subs):

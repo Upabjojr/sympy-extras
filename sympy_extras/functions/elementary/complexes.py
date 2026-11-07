@@ -91,6 +91,9 @@ def conjugate_of(e: Expr) -> Optional[Expr]:
         return e
     if isinstance(e, DefinedFunction):
         return e._eval_conjugate()
+    from .piecewise import Piecewise
+    if isinstance(e, Piecewise):
+        return e.map_expressions(conjugate)
     if isinstance(e, (Add, Mul)):
         parts = [conjugate(t) for t in e.args]
         return add(*parts) if isinstance(e, Add) else mul(*parts)

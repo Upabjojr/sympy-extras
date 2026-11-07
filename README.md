@@ -801,6 +801,7 @@ sympy_extras/
             complexes.py     Re, Im, Abs, Sign, Arg, Conjugate, Atan2; as_real_imag, conjugation (ported from SymPy)
             integers.py      Floor, Ceiling, Frac and floor, ceiling, frac (ported from SymPy)
             miscellaneous.py Max, Min and max_, min_ (ported from SymPy)
+            piecewise.py     Piecewise, ExprCondPair and piecewise (ported from SymPy)
             trigonometric.py Sin, ..., Csc, Asin, ..., Acsc and sin, ..., acsc (ported from SymPy)
             hyperbolic.py    Sinh, ..., Csch, Asinh, ..., Acsch and sinh, ..., acsch (ported from SymPy)
     concrete/
