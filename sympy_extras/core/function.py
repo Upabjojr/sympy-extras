@@ -1189,9 +1189,9 @@ def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: boo
     result = _expand(e, deep, mul, multinomial, power_exp, log)
     # SymPy's Expr.expand repeats the multinomial and mul hints until
     # nothing changes (sqrt(c)**2 = c may create a new product with a sum)
-    while mul or multinomial:
+    while mul or multinomial or log:
         was = result
-        result = _expand(result, deep, mul, multinomial, False, False)
+        result = _expand(result, deep, mul, multinomial, False, log)
         if result == was:
             break
     return result
@@ -1222,6 +1222,9 @@ def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp:
         from .numbers import E
         return mul(*[pow(E, t) for t in e.args[0].args])
     if log and _is_log_node(e):
+        from sympy_extras.functions.elementary.exponential import Log
+        if isinstance(e, Log):
+            return _expand_log_node(e, False, False)
         from .interop import expr_through_sympy
         return expr_through_sympy(e, sympy.expand_log)
     return e
@@ -1338,20 +1341,135 @@ def expand_power_exp(expr: ExprLike, deep: bool = True) -> Expr:
     return expand(expr, deep=deep, mul=False, multinomial=False, power_base=False, power_exp=True)
 
 
-def expand_log(expr: ExprLike, deep: bool = True, force: bool = False) -> Expr:
-    """SymPy's ``expand_log``: logarithms of products and powers split.
+# PORTED FROM SYMPY: sympy/core/function.py:expand_log
+def expand_log(expr: ExprLike, deep: bool = True, force: bool = False, factor: bool = False) -> Expr:
+    """SymPy's ``expand_log``: logarithms of products and powers split
+    where valid (positive factors and bases, real exponents; anything with
+    ``force``), perfect powers taken out of integer arguments (all prime
+    factors with ``factor``); a quotient of logarithms of integers like
+    ``log(8)/log(2)`` is simplified first.
 
     Examples
     ========
 
-    >>> import sympy
-    >>> from sympy_extras.core import Symbol, SymPyFunction, expand_log
-    >>> p, q = Symbol('p', positive=True), Symbol('q', positive=True)
-    >>> expand_log(SymPyFunction(sympy.log)(p*q))
-    log(p) + log(q)
+    >>> from sympy_extras.core import Symbol, expand_log, Integer
+    >>> from sympy_extras.functions import log
+    >>> p, q, x = Symbol('p', positive=True), Symbol('q', positive=True), Symbol('x')
+    >>> expand_log(log(p*q)), expand_log(log(p**2/q)), expand_log(log(x*p)), expand_log(log(Integer(8)))
+    (log(p) + log(q), 2*log(p) - log(q), log(p) + log(x), 3*log(2))
+    >>> expand_log(log(x**2), force=True), expand_log(log(Integer(12)), factor=True), expand_log(log(Integer(8))/log(Integer(2)))
+    (2*log(x), log(3) + 2*log(2), 3)
     """
-    from .interop import expr_through_sympy
-    return expr_through_sympy(to_expr(expr), lambda s: sympy.expand_log(s, deep=deep, force=force))
+    e = to_expr(expr)
+    if not factor:
+        e = as_expr(e.replace(_is_log_quotient, lambda x: _handle_log_quotient(as_expr(x), deep, force)))
+    # SymPy's Expr.expand repeats the log hint until nothing changes
+    while True:
+        was = e
+        e = _expand_logs(e, deep, force, factor)
+        if e == was:
+            return e
+
+
+def _is_log_quotient(x: Basic) -> bool:
+    from sympy_extras.functions.elementary.exponential import Log
+    from .numbers import Rational
+    if not isinstance(x, Mul):
+        return False
+    return all(any(isinstance(i, Log) and isinstance(i.args[0], Rational) for i in factors_of(j))
+               for j in x.as_numer_denom())
+
+
+def _count_logs(e: Basic) -> int:
+    from sympy_extras.functions.elementary.exponential import Log
+    from .basic import preorder_traversal
+    return sum(1 for node in preorder_traversal(e) if isinstance(node, Log))
+
+
+# PORTED FROM SYMPY: sympy/core/function.py:expand_log (_handleMul)
+def _handle_log_quotient(x: Expr, deep: bool, force: bool) -> Expr:
+    from sympy_extras.functions.elementary.exponential import Log, log
+    from sympy_extras.simplify.radsimp import fraction
+    from sympy_extras.simplify.powsimp import multiplicity
+    from .numbers import Integer
+    n, d = fraction(x)
+    ns = [i for i in n.atoms(Log) if isinstance(i.args[0], Integer)]
+    ds = [i for i in d.atoms(Log) if isinstance(i.args[0], Integer)]
+    if len(ns) == 1 and len(ds) == 1:
+        nl, dl = as_expr(ns[0]), as_expr(ds[0])
+        na, da = nl.args[0], dl.args[0]
+        if isinstance(na, Integer) and isinstance(da, Integer):
+            m = multiplicity(da, na)
+            if m:
+                r = add(Integer(m), mul(log(Integer(na.p // da.p ** m)), pow(dl, Integer(-1))))
+                x = as_expr(x.subs(nl, mul(dl, r)))
+    x1 = expand_mul(expand_log(x, deep=deep, force=force, factor=True))
+    if _count_logs(x1) <= _count_logs(x):
+        return x1
+    return x
+
+
+def _expand_logs(e: Expr, deep: bool, force: bool, factor: bool) -> Expr:
+    """The ``log`` hint of SymPy's ``expand``: the arguments first (with
+    ``deep``), then the node."""
+    from sympy_extras.functions.elementary.exponential import Log
+    if deep and e.args and not isinstance(e, (Derivative, UnevaluatedExpr)):
+        e = as_expr(e._evaluated(tuple(_expand_logs(a, deep, force, factor) if isinstance(a, Expr) else a
+                                       for a in e.args)))
+    if isinstance(e, Log):
+        return _expand_log_node(e, force, factor)
+    return e
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log._eval_expand_log
+def _expand_log_node(node: Expr, force: bool, factor: bool) -> Expr:
+    from sympy_extras.functions.elementary.complexes import unpolarify
+    from sympy_extras.functions.elementary.exponential import Log, log
+    from sympy_extras.ntheory.factor_ import factorint, perfect_power
+    from .numbers import Integer, Rational
+    from .power import Pow
+    arg = as_expr(node.args[0])
+    if isinstance(arg, Integer):
+        logarg: Optional[Expr] = None
+        coeff: Expr = Integer(1)
+        value = arg.p
+        power = perfect_power(value) if value > 1 else None
+        if power is not None:
+            value, k = power
+            coeff = Integer(k)
+            logarg = log(Integer(value))
+        if factor:
+            primes = factorint(value) if value > 1 else {}
+            if value not in primes:
+                logarg = add(*[mul(Integer(k), log(Integer(p))) for p, k in primes.items()])
+        if logarg is not None:
+            return mul(coeff, logarg)
+    elif isinstance(arg, Rational):
+        return add(log(Integer(arg.p)), mul(Integer(-1), log(Integer(arg.q))))
+    elif isinstance(arg, Mul):
+        terms: list[Expr] = []
+        nonpos: list[Expr] = []
+        for x in arg.args:
+            x = as_expr(x)
+            if force or x.is_positive is True or x.is_polar is True:
+                a = log(x)
+                terms.append(_expand_log_node(a, force, factor) if isinstance(a, Log) else a)
+            elif x.is_negative is True:
+                terms.append(log(mul(Integer(-1), x)))
+                nonpos.append(Integer(-1))
+            else:
+                nonpos.append(x)
+        return add(add(*terms), log(mul(*nonpos)))
+    elif isinstance(arg, Pow) or _is_exp_node(arg):
+        b, ex = arg.as_base_exp()
+        if force or (ex.is_extended_real is True and (b.is_positive is True or (
+                add(ex, Integer(1)).is_positive is True and add(ex, Integer(-1)).is_nonpositive is True))) \
+                or b.is_polar is True:
+            a = log(b)
+            if isinstance(a, Log):
+                return mul(unpolarify(ex), _expand_log_node(a, force, factor))
+            return mul(unpolarify(ex), a)
+    return log(arg)
 
 
 def expand_func(expr: ExprLike, deep: bool = True) -> Expr:

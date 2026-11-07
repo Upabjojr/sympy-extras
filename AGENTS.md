@@ -225,7 +225,8 @@ sympy_extras/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
         signsimp.py          signsimp, sub_pre, sub_post (ported from SymPy)
         radsimp.py           fraction, numer, denom, collect, collect_dict, rcollect (ported from SymPy; radsimp itself next)
-        powsimp.py           powsimp, multiplicity, _denest_pow (ported from SymPy; powdenest next)
+        powsimp.py           powsimp, powdenest, multiplicity, _denest_pow (ported from SymPy)
+        simplify.py          logcombine, posify (ported from SymPy; simplify itself to come)
         tests/
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)
     polys/

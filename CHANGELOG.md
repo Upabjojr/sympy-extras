@@ -42,7 +42,9 @@ remove public functions. Breaking changes are listed here when they happen.
   `collect`, `collect_dict` (SymPy's `evaluate=False`) and `rcollect`,
   ported from SymPy.
 
-- `sympy_extras.simplify.powsimp.powsimp`, ported from SymPy.
+- `sympy_extras.simplify.powsimp.powsimp` and `powdenest`,
+  `sympy_extras.simplify.simplify.logcombine` and `posify`, ported from
+  SymPy; `expand_log` (with `factor`) is native, no longer through SymPy.
 
 ### Changed
 

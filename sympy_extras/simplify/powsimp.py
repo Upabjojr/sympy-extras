@@ -18,11 +18,11 @@ when the exponent is an integer or the bases are nonnegative (or
 >>> powsimp(exp(x)*exp(y)), powsimp(sqrt(x)*sqrt(y)), powsimp(sqrt(x)*sqrt(y), force=True)
 (exp(x + y), sqrt(x)*sqrt(y), sqrt(x*y))
 
-Not ported yet: ``powdenest`` (next, with ``logcombine`` and
-``posify``); ``logcombine`` inside ``_denest_pow`` goes through SymPy.
+``powdenest`` denests powers of powers where valid (with ``polar=True``
+a few products keep SymPy's ``2**(3*n)`` as ``8**n``: not fixed yet).
 """
 # ---------------------------------------------------------------------
-# PORTED FROM SYMPY: sympy/simplify/powsimp.py (powsimp, _denest_pow),
+# PORTED FROM SYMPY: sympy/simplify/powsimp.py (powsimp, powdenest, _denest_pow),
 # sympy/ntheory/factor_.py (multiplicity of rationals) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
@@ -39,13 +39,13 @@ from sympy_extras.core.basic import Basic
 from sympy_extras.core.exprtools import factor_terms
 from sympy_extras.core.expr import Expr, ExprLike, factors_of, to_expr
 from sympy_extras.core.function import count_ops, expand_log, expand_mul
-from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.mul import Mul, _keep_coeff, mul
 from sympy_extras.core.numbers import E, Float, Integer, Number, Rational
 from sympy_extras.core.power import Pow, pow
 from sympy_extras.core.sorting import ordered
 from sympy_extras.core.symbol import Dummy, Symbol
 
-__all__ = ['powsimp', 'multiplicity']
+__all__ = ['powsimp', 'powdenest', 'multiplicity']
 
 Combine = Literal['all', 'exp', 'base']
 Measure = Callable[[Expr], int]
@@ -129,10 +129,8 @@ def _denest_pow(eq: Expr) -> Expr:
                 logs.append(ei)
             else:
                 other.append(ei)
-        from sympy_extras.core.interop import expr_through_sympy
-        import sympy
-        combined = expr_through_sympy(mul(*logs), sympy.logcombine)
-        return pow(exp(combined), mul(*other))
+        from .simplify import logcombine
+        return pow(exp(logcombine(mul(*logs))), mul(*other))
     _, be = b.as_base_exp()
     if _is_one(be) and not (isinstance(b, Mul) or (isinstance(b, Rational) and b.q != 1) or b.is_positive is True):
         return eq
@@ -152,7 +150,93 @@ def _denest_pow(eq: Expr) -> Expr:
                     return pow(base, mul(e, c))
     if not isinstance(b, Mul) or any(not s.args for s in factors_of(b)):
         return eq
-    return eq
+
+    def nc_gcd(aa: Expr, bb: Expr) -> Expr:
+        a, b_ = aa.as_coeff_Mul(), bb.as_coeff_Mul()
+        c = _number_gcd(a[0], b_[0]).as_numer_denom()[0]
+        common = set(f for f in factors_of(a[1]) if f.is_commutative is not False) & \
+            set(f for f in factors_of(b_[1]) if f.is_commutative is not False)
+        return _keep_coeff(c, mul(*common))
+
+    from .simplify import logcombine
+    glogb = expand_log(log(b))
+    if isinstance(glogb, Add):
+        args = [_expr(a) for a in glogb.args]
+        g = args[0]
+        for a in args[1:]:
+            g = nc_gcd(g, a)
+        if not _is_one(g):
+            cg, rg = g.as_coeff_Mul()
+            glogb = _keep_coeff(cg, mul(rg, add(*[mul(a, pow(g, Integer(-1))) for a in args])))
+    if _is_log(glogb) or not isinstance(glogb, Mul):
+        inner = _expr(glogb.args[0]) if glogb.args else glogb
+        if isinstance(inner, Pow) or _is_exp(inner):
+            denested = _denest_pow(inner)
+            db, de = denested.as_base_exp()
+            from sympy_extras.functions import Abs
+            from sympy_extras.core.relational import Lt
+            from sympy_extras.core.logic import true
+            if Lt(Abs(de).doit(), Integer(1)).doit() is true:
+                return pow(db, mul(de, e))
+        return eq
+    adds = [_expr(a) for a in glogb.args if isinstance(a, Add)]
+    others = [_expr(a) for a in glogb.args if not isinstance(a, Add)]
+    return pow(exp(logcombine(mul(*adds))), mul(e, *others))
+
+
+def _number_gcd(a: Expr, b: Expr) -> Expr:
+    """SymPy's ``gcd`` of two numbers (rationals: gcd of the numerators
+    over the lcm of the denominators; ``1`` otherwise)."""
+    from math import gcd as integer_gcd, lcm as integer_lcm
+    if isinstance(a, Rational) and isinstance(b, Rational):
+        from sympy_extras.core.numbers import number_from_fraction
+        from fractions import Fraction
+        return number_from_fraction(Fraction(integer_gcd(a.p, b.p), integer_lcm(a.q, b.q)))
+    return Integer(1)
+
+
+# PORTED FROM SYMPY: sympy/simplify/powsimp.py:powdenest
+def powdenest(eq: ExprLike, force: bool = False, polar: bool = False) -> Expr:
+    """Powers of powers denested where valid: ``(x**a)**b`` is
+    ``x**(a*b)`` for positive ``x`` (any ``x`` with ``force``, by
+    ``posify``), ``exp(a)**b`` with ``b`` real, products of powers with a
+    common power taken out.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import exp, sqrt
+    >>> x, y = Symbol('x', positive=True), Symbol('y', positive=True)
+    >>> from sympy_extras.functions import log
+    >>> powdenest(sqrt(x**2)), powdenest((x**2*y**6)**Symbol('i', integer=True)), powdenest(exp(3*y*log(x)))
+    (x, (x*y**3)**(2*i), x**(3*y))
+    """
+    from .simplify import posify
+    e = to_expr(eq)
+    if force:
+        def denest(b: Expr, ex: Expr) -> tuple[Optional[bool], Expr]:
+            if not (isinstance(b, Pow) or _is_exp(b)):
+                return b.is_positive, Pow(b, ex)
+            bb, be = b.as_base_exp()
+            return denest(bb, mul(be, ex))
+        reps: dict[Basic, Basic] = {}
+        for p in e.atoms(Pow):
+            if isinstance(p, Pow) and (isinstance(p.base, Pow) or _is_exp(p.base)):
+                ok, dp = denest(p.base, p.exp)
+                if ok is not False:
+                    reps[p] = dp
+        if reps:
+            e = _expr(e.subs(reps))
+        positive, back = posify(e)
+        return _expr(powdenest(positive, force=False, polar=polar)._xreplace_evaluated(back))
+    if polar:
+        from sympy_extras.functions import polarify, unpolarify
+        polarized, rep = polarify(e)
+        mapping: dict[Basic, Basic] = {k: v for k, v in rep.items()}
+        # SymPy's unpolarify(eq, subs) is unpolarify(eq.subs(subs))
+        return unpolarify(powdenest(unpolarify(polarized, exponents_only=True)).subs(mapping))
+    new = powsimp(e)
+    from sympy_extras.core.rules import Transform
+    rule = Transform(lambda m: _denest_pow(_expr(m)), lambda m: isinstance(m, Pow) or (isinstance(m, Expr) and _is_exp(m)))
+    return _expr(new._xreplace_evaluated(rule))
 
 
 # PORTED FROM SYMPY: sympy/simplify/powsimp.py:powsimp
