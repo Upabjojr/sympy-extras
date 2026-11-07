@@ -16,6 +16,9 @@ remove public functions. Breaking changes are listed here when they happen.
   polynomial layer (domains `ZZ`, `QQ`, `ZZ[a, ...]`, `QQ[a, ...]`);
   `SparsePolynomialRing`, `RationalPolynomialRing`,
   `IteratedPolynomialRing` domains and `dup_prs_resultant`.
+- `cancel` and `cancel_fraction` on the typed polynomial layer (ported
+  from SymPy, without its `signsimp`/`factor_terms(radical=True)`
+  preprocessing yet).
 - `is_carmichael`, `find_carmichael_numbers_in_range` and
   `find_first_n_carmichaels` in `sympy_extras.ntheory`; `sqrt` and `Id`
   exported from `sympy_extras.functions`.

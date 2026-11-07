@@ -231,7 +231,7 @@ sympy_extras/
         densearith.py        dup_add/mul/pow/div/pdiv/exquo over a Domain[T]
         densetools.py        dup_diff/eval/shift/compose/content/primitive/monic/trunc/clear_denoms
         euclidtools.py       dup_gcd (Euclid, subresultant PRS), dup_resultant, dup_prs_resultant (ported), dup_discriminant, dup_gcdex (typed, no SymPy)
-        polytools.py         Poly over ZZ, QQ, ZZ[a,..], QQ[a,..] (ported from SymPy, printed as SymPy): gcd, lcm, resultant, factor_list, sqf_list, div; degree, LC, gcd, lcm, resultant, factor_list
+        polytools.py         Poly over ZZ, QQ, ZZ[a,..], QQ[a,..] (ported from SymPy, printed as SymPy): gcd, lcm, resultant, factor_list, sqf_list, div; degree, LC, gcd, lcm, resultant, factor_list, cancel
         polyerrors.py        SymPy's polynomial exceptions (ported)
         subresultants.py     dup_psc, dmp_psc, psc: principal subresultant coefficients on SymPy's dense representation (the CAD)
         polyutils.py         dict_from_expr, expr_from_dict: core expressions <-> typed polynomials (no SymPy)

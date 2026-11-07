@@ -113,3 +113,34 @@ def test_construction_printing_errors() -> None:
     assert printed(lcm(x**2 - 1, x + 1)) == 'x**2 - 1'
     assert printed(resultant(x**2 + a, x - b, x)) == str(sympy.resultant(sx**2 + sa, sx - sb, sx))
     assert printed(factor_list(2*x**3 - 2*x, x)) == str(sympy.factor_list(2*sx**3 - 2*sx, sx))
+
+
+@pytest.mark.parametrize('seed', [1, 2, 3])
+def test_cancel_matches_sympy(seed: int) -> None:
+    from sympy_extras.polys.polytools import cancel
+    rng = random.Random(seed)
+    atoms: list[sympy.Expr] = [sx, sy, sa, sympy.sin(sx), sympy.exp(sx), 2**sx]
+
+    def rational(k: int) -> sympy.Expr:
+        return sympy.Add(*[rng.randint(-3, 3) * sympy.Rational(rng.choice([1, 2]), rng.choice([1, 3]))
+                           * sympy.Mul(*[rng.choice(atoms[:k])**rng.randint(0, 2) for _ in range(2)])
+                           for _ in range(rng.randint(1, 3))])
+
+    different: list[tuple[str, str, str]] = []
+    for _ in range(80):
+        k = rng.choice([3, 3, len(atoms)])
+        c = rational(k)
+        shape = rng.randint(0, 2)
+        if shape == 0:
+            e = rational(k) * c / (rational(k) * c)
+        elif shape == 1:
+            e = rational(k) / rational(k) + rational(k) / rational(k)
+        else:
+            e = rational(k) * c / c + 1 / rational(k)
+        if e.has(sympy.zoo, sympy.nan):
+            continue
+        theirs = sympy.cancel(e)
+        ours = str(to_sympy(cancel(expr_from_sympy(e)), evaluate=False))
+        if ours != str(theirs):
+            different.append((str(e), ours, str(theirs)))
+    assert not different, different[:3]

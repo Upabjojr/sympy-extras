@@ -75,7 +75,8 @@ from .polyerrors import CoercionFailed, GeneratorsError, GeneratorsNeeded, Opera
 from .polyutils import dict_from_expr
 from .rings import Monomial, PolyElement, PolyRing
 
-__all__ = ['Poly', 'poly', 'degree', 'LC', 'gcd', 'lcm', 'resultant', 'discriminant', 'factor_list', 'sqf_list']
+__all__ = ['Poly', 'poly', 'degree', 'LC', 'gcd', 'lcm', 'resultant', 'discriminant', 'factor_list', 'sqf_list', 'cancel',
+           'cancel_fraction']
 
 PolyLike = Union['Poly', ExprLike]
 
@@ -165,31 +166,42 @@ def _decompose_with_gens(e: Expr, gens: Sequence[Expr]) -> Decomposed:
 
 
 # PORTED FROM SYMPY: sympy/polys/polyutils.py:_parallel_dict_from_expr_no_gens
-def _decompose_without_gens(e: Expr) -> tuple[Decomposed, tuple[Expr, ...]]:
+def _decompose_without_gens_many(exprs: Sequence[Expr]) -> tuple[list[Decomposed], tuple[Expr, ...]]:
     found: set[Expr] = set()
-    raw: list[tuple[list[Expr], dict[Expr, int]]] = []
-    for term in _terms_of(_expanded(e)):
-        coefficient: list[Expr] = []
-        elements: dict[Expr, int] = {}
-        for factor in _factors(term):
-            if isinstance(factor, Number) or factor == I:
-                coefficient.append(factor)
-                continue
-            base, exponent = decompose_power(factor)
-            if exponent < 0:
-                exponent, base = -exponent, pow(base, Integer(-1))
-            elements[base] = elements.get(base, 0) + exponent
-            found.add(base)
-        raw.append((coefficient, elements))
+    raws: list[list[tuple[list[Expr], dict[Expr, int]]]] = []
+    for e in exprs:
+        raw: list[tuple[list[Expr], dict[Expr, int]]] = []
+        for term in _terms_of(_expanded(e)):
+            coefficient: list[Expr] = []
+            elements: dict[Expr, int] = {}
+            for factor in _factors(term):
+                if isinstance(factor, Number) or factor == I:
+                    coefficient.append(factor)
+                    continue
+                base, exponent = decompose_power(factor)
+                if exponent < 0:
+                    exponent, base = -exponent, pow(base, Integer(-1))
+                elements[base] = elements.get(base, 0) + exponent
+                found.add(base)
+            raw.append((coefficient, elements))
+        raws.append(raw)
     gens = sort_gens(list(found))
     index = {g: i for i, g in enumerate(gens)}
-    result: Decomposed = {}
-    for coefficient, elements in raw:
-        monomial = [0] * len(gens)
-        for base, exponent in elements.items():
-            monomial[index[base]] = exponent
-        result.setdefault(tuple(monomial), []).append(mul(*coefficient))
-    return result, gens
+    results: list[Decomposed] = []
+    for raw in raws:
+        result: Decomposed = {}
+        for coefficient, elements in raw:
+            monomial = [0] * len(gens)
+            for base, exponent in elements.items():
+                monomial[index[base]] = exponent
+            result.setdefault(tuple(monomial), []).append(mul(*coefficient))
+        results.append(result)
+    return results, gens
+
+
+def _decompose_without_gens(e: Expr) -> tuple[Decomposed, tuple[Expr, ...]]:
+    decomposed, gens = _decompose_without_gens_many([e])
+    return decomposed[0], gens
 
 
 # ---------------------------------------------------------------------
@@ -913,3 +925,114 @@ def factor_list(f: PolyLike, *gens: ExprLike) -> tuple[Expr, list[tuple[Expr, in
 def sqf_list(f: PolyLike, *gens: ExprLike) -> tuple[Expr, list[tuple[Expr, int]]]:
     coefficient, factors = _as_poly(f, gens).sqf_list()
     return coefficient, [(p.as_expr(), k) for p, k in factors]
+
+
+# ---------------------------------------------------------------------
+# rational functions
+
+def _joint_rings(exprs: Sequence[Expr]) -> tuple[tuple[Expr, ...], list[dict[Monomial, Fraction]]]:
+    """SymPy's ``sring`` of several expressions without generators: every
+    factor which is not a number is a generator (the generators of all the
+    expressions together, sorted), the coefficients rational (``ZZ`` or
+    ``QQ``; ``I`` and floats are not ported yet)."""
+    decomposed, gens = _decompose_without_gens_many(exprs)
+    result: list[dict[Monomial, Fraction]] = []
+    for terms in decomposed:
+        rep: dict[Monomial, Fraction] = {}
+        for m, cs in terms.items():
+            c = add(*cs)
+            if not isinstance(c, Rational):
+                raise CoercionFailed('the domain of %s (ZZ_I, RR, EX) is not ported yet' % (c,))
+            value = rep.get(m, Fraction(0)) + c.as_fraction()
+            if value:
+                rep[m] = value
+            else:
+                rep.pop(m, None)
+        result.append(rep)
+    return gens, result
+
+
+# PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement.cancel (the domains ZZ and QQ)
+def _cancel_reps(f: dict[Monomial, Fraction], g: dict[Monomial, Fraction], n: int
+                 ) -> tuple[PolyElement[int], PolyElement[int], SparsePolynomialRing[int]]:
+    """``f/g`` in lowest terms over ``ZZ``: ``(p, q)`` with ``f/g = p/q``,
+    the integer denominators cleared and their gcd removed, the leading
+    coefficient of ``q`` positive."""
+    Z = SparsePolynomialRing(ZZ, _internal_names(n, 0))
+    if not f:
+        return Z.zero, Z.one, Z
+    cq = 1
+    for c in f.values():
+        cq = cq * c.denominator // integer_gcd(cq, c.denominator)
+    cp = 1
+    for c in g.values():
+        cp = cp * c.denominator // integer_gcd(cp, c.denominator)
+    F = Z.ring.from_dict({m: int(c * cq) for m, c in f.items()})
+    G = Z.ring.from_dict({m: int(c * cp) for m, c in g.items()})
+    h = Z.gcd(F, G)
+    p, q = F.exquo(h), G.exquo(h)
+    common = integer_gcd(cp, cq)
+    p, q = p.mul_ground(cp // common), q.mul_ground(cq // common)
+    if q.LC < 0:
+        p, q = -p, -q
+    return p, q, Z
+
+
+def _expr_of(f: PolyElement[int], gens: tuple[Expr, ...]) -> Expr:
+    parts: list[Expr] = []
+    for m in sorted(f.terms, reverse=True):
+        factors: list[Expr] = [Integer(f.terms[m])]
+        factors += [pow(g, Integer(k)) for g, k in zip(gens, m) if k]
+        parts.append(mul(*factors))
+    return add(*parts)
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:cancel (a pair)
+def cancel_fraction(p: ExprLike, q: ExprLike) -> tuple[Expr, Expr]:
+    """``p/q`` in lowest terms as a pair ``(P, Q)`` of expanded
+    polynomials in the generators of ``p`` and ``q``, the leading
+    coefficient of ``Q`` positive (SymPy's ``cancel((p, q))`` with the
+    constant folded into ``P``)."""
+    gens, (f, g) = _joint_rings([_expanded(to_expr(p)), _expanded(to_expr(q))])
+    if not g:
+        raise ZeroDivisionError('cancel of %s/0' % (p,))
+    if not gens:
+        return number_from_fraction(f.get((), Fraction(0)) / g[()]), Integer(1)
+    P, Q, _ = _cancel_reps(f, g, len(gens))
+    return _expr_of(P, gens), _expr_of(Q, gens)
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:cancel
+def cancel(f: ExprLike) -> Expr:
+    """A rational function in lowest terms, ``P/Q`` with ``P`` and ``Q``
+    expanded polynomials without common factors, the leading coefficient
+    of ``Q`` positive; the generators are every non-numeric factor of the
+    numerator and the denominator (``sin(x)``, ``sqrt(2)``). Expressions
+    with a ``Piecewise`` are cancelled argument by argument.
+
+    >>> from sympy_extras.core import Symbol
+    >>> x, y = Symbol('x'), Symbol('y')
+    >>> cancel((x**2 - 1)/(x - 1))
+    x + 1
+    >>> cancel((2*x**2 - 2)/(1 - x**2*y) + 1/x)
+    (-2*x**3 + x**2*y + 2*x - 1)/(x**3*y - x)
+
+    Not ported yet: ``signsimp`` and ``factor_terms(radical=True)`` before
+    the cancellation (they change the generators only when radicals with
+    common factors appear), the domains ``ZZ_I``, ``RR`` and ``EX``.
+    """
+    e = to_expr(f)
+    if isinstance(e, Number) or e.is_commutative is False:
+        return e
+    from sympy_extras.functions.elementary.piecewise import Piecewise
+    if e.has(Piecewise):
+        rebuilt = e._evaluated(tuple(cancel(a) if isinstance(a, Expr) else a for a in e.args))
+        if not isinstance(rebuilt, Expr):
+            raise TypeError('an expression is expected')
+        return rebuilt
+    p, q = e.as_numer_denom()
+    gens, (fp, fq) = _joint_rings([_expanded(p), _expanded(q)])
+    if not gens:
+        return _expanded(e)
+    P, Q, _ = _cancel_reps(fp, fq, len(gens))
+    return mul(_expr_of(P, gens), pow(_expr_of(Q, gens), Integer(-1)))
