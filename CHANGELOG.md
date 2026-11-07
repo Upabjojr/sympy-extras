@@ -10,6 +10,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.solvers.irregular`: the exponential parts of the
+  solutions of a linear ODE at its irregular finite singular points, from
+  the local Newton polygons (the characteristic equation of each edge
+  solved in the field of the point, conjugate parts summed by a trace);
+  `hyperexponential_solutions` and the factorisation now find
+  `exp(1/x)`, `exp(1/(x**2 - 2))` and the like, and the Fuchsian
+  restriction is gone.
 - `sympy_extras.polys.rur`: the rational univariate representation of a
   zero-dimensional ideal over the rationals (Rouillier's algorithm from
   the traces on the quotient algebra, Newton's identities for the

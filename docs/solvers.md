@@ -210,7 +210,20 @@ SymPy lacks:
 - **Exponential parts at infinity** from the Newton polygon of the
   operator (`hyperexponential_solutions` finds `exp(P(x))` times the
   Fuchsian ansatz, so `y'' - 2x y' + 4y = 0` gives `x**2 - 1/2` and
-  `exp(x**2)` times a polynomial is found where it exists).
+  `exp(x**2)` times a polynomial is found where it exists), and
+  **exponential parts at the irregular finite singular points** from the
+  local Newton polygons (`sympy_extras.solvers.irregular`): the terms
+  `r/(x - c)**m`, `m >= 2`, of `y'/y` come from the edges of slope `m` of
+  the polygon of the orders of the coefficients at `c` and the roots `r`
+  of the characteristic equation of the edge, term by term; at the
+  conjugate roots of an irreducible factor the characteristic equation
+  is solved in the field of the point and the conjugate parts are summed
+  by a trace, so everything stays over the rationals. `x**4 y'' + 2
+  x**3 y' - y = 0` gives `exp(1/x)` and `exp(-1/x)`, `exp(1/(x**2 - 2))` is
+  found from its equation. Ramified parts (slopes which are not
+  integers) are not hyperexponential and are dropped; a leading
+  coefficient outside the field of the point makes the search
+  incomplete.
 - **Factorisation of operators** (`sympy_extras.solvers.factorization`):
   the arithmetic of the Ore ring `Q(x)[D]` on `LinearOperator`
   (composition, right division, `gcrd`, `lclm`, adjoint, exterior and
@@ -272,9 +285,9 @@ Schwarz (1989) and Bronstein (1994). `right_factor(L, k)` finds a right
 factor, `left_factor(L, k)` a left one (the adjoint of a right factor of
 the adjoint), and `factor_operator(L)` a factorisation into factors which
 are proven irreducible when every search was exhaustive
-(`hyperexponential_search` says when it is not: irregular finite
-singular points, irrational exponents); for second order factors
-Kovacic's algorithm decides it.
+(`hyperexponential_search` says when it is not: irrational exponents,
+exponential parts with leading coefficients outside the field of the
+point); for second order factors Kovacic's algorithm decides it.
 
 `dsolve_linear` uses the factorisation for equations of order three and
 more: the solutions of the right factor, then for each solution `z` of
@@ -317,10 +330,7 @@ no hyperexponential solution to reduce the order with.
 
 Not implemented: van Hoeij's local method (factors from the generalised
 exponents at one singular point, much faster than the associated
-equations for high orders), the eigenring, and hyperexponential solutions
-at irregular finite singular points (so right factors whose solutions
-have essential singularities at finite points are only found for second
-order operators, through Kovacic's algorithm).
+equations for high orders) and the eigenring.
 
 ## Linear systems with rational coefficients
 

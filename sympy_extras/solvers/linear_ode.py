@@ -884,10 +884,12 @@ def _polynomial_operator(L: LinearOperator) -> LinearOperator:
 
 
 def hyperexponential_solutions(L: LinearOperator, max_combinations: int = 200) -> list[Expr]:
-    """Solutions ``exp(Integral(P)) * prod (x - c)**e_c * Q(x)`` with ``P``
-    a polynomial (the exponential part at infinity, from the Newton
-    polygon), rational exponents at the finite singular points, which
-    must be regular singular, and a polynomial ``Q``. Solutions with
+    """Solutions ``exp(Integral(P) + F) * prod (x - c)**e_c * Q(x)`` with
+    ``P`` a polynomial (the exponential part at infinity, from the Newton
+    polygon), ``F`` a rational function (the exponential parts at the
+    irregular finite singular points, from the local Newton polygons:
+    :mod:`sympy_extras.solvers.irregular`), rational exponents at the
+    finite singular points and a polynomial ``Q``. Solutions with
     distinct exponent combinations are independent.
 
     Examples
@@ -904,6 +906,8 @@ def hyperexponential_solutions(L: LinearOperator, max_combinations: int = 200) -
     [x**2 - 1/2]
     >>> hyperexponential_solutions(LinearOperator.from_equation(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y))
     [x**2 + 2*x + 2, exp(x)]
+    >>> hyperexponential_solutions(LinearOperator.from_equation(x**4*y.diff(x, 2) + 2*x**3*y.diff(x) - y, y))
+    [exp(1/x), exp(-1/x)]
     """
     return hyperexponential_search(L, max_combinations)[0]
 
@@ -913,10 +917,11 @@ def hyperexponential_search(L: LinearOperator, max_combinations: int = 200) -> t
     and whether the search was exhaustive: ``True`` when every
     hyperexponential solution (over the algebraic closure of the
     constants) is a linear combination of the solutions returned. It is
-    not when a finite singular point is irregular, when a local exponent
-    is not rational or not found, when conjugate singular points could
-    take different exponents, or when the exponential part at infinity
-    has more terms than the search follows.
+    not when a local exponent is not rational or not found, when
+    conjugate singular points could take different exponents, when an
+    exponential part at a finite point has a leading coefficient outside
+    the field of the point, or when an exponential part has more terms
+    than the search follows.
 
     Examples
     ========
@@ -931,35 +936,43 @@ def hyperexponential_search(L: LinearOperator, max_combinations: int = 200) -> t
     The second equation has the solutions ``x**((1 +- sqrt(5))/2)``,
     whose exponents are not rational.
     """
+    from .irregular import finite_exponential_parts
     x = L.x
     L = _polynomial_operator(L)
     solutions: list[Expr] = []
     parts, complete = _exponential_parts(L)
+    # the exponential parts at the irregular finite singular points do
+    # not depend on the one at infinity
+    finite_parts, finite_complete = finite_exponential_parts(L, max_combinations)
+    complete = complete and finite_complete
     for part in parts:
-        if part == 0:
-            M = L
-            factor_part: Expr = S.One
-        else:
-            factor_part = as_expr(exp(integrate(part, x)))
-            M = L.transformed(factor_part)
-        found, found_complete = _hyperexponential_regular(M, max_combinations)
-        complete = complete and found_complete
-        for s in found:
-            candidate = as_expr(factor_part*s)
-            if candidate not in solutions:
-                solutions.append(candidate)
+        for finite in finite_parts:
+            if part == 0 and finite == 0:
+                M = L
+                factor_part: Expr = S.One
+            else:
+                factor_part = as_expr(exp(integrate(part, x) + finite))
+                M = _polynomial_operator(L.transformed(factor_part))
+            found, found_complete = _hyperexponential_regular(M, max_combinations)
+            complete = complete and found_complete
+            for s in found:
+                candidate = as_expr(factor_part*s)
+                if candidate not in solutions:
+                    solutions.append(candidate)
     return _independent(solutions, x), complete
 
 
 def _hyperexponential_regular(L: LinearOperator, max_combinations: int) -> tuple[list[Expr], bool]:
-    """The ansatz with the local exponents at the finite singular points,
-    which must be regular singular. One exponent per class modulo the
-    integers is enough at each point (the smallest: the polynomial
-    ``Q`` takes the integer shifts), and a combination is kept only when
-    the exponents at infinity allow a polynomial ``Q``."""
+    """The ansatz with the local exponents at the finite singular points:
+    the roots of the indicial polynomials, which at an irregular point
+    are the exponents of the solutions without exponential part there
+    (the balance of the terms of lowest order when ``rho`` has a pole of
+    order at most one; the solutions with an exponential part are reached
+    through :mod:`sympy_extras.solvers.irregular`). One exponent per
+    class modulo the integers is enough at each point (the smallest: the
+    polynomial ``Q`` takes the integer shifts), and a combination is kept
+    only when the exponents at infinity allow a polynomial ``Q``."""
     x = L.x
-    if not _is_fuchsian(L):
-        return [], False
     leading = Poly(L.coefficients[-1], x)
     _, factors = factor_list(leading.as_expr(), x)
     places: list[tuple[Expr, int, list[Rational]]] = []

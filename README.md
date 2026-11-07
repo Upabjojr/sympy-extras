@@ -828,6 +828,7 @@ sympy_extras/
         transcendental.py    transcendental equations reduced to polynomial ones
         kovacic.py           Kovacic's algorithm
         linear_ode.py        polynomial/rational/hyperexponential solutions, reduction of order, operator arithmetic
+        irregular.py         exponential parts at irregular finite singular points (local Newton polygons)
         factorization.py     factorisation of linear differential operators (Beke), solving through the factors
         special.py           Bessel, Whittaker, hypergeometric solutions
         linear_systems.py    systems Y' = A Y + b: cyclic vectors, rational solutions, variation of constants
