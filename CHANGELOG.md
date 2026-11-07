@@ -10,6 +10,17 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- The first layer of the standalone polynomial code
+  (`sympy_extras.polys.domains`, `densebasic`, `densearith`, `densetools`,
+  the typed part of `euclidtools`, `sqfreetools`): typed coefficient
+  domains (`ZZ` on `int`, `QQ` on `Fraction`, `GF(p)`, polynomial rings as
+  towers for several variables, fraction fields) and the dense univariate
+  algorithms generic over them (arithmetic with Karatsuba, division and
+  pseudo-division, derivatives and Taylor shifts, the subresultant PRS,
+  gcds, resultants by the recursive identity, discriminants, Yun's
+  square-free decomposition and the `GF(p)` one). Checked against SymPy
+  on random inputs and against the Sylvester determinant; see
+  docs/dense.md.
 - `sympy_extras.solvers.irregular`: the exponential parts of the
   solutions of a linear ODE at its irregular finite singular points, from
   the local Newton polygons (the characteristic equation of each edge

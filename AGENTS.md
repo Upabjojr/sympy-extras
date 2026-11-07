@@ -151,7 +151,12 @@ sympy_extras/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
         tests/
     polys/
-        euclidtools.py       principal subresultant coefficients (dup_psc, dmp_psc, psc)
+        domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, PolynomialRing, FractionField); see docs/dense.md
+        densebasic.py        dense univariate polynomials over a Domain[T] (list[T], highest degree first)
+        densearith.py        dup_add/mul/pow/div/pdiv/exquo over a Domain[T]
+        densetools.py        dup_diff/eval/shift/compose/content/primitive/monic/trunc/clear_denoms
+        euclidtools.py       dup_gcd (Euclid, subresultant PRS), dup_resultant, dup_discriminant, dup_gcdex; principal subresultant coefficients (dup_psc, dmp_psc, psc, on SymPy's types)
+        sqfreetools.py       dup_sqf_list/part/p (Yun, and GF(p))
         ideals.py            Ideal: operations and invariants on top of sympy.groebner
         hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
