@@ -802,10 +802,10 @@ sympy_extras/
             integers.py      Floor, Ceiling, Frac and floor, ceiling, frac (ported from SymPy)
             miscellaneous.py Max, Min and max_, min_ (ported from SymPy)
             piecewise.py     Piecewise, ExprCondPair and piecewise (ported from SymPy)
-        combinatorial/
-            factorials.py    Factorial, Binomial, RisingFactorial, FallingFactorial (ported from SymPy)
             trigonometric.py Sin, ..., Csc, Asin, ..., Acsc and sin, ..., acsc (ported from SymPy)
             hyperbolic.py    Sinh, ..., Csch, Asinh, ..., Acsch and sinh, ..., acsch (ported from SymPy)
+        combinatorial/
+            factorials.py    Factorial, Binomial, RisingFactorial, FallingFactorial (ported from SymPy)
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation
