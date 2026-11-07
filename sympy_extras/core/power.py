@@ -144,6 +144,11 @@ class Pow(Expr):
                 return (c2, pow(_keep_coeff(m3, t2), e))
         return (Integer(1), pow(b, e))
 
+    def _subs_partial(self, old: Basic, new: Basic) -> Optional[Basic]:
+        if not (isinstance(old, Expr) and isinstance(new, Expr)):
+            return None
+        return power_subs(self._base, self._exp, old, new)
+
     def as_numer_denom(self) -> tuple[Expr, Expr]:
         e = self._exp
         if isinstance(e, Rational) and e.p < 0:
@@ -613,3 +618,106 @@ def _rational_pow(b: Rational, e: Rational) -> Expr:
     else:
         radical_parts = [unit, Pow(Integer(t), number_from_fraction(Fraction(g, fraction.denominator)))]
     return mul(coefficient, *radical_parts)
+
+
+def _as_expr(b: Basic) -> Expr:
+    if not isinstance(b, Expr):
+        raise TypeError('an expression is expected, got %s' % (b,))
+    return b
+
+
+def _independent_of_symbols(e: Expr) -> tuple[Expr, Expr]:
+    """SymPy's ``e.as_independent(Symbol, as_Add=False)``: the factors free
+    of symbols and the others."""
+    from .symbol import Symbol
+    if isinstance(e, Mul):
+        free = [f for f in e.args if isinstance(f, Expr) and not f.has(Symbol)]
+        dependent = [f for f in e.args if isinstance(f, Expr) and f.has(Symbol)]
+        return mul(*free), mul(*dependent)
+    if e.has(Symbol):
+        return Integer(1), e
+    return e, Integer(1)
+
+
+def _combines(coeff1: Expr, coeff2: Expr, old: Expr) -> tuple[bool, Expr]:
+    """SymPy's ``_check`` of ``Pow._eval_subs`` for equal terms: the power
+    ``coeff1/coeff2`` and whether the substitution may use it."""
+    p = mul(coeff1, pow(coeff2, Integer(-1)))
+    exact = p.exact_value() if isinstance(p, Float) else None
+    if isinstance(p, Integer) or (exact is not None and exact.denominator == 1):
+        return True, p
+    b, e = old.as_base_exp()
+    combines = (b.is_positive is True and e.is_real is True) or (b.is_nonnegative is True and e.is_nonnegative is True)
+    return combines, p
+
+
+def _power_view(e: Expr) -> Optional[tuple[Expr, Expr]]:
+    """``(base, exponent)`` of a power or of ``exp(a)`` (``E**a``)."""
+    if isinstance(e, Pow):
+        return (e.base, e.exp)
+    from sympy_extras.functions.elementary.exponential import Exp
+    if isinstance(e, Exp):
+        arg = e.args[0]
+        if isinstance(arg, Expr):
+            return (E_number(), arg)
+    return None
+
+
+def E_number() -> Expr:
+    from .numbers import E
+    return E
+
+
+# PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_subs (the commutative cases)
+def power_subs(base: Expr, exponent: Expr, old: Expr, new: Expr, old_is_power: Optional[bool] = None) -> Optional[Expr]:
+    """``(base**exponent).subs(old, new)`` with SymPy's rules for powers:
+    ``x**4`` with ``x**2 -> y`` is ``y**2``, ``exp(3*x + 1)`` with
+    ``exp(x) -> y`` is ``E*y**3``; ``None`` for the plain substitution in
+    the arguments."""
+    from sympy_extras.functions.elementary.exponential import Exp, log
+    if old == base:
+        return pow(new, _as_expr(exponent._subs(old, new)))
+    view = _power_view(old) if old_is_power is not False else None
+    if view is not None and (isinstance(old, Pow) or base == E_number()):
+        ob, oe = view
+        if exponent == oe:
+            l = log(base, ob)
+            if isinstance(l, Number):
+                return pow(new, l)
+        if base == ob:
+            if not isinstance(exponent, Add):
+                c1, t1 = _independent_of_symbols(exponent)
+                c2, t2 = _independent_of_symbols(oe)
+                if t1 == t2:
+                    ok, p = _combines(c1, c2, old)
+                    if ok:
+                        return pow(new, p)
+            else:
+                c2n, t2n = oe.as_coeff_mul()
+                new_l: list[Expr] = []
+                others: list[Expr] = []
+                for a in exponent.args:
+                    if not isinstance(a, Expr):
+                        return None
+                    newa = _as_expr(a._subs(old, new))
+                    c1n, t1n = newa.as_coeff_mul()
+                    if t1n == t2n:
+                        ok, p = _combines(c1n, c2n, old)
+                        if ok:
+                            new_l.append(pow(new, p))
+                            continue
+                    others.append(newa)
+                if new_l:
+                    expo = add(*others)
+                    new_l.append(Pow(base, expo) if not (isinstance(expo, Integer) and expo.p == 1) else base)
+                    return mul(*new_l)
+    old_view = _power_view(old)
+    if (isinstance(old, Exp) or (old_view is not None and old_view[0] == E_number())) and old_view is not None \
+            and exponent.is_extended_real is True and base.is_positive is True:
+        c1, t1 = _independent_of_symbols(old_view[1])
+        c2, t2 = _independent_of_symbols(mul(exponent, log(base)))
+        if t1 == t2:
+            ok, p = _combines(c1, c2, old)
+            if ok:
+                return pow(new, p)
+    return None

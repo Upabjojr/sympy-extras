@@ -681,6 +681,9 @@ class Basic:
             if isinstance(rules, Mapping):
                 for k, v in rules.items():
                     pairs.append((sympify(k), sympify(v)))
+                # SymPy's order for an unordered mapping: the keys with more
+                # nodes first, then by sort key (f(x) < f(y) < x < y)
+                pairs.sort(key=lambda pair: (-_node_count(pair[0]), pair[0].sort_key()))
             elif isinstance(rules, Iterable) and not isinstance(rules, (Basic, int, float, Fraction)):
                 for k, v in rules:
                     pairs.append((sympify(k), sympify(v)))
@@ -905,3 +908,12 @@ def _wild_name(wild: Basic) -> str:
     if isinstance(wild, (Wild, WildFunction)):
         return wild.name
     raise TypeError("a wild is expected, got %s" % (wild,))
+
+
+# PORTED FROM SYMPY: sympy/core/sorting.py:_node_count
+def _node_count(e: Basic) -> float:
+    """The number of nodes of the tree (a ``Float`` counts ``0.5``)."""
+    from .numbers import Float
+    if isinstance(e, Float):
+        return 0.5
+    return 1 + sum(_node_count(a) for a in e.args)

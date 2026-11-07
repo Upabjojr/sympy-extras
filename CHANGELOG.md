@@ -38,8 +38,16 @@ remove public functions. Breaking changes are listed here when they happen.
   `ZZ[a]`/`QQ[a]` by a divisor with a numeric leading coefficient, ported
   from SymPy.
 
+- `sympy_extras.simplify.radsimp`: `fraction`, `numer`, `denom`,
+  `collect`, `collect_dict` (SymPy's `evaluate=False`) and `rcollect`,
+  ported from SymPy.
+
 ### Changed
 
+- `subs` follows SymPy's rules for powers and exponentials
+  (`x**4` with `x**2 -> y` is `y**2`, `exp(3*x + 1)` with `exp(x) -> y` is
+  `E*y**3`, `x` with `1/x -> y` is `1/y`) and applies a mapping with the
+  larger keys first, as SymPy does.
 - `factor_terms` and `gcd_terms` are a typed port of SymPy's `exprtools`
   (`Factors`, `Term`, `decompose_power`, `_keep_coeff`), `radical=True`
   included; `Mul.as_content_primitive` and `Pow.as_content_primitive` are

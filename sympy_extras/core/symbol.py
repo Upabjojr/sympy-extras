@@ -19,7 +19,7 @@ import re
 from typing import Callable, Final, Iterable, Sequence, TYPE_CHECKING, Union
 
 from .basic import Basic
-from .expr import AtomicExpr
+from .expr import AtomicExpr, Expr
 from .logic import Boolean
 from .sorting import ClassKey, CompareItem
 
@@ -55,6 +55,20 @@ class Symbol(AtomicExpr, Boolean):
 
     is_Symbol = True
     is_symbol = True
+
+    # PORTED FROM SYMPY: sympy/core/symbol.py:Symbol._eval_subs
+    def _subs(self, old: Basic, new: Basic) -> Basic:
+        """``x`` is ``x**1`` when the old expression is a power:
+        ``x.subs(1/x, y)`` is ``1/y``."""
+        if self == old:
+            return new
+        from .power import Pow, power_subs
+        if isinstance(old, Pow) and isinstance(new, Expr):
+            from .numbers import Integer
+            replaced = power_subs(self, Integer(1), old, new)
+            if replaced is not None:
+                return replaced
+        return self
 
     def __init__(self, name: str, **assumptions: bool) -> None:
         from .assumptions import PREDICATES, closure

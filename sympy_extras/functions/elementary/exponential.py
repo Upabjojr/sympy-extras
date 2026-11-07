@@ -52,6 +52,7 @@ import mpmath
 
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.assumptions import facts_of
+from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import DefinedFunction, expand_mul
 from sympy_extras.core.kind import Kind, NumberKind
@@ -209,6 +210,23 @@ class Exp(DefinedFunction):
 
     def as_base_exp(self) -> tuple[Expr, Expr]:
         return (E, self.args[0])
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp._eval_subs
+    def _subs_partial(self, old: Basic, new: Basic) -> Optional[Basic]:
+        """``exp(a)`` as ``E**a`` for SymPy's power substitution
+        (``exp(2*x)`` with ``exp(x) -> y`` is ``y**2``)."""
+        from sympy_extras.core.power import Pow, power_subs
+        if not (isinstance(old, Expr) and isinstance(new, Expr)):
+            return None
+        target: Expr = old
+        if isinstance(old, Pow):
+            rewritten = exp(mul(old.exp, log(old.base)))
+            if not isinstance(rewritten, Exp):
+                return None
+            target = rewritten
+        if isinstance(target, Exp) or target == E:
+            return power_subs(E, self.args[0], target, new)
+        return None
 
     def as_numer_denom(self) -> tuple[Expr, Expr]:
         arg = self.args[0]
