@@ -21,6 +21,8 @@ from .special.error_functions import (Chi, ChiNode, Ci, CiNode, Ei, EiNode, Erf,
                                       erfcinv, erfi, erfinv, expint, fresnelc, fresnels, li)
 from .special.gamma_functions import (DiGamma, Gamma, LogGamma, LowerGamma, PolyGamma, TriGamma, UpperGamma, digamma,
                                       gamma, loggamma, lowergamma, polygamma, trigamma, uppergamma)
+from .special.polynomials import (AssocLaguerre, ChebyshevT, ChebyshevU, Hermite, Laguerre, Legendre, assoc_laguerre,
+                                  chebyshevt, chebyshevu, hermite, laguerre, legendre)
 from .special.zeta_functions import DirichletEta, PolyLog, Zeta, dirichlet_eta, polylog, zeta
 from .elementary.trigonometric import (Acos, Acot, Acsc, Asec, Asin, Atan, Cos, Cot, Csc, Sec, Sin, Tan, acos, acot,
                                        acsc, asec, asin, atan, cos, cot, csc, sec, sin, tan)
@@ -32,7 +34,8 @@ __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', '
            'EllipticF', 'EllipticE', 'EllipticPi', 'elliptic_k', 'elliptic_f', 'elliptic_e', 'elliptic_pi', 'BesselJ', 'BesselY', 'BesselI', 'BesselK', 'besselj',
            'bessely', 'besseli', 'besselk', 'Hankel1', 'Hankel2', 'SphericalJ', 'SphericalY', 'AiryAi', 'AiryBi',
            'AiryAiPrime', 'AiryBiPrime', 'hankel1', 'hankel2', 'jn', 'yn', 'airyai', 'airybi', 'airyaiprime',
-           'airybiprime', 'LowerGamma', 'UpperGamma', 'lowergamma', 'uppergamma',
+           'airybiprime', 'Legendre', 'ChebyshevT', 'ChebyshevU', 'Hermite', 'Laguerre', 'AssocLaguerre', 'legendre',
+           'chebyshevt', 'chebyshevu', 'hermite', 'laguerre', 'assoc_laguerre', 'LowerGamma', 'UpperGamma', 'lowergamma', 'uppergamma',
            'Expint', 'EiNode', 'expint', 'Ei', 'SiNode', 'CiNode', 'ShiNode', 'ChiNode', 'LiNode', 'OffsetLiNode', 'Si',
            'Ci', 'Shi', 'Chi', 'li', 'Li', 'Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv', 'Zeta', 'DirichletEta', 'PolyLog', 'zeta', 'dirichlet_eta', 'polylog', 'DiracDelta', 'Heaviside', 'dirac_delta', 'heaviside', 'Gamma', 'LogGamma', 'PolyGamma', 'DiGamma', 'TriGamma', 'gamma', 'loggamma', 'polygamma', 'digamma',
            'trigamma', 'Max', 'Min', 'max_', 'min_', 'ExprCondPair', 'Piecewise', 'piecewise', 'Sin', 'Cos', 'Tan', 'Cot', 'Sec', 'Csc', 'sin', 'cos', 'tan', 'cot', 'sec',

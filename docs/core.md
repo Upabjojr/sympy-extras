@@ -476,6 +476,16 @@ and SymPy's complex parts); the classes are `Hankel1`, `Hankel2`,
 `SphericalJ`, `SphericalY`, `AiryAi`, `AiryBi`, `AiryAiPrime`,
 `AiryBiPrime`.
 
+The orthogonal polynomials (`Legendre`, `ChebyshevT`, `ChebyshevU`,
+`Hermite`, `Laguerre`, `AssocLaguerre` with `legendre`, `chebyshevt`,
+`chebyshevu`, `hermite`, `laguerre`, `assoc_laguerre`, in
+`special/polynomials.py`) are ported from SymPy: a numerical order gives
+the polynomial from its three-term recurrence, written as SymPy's
+`Poly.as_expr` writes it; negative orders are reflected; a symbolic
+order takes out `-x` and evaluates at `0`, `1` and `oo`; derivatives and
+conjugates. `jacobi`, `gegenbauer`, `assoc_legendre`, `hermite_prob` are
+not ported.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a

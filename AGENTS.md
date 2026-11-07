@@ -178,6 +178,7 @@ sympy_extras/
             error_functions.py Erf, ..., Expint, EiNode, SiNode, CiNode, ShiNode, ChiNode, LiNode, OffsetLiNode / erf, ..., Ei, Si, Ci, Shi, Chi, li, Li, PORTED FROM SYMPY
             beta_functions.py Beta / beta, PORTED FROM SYMPY
             bessel.py        BesselJ, ..., Hankel1, Hankel2, SphericalJ, SphericalY, AiryAi, ... / besselj, ..., jn, yn, airyai, ..., PORTED FROM SYMPY
+            polynomials.py   Legendre, ChebyshevT, ChebyshevU, Hermite, Laguerre, AssocLaguerre / legendre, ..., PORTED FROM SYMPY
             elliptic_integrals.py EllipticK, EllipticF, EllipticE, EllipticPi / elliptic_k, ..., PORTED FROM SYMPY (Fresnel in error_functions.py)
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,
                              Subs, Order, ...) and evaluating functions (add, mul, pow, mod, eq, and_, or_, diff,

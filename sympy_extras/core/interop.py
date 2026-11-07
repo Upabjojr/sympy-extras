@@ -685,7 +685,7 @@ def _fill_function_tables() -> None:
     from sympy_extras.functions.combinatorial import factorials as f
     from sympy_extras.functions.special import delta_functions as d, error_functions as e, gamma_functions as g
     from sympy_extras.functions.special import beta_functions as b, bessel as bs, elliptic_integrals as el
-    from sympy_extras.functions.special import zeta_functions as z
+    from sympy_extras.functions.special import polynomials as op, zeta_functions as z
     from sympy_extras.functions.combinatorial import numbers as cn
     pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
         (Exp, sympy.exp), (Log, sympy.log), (LambertW, sympy.LambertW), (t.Sin, sympy.sin), (t.Cos, sympy.cos), (t.Tan, sympy.tan),
@@ -708,7 +708,9 @@ def _fill_function_tables() -> None:
         (bs.BesselY, sympy.bessely), (bs.BesselI, sympy.besseli), (bs.BesselK, sympy.besselk),
         (bs.Hankel1, sympy.hankel1), (bs.Hankel2, sympy.hankel2), (bs.SphericalJ, sympy.jn), (bs.SphericalY, sympy.yn),
         (bs.AiryAi, sympy.airyai), (bs.AiryBi, sympy.airybi), (bs.AiryAiPrime, sympy.airyaiprime),
-        (bs.AiryBiPrime, sympy.airybiprime),
+        (bs.AiryBiPrime, sympy.airybiprime), (op.Legendre, sympy.legendre), (op.ChebyshevT, sympy.chebyshevt),
+        (op.ChebyshevU, sympy.chebyshevu), (op.Hermite, sympy.hermite), (op.Laguerre, sympy.laguerre),
+        (op.AssocLaguerre, sympy.assoc_laguerre),
         (e.FresnelS, sympy.fresnels), (e.FresnelC, sympy.fresnelc), (el.EllipticK, sympy.elliptic_k),
         (el.EllipticF, sympy.elliptic_f), (el.EllipticE, sympy.elliptic_e), (el.EllipticPi, sympy.elliptic_pi)]
     for native, counterpart in pairs:

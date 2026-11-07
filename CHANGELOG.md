@@ -10,6 +10,8 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `legendre`, `chebyshevt`, `chebyshevu`, `hermite`, `laguerre` and
+  `assoc_laguerre`, ported from SymPy.
 - `hankel1`, `hankel2`, `jn`, `yn` and the Airy functions, ported from
   SymPy.
 - `fresnels`, `fresnelc` and the elliptic integrals `elliptic_k`,
