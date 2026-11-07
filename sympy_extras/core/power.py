@@ -199,6 +199,20 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
             if exp.is_imaginary:
                 return nan
             return Pow(base, exp)
+    if isinstance(base, Add) and len(base.args) == 2 and any(t.is_infinite for t in base.args):
+        # PORTED FROM SYMPY: sympy/core/add.py:Add._eval_power: a literal
+        # a + I*b with real a, b and an infinite term is 0 to a negative
+        # power and zoo to a positive one (other than 1)
+        if exp.is_zero is False and exp != Integer(1):
+            a, b = base.args
+            if a.coeff(I) != 0:
+                a, b = b, a
+            imaginary = b.coeff(I)
+            if imaginary != 0 and imaginary.is_extended_real and a.is_extended_real:
+                if exp.is_extended_negative:
+                    return Integer(0)
+                if exp.is_extended_positive:
+                    return zoo
     if isinstance(base, Mul) and isinstance(exp, Rational) and exp.q != 1:
         # SymPy's Mul._eval_power with expand_power_base: an infinite
         # coefficient times a direction c, (c*oo)**e = oo*c**e for e > 0 and

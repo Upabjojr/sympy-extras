@@ -317,6 +317,13 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
         # SymPy's Mul.flatten: zero times a factor known to be infinite is nan
         if any(f.is_finite is False for f in rebuilt + merged):
             return (nan, None)
+        # SymPy distributes a rational coefficient over a single sum first:
+        # 0*(a + zoo) is 0*a + 0*zoo = nan
+        others = rebuilt + merged
+        if len(others) == 1 and isinstance(others[0], Add) and global_parameters.distribute \
+                and any(isinstance(t, (Infinity, NegativeInfinity, ComplexInfinity)) or t.is_finite is False
+                        for t in others[0].args):
+            return (nan, None)
         return (Integer(0), None)
     one = _is_one(coefficient)
     if one and len(rebuilt) + len(merged) == 1:

@@ -454,6 +454,20 @@ rule for the power of an infinite product into the core
 accepted difference is `besseli(I, -oo) = (-1)**I*oo`, where the core
 decides `(-1)**I = exp(-pi) > 0` and gives `oo`.
 
+The Fresnel integrals (`FresnelS`, `FresnelC` with `fresnels`,
+`fresnelc`, in `error_functions.py`) and the elliptic integrals
+(`EllipticK`, `EllipticF`, `EllipticE`, `EllipticPi` with `elliptic_k`,
+`elliptic_f`, `elliptic_e`, `elliptic_pi`, in
+`special/elliptic_integrals.py`) are ported from SymPy with their
+special values, symmetries, derivatives (built in SymPy's left-to-right
+order, so that `4*(1 - m)` distributes as in SymPy), conjugates and mpmath
+values. The comparison brought two more of SymPy's rules for infinities
+into the core: a two-term sum `a + I*b` with an infinite part is `0` to a
+negative power and `zoo` to a positive one (`Add._eval_power`), and zero
+times a single sum is distributed first, so `0*(a + zoo)` is `nan`. The
+accepted difference: `zoo` absorbs a numerical value the core knows to be
+finite by evaluation (`elliptic_e(-1)`), where SymPy keeps the sum.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a

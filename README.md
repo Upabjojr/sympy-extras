@@ -814,6 +814,7 @@ sympy_extras/
             error_functions.py Erf, ..., Expint, EiNode, SiNode, ..., OffsetLiNode and erf, ..., Ei, Si, ..., Li (ported from SymPy)
             beta_functions.py Beta and beta (ported from SymPy)
             bessel.py        BesselJ, BesselY, BesselI, BesselK and besselj, ... (ported from SymPy)
+            elliptic_integrals.py EllipticK, EllipticF, EllipticE, EllipticPi and elliptic_k, ... (ported from SymPy)
     concrete/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation

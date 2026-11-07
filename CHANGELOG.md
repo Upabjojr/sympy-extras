@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `fresnels`, `fresnelc` and the elliptic integrals `elliptic_k`,
+  `elliptic_f`, `elliptic_e`, `elliptic_pi`, ported from SymPy; more of
+  SymPy's arithmetic with infinities in the core.
 - `besselj`, `bessely`, `besseli` and `besselk`, ported from SymPy; the
   core's `pow` distributes over an infinite product as SymPy's does.
 - `Si`, `Ci`, `Shi`, `Chi`, `li` and `Li`, ported from SymPy.

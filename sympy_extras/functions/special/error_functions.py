@@ -50,7 +50,7 @@ from sympy_extras.functions.elementary.exponential import exp
 
 __all__ = ['Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'Expint', 'EiNode', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv',
            'expint', 'Ei', 'TrigonometricIntegral', 'SiNode', 'CiNode', 'ShiNode', 'ChiNode', 'LiNode', 'OffsetLiNode',
-           'Si', 'Ci', 'Shi', 'Chi', 'li', 'Li']
+           'Si', 'Ci', 'Shi', 'Chi', 'li', 'Li', 'FresnelIntegral', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc']
 
 ONE = Integer(1)
 ZERO = Integer(0)
@@ -688,3 +688,109 @@ def Li(z: ExprLike) -> Expr:
     """The offset logarithmic integral, evaluated (the class is
     :class:`OffsetLiNode`)."""
     return OffsetLiNode.apply(to_expr(z))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:FresnelIntegral
+class FresnelIntegral(DefinedFunction):
+    """The common rules of ``fresnels`` and ``fresnelc``: ``1/2`` at
+    ``oo``, ``0`` at ``0``, ``-1`` and ``I`` taken out of the argument
+    (``fresnels(I*z) = -I*fresnels(z)``, ``fresnelc(I*z) =
+    I*fresnelc(z)``), the derivative ``trigfunc(pi*z**2/2)``."""
+
+    #: SymPy's _sign: the factor of I taken out (-1 for fresnels)
+    sign: int = 1
+
+    @classmethod
+    def evaluating(cls, z: Expr) -> Expr:
+        raise NotImplementedError
+
+    @classmethod
+    def integrand(cls, z: Expr) -> Expr:
+        raise NotImplementedError
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [z] = args
+        if isinstance(z, Infinity):
+            return HALF
+        if z.is_zero:
+            return ZERO
+        prefactor: Expr = ONE
+        argument = z
+        changed = False
+        negated = argument.extract_multiplicatively(MINUS_ONE)
+        if negated is not None:
+            prefactor, argument, changed = mul(MINUS_ONE, prefactor), negated, True
+        rotated = argument.extract_multiplicatively(I)
+        if rotated is not None:
+            prefactor, argument, changed = mul(Integer(cls.sign), I, prefactor), rotated, True
+        if changed:
+            return mul(prefactor, cls.evaluating(argument))
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        return self.integrand(mul(HALF, pi, pow(self.args[0], Integer(2))))
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from sympy_extras.functions.elementary.complexes import conjugate
+        return type(self).apply(conjugate(self.args[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        a = facts_of(self.args[0])
+        facts: dict[str, bool] = {'commutative': True}
+        for name in ('extended_real', 'zero'):
+            if a.get(name) is not None:
+                facts[name] = a[name]
+        return facts
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:fresnels
+class FresnelS(FresnelIntegral):
+    """The Fresnel integral ``fresnels(z)``, unevaluated (``fresnels``
+    evaluates)."""
+
+    function_name = 'fresnels'
+    sign = -1
+
+    @classmethod
+    def evaluating(cls, z: Expr) -> Expr:
+        return fresnels(z)
+
+    @classmethod
+    def integrand(cls, z: Expr) -> Expr:
+        from sympy_extras.functions.elementary.trigonometric import sin
+        return sin(z)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return mpmath.mpc(mpmath.fresnels(values[0]))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:fresnelc
+class FresnelC(FresnelIntegral):
+    """The Fresnel integral ``fresnelc(z)``, unevaluated (``fresnelc``
+    evaluates)."""
+
+    function_name = 'fresnelc'
+    sign = 1
+
+    @classmethod
+    def evaluating(cls, z: Expr) -> Expr:
+        return fresnelc(z)
+
+    @classmethod
+    def integrand(cls, z: Expr) -> Expr:
+        from sympy_extras.functions.elementary.trigonometric import cos
+        return cos(z)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return mpmath.mpc(mpmath.fresnelc(values[0]))
+
+
+def fresnels(z: ExprLike) -> Expr:
+    """``fresnels(z)``, evaluated."""
+    return FresnelS.apply(to_expr(z))
+
+
+def fresnelc(z: ExprLike) -> Expr:
+    """``fresnelc(z)``, evaluated."""
+    return FresnelC.apply(to_expr(z))
