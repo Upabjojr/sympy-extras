@@ -363,8 +363,7 @@ in `sympy_extras.functions.special`) are ported from SymPy's
 `loggamma` at the integers and positive half-integers, `polygamma(0, n)`
 with the exact harmonic number, `polygamma(n, z)` for odd `n` at the
 integers and `1/2` with the exact `zeta` at even arguments
-(`trigamma(2) = pi**2/6 - 1`). `zeta` at odd arguments, Gauss' digamma
-theorem for `polygamma(0, p/q)`, `lowergamma`, `uppergamma` and the
+(`trigamma(2) = pi**2/6 - 1`). `lowergamma`, `uppergamma` and the
 series are not ported. Every ported function of floats is now evaluated
 numerically at their precision (`sin(0.5) = 0.479425538604203`), as
 SymPy's `Function.__new__` does.
@@ -377,6 +376,19 @@ default and not printed, non-real arguments refused. With them `sign`,
 `Min` and `Max` have SymPy's derivatives (`2*DiracDelta(r)`,
 `Heaviside(x - r)`). The expansion of the delta of a polynomial and the
 rewrites are not ported.
+
+The zeta functions (`Zeta`, `DirichletEta`, `PolyLog` with `zeta`,
+`dirichlet_eta`, `polylog`) are ported from SymPy's `zeta_functions.py`,
+with the Bernoulli numbers (SymPy's `B_1 = 1/2`) and polynomials and the
+harmonic numbers they need: `zeta` at the nonpositive and even
+integers, the Hurwitz zeta at positive integers, `dirichlet_eta`
+through `zeta`, `polylog` at `0`, `1`, `-1`, the dilogarithm table and
+`s = 0, -1`. With them `polygamma(n, z)` has all of SymPy's values at the
+integers and `1/2`, and `polygamma(0, p/q)` (q <= 6) is expanded by
+Gauss' digamma theorem. A function without its own partial derivative
+now differentiates as SymPy's `Function.fdiff` does (`Derivative(f(x),
+x)`, or `Subs` for a compound argument). Not ported: `lerchphi`,
+`stieltjes`, `riemann_xi`, the polar arguments of `polylog`.
 
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`

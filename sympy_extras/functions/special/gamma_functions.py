@@ -10,11 +10,11 @@ integers and the positive half-integers; ``polygamma(0, n) =
 harmonic(n - 1) - EulerGamma`` at the positive integers (the harmonic
 number computed exactly), the poles, ``oo``, and ``polygamma(-1, z)``;
 ``digamma`` and ``trigamma`` are ``polygamma(0, z)`` and
-``polygamma(1, z)``; ``polygamma(n, z)`` for an odd ``n`` at the integers
-and at ``1/2`` with the exact ``zeta`` at an even argument
-(``trigamma(2) = pi**2/6 - 1``). Where SymPy answers with ``zeta`` at an
-odd argument (``polygamma(2, 3)``) or expands ``polygamma(0, p/q)`` by Gauss' digamma theorem the
-node stays: those are not ported.
+``polygamma(1, z)``; ``polygamma(n, z)`` at the integers and at ``1/2``
+through ``zeta`` (``trigamma(2) = pi**2/6 - 1``, ``polygamma(2, 3) =
+-2*zeta(3) + 9/4``); ``polygamma(0, p/q)`` for ``q <= 6`` by Gauss'
+digamma theorem. Not ported: lowergamma, uppergamma, multigamma, the
+series, the general ``expand_func``.
 
 Examples
 ========
@@ -32,7 +32,7 @@ Examples
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: unevaluating classes with evaluating functions, strict typing;
-# the zeta forms, Gauss' digamma theorem, lowergamma, uppergamma,
+# the general expand_func, lowergamma, uppergamma,
 # multigamma and the series not ported.
 # ---------------------------------------------------------------------
 
@@ -193,27 +193,32 @@ def _fuzzy_and(values: Sequence[Optional[bool]]) -> Optional[bool]:
     return None
 
 
-def _harmonic(n: int, power: int = 1) -> Fraction:
-    """The generalised harmonic number ``sum(1/k**power, k = 1..n)``."""
-    return sum((Fraction(1, k**power) for k in range(1, n + 1)), Fraction(0))
+def _harmonic(n: int) -> Fraction:
+    return sum((Fraction(1, k) for k in range(1, n + 1)), Fraction(0))
 
 
-def _bernoulli(n: int) -> Fraction:
-    """The Bernoulli number ``B_n`` (``B_1 = -1/2``) by the recurrence
-    ``sum(binomial(m + 1, k)*B_k, k = 0..m) = 0``."""
-    from math import comb
-    numbers = [Fraction(1)]
-    for m in range(1, n + 1):
-        numbers.append(-sum((comb(m + 1, k)*numbers[k] for k in range(m)), Fraction(0))/(m + 1))
-    return numbers[n]
 
 
-# PORTED FROM SYMPY: sympy/functions/special/zeta_functions.py:zeta.eval (even integer argument)
-def _zeta_even(n: int) -> Expr:
-    """``zeta(n)`` for an even ``n > 0``: ``(-1)**(n/2 + 1)*B_n*(2*pi)**n/(2*n!)``."""
-    from math import factorial as integer_factorial
-    coefficient = Fraction((-1)**(n//2 + 1)) * _bernoulli(n) * 2**n / (2*integer_factorial(n))
-    return mul(number_from_fraction(coefficient), pow(pi, Integer(n)))
+# PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:polygamma._eval_expand_func (n = 0, z rational)
+def _digamma_rational(z: Rational) -> Expr:
+    """``polygamma(0, p/q)`` by Gauss' digamma theorem (Choi, *Values of
+    the polygamma functions at rational arguments*, 2007)."""
+    from sympy_extras.functions.elementary.integers import floor
+    from sympy_extras.functions.elementary.trigonometric import cos, cot, sin
+    p, q = z.p, z.q
+    part = add(mul(Integer(-1), EulerGamma), mul(Integer(-1), pi, cot(mul(Rational(p, q), pi)), Rational(1, 2)),
+               mul(Integer(-1), log(Integer(q))),
+               add(*[mul(cos(mul(Rational(2*k*p, q), pi)), log(mul(Integer(2), sin(mul(Rational(k, q), pi)))))
+                     for k in range(1, q)]))
+    if z.p > 0:
+        count = floor(z)
+        assert isinstance(count, Rational)
+        z0 = sub(z, count)
+        return add(part, add(*[pow(add(z0, Integer(k)), Integer(-1)) for k in range(count.p)]))
+    count = floor(sub(ONE, z))
+    assert isinstance(count, Rational)
+    z0 = add(z, count)
+    return sub(part, add(*[pow(sub(sub(z0, ONE), Integer(k)), Integer(-1)) for k in range(count.p)]))
 
 
 # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:polygamma
@@ -244,18 +249,16 @@ class PolyGamma(DefinedFunction):
                 return oo
             if isinstance(z, Rational) and z.q == 1:
                 return sub(number_from_fraction(_harmonic(z.p - 1)), EulerGamma)
-            return None  # SymPy: Gauss' digamma theorem for small denominators, not ported
+            if isinstance(z, Rational) and z.q <= 6:
+                return _digamma_rational(z)
+            return None
         if n.is_integer and n.is_nonnegative:
-            order = _integer_valued(n)
-            if order is None or order % 2 == 0:
-                return None  # SymPy: zeta(n + 1, z) at an odd argument, not ported
-            # (-1)**(n + 1)*n!*zeta(n + 1, z) with the exact zeta at an even argument
-            sign = Integer(1)
+            from .zeta_functions import zeta
+            sign = pow(Integer(-1), add(n, ONE))
             if isinstance(z, Rational) and z.q == 1:
-                hurwitz = sub(_zeta_even(order + 1), number_from_fraction(_harmonic(z.p - 1, order + 1)))
-                return mul(sign, factorial(n), hurwitz)
+                return mul(sign, factorial(n), zeta(add(n, ONE), z))
             if z == Rational(1, 2):
-                return mul(sign, factorial(n), Integer(2**(order + 1) - 1), _zeta_even(order + 1))
+                return mul(sign, factorial(n), sub(pow(Integer(2), add(n, ONE)), ONE), zeta(add(n, ONE)))
         return None
 
     def fdiff(self, argindex: int) -> Expr:

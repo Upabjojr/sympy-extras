@@ -32,14 +32,12 @@ def sympy_value(e: Expr) -> sympy.Expr:
 
 
 def test_unary_match_sympy() -> None:
-    # polygamma(0, p/q) by Gauss' digamma theorem (rational z, small q) is not ported
-    gauss = {str(v) for v in values() if isinstance(v, Rational) and v.q != 1}
     different = []
     for a in values():
         for ours_f, theirs_f, name in ((gamma, sympy.gamma, 'gamma'), (loggamma, sympy.loggamma, 'loggamma'),
                                        (digamma, sympy.digamma, 'digamma'), (trigamma, sympy.trigamma, 'trigamma')):
             ours, theirs = str(to_sympy(ours_f(a), evaluate=False)), str(theirs_f(sympy_value(a)))
-            if ours != theirs and not (name == 'digamma' and str(a) in gauss) and 'zeta' not in theirs:
+            if ours != theirs:
                 different.append((name, str(a), ours, theirs))
     assert not different, different
 
@@ -49,8 +47,6 @@ def test_polygamma_matches_sympy() -> None:
     different = []
     for order, a in itertools.product(orders, values()):
         theirs = str(sympy.polygamma(sympy_value(order), sympy_value(a)))
-        if 'zeta' in theirs or (order == 0 and isinstance(a, Rational) and a.q != 1):
-            continue  # the zeta forms and Gauss' digamma theorem, not ported
         ours = str(to_sympy(polygamma(order, a), evaluate=False))
         if ours != theirs:
             different.append((str(order), str(a), ours, theirs))

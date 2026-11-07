@@ -575,10 +575,19 @@ class DefinedFunction(Application):
                 return cls(*expressions).evalf(prec_to_dps(max(precisions)))
         return cls(*expressions)
 
+    # PORTED FROM SYMPY: sympy/core/function.py:Function.fdiff
     def fdiff(self, argindex: int) -> Expr:
         """The partial derivative with respect to the argument number
-        ``argindex`` (from 1)."""
-        return Derivative(self, Dummy('xi'))
+        ``argindex`` (from 1), for a function without its own rule:
+        ``Derivative(f(x), x)`` when the argument is a symbol found in no
+        other argument, else ``Subs(Derivative(f(xi), xi), xi, a)``."""
+        index = argindex - 1
+        a = self.args[index]
+        if isinstance(a, Symbol) and not any(a in v.free_symbols for i, v in enumerate(self.args) if i != index):
+            return Derivative(self, a)
+        xi = Dummy('xi_%d' % argindex)
+        rebuilt = type(self)(*(self.args[:index] + (xi,) + self.args[index + 1:]))
+        return Subs(Derivative(rebuilt, xi), (xi,), (a,))
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         """The value at the numerical values of the arguments (mpmath, at

@@ -173,6 +173,7 @@ sympy_extras/
         special/
             gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma / gamma, loggamma, ..., PORTED FROM SYMPY
             delta_functions.py DiracDelta, Heaviside / dirac_delta, heaviside, PORTED FROM SYMPY
+            zeta_functions.py Zeta, DirichletEta, PolyLog / zeta, dirichlet_eta, polylog; Bernoulli numbers, PORTED FROM SYMPY
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,
                              Subs, Order, ...) and evaluating functions (add, mul, pow, mod, eq, and_, or_, diff,
                              order, ...), typed; Wild/match/replace, the full set of is_* predicates, Q/ask/refine,

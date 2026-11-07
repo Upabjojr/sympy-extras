@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.functions.special.zeta_functions`: `Zeta`, `DirichletEta`,
+  `PolyLog` with the evaluating `zeta`, `dirichlet_eta`, `polylog`, ported
+  from SymPy; `polygamma` gains its zeta values and Gauss' digamma
+  theorem; SymPy's fallback partial derivative for the ported functions.
 - `sympy_extras.functions.special.delta_functions`: `DiracDelta`,
   `Heaviside` with the evaluating `dirac_delta`, `heaviside`, ported from
   SymPy; `sign`, `Min` and `Max` have SymPy's derivatives.
