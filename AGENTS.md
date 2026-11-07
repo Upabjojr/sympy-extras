@@ -161,10 +161,10 @@ sympy_extras/
         tests/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
         elementary/
-            exponential.py   Exp, Log (nodes) and exp, log (evaluating), PORTED FROM SYMPY
+            exponential.py   Exp, Log, LambertW (nodes) and exp, log, lambertw (evaluating), PORTED FROM SYMPY
             complexes.py     Re, Im, Abs, Sign, Arg, Conjugate, Atan2 / re, im, abs_, ...; as_real_imag, conjugate_of, PORTED FROM SYMPY
             integers.py      Floor, Ceiling, Frac / floor, ceiling, frac, PORTED FROM SYMPY
-            miscellaneous.py Max, Min / max_, min_ (variadic DefinedFunction), PORTED FROM SYMPY
+            miscellaneous.py Max, Min / max_, min_ (variadic DefinedFunction); root, cbrt, real_root, PORTED FROM SYMPY
             piecewise.py     Piecewise, ExprCondPair / piecewise, PORTED FROM SYMPY
             trigonometric.py Sin, ..., Csc and the inverses Asin, ..., Acsc / sin, ..., acsc; pi_coeff, peeloff_pi, PORTED FROM SYMPY
             hyperbolic.py    Sinh, ..., Csch and the inverses Asinh, ..., Acsch / sinh, ..., acsch; peeloff_ipi, PORTED FROM SYMPY

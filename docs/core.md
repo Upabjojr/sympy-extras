@@ -401,6 +401,13 @@ negative coefficient, as SymPy's `_coeff_isneg` does (`-oo*I`). Not
 ported: `erf2`, `erf2inv`, the Fresnel, exponential and trigonometric
 integrals.
 
+`LambertW` (with `lambertw`, in `exponential.py`) is ported with its
+special values on the branches 0 and -1, the pole of the other branches
+at 0, the derivative, facts and mpmath values; `root`, `cbrt` and
+`real_root` (functions, as in SymPy, in `miscellaneous.py`) build the
+powers, `real_root(x, n)` SymPy's `Piecewise`, and `real_root(e)`
+replaces the odd roots of negative numbers by their real values.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a

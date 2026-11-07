@@ -60,7 +60,7 @@ from sympy_extras.core.numbers import (ComplexInfinity, E, Exp1, I, Infinity, In
                                        nan, number_from_fraction, oo, pi, zoo)
 from sympy_extras.core.power import pow
 
-__all__ = ['Exp', 'Log', 'exp', 'log']
+__all__ = ['Exp', 'Log', 'LambertW', 'exp', 'log', 'lambertw']
 
 
 def _coefficient_of_pi_i(arg: Expr) -> Optional[Expr]:
@@ -388,3 +388,126 @@ def log(x: ExprLike, base: Optional[ExprLike] = None) -> Expr:
             rest = mul(arg, pow(b, Integer(-n)))
             return add(Integer(n), mul(Log.apply(rest), pow(Log.apply(b), Integer(-1))))
     return mul(Log.apply(arg), pow(Log.apply(b), Integer(-1)))
+
+
+def _fuzzy_not(v: Optional[bool]) -> Optional[bool]:
+    return None if v is None else not v
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:LambertW
+class LambertW(DefinedFunction):
+    """The Lambert W function ``LambertW(x)`` (principal branch) and its
+    branch ``LambertW(x, k)``, unevaluated (``lambertw`` evaluates): the
+    inverse of ``w*exp(w)``.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import E, Integer, Symbol, pi
+    >>> from sympy_extras.functions.elementary.exponential import lambertw, log
+    >>> x = Symbol('x')
+    >>> lambertw(E), lambertw(-1/E), lambertw(-pi/2), lambertw(0, 1), lambertw(x, 0), lambertw(-2*E**-2, -1)
+    (1, -1, I*pi/2, -oo, LambertW(x), -2)
+    >>> lambertw(x).diff(x)
+    LambertW(x)/(x*(LambertW(x) + 1))
+    """
+
+    function_name = 'LambertW'
+    nargs = frozenset({1, 2})
+    call_nargs = frozenset({1, 2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        x = args[0]
+        k: Expr = args[1] if len(args) > 1 else Integer(0)
+        if len(args) > 1 and k.is_zero:
+            return lambertw(x)
+        minus_one_over_e = mul(Integer(-1), pow(E, Integer(-1)))
+        if k.is_zero:
+            if x.is_zero:
+                return Integer(0)
+            if isinstance(x, Exp1):
+                return Integer(1)
+            if x == minus_one_over_e:
+                return Integer(-1)
+            log2 = log(Integer(2))
+            if x == mul(Rational(-1, 2), log2):
+                return mul(Integer(-1), log2)
+            if x == mul(Integer(2), log2):
+                return log2
+            if x == mul(Rational(-1, 2), pi):
+                return mul(I, pi, Rational(1, 2))
+            if x == exp(add(Integer(1), E)):
+                return E
+            if isinstance(x, Infinity):
+                return x
+        if _fuzzy_not(k.is_zero):
+            if x.is_zero:
+                return NegativeInfinity()
+        if k == Integer(-1):
+            if x == mul(Rational(-1, 2), pi):
+                return mul(Rational(-1, 2), I, pi)
+            if x == minus_one_over_e:
+                return Integer(-1)
+            if x == mul(Integer(-2), exp(Integer(-2))):
+                return Integer(-2)
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        if argindex == 1:
+            w = self
+            return mul(w, pow(mul(self.args[0], add(Integer(1), w)), Integer(-1)))
+        return DefinedFunction.fdiff(self, argindex)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        x = values[0]
+        k = values[1] if len(values) > 1 else mpmath.mpc(0)
+        if mpmath.im(k) != 0 or mpmath.re(k) != int(mpmath.re(k)):
+            return None
+        if x == 0 and k != 0:
+            return None
+        return mpmath.mpc(mpmath.lambertw(x, int(mpmath.re(k))))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        x = self.args[0]
+        k: Expr = self.args[1] if len(self.args) > 1 else Integer(0)
+        facts: dict[str, bool] = {'commutative': True}
+        shifted = add(x, pow(E, Integer(-1)))
+        real: Optional[bool] = None
+        if k.is_zero:
+            if shifted.is_positive:
+                real = True
+            elif shifted.is_nonpositive:
+                real = False
+        elif add(k, Integer(1)).is_zero:
+            if x.is_negative and shifted.is_positive:
+                real = True
+            elif x.is_nonpositive or shifted.is_nonnegative:
+                real = False
+        elif _fuzzy_not(k.is_zero) and _fuzzy_not(add(k, Integer(1)).is_zero):
+            if x.is_extended_real:
+                real = False
+        if real is not None:
+            facts['extended_real'] = real
+        a = facts_of(x)
+        if a.get('finite') is not None:
+            facts['finite'] = a['finite']
+        if len(self.args) == 1:
+            if a.get('zero') is not None:
+                facts['zero'] = a['zero']
+        else:
+            kz = facts_of(k).get('zero')
+            if a.get('zero') is False or kz is False:
+                facts['zero'] = False
+            elif a.get('zero') and kz:
+                facts['zero'] = True
+        if a.get('zero') is False and a.get('algebraic'):
+            facts['algebraic'] = False
+        return facts
+
+
+def lambertw(x: ExprLike, k: Optional[ExprLike] = None) -> Expr:
+    """``LambertW(x)`` or the branch ``LambertW(x, k)``, evaluated."""
+    if k is None:
+        return LambertW.apply(to_expr(x))
+    return LambertW.apply(to_expr(x), to_expr(k))

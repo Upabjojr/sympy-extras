@@ -48,7 +48,7 @@ from sympy_extras.core.numbers import Integer, NaN, NegativeInfinity, oo
 from sympy_extras.core.sorting import default_sort_key
 from sympy_extras.core.symbol import Symbol
 
-__all__ = ['Max', 'Min', 'max_', 'min_']
+__all__ = ['Max', 'Min', 'max_', 'min_', 'cbrt', 'root', 'real_root']
 
 ZERO = Integer(0)
 
@@ -393,3 +393,82 @@ def min_(*args: ExprLike) -> Expr:
     return Min.apply(*args)
 
 
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/miscellaneous.py:cbrt
+def cbrt(arg: ExprLike) -> Expr:
+    """The principal cube root ``arg**(1/3)``.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions.elementary.miscellaneous import cbrt, root, real_root
+    >>> x = Symbol('x')
+    >>> cbrt(8), cbrt(x), root(16, 4), root(x, 3, 1), real_root(-8, 3), real_root(root(-8, 3))
+    (2, x**(1/3), 2, (-1)**(2/3)*x**(1/3), -2, -2)
+    >>> real_root(x, 3)
+    Piecewise((Abs(x)**(1/3)*sign(x), Eq(im(x), 0)), (x**(1/3), True))
+    """
+    from sympy_extras.core.numbers import Rational
+    from sympy_extras.core.power import pow
+    return pow(arg, Rational(1, 3))
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/miscellaneous.py:root
+def root(arg: ExprLike, n: ExprLike, k: ExprLike = 0) -> Expr:
+    """The principal ``n``-th root ``arg**(1/n)``, times ``(-1)**(2*k/n)``
+    for the ``k``-th root."""
+    from sympy_extras.core.mul import div
+    from sympy_extras.core.power import pow
+    exponent = div(Integer(1), to_expr(n))
+    kk = to_expr(k)
+    if kk != 0:
+        return mul(pow(arg, exponent), pow(Integer(-1), div(mul(Integer(2), kk), to_expr(n))))
+    return pow(arg, exponent)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/miscellaneous.py:real_root
+def real_root(arg: ExprLike, n: Optional[ExprLike] = None) -> Expr:
+    """The real ``n``-th root of a real ``arg`` when ``n`` is odd (the
+    principal root otherwise), as SymPy's ``Piecewise``; without ``n``,
+    every ``b**(1/q)`` with a negative ``b`` and odd ``q`` of ``arg`` is
+    replaced by ``-(-b)**(1/q)``."""
+    from sympy_extras.core.logic import and_, or_, true
+    from sympy_extras.core.mod import mod
+    from sympy_extras.core.numbers import Rational
+    from sympy_extras.core.power import Pow, pow
+    from sympy_extras.core.relational import eq
+    from .complexes import abs_, im, sign
+    from .piecewise import piecewise
+    a = to_expr(arg)
+    if n is not None:
+        m = to_expr(n)
+        return piecewise((root(a, m), or_(eq(m, Integer(1)), eq(m, Integer(-1)))),
+                         (mul(sign(a), root(abs_(a), m)), and_(eq(im(a), Integer(0)), eq(mod(m, Integer(2)), Integer(1)))),
+                         (root(a, m), true))
+    replacements: dict[Basic, Basic] = {}
+    stack: list[Basic] = [a]
+    while stack:
+        node = stack.pop()
+        stack.extend(node.args)
+        if isinstance(node, Pow) and node.base.is_negative and isinstance(node.exp, Rational) \
+                and node.exp.p == 1 and node.exp.q % 2:
+            replacements[node] = mul(Integer(-1), pow(mul(Integer(-1), node.base), node.exp))
+    if not replacements:
+        return a
+    replaced = _replace_evaluated(a, replacements)
+    if not isinstance(replaced, Expr):
+        raise TypeError("an expression is expected")
+    return replaced
+
+
+def _replace_evaluated(e: Basic, rule: dict[Basic, Basic]) -> Basic:
+    """SymPy's ``xreplace``: the nodes of ``rule`` replaced, the changed
+    nodes rebuilt evaluated."""
+    if e in rule:
+        return rule[e]
+    args = tuple(_replace_evaluated(a, rule) for a in e.args)
+    if args == e.args:
+        return e
+    return e._evaluated(args)

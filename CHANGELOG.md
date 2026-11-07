@@ -10,6 +10,8 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `LambertW` with `lambertw`, and `root`, `cbrt`, `real_root`, ported from
+  SymPy.
 - `sympy_extras.functions.special.error_functions`: `Erf`, `Erfc`, `Erfi`,
   `Erfinv`, `Erfcinv` with the evaluating `erf`, `erfc`, `erfi`, `erfinv`,
   `erfcinv`, ported from SymPy.

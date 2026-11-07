@@ -797,10 +797,10 @@ sympy_extras/
     core/                    an experimental core: unevaluating classes, evaluating functions (docs/core.md)
     functions/
         elementary/
-            exponential.py   Exp, Log and exp, log on the typed core (ported from SymPy)
+            exponential.py   Exp, Log, LambertW and exp, log, lambertw on the typed core (ported from SymPy)
             complexes.py     Re, Im, Abs, Sign, Arg, Conjugate, Atan2; as_real_imag, conjugation (ported from SymPy)
             integers.py      Floor, Ceiling, Frac and floor, ceiling, frac (ported from SymPy)
-            miscellaneous.py Max, Min and max_, min_ (ported from SymPy)
+            miscellaneous.py Max, Min and max_, min_; root, cbrt, real_root (ported from SymPy)
             piecewise.py     Piecewise, ExprCondPair and piecewise (ported from SymPy)
             trigonometric.py Sin, ..., Csc, Asin, ..., Acsc and sin, ..., acsc (ported from SymPy)
             hyperbolic.py    Sinh, ..., Csch, Asinh, ..., Acsch and sinh, ..., acsch (ported from SymPy)
