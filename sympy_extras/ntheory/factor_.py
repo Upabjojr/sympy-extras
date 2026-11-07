@@ -36,7 +36,8 @@ from typing import Optional
 
 from .primetest import SMALL_PRIMES, isprime
 
-__all__ = ['factorint', 'pollard_brent', 'perfect_power']
+__all__ = ['factorint', 'pollard_brent', 'perfect_power', 'is_carmichael', 'find_carmichael_numbers_in_range',
+           'find_first_n_carmichaels']
 
 
 def perfect_power(n: int) -> Optional[tuple[int, int]]:
@@ -164,3 +165,44 @@ def factorint(n: int, limit: Optional[int] = None) -> dict[int, int]:
         else:
             factors[n] = factors.get(n, 0) + 1
     return dict(sorted(factors.items()))
+
+
+
+# PORTED FROM SYMPY: sympy/ntheory/factor_.py:is_carmichael
+def is_carmichael(n: int) -> bool:
+    """Whether ``n`` is a Carmichael number (Korselt's criterion: odd,
+    composite, squarefree, ``p - 1 | n - 1`` for its prime factors).
+
+    >>> from sympy_extras.ntheory import is_carmichael
+    >>> is_carmichael(561), is_carmichael(563)
+    (True, False)
+    """
+    if n < 561:
+        return False
+    return bool(n % 2) and not isprime(n) and all(e == 1 and (n - 1) % (p - 1) == 0 for p, e in factorint(n).items())
+
+
+# PORTED FROM SYMPY: sympy/ntheory/factor_.py:find_carmichael_numbers_in_range
+def find_carmichael_numbers_in_range(x: int, y: int) -> list[int]:
+    """The Carmichael numbers in ``[x, y)``.
+
+    >>> from sympy_extras.ntheory import find_carmichael_numbers_in_range
+    >>> find_carmichael_numbers_in_range(1, 2000)
+    [561, 1105, 1729]
+    """
+    if not 0 <= x <= y:
+        raise ValueError('The provided range is not valid. x and y must be non-negative integers and x <= y')
+    start = x + 1 if x % 2 == 0 else x
+    return [i for i in range(start, y, 2) if is_carmichael(i)]
+
+
+# PORTED FROM SYMPY: sympy/ntheory/factor_.py:find_first_n_carmichaels
+def find_first_n_carmichaels(n: int) -> list[int]:
+    """The first ``n`` Carmichael numbers."""
+    i = 561
+    found: list[int] = []
+    while len(found) < n:
+        if is_carmichael(i):
+            found.append(i)
+        i += 2
+    return found

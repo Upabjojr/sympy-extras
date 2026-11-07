@@ -464,7 +464,13 @@ of conditions. The B-spline bases `bspline_basis` and `bspline_basis_set`
 (in `special/bsplines.py`), Appell's `appellf1` (`AppellF1`, in
 `hyper.py`) and the spherical Bessel zeros `jn_zeros` (in `bessel.py`)
 are ported too; `interpolating_spline` needs SymPy's `linsolve` and is
-not.
+not. `sqrt` and `Id` are exported under SymPy's names, and SymPy's
+deprecated `carmichael` wrapper is replaced by what it wraps:
+`is_carmichael`, `find_carmichael_numbers_in_range` and
+`find_first_n_carmichaels` in `sympy_extras.ntheory`. Of the names of
+`sympy.functions`, only `interpolating_spline` (it needs `linsolve`) and
+`piecewise_exclusive` (it needs the simplification of conditions) are not
+ported.
 
 The incomplete gamma functions (`LowerGamma`, `UpperGamma` with
 `lowergamma`, `uppergamma`) and the exponential integrals (`Expint`,

@@ -29,6 +29,7 @@ from .special.error_functions import (E1, Erf2, Erf2inv, erf2, erf2inv, Chi, Chi
 from .special.gamma_functions import (MultiGamma, multigamma, DiGamma, Gamma, LogGamma, LowerGamma, PolyGamma, TriGamma, UpperGamma, digamma,
                                       gamma, loggamma, lowergamma, polygamma, trigamma, uppergamma)
 from .special.bsplines import bspline_basis, bspline_basis_set
+from sympy_extras.core.power import sqrt
 from .special.hyper import AppellF1, Hyper, MeijerG, appellf1, hyper, meijerg
 from .special.mathieu_functions import (MathieuC, MathieuCPrime, MathieuS, MathieuSPrime, mathieuc, mathieucprime,
                                         mathieus, mathieusprime)
@@ -68,10 +69,13 @@ __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', '
            'Ynm_c', 'KroneckerDeltaNode', 'LeviCivitaNode', 'KroneckerDelta', 'LeviCivita', 'MathieuS', 'MathieuC',
            'MathieuSPrime', 'MathieuCPrime', 'mathieus', 'mathieuc', 'mathieusprime', 'mathieucprime',
            'SingularityFunctionNode', 'SingularityFunction', 'Hyper', 'MeijerG', 'hyper', 'meijerg', 'AppellF1', 'appellf1',
-           'bspline_basis', 'bspline_basis_set', 'jn_zeros', 'LowerGamma', 'UpperGamma', 'lowergamma', 'uppergamma',
+           'bspline_basis', 'bspline_basis_set', 'jn_zeros', 'sqrt', 'Id', 'LowerGamma', 'UpperGamma', 'lowergamma', 'uppergamma',
            'Expint', 'EiNode', 'expint', 'Ei', 'SiNode', 'CiNode', 'ShiNode', 'ChiNode', 'LiNode', 'OffsetLiNode', 'Si',
            'Ci', 'Shi', 'Chi', 'li', 'Li', 'Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv', 'Zeta', 'DirichletEta', 'PolyLog', 'zeta', 'dirichlet_eta', 'polylog', 'DiracDelta', 'Heaviside', 'dirac_delta', 'heaviside', 'Gamma', 'LogGamma', 'PolyGamma', 'DiGamma', 'TriGamma', 'gamma', 'loggamma', 'polygamma', 'digamma',
            'trigamma', 'Max', 'Min', 'max_', 'min_', 'ExprCondPair', 'Piecewise', 'piecewise', 'Sin', 'Cos', 'Tan', 'Cot', 'Sec', 'Csc', 'sin', 'cos', 'tan', 'cot', 'sec',
            'csc', 'Asin', 'Acos', 'Atan', 'Acot', 'Asec', 'Acsc', 'asin', 'acos', 'atan', 'acot', 'asec', 'acsc',
            'Sinh', 'Cosh', 'Tanh', 'Coth', 'Sech', 'Csch', 'sinh', 'cosh', 'tanh', 'coth', 'sech', 'csch',
            'Asinh', 'Acosh', 'Atanh', 'Acoth', 'Asech', 'Acsch', 'asinh', 'acosh', 'atanh', 'acoth', 'asech', 'acsch']
+
+#: SymPy's ``Id``, the identity ``Lambda(_x, _x)``
+Id = identity_function()

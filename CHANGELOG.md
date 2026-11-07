@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `is_carmichael`, `find_carmichael_numbers_in_range` and
+  `find_first_n_carmichaels` in `sympy_extras.ntheory`; `sqrt` and `Id`
+  exported from `sympy_extras.functions`.
 - `bspline_basis`, `bspline_basis_set`, `appellf1` and `jn_zeros`, ported
   from SymPy.
 - `adjoint`, `transpose` and `piecewise_fold`, ported from SymPy.
