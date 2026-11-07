@@ -233,7 +233,7 @@ class Sin(DefinedFunction):
                 return pow(Integer(-1), add(coefficient, Rational(-1, 2)))
             if not isinstance(coefficient, Rational):
                 narg = mul(coefficient, pi)
-                return cls(narg) if narg != arg else None
+                return cls.apply(narg) if narg != arg else None
             c = coefficient.as_fraction()
             x = c % 2
             if x > 1:
@@ -245,7 +245,7 @@ class Sin(DefinedFunction):
             if not isinstance(result, Cos):
                 return result
             if mul(coefficient, pi) != arg:
-                return cls(mul(coefficient, pi))
+                return cls.apply(mul(coefficient, pi))
             return None
         if isinstance(arg, Add):
             rest, m = peeloff_pi(arg)
@@ -314,7 +314,7 @@ class Cos(DefinedFunction):
                 return Integer(0)
             if not isinstance(coefficient, Rational):
                 narg = mul(coefficient, pi)
-                return cls(narg) if narg != arg else None
+                return cls.apply(narg) if narg != arg else None
             c = coefficient.as_fraction()
             q = c.denominator
             p = c.numerator % (2*q)
@@ -426,7 +426,7 @@ class Tan(DefinedFunction):
                 return Integer(0)
             if not isinstance(coefficient, Rational):
                 narg = mul(coefficient, pi)
-                return cls(narg) if narg != arg else None
+                return cls.apply(narg) if narg != arg else None
             c = coefficient.as_fraction()
             q = c.denominator
             p = c.numerator % q
@@ -460,7 +460,7 @@ class Tan(DefinedFunction):
                     return zoo
                 return mul(s_value, pow(c_value, Integer(-1)))
             if narg != arg:
-                return cls(narg)
+                return cls.apply(narg)
             return None
         if isinstance(arg, Add):
             rest, m = peeloff_pi(arg)
@@ -534,7 +534,7 @@ class Cot(DefinedFunction):
                 return zoo
             if not isinstance(coefficient, Rational):
                 narg = mul(coefficient, pi)
-                return cls(narg) if narg != arg else None
+                return cls.apply(narg) if narg != arg else None
             c = coefficient.as_fraction()
             q = c.denominator
             if q in (5, 10):
@@ -563,7 +563,7 @@ class Cot(DefinedFunction):
                     return zoo
                 return mul(c_value, pow(s_value, Integer(-1)))
             if narg != arg:
-                return cls(narg)
+                return cls.apply(narg)
             return None
         if isinstance(arg, Add):
             rest, m = peeloff_pi(arg)

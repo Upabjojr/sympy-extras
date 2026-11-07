@@ -90,8 +90,8 @@ class DiracDelta(DefinedFunction):
         if isinstance(coefficient, Number) and coefficient.is_extended_negative:
             negated = mul(Integer(-1), arg)
             if k.p % 2:
-                return mul(Integer(-1), cls(negated, k))
-            return cls(negated, k) if k.p else cls(negated)
+                return mul(Integer(-1), dirac_delta(negated, k))
+            return dirac_delta(negated, k) if k.p else dirac_delta(negated)
         if k.p == 0 and len(args) > 1:
             return cls(arg)
         return None

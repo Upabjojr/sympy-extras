@@ -300,9 +300,10 @@ def _split_real_imag(arg: Expr, real: bool) -> Optional[Expr]:
     if len(terms) == len(included):
         return None
     a, b, c = add(*included), add(*reverted), add(*excluded)
+    # SymPy: cls(a) - im(b) + c, cls(a) + re(b) + c (cls evaluates)
     if real:
-        return add(Re(a) if a != 0 else ZERO, mul(MINUS_ONE, im(b)), c)
-    return add(Im(a) if a != 0 else ZERO, re(b), c)
+        return add(re(a), mul(MINUS_ONE, im(b)), c)
+    return add(im(a), re(b), c)
 
 
 # PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:re
@@ -426,7 +427,7 @@ class Sign(DefinedFunction):
             if c == 1 and len(unknown) == len(factors):
                 return None
             rest: Expr = ONE if not unknown else (unknown[0] if len(unknown) == 1 else Mul(*unknown))
-            return mul(s, cls(rest)) if unknown else s
+            return mul(s, sign(rest)) if unknown else s
         if isinstance(arg, NaN):
             return nan
         if arg.is_zero:
