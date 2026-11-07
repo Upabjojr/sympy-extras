@@ -48,15 +48,15 @@ from sympy_extras.core.add import add, sub
 from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import DefinedFunction
-from sympy_extras.core.mul import mul
+from sympy_extras.core.mul import div, mul
 from sympy_extras.core.numbers import (ComplexInfinity, EulerGamma, Float, I, Infinity, Integer, NaN, NegativeInfinity,
                                        Rational, nan, number_from_fraction, oo, pi, zoo)
 from sympy_extras.core.power import pow, sqrt
 from sympy_extras.functions.combinatorial.factorials import factorial
-from sympy_extras.functions.elementary.exponential import log
+from sympy_extras.functions.elementary.exponential import exp, log
 
-__all__ = ['Gamma', 'LogGamma', 'PolyGamma', 'DiGamma', 'TriGamma', 'gamma', 'loggamma', 'polygamma', 'digamma',
-           'trigamma']
+__all__ = ['Gamma', 'LogGamma', 'PolyGamma', 'DiGamma', 'TriGamma', 'LowerGamma', 'UpperGamma', 'gamma', 'loggamma',
+           'polygamma', 'digamma', 'trigamma', 'lowergamma', 'uppergamma']
 
 ONE = Integer(1)
 ZERO = Integer(0)
@@ -357,3 +357,162 @@ def digamma(z: ExprLike) -> Expr:
 def trigamma(z: ExprLike) -> Expr:
     """``trigamma(z)``, evaluated."""
     return TriGamma.apply(to_expr(z))
+
+
+def _range_to(e: Expr) -> int:
+    """``e`` (an integer, as SymPy's ``range(a + S.Half)`` has it) as a
+    Python integer."""
+    if isinstance(e, Rational) and e.q == 1:
+        return e.p
+    raise ValueError("an integer is expected, not %s" % (e,))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:lowergamma
+class LowerGamma(DefinedFunction):
+    """The lower incomplete gamma ``lowergamma(a, x)``, unevaluated
+    (``lowergamma`` evaluates). The branch factors of SymPy's polar
+    arguments (``exp_polar``) do not exist in the core."""
+
+    function_name = 'lowergamma'
+    nargs = frozenset({2})
+    call_nargs = frozenset({2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from sympy_extras.functions.special.error_functions import erf
+        a, x = args
+        if isinstance(x, Rational) and x.p == 0:
+            return ZERO
+        half = Rational(1, 2)
+        if isinstance(a, Rational):
+            if a == ONE:
+                return sub(ONE, exp(mul(Integer(-1), x)))
+            if a == half:
+                return mul(sqrt(pi), erf(sqrt(x)))
+            if a.q == 1 or a.q == 2:
+                b = sub(a, ONE)
+                if b.is_positive:
+                    if a.q == 1:
+                        terms = add(*[div(pow(x, Integer(k)), factorial(Integer(k))) for k in range(a.p)])
+                        return sub(factorial(b), mul(exp(mul(Integer(-1), x)), factorial(b), terms))
+                    terms = add(*[div(pow(x, sub(Integer(k), half)), gamma(add(half, Integer(k))))
+                                  for k in range(1, _range_to(add(a, half)))])
+                    return mul(gamma(a), sub(div(lowergamma(half, x), sqrt(pi)), mul(exp(mul(Integer(-1), x)), terms)))
+                if a.q != 1:
+                    terms = add(*[div(mul(pow(x, add(Integer(k), sub(a, ONE))), gamma(a)), gamma(add(a, Integer(k))))
+                                  for k in range(1, _range_to(sub(Rational(3, 2), a)))])
+                    return add(div(mul(pow(Integer(-1), sub(half, a)), pi, erf(sqrt(x))), gamma(sub(ONE, a))),
+                               mul(exp(mul(Integer(-1), x)), terms))
+        if x.is_zero:
+            return ZERO
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        a, z = self.args
+        if argindex == 2:
+            return mul(exp(mul(Integer(-1), z)), pow(z, sub(a, ONE)))
+        return DefinedFunction.fdiff(self, argindex)  # SymPy: with meijerg, not ported
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from sympy_extras.functions.elementary.complexes import conjugate
+        a, x = self.args
+        if x.is_zero or isinstance(x, NegativeInfinity):
+            return None
+        return lowergamma(conjugate(a), conjugate(x))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        try:
+            return mpmath.mpc(mpmath.gammainc(values[0], 0, values[1]))
+        except (ValueError, ZeroDivisionError):
+            return None
+
+    def _eval_facts(self) -> dict[str, bool]:
+        facts: dict[str, bool] = {'commutative': True}
+        if facts_of(self.args[1]).get('zero'):
+            facts['zero'] = True
+        return facts
+
+
+# PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:uppergamma
+class UpperGamma(DefinedFunction):
+    """The upper incomplete gamma ``uppergamma(a, z)``, unevaluated
+    (``uppergamma`` evaluates)."""
+
+    function_name = 'uppergamma'
+    nargs = frozenset({2})
+    call_nargs = frozenset({2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from sympy_extras.functions.elementary.complexes import re
+        from sympy_extras.functions.special.error_functions import Ei, erfc, expint
+        a, z = args
+        half = Rational(1, 2)
+        minus_z = mul(Integer(-1), z)
+        if isinstance(z, NaN):
+            return nan
+        if isinstance(z, Infinity):
+            return ZERO
+        if isinstance(z, Rational) and z.p == 0 and re(a).is_positive:
+            return gamma(a)
+        if isinstance(a, Rational):
+            if a.p == 0 and z.is_positive:
+                return mul(Integer(-1), Ei(minus_z))
+            if a == ONE:
+                return exp(minus_z)
+            if a == half:
+                return mul(sqrt(pi), erfc(sqrt(z)))
+            if a.q == 1 or a.q == 2:
+                b = sub(a, ONE)
+                if b.is_positive:
+                    if a.q == 1:
+                        terms = add(*[div(pow(z, Integer(k)), factorial(Integer(k))) for k in range(a.p)])
+                        return mul(exp(minus_z), factorial(b), terms)
+                    terms = add(*[div(mul(gamma(sub(Rational(-1, 2), Integer(k))), pow(minus_z, Integer(k))),
+                                      gamma(sub(ONE, a))) for k in range(_range_to(sub(a, half)))])
+                    return add(mul(gamma(a), erfc(sqrt(z))),
+                               mul(pow(Integer(-1), sub(a, Rational(3, 2))), exp(minus_z), sqrt(z), terms))
+                if isinstance(b, Rational) and b.q == 1:
+                    return mul(expint(mul(Integer(-1), b), z), pow(z, add(b, ONE)))
+                if a.q != 1:
+                    terms = add(*[div(mul(pow(z, Integer(k)), gamma(a)), gamma(add(a, Integer(k + 1))))
+                                  for k in range(_range_to(sub(half, a)))])
+                    return sub(div(mul(pow(Integer(-1), sub(half, a)), pi, erfc(sqrt(z))), gamma(sub(ONE, a))),
+                               mul(pow(z, a), exp(minus_z), terms))
+        if a.is_zero and z.is_positive:
+            return mul(Integer(-1), Ei(minus_z))
+        if z.is_zero and re(a).is_positive:
+            return gamma(a)
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        a, z = self.args
+        if argindex == 2:
+            return mul(Integer(-1), exp(mul(Integer(-1), z)), pow(z, sub(a, ONE)))
+        return DefinedFunction.fdiff(self, argindex)  # SymPy: with meijerg, not ported
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from sympy_extras.functions.elementary.complexes import conjugate
+        a, z = self.args
+        if z.is_zero or isinstance(z, NegativeInfinity):
+            return None
+        return uppergamma(conjugate(a), conjugate(z))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        try:
+            return mpmath.mpc(mpmath.gammainc(values[0], values[1]))
+        except (ValueError, ZeroDivisionError):
+            return None
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def lowergamma(a: ExprLike, x: ExprLike) -> Expr:
+    """``lowergamma(a, x)``, evaluated."""
+    return LowerGamma.apply(to_expr(a), to_expr(x))
+
+
+def uppergamma(a: ExprLike, z: ExprLike) -> Expr:
+    """``uppergamma(a, z)``, evaluated."""
+    return UpperGamma.apply(to_expr(a), to_expr(z))

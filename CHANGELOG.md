@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `lowergamma`, `uppergamma`, `expint` and `Ei`, ported from SymPy; the
+  core decides the sign of numerical function values by evaluation and
+  re-flattens products whose combined power changes its base.
 - `beta` (`Beta`) and the Catalan numbers `catalan` (`Catalan`), ported
   from SymPy.
 - `LambertW` with `lambertw`, and `root`, `cbrt`, `real_root`, ported from

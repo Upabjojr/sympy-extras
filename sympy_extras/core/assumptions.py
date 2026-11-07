@@ -697,7 +697,16 @@ def facts_of(e: Expr) -> Facts:
     """
     cached = e._facts_cache
     if cached is None:
-        cached = closure(e._eval_facts())
+        facts = e._eval_facts()
+        # SymPy decides the sign of a numerical function value by evaluating
+        # it (Expr._eval_is_extended_positive_negative): sin(1) > 0
+        # (only the sign of a real value: SymPy leaves is_real of gamma(I) open)
+        if e.is_Function and not any(n in facts for n in ('positive', 'negative', 'zero')) and is_number(e):
+            found = numeric_facts(e)
+            if found.get('real') is True:
+                for name, known in found.items():
+                    facts.setdefault(name, known)
+        cached = closure(facts)
         e._facts_cache = cached
     return cached
 

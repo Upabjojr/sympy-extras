@@ -172,10 +172,10 @@ sympy_extras/
             factorials.py    Factorial, Binomial, RisingFactorial, FallingFactorial / factorial, binomial, rf, ff, PORTED FROM SYMPY
             numbers.py       Catalan / catalan (the Catalan numbers), PORTED FROM SYMPY
         special/
-            gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma / gamma, loggamma, ..., PORTED FROM SYMPY
+            gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma, LowerGamma, UpperGamma / gamma, ..., PORTED FROM SYMPY
             delta_functions.py DiracDelta, Heaviside / dirac_delta, heaviside, PORTED FROM SYMPY
             zeta_functions.py Zeta, DirichletEta, PolyLog / zeta, dirichlet_eta, polylog; Bernoulli numbers, PORTED FROM SYMPY
-            error_functions.py Erf, Erfc, Erfi, Erfinv, Erfcinv / erf, erfc, erfi, erfinv, erfcinv, PORTED FROM SYMPY
+            error_functions.py Erf, Erfc, Erfi, Erfinv, Erfcinv, Expint, EiNode / erf, ..., expint, Ei, PORTED FROM SYMPY
             beta_functions.py Beta / beta, PORTED FROM SYMPY
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,
                              Subs, Order, ...) and evaluating functions (add, mul, pow, mod, eq, and_, or_, diff,

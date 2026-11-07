@@ -701,7 +701,8 @@ def _fill_function_tables() -> None:
         (d.DiracDelta, sympy.DiracDelta), (d.Heaviside, sympy.Heaviside), (z.Zeta, sympy.zeta),
         (z.DirichletEta, sympy.dirichlet_eta), (z.PolyLog, sympy.polylog), (e.Erf, sympy.erf), (e.Erfc, sympy.erfc),
         (e.Erfi, sympy.erfi), (e.Erfinv, sympy.erfinv), (e.Erfcinv, sympy.erfcinv), (b.Beta, sympy.beta),
-        (cn.Catalan, sympy.catalan)]
+        (cn.Catalan, sympy.catalan), (g.LowerGamma, sympy.lowergamma), (g.UpperGamma, sympy.uppergamma),
+        (e.Expint, sympy.expint), (e.EiNode, sympy.Ei)]
     for native, counterpart in pairs:
         _NATIVE_TO_SYMPY[native] = counterpart
         _SYMPY_TO_NATIVE[counterpart] = native

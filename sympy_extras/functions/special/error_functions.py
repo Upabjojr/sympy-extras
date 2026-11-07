@@ -47,7 +47,8 @@ from sympy_extras.core.numbers import I, Infinity, Integer, NaN, NegativeInfinit
 from sympy_extras.core.power import pow, sqrt
 from sympy_extras.functions.elementary.exponential import exp
 
-__all__ = ['Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv']
+__all__ = ['Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'Expint', 'EiNode', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv',
+           'expint', 'Ei']
 
 ONE = Integer(1)
 ZERO = Integer(0)
@@ -319,3 +320,80 @@ def erfinv(x: ExprLike) -> Expr:
 def erfcinv(x: ExprLike) -> Expr:
     """``erfcinv(x)``, evaluated."""
     return Erfcinv.apply(to_expr(x))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:expint
+class Expint(DefinedFunction):
+    """The generalised exponential integral ``expint(nu, z)``, unevaluated
+    (``expint`` evaluates). The branch factors of SymPy's polar arguments
+    do not exist in the core."""
+
+    function_name = 'expint'
+    nargs = frozenset({2})
+    call_nargs = frozenset({2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from sympy_extras.core.function import expand_mul
+        from sympy_extras.functions.special.gamma_functions import uppergamma
+        nu, z = args
+        integer = isinstance(nu, Rational) and nu.q == 1
+        if (integer and nu.is_nonpositive) or (not integer and isinstance(nu, Rational) and nu.q == 2):
+            return expand_mul(mul(pow(z, sub(nu, ONE)), uppergamma(sub(ONE, nu), z)))
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        nu, z = self.args
+        if argindex == 2:
+            return mul(MINUS_ONE, expint(sub(nu, ONE), z))
+        return DefinedFunction.fdiff(self, argindex)  # SymPy: with meijerg, not ported
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        try:
+            return mpmath.mpc(mpmath.expint(values[0], values[1]))
+        except (ValueError, ZeroDivisionError):
+            return None
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Ei
+class EiNode(DefinedFunction):
+    """The exponential integral ``Ei(z)``, unevaluated (``Ei`` evaluates)."""
+
+    function_name = 'Ei'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [z] = args
+        if z.is_zero:
+            return NegativeInfinity()
+        if isinstance(z, Infinity):
+            return oo
+        if isinstance(z, NegativeInfinity):
+            return ZERO
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        z = self.args[0]
+        return div(exp(z), z)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        if values[0] == 0:
+            return None
+        return mpmath.mpc(mpmath.ei(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def expint(nu: ExprLike, z: ExprLike) -> Expr:
+    """``expint(nu, z)``, evaluated."""
+    return Expint.apply(to_expr(nu), to_expr(z))
+
+
+def Ei(z: ExprLike) -> Expr:
+    """The exponential integral ``Ei(z)``, evaluated (the class is
+    :class:`EiNode`, since the function keeps SymPy's name)."""
+    return EiNode.apply(to_expr(z))

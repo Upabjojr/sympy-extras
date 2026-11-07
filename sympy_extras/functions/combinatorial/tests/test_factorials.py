@@ -65,9 +65,11 @@ def test_facts_agree_with_sympy() -> None:
         node2 = Binomial(a, b)
         s2 = sympy.binomial(sympy_value(a), sympy_value(b), evaluate=False)
         for name in ['integer', 'nonnegative']:
-            got = node2._ask(name)
-            if got is not None:
-                assert got == getattr(s2, 'is_' + name), (node2, name)
+            got, theirs = node2._ask(name), getattr(s2, 'is_' + name)
+            # a numerical node may be decided here by evaluation where SymPy
+            # leaves it open (binomial(0, 1/2) = 2/pi > 0); no contradiction
+            if got is not None and theirs is not None:
+                assert got == theirs, (node2, name)
 
 
 def test_numbers() -> None:

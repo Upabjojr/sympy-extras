@@ -417,6 +417,22 @@ integers and negative non-integers, with derivatives, facts and mpmath
 values. `betainc` and the other numbers of SymPy's `numbers.py` are not
 ported.
 
+The incomplete gamma functions (`LowerGamma`, `UpperGamma` with
+`lowergamma`, `uppergamma`) and the exponential integrals (`Expint`,
+`EiNode` with `expint`, `Ei`) are ported from SymPy: the special values
+at the integer and half-integer orders (through `erf`, `erfc`, `exp`,
+`factorial`, `expint`, `Ei`), `expint` at the nonpositive integer and
+half-integer orders through `uppergamma`, `Ei` at `0` and the
+infinities, the derivatives in the argument, conjugates, mpmath values.
+The branch factors of SymPy's polar arguments (`exp_polar`) do not exist
+in the core, and the derivatives in the order (SymPy's, with `meijerg`)
+stay `Derivative`.
+
+Two core rules came with them: a product whose combined power changes
+its base is flattened again (`sqrt(I)*sqrt(I)*I` is `-1`, not `I*I`), and
+the sign of a numerical function value is decided by evaluating it, as
+SymPy does (`sin(1)` is positive, `zoo*expint(2, 0)` is `zoo`).
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a

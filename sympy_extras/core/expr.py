@@ -1324,9 +1324,8 @@ class Expr(Basic):
     def _ask(self, name: str) -> Truth:
         cached = self._facts_cache
         if cached is None:
-            from .assumptions import closure
-            cached = closure(self._eval_facts())
-            self._facts_cache = cached
+            from .assumptions import facts_of
+            cached = facts_of(self)
         return cached.get(name)
 
     def _eval_facts(self) -> dict[str, bool]:

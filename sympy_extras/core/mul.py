@@ -242,6 +242,9 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
     # same exponent are multiplied together
     rebuilt: list[Expr] = []
     numerical: dict[Expr, list[Rational]] = {}
+    # a combined power whose base changed (sqrt(I)*sqrt(I) is I, collected
+    # as (-1)**(1/2)) is flattened again with the other factors
+    rebased = False
     for (base, rest), (cs, factor) in collected.items():
         total: Number = cs[0]
         for c in cs[1:]:
@@ -255,7 +258,10 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
         if len(cs) == 1:
             rebuilt.append(factor)
             continue
-        rebuilt.append(pow(base, exponent))
+        combined = pow(base, exponent)
+        if combined.as_base_exp()[0] != base:
+            rebased = True
+        rebuilt.append(combined)
     for exponent, bases in numerical.items():
         if len(bases) == 1:
             rebuilt.append(_single_power(collected, bases[0], exponent))
@@ -287,7 +293,7 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
                 continue
         merged.append(f)
     again = [f for f in rebuilt + merged if f.is_Mul or isinstance(f, Number)]
-    if again:
+    if again or rebased:
         return (Integer(0), [coefficient] + rebuilt + merged)
     if isinstance(coefficient, (Infinity, NegativeInfinity)):
         # oo absorbs the factors of known sign
