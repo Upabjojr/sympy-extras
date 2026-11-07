@@ -8,7 +8,8 @@ from .elementary.miscellaneous import Max, Min, cbrt, max_, min_, real_root, roo
 from .elementary.piecewise import ExprCondPair, Piecewise, piecewise
 from .elementary.hyperbolic import (Acosh, Acoth, Acsch, Asech, Asinh, Atanh, Cosh, Coth, Csch, Sech, Sinh, Tanh, acosh,
                                     acoth, acsch, asech, asinh, atanh, cosh, coth, csch, sech, sinh, tanh)
-from .combinatorial.numbers import Catalan, catalan
+from .combinatorial.numbers import (Bernoulli, Catalan, Fibonacci, Harmonic, Lucas, bernoulli, catalan, fibonacci,
+                                   harmonic, lucas)
 from .special.bessel import (AiryAi, AiryAiPrime, AiryBi, AiryBiPrime, BesselI, BesselJ, BesselK, BesselY, Hankel1,
                              Hankel2, SphericalJ, SphericalY, airyai, airyaiprime, airybi, airybiprime, besseli, besselj,
                              besselk, bessely, hankel1, hankel2, jn, yn)
@@ -37,7 +38,8 @@ from .elementary.trigonometric import (Acos, Acot, Acsc, Asec, Asin, Atan, Cos, 
 __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', 'abs_', 'sign', 'arg', 'conjugate',
            'atan2', 'Exp', 'Log', 'LambertW', 'exp', 'log', 'lambertw', 'cbrt', 'root', 'real_root', 'Floor', 'Ceiling', 'Frac', 'floor', 'ceiling', 'frac',
            'Factorial', 'Binomial', 'RisingFactorial', 'FallingFactorial', 'factorial', 'binomial', 'rf', 'ff',
-           'Catalan', 'catalan', 'Beta', 'beta', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc', 'EllipticK',
+           'Catalan', 'catalan', 'Fibonacci', 'Lucas', 'Harmonic', 'Bernoulli', 'fibonacci', 'lucas',
+           'harmonic', 'bernoulli', 'Beta', 'beta', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc', 'EllipticK',
            'EllipticF', 'EllipticE', 'EllipticPi', 'elliptic_k', 'elliptic_f', 'elliptic_e', 'elliptic_pi', 'BesselJ', 'BesselY', 'BesselI', 'BesselK', 'besselj',
            'bessely', 'besseli', 'besselk', 'Hankel1', 'Hankel2', 'SphericalJ', 'SphericalY', 'AiryAi', 'AiryBi',
            'AiryAiPrime', 'AiryBiPrime', 'hankel1', 'hankel2', 'jn', 'yn', 'airyai', 'airybi', 'airyaiprime',

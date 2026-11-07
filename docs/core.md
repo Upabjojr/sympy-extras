@@ -414,8 +414,12 @@ replaces the odd roots of negative numbers by their real values.
 numbers follow SymPy's `doit` rules (`beta(2, 3) = 1/12` through
 `catalan`), `catalan(n)` is the gamma quotient at the nonnegative
 integers and negative non-integers, with derivatives, facts and mpmath
-values. `betainc` and the other numbers of SymPy's `numbers.py` are not
-ported.
+values. `fibonacci` (and the Fibonacci polynomials), `lucas`, `harmonic`
+(exact at the integers, through the Bernoulli polynomials for a
+nonpositive integer order, the limits at `oo`) and `bernoulli` (numbers
+with SymPy's `B_1 = 1/2`, and polynomials) are in the same module.
+`betainc`, `euler`, `bell`, `genocchi`, `partition` and the other numbers
+of SymPy's `numbers.py` are not ported.
 
 The incomplete gamma functions (`LowerGamma`, `UpperGamma` with
 `lowergamma`, `uppergamma`) and the exponential integrals (`Expint`,

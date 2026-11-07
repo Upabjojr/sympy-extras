@@ -170,7 +170,7 @@ sympy_extras/
             hyperbolic.py    Sinh, ..., Csch and the inverses Asinh, ..., Acsch / sinh, ..., acsch; peeloff_ipi, PORTED FROM SYMPY
         combinatorial/
             factorials.py    Factorial, Binomial, RisingFactorial, FallingFactorial / factorial, binomial, rf, ff, PORTED FROM SYMPY
-            numbers.py       Catalan / catalan (the Catalan numbers), PORTED FROM SYMPY
+            numbers.py       Catalan, Fibonacci, Lucas, Harmonic, Bernoulli / catalan, fibonacci, ..., PORTED FROM SYMPY
         special/
             gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma, LowerGamma, UpperGamma / gamma, ..., PORTED FROM SYMPY
             delta_functions.py DiracDelta, Heaviside / dirac_delta, heaviside, PORTED FROM SYMPY

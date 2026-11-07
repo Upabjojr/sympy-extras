@@ -10,6 +10,7 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `fibonacci`, `lucas`, `harmonic` and `bernoulli`, ported from SymPy.
 - `hyper` and `meijerg` (`Hyper`, `MeijerG`), ported from SymPy; `jacobi`
   at `x = 0`; `Expr._numeric_node` and `Expr._eval_derivative_node` hooks.
 - The Mathieu functions and `SingularityFunction`, ported from SymPy; the
