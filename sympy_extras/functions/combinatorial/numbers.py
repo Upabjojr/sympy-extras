@@ -17,8 +17,10 @@ x)``, the Euler numbers and polynomials (``euler(-1) = pi/2``), the Bell
 numbers and polynomials, the Genocchi numbers and polynomials with their
 facts, the partition numbers. Not ported: the incomplete Bell
 polynomials ``bell(n, k, symbols)`` (a tuple argument, which the core's
-functions, taking expressions, cannot hold), ``andre``, ``tribonacci``,
-``motzkin``, ``carmichael``. The number-theoretic functions ``totient``,
+functions, taking expressions, cannot hold) and ``carmichael`` (a class
+of static tests in SymPy). ``tribonacci`` (numbers and polynomials),
+``motzkin`` (with SymPy's shift: ``motzkin(n)`` is the Motzkin number of
+``n - 1``, ``motzkin(0) = 1``) and ``andre`` are ported. The number-theoretic functions ``totient``,
 ``reduced_totient``, ``divisor_sigma``, ``udivisor_sigma``, ``primenu``,
 ``primeomega``, ``mobius``, ``primepi``, ``legendre_symbol``,
 ``jacobi_symbol``, ``kronecker_symbol`` are here too, on the typed
@@ -72,7 +74,7 @@ __all__ = ['Catalan', 'Fibonacci', 'Lucas', 'Harmonic', 'Bernoulli', 'Euler', 'B
            'ReducedTotient', 'DivisorSigma', 'UDivisorSigma', 'PrimeNu', 'PrimeOmega', 'Mobius', 'PrimePi',
            'LegendreSymbol', 'JacobiSymbol', 'KroneckerSymbol', 'totient', 'reduced_totient', 'divisor_sigma',
            'udivisor_sigma', 'primenu', 'primeomega', 'mobius', 'primepi', 'legendre_symbol', 'jacobi_symbol',
-           'kronecker_symbol']
+           'kronecker_symbol', 'Tribonacci', 'Motzkin', 'Andre', 'tribonacci', 'motzkin', 'andre']
 
 HALF = Rational(1, 2)
 
@@ -1044,3 +1046,138 @@ def jacobi_symbol(m: ExprLike, n: ExprLike) -> Expr:
 def kronecker_symbol(a: ExprLike, n: ExprLike) -> Expr:
     """``kronecker_symbol(a, n)``, evaluated."""
     return KroneckerSymbol.apply(to_expr(a), to_expr(n))
+
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:tribonacci
+class Tribonacci(DefinedFunction):
+    """The tribonacci numbers ``tribonacci(n)`` and polynomials
+    ``tribonacci(n, x)``, unevaluated (``tribonacci`` evaluates)."""
+
+    function_name = 'tribonacci'
+    nargs = frozenset({1, 2})
+    call_nargs = frozenset({1, 2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from sympy_extras.core.numbers import Infinity, oo
+        n = args[0]
+        if isinstance(n, Infinity):
+            return oo
+        k = _integer(n)
+        if k is None:
+            return None
+        if k < 0:
+            raise ValueError("Tribonacci polynomials are defined only for non-negative integer indices.")
+        if len(args) == 1:
+            a, b, c = 0, 1, 1
+            for _ in range(k):
+                a, b, c = b, c, a + b + c
+            return Integer(a)
+        x = args[1]
+        # T_0 = 0, T_1 = 1, T_2 = x**2, T_k = x**2*T_{k-1} + x*T_{k-2} + T_{k-3}
+        polys: list[list[int]] = [[0], [1], [0, 0, 1]]
+        for _ in range(3, k + 1):
+            p1, p2, p3 = polys[-1], polys[-2], polys[-3]
+            size = max(len(p1) + 2, len(p2) + 1, len(p3))
+            new = [0] * size
+            for i, c1 in enumerate(p1):
+                new[i + 2] += c1
+            for i, c2 in enumerate(p2):
+                new[i + 1] += c2
+            for i, c3 in enumerate(p3):
+                new[i] += c3
+            polys.append(new)
+        return add(*[mul(Integer(c), pow(x, Integer(i))) for i, c in enumerate(polys[k]) if c])
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def _motzkin_number(n: int) -> int:
+    """The Motzkin number ``M_n`` (``M_0 = M_1 = 1``)."""
+    values = [1, 1]
+    for k in range(2, n + 1):
+        values.append(((2 * k + 1) * values[k - 1] + (3 * k - 3) * values[k - 2]) // (k + 2))
+    return values[n]
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:motzkin
+class Motzkin(DefinedFunction):
+    """SymPy's ``motzkin(n)``: the Motzkin number of ``n - 1`` (``1`` at
+    ``n = 0``), as SymPy computes it; unevaluated (``motzkin``
+    evaluates)."""
+
+    function_name = 'motzkin'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [n] = args
+        k = _integer(n)
+        if k is None or k < 0:
+            raise ValueError('The provided number must be a positive integer')
+        return Integer(_motzkin_number(max(k - 1, 0)))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:andre
+class Andre(DefinedFunction):
+    """The Andre numbers ``andre(n)`` (the up/down numbers), unevaluated
+    (``andre`` evaluates)."""
+
+    function_name = 'andre'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from sympy_extras.core.numbers import Catalan as CatalanConstant, I, Infinity, NaN, nan, number_from_fraction, oo
+        from sympy_extras.functions.elementary.complexes import abs_
+        from sympy_extras.functions.elementary.exponential import log
+        from sympy_extras.functions.special.zeta_functions import zeta
+        [n] = args
+        if isinstance(n, NaN):
+            return nan
+        if isinstance(n, Infinity):
+            return oo
+        if n.is_zero:
+            return Integer(1)
+        k = _integer(n)
+        if k == -1:
+            return mul(Integer(-1), log(Integer(2)))
+        if k == -2:
+            return mul(Integer(-2), CatalanConstant)
+        if k is not None:
+            if k >= 0 and k % 2 == 0:
+                return abs_(euler(n))
+            if k % 2:
+                m = -k - 1
+                ratio = Fraction(1 - Fraction(2)**m) / Fraction(4)**m
+                return mul(pow(I, Integer(m)), number_from_fraction(ratio), zeta(mul(Integer(-1), n)))
+        return None
+
+    def _eval_facts(self) -> dict[str, bool]:
+        n = self.args[0]
+        facts: dict[str, bool] = {'commutative': True}
+        if n.is_integer and n.is_nonnegative:
+            facts['integer'] = True
+        if n.is_nonnegative:
+            facts['positive'] = True
+        return facts
+
+
+def tribonacci(n: ExprLike, x: Optional[ExprLike] = None) -> Expr:
+    """``tribonacci(n)`` or the polynomial ``tribonacci(n, x)``, evaluated."""
+    if x is None:
+        return Tribonacci.apply(to_expr(n))
+    return Tribonacci.apply(to_expr(n), to_expr(x))
+
+
+def motzkin(n: ExprLike) -> Expr:
+    """SymPy's ``motzkin(n)``, evaluated."""
+    return Motzkin.apply(to_expr(n))
+
+
+def andre(n: ExprLike) -> Expr:
+    """``andre(n)``, evaluated."""
+    return Andre.apply(to_expr(n))

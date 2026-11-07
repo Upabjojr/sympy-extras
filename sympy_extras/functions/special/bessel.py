@@ -56,7 +56,8 @@ from sympy_extras.core.power import pow
 
 __all__ = ['BesselBase', 'BesselJ', 'BesselY', 'BesselI', 'BesselK', 'Hankel1', 'Hankel2', 'SphericalJ', 'SphericalY',
            'AiryAi', 'AiryBi', 'AiryAiPrime', 'AiryBiPrime', 'besselj', 'bessely', 'besseli', 'besselk', 'hankel1',
-           'hankel2', 'jn', 'yn', 'airyai', 'airybi', 'airyaiprime', 'airybiprime']
+           'hankel2', 'jn', 'yn', 'airyai', 'airybi', 'airyaiprime', 'airybiprime', 'SphericalHankel1', 'SphericalHankel2',
+           'MarcumQ', 'hn1', 'hn2', 'marcumq']
 
 ONE = Integer(1)
 MINUS_ONE = Integer(-1)
@@ -574,3 +575,94 @@ def airyaiprime(z: ExprLike) -> Expr:
 def airybiprime(z: ExprLike) -> Expr:
     """``airybiprime(z)``, evaluated."""
     return AiryBiPrime.apply(to_expr(z))
+
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:hn1
+class SphericalHankel1(SphericalBesselBase):
+    """The spherical Hankel function of the first kind ``hn1(nu, z) =
+    jn(nu, z) + I*yn(nu, z)`` (no values of its own, as in SymPy)."""
+
+    function_name = 'hn1'
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        j, y = _spherical('j', values[0], values[1]), _spherical('y', values[0], values[1])
+        return None if j is None or y is None else mpmath.mpc(j + 1j * y)
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:hn2
+class SphericalHankel2(SphericalBesselBase):
+    """The spherical Hankel function of the second kind ``hn2(nu, z) =
+    jn(nu, z) - I*yn(nu, z)`` (no values of its own, as in SymPy)."""
+
+    function_name = 'hn2'
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        j, y = _spherical('j', values[0], values[1]), _spherical('y', values[0], values[1])
+        return None if j is None or y is None else mpmath.mpc(j - 1j * y)
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:marcumq
+class MarcumQ(DefinedFunction):
+    """The Marcum Q-function ``marcumq(m, a, b)``, unevaluated
+    (``marcumq`` evaluates)."""
+
+    function_name = 'marcumq'
+    nargs = frozenset({3})
+    call_nargs = frozenset({3})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from sympy_extras.core.mul import div
+        from sympy_extras.functions.elementary.exponential import exp
+        from .gamma_functions import gamma, uppergamma
+        m, a, b = args
+        zero = Integer(0)
+        if a.is_zero:
+            if m.is_zero and b.is_zero:
+                return zero
+            return div(uppergamma(m, mul(pow(b, Integer(2)), HALF)), gamma(m))
+        if m.is_zero and b.is_zero:
+            return sub(ONE, div(ONE, exp(mul(pow(a, Integer(2)), HALF))))
+        if a == b:
+            decay = exp(mul(MINUS_ONE, pow(a, Integer(2))))
+            if m == ONE:
+                return mul(add(ONE, mul(decay, besseli(Integer(0), pow(a, Integer(2))))), HALF)
+            if m == Integer(2):
+                return add(HALF, mul(HALF, decay, besseli(Integer(0), pow(a, Integer(2)))),
+                           mul(decay, besseli(ONE, pow(a, Integer(2)))))
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        from sympy_extras.core.mul import div
+        from sympy_extras.functions.elementary.exponential import exp
+        m, a, b = self.args
+        if argindex == 2:
+            return mul(a, add(mul(MINUS_ONE, marcumq(m, a, b)), marcumq(add(ONE, m), a, b)))
+        if argindex == 3:
+            return mul(div(mul(MINUS_ONE, pow(b, m)), pow(a, sub(m, ONE))),
+                       exp(div(mul(MINUS_ONE, add(pow(a, Integer(2)), pow(b, Integer(2)))), Integer(2))),
+                       besseli(sub(m, ONE), mul(a, b)))
+        return DefinedFunction.fdiff(self, argindex)
+
+    def _eval_facts(self) -> dict[str, bool]:
+        facts: dict[str, bool] = {'commutative': True}
+        m, a, b = self.args
+        if a.is_zero and m.is_zero and b.is_zero:
+            facts['zero'] = True
+        return facts
+
+
+def hn1(nu: ExprLike, z: ExprLike) -> Expr:
+    """``hn1(nu, z)``."""
+    return SphericalHankel1.apply(to_expr(nu), to_expr(z))
+
+
+def hn2(nu: ExprLike, z: ExprLike) -> Expr:
+    """``hn2(nu, z)``."""
+    return SphericalHankel2.apply(to_expr(nu), to_expr(z))
+
+
+def marcumq(m: ExprLike, a: ExprLike, b: ExprLike) -> Expr:
+    """``marcumq(m, a, b)``, evaluated."""
+    return MarcumQ.apply(to_expr(m), to_expr(a), to_expr(b))

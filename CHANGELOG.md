@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `hn1`, `hn2`, `marcumq`, `chebyshevt_root`, `chebyshevu_root`,
+  `jacobi_normalized`, `tribonacci`, `motzkin` and `andre`, ported from
+  SymPy.
 - `erf2`, `erf2inv`, `betainc`, `betainc_regularized`, `lerchphi`,
   `riemann_xi`, `stieltjes` and `multigamma`, ported from SymPy.
 - The number-theoretic functions `totient`, `reduced_totient`,

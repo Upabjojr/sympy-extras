@@ -57,7 +57,8 @@ from sympy_extras.core.power import pow, sqrt
 
 __all__ = ['Legendre', 'ChebyshevT', 'ChebyshevU', 'Hermite', 'Laguerre', 'AssocLaguerre', 'Jacobi', 'Gegenbauer',
            'AssocLegendre', 'HermiteProb', 'legendre', 'chebyshevt', 'chebyshevu', 'hermite', 'laguerre', 'assoc_laguerre',
-           'jacobi', 'gegenbauer', 'assoc_legendre', 'hermite_prob']
+           'jacobi', 'gegenbauer', 'assoc_legendre', 'hermite_prob', 'chebyshevt_root', 'chebyshevu_root',
+           'jacobi_normalized']
 
 ONE = Integer(1)
 ZERO = Integer(0)
@@ -743,3 +744,42 @@ def assoc_legendre(n: ExprLike, m: ExprLike, x: ExprLike) -> Expr:
 def hermite_prob(n: ExprLike, x: ExprLike) -> Expr:
     """``hermite_prob(n, x)``, evaluated."""
     return HermiteProb.apply(to_expr(n), to_expr(x))
+
+
+
+def _check_root_index(n: Expr, k: Expr) -> None:
+    from sympy_extras.core.logic import true
+    from sympy_extras.core.relational import le, lt
+    if not (le(ZERO, k) == true and lt(k, n) == true):
+        raise ValueError("must have 0 <= k < n, got k = %s and n = %s" % (k, n))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/polynomials.py:chebyshevt_root
+def chebyshevt_root(n: ExprLike, k: ExprLike) -> Expr:
+    """The ``k``-th root of ``chebyshevt(n, x)``, ``cos(pi*(2*k + 1)/(2*n))``
+    (SymPy's class always evaluates: a function here)."""
+    from sympy_extras.functions.elementary.trigonometric import cos
+    nn, kk = to_expr(n), to_expr(k)
+    _check_root_index(nn, kk)
+    return cos(div(mul(pi, add(mul(Integer(2), kk), ONE)), mul(Integer(2), nn)))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/polynomials.py:chebyshevu_root
+def chebyshevu_root(n: ExprLike, k: ExprLike) -> Expr:
+    """The ``k``-th root of ``chebyshevu(n, x)``, ``cos(pi*(k + 1)/(n + 1))``."""
+    from sympy_extras.functions.elementary.trigonometric import cos
+    nn, kk = to_expr(n), to_expr(k)
+    _check_root_index(nn, kk)
+    return cos(div(mul(pi, add(kk, ONE)), add(nn, ONE)))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/polynomials.py:jacobi_normalized
+def jacobi_normalized(n: ExprLike, a: ExprLike, b: ExprLike, x: ExprLike) -> Expr:
+    """The Jacobi polynomial divided by the square root of its norm."""
+    from sympy_extras.functions.combinatorial.factorials import factorial
+    from .gamma_functions import gamma
+    nn, aa, bb = to_expr(n), to_expr(a), to_expr(b)
+    factor = div(div(mul(pow(Integer(2), add(aa, bb, ONE)), mul(gamma(add(nn, aa, ONE)), gamma(add(nn, bb, ONE)))),
+                     add(mul(Integer(2), nn), aa, bb, ONE)),
+                 mul(factorial(nn), gamma(add(nn, aa, bb, ONE))))
+    return div(jacobi(nn, aa, bb, x), sqrt(factor))

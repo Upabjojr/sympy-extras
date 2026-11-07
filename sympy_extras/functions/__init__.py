@@ -8,13 +8,13 @@ from .elementary.miscellaneous import Max, Min, Rem, cbrt, identity_function, ma
 from .elementary.piecewise import ExprCondPair, Piecewise, piecewise
 from .elementary.hyperbolic import (Acosh, Acoth, Acsch, Asech, Asinh, Atanh, Cosh, Coth, Csch, Sech, Sinh, Tanh, acosh,
                                     acoth, acsch, asech, asinh, atanh, cosh, coth, csch, sech, sinh, tanh)
-from .combinatorial.numbers import (Bell, Bernoulli, Catalan, DivisorSigma, Euler, Fibonacci, Genocchi, Harmonic,
+from .combinatorial.numbers import (Andre, Motzkin, Tribonacci, andre, motzkin, tribonacci, Bell, Bernoulli, Catalan, DivisorSigma, Euler, Fibonacci, Genocchi, Harmonic,
                                    JacobiSymbol, KroneckerSymbol, LegendreSymbol, Lucas, Mobius, Partition, PrimeNu,
                                    PrimeOmega, PrimePi, ReducedTotient, Totient, UDivisorSigma, bell, bernoulli, catalan,
                                    divisor_sigma, euler, fibonacci, genocchi, harmonic, jacobi_symbol, kronecker_symbol,
                                    legendre_symbol, lucas, mobius, partition, primenu, primeomega, primepi,
                                    reduced_totient, totient, udivisor_sigma)
-from .special.bessel import (AiryAi, AiryAiPrime, AiryBi, AiryBiPrime, BesselI, BesselJ, BesselK, BesselY, Hankel1,
+from .special.bessel import (MarcumQ, SphericalHankel1, SphericalHankel2, hn1, hn2, marcumq, AiryAi, AiryAiPrime, AiryBi, AiryBiPrime, BesselI, BesselJ, BesselK, BesselY, Hankel1,
                              Hankel2, SphericalJ, SphericalY, airyai, airyaiprime, airybi, airybiprime, besseli, besselj,
                              besselk, bessely, hankel1, hankel2, jn, yn)
 from .special.beta_functions import Beta, BetaInc, BetaIncRegularized, beta, betainc, betainc_regularized
@@ -29,7 +29,7 @@ from .special.gamma_functions import (MultiGamma, multigamma, DiGamma, Gamma, Lo
 from .special.hyper import Hyper, MeijerG, hyper, meijerg
 from .special.mathieu_functions import (MathieuC, MathieuCPrime, MathieuS, MathieuSPrime, mathieuc, mathieucprime,
                                         mathieus, mathieusprime)
-from .special.polynomials import (AssocLaguerre, AssocLegendre, ChebyshevT, ChebyshevU, Gegenbauer, Hermite, HermiteProb,
+from .special.polynomials import (chebyshevt_root, chebyshevu_root, jacobi_normalized, AssocLaguerre, AssocLegendre, ChebyshevT, ChebyshevU, Gegenbauer, Hermite, HermiteProb,
                                   Jacobi, Laguerre, Legendre, assoc_laguerre, assoc_legendre, chebyshevt, chebyshevu,
                                   gegenbauer, hermite, hermite_prob, jacobi, laguerre, legendre)
 from .special.singularity_functions import SingularityFunction, SingularityFunctionNode
@@ -51,7 +51,9 @@ __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', '
            'udivisor_sigma', 'primenu', 'primeomega', 'mobius', 'primepi', 'legendre_symbol', 'jacobi_symbol',
            'kronecker_symbol', 'ln', 'E1', 'Eijk', 'identity_function', 'Erf2', 'Erf2inv', 'erf2', 'erf2inv', 'BetaInc',
            'BetaIncRegularized', 'betainc', 'betainc_regularized', 'LerchPhi', 'RiemannXi', 'Stieltjes', 'lerchphi',
-           'riemann_xi', 'stieltjes', 'MultiGamma', 'multigamma', 'Beta', 'beta', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc', 'EllipticK',
+           'riemann_xi', 'stieltjes', 'MultiGamma', 'multigamma', 'SphericalHankel1', 'SphericalHankel2', 'MarcumQ', 'hn1',
+           'hn2', 'marcumq', 'chebyshevt_root', 'chebyshevu_root', 'jacobi_normalized', 'Tribonacci', 'Motzkin', 'Andre',
+           'tribonacci', 'motzkin', 'andre', 'Beta', 'beta', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc', 'EllipticK',
            'EllipticF', 'EllipticE', 'EllipticPi', 'elliptic_k', 'elliptic_f', 'elliptic_e', 'elliptic_pi', 'BesselJ', 'BesselY', 'BesselI', 'BesselK', 'besselj',
            'bessely', 'besseli', 'besselk', 'Hankel1', 'Hankel2', 'SphericalJ', 'SphericalY', 'AiryAi', 'AiryBi',
            'AiryAiPrime', 'AiryBiPrime', 'hankel1', 'hankel2', 'jn', 'yn', 'airyai', 'airybi', 'airyaiprime',

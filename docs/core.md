@@ -440,7 +440,10 @@ The smaller special functions `erf2`, `erf2inv` (in `error_functions.py`),
 `riemann_xi`, `stieltjes` (in `zeta_functions.py`) and `multigamma` (in
 `gamma_functions.py`) are ported with SymPy's values, derivatives and
 facts; `multigamma` of a symbolic order stays a node (SymPy's answer is a
-`Product`).
+`Product`). Also `hn1`, `hn2` and `marcumq` (in `bessel.py`), the
+Chebyshev roots and `jacobi_normalized` (functions, in `polynomials.py`),
+and `tribonacci`, `motzkin` (with SymPy's shift: `motzkin(n)` is the
+Motzkin number of `n - 1`) and `andre` (in `numbers.py`).
 
 The incomplete gamma functions (`LowerGamma`, `UpperGamma` with
 `lowergamma`, `uppergamma`) and the exponential integrals (`Expint`,
