@@ -435,6 +435,13 @@ from SymPy on the typed `sympy_extras.ntheory`, with SymPy's refusals
 and class facts; SymPy's aliases `ln`, `E1`, `Eijk` and `Id`
 (`identity_function`) are provided too.
 
+The smaller special functions `erf2`, `erf2inv` (in `error_functions.py`),
+`betainc`, `betainc_regularized` (in `beta_functions.py`), `lerchphi`,
+`riemann_xi`, `stieltjes` (in `zeta_functions.py`) and `multigamma` (in
+`gamma_functions.py`) are ported with SymPy's values, derivatives and
+facts; `multigamma` of a symbolic order stays a node (SymPy's answer is a
+`Product`).
+
 The incomplete gamma functions (`LowerGamma`, `UpperGamma` with
 `lowergamma`, `uppergamma`) and the exponential integrals (`Expint`,
 `EiNode` with `expint`, `Ei`) are ported from SymPy: the special values

@@ -17,14 +17,14 @@ from .combinatorial.numbers import (Bell, Bernoulli, Catalan, DivisorSigma, Eule
 from .special.bessel import (AiryAi, AiryAiPrime, AiryBi, AiryBiPrime, BesselI, BesselJ, BesselK, BesselY, Hankel1,
                              Hankel2, SphericalJ, SphericalY, airyai, airyaiprime, airybi, airybiprime, besseli, besselj,
                              besselk, bessely, hankel1, hankel2, jn, yn)
-from .special.beta_functions import Beta, beta
+from .special.beta_functions import Beta, BetaInc, BetaIncRegularized, beta, betainc, betainc_regularized
 from .special.delta_functions import DiracDelta, Heaviside, dirac_delta, heaviside
 from .special.elliptic_integrals import (EllipticE, EllipticF, EllipticK, EllipticPi, elliptic_e, elliptic_f, elliptic_k,
                                          elliptic_pi)
-from .special.error_functions import (E1, Chi, ChiNode, Ci, CiNode, Ei, EiNode, Erf, Erfc, Erfcinv, Erfi, Erfinv, Expint,
+from .special.error_functions import (E1, Erf2, Erf2inv, erf2, erf2inv, Chi, ChiNode, Ci, CiNode, Ei, EiNode, Erf, Erfc, Erfcinv, Erfi, Erfinv, Expint,
                                       FresnelC, FresnelS, Li, LiNode, OffsetLiNode, Shi, ShiNode, Si, SiNode, erf, erfc,
                                       erfcinv, erfi, erfinv, expint, fresnelc, fresnels, li)
-from .special.gamma_functions import (DiGamma, Gamma, LogGamma, LowerGamma, PolyGamma, TriGamma, UpperGamma, digamma,
+from .special.gamma_functions import (MultiGamma, multigamma, DiGamma, Gamma, LogGamma, LowerGamma, PolyGamma, TriGamma, UpperGamma, digamma,
                                       gamma, loggamma, lowergamma, polygamma, trigamma, uppergamma)
 from .special.hyper import Hyper, MeijerG, hyper, meijerg
 from .special.mathieu_functions import (MathieuC, MathieuCPrime, MathieuS, MathieuSPrime, mathieuc, mathieucprime,
@@ -35,7 +35,8 @@ from .special.polynomials import (AssocLaguerre, AssocLegendre, ChebyshevT, Cheb
 from .special.singularity_functions import SingularityFunction, SingularityFunctionNode
 from .special.spherical_harmonics import Ynm, Ynm_c, YnmNode, Znm, ZnmNode
 from .special.tensor_functions import Eijk, KroneckerDelta, KroneckerDeltaNode, LeviCivita, LeviCivitaNode
-from .special.zeta_functions import DirichletEta, PolyLog, Zeta, dirichlet_eta, polylog, zeta
+from .special.zeta_functions import (DirichletEta, LerchPhi, PolyLog, RiemannXi, Stieltjes, Zeta, dirichlet_eta,
+                                     lerchphi, polylog, riemann_xi, stieltjes, zeta)
 from .elementary.trigonometric import (Acos, Acot, Acsc, Asec, Asin, Atan, Cos, Cot, Csc, Sec, Sin, Sinc, Tan, acos, acot,
                                        acsc, asec, asin, atan, cos, cot, csc, sec, sin, sinc, tan)
 
@@ -48,7 +49,9 @@ __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', '
            'Totient', 'ReducedTotient', 'DivisorSigma', 'UDivisorSigma', 'PrimeNu', 'PrimeOmega', 'Mobius', 'PrimePi',
            'LegendreSymbol', 'JacobiSymbol', 'KroneckerSymbol', 'totient', 'reduced_totient', 'divisor_sigma',
            'udivisor_sigma', 'primenu', 'primeomega', 'mobius', 'primepi', 'legendre_symbol', 'jacobi_symbol',
-           'kronecker_symbol', 'ln', 'E1', 'Eijk', 'identity_function', 'Beta', 'beta', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc', 'EllipticK',
+           'kronecker_symbol', 'ln', 'E1', 'Eijk', 'identity_function', 'Erf2', 'Erf2inv', 'erf2', 'erf2inv', 'BetaInc',
+           'BetaIncRegularized', 'betainc', 'betainc_regularized', 'LerchPhi', 'RiemannXi', 'Stieltjes', 'lerchphi',
+           'riemann_xi', 'stieltjes', 'MultiGamma', 'multigamma', 'Beta', 'beta', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc', 'EllipticK',
            'EllipticF', 'EllipticE', 'EllipticPi', 'elliptic_k', 'elliptic_f', 'elliptic_e', 'elliptic_pi', 'BesselJ', 'BesselY', 'BesselI', 'BesselK', 'besselj',
            'bessely', 'besseli', 'besselk', 'Hankel1', 'Hankel2', 'SphericalJ', 'SphericalY', 'AiryAi', 'AiryBi',
            'AiryAiPrime', 'AiryBiPrime', 'hankel1', 'hankel2', 'jn', 'yn', 'airyai', 'airybi', 'airyaiprime',

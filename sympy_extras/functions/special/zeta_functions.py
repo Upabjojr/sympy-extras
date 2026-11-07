@@ -9,9 +9,10 @@ pi**4/90``), the Hurwitz zeta at a positive integer ``a`` reduced to the
 Riemann zeta minus a generalised harmonic number, the pole at ``s = 1``,
 ``oo``; ``dirichlet_eta`` through ``zeta``; ``polylog(s, z)`` at ``z = 0,
 1, -1``, the table of the dilogarithm, ``s = 0, -1``. The Bernoulli
-numbers follow SymPy's convention ``B_1 = 1/2``. Not ported: the polar
-arguments of ``polylog``, ``lerchphi``, ``stieltjes``, ``riemann_xi``,
-the expansions.
+numbers follow SymPy's convention ``B_1 = 1/2``. Also ``lerchphi`` (a
+node with its derivatives, as in SymPy), ``riemann_xi`` (through
+``zeta``) and the Stieltjes constants ``stieltjes(n, a)``. Not ported:
+the polar arguments of ``polylog``, the expansions.
 
 Examples
 ========
@@ -54,8 +55,8 @@ from sympy_extras.core.numbers import (Catalan, I, Infinity, Integer, NaN, Ratio
 from sympy_extras.core.power import pow, sqrt
 from sympy_extras.functions.elementary.exponential import log
 
-__all__ = ['Zeta', 'DirichletEta', 'PolyLog', 'zeta', 'dirichlet_eta', 'polylog', 'bernoulli_number',
-           'bernoulli_polynomial']
+__all__ = ['Zeta', 'DirichletEta', 'PolyLog', 'LerchPhi', 'RiemannXi', 'Stieltjes', 'zeta', 'dirichlet_eta', 'polylog',
+           'lerchphi', 'riemann_xi', 'stieltjes', 'bernoulli_number', 'bernoulli_polynomial']
 
 ONE = Integer(1)
 ZERO = Integer(0)
@@ -311,3 +312,127 @@ def polylog(s: ExprLike, z: ExprLike) -> Expr:
     return PolyLog.apply(to_expr(s), to_expr(z))
 
 
+
+
+
+# PORTED FROM SYMPY: sympy/functions/special/zeta_functions.py:lerchphi
+class LerchPhi(DefinedFunction):
+    """The Lerch transcendent ``lerchphi(z, s, a)`` (no values of its own,
+    as in SymPy)."""
+
+    function_name = 'lerchphi'
+    nargs = frozenset({3})
+    call_nargs = frozenset({3})
+
+    def fdiff(self, argindex: int) -> Expr:
+        z, s, a = self.args
+        if argindex == 3:
+            return mul(Integer(-1), s, lerchphi(z, add(s, ONE), a))
+        if argindex == 1:
+            return div(sub(lerchphi(z, sub(s, ONE), a), mul(a, lerchphi(z, s, a))), z)
+        return DefinedFunction.fdiff(self, argindex)
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        try:
+            return mpmath.mpc(mpmath.lerchphi(*values))
+        except (ValueError, ZeroDivisionError):
+            return None
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/special/zeta_functions.py:riemann_xi
+class RiemannXi(DefinedFunction):
+    """Riemann's xi function ``riemann_xi(s)``, unevaluated
+    (``riemann_xi`` evaluates)."""
+
+    function_name = 'riemann_xi'
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from .gamma_functions import gamma
+        [s] = args
+        z = zeta(s)
+        if s == ZERO or s == ONE:
+            return Rational(1, 2)
+        if not isinstance(z, Zeta):
+            return div(mul(mul(s, sub(s, ONE)), gamma(div(s, Integer(2))), z), mul(Integer(2), pow(pi, div(s, Integer(2)))))
+        return None
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        s = values[0]
+        if s in (0, 1):
+            return mpmath.mpc(0.5)
+        return mpmath.mpc(s * (s - 1) * mpmath.gamma(s / 2) * mpmath.zeta(s) / (2 * mpmath.pi ** (s / 2)))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+# PORTED FROM SYMPY: sympy/functions/special/zeta_functions.py:stieltjes
+class Stieltjes(DefinedFunction):
+    """The Stieltjes constants ``stieltjes(n)`` and ``stieltjes(n, a)``,
+    unevaluated (``stieltjes`` evaluates)."""
+
+    function_name = 'stieltjes'
+    nargs = frozenset({1, 2})
+    call_nargs = frozenset({1, 2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        from sympy_extras.core.numbers import EulerGamma, Number
+        n = args[0]
+        a: Optional[Expr] = args[1] if len(args) > 1 else None
+        if a is not None:
+            if isinstance(a, NaN):
+                return nan
+            if isinstance(a, Rational) and a.q == 1 and a.p <= 0:
+                return zoo
+        default_a = a is None or a == ONE
+        if isinstance(n, Number):
+            if isinstance(n, NaN):
+                return nan
+            if n.is_negative:
+                return zoo
+            if not (isinstance(n, Rational) and n.q == 1):
+                return zoo
+            if n.is_zero and default_a:
+                return EulerGamma
+        if n.is_extended_negative:
+            return zoo
+        if n.is_zero and default_a:
+            return EulerGamma
+        if n.is_integer is False:
+            return zoo
+        return None
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        n = values[0]
+        if mpmath.im(n) != 0 or mpmath.re(n) != int(mpmath.re(n)):
+            return None
+        a = values[1] if len(values) > 1 else mpmath.mpc(1)
+        try:
+            return mpmath.mpc(mpmath.stieltjes(int(mpmath.re(n)), a))
+        except (ValueError, ZeroDivisionError):
+            return None
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def lerchphi(z: ExprLike, s: ExprLike, a: ExprLike) -> Expr:
+    """``lerchphi(z, s, a)``."""
+    return LerchPhi.apply(to_expr(z), to_expr(s), to_expr(a))
+
+
+def riemann_xi(s: ExprLike) -> Expr:
+    """``riemann_xi(s)``, evaluated."""
+    return RiemannXi.apply(to_expr(s))
+
+
+def stieltjes(n: ExprLike, a: Optional[ExprLike] = None) -> Expr:
+    """``stieltjes(n)`` or ``stieltjes(n, a)``, evaluated."""
+    if a is None:
+        return Stieltjes.apply(to_expr(n))
+    return Stieltjes.apply(to_expr(n), to_expr(a))

@@ -10,6 +10,8 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `erf2`, `erf2inv`, `betainc`, `betainc_regularized`, `lerchphi`,
+  `riemann_xi`, `stieltjes` and `multigamma`, ported from SymPy.
 - The number-theoretic functions `totient`, `reduced_totient`,
   `divisor_sigma`, `udivisor_sigma`, `primenu`, `primeomega`, `mobius`,
   `primepi`, `legendre_symbol`, `jacobi_symbol`, `kronecker_symbol`, and

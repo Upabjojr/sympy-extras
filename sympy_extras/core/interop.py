@@ -356,6 +356,8 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         sympy_class = _native_to_sympy().get(type(e))
         if sympy_class is None:
             raise TypeError('no SymPy counterpart of %s' % (e.function_name,))
+        if sympy_class in (sympy.betainc, sympy.betainc_regularized):
+            return sympy_class(*args)  # their __new__ takes no evaluate (they never evaluate)
         return sympy_class(*args, evaluate=evaluate)
     if isinstance(e, Derivative):
         counts = [(to_sympy(s), n) for s, n in e.variable_count]
@@ -728,7 +730,9 @@ def _fill_function_tables() -> None:
         (cn.UDivisorSigma, sympy.functions.udivisor_sigma), (cn.PrimeNu, sympy.primenu), (cn.PrimeOmega, sympy.primeomega),
         (cn.Mobius, sympy.mobius), (cn.PrimePi, sympy.primepi), (cn.LegendreSymbol, sympy.legendre_symbol),
         (cn.JacobiSymbol, sympy.jacobi_symbol), (cn.KroneckerSymbol, sympy.kronecker_symbol), (g.LowerGamma, sympy.lowergamma), (g.UpperGamma, sympy.uppergamma),
-        (e.Expint, sympy.expint), (e.EiNode, sympy.Ei), (e.SiNode, sympy.Si), (e.CiNode, sympy.Ci), (e.ShiNode, sympy.Shi),
+        (e.Expint, sympy.expint), (e.EiNode, sympy.Ei), (e.Erf2, sympy.erf2), (e.Erf2inv, sympy.erf2inv),
+        (b.BetaInc, sympy.betainc), (b.BetaIncRegularized, sympy.betainc_regularized), (z.LerchPhi, sympy.lerchphi),
+        (z.RiemannXi, sympy.riemann_xi), (z.Stieltjes, sympy.stieltjes), (g.MultiGamma, sympy.multigamma), (e.SiNode, sympy.Si), (e.CiNode, sympy.Ci), (e.ShiNode, sympy.Shi),
         (e.ChiNode, sympy.Chi), (e.LiNode, sympy.li), (e.OffsetLiNode, sympy.Li), (bs.BesselJ, sympy.besselj),
         (bs.BesselY, sympy.bessely), (bs.BesselI, sympy.besseli), (bs.BesselK, sympy.besselk),
         (bs.Hankel1, sympy.hankel1), (bs.Hankel2, sympy.hankel2), (bs.SphericalJ, sympy.jn), (bs.SphericalY, sympy.yn),

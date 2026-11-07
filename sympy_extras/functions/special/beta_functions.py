@@ -6,8 +6,10 @@ Ported from SymPy's ``sympy.functions.special.beta_functions.beta``:
 (``zoo`` at a zero argument, ``1/x`` and ``1/y`` at the other argument
 ``1``, ``1/(x*y*catalan(x))`` when ``y = x + 1``, ``0`` when ``x + y`` is
 a negative integer and ``x``, ``y`` are not integers); the derivatives
-with ``digamma``, conjugate, facts and mpmath values. Not ported:
-``betainc``, ``betainc_regularized``.
+with ``digamma``, conjugate, facts and mpmath values; the generalised
+incomplete beta functions ``betainc(a, b, x1, x2)`` and
+``betainc_regularized`` (nodes, as in SymPy, with their derivatives in
+the limits).
 
 Examples
 ========
@@ -38,7 +40,7 @@ from sympy_extras.core.function import DefinedFunction
 from sympy_extras.core.mul import div, mul
 from sympy_extras.core.numbers import Integer, Number, zoo
 
-__all__ = ['Beta', 'beta']
+__all__ = ['Beta', 'BetaInc', 'BetaIncRegularized', 'beta', 'betainc', 'betainc_regularized']
 
 ONE = Integer(1)
 
@@ -110,3 +112,67 @@ def beta(x: ExprLike, y: Optional[ExprLike] = None) -> Expr:
     if y is None:
         return Beta.apply(to_expr(x))
     return Beta.apply(to_expr(x), to_expr(y))
+
+
+
+class _IncompleteBeta(DefinedFunction):
+    """The common methods of ``betainc`` and ``betainc_regularized``."""
+
+    nargs = frozenset({4})
+    call_nargs = frozenset({4})
+    regularized: bool = False
+
+    def fdiff(self, argindex: int) -> Expr:
+        from sympy_extras.core.power import pow
+        a, b, x1, x2 = self.args
+        if argindex not in (3, 4):
+            return DefinedFunction.fdiff(self, argindex)
+        x = x1 if argindex == 3 else x2
+        value = mul(pow(sub(ONE, x), sub(b, ONE)), pow(x, sub(a, ONE)))
+        if argindex == 3:
+            value = mul(Integer(-1), value)
+        return div(value, beta(a, b)) if self.regularized else value
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from sympy_extras.functions.elementary.complexes import conjugate
+        return type(self).apply(*[conjugate(x) for x in self.args])
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        a, b, x1, x2 = values
+        try:
+            return mpmath.mpc(mpmath.betainc(a, b, x1, x2, regularized=self.regularized))
+        except (ValueError, ZeroDivisionError):
+            return None
+
+    def _eval_facts(self) -> dict[str, bool]:
+        facts: dict[str, bool] = {'commutative': True}
+        if all(x.is_real for x in self.args):
+            facts['real'] = True
+        return facts
+
+
+# PORTED FROM SYMPY: sympy/functions/special/beta_functions.py:betainc
+class BetaInc(_IncompleteBeta):
+    """The generalised incomplete beta function ``betainc(a, b, x1, x2)``
+    (no values of its own, as in SymPy)."""
+
+    function_name = 'betainc'
+
+
+# PORTED FROM SYMPY: sympy/functions/special/beta_functions.py:betainc_regularized
+class BetaIncRegularized(_IncompleteBeta):
+    """The regularised incomplete beta function
+    ``betainc_regularized(a, b, x1, x2)``."""
+
+    function_name = 'betainc_regularized'
+    regularized = True
+
+
+def betainc(a: ExprLike, b: ExprLike, x1: ExprLike, x2: ExprLike) -> Expr:
+    """``betainc(a, b, x1, x2)``."""
+    return BetaInc.apply(to_expr(a), to_expr(b), to_expr(x1), to_expr(x2))
+
+
+def betainc_regularized(a: ExprLike, b: ExprLike, x1: ExprLike, x2: ExprLike) -> Expr:
+    """``betainc_regularized(a, b, x1, x2)``."""
+    return BetaIncRegularized.apply(to_expr(a), to_expr(b), to_expr(x1), to_expr(x2))

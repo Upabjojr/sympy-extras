@@ -50,7 +50,8 @@ from sympy_extras.functions.elementary.exponential import exp
 
 __all__ = ['Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'Expint', 'EiNode', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv',
            'expint', 'Ei', 'TrigonometricIntegral', 'SiNode', 'CiNode', 'ShiNode', 'ChiNode', 'LiNode', 'OffsetLiNode',
-           'Si', 'Ci', 'Shi', 'Chi', 'li', 'Li', 'FresnelIntegral', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc', 'E1']
+           'Si', 'Ci', 'Shi', 'Chi', 'li', 'Li', 'FresnelIntegral', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc', 'E1', 'Erf2', 'Erf2inv', 'erf2',
+           'erf2inv']
 
 ONE = Integer(1)
 ZERO = Integer(0)
@@ -801,3 +802,116 @@ def fresnelc(z: ExprLike) -> Expr:
 def E1(z: ExprLike) -> Expr:
     """The classical exponential integral ``expint(1, z)``."""
     return expint(Integer(1), z)
+
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:erf2
+class Erf2(DefinedFunction):
+    """The two-argument error function ``erf2(x, y) = erf(y) - erf(x)``,
+    unevaluated (``erf2`` evaluates)."""
+
+    function_name = 'erf2'
+    nargs = frozenset({2})
+    call_nargs = frozenset({2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        x, y = args
+        special = (oo, NegativeInfinity(), ZERO)
+        if isinstance(x, NaN) or isinstance(y, NaN):
+            return nan
+        if x == y:
+            return ZERO
+        if x in special or y in special:
+            return sub(erf(y), erf(x))
+        if isinstance(y, Erf2inv) and y.args[0] == x:
+            return y.args[1]
+        if x.is_zero or y.is_zero or (x.is_extended_real and x.is_infinite) or (y.is_extended_real and y.is_infinite):
+            return sub(erf(y), erf(x))
+        sign_x, sign_y = x.could_extract_minus_sign(), y.could_extract_minus_sign()
+        if sign_x and sign_y:
+            return mul(MINUS_ONE, erf2(mul(MINUS_ONE, x), mul(MINUS_ONE, y)))
+        if sign_x or sign_y:
+            return sub(erf(y), erf(x))
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        x, y = self.args
+        if argindex == 1:
+            return div(mul(Integer(-2), exp(mul(MINUS_ONE, pow(x, Integer(2))))), sqrt(pi))
+        return div(mul(Integer(2), exp(mul(MINUS_ONE, pow(y, Integer(2))))), sqrt(pi))
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from sympy_extras.functions.elementary.complexes import conjugate
+        return erf2(conjugate(self.args[0]), conjugate(self.args[1]))
+
+    def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
+        return mpmath.mpc(mpmath.erf(values[1]) - mpmath.erf(values[0]))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        from sympy_extras.core.logic import false, true
+        from sympy_extras.core.relational import eq
+        x, y = self.args
+        facts: dict[str, bool] = {'commutative': True}
+        if x.is_extended_real and y.is_extended_real:
+            facts['extended_real'] = True
+        equal = eq(x, y)
+        if equal == true:
+            facts['zero'] = True
+        elif equal == false:
+            facts['zero'] = False
+        return facts
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:erf2inv
+class Erf2inv(DefinedFunction):
+    """The inverse ``erf2inv(x, y)`` of ``erf2`` in its second argument,
+    unevaluated (``erf2inv`` evaluates)."""
+
+    function_name = 'erf2inv'
+    nargs = frozenset({2})
+    call_nargs = frozenset({2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        x, y = args
+        if isinstance(x, NaN) or isinstance(y, NaN):
+            return nan
+        if x.is_zero and y.is_zero:
+            return ZERO
+        if x.is_zero and y == ONE:
+            return oo
+        if x == ONE and y.is_zero:
+            return ONE
+        if x.is_zero:
+            return erfinv(y)
+        if isinstance(x, Infinity):
+            return erfcinv(mul(MINUS_ONE, y))
+        if y.is_zero:
+            return x
+        if isinstance(y, Infinity):
+            return erfinv(x)
+        return None
+
+    def fdiff(self, argindex: int) -> Expr:
+        x, y = self.args
+        if argindex == 1:
+            return exp(sub(pow(erf2inv(x, y), Integer(2)), pow(x, Integer(2))))
+        return mul(sqrt(pi), HALF, exp(pow(erf2inv(x, y), Integer(2))))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        x, y = self.args
+        facts: dict[str, bool] = {'commutative': True}
+        if x.is_zero and y.is_zero:
+            facts['zero'] = True
+        return facts
+
+
+def erf2(x: ExprLike, y: ExprLike) -> Expr:
+    """``erf2(x, y)``, evaluated."""
+    return Erf2.apply(to_expr(x), to_expr(y))
+
+
+def erf2inv(x: ExprLike, y: ExprLike) -> Expr:
+    """``erf2inv(x, y)``, evaluated."""
+    return Erf2inv.apply(to_expr(x), to_expr(y))

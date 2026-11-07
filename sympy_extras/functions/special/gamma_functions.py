@@ -56,7 +56,7 @@ from sympy_extras.functions.combinatorial.factorials import factorial
 from sympy_extras.functions.elementary.exponential import exp, log
 
 __all__ = ['Gamma', 'LogGamma', 'PolyGamma', 'DiGamma', 'TriGamma', 'LowerGamma', 'UpperGamma', 'gamma', 'loggamma',
-           'polygamma', 'digamma', 'trigamma', 'lowergamma', 'uppergamma']
+           'polygamma', 'digamma', 'trigamma', 'lowergamma', 'uppergamma', 'MultiGamma', 'multigamma']
 
 ONE = Integer(1)
 ZERO = Integer(0)
@@ -516,3 +516,50 @@ def lowergamma(a: ExprLike, x: ExprLike) -> Expr:
 def uppergamma(a: ExprLike, z: ExprLike) -> Expr:
     """``uppergamma(a, z)``, evaluated."""
     return UpperGamma.apply(to_expr(a), to_expr(z))
+
+
+
+# PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:multigamma
+class MultiGamma(DefinedFunction):
+    """The multivariate gamma function ``multigamma(x, p)``, unevaluated
+    (``multigamma`` evaluates for a numerical order ``p``)."""
+
+    function_name = 'multigamma'
+    nargs = frozenset({2})
+    call_nargs = frozenset({2})
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        x, p = args
+        if p.is_positive is False or p.is_integer is False:
+            raise ValueError('Order parameter p must be positive integer.')
+        order = _integer_valued(p)
+        if order is None or not isinstance(p, Rational):
+            return None  # SymPy: an unevaluated Product, not ported
+        factors = [gamma(add(x, div(sub(ONE, Integer(k)), Integer(2)))) for k in range(1, order + 1)]
+        return mul(pow(pi, div(mul(p, sub(p, ONE)), Integer(4))), *factors)
+
+    def fdiff(self, argindex: int) -> Expr:
+        return DefinedFunction.fdiff(self, argindex)  # SymPy: a Sum, not ported
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from sympy_extras.functions.elementary.complexes import conjugate
+        x, p = self.args
+        return multigamma(conjugate(x), p)
+
+    def _eval_facts(self) -> dict[str, bool]:
+        from sympy_extras.core.logic import true
+        from sympy_extras.core.relational import gt, le
+        x, p = self.args
+        y = mul(Integer(2), x)
+        facts: dict[str, bool] = {'commutative': True}
+        if (y.is_integer or _integer_valued(y) is not None) and le(y, sub(p, ONE)) == true:
+            facts['real'] = False
+        elif gt(y, sub(p, ONE)) == true or y.is_noninteger:
+            facts['real'] = True
+        return facts
+
+
+def multigamma(x: ExprLike, p: ExprLike) -> Expr:
+    """``multigamma(x, p)``, evaluated."""
+    return MultiGamma.apply(to_expr(x), to_expr(p))
