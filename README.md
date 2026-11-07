@@ -848,6 +848,8 @@ sympy_extras/
         densetools.py        derivatives, evaluation, Taylor shifts, contents, truncation
         euclidtools.py       gcd (Euclid, subresultant PRS), resultants, discriminants; principal subresultant coefficients
         sqfreetools.py       square-free decomposition (Yun; over GF(p) with p-th roots)
+        galoistools.py       factorisation over GF(p): distinct-degree, Cantor–Zassenhaus, Rabin's test
+        factortools.py       factorisation over ZZ and QQ: Zassenhaus with quadratic Hensel lifting
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
         idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension
         hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination

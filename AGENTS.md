@@ -157,6 +157,8 @@ sympy_extras/
         densetools.py        dup_diff/eval/shift/compose/content/primitive/monic/trunc/clear_denoms
         euclidtools.py       dup_gcd (Euclid, subresultant PRS), dup_resultant, dup_discriminant, dup_gcdex; principal subresultant coefficients (dup_psc, dmp_psc, psc, on SymPy's types)
         sqfreetools.py       dup_sqf_list/part/p (Yun, and GF(p))
+        galoistools.py       gf_factor, gf_ddf, gf_edf, gf_irreducible_p over FiniteField
+        factortools.py       dup_zz_factor, dup_qq_factor (Zassenhaus), dup_zz_hensel_lift
         ideals.py            Ideal: operations and invariants on top of sympy.groebner
         hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)

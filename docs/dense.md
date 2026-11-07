@@ -87,8 +87,43 @@ the recursive gcd).
 
 The last line is the gcd of `(x + y)(x - y)` and `(x + y)**2` in `ZZ[y][x]`.
 
+## Factorisation
+
+- `galoistools` (over `GF(p)`): powers modulo a polynomial, the Frobenius
+  map through the precomputed powers of `x**p`, the distinct-degree
+  factorisation (`gf_ddf`), the equal-degree splitting of Cantor and
+  Zassenhaus (`gf_edf`; the trace map for `p = 2`), `gf_factor_sqf`,
+  `gf_factor` (with the square-free decomposition first), Rabin's
+  irreducibility test (`gf_irreducible_p`) and random irreducible
+  polynomials.
+- `factortools` (over `ZZ` and `QQ`): Zassenhaus' algorithm. A prime not
+  dividing the leading coefficient modulo which the polynomial stays
+  square-free is chosen among the first few (the one with the fewest
+  modular factors), the modular factorisation is lifted by quadratic
+  Hensel steps (`dup_zz_hensel_step`, the list of factors split in halves
+  recursively in `dup_zz_hensel_lift`) above twice the Mignotte bound, and
+  the factors are recombined by trial division of the primitive parts of
+  `lc * prod f_i` over the subsets of increasing size. `dup_zz_factor`
+  and `dup_qq_factor` return the content and the primitive factors with
+  their multiplicities.
+
+```python
+>>> from sympy_extras.polys.domains import GF
+>>> from sympy_extras.polys.galoistools import gf_factor
+>>> from sympy_extras.polys.factortools import dup_zz_factor
+>>> gf_factor([1, 0, 0, 0, 4], GF(5))
+(1, [([1, 1], 1), ([1, 2], 1), ([1, 3], 1), ([1, 4], 1)])
+>>> dup_zz_factor([1, 0, 0, 0, -1], ZZ)
+(1, [([1, -1], 1), ([1, 1], 1), ([1, 0, 1], 1)])
+
+```
+
 ## Verification
 
+`polys/tests/test_factor.py` compares the factorisations over `GF(p)`
+(`p = 2, 3, 5, 7, 11, 101`), `ZZ` and `QQ` with SymPy's `factor_list` on
+random products, checks that every factor is irreducible and that the
+products rebuild the input, and the Hensel lifting on hand-made cases.
 `polys/tests/test_dense.py` compares every operation with SymPy's on
 random polynomials over `ZZ`, `QQ` and `GF(7)`, checks the defining
 identities (pseudo-division, Bézout coefficients, inverses modulo a
@@ -104,8 +139,10 @@ determinant, SymPy gives `-1773`).
 
 ## Not done
 
-Factorisation (over `GF(p)`, `ZZ`, `QQ` and number fields), real root
-isolation, the algebraic number fields, a `Poly` wrapper and the
+Factorisation over number fields (Trager) and of multivariate
+polynomials (Wang), the recombination by lattice reduction (van Hoeij;
+the subset search is exponential in the number of modular factors), real
+root isolation, the algebraic number fields, a `Poly` wrapper and the
 conversion of the algorithms above to this layer; sparse multivariate
 polynomials (the Gröbner basis code uses SymPy's `PolyElement`); a fast
 gcd over `ZZ` (the heuristic gcd) and over `GF(p)`.
@@ -119,3 +156,7 @@ gcd over `ZZ` (the heuristic gcd) and over `GF(p)`.
 - W. S. Brown, *The subresultant PRS algorithm*, ACM Transactions on
   Mathematical Software 4 (1978), 237-249.
 - D. Y. Y. Yun, *On square-free decomposition algorithms*, SYMSAC '76.
+- J. von zur Gathen, J. Gerhard, *Modern Computer Algebra*, 3rd ed.,
+  Cambridge University Press, 2013, Chapters 14 and 15.
+- D. G. Cantor, H. Zassenhaus, *A new algorithm for factoring polynomials
+  over finite fields*, Mathematics of Computation 36 (1981), 587-592.

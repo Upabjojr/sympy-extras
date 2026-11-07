@@ -21,6 +21,11 @@ remove public functions. Breaking changes are listed here when they happen.
   square-free decomposition and the `GF(p)` one). Checked against SymPy
   on random inputs and against the Sylvester determinant; see
   docs/dense.md.
+- `sympy_extras.polys.galoistools` and `factortools`: factorisation over
+  `GF(p)` (distinct-degree and Cantor–Zassenhaus equal-degree splitting,
+  Rabin's irreducibility test) and over `ZZ` and `QQ` by Zassenhaus'
+  algorithm with quadratic Hensel lifting and trial-division
+  recombination, checked against SymPy's `factor_list`.
 - `sympy_extras.solvers.irregular`: the exponential parts of the
   solutions of a linear ODE at its irregular finite singular points, from
   the local Newton polygons (the characteristic equation of each edge
