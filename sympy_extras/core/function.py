@@ -1186,7 +1186,15 @@ def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: boo
         return expr_through_sympy(e, lambda s: sympy.expand(s, deep=deep, mul=mul, multinomial=multinomial,
                                                             power_base=power_base, power_exp=power_exp, log=log,
                                                             func=func, trig=trig, complex=complex))
-    return _expand(e, deep, mul, multinomial, power_exp, log)
+    result = _expand(e, deep, mul, multinomial, power_exp, log)
+    # SymPy's Expr.expand repeats the multinomial and mul hints until
+    # nothing changes (sqrt(c)**2 = c may create a new product with a sum)
+    while mul or multinomial:
+        was = result
+        result = _expand(result, deep, mul, multinomial, False, False)
+        if result == was:
+            break
+    return result
 
 
 def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp: bool, log: bool) -> Expr:

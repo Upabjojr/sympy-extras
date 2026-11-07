@@ -1118,6 +1118,8 @@ def _joint_rings(exprs: Sequence[Expr]) -> tuple[tuple[Expr, ...], list[dict[Mon
     ``QQ``; ``I`` and floats are not ported yet)."""
     decomposed, gens = _decompose_without_gens_many(exprs)
     result: list[dict[Monomial, Fraction]] = []
+    if not gens:
+        return gens, [{} for _ in exprs]
     for terms in decomposed:
         rep: dict[Monomial, Fraction] = {}
         for m, cs in terms.items():
@@ -1175,10 +1177,10 @@ def cancel_fraction(p: ExprLike, q: ExprLike) -> tuple[Expr, Expr]:
     coefficient of ``Q`` positive (SymPy's ``cancel((p, q))`` with the
     constant folded into ``P``)."""
     gens, (f, g) = _joint_rings([_expanded(to_expr(p)), _expanded(to_expr(q))])
+    if not gens:
+        return _expanded(mul(to_expr(p), pow(to_expr(q), Integer(-1)))), Integer(1)
     if not g:
         raise ZeroDivisionError('cancel of %s/0' % (p,))
-    if not gens:
-        return number_from_fraction(f.get((), Fraction(0)) / g[()]), Integer(1)
     P, Q, _ = _cancel_reps(f, g, len(gens))
     return _expr_of(P, gens), _expr_of(Q, gens)
 
@@ -1213,7 +1215,20 @@ def cancel(f: ExprLike) -> Expr:
     from sympy_extras.core.exprtools import factor_terms
     factored = factor_terms(e, radical=True)
     p, q = factored.as_numer_denom()
-    gens, (fp, fq) = _joint_rings([_expanded(p), _expanded(q)])
+    p, q = _expanded(p), _expanded(q)
+    if p.has(I) and not q.has(I):
+        # SymPy's ZZ_I/QQ_I is not ported: with a denominator free of I the
+        # common factors are free of I too (unless Gaussian: x - I in
+        # x**2 + 1, not found here); I is a generator for the cancellation
+        from sympy_extras.core.symbol import Dummy
+        unit = Dummy('I')
+        rule: dict[Basic, Basic] = {I: unit}
+        cancelled = cancel(p.xreplace(rule) * pow(q, Integer(-1)))
+        result = cancelled._xreplace_evaluated({unit: I})
+        if not isinstance(result, Expr):
+            raise TypeError('an expression is expected')
+        return result
+    gens, (fp, fq) = _joint_rings([p, q])
     if not gens:
         return _expanded(factored)
     P, Q, _ = _cancel_reps(fp, fq, len(gens))
