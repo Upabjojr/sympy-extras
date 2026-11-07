@@ -66,7 +66,7 @@ from sympy_extras.core.exprtools import decompose_power
 from sympy_extras.core.function import expand
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import I, Integer, Number, Rational, number_from_fraction
-from sympy_extras.core.power import pow
+from sympy_extras.core.power import Pow, pow
 from sympy_extras.core.symbol import Symbol
 
 from . import densearith, densebasic, euclidtools, factortools, sqfreetools
@@ -78,7 +78,7 @@ from .polyutils import dict_from_expr
 from .rings import Monomial, PolyElement, PolyRing
 
 __all__ = ['Poly', 'poly', 'degree', 'LC', 'gcd', 'lcm', 'resultant', 'discriminant', 'factor_list', 'sqf_list', 'cancel',
-           'cancel_fraction']
+           'cancel_fraction', 'factor', 'factor_list_fraction']
 
 PolyLike = Union['Poly', ExprLike]
 
@@ -759,35 +759,137 @@ class Poly:
         rational, factors_q = sqfreetools.dup_sqf_list(f, QQ)
         return (number_from_fraction(rational), [(self._from_univariate(g, False), k) for g, k in factors_q])
 
-    # PORTED FROM SYMPY: sympy/polys/factortools.py:dup_factor_list (the domains ZZ and QQ),
-    # sympy/polys/polyutils.py:_sort_factors
+    # PORTED FROM SYMPY: sympy/polys/factortools.py:dup_factor_list, dmp_factor_list
+    # (the domains ZZ, QQ, ZZ[a], QQ[a]), sympy/polys/polyutils.py:_sort_factors
     def factor_list(self) -> tuple[Expr, list[tuple[Poly, int]]]:
         """The irreducible factors over the domain with their
-        multiplicities and the leading constant (univariate polynomials over
-        ``ZZ`` and ``QQ``): the power of the generator first split off, the
-        content and the denominators taken out, the factors primitive with
-        positive leading coefficients, sorted by degree, multiplicity and
-        coefficients."""
-        f = self._univariate_rational()
-        if not f:
+        multiplicities and the leading constant: the monomial of the
+        generators split off, the content and the denominators taken out,
+        multivariate polynomials factored by Wang's algorithm
+        (:mod:`~sympy_extras.polys.multifactor`), a polynomial domain
+        ``ZZ[a]`` by factoring in all the variables; the factors sorted as
+        SymPy sorts them."""
+        if self.is_zero:
             return (Integer(0), [])
-        j = 0
-        while f and f[-1] == 0:
-            f = f[:-1]
-            j += 1
-        content = Fraction(0)
-        for c in f:
-            content = Fraction(integer_gcd(content.numerator, c.numerator),
-                               content.denominator * c.denominator // integer_gcd(content.denominator, c.denominator))
-        integers = [int(c / content) for c in f]
-        coefficient, factors = factortools.dup_zz_factor(integers, ZZ)
-        result: list[tuple[list[int], int]] = list(factors)
-        if j:
-            result.insert(0, ([1, 0], j))
-        result.sort(key=lambda item: (len(item[0]), item[1], item[0]))
-        integral = self._domain.integral
-        return (number_from_fraction(Fraction(coefficient) * content),
-                [(self._from_univariate([Fraction(c) for c in g], integral), k) for g, k in result])
+        if not self._domain.params:
+            coefficient, factors = _factor_all(self._rep)
+            return (number_from_fraction(coefficient),
+                    [(self._same_ring(self._rep.ring.from_dict({m: Fraction(c) for m, c in f.terms.items()})), k)
+                     for f, k in factors])
+        n = len(self._gens)
+        exponents = [min(m[i] for m in self._rep.terms) for i in range(n)]
+        shift = tuple(exponents) + tuple(0 for _ in self._domain.params)
+        f = self._rep.ring.from_dict({tuple(e - s for e, s in zip(m, shift)): c for m, c in self._rep.terms.items()})
+        if self._domain.integral:
+            Z = self._integer_ring()
+            fz = Z.ring.from_dict({m: int(c) for m, c in f.terms.items()})
+            content_z = Z.ground_content(fz) if isinstance(Z, IteratedPolynomialRing) else Z.one
+            if not Z.is_one(content_z) and isinstance(Z, IteratedPolynomialRing):
+                fz = fz.exquo(Z._embed_params(content_z))
+            f = self._rep.ring.from_dict({m: Fraction(c) for m, c in fz.terms.items()})
+            content = self._param_expr({m: Fraction(c) for m, c in content_z.terms.items()})
+        else:
+            Q = self._rational_ring()
+            fq = Q.ring.from_dict(dict(f.terms))
+            content_q = Q.ground_content(fq) if isinstance(Q, IteratedPolynomialRing) else Q.one
+            if not Q.is_one(content_q) and isinstance(Q, IteratedPolynomialRing):
+                fq = fq.exquo(Q._embed_params(content_q))
+            f = self._rep.ring.from_dict(dict(fq.terms))
+            content = self._param_expr(dict(content_q.terms))
+        coefficient, factors = _factor_all(f)
+        result: list[tuple[PolyElement[int], int]] = list(factors)
+        ring_z = PolyRing(ZZ, self._rep.ring.names)
+        for i in reversed(range(n)):
+            if exponents[i]:
+                monomial = tuple(1 if k == i else 0 for k in range(ring_z.ngens))
+                result.insert(0, (ring_z.from_dict({monomial: 1}), exponents[i]))
+        result.sort(key=lambda item: (_first_degree(item[0]) + 1, item[1], _domain_key(item[0], n)))
+        return (mul(number_from_fraction(coefficient), content),
+                [(self._same_ring(self._rep.ring.from_dict({m: Fraction(c) for m, c in g.terms.items()})), k)
+                 for g, k in result])
+
+    def _param_expr(self, terms: dict[Monomial, Fraction]) -> Expr:
+        return self._coefficient_expr(terms)
+
+
+ParamKey = tuple[int, list[tuple[Monomial, int]]]
+DomainKey = Union[ParamKey, tuple['DomainKey', ...]]
+
+
+def _first_degree(f: PolyElement[int]) -> int:
+    return max((m[0] for m in f.terms), default=-1)
+
+
+def _domain_key(f: PolyElement[int], n: int) -> DomainKey:
+    """SymPy's sort key of a dense polynomial in ``n`` generators over a
+    polynomial domain: nested tuples over the generators, the coefficients
+    compared as ``PolyElement.sort_key`` (the number of terms, then the
+    terms in decreasing lex order)."""
+    return _domain_key_level(dict(f.terms), 0, n)
+
+
+def _domain_key_level(terms: dict[Monomial, int], i: int, n: int) -> DomainKey:
+    if i == n:
+        ordered = sorted(((m[n:], c) for m, c in terms.items()), reverse=True)
+        return (len(ordered), ordered)
+    if not terms:
+        return ()
+    by_degree: dict[int, dict[Monomial, int]] = {}
+    for m, c in terms.items():
+        by_degree.setdefault(m[i], {})[m] = c
+    top = max(by_degree)
+    return tuple(_domain_key_level(by_degree.get(d, {}), i + 1, n) for d in range(top, -1, -1))
+
+
+def _factor_all(f: PolyElement[Fraction]) -> tuple[Fraction, list[tuple[PolyElement[int], int]]]:
+    """SymPy's ``dup_factor_list``/``dmp_factor_list`` over ``ZZ`` or ``QQ``
+    in all the variables of the ring of ``f``: the coefficient and the
+    integer primitive factors (positive leading coefficients), sorted."""
+    from .multifactor import _sorted, zz_factor
+    names = f.ring.names
+    n = len(names)
+    exponents = [min(m[i] for m in f.terms) for i in range(n)]
+    shifted = {tuple(e - s for e, s in zip(m, exponents)): c for m, c in f.terms.items()}
+    content = Fraction(0)
+    for c in shifted.values():
+        content = Fraction(integer_gcd(content.numerator, c.numerator),
+                           content.denominator * c.denominator // integer_gcd(content.denominator, c.denominator))
+    ints = {m: int(c / content) for m, c in shifted.items()}
+    ring = PolyRing(ZZ, names)
+    if n == 1:
+        dense = densebasic.dup_from_dict({m[0]: c for m, c in ints.items()}, ZZ)
+        coefficient, dense_factors = factortools.dup_zz_factor(dense, ZZ)
+        result = [(ring.from_dict({(len(g) - 1 - i,): c for i, c in enumerate(g) if c}), k) for g, k in dense_factors]
+        if exponents[0]:
+            result.insert(0, (ring.from_dict({(1,): 1}), exponents[0]))
+        result.sort(key=lambda item: (_first_degree(item[0]) + 1, item[1], _dense_ints(item[0])))
+        return (Fraction(coefficient) * content, result)
+    used = [i for i in range(n) if any(m[i] for m in ints)]
+    if not used:
+        coefficient = ints.get(tuple(0 for _ in names), 0)
+        factors: list[tuple[PolyElement[int], int]] = []
+    else:
+        sub = PolyRing(ZZ, [names[i] for i in used])
+        g = sub.from_dict({tuple(m[i] for i in used): c for m, c in ints.items()})
+        coefficient, sub_factors = zz_factor(g)
+        factors = []
+        for h, k in sub_factors:
+            terms: dict[Monomial, int] = {}
+            for m, value in h.terms.items():
+                full = [0] * n
+                for position, e in zip(used, m):
+                    full[position] = e
+                terms[tuple(full)] = value
+            factors.append((ring.from_dict(terms), k))
+    for i in reversed(range(n)):
+        if exponents[i]:
+            monomial = tuple(1 if k == i else 0 for k in range(n))
+            factors.insert(0, (ring.from_dict({monomial: 1}), exponents[i]))
+    return (Fraction(coefficient) * content, _sorted(factors))
+
+
+def _dense_ints(f: PolyElement[int]) -> list[int]:
+    return densebasic.dup_from_dict({m[0]: c for m, c in f.terms.items()}, ZZ)
 
 
 def _terms_gcd(values: Sequence[Fraction]) -> int:
@@ -897,11 +999,6 @@ def resultant(f: PolyLike, g: PolyLike, *gens: ExprLike) -> Expr:
 def discriminant(f: PolyLike, *gens: ExprLike) -> Expr:
     d = _as_poly(f, gens).discriminant()
     return d.as_expr() if isinstance(d, Poly) else d
-
-
-def factor_list(f: PolyLike, *gens: ExprLike) -> tuple[Expr, list[tuple[Expr, int]]]:
-    coefficient, factors = _as_poly(f, gens).factor_list()
-    return coefficient, [(p.as_expr(), k) for p, k in factors]
 
 
 def sqf_list(f: PolyLike, *gens: ExprLike) -> tuple[Expr, list[tuple[Expr, int]]]:
@@ -1019,3 +1116,207 @@ def cancel(f: ExprLike) -> Expr:
         return _expanded(factored)
     P, Q, _ = _cancel_reps(fp, fq, len(gens))
     return mul(_expr_of(P, gens), pow(_expr_of(Q, gens), Integer(-1)))
+
+
+# ---------------------------------------------------------------------
+# factorisation of expressions
+
+FactorBase = Union[Poly, Expr]
+SymbolicFactors = list[tuple[FactorBase, Expr]]
+
+
+# PORTED FROM SYMPY: sympy/core/evalf.py:pure_complex
+def _pure_complex(v: Expr) -> bool:
+    """Whether ``v`` is ``a + b*I`` with numbers ``a``, ``b`` (``b != 0``)."""
+    _, t = v.as_coeff_Add()
+    if isinstance(t, Number) and t == 0:
+        return False
+    _, i = t.as_coeff_Mul()
+    return i == I
+
+
+def _base_expr(f: FactorBase) -> Expr:
+    return f.as_expr() if isinstance(f, Poly) else f
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:_symbolic_factor_list (method 'factor')
+def _symbolic_factor_list(expr: Expr, gens: Sequence[ExprLike]) -> tuple[Expr, SymbolicFactors]:
+    coefficient: Expr = Integer(1)
+    factors: SymbolicFactors = []
+    for arg in (expr.args if isinstance(expr, Mul) else (expr,)):
+        if not isinstance(arg, Expr):
+            raise TypeError('an expression is expected')
+        if isinstance(arg, Number) or _pure_complex(arg):
+            coefficient = mul(coefficient, arg)
+            continue
+        if isinstance(arg, Pow):
+            base, exponent = arg.base, arg.exp
+            if isinstance(base, Number) and isinstance(exponent, Number):
+                coefficient = mul(coefficient, arg)
+                continue
+            if isinstance(base, Number):
+                factors.append((base, exponent))
+                continue
+        else:
+            base, exponent = arg, Integer(1)
+        try:
+            p = Poly(base, *gens)
+        except GeneratorsNeeded:
+            factors.append((_expanded(base), exponent))
+            continue
+        c, poly_factors = p.factor_list()
+        found: SymbolicFactors = [(g, Integer(k)) for g, k in poly_factors]
+        if not (isinstance(c, Integer) and c.p == 1):
+            if isinstance(exponent, Integer):
+                coefficient = mul(coefficient, pow(c, exponent))
+            elif c.is_positive is True:
+                factors.append((c, exponent))
+            else:
+                found.append((c, Integer(1)))
+        if isinstance(exponent, Integer) and exponent.p == 1:
+            factors.extend(found)
+        elif exponent.is_integer is True:
+            factors.extend([(g, mul(k, exponent)) for g, k in found])
+        else:
+            other: SymbolicFactors = []
+            for g, k in found:
+                if _base_expr(g).is_positive is True:
+                    factors.append((g, mul(k, exponent)))
+                else:
+                    other.append((g, k))
+            factors.append((_factors_product(other), exponent))
+    collected: dict[FactorBase, Expr] = {}
+    for g, k in factors:
+        collected[g] = add(collected[g], k) if g in collected else k
+    return coefficient, list(collected.items())
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:_factors_product
+def _factors_product(factors: SymbolicFactors) -> Expr:
+    return mul(*[pow(_base_expr(g), k) for g, k in factors])
+
+
+RepKey = Union[Fraction, tuple[int, list[tuple[Monomial, Fraction]]], tuple['RepKey', ...]]
+
+
+def _rep_key(p: Poly) -> RepKey:
+    """``poly.rep.to_list()`` as SymPy compares it: nested over the
+    generators, the coefficients numbers or, over a polynomial domain,
+    ``PolyElement.sort_key``."""
+    n = len(p.gens)
+    return _rep_level(dict(p._rep.terms), 0, n, bool(p._domain.params))
+
+
+def _rep_level(terms: dict[Monomial, Fraction], i: int, n: int, params: bool) -> RepKey:
+    if i == n:
+        if params:
+            ordered = sorted(((m[n:], c) for m, c in terms.items()), reverse=True)
+            return (len(ordered), ordered)
+        return sum(terms.values(), Fraction(0))
+    if not terms:
+        return ()
+    by_degree: dict[int, dict[Monomial, Fraction]] = {}
+    for m, c in terms.items():
+        by_degree.setdefault(m[i], {})[m] = c
+    top = max(by_degree)
+    if i == n - 1 and not params:
+        return tuple(sum(by_degree.get(d, {}).values(), Fraction(0)) for d in range(top, -1, -1))
+    return tuple(_rep_level(by_degree.get(d, {}), i + 1, n, params) for d in range(top, -1, -1))
+
+
+ExponentKey = tuple[int, Fraction, str]
+
+
+def _exponent_key(k: Expr) -> ExponentKey:
+    if isinstance(k, Rational):
+        return (0, k.as_fraction(), '')
+    return (1, Fraction(0), str(k))
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:_sorted_factors (method 'factor')
+def _sorted_factors(factors: list[tuple[Poly, Expr]]) -> list[tuple[Poly, Expr]]:
+    return sorted(factors, key=lambda item: (max(item[0].degree(), 0) + 1 if not item[0].is_zero else 0,
+                                             len(item[0].gens), _exponent_key(item[1]), item[0].domain,
+                                             _rep_key(item[0])))
+
+
+def _factor_lists(f: ExprLike, gens: Sequence[ExprLike]) -> tuple[Expr, list[tuple[Poly, Expr]], list[tuple[Poly, Expr]]]:
+    from .rationaltools import together
+    numer, denom = together(to_expr(f)).as_numer_denom()
+    cp, fp = _symbolic_factor_list(numer, gens)
+    cq, fq = _symbolic_factor_list(denom, gens)
+    polys_p = [(g if isinstance(g, Poly) else Poly(g, *gens), k) for g, k in fp]
+    polys_q = [(g if isinstance(g, Poly) else Poly(g, *gens), k) for g, k in fq]
+    return mul(cp, pow(cq, Integer(-1))), _sorted_factors(polys_p), _sorted_factors(polys_q)
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:factor_list, _generic_factor_list
+def factor_list(f: PolyLike, *gens: ExprLike) -> tuple[Expr, list[tuple[Expr, Expr]]]:
+    """The constant and the irreducible factors with their multiplicities
+    of a polynomial expression, sorted as SymPy sorts them; a ``Poly`` is
+    factored over its domain.
+
+    >>> from sympy_extras.core import Symbol
+    >>> x, y = Symbol('x'), Symbol('y')
+    >>> factor_list(2*x**3*y - 2*x*y**3)
+    (2, [(x, 1), (y, 1), (x - y, 1), (x + y, 1)])
+    """
+    if isinstance(f, Poly):
+        c, factors = f.factor_list()
+        return c, [(g.as_expr(), Integer(k)) for g, k in factors]
+    coefficient, fp, fq = _factor_lists(f, gens)
+    if fq:
+        raise PolynomialError('a polynomial expected, got %s' % (f,))
+    return coefficient, [(g.as_expr(), k) for g, k in fp]
+
+
+def factor_list_fraction(f: ExprLike, *gens: ExprLike) -> tuple[Expr, list[tuple[Expr, Expr]], list[tuple[Expr, Expr]]]:
+    """SymPy's ``factor_list(f, frac=True)``: the constant and the factors
+    of the numerator and of the denominator."""
+    coefficient, fp, fq = _factor_lists(f, gens)
+    return coefficient, [(g.as_expr(), k) for g, k in fp], [(g.as_expr(), k) for g, k in fq]
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:factor, _generic_factor, _symbolic_factor
+def factor(f: ExprLike, *gens: ExprLike, deep: bool = False, fraction: bool = True) -> Expr:
+    """The expression as a product of irreducible factors over ``ZZ``/``QQ``
+    (rational expressions over a common denominator first, see
+    :func:`~sympy_extras.polys.rationaltools.together`); with ``deep`` the
+    subexpressions too.
+
+    >>> from sympy_extras.core import Symbol
+    >>> x, y = Symbol('x'), Symbol('y')
+    >>> factor(x**2*y - y**3), factor((x**2 - 1)/(x**2 + 2*x + 1)), factor(x**2 + 1)
+    (y*(x - y)*(x + y), (x - 1)/(x + 1), x**2 + 1)
+    """
+    e = to_expr(f)
+    if deep:
+        from sympy_extras.core.traversal import bottom_up
+
+        def attempt(b: Basic) -> Basic:
+            if not isinstance(b, Expr):
+                return b
+            factored = factor(b, *gens)
+            return factored if isinstance(factored, (Mul, Pow)) else b
+        result = bottom_up(e, attempt)
+        partials: dict[Basic, Basic] = {}
+        for node in result.atoms(Mul, Add):
+            if isinstance(node, Expr):
+                factored = factor(node, *gens)
+                if isinstance(factored, (Mul, Pow)) and factored != node:
+                    partials[node] = factored
+        replaced = result._xreplace_evaluated(partials) if partials else result
+        if not isinstance(replaced, Expr):
+            raise TypeError('an expression is expected')
+        return replaced
+    if e.is_commutative is False:
+        from sympy_extras.core.exprtools import factor_nc
+        return factor_nc(e)
+    return _symbolic_factor(e, gens, fraction)
+
+
+def _symbolic_factor(e: Expr, gens: Sequence[ExprLike], fraction: bool) -> Expr:
+    from sympy_extras.core.mul import _keep_coeff
+    from .rationaltools import together
+    coefficient, factors = _symbolic_factor_list(together(e, fraction=fraction), gens)
+    return _keep_coeff(coefficient, _factors_product(factors))

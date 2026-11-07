@@ -23,6 +23,10 @@ remove public functions. Breaking changes are listed here when they happen.
   `sympy_extras.polys.heuristicgcd` (`heugcd`), ported from SymPy;
   `IntegerPolynomialRing`.
 - `sympy_extras.polys.rationaltools.together`, ported from SymPy.
+- Multivariate factorisation over `ZZ` (`sympy_extras.polys.multifactor`,
+  Wang's algorithm), `Poly.factor_list` over `ZZ`, `QQ`, `ZZ[a]`, `QQ[a]`
+  in any number of generators, and the expression-level `factor`,
+  `factor_list` and `factor_list_fraction`, ported from SymPy.
 
 ### Changed
 

@@ -22,7 +22,8 @@ from sympy_extras.polys.polyerrors import GeneratorsNeeded, PolynomialError
 from sympy_extras.polys.polytools import Poly, degree, factor_list, gcd, lcm, resultant
 
 sx, sy, sz, sa, sb = sympy.symbols('x y z a b')
-Result = Union[Poly, Expr, int, tuple[Expr, list[tuple[Poly, int]]], tuple[Expr, list[tuple[Expr, int]]], tuple[Poly, Poly], list[Expr],
+Result = Union[Poly, Expr, int, tuple[Expr, list[tuple[Poly, int]]], tuple[Expr, list[tuple[Expr, int]]],
+               tuple[Expr, list[tuple[Expr, Expr]]], tuple[Poly, Poly], list[Expr],
                list[tuple[int, ...]]]
 
 
