@@ -18,7 +18,15 @@ References
 
 .. [1] SymPy Development Team, *SymPy documentation: Pow*,
        https://docs.sympy.org/latest/modules/core.html#sympy.core.power.Pow
+
+The content-primitive split is ported from SymPy (``sympy/core/power.py``).
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/core/power.py (Pow.as_content_primitive) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: typed; the rest of the module is original code.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
 from fractions import Fraction
@@ -34,7 +42,7 @@ from .expr import Expr, ExprLike, factors_of, to_expr
 from .mul import Mul, mul
 from .numbers import (ComplexInfinity, Exp1, Float, ImaginaryUnit, Infinity, Integer, I, NaN,
     NegativeInfinity, Number, Rational, nan, number_from_fraction, oo, zoo)
-from .parameters import distribute, global_parameters
+from .parameters import global_parameters
 from .sorting import ClassKey
 
 if TYPE_CHECKING:
@@ -107,30 +115,34 @@ class Pow(Expr):
     def _sympystr(self, printer: StrPrinter) -> str:
         return printer.print_pow(self._base, self._exp)
 
+    # PORTED FROM SYMPY: sympy/core/power.py:Pow.as_content_primitive
     def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
-        # SymPy: the content of a sum raised to an integer power comes out
-        # ((2*x + 4)**-1 gives (1/2, (x + 2)**-1)); for another exponent the
-        # sum keeps its content as an undistributed product
-        if isinstance(self._base, Rational) and self._base.p == 1 and self._base.q > 1:
-            return (Integer(1), pow(Integer(self._base.q), mul(Integer(-1), self._exp)))  # (1/4)**n is 4**(-n)
-        if not isinstance(self._base, Add):
-            return (Integer(1), self)
-        if not clear and isinstance(self._exp, Rational) and self._exp.p < 0:
-            return (Integer(1), self)  # SymPy keeps 1/(p + 3/2) with clear=False
-        c, p = self._base.as_content_primitive(radical=radical, clear=clear)
-        if c.is_Number and c == 1 or not isinstance(c, Rational):
-            return (Integer(1), self)
-        e = self._exp
-        if isinstance(e, Rational) and e.q == 1:
-            value = c.as_fraction() ** e.p
-            return (number_from_fraction(value), pow(p, e))
-        if isinstance(e, Rational):
-            # sqrt((2*y + 1)/2) is sqrt(2)*sqrt(2*y + 1)/2: the root of the content comes out
-            numeric = pow(c, e)
-            nc, np_ = numeric.as_content_primitive(radical=radical, clear=clear)
-            return (nc, mul(np_, pow(p, e)))
-        with distribute(False):
-            return (Integer(1), Pow(mul(c, p), e))
+        from .mul import _keep_coeff
+        b0, e0 = self.as_base_exp()
+        b = _keep_coeff(*b0.as_content_primitive(radical=radical, clear=clear))
+        ce, pe = e0.as_content_primitive(radical=radical, clear=clear)
+        if isinstance(b, Rational):
+            h, t = pe.as_coeff_Add()
+            if isinstance(h, Rational) and b.p != 0:
+                ceh = Rational(ce.p * h.p, ce.q * h.q) if isinstance(ce, Rational) else None
+                if ceh is not None and isinstance(ce, Rational):
+                    c = pow(b, ceh)
+                    r = Integer(0)
+                    if not isinstance(c, Rational):
+                        iceh, rem = divmod(ceh.p, ceh.q)
+                        c = pow(b, Integer(iceh))
+                        r = Integer(rem)
+                    if isinstance(c, Rational):
+                        shift = mul(r, pow(ce, Integer(-1)), Rational(1, ceh.q))
+                        return (c, pow(b, _keep_coeff(ce, add(t, shift))))
+        e = _keep_coeff(ce, pe)
+        if isinstance(e, Rational) and isinstance(b, Mul):
+            h2, t2 = b.as_content_primitive(radical=radical, clear=clear)
+            c2, m2 = pow(h2, e).as_coeff_Mul()
+            m3, me = m2.as_base_exp()
+            if isinstance(c2, Number) and ((isinstance(m3, Integer) and m3.p == 1) or me == e):
+                return (c2, pow(_keep_coeff(m3, t2), e))
+        return (Integer(1), pow(b, e))
 
     def as_numer_denom(self) -> tuple[Expr, Expr]:
         e = self._exp

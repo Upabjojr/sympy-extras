@@ -17,8 +17,16 @@ remove public functions. Breaking changes are listed here when they happen.
   `SparsePolynomialRing`, `RationalPolynomialRing`,
   `IteratedPolynomialRing` domains and `dup_prs_resultant`.
 - `cancel` and `cancel_fraction` on the typed polynomial layer (ported
-  from SymPy, without its `signsimp`/`factor_terms(radical=True)`
-  preprocessing yet).
+  from SymPy, without its
+  `signsimp` preprocessing yet).
+
+### Changed
+
+- `factor_terms` and `gcd_terms` are a typed port of SymPy's `exprtools`
+  (`Factors`, `Term`, `decompose_power`, `_keep_coeff`), `radical=True`
+  included; `Mul.as_content_primitive` and `Pow.as_content_primitive` are
+  ported from SymPy (with `clear=False` they differed); `cancel` now takes
+  the common factors out first, as SymPy does.
 - `is_carmichael`, `find_carmichael_numbers_in_range` and
   `find_first_n_carmichaels` in `sympy_extras.ntheory`; `sqrt` and `Id`
   exported from `sympy_extras.functions`.

@@ -19,7 +19,15 @@ References
 
 .. [1] SymPy Development Team, *SymPy documentation: Mul*,
        https://docs.sympy.org/latest/modules/core.html#sympy.core.mul.Mul
+
+The content-primitive split is ported from SymPy (``sympy/core/mul.py``).
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/core/mul.py (Mul.as_content_primitive, _keep_coeff) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: typed; the rest of the module is original code.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
 from fractions import Fraction
@@ -27,7 +35,7 @@ from typing import Callable, TYPE_CHECKING, Iterable, Optional
 
 from .add import Add, add
 from .basic import Basic
-from .expr import Expr, ExprLike, factors_of, to_expr
+from .expr import Expr, ExprLike, to_expr
 from .numbers import (ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, Number, Rational, nan,
     number_from_fraction)
 from .operations import AssocOp
@@ -74,24 +82,16 @@ class Mul(AssocOp):
         from .assumptions import mul_facts
         return mul_facts(self._args)
 
+    # PORTED FROM SYMPY: sympy/core/mul.py:Mul.as_content_primitive
     def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
-        coefficient, rest = self.as_coeff_Mul()
         content = Fraction(1)
         primitives: list[Expr] = []
-        if isinstance(coefficient, Rational):
-            content = abs(coefficient.as_fraction())
-            if coefficient.p < 0:
-                primitives.append(Integer(-1))
-        else:
-            primitives.append(coefficient)
-        # a fractional coefficient takes the content of the sums with it even
-        # with clear=False: (x + 2/3)/(2*n) gives (3*x + 2)/(6*n) in SymPy
-        inner_clear = clear or (isinstance(coefficient, Rational) and coefficient.q != 1)
-        for f in factors_of(rest):
-            c, p = f.as_content_primitive(radical=radical, clear=inner_clear)
+        for a in self._args:
+            c, p = a.as_content_primitive(radical=radical, clear=clear)
             value = c.exact_value()
             content *= value if value is not None else Fraction(1)
-            primitives.append(p)
+            if not (isinstance(p, Integer) and p.p == 1):
+                primitives.append(p)
         return (number_from_fraction(content), mul(*primitives))
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
@@ -444,3 +444,43 @@ def _pow(b: ExprLike, e: ExprLike) -> Expr:
         from .power import pow
         _POW = pow
     return _POW(b, e)
+
+
+# PORTED FROM SYMPY: sympy/core/mul.py:_keep_coeff
+def _keep_coeff(coeff: Expr, factors: Expr, clear: bool = True, sign: bool = False) -> Expr:
+    """``coeff*factors`` without distributing a number over a sum
+    (``2*(x + y)``), the number put first in a product."""
+    if not isinstance(coeff, Number):
+        if isinstance(factors, Number):
+            factors, coeff = coeff, factors
+        else:
+            return mul(coeff, factors)
+    if factors == Integer(1) and isinstance(factors, Integer):
+        return coeff
+    if coeff == Integer(1) and isinstance(coeff, Integer):
+        return factors
+    if coeff == Integer(-1) and isinstance(coeff, Integer) and not sign:
+        return mul(Integer(-1), factors)
+    if isinstance(factors, Add):
+        if not clear and isinstance(coeff, Rational) and coeff.q != 1:
+            pairs = [t.as_coeff_Mul() for t in factors.args]
+            scaled = [(_keep_coeff(c, coeff), m) for c, m in pairs]
+            if any(isinstance(c, Integer) for c, _ in scaled):
+                return Add(*[m if c == Integer(1) and isinstance(c, Integer) else Mul(c, m) for c, m in scaled])
+        return Mul(coeff, factors)
+    if isinstance(factors, Mul):
+        margs = list(factors.args)
+        first = margs[0]
+        if isinstance(first, Number):
+            product = mul(first, coeff)
+            if product == Integer(1) and isinstance(product, Integer):
+                margs.pop(0)
+            else:
+                margs[0] = product
+        else:
+            margs.insert(0, coeff)
+        return Mul(*margs) if len(margs) != 1 else margs[0]
+    m = mul(coeff, factors)
+    if isinstance(m, Number) and not isinstance(factors, Number):
+        return Mul(coeff, factors)
+    return m

@@ -14,14 +14,23 @@ References
 
 .. [1] SymPy Development Team, *SymPy documentation: Add*,
        https://docs.sympy.org/latest/modules/core.html#sympy.core.add.Add
+
+The common radicals of ``as_content_primitive(radical=True)`` are ported
+from SymPy's ``sympy.core.add``.
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/core/add.py (Add.as_content_primitive, the radicals) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: typed; the rest of the module is original code.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
 from fractions import Fraction
 from typing import TYPE_CHECKING, Callable, Optional
 
 from .basic import Basic
-from .expr import Expr, ExprLike, to_expr
+from .expr import Expr, ExprLike, factors_of, to_expr
 from .numbers import (ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, Number, Rational,
     nan, number_from_fraction)
 from .operations import AssocOp
@@ -73,12 +82,13 @@ class Add(AssocOp):
                 return total.as_content_primitive(radical=radical, clear=clear)
         c, p = self.primitive()
         if clear or not isinstance(c, Rational) or c.q == 1 or self._clearable():
-            return (c, p)
+            return (c, _common_radicals(p) if radical else p)
         # SymPy's clear=False: the denominator stays (x/2 + y); the integer content is taken
         if c.p == 1:
-            return (Integer(1), self)
+            return (Integer(1), _common_radicals(self) if radical else self)
         from .mul import mul
-        return (Integer(c.p), add(*[mul(Rational(1, c.p), t) for t in self._args]))
+        rest = add(*[mul(Rational(1, c.p), t) for t in self._args])
+        return (Integer(c.p), _common_radicals(rest) if radical else rest)
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return add(*[_as_expr(a) for a in args])
@@ -312,6 +322,49 @@ def sub(a: ExprLike, b: ExprLike) -> Expr:
     return add(a, mul(Integer(-1), b))
 
 _MUL: Optional[Callable[..., Expr]] = None
+
+
+# PORTED FROM SYMPY: sympy/core/add.py:Add.as_content_primitive (the radical branch)
+def _common_radicals(prim: Expr) -> Expr:
+    """``prim`` with the radicals of integers common to all its terms taken
+    out: for each root index ``q`` present in every term, the gcd ``g`` of
+    the products of the ``q``-th roots, ``g**(1/q)`` (``sqrt(2)*x +
+    sqrt(6)`` is ``sqrt(2)*(x + sqrt(3))``)."""
+    if not isinstance(prim, Add):
+        return prim
+    from math import gcd
+    from .power import Pow, pow
+    radicals: list[dict[int, int]] = []
+    common: Optional[set[int]] = None
+    for term in prim._args:
+        products: dict[int, int] = {}
+        for f in factors_of(term):
+            if isinstance(f, Pow):
+                b, e = f.as_base_exp()
+                # a rational power of an integer is normalised with 0 < e < 1
+                if isinstance(e, Rational) and isinstance(b, Integer) and e.p > 0:
+                    products[e.q] = products.get(e.q, 1) * abs(b.p) ** e.p
+        if not products:
+            return prim
+        common = set(products) if common is None else common & set(products)
+        if not common:
+            return prim
+        radicals.append(products)
+    if common is None:
+        return prim
+    taken: list[Expr] = []
+    for q in sorted(common):
+        g = 0
+        for r in radicals:
+            g = gcd(g, r[q])
+        if g != 1:
+            taken.append(pow(Integer(g), Rational(1, q)))
+    if not taken:
+        return prim
+    G = _mul(*taken)
+    inverse = pow(G, Integer(-1))
+    return _mul(G, add(*[_mul(t, inverse) for t in prim._args]))
+
 
 
 def _mul(*args: ExprLike) -> Expr:

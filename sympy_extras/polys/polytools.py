@@ -1017,9 +1017,8 @@ def cancel(f: ExprLike) -> Expr:
     >>> cancel((2*x**2 - 2)/(1 - x**2*y) + 1/x)
     (-2*x**3 + x**2*y + 2*x - 1)/(x**3*y - x)
 
-    Not ported yet: ``signsimp`` and ``factor_terms(radical=True)`` before
-    the cancellation (they change the generators only when radicals with
-    common factors appear), the domains ``ZZ_I``, ``RR`` and ``EX``.
+    Not ported yet: ``signsimp`` before the cancellation, the domains
+    ``ZZ_I``, ``RR`` and ``EX``.
     """
     e = to_expr(f)
     if isinstance(e, Number) or e.is_commutative is False:
@@ -1030,7 +1029,9 @@ def cancel(f: ExprLike) -> Expr:
         if not isinstance(rebuilt, Expr):
             raise TypeError('an expression is expected')
         return rebuilt
-    p, q = e.as_numer_denom()
+    from sympy_extras.core.exprtools import factor_terms
+    factored = factor_terms(e, radical=True)
+    p, q = factored.as_numer_denom()
     gens, (fp, fq) = _joint_rings([_expanded(p), _expanded(q)])
     if not gens:
         return _expanded(e)
