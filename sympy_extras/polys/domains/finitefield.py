@@ -107,6 +107,38 @@ class FiniteField(Domain[int]):
     def canonical_unit(self, a: int) -> int:
         return self.one if a == 0 else self.invert(a)
 
+    has_dense_kernels = True
+
+    def dense_mul(self, f: list[int], g: list[int]) -> list[int]:
+        if not f or not g:
+            return []
+        p = self.p
+        result = [0]*(len(f) + len(g) - 1)
+        for i, a in enumerate(f):
+            if a:
+                for j, b in enumerate(g):
+                    result[i + j] += a*b
+        return _strip([c % p for c in result])
+
+    def dense_div(self, f: list[int], g: list[int]) -> tuple[list[int], list[int]]:
+        if not g:
+            raise ZeroDivisionError('polynomial division by zero')
+        df, dg = len(f) - 1, len(g) - 1
+        if df < dg:
+            return [], list(f)
+        p = self.p
+        inverse = pow(g[0], -1, p)
+        quotient = [0]*(df - dg + 1)
+        remainder = list(f)
+        for i in range(df - dg + 1):
+            c = remainder[i] % p
+            if c:
+                q = (c*inverse) % p
+                quotient[i] = q
+                for j in range(1, dg + 1):
+                    remainder[i + j] -= q*g[j]
+        return _strip(quotient), _strip([c % p for c in remainder[df - dg + 1:]])
+
     def from_int(self, n: int) -> int:
         return n % self.p
 
@@ -136,6 +168,13 @@ class FiniteField(Domain[int]):
 
     def __hash__(self) -> int:
         return hash(('FiniteField', self.p))
+
+
+def _strip(f: list[int]) -> list[int]:
+    i = 0
+    while i < len(f) and f[i] == 0:
+        i += 1
+    return f[i:]
 
 
 def GF(p: int) -> FiniteField:

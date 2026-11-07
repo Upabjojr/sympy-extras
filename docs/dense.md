@@ -133,7 +133,8 @@ Rouillier–Zimmermann) isolates the real roots of a square-free polynomial
 with rational coefficients (`dup_isolate_real_roots_sqf`; with
 multiplicities through the square-free decomposition in
 `dup_isolate_real_roots`): the positive roots are brought into `(0, 1)`
-by the Cauchy bound, an interval is kept when the sign variations of
+by a root bound (the smaller of Cauchy's and Fujiwara's), an interval is
+kept when the sign variations of
 `(x + 1)**n p(1/(x + 1))` are one, discarded when zero, bisected
 otherwise, with the midpoint checked for an exact root. Each interval is
 open with rational endpoints and holds one root, or is a point for a
@@ -145,9 +146,9 @@ interval below a width.
 >>> from fractions import Fraction
 >>> from sympy_extras.polys.rootisolation import dup_isolate_real_roots, dup_count_real_roots
 >>> dup_isolate_real_roots([Fraction(1), Fraction(0), Fraction(-2)])
-[((Fraction(-3, 1), Fraction(0, 1)), 1), ((Fraction(0, 1), Fraction(3, 1)), 1)]
+[((Fraction(-2, 1), Fraction(0, 1)), 1), ((Fraction(0, 1), Fraction(2, 1)), 1)]
 >>> dup_isolate_real_roots([Fraction(1), Fraction(0), Fraction(-2)], Fraction(1, 100))
-[((Fraction(-363, 256), Fraction(-723, 512)), 1), ((Fraction(723, 512), Fraction(363, 256)), 1)]
+[((Fraction(-91, 64), Fraction(-181, 128)), 1), ((Fraction(181, 128), Fraction(91, 64)), 1)]
 >>> dup_count_real_roots([Fraction(1), Fraction(0), Fraction(-2)], Fraction(0), Fraction(3))
 1
 
@@ -176,6 +177,18 @@ first whatever the order of the arguments, so it is off by the sign
 `(-1)**(deg f deg g)` when `deg f < deg g` and both degrees are odd
 (`resultant(-7x - 3, -2x**3 + 6x**2 + x - 6)` is `1773` by the Sylvester
 determinant, SymPy gives `-1773`).
+
+## Performance
+
+The generic functions call the domain's methods for every coefficient
+operation, which is what a statically typed translation makes free but
+costs a Python call here. `ZZ` and `GF(p)` therefore provide *dense
+kernels* (`Domain.has_dense_kernels`, `dense_mul`, `dense_div`) running
+the inner loops on machine integers, the division over a field inverts
+the leading coefficient once, and `x**n ± 1` is factored into cyclotomic
+polynomials directly. With these the factorisation of random products of
+degree 30 to 40 runs within two to three times SymPy's pure Python
+implementation; `x**100 - 1` is immediate.
 
 ## Not done
 

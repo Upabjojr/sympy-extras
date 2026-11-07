@@ -124,6 +124,41 @@ class IntegerRing(Domain[int]):
     def canonical_unit(self, a: int) -> int:
         return -1 if a < 0 else 1
 
+    has_dense_kernels = True
+
+    def dense_mul(self, f: list[int], g: list[int]) -> list[int]:
+        if not f or not g:
+            return []
+        result = [0]*(len(f) + len(g) - 1)
+        for i, a in enumerate(f):
+            if a:
+                for j, b in enumerate(g):
+                    result[i + j] += a*b
+        return _strip(result)
+
+    def dense_div(self, f: list[int], g: list[int]) -> tuple[list[int], list[int]]:
+        """Division with the quotient coefficients obtained by exact
+        division by the leading coefficient of ``g`` (``ValueError``
+        when one is not exact)."""
+        if not g:
+            raise ZeroDivisionError('polynomial division by zero')
+        df, dg = len(f) - 1, len(g) - 1
+        if df < dg:
+            return [], list(f)
+        lc = g[0]
+        quotient = [0]*(df - dg + 1)
+        remainder = list(f)
+        for i in range(df - dg + 1):
+            c = remainder[i]
+            if c:
+                q, r = divmod(c, lc)
+                if r:
+                    raise ValueError('%d does not divide %d' % (lc, c))
+                quotient[i] = q
+                for j in range(1, dg + 1):
+                    remainder[i + j] -= q*g[j]
+        return _strip(quotient), _strip(remainder[df - dg + 1:])
+
     def from_int(self, n: int) -> int:
         return n
 
@@ -141,6 +176,14 @@ class IntegerRing(Domain[int]):
         if isinstance(e, Integer):
             return int(e)
         raise ValueError('%s is not an integer' % (e,))
+
+
+
+def _strip(f: list[int]) -> list[int]:
+    i = 0
+    while i < len(f) and f[i] == 0:
+        i += 1
+    return f[i:]
 
 
 ZZ = IntegerRing()

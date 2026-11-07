@@ -163,6 +163,8 @@ def _schoolbook(f: list[T], g: list[T], K: Domain[T]) -> list[T]:
 def dup_mul(f: list[T], g: list[T], K: Domain[T]) -> list[T]:
     if not f or not g:
         return []
+    if K.has_dense_kernels:
+        return K.dense_mul(f, g)
     if f is g:
         return dup_sqr(f, K)
     df, dg = len(f) - 1, len(g) - 1
@@ -181,6 +183,8 @@ def dup_mul(f: list[T], g: list[T], K: Domain[T]) -> list[T]:
 def dup_sqr(f: list[T], K: Domain[T]) -> list[T]:
     if not f:
         return []
+    if K.has_dense_kernels:
+        return K.dense_mul(f, f)
     df = len(f) - 1
     if df >= KARATSUBA_THRESHOLD:
         return _schoolbook(f, f, K)
@@ -220,17 +224,21 @@ def dup_div(f: list[T], g: list[T], K: Domain[T]) -> tuple[list[T], list[T]]:
     exactly and raises ``ValueError`` otherwise)."""
     if not g:
         raise ZeroDivisionError('polynomial division by zero')
+    if K.has_dense_kernels:
+        return K.dense_div(f, g)
     df, dg = len(f) - 1, len(g) - 1
     if df < dg:
         return [], list(f)
     lc = g[0]
+    # over a field the leading coefficient is inverted once
+    inverse = K.invert(lc) if K.is_field else K.one
     quotient: list[T] = [K.zero]*(df - dg + 1)
     remainder = list(f)
     for i in range(df - dg + 1):
         c = remainder[i]
         if K.is_zero(c):
             continue
-        q = K.exquo(c, lc)
+        q = K.mul(c, inverse) if K.is_field else K.exquo(c, lc)
         quotient[i] = q
         for j in range(1, dg + 1):
             remainder[i + j] = K.sub(remainder[i + j], K.mul(q, g[j]))

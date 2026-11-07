@@ -34,6 +34,11 @@ remove public functions. Breaking changes are listed here when they happen.
   with norms, characteristic and minimal polynomials of elements, and
   `dup_ext_factor`, factorisation over them by Trager's algorithm;
   checked against SymPy's `factor_list` over algebraic fields.
+- The dense layer gains native kernels for `ZZ` and `GF(p)`
+  (`Domain.dense_mul`, `dense_div`), a single inversion of the leading
+  coefficient in the division over a field, the cyclotomic special case
+  of the factorisation and Fujiwara's root bound in the real root
+  isolation (tighter isolating intervals).
 - `sympy_extras.solvers.irregular`: the exponential parts of the
   solutions of a linear ODE at its irregular finite singular points, from
   the local Newton polygons (the characteristic equation of each edge

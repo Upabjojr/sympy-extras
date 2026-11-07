@@ -62,7 +62,8 @@ from .galoistools import gf_factor_sqf
 from .sqfreetools import dup_sqf_list, dup_sqf_p
 
 __all__ = ['dup_zz_factor', 'dup_zz_factor_sqf', 'dup_qq_factor', 'dup_zz_mignotte_bound', 'dup_zz_hensel_step',
-           'dup_zz_hensel_lift', 'dup_zz_zassenhaus', 'dup_zz_irreducible_p', 'dup_ext_sqf_norm', 'dup_ext_factor']
+           'dup_zz_hensel_lift', 'dup_zz_zassenhaus', 'dup_zz_irreducible_p', 'dup_ext_sqf_norm', 'dup_ext_factor',
+           'dup_zz_cyclotomic_poly', 'dup_zz_cyclotomic_factor']
 
 #: how many good primes are tried, keeping the one with the fewest factors
 _PRIMES_TRIED = 5
@@ -179,6 +180,31 @@ def _good_prime(f: list[int]) -> tuple[int, list[list[int]]]:
     return best
 
 
+def dup_zz_cyclotomic_poly(n: int) -> list[int]:
+    """The ``n``-th cyclotomic polynomial: ``x**n - 1`` divided by the
+    cyclotomic polynomials of the proper divisors of ``n``."""
+    result = [1] + [0]*(n - 1) + [-1]
+    for d in range(1, n):
+        if n % d == 0:
+            result = dup_div(result, dup_zz_cyclotomic_poly(d), ZZ)[0]
+    return result
+
+
+def dup_zz_cyclotomic_factor(f: list[int]) -> Optional[list[list[int]]]:
+    """The irreducible factors of ``x**n - 1`` (the cyclotomic
+    polynomials of the divisors of ``n``) and of ``x**n + 1`` (those of
+    the divisors of ``2 n`` which do not divide ``n``); ``None`` when
+    ``f`` has another shape."""
+    n = dup_degree(f)
+    if n < 1 or f[0] != 1 or any(f[1:-1]) or f[-1] not in (1, -1):
+        return None
+    if f[-1] == -1:
+        divisors = [d for d in range(1, n + 1) if n % d == 0]
+    else:
+        divisors = [d for d in range(1, 2*n + 1) if (2*n) % d == 0 and n % d != 0]
+    return sorted((dup_zz_cyclotomic_poly(d) for d in divisors), key=lambda g: (len(g), g))
+
+
 def dup_zz_zassenhaus(f: list[int]) -> list[list[int]]:
     """The irreducible factors (primitive, positive leading coefficient)
     of a primitive square-free ``f`` with positive leading coefficient,
@@ -186,6 +212,9 @@ def dup_zz_zassenhaus(f: list[int]) -> list[list[int]]:
     n = dup_degree(f)
     if n <= 1:
         return [list(f)]
+    cyclotomic = dup_zz_cyclotomic_factor(f)
+    if cyclotomic is not None:
+        return cyclotomic
     p, modular = _good_prime(f)
     if len(modular) == 1:
         return [list(f)]

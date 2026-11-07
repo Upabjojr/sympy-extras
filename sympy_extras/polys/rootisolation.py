@@ -5,7 +5,7 @@ coefficients.
 Zimmermann): for a square-free $f$, the positive roots are brought into
 $(0, 1)$ by the Cauchy bound, and an interval $(c/2^k, (c + 1)/2^k)$
 carries the polynomial $p$ whose roots in $(0, 1)$ are the roots of $f$
-in the interval. The number $v$ of sign variations of $(x + 1)^n p(1/(x
+in the interval (the bound is the smaller of Cauchy's and Fujiwara's). The number $v$ of sign variations of $(x + 1)^n p(1/(x
 + 1))$ bounds the number of roots of $p$ in $(0, 1)$ and has the same
 parity: $v = 0$ means no root, $v = 1$ exactly one; otherwise the
 interval is bisected ($p(x/2)$ and $p((x + 1)/2)$ up to scaling), the
@@ -22,11 +22,11 @@ Examples
 >>> from sympy_extras.polys.rootisolation import dup_isolate_real_roots, dup_count_real_roots, dup_refine_real_root
 >>> f = [Fraction(1), Fraction(0), Fraction(-2)]
 >>> dup_isolate_real_roots(f)
-[((Fraction(-3, 1), Fraction(0, 1)), 1), ((Fraction(0, 1), Fraction(3, 1)), 1)]
+[((Fraction(-2, 1), Fraction(0, 1)), 1), ((Fraction(0, 1), Fraction(2, 1)), 1)]
 >>> dup_count_real_roots(f), dup_count_real_roots(f, Fraction(0), Fraction(3))
 (2, 1)
->>> dup_refine_real_root(f, Fraction(0), Fraction(3), Fraction(1, 100))
-(Fraction(723, 512), Fraction(363, 256))
+>>> dup_refine_real_root(f, Fraction(0), Fraction(2), Fraction(1, 100))
+(Fraction(181, 128), Fraction(91, 64))
 >>> dup_isolate_real_roots([Fraction(1), Fraction(-3), Fraction(3), Fraction(-1)])
 [((Fraction(0, 1), Fraction(2, 1)), 3)]
 
@@ -53,7 +53,7 @@ from .densetools import dup_diff, dup_eval, dup_mirror, dup_monic, dup_scale, du
 from .domains.rationalfield import QQ
 from .sqfreetools import dup_sqf_list, dup_sqf_part
 
-__all__ = ['dup_cauchy_bound', 'dup_sturm', 'dup_count_real_roots', 'dup_isolate_real_roots_sqf',
+__all__ = ['dup_cauchy_bound', 'dup_fujiwara_bound', 'dup_sturm', 'dup_count_real_roots', 'dup_isolate_real_roots_sqf',
            'dup_isolate_real_roots', 'dup_refine_real_root', 'dup_sign_at', 'Interval']
 
 #: an isolating interval: ``(a, b)`` with the root in the open interval
@@ -67,6 +67,41 @@ def dup_cauchy_bound(f: list[Fraction]) -> Fraction:
         return Fraction(1)
     lc = f[0]
     return 1 + max(abs(c/lc) for c in f[1:])
+
+
+def _ceil_root(q: Fraction, k: int) -> int:
+    """The least integer ``m >= 1`` with ``m**k >= q`` (``q >= 0``)."""
+    if q <= 1:
+        return 1
+    low, high = 1, 2
+    while Fraction(high)**k < q:
+        high *= 2
+    while high - low > 1:
+        mid = (low + high)//2
+        if Fraction(mid)**k >= q:
+            high = mid
+        else:
+            low = mid
+    return high
+
+
+def dup_fujiwara_bound(f: list[Fraction]) -> Fraction:
+    """Fujiwara's bound, ``2 max(|a_{n-1}/a_n|, |a_{n-2}/a_n|**(1/2), ...,
+    |a_1/a_n|**(1/(n-1)), |a_0/(2 a_n)|**(1/n))``, with each root rounded
+    up to an integer (so the bound stays valid): the roots have absolute
+    value below it; usually far smaller than the Cauchy bound."""
+    n = dup_degree(f)
+    if n < 1:
+        return Fraction(1)
+    lc = f[0]
+    best = 0
+    for k in range(1, n + 1):
+        c = abs(f[k]/lc)
+        if k == n:
+            c = c/2
+        if c:
+            best = max(best, _ceil_root(c, k))
+    return Fraction(2*max(best, 1))
 
 
 def dup_sign_at(f: list[Fraction], a: Fraction) -> int:
@@ -161,9 +196,13 @@ def dup_isolate_real_roots_sqf(f: list[Fraction], eps: Optional[Fraction] = None
     if f[-1] == 0:
         intervals.append((Fraction(0), Fraction(0)))
         f = dup_strip(f[:-1], QQ)
-    bound = dup_cauchy_bound(f)
+    # Fujiwara's bound is not strict: a root at the bound itself is
+    # taken out first
+    bound = min(dup_cauchy_bound(f), dup_fujiwara_bound(f))
     for sign in (-1, 1):
         g = dup_mirror(f, QQ) if sign < 0 else f
+        if dup_sign_at(g, bound) == 0:
+            intervals.append((sign*bound, sign*bound))
         # the positive roots of g into (0, 1): g(bound x)
         scaled = dup_scale(g, bound, QQ)
         found: list[tuple[int, int, int]] = []

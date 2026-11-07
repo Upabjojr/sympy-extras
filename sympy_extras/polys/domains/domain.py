@@ -151,6 +151,24 @@ class Domain(Generic[T]):
         otherwise); ``1`` for ``a = 0``."""
         return self.one
 
+    # -- dense polynomial kernels: a domain whose elements are machine
+    # values may run the inner loops of the dense arithmetic on them
+    # directly (``has_dense_kernels``); the generic code of
+    # :mod:`sympy_extras.polys.densearith` is used otherwise
+
+    #: whether ``dense_mul`` and ``dense_div`` are provided
+    has_dense_kernels: bool = False
+
+    def dense_mul(self, f: list[T], g: list[T]) -> list[T]:
+        """The product of two dense polynomials (highest degree first,
+        no leading zeros), for domains with ``has_dense_kernels``."""
+        raise NotImplementedError
+
+    def dense_div(self, f: list[T], g: list[T]) -> tuple[list[T], list[T]]:
+        """The quotient and remainder of dense polynomials, for domains
+        with ``has_dense_kernels`` (a field, or the division is exact)."""
+        raise NotImplementedError
+
     # -- conversions
 
     def from_int(self, n: int) -> T:

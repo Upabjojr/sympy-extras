@@ -11,7 +11,8 @@ from sympy.polys.domains import ZZ as SZZ, QQ as SQQ
 from sympy_extras.polys.densearith import dup_mul, dup_pow
 from sympy_extras.polys.densebasic import dup_convert, dup_degree, dup_strip
 from sympy_extras.polys.domains import GF, QQ, ZZ
-from sympy_extras.polys.factortools import (dup_qq_factor, dup_zz_factor, dup_zz_hensel_lift, dup_zz_irreducible_p,
+from sympy_extras.polys.factortools import (dup_qq_factor, dup_zz_cyclotomic_factor, dup_zz_cyclotomic_poly,
+                                             dup_zz_factor, dup_zz_hensel_lift, dup_zz_irreducible_p,
                                              dup_zz_mignotte_bound)
 from sympy_extras.polys.galoistools import gf_ddf, gf_factor, gf_irreducible, gf_irreducible_p, gf_pow_mod
 
@@ -139,3 +140,21 @@ def test_qq_against_sympy() -> None:
         assert sorted(len(g) for g, _ in factors) == sorted(g.degree() + 1 for g, _ in expected)
         assert content == Fraction(int(expected_content.p), int(expected_content.q))
     assert dup_convert([1, -2], ZZ, QQ) == [Fraction(1), Fraction(-2)]
+
+
+def test_cyclotomic() -> None:
+    from sympy import cyclotomic_poly
+    for n in range(1, 40):
+        assert dup_zz_cyclotomic_poly(n) == _from_sympy(Poly(cyclotomic_poly(n, x), x)), n
+    for n in (1, 2, 6, 12, 30, 100):
+        minus = [1] + [0]*(n - 1) + [-1]
+        plus = [1] + [0]*(n - 1) + [1]
+        for f in (minus, plus):
+            found = dup_zz_cyclotomic_factor(f)
+            assert found is not None
+            product = [1]
+            for g in found:
+                product = dup_mul(product, g, ZZ)
+            assert product == f
+            assert sorted(len(g) for g in found) == sorted(g.degree() + 1 for g, _ in factor_list(_sympy_zz(f))[1])
+    assert dup_zz_cyclotomic_factor([1, 0, -2]) is None and dup_zz_cyclotomic_factor([2, 0, -2]) is None
