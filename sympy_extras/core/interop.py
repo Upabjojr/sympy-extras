@@ -320,6 +320,14 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
     if isinstance(e, Piecewise):
         return sympy.Piecewise(*[(to_sympy(p.expr, evaluate), to_sympy(p.cond, evaluate)) for p in e.args],
                                evaluate=evaluate)
+    from sympy_extras.functions.special.hyper import Hyper, MeijerG
+    if isinstance(e, Hyper):
+        return sympy.hyper([to_sympy(a, evaluate) for a in e.ap], [to_sympy(b, evaluate) for b in e.bq],
+                           to_sympy(e.argument, evaluate))
+    if isinstance(e, MeijerG):
+        return sympy.meijerg([to_sympy(a, evaluate) for a in e.an], [to_sympy(a, evaluate) for a in e.aother],
+                             [to_sympy(b, evaluate) for b in e.bm], [to_sympy(b, evaluate) for b in e.bother],
+                             to_sympy(e.argument, evaluate))
     if isinstance(e, ExprCondPair):
         return SymPyExprCondPair(to_sympy(e.expr, evaluate), to_sympy(e.cond, evaluate))
     args = [to_sympy(a, evaluate) for a in e.args]
@@ -548,6 +556,13 @@ def _from_sympy(e: SymPyBasic) -> Basic:
         return AppliedPredicate(_predicate(e.function), *[from_sympy(a) for a in e.arguments])
     if isinstance(e, SymPyPredicate):
         return _predicate(e)
+    if isinstance(e, sympy.hyper):
+        from sympy_extras.functions.special.hyper import Hyper
+        return Hyper([_expr(a) for a in e.ap], [_expr(b) for b in e.bq], _expr(e.argument))
+    if isinstance(e, sympy.meijerg):
+        from sympy_extras.functions.special.hyper import MeijerG
+        return MeijerG([_expr(a) for a in e.an], [_expr(a) for a in e.aother], [_expr(b) for b in e.bm],
+                       [_expr(b) for b in e.bother], _expr(e.argument))
     if isinstance(e, sympy.Piecewise):
         from sympy_extras.functions.elementary.piecewise import ExprCondPair, Piecewise
         return Piecewise(*[ExprCondPair(_expr(pair.args[0]), _boolean(pair.args[1])) for pair in e.args])

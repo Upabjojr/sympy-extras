@@ -101,6 +101,9 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
             if len(known) != len(values):
                 return None
             return e.numeric(known)
+        own = e._numeric_node(prec)
+        if own is not None:
+            return own
         if isinstance(e, AppliedSymPyFunction) or (e.args and e.is_number):
             from .interop import to_sympy
             parts = [numeric_value(a, prec) for a in e.args if isinstance(a, Expr)]

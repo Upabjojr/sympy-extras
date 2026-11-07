@@ -23,6 +23,8 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import Final, Iterator, Optional, Sequence, TYPE_CHECKING, Union
 
+import mpmath
+
 import sympy
 
 from .basic import Atom, Basic, RefineArg, SubsArg, SubsMapping
@@ -946,6 +948,17 @@ class Expr(Basic):
         from .function import expand
         return expand(self, deep=deep, mul=mul, multinomial=multinomial, power_base=power_base,
                       power_exp=power_exp, log=log, func=func, trig=trig, complex=complex)
+
+    def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
+        """The value of a numerical node of a class the core's evaluation
+        does not know (``hyper``, ``meijerg``) at ``prec`` bits; ``None``
+        to fall back."""
+        return None
+
+    def _eval_derivative_node(self, s: Symbol) -> Optional[Expr]:
+        """The derivative of a node of a class ``diff`` does not know
+        (``hyper``, ``meijerg``); ``None`` for ``Derivative(self, s)``."""
+        return None
 
     def evalf(self, n: int = 15, subs: Optional[SubsMapping] = None) -> Expr:
         """The numerical value to ``n`` digits (:mod:`~sympy_extras.core.evalf`)."""

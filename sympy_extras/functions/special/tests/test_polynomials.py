@@ -93,17 +93,9 @@ def test_jacobi_gegenbauer_assoc_legendre_hermite_prob_match_sympy() -> None:
     for order, alpha, z in itertools.product(orders, parameters, points):
         so, sa, sz = sympy_value(order), sympy_value(alpha), sympy_value(z)
         check('gegenbauer', lambda: gegenbauer(order, alpha, z), lambda: sympy.gegenbauer(so, sa, sz))
-        if not (z.is_zero and not order.is_Number and alpha != -a and alpha.is_zero is not True):
-            for beta in [alpha, -alpha, b, Integer(2)]:
-                sbeta = sympy_value(beta)
-                theirs_value = None
-                try:
-                    theirs_value = sympy.jacobi(so, sa, sbeta, sz)
-                except ValueError:
-                    pass
-                if theirs_value is not None and theirs_value.has(sympy.hyper):
-                    continue  # jacobi at x = 0: SymPy's hyper, not ported
-                check('jacobi', lambda: jacobi(order, alpha, beta, z), lambda: sympy.jacobi(so, sa, sbeta, sz))
+        for beta in [alpha, -alpha, b, Integer(2)]:
+            sbeta = sympy_value(beta)
+            check('jacobi', lambda: jacobi(order, alpha, beta, z), lambda: sympy.jacobi(so, sa, sbeta, sz))
     for degree, order2, z in itertools.product(orders, [Integer(k) for k in range(-3, 4)] + [m, -m, p], points):
         sd, so2, sz = sympy_value(degree), sympy_value(order2), sympy_value(z)
         check('assoc_legendre', lambda: assoc_legendre(degree, order2, z), lambda: sympy.assoc_legendre(sd, so2, sz))

@@ -15,9 +15,9 @@ out ``-x`` and evaluates at ``0``, ``1`` and ``oo``; the derivatives in
 ``assoc_legendre`` and ``hermite_prob`` with SymPy's reductions
 (``jacobi(n, a, a, x)`` through ``gegenbauer``, ``chebyshevt``,
 ``legendre``, ``chebyshevu``; ``jacobi(n, a, -a, x)`` through
-``assoc_legendre``). Not ported: ``jacobi`` at ``x = 0`` (SymPy's answer
-is a ``hyper``), the derivatives in the parameters (SymPy's are
-``Sum``), the Chebyshev roots, the rewrites.
+``assoc_legendre``; at ``x = 0`` a ``hyper``). Not ported: the
+derivatives in the parameters (SymPy's are ``Sum``), the Chebyshev
+roots, the rewrites.
 
 Examples
 ========
@@ -522,7 +522,10 @@ class Jacobi(DefinedFunction):
             if x.could_extract_minus_sign():
                 return mul(pow(MINUS_ONE, n), jacobi(n, b, a, mul(MINUS_ONE, x)))
             if x.is_zero:
-                return None  # SymPy: a hyper, not ported
+                from .hyper import hyper
+                return _lmul(pow(Integer(2), mul(MINUS_ONE, n)), gamma(add(a, n, ONE)),
+                             pow(mul(gamma(add(a, ONE)), factorial(n)), MINUS_ONE),
+                             hyper([sub(mul(MINUS_ONE, b), n), mul(MINUS_ONE, n)], [add(a, ONE)], MINUS_ONE))
             if x == ONE:
                 return div(rf(add(a, ONE), n), factorial(n))
             if isinstance(x, Infinity) and n.is_positive:

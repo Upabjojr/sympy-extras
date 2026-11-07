@@ -21,6 +21,7 @@ from .special.error_functions import (Chi, ChiNode, Ci, CiNode, Ei, EiNode, Erf,
                                       erfcinv, erfi, erfinv, expint, fresnelc, fresnels, li)
 from .special.gamma_functions import (DiGamma, Gamma, LogGamma, LowerGamma, PolyGamma, TriGamma, UpperGamma, digamma,
                                       gamma, loggamma, lowergamma, polygamma, trigamma, uppergamma)
+from .special.hyper import Hyper, MeijerG, hyper, meijerg
 from .special.mathieu_functions import (MathieuC, MathieuCPrime, MathieuS, MathieuSPrime, mathieuc, mathieucprime,
                                         mathieus, mathieusprime)
 from .special.polynomials import (AssocLaguerre, AssocLegendre, ChebyshevT, ChebyshevU, Gegenbauer, Hermite, HermiteProb,
@@ -45,7 +46,7 @@ __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', '
            'HermiteProb', 'jacobi', 'gegenbauer', 'assoc_legendre', 'hermite_prob', 'YnmNode', 'ZnmNode', 'Ynm', 'Znm',
            'Ynm_c', 'KroneckerDeltaNode', 'LeviCivitaNode', 'KroneckerDelta', 'LeviCivita', 'MathieuS', 'MathieuC',
            'MathieuSPrime', 'MathieuCPrime', 'mathieus', 'mathieuc', 'mathieusprime', 'mathieucprime',
-           'SingularityFunctionNode', 'SingularityFunction', 'LowerGamma', 'UpperGamma', 'lowergamma', 'uppergamma',
+           'SingularityFunctionNode', 'SingularityFunction', 'Hyper', 'MeijerG', 'hyper', 'meijerg', 'LowerGamma', 'UpperGamma', 'lowergamma', 'uppergamma',
            'Expint', 'EiNode', 'expint', 'Ei', 'SiNode', 'CiNode', 'ShiNode', 'ChiNode', 'LiNode', 'OffsetLiNode', 'Si',
            'Ci', 'Shi', 'Chi', 'li', 'Li', 'Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv', 'Zeta', 'DirichletEta', 'PolyLog', 'zeta', 'dirichlet_eta', 'polylog', 'DiracDelta', 'Heaviside', 'dirac_delta', 'heaviside', 'Gamma', 'LogGamma', 'PolyGamma', 'DiGamma', 'TriGamma', 'gamma', 'loggamma', 'polygamma', 'digamma',
            'trigamma', 'Max', 'Min', 'max_', 'min_', 'ExprCondPair', 'Piecewise', 'piecewise', 'Sin', 'Cos', 'Tan', 'Cot', 'Sec', 'Csc', 'sin', 'cos', 'tan', 'cot', 'sec',

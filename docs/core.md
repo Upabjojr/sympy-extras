@@ -486,9 +486,8 @@ order takes out `-x` and evaluates at `0`, `1` and `oo`; derivatives and
 conjugates; `jacobi` (built from the binomial sum, its coefficients
 expanded polynomials in `a`, `b`, and SymPy's reductions to the other
 families), `gegenbauer`, `assoc_legendre` (built in a dummy and
-substituted, as SymPy does) and `hermite_prob`. Not ported: `jacobi` at
-`x = 0` (SymPy's `hyper`) and the derivatives in the parameters (SymPy's
-`Sum`). The comparison brought three core rules from SymPy: the powers
+substituted, as SymPy does) and `hermite_prob`. Not ported:
+the derivatives in the parameters (SymPy's `Sum`). The comparison brought three core rules from SymPy: the powers
 of zero with a symbolic exponent (`0**(a/2)` is `0**a`, `0**(-a/2)` is
 `zoo**a`, `Zero._eval_power`), negative numerical bases grouped under an
 integer symbolic exponent (`(-1)**m*2**m` is `(-2)**m`), and the sign of
@@ -513,6 +512,20 @@ at it, the refused arguments and the derivative lowering the exponent.
 The Mathieu functions have no numerical values (neither SymPy nor mpmath
 has them). The comparison brought `Infinity._eval_power` for symbolic
 exponents into the core (`oo**p = oo` for positive `p`).
+
+The generalised hypergeometric function and the Meijer G-function
+(`Hyper`, `MeijerG` with `hyper`, `meijerg`, in `special/hyper.py`) are
+ported from SymPy as expression nodes of their own, since their
+parameters are lists (the `Tuple` arguments of SymPy): `hyper` cancels
+the parameters common to the top and the bottom and orders them,
+`meijerg` orders its four lists and refuses infinite parameters and an
+`a_i - b_j` that is a positive integer; both differentiate in the
+argument (a parameter depending on the variable gives `Derivative`) and
+have mpmath values; `hyper` has its radius of convergence. With them
+`jacobi` at `x = 0` is SymPy's. For such nodes `Expr` has two hooks,
+`_numeric_node` (numerical value) and `_eval_derivative_node`
+(derivative). Not ported: `hyperexpand`, the series,
+`convergence_statement`, `appellf1`.
 
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`

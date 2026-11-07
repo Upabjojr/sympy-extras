@@ -1141,6 +1141,9 @@ def _derivative(e: Expr, s: Symbol) -> Expr:
     from sympy_extras.functions.elementary.piecewise import Piecewise
     if isinstance(e, Piecewise):
         return e.map_expressions(lambda a: _derivative(a, s))
+    own_node = e._eval_derivative_node(s)
+    if own_node is not None:
+        return own_node
     if e.is_Order:
         return expr_through_sympy(e, lambda o: o.diff(to_sympy(s)))
     if isinstance(e, Subs):
