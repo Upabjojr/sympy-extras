@@ -206,6 +206,28 @@ x*y + y**2
 
 ```
 
+## Sparse multivariate polynomials
+
+`rings.PolyRing(domain, names, order)` and `PolyElement` are the sparse
+representation (exponent tuples to coefficients) with the monomial
+orders `lex`, `grlex`, `grevlex`: leading monomials, terms and
+coefficients under the order, arithmetic, `div` (the division algorithm
+by a list of polynomials, the multivariate reduction), `rem`, `exquo`,
+`monic`, `primitive`, derivatives, evaluation of one variable, and the
+conversions to and from SymPy expressions. This is the representation
+of the Gröbner basis algorithms, which still run on SymPy's
+`PolyElement` and will move to this one.
+
+```python
+>>> from sympy_extras.polys.rings import PolyRing, grevlex
+>>> R = PolyRing(QQ, ['x', 'y'], grevlex)
+>>> X, Y = R.gens
+>>> f = X**2*Y - R.one
+>>> str(f), f.LM, (X**2*Y + X).div([X*Y - R.one])[1].to_sympy()
+('x**2*y - 1', (2, 1), 2*x)
+
+```
+
 ## Performance
 
 The generic functions call the domain's methods for every coefficient
@@ -223,8 +245,8 @@ implementation; `x**100 - 1` is immediate.
 Factorisation of multivariate polynomials (Wang), the recombination by lattice reduction (van Hoeij;
 the subset search is exponential in the number of modular factors),
 complex root isolation, the conversion of the algorithms above to this
-layer (they still use SymPy's `Poly`); sparse multivariate
-polynomials (the Gröbner basis code uses SymPy's `PolyElement`); a fast
+layer (they still use SymPy's `Poly`); moving the Gröbner basis code onto
+`rings.PolyElement` (it uses SymPy's); a fast
 gcd over `ZZ` (the heuristic gcd) and over `GF(p)`.
 
 ## References

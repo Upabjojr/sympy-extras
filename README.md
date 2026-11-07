@@ -852,6 +852,7 @@ sympy_extras/
         factortools.py       factorisation over ZZ and QQ (Zassenhaus with quadratic Hensel lifting) and over number fields (Trager)
         rootisolation.py     real root isolation (Descartes with bisection), Sturm counts, refinement
         polyclasses.py       DensePoly: the typed polynomial class over a domain, with the algorithms as methods
+        rings.py             PolyRing, PolyElement: sparse multivariate polynomials with monomial orders, the division algorithm
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
         idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension
         hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination
