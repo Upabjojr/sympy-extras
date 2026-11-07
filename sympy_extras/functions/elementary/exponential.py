@@ -178,6 +178,23 @@ class Exp(DefinedFunction):
             return Integer(1)
         return None
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:ExpBase._eval_conjugate
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from .complexes import conjugate
+        return exp(conjugate(self.args[0]))
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp.as_real_imag
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .complexes import as_real_imag
+        from .trigonometric import cos, sin
+        parts = as_real_imag(self.args[0])
+        if parts is None:
+            return None
+        real, imaginary = parts
+        if deep:
+            real, imaginary = real.expand(), imaginary.expand()
+        return (mul(exp(real), cos(imaginary)), mul(exp(real), sin(imaginary)))
+
     def fdiff(self, argindex: int) -> Expr:
         return self
 
@@ -295,6 +312,15 @@ class Log(DefinedFunction):
                     return add(mul(Integer(-1), pi, I, Rational(1, 2)),
                                cls.apply(mul(coefficient, mul(Integer(-1), imaginary_part))))
         return None
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log.as_real_imag
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .complexes import abs_, arg
+        z = self.args[0].expand() if deep else self.args[0]
+        modulus = abs_(z)
+        if modulus == z:
+            return (self, Integer(0))
+        return (log(modulus), arg(z))
 
     def fdiff(self, argindex: int) -> Expr:
         return pow(self.args[0], Integer(-1))

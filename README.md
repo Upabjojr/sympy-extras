@@ -798,6 +798,7 @@ sympy_extras/
     functions/
         elementary/
             exponential.py   Exp, Log and exp, log on the typed core (ported from SymPy)
+            complexes.py     Re, Im, Abs, Sign, Arg, Conjugate, Atan2; as_real_imag, conjugation (ported from SymPy)
             trigonometric.py Sin, ..., Csc, Asin, ..., Acsc and sin, ..., acsc (ported from SymPy)
             hyperbolic.py    Sinh, ..., Csch, Asinh, ..., Acsch and sinh, ..., acsch (ported from SymPy)
     concrete/

@@ -551,6 +551,30 @@ class DefinedFunction(Application):
         the working precision), ``None`` when undefined."""
         return None
 
+    def _eval_derivative(self, s: Symbol) -> Optional[Expr]:
+        """The derivative with respect to ``s`` when the function has its
+        own rule (``re``, ``Abs``, ...: not holomorphic), ``None`` for the
+        chain rule with :meth:`fdiff`."""
+        return None
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        """The conjugate (SymPy's ``Expr._eval_conjugate``: the node itself
+        when it is real, minus it when it is imaginary), ``None`` when
+        unknown."""
+        if self.is_extended_real:
+            return self
+        if self.is_imaginary:
+            return mul(Integer(-1), self)
+        return None
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        """The real and imaginary parts (SymPy's ``Expr.as_real_imag``:
+        ``re(self)``, ``im(self)``; ``None`` when ``self`` is ``ignore``)."""
+        if ignore is not None and ignore == self:
+            return None
+        from sympy_extras.functions.elementary.complexes import im, re
+        return (re(self), im(self))
+
     @property
     def func(self) -> Callable[..., Basic]:
         return type(self)
@@ -1040,6 +1064,9 @@ def _derivative(e: Expr, s: Symbol) -> Expr:
         log_b = log(b)
         return mul(e, add(mul(_derivative(ex, s), log_b), mul(ex, _derivative(b, s), pow(b, Integer(-1)))))
     if isinstance(e, DefinedFunction):
+        own = e._eval_derivative(s)
+        if own is not None:
+            return own
         # the chain rule with the partial derivatives of the function
         chain: list[Expr] = []
         for i, a in enumerate(e.args):

@@ -10,6 +10,15 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.functions.elementary.complexes`: `Re`, `Im`, `Abs`,
+  `Sign`, `Arg`, `Conjugate`, `Atan2` with the evaluating `re`, `im`,
+  `abs_`, `sign`, `arg`, `conjugate`, `atan2`, and the complex expansion
+  and conjugation of every class of the core, ported from SymPy;
+  `Expr.as_real_imag`, `Expr.conjugate` and `abs()` no longer call SymPy,
+  and `DefinedFunction` has hooks for its own derivative, conjugate and
+  complex parts. The core gains SymPy's rules that a sum with exactly one
+  infinite term is infinite and that zero times an infinite factor is
+  `nan`.
 - The inverse trigonometric and hyperbolic functions (`Asin`, ...,
   `Acsc`, `Asinh`, ..., `Acsch` with `asin`, ..., `acsch`), ported from
   SymPy with its tables of known values and the compositions with the

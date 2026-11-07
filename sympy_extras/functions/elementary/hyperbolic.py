@@ -139,6 +139,22 @@ class Sinh(DefinedFunction):
             return Integer(0)
         return None
 
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from .trigonometric import _conjugated
+        return _conjugated(Sinh, self.args[0])
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .complexes import as_real_imag
+        from .trigonometric import cos, sin
+        arg = self.args[0]
+        if arg.is_extended_real:
+            return (self.expand() if deep else self, Integer(0))
+        parts = as_real_imag(arg.expand() if deep else arg)
+        if parts is None:
+            return None
+        r, i = parts
+        return (mul(sinh(r), cos(i)), mul(cosh(r), sin(i)))
+
     def fdiff(self, argindex: int) -> Expr:
         return cosh(self.args[0])
 
@@ -187,6 +203,22 @@ class Cosh(DefinedFunction):
         if arg.is_zero:
             return Integer(1)
         return None
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from .trigonometric import _conjugated
+        return _conjugated(Cosh, self.args[0])
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .complexes import as_real_imag
+        from .trigonometric import cos, sin
+        arg = self.args[0]
+        if arg.is_extended_real:
+            return (self.expand() if deep else self, Integer(0))
+        parts = as_real_imag(arg.expand() if deep else arg)
+        if parts is None:
+            return None
+        r, i = parts
+        return (mul(cosh(r), cos(i)), mul(sinh(r), sin(i)))
 
     def fdiff(self, argindex: int) -> Expr:
         return sinh(self.args[0])
@@ -246,6 +278,23 @@ class Tanh(DefinedFunction):
             return Integer(0)
         return None
 
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from .trigonometric import _conjugated
+        return _conjugated(Tanh, self.args[0])
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .complexes import as_real_imag
+        from .trigonometric import cos, sin
+        arg = self.args[0]
+        if arg.is_extended_real:
+            return (self.expand() if deep else self, Integer(0))
+        parts = as_real_imag(arg.expand() if deep else arg)
+        if parts is None:
+            return None
+        r, i = parts
+        denominator = pow(add(pow(sinh(r), Integer(2)), pow(cos(i), Integer(2))), Integer(-1))
+        return (mul(sinh(r), cosh(r), denominator), mul(sin(i), cos(i), denominator))
+
     def fdiff(self, argindex: int) -> Expr:
         return add(Integer(1), mul(Integer(-1), pow(self, Integer(2))))
 
@@ -304,6 +353,23 @@ class Coth(DefinedFunction):
             return zoo
         return None
 
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from .trigonometric import _conjugated
+        return _conjugated(Coth, self.args[0])
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .complexes import as_real_imag
+        from .trigonometric import cos, sin
+        arg = self.args[0]
+        if arg.is_extended_real:
+            return (self.expand() if deep else self, Integer(0))
+        parts = as_real_imag(arg.expand() if deep else arg)
+        if parts is None:
+            return None
+        r, i = parts
+        denominator = pow(add(pow(sinh(r), Integer(2)), pow(sin(i), Integer(2))), Integer(-1))
+        return (mul(sinh(r), cosh(r), denominator), mul(Integer(-1), sin(i), cos(i), denominator))
+
     def fdiff(self, argindex: int) -> Expr:
         return mul(Integer(-1), pow(sinh(self.args[0]), Integer(-2)))
 
@@ -336,6 +402,14 @@ class Sech(DefinedFunction):
         [arg] = args
         return _reciprocal_eval(cls, Cosh, True, arg)
 
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from .trigonometric import _conjugated
+        return _conjugated(Sech, self.args[0])
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .complexes import as_real_imag
+        return as_real_imag(pow(cosh(self.args[0]), Integer(-1)), deep)
+
     def fdiff(self, argindex: int) -> Expr:
         return mul(Integer(-1), tanh(self.args[0]), self)
 
@@ -358,6 +432,14 @@ class Csch(DefinedFunction):
     def eval(cls, *args: Expr) -> Optional[Expr]:
         [arg] = args
         return _reciprocal_eval(cls, Sinh, False, arg)
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        from .trigonometric import _conjugated
+        return _conjugated(Csch, self.args[0])
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .complexes import as_real_imag
+        return as_real_imag(pow(sinh(self.args[0]), Integer(-1)), deep)
 
     def fdiff(self, argindex: int) -> Expr:
         return mul(Integer(-1), coth(self.args[0]), self)

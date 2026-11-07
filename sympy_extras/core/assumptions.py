@@ -365,6 +365,11 @@ def add_facts(args: tuple[Expr, ...]) -> Facts:
     """The facts of a sum from the facts of its terms."""
     facts: Facts = {}
     sub = [facts_of(a) for a in args]
+    # SymPy's Add._eval_is_infinite: every term decided, exactly one
+    # infinite (two might cancel)
+    infinite = [s.get('infinite') for s in sub]
+    if all(v is not None for v in infinite) and infinite.count(True) == 1:
+        facts.update(infinite=True, finite=False)
     for name in ('commutative', 'finite', 'integer', 'rational', 'real', 'complex', 'extended_real',
                  'hermitian', 'antihermitian', 'algebraic'):
         values = [s.get(name) for s in sub]

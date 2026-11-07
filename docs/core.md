@@ -290,7 +290,26 @@ tables of known values and the compositions with the direct functions
 (`asin(sin(3)) = pi - 3`, reduced into the principal range): on 3744
 values the results are SymPy's except the three where SymPy answers with
 `AccumBounds` (`atan(zoo)`, `atanh(zoo)`, `asech(zoo)`), not ported yet,
-like `sin(oo)`; `atan2` neither (it needs `re`, `im`, `sign`).
+like `sin(oo)`.
+
+The complex parts (`Re`, `Im`, `Abs`, `Sign`, `Arg`, `Conjugate`,
+`Atan2` with `re`, `im`, `abs_`, `sign`, `arg`, `conjugate`, `atan2`;
+Python's `abs()` of a core expression calls `abs_`) are ported from
+SymPy's `complexes.py`, together with the complex expansion
+`as_real_imag` and the conjugation of every class of the core (SymPy's
+`as_real_imag` and `_eval_conjugate` methods of `Expr`, `Add`, `Mul`,
+`Pow`, `Symbol` and of the ported functions): `Expr.as_real_imag`,
+`Expr.conjugate` and `abs()` no longer go through SymPy. The functions
+which are not holomorphic (`re`, `im`, `Abs`, `arg`, `conjugate`) have
+their own derivative (`DefinedFunction._eval_derivative`). The results
+are SymPy's on the compared values; what is left: `Abs` applies only
+`Abs(-z) = Abs(z)` of SymPy's `signsimp`, the `Heaviside` and
+`Piecewise` answers of `atan2` are ported where they evaluate, and the
+complex expansion of `(-p)**(1 + I*r)` differs because the core's
+`expand` does not split `(-p)**(I*r)` as SymPy's does. The comparison
+also brought two of SymPy's arithmetic rules into the core: a sum with
+exactly one infinite term is infinite, and zero times an infinite
+factor is `nan`.
 
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`

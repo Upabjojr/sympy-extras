@@ -188,6 +188,22 @@ def _trig_facts(arg: Expr) -> dict[str, bool]:
     return facts
 
 
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:TrigonometricFunction._as_real_imag
+def _argument_parts(arg: Expr, deep: bool) -> Optional[tuple[Expr, Expr]]:
+    """The real and imaginary parts of the argument of a trigonometric or
+    hyperbolic function (the argument itself and 0 when it is real)."""
+    from .complexes import as_real_imag
+    if arg.is_extended_real:
+        return (arg.expand() if deep else arg, Integer(0))
+    return as_real_imag(arg.expand() if deep else arg)
+
+
+def _conjugated(cls: type[DefinedFunction], arg: Expr) -> Expr:
+    """``cls(conjugate(arg))``, evaluated."""
+    from .complexes import conjugate
+    return cls.apply(conjugate(arg))
+
+
 # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:sin
 class Sin(DefinedFunction):
     """The sine, unevaluated (``sin`` evaluates)."""
@@ -239,6 +255,17 @@ class Sin(DefinedFunction):
         if arg.is_zero:
             return Integer(0)
         return None
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        return _conjugated(Sin, self.args[0])
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .hyperbolic import cosh, sinh
+        parts = _argument_parts(self.args[0], deep)
+        if parts is None:
+            return None
+        r, i = parts
+        return (mul(sin(r), cosh(i)), mul(cos(r), sinh(i)))
 
     def fdiff(self, argindex: int) -> Expr:
         return cos(self.args[0])
@@ -328,6 +355,17 @@ class Cos(DefinedFunction):
         if arg.is_zero:
             return Integer(1)
         return None
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        return _conjugated(Cos, self.args[0])
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .hyperbolic import cosh, sinh
+        parts = _argument_parts(self.args[0], deep)
+        if parts is None:
+            return None
+        r, i = parts
+        return (mul(cos(r), cosh(i)), mul(Integer(-1), sin(r), sinh(i)))
 
     def fdiff(self, argindex: int) -> Expr:
         return mul(Integer(-1), sin(self.args[0]))
@@ -433,6 +471,20 @@ class Tan(DefinedFunction):
             return Integer(0)
         return None
 
+    def _eval_conjugate(self) -> Optional[Expr]:
+        return _conjugated(Tan, self.args[0])
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .hyperbolic import cosh, sinh
+        parts = _argument_parts(self.args[0], deep)
+        if parts is None:
+            return None
+        r, i = parts
+        if i != 0:
+            denominator = pow(add(cos(mul(Integer(2), r)), cosh(mul(Integer(2), i))), Integer(-1))
+            return (mul(sin(mul(Integer(2), r)), denominator), mul(sinh(mul(Integer(2), i)), denominator))
+        return (tan(r), Integer(0))
+
     def fdiff(self, argindex: int) -> Expr:
         return add(Integer(1), pow(self, Integer(2)))
 
@@ -522,6 +574,20 @@ class Cot(DefinedFunction):
             return zoo
         return None
 
+    def _eval_conjugate(self) -> Optional[Expr]:
+        return _conjugated(Cot, self.args[0])
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .hyperbolic import cosh, sinh
+        parts = _argument_parts(self.args[0], deep)
+        if parts is None:
+            return None
+        r, i = parts
+        if i != 0:
+            denominator = pow(add(cos(mul(Integer(2), r)), mul(Integer(-1), cosh(mul(Integer(2), i)))), Integer(-1))
+            return (mul(Integer(-1), sin(mul(Integer(2), r)), denominator), mul(sinh(mul(Integer(2), i)), denominator))
+        return (cot(r), Integer(0))
+
     def fdiff(self, argindex: int) -> Expr:
         return add(Integer(-1), mul(Integer(-1), pow(self, Integer(2))))
 
@@ -581,6 +647,13 @@ class Sec(DefinedFunction):
         [arg] = args
         return _reciprocal_eval(cls, Cos, True, arg)
 
+    def _eval_conjugate(self) -> Optional[Expr]:
+        return _conjugated(Sec, self.args[0])
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .complexes import as_real_imag
+        return as_real_imag(pow(cos(self.args[0]), Integer(-1)), deep)
+
     def fdiff(self, argindex: int) -> Expr:
         return mul(tan(self.args[0]), self)
 
@@ -603,6 +676,13 @@ class Csc(DefinedFunction):
     def eval(cls, *args: Expr) -> Optional[Expr]:
         [arg] = args
         return _reciprocal_eval(cls, Sin, False, arg)
+
+    def _eval_conjugate(self) -> Optional[Expr]:
+        return _conjugated(Csc, self.args[0])
+
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+        from .complexes import as_real_imag
+        return as_real_imag(pow(sin(self.args[0]), Integer(-1)), deep)
 
     def fdiff(self, argindex: int) -> Expr:
         return mul(Integer(-1), cot(self.args[0]), self)
@@ -848,6 +928,16 @@ class Acos(DefinedFunction):
             return _acos_angle(node.args[0], minus)
         if isinstance(node, Sin) and node.args[0].is_comparable:
             return pi/2 + asin(node) if minus else pi/2 - asin(node)
+        return None
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acos._eval_conjugate
+    def _eval_conjugate(self) -> Optional[Expr]:
+        z = self.args[0]
+        conjugated = _conjugated(Acos, z)
+        if z.is_extended_real is False:
+            return conjugated
+        if z.is_extended_real and add(z, Integer(1)).is_nonnegative and add(z, Integer(-1)).is_nonpositive:
+            return conjugated
         return None
 
     def fdiff(self, argindex: int) -> Expr:

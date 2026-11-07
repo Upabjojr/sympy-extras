@@ -262,8 +262,8 @@ class Expr(Basic):
         return self
 
     def __abs__(self) -> Expr:
-        from .function import apply_sympy
-        return apply_sympy(sympy.Abs, self)
+        from sympy_extras.functions.elementary.complexes import abs_
+        return abs_(self)
 
     def __lt__(self, other: ExprLike) -> Boolean:
         from .relational import lt
@@ -813,17 +813,9 @@ class Expr(Basic):
         >>> (2 + 3*I).as_real_imag(), (x + 2*I).as_real_imag(), Symbol('r', real=True).as_real_imag()
         ((2, 3), (re(x), im(x) + 2), (r, 0))
         """
-        from .numbers import Integer, Number
-        if isinstance(self, Number) and self.exact_value() is not None:
-            return (self, Integer(0))
-        if self.is_extended_real is True:
-            return (self, Integer(0))
-        from .interop import expr_from_sympy, to_sympy
-        s = to_sympy(self)
-        if not isinstance(s, sympy.Expr):
-            raise TypeError("an expression is expected")
-        re, im = s.as_real_imag(deep=deep)
-        return (expr_from_sympy(re), expr_from_sympy(im))
+        from sympy_extras.functions.elementary.complexes import as_real_imag, im, re
+        parts = as_real_imag(self, deep)
+        return parts if parts is not None else (re(self), im(self))
 
     def conjugate(self) -> Expr:
         """The complex conjugate.
@@ -836,13 +828,8 @@ class Expr(Basic):
         >>> (x + 2*I).conjugate(), Symbol('r', real=True).conjugate(), I.conjugate()
         (conjugate(x) - 2*I, r, -I)
         """
-        from .interop import expr_through_sympy
-        from .numbers import Number
-        if isinstance(self, Number) and self.exact_value() is not None:
-            return self
-        if self.is_extended_real is True:
-            return self
-        return expr_through_sympy(self, sympy.conjugate)
+        from sympy_extras.functions.elementary.complexes import conjugate
+        return conjugate(self)
 
     def adjoint(self) -> Expr:
         """The adjoint: the conjugate of a commutative expression."""

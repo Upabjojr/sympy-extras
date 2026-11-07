@@ -307,6 +307,9 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
         return (coefficient, None)
     zero = coefficient.exact_value()
     if zero is not None and zero == 0:
+        # SymPy's Mul.flatten: zero times a factor known to be infinite is nan
+        if any(f.is_finite is False for f in rebuilt + merged):
+            return (nan, None)
         return (Integer(0), None)
     one = _is_one(coefficient)
     if one and len(rebuilt) + len(merged) == 1:

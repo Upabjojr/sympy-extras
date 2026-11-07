@@ -661,14 +661,16 @@ def _fill_function_tables() -> None:
     if _NATIVE_TO_SYMPY:
         return
     from sympy_extras.functions.elementary.exponential import Exp, Log
-    from sympy_extras.functions.elementary import hyperbolic as h, trigonometric as t
+    from sympy_extras.functions.elementary import complexes as c, hyperbolic as h, trigonometric as t
     pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
         (Exp, sympy.exp), (Log, sympy.log), (t.Sin, sympy.sin), (t.Cos, sympy.cos), (t.Tan, sympy.tan),
         (t.Cot, sympy.cot), (t.Sec, sympy.sec), (t.Csc, sympy.csc), (t.Asin, sympy.asin), (t.Acos, sympy.acos),
         (t.Atan, sympy.atan), (t.Acot, sympy.acot), (t.Asec, sympy.asec), (t.Acsc, sympy.acsc),
         (h.Sinh, sympy.sinh), (h.Cosh, sympy.cosh), (h.Tanh, sympy.tanh), (h.Coth, sympy.coth), (h.Sech, sympy.sech),
         (h.Csch, sympy.csch), (h.Asinh, sympy.asinh), (h.Acosh, sympy.acosh), (h.Atanh, sympy.atanh),
-        (h.Acoth, sympy.acoth), (h.Asech, sympy.asech), (h.Acsch, sympy.acsch)]
+        (h.Acoth, sympy.acoth), (h.Asech, sympy.asech), (h.Acsch, sympy.acsch), (c.Re, sympy.re), (c.Im, sympy.im),
+        (c.Abs, sympy.Abs), (c.Sign, sympy.sign), (c.Arg, sympy.arg), (c.Conjugate, sympy.conjugate),
+        (c.Atan2, sympy.atan2)]
     for native, counterpart in pairs:
         _NATIVE_TO_SYMPY[native] = counterpart
         _SYMPY_TO_NATIVE[counterpart] = native
