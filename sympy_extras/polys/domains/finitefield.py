@@ -8,7 +8,7 @@ Examples
 >>> F = GF(7)
 >>> F.add(5, 4), F.mul(3, 5), F.invert(3), F.pow(3, 100)
 (2, 1, 5, 4)
->>> F.from_int(-1), F.to_sympy(6)
+>>> F.from_int(-1), F.to_expr(6)
 (6, 6)
 >>> list(GF(3).elements())
 [0, 1, 2]
@@ -17,10 +17,8 @@ from __future__ import annotations
 
 from typing import Iterator
 
-from sympy.core.expr import Expr
-from sympy.core.numbers import Integer
-
-from sympy_extras._typing import as_expr
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.numbers import Integer
 
 from .domain import Domain, U
 from .integerring import IntegerRing
@@ -153,15 +151,14 @@ class FiniteField(Domain[int]):
             raise ValueError('no conversion from %s to %s' % (K.name, self.name))
         if isinstance(K, IntegerRing) and isinstance(a, int):
             return a % self.p
-        return self.from_sympy(K.to_sympy(a))
+        return self.from_expr(K.to_expr(a))
 
-    def to_sympy(self, a: int) -> Expr:
+    def to_expr(self, a: int) -> Expr:
         return Integer(a)
 
-    def from_sympy(self, e: Expr) -> int:
-        e = as_expr(e)
+    def from_expr(self, e: Expr) -> int:
         if isinstance(e, Integer):
-            return int(e) % self.p
+            return e.p % self.p
         raise ValueError('%s is not an integer' % (e,))
 
     def elements(self) -> Iterator[int]:

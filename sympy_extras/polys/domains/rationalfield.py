@@ -10,7 +10,7 @@ Examples
 (Fraction(5, 6), Fraction(-3, 2))
 >>> QQ.numer(Fraction(-6, 4)), QQ.denom(Fraction(-6, 4))
 (-3, 2)
->>> QQ.from_sympy(QQ.to_sympy(Fraction(3, 7))) == Fraction(3, 7)
+>>> QQ.from_expr(QQ.to_expr(Fraction(3, 7))) == Fraction(3, 7)
 True
 """
 from __future__ import annotations
@@ -20,10 +20,8 @@ from fractions import Fraction
 from math import gcd
 from typing import Optional
 
-from sympy.core.expr import Expr
-from sympy.core.numbers import Rational
-
-from sympy_extras._typing import as_expr
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.numbers import Rational, number_from_fraction
 
 from .domain import Domain, U
 from .integerring import IntegerRing
@@ -173,15 +171,14 @@ class RationalField(Domain[Fraction]):
             return a
         if isinstance(K, IntegerRing) and isinstance(a, int):
             return Fraction(a)
-        return self.from_sympy(K.to_sympy(a))
+        return self.from_expr(K.to_expr(a))
 
-    def to_sympy(self, a: Fraction) -> Expr:
-        return Rational(a.numerator, a.denominator)
+    def to_expr(self, a: Fraction) -> Expr:
+        return number_from_fraction(a)
 
-    def from_sympy(self, e: Expr) -> Fraction:
-        e = as_expr(e)
+    def from_expr(self, e: Expr) -> Fraction:
         if isinstance(e, Rational):
-            return Fraction(int(e.p), int(e.q))
+            return Fraction(e.p, e.q)
         raise ValueError('%s is not a rational number' % (e,))
 
 

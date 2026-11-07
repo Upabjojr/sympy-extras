@@ -28,7 +28,8 @@ Every domain has `zero`, `one`, `add`, `sub`, `neg`, `mul`, `pow`,
 `exquo` (exact division, `ValueError` otherwise), `quo`, `rem`, `invert`,
 `gcd`, `lcm`, `gcdex`, `canonical_unit` (the unit making an element
 canonical: positive over `ZZ`, monic over a field), `from_int`,
-`convert(a, K)`, `to_sympy`, `from_sympy`; ordered domains add
+`convert(a, K)`, `to_expr`, `from_expr` (expressions of the typed core
+`sympy_extras.core`); ordered domains add
 `is_negative`, `abs`, `sign`.
 
 ```python
@@ -38,7 +39,7 @@ canonical: positive over `ZZ`, monic over a field), `from_int`,
 >>> ZZ.gcdex(12, 18), QQ.invert(Fraction(-2, 3)), GF(7).invert(3)
 ((-1, 1, 6), Fraction(-3, 2), 5)
 >>> R = PolynomialRing(ZZ, 'y')
->>> R.gcd([2, 0, -2], [4, 4]), R.to_sympy([1, 0, -1])
+>>> R.gcd([2, 0, -2], [4, 4]), R.to_expr([1, 0, -1])
 ([2, 2], y**2 - 1)
 
 ```
@@ -187,7 +188,7 @@ arithmetic operators, `div`/`quo`/`rem`/`exquo`/`pdiv`, `diff`,
 `primitive`, `monic`, `gcd`, `lcm`, `gcdex`, `invert`, `resultant`,
 `discriminant`, `subresultants`, `sqf_list`, `factor_list`,
 `is_irreducible`, `real_root_intervals`, `count_real_roots`, and the
-conversions `from_sympy`/`to_sympy`/`convert`. Factorisation and real
+conversions `from_expr`/`to_expr`/`convert`. Factorisation and real
 roots are dispatched by the domain (`Domain.factor_dense`,
 `isolate_real_roots_dense`), so a polynomial over a domain without them
 raises `NotImplementedError` rather than silently converting. A
@@ -195,13 +196,14 @@ polynomial in several variables is a `DensePoly` over a polynomial ring
 domain, and its conversions handle all the variables.
 
 ```python
->>> from sympy.abc import x, y
+>>> from sympy_extras.core import symbols
+>>> x, y = symbols('x y')
 >>> from sympy_extras.polys.polyclasses import DensePoly
->>> f = DensePoly.from_sympy(x**4 - 1, x, ZZ)
->>> [g.to_sympy() for g, _ in f.factor_list()[1]]
+>>> f = DensePoly.from_expr(x**4 - 1, x, ZZ)
+>>> [g.to_expr() for g, _ in f.factor_list()[1]]
 [x - 1, x + 1, x**2 + 1]
->>> g = DensePoly.from_sympy(x**2*y - y**3, x, PolynomialRing(ZZ, 'y'))
->>> g.gcd(DensePoly.from_sympy(x*y + y**2, x, PolynomialRing(ZZ, 'y'))).to_sympy()
+>>> g = DensePoly.from_expr(x**2*y - y**3, x, PolynomialRing(ZZ, 'y'))
+>>> g.gcd(DensePoly.from_expr(x*y + y**2, x, PolynomialRing(ZZ, 'y'))).to_expr()
 x*y + y**2
 
 ```
@@ -214,19 +216,30 @@ orders `lex`, `grlex`, `grevlex`: leading monomials, terms and
 coefficients under the order, arithmetic, `div` (the division algorithm
 by a list of polynomials, the multivariate reduction), `rem`, `exquo`,
 `monic`, `primitive`, derivatives, evaluation of one variable, and the
-conversions to and from SymPy expressions. This is the representation
-of the Gröbner basis algorithms, which still run on SymPy's
-`PolyElement` and will move to this one.
+conversions to and from the expressions of the typed core. This is the
+representation of F4 and of the strong Gröbner bases.
 
 ```python
 >>> from sympy_extras.polys.rings import PolyRing, grevlex
 >>> R = PolyRing(QQ, ['x', 'y'], grevlex)
 >>> X, Y = R.gens
 >>> f = X**2*Y - R.one
->>> str(f), f.LM, (X**2*Y + X).div([X*Y - R.one])[1].to_sympy()
+>>> str(f), f.LM, (X**2*Y + X).div([X*Y - R.one])[1].to_expr()
 ('x**2*y - 1', (2, 1), 2*x)
 
 ```
+
+## Independence from SymPy
+
+The domains, the dense and sparse polynomials and every algorithm above
+import nothing from SymPy: elements convert to and from the expressions
+of the typed core (`to_expr`, `from_expr`; `polyutils.dict_from_expr`
+walks `Add`, `Mul` and integer `Pow` nodes and multiplies out with the
+ring arithmetic, so no expansion of the expression is needed). The
+conversions to SymPy objects are in `sympy_extras.polys.interop`
+(`domain_to_sympy`, `dense_to_sympy`, `ring_to_sympy` and their
+inverses, and the conversions of SymPy's own rings), the one module of
+the layer which imports SymPy.
 
 ## Performance
 

@@ -6,26 +6,29 @@ A polynomial in several variables is a ``DensePoly`` over a
 :class:`~sympy_extras.polys.domains.polynomialring.PolynomialRing`
 domain (``K[y][x]``), whose coefficients are themselves dense
 polynomials; the conversions to and from SymPy expressions go through
-the domain, so ``to_sympy`` and ``from_sympy`` handle every variable.
+the domain, so ``to_expr`` and ``from_expr`` (expressions of the typed
+core, :mod:`sympy_extras.core`) handle every variable; the conversions
+to SymPy are in :mod:`sympy_extras.polys.interop`.
 
 Examples
 ========
 
->>> from sympy.abc import x
+>>> from sympy_extras.core import Symbol
+>>> x = Symbol('x')
 >>> from sympy_extras.polys.domains import ZZ, QQ
 >>> from sympy_extras.polys.polyclasses import DensePoly
->>> f = DensePoly.from_sympy(x**4 - 1, x, ZZ)
+>>> f = DensePoly.from_expr(x**4 - 1, x, ZZ)
 >>> f
 DensePoly([1, 0, 0, 0, -1], ZZ, x)
 >>> f.factor_list()
 (1, [(DensePoly([1, -1], ZZ, x), 1), (DensePoly([1, 1], ZZ, x), 1), (DensePoly([1, 0, 1], ZZ, x), 1)])
 >>> (f*f).sqf_list()
 (1, [(DensePoly([1, 0, 0, 0, -1], ZZ, x), 2)])
->>> f.gcd(DensePoly.from_sympy(x**2 - 1, x, ZZ)).to_sympy()
+>>> f.gcd(DensePoly.from_expr(x**2 - 1, x, ZZ)).to_expr()
 x**2 - 1
 >>> f.count_real_roots(), f.real_root_intervals()
 (2, [((Fraction(-2, 1), Fraction(0, 1)), 1), ((Fraction(0, 1), Fraction(2, 1)), 1)])
->>> DensePoly.from_sympy(x**2 - 2, x, QQ).resultant(DensePoly.from_sympy(x - 3, x, QQ)) == 7
+>>> DensePoly.from_expr(x**2 - 2, x, QQ).resultant(DensePoly.from_expr(x - 3, x, QQ)) == 7
 True
 """
 from __future__ import annotations
@@ -33,8 +36,8 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import Generic, Iterator, Optional, Sequence, TypeVar
 
-from sympy.core.expr import Expr
-from sympy.core.symbol import Symbol
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.symbol import Symbol
 
 from . import densearith, densebasic, densetools, euclidtools, sqfreetools
 from .domains.domain import Domain
@@ -60,11 +63,11 @@ class DensePoly(Generic[T]):
     # -- construction and conversion
 
     @classmethod
-    def from_sympy(cls, expr: Expr, gen: Symbol, domain: Domain[U]) -> DensePoly[U]:
-        """The polynomial of an expression in ``gen`` whose coefficients
-        belong to ``domain`` (``ValueError`` otherwise)."""
+    def from_expr(cls, expr: Expr, gen: Symbol, domain: Domain[U]) -> DensePoly[U]:
+        """The polynomial of a core expression in ``gen`` whose
+        coefficients belong to ``domain`` (``ValueError`` otherwise)."""
         ring: PolynomialRing[U] = PolynomialRing(domain, gen.name)
-        return DensePoly(ring.from_sympy(expr), domain, gen)
+        return DensePoly(ring.from_expr(expr), domain, gen)
 
     @classmethod
     def from_list(cls, coefficients: Sequence[int], gen: Symbol, domain: Domain[U]) -> DensePoly[U]:
@@ -72,8 +75,9 @@ class DensePoly(Generic[T]):
         degree first) over ``domain``."""
         return DensePoly(densebasic.dup_from_list(coefficients, domain), domain, gen)
 
-    def to_sympy(self) -> Expr:
-        return PolynomialRing(self.domain, self.gen.name).to_sympy(self.rep)
+    def to_expr(self) -> Expr:
+        """The polynomial as a core expression."""
+        return PolynomialRing(self.domain, self.gen.name).to_expr(self.rep)
 
     def convert(self, domain: Domain[U]) -> DensePoly[U]:
         """The same polynomial over another domain."""

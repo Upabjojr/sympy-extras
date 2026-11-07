@@ -369,7 +369,7 @@ outermost first.
   `simplest_between(lo, hi, lo_open=True, hi_open=True)`: canonical simple
   rational numbers between, below and above real algebraic numbers.
 
-### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
+### Principal subresultant coefficients (`sympy_extras.polys.subresultants`)
 
 - `dup_psc(f, g, K)`, `dmp_psc(f, g, u, K)`: the principal subresultant
   coefficients of two polynomials in dense representation.

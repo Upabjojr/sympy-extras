@@ -15,11 +15,13 @@ from sympy.polys.orderings import ProductOrder, grevlex
 
 from sympy_extras.polys.domains import QQ as TQQ, ZZ as TZZ
 from sympy_extras.polys.domains.finitefield import FiniteField
+from sympy_extras.core import Integer as CoreInteger, sqrt as core_sqrt
 from sympy_extras.polys.domains.algebraicfield import AlgebraicField
 from sympy_extras.polys.f4 import f4, reduced_basis, row_echelon
 from sympy_extras.polys.interop import gf_from_sympy, gf_to_sympy, qq_from_sympy, qq_to_sympy, sympy_modulus
 from sympy_extras.polys.modulargroebner import direct_groebner
 from sympy_extras.polys.rings import PolyRing as TypedRing, grevlex as typed_grevlex, lex as typed_lex
+from sympy_extras.polys.interop import ring_to_sympy
 
 
 def random_polynomial(R: PolyRing, rng: random.Random, degree: int, terms: int) -> PolyElement:
@@ -99,14 +101,14 @@ def test_f4_through_the_dispatcher_and_with_block_orders() -> None:
 
 
 def test_f4_over_an_algebraic_field_and_the_edge_cases() -> None:
-    K = AlgebraicField([Fraction(1), Fraction(0), Fraction(-2)], sqrt(2))
+    K = AlgebraicField([Fraction(1), Fraction(0), Fraction(-2)], core_sqrt(CoreInteger(2)))
     A = TypedRing(K, ['x', 'y'], typed_lex)
     X, Y = A.gens
     root = A.ground(K.alpha)
     G = f4([X*X - A.from_int(2), X*Y - root*Y + A.one], A)
     S, x, y = ring('x,y', QQ.algebraic_field(sqrt(2)), 'lex')
     expected = list(sympy_groebner([x**2 - 2, x*y - sqrt(2)*y + 1], S))
-    assert [g.to_sympy().expand() for g in G] == [e.as_expr().expand() for e in expected]
+    assert [ring_to_sympy(g).expand() for g in G] == [e.as_expr().expand() for e in expected]
     T = TypedRing(TQQ, ['x', 'y'], typed_grevlex)
     U, V = T.gens
     two = TQQ.from_int(2)

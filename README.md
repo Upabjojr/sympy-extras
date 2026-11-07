@@ -268,15 +268,16 @@ True
 >>> from sympy_extras.polys.f4 import f4
 >>> from sympy_extras.polys.modulargroebner import modular_groebner
 >>> T = PolyRing(TQQ, ['u', 'v', 'w'], typed_lex)
->>> F = [T.from_sympy(e) for e in (u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w)]
->>> [g.to_sympy() for g in f4(F, T)]
+>>> from sympy_extras.polys.interop import ring_from_sympy, ring_to_sympy
+>>> F = [ring_from_sympy(T, e) for e in (u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w)]
+>>> [ring_to_sympy(g) for g in f4(F, T)]
 [u + v - 2*w, v**2 - 2*v*w + w/3, w**2 - 2*w/15 - 1/5]
 >>> R, U, V, W = ring("u,v,w", QQ, lex)
 >>> modular_groebner([U**2 + V**2 + W**2 - 1, U*V - W/3, U + V - 2*W], R)
 [u + v - 2*w, v**2 - 2*v*w + 1/3*w, w**2 - 2/15*w - 1/5]
 >>> from sympy_extras.polys.stronggroebner import strong_groebner
 >>> Z = PolyRing(TZZ, ['a', 'b'], typed_lex)
->>> [str(g) for g in strong_groebner([Z.from_sympy(2*a), Z.from_sympy(3*b)], Z)]
+>>> [str(g) for g in strong_groebner([ring_from_sympy(Z, 2*a), ring_from_sympy(Z, 3*b)], Z)]
 ['a*b', '2*a', '3*b']
 
 ```
@@ -749,7 +750,7 @@ random expressions, and the arithmetic runs within a factor of two of
 
 ```
 
-### Principal subresultant coefficients (`sympy_extras.polys.euclidtools`)
+### Principal subresultant coefficients (`sympy_extras.polys.subresultants`)
 
 `dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
 coefficients of two polynomials, the leading coefficients of the
@@ -757,7 +758,7 @@ subresultant sequence, which are needed by Hong's projection operator.
 
 ```python
 >>> from sympy import ring, ZZ
->>> from sympy_extras.polys.euclidtools import psc
+>>> from sympy_extras.polys.subresultants import psc
 >>> R, x, y = ring("x,y", ZZ)
 >>> psc(x**2*y + x, x + y)
 [y**3 - y, 1]
@@ -854,7 +855,9 @@ sympy_extras/
         densebasic.py        dense polynomials over a typed domain: the representation
         densearith.py        dense arithmetic: multiplication (Karatsuba), division, pseudo-division
         densetools.py        derivatives, evaluation, Taylor shifts, contents, truncation
-        euclidtools.py       gcd (Euclid, subresultant PRS), resultants, discriminants; principal subresultant coefficients
+        euclidtools.py       gcd (Euclid, subresultant PRS), resultants, discriminants
+        subresultants.py     principal subresultant coefficients on SymPy's dense representation (CAD projections)
+        polyutils.py         conversions between core expressions and the typed polynomials
         sqfreetools.py       square-free decomposition (Yun; over GF(p) with p-th roots)
         galoistools.py       factorisation over GF(p): distinct-degree, Cantor–Zassenhaus, Rabin's test
         factortools.py       factorisation over ZZ and QQ (Zassenhaus with quadratic Hensel lifting) and over number fields (Trager)

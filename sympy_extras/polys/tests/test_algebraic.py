@@ -11,13 +11,16 @@ from sympy.polys.domains import QQ as SQQ
 from sympy_extras._typing import as_expr
 from sympy_extras.polys.densearith import dup_mul, dup_pow
 from sympy_extras.polys.densetools import dup_monic
+from sympy_extras.core.expr import as_expr as core_expr
+from sympy_extras.core.interop import from_sympy as core_from_sympy, to_sympy as core_to_sympy
 from sympy_extras.polys.domains.algebraicfield import AlgebraicField
+from sympy_extras.polys.interop import domain_from_sympy, domain_to_sympy
 from sympy_extras.polys.factortools import dup_ext_factor, dup_ext_norm, dup_ext_sqf_norm
 
 x, t = symbols('x t')
 
-SQRT2 = AlgebraicField([Fraction(1), Fraction(0), Fraction(-2)], sqrt(2))
-CBRT2 = AlgebraicField([Fraction(1), Fraction(0), Fraction(0), Fraction(-2)], CRootOf(t**3 - 2, 0))
+SQRT2 = AlgebraicField([Fraction(1), Fraction(0), Fraction(-2)], core_expr(core_from_sympy(sqrt(2))))
+CBRT2 = AlgebraicField([Fraction(1), Fraction(0), Fraction(0), Fraction(-2)], core_expr(core_from_sympy(CRootOf(t**3 - 2, 0))))
 
 
 def _random_element(rng: random.Random, K: AlgebraicField) -> list[Fraction]:
@@ -34,21 +37,21 @@ def _to_sympy(f: list[list[Fraction]], K: AlgebraicField) -> Poly:
     expr = as_expr(0)
     n = len(f) - 1
     for i, c in enumerate(f):
-        expr = as_expr(expr + K.to_sympy(c)*x**(n - i))
-    return Poly(expand(expr), x, domain=SQQ.algebraic_field(K.alpha_expr))
+        expr = as_expr(expr + domain_to_sympy(K, c)*x**(n - i))
+    return Poly(expand(expr), x, domain=SQQ.algebraic_field(core_to_sympy(K.alpha_expr)))
 
 
 def test_field_arithmetic() -> None:
     rng = random.Random(1)
     for K in (SQRT2, CBRT2):
-        field = SQQ.algebraic_field(K.alpha_expr)
+        field = SQQ.algebraic_field(core_to_sympy(K.alpha_expr))
         for _ in range(30):
             a, b = _random_element(rng, K), _random_element(rng, K)
-            A, B = field.from_sympy(K.to_sympy(a)), field.from_sympy(K.to_sympy(b))
-            assert K.to_sympy(K.mul(a, b)) == field.to_sympy(A*B).expand()
-            assert K.to_sympy(K.add(a, b)) == field.to_sympy(A + B).expand()
+            A, B = field.from_sympy(domain_to_sympy(K, a)), field.from_sympy(domain_to_sympy(K, b))
+            assert domain_to_sympy(K, K.mul(a, b)) == field.to_sympy(A*B).expand()
+            assert domain_to_sympy(K, K.add(a, b)) == field.to_sympy(A + B).expand()
             if b:
-                assert K.to_sympy(K.exquo(a, b)) == field.to_sympy(A/B).expand()
+                assert domain_to_sympy(K, K.exquo(a, b)) == field.to_sympy(A/B).expand()
                 assert K.mul(b, K.invert(b)) == K.one
             # the norm is the product of the conjugates: for sqrt(2),
             # (p + q sqrt 2)(p - q sqrt 2)
@@ -56,7 +59,7 @@ def test_field_arithmetic() -> None:
                 p = a[-1]
                 q = a[0] if len(a) == 2 else Fraction(0)
                 assert K.norm(a) == p*p - 2*q*q
-            assert K.from_sympy(K.to_sympy(a)) == a
+            assert domain_from_sympy(K, domain_to_sympy(K, a)) == a
             # the minimal polynomial vanishes at the element
             m = K.minimal_polynomial(a)
             value = K.zero

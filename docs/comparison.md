@@ -55,7 +55,7 @@ The setup used throughout:
 ...     isolate_real_roots, thue, abel_by_invariants, linear_diophantine_system, is_linearizable,
 ...     minimal_nonnegative_solutions, symmetries, pde_symmetries, pdsolve_lie)
 >>> from sympy_extras.polys.ideals import Ideal
->>> from sympy_extras.polys.euclidtools import psc
+>>> from sympy_extras.polys.subresultants import psc
 >>> from sympy_extras.polys.groebnerwalk import groebner_walk
 >>> from sympy_extras.polys.virtual_substitution import eliminate_linear
 >>> from sympy_extras.integrals import definite_integral, IntegralByRanges

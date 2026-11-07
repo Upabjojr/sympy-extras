@@ -14,7 +14,7 @@ ZZ(x)
 >>> a = F.new([1, 0, -1], [1, 1])
 >>> a
 FracElement([1, -1], [1])
->>> F.to_sympy(F.invert(F.new([2, 0], [1, 1])))
+>>> F.to_expr(F.invert(F.new([2, 0], [1, 1])))
 (x + 1)/(2*x)
 >>> F.add(F.new([1], [1, 0]), F.new([1], [1, 1]))
 FracElement([2, 1], [1, 1, 0])
@@ -23,9 +23,12 @@ from __future__ import annotations
 
 from typing import Generic, TypeVar
 
-from sympy.core.expr import Expr
-
-from sympy_extras._typing import as_expr
+from sympy_extras.core.add import Add
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import Integer
+from sympy_extras.core.power import Pow, pow
+from sympy_extras.core.symbol import Symbol
 
 from .. import densearith, densebasic, euclidtools
 from .domain import Domain, U
@@ -175,19 +178,43 @@ class FractionField(Domain[FracElement[T]], Generic[T]):
         if isinstance(K, FractionField) and isinstance(a, FracElement):
             if K == self:
                 return a
-            return self.from_sympy(K.to_sympy(a))
+            return self.from_expr(K.to_expr(a))
         return self.from_ring(self.ring.convert(a, K))
 
-    def to_sympy(self, a: FracElement[T]) -> Expr:
-        return as_expr(self.ring.to_sympy(a.numer)/self.ring.to_sympy(a.denom))
+    def to_expr(self, a: FracElement[T]) -> Expr:
+        numer = self.ring.to_expr(a.numer)
+        if self.ring.is_one(a.denom):
+            return numer
+        return mul(numer, pow(self.ring.to_expr(a.denom), Integer(-1)))
 
-    def from_sympy(self, e: Expr) -> FracElement[T]:
-        from sympy.polys.polytools import cancel
-        numer, denom = as_expr(cancel(e)).as_numer_denom()
-        return self.new(self.ring.from_sympy(as_expr(numer)), self.ring.from_sympy(as_expr(denom)))
+    def from_expr(self, e: Expr) -> FracElement[T]:
+        """A core expression which is a rational function of the variable:
+        sums, products and integer powers are evaluated in the field, the
+        parts free of the variable converted by the ground domain."""
+        name = self.ring.variable
+        if isinstance(e, Symbol) and e.name == name:
+            return self.from_ring([self.ground.one, self.ground.zero])
+        if not any(isinstance(s, Symbol) and s.name == name for s in e.free_symbols):
+            c = self.ground.from_expr(e)
+            return self.from_ring([] if self.ground.is_zero(c) else [c])
+        if isinstance(e, Add):
+            total = self.zero
+            for a in e.args:
+                total = self.add(total, self.from_expr(a))
+            return total
+        if isinstance(e, Mul):
+            product = self.one
+            for a in e.args:
+                product = self.mul(product, self.from_expr(a))
+            return product
+        if isinstance(e, Pow) and isinstance(e.exp, Integer):
+            base = self.from_expr(e.base)
+            n = e.exp.p
+            return self.pow(base, n) if n >= 0 else self.pow(self.invert(base), -n)
+        raise ValueError('%s is not a rational function of %s' % (e, name))
 
     def to_str(self, a: FracElement[T]) -> str:
-        return str(self.to_sympy(a))
+        return str(self.to_expr(a))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, FractionField) and other.ring == self.ring

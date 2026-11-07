@@ -28,7 +28,7 @@ True
 >>> q, r = (x**2*y + x).div([x*y - R.one])
 >>> str(q[0]), str(r)
 ('x', '2*x')
->>> R.from_sympy(R.to_sympy(f)) == f
+>>> R.from_expr(R.to_expr(f)) == f
 True
 
 References
@@ -43,20 +43,19 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import Callable, Generic, Iterator, Sequence, TypeVar, Union
 
-from sympy.core.expr import Expr
-from sympy.core.symbol import Symbol
-from sympy.polys.polytools import Poly
-
-from sympy_extras._typing import Monomial, as_expr
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.symbol import Symbol
 
 from .domains.domain import Domain
 
-__all__ = ['PolyRing', 'PolyElement', 'MonomialOrder', 'OrderValue', 'OrderKeyValue', 'lex', 'grlex', 'grevlex', 'monomial_mul', 'monomial_div',
+__all__ = ['PolyRing', 'PolyElement', 'Monomial', 'MonomialOrder', 'OrderValue', 'OrderKeyValue', 'lex', 'grlex', 'grevlex', 'monomial_mul', 'monomial_div',
            'monomial_lcm', 'monomial_gcd', 'monomial_divides']
 
 T = TypeVar('T')
 U = TypeVar('U')
 
+#: the exponents of a monomial (the same alias as ``sympy_extras._typing.Monomial``)
+Monomial = tuple[int, ...]
 #: an entry of the key of a monomial order (weights may be rational)
 OrderValue = Union[int, Fraction]
 #: the key of a monomial under an order: compared lexicographically
@@ -181,26 +180,16 @@ class PolyRing(Generic[T]):
     def from_dict(self, terms: dict[Monomial, T]) -> PolyElement[T]:
         return PolyElement({m: c for m, c in terms.items() if not self.domain.is_zero(c)}, self)
 
-    def from_sympy(self, expr: Expr) -> PolyElement[T]:
-        """The polynomial of an expression in the variables whose
-        coefficients belong to the domain."""
-        p = Poly(as_expr(expr), *self.symbols)
-        terms: dict[Monomial, T] = {}
-        for monomial, coefficient in p.terms():
-            c = self.domain.from_sympy(as_expr(coefficient))
-            if not self.domain.is_zero(c):
-                terms[tuple(int(e) for e in monomial)] = c
-        return PolyElement(terms, self)
+    def from_expr(self, expr: Expr) -> PolyElement[T]:
+        """The polynomial of a core expression in the variables whose
+        coefficients belong to the domain (``ValueError`` otherwise)."""
+        from .polyutils import dict_from_expr
+        return PolyElement(dict_from_expr(expr, self.names, self.domain), self)
 
-    def to_sympy(self, f: PolyElement[T]) -> Expr:
-        total: Expr = as_expr(0)
-        for monomial, coefficient in f.terms.items():
-            term = self.domain.to_sympy(coefficient)
-            for s, e in zip(self.symbols, monomial):
-                if e:
-                    term = as_expr(term*s**e)
-            total = as_expr(total + term)
-        return total
+    def to_expr(self, f: PolyElement[T]) -> Expr:
+        """The polynomial as a core expression."""
+        from .polyutils import expr_from_dict
+        return expr_from_dict(f.terms, self.names, self.domain)
 
     def with_order(self, order: MonomialOrder) -> PolyRing[T]:
         return PolyRing(self.domain, self.names, order)
@@ -447,5 +436,5 @@ class PolyElement(Generic[T]):
             result = result + self.ring.term(tuple(0 if j == i else e for j, e in enumerate(m)), value)
         return result
 
-    def to_sympy(self) -> Expr:
-        return self.ring.to_sympy(self)
+    def to_expr(self) -> Expr:
+        return self.ring.to_expr(self)

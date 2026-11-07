@@ -48,7 +48,7 @@ from typing import Iterable, Optional, Sequence, Union
 from sympy.core.symbol import Symbol
 from sympy.polys.densebasic import dmp_strip, dmp_zero_p
 from sympy.polys.domains import ZZ
-from sympy_extras.polys.euclidtools import dmp_psc
+from sympy_extras.polys.subresultants import dmp_psc
 from sympy.polys.polyclasses import DMP
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly

@@ -396,11 +396,12 @@ boundary (`sympy_extras.polys.interop`); the results equal SymPy's
 >>> from sympy_extras.polys.rings import PolyRing, grevlex as tgrevlex, lex as tlex
 >>> from sympy_extras.polys.f4 import f4
 >>> T = PolyRing(TQQ, ['x', 'y', 'z'], tgrevlex)
->>> F = [T.from_sympy(e) for e in (x**2 + y**2 + z**2 - 1, x + y + z, x*y*z - 1)]
+>>> from sympy_extras.polys.interop import ring_from_sympy
+>>> F = [ring_from_sympy(T, e) for e in (x**2 + y**2 + z**2 - 1, x + y + z, x*y*z - 1)]
 >>> [str(g) for g in f4(F, T)]
 ['z**3 - 1/2*z - 1', 'y**2 + y*z + z**2 - 1/2', 'x + y + z']
 >>> P = PolyRing(TGF(7), ['x', 'y'], tlex)
->>> [str(g) for g in f4([P.from_sympy(x**2 - y), P.from_sympy(3*y**2 - x)], P)]
+>>> [str(g) for g in f4([ring_from_sympy(P, x**2 - y), ring_from_sympy(P, 3*y**2 - x)], P)]
 ['x + 4*y**2', 'y**4 + 3*y']
 
 ```
@@ -529,14 +530,14 @@ leading coefficients); `is_strong_groebner` checks the definition.
 >>> from sympy_extras.polys.domains import ZZ as TZZ
 >>> from sympy_extras.polys.stronggroebner import strong_groebner, strong_reduce, is_strong_groebner
 >>> Z = PolyRing(TZZ, ['x', 'y'], tlex)
->>> [str(g) for g in strong_groebner([Z.from_sympy(2*x), Z.from_sympy(3*y)], Z)]
+>>> [str(g) for g in strong_groebner([ring_from_sympy(Z, 2*x), ring_from_sympy(Z, 3*y)], Z)]
 ['x*y', '2*x', '3*y']
->>> [str(g) for g in strong_groebner([4, Z.from_sympy(2*x + 1)], Z)]   # 2x - 1, then 2, then 1 are in the ideal
+>>> [str(g) for g in strong_groebner([4, ring_from_sympy(Z, 2*x + 1)], Z)]   # 2x - 1, then 2, then 1 are in the ideal
 ['1']
->>> G = strong_groebner([Z.from_sympy(2*x**2 + y), Z.from_sympy(3*x*y + 1)], Z)
+>>> G = strong_groebner([ring_from_sympy(Z, 2*x**2 + y), ring_from_sympy(Z, 3*x*y + 1)], Z)
 >>> [str(g) for g in G]
 ['x*y + 3*y**3 + 1', '2*x - 3*y**2', '9*y**3 + 2']
->>> str(strong_reduce(Z.from_sympy(2*x - 3*y**2), G)), str(strong_reduce(Z.from_sympy(x), G)), is_strong_groebner(G)
+>>> str(strong_reduce(ring_from_sympy(Z, 2*x - 3*y**2), G)), str(strong_reduce(ring_from_sympy(Z, x), G)), is_strong_groebner(G)
 ('0', 'x', True)
 
 ```

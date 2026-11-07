@@ -23,7 +23,7 @@ import heapq
 from fractions import Fraction
 from typing import Generic, Iterator, Optional, TypeVar
 
-from sympy.core.expr import Expr
+from sympy_extras.core.expr import Expr
 
 T = TypeVar('T')
 U = TypeVar('U')
@@ -272,12 +272,14 @@ class Domain(Generic[T]):
         domain; ``ValueError`` when there is no exact conversion."""
         raise NotImplementedError
 
-    def to_sympy(self, a: T) -> Expr:
-        """The element as a SymPy expression."""
+    def to_expr(self, a: T) -> Expr:
+        """The element as an expression of the typed core
+        (:mod:`sympy_extras.core`; the conversion to SymPy goes through
+        :func:`sympy_extras.polys.interop.domain_to_sympy`)."""
         raise NotImplementedError
 
-    def from_sympy(self, e: Expr) -> T:
-        """A SymPy expression which is an element of the domain, as an
+    def from_expr(self, e: Expr) -> T:
+        """A core expression which is an element of the domain, as an
         element; ``ValueError`` otherwise."""
         raise NotImplementedError
 

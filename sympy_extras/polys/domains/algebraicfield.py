@@ -8,15 +8,15 @@ Examples
 ========
 
 >>> from fractions import Fraction
->>> from sympy import sqrt
+>>> from sympy_extras.core import sqrt, Integer
 >>> from sympy_extras.polys.domains.algebraicfield import AlgebraicField
->>> K = AlgebraicField([Fraction(1), Fraction(0), Fraction(-2)], sqrt(2))
+>>> K = AlgebraicField([Fraction(1), Fraction(0), Fraction(-2)], sqrt(Integer(2)))
 >>> K
 QQ<sqrt(2)>
->>> a = K.from_sympy(1 + sqrt(2))
+>>> a = K.from_expr(1 + sqrt(Integer(2)))
 >>> a, K.mul(a, a), K.invert(a)
 ([Fraction(1, 1), Fraction(1, 1)], [Fraction(2, 1), Fraction(3, 1)], [Fraction(1, 1), Fraction(-1, 1)])
->>> K.to_sympy(K.invert(a))
+>>> K.to_expr(K.invert(a))
 -1 + sqrt(2)
 >>> K.norm(a), K.minimal_polynomial(a)
 (Fraction(-1, 1), [Fraction(1, 1), Fraction(-2, 1), Fraction(-1, 1)])
@@ -32,10 +32,11 @@ from __future__ import annotations
 
 from fractions import Fraction
 
-from sympy.core.expr import Expr
-from sympy.polys.polytools import Poly
-
-from sympy_extras._typing import as_expr
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import Integer, Rational
+from sympy_extras.core.power import Pow, pow
 
 from .. import densearith, densebasic, densetools, euclidtools, sqfreetools
 from .domain import Domain, U
@@ -48,8 +49,8 @@ __all__ = ['AlgebraicField']
 class AlgebraicField(Domain[list[Fraction]]):
     """The field ``QQ(alpha)`` with ``alpha`` a root of the monic
     irreducible ``minpoly`` (coefficients highest degree first) and
-    ``alpha_expr`` the SymPy expression of the root, used by the
-    conversions."""
+    ``alpha_expr`` the expression of the root in the typed core, used by
+    the conversions."""
 
     is_field = True
     is_ordered = False
@@ -181,27 +182,59 @@ class AlgebraicField(Domain[list[Fraction]]):
         if isinstance(K, AlgebraicField) and isinstance(a, list):
             if K.minpoly == self.minpoly:
                 return [c for c in a if isinstance(c, Fraction)]
-            return self.from_sympy(K.to_sympy(a))
+            return self.from_expr(K.to_expr(a))
         if isinstance(K, RationalField) and isinstance(a, Fraction):
             return self.from_rational(a)
         if isinstance(K, IntegerRing) and isinstance(a, int):
             return self.from_int(a)
-        return self.from_sympy(K.to_sympy(a))
+        return self.from_expr(K.to_expr(a))
 
-    def to_sympy(self, a: list[Fraction]) -> Expr:
-        total: Expr = as_expr(0)
+    def to_expr(self, a: list[Fraction]) -> Expr:
+        """The element as a core expression in ``alpha_expr``."""
         n = len(a) - 1
+        parts: list[Expr] = []
         for i, c in enumerate(a):
-            total = as_expr(total + QQ.to_sympy(c)*self.alpha_expr**(n - i))
-        return as_expr(total.expand())
+            if c:
+                k = n - i
+                power = self.alpha_expr if k == 1 else pow(self.alpha_expr, Integer(k))
+                parts.append(QQ.to_expr(c) if k == 0 else mul(QQ.to_expr(c), power))
+        return add(*parts) if parts else Integer(0)
 
-    def from_sympy(self, e: Expr) -> list[Fraction]:
-        p = Poly(as_expr(e).expand(), self.alpha_expr)
-        coefficients = [QQ.from_sympy(as_expr(c)) for c in p.all_coeffs()]
-        return self._reduce(densebasic.dup_strip(coefficients, QQ))
+    def from_expr(self, e: Expr) -> list[Fraction]:
+        """A core expression built from rational numbers and ``alpha_expr``
+        (and, when ``alpha_expr`` is a radical ``b**(1/n)``, the powers
+        ``b**(k/n)``) by sums, products and integer powers."""
+        alpha = self.alpha_expr
+        radical_base: Expr = Integer(0)
+        radical_index = 0
+        if isinstance(alpha, Pow) and isinstance(alpha.exp, Rational) and alpha.exp.p == 1 and alpha.exp.q > 1:
+            radical_base, radical_index = alpha.base, alpha.exp.q
+        if e == alpha:
+            return self.alpha
+        if isinstance(e, Rational):
+            return self.from_rational(QQ.from_expr(e))
+        if radical_index and isinstance(e, Pow) and e.base == radical_base and isinstance(e.exp, Rational) \
+                and e.exp.q == radical_index:
+            k = e.exp.p
+            return self.pow(self.alpha, k) if k >= 0 else self.pow(self.invert(self.alpha), -k)
+        if isinstance(e, Add):
+            total = self.zero
+            for a in e.args:
+                total = self.add(total, self.from_expr(a))
+            return total
+        if isinstance(e, Mul):
+            product = self.one
+            for a in e.args:
+                product = self.mul(product, self.from_expr(a))
+            return product
+        if isinstance(e, Pow) and isinstance(e.exp, Integer):
+            base = self.from_expr(e.base)
+            n = e.exp.p
+            return self.pow(base, n) if n >= 0 else self.pow(self.invert(base), -n)
+        raise ValueError('%s is not an element of %s' % (e, self.name))
 
     def to_str(self, a: list[Fraction]) -> str:
-        return str(self.to_sympy(a))
+        return str(self.to_expr(a))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, AlgebraicField) and other.minpoly == self.minpoly and other.alpha_expr == self.alpha_expr

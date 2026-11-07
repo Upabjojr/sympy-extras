@@ -26,11 +26,21 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import Optional, Sequence
 
+from sympy.core.expr import Expr as SymPyExpr
 from sympy.core.numbers import Rational
+from sympy.core.symbol import Symbol as SymPySymbol
 from sympy.polys.orderings import MonomialOrder as SymPyMonomialOrder
 from sympy.polys.rings import PolyElement as SymPyPolyElement, PolyRing as SymPyPolyRing
 
-from sympy_extras._typing import DomainElement, Monomial
+from typing import TypeVar
+
+from sympy_extras._typing import DomainElement, Monomial, as_expr as sympy_as_expr
+from sympy_extras.core.expr import as_expr as core_as_expr
+from sympy_extras.core.interop import from_sympy as core_from_sympy, to_sympy as core_to_sympy
+from sympy_extras.core.symbol import Symbol
+
+from .domains.domain import Domain
+from .polyclasses import DensePoly
 
 from .domains.finitefield import FiniteField
 from .domains.integerring import ZZ
@@ -38,7 +48,10 @@ from .domains.rationalfield import QQ
 from .rings import MonomialOrder, OrderKeyValue, OrderValue, PolyElement, PolyRing
 
 __all__ = ['typed_order', 'qq_from_sympy', 'qq_to_sympy', 'zz_from_sympy', 'zz_to_sympy', 'gf_from_sympy',
-           'gf_to_sympy', 'sympy_modulus']
+           'gf_to_sympy', 'sympy_modulus', 'domain_to_sympy', 'domain_from_sympy', 'dense_to_sympy',
+           'dense_from_sympy', 'ring_to_sympy', 'ring_from_sympy']
+
+T = TypeVar('T')
 
 
 
@@ -128,3 +141,37 @@ def gf_from_sympy(polys: Sequence[SymPyPolyElement], ring: SymPyPolyRing, p: int
 
 def gf_to_sympy(polys: Sequence[PolyElement[int]], ring: SymPyPolyRing) -> list[SymPyPolyElement]:
     return [ring.from_dict({m: ring.domain(c) for m, c in f.terms.items()}) for f in polys]
+
+
+# ---------------------------------------------------------------------------
+# SymPy expressions and the typed layer (through the typed core)
+
+
+def domain_to_sympy(K: Domain[T], a: T) -> SymPyExpr:
+    """An element of a typed domain as a SymPy expression."""
+    return sympy_as_expr(core_to_sympy(K.to_expr(a)))
+
+
+def domain_from_sympy(K: Domain[T], e: SymPyExpr) -> T:
+    """A SymPy expression which is an element of the typed domain."""
+    return K.from_expr(core_as_expr(core_from_sympy(e)))
+
+
+def dense_to_sympy(f: DensePoly[T]) -> SymPyExpr:
+    """A dense polynomial as a SymPy expression."""
+    return sympy_as_expr(core_to_sympy(f.to_expr()))
+
+
+def dense_from_sympy(e: SymPyExpr, gen: SymPySymbol, K: Domain[T]) -> DensePoly[T]:
+    """A SymPy expression which is a polynomial in ``gen`` over ``K``."""
+    return DensePoly.from_expr(core_as_expr(core_from_sympy(e)), Symbol(gen.name), K)
+
+
+def ring_to_sympy(f: PolyElement[T]) -> SymPyExpr:
+    """A sparse polynomial as a SymPy expression."""
+    return sympy_as_expr(core_to_sympy(f.to_expr()))
+
+
+def ring_from_sympy(R: PolyRing[T], e: SymPyExpr) -> PolyElement[T]:
+    """A SymPy expression which is a polynomial of the typed ring."""
+    return R.from_expr(core_as_expr(core_from_sympy(e)))

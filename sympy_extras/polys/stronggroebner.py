@@ -46,10 +46,9 @@ from __future__ import annotations
 
 from typing import Optional, Sequence, Union
 
-from sympy_extras._typing import Monomial
 
 from .domains.integerring import ZZ
-from .rings import PolyElement, PolyRing, monomial_div, monomial_divides, monomial_lcm
+from .rings import Monomial, PolyElement, PolyRing, monomial_div, monomial_divides, monomial_lcm
 
 __all__ = ['strong_groebner', 'strong_reduce', 'is_strong_groebner', 's_polynomial_zz', 'g_polynomial_zz']
 

@@ -13,6 +13,7 @@ from sympy.testing.pytest import raises
 from sympy_extras.polys.domains import QQ, ZZ
 from sympy_extras.polys.rings import (PolyElement, PolyRing, grevlex, grlex, lex, monomial_div, monomial_divides,
                                       monomial_gcd, monomial_lcm, monomial_mul)
+from sympy_extras.polys.interop import ring_from_sympy, ring_to_sympy
 
 x, y, z = symbols('x y z')
 
@@ -46,20 +47,20 @@ def test_arithmetic_against_sympy() -> None:
     S, X, Y, Z = ring('x,y,z', SQQ, sympy_grevlex)
     for _ in range(40):
         f, g = _random(rng, R, 4, 3), _random(rng, R, 3, 2)
-        F, G = S.from_expr(R.to_sympy(f)), S.from_expr(R.to_sympy(g))
-        assert (f + g).to_sympy() == (F + G).as_expr()
-        assert (f - g).to_sympy() == (F - G).as_expr()
-        assert (f*g).to_sympy() == (F*G).as_expr()
-        assert (f**2).to_sympy() == (F**2).as_expr()
+        F, G = S.from_expr(ring_to_sympy(f)), S.from_expr(ring_to_sympy(g))
+        assert ring_to_sympy((f + g)) == (F + G).as_expr()
+        assert ring_to_sympy((f - g)) == (F - G).as_expr()
+        assert ring_to_sympy((f*g)) == (F*G).as_expr()
+        assert ring_to_sympy((f**2)) == (F**2).as_expr()
         if f.terms:
             assert f.LM == F.LM and f.LC == Fraction(int(F.LC.numerator), int(F.LC.denominator))
-            assert f.monic().LC == 1 and f.monic().to_sympy() == F.monic().as_expr()
-        assert f.diff(0).to_sympy() == F.diff(X).as_expr()
-        assert R.from_sympy(f.to_sympy()) == f
+            assert f.monic().LC == 1 and ring_to_sympy(f.monic()) == F.monic().as_expr()
+        assert ring_to_sympy(f.diff(0)) == F.diff(X).as_expr()
+        assert ring_from_sympy(R, ring_to_sympy(f)) == f
     # lex order leading terms
     R2 = PolyRing(QQ, ['x', 'y'], lex)
     S2, X2, Y2 = ring('x,y', SQQ, sympy_lex)
-    f2 = R2.from_sympy(x*y**3 + x**2*y + y**5)
+    f2 = ring_from_sympy(R2, x*y**3 + x**2*y + y**5)
     assert f2.LM == (2, 1) and S2.from_expr(x*y**3 + x**2*y + y**5).LM == (2, 1)
     assert [m for m in f2.monomials()] == [(2, 1), (1, 3), (0, 5)]
 

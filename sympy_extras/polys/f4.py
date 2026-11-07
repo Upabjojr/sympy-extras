@@ -58,10 +58,9 @@ from __future__ import annotations
 
 from typing import Sequence, TypeVar
 
-from sympy_extras._typing import Monomial
 
 from .domains.domain import Domain
-from .rings import MonomialOrder, PolyElement, PolyRing, monomial_div, monomial_divides, monomial_lcm, monomial_mul
+from .rings import Monomial, MonomialOrder, PolyElement, PolyRing, monomial_div, monomial_divides, monomial_lcm, monomial_mul
 
 __all__ = ['f4', 'reduced_basis', 'is_graded', 'row_echelon', 'SELECTION']
 

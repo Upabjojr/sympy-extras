@@ -10,6 +10,18 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- The typed polynomial layer (domains, dense and sparse polynomials,
+  gcd, factorisation, root isolation, F4, strong bases) imports nothing
+  from SymPy: elements convert to and from the expressions of the typed
+  core (`Domain.to_expr`, `from_expr`; `polyutils.dict_from_expr` walks
+  the expression tree and multiplies out with the ring arithmetic), the
+  generators are core `Symbol`s, and the conversions to SymPy objects are
+  in `sympy_extras.polys.interop` (`domain_to_sympy`, `dense_to_sympy`,
+  `ring_to_sympy` and their inverses). The principal subresultant
+  coefficients on SymPy's dense representation, used by the CAD, moved
+  from `euclidtools` to `sympy_extras.polys.subresultants`. (The layer
+  still loads SymPy through the typed core, whose `Expr` forwards some
+  methods to SymPy.)
 - `sympy_extras.ntheory` (no SymPy): Baillie–PSW primality, `nextprime`,
   `prevprime`, `primerange`, `factorint` (trial division, Pollard–Brent
   rho, perfect powers; SymPy's `limit` convention). The modular Gröbner

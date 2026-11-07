@@ -18,6 +18,7 @@ from sympy_extras.polys.domains.polynomialring import PolynomialRing
 from sympy_extras.polys.euclidtools import (dup_discriminant, dup_gcd, dup_gcdex, dup_invert, dup_lcm,
                                              dup_qq_gcd, dup_resultant, dup_subresultants)
 from sympy_extras.polys.sqfreetools import dup_sqf_list, dup_sqf_p, dup_sqf_part
+from sympy_extras.polys.interop import domain_to_sympy
 
 x, y = symbols('x y')
 
@@ -188,12 +189,12 @@ def test_multivariate_through_the_tower() -> None:
     # (x + y)(x - y) and (x + y)**2 in ZZ[y][x]
     f = S.mul([[1], [1, 0]], [[1], [-1, 0]])
     g = S.mul([[1], [1, 0]], [[1], [1, 0]])
-    assert S.to_sympy(f).expand() == (x**2 - y**2)
+    assert domain_to_sympy(S, f).expand() == (x**2 - y**2)
     assert dup_gcd(f, g, R) == [[1], [1, 0]]
     # resultant in x of x**2 - y and x - y**2 is y**4 - y
     res = dup_resultant([[1], [], [-1, 0]], [[1], [-1, 0, 0]], R)
-    assert R.to_sympy(res) == y**4 - y
-    assert R.to_sympy(res) == resultant(x**2 - y, x - y**2, x)
+    assert domain_to_sympy(R, res) == y**4 - y
+    assert domain_to_sympy(R, res) == resultant(x**2 - y, x - y**2, x)
     rng = random.Random(6)
     for _ in range(20):
         h = [[rng.randint(-2, 2) for _ in range(2)] for _ in range(2)]
@@ -203,10 +204,10 @@ def test_multivariate_through_the_tower() -> None:
         f, g = S.mul(a, h), S.mul(b, h)
         if not f or not g:
             continue
-        found = S.to_sympy(dup_gcd(f, g, R))
-        expected = gcd(S.to_sympy(f), S.to_sympy(g))
+        found = domain_to_sympy(S, dup_gcd(f, g, R))
+        expected = gcd(domain_to_sympy(S, f), domain_to_sympy(S, g))
         assert (found - expected).expand() == 0 or (found + expected).expand() == 0, (f, g)
-        assert R.to_sympy(dup_resultant(f, g, R)) == resultant(S.to_sympy(f), S.to_sympy(g), x)
+        assert domain_to_sympy(R, dup_resultant(f, g, R)) == resultant(domain_to_sympy(S, f), domain_to_sympy(S, g), x)
 
 
 def test_fraction_field_and_tools() -> None:
@@ -214,7 +215,7 @@ def test_fraction_field_and_tools() -> None:
     a = F.new([1, 0, -1], [1, 1])
     assert a.numer == [1, -1] and a.denom == [1]
     b = F.new([1], [2, 0])
-    assert F.to_sympy(F.add(a, b)) == (x - 1 + 1/(2*x)).together()
+    assert domain_to_sympy(F, F.add(a, b)) == (x - 1 + 1/(2*x)).together()
     assert F.mul(b, F.invert(b)) == F.one
     assert dup_clear_denoms([Fraction(1, 2), Fraction(1, 3)], QQ) == (6, [Fraction(3), Fraction(2)])
     assert dup_trunc([7, 8, 9], 5, ZZ) == [2, -2, -1]

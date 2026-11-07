@@ -14,23 +14,20 @@ ZZ[y]
 [1, 0, -1]
 >>> R.gcd([2, 0, -2], [4, 4])
 [2, 2]
->>> R.to_sympy([1, 0, -1])
+>>> R.to_expr([1, 0, -1])
 y**2 - 1
 >>> S = PolynomialRing(R, 'x')
 >>> S
 ZZ[y][x]
->>> S.to_sympy([[1], [2, 0], []])
+>>> S.to_expr([[1], [2, 0], []])
 x**2 + 2*x*y
 """
 from __future__ import annotations
 
 from typing import Generic, TypeVar
 
-from sympy.core.expr import Expr
-from sympy.core.symbol import Symbol
-from sympy.polys.polytools import Poly
-
-from sympy_extras._typing import as_expr
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.symbol import Symbol
 
 from .. import densearith, densebasic, densetools, euclidtools
 from .domain import Domain, U
@@ -158,21 +155,23 @@ class PolynomialRing(Domain[list[T]], Generic[T]):
         c = self.ground.convert(a, K)
         return [] if self.ground.is_zero(c) else [c]
 
-    def to_sympy(self, a: list[T]) -> Expr:
-        x = self.symbol
+    def to_expr(self, a: list[T]) -> Expr:
+        """The polynomial as a core expression in ``symbol`` (the
+        coefficients converted by the ground domain)."""
+        from ..polyutils import expr_from_dict
         n = len(a) - 1
-        total: Expr = as_expr(0)
-        for i, c in enumerate(a):
-            total = as_expr(total + self.ground.to_sympy(c)*x**(n - i))
-        return total
+        return expr_from_dict({(n - i,): c for i, c in enumerate(a) if not self.ground.is_zero(c)},
+                              [self.variable], self.ground)
 
-    def from_sympy(self, e: Expr) -> list[T]:
-        p = Poly(e, self.symbol)
-        coefficients = [self.ground.from_sympy(as_expr(c)) for c in p.all_coeffs()]
-        return densebasic.dup_strip(coefficients, self.ground)
+    def from_expr(self, e: Expr) -> list[T]:
+        """A core expression which is a polynomial in ``symbol`` with
+        coefficients in the ground domain."""
+        from ..polyutils import dict_from_expr
+        terms = dict_from_expr(e, [self.variable], self.ground)
+        return densebasic.dup_from_dict({m[0]: c for m, c in terms.items()}, self.ground)
 
     def to_str(self, a: list[T]) -> str:
-        return str(self.to_sympy(a))
+        return str(self.to_expr(a))
 
     def diff(self, a: list[T]) -> list[T]:
         return densetools.dup_diff(a, 1, self.ground)
