@@ -842,14 +842,14 @@ sympy_extras/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
         tests/
     polys/
-        domains/             typed coefficient domains: ZZ, QQ, GF(p), polynomial rings (towers for several variables), fraction fields
+        domains/             typed coefficient domains: ZZ, QQ, GF(p), algebraic number fields, polynomial rings (towers for several variables), fraction fields
         densebasic.py        dense polynomials over a typed domain: the representation
         densearith.py        dense arithmetic: multiplication (Karatsuba), division, pseudo-division
         densetools.py        derivatives, evaluation, Taylor shifts, contents, truncation
         euclidtools.py       gcd (Euclid, subresultant PRS), resultants, discriminants; principal subresultant coefficients
         sqfreetools.py       square-free decomposition (Yun; over GF(p) with p-th roots)
         galoistools.py       factorisation over GF(p): distinct-degree, Cantor–Zassenhaus, Rabin's test
-        factortools.py       factorisation over ZZ and QQ: Zassenhaus with quadratic Hensel lifting
+        factortools.py       factorisation over ZZ and QQ (Zassenhaus with quadratic Hensel lifting) and over number fields (Trager)
         rootisolation.py     real root isolation (Descartes with bisection), Sturm counts, refinement
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
         idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension

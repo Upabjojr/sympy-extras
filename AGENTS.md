@@ -151,14 +151,14 @@ sympy_extras/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
         tests/
     polys/
-        domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, PolynomialRing, FractionField); see docs/dense.md
+        domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, AlgebraicField, PolynomialRing, FractionField); see docs/dense.md
         densebasic.py        dense univariate polynomials over a Domain[T] (list[T], highest degree first)
         densearith.py        dup_add/mul/pow/div/pdiv/exquo over a Domain[T]
         densetools.py        dup_diff/eval/shift/compose/content/primitive/monic/trunc/clear_denoms
         euclidtools.py       dup_gcd (Euclid, subresultant PRS), dup_resultant, dup_discriminant, dup_gcdex; principal subresultant coefficients (dup_psc, dmp_psc, psc, on SymPy's types)
         sqfreetools.py       dup_sqf_list/part/p (Yun, and GF(p))
         galoistools.py       gf_factor, gf_ddf, gf_edf, gf_irreducible_p over FiniteField
-        factortools.py       dup_zz_factor, dup_qq_factor (Zassenhaus), dup_zz_hensel_lift
+        factortools.py       dup_zz_factor, dup_qq_factor (Zassenhaus), dup_zz_hensel_lift, dup_ext_factor (Trager)
         rootisolation.py     dup_isolate_real_roots(_sqf), dup_count_real_roots (Sturm), dup_refine_real_root, over QQ
         ideals.py            Ideal: operations and invariants on top of sympy.groebner
         hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination

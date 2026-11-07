@@ -22,6 +22,7 @@ layers (factorisation, root isolation, a `Poly` wrapper) exist.
 | `GF(p)` | `int` in `0..p-1` | inverses by `pow(a, -1, p)` |
 | `PolynomialRing(K, 'x')` | `list[T]` | `K[x]`; `PolynomialRing(PolynomialRing(ZZ, 'y'), 'x')` is `ZZ[y][x]` |
 | `FractionField(PolynomialRing(K, 'x'))` | `FracElement` | reduced pairs, canonical denominator |
+| `AlgebraicField(minpoly, alpha)` | `list[Fraction]` | `QQ(alpha)`, reduced modulo the minimal polynomial; `norm`, `minimal_polynomial` of an element |
 
 Every domain has `zero`, `one`, `add`, `sub`, `neg`, `mul`, `pow`,
 `exquo` (exact division, `ValueError` otherwise), `quo`, `rem`, `invert`,
@@ -106,6 +107,12 @@ The last line is the gcd of `(x + y)(x - y)` and `(x + y)**2` in `ZZ[y][x]`.
   `lc * prod f_i` over the subsets of increasing size. `dup_zz_factor`
   and `dup_qq_factor` return the content and the primitive factors with
   their multiplicities.
+- Over a number field `QQ(alpha)`, Trager's algorithm (`dup_ext_factor`):
+  a shift `x - s alpha` making the norm `N(f) = Res_alpha(m, f)`
+  square-free, the norm factored over `QQ`, and each factor `N_i` giving
+  the factor `gcd(f, N_i)` over the field; `AlgebraicField.minimal_polynomial`
+  is the square-free part of the characteristic polynomial, itself a
+  resultant.
 
 ```python
 >>> from sympy_extras.polys.domains import GF
@@ -171,10 +178,9 @@ determinant, SymPy gives `-1773`).
 
 ## Not done
 
-Factorisation over number fields (Trager) and of multivariate
-polynomials (Wang), the recombination by lattice reduction (van Hoeij;
+Factorisation of multivariate polynomials (Wang), the recombination by lattice reduction (van Hoeij;
 the subset search is exponential in the number of modular factors),
-complex root isolation, the algebraic number fields, a `Poly` wrapper and the
+complex root isolation, a `Poly` wrapper and the
 conversion of the algorithms above to this layer; sparse multivariate
 polynomials (the Gröbner basis code uses SymPy's `PolyElement`); a fast
 gcd over `ZZ` (the heuristic gcd) and over `GF(p)`.

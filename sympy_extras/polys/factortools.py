@@ -47,19 +47,22 @@ from __future__ import annotations
 from fractions import Fraction
 from itertools import combinations
 from math import isqrt
+from typing import Optional
 
-from .densearith import dup_add, dup_div, dup_max_norm, dup_mul, dup_mul_ground, dup_sub
-from .densebasic import dup_LC, dup_convert, dup_degree
-from .densetools import dup_clear_denoms, dup_decompose_content, dup_diff, dup_primitive, dup_trunc
+from .densearith import dup_add, dup_add_term, dup_div, dup_max_norm, dup_mul, dup_mul_ground, dup_sub
+from .densebasic import dup_LC, dup_convert, dup_degree, dup_strip
+from .densetools import dup_clear_denoms, dup_decompose_content, dup_diff, dup_monic, dup_primitive, dup_shift, dup_trunc
+from .domains.algebraicfield import AlgebraicField
 from .domains.finitefield import FiniteField
 from .domains.integerring import IntegerRing, ZZ
-from .domains.rationalfield import RationalField
-from .euclidtools import dup_gcd, dup_gcdex
+from .domains.polynomialring import PolynomialRing
+from .domains.rationalfield import QQ, RationalField
+from .euclidtools import dup_gcd, dup_gcdex, dup_resultant
 from .galoistools import gf_factor_sqf
-from .sqfreetools import dup_sqf_list
+from .sqfreetools import dup_sqf_list, dup_sqf_p
 
 __all__ = ['dup_zz_factor', 'dup_zz_factor_sqf', 'dup_qq_factor', 'dup_zz_mignotte_bound', 'dup_zz_hensel_step',
-           'dup_zz_hensel_lift', 'dup_zz_zassenhaus', 'dup_zz_irreducible_p']
+           'dup_zz_hensel_lift', 'dup_zz_zassenhaus', 'dup_zz_irreducible_p', 'dup_ext_sqf_norm', 'dup_ext_factor']
 
 #: how many good primes are tried, keeping the one with the fewest factors
 _PRIMES_TRIED = 5
@@ -202,8 +205,8 @@ def dup_zz_zassenhaus(f: list[int]) -> list[list[int]]:
             _, candidate = dup_primitive(candidate, ZZ)
             if dup_LC(candidate, ZZ) < 0:
                 candidate = [-c for c in candidate]
-            quotient, rest = dup_div(current, candidate, ZZ) if _divides_leading(current, candidate) else ([], [1])
-            if not rest:
+            quotient = _zz_trial_division(current, candidate) if _divides_leading(current, candidate) else None
+            if quotient is not None:
                 factors.append(candidate)
                 current = quotient
                 remaining = [g for i, g in enumerate(remaining) if i not in subset]
@@ -215,6 +218,30 @@ def dup_zz_zassenhaus(f: list[int]) -> list[list[int]]:
         factors.append(current)
     factors.sort(key=lambda g: (len(g), g))
     return factors
+
+
+def _zz_trial_division(f: list[int], g: list[int]) -> Optional[list[int]]:
+    """The quotient ``f/g`` over ``ZZ`` when ``g`` divides ``f`` exactly,
+    ``None`` otherwise (the division stops at the first coefficient which
+    is not divisible)."""
+    df, dg = dup_degree(f), dup_degree(g)
+    if df < dg:
+        return None
+    lc = g[0]
+    remainder = list(f)
+    quotient: list[int] = [0]*(df - dg + 1)
+    for i in range(df - dg + 1):
+        c = remainder[i]
+        if c % lc:
+            return None
+        q = c//lc
+        quotient[i] = q
+        if q:
+            for j in range(1, dg + 1):
+                remainder[i + j] -= q*g[j]
+    if any(remainder[df - dg + 1:]):
+        return None
+    return quotient
 
 
 def _divides_leading(f: list[int], g: list[int]) -> bool:
@@ -283,4 +310,68 @@ def dup_zz_irreducible_p(f: list[int], K: IntegerRing) -> bool:
         return False
     content, factors = dup_zz_factor(f, K)
     return abs(content) == 1 and len(factors) == 1 and factors[0][1] == 1
+
+
+
+# ---------------------------------------------------------------------------
+# number fields: Trager's algorithm
+
+
+def dup_ext_norm(f: list[list[Fraction]], K: AlgebraicField) -> list[Fraction]:
+    """The norm ``N(f)`` of a polynomial over ``QQ(alpha)``: the resultant
+    in ``alpha`` of the minimal polynomial and ``f`` (a polynomial in
+    ``x`` with rational coefficients, the product of the conjugates of
+    ``f``)."""
+    R = PolynomialRing(QQ, 'x')
+    # f as a polynomial in alpha with coefficients in QQ[x]
+    n = dup_degree(f)
+    by_alpha: list[list[Fraction]] = [[] for _ in range(K.degree)]
+    for i, c in enumerate(f):
+        for j, a in enumerate(c):
+            # coefficient a of alpha**(len(c) - 1 - j) x**(n - i)
+            k = len(c) - 1 - j
+            by_alpha[K.degree - 1 - k] = dup_add_term(by_alpha[K.degree - 1 - k], a, n - i, QQ)
+    m_x: list[list[Fraction]] = [[c] if c else [] for c in K.minpoly]
+    return dup_resultant(m_x, dup_strip(by_alpha, R), R)
+
+
+def dup_ext_sqf_norm(f: list[list[Fraction]], K: AlgebraicField) -> tuple[int, list[list[Fraction]], list[Fraction]]:
+    """``(s, g, N)`` with ``g = f(x - s alpha)`` and ``N = N(g)``
+    square-free (the shifts ``s = 0, 1, -1, 2, ...`` are tried in turn;
+    finitely many fail for a square-free ``f``)."""
+    s = 0
+    while True:
+        shift = K.mul(K.from_int(-s), K.alpha)
+        g = dup_shift(f, shift, K) if s else list(f)
+        norm = dup_ext_norm(g, K)
+        if dup_sqf_p(norm, QQ):
+            return s, g, norm
+        s = -s if s > 0 else 1 - s
+
+
+def dup_ext_factor(f: list[list[Fraction]], K: AlgebraicField) -> tuple[list[Fraction], list[tuple[list[list[Fraction]], int]]]:
+    """The leading coefficient and the monic irreducible factors over
+    ``QQ(alpha)`` with their multiplicities (Trager: a shift making the
+    norm square-free, the norm factored over ``QQ``, and each factor of
+    the norm gives the factor ``gcd(g, N_i)`` over the field)."""
+    if not f:
+        return [], []
+    lc = dup_LC(f, K)
+    f = dup_monic(f, K)
+    _, sqf = dup_sqf_list(f, K)
+    factors: list[tuple[list[list[Fraction]], int]] = []
+    for g, k in sqf:
+        if dup_degree(g) == 1:
+            factors.append((g, k))
+            continue
+        s, shifted, norm = dup_ext_sqf_norm(g, K)
+        _, norm_factors = dup_qq_factor(norm, QQ)
+        back = K.mul(K.from_int(s), K.alpha)
+        for h, _ in norm_factors:
+            over_field: list[list[Fraction]] = [K.from_rational(c) for c in h]
+            factor = dup_gcd(shifted, over_field, K)
+            if dup_degree(factor) > 0:
+                factors.append((dup_shift(factor, back, K) if s else factor, k))
+    factors.sort(key=lambda item: (len(item[0]), item[1]))
+    return lc, factors
 

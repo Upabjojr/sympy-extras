@@ -30,6 +30,10 @@ remove public functions. Breaking changes are listed here when they happen.
   rule with bisection, Sturm sequences and counts, refinement of
   isolating intervals, over the rationals; checked against SymPy's
   `intervals` and `count_roots`.
+- `sympy_extras.polys.domains.AlgebraicField`: number fields `QQ(alpha)`
+  with norms, characteristic and minimal polynomials of elements, and
+  `dup_ext_factor`, factorisation over them by Trager's algorithm;
+  checked against SymPy's `factor_list` over algebraic fields.
 - `sympy_extras.solvers.irregular`: the exponential parts of the
   solutions of a linear ODE at its irregular finite singular points, from
   the local Newton polygons (the characteristic equation of each edge
