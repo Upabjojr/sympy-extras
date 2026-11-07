@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.functions.elementary.integers`: `Floor`, `Ceiling`, `Frac`
+  with the evaluating `floor`, `ceiling`, `frac`, ported from SymPy; the
+  core's `//` no longer calls SymPy.
 - `sympy_extras.functions.elementary.complexes`: `Re`, `Im`, `Abs`,
   `Sign`, `Arg`, `Conjugate`, `Atan2` with the evaluating `re`, `im`,
   `abs_`, `sign`, `arg`, `conjugate`, `atan2`, and the complex expansion

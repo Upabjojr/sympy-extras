@@ -241,18 +241,18 @@ class Expr(Basic):
         return mod(other, self)
 
     def __floordiv__(self, other: ExprLike) -> Expr:
-        from .function import apply_sympy
+        from sympy_extras.functions.elementary.integers import floor
         from .mul import div
         if not _is_number_like(other):
             return NotImplemented
-        return apply_sympy(sympy.floor, div(self, other))
+        return floor(div(self, other))
 
     def __rfloordiv__(self, other: ExprLike) -> Expr:
-        from .function import apply_sympy
+        from sympy_extras.functions.elementary.integers import floor
         from .mul import div
         if not _is_number_like(other):
             return NotImplemented
-        return apply_sympy(sympy.floor, div(other, self))
+        return floor(div(other, self))
 
     def __neg__(self) -> Expr:
         from .mul import neg

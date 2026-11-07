@@ -311,6 +311,14 @@ also brought two of SymPy's arithmetic rules into the core: a sum with
 exactly one infinite term is infinite, and zero times an infinite
 factor is `nan`.
 
+The integer parts (`Floor`, `Ceiling`, `Frac` with `floor`, `ceiling`,
+`frac`) are ported from SymPy's `integers.py`: numbers and number
+symbols (`floor(pi) = 3`, the numerical value decided at two
+precisions), integer terms of a sum taken out, imaginary arguments, and
+the bounds decided from signs (`floor(p/(p + 1)) = 0`). The `//`
+operator of the core uses them. `frac(oo)` stays unevaluated, because
+SymPy's answer is `AccumBounds(0, 1)`, which is not ported.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a
