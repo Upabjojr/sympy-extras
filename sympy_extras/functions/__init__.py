@@ -8,6 +8,8 @@ from .elementary.miscellaneous import Max, Min, cbrt, max_, min_, real_root, roo
 from .elementary.piecewise import ExprCondPair, Piecewise, piecewise
 from .elementary.hyperbolic import (Acosh, Acoth, Acsch, Asech, Asinh, Atanh, Cosh, Coth, Csch, Sech, Sinh, Tanh, acosh,
                                     acoth, acsch, asech, asinh, atanh, cosh, coth, csch, sech, sinh, tanh)
+from .combinatorial.numbers import Catalan, catalan
+from .special.beta_functions import Beta, beta
 from .special.delta_functions import DiracDelta, Heaviside, dirac_delta, heaviside
 from .special.error_functions import Erf, Erfc, Erfcinv, Erfi, Erfinv, erf, erfc, erfcinv, erfi, erfinv
 from .special.gamma_functions import (DiGamma, Gamma, LogGamma, PolyGamma, TriGamma, digamma, gamma, loggamma,
@@ -19,7 +21,7 @@ from .elementary.trigonometric import (Acos, Acot, Acsc, Asec, Asin, Atan, Cos, 
 __all__ = ['Re', 'Im', 'Abs', 'Sign', 'Arg', 'Conjugate', 'Atan2', 're', 'im', 'abs_', 'sign', 'arg', 'conjugate',
            'atan2', 'Exp', 'Log', 'LambertW', 'exp', 'log', 'lambertw', 'cbrt', 'root', 'real_root', 'Floor', 'Ceiling', 'Frac', 'floor', 'ceiling', 'frac',
            'Factorial', 'Binomial', 'RisingFactorial', 'FallingFactorial', 'factorial', 'binomial', 'rf', 'ff',
-           'Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv', 'Zeta', 'DirichletEta', 'PolyLog', 'zeta', 'dirichlet_eta', 'polylog', 'DiracDelta', 'Heaviside', 'dirac_delta', 'heaviside', 'Gamma', 'LogGamma', 'PolyGamma', 'DiGamma', 'TriGamma', 'gamma', 'loggamma', 'polygamma', 'digamma',
+           'Catalan', 'catalan', 'Beta', 'beta', 'Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv', 'Zeta', 'DirichletEta', 'PolyLog', 'zeta', 'dirichlet_eta', 'polylog', 'DiracDelta', 'Heaviside', 'dirac_delta', 'heaviside', 'Gamma', 'LogGamma', 'PolyGamma', 'DiGamma', 'TriGamma', 'gamma', 'loggamma', 'polygamma', 'digamma',
            'trigamma', 'Max', 'Min', 'max_', 'min_', 'ExprCondPair', 'Piecewise', 'piecewise', 'Sin', 'Cos', 'Tan', 'Cot', 'Sec', 'Csc', 'sin', 'cos', 'tan', 'cot', 'sec',
            'csc', 'Asin', 'Acos', 'Atan', 'Acot', 'Asec', 'Acsc', 'asin', 'acos', 'atan', 'acot', 'asec', 'acsc',
            'Sinh', 'Cosh', 'Tanh', 'Coth', 'Sech', 'Csch', 'sinh', 'cosh', 'tanh', 'coth', 'sech', 'csch',

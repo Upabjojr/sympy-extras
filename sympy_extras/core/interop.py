@@ -684,7 +684,8 @@ def _fill_function_tables() -> None:
     from sympy_extras.functions.elementary import complexes as c, hyperbolic as h, integers as n, trigonometric as t
     from sympy_extras.functions.combinatorial import factorials as f
     from sympy_extras.functions.special import delta_functions as d, error_functions as e, gamma_functions as g
-    from sympy_extras.functions.special import zeta_functions as z
+    from sympy_extras.functions.special import beta_functions as b, zeta_functions as z
+    from sympy_extras.functions.combinatorial import numbers as cn
     pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
         (Exp, sympy.exp), (Log, sympy.log), (LambertW, sympy.LambertW), (t.Sin, sympy.sin), (t.Cos, sympy.cos), (t.Tan, sympy.tan),
         (t.Cot, sympy.cot), (t.Sec, sympy.sec), (t.Csc, sympy.csc), (t.Asin, sympy.asin), (t.Acos, sympy.acos),
@@ -699,7 +700,8 @@ def _fill_function_tables() -> None:
         (g.PolyGamma, sympy.polygamma), (g.DiGamma, sympy.digamma), (g.TriGamma, sympy.trigamma),
         (d.DiracDelta, sympy.DiracDelta), (d.Heaviside, sympy.Heaviside), (z.Zeta, sympy.zeta),
         (z.DirichletEta, sympy.dirichlet_eta), (z.PolyLog, sympy.polylog), (e.Erf, sympy.erf), (e.Erfc, sympy.erfc),
-        (e.Erfi, sympy.erfi), (e.Erfinv, sympy.erfinv), (e.Erfcinv, sympy.erfcinv)]
+        (e.Erfi, sympy.erfi), (e.Erfinv, sympy.erfinv), (e.Erfcinv, sympy.erfcinv), (b.Beta, sympy.beta),
+        (cn.Catalan, sympy.catalan)]
     for native, counterpart in pairs:
         _NATIVE_TO_SYMPY[native] = counterpart
         _SYMPY_TO_NATIVE[counterpart] = native

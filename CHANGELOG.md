@@ -10,6 +10,8 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `beta` (`Beta`) and the Catalan numbers `catalan` (`Catalan`), ported
+  from SymPy.
 - `LambertW` with `lambertw`, and `root`, `cbrt`, `real_root`, ported from
   SymPy.
 - `sympy_extras.functions.special.error_functions`: `Erf`, `Erfc`, `Erfi`,

@@ -408,6 +408,15 @@ at 0, the derivative, facts and mpmath values; `root`, `cbrt` and
 powers, `real_root(x, n)` SymPy's `Piecewise`, and `real_root(e)`
 replaces the odd roots of negative numbers by their real values.
 
+`beta` (`Beta`, in `special/beta_functions.py`) and the Catalan numbers
+`catalan` (`Catalan`, in `combinatorial/numbers.py`; not the constant
+`Catalan` of the core) are ported from SymPy: `beta(x)` is `beta(x, x)`,
+numbers follow SymPy's `doit` rules (`beta(2, 3) = 1/12` through
+`catalan`), `catalan(n)` is the gamma quotient at the nonnegative
+integers and negative non-integers, with derivatives, facts and mpmath
+values. `betainc` and the other numbers of SymPy's `numbers.py` are not
+ported.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a
