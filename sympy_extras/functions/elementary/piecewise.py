@@ -115,6 +115,8 @@ class Piecewise(Expr):
     holds gives the value (``piecewise`` evaluates)."""
 
     __slots__ = ('_args',)
+    #: SymPy's class is a Function
+    is_Function = True
 
     def __init__(self, *pairs: PairLike) -> None:
         if not pairs:

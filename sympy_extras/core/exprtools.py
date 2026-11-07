@@ -32,6 +32,7 @@ References
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
+from fractions import Fraction
 from typing import Callable, Final, Optional, Sequence, Union, overload
 
 import sympy
@@ -42,7 +43,7 @@ from .containers import Tuple
 from .expr import Expr, ExprLike, factors_of, to_expr
 from .function import Application
 from .mul import Mul, _keep_coeff, mul
-from .numbers import ImaginaryUnit, Integer, Number, Rational
+from .numbers import ImaginaryUnit, Integer, Number, Rational, number_from_fraction
 from .power import Pow, pow
 from .symbol import Dummy
 
@@ -74,7 +75,7 @@ def decompose_power(e: Expr) -> tuple[Expr, int]:
         if c == Integer(-1):
             return (pow(base, tail), -1)
         if c != Integer(1):
-            return (pow(base, _keep_coeff(Rational(1, c.q), tail)), c.p)
+            return (pow(base, _keep_coeff(number_from_fraction(Fraction(1, c.q)), tail)), c.p)
     return (e, 1)
 
 
@@ -83,14 +84,14 @@ def _number_gcd(a: Number, b: Number) -> Number:
     denominators); ``1`` for other numbers."""
     if isinstance(a, Rational) and isinstance(b, Rational):
         from math import gcd, lcm
-        return Rational(gcd(a.p, b.p), lcm(a.q, b.q))
+        return number_from_fraction(Fraction(gcd(a.p, b.p), lcm(a.q, b.q)))
     return Integer(1)
 
 
 def _number_lcm(a: Number, b: Number) -> Number:
     if isinstance(a, Rational) and isinstance(b, Rational):
         from math import gcd, lcm
-        return Rational(lcm(a.p, b.p), gcd(a.q, b.q))
+        return number_from_fraction(Fraction(lcm(a.p, b.p), gcd(a.q, b.q)))
     product = mul(a, b)
     return product if isinstance(product, Number) else Integer(1)
 

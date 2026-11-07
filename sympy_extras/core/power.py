@@ -124,7 +124,7 @@ class Pow(Expr):
         if isinstance(b, Rational):
             h, t = pe.as_coeff_Add()
             if isinstance(h, Rational) and b.p != 0:
-                ceh = Rational(ce.p * h.p, ce.q * h.q) if isinstance(ce, Rational) else None
+                ceh = number_from_fraction(Fraction(ce.p * h.p, ce.q * h.q)) if isinstance(ce, Rational) else None
                 if ceh is not None and isinstance(ce, Rational):
                     c = pow(b, ceh)
                     r = Integer(0)

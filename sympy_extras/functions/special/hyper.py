@@ -96,6 +96,8 @@ class Hyper(Expr):
     node as given (``hyper`` cancels and orders the parameters)."""
 
     __slots__ = ('_ap', '_bq', '_z')
+    #: SymPy's class is a Function
+    is_Function = True
 
     def __init__(self, ap: Parameters, bq: Parameters, z: ExprLike) -> None:
         self._ap: Final[tuple[Expr, ...]] = _parameters(ap)
@@ -216,6 +218,8 @@ class MeijerG(Expr):
     as SymPy's ``meijerg(((an), (aother)), ((bm), (bother)), z)``."""
 
     __slots__ = ('_an', '_aother', '_bm', '_bother', '_z')
+    #: SymPy's class is a Function
+    is_Function = True
 
     def __init__(self, an: Parameters, aother: Parameters, bm: Parameters, bother: Parameters, z: ExprLike) -> None:
         self._an: Final[tuple[Expr, ...]] = _parameters(an)

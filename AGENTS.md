@@ -235,6 +235,7 @@ sympy_extras/
         polytools.py         Poly over ZZ, QQ, ZZ[a,..], QQ[a,..] (ported from SymPy, printed as SymPy): gcd, lcm, resultant, factor_list, sqf_list, div; degree, LC, gcd, lcm, resultant, factor_list, cancel
         polyerrors.py        SymPy's polynomial exceptions (ported)
         heuristicgcd.py      heugcd over ZZ (ported from SymPy), deflate/inflate; IntegerPolynomialRing uses it
+        rationaltools.py     together (ported from SymPy)
         subresultants.py     dup_psc, dmp_psc, psc: principal subresultant coefficients on SymPy's dense representation (the CAD)
         polyutils.py         dict_from_expr, expr_from_dict: core expressions <-> typed polynomials (no SymPy)
         sqfreetools.py       dup_sqf_list/part/p (Yun, and GF(p))

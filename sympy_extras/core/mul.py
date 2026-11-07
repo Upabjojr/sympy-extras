@@ -475,6 +475,12 @@ def _pow(b: ExprLike, e: ExprLike) -> Expr:
     return _POW(b, e)
 
 
+def _is_rational_value(e: Expr, value: int) -> bool:
+    """Whether ``e`` is the rational number ``value`` (an ``Integer`` or a
+    ``Rational`` with denominator 1: SymPy's ``S.One``, ``S.NegativeOne``)."""
+    return isinstance(e, Rational) and e.q == 1 and e.p == value
+
+
 # PORTED FROM SYMPY: sympy/core/mul.py:_keep_coeff
 def _keep_coeff(coeff: Expr, factors: Expr, clear: bool = True, sign: bool = False) -> Expr:
     """``coeff*factors`` without distributing a number over a sum
@@ -484,25 +490,25 @@ def _keep_coeff(coeff: Expr, factors: Expr, clear: bool = True, sign: bool = Fal
             factors, coeff = coeff, factors
         else:
             return mul(coeff, factors)
-    if factors == Integer(1) and isinstance(factors, Integer):
+    if _is_rational_value(factors, 1):
         return coeff
-    if coeff == Integer(1) and isinstance(coeff, Integer):
+    if _is_rational_value(coeff, 1):
         return factors
-    if coeff == Integer(-1) and isinstance(coeff, Integer) and not sign:
+    if _is_rational_value(coeff, -1) and not sign:
         return mul(Integer(-1), factors)
     if isinstance(factors, Add):
         if not clear and isinstance(coeff, Rational) and coeff.q != 1:
             pairs = [t.as_coeff_Mul() for t in factors.args]
             scaled = [(_keep_coeff(c, coeff), m) for c, m in pairs]
             if any(isinstance(c, Integer) for c, _ in scaled):
-                return Add(*[m if c == Integer(1) and isinstance(c, Integer) else Mul(c, m) for c, m in scaled])
+                return Add(*[m if _is_rational_value(c, 1) else Mul(c, m) for c, m in scaled])
         return Mul(coeff, factors)
     if isinstance(factors, Mul):
         margs = list(factors.args)
         first = margs[0]
         if isinstance(first, Number):
             product = mul(first, coeff)
-            if product == Integer(1) and isinstance(product, Integer):
+            if _is_rational_value(product, 1):
                 margs.pop(0)
             else:
                 margs[0] = product

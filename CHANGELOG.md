@@ -22,6 +22,7 @@ remove public functions. Breaking changes are listed here when they happen.
 - `sympy_extras.simplify.signsimp` (`signsimp`, `sub_pre`, `sub_post`) and
   `sympy_extras.polys.heuristicgcd` (`heugcd`), ported from SymPy;
   `IntegerPolynomialRing`.
+- `sympy_extras.polys.rationaltools.together`, ported from SymPy.
 
 ### Changed
 
@@ -32,6 +33,8 @@ remove public functions. Breaking changes are listed here when they happen.
   the common factors out first, as SymPy does.
 - `mul` follows SymPy's two-argument rule: a rational times `r*(sum)`
   with `r != 1` stays an undistributed product (`-(1 - x)/5`).
+- `Piecewise`, `Hyper` and `MeijerG` have `is_Function = True`, as in
+  SymPy.
 - `is_carmichael`, `find_carmichael_numbers_in_range` and
   `find_first_n_carmichaels` in `sympy_extras.ntheory`; `sqrt` and `Id`
   exported from `sympy_extras.functions`.

@@ -41,7 +41,7 @@ Poly(x*y + (sin(z)) + (sqrt(2)), x, y, sin(z), sqrt(2), domain='ZZ')
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/polys/polytools.py (Poly), sympy/polys/polyutils.py
-# (_sort_gens, _parallel_dict_from_expr), sympy/core/exprtools.py (decompose_power),
+# (_sort_gens, _parallel_dict_from_expr),
 # sympy/polys/constructor.py (construct_domain, the polynomial-ring case),
 # sympy/printing/str.py (_print_Poly) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
@@ -62,6 +62,7 @@ from typing import Final, Optional, Sequence, Union
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.exprtools import decompose_power
 from sympy_extras.core.function import expand
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import I, Integer, Number, Rational, number_from_fraction
@@ -103,26 +104,6 @@ def _gen_key(gen: Expr) -> tuple[int, str, int]:
 def sort_gens(gens: Sequence[Expr]) -> tuple[Expr, ...]:
     """The generators in SymPy's order (``_sort_gens``)."""
     return tuple(sorted(gens, key=_gen_key))
-
-
-# PORTED FROM SYMPY: sympy/core/exprtools.py:decompose_power
-def decompose_power(e: Expr) -> tuple[Expr, int]:
-    """``(base, n)`` with ``e = base**n``, ``n`` an integer (``x**(3/2)`` is
-    ``(sqrt(x), 3)``, ``x**(2*y)`` is ``(x**y, 2)``)."""
-    base, exponent = e.as_base_exp()
-    if isinstance(exponent, Number):
-        if isinstance(exponent, Rational):
-            if exponent.q != 1:
-                base = pow(base, Rational(1, exponent.q))
-            return (base, exponent.p)
-        return (e, 1)
-    c, tail = exponent.as_coeff_Mul(rational=True)
-    if isinstance(c, Rational):
-        if c == Integer(-1):
-            return (pow(base, tail), -1)
-        if c != Integer(1):
-            return (pow(base, mul(Rational(1, c.q), tail)), c.p)
-    return (e, 1)
 
 
 def _expanded(e: Expr) -> Expr:
