@@ -427,6 +427,14 @@ remainder with the sign of the dividend) in `miscellaneous.py`. A float
 operation whose result is zero now gives the exact `0`, as SymPy's
 `Float._new` does (`0*2.5` and `2.5 - 2.5` are `0`).
 
+The number-theoretic functions `totient`, `reduced_totient`,
+`divisor_sigma`, `udivisor_sigma`, `primenu`, `primeomega`, `mobius`,
+`primepi`, `legendre_symbol`, `jacobi_symbol` and `kronecker_symbol`
+(classes `Totient`, ..., `KroneckerSymbol`, in `numbers.py`) are ported
+from SymPy on the typed `sympy_extras.ntheory`, with SymPy's refusals
+and class facts; SymPy's aliases `ln`, `E1`, `Eijk` and `Id`
+(`identity_function`) are provided too.
+
 The incomplete gamma functions (`LowerGamma`, `UpperGamma` with
 `lowergamma`, `uppergamma`) and the exponential integrals (`Expint`,
 `EiNode` with `expint`, `Ei`) are ported from SymPy: the special values

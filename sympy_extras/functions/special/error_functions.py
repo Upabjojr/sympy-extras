@@ -50,7 +50,7 @@ from sympy_extras.functions.elementary.exponential import exp
 
 __all__ = ['Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'Expint', 'EiNode', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv',
            'expint', 'Ei', 'TrigonometricIntegral', 'SiNode', 'CiNode', 'ShiNode', 'ChiNode', 'LiNode', 'OffsetLiNode',
-           'Si', 'Ci', 'Shi', 'Chi', 'li', 'Li', 'FresnelIntegral', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc']
+           'Si', 'Ci', 'Shi', 'Chi', 'li', 'Li', 'FresnelIntegral', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc', 'E1']
 
 ONE = Integer(1)
 ZERO = Integer(0)
@@ -794,3 +794,10 @@ def fresnels(z: ExprLike) -> Expr:
 def fresnelc(z: ExprLike) -> Expr:
     """``fresnelc(z)``, evaluated."""
     return FresnelC.apply(to_expr(z))
+
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:E1
+def E1(z: ExprLike) -> Expr:
+    """The classical exponential integral ``expint(1, z)``."""
+    return expint(Integer(1), z)

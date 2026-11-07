@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- The number-theoretic functions `totient`, `reduced_totient`,
+  `divisor_sigma`, `udivisor_sigma`, `primenu`, `primeomega`, `mobius`,
+  `primepi`, `legendre_symbol`, `jacobi_symbol`, `kronecker_symbol`, and
+  the aliases `ln`, `E1`, `Eijk`, `Id`, ported from SymPy.
 - `subfactorial`, `factorial2`, `sinc` and `Rem`, ported from SymPy; a
   zero float result is the exact `0`, as in SymPy.
 - `euler`, `bell`, `genocchi` and `partition`, ported from SymPy.

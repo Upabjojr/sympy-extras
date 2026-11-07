@@ -48,7 +48,7 @@ from sympy_extras.core.numbers import Integer, NaN, NegativeInfinity, oo
 from sympy_extras.core.sorting import default_sort_key
 from sympy_extras.core.symbol import Symbol
 
-__all__ = ['Max', 'Min', 'max_', 'min_', 'cbrt', 'root', 'real_root', 'Rem', 'rem']
+__all__ = ['Max', 'Min', 'max_', 'min_', 'cbrt', 'root', 'real_root', 'Rem', 'rem', 'identity_function']
 
 ZERO = Integer(0)
 
@@ -515,3 +515,13 @@ class Rem(DefinedFunction):
 def rem(p: ExprLike, q: ExprLike) -> Expr:
     """``Rem(p, q)``, evaluated."""
     return Rem.apply(to_expr(p), to_expr(q))
+
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/miscellaneous.py:IdentityFunction
+def identity_function() -> Basic:
+    """SymPy's ``Id``, the identity ``Lambda(_x, _x)``."""
+    from sympy_extras.core.function import Lambda
+    from sympy_extras.core.symbol import Dummy
+    x = Dummy('x')
+    return Lambda(x, x)

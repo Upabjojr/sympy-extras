@@ -44,7 +44,7 @@ from sympy_extras.core.function import DefinedFunction
 from sympy_extras.core.numbers import Integer, Rational, number_from_fraction
 from sympy_extras.core.sorting import default_sort_key
 
-__all__ = ['KroneckerDeltaNode', 'LeviCivitaNode', 'KroneckerDelta', 'LeviCivita', 'eval_levicivita']
+__all__ = ['KroneckerDeltaNode', 'LeviCivitaNode', 'KroneckerDelta', 'LeviCivita', 'Eijk', 'eval_levicivita']
 
 _INTEGER_FACTS = {'commutative': True, 'integer': True, 'rational': True, 'real': True, 'extended_real': True,
                   'finite': True, 'complex': True, 'hermitian': True, 'algebraic': True, 'imaginary': False,
@@ -122,3 +122,10 @@ def LeviCivita(*args: ExprLike) -> Expr:
     """``LeviCivita(i, j, ...)``, evaluated (the class is
     :class:`LeviCivitaNode`)."""
     return LeviCivitaNode.apply(*[to_expr(a) for a in args])
+
+
+
+# PORTED FROM SYMPY: sympy/functions/special/tensor_functions.py:Eijk
+def Eijk(*args: ExprLike) -> Expr:
+    """SymPy's alias of ``LeviCivita``."""
+    return LeviCivita(*args)

@@ -60,7 +60,7 @@ from sympy_extras.core.numbers import (ComplexInfinity, E, Exp1, I, Infinity, In
                                        nan, number_from_fraction, oo, pi, zoo)
 from sympy_extras.core.power import pow
 
-__all__ = ['Exp', 'Log', 'LambertW', 'exp', 'log', 'lambertw']
+__all__ = ['Exp', 'Log', 'LambertW', 'exp', 'log', 'ln', 'lambertw']
 
 
 def _coefficient_of_pi_i(arg: Expr) -> Optional[Expr]:
@@ -511,3 +511,7 @@ def lambertw(x: ExprLike, k: Optional[ExprLike] = None) -> Expr:
     if k is None:
         return LambertW.apply(to_expr(x))
     return LambertW.apply(to_expr(x), to_expr(k))
+
+
+#: SymPy's alias of ``log``
+ln = log
