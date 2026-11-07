@@ -468,6 +468,14 @@ times a single sum is distributed first, so `0*(a + zoo)` is `nan`. The
 accepted difference: `zoo` absorbs a numerical value the core knows to be
 finite by evaluation (`elliptic_e(-1)`), where SymPy keeps the sum.
 
+`bessel.py` also has the Hankel functions (`hankel1`, `hankel2`, with no
+values of their own, as in SymPy), the spherical Bessel functions (`jn`,
+`yn`) and the Airy functions (`airyai`, `airybi`, `airyaiprime`,
+`airybiprime`, with their values at `0` and the infinities, derivatives
+and SymPy's complex parts); the classes are `Hankel1`, `Hankel2`,
+`SphericalJ`, `SphericalY`, `AiryAi`, `AiryBi`, `AiryAiPrime`,
+`AiryBiPrime`.
+
 The exponential family is the first one, ported from SymPy's
 `sympy/functions/elementary/exponential.py` (with the `PORTED FROM SYMPY`
 notice): the special values, `exp(log(x))`, the multiples of `pi*I`, a

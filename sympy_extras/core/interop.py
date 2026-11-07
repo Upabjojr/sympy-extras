@@ -706,6 +706,9 @@ def _fill_function_tables() -> None:
         (e.Expint, sympy.expint), (e.EiNode, sympy.Ei), (e.SiNode, sympy.Si), (e.CiNode, sympy.Ci), (e.ShiNode, sympy.Shi),
         (e.ChiNode, sympy.Chi), (e.LiNode, sympy.li), (e.OffsetLiNode, sympy.Li), (bs.BesselJ, sympy.besselj),
         (bs.BesselY, sympy.bessely), (bs.BesselI, sympy.besseli), (bs.BesselK, sympy.besselk),
+        (bs.Hankel1, sympy.hankel1), (bs.Hankel2, sympy.hankel2), (bs.SphericalJ, sympy.jn), (bs.SphericalY, sympy.yn),
+        (bs.AiryAi, sympy.airyai), (bs.AiryBi, sympy.airybi), (bs.AiryAiPrime, sympy.airyaiprime),
+        (bs.AiryBiPrime, sympy.airybiprime),
         (e.FresnelS, sympy.fresnels), (e.FresnelC, sympy.fresnelc), (el.EllipticK, sympy.elliptic_k),
         (el.EllipticF, sympy.elliptic_f), (el.EllipticE, sympy.elliptic_e), (el.EllipticPi, sympy.elliptic_pi)]
     for native, counterpart in pairs:

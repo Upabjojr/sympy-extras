@@ -10,6 +10,8 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `hankel1`, `hankel2`, `jn`, `yn` and the Airy functions, ported from
+  SymPy.
 - `fresnels`, `fresnelc` and the elliptic integrals `elliptic_k`,
   `elliptic_f`, `elliptic_e`, `elliptic_pi`, ported from SymPy; more of
   SymPy's arithmetic with infinities in the core.
