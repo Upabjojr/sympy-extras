@@ -27,6 +27,9 @@ remove public functions. Breaking changes are listed here when they happen.
   Wang's algorithm), `Poly.factor_list` over `ZZ`, `QQ`, `ZZ[a]`, `QQ[a]`
   in any number of generators, and the expression-level `factor`,
   `factor_list` and `factor_list_fraction`, ported from SymPy.
+- `Poly.sqf_list` in several generators and over `ZZ[a]`/`QQ[a]`
+  (`sympy_extras.polys.multisqf`), `sqf`, `sqf_list` and
+  `sqf_list_fraction` on expressions, ported from SymPy.
 
 ### Changed
 

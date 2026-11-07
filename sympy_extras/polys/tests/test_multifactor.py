@@ -98,3 +98,39 @@ def test_factor_matches_sympy() -> None:
         if listed != str(sympy.factor_list(e, frac=True)):
             different.append((str(e), listed, str(sympy.factor_list(e, frac=True))))
     assert not different, different[:2]
+
+
+@pytest.mark.parametrize('seed', [6, 7])
+def test_sqf_list_matches_sympy(seed: int) -> None:
+    from sympy_extras.polys.polytools import sqf, sqf_list_fraction
+    rng = random.Random(seed)
+
+    def random_polynomial(variables: list[sympy.Symbol]) -> sympy.Expr:
+        return sympy.Add(*[rng.randint(-4, 4) * sympy.Rational(1, rng.choice([1, 1, 2, 3]))
+                           * sympy.Mul(*[v**rng.randint(0, 2) for v in variables]) for _ in range(rng.randint(1, 3))])
+
+    different: list[tuple[str, str, str]] = []
+    for _ in range(50):
+        variables = rng.choice([[sx], [sx, sy], [sx, sa], [sx, sy, sa], [sx, sy, sz], [sx, sa, sb]])
+        gens = rng.choice([tuple(variables), (sx,), (sx, variables[-1]) if len(variables) > 1 else (sx,)])
+        product = sympy.Mul(*[random_polynomial(variables)**rng.choice([1, 2, 3]) for _ in range(rng.randint(1, 3))])
+        e = sympy.expand(product * rng.choice([1, 2, -3, sympy.Rational(1, 2)]))
+        P = sympy.Poly(e, *gens)
+        if P.is_zero:
+            continue
+        c, factors = Poly(expr_from_sympy(e), *[expr_from_sympy(g) for g in gens]).sqf_list()
+        if str((to_sympy(c), factors)) != str(P.sqf_list()):
+            different.append((str(P), str((to_sympy(c), factors)), str(P.sqf_list())))
+        q = e / sympy.expand(random_polynomial(variables)**2)
+        if q.has(sympy.zoo, sympy.nan):
+            continue
+        ours_in = expr_from_sympy(q)
+        if str(to_sympy(ours_in, evaluate=False)) != str(q):
+            continue
+        if str(to_sympy(sqf(ours_in), evaluate=False)) != str(sympy.sqf(q)):
+            different.append((str(q), str(to_sympy(sqf(ours_in), evaluate=False)), str(sympy.sqf(q))))
+        cl, fp, fq = sqf_list_fraction(ours_in)
+        listed = str((to_sympy(cl), [(to_sympy(f), to_sympy(m)) for f, m in fp], [(to_sympy(f), to_sympy(m)) for f, m in fq]))
+        if listed != str(sympy.sqf_list(q, frac=True)):
+            different.append((str(q), listed, str(sympy.sqf_list(q, frac=True))))
+    assert not different, different[:2]

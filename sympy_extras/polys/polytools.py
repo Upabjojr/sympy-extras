@@ -57,7 +57,7 @@ from __future__ import annotations
 import re
 from fractions import Fraction
 from math import gcd as integer_gcd
-from typing import Final, Optional, Sequence, Union
+from typing import Final, Literal, Optional, Sequence, Union
 
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.basic import Basic
@@ -78,7 +78,7 @@ from .polyutils import dict_from_expr
 from .rings import Monomial, PolyElement, PolyRing
 
 __all__ = ['Poly', 'poly', 'degree', 'LC', 'gcd', 'lcm', 'resultant', 'discriminant', 'factor_list', 'sqf_list', 'cancel',
-           'cancel_fraction', 'factor', 'factor_list_fraction']
+           'cancel_fraction', 'factor', 'factor_list_fraction', 'sqf', 'sqf_list_fraction']
 
 PolyLike = Union['Poly', ExprLike]
 
@@ -749,15 +749,35 @@ class Poly:
                 parts.append(mul(c, *[pow(g, Integer(k)) for g, k in zip(self._gens[1:], m[1:]) if k]))
         return add(*parts)
 
+    # PORTED FROM SYMPY: sympy/polys/sqfreetools.py:dup_sqf_list, dmp_sqf_list
     def sqf_list(self) -> tuple[Expr, list[tuple[Poly, int]]]:
-        f = self._univariate_rational()
+        """The square-free decomposition ``(coeff, [(g, k)])`` (SymPy's
+        ``Poly.sqf_list``): over ``QQ`` the leading coefficient comes out,
+        over ``ZZ`` and a polynomial domain the content with the sign."""
+        from .multisqf import IntegerSqfDomain, ParameterSqfDomain, RationalSqfDomain, sqf_list
+        n = len(self._gens)
+        names = self._rep.ring.names
+        if not self._domain.params and n == 1:
+            f = self._univariate_rational()
+            if self._domain.integral:
+                ints = [int(c) for c in f]
+                coefficient, factors = sqfreetools.dup_sqf_list(ints, ZZ)
+                return (Integer(coefficient), [(self._from_univariate([Fraction(c) for c in g], True), k)
+                                               for g, k in factors])
+            rational, factors_q = sqfreetools.dup_sqf_list(f, QQ)
+            return (number_from_fraction(rational), [(self._from_univariate(g, False), k) for g, k in factors_q])
         if self._domain.integral:
-            ints = [int(c) for c in f]
-            coefficient, factors = sqfreetools.dup_sqf_list(ints, ZZ)
-            return (Integer(coefficient), [(self._from_univariate([Fraction(c) for c in g], True), k)
-                                           for g, k in factors])
-        rational, factors_q = sqfreetools.dup_sqf_list(f, QQ)
-        return (number_from_fraction(rational), [(self._from_univariate(g, False), k) for g, k in factors_q])
+            DZ = (IntegerSqfDomain(names) if not self._domain.params
+                  else ParameterSqfDomain(IntegerPolynomialRing(names[n:]), names[:n]))
+            cz, fz = sqf_list(DZ.ring.from_dict({m: int(c) for m, c in self._rep.terms.items()}), DZ)
+            return (self._coefficient_expr({m[n:]: Fraction(c) for m, c in cz.terms.items()}),
+                    [(self._same_ring(self._rep.ring.from_dict({m: Fraction(c) for m, c in g.terms.items()})), k)
+                     for g, k in fz])
+        DQ = (RationalSqfDomain(names) if not self._domain.params
+              else ParameterSqfDomain(RationalPolynomialRing(names[n:]), names[:n]))
+        cq, fq = sqf_list(DQ.ring.from_dict(dict(self._rep.terms)), DQ)
+        return (self._coefficient_expr({m[n:]: c for m, c in cq.terms.items()}),
+                [(self._same_ring(self._rep.ring.from_dict(dict(g.terms))), k) for g, k in fq])
 
     # PORTED FROM SYMPY: sympy/polys/factortools.py:dup_factor_list, dmp_factor_list
     # (the domains ZZ, QQ, ZZ[a], QQ[a]), sympy/polys/polyutils.py:_sort_factors
@@ -1001,11 +1021,6 @@ def discriminant(f: PolyLike, *gens: ExprLike) -> Expr:
     return d.as_expr() if isinstance(d, Poly) else d
 
 
-def sqf_list(f: PolyLike, *gens: ExprLike) -> tuple[Expr, list[tuple[Expr, int]]]:
-    coefficient, factors = _as_poly(f, gens).sqf_list()
-    return coefficient, [(p.as_expr(), k) for p, k in factors]
-
-
 # ---------------------------------------------------------------------
 # rational functions
 
@@ -1139,8 +1154,12 @@ def _base_expr(f: FactorBase) -> Expr:
     return f.as_expr() if isinstance(f, Poly) else f
 
 
-# PORTED FROM SYMPY: sympy/polys/polytools.py:_symbolic_factor_list (method 'factor')
-def _symbolic_factor_list(expr: Expr, gens: Sequence[ExprLike]) -> tuple[Expr, SymbolicFactors]:
+Method = Literal['factor', 'sqf']
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:_symbolic_factor_list
+def _symbolic_factor_list(expr: Expr, gens: Sequence[ExprLike], method: Method = 'factor'
+                          ) -> tuple[Expr, SymbolicFactors]:
     coefficient: Expr = Integer(1)
     factors: SymbolicFactors = []
     for arg in (expr.args if isinstance(expr, Mul) else (expr,)):
@@ -1164,7 +1183,7 @@ def _symbolic_factor_list(expr: Expr, gens: Sequence[ExprLike]) -> tuple[Expr, S
         except GeneratorsNeeded:
             factors.append((_expanded(base), exponent))
             continue
-        c, poly_factors = p.factor_list()
+        c, poly_factors = p.factor_list() if method == 'factor' else p.sqf_list()
         found: SymbolicFactors = [(g, Integer(k)) for g, k in poly_factors]
         if not (isinstance(c, Integer) and c.p == 1):
             if isinstance(exponent, Integer):
@@ -1185,10 +1204,24 @@ def _symbolic_factor_list(expr: Expr, gens: Sequence[ExprLike]) -> tuple[Expr, S
                 else:
                     other.append((g, k))
             factors.append((_factors_product(other), exponent))
+    if method == 'sqf':
+        factors = [(_product_of([g for g, m in factors if m == k]), k)
+                   for k in sorted(dict.fromkeys(k for _, k in factors), key=_exponent_key)]
     collected: dict[FactorBase, Expr] = {}
     for g, k in factors:
         collected[g] = add(collected[g], k) if g in collected else k
     return coefficient, list(collected.items())
+
+
+def _product_of(bases: Sequence[FactorBase]) -> FactorBase:
+    """SymPy's ``reduce(mul, bases)``: a polynomial when they all are."""
+    result = bases[0]
+    for b in bases[1:]:
+        if isinstance(result, Poly) and isinstance(b, Poly):
+            result = result * b
+        else:
+            result = mul(_base_expr(result), _base_expr(b))
+    return result
 
 
 # PORTED FROM SYMPY: sympy/polys/polytools.py:_factors_product
@@ -1233,21 +1266,28 @@ def _exponent_key(k: Expr) -> ExponentKey:
     return (1, Fraction(0), str(k))
 
 
-# PORTED FROM SYMPY: sympy/polys/polytools.py:_sorted_factors (method 'factor')
-def _sorted_factors(factors: list[tuple[Poly, Expr]]) -> list[tuple[Poly, Expr]]:
-    return sorted(factors, key=lambda item: (max(item[0].degree(), 0) + 1 if not item[0].is_zero else 0,
-                                             len(item[0].gens), _exponent_key(item[1]), item[0].domain,
-                                             _rep_key(item[0])))
+def _rep_length(p: Poly) -> int:
+    return max(p.degree(), 0) + 1 if not p.is_zero else 0
 
 
-def _factor_lists(f: ExprLike, gens: Sequence[ExprLike]) -> tuple[Expr, list[tuple[Poly, Expr]], list[tuple[Poly, Expr]]]:
+# PORTED FROM SYMPY: sympy/polys/polytools.py:_sorted_factors
+def _sorted_factors(factors: list[tuple[Poly, Expr]], method: Method = 'factor') -> list[tuple[Poly, Expr]]:
+    if method == 'sqf':
+        return sorted(factors, key=lambda item: (_exponent_key(item[1]), _rep_length(item[0]), len(item[0].gens),
+                                                 item[0].domain, _rep_key(item[0])))
+    return sorted(factors, key=lambda item: (_rep_length(item[0]), len(item[0].gens), _exponent_key(item[1]),
+                                             item[0].domain, _rep_key(item[0])))
+
+
+def _factor_lists(f: ExprLike, gens: Sequence[ExprLike], method: Method = 'factor'
+                  ) -> tuple[Expr, list[tuple[Poly, Expr]], list[tuple[Poly, Expr]]]:
     from .rationaltools import together
     numer, denom = together(to_expr(f)).as_numer_denom()
-    cp, fp = _symbolic_factor_list(numer, gens)
-    cq, fq = _symbolic_factor_list(denom, gens)
+    cp, fp = _symbolic_factor_list(numer, gens, method)
+    cq, fq = _symbolic_factor_list(denom, gens, method)
     polys_p = [(g if isinstance(g, Poly) else Poly(g, *gens), k) for g, k in fp]
     polys_q = [(g if isinstance(g, Poly) else Poly(g, *gens), k) for g, k in fq]
-    return mul(cp, pow(cq, Integer(-1))), _sorted_factors(polys_p), _sorted_factors(polys_q)
+    return mul(cp, pow(cq, Integer(-1))), _sorted_factors(polys_p, method), _sorted_factors(polys_q, method)
 
 
 # PORTED FROM SYMPY: sympy/polys/polytools.py:factor_list, _generic_factor_list
@@ -1315,8 +1355,45 @@ def factor(f: ExprLike, *gens: ExprLike, deep: bool = False, fraction: bool = Tr
     return _symbolic_factor(e, gens, fraction)
 
 
-def _symbolic_factor(e: Expr, gens: Sequence[ExprLike], fraction: bool) -> Expr:
+def _symbolic_factor(e: Expr, gens: Sequence[ExprLike], fraction: bool, method: Method = 'factor') -> Expr:
     from sympy_extras.core.mul import _keep_coeff
     from .rationaltools import together
-    coefficient, factors = _symbolic_factor_list(together(e, fraction=fraction), gens)
+    coefficient, factors = _symbolic_factor_list(together(e, fraction=fraction), gens, method)
     return _keep_coeff(coefficient, _factors_product(factors))
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:sqf_list
+def sqf_list(f: PolyLike, *gens: ExprLike) -> tuple[Expr, list[tuple[Expr, Expr]]]:
+    """The constant and the square-free factors with their
+    multiplicities, sorted by multiplicity (SymPy's ``sqf_list``).
+
+    >>> from sympy_extras.core import Symbol
+    >>> x, y = Symbol('x'), Symbol('y')
+    >>> sqf_list(2*x**5 + 16*x**4 + 50*x**3 + 76*x**2 + 56*x + 16)
+    (2, [(x + 1, 2), (x + 2, 3)])
+    """
+    if isinstance(f, Poly):
+        c, factors = f.sqf_list()
+        return c, [(g.as_expr(), Integer(k)) for g, k in factors]
+    coefficient, fp, fq = _factor_lists(f, gens, 'sqf')
+    if fq:
+        raise PolynomialError('a polynomial expected, got %s' % (f,))
+    return coefficient, [(g.as_expr(), k) for g, k in fp]
+
+
+def sqf_list_fraction(f: ExprLike, *gens: ExprLike) -> tuple[Expr, list[tuple[Expr, Expr]], list[tuple[Expr, Expr]]]:
+    """SymPy's ``sqf_list(f, frac=True)``."""
+    coefficient, fp, fq = _factor_lists(f, gens, 'sqf')
+    return coefficient, [(g.as_expr(), k) for g, k in fp], [(g.as_expr(), k) for g, k in fq]
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:sqf
+def sqf(f: ExprLike, *gens: ExprLike, fraction: bool = True) -> Expr:
+    """The square-free factorisation of an expression (SymPy's ``sqf``).
+
+    >>> from sympy_extras.core import Symbol
+    >>> x = Symbol('x')
+    >>> sqf(2*x**5 + 16*x**4 + 50*x**3 + 76*x**2 + 56*x + 16)
+    2*(x + 1)**2*(x + 2)**3
+    """
+    return _symbolic_factor(to_expr(f), gens, fraction, 'sqf')

@@ -888,6 +888,7 @@ sympy_extras/
         heuristicgcd.py      the heuristic gcd of multivariate integer polynomials
         rationaltools.py     together: sums over common denominators
         multifactor.py       factorisation of multivariate polynomials over ZZ (Wang)
+        multisqf.py          square-free decomposition of multivariate polynomials
         subresultants.py     principal subresultant coefficients on SymPy's dense representation (CAD projections)
         polyutils.py         conversions between core expressions and the typed polynomials
         sqfreetools.py       square-free decomposition (Yun; over GF(p) with p-th roots)
