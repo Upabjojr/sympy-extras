@@ -42,8 +42,15 @@ remove public functions. Breaking changes are listed here when they happen.
   `collect`, `collect_dict` (SymPy's `evaluate=False`) and `rcollect`,
   ported from SymPy.
 
+- `sympy_extras.simplify.powsimp.powsimp`, ported from SymPy.
+
 ### Changed
 
+- `pow` follows SymPy's `Pow._eval_power` for powers of powers (`(p**2)**x`
+  is `p**(2*x)` for positive `p`, `exp(2)**x` is `exp(2*x)`, the branch
+  factor for half-integer and complex exponents); `Abs(x)**n` for real `x`
+  as in SymPy; `mul` rebuilds a lone power whose exponent evaluates
+  differently (`x**(2*(n + 1))` is `x**(2*n + 2)`), as SymPy's `_gather`.
 - `subs` follows SymPy's rules for powers and exponentials
   (`x**4` with `x**2 -> y` is `y**2`, `exp(3*x + 1)` with `exp(x) -> y` is
   `E*y**3`, `x` with `1/x -> y` is `1/y`) and applies a mapping with the

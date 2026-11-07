@@ -287,15 +287,9 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
             return inverse
     if base.is_Pow or _is_exp(base):
         inner_base, inner_exp = base.as_base_exp()
-        # (b**p)**q is b**(p*q) for an integer q, and for -1 < p < 1 (then
-        # Im(p*Log(b)) stays in (-pi, pi), whatever q is)
-        combine = exp.is_integer is True
-        if not combine and isinstance(inner_exp, Rational) and -1 < inner_exp.as_fraction() < 1:
-            combine = True
-        if not combine and inner_base.is_positive is True and exp.is_real is True and inner_exp.is_real is True:
-            combine = True
-        if combine:
-            return pow(inner_base, mul(inner_exp, exp))
+        denested = _power_of_power(inner_base, inner_exp, exp)
+        if denested is not None:
+            return denested
     if isinstance(base, Mul):
         distributed = _power_of_product(base, exp)
         if distributed is not None:
@@ -303,6 +297,92 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
     if base.is_commutative is False and not (isinstance(exp, Rational) and exp.q == 1):
         return Pow(base, exp)
     return Pow(base, exp)
+
+
+def _numeric2(e: Expr) -> Optional[Expr]:
+    """SymPy's ``_n2``: ``e`` evaluated to 2 digits when it is a number."""
+    try:
+        value = e.evalf(2)
+    except (ValueError, ArithmeticError):
+        return None
+    return value if isinstance(value, Number) else None
+
+
+def _half(e: Expr) -> bool:
+    if isinstance(e, Rational) and e.q == 2:
+        return True
+    n, d = e.as_numer_denom()
+    return n.is_integer is True and d == Integer(2)
+
+
+# PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_power
+def _power_of_power(b: Expr, e: Expr, expt: Expr) -> Optional[Expr]:
+    """``(b**e)**expt`` as ``s*b**(e*expt)`` when the factor ``s`` (the
+    branch correction) is known: ``s = 1`` for an integer ``expt``, a polar
+    base, ``|e| < 1``, a nonnegative base, ``re(b) >= 0`` with ``|e| < 2``;
+    the half-integer and complex exponents by the floor formula;
+    ``None`` otherwise."""
+    from sympy_extras.functions.elementary.complexes import abs_, arg, im, re
+    from sympy_extras.functions.elementary.exponential import exp as exponential, log
+    from sympy_extras.functions.elementary.integers import floor
+    from .numbers import pi
+    s: Optional[Expr] = None
+    if expt.is_integer is True:
+        s = Integer(1)
+    elif b.is_polar is True:
+        s = Integer(1)
+    elif e.is_extended_real is not None:
+        if e.is_extended_real:
+            if e == Integer(-1):
+                if _half(expt):
+                    if b.is_negative is True:
+                        return mul(pow(Integer(-1), expt), pow(mul(Integer(-1), b), mul(e, expt)))
+                    if b.is_negative is False:
+                        return pow(b, mul(Integer(-1), expt))
+            elif e.is_even is True:
+                if b.is_extended_real is True:
+                    b = abs_(b)
+                if b.is_imaginary is True:
+                    b = mul(abs_(im(b)), I)
+            if _lt(abs_(e), Integer(1)) or e == Integer(1):
+                s = Integer(1)
+            elif b.is_extended_nonnegative is True:
+                s = Integer(1)
+            elif re(b).is_extended_nonnegative is True and _lt(abs_(e), Integer(2)):
+                s = Integer(1)
+            elif _half(expt):
+                s = exponential(mul(Integer(2), pi, I, expt,
+                                    floor(add(Rational(1, 2), mul(Integer(-1), e, arg(b), pow(mul(Integer(2), pi), Integer(-1)))))))
+                s = _real_sign(s)
+        else:
+            s = exponential(mul(Integer(2), I, pi, expt,
+                                floor(add(Rational(1, 2), mul(Integer(-1), im(mul(e, log(b))),
+                                                                pow(mul(Integer(2), pi), Integer(-1)))))))
+            s = _real_sign(s)
+    if s is not None:
+        return mul(s, pow(b, mul(e, expt)))
+    return None
+
+
+def _real_sign(s: Expr) -> Optional[Expr]:
+    from sympy_extras.functions.elementary.complexes import sign
+    if s.is_extended_real is True:
+        sg = sign(s)
+        difference = _numeric2(add(sg, mul(Integer(-1), s)))
+        if difference is not None and difference == 0:
+            return sg
+    return None
+
+
+def _lt(a: Expr, b: Expr) -> bool:
+    """SymPy's ``(a < b) == True``."""
+    from .relational import Lt
+    return Lt(a, b).doit() is true_value()
+
+
+def true_value() -> Basic:
+    from .logic import true
+    return true
 
 
 def _is_exp(e: Expr) -> bool:

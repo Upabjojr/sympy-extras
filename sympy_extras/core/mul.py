@@ -285,7 +285,12 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
             numerical.setdefault(exponent, []).append(base)
             continue
         if len(cs) == 1:
-            rebuilt.append(factor)
+            # SymPy's _gather rebuilds b**(c*t) with c*t evaluated: an
+            # unevaluated exponent 2*(n + 1) becomes 2*n + 2
+            if factor.is_Pow and factor.as_base_exp()[1] != exponent:
+                rebuilt.append(pow(base, exponent))
+            else:
+                rebuilt.append(factor)
             continue
         combined = pow(base, exponent)
         if combined.as_base_exp()[0] != base:

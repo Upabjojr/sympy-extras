@@ -492,6 +492,18 @@ class Abs(DefinedFunction):
 
     function_name = 'Abs'
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:Abs._eval_power
+    def _eval_power_node(self, exponent: Expr) -> Optional[Expr]:
+        """``Abs(x)**n`` for real ``x``: ``x**n`` for even ``n``,
+        ``x**(n - 1)*Abs(x)`` for other integers but ``-1``."""
+        arg = self.args[0]
+        if isinstance(arg, Expr) and arg.is_extended_real is True and exponent.is_integer is True:
+            if exponent.is_even is True:
+                return pow(arg, exponent)
+            if isinstance(exponent, Integer) and exponent.p != -1:
+                return mul(pow(arg, Integer(exponent.p - 1)), self)
+        return None
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         [arg] = args
