@@ -75,7 +75,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional, Sequence
 
-from sympy.ntheory.generate import nextprime
+from sympy_extras.ntheory.generate import nextprime
 from sympy.polys.rings import PolyElement, PolyRing
 
 from .recursive import (coefficient, degree, distinct_factors, exact_quotient, initial, main_variable, normalize,

@@ -845,6 +845,10 @@ sympy_extras/
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
         tests/
+    ntheory/
+        primetest.py         isprime (Baillie–PSW), jacobi_symbol
+        generate.py          nextprime, prevprime, primerange
+        factor_.py           factorint (trial division, Pollard–Brent rho), perfect_power
     polys/
         domains/             typed coefficient domains: ZZ, QQ, GF(p), algebraic number fields, polynomial rings (towers for several variables), fraction fields
         densebasic.py        dense polynomials over a typed domain: the representation

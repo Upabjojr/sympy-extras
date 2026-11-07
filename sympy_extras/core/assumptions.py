@@ -281,7 +281,7 @@ def _number_facts(n: Number) -> Facts:
         if n.q == 1:
             facts['even'] = n.p % 2 == 0
             facts['odd'] = n.p % 2 == 1
-            from sympy import isprime
+            from sympy_extras.ntheory.primetest import isprime
             facts['prime'] = bool(isprime(n.p))
             facts['composite'] = n.p > 1 and not facts['prime']
         else:

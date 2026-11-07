@@ -115,7 +115,7 @@ from sympy.functions.elementary.trigonometric import (acos, acot, asin, atan, co
 from sympy.logic.boolalg import Boolean
 from sympy.matrices.dense import Matrix
 from sympy.matrices.normalforms import smith_normal_form
-from sympy.ntheory.factor_ import factorint
+from sympy_extras.ntheory.factor_ import factorint
 from sympy.polys.domains import QQ, ZZ
 from sympy.polys.domains.algebraicfield import AlgebraicField
 from sympy.polys.domains.domain import Domain
@@ -1117,10 +1117,10 @@ class ElementaryTower:
             if value < 0:
                 return self.normal(self._minus_one_logarithm() + self._number_logarithm(-value))
             total = self.zero
-            for prime, power in factorint(int(value.p)).items():
-                total = total + self._prime_logarithm(int(prime)).times(Integer(power))
-            for prime, power in factorint(int(value.q)).items():
-                total = total - self._prime_logarithm(int(prime)).times(Integer(power))
+            for prime, exponent in factorint(int(value.p)).items():
+                total = total + self._prime_logarithm(prime).times(Integer(exponent))
+            for prime, exponent in factorint(int(value.q)).items():
+                total = total - self._prime_logarithm(prime).times(Integer(exponent))
             return self.normal(total)
         degree = int(Poly(minimal_polynomial(value, Dummy('t'))).degree())
         a = self._number(value)

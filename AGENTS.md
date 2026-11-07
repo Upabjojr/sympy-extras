@@ -150,6 +150,7 @@ sympy_extras/
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
         tests/
+    ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)
     polys/
         domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, AlgebraicField, PolynomialRing, FractionField); see docs/dense.md
         densebasic.py        dense univariate polynomials over a Domain[T] (list[T], highest degree first)

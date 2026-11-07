@@ -26,7 +26,7 @@ from math import floor
 from typing import TYPE_CHECKING, Optional
 
 import mpmath
-from sympy.ntheory import factorint
+from sympy_extras.ntheory.factor_ import factorint
 
 from .add import Add, add
 from .basic import Basic

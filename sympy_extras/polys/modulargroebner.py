@@ -171,7 +171,6 @@ from typing import Iterable, Iterator, Optional, Sequence
 
 from sympy.core.expr import Expr
 from sympy.core.symbol import Dummy
-from sympy.ntheory.generate import prevprime
 from sympy.polys.domains import GF, QQ
 from sympy.polys.domains.finitefield import FiniteField
 from sympy.polys.groebnertools import groebner as _groebner
@@ -179,8 +178,12 @@ from sympy.polys.orderings import MonomialOrder, grevlex, grlex
 from sympy.polys.rings import PolyElement, PolyRing
 
 from sympy_extras._timeout import attempt
+from sympy_extras.ntheory.generate import prevprime
 from sympy_extras._typing import Monomial, OrderKey
 from sympy_extras.settings import settings
+
+from .domains.finitefield import FiniteField as FiniteField_
+from .rings import MonomialOrder as TypedOrder, PolyRing as PolyRing_
 
 __all__ = ['direct_groebner', 'groebner', 'modular_groebner', 'rational_reconstruction', 'chinese_remainder',
     'default_primes', 'ModularTrace']
@@ -590,9 +593,18 @@ _fields: dict[int, FiniteField] = {}
 
 def _image(polys: Sequence[IntPoly], symbols: Sequence[Expr], order: MonomialOrder, key: OrderKey,
            p: int) -> list[tuple[Monomial, IntPoly]]:
-    """The reduced Gröbner basis of the polynomials modulo ``p``, computed
-    by SymPy, by increasing leading monomials, with coefficients in
-    ``range(p)``."""
+    """The reduced Gröbner basis of the polynomials modulo ``p``, by
+    increasing leading monomials, with coefficients in ``range(p)``: by
+    the typed F4 over ``GF(p)`` (``settings.groebner_algorithm`` 'f4'), by
+    SymPy's Buchberger otherwise."""
+    if settings.groebner_algorithm == 'f4':
+        from .f4 import f4
+        typed = PolyRing_(FiniteField_(p), [str(s) for s in symbols], _typed_order(order, len(symbols)))
+        reduced = [typed.from_dict({m: c % p for m, c in f.items()}) for f in polys]
+        typed_basis = f4([f for f in reduced if f.terms], typed)
+        image: list[tuple[Monomial, IntPoly]] = [(g.LM, dict(g.terms)) for g in typed_basis]
+        image.sort(key=lambda pair: key(pair[0]))
+        return image
     field = _fields.get(p)
     if field is None:
         # SymPy tests the primality of the modulus the first time a finite
@@ -600,14 +612,27 @@ def _image(polys: Sequence[IntPoly], symbols: Sequence[Expr], order: MonomialOrd
         # ``groebner`` does: the domains are kept
         field = _fields[p] = GF(p)
     ring = PolyRing(symbols, field, order)
-    reduced = [ring.from_dict({m: c % p for m, c in f.items()}) for f in polys]
-    basis = direct_groebner([f for f in reduced if f], ring)
-    image: list[tuple[Monomial, IntPoly]] = []
+    sympy_reduced = [ring.from_dict({m: c % p for m, c in f.items()}) for f in polys]
+    basis = list(_groebner([f for f in sympy_reduced if f], ring))
+    sympy_image: list[tuple[Monomial, IntPoly]] = []
     for g in basis:
         coefficients: IntPoly = {tuple(m): int(field.to_int(c)) % p for m, c in g.items()}
-        image.append((max(coefficients, key=key), coefficients))
-    image.sort(key=lambda pair: key(pair[0]))
-    return image
+        sympy_image.append((max(coefficients, key=key), coefficients))
+    sympy_image.sort(key=lambda pair: key(pair[0]))
+    return sympy_image
+
+
+_typed_orders: dict[tuple[MonomialOrder, int], TypedOrder] = {}
+
+
+def _typed_order(order: MonomialOrder, n: int) -> TypedOrder:
+    """The typed order of a SymPy order, kept per order (its memoised
+    keys serve every prime)."""
+    found = _typed_orders.get((order, n))
+    if found is None:
+        from .interop import typed_order
+        found = _typed_orders[(order, n)] = typed_order(order, n)
+    return found
 
 
 class _Lifting:

@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.ntheory` (no SymPy): Baillie–PSW primality, `nextprime`,
+  `prevprime`, `primerange`, `factorint` (trial division, Pollard–Brent
+  rho, perfect powers; SymPy's `limit` convention). The modular Gröbner
+  bases, the regular chains, the core and the structure theorem use it,
+  and the modular images are computed by the typed F4 directly.
 - F4 (`sympy_extras.polys.f4`) and the strong Gröbner bases over the
   integers (`stronggroebner`) run on the typed rings of
   `sympy_extras.polys.rings` and no longer import SymPy: F4 has its own
