@@ -883,8 +883,9 @@ def modular_groebner(polys: Sequence[PolyElement], ring: PolyRing, primes: Optio
 
 def direct_groebner(polys: Sequence[PolyElement], ring: PolyRing) -> list[PolyElement]:
     """The reduced Gröbner basis by the direct computation of
-    ``settings.groebner_algorithm``: F4 (:mod:`sympy_extras.polys.f4`)
-    over a field, SymPy's Buchberger otherwise.
+    ``settings.groebner_algorithm``: the typed F4
+    (:mod:`sympy_extras.polys.f4`) over ``QQ`` and ``GF(p)``, SymPy's
+    Buchberger otherwise.
 
     Examples
     ========
@@ -897,8 +898,17 @@ def direct_groebner(polys: Sequence[PolyElement], ring: PolyRing) -> list[PolyEl
     """
     nonzero = [f for f in polys if f]
     if settings.groebner_algorithm == 'f4' and ring.domain.is_Field:
+        # the typed F4 over QQ and GF(p), through the conversions of
+        # sympy_extras.polys.interop; other fields keep SymPy's algorithm
         from .f4 import f4
-        return f4(nonzero, ring)
+        from .interop import gf_from_sympy, gf_to_sympy, qq_from_sympy, qq_to_sympy, sympy_modulus
+        if ring.domain.is_QQ:
+            typed_qq, polys_qq = qq_from_sympy(nonzero, ring)
+            return qq_to_sympy(f4(polys_qq, typed_qq), ring)
+        p = sympy_modulus(ring)
+        if p is not None:
+            typed_gf, polys_gf = gf_from_sympy(nonzero, ring, p)
+            return gf_to_sympy(f4(polys_gf, typed_gf), ring)
     return list(_groebner(nonzero, ring))
 
 

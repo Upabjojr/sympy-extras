@@ -1,62 +1,71 @@
-r"""Gröbner bases by Faugère's F4 algorithm.
+r"""Gröbner bases by Faugère's F4 algorithm, on the typed sparse
+polynomials of :mod:`sympy_extras.polys.rings`.
 
-Buchberger's algorithm reduces the S-polynomials of the critical pairs one
-at a time, each reduction repeating the same multiplications of the basis
-elements. F4 [1]_ reduces many S-polynomials at once: a set of critical
-pairs is selected, the two halves of each S-polynomial and every reducer
-they will need are collected by *symbolic preprocessing* into a set of
-polynomials, and that set is written as a
-matrix (one row per polynomial, one column per monomial, the columns in
-decreasing monomial order) whose reduced row echelon form is computed
-once. The rows whose leading monomial is new, that is not among the
-leading monomials of the rows written down, are the polynomials a run of
-Buchberger's algorithm would have found; they join the basis and the
-pairs are updated with the criteria of Gebauer and Möller [2]_, so that no
-pair known to reduce to zero is ever selected. The result is interreduced
-into the reduced Gröbner basis, which is unique: it is the one SymPy's
-``groebner`` computes.
+Buchberger's algorithm reduces one S-polynomial at a time. F4 selects a
+set of critical pairs, writes the two halves $m_i g_i$, $m_j g_j$ of each
+S-polynomial as the rows of a sparse matrix whose columns are the
+monomials in decreasing order, adds by *symbolic preprocessing* a reducer
+$m g$ (for the basis element $g$ with the smallest leading monomial
+dividing it) for every monomial of the rows which is not yet a leading
+monomial of a row, and reduces the whole matrix at once to row echelon
+form: the rows whose leading monomial is not among the leading monomials
+of the original rows are the new basis elements. The critical pairs are
+kept and pruned with the criteria of Gebauer and Möller, and the result
+is interreduced into the reduced Gröbner basis.
 
-The selection is Faugère's *normal strategy*, all the pairs whose lcm has
-the lowest total degree, for the graded orders (``grevlex``, ``grlex`` and
-the degree-first order of the modular algorithm's homogenised images),
-where it builds the Macaulay matrices degree by degree and is what makes
-F4 fast. For the other orders (``lex``, the elimination and weight
-orders) the degree of the lcm says little about the position of a pair in
-the order and the normal strategy builds matrices with many columns and
-few new rows: on Katsura-4 in ``lex`` it had not finished after 40 s
-where SymPy's Buchberger takes 2.5 s; there the ``SELECTION`` (16) pairs
-with the smallest lcms in the order are selected instead (0.3 s). A graded
-order is recognised by comparing the squares of the variables with the
-variables.
+The *selection strategy* decides the speed. For a graded order the
+*normal strategy* takes all the pairs whose lcm has the lowest degree.
+For orders which are not graded (lex, elimination orders) the degree of
+the lcms says little about their position in the order and selecting by
+degree builds huge matrices with few new rows; there the ``SELECTION``
+pairs with the smallest lcms are taken (Katsura-4 in lex: no result in
+40 s by degree, 0.3 s this way).
 
-The implementation works on the sparse polynomials of
-:mod:`sympy.polys.rings` over any field (``QQ``, ``GF(p)``, an algebraic
-number field) and uses SymPy's sparse row reduction
-(:func:`sympy.polys.matrices.sdm.sdm_irref`). The reducers are chosen as
-the basis elements with the smallest leading monomial dividing the
-monomial to reduce, a cheap form of Faugère's ``Simplify``.
+The row reduction is a sparse Gauss–Jordan elimination over the
+coefficient field of the ring (rows as dictionaries from column to
+coefficient, pivots normalised to leading coefficient one): the reduced
+form matters, since the forward elimination alone leaves the new
+elements unreduced against each other and their coefficients explode in
+lex (thousands of digits on Katsura-4).
+
+Examples
+========
+
+>>> from sympy_extras.polys.domains import QQ
+>>> from sympy_extras.polys.rings import PolyRing, grevlex, lex
+>>> from sympy_extras.polys.f4 import f4
+>>> R = PolyRing(QQ, ['x', 'y', 'z'], grevlex)
+>>> x, y, z = R.gens
+>>> [str(g) for g in f4([x*x + y*y + z*z - R.one, x + y + z, x*y*z - R.one], R)]
+['z**3 - 1/2*z - 1', 'y**2 + y*z + z**2 - 1/2', 'x + y + z']
+>>> L = PolyRing(QQ, ['x', 'y'], lex)
+>>> X, Y = L.gens
+>>> [str(g) for g in f4([X*X - Y, Y*Y - X], L)]
+['x - y**2', 'y**4 - y']
 
 References
 ==========
 
-.. [1] J.-C. Faugère, A new efficient algorithm for computing Gröbner
-   bases (F4), Journal of Pure and Applied Algebra 139 (1999) 61–88.
-.. [2] R. Gebauer, H. M. Möller, On an installation of Buchberger's
-   algorithm, Journal of Symbolic Computation 6 (1988) 275–286.
-.. [3] T. Becker, V. Weispfenning, Gröbner Bases, Springer (1993),
-   section 5.5 (the pair update).
+.. [1] J.-C. Faugère, *A new efficient algorithm for computing Gröbner
+       bases (F4)*, Journal of Pure and Applied Algebra 139 (1999),
+       61-88.
+.. [2] R. Gebauer, H. M. Möller, *On an installation of Buchberger's
+       algorithm*, Journal of Symbolic Computation 6 (1988), 275-286.
+.. [3] T. Becker, V. Weispfenning, *Gröbner Bases*, Springer, 1993,
+       Section 5.5 (the criteria and their installation).
 """
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Sequence, TypeVar
 
-from sympy.polys.matrices.sdm import sdm_irref
-from sympy.polys.monomials import monomial_div, monomial_divides, monomial_lcm, monomial_mul
-from sympy.polys.rings import PolyElement, PolyRing
+from sympy_extras._typing import Monomial
 
-from sympy_extras._typing import DomainElement, Monomial, OrderKey
+from .domains.domain import Domain
+from .rings import MonomialOrder, PolyElement, PolyRing, monomial_div, monomial_divides, monomial_lcm, monomial_mul
 
-__all__ = ['f4', 'reduced_basis', 'is_graded', 'SELECTION']
+__all__ = ['f4', 'reduced_basis', 'is_graded', 'row_echelon', 'SELECTION']
+
+T = TypeVar('T')
 
 #: the number of pairs selected at a time for the orders which are not graded
 SELECTION = 16
@@ -65,49 +74,48 @@ SELECTION = 16
 Pair = tuple[int, int, Monomial]
 #: a row of the matrix: the multiplier and the index of the basis element it multiplies
 Row = tuple[Monomial, int]
+#: a sparse row: column index to nonzero coefficient
+SparseRow = dict[int, T]
 
 
-def f4(polys: Sequence[PolyElement], ring: PolyRing) -> list[PolyElement]:
+def f4(polys: Sequence[PolyElement[T]], ring: PolyRing[T]) -> list[PolyElement[T]]:
     """The reduced Gröbner basis of the ideal generated by ``polys`` in
     ``ring`` (whose domain must be a field) for the order of the ring,
-    sorted by decreasing leading monomial as SymPy's ``groebner`` sorts it.
+    sorted by decreasing leading monomial.
 
     Examples
     ========
 
-    >>> from sympy import QQ, GF
-    >>> from sympy.polys.rings import ring
+    >>> from sympy_extras.polys.domains import GF, QQ
+    >>> from sympy_extras.polys.rings import PolyRing, lex
     >>> from sympy_extras.polys.f4 import f4
-    >>> R, x, y, z = ring('x,y,z', QQ, 'grevlex')
-    >>> f4([x**2 + y**2 + z**2 - 1, x + y + z, x*y*z - 1], R)
-    [z**3 - 1/2*z - 1, y**2 + y*z + z**2 - 1/2, x + y + z]
-    >>> R, x, y = ring('x,y', QQ, 'lex')
-    >>> f4([x**2 - y, y**2 - x], R)
-    [x - y**2, y**4 - y]
-    >>> f4([], R), f4([x, R(3)], R)
-    ([], [1])
-    >>> R, x, y = ring('x,y', GF(7), 'lex')
-    >>> f4([x**2 - y, 3*y**2 - x], R) == [x - 3*y**2, y**4 + 3*y]
-    True
+    >>> R = PolyRing(QQ, ['x', 'y'], lex)
+    >>> x, y = R.gens
+    >>> f4([], R), [str(g) for g in f4([x, R.from_int(3)], R)]
+    ([], ['1'])
+    >>> F = PolyRing(GF(7), ['x', 'y'], lex)
+    >>> X, Y = F.gens
+    >>> [str(g) for g in f4([X*X - Y, (Y*Y).mul_ground(3) - X], F)]
+    ['x + 4*y**2', 'y**4 + 3*y']
     """
-    if not ring.domain.is_Field:
+    if not ring.domain.is_field:
         raise ValueError("F4 needs a field as the coefficient domain, got %s" % ring.domain)
-    basis: list[PolyElement] = []
+    basis: list[PolyElement[T]] = []
     pairs: list[Pair] = []
     for f in polys:
-        if f:
+        if f.terms:
             basis, pairs = _update(basis, pairs, f.monic())
-    key: OrderKey = ring.order
+    order = ring.order
     graded = is_graded(ring)
     while pairs:
-        selected, pairs = _select(pairs, key, graded)
-        rows = _symbolic_preprocessing(selected, basis, key)
-        for h in _reduce_rows(rows, basis, ring, key):
+        selected, pairs = _select(pairs, order, graded)
+        rows = _symbolic_preprocessing(selected, basis, order)
+        for h in _reduce_rows(rows, basis, ring):
             basis, pairs = _update(basis, pairs, h)
     return reduced_basis(basis, ring)
 
 
-def is_graded(ring: PolyRing) -> bool:
+def is_graded(ring: PolyRing[T]) -> bool:
     """Whether the order of the ring compares total degrees first, decided
     by comparing the square of every variable with every variable (the
     graded orders put every monomial of degree two above every one of
@@ -116,92 +124,84 @@ def is_graded(ring: PolyRing) -> bool:
     Examples
     ========
 
-    >>> from sympy import QQ
-    >>> from sympy.polys.rings import ring
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.rings import PolyRing, grevlex, lex
     >>> from sympy_extras.polys.f4 import is_graded
-    >>> is_graded(ring('x,y', QQ, 'grevlex')[0]), is_graded(ring('x,y', QQ, 'lex')[0])
+    >>> is_graded(PolyRing(QQ, ['x', 'y'], grevlex)), is_graded(PolyRing(QQ, ['x', 'y'], lex))
     (True, False)
     """
-    key: OrderKey = ring.order
+    key = ring.order.key
     n = ring.ngens
     variables = [tuple(1 if k == i else 0 for k in range(n)) for i in range(n)]
     squares = [tuple(2 if k == i else 0 for k in range(n)) for i in range(n)]
     return all(key(square) > key(variable) for square in squares for variable in variables)
 
 
-def _select(pairs: list[Pair], key: OrderKey, graded: bool) -> tuple[list[Pair], list[Pair]]:
+def _select(pairs: list[Pair], order: MonomialOrder, graded: bool) -> tuple[list[Pair], list[Pair]]:
     """The pairs to reduce together and the others: for a graded order all
     the pairs whose lcm has the minimal degree, otherwise the ``SELECTION``
     pairs with the smallest lcms."""
     if graded:
         degree = min(sum(lcm) for _, _, lcm in pairs)
         return [p for p in pairs if sum(p[2]) == degree], [p for p in pairs if sum(p[2]) != degree]
-    ordered = sorted(pairs, key=lambda p: key(p[2]))
+    ordered = sorted(pairs, key=lambda p: order.key(p[2]))
     return ordered[:SELECTION], ordered[SELECTION:]
 
 
-def _update(basis: list[PolyElement], pairs: list[Pair], h: PolyElement) -> tuple[list[PolyElement], list[Pair]]:
+def _update(basis: list[PolyElement[T]], pairs: list[Pair], h: PolyElement[T]
+            ) -> tuple[list[PolyElement[T]], list[Pair]]:
     """The basis and the critical pairs after ``h`` joins the basis, with
     the criteria of Gebauer and Möller: among the new pairs ``(g, h)``,
-    those whose lcm is a multiple of another new pair's lcm are dropped
-    unless the two lcms are equal, the pairs with coprime leading
-    monomials are dropped (Buchberger's first criterion), and the old
-    pairs whose lcm is a proper multiple of ``lm(h)`` are dropped (the
-    chain criterion); the old elements whose leading monomial ``lm(h)``
-    divides stay in the list but take part in no further pair."""
+    those whose lcm is a proper multiple of another new pair's lcm are
+    dropped, as are the pairs with coprime leading monomials (Buchberger's
+    first criterion) and all but one of the pairs with equal lcms; the old
+    pairs whose lcm is a multiple of ``lm(h)`` different from the lcms of
+    their elements with ``h`` are dropped (the chain criterion)."""
     lm_h = h.LM
     index = len(basis)
-    new: list[Pair] = []
-    # the new pairs, those with an lcm which is a multiple of another new
-    # lcm or with coprime leading monomials dropped (C and D of [3])
-    candidates = [(i, monomial_lcm(basis[i].LM, lm_h)) for i in range(index) if basis[i] is not None]
+    candidates = [(i, monomial_lcm(basis[i].LM, lm_h)) for i in range(index)]
     kept: list[tuple[int, Monomial]] = []
     for i, lcm in candidates:
-        coprime = monomial_mul(basis[i].LM, lm_h) == lcm
-        if coprime:
+        if monomial_mul(basis[i].LM, lm_h) == lcm:
             continue
         if any(lcm != other and monomial_divides(other, lcm) for _, other in candidates):
             continue
         kept.append((i, lcm))
+    new: list[Pair] = []
     seen: set[Monomial] = set()
     for i, lcm in kept:
         if lcm in seen:
-            continue  # one pair per lcm among the equal ones
+            continue
         seen.add(lcm)
         new.append((i, index, lcm))
-    # the old pairs made redundant by h (B of [3])
     remaining: list[Pair] = []
     for i, j, lcm in pairs:
         if monomial_divides(lm_h, lcm) and monomial_lcm(basis[i].LM, lm_h) != lcm \
                 and monomial_lcm(basis[j].LM, lm_h) != lcm:
             continue
         remaining.append((i, j, lcm))
-    basis = basis + [h]
-    return basis, remaining + new
+    return basis + [h], remaining + new
 
 
-def _symbolic_preprocessing(selected: Sequence[Pair], basis: Sequence[PolyElement], key: OrderKey
+def _symbolic_preprocessing(selected: Sequence[Pair], basis: Sequence[PolyElement[T]], order: MonomialOrder
                             ) -> list[Row]:
     """The rows of the matrix: the two halves of each S-polynomial and a
     reducer for every monomial which is not a leading monomial of a row."""
     rows: list[Row] = []
+    present: set[Row] = set()
     done: set[Monomial] = set()
     for i, j, lcm in selected:
         for k in (i, j):
-            multiplier = monomial_div(lcm, basis[k].LM)
-            if multiplier is None:
-                raise ValueError("inconsistent critical pair")
-            row = (multiplier, k)
-            if row not in rows:
+            row = (monomial_div(lcm, basis[k].LM), k)
+            if row not in present:
+                present.add(row)
                 rows.append(row)
         done.add(lcm)
-    # the monomials of the rows, each reduced by the basis element with
-    # the smallest leading monomial dividing it
-    leading = sorted(((g.LM, k) for k, g in enumerate(basis)), key=lambda item: key(item[0]))
+    leading = sorted(((g.LM, k) for k, g in enumerate(basis)), key=lambda item: order.key(item[0]))
     pending: list[Monomial] = []
     seen: set[Monomial] = set()
     for multiplier, k in rows:
-        for monomial in basis[k].monoms():
+        for monomial in basis[k].terms:
             m = monomial_mul(multiplier, monomial)
             if m not in seen:
                 seen.add(m)
@@ -214,10 +214,11 @@ def _symbolic_preprocessing(selected: Sequence[Pair], basis: Sequence[PolyElemen
         for lm, k in leading:
             if monomial_divides(lm, m):
                 multiplier = monomial_div(m, lm)
-                if multiplier is None:
-                    continue
-                rows.append((multiplier, k))
-                for monomial in basis[k].monoms():
+                row = (multiplier, k)
+                if row not in present:
+                    present.add(row)
+                    rows.append(row)
+                for monomial in basis[k].terms:
                     mm = monomial_mul(multiplier, monomial)
                     if mm not in seen:
                         seen.add(mm)
@@ -226,30 +227,56 @@ def _symbolic_preprocessing(selected: Sequence[Pair], basis: Sequence[PolyElemen
     return rows
 
 
-def _reduce_rows(rows: Sequence[Row], basis: Sequence[PolyElement], ring: PolyRing, key: OrderKey
-                 ) -> list[PolyElement]:
-    """The polynomials with a new leading monomial among the rows of the
-    reduced row echelon form of the matrix of the rows."""
+def row_echelon(rows: Sequence[SparseRow[T]], K: Domain[T]) -> list[SparseRow[T]]:
+    """The reduced row echelon form of a sparse matrix over the field
+    ``K`` (:meth:`~sympy_extras.polys.domains.domain.Domain.sparse_echelon`:
+    fraction-free over ``QQ``): the nonzero rows with distinct leading
+    (smallest) columns, each with leading coefficient one and no entry in
+    the leading column of another row, sorted by leading column.
+
+    Examples
+    ========
+
+    >>> from fractions import Fraction
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.f4 import row_echelon
+    >>> row_echelon([{0: Fraction(2), 1: Fraction(4)}, {0: Fraction(1), 2: Fraction(1)}], QQ) == \\
+    ...     [{0: 1, 2: 1}, {1: 1, 2: Fraction(-1, 2)}]
+    True
+    """
+    return K.sparse_echelon(list(rows))
+
+
+def _reduce_rows(rows: Sequence[Row], basis: Sequence[PolyElement[T]], ring: PolyRing[T]
+                 ) -> list[PolyElement[T]]:
+    """The new basis elements from the matrix of the rows: the first row
+    with each leading monomial (a multiple of a monic basis element) is
+    the fixed pivot of that column, the other rows are reduced by those
+    pivots, and the reduced echelon form of what remains (which has no
+    entry in a pivot column) gives the polynomials with new leading
+    monomials, sorted by decreasing leading monomial."""
+    K = ring.domain
     polys = [basis[k].mul_monom(multiplier) for multiplier, k in rows]
-    columns = sorted({m for p in polys for m in p.monoms()}, key=key, reverse=True)
+    columns = sorted({m for p in polys for m in p.terms}, key=ring.order.key, reverse=True)
     position = {m: i for i, m in enumerate(columns)}
-    matrix: dict[int, dict[int, DomainElement]] = {}
-    for r, p in enumerate(polys):
-        matrix[r] = {position[m]: c for m, c in p.terms()}
-    reduced, pivots, _ = sdm_irref(matrix)
-    old = {position[p.LM] for p in polys}
-    found: list[PolyElement] = []
-    for r, row in reduced.items():
-        if not row:
-            continue
-        pivot = min(row)
-        if pivot in old:
-            continue
+    pivots: dict[int, SparseRow[T]] = {}
+    pending: list[SparseRow[T]] = []
+    for p in polys:
+        row = {position[m]: c for m, c in p.terms.items()}
+        lead = position[p.LM]
+        if lead in pivots:
+            pending.append(row)
+        else:
+            inverse = K.invert(row[lead])
+            pivots[lead] = row if K.is_one(row[lead]) else {c: K.mul(v, inverse) for c, v in row.items()}
+    remainder = K.sparse_reduce(pending, pivots)
+    found: list[PolyElement[T]] = []
+    for row in K.sparse_echelon(remainder):
         found.append(ring.from_dict({columns[c]: v for c, v in row.items()}))
     return found
 
 
-def reduced_basis(basis: Sequence[PolyElement], ring: PolyRing) -> list[PolyElement]:
+def reduced_basis(basis: Sequence[PolyElement[T]], ring: PolyRing[T]) -> list[PolyElement[T]]:
     """The reduced Gröbner basis of a Gröbner basis: the elements whose
     leading monomial another one divides are dropped, the others are
     reduced by each other and made monic, and the result is sorted by
@@ -258,20 +285,21 @@ def reduced_basis(basis: Sequence[PolyElement], ring: PolyRing) -> list[PolyElem
     Examples
     ========
 
-    >>> from sympy import QQ
-    >>> from sympy.polys.rings import ring
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.rings import PolyRing, lex
     >>> from sympy_extras.polys.f4 import reduced_basis
-    >>> R, x, y = ring('x,y', QQ, 'lex')
-    >>> reduced_basis([2*x + 2*y, y**2 - 1, x*y + x], R)
-    [x + y, y**2 - 1]
+    >>> R = PolyRing(QQ, ['x', 'y'], lex)
+    >>> x, y = R.gens
+    >>> [str(g) for g in reduced_basis([(x + y).mul_ground(QQ.from_int(2)), y*y - R.one, x*y + x], R)]
+    ['x + y', 'y**2 - 1']
     """
-    key: OrderKey = ring.order
-    nonzero = [g for g in basis if g]
-    minimal: list[PolyElement] = []
+    key = ring.order.key
+    nonzero = [g for g in basis if g.terms]
+    minimal: list[PolyElement[T]] = []
     for g in sorted(nonzero, key=lambda p: key(p.LM)):
         if not any(monomial_divides(h.LM, g.LM) for h in minimal):
             minimal.append(g)
-    result: list[PolyElement] = []
+    result: list[PolyElement[T]] = []
     for i, g in enumerate(minimal):
         others = minimal[:i] + minimal[i + 1:]
         r = g.rem(others) if others else g

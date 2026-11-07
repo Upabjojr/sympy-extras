@@ -46,26 +46,24 @@ from __future__ import annotations
 
 from typing import Optional, Sequence, Union
 
-from sympy.polys.domains import ZZ
-from sympy.polys.monomials import monomial_div, monomial_divides, monomial_lcm
-from sympy.polys.rings import PolyElement, PolyRing
-
 from sympy_extras._typing import Monomial
+
+from .domains.integerring import ZZ
+from .rings import PolyElement, PolyRing, monomial_div, monomial_divides, monomial_lcm
 
 __all__ = ['strong_groebner', 'strong_reduce', 'is_strong_groebner', 's_polynomial_zz', 'g_polynomial_zz']
 
 
-def _check_ring(ring: PolyRing) -> None:
+def _check_ring(ring: PolyRing[int]) -> None:
     if ring.domain != ZZ:
         raise ValueError("strong Gröbner bases are computed over ZZ, the ring is over %s" % ring.domain)
 
 
-def _leading(f: PolyElement) -> tuple[Monomial, int]:
-    monomial, coefficient = f.LT
-    return tuple(monomial), int(coefficient)
+def _leading(f: PolyElement[int]) -> tuple[Monomial, int]:
+    return f.LT
 
 
-def strong_reduce(f: PolyElement, basis: Sequence[PolyElement]) -> PolyElement:
+def strong_reduce(f: PolyElement[int], basis: Sequence[PolyElement[int]]) -> PolyElement[int]:
     """The normal form of ``f`` modulo the basis over ``ZZ``: every term
     ``c t`` with ``lm(g) | t`` for some ``g`` of the basis is replaced by
     its remainder ``(c mod |lc(g)|) t``, until no term can be reduced. When
@@ -75,19 +73,21 @@ def strong_reduce(f: PolyElement, basis: Sequence[PolyElement]) -> PolyElement:
     Examples
     ========
 
-    >>> from sympy import ZZ
-    >>> from sympy.polys.rings import ring
+    >>> from sympy_extras.polys.domains import ZZ
+    >>> from sympy_extras.polys.rings import PolyRing, lex
     >>> from sympy_extras.polys.stronggroebner import strong_reduce
-    >>> R, x, y = ring('x,y', ZZ, 'lex')
-    >>> strong_reduce(7*x*y + 5*x, [2*x, 3*y, x*y])
+    >>> R = PolyRing(ZZ, ['x', 'y'], lex)
+    >>> x, y = R.gens
+    >>> basis = [x.mul_ground(2), y.mul_ground(3), x*y]
+    >>> print(strong_reduce((x*y).mul_ground(7) + x.mul_ground(5), basis))
     x
-    >>> strong_reduce(6*x + 3*y, [2*x, 3*y, x*y])
+    >>> print(strong_reduce(x.mul_ground(6) + y.mul_ground(3), basis))
     0
     """
     ring = f.ring
     remainder = ring.zero
     current = f
-    while current:
+    while current.terms:
         monomial, coefficient = _leading(current)
         reduced = False
         for g in basis:
@@ -100,13 +100,11 @@ def strong_reduce(f: PolyElement, basis: Sequence[PolyElement]) -> PolyElement:
             if quotient == 0:
                 continue
             multiplier = monomial_div(monomial, g_monomial)
-            if multiplier is None:
-                continue
-            current = current - g.mul_monom(multiplier).mul_ground(ring.domain(quotient))
+            current = current - g.mul_monom(multiplier).mul_ground(quotient)
             reduced = True
             break
         if not reduced:
-            term = ring.term_new(monomial, ring.domain(coefficient))
+            term = ring.term(monomial, coefficient)
             remainder = remainder + term
             current = current - term
     return remainder
@@ -117,30 +115,30 @@ def _euclidean_quotient(c: int, d: int) -> int:
     return c // d if d > 0 else -(c // (-d))
 
 
-def s_polynomial_zz(f: PolyElement, g: PolyElement) -> PolyElement:
+def s_polynomial_zz(f: PolyElement[int], g: PolyElement[int]) -> PolyElement[int]:
     """The S-polynomial over ``ZZ``: the leading terms are brought to
     their least common multiple, coefficients included, and subtracted.
 
     Examples
     ========
 
-    >>> from sympy import ZZ
-    >>> from sympy.polys.rings import ring
+    >>> from sympy_extras.polys.domains import ZZ
+    >>> from sympy_extras.polys.rings import PolyRing, lex
     >>> from sympy_extras.polys.stronggroebner import s_polynomial_zz
-    >>> R, x, y = ring('x,y', ZZ, 'lex')
-    >>> s_polynomial_zz(2*x**2 + y, 3*x*y + 1)
+    >>> R = PolyRing(ZZ, ['x', 'y'], lex)
+    >>> x, y = R.gens
+    >>> print(s_polynomial_zz((x*x).mul_ground(2) + y, (x*y).mul_ground(3) + R.one))
     -2*x + 3*y**2
     """
     (m, a), (n, b) = _leading(f), _leading(g)
     lcm_monomial = monomial_lcm(m, n)
     lcm_coefficient = abs(a*b)//_gcd(a, b)
-    ring = f.ring
-    left = f.mul_monom(_quotient(lcm_monomial, m)).mul_ground(ring.domain(lcm_coefficient//a))
-    right = g.mul_monom(_quotient(lcm_monomial, n)).mul_ground(ring.domain(lcm_coefficient//b))
+    left = f.mul_monom(_quotient(lcm_monomial, m)).mul_ground(lcm_coefficient//a)
+    right = g.mul_monom(_quotient(lcm_monomial, n)).mul_ground(lcm_coefficient//b)
     return left - right
 
 
-def g_polynomial_zz(f: PolyElement, g: PolyElement) -> Optional[PolyElement]:
+def g_polynomial_zz(f: PolyElement[int], g: PolyElement[int]) -> Optional[PolyElement[int]]:
     """The G-polynomial over ``ZZ``: ``u (L/m) f + v (L/n) g`` with
     ``u a + v b = gcd(a, b)`` for the leading terms ``a m`` and ``b n``, so
     that its leading coefficient is the gcd; ``None`` when one leading
@@ -150,13 +148,14 @@ def g_polynomial_zz(f: PolyElement, g: PolyElement) -> Optional[PolyElement]:
     Examples
     ========
 
-    >>> from sympy import ZZ
-    >>> from sympy.polys.rings import ring
+    >>> from sympy_extras.polys.domains import ZZ
+    >>> from sympy_extras.polys.rings import PolyRing, lex
     >>> from sympy_extras.polys.stronggroebner import g_polynomial_zz
-    >>> R, x, y = ring('x,y', ZZ, 'lex')
-    >>> g_polynomial_zz(2*x, 3*y)
+    >>> R = PolyRing(ZZ, ['x', 'y'], lex)
+    >>> x, y = R.gens
+    >>> print(g_polynomial_zz(x.mul_ground(2), y.mul_ground(3)))
     x*y
-    >>> g_polynomial_zz(2*x, 4*y) is None
+    >>> g_polynomial_zz(x.mul_ground(2), y.mul_ground(4)) is None
     True
     """
     (m, a), (n, b) = _leading(f), _leading(g)
@@ -164,17 +163,13 @@ def g_polynomial_zz(f: PolyElement, g: PolyElement) -> Optional[PolyElement]:
         return None
     u, v, _ = _gcdex(a, b)
     lcm_monomial = monomial_lcm(m, n)
-    ring = f.ring
-    left = f.mul_monom(_quotient(lcm_monomial, m)).mul_ground(ring.domain(u))
-    right = g.mul_monom(_quotient(lcm_monomial, n)).mul_ground(ring.domain(v))
+    left = f.mul_monom(_quotient(lcm_monomial, m)).mul_ground(u)
+    right = g.mul_monom(_quotient(lcm_monomial, n)).mul_ground(v)
     return left + right
 
 
 def _quotient(lcm_monomial: Monomial, monomial: Monomial) -> Monomial:
-    quotient = monomial_div(lcm_monomial, monomial)
-    if quotient is None:
-        raise ValueError("inconsistent monomials")
-    return tuple(quotient)
+    return monomial_div(lcm_monomial, monomial)
 
 
 def _gcd(a: int, b: int) -> int:
@@ -199,7 +194,7 @@ def _gcdex(a: int, b: int) -> tuple[int, int, int]:
     return old_u, old_v, old_r
 
 
-def strong_groebner(polys: Sequence[Union[PolyElement, int]], ring: PolyRing) -> list[PolyElement]:
+def strong_groebner(polys: Sequence[Union[PolyElement[int], int]], ring: PolyRing[int]) -> list[PolyElement[int]]:
     """The reduced strong Gröbner basis over ``ZZ`` of the ideal generated
     by ``polys`` in ``ring`` (whose domain must be ``ZZ``), sorted by
     decreasing leading monomial; every element of the ideal, and only
@@ -208,28 +203,32 @@ def strong_groebner(polys: Sequence[Union[PolyElement, int]], ring: PolyRing) ->
     Examples
     ========
 
-    >>> from sympy import ZZ, groebner
-    >>> from sympy.abc import x, y
-    >>> from sympy.polys.rings import ring
+    >>> from sympy_extras.polys.domains import ZZ
+    >>> from sympy_extras.polys.rings import PolyRing, lex
     >>> from sympy_extras.polys.stronggroebner import strong_groebner, strong_reduce
-    >>> R, X, Y = ring('x,y', ZZ, 'lex')
-    >>> strong_groebner([2*X, 3*Y], R)
-    [x*y, 2*x, 3*y]
-    >>> groebner([2*x, 3*y], x, y, domain=ZZ)        # SymPy: the basis over QQ, wrong over ZZ
-    GroebnerBasis([x, y], x, y, domain='ZZ', order='lex')
-    >>> strong_groebner([2*X, 3*X], R), strong_groebner([4, 2*X + 1], R)
-    ([x], [1])
-    >>> G = strong_groebner([2*X**2 + Y, 3*X*Y + 1], R)
-    >>> G
-    [x*y + 3*y**3 + 1, 2*x - 3*y**2, 9*y**3 + 2]
-    >>> strong_reduce(X*(2*X**2 + Y) - Y*(3*X*Y + 1), G), strong_reduce(X, G)
-    (0, x)
+    >>> R = PolyRing(ZZ, ['x', 'y'], lex)
+    >>> X, Y = R.gens
+    >>> [str(g) for g in strong_groebner([X.mul_ground(2), Y.mul_ground(3)], R)]
+    ['x*y', '2*x', '3*y']
+    >>> [str(g) for g in strong_groebner([X.mul_ground(2), X.mul_ground(3)], R)]
+    ['x']
+    >>> [str(g) for g in strong_groebner([4, X.mul_ground(2) + R.one], R)]
+    ['1']
+    >>> f, g = (X*X).mul_ground(2) + Y, (X*Y).mul_ground(3) + R.one
+    >>> G = strong_groebner([f, g], R)
+    >>> [str(h) for h in G]
+    ['x*y + 3*y**3 + 1', '2*x - 3*y**2', '9*y**3 + 2']
+    >>> str(strong_reduce(X*f - Y*g, G)), str(strong_reduce(X, G))
+    ('0', 'x')
+
+    SymPy's ``groebner`` with ``domain=ZZ`` returns ``[x, y]`` for the
+    first ideal, its basis over ``QQ``, which is wrong over ``ZZ``.
     """
     _check_ring(ring)
-    basis: list[PolyElement] = []
+    basis: list[PolyElement[int]] = []
     for f in polys:
-        element = f if isinstance(f, PolyElement) else ring(f)
-        if element:
+        element = f if isinstance(f, PolyElement) else ring.from_int(f)
+        if element.terms:
             basis.append(_positive(element))
     pairs: list[tuple[int, int]] = [(i, j) for i in range(len(basis)) for j in range(i)]
     while pairs:
@@ -241,26 +240,25 @@ def strong_groebner(polys: Sequence[Union[PolyElement, int]], ring: PolyRing) ->
             candidates.append(G)
         for candidate in candidates:
             remainder = strong_reduce(candidate, basis)
-            if remainder:
+            if remainder.terms:
                 remainder = _positive(remainder)
                 pairs.extend((len(basis), k) for k in range(len(basis)))
                 basis.append(remainder)
     return _reduced(basis)
 
 
-def _positive(f: PolyElement) -> PolyElement:
+def _positive(f: PolyElement[int]) -> PolyElement[int]:
     return -f if _leading(f)[1] < 0 else f
 
 
-def _reduced(basis: list[PolyElement]) -> list[PolyElement]:
+def _reduced(basis: list[PolyElement[int]]) -> list[PolyElement[int]]:
     """The reduced strong Gröbner basis of a strong Gröbner basis."""
-    ring = basis[0].ring if basis else None
-    if ring is None:
+    if not basis:
         return []
-    key = ring.order
+    key = basis[0].ring.order.key
     # minimal: drop the elements whose leading term another one divides
-    kept: list[PolyElement] = []
-    ordered = sorted((f for f in basis if f), key=lambda f: (key(f.LM), abs(_leading(f)[1])))
+    kept: list[PolyElement[int]] = []
+    ordered = sorted((f for f in basis if f.terms), key=lambda f: (key(f.LM), abs(_leading(f)[1])))
     for f in ordered:
         monomial, coefficient = _leading(f)
         if any(monomial_divides(_leading(g)[0], monomial) and coefficient % _leading(g)[1] == 0 for g in kept):
@@ -268,14 +266,14 @@ def _reduced(basis: list[PolyElement]) -> list[PolyElement]:
         kept.append(f)
     # reduced: every element reduced by the others (its leading term is
     # not reducible, so that it stays)
-    result: list[PolyElement] = []
+    result: list[PolyElement[int]] = []
     for i, f in enumerate(kept):
         others = kept[:i] + kept[i + 1:]
         result.append(_positive(strong_reduce(f, others)))
     return sorted(result, key=lambda f: key(f.LM), reverse=True)
 
 
-def is_strong_groebner(basis: Sequence[PolyElement]) -> bool:
+def is_strong_groebner(basis: Sequence[PolyElement[int]]) -> bool:
     """Whether the polynomials, over ``ZZ``, form a strong Gröbner basis
     of the ideal they generate: every S-polynomial and G-polynomial of two
     of them reduces to zero.
@@ -283,19 +281,21 @@ def is_strong_groebner(basis: Sequence[PolyElement]) -> bool:
     Examples
     ========
 
-    >>> from sympy import ZZ
-    >>> from sympy.polys.rings import ring
+    >>> from sympy_extras.polys.domains import ZZ
+    >>> from sympy_extras.polys.rings import PolyRing, lex
     >>> from sympy_extras.polys.stronggroebner import is_strong_groebner
-    >>> R, x, y = ring('x,y', ZZ, 'lex')
-    >>> is_strong_groebner([2*x, 3*y]), is_strong_groebner([2*x, 3*y, x*y])
+    >>> R = PolyRing(ZZ, ['x', 'y'], lex)
+    >>> x, y = R.gens
+    >>> two_x, three_y = x.mul_ground(2), y.mul_ground(3)
+    >>> is_strong_groebner([two_x, three_y]), is_strong_groebner([two_x, three_y, x*y])
     (False, True)
     """
-    polys = [f for f in basis if f]
+    polys = [f for f in basis if f.terms]
     for i, f in enumerate(polys):
         for g in polys[:i]:
-            if strong_reduce(s_polynomial_zz(f, g), polys):
+            if strong_reduce(s_polynomial_zz(f, g), polys).terms:
                 return False
             G = g_polynomial_zz(f, g)
-            if G is not None and strong_reduce(G, polys):
+            if G is not None and strong_reduce(G, polys).terms:
                 return False
     return True

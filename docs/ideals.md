@@ -381,25 +381,27 @@ direct computation for the target order.
 ## F4
 
 `f4(polys, ring)` in `sympy_extras.polys.f4` returns the reduced Gröbner
-basis of the polynomials of a SymPy `PolyRing` over a field (`QQ`,
-`GF(p)`, an algebraic number field) for the order of the ring, equal to
-what `sympy.polys.groebnertools.groebner` returns (the reduced basis is
-unique, and the result is sorted as SymPy sorts it):
+basis of polynomials of a typed `sympy_extras.polys.rings.PolyRing` over a
+field (`QQ`, `GF(p)`, an algebraic number field of
+`sympy_extras.polys.domains.algebraicfield`) for the order of the ring,
+sorted by decreasing leading monomial. It does not use SymPy: the matrix
+reduction is a sparse Gauss–Jordan elimination of its own, fraction-free
+over the integers for `QQ`. `Ideal` and the modular algorithm still build
+SymPy rings and reach it through `direct_groebner`, which converts at the
+boundary (`sympy_extras.polys.interop`); the results equal SymPy's
+`groebner`, the reduced basis being unique.
 
 ```python
->>> from sympy import QQ, GF
->>> from sympy.polys.rings import ring
->>> from sympy.polys.groebnertools import groebner
+>>> from sympy_extras.polys.domains import QQ as TQQ, GF as TGF
+>>> from sympy_extras.polys.rings import PolyRing, grevlex as tgrevlex, lex as tlex
 >>> from sympy_extras.polys.f4 import f4
->>> R, x, y, z = ring('x,y,z', QQ, 'grevlex')
->>> F = [x**2 + y**2 + z**2 - 1, x + y + z, x*y*z - 1]
->>> f4(F, R)
-[z**3 - 1/2*z - 1, y**2 + y*z + z**2 - 1/2, x + y + z]
->>> f4(F, R) == groebner(F, R)
-True
->>> R, x, y = ring('x,y', GF(7), 'lex')
->>> f4([x**2 - y, 3*y**2 - x], R) == [x - 3*y**2, y**4 + 3*y]
-True
+>>> T = PolyRing(TQQ, ['x', 'y', 'z'], tgrevlex)
+>>> F = [T.from_sympy(e) for e in (x**2 + y**2 + z**2 - 1, x + y + z, x*y*z - 1)]
+>>> [str(g) for g in f4(F, T)]
+['z**3 - 1/2*z - 1', 'y**2 + y*z + z**2 - 1/2', 'x + y + z']
+>>> P = PolyRing(TGF(7), ['x', 'y'], tlex)
+>>> [str(g) for g in f4([P.from_sympy(x**2 - y), P.from_sympy(3*y**2 - x)], P)]
+['x + 4*y**2', 'y**4 + 3*y']
 
 ```
 
@@ -433,19 +435,29 @@ Timings in seconds of `f4` and of SymPy's `groebner` on the same ring
 elements (SymPy 1.14, pure Python ground types, Python 3.12, one run per
 entry on a shared machine, a limit of 120 s):
 
-| system    | field       | order     |   `f4` | SymPy |
-|-----------|-------------|-----------|-------:|------:|
-| Katsura-4 | `QQ`        | `grevlex` |   0.03 |  0.06 |
-| Katsura-4 | `GF(32003)` | `lex`     |   0.30 |  1.65 |
-| Katsura-4 | `QQ`        | `lex`     |   2.38 | 28.31 |
-| Katsura-5 | `QQ`        | `grevlex` |   0.26 |  0.58 |
-| Katsura-5 | `QQ`        | `lex`     |  > 120 | > 120 |
-| cyclic-5  | `QQ`        | `grevlex` |   0.09 |  0.26 |
-| cyclic-5  | `QQ`        | `lex`     |   2.33 | 35.74 |
-| cyclic-6  | `QQ`        | `grevlex` |   4.49 | 102.6 |
-| Katsura-6 | `QQ`        | `grevlex` |   8.61 | 17.26 |
-| Katsura-7 | `GF(32003)` | `grevlex` |   56.5 | > 120 |
-| cyclic-7  | `GF(32003)` | `grevlex` |  > 120 | > 120 |
+| system    | field       | order     | typed `f4` | `f4` on SymPy's elimination | SymPy |
+|-----------|-------------|-----------|-----------:|-------:|------:|
+| Katsura-4 | `QQ`        | `grevlex` |       0.06 |   0.03 |  0.06 |
+| Katsura-4 | `GF(32003)` | `lex`     |       0.15 |   0.30 |  1.65 |
+| Katsura-4 | `QQ`        | `lex`     |       1.82 |   2.38 | 28.31 |
+| Katsura-5 | `QQ`        | `grevlex` |       0.12 |   0.26 |  0.58 |
+| Katsura-5 | `QQ`        | `lex`     |      > 120 |  > 120 | > 120 |
+| cyclic-5  | `QQ`        | `grevlex` |       0.16 |   0.09 |  0.26 |
+| cyclic-5  | `QQ`        | `lex`     |       1.25 |   2.33 | 35.74 |
+| cyclic-6  | `QQ`        | `grevlex` |       1.27 |   4.49 | 102.6 |
+| Katsura-6 | `QQ`        | `grevlex` |       1.01 |   8.61 | 17.26 |
+| Katsura-7 | `GF(32003)` | `grevlex` |       3.09 |   56.5 | > 120 |
+| cyclic-7  | `GF(32003)` | `grevlex` |       88.1 |  > 120 | > 120 |
+
+The typed version (2026-11-07) has its own elimination: the multiples of
+basis elements are the fixed pivots of their columns, the S-polynomial
+halves are reduced by them only, and the small remaining block by
+Gauss–Jordan, fraction-free over the integers for `QQ` (each step divided
+by the gcd of the two multipliers, the content removed once per row).
+Pivoting on whatever row comes first instead let rows with large
+coefficients become pivots (Katsura-4 in `lex`: over 80 s for one matrix),
+and the forward elimination alone, without the back substitution, let the
+coefficients of the new elements grow to thousands of digits.
 
 On 400 random ideals in two to four variables (one to four polynomials of
 degree up to three, over `QQ`, `GF(7)` and `GF(32003)`, the three orders)
@@ -514,21 +526,22 @@ terms brought to their lcm, coefficients included) and the G-polynomials
 leading coefficients); `is_strong_groebner` checks the definition.
 
 ```python
->>> from sympy import ZZ
->>> from sympy.polys.rings import ring
+>>> from sympy_extras.polys.domains import ZZ as TZZ
 >>> from sympy_extras.polys.stronggroebner import strong_groebner, strong_reduce, is_strong_groebner
->>> R, X, Y = ring('x,y', ZZ, 'lex')
->>> strong_groebner([2*X, 3*Y], R)
-[x*y, 2*x, 3*y]
->>> strong_groebner([4, 2*X + 1], R)      # 2x - 1, then 2, then 1 are in the ideal
-[1]
->>> G = strong_groebner([2*X**2 + Y, 3*X*Y + 1], R)
->>> G
-[x*y + 3*y**3 + 1, 2*x - 3*y**2, 9*y**3 + 2]
->>> strong_reduce(2*X - 3*Y**2, G), strong_reduce(X, G), is_strong_groebner(G)
-(0, x, True)
+>>> Z = PolyRing(TZZ, ['x', 'y'], tlex)
+>>> [str(g) for g in strong_groebner([Z.from_sympy(2*x), Z.from_sympy(3*y)], Z)]
+['x*y', '2*x', '3*y']
+>>> [str(g) for g in strong_groebner([4, Z.from_sympy(2*x + 1)], Z)]   # 2x - 1, then 2, then 1 are in the ideal
+['1']
+>>> G = strong_groebner([Z.from_sympy(2*x**2 + y), Z.from_sympy(3*x*y + 1)], Z)
+>>> [str(g) for g in G]
+['x*y + 3*y**3 + 1', '2*x - 3*y**2', '9*y**3 + 2']
+>>> str(strong_reduce(Z.from_sympy(2*x - 3*y**2), G)), str(strong_reduce(Z.from_sympy(x), G)), is_strong_groebner(G)
+('0', 'x', True)
 
 ```
+
+The strong bases run on the typed rings over `ZZ`, without SymPy.
 
 ## Modular Gröbner bases
 
@@ -730,8 +743,11 @@ polynomials with rational coefficients.
 `separating_forms(variables, points)` enumerates the linear forms with
 small integer coefficients among which one separates any `points` points.
 
-`f4(polys, ring)`, `reduced_basis(basis, ring)` and `is_graded(ring)` are
-in `sympy_extras.polys.f4`; `strong_groebner(polys, ring)`,
+`f4(polys, ring)`, `reduced_basis(basis, ring)`, `is_graded(ring)` and
+`row_echelon(rows, K)` are in `sympy_extras.polys.f4` (typed rings);
+the conversions from and to SymPy rings (`qq_from_sympy`, `gf_from_sympy`,
+`zz_from_sympy`, the `_to_sympy` inverses, `typed_order`) in
+`sympy_extras.polys.interop`; `strong_groebner(polys, ring)`,
 `strong_reduce(f, basis)`, `is_strong_groebner(basis)`,
 `s_polynomial_zz(f, g)` and `g_polynomial_zz(f, g)` in
 `sympy_extras.polys.stronggroebner`;

@@ -12,9 +12,54 @@ from sympy import QQ, ZZ
 from sympy.polys.rings import PolyElement, PolyRing, ring
 from sympy.testing.pytest import raises
 
-from sympy_extras.polys.f4 import f4
-from sympy_extras.polys.stronggroebner import (g_polynomial_zz, is_strong_groebner, s_polynomial_zz,
-    strong_groebner, strong_reduce)
+from sympy_extras.polys.domains.finitefield import FiniteField
+from sympy_extras.polys.rings import PolyElement as TypedElement, PolyRing as TypedRing, lex as typed_lex
+
+from typing import Optional, Sequence, Union
+
+from sympy_extras.polys import stronggroebner as typed
+from sympy_extras.polys.interop import zz_from_sympy, zz_to_sympy
+from sympy_extras.polys.modulargroebner import direct_groebner
+
+# the tests are written in SymPy's ring syntax; the typed functions are
+# called through the conversions of sympy_extras.polys.interop
+
+
+def _typed(polys: Sequence[PolyElement], R: PolyRing) -> list[TypedElement[int]]:
+    return zz_from_sympy(polys, R)[1]
+
+
+def strong_groebner(polys: Sequence[Union[PolyElement, int]], R: PolyRing) -> list[PolyElement]:
+    elements = [p if isinstance(p, PolyElement) else R(p) for p in polys]
+    T, converted = zz_from_sympy(elements, R)
+    return zz_to_sympy(typed.strong_groebner(converted, T), R)
+
+
+def strong_reduce(f: PolyElement, basis: Sequence[PolyElement]) -> PolyElement:
+    R = f.ring
+    T, converted = zz_from_sympy([f, *basis], R)
+    return zz_to_sympy([typed.strong_reduce(converted[0], converted[1:])], R)[0]
+
+
+def g_polynomial_zz(f: PolyElement, g: PolyElement) -> Optional[PolyElement]:
+    T, (a, b) = zz_from_sympy([f, g], f.ring)
+    found = typed.g_polynomial_zz(a, b)
+    return None if found is None else zz_to_sympy([found], f.ring)[0]
+
+
+def s_polynomial_zz(f: PolyElement, g: PolyElement) -> PolyElement:
+    T, (a, b) = zz_from_sympy([f, g], f.ring)
+    return zz_to_sympy([typed.s_polynomial_zz(a, b)], f.ring)[0]
+
+
+def is_strong_groebner(basis: Sequence[PolyElement]) -> bool:
+    if not basis:
+        return True
+    return typed.is_strong_groebner(_typed(basis, basis[0].ring))
+
+
+def f4(polys: Sequence[PolyElement], R: PolyRing) -> list[PolyElement]:
+    return direct_groebner(polys, R)
 
 
 def random_polynomial(R: PolyRing, rng: random.Random, degree: int, terms: int, cmax: int) -> PolyElement:
@@ -57,8 +102,8 @@ def test_reduction_and_the_g_polynomial() -> None:
     assert g_polynomial_zz(2*x, 4*y) is None
     assert g_polynomial_zz(4*x, 6*y) in (2*x*y, -2*x*y)
     assert s_polynomial_zz(2*x**2 + y, 3*x*y + 1) == 3*y**2 - 2*x
-    Q, u = ring('u', QQ, 'lex')
-    raises(ValueError, lambda: strong_groebner([u], Q))
+    # a QQ ring does not type-check; an integer-valued domain other than ZZ is refused at run time
+    raises(ValueError, lambda: typed.strong_groebner([], TypedRing(FiniteField(5), ['u'], typed_lex)))
 
 
 def test_random_ideals_satisfy_the_definition() -> None:

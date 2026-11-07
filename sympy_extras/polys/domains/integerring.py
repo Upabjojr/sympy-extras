@@ -126,6 +126,9 @@ class IntegerRing(Domain[int]):
     def canonical_unit(self, a: int) -> int:
         return -1 if a < 0 else 1
 
+    def size(self, a: int) -> int:
+        return a.bit_length()
+
     has_dense_kernels = True
 
     def dense_mul(self, f: list[int], g: list[int]) -> list[int]:

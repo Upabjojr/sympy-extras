@@ -15,7 +15,9 @@ True
 """
 from __future__ import annotations
 
+import heapq
 from fractions import Fraction
+from math import gcd
 from typing import Optional
 
 from sympy.core.expr import Expr
@@ -109,6 +111,41 @@ class RationalField(Domain[Fraction]):
     def canonical_unit(self, a: Fraction) -> Fraction:
         return Fraction(1) if a == 0 else 1/a
 
+    def size(self, a: Fraction) -> int:
+        return a.numerator.bit_length() + a.denominator.bit_length()
+
+    def sparse_reduce(self, rows: list[dict[int, Fraction]], pivots: dict[int, dict[int, Fraction]]
+                      ) -> list[dict[int, Fraction]]:
+        """Fraction-free: rows and pivots as primitive integer rows, each
+        step ``r = (L/g) r - (r_c/g) p`` with ``g = gcd(L, r_c)``, the
+        content removed once per row (no rational normalisation inside
+        the elimination)."""
+        integer_pivots = {c: _primitive_integer_row(p) for c, p in pivots.items()}
+        result: list[dict[int, Fraction]] = []
+        for row in rows:
+            reduced = _integer_reduce(_primitive_integer_row(row), integer_pivots)
+            if reduced:
+                result.append(_monic_rational_row(reduced))
+        return result
+
+    def sparse_echelon(self, rows: list[dict[int, Fraction]]) -> list[dict[int, Fraction]]:
+        """The reduced row echelon form, fraction-free over the integers
+        and made monic at the end."""
+        pivots: dict[int, dict[int, int]] = {}
+        for row in rows:
+            reduced = _integer_reduce(_primitive_integer_row(row), pivots)
+            if reduced:
+                pivots[min(reduced)] = reduced
+        leads = sorted(pivots, reverse=True)
+        for c in leads:
+            pivot = pivots[c]
+            lead_value = pivot[c]
+            for other in leads:
+                if other >= c or c not in pivots[other]:
+                    continue
+                pivots[other] = _eliminate(pivots[other], c, pivot, lead_value)
+        return [_monic_rational_row(pivots[c]) for c in sorted(pivots)]
+
     def numer(self, a: Fraction) -> int:
         return a.numerator
 
@@ -146,6 +183,72 @@ class RationalField(Domain[Fraction]):
         if isinstance(e, Rational):
             return Fraction(int(e.p), int(e.q))
         raise ValueError('%s is not a rational number' % (e,))
+
+
+
+def _primitive_integer_row(row: dict[int, Fraction]) -> dict[int, int]:
+    """The row times the lcm of its denominators, divided by the gcd of
+    the resulting integers, with a positive leading entry."""
+    common = 1
+    for value in row.values():
+        d = value.denominator
+        common = common*d//gcd(common, d)
+    integers = {c: (v.numerator*(common//v.denominator)) for c, v in row.items()}
+    return _primitive(integers)
+
+
+def _primitive(row: dict[int, int]) -> dict[int, int]:
+    content = 0
+    for value in row.values():
+        content = gcd(content, value)
+        if content == 1:
+            break
+    if row and row[min(row)] < 0:
+        content = -content
+    if content in (0, 1):
+        return row
+    return {c: v//content for c, v in row.items()}
+
+
+def _eliminate(row: dict[int, int], c: int, pivot: dict[int, int], lead_value: int) -> dict[int, int]:
+    """``row`` with column ``c`` cleared by ``pivot`` (whose entry there is
+    ``lead_value``), fraction-free, then made primitive."""
+    factor = row[c]
+    g = gcd(lead_value, factor)
+    scale, multiple = lead_value//g, factor//g
+    result = {column: value*scale for column, value in row.items()} if scale != 1 else dict(row)
+    for column, value in pivot.items():
+        updated = result.get(column, 0) - multiple*value
+        if updated:
+            result[column] = updated
+        elif column in result:
+            del result[column]
+    return _primitive(result)
+
+
+def _integer_reduce(row: dict[int, int], pivots: dict[int, dict[int, int]]) -> dict[int, int]:
+    """The integer row with every pivot column eliminated, in increasing
+    column order."""
+    heap = list(row)
+    heapq.heapify(heap)
+    while heap:
+        c = heapq.heappop(heap)
+        if c not in row:
+            continue
+        pivot = pivots.get(c)
+        if pivot is None:
+            continue
+        before = set(row)
+        row = _eliminate(row, c, pivot, pivot[c])
+        for column in row:
+            if column not in before:
+                heapq.heappush(heap, column)
+    return row
+
+
+def _monic_rational_row(row: dict[int, int]) -> dict[int, Fraction]:
+    lead = row[min(row)]
+    return {c: Fraction(v, lead) for c, v in row.items()}
 
 
 QQ = RationalField()

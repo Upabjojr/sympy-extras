@@ -40,7 +40,8 @@ References
 """
 from __future__ import annotations
 
-from typing import Callable, Generic, Iterator, Sequence, TypeVar
+from fractions import Fraction
+from typing import Callable, Generic, Iterator, Sequence, TypeVar, Union
 
 from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
@@ -50,11 +51,16 @@ from sympy_extras._typing import Monomial, as_expr
 
 from .domains.domain import Domain
 
-__all__ = ['PolyRing', 'PolyElement', 'MonomialOrder', 'lex', 'grlex', 'grevlex', 'monomial_mul', 'monomial_div',
+__all__ = ['PolyRing', 'PolyElement', 'MonomialOrder', 'OrderValue', 'OrderKeyValue', 'lex', 'grlex', 'grevlex', 'monomial_mul', 'monomial_div',
            'monomial_lcm', 'monomial_gcd', 'monomial_divides']
 
 T = TypeVar('T')
 U = TypeVar('U')
+
+#: an entry of the key of a monomial order (weights may be rational)
+OrderValue = Union[int, Fraction]
+#: the key of a monomial under an order: compared lexicographically
+OrderKeyValue = tuple[OrderValue, ...]
 
 
 def monomial_mul(a: Monomial, b: Monomial) -> Monomial:
@@ -86,12 +92,12 @@ class MonomialOrder:
     larger key is a larger monomial) and a name; ``is_graded`` says
     whether the total degree comes first."""
 
-    def __init__(self, name: str, key: Callable[[Monomial], tuple[int, ...]], is_graded: bool) -> None:
+    def __init__(self, name: str, key: Callable[[Monomial], OrderKeyValue], is_graded: bool) -> None:
         self.name: str = name
-        self.key: Callable[[Monomial], tuple[int, ...]] = key
+        self.key: Callable[[Monomial], OrderKeyValue] = key
         self.is_graded: bool = is_graded
 
-    def __call__(self, monomial: Monomial) -> tuple[int, ...]:
+    def __call__(self, monomial: Monomial) -> OrderKeyValue:
         return self.key(monomial)
 
     def __repr__(self) -> str:
@@ -104,15 +110,15 @@ class MonomialOrder:
         return hash(('MonomialOrder', self.name))
 
 
-def _lex_key(m: Monomial) -> tuple[int, ...]:
+def _lex_key(m: Monomial) -> OrderKeyValue:
     return m
 
 
-def _grlex_key(m: Monomial) -> tuple[int, ...]:
+def _grlex_key(m: Monomial) -> OrderKeyValue:
     return (sum(m),) + m
 
 
-def _grevlex_key(m: Monomial) -> tuple[int, ...]:
+def _grevlex_key(m: Monomial) -> OrderKeyValue:
     return (sum(m),) + tuple(-e for e in reversed(m))
 
 

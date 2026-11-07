@@ -261,19 +261,23 @@ True
 2
 >>> sign_determination([x**2 - 1, y**2 - 1], [x + y, x], x, y)
 {(-1, -1): 1, (0, -1): 1, (0, 1): 1, (1, 1): 1}
->>> from sympy import QQ, ring, lex
+>>> from sympy import QQ, ring, lex, symbols
+>>> u, v, w, a, b = symbols('u v w a b')
+>>> from sympy_extras.polys.domains import QQ as TQQ, ZZ as TZZ
+>>> from sympy_extras.polys.rings import PolyRing, lex as typed_lex
 >>> from sympy_extras.polys.f4 import f4
 >>> from sympy_extras.polys.modulargroebner import modular_groebner
->>> R, u, v, w = ring("u,v,w", QQ, lex)
->>> f4([u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w], R)
+>>> T = PolyRing(TQQ, ['u', 'v', 'w'], typed_lex)
+>>> F = [T.from_sympy(e) for e in (u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w)]
+>>> [g.to_sympy() for g in f4(F, T)]
+[u + v - 2*w, v**2 - 2*v*w + w/3, w**2 - 2*w/15 - 1/5]
+>>> R, U, V, W = ring("u,v,w", QQ, lex)
+>>> modular_groebner([U**2 + V**2 + W**2 - 1, U*V - W/3, U + V - 2*W], R)
 [u + v - 2*w, v**2 - 2*v*w + 1/3*w, w**2 - 2/15*w - 1/5]
->>> modular_groebner([u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w], R)
-[u + v - 2*w, v**2 - 2*v*w + 1/3*w, w**2 - 2/15*w - 1/5]
->>> from sympy import ZZ
 >>> from sympy_extras.polys.stronggroebner import strong_groebner
->>> Z, a, b = ring("a,b", ZZ, lex)
->>> strong_groebner([2*a, 3*b], Z)
-[a*b, 2*a, 3*b]
+>>> Z = PolyRing(TZZ, ['a', 'b'], typed_lex)
+>>> [str(g) for g in strong_groebner([Z.from_sympy(2*a), Z.from_sympy(3*b)], Z)]
+['a*b', '2*a', '3*b']
 
 ```
 
@@ -857,7 +861,8 @@ sympy_extras/
         idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension
         hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
-        f4.py                Faugère's F4: Gröbner bases by sparse row reduction, over any field
+        f4.py                Faugère's F4 on the typed rings: Gröbner bases by its own sparse row reduction, over any field
+        interop.py           conversions between SymPy's polynomial rings and the typed ones (QQ, ZZ, GF(p))
         hilbert.py           Hilbert series of monomial ideals by Bigatti's algorithm
         rur.py               the rational univariate representation of zero-dimensional ideals (Rouillier)
         stronggroebner.py    strong Gröbner bases over the integers (Kandri-Rody–Kapur, Lichtblau)
