@@ -303,11 +303,13 @@ def _compare(a: ExprLike, b: ExprLike, accepted: tuple[int, ...], cls: type[Rela
         order = _order(lhs, rhs)
     elif lhs.is_extended_real and rhs.is_extended_real and \
             (isinstance(rhs, (Infinity, NegativeInfinity)) or isinstance(lhs, (Infinity, NegativeInfinity))):
-        # SymPy's is_ge: every extended real is between -oo and oo
+        # SymPy's is_ge: every extended real is between -oo and oo, a
+        # finite one strictly (p - oo is -oo)
+        other = lhs if isinstance(rhs, (Infinity, NegativeInfinity)) else rhs
         if isinstance(rhs, Infinity) or isinstance(lhs, NegativeInfinity):
-            order = {(-1, 0): -1, (1,): -1}.get(accepted, 2)
+            order = -1 if other.is_finite is True else {(-1, 0): -1, (1,): -1}.get(accepted, 2)
         else:
-            order = {(0, 1): 1, (-1,): 1}.get(accepted, 2)
+            order = 1 if other.is_finite is True else {(0, 1): 1, (-1,): 1}.get(accepted, 2)
     else:
         difference = sub(lhs, rhs)
         if isinstance(difference, Number) and not isinstance(difference, (Float,)):

@@ -160,9 +160,9 @@ class SymPyNode(_SymPyNodeMixin, Basic):
     >>> import sympy
     >>> from sympy_extras.core import from_sympy, to_sympy, Symbol
     >>> x = sympy.Symbol('x')
-    >>> t = from_sympy(sympy.Interval(0, x))
-    >>> t, type(t).__name__, t.args, to_sympy(t) == sympy.Interval(0, x)
-    (Interval(0, x), 'SymPyNode', (0, x, False, False), True)
+    >>> t = from_sympy(sympy.Range(0, x))
+    >>> t, type(t).__name__, t.args, to_sympy(t) == sympy.Range(0, x)
+    (Range(0, x, 1), 'SymPyNode', (0, x, 1), True)
     """
 
     __slots__ = ('_sympy_class', '_node_args')
@@ -384,6 +384,9 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         return sympy.Lambda(tuple(to_sympy(v) for v in e.variables), to_sympy(e.expr, evaluate))
     if isinstance(e, Tuple):
         return sympy.Tuple(*args)
+    from sympy_extras.sets import sets as native_sets
+    if isinstance(e, native_sets.Set) or isinstance(e, native_sets.Contains):
+        return _set_to_sympy(e, args, evaluate)
     if isinstance(e, Dict):
         return sympy.Dict({to_sympy(k): to_sympy(v) for k, v in e.items()})
     if isinstance(e, Relational):
@@ -561,6 +564,8 @@ def _from_sympy(e: SymPyBasic) -> Basic:
         return Dict(*[(from_sympy(k), from_sympy(v)) for k, v in e.items()])
     if isinstance(e, sympy.Tuple):
         return Tuple(*[from_sympy(a) for a in e.args])
+    if isinstance(e, (sympy.Set, sympy.Contains)):
+        return _set_from_sympy(e)
     if isinstance(e, SymPyRelational):
         for sympy_class, cls in _RELATIONAL_FROM_SYMPY.items():
             if isinstance(e, sympy_class):
@@ -981,3 +986,55 @@ def _native_to_sympy() -> dict[type[DefinedFunction], type[SymPyFunctionClass]]:
 def _sympy_to_native() -> dict[type[SymPyFunctionClass], type[DefinedFunction]]:
     _fill_function_tables()
     return _SYMPY_TO_NATIVE
+
+
+def _set_to_sympy(e: Basic, args: list[SymPyBasic], evaluate: bool) -> SymPyBasic:
+    """A set of :mod:`sympy_extras.sets` as SymPy's."""
+    from sympy_extras.sets import sets as native_sets
+    if isinstance(e, native_sets.RealsClass):
+        return sympy.S.Reals
+    if isinstance(e, native_sets.EmptySetClass):
+        return sympy.S.EmptySet
+    if isinstance(e, native_sets.UniversalSetClass):
+        return sympy.S.UniversalSet
+    if isinstance(e, native_sets.Interval):
+        return sympy.Interval(*args)
+    if isinstance(e, native_sets.FiniteSet):
+        return sympy.FiniteSet(*args, evaluate=evaluate)
+    if isinstance(e, native_sets.Union):
+        return sympy.Union(*args, evaluate=evaluate)
+    if isinstance(e, native_sets.Intersection):
+        return sympy.Intersection(*args, evaluate=evaluate)
+    if isinstance(e, native_sets.Complement):
+        return sympy.Complement(args[0], args[1], evaluate=evaluate)
+    if isinstance(e, native_sets.Contains):
+        return sympy.Contains(args[0], args[1], evaluate=False)
+    raise TypeError('no SymPy counterpart of %s' % (type(e).__name__,))
+
+
+def _set_from_sympy(e: SymPyBasic) -> Basic:
+    """A SymPy set as a set of :mod:`sympy_extras.sets` (unevaluated)."""
+    from sympy_extras.sets import sets as native_sets
+
+    if e is sympy.S.Reals:
+        return native_sets.Reals
+    if e is sympy.S.EmptySet:
+        return native_sets.EmptySet
+    if e is sympy.S.UniversalSet:
+        return native_sets.UniversalSet
+    if isinstance(e, sympy.Interval):
+        return native_sets.Interval(_expr(e.start), _expr(e.end), bool(e.left_open), bool(e.right_open))
+    if isinstance(e, sympy.FiniteSet):
+        return native_sets.FiniteSet(*[_expr(a) for a in e.args])
+    parts = [from_sympy(a) for a in e.args]
+    sets = [a for a in parts if isinstance(a, native_sets.Set)]
+    if isinstance(e, sympy.Union) and len(sets) == len(parts):
+        return native_sets.Union(*sets)
+    if isinstance(e, sympy.Intersection) and len(sets) == len(parts):
+        return native_sets.Intersection(*sets)
+    if isinstance(e, sympy.Complement) and len(sets) == 2:
+        return native_sets.Complement(sets[0], sets[1])
+    if isinstance(e, sympy.Contains) and isinstance(parts[0], Expr) and isinstance(parts[1], native_sets.Set):
+        return native_sets.Contains(parts[0], parts[1])
+    # a set not ported, or with a part not ported
+    return SymPyNode(type(e), *parts)

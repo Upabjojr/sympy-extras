@@ -187,6 +187,14 @@ remove public functions. Breaking changes are listed here when they happen.
 - `hyperexpand` is native (the last part of the port: `devise_plan_meijer`,
   `_meijergexpand` with Slater's theorem, `hyperexpand`), and `simplify`
   uses it; `residue` is native (`sympy_extras.series`).
+- Native sets (`sympy_extras.sets`, ported from SymPy): `EmptySet`,
+  `UniversalSet`, `Interval`, `Reals`, `FiniteSet`, `Union`,
+  `Intersection`, `Complement`, `Contains`, with SymPy's union,
+  intersection and subset handlers for them; interop converts them both
+  ways (sets not ported stay SymPy nodes). On random combinations they
+  match SymPy except where SymPy raises.
+- `x < oo` and `-oo < x` are true for a finite extended real `x`, as in
+  SymPy.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
