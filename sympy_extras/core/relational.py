@@ -93,20 +93,21 @@ class Relational(Boolean):
         """A canonical form (SymPy's): a number on the right, otherwise
         the sides in canonical order, and no minus sign in front of the
         left side (``-x < 1`` is ``x > -1``)."""
-        from .sorting import default_sort_key
+        from .sorting import ordered
         r: Relational = self
         if r.rhs.is_number:
             if r.rhs.is_Number and r.lhs.is_Number and _ge_numbers(r.lhs, r.rhs):
                 r = r.reversed
         elif r.lhs.is_number:
             r = r.reversed
-        elif sorted(r.args, key=default_sort_key) != list(r.args):
+        elif ordered(list(r.args)) != list(r.args):
+            # SymPy's ordered: the number of nodes first (i/2 <= n is n >= i/2)
             r = r.reversed
         if r.lhs.could_extract_minus_sign():
             return r.reversedsign
         if not r.rhs.is_number and r.rhs.could_extract_minus_sign():
             from .mul import neg
-            first = sorted([r.lhs, neg(r.rhs)], key=default_sort_key)[0]
+            first = ordered([r.lhs, neg(r.rhs)])[0]
             if first != r.lhs:
                 return r.reversed.reversedsign
         return r

@@ -3,9 +3,9 @@
 factor, polynomials by their roots and rising factorials, products of
 factors and powers piece by piece (the exponents summed).
 
-Ported from SymPy's ``sympy.concrete.products``. The Kronecker delta
-products go through SymPy for that call, and so does a polynomial factor
-whose coefficients our Poly does not take.
+Ported from SymPy's ``sympy.concrete.products`` (the Kronecker delta
+products in :mod:`~sympy_extras.concrete.delta`). A polynomial factor
+whose coefficients our Poly does not take goes through SymPy.
 
 Examples
 ========
@@ -22,7 +22,7 @@ Examples
 # (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
-# Changes: typed; deltaproduct goes through SymPy.
+# Changes: typed.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -169,15 +169,11 @@ def eval_product(term: Expr, limits: Limits) -> Optional[Expr]:
 
 
 def _through_delta(term: Expr, limits: Limits) -> Optional[Expr]:
-    """SymPy's deltaproduct when the delta is simple (through SymPy)."""
-    from sympy.concrete.delta import _has_simple_delta, deltaproduct
-    from sympy_extras.core.interop import expr_from_sympy, to_sympy
-    k = to_sympy(limits[0])
-    st = to_sympy(term)
-    if not _has_simple_delta(st, k):
+    """SymPy's ``deltaproduct`` when the delta is simple."""
+    from .delta import _has_simple_delta, deltaproduct
+    if not _has_simple_delta(term, limits[0]):
         return None
-    r = deltaproduct(st, (k, to_sympy(limits[1]), to_sympy(limits[2])))
-    return expr_from_sympy(r)
+    return deltaproduct(term, limits)
 
 
 # PORTED FROM SYMPY: sympy/concrete/products.py:Product.doit

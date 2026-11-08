@@ -75,6 +75,17 @@ class KroneckerDeltaNode(DefinedFunction):
     def _eval_facts(self) -> dict[str, bool]:
         return dict(_INTEGER_FACTS)
 
+    # PORTED FROM SYMPY: sympy/functions/special/tensor_functions.py:KroneckerDelta._eval_power
+    def _eval_power_node(self, exponent: Expr) -> Optional[Expr]:
+        """A positive power of a delta is the delta (it is 0 or 1)."""
+        if exponent.is_positive is True:
+            return self
+        if exponent.is_negative is True and exponent != -1:
+            from sympy_extras.core.mul import div
+            from sympy_extras.core.numbers import Integer
+            return div(Integer(1), self)
+        return None
+
 
 # PORTED FROM SYMPY: sympy/functions/special/tensor_functions.py:eval_levicivita
 def eval_levicivita(*args: int) -> Expr:

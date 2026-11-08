@@ -251,8 +251,14 @@ remove public functions. Breaking changes are listed here when they happen.
 - `Product.doit` and `product` are native (`sympy_extras.concrete.products`,
   ported from SymPy: `_eval_product` with polynomials by their roots and
   rising factorials, products of factors and powers piece by piece, the
-  exponents summed by the native `summation`); the Kronecker delta
-  products go through SymPy.
+  exponents summed by the native `summation`).
+- `deltasummation` and `deltaproduct` are native
+  (`sympy_extras.concrete.delta`, ported from SymPy; the equations of the
+  deltas solved through SymPy); `eval_sum` factors the nested sums and
+  takes the delta method only for a delta linear in the index, as SymPy.
+  A positive power of `KroneckerDelta` is the delta. `Relational.canonical`
+  orders the sides as SymPy's `ordered` (fewer nodes first: `i/2 <= n` is
+  `n >= i/2`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

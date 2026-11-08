@@ -154,7 +154,10 @@ def eval_sum(f: Expr, limits: Limits) -> Optional[Expr]:
                 newargs.append((newexpr, pair.cond))
             return piecewise(*newargs)
     if f.has(KroneckerDeltaNode):
-        return _through('delta.deltasummation', f, limits)
+        from .delta import _has_simple_delta, deltasummation
+        f = _e(f.replace(lambda e: isinstance(e, Sum), lambda e: _e(e).factor()))
+        if _has_simple_delta(f, limits[0]):
+            return deltasummation(f, limits)
     dif = b - a
     definite = isinstance(dif, Integer)
     if isinstance(dif, Integer) and dif.p < 100:
@@ -174,7 +177,7 @@ def eval_sum_direct(expr: Expr, limits: Limits) -> Optional[Expr]:
     """A definite sum term by term (the factors and terms free of the
     index taken out first)."""
     from sympy_extras.polys.partfrac import apart
-    from sympy_extras.polys.polyerrors import PolynomialError
+    from sympy_extras.polys.polyerrors import CoercionFailed, PolynomialError
     i, a, b = limits
     dif = b - a
     if isinstance(expr, Mul):
@@ -197,8 +200,8 @@ def eval_sum_direct(expr: Expr, limits: Limits) -> Optional[Expr]:
                     return sL * R
     try:
         expr = apart(expr, i)
-    except PolynomialError:
-        pass
+    except (PolynomialError, CoercionFailed, ValueError):
+        pass  # our apart refuses a coefficient domain it does not take
     if isinstance(expr, Add):
         without_i, with_i = expr.as_independent(i)
         if without_i != 0:
@@ -229,7 +232,7 @@ def eval_sum_symbolic(f: Expr, limits: Limits) -> Optional[Expr]:
     from sympy_extras.functions.combinatorial.numbers import bernoulli, harmonic
     from sympy_extras.functions.elementary.piecewise import piecewise
     from sympy_extras.polys.partfrac import apart
-    from sympy_extras.polys.polyerrors import PolynomialError
+    from sympy_extras.polys.polyerrors import CoercionFailed, PolynomialError
     from sympy_extras.polys.polytools import factor
     from sympy_extras.polys.rationaltools import together
     from sympy_extras.simplify.powsimp import powsimp
@@ -258,8 +261,8 @@ def eval_sum_symbolic(f: Expr, limits: Limits) -> Optional[Expr]:
                     return sL * R
     try:
         f = apart(f, i)
-    except PolynomialError:
-        pass
+    except (PolynomialError, CoercionFailed, ValueError):
+        pass  # our apart refuses a coefficient domain it does not take
     if isinstance(f, Add):
         L, R = _two_terms(f)
         lrsum = telescopic(L, R, (i, a, b))
