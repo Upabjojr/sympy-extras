@@ -96,6 +96,7 @@ class Erf(_ErrorFunction):
     unbranched = True
 
     function_name = 'erf'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -145,6 +146,7 @@ class Erfc(_ErrorFunction):
     unbranched = True
 
     function_name = 'erfc'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -189,6 +191,7 @@ class Erfi(_ErrorFunction):
     unbranched = True
 
     function_name = 'erfi'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -233,6 +236,7 @@ class Erfinv(DefinedFunction):
     evaluates)."""
 
     function_name = 'erfinv'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -275,6 +279,7 @@ class Erfcinv(DefinedFunction):
     evaluates)."""
 
     function_name = 'erfcinv'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -806,6 +811,7 @@ class FresnelS(FresnelIntegral):
     unbranched = True
 
     function_name = 'fresnels'
+    generic_nseries = True
     sign = -1
 
     @classmethod
@@ -829,6 +835,7 @@ class FresnelC(FresnelIntegral):
     unbranched = True
 
     function_name = 'fresnelc'
+    generic_nseries = True
     sign = 1
 
     @classmethod
@@ -868,6 +875,7 @@ class Erf2(DefinedFunction):
     unevaluated (``erf2`` evaluates)."""
 
     function_name = 'erf2'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -926,6 +934,7 @@ class Erf2inv(DefinedFunction):
     unevaluated (``erf2inv`` evaluates)."""
 
     function_name = 'erf2inv'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 

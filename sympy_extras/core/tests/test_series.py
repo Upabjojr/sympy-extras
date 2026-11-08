@@ -142,3 +142,26 @@ def test_is_meromorphic_matches_sympy() -> None:
         # our assumptions may know more (gamma(tan(exp(-2))) is finite): an
         # unknown answer of SymPy may be decided here, a decided one agrees
         assert want is None or got == want, (e, a)
+
+
+def test_generic_function_series_matches_sympy() -> None:
+    # SymPy's generic Function._eval_nseries, native for the functions it
+    # expands (their Taylor terms or derivatives)
+    import sympy
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import expr_from_sympy
+    sx, sa = sympy.Symbol('x'), sympy.Symbol('a')
+    cases = [f(ar) for f in (sympy.erf, sympy.erfi, sympy.erfc, sympy.fresnels, sympy.fresnelc)
+             for ar in (sx, 2*sx, sx + 1, 3*sx**2, sx/2 - sx**2, 2*sx + 1)]
+    cases += [sympy.erfinv(sx), sympy.erfinv(2*sx), sympy.erfinv(sx/2 - sx**2)]   # erfinv(1) is a pole
+    cases += [sympy.digamma(sx + 1), sympy.harmonic(sx + 1), sympy.beta(sx + 1, 2), sympy.trigamma(sx + 2),
+              sympy.Heaviside(sx + 1), sympy.re(sx), sympy.jacobi(2, sa, 1, sx), sympy.gegenbauer(3, sa, sx),
+              sympy.assoc_laguerre(2, sa, sx), sympy.elliptic_f(sx, 2), sympy.multigamma(sx + 2, 2),
+              sympy.airyaiprime(sx), sympy.airybiprime(2*sx)]
+    from sympy_extras.core.interop import from_sympy
+    from sympy_extras.core.symbol import Symbol as OurSymbol
+    ox = from_sympy(sx)
+    assert isinstance(ox, OurSymbol)
+    for e in cases:
+        got = expr_from_sympy(e).series(ox, 0, 5)
+        assert str(to_sympy(got, evaluate=False)) == str(e.series(sx, 0, 5)), e

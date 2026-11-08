@@ -318,6 +318,7 @@ class Re(DefinedFunction):
     unbranched = True
 
     function_name = 're'
+    generic_nseries = True
     # PORTED FROM SYMPY: _singularities
     singularities: Union[None, bool, tuple[Expr, ...]] = True
 
@@ -365,6 +366,7 @@ class Im(DefinedFunction):
     unbranched = True
 
     function_name = 'im'
+    generic_nseries = True
     # PORTED FROM SYMPY: _singularities
     singularities: Union[None, bool, tuple[Expr, ...]] = True
 
@@ -747,6 +749,7 @@ class Conjugate(DefinedFunction):
     """The complex conjugate, unevaluated (``conjugate`` evaluates)."""
 
     function_name = 'conjugate'
+    generic_nseries = True
     # PORTED FROM SYMPY: _singularities
     singularities: Union[None, bool, tuple[Expr, ...]] = True
 
@@ -781,6 +784,7 @@ class Atan2(DefinedFunction):
     evaluates)."""
 
     function_name = 'atan2'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -913,6 +917,7 @@ class PolarLift(DefinedFunction):
     logarithm, unevaluated (``polar_lift`` evaluates)."""
 
     function_name = 'polar_lift'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -981,6 +986,7 @@ class PeriodicArgument(DefinedFunction):
     (``periodic_argument`` evaluates)."""
 
     function_name = 'periodic_argument'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -1031,6 +1037,7 @@ class PrincipalBranch(DefinedFunction):
     ``period``, unevaluated (``principal_branch`` evaluates)."""
 
     function_name = 'principal_branch'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -1285,6 +1292,7 @@ class Transpose(DefinedFunction):
     """The transpose, unevaluated (``transpose`` evaluates)."""
 
     function_name = 'transpose'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -1302,6 +1310,7 @@ class Adjoint(DefinedFunction):
     """The conjugate transpose, unevaluated (``adjoint`` evaluates)."""
 
     function_name = 'adjoint'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

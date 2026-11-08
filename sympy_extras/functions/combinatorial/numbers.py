@@ -219,6 +219,7 @@ class Harmonic(DefinedFunction):
     sum(1/k**m, k = 1..n)``, unevaluated (``harmonic`` evaluates)."""
 
     function_name = 'harmonic'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 
@@ -656,6 +657,7 @@ class Totient(_NumberTheoretic):
     """Euler's totient ``totient(n)``, unevaluated (``totient`` evaluates)."""
 
     function_name = 'totient'
+    generic_nseries = True
     sign_facts = (('positive', True),)
 
     @classmethod
@@ -681,6 +683,7 @@ class ReducedTotient(_NumberTheoretic):
     (``reduced_totient`` evaluates)."""
 
     function_name = 'reduced_totient'
+    generic_nseries = True
     sign_facts = (('positive', True),)
 
     @classmethod
@@ -709,6 +712,7 @@ class DivisorSigma(_NumberTheoretic):
     unevaluated (``divisor_sigma`` evaluates)."""
 
     function_name = 'divisor_sigma'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
     sign_facts = (('positive', True),)
@@ -750,6 +754,7 @@ class UDivisorSigma(_NumberTheoretic):
     (``udivisor_sigma`` evaluates)."""
 
     function_name = 'udivisor_sigma'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
     sign_facts = (('positive', True),)
@@ -777,6 +782,7 @@ class PrimeNu(_NumberTheoretic):
     (``primenu`` evaluates)."""
 
     function_name = 'primenu'
+    generic_nseries = True
     sign_facts = (('nonnegative', True),)
 
     @classmethod
@@ -797,6 +803,7 @@ class PrimeOmega(_NumberTheoretic):
     unevaluated (``primeomega`` evaluates)."""
 
     function_name = 'primeomega'
+    generic_nseries = True
     sign_facts = (('nonnegative', True),)
 
     @classmethod
@@ -817,6 +824,7 @@ class Mobius(_NumberTheoretic):
     evaluates)."""
 
     function_name = 'mobius'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -912,6 +920,7 @@ class LegendreSymbol(_NumberTheoretic):
     (``legendre_symbol`` evaluates)."""
 
     function_name = 'legendre_symbol'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -941,6 +950,7 @@ class JacobiSymbol(_NumberTheoretic):
     (``jacobi_symbol`` evaluates)."""
 
     function_name = 'jacobi_symbol'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 

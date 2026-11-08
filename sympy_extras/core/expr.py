@@ -1296,7 +1296,10 @@ class Expr(Basic):
         e = self.subs(x, _x)
         for _ in range(n):
             e = e.diff(_x)
-        return e.subs(_x, x).subs(x, Integer(0)) * x**n / factorial(Integer(n))
+        # SymPy writes e.subs(_x, x).subs(x, 0); evaluated at the dummy
+        # directly, which is the same for a symbol and right for an
+        # expression argument (erfi(2*x): 4*x**2 is not a match of 2*x)
+        return e.subs(_x, Integer(0)) * x**n / factorial(Integer(n))
 
     # PORTED FROM SYMPY: sympy/core/expr.py:Expr.dir
     def dir(self, x: Symbol, cdir: Expr) -> Expr:

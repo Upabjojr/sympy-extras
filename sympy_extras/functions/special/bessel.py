@@ -515,6 +515,7 @@ class AiryAiPrime(AiryBase):
     unbranched = True
 
     function_name = 'airyaiprime'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -543,6 +544,7 @@ class AiryBiPrime(AiryBase):
     unbranched = True
 
     function_name = 'airybiprime'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -638,6 +640,7 @@ class MarcumQ(DefinedFunction):
     (``marcumq`` evaluates)."""
 
     function_name = 'marcumq'
+    generic_nseries = True
     nargs = frozenset({3})
     call_nargs = frozenset({3})
 

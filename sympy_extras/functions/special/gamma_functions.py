@@ -302,6 +302,7 @@ class DiGamma(DefinedFunction):
     evaluates, to ``polygamma(0, z)``)."""
 
     function_name = 'digamma'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -323,6 +324,7 @@ class TriGamma(DefinedFunction):
     evaluates, to ``polygamma(1, z)``)."""
 
     function_name = 'trigamma'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -558,6 +560,7 @@ class MultiGamma(DefinedFunction):
     unbranched = True
 
     function_name = 'multigamma'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 

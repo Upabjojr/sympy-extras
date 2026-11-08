@@ -57,6 +57,7 @@ class YnmNode(DefinedFunction):
     (``Ynm`` evaluates)."""
 
     function_name = 'Ynm'
+    generic_nseries = True
     nargs = frozenset({4})
     call_nargs = frozenset({4})
 
@@ -106,6 +107,7 @@ class ZnmNode(DefinedFunction):
     (``Znm`` evaluates, into ``Ynm`` for a known sign of ``m``)."""
 
     function_name = 'Znm'
+    generic_nseries = True
     nargs = frozenset({4})
     call_nargs = frozenset({4})
 

@@ -70,6 +70,7 @@ class Beta(DefinedFunction):
     unbranched = True
 
     function_name = 'beta'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 
@@ -161,6 +162,7 @@ class BetaInc(_IncompleteBeta):
     unbranched = True
 
     function_name = 'betainc'
+    generic_nseries = True
 
 
 # PORTED FROM SYMPY: sympy/functions/special/beta_functions.py:betainc_regularized
@@ -171,6 +173,7 @@ class BetaIncRegularized(_IncompleteBeta):
     unbranched = True
 
     function_name = 'betainc_regularized'
+    generic_nseries = True
     regularized = True
 
 

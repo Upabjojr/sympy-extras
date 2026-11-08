@@ -363,6 +363,7 @@ class AssocLaguerre(DefinedFunction):
     unevaluated (``assoc_laguerre`` evaluates)."""
 
     function_name = 'assoc_laguerre'
+    generic_nseries = True
     nargs = frozenset({3})
     call_nargs = frozenset({3})
 
@@ -499,6 +500,7 @@ class Jacobi(DefinedFunction):
     (``jacobi`` evaluates)."""
 
     function_name = 'jacobi'
+    generic_nseries = True
     nargs = frozenset({4})
     call_nargs = frozenset({4})
 
@@ -565,6 +567,7 @@ class Gegenbauer(DefinedFunction):
     (``gegenbauer`` evaluates)."""
 
     function_name = 'gegenbauer'
+    generic_nseries = True
     nargs = frozenset({3})
     call_nargs = frozenset({3})
 

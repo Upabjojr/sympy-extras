@@ -141,6 +141,7 @@ class EllipticF(DefinedFunction):
     ``elliptic_f(z, m)``, unevaluated (``elliptic_f`` evaluates)."""
 
     function_name = 'elliptic_f'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 

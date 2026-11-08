@@ -724,9 +724,17 @@ class DefinedFunction(Application):
             return own
         return Application._eval_is_meromorphic(self, x, a)
 
+    #: the classes whose SymPy counterpart expands by the generic
+    #: Function._eval_nseries (ported below); the others use SymPy's
+    generic_nseries: bool = False
+
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
-        # the classes whose expansion is not ported use SymPy's
         from .interop import nseries_node_through_sympy
+        if type(self).generic_nseries:
+            found = _generic_function_nseries(self, x, n, logx)
+            if found is not None:
+                return found
+        # the classes whose expansion is not ported use SymPy's
         return nseries_node_through_sympy(self, x, n, logx, cdir)
 
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
@@ -2211,3 +2219,65 @@ def _nfloat(e: Basic, n: int, exponent: bool) -> Basic:
     if not e.args:
         return e
     return e._evaluated(tuple(_nfloat(a, n, exponent) for a in e.args))
+
+
+# PORTED FROM SYMPY: sympy/core/function.py:Function._eval_nseries
+def _generic_function_nseries(f: DefinedFunction, x: Symbol, n: int, logx: Optional[Expr]) -> Optional[Expr]:
+    """SymPy's generic expansion of a function: by its derivatives when the
+    argument does not vanish (or with several arguments), by its Taylor
+    terms in the argument otherwise; ``None`` for an argument going to an
+    infinity (SymPy's asymptotic branch is not ported)."""
+    from sympy_extras.core.limits import limit
+    from sympy_extras.functions.elementary.integers import ceiling
+    from .coreerrors import PoleError
+    from .numbers import NaN
+    from .order import Order
+    args = [a for a in f.args if isinstance(a, Expr)]
+    args0 = [limit(a, x, Integer(0)) for a in args]
+    if any(a.is_finite is False for a in args0):
+        return None
+    if len(f.nargs) != 1 or 1 not in f.nargs or not (args0[0] == 0):
+        e: Expr = f
+        e1 = e.expand()
+        if e == e1:
+            if len(e.args) == 1:
+                from sympy_extras.polys.polytools import cancel
+                rebuilt = e._evaluated((cancel(args[0]),))
+                assert isinstance(rebuilt, Expr)
+                e = rebuilt
+            term = e.subs(x, Integer(0))
+            assert isinstance(term, Expr)
+            if term.is_finite is False or isinstance(term, NaN):
+                raise PoleError('Cannot expand %s around 0' % (f,))
+            series: Expr = term
+            fact: Expr = Integer(1)
+            xi = Dummy('xi')
+            moved = e.subs(x, xi)
+            assert isinstance(moved, Expr)
+            e = moved
+            for i in range(1, n):
+                fact = fact * Rational(i)
+                e = e.diff(xi)
+                value = e.subs(xi, Integer(0))
+                assert isinstance(value, Expr)
+                if isinstance(value, NaN):
+                    value = limit(e, xi, Integer(0))
+                if value.is_finite is False:
+                    raise PoleError('Cannot expand %s around 0' % (f,))
+                series = series + (value * x**i / fact).expand()
+            return series + Order(x**n, x)
+        return e1.nseries(x, n=n, logx=logx)
+    arg = args[0]
+    terms: list[Expr] = []
+    nterms = n + 2
+    cf = Order(arg.as_leading_term(x), x).getn()
+    if cf is not None and cf != 0:
+        count = ceiling(Integer(n) / cf)
+        assert isinstance(count, Integer)
+        nterms = count.p
+    g: Optional[Expr] = None
+    for i in range(nterms):
+        g = f.taylor_term(i, arg, g)
+        g = g.nseries(x, n=n, logx=logx)
+        terms.append(g)
+    return add(*terms) + Order(x**n, x)

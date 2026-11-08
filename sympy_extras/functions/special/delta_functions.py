@@ -69,6 +69,7 @@ class DiracDelta(DefinedFunction):
     ``DiracDelta(x, k)``, unevaluated (``dirac_delta`` evaluates)."""
 
     function_name = 'DiracDelta'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 
@@ -114,6 +115,7 @@ class Heaviside(DefinedFunction):
     evaluates)."""
 
     function_name = 'Heaviside'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({1, 2})
 

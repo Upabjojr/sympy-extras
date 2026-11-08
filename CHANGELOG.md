@@ -259,6 +259,14 @@ remove public functions. Breaking changes are listed here when they happen.
   A positive power of `KroneckerDelta` is the delta. `Relational.canonical`
   orders the sides as SymPy's `ordered` (fewer nodes first: `i/2 <= n` is
   `n >= i/2`).
+- SymPy's generic `Function._eval_nseries` is native (`_generic_function_nseries`):
+  the expansion by derivatives or by Taylor terms, for the functions whose
+  SymPy class uses it and whose expansions were compared equal
+  (`generic_nseries = True` on 45 classes: erf, erfi, erfc and their
+  inverses, the Fresnel integrals, digamma, trigamma, harmonic, beta,
+  Heaviside, re/im, the orthogonal polynomials of several parameters, ...);
+  the others still use SymPy's. `Expr.taylor_term` evaluates its derivative
+  at the dummy (right for an expression argument: `erfi(2*x)`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
