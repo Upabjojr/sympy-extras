@@ -105,3 +105,27 @@ def test_factor_with_floats_matches_sympy() -> None:
         if not e.free_symbols:
             continue
         assert str(to_sympy(expr_from_sympy(e).factor(), evaluate=False)) == str(s.factor(e)), e
+
+
+def test_cancel_with_gens_matches_sympy() -> None:
+    z = s.Symbol('z')
+    rng = random.Random(11)
+    atoms = [x, y, z, x*y, y*z, x**2, s.Integer(2), s.Rational(1, 2), s.Integer(-3)]
+
+    def rp() -> s.Expr:
+        result: s.Expr = s.Integer(0)
+        for _ in range(rng.randint(1, 3)):
+            term: s.Expr = s.Integer(rng.randint(-3, 3))
+            for _ in range(rng.randint(0, 2)):
+                term = term * rng.choice(atoms)
+            result = result + term
+        return result
+
+    for _ in range(100):
+        c = rp()
+        e = (rp() * c) / (rp() * c)
+        if e.has(s.zoo, s.nan):
+            continue
+        gens = rng.choice([(x,), (y,), (x, y), (z, x)])
+        ours = expr_from_sympy(e).cancel(*[expr_from_sympy(g) for g in gens])
+        assert str(to_sympy(ours, evaluate=False)) == str(s.cancel(e, *gens)), (e, gens)

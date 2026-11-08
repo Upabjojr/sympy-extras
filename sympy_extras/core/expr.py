@@ -21,7 +21,7 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Final, Iterator, Literal, Optional, Sequence, TYPE_CHECKING, Union
+from typing import Final, Iterator, Literal, Optional, Sequence, TYPE_CHECKING, Union, overload
 
 import mpmath
 
@@ -1413,14 +1413,11 @@ class Expr(Basic):
         from sympy_extras.polys.polytools import factor
         return factor(self, *gens, deep=deep)
 
-    def cancel(self, *gens: Symbol) -> Expr:
+    def cancel(self, *gens: Expr) -> Expr:
         """The common factors of numerator and denominator removed
-        (:func:`sympy_extras.polys.polytools.cancel`; SymPy's with ``gens``)."""
-        if not gens:
-            from sympy_extras.polys.polytools import cancel
-            return cancel(self)
-        from .interop import expr_through_sympy, to_sympy
-        return expr_through_sympy(self, lambda s: sympy.cancel(s, *[to_sympy(g) for g in gens]))
+        (:func:`sympy_extras.polys.polytools.cancel`)."""
+        from sympy_extras.polys.polytools import cancel
+        return cancel(self, *gens)
 
     def apart(self, x: Optional[Symbol] = None) -> Expr:
         """The partial fraction decomposition
@@ -1428,15 +1425,29 @@ class Expr(Basic):
         from sympy_extras.polys.partfrac import apart
         return apart(self, x)
 
-    def collect(self, syms: Union[Symbol, Sequence[Symbol]], evaluate: bool = True) -> Expr:
-        """SymPy's ``collect``: the terms grouped by powers of ``syms``."""
+    @overload
+    def collect(self, syms: Union[Symbol, Sequence[Symbol]], evaluate: Literal[True] = True) -> Expr: ...
+
+    @overload
+    def collect(self, syms: Union[Symbol, Sequence[Symbol]], evaluate: Literal[False]) -> dict[Expr, Expr]: ...
+
+    def collect(self, syms: Union[Symbol, Sequence[Symbol]], evaluate: bool = True) -> Union[Expr, dict[Expr, Expr]]:
+        """SymPy's ``collect``: the terms grouped by powers of ``syms``; with
+        ``evaluate=False`` the coefficients of the powers as a dictionary
+        (:func:`~sympy_extras.simplify.radsimp.collect_dict`).
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import symbols
+        >>> x, y = symbols('x y')
+        >>> (x**2*y + x*y + x**2).collect(x), (x**2*y + x*y + x**2).collect(x, evaluate=False)
+        (x**2*(y + 1) + x*y, {x**2: y + 1, x: y})
+        """
+        from sympy_extras.simplify.radsimp import collect, collect_dict
         if evaluate:
-            from sympy_extras.simplify.radsimp import collect
             return collect(self, syms)
-        from .interop import expr_through_sympy, to_sympy
-        from .symbol import Symbol
-        targets = [to_sympy(syms)] if isinstance(syms, Symbol) else [to_sympy(s) for s in syms]
-        return expr_through_sympy(self, lambda s: sympy.collect(s, targets, evaluate=evaluate))
+        return collect_dict(self, syms)
 
     def together(self) -> Expr:
         """The fractions combined (:func:`sympy_extras.polys.rationaltools.together`)."""

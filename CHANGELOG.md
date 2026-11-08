@@ -132,6 +132,10 @@ remove public functions. Breaking changes are listed here when they happen.
   `power_exp` splits when the base is nonzero or the exponent's terms
   have one sign (not only for numerical bases), `complex` combines with
   `func`/`trig` in SymPy's order, and the derivative of `Order` is native.
+- `cancel(f, *gens)` is native (the ring of `gens` over `ZZ[params]`, each
+  coefficient a polynomial of its own: `x*(y + 1)`), and
+  `Expr.collect(..., evaluate=False)` returns the typed dictionary of
+  `collect_dict` (overloads on `evaluate`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

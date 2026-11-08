@@ -1564,12 +1564,15 @@ def cancel_fraction(p: ExprLike, q: ExprLike) -> tuple[Expr, Expr]:
 
 
 # PORTED FROM SYMPY: sympy/polys/polytools.py:cancel
-def cancel(f: ExprLike) -> Expr:
+def cancel(f: ExprLike, *gens: Expr) -> Expr:
     """A rational function in lowest terms, ``P/Q`` with ``P`` and ``Q``
     expanded polynomials without common factors, the leading coefficient
     of ``Q`` positive; the generators are every non-numeric factor of the
-    numerator and the denominator (``sin(x)``, ``sqrt(2)``). Expressions
-    with a ``Piecewise`` are cancelled argument by argument.
+    numerator and the denominator (``sin(x)``, ``sqrt(2)``), or ``gens``
+    with the other factors in the coefficients (``cancel((x*y + x)/(y + 1),
+    x)`` is ``x``; the coefficients stay polynomials of their own:
+    ``x*(y + 1)``). Expressions with a ``Piecewise`` are cancelled argument
+    by argument.
 
     >>> from sympy_extras.core import Symbol
     >>> x, y = Symbol('x'), Symbol('y')
@@ -1577,6 +1580,8 @@ def cancel(f: ExprLike) -> Expr:
     x + 1
     >>> cancel((2*x**2 - 2)/(1 - x**2*y) + 1/x)
     (-2*x**3 + x**2*y + 2*x - 1)/(x**3*y - x)
+    >>> cancel((-x*y - y)/(x*y + x), x), cancel(x/y + 1, x)
+    ((-x*y - y)/(x*(y + 1)), (x + y)/y)
 
     The domains ``RR`` and ``EX`` are not ported: those fractions are
     cancelled by SymPy. Gaussian coefficients are cancelled over ``ZZ_I``.
@@ -1587,14 +1592,69 @@ def cancel(f: ExprLike) -> Expr:
         return e
     from sympy_extras.functions.elementary.piecewise import Piecewise
     if e.has(Piecewise):
-        rebuilt = e._evaluated(tuple(cancel(a) if isinstance(a, Expr) else a for a in e.args))
+        rebuilt = e._evaluated(tuple(cancel(a, *gens) if isinstance(a, Expr) else a for a in e.args))
         if not isinstance(rebuilt, Expr):
             raise TypeError('an expression is expected')
         return rebuilt
     from sympy_extras.core.exprtools import factor_terms
     factored = factor_terms(e, radical=True)
     p, q = factored.as_numer_denom()
+    if gens:
+        return _cancel_with_gens(_expanded(p), _expanded(q), e, factored, gens)
     return _cancel_expanded(_expanded(p), _expanded(q), e, factored)
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:cancel (sring with gens over ZZ[params], QQ[params])
+def _cancel_with_gens(p: Expr, q: Expr, e: Expr, factored: Expr, gens: tuple[Expr, ...]) -> Expr:
+    """``cancel(f, *gens)``: the polynomials in ``gens`` over the polynomial
+    ring of the other generators (the gcd over ``ZZ[params][gens]`` is the
+    one over ``ZZ[gens, params]``, the leading coefficient of the
+    denominator made positive in the order of ``gens`` first), each
+    coefficient printed as a polynomial of its own."""
+    try:
+        joint, (fp, fq) = _joint_rings([p, q])
+    except CoercionFailed:
+        # the domains other than ZZ[...] and QQ[...] are not ported: SymPy's cancel
+        import sympy
+        from sympy_extras.core.interop import expr_through_sympy, to_sympy
+        sympy_gens = [to_sympy(g) for g in gens]
+        return expr_through_sympy(e, lambda s: sympy.cancel(s, *sympy_gens))
+    joint_symbols: set[Symbol] = set()
+    for j in joint:
+        joint_symbols |= j.free_symbols
+    if any(g not in joint and g.free_symbols & joint_symbols for g in gens):
+        # a generator which is not one of the factors (x**2 for x): SymPy's
+        import sympy
+        from sympy_extras.core.interop import expr_through_sympy, to_sympy
+        sympy_gens = [to_sympy(g) for g in gens]
+        return expr_through_sympy(e, lambda s: sympy.cancel(s, *sympy_gens))
+    if not joint:
+        return _expanded(factored)
+    P, Q, Z = _cancel_reps(fp, fq, len(joint))
+    gen_index = [joint.index(g) if g in joint else -1 for g in gens]
+    param_index = [i for i, g in enumerate(joint) if g not in gens]
+
+    def split(m: Monomial) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        return (tuple(m[i] if i >= 0 else 0 for i in gen_index), tuple(m[i] for i in param_index))
+
+    # the canonical unit of ZZ[params]: the sign of the leading coefficient
+    # in the order of gens first
+    lead = max(Q.terms, key=split)
+    if Q.terms[lead] < 0:
+        P, Q = -P, -Q
+
+    def expr_of(f: PolyElement[int]) -> Expr:
+        grouped: dict[tuple[int, ...], list[Expr]] = {}
+        for m, c in f.terms.items():
+            gm, pm = split(m)
+            grouped.setdefault(gm, []).append(
+                mul(Integer(c), *[pow(joint[i], Integer(k)) for i, k in zip(param_index, pm) if k]))
+        parts: list[Expr] = []
+        for gm, cs in grouped.items():
+            parts.append(mul(add(*cs), *[pow(g, Integer(k)) for g, k in zip(gens, gm) if k]))
+        return add(*parts)
+
+    return mul(expr_of(P), pow(expr_of(Q), Integer(-1)))
 
 
 def _cancel_expanded(p: Expr, q: Expr, e: Expr, factored: Expr) -> Expr:
