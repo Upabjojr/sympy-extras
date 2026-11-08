@@ -1146,10 +1146,24 @@ class Expr(Basic):
             e = series
 
     def aseries(self, x: Optional[Symbol] = None, n: int = 6, bound: int = 0, hir: bool = False) -> Expr:
-        """The asymptotic series at infinity (SymPy's ``aseries``)."""
-        from .interop import expr_through_sympy, to_sympy
-        sx = None if x is None else to_sympy(x)
-        return expr_through_sympy(self, lambda s: s.aseries(sx, n, bound, hir))
+        """The asymptotic series at infinity (:func:`~sympy_extras.core.series.aseries`).
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.functions import exp
+        >>> x = Symbol('x')
+        >>> (exp(x)/(1 + exp(x))).aseries(x, 3)
+        exp(-2*x) - exp(-x) + 1 + O(exp(-3*x), (x, oo))
+        """
+        from .series import aseries
+        if x is None:
+            syms = self.free_symbols
+            if len(syms) != 1:
+                raise ValueError('x must be given for multivariate functions.')
+            x = next(iter(syms))
+        return aseries(self, x, n, bound, hir)
 
     def fps(self, x: Optional[Symbol] = None, x0: ExprLike = 0, dir: int = 1) -> Expr:
         """The formal power series (SymPy's ``fps``, wrapped)."""

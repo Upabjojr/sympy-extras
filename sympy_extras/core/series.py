@@ -30,7 +30,7 @@ from .expr import Expr
 from .numbers import Integer
 from .symbol import Dummy, Symbol
 
-__all__ = ['series', 'lseries']
+__all__ = ['series', 'lseries', 'aseries']
 
 
 def _is_zero_number(e: Expr) -> bool:
@@ -257,3 +257,108 @@ def _yield_lseries(s: Iterator[Expr], x: Symbol) -> Iterator[Expr]:
             if ndid == ndo:
                 break
             yielded = yielded + do
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.aseries
+def aseries(e: Expr, x: Symbol, n: int = 6, bound: int = 0, hir: bool = False) -> Expr:
+    """The asymptotic series of ``e`` as ``x`` goes to ``oo``, in terms of
+    the most rapidly varying subexpressions (Gruntz's mrv sets), the
+    coefficients expanded recursively (``bound`` levels for the
+    exponentials of the mrv set); with ``hir`` the hierarchical series.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.core.series import aseries
+    >>> from sympy_extras.functions import exp
+    >>> x = Symbol('x')
+    >>> aseries(exp(1/x + exp(-x**2)), x, 3)
+    1/(2*x**2) + 1/x + 1 + O(x**(-3), (x, oo))
+    """
+    from .add import Add
+    from .function import expand_mul
+    from .gruntz import mrv, rewrite
+    from .numbers import oo
+    from .order import order
+    from .containers import Tuple
+    from sympy_extras.functions.elementary.exponential import Exp, exp, log
+    if x.is_positive is None and x.is_negative is None:
+        xpos = Dummy('x', positive=True)
+        return aseries(e.subs(x, xpos), xpos, n, bound, hir).subs(xpos, x)
+    try:
+        om, exps = mrv(e, x)
+    except PoleError:
+        return e
+    # one level up, x replaced by exp(x), the series of f(exp(x)) taken
+    # and moved back with x replaced by log(x)
+    if x in om:
+        s = aseries(e.subs(x, exp(x)), x, n, bound, hir).subs(x, log(x))
+        if s.getO() is not None:
+            return s + order(1 / x**n, Tuple(x, oo))
+        return s
+    k = Dummy('k', positive=True)
+    # e rewritten in terms of omega
+    func, logw = rewrite(exps, om, x, k)
+    if e in om:
+        if bound <= 0:
+            return e
+        exponent = e.args[0]
+        if not isinstance(exponent, Expr):
+            raise TypeError("an expression is expected")
+        s = aseries(exponent, x, n, bound=bound)
+        if s.args and all(isinstance(t, Expr) for t in s.args):
+            s = _as_expr(s._evaluated(tuple(_as_expr(t).removeO() for t in s.args)))
+        res: Expr
+        try:
+            res = exp(s.subs(x, 1 / x).as_leading_term(x).subs(x, 1 / x))
+        except PoleError:
+            res = e
+        if not isinstance(res, Exp):
+            raise TypeError("an exponential is expected, got %s" % (res,))
+        func = exp(exponent - res.args[0]) / k
+        logw = log(1 / res)
+    s = func.series(k, 0, n)
+    s = expand_mul(s)
+    # the hierarchical series
+    if hir:
+        return s.subs(k, exp(logw))
+    o = s.getO()
+    removed = s.removeO()
+    terms = sorted(removed.args if isinstance(removed, Add) else (removed,),
+                   key=lambda t: _int_exponent(_as_expr(t), k))
+    result: Expr = Integer(0)
+    has_ord = False
+    # the coefficients expanded recursively in their own mrv sets
+    for t0 in terms:
+        t = _as_expr(t0)
+        coeff, expo = t.as_coeff_exponent(k)
+        if coeff.has(x):
+            snew = aseries(coeff, x, n, bound=bound - 1)
+            if has_ord and snew.getO() is not None:
+                break
+            if snew.getO() is not None:
+                has_ord = True
+            result = result + snew * k**expo
+        else:
+            result = result + t
+    if o is None or has_ord:
+        return result.subs(k, exp(logw))
+    return (result + o).subs(k, exp(logw))
+
+
+def _as_expr(b: object) -> Expr:
+    if not isinstance(b, Expr):
+        raise TypeError("an expression is expected, got %s" % (b,))
+    return b
+
+
+def _int_exponent(t: Expr, k: Symbol) -> int:
+    """``int`` of the exponent of ``k`` in the term (SymPy's sort key)."""
+    from .numbers import Rational
+    e = t.as_coeff_exponent(k)[1]
+    if isinstance(e, Integer):
+        return e.p
+    if isinstance(e, Rational):
+        return int(e.p / e.q)
+    raise TypeError("the exponent %s is not a number" % (e,))

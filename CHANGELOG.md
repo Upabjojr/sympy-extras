@@ -101,6 +101,8 @@ remove public functions. Breaking changes are listed here when they happen.
   `Piecewise` are SymPy's, node by node. `sympy_extras.core.fuzzy` has
   the typed three-valued `fuzzy_and`, `fuzzy_or`, `fuzzy_not`,
   `fuzzy_group`.
+- `Expr.aseries` (`sympy_extras.core.series.aseries`) is native, ported
+  from SymPy on the native mrv sets; the series at infinity uses it.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

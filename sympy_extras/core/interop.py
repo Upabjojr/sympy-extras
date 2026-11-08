@@ -792,9 +792,17 @@ def solveset_first_through_sympy(equation: Expr, d: Symbol) -> Optional[Expr]:
         if not (isinstance(kept, sympy.FiniteSet) and isinstance(removed, sympy.FiniteSet)):
             return None
         solutions = sympy.FiniteSet(*[s for s in kept.args if s not in removed.args])
-    if not isinstance(solutions, sympy.FiniteSet) or not solutions.args:
-        return None
-    return expr_from_sympy(solutions.args[0])
+    if isinstance(solutions, sympy.FiniteSet):
+        return expr_from_sympy(solutions.args[0]) if solutions.args else None
+    # Order takes the first element of the iteration (an ImageSet over the
+    # integers starts at n = 0)
+    if isinstance(solutions, sympy.ImageSet):
+        try:
+            first = next(iter(solutions))
+        except (TypeError, StopIteration):
+            return None
+        return expr_from_sympy(first) if isinstance(first, SymPyBasic) else None
+    return None
 
 
 def rewrite_node_through_sympy(node: Basic, args: tuple[Basic, ...], target: type,
