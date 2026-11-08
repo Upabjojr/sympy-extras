@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from ..conftest import load
+from ..conftest import load, stable_seed
 
 F = Fraction
 
@@ -113,7 +113,7 @@ DOMAINS = ["QQ", "GF(7)", "GF(32003)"]
 @pytest.mark.parametrize("nvars", [2, 3])
 @pytest.mark.parametrize("seed", range(4))
 def test_f4_agrees(rust: Any, order: str, name: str, nvars: int, seed: int) -> None:
-    rng = random.Random(hash((order, name, nvars, seed)) & 0xffff)
+    rng = random.Random(stable_seed(order, name, nvars, seed))
     if name == "QQ":
         def coefficient(r: random.Random) -> Any:
             return F(r.randint(-3, 3) or 1, r.randint(1, 2))

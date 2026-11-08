@@ -68,6 +68,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "rootisolation",
         "sympy_extras_rs.polys.rootisolation",
     )?)?;
+    algorithms::register_stronggroebner(&submodule(
+        &polys,
+        "stronggroebner",
+        "sympy_extras_rs.polys.stronggroebner",
+    )?)?;
     algorithms::register_f4(&submodule(&polys, "f4", "sympy_extras_rs.polys.f4")?)?;
     rings::register_heuristicgcd(&submodule(
         &polys,

@@ -11,6 +11,7 @@ extension module itself, for the tests that compare the two directly.
 from __future__ import annotations
 
 import importlib
+import zlib
 from types import ModuleType
 
 import pytest
@@ -18,6 +19,12 @@ import pytest
 PYTHON: str = "sympy_extras"
 RUST: str = "sympy_extras_rs"
 IMPLEMENTATIONS: list[str] = [PYTHON, RUST]
+
+
+def stable_seed(*parts: object) -> int:
+    """A seed from the parameters of a test that is the same in every run
+    (``hash`` of a string changes with ``PYTHONHASHSEED``)."""
+    return zlib.crc32(repr(parts).encode()) & 0xffff
 
 
 def load(name: str) -> ModuleType:

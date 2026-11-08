@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 import pytest
 
-from ..conftest import load
+from ..conftest import load, stable_seed
 
 
 def domains(impl: str, name: str = "") -> Any:
@@ -86,7 +86,7 @@ METHODS = ["add", "sub", "mul", "exquo", "quo", "rem", "gcd", "lcm", "gcdex", "i
 def test_domain_methods_agree(rust: Any, kind: str, which: str, method: str) -> None:
     make = poly_ring if which == "ring" else frac_field
     Ks = [make(impl, kind) for impl in ("sympy_extras", "sympy_extras_rs")]
-    rng = random.Random(hash((kind, which, method)) & 0xffff)
+    rng = random.Random(stable_seed(kind, which, method))
     unary = method in ("invert", "canonical_unit", "neg", "is_unit", "is_one", "is_zero")
     for _ in range(40):
         a, b = ground_poly(rng, kind), ground_poly(rng, kind)
@@ -130,7 +130,7 @@ def test_dense_over_polynomial_ring_agrees(rust: Any, kind: str, module: str, fu
     functions = [getattr(importlib.import_module(impl + ".polys." + module), function)
                  for impl in ("sympy_extras", "sympy_extras_rs")]
     from sympy_extras.polys.densearith import dup_mul
-    rng = random.Random(hash((kind, function)) & 0xffff)
+    rng = random.Random(stable_seed(kind, function))
 
     def bivariate(degree: int) -> list[list[Any]]:
         f = [ground_poly(rng, kind, 2) for _ in range(rng.randint(1, degree + 1))]

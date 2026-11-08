@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 import pytest
 
-from ..conftest import load
+from ..conftest import load, stable_seed
 
 
 def mod(impl: str, name: str) -> Any:
@@ -80,7 +80,7 @@ def outcome(call: Callable[[], Any]) -> Any:
 @pytest.mark.parametrize("name", DOMAINS)
 @pytest.mark.parametrize("nvars", [1, 2, 3])
 def test_ring_arithmetic_agrees(rust: Any, name: str, order: str, nvars: int) -> None:
-    rng = random.Random(hash((name, order, nvars)) & 0xffff)
+    rng = random.Random(stable_seed(name, order, nvars))
     names = ['x', 'y', 'z'][:nvars]
     rings = []
     for impl in ("sympy_extras", "sympy_extras_rs"):

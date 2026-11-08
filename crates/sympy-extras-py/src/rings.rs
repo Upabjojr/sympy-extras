@@ -202,6 +202,16 @@ fn ring_of(e: &ElemKind) -> RingKind {
     }
 }
 
+/// The name of the coefficient domain of a ring.
+pub fn domain_name(r: &RingKind) -> String {
+    use sympy_extras_core::polys::domains::Domain;
+    match r {
+        RingKind::ZZ(ring) => ring.domain.name(),
+        RingKind::QQ(ring) => ring.domain.name(),
+        RingKind::GF(ring) => ring.domain.name(),
+    }
+}
+
 fn domain_of(r: &RingKind) -> PyDomain {
     match r {
         RingKind::ZZ(_) => PyDomain::base(DomainKind::ZZ),

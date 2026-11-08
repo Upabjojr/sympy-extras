@@ -53,4 +53,5 @@ degrees and indices are `usize`, data-dependent exceptions are
 | `polys/domains/fractionfield.py` | done | conversions between different fields of fractions wait for the core (they go through expressions) |
 | `polys/rootisolation.py` | done | with the `isolate_real_roots_dense`/`count_real_roots_dense` hooks of `ZZ` and `QQ` |
 | `polys/f4.py` | done | Katsura-4: the same bases, 2.5x (lex over `QQ`) to 7x (`GF(32003)`) faster than Python, untuned |
-| everything else | not yet | next: `stronggroebner`, `modulargroebner`, `polyclasses`, `subresultants` |
+| `polys/stronggroebner.py` | done | 10-20x faster than Python on the random test systems |
+| everything else | not yet | next: `modulargroebner`, `polyclasses`, `subresultants`, `hilbert` |

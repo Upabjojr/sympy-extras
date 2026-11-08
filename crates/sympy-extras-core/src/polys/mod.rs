@@ -12,3 +12,4 @@ pub mod heuristicgcd;
 pub mod rings;
 pub mod rootisolation;
 pub mod sqfreetools;
+pub mod stronggroebner;

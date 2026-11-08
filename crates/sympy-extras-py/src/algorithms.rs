@@ -8,9 +8,10 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyModule};
 
 use sympy_extras_core::numbers::Rat;
+use sympy_extras_core::polys::domains::IntegerRing;
 use sympy_extras_core::polys::domains::{Domain, RationalField, SparseRow};
 use sympy_extras_core::polys::rings::PolyElement;
-use sympy_extras_core::polys::{f4 as groebner, rootisolation as ri};
+use sympy_extras_core::polys::{f4 as groebner, rootisolation as ri, stronggroebner as sg};
 
 use crate::convert::{err, out_polys, out_usize, poly, tuple, Bridge};
 use crate::domains::PyDomain;
@@ -232,6 +233,82 @@ fn row_echelon<'py>(py: Python<'py>, rows: &Bound<'py, PyAny>, K: &PyDomain) -> 
         }
         out_sparse_rows(k, py, &groebner::row_echelon(&sparse_rows(k, rows)?, k))
     })
+}
+
+// -- stronggroebner
+
+fn zz_elem(f: &PyPolyElement) -> PyResult<PolyElement<IntegerRing>> {
+    match &f.inner {
+        ElemKind::ZZ(f) => Ok(f.clone()),
+        _ => Err(PyTypeError::new_err("polynomials over ZZ are expected")),
+    }
+}
+
+fn zz_elems(ob: &Bound<'_, PyAny>) -> PyResult<Vec<PolyElement<IntegerRing>>> {
+    let items: Vec<ElemKind> = elements(ob)?;
+    Ok(same_kind!(&items, ZZ))
+}
+
+fn zz_out<'py>(py: Python<'py>, f: PolyElement<IntegerRing>) -> PyResult<Bound<'py, PyAny>> {
+    Ok(Bound::new(py, PyPolyElement { inner: ElemKind::ZZ(f) })?.into_any())
+}
+
+/// `strong_groebner(polys, ring)`: the generators are polynomials over `ZZ`
+/// or integers.
+#[pyfunction]
+fn strong_groebner<'py>(py: Python<'py>, polys: &Bound<'py, PyAny>, ring: &PyPolyRing) -> PyResult<Bound<'py, PyAny>> {
+    let r = match &ring.inner {
+        RingKind::ZZ(r) => r,
+        _ => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "strong Gröbner bases are computed over ZZ, the ring is over {}",
+                crate::rings::domain_name(&ring.inner)
+            )))
+        }
+    };
+    let mut generators: Vec<PolyElement<IntegerRing>> = Vec::new();
+    for item in polys.try_iter()? {
+        let item = item?;
+        if let Ok(f) = item.downcast::<PyPolyElement>() {
+            generators.push(zz_elem(f.get())?);
+        } else {
+            generators.push(r.ground(crate::convert::extract_int(&item)?));
+        }
+    }
+    let basis = sg::strong_groebner(&generators, r).map_err(err)?;
+    out_elements(py, basis.into_iter().map(ElemKind::ZZ).collect())
+}
+
+#[pyfunction]
+fn strong_reduce<'py>(py: Python<'py>, f: &PyPolyElement, basis: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    zz_out(py, sg::strong_reduce(&zz_elem(f)?, &zz_elems(basis)?))
+}
+
+#[pyfunction]
+fn is_strong_groebner(basis: &Bound<'_, PyAny>) -> PyResult<bool> {
+    Ok(sg::is_strong_groebner(&zz_elems(basis)?))
+}
+
+#[pyfunction]
+fn s_polynomial_zz<'py>(py: Python<'py>, f: &PyPolyElement, g: &PyPolyElement) -> PyResult<Bound<'py, PyAny>> {
+    zz_out(py, sg::s_polynomial_zz(&zz_elem(f)?, &zz_elem(g)?))
+}
+
+#[pyfunction]
+fn g_polynomial_zz<'py>(py: Python<'py>, f: &PyPolyElement, g: &PyPolyElement) -> PyResult<Option<Bound<'py, PyAny>>> {
+    match sg::g_polynomial_zz(&zz_elem(f)?, &zz_elem(g)?) {
+        Some(h) => Ok(Some(zz_out(py, h)?)),
+        None => Ok(None),
+    }
+}
+
+pub fn register_stronggroebner(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(strong_groebner, m)?)?;
+    m.add_function(wrap_pyfunction!(strong_reduce, m)?)?;
+    m.add_function(wrap_pyfunction!(is_strong_groebner, m)?)?;
+    m.add_function(wrap_pyfunction!(s_polynomial_zz, m)?)?;
+    m.add_function(wrap_pyfunction!(g_polynomial_zz, m)?)?;
+    Ok(())
 }
 
 pub fn register_rootisolation(m: &Bound<'_, PyModule>) -> PyResult<()> {

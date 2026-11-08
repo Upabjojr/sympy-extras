@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 import pytest
 
-from ..conftest import load
+from ..conftest import load, stable_seed
 
 #: (module, function, argument kinds); ``f``, ``g``: polynomials, ``c``: an
 #: element, ``p``: a nonzero element, ``n``: a small nonnegative int
@@ -167,7 +167,7 @@ def test_agree(rust: Any, module: str, function: str, kinds: str, name: str) -> 
     python_function = getattr(importlib.import_module("sympy_extras.polys." + module), function)
     rust_function = getattr(importlib.import_module("sympy_extras_rs.polys." + module), function)
     from sympy_extras.polys.densearith import dup_mul
-    rng = random.Random(hash((module, function, name)) & 0xffff)
+    rng = random.Random(stable_seed(module, function, name))
     for _ in range(TRIALS):
         args = arguments(rng, function, kinds, name, lambda f, g: dup_mul(f, g, K_py))
         expected = outcome(lambda: python_function(*args, K_py))
