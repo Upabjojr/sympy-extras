@@ -252,8 +252,17 @@ def powsimp(expr: ExprLike, deep: bool = False, combine: Combine = 'all', force:
 
     if not e.args or e in (exp_polar(Integer(0)), exp_polar(Integer(1))):
         return e
+    def recurse_arg(w: Basic) -> Basic:
+        # the arguments which are not expressions (the Tuple of an Order) are
+        # rebuilt with their own arguments simplified, as SymPy does
+        if isinstance(w, Expr):
+            return recurse(w)
+        if not w.args:
+            return w
+        return w._evaluated(tuple(recurse_arg(a) for a in w.args))
+
     if deep or isinstance(e, Add) or (isinstance(e, Mul) and _y not in e.args):
-        e = _expr(e._evaluated(tuple(recurse(_expr(w)) for w in e.args)))
+        e = _expr(e._evaluated(tuple(recurse_arg(w) for w in e.args)))
     if isinstance(e, Pow):
         return mul(recurse(mul(e, _y), deep_=False), pow(_y, Integer(-1)))
     if not isinstance(e, Mul):

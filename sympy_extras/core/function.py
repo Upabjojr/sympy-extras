@@ -144,6 +144,115 @@ class Application(Expr):
     def _sympystr(self, printer: StrPrinter) -> str:
         return '%s(%s)' % (self.name, ', '.join(printer.doprint(a) for a in self._args))
 
+    def _series_nargs(self) -> Optional[frozenset[int]]:
+        """The numbers of arguments of the function for the series
+        (``None``: any number, SymPy's ``Naturals0``)."""
+        return None
+
+    def _rebuilt(self, args: Sequence[Expr]) -> Expr:
+        """The node of the same function with ``args``, evaluated."""
+        return as_expr(self._evaluated(tuple(args)))
+
+    # PORTED FROM SYMPY: sympy/core/function.py:Function._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        raise PoleError('Asymptotic expansion of %s around %s is not implemented.'
+                        % (type(self).__name__, list(args0)))
+
+    # PORTED FROM SYMPY: sympy/core/function.py:Function._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from .numbers import NaN as _NaN, oo, zoo, nan
+        from .order import Order, order
+        args = self._args
+        args0 = [t.limit(x, Integer(0)) for t in args]
+        if any(t.is_finite is False for t in args0):
+            a = [t.as_leading_term(x, logx=logx) for t in args]
+            a0 = [t.limit(x, Integer(0)) for t in a]
+            if any(t.has(oo, neg(oo), zoo, nan) for t in a0):
+                return self._eval_aseries(n, args0, x, logx)
+            # the argument goes to oo logarithmically only: a power series
+            # around the logarithmic term, f(1 + x + log(x)) is
+            # f(1 + logx) + x*f'(1 + logx) + O(x**2)
+            terms = [t._eval_nseries(x, n, logx, cdir) for t in args]
+            z = [r - r0 for r, r0 in zip(terms, a0)]
+            p = [Dummy() for _ in z]
+            q: list[Expr] = []
+            v: Optional[Symbol] = None
+            zv: Expr = Integer(0)
+            for ai, zi, pi in zip(a0, z, p):
+                if zi.has(x):
+                    if v is not None:
+                        raise NotImplementedError
+                    q.append(ai + pi)
+                    v = pi
+                    zv = zi
+                else:
+                    q.append(ai)
+            e1 = self._rebuilt(q)
+            if v is None:
+                return e1
+            series = e1._eval_nseries(v, n, logx, cdir)
+            o = series.getO()
+            series = series.removeO()
+            o_expr = o.expr if isinstance(o, Order) else Integer(0)
+            return series.subs(v, zv).expand() + order(o_expr.subs(v, zv), x)
+        nargs = self._series_nargs()
+        if nargs is None or (nargs == frozenset({1}) and not _is_zero_number(args0[0])) or any(c > 1 for c in nargs):
+            e: Expr = self
+            expanded = e.expand()
+            if e == expanded:
+                # the general algorithm, for sin(x + 1) or sin(cos(x))
+                if len(e.args) == 1 and isinstance(e, Application):
+                    e = e._rebuilt([e._args[0].cancel()])
+                term = e.subs(x, Integer(0))
+                if term.is_finite is False or isinstance(term, _NaN):
+                    raise PoleError("Cannot expand %s around 0" % (self,))
+                result: Expr = term
+                fact = 1
+                _x = Dummy('xi')
+                e = e.subs(x, _x)
+                for i in range(1, n):
+                    fact *= i
+                    e = e.diff(_x)
+                    value = e.subs(_x, Integer(0))
+                    if isinstance(value, _NaN):
+                        # a limit when it has to be
+                        value = e.limit(_x, Integer(0))
+                    if value.is_finite is False:
+                        raise PoleError("Cannot expand %s around 0" % (self,))
+                    result = result + (value * x**i / Integer(fact)).expand()
+                return result + order(x**n, x)
+            return expanded.nseries(x, n=n, logx=logx)
+        arg = self._args[0]
+        lst: list[Expr] = []
+        g: Optional[Expr] = None
+        # the number of terms predicted
+        nterms = n + 2
+        cf = order(arg.as_leading_term(x), x).getn()
+        if cf is not None and cf != Integer(0):
+            from .add import _ceiling_int
+            nterms = _ceiling_int(Integer(n) / cf)
+        for i in range(nterms):
+            g = self.taylor_term(i, arg, g)
+            g = g.nseries(x, n=n, logx=logx)
+            lst.append(g)
+        return add(*lst) + order(x**n, x)
+
+    # PORTED FROM SYMPY: sympy/core/function.py:Function._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from .order import order
+        args = [a.as_leading_term(x, logx=logx) for a in self._args]
+        from .order import Order
+        o = order(Integer(1), x)
+        if isinstance(o, Order) and any(x in a.free_symbols and o.contains(a) for a in args):
+            # an argument vanishing as x -> 0 (x, x**2, not 3 or 1/x): the
+            # class must give the first nonzero term (sin(x) is x)
+            raise NotImplementedError('%s has no _eval_as_leading_term routine' % (type(self).__name__,))
+        return self
+
+
+def _is_zero_number(e: Expr) -> bool:
+    return e.is_Number and e == 0
+
 
 class UndefinedFunction(FunctionClass):
     """An undefined function ``f``; calling it builds ``f(x)``.
@@ -233,6 +342,13 @@ class AppliedUndef(Application):
     @property
     def func(self) -> Callable[..., Basic]:
         return self._function
+
+    def _series_nargs(self) -> Optional[frozenset[int]]:
+        return self._function.nargs
+
+    # PORTED FROM SYMPY: sympy/core/function.py:AppliedUndef._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        return self
 
     @property
     def function(self) -> UndefinedFunction:
@@ -356,6 +472,14 @@ class AppliedSymPyFunction(Application):
     def __init__(self, sympy_class: type[SymPyFunctionClass], *args: ExprLike) -> None:
         self._sympy_class: Final[type[SymPyFunctionClass]] = sympy_class
         Application.__init__(self, *args)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from .interop import nseries_node_through_sympy
+        return nseries_node_through_sympy(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from .interop import sympy_leading_term
+        return sympy_leading_term(self, x, logx, cdir)
 
     @property
     def func(self) -> Callable[..., Basic]:
@@ -549,6 +673,19 @@ class DefinedFunction(Application):
     #: SymPy's ``unbranched``: the function is single-valued, so that
     #: ``unpolarify`` may strip the polar parts of its arguments
     unbranched: bool = False
+
+    def _series_nargs(self) -> Optional[frozenset[int]]:
+        return None if self.variadic else self.nargs
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        # the classes whose expansion is not ported use SymPy's
+        from .interop import nseries_node_through_sympy
+        return nseries_node_through_sympy(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from .interop import leading_term_node_through_sympy
+        found = leading_term_node_through_sympy(self, x, logx, cdir)
+        return Application._eval_as_leading_term(self, x, logx, cdir) if found is None else found
 
     def __init__(self, *args: ExprLike) -> None:
         if not self.variadic and len(args) not in self.nargs:

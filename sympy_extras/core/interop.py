@@ -46,6 +46,7 @@ from .numbers import (AlgebraicNumber, Catalan, CatalanType, ComplexInfinity, Eu
     EulerGammaType, Exp1, Float, GoldenRatio, GoldenRatioType, ImaginaryUnit, Infinity, Integer,
     NaN, NegativeInfinity, Number, Pi, Rational, TribonacciConstant, TribonacciConstantType, E, I, nan,
     number_from_fraction, oo, pi, zoo)
+from .coreerrors import PoleError
 from .order import Order
 from .power import Pow
 from .relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
@@ -672,6 +673,84 @@ def expand_func_node_through_sympy(node: Basic) -> Optional[Basic]:
     if not _sympy_has_method(type(original), '_eval_expand_func'):
         return None
     return from_sympy(sympy.expand_func(original, deep=False))
+
+
+def _sympy_defines_before(cls: type, name: str, stop: type) -> bool:
+    """Whether a class of the SymPy class's MRO before ``stop`` defines
+    ``name`` (an override of the method of ``stop``)."""
+    for k in cls.__mro__:
+        if k is stop:
+            return False
+        if name in k.__dict__:
+            return True
+    return False
+
+
+def _sympy_series_args(x: Symbol, logx: Optional[Expr], cdir: Expr
+                       ) -> tuple[SymPyBasic, Optional[SymPyBasic], SymPyBasic]:
+    return to_sympy(x), None if logx is None else to_sympy(logx), to_sympy(cdir)
+
+
+def nseries_node_through_sympy(node: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+    """SymPy's ``_eval_nseries`` of the node (the series of the classes
+    whose expansion is not ported yet); SymPy's ``PoleError`` is raised
+    as the one of the core."""
+    original = sympy_expr(to_sympy(node))
+    sx, slogx, scdir = _sympy_series_args(x, logx, cdir)
+    try:
+        return expr_from_sympy(original._eval_nseries(sx, n, slogx, scdir))
+    except sympy.PoleError as error:
+        raise PoleError(str(error)) from error
+
+
+def leading_term_node_through_sympy(node: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Optional[Expr]:
+    """SymPy's ``_eval_as_leading_term`` of the node when its SymPy class
+    has its own (not the default of ``Expr`` or of ``Function``), ``None``
+    otherwise."""
+    original = sympy_expr(to_sympy(node))
+    stop: type = SymPyFunctionClass if isinstance(original, SymPyFunctionClass) else SymPyExpr
+    if not _sympy_defines_before(type(original), '_eval_as_leading_term', stop):
+        return None
+    sx, slogx, scdir = _sympy_series_args(x, logx, cdir)
+    try:
+        return expr_from_sympy(original._eval_as_leading_term(sx, logx=slogx, cdir=scdir))
+    except sympy.PoleError as error:
+        raise PoleError(str(error)) from error
+
+
+def sympy_leading_term(node: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    """SymPy's ``_eval_as_leading_term`` of the node, whatever class
+    defines it."""
+    original = sympy_expr(to_sympy(node))
+    sx, slogx, scdir = _sympy_series_args(x, logx, cdir)
+    try:
+        return expr_from_sympy(original._eval_as_leading_term(sx, logx=slogx, cdir=scdir))
+    except sympy.PoleError as error:
+        raise PoleError(str(error)) from error
+
+
+def limit_through_sympy(e: Expr, z: Symbol, z0: Expr, dir: str = '+', heuristics: bool = True) -> Optional[Expr]:
+    """SymPy's ``Limit(e, z, z0, dir).doit(heuristics=...)``; ``None`` when
+    SymPy leaves the limit unevaluated."""
+    result = sympy.Limit(to_sympy(e), to_sympy(z), to_sympy(z0), dir).doit(heuristics=heuristics)
+    if isinstance(result, sympy.Limit):
+        return None
+    return expr_from_sympy(result)
+
+
+def solveset_first_through_sympy(equation: Expr, d: Symbol) -> Optional[Expr]:
+    """The first solution of SymPy's ``solveset(equation, d)`` (a
+    complement taken as the difference of its sets, as ``Order`` does);
+    ``None`` when there is none."""
+    solutions = sympy.solveset(to_sympy(equation), to_sympy(d))
+    if isinstance(solutions, sympy.Complement):
+        kept, removed = solutions.args
+        if not (isinstance(kept, sympy.FiniteSet) and isinstance(removed, sympy.FiniteSet)):
+            return None
+        solutions = sympy.FiniteSet(*[s for s in kept.args if s not in removed.args])
+    if not isinstance(solutions, sympy.FiniteSet) or not solutions.args:
+        return None
+    return expr_from_sympy(solutions.args[0])
 
 
 def rewrite_node_through_sympy(node: Basic, args: tuple[Basic, ...], target: type,

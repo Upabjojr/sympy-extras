@@ -28,6 +28,7 @@ import mpmath
 import sympy
 
 from .basic import Atom, Basic, RefineArg, SubsArg, SubsMapping
+from .cache import cacheit
 from .kind import Kind, NumberKind, UndefinedKind
 from .sorting import ArgsKey, ClassKey, SortKey
 
@@ -462,28 +463,41 @@ class Expr(Basic):
         dependent = [a for a in factors_of(self) if a.has(*symbols)]
         return (mul(*free), mul(*dependent))
 
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr.as_coeff_exponent
     def as_coeff_exponent(self, x: Expr) -> tuple[Expr, Expr]:
-        """``(c, e)`` with ``self == c*x**e`` and ``c`` free of ``x``, or
-        ``(self, 0)``.
+        """``(c, e)`` with ``self == c*x**e`` and ``c`` free of ``x`` (after
+        collecting in ``x``), or ``(self, 0)``.
 
         Examples
         ========
 
         >>> from sympy_extras.core import symbols
-        >>> x, y = symbols('x y')
+        >>> x, y, z = symbols('x y z')
         >>> (3*x**2*y).as_coeff_exponent(x), (3/x).as_coeff_exponent(x), (x**2 + x).as_coeff_exponent(x)
         ((3*y, 2), (3, -1), (x**2 + x, 0))
+        >>> (x**2*y + x**2*z).as_coeff_exponent(x)
+        (y + z, 2)
         """
+        from .mul import Mul
         from .numbers import Integer
-        from .power import Pow
-        c, m = self.as_independent(x, as_Add=False)
-        if m == x:
-            return (c, Integer(1))
-        if isinstance(m, Pow) and m.base == x:
-            return (c, m.exp)
-        if m.is_Number and m == 1:
-            return (c, Integer(0))
-        return (self, Integer(0))
+        from sympy_extras.simplify.radsimp import collect
+        s = collect(self, x)
+        c: Expr
+        p: list[Expr]
+        if isinstance(s, Mul):
+            # SymPy's Mul.as_coeff_mul(x): the raw product of the free factors
+            free = [f for f in s.args if isinstance(f, Expr) and not f.has(x)]
+            p = [f for f in s.args if isinstance(f, Expr) and f.has(x)]
+            c = Integer(1) if not free else free[0] if len(free) == 1 else Mul(*free)
+        elif s.has(x):
+            c, p = Integer(1), [s]
+        else:
+            c, p = s, []
+        if len(p) == 1:
+            b, e = p[0].as_base_exp()
+            if b == x:
+                return c, e
+        return s, Integer(0)
 
     def as_coefficient(self, expr: ExprLike) -> Optional[Expr]:
         """The coefficient of ``expr`` when ``self`` is ``expr`` times
@@ -1017,40 +1031,96 @@ class Expr(Basic):
     # ------------------------------------------------------------------
     # series (the algorithms of sympy.series, through the conversion)
 
-    def series(self, x: Optional[Symbol] = None, x0: ExprLike = 0, n: Optional[int] = 6, dir: str = '+') -> Expr:
-        """The series expansion at ``x0`` with the error term as an
-        :class:`~sympy_extras.core.order.Order`.
+    def series(self, x: Optional[Symbol] = None, x0: ExprLike = 0, n: int = 6, dir: str = '+',
+               logx: Optional[Expr] = None, cdir: ExprLike = 0) -> Expr:
+        """The series expansion at ``x0`` up to ``O((x - x0)**n, (x, x0))``
+        (SymPy's ``series``; ``lseries`` gives the terms one by one).
 
         Examples
         ========
 
-        >>> import sympy
-        >>> from sympy_extras.core import Symbol, SymPyFunction
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.functions import cos, exp
         >>> x = Symbol('x')
-        >>> SymPyFunction(sympy.sin)(x).series(x, 0, 5)
-        x - x**3/6 + O(x**5)
-        >>> (1/(1 - x)).series(x, 0, 3).removeO()
-        x**2 + x + 1
+        >>> cos(x).series(x, 0, 6), exp(x).series(x, 1, 3)
+        (1 - x**2/2 + x**4/24 + O(x**6), E + E*(x - 1) + E*(x - 1)**2/2 + O((x - 1)**3, (x, 1)))
+        >>> (1/(1 - x)).series(x, 0, 3).removeO(), (1/x).series(x, 0, 3)
+        (x**2 + x + 1, 1/x)
         """
-        from .interop import expr_through_sympy, to_sympy
-        sx = None if x is None else to_sympy(x)
-        return expr_through_sympy(self, lambda s: s.series(sx, to_sympy(to_expr(x0)), n, dir))
+        from .series import series
+        return series(self, x, to_expr(x0), n, dir, logx, to_expr(cdir))
 
-    def nseries(self, x: Optional[Symbol] = None, x0: ExprLike = 0, n: int = 6, dir: str = '+') -> Expr:
-        """The series expansion computed by SymPy's ``nseries``."""
-        from .interop import expr_through_sympy, to_sympy
-        sx = None if x is None else to_sympy(x)
-        return expr_through_sympy(self, lambda s: s.nseries(sx, to_sympy(to_expr(x0)), n, dir))
+    def nseries(self, x: Optional[Symbol] = None, x0: ExprLike = 0, n: int = 6, dir: str = '+',
+                logx: Optional[Expr] = None, cdir: ExprLike = 0) -> Expr:
+        """The series computed by the ``_eval_nseries`` of the classes (at
+        zero from the right; ``series`` otherwise), which may have fewer
+        terms than asked for, with a correct order term.
 
-    def lseries(self, x: Optional[Symbol] = None, x0: ExprLike = 0, dir: str = '+') -> Iterator[Expr]:
-        """The terms of the series one by one (a generator)."""
-        from .interop import expr_from_sympy, to_sympy
-        s = to_sympy(self)
-        if not isinstance(s, sympy.Expr):
-            raise TypeError("an expression is expected")
-        sx = None if x is None else to_sympy(x)
-        for term in s.lseries(sx, to_sympy(to_expr(x0)), dir):
-            yield expr_from_sympy(term)
+        Examples
+        ========
+
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.functions import log, sin
+        >>> x = Symbol('x')
+        >>> sin(x).nseries(x, 0, 6), log(x + 1).nseries(x, 0, 5)
+        (x - x**3/6 + x**5/120 + O(x**6), x - x**2/2 + x**3/3 - x**4/4 + O(x**5))
+        """
+        x0e = to_expr(x0)
+        if x is not None and x not in self.free_symbols:
+            return self
+        if x is None or not (x0e.is_Number and x0e == 0) or dir != '+':
+            return self.series(x, x0e, n, dir, cdir=cdir)
+        return self._eval_nseries(x, n, logx, to_expr(cdir))
+
+    def lseries(self, x: Optional[Symbol] = None, x0: ExprLike = 0, dir: str = '+',
+                logx: Optional[Expr] = None, cdir: ExprLike = 0) -> Iterator[Expr]:
+        """The terms of the series one by one (a generator, infinite for
+        an infinite series).
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.functions import cos
+        >>> x = Symbol('x')
+        >>> terms = cos(x).lseries(x)
+        >>> next(terms), next(terms), next(terms)
+        (1, -x**2/2, x**4/24)
+        """
+        from .series import lseries
+        return lseries(self, x, to_expr(x0), dir, logx, to_expr(cdir))
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The terms of the series up to ``O(x**n)`` at zero from the
+        right (overridden by the classes; the classes whose expansion is
+        not ported use SymPy's)."""
+        from .interop import nseries_node_through_sympy
+        return nseries_node_through_sympy(self, x, n, logx, cdir)
+
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr._eval_lseries
+    def _eval_lseries(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Iterator[Expr]:
+        """The terms of the series one by one, by series of increasing
+        orders."""
+        from .numbers import Integer
+        k = 0
+        series = self._eval_nseries(x, k, logx, cdir)
+        while series.is_Order:
+            k += 1
+            series = self._eval_nseries(x, k, logx, cdir)
+        e = series.removeO()
+        yield e
+        if e.is_Number and e == 0:
+            return
+        while True:
+            while True:
+                k += 1
+                series = self._eval_nseries(x, k, logx, cdir).removeO()
+                if e != series:
+                    break
+                if (series - self).cancel() == Integer(0):
+                    return
+            yield series - e
+            e = series
 
     def aseries(self, x: Optional[Symbol] = None, n: int = 6, bound: int = 0, hir: bool = False) -> Expr:
         """The asymptotic series at infinity (SymPy's ``aseries``)."""
@@ -1085,35 +1155,34 @@ class Expr(Basic):
         from .interop import expr_through_sympy, to_sympy
         return expr_through_sympy(self, lambda s: sympy.limit(s, to_sympy(x), to_sympy(to_expr(xlim)), dir))
 
-    def as_leading_term(self, *symbols: Symbol, logx: Optional[Expr] = None, cdir: int = 0) -> Expr:
-        """The leading term at zero in the given symbols (one after the
-        other): the terms of lowest degree of a polynomial, rational or
-        algebraic expression, found structurally; what involves a
-        function is expanded by SymPy's series.
+    def as_leading_term(self, *symbols: Symbol, logx: Optional[Expr] = None, cdir: ExprLike = 0) -> Expr:
+        """The leading (nonzero) term of the series at zero in the given
+        symbols (one after the other), from the ``_eval_as_leading_term``
+        of the classes.
 
         Examples
         ========
 
-        >>> from sympy_extras.core import Symbol, sympify
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.functions import sin
         >>> x, y = Symbol('x'), Symbol('y')
         >>> (x + x**2).as_leading_term(x), (x + x*y).as_leading_term(x), (x + y + 1).as_leading_term(x)
         (x, x*y + x, y + 1)
-        >>> (1/(1 + x)).as_leading_term(x), ((1 + x)/x).as_leading_term(x), sympify('sin(x) + x').as_leading_term(x)
+        >>> (1/(1 + x)).as_leading_term(x), ((1 + x)/x).as_leading_term(x), (sin(x) + x).as_leading_term(x)
         (1, 1/x, 2*x)
         """
-        from .interop import expr_through_sympy, to_sympy
-        if logx is not None or cdir or not symbols:
-            return expr_through_sympy(self, lambda s: s.as_leading_term(
-                *[to_sympy(v) for v in symbols], logx=None if logx is None else to_sympy(logx), cdir=cdir))
-        result: Expr = self
-        for s in symbols:
-            found = _leading_term(result, s)
-            if found is None:
-                found = expr_through_sympy(result, lambda e: e.as_leading_term(to_sympy(s)))
-            result = found
-        return result
+        return _as_leading_term(self, symbols, logx, to_expr(cdir))
 
-    def leadterm(self, x: Symbol, logx: Optional[Expr] = None, cdir: int = 0) -> tuple[Expr, Expr]:
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The leading term at zero (overridden by the classes; the
+        classes whose leading term is not ported use SymPy's, the others
+        are their own leading term)."""
+        from .interop import leading_term_node_through_sympy
+        found = leading_term_node_through_sympy(self, x, logx, cdir)
+        return self if found is None else found
+
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr.leadterm
+    def leadterm(self, x: Symbol, logx: Optional[Expr] = None, cdir: ExprLike = 0) -> tuple[Expr, Expr]:
         """The leading term as ``(c, e)`` with the term ``c*x**e``.
 
         Examples
@@ -1124,32 +1193,61 @@ class Expr(Basic):
         >>> (x**2 + x**3).leadterm(x), (x*y + x**2*y).leadterm(x), (x + x*y).leadterm(x), (1/x + 1).leadterm(x)
         ((1, 2), (y, 1), (y + 1, 1), (1, -1))
         """
-        from .add import add
-        from .mul import mul
-        from .numbers import Integer
-        from .power import pow
+        from .symbol import Dummy
+        from sympy_extras.functions.elementary.exponential import log
         lt = self.as_leading_term(x, logx=logx, cdir=cdir)
-        exponent = None
-        for t in terms_of(lt):
-            _, n = t.as_coeff_exponent(x)
-            if exponent is None:
-                exponent = n
-            elif exponent != n:
-                exponent = None
-                break
-        if exponent is None:
+        d = Dummy('logx')
+        logarithm = log(x)
+        if lt.has(logarithm):
+            lt = lt.subs(logarithm, d)
+        c, e = lt.as_coeff_exponent(x)
+        if x in c.free_symbols:
             raise ValueError("cannot compute leadterm(%s, %s). The coefficient should have been free of %s "
-                             "but got %s" % (self, x, x, lt))
-        coefficient = add(*[mul(t, pow(x, mul(Integer(-1), exponent))) for t in terms_of(lt)])
-        if x in coefficient.free_symbols:
-            raise ValueError("cannot compute leadterm(%s, %s). The coefficient should have been free of %s "
-                             "but got %s" % (self, x, x, coefficient))
-        return (coefficient, exponent)
+                             "but got %s" % (self, x, x, c))
+        return c.subs(d, logarithm), e
 
-    def taylor_term(self, n: int, x: Symbol) -> Expr:
-        """The ``n``-th term of the Taylor series at zero."""
-        from .interop import expr_through_sympy, to_sympy
-        return expr_through_sympy(self, lambda s: s.taylor_term(n, to_sympy(x)))
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        """The ``n``-th term of the Taylor series at zero (by ``n``
+        derivatives; the classes have faster ones using the ``previous``
+        term)."""
+        from .symbol import Dummy, Symbol as _Symbol
+        from .numbers import Integer
+        from sympy_extras.functions.combinatorial.factorials import factorial
+        _x = Dummy('x')
+        e = self.subs(x, _x)
+        for _ in range(n):
+            e = e.diff(_x)
+        return e.subs(_x, x).subs(x, Integer(0)) * x**n / factorial(Integer(n))
+
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr.dir
+    def dir(self, x: Symbol, cdir: Expr) -> Expr:
+        """The direction from which ``self`` approaches its value at
+        ``x = 0`` along ``cdir`` (the first nonzero derivative times a
+        power of ``cdir``)."""
+        from .numbers import ComplexInfinity, Integer, NaN
+        from sympy_extras.functions.elementary.exponential import log
+        if self.is_zero is True:
+            return Integer(0)
+        minexp: Expr = Integer(0)
+        arg: Expr = self
+        coeff: Expr = Integer(0)
+        while not (arg.is_Number and arg == 0):
+            minexp = minexp + Integer(1)
+            arg = arg.diff(x)
+            coeff = arg.subs(x, Integer(0))
+            if isinstance(coeff, NaN):
+                coeff = arg.limit(x, Integer(0))
+            if isinstance(coeff, ComplexInfinity):
+                try:
+                    coeff, _ = arg.leadterm(x)
+                    if coeff.has(log(x)):
+                        raise ValueError()
+                except ValueError:
+                    coeff = arg.limit(x, Integer(0))
+            if coeff != Integer(0):
+                break
+        return coeff * cdir**minexp
 
     def removeO(self) -> Expr:
         """The expression without its ``Order`` terms.
@@ -1173,13 +1271,48 @@ class Expr(Basic):
             return None
         return add(*orders)
 
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr.getn
     def getn(self) -> Optional[Expr]:
-        """The order of the ``Order`` term (``2`` for ``O(x**2)``)."""
+        """The order of the ``Order`` term (``2`` for ``O(x**2)``), ``None``
+        when there is none.
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import Symbol, order
+        >>> x = Symbol('x')
+        >>> (1 + x + order(x**2)).getn(), (1 + x).getn(), order(1, x).getn()
+        (2, None, 0)
+        """
+        from .mul import Mul
+        from .numbers import Integer, Rational
+        from .power import Pow
+        from .symbol import Dummy, Symbol as _Symbol
         from .order import Order
         o = self.getO()
+        if o is None:
+            return None
         if isinstance(o, Order):
-            return o.getn()
-        return None
+            oe = o.expr
+            if oe.is_Number and oe == 1:
+                return Integer(0)
+            if isinstance(oe, _Symbol):
+                return Integer(1)
+            if isinstance(oe, Pow):
+                return oe.exp
+            if isinstance(oe, Mul):  # x**n*log(x)**n or x**n/log(x)**n
+                for oi in oe.args:
+                    if isinstance(oi, _Symbol):
+                        return Integer(1)
+                    if isinstance(oi, Pow):
+                        syms = oi.atoms(_Symbol)
+                        if len(syms) == 1:
+                            v = next(iter(syms))
+                            positive = oi.subs(v, Dummy('x', positive=True))
+                            if isinstance(positive, Pow) and isinstance(positive.base, _Symbol) \
+                                    and isinstance(positive.exp, Rational):
+                                return abs(positive.exp)
+        raise NotImplementedError('not sure of order of %s' % (o,))
 
     # ------------------------------------------------------------------
     # simplification and algebra (SymPy's algorithms through the conversion)
@@ -1513,6 +1646,13 @@ class AtomicExpr(Atom, Expr):
     def sort_key(self) -> SortKey:
         return (self.class_key(), (1, (str(self),)), _one().sort_key(), Fraction(1))
 
+    # PORTED FROM SYMPY: sympy/core/expr.py:AtomicExpr._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        return self
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        return self
+
 
 class UnevaluatedExpr(Expr):
     """A wrapper which keeps its content out of the evaluation: the
@@ -1561,50 +1701,26 @@ class UnevaluatedExpr(Expr):
         return {}
 
 
-def _leading_term(e: Expr, x: Symbol) -> Optional[Expr]:
-    """The leading term of a polynomial, rational or algebraic expression
-    in ``x`` at zero; ``None`` when ``e`` involves a function of ``x``
-    (SymPy's series decide then)."""
-    from .add import Add, add
-    from .mul import Mul, mul
-    from .numbers import Rational
-    from .power import Pow, pow
-    from .symbol import Symbol
-    if x not in e.free_symbols or isinstance(e, Symbol):
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.as_leading_term
+@cacheit
+def _as_leading_term(e: Expr, symbols: tuple[Symbol, ...], logx: Optional[Expr], cdir: Expr) -> Expr:
+    """The leading term of ``e`` in the symbols, one after the other."""
+    from .symbol import Symbol as _Symbol
+    from sympy_extras.simplify.powsimp import powsimp
+    if len(symbols) > 1:
+        c = e
+        for v in symbols:
+            c = c.as_leading_term(v, logx=logx, cdir=cdir)
+        return c
+    if not symbols:
         return e
-    if isinstance(e, Add):
-        leading: list[tuple[Fraction, Expr]] = []
-        for t in e.args:
-            lt = _leading_term(t, x)
-            if lt is None:
-                return None
-            for part in terms_of(lt):
-                _, n = part.as_coeff_exponent(x)
-                if not isinstance(n, Rational):
-                    return None
-                leading.append((n.as_fraction(), part))
-        lowest = min(n for n, _ in leading)
-        lowest_terms = [part for n, part in leading if n == lowest]
-        if len(lowest_terms) > 1 and any(t.as_numer_denom()[1].free_symbols for t in lowest_terms):
-            # SymPy puts the terms of equal degree over a common denominator
-            from .exprtools import gcd_terms
-            combined = gcd_terms(add(*lowest_terms))
-            return combined if isinstance(combined, Expr) else add(*lowest_terms)
-        return add(*lowest_terms)
-    if isinstance(e, Mul):
-        parts: list[Expr] = []
-        for f in e.args:
-            lt = _leading_term(f, x)
-            if lt is None:
-                return None
-            parts.append(lt)
-        return mul(*parts)
-    if isinstance(e, Pow):
-        if x in e.exp.free_symbols:
-            return None
-        base = _leading_term(e.base, x)
-        return None if base is None else pow(base, e.exp)
-    return None
+    x = symbols[0]
+    if not isinstance(x, _Symbol):
+        raise ValueError('expecting a Symbol but got %s' % (x,))
+    if x not in e.free_symbols:
+        return e
+    obj = e._eval_as_leading_term(x, logx, cdir)
+    return powsimp(obj, deep=True, combine='exp')
 
 
 def _is_polynomial_like(e: Expr, syms: set[Symbol], kind: str) -> Truth:

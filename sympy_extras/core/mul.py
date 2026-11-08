@@ -44,6 +44,7 @@ from .sorting import ClassKey, compare_key
 
 if TYPE_CHECKING:
     from .printing import StrPrinter
+    from .symbol import Symbol
 
 __all__ = ['Mul', 'mul', 'div', 'neg', 'prod']
 
@@ -81,6 +82,84 @@ class Mul(AssocOp):
     def _eval_facts(self) -> dict[str, bool]:
         from .assumptions import mul_facts
         return mul_facts(self._args)
+
+    # PORTED FROM SYMPY: sympy/core/mul.py:Mul._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from itertools import product
+        from .add import _ceiling_int
+        from .coreerrors import PoleError
+        from .order import Order, order
+        from .power import pow
+        from .series import _less
+        from sympy_extras.simplify.powsimp import powsimp
+
+        def coeff_exp(term: Expr) -> tuple[Expr, Expr]:
+            lt = term.as_coeff_exponent(x)
+            if lt[0].has(x):
+                try:
+                    lt = term.leadterm(x)
+                except ValueError:
+                    return term, Integer(0)
+            return lt
+
+        ords: list[tuple[Expr, Expr]] = []
+        nn: Expr = Integer(n)
+        facs: list[Expr] = []
+        try:
+            for t in self._args:
+                coeff, exp = t.leadterm(x)
+                if coeff.has(x):
+                    raise ValueError
+                ords.append((t, exp))
+            n0 = add(*[m for _, m in ords if m.is_number])
+            for t, m in ords:
+                n1 = _ceiling_int(add(nn, mul(Integer(-1), n0), m if m.is_number else Integer(0)))
+                series = t.nseries(x, n=n1, logx=logx, cdir=cdir)
+                ns = series.getn()
+                if ns is not None and _less(ns, Integer(n1)):
+                    # fewer terms than expected: n reduced
+                    nn = add(nn, mul(Integer(-1), add(Integer(n1), mul(Integer(-1), ns))))
+                facs.append(series)
+        except (ValueError, NotImplementedError, TypeError, PoleError):
+            n0 = add(*[m for _, m in ords if m.is_number])
+            if n0.is_nonnegative is True:
+                n0 = Integer(0)
+            k = _ceiling_int(add(nn, mul(Integer(-1), n0)))
+            facs = [t.nseries(x, n=k, logx=logx, cdir=cdir) for t in self._args]
+            fallback = powsimp(mul(*facs).expand(), combine='exp', deep=True)
+            if fallback.has(Order):
+                fallback = add(fallback, order(pow(x, nn), x))
+            return fallback
+
+        res: Expr = Integer(0)
+        ords2 = [f._args if isinstance(f, Add) else (f,) for f in facs]
+        for fac in product(*ords2):
+            ords3 = [coeff_exp(term) for term in fac]
+            power = add(*[p for _, p in ords3])
+            if add(power, mul(Integer(-1), nn)).is_negative is True:
+                res = add(res, mul(mul(*[c for c, _ in ords3]), pow(x, power)))
+
+        if self.is_polynomial(x) is True:
+            from sympy_extras.polys.polyerrors import PolynomialError
+            try:
+                if not _less(_max_degree(self, x), nn) or _degree(self, x) != _degree(res, x):
+                    res = add(res, order(pow(x, nn), x))
+            except PolynomialError:
+                pass
+            else:
+                return res
+
+        if res != self:
+            if add(self, mul(Integer(-1), res)).subs(x, Integer(0)) == Integer(0) and _less(Integer(0), nn):
+                lt = self._eval_as_leading_term(x, logx, cdir)
+                if lt == Integer(0):
+                    return res
+            res = add(res, order(pow(x, nn), x))
+        return res
+
+    # PORTED FROM SYMPY: sympy/core/mul.py:Mul._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        return mul(*[t.as_leading_term(x, logx=logx, cdir=cdir) for t in self._args])
 
     # PORTED FROM SYMPY: sympy/core/mul.py:Mul.as_content_primitive
     def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
@@ -390,11 +469,72 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
     return (Mul(*factors), None)
 
 
+# PORTED FROM SYMPY: sympy/core/mul.py:Mul.flatten (the order factors) and AssocOp.__new__
 def _with_orders(factors: list[Expr]) -> Expr:
-    """A product with ``Order`` factors, evaluated by SymPy."""
-    import sympy
-    from .interop import expr_from_sympy, sympy_expr as _sympy_expr, to_sympy
-    return expr_from_sympy(sympy.Mul(*[_sympy_expr(to_sympy(f)) for f in factors]))
+    """A product with ``Order`` factors: the product of their expressions
+    and of the other factors, in the order term of their merged variables."""
+    from .order import Order, order
+    order_symbols: Optional[tuple[tuple[Symbol, Expr], ...]] = None
+    plain: list[Expr] = []
+    for f in _flattened(factors):
+        if isinstance(f, Order):
+            e, order_symbols = f.as_expr_variables(order_symbols)
+            plain.append(e)
+        else:
+            plain.append(f)
+    product = mul(*plain)
+    if order_symbols is None:
+        return product
+    from .containers import Tuple
+    return order(product, *[Tuple(v, p) for v, p in order_symbols])
+
+
+def _degree(e: Expr, x: Symbol) -> int:
+    """The degree of ``e`` in ``x`` (SymPy's ``degree``; through SymPy over
+    the domains of coefficients not ported yet)."""
+    from sympy_extras.polys.polyerrors import CoercionFailed
+    from sympy_extras.polys.polytools import degree
+    try:
+        return degree(e, x)
+    except CoercionFailed:
+        import sympy
+        from sympy_extras.polys.polyerrors import PolynomialError
+        from .interop import to_sympy
+        try:
+            value = sympy.degree(to_sympy(e), to_sympy(x))
+        except sympy.PolynomialError as error:
+            raise PolynomialError(str(error)) from error
+        if not isinstance(value, (int, sympy.Integer)):
+            raise PolynomialError("the degree of %s is %s" % (e, value))
+        return int(value)
+
+
+# PORTED FROM SYMPY: sympy/core/mul.py:Mul._eval_nseries (max_degree)
+def _max_degree(e: Expr, x: Symbol) -> Expr:
+    from .power import Pow
+    if e == x:
+        return Integer(1)
+    if not e.args:
+        return Integer(0)
+    if isinstance(e, Add):
+        degrees = [_max_degree(_expr_arg(a), x) for a in e.args]
+        best = degrees[0]
+        from .series import _less
+        for d in degrees[1:]:
+            if _less(best, d):
+                best = d
+        return best
+    if isinstance(e, Mul):
+        return add(*[_max_degree(_expr_arg(a), x) for a in e.args])
+    if isinstance(e, Pow):
+        return mul(_max_degree(e.base, x), e.exp)
+    return Integer(0)
+
+
+def _expr_arg(b: Basic) -> Expr:
+    if not isinstance(b, Expr):
+        raise TypeError("an expression is expected, got %s" % (b,))
+    return b
 
 
 def _flattened(args: list[Expr]) -> list[Expr]:
@@ -549,6 +689,9 @@ def neg(a: ExprLike) -> Expr:
     e = to_expr(a)
     if isinstance(e, Number):
         return mul(Integer(-1), e)
+    if e.is_Order:
+        # PORTED FROM SYMPY: sympy/series/order.py:Order.__neg__
+        return e
     if isinstance(e, Add):
         # PORTED FROM SYMPY: sympy/core/add.py:Add.__neg__ (distribute)
         return add(*[neg(t) for t in e.args if isinstance(t, Expr)])

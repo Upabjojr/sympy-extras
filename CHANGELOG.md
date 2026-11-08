@@ -66,6 +66,15 @@ remove public functions. Breaking changes are listed here when they happen.
   SymPy; `Expr.simplify` uses it. The steps for Integral, Sum, Product,
   Bessel functions, `hyper`, Kronecker deltas, Piecewise conditions and
   noncommutative products still go through SymPy.
+- Native series machinery in the core, ported from SymPy: the evaluation
+  of `Order` (`order`, `contains`, the substitution of a variable moving
+  the point), the absorption of terms in sums and products with order
+  terms, the `series`/`lseries` driver (`sympy_extras.core.series`),
+  `nseries`, `as_leading_term`, `leadterm`, `dir`, `getn`, and the
+  `_eval_nseries`/`_eval_as_leading_term` of `Add`, `Mul`, `Pow` and the
+  generic function. The functions whose expansion is not ported yet, the
+  limits and the asymptotic series still go through SymPy, node by node.
+  `as_coeff_exponent` now collects first, as SymPy does.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

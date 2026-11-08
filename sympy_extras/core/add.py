@@ -27,9 +27,10 @@ from SymPy's ``sympy.core.add``.
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional, Sequence
 
 from .basic import Basic
+from .containers import Tuple
 from .expr import Expr, ExprLike, factors_of, to_expr
 from .numbers import (ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, Number, Rational,
     nan, number_from_fraction)
@@ -38,7 +39,9 @@ from .parameters import distribute, global_parameters
 from .sorting import ArgsKey, ClassKey, SortKey, compare_key
 
 if TYPE_CHECKING:
+    from .order import Order
     from .printing import StrPrinter
+    from .symbol import Symbol
 
 __all__ = ['Add', 'add', 'sub', 'to_expr']
 
@@ -72,6 +75,119 @@ class Add(AssocOp):
     def _eval_facts(self) -> dict[str, bool]:
         from .assumptions import add_facts
         return add_facts(self._args)
+
+    # PORTED FROM SYMPY: sympy/core/add.py:Add.removeO
+    def removeO(self) -> Expr:
+        return _raw([t for t in self._args if not t.is_Order])
+
+    # PORTED FROM SYMPY: sympy/core/add.py:Add.getO
+    def getO(self) -> Optional[Expr]:
+        orders = [t for t in self._args if t.is_Order]
+        return _raw(orders) if orders else None
+
+    # PORTED FROM SYMPY: sympy/core/add.py:Add._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        return add(*[t.nseries(x, n=n, logx=logx, cdir=cdir) for t in self._args])
+
+    # PORTED FROM SYMPY: sympy/core/add.py:Add.extract_leading_order
+    def extract_leading_order(self, symbols: Sequence[Symbol], point: Optional[Sequence[Expr]] = None
+                              ) -> tuple[tuple[Expr, Order], ...]:
+        """The terms of the leading order with their order terms.
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import symbols
+        >>> x, y = symbols('x y')
+        >>> (x + 1 + 1/x**5).extract_leading_order([x])
+        ((x**(-5), O(x**(-5))),)
+        >>> (1 + x).extract_leading_order([x]), (x + x**2).extract_leading_order([x])
+        (((1, O(1)),), ((x, O(x)),))
+        """
+        from .order import Order, order
+        pts: Sequence[Expr] = point if point else [Integer(0)] * len(symbols)
+        lst: list[tuple[Expr, Order]] = []
+        for ef in self._args:
+            found = order(ef, *[Tuple(s, p) for s, p in zip(symbols, pts)])
+            if not isinstance(found, Order):
+                raise TypeError("the order of %s is %s" % (ef, found))
+            of: Optional[Order] = found
+            for _, o in lst:
+                if o.contains(found) and o != found:
+                    of = None
+                    break
+            if of is None:
+                continue
+            new_lst: list[tuple[Expr, Order]] = [(ef, of)]
+            for e, o in lst:
+                if of.contains(o) and o != of:
+                    continue
+                new_lst.append((e, o))
+            lst = new_lst
+        return tuple(lst)
+
+    # PORTED FROM SYMPY: sympy/core/add.py:Add._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from .function import _expand_logs, expand_mul
+        from .order import Order, order
+        from .symbol import Dummy, Symbol as _Symbol
+        from sympy_extras.functions.elementary.exponential import Log, log
+        from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise_fold
+        o = self.getO()
+        if o is None:
+            o = order(Integer(0))
+        old = self.removeO()
+        if old.has(Piecewise):
+            old = piecewise_fold(old)
+        # the last part of expand_log (which also calls expand_mul with
+        # factor=True, more expensive)
+        if any(isinstance(a, Log) for a in self._args):
+            old = _expand_logs(old, True, False, False)
+        expr = expand_mul(old)
+        if not isinstance(expr, Add):
+            return expr.as_leading_term(x, logx=logx, cdir=cdir)
+        infinite = [t for t in expr._args if t.is_infinite is True]
+        _logx: Expr = Dummy('logx') if logx is None else logx
+        leading_terms = [t.as_leading_term(x, logx=_logx, cdir=cdir) for t in expr._args]
+        smallest = order(Integer(0))
+        new_expr: Expr = Integer(0)
+        try:
+            for term in leading_terms:
+                o_term = order(term, x)
+                if not _order_contains(smallest, o_term):
+                    smallest = o_term
+                    new_expr = term
+                elif _order_contains(o_term, smallest):
+                    new_expr = add(new_expr, term)
+        except TypeError:
+            return expr
+        if logx is None:
+            new_expr = new_expr.subs(_logx, log(x))
+        is_zero = new_expr.is_zero
+        if is_zero is None:
+            new_expr = new_expr.trigsimp().cancel()
+            is_zero = new_expr.is_zero
+        if is_zero is True:
+            # the simple analysis cancelled the terms, but a term must be
+            # returned: the leading term of the series
+            n0: Expr
+            try:
+                found_n = smallest.getn()
+                n0 = Integer(1) if found_n is None else found_n
+            except NotImplementedError:
+                n0 = Integer(1)
+            if n0.has(_Symbol):
+                n0 = Integer(1)
+            res: Expr = order(Integer(1))
+            incr = 1
+            while res.is_Order:
+                res = old._eval_nseries(x, _ceiling_int(add(n0, Integer(incr))), logx, cdir)
+                res = res.cancel().powsimp().trigsimp()
+                incr *= 2
+            return res.as_leading_term(x, logx=logx, cdir=cdir)
+        if isinstance(new_expr, NaN):
+            return add(_raw(infinite), o)
+        return new_expr
 
     def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
         # the content of each term comes out first ((1/4)**n becomes 4**(-n)), as SymPy does
@@ -291,12 +407,51 @@ def add(*args: ExprLike) -> Expr:
     return Add(*terms)
 
 
-def _with_orders(terms: list[Expr]) -> Expr:
-    """A sum with ``Order`` terms, evaluated by SymPy (the absorption of
-    the terms into the order needs the series machinery)."""
-    import sympy
-    from .interop import expr_from_sympy, sympy_expr as _sympy_expr, to_sympy
-    return expr_from_sympy(sympy.Add(*[_sympy_expr(to_sympy(t)) for t in terms]))
+# PORTED FROM SYMPY: sympy/core/add.py:Add.flatten (the order terms)
+def _with_orders(stack: list[Expr]) -> Expr:
+    """A sum with ``Order`` terms: the order terms contained in others
+    dropped, then the terms contained in an order term (``x + O(x)`` is
+    ``O(x)``, ``1 + O(1)`` is ``O(1)``)."""
+    from .order import Order
+    flat: list[Expr] = []
+    pending = list(stack)
+    while pending:
+        a = pending.pop(0)
+        if isinstance(a, Add):
+            pending[:0] = list(a._args)
+        else:
+            flat.append(a)
+    order_factors: list[Order] = []
+    others: list[Expr] = []
+    for o in flat:
+        if isinstance(o, Order):
+            if o.expr.is_zero is True:
+                continue
+            if any(o1.contains(o) for o1 in order_factors):
+                continue
+            order_factors = [o] + [o1 for o1 in order_factors if not o.contains(o1)]
+        else:
+            others.append(o)
+    rest = add(*others)
+    if isinstance(rest, NaN):
+        return rest
+    coeff: Expr = Integer(0)
+    newseq: list[Expr] = []
+    for t in (rest._args if isinstance(rest, Add) else (rest,)):
+        if isinstance(t, Number):
+            coeff = t
+        else:
+            newseq.append(t)
+    newseq2: list[Expr] = [t for t in newseq if not any(o.contains(t) for o in order_factors)]
+    terms: list[Expr] = newseq2 + list(order_factors)
+    for o in order_factors:
+        if o.contains(coeff):
+            coeff = Integer(0)
+            break
+    terms.sort(key=compare_key)
+    if not (isinstance(coeff, Integer) and coeff.p == 0):
+        terms.insert(0, coeff)
+    return _raw(terms)
 
 
 def _absorbed_in_sum(number: Number, rest: Expr, c: Number) -> bool:
@@ -382,3 +537,24 @@ def _mul(*args: ExprLike) -> Expr:
         from .mul import mul
         _MUL = mul
     return _MUL(*args)
+
+
+def _order_contains(o: Expr, e: Expr) -> bool:
+    """``e in o`` of SymPy: ``TypeError`` when ``contains`` cannot decide."""
+    from .order import Order
+    if not isinstance(o, Order):
+        raise TypeError("an order term is expected, got %s" % (o,))
+    result = o.contains(e)
+    if result is None:
+        raise TypeError('contains did not evaluate to a bool')
+    return result
+
+
+def _ceiling_int(e: Expr) -> int:
+    """The integer ceiling of a number (the order of an expansion; SymPy
+    passes rational orders, which the classes round up)."""
+    from sympy_extras.functions.elementary.integers import ceiling
+    c = ceiling(e)
+    if not isinstance(c, Integer):
+        raise TypeError("the order %s is not a number" % (e,))
+    return c.p

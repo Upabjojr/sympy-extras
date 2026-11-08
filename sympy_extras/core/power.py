@@ -47,6 +47,7 @@ from .sorting import ClassKey
 
 if TYPE_CHECKING:
     from .printing import StrPrinter
+    from .symbol import Symbol
 
 __all__ = ['Pow', 'pow', 'sqrt', 'cbrt', 'root', 'number_pow', 'integer_root_parts', 'minus_one_pow']
 
@@ -114,6 +115,218 @@ class Pow(Expr):
 
     def _sympystr(self, printer: StrPrinter) -> str:
         return printer.print_pow(self._base, self._exp)
+
+    # PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        # A generalised power series with coefficients in C(log, log(x))
+        # (gruntz needs it): b**e = f**e*(1 + g)**e with the leading term f
+        # of b, g of positive order, and the binomial series of (1 + g)**e.
+        from .add import _ceiling_int
+        from .coreerrors import PoleError
+        from .function import expand_mul, expand_multinomial
+        from .order import order
+        from .series import _less
+        from .symbol import Symbol as _Symbol, Wild
+        from sympy_extras.functions.elementary.exponential import exp, log, Log
+        from sympy_extras.functions.combinatorial.factorials import factorial, ff
+        from sympy_extras.functions.elementary.complexes import im
+        from sympy_extras.functions.special.gamma_functions import PolyGamma
+        from sympy_extras.simplify.powsimp import powdenest, powsimp
+        from .numbers import EulerGamma
+
+        def mexpand(e: Expr) -> Expr:
+            return expand_mul(expand_multinomial(e))
+
+        if isinstance(self._base, Exp1):
+            e_series = self._exp.nseries(x, n=n, logx=logx)
+            if e_series.is_Order:
+                return add(Integer(1), e_series)
+            e0 = e_series.removeO().limit(x, Integer(0))
+            if isinstance(e0, NegativeInfinity):
+                return order(pow(x, Integer(n)), x)
+            if isinstance(e0, Infinity):
+                return self
+            t = add(e_series, mul(Integer(-1), e0))
+            exp_series = term = exp(e0)
+            # the series of exp(e0 + t) in t
+            for i in range(1, n):
+                term = mul(term, t, pow(Integer(i), Integer(-1)))
+                term = term.nseries(x, n=n, logx=logx)
+                exp_series = add(exp_series, term)
+            exp_series = add(exp_series, order(pow(t, Integer(n)), x))
+            return powsimp(exp_series, deep=True, combine='exp')
+        me = powdenest(self, force=True).trigsimp()
+        b, e = me.as_base_exp()
+        if e.has(nan, oo, mul(Integer(-1), oo), zoo):
+            raise PoleError()
+        if e.has(x):
+            return exp(mul(e, log(b)))._eval_nseries(x, n, logx, cdir)
+        if logx is not None and b.has(Log):
+            wc, wex = Wild('c', exclude=[x]), Wild('ex', exclude=[x])
+            b = as_expr_basic(b.replace(log(mul(wc, pow(x, wex))), add(log(wc), mul(wex, logx))))
+            me = pow(b, e)
+        b = b.removeO()
+        m: Expr
+        try:
+            if b.has(PolyGamma, EulerGamma) and logx is not None:
+                raise ValueError()
+            _, m = b.leadterm(x)
+        except (ValueError, NotImplementedError, PoleError):
+            b = b._eval_nseries(x, max(2, n), logx, cdir).removeO()
+            if b.has(nan, ComplexInfinity):
+                raise NotImplementedError()
+            _, m = b.leadterm(x)
+        if e.has(Log):
+            from sympy_extras.simplify.simplify import logcombine
+            e = logcombine(e).cancel()
+        if not (m.is_zero is True or (e.is_number and e.is_real is True)):
+            if me == me._eval_as_leading_term(x, logx, cdir):
+                logarithmic = exp(mul(e, log(b)))
+                via_log = logarithmic._eval_nseries(x, n, logx, cdir)
+                if via_log == logarithmic:
+                    return me
+                return via_log
+        f = b.as_leading_term(x, logx=logx)
+        g = add(mexpand(b), mul(Integer(-1), f)).cancel()
+        g = mul(g, pow(f, Integer(-1)))
+        if not m.is_number:
+            raise NotImplementedError()
+        maxpow = add(Integer(n), mul(Integer(-1), m, e))
+        if maxpow.has(_Symbol):
+            maxpow = Integer(n)
+        if maxpow.is_negative is True:
+            return order(pow(x, mul(m, e)), x)
+        if g.is_zero is True:
+            r = pow(f, e)
+            if r != me:
+                r = add(r, order(pow(x, Integer(n)), x))
+            return r
+
+        def coeff_exp(term: Expr) -> tuple[Expr, Expr]:
+            coeff: Expr = Integer(1)
+            exponent: Expr = Integer(0)
+            for factor in factors_of(term):
+                if factor.has(x):
+                    base, exponent = factor.as_base_exp()
+                    if base != x:
+                        try:
+                            return term.leadterm(x)
+                        except ValueError:
+                            return term, Integer(0)
+                else:
+                    coeff = mul(coeff, factor)
+            return coeff, exponent
+
+        def product(d1: dict[Expr, Expr], d2: dict[Expr, Expr]) -> dict[Expr, Expr]:
+            res: dict[Expr, Expr] = {}
+            for e1 in d1:
+                for e2 in d2:
+                    ex = add(e1, e2)
+                    if _less(ex, maxpow):
+                        res[ex] = add(res.get(ex, Integer(0)), mul(d1[e1], d2[e2]))
+            return res
+
+        try:
+            c0, d = g.leadterm(x, logx=logx)
+        except (ValueError, NotImplementedError):
+            if mul(g, pow(pow(x, maxpow), Integer(-1))).limit(x, Integer(0)) == Integer(0):
+                # g has a zero of higher order: the first term of the binomial series
+                fe = pow(f, e)
+                return add(fe, mul(e, fe, g))
+            raise NotImplementedError()
+        if isinstance(c0, Float) and d == Integer(0):
+            # floats like 0.5 made exact, against rounding errors in d
+            from .numbers import number_from_fraction
+
+            def exact(t: Basic) -> Basic:
+                if isinstance(t, Float):
+                    value = t.exact_value()
+                    if value is not None:
+                        return number_from_fraction(value)
+                return t
+            g = as_expr_basic(g.replace(lambda t: isinstance(t, Float), exact))
+            _, d = g.leadterm(x, logx=logx)
+        if d.is_positive is not True:
+            g = g.simplify()
+            if g.is_zero is True:
+                return pow(f, e)
+            _, d = g.leadterm(x, logx=logx)
+            if d.is_positive is not True:
+                g = mul(add(b, mul(Integer(-1), f)), pow(f, Integer(-1))).expand()
+                _, d = g.leadterm(x, logx=logx)
+                if d.is_positive is not True:
+                    raise NotImplementedError()
+        gpoly = g._eval_nseries(x, _ceiling_int(maxpow), logx, cdir).removeO()
+        gterms: dict[Expr, Expr] = {}
+        for term in (gpoly.args if isinstance(gpoly, Add) else (gpoly,)):
+            if not isinstance(term, Expr):
+                continue
+            co1, e1 = coeff_exp(term)
+            gterms[e1] = add(gterms.get(e1, Integer(0)), co1)
+        k = 1
+        terms: dict[Expr, Expr] = {Integer(0): Integer(1)}
+        tk = gterms
+        while add(mul(Integer(k), d), mul(Integer(-1), maxpow)).is_negative is True:
+            coeff = mul(ff(e, Integer(k)), pow(factorial(Integer(k)), Integer(-1)))
+            for ex in tk:
+                terms[ex] = add(terms.get(ex, Integer(0)), mul(coeff, tk[ex]))
+            tk = product(tk, gterms)
+            k += 1
+        inco: Expr
+        inex: Expr
+        if e.is_integer is not True and m.is_zero is True and f.is_negative is True:
+            ndir = add(b, mul(Integer(-1), f)).dir(x, cdir)
+            if im(ndir).is_negative is True:
+                inco, inex = coeff_exp(mul(pow(f, e), pow(Integer(-1), mul(Integer(-2), e))))
+            elif im(ndir).is_zero is True:
+                inco, inex = coeff_exp(exp(mul(e, log(b))).as_leading_term(x, logx=logx, cdir=cdir))
+            else:
+                inco, inex = coeff_exp(pow(f, e))
+        else:
+            inco, inex = coeff_exp(pow(f, e))
+        res: Expr = Integer(0)
+        for e1 in terms:
+            ex = add(e1, inex)
+            res = add(res, mul(terms[e1], inco, pow(x, ex)))
+        if not (e.is_integer is True and e.is_positive is True
+                and add(mul(e, d), Integer(-n)).is_nonpositive is True and res == mexpand(me)):
+            try:
+                res = add(res, order(pow(x, Integer(n)), x))
+            except NotImplementedError:
+                return exp(mul(e, log(b)))._eval_nseries(x, n, logx, cdir)
+        return res
+
+    # PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from .coreerrors import PoleError
+        from sympy_extras.functions.elementary.complexes import im
+        from sympy_extras.functions.elementary.exponential import exp, log
+        e = self._exp
+        b = self._base
+        if isinstance(b, Exp1):
+            arg = e.as_leading_term(x, logx=logx)
+            arg0 = arg.subs(x, Integer(0))
+            if isinstance(arg0, NaN):
+                arg0 = arg.limit(x, Integer(0))
+            if arg0.is_infinite is False:
+                return pow(b, arg0)
+            raise PoleError("Cannot expand %s around 0" % (self,))
+        if e.has(x):
+            return exp(mul(e, log(b))).as_leading_term(x, logx=logx, cdir=cdir)
+        try:
+            f = b.as_leading_term(x, logx=logx, cdir=cdir)
+        except PoleError:
+            return self
+        if e.is_integer is not True and f.is_negative is True and not f.has(x):
+            ndir = add(b, mul(Integer(-1), f)).dir(x, cdir)
+            if im(ndir).is_negative is True:
+                # on the branch cut: exp(e*(log(f) - 2*pi*I)) == f**e*(-1)**(-2*e)
+                return mul(Pow(f, e).doit(), pow(Integer(-1), mul(Integer(-2), e)))
+            if im(ndir).is_zero is True:
+                log_leadterm = log(b)._eval_as_leading_term(x, logx, cdir)
+                if log_leadterm.is_infinite is False:
+                    return exp(mul(e, log_leadterm))
+        return pow(f, e)
 
     # PORTED FROM SYMPY: sympy/core/power.py:Pow.as_content_primitive
     def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
@@ -822,3 +1035,10 @@ def power_subs(base: Expr, exponent: Expr, old: Expr, new: Expr, old_is_power: O
             if ok:
                 return pow(new, p)
     return None
+
+
+def as_expr_basic(b: Basic) -> Expr:
+    """``b`` as an expression (the result of ``replace``)."""
+    if not isinstance(b, Expr):
+        raise TypeError("an expression is expected, got %s" % (b,))
+    return b
