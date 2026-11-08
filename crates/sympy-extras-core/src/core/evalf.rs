@@ -42,12 +42,7 @@ const GUARD: usize = 20;
 
 /// An integer as a float of the given precision.
 pub fn real_int(n: &Int, prec: usize) -> Real {
-    let exact: Real = Real::from(n.clone());
-    if exact.precision() > prec {
-        exact.with_precision(prec).value()
-    } else {
-        exact.with_precision(prec).value()
-    }
+    Real::from(n.clone()).with_precision(prec).value()
 }
 
 /// A rational as a float of the given precision.
