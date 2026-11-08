@@ -1256,9 +1256,9 @@ class Expr(Basic):
         return radsimp(self)
 
     def ratsimp(self) -> Expr:
-        """SymPy's ``ratsimp``."""
-        from .interop import expr_through_sympy
-        return expr_through_sympy(self, sympy.ratsimp)
+        """A polynomial plus a proper fraction (:func:`sympy_extras.simplify.ratsimp.ratsimp`)."""
+        from sympy_extras.simplify.ratsimp import ratsimp
+        return ratsimp(self)
 
     def trigsimp(self) -> Expr:
         """Trigonometric simplification (:func:`sympy_extras.simplify.trigsimp.trigsimp`)."""

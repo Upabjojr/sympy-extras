@@ -148,12 +148,13 @@ def _decompose_with_gens(e: Expr, gens: Sequence[Expr]) -> Decomposed:
 
 
 # PORTED FROM SYMPY: sympy/polys/polyutils.py:_parallel_dict_from_expr_no_gens
-def _decompose_without_gens_many(exprs: Sequence[Expr]) -> tuple[list[Decomposed], tuple[Expr, ...]]:
+def _decompose_without_gens_many(exprs: Sequence[Expr], expand: bool = True
+                                 ) -> tuple[list[Decomposed], tuple[Expr, ...]]:
     found: set[Expr] = set()
     raws: list[list[tuple[list[Expr], dict[Expr, int]]]] = []
     for e in exprs:
         raw: list[tuple[list[Expr], dict[Expr, int]]] = []
-        for term in _terms_of(_expanded(e)):
+        for term in _terms_of(_expanded(e) if expand else e):
             coefficient: list[Expr] = []
             elements: dict[Expr, int] = {}
             for factor in _factors(term):
@@ -1142,12 +1143,12 @@ def discriminant(f: PolyLike, *gens: ExprLike) -> Expr:
 # ---------------------------------------------------------------------
 # rational functions
 
-def _joint_rings(exprs: Sequence[Expr]) -> tuple[tuple[Expr, ...], list[dict[Monomial, Fraction]]]:
+def _joint_rings(exprs: Sequence[Expr], expand: bool = True) -> tuple[tuple[Expr, ...], list[dict[Monomial, Fraction]]]:
     """SymPy's ``sring`` of several expressions without generators: every
     factor which is not a number is a generator (the generators of all the
     expressions together, sorted), the coefficients rational (``ZZ`` or
     ``QQ``; ``I`` and floats are not ported yet)."""
-    decomposed, gens = _decompose_without_gens_many(exprs)
+    decomposed, gens = _decompose_without_gens_many(exprs, expand)
     result: list[dict[Monomial, Fraction]] = []
     if not gens:
         return gens, [{} for _ in exprs]
