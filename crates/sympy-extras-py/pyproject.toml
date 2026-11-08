@@ -1,0 +1,26 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "sympy-extras-rs"
+description = "Rust implementation of sympy-extras (PyO3 bindings to sympy-extras-core)"
+license = {text = "BSD-3-Clause"}
+authors = [
+    {name = "Francesco Bonazzi"},
+]
+requires-python = ">=3.10"
+dynamic = ["version"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[project.urls]
+Repository = "https://github.com/Upabjojr/sympy-extras"
+
+[tool.maturin]
+module-name = "sympy_extras_rs"
+features = ["pyo3/extension-module"]

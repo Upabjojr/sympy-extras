@@ -1,0 +1,19 @@
+[package]
+name = "sympy-extras-py"
+description = "Python bindings (PyO3) for sympy-extras-core"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "sympy_extras_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+sympy-extras-core.workspace = true
+pyo3.workspace = true
+num-bigint = "0.4"

@@ -1,0 +1,39 @@
+//! The errors of the algorithms: the Python exceptions which depend on the
+//! data.
+
+use std::fmt;
+
+/// An error of a computation, named after the Python exception it stands
+/// for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PolyError {
+    /// `ZeroDivisionError`: a division by zero.
+    ZeroDivision(String),
+    /// `ValueError`: a division which is not exact, an element which is not
+    /// a unit, a conversion without an exact image, an invalid argument.
+    Value(String),
+}
+
+/// The result of a computation which may fail.
+pub type PolyResult<T> = Result<T, PolyError>;
+
+impl fmt::Display for PolyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PolyError::ZeroDivision(message) => write!(f, "{}", message),
+            PolyError::Value(message) => write!(f, "{}", message),
+        }
+    }
+}
+
+impl std::error::Error for PolyError {}
+
+/// `ZeroDivisionError(message)`.
+pub fn zero_division(message: &str) -> PolyError {
+    PolyError::ZeroDivision(message.to_string())
+}
+
+/// `ValueError(message)`.
+pub fn value_error(message: String) -> PolyError {
+    PolyError::Value(message)
+}
