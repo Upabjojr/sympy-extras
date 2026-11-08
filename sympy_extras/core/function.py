@@ -743,14 +743,12 @@ class DefinedFunction(Application):
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         if type(self).__name__ not in _SYMPY_OWN_LEADING_TERM:
             return _generic_leading_term(self, x, logx)
+        # the ported rules of the classes without a method of their own
         from sympy_extras.functions._leading_terms import rules
         rule = rules().get(type(self).__name__)
         if rule is not None:
             return rule(self, x, logx, cdir)
-        # the classes with a rule of their own in SymPy not ported use SymPy's
-        from .interop import leading_term_node_through_sympy
-        found = leading_term_node_through_sympy(self, x, logx, cdir)
-        return Application._eval_as_leading_term(self, x, logx, cdir) if found is None else found
+        return _generic_leading_term(self, x, logx)
 
     def __init__(self, *args: ExprLike) -> None:
         if not self.variadic and len(args) not in self.nargs:
@@ -1062,6 +1060,17 @@ class Derivative(Expr):
     def args(self) -> tuple[Basic, ...]:
         return (self._expr,) + tuple(Tuple(s, Integer(n)) for s, n in self._counts)
 
+    # PORTED FROM SYMPY: sympy/core/function.py:Derivative._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The derivative of the first term of the series of the expression
+        with a nonzero derivative."""
+        d: Expr = Integer(0)
+        for leading_term in self.expr.lseries(x):
+            d = diff(leading_term, *self.variables)
+            if not (d.is_Number and d == 0):
+                break
+        return d
+
     @property
     def expr(self) -> Expr:
         return self._expr
@@ -1208,6 +1217,17 @@ class Subs(Expr):
     @property
     def args(self) -> tuple[Basic, ...]:
         return (self._expr, Tuple(*self._variables), Tuple(*self._point))
+
+    # PORTED FROM SYMPY: sympy/core/function.py:Subs._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        if x in self.point:
+            xvar = self.variables[self.point.index(x)]
+            return self.expr.as_leading_term(xvar)
+        if x in self.variables:
+            # a bound variable: it does not exist after the substitution
+            return self
+        # the variable is independent of the substitution
+        return self.expr.as_leading_term(x)
 
     @property
     def expr(self) -> Expr:

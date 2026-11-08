@@ -4,14 +4,17 @@ SymPy (``_eval_as_leading_term``), as a table by class name for
 
 Ported from SymPy's ``sympy.functions`` (the ``_eval_as_leading_term``
 methods of LambertW, factorial, binomial, gamma, polygamma, digamma,
-trigamma, zeta, erf, erfc, erfi, Ei, Si, Ci, Shi, Chi, fresnels and
-fresnelc).
+trigamma, zeta, erf, erfc, erfi, Ei, Si, Ci, Shi, Chi, fresnels, fresnelc,
+arg, floor, ceiling, frac, besselj, bessely, besseli, besselk and
+SingularityFunction).
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: the _eval_as_leading_term methods of
 # sympy/functions/special/error_functions.py, gamma_functions.py,
-# zeta_functions.py, sympy/functions/combinatorial/factorials.py and
-# sympy/functions/elementary/exponential.py (LambertW) (SymPy 1.14)
+# zeta_functions.py, bessel.py, singularity_functions.py,
+# sympy/functions/combinatorial/factorials.py and
+# sympy/functions/elementary/exponential.py (LambertW), complexes.py (arg),
+# integers.py (floor, ceiling, frac) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; a table of functions by class name.
@@ -257,6 +260,171 @@ def _fresnel(f: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr, sine: bool) -
     return _same(f, arg0)
 
 
+# PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:arg._eval_as_leading_term
+def _arg_rule(f: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.coreerrors import PoleError
+    from sympy_extras.core.symbol import Dummy
+    t = Dummy('t', positive=True)
+    d = Integer(1) if cdir == 0 else cdir
+    z = _e(_arg(f).subs(x, d * t))
+    if z.is_positive is True:
+        return Integer(0)
+    if z.is_negative is True:
+        return pi
+    raise PoleError('Cannot expand %s around 0' % (f,))
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/integers.py:floor._eval_as_leading_term and ceiling._eval_as_leading_term
+def _round(f: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr, up: bool) -> Expr:
+    from sympy_extras.core.accumbounds import AccumBounds
+    arg = _arg(f)
+    arg0 = _e(arg.subs(x, Integer(0)))
+    r = _e(f.subs(x, Integer(0)))
+    if isinstance(arg0, (NaN, AccumBounds)):
+        arg0 = _limit_dir(arg, x, _re_negative(cdir))
+        r = _same(f, arg0)
+    if arg0.is_finite is True:
+        if arg0 == r:
+            ndir = arg.dir(x, cdir if cdir != 0 else Integer(1))
+            if ndir.is_negative is True:
+                return r if up else r - 1
+            if ndir.is_positive is True:
+                return r + 1 if up else r
+            raise NotImplementedError('Not sure of sign of %s' % ndir)
+        return r
+    return _lead(arg, x, logx, cdir)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/integers.py:frac._eval_as_leading_term
+def _frac(f: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.accumbounds import AccumBounds
+    arg = _arg(f)
+    arg0 = _e(arg.subs(x, Integer(0)))
+    r = _e(f.subs(x, Integer(0)))
+    if arg0.is_finite is True:
+        if r.is_zero is True:
+            ndir = arg.dir(x, cdir)
+            if ndir.is_negative is True:
+                return Integer(1)
+            return _lead(arg - arg0, x, logx, cdir)
+        return r
+    if isinstance(arg0, (ComplexInfinity, Infinity, NegativeInfinity)):
+        return AccumBounds(Integer(0), Integer(1))
+    return _lead(arg, x, logx, cdir)
+
+
+def _bessel_parts(f: Expr, x: Symbol) -> Optional[tuple[Expr, Expr, Expr, Expr, Expr]]:
+    """``nu, z``, the leading term of ``z`` and its ``c*x**e``; None when
+    the leading term of ``z`` is not known (SymPy then returns the function)."""
+    nu, z = _arg(f), _arg(f, 1)
+    try:
+        lead = z.as_leading_term(x)
+    except NotImplementedError:
+        return None
+    c, ex = lead.as_coeff_exponent(x)
+    return nu, z, lead, c, ex
+
+
+def _generic(f: Expr, x: Symbol, logx: Optional[Expr]) -> Expr:
+    from sympy_extras.core.function import DefinedFunction, _generic_leading_term
+    assert isinstance(f, DefinedFunction)
+    return _generic_leading_term(f, x, logx)
+
+
+def _large_positive(c: Expr, ex: Expr, cdir: Expr) -> bool:
+    """SymPy's ``not (c*cdir**e).is_negative`` with ``cdir`` 0 taken as 1."""
+    d = Integer(1) if cdir == 0 else cdir
+    return (c * d**ex).is_negative is not True
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:besselj._eval_as_leading_term and besseli._eval_as_leading_term
+def _bessel_ji(f: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr, modified: bool) -> Expr:
+    from sympy_extras.core.power import sqrt
+    from sympy_extras.functions.elementary.exponential import exp
+    from sympy_extras.functions.elementary.trigonometric import cos
+    from sympy_extras.functions.special.gamma_functions import gamma
+    parts = _bessel_parts(f, x)
+    if parts is None:
+        return f
+    nu, z, lead, c, ex = parts
+    if ex.is_positive is True:
+        return lead**nu / (2**nu * gamma(nu + 1))
+    if ex.is_negative is True:
+        if _large_positive(c, ex, cdir):
+            # Abramowitz and Stegun 1965, p. 364 (J) and p. 377 (I)
+            if modified:
+                return exp(z) / sqrt(2 * pi * z)
+            return sqrt(2) * cos(z - pi * (2 * nu + 1) / 4) / sqrt(pi * z)
+        return f
+    return _generic(f, x, logx)
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:bessely._eval_as_leading_term
+def _bessel_y(f: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.add import add
+    from sympy_extras.core.power import sqrt
+    from sympy_extras.functions.combinatorial.factorials import factorial
+    from sympy_extras.functions.elementary.exponential import log
+    from sympy_extras.functions.elementary.trigonometric import cos, sin
+    from sympy_extras.functions.special.bessel import besselj
+    from sympy_extras.functions.special.gamma_functions import digamma
+    parts = _bessel_parts(f, x)
+    if parts is None:
+        return f
+    nu, z, lead, c, ex = parts
+    if ex.is_positive is True:
+        term_one = (2 / pi) * log(z / 2) * besselj(nu, z)
+        term_two = -(z / 2)**(-nu) * factorial(nu - 1) / pi if nu.is_positive is True else Integer(0)
+        term_three = -(z / 2)**nu / (pi * factorial(nu)) * (digamma(nu + 1) - EulerGamma)
+        return add(term_one, term_two, term_three).as_leading_term(x, logx=logx)
+    if ex.is_negative is True:
+        if _large_positive(c, ex, cdir):
+            # Abramowitz and Stegun 1965, p. 364
+            return (sqrt(2) * (-sin(pi * nu / 2 - z + pi / 4) + 3 * cos(pi * nu / 2 - z + pi / 4) / (8 * z))
+                    * sqrt(1 / z) / sqrt(pi))
+        return f
+    return _generic(f, x, logx)
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:besselk._eval_as_leading_term
+def _bessel_k(f: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.power import sqrt
+    from sympy_extras.functions.elementary.complexes import abs_
+    from sympy_extras.functions.elementary.exponential import exp, log
+    from sympy_extras.functions.special.gamma_functions import gamma
+    parts = _bessel_parts(f, x)
+    if parts is None:
+        return f
+    nu, z, lead, _, ex = parts
+    if ex.is_positive is True:
+        if nu.is_zero is True:
+            # Abramowitz and Stegun (10th ed, 1972), 9.6.8
+            term = -log(z) - EulerGamma + log(Integer(2))
+        elif nu.is_nonzero is True:
+            # Abramowitz and Stegun (10th ed, 1972), 9.6.9
+            term = gamma(abs_(nu)) * (z / 2)**(-abs_(nu)) / 2
+        else:
+            raise NotImplementedError(f'Cannot proceed without knowing if {nu} is zero or not.')
+        return term.as_leading_term(x, logx=logx)
+    if ex.is_negative is True:
+        # Abramowitz and Stegun (10th ed, 1972), 9.7.2
+        return sqrt(pi) * exp(-lead) / sqrt(2 * lead)
+    return _same(f, nu, lead)
+
+
+# PORTED FROM SYMPY: sympy/functions/special/singularity_functions.py:SingularityFunction._eval_as_leading_term
+def _singularity(f: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    z, a, n = _arg(f), _arg(f, 1), _arg(f, 2)
+    shift = _e((z - a).subs(x, Integer(0)))
+    if n.is_negative is True:
+        return Integer(0)
+    if n.is_zero is True and shift.is_zero is True:
+        return Integer(0) if cdir == -1 else Integer(1)
+    if shift.is_positive is True:
+        return shift**n
+    return Integer(0)
+
+
 def rules() -> dict[str, Rule]:
     """The leading-term rules by class name."""
     return {
@@ -266,4 +434,10 @@ def rules() -> dict[str, Rule]:
         'CiNode': _even_integral, 'ChiNode': _even_integral,
         'FresnelS': lambda f, x, logx, cdir: _fresnel(f, x, logx, cdir, True),
         'FresnelC': lambda f, x, logx, cdir: _fresnel(f, x, logx, cdir, False),
+        'Arg': _arg_rule, 'Frac': _frac,
+        'Floor': lambda f, x, logx, cdir: _round(f, x, logx, cdir, False),
+        'Ceiling': lambda f, x, logx, cdir: _round(f, x, logx, cdir, True),
+        'BesselJ': lambda f, x, logx, cdir: _bessel_ji(f, x, logx, cdir, False),
+        'BesselI': lambda f, x, logx, cdir: _bessel_ji(f, x, logx, cdir, True),
+        'BesselY': _bessel_y, 'BesselK': _bessel_k, 'SingularityFunctionNode': _singularity,
     }

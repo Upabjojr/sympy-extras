@@ -1262,13 +1262,11 @@ class Expr(Basic):
         """
         return _as_leading_term(self, symbols, logx, to_expr(cdir))
 
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr._eval_as_leading_term
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
-        """The leading term at zero (overridden by the classes; the
-        classes whose leading term is not ported use SymPy's, the others
-        are their own leading term)."""
-        from .interop import leading_term_node_through_sympy
-        found = leading_term_node_through_sympy(self, x, logx, cdir)
-        return self if found is None else found
+        """The leading term at zero (overridden by the classes): the node
+        itself by default."""
+        return self
 
     # PORTED FROM SYMPY: sympy/core/expr.py:Expr.leadterm
     def leadterm(self, x: Symbol, logx: Optional[Expr] = None, cdir: ExprLike = 0) -> tuple[Expr, Expr]:

@@ -233,3 +233,46 @@ def test_special_leading_terms_match_sympy() -> None:
         except (NotImplementedError, ValueError, PoleError) as exc:
             got = 'ERR ' + type(exc).__name__
         assert got == want, e
+
+
+def test_more_leading_terms_match_sympy() -> None:
+    # arg, floor, ceiling, frac, the Bessel functions, SingularityFunction,
+    # and the nodes Derivative, Subs, Piecewise, hyper, meijerg
+    import sympy
+    from sympy.core.cache import clear_cache
+    from sympy.core.function import PoleError as SympyPoleError
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.coreerrors import PoleError
+    from sympy_extras.core.interop import expr_from_sympy, from_sympy
+    from sympy_extras.core.symbol import Symbol as OurSymbol
+    sx, sy = sympy.symbols('x y')
+    ox = from_sympy(sx)
+    assert isinstance(ox, OurSymbol)
+    g = sympy.Function('f')
+    half = sympy.Rational(1, 2)
+    cases = [sympy.arg(sx), sympy.arg(-sx), sympy.arg(sx - 1), sympy.arg(sympy.I*sx),
+             sympy.floor(sx), sympy.floor(-sx), sympy.floor(sx + half), sympy.floor(1/sx), sympy.floor(sympy.sin(1/sx)),
+             sympy.ceiling(sx), sympy.ceiling(2 - sx), sympy.ceiling(-sx**2), sympy.frac(sx), sympy.frac(-sx),
+             sympy.frac(sx + 1), sympy.frac(1/sx),
+             sympy.besselj(0, sx), sympy.besselj(half, 1/sx), sympy.besselj(2, sx + 1), sympy.bessely(0, sx),
+             sympy.bessely(1, 2*sx), sympy.bessely(2, 1/sx), sympy.besseli(1, sx**2), sympy.besseli(0, 1/sx),
+             sympy.besselk(0, sx), sympy.besselk(2, sx), sympy.besselk(1, 1/sx), sympy.besselk(half, sx + 1),
+             sympy.SingularityFunction(sx, 0, 0), sympy.SingularityFunction(sx, -1, 2), sympy.SingularityFunction(sx, 1, 1),
+             sympy.SingularityFunction(sx, 0, -1),
+             sympy.Derivative(sympy.sin(sx)*sx, sx), sympy.Derivative(sympy.exp(sx)/sx, sx),
+             sympy.Subs(g(sy), sy, sx), sympy.Subs(g(sx), sx, 0), sympy.Subs(sy*sx + sx**2, sy, 1),
+             sympy.Piecewise((sx, sx > 1), (sx**2 + sx, True)), sympy.Piecewise((sx, sy > 0)),
+             sympy.hyper([1], [2], sx), sympy.hyper([1, 2], [3], 2*sx + 3),
+             sympy.meijerg([[], []], [[0], []], sx + 1), sympy.meijerg([[], []], [[0], [half]], sx**2)]
+    for e in cases:
+        clear_cache()
+        try:
+            want = str(e.as_leading_term(sx))
+        except (NotImplementedError, ValueError, SympyPoleError) as exc:
+            want = 'ERR ' + type(exc).__name__
+        clear_cache()
+        try:
+            got = str(to_sympy(expr_from_sympy(e).as_leading_term(ox), evaluate=False))
+        except (NotImplementedError, ValueError, PoleError) as exc:
+            got = 'ERR ' + type(exc).__name__
+        assert got == want, e

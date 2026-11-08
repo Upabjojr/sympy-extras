@@ -287,6 +287,10 @@ remove public functions. Breaking changes are listed here when they happen.
   digamma, trigamma, zeta, erf, erfc, erfi, Ei, Si, Ci, Shi, Chi, fresnels
   and fresnelc (`sympy_extras.functions._leading_terms`, SymPy's own
   `_eval_as_leading_term` rules).
+- Native leading terms for arg, floor, ceiling, frac, the Bessel functions
+  J, Y, I, K, SingularityFunction, Derivative, Subs, Piecewise, hyper and
+  meijerg; leading terms no longer go through SymPy except for the
+  wrapped SymPy nodes.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

@@ -113,6 +113,28 @@ class Hyper(Expr):
     def args(self) -> tuple[Basic, ...]:
         return (Tuple(*self._ap), Tuple(*self._bq), self._z)
 
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """1 when the argument vanishes, otherwise SymPy's generic rule of
+        functions (here on the argument; SymPy fails on a parameter
+        depending on ``x``)."""
+        from sympy_extras.core.limits import limit
+        from sympy_extras.core.numbers import NaN
+        from sympy_extras.core.order import Order, order
+        from sympy_extras.functions.elementary.complexes import re
+        arg = self.argument
+        x0 = arg.subs(x, Integer(0))
+        if isinstance(x0, NaN):
+            x0 = limit(arg, x, Integer(0), '-' if re(cdir).is_negative is True else '+')
+        if isinstance(x0, Integer) and x0 == 0:
+            return Integer(1)
+        lead = arg.as_leading_term(x, logx=logx)
+        o = order(Integer(1), x)
+        assert isinstance(o, Order)
+        if x in lead.free_symbols and o.contains(lead):
+            raise NotImplementedError('hyper has no _eval_as_leading_term routine')
+        return self
+
     @property
     def ap(self) -> tuple[Expr, ...]:
         return self._ap
@@ -278,6 +300,11 @@ class MeijerG(Expr):
     @property
     def bother(self) -> tuple[Expr, ...]:
         return self._bother
+
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.simplify.hyperexpand import hyperexpand
+        return hyperexpand(self).as_leading_term(x, logx=logx, cdir=cdir)
 
     @property
     def argument(self) -> Expr:

@@ -208,6 +208,12 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
 
     __slots__ = ('_sympy_class', '_node_args')
 
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """SymPy's leading term of the wrapped expression (when its class
+        has a rule of its own), else the node."""
+        found = leading_term_node_through_sympy(self, x, logx, cdir)
+        return self if found is None else found
+
     def __init__(self, sympy_class: type[SymPyBasic], *args: Basic) -> None:
         self._sympy_class: type[SymPyBasic] = sympy_class
         self._node_args: tuple[Basic, ...] = args

@@ -124,6 +124,17 @@ class Piecewise(Expr):
         self._args: Final[tuple[ExprCondPair, ...]] = tuple(_pair(p) for p in pairs)
         Basic.__init__(self)
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:Piecewise._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The leading term of the first piece whose condition holds at 0
+        (None in SymPy when none does: then ``as_leading_term`` raises)."""
+        from sympy_extras.core.numbers import Integer as _Integer
+        for pair in self.args:
+            c = pair.cond
+            if isinstance(c, BooleanTrue) or isinstance(c.subs(x, _Integer(0)), BooleanTrue):
+                return pair.expr.as_leading_term(x)
+        raise NotImplementedError('as_leading_term(%s, %s)' % (self, x))
+
     @property
     def args(self) -> tuple[ExprCondPair, ...]:
         return self._args
