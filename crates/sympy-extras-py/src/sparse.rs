@@ -300,3 +300,121 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(iterated_polynomial_ring, m)?)?;
     Ok(())
 }
+
+// -- multisqf
+
+use sympy_extras_core::polys::multisqf::{
+    sqf_list as core_sqf_list, IntegerSqfDomain, ParameterSqfDomain, RationalSqfDomain, SqfDomain,
+};
+
+#[derive(Debug, Clone)]
+enum SqfKind {
+    Integer(IntegerSqfDomain),
+    Rational(RationalSqfDomain),
+    ParameterZZ(ParameterSqfDomain<IntegerRing>),
+    ParameterQQ(ParameterSqfDomain<RationalField>),
+}
+
+/// `multisqf.SqfDomain`: one Python class for the three flavours.
+#[pyclass(name = "SqfDomain", module = "sympy_extras_rs.polys.multisqf", frozen)]
+#[derive(Debug, Clone)]
+pub struct PySqfDomain {
+    inner: SqfKind,
+}
+
+#[pymethods]
+impl PySqfDomain {
+    #[getter]
+    fn ring(&self) -> PyPolyRing {
+        let inner: RingKind = match &self.inner {
+            SqfKind::Integer(d) => RingKind::ZZ(d.ring().clone()),
+            SqfKind::Rational(d) => RingKind::QQ(d.ring().clone()),
+            SqfKind::ParameterZZ(d) => RingKind::ZZ(d.ring().clone()),
+            SqfKind::ParameterQQ(d) => RingKind::QQ(d.ring().clone()),
+        };
+        PyPolyRing { inner }
+    }
+
+    #[getter]
+    fn n_gens(&self) -> usize {
+        match &self.inner {
+            SqfKind::Integer(d) => d.n_gens(),
+            SqfKind::Rational(d) => d.n_gens(),
+            SqfKind::ParameterZZ(d) => d.n_gens(),
+            SqfKind::ParameterQQ(d) => d.n_gens(),
+        }
+    }
+}
+
+#[pyfunction]
+#[pyo3(name = "IntegerSqfDomain")]
+fn integer_sqf_domain(names: Vec<String>) -> PySqfDomain {
+    PySqfDomain {
+        inner: SqfKind::Integer(IntegerSqfDomain::new(names)),
+    }
+}
+
+#[pyfunction]
+#[pyo3(name = "RationalSqfDomain")]
+fn rational_sqf_domain(names: Vec<String>) -> PySqfDomain {
+    PySqfDomain {
+        inner: SqfKind::Rational(RationalSqfDomain::new(names)),
+    }
+}
+
+#[pyfunction]
+#[pyo3(name = "ParameterSqfDomain")]
+fn parameter_sqf_domain(params: &PySparseRing, gen_names: Vec<String>) -> PyResult<PySqfDomain> {
+    let inner: SqfKind = match &params.inner {
+        AnyRing::SZ(p) => SqfKind::ParameterZZ(ParameterSqfDomain::new(p.clone(), gen_names)),
+        AnyRing::SQ(p) => SqfKind::ParameterQQ(ParameterSqfDomain::new(p.clone(), gen_names)),
+        _ => {
+            return Err(PyTypeError::new_err(
+                "the parameters must be a polynomial ring over ZZ or QQ",
+            ))
+        }
+    };
+    Ok(PySqfDomain { inner })
+}
+
+fn out_sqf<'py, K: Domain>(
+    py: Python<'py>,
+    result: (PolyElement<K>, Vec<(PolyElement<K>, usize)>),
+    put: fn(PolyElement<K>) -> PyPolyElement,
+) -> PyResult<Bound<'py, PyAny>> {
+    let (coeff, factors) = result;
+    let mut items: Vec<Bound<'py, PyAny>> = Vec::new();
+    for (g, k) in factors {
+        items.push(tuple(
+            py,
+            vec![Bound::new(py, put(g))?.into_any(), k.into_pyobject(py)?.into_any()],
+        )?);
+    }
+    tuple(
+        py,
+        vec![
+            Bound::new(py, put(coeff))?.into_any(),
+            pyo3::types::PyList::new(py, items)?.into_any(),
+        ],
+    )
+}
+
+#[pyfunction]
+#[pyo3(signature = (f, D, all = false))]
+fn sqf_list<'py>(py: Python<'py>, f: &PyPolyElement, D: &PySqfDomain, all: bool) -> PyResult<Bound<'py, PyAny>> {
+    match &D.inner {
+        SqfKind::Integer(d) => out_sqf(py, core_sqf_list(&element_zz(f)?, d, all), |g| wrap(ElemKind::ZZ(g))),
+        SqfKind::Rational(d) => out_sqf(py, core_sqf_list(&element_qq(f)?, d, all), |g| wrap(ElemKind::QQ(g))),
+        SqfKind::ParameterZZ(d) => out_sqf(py, core_sqf_list(&element_zz(f)?, d, all), |g| wrap(ElemKind::ZZ(g))),
+        SqfKind::ParameterQQ(d) => out_sqf(py, core_sqf_list(&element_qq(f)?, d, all), |g| wrap(ElemKind::QQ(g))),
+    }
+}
+
+pub fn register_multisqf(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<PySqfDomain>()?;
+    m.add_function(wrap_pyfunction!(integer_sqf_domain, m)?)?;
+    m.add_function(wrap_pyfunction!(rational_sqf_domain, m)?)?;
+    m.add_function(wrap_pyfunction!(parameter_sqf_domain, m)?)?;
+    m.add_function(wrap_pyfunction!(sqf_list, m)?)?;
+    Ok(())
+}

@@ -56,4 +56,5 @@ degrees and indices are `usize`, data-dependent exceptions are
 | `polys/stronggroebner.py` | done | 10-20x faster than Python on the random test systems |
 | `ntheory/primetest.py`, `generate.py`, `factor_.py` | done | `primerange` is an iterator struct (a list in the bindings) |
 | `polys/modulargroebner.py` | later | written on SymPy's `PolyElement` with SymPy's `groebner` as fallback and time limits: its typed core (rational reconstruction, lifting, luckiness) can be ported once the typed interop is |
-| everything else | not yet | next: `multisqf`, `multifactor` (the last typed modules without the core), then the typed core `sympy_extras.core` |
+| `polys/multisqf.py` | done | the `SqfDomain` classes as a trait with three implementations |
+| everything else | not yet | next: `multifactor` (the last typed module without the core), then the typed core `sympy_extras.core` |

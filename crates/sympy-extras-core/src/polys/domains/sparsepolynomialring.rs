@@ -591,7 +591,7 @@ impl<K: SparseGround> IteratedPolynomialRing<K> {
     }
 
     /// An element of `K` in this ring.
-    fn embed_params(&self, c: &PolyElement<K>) -> PolyElement<K> {
+    pub fn embed_params(&self, c: &PolyElement<K>) -> PolyElement<K> {
         self.ring().from_dict(
             c.terms
                 .iter()
