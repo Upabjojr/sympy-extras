@@ -1239,6 +1239,129 @@ def _gaussian_expr_of(f: dict[Monomial, GaussianRational], gens: tuple[Expr, ...
     return add(*parts)
 
 
+# PORTED FROM SYMPY: sympy/polys/domains/realfield.py:to_rational
+def real_to_rational(value: Fraction, max_denom: int, limit: bool = True) -> Fraction:
+    """The rational of a float (its exact value) with the denominator at most
+    ``max_denom``: the closer of the two last convergents of the continued
+    fraction (SymPy's ``RealField.to_rational``)."""
+    p, q = value.numerator, value.denominator
+    if not limit or q <= max_denom:
+        return value
+    p0, q0, p1, q1 = 0, 1, 1, 0
+    n, d = p, q
+    while True:
+        a = n // d
+        q2 = q0 + a*q1
+        if q2 > max_denom:
+            break
+        p0, q0, p1, q1 = p1, q1, p0 + a*p1, q2
+        n, d = d, n - a*d
+    k = (max_denom - q0) // q1
+    bound1 = Fraction(p0 + k*p1, q0 + k*q1)
+    bound2 = Fraction(p1, q1)
+    if not bound2 or not bound1:
+        return value
+    if abs(bound2 - value) <= abs(bound1 - value):
+        return bound2
+    return bound1
+
+
+def _joint_rings_real(exprs: Sequence[Expr], expand: bool = True
+                      ) -> tuple[tuple[Expr, ...], list[dict[Monomial, Fraction]], int]:
+    """:func:`_joint_rings` over SymPy's ``RR`` (some coefficients are
+    floats): the coefficients summed, at the largest precision of the
+    floats (their exact binary values); with that precision."""
+    from sympy_extras.core.numbers import Float, _round_to_prec
+    decomposed, gens = _decompose_without_gens_many(exprs, expand)
+    prec = 0
+    sums: list[dict[Monomial, Union[Float, Rational]]] = []
+    for terms in decomposed:
+        summed: dict[Monomial, Union[Float, Rational]] = {}
+        for m, cs in terms.items():
+            c = add(*cs)
+            if not isinstance(c, (Float, Rational)):
+                raise CoercionFailed('the domain of %s (CC, EX) is not ported yet' % (c,))
+            if isinstance(c, Float):
+                prec = max(prec, c._prec)
+            summed[m] = c
+        sums.append(summed)
+    if prec == 0:
+        raise CoercionFailed('no float coefficient')
+    result: list[dict[Monomial, Fraction]] = []
+    for summed in sums:
+        rep: dict[Monomial, Fraction] = {}
+        for m, c in summed.items():
+            # RR.from_sympy: the value at the precision (exact dyadic)
+            exact = c._value if isinstance(c, Float) else c.as_fraction()
+            value = _round_to_prec(exact, prec)
+            if value:
+                rep[m] = value
+        result.append(rep)
+    return gens, result, prec
+
+
+# PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement.cancel and cofactors (over RR)
+def _cancel_real(f: dict[Monomial, Fraction], g: dict[Monomial, Fraction], n: int, prec: int
+                 ) -> tuple[dict[Monomial, Fraction], dict[Monomial, Fraction]]:
+    """``f/g`` over ``RR`` (the values are the exact binary values of the
+    floats): a term divides out its monomial gcd with the floats kept
+    (``RR.gcd`` is ``1``); otherwise the cofactors of the monic gcd over
+    ``QQ`` (the floats made rational by ``RealField.to_rational``) are
+    rounded back; the leading coefficient of the denominator positive."""
+    from sympy_extras.core.numbers import _round_to_prec
+    Z = IntegerPolynomialRing(_internal_names(n, 0))
+    if not f:
+        return {}, {(0,) * n: Fraction(1)}
+    P: dict[Monomial, Fraction]
+    Q: dict[Monomial, Fraction]
+    if len(f) == 1 or len(g) == 1:
+        # PORTED FROM SYMPY: PolyElement._gcd_monom (the ground gcd of RR is 1)
+        term, other = (f, g) if len(f) == 1 else (g, f)
+        (mt, ct), = term.items()
+        common = mt
+        for m in other:
+            common = tuple(min(a, b) for a, b in zip(common, m))
+        reduced_term = {tuple(a - b for a, b in zip(mt, common)): ct}
+        reduced_other = {tuple(a - b for a, b in zip(m, common)): c for m, c in other.items()}
+        P, Q = (reduced_term, reduced_other) if len(f) == 1 else (reduced_other, reduced_term)
+    else:
+        max_denom = max(2**prec // 200, 99)
+        fq = {m: real_to_rational(c, max_denom) for m, c in f.items()}
+        gq = {m: real_to_rational(c, max_denom) for m, c in g.items()}
+
+        def denominators(h: dict[Monomial, Fraction]) -> int:
+            d = 1
+            for c in h.values():
+                d = d * c.denominator // integer_gcd(d, c.denominator)
+            return d
+
+        cf, cg = denominators(fq), denominators(gq)
+        F = Z.ring.from_dict({m: int(c * cf) for m, c in fq.items() if c})
+        G = Z.ring.from_dict({m: int(c * cg) for m, c in gq.items() if c})
+        h = Z.gcd(F, G)
+        lc = Fraction(h.LC)
+        # the cofactors over QQ rounded to RR
+        P = {m: _round_to_prec(Fraction(c) * lc / cf, prec) for m, c in F.exquo(h).terms.items()}
+        Q = {m: _round_to_prec(Fraction(c) * lc / cg, prec) for m, c in G.exquo(h).terms.items()}
+    lead = max(Q, key=Z.ring.order.key)
+    if Q[lead] < 0:
+        P = {m: -c for m, c in P.items()}
+        Q = {m: -c for m, c in Q.items()}
+    return P, Q
+
+
+def _real_expr_of(f: dict[Monomial, Fraction], gens: tuple[Expr, ...], prec: int) -> Expr:
+    """The polynomial with float coefficients of the precision (SymPy's
+    ``RR.to_sympy``)."""
+    from sympy_extras.core.numbers import Float
+    parts: list[Expr] = []
+    for m in sorted(f, reverse=True):
+        factors: list[Expr] = [Float(number_from_fraction(f[m]), precision=prec)]
+        factors += [pow(g, Integer(k)) for g, k in zip(gens, m) if k]
+        parts.append(mul(*factors))
+    return add(*parts) if parts else Float(Integer(0), precision=prec)
+
+
 # PORTED FROM SYMPY: sympy/polys/factortools.py:dup_factor_list, dup_zz_i_factor, dup_qq_i_factor
 def _gaussian_factor_list(base: Expr) -> tuple[Expr, list[tuple[Expr, int]]]:
     """The factorisation of a univariate polynomial with Gaussian
@@ -1435,10 +1558,17 @@ def _cancel_expanded(p: Expr, q: Expr, e: Expr, factored: Expr) -> Expr:
         try:
             ggens, (gp, gq) = _joint_rings_gaussian([p, q])
         except CoercionFailed:
-            # the domains RR and EX are not ported: SymPy's cancel
-            import sympy
-            from sympy_extras.core.interop import expr_through_sympy
-            return expr_through_sympy(e, sympy.cancel)
+            try:
+                rgens, (rp, rq), prec = _joint_rings_real([p, q])
+            except CoercionFailed:
+                # the domains CC and EX are not ported: SymPy's cancel
+                import sympy
+                from sympy_extras.core.interop import expr_through_sympy
+                return expr_through_sympy(e, sympy.cancel)
+            if not rgens:
+                return _expanded(factored)
+            RP, RQ = _cancel_real(rp, rq, len(rgens), prec)
+            return mul(_real_expr_of(RP, rgens, prec), pow(_real_expr_of(RQ, rgens, prec), Integer(-1)))
         if not ggens:
             return _expanded(factored)
         GP, GQ = _cancel_gaussian(gp, gq, len(ggens))

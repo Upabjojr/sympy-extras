@@ -355,12 +355,40 @@ class Expr(Basic):
         from .numbers import Integer
         return (Integer(0), self)
 
-    def as_coeff_mul(self) -> tuple[Number, tuple[Expr, ...]]:
-        """The numerical coefficient and the tuple of the other factors."""
-        c, rest = self.as_coeff_Mul()
-        if rest.is_Number and rest == 1:
-            return (c, ())
-        return (c, factors_of(rest))
+    # PORTED FROM SYMPY: sympy/core/expr.py, mul.py, numbers.py:as_coeff_mul
+    def as_coeff_mul(self, rational: bool = True) -> tuple[Number, tuple[Expr, ...]]:
+        """The numerical coefficient and the tuple of the other factors; with
+        ``rational`` (the default, as in SymPy) only a rational coefficient
+        (a float is a factor, a negative float gives ``-1``).
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import Symbol, Float
+        >>> y = Symbol('y')
+        >>> (2*y).as_coeff_mul(), (Float(0.5)*y).as_coeff_mul(), (Float(-0.5)*y).as_coeff_mul()
+        ((2, (y,)), (1, (0.500000000000000, y)), (-1, (0.500000000000000, y)))
+        >>> (Float(0.5)*y).as_coeff_mul(rational=False), Float(0.5).as_coeff_mul()
+        ((0.500000000000000, (y,)), (1, (0.500000000000000,)))
+        """
+        from .mul import Mul
+        from .numbers import Integer, Number as _Number, Rational
+        if isinstance(self, _Number):
+            if isinstance(self, Rational) or not rational:
+                return (self, ())
+            if self.is_negative is True:
+                return (Integer(-1), (-self,))
+            return (Integer(1), (self,))
+        if isinstance(self, Mul):
+            args = tuple(a for a in self.args if isinstance(a, Expr))
+            first = args[0]
+            if isinstance(first, _Number):
+                if not rational or isinstance(first, Rational):
+                    return (first, args[1:])
+                if first.is_extended_negative is True:
+                    return (Integer(-1), (-first,) + args[1:])
+            return (Integer(1), args)
+        return (Integer(1), (self,))
 
     def as_coeff_add(self) -> tuple[Number, tuple[Expr, ...]]:
         """The numerical term and the tuple of the other terms."""

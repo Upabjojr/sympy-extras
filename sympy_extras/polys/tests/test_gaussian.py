@@ -69,3 +69,24 @@ def test_univariate_factor_over_gaussian_matches_sympy() -> None:
         if not e.has(x):
             continue
         assert str(to_sympy(expr_from_sympy(e).factor(), evaluate=False)) == str(s.factor(e)), e
+
+
+def test_cancel_with_floats_matches_sympy() -> None:
+    rng = random.Random(7)
+    atoms = [x, y, x*y, x**2, s.Float(0.5), s.Float(1.25), s.Float('0.1'), s.Rational(1, 3), s.Integer(2)]
+
+    def rp() -> s.Expr:
+        result: s.Expr = s.Integer(0)
+        for _ in range(rng.randint(1, 3)):
+            term: s.Expr = (s.Float(rng.choice([1, -2, 0.5, 3.75, -0.1])) if rng.random() < 0.5
+                            else s.Integer(rng.randint(-3, 3)))
+            for _ in range(rng.randint(0, 2)):
+                term = term * rng.choice(atoms)
+            result = result + term
+        return result
+
+    for _ in range(100):
+        e = rp() / rp() + (rp() / rp() if rng.random() < 0.3 else s.Integer(0))
+        if e.has(s.zoo, s.nan):
+            continue
+        assert str(to_sympy(expr_from_sympy(e).cancel(), evaluate=False)) == str(s.cancel(e)), e

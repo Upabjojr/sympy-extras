@@ -118,6 +118,12 @@ remove public functions. Breaking changes are listed here when they happen.
   from SymPy (`dup_zz_i_factor`, `dup_qq_i_factor`: Trager's algorithm
   over `QQ<I>`, the contents made Gaussian integers); several generators
   with `I` are still factored by SymPy.
+- `cancel` over `RR` (float coefficients), ported from SymPy: the gcd of
+  the floats made rational (`RealField.to_rational`) over `QQ`, the
+  cofactors rounded back, a term dividing its monomial gcd with the floats
+  kept. `as_coeff_mul` has SymPy's default `rational=True` (a float is a
+  factor, not the coefficient), which `gcd_terms` and `factor_terms` rely
+  on (`0.5*y + 0.5` is `0.5*(y + 1)`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
