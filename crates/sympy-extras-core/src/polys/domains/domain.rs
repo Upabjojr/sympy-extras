@@ -285,12 +285,7 @@ pub trait Domain: Clone + PartialEq + Debug {
 }
 
 /// `row -= factor * pivot` entrywise, the zero entries removed.
-fn eliminate_with_pivot<K: Domain>(
-    k: &K,
-    row: &mut SparseRow<K::Elem>,
-    factor: &K::Elem,
-    pivot: &SparseRow<K::Elem>,
-) {
+fn eliminate_with_pivot<K: Domain>(k: &K, row: &mut SparseRow<K::Elem>, factor: &K::Elem, pivot: &SparseRow<K::Elem>) {
     for (column, value) in pivot {
         let product: K::Elem = k.mul(factor, value);
         match row.get(column) {

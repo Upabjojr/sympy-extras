@@ -20,6 +20,7 @@ mod domains;
 mod factor;
 mod polyerrors;
 mod rings;
+mod sparse;
 
 /// A submodule `parent.name`, registered as `full` in `sys.modules`.
 fn submodule<'py>(parent: &Bound<'py, PyModule>, name: &str, full: &str) -> PyResult<Bound<'py, PyModule>> {
@@ -35,7 +36,13 @@ fn submodule<'py>(parent: &Bound<'py, PyModule>, name: &str, full: &str) -> PyRe
 fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", sympy_extras_core::VERSION)?;
     let polys: Bound<'_, PyModule> = submodule(m, "polys", "sympy_extras_rs.polys")?;
-    domains::register(&submodule(&polys, "domains", "sympy_extras_rs.polys.domains")?)?;
+    let domains_module: Bound<'_, PyModule> = submodule(&polys, "domains", "sympy_extras_rs.polys.domains")?;
+    domains::register(&domains_module)?;
+    sparse::register(&submodule(
+        &domains_module,
+        "sparsepolynomialring",
+        "sympy_extras_rs.polys.domains.sparsepolynomialring",
+    )?)?;
     dense::register_densebasic(&submodule(&polys, "densebasic", "sympy_extras_rs.polys.densebasic")?)?;
     dense::register_densearith(&submodule(&polys, "densearith", "sympy_extras_rs.polys.densearith")?)?;
     dense::register_densetools(&submodule(&polys, "densetools", "sympy_extras_rs.polys.densetools")?)?;

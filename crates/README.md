@@ -48,4 +48,5 @@ degrees and indices are `usize`, data-dependent exceptions are
 | `polys/rings.py` | done | orders as the enum `MonomialOrder` (lex, grlex, grevlex, and the weight, block and homogeneous orders of `orderings.py` and `modulargroebner.py`); `from_expr`/`to_expr` wait for the core |
 | `polys/heuristicgcd.py` | done | |
 | `polys/polyerrors.py` | `HeuristicGCDFailed` | the others as they are needed |
-| everything else | not yet | next: the polynomial ring domains (`polynomialring`, `sparsepolynomialring`, `fractionfield`), `polyclasses`, `f4` |
+| `polys/domains/sparsepolynomialring.py` | done | the Integer/Rational flavours as `SparsePolynomialRing::sympy` with `SparseGround` hooks; `IteratedPolynomialRing` one recursive type; over `ZZ`/`QQ` (the gcd needs an ordered ground, in Python too) |
+| everything else | not yet | next: `polynomialring`, `fractionfield`, `polyclasses`, `f4` |
