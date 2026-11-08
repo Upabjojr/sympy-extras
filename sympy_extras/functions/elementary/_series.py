@@ -555,3 +555,538 @@ def atan_acot_aseries(node: Application, n: int, args0: Sequence[Expr], x: Symbo
         e = inverse if is_acot else add(_half_pi(), mul(Integer(-1), inverse))
         return e._eval_nseries(x, n, logx, Integer(0))
     return Application._eval_aseries(node, n, args0, x, logx)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:asin._eval_nseries (the branch points,
+# shared by asin, acos, asec, acsc, asech, acsch)
+def branch_point_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr],
+                         at: Callable[[Expr], Expr], arg1: Expr, not_meromorphic: Optional[Expr]) -> Expr:
+    """The series at a branch point: the series of ``f(at(t))`` rewritten
+    with logarithms, in ``t = sqrt(arg1)``. ``not_meromorphic`` is the
+    value returned (with ``O(sqrt(x))``) when ``arg1`` has no Laurent
+    series; ``None`` when the class does not check it."""
+    from sympy_extras.core.order import order
+    from sympy_extras.core.symbol import Dummy
+    t = Dummy('t', positive=True)
+    ser = _rewrite_log(node._rebuilt([at(t)])).nseries(t, 0, 2 * n)
+    f = arg1.as_leading_term(x)
+    g = (arg1 - f) / f
+    if not_meromorphic is not None and not g.is_meromorphic(x, 0):
+        return order(Integer(1)) if n == 0 else not_meromorphic + order(_sqrt(x))
+    res1 = _sqrt(Integer(1) + g)._eval_nseries(x, n, logx, Integer(0))
+    res = (res1.removeO() * _sqrt(f)).expand()
+    return ser.removeO().subs(t, res).expand().powsimp() + order(x**n, x)
+
+
+def _log_lt(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr, expand: bool) -> Expr:
+    lt = _rewrite_log(node)._eval_as_leading_term(x, logx, cdir)
+    return lt.expand() if expand else lt
+
+
+def _log_ns(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+    return _rewrite_log(node)._eval_nseries(x, n, logx, cdir)
+
+
+def _generic_ns(node: Application, x: Symbol, n: int, logx: Optional[Expr]) -> Expr:
+    return Application._eval_nseries(node, x, n, logx, Integer(0))
+
+
+def _half_rf_term(n: int) -> tuple[Expr, Expr]:
+    """``R`` and ``F`` of the Taylor terms of asec, acsc, asech, acsch:
+    ``rf(1/2, n//2)*n`` and ``factorial(n//2)*n//2*n//2`` (SymPy's integer
+    divisions, left to right)."""
+    from sympy_extras.core.numbers import Rational
+    from sympy_extras.functions.combinatorial.factorials import rf
+    k = n // 2
+    r = rf(Rational(1, 2), Integer(k)) * Integer(n)
+    fk = _factorial(k)
+    if not isinstance(fk, Integer):
+        raise TypeError("the factorial of %d is not an integer" % k)
+    return r, Integer(((fk.p * n) // 2 * n) // 2)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:asec.taylor_term
+def asec_taylor_term(n: int, x: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.exponential import log
+    if n == 0:
+        return I * log(Integer(2) / x)
+    if n < 0 or n % 2 == 1:
+        return Integer(0)
+    r, f = _half_rf_term(n)
+    return -I * r / f * x**n / Integer(4)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acsc.taylor_term
+def acsc_taylor_term(n: int, x: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.exponential import log
+    if n == 0:
+        return _half_pi() - I * log(Integer(2)) + I * log(x)
+    if n < 0 or n % 2 == 1:
+        return Integer(0)
+    r, f = _half_rf_term(n)
+    return I * r / f * x**n / Integer(4)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:asec._eval_as_leading_term
+def asec_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    x0 = arg.subs(x, Integer(0)).cancel()
+    if isinstance(x0, NaN):
+        return node._rebuilt([arg.as_leading_term(x)])
+    if _is_number(x0, 1):
+        return _sqrt(Integer(2)) * _sqrt((arg - Integer(1)).as_leading_term(x))
+    if x0 in (Integer(-1), Integer(0)):
+        return _log_lt(node, x, logx, cdir, False)
+    if x0.is_real is True and (Integer(1) - x0**2).is_positive is True:
+        ndir = _ndir(arg, x, cdir)
+        fx0 = node._rebuilt([x0])
+        if im(ndir).is_negative is True:
+            if x0.is_positive is True:
+                return -fx0
+        elif im(ndir).is_positive is True:
+            if x0.is_negative is True:
+                return Integer(2) * pi - fx0
+        else:
+            return _log_lt(node, x, logx, cdir, True)
+    return node._rebuilt([x0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:asec._eval_nseries
+def asec_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    arg0 = arg.subs(x, Integer(0))
+    if _is_number(arg0, 1):
+        return branch_point_nseries(node, x, n, logx, lambda t: Integer(1) + t**2, arg - Integer(1), None)
+    if _is_number(arg0, -1):
+        return branch_point_nseries(node, x, n, logx, lambda t: Integer(-1) - t**2, Integer(-1) - arg, None)
+    res = _generic_ns(node, x, n, logx)
+    if isinstance(arg0, ComplexInfinity):
+        return res
+    if arg0.is_real is True and (Integer(1) - arg0**2).is_positive is True:
+        ndir = _ndir(arg, x, cdir)
+        if im(ndir).is_negative is True:
+            if arg0.is_positive is True:
+                return -res
+        elif im(ndir).is_positive is True:
+            if arg0.is_negative is True:
+                return Integer(2) * pi - res
+        else:
+            return _log_ns(node, x, n, logx, cdir)
+    return res
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acsc._eval_as_leading_term
+def acsc_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    x0 = arg.subs(x, Integer(0)).cancel()
+    if isinstance(x0, NaN):
+        return node._rebuilt([arg.as_leading_term(x)])
+    if x0 in (Integer(-1), Integer(1), Integer(0)):
+        return _log_lt(node, x, logx, cdir, True)
+    if isinstance(x0, ComplexInfinity):
+        return (Integer(1) / arg).as_leading_term(x)
+    if x0.is_real is True and (Integer(1) - x0**2).is_positive is True:
+        ndir = _ndir(arg, x, cdir)
+        fx0 = node._rebuilt([x0])
+        if im(ndir).is_negative is True:
+            if x0.is_positive is True:
+                return pi - fx0
+        elif im(ndir).is_positive is True:
+            if x0.is_negative is True:
+                return -pi - fx0
+        else:
+            return _log_lt(node, x, logx, cdir, True)
+    return node._rebuilt([x0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acsc._eval_nseries
+def acsc_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    arg0 = arg.subs(x, Integer(0))
+    if _is_number(arg0, 1):
+        return branch_point_nseries(node, x, n, logx, lambda t: Integer(1) + t**2, arg - Integer(1), None)
+    if _is_number(arg0, -1):
+        return branch_point_nseries(node, x, n, logx, lambda t: Integer(-1) - t**2, Integer(-1) - arg, None)
+    res = _generic_ns(node, x, n, logx)
+    if isinstance(arg0, ComplexInfinity):
+        return res
+    if arg0.is_real is True and (Integer(1) - arg0**2).is_positive is True:
+        ndir = _ndir(arg, x, cdir)
+        if im(ndir).is_negative is True:
+            if arg0.is_positive is True:
+                return pi - res
+        elif im(ndir).is_positive is True:
+            if arg0.is_negative is True:
+                return -pi - res
+        else:
+            return _log_ns(node, x, n, logx, cdir)
+    return res
+
+
+# ---------------------------------------------------------------------
+# the inverse hyperbolic functions
+
+def _nan_leading_term(node: Application, x: Symbol) -> Expr:
+    """``f(lt(arg))`` when finite, else the node (the NaN case)."""
+    e = node._rebuilt([node.args[0].as_leading_term(x)])
+    return e if e.is_finite is True else node
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:asinh.taylor_term
+def asinh_taylor_term(n: int, x: Expr) -> Expr:
+    if n < 0 or n % 2 == 0:
+        return Integer(0)
+    from sympy_extras.core.numbers import Rational
+    from sympy_extras.functions.combinatorial.factorials import rf
+    k = (n - 1) // 2
+    return Integer((-1) ** k) * rf(Rational(1, 2), Integer(k)) / _factorial(k) * x**n / Integer(n)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acosh.taylor_term
+def acosh_taylor_term(n: int, x: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    if n == 0:
+        return I * _half_pi()
+    if n < 0 or n % 2 == 0:
+        return Integer(0)
+    from sympy_extras.core.numbers import Rational
+    from sympy_extras.functions.combinatorial.factorials import rf
+    k = (n - 1) // 2
+    return -rf(Rational(1, 2), Integer(k)) / _factorial(k) * I * x**n / Integer(n)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:atanh.taylor_term
+def atanh_taylor_term(n: int, x: Expr) -> Expr:
+    if n < 0 or n % 2 == 0:
+        return Integer(0)
+    return x**n / Integer(n)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acoth.taylor_term
+def acoth_taylor_term(n: int, x: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    if n == 0:
+        return -I * _half_pi()
+    if n < 0 or n % 2 == 0:
+        return Integer(0)
+    return x**n / Integer(n)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:asech.taylor_term
+def asech_taylor_term(n: int, x: Expr) -> Expr:
+    from sympy_extras.functions.elementary.exponential import log
+    if n == 0:
+        return log(Integer(2) / x)
+    if n < 0 or n % 2 == 1:
+        return Integer(0)
+    r, f = _half_rf_term(n)
+    return Integer(-1) * r / f * x**n / Integer(4)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acsch.taylor_term
+def acsch_taylor_term(n: int, x: Expr) -> Expr:
+    from sympy_extras.functions.elementary.exponential import log
+    if n == 0:
+        return log(Integer(2) / x)
+    if n < 0 or n % 2 == 1:
+        return Integer(0)
+    r, f = _half_rf_term(n)
+    return Integer((-1) ** (n // 2 + 1)) * r / f * x**n / Integer(4)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:asinh._eval_as_leading_term
+def asinh_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im, re
+    arg = node.args[0]
+    x0 = arg.subs(x, Integer(0)).cancel()
+    if x0.is_zero is True:
+        return arg.as_leading_term(x)
+    if isinstance(x0, NaN):
+        return _nan_leading_term(node, x)
+    if x0 in (-I, I, zoo):
+        return _log_lt(node, x, logx, cdir, False)
+    if (Integer(1) + x0**2).is_negative is True:
+        ndir = _ndir(arg, x, cdir)
+        fx0 = node._rebuilt([x0])
+        if re(ndir).is_positive is True:
+            if im(x0).is_negative is True:
+                return -fx0 - I * pi
+        elif re(ndir).is_negative is True:
+            if im(x0).is_positive is True:
+                return -fx0 + I * pi
+        else:
+            return _log_lt(node, x, logx, cdir, False)
+    return node._rebuilt([x0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:asinh._eval_nseries
+def asinh_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im, re
+    arg = node.args[0]
+    arg0 = arg.subs(x, Integer(0))
+    if arg0 in (I, -I):
+        return _log_ns(node, x, n, logx, cdir)
+    res = _generic_ns(node, x, n, logx)
+    if isinstance(arg0, ComplexInfinity):
+        return res
+    if (Integer(1) + arg0**2).is_negative is True:
+        ndir = _ndir(arg, x, cdir)
+        if re(ndir).is_positive is True:
+            if im(arg0).is_negative is True:
+                return -res - I * pi
+        elif re(ndir).is_negative is True:
+            if im(arg0).is_positive is True:
+                return -res + I * pi
+        else:
+            return _log_ns(node, x, n, logx, cdir)
+    return res
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acosh._eval_as_leading_term
+def acosh_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    x0 = arg.subs(x, Integer(0)).cancel()
+    if x0 in (Integer(-1), Integer(0), Integer(1), zoo):
+        return _log_lt(node, x, logx, cdir, False)
+    if isinstance(x0, NaN):
+        return _nan_leading_term(node, x)
+    if (x0 - Integer(1)).is_negative is True:
+        ndir = _ndir(arg, x, cdir)
+        fx0 = node._rebuilt([x0])
+        if im(ndir).is_negative is True:
+            if (x0 + Integer(1)).is_negative is True:
+                return fx0 - Integer(2) * I * pi
+            return -fx0
+        elif im(ndir).is_positive is not True:
+            return _log_lt(node, x, logx, cdir, False)
+    return node._rebuilt([x0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acosh._eval_nseries
+def acosh_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    arg0 = arg.subs(x, Integer(0))
+    if arg0 in (Integer(1), Integer(-1)):
+        return _log_ns(node, x, n, logx, cdir)
+    res = _generic_ns(node, x, n, logx)
+    if isinstance(arg0, ComplexInfinity):
+        return res
+    if (arg0 - Integer(1)).is_negative is True:
+        ndir = _ndir(arg, x, cdir)
+        if im(ndir).is_negative is True:
+            if (arg0 + Integer(1)).is_negative is True:
+                return res - Integer(2) * I * pi
+            return -res
+        elif im(ndir).is_positive is not True:
+            return _log_ns(node, x, n, logx, cdir)
+    return res
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:atanh._eval_as_leading_term
+def atanh_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    x0 = arg.subs(x, Integer(0)).cancel()
+    if x0.is_zero is True:
+        return arg.as_leading_term(x)
+    if isinstance(x0, NaN):
+        return _nan_leading_term(node, x)
+    if x0 in (Integer(-1), Integer(1), zoo):
+        return _log_lt(node, x, logx, cdir, False)
+    if (Integer(1) - x0**2).is_negative is True:
+        ndir = _ndir(arg, x, cdir)
+        fx0 = node._rebuilt([x0])
+        if im(ndir).is_negative is True:
+            if x0.is_negative is True:
+                return fx0 - I * pi
+        elif im(ndir).is_positive is True:
+            if x0.is_positive is True:
+                return fx0 + I * pi
+        else:
+            return _log_lt(node, x, logx, cdir, False)
+    return node._rebuilt([x0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:atanh._eval_nseries
+def atanh_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    arg0 = arg.subs(x, Integer(0))
+    if arg0 in (Integer(1), Integer(-1)):
+        return _log_ns(node, x, n, logx, cdir)
+    res = _generic_ns(node, x, n, logx)
+    if isinstance(arg0, ComplexInfinity):
+        return res
+    if (Integer(1) - arg0**2).is_negative is True:
+        ndir = _ndir(arg, x, cdir)
+        if im(ndir).is_negative is True:
+            if arg0.is_negative is True:
+                return res - I * pi
+        elif im(ndir).is_positive is True:
+            if arg0.is_positive is True:
+                return res + I * pi
+        else:
+            return _log_ns(node, x, n, logx, cdir)
+    return res
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acoth._eval_as_leading_term
+def acoth_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    x0 = arg.subs(x, Integer(0)).cancel()
+    if isinstance(x0, ComplexInfinity):
+        return (Integer(1) / arg).as_leading_term(x)
+    if isinstance(x0, NaN):
+        return _nan_leading_term(node, x)
+    if x0 in (Integer(-1), Integer(1), Integer(0)):
+        return _log_lt(node, x, logx, cdir, False)
+    if x0.is_real is True and (Integer(1) - x0**2).is_positive is True:
+        ndir = _ndir(arg, x, cdir)
+        fx0 = node._rebuilt([x0])
+        if im(ndir).is_negative is True:
+            if x0.is_positive is True:
+                return fx0 + I * pi
+        elif im(ndir).is_positive is True:
+            if x0.is_negative is True:
+                return fx0 - I * pi
+        else:
+            return _log_lt(node, x, logx, cdir, False)
+    return node._rebuilt([x0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acoth._eval_nseries
+def acoth_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    arg0 = arg.subs(x, Integer(0))
+    if arg0 in (Integer(1), Integer(-1)):
+        return _log_ns(node, x, n, logx, cdir)
+    res = _generic_ns(node, x, n, logx)
+    if isinstance(arg0, ComplexInfinity):
+        return res
+    if arg0.is_real is True and (Integer(1) - arg0**2).is_positive is True:
+        ndir = _ndir(arg, x, cdir)
+        if im(ndir).is_negative is True:
+            if arg0.is_positive is True:
+                return res + I * pi
+        elif im(ndir).is_positive is True:
+            if arg0.is_negative is True:
+                return res - I * pi
+        else:
+            return _log_ns(node, x, n, logx, cdir)
+    return res
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:asech._eval_as_leading_term
+def asech_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    x0 = arg.subs(x, Integer(0)).cancel()
+    if x0 in (Integer(-1), Integer(0), Integer(1), zoo):
+        return _log_lt(node, x, logx, cdir, False)
+    if isinstance(x0, NaN):
+        return _nan_leading_term(node, x)
+    if x0.is_negative is True or (Integer(1) - x0).is_negative is True:
+        ndir = _ndir(arg, x, cdir)
+        fx0 = node._rebuilt([x0])
+        if im(ndir).is_positive is True:
+            if x0.is_positive is True or (x0 + Integer(1)).is_negative is True:
+                return -fx0
+            return fx0 - Integer(2) * I * pi
+        elif im(ndir).is_negative is not True:
+            return _log_lt(node, x, logx, cdir, False)
+    return node._rebuilt([x0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:asech._eval_nseries
+def asech_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    arg0 = arg.subs(x, Integer(0))
+    if _is_number(arg0, 1):
+        return branch_point_nseries(node, x, n, logx, lambda t: Integer(1) - t**2, Integer(1) - arg, Integer(0))
+    if _is_number(arg0, -1):
+        return branch_point_nseries(node, x, n, logx, lambda t: Integer(-1) + t**2, Integer(1) + arg, I * pi)
+    res = _generic_ns(node, x, n, logx)
+    if isinstance(arg0, ComplexInfinity):
+        return res
+    if arg0.is_negative is True or (Integer(1) - arg0).is_negative is True:
+        ndir = _ndir(arg, x, cdir)
+        if im(ndir).is_positive is True:
+            if arg0.is_positive is True or (arg0 + Integer(1)).is_negative is True:
+                return -res
+            return res - Integer(2) * I * pi
+        elif im(ndir).is_negative is not True:
+            return _log_ns(node, x, n, logx, cdir)
+    return res
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acsch._eval_as_leading_term
+def acsch_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im, re
+    arg = node.args[0]
+    x0 = arg.subs(x, Integer(0)).cancel()
+    if x0 in (-I, I, Integer(0)):
+        return _log_lt(node, x, logx, cdir, False)
+    if isinstance(x0, NaN):
+        return _nan_leading_term(node, x)
+    if isinstance(x0, ComplexInfinity):
+        return (Integer(1) / arg).as_leading_term(x)
+    if x0.is_imaginary is True and (Integer(1) + x0**2).is_positive is True:
+        ndir = _ndir(arg, x, cdir)
+        fx0 = node._rebuilt([x0])
+        if re(ndir).is_positive is True:
+            if im(x0).is_positive is True:
+                return -fx0 - I * pi
+        elif re(ndir).is_negative is True:
+            if im(x0).is_negative is True:
+                return -fx0 + I * pi
+        else:
+            return _log_lt(node, x, logx, cdir, False)
+    return node._rebuilt([x0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acsch._eval_nseries
+def acsch_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im, re
+    arg = node.args[0]
+    arg0 = arg.subs(x, Integer(0))
+    if arg0 == I:
+        return branch_point_nseries(node, x, n, logx, lambda t: I + t**2, -I + arg, -I * _half_pi())
+    if arg0 == -I:
+        return branch_point_nseries(node, x, n, logx, lambda t: -I + t**2, I + arg, I * _half_pi())
+    res = _generic_ns(node, x, n, logx)
+    if isinstance(arg0, ComplexInfinity):
+        return res
+    if arg0.is_imaginary is True and (Integer(1) + arg0**2).is_positive is True:
+        ndir = _ndir(arg, x, cdir)
+        if re(ndir).is_positive is True:
+            if im(arg0).is_positive is True:
+                return -res - I * pi
+        elif re(ndir).is_negative is True:
+            if im(arg0).is_negative is True:
+                return -res + I * pi
+        else:
+            return _log_ns(node, x, n, logx, cdir)
+    return res

@@ -1285,16 +1285,31 @@ def cancel(f: ExprLike) -> Expr:
     from sympy_extras.core.exprtools import factor_terms
     factored = factor_terms(e, radical=True)
     p, q = factored.as_numer_denom()
-    p, q = _expanded(p), _expanded(q)
+    return _cancel_expanded(_expanded(p), _expanded(q), e, factored)
+
+
+def _cancel_expanded(p: Expr, q: Expr, e: Expr, factored: Expr) -> Expr:
+    """The cancellation of ``p/q``, numerator and denominator expanded (the
+    preprocessing of ``cancel`` done once, as SymPy does)."""
     if p.has(I) and not q.has(I):
         # SymPy's ZZ_I/QQ_I is not ported: with a denominator free of I the
         # common factors are free of I too (unless Gaussian: x - I in
         # x**2 + 1, not found here); I is a generator for the cancellation
+        # (the powers of I, sqrt(I), ..., are generators of their own: SymPy
+        # keeps sqrt(I)*I, not I**(3/2))
+        from sympy_extras.core.power import Pow as _Pow
         from sympy_extras.core.symbol import Dummy
         unit = Dummy('I')
-        rule: dict[Basic, Basic] = {I: unit}
-        cancelled = cancel(p.xreplace(rule) * pow(q, Integer(-1)))
-        result = cancelled._xreplace_evaluated({unit: I})
+        rule: dict[Basic, Basic] = {}
+        for a in sorted(p.atoms(_Pow), key=lambda b: b.sort_key()):
+            if isinstance(a, _Pow) and a.base == I:
+                rule[a] = Dummy('I')
+        unit_rule: dict[Basic, Basic] = {I: unit}
+        hidden = _expr_of_basic(p.xreplace(rule).xreplace(unit_rule))
+        cancelled = _cancel_expanded(hidden, q, e, factored)
+        back: dict[Basic, Basic] = {d: a for a, d in rule.items()}
+        back[unit] = I
+        result = cancelled._xreplace_evaluated(back)
         if not isinstance(result, Expr):
             raise TypeError('an expression is expected')
         return result
@@ -1309,6 +1324,12 @@ def cancel(f: ExprLike) -> Expr:
         return _expanded(factored)
     P, Q, _ = _cancel_reps(fp, fq, len(gens))
     return mul(_expr_of(P, gens), pow(_expr_of(Q, gens), Integer(-1)))
+
+
+def _expr_of_basic(b: Basic) -> Expr:
+    if not isinstance(b, Expr):
+        raise TypeError('an expression is expected')
+    return b
 
 
 # ---------------------------------------------------------------------

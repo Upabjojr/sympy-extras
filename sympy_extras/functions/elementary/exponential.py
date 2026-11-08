@@ -414,13 +414,18 @@ class Log(DefinedFunction):
             rest = expand_mul(rest)
             real_part, imaginary_term = rest.as_independent(I, as_Add=True)
             imaginary_part = imaginary_term.as_coefficient(I)
-            if coefficient.is_real and imaginary_part is not None and imaginary_part.is_real and real_part.is_real \
-                    and real_part.is_zero:
-                if imaginary_part.is_positive:
-                    return add(mul(pi, I, Rational(1, 2)), cls.apply(mul(coefficient, imaginary_part)))
-                if imaginary_part.is_negative:
-                    return add(mul(Integer(-1), pi, I, Rational(1, 2)),
-                               cls.apply(mul(coefficient, mul(Integer(-1), imaginary_part))))
+            if coefficient.is_real and imaginary_part is not None and not _is_zero(imaginary_part) \
+                    and imaginary_part.is_real and real_part.is_real:
+                if real_part.is_zero:
+                    if imaginary_part.is_positive:
+                        return add(mul(pi, I, Rational(1, 2)), cls.apply(mul(coefficient, imaginary_part)))
+                    if imaginary_part.is_negative:
+                        return add(mul(Integer(-1), pi, I, Rational(1, 2)),
+                                   cls.apply(mul(coefficient, mul(Integer(-1), imaginary_part))))
+                else:
+                    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log.eval
+                    # (the arguments with rational multiples of pi)
+                    return _log_of_angle(cls, coefficient, rest, real_part, imaginary_part)
         return None
 
     # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log.as_real_imag
@@ -628,6 +633,57 @@ class Log(DefinedFunction):
             if a.get('algebraic'):
                 facts['algebraic'] = False
         return facts
+
+
+def _is_zero(e: Expr) -> bool:
+    return e.is_Number and e == 0
+
+
+_LOG_ATAN: dict[Expr, Expr] = {}
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:_log_atan_table
+def _log_atan_table() -> dict[Expr, Expr]:
+    """``tan(a) -> a`` for the angles of the first quadrant with algebraic
+    tangents."""
+    if not _LOG_ATAN:
+        from sympy_extras.core.power import sqrt
+        s2, s3, s5 = sqrt(Integer(2)), sqrt(Integer(3)), sqrt(Integer(5))
+        one = Integer(1)
+        entries: list[tuple[Expr, Expr]] = [
+            (s3, pi / 3), (one, pi / 4), (sqrt(5 - 2 * s5), pi / 5),
+            (s2 * sqrt(5 - s5) / (1 + s5), pi / 5), (sqrt(5 + 2 * s5), pi * Rational(2, 5)),
+            (s2 * sqrt(s5 + 5) / (-1 + s5), pi * Rational(2, 5)), (s3 / 3, pi / 6), (s2 - 1, pi / 8),
+            (sqrt(2 - s2) / sqrt(s2 + 2), pi / 8), (s2 + 1, pi * Rational(3, 8)),
+            (sqrt(s2 + 2) / sqrt(2 - s2), pi * Rational(3, 8)), (sqrt(1 - 2 * s5 / 5), pi / 10),
+            ((-s2 + sqrt(Integer(10))) / (2 * sqrt(s5 + 5)), pi / 10), (sqrt(1 + 2 * s5 / 5), pi * Rational(3, 10)),
+            ((s2 + sqrt(Integer(10))) / (2 * sqrt(5 - s5)), pi * Rational(3, 10)), (2 - s3, pi / 12),
+            ((-1 + s3) / (1 + s3), pi / 12), (2 + s3, pi * Rational(5, 12)),
+            ((1 + s3) / (-1 + s3), pi * Rational(5, 12))]
+        _LOG_ATAN.update(entries)
+    return _LOG_ATAN
+
+
+def _log_of_angle(cls: type[Log], coefficient: Expr, rest: Expr, real_part: Expr,
+                  imaginary_part: Expr) -> Optional[Expr]:
+    """``log(coefficient*(r + i*I)) = log(|...|) + I*a`` when ``i/r`` is the
+    tangent of a rational multiple ``a`` of pi in the table."""
+    from sympy_extras.functions.elementary.complexes import abs_
+    from sympy_extras.simplify.ratsimp import ratsimp
+    t = (imaginary_part / real_part).cancel()
+    t1 = (-t).cancel()
+    table = _log_atan_table()
+    if t in table:
+        modulus = ratsimp(coefficient * abs_(rest))
+        if real_part.is_positive is True:
+            return cls.apply(modulus) + I * table[t]
+        return cls.apply(modulus) + I * (table[t] - pi)
+    if t1 in table:
+        modulus = ratsimp(coefficient * abs_(rest))
+        if real_part.is_positive is True:
+            return cls.apply(modulus) + I * (-table[t1])
+        return cls.apply(modulus) + I * (pi - table[t1])
+    return None
 
 
 def _expr_of(b: Basic) -> Expr:

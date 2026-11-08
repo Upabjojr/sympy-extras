@@ -1218,6 +1218,19 @@ class Asec(DefinedFunction):
 
     function_name = 'asec'
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:asec (taylor_term, _eval_nseries, _eval_as_leading_term)
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asec_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asec_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asec_leading_term(self, x, logx, cdir)
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         [arg] = args
@@ -1269,6 +1282,19 @@ class Acsc(DefinedFunction):
     """The arccosecant (principal branch), unevaluated (``acsc`` evaluates)."""
 
     function_name = 'acsc'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acsc (taylor_term, _eval_nseries, _eval_as_leading_term)
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acsc_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acsc_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acsc_leading_term(self, x, logx, cdir)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

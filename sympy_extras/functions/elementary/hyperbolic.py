@@ -636,6 +636,19 @@ class Asinh(DefinedFunction):
 
     function_name = 'asinh'
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:asinh (taylor_term, _eval_nseries, _eval_as_leading_term)
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asinh_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asinh_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asinh_leading_term(self, x, logx, cdir)
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from .exponential import log
@@ -687,6 +700,19 @@ class Acosh(DefinedFunction):
 
     function_name = 'acosh'
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acosh (taylor_term, _eval_nseries, _eval_as_leading_term)
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acosh_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acosh_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acosh_leading_term(self, x, logx, cdir)
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         [arg] = args
@@ -732,6 +758,19 @@ class Atanh(DefinedFunction):
     """The inverse hyperbolic tangent, unevaluated (``atanh`` evaluates)."""
 
     function_name = 'atanh'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:atanh (taylor_term, _eval_nseries, _eval_as_leading_term)
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.atanh_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.atanh_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.atanh_leading_term(self, x, logx, cdir)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -785,6 +824,19 @@ class Acoth(DefinedFunction):
 
     function_name = 'acoth'
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acoth (taylor_term, _eval_nseries, _eval_as_leading_term)
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acoth_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acoth_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acoth_leading_term(self, x, logx, cdir)
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from .trigonometric import acot
@@ -833,6 +885,19 @@ class Asech(DefinedFunction):
 
     function_name = 'asech'
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:asech (taylor_term, _eval_nseries, _eval_as_leading_term)
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asech_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asech_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asech_leading_term(self, x, logx, cdir)
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         [arg] = args
@@ -876,6 +941,19 @@ class Acsch(DefinedFunction):
     """The inverse hyperbolic cosecant, unevaluated (``acsch`` evaluates)."""
 
     function_name = 'acsch'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:acsch (taylor_term, _eval_nseries, _eval_as_leading_term)
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acsch_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acsch_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acsch_leading_term(self, x, logx, cdir)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

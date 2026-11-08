@@ -664,6 +664,18 @@ def _power_of_product(base: Mul, exp: Expr) -> Optional[Expr]:
         return mul(*parts)
     if noncommutative or not isinstance(exp, Rational):
         return None
+    if exp.q == 2 and base.is_imaginary is True:
+        # PORTED FROM SYMPY: sympy/core/mul.py:Mul._eval_power (sqrt(2*I) is 1 + I)
+        imaginary = base.as_real_imag()[1]
+        if isinstance(imaginary, Rational):
+            from math import isqrt
+            half = abs(imaginary.as_fraction() / 2)
+            n, d = isqrt(half.numerator), isqrt(half.denominator)
+            if n * n == half.numerator and d * d == half.denominator:
+                from sympy_extras.simplify.radsimp import unevaluated_mul
+                unit = Integer(1 if imaginary.p > 0 else -1)
+                return unevaluated_mul(pow(number_from_fraction(Fraction(n, d)), Integer(exp.p)),
+                                       pow(add(Integer(1), mul(unit, I)), Integer(exp.p)))
     coefficient, rest = base.as_coeff_Mul()
     positive = [f for f in factors_of(rest) if f.is_positive is True]
     others = [f for f in factors_of(rest) if f.is_positive is not True]

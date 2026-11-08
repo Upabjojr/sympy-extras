@@ -81,6 +81,12 @@ remove public functions. Breaking changes are listed here when they happen.
   And those of `asin`, `acos`, `atan`, `acot` (branch points and cuts
   included). `expand` expands `(a + b)**(-p/q)` with `p > q` as
   `1/expand((a + b)**(p/q))`, as SymPy does.
+  The series of `asec`, `acsc` and of the inverse hyperbolic functions are
+  native too. Core fixes found by the comparisons: `sqrt(a*I)` is
+  `sqrt(|a|/2)*(1 ± I)` for rational `a` with `|a|/2` a square (SymPy's
+  `Mul._eval_power`), `log(r + i*I)` with `atan(i/r)` a rational multiple
+  of pi evaluates (`log(1/2 + sqrt(3)*I/2)` is `I*pi/3`), and `cancel`
+  keeps the powers of `I` as their own generators and preprocesses once.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
