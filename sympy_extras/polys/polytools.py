@@ -107,9 +107,9 @@ def sort_gens(gens: Sequence[Expr]) -> tuple[Expr, ...]:
 
 
 def _expanded(e: Expr) -> Expr:
-    """SymPy's ``_dict_from_expr`` expansion: products and integer powers
-    of sums multiplied out."""
-    return expand(e, log=False)
+    """SymPy's ``_dict_from_expr`` expansion: ``expand()`` with its
+    default hints (products, powers and logarithms)."""
+    return expand(e)
 
 
 def _factors(e: Expr) -> tuple[Expr, ...]:
@@ -1231,7 +1231,8 @@ def cancel(f: ExprLike) -> Expr:
     >>> cancel((2*x**2 - 2)/(1 - x**2*y) + 1/x)
     (-2*x**3 + x**2*y + 2*x - 1)/(x**3*y - x)
 
-    Not ported yet: the domains ``ZZ_I``, ``RR`` and ``EX``.
+    The domains ``ZZ_I``, ``RR`` and ``EX`` are not ported: those
+    fractions are cancelled by SymPy.
     """
     from sympy_extras.simplify.signsimp import signsimp
     e = signsimp(to_expr(f))
@@ -1259,7 +1260,13 @@ def cancel(f: ExprLike) -> Expr:
         if not isinstance(result, Expr):
             raise TypeError('an expression is expected')
         return result
-    gens, (fp, fq) = _joint_rings([p, q])
+    try:
+        gens, (fp, fq) = _joint_rings([p, q])
+    except CoercionFailed:
+        # the domains ZZ_I, RR and EX are not ported: SymPy's cancel
+        import sympy
+        from sympy_extras.core.interop import expr_through_sympy
+        return expr_through_sympy(e, sympy.cancel)
     if not gens:
         return _expanded(factored)
     P, Q, _ = _cancel_reps(fp, fq, len(gens))
@@ -1485,7 +1492,14 @@ def factor(f: ExprLike, *gens: ExprLike, deep: bool = False, fraction: bool = Tr
     if e.is_commutative is False:
         from sympy_extras.core.exprtools import factor_nc
         return factor_nc(e)
-    return _symbolic_factor(e, gens, fraction)
+    try:
+        return _symbolic_factor(e, gens, fraction)
+    except CoercionFailed:
+        # the domains ZZ_I, RR and EX are not ported: SymPy's factor
+        import sympy
+        from sympy_extras.core.interop import expr_through_sympy, to_sympy
+        sympy_gens = [to_sympy(to_expr(g)) for g in gens]
+        return expr_through_sympy(e, lambda s: sympy.factor(s, *sympy_gens, fraction=fraction))
 
 
 def _symbolic_factor(e: Expr, gens: Sequence[ExprLike], fraction: bool, method: Method = 'factor') -> Expr:

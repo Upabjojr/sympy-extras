@@ -1,4 +1,22 @@
-"""``logcombine`` and ``posify`` of SymPy's ``simplify`` module.
+"""``simplify``, ``logcombine``, ``posify`` and ``nsimplify`` of SymPy's
+``simplify`` module.
+
+``simplify`` tries the simplifications in SymPy's order (``cancel``,
+``together``, ``factor_terms``, ``trigsimp``, ``logcombine``,
+``combsimp``, ``powsimp``, ``exptrigsimp``, ``radsimp`` of the
+denominator) and keeps the shortest result by ``count_ops`` unless it is
+longer than ``ratio`` times the input. The steps for nodes not ported
+yet (Integral, Sum, Product, Bessel functions, ``hyper``, Kronecker
+deltas, Piecewise conditions, noncommutative products) go through SymPy,
+only for expressions containing them.
+
+>>> from sympy_extras.core import Symbol
+>>> from sympy_extras.functions import cos, sin, log, gamma
+>>> x = Symbol('x')
+>>> simplify(sin(x)**2 + cos(x)**2), simplify((x**3 + x**2 - x - 1)/(x**2 + 2*x + 1))
+(1, x - 1)
+>>> simplify(gamma(x + 1)/gamma(x)), simplify(log(2) + log(3))
+(x, log(6))
 
 Ported from SymPy's ``sympy.simplify.simplify``: ``logcombine`` joins
 logarithms, ``a*log(x) + log(y)`` into ``log(x**a*y)``, when the
@@ -18,8 +36,9 @@ returns the substitution back.
 (True, True)
 """
 # ---------------------------------------------------------------------
-# PORTED FROM SYMPY: sympy/simplify/simplify.py (logcombine, posify, nsimplify,
-# _real_to_rational) (SymPy 1.14)
+# PORTED FROM SYMPY: sympy/simplify/simplify.py (simplify, logcombine, posify, nsimplify,
+# _real_to_rational), sympy/simplify/radsimp.py (collect_abs) and the
+# _eval_simplify of log, sign and the combinatorial functions (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; posify of a single expression (map it over a list); the
@@ -27,9 +46,11 @@ returns the substitution back.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Optional
+import math
+from typing import Callable, Optional
 
 import mpmath
+import sympy
 
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.basic import Basic
@@ -41,7 +62,7 @@ from sympy_extras.core.sorting import ordered
 from sympy_extras.core.symbol import Dummy, Symbol
 from sympy_extras.core.traversal import bottom_up
 
-__all__ = ['logcombine', 'posify', 'nsimplify']
+__all__ = ['simplify', 'logcombine', 'posify', 'nsimplify', 'collect_abs']
 
 
 def _expr(b: Basic) -> Expr:
@@ -426,3 +447,253 @@ def _real_to_rational(expr: Expr, tolerance: Optional[float] = None, rational_co
                     r = Integer(0)
         reps[fl] = r
     return _expr(expr._xreplace_evaluated(reps))
+
+
+# ---------------------------------------------------------------------
+# simplify
+
+Measure = Callable[[Expr], int]
+
+
+# PORTED FROM SYMPY: sympy/simplify/radsimp.py:collect_abs
+def collect_abs(expr: ExprLike) -> Expr:
+    """The arguments of several ``Abs`` of a product joined under one:
+    ``Abs(x + 1)/Abs(x**2 - 1)`` is ``Abs((x + 1)/(x**2 - 1))``."""
+    from sympy_extras.core.expr import factors_of
+    from sympy_extras.core.power import Pow
+    from sympy_extras.functions.elementary.complexes import Abs
+    from sympy_extras.functions import Abs as abs_
+
+    def _abs(b: Basic) -> Basic:
+        e = _expr(b)
+        factors = list(factors_of(e)) if isinstance(e, Mul) else [e]
+        c = [f for f in factors if f.is_commutative is not False]
+        nc = [f for f in factors if f.is_commutative is False]
+        a: list[Expr] = []
+        o: list[Expr] = []
+        for i in c:
+            if isinstance(i, Abs):
+                a.append(_expr(i.args[0]))
+            elif isinstance(i, Pow) and isinstance(i.base, Abs) and i.exp.is_real is True:
+                a.append(pow(_expr(i.base.args[0]), i.exp))
+            else:
+                o.append(i)
+        if len(a) < 2 and not any(isinstance(i, Pow) and i.exp.is_negative is True for i in a):
+            return e
+        absarg = mul(*a)
+        A = abs_(absarg)
+        if not A.has(Abs):
+            return mul(A, *o, *nc)
+        if not isinstance(A, Abs):
+            A = Abs(absarg)
+        return mul(A, *o, *nc)
+
+    e = _expr(to_expr(expr).replace(lambda x: isinstance(x, Mul), _abs))
+    return _expr(e.replace(lambda x: isinstance(x, Pow), _abs))
+
+
+def _has_variety(choices: list[Expr]) -> bool:
+    return any(c != choices[0] for c in choices[1:])
+
+
+def _through_sympy(e: Expr, step: Callable[['sympy.Basic'], 'sympy.Basic']) -> Expr:
+    from sympy_extras.core.interop import expr_through_sympy
+    return expr_through_sympy(e, step)
+
+
+def _sympy_only() -> tuple[type, ...]:
+    """The classes whose simplification is SymPy's (not ported)."""
+    from sympy_extras.core.interop import SymPyExprNode
+    from sympy_extras.functions.elementary.piecewise import Piecewise
+    from sympy_extras.functions.special.bessel import BesselBase
+    from sympy_extras.functions.special.hyper import Hyper, MeijerG
+    return (SymPyExprNode, BesselBase, Hyper, MeijerG, Piecewise)
+
+
+def _combinatorial() -> tuple[type, ...]:
+    from sympy_extras.functions.combinatorial.factorials import (Binomial, Factorial, Factorial2, FallingFactorial,
+                                                                  RisingFactorial, Subfactorial)
+    return (Factorial, Factorial2, Subfactorial, RisingFactorial, FallingFactorial, Binomial)
+
+
+def _sympy_simplify(e: Expr, ratio: float, rational: Optional[bool], inverse: bool, doit: bool) -> Expr:
+    return _through_sympy(e, lambda s: sympy.simplify(s, ratio=ratio, rational=rational, inverse=inverse,
+                                                       doit=doit))
+
+
+def _eval_simplify(e: Expr, ratio: float, measure: Measure, rational: Optional[bool], inverse: bool,
+                   doit: bool) -> Optional[Expr]:
+    """The ``_eval_simplify`` of the node, ``None`` when it has none."""
+    from sympy_extras.functions import log, sign
+    from sympy_extras.functions.elementary.complexes import Sign
+    from sympy_extras.functions.elementary.exponential import Log
+    from sympy_extras.core.exprtools import factor_terms
+    from sympy_extras.core.function import expand_log
+    if isinstance(e, _sympy_only()):
+        return _sympy_simplify(e, ratio, rational, inverse, doit)
+    if isinstance(e, Log):
+        # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log._eval_simplify
+        new = log(simplify(_expr(e.args[0]), ratio, measure, rational, inverse, doit))
+        if inverse:
+            from sympy.simplify.simplify import inversecombine
+            new = _through_sympy(new, inversecombine)
+        new = expand_log(new, deep=True)
+        return min([new, e], key=measure)
+    if isinstance(e, Sign):
+        # PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:sign._eval_simplify
+        return sign(factor_terms(_expr(e.args[0])))
+    if isinstance(e, _combinatorial()):
+        # PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:CombinatorialFunction._eval_simplify
+        from .gammasimp import combsimp
+        new = combsimp(e)
+        return new if measure(new) <= ratio * measure(e) else e
+    return None
+
+
+# PORTED FROM SYMPY: sympy/simplify/simplify.py:simplify
+def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, rational: Optional[bool] = False,
+             inverse: bool = False, doit: bool = True) -> Expr:
+    """The expression simplified: the shortest of SymPy's heuristics by
+    ``measure``, the input when every result is more than ``ratio`` times
+    longer."""
+    from sympy_extras.core.exprtools import factor_terms
+    from sympy_extras.core.function import Application, expand_log, expand_mul, expand_power_exp, nfloat
+    from sympy_extras.core.numbers import Float
+    from sympy_extras.core.power import Pow
+    from sympy_extras.functions.elementary.complexes import Abs, Sign
+    from sympy_extras.functions.elementary.exponential import Exp, Log
+    from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise_fold
+    from sympy_extras.functions.special.gamma_functions import Gamma
+    from sympy_extras.functions.special.hyper import Hyper, MeijerG
+    from sympy_extras.functions.special.bessel import BesselBase
+    from sympy_extras.functions.special.tensor_functions import KroneckerDeltaNode
+    from sympy_extras.functions.elementary.complexes import PolarLift
+    from sympy_extras.functions.elementary.exponential import ExpPolar
+    from sympy_extras.core.interop import SymPyExprNode
+    from sympy_extras.polys.polytools import cancel
+    from sympy_extras.polys.rationaltools import together
+    from .fu import HYPER, TRIG
+    from .gammasimp import combsimp
+    from .powsimp import powsimp
+    from .radsimp import fraction, radsimp
+    from .signsimp import signsimp
+    from .sqrtdenest import _mexpand
+    from .trigsimp import exptrigsimp, trigsimp
+    from sympy.functions.elementary.piecewise import piecewise_simplify
+    from sympy.simplify.simplify import inversecombine, kroneckersimp, nc_simplify, product_simplify, sum_simplify
+
+    def shorter(*choices: Expr) -> Expr:
+        options = list(choices)
+        if not _has_variety(options):
+            return options[0]
+        return min(options, key=measure)
+
+    def done(e: Expr) -> Expr:
+        rv = e.doit() if doit else e
+        return shorter(rv, collect_abs(rv))
+
+    def again(e: Expr) -> Expr:
+        return simplify(e, ratio, measure, rational, inverse, doit)
+
+    e = to_expr(expr)
+    if e.is_zero is True:
+        return e if isinstance(e, Number) else Integer(0)
+    hook = _eval_simplify(e, ratio, measure, rational, inverse, doit)
+    if hook is not None:
+        return hook
+    original = e = collect_abs(signsimp(e))
+    if not e.args:
+        return e
+    if inverse and e.has(Application):
+        e = _through_sympy(e, inversecombine)
+        if not e.args:
+            return e
+
+    handled = (Add, Mul, Pow, Exp)
+
+    def query(x: Basic) -> bool:
+        return isinstance(x, Expr) and bool(x.args) and not isinstance(x, handled)
+
+    def value(x: Basic) -> Basic:
+        return x._evaluated(tuple(again(a) if isinstance(a, Expr) else a.simplify() for a in x.args))
+
+    e = _expr(e.replace(query, value))
+    if not isinstance(e, handled):
+        return done(e)
+    if e.is_commutative is False:
+        e = _through_sympy(e, nc_simplify)
+    floats = False
+    if rational is not False and e.has(Float):
+        floats = True
+        e = nsimplify(e, rational=True)
+    e = _expr(bottom_up(e, lambda w: w.normal() if isinstance(w, Expr) else w))
+    c, p = powsimp(e).as_content_primitive()
+    e = mul(c, p)
+    _e = cancel(e)
+    expr1 = shorter(_e, cancel(_mexpand(_e)))
+    expr2 = shorter(together(e, deep=True), together(expr1, deep=True))
+    e = expr2 if ratio == math.inf else shorter(expr2, expr1, e)
+    e = factor_terms(e, sign=False)
+    if e.has(Sign):
+        e = _expr(e.rewrite(Abs))
+    if e.has(Piecewise):
+        e = done(piecewise_fold(e))
+        if e.has(Piecewise):
+            e = piecewise_fold(e)
+            if e.has(KroneckerDeltaNode):
+                e = _through_sympy(e, kroneckersimp)
+            if e.has(Piecewise):
+                e = _through_sympy(e, lambda s: piecewise_simplify(s, deep=True, doit=False))
+                if e.has(Piecewise):
+                    return shorter(e, factor_terms(e))
+    if e.has(Hyper, MeijerG, ExpPolar, PolarLift):
+        e = _through_sympy(e, lambda s: sympy.hyperexpand(s))
+    if e.has(KroneckerDeltaNode):
+        e = _through_sympy(e, kroneckersimp)
+    if e.has(BesselBase):
+        e = _through_sympy(e, lambda s: sympy.besselsimp(s))
+    if e.has(*TRIG, *HYPER):
+        e = trigsimp(e)
+    if e.has(Log):
+        e = shorter(expand_log(e, deep=True), logcombine(e))
+    if e.has(*_combinatorial(), Gamma):
+        e = combsimp(e)
+    if e.has(SymPyExprNode):
+        def concrete(s: sympy.Basic) -> sympy.Basic:
+            if s.has(sympy.Sum):
+                s = sum_simplify(s, ratio=ratio, measure=sympy.count_ops, rational=rational, inverse=inverse,
+                                 doit=doit)
+            if s.has(sympy.Integral):
+                s = s.xreplace({i: sympy.factor_terms(i) for i in s.atoms(sympy.Integral)})
+            if s.has(sympy.Product):
+                s = product_simplify(s, ratio=ratio, measure=sympy.count_ops, rational=rational, inverse=inverse,
+                                     doit=doit)
+            return s
+        e = _through_sympy(e, concrete)
+
+    short = shorter(powsimp(e, combine='exp', deep=True), powsimp(e), e)
+    short = shorter(short, cancel(short))
+    short = shorter(short, factor_terms(short), expand_power_exp(expand_mul(short)))
+    if short.has(*TRIG, *HYPER, Exp):
+        short = exptrigsimp(short)
+
+    def hollow(x: Basic) -> bool:
+        return (isinstance(x, Mul) and len(x.args) == 2 and isinstance(x.args[0], Number)
+                and isinstance(x.args[1], Add) and x.is_commutative is not False)
+    e = _expr(short.replace(hollow, lambda x: mul(*[_expr(a) for a in x.args])))
+
+    numer, denom = e.as_numer_denom()
+    if isinstance(denom, Add):
+        n, d = fraction(radsimp(pow(denom, Integer(-1)), symbolic=False, max_terms=1))
+        if not (isinstance(n, Integer) and n.p == 1):
+            from sympy_extras.core.function import expand
+            e = mul(expand(mul(numer, n)), pow(d, Integer(-1)))
+    if e.could_extract_minus_sign():
+        n, d = fraction(e)
+        if not (isinstance(d, Integer) and d.p == 0):
+            e = signsimp(mul(mul(Integer(-1), n), pow(mul(Integer(-1), d), Integer(-1))))
+    if measure(e) > ratio * measure(original):
+        e = original
+    if floats and rational is None:
+        e = _expr(nfloat(e, exponent=False))
+    return done(e)

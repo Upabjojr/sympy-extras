@@ -51,6 +51,10 @@ remove public functions. Breaking changes are listed here when they happen.
 - `sympy_extras.simplify.simplify.nsimplify` (pslq, `mpmath.identify`
   read by a typed parser, constants, `rational`, `tolerance`), ported from
   SymPy; `radsimp` no longer goes through SymPy.
+- `sympy_extras.simplify.simplify.simplify` and `collect_abs`, ported from
+  SymPy; `Expr.simplify` uses it. The steps for Integral, Sum, Product,
+  Bessel functions, `hyper`, Kronecker deltas, Piecewise conditions and
+  noncommutative products still go through SymPy.
 - `sympy_extras.simplify.gammasimp`: `gammasimp` (rising factorials,
   reflection, duplication, Gauss multiplication) and `combsimp`, ported
   from SymPy.
@@ -63,6 +67,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `expand_mul`, `expand_multinomial`, `expand_power_base` and
+  `expand_power_exp` no longer expand logarithms; the polynomial layer
+  expands with SymPy's default hints (logarithms included).
+- `cancel` and `factor` fall back to SymPy for the domains not ported
+  (`ZZ_I`, `RR`, `EX`) instead of raising `CoercionFailed`.
 - `rewrite` accepts the typed function classes (`Cos`, `Exp`, ...) as
   targets, mapped to their SymPy classes.
 - `Pow.as_numer_denom` is SymPy's: the base is split when the exponent is

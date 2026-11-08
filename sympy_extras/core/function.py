@@ -1349,7 +1349,7 @@ def expand_mul(expr: ExprLike, deep: bool = True) -> Expr:
     >>> expand_mul(x*(y + 1)), expand_mul((x + 1)**2)
     (x*y + x, (x + 1)**2)
     """
-    return expand(expr, deep=deep, mul=True, multinomial=False, power_base=False, power_exp=False)
+    return expand(expr, deep=deep, mul=True, multinomial=False, power_base=False, power_exp=False, log=False)
 
 
 def expand_multinomial(expr: ExprLike, deep: bool = True) -> Expr:
@@ -1363,7 +1363,7 @@ def expand_multinomial(expr: ExprLike, deep: bool = True) -> Expr:
     >>> expand_multinomial((x + y)**2)
     x**2 + 2*x*y + y**2
     """
-    return expand(expr, deep=deep, mul=False, multinomial=True, power_base=False, power_exp=False)
+    return expand(expr, deep=deep, mul=False, multinomial=True, power_base=False, power_exp=False, log=False)
 
 
 def expand_power_base(expr: ExprLike, deep: bool = True, force: bool = False) -> Expr:
@@ -1381,7 +1381,7 @@ def expand_power_base(expr: ExprLike, deep: bool = True, force: bool = False) ->
     if force:
         from .interop import expr_through_sympy
         return expr_through_sympy(to_expr(expr), lambda s: sympy.expand_power_base(s, deep=deep, force=True))
-    return expand(expr, deep=deep, mul=False, multinomial=False, power_base=True, power_exp=False)
+    return expand(expr, deep=deep, mul=False, multinomial=False, power_base=True, power_exp=False, log=False)
 
 
 def expand_power_exp(expr: ExprLike, deep: bool = True) -> Expr:
@@ -1395,7 +1395,7 @@ def expand_power_exp(expr: ExprLike, deep: bool = True) -> Expr:
     >>> expand_power_exp(2**(x + y))
     2**x*2**y
     """
-    return expand(expr, deep=deep, mul=False, multinomial=False, power_base=False, power_exp=True)
+    return expand(expr, deep=deep, mul=False, multinomial=False, power_base=False, power_exp=True, log=False)
 
 
 # PORTED FROM SYMPY: sympy/core/function.py:expand_log

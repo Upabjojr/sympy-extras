@@ -1177,9 +1177,9 @@ class Expr(Basic):
     # ------------------------------------------------------------------
     # simplification and algebra (SymPy's algorithms through the conversion)
 
-    def simplify(self, ratio: float = 1.7, rational: Optional[bool] = None, inverse: bool = False,
+    def simplify(self, ratio: float = 1.7, rational: Optional[bool] = False, inverse: bool = False,
                  doit: bool = True) -> Expr:
-        """SymPy's ``simplify``.
+        """The expression simplified: :func:`sympy_extras.simplify.simplify.simplify`.
 
         Examples
         ========
@@ -1191,9 +1191,8 @@ class Expr(Basic):
         >>> (sin(x)**2 + cos(x)**2).simplify()
         1
         """
-        from .interop import expr_through_sympy
-        return expr_through_sympy(self, lambda s: sympy.simplify(s, ratio=ratio, rational=rational,
-                                                                 inverse=inverse, doit=doit))
+        from sympy_extras.simplify.simplify import simplify
+        return simplify(self, ratio=ratio, rational=rational, inverse=inverse, doit=doit)
 
     def factor(self, *gens: Symbol, deep: bool = False) -> Expr:
         """SymPy's ``factor``.

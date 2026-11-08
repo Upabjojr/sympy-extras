@@ -230,7 +230,7 @@ sympy_extras/
         trigsimp.py          trigsimp (matching, fu), futrig, exptrigsimp (ported from SymPy)
         fu.py                fu and its TR rules (TR0-TR22, TRmorrie, TRpower), greedy strategies, hyper_as_trig (ported from SymPy)
         powsimp.py           powsimp, powdenest, multiplicity, _denest_pow (ported from SymPy)
-        simplify.py          logcombine, posify, nsimplify (ported from SymPy; simplify itself to come)
+        simplify.py          simplify, logcombine, posify, nsimplify, collect_abs (ported from SymPy)
         tests/
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)
     polys/
