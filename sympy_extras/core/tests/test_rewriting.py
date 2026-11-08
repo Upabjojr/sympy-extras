@@ -106,3 +106,18 @@ def test_expand_trig_matches_sympy() -> None:
     for e in cases:
         assert str(to_sympy(expand_trig(expr_from_sympy(e)), evaluate=False)) == str(s.expand_trig(e)), e
         assert str(to_sympy(expand(expr_from_sympy(e), trig=True), evaluate=False)) == str(s.expand(e, trig=True)), e
+
+
+def test_expand_func_matches_sympy() -> None:
+    from sympy_extras.core.function import expand, expand_func
+    n, k = s.symbols('n k', integer=True)
+    R = s.Rational
+    cases: list[sympy.Expr] = [
+        s.gamma(x + 3), s.gamma(R(7, 3)), s.gamma(x + R(5, 2)), s.polygamma(0, x + 2), s.polygamma(1, 3 * x),
+        s.polygamma(0, R(1, 3)), s.polygamma(-1, x), s.loggamma(R(1, 3)), s.digamma(x - 2), s.trigamma(2 * x),
+        s.beta(x, y), s.binomial(n, 3), s.binomial(x, k), s.harmonic(n + 2), s.harmonic(x - 3), s.erfc(x), s.erfi(x),
+        s.erf2(x, y), s.expint(2, x), s.zeta(x, 3), s.polylog(-2, x), s.polylog(1, x), s.GoldenRatio * x,
+        s.besselj(2, x) + s.gamma(x + 1), s.loggamma(R(7, 3))]
+    for e in cases:
+        assert str(to_sympy(expand_func(expr_from_sympy(e)), evaluate=False)) == str(s.expand_func(e)), e
+        assert str(to_sympy(expand(expr_from_sympy(e), func=True), evaluate=False)) == str(s.expand(e, func=True)), e

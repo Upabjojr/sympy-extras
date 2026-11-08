@@ -80,6 +80,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `expand(func=True)` and `expand_func` are native
+  (`functions/_expand_func.py`: gamma, polygamma, loggamma, digamma,
+  trigamma, beta, binomial, harmonic, erfc, erfi, erf2, expint, zeta,
+  polylog, the golden ratio and the tribonacci constant); the other
+  special functions (Bessel, Airy, hyper, meijerg, lerchphi, Ynm) and the
+  cases needing a `Sum` are expanded by SymPy, that node only.
 - `expand(trig=True)` and `expand_trig` are native
   (`functions/elementary/_expand_trig.py`: the rules of sin, cos, tan, cot,
   sinh, cosh, tanh, coth and their reciprocals).

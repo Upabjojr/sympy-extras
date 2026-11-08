@@ -1186,6 +1186,12 @@ def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: boo
         # multinomial, mul and the power hints
         e = as_expr(_expand_complex(e, deep, ExpandHints(mul, multinomial, power_base, power_exp, log, True)))
         complex = False
+    if func:
+        # after complex, before log, multinomial, mul, the power hints, trig
+        e = as_expr(_expand_func(e, deep, ExpandHints(mul, multinomial, power_base, power_exp, log, False, trig)))
+        func = False
+        if not (mul or multinomial or power_exp or log or trig or complex):
+            return e
     if trig and not func:
         # SymPy's sorted hints: trig after log, multinomial, mul and the
         # power hints, then the loop of multinomial, mul and log
@@ -1240,6 +1246,33 @@ def expand_with_hints(e: Expr, hints: Optional[ExpandHints], complex: Optional[b
 
 
 _TRIG_RULES: dict[type, Callable[[Expr, ExpandHints], Expr]] = {}
+_FUNC_RULES: dict[type, Callable[[Expr, ExpandHints], Optional[Expr]]] = {}
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr._expand_hint with the _eval_expand_func methods
+def _expand_func(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
+    """The special functions (their arguments first) expanded by their
+    rules; a node without a ported rule is expanded by SymPy (that node
+    only) when SymPy has one."""
+    from .interop import expand_func_node_through_sympy
+    if not _FUNC_RULES:
+        from sympy_extras.functions._expand_func import rules
+        _FUNC_RULES.update(rules())
+    if deep and e.args and not e.is_Atom:
+        args = tuple(_expand_func(a, deep, hints) for a in e.args)
+        if any(new is not old and new != old for new, old in zip(args, e.args)):
+            e = e._evaluated(args)
+    if not isinstance(e, Expr):
+        return e
+    rule = _FUNC_RULES.get(type(e))
+    new: Optional[Basic] = rule(e, hints) if rule is not None else None
+    if new is None and (e.args or not isinstance(e, (Symbol, Number))):
+        from .add import Add as _Add
+        if not isinstance(e, (_Add, Mul, Pow)):
+            new = expand_func_node_through_sympy(e)
+    if new is not None and new != e:
+        return new
+    return e
 
 
 # PORTED FROM SYMPY: sympy/core/expr.py:Expr._expand_hint with the _eval_expand_trig methods
@@ -1628,8 +1661,8 @@ def expand_func(expr: ExprLike, deep: bool = True) -> Expr:
     >>> expand_func(sympify('gamma(x + 1)'))
     x*gamma(x)
     """
-    from .interop import expr_through_sympy
-    return expr_through_sympy(to_expr(expr), lambda s: sympy.expand_func(s, deep=deep))
+    return expand(expr, deep=deep, mul=False, multinomial=False, power_base=False, power_exp=False, log=False,
+                  func=True)
 
 
 def expand_trig(expr: ExprLike, deep: bool = True) -> Expr:

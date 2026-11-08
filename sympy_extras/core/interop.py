@@ -654,6 +654,26 @@ def _sympy_has_rule(cls: type, name: str) -> bool:
     return _SYMPY_HAS_RULE[key]
 
 
+_SYMPY_HAS_METHOD: dict[tuple[type, str], bool] = {}
+
+
+def _sympy_has_method(cls: type, name: str) -> bool:
+    """Whether a class of the SymPy class's MRO (not Basic) defines ``name``."""
+    key = (cls, name)
+    if key not in _SYMPY_HAS_METHOD:
+        _SYMPY_HAS_METHOD[key] = any(name in k.__dict__ for k in cls.__mro__ if k is not SymPyBasic)
+    return _SYMPY_HAS_METHOD[key]
+
+
+def expand_func_node_through_sympy(node: Basic) -> Optional[Basic]:
+    """The node expanded by SymPy's ``_eval_expand_func`` (not deep);
+    ``None`` when its SymPy class has none."""
+    original = to_sympy(node)
+    if not _sympy_has_method(type(original), '_eval_expand_func'):
+        return None
+    return from_sympy(sympy.expand_func(original, deep=False))
+
+
 def rewrite_node_through_sympy(node: Basic, args: tuple[Basic, ...], target: type,
                                piecewise: bool = True) -> Optional[Basic]:
     """The node, rebuilt with ``args``, rewritten by its SymPy rule for
