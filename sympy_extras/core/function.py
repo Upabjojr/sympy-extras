@@ -1504,6 +1504,14 @@ def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp:
         # changed: 2*(y*log(2) + 2) stays under the log hint alone
         if any(new is not old and new != old for new, old in zip(args, e.args)):
             e = as_expr(e._evaluated(args))
+    from sympy_extras.concrete.expr_with_limits import Sum, sum_
+    if isinstance(e, Sum):
+        # PORTED FROM SYMPY: sympy/concrete/expr_with_limits.py:AddWithLimits._eval_expand_basic
+        summand = e.function
+        if isinstance(summand, Add) and (force or (summand.is_commutative is True
+                                                   and e.has_finite_limits is not False)):
+            return add(*[sum_(t, *e.limits) for t in summand.args if isinstance(t, Expr)])
+        return e
     if isinstance(e, Mul) and distribute:
         return _expand_mul_node(e, deep)
     if isinstance(e, Pow):

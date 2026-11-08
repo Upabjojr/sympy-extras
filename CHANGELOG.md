@@ -221,6 +221,12 @@ remove public functions. Breaking changes are listed here when they happen.
   printing, interop both ways; `doit` through SymPy. `factor_terms` takes
   the factors free of the variables out of a sum (SymPy's
   `_factor_sum_int`).
+- `sum_simplify`, `sum_combine`, `sum_add`, `factor_sum`,
+  `product_simplify`, `product_mul` and the `_eval_simplify` of `Sum` and
+  `Product` are native (ported from SymPy); `simplify` no longer sends
+  sums and products to SymPy (integrals still do). `expand` splits a sum
+  of a sum into sums when the limits may be finite (SymPy's
+  `AddWithLimits._eval_expand_basic`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

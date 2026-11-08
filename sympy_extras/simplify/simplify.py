@@ -47,7 +47,7 @@ returns the substitution back.
 from __future__ import annotations
 
 import math
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional, Sequence
 
 import mpmath
 import sympy
@@ -57,6 +57,9 @@ from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import Integer, Number, Rational
+
+if TYPE_CHECKING:
+    from sympy_extras.concrete.expr_with_limits import Limits, Sum
 from sympy_extras.core.power import pow
 from sympy_extras.core.sorting import ordered
 from sympy_extras.core.symbol import Dummy, Symbol
@@ -602,9 +605,8 @@ def _through_sympy(e: Expr, step: Callable[['sympy.Basic'], 'sympy.Basic']) -> E
 
 def _sympy_only() -> tuple[type, ...]:
     """The classes whose simplification is SymPy's (not ported)."""
-    from sympy_extras.concrete.expr_with_limits import Product, Sum
     from sympy_extras.core.interop import SymPyExprNode
-    return (SymPyExprNode, Sum, Product)
+    return (SymPyExprNode,)
 
 
 def _combinatorial() -> tuple[type, ...]:
@@ -628,6 +630,13 @@ def _eval_simplify(e: Expr, ratio: float, measure: Measure, rational: Optional[b
     from sympy_extras.core.function import expand_log
     if isinstance(e, _sympy_only()):
         return _sympy_simplify(e, ratio, rational, inverse, doit)
+    from sympy_extras.concrete.expr_with_limits import Product, Sum
+    if isinstance(e, Sum):
+        return _sum_eval_simplify(e, _SimplifyOptions(ratio, measure, rational, inverse, doit))
+    if isinstance(e, Product):
+        # PORTED FROM SYMPY: sympy/concrete/products.py:Product._eval_simplify
+        rv = product_simplify(e, _SimplifyOptions(ratio, measure, rational, inverse, doit))
+        return rv.doit() if doit else rv
     from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise_simplify
     from sympy_extras.functions.special.bessel import BesselBase
     from sympy_extras.functions.special.hyper import Hyper
@@ -688,7 +697,6 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     from .signsimp import signsimp
     from .sqrtdenest import _mexpand
     from .trigsimp import exptrigsimp, trigsimp
-    from sympy.simplify.simplify import product_simplify, sum_simplify
 
     def shorter(*choices: Expr) -> Expr:
         options = list(choices)
@@ -780,18 +788,19 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
         e = shorter(expand_log(e, deep=True), logcombine(e))
     if e.has(*_combinatorial(), Gamma):
         e = combsimp(e)
-    if e.has(*_sympy_only()):
-        def concrete(s: sympy.Basic) -> sympy.Basic:
-            if s.has(sympy.Sum):
-                s = sum_simplify(s, ratio=ratio, measure=sympy.count_ops, rational=rational, inverse=inverse,
-                                 doit=doit)
+    from sympy_extras.concrete.expr_with_limits import Product, Sum
+    options = _SimplifyOptions(ratio, measure, rational, inverse, doit)
+    if e.has(Sum):
+        e = sum_simplify(e, options)
+    if e.has(SymPyExprNode):
+        # the Integrals are SymPy's: their content taken out by SymPy
+        def integrals(s: sympy.Basic) -> sympy.Basic:
             if s.has(sympy.Integral):
                 s = s.xreplace({i: sympy.factor_terms(i) for i in s.atoms(sympy.Integral)})
-            if s.has(sympy.Product):
-                s = product_simplify(s, ratio=ratio, measure=sympy.count_ops, rational=rational, inverse=inverse,
-                                     doit=doit)
             return s
-        e = _through_sympy(e, concrete)
+        e = _through_sympy(e, integrals)
+    if e.has(Product):
+        e = product_simplify(e, options)
 
     short = shorter(powsimp(e, combine='exp', deep=True), powsimp(e), e)
     short = shorter(short, cancel(short))
@@ -1180,3 +1189,201 @@ def besselsimp(expr: ExprLike) -> Expr:
     if e != orig:
         e = e.factor()
     return e
+
+
+# ---------------------------------------------------------------------
+# sums and products
+
+
+ZERO_EXPR: Expr = Integer(0)
+
+
+class _SimplifyOptions:
+    """The options of ``simplify`` passed down (SymPy's ``**kwargs``)."""
+
+    __slots__ = ('ratio', 'measure', 'rational', 'inverse', 'doit')
+
+    def __init__(self, ratio: float, measure: Measure, rational: Optional[bool], inverse: bool, doit: bool) -> None:
+        self.ratio = ratio
+        self.measure = measure
+        self.rational = rational
+        self.inverse = inverse
+        self.doit = doit
+
+    def simplify(self, e: Expr, doit: Optional[bool] = None) -> Expr:
+        return simplify(e, self.ratio, self.measure, self.rational, self.inverse,
+                        self.doit if doit is None else doit)
+
+
+def _make_args(e: Expr, cls: type) -> tuple[Expr, ...]:
+    return tuple(a for a in e.args if isinstance(a, Expr)) if isinstance(e, cls) else (e,)
+
+
+# PORTED FROM SYMPY: sympy/simplify/simplify.py:sum_simplify
+def sum_simplify(s: Expr, options: _SimplifyOptions) -> Expr:
+    """The sums of ``s`` simplified and combined (the same limits joined,
+    adjacent ranges of the same summand merged)."""
+    from sympy_extras.concrete.expr_with_limits import Sum
+    from sympy_extras.core.add import Add, add
+    from sympy_extras.core.function import expand
+    from sympy_extras.core.mul import Mul, mul
+    if not isinstance(s, Add):
+        reps: dict[Basic, Basic] = {a: sum_simplify(_expr(a), options) for a in s.atoms(Add) if a.has(Sum)}
+        s = _expr(s.xreplace(reps))
+    s = expand(s)
+    if not isinstance(s, Add):
+        return s
+    s_t: list[Expr] = []
+    o_t: list[Expr] = []
+    for term in _make_args(s, Add):
+        factors = _make_args(term, Mul)
+        sum_terms = [f for f in factors if isinstance(f, Sum)]
+        other = [f for f in factors if not isinstance(f, Sum)]
+        if not sum_terms:
+            o_t.append(term)
+            continue
+        s_t.append(mul(*([mul(*other)] + [_sum_eval_simplify(st, options) for st in sum_terms if isinstance(st, Sum)])))
+    return add(sum_combine(s_t, options), *o_t)
+
+
+# PORTED FROM SYMPY: sympy/simplify/simplify.py:sum_combine
+def sum_combine(s_t: list[Expr], options: _SimplifyOptions) -> Expr:
+    """The terms with sums combined pairwise by ``sum_add`` (first the
+    same limits, then adjacent ranges)."""
+    from sympy_extras.concrete.expr_with_limits import Sum
+    from sympy_extras.core.add import add
+    from sympy_extras.core.mul import Mul
+    used = [False] * len(s_t)
+    for method in range(2):
+        for i, s_term1 in enumerate(s_t):
+            if not used[i]:
+                for j, s_term2 in enumerate(s_t):
+                    if not used[j] and i != j:
+                        temp = sum_add(s_term1, s_term2, method, options)
+                        if isinstance(temp, (Sum, Mul)):
+                            s_t[i] = temp
+                            s_term1 = s_t[i]
+                            used[j] = True
+    result: Expr = ZERO_EXPR
+    for i, s_term in enumerate(s_t):
+        if not used[i]:
+            result = add(result, s_term)
+    return result
+
+
+# PORTED FROM SYMPY: sympy/simplify/simplify.py:factor_sum
+def factor_sum(e: Expr, limits: Optional[Sequence[Limits]] = None) -> Expr:
+    """The factors free of the variables taken out of the sum."""
+    from sympy_extras.concrete.expr_with_limits import sum_
+    from sympy_extras.core.exprtools import factor_terms
+    whole = sum_(e, *limits) if limits else e
+    return factor_terms(whole)
+
+
+# PORTED FROM SYMPY: sympy/simplify/simplify.py:sum_add
+def sum_add(this: Expr, other: Expr, method: int, options: _SimplifyOptions) -> Expr:
+    """Two terms with sums added into one sum: the same limits (method 0)
+    or adjacent ranges of the same summand (method 1)."""
+    from sympy_extras.concrete.expr_with_limits import Sum, sum_
+    from sympy_extras.core.add import add
+    from sympy_extras.core.mul import Mul, mul
+
+    def refactor(val: Expr) -> Expr:
+        factors = _make_args(val, Mul)
+        sumv = next(f for f in factors if isinstance(f, Sum))
+        assert isinstance(sumv, Sum)
+        constant = mul(*[f for f in factors if f != sumv])
+        return sum_(constant * sumv.function, *sumv.limits)
+
+    rself = refactor(this) if isinstance(this, Mul) else this
+    rother = refactor(other) if isinstance(other, Mul) else other
+    if type(rself) is type(rother) and isinstance(rself, Sum) and isinstance(rother, Sum):
+        if method == 0:
+            if rself.limits == rother.limits:
+                return factor_sum(sum_(rself.function + rother.function, *rself.limits))
+        elif method == 1:
+            if options.simplify(rself.function - rother.function) == 0:
+                if len(rself.limits) == len(rother.limits) == 1:
+                    i, x1, y1 = rself.limits[0]
+                    j, x2, y2 = rother.limits[0]
+                    if i == j:
+                        if x2 == y1 + 1:
+                            return factor_sum(sum_(rself.function, (i, x1, y2)))
+                        if x1 == y2 + 1:
+                            return factor_sum(sum_(rself.function, (i, x2, y1)))
+    return add(this, other)
+
+
+# PORTED FROM SYMPY: sympy/concrete/summations.py:Sum._eval_simplify
+def _sum_eval_simplify(s: Sum, options: _SimplifyOptions) -> Expr:
+    """A sum simplified: its summand, the sums in it combined, the free
+    factors taken out."""
+    from sympy_extras.concrete.expr_with_limits import Sum
+    from sympy_extras.core.add import Add, add
+    from sympy_extras.core.function import expand
+    from sympy_extras.core.mul import Mul, mul
+    function = options.simplify(s.function)
+    s_t: list[Expr] = []
+    o_t: list[Expr] = []
+    for term in _make_args(expand(function), Add):
+        if term.has(Sum):
+            out_terms = [_sum_eval_simplify(sub, options) if isinstance(sub, Sum) else sub
+                         for sub in _make_args(expand(term), Mul)]
+            s_t.append(mul(*out_terms))
+        else:
+            o_t.append(term)
+    result = add(sum_combine(s_t, options), *o_t)
+    return factor_sum(result, limits=s.limits)
+
+
+# PORTED FROM SYMPY: sympy/simplify/simplify.py:product_simplify
+def product_simplify(s: Expr, options: _SimplifyOptions) -> Expr:
+    """The products of ``s`` with their factors simplified and combined (the
+    same limits joined, adjacent ranges merged)."""
+    from sympy_extras.concrete.expr_with_limits import Product, product_
+    from sympy_extras.core.mul import Mul, mul
+    p_t: list[Expr] = []
+    o_t: list[Expr] = []
+    for term in _make_args(s, Mul):
+        if isinstance(term, Product):
+            p_t.append(product_(options.simplify(term.function), *term.limits))
+        else:
+            o_t.append(term)
+    used = [False] * len(p_t)
+    for method in range(2):
+        for i, p_term1 in enumerate(p_t):
+            if not used[i]:
+                for j, p_term2 in enumerate(p_t):
+                    if not used[j] and i != j:
+                        tmp_prod = product_mul(p_term1, p_term2, method, options)
+                        if isinstance(tmp_prod, Product):
+                            p_t[i] = tmp_prod
+                            used[j] = True
+    result = mul(*o_t)
+    for i, p_term in enumerate(p_t):
+        if not used[i]:
+            result = mul(result, p_term)
+    return result
+
+
+# PORTED FROM SYMPY: sympy/simplify/simplify.py:product_mul
+def product_mul(this: Expr, other: Expr, method: int, options: _SimplifyOptions) -> Expr:
+    """Two products multiplied into one: the same limits (method 0) or
+    adjacent ranges of the same factor (method 1)."""
+    from sympy_extras.concrete.expr_with_limits import Product, product_
+    from sympy_extras.core.mul import mul
+    if type(this) is type(other) and isinstance(this, Product) and isinstance(other, Product):
+        if method == 0:
+            if this.limits == other.limits:
+                return product_(this.function * other.function, *this.limits)
+        elif method == 1:
+            if options.simplify(this.function - other.function) == 0:
+                if len(this.limits) == len(other.limits) == 1:
+                    i, x1, y1 = this.limits[0]
+                    j, x2, y2 = other.limits[0]
+                    if i == j:
+                        if x2 == y1 + 1:
+                            return product_(this.function, (i, x1, y2))
+                        if x1 == y2 + 1:
+                            return product_(this.function, (i, x2, y1))
+    return mul(this, other)

@@ -57,3 +57,29 @@ def test_simplify_of_sums_matches_sympy() -> None:
               2*sympy.Sum(sympy.sin(x)**2 + sympy.cos(x)**2, (i, 0, n)),
               sympy.Product(i, (i, 1, n))*sympy.Product(i, (i, n + 1, m)), sympy.Sum(i**2, (i, 0, n)).doit()]:
         assert _s(simplify(expr_from_sympy(e))) == str(sympy.simplify(e)), e
+
+
+def test_random_simplify_of_sums_and_products_matches_sympy() -> None:
+    # sum_simplify, product_simplify and the _eval_simplify of the nodes are
+    # native; with and without doit
+    import random
+    from sympy import Product as SP, Sum as SS, cos, oo, sin
+    from sympy_extras.simplify.simplify import simplify
+    rng = random.Random(3)
+    fs = [x*i, i**2, sin(x)**2 + cos(x)**2, x, 2*i + x, i*j, 1/i**2, x**i, (x + 1)*i, 0*i + 3]
+    lims = [(i, 0, n), (i, 1, n), (i, n + 1, m), (i, 0, m), (i, 1, oo)]
+    for _ in range(25):
+        k = rng.random()
+        a = SS(rng.choice(fs), rng.choice(lims)) if k < 0.7 else SP(rng.choice(fs[:6]) + 1, rng.choice(lims[:4]))
+        b = SS(rng.choice(fs), rng.choice(lims)) if k < 0.7 else SP(rng.choice(fs[:6]) + 1, rng.choice(lims[:4]))
+        c = rng.choice([1, 2, x, -1])
+        e = a + c*b if k < 0.7 else a*b**rng.choice([1, 1, 2])
+        for doit in (True, False):
+            assert _s(simplify(expr_from_sympy(e), doit=doit)) == str(sympy.simplify(e, doit=doit)), (e, doit)
+
+
+def test_expand_splits_sums_as_sympy() -> None:
+    from sympy_extras.core.function import expand
+    for e in [sympy.Sum(3, (i, n + 1, m)) + 2*sympy.Sum(i*(x + 1), (i, n + 1, m)), sympy.Sum(i*(x + 1), (i, 0, n)),
+              sympy.Sum(x**i + 1, (i, 0, sympy.oo))]:
+        assert _s(expand(expr_from_sympy(e))) == str(sympy.expand(e)), e

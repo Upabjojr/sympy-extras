@@ -138,6 +138,18 @@ class ExprWithLimits(Expr):
     def is_number(self) -> bool:
         return not self.free_symbols
 
+    # PORTED FROM SYMPY: sympy/concrete/expr_with_limits.py:ExprWithLimits.has_finite_limits
+    @property
+    def has_finite_limits(self) -> Optional[bool]:
+        """Whether every bound is finite (``None`` when not known)."""
+        ret_none = False
+        for v, a, b in self._limits:
+            if a.is_infinite is True or b.is_infinite is True:
+                return False
+            if (a.is_infinite is None or b.is_infinite is None) and v.is_infinite is None:
+                ret_none = True
+        return None if ret_none else True
+
     # PORTED FROM SYMPY: sympy/concrete/expr_with_limits.py:ExprWithLimits._eval_subs
     def _subs_partial(self, old: Basic, new: Basic) -> Optional[Basic]:
         func = self._function
