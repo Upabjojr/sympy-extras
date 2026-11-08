@@ -27,6 +27,7 @@
 // domain, results are tuples of polynomials)
 #![allow(clippy::wrong_self_convention, clippy::type_complexity)]
 
+pub mod core;
 pub mod error;
 pub mod ntheory;
 pub mod numbers;

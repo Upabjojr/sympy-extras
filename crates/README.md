@@ -59,4 +59,9 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/multisqf.py` | done | the `SqfDomain` classes as a trait with three implementations |
 | `polys/multifactor.py` | done | the diophantine equations over `BigFiniteField` (the modulus is the next prime above a Mignotte bound) |
 | (new) `polys/domains/bigfinitefield.rs` | | `GF(p)` with `Int` elements for moduli beyond the machine words: Python's one `FiniteField` is split in two |
-| everything else | not yet | every remaining module needs the typed core `sympy_extras.core` (or SymPy): that is the next layer |
+| `core/assumptions.py` | the rules | `Predicate` enum (alphabetical, so sorted as the names), implications, closure, consistency, minimal generators; the structural rules of compound nodes come with the evaluating functions |
+| `core/sorting.py` | `compare` | the `compare` key; `sort_key`/`ordered` come with `Expr` |
+| `core/basic.py` | the structure | `Basic` = `Arc<Node>` with a `Head` per class (cached hash and compare key), `rebuild`, `atoms`, `free_symbols`, `has`, structural `xreplace`; `subs`/`doit`/`match`/`replace` come with the evaluating functions |
+| `core/numbers.py` | exact numbers | `Integer`/`Rational` (one head, the class kept), infinities, `nan`, constants, `I`; `Float`, `AlgebraicNumber` and the number arithmetic next |
+| `core/symbol.py` | the classes | `Symbol`, `Dummy`, `Wild` heads with typed views; `symbols()` next |
+| everything else | not yet | the core continues: `expr`, `add`/`mul`/`power` (the evaluating functions), `printing`; then the polynomial `from_expr`/`to_expr` |
