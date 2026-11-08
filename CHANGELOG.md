@@ -76,6 +76,8 @@ remove public functions. Breaking changes are listed here when they happen.
   limits and the asymptotic series still go through SymPy, node by node.
   `as_coeff_exponent` now collects first, as SymPy does. The series and
   leading terms of `exp` and `log` (with the branch cut of `log`) are native.
+  So are those of `sin`, `cos`, `tan`, `cot`, `sec`, `csc` and of the
+  hyperbolic functions (`sympy_extras.functions.elementary._series`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

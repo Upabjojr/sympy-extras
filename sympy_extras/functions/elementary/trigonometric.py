@@ -50,6 +50,7 @@ import mpmath
 
 from sympy_extras.core.add import Add, add, sub
 from sympy_extras.core.assumptions import facts_of
+from sympy_extras.core.symbol import Symbol
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import DefinedFunction, ExpandHints, expand
 from sympy_extras.core.mul import Mul, div, mul
@@ -216,6 +217,19 @@ class Sin(DefinedFunction):
 
     function_name = 'sin'
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:sin.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary._series import sin_taylor_term
+        return sin_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.sincos_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.sin_leading_term(self, x, logx, cdir)
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from .hyperbolic import sinh
@@ -298,6 +312,19 @@ class Cos(DefinedFunction):
     unbranched = True
 
     function_name = 'cos'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:cos.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary._series import cos_taylor_term
+        return cos_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.sincos_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.cos_leading_term(self, x, logx, cdir)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -415,6 +442,19 @@ class Tan(DefinedFunction):
 
     function_name = 'tan'
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:tan.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary._series import tan_taylor_term
+        return tan_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.tan_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.tan_leading_term(self, x, logx, cdir)
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from .hyperbolic import tanh
@@ -524,6 +564,19 @@ class Cot(DefinedFunction):
     unbranched = True
 
     function_name = 'cot'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:cot.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary._series import cot_taylor_term
+        return cot_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.cot_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.cot_leading_term(self, x, logx, cdir)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -656,6 +709,19 @@ class Sec(DefinedFunction):
 
     function_name = 'sec'
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:sec.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary._series import sec_taylor_term
+        return sec_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.reciprocal_nseries(cos(self.args[0]), x, n, logx)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.sec_leading_term(self, x, logx, cdir)
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         [arg] = args
@@ -687,6 +753,19 @@ class Csc(DefinedFunction):
     unbranched = True
 
     function_name = 'csc'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:csc.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary._series import csc_taylor_term
+        return csc_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.reciprocal_nseries(sin(self.args[0]), x, n, logx)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.csc_leading_term(self, x, logx, cdir)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

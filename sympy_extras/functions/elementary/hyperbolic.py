@@ -41,6 +41,7 @@ import mpmath
 
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.assumptions import facts_of
+from sympy_extras.core.symbol import Symbol
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import DefinedFunction, ExpandHints, expand_with_hints
 from sympy_extras.core.mul import Mul, mul
@@ -108,6 +109,19 @@ class Sinh(DefinedFunction):
     unbranched = True
 
     function_name = 'sinh'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:sinh.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary._series import sinh_taylor_term
+        return sinh_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.function import Application
+        return Application._eval_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.sinh_leading_term(self, x, logx, cdir)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -177,6 +191,19 @@ class Cosh(DefinedFunction):
     unbranched = True
 
     function_name = 'cosh'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:cosh.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary._series import cosh_taylor_term
+        return cosh_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.function import Application
+        return Application._eval_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.cosh_leading_term(self, x, logx, cdir)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -249,6 +276,19 @@ class Tanh(DefinedFunction):
     unbranched = True
 
     function_name = 'tanh'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:tanh.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary._series import tanh_taylor_term
+        return tanh_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.function import Application
+        return Application._eval_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.tanh_coth_leading_term(self, x, False)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -326,6 +366,19 @@ class Coth(DefinedFunction):
     unbranched = True
 
     function_name = 'coth'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:coth.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary._series import coth_taylor_term
+        return coth_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.function import Application
+        return Application._eval_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.tanh_coth_leading_term(self, x, True)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -407,6 +460,19 @@ class Sech(DefinedFunction):
 
     function_name = 'sech'
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:sech.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary._series import sech_taylor_term
+        return sech_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.function import Application
+        return Application._eval_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.reciprocal_leading_term(cosh(self.args[0]), x, logx, cdir)
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         [arg] = args
@@ -439,6 +505,19 @@ class Csch(DefinedFunction):
     unbranched = True
 
     function_name = 'csch'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/hyperbolic.py:csch.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary._series import csch_taylor_term
+        return csch_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.function import Application
+        return Application._eval_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.reciprocal_leading_term(sinh(self.args[0]), x, logx, cdir)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

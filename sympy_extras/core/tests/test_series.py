@@ -23,7 +23,10 @@ SERIES_CASES = ['cos(x)', 'exp(x)', '1/(1-x)', '1/x', 'sin(x)/x', 'sqrt(1+x)', '
                 '(1+x)**y', 'log(1+x)', 'tan(x)', 'x/(exp(x)-1)', '1/sin(x)', '(x+y)**3', 'sqrt(x+x**2)',
                 'log(x)*x', '(exp(x)-1)/x', 'exp(1/x)*x', 'x**(1/3)+x', 'log(cos(x))', 'sqrt(1-x)/x**2',
                 'log(sin(x))', 'exp(exp(x))', 'log(x**2+x)', 'exp(x*log(x)+x)', 'log(-x+x**2)', 'exp(-1/x)',
-                'log(exp(x)-1)', 'x**y*log(x)', 'log(1-x)/x', 'exp(sqrt(x))', 'log(sqrt(x)+x)']
+                'log(exp(x)-1)', 'x**y*log(x)', 'log(1-x)/x', 'exp(sqrt(x))', 'log(sqrt(x)+x)',
+                'sec(x)', 'csc(x)', 'cot(x)', 'tan(x+1)', 'cosh(x)', 'tanh(x)', 'coth(x)', 'sech(x)', 'csch(x)',
+                'tan(pi/2+x)', 'cot(pi+x)', 'sin(pi+x)', 'cos(pi/2+x)', 'sec(pi/2+x)', 'csc(pi+x)', 'tanh(sin(x))',
+                'cos(log(x))*x', 'sin(sqrt(x))']
 
 
 def _sympy_expr(text: str) -> sympy.Expr:
