@@ -217,6 +217,10 @@ impl Domain for IntegerRing {
         Ok((strip(quotient), strip(tail)))
     }
 
+    fn factor_dense(&self, f: &[Int]) -> PolyResult<(Int, Vec<(Vec<Int>, usize)>)> {
+        crate::polys::factortools::dup_zz_factor(f, self)
+    }
+
     fn from_int(&self, n: i64) -> Int {
         Int::from(n)
     }

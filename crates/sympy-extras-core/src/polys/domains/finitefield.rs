@@ -229,6 +229,10 @@ impl Domain for FiniteField {
         Ok((strip(quotient), strip(tail)))
     }
 
+    fn factor_dense(&self, f: &[u64]) -> PolyResult<(u64, Vec<(Vec<u64>, usize)>)> {
+        Ok(crate::polys::galoistools::gf_factor(f, self))
+    }
+
     fn from_int(&self, n: i64) -> u64 {
         (n as i128).rem_euclid(self.p as i128) as u64
     }

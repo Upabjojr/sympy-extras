@@ -219,6 +219,13 @@ impl PyDomain {
         }
     }
 
+    fn factor_dense<'py>(&self, py: Python<'py>, f: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+        with_domain!(self, k => {
+            let (c, factors) = k.factor_dense(&crate::convert::poly(k, f)?).map_err(err)?;
+            tuple(py, vec![out_elem(k, py, &c)?, crate::convert::out_factors(k, py, &factors)?])
+        })
+    }
+
     fn elements<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         match self.kind {
             DomainKind::GF(p) => {

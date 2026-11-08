@@ -28,7 +28,7 @@ degrees and indices are `usize`, data-dependent exceptions are
 
 | Python module | Rust | Notes |
 |---|---|---|
-| `polys/domains/domain.py` | done | trait `Domain`; `to_expr`/`from_expr`, `factor_dense` and the root isolation hooks wait for the ported modules |
+| `polys/domains/domain.py` | done | trait `Domain` with `factor_dense`; `to_expr`/`from_expr` and the root isolation hooks wait for the ported modules |
 | `polys/domains/integerring.py` | done | |
 | `polys/domains/rationalfield.py` | done | with the fraction-free sparse echelon form |
 | `polys/domains/finitefield.py` | done | elements `u64`, products in `u128` (any modulus below `2**64`) |
@@ -37,4 +37,6 @@ degrees and indices are `usize`, data-dependent exceptions are
 | `polys/densetools.py` | done | |
 | `polys/euclidtools.py` | done | |
 | `polys/sqfreetools.py` | done | |
-| everything else | not yet | next: `galoistools`, `factortools`, `heuristicgcd`, the polynomial ring domains, `rings` |
+| `polys/galoistools.py` | done | the random choices from a seeded SplitMix64 (`random.rs`); the factorisations are sorted, so equal to Python's |
+| `polys/factortools.py` | over `ZZ`, `QQ` | the number-field part (`dup_ext_*`, Trager) needs `AlgebraicField` |
+| everything else | not yet | next: `polyerrors`, `orderings`, `rings`, `heuristicgcd`, the polynomial ring domains |

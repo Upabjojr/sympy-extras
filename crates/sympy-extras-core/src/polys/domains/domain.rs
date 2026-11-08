@@ -254,6 +254,16 @@ pub trait Domain {
         panic!("dense_div is not implemented for {}", self.name())
     }
 
+    // -- algorithms which exist for particular domains only: the domain
+    // dispatches to the implementation
+
+    /// The irreducible factorisation of a dense polynomial: the constant and
+    /// the factors with their multiplicities (`ZZ`, `QQ`, `GF(p)`; panics
+    /// for a domain without one, as Python's `NotImplementedError`).
+    fn factor_dense(&self, _f: &[Self::Elem]) -> PolyResult<(Self::Elem, Vec<(Vec<Self::Elem>, usize)>)> {
+        panic!("no factorisation over {}", self.name())
+    }
+
     // -- conversions
 
     /// The image of a machine integer.

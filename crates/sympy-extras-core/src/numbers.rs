@@ -77,6 +77,35 @@ pub fn div_mod_floor(a: &Int, b: &Int) -> (Int, Int) {
     (q, r)
 }
 
+/// The inverse of `a` modulo `m > 1` in `0..m` (Python's `pow(a, -1, m)`);
+/// `None` when `a` and `m` are not coprime.
+pub fn mod_inverse(a: &Int, m: &Int) -> Option<Int> {
+    let (mut r0, mut r1): (Int, Int) = (mod_floor(a, m), m.clone());
+    let (mut s0, mut s1): (Int, Int) = (Int::ONE, Int::ZERO);
+    while !r1.is_zero() {
+        let q: Int = div_floor(&r0, &r1);
+        let r2: Int = &r0 - &q * &r1;
+        r0 = std::mem::replace(&mut r1, r2);
+        let s2: Int = &s0 - &q * &s1;
+        s0 = std::mem::replace(&mut s1, s2);
+    }
+    if !r0.is_one() {
+        return None;
+    }
+    Some(mod_floor(&s0, m))
+}
+
+/// `floor(sqrt(n))` (Python's `math.isqrt`).
+pub fn isqrt(n: &Int) -> Int {
+    assert!(!is_negative(n), "isqrt of a negative number");
+    Int::from(dashu_base::SquareRoot::sqrt(&n.clone().unsigned_abs()))
+}
+
+/// Whether bit `i` of the nonnegative `n` is set.
+pub fn bit(n: &Int, i: usize) -> bool {
+    n.clone().unsigned_abs().bit(i)
+}
+
 /// The number of bits of `|a|` (Python's `int.bit_length`).
 pub fn bits(a: &Int) -> u64 {
     a.clone().unsigned_abs().bit_len() as u64
@@ -139,5 +168,10 @@ mod tests {
         assert!(rat_is_negative(&rat(3, -2)));
         assert!(!is_negative(&int(0)));
         assert_eq!(rat(1, 2).to_string(), "1/2");
+        assert_eq!(mod_inverse(&int(-3), &int(7)), Some(int(2)));
+        assert_eq!(mod_inverse(&int(4), &int(8)), None);
+        assert_eq!(isqrt(&int(99)), int(9));
+        assert_eq!(isqrt(&int(100)), int(10));
+        assert!(bit(&int(5), 2) && !bit(&int(5), 1));
     }
 }

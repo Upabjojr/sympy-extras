@@ -198,6 +198,10 @@ impl Domain for RationalField {
         pivots.values().map(monic_rational_row).collect()
     }
 
+    fn factor_dense(&self, f: &[Rat]) -> PolyResult<(Rat, Vec<(Vec<Rat>, usize)>)> {
+        crate::polys::factortools::dup_qq_factor(f, self)
+    }
+
     fn from_int(&self, n: i64) -> Rat {
         Rat::from(Int::from(n))
     }

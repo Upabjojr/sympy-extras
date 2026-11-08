@@ -5,4 +5,6 @@ pub mod densebasic;
 pub mod densetools;
 pub mod domains;
 pub mod euclidtools;
+pub mod factortools;
+pub mod galoistools;
 pub mod sqfreetools;
