@@ -318,6 +318,68 @@ impl PyDomain {
         })
     }
 
+    #[pyo3(signature = (f, eps = None))]
+    fn isolate_real_roots_dense<'py>(
+        &self,
+        py: Python<'py>,
+        f: &Bound<'py, PyAny>,
+        eps: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let eps = match eps {
+            Some(e) if !e.is_none() => Some(RationalField.extract(e)?),
+            _ => None,
+        };
+        match self.kind {
+            DomainKind::ZZ => crate::algorithms::out_roots(
+                py,
+                &sympy_extras_core::polys::domains::IntegerRing.isolate_real_roots_dense(
+                    &crate::convert::poly(&sympy_extras_core::polys::domains::IntegerRing, f)?,
+                    eps.as_ref(),
+                ),
+            ),
+            DomainKind::QQ => crate::algorithms::out_roots(
+                py,
+                &RationalField.isolate_real_roots_dense(&crate::convert::poly(&RationalField, f)?, eps.as_ref()),
+            ),
+            _ => Err(pyo3::exceptions::PyNotImplementedError::new_err(format!(
+                "no real root isolation over {}",
+                rust_name(self)
+            ))),
+        }
+    }
+
+    fn count_real_roots_dense(
+        &self,
+        f: &Bound<'_, PyAny>,
+        inf: &Bound<'_, PyAny>,
+        sup: &Bound<'_, PyAny>,
+    ) -> PyResult<i64> {
+        let bound = |b: &Bound<'_, PyAny>| -> PyResult<Option<sympy_extras_core::numbers::Rat>> {
+            if b.is_none() {
+                Ok(None)
+            } else {
+                Ok(Some(RationalField.extract(b)?))
+            }
+        };
+        let (inf, sup) = (bound(inf)?, bound(sup)?);
+        match self.kind {
+            DomainKind::ZZ => Ok(sympy_extras_core::polys::domains::IntegerRing.count_real_roots_dense(
+                &crate::convert::poly(&sympy_extras_core::polys::domains::IntegerRing, f)?,
+                inf.as_ref(),
+                sup.as_ref(),
+            )),
+            DomainKind::QQ => Ok(RationalField.count_real_roots_dense(
+                &crate::convert::poly(&RationalField, f)?,
+                inf.as_ref(),
+                sup.as_ref(),
+            )),
+            _ => Err(pyo3::exceptions::PyNotImplementedError::new_err(format!(
+                "no real root counting over {}",
+                rust_name(self)
+            ))),
+        }
+    }
+
     /// `FractionField.new(numer, denom)`: the reduced fraction.
     #[allow(clippy::new_ret_no_self)]
     fn new<'py>(

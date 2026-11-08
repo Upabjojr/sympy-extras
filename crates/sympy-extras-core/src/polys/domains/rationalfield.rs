@@ -202,6 +202,16 @@ impl Domain for RationalField {
         crate::polys::factortools::dup_qq_factor(f, self)
     }
 
+    fn isolate_real_roots_dense(&self, f: &[Rat], eps: Option<&Rat>) -> Vec<((Rat, Rat), usize)> {
+        let rational: Vec<Rat> = f.to_vec();
+        crate::polys::rootisolation::dup_isolate_real_roots(&rational, eps)
+    }
+
+    fn count_real_roots_dense(&self, f: &[Rat], inf: Option<&Rat>, sup: Option<&Rat>) -> i64 {
+        let rational: Vec<Rat> = f.to_vec();
+        crate::polys::rootisolation::dup_count_real_roots(&rational, inf, sup)
+    }
+
     fn from_int(&self, n: i64) -> Rat {
         Rat::from(Int::from(n))
     }

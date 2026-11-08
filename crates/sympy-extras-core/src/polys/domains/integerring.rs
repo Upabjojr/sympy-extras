@@ -221,6 +221,16 @@ impl Domain for IntegerRing {
         crate::polys::factortools::dup_zz_factor(f, self)
     }
 
+    fn isolate_real_roots_dense(&self, f: &[Int], eps: Option<&Rat>) -> Vec<((Rat, Rat), usize)> {
+        let rational: Vec<Rat> = f.iter().map(rat_from_int).collect();
+        crate::polys::rootisolation::dup_isolate_real_roots(&rational, eps)
+    }
+
+    fn count_real_roots_dense(&self, f: &[Int], inf: Option<&Rat>, sup: Option<&Rat>) -> i64 {
+        let rational: Vec<Rat> = f.iter().map(rat_from_int).collect();
+        crate::polys::rootisolation::dup_count_real_roots(&rational, inf, sup)
+    }
+
     fn from_int(&self, n: i64) -> Int {
         Int::from(n)
     }

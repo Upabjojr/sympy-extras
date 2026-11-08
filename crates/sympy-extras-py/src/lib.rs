@@ -14,6 +14,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 
+mod algorithms;
 mod convert;
 mod dense;
 mod domains;
@@ -62,6 +63,12 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     factor::register_factortools(&submodule(&polys, "factortools", "sympy_extras_rs.polys.factortools")?)?;
     polyerrors::register(&submodule(&polys, "polyerrors", "sympy_extras_rs.polys.polyerrors")?)?;
     rings::register_rings(&submodule(&polys, "rings", "sympy_extras_rs.polys.rings")?)?;
+    algorithms::register_rootisolation(&submodule(
+        &polys,
+        "rootisolation",
+        "sympy_extras_rs.polys.rootisolation",
+    )?)?;
+    algorithms::register_f4(&submodule(&polys, "f4", "sympy_extras_rs.polys.f4")?)?;
     rings::register_heuristicgcd(&submodule(
         &polys,
         "heuristicgcd",

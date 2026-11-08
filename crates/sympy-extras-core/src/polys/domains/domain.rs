@@ -264,6 +264,17 @@ pub trait Domain: Clone + PartialEq + Debug {
         panic!("no factorisation over {}", self.name())
     }
 
+    /// Isolating intervals of the real roots with multiplicities (ordered
+    /// domains of characteristic zero with exact arithmetic: `ZZ`, `QQ`).
+    fn isolate_real_roots_dense(&self, _f: &[Self::Elem], _eps: Option<&Rat>) -> Vec<((Rat, Rat), usize)> {
+        panic!("no real root isolation over {}", self.name())
+    }
+
+    /// The number of distinct real roots in `(inf, sup]`.
+    fn count_real_roots_dense(&self, _f: &[Self::Elem], _inf: Option<&Rat>, _sup: Option<&Rat>) -> i64 {
+        panic!("no real root counting over {}", self.name())
+    }
+
     // -- conversions
 
     /// The image of a machine integer.
