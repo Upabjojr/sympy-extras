@@ -145,6 +145,10 @@ remove public functions. Breaking changes are listed here when they happen.
   handlers of `Abs`, `Pow`, `atan2`, `re`, `im`, `arg`, `sign` and the
   `_eval_refine` of symbols, powers, `exp` and booleans, on the native
   `ask`).
+- `nc_simplify` is native, ported from SymPy (repeated subwords of
+  noncommutative products grouped into powers; `simplify` uses it); the
+  printer keeps the negative powers of noncommutative factors as powers
+  (`(b*a)**(-1)*c*a`, not `c*a/(b*a)`), as SymPy does.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

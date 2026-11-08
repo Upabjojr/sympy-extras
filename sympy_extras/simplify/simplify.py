@@ -678,7 +678,7 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     from .sqrtdenest import _mexpand
     from .trigsimp import exptrigsimp, trigsimp
     from sympy.functions.elementary.piecewise import piecewise_simplify
-    from sympy.simplify.simplify import nc_simplify, product_simplify, sum_simplify
+    from sympy.simplify.simplify import product_simplify, sum_simplify
 
     def shorter(*choices: Expr) -> Expr:
         options = list(choices)
@@ -719,7 +719,7 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     if not isinstance(e, handled):
         return done(e)
     if e.is_commutative is False:
-        e = _through_sympy(e, nc_simplify)
+        e = nc_simplify(e)
     floats = False
     if rational is not False and e.has(Float):
         floats = True
@@ -795,3 +795,258 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     if floats and rational is None:
         e = _expr(nfloat(e, exponent=False))
     return done(e)
+
+
+# PORTED FROM SYMPY: sympy/simplify/simplify.py:nc_simplify
+def nc_simplify(expr: ExprLike, deep: bool = True) -> Expr:
+    """A noncommutative product with its repeated subwords grouped into
+    powers, the grouping which leaves the fewest arguments first
+    (``a*b*a*b*c*a*b*c`` is ``a*b*(a*b*c)**2``); a sum term by term; the
+    nested subexpressions too with ``deep``.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.simplify.simplify import nc_simplify
+    >>> a, b, c = symbols('a b c', commutative=False)
+    >>> nc_simplify(a*b*a*b*c*a*b*c), nc_simplify(a**2*b*a**4*b*a**4)
+    (a*b*(a*b*c)**2, a**2*(b*a**4)**2)
+    >>> nc_simplify(a*b*a*b + 2*a*c*a**2*c*a**2*c*a), nc_simplify(b**-1*a**-1*(a*b)**2)
+    ((a*b)**2 + 2*(a*c*a)**3, a*b)
+    >>> nc_simplify(a**-1*b**-1*c*a), nc_simplify((a*b*a*b)**2*a*c*a*c, deep=False)
+    ((b*a)**(-1)*c*a, (a*b*a*b)**2*(a*c)**2)
+    """
+    from sympy_extras.core.exprtools import factor_nc
+    from sympy_extras.core.power import Pow
+    e = to_expr(expr)
+
+    def _overlaps(args: tuple[Expr, ...]) -> list[list[list[int]]]:
+        # m[i][j]: the lengths of the overlaps of args[:i+1] with args[i+1+j:]
+        # (the suffixes of the prefix which are prefixes of the suffix)
+        m = [[([1, 0] if a == args[0] else [0]) for a in args[1:]]]
+        for i in range(1, len(args)):
+            overlaps: list[list[int]] = []
+            for j in range(len(args) - i - 1):
+                overlap: list[int] = []
+                for v in m[i-1][j+1]:
+                    if j + i + 1 + v < len(args) and args[i] == args[j+i+1+v]:
+                        overlap.append(v + 1)
+                overlap += [0]
+                overlaps.append(overlap)
+            m.append(overlaps)
+        return m
+
+    def _reduce_inverses(_args: tuple[Expr, ...]) -> tuple[int, tuple[Expr, ...]]:
+        # consecutive negative powers made the inverse of a product of
+        # positive powers (a**-1*b**-1*c is (b*a)**-1*c)
+        inv_tot = 0
+        inverses: list[Expr] = []
+        out: list[Expr] = []
+        for arg in _args:
+            if isinstance(arg, Pow) and arg.exp.is_extended_negative is True:
+                inverses = [pow(arg, Integer(-1))] + inverses
+                inv_tot += 1
+            else:
+                if len(inverses) == 1:
+                    out.append(pow(inverses[0], Integer(-1)))
+                elif len(inverses) > 1:
+                    out.append(pow(mul(*inverses), Integer(-1)))
+                    inv_tot -= len(inverses) - 1
+                inverses = []
+                out.append(arg)
+        if inverses:
+            out.append(pow(mul(*inverses), Integer(-1)))
+            inv_tot -= len(inverses) - 1
+        return inv_tot, tuple(out)
+
+    def get_score(s: Expr) -> int:
+        # the number of arguments, nested ones included, the exponents not
+        if isinstance(s, Pow):
+            return get_score(s.base)
+        if isinstance(s, (Add, Mul)):
+            return sum(get_score(a) for a in s.args if isinstance(a, Expr))
+        return 1
+
+    def compare(s: Expr, alt_s: Expr) -> Expr:
+        if s != alt_s and get_score(alt_s) < get_score(s):
+            return alt_s
+        return s
+
+    def base_args(t: Expr) -> tuple[Expr, ...]:
+        return tuple(a for a in t.args if isinstance(a, Expr))
+
+    if not isinstance(e, (Add, Mul, Pow)) or e.is_commutative is not False:
+        return e
+    if isinstance(e, Pow):
+        if deep:
+            return pow(nc_simplify(e.base), e.exp)
+        return e
+    if isinstance(e, Add):
+        return add(*[nc_simplify(a, deep=deep) for a in e.args if isinstance(a, Expr)])
+    # the commutative part (SymPy's args_cnc: the commutative prefix)
+    factors = [a for a in e.args if isinstance(a, Expr)]
+    split = next((i for i, f in enumerate(factors) if f.is_commutative is not True), len(factors))
+    c_args, nc_args = factors[:split], factors[split:]
+    com_coeff = mul(*c_args)
+    if not (isinstance(com_coeff, Integer) and com_coeff.p == 1):
+        return com_coeff * nc_simplify(e / com_coeff, deep=deep)
+    inv_tot, args = _reduce_inverses(tuple(nc_args))
+    # with mostly negative powers the inverse is simplified
+    # (a**-1*b*a**-1*c**-1 is (c*a*b**-1*a)**-1)
+    invert = False
+    if inv_tot > len(args) / 2:
+        invert = True
+        args = tuple(pow(a, Integer(-1)) for a in args[::-1])
+    if deep:
+        args = tuple(nc_simplify(a) for a in args)
+    m = _overlaps(args)
+    # {subterm: end}: the end of a sequence of repetitions of the subterm
+    simps: dict[tuple[Expr, ...], int] = {}
+    post: Expr = Integer(1)
+    pre: Expr = Integer(1)
+    # the number of arguments a contraction removes (a*b*a*b to (a*b)**2
+    # removes 3): the largest one is chosen
+    max_simp_coeff = 0
+    simp_found: Optional[tuple[int, Expr, Expr, int, int]] = None
+    rep: list[int] = [0]
+    for i in range(1, len(args)):
+        simp_coeff = 0
+        l = 0
+        p: Expr = Integer(0)
+        if i < len(args) - 1:
+            rep = m[i][0]
+        start = i
+        end = i + 1
+        subterm: tuple[Expr, ...]
+        if i == len(args) - 1 or rep == [0]:
+            # no repeated subterm in the arguments, maybe with the powers
+            arg_i = args[i]
+            if isinstance(arg_i, Pow) and not isinstance(arg_i.base, Symbol):
+                subterm = base_args(arg_i.base)
+                l = len(subterm)
+                if args[i-l:i] == subterm:
+                    # a*b in a*b*(a*b)**2
+                    p = p + 1
+                    start -= l
+                if args[i+1:i+1+l] == subterm:
+                    # a*b in (a*b)**2*a*b
+                    p = p + 1
+                    end += l
+            if not (isinstance(p, Integer) and p.p == 0) and isinstance(arg_i, Pow):
+                p = p + arg_i.exp
+            else:
+                continue
+        else:
+            l = rep[0]  # the longest repeated subterm here
+            start -= l - 1
+            subterm = args[start:end]
+            p = Integer(2)
+            end += l
+        if subterm in simps and simps[subterm] >= start:
+            # part of a sequence already considered
+            continue
+        # the number of repetitions
+        while end < len(args):
+            if l in m[end-1][0]:
+                p = p + 1
+                end += l
+            else:
+                at = args[end]
+                if isinstance(at, Pow) and base_args(at.base) == subterm:
+                    # a*b*a*b*(a*b)**2*a*b
+                    p = p + at.exp
+                    end += 1
+                else:
+                    break
+        # another match: b*a**2 in b*a**2*b*a**3, a*b in a**2*b*a*b
+        pre_exp: Expr = Integer(0)
+        pre_arg: Expr = Integer(1)
+        exp: Expr = Integer(1)
+        if start - l >= 0 and args[start-l+1:start] == subterm[1:]:
+            first = subterm[0]
+            if isinstance(first, Pow):
+                pre_arg, exp = first.base, first.exp
+            else:
+                pre_arg, exp = first, Integer(1)
+            before = args[start-l]
+            if isinstance(before, Pow) and before.base == pre_arg:
+                pre_exp = before.exp - exp
+                start -= l
+                p = p + 1
+            elif before == pre_arg:
+                pre_exp = 1 - exp
+                start -= l
+                p = p + 1
+        post_exp: Expr = Integer(0)
+        post_arg: Expr = Integer(1)
+        if end + l - 1 < len(args) and args[end:end+l-1] == subterm[:-1]:
+            last = subterm[-1]
+            if isinstance(last, Pow):
+                post_arg, exp = last.base, last.exp
+            else:
+                post_arg, exp = last, Integer(1)
+            after = args[end+l-1]
+            if isinstance(after, Pow) and after.base == post_arg:
+                post_exp = after.exp - exp
+                end += l
+                p = p + 1
+            elif after == post_arg:
+                post_exp = 1 - exp
+                end += l
+                p = p + 1
+        # in a*b*a**2*b*a**2*b*a both b*a**2 and a*b*a repeat: (a*b*a)**3
+        # is simpler than a*(b*a**2)**3*a**-1
+        if not _is_zero_number(post_exp) and _is_even_number(exp) and start > 0:
+            exp = exp / 2
+            _pre_exp: Expr = Integer(1)
+            _post_exp: Expr = Integer(1)
+            before = args[start-1]
+            if isinstance(before, Pow) and before.base == post_arg:
+                _post_exp = post_exp + exp
+                _pre_exp = before.exp - exp
+            elif before == post_arg:
+                _post_exp = post_exp + exp
+                _pre_exp = 1 - exp
+            if _is_zero_number(_pre_exp) or _is_zero_number(_post_exp):
+                if _is_zero_number(pre_exp):
+                    start -= 1
+                post_exp = _post_exp
+                pre_exp = _pre_exp
+                pre_arg = post_arg
+                subterm = (pow(post_arg, exp),) + subterm[:-1] + (pow(post_arg, exp),)
+        simp_coeff += end - start
+        if not _is_zero_number(post_exp):
+            simp_coeff -= 1
+        if not _is_zero_number(pre_exp):
+            simp_coeff -= 1
+        simps[subterm] = end
+        if simp_coeff > max_simp_coeff:
+            max_simp_coeff = simp_coeff
+            simp_found = (start, mul(*subterm), p, end, l)
+            pre = pow(pre_arg, pre_exp)
+            post = pow(post_arg, post_exp)
+    result: Expr
+    if simp_found is not None:
+        s_start, s_term, s_power, s_end, _ = simp_found
+        sub = pow(nc_simplify(s_term, deep=deep), s_power)
+        pre = nc_simplify(mul(*args[:s_start]) * pre, deep=deep)
+        post = post * nc_simplify(mul(*args[s_end:]), deep=deep)
+        result = pre * sub * post
+        if pre != Integer(1) or post != Integer(1):
+            # maybe new simplifications, without the arguments again
+            result = nc_simplify(result, deep=False)
+    else:
+        result = mul(*args)
+    if invert:
+        result = pow(result, Integer(-1))
+    # factor_nc may give a better simplification
+    f_expr = factor_nc(e)
+    if f_expr != e:
+        alt = nc_simplify(f_expr, deep=deep)
+        result = compare(result, alt)
+    return result
+
+
+def _is_even_number(e: Expr) -> bool:
+    return isinstance(e, Integer) and e.p % 2 == 0

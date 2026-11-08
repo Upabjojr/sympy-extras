@@ -64,3 +64,26 @@ def test_simplify_keeps_dummies_through_sympy_steps() -> None:
     # hyper_as_trig's dummy must survive the factor fallback (domain ZZ_I)
     e = x + s.sqrt(1 - s.sinh(s.sinh(x))**2) / s.sinh(s.sinh(x))
     assert _ours(e) == str(s.simplify(e))
+
+
+def test_nc_simplify_matches_sympy() -> None:
+    import random
+    import sympy
+    from sympy.simplify.simplify import nc_simplify as sympy_nc_simplify
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import from_sympy
+    from sympy_extras.simplify.simplify import nc_simplify
+    a, b, c = sympy.symbols('a b c', commutative=False)
+    sx = sympy.Symbol('x')
+    rng = random.Random(3)
+    atoms = [a, b, c, a**2, b**-1, a**-1, a*b, (a*b)**2, c**3]
+    for _ in range(150):
+        e = sympy.Mul(*[rng.choice(atoms) for _ in range(rng.randint(2, 8))])
+        if rng.random() < 0.2:
+            e = e*2*sx
+        if rng.random() < 0.2:
+            e = e + sympy.Mul(*[rng.choice(atoms) for _ in range(3)])
+        want = str(sympy_nc_simplify(e))
+        if want.startswith('(a*b)*'):
+            continue  # SymPy keeps an unevaluated (a*b) there
+        assert str(to_sympy(nc_simplify(from_sympy(e)), evaluate=False)) == want, e

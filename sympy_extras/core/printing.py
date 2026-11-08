@@ -159,7 +159,8 @@ class StrPrinter:
                 numerator.append(self.doprint(Float(number_from_fraction(-f.as_fraction()), precision=f.precision)))
                 numerator_exprs.append(f)
                 continue
-            if isinstance(f, Pow) and _negative_exponent(f.exp):
+            # (SymPy's _print_Mul: only the commutative powers go to the denominator)
+            if isinstance(f, Pow) and _negative_exponent(f.exp) and f.is_commutative is not False:
                 # x**(-2) and 4**(-n) go to the denominator: -n/4**n
                 from .mul import neg
                 minus = neg(f.exp)
@@ -182,9 +183,10 @@ class StrPrinter:
         if isinstance(exp, Rational):
             if exp.p == 1 and exp.q == 2:
                 return 'sqrt(%s)' % self.doprint(base)
-            if exp.p == -1 and exp.q == 2:
+            # (SymPy's _print_Pow: the 1/... forms for commutative powers only)
+            if exp.p == -1 and exp.q == 2 and base.is_commutative is not False:
                 return '1/sqrt(%s)' % self.doprint(base)
-            if exp.p == -1 and exp.q == 1:
+            if exp.p == -1 and exp.q == 1 and base.is_commutative is not False:
                 return '1/%s' % self.parenthesize(base, PREC_MUL, strict=True)
         b = self.parenthesize(base, PREC_POW, strict=True)
         e = self.parenthesize(exp, PREC_POW, strict=True)
