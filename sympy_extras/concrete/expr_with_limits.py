@@ -189,6 +189,11 @@ class Sum(ExprWithLimits):
 
     name = 'Sum'
 
+    def doit(self) -> Expr:
+        """The sum evaluated (:func:`~sympy_extras.concrete.summations.sum_doit`)."""
+        from .summations import sum_doit
+        return sum_doit(self)
+
     def _eval_facts(self) -> dict[str, bool]:
         facts = ExprWithLimits._eval_facts(self)
         if self._function.is_zero is True:

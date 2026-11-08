@@ -748,3 +748,19 @@ def test_factor_nc_matches_sympy() -> None:
                                  for _ in range(rng.randint(2, 3))]))
     for e in cases:
         assert str(to_sympy(factor_nc(expr_from_sympy(e)), evaluate=False)) == str(sympy.factor_nc(e)), e
+
+
+def test_number_times_wild_matches_as_sympy() -> None:
+    # SymPy's Mul._matches_simple: 2*z matches x + 1 with z = x/2 + 1/2
+    import sympy
+    from sympy_extras.core import Wild
+    from sympy_extras.core.interop import expr_from_sympy
+    sx = sympy.Symbol('x')
+    sz = sympy.Wild('z')
+    oz = Wild('z')
+    for e, coeff in [(-sx - 1, -1), (sx, -1), (2*sx + 2, 2), (sx + 1, 2), (sx**2, 3)]:
+        want = e.match(coeff*sz)
+        got = expr_from_sympy(e).match(coeff*oz)
+        assert (got is None) == (want is None), e
+        if got is not None and want is not None:
+            assert str(got[oz]) == str(want[sz]), e

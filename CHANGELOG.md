@@ -227,6 +227,14 @@ remove public functions. Breaking changes are listed here when they happen.
   sums and products to SymPy (integrals still do). `expand` splits a sum
   of a sum into sums when the limits may be finite (SymPy's
   `AddWithLimits._eval_expand_basic`).
+- `Sum.doit` and `summation` are native (`sympy_extras.concrete.summations`,
+  ported from SymPy: `eval_sum`, `eval_sum_direct`, `eval_sum_symbolic`,
+  `telescopic`); Gosper's algorithm, the hypergeometric and residue
+  methods, the Kronecker delta sums, the equation solving of the
+  telescoping and the zeta function match go through SymPy for that call.
+- A pattern `c*w` (a number times a single factor) matches `e` with `w`
+  matched against `e/c`, as SymPy's `Mul._matches_simple`
+  (`(x + 1).match(2*z)` gives `z = x/2 + 1/2`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

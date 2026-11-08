@@ -121,9 +121,20 @@ def _combine(parts: list[Expr], is_add: bool) -> Expr:
 def _match_assoc(expr: Expr, pattern: Expr, bindings: MatchDict, exact: bool, solve: bool,
                  is_add: bool) -> Iterator[MatchDict]:
     """Matching of a sum or product pattern against ``expr``."""
-    from .numbers import Integer
+    from .numbers import Integer, Number
     from .sorting import default_sort_key
     from .symbol import Wild
+    if not is_add:
+        # PORTED FROM SYMPY: sympy/core/mul.py:Mul._matches_simple: a number
+        # times a single factor matches that factor against expr divided
+        # by the number (2*z matches x + 1 with z = x/2 + 1/2)
+        coeff, rest_factors = pattern.as_coeff_Mul()
+        single = factors_of(rest_factors)
+        if isinstance(coeff, Number) and coeff != 1 and len(single) == 1:
+            first = next(_matches(expr / coeff, single[0], bindings, exact, solve), None)
+            if first is not None:
+                yield first
+                return
     subject = list(terms_of(expr) if is_add else factors_of(expr))
     identity: Expr = Integer(0) if is_add else Integer(1)
     lone: list[Wild] = []
