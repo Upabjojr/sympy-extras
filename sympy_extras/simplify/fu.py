@@ -1326,7 +1326,7 @@ class Minimize:
 
 
 Tree = Union[Rule, Chain, Minimize]
-MeasureKey = tuple[int, ...]
+MeasureKey = tuple[float, ...]
 Measure = Callable[[Expr], MeasureKey]
 
 

@@ -623,6 +623,13 @@ def rewrite_targets(args: Sequence[Union[Basic, FunctionClass, type]]) -> list[U
         elif isinstance(a, UndefinedFunction):
             targets.append(sympy.Function(a.name))
         elif isinstance(a, type):
+            # a typed function class rewrites as its SymPy class (Cos as cos)
+            if issubclass(a, DefinedFunction):
+                if not _NATIVE_TO_SYMPY:
+                    _fill_function_tables()
+                if a in _NATIVE_TO_SYMPY:
+                    targets.append(_NATIVE_TO_SYMPY[a])
+                    continue
             targets.append(a)
         else:
             raise TypeError("cannot rewrite in terms of %r" % (a,))

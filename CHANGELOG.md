@@ -51,6 +51,8 @@ remove public functions. Breaking changes are listed here when they happen.
 - `sympy_extras.simplify.simplify.nsimplify` (pslq, `mpmath.identify`
   read by a typed parser, constants, `rational`, `tolerance`), ported from
   SymPy; `radsimp` no longer goes through SymPy.
+- `sympy_extras.simplify.trigsimp`: `trigsimp` (methods `matching` and
+  `fu`), `futrig` and `exptrigsimp`, ported from SymPy.
 - `sympy_extras.simplify.fu`: `fu`, `TR0` to `TR22`, `TRmorrie`,
   `TRpower`, `L`, `sincos_to_sum`, the `greedy` strategies, `trig_split`,
   `as_f_sign_1`, `process_common_addends`, `hyper_as_trig`, and
@@ -58,6 +60,8 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `rewrite` accepts the typed function classes (`Cos`, `Exp`, ...) as
+  targets, mapped to their SymPy classes.
 - `Pow.as_numer_denom` is SymPy's: the base is split when the exponent is
   an integer or the denominator is known positive (`sqrt(sqrt(2)/4 + 1/2)`
   is `sqrt(sqrt(2) + 2)/2`), kept whole when its sign is unknown.
