@@ -27,10 +27,12 @@ trigonometric ones (Osborne's rule) and back. Each rule works bottom up.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Hashable
+from typing import Callable, Optional, Union
 
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.basic import Basic
+from sympy_extras.core.containers import Tuple
 from sympy_extras.core.exprtools import ExprFactors, factor_terms, gcd_terms
 from sympy_extras.core.expr import Expr, ExprLike, factors_of, to_expr
 from sympy_extras.core.function import expand_mul
@@ -43,8 +45,10 @@ from sympy_extras.core.traversal import bottom_up
 from sympy_extras.functions.elementary.hyperbolic import Cosh, Coth, Csch, Sech, Sinh, Tanh, cosh, coth, csch, sech, sinh, tanh
 from sympy_extras.functions.elementary.trigonometric import Cos, Cot, Csc, Sec, Sin, Tan, cos, cot, csc, sec, sin, tan
 
-__all__ = ['TR0', 'TR1', 'TR2', 'TR2i', 'TR3', 'TR5', 'TR6', 'TR7', 'TR8', 'TR9', 'trig_split', 'as_f_sign_1',
-           'process_common_addends', 'hyper_as_trig']
+__all__ = ['TR0', 'TR1', 'TR2', 'TR2i', 'TR3', 'TR4', 'TR5', 'TR6', 'TR7', 'TR8', 'TR9', 'TR10', 'TR10i', 'TR11',
+           'TR12', 'TR12i', 'TR13', 'TR14', 'TR15', 'TR16', 'TR111', 'TR22', 'TRmorrie', 'TRpower', 'L', 'fu',
+           'sincos_to_sum', 'trig_split', 'as_f_sign_1', 'process_common_addends', 'hyper_as_trig', 'greedy',
+           'Chain', 'Minimize']
 
 Rule = Callable[[Expr], Expr]
 TRIG = (Sin, Cos, Tan, Cot, Sec, Csc)
@@ -244,7 +248,7 @@ def TR3(rv: ExprLike) -> Expr:
 
 def _TR56(rv: Expr, f: type, g: Callable[[Expr], Expr], h: Callable[[Expr], Expr], max_: int, pow_: bool) -> Expr:
     from sympy_extras.ntheory.factor_ import perfect_power
-    rebuild: dict[type, Callable[[Expr], Expr]] = {Sin: sin, Cos: cos}
+    rebuild: dict[type, Callable[[Expr], Expr]] = {Sin: sin, Cos: cos, Tan: tan, Cot: cot}
 
     def _f(e: Expr) -> Expr:
         if not (isinstance(e, Pow) and isinstance(e.base, f)):
@@ -356,11 +360,11 @@ Split = tuple[Expr, int, int, Expr, Expr, bool]
 
 
 # PORTED FROM SYMPY: sympy/simplify/fu.py:process_common_addends
-def process_common_addends(rv: Expr, do: Rule, key2: Optional[Callable[[Expr], Expr]] = None,
+def process_common_addends(rv: Expr, do: Rule, key2: Optional[Callable[[Expr], Hashable]] = None,
                            key1: bool = True) -> Expr:
     """``do`` applied to the groups of terms with the same absolute
     coefficient (and the same ``key2``)."""
-    absc: dict[tuple[Expr, Expr], list[Expr]] = {}
+    absc: dict[tuple[Expr, Hashable], list[Expr]] = {}
     if key1:
         for a0 in rv.args:
             number, a = _expr(a0).as_coeff_Mul()
@@ -658,3 +662,746 @@ def hyper_as_trig(rv: ExprLike) -> tuple[Expr, Inverse]:
 
     return _osborne(masked, d), inverse
 
+
+# ---------------------------------------------------------------------
+# part 2
+
+_REBUILD: dict[type, Callable[[Expr], Expr]] = {Sin: sin, Cos: cos, Tan: tan, Cot: cot, Sec: sec, Csc: csc}
+
+
+def _ordered_exprs(args: tuple[Basic, ...]) -> list[Expr]:
+    return [_expr(a) for a in ordered(list(args))]
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TR4
+def TR4(rv: ExprLike) -> Expr:
+    """The values at the special angles (multiples of ``pi/6`` and
+    ``pi/4``) evaluated."""
+    def query(x: Basic) -> bool:
+        if not isinstance(x, TRIG):
+            return False
+        r = mul(_arg(x), _inv(pi))
+        return isinstance(r, Rational) and r.q in (1, 2, 3, 4, 6)
+
+    def value(x: Basic) -> Basic:
+        e = _expr(x)
+        arg = _arg(e)
+        return _REBUILD[type(e)](_expr(arg._evaluated(arg.args)) if arg.args else arg)
+
+    return _expr(to_expr(rv).replace(query, value))
+
+
+def _split_last(arg: Add, first: bool) -> tuple[Expr, Expr]:
+    args = _ordered_exprs(arg.args) if first else [_expr(a) for a in arg.args]
+    a = args.pop()
+    b = Add(*args) if len(args) > 1 else args[0]
+    return a, b
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TR10
+def TR10(rv: ExprLike, first: bool = True) -> Expr:
+    """``sin`` and ``cos`` of sums expanded (addition formulas)."""
+    def f(e: Expr) -> Expr:
+        if not isinstance(e, (Cos, Sin)):
+            return e
+        arg = _arg(e)
+        if not isinstance(arg, Add):
+            return e
+        a, b = _split_last(arg, first)
+        if isinstance(b, Add):
+            if isinstance(e, Sin):
+                return add(mul(sin(a), TR10(cos(b), first=False)), mul(cos(a), TR10(sin(b), first=False)))
+            return add(mul(cos(a), TR10(cos(b), first=False)), _neg(mul(sin(a), TR10(sin(b), first=False))))
+        if isinstance(e, Sin):
+            return add(mul(sin(a), cos(b)), mul(cos(a), sin(b)))
+        return add(mul(cos(a), cos(b)), _neg(mul(sin(a), sin(b))))
+    return _bottom(to_expr(rv), f)
+
+
+def _pair_rule(do: Callable[[Expr], Expr]) -> Callable[[Expr], Expr]:
+    """The pairwise search of TR9/TR10i over the terms of a sum."""
+    def search(e: Expr) -> Expr:
+        if not isinstance(e, Add):
+            return e
+        args: list[Optional[Expr]] = list(_ordered_exprs(e.args))
+        hit = False
+        for i in range(len(args)):
+            ai = args[i]
+            if ai is None:
+                continue
+            for j in range(i + 1, len(args)):
+                aj = args[j]
+                if aj is None:
+                    continue
+                was = add(ai, aj)
+                new = do(was)
+                if new != was:
+                    args[i] = new
+                    args[j] = None
+                    hit = True
+                    break
+        if hit:
+            e = add(*[t for t in args if t is not None])
+            if isinstance(e, Add):
+                e = do(e)
+        return e
+    return search
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TR10i
+def TR10i(rv: ExprLike) -> Expr:
+    """Sums of products of ``sin`` and ``cos`` as ``sin``/``cos`` of sums
+    (the inverse of TR10)."""
+    def do(e: Expr, first: bool = True) -> Expr:
+        if not isinstance(e, Add):
+            return e
+        if len(e.args) != 2:
+            return _pair_rule(do)(e)
+        a0, b0 = _ordered_exprs(e.args)
+        split = trig_split(a0, b0, two=True)
+        if not split:
+            return e
+        gcd, n1, n2, a, b, same = split
+        gcd = mul(Integer(n1), gcd)
+        if same:
+            if n1 == n2:
+                return mul(gcd, cos(add(a, _neg(b))))
+            return mul(gcd, cos(add(a, b)))
+        if n1 == n2:
+            return mul(gcd, sin(add(a, b)))
+        return mul(gcd, sin(add(b, _neg(a))))
+
+    def f(e: Expr) -> Expr:
+        if not isinstance(e, Add):
+            return e
+        e = process_common_addends(e, do, lambda x: tuple(ordered(list(x.free_symbols))))
+        while isinstance(e, Add):
+            byrad: dict[Expr, list[Optional[Expr]]] = {}
+            for a0 in e.args:
+                a = _expr(a0)
+                hit = False
+                if isinstance(a, Mul):
+                    for ai in a.args:
+                        if isinstance(ai, Pow) and ai.exp == Rational(1, 2) and isinstance(ai.base, Integer):
+                            byrad.setdefault(ai, []).append(a)
+                            hit = True
+                            break
+                if not hit:
+                    byrad.setdefault(Integer(1), []).append(a)
+            args: list[Expr] = []
+            for a in list(byrad):
+                for b in (mul(_ROOT3(), a), _invROOT3()):
+                    if b in byrad:
+                        for i in range(len(byrad[a])):
+                            item = byrad[a][i]
+                            if item is None:
+                                continue
+                            for j in range(len(byrad[b])):
+                                other_item = byrad[b][j]
+                                if other_item is None:
+                                    continue
+                                was = add(item, other_item)
+                                new = do(was)
+                                if new != was:
+                                    args.append(new)
+                                    byrad[a][i] = None
+                                    byrad[b][j] = None
+                                    break
+            if args:
+                e = add(*(args + [add(*[t for t in v if t is not None]) for v in byrad.values()]))
+            else:
+                e = do(e)
+                break
+        return e
+
+    return _bottom(to_expr(rv), f)
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TR11
+def TR11(rv: ExprLike, base: Optional[Expr] = None) -> Expr:
+    """Double angles reduced (``sin(2*x)`` is ``2*sin(x)*cos(x)``); with
+    ``base``, only the functions of ``2*base``."""
+    def f(e: Expr) -> Expr:
+        if not isinstance(e, (Cos, Sin)):
+            return e
+        if base is not None:
+            func = _REBUILD[type(e)]
+            t = func(mul(base, Integer(2)))
+            co: Expr = Integer(1)
+            if isinstance(t, Mul):
+                number, t = t.as_coeff_Mul()
+                co = number
+            if not isinstance(t, (Cos, Sin)):
+                return e
+            if _arg(e) == _arg(t):
+                c, s_ = cos(base), sin(base)
+                if isinstance(e, Cos):
+                    return mul(add(pow(c, Integer(2)), _neg(pow(s_, Integer(2)))), _inv(co))
+                return mul(Integer(2), c, s_, _inv(co))
+            return e
+        if not isinstance(_arg(e), Number):
+            c, m = _arg(e).as_coeff_Mul(rational=True)
+            if isinstance(c, Rational) and c.p % 2 == 0:
+                arg = mul(Integer(c.p // 2), m, Rational(1, c.q) if c.q != 1 else Integer(1))
+                cc, ss = TR11(cos(arg)), TR11(sin(arg))
+                if isinstance(e, Sin):
+                    return mul(Integer(2), ss, cc)
+                return add(pow(cc, Integer(2)), _neg(pow(ss, Integer(2))))
+        return e
+    return _bottom(to_expr(rv), f)
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:_TR11
+def _TR11(rv: ExprLike) -> Expr:
+    """TR11 on the half angles which appear in the other part of a
+    fraction."""
+    def sincos_args(flat: Expr) -> dict[type, set[Expr]]:
+        found: dict[type, set[Expr]] = {Cos: set(), Sin: set()}
+        for fi in factors_of(flat):
+            b, ex = fi.as_base_exp()
+            if isinstance(ex, Integer) and ex.p > 0 and isinstance(b, (Cos, Sin)):
+                found[type(b)].add(_arg(b))
+        return found
+
+    def f(e: Expr) -> Expr:
+        n, d = e.as_numer_denom()
+        num_args, den_args = sincos_args(n), sincos_args(d)
+
+        def handle(e: Expr, num: dict[type, set[Expr]], den: dict[type, set[Expr]]) -> Expr:
+            for narg in list(num[Sin]):
+                half_arg = _half(narg)
+                if half_arg in den[Cos]:
+                    kind: type = Cos
+                elif half_arg in den[Sin]:
+                    kind = Sin
+                else:
+                    continue
+                e = TR11(e, half_arg)
+                den[kind].remove(half_arg)
+            return e
+
+        e = handle(e, num_args, den_args)
+        return handle(e, den_args, num_args)
+
+    return _bottom(to_expr(rv), f)
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TR12
+def TR12(rv: ExprLike, first: bool = True) -> Expr:
+    """``tan`` of sums expanded."""
+    def f(e: Expr) -> Expr:
+        if not isinstance(e, Tan):
+            return e
+        arg = _arg(e)
+        if not isinstance(arg, Add):
+            return e
+        a, b = _split_last(arg, first)
+        tb = TR12(tan(b), first=False) if isinstance(b, Add) else tan(b)
+        return mul(add(tan(a), tb), _inv(add(Integer(1), _neg(mul(tan(a), tb)))))
+    return _bottom(to_expr(rv), f)
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TR12i
+def TR12i(rv: ExprLike) -> Expr:
+    """``(tan(a) + tan(b))/(1 - tan(a)*tan(b))`` as ``tan(a + b)``."""
+    from sympy_extras.polys.polytools import factor
+
+    def ok_d(di: Expr) -> Optional[tuple[Expr, Expr]]:
+        m = as_f_sign_1(di)
+        if m:
+            g, f_, s_ = m
+            if s_ == Integer(-1) and isinstance(f_, Mul) and len(f_.args) == 2 and all(
+                    isinstance(fi, Tan) for fi in f_.args):
+                return g, f_
+        return None
+
+    def ok_n(ni: Expr) -> Optional[tuple[Expr, Expr]]:
+        if isinstance(ni, Add) and len(ni.args) == 2:
+            a, b = _expr(ni.args[0]), _expr(ni.args[1])
+            if isinstance(a, Tan) and isinstance(b, Tan):
+                return a, b
+        return None
+
+    def f(e: Expr) -> Expr:
+        if not isinstance(e, (Add, Mul, Pow)):
+            return e
+        n, d = e.as_numer_denom()
+        if not d.args or not n.args:
+            return e
+        dok: dict[Expr, Expr] = {}
+        d_args: list[Expr] = list(factors_of(d))
+        i = 0
+        while i < len(d_args):
+            di = d_args[i]
+            m = ok_d(di)
+            if m:
+                g, t = m
+                dok[add(*[_arg(_expr(x)) for x in t.args])] = Integer(1)
+                d_args[i] = g
+            elif isinstance(di, Add):
+                fd = factor(di)
+                if isinstance(fd, Mul):
+                    d_args.extend(_expr(a) for a in fd.args)
+                    d_args[i] = Integer(1)
+            elif isinstance(di, Pow) and (di.exp.is_integer is True or di.base.is_positive is True):
+                m = ok_d(di.base)
+                if m:
+                    g, t = m
+                    dok[add(*[_arg(_expr(x)) for x in t.args])] = di.exp
+                    d_args[i] = pow(g, di.exp)
+                else:
+                    fd = factor(di)
+                    if isinstance(fd, Mul):
+                        d_args.extend(_expr(a) for a in fd.args)
+                        d_args[i] = Integer(1)
+            i += 1
+        if not dok:
+            return e
+        n_args: list[Expr] = list(factors_of(factor_terms(n)))
+        hit = False
+        i = 0
+        while i < len(n_args):
+            ni = n_args[i]
+            m = ok_n(ni)
+            if not m:
+                m = ok_n(_neg(ni))
+                if m:
+                    n_args[i] = Integer(-1)
+                else:
+                    if isinstance(ni, Add):
+                        fn = factor(ni)
+                        if isinstance(fn, Mul):
+                            n_args.extend(_expr(a) for a in fn.args)
+                            n_args[i] = Integer(1)
+                        i += 1
+                        continue
+                    if isinstance(ni, Pow) and (ni.exp.is_integer is True or ni.base.is_positive is True):
+                        m = ok_n(ni.base)
+                        if m:
+                            n_args[i] = Integer(1)
+                        else:
+                            fn = factor(ni)
+                            if isinstance(fn, Mul):
+                                n_args.extend(_expr(a) for a in fn.args)
+                                n_args[i] = Integer(1)
+                            i += 1
+                            continue
+                    else:
+                        i += 1
+                        continue
+            else:
+                n_args[i] = Integer(1)
+            hit = True
+            s_ = add(*[_arg(t) for t in m])
+            ed = dok[s_]
+            newed = ed.extract_additively(Integer(1))
+            if newed is not None:
+                if not (isinstance(newed, Number) and newed == 0):
+                    dok[s_] = newed
+                else:
+                    dok.pop(s_)
+            n_args[i] = mul(n_args[i], _neg(tan(s_)))
+            i += 1
+        if hit:
+            denominator = mul(*[pow(add(add(*[tan(_expr(a)) for a in (k.args if isinstance(k, Add) else (k,))]),
+                                        Integer(-1)), ex) for k, ex in dok.items()])
+            return mul(mul(*n_args), _inv(mul(*d_args)), _inv(denominator))
+        return e
+
+    return _bottom(to_expr(rv), f)
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TR13
+def TR13(rv: ExprLike) -> Expr:
+    """Products of ``tan`` (``cot``) as sums through ``tan(a + b)``."""
+    def f(e: Expr) -> Expr:
+        if not isinstance(e, Mul):
+            return e
+        ts: list[Expr] = []
+        cs: list[Expr] = []
+        args: list[Expr] = []
+        for a in factors_of(e):
+            if isinstance(a, Tan):
+                ts.append(_arg(a))
+            elif isinstance(a, Cot):
+                cs.append(_arg(a))
+            else:
+                args.append(a)
+        if len(ts) < 2 and len(cs) < 2:
+            return e
+        while len(ts) > 1:
+            t1, t2 = ts.pop(), ts.pop()
+            s12 = tan(add(t1, t2))
+            args.append(add(Integer(1), _neg(add(mul(tan(t1), _inv(s12)), mul(tan(t2), _inv(s12))))))
+        if ts:
+            args.append(tan(ts.pop()))
+        while len(cs) > 1:
+            t1, t2 = cs.pop(), cs.pop()
+            c12 = cot(add(t1, t2))
+            args.append(add(Integer(1), mul(cot(t1), c12), mul(cot(t2), c12)))
+        if cs:
+            args.append(cot(cs.pop()))
+        return mul(*args)
+    return _bottom(to_expr(rv), f)
+
+
+def _value(n: Expr) -> float:
+    from sympy_extras.core.numbers import Float
+    if isinstance(n, (Rational, Float)):
+        return float(n.as_fraction())
+    value = n.evalf(15)
+    return float(value.as_fraction()) if isinstance(value, (Rational, Float)) else 0.0
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TRmorrie
+def TRmorrie(rv: ExprLike) -> Expr:
+    """Morrie's law: ``cos(x)*cos(2*x)*...*cos(2**(k-1)*x)`` is
+    ``sin(2**k*x)/(2**k*sin(x))``."""
+    def f(e: Expr, first: bool = True) -> Expr:
+        if not isinstance(e, Mul):
+            return e
+        if first:
+            n, d = e.as_numer_denom()
+            return mul(f(n, False), _inv(f(d, False)))
+        args: dict[Expr, list[Expr]] = {}
+        coss: dict[Expr, int] = {}
+        other: list[Expr] = []
+        for c0 in e.args:
+            c = _expr(c0)
+            b, ex = c.as_base_exp()
+            if isinstance(ex, Integer) and isinstance(b, Cos):
+                co, a = _arg(b).as_coeff_Mul()
+                args.setdefault(a, []).append(co)
+                coss[b] = ex.p
+            else:
+                other.append(c)
+        new: list[Expr] = []
+        for a in args:
+            cl = args[a]
+            cl.sort(key=_value)
+            while cl:
+                k = 0
+                cc = ci = cl[0]
+                while cc in cl:
+                    k += 1
+                    cc = mul(cc, Integer(2))
+                if k > 1:
+                    newarg = mul(sin(mul(Integer(2**k), ci, a)), Rational(1, 2**k), _inv(sin(mul(ci, a))))
+                    take: Optional[int] = None
+                    ccs: list[Expr] = []
+                    for _ in range(k):
+                        cc = mul(cc, Rational(1, 2))
+                        key: Expr = Cos(mul(a, cc))
+                        ccs.append(cc)
+                        take = min(coss[key], take or coss[key])
+                    for _ in range(k):
+                        cc = ccs.pop()
+                        key = Cos(mul(a, cc))
+                        coss[key] -= take or 0
+                        if not coss[key]:
+                            cl.remove(cc)
+                    new.append(pow(newarg, Integer(take or 0)))
+                else:
+                    b = cos(mul(cl.pop(0), a))
+                    other.append(pow(b, Integer(coss[b])))
+        if new:
+            return mul(*(new + other + [Cos(mul(k, a)) for a in args for k in args[a]]))
+        return e
+
+    return _bottom(to_expr(rv), lambda e: f(e))
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TR14
+def TR14(rv: ExprLike, first: bool = True) -> Expr:
+    """Factored powers of ``sin``/``cos`` identities:
+    ``(1 - cos(x))*(1 + cos(x))`` is ``sin(x)**2``."""
+    from sympy_extras.core.logic import false, true
+
+    def f(e: Expr) -> Expr:
+        if not isinstance(e, Mul):
+            return e
+        if first:
+            n, d = e.as_numer_denom()
+            if d != Integer(1):
+                newn, newd = TR14(n, first=False), TR14(d, first=False)
+                if newn != n or newd != d:
+                    e = mul(newn, _inv(newd))
+                return e
+        other: list[Expr] = []
+        process: list[tuple[Expr, bool, Expr, Expr, Expr, Expr]] = []
+        for a0 in e.args:
+            a = _expr(a0)
+            if isinstance(a, Pow):
+                b, ex = a.as_base_exp()
+                if not (ex.is_integer is True or b.is_positive is True):
+                    other.append(a)
+                    continue
+                a = b
+            else:
+                ex = Integer(1)
+            m = as_f_sign_1(a)
+            if not m or not isinstance(m[1], (Cos, Sin)):
+                other.append(a if ex == Integer(1) else pow(a, ex))
+                continue
+            g, fn, si = m
+            process.append((g, isinstance(ex, Number), ex, fn, si, a))
+        wrapped = {Tuple(g, true if isn else false, ex, fn, si, a): _Item(g, ex, fn, si, a)
+                   for g, isn, ex, fn, si, a in process}
+        queue = [wrapped[_tuple(t)] for t in ordered(list(wrapped))]
+        nother = len(other)
+        while queue:
+            A = queue.pop(0)
+            if queue:
+                B = queue[0]
+                if isinstance(A.e, Number) and isinstance(B.e, Number):
+                    if A.f == B.f and A.si != B.si:
+                        B = queue.pop(0)
+                        take = A.e if _value(A.e) <= _value(B.e) else B.e
+                        if B.e != take:
+                            queue.insert(0, _Item(B.g, add(B.e, _neg(take)), B.f, B.si, B.a))
+                        elif A.e != take:
+                            queue.insert(0, _Item(A.g, add(A.e, _neg(take)), A.f, A.si, A.a))
+                        t = sin if isinstance(A.f, Cos) else cos
+                        other.append(pow(mul(_neg(A.g), B.g, pow(t(_arg(A.f)), Integer(2))), take))
+                        continue
+                elif A.e == B.e:
+                    if A.f == B.f and A.si != B.si:
+                        B = queue.pop(0)
+                        t = sin if isinstance(A.f, Cos) else cos
+                        other.append(pow(mul(_neg(A.g), B.g, pow(t(_arg(A.f)), Integer(2))), A.e))
+                        continue
+            other.append(pow(A.a, A.e))
+        if len(other) != nother:
+            return mul(*other)
+        return e
+
+    return _bottom(to_expr(rv), f)
+
+
+class _Item:
+    """A factor ``g*(f + si)**e`` of TR14 (the base ``a``)."""
+
+    __slots__ = ('g', 'e', 'f', 'si', 'a')
+
+    def __init__(self, g: Expr, e: Expr, f: Expr, si: Expr, a: Expr) -> None:
+        self.g, self.e, self.f, self.si, self.a = g, e, f, si, a
+
+
+def _tuple(b: Basic) -> Tuple:
+    if not isinstance(b, Tuple):
+        raise TypeError('a Tuple is expected')
+    return b
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TR15
+def TR15(rv: ExprLike, max: int = 4, pow: bool = False) -> Expr:
+    """Negative even powers of ``sin`` through ``1 + cot**2``."""
+    from sympy_extras.core.power import pow as power
+
+    def f(e: Expr) -> Expr:
+        if not (isinstance(e, Pow) and isinstance(e.base, Sin)):
+            return e
+        ex = e.exp
+        if isinstance(ex, Integer) and ex.p % 2 == 1:
+            return mul(TR15(power(e.base, Integer(ex.p + 1))), _inv(e.base))
+        ia = _inv(e)
+        a = _TR56(ia, Sin, cot, lambda x: add(Integer(1), x), max, pow)
+        return a if a != ia else e
+    return _bottom(to_expr(rv), f)
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TR16
+def TR16(rv: ExprLike, max: int = 4, pow: bool = False) -> Expr:
+    """Negative even powers of ``cos`` through ``1 + tan**2``."""
+    from sympy_extras.core.power import pow as power
+
+    def f(e: Expr) -> Expr:
+        if not (isinstance(e, Pow) and isinstance(e.base, Cos)):
+            return e
+        ex = e.exp
+        if isinstance(ex, Integer) and ex.p % 2 == 1:
+            return mul(TR15(power(e.base, Integer(ex.p + 1))), _inv(e.base))
+        ia = _inv(e)
+        a = _TR56(ia, Cos, tan, lambda x: add(Integer(1), x), max, pow)
+        return a if a != ia else e
+    return _bottom(to_expr(rv), f)
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TR111
+def TR111(rv: ExprLike) -> Expr:
+    """Negative powers of ``tan``, ``sin``, ``cos`` as ``cot``, ``csc``,
+    ``sec``."""
+    def f(e: Expr) -> Expr:
+        if not (isinstance(e, Pow) and (e.base.is_positive is True or (
+                e.exp.is_integer is True and e.exp.is_negative is True))):
+            return e
+        if isinstance(e.base, Tan):
+            return pow(cot(_arg(e.base)), _neg(e.exp))
+        if isinstance(e.base, Sin):
+            return pow(csc(_arg(e.base)), _neg(e.exp))
+        if isinstance(e.base, Cos):
+            return pow(sec(_arg(e.base)), _neg(e.exp))
+        return e
+    return _bottom(to_expr(rv), f)
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TR22
+def TR22(rv: ExprLike, max: int = 4, pow: bool = False) -> Expr:
+    """Even powers of ``tan``/``cot`` through ``sec**2 - 1``/``csc**2 - 1``."""
+    def f(e: Expr) -> Expr:
+        if not (isinstance(e, Pow) and isinstance(e.base, (Cot, Tan))):
+            return e
+        e = _TR56(e, Tan, sec, lambda x: add(x, Integer(-1)), max, pow)
+        return _TR56(e, Cot, csc, lambda x: add(x, Integer(-1)), max, pow)
+    return _bottom(to_expr(rv), f)
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:TRpower
+def TRpower(rv: ExprLike) -> Expr:
+    """Positive integer powers of ``sin``/``cos`` as sums of multiple
+    angles."""
+    from sympy_extras.functions import binomial
+
+    def f(e: Expr) -> Expr:
+        if not (isinstance(e, Pow) and isinstance(e.base, (Sin, Cos))):
+            return e
+        b, n0 = e.as_base_exp()
+        if not (isinstance(n0, Integer) and n0.p > 0):
+            return e
+        n = n0.p
+        x = _arg(b)
+        scale = pow(Integer(2), Integer(1 - n))
+        if n % 2 == 1 and isinstance(b, Cos):
+            e = mul(scale, add(*[mul(binomial(n, k), cos(mul(Integer(n - 2 * k), x))) for k in range((n + 1) // 2)]))
+        elif n % 2 == 1:
+            e = mul(scale, Integer((-1) ** ((n - 1) // 2)), add(*[mul(binomial(n, k), Integer((-1) ** k),
+                                                                    sin(mul(Integer(n - 2 * k), x)))
+                                                                for k in range((n + 1) // 2)]))
+        elif isinstance(b, Cos):
+            e = mul(scale, add(*[mul(binomial(n, k), cos(mul(Integer(n - 2 * k), x))) for k in range(n // 2)]))
+        else:
+            e = mul(scale, Integer((-1) ** (n // 2)), add(*[mul(binomial(n, k), Integer((-1) ** k),
+                                                              cos(mul(Integer(n - 2 * k), x))) for k in range(n // 2)]))
+        if n % 2 == 0:
+            e = add(e, mul(pow(Integer(2), Integer(-n)), binomial(n, n // 2)))
+        return e
+
+    return _bottom(to_expr(rv), f)
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:L
+def L(rv: ExprLike) -> int:
+    """The number of trigonometric functions in ``rv``."""
+    from sympy_extras.core.basic import preorder_traversal
+    return sum(1 for node in preorder_traversal(to_expr(rv)) if isinstance(node, TRIG))
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:sincos_to_sum
+def sincos_to_sum(expr: ExprLike) -> Expr:
+    e = to_expr(expr)
+    if not e.has(Sin, Cos):
+        return e
+    return TR8(expand_mul(TRpower(e)))
+
+
+# ---------------------------------------------------------------------
+# the strategies
+
+class Chain:
+    """Rules applied one after the other (SymPy's tuple in a tree)."""
+
+    __slots__ = ('rules',)
+
+    def __init__(self, *rules: 'Tree') -> None:
+        self.rules: tuple[Tree, ...] = rules
+
+
+class Minimize:
+    """The best result of the alternatives (SymPy's list in a tree)."""
+
+    __slots__ = ('rules',)
+
+    def __init__(self, *rules: 'Tree') -> None:
+        self.rules: tuple[Tree, ...] = rules
+
+
+Tree = Union[Rule, Chain, Minimize]
+MeasureKey = tuple[int, ...]
+Measure = Callable[[Expr], MeasureKey]
+
+
+# PORTED FROM SYMPY: sympy/strategies/tree.py:greedy (treeapply with minimize and chain)
+def greedy(tree: Tree, objective: Measure) -> Rule:
+    """The rule of a tree: a chain composes, a minimisation keeps the
+    result of least ``objective``."""
+    if isinstance(tree, Chain):
+        rules = [greedy(t, objective) for t in tree.rules]
+
+        def chained(e: Expr) -> Expr:
+            for r in rules:
+                e = r(e)
+            return e
+        return chained
+    if isinstance(tree, Minimize):
+        alternatives = [greedy(t, objective) for t in tree.rules]
+
+        def minimized(e: Expr) -> Expr:
+            return min((r(e) for r in alternatives), key=objective)
+        return minimized
+    return tree
+
+
+def _identity(e: Expr) -> Expr:
+    return e
+
+
+def _rule(r: Callable[[Expr], Expr]) -> Rule:
+    return r
+
+
+CTR1 = Minimize(Chain(_rule(TR5), _rule(TR0)), Chain(_rule(TR6), _rule(TR0)), _identity)
+CTR2 = Chain(_rule(TR11), Minimize(Chain(_rule(TR5), _rule(TR0)), Chain(_rule(TR6), _rule(TR0)), _rule(TR0)))
+CTR3 = Minimize(Chain(_rule(TRmorrie), _rule(TR8), _rule(TR0)), Chain(_rule(TRmorrie), _rule(TR8), _rule(TR10i),
+                                                                       _rule(TR0)), _identity)
+CTR4 = Minimize(Chain(_rule(TR4), _rule(TR10i)), _identity)
+RL1 = Chain(_rule(TR4), _rule(TR3), _rule(TR4), _rule(TR12), _rule(TR4), _rule(TR13), _rule(TR4), _rule(TR0))
+RL2 = Minimize(
+    Chain(_rule(TR4), _rule(TR3), _rule(TR10), _rule(TR4), _rule(TR3), _rule(TR11)),
+    Chain(_rule(TR5), _rule(TR7), _rule(TR11), _rule(TR4)),
+    Chain(CTR3, CTR1, _rule(TR9), CTR2, _rule(TR4), _rule(TR9), _rule(TR9), CTR4),
+    _identity)
+
+
+def _fu_measure(e: Expr) -> MeasureKey:
+    from sympy_extras.core.function import count_ops
+    ops = count_ops(e)
+    return (L(e), ops.p if isinstance(ops, Integer) else 0)
+
+
+# PORTED FROM SYMPY: sympy/simplify/fu.py:fu
+def fu(rv: ExprLike, measure: Measure = _fu_measure) -> Expr:
+    """The trigonometric simplification of Fu, Zhong and Zeng: the rule
+    lists RL1 (tangents) and RL2 (sines and cosines) applied greedily for
+    the fewest trigonometric functions, then the fewest operations.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import cos, sin, tan
+    >>> x = Symbol('x')
+    >>> fu(sin(x)**2 + cos(x)**2), fu(sin(x)/cos(x)), fu(1 - 2*sin(x)**2)
+    (1, tan(x), cos(2*x))
+    """
+    fRL1 = greedy(RL1, measure)
+    fRL2 = greedy(RL2, measure)
+    was = to_expr(rv)
+    e = TR1(was)
+    if e.has(Tan, Cot):
+        e1 = fRL1(e)
+        if measure(e1) < measure(e):
+            e = e1
+        if e.has(Tan, Cot):
+            e = TR2(e)
+    if e.has(Sin, Cos):
+        e1 = fRL2(e)
+        e2 = TR8(TRmorrie(e1))
+        e = min([was, e, e1, e2], key=measure)
+    return min(TR2i(e), e, key=measure)

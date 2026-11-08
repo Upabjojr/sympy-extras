@@ -51,12 +51,16 @@ remove public functions. Breaking changes are listed here when they happen.
 - `sympy_extras.simplify.simplify.nsimplify` (pslq, `mpmath.identify`
   read by a typed parser, constants, `rational`, `tolerance`), ported from
   SymPy; `radsimp` no longer goes through SymPy.
-- `sympy_extras.simplify.fu`: `TR0` to `TR9`, `trig_split`,
+- `sympy_extras.simplify.fu`: `fu`, `TR0` to `TR22`, `TRmorrie`,
+  `TRpower`, `L`, `sincos_to_sum`, the `greedy` strategies, `trig_split`,
   `as_f_sign_1`, `process_common_addends`, `hyper_as_trig`, and
   `ExprFactors` (SymPy's `Factors` with any exponents), ported from SymPy.
 
 ### Changed
 
+- `Pow.as_numer_denom` is SymPy's: the base is split when the exponent is
+  an integer or the denominator is known positive (`sqrt(sqrt(2)/4 + 1/2)`
+  is `sqrt(sqrt(2) + 2)/2`), kept whole when its sign is unknown.
 - `expand` distributes products as SymPy's `Mul._eval_expand_mul` does: a
   product denominator is expanded first, so `p*t/((c + 2)*t)` style terms
   keep the expanded denominator instead of cancelling `t` term by term.

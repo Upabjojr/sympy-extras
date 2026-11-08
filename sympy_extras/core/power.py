@@ -149,24 +149,38 @@ class Pow(Expr):
             return None
         return power_subs(self._base, self._exp, old, new)
 
+    # PORTED FROM SYMPY: sympy/core/power.py:Pow.as_numer_denom
     def as_numer_denom(self) -> tuple[Expr, Expr]:
-        e = self._exp
-        if isinstance(e, Rational) and e.p < 0:
-            n, d = self._base.as_numer_denom()
-            minus = Rational(-e.p, e.q)
-            return (pow(d, minus), pow(n, minus))
-        if isinstance(e, Rational):
-            if isinstance(self._base, Add) and e.q > 1:
-                return (self, Integer(1))  # SymPy keeps sqrt(pi*x + x**(-2)) whole
-            n, d = self._base.as_numer_denom()
-            return (pow(n, e), pow(d, e))
-        c = e.as_coeff_Mul()[0]
-        if isinstance(c, Rational) and c.p < 0:
-            return (Integer(1), pow(self._base, mul(Integer(-1), e)))  # x**(-pi) is 1/x**pi
-        n, d = self._base.as_numer_denom()
-        if d.is_Number and d == 1:
+        """The numerator and the denominator: the base split when its
+        denominator is known real and the exponent an integer, or the
+        denominator known positive (negated when nonpositive); a negative
+        exponent swaps them."""
+        if self.is_commutative is False:
             return (self, Integer(1))
-        return (pow(n, e), pow(d, e))  # ((5*x + 4)/5)**n is (5*x + 4)**n / 5**n
+        base, exp = self.as_base_exp()
+        n, d = base.as_numer_denom()
+        neg_exp = exp.is_negative is True
+        if isinstance(exp, Mul) and not neg_exp and exp.is_positive is not True:
+            neg_exp = exp.could_extract_minus_sign()
+        int_exp = exp.is_integer is True
+        if not (d.is_extended_real is True or int_exp):
+            n, d = base, Integer(1)
+        dnonpos = d.is_nonpositive
+        if dnonpos is True:
+            n, d = mul(Integer(-1), n), mul(Integer(-1), d)
+        elif dnonpos is None and not int_exp:
+            n, d = base, Integer(1)
+        if neg_exp:
+            n, d = d, n
+            exp = mul(Integer(-1), exp)
+        if exp.is_infinite is True:
+            n_one = isinstance(n, Integer) and n.p == 1
+            d_one = isinstance(d, Integer) and d.p == 1
+            if n_one and not d_one:
+                return (n, pow(d, exp))
+            if not n_one and d_one:
+                return (pow(n, exp), d)
+        return (pow(n, exp), pow(d, exp))
 
 
 def pow(b: ExprLike, e: ExprLike) -> Expr:
