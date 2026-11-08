@@ -55,6 +55,10 @@ from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.sorting import ClassKey, default_sort_key
 from sympy_extras.core.symbol import Symbol
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from sympy_extras.core.logic import Boolean
+
 __all__ = ['Hyper', 'MeijerG', 'AppellF1', 'hyper', 'meijerg', 'appellf1']
 
 Parameters = Union[Tuple, Sequence[ExprLike]]
@@ -163,6 +167,32 @@ class Hyper(Expr):
                 return mpmath.mpc(mpmath.hyper(ap, bq, z))
         except (ValueError, ZeroDivisionError, mpmath.libmp.NoConvergence):
             return None
+
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper.eta
+    @property
+    def eta(self) -> Expr:
+        """``sum(ap) - sum(bq)``, which decides the convergence on the circle."""
+        return sub(add(*self.ap), add(*self.bq))
+
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper.convergence_statement
+    @property
+    def convergence_statement(self) -> Union[bool, 'Boolean']:
+        """The condition under which the series converges (``False`` for a
+        zero radius, ``True`` for an infinite one, as SymPy)."""
+        from sympy_extras.core.logic import and_, or_
+        from sympy_extras.core.relational import ne
+        from sympy_extras.functions.elementary.complexes import abs_, re
+        R = self.radius_of_convergence
+        if R == 0:
+            return False
+        if R == oo:
+            return True
+        e = self.eta
+        z = self.argument
+        c1 = and_(re(e) < 0, abs_(z) <= 1)
+        c2 = and_(0 <= re(e), re(e) < 1, abs_(z) <= 1, ne(z, 1))
+        c3 = and_(re(e) >= 1, abs_(z) < 1)
+        return or_(c1, c2, c3)
 
     # PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper.radius_of_convergence
     @property

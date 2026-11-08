@@ -240,6 +240,11 @@ remove public functions. Breaking changes are listed here when they happen.
   `hypersimp`): the polynomials are coefficient lists over the cancelled
   expressions (the field of the parameters), the resultant a Sylvester
   determinant; `summation` uses it.
+- `eval_sum_hyper` is native (ported from SymPy with `_eval_sum_hyper`):
+  the sum as a hypergeometric function expanded by the native
+  `hyperexpand`, on its condition of convergence; `Hyper` has `eta` and
+  `convergence_statement`. Only the residue method and the Kronecker delta
+  sums of `summation` still go through SymPy.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

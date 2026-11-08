@@ -5,8 +5,7 @@ polynomials and harmonic numbers, geometric sums), then Gosper's
 algorithm, the hypergeometric and the residue methods.
 
 Ported from SymPy's ``sympy.concrete.summations`` (Gosper's algorithm
-in :mod:`~sympy_extras.concrete.gosper`). The hypergeometric and residue
-methods, the Kronecker delta sums and the
+in :mod:`~sympy_extras.concrete.gosper`). The residue method, the Kronecker delta sums and the
 equation solving of the telescoping go through SymPy for that call (not
 ported yet).
 
@@ -28,12 +27,12 @@ Examples
 # (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
-# Changes: typed; eval_sum_hyper, eval_sum_residue,
+# Changes: typed; eval_sum_residue,
 # deltasummation, solve and the zeta function match go through SymPy.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.basic import Basic
@@ -329,7 +328,7 @@ def eval_sum_symbolic(f: Expr, limits: Limits) -> Optional[Expr]:
             return piecewise(*args)
         if gr is not None and not isinstance(gr, NaN):
             return gr
-    h = _through('summations.eval_sum_hyper', f_orig, (i, a, b))
+    h = eval_sum_hyper(f_orig, (i, a, b))
     if h is not None:
         return h
     rr = _through('summations.eval_sum_residue', f_orig, (i, a, b))
@@ -339,6 +338,154 @@ def eval_sum_symbolic(f: Expr, limits: Limits) -> Optional[Expr]:
     if factored != f_orig:
         return eval_sum_symbolic(factored, (i, a, b))
     return None
+
+
+Condition = Union[bool, Boolean]
+
+
+def _cond(c: Condition) -> Boolean:
+    from sympy_extras.core.logic import false
+    if isinstance(c, bool):
+        return true if c else false
+    return c
+
+
+# PORTED FROM SYMPY: sympy/concrete/summations.py:_eval_sum_hyper
+def _eval_sum_hyper(f: Expr, i: Symbol, a: Expr) -> Optional[tuple[Expr, Condition]]:
+    """The sum of ``f`` from ``a`` to ``oo`` as a hypergeometric function
+    expanded, with its condition of convergence; ``None`` when ``f`` is not
+    a hypergeometric term of the needed form."""
+    from sympy_extras.core.numbers import Float
+    from sympy_extras.functions.special.hyper import Hyper, hyper
+    from sympy_extras.polys.polytools import factor
+    from sympy_extras.simplify.gammasimp import combsimp
+    from sympy_extras.simplify.hyperexpand import hyperexpand
+    from sympy_extras.simplify.radsimp import fraction
+    from sympy_extras.simplify.simplify import nsimplify, simplify
+    from .gosper import hypersimp, _UPoly
+    if a != 0:
+        return _eval_sum_hyper(_e(f.subs(i, i + a)), i, ZERO)
+    if _e(f.subs(i, ZERO)) == 0:
+        if simplify(_e(f.subs(i, Dummy('i', integer=True, positive=True)))) == 0:
+            return ZERO, True
+        return _eval_sum_hyper(_e(f.subs(i, i + 1)), i, ZERO)
+    hs = hypersimp(f, i)
+    if hs is None:
+        return None
+    if isinstance(hs, Float):
+        hs = nsimplify(hs)
+    numer, denom = fraction(factor(hs))
+    top, topl = _coeff_mul(numer, i)
+    bot, botl = _coeff_mul(denom, i)
+    ab: list[Expr] = [top, bot]
+    params: list[list[Expr]] = [[], []]
+    for k, facs in enumerate((topl, botl)):
+        for fac in facs:
+            multiplicity = 1
+            if fac.is_Pow:
+                exponent = _e(fac.args[1])
+                if not isinstance(exponent, Integer):
+                    return None
+                multiplicity = exponent.p
+                fac = _e(fac.args[0])
+            try:
+                p = _UPoly.of(fac, i)
+            except ValueError:
+                return None
+            if p.degree() != 1:
+                return None
+            m, n = p.nth(1), p.nth(0)
+            ab[k] = ab[k] * m**multiplicity
+            params[k] += [n / m] * multiplicity
+    ap = params[0] + [ONE]
+    bq = params[1]
+    x = ab[0] / ab[1]
+    h = hyper(ap, bq, x)
+    statement: Condition = h.convergence_statement if isinstance(h, Hyper) else True
+    f = combsimp(f)
+    return _e(f.subs(i, ZERO)) * hyperexpand(h), statement
+
+
+def _coeff_mul(e: Expr, x: Symbol) -> tuple[Expr, list[Expr]]:
+    """SymPy's ``e.as_coeff_mul(x)``: the factors free of ``x`` and the
+    others."""
+    factors = [a for a in (e.args if isinstance(e, Mul) else (e,)) if isinstance(a, Expr)]
+    if not isinstance(e, Mul):
+        return (ONE, [e]) if e.has(x) else (e, [])
+    return mul(*[a for a in factors if not a.has(x)]), [a for a in factors if a.has(x)]
+
+
+def _count_illegal(e: Expr) -> int:
+    """SymPy's count of ``oo``, ``-oo``, ``zoo`` and ``nan`` in ``e``."""
+    from sympy_extras.core.basic import preorder_traversal
+    from sympy_extras.core.numbers import ComplexInfinity
+    return sum(1 for node in preorder_traversal(e)
+               if isinstance(node, (Infinity, NegativeInfinity, ComplexInfinity, NaN)))
+
+
+# PORTED FROM SYMPY: sympy/concrete/summations.py:eval_sum_hyper
+def eval_sum_hyper(f: Expr, limits: Limits) -> Optional[Expr]:
+    """An infinite (or symbolic) sum of a hypergeometric term by
+    hyperexpand, as a ``Piecewise`` on the condition of convergence."""
+    from sympy_extras.core.logic import and_, false
+    from sympy_extras.functions.elementary.piecewise import piecewise
+    i, a, b = limits
+    if f.is_hypergeometric(i) is False:
+        return None
+    if isinstance(b - a, Integer):
+        return None
+    old_sum = sum_(f, (i, a, b))
+    if not isinstance(b, Infinity):
+        if isinstance(a, NegativeInfinity):
+            res = _eval_sum_hyper(_e(f.subs(i, -i)), i, -b)
+            if res is not None:
+                return piecewise((res[0], _cond(res[1])), (old_sum, true))
+            return None
+        had = _count_illegal(f)
+        res1 = _eval_sum_hyper(f, i, a)
+        if res1 is None or _count_illegal(res1[0]) > had:
+            return None
+        res2 = _eval_sum_hyper(f, i, b + 1)
+        if res2 is None or _count_illegal(res2[0]) > had:
+            return None
+        cond = and_(_cond(res1[1]), _cond(res2[1]))
+        if cond is false:
+            return None
+        return piecewise((res1[0] - res2[0], cond), (old_sum, true))
+    if isinstance(a, NegativeInfinity):
+        r1 = _eval_sum_hyper(_e(f.subs(i, -i)), i, ONE)
+        r2 = _eval_sum_hyper(f, i, ZERO)
+        if r1 is None or r2 is None:
+            return None
+        cond = and_(_cond(r1[1]), _cond(r2[1]))
+        if cond is false or _as_set_is_empty(cond):
+            return None
+        return piecewise((r1[0] + r2[0], cond), (old_sum, true))
+    res = _eval_sum_hyper(f, i, a)
+    if res is None:
+        return None
+    r, c = res
+    if c is False or c is false:
+        if r.is_number:
+            shifted = _e(f.subs(i, Dummy('i', integer=True, positive=True) + a))
+            if shifted.is_positive is True or shifted.is_zero is True:
+                return oo
+            if shifted.is_negative is True:
+                return -oo
+        return None
+    return piecewise((r, _cond(c)), (old_sum, true))
+
+
+def _as_set_is_empty(cond: Boolean) -> bool:
+    """SymPy's ``cond.as_set() == S.EmptySet`` (through SymPy)."""
+    import sympy
+    from sympy_extras.core.interop import to_sympy
+    try:
+        sympy_cond = to_sympy(cond)
+        assert isinstance(sympy_cond, sympy.logic.boolalg.Boolean)
+        return bool(sympy_cond.as_set() == sympy.S.EmptySet)
+    except NotImplementedError:
+        return False
 
 
 _ASSUMPTIONS = ['extended_nonnegative', 'nonnegative', 'extended_nonpositive', 'nonpositive', 'extended_positive',
