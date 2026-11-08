@@ -626,6 +626,36 @@ def pow_facts(base: Expr, exp: Expr) -> Facts:
         facts['nonnegative'] = True  # x**(-2) may be zoo
     if b.get('negative') and e.get('odd'):
         facts['negative'] = True
+    # PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_is_extended_real (real base and exponent)
+    if b.get('extended_real') and e.get('extended_real'):
+        if b.get('extended_positive') or (b.get('extended_nonnegative') and e.get('extended_nonnegative')) or (
+                e.get('integer') and (b.get('extended_nonzero') or e.get('nonnegative'))):
+            facts.setdefault('extended_real', True)
+        elif b.get('extended_negative') and isinstance(exp, Rational):
+            facts.setdefault('extended_real', False)
+    # PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_is_extended_negative
+    negative: Truth = None
+    if isinstance(exp, Rational) and exp.p == 1 and exp.q == 2:
+        negative = False
+    elif b.get('extended_negative'):
+        if e.get('odd') and b.get('finite'):
+            negative = True
+        elif e.get('even'):
+            negative = False
+    elif b.get('extended_positive'):
+        if e.get('extended_real'):
+            negative = False
+    elif b.get('zero'):
+        if e.get('extended_real'):
+            negative = False
+    elif b.get('extended_nonnegative'):
+        if e.get('extended_nonnegative'):
+            negative = False
+    elif b.get('extended_nonpositive') or b.get('extended_real'):
+        if e.get('even'):
+            negative = False
+    if negative is not None:
+        facts.setdefault('extended_negative', negative)
     if b.get('zero') and e.get('positive'):
         facts['zero'] = True
     if b.get('nonzero') and e.get('real') and e.get('finite'):

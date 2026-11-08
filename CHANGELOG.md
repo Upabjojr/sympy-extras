@@ -80,6 +80,14 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `expand(complex=True)` and `expand_complex` are native: the complex
+  hint first (SymPy's sorted hints), each node as `re + I*im`, the hints of
+  the call passed on to `as_real_imag` (a typed `ExpandHints`) as SymPy's
+  `log`, `exp`, trigonometric and hyperbolic functions use them.
+- `as_real_imag` of a sum, product or power has no shortcut for a real
+  node (SymPy's); the assumptions of a power follow SymPy's
+  `Pow._eval_is_extended_real` and `_eval_is_extended_negative`
+  (`re(y)**2` is extended nonnegative).
 - The `Expr` methods `factor`, `cancel` (without generators), `apart`,
   `collect` (evaluated), `together`, `powsimp`, `radsimp`, `trigsimp`,
   `combsimp`, `gammasimp` and `nsimplify` use the typed ports instead of

@@ -49,7 +49,7 @@ import mpmath
 from sympy_extras.core.add import add, sub
 from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
-from sympy_extras.core.function import DefinedFunction
+from sympy_extras.core.function import DefinedFunction, ExpandHints
 from sympy_extras.core.mul import mul
 from sympy_extras.core.numbers import (I, Infinity, Integer, NegativeInfinity, Rational, nan, oo, pi, zoo)
 from sympy_extras.core.power import pow
@@ -404,7 +404,7 @@ class AiryBase(DefinedFunction):
         from sympy_extras.functions.elementary.complexes import conjugate
         return type(self).apply(conjugate(self.args[0]))
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from sympy_extras.core.mul import div
         from sympy_extras.functions.elementary.complexes import conjugate
         z = self.args[0]

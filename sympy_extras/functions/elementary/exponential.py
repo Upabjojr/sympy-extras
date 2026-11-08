@@ -54,7 +54,7 @@ from sympy_extras.core.add import Add, add
 from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
-from sympy_extras.core.function import DefinedFunction, expand_mul
+from sympy_extras.core.function import DefinedFunction, ExpandHints, expand_mul
 from sympy_extras.core.kind import Kind, NumberKind
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import (ComplexInfinity, E, Exp1, I, Infinity, Integer, NaN, NegativeInfinity, Rational,
@@ -187,7 +187,7 @@ class Exp(DefinedFunction):
         return exp(conjugate(self.args[0]))
 
     # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp.as_real_imag
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .complexes import as_real_imag
         from .trigonometric import cos, sin
         parts = as_real_imag(self.args[0])
@@ -195,7 +195,8 @@ class Exp(DefinedFunction):
             return None
         real, imaginary = parts
         if deep:
-            real, imaginary = real.expand(), imaginary.expand()
+            from sympy_extras.core.function import expand_with_hints
+            real, imaginary = expand_with_hints(real, hints), expand_with_hints(imaginary, hints)
         return (mul(exp(real), cos(imaginary)), mul(exp(real), sin(imaginary)))
 
     def fdiff(self, argindex: int) -> Expr:
@@ -334,12 +335,16 @@ class Log(DefinedFunction):
         return None
 
     # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log.as_real_imag
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
+        # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log.as_real_imag
+        from sympy_extras.core.function import expand_with_hints
         from .complexes import abs_, arg
-        z = self.args[0].expand() if deep else self.args[0]
+        z = expand_with_hints(self.args[0], hints) if deep else self.args[0]
         modulus = abs_(z)
         if modulus == z:
             return (self, Integer(0))
+        if hints is not None and hints.log:
+            return (expand_with_hints(log(modulus), hints, complex=False), arg(z))
         return (log(modulus), arg(z))
 
     def fdiff(self, argindex: int) -> Expr:

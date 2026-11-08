@@ -42,7 +42,7 @@ import mpmath
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
-from sympy_extras.core.function import DefinedFunction
+from sympy_extras.core.function import DefinedFunction, ExpandHints, expand_with_hints
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import (ComplexInfinity, I, Infinity, Integer, NaN, NegativeInfinity, Number, Rational,
                                        nan, number_from_fraction, oo, pi, zoo)
@@ -145,13 +145,13 @@ class Sinh(DefinedFunction):
         from .trigonometric import _conjugated
         return _conjugated(Sinh, self.args[0])
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .complexes import as_real_imag
         from .trigonometric import cos, sin
         arg = self.args[0]
         if arg.is_extended_real:
-            return (self.expand() if deep else self, Integer(0))
-        parts = as_real_imag(arg.expand() if deep else arg)
+            return (expand_with_hints(self, hints, complex=False) if deep else self, Integer(0))
+        parts = as_real_imag(expand_with_hints(arg, hints) if deep else arg)
         if parts is None:
             return None
         r, i = parts
@@ -212,13 +212,13 @@ class Cosh(DefinedFunction):
         from .trigonometric import _conjugated
         return _conjugated(Cosh, self.args[0])
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .complexes import as_real_imag
         from .trigonometric import cos, sin
         arg = self.args[0]
         if arg.is_extended_real:
-            return (self.expand() if deep else self, Integer(0))
-        parts = as_real_imag(arg.expand() if deep else arg)
+            return (expand_with_hints(self, hints, complex=False) if deep else self, Integer(0))
+        parts = as_real_imag(expand_with_hints(arg, hints) if deep else arg)
         if parts is None:
             return None
         r, i = parts
@@ -288,13 +288,13 @@ class Tanh(DefinedFunction):
         from .trigonometric import _conjugated
         return _conjugated(Tanh, self.args[0])
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .complexes import as_real_imag
         from .trigonometric import cos, sin
         arg = self.args[0]
         if arg.is_extended_real:
-            return (self.expand() if deep else self, Integer(0))
-        parts = as_real_imag(arg.expand() if deep else arg)
+            return (expand_with_hints(self, hints, complex=False) if deep else self, Integer(0))
+        parts = as_real_imag(expand_with_hints(arg, hints) if deep else arg)
         if parts is None:
             return None
         r, i = parts
@@ -365,13 +365,13 @@ class Coth(DefinedFunction):
         from .trigonometric import _conjugated
         return _conjugated(Coth, self.args[0])
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .complexes import as_real_imag
         from .trigonometric import cos, sin
         arg = self.args[0]
         if arg.is_extended_real:
-            return (self.expand() if deep else self, Integer(0))
-        parts = as_real_imag(arg.expand() if deep else arg)
+            return (expand_with_hints(self, hints, complex=False) if deep else self, Integer(0))
+        parts = as_real_imag(expand_with_hints(arg, hints) if deep else arg)
         if parts is None:
             return None
         r, i = parts
@@ -416,7 +416,7 @@ class Sech(DefinedFunction):
         from .trigonometric import _conjugated
         return _conjugated(Sech, self.args[0])
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .complexes import as_real_imag
         return as_real_imag(pow(cosh(self.args[0]), Integer(-1)), deep)
 
@@ -449,7 +449,7 @@ class Csch(DefinedFunction):
         from .trigonometric import _conjugated
         return _conjugated(Csch, self.args[0])
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .complexes import as_real_imag
         return as_real_imag(pow(sinh(self.args[0]), Integer(-1)), deep)
 

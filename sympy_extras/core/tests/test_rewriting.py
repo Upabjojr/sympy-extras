@@ -82,3 +82,15 @@ def test_rewrite_gamma_matches_sympy() -> None:
         for piecewise in (True, False):
             ours = to_sympy(expr_from_sympy(e).rewrite(Gamma, piecewise=piecewise), evaluate=False)
             assert str(ours) == str(e.rewrite(s.gamma, piecewise=piecewise)), (e, piecewise)
+
+
+def test_expand_complex_matches_sympy() -> None:
+    from sympy_extras.core.function import expand, expand_complex
+    r = s.Symbol('r', real=True)
+    cases: list[sympy.Expr] = [
+        x + s.I * y, s.exp(x), s.sin(2 * p * x**2), s.log(p + y), y / (y + s.I), s.sqrt(x) + 1, p * (s.sqrt(x) + 1),
+        s.cosh(r) * s.sqrt(s.Abs(x)), r**2 + x**2 + s.log(p + y), s.log(s.pi * r * x * (1 + s.I)), s.tan(s.pi * x * y / 2),
+        2 * s.Abs(y)]
+    for e in cases:
+        assert str(to_sympy(expand_complex(expr_from_sympy(e)), evaluate=False)) == str(s.expand_complex(e)), e
+        assert str(to_sympy(expand(expr_from_sympy(e), complex=True), evaluate=False)) == str(s.expand(e, complex=True)), e

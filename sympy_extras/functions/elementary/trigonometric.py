@@ -51,7 +51,7 @@ import mpmath
 from sympy_extras.core.add import Add, add, sub
 from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
-from sympy_extras.core.function import DefinedFunction, expand
+from sympy_extras.core.function import DefinedFunction, ExpandHints, expand
 from sympy_extras.core.mul import Mul, div, mul
 from sympy_extras.core.numbers import (ComplexInfinity, Float, I, Infinity, Integer, NaN, NegativeInfinity, Rational,
                                        nan, number_from_fraction, pi, zoo)
@@ -190,13 +190,16 @@ def _trig_facts(arg: Expr) -> dict[str, bool]:
 
 
 # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:TrigonometricFunction._as_real_imag
-def _argument_parts(arg: Expr, deep: bool) -> Optional[tuple[Expr, Expr]]:
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:TrigonometricFunction._as_real_imag
+def _argument_parts(arg: Expr, deep: bool, hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
     """The real and imaginary parts of the argument of a trigonometric or
-    hyperbolic function (the argument itself and 0 when it is real)."""
+    hyperbolic function (the argument itself and 0 when it is real),
+    expanded with the hints of the ``expand`` call."""
+    from sympy_extras.core.function import expand_with_hints
     from .complexes import as_real_imag
     if arg.is_extended_real:
-        return (arg.expand() if deep else arg, Integer(0))
-    return as_real_imag(arg.expand() if deep else arg)
+        return (expand_with_hints(arg, hints, complex=False) if deep else arg, Integer(0))
+    return as_real_imag(expand_with_hints(arg, hints) if deep else arg)
 
 
 def _conjugated(cls: type[DefinedFunction], arg: Expr) -> Expr:
@@ -262,9 +265,9 @@ class Sin(DefinedFunction):
     def _eval_conjugate(self) -> Optional[Expr]:
         return _conjugated(Sin, self.args[0])
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .hyperbolic import cosh, sinh
-        parts = _argument_parts(self.args[0], deep)
+        parts = _argument_parts(self.args[0], deep, hints)
         if parts is None:
             return None
         r, i = parts
@@ -364,9 +367,9 @@ class Cos(DefinedFunction):
     def _eval_conjugate(self) -> Optional[Expr]:
         return _conjugated(Cos, self.args[0])
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .hyperbolic import cosh, sinh
-        parts = _argument_parts(self.args[0], deep)
+        parts = _argument_parts(self.args[0], deep, hints)
         if parts is None:
             return None
         r, i = parts
@@ -481,9 +484,9 @@ class Tan(DefinedFunction):
     def _eval_conjugate(self) -> Optional[Expr]:
         return _conjugated(Tan, self.args[0])
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .hyperbolic import cosh, sinh
-        parts = _argument_parts(self.args[0], deep)
+        parts = _argument_parts(self.args[0], deep, hints)
         if parts is None:
             return None
         r, i = parts
@@ -586,9 +589,9 @@ class Cot(DefinedFunction):
     def _eval_conjugate(self) -> Optional[Expr]:
         return _conjugated(Cot, self.args[0])
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .hyperbolic import cosh, sinh
-        parts = _argument_parts(self.args[0], deep)
+        parts = _argument_parts(self.args[0], deep, hints)
         if parts is None:
             return None
         r, i = parts
@@ -661,7 +664,7 @@ class Sec(DefinedFunction):
     def _eval_conjugate(self) -> Optional[Expr]:
         return _conjugated(Sec, self.args[0])
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .complexes import as_real_imag
         return as_real_imag(pow(cos(self.args[0]), Integer(-1)), deep)
 
@@ -693,7 +696,7 @@ class Csc(DefinedFunction):
     def _eval_conjugate(self) -> Optional[Expr]:
         return _conjugated(Csc, self.args[0])
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         from .complexes import as_real_imag
         return as_real_imag(pow(sin(self.args[0]), Integer(-1)), deep)
 

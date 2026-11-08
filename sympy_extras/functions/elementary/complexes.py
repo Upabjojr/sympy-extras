@@ -52,8 +52,8 @@ from sympy_extras.core.add import Add, add, sub
 from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
-from sympy_extras.core.function import AppliedUndef, Derivative, DefinedFunction, diff, expand_mul
-from sympy_extras.core.mul import Mul, div, mul
+from sympy_extras.core.function import AppliedUndef, Derivative, DefinedFunction, ExpandHints, diff, expand_mul
+from sympy_extras.core.mul import Mul, div, mul, neg
 from sympy_extras.core.numbers import (ComplexInfinity, I, ImaginaryUnit, Infinity, Integer, NaN, NegativeInfinity,
                                        Number, Rational, nan, oo, pi)
 from sympy_extras.core.power import Pow, pow, sqrt
@@ -177,15 +177,15 @@ def _mul_real_imag(e: Mul, deep: bool, ignore: Optional[Expr]) -> Optional[RealI
             return (ZERO, mul(real_coefficient, imaginary_coefficient))
         if imaginary_coefficient == 0:
             return (r, i)
-        return (mul(MINUS_ONE, imaginary_coefficient, i), mul(imaginary_coefficient, r))
+        return (mul(neg(imaginary_coefficient), i), mul(imaginary_coefficient, r))
     sum_parts = as_real_imag(expand_mul(add_terms, deep=False), deep)
     if sum_parts is None:
         return None
     sum_real, sum_imaginary = sum_parts
     if imaginary_coefficient == 0:
-        return (add(mul(r, sum_real), mul(MINUS_ONE, i, sum_imaginary)), add(mul(i, sum_real), mul(r, sum_imaginary)))
-    r, i = mul(MINUS_ONE, imaginary_coefficient, i), mul(imaginary_coefficient, r)
-    return (add(mul(r, sum_real), mul(MINUS_ONE, i, sum_imaginary)), add(mul(r, sum_imaginary), mul(i, sum_real)))
+        return (add(mul(r, sum_real), neg(mul(i, sum_imaginary))), add(mul(i, sum_real), mul(r, sum_imaginary)))
+    r, i = mul(neg(imaginary_coefficient), i), mul(imaginary_coefficient, r)
+    return (add(mul(r, sum_real), neg(mul(i, sum_imaginary))), add(mul(r, sum_imaginary), mul(i, sum_real)))
 
 
 # PORTED FROM SYMPY: sympy/core/power.py:Pow.as_real_imag
@@ -207,7 +207,7 @@ def _pow_real_imag(e: Pow, deep: bool, ignore: Optional[Expr]) -> Optional[RealI
                     return as_real_imag(expanded, deep)
             return _binomial_parts(n, re_e, im_e)
         magnitude = add(pow(re_e, Integer(2)), pow(im_e, Integer(2)))
-        re_e, im_e = mul(re_e, pow(magnitude, MINUS_ONE)), mul(MINUS_ONE, im_e, pow(magnitude, MINUS_ONE))
+        re_e, im_e = mul(re_e, pow(magnitude, MINUS_ONE)), mul(neg(im_e), pow(magnitude, MINUS_ONE))
         if isinstance(re_e, Number) and isinstance(im_e, Number):
             expanded = expand_multinomial(pow(add(re_e, mul(im_e, I)), Integer(-n)))
             if expanded != e:
@@ -222,7 +222,7 @@ def _pow_real_imag(e: Pow, deep: bool, ignore: Optional[Expr]) -> Optional[RealI
             if re_e.is_extended_nonnegative:
                 return (e, ZERO)
             if re_e.is_extended_nonpositive:
-                return (ZERO, pow(mul(MINUS_ONE, e.base), exponent))
+                return (ZERO, pow(neg(e.base), exponent))
         modulus = pow(add(pow(re_e, Integer(2)), pow(im_e, Integer(2))), Rational(1, 2))
         angle = atan2(im_e, re_e)
         rp, tp = pow(modulus, exponent), mul(angle, exponent)
@@ -245,13 +245,16 @@ def _pow_real_imag(e: Pow, deep: bool, ignore: Optional[Expr]) -> Optional[RealI
 
 
 # PORTED FROM SYMPY: sympy/core/expr.py:Expr.as_real_imag (and Add, Mul, Pow, Symbol)
-def as_real_imag(e: Expr, deep: bool = True, ignore: Optional[Expr] = None) -> Optional[RealImag]:
+def as_real_imag(e: Expr, deep: bool = True, ignore: Optional[Expr] = None,
+                 hints: Optional[ExpandHints] = None) -> Optional[RealImag]:
     """The real and imaginary parts of ``e`` by complex expansion; ``None``
     when they would only be ``re(ignore)``, ``im(ignore)`` (SymPy's
     ``ignore`` hint, which keeps ``re`` and ``im`` from looping)."""
     if isinstance(e, Number) and e.exact_value() is not None:
         return (e, ZERO)
-    if e.is_extended_real is True:
+    # SymPy's Add, Mul and Pow have their own as_real_imag (no shortcut for
+    # a real node: (x**2 + y**2)**(1/4) gives its modulus and argument)
+    if e.is_extended_real is True and not isinstance(e, (Add, Mul, Pow)):
         return (e, ZERO)
     if isinstance(e, Add):
         real_parts: list[Expr] = []
@@ -268,7 +271,7 @@ def as_real_imag(e: Expr, deep: bool = True, ignore: Optional[Expr] = None) -> O
     if isinstance(e, Pow):
         return _pow_real_imag(e, deep, ignore)
     if isinstance(e, DefinedFunction):
-        return e._eval_as_real_imag(deep, ignore)
+        return e._eval_as_real_imag(deep, ignore, hints)
     if ignore is not None and ignore == e:
         return None
     return (re(e), im(e))
@@ -329,7 +332,7 @@ class Re(DefinedFunction):
             return re(arg.args[0])
         return _split_real_imag(arg, True)
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[RealImag]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[RealImag]:
         return (self, ZERO)
 
     def _eval_conjugate(self) -> Optional[Expr]:
@@ -374,7 +377,7 @@ class Im(DefinedFunction):
             return mul(MINUS_ONE, im(arg.args[0]))
         return _split_real_imag(arg, False)
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[RealImag]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[RealImag]:
         return (self, ZERO)
 
     def _eval_conjugate(self) -> Optional[Expr]:
@@ -599,7 +602,7 @@ class Abs(DefinedFunction):
                 return sqrt(expand_mul(mul(arg, conj)))
         return None
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[RealImag]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[RealImag]:
         return (self, ZERO)
 
     def _eval_conjugate(self) -> Optional[Expr]:
@@ -702,7 +705,7 @@ class Arg(DefinedFunction):
         return mul(add(mul(x, diff(y, s)), mul(MINUS_ONE, y, diff(x, s))),
                    pow(add(pow(x, Integer(2)), pow(y, Integer(2))), MINUS_ONE))
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[RealImag]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[RealImag]:
         return (self, ZERO)
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:

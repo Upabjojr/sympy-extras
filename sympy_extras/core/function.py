@@ -613,7 +613,7 @@ class DefinedFunction(Application):
             return mul(Integer(-1), self)
         return None
 
-    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr]) -> Optional[tuple[Expr, Expr]]:
+    def _eval_as_real_imag(self, deep: bool, ignore: Optional[Expr], hints: Optional[ExpandHints] = None) -> Optional[tuple[Expr, Expr]]:
         """The real and imaginary parts (SymPy's ``Expr.as_real_imag``:
         ``re(self)``, ``im(self)``; ``None`` when ``self`` is ``ignore``)."""
         if ignore is not None and ignore == self:
@@ -1181,6 +1181,11 @@ def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: boo
     (2*2**x, x/(x + 1), x*(y + 1))
     """
     e = to_expr(expr)
+    if complex and not (func or trig):
+        # SymPy applies its hints in sorted order: complex before log,
+        # multinomial, mul and the power hints
+        e = as_expr(_expand_complex(e, deep, ExpandHints(mul, multinomial, power_base, power_exp, log, True)))
+        complex = False
     if func or trig or complex:
         from .interop import expr_through_sympy
         return expr_through_sympy(e, lambda s: sympy.expand(s, deep=deep, mul=mul, multinomial=multinomial,
@@ -1195,6 +1200,51 @@ def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: boo
         if result == was:
             break
     return result
+
+
+class ExpandHints:
+    """The hints of an ``expand`` call, as SymPy passes them on to
+    ``as_real_imag`` (``log.as_real_imag`` expands with them)."""
+
+    __slots__ = ('mul', 'multinomial', 'power_base', 'power_exp', 'log', 'complex')
+
+    def __init__(self, mul: bool, multinomial: bool, power_base: bool, power_exp: bool, log: bool,
+                 complex: bool) -> None:
+        self.mul, self.multinomial, self.power_base = mul, multinomial, power_base
+        self.power_exp, self.log, self.complex = power_exp, log, complex
+
+    def expand(self, e: Expr, deep: bool) -> Expr:
+        return expand(e, deep=deep, mul=self.mul, multinomial=self.multinomial, power_base=self.power_base,
+                      power_exp=self.power_exp, log=self.log, complex=self.complex)
+
+
+def expand_with_hints(e: Expr, hints: Optional[ExpandHints], complex: Optional[bool] = None) -> Expr:
+    """SymPy's ``e.expand(deep, **hints)`` inside ``as_real_imag``: the
+    hints of the ``expand`` call (``complex`` replaced when given), the
+    default ones without a call."""
+    if hints is None:
+        return e.expand()
+    if complex is not None:
+        hints = ExpandHints(hints.mul, hints.multinomial, hints.power_base, hints.power_exp, hints.log, complex)
+    return hints.expand(e, True)
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr._expand_hint with Expr._eval_expand_complex
+def _expand_complex(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
+    """Every node (its arguments first) as ``re + I*im``."""
+    from .numbers import I
+    if deep and e.args and not e.is_Atom:
+        args = tuple(_expand_complex(a, deep, hints) for a in e.args)
+        if any(new is not old and new != old for new, old in zip(args, e.args)):
+            e = e._evaluated(args)
+    if isinstance(e, Expr):
+        from sympy_extras.functions.elementary.complexes import as_real_imag, im, re
+        parts = as_real_imag(e, True, None, hints)
+        real, imaginary = parts if parts is not None else (re(e), im(e))
+        new = add(real, mul(I, imaginary))
+        if new != e:
+            return new
+    return e
 
 
 def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp: bool, log: bool) -> Expr:
@@ -1572,8 +1622,8 @@ def expand_complex(expr: ExprLike, deep: bool = True) -> Expr:
     >>> expand_complex(sympify('x + I*y'))
     I*(re(y) + im(x)) + re(x) - im(y)
     """
-    from .interop import expr_through_sympy
-    return expr_through_sympy(to_expr(expr), lambda s: sympy.expand_complex(s, deep=deep))
+    return expand(expr, deep=deep, mul=False, multinomial=False, power_base=False, power_exp=False, log=False,
+                  complex=True)
 
 
 #: what ``count_ops`` accepts: a node, a sequence of them, a mapping
