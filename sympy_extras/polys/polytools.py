@@ -98,10 +98,14 @@ _RE_GEN = re.compile(r'^(.*?)(\d*)$')
 
 
 # PORTED FROM SYMPY: sympy/polys/polyutils.py:_sort_gens
-def _gen_key(gen: Expr) -> tuple[int, str, int]:
+def _gen_key(gen: Expr) -> tuple[int, str, int, int]:
     match = _RE_GEN.match(str(gen))
     name, index = (match.group(1), match.group(2)) if match else (str(gen), '')
-    return (_GENS_ORDER.get(name, _MAX_ORDER), name, int(index) if index else 0)
+    # SymPy's dummies print with their number (Dummy_34), ours do not: the
+    # creation index orders them as SymPy's names do
+    from sympy_extras.core.symbol import Dummy
+    created = gen.dummy_index if isinstance(gen, Dummy) else -1
+    return (_GENS_ORDER.get(name, _MAX_ORDER), name, int(index) if index else 0, created)
 
 
 def sort_gens(gens: Sequence[Expr]) -> tuple[Expr, ...]:

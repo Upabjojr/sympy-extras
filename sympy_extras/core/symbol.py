@@ -21,7 +21,7 @@ from typing import Callable, Final, Iterable, Sequence, TYPE_CHECKING, Union
 from .basic import Basic
 from .expr import AtomicExpr, Expr
 from .logic import Boolean
-from .sorting import ClassKey, CompareItem
+from .sorting import ArgsKey, ClassKey, CompareItem
 
 if TYPE_CHECKING:
     from .printing import StrPrinter
@@ -172,6 +172,12 @@ class Dummy(Symbol):
 
     def _compare_content(self) -> tuple[CompareItem, ...]:
         return Symbol._compare_content(self) + (self.dummy_index,)
+
+    # PORTED FROM SYMPY: sympy/core/symbol.py:Dummy.sort_key
+    def _sort_atom_args(self) -> ArgsKey:
+        # SymPy's (2, (name, dummy_index)): two dummies of the same name
+        # are ordered by creation
+        return (2, (self.name, self.dummy_index))
 
     def __hash__(self) -> int:
         return hash((self.name, self.dummy_index, self._assumptions))

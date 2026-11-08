@@ -306,7 +306,7 @@ class Expr(Basic):
         base, exp = rest.as_base_exp() if rest.is_Pow else (rest, None)
         args: ArgsKey
         if isinstance(base, Atom):
-            args = (1, (base._sort_name(),))
+            args = base._sort_atom_args()
         else:
             ordered_args = base.as_ordered_terms() if base.is_Add else \
                 base.as_ordered_factors() if base.is_Mul else list(base.args)
@@ -317,6 +317,10 @@ class Expr(Basic):
     def _sort_name(self) -> str:
         """The name of an atom in its sort key."""
         return str(self)
+
+    def _sort_atom_args(self) -> ArgsKey:
+        """The arguments part of the sort key of an atom: ``(1, (name,))``."""
+        return (1, (self._sort_name(),))
 
     def _sort_class_key(self) -> ClassKey:
         """The class part of the sort key (the rank of a function of SymPy)."""
@@ -1730,7 +1734,7 @@ class AtomicExpr(Atom, Expr):
     __slots__ = ()
 
     def sort_key(self) -> SortKey:
-        return (self.class_key(), (1, (str(self),)), _one().sort_key(), Fraction(1))
+        return (self.class_key(), self._sort_atom_args(), _one().sort_key(), Fraction(1))
 
     # PORTED FROM SYMPY: sympy/core/expr.py:AtomicExpr._eval_nseries
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:

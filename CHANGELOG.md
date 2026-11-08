@@ -155,6 +155,11 @@ remove public functions. Breaking changes are listed here when they happen.
 - `besselsimp` is native, ported from SymPy (the factors `I` and `-1` of
   the arguments, the half-integer and integer orders expanded, the
   recurrence of the lowest orders); `simplify` uses it.
+- Dummies are ordered by creation, as in SymPy: their sort key is
+  `(2, (name, dummy_index))`, and polynomial generators which print alike
+  are ordered by creation (SymPy's dummies print with their number).
+  Before, two dummies tied and results such as `factor_nc` depended on
+  how many dummies existed (`(A - B)**2` or `(-A + B)**2`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
