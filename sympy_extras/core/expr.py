@@ -479,20 +479,31 @@ class Expr(Basic):
         from .add import add
         from .mul import mul
         from .numbers import Integer
+        from .symbol import Symbol as _Symbol
         if as_Add is None:
             as_Add = self.is_Add
         if self.is_Number and self == 0:
             return (self, self)  # SymPy: (0, 0)
+        # SymPy's has(): the symbols by the free symbols (a bound variable of
+        # Subs or Sum is not a dependence), the other patterns by has
+        sym = {d for d in symbols if isinstance(d, _Symbol)}
+        other = [d for d in symbols if not isinstance(d, _Symbol)]
+
+        def depends(e: Expr) -> bool:
+            if other and e.has(*other):
+                return True
+            return bool(sym & e.free_symbols)
+
         if as_Add:
             if not self.is_Add:
-                return (self, Integer(0)) if not self.has(*symbols) else (Integer(0), self)
-            free = [a for a in terms_of(self) if not a.has(*symbols)]
-            dependent = [a for a in terms_of(self) if a.has(*symbols)]
+                return (self, Integer(0)) if not depends(self) else (Integer(0), self)
+            free = [a for a in terms_of(self) if not depends(a)]
+            dependent = [a for a in terms_of(self) if depends(a)]
             return (add(*free), add(*dependent))
         if not self.is_Mul:
-            return (self, Integer(1)) if not self.has(*symbols) else (Integer(1), self)
-        free = [a for a in factors_of(self) if not a.has(*symbols)]
-        dependent = [a for a in factors_of(self) if a.has(*symbols)]
+            return (self, Integer(1)) if not depends(self) else (Integer(1), self)
+        free = [a for a in factors_of(self) if not depends(a)]
+        dependent = [a for a in factors_of(self) if depends(a)]
         return (mul(*free), mul(*dependent))
 
     # PORTED FROM SYMPY: sympy/core/expr.py:Expr.as_coeff_exponent
@@ -1296,9 +1307,11 @@ class Expr(Basic):
         e = self.subs(x, _x)
         for _ in range(n):
             e = e.diff(_x)
-        # SymPy writes e.subs(_x, x).subs(x, 0); evaluated at the dummy
-        # directly, which is the same for a symbol and right for an
-        # expression argument (erfi(2*x): 4*x**2 is not a match of 2*x)
+        # SymPy writes e.subs(_x, x).subs(x, 0) (a Subs in x for an
+        # unevaluated derivative); for an expression argument evaluated at
+        # the dummy (erfi(2*x): 4*x**2 is not a match of 2*x for our subs)
+        if isinstance(x, _Symbol):
+            return e.subs(_x, x).subs(x, Integer(0)) * x**n / factorial(Integer(n))
         return e.subs(_x, Integer(0)) * x**n / factorial(Integer(n))
 
     # PORTED FROM SYMPY: sympy/core/expr.py:Expr.dir

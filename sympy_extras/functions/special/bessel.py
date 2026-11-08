@@ -415,6 +415,7 @@ class SphericalY(SphericalBesselBase):
     unevaluated (``yn`` evaluates; SymPy gives it no values)."""
 
     function_name = 'yn'
+    generic_nseries = True
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return _spherical('y', values[0], values[1])
@@ -619,6 +620,7 @@ class SphericalHankel1(SphericalBesselBase):
     jn(nu, z) + I*yn(nu, z)`` (no values of its own, as in SymPy)."""
 
     function_name = 'hn1'
+    generic_nseries = True
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         j, y = _spherical('j', values[0], values[1]), _spherical('y', values[0], values[1])
@@ -631,6 +633,7 @@ class SphericalHankel2(SphericalBesselBase):
     jn(nu, z) - I*yn(nu, z)`` (no values of its own, as in SymPy)."""
 
     function_name = 'hn2'
+    generic_nseries = True
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         j, y = _spherical('j', values[0], values[1]), _spherical('y', values[0], values[1])

@@ -933,8 +933,8 @@ class ExpPolar(DefinedFunction):
             return (self, Integer(1))
         return (ExpPolar(Integer(1)), self.args[0])
 
-    def fdiff(self, argindex: int) -> Expr:
-        return self
+    # SymPy's exp_polar has no fdiff: its derivative stays unevaluated
+    # (Derivative(exp_polar(x), x))
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         z = values[0]

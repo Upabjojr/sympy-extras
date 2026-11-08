@@ -781,3 +781,21 @@ def test_derivative_substitution_matches_sympy() -> None:
         for old, new in [(sx, 0), (sx, sy), (sx, sx + 1), (sy, 2), (sy, sx), (sx, sz), (sy, sz**2)]:
             got = expr_from_sympy(d).subs(expr_from_sympy(old), expr_from_sympy(sympy.sympify(new)))
             assert str(to_sympy(got, evaluate=False)) == str(d.subs(old, new)), (d, old, new)
+
+
+def test_subs_of_subs_and_as_independent_match_sympy() -> None:
+    import sympy
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import expr_from_sympy
+    sx, sy, sz = sympy.symbols('x y z')
+    g = sympy.Function('f')
+    for e in [sympy.Subs(g(sx), sx, 0), sympy.Subs(sympy.Derivative(g(sx), sx), sx, sy), sympy.Subs(g(sx)*sy, sx, sy + 1),
+              sympy.Subs(g(sx, sy), (sx, sy), (1, sz))]:
+        for old, new in [(sx, sz), (sx, 1/sx), (sy, 2), (sy, sx), (sz, sx + 1), (sx, sy)]:
+            got = expr_from_sympy(e).subs(expr_from_sympy(old), expr_from_sympy(sympy.sympify(new)))
+            assert str(to_sympy(got, evaluate=False)) == str(e.subs(old, new)), (e, old, new)
+    s = sympy.Subs(sympy.Derivative(g(sx), sx), sx, 0)
+    ours = expr_from_sympy(s*sx**3).as_independent(expr_from_sympy(sx))
+    assert tuple(str(to_sympy(p, evaluate=False)) for p in ours) == tuple(str(p) for p in (s*sx**3).as_independent(sx))
+    sa = sympy.Symbol('a')
+    assert str(to_sympy(expr_from_sympy(sympy.zoo*sa + sympy.zoo*sa + sympy.zoo*sa), evaluate=False)) == '3*zoo*a'

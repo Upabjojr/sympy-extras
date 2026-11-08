@@ -357,6 +357,7 @@ class RiemannXi(DefinedFunction):
     (``riemann_xi`` evaluates)."""
 
     function_name = 'riemann_xi'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

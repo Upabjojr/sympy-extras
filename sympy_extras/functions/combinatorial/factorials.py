@@ -322,6 +322,7 @@ class Subfactorial(DefinedFunction):
     (``subfactorial`` evaluates)."""
 
     function_name = 'subfactorial'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -365,6 +366,7 @@ class Factorial2(DefinedFunction):
     unevaluated (``factorial2`` evaluates)."""
 
     function_name = 'factorial2'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

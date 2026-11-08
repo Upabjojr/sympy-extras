@@ -195,6 +195,7 @@ class Lucas(DefinedFunction):
     evaluates)."""
 
     function_name = 'lucas'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -575,6 +576,7 @@ class Partition(DefinedFunction):
     evaluates)."""
 
     function_name = 'partition'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -868,6 +870,7 @@ class PrimePi(_NumberTheoretic):
     (``primepi`` evaluates)."""
 
     function_name = 'primepi'
+    generic_nseries = True
     sign_facts = (('nonnegative', True),)
 
     @classmethod
@@ -1145,6 +1148,7 @@ class Andre(DefinedFunction):
     (``andre`` evaluates)."""
 
     function_name = 'andre'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

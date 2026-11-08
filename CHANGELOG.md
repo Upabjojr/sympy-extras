@@ -272,8 +272,13 @@ remove public functions. Breaking changes are listed here when they happen.
   renaming onto a symbol of the expression gives `Subs`, otherwise the
   derivative is rebuilt unevaluated. The generic series names its
   variable as SymPy (`xi`, `xi0`, ...) and goes by derivatives for the
-  classes SymPy takes as variadic (`HyperRep_*`); 87 classes expand
+  classes SymPy takes as variadic (`HyperRep_*`); 97 classes expand
   natively.
+- `Mul.as_coeff_Mul` takes the first argument as the coefficient, as SymPy
+  (`zoo` is not one: `zoo*a + 2*zoo*a` is `3*zoo*a`); `as_independent`
+  tests the symbols by the free symbols (a bound variable of `Subs` is no
+  dependence); `Subs` substitution as SymPy's `Subs._eval_subs`; the
+  derivative of `exp_polar` stays unevaluated, as in SymPy.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

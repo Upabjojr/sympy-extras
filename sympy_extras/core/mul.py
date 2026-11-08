@@ -194,17 +194,18 @@ class Mul(AssocOp):
             remaining.remove(factor)
         return mul(new, *[_as_expr(f._subs(old, new)) for f in remaining])
 
+    # PORTED FROM SYMPY: sympy/core/mul.py:Mul.as_coeff_Mul
     def as_coeff_Mul(self, rational: bool = False) -> tuple[Number, Expr]:
-        number: Number = Integer(1)
-        rest: list[Expr] = []
-        for a in self._args:
-            if isinstance(a, Number):
-                number = number.number_mul(a)
-            else:
-                rest.append(a)
-        if isinstance(number, ComplexInfinity):
-            return (Integer(1), self)  # as SymPy: zoo*z + 3*z stays
-        return (number, _raw(rest))
+        # the first argument when it is a number (SymPy's zoo is not a
+        # Number: 2*zoo*a is (2, zoo*a), zoo*a is (1, zoo*a))
+        coeff, rest = self._args[0], list(self._args[1:])
+        if isinstance(coeff, Number) and not isinstance(coeff, ComplexInfinity):
+            if not rational or isinstance(coeff, Rational):
+                return (coeff, _raw(rest))
+            if coeff.is_extended_negative is True:
+                negated = coeff.number_mul(Integer(-1))
+                return (Integer(-1), _raw([negated] + rest))
+        return (Integer(1), self)
 
     def as_two_terms(self) -> tuple[Expr, Expr]:
         return (self._args[0], _raw(list(self._args[1:])))

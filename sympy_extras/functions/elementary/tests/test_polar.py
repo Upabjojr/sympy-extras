@@ -65,5 +65,7 @@ def test_products_powers_and_polarify() -> None:
     assert str(ours_e) == str(theirs_e) and sorted(map(str, reps.values())) == sorted(map(str, theirs_reps.values()))
     assert all(r.is_polar for r in reps)
     assert str(exp_polar(I*pi).evalf()) == str(sympy.exp_polar(sympy.I*sympy.pi).evalf())
-    assert exp_polar(x).is_polar is True and exp_polar(x).diff(x) == exp_polar(x)
+    # SymPy's exp_polar has no derivative rule: Derivative(exp_polar(x), x)
+    from sympy_extras.core.function import Derivative
+    assert exp_polar(x).is_polar is True and exp_polar(x).diff(x) == Derivative(exp_polar(x), x)
 

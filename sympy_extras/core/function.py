@@ -1233,6 +1233,34 @@ class Subs(Expr):
     def class_key(cls) -> ClassKey:
         return (5, 0, 'Subs')
 
+    # PORTED FROM SYMPY: sympy/core/function.py:Subs._eval_subs
+    def _subs_partial(self, old: Basic, new: Basic) -> Optional[Basic]:
+        """A substitution respecting the bound variables: a neutral
+        renaming of a variable, otherwise the variable kept and the point
+        substituted (``foo.doit().subs(reps) == foo.subs(reps).doit()``)."""
+        if not isinstance(new, Expr):
+            return None
+        pt = list(self._point)
+        if isinstance(old, Symbol) and old in self._variables:
+            if isinstance(new, Symbol) and not any(a.has(new) for a in self.args):
+                renamed = self.xreplace({old: new})
+                return renamed
+            i = self._variables.index(old)
+            for j in range(i, len(self._variables)):
+                moved = pt[j]._subs(old, new)
+                assert isinstance(moved, Expr)
+                pt[j] = moved
+            return Subs(self._expr, self._variables, pt)
+        v = [var._subs(old, new) for var in self._variables]
+        if v != list(self._variables):
+            if not isinstance(old, Symbol):
+                return None
+            return Subs(self._expr, self._variables + (old,), pt + [new])
+        expr = self._expr._subs(old, new)
+        assert isinstance(expr, Expr)
+        points = [p._subs(old, new) for p in pt]
+        return Subs(expr, self._variables, [p for p in points if isinstance(p, Expr)])
+
     def _rebuild(self, args: tuple[Basic, ...]) -> Basic:
         expr, variables, point = args
         return Subs(as_expr(expr), _as_tuple(variables), _as_tuple(point))
