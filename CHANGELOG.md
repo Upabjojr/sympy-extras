@@ -51,6 +51,9 @@ remove public functions. Breaking changes are listed here when they happen.
 - `sympy_extras.simplify.simplify.nsimplify` (pslq, `mpmath.identify`
   read by a typed parser, constants, `rational`, `tolerance`), ported from
   SymPy; `radsimp` no longer goes through SymPy.
+- `sympy_extras.simplify.gammasimp`: `gammasimp` (rising factorials,
+  reflection, duplication, Gauss multiplication) and `combsimp`, ported
+  from SymPy.
 - `sympy_extras.simplify.trigsimp`: `trigsimp` (methods `matching` and
   `fu`), `futrig` and `exptrigsimp`, ported from SymPy.
 - `sympy_extras.simplify.fu`: `fu`, `TR0` to `TR22`, `TRmorrie`,
