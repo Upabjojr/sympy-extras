@@ -245,6 +245,9 @@ remove public functions. Breaking changes are listed here when they happen.
   `hyperexpand`, on its condition of convergence; `Hyper` has `eta` and
   `convergence_statement`. Only the residue method and the Kronecker delta
   sums of `summation` still go through SymPy.
+- `eval_sum_residue` is native (ported from SymPy): the poles from the
+  native `roots` where SymPy has closed forms (factors of degree at most
+  2, binomials); with `CRootOf` poles the call goes through SymPy.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

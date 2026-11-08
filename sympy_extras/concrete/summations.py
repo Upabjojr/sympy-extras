@@ -5,7 +5,8 @@ polynomials and harmonic numbers, geometric sums), then Gosper's
 algorithm, the hypergeometric and the residue methods.
 
 Ported from SymPy's ``sympy.concrete.summations`` (Gosper's algorithm
-in :mod:`~sympy_extras.concrete.gosper`). The residue method, the Kronecker delta sums and the
+in :mod:`~sympy_extras.concrete.gosper`). The residue method with poles
+which SymPy writes as ``CRootOf``, the Kronecker delta sums and the
 equation solving of the telescoping go through SymPy for that call (not
 ported yet).
 
@@ -331,7 +332,7 @@ def eval_sum_symbolic(f: Expr, limits: Limits) -> Optional[Expr]:
     h = eval_sum_hyper(f_orig, (i, a, b))
     if h is not None:
         return h
-    rr = _through('summations.eval_sum_residue', f_orig, (i, a, b))
+    rr = eval_sum_residue(f_orig, (i, a, b))
     if rr is not None:
         return rr
     factored = factor(f_orig)
@@ -486,6 +487,145 @@ def _as_set_is_empty(cond: Boolean) -> bool:
         return bool(sympy_cond.as_set() == sympy.S.EmptySet)
     except NotImplementedError:
         return False
+
+
+class _NotPorted(Exception):
+    """A case of eval_sum_residue the native code does not take (SymPy's
+    CRootOf poles, a coefficient domain our Poly lacks)."""
+
+
+# PORTED FROM SYMPY: sympy/concrete/summations.py:eval_sum_residue
+def eval_sum_residue(f: Expr, limits: Limits) -> Optional[Expr]:
+    """An infinite sum of a rational function (or ``(-1)**i`` times one) by
+    the residues of ``f*pi*cot(pi*z)`` (``csc`` when alternating) at its
+    poles; ``None`` when the method does not apply."""
+    try:
+        return _eval_sum_residue(f, limits)
+    except _NotPorted:
+        return _through('summations.eval_sum_residue', f, limits)
+
+
+def _eval_sum_residue(f: Expr, limits: Limits) -> Optional[Expr]:
+    from sympy_extras.core.numbers import pi
+    from sympy_extras.functions.elementary.trigonometric import cot, csc
+    from sympy_extras.polys.polyerrors import CoercionFailed, PolynomialError
+    from sympy_extras.polys.polyroots import roots
+    from sympy_extras.polys.polytools import Poly
+    from sympy_extras.series.residues import residue
+    i, a, b = limits
+    if a.is_comparable and b.is_comparable and _is_true(a > b):
+        return _eval_sum_residue(f, (i, b + ONE, a - ONE))
+
+    def poly(e: Expr) -> Poly:
+        try:
+            return Poly(e, i)
+        except (CoercionFailed, NotImplementedError) as exc:
+            raise _NotPorted() from exc
+
+    def is_even_function(numer: Poly, denom: Poly) -> bool:
+        nm = [m[0] for m in numer.monoms()]
+        dm = [m[0] for m in denom.monoms()]
+        return (all(k % 2 == 0 for k in nm) and all(k % 2 == 0 for k in dm)) or \
+            (all(k % 2 == 1 for k in nm) and all(k % 2 == 1 for k in dm))
+
+    def match_rational(g: Expr) -> Optional[tuple[Poly, Poly]]:
+        numer, denom = g.as_numer_denom()
+        try:
+            return poly(numer), poly(denom)
+        except PolynomialError:
+            return None
+
+    def get_poles(denom: Poly) -> Optional[tuple[list[Expr], list[Expr]]]:
+        # SymPy's denom.sqf_part().all_roots(): closed forms for the factors
+        # of degree at most 2 and the binomials, CRootOf otherwise
+        _, factors = denom.factor_list()
+        found: list[Expr] = []
+        for fac, _ in factors:
+            if fac.degree() > 2 and fac.length() != 2:
+                raise _NotPorted()
+            rs = roots(fac.as_expr(), i)
+            if not isinstance(rs, dict) or sum(rs.values()) != fac.degree():
+                raise _NotPorted()
+            found.extend(rs)
+        if any(r.is_integer is None for r in found):
+            return None
+        return [r for r in found if r.is_integer is True], [r for r in found if r.is_integer is False]
+
+    def shifted(p: Poly, by: Expr) -> Poly:
+        moved = p.as_expr().subs(i, i + by)
+        assert isinstance(moved, Expr)
+        return poly(moved.expand())
+
+    z = Dummy('z')
+
+    def residue_factor(numer: Poly, denom: Poly, alternating: bool) -> Expr:
+        g = _e((numer.as_expr() / denom.as_expr()).subs(i, z))
+        return g * (csc(pi * z) if alternating else cot(pi * z))
+
+    if f.free_symbols - {i}:
+        return None
+    if not (isinstance(a, (Integer, Infinity, NegativeInfinity)) and isinstance(b, (Integer, Infinity, NegativeInfinity))):
+        return None
+    if not isinstance(a, NegativeInfinity) and not isinstance(b, Infinity):
+        return None
+    match = match_rational(f)
+    alternating = False
+    if match is None:
+        match = match_rational(f / Integer(-1)**i)
+        if match is None:
+            return None
+        alternating = True
+    numer, denom = match
+    if denom.degree() - numer.degree() < 2:
+        return None
+    if isinstance(a, NegativeInfinity) and isinstance(b, Infinity):
+        poles = get_poles(denom)
+        if poles is None:
+            return None
+        int_roots, nonint_roots = poles
+        if int_roots:
+            return None
+        factor_ = residue_factor(numer, denom, alternating)
+        return -pi * add(*[residue(factor_, z, root) for root in nonint_roots])
+    if not (a.is_finite is True and isinstance(b, Infinity)):
+        return None
+    if not is_even_function(numer, denom):
+        n = denom.degree()
+        lead = denom.coeff_monomial((n,))
+        nxt = denom.coeff_monomial((n - 1,))
+        shift = -nxt / lead / n
+        if not isinstance(shift, Integer) or shift == 0:
+            return None
+        numer, denom = shifted(numer, shift), shifted(denom, shift)
+        if not is_even_function(numer, denom):
+            return None
+        if alternating:
+            g = Integer(-1)**i * (Integer(-1)**shift * numer.as_expr() / denom.as_expr())
+        else:
+            g = numer.as_expr() / denom.as_expr()
+        return _eval_sum_residue(g, (i, a - shift, b - shift))
+    poles = get_poles(denom)
+    if poles is None:
+        return None
+    int_roots, nonint_roots = poles
+    ints = [r.p for r in int_roots if isinstance(r, Integer)]
+    assert isinstance(a, Integer)
+    if ints:
+        if len(ints) != max(ints) - min(ints) + 1:
+            return None
+        if a.p <= max(ints):
+            return None
+    factor_ = residue_factor(numer, denom, alternating)
+    full_sum = -pi * add(*[residue(factor_, z, root) for root in list(int_roots) + list(nonint_roots)])
+    if not ints:
+        # SymPy's xreplace re-evaluates: the values of the terms
+        half_sum = (full_sum + _e(f.subs(i, ZERO))) / 2
+        extraneous_neg = [_e(f.subs(i, Integer(i0))) for i0 in range(a.p, 0)]
+        extraneous_pos = [_e(f.subs(i, Integer(i0))) for i0 in range(0, a.p)]
+        return half_sum + add(*extraneous_neg) - add(*extraneous_pos)
+    half_sum = full_sum / 2
+    extraneous = [_e(f.subs(i, Integer(i0))) for i0 in range(max(ints) + 1, a.p)]
+    return half_sum - add(*extraneous)
 
 
 _ASSUMPTIONS = ['extended_nonnegative', 'nonnegative', 'extended_nonpositive', 'nonpositive', 'extended_positive',

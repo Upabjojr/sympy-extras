@@ -75,3 +75,23 @@ def test_convergence_statement_matches_sympy() -> None:
             continue
         c = ours.convergence_statement
         assert (str(c) if isinstance(c, bool) else str(to_sympy(c, evaluate=False))) == str(h.convergence_statement), h
+
+
+def test_residue_sums_match_sympy() -> None:
+    # eval_sum_residue; the Catalan sum is left out (the hypergeometric step
+    # before it has a known difference in hyperexpand)
+    from sympy.concrete.summations import eval_sum_residue as sympy_eval_sum_residue
+    from sympy_extras.concrete.summations import eval_sum_residue
+    cases = [(1/(i**2 + 1), (i, 0, oo)), (1/(i**2 + 1), (i, -oo, oo)), ((-1)**i/(i**2 + 1), (i, -oo, oo)),
+             (1/(i**2 + 4), (i, 1, oo)), (1/(i**4 + 1), (i, -oo, oo)), (1/((i + 1)**2 + 1), (i, 0, oo)),
+             (1/(i**2 - R(1, 4)), (i, 1, oo)), (1/(i**2 + i + 1), (i, -oo, oo)), (1/(i**2 + 1)**2, (i, -oo, oo)),
+             (1/(4*i**2 + 1), (i, 0, oo)), (i**2/(i**4 + 4), (i, 1, oo)), (1/(i**3 + 2), (i, 1, oo)),
+             (1/(i**2 + 2), (i, 3, oo)), (1/((i - 2)**2 + 1), (i, 5, oo)), ((-1)**i/(i**2 + 1), (i, 2, oo))]
+    for f, (v, lo, hi) in cases:
+        var = from_sympy(v)
+        assert isinstance(var, Symbol)
+        limits = (var, expr_from_sympy(sympy.sympify(lo)), expr_from_sympy(sympy.sympify(hi)))
+        ours = eval_sum_residue(expr_from_sympy(f), limits)
+        theirs = sympy_eval_sum_residue(f, (v, sympy.sympify(lo), sympy.sympify(hi)))
+        assert (None if ours is None else str(to_sympy(ours, evaluate=False))) == (None if theirs is None else str(theirs))
+        assert str(to_sympy(summation(expr_from_sympy(f), limits), evaluate=False)) == str(sympy.summation(f, (v, lo, hi)))
