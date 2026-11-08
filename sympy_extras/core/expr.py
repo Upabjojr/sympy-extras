@@ -414,10 +414,17 @@ class Expr(Basic):
         >>> (x/y + 1).normal()
         (x + y)/y
         """
+        # PORTED FROM SYMPY: sympy/core/expr.py:Expr.normal
         from .mul import div
+        from .numbers import Integer, Number
+        from .power import pow
         n, d = self.as_numer_denom()
-        if d.is_Number and d == 1:
-            return self
+        if isinstance(d, Number):
+            if d == 1:
+                return n
+            # a numerical denominator stays outside: (2*x + 1)/2
+            from sympy_extras.simplify.radsimp import unevaluated_mul
+            return unevaluated_mul(n, pow(d, Integer(-1)))
         return div(n, d)
 
     def as_independent(self, *symbols: Basic, as_Add: Optional[bool] = None) -> tuple[Expr, Expr]:

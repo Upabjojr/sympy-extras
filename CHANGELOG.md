@@ -74,6 +74,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `add` re-creates its terms like SymPy's `Add.flatten` (a nested
+  product `(x*y*(2*y + 1))/2` is flattened one level); `Expr.normal`
+  keeps a numerical denominator outside as SymPy does
+  (`(2*x*y + 1)/2`); `replace` and `expand_log` rebuild a node only when
+  an argument changed.
 - `count_ops` follows SymPy's loop: sums in argument order with
   `_coeff_isneg` (no printing order, 30% faster `simplify`), products
   through `fraction` like SymPy (the denominator rebuilt evaluated).

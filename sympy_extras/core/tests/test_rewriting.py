@@ -60,3 +60,12 @@ def test_traversals_rebuild_only_changed_nodes() -> None:
     e = s.factor_terms(2 * y * s.log(2) + 4, sign=False)  # 2*(y*log(2) + 2)
     assert str(to_sympy(expand_log(expr_from_sympy(e), deep=True), evaluate=False)) == str(s.expand_log(e, deep=True))
     assert str(to_sympy(logcombine(expr_from_sympy(e)), evaluate=False)) == str(s.logcombine(e))
+
+
+def test_add_recreates_nested_terms_and_normal_keeps_numeric_denominator() -> None:
+    from sympy_extras.core.add import add
+    nested = s.Mul._from_args((s.S.Half, x * y * (2 * y + 1)))
+    ours = add(expr_from_sympy(nested), expr_from_sympy(y**2))
+    assert [a.args for a in ours.args] == [tuple(expr_from_sympy(b) for b in a.args) for a in (nested + y**2).args]
+    e = x * y * (y + s.S.Half) + y**2
+    assert str(to_sympy(expr_from_sympy(e).normal(), evaluate=False)) == str(e.normal())

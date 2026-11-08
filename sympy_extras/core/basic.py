@@ -600,7 +600,7 @@ class Basic:
         node: Basic = self
         if node.args:
             args = tuple(a._replace(query, value, mapping, exact) for a in node.args)
-            if not all(a is b for a, b in zip(args, node.args)):
+            if any(a is not b and a != b for a, b in zip(args, node.args)):
                 node = node._evaluated(args)
         replacement = _apply_query(node, query, value, exact)
         if replacement is None:

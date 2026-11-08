@@ -1475,8 +1475,9 @@ def _expand_logs(e: Expr, deep: bool, force: bool, factor: bool) -> Expr:
     ``deep``), then the node."""
     from sympy_extras.functions.elementary.exponential import Log
     if deep and e.args and not isinstance(e, (Derivative, UnevaluatedExpr)):
-        e = as_expr(e._evaluated(tuple(_expand_logs(a, deep, force, factor) if isinstance(a, Expr) else a
-                                       for a in e.args)))
+        args = tuple(_expand_logs(a, deep, force, factor) if isinstance(a, Expr) else a for a in e.args)
+        if any(new is not old and new != old for new, old in zip(args, e.args)):
+            e = as_expr(e._evaluated(args))
     if isinstance(e, Log):
         return _expand_log_node(e, force, factor)
     return e

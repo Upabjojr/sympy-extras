@@ -236,9 +236,6 @@ def add(*args: ExprLike) -> Expr:
         return nonidentity[0]
     number: Number = Integer(0)
     coefficients: dict[Expr, Number] = {}
-    # the term as given, kept while it is the only one with its rest, so
-    # that it is not rebuilt
-    originals: dict[Expr, Optional[Expr]] = {}
     for a in stack:
         if isinstance(a, Add):
             stack.extend(a.args)
@@ -249,10 +246,8 @@ def add(*args: ExprLike) -> Expr:
         c, rest = a.as_coeff_Mul()
         if rest in coefficients:
             coefficients[rest] = coefficients[rest].number_add(c)
-            originals[rest] = None
         else:
             coefficients[rest] = c
-            originals[rest] = a
     if isinstance(number, NaN):
         return nan
     terms: list[Expr] = []
@@ -265,11 +260,19 @@ def add(*args: ExprLike) -> Expr:
             continue
         if _absorbed_in_sum(number, rest, c):
             continue
-        original = originals[rest]
-        if original is not None:
-            term = original
-        elif isinstance(c, Rational) and c.p == 1 and c.q == 1:
+        # PORTED FROM SYMPY: sympy/core/add.py:Add.flatten (the terms re-created)
+        if isinstance(c, Rational) and c.p == 1 and c.q == 1:
             term = rest
+            terms.append(term)
+            needs_pass = needs_pass or term.is_Add or isinstance(term, Number)
+            continue
+        from .mul import Mul
+        if isinstance(rest, Mul):
+            # c in slot 0 of the product's arguments: a nested product
+            # (x*y*(2*y + 1))/2 is flattened one level
+            term = Mul(c, *rest.args)
+        elif isinstance(rest, Add):
+            term = Mul(c, rest)
         else:
             term = mul(c, rest)
         if term.is_Add or isinstance(term, Number):
