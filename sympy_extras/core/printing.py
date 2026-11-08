@@ -293,6 +293,8 @@ def _generators(term: Expr) -> list[Expr]:
     for f in factors:
         if not isinstance(f, Expr) or isinstance(f, (Number, ImaginaryUnit, NumberSymbol, UnevaluatedExpr)) or f.is_number:
             continue
+        if f.is_commutative is False:
+            continue  # SymPy's as_terms: the noncommutative factors are not generators
         b, _ = _decompose_power(f)
         if isinstance(b, NumberSymbol):
             continue

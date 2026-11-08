@@ -45,7 +45,7 @@ from .function import Application
 from .mul import Mul, _keep_coeff, mul
 from .numbers import ImaginaryUnit, Integer, Number, Rational, number_from_fraction
 from .power import Pow, pow
-from .symbol import Dummy
+from .symbol import Dummy, Symbol
 
 __all__ = ['factor_terms', 'gcd_terms', 'factor_nc', 'decompose_power', 'Factors', 'ExprFactors', 'Term']
 
@@ -606,19 +606,263 @@ class _FactorTerms:
         return _keep_coeff(content, p, clear=self.clear, sign=self.sign)
 
 
+# PORTED FROM SYMPY: sympy/core/exprtools.py:_mask_nc
+def _mask_nc(eq: Expr, name: str = 'mask') -> tuple[Expr, dict[Basic, Basic], list[Symbol]]:
+    """``eq`` with its noncommutative objects replaced by dummies: a single
+    noncommutative symbol or object by a commutative dummy (it then
+    factors as usual), the other objects by noncommutative dummies;
+    with the mapping back and the noncommutative symbols."""
+    from .sorting import default_sort_key
+    from .symbol import Dummy
+    counter = [0]
+
+    def dummy(**assumptions: bool) -> Dummy:
+        d = Dummy(name + str(counter[0]), **assumptions)
+        counter[0] += 1
+        return d
+
+    if eq.is_commutative is not False:
+        return eq, {}, []
+    nc_obj: set[Basic] = set()
+    nc_syms: set[Symbol] = set()
+
+    def visit(a: Basic) -> None:
+        # SymPy's preorder_traversal(keys=default_sort_key) with skip
+        if isinstance(a, Expr) and a.is_commutative is False:
+            if isinstance(a, Symbol):
+                nc_syms.add(a)
+                return
+            if not (a.is_Add or a.is_Mul or a.is_Pow):
+                nc_obj.add(a)
+                return
+        for child in sorted(a.args, key=default_sort_key):
+            visit(child)
+
+    visit(eq)
+    rep: list[tuple[Basic, Symbol]] = []
+    # a single noncommutative symbol or object factors as usual (polys
+    # would complain): a commutative dummy
+    if len(nc_obj) == 1 and not nc_syms:
+        rep.append((nc_obj.pop(), dummy()))
+    elif len(nc_syms) == 1 and not nc_obj:
+        rep.append((nc_syms.pop(), dummy()))
+    # the other noncommutative objects: noncommutative dummies
+    for n in sorted(nc_obj, key=default_sort_key):
+        nc = dummy(commutative=False)
+        rep.append((n, nc))
+        nc_syms.add(nc)
+    masked = eq.subs(rep)
+    return masked, {v: k for k, v in rep}, sorted(nc_syms, key=default_sort_key)
+
+
+# PORTED FROM SYMPY: sympy/core/exprtools.py:factor_nc
 def factor_nc(expr: ExprLike) -> Expr:
-    """The common factors of a noncommutative sum taken out (SymPy's ``factor_nc``).
+    """The common factors of a noncommutative sum taken out: the commutative
+    gcd, the common noncommutative prefix and suffix (or common powers),
+    the rest factored as a commutative polynomial whose factors are put
+    back in an order which gives the sum.
 
     Examples
     ========
 
-    >>> from sympy_extras.core import Symbol, factor_nc
+    >>> from sympy_extras.core import Symbol, factor_nc, symbols
     >>> x, A, B = Symbol('x'), Symbol('A', commutative=False), Symbol('B', commutative=False)
-    >>> factor_nc(x*A + x*B)
-    x*(A + B)
+    >>> factor_nc(x*A + x*B), factor_nc(A**2 + 2*A*B + B**2), factor_nc(A*B*x + A*x)
+    (x*(A + B), (A + B)**2, x*A*(1 + B))
+    >>> factor_nc(A**2 - A*B - B*A + B**2), factor_nc(A*x**2 + A*x)
+    ((A - B)**2, x*(x + 1)*A)
     """
-    from .interop import expr_through_sympy
-    return expr_through_sympy(to_expr(expr), sympy.factor_nc)
+    from itertools import permutations
+    from .add import Add, add
+    from .function import expand, expand_power_exp
+    from .mul import Mul, _keep_coeff, mul
+    from .numbers import Integer
+    from .power import Pow, pow
+    from .sorting import default_sort_key
+    from .symbol import Dummy
+    from sympy_extras.polys.polytools import factor, gcd
+    from sympy_extras.simplify.powsimp import powsimp
+    e = to_expr(expr)
+    if not e.args:
+        return e
+    if not isinstance(e, Add):
+        rebuilt = e._evaluated(tuple(factor_nc(a) if isinstance(a, Expr) else a for a in e.args))
+        return _as_expr(rebuilt)
+    e = add(*[expand_power_exp(a) for a in e.args if isinstance(a, Expr)])
+    masked, rep, nc_symbols = _mask_nc(e)
+    if rep:
+        return _as_expr(factor(masked).subs(rep))
+
+    def cnc(t: Expr) -> list[list[Expr]]:
+        # SymPy's args_cnc (the commutative prefix, the rest)
+        fs = [f for f in (t.args if isinstance(t, Mul) else (t,)) if isinstance(f, Expr)]
+        k = next((i for i, f in enumerate(fs) if f.is_commutative is not True), len(fs))
+        c_part = fs[:k]
+        if c_part and isinstance(c_part[0], Number) and c_part[0].is_extended_negative is True \
+                and not (isinstance(c_part[0], Integer) and c_part[0].p == -1):
+            c_part[:1] = [Integer(-1), -c_part[0]]
+        return [c_part, fs[k:]]
+
+    def raw_mul(fs: list[Expr]) -> Expr:
+        # Mul._from_args
+        if not fs:
+            return Integer(1)
+        return fs[0] if len(fs) == 1 else Mul(*fs)
+
+    args = [cnc(a) for a in (masked.args if isinstance(masked, Add) else (masked,)) if isinstance(a, Expr)]
+    c: Expr = Integer(1)
+    g: Expr = Integer(1)
+    lft: Expr = Integer(1)
+    rgt: Expr = Integer(1)
+    hit = False
+    # a commutative gcd
+    for i, a in enumerate(args):
+        if i == 0:
+            c = raw_mul(a[0])
+        elif a[0]:
+            c = gcd(c, raw_mul(a[0]))
+        else:
+            c = Integer(1)
+    if not (isinstance(c, Integer) and c.p == 1):
+        hit = True
+        c, g = c.as_coeff_Mul()
+        if not (isinstance(g, Integer) and g.p == 1):
+            for i, (cc, _) in enumerate(args):
+                q = raw_mul(list(cc)) / g
+                args[i][0] = list(q.args) if isinstance(q, Mul) else [q]
+        for i, (cc, _) in enumerate(args):
+            if cc:
+                cc[0] = cc[0] / c
+            else:
+                cc = [1 / c]
+            args[i][0] = cc
+    # a common noncommutative prefix
+    n: list[Expr] = []
+    found_prefix = True
+    for i, a in enumerate(args):
+        if i == 0:
+            n = a[1][:]
+        else:
+            n = _common_prefix(n, a[1])
+        if not n:
+            found_prefix = False
+            # a power which can be extracted
+            if not args[0][1]:
+                break
+            b, ex = args[0][1][0].as_base_exp()
+            ok = False
+            if isinstance(ex, Integer):
+                least = ex.p
+                for t in args:
+                    if not t[1]:
+                        break
+                    bt, et = t[1][0].as_base_exp()
+                    if isinstance(et, Integer) and bt == b:
+                        least = min(least, et.p)
+                    else:
+                        break
+                else:
+                    ok = hit = True
+                    lft = pow(b, Integer(least))
+                    il = pow(b, Integer(-least))
+                    for t in args:
+                        t[1][0] = il * t[1][0]
+            break
+    if found_prefix and args:
+        hit = True
+        lenn = len(n)
+        lft = mul(*n)
+        for t in args:
+            t[1] = t[1][lenn:]
+    # a common noncommutative suffix
+    found_suffix = True
+    for i, a in enumerate(args):
+        if i == 0:
+            n = a[1][:]
+        else:
+            n = _common_suffix(n, a[1])
+        if not n:
+            found_suffix = False
+            if not args[0][1]:
+                break
+            b, ex = args[0][1][-1].as_base_exp()
+            if isinstance(ex, Integer):
+                least = ex.p
+                for t in args:
+                    if not t[1]:
+                        break
+                    bt, et = t[1][-1].as_base_exp()
+                    if isinstance(et, Integer) and bt == b:
+                        least = min(least, et.p)
+                    else:
+                        break
+                else:
+                    hit = True
+                    rgt = pow(b, Integer(least))
+                    il = pow(b, Integer(-least))
+                    for t in args:
+                        t[1][-1] = t[1][-1] * il
+            break
+    if found_suffix and args:
+        hit = True
+        lenn = len(n)
+        rgt = mul(*n)
+        for t in args:
+            t[1] = t[1][:len(t[1]) - lenn]
+    mid = add(*[mul(*cc) * mul(*nc) for cc, nc in args]) if hit else masked
+    # the symbols sorted so that the dummies come in the order of the
+    # symbols (no factor -1 introduced: A**2 - B**2)
+    rep1: list[tuple[Basic, Basic]] = [(s, Dummy()) for s in sorted(nc_symbols, key=default_sort_key)]
+    unrep1 = [(v, k) for k, v in rep1]
+    unrep1.reverse()
+    new_mid, r2, _ = _mask_nc(mid.subs(rep1))
+    new_mid = powsimp(factor(new_mid))
+    new_mid = new_mid.subs(r2).subs(unrep1)
+    if isinstance(new_mid, Pow):
+        return _keep_coeff(c, g * lft * new_mid * rgt)
+    if isinstance(new_mid, Mul):
+
+        def _pemexpand(t: Expr) -> Expr:
+            # the minimal hints to check the result
+            return expand(t, deep=True, mul=True, power_exp=True, power_base=False, multinomial=True, log=False)
+
+        cfac: list[Expr] = []
+        ncfac: list[Expr] = []
+        for f in new_mid.args:
+            if not isinstance(f, Expr):
+                continue
+            if f.is_commutative is not False:
+                cfac.append(f)
+            else:
+                b, ex = f.as_base_exp()
+                if isinstance(ex, Integer) and ex.p > 0:
+                    ncfac.extend([b] * ex.p)
+                else:
+                    ncfac.append(f)
+        pre_mid = g * mul(*cfac) * lft
+        target = _pemexpand(e / c)
+        for perm in permutations(ncfac, len(ncfac)):
+            ok_expr = pre_mid * mul(*perm) * rgt
+            if _pemexpand(ok_expr) == target:
+                return _keep_coeff(c, ok_expr)
+    # mid was a sum which did not factor
+    return _keep_coeff(c, g * lft * mid * rgt)
+
+
+def _common_prefix(a: list[Expr], b: list[Expr]) -> list[Expr]:
+    """SymPy's ``common_prefix`` of two sequences."""
+    k = 0
+    while k < len(a) and k < len(b) and a[k] == b[k]:
+        k += 1
+    return a[:k]
+
+
+def _common_suffix(a: list[Expr], b: list[Expr]) -> list[Expr]:
+    """SymPy's ``common_suffix`` of two sequences."""
+    k = 0
+    while k < len(a) and k < len(b) and a[len(a) - 1 - k] == b[len(b) - 1 - k]:
+        k += 1
+    return a[len(a) - k:] if k else []
 
 
 def _basic(e: Union[ExprLike, Basic]) -> Basic:

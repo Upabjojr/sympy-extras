@@ -727,3 +727,21 @@ def test_refine_matches_sympy() -> None:
                 continue  # inconsistent assumptions
             ours = refine(from_sympy(e), oa(from_sympy(sx)) & ob(from_sympy(sy)))
             assert str(to_sympy(ours, evaluate=False)) == want, (e, given)
+
+
+def test_factor_nc_matches_sympy() -> None:
+    import random
+    import sympy
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.exprtools import factor_nc
+    from sympy_extras.core.interop import expr_from_sympy
+    A, B, C = sympy.symbols('A B C', commutative=False)
+    sx, sy = sympy.symbols('x y')
+    rng = random.Random(2)
+    atoms = [A, B, C, sx, sy, A**2, sympy.Integer(2)]
+    cases = [sx*A + sx*B, A**2 + 2*A*B + B**2, A**2 - A*B - B*A + B**2, A*sx**2 + A*sx, sympy.sin(A)*sx + sympy.sin(A)]
+    for _ in range(80):
+        cases.append(sympy.Add(*[sympy.Mul(*[rng.choice(atoms) for _ in range(rng.randint(1, 3))])
+                                 for _ in range(rng.randint(2, 3))]))
+    for e in cases:
+        assert str(to_sympy(factor_nc(expr_from_sympy(e)), evaluate=False)) == str(sympy.factor_nc(e)), e

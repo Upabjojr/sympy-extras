@@ -149,6 +149,9 @@ remove public functions. Breaking changes are listed here when they happen.
   noncommutative products grouped into powers; `simplify` uses it); the
   printer keeps the negative powers of noncommutative factors as powers
   (`(b*a)**(-1)*c*a`, not `c*a/(b*a)`), as SymPy does.
+- `factor_nc` and `_mask_nc` are native, ported from SymPy; the printer
+  orders the terms of noncommutative sums as SymPy's `as_terms` (the
+  noncommutative factors are not generators: `x*A*(1 + B)`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

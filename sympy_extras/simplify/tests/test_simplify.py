@@ -71,7 +71,7 @@ def test_nc_simplify_matches_sympy() -> None:
     import sympy
     from sympy.simplify.simplify import nc_simplify as sympy_nc_simplify
     from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import from_sympy
+    from sympy_extras.core.interop import expr_from_sympy
     from sympy_extras.simplify.simplify import nc_simplify
     a, b, c = sympy.symbols('a b c', commutative=False)
     sx = sympy.Symbol('x')
@@ -86,4 +86,4 @@ def test_nc_simplify_matches_sympy() -> None:
         want = str(sympy_nc_simplify(e))
         if want.startswith('(a*b)*'):
             continue  # SymPy keeps an unevaluated (a*b) there
-        assert str(to_sympy(nc_simplify(from_sympy(e)), evaluate=False)) == want, e
+        assert str(to_sympy(nc_simplify(expr_from_sympy(e)), evaluate=False)) == want, e
