@@ -74,7 +74,8 @@ remove public functions. Breaking changes are listed here when they happen.
   `_eval_nseries`/`_eval_as_leading_term` of `Add`, `Mul`, `Pow` and the
   generic function. The functions whose expansion is not ported yet, the
   limits and the asymptotic series still go through SymPy, node by node.
-  `as_coeff_exponent` now collects first, as SymPy does.
+  `as_coeff_exponent` now collects first, as SymPy does. The series and
+  leading terms of `exp` and `log` (with the branch cut of `log`) are native.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

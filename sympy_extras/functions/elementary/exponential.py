@@ -60,6 +60,7 @@ from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import (ComplexInfinity, E, Exp1, I, Infinity, Integer, NaN, NegativeInfinity, Rational,
                                        nan, number_from_fraction, oo, pi, zoo)
 from sympy_extras.core.power import pow
+from sympy_extras.core.symbol import Symbol
 
 __all__ = ['Exp', 'Log', 'LambertW', 'ExpPolar', 'exp', 'log', 'ln', 'lambertw', 'exp_polar']
 
@@ -212,6 +213,94 @@ class Exp(DefinedFunction):
     def as_base_exp(self) -> tuple[Expr, Expr]:
         return (E, self.args[0])
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        if n < 0:
+            return Integer(0)
+        if n == 0:
+            return Integer(1)
+        if previous is not None:
+            return mul(previous, x, pow(Integer(n), Integer(-1)))
+        from sympy_extras.functions.combinatorial.factorials import factorial
+        return mul(pow(x, Integer(n)), pow(factorial(Integer(n)), Integer(-1)))
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp._taylor
+    def _taylor(self, x: Symbol, n: int) -> Expr:
+        terms: list[Expr] = []
+        g: Optional[Expr] = None
+        for i in range(n):
+            g = self.taylor_term(i, self.args[0], g)
+            g = g.nseries(x, n=n)
+            terms.append(g.removeO())
+        return add(*terms)
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.add import _ceiling_int
+        from sympy_extras.core.coreerrors import PoleError
+        from sympy_extras.core.function import expand_complex
+        from sympy_extras.core.order import order
+        from sympy_extras.core.series import _less
+        from sympy_extras.core.symbol import Dummy, Wild
+        from sympy_extras.functions.elementary.complexes import Sign
+        from sympy_extras.simplify.powsimp import powsimp
+        arg = self.args[0]
+        arg_series = arg._eval_nseries(x, n, logx, Integer(0))
+        if arg_series.is_Order:
+            return add(Integer(1), arg_series)
+        arg0 = arg_series.removeO().limit(x, Integer(0))
+        if isinstance(arg0, NegativeInfinity):
+            return order(pow(x, Integer(n)), x)
+        if isinstance(arg0, Infinity):
+            return self
+        if arg0.is_infinite is True:
+            raise PoleError("Cannot expand %s around 0" % (self,))
+        # undecided sign terms in arg0
+        if any(isinstance(a, Sign) for a in arg0.args):
+            return self
+        t = Dummy("t")
+        nterms = n
+        cf: Optional[Expr]
+        try:
+            cf = order(arg.as_leading_term(x, logx=logx), x).getn()
+        except (NotImplementedError, PoleError):
+            cf = Integer(0)
+        positive_cf = cf is not None and not (cf.is_Number and cf == 0) and _less(Integer(0), cf)
+        if cf is not None and positive_cf:
+            nterms = _ceiling_int(mul(Integer(n), pow(cf, Integer(-1))))
+        exp_series = Exp(t)._taylor(t, nterms)
+        shift = add(arg_series, mul(Integer(-1), arg0))
+        r = mul(exp(arg0), exp_series.subs(t, shift))
+        if logx is not None:
+            if r.subs(logx, log(x)) == self:
+                return r
+        elif r == self:
+            return r
+        if cf is not None and positive_cf and _less(Integer(1), cf):
+            r = add(r, mul(order(pow(shift, Integer(n)), x),
+                           pow(x, mul(Integer(-1), add(cf, Integer(-1)), Integer(n)))))
+        else:
+            r = add(r, order(pow(shift, Integer(n)), x))
+        r = r.expand()
+        r = powsimp(r, deep=True, combine='exp')
+        # powsimp may introduce unexpanded (-1)**Rational (SymPy's PR #17201)
+        w = Wild('w', properties=[lambda e: isinstance(e, Rational) and e.q in (3, 4, 6)])
+        replaced = r.replace(pow(Integer(-1), w), expand_complex(pow(Integer(-1), w)))
+        return replaced if isinstance(replaced, Expr) else r
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.coreerrors import PoleError
+        arg = self.args[0].cancel().as_leading_term(x, logx=logx)
+        arg0 = arg.subs(x, Integer(0))
+        if isinstance(arg, NaN):
+            return nan
+        if isinstance(arg0, NaN):
+            arg0 = arg.limit(x, Integer(0))
+        if arg0.is_infinite is False:
+            return exp(arg0)
+        raise PoleError("Cannot expand %s around 0" % (self,))
+
     # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp._eval_subs
     def _subs_partial(self, old: Basic, new: Basic) -> Optional[Basic]:
         """``exp(a)`` as ``E**a`` for SymPy's power substitution
@@ -350,6 +439,157 @@ class Log(DefinedFunction):
     def fdiff(self, argindex: int) -> Expr:
         return pow(self.args[0], Integer(-1))
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        """The ``n``-th term of the series of ``log(1 + x)``."""
+        from sympy_extras.simplify.powsimp import powsimp
+        if n < 0:
+            return Integer(0)
+        if n == 0:
+            return x
+        if previous is not None:
+            return powsimp(mul(Integer(-n), previous, x, pow(Integer(n + 1), Integer(-1))), deep=True, combine='exp')
+        return mul(Integer(1 - 2 * (n % 2)), pow(x, Integer(n + 1)), pow(Integer(n + 1), Integer(-1)))
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.add import _ceiling_int
+        from sympy_extras.core.coreerrors import PoleError
+        from sympy_extras.core.expr import factors_of
+        from sympy_extras.core.function import _expand_logs
+        from sympy_extras.core.order import Order, order
+        from sympy_extras.core.series import _less
+        from sympy_extras.core.symbol import Dummy, Wild
+        from sympy_extras.functions.elementary.complexes import im
+        from sympy_extras.functions.special.delta_functions import heaviside
+        from sympy_extras.simplify.simplify import logcombine
+        arg = self.args[0]
+        if arg == x:
+            return log(x) if logx is None else logx
+        t = Dummy('t', positive=True)
+        if cdir.is_Number and cdir == 0:
+            cdir = Integer(1)
+        z = arg.subs(x, mul(cdir, t))
+        wk, wl = Wild("k"), Wild("l")
+        matched = z.match(mul(wk, pow(t, wl)))
+        if matched is not None and wk in matched and wl in matched:
+            k, l = _expr_of(matched[wk]), _expr_of(matched[wl])
+            if l != Integer(0) and not l.has(t) and not k.has(t):
+                r = mul(l, log(x) if logx is None else logx)
+                return add(r, log(k), mul(Integer(-1), l, log(cdir)))
+
+        def coeff_exp(term: Expr) -> tuple[Expr, Expr]:
+            coeff: Expr = Integer(1)
+            exponent: Expr = Integer(0)
+            for factor in factors_of(term):
+                if factor.has(t):
+                    base, exponent = factor.as_base_exp()
+                    if base != t:
+                        try:
+                            return term.leadterm(t)
+                        except ValueError:
+                            return term, Integer(0)
+                else:
+                    coeff = mul(coeff, factor)
+            return coeff, exponent
+
+        nn: Expr = Integer(n)
+        a: Expr
+        b: Expr
+        try:
+            a, b = z.leadterm(t, logx=logx, cdir=1)
+        except (ValueError, NotImplementedError, PoleError):
+            m = n
+            s = z._eval_nseries(t, m, logx, Integer(1))
+            while s.is_Order:
+                m += 1
+                s = z._eval_nseries(t, m, logx, Integer(1))
+            nn = Integer(m)
+            try:
+                a, b = s.removeO().leadterm(t, cdir=1)
+            except ValueError:
+                a, b = s.removeO().as_leading_term(t, cdir=1), Integer(0)
+        p = add(mul(z, pow(mul(a, pow(t, b)), Integer(-1))), Integer(-1)).cancel()
+        p = p._eval_nseries(t, _ceiling_int(nn), logx, Integer(1))
+        if p.has(Exp):
+            p = logcombine(p)
+        if isinstance(p, Order):
+            found = p.getn()
+            if found is not None:
+                nn = found
+        _, d = coeff_exp(p)
+        logx_ = log(x) if logx is None else logx
+        if d.is_positive is not True:
+            res = add(log(a), mul(Integer(-1), b, log(cdir)), mul(b, logx_))
+            expr = _expand_logs(self, True, True, False)
+            if not a.could_extract_minus_sign() and logx_.could_extract_minus_sign():
+                _res = _expand_logs(res.subs(mul(Integer(-1), logx_), mul(Integer(-1), log(x))), True, True, False)
+            else:
+                _res = _expand_logs(res.subs(logx_, log(x)), True, True, False)
+            if _res == expr:
+                return res
+            return add(res, order(pow(x, nn), x))
+
+        def product(d1: dict[Expr, Expr], d2: dict[Expr, Expr]) -> dict[Expr, Expr]:
+            res: dict[Expr, Expr] = {}
+            for e1 in d1:
+                for e2 in d2:
+                    ex = add(e1, e2)
+                    if _less(ex, nn):
+                        res[ex] = add(res.get(ex, Integer(0)), mul(d1[e1], d2[e2]))
+            return res
+
+        pterms: dict[Expr, Expr] = {}
+        removed = p.removeO()
+        for term in (removed.args if isinstance(removed, Add) else (removed,)):
+            if not isinstance(term, Expr):
+                continue
+            co1, e1 = coeff_exp(term)
+            pterms[e1] = add(pterms.get(e1, Integer(0)), co1)
+        kk = 1
+        terms: dict[Expr, Expr] = {}
+        pk = pterms
+        while _less(mul(Integer(kk), d), nn):
+            coeff = mul(Integer(-1), pow(Integer(-1), Integer(kk)), pow(Integer(kk), Integer(-1)))
+            for ex in pk:
+                terms[ex] = add(terms.get(ex, Integer(0)), mul(coeff, pk[ex]))
+            pk = product(pk, pterms)
+            kk += 1
+        res = add(log(a), mul(Integer(-1), b, log(cdir)), mul(b, logx_))
+        for ex in terms:
+            res = add(res, mul(terms[ex].cancel(), pow(t, ex)))
+        if a.is_negative is True and im(z) != Integer(0):
+            res = add(res, _branch_jump(z, t))
+        res = res.subs(t, mul(x, pow(cdir, Integer(-1))))
+        return add(res, order(pow(x, nn), x))
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.coreerrors import PoleError
+        from sympy_extras.core.symbol import Dummy
+        from sympy_extras.functions.elementary.complexes import im
+        # the steps of SymPy's PR #23592
+        arg0 = self.args[0].together()
+        t = Dummy('t', positive=True)
+        if cdir.is_Number and cdir == 0:
+            cdir = Integer(1)
+        z = arg0.subs(x, mul(cdir, t))
+        try:
+            c, e = z.leadterm(t, logx=logx, cdir=1)
+        except ValueError:
+            return log(arg0.as_leading_term(x, logx=logx, cdir=cdir))
+        if c.has(t):
+            c = c.subs(t, mul(x, pow(cdir, Integer(-1))))
+            if e != Integer(0):
+                raise PoleError("Cannot expand %s around 0" % (self,))
+            return log(c)
+        if c == Integer(1) and e == Integer(0):
+            return add(arg0, Integer(-1)).as_leading_term(x, logx=logx)
+        res = add(log(c), mul(Integer(-1), e, log(cdir)), mul(e, log(x) if logx is None else logx))
+        if c.is_negative is True and im(z) != Integer(0):
+            res = add(res, _branch_jump(z, t))
+        return res
+
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         if values[0] == 0:
             return None
@@ -388,6 +628,31 @@ class Log(DefinedFunction):
             if a.get('algebraic'):
                 facts['algebraic'] = False
         return facts
+
+
+def _expr_of(b: Basic) -> Expr:
+    if not isinstance(b, Expr):
+        raise TypeError("an expression is expected, got %s" % (b,))
+    return b
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log._eval_nseries (the branch cut)
+def _branch_jump(z: Expr, t: Symbol) -> Expr:
+    """-2*I*pi*Heaviside(-im(c), 0) for the first non-real term c*t**e
+    among the first five of the series of z (the jump of log across
+    its branch cut), 0 when they are real."""
+    from sympy_extras.core.numbers import pi
+    from sympy_extras.functions.elementary.complexes import im
+    from sympy_extras.functions.special.delta_functions import heaviside
+    term: Expr = Integer(0)
+    i = 0
+    for i, term in enumerate(z.lseries(t)):
+        if term.is_real is not True or i == 5:
+            break
+    if i < 5:
+        coeff, _ = term.as_coeff_exponent(t)
+        return mul(Integer(-2), I, pi, heaviside(mul(Integer(-1), im(coeff)), Integer(0)))
+    return Integer(0)
 
 
 def exp(x: ExprLike) -> Expr:

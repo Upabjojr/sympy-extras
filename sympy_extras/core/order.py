@@ -295,8 +295,8 @@ def _order(expr: Expr, given: tuple[tuple[Symbol, Expr], ...], explicit: bool) -
         ps: list[Expr] = [Integer(0)] * len(point) if s else list(point)
         if s:
             expr = expr.subs(s)
-            if isinstance(expr, Add):
-                expr = expr.factor()
+        if isinstance(expr, Add):
+            expr = expr.factor()
         args: tuple[Symbol, ...] = tuple(dummies) if s else tuple(variables)
         if len(variables) > 1:
             # SymPy expands (x*(x + y)).as_leading_term(x, y) is x*y, the
