@@ -749,7 +749,7 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     if e.has(KroneckerDeltaNode):
         e = kroneckersimp(e)
     if e.has(BesselBase):
-        e = _through_sympy(e, lambda s: sympy.besselsimp(s))
+        e = besselsimp(e)
     if e.has(*TRIG, *HYPER):
         e = trigsimp(e)
     if e.has(Log):
@@ -1050,3 +1050,109 @@ def nc_simplify(expr: ExprLike, deep: bool = True) -> Expr:
 
 def _is_even_number(e: Expr) -> bool:
     return isinstance(e, Integer) and e.p % 2 == 0
+
+
+# PORTED FROM SYMPY: sympy/simplify/simplify.py:besselsimp
+def besselsimp(expr: ExprLike) -> Expr:
+    """Bessel functions simplified: the factors ``I`` and ``-1`` of the
+    arguments taken out (``besselj(nu, I*z)`` is ``I**nu*besseli(nu, z)``),
+    the half-integer orders written with trigonometric functions, the
+    integer orders expanded, and the recurrence
+    ``B(a, x) = 2*(a + 1)/x*B(a + 1, x) - B(a + 2, x)`` used to remove the
+    lowest orders; the result factored when it changed.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol, I, pi, S
+    >>> from sympy_extras.functions import besselj, besseli
+    >>> from sympy_extras.simplify.simplify import besselsimp
+    >>> z, nu = Symbol('z'), Symbol('nu')
+    >>> besselsimp(besselj(nu, z*I)), besselsimp(besseli(nu, z*(-1)))
+    (besselj(nu, I*z), (-z)**nu*besseli(nu, z)/z**nu)
+    >>> besselsimp(besselj(S(1)/2, z))
+    sqrt(2)*sin(z)/(sqrt(pi)*sqrt(z))
+    """
+    from sympy_extras.core.numbers import I, Integer, pi
+    from sympy_extras.core.mod import mod
+    from sympy_extras.functions.elementary.complexes import re, unpolarify
+    from sympy_extras.functions.elementary.exponential import exp, exp_polar
+    from sympy_extras.functions.special.bessel import (BesselI, BesselJ, BesselK, BesselY, SphericalJ, besseli,
+                                                        besselj, besselk, bessely)
+    from .trigsimp import trigsimp
+    e = to_expr(expr)
+    BesselFunction = Callable[[Expr, Expr], Expr]
+
+    def replacer(fro: BesselFunction, to: BesselFunction, factors: list[Expr]) -> BesselFunction:
+        found = set(factors)
+
+        def repl(nu: Expr, z: Expr) -> Expr:
+            zfactors = set(z.args) if isinstance(z, Mul) else {z}
+            if found.intersection(zfactors):
+                return to(nu, z)
+            return fro(nu, z)
+        return repl
+
+    def torewrite(fro: BesselFunction, to: type) -> BesselFunction:
+        def tofunc(nu: Expr, z: Expr) -> Expr:
+            return fro(nu, z).rewrite(to)
+        return tofunc
+
+    def tominus(fro: BesselFunction) -> BesselFunction:
+        def tofunc(nu: Expr, z: Expr) -> Expr:
+            return exp(I*pi*nu) * fro(nu, exp_polar(-I*pi) * z)
+        return tofunc
+
+    def replace(t: Expr, cls: type, f: BesselFunction) -> Expr:
+        def value(*args: Expr) -> Expr:
+            return f(args[0], args[1])
+        return _expr(t.replace(cls, value))
+
+    orig = e
+    ifactors = [I, exp_polar(I*pi/2), exp_polar(-I*pi/2)]
+    e = replace(e, BesselJ, replacer(besselj, torewrite(besselj, BesselI), ifactors))
+    e = replace(e, BesselI, replacer(besseli, torewrite(besseli, BesselJ), ifactors))
+    minusfactors = [Integer(-1), exp_polar(I*pi)]
+    e = replace(e, BesselJ, replacer(besselj, tominus(besselj), minusfactors))
+    e = replace(e, BesselI, replacer(besseli, tominus(besseli), minusfactors))
+    z0 = Dummy('z')
+
+    def expander(fro: BesselFunction) -> BesselFunction:
+        def repl(nu: Expr, z: Expr) -> Expr:
+            if mod(nu, Integer(1)) == Rational(1, 2):
+                rewritten = fro(nu, z0).rewrite(BesselJ).rewrite(SphericalJ).expand(func=True)
+                return simplify(trigsimp(unpolarify(rewritten))).subs(z0, z)
+            if isinstance(nu, Integer) and nu.p > 1:
+                return fro(nu, z).expand(func=True)
+            return fro(nu, z)
+        return repl
+
+    e = replace(e, BesselJ, expander(besselj))
+    e = replace(e, BesselY, expander(bessely))
+    e = replace(e, BesselI, expander(besseli))
+    e = replace(e, BesselK, expander(besselk))
+
+    def use_recursion(cls: type, make: BesselFunction, t: Expr) -> Expr:
+        while True:
+            found = [b for b in t.atoms(cls) if isinstance(b, Expr)]
+            keys = [re(_expr(b.args[0])) for b in found]
+            if len(found) > 1 and not all(k.is_comparable for k in keys):
+                return t  # SymPy's sorted raises TypeError: no ordering
+            ordered_found = found if len(found) <= 1 else \
+                [b for _, b in sorted(zip(keys, found), key=lambda kb: float(kb[0]))]
+            for ba in ordered_found:
+                a, x = _expr(ba.args[0]), _expr(ba.args[1])
+                bap1, bap2 = make(a + 1, x), make(a + 2, x)
+                if t.has(bap1) and t.has(bap2):
+                    t = t.subs(ba, 2*(a + 1)/x*bap1 - bap2)
+                    break
+            else:
+                return t
+
+    if e.has(BesselJ):
+        e = use_recursion(BesselJ, besselj, e)
+    if e.has(BesselY):
+        e = use_recursion(BesselY, bessely, e)
+    if e != orig:
+        e = e.factor()
+    return e

@@ -87,3 +87,18 @@ def test_nc_simplify_matches_sympy() -> None:
         if want.startswith('(a*b)*'):
             continue  # SymPy keeps an unevaluated (a*b) there
         assert str(to_sympy(nc_simplify(expr_from_sympy(e)), evaluate=False)) == want, e
+
+
+def test_besselsimp_matches_sympy() -> None:
+    import sympy
+    from sympy import I, S, besseli, besselj, besselk, bessely, exp_polar, pi
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.simplify.simplify import besselsimp
+    z, nu, x = sympy.symbols('z nu x')
+    cases = [besselj(nu, z*I), besseli(nu, -z), besselj(S(1)/2, z), besselj(S(3)/2, z), bessely(S(1)/2, z),
+             besseli(S(1)/2, z), besselk(S(1)/2, z), besselj(2, z), besseli(2, z),
+             besselj(0, z) + besselj(2, z) - 2*besselj(1, z)/z, besselj(1, z) + besselj(3, z),
+             besselj(nu, exp_polar(I*pi/2)*z), besseli(nu, I*z), x*besselj(5, z), bessely(2, z) + bessely(0, z)]
+    for e in cases:
+        assert str(to_sympy(besselsimp(expr_from_sympy(e)), evaluate=False)) == str(sympy.besselsimp(e)), e

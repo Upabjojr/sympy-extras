@@ -152,6 +152,9 @@ remove public functions. Breaking changes are listed here when they happen.
 - `factor_nc` and `_mask_nc` are native, ported from SymPy; the printer
   orders the terms of noncommutative sums as SymPy's `as_terms` (the
   noncommutative factors are not generators: `x*A*(1 + B)`).
+- `besselsimp` is native, ported from SymPy (the factors `I` and `-1` of
+  the arguments, the half-integer and integer orders expanded, the
+  recurrence of the lowest orders); `simplify` uses it.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
