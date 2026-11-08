@@ -248,6 +248,11 @@ remove public functions. Breaking changes are listed here when they happen.
 - `eval_sum_residue` is native (ported from SymPy): the poles from the
   native `roots` where SymPy has closed forms (factors of degree at most
   2, binomials); with `CRootOf` poles the call goes through SymPy.
+- `Product.doit` and `product` are native (`sympy_extras.concrete.products`,
+  ported from SymPy: `_eval_product` with polynomials by their roots and
+  rising factorials, products of factors and powers piece by piece, the
+  exponents summed by the native `summation`); the Kronecker delta
+  products go through SymPy.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

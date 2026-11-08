@@ -210,6 +210,11 @@ class Product(ExprWithLimits):
 
     name = 'Product'
 
+    def doit(self) -> Expr:
+        """The product evaluated (:func:`~sympy_extras.concrete.products.product_doit`)."""
+        from .products import product_doit
+        return product_doit(self)
+
 
 # PORTED FROM SYMPY: sympy/concrete/expr_with_limits.py:_common_new
 def _common_new(cls: type[ExprWithLimits], function: ExprLike, limits: Sequence[LimitLike]) -> Expr:
