@@ -1202,10 +1202,7 @@ def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp:
         e = as_expr(e._evaluated(tuple(_expand(a, deep, distribute, multinomial, power_exp, log)
                                        if isinstance(a, Expr) else a for a in e.args)))
     if isinstance(e, Mul) and distribute:
-        result: Expr = Integer(1)
-        for f in e.args:
-            result = _expand_product(result, f)
-        return add(*[_expanded_denominator(t) for t in terms_of(result)])
+        return _expand_mul_node(e, deep)
     if isinstance(e, Pow):
         b, ex = e.base, e.exp
         if multinomial and isinstance(b, Add) and isinstance(ex, Rational) and ex.q == 1 and ex.p != 0:
@@ -1249,6 +1246,66 @@ def _expanded_denominator(term: Expr) -> Expr:
         return term
     expanded = _expand(denominator, False, True, False, False, False)
     return mul(numerator, pow(expanded, Integer(-1)))
+
+
+# PORTED FROM SYMPY: sympy/core/mul.py:Mul._eval_expand_mul
+def _expand_mul_node(e: Mul, deep: bool) -> Expr:
+    """SymPy's distribution of a product: the numerator and the
+    denominator split first (a product denominator expanded, so that
+    ``p/((c + 2)*t)`` keeps ``t*c + 2*t`` and no term cancels ``t``), then
+    the sums of the numerator multiplied out."""
+    expr: Expr = e
+    # the denominator matters only when it is a product (two factors at least)
+    if sum(1 for f in e.args if _denominator_factor(as_expr(f))) >= 2:
+        from sympy_extras.simplify.radsimp import fraction
+        n, d = fraction(e)
+        if isinstance(d, Mul):
+            n = _expand_mul_node(n, deep) if isinstance(n, Mul) else n
+            d = _expand_mul_node(d, deep)
+            expr = mul(n, pow(d, Integer(-1)))
+    if not isinstance(expr, Mul):
+        return expr
+    plain: list[Expr] = []
+    sums: list[Expr] = []
+    for f in expr.args:
+        f = as_expr(f)
+        if isinstance(f, Add):
+            sums.append(f)
+        elif f.is_commutative is not False:
+            plain.append(f)
+        else:
+            sums.append(f)
+    if not any(isinstance(t, Add) for t in sums):
+        return expr
+    plain_product = mul(*plain)
+    result: list[Expr] = []
+    for term in _expandsums(sums):
+        t = mul(plain_product, term)
+        if isinstance(t, Mul) and any(isinstance(a, Add) for a in t.args) and deep:
+            t = _expand_mul_node(t, deep)
+        result.append(t)
+    return add(*result)
+
+
+def _denominator_factor(f: Expr) -> bool:
+    """Whether ``fraction`` puts (part of) ``f`` in the denominator."""
+    from .numbers import Rational
+    from .power import Pow
+    if isinstance(f, Rational):
+        return f.q != 1
+    if isinstance(f, Pow) or _is_exp_node(f):
+        exponent = f.as_base_exp()[1]
+        return exponent.is_negative is True or isinstance(exponent, Mul)
+    return False
+
+
+# PORTED FROM SYMPY: sympy/core/mul.py:Mul._expandsums
+def _expandsums(sums: list[Expr]) -> tuple[Expr, ...]:
+    if len(sums) == 1:
+        return terms_of(sums[0])
+    half = len(sums) // 2
+    left, right = _expandsums(sums[:half]), _expandsums(sums[half:])
+    return terms_of(add(*[mul(a, b) for a in left for b in right]))
 
 
 def _expand_product(a: Expr, b: Expr) -> Expr:

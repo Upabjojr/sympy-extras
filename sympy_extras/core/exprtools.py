@@ -47,7 +47,7 @@ from .numbers import ImaginaryUnit, Integer, Number, Rational, number_from_fract
 from .power import Pow, pow
 from .symbol import Dummy
 
-__all__ = ['factor_terms', 'gcd_terms', 'factor_nc', 'decompose_power', 'Factors', 'Term']
+__all__ = ['factor_terms', 'gcd_terms', 'factor_nc', 'decompose_power', 'Factors', 'ExprFactors', 'Term']
 
 #: what the functions accept: a node, or a list of them (factored one by one)
 Terms = Union[ExprLike, Basic, Sequence[ExprLike]]
@@ -188,6 +188,169 @@ class Factors:
 
     def pow(self, n: int) -> Factors:
         return Factors({f: e * n for f, e in self.factors.items()})
+
+
+# PORTED FROM SYMPY: sympy/core/exprtools.py:Factors (any exponents)
+class ExprFactors:
+    """SymPy's ``Factors`` of an expression: ``{base: exponent}`` with any
+    exponents (numbers or symbolic), ``I`` counted, rationals split into
+    numerator and denominator. ``normal`` cancels the common factors of
+    two products, ``gcd`` and ``lcm`` take the smaller and the larger
+    exponents where their difference has a known sign."""
+
+    __slots__ = ('factors',)
+
+    def __init__(self, factors: dict[Expr, Expr]) -> None:
+        self.factors: Final[dict[Expr, Expr]] = factors
+
+    @classmethod
+    def of(cls, e: Expr) -> ExprFactors:
+        from .numbers import I as unit
+        if isinstance(e, Number):
+            return cls._of_number(e)
+        if not e.args:
+            return cls({e: Integer(1)})
+        commutative = [f for f in factors_of(e) if f.is_commutative is not False]
+        noncommutative = [f for f in factors_of(e) if f.is_commutative is False]
+        units = sum(1 for f in commutative if f == unit)
+        rest = [f for f in commutative if f != unit]
+        powers: dict[Expr, Expr] = dict(Mul(*rest).as_powers_dict()) if len(rest) > 1 else (
+            dict(rest[0].as_powers_dict()) if rest else {})
+        for f in list(powers):
+            if isinstance(f, Rational) and f.q != 1:
+                p, q = Integer(f.p), Integer(f.q)
+                powers[p] = add(powers.get(p, Integer(0)), powers[f])
+                powers[q] = add(powers.get(q, Integer(0)), mul(Integer(-1), powers[f]))
+                powers.pop(f)
+        if units:
+            powers[unit] = add(powers.get(unit, Integer(0)), Integer(units))
+        if noncommutative:
+            powers[Mul(*noncommutative)] = Integer(1)
+        return cls(powers)
+
+    @classmethod
+    def _of_number(cls, n: Number) -> ExprFactors:
+        if n == 0:
+            return cls({Integer(0): Integer(1)})
+        if n == 1:
+            return cls({})
+        result: dict[Expr, Expr] = {}
+        value: Number = n
+        if value.is_negative is True:
+            result[Integer(-1)] = Integer(1)
+            negated = mul(Integer(-1), value)
+            value = negated if isinstance(negated, Number) else value
+        if not (isinstance(value, Integer) and value.p == 1):
+            if isinstance(value, Rational) and value.q != 1:
+                if value.p != 1:
+                    result[Integer(value.p)] = Integer(1)
+                result[Integer(value.q)] = Integer(-1)
+            else:
+                result[value] = Integer(1)
+        return cls(result)
+
+    @property
+    def is_zero(self) -> bool:
+        return len(self.factors) == 1 and Integer(0) in self.factors
+
+    @property
+    def is_one(self) -> bool:
+        return not self.factors
+
+    def as_expr(self) -> Expr:
+        args: list[Expr] = []
+        for factor, exponent in self.factors.items():
+            if exponent != Integer(1):
+                if isinstance(exponent, Integer):
+                    b, e = factor.as_base_exp()
+                    args.append(pow(b, _keep_coeff(exponent, e)))
+                else:
+                    args.append(pow(factor, exponent))
+            else:
+                args.append(factor)
+        return mul(*args)
+
+    def normal(self, other: ExprFactors) -> tuple[ExprFactors, ExprFactors]:
+        """``self`` and ``other`` with the common factors cancelled."""
+        mine, theirs = dict(self.factors), dict(other.factors)
+        for factor, self_exp in self.factors.items():
+            if factor not in other.factors:
+                continue
+            other_exp = other.factors[factor]
+            exp = add(self_exp, mul(Integer(-1), other_exp))
+            if isinstance(exp, Number) and exp == 0:
+                del mine[factor]
+                del theirs[factor]
+            elif isinstance(exp, Number):
+                if exp.is_positive is True:
+                    mine[factor] = exp
+                    del theirs[factor]
+                else:
+                    del mine[factor]
+                    theirs[factor] = mul(Integer(-1), exp)
+            else:
+                r = self_exp.extract_additively(other_exp)
+                if r is not None:
+                    if not (isinstance(r, Number) and r == 0):
+                        mine[factor] = r
+                        del theirs[factor]
+                    else:
+                        del mine[factor]
+                        del theirs[factor]
+                else:
+                    sc, sa = self_exp.as_coeff_Add()
+                    if not (isinstance(sc, Number) and sc == 0):
+                        oc, oa = other_exp.as_coeff_Add()
+                        diff = add(sc, mul(Integer(-1), oc))
+                        if diff.is_positive is True:
+                            mine[factor] = add(mine[factor], mul(Integer(-1), oc))
+                            other_exp = oa
+                        elif diff.is_negative is True:
+                            mine[factor] = add(mine[factor], mul(Integer(-1), sc))
+                            theirs[factor] = add(theirs[factor], mul(Integer(-1), sc))
+                            other_exp = add(oa, mul(Integer(-1), diff))
+                        else:
+                            mine[factor] = sa
+                            other_exp = oa
+                    if not (isinstance(other_exp, Number) and other_exp == 0):
+                        theirs[factor] = other_exp
+                    else:
+                        del theirs[factor]
+        return ExprFactors(mine), ExprFactors(theirs)
+
+    def quo(self, other: ExprFactors) -> ExprFactors:
+        """SymPy's ``Factors.quo`` for the numerical exponents it is used
+        with (the factor ``-1``)."""
+        quotient = dict(self.factors)
+        for factor, exp in other.factors.items():
+            if factor in quotient:
+                d = add(quotient[factor], mul(Integer(-1), exp))
+                if isinstance(d, Number):
+                    if d.is_positive is not True:
+                        del quotient[factor]
+                    if d.is_negative is not True and not (isinstance(d, Number) and d == 0):
+                        quotient[factor] = d
+                else:
+                    r = quotient[factor].extract_additively(exp)
+                    if r is not None:
+                        if isinstance(r, Number) and r == 0:
+                            del quotient[factor]
+                        else:
+                            quotient[factor] = r
+        return ExprFactors(quotient)
+
+    def gcd(self, other: ExprFactors) -> ExprFactors:
+        if other.is_zero:
+            return ExprFactors(dict(self.factors))
+        result: dict[Expr, Expr] = {}
+        for factor, exp in self.factors.items():
+            if factor in other.factors:
+                lt = add(exp, mul(Integer(-1), other.factors[factor])).is_negative
+                if lt is True:
+                    result[factor] = exp
+                elif lt is False:
+                    result[factor] = other.factors[factor]
+        return ExprFactors(result)
 
 
 # PORTED FROM SYMPY: sympy/core/exprtools.py:Term
