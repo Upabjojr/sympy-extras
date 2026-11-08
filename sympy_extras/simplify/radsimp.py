@@ -636,10 +636,8 @@ def radsimp(expr: ExprLike, symbolic: bool = True, max_terms: int = 4) -> Expr:
         if not d.args:
             return inverse(d)
         if d.is_number:
-            from sympy_extras.core.interop import expr_through_sympy
-            import sympy
-            # nsimplify through SymPy for now (a numerical denominator)
-            nd = expr_through_sympy(d, sympy.nsimplify)
+            from .simplify import nsimplify
+            nd = nsimplify(d)
             if isinstance(nd, Number) and nd.equals(d) is True:
                 return inverse(nd)
         while True:

@@ -58,3 +58,22 @@ def test_power_and_exponential_substitution() -> None:
     for e, old, expected in cases:
         result = e.subs(old, d)
         assert isinstance(result, Expr) and printed(result) == expected, (e, old)
+
+
+def test_nsimplify_matches_sympy() -> None:
+    from sympy_extras.simplify.simplify import nsimplify
+    rng = random.Random(4)
+    pieces: list[sympy.Expr] = [sympy.sqrt(2), sympy.sqrt(3), sympy.sqrt(5), sympy.Rational(1, 3), sympy.Rational(-7, 4),
+                                sympy.Integer(2)]
+    different: list[tuple[str, str, str]] = []
+    for _ in range(40):
+        exact = sympy.Add(*[rng.randint(-3, 3) * rng.choice(pieces) for _ in range(rng.randint(1, 3))])
+        cases: list[tuple[sympy.Expr, tuple[sympy.Expr, ...]]] = [
+            (exact, ()), (sympy.Float(exact.evalf(15)), ()), (sympy.Float(rng.randint(-50, 50)) / rng.randint(1, 9), ()),
+            (sympy.Float((rng.randint(1, 4) * sympy.pi + rng.randint(-3, 3)).evalf(15)), (sympy.pi,)),
+            (sympy.Float(rng.random()) * sx + sympy.Float(0.5), ())]
+        for e, constants in cases:
+            ours = printed(nsimplify(expr_from_sympy(e), tuple(expr_from_sympy(c) for c in constants)))
+            if ours != str(sympy.nsimplify(e, constants)):
+                different.append((str(e), ours, str(sympy.nsimplify(e, constants))))
+    assert not different, different[:3]

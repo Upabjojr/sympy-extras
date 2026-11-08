@@ -48,6 +48,9 @@ remove public functions. Breaking changes are listed here when they happen.
 - `sympy_extras.simplify.sqrtdenest.sqrtdenest`, `radsimp`,
   `rad_rationalize`, `split_surds` and `signsimp(evaluate=False)`, ported
   from SymPy; `gcd` and `lcm` of two numbers.
+- `sympy_extras.simplify.simplify.nsimplify` (pslq, `mpmath.identify`
+  read by a typed parser, constants, `rational`, `tolerance`), ported from
+  SymPy; `radsimp` no longer goes through SymPy.
 
 ### Changed
 
