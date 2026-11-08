@@ -2333,11 +2333,12 @@ def _diff_wrt(e: Basic) -> bool:
 
 
 # PORTED FROM SYMPY: sympy/core/function.py:Function._eval_nseries
-def _generic_function_nseries(f: DefinedFunction, x: Symbol, n: int, logx: Optional[Expr]) -> Optional[Expr]:
+def _generic_function_nseries(f: Expr, x: Symbol, n: int, logx: Optional[Expr]) -> Optional[Expr]:
     """SymPy's generic expansion of a function: by its derivatives when the
-    argument does not vanish (or with several arguments), by its Taylor
-    terms in the argument otherwise; ``None`` for an argument going to an
-    infinity (SymPy's asymptotic branch is not ported)."""
+    argument does not vanish (or with several arguments, as for the nodes
+    ``hyper`` and ``meijerg``), by its Taylor terms in the argument
+    otherwise; ``None`` for an argument going to an infinity (SymPy's
+    asymptotic branch is not ported)."""
     from sympy_extras.core.limits import limit
     from sympy_extras.functions.elementary.integers import ceiling
     from .coreerrors import PoleError
@@ -2347,7 +2348,9 @@ def _generic_function_nseries(f: DefinedFunction, x: Symbol, n: int, logx: Optio
     args0 = [limit(a, x, Integer(0)) for a in args]
     if any(a.is_finite is False for a in args0):
         return None
-    if type(f).sympy_variadic or len(f.nargs) != 1 or 1 not in f.nargs or not (args0[0] == 0):
+    one_argument = (isinstance(f, DefinedFunction) and not type(f).sympy_variadic
+                    and len(f.nargs) == 1 and 1 in f.nargs)
+    if not one_argument or not (args0[0] == 0):
         e: Expr = f
         e1 = e.expand()
         if e == e1:

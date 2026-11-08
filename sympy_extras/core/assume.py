@@ -139,7 +139,7 @@ class Predicate(Boolean):
     def class_key(cls) -> ClassKey:
         return (5, 0, 'Predicate')
 
-    def sort_key(self) -> SortKey:
+    def _compute_sort_key(self) -> SortKey:
         return ((5, 0, _class_name(self.name)), (0, ()), (), Fraction(1))
 
     def _compare_name(self) -> str:

@@ -89,7 +89,7 @@ class Number(AtomicExpr):
     def class_key(cls) -> ClassKey:
         return (1, 0, 'Number')
 
-    def sort_key(self) -> SortKey:
+    def _compute_sort_key(self) -> SortKey:
         return (self.class_key(), (0, ()), (), self.sort_value())
 
     def sort_value(self) -> Fraction:

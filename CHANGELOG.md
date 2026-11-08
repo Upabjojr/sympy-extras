@@ -298,6 +298,11 @@ remove public functions. Breaking changes are listed here when they happen.
   expands in the variable, `SingularityFunction` to the order asked, and
   the series of `expint(n, x)` for integer `n > 1` has no spurious
   imaginary term.
+- Native series for `hyper` (SymPy's rule) and `meijerg` (the generic
+  expansion, now accepting any node); `Basic.sort_key` is computed once
+  per node (`_compute_sort_key` in the classes): the nested keys were
+  recomputed at every level, `hyperexpand(hyper([4], [6], 1))` went from
+  59 s to 0.6 s.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

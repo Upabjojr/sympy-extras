@@ -113,6 +113,31 @@ class Hyper(Expr):
     def args(self) -> tuple[Basic, ...]:
         return (Tuple(*self._ap), Tuple(*self._bq), self._z)
 
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The power series in the argument when it is ``x`` itself, else
+        the generic expansion of functions, hyperexpanded."""
+        from sympy_extras.core.function import _generic_function_nseries
+        from sympy_extras.core.interop import nseries_node_through_sympy
+        from sympy_extras.core.limits import limit
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.factorials import factorial, rf
+        from sympy_extras.simplify.hyperexpand import hyperexpand
+        arg = self.argument
+        x0 = limit(arg, x, Integer(0))
+        if not (arg == x and x0 == 0):
+            generic = _generic_function_nseries(self, x, n, logx)
+            if generic is None:
+                # SymPy's asymptotic branch of the generic expansion is not ported
+                return nseries_node_through_sympy(self, x, n, logx, cdir)
+            return hyperexpand(generic)
+        terms: list[Expr] = []
+        for i in range(n):
+            num = mul(*[rf(a, Integer(i)) for a in self.ap])
+            den = mul(*[rf(b, Integer(i)) for b in self.bq])
+            terms.append(num / den * arg**i / factorial(Integer(i)))
+        return add(*terms) + order(x**n, x)
+
     # PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper._eval_as_leading_term
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         """1 when the argument vanishes, otherwise SymPy's generic rule of
@@ -300,6 +325,15 @@ class MeijerG(Expr):
     @property
     def bother(self) -> tuple[Expr, ...]:
         return self._bother
+
+    # PORTED FROM SYMPY: sympy/core/function.py:Function._eval_nseries (meijerg has none of its own)
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.function import _generic_function_nseries
+        from sympy_extras.core.interop import nseries_node_through_sympy
+        generic = _generic_function_nseries(self, x, n, logx)
+        if generic is None:
+            return nseries_node_through_sympy(self, x, n, logx, cdir)
+        return generic
 
     # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg._eval_as_leading_term
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:

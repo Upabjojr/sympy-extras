@@ -301,7 +301,7 @@ class Expr(Basic):
     # ------------------------------------------------------------------
     # ordering
 
-    def sort_key(self) -> SortKey:
+    def _compute_sort_key(self) -> SortKey:
         coeff, rest = self.as_coeff_Mul()
         base, exp = rest.as_base_exp() if rest.is_Pow else (rest, None)
         args: ArgsKey
@@ -1747,7 +1747,7 @@ class AtomicExpr(Atom, Expr):
 
     __slots__ = ()
 
-    def sort_key(self) -> SortKey:
+    def _compute_sort_key(self) -> SortKey:
         return (self.class_key(), self._sort_atom_args(), _one().sort_key(), Fraction(1))
 
     # PORTED FROM SYMPY: sympy/core/expr.py:AtomicExpr._eval_nseries

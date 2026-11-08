@@ -227,10 +227,10 @@ class Add(AssocOp):
             remaining.remove(term)
         return add(new, *[_as_expr(t._subs(old, new)) for t in remaining])
 
-    def sort_key(self) -> SortKey:
+    def _compute_sort_key(self) -> SortKey:
         # the arguments in the printing order, as SymPy's key does
         from .printing import ordered_terms
-        key = Expr.sort_key(self)
+        key = Expr._compute_sort_key(self)
         args: ArgsKey = (len(self._args), tuple(a.sort_key() for a in ordered_terms(self._args)))
         return (key[0], args, key[2], key[3])
 

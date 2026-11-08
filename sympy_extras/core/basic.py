@@ -112,7 +112,7 @@ class Basic:
     2*x
     """
 
-    __slots__ = ('_hash', '_compare_key_cache', '_sympy_cache')
+    __slots__ = ('_hash', '_compare_key_cache', '_sort_key_cache', '_sympy_cache')
 
     # Class flags of SymPy, usable without importing the classes.
     is_Atom: bool = False
@@ -152,6 +152,7 @@ class Basic:
     def __init__(self) -> None:
         self._hash: Final[int] = self._compute_hash()
         self._compare_key_cache: Optional[CompareKey] = None
+        self._sort_key_cache: Optional[SortKey] = None
         self._sympy_cache: Optional[SymPyBasic] = None
         self._after_init()
 
@@ -267,7 +268,17 @@ class Basic:
         return (5, 0, cls.__name__)
 
     def sort_key(self) -> SortKey:
-        """A key which orders expressions canonically (``default_sort_key``)."""
+        """A key which orders expressions canonically (``default_sort_key``),
+        computed once per node (the nodes are immutable; the classes
+        define :meth:`_compute_sort_key`)."""
+        cached = self._sort_key_cache
+        if cached is None:
+            cached = self._compute_sort_key()
+            self._sort_key_cache = cached
+        return cached
+
+    def _compute_sort_key(self) -> SortKey:
+        """The sort key of the node, uncached."""
         args: ArgsKey = (len(self.args), tuple(a.sort_key() for a in self.args))
         return (self.class_key(), args, (), _ONE_KEY)
 
@@ -828,7 +839,7 @@ class Atom(Basic):
     def class_key(cls) -> ClassKey:
         return (2, 0, cls.__name__)
 
-    def sort_key(self) -> SortKey:
+    def _compute_sort_key(self) -> SortKey:
         return (self.class_key(), (1, (str(self),)), (), _ONE_KEY)
 
 

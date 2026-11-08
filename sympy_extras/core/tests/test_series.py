@@ -312,3 +312,28 @@ def test_special_function_series_rules() -> None:
     assert ours(S.expint(2, sx), 3) == '1 + x*(log(x) - 1 + EulerGamma) - x**2/2 + O(x**3)'
     got = expr_from_sympy(S.SingularityFunction(sx, -1, 2)).nseries(ox, n=6)
     assert str(to_sympy(got, evaluate=False)) == 'x**2 + 2*x + 1'
+
+
+def test_hyper_and_meijerg_series_match_sympy() -> None:
+    # hyper._eval_nseries and the generic expansion of hyper and meijerg
+    # (hyper((1,), (3,), x + 1) to order 5 took minutes before the sort
+    # keys were cached per node)
+    import sympy
+    from sympy.core.cache import clear_cache
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import expr_from_sympy, from_sympy
+    from sympy_extras.core.symbol import Symbol as OurSymbol
+    sx, sy = sympy.symbols('x y')
+    ox = from_sympy(sx)
+    assert isinstance(ox, OurSymbol)
+    half = sympy.Rational(1, 2)
+    hy, mg = sympy.hyper, sympy.meijerg
+    cases = [hy([1, 2], [3], sx), hy([sy], [2], sx), hy([1], [2], sx**2), hy([1], [3], sx + 1),
+             hy([1, 1], [2], sympy.sin(sx)), hy([], [half], sx), sympy.elliptic_k(2*sx), sympy.elliptic_e(sx**2),
+             mg([[], []], [[0], []], sx + 1), mg([[], []], [[0], [half]], sx**2), mg([[1], []], [[1], [0]], sx)]
+    for e in cases:
+        for n in (3, 5):
+            clear_cache()
+            want = str(e.series(sx, 0, n))
+            clear_cache()
+            assert str(to_sympy(expr_from_sympy(e).series(ox, 0, n), evaluate=False)) == want, (e, n)
