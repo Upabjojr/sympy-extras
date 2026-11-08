@@ -179,6 +179,11 @@ remove public functions. Breaking changes are listed here when they happen.
   trigonometric integrals.
 - `log(exp_polar(x))` is `x` unpolarified; `polylog` unpolarifies an
   argument in the unit disk (SymPy's rules).
+- The polar branch rules of `besselj`, `besseli` (integer orders lose the
+  polar factors, other orders take out `exp(2*n*pi*nu*I)`), of `Si`, `Ci`,
+  `Shi`, `Chi` (`polar_lift(I)` and `polar_lift(-1)` taken out, the
+  branch factor), of `Ei` and `expint`; 630 values on polar arguments
+  match SymPy. hyperexpand matches SymPy on 215 of 225 expansions.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

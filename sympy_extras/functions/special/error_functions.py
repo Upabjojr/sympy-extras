@@ -334,8 +334,8 @@ def erfcinv(x: ExprLike) -> Expr:
 # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:expint
 class Expint(DefinedFunction):
     """The generalised exponential integral ``expint(nu, z)``, unevaluated
-    (``expint`` evaluates). The branch factors of SymPy's polar arguments
-    do not exist in the core."""
+    (``expint`` evaluates); a polar argument loses its branch factor as
+    SymPy's rules say."""
 
     function_name = 'expint'
     nargs = frozenset({2})
@@ -345,11 +345,28 @@ class Expint(DefinedFunction):
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from sympy_extras.core.function import expand_mul
         from sympy_extras.functions.special.gamma_functions import uppergamma
+        from sympy_extras.functions.combinatorial.factorials import factorial
+        from sympy_extras.functions.elementary.complexes import unpolarify
+        from sympy_extras.functions.special.gamma_functions import gamma
+        from sympy_extras.core.logic import true
         nu, z = args
+        nu2 = unpolarify(nu)
+        if nu != nu2:
+            return expint(nu2, z)
         integer = isinstance(nu, Rational) and nu.q == 1
         if (integer and nu.is_nonpositive) or (not integer and isinstance(nu, Rational) and nu.q == 2):
-            return expand_mul(mul(pow(z, sub(nu, ONE)), uppergamma(sub(ONE, nu), z)))
-        return None
+            return unpolarify(expand_mul(mul(pow(z, sub(nu, ONE)), uppergamma(sub(ONE, nu), z))))
+        # the branch factor (C/f lowergamma)
+        z, n = z.extract_branch_factor()
+        if n == 0:
+            return None
+        if nu.is_integer is True:
+            if not ((nu > 0) is true):
+                return None
+            return sub(expint(nu, z), mul(Integer(2), pi, I, n, pow(MINUS_ONE, sub(nu, ONE)),
+                                          div(pow(unpolarify(z), sub(nu, ONE)), factorial(sub(nu, ONE)))))
+        return add(mul(sub(exp(mul(Integer(2), I, pi, nu, n)), ONE), pow(z, sub(nu, ONE)), gamma(sub(ONE, nu))),
+                   expint(nu, z))
 
     def fdiff(self, argindex: int) -> Expr:
         nu, z = self.args
@@ -382,6 +399,9 @@ class EiNode(DefinedFunction):
             return oo
         if isinstance(z, NegativeInfinity):
             return ZERO
+        nz, n = z.extract_branch_factor()
+        if n != 0:
+            return add(Ei(nz), mul(Integer(2), I, pi, n))
         return None
 
     def fdiff(self, argindex: int) -> Expr:
@@ -411,10 +431,9 @@ def Ei(z: ExprLike) -> Expr:
 # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:TrigonometricIntegral
 class TrigonometricIntegral(DefinedFunction):
     """The common rules of ``Si``, ``Ci``, ``Shi``, ``Chi``: the values at
-    zero and the infinities, ``I`` and ``-1`` taken out of the argument of
-    the odd ones (SymPy takes them out of the even ones only through polar
-    arguments, which the core does not have), the derivative
-    ``trigfunc(z)/z``."""
+    zero and the infinities, ``I`` and ``-1`` taken out of the argument
+    (of the even ones only as polar numbers, ``polar_lift(I)``), the
+    branch factor of a polar argument, the derivative ``trigfunc(z)/z``."""
 
     #: whether the integrand is odd (sin, sinh): its value at 0 is 0
     odd: bool = True
@@ -452,14 +471,26 @@ class TrigonometricIntegral(DefinedFunction):
             return cls.at_infinity()
         if isinstance(z, NegativeInfinity):
             return cls.at_negative_infinity()
-        if cls.odd:
-            rotated = z.extract_multiplicatively(I)
-            if rotated is not None:
-                return cls.i_factor(rotated, 1)
-            negated = z.extract_multiplicatively(MINUS_ONE)
-            if negated is not None:
-                return cls.minus_factor(negated)
-        return None
+        from sympy_extras.functions.elementary.complexes import polar_lift
+        nz = z.extract_multiplicatively(polar_lift(I))
+        if nz is None and cls.odd:
+            nz = z.extract_multiplicatively(I)
+        if nz is not None:
+            return cls.i_factor(nz, 1)
+        nz = z.extract_multiplicatively(polar_lift(mul(MINUS_ONE, I)))
+        if nz is not None:
+            return cls.i_factor(nz, -1)
+        nz = z.extract_multiplicatively(polar_lift(MINUS_ONE))
+        if nz is None and cls.odd:
+            nz = z.extract_multiplicatively(MINUS_ONE)
+        if nz is not None:
+            return cls.minus_factor(nz)
+        # the branch factor: 2*pi*I*n*trigfunc(0) + f(z)
+        bz, n = z.extract_branch_factor()
+        if n == 0 and bz == z:
+            return None
+        jump = ZERO if cls.odd else mul(Integer(2), pi, I, n)
+        return add(jump, cls.apply(bz))
 
     def fdiff(self, argindex: int) -> Expr:
         z = self.args[0]
@@ -527,6 +558,14 @@ class CiNode(TrigonometricIntegral):
         return mul(I, pi)
 
     @classmethod
+    def minus_factor(cls, z: Expr) -> Expr:
+        return add(Ci(z), mul(I, pi))
+
+    @classmethod
+    def i_factor(cls, z: Expr, sign: int) -> Expr:
+        return add(Chi(z), mul(I, pi, HALF, Integer(sign)))
+
+    @classmethod
     def integrand(cls, z: Expr) -> Expr:
         from sympy_extras.functions.elementary.trigonometric import cos
         return cos(z)
@@ -590,6 +629,14 @@ class ChiNode(TrigonometricIntegral):
     @classmethod
     def at_negative_infinity(cls) -> Expr:
         return oo
+
+    @classmethod
+    def minus_factor(cls, z: Expr) -> Expr:
+        return add(Chi(z), mul(I, pi))
+
+    @classmethod
+    def i_factor(cls, z: Expr, sign: int) -> Expr:
+        return add(Ci(z), mul(I, pi, HALF, Integer(sign)))
 
     @classmethod
     def integrand(cls, z: Expr) -> Expr:

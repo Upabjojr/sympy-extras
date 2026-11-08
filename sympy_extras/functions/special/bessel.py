@@ -42,7 +42,7 @@ Examples
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 import mpmath
 
@@ -147,6 +147,28 @@ class BesselBase(DefinedFunction):
 
 
 # PORTED FROM SYMPY: sympy/functions/special/bessel.py:besselj
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:besselj.eval (branch handling)
+def _branch(nu: Expr, z: Expr, f: Callable[[Expr, Expr], Expr]) -> Optional[Expr]:
+    """The branch handling of besselj and besseli: an integer order loses
+    the polar factors of the argument, another one takes out
+    ``exp(2*n*pi*nu*I)`` for the branch factor ``exp_polar(2*pi*I*n)``;
+    the order is unpolarified."""
+    from sympy_extras.functions.elementary.complexes import unpolarify
+    from sympy_extras.functions.elementary.exponential import exp
+    if nu.is_integer is True:
+        newz = unpolarify(z)
+        if newz != z:
+            return f(nu, newz)
+    else:
+        newz, n = z.extract_branch_factor()
+        if n != 0:
+            return mul(exp(mul(Integer(2), n, pi, nu, I)), f(nu, newz))
+    nnu = unpolarify(nu)
+    if nu != nnu:
+        return f(nnu, z)
+    return None
+
+
 class BesselJ(BesselBase):
     """The Bessel function of the first kind ``besselj(nu, z)``,
     unevaluated (``besselj`` evaluates)."""
@@ -172,7 +194,7 @@ class BesselJ(BesselBase):
             rotated = _rotated(z)
             if rotated is not None:
                 return mul(pow(I, nu), besseli(nu, rotated))
-        return None
+        return _branch(nu, z, besselj)
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return mpmath.mpc(mpmath.besselj(values[0], values[1]))
@@ -242,7 +264,7 @@ class BesselI(BesselBase):
             rotated = _rotated(z)
             if rotated is not None:
                 return mul(pow(I, mul(MINUS_ONE, nu)), besselj(nu, mul(MINUS_ONE, rotated)))
-        return None
+        return _branch(nu, z, besseli)
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return mpmath.mpc(mpmath.besseli(values[0], values[1]))

@@ -92,14 +92,13 @@ def test_operators_and_reduce_order_match_sympy() -> None:
             [[str(c) for c in op._poly.all_coeffs()] for op in theirs_ops]
 
 
-# the differences left, from the core: the polar branch rules of besseli,
-# Shi and Si are not ported (Abs(...) and exp_polar(I*pi/2) remain),
-# 2**(2*a) is 4**a, and hyper([1/3], [4/3]) does not finish; the value of
-# the FresnelS formula at 1 is a square root of a product here (alone; it
-# matches after other expansions)
-_KNOWN_DIFFERENT = {('[3/4]', '[3/2, 7/4]', '1'), ('[1/2]', '[3/2, 3/2]', '-1'), ('[1/2]', '[3/2, 3/2]', '-z'), ('[3/4]', '[3/2, 7/4]', '-1'),
-                    ('[1/2, a]', '[3/2, a + 1]', 'z**2/4'), ('[a]', '[a + 1]', 'z**2/4'),
-                    ('[1/2, 1/2, 1]', '[3/2, 3/2]', '-1'), ('[]', '[2]', '-1'), ('[]', '[2]', '-z')}
+# the differences left, from the core: 2**(2*a) is 4**a; arg and the
+# imaginary values of erf(I) and of the Catalan sum differ from SymPy's
+# (Abs(...) remains); the sign of fresnels(2/sqrt(pi)) is not decided
+# (SymPy evaluates it); the value of the FresnelS formula at 1 is a square
+# root of a product here; hyper([1/3], [4/3]) does not finish
+_KNOWN_DIFFERENT = {('[3/4]', '[3/2, 7/4]', '1'), ('[3/4]', '[3/2, 7/4]', '-1'), ('[1/2, a]', '[3/2, a + 1]', 'z**2/4'), ('[a]', '[a + 1]', 'z**2/4'),
+                    ('[1/2, 1/2, 1]', '[3/2, 3/2]', '-1'), ('[1]', '[3/2]', '-1')}
 
 
 def test_hyperexpand_of_hypergeometric_functions_matches_sympy() -> None:
