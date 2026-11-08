@@ -157,6 +157,7 @@ pub struct Node {
     args: Vec<Basic>,
     hash: u64,
     compare_key: OnceLock<CompareKey>,
+    facts: OnceLock<Facts>,
 }
 
 /// A shared immutable node of the expression tree (Python's `Basic`).
@@ -177,6 +178,7 @@ impl Basic {
             args,
             hash,
             compare_key: OnceLock::new(),
+            facts: OnceLock::new(),
         }))
     }
 
@@ -265,6 +267,12 @@ impl Basic {
             Head::Wild(w) => Some(&w.symbol.assumptions),
             _ => None,
         }
+    }
+
+    /// The closed facts of the node, computed once by `compute` (Python's
+    /// `_facts_cache`).
+    pub fn cached_facts(&self, compute: impl FnOnce() -> Facts) -> &Facts {
+        self.0.facts.get_or_init(compute)
     }
 
     // -- ordering
