@@ -78,6 +78,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The `Expr` methods `factor`, `cancel` (without generators), `apart`,
+  `collect` (evaluated), `together`, `powsimp`, `radsimp`, `trigsimp`,
+  `combsimp`, `gammasimp` and `nsimplify` use the typed ports instead of
+  SymPy; `powsimp`'s `combine` is typed as its three literals.
 - Powers of a `Piecewise` raise each piece (SymPy's
   `Piecewise._eval_power`); `(-1)**e` is 1 or -1 when `e` is known even or
   odd (`NegativeOne._eval_power`).

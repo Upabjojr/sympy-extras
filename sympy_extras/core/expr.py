@@ -21,7 +21,7 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Final, Iterator, Optional, Sequence, TYPE_CHECKING, Union
+from typing import Final, Iterator, Literal, Optional, Sequence, TYPE_CHECKING, Union
 
 import mpmath
 
@@ -1212,41 +1212,48 @@ class Expr(Basic):
         >>> (x**2 + 2*x + 1).factor()
         (x + 1)**2
         """
-        from .interop import expr_through_sympy, to_sympy
-        return expr_through_sympy(self, lambda s: sympy.factor(s, *[to_sympy(g) for g in gens], deep=deep))
+        from sympy_extras.polys.polytools import factor
+        return factor(self, *gens, deep=deep)
 
     def cancel(self, *gens: Symbol) -> Expr:
-        """SymPy's ``cancel``: the common factors of numerator and denominator removed."""
+        """The common factors of numerator and denominator removed
+        (:func:`sympy_extras.polys.polytools.cancel`; SymPy's with ``gens``)."""
+        if not gens:
+            from sympy_extras.polys.polytools import cancel
+            return cancel(self)
         from .interop import expr_through_sympy, to_sympy
         return expr_through_sympy(self, lambda s: sympy.cancel(s, *[to_sympy(g) for g in gens]))
 
     def apart(self, x: Optional[Symbol] = None) -> Expr:
-        """SymPy's ``apart``: the partial fraction decomposition."""
-        from .interop import expr_through_sympy, to_sympy
-        sx = None if x is None else to_sympy(x)
-        return expr_through_sympy(self, lambda s: sympy.apart(s, sx))
+        """The partial fraction decomposition
+        (:func:`sympy_extras.polys.partfrac.apart`)."""
+        from sympy_extras.polys.partfrac import apart
+        return apart(self, x)
 
     def collect(self, syms: Union[Symbol, Sequence[Symbol]], evaluate: bool = True) -> Expr:
         """SymPy's ``collect``: the terms grouped by powers of ``syms``."""
+        if evaluate:
+            from sympy_extras.simplify.radsimp import collect
+            return collect(self, syms)
         from .interop import expr_through_sympy, to_sympy
         from .symbol import Symbol
         targets = [to_sympy(syms)] if isinstance(syms, Symbol) else [to_sympy(s) for s in syms]
         return expr_through_sympy(self, lambda s: sympy.collect(s, targets, evaluate=evaluate))
 
     def together(self) -> Expr:
-        """SymPy's ``together``: the fractions combined."""
-        from .interop import expr_through_sympy
-        return expr_through_sympy(self, sympy.together)
+        """The fractions combined (:func:`sympy_extras.polys.rationaltools.together`)."""
+        from sympy_extras.polys.rationaltools import together
+        return together(self)
 
-    def powsimp(self, deep: bool = False, combine: str = 'all', force: bool = False) -> Expr:
-        """SymPy's ``powsimp``."""
-        from .interop import expr_through_sympy
-        return expr_through_sympy(self, lambda s: sympy.powsimp(s, deep=deep, combine=combine, force=force))
+    def powsimp(self, deep: bool = False, combine: Literal['all', 'exp', 'base'] = 'all', force: bool = False) -> Expr:
+        """Powers combined (:func:`sympy_extras.simplify.powsimp.powsimp`)."""
+        from sympy_extras.simplify.powsimp import powsimp
+        return powsimp(self, deep=deep, combine=combine, force=force)
 
     def radsimp(self) -> Expr:
-        """SymPy's ``radsimp``: the denominator rationalised."""
-        from .interop import expr_through_sympy
-        return expr_through_sympy(self, sympy.radsimp)
+        """The denominator rationalised (:func:`sympy_extras.simplify.radsimp.radsimp`)."""
+        from sympy_extras.simplify.radsimp import radsimp
+        return radsimp(self)
 
     def ratsimp(self) -> Expr:
         """SymPy's ``ratsimp``."""
@@ -1254,19 +1261,19 @@ class Expr(Basic):
         return expr_through_sympy(self, sympy.ratsimp)
 
     def trigsimp(self) -> Expr:
-        """SymPy's ``trigsimp``."""
-        from .interop import expr_through_sympy
-        return expr_through_sympy(self, sympy.trigsimp)
+        """Trigonometric simplification (:func:`sympy_extras.simplify.trigsimp.trigsimp`)."""
+        from sympy_extras.simplify.trigsimp import trigsimp
+        return trigsimp(self)
 
     def combsimp(self) -> Expr:
-        """SymPy's ``combsimp``."""
-        from .interop import expr_through_sympy
-        return expr_through_sympy(self, sympy.combsimp)
+        """Combinatorial simplification (:func:`sympy_extras.simplify.gammasimp.combsimp`)."""
+        from sympy_extras.simplify.gammasimp import combsimp
+        return combsimp(self)
 
     def gammasimp(self) -> Expr:
-        """SymPy's ``gammasimp``."""
-        from .interop import expr_through_sympy
-        return expr_through_sympy(self, sympy.gammasimp)
+        """Gamma function simplification (:func:`sympy_extras.simplify.gammasimp.gammasimp`)."""
+        from sympy_extras.simplify.gammasimp import gammasimp
+        return gammasimp(self)
 
     def nsimplify(self, constants: Sequence[Expr] = (), tolerance: Optional[float] = None, full: bool = False,
                   rational: Optional[bool] = None) -> Expr:
@@ -1279,9 +1286,8 @@ class Expr(Basic):
         >>> Float(0.5).nsimplify()
         1/2
         """
-        from .interop import expr_through_sympy, to_sympy
-        consts = [to_sympy(c) for c in constants]
-        return expr_through_sympy(self, lambda s: sympy.nsimplify(s, consts, tolerance, full, rational))
+        from sympy_extras.simplify.simplify import nsimplify
+        return nsimplify(self, tuple(constants), tolerance, full, rational)
 
     def integrate(self, *args: IntegrationSpec) -> Expr:
         """SymPy's ``integrate``.
