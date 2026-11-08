@@ -26,7 +26,8 @@ SERIES_CASES = ['cos(x)', 'exp(x)', '1/(1-x)', '1/x', 'sin(x)/x', 'sqrt(1+x)', '
                 'log(exp(x)-1)', 'x**y*log(x)', 'log(1-x)/x', 'exp(sqrt(x))', 'log(sqrt(x)+x)',
                 'sec(x)', 'csc(x)', 'cot(x)', 'tan(x+1)', 'cosh(x)', 'tanh(x)', 'coth(x)', 'sech(x)', 'csch(x)',
                 'tan(pi/2+x)', 'cot(pi+x)', 'sin(pi+x)', 'cos(pi/2+x)', 'sec(pi/2+x)', 'csc(pi+x)', 'tanh(sin(x))',
-                'cos(log(x))*x', 'sin(sqrt(x))']
+                'cos(log(x))*x', 'sin(sqrt(x))', 'asin(x)', 'acos(x)', 'atan(x)', 'acot(x)', 'atan(1/x)',
+                'acot(x+x**2)', 'acos(2*x)', 'atan(x**2)', 'asin(x+1)', 'acos(x-1)', 'atan(x+I)']
 
 
 def _sympy_expr(text: str) -> sympy.Expr:

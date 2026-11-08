@@ -78,6 +78,9 @@ remove public functions. Breaking changes are listed here when they happen.
   leading terms of `exp` and `log` (with the branch cut of `log`) are native.
   So are those of `sin`, `cos`, `tan`, `cot`, `sec`, `csc` and of the
   hyperbolic functions (`sympy_extras.functions.elementary._series`).
+  And those of `asin`, `acos`, `atan`, `acot` (branch points and cuts
+  included). `expand` expands `(a + b)**(-p/q)` with `p > q` as
+  `1/expand((a + b)**(p/q))`, as SymPy does.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

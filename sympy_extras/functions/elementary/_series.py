@@ -17,7 +17,7 @@ accumulation bounds are ported.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 from sympy_extras.core.add import add
 from sympy_extras.core.coreerrors import PoleError
@@ -297,3 +297,261 @@ def tanh_coth_leading_term(node: Application, x: Symbol, inverted: bool) -> Expr
     if x in arg.free_symbols and isinstance(o, Order) and o.contains(arg):
         return pow(arg, Integer(-1)) if inverted else arg
     return node._rebuilt([arg])
+
+
+# ---------------------------------------------------------------------
+# the inverse trigonometric functions
+
+def _sqrt(e: Expr) -> Expr:
+    from sympy_extras.core.numbers import Rational
+    return pow(e, Rational(1, 2))
+
+
+def _rewrite_log(node: Expr) -> Expr:
+    from sympy_extras.functions.elementary.exponential import Log
+    return node.rewrite(Log)
+
+
+def _ndir(arg: Expr, x: Symbol, cdir: Expr) -> Expr:
+    return arg.dir(x, Integer(1) if cdir.is_Number and cdir == 0 else cdir)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:asin.taylor_term (and acos)
+def asin_taylor_term(n: int, x: Expr) -> Expr:
+    if n < 0 or n % 2 == 0:
+        return Integer(0)
+    from sympy_extras.core.numbers import Rational
+    from sympy_extras.functions.combinatorial.factorials import rf
+    k = (n - 1) // 2
+    return _div(mul(rf(Rational(1, 2), Integer(k)), pow(x, Integer(n))), mul(_factorial(k), Integer(n)))
+
+
+def acos_taylor_term(n: int, x: Expr) -> Expr:
+    if n == 0:
+        return _half_pi()
+    if n < 0 or n % 2 == 0:
+        return Integer(0)
+    return mul(Integer(-1), asin_taylor_term(n, x))
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:atan.taylor_term
+def atan_taylor_term(n: int, x: Expr) -> Expr:
+    if n < 0 or n % 2 == 0:
+        return Integer(0)
+    return _div(mul(Integer((-1) ** ((n - 1) // 2)), pow(x, Integer(n))), Integer(n))
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acot.taylor_term
+def acot_taylor_term(n: int, x: Expr) -> Expr:
+    if n == 0:
+        return _half_pi()
+    if n < 0 or n % 2 == 0:
+        return Integer(0)
+    return _div(mul(Integer((-1) ** ((n + 1) // 2)), pow(x, Integer(n))), Integer(n))
+
+
+def _is_number(e: Expr, value: int) -> bool:
+    return e.is_Number and e == value
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:asin._eval_as_leading_term (and acos)
+def asin_acos_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr, is_acos: bool) -> Expr:
+    from sympy_extras.functions.elementary.complexes import im
+    arg = node.args[0]
+    x0 = arg.subs(x, Integer(0)).cancel()
+    if isinstance(x0, NaN):
+        return node._rebuilt([arg.as_leading_term(x)])
+    if not is_acos and x0.is_zero is True:
+        return arg.as_leading_term(x)
+    # the branch points
+    if is_acos and _is_number(x0, 1):
+        return mul(_sqrt(Integer(2)), _sqrt(add(Integer(1), mul(Integer(-1), arg)).as_leading_term(x)))
+    branch_points = (Integer(-1), zoo) if is_acos else (Integer(-1), Integer(1), zoo)
+    if x0 in branch_points:
+        lt = _rewrite_log(node)._eval_as_leading_term(x, logx, cdir)
+        return lt if is_acos else lt.expand()
+    # the points on the branch cuts (-oo, -1) U (1, oo)
+    if add(Integer(1), mul(Integer(-1), pow(x0, Integer(2)))).is_negative is True:
+        ndir = _ndir(arg, x, cdir)
+        fx0 = node._rebuilt([x0])
+        if im(ndir).is_negative is True:
+            if x0.is_negative is True:
+                return add(mul(Integer(2), pi), mul(Integer(-1), fx0)) if is_acos \
+                    else add(mul(Integer(-1), pi), mul(Integer(-1), fx0))
+        elif im(ndir).is_positive is True:
+            if x0.is_positive is True:
+                return mul(Integer(-1), fx0) if is_acos else add(pi, mul(Integer(-1), fx0))
+        else:
+            return _rewrite_log(node)._eval_as_leading_term(x, logx, cdir).expand()
+    return node._rebuilt([x0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:asin._eval_nseries (and acos)
+def asin_acos_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr, is_acos: bool) -> Expr:
+    from sympy_extras.core.order import order
+    from sympy_extras.core.symbol import Dummy
+    from sympy_extras.functions.elementary.complexes import im
+    arg0 = node.args[0].subs(x, Integer(0))
+    for point in (1, -1):
+        if not _is_number(arg0, point):
+            continue
+        # the branch points
+        t = Dummy('t', positive=True)
+        at = add(Integer(point), mul(Integer(-point), pow(t, Integer(2))))
+        ser = _rewrite_log(node._rebuilt([at])).nseries(t, 0, 2 * n)
+        arg1 = add(Integer(1), mul(Integer(-point), node.args[0]))
+        f = arg1.as_leading_term(x)
+        g = _div(add(arg1, mul(Integer(-1), f)), f)
+        if not g.is_meromorphic(x, 0):
+            # cannot be expanded
+            if n == 0:
+                return order(Integer(1))
+            if is_acos:
+                value: Expr = Integer(0) if point == 1 else pi
+            else:
+                value = mul(Integer(point), _half_pi())
+            return add(value, order(_sqrt(x)))
+        res1 = _sqrt(add(Integer(1), g))._eval_nseries(x, n, logx, Integer(0))
+        res = mul(res1.removeO(), _sqrt(f)).expand()
+        return add(ser.removeO().subs(t, res).expand().powsimp(), order(pow(x, Integer(n)), x))
+    res = Application._eval_nseries(node, x, n, logx, Integer(0))
+    if isinstance(arg0, ComplexInfinity):
+        return res
+    # the points on the branch cuts (-oo, -1) U (1, oo)
+    if add(Integer(1), mul(Integer(-1), pow(arg0, Integer(2)))).is_negative is True:
+        ndir = _ndir(node.args[0], x, cdir)
+        if im(ndir).is_negative is True:
+            if arg0.is_negative is True:
+                return add(mul(Integer(2), pi), mul(Integer(-1), res)) if is_acos \
+                    else add(mul(Integer(-1), pi), mul(Integer(-1), res))
+        elif im(ndir).is_positive is True:
+            if arg0.is_positive is True:
+                return mul(Integer(-1), res) if is_acos else add(pi, mul(Integer(-1), res))
+        else:
+            return _rewrite_log(node)._eval_nseries(x, n, logx, cdir)
+    return res
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:atan._eval_as_leading_term
+def atan_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im, re
+    arg = node.args[0]
+    x0 = arg.subs(x, Integer(0)).cancel()
+    if isinstance(x0, NaN):
+        return node._rebuilt([arg.as_leading_term(x)])
+    if x0.is_zero is True:
+        return arg.as_leading_term(x)
+    # the branch points
+    if x0 in (mul(Integer(-1), I), I, zoo):
+        return _rewrite_log(node)._eval_as_leading_term(x, logx, cdir).expand()
+    # the points on the branch cuts (-I*oo, -I) U (I, I*oo)
+    if add(Integer(1), pow(x0, Integer(2))).is_negative is True:
+        ndir = _ndir(arg, x, cdir)
+        fx0 = node._rebuilt([x0])
+        if re(ndir).is_negative is True:
+            if im(x0).is_positive is True:
+                return add(fx0, mul(Integer(-1), pi))
+        elif re(ndir).is_positive is True:
+            if im(x0).is_negative is True:
+                return add(fx0, pi)
+        else:
+            return _rewrite_log(node)._eval_as_leading_term(x, logx, cdir).expand()
+    return node._rebuilt([x0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:atan._eval_nseries
+def atan_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.core.series import _less
+    from sympy_extras.functions.elementary.complexes import im, re
+    arg0 = node.args[0].subs(x, Integer(0))
+    # the branch points
+    if arg0 in (I, mul(Integer(-1), I)):
+        return _rewrite_log(node)._eval_nseries(x, n, logx, cdir)
+    res = Application._eval_nseries(node, x, n, logx, Integer(0))
+    ndir = _ndir(node.args[0], x, cdir)
+    if isinstance(arg0, ComplexInfinity):
+        if _less(Integer(0), re(ndir)):
+            return add(res, mul(Integer(-1), pi))
+        return res
+    # the points on the branch cuts (-I*oo, -I) U (I, I*oo)
+    if add(Integer(1), pow(arg0, Integer(2))).is_negative is True:
+        if re(ndir).is_negative is True:
+            if im(arg0).is_positive is True:
+                return add(res, mul(Integer(-1), pi))
+        elif re(ndir).is_positive is True:
+            if im(arg0).is_negative is True:
+                return add(res, pi)
+        else:
+            return _rewrite_log(node)._eval_nseries(x, n, logx, cdir)
+    return res
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acot._eval_as_leading_term
+def acot_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.functions.elementary.complexes import im, re
+    arg = node.args[0]
+    x0 = arg.subs(x, Integer(0)).cancel()
+    if isinstance(x0, NaN):
+        return node._rebuilt([arg.as_leading_term(x)])
+    if isinstance(x0, ComplexInfinity):
+        return pow(arg, Integer(-1)).as_leading_term(x)
+    # the branch points
+    if x0 in (mul(Integer(-1), I), I, Integer(0)):
+        return _rewrite_log(node)._eval_as_leading_term(x, logx, cdir).expand()
+    # the points on the branch cut [-I, I]
+    if x0.is_imaginary is True and add(Integer(1), pow(x0, Integer(2))).is_positive is True:
+        ndir = _ndir(arg, x, cdir)
+        fx0 = node._rebuilt([x0])
+        if re(ndir).is_positive is True:
+            if im(x0).is_positive is True:
+                return add(fx0, pi)
+        elif re(ndir).is_negative is True:
+            if im(x0).is_negative is True:
+                return add(fx0, mul(Integer(-1), pi))
+        else:
+            return _rewrite_log(node)._eval_as_leading_term(x, logx, cdir).expand()
+    return node._rebuilt([x0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acot._eval_nseries
+def acot_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+    from sympy_extras.core.numbers import I
+    from sympy_extras.core.series import _less
+    from sympy_extras.functions.elementary.complexes import im, re
+    arg0 = node.args[0].subs(x, Integer(0))
+    # the branch points
+    if arg0 in (I, mul(Integer(-1), I)):
+        return _rewrite_log(node)._eval_nseries(x, n, logx, cdir)
+    res = Application._eval_nseries(node, x, n, logx, Integer(0))
+    if isinstance(arg0, ComplexInfinity):
+        return res
+    ndir = _ndir(node.args[0], x, cdir)
+    if arg0.is_zero is True:
+        if _less(re(ndir), Integer(0)):
+            return add(res, mul(Integer(-1), pi))
+        return res
+    # the points on the branch cut [-I, I]
+    if arg0.is_imaginary is True and add(Integer(1), pow(arg0, Integer(2))).is_positive is True:
+        if re(ndir).is_positive is True:
+            if im(arg0).is_positive is True:
+                return add(res, pi)
+        elif re(ndir).is_negative is True:
+            if im(arg0).is_negative is True:
+                return add(res, mul(Integer(-1), pi))
+        else:
+            return _rewrite_log(node)._eval_nseries(x, n, logx, cdir)
+    return res
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:atan._eval_aseries (and acot)
+def atan_acot_aseries(node: Application, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr],
+                      is_acot: bool) -> Expr:
+    from sympy_extras.functions.elementary.trigonometric import atan
+    if args0[0] in (Infinity(), NegativeInfinity()):
+        inverse = atan(pow(node.args[0], Integer(-1)))
+        e = inverse if is_acot else add(_half_pi(), mul(Integer(-1), inverse))
+        return e._eval_nseries(x, n, logx, Integer(0))
+    return Application._eval_aseries(node, n, args0, x, logx)

@@ -1469,6 +1469,12 @@ def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp:
             whole = ex.p // ex.q  # (y - x)**(3/2) is (y - x)*sqrt(y - x), distributed
             rest = Rational(ex.p - whole*ex.q, ex.q)
             return _expand_product(_expand_power(b, whole), pow(b, rest))
+        if multinomial and isinstance(b, Add) and isinstance(ex, Rational) and ex.q > 1 and -ex.p > ex.q:
+            # PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_expand_multinomial
+            # (a negative exponent: 1/(the expanded power with the opposite exponent))
+            whole = -ex.p // ex.q
+            rest = Rational(-ex.p - whole*ex.q, ex.q)
+            return pow(_expand_product(_expand_power(b, whole), pow(b, rest)), Integer(-1))
         if power_exp and isinstance(ex, Add) and isinstance(b, Number):
             return mul(*[pow(b, t) for t in ex.args])
     if power_exp and _is_exp_node(e) and isinstance(e.args[0], Add):

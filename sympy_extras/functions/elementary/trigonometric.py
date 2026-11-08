@@ -937,6 +937,19 @@ class Asin(DefinedFunction):
 
     function_name = 'asin'
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:asin (taylor_term, _eval_nseries, _eval_as_leading_term)
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asin_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asin_acos_nseries(self, x, n, logx, cdir, False)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asin_acos_leading_term(self, x, logx, cdir, False)
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from .hyperbolic import asinh
@@ -988,6 +1001,19 @@ class Acos(DefinedFunction):
     """The arccosine (principal branch), unevaluated (``acos`` evaluates)."""
 
     function_name = 'acos'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acos (taylor_term, _eval_nseries, _eval_as_leading_term)
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acos_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asin_acos_nseries(self, x, n, logx, cdir, True)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.asin_acos_leading_term(self, x, logx, cdir, True)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -1051,6 +1077,23 @@ class Atan(DefinedFunction):
 
     function_name = 'atan'
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:atan (taylor_term, _eval_nseries, _eval_as_leading_term)
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.atan_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.atan_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.atan_leading_term(self, x, logx, cdir)
+
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.atan_acot_aseries(self, n, args0, x, logx, False)
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from .hyperbolic import atanh
@@ -1104,6 +1147,23 @@ class Acot(DefinedFunction):
     """The arccotangent (principal branch), unevaluated (``acot`` evaluates)."""
 
     function_name = 'acot'
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acot (taylor_term, _eval_nseries, _eval_as_leading_term)
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acot_taylor_term(n, x)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acot_nseries(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.acot_leading_term(self, x, logx, cdir)
+
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        from sympy_extras.functions.elementary import _series
+        return _series.atan_acot_aseries(self, n, args0, x, logx, True)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
