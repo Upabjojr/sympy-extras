@@ -195,6 +195,20 @@ remove public functions. Breaking changes are listed here when they happen.
   match SymPy except where SymPy raises.
 - `x < oo` and `-oo < x` are true for a finite extended real `x`, as in
   SymPy.
+- `piecewise_simplify` is native (ported from SymPy with
+  `Piecewise._intervals` as `piecewise_intervals`): the conditions of a
+  univariate Piecewise rewritten as disjoint intervals, the equations of
+  the conditions substituted, equal pieces merged; `simplify` uses it.
+  `solve_inequality` (SymPy's `_solve_inequality`, linear case native,
+  the nonlinear one through SymPy) in `sympy_extras.solvers.inequalities`.
+  The conditions of several variables are simplified through SymPy.
+- A relation is decided from the sign of the difference only between
+  extended reals (or comparable numbers), as in SymPy: `x + 1 > x` stays
+  for an `x` not known real.
+- The relations sort by SymPy's class names (`LessThan` before
+  `StrictGreaterThan`), so `And`/`Or` keep SymPy's argument order.
+- `simplify` of a `Piecewise` inside an expression simplifies its pieces
+  (it broke the pairs into tuples).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

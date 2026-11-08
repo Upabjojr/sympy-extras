@@ -677,7 +677,6 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     from .signsimp import signsimp
     from .sqrtdenest import _mexpand
     from .trigsimp import exptrigsimp, trigsimp
-    from sympy.functions.elementary.piecewise import piecewise_simplify
     from sympy.simplify.simplify import product_simplify, sum_simplify
 
     def shorter(*choices: Expr) -> Expr:
@@ -712,8 +711,18 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     def query(x: Basic) -> bool:
         return isinstance(x, Expr) and bool(x.args) and not isinstance(x, handled)
 
+    def simplified(a: Basic) -> Basic:
+        # SymPy simplifies a non-expression node argument by argument: the
+        # expression and the condition of a piece
+        from sympy_extras.functions.elementary.piecewise import ExprCondPair, _simplify_condition
+        if isinstance(a, Expr):
+            return again(a)
+        if isinstance(a, ExprCondPair):
+            return ExprCondPair(again(a.expr), _simplify_condition(a.cond))
+        return a.simplify()
+
     def value(x: Basic) -> Basic:
-        return x._evaluated(tuple(again(a) if isinstance(a, Expr) else a.simplify() for a in x.args))
+        return x._evaluated(tuple(simplified(a) for a in x.args))
 
     e = _expr(e.replace(query, value))
     if not isinstance(e, handled):
@@ -741,7 +750,10 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
             if e.has(KroneckerDeltaNode):
                 e = kroneckersimp(e)
             if e.has(Piecewise):
-                e = _through_sympy(e, lambda s: piecewise_simplify(s, deep=True, doit=False))
+                # SymPy's piecewise_simplify: the folded expression is a Piecewise
+                from sympy_extras.functions.elementary.piecewise import piecewise_simplify
+                if isinstance(e, Piecewise):
+                    e = piecewise_simplify(e, doit=False)
                 if e.has(Piecewise):
                     return shorter(e, factor_terms(e))
     if e.has(Hyper, MeijerG, ExpPolar, PolarLift):

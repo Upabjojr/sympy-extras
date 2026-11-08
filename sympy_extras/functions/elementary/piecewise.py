@@ -12,9 +12,8 @@ the same condition, and merges successive pairs with the same expression
 derivative and the conjugate apply to the expressions; the facts are
 those all the expressions agree on. :func:`piecewise_fold` brings the
 ``Piecewise`` of a sum, product or function to the top. Not ported:
-``piecewise_simplify``, ``piecewise_exclusive`` (both need the
-simplification of the conditions), the integration and the interval
-methods; ``piecewise_fold`` keeps an ``ITE`` condition as it is where
+``piecewise_exclusive`` and the integration; ``piecewise_simplify``
+simplifies the conditions of several variables through SymPy; ``piecewise_fold`` keeps an ``ITE`` condition as it is where
 SymPy rewrites it in conjunctive normal form.
 
 Examples
@@ -56,6 +55,7 @@ from sympy_extras.core.numbers import Rational, nan
 from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.relational import Ge, Gt, Le, Lt, Relational, _FUNCTIONS, _REVERSED
 from sympy_extras.core.sorting import ClassKey
+from sympy_extras.core.symbol import Symbol
 
 __all__ = ['ExprCondPair', 'Piecewise', 'piecewise', 'piecewise_fold']
 
@@ -450,3 +450,405 @@ def _as_expression(e: Basic) -> Expr:
     if not isinstance(e, Expr):
         raise TypeError("an expression is expected")
     return e
+
+
+# ---------------------------------------------------------------------
+# the intervals of a Piecewise and piecewise_simplify
+
+
+def _lts_gts(r: Relational) -> tuple[Expr, Expr]:
+    """SymPy's ``r.lts`` and ``r.gts``: the smaller and the greater side."""
+    if isinstance(r, (Lt, Le)):
+        return r.lhs, r.rhs
+    return r.rhs, r.lhs
+
+
+def _to_nnf(b: Boolean) -> Boolean:
+    """The negations pushed to the relations (SymPy's
+    ``eliminate_implications`` on the connectives of a condition)."""
+    from sympy_extras.core.logic import Not, not_
+    if isinstance(b, Not):
+        inner = b.args[0]
+        assert isinstance(inner, Boolean)
+        if isinstance(inner, And):
+            return or_(*[_to_nnf(not_(to_boolean(a))) for a in inner.args])
+        if isinstance(inner, Or):
+            return and_(*[_to_nnf(not_(to_boolean(a))) for a in inner.args])
+        return b
+    if isinstance(b, And):
+        return and_(*[_to_nnf(to_boolean(a)) for a in b.args])
+    if isinstance(b, Or):
+        return or_(*[_to_nnf(to_boolean(a)) for a in b.args])
+    return b
+
+
+def _to_cnf(b: Boolean) -> Boolean:
+    """SymPy's ``to_cnf`` (without simplification)."""
+    return _distribute_and_over_or(_to_nnf(b))
+
+
+def _distribute_or_over_and(e: Boolean) -> Boolean:
+    """The disjunctive normal form by distribution of ``And`` over ``Or``
+    (SymPy's ``distribute_or_over_and``)."""
+    if isinstance(e, And):
+        for arg in e.args:
+            if isinstance(arg, Or):
+                others = [a for a in e.args if a is not arg]
+                rest = and_(*[to_boolean(a) for a in others])
+                return or_(*[_distribute_or_over_and(and_(to_boolean(c), rest)) for c in arg.args])
+        return e
+    if isinstance(e, Or):
+        return or_(*[_distribute_or_over_and(to_boolean(a)) for a in e.args])
+    return e
+
+
+IntervalPiece = tuple[Expr, Expr, Expr, int]
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:Piecewise._intervals
+def piecewise_intervals(pw: Piecewise, sym: Symbol,
+                        err_on_Eq: bool = False) -> tuple[bool, Union[str, list[IntervalPiece]]]:
+    """The intervals of ``sym`` on which the pieces apply: ``(True, [(lower,
+    upper, expr, index), ...])``, or ``(False, reason)`` when a condition
+    cannot be written with intervals of ``sym``.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions.elementary.piecewise import piecewise, piecewise_intervals
+    >>> x = Symbol('x')
+    >>> piecewise_intervals(piecewise((1, x < 0), (x, x < 2), (2, True)), x)
+    (True, [(-oo, 0, 1, 0), (-oo, 2, x, 1), (-oo, oo, 2, 2)])
+    """
+    from sympy_extras.core.logic import false as false_, true as true_
+    from sympy_extras.core.numbers import NegativeInfinity, oo
+    from sympy_extras.core.relational import Eq, Ne
+    from sympy_extras.core.sorting import ordered
+    from sympy_extras.functions.elementary.miscellaneous import max_, min_
+    from sympy_extras.solvers.inequalities import solve_inequality
+
+    def nonsymfail(cond: Boolean) -> tuple[bool, str]:
+        return False, 'A condition not involving %s appeared: %s' % (sym, cond)
+
+    def solve_relational(r: Relational) -> tuple[bool, Union[str, Boolean]]:
+        if sym not in r.free_symbols:
+            return nonsymfail(r)
+        try:
+            rv = solve_inequality(r, sym)
+        except NotImplementedError:
+            return False, 'Unable to solve relational %s for %s.' % (r, sym)
+        if isinstance(rv, Relational):
+            if rv.lhs != sym or sym in rv.rhs.free_symbols:
+                return False, 'Unable to solve relational %s for %s.' % (r, sym)
+            if rv.rel_op == '==':
+                rv = false_
+            elif rv.rel_op == '!=':
+                try:
+                    rv = or_(sym < rv.rhs, sym > rv.rhs)
+                except TypeError:
+                    rv = true_
+        elif rv == and_(NegativeInfinity() < sym, sym < oo):
+            rv = true_
+        return True, rv
+
+    reps: dict[Basic, Basic] = {}
+    for r in ordered(list(pw.atoms(Relational))):
+        assert isinstance(r, Relational)
+        ok, solved = solve_relational(r)
+        if not ok:
+            assert isinstance(solved, str)
+            return False, solved
+        assert isinstance(solved, Boolean)
+        reps[r] = solved
+    args: list[tuple[Expr, Boolean]] = []
+    for pair in pw.args:
+        c = pair.cond.xreplace(reps)
+        assert isinstance(c, Boolean)
+        args.append((pair.expr, c))
+    expr_cond: list[tuple[int, Expr, Boolean]] = []
+    default: Optional[Expr] = None
+    idefault = -1
+    for i, (expr, cond) in enumerate(args):
+        if cond is false_:
+            continue
+        if cond is true_:
+            default, idefault = expr, i
+            break
+        if isinstance(cond, Eq):
+            if err_on_Eq:
+                return False, 'encountered Eq condition: %s' % cond
+            continue
+        cond = _to_cnf(cond)
+        if isinstance(cond, And):
+            cond = _distribute_or_over_and(cond)
+        if isinstance(cond, Or):
+            expr_cond.extend((i, expr, to_boolean(o)) for o in cond.args if not isinstance(o, Eq))
+        elif cond is not false_:
+            expr_cond.append((i, expr, cond))
+    int_expr: list[IntervalPiece] = []
+    k = 0
+    while k < len(expr_cond):   # SymPy extends the list it iterates over
+        iarg, expr, cond = expr_cond[k]
+        k += 1
+        lower: Expr
+        upper: Expr
+        if isinstance(cond, And):
+            lower, upper = NegativeInfinity(), oo
+            exclude: list[Expr] = []
+            for cond2 in cond.args:
+                if not isinstance(cond2, Relational):
+                    return False, 'expecting only Relationals'
+                if isinstance(cond2, Eq):
+                    lower = upper
+                    if err_on_Eq:
+                        return False, 'encountered secondary Eq condition'
+                    break
+                if isinstance(cond2, Ne):
+                    l_, r_ = cond2.lhs, cond2.rhs
+                    if l_ == sym:
+                        exclude.append(r_)
+                    elif r_ == sym:
+                        exclude.append(l_)
+                    else:
+                        return nonsymfail(cond2)
+                    continue
+                lts, gts = _lts_gts(cond2)
+                if lts == sym:
+                    upper = min_(gts, upper)
+                elif gts == sym:
+                    lower = max_(lts, lower)
+                else:
+                    return nonsymfail(cond2)
+            if exclude:
+                # SymPy's `e < lower == True or e > upper == True` is a chained
+                # comparison which never holds: no excluded point is skipped
+                points = [e for e in ordered(exclude) if isinstance(e, Expr)]
+                bounds: list[tuple[Expr, Expr]] = []
+                previous = lower
+                for e in points:
+                    bounds.append((previous, e))
+                    previous = e
+                bounds.append((previous, upper))
+                expr_cond.extend((iarg, expr, and_(lo < sym, sym < hi)) for lo, hi in bounds)
+                continue
+        elif isinstance(cond, Relational) and cond.rel_op != '!=':
+            lower, upper = _lts_gts(cond)
+            if lower == sym:
+                lower = NegativeInfinity()
+            elif upper == sym:
+                upper = oo
+            else:
+                return nonsymfail(cond)
+        else:
+            return False, 'unrecognized condition: %s' % cond
+        upper = max_(lower, upper)
+        if err_on_Eq and lower == upper:
+            return False, 'encountered Eq condition'
+        if (lower >= upper) is not true_:
+            int_expr.append((lower, upper, expr, iarg))
+    if default is not None:
+        int_expr.append((NegativeInfinity(), oo, default, idefault))
+    unique: list[IntervalPiece] = []
+    for piece in int_expr:
+        if piece not in unique:
+            unique.append(piece)
+    return True, unique
+
+
+def _simplify_condition(c: Boolean) -> Boolean:
+    """SymPy's ``simplify`` of a condition (through SymPy: the
+    simplification of the relations and the logic is not ported)."""
+    import sympy
+    from sympy_extras.core.interop import from_sympy, to_sympy
+    r = from_sympy(sympy.simplify(to_sympy(c)))
+    return r if isinstance(r, Boolean) else c
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:piecewise_simplify_arguments
+def piecewise_simplify_arguments(pw: Piecewise, doit: bool = True) -> Expr:
+    """The pieces simplified: for one variable, the conditions rewritten as
+    disjoint intervals of it (``nan`` where no piece applies); otherwise
+    each condition simplified; the expressions simplified."""
+    from sympy_extras.core.logic import true as true_
+    from sympy_extras.core.numbers import Infinity, NegativeInfinity
+    from sympy_extras.core.relational import Eq
+    from sympy_extras.sets import EmptySet, Reals, Set, finite_set, interval, union
+    from sympy_extras.simplify.simplify import simplify
+    first = pw.args[0].cond.free_symbols
+    new_args: Optional[list[tuple[Expr, Boolean]]] = None
+    if len(first) == 1 and not pw.atoms(Eq):
+        x = next(iter(first))
+        assert isinstance(x, Symbol)
+        ok, abe = piecewise_intervals(pw, x, err_on_Eq=True)
+
+        def include(c: Boolean, a: Expr) -> bool:
+            try:
+                return c.subs(x, a) is true_
+            except TypeError:
+                return False
+
+        def member(s: Set, a: Expr) -> bool:
+            # SymPy's `a in covered`: a TypeError when it is not decided
+            c = s.contains(a)
+            if c is true_:
+                return True
+            if c is false:
+                return False
+            raise TypeError('did not evaluate to a bool: %r' % (c,))
+
+        if ok:
+            assert isinstance(abe, list)
+            new_args = []
+            covered: Set = EmptySet
+            for a, b, e, i in abe:
+                c = pw.args[i].cond
+                incl_a = include(c, a)
+                incl_b = include(c, b)
+                iv = interval(a, b, not incl_a, not incl_b)
+                cset = iv - covered
+                if cset is EmptySet:
+                    continue
+                try:
+                    a = cset.inf
+                except NotImplementedError:
+                    pass
+                else:
+                    incl_a = include(c, a)
+                if incl_a and incl_b:
+                    if a.is_infinite and b.is_infinite:
+                        c = true_
+                    elif b.is_infinite:
+                        c = (x > a) if member(covered, a) else (x >= a)
+                    elif a.is_infinite:
+                        c = x <= b
+                    elif member(covered, a):
+                        c = and_(a < x, x <= b)
+                    else:
+                        c = and_(a <= x, x <= b)
+                elif incl_a:
+                    if a.is_infinite:
+                        c = x < b
+                    elif member(covered, a):
+                        c = and_(a < x, x < b)
+                    else:
+                        c = and_(a <= x, x < b)
+                elif incl_b:
+                    if b.is_infinite:
+                        c = x > a
+                    else:
+                        c = and_(a < x, x <= b)
+                else:
+                    if member(covered, a):
+                        c = x < b
+                    else:
+                        c = and_(a < x, x < b)
+                covered = union(covered, iv)
+                if isinstance(a, NegativeInfinity) and incl_a:
+                    covered = union(covered, finite_set(NegativeInfinity()))
+                if isinstance(b, Infinity) and incl_b:
+                    covered = union(covered, finite_set(b))
+                new_args.append((e, c))
+            if Reals.is_subset(covered) is not True:
+                new_args.append((nan, true_))
+    if new_args is None:
+        new_args = [(p.expr, _simplify_condition(p.cond)) for p in pw.args]
+    final: list[PairLike] = []
+    for e, c in new_args:
+        newe = simplify(e, doit=False)
+        final.append((newe if newe != e else e, c))
+    return piecewise(*final)
+
+
+def _diff_wrt(e: Expr) -> bool:
+    """SymPy's ``_diff_wrt``: a symbol, an undefined function, a derivative."""
+    from sympy_extras.core.function import AppliedUndef, Derivative
+    return isinstance(e, (Symbol, AppliedUndef, Derivative))
+
+
+def _blessed(e: Relational) -> bool:
+    from sympy_extras.core.numbers import NumberSymbol
+    return _diff_wrt(e.lhs) and (_diff_wrt(e.rhs) or isinstance(e.rhs, (Rational, NumberSymbol)))
+
+
+def _eqs_and_others(cond: Boolean) -> tuple[list[Relational], list[Boolean]]:
+    from sympy_extras.core.relational import Eq
+    if isinstance(cond, And):
+        eqs: list[Relational] = [a for a in cond.args if isinstance(a, Eq)]
+        others = [to_boolean(a) for a in cond.args if not isinstance(a, Eq)]
+        return eqs, others
+    if isinstance(cond, Eq):
+        single: list[Relational] = [cond]
+        return single, []
+    return [], []
+
+
+def _subs_pair(e: Basic, eq: Relational) -> Basic:
+    return e.subs(eq.lhs, eq.rhs)
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:_piecewise_simplify_eq_and
+def _piecewise_simplify_eq_and(args: list[tuple[Expr, Boolean]]) -> list[tuple[Expr, Boolean]]:
+    """The expression of a piece with the equations of its condition
+    substituted (``(x*y, Eq(y, 0) & ...)`` becomes ``(0, ...)``)."""
+    from sympy_extras.core.sorting import ordered
+    for i, (expr, cond) in enumerate(args):
+        eqs, other = _eqs_and_others(cond)
+        if eqs:
+            eqs = [e for e in ordered(eqs) if isinstance(e, Relational)]
+            for j, e in enumerate(list(eqs)):
+                e = eqs[j]
+                if _blessed(e):
+                    expr = _as_expression(_subs_pair(expr, e))
+                    eqs[j + 1:] = [r for r in (_subs_pair(ei, e) for ei in eqs[j + 1:]) if isinstance(r, Relational)]
+                    other = [to_boolean(_subs_pair(ei, e)) for ei in other]
+            cond = and_(*(list(eqs) + other))
+            args[i] = (expr, cond)
+    return args
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:_piecewise_simplify_equal_to_next_segment
+def _piecewise_simplify_equal_to_next_segment(args: list[tuple[Expr, Boolean]]) -> list[tuple[Expr, Boolean]]:
+    """A piece whose expression equals the next one under its equations
+    takes the next expression."""
+    from sympy_extras.core.sorting import ordered
+    prevexpr: Optional[Expr] = None
+    for i, (expr, cond) in reversed(list(enumerate(args))):
+        if prevexpr is not None:
+            eqs, other = _eqs_and_others(cond)
+            _prevexpr, _expr = prevexpr, expr
+            if eqs and not other:
+                for e in ordered(eqs):
+                    assert isinstance(e, Relational)
+                    if len(args) == 2 or _blessed(e):
+                        _prevexpr = _as_expression(_subs_pair(_prevexpr, e))
+                        _expr = _as_expression(_subs_pair(_expr, e))
+            if _prevexpr == _expr:
+                args[i] = (args[i + 1][0], cond)
+            else:
+                prevexpr = expr
+        else:
+            prevexpr = expr
+    return args
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:piecewise_simplify
+def piecewise_simplify(expr: Expr, doit: bool = True) -> Expr:
+    """A ``Piecewise`` simplified: its pieces (:func:`piecewise_simplify_arguments`),
+    the equations of the conditions substituted, the pieces equal to the
+    next one merged.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions.elementary.piecewise import piecewise, piecewise_simplify
+    >>> x = Symbol('x')
+    >>> piecewise_simplify(piecewise((1, x < 0), (1, x < 1), (2, True)))
+    Piecewise((1, (x <= 0) | (x < 1)), (2, True))
+    >>> piecewise_simplify(piecewise((x**2, (x > 0) & (x < 2)), (x + x, x <= 0), (0, True)))
+    Piecewise((x**2, (x > 0) & (x < 2)), (2*x, x <= 0), (0, x >= 2))
+    """
+    if not isinstance(expr, Piecewise):
+        return expr
+    simplified = piecewise_simplify_arguments(expr, doit=doit)
+    if not isinstance(simplified, Piecewise):
+        return simplified
+    args = [(p.expr, p.cond) for p in simplified.args]
+    args = _piecewise_simplify_eq_and(args)
+    args = _piecewise_simplify_equal_to_next_segment(args)
+    return piecewise(*args)

@@ -118,7 +118,9 @@ class Relational(Boolean):
 
     @classmethod
     def class_key(cls) -> ClassKey:
-        return (5, 0, cls.__name__)
+        # SymPy's class names (LessThan, StrictGreaterThan, ...): the order
+        # of the arguments of And and Or
+        return (5, 0, _SYMPY_NAMES.get(cls, cls.__name__))
 
     def _compare_name(self) -> str:
         return _SYMPY_NAMES[type(self)]
@@ -310,7 +312,11 @@ def _compare(a: ExprLike, b: ExprLike, accepted: tuple[int, ...], cls: type[Rela
             order = -1 if other.is_finite is True else {(-1, 0): -1, (1,): -1}.get(accepted, 2)
         else:
             order = 1 if other.is_finite is True else {(0, 1): 1, (-1,): 1}.get(accepted, 2)
-    else:
+    elif (lhs.is_comparable and rhs.is_comparable) or \
+            (lhs.is_extended_real is True and rhs.is_extended_real is True):
+        # SymPy's is_ge: a numerical difference of comparable numbers, or
+        # the sign of the difference of two extended reals (x + 1 > x is
+        # not decided for an x not known real)
         difference = sub(lhs, rhs)
         if isinstance(difference, Number) and not isinstance(difference, (Float,)):
             order = _order(difference, Rational(0))
@@ -343,10 +349,10 @@ def lt(a: ExprLike, b: ExprLike) -> Boolean:
     Examples
     ========
 
-    >>> from sympy_extras.core import symbols, lt, oo
-    >>> x = symbols('x')
-    >>> lt(1, 2), lt(x, x), lt(x, x + 1), lt(x, 1), lt(-oo, 3)
-    (True, False, True, x < 1, True)
+    >>> from sympy_extras.core import Symbol, symbols, lt, oo
+    >>> x, r = symbols('x'), Symbol('r', real=True)
+    >>> lt(1, 2), lt(r, r), lt(r, r + 1), lt(x, 1), lt(-oo, 3), lt(x, x + 1)
+    (True, False, True, x < 1, True, x < x + 1)
     """
     return _compare(a, b, (-1,), Lt)
 

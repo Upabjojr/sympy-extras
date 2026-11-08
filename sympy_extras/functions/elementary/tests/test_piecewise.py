@@ -91,3 +91,53 @@ def test_round_trip_and_node() -> None:
     assert back is True
     from sympy_extras.core.interop import from_sympy
     assert from_sympy(to_sympy(f)) == f
+
+
+def test_piecewise_simplify_matches_sympy() -> None:
+    # random Piecewise of linear conditions in x (the interval path), some
+    # nonlinear (the relational solved through SymPy) or in y (the
+    # conditions simplified one by one)
+    import random
+    import sympy
+    from sympy.functions.elementary.piecewise import piecewise_simplify as sympy_piecewise_simplify
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.functions.elementary.piecewise import piecewise_simplify
+    sx, sy = sympy.symbols('x y')
+    rng = random.Random(1)
+    consts = [-2, -1, 0, sympy.Rational(1, 2), 1, 2, 3]
+    exprs = [sx, sx**2, 1, 0, 2*sx + 1, sympy.sin(sx), sx*sy, sy]
+
+    def cond() -> sympy.Basic:
+        rel = rng.choice([sympy.Lt, sympy.Le, sympy.Gt, sympy.Ge, sympy.Ne])
+        lhs = rng.choice([sx, 2*sx, -sx, sx + 1, 3 - sx] + ([sx**2] if rng.random() < 0.1 else []))
+        r = rel(lhs, rng.choice(consts))
+        k = rng.random()
+        if k < 0.25:
+            return sympy.And(r, rng.choice([sympy.Lt, sympy.Gt])(sx, rng.choice(consts)))
+        if k < 0.35:
+            return sympy.Or(r, sympy.Gt(sx, rng.choice(consts)))
+        return r
+    checked = 0
+    for _ in range(80):
+        pairs = [(rng.choice(exprs), cond()) for _ in range(rng.randint(1, 3))] + [(rng.choice(exprs), True)]
+        e = sympy.Piecewise(*pairs)
+        if not isinstance(e, sympy.Piecewise):
+            continue
+        # SymPy's Or does not see complementary relations inside a nested Or
+        # (the DNF of a condition with Ne): ours does, and finds intervals
+        if any(isinstance(c, sympy.Ne) for c in e.atoms(sympy.Ne)) and e.atoms(sympy.Or):
+            continue
+        got = piecewise_simplify(expr_from_sympy(e))
+        assert str(to_sympy(got, evaluate=False)) == str(sympy_piecewise_simplify(e)), e
+        checked += 1
+    assert checked > 50
+
+
+def test_relations_with_unknown_symbols_match_sympy() -> None:
+    # SymPy decides a relation by the sign of the difference only between
+    # extended reals: x + 1 > x is not decided for an x not known real
+    from sympy_extras.core import Symbol
+    from sympy_extras.core.logic import true
+    x, r = Symbol('x'), Symbol('r', real=True)
+    assert str(x + 1 > x) == 'x + 1 > x' and (r + 1 > r) is true

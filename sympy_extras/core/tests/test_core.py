@@ -186,7 +186,10 @@ def test_noncommutative_products() -> None:
 def test_relations() -> None:
     assert eq(x, x) == true and eq(x, x + 1) == false and eq(x, y) == Eq(x, y)
     assert eq(2, 2) == true and eq(2, 2.0) == true and eq(I, 1) == false
-    assert lt(1, 2) == true and lt(x, x) == false and lt(x, x + 1) == true and lt(x, 1) == Lt(x, 1)
+    r = Symbol('r', real=True)
+    assert lt(1, 2) == true and lt(r, r) == false and lt(r, r + 1) == true and lt(x, 1) == Lt(x, 1)
+    # as SymPy: the difference decides only between extended reals
+    assert lt(x, x) == Lt(x, x) and lt(x, x + 1) == Lt(x, x + 1)
     greater = x > 1
     assert (x < 1) == Lt(x, 1) and isinstance(greater, Relational) and greater.reversed == Lt(1, x)
     assert Eq(x, 1).lhs == x

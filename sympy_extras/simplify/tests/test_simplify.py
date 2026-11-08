@@ -102,3 +102,21 @@ def test_besselsimp_matches_sympy() -> None:
              besselj(nu, exp_polar(I*pi/2)*z), besseli(nu, I*z), x*besselj(5, z), bessely(2, z) + bessely(0, z)]
     for e in cases:
         assert str(to_sympy(besselsimp(expr_from_sympy(e)), evaluate=False)) == str(sympy.besselsimp(e)), e
+
+
+def test_simplify_of_piecewise_matches_sympy() -> None:
+    # the native piecewise_simplify in the driver, and a Piecewise nested
+    # in a sum simplified piece by piece (it used to break the pairs)
+    import sympy
+    from sympy import Piecewise as P
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.simplify.simplify import simplify
+    x, y = sympy.symbols('x y')
+    cases = [P((1, x < 0), (1, x < 1), (2, True)), P((x**2, (x > 0) & (x < 2)), (2*x, x <= 0), (0, True)),
+             2*P((x, x > 1), (0, True)) + 1, P((sympy.sin(x)**2 + sympy.cos(x)**2, x > 0), (0, True)),
+             P((x*y, y > 0), (y, True)), P((1, x > 2), (1, x < -2), (0, True)), sympy.Abs(x) + P((x, x > 0), (-x, True)),
+             P(((x**2 - 1)/(x - 1), x > 0), (x + 1, True)), sympy.exp(P((x, x > 0), (0, True))),
+             x*P((sympy.sin(x)**2 + sympy.cos(x)**2, x - 1 > 0), (2, True))]
+    for e in cases:
+        assert str(to_sympy(simplify(expr_from_sympy(e)), evaluate=False)) == str(sympy.simplify(e)), e
