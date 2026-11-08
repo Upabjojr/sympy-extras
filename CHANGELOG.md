@@ -127,6 +127,11 @@ remove public functions. Breaking changes are listed here when they happen.
 - `factor` over `RR`, ported from SymPy (`dmp_factor_list` of an inexact
   domain: the floats made rational, factored over `QQ`, each factor
   divided by its largest coefficient, rounded back).
+- `expand` is fully native: the `power_base` hint (SymPy's
+  `Pow._eval_expand_power_base`, with `force`) was missing and is ported,
+  `power_exp` splits when the base is nonzero or the exponent's terms
+  have one sign (not only for numerical bases), `complex` combines with
+  `func`/`trig` in SymPy's order, and the derivative of `Order` is native.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

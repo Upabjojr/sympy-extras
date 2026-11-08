@@ -1331,8 +1331,11 @@ def _derivative(e: Expr, s: Symbol) -> Expr:
     own_node = e._eval_derivative_node(s)
     if own_node is not None:
         return own_node
-    if e.is_Order:
-        return expr_through_sympy(e, lambda o: o.diff(to_sympy(s)))
+    from .order import Order
+    if isinstance(e, Order):
+        # PORTED FROM SYMPY: sympy/series/order.py:Order._eval_derivative
+        from .order import order
+        return order(_derivative(e.expr, s), *[Tuple(v, p) for v, p in zip(e.variables, e.point)])
     if isinstance(e, Subs):
         terms = []
         if s in e.expr.free_symbols - set(e.variables):
@@ -1348,11 +1351,12 @@ def _derivative(e: Expr, s: Symbol) -> Expr:
 
 def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: bool = True, power_base: bool = True,
            power_exp: bool = True, log: bool = True, func: bool = False, trig: bool = False,
-           complex: bool = False) -> Expr:
+           complex: bool = False, force: bool = False) -> Expr:
     """Products distributed over sums (``mul``), integer powers of sums
     expanded (``multinomial``), powers with a sum in the exponent split
-    (``power_exp``); the hints ``log``, ``func``, ``trig`` and ``complex``
-    are SymPy's and go through SymPy.
+    (``power_exp``), products in the base of powers split
+    (``power_base``, every factor with ``force``); the hints ``log``,
+    ``func``, ``trig`` and ``complex`` are SymPy's, in SymPy's order.
 
     Examples
     ========
@@ -1365,10 +1369,10 @@ def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: boo
     (2*2**x, x/(x + 1), x*(y + 1))
     """
     e = to_expr(expr)
-    if complex and not (func or trig):
-        # SymPy applies its hints in sorted order: complex before log,
-        # multinomial, mul and the power hints
-        e = as_expr(_expand_complex(e, deep, ExpandHints(mul, multinomial, power_base, power_exp, log, True)))
+    if complex:
+        # SymPy applies its hints in sorted order: complex before func, log,
+        # multinomial, mul, the power hints and trig
+        e = as_expr(_expand_complex(e, deep, ExpandHints(mul, multinomial, power_base, power_exp, log, True, trig)))
         complex = False
     if func:
         # after complex, before log, multinomial, mul, the power hints, trig
@@ -1385,17 +1389,12 @@ def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: boo
         trig = False
         if not (mul or multinomial or log):
             return e
-    if func or trig or complex:
-        from .interop import expr_through_sympy
-        return expr_through_sympy(e, lambda s: sympy.expand(s, deep=deep, mul=mul, multinomial=multinomial,
-                                                            power_base=power_base, power_exp=power_exp, log=log,
-                                                            func=func, trig=trig, complex=complex))
-    result = _expand(e, deep, mul, multinomial, power_exp, log)
+    result = _expand(e, deep, mul, multinomial, power_exp, log, power_base, force)
     # SymPy's Expr.expand repeats the multinomial and mul hints until
     # nothing changes (sqrt(c)**2 = c may create a new product with a sum)
     while mul or multinomial or log:
         was = result
-        result = _expand(result, deep, mul, multinomial, False, log)
+        result = _expand(result, deep, mul, multinomial, False, log, False, force)
         if result == was:
             break
     return result
@@ -1496,10 +1495,11 @@ def _expand_complex(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
     return e
 
 
-def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp: bool, log: bool) -> Expr:
+def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp: bool, log: bool,
+            power_base: bool = False, force: bool = False) -> Expr:
     if deep and e.args and not isinstance(e, (Derivative, UnevaluatedExpr)):
-        args = tuple(_expand(a, deep, distribute, multinomial, power_exp, log) if isinstance(a, Expr) else a
-                     for a in e.args)
+        args = tuple(_expand(a, deep, distribute, multinomial, power_exp, log, power_base, force)
+                     if isinstance(a, Expr) else a for a in e.args)
         # SymPy's _expand_hint rebuilds a node only when an argument
         # changed: 2*(y*log(2) + 2) stays under the log hint alone
         if any(new is not old and new != old for new, old in zip(args, e.args)):
@@ -1522,18 +1522,151 @@ def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp:
             whole = -ex.p // ex.q
             rest = Rational(-ex.p - whole*ex.q, ex.q)
             return pow(_expand_product(_expand_power(b, whole), pow(b, rest)), Integer(-1))
-        if power_exp and isinstance(ex, Add) and isinstance(b, Number):
-            return mul(*[pow(b, t) for t in ex.args])
+        if power_base and isinstance(b, Mul):
+            split = _expand_power_base_node(e, force)
+            if split is not e:
+                # the power_exp hint is a later pass of SymPy over the whole
+                # tree: the new powers are split too
+                return _expand(split, True, False, False, power_exp, False, False, force) if power_exp else split
+        if power_exp and isinstance(ex, Add) and (force or b.is_zero is False or _all_nonneg_or_nonpos(ex)) \
+                and ex.is_commutative is not False:
+            # PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_expand_power_exp
+            return mul(*[pow(b, t) for t in ex.args if isinstance(t, Expr)])
     if power_exp and _is_exp_node(e) and isinstance(e.args[0], Add):
         from .numbers import E
         return mul(*[pow(E, t) for t in e.args[0].args])
     if log and _is_log_node(e):
         from sympy_extras.functions.elementary.exponential import Log
         if isinstance(e, Log):
-            return _expand_log_node(e, False, False)
+            return _expand_log_node(e, force, False)
         from .interop import expr_through_sympy
         return expr_through_sympy(e, sympy.expand_log)
     return e
+
+
+# PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_expand_power_base
+def _expand_power_base_node(e: Pow, force: bool) -> Expr:
+    """``(a*b)**e`` split into ``a**e*b**e`` for the factors which allow it
+    (nonnegative or polar ones, all with ``force`` or an integer ``e``),
+    the others kept together (the signs and the powers of ``I`` sorted
+    out first)."""
+    from .numbers import I as _I, ImaginaryUnit
+    from .fuzzy import fuzzy_and
+    b, ex = e.base, e.exp
+    if not isinstance(b, Mul):
+        return e
+    cargs = [f for f in b.args if isinstance(f, Expr) and f.is_commutative is not False]
+    nc: list[Expr] = [f for f in b.args if isinstance(f, Expr) and f.is_commutative is False]
+    if nc:
+        nc = [_expand_power_base_node(f, force) if isinstance(f, Pow) else f for f in nc]
+        if isinstance(ex, Integer):
+            if ex.p > 0:
+                rv: Expr = Mul(*(nc * ex.p))
+            else:
+                rv = Mul(*([pow(f, Integer(-1)) for f in nc[::-1]] * -ex.p))
+            if cargs:
+                rv = mul(rv, pow(mul(*cargs), ex))
+            return rv
+        if not cargs:
+            return Pow(Mul(*nc), ex)
+        nc = [Mul(*nc)]
+    # the commutative bases sifted
+    other = [f for f in cargs if f.is_extended_real is False]
+    maybe_real = [f for f in cargs if f.is_extended_real is not False]
+    nonneg: list[Expr] = []
+    neg: list[Expr] = []
+    imag: list[Expr] = []
+    for f in maybe_real:
+        if isinstance(f, ImaginaryUnit):
+            imag.append(f)
+            continue
+        polar = f.is_polar
+        if polar is True:
+            nonneg.append(f)
+        elif polar is None:
+            key = f.is_extended_nonnegative
+            if key is True:
+                nonneg.append(f)
+            elif key is False:
+                neg.append(f)
+            else:
+                other.append(f)
+        else:
+            other.append(f)
+    if imag:
+        i = len(imag) % 4
+        if i == 1:
+            other.append(_I)
+        elif i in (2, 3):
+            if neg:
+                nonn = -neg.pop()
+                if not (isinstance(nonn, Integer) and nonn.p == 1):
+                    nonneg.append(nonn)
+            else:
+                neg.append(Integer(-1))
+            if i == 3:
+                other.append(_I)
+    # the bases which can be separated from the base
+    if force or ex.is_integer is True:
+        cargs = nonneg + neg + other
+        other = list(nc)
+    else:
+        # the negatives made positive, the residual -1 in other
+        if len(neg) > 1:
+            o: Expr = Integer(1)
+            if not other and isinstance(neg[0], Number):
+                o = o * neg.pop(0)
+            if len(neg) % 2:
+                o = -o
+            for n in neg:
+                nonneg.append(-n)
+            if not (isinstance(o, Integer) and o.p == 1):
+                other.append(o)
+        elif neg and other:
+            if isinstance(neg[0], Number) and not (isinstance(neg[0], Integer) and neg[0].p == -1):
+                other.append(Integer(-1))
+                nonneg.append(-neg[0])
+            else:
+                other.extend(neg)
+        else:
+            other.extend(neg)
+        other.extend(nc)
+        cargs = nonneg
+    evaluated: list[Expr] = []
+    kept: list[Expr] = []
+    if cargs:
+        if isinstance(ex, Rational):
+            npow = [f for f in cargs if isinstance(f, Pow) and isinstance(f.exp, Rational) and f.base.is_number]
+            cargs = [f for f in cargs if not (isinstance(f, Pow) and isinstance(f.exp, Rational) and f.base.is_number)]
+            evaluated = [pow(f.doit(), ex) for f in npow]
+        kept = list(cargs)
+    if other:
+        kept.append(mul(*other))
+    # SymPy's Mul(...) of the unevaluated powers evaluates them (Mul.flatten
+    # rebuilds each power), a single one stays as it is
+    if not evaluated and len(kept) == 1:
+        return Pow(kept[0], ex)
+    return mul(*evaluated, *[pow(f, ex) for f in kept])
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr._all_nonneg_or_nonppos
+def _all_nonneg_or_nonpos(e: Add) -> bool:
+    """Whether the terms are all nonnegative or all nonpositive."""
+    nn = np = False
+    for a in e.args:
+        if not isinstance(a, Expr):
+            return False
+        if a.is_nonnegative is True:
+            if np:
+                return False
+            nn = True
+        elif a.is_nonpositive is True:
+            if nn:
+                return False
+            np = True
+        else:
+            return False
+    return True
 
 
 def _is_exp_node(e: Expr) -> bool:
@@ -1689,10 +1822,8 @@ def expand_power_base(expr: ExprLike, deep: bool = True, force: bool = False) ->
     >>> expand_power_base((x*y)**2), expand_power_base((x*y)**z), expand_power_base((x*y)**z, force=True)
     (x**2*y**2, (x*y)**z, x**z*y**z)
     """
-    if force:
-        from .interop import expr_through_sympy
-        return expr_through_sympy(to_expr(expr), lambda s: sympy.expand_power_base(s, deep=deep, force=True))
-    return expand(expr, deep=deep, mul=False, multinomial=False, power_base=True, power_exp=False, log=False)
+    return expand(expr, deep=deep, mul=False, multinomial=False, power_base=True, power_exp=False, log=False,
+                  force=force)
 
 
 def expand_power_exp(expr: ExprLike, deep: bool = True) -> Expr:

@@ -70,11 +70,12 @@ def test_atan2_matches_sympy() -> None:
     assert not different, different
 
 
-def test_known_gap_of_expand() -> None:
-    # SymPy's expand splits (-p)**(I*r) into (-1)**(I*r)*p**(I*r) before
-    # taking the parts; the core's expand does not (not ported yet)
+def test_expand_splits_the_base_before_the_parts() -> None:
+    # SymPy's expand (the power_base hint) splits (-p)**(I*r) into
+    # (-1)**(I*r)*p**(I*r) before taking the parts
     e = (-p)**(1 + I*r)
-    assert re(e) == Re(e)
+    sp, sr = sympy.Symbol('p', positive=True), sympy.Symbol('r', real=True)
+    assert str(to_sympy(re(e), evaluate=False)) == str(sympy.re((-sp)**(1 + sympy.I*sr)))
 
 
 def test_derivatives() -> None:
