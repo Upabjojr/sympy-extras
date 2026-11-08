@@ -27,7 +27,7 @@ pub struct PyOrder {
     pub order: MonomialOrder,
 }
 
-fn order_from(ob: &Bound<'_, PyAny>) -> PyResult<MonomialOrder> {
+pub fn order_from(ob: &Bound<'_, PyAny>) -> PyResult<MonomialOrder> {
     if let Ok(order) = ob.downcast::<PyOrder>() {
         return Ok(order.get().order.clone());
     }

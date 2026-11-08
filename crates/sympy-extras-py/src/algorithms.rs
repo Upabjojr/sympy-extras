@@ -10,10 +10,12 @@ use pyo3::types::{PyDict, PyList, PyModule};
 use sympy_extras_core::numbers::Rat;
 use sympy_extras_core::polys::domains::IntegerRing;
 use sympy_extras_core::polys::domains::{Domain, RationalField, SparseRow};
+use sympy_extras_core::polys::groebnerwalk::{self as walk, WalkLift};
 use sympy_extras_core::polys::rings::PolyElement;
-use sympy_extras_core::polys::{f4 as groebner, multifactor as mf, rootisolation as ri, stronggroebner as sg};
+use sympy_extras_core::polys::rings::{Monomial, MonomialOrder};
+use sympy_extras_core::polys::{f4 as groebner, hilbert, multifactor as mf, rootisolation as ri, stronggroebner as sg};
 
-use crate::convert::{err, out_polys, out_usize, poly, tuple, Bridge};
+use crate::convert::{err, out_poly, out_polys, out_usize, poly, tuple, Bridge};
 use crate::domains::PyDomain;
 use crate::rings::{ElemKind, PyPolyElement, PyPolyRing, RingKind};
 use crate::with_domain;
@@ -395,5 +397,182 @@ pub fn register_f4(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(reduced_basis, m)?)?;
     m.add_function(wrap_pyfunction!(is_graded, m)?)?;
     m.add_function(wrap_pyfunction!(row_echelon, m)?)?;
+    Ok(())
+}
+
+// -- hilbert
+
+fn monomials(ob: &Bound<'_, PyAny>) -> PyResult<Vec<Monomial>> {
+    let mut result: Vec<Monomial> = Vec::new();
+    for item in ob.try_iter()? {
+        result.push(item?.extract::<Vec<u32>>()?);
+    }
+    Ok(result)
+}
+
+fn out_monomials<'py>(py: Python<'py>, items: &[Monomial]) -> PyResult<Bound<'py, PyAny>> {
+    let tuples: Vec<Bound<'py, PyAny>> = items
+        .iter()
+        .map(|m| Ok(pyo3::types::PyTuple::new(py, m)?.into_any()))
+        .collect::<PyResult<_>>()?;
+    Ok(PyList::new(py, tuples)?.into_any())
+}
+
+#[pyfunction]
+fn minimal_generators<'py>(py: Python<'py>, monoms: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    out_monomials(py, &hilbert::minimal_generators(&monomials(monoms)?))
+}
+
+/// The numerator as a dense list over `ZZ` (Python: a `Poly` in `t`).
+#[pyfunction]
+fn hilbert_numerator<'py>(py: Python<'py>, monoms: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    out_poly(&IntegerRing, py, &hilbert::hilbert_numerator(&monomials(monoms)?))
+}
+
+/// `(numerator, exponent)` of `numerator/(1 - t)**exponent` (Python: the
+/// expression in `t`).
+#[pyfunction]
+fn hilbert_series<'py>(py: Python<'py>, monoms: &Bound<'py, PyAny>, variables: usize) -> PyResult<Bound<'py, PyAny>> {
+    let series: hilbert::HilbertSeries = hilbert::hilbert_series(&monomials(monoms)?, variables);
+    tuple(
+        py,
+        vec![
+            out_poly(&IntegerRing, py, &series.numerator)?,
+            series.exponent.into_pyobject(py)?.into_any(),
+        ],
+    )
+}
+
+pub fn register_hilbert(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(minimal_generators, m)?)?;
+    m.add_function(wrap_pyfunction!(hilbert_numerator, m)?)?;
+    m.add_function(wrap_pyfunction!(hilbert_series, m)?)?;
+    Ok(())
+}
+
+// -- groebnerwalk
+
+fn weight_vector(ob: &Bound<'_, PyAny>) -> PyResult<Vec<Rat>> {
+    let mut result: Vec<Rat> = Vec::new();
+    for item in ob.try_iter()? {
+        result.push(rational(&item?)?);
+    }
+    Ok(result)
+}
+
+#[pyfunction]
+fn initial_form(f: &PyPolyElement, weights: &Bound<'_, PyAny>) -> PyResult<PyPolyElement> {
+    let w: Vec<Rat> = weight_vector(weights)?;
+    let inner: ElemKind = match &f.inner {
+        ElemKind::ZZ(p) => ElemKind::ZZ(walk::initial_form(p, &w)),
+        ElemKind::QQ(p) => ElemKind::QQ(walk::initial_form(p, &w)),
+        ElemKind::GF(p) => ElemKind::GF(walk::initial_form(p, &w)),
+    };
+    Ok(PyPolyElement { inner })
+}
+
+fn representations<'py, K: Domain>(
+    py: Python<'py>,
+    result: (Vec<PolyElement<K>>, Vec<Vec<PolyElement<K>>>),
+    kind: fn(PolyElement<K>) -> ElemKind,
+) -> PyResult<Bound<'py, PyAny>> {
+    let (h, c) = result;
+    let rows: Vec<Bound<'py, PyAny>> = c
+        .into_iter()
+        .map(|row| out_elements(py, wrap(row, kind)))
+        .collect::<PyResult<_>>()?;
+    tuple(
+        py,
+        vec![out_elements(py, wrap(h, kind))?, PyList::new(py, rows)?.into_any()],
+    )
+}
+
+#[pyfunction]
+fn extended_groebner<'py>(py: Python<'py>, F: &Bound<'py, PyAny>, ring: &PyPolyRing) -> PyResult<Bound<'py, PyAny>> {
+    let items: Vec<ElemKind> = elements(F)?;
+    match &ring.inner {
+        RingKind::ZZ(r) => representations(
+            py,
+            walk::extended_groebner(&same_kind!(&items, ZZ), r).map_err(err)?,
+            ElemKind::ZZ,
+        ),
+        RingKind::QQ(r) => representations(
+            py,
+            walk::extended_groebner(&same_kind!(&items, QQ), r).map_err(err)?,
+            ElemKind::QQ,
+        ),
+        RingKind::GF(r) => representations(
+            py,
+            walk::extended_groebner(&same_kind!(&items, GF), r).map_err(err)?,
+            ElemKind::GF,
+        ),
+    }
+}
+
+#[pyfunction]
+fn is_groebner(G: &Bound<'_, PyAny>, ring: &PyPolyRing) -> PyResult<bool> {
+    let items: Vec<ElemKind> = elements(G)?;
+    match &ring.inner {
+        RingKind::ZZ(r) => walk::is_groebner(&same_kind!(&items, ZZ), r).map_err(err),
+        RingKind::QQ(r) => walk::is_groebner(&same_kind!(&items, QQ), r).map_err(err),
+        RingKind::GF(r) => walk::is_groebner(&same_kind!(&items, GF), r).map_err(err),
+    }
+}
+
+/// `groebner_walk(G, ring, target, check=False, lift='normal_form')`; the
+/// domain must be a field (SymPy also walks over `ZZ` through `QQ`). A
+/// failed check raises `RuntimeError`, as in Python.
+#[pyfunction]
+#[pyo3(signature = (G, ring, target, check = false, lift = "normal_form"))]
+fn groebner_walk<'py>(
+    py: Python<'py>,
+    G: &Bound<'py, PyAny>,
+    ring: &PyPolyRing,
+    target: &Bound<'py, PyAny>,
+    check: bool,
+    lift: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    let target: MonomialOrder = crate::rings::order_from(target)?;
+    let lift: WalkLift = match lift {
+        "normal_form" => WalkLift::NormalForm,
+        "cofactors" => WalkLift::Cofactors,
+        _ => {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "lift must be 'normal_form' or 'cofactors'",
+            ))
+        }
+    };
+    let items: Vec<ElemKind> = elements(G)?;
+    let failed = |e: sympy_extras_core::error::PolyError| -> PyErr {
+        let message: String = e.to_string();
+        if message.contains("not a Groebner basis") {
+            pyo3::exceptions::PyRuntimeError::new_err(message)
+        } else {
+            err(e)
+        }
+    };
+    let result: Vec<ElemKind> = match &ring.inner {
+        RingKind::ZZ(_) => {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "the Groebner walk needs a field",
+            ))
+        }
+        RingKind::QQ(r) => wrap(
+            walk::groebner_walk(&same_kind!(&items, QQ), r, &target, check, lift).map_err(failed)?,
+            ElemKind::QQ,
+        ),
+        RingKind::GF(r) => wrap(
+            walk::groebner_walk(&same_kind!(&items, GF), r, &target, check, lift).map_err(failed)?,
+            ElemKind::GF,
+        ),
+    };
+    out_elements(py, result)
+}
+
+pub fn register_groebnerwalk(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(initial_form, m)?)?;
+    m.add_function(wrap_pyfunction!(extended_groebner, m)?)?;
+    m.add_function(wrap_pyfunction!(is_groebner, m)?)?;
+    m.add_function(wrap_pyfunction!(groebner_walk, m)?)?;
     Ok(())
 }

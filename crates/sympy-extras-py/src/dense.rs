@@ -10,7 +10,7 @@ use pyo3::types::PyModule;
 
 use sympy_extras_core::polys::domains::RationalField;
 use sympy_extras_core::polys::{
-    densearith as da, densebasic as db, densetools as dt, euclidtools as et, sqfreetools as sq,
+    densearith as da, densebasic as db, densetools as dt, euclidtools as et, sqfreetools as sq, subresultants as sr,
 };
 
 use crate::convert::{
@@ -213,6 +213,16 @@ binding!(dup_inner_subresultants, (f: poly, g: poly), |py, k| {
 });
 binding!(dup_discriminant, (f: poly), |py, k| out_elem(k, py, &et::dup_discriminant(&f, k)));
 
+// -- subresultants (over `K[y]` for the `dmp_psc` of the Python module)
+
+binding!(dup_psc, (f: poly, g: poly), |py, k| {
+    let mut coefficients: Vec<Bound<'py, PyAny>> = Vec::new();
+    for c in &sr::dup_psc(&f, &g, k) {
+        coefficients.push(out_elem(k, py, c)?);
+    }
+    Ok(pyo3::types::PyList::new(py, coefficients)?.into_any())
+});
+
 /// `dup_qq_gcd(f, g)` (no domain argument: always `QQ`).
 #[pyfunction]
 pub fn dup_qq_gcd<'py>(py: Python<'py>, f: &Bound<'py, PyAny>, g: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
@@ -319,6 +329,11 @@ pub fn register_euclidtools(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dup_discriminant, m)?)?;
     m.add_function(wrap_pyfunction!(dup_euclid, m)?)?;
     m.add_function(wrap_pyfunction!(dup_prs, m)?)?;
+    Ok(())
+}
+
+pub fn register_subresultants(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(dup_psc, m)?)?;
     Ok(())
 }
 

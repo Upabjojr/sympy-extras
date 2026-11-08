@@ -19,9 +19,6 @@ python -m pytest tests                       # both implementations
 The workspace members are listed explicitly in `Cargo.toml` (the session
 directory `crates/.claude/` must not be picked up as a crate).
 
-```
-```
-
 ## Conventions
 
 See the crate documentation of `sympy-extras-core` (`src/lib.rs`): Python
@@ -54,6 +51,9 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/rootisolation.py` | done | with the `isolate_real_roots_dense`/`count_real_roots_dense` hooks of `ZZ` and `QQ` |
 | `polys/f4.py` | done | Katsura-4: the same bases, 2.5x (lex over `QQ`) to 7x (`GF(32003)`) faster than Python, untuned |
 | `polys/stronggroebner.py` | done | 10-20x faster than Python on the random test systems |
+| `polys/subresultants.py` | `dup_psc` | `dmp_psc` is `dup_psc` over a `PolynomialRing` tower; `psc` on SymPy's `PolyElement` has no counterpart |
+| `polys/hilbert.py` | done | the numerator dense over `ZZ`, the series a `HilbertSeries { numerator, exponent }` (Python: `Poly` and an expression in `t`) |
+| `polys/groebnerwalk.py` | done | both liftings; the bases of the initial forms by the Rust F4 (Python: SymPy's Buchberger, the same reduced bases); over fields only (SymPy also walks over `ZZ`) |
 | `ntheory/primetest.py`, `generate.py`, `factor_.py` | done | `primerange` is an iterator struct (a list in the bindings) |
 | `polys/modulargroebner.py` | later | written on SymPy's `PolyElement` with SymPy's `groebner` as fallback and time limits: its typed core (rational reconstruction, lifting, luckiness) can be ported once the typed interop is |
 | `polys/multisqf.py` | done | the `SqfDomain` classes as a trait with three implementations |
