@@ -189,8 +189,8 @@ sympy_extras/
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,
                              Subs, Order, ...) and evaluating functions (add, mul, pow, mod, eq, and_, or_, diff,
                              order, ...), typed; Wild/match/replace, the full set of is_* predicates, Q/ask/refine,
-                             the Expr methods of SymPy (integrate, limit, aseries, ... through the conversion),
-                             native Order and series driver (order.py, series.py; per-class _eval_nseries and
+                             the Expr methods of SymPy (integrate, aseries, ... through the conversion),
+                             native Order, series driver and limits (order.py, series.py, gruntz.py, limits.py; per-class _eval_nseries and
                              _eval_as_leading_term, SymPy's per node for the functions not ported),
                              factor_terms, a native rewrite (rewriting.py), SymPy's order of the arguments, to_sympy/from_sympy with generic wrappers
                              of any SymPy object; see docs/core.md

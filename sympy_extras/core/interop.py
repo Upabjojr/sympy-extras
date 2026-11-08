@@ -48,6 +48,7 @@ from .numbers import (AlgebraicNumber, Catalan, CatalanType, ComplexInfinity, Eu
     number_from_fraction, oo, pi, zoo)
 from .coreerrors import PoleError
 from .order import Order
+from .limits import Limit
 from .power import Pow
 from .relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
 from .sorting import ClassKey, CompareItem
@@ -372,6 +373,8 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
     if isinstance(e, Order):
         limits = [(to_sympy(v), to_sympy(p)) for v, p in zip(e.variables, e.point)]
         return sympy.Order(args[0], *limits)
+    if isinstance(e, Limit):
+        return sympy.Limit(args[0], to_sympy(e.variable), to_sympy(e.point), e.direction)
     if isinstance(e, UnevaluatedExpr):
         return sympy.UnevaluatedExpr(args[0])
     if isinstance(e, Lambda):
@@ -543,6 +546,8 @@ def _from_sympy(e: SymPyBasic) -> Basic:
     if isinstance(e, sympy.Order):
         limits = [(_symbol(v), _expr(p)) for v, p in zip(e.variables, e.point)]
         return Order(_expr(e.expr), *limits)
+    if isinstance(e, sympy.Limit):
+        return Limit(_expr(e.args[0]), _symbol(e.args[1]), _expr(e.args[2]), str(e.args[3]))
     if isinstance(e, sympy.UnevaluatedExpr):
         return UnevaluatedExpr(_expr(e.args[0]))
     if isinstance(e, sympy.Lambda):
@@ -729,13 +734,28 @@ def sympy_leading_term(node: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) 
         raise PoleError(str(error)) from error
 
 
-def limit_through_sympy(e: Expr, z: Symbol, z0: Expr, dir: str = '+', heuristics: bool = True) -> Optional[Expr]:
-    """SymPy's ``Limit(e, z, z0, dir).doit(heuristics=...)``; ``None`` when
-    SymPy leaves the limit unevaluated."""
-    result = sympy.Limit(to_sympy(e), to_sympy(z), to_sympy(z0), dir).doit(heuristics=heuristics)
-    if isinstance(result, sympy.Limit):
-        return None
-    return expr_from_sympy(result)
+def rewrite_named_node_through_sympy(node: Basic, args: tuple[Basic, ...], name: str,
+                                     limitvar: Optional[Symbol]) -> Optional[Basic]:
+    """The node, rebuilt with ``args``, rewritten by SymPy's
+    ``_eval_rewrite_as_<name>`` (``tractable``, ``intractable``; not deep);
+    ``None`` when its SymPy class has no such rule."""
+    sympy_args = [to_sympy(a) for a in args]
+    if isinstance(node, DefinedFunction):
+        if not _NATIVE_TO_SYMPY:
+            _fill_function_tables()
+        sympy_class = _NATIVE_TO_SYMPY.get(type(node))
+        if sympy_class is None:
+            return None
+        if not _sympy_has_method(sympy_class, '_eval_rewrite_as_' + name):
+            return None
+        rebuilt = sympy_class(*sympy_args, evaluate=False)
+    else:
+        original = to_sympy(node)
+        if not _sympy_has_method(type(original), '_eval_rewrite_as_' + name):
+            return None
+        rebuilt = original.func(*sympy_args) if args else original
+    hints = {} if limitvar is None else {'limitvar': to_sympy(limitvar)}
+    return from_sympy(rebuilt.rewrite(name, deep=False, **hints))
 
 
 def solveset_first_through_sympy(equation: Expr, d: Symbol) -> Optional[Expr]:

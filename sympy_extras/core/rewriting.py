@@ -21,6 +21,7 @@ from typing import Callable, Optional
 
 from .basic import Basic
 from .expr import Expr
+from .symbol import Symbol
 
 __all__ = ['rewrite', 'RewriteHints']
 
@@ -93,6 +94,69 @@ def _rewrite(e: Basic, patterns: tuple[type, ...], target: type, hints: RewriteH
             through = rewrite_node_through_sympy(e, args, target, hints.piecewise)
             if through is not None:
                 return through
+    if not args:
+        return e
+    return e._evaluated(args)
+
+
+# ---------------------------------------------------------------------
+# the rewrites of the limit algorithm ('tractable', 'intractable')
+
+def _tractable_hyperbolic(e: Expr, arg: Expr) -> Optional[Expr]:
+    """SymPy's ``_eval_rewrite_as_tractable`` of the hyperbolic functions
+    (in exponentials)."""
+    from sympy_extras.functions.elementary.exponential import exp
+    from sympy_extras.functions.elementary.hyperbolic import Cosh, Coth, Csch, Sech, Sinh, Tanh
+    pos, neg = exp(arg), exp(-arg)
+    if isinstance(e, Sinh):
+        return (pos - neg) / 2
+    if isinstance(e, Cosh):
+        return (pos + neg) / 2
+    if isinstance(e, Tanh):
+        return (pos - neg) / (pos + neg)
+    if isinstance(e, Coth):
+        return (pos + neg) / (pos - neg)
+    if isinstance(e, (Sech, Csch)):
+        # PORTED FROM SYMPY: ReciprocalHyperbolicFunction._rewrite_reciprocal
+        reciprocal = Cosh(arg) if isinstance(e, Sech) else Sinh(arg)
+        t = _tractable_hyperbolic(reciprocal, arg)
+        if t is not None and t != reciprocal.doit():
+            return 1 / t
+        return None
+    return None
+
+
+def _log_tractable(e: Basic) -> bool:
+    """Whether SymPy's tractable form of the node is its logarithmic form
+    (the inverse trigonometric and hyperbolic functions)."""
+    from sympy_extras.functions.elementary.hyperbolic import Acosh, Acoth, Acsch, Asech, Asinh, Atanh
+    from sympy_extras.functions.elementary.trigonometric import Acos, Acot, Acsc, Asec, Asin, Atan
+    return isinstance(e, (Asin, Acos, Atan, Acot, Asec, Acsc, Asinh, Acosh, Atanh, Acoth, Asech, Acsch))
+
+
+# PORTED FROM SYMPY: sympy/core/basic.py:Basic._rewrite (with the rule names 'tractable', 'intractable')
+def rewrite_tractable(e: Basic, limitvar: Optional[Symbol], intractable: bool = False) -> Basic:
+    """``e.rewrite('tractable', deep=True, limitvar=...)`` of SymPy (the
+    form of the functions with the exponentials and logarithms the limit
+    algorithm works with), or ``'intractable'`` back. The elementary
+    functions are rewritten here, the special ones by SymPy's rules."""
+    from .interop import rewrite_named_node_through_sympy
+    from sympy_extras.functions.elementary.exponential import Log
+    from sympy_extras.functions.elementary.hyperbolic import Cosh, Coth, Csch, Sech, Sinh, Tanh
+    args = tuple(rewrite_tractable(a, limitvar, intractable) for a in e.args)
+    if not intractable and isinstance(e, Expr):
+        if isinstance(e, (Sinh, Cosh, Tanh, Coth, Sech, Csch)):
+            arg = args[0]
+            if isinstance(arg, Expr):
+                rewritten = _tractable_hyperbolic(e, arg)
+                if rewritten is not None:
+                    return rewritten
+        elif _log_tractable(e):
+            return _rewrite(e._evaluated(args), (), Log, RewriteHints())
+    if e.args:
+        through = rewrite_named_node_through_sympy(e, args, 'intractable' if intractable else 'tractable', limitvar)
+        if through is not None:
+            return through
     if not args:
         return e
     return e._evaluated(args)

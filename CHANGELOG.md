@@ -87,6 +87,14 @@ remove public functions. Breaking changes are listed here when they happen.
   `Mul._eval_power`), `log(r + i*I)` with `atan(i/r)` a rational multiple
   of pi evaluates (`log(1/2 + sqrt(3)*I/2)` is `I*pi/3`), and `cancel`
   keeps the powers of `I` as their own generators and preprocesses once.
+- Native limits, ported from SymPy: `sympy_extras.core.gruntz` (Gruntz's
+  algorithm: mrv sets, the rewrite in the most rapidly varying `w`,
+  `limitinf`, `sign`) and `sympy_extras.core.limits` (the `Limit` node,
+  `limit` with the meromorphic and leading-term shortcuts, the
+  heuristics); the tractable rewrite of the functions (elementary ones
+  here, special ones by SymPy's rules). `Expr.limit`, the series and
+  `Order.contains` use them. Accumulation bounds are not ported (the
+  limits of oscillating functions come from SymPy's leading terms).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

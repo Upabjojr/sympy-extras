@@ -413,9 +413,9 @@ def _combine_exponents(expr: Expr, x: Symbol) -> Expr:
 def _limit_is_nonzero(ratio: Expr, s: Symbol, point: Expr) -> Optional[bool]:
     """``Limit(ratio, s, point).doit(heuristics=False) != 0``, ``None``
     when the limit is not found."""
-    from .interop import limit_through_sympy
-    value = limit_through_sympy(ratio, s, point, heuristics=False)
-    if value is None:
+    from .limits import Limit
+    value = Limit(ratio, s, point).doit()
+    if isinstance(value, Limit):
         return None
     return not (isinstance(value, Integer) and value.p == 0)
 

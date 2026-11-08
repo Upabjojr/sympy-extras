@@ -1141,19 +1141,19 @@ class Expr(Basic):
         return expr_through_sympy(self, lambda s: sympy.fourier_series(s, bounds))
 
     def limit(self, x: Symbol, xlim: ExprLike, dir: str = '+') -> Expr:
-        """The limit as ``x`` goes to ``xlim``.
+        """The limit as ``x`` goes to ``xlim`` (:func:`~sympy_extras.core.limits.limit`).
 
         Examples
         ========
 
-        >>> import sympy
-        >>> from sympy_extras.core import Symbol, SymPyFunction, oo
+        >>> from sympy_extras.core import Symbol, oo
+        >>> from sympy_extras.functions import sin
         >>> x = Symbol('x')
-        >>> (SymPyFunction(sympy.sin)(x)/x).limit(x, 0), (1/x).limit(x, 0, '-'), (1/x).limit(x, oo)
+        >>> (sin(x)/x).limit(x, 0), (1/x).limit(x, 0, '-'), (1/x).limit(x, oo)
         (1, -oo, 0)
         """
-        from .interop import expr_through_sympy, to_sympy
-        return expr_through_sympy(self, lambda s: sympy.limit(s, to_sympy(x), to_sympy(to_expr(xlim)), dir))
+        from .limits import limit
+        return limit(self, x, xlim, dir)
 
     def as_leading_term(self, *symbols: Symbol, logx: Optional[Expr] = None, cdir: ExprLike = 0) -> Expr:
         """The leading (nonzero) term of the series at zero in the given
