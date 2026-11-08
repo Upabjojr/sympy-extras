@@ -768,7 +768,7 @@ class Basic:
         from .interop import through_sympy
         return through_sympy(self, sympy.simplify)
 
-    def rewrite(self, *args: Union[Basic, FunctionClass, type]) -> Basic:
+    def rewrite(self, *args: Union[Basic, FunctionClass, type], piecewise: bool = True) -> Basic:
         """SymPy's ``rewrite`` of the node, in terms of the given functions.
 
         Examples
@@ -786,11 +786,11 @@ class Basic:
         classes = [a for a in args if isinstance(a, type)]
         target = args[-1]
         if len(classes) == len(args) and isinstance(target, type) and issubclass(target, DefinedFunction):
-            from .rewriting import rewrite
-            return rewrite(self, tuple(classes[:-1]), target)
+            from .rewriting import RewriteHints, rewrite
+            return rewrite(self, tuple(classes[:-1]), target, RewriteHints(piecewise))
         from .interop import rewrite_targets, through_sympy
         targets = rewrite_targets(args)
-        return through_sympy(self, lambda s: s.rewrite(*targets))
+        return through_sympy(self, lambda s: s.rewrite(*targets, piecewise=piecewise))
 
     def refine(self, assumption: RefineArg = True) -> Basic:
         """The node simplified under the assumption (and the global ones):

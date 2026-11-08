@@ -17,6 +17,7 @@ from typing import Callable, Optional
 
 from sympy_extras.core.add import add
 from sympy_extras.core.expr import Expr
+from sympy_extras.core.rewriting import RewriteHints
 from sympy_extras.core.mul import mul
 from sympy_extras.core.numbers import E, I, Integer, Rational, pi
 from sympy_extras.core.power import Pow, pow
@@ -27,7 +28,7 @@ from .exponential import Exp, exp, log
 
 #: a rule: the node and its (rewritten) arguments to the rewritten node,
 #: ``None`` when the rule does not apply
-Rule = Callable[[Expr, tuple[Expr, ...]], Optional[Expr]]
+Rule = Callable[[Expr, tuple[Expr, ...], RewriteHints], Optional[Expr]]
 
 HALF_PI = mul(pi, Rational(1, 2))
 
@@ -51,7 +52,7 @@ def _exp_arg(a: Expr) -> Expr:
         from sympy_extras.core.rewriting import rewrite
         rebuilt = a._evaluated(a.args)
         if isinstance(rebuilt, Expr):
-            r = rewrite(rebuilt, (), Exp)
+            r = rewrite(rebuilt, (), Exp, RewriteHints())
             if isinstance(r, Expr):
                 return r
     return a
@@ -59,23 +60,23 @@ def _exp_arg(a: Expr) -> Expr:
 
 # trigonometric, as exp
 
-def _sin_exp(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _sin_exp(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     a = _exp_arg(args[0])
     return mul(add(exp(mul(a, I)), _neg(exp(mul(_neg(a), I)))), _inv(mul(Integer(2), I)))
 
 
-def _cos_exp(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _cos_exp(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     a = _exp_arg(args[0])
     return mul(add(exp(mul(a, I)), exp(mul(_neg(a), I))), Rational(1, 2))
 
 
-def _tan_exp(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _tan_exp(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     a = _exp_arg(args[0])
     neg_exp, pos_exp = exp(mul(_neg(a), I)), exp(mul(a, I))
     return mul(I, add(neg_exp, _neg(pos_exp)), _inv(add(neg_exp, pos_exp)))
 
 
-def _cot_exp(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _cot_exp(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     a = _exp_arg(args[0])
     neg_exp, pos_exp = exp(mul(_neg(a), I)), exp(mul(a, I))
     return mul(I, add(pos_exp, neg_exp), _inv(add(pos_exp, _neg(neg_exp))))
@@ -84,8 +85,8 @@ def _cot_exp(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
 def _reciprocal(rule: Rule, of: Callable[[Expr], Expr]) -> Rule:
     """SymPy's ``_rewrite_reciprocal``: ``1/t`` with ``t`` the rule of the
     reciprocal function, unless it leaves that function unchanged."""
-    def rewritten(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
-        r = rule(node, args)
+    def rewritten(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+        r = rule(node, args, hints)
         if r is not None and r != of(args[0]):
             return _inv(r)
         return None
@@ -94,65 +95,65 @@ def _reciprocal(rule: Rule, of: Callable[[Expr], Expr]) -> Rule:
 
 # trigonometric, as cos
 
-def _sin_cos(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _sin_cos(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     return t.Cos(add(args[0], _neg(HALF_PI)))
 
 
-def _tan_cos(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _tan_cos(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     return mul(t.Cos(add(args[0], _neg(HALF_PI))), _inv(t.cos(args[0])))
 
 
-def _cot_cos(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _cot_cos(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     return mul(t.cos(args[0]), _inv(t.Cos(add(args[0], _neg(HALF_PI)))))
 
 
-def _sec_cos(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _sec_cos(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     return _inv(t.cos(args[0]))
 
 
-def _csc_cos(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _csc_cos(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     from sympy_extras.core.rewriting import rewrite
     s = t.sin(args[0])
-    r = rewrite(s, (), t.Cos)
+    r = rewrite(s, (), t.Cos, hints)
     return _inv(r) if isinstance(r, Expr) else None
 
 
 # hyperbolic
 
-def _sinh_exp(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _sinh_exp(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     return mul(add(exp(args[0]), _neg(exp(_neg(args[0])))), Rational(1, 2))
 
 
-def _cosh_exp(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _cosh_exp(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     return mul(add(exp(args[0]), exp(_neg(args[0]))), Rational(1, 2))
 
 
-def _tanh_exp(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _tanh_exp(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     neg_exp, pos_exp = exp(_neg(args[0])), exp(args[0])
     return mul(add(pos_exp, _neg(neg_exp)), _inv(add(pos_exp, neg_exp)))
 
 
-def _coth_exp(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _coth_exp(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     neg_exp, pos_exp = exp(_neg(args[0])), exp(args[0])
     return mul(add(pos_exp, neg_exp), _inv(add(pos_exp, _neg(neg_exp))))
 
 
-def _cosh_cos(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _cosh_cos(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     return t.Cos(mul(I, args[0]))
 
 
-def _sech_cos(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _sech_cos(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     return _inv(t.Cos(mul(I, args[0])))
 
 
 # exp and powers
 
-def _exp_cos(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _exp_cos(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     a = mul(I, args[0])
     return add(t.cos(a), mul(I, t.cos(add(a, HALF_PI))))
 
 
-def _pow_exp(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _pow_exp(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     from sympy_extras.functions.elementary.complexes import abs_, arg
     base, expo = args
     if base.is_zero is True or base.has(Exp) or expo.has(Exp) or base == E:
@@ -164,9 +165,9 @@ def _pow_exp(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
     return exp(mul(add(log(abs_(base)), mul(I, arg(base))), expo))
 
 
-def _pow_cos(node: Expr, args: tuple[Expr, ...]) -> Optional[Expr]:
+def _pow_cos(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     if isinstance(node, Pow) and node.base == E:
-        return _exp_cos(node, (node.exp,))
+        return _exp_cos(node, (node.exp,), hints)
     return None
 
 

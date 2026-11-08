@@ -222,6 +222,13 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
             return nan
         if isinstance(base, Rational) and base.p == 1 and base.q == 1:
             return Integer(1)
+        if isinstance(base, Integer) and base.p == -1 and not isinstance(exp, Number):
+            # PORTED FROM SYMPY: sympy/core/numbers.py:NegativeOne._eval_power
+            # (the parity of a symbolic exponent)
+            if exp.is_odd is True:
+                return Integer(-1)
+            if exp.is_even is True:
+                return Integer(1)
         if isinstance(base, Rational) and base.p == 0:
             # PORTED FROM SYMPY: sympy/core/numbers.py:Zero._eval_power
             if exp.is_extended_positive:

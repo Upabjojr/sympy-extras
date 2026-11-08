@@ -22,17 +22,31 @@ from typing import Callable, Optional
 from .basic import Basic
 from .expr import Expr
 
-__all__ = ['rewrite']
+__all__ = ['rewrite', 'RewriteHints']
 
-Rule = Callable[[Expr, tuple[Expr, ...]], Optional[Expr]]
+
+class RewriteHints:
+    """The hints of a rewrite (SymPy's keyword arguments): ``piecewise``
+    lets the rules of the rising and falling factorials return a
+    ``Piecewise``."""
+
+    __slots__ = ('piecewise',)
+
+    def __init__(self, piecewise: bool = True) -> None:
+        self.piecewise = piecewise
+
+
+Rule = Callable[[Expr, tuple[Expr, ...], RewriteHints], Optional[Expr]]
 
 _RULES: dict[tuple[type, type], Rule] = {}
 
 
 def _rules() -> dict[tuple[type, type], Rule]:
     if not _RULES:
+        from sympy_extras.functions.combinatorial._rewrites import rules as combinatorial_rules
         from sympy_extras.functions.elementary._rewrites import rules
         _RULES.update(rules())
+        _RULES.update(combinatorial_rules())
     return _RULES
 
 
@@ -53,30 +67,30 @@ def _without_rules(e: Basic) -> bool:
 
 
 # PORTED FROM SYMPY: sympy/core/basic.py:Basic.rewrite
-def rewrite(e: Basic, patterns: tuple[type, ...], target: type) -> Basic:
+def rewrite(e: Basic, patterns: tuple[type, ...], target: type, hints: Optional[RewriteHints] = None) -> Basic:
     """``e`` with its nodes (instances of ``patterns``, all when empty)
     rewritten in terms of ``target``."""
     if patterns:
         patterns = tuple(p for p in patterns if e.has(p))
         if not patterns:
             return e
-    return _rewrite(e, patterns, target)
+    return _rewrite(e, patterns, target, hints if hints is not None else RewriteHints())
 
 
 # PORTED FROM SYMPY: sympy/core/basic.py:Basic._rewrite
-def _rewrite(e: Basic, patterns: tuple[type, ...], target: type) -> Basic:
+def _rewrite(e: Basic, patterns: tuple[type, ...], target: type, hints: RewriteHints) -> Basic:
     from .interop import rewrite_node_through_sympy
-    args = tuple(_rewrite(a, patterns, target) for a in e.args)
+    args = tuple(_rewrite(a, patterns, target, hints) for a in e.args)
     if not patterns or isinstance(e, patterns):
         rule = _rule_for(type(e), target)
         if rule is not None and isinstance(e, Expr):
             expr_args = tuple(a for a in args if isinstance(a, Expr))
             if len(expr_args) == len(args):
-                rewritten = rule(e, expr_args)
+                rewritten = rule(e, expr_args, hints)
                 if rewritten is not None:
                     return rewritten
         elif rule is None and not _without_rules(e):
-            through = rewrite_node_through_sympy(e, args, target)
+            through = rewrite_node_through_sympy(e, args, target, hints.piecewise)
             if through is not None:
                 return through
     if not args:

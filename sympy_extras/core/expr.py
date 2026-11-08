@@ -1337,8 +1337,8 @@ class Expr(Basic):
         z, k = s.extract_branch_factor(allow_half=allow_half)
         return (expr_from_sympy(z), expr_from_sympy(k))
 
-    def rewrite(self, *args: Union[Basic, FunctionClass, type]) -> Expr:
-        return as_expr(super().rewrite(*args))
+    def rewrite(self, *args: Union[Basic, FunctionClass, type], piecewise: bool = True) -> Expr:
+        return as_expr(super().rewrite(*args, piecewise=piecewise))
 
     def refine(self, assumption: RefineArg = True) -> Expr:
         return as_expr(super().refine(assumption))

@@ -154,6 +154,13 @@ class Piecewise(Expr):
                 facts[name] = False
         return facts
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:Piecewise._eval_power
+    def _eval_power_node(self, exponent: Expr) -> Optional[Expr]:
+        """Each piece raised: ``Piecewise((x, c), (y, True))**2`` is
+        ``Piecewise((x**2, c), (y**2, True))``."""
+        from sympy_extras.core.power import pow
+        return piecewise(*[(pow(p.expr, exponent), p.cond) for p in self._args])
+
     def map_expressions(self, f: Callable[[Expr], Expr]) -> Expr:
         """``f`` applied to every expression, the conditions kept
         (SymPy's ``_eval_derivative``, ``_eval_conjugate``, ...), evaluated."""

@@ -469,39 +469,6 @@ def gammasimp(expr: ExprLike) -> Expr:
     return _gammasimp(e, False)
 
 
-def _combinatorial_as_gamma(e: Expr) -> Expr:
-    """Factorials, binomials and rising and falling factorials as gamma
-    functions (SymPy's ``rewrite(gamma, piecewise=False)``)."""
-    from sympy_extras.functions import gamma
-    from sympy_extras.functions.combinatorial.factorials import (Binomial, Factorial, FallingFactorial,
-                                                                  RisingFactorial)
-    from sympy_extras.core.relational import le, lt
-    from sympy_extras.core.logic import true
-
-    def query(b: Basic) -> bool:
-        return isinstance(b, (Factorial, Binomial, RisingFactorial, FallingFactorial))
-
-    def value(b: Basic) -> Basic:
-        args = [_expr(a) for a in b.args]
-        if isinstance(b, Factorial):
-            return gamma(add(args[0], ONE))
-        if isinstance(b, Binomial):
-            n, k = args
-            return mul(gamma(add(n, ONE)), _inv(mul(gamma(add(k, ONE)), gamma(add(n, mul(Integer(-1), k), ONE)))))
-        x, k = args
-        minus_one_k = pow(Integer(-1), k)
-        if isinstance(b, RisingFactorial):
-            if le(x, Integer(0)) == true:
-                return mul(minus_one_k, gamma(add(ONE, mul(Integer(-1), x))),
-                           _inv(gamma(add(mul(Integer(-1), k), mul(Integer(-1), x), ONE))))
-            return mul(gamma(add(x, k)), _inv(gamma(x)))
-        if lt(x, Integer(0)) == true:
-            return mul(minus_one_k, gamma(add(k, mul(Integer(-1), x))), _inv(gamma(mul(Integer(-1), x))))
-        return mul(gamma(add(x, ONE)), _inv(gamma(add(x, mul(Integer(-1), k), ONE))))
-
-    return _expr(e.replace(query, value))
-
-
 # PORTED FROM SYMPY: sympy/simplify/combsimp.py:_gamma_as_comb
 def _gamma_as_comb(expr: Expr) -> Expr:
     """Gamma functions as factorials, and ``(a + b)!/(a!*b!)`` as
@@ -565,14 +532,8 @@ def combsimp(expr: ExprLike) -> Expr:
     """The combinatorial expression (factorials, binomials, rising and
     falling factorials) simplified, as factorials and binomials; through
     :func:`gammasimp` when a gamma argument is not an integer."""
-    e = _combinatorial_as_gamma(to_expr(expr))
-    e = _expr(e.rewrite(_gamma_types()[0])) if e.has(*_rewritable()) else e
+    e = to_expr(expr).rewrite(_gamma_types()[0], piecewise=False)
     if any(_is_gamma(node) and _expr(node.args[0]).is_integer is not True for node in preorder_traversal(e)):
         return gammasimp(e)
     return _gamma_as_comb(_gammasimp(e, as_comb=True))
 
-
-def _rewritable() -> tuple[type, ...]:
-    from sympy_extras.functions.combinatorial.factorials import Factorial2, Subfactorial
-    from sympy_extras.functions.special.beta_functions import Beta
-    return (Factorial2, Subfactorial, Beta)

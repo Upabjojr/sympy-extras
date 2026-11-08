@@ -654,7 +654,8 @@ def _sympy_has_rule(cls: type, name: str) -> bool:
     return _SYMPY_HAS_RULE[key]
 
 
-def rewrite_node_through_sympy(node: Basic, args: tuple[Basic, ...], target: type) -> Optional[Basic]:
+def rewrite_node_through_sympy(node: Basic, args: tuple[Basic, ...], target: type,
+                               piecewise: bool = True) -> Optional[Basic]:
     """The node, rebuilt with ``args``, rewritten by its SymPy rule for
     ``target`` (not deep); ``None`` when SymPy has no rule or the target
     has no SymPy class."""
@@ -678,7 +679,7 @@ def rewrite_node_through_sympy(node: Basic, args: tuple[Basic, ...], target: typ
         if not _sympy_has_rule(type(original), sympy_target.__name__):
             return None
         rebuilt = original.func(*sympy_args) if args else original
-    return from_sympy(rebuilt.rewrite(sympy_target, deep=False))
+    return from_sympy(rebuilt.rewrite(sympy_target, deep=False, piecewise=piecewise))
 
 
 def _canonical_order(args: list[Expr], commutative: bool) -> list[Expr]:

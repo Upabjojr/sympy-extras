@@ -51,6 +51,10 @@ remove public functions. Breaking changes are listed here when they happen.
 - `sympy_extras.simplify.simplify.nsimplify` (pslq, `mpmath.identify`
   read by a typed parser, constants, `rational`, `tolerance`), ported from
   SymPy; `radsimp` no longer goes through SymPy.
+- Native `rewrite(gamma)` rules of `factorial`, `subfactorial`,
+  `factorial2`, `rf`, `ff`, `binomial`, `catalan` and `beta`, with the
+  `piecewise` hint (`rewrite(Gamma, piecewise=False)`); `combsimp` uses it
+  in place of its own rewrite and SymPy's.
 - `rewrite` is native when its targets are typed function classes
   (`sympy_extras.core.rewriting`): the rules of the trigonometric,
   hyperbolic and exponential functions and of powers in terms of `exp` and
@@ -74,6 +78,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- Powers of a `Piecewise` raise each piece (SymPy's
+  `Piecewise._eval_power`); `(-1)**e` is 1 or -1 when `e` is known even or
+  odd (`NegativeOne._eval_power`).
 - `add` re-creates its terms like SymPy's `Add.flatten` (a nested
   product `(x*y*(2*y + 1))/2` is flattened one level); `Expr.normal`
   keeps a numerical denominator outside as SymPy does

@@ -69,3 +69,16 @@ def test_add_recreates_nested_terms_and_normal_keeps_numeric_denominator() -> No
     assert [a.args for a in ours.args] == [tuple(expr_from_sympy(b) for b in a.args) for a in (nested + y**2).args]
     e = x * y * (y + s.S.Half) + y**2
     assert str(to_sympy(expr_from_sympy(e).normal(), evaluate=False)) == str(e.normal())
+
+
+def test_rewrite_gamma_matches_sympy() -> None:
+    from sympy_extras.functions.special.gamma_functions import Gamma
+    n, k = s.symbols('n k', integer=True)
+    m = s.Symbol('m', negative=True)
+    cases: list[sympy.Expr] = [
+        s.factorial(n) / s.factorial(n - 3), s.binomial(n, k), s.rf(x, k), s.ff(x, 3), s.rf(m, y)**2, s.ff(p, k),
+        s.factorial2(n)**2, s.subfactorial(x), s.catalan(n), s.beta(x, p), s.rf(k, k)**2 + s.factorial(k)]
+    for e in cases:
+        for piecewise in (True, False):
+            ours = to_sympy(expr_from_sympy(e).rewrite(Gamma, piecewise=piecewise), evaluate=False)
+            assert str(ours) == str(e.rewrite(s.gamma, piecewise=piecewise)), (e, piecewise)
