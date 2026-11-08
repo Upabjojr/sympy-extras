@@ -301,6 +301,11 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
         if combined.as_base_exp()[0] != base:
             rebased = True
         rebuilt.append(combined)
+    paired = _pair_radicals(numerical)
+    if paired is not None:
+        pairs, numerical = paired
+        rebased = True  # the products of the pairs are flattened again
+        rebuilt.extend(pairs)
     for exponent, bases in numerical.items():
         if len(bases) == 1:
             rebuilt.append(_single_power(collected, bases[0], exponent))
@@ -396,6 +401,69 @@ def _flattened(args: list[Expr]) -> list[Expr]:
         else:
             result.append(a)
     return result
+
+
+# PORTED FROM SYMPY: sympy/core/mul.py:Mul.flatten (the gcd pairing of num_rat)
+def _pair_radicals(numerical: dict[Expr, list[Rational]]
+                   ) -> Optional[tuple[list[Expr], dict[Expr, list[Rational]]]]:
+    """SymPy's combination of rational powers of positive numbers with
+    different exponents through the gcd of their bases: ``sqrt(2)*6**(1/4)``
+    is ``2**(3/4)*3**(1/4)``. Returns the new factors and the groups left
+    alone, or ``None`` when nothing combines."""
+    from math import gcd
+    from .power import pow
+    candidates = [(e, bases) for e, bases in numerical.items()
+                  if isinstance(e, Rational) and e.q > 1 and all(b.p > 0 and b.q == 1 for b in bases)]
+    if len(candidates) < 2:
+        return None
+    num_rat: list[tuple[int, Fraction]] = []
+    for e, bases in candidates:
+        product = 1
+        for b in bases:
+            product *= b.p
+        num_rat.append((product, e.as_fraction()))
+    changed = False
+    coefficient_parts: list[Expr] = []
+    pnew: dict[Fraction, list[int]] = {}
+    i = 0
+    while i < len(num_rat):
+        bi, ei = num_rat[i]
+        if bi == 1:
+            i += 1
+            continue
+        grow: list[tuple[int, Fraction]] = []
+        for j in range(i + 1, len(num_rat)):
+            bj, ej = num_rat[j]
+            g = gcd(bi, bj)
+            if g != 1:
+                changed = True
+                es = ei + ej
+                if es.denominator == 1:
+                    coefficient_parts.append(pow(Integer(g), Integer(es.numerator)))
+                else:
+                    if es.numerator > es.denominator:
+                        e_i, ep = divmod(es.numerator, es.denominator)
+                        coefficient_parts.append(pow(Integer(g), Integer(e_i)))
+                        es = Fraction(ep, es.denominator)
+                    grow.append((g, es))
+                num_rat[j] = (bj // g, ej)
+                bi = bi // g
+                if bi == 1:
+                    break
+        if bi != 1:
+            pnew.setdefault(ei, []).append(bi)
+        num_rat.extend(grow)
+        i += 1
+    if not changed:
+        return None
+    rest = {e: bases for e, bases in numerical.items() if (e, bases) not in candidates}
+    factors = coefficient_parts
+    for ef, bs in pnew.items():
+        base_product = 1
+        for bv in bs:
+            base_product *= bv
+        factors.append(pow(Integer(base_product), number_from_fraction(ef)))
+    return factors, rest
 
 
 def _groupable(base: Rational, exponent: Expr, factor: Expr) -> bool:

@@ -51,6 +51,8 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `mul` pairs rational powers of numbers through the gcd of their bases as
+  SymPy does (`sqrt(2)*6**(1/4)` is `2**(3/4)*3**(1/4)`).
 - `add` and `mul` of a single argument (the identities dropped) return it
   unchanged, as SymPy's `AssocOp` does (`mul(Mul(8, x + 1))` is not
   redistributed).

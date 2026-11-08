@@ -37,3 +37,19 @@ def test_sqrtdenest_radsimp_match_sympy(seed: int) -> None:
             if result != expected:
                 different.append((str(e), result, expected))
     assert not different, different[:3]
+
+
+
+def test_products_of_numerical_radicals_with_common_bases() -> None:
+    # SymPy's pairing of rational powers of numbers through the gcd of the
+    # bases (the numerical part of Mul.flatten; products of three or more
+    # radicals, where SymPy's single pass is not canonical, still differ)
+    from sympy_extras.core.mul import mul
+    cases: list[tuple[sympy.Expr, sympy.Expr]] = [
+        (sympy.sqrt(2), sympy.Integer(6)**sympy.Rational(1, 4)), (sympy.sqrt(6), sympy.sqrt(10)),
+        (sympy.Integer(2)**sympy.Rational(1, 3), sympy.Integer(4)**sympy.Rational(1, 4)),
+        (sympy.sqrt(2), sympy.Integer(2)**sympy.Rational(1, 3)), (sympy.sqrt(3), sympy.Integer(12)**sympy.Rational(1, 3)),
+        (sympy.Integer(6)**sympy.Rational(2, 3), sympy.Integer(10)**sympy.Rational(1, 2))]
+    for a, b in cases:
+        ours = mul(expr_from_sympy(a), expr_from_sympy(b))
+        assert str(to_sympy(ours, evaluate=False)) == str(sympy.Mul(a, b)), (a, b)
