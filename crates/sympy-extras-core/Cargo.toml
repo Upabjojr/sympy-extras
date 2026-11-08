@@ -12,6 +12,6 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dashu-base = "0.4"
-dashu-int = "0.4"
-dashu-ratio = "0.4"
+dashu-base = "0.6"
+dashu-int = "0.6"
+dashu-ratio = "0.6"
