@@ -602,8 +602,9 @@ def _through_sympy(e: Expr, step: Callable[['sympy.Basic'], 'sympy.Basic']) -> E
 
 def _sympy_only() -> tuple[type, ...]:
     """The classes whose simplification is SymPy's (not ported)."""
+    from sympy_extras.concrete.expr_with_limits import Product, Sum
     from sympy_extras.core.interop import SymPyExprNode
-    return (SymPyExprNode,)
+    return (SymPyExprNode, Sum, Product)
 
 
 def _combinatorial() -> tuple[type, ...]:
@@ -779,7 +780,7 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
         e = shorter(expand_log(e, deep=True), logcombine(e))
     if e.has(*_combinatorial(), Gamma):
         e = combsimp(e)
-    if e.has(SymPyExprNode):
+    if e.has(*_sympy_only()):
         def concrete(s: sympy.Basic) -> sympy.Basic:
             if s.has(sympy.Sum):
                 s = sum_simplify(s, ratio=ratio, measure=sympy.count_ops, rational=rational, inverse=inverse,

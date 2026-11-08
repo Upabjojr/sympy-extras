@@ -214,6 +214,13 @@ remove public functions. Breaking changes are listed here when they happen.
   `besselsimp`, `piecewise_simplify`); a Meijer G-function takes the
   common path, as in SymPy. Only the SymPy wrapper nodes still go to
   SymPy's `simplify`.
+- Native `Sum` and `Product` (`sympy_extras.concrete.expr_with_limits`,
+  ported from SymPy): unevaluated classes with `sum_`/`product_`
+  building them as SymPy's constructors (nested sums merged, Piecewise
+  folded), the bound variables in `free_symbols` and substitution, SymPy's
+  printing, interop both ways; `doit` through SymPy. `factor_terms` takes
+  the factors free of the variables out of a sum (SymPy's
+  `_factor_sum_int`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

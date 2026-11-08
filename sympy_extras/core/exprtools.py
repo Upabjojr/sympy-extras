@@ -33,7 +33,7 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Callable, Final, Optional, Sequence, Union, overload
+from typing import TYPE_CHECKING, Callable, Final, Optional, Sequence, Union, overload
 
 import sympy
 
@@ -46,6 +46,9 @@ from .mul import Mul, _keep_coeff, mul
 from .numbers import ImaginaryUnit, Integer, Number, Rational, number_from_fraction
 from .power import Pow, pow
 from .symbol import Dummy, Symbol
+
+if TYPE_CHECKING:
+    from sympy_extras.concrete.expr_with_limits import Sum
 
 __all__ = ['factor_terms', 'gcd_terms', 'factor_nc', 'decompose_power', 'Factors', 'ExprFactors', 'Term']
 
@@ -574,6 +577,21 @@ class _FactorTerms:
         self.fraction: Final[bool] = fraction
         self.sign: Final[bool] = sign
 
+    # PORTED FROM SYMPY: sympy/core/exprtools.py:_factor_sum_int
+    def _factor_sum(self, e: Sum) -> Expr:
+        """The factors free of the variables taken out of the sum."""
+        from sympy_extras.concrete.expr_with_limits import sum_
+        result = e.function
+        if result == 0:
+            return Integer(0)
+        wrt = e.variables
+        f = factor_terms(result, radical=self.radical, clear=self.clear, fraction=self.fraction, sign=self.sign)
+        i, d = f.as_independent(*wrt)
+        limits = list(e.limits)
+        if isinstance(f, Add):
+            return i * sum_(1, *limits) + sum_(d, *limits)
+        return i * sum_(d, *limits)
+
     def do(self, e: Basic) -> Basic:
         from .interop import SymPyExprNode, sympy_expr, through_sympy
         if not e.args:
@@ -585,6 +603,9 @@ class _FactorTerms:
         if isinstance(e, (Pow, Application, Tuple)) or not isinstance(e, Expr):
             new = tuple(self.do(a) for a in e.args)
             return e if new == e.args else e._evaluated(new)
+        from sympy_extras.concrete.expr_with_limits import Sum
+        if isinstance(e, Sum):
+            return self._factor_sum(e)
         content, p = e.as_content_primitive(radical=self.radical, clear=self.clear)
         if isinstance(p, Add):
             terms = [_as_expr(self.do(a)) for a in p.args]
