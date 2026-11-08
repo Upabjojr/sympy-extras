@@ -90,3 +90,33 @@ def test_operators_and_reduce_order_match_sympy() -> None:
         assert str(tuple(to_sympy(x) for x in ours_func.bq)) == str(tuple(theirs_func.bq))
         assert [[str(to_sympy(c, evaluate=False)) for c in op.coeffs] for op in ours_ops] == \
             [[str(c) for c in op._poly.all_coeffs()] for op in theirs_ops]
+
+
+# the differences left, from the core: the polar branch rules of besseli,
+# Shi and Si are not ported (Abs(...) and exp_polar(I*pi/2) remain),
+# 2**(2*a) is 4**a, and hyper([1/3], [4/3]) does not finish; the value of
+# the FresnelS formula at 1 is a square root of a product here (alone; it
+# matches after other expansions)
+_KNOWN_DIFFERENT = {('[3/4]', '[3/2, 7/4]', '1'), ('[1/2]', '[3/2, 3/2]', '-1'), ('[1/2]', '[3/2, 3/2]', '-z'), ('[3/4]', '[3/2, 7/4]', '-1'),
+                    ('[1/2, a]', '[3/2, a + 1]', 'z**2/4'), ('[a]', '[a + 1]', 'z**2/4'),
+                    ('[1/2, 1/2, 1]', '[3/2, 3/2]', '-1'), ('[]', '[2]', '-1'), ('[]', '[2]', '-z')}
+
+
+def test_hyperexpand_of_hypergeometric_functions_matches_sympy() -> None:
+    from sympy_extras.simplify.hyperexpand import _hyperexpand
+    a, b, z = sympy.symbols('a b z')
+    cases = [([R(1, 2), 1], [R(3, 2)]), ([1, 1], [2]), ([], []), ([a], []), ([R(1, 2), R(1, 2)], [R(3, 2)]),
+             ([a, a + R(1, 2)], [2*a]), ([3, 3], [4]), ([1], [b]), ([a], [2*a]), ([2], [3]), ([], [R(1, 2)]),
+             ([], [b]), ([1, 1], [2, 2]), ([R(1, 2)], [R(3, 2), R(3, 2)]), ([R(3, 4)], [R(3, 2), R(7, 4)]),
+             ([a, -a], [R(1, 2)]), ([R(1, 2), R(1, 2)], [1]), ([R(-1, 2), R(1, 2)], [1]),
+             ([R(1, 2), a], [R(3, 2), a + 1]), ([a], [a + 1]), ([-2, a], [b]), ([-1, -2], [-3]),
+             ([1, 1, 1], [2, 2]), ([2, 3], [5]), ([a, b], [a + 1]), ([1, 2, 3], [4, 5]), ([1], [R(3, 2)]),
+             ([R(1, 2), R(1, 2), 1], [R(3, 2), R(3, 2)]), ([], [2])]
+    for ap, bq in cases:
+        for x in [z, sympy.Integer(1), sympy.Integer(-1), z**2/4, -z]:
+            if (str(ap), str(bq), str(x)) in _KNOWN_DIFFERENT:
+                continue
+            want = str(sympy_hyperexpand._hyperexpand(sympy_hyperexpand.Hyper_Function(ap, bq), x))
+            func = HyperFunction([expr_from_sympy(sympy.sympify(v)) for v in ap],
+                                 [expr_from_sympy(sympy.sympify(v)) for v in bq])
+            assert str(to_sympy(_hyperexpand(func, expr_from_sympy(x)), evaluate=False)) == want, (ap, bq, x)

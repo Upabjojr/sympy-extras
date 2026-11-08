@@ -169,6 +169,16 @@ remove public functions. Breaking changes are listed here when they happen.
 - `lowergamma` and `uppergamma` take the branch factor out of a polar
   argument as SymPy does; a rational power of a product takes out the
   polar factors as it takes out the positive ones.
+- hyperexpand part 3: `devise_plan`, `try_shifted_sum`, `try_polynomial`,
+  `try_lerchphi`, `build_hypergeometric_formula`, `hyperexpand_special`
+  and `_hyperexpand` (the expansion of a hypergeometric function); the
+  rational functions of the plans are cancelled with the coefficient
+  atoms (`pi`, `gamma(a)`, ...) as generators, as SymPy's composite
+  domains do. 212 of 225 expansions compared match SymPy; the others
+  wait for the polar branch rules of the Bessel functions and the
+  trigonometric integrals.
+- `log(exp_polar(x))` is `x` unpolarified; `polylog` unpolarifies an
+  argument in the unit disk (SymPy's rules).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

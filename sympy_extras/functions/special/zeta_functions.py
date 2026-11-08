@@ -271,6 +271,12 @@ class PolyLog(DefinedFunction):
                 return div(z, sub(ONE, z))
             if s == Integer(-1):
                 return div(z, pow(sub(ONE, z), Integer(2)))
+        # polylog is branched, but not over the unit disk
+        from sympy_extras.functions.elementary.complexes import PolarLift, abs_, unpolarify
+        from sympy_extras.functions.elementary.exponential import ExpPolar
+        from sympy_extras.core.logic import true
+        if z.has(ExpPolar, PolarLift) and (one or (abs_(z) <= ONE) is true):
+            return polylog(s, unpolarify(z))
         return None
 
     def fdiff(self, argindex: int) -> Expr:

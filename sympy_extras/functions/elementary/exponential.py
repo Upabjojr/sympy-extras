@@ -410,6 +410,10 @@ class Log(DefinedFunction):
             return nan
         if isinstance(arg, Exp) and arg.args[0].is_extended_real:
             return arg.args[0]
+        if isinstance(arg, ExpPolar):
+            # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log.eval (exp_polar)
+            from sympy_extras.functions.elementary.complexes import unpolarify
+            return unpolarify(arg.args[0])
         from sympy_extras.core.accumbounds import AccumBounds, accum_bounds
         if isinstance(arg, AccumBounds):
             # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log.eval (AccumBounds)

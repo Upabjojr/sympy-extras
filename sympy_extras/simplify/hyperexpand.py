@@ -132,14 +132,50 @@ def _xreplace(e: Expr, repl: Repl) -> Expr:
 def make_simp(z: Symbol) -> Callable[[Expr], Expr]:
     """A simplification for a rational function in ``z``: the numerator
     expanded, the common factors cancelled."""
+    from sympy_extras.polys.polyerrors import CoercionFailed
     from sympy_extras.polys.polytools import Poly
+
+    def cancel_in_z(numer: Expr, denom: Expr) -> Expr:
+        c, n, d = Poly(numer, z).cancel(Poly(denom, z))
+        return c * n.as_expr() / d.as_expr()
 
     def simp(e: Expr) -> Expr:
         numer, denom = e.as_numer_denom()
         numer = expand(numer)
-        c, n, d = Poly(numer, z).cancel(Poly(denom, z))
-        return c * n.as_expr() / d.as_expr()
+        try:
+            return cancel_in_z(numer, denom)
+        except CoercionFailed:
+            pass
+        # SymPy's composite domain (ZZ[pi], ZZ[gamma(a)], ...): the
+        # coefficient atoms our Poly does not take become generators
+        rep = _coefficient_generators([numer, expand(denom)], z)
+        back: Repl = {v: k for k, v in rep.items()}
+        return _xreplace(cancel_in_z(_xreplace(numer, rep), _xreplace(denom, rep)), back)
     return simp
+
+
+def _coefficient_generators(exprs: Sequence[Expr], z: Symbol) -> Repl:
+    """Dummies for the factors free of ``z`` which are neither numbers nor
+    symbols (``pi``, ``gamma(a)``, ``sqrt(2)``, ``I``), bases of integer
+    powers or whole powers."""
+    from sympy_extras.core.add import Add
+    from sympy_extras.core.mul import Mul
+    found: list[Expr] = []
+    for e in exprs:
+        for t in (e.args if isinstance(e, Add) else (e,)):
+            assert isinstance(t, Expr)
+            for f in (t.args if isinstance(t, Mul) else (t,)):
+                assert isinstance(f, Expr)
+                if f.has(z) or isinstance(f, (Number, Symbol)):
+                    continue
+                b, ex = f.as_base_exp()
+                g = b if isinstance(ex, Integer) and not isinstance(b, (Number, Symbol)) else f
+                if isinstance(g, (Number, Symbol)) or g.has(z):
+                    continue
+                if g not in found:
+                    found.append(g)
+    found.sort(key=default_sort_key)
+    return {g: Dummy('c') for g in found}
 
 
 # PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:Hyper_Function
@@ -1304,3 +1340,436 @@ def apply_operators_matrix(obj: ExprMatrix, ops: Sequence[Operator],
     for o in reversed(ops):
         res = o.apply_matrix(res, op)
     return res
+
+
+# ---------------------------------------------------------------------
+# the plans and the expansion of hypergeometric functions
+
+
+def _others(dic: dict[Expr, list[Expr]], key: Expr) -> list[Expr]:
+    out: list[Expr] = []
+    for k, v in dic.items():
+        if k != key:
+            out.extend(v)
+    return out
+
+
+# PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:devise_plan
+def devise_plan(target: HyperFunction, origin: HyperFunction, z: Expr) -> list[Operator]:
+    """The operators which turn ``origin`` into ``target`` (parameters
+    congruent modulo 1), to be applied in the order of the list.
+
+    >>> from sympy_extras.core import Rational, Symbol
+    >>> from sympy_extras.simplify.hyperexpand import HyperFunction, devise_plan
+    >>> z = Symbol('z')
+    >>> [str(op) for op in devise_plan(HyperFunction((3, 2), ()), HyperFunction((1, 2), ()), z)]
+    ['<Increment upper 2.>', '<Increment upper 1.>']
+    """
+    abuckets, bbuckets, nabuckets, nbbuckets = [_sift(params, _mod1) for params in
+                                                (target.ap, target.bq, origin.ap, origin.bq)]
+    if len(abuckets) != len(nabuckets) or len(bbuckets) != len(nbbuckets):
+        raise ValueError('%s not reachable from %s' % (target, origin))
+    ops: list[Operator] = []
+
+    def do_shifts(fro: list[Expr], to: list[Expr], inc: Callable[[list[Expr], int], Operator],
+                  dec: Callable[[list[Expr], int], Operator]) -> list[Operator]:
+        shifts: list[Operator] = []
+        for i in range(len(fro)):
+            if _truth(to[i] - fro[i] > 0):
+                sh, ch = inc, 1
+            else:
+                sh, ch = dec, -1
+            while to[i] != fro[i]:
+                shifts.append(sh(fro, i))
+                fro[i] = fro[i] + ch
+        return shifts
+
+    def do_shifts_a(nal: list[Expr], nbk: list[Expr], al: list[Expr], aother: list[Expr],
+                    bother: list[Expr]) -> list[Operator]:
+        return do_shifts(nal, al, lambda p, i: ShiftA(p[i]), lambda p, i: UnShiftA(p + aother, nbk + bother, i, z))
+
+    def do_shifts_b(nal: list[Expr], nbk: list[Expr], bk: list[Expr], aother: list[Expr],
+                    bother: list[Expr]) -> list[Operator]:
+        return do_shifts(nbk, bk, lambda p, i: UnShiftB(nal + aother, p + bother, i, z), lambda p, i: ShiftB(p[i]))
+
+    for r in sorted(list(abuckets) + list(bbuckets), key=default_sort_key):
+        al = sorted(abuckets.get(r, []), key=default_sort_key)
+        nal = sorted(nabuckets.get(r, []), key=default_sort_key) if r in abuckets else []
+        bk = sorted(bbuckets.get(r, []), key=default_sort_key)
+        nbk = sorted(nbbuckets.get(r, []), key=default_sort_key) if r in bbuckets else []
+        if len(al) != len(nal) or len(bk) != len(nbk):
+            raise ValueError('%s not reachable from %s' % (target, origin))
+        aother = _others(nabuckets, r)
+        bother = _others(nbbuckets, r)
+        if not al:
+            ops += do_shifts_b([], nbk, bk, aother, bother)
+        elif not bk:
+            ops += do_shifts_a(nal, [], al, aother, bother)
+        else:
+            namax, amax = nal[-1], al[-1]
+            if _truth(nbk[0] - namax <= 0) or _truth(bk[0] - amax <= 0):
+                raise ValueError('Non-suitable parameters.')
+            if _truth(namax - amax > 0):
+                ops += do_shifts_a(nal, nbk, al, aother, bother)
+                ops += do_shifts_b(al, nbk, bk, aother, bother)
+            else:
+                ops += do_shifts_b(nal, nbk, bk, aother, bother)
+                ops += do_shifts_a(nal, bk, al, aother, bother)
+        nabuckets[r] = al
+        nbbuckets[r] = bk
+    ops.reverse()
+    return ops
+
+
+def _int(e: Expr) -> int:
+    assert isinstance(e, Integer), e
+    return e.p
+
+
+# PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:try_shifted_sum
+def try_shifted_sum(func: HyperFunction, z: Expr) -> Optional[tuple[HyperFunction, list[Operator], Expr]]:
+    """A function with one positive integer upper and one positive
+    integer lower parameter as a shifted series of a simpler one: the
+    function, the operators and the polynomial to add."""
+    from sympy_extras.core.mul import mul
+    from sympy_extras.functions.combinatorial.factorials import factorial, rf
+    abuckets, bbuckets = _sift(func.ap, _mod1), _sift(func.bq, _mod1)
+    if len(abuckets.get(ZERO, [])) != 1:
+        return None
+    r = abuckets[ZERO][0]
+    if _truth(r <= 0):
+        return None
+    if ZERO not in bbuckets:
+        return None
+    k = sorted(bbuckets[ZERO], key=_Ordered)[0]
+    if _truth(k <= 0):
+        return None
+    nap = list(func.ap)
+    nap.remove(r)
+    nbq = list(func.bq)
+    nbq.remove(k)
+    k = k - 1
+    nap = [x - k for x in nap]
+    nbq = [x - k for x in nbq]
+    ops: list[Operator] = [ShiftA(Integer(n + 1)) for n in range(_int(r) - 1)]
+    ops.reverse()
+    fac = factorial(k) / z**k
+    fac = fac * mul(*[rf(b, k) for b in nbq])
+    fac = fac / mul(*[rf(a, k) for a in nap])
+    ops.append(MultOperator(fac))
+    p: Expr = ZERO
+    for n in range(_int(k)):
+        m = z**n / factorial(n)
+        m = m * mul(*[rf(a, n) for a in nap])
+        m = m / mul(*[rf(b, n) for b in nbq])
+        p = p + m
+    return HyperFunction(nap, nbq), ops, -p
+
+
+# PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:try_polynomial
+def try_polynomial(func: HyperFunction, z: Expr) -> Optional[Expr]:
+    """The function as a polynomial when an upper parameter is a
+    nonpositive integer (``oo`` when a lower one ends the series first)."""
+    from sympy_extras.core.mul import mul
+    from sympy_extras.core.numbers import oo
+    abuckets, bbuckets = _sift(func.ap, _mod1), _sift(func.bq, _mod1)
+    a0 = sorted(abuckets.get(ZERO, []), key=_Ordered)
+    b0 = sorted(bbuckets.get(ZERO, []), key=_Ordered)
+    al0 = [x for x in a0 if _truth(x <= 0)]
+    bl0 = [x for x in b0 if _truth(x <= 0)]
+    if bl0 and all(_truth(a < bl0[-1]) for a in al0):
+        return oo
+    if not al0:
+        return None
+    a = al0[-1]
+    fac: Expr = ONE
+    res: Expr = ONE
+    for n in range(-_int(a)):
+        fac = fac * z
+        fac = fac / (n + 1)
+        fac = fac * mul(*[x + n for x in func.ap])
+        fac = fac / mul(*[b + n for b in func.bq])
+        res = res + fac
+    return res
+
+
+# PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:try_lerchphi
+def try_lerchphi(func: HyperFunction) -> Optional[Formula]:
+    """A formula in terms of Lerch transcendents, for the functions whose
+    series coefficients are a rational function of the index."""
+    from sympy_extras.core.add import Add, add
+    from sympy_extras.core.function import expand_func
+    from sympy_extras.functions.combinatorial.factorials import rf
+    from sympy_extras.functions.special.zeta_functions import lerchphi
+    from sympy_extras.polys.partfrac import apart
+    from sympy_extras.polys.polytools import Poly
+    abuckets, bbuckets = _sift(func.ap, _mod1), _sift(func.bq, _mod1)
+    paired: dict[Expr, tuple[list[Expr], list[Expr]]] = {}
+    for key, value in abuckets.items():
+        if key != 0 and key not in bbuckets:
+            return None
+        paired[key] = (list(value), list(bbuckets.get(key, [])))
+        bbuckets.pop(key, None)
+    if bbuckets:
+        return None
+    if ZERO not in abuckets:
+        return None
+    aints, bints = paired[ZERO]
+    paired[ZERO] = (aints, bints + [ONE])
+    t = Dummy('t')
+    numer: Expr = ONE
+    denom: Expr = ONE
+    for avalue, bvalue in paired.values():
+        if len(avalue) != len(bvalue):
+            return None
+        for a, b in zip(avalue, bvalue):
+            if (a - b).is_positive is True:
+                k = a - b
+                numer = numer * rf(b + t, k)
+                denom = denom * rf(b, k)
+            else:
+                k = b - a
+                numer = numer * rf(a, k)
+                denom = denom * rf(a + t, k)
+    part = apart(numer / denom, t)
+    monomials: list[tuple[Expr, int]] = []
+    terms: dict[Expr, list[tuple[Expr, int]]] = {}
+    for arg in (part.args if isinstance(part, Add) else (part,)):
+        assert isinstance(arg, Expr)
+        num, den = arg.as_numer_denom()
+        if not den.has(t):
+            p = Poly(num, t)
+            if p.length() > 1:
+                raise TypeError('p should be monomial')
+            (b_exp,), lc = p.LT()
+            monomials.append((lc / den, b_exp))
+            continue
+        if num.has(t):
+            raise NotImplementedError('Need partial fraction decomposition with linear denominators')
+        indep, dep = den.as_independent(t, as_Add=False)
+        if len(dep.args) > 1 and dep.is_Mul:
+            raise ValueError('more than one factor depends on %s' % (t,))
+        n = 1
+        if dep.is_Pow:
+            n = _int(_expr(dep.args[1]))
+            dep = _expr(dep.args[0])
+        shift: Expr
+        if dep == t:
+            shift = ZERO
+        elif isinstance(dep, Add):
+            shift, tmp = dep.as_independent(t, as_Add=True)
+            scale: Expr = ONE
+            if tmp != t:
+                scale, _ = tmp.as_independent(t, as_Add=False)
+            if dep != scale*t + shift:
+                raise NotImplementedError('unrecognised form %s' % dep)
+            shift = shift / scale
+            indep = indep * scale**n
+        else:
+            raise NotImplementedError('unrecognised form of partial fraction')
+        terms.setdefault(shift, []).append((num / indep, n))
+    deriv: dict[Expr, list[tuple[Expr, Expr]]] = {}
+    coeffs: dict[Expr, list[Expr]] = {}
+    z = Dummy('z')
+    monomials.sort(key=lambda m: m[1])
+    mon: dict[int, Expr] = {0: 1 / (1 - z)}
+    if monomials:
+        for k2 in range(monomials[-1][1]):
+            mon[k2 + 1] = z * mon[k2].diff(z)
+    for coeff, n in monomials:
+        coeffs.setdefault(ONE, []).append(coeff * mon[n])
+    for shift, lst in terms.items():
+        for c, k3 in lst:
+            coeffs.setdefault(lerchphi(z, k3, shift), []).append(c)
+        lst.sort(key=lambda ck: ck[1])
+        for k4 in range(2, lst[-1][1] + 1):
+            deriv[lerchphi(z, k4, shift)] = [(-shift, lerchphi(z, k4, shift)), (ONE, lerchphi(z, k4 - 1, shift))]
+        deriv[lerchphi(z, 1, shift)] = [(-shift, lerchphi(z, 1, shift)), (1 / (1 - z), ONE)]
+    trans: dict[Expr, int] = {}
+    for idx, bb in enumerate([ONE] + list(deriv.keys())):
+        trans[bb] = idx
+    basis = [expand_func(bb) for bb, _ in sorted(trans.items(), key=lambda kv: kv[1])]
+    size = len(basis)
+    C_entries: list[Expr] = [ZERO] * size
+    for bb, cs in coeffs.items():
+        C_entries[trans[bb]] = add(*cs)
+    M_entries: list[Expr] = [ZERO] * (size * size)
+    for bb, lst2 in deriv.items():
+        for c, b2 in lst2:
+            M_entries[trans[bb] * size + trans[b2]] = c
+    return Formula(func, z, None, [], ExprMatrix.column(basis), ExprMatrix(1, size, C_entries),
+                   ExprMatrix(size, size, M_entries))
+
+
+# PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:build_hypergeometric_formula
+def build_hypergeometric_formula(func: HyperFunction) -> Formula:
+    """A formula for ``func`` whose basis is the function and shifted
+    copies of it (always available; the answer stays hypergeometric)."""
+    from sympy_extras.core.mul import mul
+    from sympy_extras.functions.special.hyper import hyper
+    from sympy_extras.polys.polytools import Poly
+    z = Dummy('z')
+    if func.ap:
+        afactors = [_x + a for a in func.ap]
+        bfactors = [_x + b - 1 for b in func.bq]
+        poly = Poly(_x * mul(*bfactors) - z * mul(*afactors), _x)
+        n = poly.degree()
+        basis: list[Expr] = []
+        M = ExprMatrix.zeros(n, n)
+        for k in range(n):
+            a = func.ap[0] + k
+            basis.append(hyper([a] + list(func.ap[1:]), func.bq, z))
+            if k < n - 1:
+                M = M.with_entry(k, k, -a).with_entry(k, k + 1, a)
+        B = ExprMatrix.column(basis)
+        C = ExprMatrix.from_rows([[ONE] + [ZERO] * (n - 1)])
+        derivs = [ExprMatrix.eye(n)]
+        for k in range(n):
+            derivs.append(M * derivs[k])
+        coeffs = poly.all_coeffs()
+        res: list[Expr] = [ZERO] * n
+        for k, c in enumerate(reversed(coeffs)):
+            for r, d in enumerate(C * derivs[k]):
+                res[r] = res[r] + c * d
+        for k, c in enumerate(res):
+            M = M.with_entry(n - 1, k, -c / derivs[n - 1][0, n - 1] / coeffs[0])
+        return Formula(func, z, None, [], B, C, M)
+    basis = []
+    bq = list(func.bq)
+    for i in range(len(bq)):
+        basis.append(hyper([], bq, z))
+        bq[i] = bq[i] + 1
+    basis.append(hyper([], bq, z))
+    B = ExprMatrix.column(basis)
+    n = len(B)
+    C = ExprMatrix.from_rows([[ONE] + [ZERO] * (n - 1)])
+    M = ExprMatrix.zeros(n, n).with_entry(0, n - 1, z / mul(*func.bq))
+    for k in range(1, n):
+        M = M.with_entry(k, k - 1, func.bq[k - 1]).with_entry(k, k, -func.bq[k - 1])
+    return Formula(func, z, None, [], B, C, M)
+
+
+# PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:hyperexpand_special
+def hyperexpand_special(ap: Sequence[Expr], bq: Sequence[Expr], z: Expr) -> Expr:
+    """The special values of 2F1 at ``z = 1`` (Gauss) and ``z = -1``
+    (Kummer); ``hyper(ap, bq, z)`` otherwise."""
+    from sympy_extras.functions.elementary.complexes import unpolarify
+    from sympy_extras.functions.elementary.trigonometric import cos
+    from sympy_extras.functions.special.gamma_functions import gamma
+    from sympy_extras.functions.special.hyper import hyper
+    from .simplify import simplify
+    p, q = len(ap), len(bq)
+    z_ = z
+    z = unpolarify(z)
+    if z == 0:
+        return ONE
+    if p == 2 and q == 1:
+        a, b, c = list(ap) + list(bq)
+        if z == 1:
+            return gamma(c - a - b)*gamma(c)/gamma(c - a)/gamma(c - b)
+        if z == -1 and simplify(b - a + c) == 1:
+            b, a = a, b
+        if z == -1 and simplify(a - b + c) == 1:
+            # Kummer
+            if b.is_integer is True and b.is_negative is True:
+                return 2*cos(pi*b/2)*gamma(-b)*gamma(b - a + 1)/gamma(-b/2)/gamma(b/2 - a + 1)
+            return gamma(b/2 + 1)*gamma(b - a + 1)/gamma(b + 1)/gamma(b/2 - a + 1)
+    return hyper(ap, bq, z_)
+
+
+def _replace_hyper_special(e: Expr) -> Expr:
+    """``e.replace(hyper, hyperexpand_special)``."""
+    from sympy_extras.core.containers import Tuple
+    from sympy_extras.functions.special.hyper import Hyper
+
+    def value(*args: Basic) -> Basic:
+        ap, bq, z = args
+        assert isinstance(ap, Tuple) and isinstance(bq, Tuple) and isinstance(z, Expr)
+        return hyperexpand_special([_expr(a) for a in ap.args], [_expr(b) for b in bq.args], z)
+    return _expr(e.replace(Hyper, value))
+
+
+Rewrite = Optional[str]
+
+_collection: Optional[FormulaCollection] = None
+
+
+def _formula_collection() -> FormulaCollection:
+    global _collection
+    if _collection is None:
+        _collection = FormulaCollection()
+    return _collection
+
+
+def _rewrite(e: Expr, rewrite: Rewrite) -> Expr:
+    """SymPy's ``e.rewrite(rewrite)``: only the ``HyperRep`` functions
+    have the rewrites 'nonrep' and 'nonrepsmall'."""
+    from sympy_extras.functions.special.hyperrep import rewrite_nonrep
+    if rewrite == 'nonrepsmall':
+        return rewrite_nonrep(e, small=True)
+    if rewrite == 'nonrep':
+        return rewrite_nonrep(e, small=False)
+    return e
+
+
+_z0 = Dummy('z0')
+
+
+# PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:_hyperexpand
+def _hyperexpand(func: HyperFunction, z: Expr, ops0: Sequence[Operator] = (), z0: Symbol = _z0,
+                 premult: Expr = ONE, prem: Expr = ZERO, rewrite: Rewrite = 'default') -> Expr:
+    """The expansion of ``func`` at ``z``: ``premult`` times the function,
+    with ``ops0`` applied (their derivative operator shifted by
+    ``prem``); the closed forms rewritten by ``rewrite``."""
+    from sympy_extras.functions.elementary.complexes import polarify, unpolarify
+    from .powsimp import powdenest
+    from .simplify import simplify
+    if z.is_zero is True:
+        return ONE
+    z = polarify(z, subs=False)[0]
+    if rewrite == 'default':
+        rewrite = 'nonrepsmall'
+
+    def carryout_plan(f: Formula, ops: Sequence[Operator]) -> Expr:
+        M0 = f.M.subs(f.z, z0)
+        C = apply_operators_matrix(f.C.subs(f.z, z0), ops, make_derivative_operator(M0, z0))
+        C = apply_operators_matrix(C, ops0, make_derivative_operator(M0 + ExprMatrix.eye(f.M.rows) * prem, z0))
+        if premult == 1:
+            C = C.applyfunc(make_simp(z0))
+        r = _closed_form(C, f.B.subs(f.z, z0)) * premult
+        res = _expr(r.subs(z0, z))
+        return _rewrite(res, rewrite)
+
+    def d(f: Expr) -> Expr:
+        return z0 * f.diff(z0)
+
+    collection = _formula_collection()
+    func, reduce_ops = reduce_order(func)
+    ops: list[Operator] = list(reduce_ops)
+    res = try_polynomial(func, z0)
+    if res is not None:
+        p = apply_operators(res, ops, d)
+        p = apply_operators(p * premult, ops0, d)
+        return unpolarify(_expr(simplify(p).subs(z0, z)))
+    p = ZERO
+    shifted = try_shifted_sum(func, z0)
+    if shifted is not None:
+        func, nops, p = shifted
+        ops += nops
+    p = apply_operators(p, ops, d)
+    p = apply_operators(p * premult, ops0, d)
+    p = _expr(simplify(p).subs(z0, z))
+    if unpolarify(z) in (ONE, Integer(-1)) and (len(func.ap), len(func.bq)) == (2, 1):
+        from sympy_extras.functions.special.hyper import Hyper
+        f = build_hypergeometric_formula(func)
+        r = _replace_hyper_special(carryout_plan(f, ops))
+        if not r.has(Hyper):
+            return r + p
+    formula = collection.lookup_origin(func)
+    if formula is None:
+        formula = try_lerchphi(func)
+    if formula is None:
+        formula = build_hypergeometric_formula(func)
+    ops += devise_plan(func, formula.func, z0)
+    r = carryout_plan(formula, ops) + p
+    return _replace_hyper_special(powdenest(r, polar=True))
