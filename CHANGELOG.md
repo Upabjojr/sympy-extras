@@ -95,6 +95,12 @@ remove public functions. Breaking changes are listed here when they happen.
   here, special ones by SymPy's rules). `Expr.limit`, the series and
   `Order.contains` use them. Accumulation bounds are not ported (the
   limits of oscillating functions come from SymPy's leading terms).
+- `Expr.is_meromorphic` is native (the rules of `Add`, `Mul`, `Pow`, the
+  functions with their `singularities`, and the atoms), ported from
+  SymPy; the rules of the Bessel and incomplete gamma functions and of
+  `Piecewise` are SymPy's, node by node. `sympy_extras.core.fuzzy` has
+  the typed three-valued `fuzzy_and`, `fuzzy_or`, `fuzzy_not`,
+  `fuzzy_group`.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

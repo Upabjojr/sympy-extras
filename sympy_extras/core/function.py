@@ -149,6 +149,34 @@ class Application(Expr):
         (``None``: any number, SymPy's ``Naturals0``)."""
         return None
 
+    def _singularities(self) -> Union[None, bool, tuple[Expr, ...]]:
+        """SymPy's ``_singularities`` of the function: the points where it
+        is not holomorphic, ``True`` when it is nowhere holomorphic, ``None``
+        when unknown."""
+        return None
+
+    # PORTED FROM SYMPY: sympy/core/function.py:Function.is_singular
+    def is_singular(self, a: Expr) -> Optional[bool]:
+        """Whether ``a`` is a singularity of the function."""
+        from .fuzzy import fuzzy_or
+        from .numbers import ComplexInfinity
+        ss = self._singularities()
+        if ss is None or isinstance(ss, bool):
+            return ss
+        return fuzzy_or(a.is_infinite if isinstance(s, ComplexInfinity) else (a - s).is_zero for s in ss)
+
+    # PORTED FROM SYMPY: sympy/core/function.py:Function._eval_is_meromorphic
+    def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
+        from .fuzzy import fuzzy_not
+        if not self._args:
+            return True
+        if any(t.has(x) for t in self._args[1:]):
+            return False
+        arg = self._args[0]
+        if not arg._eval_is_meromorphic(x, a):
+            return None
+        return fuzzy_not(self.is_singular(arg.subs(x, a)))
+
     def _rebuilt(self, args: Sequence[Expr]) -> Expr:
         """The node of the same function with ``args``, evaluated."""
         return as_expr(self._evaluated(tuple(args)))
@@ -481,6 +509,10 @@ class AppliedSymPyFunction(Application):
         from .interop import sympy_leading_term
         return sympy_leading_term(self, x, logx, cdir)
 
+    def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
+        from .interop import meromorphic_node_through_sympy
+        return meromorphic_node_through_sympy(self, x, a, False)[1]
+
     @property
     def func(self) -> Callable[..., Basic]:
         return SymPyFunction(self._sympy_class)
@@ -676,6 +708,21 @@ class DefinedFunction(Application):
 
     def _series_nargs(self) -> Optional[frozenset[int]]:
         return None if self.variadic else self.nargs
+
+    #: SymPy's ``_singularities`` of the class (see ``Application._singularities``)
+    singularities: Union[None, bool, tuple[Expr, ...]] = None
+
+    def _singularities(self) -> Union[None, bool, tuple[Expr, ...]]:
+        return self.singularities
+
+    def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
+        # the rules of the special functions (Bessel functions, incomplete
+        # gamma functions) are SymPy's
+        from .interop import meromorphic_node_through_sympy
+        found, own = meromorphic_node_through_sympy(self, x, a, True)
+        if found:
+            return own
+        return Application._eval_is_meromorphic(self, x, a)
 
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         # the classes whose expansion is not ported use SymPy's

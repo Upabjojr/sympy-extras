@@ -40,7 +40,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 from math import prod
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 import mpmath
 
@@ -83,6 +83,8 @@ class Gamma(DefinedFunction):
     unbranched = True
 
     function_name = 'gamma'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (zoo,)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

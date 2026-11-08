@@ -85,6 +85,11 @@ class Add(AssocOp):
         orders = [t for t in self._args if t.is_Order]
         return _raw(orders) if orders else None
 
+    # PORTED FROM SYMPY: sympy/core/add.py:Add._eval_is_meromorphic
+    def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
+        from .fuzzy import fuzzy_group
+        return fuzzy_group((t.is_meromorphic(x, a) for t in self._args), quick_exit=True)
+
     # PORTED FROM SYMPY: sympy/core/add.py:Add._eval_nseries
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         return add(*[t.nseries(x, n=n, logx=logx, cdir=cdir) for t in self._args])

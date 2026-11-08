@@ -83,6 +83,11 @@ class Mul(AssocOp):
         from .assumptions import mul_facts
         return mul_facts(self._args)
 
+    # PORTED FROM SYMPY: sympy/core/mul.py:Mul._eval_is_meromorphic
+    def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
+        from .fuzzy import fuzzy_group
+        return fuzzy_group((t.is_meromorphic(x, a) for t in self._args), quick_exit=True)
+
     # PORTED FROM SYMPY: sympy/core/mul.py:Mul._eval_nseries
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         from itertools import product

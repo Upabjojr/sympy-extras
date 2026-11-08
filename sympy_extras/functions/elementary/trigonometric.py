@@ -44,7 +44,7 @@ Examples
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 import mpmath
 
@@ -216,6 +216,8 @@ class Sin(DefinedFunction):
     unbranched = True
 
     function_name = 'sin'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (zoo,)
 
     # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:sin.taylor_term
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
@@ -312,6 +314,8 @@ class Cos(DefinedFunction):
     unbranched = True
 
     function_name = 'cos'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (zoo,)
 
     # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:cos.taylor_term
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
@@ -441,6 +445,8 @@ class Tan(DefinedFunction):
     unbranched = True
 
     function_name = 'tan'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (zoo,)
 
     # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:tan.taylor_term
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
@@ -564,6 +570,8 @@ class Cot(DefinedFunction):
     unbranched = True
 
     function_name = 'cot'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (zoo,)
 
     # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:cot.taylor_term
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
@@ -708,6 +716,8 @@ class Sec(DefinedFunction):
     unbranched = True
 
     function_name = 'sec'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (zoo,)
 
     # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:sec.taylor_term
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
@@ -753,6 +763,8 @@ class Csc(DefinedFunction):
     unbranched = True
 
     function_name = 'csc'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (zoo,)
 
     # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:csc.taylor_term
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
@@ -936,6 +948,8 @@ class Asin(DefinedFunction):
     """The arcsine (principal branch), unevaluated (``asin`` evaluates)."""
 
     function_name = 'asin'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (Integer(1), Integer(-1), Integer(0), zoo)
 
     # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:asin (taylor_term, _eval_nseries, _eval_as_leading_term)
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
@@ -1001,6 +1015,8 @@ class Acos(DefinedFunction):
     """The arccosine (principal branch), unevaluated (``acos`` evaluates)."""
 
     function_name = 'acos'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (Integer(1), Integer(-1), Integer(0), zoo)
 
     # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acos (taylor_term, _eval_nseries, _eval_as_leading_term)
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
@@ -1076,6 +1092,8 @@ class Atan(DefinedFunction):
     """The arctangent (principal branch), unevaluated (``atan`` evaluates)."""
 
     function_name = 'atan'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (I, -I)
 
     # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:atan (taylor_term, _eval_nseries, _eval_as_leading_term)
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
@@ -1147,6 +1165,8 @@ class Acot(DefinedFunction):
     """The arccotangent (principal branch), unevaluated (``acot`` evaluates)."""
 
     function_name = 'acot'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (I, -I)
 
     # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acot (taylor_term, _eval_nseries, _eval_as_leading_term)
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
@@ -1217,6 +1237,8 @@ class Asec(DefinedFunction):
     """The arcsecant (principal branch), unevaluated (``asec`` evaluates)."""
 
     function_name = 'asec'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (Integer(1), Integer(-1), Integer(0), zoo)
 
     # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:asec (taylor_term, _eval_nseries, _eval_as_leading_term)
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
@@ -1282,6 +1304,8 @@ class Acsc(DefinedFunction):
     """The arccosecant (principal branch), unevaluated (``acsc`` evaluates)."""
 
     function_name = 'acsc'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (Integer(1), Integer(-1), Integer(0), zoo)
 
     # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:acsc (taylor_term, _eval_nseries, _eval_as_leading_term)
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
@@ -1373,6 +1397,8 @@ class Sinc(DefinedFunction):
     ``0``), unevaluated (``sinc`` evaluates)."""
 
     function_name = 'sinc'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (zoo,)
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

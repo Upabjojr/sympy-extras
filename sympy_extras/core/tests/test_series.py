@@ -112,3 +112,33 @@ def test_order_arithmetic() -> None:
     ox, ox2 = order(X), order(X**2)
     assert isinstance(ox, Order) and isinstance(ox2, Order)
     assert ox.contains(X**2) is True and ox2.contains(X) is False
+
+
+def test_is_meromorphic_matches_sympy() -> None:
+    rng = random.Random(3)
+    atoms: list[sympy.Expr] = [x, x**2, 1/x, s.Integer(2), s.Rational(1, 2), s.pi, x - 1, s.zoo, s.oo]
+    funcs = [s.sin, s.cos, s.exp, s.log, s.sqrt, s.atan, s.tan, s.sinh, s.asin, s.Abs, s.gamma, s.erf,
+             lambda a: a**2, lambda a: 1/a, lambda a: a**s.Rational(1, 3), lambda a: 2**a, lambda a: a**x,
+             s.LambertW, s.acot, s.re]
+
+    def rnd(d: int) -> sympy.Expr:
+        if d == 0:
+            return rng.choice(atoms)
+        k = rng.random()
+        if k < 0.3:
+            return rnd(d - 1) + rnd(d - 1)
+        if k < 0.6:
+            return rnd(d - 1) * rnd(d - 1)
+        result = rng.choice(funcs)(rnd(d - 1))
+        assert isinstance(result, s.Expr)
+        return result
+
+    points = [s.Integer(0), s.Integer(1), s.Integer(-1), s.oo, s.Integer(2), s.I, -1/s.E]
+    for _ in range(200):
+        e = rnd(rng.randint(1, 3))
+        a = rng.choice(points)
+        want = e.is_meromorphic(x, a)
+        got = expr_from_sympy(e).is_meromorphic(X, expr_from_sympy(a))
+        # our assumptions may know more (gamma(tan(exp(-2))) is finite): an
+        # unknown answer of SymPy may be decided here, a decided one agrees
+        assert want is None or got == want, (e, a)

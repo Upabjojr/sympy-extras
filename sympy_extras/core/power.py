@@ -116,6 +116,38 @@ class Pow(Expr):
     def _sympystr(self, printer: StrPrinter) -> str:
         return printer.print_pow(self._base, self._exp)
 
+    # PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_is_meromorphic
+    def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
+        # f**g is meromorphic for an integer g and a meromorphic f;
+        # E**(log(f)*g) when log(f)*g is meromorphic and finite
+        from .fuzzy import fuzzy_and, fuzzy_not
+        base_merom = self._base._eval_is_meromorphic(x, a)
+        exp_integer = isinstance(self._exp, Integer)
+        if exp_integer:
+            return base_merom
+        exp_merom = self._exp._eval_is_meromorphic(x, a)
+        if base_merom is False:
+            # the singularities of log(f) and g may cancel (g = 1/log(f))
+            return False if exp_merom else None
+        if base_merom is None:
+            return None
+        b = self._base.subs(x, a)
+        # b is extended complex (the base is meromorphic): log(base) is
+        # finite and meromorphic when b is not 0 or zoo
+        b_zero = b.is_zero
+        log_defined: Optional[bool]
+        if b_zero:
+            log_defined = False
+        else:
+            log_defined = fuzzy_and((b.is_finite, fuzzy_not(b_zero)))
+        if log_defined is False:  # a zero or a pole of the base
+            return exp_integer  # False
+        if log_defined is None:
+            return None
+        if not exp_merom:
+            return exp_merom  # False or None
+        return self._exp.subs(x, a).is_finite
+
     # PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_nseries
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         # A generalised power series with coefficients in C(log, log(x))

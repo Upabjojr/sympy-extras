@@ -758,6 +758,30 @@ def rewrite_named_node_through_sympy(node: Basic, args: tuple[Basic, ...], name:
     return from_sympy(rebuilt.rewrite(name, deep=False, **hints))
 
 
+def meromorphic_node_through_sympy(node: Basic, x: Symbol, a: Expr, own_only: bool) -> tuple[bool, Optional[bool]]:
+    """SymPy's ``_eval_is_meromorphic`` of the node: ``(True, answer)``
+    when its SymPy class has a rule of its own (with ``own_only``; any
+    rule otherwise), ``(False, None)`` when not."""
+    if isinstance(node, DefinedFunction):
+        if not _NATIVE_TO_SYMPY:
+            _fill_function_tables()
+        sympy_class = _NATIVE_TO_SYMPY.get(type(node))
+        if sympy_class is None:
+            return False, None
+        if own_only and not _sympy_defines_before(sympy_class, '_eval_is_meromorphic', SymPyFunctionClass):
+            return False, None
+        original = sympy_class(*[to_sympy(t) for t in node.args], evaluate=False)
+    else:
+        original = to_sympy(node)
+        stop: type = SymPyFunctionClass if isinstance(original, SymPyFunctionClass) else SymPyExpr
+        if own_only and not _sympy_defines_before(type(original), '_eval_is_meromorphic', stop):
+            return False, None
+    if not isinstance(original, SymPyExpr):
+        return False, None
+    answer = original._eval_is_meromorphic(to_sympy(x), to_sympy(a))
+    return True, answer if isinstance(answer, bool) else None
+
+
 def solveset_first_through_sympy(equation: Expr, d: Symbol) -> Optional[Expr]:
     """The first solution of SymPy's ``solveset(equation, d)`` (a
     complement taken as the difference of its sets, as ``Order`` does);

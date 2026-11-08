@@ -44,7 +44,7 @@ Examples
 from __future__ import annotations
 
 from math import comb
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 import mpmath
 
@@ -318,6 +318,8 @@ class Re(DefinedFunction):
     unbranched = True
 
     function_name = 're'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -363,6 +365,8 @@ class Im(DefinedFunction):
     unbranched = True
 
     function_name = 'im'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -410,6 +414,8 @@ class Sign(DefinedFunction):
     evaluates)."""
 
     function_name = 'sign'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -494,6 +500,8 @@ class Abs(DefinedFunction):
     unbranched = True
 
     function_name = 'Abs'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = True
 
     # PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:Abs._eval_power
     def _eval_power_node(self, exponent: Expr) -> Optional[Expr]:
@@ -654,6 +662,8 @@ class Arg(DefinedFunction):
     (``arg`` evaluates)."""
 
     function_name = 'arg'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -737,6 +747,8 @@ class Conjugate(DefinedFunction):
     """The complex conjugate, unevaluated (``conjugate`` evaluates)."""
 
     function_name = 'conjugate'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

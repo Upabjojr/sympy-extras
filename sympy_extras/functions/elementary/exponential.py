@@ -46,7 +46,7 @@ Examples
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 import mpmath
 
@@ -97,6 +97,8 @@ class Exp(DefinedFunction):
     unbranched = True
 
     function_name = 'exp'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (zoo,)
     nargs = frozenset({1})
 
     @property
@@ -368,6 +370,8 @@ class Log(DefinedFunction):
     """
 
     function_name = 'log'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (Integer(0), zoo)
     nargs = frozenset({1})
     call_nargs = frozenset({1, 2})
 
@@ -759,6 +763,8 @@ class LambertW(DefinedFunction):
     """
 
     function_name = 'LambertW'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (-pow(E, Integer(-1)), zoo)
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 
@@ -872,6 +878,8 @@ class ExpPolar(DefinedFunction):
     ``exp(re(z))``; numerically it is ``exp(z)`` for ``-pi < im(z) <= pi``."""
 
     function_name = 'exp_polar'
+    # PORTED FROM SYMPY: _singularities
+    singularities: Union[None, bool, tuple[Expr, ...]] = (zoo,)
     unbranched = True
 
     def _eval_power_node(self, exponent: Expr) -> Optional[Expr]:

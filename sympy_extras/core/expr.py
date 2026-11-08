@@ -933,14 +933,37 @@ class Expr(Basic):
         answer = s.is_hypergeometric(to_sympy(k))
         return answer if isinstance(answer, bool) else None
 
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr.is_meromorphic
     def is_meromorphic(self, x: Symbol, a: ExprLike) -> Optional[bool]:
-        """Whether the expression is meromorphic in ``x`` at ``a`` (SymPy)."""
-        from .interop import to_sympy
-        s = to_sympy(self)
-        if not isinstance(s, sympy.Expr):
-            return None
-        answer = s.is_meromorphic(to_sympy(x), to_sympy(to_expr(a)))
-        return answer if isinstance(answer, bool) else None
+        """Whether the expression is meromorphic in ``x`` at ``a`` (a Laurent
+        series there): ``True``, ``False`` (a branch point or an essential
+        singularity) or ``None``.
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import Symbol, oo
+        >>> from sympy_extras.functions import exp, log, sin, sqrt
+        >>> x = Symbol('x')
+        >>> (1/x).is_meromorphic(x, 0), sqrt(x).is_meromorphic(x, 0), exp(1/x).is_meromorphic(x, 0)
+        (True, False, False)
+        >>> log(x).is_meromorphic(x, 0), log(x).is_meromorphic(x, 1), sin(x).is_meromorphic(x, oo)
+        (False, True, False)
+        """
+        from .symbol import Symbol as _Symbol
+        if not isinstance(x, _Symbol):
+            raise TypeError("{} should be of symbol type".format(x))
+        return self._eval_is_meromorphic(x, to_expr(a))
+
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr._eval_is_meromorphic
+    def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
+        if self == x:
+            return True
+        if x not in self.free_symbols:
+            return True
+        # the classes whose rule is not ported: SymPy's
+        from .interop import meromorphic_node_through_sympy
+        return meromorphic_node_through_sympy(self, x, a, True)[1]
 
     @property
     def is_comparable(self) -> bool:
@@ -1649,6 +1672,15 @@ class AtomicExpr(Atom, Expr):
     # PORTED FROM SYMPY: sympy/core/expr.py:AtomicExpr._eval_nseries
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         return self
+
+    # PORTED FROM SYMPY: sympy/core/expr.py:AtomicExpr._eval_is_meromorphic
+    def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
+        from .numbers import ComplexInfinity
+        if isinstance(self, ComplexInfinity):
+            return True  # zoo is not a Number in SymPy
+        if not self.is_Number:
+            return True
+        return self.is_finite
 
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         return self
