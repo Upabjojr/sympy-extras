@@ -883,19 +883,28 @@ class Expr(Basic):
         from sympy_extras.functions.elementary.complexes import conjugate
         return conjugate(self)
 
+    def _eval_transpose_node(self) -> Optional[Expr]:
+        """The transpose by a rule of the class (SymPy's ``_eval_transpose``
+        of the classes which define one); ``None`` for the general rules."""
+        return None
+
+    def _eval_adjoint_node(self) -> Optional[Expr]:
+        """The adjoint by a rule of the class (SymPy's ``_eval_adjoint``)."""
+        return None
+
     def adjoint(self) -> Expr:
-        """The adjoint: the conjugate of a commutative expression."""
-        from .interop import expr_through_sympy
-        if self.is_commutative is True:
-            return self.conjugate()
-        return expr_through_sympy(self, sympy.adjoint)
+        """The adjoint: the conjugate of a commutative expression, the
+        reversed product of the adjoints of noncommutative factors
+        (:func:`~sympy_extras.functions.elementary.complexes.adjoint`)."""
+        from sympy_extras.functions.elementary.complexes import adjoint
+        return adjoint(self)
 
     def transpose(self) -> Expr:
-        """The transpose: a commutative expression itself."""
-        from .interop import expr_through_sympy
-        if self.is_commutative is True:
-            return self
-        return expr_through_sympy(self, sympy.transpose)
+        """The transpose: a commutative expression itself, the reversed
+        product of the transposes of noncommutative factors
+        (:func:`~sympy_extras.functions.elementary.complexes.transpose`)."""
+        from sympy_extras.functions.elementary.complexes import transpose
+        return transpose(self)
 
     # ------------------------------------------------------------------
     # structural predicates
@@ -1539,7 +1548,8 @@ class Expr(Basic):
 
     def invert(self, g: ExprLike, *gens: Symbol) -> Expr:
         """SymPy's ``invert``: the inverse of ``self`` modulo ``g``."""
-        if not gens:
+        ge = to_expr(g)
+        if not gens or (len(gens) == 1 and (self.free_symbols | ge.free_symbols) <= {gens[0]}):
             from sympy_extras.polys.polytools import invert
             return invert(self, g)
         from .interop import expr_through_sympy, to_sympy

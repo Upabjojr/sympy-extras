@@ -1228,6 +1228,9 @@ def transpose_of(e: Expr) -> Optional[Expr]:
         return conjugate(e.args[0])
     if isinstance(e, Conjugate):
         return adjoint(e.args[0])
+    own = e._eval_transpose_node()
+    if own is not None:
+        return own
     if e.is_commutative:
         return e
     if isinstance(e, Mul):
@@ -1255,6 +1258,9 @@ def adjoint_of(e: Expr) -> Optional[Expr]:
         return conjugate(e.args[0])
     if isinstance(e, Conjugate):
         return transpose(e.args[0])
+    own = e._eval_adjoint_node()
+    if own is not None:
+        return own
     if isinstance(e, Mul) and not e.is_commutative:
         return mul(*[adjoint(t) for t in reversed(e.args)])
     if isinstance(e, Add) and not e.is_commutative:

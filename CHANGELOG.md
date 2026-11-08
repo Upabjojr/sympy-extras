@@ -136,6 +136,11 @@ remove public functions. Breaking changes are listed here when they happen.
   coefficient a polynomial of its own: `x*(y + 1)`), and
   `Expr.collect(..., evaluate=False)` returns the typed dictionary of
   `collect_dict` (overloads on `evaluate`).
+- `adjoint` and `transpose` are native for noncommutative expressions
+  (reversed products, the rules of `exp`, `exp_polar`, `Piecewise`), and a
+  function is commutative only when its arguments are (SymPy's
+  `Function._eval_is_commutative`: `exp(A)` of a noncommutative `A` is
+  not); `invert` with its only generator is native.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

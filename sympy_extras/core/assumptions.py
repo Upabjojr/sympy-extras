@@ -747,6 +747,13 @@ def facts_of(e: Expr) -> Facts:
     cached = e._facts_cache
     if cached is None:
         facts = e._eval_facts()
+        if e.is_Function and facts.get('commutative') is True:
+            # PORTED FROM SYMPY: sympy/core/function.py:Function._eval_is_commutative
+            # (the classes state commutative=True for commutative arguments:
+            # exp(A) of a noncommutative A is not commutative)
+            if any(isinstance(a, Expr) and facts_of(a).get('commutative') is False for a in e.args):
+                facts = dict(facts)
+                facts['commutative'] = False
         # SymPy decides the sign of a numerical function value by evaluating
         # it (Expr._eval_is_extended_positive_negative): sin(1) > 0
         # (only the sign of a real value: SymPy leaves is_real of gamma(I) open)

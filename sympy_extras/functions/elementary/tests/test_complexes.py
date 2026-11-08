@@ -86,3 +86,16 @@ def test_derivatives() -> None:
     for g, h in [(re, sympy.re), (im, sympy.im), (abs_, sympy.Abs), (conjugate, sympy.conjugate)]:
         assert str(to_sympy(g(r**2 + I*r).diff(r), evaluate=False)) == str(h(sr**2 + sympy.I*sr).diff(sr)), g
     assert abs(x) == abs_(x) and isinstance(Abs(-3), Abs) and abs_(-3) == 3
+
+
+def test_adjoint_and_transpose_of_noncommutative_match_sympy() -> None:
+    from sympy_extras.core.interop import expr_from_sympy
+    A, B, C = sympy.symbols('A B C', commutative=False)
+    sx = sympy.Symbol('x')
+    cases = [A*B, A*B*C, 2*A*B + sx*C, (A*B)**2, A**2*B, sx*A, A + B, sympy.I*A*B, A**-1*B, sympy.exp(A),
+             sx**2*A*B, sympy.sin(A)*B, sympy.exp(A*B), sympy.Piecewise((A, sx > 0), (B, True)), sympy.exp_polar(A)]
+    for e in cases:
+        ours = expr_from_sympy(e)
+        assert str(to_sympy(ours.adjoint(), evaluate=False)) == str(sympy.adjoint(e)), e
+        assert str(to_sympy(ours.transpose(), evaluate=False)) == str(sympy.transpose(e)), e
+        assert ours.is_commutative == e.is_commutative, e

@@ -161,6 +161,13 @@ class Piecewise(Expr):
         from sympy_extras.core.power import pow
         return piecewise(*[(pow(p.expr, exponent), p.cond) for p in self._args])
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:Piecewise._eval_transpose, _eval_adjoint
+    def _eval_transpose_node(self) -> Optional[Expr]:
+        return self.map_expressions(lambda e: e.transpose())
+
+    def _eval_adjoint_node(self) -> Optional[Expr]:
+        return self.map_expressions(lambda e: e.adjoint())
+
     def map_expressions(self, f: Callable[[Expr], Expr]) -> Expr:
         """``f`` applied to every expression, the conditions kept
         (SymPy's ``_eval_derivative``, ``_eval_conjugate``, ...), evaluated."""

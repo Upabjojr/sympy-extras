@@ -219,6 +219,13 @@ class Exp(DefinedFunction):
     def as_base_exp(self) -> tuple[Expr, Expr]:
         return (E, self.args[0])
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:ExpBase._eval_transpose, _eval_adjoint
+    def _eval_transpose_node(self) -> Optional[Expr]:
+        return exp(self.args[0].transpose())
+
+    def _eval_adjoint_node(self) -> Optional[Expr]:
+        return exp(self.args[0].adjoint())
+
     # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp.taylor_term
     def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
         if n < 0:
@@ -907,6 +914,13 @@ class ExpPolar(DefinedFunction):
         return exp_polar(mul(self.args[0], exponent))
 
     # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp_polar.as_base_exp
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:ExpBase._eval_transpose, _eval_adjoint
+    def _eval_transpose_node(self) -> Optional[Expr]:
+        return exp_polar(self.args[0].transpose())
+
+    def _eval_adjoint_node(self) -> Optional[Expr]:
+        return exp_polar(self.args[0].adjoint())
+
     def as_base_exp(self) -> tuple[Expr, Expr]:
         """``(exp_polar(1), z)``, so that products collect the exponents
         (``exp_polar(1)*exp_polar(2)`` is ``exp_polar(3)``, ``exp_polar(x)*
