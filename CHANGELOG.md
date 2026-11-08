@@ -109,6 +109,11 @@ remove public functions. Breaking changes are listed here when they happen.
   of `sin`, `cos`, `tan`, `cot` at infinity and of bounds, of `exp`,
   `log`, `frac(oo)`, `atan(zoo)`, `atanh(zoo)`, `asech(zoo)`; the limits
   of oscillating functions are native now.
+- The Gaussian domains `ZZ_I` and `QQ_I`, ported from SymPy
+  (`sympy_extras.polys.domains.gaussiandomains`: Euclidean division,
+  canonical units by quadrant, gcd, gcdex, lcm); `cancel` works over them
+  as SymPy's `PolyElement.cancel` does (no SymPy fallback, no generator
+  standing for `I` any more).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

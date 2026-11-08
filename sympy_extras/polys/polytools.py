@@ -73,6 +73,7 @@ from builtins import pow as builtins_pow
 
 from . import densearith, densebasic, euclidtools, factortools, sqfreetools
 from .domains import QQ, ZZ
+from .domains.gaussiandomains import QQ_I, ZZ_I, GaussianInteger, GaussianRational
 from .domains.sparsepolynomialring import (IntegerPolynomialRing, IteratedPolynomialRing, RationalPolynomialRing,
                                            SparsePolynomialRing)
 from .polyerrors import CoercionFailed, GeneratorsError, GeneratorsNeeded, OperationNotSupported, PolynomialError
@@ -1169,6 +1170,75 @@ def _joint_rings(exprs: Sequence[Expr], expand: bool = True) -> tuple[tuple[Expr
     return gens, result
 
 
+def _joint_rings_gaussian(exprs: Sequence[Expr], expand: bool = True
+                          ) -> tuple[tuple[Expr, ...], list[dict[Monomial, GaussianRational]]]:
+    """:func:`_joint_rings` with Gaussian coefficients ``a + b*I`` (SymPy's
+    ``ZZ_I`` and ``QQ_I``); ``CoercionFailed`` for other coefficients."""
+    decomposed, gens = _decompose_without_gens_many(exprs, expand)
+    result: list[dict[Monomial, GaussianRational]] = []
+    if not gens:
+        return gens, [{} for _ in exprs]
+    for terms in decomposed:
+        rep: dict[Monomial, GaussianRational] = {}
+        for m, cs in terms.items():
+            try:
+                c = QQ_I.from_expr(add(*cs))
+            except ValueError:
+                raise CoercionFailed('the domain of %s (RR, EX) is not ported yet' % (add(*cs),))
+            value = QQ_I.add(rep.get(m, QQ_I.zero), c)
+            if value:
+                rep[m] = value
+            else:
+                rep.pop(m, None)
+        result.append(rep)
+    return gens, result
+
+
+# PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement.cancel (the domains ZZ_I and QQ_I)
+def _cancel_gaussian(f: dict[Monomial, GaussianRational], g: dict[Monomial, GaussianRational], n: int
+                     ) -> tuple[dict[Monomial, GaussianRational], dict[Monomial, GaussianRational]]:
+    """``f/g`` in lowest terms over ``ZZ_I`` (the denominators of ``QQ_I``
+    cleared), made canonical with respect to the quadrant of the leading
+    coefficient of the denominator."""
+    names = _internal_names(n, 0)
+    R = SparsePolynomialRing(ZZ_I, names)
+    if not f:
+        return {}, {(0,) * n: QQ_I.one}
+
+    def cleared(h: dict[Monomial, GaussianRational]) -> tuple[GaussianInteger, PolyElement[GaussianInteger]]:
+        # SymPy's clear_denoms over QQ_I: the lcm of the denominators over ZZ_I
+        common = ZZ_I.one
+        for c in h.values():
+            common = ZZ_I.lcm(common, ZZ_I.denom_of(c))
+        k = QQ_I.convert(common, ZZ_I)
+        return common, R.ring.from_dict({m: ZZ_I.convert(QQ_I.mul(c, k), QQ_I) for m, c in h.items()})
+
+    cq, F = cleared(f)
+    cp, G = cleared(g)
+    h = R.gcd(F, G)
+    P, Q = F.exquo(h), G.exquo(h)
+    common = ZZ_I.gcd(cp, cq)
+    cp, cq = ZZ_I.quo(cp, common), ZZ_I.quo(cq, common)
+    p = {m: QQ_I.mul(QQ_I.convert(c, ZZ_I), QQ_I.convert(cp, ZZ_I)) for m, c in P.terms.items()}
+    q = {m: QQ_I.mul(QQ_I.convert(c, ZZ_I), QQ_I.convert(cq, ZZ_I)) for m, c in Q.terms.items()}
+    # canonical with respect to the quadrant of the leading coefficient
+    lead = max(q, key=R.ring.order.key)
+    u = QQ_I.canonical_unit(q[lead])
+    if u != QQ_I.one:
+        p = {m: QQ_I.mul(c, u) for m, c in p.items()}
+        q = {m: QQ_I.mul(c, u) for m, c in q.items()}
+    return p, q
+
+
+def _gaussian_expr_of(f: dict[Monomial, GaussianRational], gens: tuple[Expr, ...]) -> Expr:
+    parts: list[Expr] = []
+    for m in sorted(f, reverse=True):
+        factors: list[Expr] = [QQ_I.to_expr(f[m])]
+        factors += [pow(g, Integer(k)) for g, k in zip(gens, m) if k]
+        parts.append(mul(*factors))
+    return add(*parts)
+
+
 # PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement.cancel (the domains ZZ and QQ)
 def _cancel_reps(f: dict[Monomial, Fraction], g: dict[Monomial, Fraction], n: int
                  ) -> tuple[PolyElement[int], PolyElement[int], SparsePolynomialRing[int]]:
@@ -1269,8 +1339,8 @@ def cancel(f: ExprLike) -> Expr:
     >>> cancel((2*x**2 - 2)/(1 - x**2*y) + 1/x)
     (-2*x**3 + x**2*y + 2*x - 1)/(x**3*y - x)
 
-    The domains ``ZZ_I``, ``RR`` and ``EX`` are not ported: those
-    fractions are cancelled by SymPy.
+    The domains ``RR`` and ``EX`` are not ported: those fractions are
+    cancelled by SymPy. Gaussian coefficients are cancelled over ``ZZ_I``.
     """
     from sympy_extras.simplify.signsimp import signsimp
     e = signsimp(to_expr(f))
@@ -1291,35 +1361,20 @@ def cancel(f: ExprLike) -> Expr:
 def _cancel_expanded(p: Expr, q: Expr, e: Expr, factored: Expr) -> Expr:
     """The cancellation of ``p/q``, numerator and denominator expanded (the
     preprocessing of ``cancel`` done once, as SymPy does)."""
-    if p.has(I) and not q.has(I):
-        # SymPy's ZZ_I/QQ_I is not ported: with a denominator free of I the
-        # common factors are free of I too (unless Gaussian: x - I in
-        # x**2 + 1, not found here); I is a generator for the cancellation
-        # (the powers of I, sqrt(I), ..., are generators of their own: SymPy
-        # keeps sqrt(I)*I, not I**(3/2))
-        from sympy_extras.core.power import Pow as _Pow
-        from sympy_extras.core.symbol import Dummy
-        unit = Dummy('I')
-        rule: dict[Basic, Basic] = {}
-        for a in sorted(p.atoms(_Pow), key=lambda b: b.sort_key()):
-            if isinstance(a, _Pow) and a.base == I:
-                rule[a] = Dummy('I')
-        unit_rule: dict[Basic, Basic] = {I: unit}
-        hidden = _expr_of_basic(p.xreplace(rule).xreplace(unit_rule))
-        cancelled = _cancel_expanded(hidden, q, e, factored)
-        back: dict[Basic, Basic] = {d: a for a, d in rule.items()}
-        back[unit] = I
-        result = cancelled._xreplace_evaluated(back)
-        if not isinstance(result, Expr):
-            raise TypeError('an expression is expected')
-        return result
     try:
         gens, (fp, fq) = _joint_rings([p, q])
     except CoercionFailed:
-        # the domains ZZ_I, RR and EX are not ported: SymPy's cancel
-        import sympy
-        from sympy_extras.core.interop import expr_through_sympy
-        return expr_through_sympy(e, sympy.cancel)
+        try:
+            ggens, (gp, gq) = _joint_rings_gaussian([p, q])
+        except CoercionFailed:
+            # the domains RR and EX are not ported: SymPy's cancel
+            import sympy
+            from sympy_extras.core.interop import expr_through_sympy
+            return expr_through_sympy(e, sympy.cancel)
+        if not ggens:
+            return _expanded(factored)
+        GP, GQ = _cancel_gaussian(gp, gq, len(ggens))
+        return mul(_gaussian_expr_of(GP, ggens), pow(_gaussian_expr_of(GQ, ggens), Integer(-1)))
     if not gens:
         return _expanded(factored)
     P, Q, _ = _cancel_reps(fp, fq, len(gens))
