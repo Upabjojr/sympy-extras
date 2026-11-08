@@ -9,8 +9,7 @@ the bounds ``0 <= x < 1`` and ``1 <= x < 2`` (``-1 <= x < 0``, ...)
 decided from the signs; ``frac(x) = x - floor(x)`` for numbers. The
 numerical integer part (SymPy's ``get_integer_part``) is computed with
 mpmath at 100 and 200 digits; a value too close to an integer to decide
-leaves the node. Not ported: ``frac(oo)`` (SymPy: ``AccumBounds(0, 1)``),
-the comparisons ``frac(x) < 1`` and the series.
+leaves the node; ``frac(oo)`` is ``AccumBounds(0, 1)``. Not ported: the comparisons ``frac(x) < 1`` and the series.
 
 Examples
 ========
@@ -306,7 +305,8 @@ class Frac(DefinedFunction):
 
         def part(value: Expr) -> Optional[Expr]:
             if isinstance(value, (Infinity, NegativeInfinity)):
-                return None  # SymPy: AccumBounds(0, 1), not ported
+                from sympy_extras.core.accumbounds import AccumBounds
+                return AccumBounds(ZERO, Integer(1))
             if value.is_integer:
                 return ZERO
             if value.is_number:

@@ -42,6 +42,7 @@ import mpmath
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.symbol import Symbol
+from sympy_extras.core.accumbounds import AccumBounds
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import DefinedFunction, ExpandHints, expand_with_hints
 from sympy_extras.core.mul import Mul, mul
@@ -794,7 +795,7 @@ class Atanh(DefinedFunction):
                 return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
         else:
             if isinstance(arg, ComplexInfinity):
-                return None  # SymPy: I*AccumBounds(-pi/2, pi/2), not ported
+                return I*AccumBounds(-pi/2, pi/2)
             i_coeff = imaginary_coefficient(arg)
             if i_coeff is not None:
                 return mul(I, atan(i_coeff))
@@ -918,7 +919,7 @@ class Asech(DefinedFunction):
             if found is not None:
                 return mul(found, I) if arg.is_extended_real else found
         if isinstance(arg, ComplexInfinity):
-            return None  # SymPy: I*AccumBounds(-pi/2, pi/2), not ported
+            return I*AccumBounds(-pi/2, pi/2)
         if arg.is_zero:
             return oo
         return None

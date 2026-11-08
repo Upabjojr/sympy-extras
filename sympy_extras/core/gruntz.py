@@ -22,8 +22,7 @@ References
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; SubsSet is a class with an ordered mapping rather than
-# a dict subclass; sign returns an expression; accumulation bounds are not
-# ported.
+# a dict subclass; sign returns an expression.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -328,7 +327,13 @@ def limitinf(e: Expr, x: Symbol) -> Expr:
     if not isinstance(rewritten, Expr):
         raise TypeError("an expression is expected, got %s" % (rewritten,))
     e = powdenest(rewritten)
-    c0, e0 = mrv_leadterm(e, x)
+    from .accumbounds import AccumBounds
+    if isinstance(e, AccumBounds):
+        if mrv_leadterm(e.min, x) != mrv_leadterm(e.max, x):
+            raise NotImplementedError
+        c0, e0 = mrv_leadterm(e.min, x)
+    else:
+        c0, e0 = mrv_leadterm(e, x)
     sig = sign(e0, x)
     if _is_number(sig, 1):
         return Integer(0)  # e0 > 0: the limit is 0
@@ -437,6 +442,7 @@ def rewrite(e: Expr, Omega: SubsSet, x: Symbol, wsym: Expr) -> tuple[Expr, Expr]
     """``e`` rewritten in terms of the most rapidly varying ``wsym``, with
     the value of ``log(wsym)``."""
     from sympy_extras.simplify.powsimp import powsimp
+    from .accumbounds import AccumBounds
     from .traversal import bottom_up
     if len(Omega) == 0:
         raise ValueError("Length cannot be 0")
@@ -452,7 +458,7 @@ def rewrite(e: Expr, Omega: SubsSet, x: Symbol, wsym: Expr) -> tuple[Expr, Expr]
     g: Expr = omega[0][0]
     for g, _ in omega:
         sig = sign(_exponent(g), x)
-        if not _is_number(sig, 1) and not _is_number(sig, -1):
+        if not _is_number(sig, 1) and not _is_number(sig, -1) and not sig.has(AccumBounds):
             raise NotImplementedError('Result depends on the sign of %s' % sig)
     if _is_number(sig, 1):
         wsym = 1 / wsym  # g goes to oo: 1/w substituted

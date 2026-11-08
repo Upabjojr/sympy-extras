@@ -17,8 +17,7 @@ References
 # PORTED FROM SYMPY: sympy/series/limits.py (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
-# Changes: typed; the direction is a string argument; accumulation bounds
-# are not ported.
+# Changes: typed; the direction is a string argument.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -110,8 +109,25 @@ def heuristics(e: Expr, z: Symbol, z0: Expr, dir: str) -> Optional[Expr]:
                 return None
             r.append(lim)
         if r:
+            from .accumbounds import AccumBounds
             rebuilt = e._evaluated(tuple(r))
             rv = as_expr(rebuilt)
+            if isinstance(rv, NaN) and isinstance(e, Mul) and any(isinstance(rr, AccumBounds) for rr in r):
+                # the bounds apart, the limit of the rest simplified
+                r2: list[Expr] = []
+                e2: list[Expr] = []
+                for ii, rval in enumerate(r):
+                    if isinstance(rval, AccumBounds):
+                        r2.append(rval)
+                    else:
+                        arg_ii = e.args[ii]
+                        if isinstance(arg_ii, Expr):
+                            e2.append(arg_ii)
+                if e2:
+                    from .mul import mul
+                    e3 = mul(*e2).simplify()
+                    lim3 = limit(e3, z, z0, dir)
+                    rv = lim3 * mul(*r2)
             if isinstance(rv, NaN):
                 from sympy_extras.polys.polyerrors import PolynomialError
                 from sympy_extras.simplify.ratsimp import ratsimp
@@ -336,6 +352,9 @@ class Limit(Expr):
             except (ValueError, NotImplementedError, PoleError):
                 pass
         else:
+            from .accumbounds import AccumBounds
+            if isinstance(coeff, AccumBounds) and _is_number(ex, 0):
+                return coeff
             if coeff.has(oo, -oo, zoo, nan):
                 return self
             if not coeff.has(newz):

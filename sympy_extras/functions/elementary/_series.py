@@ -3,9 +3,8 @@
 The Taylor terms (``taylor_term``), the series (``_eval_nseries``) and the
 leading terms (``_eval_as_leading_term``) of ``sin``, ``cos``, ``tan``,
 ``cot``, ``sec``, ``csc`` and of their hyperbolic counterparts, as the
-methods of the classes call them. A leading term which SymPy gives as an
-``AccumBounds`` (``sin(1/x)``) is SymPy's, through the conversion, until
-accumulation bounds are ported.
+methods of the classes call them. A leading term at an infinite argument
+(``sin(1/x)``) is an ``AccumBounds``.
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py and
@@ -167,10 +166,14 @@ def _limit_dir(cdir: Expr) -> str:
 
 
 def _accum_bounds(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
-    """The leading term which SymPy gives as accumulation bounds (not
-    ported): SymPy's."""
-    from sympy_extras.core.interop import sympy_leading_term
-    return sympy_leading_term(node, x, logx, cdir)
+    """The leading term at an infinite argument: the accumulation bounds of
+    the function (``[-1, 1]`` for sin and cos, ``[-oo, oo]`` otherwise)."""
+    from sympy_extras.core.accumbounds import AccumBounds
+    from sympy_extras.core.numbers import oo
+    from sympy_extras.functions.elementary.trigonometric import Cos, Sin
+    if isinstance(node, (Sin, Cos)):
+        return AccumBounds(Integer(-1), Integer(1))
+    return AccumBounds(-oo, oo)
 
 
 # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:{sin,cos,tan,cot,sec,csc}._eval_as_leading_term

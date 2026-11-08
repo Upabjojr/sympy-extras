@@ -350,6 +350,8 @@ def add(*args: ExprLike) -> Expr:
         return _raw([t for a in stack for t in (a.args if isinstance(a, Add) else (a,))])
     if any(t.is_Order for a in stack for t in (a.args if isinstance(a, Add) else (a,))):
         return _with_orders(stack)
+    if any(_is_bounds(t) for a in stack for t in (a.args if isinstance(a, Add) else (a,))):
+        return _with_bounds(stack)
     # SymPy's AssocOp.__new__: the identities dropped, a single argument
     # returned as it is
     nonidentity = [t for t in stack if not (isinstance(t, Integer) and t.p == 0)]
@@ -563,3 +565,43 @@ def _ceiling_int(e: Expr) -> int:
     if not isinstance(c, Integer):
         raise TypeError("the order %s is not a number" % (e,))
     return c.p
+
+
+def _is_bounds(t: Basic) -> bool:
+    from .accumbounds import AccumBounds
+    return isinstance(t, AccumBounds)
+
+
+# PORTED FROM SYMPY: sympy/core/add.py:Add.flatten (the AccumBounds coefficient)
+def _with_bounds(stack: list[Expr]) -> Expr:
+    """A sum with accumulation bounds: the numbers and the bounds make the
+    coefficient (``AccumBounds(-1, 1) + 4`` is ``AccumBounds(3, 5)``), the
+    other terms are summed apart."""
+    from .accumbounds import AccumBounds, ab_add
+    flat: list[Expr] = []
+    pending = list(stack)
+    while pending:
+        a = pending.pop(0)
+        if isinstance(a, Add):
+            pending[:0] = list(a._args)
+        else:
+            flat.append(a)
+    coeff: Expr = Integer(0)
+    others: list[Expr] = []
+    for o in flat:
+        if isinstance(o, Number):
+            if isinstance(coeff, Number):
+                coeff = coeff.number_add(o)
+            elif isinstance(coeff, AccumBounds):
+                coeff = ab_add(coeff, o)
+        elif isinstance(o, AccumBounds):
+            coeff = ab_add(o, coeff)
+        else:
+            others.append(o)
+    rest = add(*others)
+    if not isinstance(coeff, AccumBounds):
+        return add(coeff, rest)
+    if isinstance(rest, Integer) and rest.p == 0:
+        return coeff
+    terms = list(rest._args) if isinstance(rest, Add) else [rest]
+    return Add(coeff, *terms)

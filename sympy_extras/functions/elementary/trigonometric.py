@@ -12,7 +12,6 @@ half-angle square roots, the table of ``tan(k*pi/10)``), and the
 integer and half-integer multiples of ``pi`` peeled off sums. Not ported
 yet, the node stays unevaluated:
 
-* ``sin(oo)``, ``cos(oo)``, ``tan(oo)`` (SymPy returns ``AccumBounds``);
 * the compositions with the inverse functions (``sin(asin(x))``);
 * ``Float`` multiples of ``pi`` (SymPy turns binary fractions into
   rationals).
@@ -55,8 +54,9 @@ from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import DefinedFunction, ExpandHints, expand
 from sympy_extras.core.mul import Mul, div, mul
 from sympy_extras.core.numbers import (ComplexInfinity, Float, I, Infinity, Integer, NaN, NegativeInfinity, Rational,
-                                       nan, number_from_fraction, pi, zoo)
+                                       nan, number_from_fraction, oo, pi, zoo)
 from sympy_extras.core.power import pow, sqrt
+from sympy_extras.core.accumbounds import AccumBounds, accum_bounds
 
 __all__ = ['Sin', 'Cos', 'Tan', 'Cot', 'Sec', 'Csc', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'Asin', 'Acos',
            'Atan', 'Acot', 'Asec', 'Acsc', 'asin', 'acos', 'atan', 'acot', 'asec', 'acsc', 'pi_coeff', 'peeloff_pi',
@@ -240,8 +240,11 @@ class Sin(DefinedFunction):
             return nan
         if isinstance(arg, Rational) and arg.p == 0:
             return Integer(0)
+        # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:sin.eval (AccumBounds)
         if isinstance(arg, (Infinity, NegativeInfinity)):
-            return None
+            return AccumBounds(Integer(-1), Integer(1))
+        if isinstance(arg, AccumBounds):
+            return _sin_of_bounds(arg)
         if arg.could_extract_minus_sign():
             return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
         i_coeff = imaginary_coefficient(arg)
@@ -338,8 +341,13 @@ class Cos(DefinedFunction):
             return nan
         if isinstance(arg, Rational) and arg.p == 0:
             return Integer(1)
+        # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:cos.eval (AccumBounds)
         if isinstance(arg, (Infinity, NegativeInfinity)):
-            return None
+            return AccumBounds(Integer(-1), Integer(1))
+        if isinstance(arg, AccumBounds):
+            return sin(arg + pi/2)
+        if arg.is_extended_real is True and arg.is_finite is False:
+            return AccumBounds(Integer(-1), Integer(1))
         if arg.could_extract_minus_sign():
             return cls.apply(mul(Integer(-1), arg))
         i_coeff = imaginary_coefficient(arg)
@@ -469,8 +477,11 @@ class Tan(DefinedFunction):
             return nan
         if isinstance(arg, Rational) and arg.p == 0:
             return Integer(0)
+        # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:tan.eval (AccumBounds)
         if isinstance(arg, (Infinity, NegativeInfinity)):
-            return None
+            return AccumBounds(-oo, oo)
+        if isinstance(arg, AccumBounds):
+            return _tan_of_bounds(arg)
         if arg.could_extract_minus_sign():
             return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
         i_coeff = imaginary_coefficient(arg)
@@ -594,8 +605,11 @@ class Cot(DefinedFunction):
             return nan
         if isinstance(arg, Rational) and arg.p == 0:
             return zoo
+        # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:cot.eval (AccumBounds)
         if isinstance(arg, (Infinity, NegativeInfinity)):
-            return None
+            return AccumBounds(-oo, oo)
+        if isinstance(arg, AccumBounds):
+            return -tan(arg + pi/2)
         if arg.could_extract_minus_sign():
             return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
         i_coeff = imaginary_coefficient(arg)
@@ -801,6 +815,46 @@ class Csc(DefinedFunction):
 
     def _eval_facts(self) -> dict[str, bool]:
         return _trig_facts(self.args[0])
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:sin.eval (the AccumBounds argument)
+def _sin_of_bounds(arg: AccumBounds) -> Expr:
+    """``sin`` of accumulation bounds: the bounds reduced into a period,
+    the extrema at pi/2 + 2*k*pi and 3*pi/2 + 2*k*pi included."""
+    from .integers import floor
+    from sympy_extras.functions.elementary.miscellaneous import max_, min_
+    lo, hi = arg.min, arg.max
+    d = floor(lo/(2*pi))
+    if not isinstance(lo, NegativeInfinity):
+        lo = lo - d*2*pi
+    if not isinstance(hi, Infinity):
+        hi = hi - d*2*pi
+    reduced = accum_bounds(lo, hi)
+    if not isinstance(reduced, AccumBounds):
+        return sin(reduced)
+    maxima = reduced.meets_points([pi/2, pi*Rational(5, 2)])
+    if maxima and reduced.meets_points([pi*Rational(3, 2), pi*Rational(7, 2)]):
+        return AccumBounds(Integer(-1), Integer(1))
+    if maxima:
+        return accum_bounds(min_(sin(lo), sin(hi)), Integer(1))
+    if reduced.meets_points([pi*Rational(3, 2), pi*Rational(8, 2)]):
+        return accum_bounds(Integer(-1), max_(sin(lo), sin(hi)))
+    return accum_bounds(min_(sin(lo), sin(hi)), max_(sin(lo), sin(hi)))
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:tan.eval (the AccumBounds argument)
+def _tan_of_bounds(arg: AccumBounds) -> Expr:
+    from .integers import floor
+    lo, hi = arg.min, arg.max
+    d = floor(lo/pi)
+    if not isinstance(lo, NegativeInfinity):
+        lo = lo - d*pi
+    if not isinstance(hi, Infinity):
+        hi = hi - d*pi
+    reduced = accum_bounds(lo, hi)
+    if isinstance(reduced, AccumBounds) and reduced.meets_points([pi/2, pi*Rational(3, 2)]):
+        return AccumBounds(-oo, oo)
+    return accum_bounds(tan(lo), tan(hi))
 
 
 def sin(x: ExprLike) -> Expr:
@@ -1130,7 +1184,7 @@ class Atan(DefinedFunction):
             if arg == -1:
                 return -pi/4
         if isinstance(arg, ComplexInfinity):
-            return None  # SymPy: AccumBounds(-pi/2, pi/2), not ported
+            return AccumBounds(-pi/2, pi/2)
         if arg.could_extract_minus_sign():
             return mul(Integer(-1), cls.apply(mul(Integer(-1), arg)))
         if arg.is_number:

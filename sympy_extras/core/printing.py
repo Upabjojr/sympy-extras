@@ -309,7 +309,10 @@ def _in_compare_order(args: Sequence[Expr]) -> bool:
     """Whether the arguments are as an evaluating function stores them: a
     number first (``zoo`` ranks after the symbols in the compare order,
     but ``zoo + y`` keeps it first), then the compare order."""
-    rest = args[1:] if args and isinstance(args[0], Number) else args
+    from .accumbounds import AccumBounds
+    # the coefficient: a number, or accumulation bounds (SymPy's flatten
+    # puts them in the slot of the coefficient)
+    rest = args[1:] if args and isinstance(args[0], (Number, AccumBounds)) else args
     return list(rest) == sorted(rest, key=compare_key)
 
 

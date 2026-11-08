@@ -45,11 +45,7 @@ def test_values_match_sympy() -> None:
             ours, theirs = str(to_sympy(f(a), evaluate=False)), str(g(sa))
             if ours != theirs:
                 different.append((f.__name__, str(a), ours, theirs))
-    # AccumBounds results of SymPy (atan(zoo), atanh(zoo), asech(zoo)) are
-    # not ported: the node stays
-    accepted = {('atan', 'zoo'), ('atanh', 'zoo'), ('asech', 'zoo')}
-    unexpected = [d for d in different if (d[0], d[1]) not in accepted]
-    assert not unexpected, unexpected
+    assert not different, different
 
 
 def test_derivatives_and_numbers() -> None:

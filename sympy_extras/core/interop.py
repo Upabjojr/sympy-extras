@@ -49,6 +49,7 @@ from .numbers import (AlgebraicNumber, Catalan, CatalanType, ComplexInfinity, Eu
 from .coreerrors import PoleError
 from .order import Order
 from .limits import Limit
+from .accumbounds import AccumBounds
 from .power import Pow
 from .relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
 from .sorting import ClassKey, CompareItem
@@ -375,6 +376,8 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         return sympy.Order(args[0], *limits)
     if isinstance(e, Limit):
         return sympy.Limit(args[0], to_sympy(e.variable), to_sympy(e.point), e.direction)
+    if isinstance(e, AccumBounds):
+        return sympy.AccumBounds(args[0], args[1])
     if isinstance(e, UnevaluatedExpr):
         return sympy.UnevaluatedExpr(args[0])
     if isinstance(e, Lambda):
@@ -548,6 +551,8 @@ def _from_sympy(e: SymPyBasic) -> Basic:
         return Order(_expr(e.expr), *limits)
     if isinstance(e, sympy.Limit):
         return Limit(_expr(e.args[0]), _symbol(e.args[1]), _expr(e.args[2]), str(e.args[3]))
+    if isinstance(e, sympy.AccumBounds):
+        return AccumBounds(_expr(e.args[0]), _expr(e.args[1]))
     if isinstance(e, sympy.UnevaluatedExpr):
         return UnevaluatedExpr(_expr(e.args[0]))
     if isinstance(e, sympy.Lambda):

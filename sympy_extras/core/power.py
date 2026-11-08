@@ -517,6 +517,16 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
                 return Integer(0)
             sign = Integer(1) if isinstance(coefficient, Infinity) else Integer(-1)
             return mul(oo, pow(mul(sign, direction), exp))
+    from .accumbounds import AccumBounds
+    if isinstance(exp, AccumBounds) and isinstance(base, Exp1):
+        # PORTED FROM SYMPY: sympy/core/power.py:Pow.__new__ (E**AccumBounds)
+        from .accumbounds import accum_bounds
+        from sympy_extras.functions.elementary.exponential import exp as exponential
+        return accum_bounds(exponential(exp.min), exponential(exp.max))
+    if isinstance(base, AccumBounds):
+        # PORTED FROM SYMPY: AccumulationBounds._eval_power
+        from .accumbounds import ab_pow
+        return ab_pow(base, exp)
     if not isinstance(base, Number):
         own = base._eval_power_node(exp)
         if own is not None:

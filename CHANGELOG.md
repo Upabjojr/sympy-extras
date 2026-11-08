@@ -103,6 +103,12 @@ remove public functions. Breaking changes are listed here when they happen.
   `fuzzy_group`.
 - `Expr.aseries` (`sympy_extras.core.series.aseries`) is native, ported
   from SymPy on the native mrv sets; the series at infinity uses it.
+- Accumulation bounds, ported from SymPy: `sympy_extras.core.accumbounds`
+  (`AccumBounds`, `accum_bounds`, the interval arithmetic), the bounds as
+  the coefficient of sums and products, `E**AccumBounds`, and the bounds
+  of `sin`, `cos`, `tan`, `cot` at infinity and of bounds, of `exp`,
+  `log`, `frac(oo)`, `atan(zoo)`, `atanh(zoo)`, `asech(zoo)`; the limits
+  of oscillating functions are native now.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

@@ -41,10 +41,7 @@ def test_values_match_sympy() -> None:
             ours, theirs = str(to_sympy(ours_f(a), evaluate=False)), str(theirs_f(sa))
             if ours != theirs:
                 different.append((ours_f.__name__, str(a), ours, theirs))
-    # frac(oo), frac(-oo): SymPy answers AccumBounds(0, 1), not ported
-    accepted = {('frac', 'oo'), ('frac', '-oo')}
-    unexpected = [d for d in different if (d[0], d[1]) not in accepted]
-    assert not unexpected, unexpected
+    assert not different, different
 
 
 def test_facts_agree_with_sympy() -> None:

@@ -6,7 +6,7 @@ evaluation rules, derivatives and assumptions are ported from SymPy's
 ``sympy.functions.elementary.exponential`` (``exp.eval``, ``log.eval``
 and their ``_eval_is_*`` methods), restricted to what the typed core
 provides; the rules which need ``logcombine``, ``re``/``im``,
-``AccumBounds``, matrices or set expressions are not ported yet and leave
+matrices or set expressions are not ported yet and leave
 the node unevaluated:
 
 * ``exp(oo*z)`` for a number ``z`` which is not real (SymPy decides it
@@ -119,6 +119,10 @@ class Exp(DefinedFunction):
             return oo
         if isinstance(arg, NegativeInfinity):
             return Integer(0)
+        from sympy_extras.core.accumbounds import AccumBounds, accum_bounds
+        if isinstance(arg, AccumBounds):
+            # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp.eval (AccumBounds)
+            return accum_bounds(exp(arg.min), exp(arg.max))
         if isinstance(arg, ComplexInfinity):
             return nan
         if isinstance(arg, Log):
@@ -293,10 +297,18 @@ class Exp(DefinedFunction):
     # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp._eval_as_leading_term
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         from sympy_extras.core.coreerrors import PoleError
+        from sympy_extras.core.accumbounds import AccumBounds
+        from sympy_extras.functions.elementary.complexes import re
         arg = self.args[0].cancel().as_leading_term(x, logx=logx)
         arg0 = arg.subs(x, Integer(0))
         if isinstance(arg, NaN):
             return nan
+        if isinstance(arg0, AccumBounds):
+            # a corner case of SymPy's (its test_issue_18473): arg0 is 0,
+            # AccumBounds(-oo, 0) or AccumBounds(-oo, oo)
+            if re(cdir).is_negative is True:
+                return exp(-arg0)
+            return exp(arg0)
         if isinstance(arg0, NaN):
             arg0 = arg.limit(x, Integer(0))
         if arg0.is_infinite is False:
@@ -391,6 +403,14 @@ class Log(DefinedFunction):
             return nan
         if isinstance(arg, Exp) and arg.args[0].is_extended_real:
             return arg.args[0]
+        from sympy_extras.core.accumbounds import AccumBounds, accum_bounds
+        if isinstance(arg, AccumBounds):
+            # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log.eval (AccumBounds)
+            if arg.min.is_positive is True:
+                return accum_bounds(cls.apply(arg.min), cls.apply(arg.max))
+            if arg.min.is_zero is True:
+                return accum_bounds(-oo, cls.apply(arg.max))
+            return nan
         if arg.is_number:
             if arg.is_negative:
                 return add(mul(pi, I), cls.apply(mul(Integer(-1), arg)))
@@ -518,7 +538,8 @@ class Log(DefinedFunction):
                 a, b = s.removeO().leadterm(t, cdir=1)
             except ValueError:
                 a, b = s.removeO().as_leading_term(t, cdir=1), Integer(0)
-        p = add(mul(z, pow(mul(a, pow(t, b)), Integer(-1))), Integer(-1)).cancel()
+        # the operators, as SymPy (the accumulation bounds absorb real factors)
+        p = (z / (a * t**b) - 1).cancel()
         p = p._eval_nseries(t, _ceiling_int(nn), logx, Integer(1))
         if p.has(Exp):
             p = logcombine(p)

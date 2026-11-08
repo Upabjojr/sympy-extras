@@ -291,6 +291,8 @@ def mul(*args: ExprLike) -> Expr:
         return nonidentity[0]
     if any(f.is_Order for f in _flattened(factors)):
         return _with_orders(factors)
+    if any(_is_bounds(f) for f in _flattened(factors)):
+        return _with_bounds(factors)
     two = _two_argument_rule(factors)
     if two is not None:
         return two
@@ -770,3 +772,33 @@ def _keep_coeff(coeff: Expr, factors: Expr, clear: bool = True, sign: bool = Fal
     if isinstance(m, Number) and not isinstance(factors, Number):
         return Mul(coeff, factors)
     return m
+
+
+def _is_bounds(t: Basic) -> bool:
+    from .accumbounds import AccumBounds
+    return isinstance(t, AccumBounds)
+
+
+# PORTED FROM SYMPY: sympy/core/mul.py:Mul.flatten (the AccumBounds coefficient)
+def _with_bounds(factors: list[Expr]) -> Expr:
+    """A product with accumulation bounds: the numbers and the bounds make
+    the coefficient (``2*AccumBounds(-1, 1)`` is ``AccumBounds(-2, 2)``)."""
+    from .accumbounds import AccumBounds, ab_mul
+    coeff: Expr = Integer(1)
+    others: list[Expr] = []
+    for o in _flattened(factors):
+        if isinstance(o, Number):
+            if isinstance(coeff, Number):
+                coeff = coeff.number_mul(o)
+            elif isinstance(coeff, AccumBounds):
+                coeff = ab_mul(coeff, o)
+        elif isinstance(o, AccumBounds):
+            coeff = ab_mul(o, coeff)
+        else:
+            others.append(o)
+    rest = mul(*others)
+    if not isinstance(coeff, AccumBounds):
+        return mul(coeff, rest)
+    if isinstance(rest, Integer) and rest.p == 1:
+        return coeff
+    return Mul(coeff, *(list(rest.args) if isinstance(rest, Mul) else [rest]))
