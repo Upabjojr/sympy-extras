@@ -63,5 +63,6 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `core/sorting.py` | `compare` | the `compare` key; `sort_key`/`ordered` come with `Expr` |
 | `core/basic.py` | the structure | `Basic` = `Arc<Node>` with a `Head` per class (cached hash and compare key), `rebuild`, `atoms`, `free_symbols`, `has`, structural `xreplace`; `subs`/`doit`/`match`/`replace` come with the evaluating functions |
 | `core/numbers.py` | exact numbers | `Integer`/`Rational` (one head, the class kept), infinities, `nan`, constants, `I`; `Float`, `AlgebraicNumber` and the number arithmetic next |
+| `core/evalf.py` | `numeric_value` | on `dashu-float`/`dashu-cmplx` 0.6 (MIT/Apache) for `mpmath`; `EulerGamma` (Brent-McMillan), `Catalan` (Ramanujan), golden ratio and tribonacci constant computed here; `z**w` as `exp(w ln z)` because `dashu-cmplx` 0.6.2's `powf` hangs on exact results with a zero part (`(-1)**(1/2)`); `evalf`/`N` and `Float` next |
 | `core/symbol.py` | the classes | `Symbol`, `Dummy`, `Wild` heads with typed views; `symbols()` next |
 | everything else | not yet | the core continues: `expr`, `add`/`mul`/`power` (the evaluating functions), `printing`; then the polynomial `from_expr`/`to_expr` |

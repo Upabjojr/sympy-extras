@@ -24,6 +24,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashu-cmplx"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afb1039d10a717fa2584d8428596cf23d9be49be743362d7478b5b2637ca8cb5"
+dependencies = [
+ "dashu-base",
+ "dashu-float",
+ "dashu-int",
+ "num-modular",
+ "num-order",
+]
+
+[[package]]
 name = "dashu-float"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -31,6 +44,8 @@ checksum = "4be5a53987dee3a7e9e874aad24cd42cf074f0aa1e6b4d1230189837ea672a49"
 dependencies = [
  "dashu-base",
  "dashu-int",
+ "num-modular",
+ "num-order",
  "static_assertions",
 ]
 
@@ -244,6 +259,8 @@ name = "sympy-extras-core"
 version = "0.0.3"
 dependencies = [
  "dashu-base",
+ "dashu-cmplx",
+ "dashu-float",
  "dashu-int",
  "dashu-ratio",
 ]

@@ -29,6 +29,7 @@
 
 pub mod assumptions;
 pub mod basic;
+pub mod evalf;
 pub mod numbers;
 pub mod parameters;
 pub mod sorting;

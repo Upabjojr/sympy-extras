@@ -13,5 +13,7 @@ rust-version.workspace = true
 
 [dependencies]
 dashu-base = "0.6"
+dashu-cmplx = "0.6"
+dashu-float = "0.6"
 dashu-int = "0.6"
 dashu-ratio = "0.6"
