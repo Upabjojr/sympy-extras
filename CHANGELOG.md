@@ -209,6 +209,11 @@ remove public functions. Breaking changes are listed here when they happen.
   `StrictGreaterThan`), so `And`/`Or` keep SymPy's argument order.
 - `simplify` of a `Piecewise` inside an expression simplifies its pieces
   (it broke the pairs into tuples).
+- `simplify` of a hypergeometric function, a Bessel function or a
+  `Piecewise` node uses their native `_eval_simplify` (`hyperexpand`,
+  `besselsimp`, `piecewise_simplify`); a Meijer G-function takes the
+  common path, as in SymPy. Only the SymPy wrapper nodes still go to
+  SymPy's `simplify`.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

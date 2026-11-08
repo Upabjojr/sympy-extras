@@ -120,3 +120,20 @@ def test_simplify_of_piecewise_matches_sympy() -> None:
              x*P((sympy.sin(x)**2 + sympy.cos(x)**2, x - 1 > 0), (2, True))]
     for e in cases:
         assert str(to_sympy(simplify(expr_from_sympy(e)), evaluate=False)) == str(sympy.simplify(e)), e
+
+
+def test_simplify_of_hyper_bessel_meijerg_nodes_matches_sympy() -> None:
+    # their _eval_simplify (hyperexpand, besselsimp, piecewise_simplify) is
+    # native; a Meijer G-function takes the common path, as in SymPy
+    import sympy
+    from sympy import Piecewise as P, Rational as R, besselj, hyper, meijerg
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.simplify.simplify import simplify
+    x, z, nu, a = sympy.symbols('x z nu a')
+    cases = [hyper([1, 1], [2], z), meijerg([1], [], [], [], z), besselj(R(1, 2), z), besselj(nu, z*sympy.I),
+             hyper([R(1, 2)], [R(3, 2)], -z**2), meijerg([], [], [0], [], z),
+             P((besselj(R(1, 2), x), x > 0), (hyper([], [], x), True)), x*hyper([1, 1], [2], -x) + 1,
+             meijerg([a], [], [a], [], z)]
+    for e in cases:
+        assert str(to_sympy(simplify(expr_from_sympy(e)), evaluate=False)) == str(sympy.simplify(e)), e

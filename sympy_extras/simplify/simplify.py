@@ -603,10 +603,7 @@ def _through_sympy(e: Expr, step: Callable[['sympy.Basic'], 'sympy.Basic']) -> E
 def _sympy_only() -> tuple[type, ...]:
     """The classes whose simplification is SymPy's (not ported)."""
     from sympy_extras.core.interop import SymPyExprNode
-    from sympy_extras.functions.elementary.piecewise import Piecewise
-    from sympy_extras.functions.special.bessel import BesselBase
-    from sympy_extras.functions.special.hyper import Hyper, MeijerG
-    return (SymPyExprNode, BesselBase, Hyper, MeijerG, Piecewise)
+    return (SymPyExprNode,)
 
 
 def _combinatorial() -> tuple[type, ...]:
@@ -630,6 +627,19 @@ def _eval_simplify(e: Expr, ratio: float, measure: Measure, rational: Optional[b
     from sympy_extras.core.function import expand_log
     if isinstance(e, _sympy_only()):
         return _sympy_simplify(e, ratio, rational, inverse, doit)
+    from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise_simplify
+    from sympy_extras.functions.special.bessel import BesselBase
+    from sympy_extras.functions.special.hyper import Hyper
+    if isinstance(e, Hyper):
+        # PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper._eval_simplify
+        from .hyperexpand import hyperexpand
+        return hyperexpand(e)
+    if isinstance(e, BesselBase):
+        # PORTED FROM SYMPY: sympy/functions/special/bessel.py:BesselBase._eval_simplify
+        return besselsimp(e)
+    if isinstance(e, Piecewise):
+        # PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:Piecewise._eval_simplify
+        return piecewise_simplify(e, doit=doit)
     if isinstance(e, Log):
         # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log._eval_simplify
         new = log(simplify(_expr(e.args[0]), ratio, measure, rational, inverse, doit))
