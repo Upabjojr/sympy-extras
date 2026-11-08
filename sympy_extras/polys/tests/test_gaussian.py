@@ -54,3 +54,18 @@ def test_cancel_with_gaussian_coefficients_matches_sympy() -> None:
     for e in [(x**2 + 1)/(x + s.I), (x + s.I)**2/(x**2 - 1 + 2*s.I*x), (2*s.I*x + 2)/(4*x - 4*s.I),
               s.sqrt(s.I)*s.I*x/(x + x**2)]:
         assert str(to_sympy(expr_from_sympy(e).cancel(), evaluate=False)) == str(s.cancel(e)), e
+
+
+def test_univariate_factor_over_gaussian_matches_sympy() -> None:
+    rng = random.Random(5)
+    for _ in range(60):
+        e: s.Expr = s.Integer(1)
+        for _ in range(rng.randint(1, 3)):
+            p = sum(((rng.randint(-3, 3) + rng.randint(-3, 3) * s.I) * x**k for k in range(rng.randint(1, 2) + 1)),
+                    s.Integer(0))
+            if p != 0:
+                e = e * p**rng.randint(1, 2)
+        e = s.expand(e * s.Rational(rng.choice([1, 2, 3]), rng.choice([1, 2])))
+        if not e.has(x):
+            continue
+        assert str(to_sympy(expr_from_sympy(e).factor(), evaluate=False)) == str(s.factor(e)), e

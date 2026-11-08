@@ -114,6 +114,10 @@ remove public functions. Breaking changes are listed here when they happen.
   canonical units by quadrant, gcd, gcdex, lcm); `cancel` works over them
   as SymPy's `PolyElement.cancel` does (no SymPy fallback, no generator
   standing for `I` any more).
+- `factor` of univariate polynomials with Gaussian coefficients, ported
+  from SymPy (`dup_zz_i_factor`, `dup_qq_i_factor`: Trager's algorithm
+  over `QQ<I>`, the contents made Gaussian integers); several generators
+  with `I` are still factored by SymPy.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

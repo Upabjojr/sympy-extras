@@ -1239,6 +1239,74 @@ def _gaussian_expr_of(f: dict[Monomial, GaussianRational], gens: tuple[Expr, ...
     return add(*parts)
 
 
+# PORTED FROM SYMPY: sympy/polys/factortools.py:dup_factor_list, dup_zz_i_factor, dup_qq_i_factor
+def _gaussian_factor_list(base: Expr) -> tuple[Expr, list[tuple[Expr, int]]]:
+    """The factorisation of a univariate polynomial with Gaussian
+    coefficients over ``ZZ_I`` (or ``QQ_I``): over ``QQ<I>`` by Trager's
+    algorithm, the contents of the factors made Gaussian integers as SymPy
+    does; ``CoercionFailed`` for several generators or other coefficients."""
+    from fractions import Fraction as _Fraction
+    from .domains.algebraicfield import AlgebraicField
+    from .factortools import dup_ext_factor
+    gens, (rep,) = _joint_rings_gaussian([base])
+    if len(gens) != 1:
+        raise CoercionFailed('the factorisation over ZZ_I in several generators is not ported yet')
+    integral = all(c.x.denominator == 1 and c.y.denominator == 1 for c in rep.values())
+    degree = max(m[0] for m in rep)
+    dense: list[GaussianRational] = [rep.get((degree - i,), QQ_I.zero) for i in range(degree + 1)]
+    # dup_terms_gcd
+    j = 0
+    while dense and not dense[-1]:
+        dense.pop()
+        j += 1
+    # dup_primitive (the content over ZZ_I, 1 over the field QQ_I)
+    cont = QQ_I.one
+    if integral:
+        content = ZZ_I.zero
+        for c in dense:
+            content = ZZ_I.gcd(content, ZZ_I.convert(c, QQ_I))
+            if content == ZZ_I.one:
+                break
+        cont = QQ_I.convert(content, ZZ_I)
+        dense = [QQ_I.exquo(c, cont) for c in dense]
+    # dup_qq_i_factor: the factorisation over QQ<I>
+    K1 = AlgebraicField([_Fraction(1), _Fraction(0), _Fraction(1)], I)
+    lc, ext_factors = dup_ext_factor([K1.from_expr(QQ_I.to_expr(c)) for c in dense], K1)
+    coeff = QQ_I.from_expr(K1.to_expr(lc))
+    found: list[tuple[list[GaussianRational], int]] = [
+        ([QQ_I.from_expr(K1.to_expr(c)) for c in fac], k) for fac, k in ext_factors]
+    if integral:
+        # dup_zz_i_factor: the denominators and the contents of the factors
+        # over ZZ_I moved into the coefficient
+        new_found: list[tuple[list[GaussianRational], int]] = []
+        for fac, k in found:
+            fac_denom = ZZ_I.one
+            for c in fac:
+                fac_denom = ZZ_I.lcm(fac_denom, ZZ_I.denom_of(c))
+            d = QQ_I.convert(fac_denom, ZZ_I)
+            numerators = [ZZ_I.convert(QQ_I.mul(c, d), QQ_I) for c in fac]
+            content = ZZ_I.zero
+            for nc in numerators:
+                content = ZZ_I.gcd(content, nc)
+                if content == ZZ_I.one:
+                    break
+            primitive = [QQ_I.convert(ZZ_I.exquo(nc, content), ZZ_I) for nc in numerators]
+            coeff = QQ_I.exquo(QQ_I.mul(coeff, QQ_I.pow(QQ_I.convert(content, ZZ_I), k)), QQ_I.pow(d, k))
+            new_found.append((primitive, k))
+        found = new_found
+    if j:
+        found.insert(0, ([QQ_I.one, QQ_I.zero], j))
+    # _sort_factors (multiple): by length, multiplicity, coefficients
+    found.sort(key=lambda item: (len(item[0]), item[1], [(c.x, c.y) for c in item[0]]))
+    x = gens[0]
+
+    def expr_of(fac: list[GaussianRational]) -> Expr:
+        n = len(fac) - 1
+        return add(*[mul(QQ_I.to_expr(c), pow(x, Integer(n - i))) for i, c in enumerate(fac) if c])
+
+    return QQ_I.to_expr(QQ_I.mul(coeff, cont)), [(expr_of(fac), k) for fac, k in found]
+
+
 # PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement.cancel (the domains ZZ and QQ)
 def _cancel_reps(f: dict[Monomial, Fraction], g: dict[Monomial, Fraction], n: int
                  ) -> tuple[PolyElement[int], PolyElement[int], SparsePolynomialRing[int]]:
@@ -1432,13 +1500,22 @@ def _symbolic_factor_list(expr: Expr, gens: Sequence[ExprLike], method: Method =
                 continue
         else:
             base, exponent = arg, Integer(1)
+        found: SymbolicFactors
         try:
             p = Poly(base, *gens)
         except GeneratorsNeeded:
             factors.append((_expanded(base), exponent))
             continue
-        c, poly_factors = p.factor_list() if method == 'factor' else p.sqf_list()
-        found: SymbolicFactors = [(g, Integer(k)) for g, k in poly_factors]
+        except CoercionFailed:
+            # Gaussian coefficients (one generator): SymPy's factorisation
+            # over ZZ_I and QQ_I through QQ<I>
+            if gens or method != 'factor':
+                raise
+            c, gaussian = _gaussian_factor_list(base)
+            found = [(g, Integer(k)) for g, k in gaussian]
+        else:
+            c, poly_factors = p.factor_list() if method == 'factor' else p.sqf_list()
+            found = [(g, Integer(k)) for g, k in poly_factors]
         if not (isinstance(c, Integer) and c.p == 1):
             if isinstance(exponent, Integer):
                 coefficient = mul(coefficient, pow(c, exponent))
