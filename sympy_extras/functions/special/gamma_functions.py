@@ -374,8 +374,8 @@ def _range_to(e: Expr) -> int:
 # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:lowergamma
 class LowerGamma(DefinedFunction):
     """The lower incomplete gamma ``lowergamma(a, x)``, unevaluated
-    (``lowergamma`` evaluates). The branch factors of SymPy's polar
-    arguments (``exp_polar``) do not exist in the core."""
+    (``lowergamma`` evaluates); a polar argument loses its branch factor
+    (``exp_polar(2*pi*I*n)``) as SymPy's rules say."""
 
     function_name = 'lowergamma'
     nargs = frozenset({2})
@@ -387,6 +387,18 @@ class LowerGamma(DefinedFunction):
         a, x = args
         if isinstance(x, Rational) and x.p == 0:
             return ZERO
+        from sympy_extras.functions.elementary.complexes import unpolarify
+        nx, n = x.extract_branch_factor()
+        if a.is_integer is True and a.is_positive is True:
+            nx = unpolarify(x)
+            if nx != x:
+                return lowergamma(a, nx)
+        elif a.is_integer is True and a.is_nonpositive is True:
+            if n != 0:
+                return add(div(mul(Integer(2), pi, I, n, pow(Integer(-1), mul(Integer(-1), a))),
+                               factorial(mul(Integer(-1), a))), lowergamma(a, nx))
+        elif n != 0:
+            return mul(exp(mul(Integer(2), pi, I, n, a)), lowergamma(a, nx))
         half = Rational(1, 2)
         if isinstance(a, Rational):
             if a == ONE:
@@ -440,7 +452,8 @@ class LowerGamma(DefinedFunction):
 # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:uppergamma
 class UpperGamma(DefinedFunction):
     """The upper incomplete gamma ``uppergamma(a, z)``, unevaluated
-    (``uppergamma`` evaluates)."""
+    (``uppergamma`` evaluates); a polar argument loses its branch factor
+    as SymPy's rules say."""
 
     function_name = 'uppergamma'
     nargs = frozenset({2})
@@ -459,6 +472,20 @@ class UpperGamma(DefinedFunction):
             return ZERO
         if isinstance(z, Rational) and z.p == 0 and re(a).is_positive:
             return gamma(a)
+        # the branch factor of a polar argument (C/f lowergamma)
+        from sympy_extras.functions.elementary.complexes import unpolarify
+        nx, n = z.extract_branch_factor()
+        if a.is_integer is True and a.is_positive is True:
+            nx = unpolarify(z)
+            if z != nx:
+                return uppergamma(a, nx)
+        elif a.is_integer is True and a.is_nonpositive is True:
+            if n != 0:
+                return add(div(mul(Integer(-2), pi, I, n, pow(Integer(-1), mul(Integer(-1), a))),
+                               factorial(mul(Integer(-1), a))), uppergamma(a, nx))
+        elif n != 0:
+            branch = exp(mul(Integer(2), pi, I, n, a))
+            return add(mul(gamma(a), sub(ONE, branch)), mul(branch, uppergamma(a, nx)))
         if isinstance(a, Rational):
             if a.p == 0 and z.is_positive:
                 return mul(Integer(-1), Ei(minus_z))
@@ -477,7 +504,7 @@ class UpperGamma(DefinedFunction):
                     return add(mul(gamma(a), erfc(sqrt(z))),
                                mul(pow(Integer(-1), sub(a, Rational(3, 2))), exp(minus_z), sqrt(z), terms))
                 if isinstance(b, Rational) and b.q == 1:
-                    return mul(expint(mul(Integer(-1), b), z), pow(z, add(b, ONE)))
+                    return mul(expint(mul(Integer(-1), b), z), pow(unpolarify(z), add(b, ONE)))
                 if a.q != 1:
                     terms = add(*[div(mul(pow(z, Integer(k)), gamma(a)), gamma(add(a, Integer(k + 1))))
                                   for k in range(_range_to(sub(half, a)))])

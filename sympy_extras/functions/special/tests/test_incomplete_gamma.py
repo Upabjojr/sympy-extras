@@ -55,3 +55,19 @@ def test_derivatives_and_numbers() -> None:
                  (expint(Rational(1, 3), x).subs(x, Integer(2)), sympy.expint(sympy.Rational(1, 3), 2)),
                  (Ei(x).subs(x, Integer(-2)), sympy.Ei(-2)), (Ei(x).subs(x, 1 + I), sympy.Ei(1 + sympy.I))]:
         assert abs(complex(sympy_value(e.evalf(20))) - complex(sympy.N(s, 20))) < 1e-14, e
+
+
+def test_branch_factors_of_polar_arguments_match_sympy() -> None:
+    import sympy
+    from sympy import I as sI, Rational as R, exp_polar as E, pi as sP
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.functions import lowergamma, uppergamma
+    z, a = sympy.symbols('z a')
+    p = sympy.Symbol('p', positive=True)
+    points = [z, z*E(sI*sP), z*E(2*sI*sP), z*E(-2*sI*sP), z*E(4*sI*sP), p*E(sI*sP/2), z*E(3*sI*sP), 2*E(2*sI*sP)]
+    for ours, theirs in [(lowergamma, sympy.lowergamma), (uppergamma, sympy.uppergamma)]:
+        for s in [R(1), R(2), R(1, 2), R(1, 3), R(0), R(-1), R(-2), R(-3, 2), a]:
+            for x in points:
+                got = str(to_sympy(ours(expr_from_sympy(s), expr_from_sympy(x)), evaluate=False))
+                assert got == str(theirs(s, x)), (theirs.__name__, s, x)

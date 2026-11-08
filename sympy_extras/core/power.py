@@ -719,8 +719,10 @@ def _power_of_product(base: Mul, exp: Expr) -> Optional[Expr]:
                 return unevaluated_mul(pow(number_from_fraction(Fraction(n, d)), Integer(exp.p)),
                                        pow(add(Integer(1), mul(unit, I)), Integer(exp.p)))
     coefficient, rest = base.as_coeff_Mul()
-    positive = [f for f in factors_of(rest) if f.is_positive is True]
-    others = [f for f in factors_of(rest) if f.is_positive is not True]
+    # SymPy's _eval_expand_power_base: the positive and the polar factors
+    # come out of the power
+    positive = [f for f in factors_of(rest) if f.is_positive is True or f.is_polar is True]
+    others = [f for f in factors_of(rest) if not (f.is_positive is True or f.is_polar is True)]
     if coefficient.is_finite_number and coefficient._sign() != 0 and not (
             isinstance(coefficient, Rational) and coefficient.p == 1 and coefficient.q == 1):
         if coefficient._sign() > 0 or not others:

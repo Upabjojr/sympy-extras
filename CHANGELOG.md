@@ -160,6 +160,15 @@ remove public functions. Breaking changes are listed here when they happen.
   are ordered by creation (SymPy's dummies print with their number).
   Before, two dummies tied and results such as `factor_nc` depended on
   how many dummies existed (`(A - B)**2` or `(-A + B)**2`).
+- hyperexpand groundwork (the port of `sympy.simplify.hyperexpand` is in
+  parts): the `HyperRep_*` functions with their closed forms
+  (`rewrite_nonrep`), a small immutable `ExprMatrix`
+  (`sympy_extras.matrices`), the formula tables, the parameter buckets,
+  the formula lookup and the shift operators with `reduce_order`, in
+  `sympy_extras.simplify.hyperexpand`.
+- `lowergamma` and `uppergamma` take the branch factor out of a polar
+  argument as SymPy does; a rational power of a product takes out the
+  polar factors as it takes out the positive ones.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

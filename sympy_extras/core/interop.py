@@ -960,6 +960,14 @@ def _fill_function_tables() -> None:
         (mat.MathieuCPrime, sympy.mathieucprime), (sing.SingularityFunctionNode, sympy.SingularityFunction),
         (e.FresnelS, sympy.fresnels), (e.FresnelC, sympy.fresnelc), (el.EllipticK, sympy.elliptic_k),
         (el.EllipticF, sympy.elliptic_f), (el.EllipticE, sympy.elliptic_e), (el.EllipticPi, sympy.elliptic_pi)]
+    import sympy.functions.special.hyper as sympy_hyper
+    from sympy_extras.functions.special import hyperrep
+    for name in hyperrep.__all__:
+        if name.startswith('HyperRep_'):
+            native_rep, sympy_rep = getattr(hyperrep, name), getattr(sympy_hyper, name)
+            if isinstance(native_rep, type) and issubclass(native_rep, DefinedFunction) \
+                    and isinstance(sympy_rep, type) and issubclass(sympy_rep, sympy.Function):
+                pairs.append((native_rep, sympy_rep))
     for native, counterpart in pairs:
         _NATIVE_TO_SYMPY[native] = counterpart
         _SYMPY_TO_NATIVE[counterpart] = native
