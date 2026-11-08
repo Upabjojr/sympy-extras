@@ -700,3 +700,30 @@ def test_sympy_conventions_of_the_methods() -> None:
     assert str(expand(p*y**3/(4*(4 - n)))) == 'p*y**3/(16 - 4*n)' and str(expand(-I*n*x*(y - x)**Rational(3, 2))) == 'I*n*x**2*sqrt(-x + y) - I*n*x*y*sqrt(-x + y)'
     assert str((1/sqrt(n - x) + E/z).as_leading_term(x)) == '(E*sqrt(n) + z)/(sqrt(n)*z)' and (x + x*y).as_leading_term(x) == x*y + x
     assert Q.positive(x).sort_key()[0] == (5, 0, 'AppliedPredicate') and f(x).sort_key()[0] == (4, 0, 'f')
+
+
+def test_refine_matches_sympy() -> None:
+    import random
+    import sympy
+    from sympy import Q as SQ
+    from sympy_extras.core import Q, refine, to_sympy
+    from sympy_extras.core.interop import from_sympy
+    sx, sy = sympy.symbols('x y')
+    rng = random.Random(5)
+    exprs = [sympy.sqrt(sx**2), sympy.Abs(sx), sympy.Abs(sx*sy), (-1)**(sx + 1), (-1)**(sx + sy + 3), sympy.re(sx),
+             sympy.im(sx), sympy.arg(sx), sympy.sign(sx), sympy.atan2(sy, sx), sympy.exp(sympy.pi*sympy.I*sx),
+             sympy.Abs(sx)**2, sx > 0, sympy.Eq(sx, 0), (-sx)**3, (-sx)**sy, sympy.sqrt(sx**2*sy**2),
+             (-1)**(2*sx + 1), sympy.Abs(2*sx)]
+    predicates = [(SQ.positive, Q.positive), (SQ.negative, Q.negative), (SQ.real, Q.real), (SQ.even, Q.even),
+                  (SQ.odd, Q.odd), (SQ.integer, Q.integer), (SQ.imaginary, Q.imaginary), (SQ.zero, Q.zero),
+                  (SQ.nonnegative, Q.nonnegative)]
+    for e in exprs:
+        for _ in range(5):
+            (sa, oa), (sb, ob) = rng.choice(predicates), rng.choice(predicates)
+            given = sa(sx) & sb(sy)
+            try:
+                want = str(sympy.refine(e, given))
+            except ValueError:
+                continue  # inconsistent assumptions
+            ours = refine(from_sympy(e), oa(from_sympy(sx)) & ob(from_sympy(sy)))
+            assert str(to_sympy(ours, evaluate=False)) == want, (e, given)

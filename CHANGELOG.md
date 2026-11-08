@@ -141,6 +141,10 @@ remove public functions. Breaking changes are listed here when they happen.
   function is commutative only when its arguments are (SymPy's
   `Function._eval_is_commutative`: `exp(A)` of a noncommutative `A` is
   not); `invert` with its only generator is native.
+- `refine` is native, ported from SymPy (`sympy.assumptions.refine`: the
+  handlers of `Abs`, `Pow`, `atan2`, `re`, `im`, `arg`, `sign` and the
+  `_eval_refine` of symbols, powers, `exp` and booleans, on the native
+  `ask`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
