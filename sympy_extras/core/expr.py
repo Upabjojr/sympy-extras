@@ -1330,6 +1330,9 @@ class Expr(Basic):
 
     def invert(self, g: ExprLike, *gens: Symbol) -> Expr:
         """SymPy's ``invert``: the inverse of ``self`` modulo ``g``."""
+        if not gens:
+            from sympy_extras.polys.polytools import invert
+            return invert(self, g)
         from .interop import expr_through_sympy, to_sympy
         return expr_through_sympy(self, lambda s: sympy.invert(s, to_sympy(to_expr(g)), *[to_sympy(v) for v in gens]))
 

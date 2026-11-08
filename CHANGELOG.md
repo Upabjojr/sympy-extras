@@ -66,6 +66,8 @@ remove public functions. Breaking changes are listed here when they happen.
   SymPy; `Expr.simplify` uses it. The steps for Integral, Sum, Product,
   Bessel functions, `hyper`, Kronecker deltas, Piecewise conditions and
   noncommutative products still go through SymPy.
+- `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
+  integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
   multivariate division of `reduced` over `QQ`); `Expr.ratsimp` uses it.
 - `sympy_extras.simplify.gammasimp`: `gammasimp` (rising factorials,

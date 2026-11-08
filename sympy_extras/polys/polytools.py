@@ -69,6 +69,8 @@ from sympy_extras.core.numbers import I, Integer, Number, Rational, number_from_
 from sympy_extras.core.power import Pow, pow
 from sympy_extras.core.symbol import Symbol
 
+from builtins import pow as builtins_pow
+
 from . import densearith, densebasic, euclidtools, factortools, sqfreetools
 from .domains import QQ, ZZ
 from .domains.sparsepolynomialring import (IntegerPolynomialRing, IteratedPolynomialRing, RationalPolynomialRing,
@@ -1200,6 +1202,41 @@ def _expr_of(f: PolyElement[int], gens: tuple[Expr, ...]) -> Expr:
         factors += [pow(g, Integer(k)) for g, k in zip(gens, m) if k]
         parts.append(mul(*factors))
     return add(*parts)
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:invert (univariate over QQ, two integers)
+def invert(f: ExprLike, g: ExprLike) -> Expr:
+    """The inverse of ``f`` modulo ``g``: for two integers the modular
+    inverse, for univariate polynomials the polynomial ``s`` of degree
+    below ``g``'s with ``s*f = 1 (mod g)`` over ``QQ`` (``NotInvertible``
+    when they are not coprime). Several generators go through SymPy.
+
+    >>> from sympy_extras.core import Symbol
+    >>> x = Symbol('x')
+    >>> invert(x**2 - 1, 2*x - 1), invert(3, 7)
+    (-4/3, 5)
+    """
+    from .polyerrors import NotInvertible
+    a, b = to_expr(f), to_expr(g)
+    if isinstance(a, Integer) and isinstance(b, Integer):
+        try:
+            return Integer(builtins_pow(a.p, -1, b.p))
+        except ValueError:
+            raise NotInvertible('zero divisor') from None
+    gens, (pf, pg) = _joint_rings([a, b])
+    if len(gens) != 1:
+        import sympy
+        from sympy_extras.core.interop import expr_from_sympy, to_sympy
+        return expr_from_sympy(sympy.invert(to_sympy(a), to_sympy(b)))
+    def dense(terms: dict[Monomial, Fraction]) -> list[Fraction]:
+        n = max((m[0] for m in terms), default=0)
+        return [terms.get((k,), Fraction(0)) for k in range(n, -1, -1)]
+    try:
+        h = euclidtools.dup_invert(dense(pf), dense(pg), QQ)
+    except (ValueError, ZeroDivisionError):
+        raise NotInvertible('zero divisor') from None
+    n = len(h) - 1
+    return add(*[mul(number_from_fraction(c), pow(gens[0], Integer(n - i))) for i, c in enumerate(h) if c])
 
 
 # PORTED FROM SYMPY: sympy/polys/polytools.py:cancel (a pair)

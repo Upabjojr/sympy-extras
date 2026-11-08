@@ -146,3 +146,27 @@ def test_cancel_matches_sympy(seed: int) -> None:
         if ours != str(theirs):
             different.append((str(e), ours, str(theirs)))
     assert not different, different[:3]
+
+
+def test_invert_matches_sympy() -> None:
+    import random
+    import sympy
+    from sympy_extras.core.interop import expr_from_sympy, to_sympy
+    from sympy_extras.polys.polyerrors import NotInvertible
+    from sympy_extras.polys.polytools import invert
+    rng = random.Random(3)
+    sx = sympy.Symbol('x')
+
+    def poly(d: int) -> sympy.Expr:
+        return sympy.Add(*[rng.choice([0, 1, -1, 2, sympy.Rational(1, 2), 3]) * sx**i for i in range(rng.randint(1, d) + 1)])
+    for _ in range(80):
+        f, g = poly(4), poly(3)
+        try:
+            theirs = str(sympy.invert(f, g))
+        except sympy.polys.polyerrors.NotInvertible:
+            theirs = 'not invertible'
+        try:
+            ours = str(to_sympy(invert(expr_from_sympy(f), expr_from_sympy(g)), evaluate=False))
+        except NotInvertible:
+            ours = 'not invertible'
+        assert ours == theirs, (f, g)
