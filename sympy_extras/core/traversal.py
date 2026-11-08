@@ -74,7 +74,9 @@ def bottom_up(rv: Basic, F: Callable[[Basic], Basic], atoms: bool = False, nonba
     if not rv.args:
         return F(rv) if atoms else rv
     args = tuple(bottom_up(a, F, atoms, nonbasic) for a in rv.args)
-    if not all(a is b for a, b in zip(args, rv.args)):
+    # SymPy rebuilds when the arguments are not equal (not identical): an
+    # equal new argument must not re-evaluate 2*(x + 1) into 2*x + 2
+    if any(a is not b and a != b for a, b in zip(args, rv.args)):
         rv = rv._evaluated(args)
     return F(rv)
 

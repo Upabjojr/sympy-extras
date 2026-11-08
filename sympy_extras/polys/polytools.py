@@ -577,7 +577,7 @@ class Poly:
         values = [point if j == i else g for j, g in enumerate(self._gens)]
         from sympy_extras.core.basic import Basic as _Basic
         substitution: dict[_Basic, _Basic] = {g: v for g, v in zip(self._gens, values) if g != v}
-        result = self.as_expr().xreplace(substitution)
+        result = self.as_expr()._xreplace_evaluated(substitution)
         if not isinstance(result, Expr):
             raise TypeError("an expression is expected")
         rest = self._gens[:i] + self._gens[i + 1:]

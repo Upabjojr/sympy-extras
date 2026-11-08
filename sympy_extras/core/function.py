@@ -51,7 +51,7 @@ from .containers import Tuple
 from .coreerrors import PoleError
 from .expr import AtomicExpr, Expr, ExprLike, UnevaluatedExpr, as_expr, factors_of, terms_of, to_expr
 from .kind import Kind, UndefinedKind
-from .mul import Mul, mul
+from .mul import Mul, mul, neg
 from .numbers import Exp1, Float, Integer, Number, NumberSymbol, Rational
 from .power import Pow, pow
 from .sorting import ClassKey
@@ -1199,8 +1199,12 @@ def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: boo
 
 def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp: bool, log: bool) -> Expr:
     if deep and e.args and not isinstance(e, (Derivative, UnevaluatedExpr)):
-        e = as_expr(e._evaluated(tuple(_expand(a, deep, distribute, multinomial, power_exp, log)
-                                       if isinstance(a, Expr) else a for a in e.args)))
+        args = tuple(_expand(a, deep, distribute, multinomial, power_exp, log) if isinstance(a, Expr) else a
+                     for a in e.args)
+        # SymPy's _expand_hint rebuilds a node only when an argument
+        # changed: 2*(y*log(2) + 2) stays under the log hint alone
+        if any(new is not old and new != old for new, old in zip(args, e.args)):
+            e = as_expr(e._evaluated(args))
     if isinstance(e, Mul) and distribute:
         return _expand_mul_node(e, deep)
     if isinstance(e, Pow):
@@ -1598,6 +1602,13 @@ def count_ops(expr: CountOpsArg, visual: bool = False) -> Basic:
     return Integer(sum(counts.values()))
 
 
+# PORTED FROM SYMPY: sympy/core/function.py:_coeff_isneg
+def _coeff_isneg(a: Expr) -> bool:
+    """Whether the leading numerical coefficient of ``a`` is negative."""
+    first = a.args[0] if isinstance(a, Mul) and a.args else a
+    return isinstance(first, Number) and first.is_extended_negative is True
+
+
 def _tally(counts: dict[str, int], name: str, n: int = 1) -> None:
     if n:
         counts[name] = counts.get(name, 0) + n
@@ -1623,8 +1634,9 @@ def _count(e: CountOpsArg, counts: dict[str, int]) -> None:
     if isinstance(e, Add):
         # SymPy: every term negative gives NEG and (n - 1) SUB; otherwise a
         # SUB per negative term and an ADD per positive term but one
-        terms = e.as_ordered_terms()
-        negatives = [t.could_extract_minus_sign() for t in terms]
+        # the counts do not depend on the order of the terms
+        terms = [t for t in e.args if isinstance(t, Expr)]
+        negatives = [_coeff_isneg(t) for t in terms]
         if all(negatives):
             _tally(counts, 'NEG')
             _tally(counts, 'SUB', len(terms) - 1)
@@ -1632,39 +1644,41 @@ def _count(e: CountOpsArg, counts: dict[str, int]) -> None:
             _tally(counts, 'SUB', sum(1 for n in negatives if n))
             _tally(counts, 'ADD', sum(1 for n in negatives if not n) - 1)
         for t, negative in zip(terms, negatives):
-            _count(-t if negative else t, counts)
+            _count(neg(t) if negative else t, counts)
         return
     if isinstance(e, Exp1):
         _tally(counts, 'EXP')  # SymPy: E is exp(1)
         return
     if isinstance(e, Mul):
-        c, rest = e.as_coeff_Mul()
-        numerator: list[Expr] = []
-        denominator: list[Expr] = []
-        if c.is_negative is True:
+        # PORTED FROM SYMPY: sympy/core/function.py:count_ops (the Mul branch)
+        from sympy_extras.simplify.radsimp import fraction
+        a: Expr = e
+        if _coeff_isneg(e):
             _tally(counts, 'NEG')
-            c = c.number_mul(Integer(-1))
-        if isinstance(c, Rational):
-            if c.p != 1:
-                numerator.append(Integer(c.p))
-            if c.q != 1:
-                denominator.append(Integer(c.q))
-        elif not (c.is_Number and c == 1):
-            numerator.append(c)
-        for f in factors_of(rest):
-            b, ex = f.as_base_exp()
-            sign = ex.as_coeff_Mul()[0]
-            if isinstance(sign, Rational) and sign.p < 0:
-                denominator.append(pow(b, mul(Integer(-1), ex)))
+            first = a.args[0]
+            if isinstance(first, Integer) and first.p == -1:
+                rest = [f for f in a.args[1:] if isinstance(f, Expr)]
+                a = rest[0] if len(rest) == 1 else Mul(*rest)
             else:
-                numerator.append(f)
-        _tally(counts, 'MUL', max(len(numerator) - 1, 0))
-        if denominator:
+                a = neg(a)
+        n, d = fraction(a)
+        if isinstance(n, Integer):
             _tally(counts, 'DIV')
-            _tally(counts, 'MUL', len(denominator) - 1)
-        for f in numerator + denominator:
-            if not isinstance(f, Number):
+            _tally(counts, 'NEG', int(n.p < 0))
+            _count(d, counts)
+            return
+        if not (isinstance(d, Integer) and d.p == 1):
+            if not isinstance(d, Integer):
+                _count(d, counts)
+            _tally(counts, 'DIV')
+            _count(n, counts)
+            return
+        if isinstance(a, Mul):
+            _tally(counts, 'MUL', len(a.args) - 1)
+            for f in a.args:
                 _count(f, counts)
+            return
+        _count(a, counts)
         return
     if isinstance(e, Pow):
         if isinstance(e.exp, Rational) and e.exp.p == -1 and e.exp.q == 1:
@@ -1676,8 +1690,8 @@ def _count(e: CountOpsArg, counts: dict[str, int]) -> None:
         return
     if isinstance(e, (Relational, BooleanFunction)):
         _tally(counts, type(e).__name__.upper())
-        for a in e.args:
-            _count(a, counts)
+        for operand in e.args:
+            _count(operand, counts)
         return
     if isinstance(e, Mod):
         _tally(counts, 'MOD')

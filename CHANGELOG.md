@@ -74,6 +74,14 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `count_ops` follows SymPy's loop: sums in argument order with
+  `_coeff_isneg` (no printing order, 30% faster `simplify`), products
+  through `fraction` like SymPy (the denominator rebuilt evaluated).
+- `bottom_up` rebuilds a node when its arguments are not equal (SymPy's
+  test), not when they are new objects, and `expand` only when an argument
+  changed: `2*(y*log(2) + 2)` is no longer distributed by unrelated hints.
+- `Poly.eval`, `roots`, `_osbornei`, `hyper_as_trig` and `gammasimp`
+  substitute with evaluation, as SymPy's `xreplace` does.
 - `neg` (unary minus) follows SymPy's `__neg__`: a product negates its
   coefficient and anything else becomes `Mul(-1, a)` without flattening.
 - `mul` rebuilds a lone power of `E` evaluated, like SymPy's

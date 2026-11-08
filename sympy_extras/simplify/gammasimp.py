@@ -462,9 +462,10 @@ def gammasimp(expr: ExprLike) -> Expr:
         dum = [Dummy() for _ in fun]
         simp = [_expr(f._evaluated(tuple(_gammasimp(_expr(a), False) if isinstance(a, Expr) else a
                                          for a in f.args))) for f in fun]
-        d = e.xreplace(dict(zip(fun, dum)))
+        forward: dict[Basic, Basic] = dict(zip(fun, dum))
+        d = _expr(e._xreplace_evaluated(forward))
         back: dict[Basic, Basic] = dict(zip(dum, simp))
-        return _gammasimp(d, False).xreplace(back)
+        return _expr(_gammasimp(d, False)._xreplace_evaluated(back))
     return _gammasimp(e, False)
 
 

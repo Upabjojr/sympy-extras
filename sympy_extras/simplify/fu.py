@@ -626,7 +626,7 @@ def _osbornei(e: Expr, d: Expr) -> Expr:
         if not isinstance(rv, TRIG):
             return rv
         const, x = _arg(rv).as_independent(d, as_Add=True)
-        a = add(_expr(x.xreplace({d: Integer(1)})), mul(const, I))
+        a = add(_expr(x._xreplace_evaluated({d: Integer(1)})), mul(const, I))
         if isinstance(rv, Sin):
             return mul(sinh(a), _inv(I))
         if isinstance(rv, Cos):
@@ -653,7 +653,7 @@ def hyper_as_trig(rv: ExprLike) -> tuple[Expr, Inverse]:
     e = to_expr(rv)
     trigs = [t for t in e.atoms(*TRIG)]
     reps: dict[Basic, Basic] = {t: Dummy() for t in trigs}
-    masked = _expr(e.xreplace(reps))
+    masked = _expr(e._xreplace_evaluated(reps))
     back: dict[Basic, Basic] = {v: k for k, v in reps.items()}
     d = Dummy()
 

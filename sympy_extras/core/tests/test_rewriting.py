@@ -31,3 +31,32 @@ def test_neg_does_not_flatten_like_sympy() -> None:
     assert str(to_sympy(neg(expr_from_sympy(u)), evaluate=False)) == str(-u)
     for e in (x, x + y, -2 * x, 2 * x * y, s.I * x, s.zoo * x):
         assert str(to_sympy(neg(expr_from_sympy(e)), evaluate=False)) == str(-e)
+
+
+def test_count_ops_matches_sympy() -> None:
+    from sympy_extras.core.function import count_ops
+    rng = random.Random(9)
+    atoms = [x, y, s.Integer(2), s.Rational(-1, 2), s.pi, -x]
+    fs = [s.sin, s.exp, s.log, s.sqrt, lambda a: a**2, lambda a: 1 / a, lambda a: -a, lambda a: a**s.Rational(-3, 2)]
+
+    def rnd(d: int) -> sympy.Expr:
+        if d == 0 or rng.random() < .2:
+            return rng.choice(atoms)
+        q = rng.random()
+        if q < .4:
+            return rnd(d - 1) + rnd(d - 1)
+        if q < .75:
+            return rnd(d - 1) * rnd(d - 1)
+        return rng.choice(fs)(rnd(d - 1))
+    for _ in range(300):
+        e = rnd(5)
+        for visual in (False, True):
+            assert str(count_ops(expr_from_sympy(e), visual=visual)) == str(s.count_ops(e, visual=visual)), e
+
+
+def test_traversals_rebuild_only_changed_nodes() -> None:
+    from sympy_extras.core.function import expand_log
+    from sympy_extras.simplify.simplify import logcombine
+    e = s.factor_terms(2 * y * s.log(2) + 4, sign=False)  # 2*(y*log(2) + 2)
+    assert str(to_sympy(expand_log(expr_from_sympy(e), deep=True), evaluate=False)) == str(s.expand_log(e, deep=True))
+    assert str(to_sympy(logcombine(expr_from_sympy(e)), evaluate=False)) == str(s.logcombine(e))

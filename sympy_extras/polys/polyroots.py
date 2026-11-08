@@ -674,7 +674,8 @@ def _roots(f0: Union[Poly, ExprLike], gens: Sequence[ExprLike], cubics: bool, qu
     # SymPy renames the generator to Dummy('x0') (printed _x0, sorted after
     # the parameters when the polynomial is factored in all its symbols)
     x = Dummy('x0')
-    f = Poly(f.as_expr().xreplace({f.gen: x}), x)
+    renamed: dict[Basic, Basic] = {f.gen: x}
+    f = Poly(_as_expr(f.as_expr()._xreplace_evaluated(renamed)), x)
     k = min(m[0] for m in f.monoms()) if not f.is_zero else 0
     if k:
         f = Poly(cancel(mul(f.as_expr(), pow(x, Integer(-k)))), x)
@@ -741,7 +742,7 @@ def _rescaled_binomial(f: Poly, cubics: bool, quartics: bool, filter: Optional[s
     if not bases:
         return None
     rule: dict[Basic, Basic] = {b: d for b, d in bases}
-    replaced = add(dep, fcon).xreplace(rule)
+    replaced = _as_expr(add(dep, fcon)._xreplace_evaluated(rule))
     inner = _roots(Poly(replaced, *f.gens), (), cubics, quartics, filter, predicate)
     back: dict[Basic, Basic] = {d: b for b, d in bases}
     return {_as_expr(factor_terms(r._xreplace_evaluated(back))): m for r, m in inner.items()}
