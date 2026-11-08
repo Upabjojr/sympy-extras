@@ -165,3 +165,38 @@ def test_generic_function_series_matches_sympy() -> None:
     for e in cases:
         got = expr_from_sympy(e).series(ox, 0, 5)
         assert str(to_sympy(got, evaluate=False)) == str(e.series(sx, 0, 5)), e
+
+
+def test_generic_leading_terms_match_sympy() -> None:
+    # SymPy's generic Function._eval_as_leading_term: the function itself, or
+    # NotImplementedError when an argument vanishes (valid arities only)
+    import sympy
+    from sympy.core.function import Function as SympyFunction
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import _native_to_sympy, expr_from_sympy, from_sympy
+    from sympy_extras.core.symbol import Symbol as OurSymbol
+    sx = sympy.Symbol('x')
+    ox = from_sympy(sx)
+    assert isinstance(ox, OurSymbol)
+    shapes = {1: [[sx], [2*sx + 1], [1/sx]], 2: [[1, sx], [sx, 2], [sx + 1, sx]], 3: [[2, sx, 1]]}
+    checked = 0
+    for native, theirs in _native_to_sympy().items():
+        if theirs._eval_as_leading_term is not SympyFunction._eval_as_leading_term:
+            continue
+        for k in sorted(native.nargs):
+            for args in shapes.get(k, []):
+                try:
+                    e = theirs(*args)
+                    want = str(e.as_leading_term(sx))
+                except (NotImplementedError, ValueError, TypeError, ZeroDivisionError) as exc:
+                    want = 'ERR ' + type(exc).__name__
+                    e = None
+                if e is None:
+                    continue
+                try:
+                    got = str(to_sympy(expr_from_sympy(e).as_leading_term(ox), evaluate=False))
+                except NotImplementedError:
+                    got = 'ERR NotImplementedError'
+                assert got == want, e
+                checked += 1
+    assert checked > 100

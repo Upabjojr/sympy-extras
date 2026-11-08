@@ -279,6 +279,10 @@ remove public functions. Breaking changes are listed here when they happen.
   tests the symbols by the free symbols (a bound variable of `Subs` is no
   dependence); `Subs` substitution as SymPy's `Subs._eval_subs`; the
   derivative of `exp_polar` stays unevaluated, as in SymPy.
+- SymPy's generic `Function._eval_as_leading_term` is native for the 107
+  classes using it (the function itself, `NotImplementedError` when an
+  argument vanishes); the classes with a rule of their own in SymPy still
+  use SymPy's.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

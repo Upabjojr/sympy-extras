@@ -741,6 +741,9 @@ class DefinedFunction(Application):
         return nseries_node_through_sympy(self, x, n, logx, cdir)
 
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        if type(self).__name__ not in _SYMPY_OWN_LEADING_TERM:
+            return _generic_leading_term(self, x, logx)
+        # the classes with a rule of their own in SymPy not ported use SymPy's
         from .interop import leading_term_node_through_sympy
         found = leading_term_node_through_sympy(self, x, logx, cdir)
         return Application._eval_as_leading_term(self, x, logx, cdir) if found is None else found
@@ -2359,3 +2362,26 @@ def _generic_function_nseries(f: DefinedFunction, x: Symbol, n: int, logx: Optio
         g = g.nseries(x, n=n, logx=logx)
         terms.append(g)
     return add(*terms) + Order(x**n, x)
+
+
+#: the classes whose SymPy counterpart has an _eval_as_leading_term of its
+#: own (the others use Function._eval_as_leading_term, ported below)
+_SYMPY_OWN_LEADING_TERM: Final[frozenset[str]] = frozenset({
+    'Acos', 'Acosh', 'Acot', 'Acoth', 'Acsc', 'Acsch', 'Arg', 'Asec', 'Asech', 'Asin', 'Asinh', 'Atan', 'Atanh',
+    'BesselI', 'BesselJ', 'BesselK', 'BesselY', 'Binomial', 'Ceiling', 'ChiNode', 'CiNode', 'Cos', 'Cosh', 'Cot',
+    'Coth', 'Csc', 'Csch', 'DiGamma', 'EiNode', 'Erf', 'Erfc', 'Erfi', 'Exp', 'Factorial', 'Floor', 'Frac',
+    'FresnelC', 'FresnelS', 'Gamma', 'LambertW', 'Log', 'PolyGamma', 'Sec', 'Sech', 'ShiNode', 'SiNode', 'Sin',
+    'SingularityFunctionNode', 'Sinh', 'Tan', 'Tanh', 'TriGamma', 'Zeta'})
+
+
+# PORTED FROM SYMPY: sympy/core/function.py:Function._eval_as_leading_term
+def _generic_leading_term(f: DefinedFunction, x: Symbol, logx: Optional[Expr]) -> Expr:
+    """The function itself, unless an argument vanishes at ``x = 0`` (an
+    argument in ``O(1)`` depending on ``x``): then SymPy raises, the class
+    needing a rule of its own."""
+    from .order import Order
+    args = [a.as_leading_term(x, logx=logx) for a in f.args if isinstance(a, Expr)]
+    o = Order(Integer(1), x)
+    if any(x in a.free_symbols and o.contains(a) for a in args):
+        raise NotImplementedError('%s has no _eval_as_leading_term routine' % f.function_name)
+    return f
