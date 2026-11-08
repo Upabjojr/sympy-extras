@@ -224,7 +224,8 @@ sympy_extras/
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
         signsimp.py          signsimp, sub_pre, sub_post (ported from SymPy)
-        radsimp.py           fraction, numer, denom, collect, collect_dict, rcollect (ported from SymPy; radsimp itself next)
+        radsimp.py           fraction, numer, denom, collect, collect_dict, rcollect, radsimp, rad_rationalize, split_surds (ported from SymPy)
+        sqrtdenest.py        sqrtdenest, sqrt_depth, is_algebraic (ported from SymPy)
         powsimp.py           powsimp, powdenest, multiplicity, _denest_pow (ported from SymPy)
         simplify.py          logcombine, posify (ported from SymPy; simplify itself to come)
         tests/

@@ -229,6 +229,11 @@ def add(*args: ExprLike) -> Expr:
         return _raw([t for a in stack for t in (a.args if isinstance(a, Add) else (a,))])
     if any(t.is_Order for a in stack for t in (a.args if isinstance(a, Add) else (a,))):
         return _with_orders(stack)
+    # SymPy's AssocOp.__new__: the identities dropped, a single argument
+    # returned as it is
+    nonidentity = [t for t in stack if not (isinstance(t, Integer) and t.p == 0)]
+    if len(nonidentity) == 1:
+        return nonidentity[0]
     number: Number = Integer(0)
     coefficients: dict[Expr, Number] = {}
     # the term as given, kept while it is the only one with its rest, so

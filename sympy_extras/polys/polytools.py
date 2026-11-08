@@ -1073,15 +1073,44 @@ def LC(f: PolyLike, *gens: ExprLike) -> Expr:
     return _as_poly(f, gens).LC()
 
 
+def _numbers_only(f: PolyLike, g: PolyLike, gens: Sequence[ExprLike]) -> Optional[tuple[Expr, Expr]]:
+    """``(f, g)`` as expressions when there are no generators (numbers)."""
+    if gens or isinstance(f, Poly) or isinstance(g, Poly):
+        return None
+    ef, eg = to_expr(f), to_expr(g)
+    if _common_gens(ef, eg):
+        return None
+    return ef, eg
+
+
 def gcd(f: PolyLike, g: PolyLike, *gens: ExprLike) -> Expr:
-    """The gcd of two polynomial expressions, as an expression."""
-    a = _as_poly(f, gens) if gens or isinstance(f, Poly) else Poly(add(to_expr(f) if not isinstance(f, Poly) else f.as_expr(), Integer(0)), *_common_gens(f, g))
-    return a.gcd(g).as_expr()
+    """The gcd of two polynomial expressions, as an expression (of two
+    rationals, the gcd of the numerators over the lcm of the denominators;
+    of other numbers, 1)."""
+    numbers = _numbers_only(f, g, gens)
+    if numbers is not None:
+        na, nb = numbers
+        if isinstance(na, Rational) and isinstance(nb, Rational):
+            from math import lcm as integer_lcm
+            return number_from_fraction(Fraction(integer_gcd(na.p, nb.p), integer_lcm(na.q, nb.q)))
+        return Integer(1)
+    pf = _as_poly(f, gens) if gens or isinstance(f, Poly) else Poly(to_expr(f), *_common_gens(f, g))
+    return pf.gcd(g).as_expr()
 
 
 def lcm(f: PolyLike, g: PolyLike, *gens: ExprLike) -> Expr:
-    a = _as_poly(f, gens) if gens or isinstance(f, Poly) else Poly(to_expr(f) if not isinstance(f, Poly) else f.as_expr(), *_common_gens(f, g))
-    return a.lcm(g).as_expr()
+    """The lcm of two polynomial expressions, as an expression (of two
+    rationals, the lcm of the numerators over the gcd of the
+    denominators; of other numbers, their product)."""
+    numbers = _numbers_only(f, g, gens)
+    if numbers is not None:
+        na, nb = numbers
+        if isinstance(na, Rational) and isinstance(nb, Rational):
+            from math import lcm as integer_lcm
+            return number_from_fraction(Fraction(integer_lcm(na.p, nb.p), integer_gcd(na.q, nb.q)))
+        return mul(na, nb)
+    pf = _as_poly(f, gens) if gens or isinstance(f, Poly) else Poly(to_expr(f), *_common_gens(f, g))
+    return pf.lcm(g).as_expr()
 
 
 def _common_gens(f: PolyLike, g: PolyLike) -> tuple[Expr, ...]:

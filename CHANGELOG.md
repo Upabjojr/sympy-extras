@@ -45,9 +45,15 @@ remove public functions. Breaking changes are listed here when they happen.
 - `sympy_extras.simplify.powsimp.powsimp` and `powdenest`,
   `sympy_extras.simplify.simplify.logcombine` and `posify`, ported from
   SymPy; `expand_log` (with `factor`) is native, no longer through SymPy.
+- `sympy_extras.simplify.sqrtdenest.sqrtdenest`, `radsimp`,
+  `rad_rationalize`, `split_surds` and `signsimp(evaluate=False)`, ported
+  from SymPy; `gcd` and `lcm` of two numbers.
 
 ### Changed
 
+- `add` and `mul` of a single argument (the identities dropped) return it
+  unchanged, as SymPy's `AssocOp` does (`mul(Mul(8, x + 1))` is not
+  redistributed).
 - `pow` follows SymPy's `Pow._eval_power` for powers of powers (`(p**2)**x`
   is `p**(2*x)` for positive `p`, `exp(2)**x` is `exp(2*x)`, the branch
   factor for half-integer and complex exponents); `Abs(x)**n` for real `x`

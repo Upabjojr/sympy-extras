@@ -200,6 +200,11 @@ def mul(*args: ExprLike) -> Expr:
     factors = [to_expr(a) for a in args]
     if not global_parameters.evaluate:
         return _raw(_flattened(factors))
+    # SymPy's AssocOp.__new__: the identities dropped, a single argument
+    # returned as it is (Mul(8*(x + 1)) keeps the unevaluated product)
+    nonidentity = [f for f in factors if not (isinstance(f, Integer) and f.p == 1)]
+    if len(nonidentity) == 1:
+        return nonidentity[0]
     if any(f.is_Order for f in _flattened(factors)):
         return _with_orders(factors)
     two = _two_argument_rule(factors)

@@ -20,7 +20,7 @@ by that double negation.
 # sympy/simplify/cse_opts.py (sub_pre, sub_post) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
-# Changes: typed; the evaluate=False form not ported (always evaluated).
+# Changes: typed.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -93,10 +93,11 @@ def _undo(e: Basic) -> Basic:
 
 
 # PORTED FROM SYMPY: sympy/simplify/simplify.py:signsimp
-def signsimp(expr: ExprLike) -> Expr:
+def signsimp(expr: ExprLike, evaluate: bool = True) -> Expr:
     """``expr`` with the sums which can extract a minus sign written with
-    it outside, which cancels opposite sums (SymPy's ``signsimp`` with
-    ``evaluate=True``)."""
+    it outside, which cancels opposite sums; with ``evaluate=False`` a sum
+    which can extract the sign is returned as the unevaluated ``-1*(-sum)``
+    (SymPy's ``signsimp``)."""
     e0 = to_expr(expr)
     if not e0.args:
         return e0
@@ -105,6 +106,11 @@ def signsimp(expr: ExprLike) -> Expr:
     if not isinstance(e, Expr) or not e.args:
         return to_expr(e) if isinstance(e, Expr) else e0
     if isinstance(e, Add):
-        return add(*[signsimp(a) for a in e.args if isinstance(a, Expr)])
-    result = e.replace(_double_negation, _undo)
-    return result if isinstance(result, Expr) else e0
+        rv = add(*[signsimp(a, evaluate) for a in e.args if isinstance(a, Expr)])
+        if not evaluate and isinstance(rv, Add) and rv.could_extract_minus_sign():
+            return Mul(Integer(-1), _negated(rv))
+        return rv
+    if evaluate:
+        result = e.replace(_double_negation, _undo)
+        return result if isinstance(result, Expr) else e0
+    return e
