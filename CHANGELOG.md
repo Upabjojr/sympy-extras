@@ -124,6 +124,9 @@ remove public functions. Breaking changes are listed here when they happen.
   kept. `as_coeff_mul` has SymPy's default `rational=True` (a float is a
   factor, not the coefficient), which `gcd_terms` and `factor_terms` rely
   on (`0.5*y + 0.5` is `0.5*(y + 1)`).
+- `factor` over `RR`, ported from SymPy (`dmp_factor_list` of an inexact
+  domain: the floats made rational, factored over `QQ`, each factor
+  divided by its largest coefficient, rounded back).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

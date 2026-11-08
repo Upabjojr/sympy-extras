@@ -90,3 +90,18 @@ def test_cancel_with_floats_matches_sympy() -> None:
         if e.has(s.zoo, s.nan):
             continue
         assert str(to_sympy(expr_from_sympy(e).cancel(), evaluate=False)) == str(s.cancel(e)), e
+
+
+def test_factor_with_floats_matches_sympy() -> None:
+    rng = random.Random(1)
+    for _ in range(50):
+        e: s.Expr = s.Integer(1)
+        for _ in range(rng.randint(1, 3)):
+            p = sum((s.Float(rng.choice([1, -2, 0.5, 1.5, -0.25, 3, 0.1])) * rng.choice([x, y, x**2, s.Integer(1), x*y])
+                     for _ in range(rng.randint(1, 3))), s.Integer(0))
+            if p != 0:
+                e = e * p**rng.randint(1, 2)
+        e = s.expand(e)
+        if not e.free_symbols:
+            continue
+        assert str(to_sympy(expr_from_sympy(e).factor(), evaluate=False)) == str(s.factor(e)), e

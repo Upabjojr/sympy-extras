@@ -1362,6 +1362,54 @@ def _real_expr_of(f: dict[Monomial, Fraction], gens: tuple[Expr, ...], prec: int
     return add(*parts) if parts else Float(Integer(0), precision=prec)
 
 
+# PORTED FROM SYMPY: sympy/polys/factortools.py:dmp_factor_list (an inexact domain)
+def _real_factor_list(base: Expr) -> tuple[Expr, list[tuple[Expr, int]]]:
+    """The factorisation over ``RR``: the floats made rational
+    (``RealField.to_rational``), the polynomial factored over ``QQ``, each
+    factor divided by its largest coefficient in absolute value (moved
+    into the coefficient), the factors and the coefficient rounded back
+    to floats; the powers of the generators dividing every term are the
+    factors ``1.0*x``."""
+    from sympy_extras.core.numbers import Float, _round_to_prec
+    gens, (rep,), prec = _joint_rings_real([base])
+    n = len(gens)
+    # dmp_terms_gcd
+    J = [min(m[i] for m in rep) for i in range(n)] if rep else [0] * n
+    shifted = {tuple(a - j for a, j in zip(m, J)): c for m, c in rep.items()}
+    max_denom = max(2**prec // 200, 99)
+    exact = add(*[mul(number_from_fraction(real_to_rational(c, max_denom)),
+                      *[pow(g, Integer(k)) for g, k in zip(gens, m) if k]) for m, c in shifted.items()])
+    coeff = Fraction(1)
+    factors: list[tuple[dict[Monomial, Fraction], int]] = []
+    if exact.has(*gens):
+        c, poly_factors = Poly(exact, *gens).factor_list()
+        if not isinstance(c, Rational):
+            raise CoercionFailed('the coefficient %s is not rational' % (c,))
+        coeff = c.as_fraction()
+        for g, k in poly_factors:
+            terms: dict[Monomial, Fraction] = {}
+            for m, value in g.terms():
+                if not isinstance(value, Rational):
+                    raise CoercionFailed('the coefficient %s is not rational' % (value,))
+                terms[m] = value.as_fraction()
+            # dmp_max_norm: the factor divided by it, moved into the coefficient
+            max_norm = max(abs(v) for v in terms.values())
+            factors.append(({m: _round_to_prec(v / max_norm, prec) for m, v in terms.items()}, k))
+            coeff *= max_norm**k
+    else:
+        coeff = exact.as_fraction() if isinstance(exact, Rational) else Fraction(1)
+    for i in range(n - 1, -1, -1):
+        if J[i]:
+            factors.insert(0, ({tuple(1 if t == i else 0 for t in range(n)): Fraction(1)}, J[i]))
+
+    def expr_of(terms: dict[Monomial, Fraction]) -> Expr:
+        return add(*[mul(Float(number_from_fraction(c), precision=prec),
+                         *[pow(g, Integer(k)) for g, k in zip(gens, m) if k]) for m, c in terms.items()])
+
+    return Float(number_from_fraction(_round_to_prec(coeff, prec)), precision=prec), \
+        [(expr_of(terms), k) for terms, k in factors]
+
+
 # PORTED FROM SYMPY: sympy/polys/factortools.py:dup_factor_list, dup_zz_i_factor, dup_qq_i_factor
 def _gaussian_factor_list(base: Expr) -> tuple[Expr, list[tuple[Expr, int]]]:
     """The factorisation of a univariate polynomial with Gaussian
@@ -1641,7 +1689,11 @@ def _symbolic_factor_list(expr: Expr, gens: Sequence[ExprLike], method: Method =
             # over ZZ_I and QQ_I through QQ<I>
             if gens or method != 'factor':
                 raise
-            c, gaussian = _gaussian_factor_list(base)
+            try:
+                c, gaussian = _gaussian_factor_list(base)
+            except CoercionFailed:
+                # float coefficients: SymPy's factorisation over RR
+                c, gaussian = _real_factor_list(base)
             found = [(g, Integer(k)) for g, k in gaussian]
         else:
             c, poly_factors = p.factor_list() if method == 'factor' else p.sqf_list()
