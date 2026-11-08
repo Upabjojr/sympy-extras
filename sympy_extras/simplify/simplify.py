@@ -745,7 +745,8 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
                 if e.has(Piecewise):
                     return shorter(e, factor_terms(e))
     if e.has(Hyper, MeijerG, ExpPolar, PolarLift):
-        e = _through_sympy(e, lambda s: sympy.hyperexpand(s))
+        from .hyperexpand import hyperexpand
+        e = hyperexpand(e)
     if e.has(KroneckerDeltaNode):
         e = kroneckersimp(e)
     if e.has(BesselBase):

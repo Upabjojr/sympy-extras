@@ -233,8 +233,11 @@ sympy_extras/
         trigsimp.py          trigsimp (matching, fu), futrig, exptrigsimp (ported from SymPy)
         fu.py                fu and its TR rules (TR0-TR22, TRmorrie, TRpower), greedy strategies, hyper_as_trig (ported from SymPy)
         powsimp.py           powsimp, powdenest, multiplicity, _denest_pow (ported from SymPy)
-        simplify.py          simplify, logcombine, posify, nsimplify, collect_abs (ported from SymPy)
+        simplify.py          simplify, logcombine, posify, nsimplify, collect_abs, nc_simplify, besselsimp (ported from SymPy)
+        hyperexpand.py       hyperexpand: formula tables, shift operators, plans, Slater's theorem (ported from SymPy)
         tests/
+    matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
+    series/                  residue (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)
     polys/
         domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, AlgebraicField, PolynomialRing, FractionField, SparsePolynomialRing with SymPy's PolyElement gcd, RationalPolynomialRing, IteratedPolynomialRing for dmp_rr_prs_gcd); see docs/dense.md

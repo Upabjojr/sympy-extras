@@ -184,6 +184,9 @@ remove public functions. Breaking changes are listed here when they happen.
   `Shi`, `Chi` (`polar_lift(I)` and `polar_lift(-1)` taken out, the
   branch factor), of `Ei` and `expint`; 630 values on polar arguments
   match SymPy. hyperexpand matches SymPy on 215 of 225 expansions.
+- `hyperexpand` is native (the last part of the port: `devise_plan_meijer`,
+  `_meijergexpand` with Slater's theorem, `hyperexpand`), and `simplify`
+  uses it; `residue` is native (`sympy_extras.series`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

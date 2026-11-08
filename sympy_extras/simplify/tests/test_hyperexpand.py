@@ -119,3 +119,33 @@ def test_hyperexpand_of_hypergeometric_functions_matches_sympy() -> None:
             func = HyperFunction([expr_from_sympy(sympy.sympify(v)) for v in ap],
                                  [expr_from_sympy(sympy.sympify(v)) for v in bq])
             assert str(to_sympy(_hyperexpand(func, expr_from_sympy(x)), evaluate=False)) == want, (ap, bq, x)
+
+
+def test_meijerg_expansions_match_sympy() -> None:
+    from sympy import meijerg
+    from sympy_extras.simplify.hyperexpand import hyperexpand
+    a, b, z = sympy.symbols('a b z')
+    cases = [meijerg([1], [], [], [], z), meijerg([], [1], [0], [], z), meijerg([], [], [0], [], z),
+             meijerg([], [], [R(1, 2)], [0], z), meijerg([], [], [0], [R(1, 2)], z), meijerg([], [], [a], [-a], z),
+             meijerg([], [], [a], [a + R(1, 2)], z), meijerg([1, 1], [], [], [0], z), meijerg([], [], [1, 1], [0, 0], z),
+             meijerg([], [], [a], [], z), meijerg([], [], [0, R(1, 2)], [], z), meijerg([], [], [R(1, 2), 0], [], z**2/4),
+             meijerg([], [], [a, b], [], z), meijerg([], [1], [a, b], [], z), meijerg([1 - a], [], [0], [-a], z),
+             meijerg([a], [], [b], [], z), meijerg([], [a], [b], [], z), meijerg([], [], [0, 0], [], z),
+             meijerg([], [R(1, 2)], [0], [], z), meijerg([], [], [-R(1, 2), R(1, 2)], [], z),
+             meijerg([a], [a], [b], [b], z), meijerg([R(1, 2)], [1], [0, 0], [], z)]
+    for e in cases:
+        assert str(to_sympy(hyperexpand(expr_from_sympy(e)), evaluate=False)) == str(sympy.hyperexpand(e)), e
+
+
+def test_residue_matches_sympy() -> None:
+    from sympy import I, cos, exp, gamma, pi, sin
+    from sympy_extras.series import residue
+    x, a, z = sympy.symbols('x a z')
+    cases = [(1/x, 0), (exp(x)/x**3, 0), (1/sin(x)**2, 0), (gamma(x), -2), (gamma(x), 0), (1/(x**2 + 1), I),
+             (gamma(x)*gamma(a - x)*z**x, -1), (gamma(x)**2*z**x, -1), (cos(x)/x**4, 0), (1/(x*(x - 1)), 1),
+             (gamma(-x)*z**x, 2), (x/(x - 2)**2, 2), (sympy.cot(x), pi), (1/(exp(x) - 1), 0), (gamma(x + a)*z**x, -a)]
+    from sympy_extras.core import Symbol
+    ox = Symbol('x')
+    for e, p in cases:
+        got = residue(expr_from_sympy(e), ox, expr_from_sympy(sympy.sympify(p)))
+        assert str(to_sympy(got, evaluate=False)) == str(sympy.residue(e, x, p)), (e, p)

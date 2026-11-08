@@ -1773,3 +1773,305 @@ def _hyperexpand(func: HyperFunction, z: Expr, ops0: Sequence[Operator] = (), z0
     ops += devise_plan(func, formula.func, z0)
     r = carryout_plan(formula, ops) + p
     return _replace_hyper_special(powdenest(r, polar=True))
+
+
+# ---------------------------------------------------------------------
+# Meijer G-functions
+
+
+# PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:devise_plan_meijer
+def devise_plan_meijer(fro: GFunction, to: GFunction, z: Expr) -> list[Operator]:
+    """The operators which turn ``fro`` into ``to`` (parameters congruent
+    modulo 1), to be applied in the order of the list; a
+    ``NotImplementedError`` when the shifts cannot be found."""
+    fan, fap, fbm, fbq = list(fro.an), list(fro.ap), list(fro.bm), list(fro.bq)
+
+    def try_shift(f: list[Expr], t: Sequence[Expr], shifter: Callable[[int], Operator], diff: int,
+                  counter: list[Expr]) -> Optional[Operator]:
+        """Shift one ``f[i]`` by ``diff`` towards ``t[i]``, when it is not
+        in ``counter``."""
+        for idx, (a, b) in enumerate(zip(f, t)):
+            if (a - b).is_integer is True and _truth((b - a) / diff > 0) and all(a != x for x in counter):
+                sh = shifter(idx)
+                f[idx] = f[idx] + diff
+                return sh
+        return None
+
+    ops: list[Operator] = []
+    change = True
+    while change:
+        change = False
+        attempts: list[tuple[list[Expr], tuple[Expr, ...], Callable[[int], Operator], int, list[Expr]]] = [
+            (fan, to.an, lambda i: MeijerUnShiftB(fan, fap, fbm, fbq, i, z), 1, fbm + fbq),
+            (fap, to.ap, lambda i: MeijerUnShiftD(fan, fap, fbm, fbq, i, z), 1, fbm + fbq),
+            (fbm, to.bm, lambda i: MeijerUnShiftA(fan, fap, fbm, fbq, i, z), -1, fan + fap),
+            (fbq, to.bq, lambda i: MeijerUnShiftC(fan, fap, fbm, fbq, i, z), -1, fan + fap),
+            (fan, to.an, lambda i: MeijerShiftB(fan[i]), -1, []),
+            (fap, to.ap, lambda i: MeijerShiftD(fap[i]), -1, []),
+            (fbm, to.bm, lambda i: MeijerShiftA(fbm[i]), 1, []),
+            (fbq, to.bq, lambda i: MeijerShiftC(fbq[i]), 1, [])]
+        # the counters are SymPy's at the call: an attempt which changes a
+        # list ends the round
+        for f, t, shifter, diff, counter in attempts:
+            op = try_shift(f, t, shifter, diff, counter)
+            if op is not None:
+                ops.append(op)
+                change = True
+                break
+    if fan != list(to.an) or fap != list(to.ap) or fbm != list(to.bm) or fbq != list(to.bq):
+        raise NotImplementedError('Could not devise plan.')
+    ops.reverse()
+    return ops
+
+
+_meijercollection: Optional[MeijerFormulaCollection] = None
+
+Condition = Union[bool, Boolean]
+
+
+def _meijer_collection() -> MeijerFormulaCollection:
+    global _meijercollection
+    if _meijercollection is None:
+        _meijercollection = MeijerFormulaCollection()
+    return _meijercollection
+
+
+def _count(e: Expr, cls: type) -> int:
+    """SymPy's ``e.count(cls)``: the number of nodes of the class."""
+    from sympy_extras.core.basic import preorder_traversal
+    return sum(1 for node in preorder_traversal(e) if isinstance(node, cls))
+
+
+def _subs_condition(c: Condition, old: Expr, new: Expr) -> Condition:
+    if isinstance(c, bool):
+        return c
+    r = c.subs(old, new)
+    assert isinstance(r, Boolean)
+    return r
+
+
+# PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:_meijergexpand
+def _meijergexpand(func: GFunction, z0: Expr, allow_hyper: bool = False, rewrite: Rewrite = 'default',
+                   place: Optional[Expr] = None) -> Expr:
+    """The expansion of the Meijer G-function ``func`` at ``z0``: a formula
+    of the table, or Slater's theorem (sums of hypergeometric functions,
+    around 0 and around infinity) with the conditions of their validity
+    as a ``Piecewise``; the function itself when nothing works."""
+    from sympy_extras.core.function import expand_func
+    from sympy_extras.core.numbers import oo, zoo
+    from sympy_extras.functions.combinatorial.factorials import factorial, rf
+    from sympy_extras.functions.elementary.complexes import abs_, polar_lift
+    from sympy_extras.functions.elementary.piecewise import piecewise
+    from sympy_extras.functions.special.gamma_functions import gamma
+    from sympy_extras.functions.special.hyper import Hyper
+    from sympy_extras.series.residues import residue
+    from .powsimp import powdenest
+    collection = _meijer_collection()
+    if rewrite == 'default':
+        rewrite = None
+    func0 = func
+    z = Dummy('z')
+    func, reduce_ops = reduce_order_meijer(func)
+    ops: list[Operator] = list(reduce_ops)
+    f = collection.lookup_origin(func)
+    if f is not None:
+        ops += devise_plan_meijer(f.func, func, z)
+        C = apply_operators_matrix(f.C.subs(f.z, z), ops, make_derivative_operator(f.M.subs(f.z, z), z))
+        C = C.applyfunc(make_simp(z))
+        r = (C * f.B.subs(f.z, z))[0, 0]
+        return powdenest(_expr(r.subs(z, z0)), polar=True)
+
+    def can_do(pbm: Buckets, pap: Buckets) -> bool:
+        """Whether no residue is of too high an order (Slater's theorem)."""
+        for i in pbm:
+            if len(pbm[i]) > 1:
+                n = len(pap[i]) if i in pap else 0
+                if n + 1 < len(pbm[i]):
+                    return False
+        return True
+
+    t = Dummy('t')
+
+    def do_slater(an: Sequence[Expr], bm: Sequence[Expr], ap: Sequence[Expr], bq: Sequence[Expr], z: Symbol,
+                  zfinal: Expr, ops: Sequence[Operator]) -> tuple[Expr, Condition]:
+        g = GFunction(an, bm, ap, bq)
+        _, pbm, pap, _ = g.compute_buckets()
+        if not can_do(pbm, pap):
+            return ZERO, False
+        cond: Condition = len(an) + len(ap) < len(bm) + len(bq)
+        if len(an) + len(ap) == len(bm) + len(bq):
+            cond = abs_(z) < 1
+        if cond is False:
+            return ZERO, False
+        res: Expr = ZERO
+        for m in pbm:
+            if len(pbm[m]) == 1:
+                bh = pbm[m][0]
+                fac: Expr = ONE
+                bo = list(bm)
+                bo.remove(bh)
+                for bj in bo:
+                    fac = fac * gamma(bj - bh)
+                for aj in an:
+                    fac = fac * gamma(1 + bh - aj)
+                for bj in bq:
+                    fac = fac / gamma(1 + bh - bj)
+                for aj in ap:
+                    fac = fac / gamma(aj - bh)
+                nap = [1 + bh - a for a in list(an) + list(ap)]
+                nbq = [1 + bh - b for b in list(bo) + list(bq)]
+                k = polar_lift(Integer(-1)**(len(ap) - len(bm)))
+                harg = k * zfinal
+                premult = (t / k)**bh
+                hyp = _hyperexpand(HyperFunction(nap, nbq), harg, ops, t, premult, bh, rewrite=None)
+                res = res + fac * hyp
+            else:
+                b_ = pbm[m][0]
+                ki = [bi - b_ for bi in pbm[m][1:]]
+                u = len(ki)
+                li = [ai - b_ for ai in pap[m][:u + 1]]
+                bo = list(bm)
+                for b in pbm[m]:
+                    bo.remove(b)
+                ao = list(ap)
+                for a in pap[m][:u]:
+                    ao.remove(a)
+                lu = li[-1]
+                di = [l_ - k_ for (l_, k_) in zip(li, ki)]
+                s = Dummy('s')
+                integrand: Expr = z**s
+                for b in bm:
+                    if isinstance(b, Number) and _is_zero(mod(b, ONE)):
+                        b = Integer(round(float(b)))
+                    integrand = integrand * gamma(b - s)
+                for a in an:
+                    integrand = integrand * gamma(1 - a + s)
+                for b in bq:
+                    integrand = integrand / gamma(1 - b + s)
+                for a in ap:
+                    integrand = integrand / gamma(a - s)
+                integrand = expand_func(integrand)
+                for r in range(int(round(float(lu)))):
+                    resid = residue(integrand, s, b_ + r)
+                    resid = apply_operators(resid, ops, lambda e: z * e.diff(z))
+                    res = res - resid
+                au = b_ + lu
+                k = polar_lift(Integer(-1)**(len(ao) + len(bo) + 1))
+                harg = k * zfinal
+                premult = (t / k)**au
+                nap = [1 + au - a for a in list(an) + list(ap)] + [ONE]
+                nbq = [1 + au - b for b in list(bm) + list(bq)]
+                hyp = _hyperexpand(HyperFunction(nap, nbq), harg, ops, t, premult, au, rewrite=None)
+                C: Expr = Integer(-1)**lu / factorial(lu)
+                for i in range(u):
+                    C = C * Integer(-1)**di[i] / rf(lu - li[i] + 1, di[i])
+                for a in an:
+                    C = C * gamma(1 - a + au)
+                for b in bo:
+                    C = C * gamma(b - au)
+                for a in ao:
+                    C = C / gamma(a - au)
+                for b in bq:
+                    C = C / gamma(1 - b + au)
+                res = res + C * hyp
+        return res, cond
+
+    slater1, cond1 = do_slater(func.an, func.bm, func.ap, func.bq, z, z0, ops)
+
+    def tr(params: Sequence[Expr]) -> list[Expr]:
+        return [1 - x for x in params]
+
+    # SymPy changes the operators in place: D -> -D, z -> 1/t
+    ops2: list[Operator] = [Operator(_op_of(_xreplace(_expr(_from_coeffs(op.coeffs, _x).subs(z, 1 / t)), {_x: -_x})))
+                            for op in ops]
+    slater2, cond2 = do_slater(tr(func.bm), tr(func.an), tr(func.bq), tr(func.ap), t, 1 / z0, ops2)
+    slater1 = powdenest(_expr(slater1.subs(z, z0)), polar=True)
+    slater2 = powdenest(_expr(slater2.subs(t, 1 / z0)), polar=True)
+    cond2 = _subs_condition(cond2, t, 1 / z)
+    # m = func(z): its delta and nu (SymPy's meijerg.delta and meijerg.nu)
+    full_ap, full_bq = list(func.an) + list(func.ap), list(func.bm) + list(func.bq)
+    delta = Integer(len(func.bm) + len(func.an)) - Rational(len(full_ap) + len(full_bq), 2)
+    # SymPy's (re(m.nu) < -1) is not False holds always (a relational is
+    # never the Python False)
+    if _truth(delta > 0) or (delta == 0 and len(full_ap) == len(full_bq) and polar_lift(z0) == polar_lift(ONE)):
+        if cond1 is not False:
+            cond1 = True
+        if cond2 is not False:
+            cond2 = True
+    slater1 = _rewrite(slater1, rewrite or ('nonrep' if cond1 is True else 'nonrepsmall'))
+    slater2 = _rewrite(slater2, rewrite or ('nonrep' if cond2 is True else 'nonrepsmall'))
+    if cond1 is not False and cond2 is not False:
+        if place is not None and place == 0:
+            cond2 = False
+        if place is not None and place == zoo:
+            cond1 = False
+    cond1 = _subs_condition(cond1, z, z0)
+    cond2 = _subs_condition(cond2, z, z0)
+
+    def weight(e: Expr, cond: Condition) -> tuple[int, int, int]:
+        from sympy_extras.core.numbers import nan
+        c0 = 0 if cond is True else 1 if cond is False else 2
+        if e.has(oo) or e.has(zoo) or e.has(-oo) or e.has(nan):
+            c0 = 3
+        ops_count = e.count_ops()
+        assert isinstance(ops_count, Integer)
+        return (c0, _count(e, Hyper), ops_count.p)
+
+    w1 = weight(slater1, cond1)
+    w2 = weight(slater2, cond2)
+    best = min(w1, w2)
+    # SymPy's min(w1, w2) <= (0, 1, oo)
+    if best[0] < 0 or (best[0] == 0 and best[1] <= 1):
+        return slater1 if w1 < w2 else slater2
+    if max(w1[0], w2[0]) <= 1 and max(w1[1], w2[1]) <= 1:
+        return piecewise((slater1, cond1), (slater2, cond2), (func0(z0), True))
+    r = piecewise((slater1, cond1), (slater2, cond2), (func0(z0), True))
+    if not r.has(Hyper) or allow_hyper:
+        return r
+    return func0(z0)
+
+
+# PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:hyperexpand
+def hyperexpand(f: ExprLike, allow_hyper: bool = False, rewrite: Rewrite = 'default',
+                place: Optional[Expr] = None) -> Expr:
+    """The hypergeometric functions and Meijer G-functions of ``f``
+    expanded into named special functions, where the tables, the shifts
+    and Slater's theorem find expressions; ``allow_hyper`` accepts results
+    in terms of simpler hypergeometric functions, ``place`` (``0`` or
+    ``zoo``) the point around which a Meijer G-function is expanded.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol, Rational
+    >>> from sympy_extras.functions.special.hyper import hyper, meijerg
+    >>> from sympy_extras.simplify.hyperexpand import hyperexpand
+    >>> z = Symbol('z')
+    >>> hyperexpand(hyper([], [], z)), hyperexpand(hyper([1, 1], [2], z))
+    (exp(z), -log(1 - z)/z)
+    >>> hyperexpand(meijerg([1], [], [], [], z))
+    exp(-1/z)
+    """
+    from sympy_extras.core.containers import Tuple
+    from sympy_extras.core.numbers import nan, oo, zoo
+    from sympy_extras.functions.special.hyper import Hyper, MeijerG, hyper, meijerg
+    e = to_expr(f)
+
+    def tup(b: Basic) -> list[Expr]:
+        assert isinstance(b, Tuple)
+        return [_expr(x) for x in b.args]
+
+    def do_replace(*args: Basic) -> Basic:
+        ap, bq, z = args
+        return _hyperexpand(HyperFunction(tup(ap), tup(bq)), _expr(z), rewrite=rewrite)
+
+    def do_meijer(*args: Basic) -> Basic:
+        ap, bq, z = args
+        assert isinstance(ap, Tuple) and isinstance(bq, Tuple)
+        an, aother, bm, bother = tup(ap.args[0]), tup(ap.args[1]), tup(bq.args[0]), tup(bq.args[1])
+        r = _meijergexpand(GFunction(an, aother, bm, bother), _expr(z), allow_hyper, rewrite=rewrite, place=place)
+        if not (r.has(nan) or r.has(zoo) or r.has(oo) or r.has(-oo)):
+            return r
+        return meijerg(an, aother, bm, bother, _expr(z))   # SymPy's None: the node stays
+
+    return _expr(_expr(e.replace(Hyper, do_replace)).replace(MeijerG, do_meijer))
