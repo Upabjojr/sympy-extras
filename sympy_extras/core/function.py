@@ -732,7 +732,13 @@ class DefinedFunction(Application):
     sympy_variadic: bool = False
 
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.functions._series_rules import rules
         from .interop import nseries_node_through_sympy
+        rule = rules().get(type(self).__name__)
+        if rule is not None:
+            ported = rule(self, x, n, logx, cdir)
+            if ported is not None:
+                return ported
         if type(self).generic_nseries:
             found = _generic_function_nseries(self, x, n, logx)
             if found is not None:

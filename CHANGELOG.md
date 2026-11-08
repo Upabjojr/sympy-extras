@@ -291,6 +291,13 @@ remove public functions. Breaking changes are listed here when they happen.
   J, Y, I, K, SingularityFunction, Derivative, Subs, Piecewise, hyper and
   meijerg; leading terms no longer go through SymPy except for the
   wrapped SymPy nodes.
+- Native series for LambertW, Abs, sign, arg, sinc, gamma, loggamma,
+  expint, Ei, Si, Ci, Shi, Chi, li, Li, SingularityFunction, elliptic_k
+  and elliptic_e (`sympy_extras.functions._series_rules`, SymPy's own
+  `_eval_nseries` rules). Unlike SymPy (bugs on issue #25): `sinc`
+  expands in the variable, `SingularityFunction` to the order asked, and
+  the series of `expint(n, x)` for integer `n > 1` has no spurious
+  imaginary term.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

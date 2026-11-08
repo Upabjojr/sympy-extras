@@ -276,3 +276,39 @@ def test_more_leading_terms_match_sympy() -> None:
         except (NotImplementedError, ValueError, PoleError) as exc:
             got = 'ERR ' + type(exc).__name__
         assert got == want, e
+
+
+def test_special_function_series_rules() -> None:
+    # sympy_extras.functions._series_rules: SymPy's own _eval_nseries rules
+    import sympy
+    from sympy.core.cache import clear_cache
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import expr_from_sympy, from_sympy
+    from sympy_extras.core.symbol import Symbol as OurSymbol
+    sx = sympy.Symbol('x')
+    ox = from_sympy(sx)
+    assert isinstance(ox, OurSymbol)
+    half = sympy.Rational(1, 2)
+    S = sympy
+
+    def ours(e: 'sympy.Expr', n: int) -> str:
+        return str(to_sympy(expr_from_sympy(e).series(ox, 0, n), evaluate=False))
+
+    cases = [S.LambertW(sx), S.LambertW(2*sx + sx**2), S.LambertW(sx + 1), S.Abs(-sx + sx**2), S.Abs(S.sin(sx)),
+             S.sign(-sx), S.sign(sx + 1), S.arg(-sx), S.sinc(sx), S.gamma(sx - 1), S.gamma(sx + half), S.gamma(2*sx - 2),
+             S.loggamma(sx), S.loggamma(sx + 2), S.expint(1, sx), S.expint(half, sx), S.Ei(sx), S.Ei(-sx), S.Ei(sx + 1),
+             S.Si(2*sx), S.Ci(sx**2), S.Shi(sx), S.Chi(sx), S.Ci(sx + 1), S.li(sx + 2), S.Li(sx + 3), S.li(sx),
+             S.SingularityFunction(sx, 1, 2), S.SingularityFunction(sx, 0, 0), S.elliptic_k(2*sx), S.elliptic_e(sx**2),
+             S.elliptic_e(sx, half)]
+    for e in cases:
+        for n in (3, 6):
+            clear_cache()
+            want = str(e.series(sx, 0, n))
+            clear_cache()
+            assert ours(e, n) == want, (e, n)
+    # where SymPy is wrong (issue #25): sinc expands in x, SingularityFunction
+    # to the order asked, expint(2, x) is real for x > 0
+    assert ours(S.sinc(2*sx), 6) == '1 - 2*x**2/3 + 2*x**4/15 + O(x**6)'
+    assert ours(S.expint(2, sx), 3) == '1 + x*(log(x) - 1 + EulerGamma) - x**2/2 + O(x**3)'
+    got = expr_from_sympy(S.SingularityFunction(sx, -1, 2)).nseries(ox, n=6)
+    assert str(to_sympy(got, evaluate=False)) == 'x**2 + 2*x + 1'
