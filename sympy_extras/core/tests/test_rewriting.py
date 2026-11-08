@@ -94,3 +94,15 @@ def test_expand_complex_matches_sympy() -> None:
     for e in cases:
         assert str(to_sympy(expand_complex(expr_from_sympy(e)), evaluate=False)) == str(s.expand_complex(e)), e
         assert str(to_sympy(expand(expr_from_sympy(e), complex=True), evaluate=False)) == str(s.expand(e, complex=True)), e
+
+
+def test_expand_trig_matches_sympy() -> None:
+    from sympy_extras.core.function import expand, expand_trig
+    z = s.Symbol('z')
+    cases: list[sympy.Expr] = [
+        s.sin(x + y), s.cos(3 * x), s.sin(4 * x), s.tan(x + y + z), s.cot(2 * x + y), s.tan(3 * x), s.cot(3 * x),
+        s.sinh(2 * x + y), s.cosh(3 * x), s.tanh(x + y), s.tanh(3 * x), s.coth(x + y), s.coth(2 * x), s.sec(x + y),
+        s.csc(2 * x), s.sech(x + y + z), s.csch(3 * x), x + s.cot(2 * x + y) * s.sech(x + y + z)]
+    for e in cases:
+        assert str(to_sympy(expand_trig(expr_from_sympy(e)), evaluate=False)) == str(s.expand_trig(e)), e
+        assert str(to_sympy(expand(expr_from_sympy(e), trig=True), evaluate=False)) == str(s.expand(e, trig=True)), e

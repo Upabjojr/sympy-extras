@@ -1186,6 +1186,15 @@ def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: boo
         # multinomial, mul and the power hints
         e = as_expr(_expand_complex(e, deep, ExpandHints(mul, multinomial, power_base, power_exp, log, True)))
         complex = False
+    if trig and not func:
+        # SymPy's sorted hints: trig after log, multinomial, mul and the
+        # power hints, then the loop of multinomial, mul and log
+        hints = ExpandHints(mul, multinomial, power_base, power_exp, log, False, True)
+        e = _expand(e, deep, mul, multinomial, power_exp, log) if (mul or multinomial or power_exp or log) else e
+        e = as_expr(_expand_trig(e, deep, hints))
+        trig = False
+        if not (mul or multinomial or log):
+            return e
     if func or trig or complex:
         from .interop import expr_through_sympy
         return expr_through_sympy(e, lambda s: sympy.expand(s, deep=deep, mul=mul, multinomial=multinomial,
@@ -1206,16 +1215,16 @@ class ExpandHints:
     """The hints of an ``expand`` call, as SymPy passes them on to
     ``as_real_imag`` (``log.as_real_imag`` expands with them)."""
 
-    __slots__ = ('mul', 'multinomial', 'power_base', 'power_exp', 'log', 'complex')
+    __slots__ = ('mul', 'multinomial', 'power_base', 'power_exp', 'log', 'complex', 'trig')
 
     def __init__(self, mul: bool, multinomial: bool, power_base: bool, power_exp: bool, log: bool,
-                 complex: bool) -> None:
+                 complex: bool, trig: bool = False) -> None:
         self.mul, self.multinomial, self.power_base = mul, multinomial, power_base
-        self.power_exp, self.log, self.complex = power_exp, log, complex
+        self.power_exp, self.log, self.complex, self.trig = power_exp, log, complex, trig
 
     def expand(self, e: Expr, deep: bool) -> Expr:
         return expand(e, deep=deep, mul=self.mul, multinomial=self.multinomial, power_base=self.power_base,
-                      power_exp=self.power_exp, log=self.log, complex=self.complex)
+                      power_exp=self.power_exp, log=self.log, complex=self.complex, trig=self.trig)
 
 
 def expand_with_hints(e: Expr, hints: Optional[ExpandHints], complex: Optional[bool] = None) -> Expr:
@@ -1225,8 +1234,31 @@ def expand_with_hints(e: Expr, hints: Optional[ExpandHints], complex: Optional[b
     if hints is None:
         return e.expand()
     if complex is not None:
-        hints = ExpandHints(hints.mul, hints.multinomial, hints.power_base, hints.power_exp, hints.log, complex)
+        hints = ExpandHints(hints.mul, hints.multinomial, hints.power_base, hints.power_exp, hints.log, complex,
+                            hints.trig)
     return hints.expand(e, True)
+
+
+_TRIG_RULES: dict[type, Callable[[Expr, ExpandHints], Expr]] = {}
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr._expand_hint with the _eval_expand_trig methods
+def _expand_trig(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
+    """The trigonometric and hyperbolic functions (their arguments first)
+    expanded by their rules."""
+    if not _TRIG_RULES:
+        from sympy_extras.functions.elementary._expand_trig import rules
+        _TRIG_RULES.update(rules())
+    if deep and e.args and not e.is_Atom:
+        args = tuple(_expand_trig(a, deep, hints) for a in e.args)
+        if any(new is not old and new != old for new, old in zip(args, e.args)):
+            e = e._evaluated(args)
+    rule = _TRIG_RULES.get(type(e))
+    if rule is not None and isinstance(e, Expr):
+        new = rule(e, hints)
+        if new != e:
+            return new
+    return e
 
 
 # PORTED FROM SYMPY: sympy/core/expr.py:Expr._expand_hint with Expr._eval_expand_complex
@@ -1316,7 +1348,9 @@ def _expand_mul_node(e: Mul, deep: bool) -> Expr:
         if isinstance(d, Mul):
             n = _expand_mul_node(n, deep) if isinstance(n, Mul) else n
             d = _expand_mul_node(d, deep)
-            expr = mul(n, pow(d, Integer(-1)))
+        # SymPy rebuilds n/d in any case: the denominator 2*(a + b) of
+        # fraction is already distributed
+        expr = mul(n, pow(d, Integer(-1)))
     if not isinstance(expr, Mul):
         return expr
     plain: list[Expr] = []
@@ -1608,8 +1642,8 @@ def expand_trig(expr: ExprLike, deep: bool = True) -> Expr:
     >>> expand_trig(sympify('sin(2*x)'))
     2*sin(x)*cos(x)
     """
-    from .interop import expr_through_sympy
-    return expr_through_sympy(to_expr(expr), lambda s: sympy.expand_trig(s, deep=deep))
+    return expand(expr, deep=deep, mul=False, multinomial=False, power_base=False, power_exp=False, log=False,
+                  trig=True)
 
 
 def expand_complex(expr: ExprLike, deep: bool = True) -> Expr:

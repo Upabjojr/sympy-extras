@@ -80,6 +80,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `expand(trig=True)` and `expand_trig` are native
+  (`functions/elementary/_expand_trig.py`: the rules of sin, cos, tan, cot,
+  sinh, cosh, tanh, coth and their reciprocals).
+- `expand_mul` rebuilds `n/d` after splitting a product with a numerical
+  factor in its denominator, as SymPy does (`c/(2*(a + b))` is
+  `c/(2*a + 2*b)`).
 - `expand(complex=True)` and `expand_complex` are native: the complex
   hint first (SymPy's sorted hints), each node as `re + I*im`, the hints of
   the call passed on to `as_real_imag` (a typed `ExpandHints`) as SymPy's
