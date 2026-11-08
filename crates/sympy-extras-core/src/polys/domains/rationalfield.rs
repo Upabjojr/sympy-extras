@@ -339,6 +339,7 @@ mod tests {
                 .into_iter()
                 .collect(),
         ];
+        #[derive(Debug, Clone, PartialEq)]
         struct Generic;
         impl Domain for Generic {
             type Elem = Rat;

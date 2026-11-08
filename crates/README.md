@@ -16,6 +16,12 @@ cd crates/sympy-extras-py && maturin develop --release && cd ../..
 python -m pytest tests                       # both implementations
 ```
 
+The workspace members are listed explicitly in `Cargo.toml` (the session
+directory `crates/.claude/` must not be picked up as a crate).
+
+```
+```
+
 ## Conventions
 
 See the crate documentation of `sympy-extras-core` (`src/lib.rs`): Python
@@ -39,4 +45,7 @@ degrees and indices are `usize`, data-dependent exceptions are
 | `polys/sqfreetools.py` | done | |
 | `polys/galoistools.py` | done | the random choices from a seeded SplitMix64 (`random.rs`); the factorisations are sorted, so equal to Python's |
 | `polys/factortools.py` | over `ZZ`, `QQ` | the number-field part (`dup_ext_*`, Trager) needs `AlgebraicField` |
-| everything else | not yet | next: `polyerrors`, `orderings`, `rings`, `heuristicgcd`, the polynomial ring domains |
+| `polys/rings.py` | done | orders as the enum `MonomialOrder` (lex, grlex, grevlex, and the weight, block and homogeneous orders of `orderings.py` and `modulargroebner.py`); `from_expr`/`to_expr` wait for the core |
+| `polys/heuristicgcd.py` | done | |
+| `polys/polyerrors.py` | `HeuristicGCDFailed` | the others as they are needed |
+| everything else | not yet | next: the polynomial ring domains (`polynomialring`, `sparsepolynomialring`, `fractionfield`), `polyclasses`, `f4` |

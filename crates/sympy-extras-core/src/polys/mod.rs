@@ -7,4 +7,6 @@ pub mod domains;
 pub mod euclidtools;
 pub mod factortools;
 pub mod galoistools;
+pub mod heuristicgcd;
+pub mod rings;
 pub mod sqfreetools;

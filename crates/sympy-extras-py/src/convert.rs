@@ -19,6 +19,7 @@ pub fn err(e: PolyError) -> PyErr {
     match e {
         PolyError::ZeroDivision(message) => PyZeroDivisionError::new_err(message),
         PolyError::Value(message) => PyValueError::new_err(message),
+        PolyError::HeuristicGCDFailed(message) => crate::polyerrors::HeuristicGCDFailed::new_err(message),
     }
 }
 

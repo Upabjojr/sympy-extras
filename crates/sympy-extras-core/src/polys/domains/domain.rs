@@ -35,7 +35,7 @@ pub(crate) fn next_column<T>(row: &SparseRow<T>, c: usize) -> Option<usize> {
 }
 
 /// A ring whose elements have the type `Elem`.
-pub trait Domain {
+pub trait Domain: Clone + PartialEq + Debug {
     /// The type of the elements.
     type Elem: Clone + PartialEq + Debug;
 
@@ -285,7 +285,7 @@ pub trait Domain {
 }
 
 /// `row -= factor * pivot` entrywise, the zero entries removed.
-fn eliminate_with_pivot<K: Domain + ?Sized>(
+fn eliminate_with_pivot<K: Domain>(
     k: &K,
     row: &mut SparseRow<K::Elem>,
     factor: &K::Elem,

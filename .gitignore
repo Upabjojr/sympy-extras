@@ -38,3 +38,4 @@ audits/
 
 # Rust
 target/
+.claude/

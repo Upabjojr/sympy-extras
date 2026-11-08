@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = ["crates/sympy-extras-core", "crates/sympy-extras-py"]
 
 [workspace.package]
 version = "0.0.3"

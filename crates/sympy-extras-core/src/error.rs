@@ -12,6 +12,8 @@ pub enum PolyError {
     /// `ValueError`: a division which is not exact, an element which is not
     /// a unit, a conversion without an exact image, an invalid argument.
     Value(String),
+    /// `polyerrors.HeuristicGCDFailed`: no evaluation point gave the gcd.
+    HeuristicGCDFailed(String),
 }
 
 /// The result of a computation which may fail.
@@ -22,6 +24,7 @@ impl fmt::Display for PolyError {
         match self {
             PolyError::ZeroDivision(message) => write!(f, "{}", message),
             PolyError::Value(message) => write!(f, "{}", message),
+            PolyError::HeuristicGCDFailed(message) => write!(f, "{}", message),
         }
     }
 }

@@ -18,6 +18,8 @@ mod convert;
 mod dense;
 mod domains;
 mod factor;
+mod polyerrors;
+mod rings;
 
 /// A submodule `parent.name`, registered as `full` in `sys.modules`.
 fn submodule<'py>(parent: &Bound<'py, PyModule>, name: &str, full: &str) -> PyResult<Bound<'py, PyModule>> {
@@ -41,5 +43,12 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     dense::register_sqfreetools(&submodule(&polys, "sqfreetools", "sympy_extras_rs.polys.sqfreetools")?)?;
     factor::register_galoistools(&submodule(&polys, "galoistools", "sympy_extras_rs.polys.galoistools")?)?;
     factor::register_factortools(&submodule(&polys, "factortools", "sympy_extras_rs.polys.factortools")?)?;
+    polyerrors::register(&submodule(&polys, "polyerrors", "sympy_extras_rs.polys.polyerrors")?)?;
+    rings::register_rings(&submodule(&polys, "rings", "sympy_extras_rs.polys.rings")?)?;
+    rings::register_heuristicgcd(&submodule(
+        &polys,
+        "heuristicgcd",
+        "sympy_extras_rs.polys.heuristicgcd",
+    )?)?;
     Ok(())
 }
