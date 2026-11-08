@@ -283,6 +283,10 @@ remove public functions. Breaking changes are listed here when they happen.
   classes using it (the function itself, `NotImplementedError` when an
   argument vanishes); the classes with a rule of their own in SymPy still
   use SymPy's.
+- Native leading terms for LambertW, factorial, binomial, gamma, polygamma,
+  digamma, trigamma, zeta, erf, erfc, erfi, Ei, Si, Ci, Shi, Chi, fresnels
+  and fresnelc (`sympy_extras.functions._leading_terms`, SymPy's own
+  `_eval_as_leading_term` rules).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

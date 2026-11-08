@@ -200,3 +200,36 @@ def test_generic_leading_terms_match_sympy() -> None:
                 assert got == want, e
                 checked += 1
     assert checked > 100
+
+
+def test_special_leading_terms_match_sympy() -> None:
+    # the class-specific _eval_as_leading_term rules of sympy_extras.functions._leading_terms
+    import sympy
+    from sympy.core.cache import clear_cache
+    from sympy.core.function import PoleError as SympyPoleError
+    from sympy_extras.core.coreerrors import PoleError
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import expr_from_sympy, from_sympy
+    from sympy_extras.core.symbol import Symbol as OurSymbol
+    sx = sympy.Symbol('x')
+    ox = from_sympy(sx)
+    assert isinstance(ox, OurSymbol)
+    cases = [sympy.LambertW(sx), sympy.LambertW(2*sx + 1), sympy.LambertW(sx, 2), sympy.factorial(sx),
+             sympy.factorial(sx + 3), sympy.factorial(1/sx), sympy.binomial(sx, 2), sympy.gamma(sx), sympy.gamma(sx - 2),
+             sympy.gamma(sx + 3), sympy.gamma(1/sx), sympy.polygamma(0, 1/sx), sympy.polygamma(0, -1/sx),
+             sympy.polygamma(2, sx + 1), sympy.digamma(sx), sympy.trigamma(sx + 1), sympy.zeta(sx), sympy.zeta(3, sx),
+             sympy.zeta(2, 1/sx), sympy.erf(sx), sympy.erf(1/sx), sympy.erfc(2*sx), sympy.erfi(sx), sympy.erfi(sx + 1),
+             sympy.Ei(sx), sympy.Ei(-sx), sympy.Ei(sx + 1), sympy.Si(sx), sympy.Si(1/sx), sympy.Shi(2*sx),
+             sympy.Ci(sx), sympy.Ci(sympy.sqrt(sx)), sympy.Chi(sx**2 + sx), sympy.Chi(sx + 3),
+             sympy.fresnels(sx), sympy.fresnels(1/sx), sympy.fresnelc(sx), sympy.fresnelc(-1/sx), sympy.fresnelc(sx + 1)]
+    for e in cases:
+        clear_cache()
+        try:
+            want = str(e.as_leading_term(sx))
+        except (NotImplementedError, ValueError, SympyPoleError) as exc:
+            want = 'ERR ' + type(exc).__name__
+        try:
+            got = str(to_sympy(expr_from_sympy(e).as_leading_term(ox), evaluate=False))
+        except (NotImplementedError, ValueError, PoleError) as exc:
+            got = 'ERR ' + type(exc).__name__
+        assert got == want, e

@@ -743,6 +743,10 @@ class DefinedFunction(Application):
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         if type(self).__name__ not in _SYMPY_OWN_LEADING_TERM:
             return _generic_leading_term(self, x, logx)
+        from sympy_extras.functions._leading_terms import rules
+        rule = rules().get(type(self).__name__)
+        if rule is not None:
+            return rule(self, x, logx, cdir)
         # the classes with a rule of their own in SymPy not ported use SymPy's
         from .interop import leading_term_node_through_sympy
         found = leading_term_node_through_sympy(self, x, logx, cdir)
