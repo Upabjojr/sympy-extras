@@ -20,8 +20,8 @@
 //!   `Integer` of the same value; a `Dummy` only equals itself).
 //!
 //! The modules are ported bottom-up: `assumptions` (the rules and their
-//! closure), `sorting` (the `compare` order), `basic`, `numbers`, `symbol`
-//! so far; the evaluating functions, printing and the rest follow.
+//! closure), `sorting` (the `compare` order), `basic`, `numbers` (with the
+//! arithmetic of the numbers), `parameters`, `symbol` so far; the evaluating functions, printing and the rest follow.
 
 // a node caches its `compare` key in a `OnceLock`; the hash and the equality
 // never read it, so nodes are sound keys of maps and sets
@@ -30,6 +30,7 @@
 pub mod assumptions;
 pub mod basic;
 pub mod numbers;
+pub mod parameters;
 pub mod sorting;
 pub mod symbol;
 
