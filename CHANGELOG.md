@@ -303,6 +303,11 @@ remove public functions. Breaking changes are listed here when they happen.
   per node (`_compute_sort_key` in the classes): the nested keys were
   recomputed at every level, `hyperexpand(hyper([4], [6], 1))` went from
   59 s to 0.6 s.
+- Native series for floor, ceiling, frac, polylog and the Bessel functions
+  J, Y, I, K (SymPy's rules); no series rule of a ported function goes
+  through SymPy any more. `Order` has no `real` fact, as in SymPy
+  (`AccumBounds(0, 1) + O(x**3)` stays a sum: `frac(1/x).series(x)`
+  failed).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

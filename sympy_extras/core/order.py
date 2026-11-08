@@ -173,11 +173,13 @@ class Order(Expr):
         return self
 
     def _eval_facts(self) -> dict[str, bool]:
+        # SymPy's Order has no facts: not even real for a real expression
+        # (AccumBounds(0, 1) + O(x**3) stays a sum); commutative is kept
+        # for the products here
         from .assumptions import facts_of
         facts: dict[str, bool] = {}
-        for name in ('commutative', 'real'):
-            if facts_of(self._expr).get(name) is True:
-                facts[name] = True
+        if facts_of(self._expr).get('commutative') is True:
+            facts['commutative'] = True
         return facts
 
     def _sympystr(self, printer: StrPrinter) -> str:

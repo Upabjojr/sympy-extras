@@ -299,7 +299,14 @@ def test_special_function_series_rules() -> None:
              S.loggamma(sx), S.loggamma(sx + 2), S.expint(1, sx), S.expint(half, sx), S.Ei(sx), S.Ei(-sx), S.Ei(sx + 1),
              S.Si(2*sx), S.Ci(sx**2), S.Shi(sx), S.Chi(sx), S.Ci(sx + 1), S.li(sx + 2), S.Li(sx + 3), S.li(sx),
              S.SingularityFunction(sx, 1, 2), S.SingularityFunction(sx, 0, 0), S.elliptic_k(2*sx), S.elliptic_e(sx**2),
-             S.elliptic_e(sx, half)]
+             S.elliptic_e(sx, half),
+             S.floor(-sx), S.floor(sx + half), S.floor(S.sin(sx)), S.ceiling(2 - sx), S.ceiling(sx), S.frac(-sx),
+             S.frac(sx + half), S.frac(1/sx), S.frac(2*sx - 3), S.polylog(3, 2*sx), S.polylog(2, sx**2),
+             S.polylog(sympy.Symbol('y'), sx), S.polylog(2, S.sqrt(sx)), S.polylog(2, S.sin(sx)), S.polylog(-1, sx),
+             S.besselj(0, sx), S.besselj(2, sx**2), S.besselj(half, S.sqrt(sx)), S.besselj(3, 2*sx),
+             S.besseli(1, 2*sx), S.besseli(sympy.Rational(1, 3), sx), S.bessely(0, sx), S.bessely(2, 2*sx),
+             S.bessely(3, sx**2), S.besselk(0, sx), S.besselk(1, S.sqrt(sx)), S.besselk(3, 2*sx), S.besselk(half, sx),
+             S.besselk(sympy.Rational(1, 3), sx**2), S.besselj(1, sx + 1)]
     for e in cases:
         for n in (3, 6):
             clear_cache()
