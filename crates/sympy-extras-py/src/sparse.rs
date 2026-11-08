@@ -122,6 +122,7 @@ impl PySparseRing {
             DomainKind::ZZ => AnyRing::SZ(SparsePolynomialRing::new(IntegerRing, names)),
             DomainKind::QQ => AnyRing::SQ(SparsePolynomialRing::new(RationalField, names)),
             DomainKind::GF(p) => AnyRing::SG(SparsePolynomialRing::new(FiniteField::new(p).map_err(err)?, names)),
+            _ => return Err(PyTypeError::new_err("the ground must be ZZ, QQ or GF(p)")),
         };
         Ok(PySparseRing { inner })
     }

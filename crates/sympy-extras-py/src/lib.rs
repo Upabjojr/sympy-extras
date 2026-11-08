@@ -38,6 +38,16 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let polys: Bound<'_, PyModule> = submodule(m, "polys", "sympy_extras_rs.polys")?;
     let domains_module: Bound<'_, PyModule> = submodule(&polys, "domains", "sympy_extras_rs.polys.domains")?;
     domains::register(&domains_module)?;
+    domains::register_polynomialring(&submodule(
+        &domains_module,
+        "polynomialring",
+        "sympy_extras_rs.polys.domains.polynomialring",
+    )?)?;
+    domains::register_fractionfield(&submodule(
+        &domains_module,
+        "fractionfield",
+        "sympy_extras_rs.polys.domains.fractionfield",
+    )?)?;
     sparse::register(&submodule(
         &domains_module,
         "sparsepolynomialring",

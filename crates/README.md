@@ -49,4 +49,6 @@ degrees and indices are `usize`, data-dependent exceptions are
 | `polys/heuristicgcd.py` | done | |
 | `polys/polyerrors.py` | `HeuristicGCDFailed` | the others as they are needed |
 | `polys/domains/sparsepolynomialring.py` | done | the Integer/Rational flavours as `SparsePolynomialRing::sympy` with `SparseGround` hooks; `IteratedPolynomialRing` one recursive type; over `ZZ`/`QQ` (the gcd needs an ordered ground, in Python too) |
-| everything else | not yet | next: `polynomialring`, `fractionfield`, `polyclasses`, `f4` |
+| `polys/domains/polynomialring.py` | done | the tower depth is a type (`PolynomialRing<PolynomialRing<K>>`); the bindings offer `K[y]` over `ZZ`, `QQ`, `GF(p)`, on which every dense binding runs |
+| `polys/domains/fractionfield.py` | done | conversions between different fields of fractions wait for the core (they go through expressions) |
+| everything else | not yet | next: `polyclasses`, `f4`, `subresultants`, `rootisolation` |

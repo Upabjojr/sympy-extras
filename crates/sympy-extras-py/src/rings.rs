@@ -204,11 +204,9 @@ fn ring_of(e: &ElemKind) -> RingKind {
 
 fn domain_of(r: &RingKind) -> PyDomain {
     match r {
-        RingKind::ZZ(_) => PyDomain { kind: DomainKind::ZZ },
-        RingKind::QQ(_) => PyDomain { kind: DomainKind::QQ },
-        RingKind::GF(ring) => PyDomain {
-            kind: DomainKind::GF(ring.domain.p()),
-        },
+        RingKind::ZZ(_) => PyDomain::base(DomainKind::ZZ),
+        RingKind::QQ(_) => PyDomain::base(DomainKind::QQ),
+        RingKind::GF(ring) => PyDomain::base(DomainKind::GF(ring.domain.p())),
     }
 }
 
@@ -257,6 +255,7 @@ impl PyPolyRing {
             DomainKind::GF(p) => {
                 RingKind::GF(PolyRing::new(FiniteField::new(p).map_err(err)?, symbols, order).map_err(err)?)
             }
+            _ => return Err(PyTypeError::new_err("the domain must be ZZ, QQ or GF(p)")),
         };
         Ok(PyPolyRing { inner })
     }

@@ -12,7 +12,9 @@ use pyo3::types::{PyDict, PyInt, PyList, PyTuple};
 
 use sympy_extras_core::error::PolyError;
 use sympy_extras_core::numbers::{denom, numer, rat_from_parts, Int, Rat};
-use sympy_extras_core::polys::domains::{Domain, FiniteField, IntegerRing, RationalField};
+use sympy_extras_core::polys::domains::{
+    Domain, FiniteField, FracElement, FractionField, IntegerRing, PolynomialRing, RationalField,
+};
 
 /// The Python exception of an error of the core.
 pub fn err(e: PolyError) -> PyErr {
@@ -75,6 +77,74 @@ impl Bridge for FiniteField {
 
     fn to_py<'py>(&self, py: Python<'py>, e: &u64) -> PyResult<Bound<'py, PyAny>> {
         Ok(e.into_pyobject(py)?.into_any())
+    }
+}
+
+/// The elements of `K[x]` are lists of coefficients of `K`.
+impl<K: Bridge> Bridge for PolynomialRing<K> {
+    fn extract(&self, ob: &Bound<'_, PyAny>) -> PyResult<Vec<K::Elem>> {
+        poly(&self.ground, ob)
+    }
+
+    fn to_py<'py>(&self, py: Python<'py>, e: &Vec<K::Elem>) -> PyResult<Bound<'py, PyAny>> {
+        out_poly(&self.ground, py, e)
+    }
+}
+
+/// A reduced fraction of two polynomials (lists of coefficients), as
+/// `fractionfield.FracElement`; equal to any object with the same `numer`
+/// and `denom`.
+#[pyclass(name = "FracElement", module = "sympy_extras_rs.polys.domains.fractionfield", frozen)]
+pub struct PyFracElement {
+    #[pyo3(get)]
+    numer: Py<PyAny>,
+    #[pyo3(get)]
+    denom: Py<PyAny>,
+}
+
+impl PyFracElement {
+    pub fn from_parts(numer: Py<PyAny>, denom: Py<PyAny>) -> PyFracElement {
+        PyFracElement { numer, denom }
+    }
+}
+
+#[pymethods]
+impl PyFracElement {
+    #[new]
+    fn new(numer: Py<PyAny>, denom: Py<PyAny>) -> PyFracElement {
+        PyFracElement { numer, denom }
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        Ok(format!(
+            "FracElement({}, {})",
+            self.numer.bind(py).repr()?.extract::<String>()?,
+            self.denom.bind(py).repr()?.extract::<String>()?
+        ))
+    }
+
+    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let (numer, denom) = match (other.getattr("numer"), other.getattr("denom")) {
+            (Ok(n), Ok(d)) => (n, d),
+            _ => return Ok(false),
+        };
+        Ok(self.numer.bind(py).eq(numer)? && self.denom.bind(py).eq(denom)?)
+    }
+}
+
+/// The elements of `K(x)` are `FracElement`s (or any object with `numer`
+/// and `denom`), reduced on the way in.
+impl<K: Bridge> Bridge for FractionField<K> {
+    fn extract(&self, ob: &Bound<'_, PyAny>) -> PyResult<FracElement<K::Elem>> {
+        let numer: Vec<K::Elem> = poly(&self.ring.ground, &ob.getattr("numer")?)?;
+        let denom: Vec<K::Elem> = poly(&self.ring.ground, &ob.getattr("denom")?)?;
+        self.new_element(numer, denom).map_err(err)
+    }
+
+    fn to_py<'py>(&self, py: Python<'py>, e: &FracElement<K::Elem>) -> PyResult<Bound<'py, PyAny>> {
+        let numer: Py<PyAny> = out_poly(&self.ring.ground, py, &e.numer)?.unbind();
+        let denom: Py<PyAny> = out_poly(&self.ring.ground, py, &e.denom)?.unbind();
+        Ok(Bound::new(py, PyFracElement { numer, denom })?.into_any())
     }
 }
 

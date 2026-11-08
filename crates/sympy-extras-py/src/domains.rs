@@ -1,10 +1,12 @@
-//! `sympy_extras_rs.polys.domains`: the domains `ZZ`, `QQ` and `GF(p)` as
-//! one Python class, with the methods of the Python domains.
+//! `sympy_extras_rs.polys.domains`: the domains `ZZ`, `QQ` and `GF(p)`, and
+//! the polynomial rings `K[x]` and the fields of fractions `K(x)` over them
+//! (`polynomialring.PolynomialRing`, `fractionfield.FractionField`), as one
+//! Python class with the methods of the Python domains.
 
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 
-use sympy_extras_core::polys::domains::{Domain, FiniteField, IntegerRing, RationalField};
+use sympy_extras_core::polys::domains::{Domain, FiniteField, RationalField};
 
 use crate::convert::{err, out_elem, tuple, Bridge};
 
@@ -14,20 +16,104 @@ pub enum DomainKind {
     ZZ,
     QQ,
     GF(u64),
+    /// `ZZ[x]`, `QQ[x]`, `GF(p)[x]` (the variable is `PyDomain::variable`)
+    PolyZZ,
+    PolyQQ,
+    PolyGF(u64),
+    /// `ZZ(x)`, `QQ(x)`, `GF(p)(x)`
+    FracZZ,
+    FracQQ,
+    FracGF(u64),
 }
 
 /// A coefficient domain.
 #[pyclass(name = "Domain", module = "sympy_extras_rs.polys.domains", frozen, eq, hash)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PyDomain {
     pub kind: DomainKind,
+    /// The variable of `K[x]` and `K(x)` (empty otherwise).
+    pub variable: String,
+}
+
+impl PyDomain {
+    /// `ZZ`, `QQ` or `GF(p)`.
+    pub fn base(kind: DomainKind) -> PyDomain {
+        PyDomain {
+            kind,
+            variable: String::new(),
+        }
+    }
+
+    /// Whether this is `ZZ`, `QQ` or `GF(p)`.
+    pub fn is_base(&self) -> bool {
+        matches!(self.kind, DomainKind::ZZ | DomainKind::QQ | DomainKind::GF(_))
+    }
 }
 
 /// Runs `$body` with `$k` bound to the Rust domain of a `PyDomain`.
 #[macro_export]
 macro_rules! with_domain {
-    ($dom:expr, $k:ident => $body:expr) => {
-        match $dom.kind {
+    ($dom:expr, $k:ident => $body:expr) => {{
+        use sympy_extras_core::polys::domains::{
+            FiniteField as _F, FractionField as _Frac, IntegerRing as _Z, PolynomialRing as _P, RationalField as _Q,
+        };
+        let dom: &$crate::domains::PyDomain = &$dom;
+        match dom.kind {
+            $crate::domains::DomainKind::ZZ => {
+                let $k = &_Z;
+                $body
+            }
+            $crate::domains::DomainKind::QQ => {
+                let $k = &_Q;
+                $body
+            }
+            $crate::domains::DomainKind::GF(p) => {
+                let field = _F::new(p).map_err($crate::convert::err)?;
+                let $k = &field;
+                $body
+            }
+            $crate::domains::DomainKind::PolyZZ => {
+                let ring = _P::new(_Z, &dom.variable);
+                let $k = &ring;
+                $body
+            }
+            $crate::domains::DomainKind::PolyQQ => {
+                let ring = _P::new(_Q, &dom.variable);
+                let $k = &ring;
+                $body
+            }
+            $crate::domains::DomainKind::PolyGF(p) => {
+                let ring = _P::new(_F::new(p).map_err($crate::convert::err)?, &dom.variable);
+                let $k = &ring;
+                $body
+            }
+            $crate::domains::DomainKind::FracZZ => {
+                let field = _Frac::new(_P::new(_Z, &dom.variable));
+                let $k = &field;
+                $body
+            }
+            $crate::domains::DomainKind::FracQQ => {
+                let field = _Frac::new(_P::new(_Q, &dom.variable));
+                let $k = &field;
+                $body
+            }
+            $crate::domains::DomainKind::FracGF(p) => {
+                let field = _Frac::new(_P::new(_F::new(p).map_err($crate::convert::err)?, &dom.variable));
+                let $k = &field;
+                $body
+            }
+        }
+    }};
+}
+
+/// [`with_domain!`] for `ZZ`, `QQ` and `GF(p)` only (`TypeError` for the
+/// polynomial domains): the functions which need conversions between any
+/// two of the domains.
+#[macro_export]
+macro_rules! with_base_domain {
+    ($dom:expr, $k:ident => $body:expr) => {{
+        let dom: &$crate::domains::PyDomain = &$dom;
+        match dom.kind {
             $crate::domains::DomainKind::ZZ => {
                 let $k = &sympy_extras_core::polys::domains::IntegerRing;
                 $body
@@ -41,23 +127,23 @@ macro_rules! with_domain {
                 let $k = &field;
                 $body
             }
+            _ => Err(pyo3::exceptions::PyTypeError::new_err(
+                "only ZZ, QQ and GF(p) are supported here",
+            )),
         }
-    };
+    }};
 }
 
-fn rust_name(kind: DomainKind) -> String {
-    match kind {
-        DomainKind::ZZ => IntegerRing.name(),
-        DomainKind::QQ => RationalField.name(),
-        DomainKind::GF(p) => format!("GF({})", p),
-    }
+fn rust_name(dom: &PyDomain) -> String {
+    let name = || -> PyResult<String> { with_domain!(dom, k => Ok(k.name())) };
+    name().unwrap_or_else(|_| format!("{:?}", dom.kind))
 }
 
 #[pymethods]
 impl PyDomain {
     #[getter]
     fn name(&self) -> String {
-        rust_name(self.kind)
+        rust_name(self)
     }
 
     #[getter]
@@ -95,11 +181,11 @@ impl PyDomain {
     }
 
     fn __repr__(&self) -> String {
-        rust_name(self.kind)
+        rust_name(self)
     }
 
     fn __str__(&self) -> String {
-        rust_name(self.kind)
+        rust_name(self)
     }
 
     fn is_zero(&self, a: &Bound<'_, PyAny>) -> PyResult<bool> {
@@ -220,10 +306,39 @@ impl PyDomain {
     }
 
     fn factor_dense<'py>(&self, py: Python<'py>, f: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+        if !self.is_base() {
+            return Err(pyo3::exceptions::PyNotImplementedError::new_err(format!(
+                "no factorisation over {}",
+                rust_name(self)
+            )));
+        }
         with_domain!(self, k => {
             let (c, factors) = k.factor_dense(&crate::convert::poly(k, f)?).map_err(err)?;
             tuple(py, vec![out_elem(k, py, &c)?, crate::convert::out_factors(k, py, &factors)?])
         })
+    }
+
+    /// `FractionField.new(numer, denom)`: the reduced fraction.
+    #[allow(clippy::new_ret_no_self)]
+    fn new<'py>(
+        &self,
+        py: Python<'py>,
+        numer: &Bound<'py, PyAny>,
+        denom: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        if !matches!(
+            self.kind,
+            DomainKind::FracZZ | DomainKind::FracQQ | DomainKind::FracGF(_)
+        ) {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "new is a method of the fields of fractions",
+            ));
+        }
+        let raw = Bound::new(
+            py,
+            crate::convert::PyFracElement::from_parts(numer.clone().unbind(), denom.clone().unbind()),
+        )?;
+        with_domain!(self, k => out_elem(k, py, &k.extract(raw.as_any())?))
     }
 
     fn elements<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
@@ -236,7 +351,7 @@ impl PyDomain {
             }
             _ => Err(pyo3::exceptions::PyNotImplementedError::new_err(format!(
                 "{} is not finite",
-                rust_name(self.kind)
+                rust_name(self)
             ))),
         }
     }
@@ -266,15 +381,62 @@ impl PyDomain {
 #[pyo3(name = "GF")]
 fn gf(p: u64) -> PyResult<PyDomain> {
     FiniteField::new(p).map_err(err)?;
+    Ok(PyDomain::base(DomainKind::GF(p)))
+}
+
+/// `polynomialring.PolynomialRing(ground, variable)` over `ZZ`, `QQ` or
+/// `GF(p)`.
+#[pyfunction]
+#[pyo3(name = "PolynomialRing")]
+fn polynomial_ring(ground: &PyDomain, variable: String) -> PyResult<PyDomain> {
+    let kind: DomainKind = match ground.kind {
+        DomainKind::ZZ => DomainKind::PolyZZ,
+        DomainKind::QQ => DomainKind::PolyQQ,
+        DomainKind::GF(p) => DomainKind::PolyGF(p),
+        _ => {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "the ground must be ZZ, QQ or GF(p)",
+            ))
+        }
+    };
+    Ok(PyDomain { kind, variable })
+}
+
+/// `fractionfield.FractionField(ring)` of a `PolynomialRing`.
+#[pyfunction]
+#[pyo3(name = "FractionField")]
+fn fraction_field(ring: &PyDomain) -> PyResult<PyDomain> {
+    let kind: DomainKind = match ring.kind {
+        DomainKind::PolyZZ => DomainKind::FracZZ,
+        DomainKind::PolyQQ => DomainKind::FracQQ,
+        DomainKind::PolyGF(p) => DomainKind::FracGF(p),
+        _ => {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "a PolynomialRing over ZZ, QQ or GF(p) is expected",
+            ))
+        }
+    };
     Ok(PyDomain {
-        kind: DomainKind::GF(p),
+        kind,
+        variable: ring.variable.clone(),
     })
+}
+
+pub fn register_polynomialring(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(polynomial_ring, m)?)?;
+    Ok(())
+}
+
+pub fn register_fractionfield(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(fraction_field, m)?)?;
+    m.add_class::<crate::convert::PyFracElement>()?;
+    Ok(())
 }
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDomain>()?;
-    m.add("ZZ", PyDomain { kind: DomainKind::ZZ })?;
-    m.add("QQ", PyDomain { kind: DomainKind::QQ })?;
+    m.add("ZZ", PyDomain::base(DomainKind::ZZ))?;
+    m.add("QQ", PyDomain::base(DomainKind::QQ))?;
     m.add_function(wrap_pyfunction!(gf, m)?)?;
     m.add("FiniteField", m.getattr("GF")?)?;
     Ok(())

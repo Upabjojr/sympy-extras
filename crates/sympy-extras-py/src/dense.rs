@@ -103,9 +103,9 @@ pub fn dup_convert<'py>(
     K0: &PyDomain,
     K1: &PyDomain,
 ) -> PyResult<Bound<'py, PyAny>> {
-    with_domain!(K0, k0 => {
+    crate::with_base_domain!(K0, k0 => {
         let f = poly(k0, f)?;
-        with_domain!(K1, k1 => out_poly(k1, py, &db::dup_convert(&f, k0, k1).map_err(err)?))
+        crate::with_base_domain!(K1, k1 => out_poly(k1, py, &db::dup_convert(&f, k0, k1).map_err(err)?))
     })
 }
 
