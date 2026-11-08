@@ -36,7 +36,7 @@ from typing import Callable, TYPE_CHECKING, Iterable, Optional
 from .add import Add, add
 from .basic import Basic
 from .expr import Expr, ExprLike, to_expr
-from .numbers import (ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, Number, Rational, nan,
+from .numbers import (ComplexInfinity, Exp1, Infinity, Integer, NaN, NegativeInfinity, Number, Rational, nan,
     number_from_fraction)
 from .operations import AssocOp
 from .parameters import global_parameters
@@ -294,6 +294,11 @@ def _mul_pass(args: list[Expr]) -> tuple[Expr, Optional[list[Expr]]]:
             # unevaluated exponent 2*(n + 1) becomes 2*n + 2
             if factor.is_Pow and factor.as_base_exp()[1] != exponent:
                 rebuilt.append(pow(base, exponent))
+            elif isinstance(base, Exp1) and factor.args:
+                # SymPy rebuilds E**e evaluated: an unevaluated
+                # exp(2*log(p)) times x is p**2*x
+                from sympy_extras.functions.elementary.exponential import exp
+                rebuilt.append(exp(exponent))
             else:
                 rebuilt.append(factor)
             continue
@@ -539,7 +544,27 @@ def neg(a: ExprLike) -> Expr:
     >>> neg(x), neg(x + y), neg(-2*x)
     (-x, -x - y, 2*x)
     """
-    return mul(Integer(-1), a)
+    from .add import Add, add
+    from .expr import to_expr
+    e = to_expr(a)
+    if isinstance(e, Number):
+        return mul(Integer(-1), e)
+    if isinstance(e, Add):
+        # PORTED FROM SYMPY: sympy/core/add.py:Add.__neg__ (distribute)
+        return add(*[neg(t) for t in e.args if isinstance(t, Expr)])
+    if isinstance(e, Mul):
+        # PORTED FROM SYMPY: sympy/core/mul.py:Mul.__neg__ (no flattening)
+        factors = list(e.args)
+        first = factors[0]
+        if isinstance(first, Number):
+            negated = mul(Integer(-1), first)
+            if _is_rational_value(negated, 1):
+                rest = [f for f in factors[1:] if isinstance(f, Expr)]
+                return rest[0] if len(rest) == 1 else Mul(*rest)
+            return Mul(negated, *factors[1:])
+        return Mul(Integer(-1), *factors)
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr.__neg__ (Mul._from_args)
+    return Mul(Integer(-1), e)
 
 _POW: Optional[Callable[[ExprLike, ExprLike], Expr]] = None
 

@@ -51,6 +51,11 @@ remove public functions. Breaking changes are listed here when they happen.
 - `sympy_extras.simplify.simplify.nsimplify` (pslq, `mpmath.identify`
   read by a typed parser, constants, `rational`, `tolerance`), ported from
   SymPy; `radsimp` no longer goes through SymPy.
+- `rewrite` is native when its targets are typed function classes
+  (`sympy_extras.core.rewriting`): the rules of the trigonometric,
+  hyperbolic and exponential functions and of powers in terms of `exp` and
+  `cos` are a typed table; a node without a ported rule is rewritten by
+  SymPy, that node only.
 - `inversecombine` and `kroneckersimp` in `sympy_extras.simplify.simplify`,
   ported from SymPy (used by `simplify` in place of SymPy's).
 - `sympy_extras.simplify.simplify.simplify` and `collect_abs`, ported from
@@ -69,6 +74,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `neg` (unary minus) follows SymPy's `__neg__`: a product negates its
+  coefficient and anything else becomes `Mul(-1, a)` without flattening.
+- `mul` rebuilds a lone power of `E` evaluated, like SymPy's
+  `Mul.flatten` (`x*exp(2*log(p))` unevaluated is `p**2*x`).
 - `expand_mul`, `expand_multinomial`, `expand_power_base` and
   `expand_power_exp` no longer expand logarithms; the polynomial layer
   expands with SymPy's default hints (logarithms included).

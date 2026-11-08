@@ -780,6 +780,14 @@ class Basic:
         >>> SymPyFunction(sympy.sin)(x).rewrite(sympy.exp)
         -I*(exp(I*x) - exp(-I*x))/2
         """
+        if not args:
+            return self
+        from .function import DefinedFunction
+        classes = [a for a in args if isinstance(a, type)]
+        target = args[-1]
+        if len(classes) == len(args) and isinstance(target, type) and issubclass(target, DefinedFunction):
+            from .rewriting import rewrite
+            return rewrite(self, tuple(classes[:-1]), target)
         from .interop import rewrite_targets, through_sympy
         targets = rewrite_targets(args)
         return through_sympy(self, lambda s: s.rewrite(*targets))

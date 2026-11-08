@@ -640,6 +640,47 @@ def rewrite_targets(args: Sequence[Union[Basic, FunctionClass, type]]) -> list[U
     return targets
 
 
+_SYMPY_HAS_RULE: dict[tuple[type, str], bool] = {}
+
+
+def _sympy_has_rule(cls: type, name: str) -> bool:
+    """Whether the SymPy class has a rewrite rule for the target name (its
+    ``_eval_rewrite_as_<name>`` or an ``_eval_rewrite`` of its own)."""
+    key = (cls, name)
+    if key not in _SYMPY_HAS_RULE:
+        method = '_eval_rewrite_as_' + name
+        _SYMPY_HAS_RULE[key] = any(method in k.__dict__ for k in cls.__mro__) or any(
+            '_eval_rewrite' in k.__dict__ for k in cls.__mro__ if k is not SymPyBasic)
+    return _SYMPY_HAS_RULE[key]
+
+
+def rewrite_node_through_sympy(node: Basic, args: tuple[Basic, ...], target: type) -> Optional[Basic]:
+    """The node, rebuilt with ``args``, rewritten by its SymPy rule for
+    ``target`` (not deep); ``None`` when SymPy has no rule or the target
+    has no SymPy class."""
+    if not issubclass(target, DefinedFunction):
+        return None
+    if not _NATIVE_TO_SYMPY:
+        _fill_function_tables()
+    sympy_target = _NATIVE_TO_SYMPY.get(target)
+    if sympy_target is None:
+        return None
+    sympy_args = [to_sympy(a) for a in args]
+    if isinstance(node, DefinedFunction) and type(node) in _NATIVE_TO_SYMPY:
+        # the node's own class, unevaluated (SymPy calls the rule of the
+        # node itself with the rewritten arguments)
+        sympy_class = _NATIVE_TO_SYMPY[type(node)]
+        if not _sympy_has_rule(sympy_class, sympy_target.__name__):
+            return None
+        rebuilt = sympy_class(*sympy_args, evaluate=False)
+    else:
+        original = to_sympy(node)
+        if not _sympy_has_rule(type(original), sympy_target.__name__):
+            return None
+        rebuilt = original.func(*sympy_args) if args else original
+    return from_sympy(rebuilt.rewrite(sympy_target, deep=False))
+
+
 def _canonical_order(args: list[Expr], commutative: bool) -> list[Expr]:
     """The arguments of a sum or a product of SymPy in the order the
     evaluating functions of this core give (SymPy's own order): the
