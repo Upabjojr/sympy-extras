@@ -4,8 +4,9 @@ methods (linearity, telescoping, powers of the index by Bernoulli
 polynomials and harmonic numbers, geometric sums), then Gosper's
 algorithm, the hypergeometric and the residue methods.
 
-Ported from SymPy's ``sympy.concrete.summations``. Gosper's algorithm,
-the hypergeometric and residue methods, the Kronecker delta sums and the
+Ported from SymPy's ``sympy.concrete.summations`` (Gosper's algorithm
+in :mod:`~sympy_extras.concrete.gosper`). The hypergeometric and residue
+methods, the Kronecker delta sums and the
 equation solving of the telescoping go through SymPy for that call (not
 ported yet).
 
@@ -27,7 +28,7 @@ Examples
 # (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
-# Changes: typed; gosper_sum, eval_sum_hyper, eval_sum_residue,
+# Changes: typed; eval_sum_hyper, eval_sum_residue,
 # deltasummation, solve and the zeta function match go through SymPy.
 # ---------------------------------------------------------------------
 from __future__ import annotations
@@ -306,7 +307,8 @@ def eval_sum_symbolic(f: Expr, limits: Limits) -> Optional[Expr]:
                 r = p * (q**a - q**(b + 1)) / (1 - q)
                 l_ = p * (b - a + 1)
                 return piecewise((l_, Eq(q, ONE)), (r, True))
-        gr = _through('gosper.gosper_sum', f, (i, a, b))
+        from .gosper import gosper_sum
+        gr = gosper_sum(f, (i, a, b))
         if isinstance(gr, (Mul, Add)):
             non_limit = gr.free_symbols - (a.free_symbols | b.free_symbols)
             den = denom(together(gr))

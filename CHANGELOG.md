@@ -235,6 +235,11 @@ remove public functions. Breaking changes are listed here when they happen.
 - A pattern `c*w` (a number times a single factor) matches `e` with `w`
   matched against `e/c`, as SymPy's `Mul._matches_simple`
   (`(x + 1).match(2*z)` gives `z = x/2 + 1/2`).
+- Gosper's algorithm is native (`sympy_extras.concrete.gosper`, ported
+  from SymPy: `gosper_normal`, `gosper_term`, `gosper_sum`, with
+  `hypersimp`): the polynomials are coefficient lists over the cancelled
+  expressions (the field of the parameters), the resultant a Sylvester
+  determinant; `summation` uses it.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
