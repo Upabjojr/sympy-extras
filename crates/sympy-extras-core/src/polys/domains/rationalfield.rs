@@ -42,8 +42,8 @@ impl Domain for RationalField {
         true
     }
 
-    fn characteristic(&self) -> u64 {
-        0
+    fn characteristic(&self) -> Int {
+        Int::ZERO
     }
 
     fn zero(&self) -> Rat {
@@ -362,8 +362,8 @@ mod tests {
             fn is_ordered(&self) -> bool {
                 true
             }
-            fn characteristic(&self) -> u64 {
-                0
+            fn characteristic(&self) -> Int {
+                Int::ZERO
             }
             fn zero(&self) -> Rat {
                 QQ.zero()

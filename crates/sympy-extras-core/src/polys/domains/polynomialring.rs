@@ -61,7 +61,7 @@ impl<K: Domain> Domain for PolynomialRing<K> {
         self.ground.is_ordered()
     }
 
-    fn characteristic(&self) -> u64 {
+    fn characteristic(&self) -> Int {
         self.ground.characteristic()
     }
 

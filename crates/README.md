@@ -27,7 +27,7 @@ directory `crates/.claude/` must not be picked up as a crate).
 See the crate documentation of `sympy-extras-core` (`src/lib.rs`): Python
 `int` is `numbers::Int`, `Fraction` is `numbers::Rat` (both from `dashu`, whose
 gcd is faster than CPython's; `num-bigint`'s was 12 times slower at 50 000 bits),
-degrees and indices are `usize`, data-dependent exceptions are
+degrees and indices are `usize` (the characteristic of a domain is an `Int`), data-dependent exceptions are
 `Err(PolyError)`, `NotImplementedError` is a panic.
 
 ## Status
@@ -57,4 +57,6 @@ degrees and indices are `usize`, data-dependent exceptions are
 | `ntheory/primetest.py`, `generate.py`, `factor_.py` | done | `primerange` is an iterator struct (a list in the bindings) |
 | `polys/modulargroebner.py` | later | written on SymPy's `PolyElement` with SymPy's `groebner` as fallback and time limits: its typed core (rational reconstruction, lifting, luckiness) can be ported once the typed interop is |
 | `polys/multisqf.py` | done | the `SqfDomain` classes as a trait with three implementations |
-| everything else | not yet | next: `multifactor` (the last typed module without the core), then the typed core `sympy_extras.core` |
+| `polys/multifactor.py` | done | the diophantine equations over `BigFiniteField` (the modulus is the next prime above a Mignotte bound) |
+| (new) `polys/domains/bigfinitefield.rs` | | `GF(p)` with `Int` elements for moduli beyond the machine words: Python's one `FiniteField` is split in two |
+| everything else | not yet | every remaining module needs the typed core `sympy_extras.core` (or SymPy): that is the next layer |

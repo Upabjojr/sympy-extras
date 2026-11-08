@@ -17,6 +17,8 @@
 //! 2. K. O. Geddes, S. R. Czapor, G. Labahn, *Algorithms for Computer
 //!    Algebra*, Kluwer, 1992, Section 8.2.
 
+use crate::numbers::Int;
+
 use super::densearith::{dup_exquo, dup_mul, dup_mul_ground, dup_sub};
 use super::densebasic::dup_degree;
 use super::densetools::{dup_decompose_content, dup_diff, dup_monic_field, dup_primitive};
@@ -52,10 +54,13 @@ pub fn dup_sqf_list<K: Domain>(f: &[K::Elem], k: &K) -> (K::Elem, Vec<Factor<K::
     if dup_degree(&part) <= 0 {
         return (content, Vec::new());
     }
-    if k.characteristic() == 0 {
+    let characteristic: Int = k.characteristic();
+    if characteristic.is_zero() {
         return (content, yun(&part, k));
     }
-    let p: u64 = k.characteristic();
+    // a characteristic beyond the machine words is above every degree: the
+    // p-th roots are then never taken
+    let p: u64 = u64::try_from(&characteristic).unwrap_or(u64::MAX);
     (content, sqf_list_positive_characteristic(&part, k, p))
 }
 

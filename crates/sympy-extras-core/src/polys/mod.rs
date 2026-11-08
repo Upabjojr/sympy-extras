@@ -9,6 +9,7 @@ pub mod f4;
 pub mod factortools;
 pub mod galoistools;
 pub mod heuristicgcd;
+pub mod multifactor;
 pub mod multisqf;
 pub mod rings;
 pub mod rootisolation;

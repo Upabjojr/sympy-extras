@@ -365,7 +365,7 @@ impl<K: SparseGround> Domain for SparsePolynomialRing<K> {
         self.ground.is_ordered()
     }
 
-    fn characteristic(&self) -> u64 {
+    fn characteristic(&self) -> Int {
         self.ground.characteristic()
     }
 
@@ -690,7 +690,7 @@ impl<K: SparseGround> Domain for IteratedPolynomialRing<K> {
         self.base.is_ordered()
     }
 
-    fn characteristic(&self) -> u64 {
+    fn characteristic(&self) -> Int {
         self.base.characteristic()
     }
 

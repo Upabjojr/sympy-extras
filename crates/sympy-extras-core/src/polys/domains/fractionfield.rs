@@ -110,7 +110,7 @@ impl<K: Domain> Domain for FractionField<K> {
         self.ring.is_ordered()
     }
 
-    fn characteristic(&self) -> u64 {
+    fn characteristic(&self) -> Int {
         self.ring.characteristic()
     }
 

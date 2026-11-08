@@ -30,8 +30,8 @@ impl Domain for IntegerRing {
         true
     }
 
-    fn characteristic(&self) -> u64 {
-        0
+    fn characteristic(&self) -> Int {
+        Int::ZERO
     }
 
     fn zero(&self) -> Int {

@@ -46,7 +46,7 @@ pub trait Domain: Clone + PartialEq + Debug {
     /// Whether the domain is ordered (`is_negative`, `abs` are defined).
     fn is_ordered(&self) -> bool;
     /// The characteristic (`0` or a prime).
-    fn characteristic(&self) -> u64;
+    fn characteristic(&self) -> Int;
 
     // -- constants and predicates
 

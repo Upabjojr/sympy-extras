@@ -75,8 +75,8 @@ impl Domain for FiniteField {
         false
     }
 
-    fn characteristic(&self) -> u64 {
-        self.p
+    fn characteristic(&self) -> Int {
+        Int::from(self.p)
     }
 
     fn zero(&self) -> u64 {

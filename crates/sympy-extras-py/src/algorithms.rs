@@ -11,7 +11,7 @@ use sympy_extras_core::numbers::Rat;
 use sympy_extras_core::polys::domains::IntegerRing;
 use sympy_extras_core::polys::domains::{Domain, RationalField, SparseRow};
 use sympy_extras_core::polys::rings::PolyElement;
-use sympy_extras_core::polys::{f4 as groebner, rootisolation as ri, stronggroebner as sg};
+use sympy_extras_core::polys::{f4 as groebner, multifactor as mf, rootisolation as ri, stronggroebner as sg};
 
 use crate::convert::{err, out_polys, out_usize, poly, tuple, Bridge};
 use crate::domains::PyDomain;
@@ -308,6 +308,71 @@ pub fn register_stronggroebner(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(is_strong_groebner, m)?)?;
     m.add_function(wrap_pyfunction!(s_polynomial_zz, m)?)?;
     m.add_function(wrap_pyfunction!(g_polynomial_zz, m)?)?;
+    Ok(())
+}
+
+// -- multifactor
+
+fn out_int_factors<'py>(
+    py: Python<'py>,
+    factors: Vec<(PolyElement<IntegerRing>, usize)>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let mut items: Vec<Bound<'py, PyAny>> = Vec::new();
+    for (g, k) in factors {
+        items.push(tuple(py, vec![zz_out(py, g)?, out_usize(py, k)?])?);
+    }
+    Ok(PyList::new(py, items)?.into_any())
+}
+
+#[pyfunction]
+fn zz_factor<'py>(py: Python<'py>, f: &PyPolyElement) -> PyResult<Bound<'py, PyAny>> {
+    let (c, factors) = mf::zz_factor(&zz_elem(f)?).map_err(err)?;
+    tuple(
+        py,
+        vec![crate::convert::out_int(py, &c)?, out_int_factors(py, factors)?],
+    )
+}
+
+/// `zz_wang(f, mod=None, seed=0)`.
+#[pyfunction]
+#[pyo3(signature = (f, r#mod = None, seed = 0))]
+fn zz_wang<'py>(py: Python<'py>, f: &PyPolyElement, r#mod: Option<i64>, seed: u64) -> PyResult<Bound<'py, PyAny>> {
+    let factors = mf::zz_wang(&zz_elem(f)?, r#mod, seed).map_err(err)?;
+    out_elements(py, factors.into_iter().map(ElemKind::ZZ).collect())
+}
+
+#[pyfunction]
+fn sqf_part<'py>(py: Python<'py>, f: &PyPolyElement) -> PyResult<Bound<'py, PyAny>> {
+    zz_out(py, mf::sqf_part(&zz_elem(f)?).map_err(err)?)
+}
+
+#[pyfunction]
+fn trial_division<'py>(py: Python<'py>, f: &PyPolyElement, factors: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    out_int_factors(py, mf::trial_division(&zz_elem(f)?, &zz_elems(factors)?).map_err(err)?)
+}
+
+fn dense_key_to_py<'py>(py: Python<'py>, key: &mf::DenseKey) -> PyResult<Bound<'py, PyAny>> {
+    match key {
+        mf::DenseKey::Int(n) => crate::convert::out_int(py, n),
+        mf::DenseKey::Tuple(items) => {
+            let objects: Vec<Bound<'py, PyAny>> =
+                items.iter().map(|k| dense_key_to_py(py, k)).collect::<PyResult<_>>()?;
+            tuple(py, objects)
+        }
+    }
+}
+
+#[pyfunction]
+fn factor_sort_key<'py>(py: Python<'py>, f: &PyPolyElement) -> PyResult<Bound<'py, PyAny>> {
+    dense_key_to_py(py, &mf::factor_sort_key(&zz_elem(f)?))
+}
+
+pub fn register_multifactor(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(zz_factor, m)?)?;
+    m.add_function(wrap_pyfunction!(zz_wang, m)?)?;
+    m.add_function(wrap_pyfunction!(sqf_part, m)?)?;
+    m.add_function(wrap_pyfunction!(trial_division, m)?)?;
+    m.add_function(wrap_pyfunction!(factor_sort_key, m)?)?;
     Ok(())
 }
 

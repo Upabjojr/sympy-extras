@@ -157,8 +157,8 @@ impl PyDomain {
     }
 
     #[getter]
-    fn characteristic(&self) -> PyResult<u64> {
-        with_domain!(self, k => Ok(k.characteristic()))
+    fn characteristic<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        with_domain!(self, k => crate::convert::out_int(py, &k.characteristic()))
     }
 
     /// The modulus of `GF(p)`.
