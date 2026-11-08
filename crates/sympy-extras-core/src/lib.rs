@@ -28,6 +28,7 @@
 #![allow(clippy::wrong_self_convention, clippy::type_complexity)]
 
 pub mod error;
+pub mod ntheory;
 pub mod numbers;
 pub mod polys;
 pub mod random;

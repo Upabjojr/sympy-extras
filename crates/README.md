@@ -54,4 +54,6 @@ degrees and indices are `usize`, data-dependent exceptions are
 | `polys/rootisolation.py` | done | with the `isolate_real_roots_dense`/`count_real_roots_dense` hooks of `ZZ` and `QQ` |
 | `polys/f4.py` | done | Katsura-4: the same bases, 2.5x (lex over `QQ`) to 7x (`GF(32003)`) faster than Python, untuned |
 | `polys/stronggroebner.py` | done | 10-20x faster than Python on the random test systems |
-| everything else | not yet | next: `modulargroebner`, `polyclasses`, `subresultants`, `hilbert` |
+| `ntheory/primetest.py`, `generate.py`, `factor_.py` | done | `primerange` is an iterator struct (a list in the bindings) |
+| `polys/modulargroebner.py` | later | written on SymPy's `PolyElement` with SymPy's `groebner` as fallback and time limits: its typed core (rational reconstruction, lifting, luckiness) can be ported once the typed interop is |
+| everything else | not yet | next: `multisqf`, `multifactor` (the last typed modules without the core), then the typed core `sympy_extras.core` |

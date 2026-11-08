@@ -19,6 +19,7 @@ mod convert;
 mod dense;
 mod domains;
 mod factor;
+mod ntheory;
 mod polyerrors;
 mod rings;
 mod sparse;
@@ -36,6 +37,13 @@ fn submodule<'py>(parent: &Bound<'py, PyModule>, name: &str, full: &str) -> PyRe
 #[pymodule]
 fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", sympy_extras_core::VERSION)?;
+    let ntheory_module: Bound<'_, PyModule> = submodule(m, "ntheory", "sympy_extras_rs.ntheory")?;
+    ntheory::register(
+        &ntheory_module,
+        &submodule(&ntheory_module, "primetest", "sympy_extras_rs.ntheory.primetest")?,
+        &submodule(&ntheory_module, "generate", "sympy_extras_rs.ntheory.generate")?,
+        &submodule(&ntheory_module, "factor_", "sympy_extras_rs.ntheory.factor_")?,
+    )?;
     let polys: Bound<'_, PyModule> = submodule(m, "polys", "sympy_extras_rs.polys")?;
     let domains_module: Bound<'_, PyModule> = submodule(&polys, "domains", "sympy_extras_rs.polys.domains")?;
     domains::register(&domains_module)?;
