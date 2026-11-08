@@ -275,7 +275,11 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
     if isinstance(e, Dummy):
         key = (e.name, e.dummy_index)
         if key not in _dummies_to_sympy:
-            _dummies_to_sympy[key] = sympy.Dummy(e.name, **e.given_assumptions)
+            converted = sympy.Dummy(e.name, **e.given_assumptions)
+            _dummies_to_sympy[key] = converted
+            # and back to the same dummy (not a new one)
+            index = converted._hashable_content()[-1]
+            _dummies_from_sympy[(e.name, int(index) if isinstance(index, int) else hash(index))] = e
         return _dummies_to_sympy[key]
     if isinstance(e, Symbol):
         return sympy.Symbol(e.name, **e.given_assumptions)

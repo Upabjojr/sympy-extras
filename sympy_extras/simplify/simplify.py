@@ -36,7 +36,7 @@ returns the substitution back.
 (True, True)
 """
 # ---------------------------------------------------------------------
-# PORTED FROM SYMPY: sympy/simplify/simplify.py (simplify, logcombine, posify, nsimplify,
+# PORTED FROM SYMPY: sympy/simplify/simplify.py (simplify, inversecombine, kroneckersimp, logcombine, posify, nsimplify,
 # _real_to_rational), sympy/simplify/radsimp.py (collect_abs) and the
 # _eval_simplify of log, sign and the combinatorial functions (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
@@ -62,7 +62,7 @@ from sympy_extras.core.sorting import ordered
 from sympy_extras.core.symbol import Dummy, Symbol
 from sympy_extras.core.traversal import bottom_up
 
-__all__ = ['simplify', 'logcombine', 'posify', 'nsimplify', 'collect_abs']
+__all__ = ['simplify', 'logcombine', 'posify', 'nsimplify', 'collect_abs', 'inversecombine', 'kroneckersimp']
 
 
 def _expr(b: Basic) -> Expr:
@@ -492,6 +492,105 @@ def collect_abs(expr: ExprLike) -> Expr:
     return _expr(e.replace(lambda x: isinstance(x, Pow), _abs))
 
 
+def _inverse_table() -> dict[type, type]:
+    """The function classes with their inverse of the first argument
+    (SymPy's ``inverse(argindex=1)``)."""
+    from sympy_extras.functions.elementary import hyperbolic as h, trigonometric as t
+    from sympy_extras.functions.elementary.exponential import Exp, Log
+    from sympy_extras.functions.special import error_functions as er
+    pairs: list[tuple[type, type]] = [
+        (Exp, Log), (Log, Exp), (t.Tan, t.Atan), (t.Cot, t.Acot), (t.Asin, t.Sin), (t.Acos, t.Cos), (t.Atan, t.Tan),
+        (t.Acot, t.Cot), (t.Asec, t.Sec), (t.Acsc, t.Csc), (h.Sinh, h.Asinh), (h.Tanh, h.Atanh), (h.Coth, h.Acoth),
+        (h.Asinh, h.Sinh), (h.Acosh, h.Cosh), (h.Atanh, h.Tanh), (h.Acoth, h.Coth), (h.Asech, h.Sech),
+        (h.Acsch, h.Csch), (er.Erf, er.Erfinv), (er.Erfc, er.Erfcinv), (er.Erfinv, er.Erf), (er.Erfcinv, er.Erfc)]
+    return dict(pairs)
+
+
+# PORTED FROM SYMPY: sympy/simplify/simplify.py:inversecombine
+def inversecombine(expr: ExprLike) -> Expr:
+    """Functions of their inverses cancelled: ``log(exp(x))`` and
+    ``exp(log(x))`` are ``x``, ``atan(tan(x))`` is ``x``.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import exp, log, atan, tan
+    >>> x = Symbol('x')
+    >>> inversecombine(log(exp(x)) + exp(log(x)) + atan(tan(x)))
+    3*x
+    """
+    from sympy_extras.core.numbers import E
+    from sympy_extras.core.power import Pow
+    from sympy_extras.functions.elementary.exponential import Exp, Log
+    inverse = _inverse_table()
+
+    def exponent(e: Basic) -> Optional[Expr]:
+        if isinstance(e, Exp):
+            return _expr(e.args[0])
+        if isinstance(e, Pow) and e.base == E:
+            return e.exp
+        return None
+
+    def f(b: Basic) -> Basic:
+        rv = b
+        if isinstance(rv, Log):
+            ex = exponent(rv.args[0])
+            if ex is not None:
+                rv = ex
+        elif type(rv) in inverse:
+            if len(rv.args) == 1 and len(rv.args[0].args) == 1 and isinstance(rv.args[0], inverse[type(rv)]):
+                rv = rv.args[0].args[0]
+        if isinstance(rv, Pow) and rv.base == E and isinstance(rv.exp, Log):
+            rv = rv.exp.args[0]
+        elif isinstance(rv, Exp) and isinstance(rv.args[0], Log):
+            rv = rv.args[0].args[0]
+        return rv
+
+    return _expr(bottom_up(to_expr(expr), f))
+
+
+# PORTED FROM SYMPY: sympy/simplify/simplify.py:kroneckersimp
+def kroneckersimp(expr: ExprLike) -> Expr:
+    """Products of Kronecker deltas which cannot both be 1 set to 0.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import KroneckerDelta
+    >>> i = Symbol('i')
+    >>> kroneckersimp(1 + KroneckerDelta(0, i)*KroneckerDelta(1, i))
+    1
+    """
+    from itertools import combinations
+    from sympy_extras.core.logic import false, true
+    from sympy_extras.core.relational import eq
+    from sympy_extras.functions.elementary.piecewise import Piecewise
+    from sympy_extras.functions.special.tensor_functions import KroneckerDeltaNode
+
+    def args_cancel(args1: tuple[Basic, ...], args2: tuple[Basic, ...]) -> bool:
+        for i1 in range(2):
+            for i2 in range(2):
+                a1, a2 = _expr(args1[i1]), _expr(args2[i2])
+                a3, a4 = _expr(args1[(i1 + 1) % 2]), _expr(args2[(i2 + 1) % 2])
+                if eq(a1, a2) == true and eq(a3, a4) == false:
+                    return True
+        return False
+
+    def cancel_kronecker_mul(b: Basic) -> Basic:
+        deltas = [a for a in b.args if isinstance(a, KroneckerDeltaNode)]
+        for delta1, delta2 in combinations(deltas, 2):
+            if args_cancel(delta1.args, delta2.args):
+                return mul(Integer(0), _expr(b))
+        return b
+
+    e = to_expr(expr)
+    if not e.has(KroneckerDeltaNode):
+        return e
+    if e.has(Piecewise):
+        e = _expr(e.rewrite(KroneckerDeltaNode))
+    previous: Optional[Expr] = None
+    while e != previous:
+        previous = e
+        e = _expr(e.replace(lambda x: isinstance(x, Mul), cancel_kronecker_mul))
+    return e
+
+
 def _has_variety(choices: list[Expr]) -> bool:
     return any(c != choices[0] for c in choices[1:])
 
@@ -535,8 +634,7 @@ def _eval_simplify(e: Expr, ratio: float, measure: Measure, rational: Optional[b
         # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:log._eval_simplify
         new = log(simplify(_expr(e.args[0]), ratio, measure, rational, inverse, doit))
         if inverse:
-            from sympy.simplify.simplify import inversecombine
-            new = _through_sympy(new, inversecombine)
+            new = inversecombine(new)
         new = expand_log(new, deep=True)
         return min([new, e], key=measure)
     if isinstance(e, Sign):
@@ -580,7 +678,7 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     from .sqrtdenest import _mexpand
     from .trigsimp import exptrigsimp, trigsimp
     from sympy.functions.elementary.piecewise import piecewise_simplify
-    from sympy.simplify.simplify import inversecombine, kroneckersimp, nc_simplify, product_simplify, sum_simplify
+    from sympy.simplify.simplify import nc_simplify, product_simplify, sum_simplify
 
     def shorter(*choices: Expr) -> Expr:
         options = list(choices)
@@ -605,7 +703,7 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     if not e.args:
         return e
     if inverse and e.has(Application):
-        e = _through_sympy(e, inversecombine)
+        e = inversecombine(e)
         if not e.args:
             return e
 
@@ -641,7 +739,7 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
         if e.has(Piecewise):
             e = piecewise_fold(e)
             if e.has(KroneckerDeltaNode):
-                e = _through_sympy(e, kroneckersimp)
+                e = kroneckersimp(e)
             if e.has(Piecewise):
                 e = _through_sympy(e, lambda s: piecewise_simplify(s, deep=True, doit=False))
                 if e.has(Piecewise):
@@ -649,7 +747,7 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     if e.has(Hyper, MeijerG, ExpPolar, PolarLift):
         e = _through_sympy(e, lambda s: sympy.hyperexpand(s))
     if e.has(KroneckerDeltaNode):
-        e = _through_sympy(e, kroneckersimp)
+        e = kroneckersimp(e)
     if e.has(BesselBase):
         e = _through_sympy(e, lambda s: sympy.besselsimp(s))
     if e.has(*TRIG, *HYPER):

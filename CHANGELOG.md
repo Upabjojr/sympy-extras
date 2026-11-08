@@ -51,6 +51,8 @@ remove public functions. Breaking changes are listed here when they happen.
 - `sympy_extras.simplify.simplify.nsimplify` (pslq, `mpmath.identify`
   read by a typed parser, constants, `rational`, `tolerance`), ported from
   SymPy; `radsimp` no longer goes through SymPy.
+- `inversecombine` and `kroneckersimp` in `sympy_extras.simplify.simplify`,
+  ported from SymPy (used by `simplify` in place of SymPy's).
 - `sympy_extras.simplify.simplify.simplify` and `collect_abs`, ported from
   SymPy; `Expr.simplify` uses it. The steps for Integral, Sum, Product,
   Bessel functions, `hyper`, Kronecker deltas, Piecewise conditions and
@@ -1607,6 +1609,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- A native `Dummy` converted to SymPy and back is the same dummy (the
+  reverse mapping was not registered), so dummies survive the steps
+  which go through SymPy.
 - A time limit shorter than its own entry (the `1e-6` s budget of the
   direct Gröbner computation before the modular one takes over)
   raised its expiry before its owner held the `Deadline`, so that

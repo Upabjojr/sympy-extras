@@ -46,3 +46,21 @@ def test_simplify_random() -> None:
     for _ in range(25):
         e = rnd(3)
         assert _ours(e) == str(s.simplify(e)), e
+
+
+def test_inversecombine_and_kroneckersimp_match_sympy() -> None:
+    from sympy.simplify.simplify import inversecombine as sympy_inversecombine, kroneckersimp as sympy_kroneckersimp
+    from sympy_extras.simplify.simplify import inversecombine, kroneckersimp
+    i, j = s.symbols('i j')
+    K = s.KroneckerDelta
+    for e in [s.log(s.exp(x)) + s.exp(s.log(y)), s.atan(s.tan(x)), s.asinh(s.sinh(s.exp(s.log(x)))),
+              s.erf(s.erfinv(x)) * s.tan(s.atan(y)), s.sin(s.asin(x)) + s.acosh(s.cosh(x))]:
+        assert str(to_sympy(inversecombine(expr_from_sympy(e)), evaluate=False)) == str(sympy_inversecombine(e)), e
+    for e in [1 + K(0, i) * K(1, i), K(i, j) * K(0, i) * K(1, j), x * K(i, 0) * K(i, 0) + K(i, 2) * K(i, 1)]:
+        assert str(to_sympy(kroneckersimp(expr_from_sympy(e)), evaluate=False)) == str(sympy_kroneckersimp(e)), e
+
+
+def test_simplify_keeps_dummies_through_sympy_steps() -> None:
+    # hyper_as_trig's dummy must survive the factor fallback (domain ZZ_I)
+    e = x + s.sqrt(1 - s.sinh(s.sinh(x))**2) / s.sinh(s.sinh(x))
+    assert _ours(e) == str(s.simplify(e))
