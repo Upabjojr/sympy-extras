@@ -764,3 +764,20 @@ def test_number_times_wild_matches_as_sympy() -> None:
         assert (got is None) == (want is None), e
         if got is not None and want is not None:
             assert str(got[oz]) == str(want[sz]), e
+
+
+def test_derivative_substitution_matches_sympy() -> None:
+    # Derivative._eval_subs: Subs for a variable replaced by what is not a
+    # symbol, captured symbols, renamings onto a symbol of the expression;
+    # otherwise the derivative rebuilt unevaluated
+    import sympy
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import expr_from_sympy
+    sx, sy, sz = sympy.symbols('x y z')
+    g = sympy.Function('f')
+    for d in [sympy.Derivative(g(sx), sx), sympy.Derivative(g(sx, sy), sx), sympy.Derivative(g(sx)*sy, sx),
+              sympy.Derivative(g(sx, sy), sx, sy), sympy.Derivative(g(sx), (sx, 2)),
+              sympy.Derivative(sympy.sin(sx)*g(sy), sy), sympy.Derivative(g(sx**2), sx)]:
+        for old, new in [(sx, 0), (sx, sy), (sx, sx + 1), (sy, 2), (sy, sx), (sx, sz), (sy, sz**2)]:
+            got = expr_from_sympy(d).subs(expr_from_sympy(old), expr_from_sympy(sympy.sympify(new)))
+            assert str(to_sympy(got, evaluate=False)) == str(d.subs(old, new)), (d, old, new)

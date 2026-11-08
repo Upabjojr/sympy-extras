@@ -110,6 +110,7 @@ class Zeta(DefinedFunction):
     unevaluated (``zeta`` evaluates)."""
 
     function_name = 'zeta'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 
@@ -173,6 +174,7 @@ class DirichletEta(DefinedFunction):
     unevaluated (``dirichlet_eta`` evaluates)."""
 
     function_name = 'dirichlet_eta'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 
@@ -327,6 +329,7 @@ class LerchPhi(DefinedFunction):
     as in SymPy)."""
 
     function_name = 'lerchphi'
+    generic_nseries = True
     nargs = frozenset({3})
     call_nargs = frozenset({3})
 
@@ -382,6 +385,7 @@ class Stieltjes(DefinedFunction):
     unevaluated (``stieltjes`` evaluates)."""
 
     function_name = 'stieltjes'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 

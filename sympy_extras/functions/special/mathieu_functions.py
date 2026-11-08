@@ -82,6 +82,7 @@ class MathieuS(MathieuBase):
     unbranched = True
 
     function_name = 'mathieus'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -106,6 +107,7 @@ class MathieuC(MathieuBase):
     unbranched = True
 
     function_name = 'mathieuc'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -130,6 +132,7 @@ class MathieuSPrime(MathieuBase):
     unbranched = True
 
     function_name = 'mathieusprime'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -155,6 +158,7 @@ class MathieuCPrime(MathieuBase):
     unbranched = True
 
     function_name = 'mathieucprime'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

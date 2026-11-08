@@ -727,6 +727,9 @@ class DefinedFunction(Application):
     #: the classes whose SymPy counterpart expands by the generic
     #: Function._eval_nseries (ported below); the others use SymPy's
     generic_nseries: bool = False
+    #: the SymPy class takes any number of arguments (nargs Naturals0): the
+    #: generic expansion goes by derivatives
+    sympy_variadic: bool = False
 
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         from .interop import nseries_node_through_sympy
@@ -1086,6 +1089,35 @@ class Derivative(Expr):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         expr, rest = args[0], args[1:]
         return diff(as_expr(expr), *[_as_count(_as_tuple(t)) for t in rest])
+
+    # PORTED FROM SYMPY: sympy/core/function.py:Derivative._eval_subs
+    def _subs_partial(self, old: Basic, new: Basic) -> Optional[Basic]:
+        """The substitutions which become a ``Subs``: a variable replaced
+        by what is not a symbol (``Derivative(f(x), x).subs(x, 0)``), a
+        free symbol which would be captured, a variable renamed to a symbol
+        already in the expression."""
+        wrt = [v for v, _ in self._counts]
+        if not isinstance(new, Expr):
+            return None
+        if isinstance(old, Symbol) and old in wrt and not _diff_wrt(new):
+            return Subs(self, old, new)
+        new_expr = self._expr._subs(old, new)
+        if new_expr != self._expr and isinstance(old, Symbol):
+            forbidden = self._expr.free_symbols & set(wrt)
+            if (new.free_symbols - old.free_symbols) & forbidden:
+                return Subs(self, old, new)
+        renamed = [(v, v._subs(old, new)) for v in wrt]
+        if any(nv != v for v, nv in renamed) and isinstance(old, Symbol):
+            atoms = self._expr.atoms(Symbol)
+            for v, nv in renamed:
+                if nv != v and nv in atoms:
+                    return Subs(self, old, new)
+        if not all(isinstance(nv, Symbol) for _, nv in renamed):
+            return None
+        # SymPy's _derivative_dispatch: the derivative rebuilt unevaluated
+        # (Derivative(2*f(x), x) stays)
+        counts = [Tuple(nv, Integer(n)) for (_, nv), (_, n) in zip(renamed, self._counts)]
+        return Derivative(as_expr(new_expr), *counts)
 
     def _eval_facts(self) -> dict[str, bool]:
         from .assumptions import facts_of
@@ -2221,6 +2253,24 @@ def _nfloat(e: Basic, n: int, exponent: bool) -> Basic:
     return e._evaluated(tuple(_nfloat(a, n, exponent) for a in e.args))
 
 
+# PORTED FROM SYMPY: sympy/core/symbol.py:uniquely_named_symbol
+def _uniquely_named_symbol(name: str, e: Basic) -> Symbol:
+    """A symbol named ``name`` (with a number appended when a symbol of
+    ``e`` has the name: ``xi0``, ``xi1``, ...)."""
+    names = {str(s) for s in e.atoms(Symbol)}
+    if name not in names:
+        return Symbol(name)
+    k = 0
+    while '%s%d' % (name, k) in names:
+        k += 1
+    return Symbol('%s%d' % (name, k))
+
+
+def _diff_wrt(e: Basic) -> bool:
+    """SymPy's ``_diff_wrt``: a symbol or an undefined function application."""
+    return isinstance(e, (Symbol, AppliedUndef))
+
+
 # PORTED FROM SYMPY: sympy/core/function.py:Function._eval_nseries
 def _generic_function_nseries(f: DefinedFunction, x: Symbol, n: int, logx: Optional[Expr]) -> Optional[Expr]:
     """SymPy's generic expansion of a function: by its derivatives when the
@@ -2236,7 +2286,7 @@ def _generic_function_nseries(f: DefinedFunction, x: Symbol, n: int, logx: Optio
     args0 = [limit(a, x, Integer(0)) for a in args]
     if any(a.is_finite is False for a in args0):
         return None
-    if len(f.nargs) != 1 or 1 not in f.nargs or not (args0[0] == 0):
+    if type(f).sympy_variadic or len(f.nargs) != 1 or 1 not in f.nargs or not (args0[0] == 0):
         e: Expr = f
         e1 = e.expand()
         if e == e1:
@@ -2251,7 +2301,7 @@ def _generic_function_nseries(f: DefinedFunction, x: Symbol, n: int, logx: Optio
                 raise PoleError('Cannot expand %s around 0' % (f,))
             series: Expr = term
             fact: Expr = Integer(1)
-            xi = Dummy('xi')
+            xi = _uniquely_named_symbol('xi', f)
             moved = e.subs(x, xi)
             assert isinstance(moved, Expr)
             e = moved

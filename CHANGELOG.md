@@ -267,6 +267,13 @@ remove public functions. Breaking changes are listed here when they happen.
   Heaviside, re/im, the orthogonal polynomials of several parameters, ...);
   the others still use SymPy's. `Expr.taylor_term` evaluates its derivative
   at the dummy (right for an expression argument: `erfi(2*x)`).
+- `Derivative` substitution follows SymPy's `Derivative._eval_subs`: a
+  variable replaced by what is not a symbol, a captured symbol or a
+  renaming onto a symbol of the expression gives `Subs`, otherwise the
+  derivative is rebuilt unevaluated. The generic series names its
+  variable as SymPy (`xi`, `xi0`, ...) and goes by derivatives for the
+  classes SymPy takes as variadic (`HyperRep_*`); 87 classes expand
+  natively.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

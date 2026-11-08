@@ -324,6 +324,7 @@ class Hankel1(BesselBase):
     unevaluated (``hankel1`` evaluates; SymPy gives it no values)."""
 
     function_name = 'hankel1'
+    generic_nseries = True
     real_on_real_axis = False
 
     def _eval_conjugate(self) -> Optional[Expr]:
@@ -344,6 +345,7 @@ class Hankel2(BesselBase):
     unevaluated (``hankel2`` evaluates; SymPy gives it no values)."""
 
     function_name = 'hankel2'
+    generic_nseries = True
     real_on_real_axis = False
 
     def _eval_conjugate(self) -> Optional[Expr]:
@@ -389,6 +391,7 @@ class SphericalJ(SphericalBesselBase):
     unevaluated (``jn`` evaluates)."""
 
     function_name = 'jn'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

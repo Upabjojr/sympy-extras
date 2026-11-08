@@ -118,6 +118,7 @@ class Binomial(DefinedFunction):
     (``binomial`` evaluates)."""
 
     function_name = 'binomial'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -236,6 +237,7 @@ class RisingFactorial(DefinedFunction):
     (``rf`` evaluates)."""
 
     function_name = 'RisingFactorial'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -269,6 +271,7 @@ class FallingFactorial(DefinedFunction):
     (``ff`` evaluates)."""
 
     function_name = 'FallingFactorial'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 

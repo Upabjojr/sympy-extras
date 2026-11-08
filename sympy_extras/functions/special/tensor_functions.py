@@ -57,6 +57,7 @@ class KroneckerDeltaNode(DefinedFunction):
     (``KroneckerDelta`` evaluates)."""
 
     function_name = 'KroneckerDelta'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 

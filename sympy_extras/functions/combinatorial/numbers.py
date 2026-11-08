@@ -149,6 +149,7 @@ class Fibonacci(DefinedFunction):
     ``fibonacci(n, x)``, unevaluated (``fibonacci`` evaluates)."""
 
     function_name = 'fibonacci'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 
@@ -292,6 +293,7 @@ class Bernoulli(DefinedFunction):
     evaluates)."""
 
     function_name = 'bernoulli'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 
@@ -419,6 +421,7 @@ class Euler(DefinedFunction):
     unevaluated (``euler`` evaluates)."""
 
     function_name = 'euler'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 
@@ -466,6 +469,7 @@ class Bell(DefinedFunction):
     unevaluated (``bell`` evaluates)."""
 
     function_name = 'bell'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 
@@ -502,6 +506,7 @@ class Genocchi(DefinedFunction):
     ``genocchi(n, x)``, unevaluated (``genocchi`` evaluates)."""
 
     function_name = 'genocchi'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 
@@ -981,6 +986,7 @@ class KroneckerSymbol(_NumberTheoretic):
     (``kronecker_symbol`` evaluates)."""
 
     function_name = 'kronecker_symbol'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -1065,6 +1071,7 @@ class Tribonacci(DefinedFunction):
     ``tribonacci(n, x)``, unevaluated (``tribonacci`` evaluates)."""
 
     function_name = 'tribonacci'
+    generic_nseries = True
     nargs = frozenset({1, 2})
     call_nargs = frozenset({1, 2})
 

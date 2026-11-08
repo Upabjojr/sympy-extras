@@ -55,6 +55,8 @@ class HyperRep(DefinedFunction):
     the closed forms for small and big arguments and their branches;
     the parameters (all but the last argument) unpolarified."""
 
+    sympy_variadic = True
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from sympy_extras.functions.elementary.complexes import unpolarify
@@ -129,6 +131,7 @@ def _log(e: Expr) -> Expr:
 class HyperRep_power1(HyperRep):
     """``(1 - z)**a``."""
     function_name = 'HyperRep_power1'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -159,6 +162,7 @@ class HyperRep_power1(HyperRep):
 class HyperRep_power2(HyperRep):
     """``2**(2*a - 1)*(1 + sqrt(1 - z))**(1 - 2*a)``."""
     function_name = 'HyperRep_power2'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -194,6 +198,7 @@ class HyperRep_power2(HyperRep):
 class HyperRep_log1(HyperRep):
     """``log(1 - z)``."""
     function_name = 'HyperRep_log1'
+    generic_nseries = True
     nargs = frozenset({1})
 
     @classmethod
@@ -217,6 +222,7 @@ class HyperRep_log1(HyperRep):
 class HyperRep_atanh(HyperRep):
     """``atanh(sqrt(z))/sqrt(z)``."""
     function_name = 'HyperRep_atanh'
+    generic_nseries = True
     nargs = frozenset({1})
 
     @classmethod
@@ -248,6 +254,7 @@ class HyperRep_atanh(HyperRep):
 class HyperRep_asin1(HyperRep):
     """``asin(sqrt(z))/sqrt(z)``."""
     function_name = 'HyperRep_asin1'
+    generic_nseries = True
     nargs = frozenset({1})
 
     @classmethod
@@ -275,6 +282,7 @@ class HyperRep_asin1(HyperRep):
 class HyperRep_asin2(HyperRep):
     """``asin(sqrt(z))/sqrt(z)/sqrt(1 - z)``."""
     function_name = 'HyperRep_asin2'
+    generic_nseries = True
     nargs = frozenset({1})
 
     @classmethod
@@ -298,6 +306,7 @@ class HyperRep_asin2(HyperRep):
 class HyperRep_sqrts1(HyperRep):
     """``((1 - sqrt(z))**(2*a) + (1 + sqrt(z))**(2*a))/2``."""
     function_name = 'HyperRep_sqrts1'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -333,6 +342,7 @@ class HyperRep_sqrts1(HyperRep):
 class HyperRep_sqrts2(HyperRep):
     """``sqrt(z)*((1 - sqrt(z))**(2*a) - (1 + sqrt(z))**(2*a))/2``."""
     function_name = 'HyperRep_sqrts2'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -368,6 +378,7 @@ class HyperRep_sqrts2(HyperRep):
 class HyperRep_log2(HyperRep):
     """``log(1/2 + sqrt(1 - z)/2)``."""
     function_name = 'HyperRep_log2'
+    generic_nseries = True
     nargs = frozenset({1})
 
     @classmethod
@@ -396,6 +407,7 @@ class HyperRep_log2(HyperRep):
 class HyperRep_cosasin(HyperRep):
     """``cos(2*a*asin(sqrt(z)))``."""
     function_name = 'HyperRep_cosasin'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -426,6 +438,7 @@ class HyperRep_cosasin(HyperRep):
 class HyperRep_sinasin(HyperRep):
     """``sqrt(z)/sqrt(1 - z)*sin(2*a*asin(sqrt(z)))``."""
     function_name = 'HyperRep_sinasin'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 

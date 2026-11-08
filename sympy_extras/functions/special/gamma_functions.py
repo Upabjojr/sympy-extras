@@ -231,6 +231,7 @@ class PolyGamma(DefinedFunction):
     unevaluated (``polygamma`` evaluates)."""
 
     function_name = 'polygamma'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 

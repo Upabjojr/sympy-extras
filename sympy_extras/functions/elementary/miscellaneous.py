@@ -481,6 +481,7 @@ class Rem(DefinedFunction):
     evaluates)."""
 
     function_name = 'Rem'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 

@@ -156,6 +156,7 @@ class Legendre(OrthogonalPolynomial):
     (``legendre`` evaluates)."""
 
     function_name = 'legendre'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -198,6 +199,7 @@ class ChebyshevT(OrthogonalPolynomial):
     unevaluated (``chebyshevt`` evaluates)."""
 
     function_name = 'chebyshevt'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -237,6 +239,7 @@ class ChebyshevU(OrthogonalPolynomial):
     unevaluated (``chebyshevu`` evaluates)."""
 
     function_name = 'chebyshevu'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -285,6 +288,7 @@ class Hermite(OrthogonalPolynomial):
     (``hermite`` evaluates)."""
 
     function_name = 'hermite'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -322,6 +326,7 @@ class Laguerre(OrthogonalPolynomial):
     (``laguerre`` evaluates)."""
 
     function_name = 'laguerre'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -635,6 +640,7 @@ class AssocLegendre(DefinedFunction):
     unevaluated (``assoc_legendre`` evaluates)."""
 
     function_name = 'assoc_legendre'
+    generic_nseries = True
     nargs = frozenset({3})
     call_nargs = frozenset({3})
 
@@ -697,6 +703,7 @@ class HermiteProb(OrthogonalPolynomial):
     unevaluated (``hermite_prob`` evaluates)."""
 
     function_name = 'hermite_prob'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
