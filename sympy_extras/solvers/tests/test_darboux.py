@@ -276,7 +276,7 @@ def test_parameters_with_undecided_signs() -> None:
 def test_solve_ode_reaches_the_first_order_solvers() -> None:
     # Kamke 1.236, x (y + 4) y' = 2 x + y**2 + 2 y: dsolve fails, the
     # Prelle-Singer procedure gives x (x - 2 y - 4)/(x - y)**2 = C1
-    from sympy_extras.solvers import solve_ode
+    from sympy_extras.solvers.ode import solve_ode
     from sympy_extras.solvers.ode import _first_order
     f = Function('y')(x)
     equation = x*(f + 4)*f.diff(x) - 2*x - f**2 - 2*f

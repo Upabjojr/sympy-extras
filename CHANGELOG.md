@@ -437,6 +437,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- **Breaking:** the package `sympy_extras.solvers` exports nothing (as
+  `sympy_extras.concrete`): its functions are imported from their modules
+  (`from sympy_extras.solvers.ode import dsolve_lie`,
+  `from sympy_extras.solvers.recurr import rsolve_linear`, ...). Importing
+  the native modules (`solvers.recurr`, `solvers.linsolve`, and
+  `concrete.creative` which uses them) no longer loads SymPy; a test pins
+  it.
 - `sympy_extras.concrete.creative` is native: `creative_telescoping` and
   `definite_sum` take and return core expressions, on the native
   `PiSigmaField` built by the builder of `karr` (the hypergeometric part

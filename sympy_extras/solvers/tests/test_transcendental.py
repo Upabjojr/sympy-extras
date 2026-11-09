@@ -145,7 +145,7 @@ def test_a_multiple_angle_is_solved() -> None:
     # the solutions are x = pi/12 + k pi and 5 pi/12 + k pi.
     from sympy import sin, cos, Eq, Rational, pi
     from sympy.abc import x
-    from sympy_extras.solvers import solve_transcendental
+    from sympy_extras.solvers.transcendental import solve_transcendental
     for equation, root in ((Eq(sin(2*x), Rational(1, 2)), pi/12),
                            (Eq(cos(2*x), Rational(1, 2)), pi/6)):
         found = solve_transcendental(equation, x)

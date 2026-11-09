@@ -45,7 +45,8 @@ from sympy_extras.concrete.dirichlet import dirichlet_series
 from sympy_extras.concrete.karr_sympy import karr_sum
 from sympy_extras.concrete.rational import rational_sum
 from sympy_extras.integrals.series import _polygamma_series_sympy
-from sympy_extras.solvers import isolate_real_roots, thue
+from sympy_extras.solvers.isolation import isolate_real_roots
+from sympy_extras.solvers.thue_equation import thue
 from sympy_extras.solvers.isolation import TranscendentalRoot
 
 #: the time limit of one case
@@ -591,7 +592,7 @@ def ode_case(rng: random.Random) -> tuple[str, Check]:
 
     def check() -> Optional[str]:
         from sympy import checkodesol
-        from sympy_extras.solvers import solve_ode
+        from sympy_extras.solvers.ode import solve_ode
         solutions = attempt(lambda: solve_ode(equation, y), TIMEOUT)
         if not solutions:
             return None
@@ -676,7 +677,7 @@ def darboux_case(rng: random.Random) -> tuple[str, Check]:
     label = 'darboux_first_integral(%s, %s) for the level curves of %s' % (P, Q, integral)
 
     def check() -> Optional[str]:
-        from sympy_extras.solvers import darboux_first_integral
+        from sympy_extras.solvers.darboux import darboux_first_integral
         found = attempt(lambda: darboux_first_integral(P, Q, x, y), TIMEOUT)
         if found is None:
             return 'no first integral found'

@@ -114,7 +114,7 @@ def test_the_unknown_is_not_left_under_an_integral() -> None:
     # integral is the honest reduction when that happens.
     from sympy import Function, Eq, Integral
     from sympy.abc import x
-    from sympy_extras.solvers import dsolve_second_order
+    from sympy_extras.solvers.second_order import dsolve_second_order
     y = Function('y')(x)
     results = dsolve_second_order(Eq(y.diff(x, 2) + y.diff(x)/x - y, 0), y)
     assert results is not None

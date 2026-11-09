@@ -11,8 +11,11 @@ from sympy.core.symbol import Symbol
 
 from sympy_extras._special_values import Point, condition_point
 from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
-from sympy_extras.solvers import (dsolve_first_order, dsolve_kovacic, dsolve_linear, dsolve_second_order,
-                                  riccati_ode, solve_ode)
+from sympy_extras.solvers.first_order import dsolve_first_order, riccati_ode
+from sympy_extras.solvers.kovacic import dsolve_kovacic
+from sympy_extras.solvers.linear_ode import dsolve_linear
+from sympy_extras.solvers.second_order import dsolve_second_order
+from sympy_extras.solvers.ode import solve_ode
 from sympy_extras.solvers._special_values import solution_jacobian
 
 x, k, a, b = symbols('x k a b')

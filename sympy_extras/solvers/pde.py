@@ -55,7 +55,7 @@ def pde_symmetries(pde: Equation, u: AppliedUndef, degree: int = 2,
     ========
 
     >>> from sympy import Function, symbols
-    >>> from sympy_extras.solvers import pde_symmetries
+    >>> from sympy_extras.solvers.pde import pde_symmetries
     >>> x, t = symbols('x t')
     >>> u = Function('u')(x, t)
     >>> heat = u.diff(t) - u.diff(x, 2)
@@ -157,7 +157,7 @@ def similarity_reduction(pde: Equation, u: AppliedUndef, symmetry: Symmetry,
     ========
 
     >>> from sympy import Function, symbols
-    >>> from sympy_extras.solvers import pde_symmetries, similarity_reduction
+    >>> from sympy_extras.solvers.pde import pde_symmetries, similarity_reduction
     >>> x, t = symbols('x t')
     >>> u = Function('u')(x, t)
     >>> heat = u.diff(t) - u.diff(x, 2)
@@ -309,7 +309,7 @@ def pdsolve_lie(pde: Equation, u: AppliedUndef, symmetries_: Optional[Sequence[S
     ========
 
     >>> from sympy import Function, symbols
-    >>> from sympy_extras.solvers import pdsolve_lie
+    >>> from sympy_extras.solvers.pde import pdsolve_lie
     >>> x, t = symbols('x t')
     >>> u = Function('u')(x, t)
     >>> for s in pdsolve_lie(u.diff(t) - u.diff(x, 2), u):

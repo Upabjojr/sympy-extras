@@ -10,63 +10,13 @@ linearisation and Abel invariants for ordinary differential equations;
 factorisation of linear differential operators (Beke's algorithm); linear
 systems with rational coefficients (cyclic vectors, Barkatou's rational
 solutions, variation of constants); Darboux polynomials and the
-Prelle–Singer procedure for first order equations ``y' = P/Q``."""
-from .lie import JetSpace, Symmetry, symmetries, check_symmetry, determining_system, symmetry_janet_basis
-from .pde import pde_symmetries, similarity_reduction, pdsolve_lie, Reduction
-from .ode import (ode_symmetries, canonical_coordinates, reduce_order,
-    dsolve_lie, solve_ode, ReducedODE)
-from .integers import (hermite_normal_form_with_transform, linear_diophantine_system,
-    hilbert_basis, minimal_nonnegative_solutions, cooper, presburger_quantifier_elimination,
-    is_presburger)
-from .transcendental import solve_transcendental, polynomialize
-from .parametric import ParametricCase, parametric_cases
-from .kovacic import liouvillian_solution, dsolve_kovacic, KovacicSolution
-from .linear_ode import (LinearOperator, polynomial_solutions, rational_solutions,
-    hyperexponential_solutions, hyperexponential_search, reduce_order_linear, dsolve_linear, gcrd, lclm,
-    log_derivative)
-from .factorization import (OperatorFactorization, factor_operator, right_factor, left_factor,
-    variation_of_parameters, solve_factored)
-from .charpit import complete_integral, check_complete_integral
-from .special import special_solutions, bessel_solutions, whittaker_solutions, hypergeometric_solutions, whittaker_m
-from .first_order import riccati_ode, chini_ode, abel_ode, lagrange_ode, dsolve_first_order
-from .linear_systems import (cyclic_vector, cyclic_reduction, system_to_scalar, dsolve_linear_system,
-    rational_system_solutions, hyperexponential_system_solutions, dsolve_system, CyclicReduction,
-    LinearSystemSolution)
-from .dae import core_nilpotent_decomposition, dae_index, dsolve_dae, dae_matrices, check_dae, DAESolution
-from .isolation import TranscendentalRoot, isolate_real_roots, real_roots_of
-from .abel import (abel_invariants, abel_equivalence, abel_by_invariants, air_solution, particular_solution,
-    AbelInvariants, AbelTransformation)
-from .thue_equation import thue, units_of_order, elements_of_norm, ThueEquation
-from .second_order import (integrating_factor_xy, integrating_factor_p, is_linearizable, linearize,
-    rectify_symmetries, dsolve_second_order, FirstIntegral, Linearization)
-from .recurr import (rsolve_polynomial, rsolve_hypergeometric, rsolve_dalembertian, rsolve_linear, gosper_form,
-    is_recurrence_solution)
-from .darboux import (DarbouxPolynomial, ExponentialFactor, darboux_polynomials, exponential_factors,
-    darboux_integrating_factor, darboux_first_integral, prelle_singer)
+Prelle–Singer procedure for first order equations ``y' = P/Q``.
 
-__all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry', 'determining_system', 'symmetry_janet_basis',
-    'pde_symmetries', 'similarity_reduction', 'pdsolve_lie', 'Reduction',
-    'ode_symmetries', 'canonical_coordinates', 'reduce_order', 'dsolve_lie',
-    'solve_ode', 'ReducedODE',
-    'hermite_normal_form_with_transform', 'linear_diophantine_system', 'hilbert_basis',
-    'minimal_nonnegative_solutions', 'cooper', 'presburger_quantifier_elimination',
-    'is_presburger', 'solve_transcendental', 'polynomialize', 'ParametricCase', 'parametric_cases',
-    'liouvillian_solution', 'dsolve_kovacic', 'KovacicSolution', 'LinearOperator', 'polynomial_solutions',
-    'rational_solutions', 'hyperexponential_solutions', 'reduce_order_linear', 'dsolve_linear',
-    'hyperexponential_search', 'gcrd', 'lclm', 'log_derivative', 'OperatorFactorization', 'factor_operator',
-    'right_factor', 'left_factor', 'variation_of_parameters', 'solve_factored',
-    'complete_integral', 'check_complete_integral',
-    'special_solutions', 'bessel_solutions', 'whittaker_solutions', 'hypergeometric_solutions',
-    'whittaker_m', 'riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order',
-    'cyclic_vector', 'cyclic_reduction', 'system_to_scalar', 'dsolve_linear_system', 'rational_system_solutions',
-    'hyperexponential_system_solutions', 'dsolve_system', 'CyclicReduction', 'LinearSystemSolution',
-    'core_nilpotent_decomposition', 'dae_index', 'dsolve_dae', 'dae_matrices', 'check_dae', 'DAESolution',
-    'TranscendentalRoot', 'isolate_real_roots', 'real_roots_of',
-    'integrating_factor_xy', 'integrating_factor_p', 'is_linearizable', 'linearize', 'rectify_symmetries',
-    'dsolve_second_order', 'FirstIntegral', 'Linearization',
-    'abel_invariants', 'abel_equivalence', 'abel_by_invariants', 'air_solution', 'particular_solution',
-    'AbelInvariants', 'AbelTransformation', 'thue', 'units_of_order', 'elements_of_norm', 'ThueEquation',
-    'DarbouxPolynomial', 'ExponentialFactor', 'darboux_polynomials', 'exponential_factors',
-    'darboux_integrating_factor', 'darboux_first_integral', 'prelle_singer',
-    'rsolve_polynomial', 'rsolve_hypergeometric', 'rsolve_dalembertian', 'rsolve_linear', 'gosper_form',
-    'is_recurrence_solution']
+The package exports nothing: the modules are imported by their paths
+(``from sympy_extras.solvers.ode import dsolve_lie``), so that importing
+the native ones (:mod:`~sympy_extras.solvers.recurr`,
+:mod:`~sympy_extras.solvers.linsolve`) does not load the modules still
+written on SymPy."""
+from __future__ import annotations
+
+__all__: list[str] = []

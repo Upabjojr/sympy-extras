@@ -40,7 +40,8 @@ solvers always return.
 
 ```python
 >>> from sympy import Function, symbols
->>> from sympy_extras.solvers import pde_symmetries, pdsolve_lie, dsolve_lie
+>>> from sympy_extras.solvers.pde import pde_symmetries, pdsolve_lie
+>>> from sympy_extras.solvers.ode import dsolve_lie
 >>> x, t = symbols('x t')
 >>> u = Function('u')(x, t)
 >>> heat = u.diff(t) - u.diff(x, 2)
@@ -249,7 +250,8 @@ SymPy lacks:
 ```python
 >>> from sympy import Matrix, Function
 >>> from sympy.abc import n
->>> from sympy_extras.solvers import special_solutions, dsolve_linear_system
+>>> from sympy_extras.solvers.special import special_solutions
+>>> from sympy_extras.solvers.linear_systems import dsolve_linear_system
 >>> y = Function('y')(x)
 >>> special_solutions(y.diff(x, 2) + x*y, y)
 [sqrt(x)*besselj(1/3, 2*x**(3/2)/3), sqrt(x)*besselj(-1/3, 2*x**(3/2)/3)]
@@ -296,8 +298,8 @@ with the integrals left unevaluated when SymPy cannot evaluate them.
 
 ```python
 >>> from sympy import Function
->>> from sympy_extras.solvers import (LinearOperator, factor_operator, right_factor,
-...     left_factor, gcrd, lclm, dsolve_linear)
+>>> from sympy_extras.solvers.linear_ode import LinearOperator, gcrd, lclm, dsolve_linear
+>>> from sympy_extras.solvers.factorization import factor_operator, right_factor, left_factor
 >>> D = LinearOperator([0, 1], x)
 >>> A = LinearOperator([-x, 0, 1], x)          # Airy: y'' - x y
 >>> B = LinearOperator([1, 1/x, 1], x)         # Bessel of order 0
@@ -372,7 +374,7 @@ antiderivative, and a few special types of two and three equations.
 
 ```python
 >>> from sympy import Matrix, symbols, simplify, exp
->>> from sympy_extras.solvers import dsolve_system, rational_system_solutions
+>>> from sympy_extras.solvers.linear_systems import dsolve_system, rational_system_solutions
 >>> A = Matrix([[0, 1], [2/x**2, 0]])
 >>> S = dsolve_system(A, x)
 >>> S.fundamental
@@ -413,7 +415,7 @@ parametrically. SymPy has hints for Bernoulli, Riccati (rational
 particular solutions) and Clairaut equations only.
 
 ```python
->>> from sympy_extras.solvers import lagrange_ode, abel_ode, riccati_ode
+>>> from sympy_extras.solvers.first_order import lagrange_ode, abel_ode, riccati_ode
 >>> riccati_ode(y.diff(x) + y**2 - 2/x**2, y)
 Eq(y(x), (2*C1*x**3 - 1)/(C1*x**4 + x))
 >>> lagrange_ode(Eq(y, 2*x*y.diff(x) + y.diff(x)**2), y)
@@ -426,7 +428,8 @@ Eq(..., C1 + x)
 ```python
 >>> from sympy import Function, Rational
 >>> from sympy.abc import n
->>> from sympy_extras.solvers import dsolve_linear, dsolve_kovacic, liouvillian_solution
+>>> from sympy_extras.solvers.linear_ode import dsolve_linear
+>>> from sympy_extras.solvers.kovacic import dsolve_kovacic, liouvillian_solution
 >>> y = Function('y')(x)
 >>> dsolve_linear(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y)
 [x**2 + 2*x + 2, exp(x)]
@@ -509,7 +512,7 @@ closed forms of the sums are computed without a time limit.
 
 ```python
 >>> from sympy_extras.core import Eq, Function, Symbol
->>> from sympy_extras.solvers import rsolve_linear, rsolve_dalembertian, rsolve_hypergeometric
+>>> from sympy_extras.solvers.recurr import rsolve_linear, rsolve_dalembertian, rsolve_hypergeometric
 >>> n = Symbol('n')
 >>> u = Function('u')
 >>> rsolve_linear(u(n + 1) - (n + 1)*u(n) - 1, u(n))
@@ -556,7 +559,7 @@ SymPy's `dsolve` has nothing of the kind; `dsolve_first_order` tries it
 after the Riccati, Abel and Chini classes.
 
 ```python
->>> from sympy_extras.solvers import (darboux_polynomials, darboux_integrating_factor,
+>>> from sympy_extras.solvers.darboux import (darboux_polynomials, darboux_integrating_factor,
 ...     darboux_first_integral, prelle_singer)
 >>> from sympy.abc import x
 >>> from sympy import Symbol
@@ -605,7 +608,7 @@ handles first order linear equations only.
 
 ```python
 >>> from sympy import Eq, Function, symbols
->>> from sympy_extras.solvers import complete_integral
+>>> from sympy_extras.solvers.charpit import complete_integral
 >>> x, y = symbols('x y')
 >>> u = Function('u')(x, y)
 >>> complete_integral(u.diff(x)*u.diff(y) - 1, u)
@@ -652,7 +655,8 @@ the cases off.
 
 ```python
 >>> from sympy import Function, symbols, exp, sin
->>> from sympy_extras.solvers import solve_ode, dsolve_linear
+>>> from sympy_extras.solvers.ode import solve_ode
+>>> from sympy_extras.solvers.linear_ode import dsolve_linear
 >>> x, k, a = symbols('x k a')
 >>> y = Function('y')(x)
 >>> solve_ode(y.diff(x) - k*y - exp(x), y)
@@ -706,7 +710,7 @@ to the index of the equation.
 
 ```python
 >>> from sympy import Function, Matrix, Eq, sin, symbols
->>> from sympy_extras.solvers import dae_matrices, dsolve_dae, dae_index
+>>> from sympy_extras.solvers.dae import dae_matrices, dsolve_dae, dae_index
 >>> x = symbols('x')
 >>> y1, y2 = Function('y1')(x), Function('y2')(x)
 >>> A, B, f, _ = dae_matrices([Eq(y1.diff(x), y2), Eq(y1, sin(x))], [y1, y2])
@@ -728,7 +732,7 @@ commuting point symmetries into translations, after which the equation
 is `u'' = F(u')`, solvable by quadratures.
 
 ```python
->>> from sympy_extras.solvers import dsolve_second_order
+>>> from sympy_extras.solvers.second_order import dsolve_second_order
 >>> f = Function('y')(x)
 >>> dsolve_second_order(f.diff(x, 2) + 3*f*f.diff(x) + f**3, f)
 [Eq(y(x), 2*(C2 + x)/(2*C1 + 2*C2*x + x**2))]

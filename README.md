@@ -298,7 +298,8 @@ first order equations and `pdsolve` has no symmetry analysis.
 
 ```python
 >>> from sympy import Function, symbols
->>> from sympy_extras.solvers import pde_symmetries, pdsolve_lie, dsolve_lie
+>>> from sympy_extras.solvers.pde import pde_symmetries, pdsolve_lie
+>>> from sympy_extras.solvers.ode import dsolve_lie
 >>> x, t = symbols('x t')
 >>> u = Function('u')(x, t)
 >>> burgers = u.diff(t) + u*u.diff(x) - u.diff(x, 2)
@@ -369,7 +370,9 @@ statement assumptions and case distinctions.
 
 ```python
 >>> from sympy import Function, binomial, exp, oo, symbols
->>> from sympy_extras.solvers import dsolve_kovacic, dsolve_linear, complete_integral
+>>> from sympy_extras.solvers.kovacic import dsolve_kovacic
+>>> from sympy_extras.solvers.linear_ode import dsolve_linear
+>>> from sympy_extras.solvers.charpit import complete_integral
 >>> from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
 >>> from sympy_extras.assumptions import limit
 >>> x, y = symbols('x y')
@@ -416,13 +419,14 @@ system for their exponents, and the first integral by quadrature
 ```python
 >>> from sympy import Function
 >>> from sympy.abc import x, a, n
->>> from sympy_extras.solvers import dsolve_linear, special_solutions
+>>> from sympy_extras.solvers.linear_ode import dsolve_linear
+>>> from sympy_extras.solvers.special import special_solutions
 >>> y = Function('y')(x)
 >>> dsolve_linear(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y)
 [x**2 + 2*x + 2, exp(x)]
 >>> special_solutions(x**2*y.diff(x, 2) + x*y.diff(x) + (x**2 - n**2)*y, y)
 [besselj(n, x), bessely(n, x)]
->>> from sympy_extras.solvers import prelle_singer
+>>> from sympy_extras.solvers.darboux import prelle_singer
 >>> prelle_singer(x*(1 - y)*y.diff(x) - y*(x - 1), y)          # Lotka–Volterra
 Eq(-x - y(x) + log(x) + log(y(x)), C1)
 
@@ -439,7 +443,7 @@ values. The module is native (written on the core, without SymPy).
 
 ```python
 >>> from sympy_extras.core import Eq, Function, Symbol
->>> from sympy_extras.solvers import rsolve_linear
+>>> from sympy_extras.solvers.recurr import rsolve_linear
 >>> n = Symbol('n')
 >>> u = Function('u')
 >>> rsolve_linear(u(n + 1) - (n + 1)*u(n) - 1, u(n))
@@ -463,7 +467,8 @@ their invariants, and `polygamma_series` sums Euler sums and series of
 polygamma functions in zeta values.
 
 ```python
->>> from sympy_extras.solvers import thue, dsolve_second_order
+>>> from sympy_extras.solvers.thue_equation import thue
+>>> from sympy_extras.solvers.second_order import dsolve_second_order
 >>> from sympy_extras.concrete.eulersums import polygamma_series
 >>> thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y)
 [(-9, 5), (-1, -1), (-1, 1), (-1, 2), (0, -1), (1, 0), (2, -1), (4, -9), (5, 4)]
@@ -499,7 +504,7 @@ decided by virtual substitution and the parity of integer polynomials in
 >>> from sympy import cos, exp, Eq, S, Matrix, sin, mobius, Mod
 >>> from sympy.abc import x, n, p
 >>> from sympy_extras.assumptions import solve, refine, limit_seq, element
->>> from sympy_extras.solvers import dsolve_dae
+>>> from sympy_extras.solvers.dae import dsolve_dae
 >>> from sympy_extras.concrete.convergence import sum_convergence
 >>> from sympy_extras.concrete.dirichlet import dirichlet_series
 >>> solve(Eq(x, cos(x)), x, domain=S.Reals)
@@ -673,7 +678,7 @@ The size of the symmetry algebra of a differential equation follows from
 the Janet basis of its determining equations:
 
 ```python
->>> from sympy_extras.solvers import symmetry_janet_basis
+>>> from sympy_extras.solvers.lie import symmetry_janet_basis
 >>> symmetry_janet_basis(p.diff(x, 2), p).dimension
 8
 

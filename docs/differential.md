@@ -112,7 +112,7 @@ the Janet basis says how many symmetries there are, so that one knows
 whether the ansatz found them all.
 
 ```python
->>> from sympy_extras.solvers import symmetry_janet_basis, symmetries
+>>> from sympy_extras.solvers.lie import symmetry_janet_basis, symmetries
 >>> s = Function('s')(x)
 >>> symmetry_janet_basis(s.diff(x, 2), s).dimension
 8

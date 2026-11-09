@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sympy import Function, symbols, Eq, exp, sin, Rational
 
-from sympy_extras.solvers import JetSpace, Symmetry, symmetries, check_symmetry
+from sympy_extras.solvers.lie import JetSpace, Symmetry, symmetries, check_symmetry
 from sympy_extras.solvers.lie import infinitesimal_condition
 
 x, t, m = symbols('x t m')
@@ -143,7 +143,7 @@ def test_nonlinear_leading_derivative() -> None:
 
 def test_the_size_of_the_symmetry_algebra_by_a_janet_basis() -> None:
     from sympy import oo
-    from sympy_extras.solvers import determining_system, symmetry_janet_basis
+    from sympy_extras.solvers.lie import determining_system, symmetry_janet_basis
     y = Function('y')(x)
     # known dimensions (Lie; Olver, Applications of Lie Groups, section 2.4 and
     # chapter 2 examples): the projective group for y'' = 0, the maximal 7 for

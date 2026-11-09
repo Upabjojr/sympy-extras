@@ -81,11 +81,21 @@ from sympy_extras.concrete.dirichlet import dirichlet_series
 from sympy_extras.concrete.eulersums import polygamma_series, euler_sum
 from sympy_extras.concrete.qhyper import qgosper_sum, qzeilberger
 from sympy_extras.concrete.rational import rational_sum
-from sympy_extras.solvers import (dsolve_kovacic, dsolve_linear, special_solutions, dsolve_lie,
-    dsolve_first_order, dsolve_second_order, dsolve_dae, dae_matrices, complete_integral,
-    isolate_real_roots, thue, abel_by_invariants, abel_invariants, linear_diophantine_system,
-    minimal_nonnegative_solutions, cooper, dsolve_linear_system, symmetries, pde_symmetries,
-    rational_system_solutions, integrating_factor_xy, is_linearizable)
+from sympy_extras.solvers.kovacic import dsolve_kovacic
+from sympy_extras.solvers.linear_ode import dsolve_linear
+from sympy_extras.solvers.special import special_solutions
+from sympy_extras.solvers.ode import dsolve_lie
+from sympy_extras.solvers.first_order import dsolve_first_order
+from sympy_extras.solvers.second_order import dsolve_second_order, integrating_factor_xy, is_linearizable
+from sympy_extras.solvers.dae import dsolve_dae, dae_matrices
+from sympy_extras.solvers.charpit import complete_integral
+from sympy_extras.solvers.isolation import isolate_real_roots
+from sympy_extras.solvers.thue_equation import thue
+from sympy_extras.solvers.abel import abel_by_invariants, abel_invariants
+from sympy_extras.solvers.integers import linear_diophantine_system, minimal_nonnegative_solutions, cooper
+from sympy_extras.solvers.linear_systems import dsolve_linear_system, rational_system_solutions
+from sympy_extras.solvers.lie import symmetries
+from sympy_extras.solvers.pde import pde_symmetries
 from sympy_extras.polys.ideals import Ideal
 from sympy_extras.polys.groebnerwalk import groebner_walk
 from sympy_extras.polys.euclidtools import psc
@@ -98,7 +108,7 @@ from sympy.series.limitseq import limit_seq
 from sympy.polys import ring, QQ, ZZ, grevlex, lex
 from sympy.polys.groebnertools import groebner as ring_groebner
 from sympy.logic.inference import satisfiable as sympy_satisfiable
-from sympy_extras.solvers import pdsolve_lie
+from sympy_extras.solvers.pde import pdsolve_lie
 
 f = Function('y')(x)
 g = Function('u')(x, y)

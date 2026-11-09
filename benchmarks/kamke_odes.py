@@ -39,7 +39,9 @@ from sympy.core.numbers import Rational
 
 from sympy_extras._timeout import attempt
 from sympy_extras.settings import configure
-from sympy_extras.solvers import dsolve_lie, dsolve_linear, dsolve_first_order
+from sympy_extras.solvers.ode import dsolve_lie
+from sympy_extras.solvers.linear_ode import dsolve_linear
+from sympy_extras.solvers.first_order import dsolve_first_order
 
 from kamke_data import ODEEntry, load, x, y
 

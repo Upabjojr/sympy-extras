@@ -302,7 +302,7 @@ Piecewise((oo, a > 1), (1, Eq(a, 1)), (0, a < 1))
 ## Thue equations
 
 ```python
->>> from sympy_extras.solvers import thue
+>>> from sympy_extras.solvers.thue_equation import thue
 >>> thue(x**3 - 2*y**3, 1, x, y)
 [(-1, -1), (1, 0)]
 >>> thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y)

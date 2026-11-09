@@ -50,3 +50,26 @@ def test_the_bridge_is_registered_by_interop() -> None:
     from sympy_extras.core import sympify
     assert isinstance(bridge(), interop.SymPyBridge)
     assert str(sympify('x + 1')) == 'x + 1'
+
+
+_NATIVE_SOLVERS = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.functions import binomial
+from sympy_extras.solvers.linsolve import solve_linear_unique
+from sympy_extras.solvers.recurr import rsolve_hypergeometric
+from sympy_extras.concrete.creative import definite_sum
+n, k, a, b = symbols('n k a b')
+assert str(solve_linear_unique([a + b - 1, a - b - n], [a, b])) == '[n/2 + 1/2, 1/2 - n/2]'
+assert str(definite_sum(binomial(n, k), (k, 0, n))) == '2**n'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_solvers_do_not_load_sympy() -> None:
+    """The package ``sympy_extras.solvers`` exports nothing, so importing
+    its native modules (and :mod:`sympy_extras.concrete.creative`, which
+    uses them) does not load the ones written on SymPy."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVERS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

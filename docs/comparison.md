@@ -54,10 +54,21 @@ The setup used throughout:
 >>> from sympy_extras.concrete.eulersums import polygamma_series
 >>> from sympy_extras.concrete.qhyper import qgosper_sum, qzeilberger
 >>> from sympy_extras.concrete.qhyper import qbinomial
->>> from sympy_extras.solvers import (dsolve_kovacic, dsolve_linear, special_solutions, dsolve_lie,
-...     dsolve_first_order, dsolve_second_order, dsolve_dae, dsolve_linear_system, complete_integral,
-...     isolate_real_roots, thue, abel_by_invariants, linear_diophantine_system, is_linearizable,
-...     minimal_nonnegative_solutions, symmetries, pde_symmetries, pdsolve_lie)
+>>> from sympy_extras.solvers.kovacic import dsolve_kovacic
+>>> from sympy_extras.solvers.linear_ode import dsolve_linear
+>>> from sympy_extras.solvers.special import special_solutions
+>>> from sympy_extras.solvers.ode import dsolve_lie
+>>> from sympy_extras.solvers.first_order import dsolve_first_order
+>>> from sympy_extras.solvers.second_order import dsolve_second_order, is_linearizable
+>>> from sympy_extras.solvers.dae import dsolve_dae
+>>> from sympy_extras.solvers.linear_systems import dsolve_linear_system
+>>> from sympy_extras.solvers.charpit import complete_integral
+>>> from sympy_extras.solvers.isolation import isolate_real_roots
+>>> from sympy_extras.solvers.thue_equation import thue
+>>> from sympy_extras.solvers.abel import abel_by_invariants
+>>> from sympy_extras.solvers.integers import linear_diophantine_system, minimal_nonnegative_solutions
+>>> from sympy_extras.solvers.lie import symmetries
+>>> from sympy_extras.solvers.pde import pde_symmetries, pdsolve_lie
 >>> from sympy_extras.polys.ideals import Ideal
 >>> from sympy_extras.polys.subresultants import psc
 >>> from sympy_extras.polys.groebnerwalk import groebner_walk

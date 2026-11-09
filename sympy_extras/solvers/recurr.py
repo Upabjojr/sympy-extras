@@ -86,7 +86,7 @@ factors of degree two are written with a square root, those of higher
 degree as SymPy's ``roots`` (ported) writes them; the roots it does not
 find (``CRootOf`` in SymPy) are left out. The closed forms of the sums in
 the solutions come from the ported summation (``Sum.doit``) without a
-time limit (the time limits of :mod:`sympy_extras._timeout` load SymPy).
+time limit.
 
 References
 ==========

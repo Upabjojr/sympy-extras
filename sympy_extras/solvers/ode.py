@@ -83,7 +83,7 @@ def ode_symmetries(ode: Equation, y: AppliedUndef, degree: int = 2,
     ========
 
     >>> from sympy import Function, symbols
-    >>> from sympy_extras.solvers import ode_symmetries
+    >>> from sympy_extras.solvers.ode import ode_symmetries
     >>> x = symbols('x')
     >>> y = Function('y')(x)
     >>> for X in ode_symmetries(y.diff(x, 2) + 2*y.diff(x)/x + y**5, y):
@@ -140,7 +140,7 @@ def canonical_coordinates(symmetry: Symmetry, timeout: Optional[float] = DEFAULT
     ========
 
     >>> from sympy import Function, symbols
-    >>> from sympy_extras.solvers import canonical_coordinates, ode_symmetries
+    >>> from sympy_extras.solvers.ode import canonical_coordinates, ode_symmetries
     >>> x = symbols('x')
     >>> y = Function('y')(x)
     >>> [X] = ode_symmetries(y.diff(x, 2) + 2*y.diff(x)/x + y**5, y)
@@ -243,7 +243,8 @@ def reduce_order(ode: Equation, y: AppliedUndef, symmetry: Symmetry,
     ========
 
     >>> from sympy import Function, symbols
-    >>> from sympy_extras.solvers import reduce_order, JetSpace, Symmetry
+    >>> from sympy_extras.solvers.ode import reduce_order
+    >>> from sympy_extras.solvers.lie import JetSpace, Symmetry
     >>> x = symbols('x')
     >>> y = Function('y')(x)
     >>> eq = y.diff(x, 2) - y.diff(x)**2/y
@@ -377,7 +378,7 @@ def dsolve_lie(ode: Equation, y: AppliedUndef, degree: int = 2, basis: Sequence[
     ========
 
     >>> from sympy import Function, symbols
-    >>> from sympy_extras.solvers import dsolve_lie
+    >>> from sympy_extras.solvers.ode import dsolve_lie
     >>> x = symbols('x')
     >>> y = Function('y')(x)
     >>> dsolve_lie(y.diff(x, 2) - y.diff(x)**2/y, y)
@@ -433,7 +434,7 @@ def solve_ode(ode: Equation, y: AppliedUndef, degree: int = 2, check: bool = Tru
     ========
 
     >>> from sympy import Function, symbols
-    >>> from sympy_extras.solvers import solve_ode
+    >>> from sympy_extras.solvers.ode import solve_ode
     >>> x = symbols('x')
     >>> y = Function('y')(x)
     >>> solve_ode(y.diff(x, 2) - y.diff(x)**2/y - y.diff(x)/x, y)

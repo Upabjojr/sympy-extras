@@ -81,7 +81,8 @@ def test_zero_normal_form_does_not_crash() -> None:
     # no singular points at all, and the pole bookkeeping indexed an
     # empty list. None is the acceptable answer, an IndexError is not.
     from sympy import Symbol, Integer, Function, Eq
-    from sympy_extras.solvers import bessel_solutions, whittaker_solutions, riccati_ode
+    from sympy_extras.solvers.special import bessel_solutions, whittaker_solutions
+    from sympy_extras.solvers.first_order import riccati_ode
     x = Symbol('x')
     assert bessel_solutions(Integer(0), x) is None
     assert whittaker_solutions(Integer(0), x) is None

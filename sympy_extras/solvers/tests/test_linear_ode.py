@@ -105,7 +105,7 @@ def test_a_truncated_series_is_not_accepted_as_a_solution() -> None:
     # exact solutions, neither of which satisfies the equation.
     from sympy import Function, Eq, Order, expand
     from sympy.abc import x
-    from sympy_extras.solvers import dsolve_linear
+    from sympy_extras.solvers.linear_ode import dsolve_linear
     y = Function('y')(x)
     ode = Eq(y.diff(x, 2) + (-2*x**2 - x + 1)*y.diff(x) + 3*y, 0)
     for s in dsolve_linear(ode, y) or []:
