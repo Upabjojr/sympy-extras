@@ -1942,7 +1942,8 @@ def _is_polynomial_like(e: Expr, syms: set[Symbol], kind: str) -> Truth:
 _POINT_FACTS: Final[frozenset[str]] = frozenset({
     'commutative', 'complex', 'finite', 'integer', 'rational', 'real', 'extended_real', 'positive', 'negative',
     'nonnegative', 'nonpositive', 'nonzero', 'zero', 'extended_positive', 'extended_negative', 'extended_nonnegative',
-    'extended_nonpositive', 'extended_nonzero', 'even', 'odd', 'algebraic', 'hermitian', 'imaginary', 'antihermitian'})
+    'extended_nonpositive', 'extended_nonzero', 'even', 'odd', 'algebraic', 'hermitian', 'imaginary', 'antihermitian',
+    'polar'})
 
 
 def _admissible_value(s: Symbol, i: int, variant: int = 0) -> Optional[Expr]:
@@ -1959,8 +1960,10 @@ def _admissible_value(s: Symbol, i: int, variant: int = 0) -> Optional[Expr]:
         return Integer(0)
     negative = facts.get('negative') is True or facts.get('nonpositive') is True \
         or facts.get('extended_negative') is True or facts.get('extended_nonpositive') is True
+    # a polar symbol takes positive real values among others (exp_polar is evaluated as exp)
     positive = facts.get('positive') is True or facts.get('nonnegative') is True \
-        or facts.get('extended_positive') is True or facts.get('extended_nonnegative') is True
+        or facts.get('extended_positive') is True or facts.get('extended_nonnegative') is True \
+        or facts.get('polar') is True
     # the sign is free unless an assumption fixes it
     sign = -1 if negative else 1 if positive else (1, -1, -1)[variant]
     # the second point is far (an imaginary part beyond pi: log(exp(x)) - x)

@@ -819,9 +819,13 @@ def test_equals_proves_nonzero_at_admissible_points() -> None:
                   (-1)**(2*m) - 1, sympy.log(p**2) - 2*sympy.log(p)]
     for e in identities:
         assert not _nonzero_at_a_point(expr_from_sympy(e)), e
+    z = sympy.Dummy('z', polar=True)
     for e in [x - y, 2*x - 1, sympy.log(sympy.exp(x)) - x, (-1)**n - 1, sympy.floor(r) - r, sympy.sqrt(x**2) - x,
-              sympy.Abs(r) - r, sympy.sqrt(x)*sympy.sqrt(y) - sympy.sqrt(x*y), sympy.log(x**2) - 2*sympy.log(x)]:
+              sympy.Abs(r) - r, sympy.sqrt(x)*sympy.sqrt(y) - sympy.sqrt(x*y), sympy.log(x**2) - 2*sympy.log(x),
+              z - 1, z*sympy.exp_polar(sympy.I*sympy.pi) - 1, z**2/4 - 1]:
         assert _nonzero_at_a_point(expr_from_sympy(e)), e
+    # exp_polar beyond (-pi, pi] is not evaluated (as SymPy's evalf): not decided
+    assert not _nonzero_at_a_point(expr_from_sympy(sympy.sqrt(x)*sympy.exp_polar(3*sympy.I*sympy.pi/2) - 1))
 
 
 def test_is_constant_natively() -> None:
