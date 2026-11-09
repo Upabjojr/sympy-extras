@@ -20,6 +20,7 @@ mod convert;
 mod dense;
 mod domains;
 mod factor;
+mod gaussian;
 mod ntheory;
 mod polyerrors;
 mod rings;
@@ -57,6 +58,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &domains_module,
         "fractionfield",
         "sympy_extras_rs.polys.domains.fractionfield",
+    )?)?;
+    gaussian::register(&submodule(
+        &domains_module,
+        "gaussiandomains",
+        "sympy_extras_rs.polys.domains.gaussiandomains",
     )?)?;
     algebraic::register_algebraicfield(&submodule(
         &domains_module,

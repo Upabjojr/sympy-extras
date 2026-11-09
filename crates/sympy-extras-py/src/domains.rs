@@ -24,6 +24,9 @@ pub enum DomainKind {
     FracZZ,
     FracQQ,
     FracGF(u64),
+    /// the Gaussian integers `ZZ_I` and rationals `QQ_I`
+    GaussianZZ,
+    GaussianQQ,
 }
 
 /// A coefficient domain.
@@ -100,6 +103,14 @@ macro_rules! with_domain {
             $crate::domains::DomainKind::FracGF(p) => {
                 let field = _Frac::new(_P::new(_F::new(p).map_err($crate::convert::err)?, &dom.variable));
                 let $k = &field;
+                $body
+            }
+            $crate::domains::DomainKind::GaussianZZ => {
+                let $k = &sympy_extras_core::polys::domains::GaussianIntegerRing;
+                $body
+            }
+            $crate::domains::DomainKind::GaussianQQ => {
+                let $k = &sympy_extras_core::polys::domains::GaussianRationalField;
                 $body
             }
         }

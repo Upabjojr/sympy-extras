@@ -35,6 +35,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/domains/integerring.py` | done | |
 | `polys/domains/rationalfield.py` | done | with the fraction-free sparse echelon form |
 | `polys/domains/algebraicfield.py` | done | elements `Vec<Rat>`; `alpha_expr` a core node (the bindings take any object and name the root by its `str`); `to_expr`/`from_expr` and the conversion between different fields wait for the core; a separate Python class in the bindings, not a `DomainKind` |
+| `polys/domains/gaussiandomains.py` | done | `ZZ_I`, `QQ_I` with the elements `GaussianInteger`/`GaussianRational`; kinds of `Domain` in the bindings, so every dense binding runs over them; `to_expr`/`from_expr` wait for the core |
 | `polys/domains/finitefield.py` | done | elements `u64`, products in `u128` (any modulus below `2**64`) |
 | `polys/densebasic.py` | done | |
 | `polys/densearith.py` | done | |
