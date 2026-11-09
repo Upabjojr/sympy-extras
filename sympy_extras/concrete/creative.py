@@ -98,7 +98,6 @@ from sympy.functions.combinatorial.numbers import harmonic
 from sympy.functions.special.gamma_functions import gamma
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.logic.boolalg import Boolean, true
-from sympy.polys.fields import FracElement
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, cancel, factor_list, gcd_list, lcm_list
 from sympy.polys.rationaltools import together
@@ -116,7 +115,8 @@ from sympy_extras._typing import as_boolean, as_expr, as_symbol, free_symbols, s
 from sympy_extras.settings import settings
 
 from .karr import _Builder, _atoms, _auto_extensions, karr_sum, with_sum_special_values
-from .pisigma import PiSigmaField
+from .pisigma import PiSigmaElement
+from .pisigma_sympy import SymPyPiSigmaField
 
 __all__ = ['CreativeTelescoper', 'creative_telescoping', 'definite_sum']
 
@@ -140,13 +140,13 @@ class CreativeTelescoper:
         parameters) without a common factor.
     certificate : Expr
         $g(n, k)$ with $\sum_i c_i(n) f(n + i, k) = g(n, k + 1) - g(n, k)$.
-    field : PiSigmaField
+    field : SymPyPiSigmaField
         The $\Pi\Sigma$-field of ``k`` over $\mathbb{Q}(n)$ in which the
         relation holds.
     """
 
     def __init__(self, term: Expr, k: Symbol, n: Symbol, coefficients: list[Expr], certificate: Expr,
-                 field: PiSigmaField, elements: list[FracElement], g: FracElement, factor: Expr) -> None:
+                 field: SymPyPiSigmaField, elements: list[PiSigmaElement], g: PiSigmaElement, factor: Expr) -> None:
         self.term = term
         self.k = k
         self.n = n
@@ -335,9 +335,9 @@ def _creative_telescoping(f: Expr, k: Symbol, n: Symbol, order: int,
         if sols is None:
             return None
         for c, g in sols:
-            if not any(c):
+            if all(ci == 0 for ci in c):
                 continue
-            values = [as_expr(field.C.to_sympy(ci)) for ci in c]
+            values = list(c)
             coefficients, scale = _normalized(values, n)
             g = g*field.from_expr(scale)
             certificate = as_expr(u*field.to_expr(g))
@@ -500,12 +500,12 @@ def _poles(Z: CreativeTelescoper) -> tuple[list[tuple[Fraction, Fraction]], list
     in_k: list[tuple[Fraction, Fraction]] = []
     in_n: list[int] = []
     for element in elements:
-        for part in (element.numer, element.denom):
-            expr = as_expr(together(part.as_expr()))
+        for is_numer, part in ((True, F.numer_expr(element)), (False, F.denom_expr(element))):
+            expr = as_expr(together(part))
             numerator, denominator = expr.as_numer_denom()
             # the coefficients of the numerator and the denominator in Q(n)
             in_n.extend(_integer_roots(as_expr(denominator), n))
-            if part is element.numer:
+            if is_numer:
                 continue
             try:
                 factors = factor_list(as_expr(numerator))[1]

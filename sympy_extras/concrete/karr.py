@@ -59,7 +59,6 @@ from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import cancel, factor_list
 from sympy.simplify.simplify import hypersimp
 
-from sympy.polys.fields import FracElement
 
 from sympy_extras._numeric import reliable_value
 from sympy_extras._special_values import Point, with_special_values
@@ -69,7 +68,8 @@ from sympy_extras.assumptions.ask import Assumptions
 
 from sympy_extras._typing import as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
 
-from .pisigma import PiSigmaField
+from .pisigma import PiSigmaElement
+from .pisigma_sympy import SymPyPiSigmaField
 
 __all__ = ['karr_term', 'karr_sum', 'summation', 'build_pisigma_field']
 
@@ -125,11 +125,11 @@ class _Builder:
 
     def __init__(self, k: Symbol, params: Sequence[Symbol]) -> None:
         self.k = k
-        self.field = PiSigmaField(k, params)
+        self.field = SymPyPiSigmaField(k, params)
         # atom -> expression in k and the generator symbols
         self.known: dict[Expr, Expr] = {}
 
-    def convert(self, expr: Union[Expr, int]) -> FracElement:
+    def convert(self, expr: Union[Expr, int]) -> PiSigmaElement:
         """The element of the field equal to ``expr``, adjoining
         generators as needed."""
         expr = sympify(expr)
@@ -209,9 +209,7 @@ class _Builder:
                 c = cancel(a0/w0)
             else:
                 c = cancel(a0 - w0)
-            try:
-                self.field.C.from_sympy(c)
-            except Exception:
+            if not self.field.is_constant_expr(c):
                 return None
             # the identity must hold for all k: check at another point
             k1 = k0 + 1
@@ -287,7 +285,7 @@ def _degree_in(expr: Expr, atom: Expr) -> int:
     return 1
 
 
-def build_pisigma_field(f: Union[Expr, int], k: Symbol, extensions: Sequence[Expr] = ()) -> tuple[PiSigmaField, FracElement]:
+def build_pisigma_field(f: Union[Expr, int], k: Symbol, extensions: Sequence[Expr] = ()) -> tuple[SymPyPiSigmaField, PiSigmaElement]:
     r"""A $\Pi\Sigma$-field containing ``f`` and the ``extensions``, and
     the element of the field equal to ``f``.
 
@@ -322,7 +320,7 @@ def build_pisigma_field(f: Union[Expr, int], k: Symbol, extensions: Sequence[Exp
 
 
 def _telescope(f: Union[Expr, int], k: Symbol, extensions: Sequence[Expr], auto: bool
-               ) -> tuple[PiSigmaField, FracElement, Optional[FracElement]]:
+               ) -> tuple[SymPyPiSigmaField, PiSigmaElement, Optional[PiSigmaElement]]:
     """The field, the element and a telescoper for ``f``, trying the
     automatic extensions if the first attempt fails."""
     f_ = as_expr(f)

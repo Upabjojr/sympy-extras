@@ -195,7 +195,8 @@ sympy_extras/
                              factor_terms, a native rewrite (rewriting.py), SymPy's order of the arguments, to_sympy/from_sympy with generic wrappers
                              of any SymPy object; see docs/core.md
     concrete/                summation algorithms extending sympy.concrete
-        pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver
+        pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver (typed, no SymPy)
+        pisigma_sympy.py     SymPyPiSigmaField: the SymPy face of PiSigmaField used by karr and creative
         karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation
         tests/
     integrals/               definite integration extending sympy.integrals

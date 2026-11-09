@@ -10,7 +10,7 @@ from sympy_extras._testing import untyped
 from sympy.abc import a, k, n, j, x
 
 from sympy_extras.concrete.karr import karr_term, karr_sum, summation, build_pisigma_field
-from sympy_extras.concrete.pisigma import PiSigmaField
+from sympy_extras.concrete.pisigma_sympy import SymPyPiSigmaField
 from sympy_extras.concrete.creative import definite_sum
 from sympy_extras.concrete.karr import with_sum_special_values
 from sympy_extras.concrete.tests.cases import check_antidifference_cases, check_sum_cases
@@ -205,7 +205,7 @@ def test_karr_term_and_field() -> None:
 
 
 def test_pisigma_field() -> None:
-    F = PiSigmaField(k, params=[n])
+    F = SymPyPiSigmaField(k, params=[n])
     assert F.level == 0 and F.params == (n,)
     kk = F.gens[0]
     assert F.sigma(kk) == kk + 1 and F.sigma(kk, -1) == kk - 1 and F.sigma(kk, 2) == kk + 2
@@ -216,7 +216,7 @@ def test_pisigma_field() -> None:
     assert F.sigma(F.sigma(t), -1) == t
     assert F.as_poly_in(t**2*kk + 1, 1) == {2: kk, 0: F.one}
     assert F.as_poly_in(1/t, 1) is None
-    assert F.to_constant(F.from_expr(n/2)) == F.C.from_sympy(n/2)
+    assert F.to_constant(F.from_expr(n/2)) == n/2
     raises(ValueError, lambda: F.to_constant(kk))
     p = F.add_pi(2, 2**k)
     u = F.from_expr(p)
@@ -230,7 +230,7 @@ def test_pisigma_field() -> None:
     assert sols is not None
     assert len(sols) == 3
     for c, g in sols:
-        assert F.sigma(g) - g == F.field(c[0])*t + F.field(c[1])*kk*t
+        assert F.sigma(g) - g == F.from_expr(c[0])*t + F.from_expr(c[1])*kk*t
     # homogeneous equations
     assert F.solve(F.from_expr(k + 1), []) == []
     hom = F.solve(F.from_expr((k + 1)/k), [])
@@ -238,7 +238,7 @@ def test_pisigma_field() -> None:
     [(c, g)] = hom
     assert c == [] and F.to_expr(g) in (k, 2*k) or F.sigma(g)*kk == (kk + 1)*g
     raises(ValueError, lambda: F.add_pi(0, 1))
-    raises(TypeError, lambda: untyped(PiSigmaField)(2))
+    raises(TypeError, lambda: untyped(SymPyPiSigmaField)(2))
     assert repr(F.extensions[0]) == "Extension(sigma, harmonic(k), 1/(k + 1))"
 
 
@@ -282,7 +282,7 @@ def test_homogeneous_pi_solutions_of_a_single_exponent_are_found() -> None:
     # exponent without a solution and returned [], so binomial(n + 1, k)
     # was not recognised as binomial(n, k)*(n + 1)/(n + 1 - k) and became
     # a second, algebraically dependent Pi-extension.
-    F = PiSigmaField(k, params=[n])
+    F = SymPyPiSigmaField(k, params=[n])
     t = F.add_pi((n - k)/(k + 1), binomial(n, k))
     sols = F.solve(F.from_expr((n + 1 - k)/(k + 1)), [])
     assert sols is not None and len(sols) == 1
@@ -300,7 +300,7 @@ def test_parameterized_solutions_have_small_constants() -> None:
     # without normalisation: the parameterized telescoping of the shifts
     # binomial(n + i, k)**2*harmonic(k) gave constants of degree 530 in n
     # (and took two minutes) for a relation whose coefficients have degree 3.
-    F = PiSigmaField(k, params=[n])
+    F = SymPyPiSigmaField(k, params=[n])
     t = F.add_pi((n - k)/(k + 1), binomial(n, k))
     h = F.add_sigma(1/(k + 1), harmonic(k))
     fs = [F.from_expr(t**2*h), F.from_expr((n + 1)**2/(n + 1 - k)**2*t**2*h),
@@ -312,8 +312,8 @@ def test_parameterized_solutions_have_small_constants() -> None:
     [(c, g)] = relations
     # FracElement equality is not canonical over the ground field Q(n): the
     # difference is compared with zero
-    assert F.sigma(g) - g - sum((F.field(ci)*fi for ci, fi in zip(c, fs)), F.zero) == F.zero
+    assert F.sigma(g) - g - sum((F.from_expr(ci)*fi for ci, fi in zip(c, fs)), F.zero) == F.zero
     for ci in c:
-        value = F.C.to_sympy(ci)
+        value = ci
         numerator, denominator = value.as_numer_denom()
         assert numerator.as_poly(n).degree() <= 3 and denominator.as_poly(n).degree() <= 3

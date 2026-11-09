@@ -329,8 +329,9 @@ Piecewise((1, Eq(y, 0)), ((y*(y + 1)**n + (y + 1)**n - 1)/(y*(n + 1)), True))
   with `g(k + 1) - g(k) == f(k)`, or `None`.
 - `summation(f, *limits, extensions=(), auto=True, special_values=True)`:
   SymPy's summation followed by Karr's algorithm.
-- `build_pisigma_field(f, k, extensions=())`: the field and the element
-  representing `f`.
+- `build_pisigma_field(f, k, extensions=())`: the field (a
+  `SymPyPiSigmaField`, the SymPy face of the native `PiSigmaField` of
+  `sympy_extras.concrete.pisigma`) and the element representing `f`.
 - `creative_telescoping(f, k, n, order=4, extensions=())`: a
   `CreativeTelescoper` with the `coefficients` `c_i(n)`, the `certificate`
   `g(n, k)`, `recurrence()` and `check()`, or `None`.

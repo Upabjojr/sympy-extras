@@ -429,6 +429,21 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.concrete.pisigma` (ΠΣ-fields and Karr's solver) is
+  native, on the typed polynomial layer, without SymPy: one
+  `SparseFractionField` over `QQ` in the parameters, `k` and the
+  generators (the parameters are variables, so that the gcds are those
+  over `ZZ` and an element in lowest terms is canonical); `PiSigmaField`
+  is generic over its constants (`RationalConstants`, `Fraction`, or
+  `ParametricConstants`, `QQ(params)`) and immutable (`add_sigma` and
+  `add_pi` return the new field and the generator); its elements are
+  `PiSigmaElement`s with the arithmetic operators; the dispersion
+  factors with the native `zz_factor`. `karr` and `creative` use it
+  through `sympy_extras.concrete.pisigma_sympy.SymPyPiSigmaField`,
+  which converts SymPy expressions directly to and from the elements and
+  returns the constants of the solutions as SymPy expressions
+  (`build_pisigma_field` returns one). Creative telescoping is about
+  twice as fast (the Paule–Schneider harmonic cubes 12.5 s → 5.4 s).
 - `expand(func=True)` and `expand_func` are native
   (`functions/_expand_func.py`: gamma, polygamma, loggamma, digamma,
   trigamma, beta, binomial, harmonic, erfc, erfi, erf2, expint, zeta,
