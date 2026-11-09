@@ -80,7 +80,7 @@ from .polyerrors import CoercionFailed, GeneratorsError, GeneratorsNeeded, Opera
 from .polyutils import dict_from_expr
 from .rings import Monomial, PolyElement, PolyRing
 
-__all__ = ['Poly', 'poly', 'degree', 'LC', 'gcd', 'lcm', 'resultant', 'discriminant', 'factor_list', 'sqf_list', 'cancel',
+__all__ = ['Poly', 'poly', 'degree', 'LC', 'gcd', 'lcm', 'gcd_list', 'lcm_list', 'resultant', 'discriminant', 'factor_list', 'sqf_list', 'cancel',
            'cancel_fraction', 'factor', 'factor_list_fraction', 'sqf', 'sqf_list_fraction']
 
 PolyLike = Union['Poly', ExprLike]
@@ -1119,6 +1119,47 @@ def lcm(f: PolyLike, g: PolyLike, *gens: ExprLike) -> Expr:
         return mul(na, nb)
     pf = _as_poly(f, gens) if gens or isinstance(f, Poly) else Poly(to_expr(f), *_common_gens(f, g))
     return pf.lcm(g).as_expr()
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:gcd_list (the API; computed by folding gcd)
+def gcd_list(seq: Sequence[PolyLike], *gens: ExprLike) -> Expr:
+    """The gcd of a list of polynomial expressions (``0`` of an empty
+    list), folding :func:`gcd`: SymPy's results, with its primitive and
+    sign conventions.
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.polys.polytools import gcd_list
+    >>> n = symbols('n')
+    >>> gcd_list([2*n + 2, 4*n**2 - 4]), gcd_list([n**2 - 1, n + 1, 3*n + 3])
+    (2*n + 2, n + 1)
+    """
+    if not seq:
+        return Integer(0)
+    first = seq[0]
+    result = first.as_expr() if isinstance(first, Poly) else to_expr(first)
+    for g in seq[1:]:
+        result = gcd(result, g, *gens)
+    return result
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:lcm_list (the API; computed by folding lcm)
+def lcm_list(seq: Sequence[PolyLike], *gens: ExprLike) -> Expr:
+    """The lcm of a list of polynomial expressions (``1`` of an empty
+    list), folding :func:`lcm`.
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.polys.polytools import lcm_list
+    >>> n = symbols('n')
+    >>> lcm_list([n**2 - 1, n + 1, 3*n + 3])
+    3*n**2 - 3
+    """
+    if not seq:
+        return Integer(1)
+    first = seq[0]
+    result = first.as_expr() if isinstance(first, Poly) else to_expr(first)
+    for g in seq[1:]:
+        result = lcm(result, g, *gens)
+    return result
 
 
 def _common_gens(f: PolyLike, g: PolyLike) -> tuple[Expr, ...]:

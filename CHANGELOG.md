@@ -10,6 +10,14 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.polytools.gcd_list` and `lcm_list`, native (folding
+  `gcd`/`lcm`): the same results as SymPy's, structurally.
+- `sympy_extras.solvers.linsolve.solve_linear_unique`: the unique solution
+  of a linear system with coefficients in `QQ(other symbols)`, by the
+  reduced echelon form over the native fraction field (`None` when not
+  unique, not linear, or outside the field); checked against SymPy's
+  `linsolve` on random systems. Building blocks for the native `creative`.
+
 - `sympy_extras.polys.rationalsolve.solveset_rational`: SymPy's `solveset`
   over the complex numbers for the equations rational in the unknown
   (same solutions in the same order); `Order`'s change of variables

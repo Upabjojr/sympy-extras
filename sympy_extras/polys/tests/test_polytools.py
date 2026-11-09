@@ -171,3 +171,19 @@ def test_invert_matches_sympy() -> None:
         except NotInvertible:
             ours = 'not invertible'
         assert ours == theirs, (f, g)
+
+
+def test_gcd_list_and_lcm_list_match_sympy() -> None:
+    import sympy
+    from sympy_extras.interop import expr_from_sympy, to_sympy
+    from sympy_extras.polys.polytools import gcd_list, lcm_list
+    x, n, a = sympy.symbols('x n a')
+    R = sympy.Rational
+    cases = [[2*n + 2, 4*n**2 - 4], [n**2 - 1, n + 1, 3*n + 3], [sympy.Integer(6), R(4, 3)], [2*x*n, 6*n**2],
+             [-n - 1, 2*n + 2], [a*n + a, n**2 + n], [R(1, 2)*n + R(1, 2), n**2 - 1], [-2*n**2 + 2, 4*n - 4],
+             [R(3, 2)*n, R(9, 4)*n**2], [x**2*n - n, x*n + n], [n + 1]]
+    for c in cases:
+        native = [expr_from_sympy(e) for e in c]
+        assert sympy.srepr(to_sympy(gcd_list(native))) == sympy.srepr(sympy.gcd_list(c)), c
+        assert sympy.srepr(to_sympy(lcm_list(native))) == sympy.srepr(sympy.lcm_list(c)), c
+    assert str(gcd_list([])) == '0' and str(lcm_list([])) == '1'
