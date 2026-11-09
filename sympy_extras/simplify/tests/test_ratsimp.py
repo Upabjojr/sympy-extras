@@ -3,7 +3,7 @@ import random
 
 import sympy
 
-from sympy_extras.core.interop import expr_from_sympy, to_sympy
+from sympy_extras.interop import expr_from_sympy, to_sympy
 from sympy_extras.simplify.ratsimp import ratsimp
 
 s = sympy

@@ -47,8 +47,12 @@ The setup used throughout:
 >>> from sympy.abc import a, b, c, k, n, p, q, s, t, x, y, z
 >>> from sympy_extras.assumptions import (ask, refine, simplify, resolve, solve, element,
 ...     ForAll, Exists, satisfiable, find_instance, limit, limit_seq, series)
->>> from sympy_extras.concrete import (karr_sum, zeilberger_sum, wz_prove, sum_convergence,
-...     product_convergence, dirichlet_series, polygamma_series, qgosper_sum, qzeilberger)
+>>> from sympy_extras.concrete.karr import karr_sum
+>>> from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
+>>> from sympy_extras.concrete.convergence import sum_convergence, product_convergence
+>>> from sympy_extras.concrete.dirichlet import dirichlet_series
+>>> from sympy_extras.concrete.eulersums import polygamma_series
+>>> from sympy_extras.concrete.qhyper import qgosper_sum, qzeilberger
 >>> from sympy_extras.concrete.qhyper import qbinomial
 >>> from sympy_extras.solvers import (dsolve_kovacic, dsolve_linear, special_solutions, dsolve_lie,
 ...     dsolve_first_order, dsolve_second_order, dsolve_dae, dsolve_linear_system, complete_integral,

@@ -178,7 +178,7 @@ the summand, and decides when no closed form exists in that field.
 ```python
 >>> from sympy import harmonic, factorial
 >>> from sympy.abc import k, n
->>> from sympy_extras.concrete import karr_sum, summation
+>>> from sympy_extras.concrete.karr import karr_sum, summation
 >>> karr_sum(harmonic(k)**2, (k, 1, n))
 n*harmonic(n)**2 - 2*n*harmonic(n) + 2*n + harmonic(n)**2 - harmonic(n)
 >>> karr_sum(harmonic(k)/k, (k, 1, n))
@@ -197,7 +197,7 @@ extension of Zeilberger's algorithm), with harmonic numbers in the summand:
 
 ```python
 >>> from sympy import binomial
->>> from sympy_extras.concrete import definite_sum
+>>> from sympy_extras.concrete.creative import definite_sum
 >>> definite_sum(binomial(n, k)**2*harmonic(k), (k, 0, n))
 (2*harmonic(n) - harmonic(2*n))*binomial(2*n, n)
 
@@ -367,7 +367,7 @@ statement assumptions and case distinctions.
 ```python
 >>> from sympy import Function, binomial, exp, oo, symbols
 >>> from sympy_extras.solvers import dsolve_kovacic, dsolve_linear, complete_integral
->>> from sympy_extras.concrete import zeilberger_sum, wz_prove
+>>> from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
 >>> from sympy_extras.assumptions import limit
 >>> x, y = symbols('x y')
 >>> f = Function('y')(x)
@@ -461,7 +461,7 @@ polygamma functions in zeta values.
 ```python
 >>> from sympy import harmonic
 >>> from sympy_extras.solvers import thue, dsolve_second_order
->>> from sympy_extras.concrete import polygamma_series
+>>> from sympy_extras.concrete.eulersums import polygamma_series
 >>> thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y)
 [(-9, 5), (-1, -1), (-1, 1), (-1, 2), (0, -1), (1, 0), (2, -1), (4, -9), (5, 4)]
 >>> from sympy import Function
@@ -494,7 +494,8 @@ decided by virtual substitution and the parity of integer polynomials in
 >>> from sympy.abc import x, n, p
 >>> from sympy_extras.assumptions import solve, refine, limit_seq, element
 >>> from sympy_extras.solvers import dsolve_dae
->>> from sympy_extras.concrete import sum_convergence, dirichlet_series
+>>> from sympy_extras.concrete.convergence import sum_convergence
+>>> from sympy_extras.concrete.dirichlet import dirichlet_series
 >>> solve(Eq(x, cos(x)), x, domain=S.Reals)
 {TranscendentalRoot(x - cos(x), x, 5/8, 3/4)}
 >>> dsolve_dae(Matrix([[1, 0], [0, 0]]), Matrix([[0, -1], [1, 0]]), Matrix([0, sin(x)]), x).solution.T
@@ -616,7 +617,7 @@ region of the assumptions.
 
 ```python
 >>> from sympy import symbols, exp, log, sqrt, sin, cos, atan, pi, Rational
->>> from sympy_extras.simplify import is_zero, canonical_form
+>>> from sympy_extras.simplify.structure import is_zero, canonical_form
 >>> x, y = symbols('x y')
 >>> is_zero(sin(x + y) - sin(x)*cos(y) - cos(x)*sin(y)), is_zero(exp(x) - x - 1)
 (True, False)

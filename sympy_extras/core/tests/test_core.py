@@ -10,10 +10,8 @@ import sympy
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras.core import (Add, Basic, Derivative, Dummy, Eq, Expr, Float, Function,
-    Integer, Lambda, Lt, Mul, Ne, Pow, Rational, Relational, S, Symbol, SympifyError, Tuple,
-    add, as_expr, diff, div, eq, expand, false, from_sympy, lt, mul, nan, neg, oo, pi, pow,
-    sqrt, srepr, sub, symbols, sympify, to_sympy, true, zoo, E, I)
+from sympy_extras.core import Add, Basic, Derivative, Dummy, Eq, Expr, Float, Function, Integer, Lambda, Lt, Mul, Ne, Pow, Rational, Relational, S, Symbol, SympifyError, Tuple, add, as_expr, diff, div, eq, expand, false, lt, mul, nan, neg, oo, pi, pow, sqrt, srepr, sub, symbols, sympify, true, zoo, E, I
+from sympy_extras.interop import from_sympy, to_sympy
 from sympy_extras.core.numbers import number_from_fraction
 
 x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
@@ -353,7 +351,7 @@ def test_order_subs_unevaluated_dict_algebraic() -> None:
     assert d.args == (Tuple(x, 1), Tuple(y, 2)) and d.subs(x, y) == Dict({y: 2}) and str(d) == '{x: 1, y: 2}'
     r = AlgebraicNumber(sqrt(2), [1, 1])
     assert r.root == sqrt(2) and r.coeffs() == [1, 1] and r.as_expr() == sqrt(2) + 1 and r.doit() == sqrt(2) + 1
-    assert r.is_algebraic and r.is_real and r.is_number and str(r.minpoly) == "PurePoly(_x**2 - 2*_x - 1, _x, domain='QQ')"
+    assert r.is_algebraic and r.is_real and r.is_number and str(r.minpoly) == "Poly(_x**2 - 2*_x - 1, _x, domain='ZZ')"
     assert AlgebraicNumber(sqrt(2)).coeffs() == [1, 0] and AlgebraicNumber(sqrt(2), alias='a').is_aliased
 
 
@@ -434,7 +432,7 @@ def test_the_new_methods_of_expr() -> None:
     assert (expr('sin(x)')/x).limit(x, 0) == 1 and (1/x).limit(x, 0, '-') == -oo and (1/x).limit(x, oo) == 0
     assert (x + x**2).as_leading_term(x) == x and (x**2 + x**3).leadterm(x) == (1, 2)
     import sympy
-    from sympy_extras.core import SymPyFunction
+    from sympy_extras.interop import SymPyFunction
     assert (x + 1).rewrite(SymPyFunction(sympy.exp)) == x + 1
     assert str(expr('sin(x)').rewrite(SymPyFunction(sympy.exp))) == '-I*(exp(I*x) - exp(-I*x))/2'
     assert sqrt(x**2).refine(sympy.Q.positive(to_sympy(x))) == x
@@ -709,8 +707,9 @@ def test_refine_matches_sympy() -> None:
     import random
     import sympy
     from sympy import Q as SQ
-    from sympy_extras.core import Q, refine, to_sympy
-    from sympy_extras.core.interop import from_sympy
+    from sympy_extras.core import Q, refine
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import from_sympy
     sx, sy = sympy.symbols('x y')
     rng = random.Random(5)
     exprs = [sympy.sqrt(sx**2), sympy.Abs(sx), sympy.Abs(sx*sy), (-1)**(sx + 1), (-1)**(sx + sy + 3), sympy.re(sx),
@@ -735,9 +734,9 @@ def test_refine_matches_sympy() -> None:
 def test_factor_nc_matches_sympy() -> None:
     import random
     import sympy
-    from sympy_extras.core import to_sympy
+    from sympy_extras.interop import to_sympy
     from sympy_extras.core.exprtools import factor_nc
-    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.interop import expr_from_sympy
     A, B, C = sympy.symbols('A B C', commutative=False)
     sx, sy = sympy.symbols('x y')
     rng = random.Random(2)
@@ -754,7 +753,7 @@ def test_number_times_wild_matches_as_sympy() -> None:
     # SymPy's Mul._matches_simple: 2*z matches x + 1 with z = x/2 + 1/2
     import sympy
     from sympy_extras.core import Wild
-    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.interop import expr_from_sympy
     sx = sympy.Symbol('x')
     sz = sympy.Wild('z')
     oz = Wild('z')
@@ -771,8 +770,8 @@ def test_derivative_substitution_matches_sympy() -> None:
     # symbol, captured symbols, renamings onto a symbol of the expression;
     # otherwise the derivative rebuilt unevaluated
     import sympy
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy
     sx, sy, sz = sympy.symbols('x y z')
     g = sympy.Function('f')
     for d in [sympy.Derivative(g(sx), sx), sympy.Derivative(g(sx, sy), sx), sympy.Derivative(g(sx)*sy, sx),
@@ -785,8 +784,8 @@ def test_derivative_substitution_matches_sympy() -> None:
 
 def test_subs_of_subs_and_as_independent_match_sympy() -> None:
     import sympy
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy
     sx, sy, sz = sympy.symbols('x y z')
     g = sympy.Function('f')
     for e in [sympy.Subs(g(sx), sx, 0), sympy.Subs(sympy.Derivative(g(sx), sx), sx, sy), sympy.Subs(g(sx)*sy, sx, sy + 1),

@@ -86,7 +86,7 @@ def ratsimp(expr: ExprLike) -> Expr:
         gens, (pf, pg) = _joint_rings([f, g], expand=False)
     except CoercionFailed:
         import sympy
-        from sympy_extras.core.interop import expr_through_sympy
+        from sympy_extras.interop import expr_through_sympy
         return expr_through_sympy(to_expr(expr), sympy.ratsimp)
     if not gens:
         # SymPy's ComputationFailed (no generators)

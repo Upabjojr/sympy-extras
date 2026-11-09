@@ -9,7 +9,7 @@ from fractions import Fraction
 import sympy
 from sympy.polys.matrices import DomainMatrix
 
-from sympy_extras.core.interop import expr_from_sympy
+from sympy_extras.interop import expr_from_sympy
 from sympy_extras.polys.domains import QQ
 from sympy_extras.polys.domains.sparsefractionfield import SparseFractionField
 from sympy_extras.polys.domains.sparsepolynomialring import RationalPolynomialRing

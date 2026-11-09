@@ -35,8 +35,6 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import TYPE_CHECKING, Callable, Final, Optional, Sequence, Union, overload
 
-import sympy
-
 from .add import Add, add
 from .basic import Basic
 from .containers import Tuple
@@ -593,13 +591,12 @@ class _FactorTerms:
         return i * sum_(d, *limits)
 
     def do(self, e: Basic) -> Basic:
-        from .interop import SymPyExprNode, sympy_expr, through_sympy
         if not e.args:
             return e
-        if isinstance(e, SymPyExprNode):
-            # SymPy's handling of its own objects (the content of an Integral is taken out)
-            return through_sympy(e, lambda s: sympy.factor_terms(sympy_expr(s), radical=self.radical, clear=self.clear,
-                                                                 fraction=self.fraction, sign=self.sign))
+        own = e._eval_factor_terms(self.radical, self.clear, self.fraction, self.sign)
+        if own is not None:
+            # a node with a rule of its own (a wrapped foreign object)
+            return own
         if isinstance(e, (Pow, Application, Tuple)) or not isinstance(e, Expr):
             new = tuple(self.do(a) for a in e.args)
             return e if new == e.args else e._evaluated(new)

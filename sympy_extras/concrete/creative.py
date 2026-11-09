@@ -53,7 +53,7 @@ Examples
 ========
 
 >>> from sympy import binomial, harmonic, symbols
->>> from sympy_extras.concrete import creative_telescoping, definite_sum
+>>> from sympy_extras.concrete.creative import creative_telescoping, definite_sum
 >>> n, k = symbols('n k')
 >>> Z = creative_telescoping(binomial(n, k)**2, k, n)
 >>> Z.coefficients
@@ -279,7 +279,7 @@ def creative_telescoping(f: Union[Expr, int], k: Symbol, n: Symbol, order: int =
     ========
 
     >>> from sympy import binomial, harmonic, symbols
-    >>> from sympy_extras.concrete import creative_telescoping
+    >>> from sympy_extras.concrete.creative import creative_telescoping
     >>> n, k = symbols('n k')
     >>> Z = creative_telescoping(binomial(n, k), k, n)
     >>> Z.coefficients, Z.certificate
@@ -821,7 +821,7 @@ def definite_sum(f: Union[Expr, int], limits: Sequence[Union[Symbol, Expr, int]]
     ========
 
     >>> from sympy import binomial, harmonic, symbols
-    >>> from sympy_extras.concrete import definite_sum
+    >>> from sympy_extras.concrete.creative import definite_sum
     >>> n, k, a, b = symbols('n k a b')
     >>> definite_sum(binomial(a, k)*binomial(b, n - k), (k, 0, n))
     binomial(a + b, n)

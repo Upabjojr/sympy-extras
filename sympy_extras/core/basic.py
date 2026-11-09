@@ -38,8 +38,6 @@ from .kind import Kind, UndefinedKind
 from .sorting import ArgsKey, ClassKey, CompareItem, CompareKey, SortKey, class_rank
 
 if TYPE_CHECKING:
-    from sympy.core.basic import Basic as SymPyBasic
-
     from .expr import Expr
     from .logic import Boolean
     from .function import FunctionClass
@@ -83,8 +81,9 @@ class ReplacementRule(Protocol):
     def __getitem__(self, item: Basic) -> Basic: ...
 
 
-#: an assumption for ``refine``: a boolean node, a Python bool or a SymPy boolean
-RefineArg = Union['Boolean', bool, 'SymPyBasic']
+#: an assumption for ``refine``: a boolean node or a Python bool (a
+#: foreign boolean is converted by the registered bridge)
+RefineArg = Union['Boolean', bool]
 
 
 def _as_boolean(b: object) -> 'Boolean':
@@ -112,7 +111,7 @@ class Basic:
     2*x
     """
 
-    __slots__ = ('_hash', '_compare_key_cache', '_sort_key_cache', '_sympy_cache')
+    __slots__ = ('_hash', '_compare_key_cache', '_sort_key_cache')
 
     # Class flags of SymPy, usable without importing the classes.
     is_Atom: bool = False
@@ -153,7 +152,6 @@ class Basic:
         self._hash: Final[int] = self._compute_hash()
         self._compare_key_cache: Optional[CompareKey] = None
         self._sort_key_cache: Optional[SortKey] = None
-        self._sympy_cache: Optional[SymPyBasic] = None
         self._after_init()
 
     def _compute_hash(self) -> int:
@@ -285,6 +283,25 @@ class Basic:
     def _compare_name(self) -> str:
         """The name of the class in SymPy, for the ``compare`` order."""
         return type(self).__name__
+
+    # hooks for the nodes defined outside the core (the wrappers of
+    # foreign objects): None means the core's own handling
+
+    def _is_foreign_node(self) -> bool:
+        """Whether the node wraps an object of a foreign system."""
+        return False
+
+    def _count_ops_label(self) -> Optional[str]:
+        """The label of the node in ``count_ops`` (a function name)."""
+        return None
+
+    def _srepr_name(self) -> Optional[str]:
+        """The head of the node in ``srepr``, as for a function."""
+        return None
+
+    def _eval_factor_terms(self, radical: bool, clear: bool, fraction: bool, sign: bool) -> Optional[Basic]:
+        """The node's own ``factor_terms``."""
+        return None
 
     def _compare_content(self) -> tuple[CompareItem, ...]:
         """The content of the node in the ``compare`` order: the keys of
@@ -775,9 +792,8 @@ class Basic:
         >>> Eq(x + x, 2*x).simplify()
         True
         """
-        import sympy
-        from .interop import through_sympy
-        return through_sympy(self, sympy.simplify)
+        from .bridge import bridge
+        return bridge().simplify(self)
 
     def rewrite(self, *args: Union[Basic, FunctionClass, type], piecewise: bool = True) -> Basic:
         """SymPy's ``rewrite`` of the node, in terms of the given functions.
@@ -786,7 +802,8 @@ class Basic:
         ========
 
         >>> import sympy
-        >>> from sympy_extras.core import Symbol, SymPyFunction
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.interop import SymPyFunction
         >>> x = Symbol('x')
         >>> SymPyFunction(sympy.sin)(x).rewrite(sympy.exp)
         -I*(exp(I*x) - exp(-I*x))/2
@@ -799,9 +816,8 @@ class Basic:
         if len(classes) == len(args) and isinstance(target, type) and issubclass(target, DefinedFunction):
             from .rewriting import RewriteHints, rewrite
             return rewrite(self, tuple(classes[:-1]), target, RewriteHints(piecewise))
-        from .interop import rewrite_targets, through_sympy
-        targets = rewrite_targets(args)
-        return through_sympy(self, lambda s: s.rewrite(*targets, piecewise=piecewise))
+        from .bridge import bridge
+        return bridge().rewrite(self, args, piecewise)
 
     def refine(self, assumption: RefineArg = True) -> Basic:
         """The node simplified under the assumption (and the global ones):
@@ -817,10 +833,12 @@ class Basic:
         (x, Abs(x))
         """
         from .refine import refine
-        if isinstance(assumption, (Basic, bool)):
-            return refine(self, _as_boolean(assumption))
-        from .interop import from_sympy
-        return refine(self, _as_boolean(from_sympy(assumption)))
+        if not isinstance(assumption, (Basic, bool)):
+            # a foreign boolean, converted by the registered bridge (as sympify does)
+            from .bridge import bridge
+            if bridge().is_foreign(assumption):
+                return refine(self, _as_boolean(bridge().from_foreign(assumption)))
+        return refine(self, _as_boolean(assumption))
 
     def count_ops(self, visual: bool = False) -> Basic:
         """The number of operations of the tree (:func:`~sympy_extras.core.function.count_ops`)."""

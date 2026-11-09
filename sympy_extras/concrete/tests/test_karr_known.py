@@ -16,7 +16,7 @@ from sympy import (Sum, Expr, Symbol, harmonic, factorial, binomial, Rational,
     simplify, symbols)
 from sympy.abc import k, n, m, x
 
-from sympy_extras.concrete import karr_sum
+from sympy_extras.concrete.karr import karr_sum
 
 H = harmonic
 

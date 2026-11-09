@@ -15,8 +15,6 @@ from fractions import Fraction
 from typing import Optional
 
 import mpmath
-from sympy.core.expr import Expr as SymPyExpr
-from sympy.core.numbers import Number as SymPyNumber
 
 from .basic import Basic, SubsMapping
 from .coreerrors import PrecisionExhausted
@@ -49,7 +47,7 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
     the working precision ``prec`` (bits), ``None`` when ``e`` contains a
     symbol or something not evaluable."""
     from .add import Add
-    from .function import AppliedSymPyFunction, DefinedFunction
+    from .function import DefinedFunction
     from .mul import Mul
     from .power import Pow
     with mpmath.workprec(prec):
@@ -104,22 +102,13 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
         own = e._numeric_node(prec)
         if own is not None:
             return own
-        if isinstance(e, AppliedSymPyFunction) or (e.args and e.is_number):
-            from .interop import to_sympy
+        if e.args and e.is_number:
+            # a number node with no numeric rule here: the foreign system's
+            from .bridge import bridge
             parts = [numeric_value(a, prec) for a in e.args if isinstance(a, Expr)]
             if any(p is None for p in parts):
                 return None
-            dps = int(mpmath.mp.dps) + 5
-            sympy_expr = to_sympy(e)
-            if not isinstance(sympy_expr, SymPyExpr):
-                return None
-            sympy_value = sympy_expr.evalf(dps)
-            if not isinstance(sympy_value, SymPyExpr):
-                return None
-            re, im = sympy_value.as_real_imag()
-            if not (isinstance(re, SymPyNumber) and isinstance(im, SymPyNumber)):
-                return None
-            return mpmath.mpc(mpmath.mpf(str(re)), mpmath.mpf(str(im)))
+            return bridge().numeric(e, int(mpmath.mp.dps) + 5)
     return None
 
 

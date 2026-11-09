@@ -10,7 +10,7 @@ from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
 from sympy_extras._typing import as_expr
-from sympy_extras.simplify import ElementaryTower, NotElementary, canonical_form, equal, is_zero
+from sympy_extras.simplify.structure import ElementaryTower, NotElementary, canonical_form, equal, is_zero
 
 x, y = symbols('x y')
 

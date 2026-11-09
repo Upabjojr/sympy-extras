@@ -4,21 +4,20 @@
 fractions and booleans, strings (parsed by SymPy's parser and converted),
 tuples and lists (which become :class:`~sympy_extras.core.containers.Tuple`),
 dictionaries (:class:`~sympy_extras.core.containers.Dict`) and SymPy objects
-(converted by :func:`~sympy_extras.core.interop.from_sympy`).
+(converted by :func:`~sympy_extras.interop.from_sympy`).
 """
 from __future__ import annotations
 
 from fractions import Fraction
 from typing import Mapping, Sequence, Union
 
-from sympy.core.basic import Basic as SymPyBasic
-
 from .basic import Basic
 
 __all__ = ['sympify', 'SympifyError', 'SympifyLike']
 
-#: what ``sympify`` accepts
-SympifyLike = Union[Basic, int, float, Fraction, bool, str, SymPyBasic, Sequence['SympifyLike'],
+#: what ``sympify`` accepts (at run time a foreign object too, converted
+#: by the registered bridge; typed callers convert it themselves)
+SympifyLike = Union[Basic, int, float, Fraction, bool, str, Sequence['SympifyLike'],
     Mapping['SympifyLike', 'SympifyLike']]
 
 
@@ -56,22 +55,18 @@ def sympify(a: SympifyLike) -> Basic:
     if isinstance(a, float):
         return Float(a)
     if isinstance(a, str):
-        from sympy.parsing.sympy_parser import parse_expr
-        from .interop import from_sympy
+        from .bridge import bridge
         from .parameters import global_parameters
         try:
-            parsed = parse_expr(a, evaluate=global_parameters.evaluate)
+            return bridge().parse(a, global_parameters.evaluate)
         except (SyntaxError, ValueError, TypeError, NameError) as error:
             raise SympifyError("cannot parse %r: %s" % (a, error)) from None
-        if not isinstance(parsed, SymPyBasic):
-            raise SympifyError("cannot parse %r" % (a,))
-        return from_sympy(parsed)
-    if isinstance(a, SymPyBasic):
-        from .interop import from_sympy
-        return from_sympy(a)
     if isinstance(a, (tuple, list)):
         return Tuple(*[sympify(item) for item in a])
     if isinstance(a, Mapping):
         from .containers import Dict
         return Dict(*[(sympify(k), sympify(v)) for k, v in a.items()])
+    from .bridge import bridge
+    if bridge().is_foreign(a):
+        return bridge().from_foreign(a)
     raise SympifyError("cannot convert %r to an expression" % (a,))

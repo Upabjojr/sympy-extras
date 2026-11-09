@@ -12,7 +12,7 @@ from sympy_extras._typing import as_expr
 from sympy_extras.polys.densearith import dup_mul, dup_pow
 from sympy_extras.polys.densetools import dup_monic
 from sympy_extras.core.expr import as_expr as core_expr
-from sympy_extras.core.interop import from_sympy as core_from_sympy, to_sympy as core_to_sympy
+from sympy_extras.interop import from_sympy as core_from_sympy, to_sympy as core_to_sympy
 from sympy_extras.polys.domains.algebraicfield import AlgebraicField
 from sympy_extras.polys.interop import domain_from_sympy, domain_to_sympy
 from sympy_extras.polys.factortools import dup_ext_factor, dup_ext_norm, dup_ext_sqf_norm

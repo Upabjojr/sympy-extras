@@ -135,8 +135,10 @@ def ask(proposition: BooleanLike, assumptions: BooleanLike = True,
     (True, False, None)
     >>> ask(Q.integer(2)), ask(Q.positive(x*y), Q.positive(x) & Q.negative(y)), ask(x > 0, Q.positive(x))
     (True, False, True)
-    >>> ask(Q.positive(x), Q.positive(x) | Q.negative(x)), ask(Q.nonzero(x), Q.positive(x) | Q.negative(x))
-    (None, True)
+    >>> ask(Q.positive(x), Q.positive(x) | Q.negative(x))
+    >>> import sympy_extras.interop  # SymPy's ask for what is not decided here (core.bridge)
+    >>> ask(Q.nonzero(x), Q.positive(x) | Q.negative(x))
+    True
     >>> ask(Q.positive(x), Q.positive(x) & Q.zero(x))
     Traceback (most recent call last):
     ...
@@ -167,12 +169,8 @@ def _has_user_predicate(b: Basic) -> bool:
 
 
 def _ask_sympy(prop: Boolean, assumptions: Boolean) -> Truth:
-    import sympy
-    from .interop import to_sympy
-    result = sympy.ask(to_sympy(prop), to_sympy(assumptions))
-    if isinstance(result, bool):
-        return result
-    return None
+    from .bridge import bridge
+    return bridge().ask(prop, assumptions)
 
 
 class _Facts:

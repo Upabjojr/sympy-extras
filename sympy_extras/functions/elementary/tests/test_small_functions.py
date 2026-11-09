@@ -8,7 +8,8 @@ import pytest
 import sympy
 
 from sympy_extras._typing import as_expr as sympy_expr
-from sympy_extras.core import I, Integer, Rational, Symbol, oo, pi, to_sympy, zoo
+from sympy_extras.core import I, Integer, Rational, Symbol, oo, pi, zoo
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.numbers import Float, nan
 from sympy_extras.functions import Factorial2, Sinc, Subfactorial, factorial2, rem, sinc, subfactorial

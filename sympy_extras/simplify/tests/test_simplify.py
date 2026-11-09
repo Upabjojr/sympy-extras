@@ -3,7 +3,7 @@ import random
 
 import sympy
 
-from sympy_extras.core.interop import expr_from_sympy, to_sympy
+from sympy_extras.interop import expr_from_sympy, to_sympy
 from sympy_extras.simplify.simplify import simplify
 
 s = sympy
@@ -70,8 +70,8 @@ def test_nc_simplify_matches_sympy() -> None:
     import random
     import sympy
     from sympy.simplify.simplify import nc_simplify as sympy_nc_simplify
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy
     from sympy_extras.simplify.simplify import nc_simplify
     a, b, c = sympy.symbols('a b c', commutative=False)
     sx = sympy.Symbol('x')
@@ -92,8 +92,8 @@ def test_nc_simplify_matches_sympy() -> None:
 def test_besselsimp_matches_sympy() -> None:
     import sympy
     from sympy import I, S, besseli, besselj, besselk, bessely, exp_polar, pi
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy
     from sympy_extras.simplify.simplify import besselsimp
     z, nu, x = sympy.symbols('z nu x')
     cases = [besselj(nu, z*I), besseli(nu, -z), besselj(S(1)/2, z), besselj(S(3)/2, z), bessely(S(1)/2, z),
@@ -109,8 +109,8 @@ def test_simplify_of_piecewise_matches_sympy() -> None:
     # in a sum simplified piece by piece (it used to break the pairs)
     import sympy
     from sympy import Piecewise as P
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy
     from sympy_extras.simplify.simplify import simplify
     x, y = sympy.symbols('x y')
     cases = [P((1, x < 0), (1, x < 1), (2, True)), P((x**2, (x > 0) & (x < 2)), (2*x, x <= 0), (0, True)),
@@ -127,8 +127,8 @@ def test_simplify_of_hyper_bessel_meijerg_nodes_matches_sympy() -> None:
     # native; a Meijer G-function takes the common path, as in SymPy
     import sympy
     from sympy import Piecewise as P, Rational as R, besselj, hyper, meijerg
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy
     from sympy_extras.simplify.simplify import simplify
     x, z, nu, a = sympy.symbols('x z nu a')
     cases = [hyper([1, 1], [2], z), meijerg([1], [], [], [], z), besselj(R(1, 2), z), besselj(nu, z*sympy.I),

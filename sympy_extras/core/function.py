@@ -9,7 +9,7 @@
   :class:`AppliedSymPyFunction` node, unevaluated, whose ``doit`` and
   ``evalf`` go through SymPy. This is how the rest of SymPy (``sin``,
   ``exp``, ``log``, ``gamma``, ...) is reached from this core, and how
-  :func:`~sympy_extras.core.interop.from_sympy` represents it.
+  :func:`~sympy_extras.interop.from_sympy` represents it.
 * :class:`WildFunction` matches any applied function in a pattern.
 * :class:`Derivative` is the unevaluated derivative; :func:`diff`
   evaluates it with the rules of calculus (the derivative of an
@@ -41,10 +41,6 @@ import mpmath
 from fractions import Fraction
 from typing import Callable, Final, Iterable, Iterator, Mapping, Optional, Sequence, TYPE_CHECKING, Union, overload
 
-import sympy
-from sympy.core.basic import Basic as SymPyBasic
-from sympy.core.function import Function as SymPyFunctionClass
-
 from .add import Add, add
 from .basic import Basic
 from .containers import Tuple
@@ -61,7 +57,7 @@ if TYPE_CHECKING:
     from .printing import StrPrinter
 
 __all__ = ['FunctionClass', 'Application', 'UndefinedFunction', 'AppliedUndef', 'Function',
-    'SymPyFunction', 'AppliedSymPyFunction', 'WildFunction', 'apply_sympy', 'Lambda', 'Derivative',
+    'WildFunction', 'Lambda', 'Derivative',
     'Subs', 'diff', 'expand', 'expand_mul', 'expand_multinomial', 'expand_power_base',
     'expand_power_exp', 'expand_log', 'expand_func', 'expand_trig', 'expand_complex', 'count_ops',
     'nfloat', 'arity', 'PoleError', 'DiffSpec', 'CountOpsArg']
@@ -88,7 +84,8 @@ class FunctionClass:
     ========
 
     >>> import sympy
-    >>> from sympy_extras.core import Function, SymPyFunction, FunctionClass
+    >>> from sympy_extras.core import Function, FunctionClass
+    >>> from sympy_extras.interop import SymPyFunction
     >>> f = Function('f')
     >>> isinstance(f, FunctionClass), isinstance(SymPyFunction(sympy.sin), FunctionClass), f.nargs
     (True, True, None)
@@ -442,149 +439,6 @@ def _all_commutative(facts: list[dict[str, bool]]) -> Optional[bool]:
     return None
 
 
-class SymPyFunction(FunctionClass):
-    """A function of SymPy usable in this core; calling it builds an
-    unevaluated :class:`AppliedSymPyFunction` node.
-
-    Examples
-    ========
-
-    >>> import sympy
-    >>> from sympy_extras.core import SymPyFunction, Symbol
-    >>> sin = SymPyFunction(sympy.sin)
-    >>> x = Symbol('x')
-    >>> sin(x), sin(0), sin(0).doit(), sin(x).diff(x)
-    (sin(x), sin(0), 0, cos(x))
-    """
-
-    __slots__ = ('sympy_class',)
-
-    def __init__(self, sympy_class: type[SymPyFunctionClass]) -> None:
-        self.sympy_class: Final[type[SymPyFunctionClass]] = sympy_class
-
-    @property
-    def name(self) -> str:
-        return self.sympy_class.__name__
-
-    @property
-    def nargs(self) -> Optional[frozenset[int]]:
-        nargs = self.sympy_class.nargs
-        if isinstance(nargs, sympy.FiniteSet):
-            return frozenset(int(n) for n in nargs.args if isinstance(n, sympy.Integer))
-        return None
-
-    def __call__(self, *args: ExprLike) -> AppliedSymPyFunction:
-        return AppliedSymPyFunction(self.sympy_class, *args)
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, SymPyFunction):
-            return NotImplemented
-        return self.sympy_class is other.sympy_class
-
-    def __ne__(self, other: object) -> bool:
-        result = self.__eq__(other)
-        if result is NotImplemented:
-            return NotImplemented
-        return not result
-
-    def __hash__(self) -> int:
-        return hash(('SymPyFunction', self.sympy_class.__name__))
-
-
-class AppliedSymPyFunction(Application):
-    """A function of SymPy applied to arguments, unevaluated; ``doit``
-    evaluates it with SymPy."""
-
-    __slots__ = ('_sympy_class',)
-
-    def __init__(self, sympy_class: type[SymPyFunctionClass], *args: ExprLike) -> None:
-        self._sympy_class: Final[type[SymPyFunctionClass]] = sympy_class
-        Application.__init__(self, *args)
-
-    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
-        from .interop import nseries_node_through_sympy
-        return nseries_node_through_sympy(self, x, n, logx, cdir)
-
-    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
-        from .interop import sympy_leading_term
-        return sympy_leading_term(self, x, logx, cdir)
-
-    def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
-        from .interop import meromorphic_node_through_sympy
-        return meromorphic_node_through_sympy(self, x, a, False)[1]
-
-    @property
-    def func(self) -> Callable[..., Basic]:
-        return SymPyFunction(self._sympy_class)
-
-    @property
-    def function(self) -> SymPyFunction:
-        """The wrapped SymPy function."""
-        return SymPyFunction(self._sympy_class)
-
-    @property
-    def sympy_class(self) -> type[SymPyFunctionClass]:
-        return self._sympy_class
-
-    @property
-    def name(self) -> str:
-        return self._sympy_class.__name__
-
-    def __hash__(self) -> int:
-        return hash((self._sympy_class.__name__, self._args))
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, AppliedSymPyFunction):
-            if isinstance(other, Basic):
-                return False
-            return NotImplemented
-        return self._sympy_class is other._sympy_class and self._args == other._args
-
-    def __ne__(self, other: object) -> bool:
-        result = self.__eq__(other)
-        if result is NotImplemented:
-            return NotImplemented
-        return not result
-
-    @classmethod
-    def class_key(cls) -> ClassKey:
-        return (4, 10000, 'AppliedSymPyFunction')
-
-    def _compare_name(self) -> str:
-        return self._sympy_class.__name__
-
-    def _sort_class_key(self) -> ClassKey:
-        return (4, _FUNCTION_RANKS.get(self.name, 10000), self.name)
-
-    @property
-    def kind(self) -> Kind:
-        from sympy.core.kind import NumberKind as SymPyNumberKind
-
-        from .interop import to_sympy
-        from .kind import NumberKind
-        return NumberKind if to_sympy(self).kind is SymPyNumberKind else UndefinedKind
-
-    def as_base_exp(self) -> tuple[Expr, Expr]:
-        # exp(a) is E**a, as in SymPy (where E**a builds exp(a))
-        if self._sympy_class is sympy.exp:
-            from .numbers import E
-            return (E, self._args[0])
-        return (self, Integer(1))
-
-    def as_numer_denom(self) -> tuple[Expr, Expr]:
-        if self._sympy_class is sympy.exp:
-            arg = self._args[0]
-            if arg.is_negative is True or arg.could_extract_minus_sign():  # exp(-x) is 1/exp(x), as SymPy decides
-                return (Integer(1), apply_sympy(sympy.exp, mul(Integer(-1), arg)))
-        return (self, Integer(1))
-
-    def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
-        return apply_sympy(self._sympy_class, *[as_expr(a) for a in args])
-
-    def _eval_facts(self) -> dict[str, bool]:
-        from .assumptions import sympy_facts
-        return sympy_facts(self)
-
 
 class WildFunction(AtomicExpr):
     """A pattern head matching any applied function (with one of the
@@ -718,8 +572,8 @@ class DefinedFunction(Application):
     def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
         # the rules of the special functions (Bessel functions, incomplete
         # gamma functions) are SymPy's
-        from .interop import meromorphic_node_through_sympy
-        found, own = meromorphic_node_through_sympy(self, x, a, True)
+        from .bridge import bridge
+        found, own = bridge().meromorphic(self, x, a, True)
         if found:
             return own
         return Application._eval_is_meromorphic(self, x, a)
@@ -733,7 +587,7 @@ class DefinedFunction(Application):
 
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         from sympy_extras.functions._series_rules import rules
-        from .interop import nseries_node_through_sympy
+        from .bridge import bridge
         rule = rules().get(type(self).__name__)
         if rule is not None:
             ported = rule(self, x, n, logx, cdir)
@@ -743,8 +597,8 @@ class DefinedFunction(Application):
             found = _generic_function_nseries(self, x, n, logx)
             if found is not None:
                 return found
-        # the classes whose expansion is not ported use SymPy's
-        return nseries_node_through_sympy(self, x, n, logx, cdir)
+        # the classes whose expansion is not ported: the foreign system's
+        return bridge().nseries(self, x, n, logx, cdir)
 
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         if type(self).__name__ not in _SYMPY_OWN_LEADING_TERM:
@@ -874,28 +728,6 @@ class DefinedFunction(Application):
         return {'commutative': True}
 
 
-def apply_sympy(sympy_class: type[SymPyFunctionClass], *args: ExprLike) -> Expr:
-    """The function of SymPy applied and evaluated by SymPy.
-
-    Examples
-    ========
-
-    >>> import sympy
-    >>> from sympy_extras.core import Symbol, E
-    >>> from sympy_extras.core.function import apply_sympy
-    >>> x = Symbol('x')
-    >>> apply_sympy(sympy.log, E), apply_sympy(sympy.log, x), apply_sympy(sympy.sin, sympy.pi)
-    (1, log(x), 0)
-    """
-    from .interop import expr_from_sympy, to_sympy
-    from .parameters import global_parameters
-    if not global_parameters.evaluate:
-        return AppliedSymPyFunction(sympy_class, *args)
-    value = sympy_class(*[to_sympy(to_expr(a)) for a in args])
-    if not isinstance(value, SymPyBasic):
-        raise TypeError("SymPy returned %r" % (value,))
-    return expr_from_sympy(value)
-
 
 def arity(cls: Union[FunctionClass, Callable[..., object]]) -> Union[int, tuple[int, ...], None]:
     """The number of arguments of a function object (``None`` when any
@@ -905,7 +737,8 @@ def arity(cls: Union[FunctionClass, Callable[..., object]]) -> Union[int, tuple[
     ========
 
     >>> import sympy
-    >>> from sympy_extras.core import Function, SymPyFunction, arity
+    >>> from sympy_extras.core import Function, arity
+    >>> from sympy_extras.interop import SymPyFunction
     >>> arity(SymPyFunction(sympy.sin)), arity(SymPyFunction(sympy.log)), arity(Function('f')), arity(lambda a, b: 0)
     (1, (1, 2), None, 2)
     """
@@ -1372,7 +1205,6 @@ def diff(expr: ExprLike, *symbols: DiffSpec) -> Expr:
 
 
 def _derivative(e: Expr, s: Symbol) -> Expr:
-    from .interop import expr_through_sympy, to_sympy
     if e == s:
         return Integer(1)
     if s not in e.free_symbols:
@@ -1408,9 +1240,6 @@ def _derivative(e: Expr, s: Symbol) -> Expr:
                 continue
             chain.append(mul(e.fdiff(i + 1), da))
         return add(*chain)
-    if isinstance(e, AppliedSymPyFunction):
-        # the derivative of a function of SymPy is SymPy's (Abs has its own rule)
-        return expr_through_sympy(e, lambda node: sympy.diff(node, to_sympy(s)))
     if isinstance(e, AppliedUndef):
         terms = []
         others_depend = sum(1 for a in e.args if s in a.free_symbols) > 1
@@ -1538,7 +1367,7 @@ def _expand_func(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
     """The special functions (their arguments first) expanded by their
     rules; a node without a ported rule is expanded by SymPy (that node
     only) when SymPy has one."""
-    from .interop import expand_func_node_through_sympy
+    from .bridge import bridge
     if not _FUNC_RULES:
         from sympy_extras.functions._expand_func import rules
         _FUNC_RULES.update(rules())
@@ -1553,7 +1382,7 @@ def _expand_func(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
     if new is None and (e.args or not isinstance(e, (Symbol, Number))):
         from .add import Add as _Add
         if not isinstance(e, (_Add, Mul, Pow)):
-            new = expand_func_node_through_sympy(e)
+            new = bridge().expand_func_node(e)
     if new is not None and new != e:
         return new
     return e
@@ -1648,8 +1477,6 @@ def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp:
         from sympy_extras.functions.elementary.exponential import Log
         if isinstance(e, Log):
             return _expand_log_node(e, force, False)
-        from .interop import expr_through_sympy
-        return expr_through_sympy(e, sympy.expand_log)
     return e
 
 
@@ -1780,12 +1607,12 @@ def _all_nonneg_or_nonpos(e: Add) -> bool:
 
 def _is_exp_node(e: Expr) -> bool:
     from sympy_extras.functions.elementary.exponential import Exp
-    return isinstance(e, Exp) or (isinstance(e, AppliedSymPyFunction) and e.sympy_class is sympy.exp)
+    return isinstance(e, Exp)
 
 
 def _is_log_node(e: Expr) -> bool:
     from sympy_extras.functions.elementary.exponential import Log
-    return isinstance(e, Log) or (isinstance(e, AppliedSymPyFunction) and e.sympy_class is sympy.log)
+    return isinstance(e, Log)
 
 
 def _expanded_denominator(term: Expr) -> Expr:
@@ -2251,10 +2078,11 @@ def _count(e: CountOpsArg, counts: dict[str, int]) -> None:
         for a in e.args:
             _count(a, counts)
         return
-    if isinstance(e, AppliedSymPyFunction):
-        _tally(counts, e.name.upper())
-        for a in e.args:
-            _count(a, counts)
+    head = e._count_ops_label()
+    if head is not None:
+        _tally(counts, head)
+        for child in e.args:
+            _count(child, counts)
         return
     if isinstance(e, Derivative):
         _tally(counts, 'DERIVATIVE')

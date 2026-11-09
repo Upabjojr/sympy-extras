@@ -17,8 +17,9 @@ from typing import Callable
 import sympy
 
 from sympy_extras import core as C
+from sympy_extras import interop
 from sympy_extras._testing import untyped
-from sympy_extras.core import from_sympy, to_sympy
+from sympy_extras.interop import from_sympy, to_sympy
 from sympy_extras.core.assumptions import ask_structural
 
 sx, sy, sz = sympy.Symbol('x'), sympy.Symbol('y'), sympy.Symbol('z')
@@ -264,10 +265,10 @@ def test_round_trip_with_sympy() -> None:
         assert to_sympy(tree) == parsed, (parsed, tree)
         assert from_sympy(to_sympy(tree)) == tree, (parsed, tree)
     # SymPy's functions are evaluated by SymPy on doit, differentiated by the chain rule
-    sin = C.SymPyFunction(sympy.sin)
-    assert sin(0) == C.AppliedSymPyFunction(sympy.sin, 0) and sin(0).doit() == 0
+    sin = interop.SymPyFunction(sympy.sin)
+    assert sin(0) == interop.AppliedSymPyFunction(sympy.sin, 0) and sin(0).doit() == 0
     assert to_sympy(C.diff(sin(cx**2), cx)) == 2*sx*sympy.cos(sx**2)
-    assert C.as_expr(C.sympify('sin(x)')).is_real is None and C.SymPyFunction(sympy.exp)(cp).is_positive is True
+    assert C.as_expr(C.sympify('sin(x)')).is_real is None and interop.SymPyFunction(sympy.exp)(cp).is_positive is True
 
 
 def test_symbols_with_assumptions_round_trip() -> None:
@@ -523,7 +524,7 @@ def test_known_forwarded_methods() -> None:
         (_cv('x**2').integrate((cx, 0, 1)), sympy.integrate(sx**2, (sx, 0, 1))),
         (_cv('x**2 + 1').invert(cx), sympy.invert(sx**2 + 1, sx)),
         (_cv('gamma(x + 1)/gamma(x)').gammasimp(), sympy.gammasimp(parse('gamma(x + 1)/gamma(x)'))),
-        (_cv('sin(x)').rewrite(C.SymPyFunction(sympy.exp)), sympy.sin(sx).rewrite(sympy.exp)),
+        (_cv('sin(x)').rewrite(interop.SymPyFunction(sympy.exp)), sympy.sin(sx).rewrite(sympy.exp)),
         (_cv('sqrt(x**2)').refine(sympy.Q.positive(sx)), sympy.refine(sympy.sqrt(sx**2), sympy.Q.positive(sx))),
         (_cv('x + x**2').as_leading_term(cx), (sx + sx**2).as_leading_term(sx)),
         (_cv('sin(x)').taylor_term(3, cx), sympy.sin(sx).taylor_term(3, sx)),
@@ -682,9 +683,9 @@ def test_known_ask_and_refine() -> None:
     solver, the errors included."""
     sf, cf = sympy.Function('f'), C.Function('f')
     S_NS: dict[str, object] = dict(vars(sympy), Q=sympy.Q, ask=sympy.ask, refine=sympy.refine, x=sx, y=sy, z=sz, f=sf)
-    C_NS: dict[str, object] = dict(vars(C), x=cx, y=cy, z=cz, f=cf, sin=C.SymPyFunction(sympy.sin),
-        exp=C.SymPyFunction(sympy.exp), Abs=C.SymPyFunction(sympy.Abs), log=C.SymPyFunction(sympy.log),
-        sign=C.SymPyFunction(sympy.sign), re=C.SymPyFunction(sympy.re), im=C.SymPyFunction(sympy.im))
+    C_NS: dict[str, object] = dict(vars(C), x=cx, y=cy, z=cz, f=cf, sin=interop.SymPyFunction(sympy.sin),
+        exp=interop.SymPyFunction(sympy.exp), Abs=interop.SymPyFunction(sympy.Abs), log=interop.SymPyFunction(sympy.log),
+        sign=interop.SymPyFunction(sympy.sign), re=interop.SymPyFunction(sympy.re), im=interop.SymPyFunction(sympy.im))
     cases = ['ask(Q.positive(x), Q.positive(x))', 'ask(Q.positive(x + 1), Q.positive(x))', 'ask(Q.integer(2))',
         'ask(Q.prime(x), Q.integer(x))', 'ask(Q.even(x), Q.odd(x))', 'ask(Q.positive(x), x > 0)',
         'ask(x > 0, Q.positive(x))', 'ask(Q.zero(x), x > 0)', 'ask(Q.is_true(x > 0), Q.positive(x))',
@@ -879,7 +880,7 @@ def test_known_methods_on_random_expressions() -> None:
         if op == 'fun':
             g = rng.choice(sfs)
             inner = build(depth - 1)
-            return (sympy_expr(g(inner[0])), C.SymPyFunction(g)(inner[1]).doit())
+            return (sympy_expr(g(inner[0])), interop.SymPyFunction(g)(inner[1]).doit())
         if op == 'neg':
             inner = build(depth - 1)
             return (sympy_expr(-inner[0]), -inner[1])

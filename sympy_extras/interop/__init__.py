@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 from functools import partial
-from typing import Callable, Optional, Sequence, TYPE_CHECKING, Union
+from typing import Callable, Final, Optional, Sequence, TYPE_CHECKING, Union
 
 import mpmath
 import sympy
@@ -32,34 +32,38 @@ from sympy.assumptions.assume import Predicate as SymPyPredicate
 from sympy.core.relational import Relational as SymPyRelational
 from sympy.functions.elementary.piecewise import ExprCondPair as SymPyExprCondPair
 
-from .add import Add
-from .assume import AppliedPredicate, Predicate
-from .basic import Basic, SubsMapping
-from .containers import Dict, Tuple
-from .expr import Expr, UnevaluatedExpr, as_expr
-from .function import (AppliedSymPyFunction, AppliedUndef, DefinedFunction, Derivative, Function, FunctionClass, Lambda,
-    Subs, SymPyFunction, UndefinedFunction, WildFunction)
-from .logic import ITE, And, Boolean, BooleanAtom, BooleanFunction, Equivalent, Implies, Not, Or, Xor, false, true
-from .mod import Mod
-from .mul import Mul
-from .numbers import (AlgebraicNumber, Catalan, CatalanType, ComplexInfinity, EulerGamma,
+from sympy_extras.core.add import Add
+from sympy_extras.core.assume import AppliedPredicate, Predicate
+from sympy_extras.core.basic import Basic, SubsMapping
+from sympy_extras.core.bridge import Bridge, RewriteTarget, register_bridge
+from sympy_extras.core.containers import Dict, Tuple
+from sympy_extras.core.assumptions import Facts, Truth
+from sympy_extras.core.expr import Expr, ExprLike, UnevaluatedExpr, as_expr, to_expr
+from sympy_extras.core.function import (_FUNCTION_RANKS, AppliedUndef, Application, DefinedFunction, Derivative, Function,
+    FunctionClass, Lambda, Subs, UndefinedFunction, WildFunction)
+from sympy_extras.core.kind import Kind, UndefinedKind
+from sympy_extras.core.logic import ITE, And, Boolean, BooleanAtom, BooleanFunction, Equivalent, Implies, Not, Or, Xor, false, true
+from sympy_extras.core.mod import Mod
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import (AlgebraicNumber, Catalan, CatalanType, ComplexInfinity, EulerGamma,
     EulerGammaType, Exp1, Float, GoldenRatio, GoldenRatioType, ImaginaryUnit, Infinity, Integer,
     NaN, NegativeInfinity, Number, Pi, Rational, TribonacciConstant, TribonacciConstantType, E, I, nan,
     number_from_fraction, oo, pi, zoo)
-from .coreerrors import PoleError
-from .order import Order
-from .limits import Limit
-from .accumbounds import AccumBounds
-from .power import Pow
-from .relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
-from .sorting import ClassKey, CompareItem
-from .symbol import Dummy, Symbol, Wild
+from sympy_extras.core.coreerrors import PoleError
+from sympy_extras.core.order import Order
+from sympy_extras.core.limits import Limit
+from sympy_extras.core.accumbounds import AccumBounds
+from sympy_extras.core.power import Pow
+from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
+from sympy_extras.core.sorting import ClassKey, CompareItem
+from sympy_extras.core.symbol import Dummy, Symbol, Wild
 
 if TYPE_CHECKING:
-    from .printing import StrPrinter
+    from sympy_extras.core.printing import StrPrinter
 
 __all__ = ['to_sympy', 'from_sympy', 'expr_from_sympy', 'sympy_expr', 'through_sympy', 'expr_through_sympy',
-    'rewrite_targets', 'SymPyNode', 'SymPyExprNode']
+    'rewrite_targets', 'SymPyNode', 'SymPyExprNode', 'SymPyFunction', 'AppliedSymPyFunction', 'apply_sympy',
+    'sympy_facts', 'SymPyBridge']
 
 #: the dummies already converted, so that a dummy bound in one place and
 #: used in another stays one dummy on both sides
@@ -69,6 +73,9 @@ _dummies_to_sympy: dict[tuple[str, int], sympy.Dummy] = {}
 #: ``clear_cache``)
 _from_sympy_cache: dict[SymPyBasic, Basic] = {}
 _FROM_SYMPY_CACHE_SIZE = 20000
+#: the SymPy forms of the nodes already converted, by identity of the node
+#: (the node is kept with its form, so that its id is not reused)
+_to_sympy_cache: dict[int, tuple[Basic, SymPyBasic]] = {}
 
 
 class _ConversionCache:
@@ -76,6 +83,7 @@ class _ConversionCache:
 
     def clear(self) -> None:
         _from_sympy_cache.clear()
+        _to_sympy_cache.clear()
         _dummies_from_sympy.clear()
         _dummies_to_sympy.clear()
 
@@ -115,6 +123,9 @@ _LOGIC_FROM_SYMPY: dict[type[SymPyBasic], type[BooleanFunction]] = {
 
 class _SymPyNodeMixin:
     """The behaviour shared by the generic wrappers of SymPy objects."""
+
+    def _is_foreign_node(self) -> bool:
+        return True
 
     __slots__ = ()
 
@@ -158,7 +169,8 @@ class SymPyNode(_SymPyNodeMixin, Basic):
     ========
 
     >>> import sympy
-    >>> from sympy_extras.core import from_sympy, to_sympy, Symbol
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.interop import from_sympy, to_sympy
     >>> x = sympy.Symbol('x')
     >>> t = from_sympy(sympy.Range(0, x))
     >>> t, type(t).__name__, t.args, to_sympy(t) == sympy.Range(0, x)
@@ -247,8 +259,12 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
         return expr_from_sympy(s.evalf(n))
 
     def _eval_facts(self) -> dict[str, bool]:
-        from .assumptions import sympy_facts
         return sympy_facts(self)
+
+    def _eval_factor_terms(self, radical: bool, clear: bool, fraction: bool, sign: bool) -> Optional[Basic]:
+        # SymPy's handling of its own objects (the content of an Integral is taken out)
+        return through_sympy(self, lambda e: sympy.factor_terms(sympy_expr(e), radical=radical, clear=clear,
+                                                                 fraction=fraction, sign=sign))
 
 
 def to_sympy(e: Basic, evaluate: bool = True) -> SymPyBasic:
@@ -258,7 +274,8 @@ def to_sympy(e: Basic, evaluate: bool = True) -> SymPyBasic:
     ========
 
     >>> import sympy
-    >>> from sympy_extras.core import symbols, Add, to_sympy
+    >>> from sympy_extras.core import symbols, Add
+    >>> from sympy_extras.interop import to_sympy
     >>> x = symbols('x')
     >>> s = to_sympy(x**2 + 1)
     >>> s, type(s).__module__
@@ -267,12 +284,19 @@ def to_sympy(e: Basic, evaluate: bool = True) -> SymPyBasic:
     (2*x, x + x)
     """
     if evaluate:
-        cached = e._sympy_cache
-        if cached is None:
-            cached = _to_sympy(e, True)
-            e._sympy_cache = cached
-        return cached
+        found = _to_sympy_cache.get(id(e))
+        if found is not None and found[0] is e:
+            return found[1]
+        converted = _to_sympy(e, True)
+        _remember(e, converted)
+        return converted
     return _to_sympy(e, False)
+
+
+def _remember(e: Basic, converted: SymPyBasic) -> None:
+    if len(_to_sympy_cache) >= _FROM_SYMPY_CACHE_SIZE:
+        _to_sympy_cache.clear()
+    _to_sympy_cache[id(e)] = (e, converted)
 
 
 def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
@@ -440,7 +464,7 @@ def _symbol_assumptions(s: sympy.Symbol) -> dict[str, bool]:
     """The assumptions of a SymPy symbol among the predicates known here
     (SymPy's ``assumptions0`` is the closure of the given ones; two symbols
     with the same closure are the same symbol, in SymPy and here)."""
-    from .assumptions import PREDICATES, minimal_generators
+    from sympy_extras.core.assumptions import PREDICATES, minimal_generators
     facts = s.assumptions0
     known = {str(k): bool(v) for k, v in facts.items() if str(k) in PREDICATES and v is not None}
     return minimal_generators(known)
@@ -453,7 +477,8 @@ def from_sympy(e: Union[SymPyBasic, int]) -> Basic:
     ========
 
     >>> import sympy
-    >>> from sympy_extras.core import from_sympy, srepr
+    >>> from sympy_extras.core import srepr
+    >>> from sympy_extras.interop import from_sympy
     >>> x = sympy.Symbol('x')
     >>> t = from_sympy(sympy.sin(x)**2 + 1)
     >>> t, srepr(t)
@@ -472,8 +497,8 @@ def from_sympy(e: Union[SymPyBasic, int]) -> Basic:
     if len(_from_sympy_cache) >= _FROM_SYMPY_CACHE_SIZE:
         _from_sympy_cache.clear()
     _from_sympy_cache[e] = converted
-    if converted._sympy_cache is None and not isinstance(e, sympy.Float):
-        converted._sympy_cache = e  # the round trip is exact
+    if id(converted) not in _to_sympy_cache and not isinstance(e, sympy.Float):
+        _remember(converted, e)  # the round trip is exact
     return converted
 
 
@@ -553,7 +578,7 @@ def _from_sympy(e: SymPyBasic) -> Basic:
         f = e.func
         if not isinstance(f, SymPyUndefinedFunction):
             raise TypeError("cannot convert %s" % (e,))
-        from .assumptions import PREDICATES
+        from sympy_extras.core.assumptions import PREDICATES
         assumptions = {str(k): bool(v) for k, v in f._kwargs.items() if str(k) in PREDICATES and v is not None}
         return Function(f.__name__, **assumptions)(*[_expr(a) for a in e.args])
     if isinstance(e, sympy.Derivative):
@@ -636,7 +661,7 @@ def through_sympy(e: Basic, f: Callable[[SymPyBasic], SymPyBasic]) -> Basic:
 
     >>> import sympy
     >>> from sympy_extras.core import Symbol
-    >>> from sympy_extras.core.interop import through_sympy
+    >>> from sympy_extras.interop import through_sympy
     >>> x = Symbol('x')
     >>> through_sympy(x**2 - 1, sympy.factor)
     (x - 1)*(x + 1)
@@ -866,8 +891,8 @@ def _canonical_order(args: list[Expr], commutative: bool) -> list[Expr]:
     evaluating functions of this core give (SymPy's own order): the
     numbers first, then the commutative arguments in the ``compare``
     order, then the noncommutative ones as given."""
-    from .numbers import Number
-    from .sorting import compare_key
+    from sympy_extras.core.numbers import Number
+    from sympy_extras.core.sorting import compare_key
     numbers = [a for a in args if isinstance(a, Number)]
     others = [a for a in args if not isinstance(a, Number)]
     if commutative:
@@ -892,7 +917,7 @@ def _expr(e: SymPyBasic) -> Expr:
 def _predicate(p: SymPyBasic) -> Predicate:
     """The predicate of this core for a predicate of SymPy: the one of
     ``Q`` with the same name when SymPy's is in its ``Q``."""
-    from .ask import PREDICATES_OF_Q
+    from sympy_extras.core.ask import PREDICATES_OF_Q
     if not isinstance(p, SymPyPredicate):
         raise TypeError("a predicate is expected, got %s" % (p,))
     name = str(p.name)
@@ -915,7 +940,7 @@ def _symbol(e: SymPyBasic) -> Symbol:
     return converted
 
 
-from .cache import register_clearable  # noqa: E402 (the registration needs the class above)
+from sympy_extras.core.cache import register_clearable  # noqa: E402 (the registration needs the class above)
 
 register_clearable(_ConversionCache())
 
@@ -1056,3 +1081,366 @@ def _set_from_sympy(e: SymPyBasic) -> Basic:
         return native_sets.Contains(parts[0], parts[1])
     # a set not ported, or with a part not ported
     return SymPyNode(type(e), *parts)
+
+
+# ---------------------------------------------------------------------
+# the functions of SymPy wrapped in the core, and SymPy's facts (moved
+# here from sympy_extras.core.function and sympy_extras.core.assumptions)
+
+class SymPyFunction(FunctionClass):
+    """A function of SymPy usable in this core; calling it builds an
+    unevaluated :class:`AppliedSymPyFunction` node.
+
+    Examples
+    ========
+
+    >>> import sympy
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.interop import SymPyFunction
+    >>> sin = SymPyFunction(sympy.sin)
+    >>> x = Symbol('x')
+    >>> sin(x), sin(0), sin(0).doit(), sin(x).diff(x)
+    (sin(x), sin(0), 0, cos(x))
+    """
+
+    __slots__ = ('sympy_class',)
+
+    def __init__(self, sympy_class: type[SymPyFunctionClass]) -> None:
+        self.sympy_class: Final[type[SymPyFunctionClass]] = sympy_class
+
+    @property
+    def name(self) -> str:
+        return self.sympy_class.__name__
+
+    @property
+    def nargs(self) -> Optional[frozenset[int]]:
+        nargs = self.sympy_class.nargs
+        if isinstance(nargs, sympy.FiniteSet):
+            return frozenset(int(n) for n in nargs.args if isinstance(n, sympy.Integer))
+        return None
+
+    def __call__(self, *args: ExprLike) -> AppliedSymPyFunction:
+        return AppliedSymPyFunction(self.sympy_class, *args)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, SymPyFunction):
+            return NotImplemented
+        return self.sympy_class is other.sympy_class
+
+    def __ne__(self, other: object) -> bool:
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return NotImplemented
+        return not result
+
+    def __hash__(self) -> int:
+        return hash(('SymPyFunction', self.sympy_class.__name__))
+
+
+class AppliedSymPyFunction(Application):
+    """A function of SymPy applied to arguments, unevaluated; ``doit``
+    evaluates it with SymPy."""
+
+    __slots__ = ('_sympy_class',)
+
+    def __init__(self, sympy_class: type[SymPyFunctionClass], *args: ExprLike) -> None:
+        self._sympy_class: Final[type[SymPyFunctionClass]] = sympy_class
+        Application.__init__(self, *args)
+
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+                return nseries_node_through_sympy(self, x, n, logx, cdir)
+
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+                return sympy_leading_term(self, x, logx, cdir)
+
+    def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
+                return meromorphic_node_through_sympy(self, x, a, False)[1]
+
+    @property
+    def func(self) -> Callable[..., Basic]:
+        return SymPyFunction(self._sympy_class)
+
+    @property
+    def function(self) -> SymPyFunction:
+        """The wrapped SymPy function."""
+        return SymPyFunction(self._sympy_class)
+
+    @property
+    def sympy_class(self) -> type[SymPyFunctionClass]:
+        return self._sympy_class
+
+    @property
+    def name(self) -> str:
+        return self._sympy_class.__name__
+
+    def __hash__(self) -> int:
+        return hash((self._sympy_class.__name__, self._args))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, AppliedSymPyFunction):
+            if isinstance(other, Basic):
+                return False
+            return NotImplemented
+        return self._sympy_class is other._sympy_class and self._args == other._args
+
+    def __ne__(self, other: object) -> bool:
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return NotImplemented
+        return not result
+
+    @classmethod
+    def class_key(cls) -> ClassKey:
+        return (4, 10000, 'AppliedSymPyFunction')
+
+    def _compare_name(self) -> str:
+        return self._sympy_class.__name__
+
+    def _sort_class_key(self) -> ClassKey:
+        return (4, _FUNCTION_RANKS.get(self.name, 10000), self.name)
+
+    @property
+    def kind(self) -> Kind:
+        from sympy.core.kind import NumberKind as SymPyNumberKind
+
+        from sympy_extras.core.kind import NumberKind
+        return NumberKind if to_sympy(self).kind is SymPyNumberKind else UndefinedKind
+
+    def as_base_exp(self) -> tuple[Expr, Expr]:
+        # exp(a) is E**a, as in SymPy (where E**a builds exp(a))
+        if self._sympy_class is sympy.exp:
+            from sympy_extras.core.numbers import E
+            return (E, self._args[0])
+        return (self, Integer(1))
+
+    def as_numer_denom(self) -> tuple[Expr, Expr]:
+        if self._sympy_class is sympy.exp:
+            arg = self._args[0]
+            if arg.is_negative is True or arg.could_extract_minus_sign():  # exp(-x) is 1/exp(x), as SymPy decides
+                return (Integer(1), apply_sympy(sympy.exp, mul(Integer(-1), arg)))
+        return (self, Integer(1))
+
+    def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
+        return apply_sympy(self._sympy_class, *[as_expr(a) for a in args])
+
+    def _eval_facts(self) -> dict[str, bool]:
+                return sympy_facts(self)
+
+    def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
+        # SymPy's numeric value of its function
+        return _sympy_numeric(self, int(mpmath.mp.dps) + 5)
+
+    def _eval_derivative_node(self, s: Symbol) -> Optional[Expr]:
+        # the derivative of a function of SymPy is SymPy's (Abs has its own rule)
+        return expr_through_sympy(self, lambda node: sympy.diff(node, to_sympy(s)))
+
+    def _count_ops_label(self) -> Optional[str]:
+        return self.name.upper()
+
+    def _srepr_name(self) -> Optional[str]:
+        return self.name
+
+
+
+def apply_sympy(sympy_class: type[SymPyFunctionClass], *args: ExprLike) -> Expr:
+    """The function of SymPy applied and evaluated by SymPy.
+
+    Examples
+    ========
+
+    >>> import sympy
+    >>> from sympy_extras.core import Symbol, E
+    >>> from sympy_extras.interop import apply_sympy
+    >>> x = Symbol('x')
+    >>> apply_sympy(sympy.log, E), apply_sympy(sympy.log, x), apply_sympy(sympy.sin, sympy.pi)
+    (1, log(x), 0)
+    """
+    from sympy_extras.core.parameters import global_parameters
+    if not global_parameters.evaluate:
+        return AppliedSymPyFunction(sympy_class, *args)
+    value = sympy_class(*[to_sympy(to_expr(a)) for a in args])
+    if not isinstance(value, SymPyBasic):
+        raise TypeError("SymPy returned %r" % (value,))
+    return expr_from_sympy(value)
+
+
+
+#: SymPy's ``is_*`` properties by predicate name (read without ``getattr``)
+_SYMPY_QUERIES: dict[str, Callable[[SymPyBasic], Truth]] = {
+    'commutative': lambda e: e.is_commutative, 'complex': lambda e: e.is_complex, 'real': lambda e: e.is_real,
+    'extended_real': lambda e: e.is_extended_real, 'imaginary': lambda e: e.is_imaginary,
+    'integer': lambda e: e.is_integer, 'noninteger': lambda e: e.is_noninteger, 'rational': lambda e: e.is_rational,
+    'irrational': lambda e: e.is_irrational, 'algebraic': lambda e: e.is_algebraic,
+    'transcendental': lambda e: e.is_transcendental, 'positive': lambda e: e.is_positive,
+    'negative': lambda e: e.is_negative, 'nonnegative': lambda e: e.is_nonnegative,
+    'nonpositive': lambda e: e.is_nonpositive, 'zero': lambda e: e.is_zero, 'nonzero': lambda e: e.is_nonzero,
+    'extended_positive': lambda e: e.is_extended_positive, 'extended_negative': lambda e: e.is_extended_negative,
+    'extended_nonnegative': lambda e: e.is_extended_nonnegative,
+    'extended_nonpositive': lambda e: e.is_extended_nonpositive, 'extended_nonzero': lambda e: e.is_extended_nonzero,
+    'even': lambda e: e.is_even, 'odd': lambda e: e.is_odd, 'prime': lambda e: e.is_prime,
+    'composite': lambda e: e.is_composite, 'finite': lambda e: e.is_finite, 'infinite': lambda e: e.is_infinite,
+    'hermitian': lambda e: e.is_hermitian, 'antihermitian': lambda e: e.is_antihermitian, 'polar': lambda e: e.is_polar,
+}
+
+
+def sympy_facts(e: Expr) -> Facts:
+    """The facts SymPy knows about the SymPy form of ``e`` (its ``is_*``
+    properties)."""
+    facts: Facts = {}
+    sympy_expr = to_sympy(e)
+    for name, query in _SYMPY_QUERIES.items():
+        try:
+            answer = query(sympy_expr)
+        except (TypeError, ValueError, AttributeError):  # SymPy refuses some questions
+            continue
+        if isinstance(answer, bool):
+            facts[name] = answer
+    return facts
+
+
+def _sympy_numeric(e: Expr, dps: int) -> Optional[mpmath.mpc]:
+    """SymPy's value of ``e`` at ``dps`` digits as an mpmath number."""
+    s = to_sympy(e)
+    if not isinstance(s, SymPyExpr):
+        return None
+    value = s.evalf(dps)
+    if not isinstance(value, SymPyExpr):
+        return None
+    re, im = value.as_real_imag()
+    if not (isinstance(re, sympy.Number) and isinstance(im, sympy.Number)):
+        return None
+    return mpmath.mpc(mpmath.mpf(str(re)), mpmath.mpf(str(im)))
+
+
+# ---------------------------------------------------------------------
+# the bridge of the core (sympy_extras.core.bridge): SymPy for the
+# operations not yet ported, registered when this module is imported
+
+class SymPyBridge(Bridge):
+    """SymPy lent to the core."""
+
+    def is_foreign(self, a: object) -> bool:
+        return isinstance(a, SymPyBasic)
+
+    def from_foreign(self, a: object) -> Basic:
+        if not isinstance(a, SymPyBasic):
+            raise TypeError("not an object of SymPy: %r" % (a,))
+        return from_sympy(a)
+
+    def parse(self, text: str, evaluate: bool) -> Basic:
+        from sympy.parsing.sympy_parser import parse_expr
+        parsed = parse_expr(text, evaluate=evaluate)
+        if not isinstance(parsed, SymPyBasic):
+            raise ValueError("cannot parse %r" % (text,))
+        return from_sympy(parsed)
+
+    def numeric(self, e: Expr, dps: int) -> Optional[mpmath.mpc]:
+        return _sympy_numeric(e, dps)
+
+    def ask(self, proposition: Boolean, assumptions: Boolean) -> Truth:
+        result = sympy.ask(to_sympy(proposition), to_sympy(assumptions))
+        return result if isinstance(result, bool) else None
+
+    def facts(self, e: Expr) -> dict[str, bool]:
+        return sympy_facts(e)
+
+    def equals_zero(self, e: Expr) -> Truth:
+        s = to_sympy(e)
+        if not isinstance(s, SymPyExpr):
+            return None
+        answer = s.equals(0)
+        return answer if isinstance(answer, bool) else None
+
+    def is_constant(self, e: Expr, wrt: Sequence[Symbol]) -> Truth:
+        s = to_sympy(e)
+        if not isinstance(s, SymPyExpr):
+            return None
+        answer = s.is_constant(*[to_sympy(w) for w in wrt])
+        return answer if isinstance(answer, bool) else None
+
+    def is_hypergeometric(self, e: Expr, k: Symbol) -> Truth:
+        s = to_sympy(e)
+        if not isinstance(s, SymPyExpr):
+            return None
+        answer = s.is_hypergeometric(to_sympy(k))
+        return answer if isinstance(answer, bool) else None
+
+    def minimal_polynomial(self, e: Expr, x: Symbol) -> Expr:
+        return expr_from_sympy(sympy.minimal_polynomial(to_sympy(e), to_sympy(x)))
+
+    def degree(self, e: Expr, x: Expr) -> int:
+        from sympy_extras.polys.polyerrors import PolynomialError
+        try:
+            value = sympy.degree(to_sympy(e), to_sympy(x))
+        except sympy.PolynomialError as error:
+            raise PolynomialError(str(error)) from error
+        if not isinstance(value, (int, sympy.Integer)):
+            raise PolynomialError("the degree of %s is %s" % (e, value))
+        return int(value)
+
+    def power(self, base: Expr, exp: Expr) -> Expr:
+        return expr_from_sympy(sympy.Pow(to_sympy(base), to_sympy(exp)))
+
+    def nseries(self, node: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        return nseries_node_through_sympy(node, x, n, logx, cdir)
+
+    def leading_term(self, node: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Optional[Expr]:
+        return leading_term_node_through_sympy(node, x, logx, cdir)
+
+    def meromorphic(self, node: Expr, x: Symbol, a: Expr, own_only: bool) -> tuple[bool, Truth]:
+        return meromorphic_node_through_sympy(node, x, a, own_only)
+
+    def rewrite(self, e: Basic, targets: Sequence[RewriteTarget], piecewise: bool) -> Basic:
+        sympy_targets = rewrite_targets(targets)
+        return through_sympy(e, lambda s: s.rewrite(*sympy_targets, piecewise=piecewise))
+
+    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: type, piecewise: bool) -> Optional[Basic]:
+        return rewrite_node_through_sympy(e, args, target, piecewise)
+
+    def rewrite_named_node(self, e: Basic, args: tuple[Basic, ...], name: str, limitvar: Optional[Symbol]
+                           ) -> Optional[Basic]:
+        return rewrite_named_node_through_sympy(e, args, name, limitvar)
+
+    def expand_func_node(self, e: Basic) -> Optional[Basic]:
+        return expand_func_node_through_sympy(e)
+
+    def solve_first(self, equation: Expr, x: Symbol) -> Optional[Expr]:
+        return solveset_first_through_sympy(equation, x)
+
+    def simplify(self, e: Basic, ratio: float = 1.7, rational: Optional[bool] = False, inverse: bool = False,
+                 doit: bool = True) -> Basic:
+        return through_sympy(e, lambda s: sympy.simplify(s, ratio=ratio, rational=rational, inverse=inverse, doit=doit))
+
+    def factor_foreign_integrals(self, e: Expr) -> Expr:
+        def integrals(s: SymPyExpr) -> SymPyBasic:
+            if s.has(sympy.Integral):
+                return s.xreplace({i: sympy.factor_terms(i) for i in s.atoms(sympy.Integral)})
+            return s
+        return expr_through_sympy(e, integrals)
+
+    def integrate(self, e: Expr, specs: Sequence[Union[Symbol, tuple[Symbol, Expr, Expr]]]) -> Expr:
+        converted: list[Union[SymPyBasic, tuple[SymPyBasic, SymPyBasic, SymPyBasic]]] = []
+        for a in specs:
+            converted.append((to_sympy(a[0]), to_sympy(a[1]), to_sympy(a[2])) if isinstance(a, tuple) else to_sympy(a))
+        return expr_through_sympy(e, lambda s: sympy.integrate(s, *converted))
+
+    def fps(self, e: Expr, x: Optional[Symbol], x0: Expr, dir: int) -> Expr:
+        sx = None if x is None else to_sympy(x)
+        return expr_through_sympy(e, lambda s: sympy.fps(s, sx, to_sympy(x0), dir))
+
+    def fourier_series(self, e: Expr, limits: Optional[tuple[Symbol, Expr, Expr]]) -> Expr:
+        bounds = None if limits is None else (to_sympy(limits[0]), to_sympy(limits[1]), to_sympy(limits[2]))
+        return expr_through_sympy(e, lambda s: sympy.fourier_series(s, bounds))
+
+    def invert(self, e: Expr, g: Expr, gens: Sequence[Symbol]) -> Expr:
+        return expr_through_sympy(e, lambda s: sympy.invert(s, to_sympy(g), *[to_sympy(v) for v in gens]))
+
+    def extract_branch_factor(self, e: Expr, allow_half: bool) -> tuple[Expr, Expr]:
+        s = to_sympy(e)
+        if not isinstance(s, SymPyExpr):
+            raise TypeError("an expression is expected")
+        z, k = s.extract_branch_factor(allow_half=allow_half)
+        return (expr_from_sympy(z), expr_from_sympy(k))
+
+
+register_bridge(SymPyBridge())

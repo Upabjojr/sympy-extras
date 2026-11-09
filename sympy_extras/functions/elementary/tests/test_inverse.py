@@ -9,7 +9,8 @@ from typing import Callable
 import sympy
 
 from sympy_extras._typing import as_expr as sympy_expr
-from sympy_extras.core import I, Integer, Rational, Symbol, oo, pi, to_sympy, zoo
+from sympy_extras.core import I, Integer, Rational, Symbol, oo, pi, zoo
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.power import sqrt
 from sympy_extras.functions import (Acos, Acosh, Asin, Atan, acos, acosh, acot, acoth, acsc, acsch, asec, asech, asin,

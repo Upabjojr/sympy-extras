@@ -4,7 +4,7 @@ import random
 import sympy
 from sympy.polys.domains import QQ_I as SQQ_I, ZZ_I as SZZ_I
 
-from sympy_extras.core.interop import expr_from_sympy, to_sympy
+from sympy_extras.interop import expr_from_sympy, to_sympy
 from sympy_extras.polys.domains.gaussiandomains import GaussianInteger, QQ_I, ZZ_I
 
 s = sympy

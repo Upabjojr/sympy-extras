@@ -505,16 +505,10 @@ def _degree(e: Expr, x: Symbol) -> int:
     try:
         return degree(e, x)
     except CoercionFailed:
-        import sympy
-        from sympy_extras.polys.polyerrors import PolynomialError
-        from .interop import to_sympy
-        try:
-            value = sympy.degree(to_sympy(e), to_sympy(x))
-        except sympy.PolynomialError as error:
-            raise PolynomialError(str(error)) from error
-        if not isinstance(value, (int, sympy.Integer)):
-            raise PolynomialError("the degree of %s is %s" % (e, value))
-        return int(value)
+        # a coefficient domain not ported (polynomials in functions): the
+        # foreign system's degree (PolynomialError when there is none)
+        from .bridge import bridge
+        return bridge().degree(e, x)
 
 
 # PORTED FROM SYMPY: sympy/core/mul.py:Mul._eval_nseries (max_degree)

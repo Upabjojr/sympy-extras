@@ -9,7 +9,8 @@ from typing import Callable, Optional
 import sympy
 
 from sympy_extras._typing import as_expr as sympy_expr
-from sympy_extras.core import I, Integer, Rational, Symbol, pi, to_sympy
+from sympy_extras.core import I, Integer, Rational, Symbol, pi
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.function import DefinedFunction
 from sympy_extras.functions import (Cos, Cosh, Cot, Coth, Csc, Csch, Exp, Log, Sec, Sech, Sin, Sinh, Tan, Tanh, cos,

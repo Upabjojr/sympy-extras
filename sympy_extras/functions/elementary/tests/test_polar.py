@@ -8,7 +8,8 @@ import itertools
 import sympy
 
 from sympy_extras._typing import as_expr as sympy_expr
-from sympy_extras.core import I, Integer, Rational, Symbol, oo, pi, to_sympy
+from sympy_extras.core import I, Integer, Rational, Symbol, oo, pi
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.functions import (abs_, exp, exp_polar, periodic_argument, polar_lift, polarify, principal_branch,
                                     unbranched_argument, unpolarify)

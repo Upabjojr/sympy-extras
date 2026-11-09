@@ -9,8 +9,9 @@ from sympy.testing.pytest import raises
 from sympy_extras._testing import untyped
 from sympy.abc import a, k, n, j, x
 
-from sympy_extras.concrete import (karr_term, karr_sum, summation,
-    build_pisigma_field, PiSigmaField, definite_sum)
+from sympy_extras.concrete.karr import karr_term, karr_sum, summation, build_pisigma_field
+from sympy_extras.concrete.pisigma import PiSigmaField
+from sympy_extras.concrete.creative import definite_sum
 from sympy_extras.concrete.karr import with_sum_special_values
 from sympy_extras.concrete.tests.cases import check_antidifference_cases, check_sum_cases
 

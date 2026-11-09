@@ -5,8 +5,8 @@ import sympy
 from sympy import KroneckerDelta, Piecewise, Rational as R, binomial, exp, factorial, oo, sin
 
 from sympy_extras.concrete.summations import summation
-from sympy_extras.core import to_sympy
-from sympy_extras.core.interop import expr_from_sympy, from_sympy
+from sympy_extras.interop import to_sympy
+from sympy_extras.interop import expr_from_sympy, from_sympy
 from sympy_extras.core.symbol import Symbol
 
 i = sympy.Symbol('i', integer=True)

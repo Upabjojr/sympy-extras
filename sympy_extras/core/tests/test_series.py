@@ -5,7 +5,7 @@ import sympy
 
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.containers import Tuple
-from sympy_extras.core.interop import expr_from_sympy, to_sympy
+from sympy_extras.interop import expr_from_sympy, to_sympy
 from sympy_extras.core.order import Order, order
 from sympy_extras.core.symbol import Symbol
 
@@ -148,8 +148,8 @@ def test_generic_function_series_matches_sympy() -> None:
     # SymPy's generic Function._eval_nseries, native for the functions it
     # expands (their Taylor terms or derivatives)
     import sympy
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy
     sx, sa = sympy.Symbol('x'), sympy.Symbol('a')
     cases = [f(ar) for f in (sympy.erf, sympy.erfi, sympy.erfc, sympy.fresnels, sympy.fresnelc)
              for ar in (sx, 2*sx, sx + 1, 3*sx**2, sx/2 - sx**2, 2*sx + 1)]
@@ -158,7 +158,7 @@ def test_generic_function_series_matches_sympy() -> None:
               sympy.Heaviside(sx + 1), sympy.re(sx), sympy.jacobi(2, sa, 1, sx), sympy.gegenbauer(3, sa, sx),
               sympy.assoc_laguerre(2, sa, sx), sympy.elliptic_f(sx, 2), sympy.multigamma(sx + 2, 2),
               sympy.airyaiprime(sx), sympy.airybiprime(2*sx)]
-    from sympy_extras.core.interop import from_sympy
+    from sympy_extras.interop import from_sympy
     from sympy_extras.core.symbol import Symbol as OurSymbol
     ox = from_sympy(sx)
     assert isinstance(ox, OurSymbol)
@@ -172,8 +172,8 @@ def test_generic_leading_terms_match_sympy() -> None:
     # NotImplementedError when an argument vanishes (valid arities only)
     import sympy
     from sympy.core.function import Function as SympyFunction
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import _native_to_sympy, expr_from_sympy, from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import _native_to_sympy, expr_from_sympy, from_sympy
     from sympy_extras.core.symbol import Symbol as OurSymbol
     sx = sympy.Symbol('x')
     ox = from_sympy(sx)
@@ -208,8 +208,8 @@ def test_special_leading_terms_match_sympy() -> None:
     from sympy.core.cache import clear_cache
     from sympy.core.function import PoleError as SympyPoleError
     from sympy_extras.core.coreerrors import PoleError
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy, from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy, from_sympy
     from sympy_extras.core.symbol import Symbol as OurSymbol
     sx = sympy.Symbol('x')
     ox = from_sympy(sx)
@@ -241,9 +241,9 @@ def test_more_leading_terms_match_sympy() -> None:
     import sympy
     from sympy.core.cache import clear_cache
     from sympy.core.function import PoleError as SympyPoleError
-    from sympy_extras.core import to_sympy
+    from sympy_extras.interop import to_sympy
     from sympy_extras.core.coreerrors import PoleError
-    from sympy_extras.core.interop import expr_from_sympy, from_sympy
+    from sympy_extras.interop import expr_from_sympy, from_sympy
     from sympy_extras.core.symbol import Symbol as OurSymbol
     sx, sy = sympy.symbols('x y')
     ox = from_sympy(sx)
@@ -282,8 +282,8 @@ def test_special_function_series_rules() -> None:
     # sympy_extras.functions._series_rules: SymPy's own _eval_nseries rules
     import sympy
     from sympy.core.cache import clear_cache
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy, from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy, from_sympy
     from sympy_extras.core.symbol import Symbol as OurSymbol
     sx = sympy.Symbol('x')
     ox = from_sympy(sx)
@@ -327,8 +327,8 @@ def test_hyper_and_meijerg_series_match_sympy() -> None:
     # keys were cached per node)
     import sympy
     from sympy.core.cache import clear_cache
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy, from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy, from_sympy
     from sympy_extras.core.symbol import Symbol as OurSymbol
     sx, sy = sympy.symbols('x y')
     ox = from_sympy(sx)
@@ -351,8 +351,8 @@ def test_parameter_derivatives_and_generic_series_match_sympy() -> None:
     # uppergamma in the first argument, the Taylor terms of airyai/airybi
     import sympy
     from sympy.core.cache import clear_cache
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy, from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy, from_sympy
     from sympy_extras.core.symbol import Symbol as OurSymbol
     sx, sa = sympy.symbols('x a')
     ox, oa = from_sympy(sx), from_sympy(sa)

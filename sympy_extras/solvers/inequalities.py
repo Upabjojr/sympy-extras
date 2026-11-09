@@ -79,7 +79,7 @@ _REVERSED = {'<': '>', '<=': '>=', '>': '<', '>=': '<=', '==': '==', '!=': '!='}
 
 def _through_sympy(ie: Relational, s: Symbol) -> Boolean:
     from sympy.solvers.inequalities import _solve_inequality
-    from sympy_extras.core.interop import from_sympy, to_sympy
+    from sympy_extras.interop import from_sympy, to_sympy
     r = from_sympy(_solve_inequality(to_sympy(ie), to_sympy(s)))
     if not isinstance(r, Boolean):
         raise TypeError('a condition is expected, not %s' % (r,))

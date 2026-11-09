@@ -1,7 +1,7 @@
 """Oracle tests of the accumulation bounds against SymPy."""
 import sympy
 
-from sympy_extras.core.interop import expr_from_sympy, to_sympy
+from sympy_extras.interop import expr_from_sympy, to_sympy
 from sympy_extras.core.symbol import Symbol
 
 s = sympy

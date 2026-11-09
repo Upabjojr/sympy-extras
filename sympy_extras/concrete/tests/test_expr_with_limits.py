@@ -6,10 +6,10 @@ from __future__ import annotations
 import sympy
 
 from sympy_extras.concrete.expr_with_limits import Product, Sum, product_, sum_
-from sympy_extras.core import to_sympy
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.exprtools import factor_terms
 from sympy_extras.core.expr import Expr
-from sympy_extras.core.interop import expr_from_sympy, from_sympy
+from sympy_extras.interop import expr_from_sympy, from_sympy
 from sympy_extras.core.symbol import Symbol
 
 i, j, k, n, m, x = sympy.symbols('i j k n m x')

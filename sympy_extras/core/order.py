@@ -553,8 +553,8 @@ def _solve_for(equation: Expr, d: Symbol) -> Optional[Expr]:
     if not slope.has(d) and slope.is_zero is False:
         rest = equation.subs(d, Integer(0))
         return mul(Integer(-1), rest, pow(slope, Integer(-1)))
-    from .interop import solveset_first_through_sympy
-    return solveset_first_through_sympy(equation, d)
+    from .bridge import bridge
+    return bridge().solve_first(equation, d)
 
 
 O = order

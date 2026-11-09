@@ -10,7 +10,7 @@ from sympy.polys.domains import QQ
 from sympy.testing.pytest import raises
 
 from sympy_extras._typing import as_expr
-from sympy_extras.simplify import Element, ElementaryTower
+from sympy_extras.simplify.structure import Element, ElementaryTower
 from sympy_extras.simplify.structure import EXPONENTIAL, LOGARITHM, ROOT, VARIABLE, as_rational
 
 x, y, z = symbols('x y z')
@@ -251,7 +251,7 @@ def test_the_number_field_is_not_allowed_to_explode() -> None:
     # the field grows by primitive elements: sqrt(2), I, 2**(1/3) and
     # exp(I*pi/5) together have degree 48, which SymPy does not finish;
     # the tower refuses, and is_zero answers from a sample point
-    from sympy_extras.simplify import NotElementary, is_zero
+    from sympy_extras.simplify.structure import NotElementary, is_zero
     tower = ElementaryTower()
     tower.element(sqrt(2) + I)
     raises(NotElementary, lambda: tower.element(2**Rational(1, 3) + exp(I * pi / 5)))

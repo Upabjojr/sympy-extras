@@ -1323,7 +1323,7 @@ def _polygamma_form(value: Expr) -> Expr:
 def _polygamma_series_sympy(term: Expr, n: Symbol, lower: int) -> Optional[Expr]:
     """:func:`~sympy_extras.concrete.eulersums.polygamma_series` (on the
     native core) for SymPy expressions."""
-    from sympy_extras.core.interop import expr_from_sympy, sympy_expr, to_sympy
+    from sympy_extras.interop import expr_from_sympy, sympy_expr, to_sympy
     from sympy_extras.core.symbol import Symbol as NativeSymbol
     native_n = expr_from_sympy(n)
     assert isinstance(native_n, NativeSymbol)

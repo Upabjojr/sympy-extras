@@ -9,8 +9,8 @@ import random
 import pytest
 import sympy
 
-from sympy_extras.core import to_sympy
-from sympy_extras.core.interop import expr_from_sympy
+from sympy_extras.interop import to_sympy
+from sympy_extras.interop import expr_from_sympy
 from sympy_extras.polys.domains import ZZ
 from sympy_extras.polys.multifactor import zz_factor
 from sympy_extras.polys.polytools import Poly, factor, factor_list_fraction

@@ -3,7 +3,7 @@ import random
 
 import sympy
 
-from sympy_extras.core.interop import expr_from_sympy, to_sympy
+from sympy_extras.interop import expr_from_sympy, to_sympy
 from sympy_extras.core.mul import neg
 from sympy_extras.functions.elementary.exponential import Exp
 from sympy_extras.functions.elementary.trigonometric import Cos

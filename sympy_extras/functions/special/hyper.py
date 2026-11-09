@@ -118,7 +118,7 @@ class Hyper(Expr):
         """The power series in the argument when it is ``x`` itself, else
         the generic expansion of functions, hyperexpanded."""
         from sympy_extras.core.function import _generic_function_nseries
-        from sympy_extras.core.interop import nseries_node_through_sympy
+        from sympy_extras.interop import nseries_node_through_sympy
         from sympy_extras.core.limits import limit
         from sympy_extras.core.order import order
         from sympy_extras.functions.combinatorial.factorials import factorial, rf
@@ -329,7 +329,7 @@ class MeijerG(Expr):
     # PORTED FROM SYMPY: sympy/core/function.py:Function._eval_nseries (meijerg has none of its own)
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         from sympy_extras.core.function import _generic_function_nseries
-        from sympy_extras.core.interop import nseries_node_through_sympy
+        from sympy_extras.interop import nseries_node_through_sympy
         generic = _generic_function_nseries(self, x, n, logx)
         if generic is None:
             return nseries_node_through_sympy(self, x, n, logx, cdir)

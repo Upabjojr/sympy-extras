@@ -218,7 +218,7 @@ def srepr(e: Basic) -> str:
     >>> srepr(2*x + 1), srepr(-3*x/8)
     ("Add(Mul(Integer(2), Symbol('x')), Integer(1))", "Mul(Integer(-1), Rational(3, 8), Symbol('x'))")
     """
-    from .function import AppliedSymPyFunction, AppliedUndef, DefinedFunction, WildFunction
+    from .function import AppliedUndef, DefinedFunction, WildFunction
     from .numbers import Float
     from .symbol import Dummy, Symbol, Wild
     if isinstance(e, Wild):
@@ -240,8 +240,11 @@ def srepr(e: Basic) -> str:
         return "Float(%r, precision=%d)" % (e.repr_str(), e.precision)
     if isinstance(e, AppliedUndef):
         return "Function(%r)(%s)" % (e.name, ', '.join(srepr(a) for a in e.args))
-    if isinstance(e, (AppliedSymPyFunction, DefinedFunction)):
+    if isinstance(e, DefinedFunction):
         return "%s(%s)" % (e.name, ', '.join(srepr(a) for a in e.args))
+    head = e._srepr_name()
+    if head is not None:
+        return "%s(%s)" % (head, ', '.join(srepr(a) for a in e.args))
     if not e.args:
         return str(e)
     args: Sequence[Basic] = e.args

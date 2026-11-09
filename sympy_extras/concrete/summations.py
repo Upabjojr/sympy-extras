@@ -74,7 +74,7 @@ def _two_terms(e: Expr) -> tuple[Expr, Expr]:
 def _through(name: str, f: Expr, limits: Limits) -> Optional[Expr]:
     """``sympy.concrete.<module>.<name>(f, limits)``, ``None`` kept."""
     import importlib
-    from sympy_extras.core.interop import expr_from_sympy, to_sympy
+    from sympy_extras.interop import expr_from_sympy, to_sympy
     module, function = name.rsplit('.', 1)
     fn = getattr(importlib.import_module('sympy.concrete.' + module), function)
     i, a, b = limits
@@ -87,7 +87,7 @@ def _through(name: str, f: Expr, limits: Limits) -> Optional[Expr]:
 def _solve(e: Expr, v: Symbol) -> list[Expr]:
     """SymPy's ``solve(e, v)`` (through SymPy)."""
     import sympy
-    from sympy_extras.core.interop import expr_from_sympy, to_sympy
+    from sympy_extras.interop import expr_from_sympy, to_sympy
     return [expr_from_sympy(s) for s in sympy.solve(to_sympy(e), to_sympy(v))]
 
 
@@ -483,7 +483,7 @@ def eval_sum_hyper(f: Expr, limits: Limits) -> Optional[Expr]:
 def _as_set_is_empty(cond: Boolean) -> bool:
     """SymPy's ``cond.as_set() == S.EmptySet`` (through SymPy)."""
     import sympy
-    from sympy_extras.core.interop import to_sympy
+    from sympy_extras.interop import to_sympy
     try:
         sympy_cond = to_sympy(cond)
         assert isinstance(sympy_cond, sympy.logic.boolalg.Boolean)
@@ -696,7 +696,7 @@ def sum_doit(s: Sum, deep: bool = True) -> Expr:
         if newf is None:
             if f == s.function:
                 if _zeta_match(f, (i, a, b)):
-                    from sympy_extras.core.interop import expr_through_sympy
+                    from sympy_extras.interop import expr_through_sympy
                     return expr_through_sympy(s, lambda t: t.doit(deep=False))
                 return s
             return sum_(f, *s.limits[n:])

@@ -10,8 +10,10 @@ constructors is done by the functions of the same name in lower case:
 a tree with them. Everything else keeps SymPy's names and meanings
 (``symbols``, ``S``, ``sympify``, ``args``, ``func``, ``subs``, ``match``,
 ``replace``, ``as_coeff_Mul``, the ``is_*`` assumptions, ``series``,
-``simplify``, the printing), and ``to_sympy``/``from_sympy`` convert in
-both directions, so that the rest of SymPy stays usable.
+``simplify``, the printing). The core does not import SymPy:
+:mod:`sympy_extras.interop` converts in both directions (``to_sympy``,
+``from_sympy``) and, when imported, lends SymPy to the operations not yet
+ported (:mod:`sympy_extras.core.bridge`).
 
 See ``docs/core.md`` for the design and the differences with
 ``sympy.core``.
@@ -30,11 +32,10 @@ from .coreerrors import BaseCoreError, NonCommutativeExpression, PoleError, Prec
 from .evalf import N, evalf
 from .expr import AtomicExpr, Expr, ExprLike, UnevaluatedExpr, as_expr
 from .exprtools import factor_nc, factor_terms, gcd_terms
-from .function import (AppliedSymPyFunction, AppliedUndef, Application, Derivative, Function, FunctionClass,
-    Lambda, Subs, SymPyFunction, UndefinedFunction, WildFunction, apply_sympy, arity, count_ops, diff, expand,
+from .function import (AppliedUndef, Application, Derivative, Function, FunctionClass,
+    Lambda, Subs, UndefinedFunction, WildFunction, arity, count_ops, diff, expand,
     expand_complex, expand_func, expand_log, expand_mul, expand_multinomial, expand_power_base,
     expand_power_exp, expand_trig, nfloat)
-from .interop import SymPyExprNode, SymPyNode, from_sympy, to_sympy
 from .intfunc import igcd, igcdex, ilcm, integer_log, integer_nthroot, isqrt, mod_inverse, num_digits, trailing
 from .kind import BooleanKind, Kind, NumberKind, TupleKind, UndefinedKind
 from .logic import (ITE, And, Boolean, BooleanAtom, BooleanFalse, BooleanFunction, BooleanTrue, Equivalent,
@@ -69,8 +70,8 @@ __all__ = [
     'GoldenRatio', 'TribonacciConstant', 'I', 'oo', 'zoo', 'nan', 'comp', 'seterr',
     'Add', 'add', 'sub', 'Mul', 'mul', 'div', 'neg', 'prod', 'Pow', 'pow', 'sqrt', 'cbrt', 'root',
     'Mod', 'mod', 'AssocOp',
-    'FunctionClass', 'Function', 'UndefinedFunction', 'AppliedUndef', 'Application', 'SymPyFunction',
-    'AppliedSymPyFunction', 'WildFunction', 'apply_sympy', 'arity', 'Lambda', 'Derivative', 'Subs', 'diff',
+    'FunctionClass', 'Function', 'UndefinedFunction', 'AppliedUndef', 'Application',
+    'WildFunction', 'arity', 'Lambda', 'Derivative', 'Subs', 'diff',
     'expand', 'expand_mul', 'expand_multinomial', 'expand_power_base', 'expand_power_exp', 'expand_log',
     'expand_func', 'expand_trig', 'expand_complex', 'count_ops', 'nfloat', 'Order', 'order', 'O',
     'Tuple', 'Dict', 'Boolean', 'BooleanAtom', 'BooleanTrue', 'BooleanFalse', 'true', 'false', 'BooleanFunction',
@@ -79,7 +80,7 @@ __all__ = [
     'Relational', 'Eq', 'Ne', 'Lt', 'Le', 'Gt', 'Ge', 'Equality', 'Unequality',
     'StrictLessThan', 'LessThan', 'StrictGreaterThan', 'GreaterThan', 'Rel',
     'eq', 'ne', 'lt', 'le', 'gt', 'ge',
-    'S', 'sympify', 'SympifyError', 'to_sympy', 'from_sympy', 'SymPyNode', 'SymPyExprNode', 'sstr', 'srepr',
+    'S', 'sympify', 'SympifyError', 'sstr', 'srepr',
     'default_sort_key', 'ordered', 'evalf', 'N',
     'assumptions', 'check_assumptions', 'failing_assumptions', 'common_assumptions',
     'Q', 'ask', 'AssumptionKeys', 'Predicate', 'AppliedPredicate', 'AssumptionsContext', 'global_assumptions',

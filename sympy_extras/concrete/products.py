@@ -53,7 +53,7 @@ def _e(b: Basic) -> Expr:
 
 def _through(name: str, f: Expr, limits: Limits) -> Optional[Expr]:
     import importlib
-    from sympy_extras.core.interop import expr_from_sympy, to_sympy
+    from sympy_extras.interop import expr_from_sympy, to_sympy
     module, function = name.rsplit('.', 1)
     fn = getattr(importlib.import_module('sympy.concrete.' + module), function)
     k, a, n = limits
@@ -205,7 +205,7 @@ def product_doit(p: Product, deep: bool = True) -> Expr:
                 return product_(powsimp(f), *p.limits[index:])
             f = g
     except _ThroughSymPy:
-        from sympy_extras.core.interop import expr_through_sympy
+        from sympy_extras.interop import expr_through_sympy
         return expr_through_sympy(p, lambda s: s.doit(deep=deep))
     if deep:
         return f.doit()

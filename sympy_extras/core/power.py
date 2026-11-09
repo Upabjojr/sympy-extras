@@ -449,9 +449,8 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
     if not global_parameters.evaluate:
         return Pow(base, exp)
     if base.is_Order or exp.is_Order:
-        import sympy
-        from .interop import expr_from_sympy, to_sympy
-        return expr_from_sympy(sympy.Pow(to_sympy(base), to_sympy(exp)))
+        from .bridge import bridge
+        return bridge().power(base, exp)
     if isinstance(base, Number) and isinstance(exp, Number):
         return number_pow(base, exp)
     if isinstance(exp, Number):
@@ -662,11 +661,9 @@ def true_value() -> Basic:
 
 
 def _is_exp(e: Expr) -> bool:
-    """Whether ``e`` is an ``exp(...)`` of SymPy (a power of ``E``)."""
-    import sympy
+    """Whether ``e`` is an ``exp(...)`` (a power of ``E``)."""
     from sympy_extras.functions.elementary.exponential import Exp
-    from .function import AppliedSymPyFunction
-    return isinstance(e, Exp) or (isinstance(e, AppliedSymPyFunction) and e.sympy_class is sympy.exp)
+    return isinstance(e, Exp)
 
 
 def _imaginary_unit_power(n: int) -> Expr:

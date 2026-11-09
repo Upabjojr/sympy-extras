@@ -7,9 +7,10 @@ import random
 import pytest
 import sympy
 
-from sympy_extras.core import Symbol, to_sympy
+from sympy_extras.core import Symbol
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
-from sympy_extras.core.interop import expr_from_sympy
+from sympy_extras.interop import expr_from_sympy
 from sympy_extras.functions import exp
 from sympy_extras.simplify.radsimp import collect, collect_dict, fraction, rcollect
 

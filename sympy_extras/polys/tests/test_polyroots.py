@@ -10,8 +10,8 @@ from typing import Callable
 import pytest
 import sympy
 
-from sympy_extras.core import to_sympy
-from sympy_extras.core.interop import expr_from_sympy
+from sympy_extras.interop import to_sympy
+from sympy_extras.interop import expr_from_sympy
 from sympy_extras.polys.polyroots import roots
 
 sx, sa = sympy.symbols('x a')

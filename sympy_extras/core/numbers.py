@@ -43,7 +43,7 @@ from .expr import AtomicExpr, Expr, ExprLike, to_expr
 from .sorting import ClassKey, CompareItem, SortKey
 
 if TYPE_CHECKING:
-    import sympy
+    from sympy_extras.polys.polytools import Poly
     from .printing import StrPrinter
     from .symbol import Symbol
 
@@ -755,8 +755,9 @@ class AlgebraicNumber(Expr):
     >>> a = AlgebraicNumber(sqrt(2), [1, 1])
     >>> a, a.args, a.root, a.coeffs(), a.as_expr(), a.doit()
     (1 + sqrt(2), (sqrt(2), (1, 1)), sqrt(2), [1, 1], 1 + sqrt(2), 1 + sqrt(2))
+    >>> import sympy_extras.interop  # SymPy's minimal polynomial (core.bridge)
     >>> a.minpoly
-    PurePoly(_x**2 - 2*_x - 1, _x, domain='QQ')
+    Poly(_x**2 - 2*_x - 1, _x, domain='ZZ')
     >>> AlgebraicNumber(sqrt(2)).coeffs(), AlgebraicNumber(sqrt(2), alias='a').is_aliased
     ([1, 0], True)
     """
@@ -828,22 +829,24 @@ class AlgebraicNumber(Expr):
         return self.as_expr()
 
     @property
-    def minpoly(self) -> 'sympy.Poly':
-        """The minimal polynomial over the rationals (SymPy's ``PurePoly``)."""
-        import sympy
-        from .interop import to_sympy
-        poly = sympy.minimal_polynomial(to_sympy(self.as_expr()), polys=True)
-        if not isinstance(poly, sympy.Poly):
-            raise TypeError("SymPy returned %r" % (poly,))
-        return poly
+    def minpoly(self) -> 'Poly':
+        """The minimal polynomial over the rationals, in a dummy (computed
+        by the foreign system until it is ported: :mod:`~sympy_extras.core.bridge`)."""
+        from sympy_extras.polys.polytools import Poly
+        from .bridge import bridge
+        from .symbol import Dummy
+        x = Dummy('x')
+        return Poly(bridge().minimal_polynomial(self.as_expr(), x), x)
 
-    def as_poly(self, *gens: 'Symbol') -> Optional['sympy.Poly']:
-        """The coefficients as a SymPy polynomial in the first of ``gens``
-        (or in a dummy)."""
-        import sympy
-        from .interop import to_sympy
-        variable = sympy.Dummy('x') if not gens else to_sympy(gens[0])
-        return sympy.PurePoly([to_sympy(c) for c in self._coeffs], variable, domain='QQ')
+    def as_poly(self, *gens: 'Symbol') -> Optional['Poly']:
+        """The polynomial with the coefficients (highest degree first) in
+        the first of ``gens`` (or in a dummy)."""
+        from sympy_extras.polys.polytools import Poly
+        from .add import add
+        from .symbol import Dummy
+        variable = Dummy('x') if not gens else gens[0]
+        degree = len(self._coeffs) - 1
+        return Poly(add(*[c * variable**(degree - i) for i, c in enumerate(self._coeffs)]), variable)
 
     def doit(self) -> Expr:
         return self.as_expr()

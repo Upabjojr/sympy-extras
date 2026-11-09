@@ -5,8 +5,8 @@ import sympy
 from sympy import KroneckerDelta, Product as SympyProduct, Rational as R, exp, factorial, oo, sin
 
 from sympy_extras.concrete.products import product
-from sympy_extras.core import to_sympy
-from sympy_extras.core.interop import expr_from_sympy, from_sympy
+from sympy_extras.interop import to_sympy
+from sympy_extras.interop import expr_from_sympy, from_sympy
 from sympy_extras.core.symbol import Symbol
 
 k = sympy.Symbol('k', integer=True)

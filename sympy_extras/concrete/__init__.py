@@ -1,20 +1,10 @@
-"""Summation algorithms extending :mod:`sympy.concrete`."""
+"""Summation algorithms extending :mod:`sympy.concrete`.
+
+The package exports nothing: the modules are imported by their paths
+(``from sympy_extras.concrete.karr import karr_sum``), so that importing
+the native ones (:mod:`~sympy_extras.concrete.expr_with_limits`, used by
+the core) does not load the modules still written on SymPy.
+"""
 from __future__ import annotations
 
-from .pisigma import PiSigmaField, Extension
-from .karr import karr_term, karr_sum, summation, build_pisigma_field
-from .creative import CreativeTelescoper, creative_telescoping, definite_sum
-from .zeilberger import zeilberger, zeilberger_sum, wz_certificate, wz_prove, Telescoper
-from .qhyper import (QPochhammer, qpochhammer, qbinomial, q_ratio, normal_in, qgosper_term, qgosper_sum,
-    qzeilberger, QTelescoper)
-from .rational import abramov_decomposition, rational_sum, RationalDecomposition
-from .convergence import sum_convergence, product_convergence, is_convergent
-from .dirichlet import dirichlet_series
-from .eulersums import euler_sum, polygamma_series, polygamma_integral_representation
-
-__all__ = ['PiSigmaField', 'Extension', 'karr_term', 'karr_sum', 'summation',
-    'build_pisigma_field', 'CreativeTelescoper', 'creative_telescoping', 'definite_sum', 'zeilberger', 'zeilberger_sum', 'wz_certificate', 'wz_prove',
-    'Telescoper', 'QPochhammer', 'qpochhammer', 'qbinomial', 'q_ratio', 'normal_in', 'qgosper_term',
-    'qgosper_sum', 'qzeilberger', 'QTelescoper', 'abramov_decomposition', 'rational_sum',
-    'RationalDecomposition', 'sum_convergence', 'product_convergence', 'is_convergent', 'dirichlet_series',
-    'euler_sum', 'polygamma_series', 'polygamma_integral_representation']
+__all__: list[str] = []

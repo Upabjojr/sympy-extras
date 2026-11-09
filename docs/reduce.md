@@ -264,7 +264,8 @@ parameters like `limit`.
 ```python
 >>> from sympy import factorial, log
 >>> from sympy.abc import n, p
->>> from sympy_extras.concrete import sum_convergence, product_convergence, dirichlet_series
+>>> from sympy_extras.concrete.convergence import sum_convergence, product_convergence
+>>> from sympy_extras.concrete.dirichlet import dirichlet_series
 >>> from sympy_extras.assumptions import limit_seq
 >>> sum_convergence(x**n/n, n)
 (x >= -1) & (x < 1)
@@ -321,7 +322,7 @@ bound on the exponents down to a few dozens before the enumeration.
 ```python
 >>> from sympy import harmonic, polygamma
 >>> from sympy.abc import n
->>> from sympy_extras.concrete import polygamma_series
+>>> from sympy_extras.concrete.eulersums import polygamma_series
 >>> polygamma_series(harmonic(n)/n**2, n)
 2*zeta(3)
 >>> polygamma_series(polygamma(1, n)/n**2, n)

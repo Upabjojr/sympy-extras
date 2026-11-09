@@ -6,7 +6,8 @@ import sympy
 from sympy.functions.special.bessel import jn_zeros as sympy_jn_zeros
 
 from sympy_extras._typing import as_expr as sympy_expr
-from sympy_extras.core import Integer, Rational, Symbol, to_sympy
+from sympy_extras.core import Integer, Rational, Symbol
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.functions import appellf1, bspline_basis, bspline_basis_set, jn_zeros
 

@@ -176,7 +176,7 @@ class ExprWithLimits(Expr):
 
     def doit(self) -> Expr:
         """The node evaluated (through SymPy)."""
-        from sympy_extras.core.interop import expr_through_sympy
+        from sympy_extras.interop import expr_through_sympy
         return expr_through_sympy(self, lambda s: s.doit())
 
 

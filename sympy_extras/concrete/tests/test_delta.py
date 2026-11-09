@@ -8,8 +8,8 @@ from sympy.concrete.delta import deltaproduct as sympy_deltaproduct, deltasummat
 from sympy_extras.concrete.delta import deltaproduct, deltasummation
 from sympy_extras.concrete.products import product
 from sympy_extras.concrete.summations import summation
-from sympy_extras.core import to_sympy
-from sympy_extras.core.interop import expr_from_sympy, from_sympy
+from sympy_extras.interop import to_sympy
+from sympy_extras.interop import expr_from_sympy, from_sympy
 from sympy_extras.core.symbol import Symbol
 
 i, j, k, n = sympy.symbols('i j k n', integer=True)

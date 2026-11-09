@@ -131,7 +131,7 @@ def dirichlet_series(term: Union[Expr, int], n: Symbol, lower: Union[Expr, int] 
 
     >>> from sympy import mobius, totient, divisor_sigma, log
     >>> from sympy.abc import n, s
-    >>> from sympy_extras.concrete import dirichlet_series
+    >>> from sympy_extras.concrete.dirichlet import dirichlet_series
     >>> dirichlet_series(mobius(n)/n**s, n)
     (1/zeta(s), re(s) > 1)
     >>> dirichlet_series(totient(n)/n**s, n)

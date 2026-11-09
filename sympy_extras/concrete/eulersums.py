@@ -237,7 +237,7 @@ def polygamma_series(term: ExprLike, n: Symbol, lower: ExprLike = 1) -> Optional
 
     >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.functions import harmonic, polygamma
-    >>> from sympy_extras.concrete import polygamma_series
+    >>> from sympy_extras.concrete.eulersums import polygamma_series
     >>> n = Symbol('n')
     >>> polygamma_series(harmonic(n)/n**2, n)
     2*zeta(3)
@@ -295,7 +295,7 @@ def polygamma_integral_representation(term: ExprLike, n: Symbol) -> Optional[Exp
 
     >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.functions import polygamma
-    >>> from sympy_extras.concrete import polygamma_integral_representation
+    >>> from sympy_extras.concrete.eulersums import polygamma_integral_representation
     >>> n, s = Symbol('n'), Symbol('s')
     >>> polygamma_integral_representation(polygamma(0, n)/n**s, n)
     Integral((zeta(s) - polylog(s, t)/t)/(1 - t), (t, 0, 1)) - EulerGamma*zeta(s)
@@ -303,8 +303,8 @@ def polygamma_integral_representation(term: ExprLike, n: Symbol) -> Optional[Exp
     (the wrapped SymPy node is printed first: SymPy orders it after)
     """
     import sympy
-    from sympy_extras.core.interop import from_sympy, sympy_expr
-    from sympy_extras.core.interop import to_sympy
+    from sympy_extras.interop import from_sympy, sympy_expr
+    from sympy_extras.interop import to_sympy
     term_ = to_expr(term)
     factors = [a for a in term_.args if isinstance(a, Expr)] if isinstance(term_, Mul) else [term_]
     exponent: Optional[Expr] = None

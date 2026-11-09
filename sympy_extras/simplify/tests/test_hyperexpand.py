@@ -8,9 +8,9 @@ from typing import Callable
 import sympy
 from sympy import Rational as R
 
-from sympy_extras.core import to_sympy
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
-from sympy_extras.core.interop import expr_from_sympy
+from sympy_extras.interop import expr_from_sympy
 from sympy_extras.matrices import ExprMatrix
 from sympy_extras.simplify.hyperexpand import Formula, FormulaCollection, HyperFunction
 

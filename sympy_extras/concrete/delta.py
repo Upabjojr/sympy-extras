@@ -61,7 +61,7 @@ def _delta(i: Expr, j: Expr) -> Expr:
 def _solve(e: Expr, v: Optional[Symbol] = None) -> list[Expr]:
     """SymPy's ``solve(e, v)`` (through SymPy)."""
     import sympy
-    from sympy_extras.core.interop import expr_from_sympy, to_sympy
+    from sympy_extras.interop import expr_from_sympy, to_sympy
     found = sympy.solve(to_sympy(e), to_sympy(v)) if v is not None else sympy.solve(to_sympy(e))
     return [expr_from_sympy(s) for s in found]
 
@@ -69,7 +69,7 @@ def _solve(e: Expr, v: Optional[Symbol] = None) -> list[Expr]:
 def _solve_dicts(eqs: list[Expr]) -> list[dict[Expr, Expr]]:
     """SymPy's ``solve(eqs, dict=True)`` (through SymPy)."""
     import sympy
-    from sympy_extras.core.interop import expr_from_sympy, to_sympy
+    from sympy_extras.interop import expr_from_sympy, to_sympy
     out: list[dict[Expr, Expr]] = []
     for sol in sympy.solve([to_sympy(e) for e in eqs], dict=True):
         out.append({expr_from_sympy(k): expr_from_sympy(v) for k, v in sol.items()})

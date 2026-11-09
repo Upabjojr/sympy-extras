@@ -8,9 +8,10 @@ from typing import Optional
 import sympy
 import sympy.functions.special.hyper as sympy_hyper
 
-from sympy_extras.core import I, Rational, Symbol, pi, to_sympy
+from sympy_extras.core import I, Rational, Symbol, pi
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
-from sympy_extras.core.interop import expr_from_sympy
+from sympy_extras.interop import expr_from_sympy
 from sympy_extras.functions.elementary.exponential import exp_polar
 from sympy_extras.functions.special import hyperrep
 

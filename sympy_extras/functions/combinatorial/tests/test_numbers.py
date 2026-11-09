@@ -8,7 +8,8 @@ import pytest
 import sympy
 
 from sympy_extras._typing import as_expr as sympy_expr
-from sympy_extras.core import Integer, Rational, Symbol, oo, to_sympy
+from sympy_extras.core import Integer, Rational, Symbol, oo
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.functions import bernoulli, fibonacci, harmonic, lucas
 

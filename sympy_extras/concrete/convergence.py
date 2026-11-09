@@ -708,7 +708,7 @@ def sum_convergence(term: Union[Expr, int], n: Symbol, assumptions: Assumptions 
 
     >>> from sympy import factorial, binomial, log
     >>> from sympy.abc import n, x, p
-    >>> from sympy_extras.concrete import sum_convergence
+    >>> from sympy_extras.concrete.convergence import sum_convergence
     >>> sum_convergence(x**n, n)
     (x > -1) & (x < 1)
     >>> sum_convergence(x**n/n, n)
@@ -740,7 +740,7 @@ def is_convergent(term: Union[Expr, int], n: Symbol, assumptions: Assumptions = 
     ========
 
     >>> from sympy.abc import n, x
-    >>> from sympy_extras.concrete import is_convergent
+    >>> from sympy_extras.concrete.convergence import is_convergent
     >>> is_convergent(x**n, n, (x > 0) & (x < 1))
     True
     >>> is_convergent(x**n, n, x > 1)
@@ -768,7 +768,7 @@ def product_convergence(term: Union[Expr, int], n: Symbol, assumptions: Assumpti
     ========
 
     >>> from sympy.abc import n, x
-    >>> from sympy_extras.concrete import product_convergence
+    >>> from sympy_extras.concrete.convergence import product_convergence
     >>> product_convergence(1 + 1/n**2, n)
     True
     >>> product_convergence(1 + x/n**2, n)

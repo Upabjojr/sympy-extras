@@ -10,7 +10,7 @@ from typing import Callable
 import sympy
 from sympy.polys.fields import FracElement, field as sympy_field
 
-from sympy_extras.core.interop import expr_from_sympy
+from sympy_extras.interop import expr_from_sympy
 from sympy_extras.polys.domains.sparsefractionfield import SparseFractionField, SparseFracElement
 from sympy_extras.polys.domains.sparsepolynomialring import RationalPolynomialRing
 

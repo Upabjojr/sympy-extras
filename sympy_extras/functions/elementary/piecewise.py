@@ -668,7 +668,7 @@ def _simplify_condition(c: Boolean) -> Boolean:
     """SymPy's ``simplify`` of a condition (through SymPy: the
     simplification of the relations and the logic is not ported)."""
     import sympy
-    from sympy_extras.core.interop import from_sympy, to_sympy
+    from sympy_extras.interop import from_sympy, to_sympy
     r = from_sympy(sympy.simplify(to_sympy(c)))
     return r if isinstance(r, Boolean) else c
 

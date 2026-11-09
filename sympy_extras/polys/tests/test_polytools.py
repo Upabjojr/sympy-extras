@@ -14,9 +14,10 @@ from sympy.polys.polyerrors import BasePolynomialError
 from sympy.polys.subresultants_qq_zz import sylvester
 
 from sympy_extras._typing import as_expr as sympy_expr
-from sympy_extras.core import Symbol, to_sympy
+from sympy_extras.core import Symbol
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
-from sympy_extras.core.interop import expr_from_sympy
+from sympy_extras.interop import expr_from_sympy
 from sympy_extras.functions import sin, sqrt
 from sympy_extras.polys.polyerrors import GeneratorsNeeded, PolynomialError
 from sympy_extras.polys.polytools import Poly, degree, factor_list, gcd, lcm, resultant
@@ -151,7 +152,7 @@ def test_cancel_matches_sympy(seed: int) -> None:
 def test_invert_matches_sympy() -> None:
     import random
     import sympy
-    from sympy_extras.core.interop import expr_from_sympy, to_sympy
+    from sympy_extras.interop import expr_from_sympy, to_sympy
     from sympy_extras.polys.polyerrors import NotInvertible
     from sympy_extras.polys.polytools import invert
     rng = random.Random(3)

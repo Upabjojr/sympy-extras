@@ -8,7 +8,8 @@ import itertools
 import sympy
 
 from sympy_extras._typing import as_expr as sympy_expr
-from sympy_extras.core import Integer, Rational, Symbol, pi, to_sympy
+from sympy_extras.core import Integer, Rational, Symbol, pi
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.functions import KroneckerDelta, LeviCivita, Ynm, Ynm_c, Znm, conjugate
 

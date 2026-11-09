@@ -74,9 +74,13 @@ from sympy_extras.assumptions import (ask as xask, refine as xrefine, simplify a
     solve as xsolve, element,
     ForAll, Exists, satisfiable, tautology, find_instance, limit as xlimit, limit_seq as xlimit_seq,
     series as xseries)
-from sympy_extras.concrete import (karr_sum, summation as xsummation, zeilberger_sum, wz_prove,
-    sum_convergence, product_convergence, dirichlet_series, polygamma_series, euler_sum,
-    qgosper_sum, qzeilberger, rational_sum)
+from sympy_extras.concrete.karr import karr_sum, summation as xsummation
+from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
+from sympy_extras.concrete.convergence import sum_convergence, product_convergence
+from sympy_extras.concrete.dirichlet import dirichlet_series
+from sympy_extras.concrete.eulersums import polygamma_series, euler_sum
+from sympy_extras.concrete.qhyper import qgosper_sum, qzeilberger
+from sympy_extras.concrete.rational import rational_sum
 from sympy_extras.solvers import (dsolve_kovacic, dsolve_linear, special_solutions, dsolve_lie,
     dsolve_first_order, dsolve_second_order, dsolve_dae, dae_matrices, complete_integral,
     isolate_real_roots, thue, abel_by_invariants, abel_invariants, linear_diophantine_system,

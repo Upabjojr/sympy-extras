@@ -268,7 +268,7 @@ class ElementaryTower:
     ========
 
     >>> from sympy import symbols, exp, log, sqrt, sin, cos
-    >>> from sympy_extras.simplify import ElementaryTower
+    >>> from sympy_extras.simplify.structure import ElementaryTower
     >>> x, y = symbols('x y')
     >>> tower = ElementaryTower()
     >>> u = tower.element(exp(x + y) - exp(x)*exp(y) + sin(x)**2 + cos(x)**2)
@@ -1419,7 +1419,7 @@ def canonical_form(expression: object, assumptions: Assumptions = None) -> Expr:
     ========
 
     >>> from sympy import symbols, exp, log, sqrt, sin, cos, tan, atan, pi, I
-    >>> from sympy_extras.simplify import canonical_form
+    >>> from sympy_extras.simplify.structure import canonical_form
     >>> x, y = symbols('x y')
     >>> canonical_form(exp(x + y) - exp(x)*exp(y))
     0
@@ -1448,7 +1448,7 @@ def is_zero(expression: object, assumptions: Assumptions = None) -> Optional[boo
     ========
 
     >>> from sympy import symbols, exp, log, sqrt, sin, cos, cosh, sinh, atan, asin
-    >>> from sympy_extras.simplify import is_zero
+    >>> from sympy_extras.simplify.structure import is_zero
     >>> x = symbols('x')
     >>> is_zero(cosh(x)**2 - sinh(x)**2 - 1)
     True
@@ -1482,7 +1482,7 @@ def equal(a: object, b: object, assumptions: Assumptions = None) -> Optional[boo
     assumptions, by :func:`is_zero` of their difference.
 
     >>> from sympy import symbols, tan, sin, cos, sqrt
-    >>> from sympy_extras.simplify import equal
+    >>> from sympy_extras.simplify.structure import equal
     >>> x = symbols('x')
     >>> equal(tan(x), sin(x)/cos(x)), equal(sqrt(x)*sqrt(x), x), equal(sin(x), x)
     (True, True, False)

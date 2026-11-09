@@ -31,7 +31,7 @@ exactly when its numerator does:
 
 ```python
 >>> from sympy import symbols, exp, log, sqrt, sin, cos, atan, asin, acos, pi, Rational, I
->>> from sympy_extras.simplify import is_zero, canonical_form, ElementaryTower
+>>> from sympy_extras.simplify.structure import is_zero, canonical_form, ElementaryTower
 >>> x, y = symbols('x y')
 >>> is_zero(sin(x + y) - sin(x)*cos(y) - cos(x)*sin(y))
 True

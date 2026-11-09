@@ -10,9 +10,9 @@ from typing import Union
 import sympy
 from sympy import Rational as R, oo
 
-from sympy_extras.core import to_sympy
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
-from sympy_extras.core.interop import expr_from_sympy
+from sympy_extras.interop import expr_from_sympy
 from sympy_extras import sets as N
 
 Tree = tuple[object, ...]

@@ -325,6 +325,20 @@ remove public functions. Breaking changes are listed here when they happen.
   echelon form, the free coordinate one (SymPy's `DomainMatrix.nullspace`
   over `QQ`; over fields of rational functions SymPy's vectors are
   fraction-free multiples).
+- The core does not import SymPy (`import sympy_extras.core` leaves `sympy`
+  out of `sys.modules`; tested). The bridge moved out of the core:
+  `sympy_extras.interop` (was `sympy_extras.core.interop`) holds the
+  conversions, the wrappers of SymPy objects (`SymPyFunction`,
+  `AppliedSymPyFunction`, `SymPyNode`, `SymPyExprNode`, `apply_sympy`) and
+  `SymPyBridge`, which registers itself with `sympy_extras.core.bridge` when
+  imported: the operations not ported (integrate, simplify of foreign
+  nodes, string parsing, ...) go through it; without it they raise
+  `ForeignOperationUnavailable` and the queries answer unknown.
+  `sympy_extras.core` no longer re-exports `to_sympy`/`from_sympy` and the
+  wrappers; `sympy_extras.concrete` and `sympy_extras.simplify` re-export
+  nothing (import from the modules: `sympy_extras.concrete.karr`, ...).
+  `Expr.as_poly`, `AlgebraicNumber.as_poly`/`minpoly` return the typed
+  `Poly`.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

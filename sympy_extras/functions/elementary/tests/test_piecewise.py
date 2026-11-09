@@ -5,7 +5,8 @@ from __future__ import annotations
 import sympy
 
 from sympy_extras._typing import as_expr as sympy_expr
-from sympy_extras.core import I, Integer, Rational, Symbol, to_sympy
+from sympy_extras.core import I, Integer, Rational, Symbol
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.logic import Boolean, and_, false, not_, or_, true
@@ -89,7 +90,7 @@ def test_round_trip_and_node() -> None:
     f = piecewise((x**2, lt(x, 0)), (x, true))
     back = Basic.__eq__(f, f)
     assert back is True
-    from sympy_extras.core.interop import from_sympy
+    from sympy_extras.interop import from_sympy
     assert from_sympy(to_sympy(f)) == f
 
 
@@ -100,8 +101,8 @@ def test_piecewise_simplify_matches_sympy() -> None:
     import random
     import sympy
     from sympy.functions.elementary.piecewise import piecewise_simplify as sympy_piecewise_simplify
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy
     from sympy_extras.functions.elementary.piecewise import piecewise_simplify
     sx, sy = sympy.symbols('x y')
     rng = random.Random(1)

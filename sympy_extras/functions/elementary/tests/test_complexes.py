@@ -8,7 +8,8 @@ from typing import Callable
 import sympy
 
 from sympy_extras._typing import as_expr as sympy_expr
-from sympy_extras.core import E, I, Integer, Rational, Symbol, oo, pi, to_sympy, zoo
+from sympy_extras.core import E, I, Integer, Rational, Symbol, oo, pi, zoo
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.function import Function
 from sympy_extras.core.power import sqrt
@@ -89,7 +90,7 @@ def test_derivatives() -> None:
 
 
 def test_adjoint_and_transpose_of_noncommutative_match_sympy() -> None:
-    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.interop import expr_from_sympy
     A, B, C = sympy.symbols('A B C', commutative=False)
     sx = sympy.Symbol('x')
     cases = [A*B, A*B*C, 2*A*B + sx*C, (A*B)**2, A**2*B, sx*A, A + B, sympy.I*A*B, A**-1*B, sympy.exp(A),

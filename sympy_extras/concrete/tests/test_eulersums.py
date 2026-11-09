@@ -9,7 +9,7 @@ from sympy.core.expr import Expr
 from sympy.abc import n
 
 from sympy_extras.concrete import eulersums
-from sympy_extras.core.interop import expr_from_sympy, sympy_expr, to_sympy
+from sympy_extras.interop import expr_from_sympy, sympy_expr, to_sympy
 from sympy_extras.core.symbol import Symbol as NativeSymbol
 
 # the module is on the native core: SymPy in and out here, as the oracle

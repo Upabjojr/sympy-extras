@@ -14,7 +14,7 @@ implements it.
 ```python
 >>> from sympy import harmonic, factorial, binomial, Sum
 >>> from sympy.abc import j, k, n
->>> from sympy_extras.concrete import karr_sum, karr_term, summation
+>>> from sympy_extras.concrete.karr import karr_sum, karr_term, summation
 >>> karr_sum(harmonic(k), (k, 1, n))
 n*harmonic(n) - n + harmonic(n)
 >>> karr_sum(harmonic(k)**2, (k, 1, n))
@@ -60,7 +60,7 @@ n*harmonic(2*n) - n + harmonic(n)/4 + harmonic(2*n)/2
 ```
 
 ```python
->>> from sympy_extras.concrete import build_pisigma_field
+>>> from sympy_extras.concrete.karr import build_pisigma_field
 >>> F, f = build_pisigma_field(harmonic(k + 1)*factorial(k), k)
 >>> F.extensions
 [Extension(pi, factorial(k), k + 1), Extension(sigma, harmonic(k), 1/(k + 1))]
@@ -133,7 +133,7 @@ recurrence from `summation`.
 
 ```python
 >>> from sympy import binomial, symbols
->>> from sympy_extras.concrete import zeilberger, zeilberger_sum, wz_prove
+>>> from sympy_extras.concrete.zeilberger import zeilberger, zeilberger_sum, wz_prove
 >>> n, k = symbols('n k', integer=True)
 >>> zeilberger(binomial(n, k)**2, n, k)
 Telescoper([-2*(2*n + 1), n + 1], k**2*(2*k - 3*n - 3)/(k - n - 1)**2)
@@ -161,7 +161,7 @@ certificate `g`, for the least order (`creative_telescoping`).
 
 ```python
 >>> from sympy import binomial, harmonic, symbols
->>> from sympy_extras.concrete import creative_telescoping, definite_sum
+>>> from sympy_extras.concrete.creative import creative_telescoping, definite_sum
 >>> n, k = symbols('n k')
 >>> Z = creative_telescoping(binomial(n, k)*harmonic(k), k, n)
 >>> Z.coefficients
@@ -220,7 +220,7 @@ representative each); `f` has a rational indefinite sum exactly when
 polygamma functions for the rest.
 
 ```python
->>> from sympy_extras.concrete import abramov_decomposition, rational_sum
+>>> from sympy_extras.concrete.rational import abramov_decomposition, rational_sum
 >>> abramov_decomposition(1/(k*(k + 1)), k)
 RationalDecomposition(-1/k, 0)
 >>> abramov_decomposition(1/k, k)
@@ -241,7 +241,7 @@ their definite sums. SymPy has no q-summation at all.
 ```python
 >>> from sympy import factor
 >>> from sympy.abc import q, k, n, x
->>> from sympy_extras.concrete import qgosper_sum, qzeilberger, qbinomial
+>>> from sympy_extras.concrete.qhyper import qgosper_sum, qzeilberger, qbinomial
 >>> factor(qgosper_sum(q**k, (k, 0, n), q, special_values=False))
 (q**(n + 1) - 1)/(q - 1)
 >>> qzeilberger(qbinomial(n, k, q)*q**(k*(k - 1)/2)*x**k, n, k, q).coefficients
@@ -265,7 +265,8 @@ off (the functions pass it to one another for their inner sums).
 
 ```python
 >>> from sympy import symbols, binomial, log
->>> from sympy_extras.concrete import dirichlet_series, qgosper_term
+>>> from sympy_extras.concrete.dirichlet import dirichlet_series
+>>> from sympy_extras.concrete.qhyper import qgosper_term
 >>> y, s = symbols('y s')
 >>> k, n = symbols('k n')
 >>> zeilberger_sum(k*y**k, (k, 0, n), n)

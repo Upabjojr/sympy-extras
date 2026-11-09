@@ -36,7 +36,7 @@ from typing import TypeVar
 
 from sympy_extras._typing import DomainElement, Monomial, as_expr as sympy_as_expr
 from sympy_extras.core.expr import as_expr as core_as_expr
-from sympy_extras.core.interop import from_sympy as core_from_sympy, to_sympy as core_to_sympy
+from sympy_extras.interop import from_sympy as core_from_sympy, to_sympy as core_to_sympy
 from sympy_extras.core.symbol import Symbol
 
 from .domains.domain import Domain

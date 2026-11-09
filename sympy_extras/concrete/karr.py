@@ -16,7 +16,7 @@ Examples
 
 >>> from sympy import harmonic, factorial, binomial
 >>> from sympy.abc import k, n
->>> from sympy_extras.concrete import karr_sum
+>>> from sympy_extras.concrete.karr import karr_sum
 >>> karr_sum(harmonic(k), (k, 1, n))
 n*harmonic(n) - n + harmonic(n)
 >>> karr_sum(k*harmonic(k), (k, 1, n))
@@ -374,7 +374,7 @@ def karr_term(f: Union[Expr, int], k: Symbol, extensions: Sequence[Expr] = (), a
 
     >>> from sympy import harmonic, factorial
     >>> from sympy.abc import k
-    >>> from sympy_extras.concrete import karr_term
+    >>> from sympy_extras.concrete.karr import karr_term
     >>> karr_term(harmonic(k), k)
     k*(harmonic(k) - 1)
     >>> karr_term(k*factorial(k), k)
@@ -424,7 +424,7 @@ def karr_sum(f: Union[Expr, int], k: Union[Symbol, Sequence[Union[Symbol, Expr, 
 
     >>> from sympy import harmonic, factorial, binomial
     >>> from sympy.abc import k, n
-    >>> from sympy_extras.concrete import karr_sum
+    >>> from sympy_extras.concrete.karr import karr_sum
     >>> karr_sum(harmonic(k)**2, (k, 1, n))
     n*harmonic(n)**2 - 2*n*harmonic(n) + 2*n + harmonic(n)**2 - harmonic(n)
     >>> karr_sum(1/(k*(k + 1)), (k, 1, n))
@@ -493,7 +493,7 @@ def with_sum_special_values(value: Expr, f: Expr, indices: Sequence[Symbol], lim
     :func:`~sympy_extras._special_values.with_special_values`.
 
     >>> from sympy.abc import k, n, y
-    >>> from sympy_extras.concrete import karr_sum
+    >>> from sympy_extras.concrete.karr import karr_sum
     >>> karr_sum(y**k, (k, 0, n))
     Piecewise((n + 1, Eq(y, 1)), ((y*y**n - 1)/(y - 1), True))
     """
@@ -723,7 +723,7 @@ def summation(f: Union[Expr, int], *symbols: Union[Symbol, Sequence[Union[Symbol
 
     >>> from sympy import harmonic
     >>> from sympy.abc import k, n
-    >>> from sympy_extras.concrete import summation
+    >>> from sympy_extras.concrete.karr import summation
     >>> summation(k**2, (k, 1, n))
     n**3/3 + n**2/2 + n/6
     >>> summation(harmonic(k), (k, 1, n))

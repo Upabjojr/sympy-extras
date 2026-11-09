@@ -1,7 +1,7 @@
 """Oracle tests of the native limits (Gruntz's algorithm) against SymPy."""
 import sympy
 
-from sympy_extras.core.interop import expr_from_sympy, to_sympy
+from sympy_extras.interop import expr_from_sympy, to_sympy
 from sympy_extras.core.limits import Limit, limit
 from sympy_extras.core.symbol import Symbol
 

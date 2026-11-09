@@ -50,11 +50,10 @@ import math
 from typing import TYPE_CHECKING, Callable, Optional, Sequence
 
 import mpmath
-import sympy
 
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.basic import Basic
-from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import Integer, Number, Rational
 
@@ -598,15 +597,10 @@ def _has_variety(choices: list[Expr]) -> bool:
     return any(c != choices[0] for c in choices[1:])
 
 
-def _through_sympy(e: Expr, step: Callable[['sympy.Basic'], 'sympy.Basic']) -> Expr:
-    from sympy_extras.core.interop import expr_through_sympy
-    return expr_through_sympy(e, step)
-
-
-def _sympy_only() -> tuple[type, ...]:
-    """The classes whose simplification is SymPy's (not ported)."""
-    from sympy_extras.core.interop import SymPyExprNode
-    return (SymPyExprNode,)
+def _has_foreign_node(e: Basic) -> bool:
+    """Whether ``e`` contains a wrapped object of a foreign system."""
+    from sympy_extras.core.basic import preorder_traversal
+    return any(node._is_foreign_node() for node in preorder_traversal(e))
 
 
 def _combinatorial() -> tuple[type, ...]:
@@ -616,8 +610,9 @@ def _combinatorial() -> tuple[type, ...]:
 
 
 def _sympy_simplify(e: Expr, ratio: float, rational: Optional[bool], inverse: bool, doit: bool) -> Expr:
-    return _through_sympy(e, lambda s: sympy.simplify(s, ratio=ratio, rational=rational, inverse=inverse,
-                                                       doit=doit))
+    # the foreign system's simplification (the nodes not ported)
+    from sympy_extras.core.bridge import bridge
+    return as_expr(bridge().simplify(e, ratio, rational, inverse, doit))
 
 
 def _eval_simplify(e: Expr, ratio: float, measure: Measure, rational: Optional[bool], inverse: bool,
@@ -628,7 +623,7 @@ def _eval_simplify(e: Expr, ratio: float, measure: Measure, rational: Optional[b
     from sympy_extras.functions.elementary.exponential import Log
     from sympy_extras.core.exprtools import factor_terms
     from sympy_extras.core.function import expand_log
-    if isinstance(e, _sympy_only()):
+    if e._is_foreign_node():
         return _sympy_simplify(e, ratio, rational, inverse, doit)
     from sympy_extras.concrete.expr_with_limits import Product, Sum
     if isinstance(e, Sum):
@@ -687,7 +682,6 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     from sympy_extras.functions.special.tensor_functions import KroneckerDeltaNode
     from sympy_extras.functions.elementary.complexes import PolarLift
     from sympy_extras.functions.elementary.exponential import ExpPolar
-    from sympy_extras.core.interop import SymPyExprNode
     from sympy_extras.polys.polytools import cancel
     from sympy_extras.polys.rationaltools import together
     from .fu import HYPER, TRIG
@@ -792,13 +786,10 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     options = _SimplifyOptions(ratio, measure, rational, inverse, doit)
     if e.has(Sum):
         e = sum_simplify(e, options)
-    if e.has(SymPyExprNode):
-        # the Integrals are SymPy's: their content taken out by SymPy
-        def integrals(s: sympy.Basic) -> sympy.Basic:
-            if s.has(sympy.Integral):
-                s = s.xreplace({i: sympy.factor_terms(i) for i in s.atoms(sympy.Integral)})
-            return s
-        e = _through_sympy(e, integrals)
+    if _has_foreign_node(e):
+        # the Integrals are the foreign system's: their content taken out by it
+        from sympy_extras.core.bridge import bridge
+        e = bridge().factor_foreign_integrals(e)
     if e.has(Product):
         e = product_simplify(e, options)
 

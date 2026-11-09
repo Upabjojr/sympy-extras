@@ -1539,7 +1539,7 @@ def invert(f: ExprLike, g: ExprLike) -> Expr:
     gens, (pf, pg) = _joint_rings([a, b])
     if len(gens) != 1:
         import sympy
-        from sympy_extras.core.interop import expr_from_sympy, to_sympy
+        from sympy_extras.interop import expr_from_sympy, to_sympy
         return expr_from_sympy(sympy.invert(to_sympy(a), to_sympy(b)))
     def dense(terms: dict[Monomial, Fraction]) -> list[Fraction]:
         n = max((m[0] for m in terms), default=0)
@@ -1620,7 +1620,7 @@ def _cancel_with_gens(p: Expr, q: Expr, e: Expr, factored: Expr, gens: tuple[Exp
     except CoercionFailed:
         # the domains other than ZZ[...] and QQ[...] are not ported: SymPy's cancel
         import sympy
-        from sympy_extras.core.interop import expr_through_sympy, to_sympy
+        from sympy_extras.interop import expr_through_sympy, to_sympy
         sympy_gens = [to_sympy(g) for g in gens]
         return expr_through_sympy(e, lambda s: sympy.cancel(s, *sympy_gens))
     joint_symbols: set[Symbol] = set()
@@ -1629,7 +1629,7 @@ def _cancel_with_gens(p: Expr, q: Expr, e: Expr, factored: Expr, gens: tuple[Exp
     if any(g not in joint and g.free_symbols & joint_symbols for g in gens):
         # a generator which is not one of the factors (x**2 for x): SymPy's
         import sympy
-        from sympy_extras.core.interop import expr_through_sympy, to_sympy
+        from sympy_extras.interop import expr_through_sympy, to_sympy
         sympy_gens = [to_sympy(g) for g in gens]
         return expr_through_sympy(e, lambda s: sympy.cancel(s, *sympy_gens))
     if not joint:
@@ -1675,7 +1675,7 @@ def _cancel_expanded(p: Expr, q: Expr, e: Expr, factored: Expr) -> Expr:
             except CoercionFailed:
                 # the domains CC and EX are not ported: SymPy's cancel
                 import sympy
-                from sympy_extras.core.interop import expr_through_sympy
+                from sympy_extras.interop import expr_through_sympy
                 return expr_through_sympy(e, sympy.cancel)
             if not rgens:
                 return _expanded(factored)
@@ -1934,7 +1934,7 @@ def factor(f: ExprLike, *gens: ExprLike, deep: bool = False, fraction: bool = Tr
     except CoercionFailed:
         # the domains ZZ_I, RR and EX are not ported: SymPy's factor
         import sympy
-        from sympy_extras.core.interop import expr_through_sympy, to_sympy
+        from sympy_extras.interop import expr_through_sympy, to_sympy
         sympy_gens = [to_sympy(to_expr(g)) for g in gens]
         return expr_through_sympy(e, lambda s: sympy.factor(s, *sympy_gens, fraction=fraction))
 

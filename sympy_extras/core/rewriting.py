@@ -80,7 +80,7 @@ def rewrite(e: Basic, patterns: tuple[type, ...], target: type, hints: Optional[
 
 # PORTED FROM SYMPY: sympy/core/basic.py:Basic._rewrite
 def _rewrite(e: Basic, patterns: tuple[type, ...], target: type, hints: RewriteHints) -> Basic:
-    from .interop import rewrite_node_through_sympy
+    from .bridge import bridge
     args = tuple(_rewrite(a, patterns, target, hints) for a in e.args)
     if not patterns or isinstance(e, patterns):
         rule = _rule_for(type(e), target)
@@ -91,7 +91,7 @@ def _rewrite(e: Basic, patterns: tuple[type, ...], target: type, hints: RewriteH
                 if rewritten is not None:
                     return rewritten
         elif rule is None and not _without_rules(e):
-            through = rewrite_node_through_sympy(e, args, target, hints.piecewise)
+            through = bridge().rewrite_node(e, args, target, hints.piecewise)
             if through is not None:
                 return through
     if not args:
@@ -140,7 +140,7 @@ def rewrite_tractable(e: Basic, limitvar: Optional[Symbol], intractable: bool = 
     form of the functions with the exponentials and logarithms the limit
     algorithm works with), or ``'intractable'`` back. The elementary
     functions are rewritten here, the special ones by SymPy's rules."""
-    from .interop import rewrite_named_node_through_sympy
+    from .bridge import bridge
     from sympy_extras.functions.elementary.exponential import Log
     from sympy_extras.functions.elementary.hyperbolic import Cosh, Coth, Csch, Sech, Sinh, Tanh
     args = tuple(rewrite_tractable(a, limitvar, intractable) for a in e.args)
@@ -154,7 +154,7 @@ def rewrite_tractable(e: Basic, limitvar: Optional[Symbol], intractable: bool = 
         elif _log_tractable(e):
             return _rewrite(e._evaluated(args), (), Log, RewriteHints())
     if e.args:
-        through = rewrite_named_node_through_sympy(e, args, 'intractable' if intractable else 'tractable', limitvar)
+        through = bridge().rewrite_named_node(e, args, 'intractable' if intractable else 'tractable', limitvar)
         if through is not None:
             return through
     if not args:

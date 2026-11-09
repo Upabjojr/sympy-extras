@@ -8,7 +8,8 @@ from typing import Callable, Optional
 import sympy
 
 from sympy_extras._typing import as_expr as sympy_expr
-from sympy_extras.core import E, I, Integer, Rational, Symbol, pi, to_sympy, from_sympy
+from sympy_extras.core import E, I, Integer, Rational, Symbol, pi
+from sympy_extras.interop import to_sympy, from_sympy
 from sympy_extras.core.expr import Expr, as_expr
 from sympy_extras.functions.elementary.exponential import Exp, Log, exp, log
 

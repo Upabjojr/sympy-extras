@@ -9,9 +9,9 @@ from sympy import binomial, factorial, rf
 from sympy.concrete.gosper import gosper_sum as sympy_gosper_sum, gosper_term as sympy_gosper_term
 
 from sympy_extras.concrete.gosper import gosper_sum, gosper_term
-from sympy_extras.core import to_sympy
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
-from sympy_extras.core.interop import expr_from_sympy, from_sympy
+from sympy_extras.interop import expr_from_sympy, from_sympy
 from sympy_extras.core.symbol import Symbol
 
 i = sympy.Symbol('i', integer=True)

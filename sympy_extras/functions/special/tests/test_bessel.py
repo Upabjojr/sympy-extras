@@ -8,7 +8,8 @@ from typing import Callable
 import sympy
 
 from sympy_extras._typing import as_expr as sympy_expr
-from sympy_extras.core import I, Integer, Rational, Symbol, oo, to_sympy
+from sympy_extras.core import I, Integer, Rational, Symbol, oo
+from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.numbers import nan
 from sympy_extras.functions import BesselI, BesselJ, BesselK, BesselY, besseli, besselj, besselk, bessely
@@ -70,8 +71,8 @@ def test_polar_arguments_match_sympy() -> None:
     # integrals, Ei and expint on polar arguments
     import sympy
     from sympy import I as sI, Rational as R, exp_polar as E, pi as sP
-    from sympy_extras.core import to_sympy
-    from sympy_extras.core.interop import expr_from_sympy
+    from sympy_extras.interop import to_sympy
+    from sympy_extras.interop import expr_from_sympy
     import sympy_extras.functions as F
     z, a = sympy.symbols('z a')
     p = sympy.Symbol('p', positive=True)

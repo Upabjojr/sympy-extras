@@ -25,8 +25,6 @@ from typing import Final, Iterator, Literal, Optional, Sequence, TYPE_CHECKING, 
 
 import mpmath
 
-import sympy
-
 from .basic import Atom, Basic, RefineArg, SubsArg, SubsMapping
 from .cache import cacheit
 from .kind import Kind, NumberKind, UndefinedKind
@@ -40,6 +38,7 @@ if TYPE_CHECKING:
     from .numbers import Number
     from .printing import StrPrinter
     from .symbol import Symbol
+    from sympy_extras.polys.polytools import Poly
 
 __all__ = ['Expr', 'AtomicExpr', 'ExprLike', 'UnevaluatedExpr', 'as_expr', 'to_expr', 'terms_of',
     'factors_of', 'IntegrationSpec', 'TermInfo']
@@ -851,7 +850,7 @@ class Expr(Basic):
         (True, True, False)
         """
         from .add import sub
-        from .interop import to_sympy
+        from .bridge import bridge
         from .numbers import Number
         difference = sub(self, other)
         if isinstance(difference, Number):
@@ -860,11 +859,7 @@ class Expr(Basic):
         zero = difference.is_zero
         if zero is not None:
             return zero
-        s = to_sympy(difference)
-        if not isinstance(s, sympy.Expr):
-            return None
-        answer = s.equals(0)
-        return answer if isinstance(answer, bool) else None
+        return bridge().equals_zero(difference)
 
     # ------------------------------------------------------------------
     # complex structure
@@ -969,21 +964,13 @@ class Expr(Basic):
             free = free & set(wrt)
         if not free:
             return True
-        from .interop import to_sympy
-        s = to_sympy(self)
-        if not isinstance(s, sympy.Expr):
-            return None
-        answer = s.is_constant(*[to_sympy(w) for w in wrt])
-        return answer if isinstance(answer, bool) else None
+        from .bridge import bridge
+        return bridge().is_constant(self, list(wrt))
 
     def is_hypergeometric(self, k: Symbol) -> Optional[bool]:
         """Whether the expression is a hypergeometric term in ``k`` (SymPy)."""
-        from .interop import to_sympy
-        s = to_sympy(self)
-        if not isinstance(s, sympy.Expr):
-            return None
-        answer = s.is_hypergeometric(to_sympy(k))
-        return answer if isinstance(answer, bool) else None
+        from .bridge import bridge
+        return bridge().is_hypergeometric(self, k)
 
     # PORTED FROM SYMPY: sympy/core/expr.py:Expr.is_meromorphic
     def is_meromorphic(self, x: Symbol, a: ExprLike) -> Optional[bool]:
@@ -1013,9 +1000,9 @@ class Expr(Basic):
             return True
         if x not in self.free_symbols:
             return True
-        # the classes whose rule is not ported: SymPy's
-        from .interop import meromorphic_node_through_sympy
-        return meromorphic_node_through_sympy(self, x, a, True)[1]
+        # the classes whose rule is not ported: the foreign system's
+        from .bridge import bridge
+        return bridge().meromorphic(self, x, a, True)[1]
 
     @property
     def is_comparable(self) -> bool:
@@ -1168,9 +1155,9 @@ class Expr(Basic):
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         """The terms of the series up to ``O(x**n)`` at zero from the
         right (overridden by the classes; the classes whose expansion is
-        not ported use SymPy's)."""
-        from .interop import nseries_node_through_sympy
-        return nseries_node_through_sympy(self, x, n, logx, cdir)
+        not ported use the foreign system's)."""
+        from .bridge import bridge
+        return bridge().nseries(self, x, n, logx, cdir)
 
     # PORTED FROM SYMPY: sympy/core/expr.py:Expr._eval_lseries
     def _eval_lseries(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Iterator[Expr]:
@@ -1219,15 +1206,14 @@ class Expr(Basic):
 
     def fps(self, x: Optional[Symbol] = None, x0: ExprLike = 0, dir: int = 1) -> Expr:
         """The formal power series (SymPy's ``fps``, wrapped)."""
-        from .interop import expr_through_sympy, to_sympy
-        sx = None if x is None else to_sympy(x)
-        return expr_through_sympy(self, lambda s: sympy.fps(s, sx, to_sympy(to_expr(x0)), dir))
+        from .bridge import bridge
+        return bridge().fps(self, x, to_expr(x0), dir)
 
     def fourier_series(self, limits: Optional[tuple[Symbol, ExprLike, ExprLike]] = None) -> Expr:
         """The Fourier series (SymPy's ``fourier_series``, wrapped)."""
-        from .interop import expr_through_sympy, to_sympy
-        bounds = None if limits is None else (to_sympy(limits[0]), to_sympy(to_expr(limits[1])), to_sympy(to_expr(limits[2])))
-        return expr_through_sympy(self, lambda s: sympy.fourier_series(s, bounds))
+        from .bridge import bridge
+        bounds = None if limits is None else (limits[0], to_expr(limits[1]), to_expr(limits[2]))
+        return bridge().fourier_series(self, bounds)
 
     def limit(self, x: Symbol, xlim: ExprLike, dir: str = '+') -> Expr:
         """The limit as ``x`` goes to ``xlim`` (:func:`~sympy_extras.core.limits.limit`).
@@ -1417,7 +1403,8 @@ class Expr(Basic):
         ========
 
         >>> import sympy
-        >>> from sympy_extras.core import Symbol, SymPyFunction
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.interop import SymPyFunction
         >>> x = Symbol('x')
         >>> sin, cos = SymPyFunction(sympy.sin), SymPyFunction(sympy.cos)
         >>> (sin(x)**2 + cos(x)**2).simplify()
@@ -1536,33 +1523,31 @@ class Expr(Basic):
         >>> (x**2).integrate(x), (x**2).integrate((x, 0, 1))
         (x**3/3, 1/3)
         """
-        from .interop import expr_through_sympy, to_sympy
-        specs: list[Union[sympy.Basic, tuple[sympy.Basic, sympy.Basic, sympy.Basic]]] = []
+        from .bridge import bridge
+        specs: list[Union[Symbol, tuple[Symbol, Expr, Expr]]] = []
         for a in args:
-            if isinstance(a, tuple):
-                specs.append((to_sympy(a[0]), to_sympy(to_expr(a[1])), to_sympy(to_expr(a[2]))))
-            else:
-                specs.append(to_sympy(a))
-        return expr_through_sympy(self, lambda s: sympy.integrate(s, *specs))
+            specs.append((a[0], to_expr(a[1]), to_expr(a[2])) if isinstance(a, tuple) else a)
+        return bridge().integrate(self, specs)
 
-    def as_poly(self, *gens: Symbol) -> Optional[sympy.Poly]:
-        """SymPy's ``Poly`` of the expression, ``None`` when it is not a
-        polynomial (the ``Poly`` class belongs to ``sympy.polys``).
+    def as_poly(self, *gens: Symbol) -> Optional[Poly]:
+        """The polynomial of the expression (the typed ``Poly`` of
+        :mod:`sympy_extras.polys.polytools`), ``None`` when it is not a
+        polynomial in ``gens`` (or in its own generators).
 
         Examples
         ========
 
         >>> from sympy_extras.core import Symbol
         >>> x = Symbol('x')
-        >>> (x**2 + 1).as_poly()
-        Poly(x**2 + 1, x, domain='ZZ')
+        >>> (x**2 + 1).as_poly(), (1/x).as_poly(x)
+        (Poly(x**2 + 1, x, domain='ZZ'), None)
         """
-        from .interop import to_sympy
-        s = to_sympy(self)
-        if not isinstance(s, sympy.Expr):
+        from sympy_extras.polys.polyerrors import GeneratorsNeeded, PolynomialError
+        from sympy_extras.polys.polytools import Poly
+        try:
+            return Poly(self, *gens)
+        except (PolynomialError, GeneratorsNeeded):
             return None
-        poly = s.as_poly(*[to_sympy(g) for g in gens])
-        return poly if isinstance(poly, sympy.Poly) else None
 
     def invert(self, g: ExprLike, *gens: Symbol) -> Expr:
         """SymPy's ``invert``: the inverse of ``self`` modulo ``g``."""
@@ -1570,18 +1555,14 @@ class Expr(Basic):
         if not gens or (len(gens) == 1 and (self.free_symbols | ge.free_symbols) <= {gens[0]}):
             from sympy_extras.polys.polytools import invert
             return invert(self, g)
-        from .interop import expr_through_sympy, to_sympy
-        return expr_through_sympy(self, lambda s: sympy.invert(s, to_sympy(to_expr(g)), *[to_sympy(v) for v in gens]))
+        from .bridge import bridge
+        return bridge().invert(self, ge, list(gens))
 
     def extract_branch_factor(self, allow_half: bool = False) -> tuple[Expr, Expr]:
         """SymPy's ``extract_branch_factor``: ``(z, n)`` with
         ``self == z*exp_polar(2*pi*I*n)``."""
-        from .interop import expr_from_sympy, to_sympy
-        s = to_sympy(self)
-        if not isinstance(s, sympy.Expr):
-            raise TypeError("an expression is expected")
-        z, k = s.extract_branch_factor(allow_half=allow_half)
-        return (expr_from_sympy(z), expr_from_sympy(k))
+        from .bridge import bridge
+        return bridge().extract_branch_factor(self, allow_half)
 
     def rewrite(self, *args: Union[Basic, FunctionClass, type], piecewise: bool = True) -> Expr:
         return as_expr(super().rewrite(*args, piecewise=piecewise))

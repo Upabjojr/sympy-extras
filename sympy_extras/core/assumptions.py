@@ -28,7 +28,6 @@ import mpmath
 
 from typing import Callable, Iterable, Optional
 
-from sympy.core.basic import Basic as SymPyBasic
 
 from .expr import Expr
 from .numbers import (CatalanType, ComplexInfinity, EulerGammaType, Exp1, Float, GoldenRatioType,
@@ -697,39 +696,6 @@ def pow_facts(base: Expr, exp: Expr) -> Facts:
             facts.update(irrational=True, real=True)
     return facts
 
-
-#: SymPy's ``is_*`` properties by predicate name (read without ``getattr``)
-_SYMPY_QUERIES: dict[str, Callable[[SymPyBasic], Truth]] = {
-    'commutative': lambda e: e.is_commutative, 'complex': lambda e: e.is_complex, 'real': lambda e: e.is_real,
-    'extended_real': lambda e: e.is_extended_real, 'imaginary': lambda e: e.is_imaginary,
-    'integer': lambda e: e.is_integer, 'noninteger': lambda e: e.is_noninteger, 'rational': lambda e: e.is_rational,
-    'irrational': lambda e: e.is_irrational, 'algebraic': lambda e: e.is_algebraic,
-    'transcendental': lambda e: e.is_transcendental, 'positive': lambda e: e.is_positive,
-    'negative': lambda e: e.is_negative, 'nonnegative': lambda e: e.is_nonnegative,
-    'nonpositive': lambda e: e.is_nonpositive, 'zero': lambda e: e.is_zero, 'nonzero': lambda e: e.is_nonzero,
-    'extended_positive': lambda e: e.is_extended_positive, 'extended_negative': lambda e: e.is_extended_negative,
-    'extended_nonnegative': lambda e: e.is_extended_nonnegative,
-    'extended_nonpositive': lambda e: e.is_extended_nonpositive, 'extended_nonzero': lambda e: e.is_extended_nonzero,
-    'even': lambda e: e.is_even, 'odd': lambda e: e.is_odd, 'prime': lambda e: e.is_prime,
-    'composite': lambda e: e.is_composite, 'finite': lambda e: e.is_finite, 'infinite': lambda e: e.is_infinite,
-    'hermitian': lambda e: e.is_hermitian, 'antihermitian': lambda e: e.is_antihermitian, 'polar': lambda e: e.is_polar,
-}
-
-
-def sympy_facts(e: Expr) -> Facts:
-    """The facts SymPy knows about the SymPy form of ``e`` (its ``is_*``
-    properties)."""
-    from .interop import to_sympy
-    facts: Facts = {}
-    sympy_expr = to_sympy(e)
-    for name, query in _SYMPY_QUERIES.items():
-        try:
-            answer = query(sympy_expr)
-        except (TypeError, ValueError, AttributeError):  # SymPy refuses some questions
-            continue
-        if isinstance(answer, bool):
-            facts[name] = answer
-    return facts
 
 
 def facts_of(e: Expr) -> Facts:

@@ -7,7 +7,8 @@ from sympy import (Expr, Integer, Piecewise, Rational, Sum, Symbol, binomial, ex
     symbols)
 
 from sympy_extras._typing import as_expr
-from sympy_extras.concrete import creative_telescoping, definite_sum, summation
+from sympy_extras.concrete.creative import creative_telescoping, definite_sum
+from sympy_extras.concrete.karr import summation
 
 n, k, a, b, x = symbols('n k a b x')
 

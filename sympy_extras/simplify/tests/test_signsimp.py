@@ -7,8 +7,8 @@ import random
 import pytest
 import sympy
 
-from sympy_extras.core import to_sympy
-from sympy_extras.core.interop import expr_from_sympy
+from sympy_extras.interop import to_sympy
+from sympy_extras.interop import expr_from_sympy
 from sympy_extras.simplify.signsimp import signsimp
 
 sx, sy, sa = sympy.symbols('x y a')
