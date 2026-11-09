@@ -50,6 +50,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/domains/sparsepolynomialring.py` | done | the Integer/Rational flavours as `SparsePolynomialRing::sympy` with `SparseGround` hooks; `IteratedPolynomialRing` one recursive type; over `ZZ`/`QQ` (the gcd needs an ordered ground, in Python too) |
 | `polys/domains/polynomialring.py` | done | the tower depth is a type (`PolynomialRing<PolynomialRing<K>>`); the bindings offer `K[y]` over `ZZ`, `QQ`, `GF(p)`, on which every dense binding runs |
 | `polys/domains/fractionfield.py` | done | conversions between different fields of fractions wait for the core (they go through expressions) |
+| `polys/domains/sparsefractionfield.py` | done | over the sparse rings of `ZZ` and `QQ` (with `cancel`, and `RationalPolynomialRing.cancel` as a `SparseGround` hook); `to_expr`/`from_expr` wait for the core |
 | `polys/rootisolation.py` | done | with the `isolate_real_roots_dense`/`count_real_roots_dense` hooks of `ZZ` and `QQ` |
 | `polys/f4.py` | done | Katsura-4: the same bases, 2.5x (lex over `QQ`) to 7x (`GF(32003)`) faster than Python, untuned |
 | `polys/stronggroebner.py` | done | 10-20x faster than Python on the random test systems |

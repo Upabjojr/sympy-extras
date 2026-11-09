@@ -15,7 +15,11 @@ use crate::convert::{extract_int, out_int, Bridge};
 use crate::domains::{DomainKind, PyDomain};
 
 /// `x + y*I` with integer parts.
-#[pyclass(name = "GaussianInteger", module = "sympy_extras_rs.polys.domains.gaussiandomains", frozen)]
+#[pyclass(
+    name = "GaussianInteger",
+    module = "sympy_extras_rs.polys.domains.gaussiandomains",
+    frozen
+)]
 pub struct PyGaussianInteger {
     #[pyo3(get)]
     x: Py<PyAny>,
@@ -24,7 +28,11 @@ pub struct PyGaussianInteger {
 }
 
 /// `x + y*I` with rational parts.
-#[pyclass(name = "GaussianRational", module = "sympy_extras_rs.polys.domains.gaussiandomains", frozen)]
+#[pyclass(
+    name = "GaussianRational",
+    module = "sympy_extras_rs.polys.domains.gaussiandomains",
+    frozen
+)]
 pub struct PyGaussianRational {
     #[pyo3(get)]
     x: Py<PyAny>,
@@ -55,7 +63,11 @@ impl PyGaussianInteger {
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
-        Ok(format!("GaussianInteger({}, {})", self.x.bind(py).str()?, self.y.bind(py).str()?))
+        Ok(format!(
+            "GaussianInteger({}, {})",
+            self.x.bind(py).str()?,
+            self.y.bind(py).str()?
+        ))
     }
 
     fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<bool> {
@@ -87,7 +99,11 @@ impl PyGaussianRational {
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
-        Ok(format!("GaussianRational({}, {})", self.x.bind(py).str()?, self.y.bind(py).str()?))
+        Ok(format!(
+            "GaussianRational({}, {})",
+            self.x.bind(py).str()?,
+            self.y.bind(py).str()?
+        ))
     }
 
     fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<bool> {
@@ -124,7 +140,10 @@ impl Bridge for GaussianIntegerRing {
 impl Bridge for GaussianRationalField {
     fn extract(&self, ob: &Bound<'_, PyAny>) -> PyResult<GaussianRational> {
         if let (Ok(x), Ok(y)) = (ob.getattr("x"), ob.getattr("y")) {
-            return Ok(GaussianRational::new(RationalField.extract(&x)?, RationalField.extract(&y)?));
+            return Ok(GaussianRational::new(
+                RationalField.extract(&x)?,
+                RationalField.extract(&y)?,
+            ));
         }
         Ok(GaussianRational::new(RationalField.extract(ob)?, Rat::ZERO))
     }

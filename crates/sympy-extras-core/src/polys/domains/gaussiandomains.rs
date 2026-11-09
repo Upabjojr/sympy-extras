@@ -145,7 +145,11 @@ impl GaussianIntegerRing {
 
     /// SymPy's `GaussianInteger.__divmod__`: the quotient rounded to the
     /// nearest Gaussian integer, `|r| < |b|`.
-    pub fn divmod_gaussian(&self, a: &GaussianInteger, b: &GaussianInteger) -> PolyResult<(GaussianInteger, GaussianInteger)> {
+    pub fn divmod_gaussian(
+        &self,
+        a: &GaussianInteger,
+        b: &GaussianInteger,
+    ) -> PolyResult<(GaussianInteger, GaussianInteger)> {
         if b.is_zero() {
             return Err(zero_division(&format!("divmod({}, 0)", a)));
         }
@@ -442,10 +446,16 @@ impl Domain for GaussianRationalField {
     }
 
     fn size(&self, a: &GaussianRational) -> u64 {
-        [bits(&numer(&a.x)), bits(&denom(&a.x)), bits(&numer(&a.y)), bits(&denom(&a.y)), 1]
-            .into_iter()
-            .max()
-            .unwrap_or(1)
+        [
+            bits(&numer(&a.x)),
+            bits(&denom(&a.x)),
+            bits(&numer(&a.y)),
+            bits(&denom(&a.y)),
+            1,
+        ]
+        .into_iter()
+        .max()
+        .unwrap_or(1)
     }
 
     fn from_int(&self, n: i64) -> GaussianRational {
@@ -531,7 +541,12 @@ mod tests {
         assert_eq!(ZZ_I.add(&ZZ_I.mul(&s, &g(4, 2)), &ZZ_I.mul(&t, &g(2, 6))), h);
         assert!(ZZ_I.exquo(&a, &b).is_err() && ZZ_I.invert(&a).is_err());
         assert_eq!(ZZ_I.invert(&g(0, 1)).unwrap(), g(0, -1));
-        assert!(ZZ_I.convert(&GaussianRational::new(rat(1, 2), Rat::ZERO), &QQ_I).is_err());
-        assert_eq!((g(0, 0).quadrant(), g(-1, 0).quadrant(), g(0, -1).quadrant()), (0, 2, 3));
+        assert!(ZZ_I
+            .convert(&GaussianRational::new(rat(1, 2), Rat::ZERO), &QQ_I)
+            .is_err());
+        assert_eq!(
+            (g(0, 0).quadrant(), g(-1, 0).quadrant(), g(0, -1).quadrant()),
+            (0, 2, 3)
+        );
     }
 }

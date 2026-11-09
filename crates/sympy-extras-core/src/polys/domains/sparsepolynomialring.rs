@@ -98,6 +98,17 @@ pub trait SparseGround: Domain {
         ring.subresultant_gcd(a, b)
     }
 
+    /// `cancel`, when it is not the generic one
+    /// (`RationalPolynomialRing.cancel`).
+    #[allow(clippy::type_complexity)]
+    fn sympy_cancel(
+        _ring: &SparsePolynomialRing<Self>,
+        _f: &PolyElement<Self>,
+        _g: &PolyElement<Self>,
+    ) -> Option<(PolyElement<Self>, PolyElement<Self>)> {
+        None
+    }
+
     /// The lcm, when it is not the generic one.
     fn sympy_lcm(
         _ring: &SparsePolynomialRing<Self>,
@@ -167,6 +178,52 @@ impl SparseGround for RationalField {
             .expect("a nonzero leading coefficient of a field")
     }
 
+    /// The denominators cleared, the cofactors over `ZZ`, the contents
+    /// divided by their gcd, the sign of `q` canonical.
+    fn sympy_cancel(
+        ring: &SparsePolynomialRing<RationalField>,
+        f: &PolyElement<RationalField>,
+        g: &PolyElement<RationalField>,
+    ) -> Option<(PolyElement<RationalField>, PolyElement<RationalField>)> {
+        if f.is_zero() {
+            return Some((f.clone(), ring.one()));
+        }
+        let z: SparsePolynomialRing<IntegerRing> = SparsePolynomialRing::sympy(ZZ, ring.names.clone());
+        let clear = |p: &PolyElement<RationalField>| -> (Int, PolyElement<IntegerRing>) {
+            let mut d: Int = Int::ONE;
+            for c in p.terms.values() {
+                d = lcm(&d, &denom(c));
+            }
+            let cleared = z.ring.from_dict(
+                p.terms
+                    .iter()
+                    .map(|(m, c)| (m.clone(), numer(&(c * rat_from_int(&d)))))
+                    .collect(),
+            );
+            (d, cleared)
+        };
+        let (cq, fz) = clear(f);
+        let (cp, gz) = clear(g);
+        let h: PolyElement<IntegerRing> = z.gcd(&fz, &gz);
+        let pz: PolyElement<IntegerRing> = fz.exquo(&h).expect("the gcd divides");
+        let qz: PolyElement<IntegerRing> = gz.exquo(&h).expect("the gcd divides");
+        let c: Int = gcd(&cp, &cq);
+        let (cp, cq): (Int, Int) = (&cp / &c, &cq / &c);
+        let p = ring.ring.from_dict(
+            pz.terms
+                .iter()
+                .map(|(m, v)| (m.clone(), rat_from_int(&(v * &cp))))
+                .collect(),
+        );
+        let q = ring.ring.from_dict(
+            qz.terms
+                .iter()
+                .map(|(m, v)| (m.clone(), rat_from_int(&(v * &cq))))
+                .collect(),
+        );
+        Some(ring.canonical_denominator(p, q))
+    }
+
     /// The monic `a b / gcd(a, b)`.
     fn sympy_lcm(
         ring: &SparsePolynomialRing<RationalField>,
@@ -207,6 +264,32 @@ impl<K: SparseGround> SparsePolynomialRing<K> {
             ring,
             flavor,
         }
+    }
+
+    /// `(p, q)` with `p/q == f/g` in lowest terms, the leading coefficient
+    /// of `q` canonical (nonnegative).
+    pub fn cancel(&self, f: &PolyElement<K>, g: &PolyElement<K>) -> (PolyElement<K>, PolyElement<K>) {
+        if self.flavor == GcdFlavor::Sympy {
+            if let Some(result) = K::sympy_cancel(self, f, g) {
+                return result;
+            }
+        }
+        if f.is_zero() {
+            return (f.clone(), self.ring.one());
+        }
+        let h: PolyElement<K> = self.gcd(f, g);
+        let p: PolyElement<K> = f.exquo(&h).expect("the gcd divides");
+        let q: PolyElement<K> = g.exquo(&h).expect("the gcd divides");
+        self.canonical_denominator(p, q)
+    }
+
+    /// `(-p, -q)` when the leading coefficient of `q` is negative (SymPy
+    /// multiplies by the canonical unit of `q`).
+    pub fn canonical_denominator(&self, p: PolyElement<K>, q: PolyElement<K>) -> (PolyElement<K>, PolyElement<K>) {
+        if !q.is_zero() && self.ground.is_negative(&q.LC()) {
+            return (p.neg(), q.neg());
+        }
+        (p, q)
     }
 
     pub fn is_nonnegative(&self, a: &PolyElement<K>) -> bool {

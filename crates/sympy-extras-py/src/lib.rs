@@ -25,6 +25,7 @@ mod ntheory;
 mod polyerrors;
 mod rings;
 mod sparse;
+mod sparsefrac;
 
 /// A submodule `parent.name`, registered as `full` in `sys.modules`.
 fn submodule<'py>(parent: &Bound<'py, PyModule>, name: &str, full: &str) -> PyResult<Bound<'py, PyModule>> {
@@ -73,6 +74,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &domains_module,
         "sparsepolynomialring",
         "sympy_extras_rs.polys.domains.sparsepolynomialring",
+    )?)?;
+    sparsefrac::register(&submodule(
+        &domains_module,
+        "sparsefractionfield",
+        "sympy_extras_rs.polys.domains.sparsefractionfield",
     )?)?;
     dense::register_densebasic(&submodule(&polys, "densebasic", "sympy_extras_rs.polys.densebasic")?)?;
     dense::register_densearith(&submodule(&polys, "densearith", "sympy_extras_rs.polys.densearith")?)?;

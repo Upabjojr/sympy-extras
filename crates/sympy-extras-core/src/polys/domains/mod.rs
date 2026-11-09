@@ -9,6 +9,7 @@ pub mod gaussiandomains;
 pub mod integerring;
 pub mod polynomialring;
 pub mod rationalfield;
+pub mod sparsefractionfield;
 pub mod sparsepolynomialring;
 
 pub use algebraicfield::{AlgebraicElement, AlgebraicField};
@@ -20,4 +21,5 @@ pub use gaussiandomains::{GaussianInteger, GaussianIntegerRing, GaussianRational
 pub use integerring::{IntegerRing, ZZ};
 pub use polynomialring::PolynomialRing;
 pub use rationalfield::{RationalField, QQ};
+pub use sparsefractionfield::{SparseFracElement, SparseFractionField};
 pub use sparsepolynomialring::{GcdFlavor, IteratedPolynomialRing, SparseGround, SparsePolynomialRing};
