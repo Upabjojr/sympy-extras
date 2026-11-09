@@ -171,6 +171,65 @@ def _pow_cos(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optiona
     return None
 
 
+# PORTED FROM SYMPY: the _eval_rewrite_as_log methods of asin, acos, atan, acot, asec, acsc
+# (sympy/functions/elementary/trigonometric.py), asinh, acosh, atanh, acoth, asech, acsch
+# (sympy/functions/elementary/hyperbolic.py), and cot._eval_rewrite_as_tan
+def _log_rules() -> dict[tuple[type, type], Rule]:
+    """The inverse trigonometric and hyperbolic functions as logarithms."""
+    from sympy_extras.core.power import sqrt
+    from .exponential import Log
+    one = Integer(1)
+
+    def asin(x: Expr) -> Expr:
+        return -I * log(I * x + sqrt(1 - x**2))
+
+    def acos(x: Expr) -> Expr:
+        return HALF_PI + I * log(I * x + sqrt(1 - x**2))
+
+    def atan(x: Expr) -> Expr:
+        return I / 2 * (log(one - I * x) - log(one + I * x))
+
+    def acot(x: Expr) -> Expr:
+        return I / 2 * (log(1 - I / x) - log(1 + I / x))
+
+    def asec(x: Expr) -> Expr:
+        return HALF_PI + I * log(I / x + sqrt(1 - 1 / x**2))
+
+    def acsc(x: Expr) -> Expr:
+        return -I * log(I / x + sqrt(1 - 1 / x**2))
+
+    def asinh(x: Expr) -> Expr:
+        return log(x + sqrt(x**2 + 1))
+
+    def acosh(x: Expr) -> Expr:
+        return log(x + sqrt(x + 1) * sqrt(x - 1))
+
+    def atanh(x: Expr) -> Expr:
+        return (log(1 + x) - log(1 - x)) / 2
+
+    def acoth(x: Expr) -> Expr:
+        return (log(1 + 1 / x) - log(1 - 1 / x)) / 2
+
+    def asech(x: Expr) -> Expr:
+        return log(1 / x + sqrt(1 / x - 1) * sqrt(1 / x + 1))
+
+    def acsch(x: Expr) -> Expr:
+        return log(1 / x + sqrt(1 / x**2 + 1))
+
+    def of(f: Callable[[Expr], Expr]) -> Rule:
+        def rule(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+            return f(args[0])
+        return rule
+
+    def cot_tan(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+        return 1 / t.tan(args[0])
+
+    return {(t.Asin, Log): of(asin), (t.Acos, Log): of(acos), (t.Atan, Log): of(atan), (t.Acot, Log): of(acot),
+            (t.Asec, Log): of(asec), (t.Acsc, Log): of(acsc), (h.Asinh, Log): of(asinh), (h.Acosh, Log): of(acosh),
+            (h.Atanh, Log): of(atanh), (h.Acoth, Log): of(acoth), (h.Asech, Log): of(asech),
+            (h.Acsch, Log): of(acsch), (t.Cot, t.Tan): cot_tan}
+
+
 def rules() -> dict[tuple[type, type], Rule]:
     """The rules keyed by (the class of the node, the target class)."""
     sec_exp_r = _reciprocal(_cos_exp, t.cos)
@@ -186,6 +245,7 @@ def rules() -> dict[tuple[type, type], Rule]:
         (h.Sech, Exp): sech_exp_r, (h.Csch, Exp): csch_exp_r,
         (h.Cosh, t.Cos): _cosh_cos, (h.Sech, t.Cos): _sech_cos,
         (Exp, t.Cos): _exp_cos, (Pow, Exp): _pow_exp, (Pow, t.Cos): _pow_cos}
+    table.update(_log_rules())
     return table
 
 

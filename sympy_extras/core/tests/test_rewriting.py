@@ -201,3 +201,30 @@ def test_expand_func_loggamma_spherical_lerchphi_match_sympy() -> None:
     for e in cases:
         got = to_sympy(expand_func(expr_from_sympy(e)), evaluate=False)
         assert norm(str(got)) == norm(str(sympy.expand_func(e))), e
+
+
+def test_log_and_special_rewrites_match_sympy() -> None:
+    # functions/elementary/_rewrites._log_rules and functions/special/_rewrites
+    import sympy
+    from sympy_extras.functions.elementary.exponential import Log
+    from sympy_extras.functions.elementary.trigonometric import Tan
+    import sympy_extras.functions.special.bessel as B
+    import sympy_extras.functions.special.error_functions as ER
+    from sympy_extras.interop import expr_from_sympy, to_sympy
+    x, z, n = sympy.symbols('x z n')
+    half = sympy.Rational(1, 2)
+    pairs: list[tuple[sympy.Expr, object, type]] = []
+    for f in (sympy.asin, sympy.acos, sympy.atan, sympy.acot, sympy.asec, sympy.acsc, sympy.asinh, sympy.acosh,
+              sympy.atanh, sympy.acoth, sympy.asech, sympy.acsch):
+        for a in (x, 2*x + 1, sympy.Rational(1, 3)):
+            pairs.append((f(a, evaluate=False), sympy.log, Log))
+    pairs += [(sympy.cot(x), sympy.tan, Tan), (sympy.besselj(n, z), sympy.jn, B.SphericalJ),
+              (sympy.besselj(n, z), sympy.besseli, B.BesselI), (sympy.besseli(n, z), sympy.besselj, B.BesselJ),
+              (sympy.bessely(half, z), sympy.besselj, B.BesselJ), (sympy.bessely(n, z), sympy.besselj, B.BesselJ),
+              (sympy.besselk(half, z), sympy.besselj, B.BesselJ), (sympy.erfc(z), sympy.erf, ER.Erf),
+              (sympy.erfi(z), sympy.erf, ER.Erf), (sympy.erf2(z, 2*z), sympy.erf, ER.Erf),
+              (sympy.expint(1, z), sympy.Ei, ER.EiNode), (sympy.expint(3, z), sympy.Ei, ER.EiNode),
+              (sympy.Ei(z), sympy.expint, ER.Expint)]
+    for e, theirs, ours in pairs:
+        got = to_sympy(expr_from_sympy(e).rewrite(ours), evaluate=False)
+        assert str(got) == str(e.rewrite(theirs)), (e, ours)

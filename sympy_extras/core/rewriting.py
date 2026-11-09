@@ -46,8 +46,10 @@ def _rules() -> dict[tuple[type, type], Rule]:
     if not _RULES:
         from sympy_extras.functions.combinatorial._rewrites import rules as combinatorial_rules
         from sympy_extras.functions.elementary._rewrites import rules
+        from sympy_extras.functions.special._rewrites import rules as special_rules
         _RULES.update(rules())
         _RULES.update(combinatorial_rules())
+        _RULES.update(special_rules())
     return _RULES
 
 

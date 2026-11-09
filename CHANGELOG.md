@@ -386,6 +386,11 @@ remove public functions. Breaking changes are listed here when they happen.
   spherical Bessel functions (`spherical_bessel_fn`, ported from
   `sympy.polys.orthopolys`) and of `lerchphi` (all its cases) is native:
   no `expand_func` of the measured tests goes through SymPy now.
+- Native rewrites: the inverse trigonometric and hyperbolic functions as
+  `log`, `cot` as `tan`, and (`functions/special/_rewrites.py`) the Bessel
+  functions between themselves and as `jn`, `erfc`/`erfi`/`erf2` as `erf`,
+  `expint` and `Ei` into each other: no rewrite of the measured tests goes
+  through SymPy now.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
