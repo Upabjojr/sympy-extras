@@ -145,3 +145,19 @@ def test_own_meromorphic_table_matches_sympy() -> None:
             if any('_eval_is_meromorphic' in vars(k) for k in s.__mro__
                    if k not in (SympyFunction, sympy.Expr, sympy.Basic) and k.__module__.startswith('sympy.functions'))}
     assert have == set(_SYMPY_OWN_MEROMORPHIC), have ^ set(_SYMPY_OWN_MEROMORPHIC)
+
+
+def test_rewrite_rules_table_matches_sympy() -> None:
+    # sympy_extras.core._rewrite_rules: SymPy's _eval_rewrite_as_<name>
+    # targets by class, and the SymPy names of the targets (function_name)
+    from sympy.core.basic import Basic as SympyBasic
+    from sympy_extras.core._rewrite_rules import OWN_REWRITE, REWRITE_TARGETS
+    from sympy_extras.interop import _NATIVE_TO_SYMPY, _fill_function_tables
+    _fill_function_tables()
+    for native, theirs in _NATIVE_TO_SYMPY.items():
+        targets = {m[len('_eval_rewrite_as_'):] for k in theirs.__mro__ for m in k.__dict__
+                   if m.startswith('_eval_rewrite_as_')}
+        assert REWRITE_TARGETS[native.__name__] == targets, native
+        assert (native.__name__ in OWN_REWRITE) == any('_eval_rewrite' in k.__dict__ for k in theirs.__mro__
+                                                       if k is not SympyBasic), native
+        assert native.function_name == theirs.__name__, (native, theirs)

@@ -90,7 +90,7 @@ def _rewrite(e: Basic, patterns: tuple[type, ...], target: type, hints: RewriteH
                 rewritten = rule(e, expr_args, hints)
                 if rewritten is not None:
                     return rewritten
-        elif rule is None and not _without_rules(e):
+        elif rule is None and not _without_rules(e) and _sympy_may_rewrite(e, target):
             through = bridge().rewrite_node(e, args, target, hints.piecewise)
             if through is not None:
                 return through
@@ -175,3 +175,19 @@ _SYMPY_NAMED_RULES: dict[str, frozenset[str]] = {
         'Sech', 'Sinh', 'Tanh', 'UpperGamma'}),
     'intractable': frozenset({'LogGamma'}),
 }
+
+
+def _sympy_may_rewrite(e: Basic, target: type) -> bool:
+    """Whether SymPy has a rule rewriting the node into ``target`` (its
+    ``_eval_rewrite_as_<target>``): only then is the bridge asked. Wrapped
+    foreign nodes and the classes not in the table are asked always."""
+    from ._rewrite_rules import OWN_REWRITE, REWRITE_TARGETS
+    from .function import DefinedFunction
+    if e._is_foreign_node():
+        return True
+    name = type(e).__name__
+    if name in OWN_REWRITE or name not in REWRITE_TARGETS:
+        return True
+    if not issubclass(target, DefinedFunction):
+        return False  # the bridge rewrites only into functions with a SymPy class
+    return target.function_name in REWRITE_TARGETS[name]

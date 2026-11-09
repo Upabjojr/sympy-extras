@@ -353,6 +353,9 @@ remove public functions. Breaking changes are listed here when they happen.
   random generators seeded and restored: they evaluate at random points,
   and some points made the suite hang (only under some hash seeds, in
   `test_known_methods_on_random_expressions`).
+- The rewrites of single nodes ask the bridge only when SymPy has a rule
+  for that class and target (`sympy_extras.core._rewrite_rules`, generated
+  from SymPy and checked by a test): 340 of 419 calls had none.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
