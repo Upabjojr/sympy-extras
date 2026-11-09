@@ -49,6 +49,10 @@ class Bridge:
         return ForeignOperationUnavailable(
             '%s is not ported to the core: import sympy_extras.interop to use SymPy for it' % name)
 
+    def available(self) -> bool:
+        """Whether a foreign system is registered."""
+        return False
+
     # -- conversion of foreign objects and strings
 
     def is_foreign(self, a: object) -> bool:

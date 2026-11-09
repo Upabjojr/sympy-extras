@@ -18,13 +18,21 @@ results = [expand((x + y)**3/2), diff(sin(x)*exp(x), x), ((x + y)**2).subs(x, 2)
            (sin(x)/x).series(x, 0, 6), limit(sin(x)/x, x, Integer(0)), gamma(Rational(1, 2)), log(exp(2)),
            pi.evalf(30), (x*I)**2, sqrt(8), Eq(x, x)]
 assert str(results[4]) == '1 - x**2/6 + x**4/120 + O(x**6)', results[4]
+from sympy_extras.core import sympify, SympifyError
+assert str(sympify('sin(x)**2 + log(8, 2) - x/2')) == '-x/2 + sin(x)**2 + 3', sympify('sin(x)**2 + log(8, 2) - x/2')
 try:
-    from sympy_extras.core import sympify
-    sympify('x + 1')
+    sympify('x if y else z')   # outside the native grammar, and no bridge
+except SympifyError:
+    pass
+else:
+    raise AssertionError('should not parse without the bridge')
+try:
+    from sympy_extras.core import Symbol
+    Symbol('x').integrate(Symbol('x'))
 except ForeignOperationUnavailable:
     pass
 else:
-    raise AssertionError('parsing should need the SymPy bridge')
+    raise AssertionError('integrate should need the bridge')
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 

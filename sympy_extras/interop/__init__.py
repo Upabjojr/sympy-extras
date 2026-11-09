@@ -1335,6 +1335,9 @@ def _sympy_numeric(e: Expr, dps: int) -> Optional[mpmath.mpc]:
 class SymPyBridge(Bridge):
     """SymPy lent to the core."""
 
+    def available(self) -> bool:
+        return True
+
     def is_foreign(self, a: object) -> bool:
         return isinstance(a, SymPyBasic)
 

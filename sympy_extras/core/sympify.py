@@ -31,14 +31,13 @@ def sympify(a: SympifyLike) -> Basic:
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
     >>> from sympy_extras.core import sympify
     >>> from fractions import Fraction
     >>> sympify(2), sympify(Fraction(1, 2)), sympify(2.5), sympify(True)
     (2, 1/2, 2.50000000000000, True)
     >>> sympify('x**2 + 1')
     x**2 + 1
-    >>> import sympy
+    >>> import sympy, sympy_extras.interop  # SymPy objects are converted by the bridge
     >>> sympify(sympy.Symbol('y')*2)
     2*y
     """
@@ -56,10 +55,22 @@ def sympify(a: SympifyLike) -> Basic:
     if isinstance(a, float):
         return Float(a)
     if isinstance(a, str):
-        from .bridge import bridge
+        from .bridge import ForeignOperationUnavailable, bridge
         from .parameters import global_parameters
+        from .parsing import ParseUnsupported, parse
+        evaluate = global_parameters.evaluate
+        try:
+            if evaluate or not bridge().available():
+                # the native parser; without evaluation SymPy's own (when
+                # registered) keeps its literal forms (x - 1 is x + (-1)*1)
+                return parse(a, evaluate)
+        except ParseUnsupported:
+            pass
+        # outside the native grammar: the foreign system's parser, if any
         try:
             return bridge().parse(a, global_parameters.evaluate)
+        except ForeignOperationUnavailable:
+            raise SympifyError("cannot parse %r" % (a,)) from None
         except (SyntaxError, ValueError, TypeError, NameError) as error:
             raise SympifyError("cannot parse %r: %s" % (a, error)) from None
     if isinstance(a, (tuple, list)):

@@ -375,6 +375,13 @@ remove public functions. Breaking changes are listed here when they happen.
 - `expand_func` asks the bridge only for the classes with a SymPy rule
   (a table checked against SymPy); the recurrence of the Bessel functions
   (`BesselBase._eval_expand_func`) is native.
+- `sympify` parses strings natively (`sympy_extras.core.parsing`: numbers,
+  names, constants, SymPy's function names, undefined functions, the
+  arithmetic operators; the same trees as SymPy's `parse_expr` on the
+  tested strings). Other syntax goes to the bridge, `SympifyError` without
+  it; `evaluate=False` prefers SymPy's parser when it is registered (its
+  literal forms). `Bridge.available()` tells whether a system is
+  registered.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
