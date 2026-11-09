@@ -496,9 +496,12 @@ convergent boundary point `x = -1`.
 ### Euler, polygamma and Dirichlet series
 
 ```python
->>> polygamma_series(harmonic(n)/n**2, n)
+>>> from sympy_extras.core import Symbol
+>>> from sympy_extras.functions import harmonic as native_harmonic, polygamma as native_polygamma
+>>> m = Symbol('m')
+>>> polygamma_series(native_harmonic(m)/m**2, m)
 2*zeta(3)
->>> polygamma_series(polygamma(1, n)/n**2, n)
+>>> polygamma_series(native_polygamma(1, m)/m**2, m)
 7*pi**4/360
 >>> dirichlet_series(totient(n)/n**s, n)
 (zeta(s - 1)/zeta(s), re(s) > 2)

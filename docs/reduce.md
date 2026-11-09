@@ -320,8 +320,9 @@ bound on the exponents down to a few dozens before the enumeration.
 ## Polygamma series
 
 ```python
->>> from sympy import harmonic, polygamma
->>> from sympy.abc import n
+>>> from sympy_extras.core import Symbol
+>>> from sympy_extras.functions import harmonic, polygamma
+>>> n = Symbol('n')
 >>> from sympy_extras.concrete.eulersums import polygamma_series
 >>> polygamma_series(harmonic(n)/n**2, n)
 2*zeta(3)

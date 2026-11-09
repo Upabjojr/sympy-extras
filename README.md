@@ -459,7 +459,6 @@ their invariants, and `polygamma_series` sums Euler sums and series of
 polygamma functions in zeta values.
 
 ```python
->>> from sympy import harmonic
 >>> from sympy_extras.solvers import thue, dsolve_second_order
 >>> from sympy_extras.concrete.eulersums import polygamma_series
 >>> thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y)
@@ -468,7 +467,10 @@ polygamma functions in zeta values.
 >>> f = Function('y')(x)
 >>> dsolve_second_order(f.diff(x, 2) + 3*f*f.diff(x) + f**3, f)
 [Eq(y(x), 2*(C2 + x)/(2*C1 + 2*C2*x + x**2))]
->>> polygamma_series(harmonic(n)/n**2, n)
+>>> from sympy_extras.core import Symbol
+>>> from sympy_extras.functions import harmonic
+>>> m = Symbol('m')
+>>> polygamma_series(harmonic(m)/m**2, m)
 2*zeta(3)
 
 ```
@@ -740,7 +742,8 @@ random expressions, and the arithmetic runs within a factor of two of
 `sympy.core`. See `docs/core.md`.
 
 ```python
->>> from sympy_extras.core import Symbol, Add, add, sqrt, Eq, eq, to_sympy
+>>> from sympy_extras.core import Symbol, Add, add, sqrt, Eq, eq
+>>> from sympy_extras.interop import to_sympy
 >>> x = Symbol('x')
 >>> Add(x, x), Add(x, x).args, add(x, x), x + x
 (x + x, (x, x), 2*x, 2*x)

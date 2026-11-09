@@ -827,9 +827,9 @@ fall back to this route for the integrands beyond one radical.
 >>> from sympy_extras.integrals.curves import curve_antiderivative, is_nonelementary_on_curve
 >>> x = symbols('x')
 >>> curve_antiderivative(1/(sqrt(x + 1) + sqrt(x - 1)), x)
-(x + 1)**(3/2)/3 - (x - 1)**(3/2)/3
+-x*sqrt(x - 1)/3 + x*sqrt(x + 1)/3 + sqrt(x - 1)/3 + sqrt(x + 1)/3
 >>> curve_antiderivative(1/(x*sqrt(1 - x**3)), x)
-log((-x**3 - 2*sqrt(1 - x**3) + 2)/(2*x**3))/3
+-log((x**3 - 2*sqrt(1 - x**3) - 2)/(2*x**3))/3
 >>> is_nonelementary_on_curve(x/sqrt(1 - x**3), x)
 True
 

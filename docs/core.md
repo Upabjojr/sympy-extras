@@ -141,7 +141,8 @@ substitutions and numerical values.
 
   ```python
   >>> import sympy
-  >>> from sympy_extras.core import SymPyFunction, Symbol, diff, sympify
+>>> from sympy_extras.core import Symbol, diff, sympify
+>>> from sympy_extras.interop import SymPyFunction
   >>> x = Symbol('x')
   >>> sin = SymPyFunction(sympy.sin)
   >>> sin(0), sin(0).doit(), diff(sin(x**2), x), sympify('x*exp(x)').diff(x)
@@ -240,7 +241,8 @@ expressions.
 
 ```python
 >>> import sympy
->>> from sympy_extras.core import Symbol, Add, to_sympy, from_sympy, srepr
+>>> from sympy_extras.core import Symbol, Add, srepr
+>>> from sympy_extras.interop import to_sympy, from_sympy
 >>> x = Symbol('x')
 >>> to_sympy(x**2 + 1).is_polynomial(), sympy.integrate(to_sympy(x**2), to_sympy(x))
 (True, x**3/3)
