@@ -429,11 +429,14 @@ returned.
 ### Indefinite summation beyond Gosper
 
 ```python
->>> karr_sum(harmonic(k), (k, 1, n))
+>>> from sympy_extras.core import symbols as core_symbols
+>>> from sympy_extras.functions import harmonic as core_harmonic
+>>> k_, n_ = core_symbols('k n')
+>>> karr_sum(core_harmonic(k_), (k_, 1, n_))
 n*harmonic(n) - n + harmonic(n)
->>> karr_sum(harmonic(k)**2, (k, 1, n))
+>>> karr_sum(core_harmonic(k_)**2, (k_, 1, n_))
 n*harmonic(n)**2 - 2*n*harmonic(n) + 2*n + harmonic(n)**2 - harmonic(n)
->>> karr_sum(harmonic(k)/(k + 1), (k, 1, n))
+>>> karr_sum(core_harmonic(k_)/(k_ + 1), (k_, 1, n_))
 (n*harmonic(n)**2 - n*harmonic(n, 2) + harmonic(n)**2 + 2*harmonic(n) - harmonic(n, 2))/(2*(n + 1))
 
 ```

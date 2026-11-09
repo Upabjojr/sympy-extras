@@ -12,23 +12,25 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from sympy import (Sum, Expr, Symbol, harmonic, factorial, binomial, Rational,
-    simplify, symbols)
-from sympy.abc import k, n, m, x
+from sympy_extras.core import Expr, Integer, Rational, Symbol
+from sympy_extras.functions import harmonic, factorial, binomial
+from sympy_extras.polys.polytools import cancel
+from sympy_extras.concrete.expr_with_limits import Sum
 
 from sympy_extras.concrete.karr import karr_sum
 
 H = harmonic
+k, n, m, x = Symbol('k'), Symbol('n'), Symbol('m'), Symbol('x')
 
 
 def _agree(ours: Optional[Expr], published: Expr, values: Iterable[int] = range(1, 9),
            extra: Optional[dict[Symbol, int]] = None) -> None:
     assert ours is not None
     for v in values:
-        subs = {n: v}
+        subs: dict[Symbol, Expr] = {n: Integer(v)}
         if extra:
-            subs.update(extra)
-        assert simplify((ours - published).subs(subs).doit()) == 0, (v, ours, published)
+            subs.update({s: Integer(e) for s, e in extra.items()})
+        assert cancel((ours - published).subs(subs).doit()) == 0, (v, ours, published)
 
 
 def test_concrete_mathematics() -> None:
@@ -62,9 +64,11 @@ def test_a_equals_b_and_gosper_examples() -> None:
     _agree(karr_sum(k*factorial(k), (k, 0, n)), factorial(n + 1) - 1)
     # A = B: sum_{k=0}^{n} (4k+1) k!/(2k+1)! = 2 - (n+1)!... Gosper-summable;
     # compare with SymPy's own Gosper implementation
-    from sympy.concrete.gosper import gosper_sum
+    from sympy_extras.concrete.gosper import gosper_sum
     f = (4*k + 1)*factorial(k)/factorial(2*k + 1)
-    _agree(karr_sum(f, (k, 0, n)), gosper_sum(f, (k, 0, n)))
+    expected = gosper_sum(f, (k, Integer(0), n))
+    assert expected is not None
+    _agree(karr_sum(f, (k, 0, n)), expected)
     # A = B (5.4.1): partial sums of (-1)^k C(n, k): sum_{k=0}^{m} (-1)^k C(n,k) = (-1)^m C(n-1, m)
     _agree(karr_sum((-1)**k*binomial(n, k), (k, 0, m)), (-1)**m*binomial(n - 1, m),
            values=range(2, 8), extra={m: 1})
@@ -94,21 +98,21 @@ def test_sigma_examples() -> None:
     s = karr_sum(H(k)**3, (k, 1, n))
     assert s is not None
     for v in range(1, 7):
-        assert s.subs(n, v).doit() == sum(H(i)**3 for i in range(1, v + 1))
+        assert s.subs(n, Integer(v)).doit() == sum((H(Integer(i))**3 for i in range(1, v + 1)), Integer(0))
     # sum_{k=1}^{n} H_k H_k^(2) needs H^(3), found automatically
     s = karr_sum(H(k)*H(k, 2), (k, 1, n))
     assert s is not None
     for v in range(1, 7):
-        assert s.subs(n, v).doit() == sum(H(i)*H(i, 2) for i in range(1, v + 1))
+        assert s.subs(n, Integer(v)).doit() == sum((H(Integer(i))*H(Integer(i), 2) for i in range(1, v + 1)), Integer(0))
     # harmonic numbers with a scaled argument: sum_{k=1}^{n} H_{2k}
     s = karr_sum(H(2*k), (k, 1, n))
     assert s == n*H(2*n) - n + H(n)/4 + H(2*n)/2
     for v in range(1, 7):
-        assert s.subs(n, v).doit() == sum(H(2*i) for i in range(1, v + 1))
+        assert s.subs(n, Integer(v)).doit() == sum((H(Integer(2*i)) for i in range(1, v + 1)), Integer(0))
     # H_{3k+1}^(2) would need sum 1/(3j+2), which is not a harmonic number
     assert karr_sum(H(3*k + 1, 2), (k, 0, n)) is None
     # nested sums as such
-    j = symbols('j')
+    j = Symbol('j')
     s = karr_sum(Sum(H(j), (j, 1, k)), (k, 1, n))
     direct = karr_sum((n + 1 - k)*H(k), (k, 1, n))
     assert direct is not None

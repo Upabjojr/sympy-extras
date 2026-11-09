@@ -429,6 +429,22 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.concrete.karr` is native: `karr_sum`, `karr_term`,
+  `summation` and `build_pisigma_field` take and return core expressions
+  (`sympy_extras.core`, `sympy_extras.functions`, the native `Sum` and
+  `Product`), on the native `PiSigmaField`, the ported `summation`,
+  `hypersimp`, `Poly`, `cancel`, `together` and `roots`; importing the
+  module loads no SymPy, and a summand without parameters is summed
+  without it. Two steps go through SymPy for the call: the cases of the
+  isolated values of the parameters (`sympy_extras._special_values`)
+  and creative telescoping, the last resort of `summation`.
+  `build_pisigma_field` returns the native field (its `extensions` a
+  tuple). The SymPy face, for the modules still written on SymPy
+  (`creative`, `zeilberger`, `rational`, `dirichlet`, `qhyper`), is the
+  new `sympy_extras.concrete.karr_sympy`: `karr_sum`, `karr_term` and
+  `summation` converting at the boundary, `with_sum_special_values`
+  (moved there from `karr`), and the builder of a field on SymPy
+  expressions which creative telescoping extends.
 - `sympy_extras.concrete.pisigma` (ΠΣ-fields and Karr's solver) is
   native, on the typed polynomial layer, without SymPy: one
   `SparseFractionField` over `QQ` in the parameters, `k` and the

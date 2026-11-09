@@ -95,3 +95,15 @@ def test_residue_sums_match_sympy() -> None:
         theirs = sympy_eval_sum_residue(f, (v, sympy.sympify(lo), sympy.sympify(hi)))
         assert (None if ours is None else str(to_sympy(ours, evaluate=False))) == (None if theirs is None else str(theirs))
         assert str(to_sympy(summation(expr_from_sympy(f), limits), evaluate=False)) == str(sympy.summation(f, (v, lo, hi)))
+
+
+def test_geometric_sum_with_ratio_one() -> None:
+    # the bug: the sum of (-1)**(2*k) was nan, the geometric formula
+    # (q**a - q**(b + 1))/(1 - q) at q = (-1)**2 = 1: the case Eq(q, 1) was
+    # the unevaluated Eq(1, 1), which Piecewise drops as SymPy does for
+    # Eq(1, 1, evaluate=False), where SymPy's Eq evaluates to True
+    kk, nn = Symbol('k'), Symbol('n')
+    from sympy_extras.core.numbers import Integer
+    term = Integer(-1)**(2*kk)
+    assert summation(term, (kk, 0, nn)) == nn + 1
+    assert str(to_sympy(summation(term, (kk, 0, nn)))) == str(sympy.summation((-1)**(2*k), (k, 0, n)))

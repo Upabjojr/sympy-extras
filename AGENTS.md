@@ -196,8 +196,9 @@ sympy_extras/
                              of any SymPy object; see docs/core.md
     concrete/                summation algorithms extending sympy.concrete
         pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver (typed, no SymPy)
-        pisigma_sympy.py     SymPyPiSigmaField: the SymPy face of PiSigmaField used by karr and creative
-        karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation
+        pisigma_sympy.py     SymPyPiSigmaField: the SymPy face of PiSigmaField used by creative
+        karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation (native)
+        karr_sympy.py        the SymPy face of karr: karr_sum, karr_term, summation, with_sum_special_values, creative's builder
         tests/
     integrals/               definite integration extending sympy.integrals
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels

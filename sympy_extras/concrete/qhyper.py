@@ -55,7 +55,7 @@ from sympy_extras._special_values import Point
 from sympy_extras._typing import as_expr
 from sympy_extras.assumptions.ask import Assumptions
 
-from .karr import karr_term, summation, with_sum_special_values
+from .karr_sympy import karr_term, summation, with_sum_special_values
 
 __all__ = ['QPochhammer', 'qpochhammer', 'qbinomial', 'q_ratio', 'normal_in', 'qgosper_term',
            'qgosper_sum', 'qzeilberger', 'QTelescoper']

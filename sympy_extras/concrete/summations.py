@@ -227,7 +227,7 @@ def eval_sum_symbolic(f: Expr, limits: Limits) -> Optional[Expr]:
     """A sum by the symbolic methods: linearity, telescoping, powers of
     the index, geometric sums, Gosper's algorithm, the hypergeometric and
     residue methods, the factored summand."""
-    from sympy_extras.core.relational import Eq
+    from sympy_extras.core.relational import Eq, eq
     from sympy_extras.core.sorting import ordered
     from sympy_extras.functions.combinatorial.numbers import bernoulli, harmonic
     from sympy_extras.functions.elementary.piecewise import piecewise
@@ -309,7 +309,7 @@ def eval_sum_symbolic(f: Expr, limits: Limits) -> Optional[Expr]:
                 q = _e((c1**c2).subs(e))
                 r = p * (q**a - q**(b + 1)) / (1 - q)
                 l_ = p * (b - a + 1)
-                return piecewise((l_, Eq(q, ONE)), (r, True))
+                return piecewise((l_, eq(q, ONE)), (r, True))
         from .gosper import gosper_sum
         gr = gosper_sum(f, (i, a, b))
         if isinstance(gr, (Mul, Add)):

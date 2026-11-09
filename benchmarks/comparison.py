@@ -74,7 +74,7 @@ from sympy_extras.assumptions import (ask as xask, refine as xrefine, simplify a
     solve as xsolve, element,
     ForAll, Exists, satisfiable, tautology, find_instance, limit as xlimit, limit_seq as xlimit_seq,
     series as xseries)
-from sympy_extras.concrete.karr import karr_sum, summation as xsummation
+from sympy_extras.concrete.karr_sympy import karr_sum, summation as xsummation
 from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
 from sympy_extras.concrete.convergence import sum_convergence, product_convergence
 from sympy_extras.concrete.dirichlet import dirichlet_series

@@ -11,10 +11,19 @@ whose summands contain *sums* such as harmonic numbers, nested sums, and
 products of all of them, is not implemented in SymPy. This module
 implements it.
 
+The module is written on the core of the package: it takes and returns
+its expressions (`sympy_extras.core`, the functions of
+`sympy_extras.functions`, the `Sum` of
+`sympy_extras.concrete.expr_with_limits`), and
+`sympy_extras.concrete.karr_sympy` has the same functions for SymPy
+expressions.
+
 ```python
->>> from sympy import harmonic, factorial, binomial, Sum
->>> from sympy.abc import j, k, n
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.functions import harmonic, factorial, binomial
+>>> from sympy_extras.concrete.expr_with_limits import Sum
 >>> from sympy_extras.concrete.karr import karr_sum, karr_term, summation
+>>> j, k, n = symbols('j k n')
 >>> karr_sum(harmonic(k), (k, 1, n))
 n*harmonic(n) - n + harmonic(n)
 >>> karr_sum(harmonic(k)**2, (k, 1, n))
@@ -32,8 +41,9 @@ n*factorial(n) + factorial(n) - 1
 
 ```
 
-`summation` calls SymPy's `summation` first and Karr's algorithm on the
-sums SymPy leaves unevaluated.
+`summation` calls SymPy's `summation` (its port,
+`sympy_extras.concrete.summations`) first and Karr's algorithm on the
+sums it leaves unevaluated.
 
 ## ΠΣ-fields
 
@@ -63,7 +73,7 @@ n*harmonic(2*n) - n + harmonic(n)/4 + harmonic(2*n)/2
 >>> from sympy_extras.concrete.karr import build_pisigma_field
 >>> F, f = build_pisigma_field(harmonic(k + 1)*factorial(k), k)
 >>> F.extensions
-[Extension(pi, factorial(k), k + 1), Extension(sigma, harmonic(k), 1/(k + 1))]
+(Extension(pi, factorial(k), k + 1), Extension(sigma, harmonic(k), 1/(k + 1)))
 >>> F.to_expr(f)
 (k*harmonic(k) + harmonic(k) + 1)*factorial(k)/(k + 1)
 
@@ -271,7 +281,9 @@ off (the functions pass it to one another for their inner sums).
 >>> k, n = symbols('k n')
 >>> zeilberger_sum(k*y**k, (k, 0, n), n)
 Piecewise((n*(n + 1)/2, Eq(y, 1)), ((-n*y**(n + 1) + n*y**(n + 2) + y - y**(n + 1))/(y - 1)**2, True))
->>> karr_term(y**k, k)
+>>> from sympy_extras.core import Symbol as CoreSymbol
+>>> y_, k_ = CoreSymbol('y'), CoreSymbol('k')
+>>> karr_term(y_**k_, k_)
 Piecewise((k, Eq(y, 1)), (y**k/(y - 1), True))
 >>> qgosper_sum(q**(2*k), (k, 0, n), q)
 Piecewise((n + 1, Eq(q, -1) | Eq(q, 1)), (q**(2*n + 2)/((q - 1)*(q + 1)) - 1/((q - 1)*(q + 1)), True))
@@ -328,10 +340,13 @@ Piecewise((1, Eq(y, 0)), ((y*(y + 1)**n + (y + 1)**n - 1)/(y*(n + 1)), True))
 - `karr_term(f, k, extensions=(), auto=True, special_values=True)`: `g`
   with `g(k + 1) - g(k) == f(k)`, or `None`.
 - `summation(f, *limits, extensions=(), auto=True, special_values=True)`:
-  SymPy's summation followed by Karr's algorithm.
+  SymPy's summation (ported) followed by Karr's algorithm.
 - `build_pisigma_field(f, k, extensions=())`: the field (a
-  `SymPyPiSigmaField`, the SymPy face of the native `PiSigmaField` of
-  `sympy_extras.concrete.pisigma`) and the element representing `f`.
+  `PiSigmaField` of `sympy_extras.concrete.pisigma`) and the element
+  representing `f`.
+- These take and return core expressions; `karr_sum`, `karr_term`,
+  `summation` and `with_sum_special_values` of
+  `sympy_extras.concrete.karr_sympy` take and return SymPy expressions.
 - `creative_telescoping(f, k, n, order=4, extensions=())`: a
   `CreativeTelescoper` with the `coefficients` `c_i(n)`, the `certificate`
   `g(n, k)`, `recurrence()` and `check()`, or `None`.

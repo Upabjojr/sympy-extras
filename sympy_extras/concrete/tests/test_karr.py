@@ -2,26 +2,37 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from sympy import (Sum, Product, Expr, harmonic, factorial, binomial, Rational,
-    RisingFactorial, sin, sqrt, simplify, cancel, Eq, S, symbols)
+import sympy
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy.abc import a, k, n, j, x
+from sympy_extras._typing import as_expr, as_symbol
+from sympy_extras.core import Eq, Expr, Integer, Rational, Symbol
+from sympy_extras.functions import Binomial, harmonic, factorial, binomial, RisingFactorial, sin, sqrt
+from sympy_extras.polys.polytools import cancel
+from sympy_extras.concrete.expr_with_limits import Sum, Product
+from sympy_extras.interop import to_sympy
 
 from sympy_extras.concrete.karr import karr_term, karr_sum, summation, build_pisigma_field
 from sympy_extras.concrete.pisigma_sympy import SymPyPiSigmaField
 from sympy_extras.concrete.creative import definite_sum
-from sympy_extras.concrete.karr import with_sum_special_values
+from sympy_extras.concrete.karr_sympy import with_sum_special_values
 from sympy_extras.concrete.tests.cases import check_antidifference_cases, check_sum_cases
+
+a, k, n, j, x = Symbol('a'), Symbol('k'), Symbol('n'), Symbol('j'), Symbol('x')
+ZERO = Integer(0)
 
 
 def _check(f: Expr, closed: Optional[Expr], lower: int = 1, values: Iterable[int] = range(1, 7)) -> None:
     """The closed form agrees with the direct sum for several n."""
     assert closed is not None
     for m in values:
-        direct = sum(f.subs({k: i, n: m}).doit() for i in range(lower, m + 1))
-        assert simplify(closed.subs(n, m).doit() - direct) == 0, (f, m)
+        direct = sum((f.subs({k: Integer(i), n: Integer(m)}).doit() for i in range(lower, m + 1)), ZERO)
+        assert cancel(closed.subs(n, Integer(m)).doit() - direct) == ZERO, (f, m)
+
+
+def _sympy(e: Expr) -> sympy.Expr:
+    return as_expr(to_sympy(e))
 
 
 def test_harmonic_sums() -> None:
@@ -48,7 +59,8 @@ def test_harmonic_sums() -> None:
     s = karr_sum(harmonic(k - 1)/k, (k, 2, n))
     _check(harmonic(k - 1)/k, s, lower=2, values=range(2, 8))
     s = karr_sum(harmonic(k)/(k + 1), (k, 1, n))
-    assert cancel(s - (harmonic(n + 1)**2 - harmonic(n + 1, 2))/2).subs(n, 5).doit() == 0
+    assert s is not None
+    assert cancel(s - (harmonic(n + 1)**2 - harmonic(n + 1, 2))/2).subs(n, Integer(5)).doit() == ZERO
     _check(harmonic(k)/(k + 1), s)
 
 
@@ -73,7 +85,7 @@ def test_no_closed_form() -> None:
     assert g is not None
     # harmonic(k + 1, 2) - harmonic(k, 2) is 1/(k + 1)**2, which simplify
     # cannot see symbolically but which is exact at integers
-    assert all(g.subs(k, j + 1) - g.subs(k, j) - Rational(1, j**2) == 0 for j in range(1, 7))
+    assert all(g.subs(k, Integer(i + 1)) - g.subs(k, Integer(i)) - Rational(1, i**2) == ZERO for i in range(1, 7))
     # with the right extension there is one
     s = karr_sum(harmonic(k)/k, (k, 1, n), extensions=[harmonic(k, 2)])
     assert s is not None
@@ -114,7 +126,7 @@ def test_hypergeometric_and_rational() -> None:
     _check(n*k + 1/(k*(k + 1)), s)
     s = karr_sum(x**k, (k, 0, n))
     assert s is not None
-    assert simplify(s.subs(x, 2) - (2**(n + 1) - 1)) == 0
+    assert all(s.subs({x: Integer(2), n: Integer(m)}) == Integer(2**(m + 1) - 1) for m in range(0, 5))
     # the value at x = 1, where the closed form is 0/0, as a case
     assert s.subs(x, 1) == n + 1
 
@@ -122,12 +134,17 @@ def test_hypergeometric_and_rational() -> None:
 def test_isolated_values_of_the_parameters() -> None:
     # the bug: the sum of y**k was (y*y**n - 1)/(y - 1), which is 0/0 at
     # y = 1, where the sum is n + 1
-    y = symbols('y')
-    for s in (karr_sum(y**k, (k, 0, n)), summation(y**k, (k, 0, n)), definite_sum(y**k, (k, 0, n))):
+    y = Symbol('y')
+    for s in (karr_sum(y**k, (k, 0, n)), summation(y**k, (k, 0, n))):
         assert s is not None
-        assert s.subs({y: 1, n: 5}) == 6 and s.subs({y: 2, n: 5}) == 63
+        assert s.subs({y: Integer(1), n: Integer(5)}) == Integer(6)
+        assert s.subs({y: Integer(2), n: Integer(5)}) == Integer(63)
+    ys, ks, ns = sympy.symbols('y k n')
+    creative = definite_sum(ys**ks, (ks, 0, ns))
+    assert creative is not None
+    assert creative.subs({ys: 1, ns: 5}) == 6 and creative.subs({ys: 2, ns: 5}) == 63
     s = summation(k*y**k, (k, 0, n))
-    assert s.subs({y: 1, n: 4}) == 10
+    assert s.subs({y: Integer(1), n: Integer(4)}) == Integer(10)
     # a point where the sum itself is undefined (the term 1/0 at k = 0 for
     # a = 0) gets no case
     assert not summation(1/((k + a)*(k + a + 1)), (k, 0, n)).has(Eq)
@@ -136,10 +153,11 @@ def test_isolated_values_of_the_parameters() -> None:
 def test_isolated_values_of_indefinite_sums() -> None:
     # the bug: the antidifference of y**k was y**k/(y - 1), undefined at
     # y = 1, where it is k
-    y = symbols('y')
+    y = Symbol('y')
     for value in (karr_term(y**k, k), karr_sum(y**k, k)):
-        assert check_antidifference_cases(value, y**k, k) == 1
-        assert value is not None and value.subs(y, 1) == k
+        assert value is not None
+        assert check_antidifference_cases(_sympy(value), _sympy(y**k), as_symbol(to_sympy(k))) == 1
+        assert value.subs(y, Integer(1)) == k
     assert karr_term(y**k, k, special_values=False) == y**k/(y - 1)
     assert karr_sum(y**k, (k, 0, n), special_values=False) == (y*y**n - 1)/(y - 1)
 
@@ -148,22 +166,22 @@ def test_zero_powers_at_a_point_are_summed() -> None:
     # the bug: the sum of binomial(n, k)*y**k/(k + 1), ((y + 1)**(n + 1) -
     # 1)/(y*(n + 1)), got no case at y = 0 (the summand 0**k*... at the
     # point, which the algorithms do not take), where the sum is 1
-    y = symbols('y')
-    term = binomial(n, k)*y**k/(k + 1)
-    value = definite_sum(term, (k, 0, n))
-    assert check_sum_cases(value, term, k, 0, n, n) == 1
+    y, ks, ns = sympy.symbols('y k n')
+    term = sympy.binomial(ns, ks)*y**ks/(ks + 1)
+    value = definite_sum(term, (ks, 0, ns))
+    assert check_sum_cases(value, term, ks, 0, ns, ns) == 1
     assert value is not None and value.subs(y, 0) == 1
 
 
 def test_wrong_cases_are_left_out() -> None:
     # a case which disagrees with the sum computed term by term (here a
     # wrong value given by the callback) is not listed
-    y = symbols('y')
-    generic = (y**(n + 1) - 1)/(y - 1)
-    assert with_sum_special_values(generic, y**k, [k], [S.Zero, n], lambda point, at: n + 2) == generic
-    assert with_sum_special_values(y**k/(y - 1), y**k, [k], [], lambda point, at: 2*k) == y**k/(y - 1)
-    right = with_sum_special_values(generic, y**k, [k], [S.Zero, n], lambda point, at: n + 1)
-    assert check_sum_cases(right, y**k, k, 0, n, n) == 1
+    y, ks, ns = sympy.symbols('y k n')
+    generic = (y**(ns + 1) - 1)/(y - 1)
+    assert with_sum_special_values(generic, y**ks, [ks], [sympy.S.Zero, ns], lambda point, at: ns + 2) == generic
+    assert with_sum_special_values(y**ks/(y - 1), y**ks, [ks], [], lambda point, at: 2*ks) == y**ks/(y - 1)
+    right = with_sum_special_values(generic, y**ks, [ks], [sympy.S.Zero, ns], lambda point, at: ns + 1)
+    assert check_sum_cases(right, y**ks, ks, 0, ns, ns) == 1
 
 
 def test_nested_sums_and_products() -> None:
@@ -205,6 +223,9 @@ def test_karr_term_and_field() -> None:
 
 
 def test_pisigma_field() -> None:
+    # the SymPy face of the native field, which creative telescoping uses
+    k, n = sympy.symbols('k n')
+    harmonic = sympy.harmonic
     F = SymPyPiSigmaField(k, params=[n])
     assert F.level == 0 and F.params == (n,)
     kk = F.gens[0]
@@ -255,25 +276,23 @@ def test_summation() -> None:
 def test_harmonic_sum_gets_its_extension_automatically() -> None:
     # sympy-extras#34: the harmonic extension only fired when the summand
     # already carried a harmonic number, so sum 1/k came back None.
-    from sympy import symbols, harmonic
-    n, k = symbols('n k', integer=True)
+    n, k = Symbol('n', integer=True), Symbol('k', integer=True)
     result = karr_sum(1/k, (k, 1, n))
     assert result is not None
     for N in range(1, 7):
-        assert result.subs(n, N) == harmonic(N), N
+        assert result.subs(n, Integer(N)) == harmonic(Integer(N)), N
 
 
 def test_closed_form_is_not_asserted_at_its_own_poles() -> None:
     # sympy-extras#35: the antidifference has a denominator in n whose
     # integer roots are exactly where the returned closed form 0 is false:
     # the sum is -1 at n = 1 and 2 at n = 2.
-    from sympy import symbols, binomial, Sum
-    n, k = symbols('n k', integer=True)
+    n, k = Symbol('n', integer=True), Symbol('k', integer=True)
     term = (-1)**k*k**2*binomial(n, k)
     result = karr_sum(term, (k, 1, n))
-    if result is not None:
-        for N in range(1, 7):
-            assert result.subs(n, N) == Sum(term.subs(n, N), (k, 1, N)).doit(), N
+    assert result is not None
+    for N in range(1, 7):
+        assert result.subs(n, Integer(N)) == Sum(term.subs(n, Integer(N)), (k, 1, N)).doit(), N
 
 
 def test_homogeneous_pi_solutions_of_a_single_exponent_are_found() -> None:
@@ -282,17 +301,21 @@ def test_homogeneous_pi_solutions_of_a_single_exponent_are_found() -> None:
     # exponent without a solution and returned [], so binomial(n + 1, k)
     # was not recognised as binomial(n, k)*(n + 1)/(n + 1 - k) and became
     # a second, algebraically dependent Pi-extension.
+    k, n = sympy.symbols('k n')
+    binomial = sympy.binomial
     F = SymPyPiSigmaField(k, params=[n])
-    t = F.add_pi((n - k)/(k + 1), binomial(n, k))
+    F.add_pi((n - k)/(k + 1), binomial(n, k))
     sols = F.solve(F.from_expr((n + 1 - k)/(k + 1)), [])
     assert sols is not None and len(sols) == 1
     [(c, g)] = sols
     assert c == [] and g != F.zero
     assert F.sigma(g) == F.from_expr((n + 1 - k)/(k + 1))*g
     assert F.level_of(g) == 1 and F.as_poly_in(g, 1, laurent=True) is not None
-    field, element = build_pisigma_field(binomial(n + 1, k)*binomial(n, k), k)
+    # the same through the native field of build_pisigma_field
+    k_, n_ = Symbol('k'), Symbol('n')
+    field, element = build_pisigma_field(Binomial(n_ + 1, k_)*Binomial(n_, k_), k_)
     assert len(field.extensions) == 1
-    assert field.to_expr(element).has(t) is False
+    assert field.to_expr(element).has(*[e.symbol for e in field.extensions]) is False
 
 
 def test_parameterized_solutions_have_small_constants() -> None:
@@ -300,6 +323,8 @@ def test_parameterized_solutions_have_small_constants() -> None:
     # without normalisation: the parameterized telescoping of the shifts
     # binomial(n + i, k)**2*harmonic(k) gave constants of degree 530 in n
     # (and took two minutes) for a relation whose coefficients have degree 3.
+    k, n = sympy.symbols('k n')
+    binomial, harmonic = sympy.binomial, sympy.harmonic
     F = SymPyPiSigmaField(k, params=[n])
     t = F.add_pi((n - k)/(k + 1), binomial(n, k))
     h = F.add_sigma(1/(k + 1), harmonic(k))

@@ -114,7 +114,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
 from sympy_extras.settings import settings
 
-from .karr import _Builder, _atoms, _auto_extensions, karr_sum, with_sum_special_values
+from .karr_sympy import _Builder, _atoms, _auto_extensions, karr_sum, with_sum_special_values
 from .pisigma import PiSigmaElement
 from .pisigma_sympy import SymPyPiSigmaField
 

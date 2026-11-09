@@ -2,8 +2,10 @@ r"""The SymPy face of the $\Pi\Sigma$-fields of
 :mod:`sympy_extras.concrete.pisigma`.
 
 :class:`SymPyPiSigmaField` is the field used by the summation algorithms
-which are still written on SymPy (:mod:`~sympy_extras.concrete.karr` and
-:mod:`~sympy_extras.concrete.creative`): it takes and returns SymPy
+which are still written on SymPy (:mod:`~sympy_extras.concrete.creative`,
+through the builder of :mod:`~sympy_extras.concrete.karr_sympy`; Karr's
+algorithm itself, :mod:`~sympy_extras.concrete.karr`, uses the native
+field): it takes and returns SymPy
 expressions, its generators are SymPy ``Dummy`` symbols and the constants
 of the solutions are SymPy expressions in the parameters, while the
 elements, the shift and the solver are those of the native

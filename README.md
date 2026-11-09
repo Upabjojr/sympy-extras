@@ -176,9 +176,10 @@ factorials and powers. `karr_sum` implements it in a ΠΣ-field built from
 the summand, and decides when no closed form exists in that field.
 
 ```python
->>> from sympy import harmonic, factorial
->>> from sympy.abc import k, n
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.functions import harmonic, factorial
 >>> from sympy_extras.concrete.karr import karr_sum, summation
+>>> k, n = symbols('k n')
 >>> karr_sum(harmonic(k)**2, (k, 1, n))
 n*harmonic(n)**2 - 2*n*harmonic(n) + 2*n + harmonic(n)**2 - harmonic(n)
 >>> karr_sum(harmonic(k)/k, (k, 1, n))
@@ -190,13 +191,14 @@ True
 
 ```
 
-`summation` runs SymPy's summation first and Karr's algorithm on what is
+`summation` runs SymPy's summation (ported) first and Karr's algorithm on what is
 left. Definite sums whose summand depends on the upper limit are evaluated
 by creative telescoping in the same ΠΣ-fields (`definite_sum`, Schneider's
 extension of Zeilberger's algorithm), with harmonic numbers in the summand:
 
 ```python
->>> from sympy import binomial
+>>> from sympy import binomial, harmonic
+>>> from sympy.abc import k, n
 >>> from sympy_extras.concrete.creative import definite_sum
 >>> definite_sum(binomial(n, k)**2*harmonic(k), (k, 0, n))
 (2*harmonic(n) - harmonic(2*n))*binomial(2*n, n)
