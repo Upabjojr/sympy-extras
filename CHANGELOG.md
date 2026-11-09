@@ -402,6 +402,11 @@ remove public functions. Breaking changes are listed here when they happen.
   before the bridge; random queries agree with SymPy's `ask` (a test).
   SymPy's `ask(Q.real(x*y), Q.imaginary(y) & Q.real(x))` is wrongly
   `False` (issue #25); here it is undecided.
+- `is_constant` natively: `False` by two different stable values at
+  admissible points, `True` by exactly zero derivatives; the bridge only
+  otherwise (none of the measured tests needs it now). The random-methods
+  test seeds SymPy's generator for its oracle (one run in a few hung on a
+  point drawn from the system's entropy).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

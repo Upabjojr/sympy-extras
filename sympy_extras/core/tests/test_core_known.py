@@ -841,6 +841,11 @@ def test_known_methods_on_random_expressions() -> None:
     on random expressions with functions (the method fuzz of the
     session): the printed results are compared, a fact known here and
     unknown to SymPy is allowed."""
+    # SymPy's is_constant and equals (the oracle) evaluate at points drawn
+    # from sympy.core.random, seeded from the system's entropy: some draws
+    # make an evaluation explode (one run in a few hung); seeded here
+    from sympy.core.random import seed
+    seed(0)
     rng = random.Random(1)
     sfs = [sympy.sin, sympy.cos, sympy.exp, sympy.log, sympy.Abs]
     leaves = [(sx, cx), (sy, cy), (sz, cz), (sp, cp), (sn, cn), (sympy.pi, C.pi), (sympy.I, C.I), (sympy.E, C.E)]

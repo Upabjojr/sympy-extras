@@ -969,6 +969,9 @@ class Expr(Basic):
             free = free & set(wrt)
         if not free:
             return True
+        native = _constant_natively(self, sorted((w for w in free if isinstance(w, _symbol_class())), key=str))
+        if native is not None:
+            return native
         from .bridge import bridge
         return bridge().is_constant(self, list(wrt))
 
@@ -2005,3 +2008,65 @@ def _nonzero_at_a_point(e: Expr) -> bool:
             if size > mpmath.mpf('1e-30') and abs(low - high) < mpmath.mpf('1e-12') * size:
                 return True
     return False
+
+
+def _symbol_class() -> type:
+    from .symbol import Symbol as _Symbol
+    return _Symbol
+
+
+def _value_at(e: Expr, point: dict[Basic, Basic]) -> Optional[mpmath.mpc]:
+    """The value of ``e`` at the point when it is the same at 60 and 200 bits
+    (``None`` when not evaluable or not stable)."""
+    from .evalf import numeric_value
+    at = e.xreplace(point) if point else e
+    if not isinstance(at, Expr):
+        return None
+    try:
+        low, high = numeric_value(at, 60), numeric_value(at, 200)
+    except (ZeroDivisionError, ValueError, OverflowError, TypeError):
+        return None
+    if low is None or high is None:
+        return None
+    with mpmath.workprec(200):
+        if abs(low - high) > mpmath.mpf('1e-12') * max(abs(high), mpmath.mpf(1)):
+            return None
+    return high
+
+
+def _constant_natively(e: Expr, wrt: list[Symbol]) -> Optional[bool]:
+    """``False`` when ``e`` takes two clearly different values at admissible
+    points of ``wrt`` (the other symbols fixed); ``True`` when its
+    derivatives in ``wrt`` are exactly zero; ``None`` otherwise."""
+    from .function import diff
+    from .numbers import Integer
+    others = sorted((f for f in e.free_symbols if isinstance(f, _symbol_class()) and f not in wrt), key=str)
+    fixed: dict[Basic, Basic] = {}
+    for i, s in enumerate(others):
+        value = _admissible_value(s, len(wrt) + i, 0)
+        if value is None:
+            break
+        fixed[s] = value
+    else:
+        values: list[mpmath.mpc] = []
+        for variant in range(3):
+            point = dict(fixed)
+            usable = True
+            for i, s in enumerate(wrt):
+                value = _admissible_value(s, i, variant)
+                if value is None:
+                    usable = False
+                    break
+                point[s] = value
+            if not usable:
+                break
+            found = _value_at(e, point)
+            if found is not None:
+                values.append(found)
+        with mpmath.workprec(200):
+            for v in values[1:]:
+                if abs(v - values[0]) > mpmath.mpf('1e-20') * max(abs(v), abs(values[0]), mpmath.mpf(1)):
+                    return False
+    if all((lambda d: isinstance(d, Integer) and d.p == 0)(diff(e, w)) for w in wrt):
+        return True
+    return None

@@ -822,3 +822,22 @@ def test_equals_proves_nonzero_at_admissible_points() -> None:
     for e in [x - y, 2*x - 1, sympy.log(sympy.exp(x)) - x, (-1)**n - 1, sympy.floor(r) - r, sympy.sqrt(x**2) - x,
               sympy.Abs(r) - r, sympy.sqrt(x)*sympy.sqrt(y) - sympy.sqrt(x*y), sympy.log(x**2) - 2*sympy.log(x)]:
         assert _nonzero_at_a_point(expr_from_sympy(e)), e
+
+
+def test_is_constant_natively() -> None:
+    # expr._constant_natively: False by two different values at admissible
+    # points, True by exactly zero derivatives; the bridge is not needed
+    import sympy
+    from sympy_extras.core.expr import _constant_natively
+    from sympy_extras.core.symbol import Symbol as NativeSymbol
+    from sympy_extras.interop import expr_from_sympy
+    x, y = sympy.symbols('x y')
+    n = sympy.Symbol('n', integer=True)
+    p = sympy.Symbol('p', positive=True)
+    for e, want in [(sympy.exp(x), False), (x*y, False), (sympy.floor(x), False), (sympy.sqrt(x**2), False),
+                    (sympy.sin(x)**2 + sympy.cos(x)**2, True), ((x + 1)**2 - x**2 - 2*x, True),
+                    (sympy.log(sympy.exp(p)) - p, True), (sympy.sin(sympy.pi*n), True)]:
+        native = expr_from_sympy(e)
+        symbols = sorted((s for s in native.free_symbols if isinstance(s, NativeSymbol)), key=str)
+        assert _constant_natively(native, symbols) in (want, None), e
+        assert native.is_constant() == want, e
