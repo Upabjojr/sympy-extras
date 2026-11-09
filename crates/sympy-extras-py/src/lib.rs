@@ -14,6 +14,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 
+mod algebraic;
 mod algorithms;
 mod convert;
 mod dense;
@@ -57,6 +58,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "fractionfield",
         "sympy_extras_rs.polys.domains.fractionfield",
     )?)?;
+    algebraic::register_algebraicfield(&submodule(
+        &domains_module,
+        "algebraicfield",
+        "sympy_extras_rs.polys.domains.algebraicfield",
+    )?)?;
     sparse::register(&submodule(
         &domains_module,
         "sparsepolynomialring",
@@ -68,7 +74,10 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     dense::register_euclidtools(&submodule(&polys, "euclidtools", "sympy_extras_rs.polys.euclidtools")?)?;
     dense::register_sqfreetools(&submodule(&polys, "sqfreetools", "sympy_extras_rs.polys.sqfreetools")?)?;
     factor::register_galoistools(&submodule(&polys, "galoistools", "sympy_extras_rs.polys.galoistools")?)?;
-    factor::register_factortools(&submodule(&polys, "factortools", "sympy_extras_rs.polys.factortools")?)?;
+    let factortools_module: Bound<'_, PyModule> =
+        submodule(&polys, "factortools", "sympy_extras_rs.polys.factortools")?;
+    factor::register_factortools(&factortools_module)?;
+    algebraic::register_ext_factortools(&factortools_module)?;
     polyerrors::register(&submodule(&polys, "polyerrors", "sympy_extras_rs.polys.polyerrors")?)?;
     rings::register_rings(&submodule(&polys, "rings", "sympy_extras_rs.polys.rings")?)?;
     algorithms::register_rootisolation(&submodule(

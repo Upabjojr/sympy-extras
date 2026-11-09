@@ -14,9 +14,10 @@
 //! the remaining factors. Over `QQ` the denominators are cleared first. The
 //! square-free decomposition comes first.
 //!
-//! Not ported yet: the factorisation over number fields (Trager's
-//! algorithm: `dup_ext_norm`, `dup_ext_sqf_norm`, `dup_ext_factor`), which
-//! needs the algebraic field domain.
+//! Over a number field `QQ(alpha)` ([`AlgebraicField`]) Trager's algorithm:
+//! a shift `x -> x - s alpha` making the norm square-free, the norm factored
+//! over `QQ`, and each of its factors giving a factor by a gcd over the
+//! field.
 //!
 //! References
 //! ==========
@@ -32,13 +33,16 @@
 use crate::error::{value_error, PolyResult};
 use crate::numbers::*;
 
-use super::densearith::{dup_add, dup_div, dup_max_norm, dup_mul, dup_mul_ground, dup_sub};
-use super::densebasic::{dup_convert, dup_degree};
-use super::densetools::{dup_clear_denoms, dup_decompose_content, dup_diff, dup_primitive, dup_trunc};
-use super::domains::{Domain, FiniteField, IntegerRing, RationalField, ZZ};
-use super::euclidtools::{dup_gcd, dup_gcdex};
+use super::densearith::{dup_add, dup_add_term, dup_div, dup_max_norm, dup_mul, dup_mul_ground, dup_sub};
+use super::densebasic::{dup_LC, dup_convert, dup_degree, dup_strip};
+use super::densetools::{
+    dup_clear_denoms, dup_decompose_content, dup_diff, dup_monic, dup_primitive, dup_shift, dup_trunc,
+};
+use super::domains::algebraicfield::{AlgebraicElement, AlgebraicField};
+use super::domains::{Domain, FiniteField, IntegerRing, PolynomialRing, RationalField, QQ, ZZ};
+use super::euclidtools::{dup_gcd, dup_gcdex, dup_resultant};
 use super::galoistools::gf_factor_sqf;
-use super::sqfreetools::{dup_sqf_list, Factor};
+use super::sqfreetools::{dup_sqf_list, dup_sqf_p, Factor};
 
 /// How many good primes are tried, keeping the one with the fewest factors.
 const PRIMES_TRIED: usize = 5;
@@ -446,6 +450,84 @@ pub fn dup_zz_irreducible_p(f: &[Int], k: &IntegerRing) -> PolyResult<bool> {
     }
     let (content, factors) = dup_zz_factor(f, k)?;
     Ok(abs(&content).is_one() && factors.len() == 1 && factors[0].1 == 1)
+}
+
+// -- number fields: Trager's algorithm
+
+/// The norm `N(f)` of a polynomial over `QQ(alpha)`: the resultant in
+/// `alpha` of the minimal polynomial and `f`, a polynomial in `x` with
+/// rational coefficients (the product of the conjugates of `f`).
+pub fn dup_ext_norm(f: &[AlgebraicElement], k: &AlgebraicField) -> Vec<Rat> {
+    let r: PolynomialRing<RationalField> = PolynomialRing::new(QQ, "x");
+    // f as a polynomial in alpha with coefficients in QQ[x]
+    let n: usize = dup_degree(f).max(0) as usize;
+    let mut by_alpha: Vec<Vec<Rat>> = vec![Vec::new(); k.degree];
+    for (i, c) in f.iter().enumerate() {
+        for (j, a) in c.iter().enumerate() {
+            // the coefficient a of alpha**(len(c) - 1 - j) x**(n - i)
+            let power: usize = c.len() - 1 - j;
+            let slot: usize = k.degree - 1 - power;
+            by_alpha[slot] = dup_add_term(&by_alpha[slot], a, n - i, &QQ);
+        }
+    }
+    let m_x: Vec<Vec<Rat>> = k
+        .minpoly
+        .iter()
+        .map(|c| if c.is_zero() { Vec::new() } else { vec![c.clone()] })
+        .collect();
+    dup_resultant(&m_x, &dup_strip(&by_alpha, &r), &r)
+}
+
+/// `(s, g, N)` with `g = f(x - s alpha)` and `N = N(g)` square-free (the
+/// shifts `s = 0, 1, -1, 2, ...` are tried in turn; finitely many fail for
+/// a square-free `f`).
+pub fn dup_ext_sqf_norm(f: &[AlgebraicElement], k: &AlgebraicField) -> (i64, Vec<AlgebraicElement>, Vec<Rat>) {
+    let mut s: i64 = 0;
+    loop {
+        let shift: AlgebraicElement = k.mul(&k.from_int(-s), &k.alpha());
+        let g: Vec<AlgebraicElement> = if s != 0 { dup_shift(f, &shift, k) } else { f.to_vec() };
+        let norm: Vec<Rat> = dup_ext_norm(&g, k);
+        if dup_sqf_p(&norm, &QQ) {
+            return (s, g, norm);
+        }
+        s = if s > 0 { -s } else { 1 - s };
+    }
+}
+
+/// The leading coefficient and the monic irreducible factors over
+/// `QQ(alpha)` with their multiplicities, sorted by degree and
+/// multiplicity.
+#[allow(clippy::type_complexity)]
+pub fn dup_ext_factor(
+    f: &[AlgebraicElement],
+    k: &AlgebraicField,
+) -> PolyResult<(AlgebraicElement, Vec<Factor<AlgebraicElement>>)> {
+    if f.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let lc: AlgebraicElement = dup_LC(f, k);
+    let monic: Vec<AlgebraicElement> = dup_monic(f, k)?;
+    let (_, sqf) = dup_sqf_list(&monic, k);
+    let mut factors: Vec<Factor<AlgebraicElement>> = Vec::new();
+    for (g, multiplicity) in sqf {
+        if dup_degree(&g) == 1 {
+            factors.push((g, multiplicity));
+            continue;
+        }
+        let (s, shifted, norm) = dup_ext_sqf_norm(&g, k);
+        let (_, norm_factors) = dup_qq_factor(&norm, &QQ)?;
+        let back: AlgebraicElement = k.mul(&k.from_int(s), &k.alpha());
+        for (h, _) in norm_factors {
+            let over_field: Vec<AlgebraicElement> = h.iter().map(|c| k.from_rational(c)).collect();
+            let factor: Vec<AlgebraicElement> = dup_gcd(&shifted, &over_field, k);
+            if dup_degree(&factor) > 0 {
+                let unshifted: Vec<AlgebraicElement> = if s != 0 { dup_shift(&factor, &back, k) } else { factor };
+                factors.push((unshifted, multiplicity));
+            }
+        }
+    }
+    factors.sort_by_key(|(g, m)| (g.len(), *m));
+    Ok((lc, factors))
 }
 
 #[cfg(test)]

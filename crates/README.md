@@ -34,6 +34,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/domains/domain.py` | done | trait `Domain` with `factor_dense`; `to_expr`/`from_expr` and the root isolation hooks wait for the ported modules |
 | `polys/domains/integerring.py` | done | |
 | `polys/domains/rationalfield.py` | done | with the fraction-free sparse echelon form |
+| `polys/domains/algebraicfield.py` | done | elements `Vec<Rat>`; `alpha_expr` a core node (the bindings take any object and name the root by its `str`); `to_expr`/`from_expr` and the conversion between different fields wait for the core; a separate Python class in the bindings, not a `DomainKind` |
 | `polys/domains/finitefield.py` | done | elements `u64`, products in `u128` (any modulus below `2**64`) |
 | `polys/densebasic.py` | done | |
 | `polys/densearith.py` | done | |
@@ -41,7 +42,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/euclidtools.py` | done | |
 | `polys/sqfreetools.py` | done | |
 | `polys/galoistools.py` | done | the random choices from a seeded SplitMix64 (`random.rs`); the factorisations are sorted, so equal to Python's |
-| `polys/factortools.py` | over `ZZ`, `QQ` | the number-field part (`dup_ext_*`, Trager) needs `AlgebraicField` |
+| `polys/factortools.py` | done | with Trager's algorithm over number fields (`dup_ext_norm`, `dup_ext_sqf_norm`, `dup_ext_factor`) |
 | `polys/rings.py` | done | orders as the enum `MonomialOrder` (lex, grlex, grevlex, and the weight, block and homogeneous orders of `orderings.py` and `modulargroebner.py`); `from_expr`/`to_expr` wait for the core |
 | `polys/heuristicgcd.py` | done | |
 | `polys/polyerrors.py` | `HeuristicGCDFailed` | the others as they are needed |
