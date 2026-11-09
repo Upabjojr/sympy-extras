@@ -755,7 +755,6 @@ class AlgebraicNumber(Expr):
     >>> a = AlgebraicNumber(sqrt(2), [1, 1])
     >>> a, a.args, a.root, a.coeffs(), a.as_expr(), a.doit()
     (1 + sqrt(2), (sqrt(2), (1, 1)), sqrt(2), [1, 1], 1 + sqrt(2), 1 + sqrt(2))
-    >>> import sympy_extras.interop  # SymPy's minimal polynomial (core.bridge)
     >>> a.minpoly
     Poly(_x**2 - 2*_x - 1, _x, domain='ZZ')
     >>> AlgebraicNumber(sqrt(2)).coeffs(), AlgebraicNumber(sqrt(2), alias='a').is_aliased
@@ -830,13 +829,13 @@ class AlgebraicNumber(Expr):
 
     @property
     def minpoly(self) -> 'Poly':
-        """The minimal polynomial over the rationals, in a dummy (computed
-        by the foreign system until it is ported: :mod:`~sympy_extras.core.bridge`)."""
+        """The minimal polynomial over the rationals, in a dummy
+        (:mod:`sympy_extras.polys.numberfields.minpoly`)."""
+        from sympy_extras.polys.numberfields.minpoly import minimal_polynomial
         from sympy_extras.polys.polytools import Poly
-        from .bridge import bridge
         from .symbol import Dummy
         x = Dummy('x')
-        return Poly(bridge().minimal_polynomial(self.as_expr(), x), x)
+        return Poly(minimal_polynomial(self.as_expr(), x), x)
 
     def as_poly(self, *gens: 'Symbol') -> Optional['Poly']:
         """The polynomial with the coefficients (highest degree first) in

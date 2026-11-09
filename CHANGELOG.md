@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.numberfields.minimal_polynomial` (and `minpoly`,
+  `minimal_polynomial_coeffs`): minimal polynomials of algebraic numbers
+  over `QQ` by resultants on the typed polynomial layer, ported from
+  SymPy's `minpoly` (numbers only); `AlgebraicNumber.minpoly` no longer
+  goes through the SymPy bridge.
 - `sympy_extras.polys.polytools.Poly` with `degree`, `LC`, `gcd`, `lcm`,
   `resultant`, `discriminant`, `factor_list`, `sqf_list`, and
   `sympy_extras.polys.polyerrors`, ported from SymPy onto the typed
