@@ -1382,16 +1382,6 @@ class SymPyBridge(Bridge):
     def minimal_polynomial(self, e: Expr, x: Symbol) -> Expr:
         return expr_from_sympy(sympy.minimal_polynomial(to_sympy(e), to_sympy(x)))
 
-    def degree(self, e: Expr, x: Expr) -> int:
-        from sympy_extras.polys.polyerrors import PolynomialError
-        try:
-            value = sympy.degree(to_sympy(e), to_sympy(x))
-        except sympy.PolynomialError as error:
-            raise PolynomialError(str(error)) from error
-        if not isinstance(value, (int, sympy.Integer)):
-            raise PolynomialError("the degree of %s is %s" % (e, value))
-        return int(value)
-
     def nseries(self, node: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         return nseries_node_through_sympy(node, x, n, logx, cdir)
 

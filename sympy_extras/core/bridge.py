@@ -83,9 +83,6 @@ class Bridge:
     def minimal_polynomial(self, e: Expr, x: Symbol) -> Expr:
         raise self._missing('minimal_polynomial')
 
-    def degree(self, e: Expr, x: Expr) -> int:
-        raise self._missing('degree')
-
     # -- operations on nodes whose rules are not ported
 
     def nseries(self, node: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:

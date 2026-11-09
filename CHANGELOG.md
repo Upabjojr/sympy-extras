@@ -356,6 +356,9 @@ remove public functions. Breaking changes are listed here when they happen.
 - The rewrites of single nodes ask the bridge only when SymPy has a rule
   for that class and target (`sympy_extras.core._rewrite_rules`, generated
   from SymPy and checked by a test): 340 of 419 calls had none.
+- `degree` with coefficients the typed `Poly` does not hold (rational
+  functions of other symbols, functions) is native, term by term (SymPy's
+  degree over `EX`); the bridge no longer has `degree`.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

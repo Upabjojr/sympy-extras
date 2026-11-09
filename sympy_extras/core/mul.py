@@ -498,17 +498,45 @@ def _with_orders(factors: list[Expr]) -> Expr:
 
 
 def _degree(e: Expr, x: Symbol) -> int:
-    """The degree of ``e`` in ``x`` (SymPy's ``degree``; through SymPy over
-    the domains of coefficients not ported yet)."""
+    """The degree of ``e`` in ``x`` (SymPy's ``degree``)."""
     from sympy_extras.polys.polyerrors import CoercionFailed
     from sympy_extras.polys.polytools import degree
     try:
         return degree(e, x)
     except CoercionFailed:
-        # a coefficient domain not ported (polynomials in functions): the
-        # foreign system's degree (PolynomialError when there is none)
-        from .bridge import bridge
-        return bridge().degree(e, x)
+        # coefficients in a domain the typed Poly has not (rational
+        # functions of the other symbols, functions): term by term
+        return _degree_in_terms(e, x)
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:degree (a polynomial in x with
+# coefficients in the domain EX)
+def _degree_in_terms(e: Expr, x: Symbol) -> int:
+    """The degree in ``x`` of the expanded terms, each a coefficient free
+    of ``x`` times a power ``x**n`` (``n >= 0``); ``PolynomialError`` for
+    anything else, and for zero (SymPy's degree ``-oo`` is no integer)."""
+    from sympy_extras.polys.polyerrors import PolynomialError
+    from .add import Add
+    from .function import expand
+    from .numbers import Integer
+    from .power import Pow
+    expanded = expand(e)
+    if isinstance(expanded, Integer) and expanded.p == 0:
+        raise PolynomialError('the degree of %s is -oo' % (e,))
+    best = 0
+    for term in (expanded.args if isinstance(expanded, Add) else (expanded,)):
+        assert isinstance(term, Expr)
+        _, dependent = term.as_independent(x, as_Add=False)
+        n = 0
+        for f in (dependent.args if isinstance(dependent, Mul) else (dependent,)):
+            if f == x:
+                n += 1
+            elif isinstance(f, Pow) and f.base == x and isinstance(f.exp, Integer) and f.exp.p >= 0:
+                n += f.exp.p
+            elif not (isinstance(f, Integer) and f.p == 1):
+                raise PolynomialError('%s is not a polynomial in %s' % (e, x))
+        best = max(best, n)
+    return best
 
 
 # PORTED FROM SYMPY: sympy/core/mul.py:Mul._eval_nseries (max_degree)

@@ -386,3 +386,29 @@ def test_powers_of_order_terms_match_sympy() -> None:
         want = sympy.srepr(sympy.Pow(b, e))
         got = native_pow(expr_from_sympy(sympy.sympify(b)), expr_from_sympy(sympy.sympify(e)))
         assert sympy.srepr(to_sympy(got, evaluate=False)) == want, (b, e)
+
+
+def test_degree_with_any_coefficients_matches_sympy() -> None:
+    # mul._degree_in_terms: SymPy's degree over the domain EX (coefficients
+    # the typed Poly does not hold: rational functions of other symbols, functions)
+    import sympy
+    from sympy_extras.core.mul import _degree_in_terms
+    from sympy_extras.core.symbol import Symbol as NativeSymbol
+    from sympy_extras.interop import expr_from_sympy
+    from sympy_extras.polys.polyerrors import PolynomialError
+    k, x, y, t = sympy.symbols('k x y t')
+    for e, v in [((k*x + 1)/x, k), (k + 1/x, k), (x/(y + 1), x), (-t*sympy.I/2, t), (sympy.sin(y)*x**3 + x, x),
+                 ((x + 1/y)**3, x), (sympy.exp(y)*x**2 - x**2*sympy.exp(y), x), (sympy.sin(x), x), (1/x, x),
+                 (sympy.sqrt(x), x), (y, x), ((x + y)**2 - x**2, x), (sympy.Integer(0), x), (sympy.cos(y)*(x + 1)**4, x)]:
+        try:
+            value = sympy.degree(e, v)
+            want: object = int(value) if value.is_Integer else 'error'
+        except sympy.PolynomialError:
+            want = 'error'
+        native_v = expr_from_sympy(v)
+        assert isinstance(native_v, NativeSymbol)
+        try:
+            got: object = _degree_in_terms(expr_from_sympy(e), native_v)
+        except PolynomialError:
+            got = 'error'
+        assert got == want, (e, v)
