@@ -30,10 +30,10 @@ from typing import Callable, Final, Iterable, Optional
 
 from .assume import AppliedPredicate, Predicate, global_assumptions
 from .assumptions import PREDICATES, Truth, closure, facts_of, is_consistent, minimal_generators
-from .basic import Basic
+from .basic import Basic, preorder_traversal
 from .expr import Expr
-from .logic import (ITE, And, Boolean, BooleanAtom, BooleanLike, Equivalent, Implies, Not, Or, Xor, and_, false,
-    not_, to_boolean)
+from .logic import (ITE, And, Boolean, BooleanAtom, BooleanFalse, BooleanLike, BooleanTrue, Equivalent, Implies, Not,
+    Or, Xor, and_, false, not_, or_, to_boolean)
 from .relational import Relational, eq, ge, gt, le, lt, ne
 from .symbol import Dummy, Symbol
 
@@ -136,8 +136,7 @@ def ask(proposition: BooleanLike, assumptions: BooleanLike = True,
     >>> ask(Q.integer(2)), ask(Q.positive(x*y), Q.positive(x) & Q.negative(y)), ask(x > 0, Q.positive(x))
     (True, False, True)
     >>> ask(Q.positive(x), Q.positive(x) | Q.negative(x))
-    >>> import sympy_extras.interop  # SymPy's ask for what is not decided here (core.bridge)
-    >>> ask(Q.nonzero(x), Q.positive(x) | Q.negative(x))
+    >>> ask(Q.nonzero(x), Q.positive(x) | Q.negative(x))  # by cases
     True
     >>> ask(Q.positive(x), Q.positive(x) & Q.zero(x))
     Traceback (most recent call last):
@@ -153,7 +152,133 @@ def ask(proposition: BooleanLike, assumptions: BooleanLike = True,
     result = facts.evaluate(prop)
     if result is not None or _has_user_predicate(prop) or _has_user_predicate(everything):
         return result
+    split = _ask_by_cases(prop, everything)
+    if split is not None:
+        return split
+    refuted = _ask_by_refutation(prop, everything)
+    if refuted is not None:
+        return refuted
     return _ask_sympy(prop, everything)
+
+
+def _inconsistent(conjunction: Boolean) -> bool:
+    """Whether a conjunction of literals is contradictory: by the facts it
+    gives its subjects, or by a literal together with its negation."""
+    if conjunction == false:
+        return True
+    try:
+        facts = _Facts(conjunction, conjunction)
+    except ValueError:
+        return True
+    literals = {_relational_form(literal) for literal in facts.literals}
+    return any(_relational_form(not_(literal)) in literals for literal in literals)
+
+
+#: the comparison predicates and their relationals
+_COMPARISONS: Final[dict[str, Callable[[Expr, Expr], Boolean]]] = {
+    'gt': gt, 'lt': lt, 'ge': ge, 'le': le, 'eq': eq, 'ne': ne}
+
+
+def _relational_form(b: Boolean) -> Boolean:
+    """``Q.gt(x, y)`` as ``x > y`` (and the other comparisons, negated or
+    not), so that both forms of a literal are recognised."""
+    if isinstance(b, Not) and isinstance(b.arg, Boolean):
+        return not_(_relational_form(b.arg))
+    if isinstance(b, AppliedPredicate) and b.function._defined:
+        build = _COMPARISONS.get(b.function.name)
+        args = b.arguments
+        if build is not None and len(args) == 2 and all(isinstance(a, Expr) for a in args):
+            left, right = args
+            assert isinstance(left, Expr) and isinstance(right, Expr)
+            return build(left, right)
+    return b
+
+
+def _ask_by_refutation(prop: Boolean, assumptions: Boolean) -> Truth:
+    """``True`` when every case of ``assumptions & ~prop`` is contradictory,
+    ``False`` when every case of ``assumptions & prop`` is (``None``
+    otherwise, or past the number of cases)."""
+    alone = _dnf(assumptions, _MAX_CASES)
+    if alone is None or all(_inconsistent(and_(*case)) for case in alone):
+        # contradictory assumptions: anything would follow; SymPy checks only
+        # the facts of the subjects of the proposition, so it is left to it
+        return None
+    for value, formula in ((True, and_(assumptions, not_(prop))), (False, and_(assumptions, prop))):
+        cases = _dnf(formula, _MAX_CASES)
+        if cases is not None and all(_inconsistent(and_(*case)) for case in cases):
+            return value
+    return None
+
+
+#: the largest number of cases _ask_by_cases tries
+_MAX_CASES: Final[int] = 16
+
+
+def _ask_by_cases(prop: Boolean, assumptions: Boolean) -> Truth:
+    """The answer under assumptions with disjunctions: the same answer in
+    every consistent case of their disjunctive normal form (``None`` when
+    the cases disagree, are undecided or too many)."""
+    if not any(isinstance(b, (Or, Xor, Implies, Equivalent, Not)) for b in preorder_traversal(assumptions)):
+        return None
+    cases = _dnf(assumptions, _MAX_CASES)
+    if cases is None or len(cases) < 2:
+        return None
+    answers: list[Truth] = []
+    for case in cases:
+        conjunction = and_(*case)
+        if conjunction == false:
+            continue
+        try:
+            answers.append(_Facts(conjunction, prop).evaluate(prop))
+        except ValueError:
+            continue  # an inconsistent case
+    if answers and answers[0] is not None and all(a == answers[0] for a in answers):
+        return answers[0]
+    return None
+
+
+def _dnf(b: Boolean, limit: int, positive: bool = True) -> Optional[list[list[Boolean]]]:
+    """The disjunctive normal form of ``b`` (of ``~b`` when not
+    ``positive``) as lists of literals, ``None`` past ``limit`` cases."""
+    if isinstance(b, BooleanTrue):
+        return [[]] if positive else []
+    if isinstance(b, BooleanFalse):
+        return [] if positive else [[]]
+    if isinstance(b, Not):
+        inner = b.args[0]
+        assert isinstance(inner, Boolean)
+        return _dnf(inner, limit, not positive)
+    parts = [a for a in b.args if isinstance(a, Boolean)]
+    if isinstance(b, (And, Or)) and len(parts) == len(b.args):
+        conjunctive = isinstance(b, And) == positive  # De Morgan for the negation
+        if conjunctive:
+            out: list[list[Boolean]] = [[]]
+            for a in parts:
+                cases = _dnf(a, limit, positive)
+                if cases is None:
+                    return None
+                out = [left + right for left in out for right in cases]
+                if len(out) > limit:
+                    return None
+            return out
+        union: list[list[Boolean]] = []
+        for a in parts:
+            cases = _dnf(a, limit, positive)
+            if cases is None:
+                return None
+            union += cases
+            if len(union) > limit:
+                return None
+        return union
+    if isinstance(b, Implies) and len(parts) == 2:
+        return _dnf(or_(not_(parts[0]), parts[1]), limit, positive)
+    if isinstance(b, Equivalent) and len(parts) == 2:
+        return _dnf(or_(and_(parts[0], parts[1]), and_(not_(parts[0]), not_(parts[1]))), limit, positive)
+    if isinstance(b, Xor) and len(parts) == 2:
+        return _dnf(or_(and_(parts[0], not_(parts[1])), and_(not_(parts[0]), parts[1])), limit, positive)
+    if isinstance(b, (Implies, Equivalent, Xor, And, Or)):
+        return None
+    return [[b if positive else not_(b)]]
 
 
 def _argument(value: object, role: str) -> Boolean:

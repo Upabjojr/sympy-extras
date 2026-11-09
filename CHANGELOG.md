@@ -396,6 +396,12 @@ remove public functions. Breaking changes are listed here when they happen.
   integer symbol, ...), a value above the noise and the same at 60 and 200
   bits. 203 of 264 bridge calls of the measured tests are decided so; some
   answers SymPy leaves undecided (`sqrt(x**2) == x`) are `False` now.
+- `ask` decides by cases (the disjunctive normal form of the assumptions,
+  the same answer in every consistent case) and by refutation (every case
+  of `assumptions & ~prop`, or of `assumptions & prop`, contradictory)
+  before the bridge; random queries agree with SymPy's `ask` (a test).
+  SymPy's `ask(Q.real(x*y), Q.imaginary(y) & Q.real(x))` is wrongly
+  `False` (issue #25); here it is undecided.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
