@@ -391,6 +391,11 @@ remove public functions. Breaking changes are listed here when they happen.
   functions between themselves and as `jn`, `erfc`/`erfi`/`erf2` as `erf`,
   `expint` and `Ei` into each other: no rewrite of the measured tests goes
   through SymPy now.
+- `equals` proves "not equal" natively: the difference evaluated at up to
+  three points respecting the assumptions of its symbols (integers for an
+  integer symbol, ...), a value above the noise and the same at 60 and 200
+  bits. 203 of 264 bridge calls of the measured tests are decided so; some
+  answers SymPy leaves undecided (`sqrt(x**2) == x`) are `False` now.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

@@ -798,3 +798,27 @@ def test_subs_of_subs_and_as_independent_match_sympy() -> None:
     assert tuple(str(to_sympy(p, evaluate=False)) for p in ours) == tuple(str(p) for p in (s*sx**3).as_independent(sx))
     sa = sympy.Symbol('a')
     assert str(to_sympy(expr_from_sympy(sympy.zoo*sa + sympy.zoo*sa + sympy.zoo*sa), evaluate=False)) == '3*zoo*a'
+
+
+def test_equals_proves_nonzero_at_admissible_points() -> None:
+    # expr._nonzero_at_a_point: never on an identity (the points respect the
+    # assumptions: sin(pi*n) is zero for an integer n), always on these
+    # non-identities, some of which SymPy's equals leaves undecided
+    import sympy
+    from sympy_extras.core.expr import _nonzero_at_a_point
+    from sympy_extras.interop import expr_from_sympy
+    x, y = sympy.symbols('x y')
+    p = sympy.Symbol('p', positive=True)
+    n = sympy.Symbol('n', integer=True)
+    m = sympy.Symbol('m', integer=True, even=True)
+    r = sympy.Symbol('r', real=True)
+    identities = [sympy.sin(sympy.pi*n), sympy.cos(sympy.pi*m) - 1, sympy.sqrt(p**2) - p, (x + 1)**2 - x**2 - 2*x - 1,
+                  sympy.sin(x)**2 + sympy.cos(x)**2 - 1, sympy.log(sympy.exp(r)) - r, sympy.exp(sympy.log(x)) - x,
+                  sympy.Abs(p) - p, sympy.gamma(x + 1) - x*sympy.gamma(x), sympy.sin(2*x) - 2*sympy.sin(x)*sympy.cos(x),
+                  (-1)**n - (-1)**(n + 2), sympy.cosh(x)**2 - sympy.sinh(x)**2 - 1, sympy.exp(x + y) - sympy.exp(x)*sympy.exp(y),
+                  (-1)**(2*m) - 1, sympy.log(p**2) - 2*sympy.log(p)]
+    for e in identities:
+        assert not _nonzero_at_a_point(expr_from_sympy(e)), e
+    for e in [x - y, 2*x - 1, sympy.log(sympy.exp(x)) - x, (-1)**n - 1, sympy.floor(r) - r, sympy.sqrt(x**2) - x,
+              sympy.Abs(r) - r, sympy.sqrt(x)*sympy.sqrt(y) - sympy.sqrt(x*y), sympy.log(x**2) - 2*sympy.log(x)]:
+        assert _nonzero_at_a_point(expr_from_sympy(e)), e

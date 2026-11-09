@@ -860,6 +860,8 @@ class Expr(Basic):
         zero = difference.is_zero
         if zero is not None:
             return zero
+        if _nonzero_at_a_point(difference):
+            return False
         return bridge().equals_zero(difference)
 
     # ------------------------------------------------------------------
@@ -1932,3 +1934,74 @@ def _is_polynomial_like(e: Expr, syms: set[Symbol], kind: str) -> Truth:
     return None
 
 
+#: the facts a point chosen by _admissible_value respects (a symbol with
+#: another true fact gets no point: prime, irrational, transcendental, ...)
+_POINT_FACTS: Final[frozenset[str]] = frozenset({
+    'commutative', 'complex', 'finite', 'integer', 'rational', 'real', 'extended_real', 'positive', 'negative',
+    'nonnegative', 'nonpositive', 'nonzero', 'zero', 'extended_positive', 'extended_negative', 'extended_nonnegative',
+    'extended_nonpositive', 'extended_nonzero', 'even', 'odd', 'algebraic', 'hermitian', 'imaginary', 'antihermitian'})
+
+
+def _admissible_value(s: Symbol, i: int, variant: int = 0) -> Optional[Expr]:
+    """A value of the symbol respecting its assumptions (an integer for an
+    integer symbol, a signed rational for a real one, a complex number
+    otherwise); ``variant`` 0, 1, 2 picks other signs, sizes and quadrants
+    where the assumptions allow; ``None`` when a fact is not handled."""
+    from .assumptions import facts_of
+    from .numbers import I, Integer, Rational
+    facts = facts_of(s)
+    if any(v is True and k not in _POINT_FACTS for k, v in facts.items()):
+        return None
+    if facts.get('zero') is True:
+        return Integer(0)
+    negative = facts.get('negative') is True or facts.get('nonpositive') is True \
+        or facts.get('extended_negative') is True or facts.get('extended_nonpositive') is True
+    positive = facts.get('positive') is True or facts.get('nonnegative') is True \
+        or facts.get('extended_positive') is True or facts.get('extended_nonnegative') is True
+    # the sign is free unless an assumption fixes it
+    sign = -1 if negative else 1 if positive else (1, -1, -1)[variant]
+    # the second point is far (an imaginary part beyond pi: log(exp(x)) - x)
+    scale = (1, 9, 1)[variant]
+    if facts.get('integer') is True or facts.get('even') is True or facts.get('odd') is True:
+        if facts.get('even') is True:
+            return Integer(sign * scale * (4 + 2 * i))
+        return Integer(sign * (scale * (3 + 2 * i) | 1))
+    if facts.get('imaginary') is True or facts.get('antihermitian') is True:
+        return Integer(sign) * Rational(scale * (7 + 2 * i), 11) * I
+    if facts.get('real') is True or facts.get('extended_real') is True or facts.get('rational') is True \
+            or negative or positive or facts.get('hermitian') is True:
+        return Integer(sign) * Rational(scale * (7 + 3 * i), 11)
+    quadrant = ((1, 1), (-1, -1), (-1, 1))[variant]
+    return Integer(quadrant[0]) * Rational(scale * (7 + 3 * i), 11) + Integer(quadrant[1]) * Rational(scale * (5 + i), 13) * I
+
+
+def _nonzero_at_a_point(e: Expr) -> bool:
+    """Whether ``e`` is shown not to be identically zero by its value at an
+    admissible point of its symbols: a value well above the noise and the
+    same at two precisions (a hidden zero gives noise that moves with the
+    precision; SymPy's ``equals`` decides by random points likewise)."""
+    import mpmath
+    from .evalf import numeric_value
+    from .symbol import Symbol as _Symbol
+    symbols = sorted((f for f in e.free_symbols if isinstance(f, _Symbol)), key=lambda f: f.name)
+    for variant in range(3 if symbols else 1):
+        point: dict[Basic, Basic] = {}
+        for i, s in enumerate(symbols):
+            value = _admissible_value(s, i, variant)
+            if value is None:
+                return False
+            point[s] = value
+        at = e.xreplace(point) if point else e
+        if not isinstance(at, Expr):
+            return False
+        try:
+            low, high = numeric_value(at, 60), numeric_value(at, 200)
+        except (ZeroDivisionError, ValueError, OverflowError, TypeError):
+            continue
+        if low is None or high is None:
+            continue
+        size = abs(high)
+        with mpmath.workprec(200):
+            if size > mpmath.mpf('1e-30') and abs(low - high) < mpmath.mpf('1e-12') * size:
+                return True
+    return False
