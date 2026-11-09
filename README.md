@@ -434,11 +434,12 @@ nested sums of hypergeometric terms, found by reduction of order; the
 harmonic numbers, the derangement numbers and `y(n + 1) = (n + 1) y(n) + 1`,
 on which `rsolve` returns nothing or misses a solution, are solved, with
 particular solutions for hypergeometric right-hand sides and initial
-values.
+values. The module is native (written on the core, without SymPy).
 
 ```python
->>> from sympy import Eq
+>>> from sympy_extras.core import Eq, Function, Symbol
 >>> from sympy_extras.solvers import rsolve_linear
+>>> n = Symbol('n')
 >>> u = Function('u')
 >>> rsolve_linear(u(n + 1) - (n + 1)*u(n) - 1, u(n))
 C0*factorial(n) + factorial(n)*Sum(1/factorial(k + 1), (k, 0, n - 1))
@@ -871,7 +872,7 @@ sympy_extras/
         special.py           Bessel, Whittaker, hypergeometric solutions
         linear_systems.py    systems Y' = A Y + b: cyclic vectors, rational solutions, variation of constants
         first_order.py       Abel, Chini, d'Alembert-Lagrange equations
-        recurr.py            linear recurrences: polynomial, hypergeometric (Petkovšek), d'Alembertian (Abramov–Petkovšek) solutions
+        recurr.py            linear recurrences: polynomial, hypergeometric (Petkovšek), d'Alembertian (Abramov–Petkovšek) solutions (native)
         charpit.py           complete integrals of first order PDEs
         kovacic.py           Kovacic's algorithm (Liouvillian solutions of second order linear ODEs)
         linear_ode.py        polynomial, rational, hyperexponential solutions; reduction of order

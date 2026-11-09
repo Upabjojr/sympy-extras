@@ -45,7 +45,7 @@ from sympy.concrete.summations import Sum
 from sympy.core.add import Add
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
-from sympy.core.function import AppliedUndef, Function
+from sympy.core.function import Function
 from sympy.core.numbers import Integer
 from sympy.core.singleton import S
 from sympy.core.symbol import Dummy, Symbol
@@ -537,19 +537,29 @@ def _nicer(solution: Expr, n: Symbol) -> Expr:
 
 def _rsolve_linear(recurrence: Expr, S_n: Expr, initial: dict[Basic, Basic]) -> Optional[Expr]:
     """:func:`~sympy_extras.solvers.recurr.rsolve_linear` on the recurrence
-    with the initial values, ``None`` on failure."""
+    with the initial values, ``None`` on failure (the solver is native:
+    the expressions are converted at the call)."""
+    from sympy_extras.core.expr import Expr as CoreExpr
+    from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef
+    from sympy_extras.core.relational import Eq as CoreEq
+    from sympy_extras.interop import from_sympy, sympy_expr, to_sympy
+    from sympy_extras.polys.polyerrors import BasePolynomialError
     from sympy_extras.solvers.recurr import rsolve_linear
-    if not isinstance(S_n, AppliedUndef):
+    equation = from_sympy(recurrence)
+    function = from_sympy(S_n)
+    if not isinstance(function, CoreAppliedUndef) or not isinstance(equation, (CoreExpr, CoreEq)):
         return None
-    init: dict[AppliedUndef, Union[Expr, int]] = {}
+    init: dict[CoreAppliedUndef, Union[CoreExpr, int]] = {}
     for key, value in initial.items():
-        if not isinstance(key, AppliedUndef) or not isinstance(value, Expr):
+        point, core_value = from_sympy(key), from_sympy(value)
+        if not isinstance(point, CoreAppliedUndef) or not isinstance(core_value, CoreExpr):
             return None
-        init[key] = value
+        init[point] = core_value
     try:
-        return rsolve_linear(recurrence, S_n, init if init else None)
-    except (NotImplementedError, ValueError, TypeError, AttributeError, PolynomialError):
+        solution = rsolve_linear(equation, function, init if init else None)
+    except (NotImplementedError, ValueError, TypeError, AttributeError, BasePolynomialError):
         return None
+    return None if solution is None else sympy_expr(to_sympy(solution))
 
 
 def _start(leading: Expr, n: Symbol) -> int:

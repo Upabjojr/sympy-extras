@@ -461,8 +461,10 @@ that factor into first order factors over the rational functions:
   irreducible factors of `a` and `b` under integer shifts, which is far
   cheaper than the resultant), `z` from the leading coefficients, `c` a
   polynomial solution of the auxiliary recurrence; the terms are grouped
-  into similarity classes by the Gosper–Petkovšek form of the quotient of
-  their ratios (`gosper_form`), so that the result is a basis;
+  into similarity classes (the quotient of their ratios is `q(n + 1)/q(n)`
+  for a polynomial `q`, a polynomial solution of a first order
+  recurrence), so that the result is a basis; `gosper_form` gives the
+  Gosper–Petkovšek form of a ratio;
 - `rsolve_dalembertian(coefficients, n)`: a hypergeometric solution `h`
   gives `L = L' (N - r)`, the substitution `y = h sum z` reduces the order
   by one, and the solutions are `h` and the `h sum_{k < n} z(k)` for the
@@ -482,19 +484,33 @@ that factor into first order factors over the rational functions:
 
 The solutions are written with `factorial`, `RisingFactorial`, `Product`
 (for the irreducible factors of degree two and more), `Sum` and `z**n`;
-the sums SymPy can evaluate without special functions are evaluated
-(`harmonic(n)` for the harmonic numbers, `2**n - n - 1` for
-`y(n + 1) = 2 y(n) + n`; `Sum(1/factorial(k + 1), (k, 0, n - 1))` is kept
-because SymPy writes it with the incomplete gamma function). A product
+the sums the summation (SymPy's, ported) evaluates without special
+functions are evaluated (`harmonic(n)` for the harmonic numbers,
+`2**n - n - 1` for `y(n + 1) = 2 y(n) + n`;
+`Sum(1/factorial(k + 1), (k, 0, n - 1))` is kept because the summation
+writes it with the incomplete gamma function). A product
 whose factor vanishes at a nonnegative integer starts after it, and the
 solution holds from there.
 Every solution is checked by substitution at six consecutive integers
 before it is returned (`is_recurrence_solution`).
 
+The module is native: it takes and returns expressions of the core and
+does not import SymPy (`zeilberger_sum` converts at the call). The
+coefficients are dense polynomials in `n` over `QQ`, over the rational
+functions `QQ(a, b, ...)` of the parameters, or over a number field
+`QQ(alpha)` for one radical `alpha`; a root `z` outside the field is
+adjoined (an `AlgebraicField` over `QQ`, a simple extension of `QQ(a, ...)`
+otherwise: `sqrt(a)**n` for `y(n + 2) = a y(n)`). The d'Alembertian
+reduction needs a factorisation over the field of the hypergeometric
+solution it reduces with, which exists over `QQ`, `QQ(a, ...)` and the
+number fields over `QQ`; the roots of degree five and more that the
+ported `roots` does not find (SymPy's `CRootOf`) are left out, and the
+closed forms of the sums are computed without a time limit.
+
 ```python
->>> from sympy import Function, Eq
->>> from sympy.abc import n
+>>> from sympy_extras.core import Eq, Function, Symbol
 >>> from sympy_extras.solvers import rsolve_linear, rsolve_dalembertian, rsolve_hypergeometric
+>>> n = Symbol('n')
 >>> u = Function('u')
 >>> rsolve_linear(u(n + 1) - (n + 1)*u(n) - 1, u(n))
 C0*factorial(n) + factorial(n)*Sum(1/factorial(k + 1), (k, 0, n - 1))
@@ -588,7 +604,7 @@ integrals) and the integration of `du = p dx + q dy`. SymPy's `pdsolve`
 handles first order linear equations only.
 
 ```python
->>> from sympy import symbols
+>>> from sympy import Eq, Function, symbols
 >>> from sympy_extras.solvers import complete_integral
 >>> x, y = symbols('x y')
 >>> u = Function('u')(x, y)

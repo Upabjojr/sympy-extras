@@ -437,6 +437,28 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.solvers.recurr` is native: `rsolve_polynomial`,
+  `rsolve_hypergeometric`, `rsolve_dalembertian`, `rsolve_linear`,
+  `gosper_form` and `is_recurrence_solution` take and return core
+  expressions, and the module imports no SymPy (the package
+  `sympy_extras.solvers` still does, through its other modules). The
+  coefficients are dense polynomials in `n` over `QQ`, `QQ(a, ...)` (the
+  native `SparseFractionField`) or `QQ(alpha)` (`AlgebraicField`); the
+  roots outside the field are adjoined (`AlgebraicField` over `QQ`, a
+  simple algebraic extension otherwise, which gives `sqrt(a)**n`); the
+  similarity classes of Petkovšek's terms are decided by a polynomial
+  solution of a first order recurrence instead of the Gosper–Petkovšek
+  form, which needs no factorisation over the extensions; the linear
+  algebra is `Domain.nullspace` and `sparse_echelon`, and on
+  expressions (independence, initial values) an elimination with exact
+  zero tests (minimal polynomials of the algebraic numbers). The closed
+  forms of the sums come from the ported summation, without a time limit.
+  Same outputs as before on the tests and the documented examples;
+  `gosper_form` over `QQ(a)` gives `Poly` over `QQ[a]` (and
+  `CoercionFailed` when a coefficient is not a polynomial in the
+  parameters, the fraction fields not being ported to `Poly`). The
+  removed `RecurrenceSolution` alias was internal. `zeilberger_sum`
+  converts at the call.
 - `sympy_extras.concrete.karr` is native: `karr_sum`, `karr_term`,
   `summation` and `build_pisigma_field` take and return core expressions
   (`sympy_extras.core`, `sympy_extras.functions`, the native `Sum` and
