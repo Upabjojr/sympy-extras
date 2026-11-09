@@ -321,6 +321,10 @@ remove public functions. Breaking changes are listed here when they happen.
   rings (SymPy's `PolyElement.cancel`). Unlike SymPy, negative powers are
   normalised too (issue #25: SymPy's `(-2*x - 2*y)**-1` and
   `1/(-2*x - 2*y)` compare unequal).
+- `Domain.nullspace`: a basis of the null space from the reduced row
+  echelon form, the free coordinate one (SymPy's `DomainMatrix.nullspace`
+  over `QQ`; over fields of rational functions SymPy's vectors are
+  fraction-free multiples).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import heapq
 from fractions import Fraction
-from typing import Generic, Iterator, Optional, TypeVar
+from typing import Generic, Iterator, Optional, Sequence, TypeVar
 
 from sympy_extras.core.expr import Expr
 
@@ -224,6 +224,36 @@ class Domain(Generic[T]):
                     else:
                         row[column] = self.neg(self.mul(factor, value))
         return [pivots[c] for c in sorted(pivots)]
+
+    def nullspace(self, rows: Sequence[Sequence[T]], ncols: int) -> list[list[T]]:
+        """A basis of the null space of the matrix with these rows (``ncols``
+        columns): one vector per free column of the reduced row echelon
+        form, its free coordinate one (the canonical basis; SymPy's
+        ``DomainMatrix.nullspace`` gives the same vectors over ``QQ``, and
+        multiples of them, fraction-free, over fields of rational
+        functions), in the order of the free columns.
+
+        >>> from fractions import Fraction
+        >>> from sympy_extras.polys.domains import QQ
+        >>> QQ.nullspace([[Fraction(2), Fraction(4), Fraction(1), Fraction(3)],
+        ...               [Fraction(1), Fraction(2), Fraction(3), Fraction(4)]], 4) == [
+        ...     [-2, 1, 0, 0], [-1, 0, -1, 1]]
+        True
+        """
+        sparse = [{j: c for j, c in enumerate(row) if not self.is_zero(c)} for row in rows]
+        echelon = self.sparse_echelon([r for r in sparse if r])
+        pivot_rows = {min(r): r for r in echelon}
+        basis: list[list[T]] = []
+        for free in range(ncols):
+            if free in pivot_rows:
+                continue
+            vector = [self.zero] * ncols
+            vector[free] = self.one
+            for pivot, r in pivot_rows.items():
+                if free in r:
+                    vector[pivot] = self.neg(r[free])
+            basis.append(vector)
+        return basis
 
     # -- dense polynomial kernels: a domain whose elements are machine
     # values may run the inner loops of the dense arithmetic on them
