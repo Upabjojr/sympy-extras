@@ -792,6 +792,13 @@ class Basic:
         >>> Eq(x + x, 2*x).simplify()
         True
         """
+        from .containers import Tuple
+        if not self.args:
+            return self
+        if isinstance(self, Tuple):
+            # the elements simplified (the parameters of hyper and meijerg)
+            return Tuple(*[a.simplify() for a in self.args])
+        # the relationals (SymPy canonicalises them) and the other nodes
         from .bridge import bridge
         return bridge().simplify(self)
 

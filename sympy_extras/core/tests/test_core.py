@@ -845,3 +845,28 @@ def test_is_constant_natively() -> None:
         symbols = sorted((s for s in native.free_symbols if isinstance(s, NativeSymbol)), key=str)
         assert _constant_natively(native, symbols) in (want, None), e
         assert native.is_constant() == want, e
+
+
+def test_termwise_integrate_and_tuple_simplify() -> None:
+    # expr._integrate_terms against SymPy's integrate; Tuple.simplify natively
+    import sympy
+    from sympy_extras.core.containers import Tuple
+    from sympy_extras.core.expr import _integrate_terms
+    from sympy_extras.core.symbol import Symbol as NativeSymbol
+    from sympy_extras.interop import expr_from_sympy, to_sympy
+    x, a = sympy.symbols('x a')
+    nx = expr_from_sympy(x)
+    assert isinstance(nx, NativeSymbol)
+    for e, limits in [(x**2, None), (1/x, None), (x**2, (0, 1)), ((x + 1)**2, None), (a*x**3 + 2*x - 5, None),
+                      (sympy.sqrt(x), None), (x**sympy.Rational(-3, 2), None), (a/x + x, None), (x**2 + 1, (-1, 2)),
+                      (a*x, (0, a))]:
+        spec = nx if limits is None else (nx, expr_from_sympy(sympy.sympify(limits[0])), expr_from_sympy(sympy.sympify(limits[1])))
+        got = _integrate_terms(expr_from_sympy(sympy.sympify(e)), spec)
+        assert got is not None, e
+        want = sympy.integrate(e, x if limits is None else (x, *limits))
+        assert str(to_sympy(got, evaluate=False)) == str(want), (e, limits)
+    for e in [sympy.sin(x), 1/(x + 1), x*sympy.exp(x)]:
+        assert _integrate_terms(expr_from_sympy(e), nx) is None
+    assert _integrate_terms(expr_from_sympy(1/x), (nx, expr_from_sympy(sympy.Integer(1)), expr_from_sympy(sympy.Integer(2)))) is None
+    t = Tuple(expr_from_sympy(sympy.sin(x)**2 + sympy.cos(x)**2), expr_from_sympy(2*x - x))
+    assert str(t.simplify()) == '(1, x)'

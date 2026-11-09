@@ -1553,6 +1553,10 @@ class Expr(Basic):
         specs: list[Union[Symbol, tuple[Symbol, Expr, Expr]]] = []
         for a in args:
             specs.append((a[0], to_expr(a[1]), to_expr(a[2])) if isinstance(a, tuple) else a)
+        if len(specs) == 1:
+            native = _integrate_terms(self, specs[0])
+            if native is not None:
+                return native
         return bridge().integrate(self, specs)
 
     def as_poly(self, *gens: Symbol) -> Optional[Poly]:
@@ -2073,3 +2077,45 @@ def _constant_natively(e: Expr, wrt: list[Symbol]) -> Optional[bool]:
     if all((lambda d: isinstance(d, Integer) and d.p == 0)(diff(e, w)) for w in wrt):
         return True
     return None
+
+
+def _integrate_terms(e: Expr, spec: Union[Symbol, tuple[Symbol, Expr, Expr]]) -> Optional[Expr]:
+    """The integral of a sum of terms ``c*x**n`` (``c`` free of ``x``, ``n``
+    a rational number), term by term: ``x**(n + 1)/(n + 1)``, ``log(x)``
+    for ``n = -1``; definite only without the logarithm. ``None`` for
+    anything else (the foreign system integrates it)."""
+    from fractions import Fraction
+    from sympy_extras.functions.elementary.exponential import log
+    from .add import Add, add
+    from .function import expand
+    from .mul import Mul
+    from .numbers import Integer, Rational
+    from .power import Pow
+    x = spec[0] if isinstance(spec, tuple) else spec
+    expanded = expand(e)
+    pieces: list[Expr] = []
+    logarithmic = False
+    for term in (expanded.args if isinstance(expanded, Add) else (expanded,)):
+        assert isinstance(term, Expr)
+        c, dependent = term.as_independent(x, as_Add=False)
+        n = Fraction(0)
+        for f in (dependent.args if isinstance(dependent, Mul) else (dependent,)):
+            if f == x:
+                n += 1
+            elif isinstance(f, Pow) and f.base == x and isinstance(f.exp, Rational):
+                n += Fraction(f.exp.p, f.exp.q)
+            elif not (isinstance(f, Integer) and f.p == 1):
+                return None
+        if n == -1:
+            logarithmic = True
+            pieces.append(c * log(x))
+        else:
+            m = Rational(n.numerator + n.denominator, n.denominator)
+            pieces.append(c * x**m / m)
+    antiderivative = add(*pieces)
+    if not isinstance(spec, tuple):
+        return antiderivative
+    if logarithmic:
+        return None
+    _, lower, upper = spec
+    return antiderivative.subs(x, upper) - antiderivative.subs(x, lower)

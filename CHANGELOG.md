@@ -407,6 +407,9 @@ remove public functions. Breaking changes are listed here when they happen.
   otherwise (none of the measured tests needs it now). The random-methods
   test seeds SymPy's generator for its oracle (one run in a few hung on a
   point drawn from the system's entropy).
+- `integrate` natively for sums of terms `c*x**n` (rational `n`, `log(x)`
+  for `n = -1`; definite without the logarithm), the same results as
+  SymPy's; `Tuple.simplify` simplifies the elements natively.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

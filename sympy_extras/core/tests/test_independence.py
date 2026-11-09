@@ -28,7 +28,8 @@ else:
     raise AssertionError('should not parse without the bridge')
 try:
     from sympy_extras.core import Symbol
-    Symbol('x').integrate(Symbol('x'))
+    assert str(Symbol('x').integrate(Symbol('x'))) == 'x**2/2'   # native (term by term)
+    (1/(Symbol('x') + 1)).integrate(Symbol('x'))
 except ForeignOperationUnavailable:
     pass
 else:
