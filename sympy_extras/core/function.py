@@ -1380,10 +1380,9 @@ def _expand_func(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
         return e
     rule = _FUNC_RULES.get(type(e))
     new: Optional[Basic] = rule(e, hints) if rule is not None else None
-    if new is None and (e.args or not isinstance(e, (Symbol, Number))):
-        from .add import Add as _Add
-        if not isinstance(e, (_Add, Mul, Pow)):
-            new = bridge().expand_func_node(e)
+    if new is None and (e._is_foreign_node() or type(e).__name__ in _SYMPY_EXPAND_FUNC):
+        # a class with a SymPy rule not ported (or a wrapped foreign node)
+        new = bridge().expand_func_node(e)
     if new is not None and new != e:
         return new
     return e
@@ -2254,3 +2253,12 @@ def _generic_leading_term(f: DefinedFunction, x: Symbol, logx: Optional[Expr]) -
 _SYMPY_OWN_MEROMORPHIC: Final[frozenset[str]] = frozenset({
     'BesselI', 'BesselJ', 'BesselK', 'BesselY', 'Hankel1', 'Hankel2', 'LowerGamma', 'SphericalHankel1',
     'SphericalHankel2', 'SphericalJ', 'SphericalY', 'UpperGamma'})
+
+
+#: the classes whose SymPy counterpart has an ``_eval_expand_func`` (the
+#: others are not sent to the bridge; checked against SymPy by a test)
+_SYMPY_EXPAND_FUNC: Final[frozenset[str]] = frozenset({
+    'AiryAi', 'AiryAiPrime', 'AiryBi', 'AiryBiPrime', 'BesselI', 'BesselJ', 'BesselK', 'BesselY', 'Beta', 'Binomial',
+    'DiGamma', 'Erf2', 'Erfc', 'Erfi', 'Expint', 'Gamma', 'Hankel1', 'Hankel2', 'Harmonic', 'LerchPhi', 'LogGamma',
+    'PolyGamma', 'PolyLog', 'SphericalHankel1', 'SphericalHankel2', 'SphericalJ', 'SphericalY', 'TriGamma', 'YnmNode',
+    'Zeta', 'Hyper', 'MeijerG', 'GoldenRatioType', 'TribonacciConstantType'})

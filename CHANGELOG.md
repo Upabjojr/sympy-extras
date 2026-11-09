@@ -372,6 +372,9 @@ remove public functions. Breaking changes are listed here when they happen.
 - `degree` with coefficients the typed `Poly` does not hold (rational
   functions of other symbols, functions) is native, term by term (SymPy's
   degree over `EX`); the bridge no longer has `degree`.
+- `expand_func` asks the bridge only for the classes with a SymPy rule
+  (a table checked against SymPy); the recurrence of the Bessel functions
+  (`BesselBase._eval_expand_func`) is native.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

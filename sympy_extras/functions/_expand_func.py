@@ -249,15 +249,47 @@ def _tribonacci(node: Expr, hints: ExpandHints) -> Optional[Expr]:
                Rational(1, 3))
 
 
+#: SymPy's ``_a`` and ``_b`` of the Bessel classes (the signs of their recurrences)
+_BESSEL_SIGNS: dict[str, tuple[int, int]] = {'BesselJ': (1, 1), 'BesselY': (1, 1), 'BesselI': (-1, 1),
+                                             'BesselK': (1, -1), 'Hankel1': (1, 1), 'Hankel2': (1, 1)}
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:BesselBase._eval_expand_func
+def _bessel(node: Expr, hints: ExpandHints) -> Optional[Expr]:
+    """The recurrence down to an order in ``[-1, 1]``: ``f(nu)`` from
+    ``f(nu - 1)`` and ``f(nu - 2)`` (or up from ``f(nu + 1)``,
+    ``f(nu + 2)``), with the signs of the class; the node itself when the
+    order is not real or already small."""
+    nu, z = _args(node)
+    a, b = _BESSEL_SIGNS[type(node).__name__]
+
+    def at(order: Expr) -> Expr:
+        g = node._evaluated((order, z))
+        assert isinstance(g, Expr)
+        if type(g) is type(node):
+            expanded = _bessel(g, hints)
+            return g if expanded is None else expanded
+        return g
+
+    if nu.is_real is True:
+        if (nu - 1).is_positive is True:
+            return -a * b * at(nu - 2) + 2 * a * (nu - 1) * at(nu - 1) / z
+        if (nu + 1).is_negative is True:
+            return 2 * b * (nu + 1) * at(nu + 1) / z - a * b * at(nu + 2)
+    return node
+
+
 def rules() -> dict[type, Rule]:
     """The rules keyed by the class of the node."""
     from sympy_extras.core.numbers import GoldenRatioType, TribonacciConstantType
     from sympy_extras.functions.combinatorial.factorials import Binomial
     from sympy_extras.functions.combinatorial.numbers import Harmonic
     from sympy_extras.functions.special import error_functions as er, gamma_functions as g
+    from sympy_extras.functions.special import bessel as bs
     from sympy_extras.functions.special.beta_functions import Beta
     from sympy_extras.functions.special.zeta_functions import PolyLog, Zeta
-    return {g.Gamma: _gamma, g.PolyGamma: _polygamma, g.LogGamma: _loggamma, g.DiGamma: _digamma,
+    bessel: dict[type, Rule] = {c: _bessel for c in (bs.BesselJ, bs.BesselY, bs.BesselI, bs.BesselK, bs.Hankel1, bs.Hankel2)}
+    return bessel | {g.Gamma: _gamma, g.PolyGamma: _polygamma, g.LogGamma: _loggamma, g.DiGamma: _digamma,
             g.TriGamma: _trigamma, Beta: _beta, Binomial: _binomial, Harmonic: _harmonic, er.Erfc: _to_erf,
             er.Erfi: _to_erf, er.Erf2: _to_erf, er.Expint: _expint, Zeta: _zeta, PolyLog: _polylog,
             GoldenRatioType: _golden_ratio, TribonacciConstantType: _tribonacci}

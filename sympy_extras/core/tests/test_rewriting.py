@@ -161,3 +161,21 @@ def test_rewrite_rules_table_matches_sympy() -> None:
         assert (native.__name__ in OWN_REWRITE) == any('_eval_rewrite' in k.__dict__ for k in theirs.__mro__
                                                        if k is not SympyBasic), native
         assert native.function_name == theirs.__name__, (native, theirs)
+
+
+def test_expand_func_table_and_bessel_recurrence_match_sympy() -> None:
+    import sympy
+    from sympy.core.basic import Basic as SympyBasic
+    from sympy_extras.core.function import _SYMPY_EXPAND_FUNC, expand_func
+    from sympy_extras.interop import _NATIVE_TO_SYMPY, _fill_function_tables, expr_from_sympy, to_sympy
+    _fill_function_tables()
+    have = {n.__name__ for n, s in _NATIVE_TO_SYMPY.items()
+            if any('_eval_expand_func' in k.__dict__ for k in s.__mro__ if k is not SympyBasic)}
+    extra = {'Hyper', 'MeijerG', 'GoldenRatioType', 'TribonacciConstantType'}
+    assert have | extra == set(_SYMPY_EXPAND_FUNC), have ^ (set(_SYMPY_EXPAND_FUNC) - extra)
+    z, n = sympy.Symbol('z'), sympy.Symbol('n')
+    half = sympy.Rational(1, 2)
+    for f in (sympy.besselj, sympy.bessely, sympy.besseli, sympy.besselk, sympy.hankel1, sympy.hankel2):
+        for nu in (0, 1, 2, 3, 5, -2, -3, half, 3*half, -5*half, n, n + 2):
+            e = f(nu, z)
+            assert str(to_sympy(expand_func(expr_from_sympy(e)), evaluate=False)) == str(sympy.expand_func(e)), e
