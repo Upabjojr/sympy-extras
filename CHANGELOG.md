@@ -308,6 +308,9 @@ remove public functions. Breaking changes are listed here when they happen.
   through SymPy any more. `Order` has no `real` fact, as in SymPy
   (`AccumBounds(0, 1) + O(x**3)` stays a sum: `frac(1/x).series(x)`
   failed).
+- `meijerg` derivatives in the parameters (SymPy's `_diff_wrt_parameter`);
+  `lowergamma` and `uppergamma` derivatives in the first argument; the
+  Taylor terms of `airyai` and `airybi`: their series are native.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

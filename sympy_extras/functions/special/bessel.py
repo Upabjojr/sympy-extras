@@ -461,6 +461,7 @@ class AiryAi(AiryBase):
     unbranched = True
 
     function_name = 'airyai'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -477,6 +478,20 @@ class AiryAi(AiryBase):
     def fdiff(self, argindex: int) -> Expr:
         return airyaiprime(self.args[0])
 
+    # PORTED FROM SYMPY: sympy/functions/special/bessel.py:airyai.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        """The closed form of the term (SymPy's recurrence on the
+        previous terms needs two of them, never given by the generic
+        expansion)."""
+        from sympy_extras.functions.combinatorial.factorials import factorial
+        from sympy_extras.functions.elementary.trigonometric import sin
+        from sympy_extras.functions.special.gamma_functions import gamma
+        if n < 0:
+            return Integer(0)
+        k = Integer(n)
+        return (ONE / (Integer(3)**Rational(2, 3) * pi) * gamma((k + 1) / 3) * sin(Rational(2, 3) * pi * (k + 1))
+                / factorial(k) * (Integer(3)**Rational(1, 3) * x)**k)
+
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return mpmath.mpc(mpmath.airyai(values[0]))
 
@@ -489,6 +504,7 @@ class AiryBi(AiryBase):
     unbranched = True
 
     function_name = 'airybi'
+    generic_nseries = True
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
@@ -506,6 +522,19 @@ class AiryBi(AiryBase):
 
     def fdiff(self, argindex: int) -> Expr:
         return airybiprime(self.args[0])
+
+    # PORTED FROM SYMPY: sympy/functions/special/bessel.py:airybi.taylor_term
+    def taylor_term(self, n: int, x: Expr, previous: Optional[Expr] = None) -> Expr:
+        """The closed form of the term (as for ``airyai``)."""
+        from sympy_extras.functions.combinatorial.factorials import factorial
+        from sympy_extras.functions.elementary.complexes import abs_
+        from sympy_extras.functions.elementary.trigonometric import sin
+        from sympy_extras.functions.special.gamma_functions import gamma
+        if n < 0:
+            return Integer(0)
+        k = Integer(n)
+        return (ONE / (Integer(3)**Rational(1, 6) * pi) * gamma((k + 1) / 3) * abs_(sin(Rational(2, 3) * pi * (k + 1)))
+                / factorial(k) * (Integer(3)**Rational(1, 3) * x)**k)
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return mpmath.mpc(mpmath.airybi(values[0]))

@@ -381,6 +381,7 @@ class LowerGamma(DefinedFunction):
     (``exp_polar(2*pi*I*n)``) as SymPy's rules say."""
 
     function_name = 'lowergamma'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -430,7 +431,11 @@ class LowerGamma(DefinedFunction):
         a, z = self.args
         if argindex == 2:
             return mul(exp(mul(Integer(-1), z)), pow(z, sub(a, ONE)))
-        return DefinedFunction.fdiff(self, argindex)  # SymPy: with meijerg, not ported
+        if argindex == 1:
+            from sympy_extras.functions.special.hyper import meijerg
+            return (gamma(a) * digamma(a) - log(z) * uppergamma(a, z)
+                    - meijerg([], [ONE, ONE], [ZERO, ZERO, a], [], z))
+        return DefinedFunction.fdiff(self, argindex)
 
     def _eval_conjugate(self) -> Optional[Expr]:
         from sympy_extras.functions.elementary.complexes import conjugate
@@ -459,6 +464,7 @@ class UpperGamma(DefinedFunction):
     as SymPy's rules say."""
 
     function_name = 'uppergamma'
+    generic_nseries = True
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
@@ -523,7 +529,10 @@ class UpperGamma(DefinedFunction):
         a, z = self.args
         if argindex == 2:
             return mul(Integer(-1), exp(mul(Integer(-1), z)), pow(z, sub(a, ONE)))
-        return DefinedFunction.fdiff(self, argindex)  # SymPy: with meijerg, not ported
+        if argindex == 1:
+            from sympy_extras.functions.special.hyper import meijerg
+            return uppergamma(a, z) * log(z) + meijerg([], [ONE, ONE], [ZERO, ZERO, a], [], z)
+        return DefinedFunction.fdiff(self, argindex)
 
     def _eval_conjugate(self) -> Optional[Expr]:
         from sympy_extras.functions.elementary.complexes import conjugate

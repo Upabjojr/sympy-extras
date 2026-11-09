@@ -344,3 +344,30 @@ def test_hyper_and_meijerg_series_match_sympy() -> None:
             want = str(e.series(sx, 0, n))
             clear_cache()
             assert str(to_sympy(expr_from_sympy(e).series(ox, 0, n), evaluate=False)) == want, (e, n)
+
+
+def test_parameter_derivatives_and_generic_series_match_sympy() -> None:
+    # meijerg._diff_wrt_parameter, the derivatives of lowergamma and
+    # uppergamma in the first argument, the Taylor terms of airyai/airybi
+    import sympy
+    from sympy.core.cache import clear_cache
+    from sympy_extras.core import to_sympy
+    from sympy_extras.core.interop import expr_from_sympy, from_sympy
+    from sympy_extras.core.symbol import Symbol as OurSymbol
+    sx, sa = sympy.symbols('x a')
+    ox, oa = from_sympy(sx), from_sympy(sa)
+    assert isinstance(ox, OurSymbol) and isinstance(oa, OurSymbol)
+    mg = sympy.meijerg
+    for e in [mg([], [1, 1], [0, 0, sa], [], sx), mg([sa], [], [sa + 1], [], sx), mg([], [sa], [sa - 2], [], sx),
+              sympy.lowergamma(sa, sx), sympy.uppergamma(sa, 3)]:
+        clear_cache()
+        want = str(e.diff(sa))
+        clear_cache()
+        assert str(to_sympy(expr_from_sympy(e).diff(oa), evaluate=False)) == want, e
+    for e in [sympy.airyai(sx), sympy.airybi(2*sx), sympy.lowergamma(sx + 2, 3), sympy.uppergamma(sx, 2),
+              sympy.uppergamma(2, sx + 1)]:
+        for n in (3, 5):
+            clear_cache()
+            want = str(e.series(sx, 0, n))
+            clear_cache()
+            assert str(to_sympy(expr_from_sympy(e).series(ox, 0, n), evaluate=False)) == want, (e, n)

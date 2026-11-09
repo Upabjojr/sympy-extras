@@ -910,6 +910,8 @@ class ExpPolar(DefinedFunction):
     ``exp(re(z))``; numerically it is ``exp(z)`` for ``-pi < im(z) <= pi``."""
 
     function_name = 'exp_polar'
+    # SymPy's exp_polar takes any number of arguments (nargs Naturals0)
+    sympy_variadic = True
     # PORTED FROM SYMPY: _singularities
     singularities: Union[None, bool, tuple[Expr, ...]] = (zoo,)
     unbranched = True

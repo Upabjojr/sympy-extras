@@ -382,11 +382,82 @@ class MeijerG(Expr):
             return mul(div(ONE, z), sub(mul(self._bm[0], self), g))
         return Integer(0)
 
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:TupleParametersBase._eval_derivative
     def _eval_derivative_node(self, s: Symbol) -> Optional[Expr]:
         from sympy_extras.core.function import Derivative, diff
-        if _depends(self._an + self._aother + self._bm + self._bother, s):
-            return Derivative(self, s)  # SymPy's derivatives in the parameters, not ported
-        return mul(self.derivative_in_argument(), diff(self._z, s))
+        params = self._an + self._aother + self._bm + self._bother
+        if not _depends(params, s):
+            return mul(self.derivative_in_argument(), diff(self._z, s))
+        try:
+            res: Expr = Integer(0)
+            for i, p in enumerate(params):
+                m = diff(p, s)
+                if not (m.is_Number and m == 0):
+                    res = res + self._diff_wrt_parameter(i) * m
+            return res + mul(self.derivative_in_argument(), diff(self._z, s))
+        except NotImplementedError:
+            return Derivative(self, s)
+
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg._diff_wrt_parameter
+    def _diff_wrt_parameter(self, idx: int) -> Expr:
+        """The derivative in the parameter ``idx`` (over ``an``,
+        ``aother``, ``bm``, ``bother``): ``log(z)*G`` minus G-functions, when
+        the other parameters pair up by integer differences (then the other
+        gamma factors of the Mellin transform reduce to rational functions;
+        the digamma difference equation gives the G-functions)."""
+        from sympy_extras.core.mod import mod
+        from sympy_extras.functions.elementary.exponential import log
+        from sympy_extras.simplify.simplify import simplify
+        an, ap, bm, bq = list(self._an), list(self._aother), list(self._bm), list(self._bother)
+        if idx < len(an):
+            an.pop(idx)
+        else:
+            idx -= len(an)
+            if idx < len(ap):
+                ap.pop(idx)
+            else:
+                idx -= len(ap)
+                if idx < len(bm):
+                    bm.pop(idx)
+                else:
+                    bq.pop(idx - len(bm))
+        pairs1: list[tuple[Expr, Expr]] = []
+        pairs2: list[tuple[Expr, Expr]] = []
+        for l1, l2, pairs in [(an, bq, pairs1), (ap, bm, pairs2)]:
+            while l1:
+                x = l1.pop()
+                found: Optional[int] = None
+                for i, y in enumerate(l2):
+                    r = mod(simplify(x - y), Integer(1))
+                    if r.is_Number and r == 0:
+                        found = i
+                        break
+                if found is None:
+                    raise NotImplementedError('Derivative not expressible as G-function?')
+                pairs.append((x, l2.pop(found)))
+
+        def count(e: Expr) -> int:
+            # range(n) in SymPy: an integer
+            if not isinstance(e, Integer):
+                raise TypeError('%s cannot be interpreted as an integer' % (e,))
+            return int(e)
+
+        res: Expr = log(self._z) * self
+        for a, b in pairs1:
+            sign, n, base = 1, count(a - b), b
+            if n < 0:
+                sign, n, base = -1, -n, a
+            for k in range(n):
+                res = res - sign * meijerg(self._an + (base + k + 1,), self._aother, self._bm,
+                                           self._bother + (base + k,), self._z)
+        for a, b in pairs2:
+            sign, n, base = 1, count(b - a), a
+            if n < 0:
+                sign, n, base = -1, -n, b
+            for k in range(n):
+                res = res - sign * meijerg(self._an, self._aother + (base + k + 1,), self._bm + (base + k,),
+                                           self._bother, self._z)
+        return res
 
     def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
         from sympy_extras.core.evalf import numeric_value
