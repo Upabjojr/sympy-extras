@@ -89,6 +89,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "subresultants",
         "sympy_extras_rs.polys.subresultants",
     )?)?;
+    algorithms::register_modulargroebner(&submodule(
+        &polys,
+        "modulargroebner",
+        "sympy_extras_rs.polys.modulargroebner",
+    )?)?;
     algorithms::register_hilbert(&submodule(&polys, "hilbert", "sympy_extras_rs.polys.hilbert")?)?;
     algorithms::register_groebnerwalk(&submodule(
         &polys,

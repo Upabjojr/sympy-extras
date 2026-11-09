@@ -55,7 +55,8 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/hilbert.py` | done | the numerator dense over `ZZ`, the series a `HilbertSeries { numerator, exponent }` (Python: `Poly` and an expression in `t`) |
 | `polys/groebnerwalk.py` | done | both liftings; the bases of the initial forms by the Rust F4 (Python: SymPy's Buchberger, the same reduced bases); over fields only (SymPy also walks over `ZZ`) |
 | `ntheory/primetest.py`, `generate.py`, `factor_.py` | done | `primerange` is an iterator struct (a list in the bindings) |
-| `polys/modulargroebner.py` | later | written on SymPy's `PolyElement` with SymPy's `groebner` as fallback and time limits: its typed core (rational reconstruction, lifting, luckiness) can be ported once the typed interop is |
+| `polys/modulargroebner.py` | the modular algorithm | `modular_groebner` over `QQ` and `ZZ` (`modular_groebner_zz`), with the same images (F4 over `BigFiniteField`), luckiness, reconstruction, verification and trace as Python; `direct_groebner`/`groebner` (time limits around SymPy's Buchberger) not ported |
+| `polys/polyclasses.py` | `DensePoly` | generic over the domain, the variable a core `Symbol`; binary operations return `Err(Value)` for different domains or variables; `from_expr`/`to_expr` wait for the core; no binding (it needs the core's `Symbol` in Python) |
 | `polys/multisqf.py` | done | the `SqfDomain` classes as a trait with three implementations |
 | `polys/multifactor.py` | done | the diophantine equations over `BigFiniteField` (the modulus is the next prime above a Mignotte bound) |
 | (new) `polys/domains/bigfinitefield.rs` | | `GF(p)` with `Int` elements for moduli beyond the machine words: Python's one `FiniteField` is split in two |

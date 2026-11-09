@@ -7,15 +7,17 @@ use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyModule};
 
+use sympy_extras_core::numbers::Int;
 use sympy_extras_core::numbers::Rat;
 use sympy_extras_core::polys::domains::IntegerRing;
 use sympy_extras_core::polys::domains::{Domain, RationalField, SparseRow};
 use sympy_extras_core::polys::groebnerwalk::{self as walk, WalkLift};
+use sympy_extras_core::polys::modulargroebner as mg;
 use sympy_extras_core::polys::rings::PolyElement;
 use sympy_extras_core::polys::rings::{Monomial, MonomialOrder};
 use sympy_extras_core::polys::{f4 as groebner, hilbert, multifactor as mf, rootisolation as ri, stronggroebner as sg};
 
-use crate::convert::{err, out_poly, out_polys, out_usize, poly, tuple, Bridge};
+use crate::convert::{err, extract_int, out_int, out_poly, out_polys, out_usize, poly, tuple, Bridge};
 use crate::domains::PyDomain;
 use crate::rings::{ElemKind, PyPolyElement, PyPolyRing, RingKind};
 use crate::with_domain;
@@ -574,5 +576,212 @@ pub fn register_groebnerwalk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(extended_groebner, m)?)?;
     m.add_function(wrap_pyfunction!(is_groebner, m)?)?;
     m.add_function(wrap_pyfunction!(groebner_walk, m)?)?;
+    Ok(())
+}
+
+// -- modulargroebner
+
+#[pyfunction]
+#[pyo3(signature = (a, m, bound = None))]
+fn rational_reconstruction<'py>(
+    py: Python<'py>,
+    a: &Bound<'py, PyAny>,
+    m: &Bound<'py, PyAny>,
+    bound: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Option<Bound<'py, PyAny>>> {
+    let bound: Option<Int> = match bound {
+        Some(b) if !b.is_none() => Some(extract_int(b)?),
+        _ => None,
+    };
+    match mg::rational_reconstruction(&extract_int(a)?, &extract_int(m)?, bound.as_ref()).map_err(err)? {
+        Some((n, d)) => Ok(Some(tuple(py, vec![out_int(py, &n)?, out_int(py, &d)?])?)),
+        None => Ok(None),
+    }
+}
+
+#[pyfunction]
+fn chinese_remainder<'py>(
+    py: Python<'py>,
+    a: &Bound<'py, PyAny>,
+    m: &Bound<'py, PyAny>,
+    b: &Bound<'py, PyAny>,
+    p: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let r: Int =
+        mg::chinese_remainder(&extract_int(a)?, &extract_int(m)?, &extract_int(b)?, &extract_int(p)?).map_err(err)?;
+    out_int(py, &r)
+}
+
+/// The iterator of [`mg::default_primes`].
+#[pyclass(name = "DefaultPrimes", module = "sympy_extras_rs.polys.modulargroebner")]
+struct PyDefaultPrimes {
+    inner: mg::DefaultPrimes,
+}
+
+#[pymethods]
+impl PyDefaultPrimes {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__<'py>(mut slf: PyRefMut<'py, Self>, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
+        match slf.inner.next() {
+            Some(p) => Ok(Some(out_int(py, &p)?)),
+            None => Ok(None),
+        }
+    }
+}
+
+#[pyfunction]
+fn default_primes() -> PyDefaultPrimes {
+    PyDefaultPrimes {
+        inner: mg::default_primes(),
+    }
+}
+
+/// `ModularTrace`: what `modular_groebner` did.
+#[pyclass(name = "ModularTrace", module = "sympy_extras_rs.polys.modulargroebner")]
+#[derive(Default)]
+struct PyModularTrace {
+    inner: mg::ModularTrace,
+}
+
+fn int_list<'py>(py: Python<'py>, items: &[Int]) -> PyResult<Bound<'py, PyAny>> {
+    let objects: Vec<Bound<'py, PyAny>> = items.iter().map(|n| out_int(py, n)).collect::<PyResult<_>>()?;
+    Ok(PyList::new(py, objects)?.into_any())
+}
+
+#[pymethods]
+impl PyModularTrace {
+    #[new]
+    fn new() -> PyModularTrace {
+        PyModularTrace::default()
+    }
+
+    #[getter]
+    fn homogenized(&self) -> bool {
+        self.inner.homogenized
+    }
+
+    #[getter]
+    fn used<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        int_list(py, &self.inner.used)
+    }
+
+    #[getter]
+    fn skipped<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        int_list(py, &self.inner.skipped)
+    }
+
+    #[getter]
+    fn unlucky<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        int_list(py, &self.inner.unlucky)
+    }
+
+    #[getter]
+    fn lucky<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        int_list(py, &self.inner.lucky)
+    }
+
+    #[getter]
+    fn failed_verifications(&self) -> usize {
+        self.inner.failed_verifications
+    }
+
+    fn __repr__(&self) -> String {
+        let show =
+            |v: &[Int]| -> String { format!("[{}]", v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ")) };
+        format!(
+            "ModularTrace(used={}, skipped={}, unlucky={}, lucky={}, failed_verifications={})",
+            show(&self.inner.used),
+            show(&self.inner.skipped),
+            show(&self.inner.unlucky),
+            show(&self.inner.lucky),
+            self.inner.failed_verifications
+        )
+    }
+}
+
+/// The integers of a Python iterator; the first error stops it and is kept.
+struct IntIterator<'py> {
+    iterator: Bound<'py, pyo3::types::PyIterator>,
+    error: Option<PyErr>,
+}
+
+impl Iterator for IntIterator<'_> {
+    type Item = Int;
+
+    fn next(&mut self) -> Option<Int> {
+        if self.error.is_some() {
+            return None;
+        }
+        match self.iterator.next()? {
+            Ok(item) => match extract_int(&item) {
+                Ok(n) => Some(n),
+                Err(e) => {
+                    self.error = Some(e);
+                    None
+                }
+            },
+            Err(e) => {
+                self.error = Some(e);
+                None
+            }
+        }
+    }
+}
+
+/// `modular_groebner(polys, ring, primes=None, trace=None)` over `QQ` and
+/// `ZZ`; for `GF(p)` the basis of `f4`, as Python falls back on SymPy's.
+#[pyfunction]
+#[pyo3(signature = (polys, ring, primes = None, trace = None))]
+fn modular_groebner<'py>(
+    py: Python<'py>,
+    polys: &Bound<'py, PyAny>,
+    ring: &PyPolyRing,
+    primes: Option<&Bound<'py, PyAny>>,
+    trace: Option<&Bound<'py, PyModularTrace>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let items: Vec<ElemKind> = elements(polys)?;
+    let mut given: Option<IntIterator<'py>> = match primes {
+        Some(p) if !p.is_none() => Some(IntIterator {
+            iterator: p.try_iter()?,
+            error: None,
+        }),
+        _ => None,
+    };
+    let mut record: mg::ModularTrace = mg::ModularTrace::default();
+    let result: PyResult<Vec<ElemKind>> = {
+        let primes_arg: Option<&mut dyn Iterator<Item = Int>> =
+            given.as_mut().map(|g| g as &mut dyn Iterator<Item = Int>);
+        match &ring.inner {
+            RingKind::QQ(r) => mg::modular_groebner(&same_kind!(&items, QQ), r, primes_arg, Some(&mut record))
+                .map(|g| wrap(g, ElemKind::QQ))
+                .map_err(err),
+            RingKind::ZZ(r) => mg::modular_groebner_zz(&same_kind!(&items, ZZ), r, primes_arg, Some(&mut record))
+                .map(|g| wrap(g, ElemKind::ZZ))
+                .map_err(err),
+            RingKind::GF(r) => groebner::f4(&same_kind!(&items, GF), r)
+                .map(|g| wrap(g, ElemKind::GF))
+                .map_err(err),
+        }
+    };
+    if let Some(e) = given.and_then(|g| g.error) {
+        return Err(e);
+    }
+    if let Some(t) = trace {
+        t.borrow_mut().inner = record;
+    }
+    out_elements(py, result?)
+}
+
+pub fn register_modulargroebner(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add("GUARD_BITS", mg::GUARD_BITS)?;
+    m.add_class::<PyModularTrace>()?;
+    m.add_class::<PyDefaultPrimes>()?;
+    m.add_function(wrap_pyfunction!(rational_reconstruction, m)?)?;
+    m.add_function(wrap_pyfunction!(chinese_remainder, m)?)?;
+    m.add_function(wrap_pyfunction!(default_primes, m)?)?;
+    m.add_function(wrap_pyfunction!(modular_groebner, m)?)?;
     Ok(())
 }
