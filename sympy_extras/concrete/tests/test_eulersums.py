@@ -1,12 +1,39 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import mpmath
 
 from sympy import zeta, pi, harmonic, polygamma, N, S, Integral, Symbol, Float, EulerGamma, lambdify
 from sympy.core.expr import Expr
 from sympy.abc import n
 
-from sympy_extras.concrete.eulersums import euler_sum, polygamma_series, polygamma_integral_representation
+from sympy_extras.concrete import eulersums
+from sympy_extras.core.interop import expr_from_sympy, sympy_expr, to_sympy
+from sympy_extras.core.symbol import Symbol as NativeSymbol
+
+# the module is on the native core: SymPy in and out here, as the oracle
+
+
+def _native_symbol(s: Expr) -> NativeSymbol:
+    native = expr_from_sympy(s)
+    assert isinstance(native, NativeSymbol)
+    return native
+
+
+def euler_sum(p: int, q: int) -> Optional[Expr]:
+    found = eulersums.euler_sum(p, q)
+    return None if found is None else sympy_expr(to_sympy(found))
+
+
+def polygamma_series(term: Expr, var: Expr, lower: int = 1) -> Optional[Expr]:
+    found = eulersums.polygamma_series(expr_from_sympy(term), _native_symbol(var), lower)
+    return None if found is None else sympy_expr(to_sympy(found))
+
+
+def polygamma_integral_representation(term: Expr, var: Expr) -> Optional[Expr]:
+    found = eulersums.polygamma_integral_representation(expr_from_sympy(term), _native_symbol(var))
+    return None if found is None else sympy_expr(to_sympy(found))
 
 
 def _euler_sum_numeric(p: int, q: int) -> Float:

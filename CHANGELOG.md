@@ -311,6 +311,10 @@ remove public functions. Breaking changes are listed here when they happen.
 - `meijerg` derivatives in the parameters (SymPy's `_diff_wrt_parameter`);
   `lowergamma` and `uppergamma` derivatives in the first argument; the
   Taylor terms of `airyai` and `airybi`: their series are native.
+- `sympy_extras.concrete.eulersums` (`euler_sum`, `polygamma_series`,
+  `polygamma_integral_representation`) runs on the native core: native
+  expressions in and out (the integral is SymPy's `Integral`, wrapped);
+  `integrals.series` converts at the boundary.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

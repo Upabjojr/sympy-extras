@@ -40,7 +40,8 @@ from sympy.polys.polytools import Poly, cancel
 from sympy_extras._timeout import attempt, time_limit, TimeLimitExceeded
 from sympy_extras._typing import as_boolean, as_expr
 from sympy_extras.assumptions import ask, element, solve, limit
-from sympy_extras.concrete import sum_convergence, polygamma_series, dirichlet_series, karr_sum, rational_sum
+from sympy_extras.concrete import sum_convergence, dirichlet_series, karr_sum, rational_sum
+from sympy_extras.integrals.series import _polygamma_series_sympy
 from sympy_extras.solvers import isolate_real_roots, thue
 from sympy_extras.solvers.isolation import TranscendentalRoot
 
@@ -257,7 +258,7 @@ def sums_case(rng: random.Random) -> tuple[str, Check]:
         label = 'polygamma_series(%s, n, %d)' % (term, lower)
 
         def check_euler() -> Optional[str]:
-            closed = attempt(lambda: polygamma_series(term, n, lower), TIMEOUT)
+            closed = attempt(lambda: _polygamma_series_sympy(term, n, lower), TIMEOUT)
             if closed is None:
                 return None
             got = _numeric(as_expr(closed), 0)

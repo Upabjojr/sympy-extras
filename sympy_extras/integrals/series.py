@@ -799,7 +799,7 @@ def sum_series(term: Expr, j: Dummy, start: int, assumptions: Assumptions = None
         return rational
     n = Dummy('n', integer=True, positive=True)
     shifted = as_expr(term.subs(j, n))
-    value = attempt(lambda: polygamma_series(shifted, n, max(start, 1)), settings.timeout)
+    value = attempt(lambda: _polygamma_series_sympy(shifted, n, max(start, 1)), settings.timeout)
     if value is not None and start >= 1:
         return value
     closed = attempt(lambda: zeilberger_sum(shifted, (n, start, oo), special_values=False), settings.timeout)
@@ -1318,3 +1318,14 @@ def _polygamma_form(value: Expr) -> Expr:
                 # zeta(n, a) = (-1)^n psi^(n-1)(a) / (n - 1)!
                 replacement[as_expr(node)] = as_expr(S.NegativeOne**n * polygamma(n - 1, a) / factorial(n - 1))
     return as_expr(cancel(value.xreplace(replacement))) if replacement else value
+
+
+def _polygamma_series_sympy(term: Expr, n: Symbol, lower: int) -> Optional[Expr]:
+    """:func:`~sympy_extras.concrete.eulersums.polygamma_series` (on the
+    native core) for SymPy expressions."""
+    from sympy_extras.core.interop import expr_from_sympy, sympy_expr, to_sympy
+    from sympy_extras.core.symbol import Symbol as NativeSymbol
+    native_n = expr_from_sympy(n)
+    assert isinstance(native_n, NativeSymbol)
+    found = polygamma_series(expr_from_sympy(term), native_n, lower)
+    return None if found is None else sympy_expr(to_sympy(found))

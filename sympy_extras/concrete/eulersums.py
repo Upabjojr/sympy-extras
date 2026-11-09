@@ -42,30 +42,27 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import Optional
 
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.mul import Mul
-from sympy.core.numbers import Integer, Rational
-from sympy.core.power import Pow
-from sympy.core.singleton import S
-from sympy.core.symbol import Symbol, Dummy
-from sympy.core.sympify import sympify
-from sympy.functions.combinatorial.factorials import factorial, binomial
-from sympy.functions.combinatorial.numbers import harmonic
-from sympy.functions.special.gamma_functions import polygamma
-from sympy.functions.special.zeta_functions import zeta, polylog
-from sympy.integrals.integrals import Integral
-from sympy.polys.partfrac import apart
-
-from sympy_extras._typing import as_expr
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import EulerGamma, Integer, Rational
+from sympy_extras.core.power import Pow
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.combinatorial.factorials import binomial, factorial
+from sympy_extras.functions.combinatorial.numbers import Harmonic, harmonic
+from sympy_extras.functions.special.gamma_functions import PolyGamma
+from sympy_extras.functions.special.zeta_functions import polylog, zeta
+from sympy_extras.polys.partfrac import apart
 
 __all__ = ['euler_sum', 'polygamma_series', 'polygamma_integral_representation']
 
+ZERO, ONE = Integer(0), Integer(1)
+
 
 def _zeta(k: int) -> Expr:
-    return as_expr(zeta(Integer(k)))
+    return zeta(Integer(k))
 
 
 def euler_sum(p: int, q: int) -> Optional[Expr]:
@@ -90,23 +87,21 @@ def euler_sum(p: int, q: int) -> Optional[Expr]:
     if p < 1 or q < 2:
         return None
     if p == 1:
-        total = (1 + Rational(q, 2))*_zeta(q + 1)
-        total -= Rational(1, 2)*Add(*[_zeta(k + 1)*_zeta(q - k) for k in range(1, q - 1)])
-        return as_expr(total.expand())
+        total = (1 + Rational(q, 2)) * _zeta(q + 1)
+        total = total - Rational(1, 2) * add(*[_zeta(k + 1) * _zeta(q - k) for k in range(1, q - 1)])
+        return total.expand()
     if p == q:
-        return as_expr(((_zeta(p)**2 + _zeta(2*p))/2).expand())
+        return ((_zeta(p)**2 + _zeta(2 * p)) / 2).expand()
     w = p + q
     if w % 2 == 1:
         return _odd_weight(p, q)
     if q == 1:
         return None
     if (p, q) == (2, 4):
-        return as_expr((_zeta(3)**2 - _zeta(6)/3).expand())
+        return (_zeta(3)**2 - _zeta(6) / 3).expand()
     if (p, q) == (4, 2):
         # from the symmetry with S(2, 4)
-        return as_expr((_zeta(2)*_zeta(4) + _zeta(6) - (_zeta(3)**2 - _zeta(6)/3)).expand())
-    if p == 1 or q == 1:
-        return None
+        return (_zeta(2) * _zeta(4) + _zeta(6) - (_zeta(3)**2 - _zeta(6) / 3)).expand()
     return None
 
 
@@ -117,33 +112,38 @@ def _odd_weight(p: int, q: int) -> Expr:
     ``p``)."""
     w = p + q
     sign = (-1)**p
-    total: Expr = _zeta(w)*(Rational(1, 2) - Rational(sign, 2)*binomial(w - 1, p)
-                            - Rational(sign, 2)*binomial(w - 1, q))
+    total: Expr = _zeta(w) * (Rational(1, 2) - Rational(sign, 2) * binomial(Integer(w - 1), Integer(p))
+                              - Rational(sign, 2) * binomial(Integer(w - 1), Integer(q)))
     if p % 2 == 1 and p > 1:
-        total += _zeta(p)*_zeta(q)
-    for k in range(1, q//2 + 1):
-        total += sign*binomial(w - 2*k - 1, p - 1)*_zeta(2*k)*_zeta(w - 2*k)
-    for k in range(1, p//2 + 1):
-        total += sign*binomial(w - 2*k - 1, q - 1)*_zeta(2*k)*_zeta(w - 2*k)
-    return as_expr(total.expand())
+        total = total + _zeta(p) * _zeta(q)
+    for k in range(1, q // 2 + 1):
+        total = total + sign * binomial(Integer(w - 2 * k - 1), Integer(p - 1)) * _zeta(2 * k) * _zeta(w - 2 * k)
+    for k in range(1, p // 2 + 1):
+        total = total + sign * binomial(Integer(w - 2 * k - 1), Integer(q - 1)) * _zeta(2 * k) * _zeta(w - 2 * k)
+    return total.expand()
 
 
 def _integer(e: Expr) -> Optional[int]:
-    return int(e) if e.is_Integer else None
+    return int(e) if isinstance(e, Integer) else None
+
+
+def _arg(f: Expr, i: int) -> Expr:
+    a = f.args[i]
+    assert isinstance(a, Expr)
+    return a
 
 
 def _split(term: Expr, n: Symbol) -> Optional[tuple[Expr, Expr, int]]:
     """``(c, f, q)`` with ``term == c * f * n**(-q)``, ``c`` free of ``n``
     and ``f`` a single harmonic number or polygamma factor."""
-    factors = list(term.args) if isinstance(term, Mul) else [term]
+    factors = [a for a in term.args if isinstance(a, Expr)] if isinstance(term, Mul) else [term]
     constant: list[Expr] = []
     special: list[Expr] = []
     q = 0
-    for factor in factors:
-        f = as_expr(factor)
+    for f in factors:
         if not f.has(n):
             constant.append(f)
-        elif isinstance(f, Pow) and f.base == n and f.exp.is_Integer:
+        elif isinstance(f, Pow) and f.base == n and isinstance(f.exp, Integer):
             q -= int(f.exp)
         elif f == n:
             q -= 1
@@ -151,26 +151,26 @@ def _split(term: Expr, n: Symbol) -> Optional[tuple[Expr, Expr, int]]:
             special.append(f)
     if len(special) != 1:
         return None
-    return as_expr(Mul(*constant)), special[0], q
+    return mul(*constant), special[0], q
 
 
 def _harmonic_data(f: Expr, n: Symbol) -> Optional[tuple[int, int, Expr]]:
     """``(p, shift, extra)`` with ``f == harmonic(n + shift, p) + extra``
     for a harmonic number, and ``polygamma(m, n + a)`` written as
     ``(-1)**(m+1) m! (zeta(m+1) - harmonic(n + a - 1, m + 1))``."""
-    if isinstance(f, harmonic):
-        argument = as_expr(f.args[0])
-        p = _integer(as_expr(f.args[1])) if len(f.args) > 1 else 1
-        shift = _integer(as_expr(argument - n))
+    if isinstance(f, Harmonic):
+        argument = _arg(f, 0)
+        p = _integer(_arg(f, 1)) if len(f.args) > 1 else 1
+        shift = _integer(argument - n)
         if p is None or shift is None:
             return None
-        return p, shift, S.Zero
-    if isinstance(f, polygamma):
-        m = _integer(as_expr(f.args[0]))
-        shift = _integer(as_expr(f.args[1] - n))
+        return p, shift, ZERO
+    if isinstance(f, PolyGamma):
+        m = _integer(_arg(f, 0))
+        shift = _integer(_arg(f, 1) - n)
         if m is None or shift is None or m < 0:
             return None
-        return m + 1, shift - 1, S.Zero
+        return m + 1, shift - 1, ZERO
     return None
 
 
@@ -180,14 +180,14 @@ def _to_harmonic(f: Expr, n: Symbol) -> Optional[tuple[Expr, int, int, Expr]]:
     if data is None:
         return None
     p, shift, _ = data
-    if isinstance(f, polygamma):
+    if isinstance(f, PolyGamma):
         m = p - 1
         if m == 0:
             # psi(n + a) = H_{n + a - 1} - gamma
-            return S.One, shift, 1, as_expr(-S.EulerGamma)
-        scale = as_expr((-1)**m*factorial(m))
-        return scale, shift, p, as_expr(-scale*zeta(Integer(p)))
-    return S.One, shift, p, S.Zero
+            return ONE, shift, 1, -EulerGamma
+        scale = Integer(-1)**m * factorial(Integer(m))
+        return scale, shift, p, -scale * zeta(Integer(p))
+    return ONE, shift, p, ZERO
 
 
 def _rational_tail(expr: Expr, k: Symbol, lower: int) -> Optional[Expr]:
@@ -197,36 +197,36 @@ def _rational_tail(expr: Expr, k: Symbol, lower: int) -> Optional[Expr]:
     coefficients add up to zero, give ``-Sum(c_a harmonic(lower + a - 1))``
     (SymPy's ``summation`` gets some of these sums wrong)."""
     decomposed = apart(expr, k)
-    terms = list(decomposed.args) if isinstance(decomposed, Add) else [decomposed]
-    total: Expr = S.Zero
-    simple: Expr = S.Zero
+    terms = [a for a in decomposed.args if isinstance(a, Expr)] if isinstance(decomposed, Add) else [decomposed]
+    total: Expr = ZERO
+    simple: Expr = ZERO
     for term in terms:
-        c, rest = as_expr(term).as_independent(k)
+        c, rest = term.as_independent(k)
         if not rest.has(k):
             return None
-        if isinstance(rest, Pow) and rest.exp.is_Integer and rest.exp < 0:
-            base, m = as_expr(rest.base), -int(rest.exp)
+        if isinstance(rest, Pow) and isinstance(rest.exp, Integer) and int(rest.exp) < 0:
+            base, m = rest.base, -int(rest.exp)
         else:
             base, m = rest, 1
-            rest_ = as_expr(1/rest)
-            if rest_.is_polynomial(k):
-                base = rest_
+            inverse = 1 / rest
+            if inverse.is_polynomial(k) is True:
+                base = inverse
             else:
                 return None
-        a = _integer(as_expr(base - k))
+        a = _integer(base - k)
         if a is None or lower + a < 1:
             return None
         if m == 1:
-            simple += c
-            total -= c*harmonic(lower + a - 1)
+            simple = simple + c
+            total = total - c * harmonic(Integer(lower + a - 1))
         else:
-            total += c*(zeta(Integer(m)) - harmonic(lower + a - 1, m))
-    if simple != 0:
+            total = total + c * (zeta(Integer(m)) - harmonic(Integer(lower + a - 1), Integer(m)))
+    if not (simple.is_Number and simple == 0):
         return None
-    return as_expr(total.expand())
+    return total.expand()
 
 
-def polygamma_series(term: Union[Expr, int], n: Symbol, lower: Union[Expr, int] = 1) -> Optional[Expr]:
+def polygamma_series(term: ExprLike, n: Symbol, lower: ExprLike = 1) -> Optional[Expr]:
     """``Sum(term, (n, lower, oo))`` for a summand ``c * f(n) / n**q`` with
     ``f`` a harmonic number ``harmonic(n + a, p)`` or a polygamma function
     ``polygamma(m, n + a)`` (integer ``a``), in zeta values; ``None`` when
@@ -235,9 +235,10 @@ def polygamma_series(term: Union[Expr, int], n: Symbol, lower: Union[Expr, int] 
     Examples
     ========
 
-    >>> from sympy import harmonic, polygamma
-    >>> from sympy.abc import n
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import harmonic, polygamma
     >>> from sympy_extras.concrete import polygamma_series
+    >>> n = Symbol('n')
     >>> polygamma_series(harmonic(n)/n**2, n)
     2*zeta(3)
     >>> polygamma_series(polygamma(0, n)/n**2, n)
@@ -249,9 +250,9 @@ def polygamma_series(term: Union[Expr, int], n: Symbol, lower: Union[Expr, int] 
     >>> polygamma_series(harmonic(n)/n**2, n, 2)
     -1 + 2*zeta(3)
     """
-    term_ = as_expr(sympify(term))
-    lower_ = as_expr(sympify(lower))
-    if not isinstance(lower_, Integer) or lower_ < 1:
+    term_ = to_expr(term)
+    lower_ = to_expr(lower)
+    if not isinstance(lower_, Integer) or int(lower_) < 1:
         return None
     L = int(lower_)
     split = _split(term_, n)
@@ -270,44 +271,50 @@ def polygamma_series(term: Union[Expr, int], n: Symbol, lower: Union[Expr, int] 
         return None
     k = Dummy('k')
     # sum_{n >= L} H_n^{(p)} / n**q
-    total: Expr = base - Add(*[harmonic(j, p)/Integer(j)**q for j in range(1, L)])
+    total: Expr = base - add(*[harmonic(Integer(j), Integer(p)) / Integer(j)**q for j in range(1, L)])
     # H_{n + shift} = H_n + sum_{j=1}^{shift} 1/(n + j)**p, or
     # H_n - sum_{j=0}^{-shift-1} 1/(n - j)**p
     for j in (range(1, shift + 1) if shift > 0 else range(0, -shift)):
         offset = j if shift > 0 else -j
-        extra = _rational_tail(as_expr(1/((k + offset)**p*k**q)), k, L)
+        extra = _rational_tail(1 / ((k + offset)**p * k**q), k, L)
         if extra is None:
             return None
-        total += extra if shift > 0 else -extra
-    total = scale*total + constant*(zeta(Integer(q)) - Add(*[Integer(j)**(-q) for j in range(1, L)]))
-    return as_expr((c*total).expand())
+        total = total + extra if shift > 0 else total - extra
+    total = scale * total + constant * (zeta(Integer(q)) - add(*[Integer(j)**(-q) for j in range(1, L)]))
+    return (c * total).expand()
 
 
-def polygamma_integral_representation(term: Union[Expr, int], n: Symbol) -> Optional[Expr]:
+def polygamma_integral_representation(term: ExprLike, n: Symbol) -> Optional[Expr]:
     """``Sum(polygamma(0, n)/n**s, (n, 1, oo))`` as an integral through
     ``psi(n) = -EulerGamma + Integral((1 - t**(n - 1))/(1 - t), (t, 0, 1))``,
-    for a symbolic exponent ``s``.
+    for a symbolic exponent ``s`` (the integral is SymPy's ``Integral``,
+    wrapped: it has no class here yet).
 
     Examples
     ========
 
-    >>> from sympy import polygamma
-    >>> from sympy.abc import n, s
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import polygamma
     >>> from sympy_extras.concrete import polygamma_integral_representation
+    >>> n, s = Symbol('n'), Symbol('s')
     >>> polygamma_integral_representation(polygamma(0, n)/n**s, n)
-    -EulerGamma*zeta(s) + Integral((zeta(s) - polylog(s, t)/t)/(1 - t), (t, 0, 1))
+    Integral((zeta(s) - polylog(s, t)/t)/(1 - t), (t, 0, 1)) - EulerGamma*zeta(s)
+
+    (the wrapped SymPy node is printed first: SymPy orders it after)
     """
-    term_ = as_expr(sympify(term))
-    factors = list(term_.args) if isinstance(term_, Mul) else [term_]
+    import sympy
+    from sympy_extras.core.interop import from_sympy, sympy_expr
+    from sympy_extras.core.interop import to_sympy
+    term_ = to_expr(term)
+    factors = [a for a in term_.args if isinstance(a, Expr)] if isinstance(term_, Mul) else [term_]
     exponent: Optional[Expr] = None
     found = False
     constant: list[Expr] = []
-    for factor in factors:
-        f = as_expr(factor)
-        if isinstance(f, polygamma) and f.args[0] == 0 and f.args[1] == n:
+    for f in factors:
+        if isinstance(f, PolyGamma) and _arg(f, 0) == 0 and _arg(f, 1) == n:
             found = True
-        elif isinstance(f, Pow) and f.base == n and not as_expr(f.exp).has(n):
-            exponent = as_expr(-f.exp)
+        elif isinstance(f, Pow) and f.base == n and not f.exp.has(n):
+            exponent = -f.exp
         elif not f.has(n):
             constant.append(f)
         else:
@@ -316,5 +323,7 @@ def polygamma_integral_representation(term: Union[Expr, int], n: Symbol) -> Opti
         return None
     t = Symbol('t')
     s = exponent
-    integral = Integral((zeta(s) - polylog(s, t)/t)/(1 - t), (t, 0, 1))
-    return as_expr(Mul(*constant)*(-S.EulerGamma*zeta(s) + integral))
+    integrand = (zeta(s) - polylog(s, t) / t) / (1 - t)
+    integral = from_sympy(sympy.Integral(sympy_expr(to_sympy(integrand)), (sympy_expr(to_sympy(t)), 0, 1)))
+    assert isinstance(integral, Expr)
+    return mul(*constant) * (-EulerGamma * zeta(s) + integral)
