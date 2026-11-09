@@ -14,12 +14,12 @@ algorithm.
 The module is written on the core (:mod:`sympy_extras.core`, the native
 functions, polynomials and sums) and takes and returns its expressions;
 :mod:`~sympy_extras.concrete.karr_sympy` is its face for SymPy
-expressions, used by the modules still written on SymPy. Two steps are
-not native yet and go through SymPy for the call: the cases of the
+expressions, used by the modules still written on SymPy. One step is
+not native yet and goes through SymPy for the call: the cases of the
 isolated values of the parameters (:mod:`sympy_extras._special_values`),
-for summands with parameters only, and creative telescoping
-(:func:`~sympy_extras.concrete.creative.definite_sum`), the last resort
-of :func:`summation`.
+for summands with parameters only. Creative telescoping
+(:func:`~sympy_extras.concrete.creative.definite_sum`, native too) is the
+last resort of :func:`summation`.
 
 Examples
 ========
@@ -48,6 +48,7 @@ from __future__ import annotations
 
 from typing import Callable, Optional, Sequence, Union
 
+from sympy_extras._timeout import attempt
 from sympy_extras.core.add import Add
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
@@ -64,6 +65,7 @@ from sympy_extras.polys.polyerrors import BasePolynomialError
 from sympy_extras.polys.polyroots import roots
 from sympy_extras.polys.polytools import Poly, cancel
 from sympy_extras.polys.rationaltools import together
+from sympy_extras.settings import settings
 
 from .expr_with_limits import Product, Sum
 from .gosper import hypersimp
@@ -595,9 +597,9 @@ def summation(f: ExprLike, *symbols: tuple[Symbol, ExprLike, ExprLike],
     and it is a sum over a single index of a summand in the scope of
     :func:`karr_sum`, Karr's algorithm is tried, and when that fails for a
     summand depending on a limit, creative telescoping
-    (:func:`~sympy_extras.concrete.creative.definite_sum`, through
-    SymPy). With ``special_values`` (the default) the isolated values of
-    the parameters of the summand at which the result is undefined get
+    (:func:`~sympy_extras.concrete.creative.definite_sum`). With
+    ``special_values`` (the default) the isolated values of the
+    parameters of the summand at which the result is undefined get
     cases of their own
     (:func:`~sympy_extras.concrete.karr_sympy.with_sum_special_values`).
 
@@ -644,9 +646,13 @@ def _karr_on_sums(expr: Expr, extensions: Sequence[Expr], auto: bool) -> Expr:
         except ValueError:
             value = None
         if value is None and s.function.free_symbols & (a.free_symbols | b.free_symbols) - {k}:
-            # the summand depends on a limit: creative telescoping
-            from .karr_sympy import creative_sum_of_core
-            value = creative_sum_of_core(s.function, (k, a, b), extensions)
+            # the summand depends on a limit: creative telescoping, within
+            # the time limit of the settings (imported here: creative is
+            # built on this module)
+            from .creative import definite_sum
+            function = s.function
+            value = attempt(lambda: definite_sum(function, (k, a, b), extensions=extensions, special_values=False),
+                            settings.timeout, native=True)
         return s if value is None else value
     replaced = expr.replace(lambda e: isinstance(e, Sum), evaluate)
     assert isinstance(replaced, Expr)

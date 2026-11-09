@@ -2,8 +2,7 @@ r"""The SymPy face of Karr's algorithm (:mod:`sympy_extras.concrete.karr`).
 
 :mod:`~sympy_extras.concrete.karr` is written on the core and takes and
 returns core expressions. The summation modules still written on SymPy
-(:mod:`~sympy_extras.concrete.creative`,
-:mod:`~sympy_extras.concrete.zeilberger`,
+(:mod:`~sympy_extras.concrete.zeilberger`,
 :mod:`~sympy_extras.concrete.rational`,
 :mod:`~sympy_extras.concrete.dirichlet`,
 :mod:`~sympy_extras.concrete.qhyper`) use this module instead:
@@ -14,12 +13,13 @@ returns core expressions. The summation modules still written on SymPy
 - :func:`with_sum_special_values` gives a sum the cases of the isolated
   values of its parameters (:mod:`sympy_extras._special_values`, on
   SymPy), for these modules and, through
-  :func:`sum_special_values_of_core`, for the native ones;
-- the builder of a $\Pi\Sigma$-field on SymPy expressions
-  (:class:`_Builder`, on the
-  :class:`~sympy_extras.concrete.pisigma_sympy.SymPyPiSigmaField`), which
-  creative telescoping extends as it goes; it goes when
-  :mod:`~sympy_extras.concrete.creative` is moved onto the core.
+  :func:`sum_special_values_of_core`, for the native ones
+  (:mod:`~sympy_extras.concrete.karr`,
+  :mod:`~sympy_extras.concrete.creative`);
+- :func:`reliable_value_of_core` evaluates a core expression at sample
+  values of its parameters with
+  :func:`~sympy_extras._numeric.reliable_value`, for the checks of
+  :mod:`~sympy_extras.concrete.creative`.
 
 Examples
 ========
@@ -38,24 +38,18 @@ from __future__ import annotations
 
 from typing import Callable, Optional, Sequence, Union
 
-from sympy.concrete.products import Product
-from sympy.concrete.summations import Sum
 from sympy.core.add import Add
 from sympy.core.basic import Basic
 from sympy.core.traversal import preorder_traversal
 from sympy.core.expr import Expr
-from sympy.core.mul import Mul
 from sympy.core.power import Pow
 from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
-from sympy.functions.combinatorial.numbers import harmonic
 from sympy.polys.polytools import Poly
 from sympy.core.numbers import Integer, Rational, nan, zoo
 from sympy.polys.rationaltools import together
-from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import cancel, factor_list
-from sympy.simplify.simplify import hypersimp
 
 from sympy_extras._numeric import reliable_value
 from sympy_extras._special_values import Point, with_special_values
@@ -71,11 +65,9 @@ from sympy_extras.interop import expr_from_sympy, to_sympy
 
 from . import karr as core_karr
 from .karr import SumCompute, SumPoint
-from .pisigma import PiSigmaElement
-from .pisigma_sympy import SymPyPiSigmaField
 
 __all__ = ['karr_term', 'karr_sum', 'summation', 'with_sum_special_values', 'sum_special_values_of_core',
-           'creative_sum_of_core']
+           'reliable_value_of_core']
 
 
 # ----------------------------------------------------------------------
@@ -174,233 +166,13 @@ def sum_special_values_of_core(value: CoreExpr, f: CoreExpr, indices: Sequence[C
                                          [_sympy(e) for e in limits], at_point, keep_unevaluated))
 
 
-def creative_sum_of_core(f: CoreExpr, limit: tuple[CoreSymbol, CoreExpr, CoreExpr],
-                         extensions: Sequence[CoreExpr]) -> Optional[CoreExpr]:
-    """The sum by creative telescoping
-    (:func:`~sympy_extras.concrete.creative.definite_sum`, on SymPy) of
-    core expressions, without the cases of the special values, within
-    the time limit of the settings; ``None`` if there is none."""
-    from .creative import definite_sum
-    k, a, b = limit
-    f_, k_, a_, b_ = _sympy(f), _sympy_symbol(k), _sympy(a), _sympy(b)
-    extensions_ = [_sympy(e) for e in extensions]
-    value = attempt(lambda: definite_sum(f_, (k_, a_, b_), extensions=extensions_, special_values=False),
-                    settings.timeout)
-    return None if value is None else _core(value)
-
-
-# ----------------------------------------------------------------------
-# the builder of a field on SymPy expressions, for creative telescoping
-
-def _atoms(expr: Expr, k: Symbol) -> set[Expr]:
-    """The subexpressions of ``expr`` depending on ``k`` which are not
-    rational operations: functions of ``k``, powers with ``k`` in the
-    exponent or with a non-integer exponent, sums and products."""
-    expr = sympify(expr)
-    if not expr.has(k) or expr == k:
-        return set()
-    if isinstance(expr, (Add, Mul)):
-        return set().union(*[_atoms(a, k) for a in expr.args])
-    if isinstance(expr, Pow):
-        if expr.exp.is_Integer and not expr.exp.has(k):
-            return _atoms(expr.base, k)
-        return {expr}
-    return {expr}
-
-
-def _linear_shift(arg: Expr, k: Symbol) -> Optional[int]:
-    """``c`` if ``arg == k + c`` with ``c`` an integer, else ``None``."""
-    c = arg - k
-    if c.is_Integer:
-        return int(c)
-    return None
-
-
-def _linear(arg: Expr, k: Symbol) -> Optional[tuple[int, int]]:
-    """``(a, b)`` if ``arg == a*k + b`` with ``a`` a positive integer and
-    ``b`` an integer, else ``None``."""
-    arg = sympify(arg).expand()
-    a = arg.coeff(k)
-    b = (arg - a*k).expand()
-    if a.is_Integer and a > 0 and b.is_Integer:
-        return int(a), int(b)
-    return None
-
-
-def _evaluate_at(expr: Expr, k: Symbol, k0: int) -> Optional[Expr]:
-    value = expr.subs(k, k0)
-    try:
-        value = value.doit()
-    except Exception:
-        return None
-    if value.has(S.NaN, S.ComplexInfinity, S.Infinity, S.NegativeInfinity):
-        return None
-    return value
-
-
-class _Builder:
-    """Builds a $\\Pi\\Sigma$-field containing given expressions."""
-
-    def __init__(self, k: Symbol, params: Sequence[Symbol]) -> None:
-        self.k = k
-        self.field = SymPyPiSigmaField(k, params)
-        # atom -> expression in k and the generator symbols
-        self.known: dict[Expr, Expr] = {}
-
-    def convert(self, expr: Union[Expr, int]) -> PiSigmaElement:
-        """The element of the field equal to ``expr``, adjoining
-        generators as needed."""
-        expr = sympify(expr)
-        atoms = sorted(_atoms(expr, self.k), key=lambda a: (a.count_ops(), str(a)))
-        for atom in atoms:
-            if atom not in self.known:
-                self.known[atom] = self._represent(atom)
-        rewritten = expr.xreplace(self.known)
-        try:
-            return self.field.from_expr(rewritten)
-        except (ValueError, PolynomialError, TypeError) as e:
-            raise ValueError("%s is not a rational expression in the summation "
-                             "index, the parameters and the sequences of the "
-                             "field: %s" % (expr, e))
-
-    def _represent(self, atom: Expr) -> Expr:
-        k = self.k
-        # sums and products with a shifted upper limit are expressed through
-        # the unshifted ones
-        canonical, shift = self._canonical(atom)
-        if shift:
-            if canonical not in self.known:
-                self.known[canonical] = self._represent(canonical)
-            element = self.field.from_expr(self.known[canonical])
-            return self.field.to_expr(self.field.sigma(element, shift), substitute=False)
-        if isinstance(atom, harmonic):
-            order = atom.args[1] if len(atom.args) > 1 else S.One
-            linear = _linear(atom.args[0], k)
-            if linear is not None and not order.has(k):
-                a, b = linear
-                # H_{a(k+1)+b} - H_{ak+b} = sum of the a reciprocals in between
-                beta = sum(1/(a*k + b + i)**order for i in range(1, a + 1))
-                return self._sigma(atom, beta)
-        if isinstance(atom, Sum) and len(atom.limits) == 1:
-            j, lo, hi = atom.limits[0]
-            if hi == k and not lo.has(k) and not atom.function.has(k):
-                return self._sigma(atom, atom.function.subs(j, k + 1))
-        if isinstance(atom, Product) and len(atom.limits) == 1:
-            j, lo, hi = atom.limits[0]
-            if hi == k and not lo.has(k) and not atom.function.has(k):
-                return self._pi(atom, atom.function.subs(j, k + 1))
-        ratio = hypersimp(atom, k)
-        if ratio is not None and ratio != 0:
-            return self._pi(atom, ratio)
-        raise ValueError("%s is not a hypergeometric term or an indefinite sum "
-                         "in %s" % (atom, k))
-
-    def _canonical(self, atom: Expr) -> tuple[Expr, int]:
-        """``(atom with k in place of k + c, c)`` for harmonic numbers, sums
-        and products with argument or upper limit ``k + c``."""
-        k = self.k
-        if isinstance(atom, harmonic):
-            linear = _linear(atom.args[0], k)
-            if linear is not None:
-                a, b = linear
-                b0 = b % a
-                if b != b0:
-                    return atom.func(a*k + b0, *atom.args[1:]), (b - b0)//a
-        if isinstance(atom, (Sum, Product)) and len(atom.limits) == 1:
-            j, lo, hi = atom.limits[0]
-            shift = _linear_shift(hi, k)
-            if shift and not lo.has(k) and not atom.function.has(k):
-                return atom.func(atom.function, (j, lo, k)), shift
-        return atom, 0
-
-    def _initial_constant(self, atom: Expr, w_expr: Expr, ratio: bool = False) -> Optional[Expr]:
-        """The constant ``atom - w`` (or ``atom/w``) as an element of the
-        constants, by evaluation at a point, or ``None``."""
-        for k0 in range(0, 12):
-            a0 = _evaluate_at(atom, self.k, k0)
-            w0 = _evaluate_at(w_expr, self.k, k0)
-            if a0 is None or w0 is None:
-                continue
-            if ratio:
-                if w0 == 0:
-                    continue
-                c = cancel(a0/w0)
-            else:
-                c = cancel(a0 - w0)
-            if not self.field.is_constant_expr(c):
-                return None
-            # the identity must hold for all k: check at another point
-            k1 = k0 + 1
-            a1 = _evaluate_at(atom, self.k, k1)
-            w1 = _evaluate_at(w_expr, self.k, k1)
-            if a1 is not None and w1 is not None:
-                check = cancel(a1/w1 - c) if ratio else cancel(a1 - w1 - c)
-                if check != 0:
-                    return None
-            return c
-        return None
-
-    def _sigma(self, atom: Expr, beta: Expr) -> Expr:
-        b = self.convert(beta)
-        w = self.field.telescope(b)
-        if w is not None:
-            c = self._initial_constant(atom, self.field.to_expr(w))
-            if c is not None:
-                return self.field.to_expr(w, substitute=False) + c
-        return self.field.add_sigma(self.field.to_expr(b, substitute=False), atom)
-
-    def _pi(self, atom: Expr, alpha: Expr) -> Expr:
-        a = self.convert(alpha)
-        sols = self.field.solve(a, [])
-        if sols:
-            for _, w in sols:
-                if w != self.field.zero:
-                    c = self._initial_constant(atom, self.field.to_expr(w), ratio=True)
-                    if c is not None:
-                        return c*self.field.to_expr(w, substitute=False)
-        return self.field.add_pi(self.field.to_expr(a, substitute=False), atom)
-
-
-def _auto_extensions(f: Expr, k: Symbol) -> list[Expr]:
-    """Harmonic numbers to adjoin when the telescoping fails: for a summand
-    with harmonic numbers or nested sums of total degree ``d`` and highest
-    order ``m``, the harmonic numbers of orders up to ``m + d``."""
-    f = sympify(f)
-    atoms = [a for a in _atoms(f, k) if isinstance(a, (harmonic, Sum))]
-    if not atoms:
-        # a rational summand with no closed form in the rational functions
-        # sums to harmonic numbers: partial fractions give orders up to
-        # the multiplicity of the poles (sum 1/k is harmonic(n),
-        # sympy-extras#34)
-        numerator, denominator = f.as_numer_denom()
-        if not denominator.has(k) or not f.is_rational_function(k):
-            return []
-        multiplicity = max((int(m) for _, m in Poly(denominator, k).factor_list()[1]), default=0)
-        return [harmonic(k, m) for m in range(1, multiplicity + 1)]
-    order = 1
-    for a in atoms:
-        if isinstance(a, harmonic) and len(a.args) > 1 and a.args[1].is_Integer:
-            order = max(order, int(a.args[1]))
-    degree = 0
-    for a in atoms:
-        degree = max(degree, _degree_in(f, a))
-    return [harmonic(k, m) for m in range(1, order + max(degree, 1) + 1)]
-
-
-def _degree_in(expr: Expr, atom: Expr) -> int:
-    """The degree of ``expr`` in ``atom`` (an upper bound)."""
-    expr = sympify(expr)
-    if expr == atom:
-        return 1
-    if not expr.has(atom):
-        return 0
-    if isinstance(expr, Add):
-        return max(_degree_in(a, atom) for a in expr.args)
-    if isinstance(expr, Mul):
-        return sum(_degree_in(a, atom) for a in expr.args)
-    if isinstance(expr, Pow) and expr.exp.is_Integer:
-        return abs(int(expr.exp))*_degree_in(expr.base, atom)
-    return 1
+def reliable_value_of_core(e: CoreExpr, digits: int, values: SumPoint) -> Optional[complex]:
+    """:func:`~sympy_extras._numeric.reliable_value` of a core expression
+    at the ``values`` of its symbols, as a complex number (``None`` when
+    it is not reliable), for :mod:`~sympy_extras.concrete.creative`."""
+    point: dict[Symbol, Expr] = {_sympy_symbol(s): _sympy(v) for s, v in values.items()}
+    value = reliable_value(_sympy(e), digits, point)
+    return None if value is None else complex(value)
 
 
 # ----------------------------------------------------------------------

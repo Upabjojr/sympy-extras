@@ -197,9 +197,10 @@ by creative telescoping in the same ΠΣ-fields (`definite_sum`, Schneider's
 extension of Zeilberger's algorithm), with harmonic numbers in the summand:
 
 ```python
->>> from sympy import binomial, harmonic
->>> from sympy.abc import k, n
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.functions import binomial, harmonic
 >>> from sympy_extras.concrete.creative import definite_sum
+>>> k, n = symbols('k n')
 >>> definite_sum(binomial(n, k)**2*harmonic(k), (k, 0, n))
 (2*harmonic(n) - harmonic(2*n))*binomial(2*n, n)
 

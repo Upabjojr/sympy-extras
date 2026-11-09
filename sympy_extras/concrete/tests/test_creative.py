@@ -3,20 +3,25 @@ from __future__ import annotations
 import random
 from typing import Optional, Sequence
 
-from sympy import (Expr, Integer, Piecewise, Rational, Sum, Symbol, binomial, expand_func, harmonic, simplify,
-    symbols)
-
-from sympy_extras._typing import as_expr
+from sympy_extras.core import Expr, Integer, Rational, Symbol, expand_func
+from sympy_extras.functions import Piecewise, binomial, harmonic
+from sympy_extras.simplify.simplify import simplify
+from sympy_extras.concrete.expr_with_limits import Sum
 from sympy_extras.concrete.creative import creative_telescoping, definite_sum
-from sympy_extras.concrete.karr_sympy import summation
+from sympy_extras.concrete.karr import summation
 
-n, k, a, b, x = symbols('n k a b x')
+n, k, a, b, x = Symbol('n'), Symbol('k'), Symbol('a'), Symbol('b'), Symbol('x')
+
+
+def _int(e: Expr) -> int:
+    assert isinstance(e, Integer), e
+    return e.p
 
 
 def _direct(f: Expr, lower: Expr, upper: Expr, value: int) -> Expr:
     """The sum at n = value, term by term."""
-    lo, hi = int(lower.subs(n, value)), int(upper.subs(n, value))
-    return as_expr(sum((f.subs(n, value).subs(k, i).doit() for i in range(lo, hi + 1)), Integer(0)))
+    lo, hi = _int(lower.subs(n, value)), _int(upper.subs(n, value))
+    return sum((f.subs(n, value).subs(k, i).doit() for i in range(lo, hi + 1)), Integer(0))
 
 
 def _assert_ordered_sums(value: Expr, at: int) -> None:
@@ -25,8 +30,8 @@ def _assert_ordered_sums(value: Expr, at: int) -> None:
     for node in value.atoms(Sum):
         assert isinstance(node, Sum)
         for limit in node.limits:
-            length = as_expr(limit[2] - limit[1] + 1)
-            assert not (length.is_number and length < 0), (node, at)
+            length = limit[2] - limit[1] + 1
+            assert not (length.is_number and length.is_negative), (node, at)
 
 
 def _check(result: Optional[Expr], f: Expr, lower: Expr, upper: Expr, values: Sequence[int] = range(0, 9),
@@ -38,12 +43,12 @@ def _check(result: Optional[Expr], f: Expr, lower: Expr, upper: Expr, values: Se
     (Mathematica's) gives 0."""
     assert result is not None, f
     for value in values:
-        _assert_ordered_sums(as_expr(result.subs(n, value)), value)
+        _assert_ordered_sums(result.subs(n, value), value)
         direct = _direct(f, lower, upper, value)
-        closed = as_expr(result.subs(n, value).doit())
-        difference = as_expr(direct - closed)
+        closed = result.subs(n, value).doit()
+        difference = direct - closed
         if parameters:
-            difference = as_expr(difference.xreplace(parameters))
+            difference = difference.subs(parameters)
         assert simplify(expand_func(difference)) == 0, (f, value)
 
 
@@ -72,7 +77,8 @@ def test_hypergeometric_identities() -> None:
         _check(definite_sum(f, (k, lower, upper)), f, lower, upper, parameters={x: Rational(3, 7)})
     assert definite_sum(binomial(n, k), (k, 0, n)) == 2**n
     assert definite_sum(binomial(n, k)**2, (k, 0, n)) == binomial(2*n, n)
-    assert simplify(as_expr(definite_sum(k*binomial(n, k), (k, 0, n))) - n*2**(n - 1)) == 0
+    result = definite_sum(k*binomial(n, k), (k, 0, n))
+    assert result is not None and simplify(result - n*2**(n - 1)) == 0
     assert definite_sum((-1)**(k + 1)*binomial(n, k)/k, (k, 1, n)) == harmonic(n)
 
 
@@ -138,7 +144,7 @@ def test_unevaluated_sums_have_ordered_limits() -> None:
     result = definite_sum(f, (k, 0, n))
     assert result is not None and result.has(Sum)
     _check(result, f, Integer(0), n)
-    closed = as_expr(result.subs(n, 1))
+    closed = result.subs(n, 1)
     assert closed.doit() == 1
 
 
@@ -160,7 +166,7 @@ def test_random_certificates() -> None:
     rest: list[Expr] = [Integer(1), k, 1/(k + 1), harmonic(k), k*harmonic(k)]
     found = 0
     for _ in range(6):
-        f = as_expr(rng.choice(hypergeometric)*rng.choice(rest))
+        f = rng.choice(hypergeometric)*rng.choice(rest)
         Z = creative_telescoping(f, k, n, order=2)
         if Z is None:
             continue

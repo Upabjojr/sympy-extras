@@ -269,3 +269,30 @@ def test_a_limit_shorter_than_its_entry_is_the_owners() -> None:
             assert attempt(lambda: sum(range(10**5)), seconds) in (None, sum(range(10**5)))
     # inside an enclosing limit with time left, the same
     assert attempt(lambda: attempt(lambda: sum(range(10**5)), 1e-9), 5) in (None, sum(range(10**5)))
+
+
+_NATIVE_PROGRAM = r'''
+import sys
+from sympy_extras._timeout import attempt
+from sympy_extras.polys.polyerrors import PolynomialError
+def fails() -> int:
+    raise PolynomialError("out of scope")
+def slow() -> int:
+    while True:
+        pass
+assert attempt(fails, 5, native=True) is None
+assert attempt(slow, 0.2, native=True) is None
+assert attempt(lambda: 42, 5, native=True) == 42
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_limits_do_not_load_sympy() -> None:
+    # the limits of the code written on the core (creative telescoping):
+    # no SymPy tables prepared, the polynomial errors of the core given
+    # up on
+    import subprocess
+    import sys
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PROGRAM], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

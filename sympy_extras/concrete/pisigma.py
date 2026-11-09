@@ -430,23 +430,58 @@ class PiSigmaTower(ABC):
             parts.append(mul(*factors))
         return add(*parts) if parts else Integer(0)
 
-    def to_expr(self, f: PiSigmaElement, substitute: bool = True) -> Expr:
+    def to_expr(self, f: PiSigmaElement, substitute: bool = True, positive_denominator: bool = False) -> Expr:
         """Convert an element to an expression; with ``substitute`` the
         generators are replaced by the sequences they stand for (and the
-        common factors are taken out)."""
+        common factors are taken out). With ``positive_denominator`` the
+        numerator and the denominator are negated when the leading
+        coefficient of the denominator is negative in the lexicographic
+        order of ``k``, the generators and then the parameters (the sign
+        SymPy's fraction field over the rational functions of the
+        parameters gives its denominators: ``k/(k - n - 1)`` rather than
+        ``-k/(-k + n + 1)``)."""
         images: list[Expr] = [s for s in self.params]
         images.append(self.k)
         if substitute:
             images += [e.expr for e in self.extensions]
         else:
             images += [e.symbol for e in self.extensions]
-        numer = self._poly_expr(f.numer, images)
+        numer_poly, denom_poly = f.numer, f.denom
+        if positive_denominator and self._negative_lead(denom_poly):
+            numer_poly, denom_poly = -numer_poly, -denom_poly
+        numer = self._poly_expr(numer_poly, images)
         expr = numer
-        if f.denom != self._ring.one:
-            expr = mul(numer, pow(self._poly_expr(f.denom, images), Integer(-1)))
+        if denom_poly != self._ring.one:
+            expr = mul(numer, pow(self._poly_expr(denom_poly, images), Integer(-1)))
         if substitute:
             expr = factor_terms(expr)
         return expr
+
+    def _negative_lead(self, p: Poly) -> bool:
+        """Whether the leading coefficient of ``p`` in the lexicographic
+        order of ``k``, the generators and then the parameters is
+        negative (only with parameters: over the rationals the field's
+        own normalisation is kept)."""
+        P = self._P
+        if not P or not p.terms:
+            return False
+        leading = max(p.terms, key=lambda m: m[P:] + m[:P])
+        return p.terms[leading] < 0
+
+    def _symbol_images(self) -> list[Expr]:
+        images: list[Expr] = [s for s in self.params]
+        images.append(self.k)
+        images += [e.symbol for e in self.extensions]
+        return images
+
+    def numer_expr(self, f: PiSigmaElement) -> Expr:
+        """The numerator of ``f``, a polynomial in the parameters, the
+        index and the generator symbols."""
+        return self._poly_expr(f.numer, self._symbol_images())
+
+    def denom_expr(self, f: PiSigmaElement) -> Expr:
+        """The denominator of ``f``, see :meth:`numer_expr`."""
+        return self._poly_expr(f.denom, self._symbol_images())
 
     # ------------------------------------------------------------------
     # extensions

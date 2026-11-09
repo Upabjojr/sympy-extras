@@ -170,7 +170,8 @@ recurrence `sum_i c_i(n) f(n + i, k) = g(n, k + 1) - g(n, k)` with its
 certificate `g`, for the least order (`creative_telescoping`).
 
 ```python
->>> from sympy import binomial, harmonic, symbols
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.functions import binomial, harmonic
 >>> from sympy_extras.concrete.creative import creative_telescoping, definite_sum
 >>> n, k = symbols('n k')
 >>> Z = creative_telescoping(binomial(n, k)*harmonic(k), k, n)
@@ -195,7 +196,7 @@ inwards past the poles of the certificate's representation (the
 certificate of `binomial(n, k)` has the factor `1/(k - n - 1)`), and the
 terms left out are added explicitly. The recurrence is solved in
 d'Alembertian terms: a hypergeometric solution of the homogeneous
-recurrence (SymPy's `rsolve_hyper`) reduces the order, a first order
+recurrence (`rsolve_hypergeometric` of `sympy_extras.solvers.recurr`) reduces the order, a first order
 recurrence is a product and a sum, and the sums are evaluated with Karr's
 algorithm or left unevaluated when they have no closed form in their field
 (the `Sum` above). A recurrence in steps of two gives a result for each
@@ -230,6 +231,7 @@ representative each); `f` has a rational indefinite sum exactly when
 polygamma functions for the rest.
 
 ```python
+>>> from sympy.abc import k, n
 >>> from sympy_extras.concrete.rational import abramov_decomposition, rational_sum
 >>> abramov_decomposition(1/(k*(k + 1)), k)
 RationalDecomposition(-1/k, 0)
@@ -282,14 +284,15 @@ off (the functions pass it to one another for their inner sums).
 >>> zeilberger_sum(k*y**k, (k, 0, n), n)
 Piecewise((n*(n + 1)/2, Eq(y, 1)), ((-n*y**(n + 1) + n*y**(n + 2) + y - y**(n + 1))/(y - 1)**2, True))
 >>> from sympy_extras.core import Symbol as CoreSymbol
->>> y_, k_ = CoreSymbol('y'), CoreSymbol('k')
+>>> from sympy_extras.functions import binomial as core_binomial
+>>> y_, k_, n_ = CoreSymbol('y'), CoreSymbol('k'), CoreSymbol('n')
 >>> karr_term(y_**k_, k_)
 Piecewise((k, Eq(y, 1)), (y**k/(y - 1), True))
 >>> qgosper_sum(q**(2*k), (k, 0, n), q)
 Piecewise((n + 1, Eq(q, -1) | Eq(q, 1)), (q**(2*n + 2)/((q - 1)*(q + 1)) - 1/((q - 1)*(q + 1)), True))
 >>> qgosper_term(q**k, k, q)
 Piecewise((k, Eq(q, 1)), (q**k/(q - 1), True))
->>> definite_sum(binomial(n, k)*y**k/(k + 1), (k, 0, n))
+>>> definite_sum(core_binomial(n_, k_)*y_**k_/(k_ + 1), (k_, 0, n_))
 Piecewise((1, Eq(y, 0)), ((y*(y + 1)**n + (y + 1)**n - 1)/(y*(n + 1)), True))
 >>> dirichlet_series((-1)**(n + 1)/n**s, n)
 (Piecewise((log(2), Eq(s, 1)), ((1 - 2**(1 - s))*zeta(s), True)), re(s) > 0)
@@ -347,6 +350,8 @@ Piecewise((1, Eq(y, 0)), ((y*(y + 1)**n + (y + 1)**n - 1)/(y*(n + 1)), True))
 - These take and return core expressions; `karr_sum`, `karr_term`,
   `summation` and `with_sum_special_values` of
   `sympy_extras.concrete.karr_sympy` take and return SymPy expressions.
+- `creative_telescoping` and `definite_sum` take and return core
+  expressions too.
 - `creative_telescoping(f, k, n, order=4, extensions=())`: a
   `CreativeTelescoper` with the `coefficients` `c_i(n)`, the `certificate`
   `g(n, k)`, `recurrence()` and `check()`, or `None`.

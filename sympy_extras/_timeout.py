@@ -4,11 +4,19 @@ reasonable time (integration, ``dsolve``, ``solve``, simplification).
 The limit is enforced with the ``SIGALRM`` interval timer, so it only works
 in the main thread on POSIX systems; elsewhere the computation runs without
 a limit.
+
+With ``native=True`` (:func:`time_limit`, :func:`attempt`) a limit does
+not load SymPy: the tables of SymPy which a limit may leave half built
+are not prepared, for the code written on the core
+(:mod:`sympy_extras.concrete.creative`); the polynomial errors of SymPy
+are recognised only once SymPy's polynomials have been imported (none can
+be raised before).
 """
 from __future__ import annotations
 
 import contextlib
 import signal
+import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -121,7 +129,7 @@ def _expire(signum: int, frame: Optional[FrameType]) -> None:
 
 
 @contextmanager
-def time_limit(seconds: Optional[float]) -> Iterator[Optional[Deadline]]:
+def time_limit(seconds: Optional[float], native: bool = False) -> Iterator[Optional[Deadline]]:
     """Run the body for at most ``seconds`` (no limit for ``None`` or a
     non-positive value); :class:`TimeLimitExceeded` is raised in the body
     when the time is up. The value is the :class:`Deadline` of the limit
@@ -134,7 +142,10 @@ def time_limit(seconds: Optional[float]) -> Iterator[Optional[Deadline]]:
     owner lets through. A limit entered after an enclosing one has
     expired (its exception swallowed on the way) raises that expiry at
     once. The seconds are multiplied by ``settings.time_scale``, which a
-    slower machine sets to get the answers of a faster one.
+    slower machine sets to get the answers of a faster one. With
+    ``native`` the body is code written on the core, which does not
+    integrate with SymPy: the tables of SymPy are not prepared (nor
+    SymPy imported).
 
     >>> from sympy_extras._timeout import TimeLimitExceeded, time_limit
     >>> try:
@@ -160,8 +171,9 @@ def time_limit(seconds: Optional[float]) -> Iterator[Optional[Deadline]]:
         return
     from sympy_extras.settings import settings
     seconds = seconds * settings.time_scale
-    _complete_sympy_tables()
-    _restore_manualintegrate()
+    if not native:
+        _complete_sympy_tables()
+        _restore_manualintegrate()
     _Bookkeeping.busy = True
     started = time.monotonic()
     # a timer set by other code, around the first limit: honoured
@@ -302,7 +314,7 @@ def _complete_sympy_tables() -> None:
     _tables_complete = True
 
 
-def attempt(f: Callable[[], T], seconds: Optional[float]) -> Optional[T]:
+def attempt(f: Callable[[], T], seconds: Optional[float], native: bool = False) -> Optional[T]:
     """The value of ``f()`` computed within ``seconds``, or ``None`` when
     the time is up or SymPy gives up (``NotImplementedError``,
     ``ValueError``, ``TypeError``, a ``PolynomialError`` raised on an
@@ -313,7 +325,9 @@ def attempt(f: Callable[[], T], seconds: Optional[float]) -> Optional[T]:
 
     An enclosing limit which expires meanwhile is not the time of ``f``
     being up: its :class:`TimeLimitExceeded` goes on to the code which
-    set it.
+    set it. ``native`` is that of :func:`time_limit`; the polynomial
+    errors of the core (:mod:`sympy_extras.polys.polyerrors`) are given
+    up on as SymPy's are.
 
     >>> from sympy_extras._timeout import attempt
     >>> attempt(lambda: 1/0, 1) is None
@@ -326,10 +340,10 @@ def attempt(f: Callable[[], T], seconds: Optional[float]) -> Optional[T]:
     >>> attempt(lambda: (attempt(slow, 5), 'went on'), 0.2) is None
     True
     """
-    from sympy.polys.polyerrors import BasePolynomialError
+    from sympy_extras.polys.polyerrors import BasePolynomialError
     deadline: Optional[Deadline] = None
     try:
-        with time_limit(seconds) as deadline:
+        with time_limit(seconds, native) as deadline:
             return f()
     except TimeLimitExceeded as expiry:
         if expiry.expired(deadline):
@@ -338,3 +352,16 @@ def attempt(f: Callable[[], T], seconds: Optional[float]) -> Optional[T]:
     except (NotImplementedError, ValueError, TypeError, RecursionError,
             BasePolynomialError, ArithmeticError):
         return None
+    except Exception as error:
+        if _is_sympy_polynomial_error(error):
+            return None
+        raise
+
+
+def _is_sympy_polynomial_error(error: Exception) -> bool:
+    """Whether ``error`` is a ``PolynomialError`` of SymPy (only possible
+    once SymPy's polynomials are imported)."""
+    if 'sympy.polys.polyerrors' not in sys.modules:
+        return False
+    from sympy.polys.polyerrors import BasePolynomialError
+    return isinstance(error, BasePolynomialError)

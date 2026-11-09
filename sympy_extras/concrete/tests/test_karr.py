@@ -9,12 +9,12 @@ from sympy_extras._testing import untyped
 from sympy_extras._typing import as_expr, as_symbol
 from sympy_extras.core import Eq, Expr, Integer, Rational, Symbol
 from sympy_extras.functions import Binomial, harmonic, factorial, binomial, RisingFactorial, sin, sqrt
-from sympy_extras.polys.polytools import cancel
+from sympy_extras.polys.polytools import Poly, cancel
 from sympy_extras.concrete.expr_with_limits import Sum, Product
 from sympy_extras.interop import to_sympy
 
 from sympy_extras.concrete.karr import karr_term, karr_sum, summation, build_pisigma_field
-from sympy_extras.concrete.pisigma_sympy import SymPyPiSigmaField
+from sympy_extras.concrete.pisigma import parametric_pisigma_field
 from sympy_extras.concrete.creative import definite_sum
 from sympy_extras.concrete.karr_sympy import with_sum_special_values
 from sympy_extras.concrete.tests.cases import check_antidifference_cases, check_sum_cases
@@ -139,10 +139,10 @@ def test_isolated_values_of_the_parameters() -> None:
         assert s is not None
         assert s.subs({y: Integer(1), n: Integer(5)}) == Integer(6)
         assert s.subs({y: Integer(2), n: Integer(5)}) == Integer(63)
-    ys, ks, ns = sympy.symbols('y k n')
-    creative = definite_sum(ys**ks, (ks, 0, ns))
+    creative = definite_sum(y**k, (k, 0, n))
     assert creative is not None
-    assert creative.subs({ys: 1, ns: 5}) == 6 and creative.subs({ys: 2, ns: 5}) == 63
+    assert creative.subs({y: Integer(1), n: Integer(5)}) == Integer(6)
+    assert creative.subs({y: Integer(2), n: Integer(5)}) == Integer(63)
     s = summation(k*y**k, (k, 0, n))
     assert s.subs({y: Integer(1), n: Integer(4)}) == Integer(10)
     # a point where the sum itself is undefined (the term 1/0 at k = 0 for
@@ -166,11 +166,12 @@ def test_zero_powers_at_a_point_are_summed() -> None:
     # the bug: the sum of binomial(n, k)*y**k/(k + 1), ((y + 1)**(n + 1) -
     # 1)/(y*(n + 1)), got no case at y = 0 (the summand 0**k*... at the
     # point, which the algorithms do not take), where the sum is 1
-    y, ks, ns = sympy.symbols('y k n')
-    term = sympy.binomial(ns, ks)*y**ks/(ks + 1)
-    value = definite_sum(term, (ks, 0, ns))
-    assert check_sum_cases(value, term, ks, 0, ns, ns) == 1
-    assert value is not None and value.subs(y, 0) == 1
+    y = Symbol('y')
+    term = binomial(n, k)*y**k/(k + 1)
+    value = definite_sum(term, (k, 0, n))
+    assert value is not None and value.subs(y, Integer(0)) == Integer(1)
+    ns = as_symbol(to_sympy(n))
+    assert check_sum_cases(_sympy(value), _sympy(term), as_symbol(to_sympy(k)), 0, ns, ns) == 1
 
 
 def test_wrong_cases_are_left_out() -> None:
@@ -223,23 +224,22 @@ def test_karr_term_and_field() -> None:
 
 
 def test_pisigma_field() -> None:
-    # the SymPy face of the native field, which creative telescoping uses
-    k, n = sympy.symbols('k n')
-    harmonic = sympy.harmonic
-    F = SymPyPiSigmaField(k, params=[n])
+    # the native field with a parameter, as creative telescoping uses it
+    k, n = Symbol('k'), Symbol('n')
+    F = parametric_pisigma_field(k, [n])
     assert F.level == 0 and F.params == (n,)
     kk = F.gens[0]
     assert F.sigma(kk) == kk + 1 and F.sigma(kk, -1) == kk - 1 and F.sigma(kk, 2) == kk + 2
-    h = F.add_sigma(1/(k + 1), harmonic(k))
+    F, h = F.add_sigma(1/(k + 1), harmonic(k))
     t = F.from_expr(h)
     kk = F.gens[0]
     assert F.level == 1 and F.level_of(t) == 1 and F.level_of(kk) == 0 and F.level_of(F.from_expr(n)) == -1
     assert F.sigma(F.sigma(t), -1) == t
     assert F.as_poly_in(t**2*kk + 1, 1) == {2: kk, 0: F.one}
     assert F.as_poly_in(1/t, 1) is None
-    assert F.to_constant(F.from_expr(n/2)) == n/2
+    assert F.constant_to_expr(F.to_constant(F.from_expr(n/2))) == n/2
     raises(ValueError, lambda: F.to_constant(kk))
-    p = F.add_pi(2, 2**k)
+    F, p = F.add_pi(2, 2**k)
     u = F.from_expr(p)
     kk, t = F.gens[0], F.from_expr(h)
     assert F.as_poly_in(kk/u, 2, laurent=True) == {-1: kk}
@@ -247,20 +247,26 @@ def test_pisigma_field() -> None:
     assert F.sigma(u, -1) == u/2
     # the parameterized equation: sigma(g) - g = c1*H + c2*(k*H) has a two
     # dimensional solution space plus the constants
-    sols = F.solve(F.one, [t, kk*t])
+    sols = F.solve_embedded(F.one, [t, kk*t])
     assert sols is not None
     assert len(sols) == 3
     for c, g in sols:
-        assert F.sigma(g) - g == F.from_expr(c[0])*t + F.from_expr(c[1])*kk*t
+        assert F.sigma(g) - g == c[0]*t + c[1]*kk*t
     # homogeneous equations
-    assert F.solve(F.from_expr(k + 1), []) == []
-    hom = F.solve(F.from_expr((k + 1)/k), [])
+    assert F.solve_embedded(F.from_expr(k + 1), []) == []
+    hom = F.solve_embedded(F.from_expr((k + 1)/k), [])
     assert hom is not None
     [(c, g)] = hom
-    assert c == [] and F.to_expr(g) in (k, 2*k) or F.sigma(g)*kk == (kk + 1)*g
-    raises(ValueError, lambda: F.add_pi(0, 1))
-    raises(TypeError, lambda: untyped(SymPyPiSigmaField)(2))
+    assert c == [] and F.sigma(g)*kk == (kk + 1)*g
+    raises(ValueError, lambda: F.add_pi(0, Integer(1)))
+    raises(TypeError, lambda: untyped(parametric_pisigma_field)(2, [n]))
     assert repr(F.extensions[0]) == "Extension(sigma, harmonic(k), 1/(k + 1))"
+    # the numerator and the denominator, and the sign of the denominator
+    # SymPy's fraction field gives
+    q = F.from_expr(k/(n + 1 - k))
+    assert cancel(F.numer_expr(q)/F.denom_expr(q) - k/(n + 1 - k)) == ZERO
+    assert str(F.to_expr(q, positive_denominator=True)) == "-k/(k - n - 1)"
+    assert str(F.to_expr(q)) == "k/(-k + n + 1)"
 
 
 def test_summation() -> None:
@@ -301,11 +307,9 @@ def test_homogeneous_pi_solutions_of_a_single_exponent_are_found() -> None:
     # exponent without a solution and returned [], so binomial(n + 1, k)
     # was not recognised as binomial(n, k)*(n + 1)/(n + 1 - k) and became
     # a second, algebraically dependent Pi-extension.
-    k, n = sympy.symbols('k n')
-    binomial = sympy.binomial
-    F = SymPyPiSigmaField(k, params=[n])
-    F.add_pi((n - k)/(k + 1), binomial(n, k))
-    sols = F.solve(F.from_expr((n + 1 - k)/(k + 1)), [])
+    k, n = Symbol('k'), Symbol('n')
+    F, _ = parametric_pisigma_field(k, [n]).add_pi((n - k)/(k + 1), binomial(n, k))
+    sols = F.solve_embedded(F.from_expr((n + 1 - k)/(k + 1)), [])
     assert sols is not None and len(sols) == 1
     [(c, g)] = sols
     assert c == [] and g != F.zero
@@ -323,22 +327,20 @@ def test_parameterized_solutions_have_small_constants() -> None:
     # without normalisation: the parameterized telescoping of the shifts
     # binomial(n + i, k)**2*harmonic(k) gave constants of degree 530 in n
     # (and took two minutes) for a relation whose coefficients have degree 3.
-    k, n = sympy.symbols('k n')
-    binomial, harmonic = sympy.binomial, sympy.harmonic
-    F = SymPyPiSigmaField(k, params=[n])
-    t = F.add_pi((n - k)/(k + 1), binomial(n, k))
-    h = F.add_sigma(1/(k + 1), harmonic(k))
+    k, n = Symbol('k'), Symbol('n')
+    F, t = parametric_pisigma_field(k, [n]).add_pi((n - k)/(k + 1), binomial(n, k))
+    F, h = F.add_sigma(1/(k + 1), harmonic(k))
     fs = [F.from_expr(t**2*h), F.from_expr((n + 1)**2/(n + 1 - k)**2*t**2*h),
           F.from_expr((n + 1)**2*(n + 2)**2/((n + 1 - k)**2*(n + 2 - k)**2)*t**2*h)]
-    sols = F.solve(F.one, fs)
+    sols = F.solve_embedded(F.one, fs)
     assert sols is not None
     relations = [(c, g) for c, g in sols if any(c)]
     assert len(relations) == 1
     [(c, g)] = relations
-    # FracElement equality is not canonical over the ground field Q(n): the
-    # difference is compared with zero
-    assert F.sigma(g) - g - sum((F.from_expr(ci)*fi for ci, fi in zip(c, fs)), F.zero) == F.zero
+    # the numerator and the denominator of an element over Q(n) are not
+    # normalised: the difference is compared with zero
+    assert F.sigma(g) - g - sum((ci*fi for ci, fi in zip(c, fs)), F.zero) == F.zero
     for ci in c:
-        value = ci
-        numerator, denominator = value.as_numer_denom()
-        assert numerator.as_poly(n).degree() <= 3 and denominator.as_poly(n).degree() <= 3
+        assert F.level_of(ci) == -1
+        numerator, denominator = F.numer_expr(ci), F.denom_expr(ci)
+        assert Poly(numerator, n).degree() <= 3 and Poly(denominator, n).degree() <= 3

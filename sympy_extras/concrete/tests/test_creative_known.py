@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from sympy import Integer, binomial, harmonic, simplify, symbols
+from sympy_extras.core import Integer, Symbol
+from sympy_extras.functions import binomial, harmonic
+from sympy_extras.simplify.simplify import simplify
 
 from sympy_extras.concrete.creative import definite_sum
 
-n, k = symbols('n k')
+n, k = Symbol('n'), Symbol('k')
 
 
 def test_paule_schneider_harmonic_cubes() -> None:

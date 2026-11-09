@@ -437,6 +437,33 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.concrete.creative` is native: `creative_telescoping` and
+  `definite_sum` take and return core expressions, on the native
+  `PiSigmaField` built by the builder of `karr` (the hypergeometric part
+  adjoined to the immutable field as a Π-extension), `rsolve_hypergeometric`
+  for the hypergeometric solution of the recurrence (instead of SymPy's
+  `rsolve_hyper`), `solve_linear_unique` for the constants (instead of
+  `linsolve`), the ported `combsimp`, `powsimp`, `simplify`, `hypersimp`,
+  `product`, `Poly`, `cancel`, `factor_list`, `gcd_list`, `lcm_list` and
+  `together`, and imports no SymPy itself (the package
+  `sympy_extras.solvers`, through which `recurr` and `linsolve` are
+  imported, still loads SymPy). Two steps go through SymPy for the call,
+  for summands with parameters other than the limit only: the cases of
+  the isolated values of the parameters and the numerical comparison of
+  the closed form with the sum at sample values of the parameters
+  (`sympy_extras.concrete.karr_sympy.reliable_value_of_core`). The same
+  outputs as before on the tests and the documented examples.
+  `sympy_extras.concrete.pisigma_sympy` (`SymPyPiSigmaField`), the SymPy
+  builder of `karr_sympy` and `karr_sympy.creative_sum_of_core` are
+  removed; `karr.summation` calls `definite_sum` directly.
+  `PiSigmaTower.to_expr(..., positive_denominator=True)` gives the
+  denominators the sign SymPy's fraction field gives them (the
+  certificates print as before), and `numer_expr`/`denom_expr` are on the
+  native field.
+- `sympy_extras._timeout.time_limit` and `attempt` take `native=True`:
+  the limit then does not prepare SymPy's tables (nor import SymPy), and
+  the polynomial errors of the core are given up on as SymPy's are (a
+  SymPy one only recognised once SymPy's polynomials are imported).
 - `sympy_extras.solvers.recurr` is native: `rsolve_polynomial`,
   `rsolve_hypergeometric`, `rsolve_dalembertian`, `rsolve_linear`,
   `gosper_form` and `is_recurrence_solution` take and return core
