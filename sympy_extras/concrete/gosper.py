@@ -37,7 +37,7 @@ from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.numbers import Integer, NaN
 from sympy_extras.core.symbol import Dummy, Symbol
 
-__all__ = ['hypersimp', 'gosper_normal', 'gosper_term', 'gosper_sum']
+__all__ = ['hypersimp', 'consecutive_ratio', 'gosper_normal', 'gosper_term', 'gosper_sum']
 
 ZERO = Integer(0)
 ONE = Integer(1)
@@ -247,11 +247,31 @@ def gosper_normal(f: Expr, g: Expr, n: Symbol) -> tuple[_UPoly, _UPoly, _UPoly]:
 def hypersimp(f: ExprLike, k: Symbol) -> Optional[Expr]:
     """The ratio ``f(k + 1)/f(k)`` simplified when it is a rational function
     of ``k`` (``f`` a hypergeometric term), ``None`` otherwise."""
+    from sympy_extras.simplify.simplify import simplify
+    g = consecutive_ratio(f, k)
+    if g is None:
+        return None
+    return simplify(g, ratio=float('inf'))
+
+
+# PORTED FROM SYMPY: sympy/simplify/simplify.py:hypersimp (its steps
+# before the final simplify)
+def consecutive_ratio(f: ExprLike, k: Symbol) -> Optional[Expr]:
+    """The ratio ``f(k + 1)/f(k)`` with the functions rewritten in gamma,
+    expanded and the powers combined, when it is a rational function of
+    ``k``; ``None`` otherwise (:func:`hypersimp` without its final
+    simplification).
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import factorial, sin
+    >>> k = Symbol('k')
+    >>> consecutive_ratio(factorial(k)*2**k, k), consecutive_ratio(sin(k), k)
+    (2*k + 2, None)
+    """
     from sympy_extras.core.function import expand_func
     from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise_fold
     from sympy_extras.functions.special.gamma_functions import Gamma
     from sympy_extras.simplify.powsimp import powsimp
-    from sympy_extras.simplify.simplify import simplify
     e = to_expr(f)
     shifted = e.subs(k, k + 1)
     assert isinstance(shifted, Expr)
@@ -266,7 +286,7 @@ def hypersimp(f: ExprLike, k: Symbol) -> Optional[Expr]:
     g = expand_func(g)
     g = powsimp(g, deep=True, combine='exp')
     if g.is_rational_function(k):
-        return simplify(g, ratio=float('inf'))
+        return g
     return None
 
 

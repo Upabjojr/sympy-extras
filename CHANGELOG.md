@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `Expr.is_hypergeometric` is native (SymPy's test: the consecutive ratio
+  is a rational function), no longer through the SymPy bridge;
+  `sympy_extras.concrete.gosper.consecutive_ratio`, the steps of
+  `hypersimp` before its final simplification.
 - `sympy_extras.polys.numberfields.minimal_polynomial` (and `minpoly`,
   `minimal_polynomial_coeffs`): minimal polynomials of algebraic numbers
   over `QQ` by resultants on the typed polynomial layer, ported from

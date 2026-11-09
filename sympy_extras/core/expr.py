@@ -970,10 +970,24 @@ class Expr(Basic):
         from .bridge import bridge
         return bridge().is_constant(self, list(wrt))
 
+    # PORTED FROM SYMPY: sympy/core/basic.py:Basic.is_hypergeometric
     def is_hypergeometric(self, k: Symbol) -> Optional[bool]:
-        """Whether the expression is a hypergeometric term in ``k`` (SymPy)."""
-        from .bridge import bridge
-        return bridge().is_hypergeometric(self, k)
+        """Whether the expression is a hypergeometric term in ``k``: its
+        consecutive ratio is a rational function of ``k``
+        (:func:`~sympy_extras.concrete.gosper.consecutive_ratio`); ``None``
+        with a ``Piecewise``.
+
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.functions import binomial, sin
+        >>> k, n = Symbol('k'), Symbol('n')
+        >>> binomial(n, k).is_hypergeometric(k), sin(k).is_hypergeometric(k)
+        (True, False)
+        """
+        from sympy_extras.concrete.gosper import consecutive_ratio
+        from sympy_extras.functions.elementary.piecewise import Piecewise
+        if self.has(Piecewise):
+            return None
+        return consecutive_ratio(self, k) is not None
 
     # PORTED FROM SYMPY: sympy/core/expr.py:Expr.is_meromorphic
     def is_meromorphic(self, x: Symbol, a: ExprLike) -> Optional[bool]:
