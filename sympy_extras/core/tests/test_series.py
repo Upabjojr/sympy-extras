@@ -371,3 +371,18 @@ def test_parameter_derivatives_and_generic_series_match_sympy() -> None:
             want = str(e.series(sx, 0, n))
             clear_cache()
             assert str(to_sympy(expr_from_sympy(e).series(ox, 0, n), evaluate=False)) == want, (e, n)
+
+
+def test_powers_of_order_terms_match_sympy() -> None:
+    # Order._eval_power and Pow.__new__ with an order term, ported
+    import sympy
+    from sympy_extras.core.power import pow as native_pow
+    from sympy_extras.interop import expr_from_sympy, to_sympy
+    x, y = sympy.symbols('x y')
+    O = sympy.O
+    half = sympy.Rational(1, 2)
+    for b, e in [(O(x), 2), (O(x), half), (O(x), -1), (O(x), y), (O(x**2, (x, sympy.oo)), 2), (x, O(x)), (2, O(x)),
+                 (O(x), O(1)), (O(1), 2), (O(x), 0), (O(x*y, x, y), 2), (O(x), -half), (O(1, x), -1), (O(x**2), 3)]:
+        want = sympy.srepr(sympy.Pow(b, e))
+        got = native_pow(expr_from_sympy(sympy.sympify(b)), expr_from_sympy(sympy.sympify(e)))
+        assert sympy.srepr(to_sympy(got, evaluate=False)) == want, (b, e)

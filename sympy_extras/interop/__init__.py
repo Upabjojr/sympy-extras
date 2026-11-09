@@ -1298,6 +1298,22 @@ def sympy_facts(e: Expr) -> Facts:
     return facts
 
 
+def _with_fixed_random(f: Callable[[], object]) -> object:
+    """``f()`` with SymPy's random generators seeded with a fixed value
+    and restored after: SymPy's ``is_constant`` and ``equals`` evaluate at
+    random points, so that their answer (and their running time: some
+    points make the evaluation of number powers explode) depended on the
+    calls made before, in any order the hash seed gave."""
+    from sympy.core import random as sympy_random
+    saved = (sympy_random.rng.getstate(), sympy_random._assumptions_rng.getstate())
+    sympy_random.seed(0)
+    try:
+        return f()
+    finally:
+        sympy_random.rng.setstate(saved[0])
+        sympy_random._assumptions_rng.setstate(saved[1])
+
+
 def _sympy_numeric(e: Expr, dps: int) -> Optional[mpmath.mpc]:
     """SymPy's value of ``e`` at ``dps`` digits as an mpmath number."""
     s = to_sympy(e)
@@ -1341,21 +1357,19 @@ class SymPyBridge(Bridge):
         result = sympy.ask(to_sympy(proposition), to_sympy(assumptions))
         return result if isinstance(result, bool) else None
 
-    def facts(self, e: Expr) -> dict[str, bool]:
-        return sympy_facts(e)
-
     def equals_zero(self, e: Expr) -> Truth:
         s = to_sympy(e)
         if not isinstance(s, SymPyExpr):
             return None
-        answer = s.equals(0)
+        answer = _with_fixed_random(lambda: s.equals(0))
         return answer if isinstance(answer, bool) else None
 
     def is_constant(self, e: Expr, wrt: Sequence[Symbol]) -> Truth:
         s = to_sympy(e)
         if not isinstance(s, SymPyExpr):
             return None
-        answer = s.is_constant(*[to_sympy(w) for w in wrt])
+        variables = [to_sympy(w) for w in wrt]
+        answer = _with_fixed_random(lambda: s.is_constant(*variables))
         return answer if isinstance(answer, bool) else None
 
     def is_hypergeometric(self, e: Expr, k: Symbol) -> Truth:
@@ -1378,14 +1392,8 @@ class SymPyBridge(Bridge):
             raise PolynomialError("the degree of %s is %s" % (e, value))
         return int(value)
 
-    def power(self, base: Expr, exp: Expr) -> Expr:
-        return expr_from_sympy(sympy.Pow(to_sympy(base), to_sympy(exp)))
-
     def nseries(self, node: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         return nseries_node_through_sympy(node, x, n, logx, cdir)
-
-    def leading_term(self, node: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Optional[Expr]:
-        return leading_term_node_through_sympy(node, x, logx, cdir)
 
     def meromorphic(self, node: Expr, x: Symbol, a: Expr, own_only: bool) -> tuple[bool, Truth]:
         return meromorphic_node_through_sympy(node, x, a, own_only)
@@ -1434,13 +1442,6 @@ class SymPyBridge(Bridge):
 
     def invert(self, e: Expr, g: Expr, gens: Sequence[Symbol]) -> Expr:
         return expr_through_sympy(e, lambda s: sympy.invert(s, to_sympy(g), *[to_sympy(v) for v in gens]))
-
-    def extract_branch_factor(self, e: Expr, allow_half: bool) -> tuple[Expr, Expr]:
-        s = to_sympy(e)
-        if not isinstance(s, SymPyExpr):
-            raise TypeError("an expression is expected")
-        z, k = s.extract_branch_factor(allow_half=allow_half)
-        return (expr_from_sympy(z), expr_from_sympy(k))
 
 
 register_bridge(SymPyBridge())

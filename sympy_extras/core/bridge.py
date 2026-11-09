@@ -71,9 +71,6 @@ class Bridge:
     def ask(self, proposition: Boolean, assumptions: Boolean) -> Truth:
         return None
 
-    def facts(self, e: Expr) -> dict[str, bool]:
-        return {}
-
     def equals_zero(self, e: Expr) -> Truth:
         return None
 
@@ -91,15 +88,8 @@ class Bridge:
 
     # -- operations on nodes whose rules are not ported
 
-    def power(self, base: Expr, exp: Expr) -> Expr:
-        raise self._missing('powers of order terms')
-
     def nseries(self, node: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         raise self._missing('the series of %s' % (type(node).__name__,))
-
-    def leading_term(self, node: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Optional[Expr]:
-        """The foreign class's own leading term rule, ``None`` without one."""
-        return None
 
     def meromorphic(self, node: Expr, x: Symbol, a: Expr, own_only: bool) -> tuple[bool, Truth]:
         """``(found, answer)``: whether the foreign class has a rule (with
@@ -144,9 +134,6 @@ class Bridge:
 
     def invert(self, e: Expr, g: Expr, gens: Sequence[Symbol]) -> Expr:
         raise self._missing('invert in several variables')
-
-    def extract_branch_factor(self, e: Expr, allow_half: bool) -> tuple[Expr, Expr]:
-        raise self._missing('extract_branch_factor')
 
 
 _registered: list[Bridge] = [Bridge()]

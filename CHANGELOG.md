@@ -346,6 +346,13 @@ remove public functions. Breaking changes are listed here when they happen.
   only for the classes whose SymPy counterpart has a rule of its own
   (tables checked against SymPy by tests): 2026 of 2028 and 562 of 562
   calls found no rule and were round trips to SymPy for nothing.
+- Powers of order terms are native (SymPy's `Order._eval_power`); the
+  unused bridge methods (`power`, `extract_branch_factor`, `facts`,
+  `leading_term`) are gone.
+- SymPy's `is_constant` and `equals` run through the bridge with SymPy's
+  random generators seeded and restored: they evaluate at random points,
+  and some points made the suite hang (only under some hash seeds, in
+  `test_known_methods_on_random_expressions`).
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

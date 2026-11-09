@@ -449,8 +449,7 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
     if not global_parameters.evaluate:
         return Pow(base, exp)
     if base.is_Order or exp.is_Order:
-        from .bridge import bridge
-        return bridge().power(base, exp)
+        return _order_power(base, exp)
     if isinstance(base, Number) and isinstance(exp, Number):
         return number_pow(base, exp)
     if isinstance(exp, Number):
@@ -1095,3 +1094,22 @@ def as_expr_basic(b: Basic) -> Expr:
     if not isinstance(b, Expr):
         raise TypeError("an expression is expected, got %s" % (b,))
     return b
+
+
+# PORTED FROM SYMPY: sympy/core/power.py:Pow.__new__ (the zero exponent) and
+# sympy/series/order.py:Order._eval_power
+def _order_power(base: Expr, exp: Expr) -> Expr:
+    """A power with an order term: ``O(f)**e`` is ``O(f**e)`` for a
+    nonnegative number ``e``, ``O(f)**O(1)`` is ``O(f)``; the others (a
+    negative or symbolic exponent, an order term in the exponent) stay
+    unevaluated, as in SymPy."""
+    from .numbers import Integer
+    from .order import Order, order
+    if isinstance(exp, Integer) and exp.p == 0:
+        return Integer(1)
+    if isinstance(base, Order):
+        if exp.is_Number and exp.is_nonnegative is True:
+            return order(pow(base.expr, exp), *zip(base.variables, base.point))
+        if exp == order(Integer(1)):
+            return base
+    return Pow(base, exp)
