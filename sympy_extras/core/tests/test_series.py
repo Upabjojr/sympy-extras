@@ -412,3 +412,18 @@ def test_degree_with_any_coefficients_matches_sympy() -> None:
         except PolynomialError:
             got = 'error'
         assert got == want, (e, v)
+
+
+def test_loggamma_asymptotic_series_matches_sympy() -> None:
+    # LogGamma._eval_aseries (Stirling) through the asymptotic branch of the
+    # generic expansion
+    import sympy
+    from sympy_extras.core.symbol import Symbol as NativeSymbol
+    from sympy_extras.interop import expr_from_sympy, to_sympy
+    x = sympy.Symbol('x')
+    nx = expr_from_sympy(x)
+    assert isinstance(nx, NativeSymbol)
+    for e in [sympy.loggamma(1/x), sympy.loggamma((x + 1)/x), sympy.loggamma(2/x), sympy.loggamma(1/x**2)]:
+        for n in (2, 3, 4):
+            got = to_sympy(expr_from_sympy(e).series(nx, 0, n), evaluate=False)
+            assert str(got) == str(e.series(x, 0, n)), (e, n)

@@ -52,6 +52,7 @@ from sympy_extras.core.mul import div, mul
 from sympy_extras.core.numbers import (ComplexInfinity, EulerGamma, Float, I, Infinity, Integer, NaN, NegativeInfinity,
                                        Rational, nan, number_from_fraction, oo, pi, zoo)
 from sympy_extras.core.power import pow, sqrt
+from sympy_extras.core.symbol import Symbol
 from sympy_extras.functions.combinatorial.factorials import factorial
 from sympy_extras.functions.elementary.exponential import exp, log
 
@@ -144,6 +145,23 @@ class LogGamma(DefinedFunction):
     unevaluated (``loggamma`` evaluates)."""
 
     function_name = 'loggamma'
+
+    # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:loggamma._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        """Stirling's series at an argument going to ``oo``:
+        ``(z - 1/2)*log(z) - z + log(2*pi)/2 + sum B_2k/(2k(2k - 1) z**(2k - 1))``."""
+        from sympy_extras.core.numbers import oo
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.numbers import bernoulli
+        if args0[0] != oo:
+            return DefinedFunction._eval_aseries(self, n, args0, x, logx)
+        z = self.args[0]
+        assert isinstance(z, Expr)
+        r = log(z) * (z - Rational(1, 2)) - z + log(2 * pi) / 2
+        terms = [bernoulli(Integer(2 * k)) / (2 * k * (2 * k - 1) * z**(2 * k - 1)) for k in range(1, n)]
+        o = order(Integer(1), x) if n == 0 else order(1 / z**n, x)
+        # it is very inefficient to add the order first and then do the nseries
+        return add(r, *terms)._eval_nseries(x, n, logx, Integer(0)) + o
 
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:

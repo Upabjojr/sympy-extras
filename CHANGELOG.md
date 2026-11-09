@@ -410,6 +410,9 @@ remove public functions. Breaking changes are listed here when they happen.
 - `integrate` natively for sums of terms `c*x**n` (rational `n`, `log(x)`
   for `n = -1`; definite without the logarithm), the same results as
   SymPy's; `Tuple.simplify` simplifies the elements natively.
+- The generic series of a function whose argument goes to an infinity
+  uses the class's own `_eval_aseries` (SymPy's asymptotic branch);
+  `LogGamma._eval_aseries` (Stirling's series) is native.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

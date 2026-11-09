@@ -2175,6 +2175,15 @@ def _generic_function_nseries(f: Expr, x: Symbol, n: int, logx: Optional[Expr]) 
     args = [a for a in f.args if isinstance(a, Expr)]
     args0 = [limit(a, x, Integer(0)) for a in args]
     if any(a.is_finite is False for a in args0):
+        # SymPy's asymptotic branch: the class's own _eval_aseries when the
+        # arguments go to an infinity faster than logarithmically (the
+        # classes without a ported one, and the logarithmic case, are left
+        # to the foreign system)
+        from .numbers import oo, zoo, nan
+        if isinstance(f, Application) and type(f)._eval_aseries is not Application._eval_aseries:
+            a0 = [limit(a.as_leading_term(x, logx=logx), x, Integer(0)) for a in args]
+            if any(t.has(oo, -oo, zoo, nan) for t in a0):
+                return f._eval_aseries(n, args0, x, logx)
         return None
     one_argument = (isinstance(f, DefinedFunction) and not type(f).sympy_variadic
                     and len(f.nargs) == 1 and 1 in f.nargs)
