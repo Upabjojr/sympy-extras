@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.rationalsolve.solveset_rational`: SymPy's `solveset`
+  over the complex numbers for the equations rational in the unknown
+  (same solutions in the same order); `Order`'s change of variables
+  uses it and asks the SymPy bridge only for the other equations.
 - `Expr.is_hypergeometric` is native (SymPy's test: the consecutive ratio
   is a rational function), no longer through the SymPy bridge;
   `sympy_extras.concrete.gosper.consecutive_ratio`, the steps of

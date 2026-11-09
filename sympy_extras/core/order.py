@@ -544,7 +544,8 @@ def add_neg(a: Expr, b: Expr) -> Expr:
 def _solve_for(equation: Expr, d: Symbol) -> Optional[Expr]:
     """A solution of ``equation == 0`` for ``d`` (the first one of
     SymPy's ``solveset``): solved directly when ``equation`` is linear in
-    ``d``, by SymPy's ``solveset`` otherwise."""
+    ``d``, from the roots in radicals when it is rational in ``d``, by the
+    foreign ``solveset`` otherwise."""
     from .add import add
     from .mul import mul
     from .power import pow
@@ -553,8 +554,24 @@ def _solve_for(equation: Expr, d: Symbol) -> Optional[Expr]:
     if not slope.has(d) and slope.is_zero is False:
         rest = equation.subs(d, Integer(0))
         return mul(Integer(-1), rest, pow(slope, Integer(-1)))
+    native = _solve_rational(equation, d)
+    if native is not None:
+        return native
     from .bridge import bridge
     return bridge().solve_first(equation, d)
+
+
+def _solve_rational(equation: Expr, d: Symbol) -> Optional[Expr]:
+    """The first solution of SymPy's ``solveset`` (the points excluded by
+    its ``Complement`` left out) for an equation rational in ``d``
+    (:mod:`sympy_extras.polys.rationalsolve`); ``None`` for the other
+    equations or without a solution."""
+    from sympy_extras.polys.rationalsolve import solveset_rational
+    result = solveset_rational(equation, d)
+    if result is None or not result[0]:
+        return None
+    return result[0][0]
+
 
 
 O = order
