@@ -31,6 +31,7 @@ def sympify(a: SympifyLike) -> Basic:
     Examples
     ========
 
+    >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
     >>> from sympy_extras.core import sympify
     >>> from fractions import Fraction
     >>> sympify(2), sympify(Fraction(1, 2)), sympify(2.5), sympify(True)

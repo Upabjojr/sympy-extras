@@ -58,6 +58,7 @@ def limit(e: ExprLike, z: Symbol, z0: ExprLike, dir: str = "+") -> Expr:
     Examples
     ========
 
+    >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
     >>> from sympy_extras.core import Symbol, oo
     >>> from sympy_extras.core.limits import limit
     >>> from sympy_extras.functions import cos, exp, sin

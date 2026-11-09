@@ -94,6 +94,7 @@ def series(e: Expr, x: Optional[Symbol], x0: Expr, n: int, dir: str, logx: Optio
     Examples
     ========
 
+    >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
     >>> from sympy_extras.core import Symbol, oo
     >>> from sympy_extras.core.series import series
     >>> from sympy_extras.functions import sin
@@ -269,6 +270,7 @@ def aseries(e: Expr, x: Symbol, n: int = 6, bound: int = 0, hir: bool = False) -
     Examples
     ========
 
+    >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
     >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.core.series import aseries
     >>> from sympy_extras.functions import exp

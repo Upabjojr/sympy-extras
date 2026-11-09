@@ -844,6 +844,7 @@ class Expr(Basic):
         Examples
         ========
 
+        >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
         >>> from sympy_extras.core import Symbol, sqrt
         >>> x = Symbol('x')
         >>> ((x + 1)**2).equals(x**2 + 2*x + 1), (sqrt(2)*sqrt(3)).equals(sqrt(6)), x.equals(x + 1)
@@ -928,6 +929,7 @@ class Expr(Basic):
         Examples
         ========
 
+        >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
         >>> from sympy_extras.core import symbols, sqrt, sympify
         >>> x, y = symbols('x y')
         >>> (x**2 + 1).is_polynomial(), (x + 1/y).is_polynomial(x), (x + 1/y).is_polynomial(), sqrt(x).is_polynomial(x)
@@ -954,6 +956,7 @@ class Expr(Basic):
         Examples
         ========
 
+        >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
         >>> from sympy_extras.core import symbols, Integer
         >>> x, y = symbols('x y')
         >>> Integer(2).is_constant(), (x + y).is_constant(), (x + y).is_constant(y), (x - x).is_constant()
@@ -1190,6 +1193,7 @@ class Expr(Basic):
         Examples
         ========
 
+        >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
         >>> from sympy_extras.core import Symbol
         >>> from sympy_extras.functions import exp
         >>> x = Symbol('x')
@@ -1518,6 +1522,7 @@ class Expr(Basic):
         Examples
         ========
 
+        >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
         >>> from sympy_extras.core import Symbol
         >>> x = Symbol('x')
         >>> (x**2).integrate(x), (x**2).integrate((x, 0, 1))
@@ -1558,11 +1563,74 @@ class Expr(Basic):
         from .bridge import bridge
         return bridge().invert(self, ge, list(gens))
 
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr.extract_branch_factor
     def extract_branch_factor(self, allow_half: bool = False) -> tuple[Expr, Expr]:
-        """SymPy's ``extract_branch_factor``: ``(z, n)`` with
-        ``self == z*exp_polar(2*pi*I*n)``."""
-        from .bridge import bridge
-        return bridge().extract_branch_factor(self, allow_half)
+        """``(z, n)`` with ``self == z*exp_polar(2*pi*I*n)`` and the
+        multiple of ``I*pi`` left in ``z`` in ``(-1, 1]`` (``[0, 1)`` and a
+        half-integer ``n`` with ``allow_half``).
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import Symbol, I, pi
+        >>> from sympy_extras.functions import exp_polar
+        >>> y = Symbol('y')
+        >>> exp_polar(2*pi*I).extract_branch_factor(), exp_polar(-pi*I).extract_branch_factor()
+        ((1, 1), (exp_polar(I*pi), -1))
+        >>> exp_polar(5*pi*I + y).extract_branch_factor(), exp_polar(pi*I).extract_branch_factor(allow_half=True)
+        ((exp_polar(y + I*pi), 2), (1, 1/2))
+        """
+        from sympy_extras.functions.elementary.exponential import ExpPolar, exp_polar
+        from sympy_extras.functions.elementary.integers import ceiling
+        from .add import Add, add
+        from .mul import Mul, mul
+        from .numbers import I, Integer, Rational, pi
+        n: Expr = Integer(0)
+        res: Expr = Integer(1)
+        exps: list[Expr] = []
+        for arg in (self.args if isinstance(self, Mul) else (self,)):
+            assert isinstance(arg, Expr)
+            if isinstance(arg, ExpPolar):
+                exps.append(as_expr(arg.args[0]))
+            else:
+                res = res * arg
+        piimult: Expr = Integer(0)
+        extras: list[Expr] = []
+        ipi = mul(pi, I)
+        while exps:
+            e = exps.pop()
+            if isinstance(e, Add):
+                exps += [as_expr(a) for a in e.args]
+                continue
+            if isinstance(e, Mul):
+                coeff = e.as_coefficient(ipi)
+                if coeff is not None:
+                    piimult = piimult + coeff
+                    continue
+            extras.append(e)
+        coefficient: Expr
+        tail: tuple[Expr, ...]
+        if piimult.is_number:
+            coefficient, tail = piimult, ()
+        else:
+            # SymPy's as_coeff_add(*free_symbols): the terms free of them, and the others
+            free = piimult.free_symbols
+            terms = [as_expr(a) for a in piimult.args] if isinstance(piimult, Add) else [piimult]
+            coefficient = add(*[t for t in terms if not (t.free_symbols & free)])
+            tail = tuple(t for t in terms if t.free_symbols & free)
+        # round down to the nearest multiple of 2
+        branchfact = ceiling(coefficient / 2 - Rational(1, 2)) * 2
+        n = n + branchfact / 2
+        c = coefficient - branchfact
+        if allow_half:
+            nc = c.extract_additively(1)
+            if nc is not None:
+                n = n + Rational(1, 2)
+                c = nc
+        newexp = ipi * add(*((c,) + tail)) + add(*extras)
+        if not (newexp.is_Number and newexp == 0):
+            res = res * exp_polar(newexp)
+        return res, n
 
     def rewrite(self, *args: Union[Basic, FunctionClass, type], piecewise: bool = True) -> Expr:
         return as_expr(super().rewrite(*args, piecewise=piecewise))

@@ -339,6 +339,9 @@ remove public functions. Breaking changes are listed here when they happen.
   nothing (import from the modules: `sympy_extras.concrete.karr`, ...).
   `Expr.as_poly`, `AlgebraicNumber.as_poly`/`minpoly` return the typed
   `Poly`.
+- `Expr.extract_branch_factor` is native (it was the most used operation
+  of the bridge); the doctests of the core which need the bridge import
+  `sympy_extras.interop` explicitly.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
