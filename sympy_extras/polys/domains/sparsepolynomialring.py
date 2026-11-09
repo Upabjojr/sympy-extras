@@ -26,7 +26,7 @@ Examples
 (x + y, 'ZZ[x,y]')
 """
 # ---------------------------------------------------------------------
-# PORTED FROM SYMPY: sympy/polys/rings.py (PolyElement.cofactors, _gcd_zero,
+# PORTED FROM SYMPY: sympy/polys/rings.py (PolyElement.cofactors, cancel, clear_denoms, _gcd_zero,
 # _gcd_monom, _gcd_QQ, lcm, content), sympy/polys/domains/polynomialring.py
 # (canonical_unit), sympy/polys/domains/field.py (Field.gcd, Field.lcm),
 # sympy/polys/euclidtools.py (dup_rr_prs_gcd, dmp_rr_prs_gcd,
@@ -230,6 +230,22 @@ class SparsePolynomialRing(Domain[PolyElement[T]], Generic[T]):
         c = self._ground_lcm(ca, cb)
         return (pa * pb).exquo(self.gcd(pa, pb)).mul_ground(c)
 
+    # PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement.cancel (a ground domain without an associated ring)
+    def cancel(self, f: PolyElement[T], g: PolyElement[T]) -> tuple[PolyElement[T], PolyElement[T]]:
+        """``(p, q)`` with ``p/q == f/g`` in lowest terms, the leading
+        coefficient of ``q`` canonical (nonnegative)."""
+        if not f.terms:
+            return f, self.one
+        h = self.gcd(f, g)
+        p, q = f.exquo(h), g.exquo(h)
+        return self._canonical_denominator(p, q)
+
+    def _canonical_denominator(self, p: PolyElement[T], q: PolyElement[T]) -> tuple[PolyElement[T], PolyElement[T]]:
+        # SymPy multiplies by the canonical unit of q: -1 for a negative leading coefficient
+        if q.terms and self.ground.is_negative(q.LC):
+            return -p, -q
+        return p, q
+
     def from_int(self, n: int) -> PolyElement[T]:
         return self.ring.from_int(n)
 
@@ -311,6 +327,33 @@ class RationalPolynomialRing(SparsePolynomialRing[Fraction]):
         h = Z._gcd_general(self._cleared(a, Z), self._cleared(b, Z))
         result = self.ring.from_dict({m: Fraction(c) for m, c in h.terms.items()})
         return result.exquo_ground(result.LC)
+
+    # PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement.cancel (a field with an associated ring)
+    def cancel(self, f: PolyElement[Fraction], g: PolyElement[Fraction]
+               ) -> tuple[PolyElement[Fraction], PolyElement[Fraction]]:
+        """The denominators cleared, the cofactors over ``ZZ``, the
+        contents divided by their gcd, the sign of ``q`` canonical."""
+        if not f.terms:
+            return f, self.one
+        Z = IntegerPolynomialRing(self.names)
+        cq, fz = self._clear_denoms(f, Z)
+        cp, gz = self._clear_denoms(g, Z)
+        h = Z.gcd(fz, gz)
+        pz, qz = fz.exquo(h), gz.exquo(h)
+        c = integer_gcd(cp, cq)
+        cp, cq = cp // c, cq // c
+        p = self.ring.from_dict({m: Fraction(v * cp) for m, v in pz.terms.items()})
+        q = self.ring.from_dict({m: Fraction(v * cq) for m, v in qz.terms.items()})
+        return self._canonical_denominator(p, q)
+
+    @staticmethod
+    def _clear_denoms(a: PolyElement[Fraction], Z: SparsePolynomialRing[int]) -> tuple[int, PolyElement[int]]:
+        """SymPy's ``clear_denoms``: the lcm of the denominators and the
+        polynomial times it, over ``ZZ``."""
+        d = 1
+        for c in a.terms.values():
+            d = integer_lcm(d, c.denominator)
+        return d, Z.ring.from_dict({m: int(c * d) for m, c in a.terms.items()})
 
     @staticmethod
     def _cleared(a: PolyElement[Fraction], Z: SparsePolynomialRing[int]) -> PolyElement[int]:
