@@ -179,3 +179,25 @@ def test_expand_func_table_and_bessel_recurrence_match_sympy() -> None:
         for nu in (0, 1, 2, 3, 5, -2, -3, half, 3*half, -5*half, n, n + 2):
             e = f(nu, z)
             assert str(to_sympy(expand_func(expr_from_sympy(e)), evaluate=False)) == str(sympy.expand_func(e)), e
+
+
+def test_expand_func_loggamma_spherical_lerchphi_match_sympy() -> None:
+    # the ported _eval_expand_func of loggamma (with a Sum), jn/yn/hn1/hn2
+    # (spherical_bessel_fn) and lerchphi
+    import re
+    import sympy
+    from sympy_extras.core.function import expand_func
+    from sympy_extras.interop import expr_from_sympy, to_sympy
+    z, s, a = sympy.symbols('z s a')
+    R, I, pi = sympy.Rational, sympy.I, sympy.pi
+    cases = [sympy.loggamma(R(7, 3)), sympy.loggamma(R(-5, 3)), sympy.loggamma(R(11, 4)), sympy.loggamma(R(-1, 2))]
+    cases += [f(n, z) for f in (sympy.jn, sympy.yn, sympy.hn1, sympy.hn2) for n in range(-3, 4)]
+    cases += [sympy.lerchphi(1, s, a), sympy.lerchphi(z, -2, 3), sympy.lerchphi(z, s, R(1, 2)), sympy.lerchphi(z, s, R(3, 2)),
+              sympy.lerchphi(z, s, R(-1, 3)), sympy.lerchphi(-1, s, a), sympy.lerchphi(I, s, a),
+              sympy.lerchphi(sympy.exp(2*pi*I/3), s, a), sympy.lerchphi(z, s, a)]
+
+    def norm(text: str) -> str:
+        return re.sub(r'_[kt]\w*', '_d', text)
+    for e in cases:
+        got = to_sympy(expand_func(expr_from_sympy(e)), evaluate=False)
+        assert norm(str(got)) == norm(str(sympy.expand_func(e))), e

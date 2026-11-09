@@ -123,9 +123,18 @@ def _loggamma(node: Expr, hints: ExpandHints) -> Optional[Expr]:
         n = z.p // z.q
         p = z.p - n * z.q
         if 0 < p < z.q:
-            if n != 0:
-                return None  # a Sum: SymPy's
-            return loggamma(_q(p, z.q))
+            if n == 0:
+                return loggamma(_q(p, z.q))
+            from sympy_extras.concrete.expr_with_limits import Sum
+            from sympy_extras.core.numbers import I
+            from sympy_extras.core.symbol import Dummy
+            from sympy_extras.functions import log
+            k = Dummy('k')
+            q = Integer(z.q)
+            base = loggamma(_q(p, z.q)) - n * log(q)
+            if n > 0:
+                return base + Sum(log((k - 1) * q + p), (k, ONE, Integer(n)))
+            return base + pi * I * n - Sum(log(k * q - p), (k, ONE, Integer(-n)))
     return node
 
 
@@ -249,6 +258,146 @@ def _tribonacci(node: Expr, hints: ExpandHints) -> Optional[Expr]:
                Rational(1, 3))
 
 
+# PORTED FROM SYMPY: sympy/polys/orthopolys.py:dup_spherical_bessel_fn and dup_spherical_bessel_fn_minus
+def _spherical_fn_coefficients(n: int) -> list[int]:
+    """The coefficients (highest degree first) of SymPy's
+    ``spherical_bessel_fn(n, x)``, a polynomial in ``1/x``."""
+    def lshift(f: list[int]) -> list[int]:
+        return f + [0] if f else []
+
+    def sub(f: list[int], g: list[int]) -> list[int]:
+        size = max(len(f), len(g))
+        f, g = [0] * (size - len(f)) + f, [0] * (size - len(g)) + g
+        out = [a - b for a, b in zip(f, g)]
+        while out and out[0] == 0:
+            out.pop(0)
+        return out
+
+    if n >= 0:
+        if n < 1:
+            return [1, 0]
+        m2, m1 = [1], [1, 0]
+        for i in range(2, n + 1):
+            m2, m1 = m1, sub([c * (2 * i - 1) for c in lshift(m1)], m2)
+        return lshift(m1)
+    m = -n
+    m2, m1 = [1, 0], [0]
+    m1 = []  # SymPy's [K.zero] is the zero polynomial
+    for i in range(2, m + 1):
+        m2, m1 = m1, sub([c * (3 - 2 * i) for c in lshift(m1)], m2)
+    return m1
+
+
+def _spherical_fn(n: int, z: Expr) -> Expr:
+    """SymPy's ``spherical_bessel_fn(n, z)`` as an expression."""
+    coefficients = _spherical_fn_coefficients(n)
+    degree = len(coefficients) - 1
+    return add(*[c * pow(z, Integer(-(degree - i))) for i, c in enumerate(coefficients) if c])
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:_jn and _yn
+def _jn(n: int, z: Expr) -> Expr:
+    from sympy_extras.functions import cos, sin
+    return _spherical_fn(n, z) * sin(z) + MINUS_ONE**(n + 1) * _spherical_fn(-n - 1, z) * cos(z)
+
+
+def _yn(n: int, z: Expr) -> Expr:
+    from sympy_extras.functions import cos, sin
+    return MINUS_ONE**(n + 1) * _spherical_fn(-n - 1, z) * sin(z) - _spherical_fn(n, z) * cos(z)
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:SphericalBesselBase._eval_expand_func with the _expand of
+# jn, yn and SphericalHankelBase
+def _spherical(node: Expr, hints: ExpandHints) -> Optional[Expr]:
+    """The closed forms in ``sin`` and ``cos`` for an integer order (the
+    node itself otherwise)."""
+    from sympy_extras.core.numbers import I
+    nu, z = _args(node)
+    if not isinstance(nu, Integer):
+        return node
+    n = nu.p
+    name = type(node).__name__
+    if name == 'SphericalJ':
+        return _jn(n, z)
+    if name == 'SphericalY':
+        return _yn(n, z)
+    sign = 1 if name == 'SphericalHankel1' else -1
+    return (_jn(n, z) + sign * I * _yn(n, z)).expand()
+
+
+# PORTED FROM SYMPY: sympy/functions/special/zeta_functions.py:lerchphi._eval_expand_func
+def _lerchphi(node: Expr, hints: ExpandHints) -> Optional[Expr]:
+    """``zeta(s, a)`` at ``z = 1``; a rational function of ``z`` for an
+    integer ``s <= 0``; for a rational ``a`` (after a shift into ``(0, 1]``)
+    a sum of polylogarithms at the ``q``-th roots of ``z``; for ``z`` a root
+    of unity a sum of Hurwitz zeta functions (Roach, *Hypergeometric
+    function representations*, ISSAC 1997, section 18)."""
+    from sympy_extras.core.function import diff
+    from sympy_extras.core.numbers import I
+    from sympy_extras.core.symbol import Dummy
+    from sympy_extras.functions import exp, exp_polar, floor, polylog, unpolarify, zeta
+    from sympy_extras.functions.combinatorial.factorials import binomial
+    from sympy_extras.functions.elementary.exponential import Exp
+    from sympy_extras.functions.special.zeta_functions import PolyLog
+    z, s, a = _args(node)
+    if z == 1:
+        return zeta(s, a)
+    if isinstance(s, Integer) and s.p <= 0:
+        t = Dummy('t')
+        m = -s.p
+        start: Expr = 1 / (1 - t)
+        res: Expr = Integer(0)
+        # the coefficients of (t + a)**m, lowest degree first
+        for k in range(m + 1):
+            res = res + binomial(Integer(m), Integer(k)) * pow(a, Integer(m - k)) * start
+            start = t * diff(start, t)
+        return res.subs(t, z)
+    if isinstance(a, Rational):
+        shift: Expr = Integer(0)
+        factor: Expr = ONE
+        if a > 1:
+            n = floor(a)
+            if n == a:
+                n = n - 1
+            assert isinstance(n, Integer)
+            a = a - n
+            factor = pow(z, -n)
+            shift = add(*[-pow(z, Integer(k) - n) / pow(a + k, s) for k in range(int(n))])
+        elif a <= 0:
+            n = floor(-a) + 1
+            assert isinstance(n, Integer)
+            a = a + n
+            factor = pow(z, n)
+            shift = add(*[pow(z, n - 1 - k) / pow(a - k - 1, s) for k in range(int(n))])
+        assert isinstance(a, Rational)
+        p, q = a.p, a.q
+        zet = exp_polar(2 * pi * I / q)
+        root = pow(z, Rational(1, q))
+        up_zet = unpolarify(zet)
+        terms: list[Expr] = []
+        for k in range(q):
+            term = polylog(s, pow(zet, Integer(k)) * root)
+            if isinstance(term, PolyLog):
+                expanded = _polylog(term, hints)
+                if expanded is not None:
+                    term = expanded
+            terms.append(term / pow(pow(up_zet, Integer(k)) * root, Integer(p)))
+        return shift + factor * pow(Integer(q), s - 1) * add(*terms)
+    if (isinstance(z, Exp) and isinstance(z.args[0] / (pi * I), Rational)) or z in (MINUS_ONE, I, -I):
+        if z == MINUS_ONE:
+            pp, qq = 1, 2
+        elif z == I:
+            pp, qq = 1, 4
+        elif z == -I:
+            pp, qq = -1, 4
+        else:
+            ratio = _args(z)[0] / (2 * pi * I)
+            assert isinstance(ratio, Rational)
+            pp, qq = ratio.p, ratio.q
+        return add(*[exp(2 * pi * I * k * pp / qq) / pow(Integer(qq), s) * zeta(s, (k + a) / qq) for k in range(qq)])
+    return node
+
+
 #: SymPy's ``_a`` and ``_b`` of the Bessel classes (the signs of their recurrences)
 _BESSEL_SIGNS: dict[str, tuple[int, int]] = {'BesselJ': (1, 1), 'BesselY': (1, 1), 'BesselI': (-1, 1),
                                              'BesselK': (1, -1), 'Hankel1': (1, 1), 'Hankel2': (1, 1)}
@@ -289,6 +438,9 @@ def rules() -> dict[type, Rule]:
     from sympy_extras.functions.special.beta_functions import Beta
     from sympy_extras.functions.special.zeta_functions import PolyLog, Zeta
     bessel: dict[type, Rule] = {c: _bessel for c in (bs.BesselJ, bs.BesselY, bs.BesselI, bs.BesselK, bs.Hankel1, bs.Hankel2)}
+    bessel.update({c: _spherical for c in (bs.SphericalJ, bs.SphericalY, bs.SphericalHankel1, bs.SphericalHankel2)})
+    from sympy_extras.functions.special.zeta_functions import LerchPhi
+    bessel[LerchPhi] = _lerchphi
     return bessel | {g.Gamma: _gamma, g.PolyGamma: _polygamma, g.LogGamma: _loggamma, g.DiGamma: _digamma,
             g.TriGamma: _trigamma, Beta: _beta, Binomial: _binomial, Harmonic: _harmonic, er.Erfc: _to_erf,
             er.Erfi: _to_erf, er.Erf2: _to_erf, er.Expint: _expint, Zeta: _zeta, PolyLog: _polylog,

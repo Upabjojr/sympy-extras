@@ -382,6 +382,10 @@ remove public functions. Breaking changes are listed here when they happen.
   it; `evaluate=False` prefers SymPy's parser when it is registered (its
   literal forms). `Bridge.available()` tells whether a system is
   registered.
+- `expand_func` of `loggamma` at rationals (with a `Sum`), of the
+  spherical Bessel functions (`spherical_bessel_fn`, ported from
+  `sympy.polys.orthopolys`) and of `lerchphi` (all its cases) is native:
+  no `expand_func` of the measured tests goes through SymPy now.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the
