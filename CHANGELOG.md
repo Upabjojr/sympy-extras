@@ -342,6 +342,10 @@ remove public functions. Breaking changes are listed here when they happen.
 - `Expr.extract_branch_factor` is native (it was the most used operation
   of the bridge); the doctests of the core which need the bridge import
   `sympy_extras.interop` explicitly.
+- The tractable/intractable rewrites and `is_meromorphic` ask the bridge
+  only for the classes whose SymPy counterpart has a rule of its own
+  (tables checked against SymPy by tests): 2026 of 2028 and 562 of 562
+  calls found no rule and were round trips to SymPy for nothing.
 - `sympy_extras.polys.polytools.invert` (univariate over `QQ`, two
   integers), ported from SymPy; `Expr.invert` uses it without generators.
 - `sympy_extras.simplify.ratsimp.ratsimp`, ported from SymPy (with the

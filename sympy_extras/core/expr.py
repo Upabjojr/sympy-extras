@@ -1003,7 +1003,9 @@ class Expr(Basic):
             return True
         if x not in self.free_symbols:
             return True
-        # the classes whose rule is not ported: the foreign system's
+        if not self._is_foreign_node():
+            return None
+        # a wrapped foreign object: the foreign system's rule
         from .bridge import bridge
         return bridge().meromorphic(self, x, a, True)[1]
 

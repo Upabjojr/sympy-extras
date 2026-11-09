@@ -121,3 +121,27 @@ def test_expand_func_matches_sympy() -> None:
     for e in cases:
         assert str(to_sympy(expand_func(expr_from_sympy(e)), evaluate=False)) == str(s.expand_func(e)), e
         assert str(to_sympy(expand(expr_from_sympy(e), func=True), evaluate=False)) == str(s.expand(e, func=True)), e
+
+
+def test_named_rules_table_matches_sympy() -> None:
+    # the classes sent to SymPy for 'tractable'/'intractable' are exactly
+    # those whose SymPy class has the rule
+    from sympy_extras.core.rewriting import _SYMPY_NAMED_RULES
+    from sympy_extras.interop import _NATIVE_TO_SYMPY, _fill_function_tables
+    _fill_function_tables()
+    for name, table in _SYMPY_NAMED_RULES.items():
+        have = {n.__name__ for n, s in _NATIVE_TO_SYMPY.items()
+                if any('_eval_rewrite_as_' + name in vars(k) for k in s.__mro__)}
+        assert have == set(table), (name, have ^ set(table))
+
+
+def test_own_meromorphic_table_matches_sympy() -> None:
+    import sympy
+    from sympy.core.function import Function as SympyFunction
+    from sympy_extras.core.function import _SYMPY_OWN_MEROMORPHIC
+    from sympy_extras.interop import _NATIVE_TO_SYMPY, _fill_function_tables
+    _fill_function_tables()
+    have = {n.__name__ for n, s in _NATIVE_TO_SYMPY.items()
+            if any('_eval_is_meromorphic' in vars(k) for k in s.__mro__
+                   if k not in (SympyFunction, sympy.Expr, sympy.Basic) and k.__module__.startswith('sympy.functions'))}
+    assert have == set(_SYMPY_OWN_MEROMORPHIC), have ^ set(_SYMPY_OWN_MEROMORPHIC)

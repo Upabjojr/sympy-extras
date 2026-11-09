@@ -153,10 +153,25 @@ def rewrite_tractable(e: Basic, limitvar: Optional[Symbol], intractable: bool = 
                     return rewritten
         elif _log_tractable(e):
             return _rewrite(e._evaluated(args), (), Log, RewriteHints())
-    if e.args:
-        through = bridge().rewrite_named_node(e, args, 'intractable' if intractable else 'tractable', limitvar)
+    name = 'intractable' if intractable else 'tractable'
+    if e.args and (e._is_foreign_node() or type(e).__name__ in _SYMPY_NAMED_RULES[name]):
+        # the classes with a rule of that name in SymPy, not ported: SymPy's
+        through = bridge().rewrite_named_node(e, args, name, limitvar)
         if through is not None:
             return through
     if not args:
         return e
     return e._evaluated(args)
+
+
+#: the classes whose SymPy counterpart has ``_eval_rewrite_as_tractable``
+#: or ``_eval_rewrite_as_intractable`` (the others, sums, products and
+#: powers among them, have no such rule: the node is rebuilt here)
+_SYMPY_NAMED_RULES: dict[str, frozenset[str]] = {
+    'tractable': frozenset({
+        'Acos', 'Acosh', 'Acot', 'Acoth', 'Acsc', 'Acsch', 'Asec', 'Asech', 'Asin', 'Asinh', 'Atan', 'Atanh',
+        'BesselI', 'BesselK', 'Binomial', 'Cosh', 'Coth', 'Csch', 'EiNode', 'Erf', 'Erfc', 'Erfi',
+        'FallingFactorial', 'Fibonacci', 'Gamma', 'Harmonic', 'LiNode', 'OffsetLiNode', 'RisingFactorial',
+        'Sech', 'Sinh', 'Tanh', 'UpperGamma'}),
+    'intractable': frozenset({'LogGamma'}),
+}

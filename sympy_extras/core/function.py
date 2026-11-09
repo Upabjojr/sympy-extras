@@ -570,12 +570,13 @@ class DefinedFunction(Application):
         return self.singularities
 
     def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
-        # the rules of the special functions (Bessel functions, incomplete
-        # gamma functions) are SymPy's
-        from .bridge import bridge
-        found, own = bridge().meromorphic(self, x, a, True)
-        if found:
-            return own
+        if type(self).__name__ in _SYMPY_OWN_MEROMORPHIC:
+            # the rules of the special functions (Bessel functions, incomplete
+            # gamma functions) are SymPy's
+            from .bridge import bridge
+            found, own = bridge().meromorphic(self, x, a, True)
+            if found:
+                return own
         return Application._eval_is_meromorphic(self, x, a)
 
     #: the classes whose SymPy counterpart expands by the generic
@@ -2246,3 +2247,10 @@ def _generic_leading_term(f: DefinedFunction, x: Symbol, logx: Optional[Expr]) -
     if any(x in a.free_symbols and o.contains(a) for a in args):
         raise NotImplementedError('%s has no _eval_as_leading_term routine' % f.function_name)
     return f
+
+
+#: the classes whose SymPy counterpart has an ``_eval_is_meromorphic`` of
+#: its own (not ported: asked to the bridge; the others use Application's)
+_SYMPY_OWN_MEROMORPHIC: Final[frozenset[str]] = frozenset({
+    'BesselI', 'BesselJ', 'BesselK', 'BesselY', 'Hankel1', 'Hankel2', 'LowerGamma', 'SphericalHankel1',
+    'SphericalHankel2', 'SphericalJ', 'SphericalY', 'UpperGamma'})
