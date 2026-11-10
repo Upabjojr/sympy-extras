@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.eigen`: matrices with `I` in the entries (the
+  Pauli matrices, Hermitian matrices): the characteristic polynomial is
+  factored over `QQ(i)` by Trager's algorithm and the eigenspaces and
+  Jordan chains are computed over `K[i]/(i**2 + 1)`.
 - `sympy_extras.matrices.linalg`: matrices whose entries are rational
   functions of symbols and `I` are handled exactly, in the field
   `K[i]/(i**2 + 1)` (rank, echelon form, null space, inverse, systems,

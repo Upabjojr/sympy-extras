@@ -26,9 +26,11 @@ generalised eigenvectors are built from the longest down, the vectors of
 each level completing the kernel of the previous power together with the
 images of the level above [3]_.
 
-Only symbols are accepted in the entries (rational functions of them):
-with other kernels the factorisation over the field they generate would
-be needed.
+The entries are rational functions of symbols, possibly with the
+imaginary unit: the factorisation is then over $\mathbb{Q}(i)$ (Trager's
+algorithm, :mod:`sympy_extras.polys.gaussianfactor`) and $K$ contains
+$i$. With other kernels the factorisation over the field they generate
+would be needed.
 
 Examples
 ========
@@ -70,11 +72,12 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import Final, Generic, Optional, Sequence, TypeVar
 
-from sympy_extras.core.add import add
+from sympy_extras.core.add import Add, add
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.mul import mul
-from sympy_extras.core.numbers import Integer, number_from_fraction
-from sympy_extras.core.power import pow
+from sympy_extras.core.function import expand
+from sympy_extras.core.numbers import ImaginaryUnit, Integer, number_from_fraction
+from sympy_extras.core.power import Pow, pow, sqrt
 from sympy_extras.core.sorting import default_sort_key
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.polys.domains import QQ
@@ -82,16 +85,62 @@ from sympy_extras.polys.domains.domain import Domain
 from sympy_extras.polys.domains.quotientfield import QuotientField
 from sympy_extras.polys.domains.sparsefractionfield import SparseFracElement, SparseFractionField
 from sympy_extras.polys.polyroots import roots
-from sympy_extras.polys.polytools import Poly, factor_list
+from sympy_extras.polys.domains.gaussiandomains import QQ_I
+from sympy_extras.polys.gaussianfactor import gaussian_ext_factor
+from sympy_extras.polys.polyerrors import PolynomialError
+from sympy_extras.polys.polytools import factor_list
+from sympy_extras.polys.rings import PolyRing
 
 from .dense import ExprMatrix
 from .domainmatrix import DomainMatrix
-from .linalg import _IntegerLift, _PolynomialLift, _kernels, _square, charpoly
+from .linalg import _ComplexLift, _Fraction, _IntegerLift, _PolynomialLift, _complex_lift, _kernels, _square, charpoly
 
 __all__ = ['Eigenspace', 'eigenspaces', 'eigenvalues', 'eigenvectors', 'is_diagonalizable', 'diagonalize', 'JordanChains',
            'jordan_chains', 'jordan_form']
 
 T = TypeVar('T')
+
+
+def _coefficients(e: Expr, x: Symbol) -> list[Expr]:
+    """The coefficients of a polynomial in ``x``, highest degree first
+    (the coefficients may contain ``I``)."""
+    expanded = expand(e)
+    found: dict[int, list[Expr]] = {}
+    for term in (expanded.args if isinstance(expanded, Add) else (expanded,)):
+        if not isinstance(term, Expr):
+            raise TypeError('%s is not an expression' % (term,))
+        coefficient, power = term.as_independent(x)
+        if power == 1:
+            degree = 0
+        elif power == x:
+            degree = 1
+        elif isinstance(power, Pow) and power.base == x and isinstance(power.exp, Integer) and power.exp.p > 0:
+            degree = power.exp.p
+        else:
+            raise ValueError('%s is not a polynomial in %s' % (e, x))
+        found.setdefault(degree, []).append(coefficient)
+    top = max(found) if found else 0
+    return [add(*found.get(k, [])) for k in range(top, -1, -1)]
+
+
+def _roots_in_radicals(factor: Expr, x: Symbol) -> Optional[list[Expr]]:
+    """The roots of an irreducible factor in radicals, or ``None``."""
+    coefficients = _coefficients(factor, x)
+    if len(coefficients) == 2:
+        return [-coefficients[1]/coefficients[0]]
+    if any(c.has(ImaginaryUnit) for c in coefficients):
+        if len(coefficients) != 3:
+            return None
+        a, b, c = coefficients
+        root = sqrt(expand(b*b - 4*a*c))
+        return sorted([(-b - root)/(2*a), (-b + root)/(2*a)], key=default_sort_key)
+    try:
+        found = roots(factor, x)
+    except PolynomialError:
+        return None
+    if not isinstance(found, dict) or sum(found.values()) != len(coefficients) - 1:
+        return None
+    return sorted(found, key=default_sort_key)
 
 
 class Eigenspace:
@@ -115,11 +164,7 @@ class Eigenspace:
     def values(self) -> Optional[list[Expr]]:
         """The roots of ``factor`` in radicals, or ``None`` when they are
         not found."""
-        degree = Poly(self.factor, self.symbol).degree()
-        found = roots(self.factor, self.symbol)
-        if not isinstance(found, dict) or sum(found.values()) != degree:
-            return None
-        return sorted(found, key=default_sort_key)
+        return _roots_in_radicals(self.factor, self.symbol)
 
     def vectors(self, value: Expr) -> list[ExprMatrix]:
         """The basis of the eigenspace of the eigenvalue ``value``."""
@@ -192,6 +237,20 @@ class _FunctionField(_Field[SparseFracElement[int]]):
         return self.lift.ratio(a.numer, a.denom)
 
 
+class _GaussianField(_Field[list[_Fraction]]):
+    """Rational functions of the symbols with ``I``."""
+
+    def __init__(self, lift: _ComplexLift) -> None:
+        super().__init__(lift.field)
+        self.lift: Final[_ComplexLift] = lift
+
+    def element(self, e: Expr) -> list[_Fraction]:
+        return self.lift.element(e)
+
+    def expr(self, a: list[_Fraction]) -> Expr:
+        return self.lift.expr(a)
+
+
 def _fresh_symbol(M: ExprMatrix) -> Symbol:
     used = {s.name for e in M.entries for s in e.free_symbols if isinstance(s, Symbol)}
     name, k = '_lambda', 0
@@ -219,7 +278,7 @@ def _field_nullspace(matrix: DomainMatrix[T]) -> list[list[T]]:
 
 def _extension(field: _Field[T], factor: Expr, unknown: Symbol) -> QuotientField[T]:
     K = field.domain
-    coefficients = [field.element(c) for c in Poly(factor, unknown).all_coeffs()]
+    coefficients = [field.element(c) for c in _coefficients(factor, unknown)]
     leading = K.invert(coefficients[0])
     return QuotientField(K, [K.mul(c, leading) for c in coefficients])
 
@@ -315,11 +374,17 @@ def _characteristic_factors(M: ExprMatrix, unknown: Symbol) -> tuple[list[Expr],
     characteristic polynomial with their multiplicities."""
     _square(M)
     kernels = _kernels([M])
-    if not all(isinstance(k, Symbol) for k in kernels):
-        raise NotImplementedError('eigenvalues of a matrix whose entries are not rational functions of symbols')
+    if not all(isinstance(k, (Symbol, ImaginaryUnit)) for k in kernels):
+        raise NotImplementedError('eigenvalues of a matrix whose entries are not rational functions of symbols and I')
     if M.rows == 0:
         return kernels, []
     polynomial = charpoly(M, unknown)
+    if any(isinstance(k, ImaginaryUnit) for k in kernels):
+        # over QQ(i): Trager's algorithm on the numerator
+        names = [unknown.name] + [k.name for k in kernels if isinstance(k, Symbol)]
+        ring = PolyRing(QQ_I, names)
+        _, gaussian = gaussian_ext_factor(ring.from_expr(expand(polynomial.together().as_numer_denom()[0])))
+        return kernels, [(g.to_expr(), k) for g, k in gaussian if g.to_expr().has(unknown)]
     # the entries may have denominators: factor the numerator over the integers
     numerator = polynomial.together().as_numer_denom()[0] if kernels else polynomial
     _, listed = factor_list(numerator, unknown, *kernels) if kernels else factor_list(numerator, unknown)
@@ -351,6 +416,9 @@ def eigenspaces(M: ExprMatrix, x: Symbol) -> list[Eigenspace]:
     """
     unknown = _fresh_symbol(M)
     kernels, factors = _characteristic_factors(M, unknown)
+    gaussian = _complex_lift(kernels)
+    if gaussian is not None:
+        return _eigenspaces(_GaussianField(gaussian), M, factors, unknown, x)
     if kernels:
         return _eigenspaces(_FunctionField(_PolynomialLift(kernels)), M, factors, unknown, x)
     return _eigenspaces(_RationalField(), M, factors, unknown, x)
@@ -373,6 +441,9 @@ def jordan_chains(M: ExprMatrix, x: Symbol) -> list[JordanChains]:
     """
     unknown = _fresh_symbol(M)
     kernels, factors = _characteristic_factors(M, unknown)
+    gaussian = _complex_lift(kernels)
+    if gaussian is not None:
+        return _jordan_chains(_GaussianField(gaussian), M, factors, unknown, x)
     if kernels:
         return _jordan_chains(_FunctionField(_PolynomialLift(kernels)), M, factors, unknown, x)
     return _jordan_chains(_RationalField(), M, factors, unknown, x)
@@ -391,9 +462,8 @@ def jordan_form(M: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix]:
     n = _square(M)
     blocks: list[tuple[Expr, list[ExprMatrix]]] = []
     for group in jordan_chains(M, _fresh_symbol(M)):
-        degree = Poly(group.factor, group.symbol).degree()
-        found = roots(group.factor, group.symbol)
-        if not isinstance(found, dict) or sum(found.values()) != degree:
+        found = _roots_in_radicals(group.factor, group.symbol)
+        if found is None:
             raise NotImplementedError('the roots of %s are not expressed in radicals: see jordan_chains' % (group.factor,))
         for value in found:
             for vectors in group.chains:

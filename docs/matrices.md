@@ -209,7 +209,17 @@ True
 
 ```
 
-The entries must be rational functions of symbols.
+The entries are rational functions of symbols, possibly with `I`; the
+characteristic polynomial is then factored over $\mathbb{Q}(i)$:
+
+```python
+>>> Y = ExprMatrix.from_rows([[0, -I], [I, 0]])
+>>> Y.eigenvects()
+[(-1, 1, [ExprMatrix([[I], [1]])]), (1, 1, [ExprMatrix([[-I], [1]])])]
+>>> ExprMatrix.from_rows([[2, 1 - I], [1 + I, 3]]).eigenvals()
+{1: 1, 4: 1}
+
+```
 
 ### The Jordan form
 
@@ -265,7 +275,8 @@ expressed in radicals.
 
 ## Not done
 
-* eigenvalues of matrices with other kernels (`sqrt(2)`, `sin(t)`): the
+* eigenvalues of matrices with kernels other than symbols and `I`
+  (`sqrt(2)`, `sin(t)`): the
   factorisation over the field they generate is needed; eigenvalues as
   `RootOf` objects when a factor is not solved in radicals;
 * the Smith and rational canonical forms of symbolic matrices; the

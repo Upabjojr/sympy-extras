@@ -9,7 +9,7 @@ from fractions import Fraction
 import pytest
 import sympy
 
-from sympy_extras.core import Integer, Rational, Symbol
+from sympy_extras.core import I, Integer, Rational, Symbol
 from sympy_extras.core.expr import Expr
 from sympy_extras.interop import sympy_expr, to_sympy
 from sympy_extras.matrices import ExprMatrix
@@ -62,7 +62,7 @@ def _diagonalizable(S: sympy.Matrix) -> bool:
     total = sympy.zeros(S.rows, S.rows)
     for c in squarefree.all_coeffs():
         total = total*S + c*sympy.eye(S.rows)
-    return bool(total == sympy.zeros(S.rows, S.rows))
+    return bool(total.expand() == sympy.zeros(S.rows, S.rows))
 
 
 def test_random_integer_matrices() -> None:
@@ -228,3 +228,47 @@ def test_jordan_form_irrational_and_parameters() -> None:
     assert [g.block_sizes for g in jordan_chains(companion, x)] == [[1]]
     with pytest.raises(NotImplementedError):
         jordan_form(companion)
+
+
+def test_imaginary_unit() -> None:
+    # the Pauli matrices and a Hermitian matrix: real eigenvalues, found over QQ(i)
+    pauli_y = ExprMatrix.from_rows([[0, -I], [I, 0]])
+    assert eigenvalues(pauli_y) == {Integer(-1): 1, Integer(1): 1}
+    hermitian = ExprMatrix.from_rows([[2, 1 - I], [1 + I, 3]])
+    assert eigenvalues(hermitian) == {Integer(1): 1, Integer(4): 1}
+    assert eigenvalues(ExprMatrix.from_rows([[a, I], [-I, a]])) == {a - 1: 1, a + 1: 1}
+    rnd = random.Random(31)
+    choices = [Integer(0), Integer(1), I, 1 + I, -I, 2 - I, Integer(-1)]
+    done = 0
+    while done < 15:
+        n = rnd.randint(2, 3)
+        M = ExprMatrix(n, n, [rnd.choice(choices) for _ in range(n*n)])
+        S = _sympy_matrix(M)
+        sx = sympy.Symbol('x')
+        spaces = eigenspaces(M, x)
+        characteristic = S.charpoly(sx).as_expr()
+        product = sympy.Integer(1)
+        for space in spaces:
+            factor = sympy_expr(to_sympy(space.factor))
+            product *= factor**space.multiplicity
+            for vector in space.basis:
+                v = _sympy_matrix(vector)
+                residual = S*v - sx*v
+                for i in range(n):
+                    numerator = sympy.fraction(sympy.together(residual[i, 0]))[0]
+                    assert sympy.rem(sympy.expand(numerator), factor, sx, extension=sympy.I) == 0
+        ratio = sympy.simplify(product/characteristic)
+        assert sx not in ratio.free_symbols and ratio != 0
+        assert sum(sympy.degree(sympy_expr(to_sympy(space.factor)), sx)*space.multiplicity for space in spaces) == n
+        assert is_diagonalizable(M) == _diagonalizable(S)
+        try:
+            P, J = (_sympy_matrix(m) for m in jordan_form(M))
+        except NotImplementedError:
+            continue
+        difference = S*P - P*J
+        assert all(sympy.simplify(sympy.expand(difference[i, j])) == 0 for i in range(n) for j in range(n))
+        assert sympy.simplify(P.det()) != 0
+        done += 1
+    # a Jordan block with a complex eigenvalue
+    P, J = (_sympy_matrix(m) for m in jordan_form(ExprMatrix.from_rows([[I, 1], [0, I]])))
+    assert J == sympy.Matrix([[sympy.I, 1], [0, sympy.I]])
