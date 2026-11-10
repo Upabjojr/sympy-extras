@@ -157,3 +157,41 @@ def test_rationals_and_errors() -> None:
     raises(ValueError, lambda: sqrt2.rational_value())
     raises(ValueError, lambda: sqrt2.enclosure(Fraction(0)))
     raises(ValueError, lambda: Algebraic([1, 0, -2], None, None))
+
+
+def test_principal_roots() -> None:
+    import cmath
+    two = Algebraic.from_rational(2)
+    sqrt2 = two.sqrt()
+    assert sqrt2 == _positive_root([1, 0, -2]) and sqrt2.nth_root(1) == sqrt2
+    assert Algebraic.from_rational(0).sqrt().is_zero
+    assert Algebraic.from_rational(Fraction(9, 4)).sqrt() == Fraction(3, 2)
+    i = Algebraic.imaginary_unit()
+    assert Algebraic.from_rational(-1).sqrt() == i
+    assert Algebraic.from_rational(-4).sqrt() == 2*i
+    # sqrt(i) = (1 + i)/sqrt(2); sqrt(-i) is its conjugate
+    assert i.sqrt() == (1 + i)/sqrt2 and (-i).sqrt() == (1 - i)/sqrt2
+    # the principal cube root of -8 is 1 + sqrt(3) i, of 8 it is 2
+    sqrt3 = Algebraic.from_rational(3).sqrt()
+    assert Algebraic.from_rational(-8).nth_root(3) == 1 + sqrt3*i
+    assert Algebraic.from_rational(8).nth_root(3) == 2
+    # denestings: sqrt(5 + 2 sqrt 6) = sqrt 2 + sqrt 3, sqrt(3 - 2 sqrt 2) = sqrt 2 - 1
+    assert (5 + 2*Algebraic.from_rational(6).sqrt()).sqrt() == sqrt2 + sqrt3
+    assert (3 - 2*sqrt2).sqrt() == sqrt2 - 1
+    # 2 cos(pi/8) and the nested radical of the 16-gon
+    c8 = (2 + sqrt2).sqrt()
+    assert c8.minpoly == [1, 0, -4, 0, 2]
+    assert (2 + c8).sqrt().minpoly == [1, 0, -8, 0, 20, 0, -16, 0, 2]
+    # against the principal values of cmath
+    rng = random.Random(63)
+    pool = algebraic_roots([1, 0, 0, -2]) + algebraic_roots([1, 1, 1]) + algebraic_roots([1, 0, -2]) + [i, -i, -two]
+    for _ in range(25):
+        a = rng.choice(pool) + rng.randint(-2, 2)
+        n = rng.randint(2, 4)
+        if a.is_zero:
+            continue
+        r = a.nth_root(n)
+        assert r**n == a
+        expected = cmath.exp(cmath.log(complex(a))/n)
+        assert abs(complex(r) - expected) < 1e-9
+    raises(ValueError, lambda: two.nth_root(0))

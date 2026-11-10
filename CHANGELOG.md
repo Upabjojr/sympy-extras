@@ -14,7 +14,8 @@ remove public functions. Breaking changes are listed here when they happen.
   on algebraic numbers (minimal polynomial and isolating interval or
   rectangle): `+ - * /`, integer powers, conjugates, real and imaginary
   parts, exact equality, order and signs of the real ones, enclosures of
-  any precision; `algebraic_roots(f)`, the roots of a polynomial. The
+  any precision, principal roots (`nth_root`, `sqrt`);
+  `algebraic_roots(f)`, the roots of a polynomial. The
   results are identified among the roots of a resultant by interval
   arithmetic and winding numbers. Typed, no SymPy.
 - `sympy_extras.polys.complexroots`: `dup_count_roots_right_of` (the roots

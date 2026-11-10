@@ -283,6 +283,10 @@ roots of a polynomial, real ones first in increasing order.
 Algebraic([1, 0, -10, 0, 1], 3.14626437)
 >>> 1/(sqrt3 - sqrt2) == sqrt2 + sqrt3, (1 + sqrt2)**2 == 3 + 2*sqrt2
 (True, True)
+>>> (5 + 2*(sqrt2*sqrt3)).sqrt() == sqrt2 + sqrt3          # a denesting, decided
+True
+>>> Algebraic.from_rational(-8).nth_root(3)                # the principal cube root
+Algebraic([1, -2, 4], 1 + 1.732050808*I)
 >>> a, b, c = algebraic_roots([1, 0, 0, -2])
 >>> a + b + c == 0, b.conjugate() == c, (b*c).is_real
 (True, True, True)

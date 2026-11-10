@@ -377,6 +377,65 @@ class Algebraic:
 
         return _select(_irreducible_factors(resultant), enclosure)
 
+    def nth_root(self, n: int) -> Algebraic:
+        """The principal ``n``-th root: the root of ``z**n = self`` whose
+        argument is in ``(-pi/n, pi/n]``.
+
+        Its minimal polynomial divides ``m(x**n)``. Among the roots of
+        that polynomial, those whose ``n``-th power is this number are
+        found by enclosures (there are ``n`` of them), and the principal
+        one has the largest real part; for a negative real number two
+        conjugate roots share it, and the one above the real axis is
+        taken.
+
+        Examples
+        ========
+
+        >>> from sympy_extras.polys.numberfields.qqbar import Algebraic
+        >>> two = Algebraic.from_rational(2)
+        >>> two.nth_root(2)
+        Algebraic([1, 0, -2], 1.414213562)
+        >>> (two + two.nth_root(2)).nth_root(2)             # sqrt(2 + sqrt(2)) = 2 cos(pi/8)
+        Algebraic([1, 0, -4, 0, 2], 1.847759065)
+        >>> Algebraic.from_rational(-1).nth_root(2) == Algebraic.imaginary_unit()
+        True
+        >>> Algebraic.from_rational(-8).nth_root(3)         # the principal cube root, not -2
+        Algebraic([1, -2, 4], 1 + 1.732050808*I)
+        """
+        if n < 1:
+            raise ValueError('the index of the root must be positive')
+        if n == 1 or self.is_zero:
+            return self
+        expanded: list[int] = []
+        for c in self._minpoly[:-1]:
+            expanded.extend([c] + [0]*(n - 1))
+        expanded.append(self._minpoly[-1])
+        real_roots, other_roots = _roots(expanded)
+        candidates = real_roots + other_roots
+        eps = Fraction(1, 4)
+        while len(candidates) > n:
+            target = self._box(eps)
+            kept: list[Algebraic] = []
+            for candidate in candidates:
+                base = candidate._box(eps)
+                box = base
+                for _ in range(n - 1):
+                    box = _box_product(box, base)
+                if not (box[1] < target[0] or target[1] < box[0] or box[3] < target[2] or target[3] < box[2]):
+                    kept.append(candidate)
+            candidates = kept
+            eps = eps/16
+        if len(candidates) != n:
+            raise ArithmeticError('%d roots of index %d were found' % (len(candidates), n))
+        best = candidates[0]
+        for candidate in candidates[1:]:
+            best = _larger_real_part(best, candidate)
+        return best
+
+    def sqrt(self) -> Algebraic:
+        """The principal square root."""
+        return self.nth_root(2)
+
     def real_part(self) -> Algebraic:
         """``(z + conjugate(z))/2``."""
         if self.is_real:
@@ -462,6 +521,27 @@ class Algebraic:
         return self._compare(other) >= 0
 
 
+def _larger_real_part(a: Algebraic, b: Algebraic) -> Algebraic:
+    """The one of the two numbers with the larger real part; when the
+    real parts are equal, the one with the larger imaginary part."""
+    eps = Fraction(1, 4)
+    while eps > Fraction(1, 2**64):
+        p, q = a._box(eps), b._box(eps)
+        if p[0] > q[1]:
+            return a
+        if q[0] > p[1]:
+            return b
+        eps = eps/16
+    # close real parts: conjugate numbers have the same one; otherwise
+    # they are compared exactly
+    if not a.is_real and not b.is_real and a.conjugate() == b:
+        return a if _above(a) else b
+    ra, rb = a.real_part(), b.real_part()
+    if ra != rb:
+        return a if ra > rb else b
+    return a if a.imaginary_part() > b.imaginary_part() else b
+
+
 def _coerce(value: AlgebraicLike) -> Algebraic:
     if isinstance(value, Algebraic):
         return value
@@ -541,6 +621,14 @@ def algebraic_roots(f: list[int]) -> list[Algebraic]:
     >>> algebraic_roots([1, 0, 1])
     [Algebraic([1, 0, 1], 0 - 1*I), Algebraic([1, 0, 1], 0 + 1*I)]
     """
+    real, others = _roots(f)
+    real.sort(key=_RealKey)
+    others.sort(key=_ComplexKey)
+    return real + others
+
+
+def _roots(f: list[int]) -> tuple[list[Algebraic], list[Algebraic]]:
+    """The real roots and the other roots, in no particular order."""
     if not any(f):
         raise ValueError('the zero polynomial')
     real: list[Algebraic] = []
@@ -555,9 +643,19 @@ def algebraic_roots(f: list[int]) -> list[Algebraic]:
         for rectangle in dup_isolate_complex_roots_sqf(rational):
             others.append(Algebraic(g, None, rectangle.conjugate()))
             others.append(Algebraic(g, None, rectangle))
-    real.sort(key=_RealKey)
-    others.sort(key=_ComplexKey)
-    return real + others
+    return real, others
+
+
+def _above(a: Algebraic) -> bool:
+    """Whether a number which is not real is above the real axis."""
+    eps = Fraction(1, 4)
+    while True:
+        box = a._box(eps)
+        if box[2] > 0:
+            return True
+        if box[3] < 0:
+            return False
+        eps = eps/16
 
 
 class _RealKey:
@@ -587,7 +685,10 @@ class _ComplexKey:
                 return False
             eps = eps/16
             if eps < Fraction(1, 2**40):
-                # the real parts may be equal: decide them exactly
+                # the real parts may be equal: those of conjugate numbers
+                # are, the others are compared exactly
+                if not a.is_real and not b.is_real and a.conjugate() == b:
+                    return not _above(a)
                 ra, rb = a.real_part(), b.real_part()
                 if ra != rb:
                     return ra < rb
