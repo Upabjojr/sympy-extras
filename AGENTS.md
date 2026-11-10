@@ -205,6 +205,7 @@ sympy_extras/
         karr_sympy.py        the SymPy face of karr: karr_sum, karr_term, summation, with_sum_special_values, reliable_value_of_core
         creative.py          creative telescoping in PiSigma-fields: creative_telescoping, definite_sum (native)
         guess.py             guess_recurrence, guess_differential_equation, guess_algebraic_equation, guess_closed_form: equations from the first terms (native)
+        ztransform.py        z_transform, inverse_z_transform (rational functions by partial fractions over K[t]/(g)) (native)
         zeilberger.py        Zeilberger's algorithm, WZ certificates, zeilberger_sum (native)
         zeilberger_sympy.py  the SymPy face of zeilberger: zeilberger_sum, wz_certificate, wz_prove
         qhyper.py            q-Pochhammer symbols (QPochhammer node, qpochhammer), q-Gosper, q-Zeilberger (native)

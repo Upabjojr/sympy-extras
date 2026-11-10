@@ -910,6 +910,26 @@ IntegerProgramResult('optimal', value=20, point=[4, 0])
 
 ```
 
+### The Z-transform (`sympy_extras.concrete.ztransform`)
+
+The unilateral Z-transform of sequences and the inverse of every rational
+function whose poles are found in radicals (see
+[docs/solvers.md](docs/solvers.md)).
+
+```python
+>>> from sympy_extras.core import Symbol
+>>> from sympy_extras.functions import sin
+>>> from sympy_extras.concrete.ztransform import z_transform, inverse_z_transform
+>>> n, z, w = Symbol('n'), Symbol('z'), Symbol('w')
+>>> z_transform(n*2**n, n, z), z_transform(sin(w*n), n, z)
+(2*z/(z**2 - 4*z + 4), z*sin(w)/(z**2 - 2*z*cos(w) + 1))
+>>> inverse_z_transform(z/(z**2 - z - 1), z, n)
+-sqrt(5)*(1/2 - sqrt(5)/2)**n/5 + sqrt(5)*(1/2 + sqrt(5)/2)**n/5
+>>> inverse_z_transform(z/(z**2 - z + 1), z, n)
+2*sqrt(3)*sin(pi*n/3)/3
+
+```
+
 ### Linear algebra on matrices of expressions (`sympy_extras.matrices`)
 
 Determinants, inverses, ranks, null spaces, linear systems and

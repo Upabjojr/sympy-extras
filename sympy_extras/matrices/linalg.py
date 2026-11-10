@@ -76,7 +76,7 @@ from sympy_extras.polys.rings import PolyElement
 from .dense import ExprMatrix
 from .domainmatrix import DomainMatrix
 
-__all__ = ['det', 'adjugate', 'inverse', 'rank', 'rref', 'nullspace', 'linear_solve', 'LinearSolution', 'charpoly',
+__all__ = ['normal', 'det', 'adjugate', 'inverse', 'rank', 'rref', 'nullspace', 'linear_solve', 'LinearSolution', 'charpoly',
            'charpoly_coefficients']
 
 T = TypeVar('T')
@@ -384,6 +384,28 @@ def _linear_solve(lift: _Lift[T], A: ExprMatrix, B: ExprMatrix) -> Optional[Line
 
 # ---------------------------------------------------------------------
 # the public functions
+
+def normal(e: Expr) -> Expr:
+    """The expression as a quotient of two expanded polynomials in its
+    kernels, in lowest terms (the form in which the functions of this
+    module return their results). Relations between kernels which are
+    not symbols are not used.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import cos
+    >>> from sympy_extras.matrices.linalg import normal
+    >>> x, t = Symbol('x'), Symbol('t')
+    >>> normal(1/(x - 1) - 1/(x + 1)), normal((cos(t)**2 - 1)/(cos(t) + 1) + x/2)
+    (2/(x**2 - 1), x/2 + cos(t) - 1)
+    """
+    found: dict[Expr, int] = {}
+    _collect_kernels(e, found)
+    if not found:
+        integers = _IntegerLift()
+        return integers.ratio(*integers.fraction(e))
+    lift = _PolynomialLift(list(found))
+    return lift.ratio(*lift.fraction(e))
+
 
 def det(M: ExprMatrix) -> Expr:
     """The determinant, expanded and in lowest terms (Bareiss'

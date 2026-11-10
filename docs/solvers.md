@@ -587,6 +587,56 @@ three of their generating function. A guess is a conjecture which holds
 on the terms given: a few exceptions to a pattern are absorbed by a
 coefficient vanishing at them, and more terms settle such a case.
 
+## The Z-transform and its inverse
+
+`sympy_extras.concrete.ztransform` has the unilateral Z-transform
+$F(z) = \sum_{n \ge 0} f(n) z^{-n}$ of a sequence and its inverse, on the
+typed core.
+
+`z_transform(f, n, z)` handles linear combinations of
+
+| sequence | transform |
+|---|---|
+| `n**k * a**n` (`exp(c*n)` included) | rational: `z/(z - a)` and the rule $n f(n) \mapsto -z F'(z)$ |
+| `n**k * a**n * cos(w*n + p)`, `... * sin(w*n + p)`, products and powers of sines and cosines (linearised) | rational, denominator `z**2 - 2*a*z*cos(w) + a**2` |
+| `n**k * a**n / factorial(n)` | `exp(a/z)` and its derivatives |
+| `n**k * a**n / (n + m)`, `m = 1, 2, ...` | `(z/a)**m * (-log(1 - a/z) - sum((a/z)**j/j, j < m))` |
+| `KroneckerDelta(n, m)` times anything | the value at `m` times `z**-m` |
+
+and raises `NotImplementedError` otherwise.
+
+`inverse_z_transform(F, z, n)` inverts every rational function of `z`
+(symbols as parameters) which is finite at infinity, provided its poles
+are found in radicals: the polynomial part in $1/z$ gives impulses, and
+the partial fractions over each irreducible factor of the denominator are
+computed in the extension field the factor defines, once for all its
+roots. A quadratic factor with rational coefficients and complex poles
+is written with a cosine and a sine.
+
+```python
+>>> from sympy_extras.core import Symbol, pi
+>>> from sympy_extras.functions import cos, sin, factorial
+>>> from sympy_extras.concrete.ztransform import z_transform, inverse_z_transform
+>>> n, z, a, w = Symbol('n'), Symbol('z'), Symbol('a'), Symbol('w')
+>>> z_transform(a**n, n, z), z_transform(n**2, n, z)
+(z/(-a + z), (z**2 + z)/(z**3 - 3*z**2 + 3*z - 1))
+>>> z_transform(sin(w*n), n, z), z_transform(a**n/factorial(n), n, z)
+(z*sin(w)/(z**2 - 2*z*cos(w) + 1), exp(a/z))
+>>> inverse_z_transform(z/((z - 1)*(z - 2)), z, n), inverse_z_transform(z*(z + 1)/(z - 1)**3, z, n)
+(2**n - 1, n**2)
+>>> inverse_z_transform(z/(z**2 - z - 1), z, n)
+-sqrt(5)*(1/2 - sqrt(5)/2)**n/5 + sqrt(5)*(1/2 + sqrt(5)/2)**n/5
+>>> inverse_z_transform(z/(z**2 - z + 1), z, n), inverse_z_transform(1/(z - a), z, n)
+(2*sqrt(3)*sin(pi*n/3)/3, a**n/a - KroneckerDelta(0, n)/a)
+
+```
+
+The sequences are those for $n \ge 0$. Not done: the bilateral transform
+and regions of convergence, `Heaviside` steps and shifted sequences
+`f(n - m)`, inverses of non-rational functions, rational functions whose
+coefficients involve `sqrt(2)` or `cos(w)`, and difference equations
+solved through the transform (`solvers.recurr` solves them directly).
+
 ## Exponential Diophantine equations
 
 `sympy_extras.solvers.exponential_diophantine` solves two families

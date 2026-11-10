@@ -10,6 +10,14 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.concrete.ztransform`: `z_transform(f, n, z)` (polynomial
+  times exponential times sines and cosines, `a**n/n!`, `a**n/(n + m)`,
+  impulses) and `inverse_z_transform(F, z, n)` (every rational function
+  finite at infinity whose poles are found in radicals, parameters
+  allowed; partial fractions per irreducible factor of the denominator in
+  the extension field it defines; real form for complex pole pairs).
+- `sympy_extras.matrices.linalg.normal`: an expression as a quotient of
+  expanded polynomials in its kernels, in lowest terms.
 - `sympy_extras.matrices.eigen`: `eigenspaces` (one `Eigenspace` per
   irreducible factor of the characteristic polynomial: the factor, its
   multiplicity, a basis of the eigenspace in terms of the eigenvalue,
