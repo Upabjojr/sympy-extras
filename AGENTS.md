@@ -172,7 +172,9 @@ sympy_extras/
         resolve.py           resolve(): quantifier elimination over R, Z, C (native)
         resolve_sympy.py     the SymPy face of resolve, and the eliminations (CAD, virtual substitution, Cooper,
                              comprehensive Groebner systems) which stay on SymPy
-        sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check
+        sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check (native; SymPy's SAT
+                             solver, predicates_consistent, the CAD and Hermite's count through sat_sympy)
+        sat_sympy.py         the SymPy face of sat, and the steps which stay on SymPy (the *_of_core functions)
         solve.py             solve(): Solve under assumptions (native; solveset, nonlinsolve, the CAD, regular chains,
                              transcendental equations, root isolation, Diophantine systems through solve_sympy)
         solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions)

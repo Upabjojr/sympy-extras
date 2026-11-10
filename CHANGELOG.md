@@ -577,6 +577,31 @@ remove public functions. Breaking changes are listed here when they happen.
   `ValueError` for a finite set of complex numbers (their infimum; SymPy's
   key catches it); `from_sympy` gave `Reals` for SymPy's `Interval(-oo,
   oo)`, which equals it in SymPy (the cache is keyed by the class too).
+- `sympy_extras.assumptions.sat` is native (**breaking**: `satisfiable`,
+  `tautology` and `find_instance` take and return core Booleans,
+  symbols, sets and expressions, and the module imports no SymPy). The
+  propositional abstraction, the theory check of the literals, the
+  search for integer points (the floor and the comparison of rational
+  endpoints included) and the evaluation of the candidates run on the
+  core, with the native `ask._facts`, `facts`, `quantifiers` and
+  `resolve`. What is not ported is called at run time through the new
+  face `assumptions.sat_sympy` (the `*_of_core` functions): SymPy's SAT
+  solver on the abstraction, `facts_sympy.predicates_consistent`, the
+  CAD's `sample_points` and `solution_set`, `hermite.decide_zero_dimensional`,
+  and the floor and the comparison of `CRootOf` numbers. The face keeps
+  the old API on SymPy objects (also `Model`, `Witness`,
+  `_without_real_solution`); **import it instead of the old module**:
+  `from sympy_extras.assumptions.sat_sympy import satisfiable`. `limits`,
+  the integrals, `_special_values`, the tests, README, docs and
+  benchmarks use it. The native `find_instance` takes `domain=None` (no
+  domain) like the old one. The same printed results and classes as
+  before through the face on 201 calls (the 20 doctest examples, 90
+  calls of `test_sat` and 91 more), except where the old function
+  already depended on the hash seed (which of two equivalent models
+  SymPy's SAT solver enumerates first, 5 calls); through the native
+  functions with converted inputs, the same printed values (the classes
+  of the core differ: `Integer` for `0` and `1`, `Rational` for `1/2`,
+  `CRootOf` wrapped as `SymPyExprNode`).
 - `sympy_extras.assumptions.ask`, `sympy_extras.assumptions.refine` and
   `sympy_extras.assumptions.resolve` are native (**breaking**: core
   expressions, Booleans, sets and the native `Facts` in and out; none of

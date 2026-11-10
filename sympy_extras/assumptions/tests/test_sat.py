@@ -8,9 +8,9 @@ from sympy import Basic, sympify
 from sympy.logic.boolalg import Boolean
 from sympy.abc import x, y, z
 
-from sympy_extras.assumptions.sat import Model, Witness
+from sympy_extras.assumptions.sat_sympy import Model, Witness
 
-from sympy_extras.assumptions.sat import satisfiable, tautology, find_instance
+from sympy_extras.assumptions.sat_sympy import satisfiable, tautology, find_instance
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 
@@ -194,7 +194,7 @@ def test_find_instance() -> None:
 
 
 def test_zero_dimensional_systems_without_real_solution() -> None:
-    from sympy_extras.assumptions.sat import _without_real_solution
+    from sympy_extras.assumptions.sat_sympy import _without_real_solution
     reals = element(x, S.Reals) & element(y, S.Reals) & element(z, S.Reals)
     # x, y, z are the roots of t**3 - 3*t**2 + 3*t - 1 = (t - 1)**3, all 1
     system = Eq(x**2 + y**2 + z**2, 3) & Eq(x*y + y*z + z*x, 3) & Eq(x*y*z, 1)
