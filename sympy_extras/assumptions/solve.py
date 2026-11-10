@@ -1,108 +1,261 @@
-"""Solving equations and inequalities under assumptions."""
+"""Solving equations and inequalities under assumptions.
+
+The equations, the unknowns, the assumptions and the solutions are
+objects of the core (:mod:`sympy_extras.core`, :mod:`sympy_extras.sets`):
+the solutions are sets of the core, condition sets
+(:class:`~sympy_extras.sets.conditionset.ConditionSet`), images of the
+integers (:class:`~sympy_extras.sets.fancysets.ImageSet`) and finite sets
+of points (:class:`~sympy_extras.sets.sets.PointSet`) among them.
+
+The module imports no SymPy: :mod:`sympy_extras.assumptions.solve_sympy`
+is its face on SymPy objects. The assumptions are decided by the native
+:mod:`~sympy_extras.assumptions.ask` (with :mod:`~sympy_extras.assumptions.facts`,
+:mod:`~sympy_extras.assumptions.refine` and
+:mod:`~sympy_extras.assumptions.analysis`), the rational equations over
+the complex numbers are solved by the native
+:func:`~sympy_extras.polys.rationalsolve.solveset_rational`, the families
+of a regular chain with the native polynomials, and the candidates are
+checked natively. The steps which are not ported go through SymPy at run
+time (the face holds them, the functions ending in ``_of_core``): SymPy's
+``solveset`` (the other equations and the inequalities in one unknown),
+``nonlinsolve``, ``periodicity`` and the evaluation of an intersection of
+sets which is not ported (with ``Range``, ...), the cylindrical algebraic
+decomposition (:mod:`sympy_extras.polys.cad`: ``solution_set``,
+``cylindrical_set``, ``cylindrical_formula``, ``cylindrical_cases``) and
+the radical forms of its roots (:func:`sympy_extras.polys.roots.in_radicals`),
+the triangular decompositions (:mod:`sympy_extras.polys.regularchains`,
+:func:`sympy_extras.solvers.parametric.parametric_cases`), the
+transcendental equations (:mod:`sympy_extras.solvers.transcendental`),
+the isolation of real roots (:mod:`sympy_extras.solvers.isolation`), the
+linear Diophantine systems (:mod:`sympy_extras.solvers.integers`) and the
+reliable numerical values of :mod:`sympy_extras._numeric`.
+"""
 from __future__ import annotations
 
 import random
-from typing import Optional, Sequence, Union
+from typing import Callable, Final, Optional, Sequence, Union
 
-from sympy.core.basic import Basic
-from sympy.core.expr import Expr
-from sympy.core.relational import Relational, Eq, Ne, Gt, Lt, Ge, Le
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.core.numbers import Rational, Integer
-from sympy.core.mod import Mod
-from sympy.functions.elementary.integers import floor
-from sympy.functions.elementary.miscellaneous import sqrt
-from sympy.simplify.simplify import simplify
-from sympy.core.containers import Tuple
-from sympy.core.function import Lambda
-from sympy.core.evalf import N
-from sympy.functions.elementary.complexes import im
-from sympy.core.sympify import sympify
-from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or, false,
-    Not, true)
-from sympy.sets.contains import Contains
-from sympy.sets.conditionset import ConditionSet
-from sympy.sets.fancysets import Reals, Integers, Naturals, Rationals, Complexes, ImageSet
-from sympy.sets.sets import (Set, FiniteSet, Intersection, Complement, Interval,
-    Union as SetUnion, EmptySet, ProductSet, imageset)
-from sympy.solvers.solveset import solveset, nonlinsolve
-
-from sympy_extras._typing import Truth, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
-from sympy_extras.polys.cad import cylindrical_cases, cylindrical_formula, cylindrical_set, solution_set
-from sympy_extras.polys.roots import in_radicals
-from sympy_extras.solvers.transcendental import solve_transcendental
-from sympy.polys.numberfields.minpoly import minimal_polynomial
-from sympy.polys.polytools import Poly, cancel
-from sympy_extras._numeric import reliable_value
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.containers import Tuple
+from sympy_extras.core.evalf import N
+from sympy_extras.core.expr import Expr, as_expr
+from sympy_extras.core.logic import (And, Boolean, BooleanFalse, BooleanTrue, Not, Or, and_, false, to_boolean,
+    true)
+from sympy_extras.core.mod import Mod
+from sympy_extras.core.numbers import Integer, NegativeInfinity, Rational
+from sympy_extras.core.power import sqrt
+from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, eq
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.complexes import abs_, im
+from sympy_extras.functions.elementary.integers import floor
+from sympy_extras.sets.conditionset import ConditionSet, condition_set
+from sympy_extras.sets.fancysets import (Complexes, ComplexesClass, Integers, IntegersClass,
+    Naturals0Class, NaturalsClass, RationalsClass, image_set)
+from sympy_extras.sets.sets import (Complement, Contains, EmptySet, EmptySetClass, FiniteSet, Intersection,
+    Interval, PointSet, Reals, RealsClass, Set, Union as SetUnion, complement, finite_set, intersection, interval,
+    point_set, product_set, union)
 from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 
-from .ask_sympy import Assumptions, _facts, _evaluate
-from .facts_sympy import Facts, normalize, conjuncts, to_polynomial
-from .refine_sympy import _Refiner
-from .analysis_sympy import domain_of, certified_sign, _pieces
+from .analysis import _pieces, certified_sign, domain_of
+from .ask import Assumptions, Truth, _evaluate, _facts
+from .facts import Facts, conjuncts, normalize, to_polynomial
+from .refine import _Refiner
 
-__all__ = ['solve']
+__all__ = ['solve', 'Statement', 'TriangularChain', 'ParametricCase']
 
 #: an equation or inequality to solve: an expression (equated to zero), a
 #: relation or a Boolean combination of relations
 Statement = Union[Expr, Boolean, bool]
 
+#: the points of a zero-dimensional chain, as values of the unknowns
+ChainPoints = list[dict[Symbol, Expr]]
 
-def _as_statement(item: object) -> Boolean:
-    e = sympify(item)
-    if isinstance(e, Expr):
-        # a Symbol is also a Boolean in SymPy: an expression is equated to zero
-        return Eq(e, 0)
-    if isinstance(e, Boolean):
-        return e
-    raise TypeError("an equation or a Boolean is expected, got %s" % (e,))
+
+class TriangularChain:
+    """A regular chain of a triangular decomposition, as the solver uses
+    it (built by the face from :class:`sympy_extras.polys.regularchains.RegularChain`).
+
+    Attributes
+    ==========
+
+    dimension : int
+        The number of free variables.
+    polys : list of Expr
+        The polynomials of the chain.
+    main_variables : list of Symbol
+        Their main variables.
+    solutions : callable
+        ``solutions(real)``: the points of a chain of dimension zero (the
+        real ones only with ``real``), ``None`` when they are not found.
+    """
+
+    def __init__(self, dimension: int, polys: list[Expr], main_variables: list[Symbol],
+                 solutions: Callable[[bool], Optional[ChainPoints]]) -> None:
+        self.dimension: Final[int] = dimension
+        self.polys: Final[list[Expr]] = polys
+        self.main_variables: Final[list[Symbol]] = main_variables
+        self.solutions: Final[Callable[[bool], Optional[ChainPoints]]] = solutions
+
+
+class ParametricCase:
+    """A case of a system with parameters
+    (:class:`sympy_extras.solvers.parametric.ParametricCase` on the core):
+    the condition on the parameters, the solutions (a finite set of
+    points, or ``None``) and the equations of the chain."""
+
+    def __init__(self, condition: Boolean, solutions: Optional[Set], equations: list[Expr]) -> None:
+        self.condition: Final[Boolean] = condition
+        self.solutions: Final[Optional[Set]] = solutions
+        self.equations: Final[list[Expr]] = equations
+
+
+def _sorted_symbols(symbols: set[Symbol]) -> list[Symbol]:
+    return sorted(symbols, key=lambda s: s.name)
+
+
+def _as_statement(item: Statement) -> Boolean:
+    if isinstance(item, bool):
+        return to_boolean(item)
+    if isinstance(item, Expr):
+        return eq(item, 0)
+    if isinstance(item, Boolean):
+        return item
+    raise TypeError("an equation or a Boolean is expected, got %s" % (item,))
+
+
+def _membership(x: Expr, s: Set) -> Boolean:
+    """SymPy's ``Contains(x, s)``: the truth value when the membership is
+    decided, the unevaluated membership otherwise."""
+    found = s.contains(x)
+    if isinstance(found, (BooleanTrue, BooleanFalse)):
+        return found
+    return Contains(x, s)
+
+
+def _as_set(b: Basic) -> Set:
+    if not isinstance(b, Set):
+        raise TypeError("expected a set, got %s" % (b,))
+    return b
+
+
+def _unevaluated(s: Basic) -> bool:
+    """Whether a set has an intersection, a union or a complement which
+    the sets of the core do not evaluate."""
+    if isinstance(s, (Intersection, Complement)):
+        return True
+    return any(_unevaluated(a) for a in s.args if isinstance(a, Set))
+
+
+def _evaluated_set(s: Set) -> Set:
+    """The set evaluated by SymPy when the core leaves an operation on it
+    unevaluated (an intersection with the integers, ...)."""
+    if not _unevaluated(s):
+        return s
+    from .solve_sympy import evaluated_set_of_core
+    return evaluated_set_of_core(s)
+
+
+def _intersect(*sets: Set) -> Set:
+    """SymPy's ``Intersection``."""
+    return _evaluated_set(intersection(*sets))
 
 
 def _domain_set(facts: Facts, symbols: Sequence[Symbol], domain: Optional[Set]) -> Set:
-    """The set the solutions are searched in by SymPy's solvers."""
+    """The set the solutions are searched in by the solvers."""
     if domain is not None:
-        domain_ = as_set(domain)
-        if isinstance(domain_, (Reals, Integers, Naturals, Rationals, Complexes)) or domain_.is_subset(S.Reals):
-            return domain_
+        if isinstance(domain, (RealsClass, IntegersClass, NaturalsClass, Naturals0Class, RationalsClass,
+                               ComplexesClass)) or domain.is_subset(Reals):
+            return domain
     if all(s in facts.real for s in symbols):
-        return S.Reals
-    return S.Complexes
+        return Reals
+    return Complexes
 
 
 def _solveset(formula: Boolean, x: Symbol, domain: Set) -> Set:
-    """Solve a Boolean combination of relations in one variable with
-    :func:`sympy.solveset`, atom by atom."""
+    """Solve a Boolean combination of relations in one variable, atom by
+    atom: a rational equation over the complex numbers natively, the
+    others with SymPy's ``solveset``."""
     if isinstance(formula, BooleanTrue):
         return domain
     if isinstance(formula, BooleanFalse):
-        return S.EmptySet
+        return EmptySet
     if isinstance(formula, And):
-        return Intersection(*[_solveset(as_boolean(a), x, domain) for a in formula.args])
+        return _intersect(*[_solveset(a, x, domain) for a in formula.args if isinstance(a, Boolean)])
     if isinstance(formula, Or):
-        return SetUnion(*[_solveset(as_boolean(a), x, domain) for a in formula.args])
+        return union(*[_solveset(a, x, domain) for a in formula.args if isinstance(a, Boolean)])
     if isinstance(formula, Not):
-        return Complement(domain, _solveset(as_boolean(formula.args[0]), x, domain))
+        negated = formula.args[0]
+        if isinstance(negated, Boolean):
+            return _evaluated_set(complement(domain, _solveset(negated, x, domain)))
     if isinstance(formula, Contains):
         if formula.args[0] == x:
-            return Intersection(domain, as_set(formula.args[1]))
-        return ConditionSet(x, formula, domain)
+            return _intersect(domain, _as_set(formula.args[1]))
+        return condition_set(x, formula, domain)
     if isinstance(formula, Relational):
         if x not in formula.free_symbols:
-            return ConditionSet(x, formula, domain)
+            return condition_set(x, formula, domain)
+        rational = _rational_solutions(formula, x, domain)
+        if rational is not None:
+            return rational
+        from .solve_sympy import solveset_of_core
         try:
-            return as_set(solveset(formula, x, domain))
+            return solveset_of_core(formula, x, domain)
         except (NotImplementedError, ValueError, TypeError):
-            return ConditionSet(x, formula, domain)
-    return ConditionSet(x, formula, domain)
+            return condition_set(x, formula, domain)
+    return condition_set(x, formula, domain)
+
+
+def _rational_solutions(formula: Relational, x: Symbol, domain: Set) -> Optional[Set]:
+    """The solutions of a rational equation over the complex numbers by the
+    native :func:`~sympy_extras.polys.rationalsolve.solveset_rational`
+    (SymPy's answer), ``None`` for the other equations."""
+    if not isinstance(formula, Eq) or not isinstance(domain, ComplexesClass) or x.given_assumptions:
+        return None
+    from sympy_extras.polys.rationalsolve import solveset_rational
+    f = as_expr(formula.lhs - formula.rhs)
+    if not _low_degree(f, x):
+        return None
+    found = attempt(lambda: solveset_rational(f, x), settings.timeout, native=True)
+    if found is None:
+        return None
+    solutions, excluded = found
+    result = finite_set(*solutions)
+    if excluded:
+        result = complement(result, finite_set(*excluded))
+        if not isinstance(result, (FiniteSet, EmptySetClass)):
+            return None
+    return result
+
+
+#: the largest degree of the numerator solved natively: the roots of the
+#: quartics, which SymPy writes by Ferrari's formulas over its domain EX,
+#: come out of the port in another (trigonometric) form
+_NATIVE_DEGREE = 3
+
+
+def _low_degree(f: Expr, x: Symbol) -> bool:
+    """Whether the numerator of ``f`` is a polynomial in ``x`` of degree at
+    most :data:`_NATIVE_DEGREE`."""
+    from sympy_extras.polys.polyerrors import BasePolynomialError
+    from sympy_extras.polys.polytools import degree
+    numerator = f.as_numer_denom()[0]
+    try:
+        return numerator.is_polynomial(x) is True and degree(numerator, x) <= _NATIVE_DEGREE
+    except (BasePolynomialError, NotImplementedError, ValueError, TypeError):
+        return False
 
 
 def _holds_at(formula: Boolean, values: dict[Basic, Basic], facts: Facts) -> Truth:
     """Whether the formula holds at the values, under the facts about the
     remaining symbols."""
-    instance = normalize(as_boolean(formula.xreplace(values)))
+    instance = normalize(to_boolean(formula._xreplace_evaluated(values)))
     return _evaluate(instance, facts)
+
+
+def _reliable_value(e: Expr, digits: int) -> Optional[Expr]:
+    from .solve_sympy import reliable_value_of_core
+    return reliable_value_of_core(e, digits)
 
 
 def _clearly_not_real(e: Basic) -> bool:
@@ -114,11 +267,11 @@ def _clearly_not_real(e: Basic) -> bool:
     # a value whose branch a rounding error chooses is not "clearly"
     # anything (the bug: log(-2*sqrt(2) - 2*sqrt(z)) - I*pi with z a sum
     # which is exactly zero, a real number, was found not real)
-    value = reliable_value(e, digits) if isinstance(e, Expr) else None
+    value = _reliable_value(e, digits) if isinstance(e, Expr) else None
     if value is None:
         return False
     imaginary = N(im(value), digits)
-    return isinstance(imaginary, Expr) and imaginary.is_number and bool(abs(imaginary) > Rational(1, 10)**(digits*2//3))
+    return imaginary.is_number and (abs_(imaginary) > Rational(1, 10)**(digits*2//3)) is true
 
 
 def _same_number(first: Basic, second: Basic) -> bool:
@@ -132,13 +285,18 @@ def _same_number(first: Basic, second: Basic) -> bool:
         return False
     if first.free_symbols or second.free_symbols:
         return False
-    difference = attempt(lambda: as_expr(simplify(first - second)), settings.timeout)
+    from sympy_extras.simplify.simplify import simplify
+    difference = attempt(lambda: simplify(first - second), settings.timeout, native=True)
     if difference is not None and difference == 0:
         return True
+    if difference is not None and difference.is_number and difference.is_zero is False:
+        # a number the core knows not to be zero: the evaluation below
+        # would find it apart
+        return False
     # two conjugates have the same minimal polynomial, and are told apart
     # by their values only: not by values whose branch a rounding error
     # chooses (see reliable_form)
-    apart, size = reliable_value(as_expr(first - second), 60), reliable_value(first, 60)
+    apart, size = _reliable_value(first - second, 60), _reliable_value(first, 60)
     if apart is None or size is None:
         return False
     try:
@@ -149,27 +307,28 @@ def _same_number(first: Basic, second: Basic) -> bool:
         return False
     if not (first.is_algebraic and second.is_algebraic):
         return False
+    from sympy_extras.polys.numberfields.minpoly import minimal_polynomial
     t = Dummy('t')
     polynomials = attempt(lambda: (minimal_polynomial(first, t), minimal_polynomial(second, t)),
-                          settings.timeout)
+                          settings.timeout, native=True)
     return polynomials is not None and polynomials[0] == polynomials[1]
 
 
-def _filter_finite(elements: Sequence[Basic], x: Symbol, condition: Boolean, facts: Facts,
+def _filter_finite(elements: Sequence[Expr], x: Symbol, condition: Boolean, facts: Facts,
                    formula: Boolean = true, real: bool = False) -> Set:
     """Keep the elements at which the condition holds, and put the
-    undecided ones in a :class:`~sympy.sets.conditionset.ConditionSet`.
+    undecided ones in a :class:`~sympy_extras.sets.conditionset.ConditionSet`.
     Elements at which the solved formula itself provably fails (SymPy's
     solvers return extraneous roots of radical equations), and elements
     which are clearly not real when ``real`` solutions are wanted, are
     dropped."""
-    kept: list[Basic] = []
-    undecided: list[Basic] = []
+    kept: list[Expr] = []
+    undecided: list[Expr] = []
     for e in elements:
         if real and _clearly_not_real(e):
             continue
         if formula is not true:
-            at_point = normalize(as_boolean(formula.xreplace({x: e})))
+            at_point = normalize(to_boolean(formula._xreplace_evaluated({x: e})))
             if _evaluate(at_point, facts) is False or _numeric_root(at_point) is False:
                 continue
         value = _holds_at(condition, {x: e}, facts)
@@ -181,9 +340,9 @@ def _filter_finite(elements: Sequence[Basic], x: Symbol, condition: Boolean, fac
                 kept.append(e)
         elif value is None:
             undecided.append(e)
-    result: Set = FiniteSet(*kept) if kept else S.EmptySet
+    result: Set = finite_set(*kept) if kept else EmptySet
     if undecided:
-        result = SetUnion(result, ConditionSet(x, condition, FiniteSet(*undecided)))
+        result = union(result, condition_set(x, condition, finite_set(*undecided)))
     return result
 
 
@@ -194,14 +353,14 @@ def _numeric_root(instance: Boolean) -> Truth:
     if not settings.numerical_checks:
         return None
     equations = [c for c in conjuncts(instance) if isinstance(c, Eq)]
-    if not equations or any(free_symbols(c) for c in equations):
+    if not equations or any(c.free_symbols for c in equations):
         return None
     digits = settings.precision
     for c in equations:
-        residual = reliable_value(as_expr(c.lhs - c.rhs), digits)
+        residual = _reliable_value(as_expr(c.lhs - c.rhs), digits)
         if residual is None:
             return None
-        if abs(residual) > Rational(1, 10)**(digits*2//3):
+        if (abs_(residual) > Rational(1, 10)**(digits*2//3)) is true:
             return False
     return True
 
@@ -211,93 +370,104 @@ def _restrict(result: Set, x: Symbol, condition: Boolean, facts: Facts, formula:
     """Restrict a solution set to the values satisfying the condition (and
     check the finite candidates against the solved formula)."""
     if isinstance(result, FiniteSet):
-        return _filter_finite(list(result.args), x, condition, facts, formula, real)
-    if isinstance(result, (SetUnion, Intersection)):
-        return as_set(result.func(*[_restrict(as_set(a), x, condition, facts, formula, real) for a in result.args]))
+        return _filter_finite(list(result.elements), x, condition, facts, formula, real)
+    if isinstance(result, SetUnion):
+        return union(*[_restrict(a, x, condition, facts, formula, real) for a in result.sets])
+    if isinstance(result, Intersection):
+        return _intersect(*[_restrict(a, x, condition, facts, formula, real) for a in result.sets])
     if condition is true:
         return result
-    if isinstance(result, EmptySet):
+    if isinstance(result, EmptySetClass):
         return result
-    if free_symbols(condition) <= {x} and x in facts.real:
+    if condition.free_symbols <= {x} and x in facts.real:
         polynomial = to_polynomial(condition, facts.real)
         if polynomial is not None:
-            return Intersection(result, _radicals(solution_set(polynomial, x)))
-    return ConditionSet(x, condition, result)
+            return _intersect(result, _radicals(_solution_set(polynomial, x)))
+    return condition_set(x, condition, result)
+
+
+def _solution_set(formula: Boolean, x: Symbol) -> Set:
+    """The real solutions of a polynomial formula in one unknown by the
+    CAD (:func:`sympy_extras.polys.cad.solution_set`, on SymPy)."""
+    from .solve_sympy import solution_set_of_core
+    return solution_set_of_core(formula, x)
 
 
 def _radicals(result: Set) -> Set:
     """Write the algebraic numbers in radicals when that is reasonable
     (see :func:`sympy_extras.polys.roots.in_radicals`)."""
-    return in_radicals(result)
+    from .solve_sympy import in_radicals_of_core
+    return in_radicals_of_core(result)
 
 
 def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]) -> Set:
     dom = _domain_set(facts, [x], domain)
     # the membership in the domain is handled by the solvers themselves
-    on_x = And(*[c for c in facts.conjuncts if x in c.free_symbols
-                 and not (isinstance(c, Contains) and c.args[0] == x and c.args[1] == dom)])
-    others = And(*[c for c in facts.conjuncts if x not in c.free_symbols])
+    on_x = and_(*[c for c in facts.conjuncts if x in c.free_symbols
+                  and not (isinstance(c, Contains) and c.args[0] == x and c.args[1] == dom)])
+    others = and_(*[c for c in facts.conjuncts if x not in c.free_symbols])
     if others is not true:
         # the facts about the parameters are used when deciding the solutions
         facts = Facts([others]) if others.free_symbols else facts
-    parameters = free_symbols(formula) - {x}
-    polynomial_on_x = to_polynomial(as_boolean(on_x), facts.real) if free_symbols(on_x) <= {x} else None
+    parameters = formula.free_symbols - {x}
+    polynomial_on_x = to_polynomial(on_x, facts.real) if on_x.free_symbols <= {x} else None
     polynomial_formula = to_polynomial(formula, facts.real) if not parameters and x in facts.real else None
     if polynomial_on_x is not None and polynomial_formula is not None:
-        real = _radicals(solution_set(And(polynomial_formula, polynomial_on_x), x))
-        if isinstance(dom, Reals):
+        real = _radicals(_solution_set(and_(polynomial_formula, polynomial_on_x), x))
+        if isinstance(dom, RealsClass):
             return real
-        return Intersection(real, dom)
-    if isinstance(dom, Reals) and polynomial_on_x is not None:
+        return _intersect(real, dom)
+    if isinstance(dom, RealsClass) and polynomial_on_x is not None:
         # transcendental formulas reduced to polynomial ones through
         # their kernels (exp, log, sin and cos, roots); the parameters
         # carry their assumptions into the polynomial solving and the
         # inversion of the kernels
         facts_ = facts
+        from .solve_sympy import solve_transcendental_of_core
         transcendental = attempt(
-            lambda: solve_transcendental(formula, x,
-                                         solver=lambda f, v: _univariate(f, v, facts_, S.Reals),
-                                         decide=lambda c: _evaluate(normalize(c), facts_)),
+            lambda: solve_transcendental_of_core(formula, x,
+                                                 lambda f, v: _univariate(f, v, facts_, Reals),
+                                                 lambda c: _evaluate(normalize(c), facts_)),
             settings.timeout)
         if transcendental is not None:
             if polynomial_on_x is not true:
-                transcendental = Intersection(transcendental, _radicals(solution_set(polynomial_on_x, x)))
-            return _restrict(as_set(transcendental), x, true, facts, formula, real=True)
-    # the parameters carry their assumptions while SymPy solves; with
-    # parameters the equations are solved over the complex numbers and the
-    # membership in the domain is decided afterwards
+                transcendental = _intersect(transcendental, _radicals(_solution_set(polynomial_on_x, x)))
+            return _restrict(transcendental, x, true, facts, formula, real=True)
+    # the parameters carry their assumptions while the equations are
+    # solved; with parameters they are solved over the complex numbers and
+    # the membership in the domain is decided afterwards
     refiner = _Refiner(facts)
     forward: dict[Basic, Basic] = {}
     back_symbols: dict[Basic, Basic] = {}
-    for parameter in sorted(parameters, key=lambda s: s.name):
+    for parameter in _sorted_symbols(parameters):
         dummy = refiner.dummy_for(parameter)
         if dummy is not None:
             forward[parameter] = dummy
             back_symbols[dummy] = parameter
-    abstracted = formula.xreplace(forward)
-    condition = as_boolean(on_x)
+    abstracted = to_boolean(formula._xreplace_evaluated(forward))
+    condition = on_x
     solving_domain = dom
-    if parameters and not isinstance(dom, Complexes):
+    if parameters and not isinstance(dom, ComplexesClass):
         ordered_condition = any(isinstance(c, (Gt, Lt, Ge, Le)) for c in conjuncts(condition))
         ordered_formula = any(isinstance(a, (Gt, Lt, Ge, Le)) for a in formula.atoms(Relational))
-        if isinstance(dom, Reals) and ordered_formula:
+        if isinstance(dom, RealsClass) and ordered_formula:
             # an inequality only makes sense between real numbers
-            solving_domain = S.Reals
+            solving_domain = Reals
         else:
-            solving_domain = S.Complexes
-            if not (isinstance(dom, Reals) and ordered_condition):
-                condition = And(Contains(x, dom), condition)
-    if not parameters and dom.is_subset(S.Reals) is True:
+            solving_domain = Complexes
+            if not (isinstance(dom, RealsClass) and ordered_condition):
+                condition = and_(_membership(x, dom), condition)
+    if not parameters and dom.is_subset(Reals) is True:
         # a periodic inequality: SymPy answers over one period only
         periodic = attempt(lambda: _periodic(formula, x, facts, dom), settings.timeout)
         if periodic is not None:
             # the conditions on the unknown which are not a region of the
             # real line (an integrality) are applied as for any answer
             return _restrict(periodic, x, condition, facts, formula, real=True)
-    result = _solveset(as_boolean(abstracted), x, solving_domain)
-    result = as_set(result.xreplace(back_symbols))
-    restricted = _restrict(result, x, condition, facts, formula, real=dom.is_subset(S.Reals) is True)
-    if not parameters and restricted.has(ConditionSet) and dom.is_subset(S.Reals) is True:
+    result = _solveset(abstracted, x, solving_domain)
+    result = _as_set(result._xreplace_evaluated(back_symbols))
+    restricted = _restrict(result, x, condition, facts, formula, real=dom.is_subset(Reals) is True)
+    if not parameters and restricted.has(ConditionSet) and dom.is_subset(Reals) is True:
         # no closed form: the real roots are isolated instead
         isolated = attempt(lambda: _isolated(formula, x, facts, dom), settings.timeout)
         if isolated is not None:
@@ -308,16 +478,18 @@ def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]
 def _period(formula: Boolean, x: Symbol) -> Optional[Expr]:
     """The common period of the relations of a formula in one unknown, or
     ``None`` when one of them is not periodic."""
-    from sympy.calculus.util import periodicity
+    from .solve_sympy import periodicity_of_core
     period: Optional[Expr] = None
     for atom in formula.atoms(Relational):
-        difference = as_expr(atom.lhs - atom.rhs)
-        if x not in free_symbols(difference):
+        if not isinstance(atom, Relational):
             continue
-        value = periodicity(difference, x)
-        if not isinstance(value, Expr) or value.is_positive is not True or value.is_finite is not True:
+        difference = as_expr(atom.lhs - atom.rhs)
+        if x not in difference.free_symbols:
+            continue
+        value = periodicity_of_core(difference, x)
+        if value is None or value.is_positive is not True or value.is_finite is not True:
             return None
-        if free_symbols(value):
+        if value.free_symbols:
             return None
         period = value if period is None else _common_period(period, value)
         if period is None:
@@ -328,10 +500,23 @@ def _period(formula: Boolean, x: Symbol) -> Optional[Expr]:
 def _common_period(first: Expr, second: Expr) -> Optional[Expr]:
     """The least common multiple of two periods (``None`` when their
     ratio is not rational, so that no common period exists)."""
-    ratio = as_expr(simplify(first/second))
+    from sympy_extras.simplify.simplify import simplify
+    ratio = simplify(first/second)
     if not isinstance(ratio, Rational):
         return None
-    return as_expr(first*ratio.q)
+    return first*ratio.q
+
+
+def _region(x: Symbol, facts: Facts, dom: Set) -> Set:
+    """The region the solutions are looked for in; when the assumptions do
+    not describe a region of the real line (an integrality among them)
+    the relations alone describe one, and the rest is applied afterwards."""
+    described = domain_of(x, facts.with_reals([x]))
+    if described is None:
+        relations: list[Boolean] = [c for c in facts.conjuncts
+                                    if isinstance(c, Relational) and c.free_symbols <= {x}]
+        described = domain_of(x, Facts(relations, Reals, [x]).with_reals([x]))
+    return dom if described is None else _intersect(described, dom)
 
 
 def _periodic(formula: Boolean, x: Symbol, facts: Facts, dom: Set) -> Optional[Set]:
@@ -346,36 +531,44 @@ def _periodic(formula: Boolean, x: Symbol, facts: Facts, dom: Set) -> Optional[S
     when it meets infinitely many.  Equations are left alone: for them
     ``solveset`` returns the periodic family as an ``ImageSet``.
     """
-    if free_symbols(formula) != {x} or not formula.atoms(Gt, Lt, Ge, Le):
+    if formula.free_symbols != {x} or not formula.atoms(Gt, Lt, Ge, Le):
         return None
     if formula.atoms(Eq, Ne):
         return None
     period = _period(formula, x)
     if period is None:
         return None
-    window = Interval.Ropen(S.Zero, period)
+    window = interval(Integer(0), period, False, True)
     base = _base_over_period(formula, x, period)
     if base is None:
         return None
-    # the region the solutions are looked for in; when the assumptions do
-    # not describe a region of the real line (an integrality among them)
-    # the relations alone describe one, and the rest is applied afterwards
-    described = domain_of(x, facts.with_reals([x]))
-    if described is None:
-        relations = [c for c in facts.conjuncts
-                     if isinstance(c, Relational) and free_symbols(c) <= {x}]
-        described = domain_of(x, Facts(relations, S.Reals, [x]).with_reals([x]))
-    region = as_set(dom if described is None else Intersection(described, dom))
-    if isinstance(base, EmptySet) or isinstance(region, EmptySet):
-        return S.EmptySet
+    region = _region(x, facts, dom)
+    if isinstance(base, EmptySetClass) or isinstance(region, EmptySetClass):
+        return EmptySet
     if base == window:
         return region
     tiles = _tiles(_pieces(region), period)
     if tiles is None:
-        return ConditionSet(x, Contains(Mod(x, period), base), region)
+        return condition_set(x, _membership(Mod(x, period), base), region)
+    copies = [_translated(base, k*period) for k in tiles]
+    return _intersect(union(*copies), region)
+
+
+def _translated(s: Set, offset: Expr) -> Set:
+    """The set moved by ``offset`` (SymPy's ``imageset(Lambda(t, t +
+    offset), s)``)."""
+    if offset == 0:
+        return s
+    if isinstance(s, Interval):
+        return interval(s.start + offset, s.end + offset, s.left_open, s.right_open)
+    if isinstance(s, FiniteSet):
+        return finite_set(*[e + offset for e in s.elements])
+    if isinstance(s, SetUnion):
+        return union(*[_translated(a, offset) for a in s.sets])
+    if isinstance(s, EmptySetClass):
+        return s
     shift = Dummy('shift')
-    copies = [as_set(imageset(Lambda(shift, shift + k*period), base)) for k in tiles]
-    return as_set(Intersection(SetUnion(*copies), region))
+    return image_set(Tuple(shift), shift + offset, s)
 
 
 #: the largest number of periods tiled explicitly (beyond it the solutions
@@ -388,14 +581,14 @@ def _tiles(pieces: Optional[Sequence[Interval]], period: Expr) -> Optional[range
     many of them (or infinitely many)."""
     if not pieces:
         return None
-    low = as_expr(min((as_expr(piece.start) for piece in pieces), key=_ordering))
-    high = as_expr(max((as_expr(piece.end) for piece in pieces), key=_ordering))
+    low = min((piece.start for piece in pieces), key=_ordering)
+    high = max((piece.end for piece in pieces), key=_ordering)
     if low.is_finite is not True or high.is_finite is not True:
         return None
     first, last = floor(low/period), floor(high/period)
     if not (isinstance(first, Integer) and isinstance(last, Integer)):
         return None
-    if last - first + 1 > _TILES:
+    if int(last) - int(first) + 1 > _TILES:
         return None
     return range(int(first), int(last) + 1)
 
@@ -403,8 +596,9 @@ def _tiles(pieces: Optional[Sequence[Interval]], period: Expr) -> Optional[range
 def _ordering(point: Expr) -> float:
     """A key ordering the endpoints of the pieces of a region."""
     value = N(point, 20)
-    return float(value) if isinstance(value, Expr) and value.is_real and value.is_finite \
-        else (float('-inf') if point is S.NegativeInfinity else float('inf'))
+    if value.is_real and value.is_finite:
+        return float(value)
+    return float('-inf') if isinstance(point, NegativeInfinity) else float('inf')
 
 
 def _base_over_period(formula: Boolean, x: Symbol, period: Expr) -> Optional[Set]:
@@ -412,11 +606,11 @@ def _base_over_period(formula: Boolean, x: Symbol, period: Expr) -> Optional[Set
     the relation between its roots when that works (the answer does not
     then depend on SymPy's solving of the inequality), and left to
     ``solveset`` over the bounded window otherwise."""
-    window = Interval.Ropen(S.Zero, period)
-    facts = Facts([], S.Reals, [x])
-    isolated = attempt(lambda: _isolated(formula, x, facts, Interval(S.Zero, period)), settings.timeout)
+    window = interval(Integer(0), period, False, True)
+    facts = Facts([], Reals, [x])
+    isolated = attempt(lambda: _isolated(formula, x, facts, interval(Integer(0), period)), settings.timeout)
     if isolated is not None:
-        return as_set(Intersection(isolated, window))
+        return _intersect(isolated, window)
     solved = _solveset(formula, x, window)
     if solved.has(ConditionSet):
         return None
@@ -429,54 +623,45 @@ def _isolated(formula: Boolean, x: Symbol, facts: Facts, dom: Set) -> Optional[S
     (:mod:`sympy_extras.solvers.isolation`): exact roots where SymPy finds
     them, :class:`~sympy_extras.solvers.isolation.TranscendentalRoot`
     objects otherwise; ``None`` when the roots cannot be isolated."""
-    # imported here: the isolation module uses the analysis of this package
-    from sympy_extras.solvers.isolation import isolate_real_roots, point_between, compare_points
-    if not isinstance(formula, Relational) or free_symbols(formula) != {x}:
+    from .solve_sympy import compare_points_of_core, isolate_real_roots_of_core, point_between_of_core
+    if not isinstance(formula, Relational) or formula.free_symbols != {x}:
         return None
-    # the region the solutions are looked for in; when the assumptions do
-    # not describe a region of the real line (an integrality among them)
-    # the relations alone describe one, and the rest is applied afterwards
-    described = domain_of(x, facts.with_reals([x]))
-    if described is None:
-        relations = [c for c in facts.conjuncts
-                     if isinstance(c, Relational) and free_symbols(c) <= {x}]
-        described = domain_of(x, Facts(relations, S.Reals, [x]).with_reals([x]))
-    region = as_set(dom if described is None else Intersection(described, dom))
+    region = _region(x, facts, dom)
     pieces = _pieces(region)
     if pieces is None:
         return None
     f = as_expr(formula.lhs - formula.rhs)
-    roots = isolate_real_roots(f, x, region)
+    roots = isolate_real_roots_of_core(f, x, region)
     if roots is None:
         return None
     if isinstance(formula, Eq):
-        return FiniteSet(*roots) if roots else S.EmptySet
+        return finite_set(*roots) if roots else EmptySet
     if isinstance(formula, Ne):
-        return as_set(Complement(region, FiniteSet(*roots))) if roots else region
+        return _evaluated_set(complement(region, finite_set(*roots))) if roots else region
     strict = isinstance(formula, (Gt, Lt))
     wanted = 1 if isinstance(formula, (Gt, Ge)) else -1
     parts: list[Set] = []
     for piece in pieces:
-        a, b = as_expr(piece.start), as_expr(piece.end)
-        inner = [r for r in roots if compare_points(r, a) == 1 and compare_points(b, r) == 1]
+        a, b = piece.start, piece.end
+        inner = [r for r in roots if compare_points_of_core(r, a) == 1 and compare_points_of_core(b, r) == 1]
         points: list[Expr] = [a] + inner + [b]
         for p, q in zip(points, points[1:]):
-            sample = point_between(p, q)
+            sample = point_between_of_core(p, q)
             if sample is None:
                 return None
             s = certified_sign(as_expr(f.subs(x, sample)))
             if s is None:
                 return None
             if s == wanted:
-                parts.append(Interval.open(p, q))
+                parts.append(interval(p, q, True, True))
         if not strict:
-            parts.extend(FiniteSet(r) for r in inner)
+            parts.extend(finite_set(r) for r in inner)
         for closed, point in ((not piece.left_open, a), (not piece.right_open, b)):
             if closed and point.is_finite:
                 s = certified_sign(as_expr(f.subs(x, point)))
                 if s == wanted or (s == 0 and not strict):
-                    parts.append(FiniteSet(point))
-    return as_set(SetUnion(*parts)) if parts else S.EmptySet
+                    parts.append(finite_set(point))
+    return union(*parts) if parts else EmptySet
 
 
 def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], facts: Facts,
@@ -489,18 +674,18 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
                 equations.append(as_expr(c.lhs - c.rhs))
             else:
                 conditions.append(c)
-    conditions.extend(c for c in facts.conjuncts if free_symbols(c) & set(symbols))
-    condition = And(*conditions)
+    conditions.extend(c for c in facts.conjuncts if c.free_symbols & set(symbols))
+    condition = and_(*conditions)
     dom = _domain_set(facts, symbols, domain)
-    real = dom.is_subset(S.Reals) is True
+    real = dom.is_subset(Reals) is True
     if not equations:
-        region = _cylindrical(equations, conditions, symbols, facts) if real and dom == S.Reals else None
+        region = _cylindrical(equations, conditions, symbols, facts) if real and dom == Reals else None
         if region is None:
             raise NotImplementedError("systems of inequalities in several unknowns are solved over the reals "
                                       "(domain=S.Reals, or real unknowns), for polynomial relations with "
                                       "rational coefficients, within the time limit")
         return region
-    if isinstance(domain, Integers) or set(symbols) <= facts.integer:
+    if isinstance(domain, IntegersClass) or set(symbols) <= facts.integer:
         integer = _integer_linear_system(equations, conditions, symbols, facts)
         if integer is not None:
             return integer
@@ -511,7 +696,7 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
     # three equations with twelve solutions, after 37 s where the chains
     # take two
     solutions = _by_regular_chains(equations, symbols, real, True)
-    if solutions is None and real and dom == S.Reals:
+    if solutions is None and real and dom == Reals:
         # real solutions in positive dimension: the cylindrical description
         # of the set, which has the conditions for the solutions to be real
         # and the inequalities in it (nonlinsolve gives families over the
@@ -522,37 +707,43 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
             return region
     unsolved = False
     unchecked = solutions is None
+    refuted = False
     if solutions is None:
+        from .solve_sympy import nonlinsolve_of_core
         try:
-            solutions = nonlinsolve(equations, list(symbols))
+            solutions = nonlinsolve_of_core(equations, list(symbols))
+            # None: points with sets among their coordinates
+            refuted = solutions is None
         except (NotImplementedError, ValueError, TypeError):
             unsolved = True
     # the points of the chains are not substituted back: they are exact, and
     # evalf spends the whole time limit on a residual which is exactly zero
     # at a root object (the bug: 34 s for two quadratic equations)
-    if solutions is None or (unchecked and isinstance(solutions, FiniteSet) and _refuted(solutions, equations, symbols)):
+    if solutions is None or (unchecked and isinstance(solutions, PointSet)
+                             and _refuted(solutions, equations, symbols)):
         # the points of nonlinsolve are substituted back, and a system they
         # do not satisfy goes through the chains, with their families
         solutions = _by_regular_chains(equations, symbols, real, False)
         if solutions is None:
-            if unsolved:
+            if unsolved and not refuted:
                 raise NotImplementedError("the system cannot be solved")
             # a refuted answer is not returned: the system as it is
-            return ConditionSet(Tuple(*symbols), And(condition, *[Eq(e, 0) for e in equations]),
-                                ProductSet(*[dom] * len(symbols)))
-    if not isinstance(solutions, FiniteSet):
-        return ConditionSet(tuple(symbols), condition, solutions) if condition is not true else solutions
-    kept: list[Basic] = []
-    undecided: list[Basic] = []
-    for point in solutions.args:
+            return condition_set(Tuple(*symbols), and_(condition, *[eq(e, 0) for e in equations]),
+                                 product_set(*[dom] * len(symbols)))
+    if not isinstance(solutions, PointSet):
+        return condition_set(Tuple(*symbols), condition, solutions) if condition is not true else solutions
+    kept: list[Tuple] = []
+    undecided: list[Tuple] = []
+    for point in solutions.points:
         values: dict[Basic, Basic] = {s: v for s, v in zip(symbols, point.args)}
-        membership = And(*[Contains(v, dom) for v in point.args]) if not isinstance(dom, Complexes) else true
-        value = _holds_at(And(condition, membership), values, facts)
+        membership = and_(*[_membership(as_expr(v), dom) for v in point.args]) \
+            if not isinstance(dom, ComplexesClass) else true
+        value = _holds_at(and_(condition, membership), values, facts)
         if value is True:
             kept.append(point)
         elif value is None:
             undecided.append(point)
-    result: Set = FiniteSet(*kept) if kept else S.EmptySet
+    result: Set = point_set(*kept) if kept else EmptySet
     if undecided:
         # the memberships in the domain are those of the unknowns, which the
         # condition set gives the coordinates of each point in turn (the
@@ -560,9 +751,15 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
         # over from the loop, were the condition of every point, and the
         # real branch of x**3 = 1 - y**3 - y**2 was dropped because a
         # complex one is not real)
-        inside = And(*[Contains(s, dom) for s in symbols]) if not isinstance(dom, Complexes) else true
-        result = SetUnion(result, ConditionSet(tuple(symbols), And(condition, inside), FiniteSet(*undecided)))
+        inside = and_(*[_membership(s, dom) for s in symbols]) if not isinstance(dom, ComplexesClass) else true
+        result = union(result, condition_set(Tuple(*symbols), and_(condition, inside), point_set(*undecided)))
     return result
+
+
+def _informative(c: Boolean) -> bool:
+    """Whether an assumption says more than the membership of a variable in
+    the reals (every variable of a decomposition is real)."""
+    return not (isinstance(c, Contains) and c.args[1] == Reals)
 
 
 def _parametric(statements: Sequence[Boolean], symbols: Sequence[Symbol], facts: Facts,
@@ -574,59 +771,59 @@ def _parametric(statements: Sequence[Boolean], symbols: Sequence[Symbol], facts:
     relations: list[Boolean] = []
     for s in statements:
         relations.extend(conjuncts(normalize(s)))
-    parameters = sorted_symbols(set().union(*[free_symbols(c) for c in relations]) - set(symbols)) if relations else []
+    found_symbols: set[Symbol] = set()
+    for c in relations:
+        found_symbols |= c.free_symbols
+    parameters = _sorted_symbols(found_symbols - set(symbols))
     if not parameters:
         return None
     unknown: Basic = symbols[0] if len(symbols) == 1 else Tuple(*symbols)
     dom = _domain_set(facts, symbols, domain)
-
-    def informative(c: Boolean) -> bool:
-        return not (isinstance(c, Contains) and c.args[1] == S.Reals)
-
-    hypotheses = [c for c in facts.conjuncts if informative(c)]
+    hypotheses = [c for c in facts.conjuncts if _informative(c)]
     pieces: list[Set] = []
-    if dom == S.Reals:
-        system = And(*relations, *[c for c in hypotheses if free_symbols(c) <= set(parameters) | set(symbols)])
-        discussed = attempt(lambda: cylindrical_cases(system, parameters, list(symbols)), settings.timeout)
+    if dom == Reals:
+        system = and_(*relations, *[c for c in hypotheses if c.free_symbols <= set(parameters) | set(symbols)])
+        from .solve_sympy import cylindrical_cases_of_core
+        discussed = attempt(lambda: cylindrical_cases_of_core(system, parameters, list(symbols)), settings.timeout)
         if discussed is None:
             return None
         for condition, found in discussed:
             pieces.append(_under(unknown, condition, found, facts))
-        return as_set(SetUnion(*pieces)) if pieces else S.EmptySet
-    if not isinstance(dom, Complexes) or not all(isinstance(c, (Eq, Ne)) for c in relations):
+        return union(*pieces) if pieces else EmptySet
+    if not isinstance(dom, ComplexesClass) or not all(isinstance(c, (Eq, Ne)) for c in relations):
         return None
     equations = [as_expr(c.lhs - c.rhs) for c in relations if isinstance(c, Eq)]
     inequations = [as_expr(c.lhs - c.rhs) for c in relations if isinstance(c, Ne)]
     if not equations:
         return None
-    from sympy_extras.solvers.parametric import parametric_cases
-    found_cases = attempt(lambda: parametric_cases(equations, list(symbols), parameters, inequations), settings.timeout)
+    from .solve_sympy import parametric_cases_of_core
+    found_cases = attempt(lambda: parametric_cases_of_core(equations, list(symbols), parameters, inequations),
+                          settings.timeout)
     if found_cases is None:
         return None
-    space: Set = S.Complexes if len(symbols) == 1 else ProductSet(*[S.Complexes] * len(symbols))
+    space: Set = Complexes if len(symbols) == 1 else product_set(*[Complexes] * len(symbols))
     for case in found_cases:
-        condition = case.condition
         if case.solutions is None:
-            solutions: Set = ConditionSet(unknown, And(*[Eq(e, 0) for e in case.equations]), space)
+            solutions: Set = condition_set(unknown, and_(*[eq(e, 0) for e in case.equations]), space)
         elif len(symbols) == 1:
-            values = [point.args[0] for point in case.solutions.args]
-            solutions = space if symbols[0] in values else FiniteSet(*values)
+            values = [as_expr(point.args[0]) for point in case.solutions.args if isinstance(point, Tuple)]
+            solutions = space if symbols[0] in values else finite_set(*values)
         else:
             solutions = case.solutions
-        pieces.append(_under(unknown, And(condition, *[c for c in hypotheses if free_symbols(c) & set(symbols)]),
+        pieces.append(_under(unknown, and_(case.condition, *[c for c in hypotheses if c.free_symbols & set(symbols)]),
                              solutions, facts))
-    return as_set(SetUnion(*pieces)) if pieces else S.EmptySet
+    return union(*pieces) if pieces else EmptySet
 
 
 def _under(unknown: Basic, condition: Boolean, solutions: Set, facts: Facts) -> Set:
     """The solutions of a case: nothing when the facts refute its
     condition, the solutions themselves when they prove it."""
-    holds = _evaluate(normalize(as_boolean(condition)), facts) if free_symbols(condition) else None
+    holds = _evaluate(normalize(condition), facts) if condition.free_symbols else None
     if condition == true or holds is True:
         return solutions
     if condition == false or holds is False:
-        return S.EmptySet
-    return ConditionSet(unknown, condition, solutions)
+        return EmptySet
+    return condition_set(unknown, condition, solutions)
 
 
 def _cylindrical(equations: Sequence[Expr], conditions: Sequence[Boolean], symbols: Sequence[Symbol],
@@ -639,48 +836,41 @@ def _cylindrical(equations: Sequence[Expr], conditions: Sequence[Boolean], symbo
     parameters come before the unknowns, with what the assumptions say of
     them, and the condition bounds them first. ``None`` when the system is
     not of this kind or the decomposition does not end in time."""
-    # every variable of the decomposition is a real number: the memberships
-    # in the reals say nothing more
-    def informative(c: Boolean) -> bool:
-        return not (isinstance(c, Contains) and c.args[1] == S.Reals)
-
-    system = And(*[c for c in conditions if informative(c)], *[Eq(e, 0) for e in equations])
-    parameters = sorted_symbols(free_symbols(system) - set(symbols))
+    from .solve_sympy import cylindrical_formula_of_core, cylindrical_set_of_core
+    system = and_(*[c for c in conditions if _informative(c)], *[eq(e, 0) for e in equations])
+    parameters = _sorted_symbols(system.free_symbols - set(symbols))
     hypotheses = [c for c in facts.conjuncts
-                  if informative(c) and free_symbols(c) and free_symbols(c) <= set(parameters)]
+                  if _informative(c) and c.free_symbols and c.free_symbols <= set(parameters)]
 
     def decompose() -> Set:
         if not parameters:
-            return cylindrical_set(system, list(symbols))
-        formula = cylindrical_formula(And(system, *hypotheses), parameters + list(symbols))
+            return cylindrical_set_of_core(system, list(symbols))
+        formula = cylindrical_formula_of_core(and_(system, *hypotheses), parameters + list(symbols))
         if formula == false:
-            return S.EmptySet
-        return ConditionSet(Tuple(*symbols), formula, ProductSet(*[S.Reals] * len(symbols)))
+            return EmptySet
+        return condition_set(Tuple(*symbols), formula, product_set(*[Reals] * len(symbols)))
 
     return attempt(decompose, settings.timeout)
 
 
-def _refuted(solutions: FiniteSet, equations: Sequence[Expr], symbols: Sequence[Symbol]) -> bool:
+def _refuted(solutions: PointSet, equations: Sequence[Expr], symbols: Sequence[Symbol]) -> bool:
     """Whether a point of ``solutions`` clearly does not satisfy the
     equations: the residuals are evaluated numerically, at random rational
     values of the symbols left in the point."""
     rng = random.Random(0)
-    if any(not isinstance(value, Expr) for point in solutions.args for value in point.args):
-        # nonlinsolve puts sets among the coordinates: (-sqrt(...), -sqrt(3*z/2
-        # - 5/4), Interval.open(-oo, 5/6)) for two equations in x, y, z
-        return True
 
     def check() -> bool:
-        for point in solutions.args:
+        for point in solutions.points:
             values: dict[Basic, Basic] = {s: v for s, v in zip(symbols, point.args)}
             for e in equations:
-                residual = as_expr(e.xreplace(values))
-                free = sorted_symbols(free_symbols(residual))
+                residual = as_expr(e._xreplace_evaluated(values))
+                free = _sorted_symbols(residual.free_symbols)
                 for _ in range(2 if free else 1):
                     sample: dict[Basic, Basic] = {s: Rational(rng.randint(2, 40), rng.randint(2, 9)) for s in free}
-                    terms = [as_expr(as_expr(term.xreplace(values)).xreplace(sample)) for term in e.expand().as_ordered_terms()]
+                    terms = [as_expr(as_expr(term._xreplace_evaluated(values))._xreplace_evaluated(sample))
+                             for term in e.expand().as_ordered_terms()]
                     scale = sum(abs(complex(term.evalf(15))) for term in terms)
-                    if abs(complex(as_expr(residual.xreplace(sample)).evalf(15))) > 1e-8 * (1 + scale):
+                    if abs(complex(as_expr(residual._xreplace_evaluated(sample)).evalf(15))) > 1e-8 * (1 + scale):
                         return True
         return False
 
@@ -699,17 +889,16 @@ def _by_regular_chains(equations: Sequence[Expr], symbols: Sequence[Symbol], rea
     variables the families it parametrizes, the free variables standing for
     themselves as in ``nonlinsolve`` (not with ``isolated``: the systems
     with finitely many solutions only); ``None`` otherwise."""
-    from sympy_extras.polys.regularchains import triangularize
-    try:
-        chains = attempt(lambda: triangularize(list(equations), *symbols), settings.timeout)
-    except ZeroDivisionError:
-        chains = None
+    from sympy_extras.polys.polytools import Poly, cancel
+    from .solve_sympy import triangularize_of_core
+    chains = triangularize_of_core(list(equations), list(symbols))
     if chains is None or (isolated and any(chain.dimension for chain in chains)):
         return None
     points: list[Tuple] = []
     for chain in chains:
         if chain.dimension == 0:
-            found = attempt(lambda: chain.solutions(real), settings.timeout)
+            solutions = chain.solutions
+            found = attempt(lambda: solutions(real), settings.timeout)
             if found is None:
                 return None
             points.extend(Tuple(*[solution[s] for s in symbols]) for solution in found)
@@ -721,23 +910,24 @@ def _by_regular_chains(equations: Sequence[Expr], symbols: Sequence[Symbol], rea
                 return None
             extended: list[dict[Basic, Basic]] = []
             for family in families:
-                coefficients = [as_expr(as_expr(c).xreplace(family)) for c in poly.all_coeffs()]
+                coefficients = [as_expr(c._xreplace_evaluated(family)) for c in poly.all_coeffs()]
                 if len(coefficients) == 2:
-                    values = [as_expr(cancel(-coefficients[1] / coefficients[0]))]
+                    values = [cancel(-coefficients[1] / coefficients[0])]
                 else:
                     a, b, c = coefficients
-                    root = sqrt(as_expr(cancel(b**2 - 4 * a * c)))
-                    values = [as_expr((-b - root) / (2 * a)), as_expr((-b + root) / (2 * a))]
+                    root = sqrt(cancel(b**2 - 4 * a * c))
+                    values = [(-b - root) / (2 * a), (-b + root) / (2 * a)]
                 for value in values:
                     longer = dict(family)
                     longer[v] = value
                     extended.append(longer)
             families = extended
         found_ = [Tuple(*[family.get(s, s) for s in symbols]) for family in families]
-        if _refuted(FiniteSet(*found_), equations, symbols):
+        candidates = point_set(*found_)
+        if isinstance(candidates, PointSet) and _refuted(candidates, equations, symbols):
             return None
         points.extend(found_)
-    return FiniteSet(*points)
+    return point_set(*points)
 
 
 def _integer_linear_system(equations: Sequence[Expr], conditions: Sequence[Boolean],
@@ -747,42 +937,42 @@ def _integer_linear_system(equations: Sequence[Expr], conditions: Sequence[Boole
     nonnegative solutions (Contejean–Devie) when the unknowns are known to
     be nonnegative and the solutions are finitely many. ``None`` when the
     system is not linear."""
-    from sympy_extras.solvers.integers import (_linear_system, linear_diophantine_system,
-        minimal_nonnegative_solutions)
-    system = _linear_system(equations, symbols)
+    from .solve_sympy import (linear_diophantine_system_of_core, linear_system_of_core,
+        minimal_nonnegative_solutions_of_core)
+    system = linear_system_of_core(equations, symbols)
     if system is None:
         return None
-    general = linear_diophantine_system(equations, symbols)
+    general = linear_diophantine_system_of_core(equations, symbols)
     if general is None:
-        return S.EmptySet
+        return EmptySet
     values, parameters = general
     # the memberships in the integers are satisfied by construction
-    condition = And(*[c for c in conditions
-                      if not (isinstance(c, Contains) and c.args[1] == S.Integers and c.args[0] in symbols)])
+    condition = and_(*[c for c in conditions
+                       if not (isinstance(c, Contains) and c.args[1] == Integers and c.args[0] in symbols)])
     if not parameters:
         point = Tuple(*values)
         holds = _holds_at(condition, {s: v for s, v in zip(symbols, values)}, facts)
         if holds is False:
-            return S.EmptySet
+            return EmptySet
         if holds is True:
-            return FiniteSet(point)
-        return ConditionSet(Tuple(*symbols), condition, FiniteSet(point))
+            return point_set(point)
+        return condition_set(Tuple(*symbols), condition, point_set(point))
     nonnegative = all(_evaluate(s >= 0, facts) is True for s in symbols)
     if nonnegative:
         A, b = system
         try:
-            particular, homogeneous = minimal_nonnegative_solutions(A, b)
+            particular, homogeneous = minimal_nonnegative_solutions_of_core(A, b)
         except RuntimeError:
             particular, homogeneous = [], [[0]]
         if not homogeneous:
             points = [Tuple(*[Integer(c) for c in p]) for p in particular]
             kept = [p for p in points if _holds_at(condition, {s: v for s, v in zip(symbols, p.args)}, facts) is not False]
-            return FiniteSet(*kept) if kept else S.EmptySet
-    solutions: Set = ImageSet(Lambda(Tuple(*parameters), Tuple(*values)),
-                              ProductSet(*[S.Integers]*len(parameters)) if len(parameters) > 1 else S.Integers)
+            return point_set(*kept) if kept else EmptySet
+    solutions = image_set(Tuple(*parameters), Tuple(*values),
+                          product_set(*[Integers] * len(parameters)) if len(parameters) > 1 else Integers)
     if condition is true:
         return solutions
-    return ConditionSet(Tuple(*symbols), condition, solutions)
+    return condition_set(Tuple(*symbols), condition, solutions)
 
 
 def solve(equations: Union[Statement, Sequence[Statement]],
@@ -801,10 +991,11 @@ def solve(equations: Union[Statement, Sequence[Statement]],
         The unknowns; by default all the free symbols.
     assumptions : Boolean or list of Booleans, optional
         Assumptions on the unknowns and on the parameters, written as
-        statements (see :mod:`sympy_extras.assumptions`); the global
-        assumptions are used as well.
+        statements (see :mod:`sympy_extras.assumptions.facts`); the global
+        assumptions of :mod:`sympy_extras.assumptions.context` are used as
+        well.
     domain : Set, optional
-        The set the unknowns belong to (``S.Reals``, ``S.Integers``, ...).
+        The set the unknowns belong to (``Reals``, ``Integers``, ...).
         Without it the unknowns are real when the assumptions say so and
         complex otherwise.
     cases : bool
@@ -816,8 +1007,8 @@ def solve(equations: Union[Statement, Sequence[Statement]],
         no solution are in none). Over the complex numbers, for equations
         and inequations, the cases are those of a triangular decomposition
         (:func:`~sympy_extras.solvers.parametric.parametric_cases`); over
-        the reals (``domain=S.Reals``, the parameters are then real
-        numbers too), with inequalities as well, those of a cylindrical
+        the reals (``domain=Reals``, the parameters are then real numbers
+        too), with inequalities as well, those of a cylindrical
         decomposition with the parameters first
         (:func:`~sympy_extras.polys.cad.cylindrical_cases`). Without it
         the solutions are the generic ones: ``{b/a}`` for ``a*x = b``.
@@ -825,74 +1016,65 @@ def solve(equations: Union[Statement, Sequence[Statement]],
     Returns
     =======
 
-    A SymPy set. For one unknown with polynomial equations and
-    inequalities over the reals the solution set is computed exactly by
-    cylindrical algebraic decomposition, as a union of intervals and
-    points with algebraic endpoints. Otherwise :func:`sympy.solveset` (or
-    :func:`sympy.nonlinsolve` for systems) solves the equations and the
+    A set of :mod:`sympy_extras.sets`. For one unknown with polynomial
+    equations and inequalities over the reals the solution set is computed
+    exactly by cylindrical algebraic decomposition, as a union of
+    intervals and points with algebraic endpoints. Otherwise the equations
+    are solved (the rational ones over the complex numbers natively, the
+    others by SymPy's ``solveset``, or ``nonlinsolve`` for systems) and the
     solutions are kept when the assumptions hold at them, dropped when
     they fail and collected in a
-    :class:`~sympy.sets.conditionset.ConditionSet` when this cannot be
-    decided. The points of ``nonlinsolve`` are substituted back in the
+    :class:`~sympy_extras.sets.conditionset.ConditionSet` when this cannot
+    be decided. The points of ``nonlinsolve`` are substituted back in the
     equations: a polynomial system with rational coefficients which they
     do not satisfy (``nonlinsolve`` leaves free an unknown it cannot solve
     for) is solved by a triangular decomposition into regular chains
     (:mod:`sympy_extras.polys.regularchains`), and another one is returned
     as a ``ConditionSet`` of its equations.
 
-    Over the reals (``domain=S.Reals``, or real unknowns), a system of
+    Over the reals (``domain=Reals``, or real unknowns), a system of
     polynomial inequalities in several unknowns, with or without
     equations, and a system of equations with infinitely many solutions,
     are described cylindrically
     (:func:`~sympy_extras.polys.cad.cylindrical_set`): the points with
-    algebraic coordinates as a finite set, and the rest as a
+    algebraic coordinates as a finite set of points, and the rest as a
     ``ConditionSet`` whose condition bounds the first unknown by numbers,
-    the second one by functions of the first, and so on (explicit roots of
-    polynomials of degree at most two, :class:`~sympy_extras.polys.cad.IndexedRoot`
-    beyond). The parameters of the system are bounded before the unknowns,
-    within what the assumptions say of them.
+    the second one by functions of the first, and so on. The parameters
+    of the system are bounded before the unknowns, within what the
+    assumptions say of them.
 
     Examples
     ========
 
-    >>> from sympy import S, Eq, sqrt, sin, exp
-    >>> from sympy.abc import x, y, a
+    >>> from sympy_extras.core import Eq, symbols
+    >>> from sympy_extras.functions import exp
+    >>> from sympy_extras.sets import Integers, Reals
     >>> from sympy_extras.assumptions.solve import solve
-    >>> from sympy_extras.assumptions.facts_sympy import element
+    >>> x, y, a = symbols('x y a')
+    >>> solve(x**2 - 2, x), solve(x**2 + 1, x)
+    ({-sqrt(2), sqrt(2)}, {-I, I})
     >>> solve(x**2 - 2, x, x > 0)
     {sqrt(2)}
-    >>> solve(x**2 - 2, x)
-    {-sqrt(2), sqrt(2)}
-    >>> solve((x**2 - 2 > 0) & (x < 3), x, domain=S.Reals)
+    >>> solve((x**2 - 2 > 0) & (x < 3), x, domain=Reals)
     Union(Interval.open(-oo, -sqrt(2)), Interval.open(sqrt(2), 3))
-    >>> solve(x**2 < 10, x, domain=S.Integers)
-    Range(-3, 4, 1)
-    >>> solve(x**2 - a, x, (x > 0) & (a > 0))
-    {sqrt(a)}
-    >>> solve(x**2 - a, x, x > 0)
-    ConditionSet(x, x > 0, {-sqrt(a), sqrt(a)})
+    >>> solve(x**2 - a, x, (x > 0) & (a > 0)), solve(a*x - 1, x, a > 0)
+    ({sqrt(a)}, {1/a})
     >>> solve(exp(x) - 2, x, x > 1)
     EmptySet
     >>> solve([x**2 + y**2 - 1, x - y], [x, y], x > 0)
     {(sqrt(2)/2, sqrt(2)/2)}
-    >>> solve([x**2 + y**2 <= 1, x + y >= 1], [x, y], domain=S.Reals)
-    ConditionSet((x, y), (x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2)), ProductSet(Reals, Reals))
-    >>> solve([Eq(x**2 + y**2, a), x > y], [x, y], a > 0, domain=S.Reals)
-    ConditionSet((x, y), ..., ProductSet(Reals, Reals))
     >>> solve(a*x - 1, x, cases=True)
     ConditionSet(x, Ne(a, 0), {1/a})
-    >>> solve(Eq(x**2, a), x, domain=S.Reals, cases=True)
-    ConditionSet(x, a >= 0, {-sqrt(a), sqrt(a)})
-    >>> solve(Eq(3*x + 5*y, 22), [x, y], (x >= 0) & (y >= 0), domain=S.Integers)
+    >>> solve(Eq(3*x + 5*y, 22), [x, y], (x >= 0) & (y >= 0), domain=Integers)
     {(4, 2)}
-    >>> solve(Eq(3*x + 5*y, 22), [x, y], domain=S.Integers)
-    ImageSet(Lambda(t0, (44 - 5*t0, 3*t0 - 22)), Integers)
     """
-    items = [equations] if isinstance(equations, (Basic, bool)) else list(equations)
+    items: list[Statement] = [equations] if isinstance(equations, (Basic, bool)) else list(equations)
     statements = [_as_statement(item) for item in items]
-    all_symbols = set().union(*[free_symbols(s) for s in statements]) if statements else set()
+    all_symbols: set[Symbol] = set()
+    for s in statements:
+        all_symbols |= s.free_symbols
     if symbols is None:
-        unknowns = sorted_symbols(all_symbols)
+        unknowns = _sorted_symbols(all_symbols)
     elif isinstance(symbols, Symbol):
         unknowns = [symbols]
     else:
@@ -902,13 +1084,13 @@ def solve(equations: Union[Statement, Sequence[Statement]],
     try:
         facts = _facts(assumptions, domain, all_symbols | set(unknowns))
     except ValueError:
-        return S.EmptySet
+        return EmptySet
     if cases:
         discussed = _parametric(statements, unknowns, facts, domain)
         if discussed is not None:
             return discussed
     if len(unknowns) == 1:
         x = unknowns[0]
-        formula = normalize(And(*statements))
+        formula = normalize(and_(*statements))
         return _univariate(formula, x, facts, domain)
     return _multivariate(statements, unknowns, facts, domain)

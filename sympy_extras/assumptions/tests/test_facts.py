@@ -237,7 +237,11 @@ def test_native_facts() -> None:
     assert nf.Facts([], domain=CIntegers, symbols=[a]).integer == {a}
     assert nf.Facts(a > 0).with_reals([b]).real == {a, b}
     raises(ValueError, lambda: nf.Facts([a > 0, False]))
-    # unported SymPy sets are wrapped as Booleans by interop and left alone
+    # unported SymPy memberships are wrapped as Booleans by interop and left
+    # alone, and so are the memberships in a product of sets
+    from sympy import Tuple
     from sympy_extras.interop import from_sympy, SymPyBooleanNode
-    w = from_sympy(Contains(x, S.Reals**2))
+    w = from_sympy(Contains(Tuple(x, x), S.Reals**2, evaluate=False))
     assert isinstance(w, SymPyBooleanNode) and nf.to_predicates(w) is None and nf.normalize(w) == w
+    m = from_sympy(Contains(x, S.Reals**2))
+    assert nf.to_predicates(m) is None and nf.normalize(m) == m

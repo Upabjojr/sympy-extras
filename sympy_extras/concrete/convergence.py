@@ -15,7 +15,7 @@ of Mathematica's ``SumConvergence``:
 2. **d'Alembert's ratio test** with `r = \\lim |a_{n+1}/a_n|`: absolute
    convergence for `r < 1`, divergence for `r > 1`; when `r` depends on
    the parameters the boundary `r = 1` is examined at each of its points
-   (found by :func:`~sympy_extras.assumptions.solve`) when there is a
+   (found by :func:`~sympy_extras.assumptions.solve_sympy.solve`) when there is a
    single parameter;
 3. **Raabe's test** on the boundary, `\\rho = \\lim n (|a_n/a_{n+1}| - 1)`
    (`\\rho > 1` convergence, `\\rho < 1` divergence of `\\sum |a_n|`), and
@@ -86,7 +86,7 @@ from sympy_extras.assumptions.ask_sympy import ask, Assumptions, _facts
 from sympy_extras.assumptions.analysis_sympy import sign_on, certified_sign
 from sympy_extras.assumptions.limits import limit as _limit_with_assumptions
 from sympy_extras.assumptions.refine_sympy import simplify as _simplify_with_assumptions, _Refiner
-from sympy_extras.assumptions.solve import solve
+from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.assumptions.resolve_sympy import resolve
 
 __all__ = ['sum_convergence', 'product_convergence', 'is_convergent']

@@ -1,6 +1,6 @@
 # Exact equation solving and reduction
 
-Modules: `sympy_extras.assumptions.resolve`, `sympy_extras.assumptions.solve`,
+Modules: `sympy_extras.assumptions.resolve`, `sympy_extras.assumptions.solve` (SymPy face `solve_sympy`),
 `sympy_extras.polys.virtual_substitution`, `sympy_extras.polys.comprehensive`,
 `sympy_extras.polys.roots`, `sympy_extras.solvers.integers`,
 `sympy_extras.solvers.transcendental`.
@@ -145,7 +145,7 @@ False
 
 ```python
 >>> from sympy import Mod
->>> from sympy_extras.assumptions.solve import solve
+>>> from sympy_extras.assumptions.solve_sympy import solve
 >>> from sympy_extras.solvers.integers import linear_diophantine_system, minimal_nonnegative_solutions, cooper
 >>> linear_diophantine_system([Eq(3*x + 5*y, 7)], [x, y])
 ([14 - 5*t0, 3*t0 - 7], [t0])

@@ -173,6 +173,9 @@ sympy_extras/
         resolve_sympy.py     the SymPy face of resolve, and the eliminations (CAD, virtual substitution, Cooper,
                              comprehensive Groebner systems) which stay on SymPy
         sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check
+        solve.py             solve(): Solve under assumptions (native; solveset, nonlinsolve, the CAD, regular chains,
+                             transcendental equations, root isolation, Diophantine systems through solve_sympy)
+        solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions)
         tests/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
         elementary/
@@ -260,7 +263,8 @@ sympy_extras/
         tests/
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
     series/                  residue (ported from SymPy)
-    sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains; Naturals, Naturals0, Integers, Rationals, Complexes (fancysets.py) (ported from SymPy)
+    sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains, ProductSet, PointSet (finite sets of tuples);
+                             Naturals, Naturals0, Integers, Rationals, Complexes, ImageSet (fancysets.py); ConditionSet (conditionset.py) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)
     polys/
         domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, AlgebraicField, PolynomialRing, FractionField, SparsePolynomialRing with SymPy's PolyElement gcd, RationalPolynomialRing, IteratedPolynomialRing for dmp_rr_prs_gcd); see docs/dense.md

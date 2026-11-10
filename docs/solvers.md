@@ -1,6 +1,7 @@
 # Differential equations: Lie point symmetries, linear equations, first order PDEs, and solving with assumptions
 
-Modules: `sympy_extras.solvers` and `sympy_extras.assumptions.solve`.
+Modules: `sympy_extras.solvers` and `sympy_extras.assumptions.solve` (native,
+on the core) with its SymPy face `sympy_extras.assumptions.solve_sympy`.
 
 ## What SymPy has and what is added
 
@@ -67,8 +68,9 @@ Eq(u(x, t), C1*exp(-x**2/(4*t))/sqrt(t))
 
 ## Solving with assumptions
 
-`sympy_extras.assumptions.solve.solve(equations, symbols, assumptions, domain)`
-is `Solve` with `Assumptions` and a domain. One unknown with polynomial
+`sympy_extras.assumptions.solve_sympy.solve(equations, symbols, assumptions, domain)`
+(the native `sympy_extras.assumptions.solve.solve` takes and returns objects
+of the core) is `Solve` with `Assumptions` and a domain. One unknown with polynomial
 equations and inequalities over the reals goes to the cylindrical
 algebraic decomposition (exact intervals and points with algebraic
 endpoints); otherwise `solveset` or `nonlinsolve` solve the equations,
@@ -79,7 +81,7 @@ hold at it, fail, or cannot be decided.
 ```python
 >>> from sympy import S
 >>> from sympy.abc import a, y
->>> from sympy_extras.assumptions.solve import solve
+>>> from sympy_extras.assumptions.solve_sympy import solve
 >>> solve(x**2 - 2, x, x > 0)
 {sqrt(2)}
 >>> solve((x**2 - 2 > 0) & (x < 3), x, domain=S.Reals)

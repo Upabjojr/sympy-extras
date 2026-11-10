@@ -539,6 +539,44 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.assumptions.solve` is native (**breaking**: core
+  expressions, Booleans, symbols and sets in and out, the native `ask`,
+  `facts`, `refine` and `analysis` underneath; it imports no SymPy).
+  Rational equations over the complex numbers with numerators of degree
+  at most 3 are solved by the native `polys.rationalsolve.solveset_rational`
+  (its quartics are written in another form than SymPy's), the families
+  of a regular chain with the native `Poly`, `cancel` and `sqrt`, the
+  candidates checked with the native `simplify`, `minimal_polynomial`
+  and evaluation. What is not ported is called at run time through the
+  new face `assumptions.solve_sympy` (the `*_of_core` functions): SymPy's
+  `solveset`, `nonlinsolve`, `periodicity` and the intersections the
+  core's sets do not evaluate, the CAD (`solution_set`,
+  `cylindrical_set`, `cylindrical_formula`, `cylindrical_cases`) and
+  `polys.roots.in_radicals`, `regularchains.triangularize` and
+  `solvers.parametric.parametric_cases`, `solvers.transcendental`,
+  `solvers.isolation`, `solvers.integers` (linear Diophantine systems)
+  and `_numeric.reliable_value`. `solve_sympy.solve` keeps the old API
+  on SymPy objects (also `_refuted` and `_clearly_not_real`); **import
+  it instead of the old module**: `from
+  sympy_extras.assumptions.solve_sympy import solve`. The integrals,
+  `concrete.convergence`, the tests, README, docs and benchmarks use it.
+  The same classes and `srepr` as before through the face on 189 calls
+  (the doctests, the calls of the tests of solve and of the solvers, and
+  68 more), and natively with the inputs converted and the result
+  converted back.
+- `sympy_extras.sets`: `ConditionSet`/`condition_set`
+  (`sets.conditionset`), `ImageSet`/`image_set` (`sets.fancysets`; the
+  function is its variables and an image which may be a tuple),
+  `ProductSet`/`product_set` and `PointSet`/`point_set` (a finite set of
+  tuples, SymPy's `FiniteSet` of `Tuple`), with their conversions;
+  `interop.SymPySetNode` wraps the sets of SymPy not ported (`Range`,
+  ...) as sets of the core (memberships, emptiness and bounds asked of
+  SymPy), where `SymPyNode` did. `Union` and `Intersection` print their
+  sets sorted as SymPy does.
+- Fixed on the way: the order of the sets of an intersection raised
+  `ValueError` for a finite set of complex numbers (their infimum; SymPy's
+  key catches it); `from_sympy` gave `Reals` for SymPy's `Interval(-oo,
+  oo)`, which equals it in SymPy (the cache is keyed by the class too).
 - `sympy_extras.assumptions.ask`, `sympy_extras.assumptions.refine` and
   `sympy_extras.assumptions.resolve` are native (**breaking**: core
   expressions, Booleans, sets and the native `Facts` in and out; none of

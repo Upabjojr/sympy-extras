@@ -327,7 +327,8 @@ Eq(u(x, t), C1 + C2*erf(x/(2*sqrt(t))))
 
 ```
 
-`sympy_extras.assumptions.solve` is `Solve` with assumptions: polynomial
+`sympy_extras.assumptions.solve_sympy.solve` (the SymPy face of the native
+`sympy_extras.assumptions.solve`) is `Solve` with assumptions: polynomial
 equations and inequalities in one real unknown go to the CAD, the rest to
 `solveset`/`nonlinsolve` with the parameters carrying the assumptions and
 the solutions filtered by `ask`. See [docs/solvers.md](docs/solvers.md).
@@ -349,7 +350,7 @@ parameters carrying their assumptions.
 >>> from sympy import S, Eq, Mod, exp, sin, cos
 >>> from sympy.abc import a, b, x, y
 >>> from sympy_extras.assumptions.resolve_sympy import resolve
->>> from sympy_extras.assumptions.solve import solve
+>>> from sympy_extras.assumptions.solve_sympy import solve
 >>> from sympy_extras.assumptions.quantifiers_sympy import Exists, ForAll
 >>> resolve(Exists(y, Eq(a*y + b, 0) & (y > 0)))
 (Eq(a, 0) & Eq(b, 0)) | ((a > 0) & (b < 0)) | ((b > 0) & (a < 0))
@@ -516,7 +517,7 @@ decided by virtual substitution and the parity of integer polynomials in
 ```python
 >>> from sympy import cos, exp, Eq, S, Matrix, sin, mobius, Mod
 >>> from sympy.abc import x, n, p
->>> from sympy_extras.assumptions.solve import solve
+>>> from sympy_extras.assumptions.solve_sympy import solve
 >>> from sympy_extras.assumptions.refine_sympy import refine
 >>> from sympy_extras.assumptions.limits import limit_seq
 >>> from sympy_extras.assumptions.facts_sympy import element

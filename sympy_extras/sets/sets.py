@@ -1,6 +1,7 @@
 """Sets of numbers on the typed core: the empty and the universal set,
 intervals, the real line, finite sets, unions, intersections,
-complements and the unevaluated membership ``Contains``.
+complements, the unevaluated membership ``Contains``, Cartesian products
+and finite sets of points.
 
 Ported from SymPy's ``sympy.sets.sets`` with the handlers of
 ``sympy.sets.handlers`` (union, intersection, subset) for these classes.
@@ -30,16 +31,18 @@ Examples
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; the dispatchers are functions over the classes ported
-# (ProductSet, ImageSet, the number sets other than Reals, ConditionSet
-# are not ported); SymPy's Python sets of arguments are lists without
-# duplicates (deterministic order); Reals is an Interval subclass equal
-# to Interval(-oo, oo), as in SymPy.
+# (ImageSet, the number sets other than Reals and ConditionSet are in
+# their own modules, ProductSet has no rules); SymPy's Python sets of
+# arguments are lists without duplicates (deterministic order); Reals is
+# an Interval subclass equal to Interval(-oo, oo), as in SymPy; a finite
+# set of tuples is a PointSet.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
 from typing import Final, Iterator, Optional, Sequence, Union as TUnion
 
 from sympy_extras.core.basic import Basic
+from sympy_extras.core.containers import Tuple
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.fuzzy import fuzzy_and, fuzzy_not, fuzzy_or
 from sympy_extras.core.logic import Boolean, BooleanLike, and_, false, not_, or_, to_boolean, true
@@ -49,7 +52,7 @@ from sympy_extras.core.sorting import ClassKey, default_sort_key, ordered
 
 __all__ = ['Set', 'EmptySetClass', 'UniversalSetClass', 'Interval', 'RealsClass', 'FiniteSet', 'Union',
            'Intersection', 'Complement', 'Contains', 'EmptySet', 'UniversalSet', 'Reals', 'interval', 'finite_set',
-           'union', 'intersection', 'complement', 'contains']
+           'union', 'intersection', 'complement', 'contains', 'ProductSet', 'product_set', 'PointSet', 'point_set']
 
 Truth = Optional[bool]
 
@@ -214,7 +217,9 @@ def _infimum_key(s: Basic) -> tuple[float, object]:
     if isinstance(s, Set):
         try:
             infimum = s.inf
-        except NotImplementedError:
+        except (NotImplementedError, ValueError):
+            # SymPy's key catches the ValueError of Min with an element
+            # which is not comparable (a complex number) as well
             infimum = oo
         if infimum.is_comparable:
             value = float(infimum.evalf())
@@ -681,8 +686,9 @@ class Union(Set):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return union(*[a for a in args if isinstance(a, Set)])
 
+    # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_LatticeOp
     def _sympystr(self, printer: StrPrinter) -> str:
-        return 'Union(%s)' % ', '.join(printer.doprint(s) for s in self._sets)
+        return 'Union(%s)' % ', '.join(printer.doprint(s) for s in sorted(self._sets, key=default_sort_key))
 
     @property
     def is_empty(self) -> Truth:
@@ -751,8 +757,9 @@ class Intersection(Set):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return intersection(*[a for a in args if isinstance(a, Set)])
 
+    # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_LatticeOp
     def _sympystr(self, printer: StrPrinter) -> str:
-        return 'Intersection(%s)' % ', '.join(printer.doprint(s) for s in self._sets)
+        return 'Intersection(%s)' % ', '.join(printer.doprint(s) for s in sorted(self._sets, key=default_sort_key))
 
     @property
     def is_finite_set(self) -> Truth:
@@ -1164,3 +1171,121 @@ def _eq(a: Expr, b: Expr) -> Boolean:
     from sympy_extras.core.relational import eq
     return eq(a, b)
 
+
+
+# PORTED FROM SYMPY: sympy/sets/sets.py:ProductSet
+class ProductSet(Set):
+    """The Cartesian product of sets, unevaluated (``product_set``
+    evaluates); its elements are tuples."""
+
+    __slots__ = ('_sets',)
+
+    is_ProductSet = True
+
+    def __init__(self, *sets: Set) -> None:
+        self._sets: Final[tuple[Set, ...]] = sets
+        Basic.__init__(self)
+
+    @property
+    def args(self) -> tuple[Basic, ...]:
+        return self._sets
+
+    def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
+        return product_set(*[a for a in args if isinstance(a, Set)])
+
+    def _sympystr(self, printer: StrPrinter) -> str:
+        return 'ProductSet(%s)' % ', '.join(printer.doprint(s) for s in self._sets)
+
+    @property
+    def is_empty(self) -> Truth:
+        return fuzzy_or(s.is_empty for s in self._sets)
+
+    # PORTED FROM SYMPY: sympy/sets/sets.py:ProductSet.is_finite_set
+    @property
+    def is_finite_set(self) -> Truth:
+        all_finite = fuzzy_and(s.is_finite_set for s in self._sets)
+        return fuzzy_or([self.is_empty, all_finite])
+
+    def _contains(self, other: Expr) -> Optional[Boolean]:
+        # the elements are tuples: an expression is not one, but a symbol
+        # may stand for one
+        from sympy_extras.core.symbol import Symbol
+        return None if isinstance(other, Symbol) else false
+
+
+# PORTED FROM SYMPY: sympy/sets/sets.py:ProductSet.__new__
+def product_set(*sets: Set) -> Set:
+    """The Cartesian product, evaluated (empty when a factor is)."""
+    if not sets:
+        raise ValueError('the product of no set is not ported (SymPy gives FiniteSet(()))')
+    if any(isinstance(s, EmptySetClass) for s in sets):
+        return EmptySet
+    return ProductSet(*sets)
+
+
+class PointSet(Set):
+    """A finite set of points, tuples of expressions (SymPy's ``FiniteSet``
+    of ``Tuple``; ``point_set`` evaluates: no duplicates, empty is
+    :data:`EmptySet`)."""
+
+    __slots__ = ('_points',)
+
+    def __init__(self, *points: Tuple) -> None:
+        self._points: Final[tuple[Tuple, ...]] = points
+        Basic.__init__(self)
+
+    @property
+    def args(self) -> tuple[Basic, ...]:
+        return self._points
+
+    @property
+    def points(self) -> tuple[Tuple, ...]:
+        return self._points
+
+    def _rebuild(self, args: tuple[Basic, ...]) -> Basic:
+        return PointSet(*[_as_point(a) for a in args])
+
+    def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
+        return point_set(*[_as_point(a) for a in args])
+
+    # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_FiniteSet
+    def _sympystr(self, printer: StrPrinter) -> str:
+        items = sorted(self._points, key=default_sort_key)
+        return '{' + ', '.join(printer.doprint(p) for p in items) + '}'
+
+    def __iter__(self) -> Iterator[Tuple]:
+        return iter(self._points)
+
+    def __len__(self) -> int:
+        return len(self._points)
+
+    @property
+    def is_empty(self) -> Truth:
+        return len(self._points) == 0
+
+    @property
+    def is_finite_set(self) -> Truth:
+        return True
+
+    def _contains(self, other: Expr) -> Optional[Boolean]:
+        # SymPy's Eq of a tuple and an expression is false
+        return false
+
+
+def _as_point(b: Basic) -> Tuple:
+    if not isinstance(b, Tuple):
+        raise TypeError('a point is a tuple, got %s' % (b,))
+    return b
+
+
+# PORTED FROM SYMPY: sympy/sets/sets.py:FiniteSet.__new__
+def point_set(*points: Tuple) -> Set:
+    """The finite set of points, evaluated: duplicates removed, in SymPy's
+    canonical order, empty is :data:`EmptySet`."""
+    unique: list[Tuple] = []
+    for p in points:
+        if p not in unique:
+            unique.append(p)
+    if not unique:
+        return EmptySet
+    return PointSet(*[p for p in ordered(unique) if isinstance(p, Tuple)])

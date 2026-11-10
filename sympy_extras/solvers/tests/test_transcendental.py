@@ -4,7 +4,7 @@ from sympy import (S, Eq, exp, log, sin, cos, tan, sinh, cosh, tanh, sqrt, cbrt,
     FiniteSet, ImageSet, Lambda, Rational, Symbol, N, ConditionSet)
 from sympy.abc import x, a
 
-from sympy_extras.assumptions.solve import solve
+from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.solvers.transcendental import solve_transcendental, polynomialize
 from sympy_extras.polys.roots import radical_form, in_radicals
 from sympy import CRootOf

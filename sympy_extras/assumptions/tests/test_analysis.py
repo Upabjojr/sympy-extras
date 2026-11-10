@@ -7,7 +7,7 @@ from sympy.abc import x, y
 from sympy_extras.assumptions.ask_sympy import ask
 from sympy_extras.assumptions.refine_sympy import refine, simplify
 from sympy_extras.assumptions.facts_sympy import element
-from sympy_extras.assumptions.solve import solve
+from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.assumptions.analysis_sympy import (certified_sign, domain_of, sign_on,
     decide_relational)
 from sympy_extras.assumptions.facts_sympy import Facts

@@ -31,8 +31,9 @@ SymPy):
   quantifier elimination over the reals;
 * :func:`~sympy_extras.assumptions.sat.satisfiable`, ``tautology`` and
   ``find_instance`` -- ``SatisfiableQ``, ``TautologyQ`` and ``FindInstance``;
-* :func:`~sympy_extras.assumptions.solve.solve` -- ``Solve`` with
-  assumptions and a domain;
+* :func:`~sympy_extras.assumptions.solve.solve` (native, on the core) and
+  :func:`~sympy_extras.assumptions.solve_sympy.solve` (on SymPy objects) --
+  ``Solve`` with assumptions and a domain;
 * :func:`~sympy_extras.assumptions.limits.limit`, ``limit_seq`` and
   ``series`` -- limits and expansions with the parameters carrying the
   assumptions;

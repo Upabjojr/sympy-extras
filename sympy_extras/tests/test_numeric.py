@@ -76,7 +76,7 @@ def test_the_checks_of_the_package_go_through_them() -> None:
     from sympy_extras.assumptions.ask_sympy import _clearly_not_zero
     from sympy_extras.assumptions.facts_sympy import Facts
     assert _clearly_not_zero(as_expr(parametric - log(2 * sqrt(2) * positive) - I * pi), Facts([])) is False
-    from sympy_extras.assumptions.solve import _clearly_not_real
+    from sympy_extras.assumptions.solve_sympy import _clearly_not_real
     assert _clearly_not_real(as_expr(L - I * pi)) is False
     assert _clearly_not_real(as_expr(L)) is True
     from sympy_extras.solvers.transcendental import _real_root

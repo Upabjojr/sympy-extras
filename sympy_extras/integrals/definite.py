@@ -13,7 +13,7 @@ converges come out of the computation. The steps are
    ``Heaviside`` and ``Max``/``Min``, the conditions of a ``Piecewise``,
    the zeros of the factors of a radicand or of the argument of a
    logarithm, and the singularities of the integrand inside the range
-   (poles, branch points), found with :func:`sympy_extras.assumptions.solve`
+   (poles, branch points), found with :func:`sympy_extras.assumptions.solve_sympy.solve`
    and :func:`sympy.calculus.singularities.singularities`. On each piece
    the integrand is replaced by its analytic branch, and a power or a
    logarithm of a product is split over the factors whose sign on the
@@ -137,7 +137,7 @@ from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set, free_sym
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.sat import satisfiable
-from sympy_extras.assumptions.solve import solve
+from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.settings import settings
 from .conditions import (ConditionalValue, _items, decide, plain_symbols, sample_values,
                          with_symbol_facts)
