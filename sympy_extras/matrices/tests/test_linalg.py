@@ -14,7 +14,7 @@ from sympy_extras.functions import cos, sin, sqrt
 from sympy_extras.interop import to_sympy
 from sympy_extras.matrices import ExprMatrix
 from sympy_extras.matrices.linalg import (adjugate, charpoly, charpoly_coefficients, det, inverse, linear_solve,
-                                          nullspace, rank, rref)
+                                          nullspace, pseudoinverse, rank, rref)
 
 x, y, z, t = Symbol('x'), Symbol('y'), Symbol('z'), Symbol('t')
 
@@ -128,3 +128,24 @@ def test_larger_determinant() -> None:
         sx, sy = sympy.Symbol('x'), sympy.Symbol('y')
         assert to_sympy(determinant).subs(sx, p).subs(sy, q) == S.subs(sx, p).subs(sy, q).det()
     assert sympy.Poly(to_sympy(determinant), *sympy.symbols('x y')).total_degree() <= 8
+
+
+def test_pseudoinverse() -> None:
+    rnd = random.Random(8)
+    for trial in range(25):
+        n, m = rnd.randint(1, 4), rnd.randint(1, 4)
+        rows = [[rnd.randint(-2, 2) for _ in range(m)] for _ in range(n)]
+        if trial % 3 == 0 and n > 1:
+            rows[-1] = [2*e for e in rows[0]]
+        M = ExprMatrix.from_rows(rows)
+        S = sympy.Matrix(rows)
+        P = _sympy_matrix(pseudoinverse(M))
+        # the four Penrose conditions
+        assert S*P*S == S and P*S*P == P and (S*P).T == S*P and (P*S).T == P*S
+    # parameters: the generic rank
+    A = ExprMatrix.from_rows([[x, 1], [1, x], [x, x]])
+    S, P = _sympy_matrix(A), _sympy_matrix(pseudoinverse(A))
+    assert _same(S*P*S, S) and _same(P*S*P, P) and _same((S*P).T, S*P) and _same((P*S).T, P*S)
+    assert pseudoinverse(ExprMatrix.zeros(2, 3)) == ExprMatrix.zeros(3, 2)
+    square = ExprMatrix.from_rows([[2, 1], [1, 1]])
+    assert pseudoinverse(square) == inverse(square) == square.pinv()

@@ -230,6 +230,11 @@ class ExprMatrix:
             raise ValueError('the system has no solution')
         return solution.particular
 
+    def pinv(self) -> ExprMatrix:
+        """The Moore-Penrose pseudoinverse (real entries)."""
+        from .linalg import pseudoinverse
+        return pseudoinverse(self)
+
     # eigenvalues (sympy_extras.matrices.eigen)
 
     def eigenvals(self) -> dict[Expr, int]:

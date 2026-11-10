@@ -64,6 +64,19 @@ True
 
 ```
 
+The Moore–Penrose pseudoinverse of a real matrix comes from a full rank
+factorisation `M = B*C` (the pivot columns and the nonzero rows of the
+echelon form): `M.pinv()` is `C.T*(C*C.T)**-1*(B.T*B)**-1*B.T`, and
+`M.pinv()*b` is the least squares solution of least norm.
+
+```python
+>>> ExprMatrix.from_rows([[1, 0], [0, 1], [1, 1]]).pinv()
+ExprMatrix([[2/3, -1/3, 1/3], [-1/3, 2/3, 1/3]])
+>>> ExprMatrix.from_rows([[1, a], [1, a]]).pinv()
+ExprMatrix([[1/(2*a**2 + 2), 1/(2*a**2 + 2)], [a/(2*a**2 + 2), a/(2*a**2 + 2)]])
+
+```
+
 ## What the answers mean
 
 The determinant, the adjugate and the characteristic polynomial are

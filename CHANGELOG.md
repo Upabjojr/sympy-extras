@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.linalg.pseudoinverse` and `ExprMatrix.pinv`: the
+  Moore–Penrose pseudoinverse of a real matrix by a full rank
+  factorisation.
 - `sympy_extras.matrices.svd`: `singular_values` and the exact compact
   singular value decomposition `svd` of matrices of rational numbers
   (orthogonal eigenvectors of `A.T*A` per irreducible factor, Gram–Schmidt
