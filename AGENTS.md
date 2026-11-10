@@ -264,7 +264,7 @@ sympy_extras/
         factortools.py       dup_zz_factor, dup_qq_factor (Zassenhaus; van Hoeij's knapsack recombination from 10 modular factors on), dup_zz_hensel_lift, dup_ext_factor (Trager)
         lattice.py           lll, lll_reduction (integral LLL, Gram determinants), hermite_normal_form, integer_kernel, solve_integer_system, smith_normal_form (typed, no SymPy)
         rootisolation.py     dup_isolate_real_roots(_sqf), dup_count_real_roots (Sturm), dup_refine_real_root, over QQ
-        complexroots.py      Rectangle, dup_count_complex_roots (winding numbers by Sturm), dup_isolate_complex_roots(_sqf), dup_refine_complex_root, over QQ
+        complexroots.py      Rectangle, dup_count_complex_roots (winding numbers by Sturm), dup_isolate_complex_roots(_sqf), dup_refine_complex_root, dup_count_roots_right_of, dup_count_roots_in_disc, Hurwitz and Schur stability, over QQ
         polyclasses.py       DensePoly[T]: rep, domain, gen; the dense algorithms as methods, factorisation and roots through the domain
         rings.py             PolyRing[T], PolyElement[T] (dict[Monomial, T]), MonomialOrder (lex, grlex, grevlex), div by a list
         ideals.py            Ideal: operations and invariants on top of sympy.groebner

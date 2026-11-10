@@ -29,6 +29,15 @@ rectangles returned have rational corners, positive imaginary parts,
 disjoint interiors and no root on their boundaries; each contains one
 root, and its mirror image the conjugate root.
 
+**Half-planes and discs.** The same Cauchy index on a whole line counts
+the roots on one side of it (:func:`dup_count_roots_right_of`; the
+criterion of Routh and Hurwitz when the count is zero): for $f$ of
+degree $n$ with $c f(a + i t) = u(t) + i v(t)$ and $\deg u = n > \deg
+v$, there are $(n + \operatorname{Ind}_{-\infty}^{+\infty}(v/u))/2$ roots
+with real part larger than $a$. A disc is the image of a half-plane
+under $w \mapsto c + \rho (w - 1)/(w + 1)$
+(:func:`dup_count_roots_in_disc`; Schur stability for the unit disc).
+
 Examples
 ========
 
@@ -74,7 +83,8 @@ from .rootisolation import Interval, dup_count_real_roots, dup_fujiwara_bound, d
 from .sqfreetools import dup_sqf_list, dup_sqf_p
 
 __all__ = ['Rectangle', 'dup_count_complex_roots', 'dup_isolate_complex_roots_sqf', 'dup_refine_complex_root',
-           'dup_isolate_all_roots_sqf', 'dup_isolate_complex_roots']
+           'dup_isolate_all_roots_sqf', 'dup_isolate_complex_roots', 'dup_count_roots_right_of',
+           'dup_count_roots_in_disc', 'dup_hurwitz_stable_p', 'dup_schur_stable_p']
 
 #: the constants ``c = a + b i`` tried so that ``Re(c f)`` does not vanish
 #: at the corners: pairwise non-parallel, and a corner excludes one
@@ -572,3 +582,203 @@ def dup_isolate_complex_roots(f: list[Fraction], eps: Optional[Fraction] = None)
     result = [(rectangle, multiplicity) for rectangle, multiplicity, _ in found]
     result.sort(key=lambda item: (item[0].re_min, item[0].im_min))
     return result
+
+
+# ---------------------------------------------------------------------------
+# half-planes and discs
+
+def _variations_at_infinity(sequence: list[list[int]], sign: int) -> int:
+    """The sign variations of the sequence at ``+oo`` (``sign = 1``) or
+    ``-oo`` (``sign = -1``)."""
+    count = 0
+    previous = 0
+    for g in sequence:
+        s = 1 if g[0] > 0 else -1
+        if sign < 0 and (len(g) - 1) % 2:
+            s = -s
+        if previous and s != previous:
+            count += 1
+        previous = s
+    return count
+
+
+def _has_real_root(g: list[int]) -> bool:
+    if len(g) <= 1:
+        return False
+    n = len(g) - 1
+    sequence = _signed_remainder_sequence(g, [c*(n - i) for i, c in enumerate(g[:-1])])
+    return _variations_at_infinity(sequence, -1) != _variations_at_infinity(sequence, 1)
+
+
+def _right_half_plane(re: list[int], im: list[int]) -> Optional[int]:
+    """The number of roots with positive real part of the polynomial
+    with Gaussian integer coefficients ``re + i im`` (highest degree
+    first, a non-zero leading coefficient); ``None`` when a root lies on
+    the imaginary axis."""
+    n = len(re) - 1
+    if n == 0:
+        return 0
+    # the leading coefficient made real and positive
+    lr, li = re[0], im[0]
+    re, im = [r*lr + s*li for r, s in zip(re, im)], [s*lr - r*li for r, s in zip(re, im)]
+    # g(i t) = u(t) + i v(t)
+    u: list[int] = []
+    v: list[int] = []
+    for k in range(n + 1):
+        cr, ci = re[k], im[k]
+        m = (n - k) % 4
+        if m == 0:
+            u.append(cr)
+            v.append(ci)
+        elif m == 1:
+            u.append(-ci)
+            v.append(cr)
+        elif m == 2:
+            u.append(-cr)
+            v.append(-ci)
+        else:
+            u.append(ci)
+            v.append(-cr)
+    if n % 2:
+        # times -i: the leading term goes to the real part
+        u, v = v, [-c for c in u]
+    u, v = _strip(u), _strip(v)
+    if not v:
+        return None if _has_real_root(u) else n//2 if n % 2 == 0 else None
+    sequence = _signed_remainder_sequence(u, v)
+    if _has_real_root(sequence[-1]):
+        return None
+    index = _variations_at_infinity(sequence, -1) - _variations_at_infinity(sequence, 1)
+    return (n + index)//2
+
+
+def dup_count_roots_right_of(f: list[Fraction], a: Fraction = Fraction(0)) -> int:
+    """The number of complex roots of ``f``, with multiplicities, whose
+    real part is larger than ``a``. Raises ``ValueError`` when a root has
+    the real part ``a``.
+
+    Examples
+    ========
+
+    >>> from fractions import Fraction
+    >>> from sympy_extras.polys.complexroots import dup_count_roots_right_of
+    >>> f = [Fraction(c) for c in (1, 0, 0, -1)]          # x**3 - 1
+    >>> dup_count_roots_right_of(f), dup_count_roots_right_of(f, Fraction(-1)), dup_count_roots_right_of(f, Fraction(2))
+    (1, 3, 0)
+    """
+    coefficients = _integer_coefficients(f)
+    n = len(coefficients) - 1
+    a = Fraction(a)
+    # denominator**n f(a + w/denominator) as a polynomial in w
+    shifted = _taylor_shift(coefficients, a.numerator, a.denominator)
+    count = _right_half_plane(shifted, [0]*(n + 1))
+    if count is None:
+        raise ValueError('a root has the real part %s' % a)
+    return count
+
+
+def _taylor_shift(a: list[int], numerator: int, denominator: int) -> list[int]:
+    """The coefficients of ``denominator**n a((numerator + w)/denominator)``
+    in ``w``."""
+    n = len(a) - 1
+    result = [c*denominator**k for k, c in enumerate(a)]
+    for i in range(n):
+        for j in range(1, n - i + 1):
+            result[j] += result[j - 1]*numerator
+    return result
+
+
+def dup_count_roots_in_disc(f: list[Fraction], center: tuple[Fraction, Fraction] = (Fraction(0), Fraction(0)),
+                            radius: Fraction = Fraction(1)) -> int:
+    """The number of complex roots of ``f``, with multiplicities, in the
+    open disc of the given centre ``(re, im)`` and radius. Raises
+    ``ValueError`` when a root lies on the circle.
+
+    Examples
+    ========
+
+    >>> from fractions import Fraction
+    >>> from sympy_extras.polys.complexroots import dup_count_roots_in_disc
+    >>> f = [Fraction(c) for c in (2, 0, 0, 0, 1)]         # 2 x**4 + 1: four roots of modulus 0.84
+    >>> dup_count_roots_in_disc(f), dup_count_roots_in_disc(f, radius=Fraction(1, 2))
+    (4, 0)
+    >>> dup_count_roots_in_disc(f, (Fraction(1), Fraction(1)), Fraction(1))
+    1
+    """
+    radius = Fraction(radius)
+    if radius <= 0:
+        raise ValueError('the radius must be positive')
+    coefficients = _integer_coefficients(f)
+    n = len(coefficients) - 1
+    cx, cy = Fraction(center[0]), Fraction(center[1])
+    scale = lcm(cx.denominator, cy.denominator, radius.denominator)
+    X, Y, R = int(cx*scale), int(cy*scale), int(radius*scale)
+    # z = c + radius (w - 1)/(w + 1): scale**n (w + 1)**n f(z) =
+    # sum a_k N**(n - k) (scale (w + 1))**k, N = (X + i Y)(w + 1) + R (w - 1)
+    numerator_re = [X + R, X - R]          # coefficients of w, 1
+    numerator_im = [Y, Y]
+    total_re = [0]*(n + 1)
+    total_im = [0]*(n + 1)
+    power_re, power_im = [1], [0]          # N**j, highest degree first
+    for j in range(n + 1):
+        k = n - j
+        # (scale (w + 1))**k
+        binomial = [1]
+        for _ in range(k):
+            binomial = [x + y for x, y in zip(binomial + [0], [0] + binomial)]
+        factor = coefficients[k]*scale**k
+        if factor:
+            for p_index in range(len(power_re)):
+                for b_index, weight in enumerate(binomial):
+                    total_re[p_index + b_index] += factor*weight*power_re[p_index]
+                    total_im[p_index + b_index] += factor*weight*power_im[p_index]
+        if j < n:
+            next_re = [0]*(len(power_re) + 1)
+            next_im = [0]*(len(power_re) + 1)
+            for p_index in range(len(power_re)):
+                for q_index in range(2):
+                    next_re[p_index + q_index] += (power_re[p_index]*numerator_re[q_index]
+                                                   - power_im[p_index]*numerator_im[q_index])
+                    next_im[p_index + q_index] += (power_re[p_index]*numerator_im[q_index]
+                                                   + power_im[p_index]*numerator_re[q_index])
+            power_re, power_im = next_re, next_im
+    if total_re[0] == 0 and total_im[0] == 0:
+        # the leading coefficient is scale**n f(c + radius)
+        raise ValueError('a root lies on the circle')
+    count = _right_half_plane(total_re, total_im)
+    if count is None:
+        raise ValueError('a root lies on the circle')
+    return count
+
+
+def dup_hurwitz_stable_p(f: list[Fraction]) -> bool:
+    """Whether every root of ``f`` has a negative real part (the
+    criterion of Routh and Hurwitz, by a Cauchy index).
+
+    Examples
+    ========
+
+    >>> from fractions import Fraction
+    >>> from sympy_extras.polys.complexroots import dup_hurwitz_stable_p
+    >>> dup_hurwitz_stable_p([Fraction(c) for c in (1, 3, 3, 1)]), dup_hurwitz_stable_p([Fraction(c) for c in (1, 1, 1, 6)])
+    (True, False)
+    """
+    return _right_half_plane(_integer_coefficients(f), [0]*len(f)) == 0
+
+
+def dup_schur_stable_p(f: list[Fraction]) -> bool:
+    """Whether every root of ``f`` is in the open unit disc (the
+    criterion of Schur and Cohn).
+
+    Examples
+    ========
+
+    >>> from fractions import Fraction
+    >>> from sympy_extras.polys.complexroots import dup_schur_stable_p
+    >>> dup_schur_stable_p([Fraction(c) for c in (4, 0, 1)]), dup_schur_stable_p([Fraction(c) for c in (1, 0, 4)])
+    (True, False)
+    """
+    try:
+        return dup_count_roots_in_disc(f) == dup_degree(f)
+    except ValueError:
+        return False

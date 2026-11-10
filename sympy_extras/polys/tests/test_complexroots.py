@@ -188,3 +188,60 @@ def test_multiplicities() -> None:
     r, s = by_multiplicity[3], by_multiplicity[2]
     assert r.im_max < s.im_min or s.im_max < r.im_min or r.re_max < s.re_min or s.re_max < r.re_min
     assert dup_isolate_complex_roots(_poly(5)) == []
+
+
+def test_half_planes_and_discs_known() -> None:
+    from sympy_extras.polys.complexroots import (dup_count_roots_in_disc, dup_count_roots_right_of,
+                                                 dup_hurwitz_stable_p, dup_schur_stable_p)
+    # x**3 - 1: one root at 1, two with real part -1/2
+    f = _poly(1, 0, 0, -1)
+    assert dup_count_roots_right_of(f) == 1
+    assert dup_count_roots_right_of(f, Fraction(-1, 2) - Fraction(1, 100)) == 3
+    assert dup_count_roots_right_of(f, Fraction(-1, 4)) == 1
+    raises(ValueError, lambda: dup_count_roots_right_of(f, Fraction(-1, 2)))
+    raises(ValueError, lambda: dup_count_roots_right_of(f, Fraction(1)))
+    # Routh-Hurwitz: (x + 1)**3 is stable; x**3 + x**2 + x + 6 = (x + 2)(x**2 - x + 3) is not;
+    # x**3 + a2 x**2 + a1 x + a0 is stable exactly when all are positive and a2 a1 > a0
+    assert dup_hurwitz_stable_p(_poly(1, 3, 3, 1))
+    assert not dup_hurwitz_stable_p(_poly(1, 1, 1, 6))
+    for a2 in range(1, 5):
+        for a1 in range(1, 5):
+            for a0 in range(1, 8):
+                assert dup_hurwitz_stable_p(_poly(1, a2, a1, a0)) == (a2*a1 > a0)
+    # roots on the imaginary axis: not stable
+    assert not dup_hurwitz_stable_p(_poly(1, 0, 1))
+    assert not dup_hurwitz_stable_p(_poly(1, 1, 1, 1))
+    assert dup_hurwitz_stable_p(_poly(7))
+    # Schur-Cohn: x**2 + b x + c is stable exactly when |c| < 1 and |b| < 1 + c
+    for b in range(-9, 10):
+        for c in range(-5, 6):
+            g = [Fraction(1), Fraction(b, 4), Fraction(c, 4)]
+            assert dup_schur_stable_p(g) == (abs(Fraction(c, 4)) < 1 and abs(Fraction(b, 4)) < 1 + Fraction(c, 4))
+    # 2 x**4 + 1: four roots of modulus 2**(-1/4); x**4 + 4 has the roots +-1 +- i
+    assert dup_count_roots_in_disc(_poly(2, 0, 0, 0, 1)) == 4
+    assert dup_count_roots_in_disc(_poly(2, 0, 0, 0, 1), radius=Fraction(4, 5)) == 0
+    assert dup_count_roots_in_disc(_poly(1, 0, 0, 0, 4), (Fraction(1), Fraction(1)), Fraction(1, 10)) == 1
+    assert dup_count_roots_in_disc(_poly(1, 0, 0, 0, 4), (Fraction(1), Fraction(0)), Fraction(11, 10)) == 2
+    raises(ValueError, lambda: dup_count_roots_in_disc(_poly(1, 0, 0, 0, 4), (Fraction(1), Fraction(0)), Fraction(1)))
+    raises(ValueError, lambda: dup_count_roots_in_disc(_poly(1, 0, -1)))
+    raises(ValueError, lambda: dup_count_roots_in_disc(_poly(1, 0, 1), radius=Fraction(0)))
+
+
+def test_half_planes_and_discs_against_numerical_roots() -> None:
+    from sympy_extras.polys.complexroots import dup_count_roots_in_disc, dup_count_roots_right_of
+    rng = random.Random(33)
+    tolerance = Fraction(1, 10**20)
+    for _ in range(120):
+        n = rng.randint(1, 8)
+        f = [Fraction(rng.randint(-9, 9), rng.randint(1, 3)) for _ in range(n + 1)]
+        if f[0] == 0:
+            f[0] = Fraction(1)
+        roots = _numerical_roots(f)
+        a = Fraction(rng.randint(-8, 8), rng.randint(1, 4))
+        if all(abs(z[0] - a) > tolerance for z in roots):
+            assert dup_count_roots_right_of(f, a) == sum(1 for z in roots if z[0] > a)
+        cx, cy = Fraction(rng.randint(-8, 8), rng.randint(1, 3)), Fraction(rng.randint(-8, 8), rng.randint(1, 3))
+        radius = Fraction(rng.randint(1, 12), rng.randint(1, 4))
+        distances = [(z[0] - cx)**2 + (z[1] - cy)**2 - radius**2 for z in roots]
+        if all(abs(d) > tolerance for d in distances):
+            assert dup_count_roots_in_disc(f, (cx, cy), radius) == sum(1 for d in distances if d < 0)

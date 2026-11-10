@@ -238,6 +238,22 @@ True
 
 ```
 
+The Cauchy index on a whole line counts the roots on one side of it:
+`dup_count_roots_right_of(f, a)` (real part larger than `a`),
+`dup_hurwitz_stable_p` (the criterion of Routh and Hurwitz), and through
+the map `w -> c + rho (w - 1)/(w + 1)` of a half-plane onto a disc,
+`dup_count_roots_in_disc(f, center, radius)` and `dup_schur_stable_p`
+(Schur–Cohn).
+
+```python
+>>> from sympy_extras.polys.complexroots import dup_count_roots_right_of, dup_count_roots_in_disc, dup_hurwitz_stable_p
+>>> dup_count_roots_right_of(f), dup_count_roots_in_disc(f, (Fraction(1), Fraction(1)), Fraction(1, 2))
+(2, 1)
+>>> dup_hurwitz_stable_p([Fraction(1), Fraction(3), Fraction(3), Fraction(1)])
+True
+
+```
+
 On random polynomials of degree 10, 20, 30 with coefficients below 100
 the isolation takes 0.01, 0.1 and 1 s (SymPy's
 `dup_isolate_complex_roots_sqf`: 0.07, 0.25, 1.7 s), and the refinement

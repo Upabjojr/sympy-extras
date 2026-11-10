@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.complexroots`: `dup_count_roots_right_of` (the roots
+  on one side of a vertical line), `dup_count_roots_in_disc`,
+  `dup_hurwitz_stable_p` (Routh–Hurwitz) and `dup_schur_stable_p`
+  (Schur–Cohn), exact, by Cauchy indices on a line.
 - `sympy_extras.solvers.exponential_diophantine`: `pillai(a, b, c)`, all
   the solutions in non-negative integers of `a**x - b**y = c` (the
   Baker–Wüstholz bound for two logarithms, reduced by the continued
