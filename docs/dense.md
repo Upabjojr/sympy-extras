@@ -169,6 +169,23 @@ The last line is the gcd of `(x + y)(x - y)` and `(x + y)**2` in `ZZ[y][x]`.
 
 ```
 
+`domains.galoisfield.GaloisField(p, n)` is the field with `p**n` elements,
+`GF(p)[a]/(m)` for the first monic irreducible `m` of degree `n` (or a
+given one); `galoisfactor.gfq_factor` factors over it: the square-free
+decomposition in characteristic `p` (the `p`-th roots of the coefficients
+are their powers `q/p`), distinct degrees by `gcd(f, x**(q**d) - x)`,
+equal degrees by Cantor and Zassenhaus (the trace map in characteristic
+2).
+
+```python
+>>> from sympy_extras.polys.domains.galoisfield import GaloisField
+>>> from sympy_extras.polys.galoisfactor import gfq_factor
+>>> GF4 = GaloisField(2, 2)
+>>> gfq_factor([[1], [1], [1]], GF4)             # x**2 + x + 1 = (x + a)(x + a + 1) over GF(4)
+([1], [([[1], [1, 0]], 1), ([[1], [1, 1]], 1)])
+
+```
+
 ## Real roots
 
 `rootisolation`: Descartes' rule with bisection (Collins–Akritas,

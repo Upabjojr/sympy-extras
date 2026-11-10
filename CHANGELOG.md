@@ -10,6 +10,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.domains.galoisfield.GaloisField`: the finite fields
+  `GF(p**n)` as a typed coefficient domain (Frobenius map, `p`-th roots,
+  trace, enumeration), and `sympy_extras.polys.galoisfactor`:
+  `gfq_factor`, `gfq_sqf_list`, `gfq_ddf`, `gfq_edf`,
+  `gfq_irreducible_p`, factorisation of univariate polynomials over
+  them (Cantor–Zassenhaus). No SymPy counterpart.
 - `sympy_extras.polys.numberfields.basis`: `integral_basis` and
   `field_discriminant` of a number field by the Round 2 algorithm
   (p-radicals and their multiplier rings, Hermite normal forms), and

@@ -261,6 +261,7 @@ sympy_extras/
         subresultants.py     dup_psc, dmp_psc, psc: principal subresultant coefficients on SymPy's dense representation (the CAD)
         polyutils.py         dict_from_expr, expr_from_dict: core expressions <-> typed polynomials (no SymPy)
         sqfreetools.py       dup_sqf_list/part/p (Yun, and GF(p))
+        galoisfactor.py      gfq_factor, gfq_sqf_list, gfq_ddf, gfq_edf over domains.galoisfield.GaloisField (GF(p**n))
         galoistools.py       gf_factor, gf_ddf, gf_edf, gf_irreducible_p over FiniteField
         factortools.py       dup_zz_factor, dup_qq_factor (Zassenhaus; van Hoeij's knapsack recombination from 10 modular factors on), dup_zz_hensel_lift, dup_ext_factor (Trager)
         lattice.py           lll, lll_reduction (integral LLL, Gram determinants), hermite_normal_form, integer_kernel, solve_integer_system, smith_normal_form (typed, no SymPy)
