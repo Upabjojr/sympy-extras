@@ -537,6 +537,56 @@ small linear factors, the solver returns the full basis of `d`
 independent solutions (the oracle used in the tests, each solution also
 verified by substitution).
 
+## Guessing recurrences and equations from the first terms
+
+`sympy_extras.concrete.guess` goes the other way: from the first terms of
+a sequence to an equation, which the solvers above then solve. Three
+kinds of equations with polynomial coefficients are searched, each a
+linear problem in the unknown coefficients (Salvy–Zimmermann's gfun,
+Kauers' Guess):
+
+- `guess_recurrence(terms)`: `sum_i p_i(n) a(n + i) = 0`;
+- `guess_differential_equation(terms)`: `sum_k q_k(x) f^(k)(x) = 0`
+  (possibly with a polynomial right-hand side) for the generating
+  function `f = sum a(n) x**n`;
+- `guess_algebraic_equation(terms)`: `sum_k q_k(x) f**k = 0` (degree one:
+  a rational generating function).
+
+An equation is accepted only when the linear system has `margin` (three
+by default) more equations than unknowns, so that it has passed that many
+independent checks; among the orders and degrees which the number of
+terms allows, the one with the fewest coefficients is returned. The
+search runs modulo the prime `2**61 - 1` (for each order the largest
+degree, then the smallest by bisection) and the exact null space is
+computed once. `guess_closed_form(terms, n)` solves the recurrence with
+`rsolve_linear`, the initial values taken after the last zero of the
+leading coefficient, and checks the expression on every term.
+
+```python
+>>> from math import comb
+>>> from sympy_extras.core import Function, Symbol
+>>> from sympy_extras.concrete.guess import (guess_recurrence, guess_differential_equation,
+...     guess_algebraic_equation, guess_closed_form)
+>>> n, x = Symbol('n'), Symbol('x')
+>>> apery = [sum(comb(m, k)**2*comb(m + k, k)**2 for k in range(m + 1)) for m in range(20)]
+>>> apery[:5]
+[1, 5, 73, 1445, 33001]
+>>> guess_recurrence(apery).as_expr(Function('a'), n)
+(-34*n**3 - 153*n**2 - 231*n - 117)*a(n + 1) + (n**3 + 3*n**2 + 3*n + 1)*a(n) + (n**3 + 6*n**2 + 12*n + 8)*a(n + 2)
+>>> motzkin = [1, 1, 2, 4, 9, 21, 51, 127, 323, 835, 2188, 5798, 15511, 41835]
+>>> guess_algebraic_equation(motzkin).as_expr(x, Symbol('f'))
+f**2*x**2 + f*(x - 1) + 1
+>>> guess_closed_form([1, 0, 1, 2, 9, 44, 265, 1854, 14833, 133496, 1334961, 14684570], n)
+-factorial(n)*Sum((-1)**k/factorial(k + 1), (k, 0, n - 1)) + factorial(n)
+
+```
+
+The first is Apéry's recurrence for `zeta(3)`; with 40 terms
+`guess_differential_equation` finds the differential equation of order
+three of their generating function. A guess is a conjecture which holds
+on the terms given: a few exceptions to a pattern are absorbed by a
+coefficient vanishing at them, and more terms settle such a case.
+
 ## Darboux polynomials and the Prelle–Singer procedure
 
 `sympy_extras.solvers.darboux` solves `y' = P(x, y)/Q(x, y)` with

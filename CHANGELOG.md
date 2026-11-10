@@ -10,6 +10,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.concrete.guess`: `guess_recurrence`,
+  `guess_differential_equation`, `guess_algebraic_equation` (the equation
+  with polynomial coefficients, with the fewest coefficients, which the
+  first terms of a sequence or their generating function satisfy, by
+  linear algebra with a margin of surplus equations; modular search,
+  exact null space) and `guess_closed_form` (the guessed recurrence
+  solved by `rsolve_linear` and checked on the terms). Native.
 - `sympy_extras.polys.complexroots`: isolation of the complex roots of
   polynomials with rational coefficients in rectangles with rational
   corners (`dup_isolate_complex_roots_sqf`, `dup_isolate_complex_roots`

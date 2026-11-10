@@ -839,6 +839,7 @@ sympy_extras/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation
         creative.py          creative_telescoping, definite_sum
+        guess.py             guessing recurrences, differential and algebraic equations, closed forms from the first terms
         zeilberger.py        Zeilberger's algorithm, WZ certificates, definite sums
         qhyper.py            q-Pochhammer symbols, q-Gosper, q-Zeilberger
         rational.py          Abramov's decomposition of rational summands

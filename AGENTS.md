@@ -199,6 +199,7 @@ sympy_extras/
         karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation (native)
         karr_sympy.py        the SymPy face of karr: karr_sum, karr_term, summation, with_sum_special_values, reliable_value_of_core
         creative.py          creative telescoping in PiSigma-fields: creative_telescoping, definite_sum (native)
+        guess.py             guess_recurrence, guess_differential_equation, guess_algebraic_equation, guess_closed_form: equations from the first terms (native)
         tests/
     integrals/               definite integration extending sympy.integrals
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels
