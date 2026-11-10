@@ -1456,12 +1456,17 @@ def _is_zero(value: Expr) -> bool:
             return False
     if isinstance(normal, Rational):
         return False
+    # a number which is not small at 120 digits is not zero: the minimal
+    # polynomial (resultants, hopeless on Cardano's formulas) is only
+    # asked to prove the zeros
+    approximation = numeric_value(normal, 120)
+    if approximation is not None and bool(abs(approximation) > mpmath.mpf(10)**-20):
+        return False
     try:
         return minimal_polynomial_coeffs(normal) == [1, 0]
     except (BasePolynomialError, NotImplementedError, ValueError, TypeError):
         pass
-    approximation = numeric_value(normal, 120)
-    return approximation is not None and bool(abs(approximation) < mpmath.mpf(10)**-20)
+    return approximation is not None
 
 
 def _row_reduce(rows: list[list[Expr]]) -> tuple[list[list[Expr]], list[int]]:

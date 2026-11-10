@@ -228,3 +228,22 @@ def test_rising_factorials_are_written_as_factorials() -> None:
     assert solution == RisingFactorial(Rational(1, 2), n)/factorial(n)
     # the shift used throughout
     assert dup_shift([Fraction(1), Fraction(0)], Fraction(1), QQ) == [Fraction(1), Fraction(1)]
+
+
+def test_zero_test_on_roots_of_a_cubic() -> None:
+    from sympy_extras._timeout import attempt
+    from sympy_extras.solvers.recurr import _is_zero
+    # the tribonacci recurrence: the zero test of the linear system for
+    # the constants asked for the minimal polynomial (by resultants) of
+    # every entry, combinations of Cardano's formulas, and
+    # rsolve_linear with initial values did not return; a number which
+    # is not small at 120 digits is now known not to be zero
+    from sympy_extras.polys.polyroots import roots
+    x = Symbol('x')
+    found = roots(x**3 - x**2 - x - 1, x)
+    r0, r1, r2 = list(found) if isinstance(found, dict) else list(found)
+    assert attempt(lambda: _is_zero(r0 - r1), 10, native=True) is False
+    assert attempt(lambda: _is_zero(r0*r1 - r2**2), 10, native=True) is False
+    # the zeros are still proved: the sum of the roots is 1, their product 1
+    assert attempt(lambda: _is_zero(r0 + r1 + r2 - 1), 10, native=True) is True
+    assert attempt(lambda: _is_zero(r0*r1*r2 - 1), 10, native=True) is True
