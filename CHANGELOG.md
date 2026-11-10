@@ -10,6 +10,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.numberfields.qqbar`: `Algebraic`, exact arithmetic
+  on algebraic numbers (minimal polynomial and isolating interval or
+  rectangle): `+ - * /`, integer powers, conjugates, real and imaginary
+  parts, exact equality, order and signs of the real ones, enclosures of
+  any precision; `algebraic_roots(f)`, the roots of a polynomial. The
+  results are identified among the roots of a resultant by interval
+  arithmetic and winding numbers. Typed, no SymPy.
 - `sympy_extras.polys.complexroots`: `dup_count_roots_right_of` (the roots
   on one side of a vertical line), `dup_count_roots_in_disc`,
   `dup_hurwitz_stable_p` (Routh–Hurwitz) and `dup_schur_stable_p`

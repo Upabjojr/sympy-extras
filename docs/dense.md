@@ -260,6 +260,40 @@ the isolation takes 0.01, 0.1 and 1 s (SymPy's
 to `10**-50` 0.01, 0.17 and 1.7 s in all (SymPy's refinement to
 `10**-10`: 1.8 s and 21 s at degrees 10 and 20).
 
+## Algebraic numbers
+
+`numberfields.qqbar`: exact arithmetic in the field of all algebraic
+numbers. An `Algebraic` is its minimal polynomial over `QQ` together with
+a region isolating it among the roots (a rational point, an interval, a
+rectangle). For a sum or a product, a resultant of the two minimal
+polynomials vanishes at the result; it is factored over `ZZ`, and the
+factor and the root are identified by enclosures: the operands are
+refined, interval arithmetic gives a box for the result, and the roots
+of each factor in the box are counted by winding numbers until one root
+of one factor is left (real exactly when the box made symmetric about
+the real axis still has one root). Equality, the order of the real
+numbers and signs are decided exactly; `algebraic_roots(f)` lists the
+roots of a polynomial, real ones first in increasing order.
+
+```python
+>>> from sympy_extras.polys.numberfields.qqbar import Algebraic, algebraic_roots
+>>> sqrt2 = algebraic_roots([1, 0, -2])[1]
+>>> sqrt3 = algebraic_roots([1, 0, -3])[1]
+>>> sqrt2 + sqrt3
+Algebraic([1, 0, -10, 0, 1], 3.14626437)
+>>> 1/(sqrt3 - sqrt2) == sqrt2 + sqrt3, (1 + sqrt2)**2 == 3 + 2*sqrt2
+(True, True)
+>>> a, b, c = algebraic_roots([1, 0, 0, -2])
+>>> a + b + c == 0, b.conjugate() == c, (b*c).is_real
+(True, True, True)
+
+```
+
+The resultant of a sum or product has the product of the degrees (a
+power keeps the degree): this representation is convenient up to
+degrees of a few dozen, not a replacement for computing in one fixed
+number field (`AlgebraicField`).
+
 ## Verification
 
 `polys/tests/test_factor.py` compares the factorisations over `GF(p)`
