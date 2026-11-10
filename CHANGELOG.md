@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.numberfields.recognize.recognize_algebraic`: the
+  algebraic number (an exact `Algebraic`) behind a decimal approximation,
+  real or complex, by LLL reduction on the powers of the approximation
+  (Kannan–Lenstra–Lovász); `None` when no short relation exists.
 - `sympy_extras.polys.numberfields.qqbar`: `Algebraic`, exact arithmetic
   on algebraic numbers (minimal polynomial and isolating interval or
   rectangle): `+ - * /`, integer powers, conjugates, real and imaginary

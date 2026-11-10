@@ -293,6 +293,23 @@ Algebraic([1, -2, 4], 1 + 1.732050808*I)
 
 ```
 
+`numberfields.recognize.recognize_algebraic(re, im, digits, max_degree)`
+goes from a decimal approximation to the exact number: a short vector of
+the lattice of the powers of the approximation (LLL) is an integer
+polynomial which nearly vanishes there, accepted when it is much shorter
+than a number without relation would give, and its root nearest to the
+approximation is returned.
+
+```python
+>>> from fractions import Fraction
+>>> from sympy_extras.polys.numberfields.recognize import recognize_algebraic
+>>> recognize_algebraic(Fraction(3146264369941972, 10**15), digits=15)
+Algebraic([1, 0, -10, 0, 1], 3.14626437)
+>>> recognize_algebraic(Fraction(3141592653589793, 10**15), digits=15) is None
+True
+
+```
+
 The resultant of a sum or product has the product of the degrees (a
 power keeps the degree): this representation is convenient up to
 degrees of a few dozen, not a replacement for computing in one fixed
