@@ -9,13 +9,15 @@ use pyo3::types::{PyDict, PyList, PyModule};
 
 use sympy_extras_core::numbers::Int;
 use sympy_extras_core::numbers::Rat;
-use sympy_extras_core::polys::domains::IntegerRing;
 use sympy_extras_core::polys::domains::{Domain, RationalField, SparseRow};
+use sympy_extras_core::polys::domains::{GaussianRational, GaussianRationalField, IntegerRing};
 use sympy_extras_core::polys::groebnerwalk::{self as walk, WalkLift};
 use sympy_extras_core::polys::modulargroebner as mg;
 use sympy_extras_core::polys::rings::PolyElement;
 use sympy_extras_core::polys::rings::{Monomial, MonomialOrder};
-use sympy_extras_core::polys::{f4 as groebner, hilbert, multifactor as mf, rootisolation as ri, stronggroebner as sg};
+use sympy_extras_core::polys::{
+    f4 as groebner, gaussianfactor as gf, hilbert, multifactor as mf, rootisolation as ri, stronggroebner as sg,
+};
 
 use crate::convert::{err, extract_int, out_int, out_poly, out_polys, out_usize, poly, tuple, Bridge};
 use crate::domains::PyDomain;
@@ -175,6 +177,10 @@ fn f4<'py>(py: Python<'py>, polys: &Bound<'py, PyAny>, ring: &PyPolyRing) -> PyR
         RingKind::ZZ(r) => wrap(groebner::f4(&[], r).map_err(err)?, ElemKind::ZZ),
         RingKind::QQ(r) => wrap(groebner::f4(&same_kind!(&items, QQ), r).map_err(err)?, ElemKind::QQ),
         RingKind::GF(r) => wrap(groebner::f4(&same_kind!(&items, GF), r).map_err(err)?, ElemKind::GF),
+        RingKind::GaussianQQ(r) => wrap(
+            groebner::f4(&same_kind!(&items, GaussianQQ), r).map_err(err)?,
+            ElemKind::GaussianQQ,
+        ),
     };
     out_elements(py, result)
 }
@@ -186,6 +192,10 @@ fn reduced_basis<'py>(py: Python<'py>, basis: &Bound<'py, PyAny>, ring: &PyPolyR
         RingKind::ZZ(_) => return Err(PyTypeError::new_err("reduced_basis needs a field")),
         RingKind::QQ(r) => wrap(groebner::reduced_basis(&same_kind!(&items, QQ), r), ElemKind::QQ),
         RingKind::GF(r) => wrap(groebner::reduced_basis(&same_kind!(&items, GF), r), ElemKind::GF),
+        RingKind::GaussianQQ(r) => wrap(
+            groebner::reduced_basis(&same_kind!(&items, GaussianQQ), r),
+            ElemKind::GaussianQQ,
+        ),
     };
     out_elements(py, result)
 }
@@ -196,6 +206,7 @@ fn is_graded(ring: &PyPolyRing) -> bool {
         RingKind::ZZ(r) => groebner::is_graded(r),
         RingKind::QQ(r) => groebner::is_graded(r),
         RingKind::GF(r) => groebner::is_graded(r),
+        RingKind::GaussianQQ(r) => groebner::is_graded(r),
     }
 }
 
@@ -380,6 +391,78 @@ pub fn register_multifactor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+// -- gaussianfactor
+
+fn qq_i_elem(f: &PyPolyElement) -> PyResult<PolyElement<GaussianRationalField>> {
+    match &f.inner {
+        ElemKind::GaussianQQ(f) => Ok(f.clone()),
+        _ => Err(PyTypeError::new_err("polynomials over QQ_I are expected")),
+    }
+}
+
+fn gaussian_result<'py>(py: Python<'py>, result: (GaussianRational, gf::GaussFactors)) -> PyResult<Bound<'py, PyAny>> {
+    let (c, factors) = result;
+    let mut items: Vec<Bound<'py, PyAny>> = Vec::new();
+    for (g, k) in factors {
+        let g: Bound<'py, PyAny> = Bound::new(
+            py,
+            PyPolyElement {
+                inner: ElemKind::GaussianQQ(g),
+            },
+        )?
+        .into_any();
+        items.push(tuple(py, vec![g, out_usize(py, k)?])?);
+    }
+    tuple(
+        py,
+        vec![GaussianRationalField.to_py(py, &c)?, PyList::new(py, items)?.into_any()],
+    )
+}
+
+fn gauss_key_to_py<'py>(py: Python<'py>, key: &gf::GaussKey) -> PyResult<Bound<'py, PyAny>> {
+    match key {
+        gf::GaussKey::Coefficient(y, x) => tuple(py, vec![RationalField.to_py(py, y)?, RationalField.to_py(py, x)?]),
+        gf::GaussKey::Tuple(items) => {
+            let objects: Vec<Bound<'py, PyAny>> =
+                items.iter().map(|k| gauss_key_to_py(py, k)).collect::<PyResult<_>>()?;
+            tuple(py, objects)
+        }
+    }
+}
+
+#[pyfunction]
+fn gaussian_ext_factor<'py>(py: Python<'py>, f: &PyPolyElement) -> PyResult<Bound<'py, PyAny>> {
+    gaussian_result(py, gf::gaussian_ext_factor(&qq_i_elem(f)?).map_err(err)?)
+}
+
+#[pyfunction]
+fn gaussian_factor_list<'py>(py: Python<'py>, f: &PyPolyElement, integral: bool) -> PyResult<Bound<'py, PyAny>> {
+    gaussian_result(py, gf::gaussian_factor_list(&qq_i_elem(f)?, integral).map_err(err)?)
+}
+
+/// `gaussian_sort_key((f, k))`.
+#[pyfunction]
+fn gaussian_sort_key<'py>(py: Python<'py>, item: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let f: PolyElement<GaussianRationalField> = qq_i_elem(item.get_item(0)?.downcast::<PyPolyElement>()?.get())?;
+    let k: usize = item.get_item(1)?.extract::<usize>()?;
+    let (length, k, key) = gf::gaussian_sort_key(&(f, k));
+    tuple(
+        py,
+        vec![
+            length.into_pyobject(py)?.into_any(),
+            out_usize(py, k)?,
+            gauss_key_to_py(py, &key)?,
+        ],
+    )
+}
+
+pub fn register_gaussianfactor(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(gaussian_ext_factor, m)?)?;
+    m.add_function(wrap_pyfunction!(gaussian_factor_list, m)?)?;
+    m.add_function(wrap_pyfunction!(gaussian_sort_key, m)?)?;
+    Ok(())
+}
+
 pub fn register_rootisolation(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dup_cauchy_bound, m)?)?;
     m.add_function(wrap_pyfunction!(dup_fujiwara_bound, m)?)?;
@@ -469,6 +552,7 @@ fn initial_form(f: &PyPolyElement, weights: &Bound<'_, PyAny>) -> PyResult<PyPol
         ElemKind::ZZ(p) => ElemKind::ZZ(walk::initial_form(p, &w)),
         ElemKind::QQ(p) => ElemKind::QQ(walk::initial_form(p, &w)),
         ElemKind::GF(p) => ElemKind::GF(walk::initial_form(p, &w)),
+        ElemKind::GaussianQQ(p) => ElemKind::GaussianQQ(walk::initial_form(p, &w)),
     };
     Ok(PyPolyElement { inner })
 }
@@ -508,6 +592,11 @@ fn extended_groebner<'py>(py: Python<'py>, F: &Bound<'py, PyAny>, ring: &PyPolyR
             walk::extended_groebner(&same_kind!(&items, GF), r).map_err(err)?,
             ElemKind::GF,
         ),
+        RingKind::GaussianQQ(r) => representations(
+            py,
+            walk::extended_groebner(&same_kind!(&items, GaussianQQ), r).map_err(err)?,
+            ElemKind::GaussianQQ,
+        ),
     }
 }
 
@@ -518,6 +607,7 @@ fn is_groebner(G: &Bound<'_, PyAny>, ring: &PyPolyRing) -> PyResult<bool> {
         RingKind::ZZ(r) => walk::is_groebner(&same_kind!(&items, ZZ), r).map_err(err),
         RingKind::QQ(r) => walk::is_groebner(&same_kind!(&items, QQ), r).map_err(err),
         RingKind::GF(r) => walk::is_groebner(&same_kind!(&items, GF), r).map_err(err),
+        RingKind::GaussianQQ(r) => walk::is_groebner(&same_kind!(&items, GaussianQQ), r).map_err(err),
     }
 }
 
@@ -566,6 +656,10 @@ fn groebner_walk<'py>(
         RingKind::GF(r) => wrap(
             walk::groebner_walk(&same_kind!(&items, GF), r, &target, check, lift).map_err(failed)?,
             ElemKind::GF,
+        ),
+        RingKind::GaussianQQ(r) => wrap(
+            walk::groebner_walk(&same_kind!(&items, GaussianQQ), r, &target, check, lift).map_err(failed)?,
+            ElemKind::GaussianQQ,
         ),
     };
     out_elements(py, result)
@@ -764,6 +858,7 @@ fn modular_groebner<'py>(
             RingKind::GF(r) => groebner::f4(&same_kind!(&items, GF), r)
                 .map(|g| wrap(g, ElemKind::GF))
                 .map_err(err),
+            RingKind::GaussianQQ(_) => Err(PyTypeError::new_err("modular Groebner bases over QQ or ZZ")),
         }
     };
     if let Some(e) = given.and_then(|g| g.error) {

@@ -288,7 +288,8 @@ fn dense_key(terms: &Terms<Int>, i: usize, n: usize) -> DenseKey {
     )
 }
 
-fn sorted(mut factors: Factors) -> Factors {
+/// The factors sorted as SymPy sorts them (`_sorted`).
+pub fn sorted(mut factors: Factors) -> Factors {
     factors.sort_by(|a, b| {
         (degree(&a.0, 0) + 1, a.1, factor_sort_key(&a.0)).cmp(&(degree(&b.0, 0) + 1, b.1, factor_sort_key(&b.0)))
     });

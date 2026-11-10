@@ -13,7 +13,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyModule, PyTuple};
 
 use sympy_extras_core::numbers::Int;
-use sympy_extras_core::polys::domains::{FiniteField, IntegerRing, RationalField};
+use sympy_extras_core::polys::domains::{FiniteField, GaussianRationalField, IntegerRing, RationalField};
 use sympy_extras_core::polys::heuristicgcd as hg;
 use sympy_extras_core::polys::rings::{self, Monomial, MonomialOrder, PolyElement, PolyRing, Terms};
 
@@ -99,6 +99,7 @@ pub enum RingKind {
     ZZ(Arc<PolyRing<IntegerRing>>),
     QQ(Arc<PolyRing<RationalField>>),
     GF(Arc<PolyRing<FiniteField>>),
+    GaussianQQ(Arc<PolyRing<GaussianRationalField>>),
 }
 
 #[derive(Debug, Clone)]
@@ -106,6 +107,7 @@ pub enum ElemKind {
     ZZ(PolyElement<IntegerRing>),
     QQ(PolyElement<RationalField>),
     GF(PolyElement<FiniteField>),
+    GaussianQQ(PolyElement<GaussianRationalField>),
 }
 
 /// Runs `$body` with `$f` the element of its domain; the result keeps the
@@ -116,6 +118,7 @@ macro_rules! map_elem {
             ElemKind::ZZ($f) => ElemKind::ZZ($body),
             ElemKind::QQ($f) => ElemKind::QQ($body),
             ElemKind::GF($f) => ElemKind::GF($body),
+            ElemKind::GaussianQQ($f) => ElemKind::GaussianQQ($body),
         }
     };
 }
@@ -127,6 +130,7 @@ macro_rules! with_elem {
             ElemKind::ZZ($f) => $body,
             ElemKind::QQ($f) => $body,
             ElemKind::GF($f) => $body,
+            ElemKind::GaussianQQ($f) => $body,
         }
     };
 }
@@ -139,6 +143,7 @@ macro_rules! binary_elem {
             (ElemKind::ZZ($f), ElemKind::ZZ($g)) => Ok(ElemKind::ZZ($body)),
             (ElemKind::QQ($f), ElemKind::QQ($g)) => Ok(ElemKind::QQ($body)),
             (ElemKind::GF($f), ElemKind::GF($g)) => Ok(ElemKind::GF($body)),
+            (ElemKind::GaussianQQ($f), ElemKind::GaussianQQ($g)) => Ok(ElemKind::GaussianQQ($body)),
             _ => Err(PyTypeError::new_err("polynomials of different rings")),
         }
     };
@@ -150,6 +155,7 @@ macro_rules! with_ring {
             RingKind::ZZ($ring) => $body,
             RingKind::QQ($ring) => $body,
             RingKind::GF($ring) => $body,
+            RingKind::GaussianQQ($ring) => $body,
         }
     };
 }
@@ -199,6 +205,7 @@ fn ring_of(e: &ElemKind) -> RingKind {
         ElemKind::ZZ(f) => RingKind::ZZ(Arc::clone(&f.ring)),
         ElemKind::QQ(f) => RingKind::QQ(Arc::clone(&f.ring)),
         ElemKind::GF(f) => RingKind::GF(Arc::clone(&f.ring)),
+        ElemKind::GaussianQQ(f) => RingKind::GaussianQQ(Arc::clone(&f.ring)),
     }
 }
 
@@ -209,6 +216,7 @@ pub fn domain_name(r: &RingKind) -> String {
         RingKind::ZZ(ring) => ring.domain.name(),
         RingKind::QQ(ring) => ring.domain.name(),
         RingKind::GF(ring) => ring.domain.name(),
+        RingKind::GaussianQQ(ring) => ring.domain.name(),
     }
 }
 
@@ -217,6 +225,7 @@ fn domain_of(r: &RingKind) -> PyDomain {
         RingKind::ZZ(_) => PyDomain::base(DomainKind::ZZ),
         RingKind::QQ(_) => PyDomain::base(DomainKind::QQ),
         RingKind::GF(ring) => PyDomain::base(DomainKind::GF(ring.domain.p())),
+        RingKind::GaussianQQ(_) => PyDomain::base(DomainKind::GaussianQQ),
     }
 }
 
@@ -265,7 +274,10 @@ impl PyPolyRing {
             DomainKind::GF(p) => {
                 RingKind::GF(PolyRing::new(FiniteField::new(p).map_err(err)?, symbols, order).map_err(err)?)
             }
-            _ => return Err(PyTypeError::new_err("the domain must be ZZ, QQ or GF(p)")),
+            DomainKind::GaussianQQ => {
+                RingKind::GaussianQQ(PolyRing::new(GaussianRationalField, symbols, order).map_err(err)?)
+            }
+            _ => return Err(PyTypeError::new_err("the domain must be ZZ, QQ, GF(p) or QQ_I")),
         };
         Ok(PyPolyRing { inner })
     }
@@ -305,6 +317,7 @@ impl PyPolyRing {
                 (RingKind::ZZ(a), RingKind::ZZ(b)) => a == b,
                 (RingKind::QQ(a), RingKind::QQ(b)) => a == b,
                 (RingKind::GF(a), RingKind::GF(b)) => a == b,
+                (RingKind::GaussianQQ(a), RingKind::GaussianQQ(b)) => a == b,
                 _ => false,
             },
             Err(_) => false,
@@ -317,6 +330,7 @@ impl PyPolyRing {
             RingKind::ZZ(r) => ElemKind::ZZ(r.zero()),
             RingKind::QQ(r) => ElemKind::QQ(r.zero()),
             RingKind::GF(r) => ElemKind::GF(r.zero()),
+            RingKind::GaussianQQ(r) => ElemKind::GaussianQQ(r.zero()),
         })
     }
 
@@ -326,6 +340,7 @@ impl PyPolyRing {
             RingKind::ZZ(r) => ElemKind::ZZ(r.one()),
             RingKind::QQ(r) => ElemKind::QQ(r.one()),
             RingKind::GF(r) => ElemKind::GF(r.one()),
+            RingKind::GaussianQQ(r) => ElemKind::GaussianQQ(r.one()),
         })
     }
 
@@ -335,6 +350,7 @@ impl PyPolyRing {
             RingKind::ZZ(r) => r.gens().into_iter().map(ElemKind::ZZ).collect(),
             RingKind::QQ(r) => r.gens().into_iter().map(ElemKind::QQ).collect(),
             RingKind::GF(r) => r.gens().into_iter().map(ElemKind::GF).collect(),
+            RingKind::GaussianQQ(r) => r.gens().into_iter().map(ElemKind::GaussianQQ).collect(),
         };
         elem_list(py, items)
     }
@@ -344,6 +360,7 @@ impl PyPolyRing {
             RingKind::ZZ(r) => ElemKind::ZZ(r.term(monomial, r.domain.extract(coefficient)?)),
             RingKind::QQ(r) => ElemKind::QQ(r.term(monomial, r.domain.extract(coefficient)?)),
             RingKind::GF(r) => ElemKind::GF(r.term(monomial, r.domain.extract(coefficient)?)),
+            RingKind::GaussianQQ(r) => ElemKind::GaussianQQ(r.term(monomial, r.domain.extract(coefficient)?)),
         }))
     }
 
@@ -357,6 +374,7 @@ impl PyPolyRing {
             RingKind::ZZ(r) => ElemKind::ZZ(r.from_int(n)),
             RingKind::QQ(r) => ElemKind::QQ(r.from_int(n)),
             RingKind::GF(r) => ElemKind::GF(r.from_int(n)),
+            RingKind::GaussianQQ(r) => ElemKind::GaussianQQ(r.from_int(n)),
         })
     }
 
@@ -365,6 +383,7 @@ impl PyPolyRing {
             RingKind::ZZ(r) => ElemKind::ZZ(r.from_dict(terms_from_py(&r.domain, terms)?)),
             RingKind::QQ(r) => ElemKind::QQ(r.from_dict(terms_from_py(&r.domain, terms)?)),
             RingKind::GF(r) => ElemKind::GF(r.from_dict(terms_from_py(&r.domain, terms)?)),
+            RingKind::GaussianQQ(r) => ElemKind::GaussianQQ(r.from_dict(terms_from_py(&r.domain, terms)?)),
         }))
     }
 
@@ -375,6 +394,7 @@ impl PyPolyRing {
                 RingKind::ZZ(r) => RingKind::ZZ(r.with_order(order)),
                 RingKind::QQ(r) => RingKind::QQ(r.with_order(order)),
                 RingKind::GF(r) => RingKind::GF(r.with_order(order)),
+                RingKind::GaussianQQ(r) => RingKind::GaussianQQ(r.with_order(order)),
             },
         })
     }
@@ -410,6 +430,7 @@ impl PyPolyElement {
                 (ElemKind::ZZ(a), ElemKind::ZZ(b)) => a == b,
                 (ElemKind::QQ(a), ElemKind::QQ(b)) => a == b,
                 (ElemKind::GF(a), ElemKind::GF(b)) => a == b,
+                (ElemKind::GaussianQQ(a), ElemKind::GaussianQQ(b)) => a == b,
                 _ => false,
             },
             Err(_) => false,
@@ -567,6 +588,16 @@ impl PyPolyElement {
                     ],
                 )
             }
+            ElemKind::GaussianQQ(f) => {
+                let (c, p) = f.primitive();
+                tuple(
+                    py,
+                    vec![
+                        f.ring.domain.to_py(py, &c)?,
+                        Bound::new(py, elem(ElemKind::GaussianQQ(p)))?.into_any(),
+                    ],
+                )
+            }
         }
     }
 
@@ -584,6 +615,13 @@ impl PyPolyElement {
             ElemKind::GF(f) => {
                 let (q, r) = f.div(&same_kind!(&divisors, GF)).map_err(err)?;
                 (q.into_iter().map(ElemKind::GF).collect(), ElemKind::GF(r))
+            }
+            ElemKind::GaussianQQ(f) => {
+                let (q, r) = f.div(&same_kind!(&divisors, GaussianQQ)).map_err(err)?;
+                (
+                    q.into_iter().map(ElemKind::GaussianQQ).collect(),
+                    ElemKind::GaussianQQ(r),
+                )
             }
         };
         tuple(

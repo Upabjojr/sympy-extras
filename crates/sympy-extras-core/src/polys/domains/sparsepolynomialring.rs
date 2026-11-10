@@ -47,6 +47,7 @@ use super::super::heuristicgcd::{deflate, heugcd, inflate};
 use super::super::rings::{Monomial, MonomialOrder, PolyElement, PolyRing, Terms};
 use super::domain::Domain;
 use super::finitefield::FiniteField;
+use super::gaussiandomains::GaussianIntegerRing;
 use super::integerring::{IntegerRing, ZZ};
 use super::rationalfield::RationalField;
 
@@ -242,6 +243,10 @@ impl SparseGround for RationalField {
 }
 
 impl SparseGround for FiniteField {}
+
+/// The generic hooks: `SparsePolynomialRing(ZZ_I, ...)` of
+/// `gaussianfactor` (the subresultant gcd).
+impl SparseGround for GaussianIntegerRing {}
 
 impl<K: SparseGround> SparsePolynomialRing<K> {
     /// `SparsePolynomialRing(ground, names)`.
