@@ -282,8 +282,16 @@ class DomainMatrix(Generic[T]):
                     if not K.is_one(previous) or not K.is_one(pivot):
                         rows[i] = [K.exquo(K.mul(pivot, a), previous) if not K.is_zero(a) else a for a in row]
                 else:
-                    rows[i] = [K.exquo(K.sub(K.mul(pivot, a), K.mul(factor, b)), previous)
-                               for a, b in zip(row, pivot_row)]
+                    updated: list[T] = []
+                    for a, b in zip(row, pivot_row):
+                        # the columns of an appended identity are mostly zero
+                        if K.is_zero(b):
+                            updated.append(a if K.is_zero(a) else K.exquo(K.mul(pivot, a), previous))
+                        elif K.is_zero(a):
+                            updated.append(K.exquo(K.neg(K.mul(factor, b)), previous))
+                        else:
+                            updated.append(K.exquo(K.sub(K.mul(pivot, a), K.mul(factor, b)), previous))
+                    rows[i] = updated
             previous = pivot
             pivots.append(column)
             values.append(pivot)

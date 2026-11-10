@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `DomainMatrix.rref_den` skips the zero entries (the appended identity
+  of an inverse): symbolic and integer inverses are two to three times
+  faster.
 - `z_transform`: delayed sequences `g(n)*Heaviside(n - m, 1)` (and
   `Heaviside(n - m)`, whose value at zero is one half).
 - `sympy_extras.matrices.functions`: `matrix_exp` (the exponential

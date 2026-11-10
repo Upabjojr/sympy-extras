@@ -162,7 +162,8 @@ of the symbolic matrices are `p*x + q*y + r` with random small integers.
 | determinant, 10 x 10, entries linear in `x, y` | 0.6 | 129 |
 | determinant, 5 x 5 of distinct symbols | 0.02 | 0.09 |
 | determinant, 60 x 60 of two-digit integers | 0.04 | 3.7 |
-| inverse, 6 x 6, entries linear in `x, y` (in lowest terms here, not in SymPy) | 0.6 | 0.3 |
+| inverse, 6 x 6, entries linear in `x, y` (in lowest terms here, not in SymPy) | 0.2 | 0.3 |
+| inverse, 60 x 60 of two-digit integers | 0.4 | 0.5 |
 
 ## Eigenvalues and eigenvectors
 
