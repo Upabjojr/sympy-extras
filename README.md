@@ -971,6 +971,10 @@ False
 
 ```
 
+The Jordan form (`M.jordan_form()`) and the exact singular value
+decomposition of rational matrices (`M.svd()`) are built on the same
+eigenspaces.
+
 The rank-dependent operations return the generic answer for symbols; with
 other kernels (`sin(t)`, `sqrt(2)`) every pivot must be proved nonzero by
 the zero test, otherwise `NotImplementedError` is raised.

@@ -5,8 +5,9 @@
 * `DomainMatrix` (`sympy_extras.matrices.domainmatrix`): a dense matrix
   over a typed `Domain[T]` (`ZZ`, `QQ`, `GF(p)`, a polynomial ring), with
   fraction-free algorithms;
-* `sympy_extras.matrices.eigen`: eigenvalues, eigenvectors and
-  diagonalisation;
+* `sympy_extras.matrices.eigen`: eigenvalues, eigenvectors,
+  diagonalisation and the Jordan form; `sympy_extras.matrices.svd`: the
+  singular value decomposition;
 * `sympy_extras.matrices.linalg`: the same operations on an `ExprMatrix`
   of expressions of the core, also available as methods (`M.det()`,
   `M.inv()`, `M.rank()`, `M.rref()`, `M.nullspace()`, `M.adjugate()`,
@@ -205,13 +206,45 @@ substitutes the roots and returns `(P, J)` with `M P = P J`.
 
 ```
 
+## Singular values
+
+`sympy_extras.matrices.svd` computes the singular value decomposition of
+a matrix of rational numbers exactly. The orthonormal eigenvectors of
+$A^T A$ come from the eigenspaces above; inside an eigenspace of
+dimension greater than one they are made orthogonal by a Gram–Schmidt
+process without square roots, in the field $\mathbb{Q}[\lambda]/(f)$,
+and the square roots are taken once at the end. The three real roots of
+an irreducible cubic are written in trigonometric form, their radical
+form going through complex numbers. `svd` returns the compact
+decomposition `(U, S, V)` with `A = U * S * V.transpose()`, the nonzero
+singular values in decreasing order.
+
+```python
+>>> B = ExprMatrix.from_rows([[3, 0], [4, 5]])
+>>> B.singular_values()
+[3*sqrt(5), sqrt(5)]
+>>> U, S, V = B.svd()
+>>> U, V
+(ExprMatrix([[sqrt(10)/10, -3*sqrt(10)/10], [3*sqrt(10)/10, sqrt(10)/10]]), ExprMatrix([[sqrt(2)/2, -sqrt(2)/2], [sqrt(2)/2, sqrt(2)/2]]))
+>>> (U*S*V.transpose()).applyfunc(lambda e: e.expand()) == B
+True
+>>> ExprMatrix.from_rows([[1, 1], [1, 1]]).svd()
+(ExprMatrix([[sqrt(2)/2], [sqrt(2)/2]]), ExprMatrix([[2]]), ExprMatrix([[sqrt(2)/2], [sqrt(2)/2]]))
+
+```
+
+`singular_values` also accepts symbols (taken to be real); `svd` raises
+`NotImplementedError` for them and when the singular values are not
+expressed in radicals.
+
 ## Not done
 
 * eigenvalues of matrices with other kernels (`sqrt(2)`, `sin(t)`): the
   factorisation over the field they generate is needed; eigenvalues as
   `RootOf` objects when a factor is not solved in radicals;
 * the Smith and rational canonical forms of symbolic matrices; the
-  singular value decomposition;
+  singular value decomposition with parameters, the full (square `U`,
+  `V`) decomposition and the pseudoinverse;
 * case distinctions on the parameters inside these functions;
 * a sparse representation, and modular or evaluation-interpolation
   methods for large matrices of polynomials.

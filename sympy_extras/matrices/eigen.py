@@ -19,6 +19,13 @@ are known for every matrix (:func:`eigenspaces`,
 roots of the factors are found in radicals
 (:func:`sympy_extras.polys.polyroots.roots`).
 
+The Jordan form is found in the same way (:func:`jordan_chains`,
+:func:`jordan_form`): over $K[\lambda]/(f)$ the kernels of the powers of
+$M - \lambda I$ give the sizes of the blocks, and the chains of
+generalised eigenvectors are built from the longest down, the vectors of
+each level completing the kernel of the previous power together with the
+images of the level above [3]_.
+
 Only symbols are accepted in the entries (rational functions of them):
 with other kernels the factorisation over the field they generate would
 be needed.
@@ -54,6 +61,9 @@ References
 .. [2] S. J. Berkowitz, *On computing the determinant in small parallel
        time using a small number of processors*, Information Processing
        Letters 18 (1984), 147-150.
+.. [3] R. A. Horn, C. R. Johnson, *Matrix Analysis*, 2nd ed., Cambridge
+       University Press, 2013, Section 3.1 (the Jordan canonical form:
+       the kernels of the powers of the nilpotent part and the chains).
 """
 from __future__ import annotations
 

@@ -107,6 +107,9 @@ class ExprMatrix:
 
     __str__ = __repr__
 
+    def transpose(self) -> ExprMatrix:
+        return ExprMatrix(self.cols, self.rows, [self.entries[i*self.cols + j] for j in range(self.cols) for i in range(self.rows)])
+
     # arithmetic
 
     def __add__(self, other: ExprMatrix) -> ExprMatrix:
@@ -257,3 +260,15 @@ class ExprMatrix:
         ``self * P = P * J``."""
         from .eigen import jordan_form
         return jordan_form(self)
+
+    # singular values (sympy_extras.matrices.svd)
+
+    def singular_values(self) -> list[Expr]:
+        from .svd import singular_values
+        return singular_values(self)
+
+    def svd(self) -> tuple[ExprMatrix, ExprMatrix, ExprMatrix]:
+        """The compact singular value decomposition ``(U, S, V)`` with
+        ``self = U * S * V.transpose()``."""
+        from .svd import svd
+        return svd(self)

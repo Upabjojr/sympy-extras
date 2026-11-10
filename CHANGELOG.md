@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.svd`: `singular_values` and the exact compact
+  singular value decomposition `svd` of matrices of rational numbers
+  (orthogonal eigenvectors of `A.T*A` per irreducible factor, Gram–Schmidt
+  without square roots inside an eigenspace, Viete's trigonometric form
+  for cubic factors); `ExprMatrix.transpose`, `singular_values`, `svd`.
 - `sympy_extras.matrices.eigen`: `jordan_chains` (the Jordan blocks and
   chains of generalised eigenvectors per irreducible factor of the
   characteristic polynomial, without solving it) and `jordan_form`
