@@ -227,12 +227,14 @@ summand depending on a limit.
 `f = g(k+1) - g(k) + h` with `h` of minimal denominator (the irreducible
 factors of the denominator grouped into shift classes and moved to one
 representative each); `f` has a rational indefinite sum exactly when
-`h = 0`, and `rational_sum` uses `g` for the rational part and SymPy's
-polygamma functions for the rest.
+`h = 0`, and `rational_sum` uses `g` for the rational part and polygamma
+functions for the rest. Both work on the expressions of the core
+(`sympy_extras.core`).
 
 ```python
->>> from sympy.abc import k, n
+>>> from sympy_extras.core import symbols
 >>> from sympy_extras.concrete.rational import abramov_decomposition, rational_sum
+>>> k, n = symbols('k n')
 >>> abramov_decomposition(1/(k*(k + 1)), k)
 RationalDecomposition(-1/k, 0)
 >>> abramov_decomposition(1/k, k)

@@ -12,6 +12,12 @@ shift-inequivalent, and `f` has a rational indefinite sum exactly when
 `h = 0` (Abramov). When `h \\ne 0` the sum of `h` is not rational: SymPy
 writes it with polygamma functions when the poles are simple.
 
+The module works on the expressions of the core
+(:mod:`sympy_extras.core`) and imports no SymPy: the polynomials, the
+factorisation, the partial fractions and the summation of the remainder
+are those of the core; only the isolated values of the parameters go
+through SymPy at the call (:func:`~sympy_extras.concrete.karr._with_special_values`).
+
 SymPy's ``summation`` sums rational functions through partial fractions
 and polygamma functions but does not separate the rational part; Karr's
 algorithm (:mod:`sympy_extras.concrete.karr`) decides rational summability
@@ -28,29 +34,37 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence
 
-from sympy.concrete.summations import Sum, summation
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.numbers import Integer
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.core.sympify import sympify
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly, cancel, factor_list, div
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import Integer
+from sympy_extras.core.power import Pow, pow
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.polys.partfrac import apart
+from sympy_extras.polys.polyerrors import BasePolynomialError
+from sympy_extras.polys.polytools import Poly, cancel, factor, factor_list
 
-from sympy_extras._special_values import Point
-from sympy_extras._typing import as_expr
-from sympy_extras.assumptions.ask import Assumptions
-
-from .karr_sympy import with_sum_special_values
+from .expr_with_limits import Sum
+from .karr import SumPoint, _with_special_values
+from .summations import summation
 
 __all__ = ['abramov_decomposition', 'rational_sum', 'RationalDecomposition']
 
+ZERO = Integer(0)
+
+
+def _e(b: Basic) -> Expr:
+    if not isinstance(b, Expr):
+        raise TypeError('an expression is expected, not %s' % (b,))
+    return b
+
 
 class RationalDecomposition:
-    """``f = g(k + 1) - g(k) + h`` with ``h`` of minimal denominator.
+    """``f = g(k + 1) - g(k) + h`` with ``h`` of minimal denominator
+    (immutable).
 
     Attributes
     ==========
@@ -61,16 +75,26 @@ class RationalDecomposition:
         The remainder, ``0`` exactly when ``f`` has a rational sum.
     """
 
+    __slots__ = ('_g', '_h')
+
     def __init__(self, g: Expr, h: Expr) -> None:
-        self.g = g
-        self.h = h
+        self._g = g
+        self._h = h
+
+    @property
+    def g(self) -> Expr:
+        return self._g
+
+    @property
+    def h(self) -> Expr:
+        return self._h
 
     @property
     def summable(self) -> bool:
-        return self.h == 0
+        return self._h == ZERO
 
     def __repr__(self) -> str:
-        return "RationalDecomposition(%s, %s)" % (self.g, self.h)
+        return "RationalDecomposition(%s, %s)" % (self._g, self._h)
 
 
 def _shift(q1: Poly, q2: Poly, k: Symbol) -> Optional[int]:
@@ -79,25 +103,26 @@ def _shift(q1: Poly, q2: Poly, k: Symbol) -> Optional[int]:
     if q1.degree() != q2.degree() or q1.degree() == 0:
         return None
     d = q1.degree()
-    c1 = as_expr(q1.all_coeffs()[1]) if d >= 1 else S.Zero
-    c2 = as_expr(q2.all_coeffs()[1]) if d >= 1 else S.Zero
+    c1 = q1.all_coeffs()[1]
+    c2 = q2.all_coeffs()[1]
     # the coefficient of k**(d-1) of q1(k + j) is c1 + d*j
-    j = as_expr(cancel((c2 - c1)/d))
+    j = cancel(mul(add(c2, -c1), pow(Integer(d), Integer(-1))))
     if not isinstance(j, Integer):
         return None
-    if as_expr(q1.as_expr().subs(k, k + j) - q2.as_expr()).expand() == 0:
-        return int(j)
+    if add(_e(q1.as_expr().subs(k, add(k, j))), -q2.as_expr()).expand() == ZERO:
+        return j.p
     return None
 
 
-def abramov_decomposition(f: Union[Expr, int], k: Symbol) -> RationalDecomposition:
+def abramov_decomposition(f: ExprLike, k: Symbol) -> RationalDecomposition:
     """Abramov's decomposition of a rational function of ``k``.
 
     Examples
     ========
 
-    >>> from sympy.abc import k
+    >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.concrete.rational import abramov_decomposition
+    >>> k = Symbol('k')
     >>> abramov_decomposition(1/(k*(k + 1)), k)
     RationalDecomposition(-1/k, 0)
     >>> abramov_decomposition(1/k, k)
@@ -105,30 +130,30 @@ def abramov_decomposition(f: Union[Expr, int], k: Symbol) -> RationalDecompositi
     >>> abramov_decomposition((2*k + 1)/(k**2*(k + 1)**2), k)
     RationalDecomposition(-1/k**2, 0)
     """
-    expression = as_expr(cancel(sympify(f)))
-    if not expression.is_rational_function(k):
+    expression = cancel(to_expr(f))
+    if expression.is_rational_function(k) is not True:
         raise ValueError("%s is not a rational function of %s" % (expression, k))
     numerator, denominator = expression.as_numer_denom()
     try:
         num, den = Poly(numerator, k), Poly(denominator, k)
-    except PolynomialError:
+    except BasePolynomialError:
         raise ValueError("%s is not a rational function of %s" % (expression, k))
-    quotient, remainder = div(num, den)
-    g: Expr = S.Zero
+    quotient, remainder = num.div(den)
+    g: Expr = ZERO
     # the polynomial part: sum_{i=0}^{k-1} quotient(i)
     if not quotient.is_zero:
         i = Dummy('i', integer=True)
-        summed = summation(quotient.as_expr().subs(k, i), (i, 0, k - 1))
+        summed = summation(_e(quotient.as_expr().subs(k, i)), (i, ZERO, add(k, Integer(-1))))
         if isinstance(summed, Sum):
             raise ValueError("the polynomial part could not be summed")
-        g = as_expr(g + summed)
+        g = add(g, summed)
     if remainder.is_zero:
-        return RationalDecomposition(as_expr(cancel(g)), S.Zero)
+        return RationalDecomposition(cancel(g), ZERO)
     # the shift classes of the irreducible factors of the denominator
-    lead, factors = factor_list(den.as_expr(), k)
-    monic: list[tuple[Poly, int]] = [(Poly(fac, k).monic(), int(m)) for fac, m in factors]
+    _, factors = factor_list(den.as_expr(), k)
+    monic: list[Poly] = [Poly(fac, k).monic() for fac, _ in factors]
     classes: list[list[tuple[Poly, int]]] = []   # (factor, shift from the representative)
-    for factor_poly, _ in monic:
+    for factor_poly in monic:
         placed = False
         for group in classes:
             j = _shift(group[0][0], factor_poly, k)
@@ -139,79 +164,77 @@ def abramov_decomposition(f: Union[Expr, int], k: Symbol) -> RationalDecompositi
         if not placed:
             classes.append([(factor_poly, 0)])
     # partial fractions of the proper part
-    proper = as_expr(remainder.as_expr()/den.as_expr())
-    terms = _partial_terms(proper, k)
+    proper = mul(remainder.as_expr(), pow(den.as_expr(), Integer(-1)))
     h_terms: list[Expr] = []
-    for c, q, m in terms:
+    for c, q, m in _partial_terms(proper, k):
         q_poly = Poly(q, k).monic()
-        scale = as_expr(Poly(q, k).LC())
-        c_ = as_expr(c/scale**m)
+        scale = Poly(q, k).LC()
+        c_ = mul(c, pow(scale, Integer(-m)))
         # the class and the shift of this factor
-        representative: Optional[Poly] = None
-        shift = 0
+        found: Optional[tuple[list[tuple[Poly, int]], int]] = None
         for group in classes:
             for member, j in group:
-                if as_expr(member.as_expr() - q_poly.as_expr()).expand() == 0:
-                    representative = group[0][0]
-                    shift = j
+                if add(member.as_expr(), -q_poly.as_expr()).expand() == ZERO:
+                    found = (group, j)
                     break
-            if representative is not None:
+            if found is not None:
                 break
-        if representative is None:
-            h_terms.append(as_expr(c_/q_poly.as_expr()**m))
+        if found is None:
+            h_terms.append(mul(c_, pow(q_poly.as_expr(), Integer(-m))))
             continue
+        group, shift = found
+        representative = group[0][0]
         # the leftmost member of the class is the target denominator
         least = min(j for _, j in group)
         offset = shift - least
-        target = as_expr(representative.as_expr().subs(k, k + least))
+        target = _e(representative.as_expr().subs(k, add(k, Integer(least))))
         if offset == 0:
-            h_terms.append(as_expr(c_/target**m))
+            h_terms.append(mul(c_, pow(target, Integer(-m))))
             continue
         # c(k)/q(k + offset)^m = c(k - offset)/q(k)^m + Delta(sum_{i=0}^{offset-1} c(k - offset + i)/q(k + i)^m)
-        h_terms.append(as_expr(c_.subs(k, k - offset)/target**m))
-        g = as_expr(g + Add(*[c_.subs(k, k - offset + i)/target.subs(k, k + i)**m for i in range(offset)]))
-    h = as_expr(cancel(Add(*h_terms))) if h_terms else S.Zero
-    return RationalDecomposition(as_expr(cancel(g)), h)
+        h_terms.append(mul(_e(c_.subs(k, add(k, Integer(-offset)))), pow(target, Integer(-m))))
+        g = add(g, *[mul(_e(c_.subs(k, add(k, Integer(i - offset)))),
+                         pow(_e(target.subs(k, add(k, Integer(i)))), Integer(-m))) for i in range(offset)])
+    h = cancel(add(*h_terms)) if h_terms else ZERO
+    return RationalDecomposition(cancel(g), h)
 
 
 def _partial_terms(proper: Expr, k: Symbol) -> list[tuple[Expr, Expr, int]]:
     """``(c(k), q(k), m)`` for the terms ``c/q**m`` of the partial fraction
     expansion of a proper rational function over the rationals."""
-    from sympy.polys.partfrac import apart
-    from sympy.core.power import Pow
-    from sympy.core.mul import Mul
     result: list[tuple[Expr, Expr, int]] = []
-    expanded = as_expr(apart(proper, k, full=False))
-    for term in Add.make_args(expanded):
-        c: Expr = S.One
+    expanded = apart(proper, k, full=False)
+    for term in (expanded.args if isinstance(expanded, Add) else (expanded,)):
+        c: Expr = Integer(1)
         q: Optional[Expr] = None
         m = 1
-        for factor in Mul.make_args(term):
-            factor_ = as_expr(factor)
-            if isinstance(factor_, Pow) and factor_.exp.is_Integer and int(factor_.exp) < 0 and factor_.base.has(k):
-                q = as_expr(factor_.base)
-                m = -int(factor_.exp)
-            elif factor_.has(k) and not factor_.is_polynomial(k):
-                inner = factor_.as_numer_denom()
-                q = as_expr(inner[1])
-                c = as_expr(c*inner[0])
+        for factor_ in (term.args if isinstance(term, Mul) else (term,)):
+            factor_e = _e(factor_)
+            if (isinstance(factor_e, Pow) and isinstance(factor_e.exp, Integer) and factor_e.exp.p < 0
+                    and factor_e.base.has(k)):
+                q = factor_e.base
+                m = -factor_e.exp.p
+            elif factor_e.has(k) and factor_e.is_polynomial(k) is not True:
+                inner = factor_e.as_numer_denom()
+                q = inner[1]
+                c = mul(c, inner[0])
             else:
-                c = as_expr(c*factor_)
+                c = mul(c, factor_e)
         if q is None:
             continue
-        result.append((as_expr(c), q, m))
+        result.append((c, q, m))
     return result
 
 
-def rational_sum(f: Union[Expr, int], limits: Sequence[Union[Symbol, Expr, int]], special_values: bool = True) -> Expr:
+def rational_sum(f: ExprLike, limits: Sequence[ExprLike], special_values: bool = True) -> Expr:
     """``sum_{k=lo}^{hi} f`` for a rational function: the rational part in
-    closed form and the remainder summed by SymPy (polygamma functions)
-    or left as a ``Sum``.
+    closed form and the remainder summed by the summation of the core
+    (polygamma functions) or left as a ``Sum``.
 
     With ``special_values`` (the default) the isolated values of the
     parameters of ``f`` at which the sum is undefined get cases of their
     own, the sum computed again there
-    (:func:`~sympy_extras.concrete.karr.with_sum_special_values`). Where
+    (:func:`~sympy_extras.concrete.karr_sympy.with_sum_special_values`). Where
     two poles of ``f`` merge (``k = -a`` and ``k = -b`` at ``a = b``) the
     partial fractions of the generic sum have the difference of the
     poles, a factor of the resultant of the factors of the denominator,
@@ -224,35 +247,36 @@ def rational_sum(f: Union[Expr, int], limits: Sequence[Union[Symbol, Expr, int]]
     Examples
     ========
 
-    >>> from sympy.abc import k, n
+    >>> from sympy_extras.core import symbols, Integer
     >>> from sympy_extras.concrete.rational import rational_sum
+    >>> k, n, a, b = symbols('k n a b')
     >>> rational_sum(1/(k*(k + 1)), (k, 1, n))
     n/(n + 1)
     >>> rational_sum(1/(k*(k + 2)), (k, 1, n))
     n*(3*n + 5)/(4*(n + 1)*(n + 2))
-    >>> from sympy import N
-    >>> from sympy.abc import a, b
     >>> s = rational_sum(1/((k + a)*(k + b)), (k, 0, n))
     >>> s.args[0].cond
     Eq(a, b)
-    >>> N(s.subs({a: 1, b: 1, n: 2}), 6)     # 1 + 1/4 + 1/9 = 49/36
+    >>> s.subs({a: 1, b: 1, n: 2}).evalf(6)     # 1 + 1/4 + 1/9 = 49/36
     1.36111
     """
-    k_, lo_, hi_ = limits
-    k = k_ if isinstance(k_, Symbol) else Symbol(str(k_))
-    lo, hi = as_expr(sympify(lo_)), as_expr(sympify(hi_))
-    f_ = as_expr(sympify(f))
+    if len(limits) != 3:
+        raise ValueError('the limits are (k, lower, upper)')
+    k_, lo, hi = (to_expr(e) for e in limits)
+    if not isinstance(k_, Symbol):
+        raise TypeError('the index of summation must be a symbol, not %s' % (k_,))
+    k = k_
+    f_ = to_expr(f)
     decomposition = abramov_decomposition(f_, k)
     g, h = decomposition.g, decomposition.h
-    total = as_expr(g.subs(k, hi + 1) - g.subs(k, lo))
-    if h != 0:
-        total = as_expr(total + summation(h, (k, lo, hi)))
-    from sympy.polys.polytools import factor
-    value = as_expr(factor(cancel(total))) if total.is_rational_function() else total
+    total = add(_e(g.subs(k, add(hi, Integer(1)))), -_e(g.subs(k, lo)))
+    if h != ZERO:
+        total = add(total, summation(h, (k, lo, hi)))
+    value = factor(cancel(total)) if total.is_rational_function() is True else total
     if not special_values:
         return value
 
-    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
-        return rational_sum(as_expr(f_.xreplace(point)), (k, lo, hi))
+    def at_point(point: SumPoint) -> Optional[Expr]:
+        return rational_sum(f_.xreplace(point), (k, lo, hi))
 
-    return with_sum_special_values(value, f_, [k], [lo, hi], at_point)
+    return _with_special_values(value, f_, [k], [lo, hi], at_point)

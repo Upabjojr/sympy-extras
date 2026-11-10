@@ -241,7 +241,10 @@ def sums_case(rng: random.Random) -> tuple[str, Check]:
         label = 'rational_sum(%s, (k, 1, n))' % term
 
         def check_rational() -> Optional[str]:
-            closed = attempt(lambda: rational_sum(term, (k, 1, n)), TIMEOUT)
+            from sympy_extras.interop import expr_from_sympy, to_sympy
+            native = attempt(lambda: rational_sum(expr_from_sympy(term), (expr_from_sympy(k), 1,
+                                                                         expr_from_sympy(n))), TIMEOUT)
+            closed = as_expr(to_sympy(native)) if native is not None else None
             if closed is None or closed.has(Sum):
                 return None
             for m in (3, 8, 15):

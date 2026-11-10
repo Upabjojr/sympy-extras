@@ -446,6 +446,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.concrete.rational` is native (breaking: core expressions
+  in and out): `abramov_decomposition` and `rational_sum` on the core's
+  `Poly`, `factor_list`, `apart`, `cancel`, `factor` and `summation`;
+  `RationalDecomposition` is immutable. The same printed results as
+  before on the tests, the docs and 46 compared cases. Only the isolated
+  values of the parameters go through SymPy at the call.
 - `sympy_extras.concrete.delta` and `summations` solve natively the
   equations of their deltas and shifts when they are linear with rational
   coefficients or free of the unknown (`solvers.linsolve.solve_one`,
