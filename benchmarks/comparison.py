@@ -70,9 +70,9 @@ PREAMBLE = """
 from sympy import *
 from sympy.abc import a, b, c, k, m, n, p, q, s, t, u, v, w, x, y, z
 import sympy_extras
-from sympy_extras.assumptions.ask import ask as xask
-from sympy_extras.assumptions.refine import refine as xrefine, simplify as xsimplify
-from sympy_extras.assumptions.resolve import resolve
+from sympy_extras.assumptions.ask_sympy import ask as xask
+from sympy_extras.assumptions.refine_sympy import refine as xrefine, simplify as xsimplify
+from sympy_extras.assumptions.resolve_sympy import resolve
 from sympy_extras.assumptions.solve import solve as xsolve
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists

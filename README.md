@@ -125,20 +125,24 @@ user interface with Python names. Assumptions are written as ordinary
 statements instead of predicates: `x > 0` for `Q.positive(x)`,
 `element(n, S.Integers)` (that is `Contains(n, S.Integers)`) for
 `Q.integer(n)`, intervals and other sets, combined with `&`, `|`, `~`, and
-quantified with `ForAll` and `Exists`. SymPy's `ask`, `refine`, `simplify`
-and SAT solver are the backends, together with the cylindrical algebraic
+quantified with `ForAll` and `Exists`. The `ask`, `refine` and `simplify`
+of the typed core (which ask SymPy what they cannot answer) and SymPy's
+SAT solver are the backends, together with the cylindrical algebraic
 decomposition above for everything polynomial over the reals. `refine` and
 `simplify` decide the signs of the symbols and of the relevant
-subexpressions, hand SymPy's algorithms symbols carrying the equivalent
-assumptions, and rewrite with the CAD what SymPy cannot decide.
+subexpressions, hand the algorithms symbols carrying the equivalent
+assumptions, and rewrite with the CAD what they cannot decide. The
+modules `ask`, `refine` and `resolve` are written on the core (its
+expressions in and out); the examples use their SymPy faces
+`ask_sympy`, `refine_sympy` and `resolve_sympy`.
 
 ```python
 >>> from sympy import S, Abs, sqrt, Eq, log
 >>> from sympy.abc import b, c, x, y, n
->>> from sympy_extras.assumptions.ask import ask
->>> from sympy_extras.assumptions.refine import refine, simplify
+>>> from sympy_extras.assumptions.ask_sympy import ask
+>>> from sympy_extras.assumptions.refine_sympy import refine, simplify
 >>> from sympy_extras.assumptions.facts_sympy import element
->>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.resolve_sympy import resolve
 >>> from sympy_extras.assumptions.sat import satisfiable
 >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 >>> ask(x**2 - 2*x + 1 >= 0, x > 0)
@@ -344,7 +348,7 @@ parameters carrying their assumptions.
 ```python
 >>> from sympy import S, Eq, Mod, exp, sin, cos
 >>> from sympy.abc import a, b, x, y
->>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.resolve_sympy import resolve
 >>> from sympy_extras.assumptions.solve import solve
 >>> from sympy_extras.assumptions.quantifiers_sympy import Exists, ForAll
 >>> resolve(Exists(y, Eq(a*y + b, 0) & (y > 0)))
@@ -513,7 +517,7 @@ decided by virtual substitution and the parity of integer polynomials in
 >>> from sympy import cos, exp, Eq, S, Matrix, sin, mobius, Mod
 >>> from sympy.abc import x, n, p
 >>> from sympy_extras.assumptions.solve import solve
->>> from sympy_extras.assumptions.refine import refine
+>>> from sympy_extras.assumptions.refine_sympy import refine
 >>> from sympy_extras.assumptions.limits import limit_seq
 >>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.solvers.dae import dsolve_dae

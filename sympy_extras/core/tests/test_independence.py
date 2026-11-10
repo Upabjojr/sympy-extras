@@ -197,3 +197,32 @@ def test_native_analysis_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ANALYSIS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ASK = r'''
+import sys
+from sympy_extras.core import symbols, Q, Eq, sqrt
+from sympy_extras.functions import Abs, sign, exp
+from sympy_extras.sets import Integers, Reals
+from sympy_extras.assumptions.facts import element
+from sympy_extras.assumptions.ask import ask
+from sympy_extras.assumptions.refine import refine
+from sympy_extras.assumptions.resolve import resolve
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+assert ask(x**3 > 0, x > 0) is True and ask(x*y > 0, (x > 0) & (y < 0)) is False
+assert ask(Q.positive(x), Eq(x, 3)) is True and ask(x + y > 0, (x > 0) & (y > 0)) is True
+assert ask(element(x + 1, Integers), element(x, Integers)) is True and ask(exp(x) > 0, element(x, Reals)) is True
+assert str(refine(Abs(x) + sqrt(x**2), x > 0)) == '2*x' and str(refine(sign(x*y), (x > 0) & (y < 0))) == '-1'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_ask_refine_resolve_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.assumptions.ask`, ``refine`` and
+    ``resolve`` does not load SymPy, nor do the questions answered by the
+    predicates (the CAD, virtual substitution and the structure theorem go
+    through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ASK], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

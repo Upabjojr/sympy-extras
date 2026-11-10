@@ -82,7 +82,7 @@ space is needed, so parameters do not slow it down.
 
 ```python
 >>> from sympy import Eq, symbols
->>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.resolve_sympy import resolve
 >>> from sympy_extras.assumptions.quantifiers_sympy import Exists, ForAll
 >>> from sympy_extras.polys.virtual_substitution import eliminate_linear
 >>> a, b, x, y, z = symbols('a b x y z')

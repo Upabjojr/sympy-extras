@@ -62,9 +62,9 @@ Examples
 
 >>> from sympy import Abs, sqrt, S, Eq
 >>> from sympy.abc import x, y, n
->>> from sympy_extras.assumptions.ask import ask
->>> from sympy_extras.assumptions.refine import refine
->>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.ask_sympy import ask
+>>> from sympy_extras.assumptions.refine_sympy import refine
+>>> from sympy_extras.assumptions.resolve_sympy import resolve
 >>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 >>> ask(x**2 - 2*x + 1 >= 0, x > 0)

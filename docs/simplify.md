@@ -147,8 +147,8 @@ for every `x`, the factor `2` being positive.
 
 ```python
 >>> from sympy import Eq
->>> from sympy_extras.assumptions.ask import ask
->>> from sympy_extras.assumptions.refine import simplify
+>>> from sympy_extras.assumptions.ask_sympy import ask
+>>> from sympy_extras.assumptions.refine_sympy import simplify
 >>> ask(Eq(4*atan(Rational(1, 5)) - atan(Rational(1, 239)), pi/4))
 True
 >>> ask(Eq(log(x**2), 2*log(x)), x > 0), ask(Eq(log(x**2), 2*log(x)))

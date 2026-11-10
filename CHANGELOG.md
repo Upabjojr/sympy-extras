@@ -539,6 +539,50 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.assumptions.ask`, `sympy_extras.assumptions.refine` and
+  `sympy_extras.assumptions.resolve` are native (**breaking**: core
+  expressions, Booleans, sets and the native `Facts` in and out; none of
+  them imports SymPy). `ask` asks the core's `ask` (which asks SymPy's,
+  through the bridge, what it cannot answer), decides the reality of
+  roots, logarithms and inverse functions, and calls the native
+  `analysis.decide_relational` and `bounds.polynomial_abstraction`;
+  `refine` and `simplify` abstract the symbols and subexpressions into
+  dummies of the core and apply the core's automatic evaluation, its
+  `refine` and the native `simplify`, `factor_list`, `posify`,
+  `powsimp`, `powdenest`, `logcombine` and `expand_log`; `resolve` puts
+  the formula in prenex form and simplifies the result under the
+  assumptions natively. What is not ported is called at run time through
+  the new faces: the CAD's `truth_tables` and `quantifier_elimination`,
+  virtual substitution (`is_linear_in`, `linear_quantifier_elimination`,
+  `virtual_substitution_elimination`, `with_sides`), Cooper's algorithm
+  (`is_presburger`, `presburger_quantifier_elimination`), comprehensive
+  Gröbner systems (`complex_quantifier_elimination`, `reduce_complex`),
+  the structure theorem's `ElementaryTower` (the zero test of `ask`, the
+  proofs of `simplify`), `integrals.conditions.sample_values` and
+  `_numeric.reliable_value`, SymPy's `simplify` of a Boolean formula
+  (`simplify_logic` and the rules of the relations) and SymPy's
+  `factor_list` of a polynomial with coefficients which are not rational.
+  The new faces `assumptions.ask_sympy`, `assumptions.refine_sympy` and
+  `assumptions.resolve_sympy` keep the old API on SymPy objects (also the
+  helpers `Assumptions`, `_facts`, `_evaluate`, `_evaluate_atom`,
+  `_linear_ask`, `_clearly_not_zero`, `_Refiner`, `_refine_boolean`);
+  **import them instead of the old modules**: `from
+  sympy_extras.assumptions.ask_sympy import ask`, `refine` and `simplify`
+  from `.refine_sympy`, `resolve` from `.resolve_sympy`. `sat`, `limits`,
+  `solve`, the integrals, `concrete.convergence`, `simplify.structure`,
+  the docs and the benchmarks use the faces. The face's `simplify` takes
+  `ratio`, `rational`, `inverse` and `doit` as keyword arguments (no
+  `measure` and no other keyword of SymPy's `simplify` any more). The
+  same printed results and classes as before through the faces on 98
+  extra calls, the 45 doctest examples and the 439 calls of the tests of
+  the three modules; through the native functions with the inputs
+  converted, the same printed results (the classes of the core differ:
+  `Integer` for `0` and `1`, `Gt` for `StrictGreaterThan`, ...).
+- Fixed in the core on the way: `sqrt(a)` of a symbol not known to be a
+  number was not negative (`is_extended_negative` `False`); as in SymPy's
+  `Pow._eval_is_extended_negative` that needs a complex or extended real
+  base (`None` otherwise). Asked through the core's `ask`, it made
+  `solve(x**2 - a, x, x > 0)` drop `-sqrt(a)`.
 - `sympy_extras.assumptions.intervals` and `sympy_extras.assumptions.analysis`
   are native (**breaking**: core expressions, symbols, sets and the native
   `Facts` in and out; neither imports SymPy). The interval arithmetic,

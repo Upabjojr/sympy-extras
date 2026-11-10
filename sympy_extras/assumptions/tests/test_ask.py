@@ -7,7 +7,7 @@ from sympy.testing.pytest import raises
 from sympy_extras._testing import untyped
 from sympy.abc import x, y
 
-from sympy_extras.assumptions.ask import ask
+from sympy_extras.assumptions.ask_sympy import ask
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 
@@ -142,7 +142,7 @@ def test_ask_inputs() -> None:
 def test_ask_linear() -> None:
     # linear formulas are decided by virtual substitution (Loos-Weispfenning)
     from sympy.abc import a, b, c, d, e
-    from sympy_extras.assumptions.ask import _linear_ask
+    from sympy_extras.assumptions.ask_sympy import _linear_ask
     assert ask(a + b + c + d + e < 5, (a < 1) & (b < 1) & (c < 1) & (d < 1) & (e < 1)) is True
     assert ask(2*a - b + c > 0, (a > b) & (b > c) & (c > 0)) is True
     assert ask(x + y > 3, (x < 1) & (y < 1)) is False
@@ -220,7 +220,7 @@ def test_the_structure_theorem_does_not_call_itself() -> None:
     # the question comes back
     from sympy import exp, log, sqrt
     import importlib
-    from sympy_extras.assumptions.ask import ask as ask_
+    from sympy_extras.assumptions.ask_sympy import ask as ask_
     module = importlib.import_module('sympy_extras.assumptions.ask')     # the package exports the function ask
     assert ask_(Eq(log((exp(x) + 1) * (exp(x) + 2)), log(exp(x) + 1) + log(exp(x) + 2)), x > 0) is True
     assert ask_(Eq(sqrt((exp(x) + 1)**2), exp(x) + 1), x > 0) is True

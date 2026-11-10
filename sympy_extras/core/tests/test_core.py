@@ -160,6 +160,11 @@ def test_assumptions() -> None:
     assert (2*n + 1).is_odd and (n**2).is_nonnegative and (n**2 + 1).is_positive and (p**2).is_positive
     assert (p*Symbol('q', negative=True)).is_negative and (-p).is_negative and (p + 1).is_positive
     assert (x - x).is_zero and (0*x).is_zero and Integer(0).is_zero and Integer(7).is_prime
+    # sqrt(x) of a symbol not known to be a number was not negative (False),
+    # SymPy's Pow._eval_is_extended_negative says so only for a complex or
+    # extended real base (None here): solve(x**2 - a, x, x > 0) lost -sqrt(a)
+    assert sqrt(x).is_extended_negative is None and sqrt(x).is_negative is None
+    assert sqrt(Symbol('c', complex=True)).is_extended_negative is False and sqrt(p).is_negative is False
     assert pi.is_positive and pi.is_irrational and (pi + 2).is_rational is False and I.is_real is False
     assert I.is_imaginary and (2*I).is_imaginary and (1 + I).is_real is False and (1 + I).is_zero is False
     assert oo.is_finite is False and oo.is_extended_real and oo.is_real is False and zoo.is_finite is False

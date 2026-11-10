@@ -233,7 +233,7 @@ def test_an_enclosing_limit_is_not_a_slow_question() -> None:
     import time
     from sympy_extras._timeout import attempt
     from sympy.logic.boolalg import Boolean
-    from sympy_extras.assumptions.ask import Assumptions, ask
+    from sympy_extras.assumptions.ask_sympy import Assumptions, ask
     from sympy_extras.integrals import residues
 
     def slow(q: Boolean, assumptions: Assumptions) -> Optional[bool]:

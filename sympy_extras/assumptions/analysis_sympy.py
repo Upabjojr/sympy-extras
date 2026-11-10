@@ -235,8 +235,8 @@ def decide_relational(atom: Relational, facts: Facts) -> Truth:
 
     >>> from sympy import sin, exp, pi, Abs
     >>> from sympy.abc import x
-    >>> from sympy_extras.assumptions.ask import ask
-    >>> from sympy_extras.assumptions.refine import refine
+    >>> from sympy_extras.assumptions.ask_sympy import ask
+    >>> from sympy_extras.assumptions.refine_sympy import refine
     >>> ask(sin(x) > 0, (x > 0) & (x < pi))
     True
     >>> ask(exp(x) > 2, x > 1)

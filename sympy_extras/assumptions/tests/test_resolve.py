@@ -5,7 +5,7 @@ from sympy import (S, Q, Eq, Ne, And, Or, Not, Implies, symbols, Interval,
 from sympy.testing.pytest import raises
 from sympy.abc import a, b, c, x, y, z
 
-from sympy_extras.assumptions.resolve import resolve
+from sympy_extras.assumptions.resolve_sympy import resolve
 from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.polys.cad import decide
@@ -90,7 +90,7 @@ def test_a_parameter_in_a_denominator_is_cleared() -> None:
     # polynomial; x/a = 1 is x - a = 0 with a != 0.
     from sympy import Eq
     from sympy.abc import a, x
-    from sympy_extras.assumptions.resolve import resolve
+    from sympy_extras.assumptions.resolve_sympy import resolve
     from sympy_extras.assumptions.quantifiers_sympy import Exists, ForAll
     condition = resolve(Exists(x, Eq(x/a, 1)))          # a != 0, however written
     assert condition.subs(a, 0) is false
@@ -104,7 +104,7 @@ def test_a_system_of_linear_equalities_is_a_chain_of_substitutions() -> None:
     # substitution and came back True; an equality pins the variable and
     # needs no test points.
     from sympy import Symbol, Eq, And, Implies, linsolve
-    from sympy_extras.assumptions.resolve import resolve
+    from sympy_extras.assumptions.resolve_sympy import resolve
     from sympy_extras.assumptions.quantifiers_sympy import ForAll
     from sympy_extras._timeout import attempt
     vs = [Symbol('v%d' % i) for i in range(5)]

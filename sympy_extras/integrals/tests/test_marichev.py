@@ -11,7 +11,7 @@ from sympy.testing.pytest import raises
 from sympy_extras._testing import untyped
 from sympy_extras._typing import ExprLike, as_expr
 from sympy_extras.assumptions.facts_sympy import element
-from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.integrals import marichev
 from sympy_extras.integrals.conditions import ConditionalValue, numerical_verdict, numerically_equal
 from sympy_extras.integrals.marichev import (mellin_integrate, evaluate_quotient, reduce_positive_powers,

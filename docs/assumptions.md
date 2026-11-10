@@ -29,6 +29,18 @@ Predicates of `sympy.assumptions` such as `Q.prime(n)` are still accepted
 wherever an assumption is expected, for the facts which have no
 mathematical notation.
 
+The examples below use SymPy objects, through the modules ending in
+`_sympy` (`ask_sympy`, `refine_sympy`, `resolve_sympy`, `facts_sympy`,
+`quantifiers_sympy`, `context_sympy`). The modules without the suffix
+(`ask`, `refine`, `resolve`, `facts`, `quantifiers`, `context`,
+`analysis`, `intervals`, `bounds`) are written on the typed core of
+`sympy_extras.core` and import no SymPy: they take and return its
+expressions, Booleans and sets. They call SymPy at run time, through the
+faces, only for what is not ported: the cylindrical algebraic
+decomposition, virtual substitution, Cooper's algorithm, comprehensive
+Gröbner systems, the structure theorem's proofs, SymPy's `simplify` of
+Boolean formulas, and the predicates the core's `ask` cannot answer.
+
 ## Conventions
 
 - **An inequality is a statement about real numbers.** `x > y` says that
@@ -98,8 +110,8 @@ variables.
 ```python
 >>> from sympy import S, sin, exp, log, Abs, Max, pi
 >>> from sympy.abc import x
->>> from sympy_extras.assumptions.ask import ask
->>> from sympy_extras.assumptions.refine import refine
+>>> from sympy_extras.assumptions.ask_sympy import ask
+>>> from sympy_extras.assumptions.refine_sympy import refine
 >>> ask(sin(x) > 0, (x > 0) & (x < pi))
 True
 >>> refine(Abs(exp(x) - 2) + Abs(log(x)), x > 1)
@@ -170,7 +182,7 @@ integration runs with 3.
 ```python
 >>> from sympy import S, Eq, Q, Abs, sqrt, sign, Max, floor, Piecewise
 >>> from sympy.abc import a, b, c, x, y, n
->>> from sympy_extras.assumptions.ask import ask
+>>> from sympy_extras.assumptions.ask_sympy import ask
 >>> from sympy_extras.assumptions.facts_sympy import element
 >>> ask(x**3 > 0, x > 0)
 True
@@ -208,7 +220,7 @@ input.
 
 ```python
 >>> from sympy import log, exp, atan2, gamma
->>> from sympy_extras.assumptions.refine import refine, simplify
+>>> from sympy_extras.assumptions.refine_sympy import refine, simplify
 >>> refine(Abs(x - 1) + sqrt(x**2), x > 2)
 2*x - 1
 >>> refine(sqrt(x**2 - 2*x + 1) + log(x**2), x > 1)
@@ -271,7 +283,7 @@ predicates implied by the assumptions.
 
 ```python
 >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
->>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.resolve_sympy import resolve
 >>> resolve(ForAll(x, x**2 + b*x + c > 0))
 b**2 < 4*c
 >>> resolve(Exists(x, Eq(x**2 + a*x + b, 0)))

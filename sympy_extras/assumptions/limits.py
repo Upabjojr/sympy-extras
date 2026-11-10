@@ -49,9 +49,9 @@ from sympy_extras.settings import settings
 #: cannot)
 Engine = Callable[[Expr, Symbol], Expr]
 
-from .ask import Assumptions, _facts, _evaluate
+from .ask_sympy import Assumptions, _facts, _evaluate
 from .facts_sympy import Facts, normalize
-from .refine import _Refiner
+from .refine_sympy import _Refiner
 from .sat import satisfiable
 
 __all__ = ['limit', 'limit_seq', 'series']
@@ -529,7 +529,7 @@ def _piecewise(pieces: list[tuple[Expr, Boolean]]) -> Expr:
 def _condition(formula: Boolean) -> Boolean:
     """A condition on the parameters simplified over the reals when it is
     polynomial (``(a > 0) & (a > 1)`` is ``a > 1``)."""
-    from .resolve import resolve
+    from .resolve_sympy import resolve
     simplified = attempt(lambda: resolve(formula), settings.timeout)
     return simplified if isinstance(simplified, Boolean) else formula
 

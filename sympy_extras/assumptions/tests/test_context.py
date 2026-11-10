@@ -5,8 +5,8 @@ from sympy.assumptions import global_assumptions as sympy_global_assumptions
 from sympy.abc import x, y
 
 from sympy_extras.assumptions.context_sympy import assuming, global_assumptions, AssumptionsContext
-from sympy_extras.assumptions.ask import ask
-from sympy_extras.assumptions.refine import refine
+from sympy_extras.assumptions.ask_sympy import ask
+from sympy_extras.assumptions.refine_sympy import refine
 
 
 def test_assumptions_context() -> None:

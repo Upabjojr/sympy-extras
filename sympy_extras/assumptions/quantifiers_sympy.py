@@ -133,7 +133,7 @@ class ForAll(Quantifier):
 
     >>> from sympy.abc import b, c, x
     >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll
-    >>> from sympy_extras.assumptions.resolve import resolve
+    >>> from sympy_extras.assumptions.resolve_sympy import resolve
     >>> f = ForAll(x, x**2 + b*x + c > 0)
     >>> f
     ForAll(x, b*x + c + x**2 > 0)
@@ -154,7 +154,7 @@ class Exists(Quantifier):
     >>> from sympy import Eq
     >>> from sympy.abc import a, b, x
     >>> from sympy_extras.assumptions.quantifiers_sympy import Exists
-    >>> from sympy_extras.assumptions.resolve import resolve
+    >>> from sympy_extras.assumptions.resolve_sympy import resolve
     >>> resolve(Exists(x, Eq(x**2 + a*x + b, 0)))
     a**2 >= 4*b
     >>> resolve(Exists([a, b], Eq(x**2 + a*x + b, 0) & (a > 0)))

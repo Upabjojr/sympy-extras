@@ -80,7 +80,7 @@ from sympy.simplify.fu import TR8
 from sympy.simplify.simplify import logcombine, simplify
 
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from .conditions import ConditionalValue
 from .mellin import monomial
 

@@ -10,7 +10,7 @@ from sympy.core.expr import Expr
 from sympy_extras._typing import as_expr
 from sympy.testing.pytest import raises
 
-from sympy_extras.assumptions.resolve import resolve
+from sympy_extras.assumptions.resolve_sympy import resolve
 from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 from sympy_extras.polys.ideals import Ideal
 from sympy_extras.polys.comprehensive import (comprehensive_groebner_system, exists_complex,

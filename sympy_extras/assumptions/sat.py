@@ -51,7 +51,7 @@ from sympy_extras._timeout import attempt
 
 from typing import Literal, overload
 
-from .ask import Assumptions, _facts
+from .ask_sympy import Assumptions, _facts
 from .facts_sympy import Facts
 from .facts_sympy import (normalize, to_predicates, to_polynomial,
     predicates_consistent, _consequences, _is_atom, _REAL_SETS)
@@ -342,7 +342,7 @@ def satisfiable(formula: Union[Boolean, bool], assumptions: Assumptions = None,
     """
     formula_ = as_boolean(formula)
     if formula_.has(Quantifier):
-        from .resolve import resolve
+        from .resolve_sympy import resolve
         formula_ = resolve(formula_, assumptions=assumptions, domain=domain)
     facts = _facts(assumptions, domain, formula_.free_symbols)
     formula_ = normalize(formula_)
@@ -460,7 +460,7 @@ def find_instance(formula: Union[Boolean, bool], variables: Union[Symbol, Sequen
     variables = [variables] if isinstance(variables, Symbol) else [as_symbol(v) for v in variables]
     domain = sympify(domain)
     if formula_.has(Quantifier):
-        from .resolve import resolve
+        from .resolve_sympy import resolve
         formula_ = resolve(formula_, assumptions=assumptions, domain=S.Reals)
     facts = _facts(assumptions, None, set(variables))
     formula_ = normalize(And(formula_, facts.formula))

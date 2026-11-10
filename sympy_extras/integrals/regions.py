@@ -246,10 +246,10 @@ from sympy.solvers.simplex import linprog
 from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
-from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import element, normalize
 from sympy_extras.assumptions.solve import solve
-from sympy_extras.assumptions.refine import refine
+from sympy_extras.assumptions.refine_sympy import refine
 from sympy_extras.polys.cad.lifting import CAD, CADCell, cylindrical_algebraic_decomposition
 from sympy_extras.polys.cad.qe import _compile
 from sympy_extras.polys.cad.samplepoints import RealAlgebraic, compare_real

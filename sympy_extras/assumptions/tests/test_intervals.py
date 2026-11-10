@@ -8,8 +8,8 @@ from sympy.abc import x, y, z
 def _box(**ranges: tuple[object, object]) -> Box:
     return {{'x': x, 'y': y, 'z': z}[k]: (as_expr(lo), as_expr(hi)) for k, (lo, hi) in ranges.items()}
 
-from sympy_extras.assumptions.ask import ask
-from sympy_extras.assumptions.refine import refine, simplify
+from sympy_extras.assumptions.ask_sympy import ask
+from sympy_extras.assumptions.refine_sympy import refine, simplify
 from sympy_extras.assumptions.analysis_sympy import signs_multivariate, box_of
 from sympy_extras.assumptions.bounds_sympy import polynomial_abstraction
 from sympy_extras.assumptions.facts_sympy import Facts

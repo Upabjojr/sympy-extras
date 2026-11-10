@@ -634,7 +634,9 @@ def pow_facts(base: Expr, exp: Expr) -> Facts:
             facts.setdefault('extended_real', False)
     # PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_is_extended_negative
     negative: Truth = None
-    if isinstance(exp, Rational) and exp.p == 1 and exp.q == 2:
+    if isinstance(exp, Rational) and exp.p == 1 and exp.q == 2 and (b.get('complex') or b.get('extended_real')):
+        # only for a base known to be a number: sqrt(a) of a plain symbol
+        # is not known to be non-negative (SymPy's is_extended_negative is None)
         negative = False
     elif b.get('extended_negative'):
         if e.get('odd') and b.get('finite'):

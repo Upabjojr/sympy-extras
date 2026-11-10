@@ -202,7 +202,7 @@ def test_real_variables_do_not_make_a_complex_expression_real() -> None:
     # real is not real, and the argument condition of a Mellin kernel
     # with the complex scale (a + I b)**2 was rewritten as (a + I b)**2 > 0
     from sympy import I
-    from sympy_extras.assumptions.ask import ask
+    from sympy_extras.assumptions.ask_sympy import ask
     a, b = Symbol('a', positive=True), Symbol('b', positive=True)
     assert ask(Contains((a + I * b)**2, S.Reals)) is None
     assert ask(Contains(a + I * b, S.Reals)) is False

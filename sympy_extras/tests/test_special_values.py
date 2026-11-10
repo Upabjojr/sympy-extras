@@ -13,7 +13,7 @@ from sympy_extras._special_values import (Point, condition_point, defined_proble
 from sympy_extras._timeout import time_limit
 from sympy_extras.settings import configure, settings
 from sympy_extras._typing import as_expr
-from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.assumptions.ask_sympy import Assumptions
 
 a, b, c, k, y, x = symbols('a b c k y x')
 p = symbols('p', positive=True)

@@ -38,9 +38,9 @@ from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 
-from .ask import Assumptions, _facts, _evaluate
+from .ask_sympy import Assumptions, _facts, _evaluate
 from .facts_sympy import Facts, normalize, conjuncts, to_polynomial
-from .refine import _Refiner
+from .refine_sympy import _Refiner
 from .analysis_sympy import domain_of, certified_sign, _pieces
 
 __all__ = ['solve']

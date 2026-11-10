@@ -10,7 +10,7 @@ from sympy.core.basic import Basic
 from sympy.logic.boolalg import Boolean
 from sympy.testing.pytest import raises
 
-from sympy_extras.assumptions.resolve import resolve
+from sympy_extras.assumptions.resolve_sympy import resolve
 from sympy_extras.assumptions.solve import solve
 from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 from sympy_extras.solvers.integers import (hermite_normal_form_with_transform,

@@ -164,9 +164,14 @@ sympy_extras/
         analysis.py          signs beyond polynomials: certified_sign, sign_on, domain_of, decide_relational (native;
                              continuous_domain/solveset of non-rational expressions and the CAD through analysis_sympy)
         analysis_sympy.py    the SymPy face of analysis, and the steps which stay on SymPy (the *_of_core functions)
-        ask.py               ask(): sympy.ask first, then the CAD
-        refine.py            refine(), simplify(): sympy.refine plus CAD-decided handlers
-        resolve.py           resolve(): quantifier elimination through the CAD
+        ask.py               ask(): the core's ask first, then the CAD (native; the CAD, virtual substitution,
+                             the structure theorem and the sample points through ask_sympy)
+        ask_sympy.py         the SymPy face of ask, and the steps which stay on SymPy (the *_of_core functions)
+        refine.py            refine(), simplify(): the core's refine and simplify plus CAD-decided handlers (native)
+        refine_sympy.py      the SymPy face of refine (_Refiner too), SymPy's simplify of Booleans, the proofs
+        resolve.py           resolve(): quantifier elimination over R, Z, C (native)
+        resolve_sympy.py     the SymPy face of resolve, and the eliminations (CAD, virtual substitution, Cooper,
+                             comprehensive Groebner systems) which stay on SymPy
         sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check
         tests/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)

@@ -1,50 +1,93 @@
-"""Truth values of statements under assumptions."""
+"""Truth values of statements under assumptions.
+
+The statements and the assumptions are Booleans of the core
+(:mod:`sympy_extras.core.logic`): relations, memberships in the sets of
+:mod:`sympy_extras.sets`, predicates of the core's ``Q``, their Boolean
+combinations and the quantified formulas of
+:mod:`sympy_extras.assumptions.quantifiers`.
+
+The module works on the objects of the core and imports no SymPy:
+:mod:`sympy_extras.assumptions.ask_sympy` is its face on SymPy objects.
+The steps which are not ported go through SymPy at run time (the face
+holds them, the functions ending in ``_of_core``): the cylindrical
+algebraic decomposition (:mod:`sympy_extras.polys.cad`) and virtual
+substitution (:mod:`sympy_extras.polys.virtual_substitution`), both
+written on SymPy's polynomials, the zero test of the structure theorem
+(:mod:`sympy_extras.simplify.structure`), and the sample points and the
+reliable numerical values with which a difference is shown not to be
+identically zero (:mod:`sympy_extras.integrals.conditions`,
+:mod:`sympy_extras._numeric`). The questions about predicates go to the
+core's :func:`~sympy_extras.core.ask.ask` (which asks SymPy's ``ask``,
+through the bridge, what it cannot answer).
+"""
 from __future__ import annotations
 
+from fractions import Fraction
 from typing import Iterable, Optional, Union
 
-from sympy.assumptions import Q, ask as _sympy_ask
-from sympy.assumptions.assume import AppliedPredicate
-from sympy.core.add import Add
-from sympy.core.basic import Basic
-from sympy.core.expr import Expr
-from sympy.core.function import Function
-from sympy.core.mul import Mul
-from sympy.core.numbers import Rational
-from sympy.core.power import Pow
-from sympy.core.singleton import S
-from sympy.sets.contains import Contains
-from sympy.core.relational import Relational, Eq, Ne, Gt, Lt, Ge, Le
-from sympy.core.symbol import Symbol
-from sympy.functions.elementary.complexes import Abs
-from sympy.functions.elementary.exponential import exp, log
-from sympy.functions.elementary.hyperbolic import sinh, cosh, tanh, asinh, acosh, atanh
-from sympy.functions.elementary.integers import floor, ceiling
-from sympy.functions.elementary.trigonometric import sin, cos, tan, asin, acos, atan
-from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or,
-    Not, Implies, Equivalent, Xor, ITE, true, false)
-from sympy.sets.sets import Set
+from sympy_extras.core.add import Add
+from sympy_extras.core.ask import Q, ask as _core_ask
+from sympy_extras.core.assume import AppliedPredicate
+from sympy_extras.core.basic import Basic, preorder_traversal
+from sympy_extras.core.expr import Expr, as_expr
+from sympy_extras.core.function import Application
+from sympy_extras.core.logic import (ITE, And, Boolean, BooleanAtom, BooleanFalse, BooleanLike, BooleanTrue,
+    Equivalent, Implies, Not, Or, Xor, and_, not_, or_, to_boolean)
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import E, Rational, number_from_fraction, pi
+from sympy_extras.core.power import Pow
+from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.functions.elementary.complexes import Abs
+from sympy_extras.functions.elementary.exponential import Exp, Log
+from sympy_extras.functions.elementary.hyperbolic import Acosh, Asinh, Atanh, Cosh, Sinh, Tanh
+from sympy_extras.functions.elementary.integers import Ceiling, Floor
+from sympy_extras.functions.elementary.miscellaneous import MinMaxBase
+from sympy_extras.functions.elementary.piecewise import Piecewise
+from sympy_extras.functions.elementary.trigonometric import Acos, Asin, Atan, Cos, Sin, Tan
+from sympy_extras.sets.sets import Contains, Reals, Set
 
-from sympy_extras._numeric import reliable_value
-from sympy_extras._typing import Truth, as_boolean, as_expr, free_symbols, sorted_symbols
+from .context import global_assumptions
+from .facts import Facts, _predicate_of_atom, element, normalize, to_polynomial
+from .quantifiers import Prefix, Quantifier
 
-from sympy_extras.polys.cad import truth_tables
-from sympy_extras.polys.virtual_substitution import is_linear_in, linear_quantifier_elimination
-from sympy_extras._typing import QuantifierPrefix
+__all__ = ['ask', 'Assumptions', 'Truth']
 
-from .context_sympy import global_assumptions
-from .facts_sympy import Facts, normalize, to_polynomial, _predicate_of_atom
-from .quantifiers_sympy import Quantifier
+#: a truth value of three states
+Truth = Optional[bool]
 
-__all__ = ['ask']
+#: assumptions as the functions take them: one statement or several
+Assumptions = Union[None, BooleanLike, Iterable[BooleanLike]]
 
 
-Assumptions = Union[None, Boolean, bool, Iterable[Union[Boolean, bool]]]
+def _symbols(e: Basic) -> set[Symbol]:
+    """The free symbols which are plain symbols."""
+    return {s for s in e.free_symbols if isinstance(s, Symbol)}
+
+
+def _sorted_symbols(symbols: Iterable[Symbol]) -> list[Symbol]:
+    return sorted(symbols, key=lambda s: s.name)
+
+
+def _is_function(e: Basic) -> bool:
+    """Whether ``e`` is an applied function as SymPy's ``Function`` sees
+    it: ``Max`` and ``Min`` are not, ``Piecewise`` and ``Mod`` are."""
+    return (isinstance(e, Application) and not isinstance(e, MinMaxBase)) or isinstance(e, Piecewise)
+
+
+def _has_function(e: Basic) -> bool:
+    return any(_is_function(node) for node in preorder_traversal(e))
+
+
+def _has_fractional_power(e: Basic) -> bool:
+    """Whether ``e`` has a power whose exponent is not known to be an
+    integer."""
+    return any(isinstance(p, Pow) and not p.exp.is_integer for p in preorder_traversal(e))
 
 
 def _facts(assumptions: Assumptions, domain: Optional[Set], symbols: Iterable[Basic]) -> Facts:
     """The facts from the global assumptions and the explicit ones."""
-    items: list[Union[Boolean, bool]] = list(global_assumptions)
+    items: list[BooleanLike] = list(global_assumptions)
     if isinstance(assumptions, (Boolean, bool)):
         items.append(assumptions)
     elif assumptions is not None:
@@ -61,16 +104,17 @@ def _cad_ask(formula: Boolean, facts: Facts) -> Truth:
     poly = to_polynomial(formula, facts.real)
     if poly is None:
         return None
-    if isinstance(poly, (BooleanTrue, BooleanFalse)):
-        return bool(poly)
+    if isinstance(poly, BooleanAtom):
+        return isinstance(poly, BooleanTrue)
     premise = facts.polynomial
-    gens = sorted_symbols(free_symbols(poly) | free_symbols(premise))
+    gens = _sorted_symbols(_symbols(poly) | _symbols(premise))
     if not gens:
-        return bool(poly)
+        return isinstance(poly, BooleanTrue)
     linear = _linear_ask(poly, premise, gens)
     if linear is not None:
         return linear
-    _, (holds, values) = truth_tables([premise, poly], gens)
+    from .ask_sympy import truth_tables_of_core
+    holds, values = truth_tables_of_core([premise, poly], gens)
     relevant = [v for h, v in zip(holds, values) if h]
     if not relevant:
         # the assumptions have no real solution: nothing can be said
@@ -88,37 +132,44 @@ def _linear_ask(poly: Boolean, premise: Boolean, gens: list[Symbol]) -> Truth:
     under the premise when ``premise & ~poly`` has no real solution, fails
     when ``premise & poly`` has none; ``None`` otherwise, or when the
     formula is not linear (the CAD decides then)."""
-    combined = And(premise, poly)
-    if not all(is_linear_in(combined, g) for g in gens):
+    from .ask_sympy import is_linear_in_of_core, linear_quantifier_elimination_of_core
+    combined = and_(premise, poly)
+    if not all(is_linear_in_of_core(combined, g) for g in gens):
         return None
-    prefix: QuantifierPrefix = [('exists', g) for g in gens]
-    counterexamples, rest = linear_quantifier_elimination(And(premise, Not(poly)), prefix)
-    examples, rest_ = linear_quantifier_elimination(combined, prefix)
-    if rest or rest_ or not isinstance(counterexamples, (BooleanTrue, BooleanFalse)) \
-            or not isinstance(examples, (BooleanTrue, BooleanFalse)):
+    prefix: Prefix = [('exists', g) for g in gens]
+    counterexamples, rest = linear_quantifier_elimination_of_core(and_(premise, not_(poly)), prefix)
+    examples, rest_ = linear_quantifier_elimination_of_core(combined, prefix)
+    if rest or rest_ or not isinstance(counterexamples, BooleanAtom) or not isinstance(examples, BooleanAtom):
         return None
-    if examples is false and counterexamples is false:
+    if isinstance(examples, BooleanFalse) and isinstance(counterexamples, BooleanFalse):
         # the premise has no real solution: nothing can be said
         return None
-    if counterexamples is false:
+    if isinstance(counterexamples, BooleanFalse):
         return True
-    if examples is false:
+    if isinstance(examples, BooleanFalse):
         return False
     return None
 
 
+def _predicate_ask(predicate: Boolean, facts: Facts) -> Truth:
+    """The core's ``ask`` of a predicate under the predicates of the
+    facts, ``None`` when it gives up."""
+    try:
+        return _core_ask(predicate, facts.predicates)
+    except (ValueError, TypeError, AttributeError, AssertionError):
+        # AssertionError: SymPy 1.14's LRA solver (asked through the
+        # bridge) asserts on a term without symbols in the encoded CNF
+        # (lra_theory.py line 319)
+        return None
+
+
 def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
-    if isinstance(atom, (BooleanTrue, BooleanFalse)):
-        return bool(atom)
+    if isinstance(atom, BooleanAtom):
+        return isinstance(atom, BooleanTrue)
     if isinstance(atom, (Gt, Lt, Ge, Le)):
         # an inequality is false when its sides are not both real
-        try:
-            if _sympy_ask(Q.real(atom.lhs - atom.rhs), facts.predicates) is False:
-                return False
-        except (ValueError, TypeError, AttributeError, AssertionError):
-            # AssertionError: SymPy 1.14's LRA solver asserts on a term
-            # without symbols in the encoded CNF (lra_theory.py line 319)
-            pass
+        if _predicate_ask(Q.real(atom.lhs - atom.rhs), facts) is False:
+            return False
     membership = _real_membership(atom)
     if membership is not None:
         # SymPy's ``ask(Q.real(sqrt(a - 2)), Q.positive(a))`` is True: the
@@ -130,23 +181,20 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
             return None
     predicate = _predicate_of_atom(atom)
     if predicate is not None:
-        try:
-            value = _sympy_ask(predicate, facts.predicates)
-        except (ValueError, TypeError, AttributeError, AssertionError):
-            value = None
+        value = _predicate_ask(predicate, facts)
         if value is not None:
             return value
     if isinstance(atom, Relational) and not atom.free_symbols:
-        value = atom.doit()
-        if value in (true, false):
-            return bool(value)
+        done = atom.doit()
+        if isinstance(done, BooleanAtom):
+            return isinstance(done, BooleanTrue)
     value = _cad_ask(atom, facts)
     if value is None and isinstance(atom, Relational):
         # the two sides equal as elementary functions: a proof
         value = _structure_ask(atom, facts)
     if value is None and isinstance(atom, Relational):
         # expressions beyond polynomials: calculus and interval arithmetic
-        from .analysis_sympy import decide_relational
+        from .analysis import decide_relational
         value = decide_relational(atom, facts)
     if value is None:
         value = _bounded_cad_ask(atom, facts)
@@ -169,7 +217,8 @@ def _structure_ask(atom: Relational, facts: Facts) -> Truth:
     vanish somewhere), except between constants, where it is a number
     other than zero.
 
-    >>> from sympy import Eq, atan, pi, Rational, symbols, log
+    >>> from sympy_extras.core import Eq, Rational, pi, symbols
+    >>> from sympy_extras.functions import atan, log
     >>> from sympy_extras.assumptions.ask import ask
     >>> x = symbols('x')
     >>> ask(Eq(4*atan(Rational(1, 5)) - atan(Rational(1, 239)), pi/4))
@@ -180,32 +229,18 @@ def _structure_ask(atom: Relational, facts: Facts) -> Truth:
     global _structure_depth
     if _structure_depth > 0 or not isinstance(atom, (Eq, Ne, Gt, Ge, Lt, Le)):
         return None
-    difference = as_expr(atom.lhs - atom.rhs)
-    if not (difference.atoms(Function) or any(not as_expr(p.exp).is_integer for p in difference.atoms(Pow))
-            or difference.has(S.Pi, S.Exp1)):
+    difference = atom.lhs - atom.rhs
+    if not (_has_function(difference) or _has_fractional_power(difference) or difference.has(pi, E)):
         return None                                         # polynomial: the decomposition's business
     from sympy_extras._timeout import attempt
-    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
+    from .ask_sympy import structure_zero_of_core
     if difference.free_symbols and _clearly_not_zero(difference, facts):
         return None                                         # the common case, told at one point
 
-    def decide() -> Optional[bool]:
-        """``True`` for identically zero, ``False`` for a constant other
-        than zero, ``None`` otherwise."""
-        tower = ElementaryTower(list(facts.conjuncts) or None)
-        try:
-            value = tower.element(difference)
-        except (NotElementary, ZeroDivisionError):
-            return None
-        if tower.vanishes(value):
-            return True
-        if not difference.free_symbols and tower.certifies(value):
-            return False
-        return None
-
+    conjuncts = list(facts.conjuncts)
     _structure_depth += 1
     try:
-        zero = attempt(decide, _STRUCTURE_SECONDS)
+        zero = attempt(lambda: structure_zero_of_core(difference, conjuncts), _STRUCTURE_SECONDS)
     finally:
         _structure_depth -= 1
     if zero is None:
@@ -218,35 +253,34 @@ def _structure_ask(atom: Relational, facts: Facts) -> Truth:
         return None                                         # the sign of a nonzero constant is not told here
     if isinstance(atom, (Gt, Lt)):
         return False
-    return True if _realness(as_expr(atom.lhs), facts) is True else None
+    return True if _realness(atom.lhs, facts) is True else None
 
 
 def _clearly_not_zero(difference: Expr, facts: Facts) -> bool:
     """Whether ``difference`` has a value away from zero at one point of
     the region of the facts: then it is not identically zero there, and
     the tower has nothing to prove."""
-    import random
-    symbols = sorted_symbols(free_symbols(difference))
-    values: Optional[dict[Symbol, Expr]] = {s: Rational(3 + 2 * i, 7 + i) for i, s in enumerate(symbols)}
+    from .ask_sympy import reliable_complex_of_core, sample_values_of_core
+    symbols = _sorted_symbols(_symbols(difference))
+    values: Optional[dict[Symbol, Expr]] = {
+        s: number_from_fraction(Fraction(3 + 2 * i, 7 + i)) for i, s in enumerate(symbols)}
     if facts.conjuncts:
-        from sympy_extras.integrals.conditions import sample_values
-        values = sample_values(symbols, list(facts.conjuncts), random.Random(str(difference)))
+        values = sample_values_of_core(symbols, list(facts.conjuncts), difference)
     if values is None:
         return False
     # a value whose branch a rounding error chooses shows nothing (the
     # bug: log(-2*sqrt(2) - 2*sqrt(z)) - log(2*sqrt(2)) - I*pi with z a sum
     # which is exactly zero came out as -2*I*pi, "clearly not zero")
-    value = reliable_value(difference, 20, values)
-    try:
-        return value is not None and abs(complex(value)) > 1e-12
-    except (TypeError, ValueError, OverflowError):
-        return False
+    value = reliable_complex_of_core(difference, 20, values)
+    return value is not None and abs(value) > 1e-12
 
 
 def _real_membership(atom: Boolean) -> Optional[Expr]:
-    """The expression of an atom ``Contains(e, S.Reals)`` or ``Q.real(e)``."""
-    if isinstance(atom, Contains) and atom.args[1] == S.Reals and isinstance(atom.args[0], Expr):
-        return atom.args[0]
+    """The expression of an atom ``Contains(e, Reals)`` or ``Q.real(e)``."""
+    if isinstance(atom, Contains):
+        member, s = atom.args
+        if s == Reals and isinstance(member, Expr):
+            return member
     if isinstance(atom, AppliedPredicate) and atom.function == Q.real and isinstance(atom.arguments[0], Expr):
         return atom.arguments[0]
     return None
@@ -256,8 +290,7 @@ def _fragile(e: Expr) -> bool:
     """Whether SymPy's ``Q.real`` handlers are known to misjudge ``e``:
     non-integer powers, logarithms and inverse trigonometric functions of
     expressions whose sign they do not check."""
-    return any(isinstance(a, Pow) and not as_expr(a.exp).is_integer for a in e.atoms(Pow)) or \
-        bool(e.atoms(log, asin, acos, acosh, atanh))
+    return _has_fractional_power(e) or bool(e.atoms(Log, Asin, Acos, Acosh, Atanh))
 
 
 def _realness(e: Expr, facts: Facts) -> Truth:
@@ -271,50 +304,50 @@ def _realness(e: Expr, facts: Facts) -> Truth:
         parts = [_realness(as_expr(a), facts) for a in e.args]
         return True if all(p is True for p in parts) else None
     if isinstance(e, Pow):
-        base, exponent = as_expr(e.base), as_expr(e.exp)
+        base, exponent = e.base, e.exp
         base_real = _realness(base, facts)
         if exponent.is_integer:
             return base_real
         if base_real is not True:
             return None
         if isinstance(exponent, Rational) or _realness(exponent, facts) is True:
-            if _evaluate(as_boolean(base >= 0), facts) is True:
+            if _evaluate(base >= 0, facts) is True:
                 return True
-            if isinstance(exponent, Rational) and _evaluate(as_boolean(base < 0), facts) is True:
+            if isinstance(exponent, Rational) and _evaluate(base < 0, facts) is True:
                 # the principal root of a negative number is not real
                 return False
         return None
-    if isinstance(e, log):
+    if isinstance(e, Log):
         argument = as_expr(e.args[0])
-        if _evaluate(as_boolean(argument > 0), facts) is True:
+        if _evaluate(argument > 0, facts) is True:
             return True
-        if _evaluate(as_boolean(argument < 0), facts) is True:
+        if _evaluate(argument < 0, facts) is True:
             return False
         return None
-    if isinstance(e, (asin, acos)):
+    if isinstance(e, (Asin, Acos)):
         argument = as_expr(e.args[0])
-        if _evaluate(as_boolean(And(argument >= -1, argument <= 1)), facts) is True:
+        if _evaluate(and_(argument >= -1, argument <= 1), facts) is True:
             return True
-        if _evaluate(as_boolean(Or(argument > 1, argument < -1)), facts) is True:
+        if _evaluate(or_(argument > 1, argument < -1), facts) is True:
             return False
         return None
-    if isinstance(e, acosh):
+    if isinstance(e, Acosh):
         argument = as_expr(e.args[0])
-        if _evaluate(as_boolean(argument >= 1), facts) is True:
+        if _evaluate(argument >= 1, facts) is True:
             return True
-        if _evaluate(as_boolean(argument < 1), facts) is True:
+        if _evaluate(argument < 1, facts) is True:
             return False
         return None
-    if isinstance(e, atanh):
+    if isinstance(e, Atanh):
         argument = as_expr(e.args[0])
-        if _evaluate(as_boolean(And(argument > -1, argument < 1)), facts) is True:
+        if _evaluate(and_(argument > -1, argument < 1), facts) is True:
             return True
-        if _evaluate(as_boolean(Or(argument > 1, argument < -1)), facts) is True:
+        if _evaluate(or_(argument > 1, argument < -1), facts) is True:
             return False
         return None
     if isinstance(e, Abs):
-        return True if e.args[0].is_finite is not False else None
-    if isinstance(e, (exp, sin, cos, tan, atan, sinh, cosh, tanh, asinh, floor, ceiling)):
+        return True if as_expr(e.args[0]).is_finite is not False else None
+    if isinstance(e, (Exp, Sin, Cos, Tan, Atan, Sinh, Cosh, Tanh, Asinh, Floor, Ceiling)):
         argument = as_expr(e.args[0])
         return True if _realness(argument, facts) is True else None
     return None
@@ -323,11 +356,11 @@ def _realness(e: Expr, facts: Facts) -> Truth:
 def _bounded_cad_ask(formula: Boolean, facts: Facts) -> Truth:
     """Decide a formula with elementary functions by replacing them with
     variables constrained by polynomial bounds (see
-    :mod:`sympy_extras.assumptions.bounds_sympy`) and asking the CAD whether the
+    :mod:`sympy_extras.assumptions.bounds`) and asking the CAD whether the
     formula holds, or fails, for every allowed value of the new
     variables."""
-    from .bounds_sympy import polynomial_abstraction
-    if not formula.atoms(Function):
+    from .bounds import polynomial_abstraction
+    if not _has_function(formula):
         return None
     abstraction = polynomial_abstraction(normalize(formula), facts.real)
     if abstraction is None:
@@ -340,28 +373,29 @@ def _bounded_cad_ask(formula: Boolean, facts: Facts) -> Truth:
         if _cad_ask(normalize(requirement), facts) is not True:
             return None
     try:
-        extended = Facts(facts.conjuncts + abstraction.constraints
-                         + [Contains(t, S.Reals) for t in abstraction.variables])
+        extended = Facts(list(facts.conjuncts) + list(abstraction.constraints)
+                         + [element(t, Reals) for t in abstraction.variables])
     except (ValueError, TypeError):
         return None
-    if len(free_symbols(extended.polynomial) | free_symbols(abstraction.formula)) > 3:
+    if len(_symbols(extended.polynomial) | _symbols(abstraction.formula)) > 3:
         return None
     from sympy_extras._timeout import attempt
     from sympy_extras.settings import settings
     limit = None if settings.timeout is None else min(settings.timeout, 5.0)
-    return attempt(lambda: _cad_ask(normalize(abstraction.formula), extended), limit)
+    bounded = normalize(abstraction.formula)
+    return attempt(lambda: _cad_ask(bounded, extended), limit)
 
 
 def _evaluate(formula: Boolean, facts: Facts) -> Truth:
     """Three-valued evaluation of a normalized formula: ``True``,
     ``False`` or ``None``."""
-    if isinstance(formula, (BooleanTrue, BooleanFalse)):
-        return bool(formula)
+    if isinstance(formula, BooleanAtom):
+        return isinstance(formula, BooleanTrue)
     if isinstance(formula, Not):
-        value = _evaluate(formula.args[0], facts)
+        value = _evaluate(formula.arg, facts)
         return None if value is None else not value
     if isinstance(formula, (And, Or, Implies, Equivalent, Xor, ITE)):
-        values = [_evaluate(as_boolean(arg), facts) for arg in formula.args]
+        values = [_evaluate(to_boolean(arg), facts) for arg in formula.args]
         value = _combine(formula, values)
         if value is None:
             value = _cad_ask(formula, facts)
@@ -411,7 +445,7 @@ def _combine(formula: Boolean, values: list[Truth]) -> Truth:
     return None
 
 
-def ask(query: Union[Boolean, bool], assumptions: Assumptions = None, domain: Optional[Set] = None) -> Truth:
+def ask(query: BooleanLike, assumptions: Assumptions = None, domain: Optional[Set] = None) -> Truth:
     """Truth value of a statement under assumptions.
 
     Parameters
@@ -419,16 +453,16 @@ def ask(query: Union[Boolean, bool], assumptions: Assumptions = None, domain: Op
 
     query : Boolean
         A relation (``x > 0``, ``Eq(x, y)``), a membership
-        (``element(x, S.Integers)``), a predicate (``Q.positive(x)``), a
+        (``element(x, Integers)``), a predicate (``Q.positive(x)``), a
         Boolean combination of those or a quantified formula
-        (``ForAll(x, ...)``, ``Exists(x, ...)``).
+        (``forall(x, ...)``, ``exists(x, ...)``).
     assumptions : Boolean or list of Booleans, optional
         Assumptions in the same form. The assumptions in
-        :data:`~sympy_extras.assumptions.global_assumptions` are always
-        used as well.
+        :data:`~sympy_extras.assumptions.context.global_assumptions` are
+        always used as well.
     domain : Set, optional
-        A named SymPy set (``S.Reals``, ``S.Integers``, ...) all the
-        variables are assumed to belong to.
+        A named set (``Reals``, ``Integers``, ...) all the variables are
+        assumed to belong to.
 
     Returns
     =======
@@ -437,42 +471,32 @@ def ask(query: Union[Boolean, bool], assumptions: Assumptions = None, domain: Op
     its negation does and ``None`` if neither can be established.
 
     The assumptions and the query are first translated to the predicates
-    of :mod:`sympy.assumptions` and answered by :func:`sympy.ask`; what
-    remains undecided and is a Boolean combination of polynomial relations
-    between real variables is decided exactly by cylindrical algebraic
-    decomposition (see :mod:`sympy_extras.polys.cad`). Note that an
-    inequality between expressions states that both sides are real.
+    of the core's ``Q`` and answered by its
+    :func:`~sympy_extras.core.ask.ask`; what remains undecided and is a
+    Boolean combination of polynomial relations between real variables is
+    decided exactly by cylindrical algebraic decomposition (see
+    :mod:`sympy_extras.polys.cad`). Note that an inequality between
+    expressions states that both sides are real.
 
     Examples
     ========
 
-    >>> from sympy import S, Eq, Q
-    >>> from sympy.abc import x, y
+    >>> from sympy_extras.core import Eq, Q, symbols
+    >>> from sympy_extras.sets import Integers, Reals
     >>> from sympy_extras.assumptions.ask import ask
-    >>> from sympy_extras.assumptions.facts_sympy import element
-    >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll
-    >>> ask(x**3 > 0, x > 0)
-    True
-    >>> ask(x**2 - 2*x + 1 >= 0, x > 0)
-    True
-    >>> ask(x > 1, x > 2)
-    True
-    >>> ask(x > 3, x > 2) is None
-    True
-    >>> ask(x*y > 0, (x > 0) & (y < 0))
-    False
-    >>> ask(element(x + 1, S.Integers), element(x, S.Integers))
-    True
-    >>> ask(x**2 >= 0) is None
-    True
-    >>> ask(x**2 >= 0, domain=S.Reals)
-    True
-    >>> ask(ForAll(x, x**2 + 2*x*y + y**2 >= 0), domain=S.Reals)
-    True
-    >>> ask(Q.positive(x), Eq(x, 3))
-    True
+    >>> from sympy_extras.assumptions.facts import element
+    >>> from sympy_extras.assumptions.quantifiers import ForAll
+    >>> x, y = symbols('x y')
+    >>> ask(x**3 > 0, x > 0), ask(x**2 - 2*x + 1 >= 0, x > 0), ask(x > 1, x > 2), ask(x > 3, x > 2)
+    (True, True, True, None)
+    >>> ask(x*y > 0, (x > 0) & (y < 0)), ask(element(x + 1, Integers), element(x, Integers))
+    (False, True)
+    >>> ask(x**2 >= 0), ask(x**2 >= 0, domain=Reals)
+    (None, True)
+    >>> ask(ForAll(x, x**2 + 2*x*y + y**2 >= 0), domain=Reals), ask(Q.positive(x), Eq(x, 3))
+    (True, True)
     """
-    query_ = as_boolean(query)
+    query_ = to_boolean(query)
     if query_.has(Quantifier):
         from .resolve import resolve
         query_ = resolve(query_, assumptions=assumptions, domain=domain)

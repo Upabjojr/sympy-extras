@@ -45,9 +45,9 @@ The setup used throughout:
 ```python
 >>> from sympy import *
 >>> from sympy.abc import a, b, c, k, n, p, q, s, t, x, y, z
->>> from sympy_extras.assumptions.ask import ask
->>> from sympy_extras.assumptions.refine import refine, simplify
->>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.ask_sympy import ask
+>>> from sympy_extras.assumptions.refine_sympy import refine, simplify
+>>> from sympy_extras.assumptions.resolve_sympy import resolve
 >>> from sympy_extras.assumptions.solve import solve
 >>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists

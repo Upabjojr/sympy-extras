@@ -39,7 +39,7 @@ from sympy.polys.polytools import Poly, cancel
 
 from sympy_extras._timeout import attempt, time_limit, TimeLimitExceeded
 from sympy_extras._typing import as_boolean, as_expr
-from sympy_extras.assumptions.ask import ask
+from sympy_extras.assumptions.ask_sympy import ask
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.solve import solve
 from sympy_extras.assumptions.limits import limit
@@ -734,7 +734,7 @@ def _refine_expression(rng: random.Random) -> tuple[Expr, Boolean]:
 def refine_case(rng: random.Random) -> tuple[str, Check]:
     """A refinement, checked by evaluating both forms at points which
     satisfy the assumptions."""
-    from sympy_extras.assumptions.refine import refine as xrefine, simplify as xsimplify
+    from sympy_extras.assumptions.refine_sympy import refine as xrefine, simplify as xsimplify
     expression, assumption = _refine_expression(rng)
     which = rng.choice(['refine', 'simplify'])
     label = '%s(%s, %s)' % (which, expression, assumption)
