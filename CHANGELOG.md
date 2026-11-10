@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.linalg`: matrices whose entries are rational
+  functions of symbols and `I` are handled exactly, in the field
+  `K[i]/(i**2 + 1)` (rank, echelon form, null space, inverse, systems,
+  determinant, adjugate, characteristic polynomial), without the zero
+  test.
 - `sympy_extras.matrices.linalg.pseudoinverse` and `ExprMatrix.pinv`: the
   Moore–Penrose pseudoinverse of a real matrix by a full rank
   factorisation.

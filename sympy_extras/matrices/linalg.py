@@ -19,6 +19,8 @@ systems depend on which quantities are zero. With symbols only a nonzero
 polynomial is a nonzero quantity, and the answer is the generic one (for
 the values of the symbols at which no pivot vanishes; see
 :func:`sympy_extras.assumptions.resolve` for case distinctions). With
+the imaginary unit as well the arithmetic is that of the field
+$K[i]/(i^2 + 1)$ over the rational functions $K$, and is exact too. With
 other kernels each pivot of the elimination is submitted to the zero test
 of :mod:`sympy_extras.simplify.structure`, and ``NotImplementedError`` is
 raised unless all are proved nonzero.
@@ -65,11 +67,13 @@ from typing import Final, Generic, Optional, Sequence, TypeVar
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.mul import Mul, mul
-from sympy_extras.core.numbers import Integer, Rational
+from sympy_extras.core.numbers import I, ImaginaryUnit, Integer, Rational
 from sympy_extras.core.power import Pow, pow
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.polys.domains import ZZ
 from sympy_extras.polys.domains.domain import Domain
+from sympy_extras.polys.domains.quotientfield import QuotientField
+from sympy_extras.polys.domains.sparsefractionfield import SparseFracElement, SparseFractionField
 from sympy_extras.polys.domains.sparsepolynomialring import IntegerPolynomialRing
 from sympy_extras.polys.rings import PolyElement
 
@@ -382,6 +386,90 @@ def _linear_solve(lift: _Lift[T], A: ExprMatrix, B: ExprMatrix) -> Optional[Line
     return LinearSolution(particular, _nullspace_vectors(lift, reduced, den, pivots, A.cols))
 
 
+
+# ---------------------------------------------------------------------
+# entries with the imaginary unit: the field K(parameters)[i]/(i**2 + 1)
+
+_Fraction = SparseFracElement[int]
+
+
+class _ComplexLift:
+    """The entries as elements of ``K[i]/(i**2 + 1)`` with ``K`` the field
+    of rational functions in the symbols: exact arithmetic with ``I``,
+    where a nonzero element is a nonzero quantity."""
+
+    def __init__(self, parameters: Sequence[Expr]) -> None:
+        # a fraction field needs a variable: a spare one for matrices of numbers
+        self.lift: Final[_PolynomialLift] = _PolynomialLift(list(parameters) if parameters else [Symbol('_spare')])
+        self.ground: Final[SparseFractionField[int]] = SparseFractionField(self.lift.ring)
+        K = self.ground
+        self.field: Final[QuotientField[_Fraction]] = QuotientField(K, [K.one, K.zero, K.one])
+
+    def element(self, e: Expr) -> list[_Fraction]:
+        F = self.field
+        if isinstance(e, ImaginaryUnit):
+            return F.generator
+        if not e.has(I):
+            n, d = self.lift.fraction(e)
+            return F.from_ground(self.ground.new(n, d))
+        if isinstance(e, Add):
+            total = F.zero
+            for a in e.args:
+                if not isinstance(a, Expr):
+                    raise TypeError('%s is not an expression' % (a,))
+                total = F.add(total, self.element(a))
+            return total
+        if isinstance(e, Mul):
+            product = F.one
+            for a in e.args:
+                if not isinstance(a, Expr):
+                    raise TypeError('%s is not an expression' % (a,))
+                product = F.mul(product, self.element(a))
+            return product
+        if isinstance(e, Pow) and isinstance(e.exp, Integer):
+            return F.pow(self.element(e.base), e.exp.p)
+        raise ValueError('%s is not a rational function of symbols and I' % (e,))
+
+    def expr(self, a: Sequence[_Fraction]) -> Expr:
+        if not a:
+            return Integer(0)
+        real = self.lift.ratio(a[-1].numer, a[-1].denom)
+        if len(a) == 1:
+            return real
+        return add(real, mul(I, self.lift.ratio(a[0].numer, a[0].denom)))
+
+    def matrix(self, M: ExprMatrix) -> DomainMatrix[list[_Fraction]]:
+        return DomainMatrix([[self.element(e) for e in M.row(i)] for i in range(M.rows)], self.field, M.cols)
+
+    def expr_matrix(self, D: DomainMatrix[list[_Fraction]]) -> ExprMatrix:
+        return ExprMatrix(D.nrows, D.ncols, [self.expr(a) for row in D.rows for a in row])
+
+    def nullspace(self, D: DomainMatrix[list[_Fraction]], pivots: Sequence[int], ncols: int) -> list[ExprMatrix]:
+        """From a reduced row echelon form."""
+        F = self.field
+        basis: list[ExprMatrix] = []
+        for free in range(ncols):
+            if free in pivots:
+                continue
+            vector: list[Expr] = [Integer(0)] * ncols
+            vector[free] = Integer(1)
+            for i, column in enumerate(pivots):
+                vector[column] = self.expr(F.neg(D.rows[i][free]))
+            basis.append(ExprMatrix.column(vector))
+        return basis
+
+
+def _complex_lift(kernels: Sequence[Expr]) -> Optional[_ComplexLift]:
+    """The exact arithmetic with ``I`` when the kernels are ``I`` and
+    symbols."""
+    if not any(isinstance(k, ImaginaryUnit) for k in kernels):
+        return None
+    parameters = [k for k in kernels if not isinstance(k, ImaginaryUnit)]
+    if not all(isinstance(k, Symbol) for k in parameters):
+        return None
+    return _ComplexLift(parameters)
+
+
 # ---------------------------------------------------------------------
 # the public functions
 
@@ -420,6 +508,9 @@ def det(M: ExprMatrix) -> Expr:
     """
     _square(M)
     kernels = _kernels([M])
+    gaussian = _complex_lift(kernels)
+    if gaussian is not None:
+        return gaussian.expr(gaussian.matrix(M).det())
     return _det(_PolynomialLift(kernels), M) if kernels else _det(_IntegerLift(), M)
 
 
@@ -428,6 +519,9 @@ def charpoly_coefficients(M: ExprMatrix) -> list[Expr]:
     (Berkowitz' division-free algorithm)."""
     _square(M)
     kernels = _kernels([M])
+    gaussian = _complex_lift(kernels)
+    if gaussian is not None:
+        return [gaussian.expr(c) for c in gaussian.matrix(M).charpoly()]
     return _charpoly(_PolynomialLift(kernels), M) if kernels else _charpoly(_IntegerLift(), M)
 
 
@@ -457,6 +551,9 @@ def adjugate(M: ExprMatrix) -> ExprMatrix:
     """
     _square(M)
     kernels = _kernels([M])
+    gaussian = _complex_lift(kernels)
+    if gaussian is not None:
+        return gaussian.expr_matrix(gaussian.matrix(M).adjugate())
     return _adjugate(_PolynomialLift(kernels), M) if kernels else _adjugate(_IntegerLift(), M)
 
 
@@ -472,6 +569,9 @@ def inverse(M: ExprMatrix) -> ExprMatrix:
     """
     _square(M)
     kernels = _kernels([M])
+    gaussian = _complex_lift(kernels)
+    if gaussian is not None:
+        return gaussian.expr_matrix(gaussian.matrix(M).inv())
     return _inverse(_PolynomialLift(kernels), M) if kernels else _inverse(_IntegerLift(), M)
 
 
@@ -486,6 +586,9 @@ def rank(M: ExprMatrix) -> int:
     (1, 2)
     """
     kernels = _kernels([M])
+    gaussian = _complex_lift(kernels)
+    if gaussian is not None:
+        return gaussian.matrix(M).rank()
     return _rank(_PolynomialLift(kernels), M) if kernels else _rank(_IntegerLift(), M)
 
 
@@ -500,6 +603,10 @@ def rref(M: ExprMatrix) -> tuple[ExprMatrix, tuple[int, ...]]:
     (ExprMatrix([[1, 0, (3*x - 2)/(x**2 - 1)], [0, 1, (2*x - 3)/(x**2 - 1)]]), (0, 1))
     """
     kernels = _kernels([M])
+    gaussian = _complex_lift(kernels)
+    if gaussian is not None:
+        echelon, columns = gaussian.matrix(M).rref()
+        return gaussian.expr_matrix(echelon), tuple(columns)
     return _rref(_PolynomialLift(kernels), M) if kernels else _rref(_IntegerLift(), M)
 
 
@@ -515,6 +622,10 @@ def nullspace(M: ExprMatrix) -> list[ExprMatrix]:
     [ExprMatrix([[x**2], [-x], [1]])]
     """
     kernels = _kernels([M])
+    gaussian = _complex_lift(kernels)
+    if gaussian is not None:
+        echelon, columns = gaussian.matrix(M).rref()
+        return gaussian.nullspace(echelon, columns, M.cols)
     return _nullspace(_PolynomialLift(kernels), M) if kernels else _nullspace(_IntegerLift(), M)
 
 
@@ -536,6 +647,17 @@ def linear_solve(A: ExprMatrix, B: ExprMatrix) -> Optional[LinearSolution]:
     if A.rows != B.rows:
         raise ValueError('%d equations and %d right-hand sides' % (A.rows, B.rows))
     kernels = _kernels([A, B])
+    gaussian = _complex_lift(kernels)
+    if gaussian is not None:
+        echelon, columns = gaussian.matrix(A).hstack(gaussian.matrix(B)).rref()
+        if any(column >= A.cols for column in columns):
+            return None
+        zero: Expr = Integer(0)
+        solution = [[zero] * B.cols for _ in range(A.cols)]
+        for i, column in enumerate(columns):
+            solution[column] = [gaussian.expr(a) for a in echelon.rows[i][A.cols:]]
+        particular = ExprMatrix(A.cols, B.cols, [e for line in solution for e in line])
+        return LinearSolution(particular, gaussian.nullspace(echelon, columns, A.cols))
     return _linear_solve(_PolynomialLift(kernels), A, B) if kernels else _linear_solve(_IntegerLift(), A, B)
 
 

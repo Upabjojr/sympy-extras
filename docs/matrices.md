@@ -99,7 +99,20 @@ of systems depend on which quantities vanish.
   no pivot vanishes (`a**2 - 1` above). Case distinctions on the
   parameters are the business of `solve(..., cases=True)` and `resolve`
   (see `docs/reduce.md`).
-* With other kernels (`sin(t)`, `sqrt(2)`, `I`) a nonzero polynomial may
+* With the imaginary unit `I` (and symbols) the arithmetic is that of the
+  field $K[i]/(i^2 + 1)$ over the rational functions $K$: exact as well.
+
+```python
+>>> from sympy_extras.core import I
+>>> P = ExprMatrix.from_rows([[1, I], [I, -1]])
+>>> P.rank(), P.nullspace()
+(1, [ExprMatrix([[-I], [1]])])
+>>> ExprMatrix.from_rows([[1 + I, a], [2, 1 - I]]).inv()
+ExprMatrix([[-1/(2*a - 2) + I/(2*a - 2), a/(2*a - 2)], [1/(a - 1), -1/(2*a - 2) - I/(2*a - 2)]])
+
+```
+
+* With other kernels (`sin(t)`, `sqrt(2)`) a nonzero polynomial may
   be a zero quantity. Every pivot is then submitted to the zero test of
   `sympy_extras.simplify.structure`, and `NotImplementedError` is raised
   unless all are proved nonzero, so that no wrong rank is returned:

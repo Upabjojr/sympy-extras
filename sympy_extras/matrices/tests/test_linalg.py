@@ -99,6 +99,7 @@ def test_determinants_hold_under_relations() -> None:
     M = ExprMatrix.from_rows([[sqrt(2), 1], [1, sqrt(2)]])
     assert det(M) == 1 and charpoly(M, x).subs(x, sqrt(2) + 1).expand() == 0
     assert det(ExprMatrix.from_rows([[I, 1], [1, I]])) == -2
+    assert det(ExprMatrix.from_rows([[sqrt(2), I], [I, sqrt(2)]])) == 3
 
 
 def test_pivots_are_certified() -> None:
@@ -149,3 +150,47 @@ def test_pseudoinverse() -> None:
     assert pseudoinverse(ExprMatrix.zeros(2, 3)) == ExprMatrix.zeros(3, 2)
     square = ExprMatrix.from_rows([[2, 1], [1, 1]])
     assert pseudoinverse(square) == inverse(square) == square.pinv()
+
+
+def test_imaginary_unit_is_exact() -> None:
+    rnd = random.Random(9)
+
+    def entry(parameter: bool) -> Expr:
+        choices: list[Expr] = [Integer(0), Integer(1), I, 1 + I, 2 - I, -I, Rational(1, 2) + I/3]
+        if parameter:
+            choices += [x, x*I, x + I, 1/(x - I)]
+        return rnd.choice(choices)
+
+    for trial in range(30):
+        n, m = rnd.randint(1, 3), rnd.randint(1, 4)
+        M = ExprMatrix(n, m, [entry(trial % 2 == 1) for _ in range(n*m)])
+        if trial % 5 == 0 and n > 1:
+            # a row which is I times another one
+            M = ExprMatrix(n, m, list(M.entries[:m]) + [I*e for e in M.entries[:m]] + list(M.entries[2*m:]))
+        S = _sympy_matrix(M)
+        expected, pivots = S.rref(simplify=True)
+        reduced, found = rref(M)
+        assert found == tuple(pivots) and rank(M) == len(pivots)
+        assert _same(_sympy_matrix(reduced), expected)
+        for v in nullspace(M):
+            assert _same(S*_sympy_matrix(v), sympy.zeros(n, 1))
+        assert len(nullspace(M)) == m - len(pivots)
+        if n == m:
+            assert sympy.simplify(to_sympy(det(M)) - S.det()) == 0
+            assert sympy.simplify(to_sympy(charpoly(M, t)) - S.charpoly(sympy.Symbol('t')).as_expr()) == 0
+            assert _same(_sympy_matrix(adjugate(M)), S.adjugate())
+            if len(pivots) == n:
+                assert _same(S*_sympy_matrix(inverse(M)), sympy.eye(n))
+            else:
+                with pytest.raises(ValueError):
+                    inverse(M)
+        B = ExprMatrix(n, 1, [entry(False) for _ in range(n)])
+        solution = linear_solve(M, B)
+        consistent = S.row_join(_sympy_matrix(B)).rref(simplify=True)[1][-1:] != (m,)
+        assert (solution is not None) == consistent
+        if solution is not None:
+            assert _same(S*_sympy_matrix(solution.particular), _sympy_matrix(B))
+    # the hidden zero 1 + I**2 is seen without the zero test
+    assert rank(ExprMatrix.from_rows([[1, I], [I, -1]])) == 1
+    assert nullspace(ExprMatrix.from_rows([[1, I], [I, -1]])) == [ExprMatrix.column([-I, 1])]
+    assert inverse(ExprMatrix.from_rows([[0, -I], [I, 0]])) == ExprMatrix.from_rows([[0, -I], [I, 0]])
