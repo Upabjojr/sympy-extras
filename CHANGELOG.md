@@ -17,7 +17,9 @@ remove public functions. Breaking changes are listed here when they happen.
   `integer_program`, branch and bound on the exact relaxations inside a
   box proved to contain an optimum (proximity theorem of Cook, Gerards,
   Schrijver and Tardos), so that it terminates on unbounded polyhedra
-  too. Typed, no SymPy.
+  too; `eliminate_variables`, Fourier–Motzkin elimination with strict
+  inequalities and the redundant rows removed by linear programs
+  (`LinearSystem`). Typed, no SymPy.
 - `sympy_extras.polys.numberfields.recognize.recognize_algebraic`: the
   algebraic number (an exact `Algebraic`) behind a decimal approximation,
   real or complex, by LLL reduction on the powers of the approximation

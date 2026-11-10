@@ -31,6 +31,13 @@ coordinates at most $(n + 1) \Delta'$ for the matrix $[A\ b]$, which
 decides the case of an unbounded relaxation. The search is confined to
 these boxes.
 
+:func:`eliminate_variables` projects a system of linear inequalities
+(strict ones included) onto some of its unknowns by Fourier–Motzkin
+elimination, which is quantifier elimination for the existential linear
+formulas over the reals; the redundant inequalities the method produces
+(doubly exponentially many otherwise) are removed after each variable by
+linear programs.
+
 Examples
 ========
 
@@ -62,6 +69,9 @@ References
 .. [4] W. Cook, A. M. H. Gerards, A. Schrijver, É. Tardos, *Sensitivity
        theorems in integer linear programming*, Mathematical Programming
        34 (1986), 251-264 (also [1], Theorem 17.2 and Corollary 17.1b).
+.. [5] G. B. Dantzig, B. C. Eaves, *Fourier-Motzkin elimination and its
+       dual*, Journal of Combinatorial Theory A 14 (1973), 288-297 (also
+       [1], Section 12.2).
 """
 from __future__ import annotations
 
@@ -69,7 +79,8 @@ from fractions import Fraction
 from math import ceil, floor, gcd, isqrt
 from typing import Final, Optional, Sequence, Union
 
-__all__ = ['linear_program', 'linear_feasible', 'LinearProgramResult', 'integer_program', 'IntegerProgramResult']
+__all__ = ['linear_program', 'linear_feasible', 'LinearProgramResult', 'integer_program', 'IntegerProgramResult',
+           'LinearSystem', 'eliminate_variables']
 
 #: a coefficient
 Number = Union[int, Fraction]
@@ -415,3 +426,130 @@ def integer_program(c: Sequence[Number], A: Sequence[Sequence[Number]], b: Seque
     if found is None:
         return IntegerProgramResult('infeasible', None, None)
     return IntegerProgramResult('optimal', found[0], found[1])
+
+
+# ---------------------------------------------------------------------------
+# Fourier-Motzkin elimination
+
+class LinearSystem:
+    """The inequalities ``A_i x <= b_i``, strict (``<``) on the rows
+    marked in ``strict``."""
+
+    def __init__(self, A: list[list[Fraction]], b: list[Fraction], strict: list[bool]) -> None:
+        self.A: Final[list[list[Fraction]]] = A
+        self.b: Final[list[Fraction]] = b
+        self.strict: Final[list[bool]] = strict
+
+    def contains(self, point: Sequence[Number]) -> bool:
+        """Whether the point satisfies every inequality."""
+        for row, bound, flag in zip(self.A, self.b, self.strict):
+            value = sum((a*Fraction(v) for a, v in zip(row, point)), _ZERO)
+            if value > bound or (flag and value == bound):
+                return False
+        return True
+
+    def is_feasible(self) -> bool:
+        """Whether the system has a solution."""
+        if not self.A:
+            return True
+        return linear_feasible(self.A, self.b, self.strict) is not None
+
+    def __repr__(self) -> str:
+        return 'LinearSystem(%r, %r, %r)' % (self.A, self.b, self.strict)
+
+
+#: an inequality: the coefficients, the bound, whether it is strict
+_Row = tuple[tuple[Fraction, ...], Fraction, bool]
+
+
+def _normal_row(coefficients: Sequence[Fraction], bound: Fraction, strict: bool) -> _Row:
+    """The row divided by the absolute value of its first non-zero
+    coefficient (of the bound for a row without unknowns)."""
+    scale = next((abs(v) for v in coefficients if v), _ZERO)
+    if scale == 0:
+        scale = abs(bound) if bound else _ONE
+    return tuple(v/scale for v in coefficients), bound/scale, strict
+
+
+def _without_redundant(rows: list[_Row]) -> list[_Row]:
+    """The rows without duplicates, without those implied by a row with
+    the same left-hand side, without the trivial ones, and without
+    those which a linear program proves implied by the others."""
+    strongest: dict[tuple[Fraction, ...], tuple[Fraction, bool]] = {}
+    for coefficients, bound, strict in rows:
+        if not any(coefficients):
+            if bound > 0 or (bound == 0 and not strict):
+                continue
+            # 0 <= negative, or 0 < 0: the system is contradictory
+            return [(coefficients, -_ONE, False)]
+        current = strongest.get(coefficients)
+        if current is None or bound < current[0] or (bound == current[0] and strict and not current[1]):
+            strongest[coefficients] = (bound, strict)
+    kept: list[_Row] = [(coefficients, bound, strict) for coefficients, (bound, strict) in strongest.items()]
+    index = 0
+    while index < len(kept) and len(kept) > 1:
+        coefficients, bound, strict = kept[index]
+        others = kept[:index] + kept[index + 1:]
+        result = linear_program(list(coefficients), [list(row[0]) for row in others], [row[1] for row in others])
+        if result.status == 'infeasible':
+            return [(tuple(_ZERO for _ in coefficients), -_ONE, False)]
+        # the supremum over the closure of the others: below the bound,
+        # the row says nothing new (at the bound, a strict row still does)
+        if result.status == 'optimal' and result.value is not None and (
+                result.value < bound or (result.value == bound and not strict)):
+            kept = others
+        else:
+            index += 1
+    return kept
+
+
+def eliminate_variables(A: Sequence[Sequence[Number]], b: Sequence[Number], variables: Sequence[int],
+                        strict: Optional[Sequence[bool]] = None) -> LinearSystem:
+    """The projection of ``{x: A x <= b}`` (strict on the rows marked in
+    ``strict``) along the unknowns ``variables``: a system in the other
+    unknowns, in their order, satisfied by exactly the points which
+    extend to a solution.
+
+    For each eliminated unknown, the rows where it has a positive
+    coefficient (upper bounds) are combined with those where it is
+    negative (lower bounds), a combination being strict when one of the
+    two is; the rows a linear program proves redundant are dropped.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.solvers.simplex import eliminate_variables
+    >>> triangle = [[-1, 0], [0, -1], [1, 1]]             # x >= 0, y >= 0, x + y <= 1
+    >>> shadow = eliminate_variables(triangle, [0, 0, 1], [1])
+    >>> sorted(zip(shadow.A, shadow.b)) == [([-1], 0), ([1], 1)]             # 0 <= x <= 1
+    True
+    >>> open_one = eliminate_variables(triangle, [0, 0, 1], [1], [False, True, False])     # y > 0
+    >>> open_one.contains([1]), open_one.contains([Fraction(1, 2)])
+    (False, True)
+    >>> eliminate_variables([[1], [-1]], [0, -1], [0]).is_feasible()         # exists x: x <= 0, x >= 1
+    False
+    """
+    m = len(A)
+    n = len(A[0]) if m else 0
+    flags = [False]*m if strict is None else [bool(v) for v in strict]
+    if len(b) != m or len(flags) != m:
+        raise ValueError('one right-hand side and one flag for each row')
+    for j in variables:
+        if not 0 <= j < n:
+            raise ValueError('no unknown number %d' % j)
+    rows: list[_Row] = [_normal_row([Fraction(v) for v in row], Fraction(bound), flag)
+                        for row, bound, flag in zip(A, b, flags)]
+    for j in sorted(set(variables)):
+        upper = [row for row in rows if row[0][j] > 0]
+        lower = [row for row in rows if row[0][j] < 0]
+        combined: list[_Row] = [row for row in rows if row[0][j] == 0]
+        for p in upper:
+            for q in lower:
+                wp, wq = 1/p[0][j], -1/q[0][j]
+                coefficients = [wp*u + wq*v for u, v in zip(p[0], q[0])]
+                coefficients[j] = _ZERO
+                combined.append(_normal_row(coefficients, wp*p[1] + wq*q[1], p[2] or q[2]))
+        rows = _without_redundant(combined)
+    remaining = [j for j in range(n) if j not in set(variables)]
+    return LinearSystem([[row[0][j] for j in remaining] for row in rows], [row[1] for row in rows],
+                        [row[2] for row in rows])

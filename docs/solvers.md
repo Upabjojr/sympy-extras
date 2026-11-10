@@ -691,6 +691,21 @@ infeasible
 
 ```
 
+`eliminate_variables(A, b, variables, strict)` projects a system onto
+the other unknowns by Fourier–Motzkin elimination (quantifier elimination
+for existential linear formulas): the upper and the lower bounds of the
+eliminated unknown are combined, a combination being strict when one of
+the two is, and the inequalities a linear program proves redundant are
+removed after each unknown.
+
+```python
+>>> from sympy_extras.solvers.simplex import eliminate_variables
+>>> shadow = eliminate_variables([[-1, 0], [0, -1], [1, 1]], [0, 0, 1], [1])     # the triangle, without y
+>>> sorted(zip(shadow.A, shadow.b)) == [([-1], 0), ([1], 1)]
+True
+
+```
+
 None of this is called yet by `ask`, `satisfiable` or `resolve`, which
 still send linear formulas to virtual substitution and Cooper's method.
 
