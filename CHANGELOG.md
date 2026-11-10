@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.fglm`: `fglm` (change of monomial order for
+  zero-dimensional ideals on the typed rings, by linear algebra on normal
+  forms), `groebner_by_fglm` (F4 for `grevlex`, then the conversion) and
+  `is_zero_dimensional`. Typed, no SymPy; `Ideal` still calls SymPy's
+  `matrix_fglm` on its own rings.
 - `sympy_extras.solvers.simplex`: `linear_program` (exact two-phase
   simplex over the rationals with Bland's rule; every result carries its
   certificate: optimal dual multipliers, a Farkas combination, or a ray)

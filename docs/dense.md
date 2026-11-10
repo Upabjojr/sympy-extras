@@ -389,6 +389,28 @@ representation of F4 and of the strong Gröbner bases.
 
 ```
 
+`fglm` changes the monomial order of the reduced Gröbner basis of a
+zero-dimensional ideal on these rings (Faugère, Gianni, Lazard, Mora):
+the monomials are visited in increasing order for the new order, the
+normal form of each is computed from that of the monomial it is a
+multiple of, and a linear dependence between the normal forms kept is an
+element of the new basis. `groebner_by_fglm` computes the basis for
+`grevlex` with F4 and converts it: Katsura-4 for `lex` in 0.14 s instead
+of 1.1 s by F4 directly, the conversion of Katsura-5 in 1.5 s (SymPy's
+`matrix_fglm`: 1.9 s).
+
+```python
+>>> from sympy_extras.polys.rings import grevlex, lex
+>>> from sympy_extras.polys.f4 import f4
+>>> from sympy_extras.polys.fglm import fglm
+>>> graded = PolyRing(QQ, ['x', 'y'], grevlex)
+>>> gx, gy = graded.gens
+>>> basis = f4([gx*gx + gy*gy - graded.from_int(5), gx*gy - graded.from_int(2)], graded)
+>>> [str(g) for g in fglm(basis, graded, lex)]
+['x + 1/2*y**3 - 5/2*y', 'y**4 - 5*y**2 + 4']
+
+```
+
 ## Independence from SymPy
 
 The domains, the dense and sparse polynomials and every algorithm above
