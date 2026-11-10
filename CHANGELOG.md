@@ -10,6 +10,8 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `z_transform`: delayed sequences `g(n)*Heaviside(n - m, 1)` (and
+  `Heaviside(n - m)`, whose value at zero is one half).
 - `sympy_extras.matrices.functions`: `matrix_exp` (the exponential
   `exp(t*M)`, real form for complex pairs of eigenvalues), `matrix_power`
   (`M**n` for a symbolic `n`), `matrix_function` (any expression `f(x)`)

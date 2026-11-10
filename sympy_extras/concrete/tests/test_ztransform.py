@@ -10,7 +10,7 @@ import sympy
 from sympy_extras.concrete.ztransform import inverse_z_transform, z_transform
 from sympy_extras.core import Integer, Rational, Symbol, pi
 from sympy_extras.core.expr import Expr
-from sympy_extras.functions import KroneckerDelta, cos, exp, factorial, log, sin, sqrt
+from sympy_extras.functions import Heaviside, KroneckerDelta, cos, exp, factorial, log, sin, sqrt
 from sympy_extras.interop import sympy_expr, to_sympy
 
 n, z, a, b, w = Symbol('n'), Symbol('z'), Symbol('a'), Symbol('b'), Symbol('w')
@@ -105,3 +105,21 @@ def test_round_trips() -> None:
         sequence = inverse_z_transform(image, z, n)
         again = z_transform(sequence, n, z)
         assert sympy.simplify(sympy_expr(to_sympy(again - image))) == 0, image
+
+
+def test_steps() -> None:
+    one = Integer(1)
+    sequences: list[Expr] = [
+        Heaviside(n - 2, one), 2**n*Heaviside(n - 3, one), n**2*Heaviside(n - 1, one), a**n*cos(w*n)*Heaviside(n - 2, one),
+        Heaviside(n - 2), n*3**n*Heaviside(n - 1), Heaviside(n, one), Heaviside(n), Heaviside(n + 2)*n,
+        a**(n - 2)*Heaviside(n - 2, one) + n, Heaviside(n - 1, one)*Heaviside(n - 3, one)*n,
+    ]
+    for f in sequences:
+        assert _series_matches(f, z_transform(f, n, z)), f
+    assert z_transform(Heaviside(n - 1, one), n, z) == 1/(z - 1)
+    assert z_transform(a**(n - 1)*Heaviside(n - 1, one), n, z) == 1/(z - a)
+    # a delay of the unit step and its inverse
+    assert inverse_z_transform(z_transform(2**n*Heaviside(n - 3, one), n, z), z, n).subs(n, 5) == 32
+    for unknown in (Heaviside(2*n - 3), Heaviside(n - a), Heaviside(n - Rational(1, 2))):
+        with pytest.raises(NotImplementedError):
+            z_transform(unknown, n, z)

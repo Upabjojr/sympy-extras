@@ -18,7 +18,11 @@ by the rule $n f(n) \mapsto -z F'(z)$; products of sines and cosines are
 linearised first. Three more families are known: $a^n / n!
 \mapsto e^{a/z}$, $a^n / (n + m) \mapsto (z/a)^m \bigl(-\log(1 - a/z) -
 \sum_{j=1}^{m-1} (a/z)^j / j\bigr)$ for an integer $m \ge 1$, and the
-impulses $\delta_{n,m} \mapsto z^{-m}$.
+impulses $\delta_{n,m} \mapsto z^{-m}$. A step $H(n - m)$ ($m \ge 0$ an
+integer) delays: $g(n) H(n - m) \mapsto z^{-m} \bigl(G_m(z) - (1 - H(0))
+g(m)\bigr)$ with $G_m$ the transform of $g(n + m)$; ``Heaviside(n - m)``
+has $H(0) = 1/2$, and ``Heaviside(n - m, 1)`` is the unit step of signal
+processing.
 
 **Inverse.** A rational $F(z)$ which is finite at infinity is a rational
 function $A(x)/B(x)$ of $x = 1/z$ with $B(0) \ne 0$, and $f(n)$ is the
@@ -80,6 +84,7 @@ from sympy_extras.functions import KroneckerDelta, acos, cos, exp, log, sin
 from sympy_extras.functions.combinatorial.factorials import Factorial
 from sympy_extras.functions.elementary.exponential import Exp
 from sympy_extras.functions.elementary.trigonometric import Cos, Sin
+from sympy_extras.functions.special.delta_functions import Heaviside
 from sympy_extras.functions.special.tensor_functions import KroneckerDeltaNode
 from sympy_extras.matrices.eigen import _Field, _FunctionField, _RationalField
 from sympy_extras.matrices.linalg import _PolynomialLift, _kernels, normal
@@ -125,6 +130,7 @@ class _Term:
         self.factorial: bool = False
         self.shift: Optional[int] = None
         self.impulse: Optional[int] = None
+        self.steps: list[Expr] = []
 
 
 def _nonnegative_integer(e: Expr) -> Optional[int]:
@@ -150,6 +156,12 @@ def _classify(term: Expr, n: Symbol) -> Optional[_Term]:
             if _linear(factor.args[0], n) is None:
                 return None
             result.trig.append(factor)
+        elif isinstance(factor, Heaviside):
+            argument = factor.args[0]
+            parts = _linear(argument, n) if isinstance(argument, Expr) else None
+            if parts is None or parts[0] != 1 or not isinstance(parts[1], Integer):
+                return None
+            result.steps.append(factor)
         elif isinstance(factor, KroneckerDeltaNode):
             first, second = factor.args
             position = _nonnegative_integer(first) if second == n else (_nonnegative_integer(second) if first == n else None)
@@ -210,6 +222,20 @@ def _transform_term(term: Expr, n: Symbol, z: Symbol) -> Expr:
     data = _classify(term, n)
     if data is None:
         raise NotImplementedError('the Z-transform of %s' % (term,))
+    if data.steps:
+        # g(n) H(n - m): the terms from n = m on, the one at n = m weighted by H(0)
+        step = data.steps[0]
+        argument, at_zero = step.args[0], step.args[1] if len(step.args) > 1 else Rational(1, 2)
+        if not isinstance(argument, Expr) or not isinstance(at_zero, Expr):
+            raise NotImplementedError('the Z-transform of %s' % (term,))
+        start = -argument.subs(n, _ZERO)
+        if not isinstance(start, Integer):
+            raise NotImplementedError('the Z-transform of %s' % (term,))
+        rest = term/step
+        if start.p < 0:
+            return z_transform(rest, n, z)
+        first = rest.subs(n, start)
+        return pow(z, -start)*(z_transform(rest.subs(n, n + start), n, z) - (1 - at_zero)*first)
     if len(data.trig) > 1:
         rest = term
         for factor in data.trig[:2]:
@@ -265,6 +291,9 @@ def z_transform(f: ExprLike, n: Symbol, z: Symbol) -> Expr:
     (z/(z - 1), (z**2 + z)/(z**3 - 3*z**2 + 3*z - 1), -z*log(1 - 1/z) + 3/z**2)
     >>> z_transform(sin(w*n), n, z)
     z*sin(w)/(z**2 - 2*z*cos(w) + 1)
+    >>> from sympy_extras.functions import Heaviside
+    >>> z_transform(2**n*Heaviside(n - 3, 1), n, z)          # 2**n from n = 3 on
+    8/(z**3 - 2*z**2)
     """
     expression = expand(to_expr(f))
     terms = expression.args if isinstance(expression, Add) else (expression,)

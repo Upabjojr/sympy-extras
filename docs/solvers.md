@@ -602,6 +602,7 @@ typed core.
 | `n**k * a**n / factorial(n)` | `exp(a/z)` and its derivatives |
 | `n**k * a**n / (n + m)`, `m = 1, 2, ...` | `(z/a)**m * (-log(1 - a/z) - sum((a/z)**j/j, j < m))` |
 | `KroneckerDelta(n, m)` times anything | the value at `m` times `z**-m` |
+| `g(n) * Heaviside(n - m, 1)` (the unit step delayed by `m`; `Heaviside(n - m)` counts the term at `m` half) | `z**-m` times the transform of `g(n + m)` |
 
 and raises `NotImplementedError` otherwise.
 
@@ -632,8 +633,7 @@ is written with a cosine and a sine.
 ```
 
 The sequences are those for $n \ge 0$. Not done: the bilateral transform
-and regions of convergence, `Heaviside` steps and shifted sequences
-`f(n - m)`, inverses of non-rational functions, rational functions whose
+and regions of convergence, inverses of non-rational functions, rational functions whose
 coefficients involve `sqrt(2)` or `cos(w)`, and difference equations
 solved through the transform (`solvers.recurr` solves them directly).
 
