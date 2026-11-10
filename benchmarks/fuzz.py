@@ -241,7 +241,10 @@ def sums_case(rng: random.Random) -> tuple[str, Check]:
         label = 'rational_sum(%s, (k, 1, n))' % term
 
         def check_rational() -> Optional[str]:
-            closed = attempt(lambda: rational_sum(term, (k, 1, n)), TIMEOUT)
+            from sympy_extras.interop import expr_from_sympy, to_sympy
+            native = attempt(lambda: rational_sum(expr_from_sympy(term), (expr_from_sympy(k), 1,
+                                                                         expr_from_sympy(n))), TIMEOUT)
+            closed = as_expr(to_sympy(native)) if native is not None else None
             if closed is None or closed.has(Sum):
                 return None
             for m in (3, 8, 15):
@@ -291,10 +294,14 @@ def sums_case(rng: random.Random) -> tuple[str, Check]:
     label = 'dirichlet_series(%s, n)' % term
 
     def check_dirichlet() -> Optional[str]:
-        found = attempt(lambda: dirichlet_series(term, n), TIMEOUT)
+        from sympy_extras.core.symbol import Symbol as NativeSymbol
+        from sympy_extras.interop import expr_from_sympy, to_sympy
+        native_n = expr_from_sympy(n)
+        assert isinstance(native_n, NativeSymbol)
+        found = attempt(lambda: dirichlet_series(expr_from_sympy(term), native_n), TIMEOUT)
         if found is None:
             return None
-        got = _numeric(as_expr(found[0]), 0)
+        got = _numeric(as_expr(to_sympy(found[0])), 0)
         exact = _partial_sum(term, n, 1, 3000)
         if got is None or exact is None:
             return None

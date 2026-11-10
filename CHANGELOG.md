@@ -65,6 +65,15 @@ remove public functions. Breaking changes are listed here when they happen.
   search (exponential on polynomials which split modulo every prime: the
   Swinnerton-Dyer polynomial of degree 32 in 0.04 s instead of 2 s, of
   degree 128 in 2 s).
+- `sympy_extras.polys.gaussianfactor`: factorisation of multivariate
+  polynomials over `ZZ_I` and `QQ_I` by Trager's algorithm over `QQ<I>`,
+  ported from SymPy's `dmp_zz_i_factor`, `dmp_qq_i_factor`,
+  `dmp_ext_factor`, `dmp_sqf_norm` and `_sort_factors`; `factor` of
+  expressions with Gaussian coefficients in several generators (trigsimp,
+  `Order`) no longer goes through SymPy, with SymPy's results (checked by
+  `srepr` on 100 random cases) and about ten times faster. The univariate
+  factors over `ZZ_I` are sorted as SymPy sorts them (imaginary parts
+  first).
 - `sympy_extras.polys.polytools.gcd_list` and `lcm_list`, native (folding
   `gcd`/`lcm`): the same results as SymPy's, structurally.
 - `sympy_extras.solvers.linsolve.solve_linear_unique`: the unique solution
@@ -492,6 +501,27 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.concrete.dirichlet` is native (breaking: core expressions
+  in and out): `dirichlet_series` on the core's arithmetic functions,
+  `zeta`, `re`, `max_` and `Derivative`; the same printed results as
+  before on 26 compared summands with and without special values.
+  `karr._with_special_values` and `karr_sympy.sum_special_values_of_core`
+  take `defined` (the points outside the region of convergence get no
+  case). `benchmarks/comparison.py` wraps the native `dirichlet_series`,
+  `polygamma_series` and `rational_sum` for its SymPy namespace.
+- `sympy_extras.concrete.rational` is native (breaking: core expressions
+  in and out): `abramov_decomposition` and `rational_sum` on the core's
+  `Poly`, `factor_list`, `apart`, `cancel`, `factor` and `summation`;
+  `RationalDecomposition` is immutable. The same printed results as
+  before on the tests, the docs and 46 compared cases. Only the isolated
+  values of the parameters go through SymPy at the call.
+- `sympy_extras.concrete.delta` and `summations` solve natively the
+  equations of their deltas and shifts when they are linear with rational
+  coefficients or free of the unknown (`solvers.linsolve.solve_one`,
+  `numeric_linear_solution`, same results as SymPy's `solve`); about 200
+  of the 220 calls the tests made to SymPy's `solve` from there are gone.
+  `telescopic` finds its shift natively for equations rational in it
+  (`polys.rationalsolve.solveset_rational`); 10 calls are left.
 - **Breaking:** the package `sympy_extras.solvers` exports nothing (as
   `sympy_extras.concrete`): its functions are imported from their modules
   (`from sympy_extras.solvers.ode import dsolve_lie`,

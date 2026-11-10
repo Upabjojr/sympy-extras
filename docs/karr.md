@@ -227,12 +227,14 @@ summand depending on a limit.
 `f = g(k+1) - g(k) + h` with `h` of minimal denominator (the irreducible
 factors of the denominator grouped into shift classes and moved to one
 representative each); `f` has a rational indefinite sum exactly when
-`h = 0`, and `rational_sum` uses `g` for the rational part and SymPy's
-polygamma functions for the rest.
+`h = 0`, and `rational_sum` uses `g` for the rational part and polygamma
+functions for the rest. Both work on the expressions of the core
+(`sympy_extras.core`).
 
 ```python
->>> from sympy.abc import k, n
+>>> from sympy_extras.core import symbols
 >>> from sympy_extras.concrete.rational import abramov_decomposition, rational_sum
+>>> k, n = symbols('k n')
 >>> abramov_decomposition(1/(k*(k + 1)), k)
 RationalDecomposition(-1/k, 0)
 >>> abramov_decomposition(1/k, k)
@@ -294,7 +296,8 @@ Piecewise((n + 1, Eq(q, -1) | Eq(q, 1)), (q**(2*n + 2)/((q - 1)*(q + 1)) - 1/((q
 Piecewise((k, Eq(q, 1)), (q**k/(q - 1), True))
 >>> definite_sum(core_binomial(n_, k_)*y_**k_/(k_ + 1), (k_, 0, n_))
 Piecewise((1, Eq(y, 0)), ((y*(y + 1)**n + (y + 1)**n - 1)/(y*(n + 1)), True))
->>> dirichlet_series((-1)**(n + 1)/n**s, n)
+>>> s_ = CoreSymbol('s')
+>>> dirichlet_series((-1)**(n_ + 1)/n_**s_, n_)
 (Piecewise((log(2), Eq(s, 1)), ((1 - 2**(1 - s))*zeta(s), True)), re(s) > 0)
 
 ```

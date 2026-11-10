@@ -31,12 +31,12 @@ from typing import Optional, Sequence
 
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.function import diff
-from sympy_extras.core.numbers import Integer
+from sympy_extras.core.numbers import Integer, Rational
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.polys.domains.sparsefractionfield import SparseFracElement, SparseFractionField
 from sympy_extras.polys.domains.sparsepolynomialring import RationalPolynomialRing
 
-__all__ = ['solve_linear_unique']
+__all__ = ['solve_linear_unique', 'linear_root', 'solve_one', 'numeric_linear_solution']
 
 
 def solve_linear_unique(equations: Sequence[Expr], unknowns: Sequence[Symbol]) -> Optional[list[Expr]]:
@@ -83,3 +83,67 @@ def solve_linear_unique(equations: Sequence[Expr], unknowns: Sequence[Symbol]) -
         value = field.neg(constant) if constant is not None else field.zero
         solution.append(field.to_expr(value).xreplace(restored))
     return solution
+
+
+def linear_root(e: Expr, v: Symbol) -> Optional[Expr]:
+    """The root ``-b/a`` of ``e = a*v + b`` for a nonzero rational ``a``
+    (SymPy's ``solve(e, v)`` is then ``[-b/a]``), ``None`` when ``e`` is not
+    of that form. (:func:`solve_one` adds the equations free of ``v``.)
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.solvers.linsolve import linear_root
+    >>> i, k = symbols('i k')
+    >>> linear_root(i - 2*k, k), linear_root(2*k - i - 1, k), linear_root(k**2 - i, k)
+    (i/2, i/2 + 1/2, None)
+    """
+    a = diff(e, v)
+    if not isinstance(a, Rational) or a == 0:
+        return None
+    b = e.subs(v, Integer(0))
+    if not isinstance(b, Expr) or b.has(v):
+        return None
+    return -b/a
+
+
+def solve_one(e: Expr, v: Symbol) -> Optional[list[Expr]]:
+    """SymPy's ``solve(e, v)`` when it is known natively: ``[]`` for an
+    equation free of ``v`` (SymPy gives no solution then, even for
+    ``0``), the root of :func:`linear_root`; ``None`` otherwise.
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.solvers.linsolve import solve_one
+    >>> i, k, m = symbols('i k m')
+    >>> solve_one(2*k + 1, m), solve_one(i - 2*m, m), solve_one(m**2 - i, m) is None
+    ([], [i/2], True)
+    """
+    if not e.has(v):
+        return []
+    root = linear_root(e, v)
+    return [root] if root is not None else None
+
+
+def numeric_linear_solution(equations: Sequence[Expr]) -> Optional[dict[Symbol, Expr]]:
+    """The unique solution for all the free symbols of ``equations`` (each
+    ``= 0``) when they are linear with rational coefficients and constants
+    (SymPy's ``solve(equations, dict=True)`` is then ``[solution]``),
+    ``None`` otherwise.
+
+    >>> from sympy_extras.core import symbols, Integer
+    >>> from sympy_extras.solvers.linsolve import numeric_linear_solution
+    >>> i, n = symbols('i n')
+    >>> numeric_linear_solution([1 - i, 1 - n]), numeric_linear_solution([i + n - 1]) is None
+    ({i: 1, n: 1}, True)
+    """
+    unknowns = sorted({s for e in equations for s in e.free_symbols if isinstance(s, Symbol)},
+                      key=lambda s: s.sort_key())
+    if not unknowns:
+        return None
+    for e in equations:
+        if not isinstance(e.subs({u: Integer(0) for u in unknowns}), Rational):
+            return None
+        if not all(isinstance(diff(e, u), Rational) for u in unknowns):
+            return None
+    values = solve_linear_unique(equations, unknowns)
+    if values is None:
+        return None
+    return dict(zip(unknowns, values))

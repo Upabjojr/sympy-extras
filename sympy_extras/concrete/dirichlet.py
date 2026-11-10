@@ -21,6 +21,11 @@ periodic signs or logarithmic factors are transforms of it:
 
 The summand is written as `c\\, f(n)\\, n^{e}` with `e` free of `n`
 (`s = -e`); a sum starting above `1` gets the first terms subtracted.
+The module works on the expressions of the core
+(:mod:`sympy_extras.core`) and imports no SymPy; only the isolated
+values of the parameters go through SymPy at the call
+(:func:`~sympy_extras.concrete.karr._with_special_values`).
+
 SymPy's ``summation`` knows `\\zeta(s)` and the Hurwitz zeta function for
 `\\sum (a n + b)^{-s}` but none of the arithmetic functions.
 
@@ -34,85 +39,95 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import Optional
 
-from sympy.concrete.summations import Sum
-from sympy.core.expr import Expr
-from sympy.core.function import Derivative
-from sympy.core.mul import Mul
-from sympy.core.numbers import Integer
-from sympy.core.power import Pow
-from sympy.core.singleton import S
-from sympy.core.symbol import Symbol
-from sympy.core.sympify import sympify
-from sympy.functions.combinatorial.numbers import mobius, totient, divisor_sigma
-from sympy.functions.elementary.complexes import re
-from sympy.functions.elementary.exponential import log
-from sympy.functions.elementary.miscellaneous import Max
-from sympy.functions.special.zeta_functions import zeta
-from sympy.logic.boolalg import Boolean, false
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.function import Derivative
+from sympy_extras.core.logic import Boolean, BooleanFalse
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import Integer, oo
+from sympy_extras.core.power import Pow, pow
+from sympy_extras.core.relational import gt
+from sympy_extras.core.add import add
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.functions.combinatorial.numbers import DivisorSigma, Mobius, Totient
+from sympy_extras.functions.elementary.complexes import re
+from sympy_extras.functions.elementary.exponential import Log
+from sympy_extras.functions.elementary.miscellaneous import max_
+from sympy_extras.functions.special.zeta_functions import zeta
 
-from sympy_extras._special_values import Point
-from sympy_extras._typing import as_boolean, as_expr
-from sympy_extras.assumptions.ask import Assumptions
-
-from .karr_sympy import summation, with_sum_special_values
+from .expr_with_limits import Sum
+from .karr import SumPoint, _with_special_values, summation
+from .summations import sum_doit
 
 __all__ = ['dirichlet_series', 'DirichletSum']
 
 #: the closed form of a Dirichlet series and the condition of convergence
 DirichletSum = tuple[Expr, Boolean]
 
+ONE = Integer(1)
 
-def _split(term: Expr, n: Symbol) -> Optional[tuple[Expr, Expr, Expr]]:
+
+def _e(b: Basic) -> Expr:
+    if not isinstance(b, Expr):
+        raise TypeError('an expression is expected, not %s' % (b,))
+    return b
+
+
+def _split(term: Expr, n: Symbol) -> tuple[Expr, Expr, Expr]:
     """``(c, f, s)`` with ``term == c * f(n) * n**(-s)``, ``c`` free of
     ``n``."""
-    factors = list(term.args) if isinstance(term, Mul) else [term]
-    exponent: Expr = S.Zero
+    factors = [_e(a) for a in term.args] if isinstance(term, Mul) else [term]
+    exponent: Expr = Integer(0)
     constant: list[Expr] = []
     coefficient: list[Expr] = []
-    for factor in factors:
-        f = as_expr(factor)
+    for f in factors:
         if not f.has(n):
             constant.append(f)
-        elif isinstance(f, Pow) and f.base == n and not as_expr(f.exp).has(n):
-            exponent = as_expr(exponent + f.exp)
+        elif isinstance(f, Pow) and f.base == n and not f.exp.has(n):
+            exponent = add(exponent, f.exp)
         elif f == n:
-            exponent = as_expr(exponent + 1)
+            exponent = add(exponent, ONE)
         else:
             coefficient.append(f)
-    return as_expr(Mul(*constant)), as_expr(Mul(*coefficient)), as_expr(-exponent)
+    return mul(*constant), mul(*coefficient), mul(Integer(-1), exponent)
 
 
 def _closed_form(f: Expr, n: Symbol, s: Expr) -> Optional[DirichletSum]:
     """The series of a recognised coefficient pattern."""
-    if f == 1:
-        return as_expr(zeta(s)), as_boolean(re(s) > 1)
-    if isinstance(f, Pow) and f.base == S.NegativeOne:
-        exponent = as_expr(f.exp - n)
-        if not exponent.has(n) and exponent.is_integer:
-            sign = S.NegativeOne if exponent.is_even else S.One
-            return as_expr(sign*(1 - 2**(1 - s))*zeta(s)), as_boolean(re(s) > 0)
+    if f == ONE:
+        return zeta(s), gt(re(s), ONE)
+    if isinstance(f, Pow) and f.base == Integer(-1):
+        exponent = add(f.exp, mul(Integer(-1), n))
+        if not exponent.has(n) and exponent.is_integer is True:
+            sign = Integer(-1) if exponent.is_even is True else ONE
+            # sign*(1 - 2**(1 - s)) first, as SymPy multiplies: the sign
+            # distributed over the sum
+            signed = mul(sign, add(ONE, mul(Integer(-1), pow(Integer(2), add(ONE, mul(Integer(-1), s))))))
+            return (mul(signed, zeta(s)),
+                    gt(re(s), Integer(0)))
         return None
-    if isinstance(f, mobius) and f.args[0] == n:
-        return as_expr(1/zeta(s)), as_boolean(re(s) > 1)
-    if isinstance(f, Pow) and isinstance(f.base, mobius) and f.base.args[0] == n and f.exp == 2:
-        return as_expr(zeta(s)/zeta(2*s)), as_boolean(re(s) > 1)
-    if isinstance(f, totient) and f.args[0] == n:
-        return as_expr(zeta(s - 1)/zeta(s)), as_boolean(re(s) > 2)
-    if isinstance(f, divisor_sigma) and f.args[0] == n:
-        k = as_expr(f.args[1]) if len(f.args) > 1 else S.One
-        return as_expr(zeta(s)*zeta(s - k)), as_boolean(re(s) > Max(1, 1 + re(k)))
-    if isinstance(f, log) and f.args[0] == n and isinstance(s, Symbol):
-        return as_expr(-Derivative(zeta(s), s)), as_boolean(re(s) > 1)
-    if isinstance(f, Pow) and isinstance(f.base, log) and f.base.args[0] == n and f.exp.is_Integer and f.exp > 0 \
-            and isinstance(s, Symbol):
-        order = int(f.exp)
-        return as_expr((-1)**order*Derivative(zeta(s), (s, order))), as_boolean(re(s) > 1)
+    if isinstance(f, Mobius) and f.args[0] == n:
+        return pow(zeta(s), Integer(-1)), gt(re(s), ONE)
+    if isinstance(f, Pow) and isinstance(f.base, Mobius) and f.base.args[0] == n and f.exp == Integer(2):
+        return mul(zeta(s), pow(zeta(mul(Integer(2), s)), Integer(-1))), gt(re(s), ONE)
+    if isinstance(f, Totient) and f.args[0] == n:
+        return mul(zeta(add(s, Integer(-1))), pow(zeta(s), Integer(-1))), gt(re(s), Integer(2))
+    if isinstance(f, DivisorSigma) and f.args[0] == n:
+        k = _e(f.args[1]) if len(f.args) > 1 else ONE
+        return (mul(zeta(s), zeta(add(s, mul(Integer(-1), k)))),
+                gt(re(s), max_(ONE, add(ONE, re(k)))))
+    if isinstance(f, Log) and f.args[0] == n and isinstance(s, Symbol):
+        return mul(Integer(-1), Derivative(zeta(s), s)), gt(re(s), ONE)
+    if (isinstance(f, Pow) and isinstance(f.base, Log) and f.base.args[0] == n and isinstance(f.exp, Integer)
+            and f.exp.p > 0 and isinstance(s, Symbol)):
+        order = f.exp.p
+        return mul(Integer((-1)**order), Derivative(zeta(s), (s, order))), gt(re(s), ONE)
     return None
 
 
-def dirichlet_series(term: Union[Expr, int], n: Symbol, lower: Union[Expr, int] = 1,
+def dirichlet_series(term: ExprLike, n: Symbol, lower: ExprLike = 1,
                      special_values: bool = True) -> Optional[DirichletSum]:
     """The closed form of ``Sum(term, (n, lower, oo))`` for a Dirichlet
     series with recognised coefficients, with its condition of
@@ -129,9 +144,10 @@ def dirichlet_series(term: Union[Expr, int], n: Symbol, lower: Union[Expr, int] 
     Examples
     ========
 
-    >>> from sympy import mobius, totient, divisor_sigma, log
-    >>> from sympy.abc import n, s
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import mobius, totient, divisor_sigma, log
     >>> from sympy_extras.concrete.dirichlet import dirichlet_series
+    >>> n, s = symbols('n s')
     >>> dirichlet_series(mobius(n)/n**s, n)
     (1/zeta(s), re(s) > 1)
     >>> dirichlet_series(totient(n)/n**s, n)
@@ -145,34 +161,29 @@ def dirichlet_series(term: Union[Expr, int], n: Symbol, lower: Union[Expr, int] 
     >>> dirichlet_series(mobius(n)/n**2, n, 2)
     (-1 + 6/pi**2, True)
     """
-    term_ = as_expr(sympify(term))
-    lower_ = as_expr(sympify(lower))
-    split = _split(term_, n)
-    if split is None:
-        return None
-    c, f, s = split
+    term_ = to_expr(term)
+    lower_ = to_expr(lower)
+    c, f, s = _split(term_, n)
     found = _closed_form(f, n, s)
     if found is None:
         return None
     value, condition = found
-    result = as_expr(c*value)
-    if lower_ != 1:
-        if not isinstance(lower_, Integer) or lower_ < 1:
+    result = mul(c, value)
+    if lower_ != ONE:
+        if not isinstance(lower_, Integer) or lower_.p < 1:
             return None
-        head = as_expr(Sum(term_, (n, 1, lower_ - 1)).doit())
-        result = as_expr(result - head)
-    if not condition.free_symbols:
-        condition = as_boolean(condition)
-    value = as_expr(result.doit())
+        head = sum_doit(Sum(term_, (n, ONE, Integer(lower_.p - 1))))
+        result = add(result, mul(Integer(-1), head))
+    value = _e(result.doit())
     if not special_values:
         return value, condition
     region = condition
 
-    def converges(point: Point) -> bool:
-        return as_boolean(region.xreplace(point)) is not false
+    def converges(point: SumPoint) -> bool:
+        return not isinstance(region.subs(point), BooleanFalse)
 
-    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
-        return summation(as_expr(term_.xreplace(point)), (n, lower_, S.Infinity))
+    def at_point(point: SumPoint) -> Optional[Expr]:
+        return summation(term_.xreplace(point), (n, lower_, oo))
 
-    return with_sum_special_values(value, term_, [n], [lower_, S.Infinity], at_point, keep_unevaluated=False,
-                                   defined=converges), condition
+    return _with_special_values(value, term_, [n], [lower_, oo], at_point, keep_unevaluated=False,
+                                defined=converges), condition

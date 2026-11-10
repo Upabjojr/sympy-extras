@@ -59,7 +59,15 @@ def _delta(i: Expr, j: Expr) -> Expr:
 
 
 def _solve(e: Expr, v: Optional[Symbol] = None) -> list[Expr]:
-    """SymPy's ``solve(e, v)`` (through SymPy)."""
+    """SymPy's ``solve(e, v)``: native for an equation free of ``v`` or
+    linear in it with a rational coefficient
+    (:func:`~sympy_extras.solvers.linsolve.solve_one`), through SymPy
+    otherwise."""
+    from sympy_extras.solvers.linsolve import solve_one
+    if v is not None:
+        known = solve_one(e, v)
+        if known is not None:
+            return known
     import sympy
     from sympy_extras.interop import expr_from_sympy, to_sympy
     found = sympy.solve(to_sympy(e), to_sympy(v)) if v is not None else sympy.solve(to_sympy(e))
@@ -67,7 +75,12 @@ def _solve(e: Expr, v: Optional[Symbol] = None) -> list[Expr]:
 
 
 def _solve_dicts(eqs: list[Expr]) -> list[dict[Expr, Expr]]:
-    """SymPy's ``solve(eqs, dict=True)`` (through SymPy)."""
+    """SymPy's ``solve(eqs, dict=True)``: native for a linear system with
+    rational coefficients and a unique solution, through SymPy otherwise."""
+    from sympy_extras.solvers.linsolve import numeric_linear_solution
+    solution = numeric_linear_solution(eqs)
+    if solution is not None:
+        return [dict(solution.items())]
     import sympy
     from sympy_extras.interop import expr_from_sympy, to_sympy
     out: list[dict[Expr, Expr]] = []

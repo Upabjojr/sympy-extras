@@ -128,6 +128,26 @@ R3, X, Y, Z = ring("x,y,z", QQ, grevlex)
 R1, X3 = ring("x", ZZ)
 RA, A, B = ring("a,b", ZZ)
 RAB, X3, A, B = ring("x,a,b", ZZ)
+
+# the native summation functions take and return core expressions
+from sympy_extras.interop import expr_from_sympy as _core, to_sympy as _sympy
+from sympy_extras.concrete.dirichlet import dirichlet_series as _dirichlet_series
+from sympy_extras.concrete.eulersums import polygamma_series as _polygamma_series
+from sympy_extras.concrete.rational import rational_sum as _rational_sum
+
+
+def dirichlet_series(term, n, *args, **kwargs):
+    found = _dirichlet_series(_core(term), _core(n), *args, **kwargs)
+    return None if found is None else (_sympy(found[0]), _sympy(found[1]))
+
+
+def polygamma_series(term, n, *args):
+    found = _polygamma_series(_core(term), _core(n), *[_core(a) for a in args])
+    return None if found is None else _sympy(found)
+
+
+def rational_sum(term, limits, *args, **kwargs):
+    return _sympy(_rational_sum(_core(term), [_core(e) for e in limits], *args, **kwargs))
 """
 
 

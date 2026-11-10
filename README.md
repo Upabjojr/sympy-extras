@@ -506,7 +506,6 @@ decided by virtual substitution and the parity of integer polynomials in
 >>> from sympy_extras.assumptions import solve, refine, limit_seq, element
 >>> from sympy_extras.solvers.dae import dsolve_dae
 >>> from sympy_extras.concrete.convergence import sum_convergence
->>> from sympy_extras.concrete.dirichlet import dirichlet_series
 >>> solve(Eq(x, cos(x)), x, domain=S.Reals)
 {TranscendentalRoot(x - cos(x), x, 5/8, 3/4)}
 >>> dsolve_dae(Matrix([[1, 0], [0, 0]]), Matrix([[0, -1], [1, 0]]), Matrix([0, sin(x)]), x).solution.T
@@ -515,7 +514,9 @@ Matrix([[sin(x), cos(x)]])
 (x >= -1) & (x < 1)
 >>> sum_convergence(1/n**p, n)
 p > 1
->>> dirichlet_series(mobius(n)/n**p, n)
+>>> from sympy_extras.interop import expr_from_sympy
+>>> from sympy_extras.concrete.dirichlet import dirichlet_series
+>>> dirichlet_series(expr_from_sympy(mobius(n)/n**p), expr_from_sympy(n))
 (1/zeta(p), re(p) > 1)
 >>> limit_seq(p**n, n, assumptions=(p > -1) & (p < 0))
 0
