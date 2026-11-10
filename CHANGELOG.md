@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.berlekampmassey`: `berlekamp_massey` (the shortest
+  linear recurrence of a sequence over any field of the typed layer),
+  `extend_sequence`, `satisfies_recurrence`.
 - `sympy_extras.polys.domains.galoisfield.GaloisField`: the finite fields
   `GF(p**n)` as a typed coefficient domain (Frobenius map, `p`-th roots,
   trace, enumeration), and `sympy_extras.polys.galoisfactor`:
