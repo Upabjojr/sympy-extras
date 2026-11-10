@@ -252,15 +252,18 @@ n*(3*n + 5)/(4*(n + 1)*(n + 2))
 ## q-analogues: q-Gosper and q-Zeilberger
 
 `sympy_extras.concrete.qhyper` adds q-Pochhammer symbols
-(`QPochhammer(a, q, k)`, `qbinomial`), the q-Gosper algorithm for
-indefinite sums of q-hypergeometric terms (terms whose ratio
-`t(k+1)/t(k)` is rational in `q**k`) and the q-Zeilberger algorithm for
-their definite sums. SymPy has no q-summation at all.
+(`QPochhammer(a, q, k)`, the node, and `qpochhammer`, which evaluates;
+`qbinomial`), the q-Gosper algorithm for indefinite sums of
+q-hypergeometric terms (terms whose ratio `t(k+1)/t(k)` is rational in
+`q**k`) and the q-Zeilberger algorithm for their definite sums, on the
+expressions of the core; `sympy_extras.concrete.qhyper_sympy` is the same
+on SymPy expressions. SymPy has no q-summation at all.
 
 ```python
->>> from sympy import factor
->>> from sympy.abc import q, k, n, x
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.polys.polytools import factor
 >>> from sympy_extras.concrete.qhyper import qgosper_sum, qzeilberger, qbinomial
+>>> q, k, n, x = symbols('q k n x')
 >>> factor(qgosper_sum(q**k, (k, 0, n), q, special_values=False))
 (q**(n + 1) - 1)/(q - 1)
 >>> qzeilberger(qbinomial(n, k, q)*q**(k*(k - 1)/2)*x**k, n, k, q).coefficients
@@ -295,9 +298,10 @@ off (the functions pass it to one another for their inner sums).
 Piecewise((n*(n + 1)/2, Eq(y, 1)), ((-n*y**(n + 1) + n*y**(n + 2) + y - y**(n + 1))/(y - 1)**2, True))
 >>> karr_term(y_**k_, k_)
 Piecewise((k, Eq(y, 1)), (y**k/(y - 1), True))
->>> qgosper_sum(q**(2*k), (k, 0, n), q)
+>>> q_ = CoreSymbol('q')
+>>> qgosper_sum(q_**(2*k_), (k_, 0, n_), q_)
 Piecewise((n + 1, Eq(q, -1) | Eq(q, 1)), (q**(2*n + 2)/((q - 1)*(q + 1)) - 1/((q - 1)*(q + 1)), True))
->>> qgosper_term(q**k, k, q)
+>>> qgosper_term(q_**k_, k_, q_)
 Piecewise((k, Eq(q, 1)), (q**k/(q - 1), True))
 >>> definite_sum(core_binomial(n_, k_)*y_**k_/(k_ + 1), (k_, 0, n_))
 Piecewise((1, Eq(y, 0)), ((y*(y + 1)**n + (y + 1)**n - 1)/(y*(n + 1)), True))

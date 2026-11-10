@@ -446,6 +446,29 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.concrete.qhyper` is native (breaking: core expressions in
+  and out): `QPochhammer` is a node of the core which never evaluates,
+  `qpochhammer` the function which does (`QPochhammer(a, q, 2)` was the
+  product, it is now `qpochhammer(a, q, 2)`); `qbinomial`, `q_ratio`,
+  `normal_in`, `qgosper_term`, `qgosper_sum` and `qzeilberger` on the
+  core's `cancel`, `factor`, `gcd`, `lcm_list`, `powsimp` and `expand`,
+  the null space of `concrete.zeilberger` and the linear solver of
+  `concrete.gosper`; `QTelescoper` is immutable. Only the isolated
+  values of the parameters go through SymPy, at the call. The new
+  `sympy_extras.concrete.qhyper_sympy` is the face on SymPy expressions
+  (`QPochhammer` as a SymPy function, which `sympy_extras.interop`
+  converts to and from the node), used by `docs/comparison.md` and
+  `benchmarks/comparison.py`. The same printed results as
+  before on 64 of 66 compared calls (q-Pochhammer symbols, q-binomials,
+  ratios, 12 antidifferences and 21 sums with and without special
+  values, 8 q-Zeilberger calls); the other two: the sum of
+  `q**k/((1 - q**k)*(1 - q**(k + 1)))` contained the free unknown `_f0`
+  of the q-Gosper equation, now set to 0 (a regression test), and
+  `qzeilberger` on `qbinomial(n, k, q)**2*q**(k**2)` returns `None` in
+  13 s where the SymPy-based version ran for more than 300 s. The gcds
+  of the q-Gosper normal form are the native multivariate `gcd` of the
+  numerators: `qzeilberger(qbinomial(n, k, q), n, k, q)` takes 1.2 s
+  instead of 10 s.
 - `sympy_extras.concrete.zeilberger` is native (breaking: core expressions
   in and out): `zeilberger`, `wz_certificate`, `wz_prove` and
   `zeilberger_sum` on the core's `cancel`, `factor`, `lcm_list`,

@@ -52,8 +52,8 @@ The setup used throughout:
 >>> from sympy_extras.concrete.convergence import sum_convergence, product_convergence
 >>> from sympy_extras.concrete.dirichlet import dirichlet_series
 >>> from sympy_extras.concrete.eulersums import polygamma_series
->>> from sympy_extras.concrete.qhyper import qgosper_sum, qzeilberger
->>> from sympy_extras.concrete.qhyper import qbinomial
+>>> from sympy_extras.concrete.qhyper_sympy import qgosper_sum, qzeilberger
+>>> from sympy_extras.concrete.qhyper_sympy import qbinomial
 >>> from sympy_extras.solvers.kovacic import dsolve_kovacic
 >>> from sympy_extras.solvers.linear_ode import dsolve_linear
 >>> from sympy_extras.solvers.special import special_solutions

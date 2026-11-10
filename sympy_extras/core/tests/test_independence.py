@@ -98,3 +98,24 @@ def test_native_zeilberger_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ZEILBERGER], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_QHYPER = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.concrete.qhyper import qgosper_sum, qgosper_term, qzeilberger, qbinomial, qpochhammer
+q, k, n, x, a = symbols('q k n x a')
+assert str(qgosper_sum(q**k, (k, 0, n), q, special_values=False)) == 'q**(n + 1)/(q - 1) - 1/(q - 1)'
+assert str(qgosper_term(q**k*qpochhammer(a, q, k), k, q, special_values=False)) == '-QPochhammer(a, q, k)/a'
+assert str(qzeilberger(qbinomial(n, k, q)*q**(k*(k - 1)/2)*x**k, n, k, q).coefficients) == '[-q**n*x - 1, 1]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_qhyper_does_not_load_sympy() -> None:
+    """:mod:`sympy_extras.concrete.qhyper` without the cases of the
+    parameters (``q`` is one: they always go through SymPy) does not load
+    SymPy."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_QHYPER], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

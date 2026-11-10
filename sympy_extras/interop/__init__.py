@@ -1016,6 +1016,8 @@ def _fill_function_tables() -> None:
             if isinstance(native_rep, type) and issubclass(native_rep, DefinedFunction) \
                     and isinstance(sympy_rep, type) and issubclass(sympy_rep, sympy.Function):
                 pairs.append((native_rep, sympy_rep))
+    from sympy_extras.concrete import qhyper, qhyper_sympy
+    pairs.append((qhyper.QPochhammer, qhyper_sympy.QPochhammer))
     for native, counterpart in pairs:
         _NATIVE_TO_SYMPY[native] = counterpart
         _SYMPY_TO_NATIVE[counterpart] = native

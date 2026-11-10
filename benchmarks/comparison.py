@@ -78,7 +78,7 @@ from sympy_extras.concrete.karr_sympy import karr_sum, summation as xsummation
 from sympy_extras.concrete.convergence import sum_convergence, product_convergence
 from sympy_extras.concrete.dirichlet import dirichlet_series
 from sympy_extras.concrete.eulersums import polygamma_series, euler_sum
-from sympy_extras.concrete.qhyper import qgosper_sum, qzeilberger
+from sympy_extras.concrete.qhyper_sympy import qgosper_sum, qzeilberger
 from sympy_extras.concrete.rational import rational_sum
 from sympy_extras.solvers.kovacic import dsolve_kovacic
 from sympy_extras.solvers.linear_ode import dsolve_linear
@@ -100,7 +100,7 @@ from sympy_extras.polys.groebnerwalk import groebner_walk
 from sympy_extras.polys.euclidtools import psc
 from sympy_extras.polys.cad import quantifier_elimination, solution_set
 from sympy_extras.polys.virtual_substitution import eliminate_linear
-from sympy_extras.concrete.qhyper import qpochhammer, qbinomial
+from sympy_extras.concrete.qhyper_sympy import qpochhammer, qbinomial
 from sympy_extras.integrals import definite_integral, IntegralByRanges, mellin_transform as xmellin
 from sympy.solvers.ode import dsolve
 from sympy.series.limitseq import limit_seq

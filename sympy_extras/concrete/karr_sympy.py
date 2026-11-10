@@ -1,8 +1,8 @@
 r"""The SymPy face of Karr's algorithm (:mod:`sympy_extras.concrete.karr`).
 
 :mod:`~sympy_extras.concrete.karr` is written on the core and takes and
-returns core expressions. The summation modules still written on SymPy
-(:mod:`~sympy_extras.concrete.qhyper`) use this module instead:
+returns core expressions. Code still written on SymPy uses this module
+instead:
 
 - :func:`karr_sum`, :func:`karr_term` and :func:`summation` take and
   return SymPy expressions, converted at the boundary

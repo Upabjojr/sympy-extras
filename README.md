@@ -846,6 +846,7 @@ sympy_extras/
         qhyper.py            q-Pochhammer symbols, q-Gosper, q-Zeilberger
         rational.py          Abramov's decomposition of rational summands
         zeilberger_sympy.py  the SymPy face of zeilberger: zeilberger_sum, wz_certificate, wz_prove
+        qhyper_sympy.py      the SymPy face of qhyper: QPochhammer as a SymPy function, qgosper_sum, qzeilberger, ...
     integrals/
         mellin.py            Mellin transforms as gamma quotients, the table of kernels
         slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem

@@ -201,6 +201,8 @@ sympy_extras/
         creative.py          creative telescoping in PiSigma-fields: creative_telescoping, definite_sum (native)
         zeilberger.py        Zeilberger's algorithm, WZ certificates, zeilberger_sum (native)
         zeilberger_sympy.py  the SymPy face of zeilberger: zeilberger_sum, wz_certificate, wz_prove
+        qhyper.py            q-Pochhammer symbols (QPochhammer node, qpochhammer), q-Gosper, q-Zeilberger (native)
+        qhyper_sympy.py      the SymPy face of qhyper: QPochhammer as a SymPy function, qgosper_sum, qzeilberger, ...
         tests/
     integrals/               definite integration extending sympy.integrals
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels
