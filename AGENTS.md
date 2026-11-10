@@ -251,6 +251,7 @@ sympy_extras/
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
       domainmatrix.py        DomainMatrix[T] over a Domain[T]: Bareiss determinant, fraction-free Gauss-Jordan (rank, null space, inverse, systems), Berkowitz characteristic polynomial, adjugate
       linalg.py              the same on ExprMatrix: entries as fractions over ZZ[kernels], pivots certified by the zero test when the kernels are not symbols
+      eigen.py               eigenspaces per irreducible factor of the characteristic polynomial (elimination over K[x]/(f)), eigenvalues, eigenvectors, diagonalize
     series/                  residue (ported from SymPy)
     sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains; Naturals, Naturals0, Integers, Rationals, Complexes (fancysets.py) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)

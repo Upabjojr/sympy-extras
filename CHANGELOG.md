@@ -10,6 +10,15 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.eigen`: `eigenspaces` (one `Eigenspace` per
+  irreducible factor of the characteristic polynomial: the factor, its
+  multiplicity, a basis of the eigenspace in terms of the eigenvalue,
+  computed by elimination over `K[x]/(f)`), `eigenvalues`, `eigenvectors`,
+  `is_diagonalizable` (decided without solving the characteristic
+  polynomial), `diagonalize`; the methods `eigenvals`, `eigenvects`,
+  `is_diagonalizable`, `diagonalize` of `ExprMatrix`.
+- `sympy_extras.polys.domains.quotientfield.QuotientField`: the simple
+  algebraic extension `K[t]/(f)` of any typed field `K` as a domain.
 - `sympy_extras.matrices.domainmatrix.DomainMatrix`: dense matrices over a
   typed `Domain[T]` with fraction-free linear algebra: `det` (Bareiss),
   `rref_den` / `rref` (fraction-free Gauss–Jordan with a single

@@ -937,6 +937,20 @@ LinearSolution(ExprMatrix([[0], [1], [0]]), [ExprMatrix([[a - 2], [1 - a], [1]])
 
 ```
 
+Eigenvalues and eigenvectors are computed per irreducible factor of the
+characteristic polynomial, by elimination over the extension field it
+defines, so that diagonalisability is decided even when the eigenvalues
+have no closed form:
+
+```python
+>>> M = ExprMatrix.from_rows([[a, b], [b, a]])
+>>> M.eigenvals(), M.diagonalize()
+({a - b: 1, a + b: 1}, (ExprMatrix([[-1, 1], [1, 1]]), ExprMatrix([[a - b, 0], [0, a + b]])))
+>>> ExprMatrix.from_rows([[a, 1], [0, a]]).is_diagonalizable()
+False
+
+```
+
 The rank-dependent operations return the generic answer for symbols; with
 other kernels (`sin(t)`, `sqrt(2)`) every pivot must be proved nonzero by
 the zero test, otherwise `NotImplementedError` is raised.

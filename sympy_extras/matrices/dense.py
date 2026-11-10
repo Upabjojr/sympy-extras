@@ -4,7 +4,9 @@ order with the shape. Only what hyperexpand's formula tables need
 ``row_insert``, the arithmetic, ``subs``, ``diff``, ``applyfunc``,
 ``has``); every operation returns a new matrix. The linear algebra
 (``det``, ``inv``, ``rank``, ``rref``, ``nullspace``, ``adjugate``,
-``charpoly``, ``solve``) is that of :mod:`sympy_extras.matrices.linalg`.
+``charpoly``, ``solve``) is that of :mod:`sympy_extras.matrices.linalg`,
+the eigenvalues (``eigenvals``, ``eigenvects``, ``is_diagonalizable``,
+``diagonalize``) that of :mod:`sympy_extras.matrices.eigen`.
 
 Examples
 ========
@@ -224,3 +226,28 @@ class ExprMatrix:
         if solution is None:
             raise ValueError('the system has no solution')
         return solution.particular
+
+    # eigenvalues (sympy_extras.matrices.eigen)
+
+    def eigenvals(self) -> dict[Expr, int]:
+        """The eigenvalues with their algebraic multiplicities."""
+        from .eigen import eigenvalues
+        return eigenvalues(self)
+
+    def eigenvects(self) -> list[tuple[Expr, int, list[ExprMatrix]]]:
+        """``(eigenvalue, multiplicity, basis of the eigenspace)``."""
+        from .eigen import eigenvectors
+        return eigenvectors(self)
+
+    def is_diagonalizable(self) -> bool:
+        from .eigen import is_diagonalizable
+        return is_diagonalizable(self)
+
+    def diagonalize(self) -> tuple[ExprMatrix, ExprMatrix]:
+        """``(P, D)`` with ``self * P = P * D``; ``ValueError`` when the
+        matrix is not diagonalisable."""
+        from .eigen import diagonalize
+        result = diagonalize(self)
+        if result is None:
+            raise ValueError('the matrix is not diagonalizable')
+        return result

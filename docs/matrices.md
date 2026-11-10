@@ -5,6 +5,8 @@
 * `DomainMatrix` (`sympy_extras.matrices.domainmatrix`): a dense matrix
   over a typed `Domain[T]` (`ZZ`, `QQ`, `GF(p)`, a polynomial ring), with
   fraction-free algorithms;
+* `sympy_extras.matrices.eigen`: eigenvalues, eigenvectors and
+  diagonalisation;
 * `sympy_extras.matrices.linalg`: the same operations on an `ExprMatrix`
   of expressions of the core, also available as methods (`M.det()`,
   `M.inv()`, `M.rank()`, `M.rref()`, `M.nullspace()`, `M.adjugate()`,
@@ -134,10 +136,60 @@ of the symbolic matrices are `p*x + q*y + r` with random small integers.
 | determinant, 60 x 60 of two-digit integers | 0.04 | 3.7 |
 | inverse, 6 x 6, entries linear in `x, y` (in lowest terms here, not in SymPy) | 0.6 | 0.3 |
 
+## Eigenvalues and eigenvectors
+
+`sympy_extras.matrices.eigen` factors the characteristic polynomial over
+the field $K$ of rational functions in the symbols of the matrix, and
+computes the eigenvectors *once for all the roots of each irreducible
+factor* $f$: the null space of $M - \lambda I$ is found by elimination
+over the field $K[\lambda]/(f)$
+(`sympy_extras.polys.domains.quotientfield.QuotientField`), in which
+$\lambda$ is a root of $f$ by construction. No expression in radicals is
+ever tested for zero, and the structure does not depend on solving $f$.
+
+```python
+>>> from sympy_extras.matrices.eigen import eigenspaces, is_diagonalizable
+>>> F = ExprMatrix.from_rows([[1, 1], [1, 0]])
+>>> eigenspaces(F, x)
+[Eigenspace(x**2 - x - 1, 1, [ExprMatrix([[x], [1]])])]
+>>> F.eigenvals()
+{1/2 - sqrt(5)/2: 1, 1/2 + sqrt(5)/2: 1}
+>>> F.eigenvects()
+[(1/2 - sqrt(5)/2, 1, [ExprMatrix([[1/2 - sqrt(5)/2], [1]])]), (1/2 + sqrt(5)/2, 1, [ExprMatrix([[1/2 + sqrt(5)/2], [1]])])]
+>>> ExprMatrix.from_rows([[a, b], [b, a]]).diagonalize()
+(ExprMatrix([[-1, 1], [1, 1]]), ExprMatrix([[a - b, 0], [0, a + b]]))
+>>> J = ExprMatrix.from_rows([[a, 1], [0, a]])
+>>> eigenspaces(J, x), J.is_diagonalizable()
+([Eigenspace(-a + x, 2, [ExprMatrix([[1], [0]])])], False)
+
+```
+
+An `Eigenspace` has the irreducible `factor`, its `multiplicity` in the
+characteristic polynomial, and a `basis` of the eigenspace in terms of
+the eigenvalue; `values()` gives the roots in radicals when they are
+found, `vectors(value)` the basis for one of them. When a factor is not
+solved, the structure is still complete (and `is_diagonalizable` is
+decided), while `eigenvals`, `eigenvects` and `diagonalize` raise
+`NotImplementedError`:
+
+```python
+>>> C = ExprMatrix.from_rows([[0, 0, 0, 0, 1], [1, 0, 0, 0, 1], [0, 1, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 0]])
+>>> [space] = eigenspaces(C, x)
+>>> space.factor, space.values() is None, space.basis
+(x**5 - x - 1, True, (ExprMatrix([[x**4 - 1], [x**3], [x**2], [x], [1]]),))
+>>> C.is_diagonalizable()
+True
+
+```
+
+The entries must be rational functions of symbols.
+
 ## Not done
 
-* eigenvalues and eigenvectors (the roots of the characteristic
-  polynomial), Jordan and Smith forms of symbolic matrices;
+* eigenvalues of matrices with other kernels (`sqrt(2)`, `sin(t)`): the
+  factorisation over the field they generate is needed; eigenvalues as
+  `RootOf` objects when a factor is not solved in radicals;
+* generalised eigenvectors, Jordan and Smith forms of symbolic matrices;
 * case distinctions on the parameters inside these functions;
 * a sparse representation, and modular or evaluation-interpolation
   methods for large matrices of polynomials.
