@@ -53,3 +53,61 @@ def test_solve_linear_unique_declines() -> None:
     assert solve_linear_unique([a - log(n)], [a]) is None
     assert solve_linear_unique([a - pi], [a]) is None
     assert solve_linear_unique([], [a]) is None
+
+
+def test_linear_root_and_numeric_linear_solution_match_sympy_solve() -> None:
+    import sympy
+    from sympy_extras.core.symbol import Symbol as NativeSymbol
+    from sympy_extras.interop import expr_from_sympy, sympy_expr, to_sympy
+    from sympy_extras.solvers.linsolve import linear_root, numeric_linear_solution
+    rng = random.Random(11)
+    i, j, k, n = sympy.symbols('i j k n')
+    d = sympy.Dummy('d')
+    coefficients = [sympy.Integer(1), sympy.Integer(-1), sympy.Integer(2), sympy.Integer(-3), sympy.Rational(1, 2)]
+    rests = [i, 2*i + 1, i - n + sympy.Rational(1, 3), n*i, sympy.sin(n), sympy.Integer(0)]
+    roots = 0
+    for _ in range(60):
+        v = rng.choice([k, d])
+        e = rng.choice(coefficients)*v + rng.choice(rests)
+        if rng.random() < 0.2:
+            e += v**2
+        native_v = expr_from_sympy(v)
+        assert isinstance(native_v, NativeSymbol)
+        got = linear_root(expr_from_sympy(e), native_v)
+        if got is None:
+            assert e.has(v**2), e
+            continue
+        roots += 1
+        assert sympy.srepr(sympy_expr(to_sympy(got))) == sympy.srepr(sympy.solve(e, v)[0]), e
+    assert roots >= 30
+    systems = 0
+    for _ in range(60):
+        unknowns = [i, j, n][:rng.choice([1, 2, 3])]
+        eqs = [sympy.Add(*[rng.choice(coefficients + [sympy.Integer(0)])*u for u in unknowns])
+               + rng.choice([sympy.Integer(0), sympy.Integer(1), sympy.Integer(-2), sympy.Rational(1, 2)])
+               for _ in range(rng.choice([len(unknowns), len(unknowns) + 1]))]
+        got_dict = numeric_linear_solution([expr_from_sympy(e) for e in eqs])
+        want = sympy.solve(eqs, dict=True)
+        free = set().union(*[e.free_symbols for e in eqs])
+        if len(want) == 1 and set(want[0]) == free:
+            systems += 1
+            assert got_dict is not None, eqs
+            assert {sympy.srepr(to_sympy(a)): sympy.srepr(to_sympy(b)) for a, b in got_dict.items()} == \
+                {sympy.srepr(a): sympy.srepr(b) for a, b in want[0].items()}, eqs
+        else:
+            assert got_dict is None, (eqs, got_dict, want)
+    assert systems >= 20
+
+
+def test_solve_one_free_of_the_unknown_matches_sympy() -> None:
+    import sympy
+    from sympy_extras.core.symbol import Symbol as NativeSymbol
+    from sympy_extras.interop import expr_from_sympy
+    from sympy_extras.solvers.linsolve import solve_one
+    i, k, x = sympy.symbols('i k x')
+    m = sympy.Dummy('m')
+    native_m = expr_from_sympy(m)
+    assert isinstance(native_m, NativeSymbol)
+    for e in [sympy.Integer(0), sympy.Integer(3), 2*k + 1, i*x + x, 1 + i**-2, sympy.sin(i)]:
+        assert sympy.solve(e, m) == []
+        assert solve_one(expr_from_sympy(e), native_m) == [], e

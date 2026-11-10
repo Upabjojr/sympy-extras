@@ -85,7 +85,14 @@ def _through(name: str, f: Expr, limits: Limits) -> Optional[Expr]:
 
 
 def _solve(e: Expr, v: Symbol) -> list[Expr]:
-    """SymPy's ``solve(e, v)`` (through SymPy)."""
+    """SymPy's ``solve(e, v)``: native for an equation free of ``v`` or
+    linear in it with a rational coefficient
+    (:func:`~sympy_extras.solvers.linsolve.solve_one`), through SymPy
+    otherwise."""
+    from sympy_extras.solvers.linsolve import solve_one
+    known = solve_one(e, v)
+    if known is not None:
+        return known
     import sympy
     from sympy_extras.interop import expr_from_sympy, to_sympy
     return [expr_from_sympy(s) for s in sympy.solve(to_sympy(e), to_sympy(v))]
