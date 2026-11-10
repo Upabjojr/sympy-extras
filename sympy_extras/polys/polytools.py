@@ -18,9 +18,10 @@ SymPy prints ``Poly``.
 
 Not ported yet (``CoercionFailed`` or ``OperationNotSupported``): the
 domains ``EX`` (coefficients like ``exp(y)`` with explicit generators),
-``RR``, fraction fields (``ZZ(a)``), ``ZZ_I`` and algebraic extensions;
-the division of multivariate polynomials and of polynomials with
-symbolic coefficients; multivariate factorisation.
+``RR``, fraction fields (``ZZ(a)``), ``ZZ_I`` and algebraic extensions
+in ``Poly`` (``factor`` without generators factors over ``ZZ_I``/``QQ_I``,
+:mod:`~sympy_extras.polys.gaussianfactor`, and ``RR``); the division of
+multivariate polynomials and of polynomials with symbolic coefficients.
 
 Examples
 ========
@@ -1457,17 +1458,23 @@ def _real_factor_list(base: Expr) -> tuple[Expr, list[tuple[Expr, int]]]:
 
 # PORTED FROM SYMPY: sympy/polys/factortools.py:dup_factor_list, dup_zz_i_factor, dup_qq_i_factor
 def _gaussian_factor_list(base: Expr) -> tuple[Expr, list[tuple[Expr, int]]]:
-    """The factorisation of a univariate polynomial with Gaussian
-    coefficients over ``ZZ_I`` (or ``QQ_I``): over ``QQ<I>`` by Trager's
-    algorithm, the contents of the factors made Gaussian integers as SymPy
-    does; ``CoercionFailed`` for several generators or other coefficients."""
+    """The factorisation of a polynomial with Gaussian coefficients over
+    ``ZZ_I`` (or ``QQ_I``): over ``QQ<I>`` by Trager's algorithm, the
+    contents of the factors made Gaussian integers as SymPy does (several
+    generators: :mod:`~sympy_extras.polys.gaussianfactor`);
+    ``CoercionFailed`` for other coefficients."""
     from fractions import Fraction as _Fraction
     from .domains.algebraicfield import AlgebraicField
     from .factortools import dup_ext_factor
     gens, (rep,) = _joint_rings_gaussian([base])
-    if len(gens) != 1:
-        raise CoercionFailed('the factorisation over ZZ_I in several generators is not ported yet')
+    if not gens:
+        raise CoercionFailed('no generator')
     integral = all(c.x.denominator == 1 and c.y.denominator == 1 for c in rep.values())
+    if len(gens) > 1:
+        from .gaussianfactor import gaussian_factor_list
+        ring = PolyRing(QQ_I, _internal_names(len(gens), 0))
+        coefficient, multivariate = gaussian_factor_list(ring.from_dict(rep), integral)
+        return QQ_I.to_expr(coefficient), [(_gaussian_expr_of(dict(g.terms), gens), k) for g, k in multivariate]
     degree = max(m[0] for m in rep)
     dense: list[GaussianRational] = [rep.get((degree - i,), QQ_I.zero) for i in range(degree + 1)]
     # dup_terms_gcd
@@ -1512,8 +1519,9 @@ def _gaussian_factor_list(base: Expr) -> tuple[Expr, list[tuple[Expr, int]]]:
         found = new_found
     if j:
         found.insert(0, ([QQ_I.one, QQ_I.zero], j))
-    # _sort_factors (multiple): by length, multiplicity, coefficients
-    found.sort(key=lambda item: (len(item[0]), item[1], [(c.x, c.y) for c in item[0]]))
+    # _sort_factors (multiple): by length, multiplicity, coefficients (SymPy
+    # compares Gaussian numbers by their imaginary parts first)
+    found.sort(key=lambda item: (len(item[0]), item[1], [(c.y, c.x) for c in item[0]]))
     x = gens[0]
 
     def expr_of(fac: list[GaussianRational]) -> Expr:
@@ -1790,8 +1798,8 @@ def _symbolic_factor_list(expr: Expr, gens: Sequence[ExprLike], method: Method =
             factors.append((_expanded(base), exponent))
             continue
         except CoercionFailed:
-            # Gaussian coefficients (one generator): SymPy's factorisation
-            # over ZZ_I and QQ_I through QQ<I>
+            # Gaussian coefficients: SymPy's factorisation over ZZ_I and
+            # QQ_I through QQ<I>
             if gens or method != 'factor':
                 raise
             try:
@@ -1973,7 +1981,8 @@ def factor(f: ExprLike, *gens: ExprLike, deep: bool = False, fraction: bool = Tr
     try:
         return _symbolic_factor(e, gens, fraction)
     except CoercionFailed:
-        # the domains ZZ_I, RR and EX are not ported: SymPy's factor
+        # EX, and ZZ_I, QQ_I or RR with explicit generators, are not
+        # ported: SymPy's factor
         import sympy
         from sympy_extras.interop import expr_through_sympy, to_sympy
         sympy_gens = [to_sympy(to_expr(g)) for g in gens]

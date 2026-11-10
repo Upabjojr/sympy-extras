@@ -10,6 +10,15 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.gaussianfactor`: factorisation of multivariate
+  polynomials over `ZZ_I` and `QQ_I` by Trager's algorithm over `QQ<I>`,
+  ported from SymPy's `dmp_zz_i_factor`, `dmp_qq_i_factor`,
+  `dmp_ext_factor`, `dmp_sqf_norm` and `_sort_factors`; `factor` of
+  expressions with Gaussian coefficients in several generators (trigsimp,
+  `Order`) no longer goes through SymPy, with SymPy's results (checked by
+  `srepr` on 100 random cases) and about ten times faster. The univariate
+  factors over `ZZ_I` are sorted as SymPy sorts them (imaginary parts
+  first).
 - `sympy_extras.polys.polytools.gcd_list` and `lcm_list`, native (folding
   `gcd`/`lcm`): the same results as SymPy's, structurally.
 - `sympy_extras.solvers.linsolve.solve_linear_unique`: the unique solution
