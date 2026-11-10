@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.eigen`: `jordan_chains` (the Jordan blocks and
+  chains of generalised eigenvectors per irreducible factor of the
+  characteristic polynomial, without solving it) and `jordan_form`
+  (`(P, J)` with `M P = P J`); `ExprMatrix.jordan_form`.
 - `sympy_extras.concrete.ztransform`: `z_transform(f, n, z)` (polynomial
   times exponential times sines and cosines, `a**n/n!`, `a**n/(n + m)`,
   impulses) and `inverse_z_transform(F, z, n)` (every rational function

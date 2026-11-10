@@ -184,12 +184,34 @@ True
 
 The entries must be rational functions of symbols.
 
+### The Jordan form
+
+`jordan_chains(M, x)` computes the chains of generalised eigenvectors in
+the same way: for each irreducible factor, the kernels of the powers of
+$M - \lambda I$ over $K[\lambda]/(f)$ give the sizes of the blocks, and
+the chains are built from the longest down, each level completing the
+kernel of the previous power. `jordan_form(M)` (or `M.jordan_form()`)
+substitutes the roots and returns `(P, J)` with `M P = P J`.
+
+```python
+>>> from sympy_extras.matrices.eigen import jordan_chains
+>>> G = ExprMatrix.from_rows([[3, 1, 0], [-1, 1, 0], [0, 0, 2]])
+>>> jordan_chains(G, x)
+[JordanChains(x - 2, 3, blocks [2, 1])]
+>>> G.jordan_form()
+(ExprMatrix([[1, 1, 0], [-1, 0, 0], [0, 0, 1]]), ExprMatrix([[2, 1, 0], [0, 2, 0], [0, 0, 2]]))
+>>> ExprMatrix.from_rows([[a, 1], [0, a]]).jordan_form()
+(ExprMatrix([[1, 0], [0, 1]]), ExprMatrix([[a, 1], [0, a]]))
+
+```
+
 ## Not done
 
 * eigenvalues of matrices with other kernels (`sqrt(2)`, `sin(t)`): the
   factorisation over the field they generate is needed; eigenvalues as
   `RootOf` objects when a factor is not solved in radicals;
-* generalised eigenvectors, Jordan and Smith forms of symbolic matrices;
+* the Smith and rational canonical forms of symbolic matrices; the
+  singular value decomposition;
 * case distinctions on the parameters inside these functions;
 * a sparse representation, and modular or evaluation-interpolation
   methods for large matrices of polynomials.

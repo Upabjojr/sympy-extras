@@ -13,7 +13,8 @@ from sympy_extras.core import Integer, Rational, Symbol
 from sympy_extras.core.expr import Expr
 from sympy_extras.interop import sympy_expr, to_sympy
 from sympy_extras.matrices import ExprMatrix
-from sympy_extras.matrices.eigen import diagonalize, eigenspaces, eigenvalues, eigenvectors, is_diagonalizable
+from sympy_extras.matrices.eigen import (diagonalize, eigenspaces, eigenvalues, eigenvectors, is_diagonalizable, jordan_chains,
+                                         jordan_form)
 from sympy_extras.polys.domains import GF, QQ
 from sympy_extras.polys.domains.quotientfield import QuotientField
 
@@ -162,3 +163,68 @@ def test_quotient_field() -> None:
         R.invert(R.sub(R.generator, R.one))
     with pytest.raises(ValueError):
         QuotientField(QQ, [Fraction(2), Fraction(1)])
+
+
+def _similar_to_blocks(rnd: random.Random, blocks: list[tuple[int, int]]) -> sympy.Matrix:
+    """A matrix with the given Jordan blocks ``(eigenvalue, size)``,
+    conjugated by a random unimodular integer matrix."""
+    n = sum(size for _, size in blocks)
+    J = sympy.zeros(n, n)
+    position = 0
+    for value, size in blocks:
+        for i in range(size):
+            J[position + i, position + i] = value
+            if i:
+                J[position + i - 1, position + i] = 1
+        position += size
+    P = sympy.eye(n)
+    for _ in range(2*n):
+        i, j = rnd.randrange(n), rnd.randrange(n)
+        if i != j:
+            P[i, :] = P[i, :] + rnd.choice([-1, 1])*P[j, :]
+    return P*J*P.inv()
+
+
+def test_jordan_form_of_planted_blocks() -> None:
+    rnd = random.Random(21)
+    cases = [[(2, 2), (2, 1)], [(1, 3)], [(0, 2), (0, 2)], [(3, 1), (3, 1), (-1, 2)], [(2, 3), (2, 1), (5, 1)],
+             [(1, 2), (1, 2), (1, 1)], [(0, 4)], [(7, 1)], [(-2, 2), (4, 3)]]
+    for blocks in cases:
+        S = _similar_to_blocks(rnd, blocks)
+        M = ExprMatrix(S.rows, S.cols, [int(S[i, j]) for i in range(S.rows) for j in range(S.cols)])
+        found: list[tuple[int, int]] = []
+        for group in jordan_chains(M, x):
+            [value] = sympy.solve(sympy_expr(to_sympy(group.factor)), sympy.Symbol('x'))
+            found.extend((int(value), size) for size in group.block_sizes)
+            assert sum(group.block_sizes) == group.multiplicity
+        assert sorted(found) == sorted(blocks)
+        P, J = (_sympy_matrix(m) for m in jordan_form(M))
+        assert S*P == P*J and P.det() != 0
+        assert all(J[i, j] == 0 for i in range(S.rows) for j in range(S.rows) if j not in (i, i + 1))
+        assert all(J[i, i + 1] in (0, 1) for i in range(S.rows - 1))
+
+
+def test_jordan_form_irrational_and_parameters() -> None:
+    # a 4 x 4 matrix with minimal polynomial (x**2 - 2)**2: two blocks of size two for sqrt(2) and -sqrt(2)
+    C = sympy.Matrix([[0, 2], [1, 0]])
+    S = sympy.Matrix(sympy.BlockMatrix([[C, sympy.eye(2)], [sympy.zeros(2, 2), C]]))
+    M = ExprMatrix(4, 4, [int(S[i, j]) for i in range(4) for j in range(4)])
+    [group] = jordan_chains(M, x)
+    assert group.factor == x**2 - 2 and group.multiplicity == 2 and group.block_sizes == [2]
+    P, J = (_sympy_matrix(m) for m in jordan_form(M))
+    assert sympy.simplify(S*P - P*J) == sympy.zeros(4, 4) and sympy.simplify(P.det()) != 0
+    assert sorted(J[i, i + 1] for i in range(3)) == [0, 1, 1]
+    # parameters
+    A = ExprMatrix.from_rows([[a, 1, 0], [0, a, 0], [0, 0, b]])
+    groups = jordan_chains(A, x)
+    assert sorted(g.block_sizes for g in groups) == [[1], [2]]
+    P, J = (_sympy_matrix(m) for m in jordan_form(A))
+    assert sympy.simplify(_sympy_matrix(A)*P - P*J) == sympy.zeros(3, 3) and sympy.simplify(P.det()) != 0
+    # a diagonalisable matrix: the Jordan form is diagonal
+    D = ExprMatrix.from_rows([[a, b], [b, a]])
+    assert all(size == [1] for size in (g.block_sizes for g in jordan_chains(D, x)))
+    # the structure without the roots
+    companion = ExprMatrix.from_rows([[0, 0, 0, 0, 1], [1, 0, 0, 0, 1], [0, 1, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 0]])
+    assert [g.block_sizes for g in jordan_chains(companion, x)] == [[1]]
+    with pytest.raises(NotImplementedError):
+        jordan_form(companion)

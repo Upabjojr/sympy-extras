@@ -6,7 +6,7 @@ order with the shape. Only what hyperexpand's formula tables need
 (``det``, ``inv``, ``rank``, ``rref``, ``nullspace``, ``adjugate``,
 ``charpoly``, ``solve``) is that of :mod:`sympy_extras.matrices.linalg`,
 the eigenvalues (``eigenvals``, ``eigenvects``, ``is_diagonalizable``,
-``diagonalize``) that of :mod:`sympy_extras.matrices.eigen`.
+``diagonalize``, ``jordan_form``) that of :mod:`sympy_extras.matrices.eigen`.
 
 Examples
 ========
@@ -251,3 +251,9 @@ class ExprMatrix:
         if result is None:
             raise ValueError('the matrix is not diagonalizable')
         return result
+
+    def jordan_form(self) -> tuple[ExprMatrix, ExprMatrix]:
+        """``(P, J)`` with ``J`` the Jordan normal form and
+        ``self * P = P * J``."""
+        from .eigen import jordan_form
+        return jordan_form(self)
