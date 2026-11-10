@@ -666,7 +666,10 @@ def piecewise_intervals(pw: Piecewise, sym: Symbol,
 
 def _simplify_condition(c: Boolean) -> Boolean:
     """SymPy's ``simplify`` of a condition (through SymPy: the
-    simplification of the relations and the logic is not ported)."""
+    simplification of the relations and the logic is not ported); ``True``
+    and ``False`` are left as they are, as SymPy does, without it."""
+    if isinstance(c, (BooleanTrue, BooleanFalse)):
+        return c
     import sympy
     from sympy_extras.interop import from_sympy, to_sympy
     r = from_sympy(sympy.simplify(to_sympy(c)))
