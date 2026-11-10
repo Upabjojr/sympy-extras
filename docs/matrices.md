@@ -6,8 +6,9 @@
   over a typed `Domain[T]` (`ZZ`, `QQ`, `GF(p)`, a polynomial ring), with
   fraction-free algorithms;
 * `sympy_extras.matrices.eigen`: eigenvalues, eigenvectors,
-  diagonalisation and the Jordan form; `sympy_extras.matrices.svd`: the
-  singular value decomposition;
+  diagonalisation and the Jordan form; `sympy_extras.matrices.functions`:
+  the matrix exponential, symbolic powers, functions of matrices;
+  `sympy_extras.matrices.svd`: the singular value decomposition;
 * `sympy_extras.matrices.linalg`: the same operations on an `ExprMatrix`
   of expressions of the core, also available as methods (`M.det()`,
   `M.inv()`, `M.rank()`, `M.rref()`, `M.nullspace()`, `M.adjugate()`,
@@ -241,6 +242,42 @@ substitutes the roots and returns `(P, J)` with `M P = P J`.
 (ExprMatrix([[1, 0], [0, 1]]), ExprMatrix([[a, 1], [0, a]]))
 
 ```
+
+## Functions of matrices
+
+`sympy_extras.matrices.functions` computes $f(M) = \sum_\lambda \sum_j
+f^{(j)}(\lambda) C_{\lambda, j}$ from the *component matrices*
+$C_{\lambda, j} = (M - \lambda)^j E_\lambda / j!$, with $E_\lambda$ the
+projector on the generalised eigenspace, a polynomial in $M$. The
+components are computed once for all the roots of an irreducible factor
+of the characteristic polynomial, over the field it defines: no matrix of
+eigenvectors is inverted. `matrix_exp(M, t)` (or `M.exp(t)`) is the
+fundamental matrix of $y' = M y$, with cosines and sines for complex
+pairs of eigenvalues; `matrix_power(M, n)` (or `M.power(n)`) is a closed
+form of the powers; `matrix_function(M, f, x)` takes any expression `f`
+in `x`.
+
+```python
+>>> from sympy_extras.functions import sqrt
+>>> from sympy_extras.matrices.functions import matrix_function, matrix_components
+>>> t, n = Symbol('t'), Symbol('n')
+>>> ExprMatrix.from_rows([[0, 1], [-1, 0]]).exp(t)
+ExprMatrix([[cos(t), sin(t)], [-sin(t), cos(t)]])
+>>> ExprMatrix.from_rows([[a, 1], [0, a]]).exp(t)
+ExprMatrix([[exp(a*t), t*exp(a*t)], [0, exp(a*t)]])
+>>> ExprMatrix.from_rows([[1, -2], [2, 1]]).exp(t)
+ExprMatrix([[exp(t)*cos(2*t), -exp(t)*sin(2*t)], [exp(t)*sin(2*t), exp(t)*cos(2*t)]])
+>>> ExprMatrix.from_rows([[2, 1], [0, 2]]).power(n)
+ExprMatrix([[2**n, 2**n*n/2], [0, 2**n]])
+>>> matrix_function(ExprMatrix.from_rows([[5, 4], [4, 5]]), sqrt(x), x)
+ExprMatrix([[2, 1], [1, 2]])
+>>> matrix_components(ExprMatrix.from_rows([[1, 1], [1, 0]]), x)
+[MatrixComponents(x**2 - x - 1, [ExprMatrix([[x/5 + 2/5, 2*x/5 - 1/5], [2*x/5 - 1/5, 3/5 - x/5]])])]
+
+```
+
+The eigenvalues must be found in radicals (`NotImplementedError`
+otherwise; `matrix_components` always works).
 
 ## Singular values
 

@@ -10,6 +10,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.functions`: `matrix_exp` (the exponential
+  `exp(t*M)`, real form for complex pairs of eigenvalues), `matrix_power`
+  (`M**n` for a symbolic `n`), `matrix_function` (any expression `f(x)`)
+  and `matrix_components` (the component matrices, computed per
+  irreducible factor of the characteristic polynomial over `K[x]/(f)`,
+  without inverting a matrix of eigenvectors); `ExprMatrix.exp`,
+  `ExprMatrix.power`.
 - `sympy_extras.matrices.eigen`: matrices with `I` in the entries (the
   Pauli matrices, Hermitian matrices): the characteristic polynomial is
   factored over `QQ(i)` by Trager's algorithm and the eigenspaces and

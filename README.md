@@ -971,9 +971,18 @@ False
 
 ```
 
-The Jordan form (`M.jordan_form()`) and the exact singular value
-decomposition of rational matrices (`M.svd()`) are built on the same
-eigenspaces.
+The Jordan form (`M.jordan_form()`), the exact singular value
+decomposition of rational matrices (`M.svd()`), the matrix exponential
+and symbolic powers are built on the same construction:
+
+```python
+>>> t, n = Symbol('t'), Symbol('n')
+>>> ExprMatrix.from_rows([[1, -2], [2, 1]]).exp(t)
+ExprMatrix([[exp(t)*cos(2*t), -exp(t)*sin(2*t)], [exp(t)*sin(2*t), exp(t)*cos(2*t)]])
+>>> ExprMatrix.from_rows([[2, 1], [0, 2]]).power(n)
+ExprMatrix([[2**n, 2**n*n/2], [0, 2**n]])
+
+```
 
 The rank-dependent operations return the generic answer for symbols; with
 other kernels (`sin(t)`, `sqrt(2)`) every pivot must be proved nonzero by

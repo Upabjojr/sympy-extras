@@ -277,3 +277,15 @@ class ExprMatrix:
         ``self = U * S * V.transpose()``."""
         from .svd import svd
         return svd(self)
+
+    # functions of matrices (sympy_extras.matrices.functions)
+
+    def exp(self, t: ExprLike = 1) -> ExprMatrix:
+        """The matrix exponential ``exp(t*self)``."""
+        from .functions import matrix_exp
+        return matrix_exp(self, t)
+
+    def power(self, n: ExprLike) -> ExprMatrix:
+        """``self**n`` for a symbolic exponent."""
+        from .functions import matrix_power
+        return matrix_power(self, n)
