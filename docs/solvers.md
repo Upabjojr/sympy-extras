@@ -644,6 +644,38 @@ fractions.
 Not covered: more than two exponentials (S-unit equations, which need
 the LLL reduction of `polys.lattice`), unknown bases.
 
+## Exact linear programming with certificates
+
+`sympy_extras.solvers.simplex.linear_program(c, A, b)` maximises `c . x`
+on `A x <= b` over the rationals (unknowns of either sign) by the
+two-phase simplex method in exact arithmetic with Bland's rule, and
+returns a certificate with every answer, checked by a few products
+whatever the method did:
+
+- *optimal*: the point and multipliers `y >= 0` with `y^T A = c` and
+  `y . b = c . x` (strong duality);
+- *infeasible*: `y >= 0` with `y^T A = 0` and `y . b < 0` (Farkas' lemma);
+- *unbounded*: a feasible point and a ray `d` with `A d <= 0`, `c . d > 0`.
+
+`linear_feasible(A, b, strict)` decides systems with strict inequalities
+on chosen rows (a common slack is maximised) and returns a point: the
+linear fragment of real arithmetic, without a cylindrical decomposition.
+
+```python
+>>> from sympy_extras.solvers.simplex import linear_program, linear_feasible
+>>> r = linear_program([5, 4, 3], [[2, 3, 1], [4, 1, 2], [3, 4, 2], [-1, 0, 0], [0, -1, 0], [0, 0, -1]], [5, 11, 8, 0, 0, 0])
+>>> r.value == 13, r.point == [2, 0, 1], r.dual == [1, 0, 1, 0, 3, 0]
+(True, True, True)
+>>> linear_program([0, 0], [[1, 1], [-1, 0], [0, -1]], [-1, 0, 0]).dual == [1, 1, 1]      # x + y <= -1, x, y >= 0
+True
+>>> linear_feasible([[1], [-1]], [1, -1], [True, False]) is None                      # x < 1 and x >= 1
+True
+
+```
+
+It is not yet called by `ask`, `satisfiable` or `resolve`, which still
+send linear formulas to virtual substitution.
+
 ## Darboux polynomials and the Prelle–Singer procedure
 
 `sympy_extras.solvers.darboux` solves `y' = P(x, y)/Q(x, y)` with

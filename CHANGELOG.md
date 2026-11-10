@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.solvers.simplex`: `linear_program` (exact two-phase
+  simplex over the rationals with Bland's rule; every result carries its
+  certificate: optimal dual multipliers, a Farkas combination, or a ray)
+  and `linear_feasible` (systems with strict inequalities). Typed, no
+  SymPy.
 - `sympy_extras.polys.numberfields.recognize.recognize_algebraic`: the
   algebraic number (an exact `Algebraic`) behind a decimal approximation,
   real or complex, by LLL reduction on the powers of the approximation
