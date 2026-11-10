@@ -100,20 +100,30 @@ of systems depend on which quantities vanish.
   no pivot vanishes (`a**2 - 1` above). Case distinctions on the
   parameters are the business of `solve(..., cases=True)` and `resolve`
   (see `docs/reduce.md`).
-* With the imaginary unit `I` (and symbols) the arithmetic is that of the
-  field $K[i]/(i^2 + 1)$ over the rational functions $K$: exact as well.
+* With the imaginary unit `I` and square roots of rational numbers (and
+  symbols) the arithmetic is that of the field $K(i, \sqrt{p_1}, \dots)$
+  over the rational functions $K$, for the primes involved
+  (`sympy_extras.polys.domains.multiquadratic.MultiquadraticField`):
+  exact as well.
 
 ```python
 >>> from sympy_extras.core import I
+>>> from sympy_extras.functions import sqrt
 >>> P = ExprMatrix.from_rows([[1, I], [I, -1]])
 >>> P.rank(), P.nullspace()
 (1, [ExprMatrix([[-I], [1]])])
 >>> ExprMatrix.from_rows([[1 + I, a], [2, 1 - I]]).inv()
 ExprMatrix([[-1/(2*a - 2) + I/(2*a - 2), a/(2*a - 2)], [1/(a - 1), -1/(2*a - 2) - I/(2*a - 2)]])
+>>> Q = ExprMatrix.from_rows([[sqrt(2), sqrt(3)], [sqrt(6), 3]])
+>>> Q.det(), Q.rank(), Q.nullspace()
+(0, 1, [ExprMatrix([[-sqrt(6)/2], [1]])])
+>>> W = ExprMatrix.from_rows([[1, 1], [1, -1]])/sqrt(2)
+>>> W.inv() == W, W.eigenvals()
+(True, {-1: 1, 1: 1})
 
 ```
 
-* With other kernels (`sin(t)`, `sqrt(2)`) a nonzero polynomial may
+* With other kernels (`sin(t)`, `2**(1/3)`) a nonzero polynomial may
   be a zero quantity. Every pivot is then submitted to the zero test of
   `sympy_extras.simplify.structure`, and `NotImplementedError` is raised
   unless all are proved nonzero, so that no wrong rank is returned:
@@ -211,8 +221,10 @@ True
 
 ```
 
-The entries are rational functions of symbols, possibly with `I`; the
-characteristic polynomial is then factored over $\mathbb{Q}(i)$:
+The entries are rational functions of symbols, possibly with `I` and
+square roots of rationals; the characteristic polynomial is factored
+over $\mathbb{Q}$ or $\mathbb{Q}(i)$ (its coefficients must not contain
+square roots):
 
 ```python
 >>> Y = ExprMatrix.from_rows([[0, -I], [I, 0]])
@@ -313,8 +325,8 @@ expressed in radicals.
 
 ## Not done
 
-* eigenvalues of matrices with kernels other than symbols and `I`
-  (`sqrt(2)`, `sin(t)`): the
+* eigenvalues when square roots remain in the coefficients of the
+  characteristic polynomial, or with other kernels (`sin(t)`): the
   factorisation over the field they generate is needed; eigenvalues as
   `RootOf` objects when a factor is not solved in radicals;
 * the Smith and rational canonical forms of symbolic matrices; the

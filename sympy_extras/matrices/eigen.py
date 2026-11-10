@@ -27,10 +27,12 @@ each level completing the kernel of the previous power together with the
 images of the level above [3]_.
 
 The entries are rational functions of symbols, possibly with the
-imaginary unit: the factorisation is then over $\mathbb{Q}(i)$ (Trager's
-algorithm, :mod:`sympy_extras.polys.gaussianfactor`) and $K$ contains
-$i$. With other kernels the factorisation over the field they generate
-would be needed.
+imaginary unit and square roots of rational numbers, which $K$ then
+contains. The characteristic polynomial is factored over $\mathbb{Q}$,
+or over $\mathbb{Q}(i)$ when ``I`` remains in it (Trager's algorithm,
+:mod:`sympy_extras.polys.gaussianfactor`); when square roots remain in
+its coefficients, or with other kernels, the factorisation over the
+field they generate would be needed (``NotImplementedError``).
 
 Examples
 ========
@@ -93,7 +95,8 @@ from sympy_extras.polys.rings import PolyRing
 
 from .dense import ExprMatrix
 from .domainmatrix import DomainMatrix
-from .linalg import _ComplexLift, _Fraction, _IntegerLift, _PolynomialLift, _complex_lift, _kernels, _square, charpoly
+from .linalg import (_ComplexLift, _IntegerLift, _PolynomialLift, _Radical, _complex_lift, _is_radical, _kernels, _square,
+                     charpoly)
 
 __all__ = ['Eigenspace', 'eigenspaces', 'eigenvalues', 'eigenvectors', 'is_diagonalizable', 'diagonalize', 'JordanChains',
            'jordan_chains', 'jordan_form']
@@ -237,17 +240,18 @@ class _FunctionField(_Field[SparseFracElement[int]]):
         return self.lift.ratio(a.numer, a.denom)
 
 
-class _GaussianField(_Field[list[_Fraction]]):
-    """Rational functions of the symbols with ``I``."""
+class _GaussianField(_Field[_Radical]):
+    """Rational functions of the symbols with ``I`` and square roots of
+    rationals."""
 
     def __init__(self, lift: _ComplexLift) -> None:
         super().__init__(lift.field)
         self.lift: Final[_ComplexLift] = lift
 
-    def element(self, e: Expr) -> list[_Fraction]:
+    def element(self, e: Expr) -> _Radical:
         return self.lift.element(e)
 
-    def expr(self, a: list[_Fraction]) -> Expr:
+    def expr(self, a: _Radical) -> Expr:
         return self.lift.expr(a)
 
 
@@ -374,20 +378,24 @@ def _characteristic_factors(M: ExprMatrix, unknown: Symbol) -> tuple[list[Expr],
     characteristic polynomial with their multiplicities."""
     _square(M)
     kernels = _kernels([M])
-    if not all(isinstance(k, (Symbol, ImaginaryUnit)) for k in kernels):
-        raise NotImplementedError('eigenvalues of a matrix whose entries are not rational functions of symbols and I')
+    if not all(isinstance(k, Symbol) or _is_radical(k) for k in kernels):
+        raise NotImplementedError('eigenvalues of a matrix whose entries are not rational functions of symbols, I and '
+                                  'square roots of rationals')
     if M.rows == 0:
         return kernels, []
     polynomial = charpoly(M, unknown)
-    if any(isinstance(k, ImaginaryUnit) for k in kernels):
+    symbols = [k for k in kernels if isinstance(k, Symbol)]
+    numerator = expand(polynomial.together().as_numer_denom()[0]) if kernels else polynomial
+    remaining = _kernels([ExprMatrix(1, 1, [numerator])])
+    if any(_is_radical(k) and not isinstance(k, ImaginaryUnit) for k in remaining):
+        raise NotImplementedError('the characteristic polynomial %s has irrational coefficients: its factorisation over '
+                                  'the field they generate is needed' % (polynomial.subs(unknown, Symbol('x')),))
+    if any(isinstance(k, ImaginaryUnit) for k in remaining):
         # over QQ(i): Trager's algorithm on the numerator
-        names = [unknown.name] + [k.name for k in kernels if isinstance(k, Symbol)]
-        ring = PolyRing(QQ_I, names)
-        _, gaussian = gaussian_ext_factor(ring.from_expr(expand(polynomial.together().as_numer_denom()[0])))
+        ring = PolyRing(QQ_I, [unknown.name] + [k.name for k in symbols])
+        _, gaussian = gaussian_ext_factor(ring.from_expr(numerator))
         return kernels, [(g.to_expr(), k) for g, k in gaussian if g.to_expr().has(unknown)]
-    # the entries may have denominators: factor the numerator over the integers
-    numerator = polynomial.together().as_numer_denom()[0] if kernels else polynomial
-    _, listed = factor_list(numerator, unknown, *kernels) if kernels else factor_list(numerator, unknown)
+    _, listed = factor_list(numerator, unknown, *symbols)
     factors: list[tuple[Expr, int]] = []
     for factor, exponent in listed:
         if not factor.has(unknown):

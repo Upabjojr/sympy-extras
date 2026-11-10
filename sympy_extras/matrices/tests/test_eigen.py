@@ -272,3 +272,23 @@ def test_imaginary_unit() -> None:
     # a Jordan block with a complex eigenvalue
     P, J = (_sympy_matrix(m) for m in jordan_form(ExprMatrix.from_rows([[I, 1], [0, I]])))
     assert J == sympy.Matrix([[sympy.I, 1], [0, sympy.I]])
+
+
+def test_square_roots() -> None:
+    from sympy_extras.functions import sqrt
+    two = Integer(2)
+    hadamard = ExprMatrix.from_rows([[1, 1], [1, -1]])/sqrt(two)
+    assert eigenvalues(hadamard) == {Integer(-1): 1, Integer(1): 1}
+    S = _sympy_matrix(hadamard)
+    for value, _, vectors in eigenvectors(hadamard):
+        for v in vectors:
+            residual = S*_sympy_matrix(v) - to_sympy(value)*_sympy_matrix(v)
+            assert all(sympy.simplify(residual[i, 0]) == 0 for i in range(2))
+    # sqrt(2) cancels in the characteristic polynomial x**2 - 2*x - 1... of [[1, sqrt(2)], [sqrt(2), 1]]
+    M = ExprMatrix.from_rows([[1, sqrt(two)], [sqrt(two), 1]])
+    assert set(eigenvalues(M)) == {1 - sqrt(two), 1 + sqrt(two)}
+    P, J = (_sympy_matrix(m) for m in jordan_form(M))
+    difference = _sympy_matrix(M)*P - P*J
+    assert all(sympy.simplify(difference[i, j]) == 0 for i in range(2) for j in range(2))
+    with pytest.raises(NotImplementedError):
+        eigenvalues(ExprMatrix.from_rows([[sqrt(two), 1], [1, 0]]))

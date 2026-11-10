@@ -19,8 +19,10 @@ systems depend on which quantities are zero. With symbols only a nonzero
 polynomial is a nonzero quantity, and the answer is the generic one (for
 the values of the symbols at which no pivot vanishes; see
 :func:`sympy_extras.assumptions.resolve` for case distinctions). With
-the imaginary unit as well the arithmetic is that of the field
-$K[i]/(i^2 + 1)$ over the rational functions $K$, and is exact too. With
+the imaginary unit and square roots of rational numbers as well the
+arithmetic is that of the field $K(i, \sqrt{p_1}, \dots)$ over the
+rational functions $K$, for the primes $p_j$ involved
+(:mod:`sympy_extras.polys.domains.multiquadratic`), and is exact too. With
 other kernels each pivot of the elimination is submitted to the zero test
 of :mod:`sympy_extras.simplify.structure`, and ``NotImplementedError`` is
 raised unless all are proved nonzero.
@@ -61,6 +63,7 @@ References
 """
 from __future__ import annotations
 
+from fractions import Fraction
 from math import gcd
 from typing import Final, Generic, Optional, Sequence, TypeVar
 
@@ -68,11 +71,12 @@ from sympy_extras.core.add import Add, add
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import I, ImaginaryUnit, Integer, Rational
-from sympy_extras.core.power import Pow, pow
+from sympy_extras.core.power import Pow, pow, sqrt
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.polys.domains import ZZ
 from sympy_extras.polys.domains.domain import Domain
-from sympy_extras.polys.domains.quotientfield import QuotientField
+from sympy_extras.ntheory import factorint
+from sympy_extras.polys.domains.multiquadratic import MultiquadraticField
 from sympy_extras.polys.domains.sparsefractionfield import SparseFracElement, SparseFractionField
 from sympy_extras.polys.domains.sparsepolynomialring import IntegerPolynomialRing
 from sympy_extras.polys.rings import PolyElement
@@ -388,28 +392,70 @@ def _linear_solve(lift: _Lift[T], A: ExprMatrix, B: ExprMatrix) -> Optional[Line
 
 
 # ---------------------------------------------------------------------
-# entries with the imaginary unit: the field K(parameters)[i]/(i**2 + 1)
+# entries with the imaginary unit and square roots of rational numbers:
+# the field K(parameters)(i, sqrt(p1), ...) for the primes involved
 
 _Fraction = SparseFracElement[int]
+_Radical = dict[int, _Fraction]
+
+
+def _radicand(e: Expr) -> Optional[Fraction]:
+    """``r`` when ``e`` is ``sqrt(r)`` for a positive rational ``r``."""
+    if isinstance(e, Pow) and isinstance(e.base, Rational) and e.exp == Rational(1, 2) and e.base.p > 0:
+        return e.base.as_fraction()
+    return None
+
+
+def _is_radical(e: Expr) -> bool:
+    return isinstance(e, ImaginaryUnit) or _radicand(e) is not None
+
+
+def _squarefree(r: Fraction) -> tuple[Fraction, list[int]]:
+    """``(c, primes)`` with ``sqrt(r) = c * sqrt(product of the
+    primes)``."""
+    # sqrt(p/q) = sqrt(p*q)/q
+    outside = Fraction(1, r.denominator)
+    primes: list[int] = []
+    for prime, exponent in sorted(factorint(r.numerator*r.denominator).items()):
+        outside *= prime**(exponent//2)
+        if exponent % 2:
+            primes.append(prime)
+    return outside, primes
 
 
 class _ComplexLift:
-    """The entries as elements of ``K[i]/(i**2 + 1)`` with ``K`` the field
-    of rational functions in the symbols: exact arithmetic with ``I``,
-    where a nonzero element is a nonzero quantity."""
+    """The entries as elements of ``K(i, sqrt(p1), ..., sqrt(pk))`` with
+    ``K`` the field of rational functions in the symbols: exact
+    arithmetic, where a nonzero element is a nonzero quantity."""
 
-    def __init__(self, parameters: Sequence[Expr]) -> None:
+    def __init__(self, parameters: Sequence[Expr], radicals: Sequence[Expr]) -> None:
         # a fraction field needs a variable: a spare one for matrices of numbers
         self.lift: Final[_PolynomialLift] = _PolynomialLift(list(parameters) if parameters else [Symbol('_spare')])
         self.ground: Final[SparseFractionField[int]] = SparseFractionField(self.lift.ring)
-        K = self.ground
-        self.field: Final[QuotientField[_Fraction]] = QuotientField(K, [K.one, K.zero, K.one])
+        radicands: set[int] = set()
+        for kernel in radicals:
+            r = _radicand(kernel)
+            if r is None:
+                radicands.add(-1)
+            else:
+                radicands.update(_squarefree(r)[1])
+        ordered = sorted(radicands)
+        self.field: Final[MultiquadraticField[_Fraction]] = MultiquadraticField(self.ground, ordered)
+        self.position: Final[dict[int, int]] = {d: i for i, d in enumerate(ordered)}
 
-    def element(self, e: Expr) -> list[_Fraction]:
+    def element(self, e: Expr) -> _Radical:
         F = self.field
         if isinstance(e, ImaginaryUnit):
-            return F.generator
-        if not e.has(I):
+            return F.generator(self.position[-1])
+        r = _radicand(e)
+        if r is not None:
+            outside, primes = _squarefree(r)
+            value = F.from_ground(self.ground.new(self.lift.ring.from_int(outside.numerator),
+                                                  self.lift.ring.from_int(outside.denominator)))
+            for prime in primes:
+                value = F.mul(value, F.generator(self.position[prime]))
+            return value
+        if isinstance(e, Rational) or isinstance(e, Symbol):
             n, d = self.lift.fraction(e)
             return F.from_ground(self.ground.new(n, d))
         if isinstance(e, Add):
@@ -428,23 +474,32 @@ class _ComplexLift:
             return product
         if isinstance(e, Pow) and isinstance(e.exp, Integer):
             return F.pow(self.element(e.base), e.exp.p)
-        raise ValueError('%s is not a rational function of symbols and I' % (e,))
+        raise ValueError('%s is not a rational function of symbols, I and square roots of rationals' % (e,))
 
-    def expr(self, a: Sequence[_Fraction]) -> Expr:
-        if not a:
-            return Integer(0)
-        real = self.lift.ratio(a[-1].numer, a[-1].denom)
-        if len(a) == 1:
-            return real
-        return add(real, mul(I, self.lift.ratio(a[0].numer, a[0].denom)))
+    def expr(self, a: _Radical) -> Expr:
+        terms: list[Expr] = []
+        for mask in sorted(a):
+            coefficient = self.lift.ratio(a[mask].numer, a[mask].denom)
+            factors: list[Expr] = [coefficient]
+            product = 1
+            for d, i in self.position.items():
+                if mask >> i & 1:
+                    if d == -1:
+                        factors.append(I)
+                    else:
+                        product *= d
+            if product != 1:
+                factors.append(sqrt(Integer(product)))
+            terms.append(mul(*factors))
+        return add(*terms) if terms else Integer(0)
 
-    def matrix(self, M: ExprMatrix) -> DomainMatrix[list[_Fraction]]:
+    def matrix(self, M: ExprMatrix) -> DomainMatrix[_Radical]:
         return DomainMatrix([[self.element(e) for e in M.row(i)] for i in range(M.rows)], self.field, M.cols)
 
-    def expr_matrix(self, D: DomainMatrix[list[_Fraction]]) -> ExprMatrix:
+    def expr_matrix(self, D: DomainMatrix[_Radical]) -> ExprMatrix:
         return ExprMatrix(D.nrows, D.ncols, [self.expr(a) for row in D.rows for a in row])
 
-    def nullspace(self, D: DomainMatrix[list[_Fraction]], pivots: Sequence[int], ncols: int) -> list[ExprMatrix]:
+    def nullspace(self, D: DomainMatrix[_Radical], pivots: Sequence[int], ncols: int) -> list[ExprMatrix]:
         """From a reduced row echelon form."""
         F = self.field
         basis: list[ExprMatrix] = []
@@ -460,14 +515,15 @@ class _ComplexLift:
 
 
 def _complex_lift(kernels: Sequence[Expr]) -> Optional[_ComplexLift]:
-    """The exact arithmetic with ``I`` when the kernels are ``I`` and
-    symbols."""
-    if not any(isinstance(k, ImaginaryUnit) for k in kernels):
+    """The exact arithmetic with radicals when the kernels are symbols,
+    ``I`` and square roots of positive rationals."""
+    radicals = [k for k in kernels if _is_radical(k)]
+    if not radicals:
         return None
-    parameters = [k for k in kernels if not isinstance(k, ImaginaryUnit)]
+    parameters = [k for k in kernels if not _is_radical(k)]
     if not all(isinstance(k, Symbol) for k in parameters):
         return None
-    return _ComplexLift(parameters)
+    return _ComplexLift(parameters, radicals)
 
 
 # ---------------------------------------------------------------------

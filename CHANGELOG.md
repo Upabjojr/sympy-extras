@@ -10,6 +10,14 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.domains.multiquadratic.MultiquadraticField`: the
+  field `K(sqrt(d1), ..., sqrt(dk))` over any typed field of
+  characteristic zero. `matrices.linalg` uses it for entries with `I` and
+  square roots of rationals (`sqrt(2)`, `sqrt(6)/3`): exact rank, echelon
+  form, null space, inverse, systems, determinant. `matrices.eigen` and
+  `matrices.functions` accept such entries when the characteristic
+  polynomial has coefficients in `QQ(i)` and symbols (the Hadamard
+  matrix).
 - `DomainMatrix.rref_den` skips the zero entries (the appended identity
   of an inverse): symbolic and integer inverses are two to three times
   faster.

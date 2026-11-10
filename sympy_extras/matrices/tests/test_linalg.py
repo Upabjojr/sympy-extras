@@ -194,3 +194,38 @@ def test_imaginary_unit_is_exact() -> None:
     assert rank(ExprMatrix.from_rows([[1, I], [I, -1]])) == 1
     assert nullspace(ExprMatrix.from_rows([[1, I], [I, -1]])) == [ExprMatrix.column([-I, 1])]
     assert inverse(ExprMatrix.from_rows([[0, -I], [I, 0]])) == ExprMatrix.from_rows([[0, -I], [I, 0]])
+
+
+def test_square_roots_are_exact() -> None:
+    rnd = random.Random(10)
+    two, three = Integer(2), Integer(3)
+    choices: list[Expr] = [Integer(0), Integer(1), sqrt(two), sqrt(three), sqrt(Integer(6)), 1 + sqrt(two), I*sqrt(three),
+                           sqrt(Rational(1, 2)), sqrt(Integer(8)) - 1, x, x*sqrt(two), Integer(-2), 1/(x + sqrt(three))]
+    for trial in range(25):
+        n, m = rnd.randint(1, 3), rnd.randint(1, 3)
+        entries = [rnd.choice(choices) for _ in range(n*m)]
+        if trial % 4 == 0 and n > 1:
+            # a row which is sqrt(2) + sqrt(3) times another one
+            entries[m:2*m] = [((sqrt(two) + sqrt(three))*e).expand() for e in entries[:m]]
+        M = ExprMatrix(n, m, entries)
+        S = _sympy_matrix(M)
+        expected_rank = S.rank(simplify=True)
+        assert rank(M) == expected_rank
+        reduced, pivots = rref(M)
+        R = _sympy_matrix(reduced)
+        assert len(pivots) == expected_rank
+        # the echelon form has the same row space: stacking does not raise the rank
+        assert S.col_join(R).rank(simplify=True) == expected_rank
+        for v in nullspace(M):
+            product = S*_sympy_matrix(v)
+            assert all(sympy.simplify(product[i, 0]) == 0 for i in range(n))
+        assert len(nullspace(M)) == m - expected_rank
+        if n == m:
+            assert sympy.simplify(to_sympy(det(M)) - S.det()) == 0
+            if expected_rank == n:
+                product = S*_sympy_matrix(inverse(M))
+                assert all(sympy.simplify(product[i, j] - (1 if i == j else 0)) == 0 for i in range(n) for j in range(n))
+    hidden = ExprMatrix.from_rows([[sqrt(two), sqrt(three)], [sqrt(Integer(6)), 3]])
+    assert det(hidden) == 0 and rank(hidden) == 1 and nullspace(hidden) == [ExprMatrix.column([-sqrt(Integer(6))/2, 1])]
+    hadamard = ExprMatrix.from_rows([[1, 1], [1, -1]])/sqrt(two)
+    assert inverse(hadamard) == hadamard and det(hadamard) == -1
