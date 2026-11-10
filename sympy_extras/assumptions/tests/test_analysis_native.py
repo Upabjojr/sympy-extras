@@ -1,0 +1,86 @@
+"""The native analysis and interval arithmetic on expressions of the core,
+checked against hand computations (the SymPy faces are tested in
+test_analysis.py and test_intervals.py)."""
+from __future__ import annotations
+
+from sympy_extras.core import E, Integer, Rational, Symbol, oo, pi, sqrt
+from sympy_extras.core.relational import Gt
+from sympy_extras.functions import cos, exp, log, sin
+from sympy_extras.sets import Interval, Reals
+from sympy_extras.assumptions.facts import Facts
+from sympy_extras.assumptions.analysis import (certified_compare, certified_sign, decide_relational, domain_of,
+    sign_on, signs_multivariate)
+from sympy_extras.assumptions.intervals import (Box, corner_value, evaluate, interval_sign, isolate_signs, range_on_box,
+    signs_on_box)
+from sympy_extras.settings import configure
+
+x, y = Symbol('x'), Symbol('y')
+
+
+def test_native_certified_sign() -> None:
+    assert certified_sign(E - 2) == 1 and certified_sign(log(2) - 1) == -1
+    assert certified_sign(sin(3) - Rational(1, 7)) == -1   # sin(3) = 0.14112...
+    assert certified_sign(pi - Rational(355, 113)) == -1   # 3.14159265358979 < 3.14159292035398
+    assert certified_sign(x) is None and certified_sign(oo) == 1 and certified_sign(-oo) == -1
+    # a hidden zero of an algebraic number, from its minimal polynomial
+    # (SymPy's is_zero knows it): no sign is read from the noise
+    hidden = (1 + sqrt(2))**2 - 2*sqrt(2) - 3
+    assert certified_sign(hidden) == 0
+    assert certified_sign(sin(1)**2 + cos(1)**2 - 1) is None
+    with configure(numerical_checks=False):
+        assert certified_sign(hidden) == 0
+    assert certified_compare(sqrt(2), Rational(3, 2)) == -1 and certified_compare(oo, oo) == 0
+
+
+def test_native_intervals() -> None:
+    box: Box = {x: (Integer(0), Integer(1)), y: (Integer(0), Integer(2))}
+    enclosure = evaluate(exp(x) - 1, {x: (Integer(0), Integer(1))})
+    assert enclosure is not None and enclosure.a <= 0 and enclosure.b >= 1.718281828
+    assert interval_sign(evaluate(-exp(x) - 1, {x: (-oo, oo)})) == -1
+    assert evaluate(log(x), {x: (Integer(-1), Integer(1))}) is None
+    assert signs_on_box(x - y, box) is None
+    assert range_on_box(x*y + 1, box) == Interval(1, 3)
+    # the limit at the infinite corner is the core's
+    assert corner_value(x*exp(-x) + y, {x: oo, y: Integer(2)}) == Integer(2)
+    assert isolate_signs(exp(x) - 2, x, Interval(log(2), 3)) == frozenset([0, 1])
+    assert isolate_signs(exp(x) - 2, x, Interval(log(2), 3, True, False)) == frozenset([1])
+
+
+def test_native_signs_of_rational_functions() -> None:
+    # zeros and poles by solveset_rational: sqrt(2) is the only zero in (0, 10)
+    assert sign_on(x**2 - 2, x, Interval(0, 10, True, True)) == frozenset([-1, 0, 1])
+    assert sign_on(x**2 + 1, x, Reals) == frozenset([1])
+    assert sign_on(1/(x**2 - 2), x, Interval(0, 1, True, True)) == frozenset([-1])
+    assert sign_on(1/(x**2 - 2), x, Interval(0, 2, True, True)) is None   # a pole at sqrt(2)
+    assert sign_on(1/x - 1/x**2, x, Interval(0, 3, True, True)) == frozenset([-1, 0, 1])
+    assert decide_relational(Gt(x**2, 1), Facts([x > 2])) is True
+    assert decide_relational(Gt(x, 5), Facts([x > 2])) is None
+
+
+def test_native_analysis_through_sympy_steps() -> None:
+    from sympy_extras.interop import from_sympy  # solveset, continuous_domain and the CAD are SymPy's
+    assert from_sympy(1) == Integer(1)
+    assert sign_on(sin(x), x, Interval(0, pi, True, True)) == frozenset([1])
+    assert sign_on(x*exp(x) - 1, x, Interval(1, oo, True, True)) == frozenset([1])
+    assert domain_of(x, Facts([x**2 < 4, x > 0])) == Interval(0, 2, True, True)
+    # the end sqrt(2) is CRootOf(x**2 - 2, 1) from the CAD: SymPy intersects
+    domain = domain_of(x, Facts([x**2 < 2, x > 0]))
+    assert isinstance(domain, Interval) and domain.left_open and domain.right_open and domain.start == 0
+    end = domain.end
+    assert certified_compare(end, Rational(1414, 1000)) == 1 and certified_compare(end, Rational(1415, 1000)) == -1
+    assert decide_relational(Gt(sin(x), 0), Facts([x > 0, x < pi])) is True
+    assert signs_multivariate(exp(x*y) - 1, [x, y], Facts([x > 0, x < 1, y >= 2])) == frozenset([1])
+
+
+def test_roots_of_sympy_have_values_in_sums() -> None:
+    import sympy
+    from sympy_extras.interop import expr_from_sympy
+    from sympy_extras.core import Float
+    root = expr_from_sympy(sympy.CRootOf(sympy.Symbol('x')**5 - sympy.Symbol('x') + 1, 0))
+    # CRootOf (not ported, a SymPy wrapper) had no value inside a sum of the
+    # core: (r + 2).evalf() stayed CRootOf(...) + 2.0, so the zero of
+    # x**5 - x + 1 found by solveset could not be ordered and the signs
+    # were not found (None instead of {-1, 0, 1})
+    assert isinstance((root + 2).evalf(30), Float)
+    assert certified_sign(root + 2) == 1 and certified_sign(root + 1) == -1   # r = -1.1673...
+    assert sign_on(x**5 - x + 1, x, Reals) == frozenset([-1, 0, 1])

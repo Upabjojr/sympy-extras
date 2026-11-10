@@ -151,3 +151,49 @@ def test_native_assumptions_leaves_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ASSUMPTIONS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ANALYSIS = r'''
+import sys
+from sympy_extras.core import symbols, Integer, Rational, pi, E, oo, sqrt
+from sympy_extras.functions import exp, sin, log
+from sympy_extras.sets import Interval, Reals
+from sympy_extras.assumptions.facts import Facts
+from sympy_extras.assumptions.intervals import (evaluate, interval_sign, signs_on_box, range_on_box, corner_signs,
+    corner_value, monotone_range, isolate_signs)
+from sympy_extras.assumptions.analysis import (certified_sign, certified_compare, domain_of, sign_on, box_of,
+    signs_multivariate, decide_relational)
+x, y = symbols('x y')
+box = {x: (Integer(0), Integer(2)), y: (Integer(0), Integer(3))}
+assert interval_sign(evaluate(exp(x) + y, box)) == 1
+assert signs_on_box(x**2 + y**2 + 1, box) == frozenset([1])
+assert str(range_on_box(x*y + 1, box)) == 'Interval(1, 7)'
+assert corner_signs(exp(x) + y - 1, box, {x: (True, True), y: (True, True)}) == frozenset([1])
+assert str(corner_value(exp(-x)*y + 1, {x: oo, y: Integer(2)})) == '1'
+assert str(monotone_range(x + y, box, {x: (True, False), y: (False, False)})) == 'Interval.Lopen(0, 5)'
+assert isolate_signs(sin(x), x, Interval(0, pi, True, True)) == frozenset([1])
+assert isolate_signs(x*exp(x) - 1, x, Interval(0, 2, True, True)) == frozenset([-1, 0, 1])
+assert certified_sign(E - 2) == 1 and certified_sign(sin(3) - Rational(1, 7)) == -1
+assert certified_sign((1 + sqrt(2))**2 - 2*sqrt(2) - 3) == 0
+assert certified_compare(pi, Integer(3)) == 1
+facts = Facts([x > 0, x < 1, y >= 2])
+assert str(domain_of(x, Facts([x > 0, x < pi]))) == 'Interval.open(0, pi)'
+assert str(box_of([x, y], facts)) == '({x: (0, 1), y: (2, oo)}, {x: (True, True), y: (False, True)})'
+assert signs_multivariate(x - y, [x, y], facts) == frozenset([-1])
+assert sign_on(x**2 - 2, x, Interval(0, 10, True, True)) == frozenset([-1, 0, 1])
+assert sign_on((x - 1)/(x**2 + 1), x, Reals) == frozenset([-1, 0, 1])
+assert sign_on(1/x, x, Interval(-1, 1, True, True)) is None
+assert decide_relational(x**2 > 1, Facts([x > 2])) is True
+assert decide_relational(1/(x - 3) < 0, Facts([x > 0, x < 2])) is True
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_analysis_does_not_load_sympy() -> None:
+    """:mod:`sympy_extras.assumptions.intervals` and
+    :mod:`sympy_extras.assumptions.analysis` on rational functions,
+    boxes and constants do not load SymPy (``continuous_domain`` and
+    ``solveset`` of the other expressions and the CAD go through it)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ANALYSIS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

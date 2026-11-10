@@ -38,3 +38,24 @@ def test_arithmetic_of_bounds_matches_sympy() -> None:
                 except Exception as error:
                     got = type(error).__name__
                 assert got == want, (a, b)
+
+
+def test_nan_in_a_sum_of_bounds() -> None:
+    from sympy_extras.core.add import add
+    from sympy_extras.core.numbers import Integer, nan
+    from sympy_extras.functions import log
+    b = expr_from_sympy(AB(-1, 1))
+    # the sum recursed without end: nan was not absorbed in the
+    # coefficient of the bounds (SymPy's Add.flatten returns nan at once)
+    assert add(nan, b) == nan and add(nan, -b, Integer(1)) == nan
+    assert str(to_sympy((log(Q) - Q + 1).subs(Q, expr_from_sympy(AB(-1, 1))))) == str(s.nan)
+
+
+def test_evalf_of_a_function_of_bounds() -> None:
+    b = expr_from_sympy(AB(0, s.oo))
+    from sympy_extras.functions import atan
+    # evalf recursed without end on the product -atan(AccumBounds(0, oo)),
+    # a number without a value; SymPy leaves it as it is
+    e = b - atan(b)
+    assert str(e.evalf(30)) == 'AccumBounds(0, oo) - atan(AccumBounds(0, oo))'
+    assert str((-atan(b)).evalf(30)) == str((-s.atan(AB(0, s.oo))).evalf(30)) == '-atan(AccumBounds(0, oo))'

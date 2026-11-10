@@ -10,13 +10,16 @@ where `x` is assumed to lie is found from calculus:
    between consecutive zeros (and endpoints) the sign is constant, so it
    is read off at one rational sample point per piece, with exact
    evaluation or, when :data:`sympy_extras.settings.settings` allows it,
-   certified numerical evaluation (the value is computed with a margin
-   over its error bound before its sign is trusted);
-3. when the zeros cannot be found, interval arithmetic (SymPy's
-   ``AccumBounds``) bounds `f` on the set, the critical points of `f'`
-   split the set into monotone pieces whose signs follow from the limits
-   at the ends, and finally the zeros are isolated by bisection with
-   rigorous interval arithmetic (:mod:`sympy_extras.assumptions.intervals`).
+   certified numerical evaluation (rigorous interval arithmetic at the
+   precision of the settings, or for the functions it does not cover a
+   value computed with a margin over the precision before its sign is
+   trusted);
+3. when the zeros cannot be found, interval arithmetic (accumulation
+   bounds, :mod:`sympy_extras.core.accumbounds`) bounds `f` on the set,
+   the critical points of `f'` split the set into monotone pieces whose
+   signs follow from the limits at the ends, and finally the zeros are
+   isolated by bisection with rigorous interval arithmetic
+   (:mod:`sympy_extras.assumptions.intervals`).
 
 Expressions of several variables are handled on the box of their
 assumptions by branch and bound with interval arithmetic, by monotonicity
@@ -24,50 +27,113 @@ in every variable, or through the range of a single inner argument.
 
 Every answer is a proof modulo the correctness of ``solveset`` and
 ``continuous_domain``; the undecided cases give ``None``.
+
+The module works on the expressions of the core and imports no SymPy:
+:mod:`sympy_extras.assumptions.analysis_sympy` is its face on SymPy
+objects. Three steps are not ported and go through SymPy at run time
+(the face holds them): ``continuous_domain`` and ``solveset`` for
+expressions which are not rational in the variable (the rational ones
+are handled by :func:`~sympy_extras.polys.rationalsolve.solveset_rational`),
+and the CAD's ``solution_set`` for a polynomial assumption which is not
+a bound.
 """
 from __future__ import annotations
 
 from typing import Optional
 
-from sympy.calculus.util import continuous_domain
-from sympy.calculus.accumulationbounds import AccumBounds
-from sympy.core.expr import Expr
-from sympy.core.function import count_ops
-from sympy.core.traversal import preorder_traversal
-from sympy.core.numbers import Rational, Float
-from sympy.core.relational import Relational, Eq, Ne, Gt, Lt, Ge, Le
-from sympy.core.singleton import S
-from sympy.core.symbol import Symbol
-from sympy.logic.boolalg import Boolean
-from sympy.sets.contains import Contains
-from sympy.sets.fancysets import Reals, Integers, Naturals, Naturals0, ImageSet
-from sympy.sets.sets import Set, Interval, FiniteSet, Union as SetUnion, Intersection, EmptySet
-from sympy.series.limits import limit
-from sympy.solvers.solveset import solveset
-
+from sympy_extras.core.accumbounds import AccumBounds, accum_bounds
+from sympy_extras.core.add import Add
+from sympy_extras.core.basic import Basic, preorder_traversal
+from sympy_extras.core.expr import Expr, as_expr
+from sympy_extras.core.function import count_ops
+from sympy_extras.core.limits import limit
+from sympy_extras.core.logic import Boolean, false, true
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import (Float, I, ImaginaryUnit, Infinity, Integer, NegativeInfinity, Rational,
+    number_from_fraction, oo)
+from sympy_extras.core.power import Pow
+from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.functions.elementary.exponential import Log
+from sympy_extras.polys.rationalsolve import solveset_rational
+from sympy_extras.sets.sets import (Contains, EmptySetClass, Interval, Reals, Set, Union, intersection, interval,
+    union)
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import Sign, Truth, as_expr, as_set, free_symbols
-from sympy_extras.polys.cad import solution_set
 from sympy_extras.settings import settings
 
-from .facts_sympy import Facts, to_polynomial
-from .intervals import Box, Openness, signs_on_box, corner_signs, range_on_box, monotone_range, isolate_signs
+from .facts import Facts, to_polynomial
+from .intervals import (Box, Openness, Sign, Signs, corner_signs, evaluate, interval_sign, isolate_signs,
+    monotone_range, range_on_box, replaced, signs_on_box)
 
-__all__ = ['certified_sign', 'domain_of', 'sign_on', 'signs_multivariate', 'box_of', 'decide_relational']
+__all__ = ['Truth', 'certified_sign', 'certified_compare', 'domain_of', 'sign_on', 'signs_multivariate', 'box_of',
+    'decide_relational']
 
-#: the possible signs of an expression on a set
-Signs = frozenset[Sign]
+#: a truth value of three states
+Truth = Optional[bool]
+
+
+def _symbols(e: Basic) -> set[Symbol]:
+    """The free symbols which are plain symbols."""
+    return {s for s in e.free_symbols if isinstance(s, Symbol)}
+
+
+def _interval_sign_at(value: Expr, digits: int) -> tuple[bool, Optional[Sign]]:
+    """The sign of a constant by interval arithmetic at ``digits`` digits:
+    whether the arithmetic covers it, and the sign when the enclosure
+    excludes zero."""
+    import mpmath
+    saved = mpmath.iv.prec
+    mpmath.iv.dps = digits
+    try:
+        enclosure = evaluate(value, {})
+    finally:
+        mpmath.iv.prec = saved
+    if enclosure is None:
+        return False, None
+    s = interval_sign(enclosure)
+    return True, (s if s != 0 else None)
+
+
+def _is_algebraic_constant(e: Expr) -> bool:
+    """Whether ``e`` is built from rationals and ``I`` by sums, products
+    and rational powers."""
+    if isinstance(e, (Rational, ImaginaryUnit)):
+        return True
+    if isinstance(e, Pow):
+        return isinstance(e.exp, Rational) and _is_algebraic_constant(e.base)
+    if isinstance(e, (Add, Mul)):
+        return all(isinstance(a, Expr) and _is_algebraic_constant(a) for a in e.args)
+    return False
+
+
+def _vanishes(e: Expr) -> bool:
+    """Whether the algebraic number ``e`` is zero: its minimal polynomial
+    is ``x``."""
+    from sympy_extras.polys.numberfields.minpoly import minimal_polynomial_coeffs
+    coefficients = attempt(lambda: minimal_polynomial_coeffs(e), settings.timeout, native=True)
+    return coefficients == [1, 0]
 
 
 def certified_sign(value: Expr) -> Optional[Sign]:
-    """The sign of a constant expression: from SymPy's exact knowledge, or
-    from numerical evaluation with a margin over the error bound when the
-    numerical checks are enabled; ``None`` when undecided."""
-    if free_symbols(value):
+    """The sign of a constant expression: from the exact knowledge of the
+    core, or numerically when the numerical checks are enabled (rigorous
+    interval arithmetic where it covers the expression, otherwise a value
+    computed with a margin over its precision); ``None`` when undecided.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import E, Rational, Symbol
+    >>> from sympy_extras.functions import sin
+    >>> from sympy_extras.assumptions.analysis import certified_sign
+    >>> certified_sign(E - 2), certified_sign(sin(3) - Rational(1, 7)), certified_sign(Symbol('x'))
+    (1, -1, None)
+    """
+    if _symbols(value):
         return None
-    if value is S.Infinity:
+    if isinstance(value, Infinity):
         return 1
-    if value is S.NegativeInfinity:
+    if isinstance(value, NegativeInfinity):
         return -1
     if value.is_zero:
         return 0
@@ -75,37 +141,56 @@ def certified_sign(value: Expr) -> Optional[Sign]:
         return 1
     if value.is_negative:
         return -1
+    if _is_algebraic_constant(value) and _vanishes(value):
+        # SymPy knows a hidden zero of an algebraic number from its
+        # minimal polynomial (Expr._eval_is_extended_positive_negative)
+        return 0
     if not settings.numerical_checks or value.is_real is False:
         return None
     for digits in (settings.precision, 2*settings.precision, 4*settings.precision):
+        covered, s = _interval_sign_at(value, digits)
+        if covered:
+            # an enclosure is a proof; one containing zero says nothing
+            if s is not None:
+                return s
+            continue
         approximation = value.evalf(digits)
         if not isinstance(approximation, Float) or not approximation.is_finite:
             return None
-        # SymPy tracks the precision of the result: a value which is not
-        # zero to that precision has a certain sign
-        if abs(approximation) > Float(10)**(-(digits//2)):
-            return 1 if approximation > 0 else -1
+        # a value which is not zero to that precision has a certain sign
+        threshold = Float(10)**Integer(-(digits//2))
+        if isinstance(threshold, Float) and abs(approximation.as_fraction()) > threshold.as_fraction():
+            return 1 if approximation.as_fraction() > 0 else -1
     return None
 
 
 def certified_compare(a: Expr, b: Expr) -> Optional[Sign]:
-    """The sign of ``a - b`` for constants, infinities included."""
-    if a is S.Infinity or b is S.NegativeInfinity:
+    """The sign of ``a - b`` for constants, infinities included.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import pi, oo, Integer
+    >>> from sympy_extras.assumptions.analysis import certified_compare
+    >>> certified_compare(pi, Integer(3)), certified_compare(oo, oo), certified_compare(Integer(2), -oo)
+    (1, 0, 1)
+    """
+    if isinstance(a, Infinity) or isinstance(b, NegativeInfinity):
         return 0 if a == b else 1
-    if a is S.NegativeInfinity or b is S.Infinity:
+    if isinstance(a, NegativeInfinity) or isinstance(b, Infinity):
         return 0 if a == b else -1
-    return certified_sign(as_expr(a - b))
+    return certified_sign(a - b)
 
 
 def _interval_of_bound(atom: Boolean, x: Symbol) -> Optional[Set]:
     """The interval described by a bound ``x rel c`` with a constant
     ``c``."""
-    if not isinstance(atom, Relational) or free_symbols(atom) != {x}:
+    if not isinstance(atom, Relational) or _symbols(atom) != {x}:
         return None
-    lhs, rhs = as_expr(atom.lhs), as_expr(atom.rhs)
-    if lhs == x and not free_symbols(rhs):
+    lhs, rhs = atom.lhs, atom.rhs
+    if lhs == x and not _symbols(rhs):
         c, flipped = rhs, False
-    elif rhs == x and not free_symbols(lhs):
+    elif rhs == x and not _symbols(lhs):
         c, flipped = lhs, True
     else:
         return None
@@ -116,61 +201,79 @@ def _interval_of_bound(atom: Boolean, x: Symbol) -> Optional[Set]:
         flip: dict[type[Relational], type[Relational]] = {Gt: Lt, Lt: Gt, Ge: Le, Le: Ge}
         kind = flip.get(kind, kind)
     if kind is Gt:
-        return Interval.open(c, S.Infinity)
+        return interval(c, oo, True, True)
     if kind is Ge:
-        return Interval(c, S.Infinity)
+        return interval(c, oo)
     if kind is Lt:
-        return Interval.open(S.NegativeInfinity, c)
+        return interval(-oo, c, True, True)
     if kind is Le:
-        return Interval(S.NegativeInfinity, c)
+        return interval(-oo, c)
     if kind is Eq:
-        return FiniteSet(c)
+        from sympy_extras.sets.sets import finite_set
+        return finite_set(c)
     if kind is Ne:
-        return SetUnion(Interval.open(S.NegativeInfinity, c), Interval.open(c, S.Infinity))
+        return union(interval(-oo, c, True, True), interval(c, oo, True, True))
     return None
 
 
 def domain_of(x: Symbol, facts: Facts) -> Optional[Set]:
     """The set of real values of ``x`` allowed by the facts which only
     concern ``x``, as a union of intervals; ``None`` when some fact about
-    ``x`` involves other symbols or cannot be turned into intervals."""
+    ``x`` involves other symbols or cannot be turned into intervals.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol, pi
+    >>> from sympy_extras.assumptions.facts import Facts
+    >>> from sympy_extras.assumptions.analysis import domain_of
+    >>> x, y = Symbol('x'), Symbol('y')
+    >>> domain_of(x, Facts([x > 0, x < pi])), domain_of(x, Facts([x > y]))
+    (Interval.open(0, pi), None)
+    """
     if x not in facts.real:
         return None
-    domain: Set = S.Reals
+    domain: Set = Reals
+    on_sympy = False
     for atom in facts.conjuncts:
-        symbols = free_symbols(atom)
+        symbols = _symbols(atom)
         if x not in symbols:
             continue
         if symbols != {x}:
             return None
         piece: Optional[Set] = None
         if isinstance(atom, Contains):
-            candidate = as_set(atom.args[1])
-            if isinstance(candidate, (Interval, Reals)):
+            candidate = atom.args[1]
+            if isinstance(candidate, Interval):
                 piece = candidate
         if piece is None:
             piece = _interval_of_bound(atom, x)
         if piece is None and to_polynomial(atom, facts.real) is not None:
-            piece = attempt(lambda: solution_set(atom, x), settings.timeout)
+            # the CAD (on SymPy) describes the solutions of the polynomial
+            from .analysis_sympy import solution_set_of_core
+            piece = solution_set_of_core(atom, x)
+            on_sympy = True
         if piece is None:
             return None
-        domain = Intersection(domain, piece)
-    domain = as_set(domain)
-    if isinstance(domain, EmptySet):
+        if on_sympy:
+            # its ends may be roots SymPy compares (CRootOf, not ported)
+            from .analysis_sympy import intersection_of_core
+            domain = intersection_of_core(domain, piece)
+        else:
+            domain = intersection(domain, piece)
+    if isinstance(domain, (EmptySetClass, Interval)):
         return domain
-    if isinstance(domain, (Interval, Reals)):
-        return domain
-    if isinstance(domain, SetUnion) and all(isinstance(a, Interval) for a in domain.args):
+    if isinstance(domain, Union) and all(isinstance(a, Interval) for a in domain.args):
         return domain
     return None
 
 
 def _pieces(domain: Set) -> Optional[list[Interval]]:
-    if isinstance(domain, Reals):
-        return [Interval(S.NegativeInfinity, S.Infinity)]
+    if domain is Reals:
+        return [Interval(-oo, oo, True, True)]
     if isinstance(domain, Interval):
         return [domain]
-    if isinstance(domain, SetUnion):
+    if isinstance(domain, Union):
         pieces: list[Interval] = []
         for a in domain.args:
             if not isinstance(a, Interval):
@@ -180,17 +283,26 @@ def _pieces(domain: Set) -> Optional[list[Interval]]:
     return None
 
 
+def _rational(value: Expr) -> Expr:
+    """The exact value of a float (``Rational(Float)`` of SymPy)."""
+    if isinstance(value, Float):
+        return number_from_fraction(value.as_fraction())
+    if isinstance(value, Rational):
+        return value
+    raise TypeError("invalid input: %s" % (value,))
+
+
 def _between(p: Expr, q: Expr) -> Optional[Expr]:
     """A rational number strictly between the constants ``p < q``."""
-    if p is S.NegativeInfinity and q is S.Infinity:
-        return S.Zero
+    if isinstance(p, NegativeInfinity) and isinstance(q, Infinity):
+        return Integer(0)
     for digits in (settings.precision, 2*settings.precision):
-        if p is S.NegativeInfinity:
-            candidate = as_expr(Rational(q.evalf(digits)) - 1)
-        elif q is S.Infinity:
-            candidate = as_expr(Rational(p.evalf(digits)) + 1)
+        if isinstance(p, NegativeInfinity):
+            candidate = _rational(q.evalf(digits)) - 1
+        elif isinstance(q, Infinity):
+            candidate = _rational(p.evalf(digits)) + 1
         else:
-            candidate = as_expr(Rational((p.evalf(digits) + q.evalf(digits))/2))
+            candidate = _rational((p.evalf(digits) + q.evalf(digits))/2)
         if certified_compare(candidate, p) == 1 and certified_compare(q, candidate) == 1:
             return candidate
     return None
@@ -217,23 +329,109 @@ def _sorted_constants(values: list[Expr]) -> Optional[list[Expr]]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# continuity and zeros: native for the rational functions, SymPy otherwise
+
+def _is_rational_in(f: Expr, x: Symbol) -> bool:
+    """Whether ``f`` is a rational function of ``x`` (its subexpressions
+    free of ``x`` are constants)."""
+    if x not in f.free_symbols:
+        return True
+    if f == x:
+        return True
+    if isinstance(f, Pow):
+        return isinstance(f.exp, Integer) and _is_rational_in(f.base, x)
+    if isinstance(f, (Add, Mul)):
+        return all(isinstance(a, Expr) and _is_rational_in(a, x) for a in f.args)
+    return False
+
+
+def _real_zeros_in(f: Expr, x: Symbol, domain: Set) -> tuple[bool, list[Expr]]:
+    """The zeros of a rational ``f`` in ``domain`` natively: whether they
+    are known (every complex zero decided in or out of the domain), and
+    the list."""
+    solutions = solveset_rational(f, x)
+    if solutions is None:
+        return False, []
+    zeros: list[Expr] = []
+    for z in solutions[0]:
+        member = domain.contains(z)
+        if member is true:
+            zeros.append(z)
+        elif member is not false:
+            return False, []
+    return True, zeros
+
+
+def _continuous_on(f: Expr, x: Symbol, domain: Set) -> bool:
+    """Whether ``f`` is continuous on ``domain`` (SymPy's
+    ``continuous_domain`` contains it): a rational function natively,
+    when no zero of a denominator is in the domain."""
+    if _is_rational_in(f, x):
+        known = True
+        for node in preorder_traversal(f):
+            if isinstance(node, Pow) and isinstance(node.exp, Integer) and node.exp.p < 0 \
+                    and x in node.base.free_symbols:
+                found, poles = _real_zeros_in(node.base, x, domain)
+                if not found:
+                    known = False
+                    break
+                if poles:
+                    return False
+        if known:
+            return True
+    from .analysis_sympy import continuous_on_of_core
+    return continuous_on_of_core(f, x, domain)
+
+
+def _finite_zeros(f: Expr, x: Symbol, domain: Set) -> Optional[list[Expr]]:
+    """The zeros of ``f`` in ``domain`` when ``solveset`` finds a finite
+    set of them, ``None`` otherwise."""
+    if _is_rational_in(f, x):
+        found, zeros = _real_zeros_in(f, x, domain)
+        if found:
+            return zeros
+    from .analysis_sympy import finite_zeros_of_core
+    return finite_zeros_of_core(f, x, domain)
+
+
+def _has_discrete_zeros(f: Expr, x: Symbol, piece: Interval) -> bool:
+    """Whether the zeros of ``f`` on the piece are isolated points (a
+    finite set, or a periodic family)."""
+    if _is_rational_in(f, x) and _real_zeros_in(f, x, piece)[0]:
+        return True
+    from .analysis_sympy import has_discrete_zeros_of_core
+    return has_discrete_zeros_of_core(f, x, piece)
+
+
 def sign_on(f: Expr, x: Symbol, domain: Set, depth: int = 1) -> Optional[Signs]:
     """The set of signs which ``f`` takes on ``domain`` (a union of
-    intervals), or ``None`` when it cannot be established."""
+    intervals), or ``None`` when it cannot be established.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol, Integer
+    >>> from sympy_extras.sets import Interval, Reals
+    >>> from sympy_extras.assumptions.analysis import sign_on
+    >>> x = Symbol('x')
+    >>> sorted(sign_on(x**2 - 2, x, Interval(0, 10, True, True))), sign_on(x**2 + 1, x, Reals)
+    ([-1, 0, 1], frozenset({1}))
+    >>> sign_on(1/x, x, Interval(-1, 1, True, True)) is None
+    True
+    """
     pieces = _pieces(domain)
     if pieces is None:
         return None
     if not f.has(x):
         s = certified_sign(f)
         return None if s is None else frozenset([s])
-    continuity = attempt(lambda: as_set(continuous_domain(f, x, S.Reals)), settings.timeout)
-    if continuity is None or domain.is_subset(continuity) is not True:
+    continuous = attempt(lambda: _continuous_on(f, x, domain), settings.timeout, native=True)
+    if continuous is not True:
         return None
-    zeros = attempt(lambda: as_set(solveset(f, x, domain)), settings.timeout)
-    if isinstance(zeros, (FiniteSet, EmptySet)):
-        zero_list = [as_expr(z) for z in zeros.args] if isinstance(zeros, FiniteSet) else []
-        if all(z.is_real for z in zero_list):
-            return _signs_from_zeros(f, x, pieces, zero_list)
+    zero_list = attempt(lambda: _finite_zeros(f, x, domain), settings.timeout, native=True)
+    if zero_list is not None and all(z.is_real for z in zero_list):
+        return _signs_from_zeros(f, x, pieces, zero_list)
     bounded = _signs_from_bounds(f, x, pieces)
     if bounded is not None and len(bounded) == 1:
         return bounded
@@ -252,17 +450,17 @@ def sign_on(f: Expr, x: Symbol, domain: Set, depth: int = 1) -> Optional[Signs]:
 
 
 def _signs_from_bounds(f: Expr, x: Symbol, pieces: list[Interval]) -> Optional[Signs]:
-    """The signs allowed by interval arithmetic (SymPy's ``AccumBounds``)
-    on every piece: an over-approximation, so only a one-sided answer is
+    """The signs allowed by interval arithmetic (accumulation bounds) on
+    every piece: an over-approximation, so only a one-sided answer is
     informative."""
     signs: set[Sign] = set()
     for piece in pieces:
-        bounds = attempt(lambda: f.subs(x, AccumBounds(piece.start, piece.end)), settings.timeout)
+        bounds = attempt(lambda: f.subs(x, accum_bounds(piece.start, piece.end)), settings.timeout, native=True)
         if bounds is None:
             return None
         if isinstance(bounds, AccumBounds):
-            low, high = as_expr(bounds.min), as_expr(bounds.max)
-        elif isinstance(bounds, Expr) and not free_symbols(bounds):
+            low, high = bounds.min, bounds.max
+        elif not _symbols(bounds):
             low = high = bounds
         else:
             return None
@@ -289,14 +487,14 @@ def _signs_from_zeros(f: Expr, x: Symbol, pieces: list[Interval], zeros: list[Ex
     if zeros:
         signs.add(0)
     for piece in pieces:
-        a, b = as_expr(piece.start), as_expr(piece.end)
+        a, b = piece.start, piece.end
         inside = [z for z in zeros if certified_compare(z, a) == 1 and certified_compare(b, z) == 1]
         ordered = _sorted_constants([a] + inside + [b])
         if ordered is None:
             return None
         if len(ordered) < 2:
             # a single point: its sign is the value there
-            s = certified_sign(as_expr(f.subs(x, ordered[0])))
+            s = certified_sign(f.subs(x, ordered[0]))
             if s is None:
                 return None
             signs.add(s)
@@ -305,7 +503,7 @@ def _signs_from_zeros(f: Expr, x: Symbol, pieces: list[Interval], zeros: list[Ex
             sample = _between(p, q)
             if sample is None:
                 return None
-            s = certified_sign(as_expr(f.subs(x, sample)))
+            s = certified_sign(f.subs(x, sample))
             if s is None:
                 return None
             signs.add(s)
@@ -313,35 +511,18 @@ def _signs_from_zeros(f: Expr, x: Symbol, pieces: list[Interval], zeros: list[Ex
 
 
 def _endpoint_value(f: Expr, x: Symbol, point: Expr, direction: str) -> Optional[Expr]:
-    value = attempt(lambda: as_expr(limit(f, x, point, direction)), settings.timeout)
-    if value is None or free_symbols(value):
+    value = attempt(lambda: limit(f, x, point, direction), settings.timeout, native=True)
+    if value is None or _symbols(value):
         return None
     return value
-
-
-def _is_discrete(zeros: Set) -> bool:
-    if isinstance(zeros, (FiniteSet, EmptySet)):
-        return True
-    if isinstance(zeros, ImageSet):
-        return isinstance(zeros.base_set, (Integers, Naturals, Naturals0))
-    if isinstance(zeros, SetUnion):
-        return all(_is_discrete(as_set(a)) for a in zeros.args)
-    if isinstance(zeros, Intersection):
-        return any(_is_discrete(as_set(a)) for a in zeros.args)
-    return False
-
-
-def _has_discrete_zeros(f: Expr, x: Symbol, piece: Interval) -> bool:
-    zeros = attempt(lambda: as_set(solveset(f, x, piece)), settings.timeout)
-    return zeros is not None and _is_discrete(zeros)
 
 
 def _value_at(f: Expr, x: Symbol, point: Expr, direction: str) -> Optional[Expr]:
     """The value of a continuous ``f`` at a finite point, or its limit at
     an infinite one."""
     if point.is_finite:
-        value = as_expr(f.subs(x, point))
-        if not free_symbols(value) and value.is_finite is not False:
+        value = f.subs(x, point)
+        if not _symbols(value) and value.is_finite is not False:
             return value
     return _endpoint_value(f, x, point, direction)
 
@@ -370,16 +551,15 @@ def _signs_from_monotonicity(f: Expr, x: Symbol, pieces: list[Interval], depth: 
     its signs follow from its values at the ends. When the zeros of ``f'``
     cannot be listed, a constant sign of ``f'`` on the piece (with isolated
     zeros at most) is enough."""
-    derivative = as_expr(f.diff(x))
+    derivative = f.diff(x)
     signs: set[Sign] = set()
     for piece in pieces:
-        a, b = as_expr(piece.start), as_expr(piece.end)
-        critical = attempt(lambda: as_set(solveset(derivative, x, piece)), settings.timeout)
-        if isinstance(critical, (FiniteSet, EmptySet)):
-            points = [as_expr(c) for c in critical.args] if isinstance(critical, FiniteSet) else []
-            if not all(c.is_real for c in points):
+        a, b = piece.start, piece.end
+        critical = attempt(lambda: _finite_zeros(derivative, x, piece), settings.timeout, native=True)
+        if critical is not None:
+            if not all(c.is_real for c in critical):
                 return None
-            inside = [c for c in points if certified_compare(c, a) == 1 and certified_compare(b, c) == 1]
+            inside = [c for c in critical if certified_compare(c, a) == 1 and certified_compare(b, c) == 1]
             ordered = _sorted_constants([a] + inside + [b])
             if ordered is None:
                 return None
@@ -387,7 +567,7 @@ def _signs_from_monotonicity(f: Expr, x: Symbol, pieces: list[Interval], depth: 
                 sample = _between(p, q)
                 if sample is None:
                     return None
-                slope = certified_sign(as_expr(derivative.subs(x, sample)))
+                slope = certified_sign(derivative.subs(x, sample))
                 if slope is None or slope == 0:
                     return None
                 part = _monotone_signs(f, x, p, q, slope == 1)
@@ -395,7 +575,7 @@ def _signs_from_monotonicity(f: Expr, x: Symbol, pieces: list[Interval], depth: 
                     return None
                 signs.update(part)
             for c in inside:
-                value = certified_sign(as_expr(f.subs(x, c)))
+                value = certified_sign(f.subs(x, c))
                 if value is None:
                     return None
                 signs.add(value)
@@ -422,11 +602,43 @@ def _signs_from_monotonicity(f: Expr, x: Symbol, pieces: list[Interval], depth: 
     return frozenset(signs)
 
 
+def _numeric_key(e: Expr) -> tuple[int, Rational]:
+    """The value of a real constant at 20 digits, as a sort key."""
+    if isinstance(e, NegativeInfinity):
+        return (-1, Integer(0))
+    if isinstance(e, Infinity):
+        return (1, Integer(0))
+    value = e.evalf(20)
+    if isinstance(value, Float):
+        exact = number_from_fraction(value.as_fraction())
+        return (0, exact)
+    if isinstance(value, Rational):
+        return (0, value)
+    raise TypeError("Invalid comparison of non-real %s" % (value,))
+
+
+def _key_less(a: tuple[int, Rational], b: tuple[int, Rational]) -> bool:
+    if a[0] != b[0]:
+        return a[0] < b[0]
+    return a[1].as_fraction() < b[1].as_fraction()
+
+
 def box_of(symbols: list[Symbol], facts: Facts) -> Optional[tuple[Box, Openness]]:
     """The box of the values of the symbols allowed by the facts which
     concern one symbol at a time (the hull of the pieces), and for every
     symbol whether the range is open at each end; ``None`` when a symbol
-    is not known to be real."""
+    is not known to be real.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.assumptions.facts import Facts
+    >>> from sympy_extras.assumptions.analysis import box_of
+    >>> x, y = Symbol('x'), Symbol('y')
+    >>> box_of([x, y], Facts([x > 0, x < 1, y >= 2]))
+    ({x: (0, 1), y: (2, oo)}, {x: (True, True), y: (False, True)})
+    """
     box: Box = {}
     openness: Openness = {}
     for v in symbols:
@@ -436,10 +648,16 @@ def box_of(symbols: list[Symbol], facts: Facts) -> Optional[tuple[Box, Openness]
         pieces = _pieces(domain)
         if not pieces:
             return None
-        first = min(pieces, key=lambda p: as_expr(p.start).evalf(20))
-        last = max(pieces, key=lambda p: as_expr(p.end).evalf(20))
-        box[v] = (as_expr(first.start), as_expr(last.end))
-        openness[v] = (bool(first.left_open), bool(last.right_open))
+        first, last = pieces[0], pieces[0]
+        first_key, last_key = _numeric_key(first.start), _numeric_key(last.end)
+        for p in pieces[1:]:
+            start_key, end_key = _numeric_key(p.start), _numeric_key(p.end)
+            if _key_less(start_key, first_key):
+                first, first_key = p, start_key
+            if _key_less(last_key, end_key):
+                last, last_key = p, end_key
+        box[v] = (first.start, last.end)
+        openness[v] = (first.left_open, last.right_open)
     return box, openness
 
 
@@ -448,11 +666,18 @@ def _single_argument(f: Expr, symbols: set[Symbol]) -> Optional[tuple[Expr, Expr
     ``u``: ``(F, u, v)`` with ``f = F(v)`` at ``v = u``."""
     v = Symbol('v', real=True)
     candidates = [e for e in preorder_traversal(f) if isinstance(e, Expr) and e is not f
-                  and free_symbols(e) == symbols and not isinstance(e, Symbol)]
-    for u in sorted(candidates, key=lambda e: -int(count_ops(e))):
-        F = as_expr(f.xreplace({u: v}))
-        if free_symbols(F) == {v}:
-            return F, as_expr(u), v
+                  and _symbols(e) == symbols and not isinstance(e, Symbol)]
+
+    def operations(e: Expr) -> int:
+        count = count_ops(e)
+        if not isinstance(count, Integer):
+            raise TypeError("count_ops gave %s" % (count,))
+        return count.p
+
+    for u in sorted(candidates, key=lambda e: -operations(e)):
+        F = replaced(f, {u: v})
+        if _symbols(F) == {v}:
+            return F, u, v
     return None
 
 
@@ -460,7 +685,20 @@ def signs_multivariate(f: Expr, symbols: list[Symbol], facts: Facts) -> Optional
     """The signs of an expression of several real variables on the box of
     their assumptions: branch and bound with interval arithmetic,
     monotonicity in every variable (extreme values at the corners), and the
-    range of a single inner argument analysed as a univariate problem."""
+    range of a single inner argument analysed as a univariate problem.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import exp
+    >>> from sympy_extras.assumptions.facts import Facts
+    >>> from sympy_extras.assumptions.analysis import signs_multivariate
+    >>> x, y = Symbol('x'), Symbol('y')
+    >>> facts = Facts([x > 0, x < 1, y >= 2])
+    >>> signs_multivariate(x - y, [x, y], facts), sorted(signs_multivariate(x*y - 1, [x, y], facts))
+    (frozenset({-1}), [-1, 0, 1])
+    """
     found = box_of(symbols, facts)
     if found is None:
         return None
@@ -469,7 +707,7 @@ def signs_multivariate(f: Expr, symbols: list[Symbol], facts: Facts) -> Optional
     def partial_sign(derivative: Expr) -> Optional[Signs]:
         # a partial derivative of one variable is analysed exactly on the
         # (possibly open) domain of that variable; otherwise on the box
-        inner = free_symbols(derivative)
+        inner = _symbols(derivative)
         if not inner:
             s = certified_sign(derivative)
             return None if s is None else frozenset([s])
@@ -502,20 +740,19 @@ def _real_on(f: Expr, x: Optional[Symbol], domain: Optional[Set], facts: Facts,
     whole domain: the argument of a logarithm positive, the base of a
     root nonnegative (the bug: ``2 - x**(1/3)`` was found positive on
     ``-1 < x < 1``, where the principal root is not real for ``x < 0``)."""
-    from sympy.functions.elementary.exponential import log
-    from sympy.core.power import Pow
-    from sympy.core.numbers import I, Rational
     if f.has(I):
         # a sign is a property of real values (the bug: exp(-I*x) > 0 was
         # True on -1 < x < 1, from its value 1 at 0 and the absence of zeros)
         return False
     checks: list[tuple[Expr, Signs]] = []
-    for node in f.atoms(log):
-        checks.append((as_expr(node.args[0]), frozenset([1])))
+    for node in f.atoms(Log):
+        if isinstance(node, Log):
+            checks.append((as_expr(node.args[0]), frozenset([1])))
     for node in f.atoms(Pow):
-        exponent = node.exp
-        if isinstance(exponent, Rational) and not exponent.is_integer and node.base.free_symbols:
-            checks.append((as_expr(node.base), frozenset([0, 1]) if exponent > 0 else frozenset([1])))
+        if isinstance(node, Pow):
+            exponent = node.exp
+            if isinstance(exponent, Rational) and exponent.q != 1 and node.base.free_symbols:
+                checks.append((node.base, frozenset([0, 1]) if exponent.p > 0 else frozenset([1])))
     for inner, allowed in checks:
         if x is not None and domain is not None:
             signs = sign_on(inner, x, domain)
@@ -533,33 +770,25 @@ def decide_relational(atom: Relational, facts: Facts) -> Truth:
     Examples
     ========
 
-    >>> from sympy import sin, exp, pi, Abs
-    >>> from sympy.abc import x
-    >>> from sympy_extras.assumptions.ask import ask
-    >>> from sympy_extras.assumptions.refine import refine
-    >>> ask(sin(x) > 0, (x > 0) & (x < pi))
-    True
-    >>> ask(exp(x) > 2, x > 1)
-    True
-    >>> refine(Abs(sin(x)), (x > 0) & (x < pi))
-    sin(x)
-    >>> ask(x*exp(x) > 1, x > 1)
-    True
-    >>> from sympy.abc import y
-    >>> ask(exp(x) + y > 1, (x > 0) & (y > 0))
-    True
-    >>> ask(sin(x*y) > 0, (x > 0) & (x < 1) & (y > 0) & (y < 3))
+    >>> from sympy_extras.core import Symbol, pi
+    >>> from sympy_extras.functions import sin, exp
+    >>> from sympy_extras.assumptions.facts import Facts
+    >>> from sympy_extras.assumptions.analysis import decide_relational
+    >>> x, y = Symbol('x'), Symbol('y')
+    >>> decide_relational(x**2 > 1, Facts([x > 2])), decide_relational(1/(x - 3) < 0, Facts([x > 0, x < 2]))
+    (True, True)
+    >>> decide_relational(x > 5, Facts([x > 2])) is None
     True
     """
-    symbols = free_symbols(atom)
+    symbols = _symbols(atom)
     if not symbols:
         return None
-    f = as_expr(atom.lhs - atom.rhs)
+    f = atom.lhs - atom.rhs
     signs: Optional[Signs]
     if len(symbols) == 1:
         [x] = symbols
         domain = domain_of(x, facts)
-        if domain is None or isinstance(domain, EmptySet):
+        if domain is None or isinstance(domain, EmptySetClass):
             return None
         if not _real_on(f, x, domain, facts):
             return None

@@ -159,6 +159,11 @@ sympy_extras/
         context_sympy.py     the SymPy face: the same global_assumptions, assuming() pushing to SymPy's
         bounds.py            polynomial_abstraction: MetiTarski bounds of elementary functions (native)
         bounds_sympy.py      the SymPy face of bounds
+        intervals.py         rigorous interval arithmetic: evaluate, signs_on_box, corner_signs, isolate_signs (native)
+        intervals_sympy.py   the SymPy face of intervals
+        analysis.py          signs beyond polynomials: certified_sign, sign_on, domain_of, decide_relational (native;
+                             continuous_domain/solveset of non-rational expressions and the CAD through analysis_sympy)
+        analysis_sympy.py    the SymPy face of analysis, and the steps which stay on SymPy (the *_of_core functions)
         ask.py               ask(): sympy.ask first, then the CAD
         refine.py            refine(), simplify(): sympy.refine plus CAD-decided handlers
         resolve.py           resolve(): quantifier elimination through the CAD

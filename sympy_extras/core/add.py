@@ -589,6 +589,8 @@ def _with_bounds(stack: list[Expr]) -> Expr:
     coeff: Expr = Integer(0)
     others: list[Expr] = []
     for o in flat:
+        if isinstance(o, NaN):
+            return nan   # SymPy: the sum is nan at once
         if isinstance(o, Number):
             if isinstance(coeff, Number):
                 coeff = coeff.number_add(o)

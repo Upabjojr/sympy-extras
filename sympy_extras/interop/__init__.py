@@ -274,6 +274,13 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
     def func(self) -> Callable[..., Basic]:
         return partial(SymPyExprNode, self._sympy_class)
 
+    def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
+        # a root of a polynomial (CRootOf, not ported) has SymPy's value,
+        # so that the sums and the signs of the core containing it have one
+        if not issubclass(self._sympy_class, sympy.ComplexRootOf):
+            return None
+        return _sympy_numeric(self, int(mpmath.mp.dps) + 5)
+
     @classmethod
     def class_key(cls) -> ClassKey:
         return (4, 2, 'SymPyExprNode')

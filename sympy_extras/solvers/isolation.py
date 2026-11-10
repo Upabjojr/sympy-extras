@@ -65,9 +65,9 @@ from sympy.solvers.solveset import solveset
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import Sign, as_expr, as_set, free_symbols
 from sympy_extras.settings import settings
-from sympy_extras.assumptions.analysis import (certified_sign, certified_compare, _pieces, _sorted_constants,
+from sympy_extras.assumptions.analysis_sympy import (certified_sign, certified_compare, _pieces, _sorted_constants,
     _between, _endpoint_value, _has_discrete_zeros, sign_on)
-from sympy_extras.assumptions.intervals import evaluate, interval_sign
+from sympy_extras.assumptions.intervals_sympy import evaluate, interval_sign
 
 __all__ = ['TranscendentalRoot', 'isolate_real_roots', 'real_roots_of', 'point_between', 'compare_points']
 

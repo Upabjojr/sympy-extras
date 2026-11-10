@@ -146,7 +146,7 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
         value = _structure_ask(atom, facts)
     if value is None and isinstance(atom, Relational):
         # expressions beyond polynomials: calculus and interval arithmetic
-        from .analysis import decide_relational
+        from .analysis_sympy import decide_relational
         value = decide_relational(atom, facts)
     if value is None:
         value = _bounded_cad_ask(atom, facts)

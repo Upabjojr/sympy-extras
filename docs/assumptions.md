@@ -78,16 +78,22 @@ variables.
    point of each piece, and when the zeros cannot be found the sign of the
    derivative (found the same way) gives monotonicity and the sign follows
    from the limits at the endpoints. Constant expressions such as
-   `sin(3) - 1/7` are signed by SymPy's own knowledge (exact, or its
-   numerical evaluation of constants) or, when
-   `sympy_extras.settings.settings.numerical_checks` is on (the default),
-   by high precision numerical evaluation with a margin over the error
-   bound. With the checks off, only what SymPy knows by itself is used,
+   `sin(3) - 1/7` are signed by the core's own knowledge (its predicates,
+   the minimal polynomial of an algebraic number for a hidden zero) or,
+   when `sympy_extras.settings.settings.numerical_checks` is on (the
+   default), by rigorous interval arithmetic at the precision of the
+   settings (for the functions it does not cover, a value computed with a
+   margin over its precision). With the checks off, only what the core
+   knows by itself is used,
    and `solve` no longer discards the candidates of `solveset` by their
    numerical residual. This is what
    makes `ask(sin(x) > 0, (x > 0) & (x < pi))` `True`,
    `refine(Abs(sin(x)), (x > 0) & (x < pi))` `sin(x)`, and
-   `ask(x*exp(x) > 1, x > 1)` `True`.
+   `ask(x*exp(x) > 1, x > 1)` `True`. The module is written on the core
+   and takes its expressions (`analysis_sympy` is the face on SymPy's);
+   SymPy's `continuous_domain` and `solveset` are still called for the
+   expressions which are not rational in the variable, and the CAD for a
+   polynomial assumption which is not a bound.
 
 ```python
 >>> from sympy import S, sin, exp, log, Abs, Max, pi

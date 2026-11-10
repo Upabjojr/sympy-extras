@@ -187,6 +187,10 @@ def _evalf_inside(e: Expr, n: int) -> Expr:
         coefficient = mul(*numeric)
         if isinstance(coefficient, Add):
             return mul(_evalf_inside(coefficient, n), *symbolic)
+        if coefficient == e:
+            # a product of numbers with no value (-atan(AccumBounds(0, oo))):
+            # its factors one by one, the coefficient -1 kept
+            return mul(*[f if isinstance(f, Rational) and f == -1 else _evalf_term(f, n) for f in e.args])
         return mul(evalf(coefficient, n), *symbolic)
     if isinstance(e, Pow):
         exponent = e.exp
