@@ -339,6 +339,11 @@ class Facts:
     def __repr__(self) -> str:
         return "Facts(%s)" % (self.formula,)
 
+    @property
+    def native(self) -> native.Facts:
+        """The facts of the core these are the face of."""
+        return self._native
+
     def is_polynomial(self, formula: Boolean) -> bool:
         """Whether the normalized ``formula`` can be handled by the CAD
         given the variables known to be real."""

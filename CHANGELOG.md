@@ -446,6 +446,41 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.assumptions.intervals` and `sympy_extras.assumptions.analysis`
+  are native (**breaking**: core expressions, symbols, sets and the native
+  `Facts` in and out; neither imports SymPy). The interval arithmetic,
+  branch and bound, monotonicity at the corners (limits by the core's
+  `limit`), the root isolation, `certified_sign` (the core's predicates,
+  the minimal polynomial of an algebraic constant for a hidden zero, and
+  with the numerical checks on rigorous interval arithmetic at the
+  precision of the settings, or for the functions it does not cover a
+  value with a margin over its precision), the bounds by the core's
+  `AccumBounds`, `domain_of`, `box_of`, `signs_multivariate` and
+  `decide_relational` run on the core; the zeros and the continuity of
+  a rational function come from `polys.rationalsolve.solveset_rational`.
+  Three steps stay on SymPy, called at run time through the new faces:
+  `continuous_domain` and `solveset` for the expressions which are not
+  rational (with SymPy's `ImageSet` for the periodic zeros), and the CAD's
+  `solution_set` (with SymPy's intersection of its intervals, whose ends
+  may be `CRootOf`) for a polynomial assumption which is not a bound.
+  `range_on_box` and `monotone_range` return a `Set` (a point is a
+  `FiniteSet`, as before through SymPy's `Interval`). The new faces
+  `assumptions.intervals_sympy` and `assumptions.analysis_sympy` keep the
+  old API on SymPy objects (also the helpers `_pieces`, `_between`,
+  `_sorted_constants`, `_endpoint_value`, `_has_discrete_zeros` used by
+  `solvers.isolation`); `ask`, `solve`, `solvers.isolation`,
+  `concrete.convergence` and `integrals.validated` use them, and
+  `facts_sympy.Facts.native` gives the native facts of the face. The
+  same printed results as before on 202 compared calls through the faces
+  and through the native functions, except `certified_sign` of
+  `exp(pi*sqrt(163)) - 640320**3 - 744` with the numerical checks off
+  (SymPy's predicates evaluate it at an adaptive precision, the core's do
+  not: `None` instead of `-1`).
+- Fixed in the core on the way: a sum of accumulation bounds with `nan`
+  recursed without end (it is `nan`, as in SymPy); `evalf` of a product
+  of numbers without a value (`-atan(AccumBounds(0, oo))`) recursed
+  without end; a `CRootOf` wrapped from SymPy has SymPy's numerical value
+  inside the sums of the core (`evalf`, signs).
 - **Breaking:** `sympy_extras.assumptions` exports nothing any more, like
   `concrete`, `simplify` and `solvers`: import the functions from their
   modules (`from sympy_extras.assumptions.ask import ask`; `refine` and

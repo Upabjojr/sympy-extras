@@ -10,11 +10,11 @@ def _box(**ranges: tuple[object, object]) -> Box:
 
 from sympy_extras.assumptions.ask import ask
 from sympy_extras.assumptions.refine import refine, simplify
-from sympy_extras.assumptions.analysis import signs_multivariate, box_of
+from sympy_extras.assumptions.analysis_sympy import signs_multivariate, box_of
 from sympy_extras.assumptions.bounds_sympy import polynomial_abstraction
 from sympy_extras.assumptions.facts_sympy import Facts
 from sympy_extras._typing import as_expr
-from sympy_extras.assumptions.intervals import (Box, Openness, evaluate, interval_sign, signs_on_box,
+from sympy_extras.assumptions.intervals_sympy import (Box, Openness, evaluate, interval_sign, signs_on_box,
     range_on_box, corner_signs, isolate_signs)
 
 

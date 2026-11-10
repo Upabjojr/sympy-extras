@@ -8,7 +8,7 @@ from sympy_extras.assumptions.ask import ask
 from sympy_extras.assumptions.refine import refine, simplify
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.solve import solve
-from sympy_extras.assumptions.analysis import (certified_sign, domain_of, sign_on,
+from sympy_extras.assumptions.analysis_sympy import (certified_sign, domain_of, sign_on,
     decide_relational)
 from sympy_extras.assumptions.facts_sympy import Facts
 from sympy_extras.settings import settings, configure

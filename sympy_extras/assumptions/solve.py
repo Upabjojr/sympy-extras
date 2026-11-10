@@ -41,7 +41,7 @@ from sympy_extras.settings import settings
 from .ask import Assumptions, _facts, _evaluate
 from .facts_sympy import Facts, normalize, conjuncts, to_polynomial
 from .refine import _Refiner
-from .analysis import domain_of, certified_sign, _pieces
+from .analysis_sympy import domain_of, certified_sign, _pieces
 
 __all__ = ['solve']
 
