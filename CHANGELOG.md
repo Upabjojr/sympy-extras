@@ -10,6 +10,21 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.domainmatrix.DomainMatrix`: dense matrices over a
+  typed `Domain[T]` with fraction-free linear algebra: `det` (Bareiss),
+  `rref_den` / `rref` (fraction-free Gauss–Jordan with a single
+  denominator), `rank`, `nullspace`, `inv_den` / `inv`, `solve_den`,
+  `charpoly` (Berkowitz, division-free), `adjugate` (singular matrices by
+  Cayley–Hamilton), `elimination` (the pivots used).
+- `sympy_extras.matrices.linalg`: `det`, `inverse`, `adjugate`, `rank`,
+  `rref`, `nullspace`, `linear_solve` (any shape, the general solution),
+  `charpoly`, `charpoly_coefficients` for an `ExprMatrix`, and the methods
+  `det`, `inv`, `adjugate`, `rank`, `rref`, `nullspace`, `charpoly`,
+  `solve` of `ExprMatrix`. The entries are fractions over `ZZ[kernels]`;
+  with kernels other than symbols the pivots of rank-dependent operations
+  must be proved nonzero by the zero test (`NotImplementedError`
+  otherwise). Determinants with polynomial entries are 5 to 200 times
+  faster than `sympy.Matrix.det`. See `docs/matrices.md`.
 - `sympy_extras.polys.berlekampmassey`: `berlekamp_massey` (the shortest
   linear recurrence of a sequence over any field of the typed layer),
   `extend_sequence`, `satisfies_recurrence`.

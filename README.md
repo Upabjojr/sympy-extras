@@ -910,6 +910,37 @@ IntegerProgramResult('optimal', value=20, point=[4, 0])
 
 ```
 
+### Linear algebra on matrices of expressions (`sympy_extras.matrices`)
+
+Determinants, inverses, ranks, null spaces, linear systems and
+characteristic polynomials of matrices with symbolic entries, by
+fraction-free elimination (Bareiss) and Berkowitz' algorithm over the
+polynomial ring of the entries: no rational function is added to another
+one on the way, and the results are in lowest terms. An 8 x 8 determinant
+with entries linear in two symbols takes 0.1 s (27 s with
+`sympy.Matrix.det`). See [docs/matrices.md](docs/matrices.md).
+
+```python
+>>> from sympy_extras.core import Symbol
+>>> from sympy_extras.matrices import ExprMatrix
+>>> from sympy_extras.matrices.linalg import linear_solve
+>>> a, b, c, x = (Symbol(s) for s in 'abcx')
+>>> V = ExprMatrix.from_rows([[1, a, a**2], [1, b, b**2], [1, c, c**2]])
+>>> V.det()
+-a**2*b + a**2*c + a*b**2 - a*c**2 - b**2*c + b*c**2
+>>> ExprMatrix.from_rows([[1, a], [a, 1]]).inv()
+ExprMatrix([[-1/(a**2 - 1), a/(a**2 - 1)], [a/(a**2 - 1), -1/(a**2 - 1)]])
+>>> ExprMatrix.from_rows([[2, 1], [1, 2]]).charpoly(x)
+x**2 - 4*x + 3
+>>> linear_solve(ExprMatrix.from_rows([[1, 1, 1], [1, 2, a]]), ExprMatrix.column([1, 2]))
+LinearSolution(ExprMatrix([[0], [1], [0]]), [ExprMatrix([[a - 2], [1 - a], [1]])])
+
+```
+
+The rank-dependent operations return the generic answer for symbols; with
+other kernels (`sin(t)`, `sqrt(2)`) every pivot must be proved nonzero by
+the zero test, otherwise `NotImplementedError` is raised.
+
 ## What this adds to SymPy
 
 [docs/comparison.md](docs/comparison.md) puts seventy questions to SymPy

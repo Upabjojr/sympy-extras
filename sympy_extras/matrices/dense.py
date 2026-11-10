@@ -2,7 +2,9 @@
 order with the shape. Only what hyperexpand's formula tables need
 (SymPy's ``Matrix`` construction, ``eye``, ``zeros``, ``col_insert``,
 ``row_insert``, the arithmetic, ``subs``, ``diff``, ``applyfunc``,
-``has``); every operation returns a new matrix.
+``has``); every operation returns a new matrix. The linear algebra
+(``det``, ``inv``, ``rank``, ``rref``, ``nullspace``, ``adjugate``,
+``charpoly``, ``solve``) is that of :mod:`sympy_extras.matrices.linalg`.
 
 Examples
 ========
@@ -14,6 +16,8 @@ Examples
 >>> M = ExprMatrix.from_rows([[0, 1], [z, 2]])
 >>> (M * B).entries, ExprMatrix.from_rows([[1, 0]]) * B
 ((z**2, 3*z**2), ExprMatrix([[z]]))
+>>> M.det(), M.inv(), M.rank()
+(-z, ExprMatrix([[-2/z, 1/z], [1, 0]]), 2)
 >>> ExprMatrix.eye(2).col_insert(0, ExprMatrix.zeros(2, 1)).row_insert(2, ExprMatrix.from_rows([[1, 2, 3]]))
 ExprMatrix([[0, 1, 0], [0, 0, 1], [1, 2, 3]])
 """
@@ -176,3 +180,47 @@ class ExprMatrix:
 
     def has(self, *patterns: Union[Basic, type]) -> bool:
         return any(a.has(*patterns) for a in self.entries)
+
+    # linear algebra (sympy_extras.matrices.linalg, which imports this module)
+
+    def det(self) -> Expr:
+        """The determinant (fraction-free elimination)."""
+        from .linalg import det
+        return det(self)
+
+    def inv(self) -> ExprMatrix:
+        """The inverse; ``ValueError`` for a singular matrix."""
+        from .linalg import inverse
+        return inverse(self)
+
+    def adjugate(self) -> ExprMatrix:
+        from .linalg import adjugate
+        return adjugate(self)
+
+    def rank(self) -> int:
+        from .linalg import rank
+        return rank(self)
+
+    def rref(self) -> tuple[ExprMatrix, tuple[int, ...]]:
+        """The reduced row echelon form and the pivot columns."""
+        from .linalg import rref
+        return rref(self)
+
+    def nullspace(self) -> list[ExprMatrix]:
+        from .linalg import nullspace
+        return nullspace(self)
+
+    def charpoly(self, x: Expr) -> Expr:
+        """The characteristic polynomial ``det(x*I - M)``."""
+        from .linalg import charpoly
+        return charpoly(self, x)
+
+    def solve(self, rhs: ExprMatrix) -> ExprMatrix:
+        """The solution ``X`` of ``self * X = rhs`` (the one with the free
+        unknowns zero when there are several); ``ValueError`` when there
+        is none."""
+        from .linalg import linear_solve
+        solution = linear_solve(self, rhs)
+        if solution is None:
+            raise ValueError('the system has no solution')
+        return solution.particular
