@@ -911,6 +911,7 @@ sympy_extras/
         factortools.py       factorisation over ZZ and QQ (Zassenhaus with quadratic Hensel lifting, van Hoeij's knapsack recombination) and over number fields (Trager)
         lattice.py           lattice reduction: the all-integer LLL algorithm, Hermite normal form
         rootisolation.py     real root isolation (Descartes with bisection), Sturm counts, refinement
+        complexroots.py      complex root isolation in rectangles: exact winding numbers, certified Newton refinement
         polyclasses.py       DensePoly: the typed polynomial class over a domain, with the algorithms as methods
         rings.py             PolyRing, PolyElement: sparse multivariate polynomials with monomial orders, the division algorithm
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals

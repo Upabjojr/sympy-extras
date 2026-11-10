@@ -10,6 +10,14 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.complexroots`: isolation of the complex roots of
+  polynomials with rational coefficients in rectangles with rational
+  corners (`dup_isolate_complex_roots_sqf`, `dup_isolate_complex_roots`
+  with multiplicities, `dup_isolate_all_roots_sqf`), exact counting in a
+  rectangle by winding numbers from Sturm sequences
+  (`dup_count_complex_roots`; a root on the boundary is detected),
+  refinement by Newton's iteration certified by Rouché's theorem
+  (`dup_refine_complex_root`). Typed, integers only, no SymPy.
 - `sympy_extras.polys.lattice`: `lll`, `lll_reduction` (the LLL algorithm
   in de Weger's all-integer form, with the Gram determinants and
   `short_part`), `hermite_normal_form`, `is_lll_reduced`. Exact on entries

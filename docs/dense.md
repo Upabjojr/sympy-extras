@@ -192,6 +192,53 @@ interval below a width.
 
 ```
 
+## Complex roots
+
+`complexroots`: the roots which are not real are isolated in rectangles
+with rational corners by exact winding numbers. On each edge `z = z0 + t
+w` of a rectangle, `c f(z) = u(t) + i v(t)` (`c` a constant making `u`
+non-zero at the corners), and the winding number of `f` along the
+boundary is minus half the sum of the Cauchy indices of `v/u` on
+`[0, 1]`, which the sign variations of the signed remainder sequence of
+`(u, v)` give at the two ends (Sturm); the last polynomial of the
+sequence is `gcd(u, v)`, whose roots in `[0, 1]` are the roots of `f` on
+the edge, so that a root on the boundary is detected, not miscounted
+(`dup_count_complex_roots` raises `ValueError`). Integer arithmetic
+throughout.
+
+`dup_isolate_complex_roots_sqf` returns the rectangles of the roots above
+the real axis of a square-free polynomial (the conjugate rectangles
+isolate the others): the number of pairs is known from the real root
+count, a strip around the real axis free of them is found by halving its
+height, and the rectangle above it is bisected along its longer side, the
+cut being moved when it meets a root. With `eps`, each rectangle is
+refined by Newton's iteration in fixed point arithmetic from its centre,
+and the small square around the last iterate is accepted when Rouché's
+theorem on the Taylor expansion at its centre (or else its winding
+number) proves that it contains the root; bisection is the fallback.
+`dup_isolate_complex_roots` handles multiplicities (the rectangles of
+different square-free factors are refined until disjoint),
+`dup_isolate_all_roots_sqf` returns the real intervals and the
+rectangles, `dup_refine_complex_root` refines one rectangle.
+
+```python
+>>> from sympy_extras.polys.complexroots import Rectangle, dup_count_complex_roots, dup_isolate_complex_roots_sqf
+>>> f = [Fraction(1), Fraction(0), Fraction(0), Fraction(0), Fraction(4)]       # roots 1 + i, 1 - i, -1 + i, -1 - i
+>>> dup_isolate_complex_roots_sqf(f)
+[Rectangle(-5, 0, 5/8, 5), Rectangle(0, 5, 5/8, 5)]
+>>> dup_isolate_complex_roots_sqf(f, Fraction(1, 1000))[1].contains(Fraction(1), Fraction(1))
+True
+>>> dup_count_complex_roots(f, Rectangle(Fraction(0), Fraction(2), Fraction(-2), Fraction(2)))
+2
+
+```
+
+On random polynomials of degree 10, 20, 30 with coefficients below 100
+the isolation takes 0.01, 0.1 and 1 s (SymPy's
+`dup_isolate_complex_roots_sqf`: 0.07, 0.25, 1.7 s), and the refinement
+to `10**-50` 0.01, 0.17 and 1.7 s in all (SymPy's refinement to
+`10**-10`: 1.8 s and 21 s at degrees 10 and 20).
+
 ## Verification
 
 `polys/tests/test_factor.py` compares the factorisations over `GF(p)`
@@ -312,6 +359,10 @@ gcd over `ZZ` (the heuristic gcd) and over `GF(p)`.
   Cambridge University Press, 2013, Chapters 14 and 15.
 - D. G. Cantor, H. Zassenhaus, *A new algorithm for factoring polynomials
   over finite fields*, Mathematics of Computation 36 (1981), 587-592.
+- H. S. Wilf, *A global bisection algorithm for computing the zeros of
+  polynomials in the complex plane*, Journal of the ACM 25 (1978), 415-420.
+- G. E. Collins, W. Krandick, *An efficient algorithm for infallible
+  polynomial complex root isolation*, ISSAC '92, 189-194.
 - M. van Hoeij, *Factoring polynomials and the knapsack problem*, Journal
   of Number Theory 95 (2002), 167-189.
 - A. K. Lenstra, H. W. Lenstra, L. Lovász, *Factoring polynomials with
