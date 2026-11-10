@@ -294,10 +294,14 @@ def sums_case(rng: random.Random) -> tuple[str, Check]:
     label = 'dirichlet_series(%s, n)' % term
 
     def check_dirichlet() -> Optional[str]:
-        found = attempt(lambda: dirichlet_series(term, n), TIMEOUT)
+        from sympy_extras.core.symbol import Symbol as NativeSymbol
+        from sympy_extras.interop import expr_from_sympy, to_sympy
+        native_n = expr_from_sympy(n)
+        assert isinstance(native_n, NativeSymbol)
+        found = attempt(lambda: dirichlet_series(expr_from_sympy(term), native_n), TIMEOUT)
         if found is None:
             return None
-        got = _numeric(as_expr(found[0]), 0)
+        got = _numeric(as_expr(to_sympy(found[0])), 0)
         exact = _partial_sum(term, n, 1, 3000)
         if got is None or exact is None:
             return None

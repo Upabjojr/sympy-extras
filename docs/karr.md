@@ -296,7 +296,8 @@ Piecewise((n + 1, Eq(q, -1) | Eq(q, 1)), (q**(2*n + 2)/((q - 1)*(q + 1)) - 1/((q
 Piecewise((k, Eq(q, 1)), (q**k/(q - 1), True))
 >>> definite_sum(core_binomial(n_, k_)*y_**k_/(k_ + 1), (k_, 0, n_))
 Piecewise((1, Eq(y, 0)), ((y*(y + 1)**n + (y + 1)**n - 1)/(y*(n + 1)), True))
->>> dirichlet_series((-1)**(n + 1)/n**s, n)
+>>> s_ = CoreSymbol('s')
+>>> dirichlet_series((-1)**(n_ + 1)/n_**s_, n_)
 (Piecewise((log(2), Eq(s, 1)), ((1 - 2**(1 - s))*zeta(s), True)), re(s) > 0)
 
 ```

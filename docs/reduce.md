@@ -280,8 +280,10 @@ True
 True
 >>> limit_seq(a**n, n, assumptions=a > 0)
 Piecewise((oo, a > 1), (1, Eq(a, 1)), (0, a < 1))
->>> from sympy import mobius
->>> dirichlet_series(mobius(n)/n**p, n)
+>>> from sympy_extras.core import Symbol as CoreSymbol
+>>> from sympy_extras.functions import mobius
+>>> n_, p_ = CoreSymbol('n'), CoreSymbol('p')
+>>> dirichlet_series(mobius(n_)/n_**p_, n_)
 (1/zeta(p), re(p) > 1)
 
 ```

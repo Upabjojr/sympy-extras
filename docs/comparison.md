@@ -517,10 +517,12 @@ convergent boundary point `x = -1`.
 2*zeta(3)
 >>> polygamma_series(native_polygamma(1, m)/m**2, m)
 7*pi**4/360
->>> dirichlet_series(totient(n)/n**s, n)
-(zeta(s - 1)/zeta(s), re(s) > 2)
->>> dirichlet_series(mobius(n)/n**s, n)
-(1/zeta(s), re(s) > 1)
+>>> from sympy_extras.functions import mobius as native_mobius, totient as native_totient
+>>> r = Symbol('r')
+>>> dirichlet_series(native_totient(m)/m**r, m)
+(zeta(r - 1)/zeta(r), re(r) > 2)
+>>> dirichlet_series(native_mobius(m)/m**r, m)
+(1/zeta(r), re(r) > 1)
 
 ```
 

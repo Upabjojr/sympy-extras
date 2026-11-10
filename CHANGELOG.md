@@ -446,6 +446,14 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.concrete.dirichlet` is native (breaking: core expressions
+  in and out): `dirichlet_series` on the core's arithmetic functions,
+  `zeta`, `re`, `max_` and `Derivative`; the same printed results as
+  before on 26 compared summands with and without special values.
+  `karr._with_special_values` and `karr_sympy.sum_special_values_of_core`
+  take `defined` (the points outside the region of convergence get no
+  case). `benchmarks/comparison.py` wraps the native `dirichlet_series`,
+  `polygamma_series` and `rational_sum` for its SymPy namespace.
 - `sympy_extras.concrete.rational` is native (breaking: core expressions
   in and out): `abramov_decomposition` and `rational_sum` on the core's
   `Poly`, `factor_list`, `apart`, `cancel`, `factor` and `summation`;

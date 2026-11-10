@@ -537,19 +537,21 @@ def karr_sum(f: ExprLike, k: SumSpec, extensions: Sequence[Expr] = (), auto: boo
 
 
 def _with_special_values(value: Expr, f: Expr, indices: Sequence[Symbol], limits: Sequence[Expr],
-                         compute: SumCompute, keep_unevaluated: bool = True) -> Expr:
+                         compute: SumCompute, keep_unevaluated: bool = True,
+                         defined: Optional[Callable[[SumPoint], bool]] = None) -> Expr:
     """:func:`~sympy_extras.concrete.karr_sympy.with_sum_special_values`
     for core expressions. A summand without parameters (symbols other
     than the ``indices`` and those of the ``limits``) has no such values;
     the others go through SymPy (:mod:`sympy_extras._special_values` is
-    not ported)."""
+    not ported). ``defined`` refutes the points where the sum is not
+    defined (outside the region of convergence of a series)."""
     excluded: set[Symbol] = set(indices)
     for limit in limits:
         excluded |= limit.free_symbols
     if not f.free_symbols - excluded:
         return value
     from .karr_sympy import sum_special_values_of_core
-    return sum_special_values_of_core(value, f, indices, limits, compute, keep_unevaluated)
+    return sum_special_values_of_core(value, f, indices, limits, compute, keep_unevaluated, defined)
 
 
 def _repaired_at_poles(closed: Expr, antidifference: Expr, f: Expr, index: Symbol,
