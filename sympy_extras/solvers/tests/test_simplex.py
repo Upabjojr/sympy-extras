@@ -142,3 +142,69 @@ def test_strict_inequalities() -> None:
                 for candidate in points:
                     assert not all((_dot(row, candidate) < bound) if flag else (_dot(row, candidate) <= bound)
                                    for row, bound, flag in zip(A, b, strict))
+
+
+def test_integer_programs_known() -> None:
+    from sympy_extras.solvers.simplex import integer_program
+    # a knapsack: maximise 10 a + 13 b + 7 c with 3 a + 4 b + 2 c <= 9, 0 <= a, b, c <= 1... relaxed to counts <= 3
+    weights = [[3, 4, 2], [-1, 0, 0], [0, -1, 0], [0, 0, -1], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    result = integer_program([10, 13, 7], weights, [9, 0, 0, 0, 3, 3, 3])
+    best = max((10*a + 13*b + 7*c, [a, b, c]) for a in range(4) for b in range(4) for c in range(4)
+               if 3*a + 4*b + 2*c <= 9)
+    assert result.status == 'optimal' and result.value == best[0]
+    assert result.point is not None and 10*result.point[0] + 13*result.point[1] + 7*result.point[2] == best[0]
+    # the relaxation has the optimum 21 at (3, 3/2); the integer optimum is 20
+    assert integer_program([5, 4], [[6, 4], [1, 2], [-1, 0], [0, -1]], [24, 6, 0, 0]).value == 20
+    # no integer point: a hyperplane x + y = 1/2, an unbounded strip 1/3 <= x - y <= 2/3
+    assert integer_program([1, 1], [[2, 2], [-2, -2]], [1, -1]).status == 'infeasible'
+    assert integer_program([0, 0], [[3, -3], [-3, 3]], [2, -1]).status == 'infeasible'
+    assert integer_program([1, 1], [[3, -3], [-3, 3]], [2, -1]).status == 'infeasible'       # unbounded relaxation
+    unbounded = integer_program([1, 0], [[0, 1], [0, -1]], [Fraction(5, 2), 0])
+    assert unbounded.status == 'unbounded' and unbounded.point is not None and 0 <= unbounded.point[1] <= 2
+    assert integer_program([1], [[1], [-1]], [0, -1]).status == 'infeasible'
+    # a thin triangle with a single integer point far from the vertex of the relaxation
+    thin = integer_program([0, 1], [[-10, 21], [10, -19], [0, -1]], [0, 0, 0])
+    assert thin.status == 'optimal' and thin.point == [0, 0]
+    assert repr(thin) == "IntegerProgramResult('optimal', value=0, point=[0, 0])"
+
+
+def test_integer_programs_against_search() -> None:
+    from sympy_extras.solvers.simplex import integer_program
+    rng = random.Random(84)
+    solved = 0
+    for _ in range(120):
+        n = rng.randint(1, 3)
+        m = rng.randint(1, 4)
+        A = [[Fraction(rng.randint(-4, 4)) for _ in range(n)] for _ in range(m)]
+        b = [Fraction(rng.randint(-6, 12), rng.choice([1, 2, 3])) for _ in range(m)]
+        # a box, so that the search below is complete
+        for j in range(n):
+            A.append([Fraction(1 if k == j else 0) for k in range(n)])
+            b.append(Fraction(5))
+            A.append([Fraction(-1 if k == j else 0) for k in range(n)])
+            b.append(Fraction(5))
+        c = [Fraction(rng.randint(-3, 3)) for _ in range(n)]
+        best = None
+        point = [-5]*n
+        while True:
+            vector = [Fraction(v) for v in point]
+            if all(_dot(row, vector) <= bound for row, bound in zip(A, b)):
+                value = _dot(c, vector)
+                best = value if best is None or value > best else best
+            k = 0
+            while k < n and point[k] == 5:
+                point[k] = -5
+                k += 1
+            if k == n:
+                break
+            point[k] += 1
+        result = integer_program(c, A, b)
+        if best is None:
+            assert result.status == 'infeasible'
+        else:
+            assert result.status == 'optimal' and result.value == best
+            assert result.point is not None
+            found = [Fraction(v) for v in result.point]
+            assert all(_dot(row, found) <= bound for row, bound in zip(A, b)) and _dot(c, found) == best
+            solved += 1
+    assert solved > 60

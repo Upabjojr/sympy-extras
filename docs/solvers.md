@@ -673,8 +673,26 @@ True
 
 ```
 
-It is not yet called by `ask`, `satisfiable` or `resolve`, which still
-send linear formulas to virtual substitution.
+`integer_program(c, A, b)` maximises over the integer points by branch
+and bound on the exact relaxations. It always terminates, also on an
+unbounded polyhedron without integer points: an integer optimum, if
+there is one, lies within `n Delta(A)` of the optimum of the relaxation
+(Cook, Gerards, Schrijver and Tardos), and a polyhedron with integer
+points has one of size `(n + 1) Delta([A b])`; `Delta`, the largest
+subdeterminant, is bounded by Hadamard's inequality, and the search
+stays in these boxes.
+
+```python
+>>> from sympy_extras.solvers.simplex import integer_program
+>>> integer_program([5, 4], [[6, 4], [1, 2], [-1, 0], [0, -1]], [24, 6, 0, 0])      # the relaxation: 21 at (3, 3/2)
+IntegerProgramResult('optimal', value=20, point=[4, 0])
+>>> integer_program([0, 0], [[3, -3], [-3, 3]], [2, -1]).status                     # 1/3 <= x - y <= 2/3
+infeasible
+
+```
+
+None of this is called yet by `ask`, `satisfiable` or `resolve`, which
+still send linear formulas to virtual substitution and Cooper's method.
 
 ## Darboux polynomials and the Prelle–Singer procedure
 
