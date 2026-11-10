@@ -328,6 +328,22 @@ power keeps the degree): this representation is convenient up to
 degrees of a few dozen, not a replacement for computing in one fixed
 number field (`AlgebraicField`).
 
+`numberfields.basis`: `integral_basis(T)` and `field_discriminant(T)` for
+the field `QQ(theta)`, `T(theta) = 0`, by the Round 2 algorithm: at each
+prime whose square divides the discriminant of `T`, the order is replaced
+by the multiplier ring of its `p`-radical (the kernel of a power of the
+Frobenius map on `O/pO`) until it no longer grows (Pohst–Zassenhaus);
+linear algebra modulo `p` and Hermite normal forms.
+
+```python
+>>> from sympy_extras.polys.numberfields.basis import integral_basis, field_discriminant
+>>> integral_basis([1, -1, -2, -8])[2] == [Fraction(1, 2), Fraction(1, 2), 0]      # Dedekind's cubic: (theta**2 + theta)/2
+True
+>>> field_discriminant([1, -1, -2, -8]), field_discriminant([1, 0, -10, 0, 1])
+(-503, 2304)
+
+```
+
 ## Verification
 
 `polys/tests/test_factor.py` compares the factorisations over `GF(p)`

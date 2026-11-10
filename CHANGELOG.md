@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.numberfields.basis`: `integral_basis` and
+  `field_discriminant` of a number field by the Round 2 algorithm
+  (p-radicals and their multiplier rings, Hermite normal forms), and
+  `polynomial_discriminant`. Typed, no SymPy.
 - `sympy_extras.polys.zerodim.solve_zero_dimensional`: all the complex
   solutions of a polynomial system over `QQ` with finitely many, with
   exact coordinates (`Algebraic`): radical by Seidenberg's lemma, FGLM,
