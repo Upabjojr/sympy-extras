@@ -46,7 +46,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import Facts, element
-from sympy_extras.assumptions.sat import find_instance
+from sympy_extras.assumptions.sat_sympy import find_instance
 
 __all__ = ['ConditionalValue', 'decide', 'combine', 'real_form', 'numerically_equal', 'positive', 'canonical',
            'symbol_facts', 'with_symbol_facts', 'plain_symbols', 'sample_values']

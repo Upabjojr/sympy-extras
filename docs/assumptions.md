@@ -349,7 +349,7 @@ witness is returned.
 
 ```python
 >>> from sympy import symbols
->>> from sympy_extras.assumptions.sat import satisfiable, tautology, find_instance
+>>> from sympy_extras.assumptions.sat_sympy import satisfiable, tautology, find_instance
 >>> p, q = symbols('p q')
 >>> satisfiable(p & ~q)
 {p: True, q: False}

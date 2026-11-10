@@ -52,7 +52,7 @@ Engine = Callable[[Expr, Symbol], Expr]
 from .ask_sympy import Assumptions, _facts, _evaluate
 from .facts_sympy import Facts, normalize
 from .refine_sympy import _Refiner
-from .sat import satisfiable
+from .sat_sympy import satisfiable
 
 __all__ = ['limit', 'limit_seq', 'series']
 

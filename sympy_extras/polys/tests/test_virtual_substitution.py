@@ -6,7 +6,7 @@ from sympy.testing.pytest import raises
 
 from sympy_extras.polys.virtual_substitution import (is_linear_in, eliminate_linear,
     linear_quantifier_elimination, is_quadratic_in, eliminate_quadratic, virtual_substitution_elimination)
-from sympy_extras.assumptions.sat import tautology
+from sympy_extras.assumptions.sat_sympy import tautology
 from sympy_extras.assumptions.resolve_sympy import resolve
 from sympy_extras.assumptions.quantifiers_sympy import Exists, ForAll
 

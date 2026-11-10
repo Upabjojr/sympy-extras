@@ -226,3 +226,26 @@ def test_native_ask_refine_resolve_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ASK], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SAT = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.assumptions.sat import satisfiable, tautology, find_instance
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+assert satisfiable(True) == {} and satisfiable(False) is False and satisfiable((x > 1) & (x <= 1)) is False
+assert tautology(True) is True and tautology((x > 0) | (x <= 0)) is True
+assert str(find_instance(True, [x, y])) == '[{x: 0, y: 0}]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_sat_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.assumptions.sat` does not load SymPy,
+    nor do the formulas decided without a SAT search or a decomposition
+    (SymPy's SAT solver, the predicates' facts, the CAD and Hermite's
+    count go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SAT], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

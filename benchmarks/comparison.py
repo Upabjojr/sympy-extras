@@ -76,7 +76,7 @@ from sympy_extras.assumptions.resolve_sympy import resolve
 from sympy_extras.assumptions.solve import solve as xsolve
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
-from sympy_extras.assumptions.sat import satisfiable, tautology, find_instance
+from sympy_extras.assumptions.sat_sympy import satisfiable, tautology, find_instance
 from sympy_extras.assumptions.limits import limit as xlimit, limit_seq as xlimit_seq, series as xseries
 from sympy_extras.concrete.karr_sympy import karr_sum, summation as xsummation
 from sympy_extras.concrete.convergence import sum_convergence, product_convergence

@@ -136,7 +136,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import element
-from sympy_extras.assumptions.sat import satisfiable
+from sympy_extras.assumptions.sat_sympy import satisfiable
 from sympy_extras.assumptions.solve import solve
 from sympy_extras.settings import settings
 from .conditions import (ConditionalValue, _items, decide, plain_symbols, sample_values,
@@ -1431,7 +1431,7 @@ class _Integrator:
         from the others and the assumptions (``c > 0`` next to ``c > 1``),
         or ``None`` when the conjunction is unsatisfiable under the
         assumptions (``c < 0`` next to ``c > 1``), both by the SAT solver
-        with the theory of the reals (:func:`~sympy_extras.assumptions.satisfiable`,
+        with the theory of the reals (:func:`~sympy_extras.assumptions.sat_sympy.satisfiable`,
         which :func:`ask` on a conjunction without assumptions leaves
         undecided, and which answers in half its time)."""
         kept = list(conjuncts)

@@ -143,7 +143,7 @@ expressions in and out); the examples use their SymPy faces
 >>> from sympy_extras.assumptions.refine_sympy import refine, simplify
 >>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.assumptions.resolve_sympy import resolve
->>> from sympy_extras.assumptions.sat import satisfiable
+>>> from sympy_extras.assumptions.sat_sympy import satisfiable
 >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 >>> ask(x**2 - 2*x + 1 >= 0, x > 0)
 True
