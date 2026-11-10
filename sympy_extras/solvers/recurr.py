@@ -1568,11 +1568,22 @@ def _parse(equation: Union[Expr, Eq], y: AppliedUndef) -> tuple[list[Expr], Expr
             raise ValueError("%s is not a shift of %s by an integer" % (t, y))
         shifts.append(offset.p)
     least = min(shifts)
-    expr = together(expr.subs(n, n - least)).as_numer_denom()[0]
+    shifted = expr.subs(n, n - least)
     order = max(shifts) - least
+    coefficients, rhs = _linear_parts(together(shifted).as_numer_denom()[0], y, n, order)
+    if any(c.is_rational_function(n) is not True for c in coefficients):
+        # the denominator of the right-hand side is no polynomial in n
+        # (factorials): the equation is not multiplied by it
+        coefficients, rhs = _linear_parts(shifted, y, n, order)
+    return coefficients, rhs, n
+
+
+def _linear_parts(expr: Expr, y: AppliedUndef, n: Symbol, order: int) -> tuple[list[Expr], Expr]:
+    """``(coefficients, rhs)`` of ``expr = sum coefficients[i] y(n + i) -
+    rhs``."""
     unknowns: list[Expr] = [Dummy('y%d' % i) for i in range(order + 1)]
     expr = expand(expr.subs({y.func(n + i): u for i, u in enumerate(unknowns)}))
-    if applications(expr):
+    if any(isinstance(t, AppliedUndef) and t.func == y.func for t in expr.atoms(AppliedUndef)):
         raise ValueError("the equation is not linear in %s" % (y,))
     coefficients: list[Expr] = [ZERO]*(order + 1)
     rhs: Expr = ZERO
@@ -1585,7 +1596,7 @@ def _parse(equation: Union[Expr, Eq], y: AppliedUndef) -> tuple[list[Expr], Expr
             coefficients[i] = coefficients[i] + coefficient
         else:
             raise ValueError("the equation is not linear in %s" % (y,))
-    return coefficients, rhs, n
+    return coefficients, rhs
 
 
 def _hypergeometric_ratio(f: Expr, n: Symbol) -> Optional[Expr]:

@@ -131,7 +131,7 @@ from sympy_extras.assumptions.ask import Assumptions, ask
 from sympy_extras.assumptions.facts import element
 from sympy_extras.concrete.convergence import sum_convergence
 from sympy_extras.concrete.eulersums import polygamma_series
-from sympy_extras.concrete.zeilberger import zeilberger_sum
+from sympy_extras.concrete.zeilberger_sympy import zeilberger_sum
 from sympy_extras.settings import settings
 from .brackets import SeriesCoefficient, taylor_coefficient
 from .conditions import ConditionalValue

@@ -75,7 +75,6 @@ from sympy_extras.assumptions import (ask as xask, refine as xrefine, simplify a
     ForAll, Exists, satisfiable, tautology, find_instance, limit as xlimit, limit_seq as xlimit_seq,
     series as xseries)
 from sympy_extras.concrete.karr_sympy import karr_sum, summation as xsummation
-from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
 from sympy_extras.concrete.convergence import sum_convergence, product_convergence
 from sympy_extras.concrete.dirichlet import dirichlet_series
 from sympy_extras.concrete.eulersums import polygamma_series, euler_sum
@@ -134,6 +133,8 @@ from sympy_extras.interop import expr_from_sympy as _core, to_sympy as _sympy
 from sympy_extras.concrete.dirichlet import dirichlet_series as _dirichlet_series
 from sympy_extras.concrete.eulersums import polygamma_series as _polygamma_series
 from sympy_extras.concrete.rational import rational_sum as _rational_sum
+# zeilberger is native too: its SymPy face converts at the call
+from sympy_extras.concrete.zeilberger_sympy import zeilberger_sum, wz_prove
 
 
 def dirichlet_series(term, n, *args, **kwargs):

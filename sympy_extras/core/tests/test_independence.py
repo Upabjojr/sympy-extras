@@ -73,3 +73,28 @@ def test_native_solvers_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVERS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ZEILBERGER = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.functions import binomial
+from sympy_extras.concrete.zeilberger import zeilberger, zeilberger_sum, wz_prove
+n, k = symbols('n k', integer=True)
+assert str(zeilberger(binomial(n, k)**2, n, k)) == \
+    'Telescoper([-2*(2*n + 1), n + 1], k**2*(2*k - 3*n - 3)/(k - n - 1)**2)'
+assert str(zeilberger_sum(binomial(n, k)**2, (k, 0, n))) == 'binomial(2*n, n)'
+assert str(zeilberger_sum(1/k, (k, 1, n))) == 'harmonic(n)'
+assert str(zeilberger_sum(binomial(2*n, k), (k, 0, n))) == '4**n/2 + factorial(2*n)/(2*factorial(n)**2)'
+assert wz_prove(binomial(n, k), 2**n, n, k) is True
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_zeilberger_does_not_load_sympy() -> None:
+    """:mod:`sympy_extras.concrete.zeilberger` on a summand without
+    parameters (the cases of the parameters are the only step through
+    SymPy) does not load SymPy."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ZEILBERGER], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

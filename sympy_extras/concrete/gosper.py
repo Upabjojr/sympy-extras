@@ -5,8 +5,9 @@
 Ported from SymPy's ``sympy.concrete.gosper``. SymPy works with
 polynomials over a field of the parameters; here a polynomial in ``n`` is
 the list of its coefficients, expressions kept cancelled (the elements of
-that field), with the resultant from the Sylvester determinant and its
-nonnegative integer roots from its linear factors.
+that field), with the resultant from the typed polynomials (or the
+Sylvester determinant) and its nonnegative integer roots from its linear
+factors.
 
 Examples
 ========
@@ -173,13 +174,25 @@ def _determinant(rows: list[list[Expr]]) -> Expr:
 
 
 def _resultant(a: _UPoly, b: _UPoly) -> Expr:
-    """The resultant of ``a`` and ``b`` (the Sylvester determinant)."""
+    """The resultant of ``a`` and ``b`` up to a factor free of the
+    symbols of ``b`` which are not in ``a`` (only its roots in them are
+    used): of the polynomials with the denominators of their coefficients
+    cleared, by the typed polynomials; by the Sylvester determinant when
+    a coefficient is outside their domains."""
     da, db = a.degree(), b.degree()
     if da < 0 or db < 0:
         return ZERO
     size = da + db
     if size == 0:
         return ONE
+    from sympy_extras.polys.polyerrors import BasePolynomialError
+    from sympy_extras.polys.polytools import resultant
+    x = Dummy('x')
+    try:
+        cleared = [_cleared(p, x) for p in (a, b)]
+        return resultant(cleared[0], cleared[1], x)
+    except (BasePolynomialError, ValueError, TypeError, NotImplementedError):
+        pass
     rows: list[list[Expr]] = []
     for k in range(db):
         row: list[Expr] = [ZERO] * size
@@ -192,6 +205,15 @@ def _resultant(a: _UPoly, b: _UPoly) -> Expr:
             row[k + j] = c
         rows.append(row)
     return _determinant(rows)
+
+
+def _cleared(p: _UPoly, x: Symbol) -> Expr:
+    """``p`` in ``x`` times the lcm of the denominators of its
+    coefficients."""
+    from sympy_extras.core.add import add
+    from sympy_extras.polys.polytools import lcm_list
+    scale = lcm_list([c.as_numer_denom()[1] for c in p.c])
+    return add(*[_c(c * scale) * x**k for k, c in enumerate(p.c)])
 
 
 def _nonnegative_integer_roots(r: Expr, h: Symbol) -> list[int]:

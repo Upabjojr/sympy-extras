@@ -498,7 +498,7 @@ Every solution is checked by substitution at six consecutive integers
 before it is returned (`is_recurrence_solution`).
 
 The module is native: it takes and returns expressions of the core and
-does not import SymPy (`zeilberger_sum` converts at the call). The
+does not import SymPy (`zeilberger_sum`, native too, calls it directly). The
 coefficients are dense polynomials in `n` over `QQ`, over the rational
 functions `QQ(a, b, ...)` of the parameters, or over a number field
 `QQ(alpha)` for one radical `alpha`; a root `z` outside the field is

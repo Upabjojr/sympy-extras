@@ -384,10 +384,12 @@ statement assumptions and case distinctions.
 >>> u = Function('u')(x, y)
 >>> complete_integral(u.diff(x)*u.diff(y) - 1, u)
 Eq(u(x, y), a*x + b + y/a)
->>> n, k = symbols('n k', integer=True)
->>> zeilberger_sum((-1)**k*binomial(2*n, k)**3, (k, 0, 2*n))
+>>> from sympy_extras.core import Symbol as CoreSymbol
+>>> from sympy_extras.functions import binomial as core_binomial
+>>> n, k = CoreSymbol('n', integer=True), CoreSymbol('k', integer=True)
+>>> zeilberger_sum((-1)**k*core_binomial(2*n, k)**3, (k, 0, 2*n))
 (-1)**n*factorial(3*n)/factorial(n)**3
->>> wz_prove(binomial(n, k)**2, binomial(2*n, n), n, k)
+>>> wz_prove(core_binomial(n, k)**2, core_binomial(2*n, n), n, k)
 True
 >>> limit(exp(a*x), x, oo)
 Piecewise((oo, a > 0), (1, Eq(a, 0)), (0, a < 0))
@@ -843,7 +845,7 @@ sympy_extras/
         zeilberger.py        Zeilberger's algorithm, WZ certificates, definite sums
         qhyper.py            q-Pochhammer symbols, q-Gosper, q-Zeilberger
         rational.py          Abramov's decomposition of rational summands
-        zeilberger.py        Zeilberger's algorithm, WZ certificates, definite sums
+        zeilberger_sympy.py  the SymPy face of zeilberger: zeilberger_sum, wz_certificate, wz_prove
     integrals/
         mellin.py            Mellin transforms as gamma quotients, the table of kernels
         slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem

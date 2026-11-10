@@ -446,6 +446,34 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.concrete.zeilberger` is native (breaking: core expressions
+  in and out): `zeilberger`, `wz_certificate`, `wz_prove` and
+  `zeilberger_sum` on the core's `cancel`, `factor`, `lcm_list`,
+  `gcd_list`, `combsimp`, `gammasimp`, `simplify`, `limit`, `product` and
+  `Sum`, the native `gosper_normal`, the null space over the rational
+  functions of the parameters (`SparseFractionField.nullspace`), and
+  `Telescoper` is immutable. The recurrence is solved by the native
+  `rsolve_linear` only (SymPy's `rsolve` is gone: where it found a
+  solution, `rsolve_linear` finds the same; SymPy's `rsolve` also returned
+  `0` for recurrences without hypergeometric solutions whatever the
+  initial values). The integer zeros of the leading coefficient come from
+  its native factorisation, so a leading coefficient with parameters no
+  longer raises `NotImplementedError` from SymPy's `real_roots`: the sums
+  of `(-1)**k*binomial(n, k)/(k + a)` and `binomial(n, k)*binomial(n, k +
+  a)` get their closed forms. The same printed results as before on the
+  70 other compared calls (16 telescopers, 7 WZ certificates and proofs,
+  42 sums, with and without special values); only the isolated values of
+  the parameters go through SymPy, at the call. The new
+  `sympy_extras.concrete.zeilberger_sympy` (`zeilberger_sum`,
+  `wz_certificate`, `wz_prove` on SymPy expressions) is used by
+  `sympy_extras.integrals.series`, `docs/comparison.md` and
+  `benchmarks/comparison.py`. `gosper_normal` computes its resultant with
+  the typed polynomials (the Sylvester determinant only as a fallback),
+  four times faster on Apéry's summand.
+- `sympy_extras.solvers.recurr.rsolve_linear` no longer multiplies the
+  equation by a denominator of the right-hand side which is no
+  polynomial in `n` (`S(n + 1) - 4*S(n) = -(2n)!/(n! (n + 1)!)` raised
+  `ValueError`).
 - `sympy_extras.concrete.dirichlet` is native (breaking: core expressions
   in and out): `dirichlet_series` on the core's arithmetic functions,
   `zeta`, `re`, `max_` and `Derivative`; the same printed results as

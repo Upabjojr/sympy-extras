@@ -228,3 +228,15 @@ def test_rising_factorials_are_written_as_factorials() -> None:
     assert solution == RisingFactorial(Rational(1, 2), n)/factorial(n)
     # the shift used throughout
     assert dup_shift([Fraction(1), Fraction(0)], Fraction(1), QQ) == [Fraction(1), Fraction(1)]
+
+
+def test_right_hand_side_with_factorials_in_the_denominator() -> None:
+    # the bug: the equation was multiplied by the denominator of its
+    # right-hand side, factorial(n)*factorial(n + 1), and the coefficients
+    # were no rational functions any more (ValueError); the recurrence of
+    # the sums of binomial(2n, k) up to n (1, 3, 11, 42, 163, ...)
+    S = Function('S')
+    rhs = factorial(2*n)/(factorial(n)*factorial(n + 1))
+    solution = rsolve_linear(S(n + 1) - 4*S(n) + rhs, S(n), {S(Integer(0)): 1})
+    assert solution is not None
+    assert [solution.subs(n, Integer(i)).doit() for i in range(5)] == [1, 3, 11, 42, 163]
