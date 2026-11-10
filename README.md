@@ -908,7 +908,8 @@ sympy_extras/
         polyutils.py         conversions between core expressions and the typed polynomials
         sqfreetools.py       square-free decomposition (Yun; over GF(p) with p-th roots)
         galoistools.py       factorisation over GF(p): distinct-degree, Cantor–Zassenhaus, Rabin's test
-        factortools.py       factorisation over ZZ and QQ (Zassenhaus with quadratic Hensel lifting) and over number fields (Trager)
+        factortools.py       factorisation over ZZ and QQ (Zassenhaus with quadratic Hensel lifting, van Hoeij's knapsack recombination) and over number fields (Trager)
+        lattice.py           lattice reduction: the all-integer LLL algorithm, Hermite normal form
         rootisolation.py     real root isolation (Descartes with bisection), Sturm counts, refinement
         polyclasses.py       DensePoly: the typed polynomial class over a domain, with the algorithms as methods
         rings.py             PolyRing, PolyElement: sparse multivariate polynomials with monomial orders, the division algorithm

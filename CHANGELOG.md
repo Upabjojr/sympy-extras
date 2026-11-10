@@ -10,6 +10,17 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.lattice`: `lll`, `lll_reduction` (the LLL algorithm
+  in de Weger's all-integer form, with the Gram determinants and
+  `short_part`), `hermite_normal_form`, `is_lll_reduced`. Exact on entries
+  of any size, dependent generators allowed; `thue_equation.lll` is now
+  this function (it recomputed a rational Gram–Schmidt after every step).
+- `sympy_extras.polys.factortools.dup_zz_van_hoeij`: van Hoeij's knapsack
+  recombination of the modular factors by lattice reduction, used by
+  `dup_zz_factor` from ten modular factors on instead of the subset
+  search (exponential on polynomials which split modulo every prime: the
+  Swinnerton-Dyer polynomial of degree 32 in 0.04 s instead of 2 s, of
+  degree 128 in 2 s).
 - `sympy_extras.polys.polytools.gcd_list` and `lcm_list`, native (folding
   `gcd`/`lcm`): the same results as SymPy's, structurally.
 - `sympy_extras.solvers.linsolve.solve_linear_unique`: the unique solution

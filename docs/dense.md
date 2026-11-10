@@ -120,6 +120,29 @@ The last line is the gcd of `(x + y)(x - y)` and `(x + y)**2` in `ZZ[y][x]`.
   `lc * prod f_i` over the subsets of increasing size. `dup_zz_factor`
   and `dup_qq_factor` return the content and the primitive factors with
   their multiplicities.
+- From ten modular factors on, the recombination is van Hoeij's
+  (`dup_zz_van_hoeij`): the subset search costs `2**(r - 1)` trial
+  divisions on a polynomial with `r` modular factors and few rational
+  ones (the Swinnerton-Dyer polynomials, the resolvents and minimal
+  polynomials of sums of roots), the knapsack lattice a few LLL
+  reductions in dimension `r + 2`. The scaled power sums of the roots
+  `S_k(g) = lc**k sum alpha**k` of the lifted factors are additive, and
+  integers of bounded size on the rational factors; their middle `p`-adic
+  digits make a lattice in which the 0-1 vectors of the rational factors
+  are short, and the LLL-reduced basis vectors whose Gram–Schmidt length
+  passes the bound are discarded until the rest is a partition of the
+  modular factors, proved by trial division (rank one: irreducible).
+  The Swinnerton-Dyer polynomial of degree 32 takes 0.04 s instead of
+  2 s, those of degree 64 and 128 (out of reach of the subset search)
+  0.2 s and 2 s.
+- `lattice`: the LLL algorithm in de Weger's all-integer form (`lll`,
+  `lll_reduction` with the Gram determinants, from which the
+  Gram–Schmidt lengths and `short_part`, the vectors spanning everything
+  below a length), and the Hermite normal form (`hermite_normal_form`,
+  which also extracts a basis from dependent generators). No fractions
+  and no floating point: entries of any size (SymPy's
+  `DomainMatrix.lll` fails on entries of a few hundred bits). The Thue
+  solver uses it.
 - Over a number field `QQ(alpha)`, Trager's algorithm (`dup_ext_factor`):
   a shift `x - s alpha` making the norm `N(f) = Res_alpha(m, f)`
   square-free, the norm factored over `QQ`, and each factor `N_i` giving
@@ -135,6 +158,9 @@ The last line is the gcd of `(x + y)(x - y)` and `(x + y)**2` in `ZZ[y][x]`.
 (1, [([1, 1], 1), ([1, 2], 1), ([1, 3], 1), ([1, 4], 1)])
 >>> dup_zz_factor([1, 0, 0, 0, -1], ZZ)
 (1, [([1, -1], 1), ([1, 1], 1), ([1, 0, 1], 1)])
+>>> from sympy_extras.polys.lattice import lll
+>>> lll([[1, 0, 0, 1000000], [0, 1, 0, 1414214], [0, 0, 1, 2828427]])[0]
+[0, -2, 1, -1]
 
 ```
 
@@ -286,3 +312,9 @@ gcd over `ZZ` (the heuristic gcd) and over `GF(p)`.
   Cambridge University Press, 2013, Chapters 14 and 15.
 - D. G. Cantor, H. Zassenhaus, *A new algorithm for factoring polynomials
   over finite fields*, Mathematics of Computation 36 (1981), 587-592.
+- M. van Hoeij, *Factoring polynomials and the knapsack problem*, Journal
+  of Number Theory 95 (2002), 167-189.
+- A. K. Lenstra, H. W. Lenstra, L. Lovász, *Factoring polynomials with
+  rational coefficients*, Mathematische Annalen 261 (1982), 515-534.
+- H. Cohen, *A Course in Computational Algebraic Number Theory*, Springer,
+  1993, Sections 2.4 and 2.6.

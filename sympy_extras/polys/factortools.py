@@ -59,14 +59,21 @@ from .domains.polynomialring import PolynomialRing
 from .domains.rationalfield import QQ, RationalField
 from .euclidtools import dup_gcd, dup_gcdex, dup_resultant
 from .galoistools import gf_factor_sqf
+from .lattice import hermite_normal_form, lll_reduction
 from .sqfreetools import dup_sqf_list, dup_sqf_p
 
 __all__ = ['dup_zz_factor', 'dup_zz_factor_sqf', 'dup_qq_factor', 'dup_zz_mignotte_bound', 'dup_zz_hensel_step',
-           'dup_zz_hensel_lift', 'dup_zz_zassenhaus', 'dup_zz_irreducible_p', 'dup_ext_sqf_norm', 'dup_ext_factor',
+           'dup_zz_hensel_lift', 'dup_zz_zassenhaus', 'dup_zz_van_hoeij', 'dup_zz_irreducible_p', 'dup_ext_sqf_norm', 'dup_ext_factor',
            'dup_zz_cyclotomic_poly', 'dup_zz_cyclotomic_factor']
 
 #: how many good primes are tried, keeping the one with the fewest factors
 _PRIMES_TRIED = 5
+#: from this number of modular factors on, the factors are recombined by
+#: lattice reduction (van Hoeij) rather than by the subset search
+_KNAPSACK_THRESHOLD = 10
+#: how many times the lifting is squared before van Hoeij's recombination
+#: gives up for the subset search
+_KNAPSACK_LIFTS = 4
 
 
 def dup_zz_mignotte_bound(f: list[int], K: IntegerRing) -> int:
@@ -218,22 +225,25 @@ def dup_zz_zassenhaus(f: list[int]) -> list[list[int]]:
     p, modular = _good_prime(f)
     if len(modular) == 1:
         return [list(f)]
+    if len(modular) >= _KNAPSACK_THRESHOLD:
+        return _knapsack_recombination(f, p, modular)
     bound = dup_zz_mignotte_bound(f, ZZ)
     lifted, m = dup_zz_hensel_lift(p, f, modular, 2*bound + 1)
+    return _subset_recombination(f, lifted, m)
+
+
+def _subset_recombination(f: list[int], lifted: list[list[int]], m: int) -> list[list[int]]:
+    """The irreducible factors of ``f`` from its monic factors modulo
+    ``m`` (above twice the Mignotte bound): trial division by the
+    products over the subsets of increasing size."""
     remaining = list(lifted)
     factors: list[list[int]] = []
     current = list(f)
     size = 1
     while 2*size <= len(remaining):
         found = False
-        lc = dup_LC(current, ZZ)
         for subset in combinations(range(len(remaining)), size):
-            candidate = [lc % m]
-            for i in subset:
-                candidate = dup_trunc(dup_mul(candidate, remaining[i], ZZ), m, ZZ)
-            _, candidate = dup_primitive(candidate, ZZ)
-            if dup_LC(candidate, ZZ) < 0:
-                candidate = [-c for c in candidate]
+            candidate = _candidate_factor(current, [remaining[i] for i in subset], m)
             quotient = _zz_trial_division(current, candidate) if _divides_leading(current, candidate) else None
             if quotient is not None:
                 factors.append(candidate)
@@ -247,6 +257,252 @@ def dup_zz_zassenhaus(f: list[int]) -> list[list[int]]:
         factors.append(current)
     factors.sort(key=lambda g: (len(g), g))
     return factors
+
+
+def _candidate_factor(f: list[int], modular: list[list[int]], m: int) -> list[int]:
+    """The primitive part, with positive leading coefficient, of ``lc(f)``
+    times the product of the monic factors modulo ``m`` (symmetric
+    residues): the factor of ``f`` they lift, if they lift one."""
+    candidate = [dup_LC(f, ZZ) % m]
+    for g in modular:
+        candidate = dup_trunc(dup_mul(candidate, g, ZZ), m, ZZ)
+    _, candidate = dup_primitive(candidate, ZZ)
+    if dup_LC(candidate, ZZ) < 0:
+        candidate = [-c for c in candidate]
+    return candidate
+
+
+# ---------------------------------------------------------------------------
+# van Hoeij's recombination
+
+def _root_ceiling(a: int, k: int) -> int:
+    """The smallest integer ``r >= 0`` with ``r**k >= a``."""
+    if a <= 0:
+        return 0
+    low, high = 0, 1
+    while high**k < a:
+        high *= 2
+    while high - low > 1:
+        middle = (low + high)//2
+        if middle**k >= a:
+            high = middle
+        else:
+            low = middle
+    return high
+
+
+def _scaled_root_bound(f: list[int]) -> int:
+    """An integer ``R >= |lc(f) alpha|`` for every complex root ``alpha``
+    of ``f``: Fujiwara's bound ``2 max |c_i|**(1/i)`` for the monic
+    polynomial ``y**n + sum c_i y**(n - i)`` with the roots ``lc(f)
+    alpha``, ``c_i = f_i lc(f)**(i - 1)``."""
+    lc = abs(f[0])
+    bound = 1
+    for i in range(1, len(f)):
+        bound = max(bound, _root_ceiling(abs(f[i])*lc**(i - 1), i))
+    return 2*bound
+
+
+def _power_sums(g: list[int], count: int, m: int) -> list[int]:
+    """The power sums ``p_1, ..., p_count`` of the roots of the monic
+    ``g`` modulo ``m`` (Newton's identities: ``p_k = -k g_k - sum_{0 < i <
+    k} g_i p_{k - i}``, without division)."""
+    d = len(g) - 1
+    sums: list[int] = []
+    for k in range(1, count + 1):
+        total = -k*g[k] if k <= d else 0
+        for i in range(1, min(k - 1, d) + 1):
+            total -= g[i]*sums[k - i - 1]
+        sums.append(total % m)
+    return sums
+
+
+def _rational_echelon(rows: list[list[int]]) -> list[list[Fraction]]:
+    """The reduced row echelon form over ``QQ`` of independent rows."""
+    work = [[Fraction(v) for v in row] for row in rows]
+    width = len(work[0]) if work else 0
+    rank = 0
+    for column in range(width):
+        pivot = next((i for i in range(rank, len(work)) if work[i][column]), -1)
+        if pivot < 0:
+            continue
+        work[rank], work[pivot] = work[pivot], work[rank]
+        inverse = 1/work[rank][column]
+        work[rank] = [v*inverse for v in work[rank]]
+        for i in range(len(work)):
+            if i != rank and work[i][column]:
+                c = work[i][column]
+                work[i] = [a - c*b for a, b in zip(work[i], work[rank])]
+        rank += 1
+    return work[:rank]
+
+
+def _partition_of(basis: list[list[int]]) -> Optional[list[list[int]]]:
+    """The partition of the modular factors a lattice basis describes:
+    when its reduced echelon form consists of 0-1 vectors with exactly
+    one 1 in every column, the index sets of the rows; ``None``
+    otherwise."""
+    echelon = _rational_echelon(basis)
+    if not echelon:
+        return None
+    width = len(echelon[0])
+    for column in range(width):
+        ones = 0
+        for row in echelon:
+            if row[column] == 1:
+                ones += 1
+            elif row[column] != 0:
+                return None
+        if ones != 1:
+            return None
+    return [[i for i in range(width) if row[i] == 1] for row in echelon]
+
+
+def _knapsack_recombination(f: list[int], p: int, modular: list[list[int]]) -> list[list[int]]:
+    """The irreducible factors of the primitive square-free ``f`` from its
+    monic irreducible factors modulo ``p``, by van Hoeij's algorithm (see
+    :func:`dup_zz_van_hoeij`)."""
+    n = dup_degree(f)
+    r = len(modular)
+    lc = dup_LC(f, ZZ)
+    root_bound = _scaled_root_bound(f)
+    traces = 2
+    lifted, m = dup_zz_hensel_lift(p, f, modular, 2*dup_zz_mignotte_bound(f, ZZ) + 1)
+    basis: list[list[int]] = [[1 if i == j else 0 for j in range(r)] for i in range(r)]
+    # enough digits for the Gram-Schmidt lengths of the vectors which do
+    # not come from factors to pass the bound: W**traces > bound**(r + traces)
+    window_bits = ((r + traces)*(r + 1).bit_length())//traces + 8
+    window = p
+    while window.bit_length() <= window_bits:
+        window *= p
+    k = 1
+    lifts = 0
+    sums: list[list[int]] = []
+    while True:
+        # the next traces whose digits above their bound are known
+        chosen: list[tuple[int, int]] = []
+        while k < n and len(chosen) < traces:
+            low = p
+            while low < 2*n*root_bound**k:
+                low *= p
+            if low*window <= m:
+                chosen.append((k, low))
+            k += 1
+        if not chosen:
+            if k >= n and 2*n*root_bound*p*window <= m:
+                # every trace was used: a second pass with more digits
+                window = window*window
+                k = 1
+                continue
+            lifts += 1
+            if lifts > _KNAPSACK_LIFTS:
+                return _subset_recombination(f, lifted, m)
+            lifted, m = dup_zz_hensel_lift(p, f, modular, m*m)
+            sums = []
+            k = 1
+            continue
+        if not sums:
+            sums = [_power_sums(g, n - 1, m) for g in lifted]
+        columns: list[list[int]] = []
+        for index, low in chosen:
+            modulus = low*window
+            scale = pow(lc, index, modulus)
+            column: list[int] = []
+            for i in range(r):
+                s = (scale*sums[i][index - 1]) % modulus
+                if 2*s > modulus:
+                    s -= modulus
+                remainder = s % low
+                if 2*remainder > low:
+                    remainder -= low
+                column.append((s - remainder)//low)
+            columns.append(column)
+        rows: list[list[int]] = []
+        for w in basis:
+            rows.append(list(w) + [sum(w[i]*column[i] for i in range(r)) for column in columns])
+        for j in range(len(columns)):
+            rows.append([0]*r + [window if i == j else 0 for i in range(len(columns))])
+        # an irreducible factor gives a 0-1 vector v with, for each trace,
+        # |sum v_i T_i - c W| <= (r + 1)/2
+        bound = Fraction(4*r + len(columns)*(r + 1)**2, 4)
+        short = lll_reduction(rows).short_part(bound)
+        basis = hermite_normal_form([row[:r] for row in short])
+        if len(basis) == 1:
+            return [list(f)]
+        partition = _partition_of(basis)
+        if partition is None:
+            continue
+        factors: list[list[int]] = []
+        for subset in partition:
+            candidate = _candidate_factor(f, [lifted[i] for i in subset], m)
+            if not _divides_leading(f, candidate) or _zz_trial_division(f, candidate) is None:
+                break
+            factors.append(candidate)
+        else:
+            factors.sort(key=lambda g: (len(g), g))
+            return factors
+
+
+def dup_zz_van_hoeij(f: list[int]) -> list[list[int]]:
+    r"""The irreducible factors (primitive, positive leading coefficient,
+    sorted) of a primitive square-free ``f`` with positive leading
+    coefficient, by van Hoeij's knapsack algorithm.
+
+    Explanation
+    ===========
+
+    Zassenhaus' algorithm tries the subsets of the $r$ modular factors:
+    $2^{r-1}$ trial divisions for an irreducible polynomial which splits
+    modulo every prime (the Swinnerton-Dyer polynomials, the minimal
+    polynomials of sums of square roots, of degree $2^k$ with $r =
+    2^{k-1}$). Van Hoeij replaces the search by a lattice reduction.
+
+    Let $f \equiv l\, g_1 \cdots g_r \pmod{p^a}$, $g_i$ monic. For a
+    monic $g$ let $S_k(g) = l^k \sum_{g(\alpha) = 0} \alpha^k$, computed
+    from the coefficients by Newton's identities. $S_k$ is additive on
+    products, and for a rational factor $G$ of $f$ it is an integer with
+    $|S_k(G)| \le n R^k$, $R$ a bound of $|l \alpha|$ over the roots of
+    $f$. So if $G \equiv \prod g_i^{v_i}$ with $v \in \{0, 1\}^r$, then
+    $\sum v_i S_k(g_i) \equiv S_k(G) \pmod{p^a}$ is small. Cutting the
+    digits below $p^b > 2 n R^k$ and above $p^b W$ leaves integers
+    $T_{ik}$ with $|\sum_i v_i T_{ik} - c W| \le (r + 1)/2$ for some
+    integer $c$: the vector $(v, \sum v_i T_{ik} - c_k W)_k$ is a short
+    vector, of squared length at most $r + s (r + 1)^2/4$ for $s$
+    traces, of the lattice spanned by the rows $(e_i, T_{i1}, \dots,
+    T_{is})$ and $(0, W e_k)$.
+
+    After an LLL reduction, the vectors of that length lie in the span of
+    the first $t$ basis vectors, $t$ the last index with a Gram–Schmidt
+    vector within the bound. Their projections span a lattice $L \subset
+    \mathbb{Z}^r$ containing the 0-1 vectors of the irreducible factors,
+    which replaces $\mathbb{Z}^r$ for the next traces. When $L$ has rank
+    one, $f$ is irreducible; when its reduced echelon form is a
+    partition of the modular factors, the products are checked by trial
+    division, which proves the factorisation. Otherwise more traces, then
+    more digits, then a higher lifting are used (and, should all of this
+    fail, the subset search).
+
+    Examples
+    ========
+
+    >>> from sympy_extras.polys.factortools import dup_zz_van_hoeij
+    >>> dup_zz_van_hoeij([1, 0, -10, 0, 1])
+    [[1, 0, -10, 0, 1]]
+    >>> dup_zz_van_hoeij([1, 0, -17, 0, 66, 0, -72])
+    [[1, 0, -12], [1, 0, -3], [1, 0, -2]]
+
+    References
+    ==========
+
+    .. [1] M. van Hoeij, *Factoring polynomials and the knapsack
+           problem*, Journal of Number Theory 95 (2002), 167-189.
+    """
+    if dup_degree(f) <= 1:
+        return [list(f)]
+    p, modular = _good_prime(f)
+    if len(modular) == 1:
+        return [list(f)]
+    return _knapsack_recombination(f, p, modular)
 
 
 def _zz_trial_division(f: list[int], g: list[int]) -> Optional[list[int]]:
