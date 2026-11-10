@@ -240,8 +240,10 @@ def test_native_facts() -> None:
     # unported SymPy memberships are wrapped as Booleans by interop and left
     # alone, and so are the memberships in a product of sets
     from sympy import Tuple
+    from sympy_extras.core.logic import Boolean as CBoolean
     from sympy_extras.interop import from_sympy, SymPyBooleanNode
     w = from_sympy(Contains(Tuple(x, x), S.Reals**2, evaluate=False))
     assert isinstance(w, SymPyBooleanNode) and nf.to_predicates(w) is None and nf.normalize(w) == w
     m = from_sympy(Contains(x, S.Reals**2))
+    assert isinstance(m, CBoolean)
     assert nf.to_predicates(m) is None and nf.normalize(m) == m
