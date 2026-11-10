@@ -273,6 +273,7 @@ sympy_extras/
         hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
         f4.py                f4 on rings.PolyRing (typed, no SymPy): reduced Gröbner bases by Faugère's F4 (the default direct algorithm); row_echelon
+        zerodim.py           solve_zero_dimensional: exact solutions (Algebraic coordinates) of zero-dimensional systems over QQ by the shape lemma
         fglm.py              fglm, groebner_by_fglm on rings.PolyRing (typed, no SymPy): change of order for zero-dimensional ideals
         interop.py           qq/zz/gf_from_sympy and _to_sympy, typed_order: the boundary with SymPy's rings
         hilbert.py           hilbert_numerator, hilbert_series, minimal_generators: Bigatti's algorithm for monomial ideals

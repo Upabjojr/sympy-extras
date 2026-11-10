@@ -411,6 +411,25 @@ of 1.1 s by F4 directly, the conversion of Katsura-5 in 1.5 s (SymPy's
 
 ```
 
+`zerodim.solve_zero_dimensional(polys, ring)` puts these together into
+exact solutions of systems with finitely many: the ideal is made radical
+(the square-free parts of the univariate polynomials of the ideal, found
+by linear algebra on normal forms), the lexicographic basis by FGLM is
+brought to the shape `x_i - g_i(x_n), h(x_n)` by a change of the last
+coordinate when needed, and each solution is the list of the algebraic
+numbers `g_i(t)` for a root `t` of `h` (`Algebraic.polynomial_value`,
+one resultant each).
+
+```python
+>>> from sympy_extras.polys.zerodim import solve_zero_dimensional
+>>> plane = PolyRing(QQ, ['x', 'y'], lex)
+>>> px, py = plane.gens
+>>> points = solve_zero_dimensional([px*px + py*py - plane.one, py - px*px], plane)     # a circle and a parabola
+>>> len(points), [p for p in points if p[0].is_real and p[0] > 0]
+(4, [[Algebraic([1, 0, 1, 0, -1], 0.7861513778), Algebraic([1, 1, -1], 0.6180339887)]])
+
+```
+
 ## Independence from SymPy
 
 The domains, the dense and sparse polynomials and every algorithm above

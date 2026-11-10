@@ -73,7 +73,7 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Callable, Final, Optional, Union
+from typing import Callable, Final, Optional, Sequence, Union
 
 from sympy_extras.polys.complexroots import Rectangle, _refine, _winding_number, dup_isolate_complex_roots_sqf
 from sympy_extras.polys.domains import ZZ
@@ -373,6 +373,49 @@ class Algebraic:
             box = base
             for _ in range(exponent - 1):
                 box = _box_product(box, base)
+            return box
+
+        return _select(_irreducible_factors(resultant), enclosure)
+
+    def polynomial_value(self, coefficients: Sequence[Union[int, Fraction]]) -> Algebraic:
+        """``g(self)`` for the polynomial ``g`` with these rational
+        coefficients (highest degree first), through one resultant:
+        ``Res_y(m(y), D x - G(y))`` for ``g = G/D`` has the degree of the
+        minimal polynomial ``m``, whereas Horner's rule in this class
+        would take a resultant of squared degree at every step.
+
+        Examples
+        ========
+
+        >>> from sympy_extras.polys.numberfields.qqbar import algebraic_roots
+        >>> sqrt2 = algebraic_roots([1, 0, -2])[1]
+        >>> sqrt2.polynomial_value([1, 0, 0, 1])               # sqrt(2)**3 + 1
+        Algebraic([1, -2, -7], 3.828427125)
+        >>> sqrt2.polynomial_value([1, 0, -2]).is_zero
+        True
+        """
+        g = [Fraction(c) for c in coefficients]
+        while g and g[0] == 0:
+            g = g[1:]
+        if len(g) <= 1 or self.is_rational:
+            value = _ZERO
+            point = self.rational_value() if self.is_rational else _ZERO
+            for c in g:
+                value = value*point + c
+            return Algebraic.from_rational(value)
+        common = 1
+        for c in g:
+            common = common*c.denominator//_gcd(common, c.denominator)
+        integers = [int(c*common) for c in g]
+        target: list[list[int]] = [[-c] if c else [] for c in integers[:-1]] + [[common, -integers[-1]]]
+        resultant = dup_resultant([[c] if c else [] for c in self._minpoly], target, _ZX)
+
+        def enclosure(eps: Fraction) -> Optional[Box]:
+            base = self._box(eps)
+            box: Box = (g[0], g[0], _ZERO, _ZERO)
+            for c in g[1:]:
+                box = _box_product(box, base)
+                box = (box[0] + c, box[1] + c, box[2], box[3])
             return box
 
         return _select(_irreducible_factors(resultant), enclosure)
