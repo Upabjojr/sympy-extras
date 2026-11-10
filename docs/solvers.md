@@ -627,9 +627,22 @@ of the other terms, found recursively; negative `n` by the mirrored sum.
 
 ```
 
-Not covered: coefficients (`r a**x - s b**y = c`, a linear form in three
-logarithms, which needs the LLL reduction of `polys.lattice`), more than
-two exponentials (S-unit equations), unknown bases.
+With coefficients, `pillai(a, b, c, r, s)` solves `r a**x - s b**y = c`:
+the linear form has the third logarithm `log(r/s)`, the Baker–Wüstholz
+bound for three logarithms is reduced by the lemma of Baker and Davenport
+(Dujella–Pethő: a convergent `p/q` of `log a/log b` with `q log(r/s)/log
+b` far from an integer), and a coefficient made of the primes of the
+bases, `(r/s)**k = a**i b**j`, brings back two logarithms and continued
+fractions.
+
+```python
+>>> pillai(5, 2, -3, s=2)          # 5**x - 2*2**y = -3: 125 - 128
+[(0, 1), (1, 2), (3, 6)]
+
+```
+
+Not covered: more than two exponentials (S-unit equations, which need
+the LLL reduction of `polys.lattice`), unknown bases.
 
 ## Darboux polynomials and the Prelle–Singer procedure
 

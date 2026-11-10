@@ -14,7 +14,9 @@ remove public functions. Breaking changes are listed here when they happen.
   the solutions in non-negative integers of `a**x - b**y = c` (the
   Baker–Wüstholz bound for two logarithms, reduced by the continued
   fraction of `log b/log a`, then an exact search; dependent bases
-  apart), and `exponential_polynomial_roots`, all the integer zeros of
+  apart; with coefficients, `pillai(a, b, c, r, s)` for `r a**x - s b**y
+  = c`, three logarithms and the Baker–Davenport reduction), and
+  `exponential_polynomial_roots`, all the integer zeros of
   `sum p_i(n) a_i**n`. Typed, no SymPy.
 - `sympy_extras.polys.lattice`: `integer_kernel` (an LLL reduced basis of
   the integer solutions of `A x = 0`), `solve_integer_system` (all the

@@ -7,7 +7,7 @@ from fractions import Fraction
 
 from sympy.testing.pytest import raises
 
-from sympy_extras.solvers.exponential_diophantine import (_baker_bound, _common_base, _partial_quotients,
+from sympy_extras.solvers.exponential_diophantine import (_baker_bound, _common_base, _dependence, _partial_quotients,
                                                           exponential_polynomial_roots, pillai)
 
 F = Fraction
@@ -66,6 +66,38 @@ def test_pillai_against_search() -> None:
         assert [s for s in found if s[0] < 40 and s[1] < 40] == expected
         # nothing beyond the box either (it would be a remarkable identity)
         assert found == expected
+
+
+def test_pillai_with_coefficients() -> None:
+    # 5**3 - 2**7 = -3, 5**3 - 11**2 = 4
+    assert pillai(5, 2, -3, s=2) == [(0, 1), (1, 2), (3, 6)]
+    assert pillai(5, 11, 4, r=5) == [(0, 0), (2, 2)]
+    # a common factor of the coefficients which does not divide c
+    assert pillai(2, 3, 5, r=4, s=6) == []
+    assert pillai(2, 3, 10, r=2, s=2) == pillai(2, 3, 5)
+    # coefficients made of the primes of the bases: two logarithms again
+    assert _dependence(2, 3, 4, 9) == (1, 2, -2)
+    assert _dependence(4, 9, 6, 1) == (2, 1, 1)
+    assert _dependence(2, 3, 5, 1) is None
+    assert pillai(2, 3, 3, r=3) == [(1, 1), (2, 2)]             # 3 (2**x - 3**(y - 1)) = 3
+    assert pillai(4, 9, 15, r=6) == [(1, 1), (2, 2)]             # 24 - 9 = 96 - 81
+    # dependent bases with coefficients: 3 2**x - 5 4**y = 4, 28
+    assert pillai(2, 4, 4, r=3, s=5) == [(3, 1)]
+    assert pillai(2, 4, 28, r=3, s=5) == [(4, 1)]
+    rng = random.Random(53)
+    checked = 0
+    for _ in range(300):
+        a, b, r, s = rng.randint(2, 12), rng.randint(2, 12), rng.randint(1, 9), rng.randint(1, 9)
+        if rng.random() < 0.7:
+            c = r*a**rng.randint(0, 6) - s*b**rng.randint(0, 6)
+        else:
+            c = rng.randint(-300, 300)
+        if c == 0:
+            continue
+        checked += 1
+        assert pillai(a, b, c, r, s) == [(x, y) for x in range(40) for y in range(40) if r*a**x - s*b**y == c]
+    assert checked > 250
+    raises(ValueError, lambda: pillai(2, 3, 1, r=0))
 
 
 def test_pillai_bounds() -> None:
