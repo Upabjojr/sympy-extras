@@ -537,6 +537,178 @@ small linear factors, the solver returns the full basis of `d`
 independent solutions (the oracle used in the tests, each solution also
 verified by substitution).
 
+## Guessing recurrences and equations from the first terms
+
+`sympy_extras.concrete.guess` goes the other way: from the first terms of
+a sequence to an equation, which the solvers above then solve. Three
+kinds of equations with polynomial coefficients are searched, each a
+linear problem in the unknown coefficients (Salvy–Zimmermann's gfun,
+Kauers' Guess):
+
+- `guess_recurrence(terms)`: `sum_i p_i(n) a(n + i) = 0`;
+- `guess_differential_equation(terms)`: `sum_k q_k(x) f^(k)(x) = 0`
+  (possibly with a polynomial right-hand side) for the generating
+  function `f = sum a(n) x**n`;
+- `guess_algebraic_equation(terms)`: `sum_k q_k(x) f**k = 0` (degree one:
+  a rational generating function).
+
+An equation is accepted only when the linear system has `margin` (three
+by default) more equations than unknowns, so that it has passed that many
+independent checks; among the orders and degrees which the number of
+terms allows, the one with the fewest coefficients is returned. The
+search runs modulo the prime `2**61 - 1` (for each order the largest
+degree, then the smallest by bisection) and the exact null space is
+computed once. `guess_closed_form(terms, n)` solves the recurrence with
+`rsolve_linear`, the initial values taken after the last zero of the
+leading coefficient, and checks the expression on every term.
+
+```python
+>>> from math import comb
+>>> from sympy_extras.core import Function, Symbol
+>>> from sympy_extras.concrete.guess import (guess_recurrence, guess_differential_equation,
+...     guess_algebraic_equation, guess_closed_form)
+>>> n, x = Symbol('n'), Symbol('x')
+>>> apery = [sum(comb(m, k)**2*comb(m + k, k)**2 for k in range(m + 1)) for m in range(20)]
+>>> apery[:5]
+[1, 5, 73, 1445, 33001]
+>>> guess_recurrence(apery).as_expr(Function('a'), n)
+(-34*n**3 - 153*n**2 - 231*n - 117)*a(n + 1) + (n**3 + 3*n**2 + 3*n + 1)*a(n) + (n**3 + 6*n**2 + 12*n + 8)*a(n + 2)
+>>> motzkin = [1, 1, 2, 4, 9, 21, 51, 127, 323, 835, 2188, 5798, 15511, 41835]
+>>> guess_algebraic_equation(motzkin).as_expr(x, Symbol('f'))
+f**2*x**2 + f*(x - 1) + 1
+>>> guess_closed_form([1, 0, 1, 2, 9, 44, 265, 1854, 14833, 133496, 1334961, 14684570], n)
+-factorial(n)*Sum((-1)**k/factorial(k + 1), (k, 0, n - 1)) + factorial(n)
+
+```
+
+The first is Apéry's recurrence for `zeta(3)`; with 40 terms
+`guess_differential_equation` finds the differential equation of order
+three of their generating function. A guess is a conjecture which holds
+on the terms given: a few exceptions to a pattern are absorbed by a
+coefficient vanishing at them, and more terms settle such a case.
+
+## Exponential Diophantine equations
+
+`sympy_extras.solvers.exponential_diophantine` solves two families
+completely, with a proof that nothing is missed.
+
+`pillai(a, b, c)` returns all the non-negative integers `x, y` with
+`a**x - b**y = c` (`a, b >= 2`, `c != 0`). For multiplicatively
+dependent bases the equation is `g**u - g**v = c` and the smaller power
+divides `c`. Otherwise `Lambda = x log a - y log b = log(1 + c/b**y)` is
+a non-zero linear form in two logarithms with `|Lambda| <= 2 |c|/b**y`,
+and the theorem of Baker and Wüstholz bounds `y` (by about `10**11`);
+the continued fraction of `log b/log a` reduces the bound: a solution
+beyond a few dozen would make `x/y` a convergent approximating too well
+for the partial quotients met below the Baker bound. The rest is
+searched with exact integers.
+
+`exponential_polynomial_roots(terms)` returns all the integers `n` with
+`sum p_i(n) a_i**n = 0` (rational polynomials, positive rational bases):
+beyond a bound which is logarithmic in the coefficients the term of the
+largest base dominates wherever its polynomial does not vanish, and the
+zeros beyond it are the common zeros of that polynomial and of the sum
+of the other terms, found recursively; negative `n` by the mirrored sum.
+
+```python
+>>> from fractions import Fraction
+>>> from sympy_extras.solvers.exponential_diophantine import pillai, exponential_polynomial_roots
+>>> pillai(3, 2, 1)
+[(1, 1), (2, 3)]
+>>> pillai(2, 3, 13)
+[(4, 1), (8, 5)]
+>>> pillai(13, 3, 10)
+[(1, 1), (3, 7)]
+>>> one = [Fraction(1)]
+>>> exponential_polynomial_roots([(one, Fraction(3)), (one, Fraction(4)), ([Fraction(-1)], Fraction(5))])    # 3**n + 4**n = 5**n
+[2]
+>>> exponential_polynomial_roots([(one, Fraction(2)), ([Fraction(-1), Fraction(0), Fraction(0)], Fraction(1))])   # 2**n = n**2
+[2, 4]
+
+```
+
+With coefficients, `pillai(a, b, c, r, s)` solves `r a**x - s b**y = c`:
+the linear form has the third logarithm `log(r/s)`, the Baker–Wüstholz
+bound for three logarithms is reduced by the lemma of Baker and Davenport
+(Dujella–Pethő: a convergent `p/q` of `log a/log b` with `q log(r/s)/log
+b` far from an integer), and a coefficient made of the primes of the
+bases, `(r/s)**k = a**i b**j`, brings back two logarithms and continued
+fractions.
+
+```python
+>>> pillai(5, 2, -3, s=2)          # 5**x - 2*2**y = -3: 125 - 128
+[(0, 1), (1, 2), (3, 6)]
+
+```
+
+Not covered: more than two exponentials (S-unit equations, which need
+the LLL reduction of `polys.lattice`), unknown bases.
+
+## Exact linear programming with certificates
+
+`sympy_extras.solvers.simplex.linear_program(c, A, b)` maximises `c . x`
+on `A x <= b` over the rationals (unknowns of either sign) by the
+two-phase simplex method in exact arithmetic with Bland's rule, and
+returns a certificate with every answer, checked by a few products
+whatever the method did:
+
+- *optimal*: the point and multipliers `y >= 0` with `y^T A = c` and
+  `y . b = c . x` (strong duality);
+- *infeasible*: `y >= 0` with `y^T A = 0` and `y . b < 0` (Farkas' lemma);
+- *unbounded*: a feasible point and a ray `d` with `A d <= 0`, `c . d > 0`.
+
+`linear_feasible(A, b, strict)` decides systems with strict inequalities
+on chosen rows (a common slack is maximised) and returns a point: the
+linear fragment of real arithmetic, without a cylindrical decomposition.
+
+```python
+>>> from sympy_extras.solvers.simplex import linear_program, linear_feasible
+>>> r = linear_program([5, 4, 3], [[2, 3, 1], [4, 1, 2], [3, 4, 2], [-1, 0, 0], [0, -1, 0], [0, 0, -1]], [5, 11, 8, 0, 0, 0])
+>>> r.value == 13, r.point == [2, 0, 1], r.dual == [1, 0, 1, 0, 3, 0]
+(True, True, True)
+>>> linear_program([0, 0], [[1, 1], [-1, 0], [0, -1]], [-1, 0, 0]).dual == [1, 1, 1]      # x + y <= -1, x, y >= 0
+True
+>>> linear_feasible([[1], [-1]], [1, -1], [True, False]) is None                      # x < 1 and x >= 1
+True
+
+```
+
+`integer_program(c, A, b)` maximises over the integer points by branch
+and bound on the exact relaxations. It always terminates, also on an
+unbounded polyhedron without integer points: an integer optimum, if
+there is one, lies within `n Delta(A)` of the optimum of the relaxation
+(Cook, Gerards, Schrijver and Tardos), and a polyhedron with integer
+points has one of size `(n + 1) Delta([A b])`; `Delta`, the largest
+subdeterminant, is bounded by Hadamard's inequality, and the search
+stays in these boxes.
+
+```python
+>>> from sympy_extras.solvers.simplex import integer_program
+>>> integer_program([5, 4], [[6, 4], [1, 2], [-1, 0], [0, -1]], [24, 6, 0, 0])      # the relaxation: 21 at (3, 3/2)
+IntegerProgramResult('optimal', value=20, point=[4, 0])
+>>> integer_program([0, 0], [[3, -3], [-3, 3]], [2, -1]).status                     # 1/3 <= x - y <= 2/3
+infeasible
+
+```
+
+`eliminate_variables(A, b, variables, strict)` projects a system onto
+the other unknowns by Fourier–Motzkin elimination (quantifier elimination
+for existential linear formulas): the upper and the lower bounds of the
+eliminated unknown are combined, a combination being strict when one of
+the two is, and the inequalities a linear program proves redundant are
+removed after each unknown.
+
+```python
+>>> from sympy_extras.solvers.simplex import eliminate_variables
+>>> shadow = eliminate_variables([[-1, 0], [0, -1], [1, 1]], [0, 0, 1], [1])     # the triangle, without y
+>>> sorted(zip(shadow.A, shadow.b)) == [([-1], 0), ([1], 1)]
+True
+
+```
+
+None of this is called yet by `ask`, `satisfiable` or `resolve`, which
+still send linear formulas to virtual substitution and Cooper's method.
+
 ## Darboux polynomials and the Prelle–Singer procedure
 
 `sympy_extras.solvers.darboux` solves `y' = P(x, y)/Q(x, y)` with

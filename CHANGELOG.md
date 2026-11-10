@@ -10,6 +10,99 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.berlekampmassey`: `berlekamp_massey` (the shortest
+  linear recurrence of a sequence over any field of the typed layer),
+  `extend_sequence`, `satisfies_recurrence`.
+- `sympy_extras.polys.domains.galoisfield.GaloisField`: the finite fields
+  `GF(p**n)` as a typed coefficient domain (Frobenius map, `p`-th roots,
+  trace, enumeration), and `sympy_extras.polys.galoisfactor`:
+  `gfq_factor`, `gfq_sqf_list`, `gfq_ddf`, `gfq_edf`,
+  `gfq_irreducible_p`, factorisation of univariate polynomials over
+  them (Cantor–Zassenhaus). No SymPy counterpart.
+- `sympy_extras.polys.numberfields.basis`: `integral_basis` and
+  `field_discriminant` of a number field by the Round 2 algorithm
+  (p-radicals and their multiplier rings, Hermite normal forms), and
+  `polynomial_discriminant`. Typed, no SymPy.
+- `sympy_extras.polys.zerodim.solve_zero_dimensional`: all the complex
+  solutions of a polynomial system over `QQ` with finitely many, with
+  exact coordinates (`Algebraic`): radical by Seidenberg's lemma, FGLM,
+  the shape lemma with a change of the last coordinate when needed;
+  `univariate_in_ideal`; `Algebraic.polynomial_value` (a rational
+  polynomial at an algebraic number by one resultant). Typed, no SymPy.
+- `sympy_extras.polys.numberfields.qqbar.primitive_element(a, b)`: a
+  primitive element `theta = a + c b` of the field of two algebraic
+  numbers, with `a` and `b` as polynomials in `theta` (a gcd over
+  `QQ(theta)`).
+- `sympy_extras.polys.fglm`: `fglm` (change of monomial order for
+  zero-dimensional ideals on the typed rings, by linear algebra on normal
+  forms), `groebner_by_fglm` (F4 for `grevlex`, then the conversion) and
+  `is_zero_dimensional`. Typed, no SymPy; `Ideal` still calls SymPy's
+  `matrix_fglm` on its own rings.
+- `sympy_extras.solvers.simplex`: `linear_program` (exact two-phase
+  simplex over the rationals with Bland's rule; every result carries its
+  certificate: optimal dual multipliers, a Farkas combination, or a ray)
+  and `linear_feasible` (systems with strict inequalities);
+  `integer_program`, branch and bound on the exact relaxations inside a
+  box proved to contain an optimum (proximity theorem of Cook, Gerards,
+  Schrijver and Tardos), so that it terminates on unbounded polyhedra
+  too; `eliminate_variables`, Fourier–Motzkin elimination with strict
+  inequalities and the redundant rows removed by linear programs
+  (`LinearSystem`). Typed, no SymPy.
+- `sympy_extras.polys.numberfields.recognize.recognize_algebraic`: the
+  algebraic number (an exact `Algebraic`) behind a decimal approximation,
+  real or complex, by LLL reduction on the powers of the approximation
+  (Kannan–Lenstra–Lovász); `None` when no short relation exists.
+- `sympy_extras.polys.numberfields.qqbar`: `Algebraic`, exact arithmetic
+  on algebraic numbers (minimal polynomial and isolating interval or
+  rectangle): `+ - * /`, integer powers, conjugates, real and imaginary
+  parts, exact equality, order and signs of the real ones, enclosures of
+  any precision, principal roots (`nth_root`, `sqrt`);
+  `algebraic_roots(f)`, the roots of a polynomial. The
+  results are identified among the roots of a resultant by interval
+  arithmetic and winding numbers. Typed, no SymPy.
+- `sympy_extras.polys.complexroots`: `dup_count_roots_right_of` (the roots
+  on one side of a vertical line), `dup_count_roots_in_disc`,
+  `dup_hurwitz_stable_p` (Routh–Hurwitz) and `dup_schur_stable_p`
+  (Schur–Cohn), exact, by Cauchy indices on a line.
+- `sympy_extras.solvers.exponential_diophantine`: `pillai(a, b, c)`, all
+  the solutions in non-negative integers of `a**x - b**y = c` (the
+  Baker–Wüstholz bound for two logarithms, reduced by the continued
+  fraction of `log b/log a`, then an exact search; dependent bases
+  apart; with coefficients, `pillai(a, b, c, r, s)` for `r a**x - s b**y
+  = c`, three logarithms and the Baker–Davenport reduction), and
+  `exponential_polynomial_roots`, all the integer zeros of
+  `sum p_i(n) a_i**n`. Typed, no SymPy.
+- `sympy_extras.polys.lattice`: `integer_kernel` (an LLL reduced basis of
+  the integer solutions of `A x = 0`), `solve_integer_system` (all the
+  integer solutions of `A x = b`: a short particular solution by Babai's
+  nearest plane algorithm and the kernel; `None` when there is none) and
+  `smith_normal_form` (the invariant factors).
+- `sympy_extras.concrete.guess`: `guess_recurrence`,
+  `guess_differential_equation`, `guess_algebraic_equation` (the equation
+  with polynomial coefficients, with the fewest coefficients, which the
+  first terms of a sequence or their generating function satisfy, by
+  linear algebra with a margin of surplus equations; modular search,
+  exact null space) and `guess_closed_form` (the guessed recurrence
+  solved by `rsolve_linear` and checked on the terms). Native.
+- `sympy_extras.polys.complexroots`: isolation of the complex roots of
+  polynomials with rational coefficients in rectangles with rational
+  corners (`dup_isolate_complex_roots_sqf`, `dup_isolate_complex_roots`
+  with multiplicities, `dup_isolate_all_roots_sqf`), exact counting in a
+  rectangle by winding numbers from Sturm sequences
+  (`dup_count_complex_roots`; a root on the boundary is detected),
+  refinement by Newton's iteration certified by Rouché's theorem
+  (`dup_refine_complex_root`). Typed, integers only, no SymPy.
+- `sympy_extras.polys.lattice`: `lll`, `lll_reduction` (the LLL algorithm
+  in de Weger's all-integer form, with the Gram determinants and
+  `short_part`), `hermite_normal_form`, `is_lll_reduced`. Exact on entries
+  of any size, dependent generators allowed; `thue_equation.lll` is now
+  this function (it recomputed a rational Gram–Schmidt after every step).
+- `sympy_extras.polys.factortools.dup_zz_van_hoeij`: van Hoeij's knapsack
+  recombination of the modular factors by lattice reduction, used by
+  `dup_zz_factor` from ten modular factors on instead of the subset
+  search (exponential on polynomials which split modulo every prime: the
+  Swinnerton-Dyer polynomial of degree 32 in 0.04 s instead of 2 s, of
+  degree 128 in 2 s).
 - `sympy_extras.polys.gaussianfactor`: factorisation of multivariate
   polynomials over `ZZ_I` and `QQ_I` by Trager's algorithm over `QQ<I>`,
   ported from SymPy's `dmp_zz_i_factor`, `dmp_qq_i_factor`,
@@ -1148,6 +1241,16 @@ remove public functions. Breaking changes are listed here when they happen.
   embedding by a gcd, no root evaluated numerically (SymPy's
   constructions refine complex roots by bisection, which takes minutes
   at the precisions they ask).
+
+### Fixed
+
+- `rsolve_linear` with initial values did not return on a recurrence
+  whose characteristic polynomial is an irreducible cubic (the
+  tribonacci numbers): the zero test of the linear system for the
+  constants computed the minimal polynomial of every entry, by
+  resultants on Cardano's formulas. A number which is not small at 120
+  digits is now known not to be zero; the minimal polynomial only proves
+  the zeros.
 
 ## 0.0.3 - 2026-10-06
 

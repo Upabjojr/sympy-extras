@@ -104,6 +104,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     sparse::register_multisqf(&submodule(&polys, "multisqf", "sympy_extras_rs.polys.multisqf")?)?;
     algorithms::register_multifactor(&submodule(&polys, "multifactor", "sympy_extras_rs.polys.multifactor")?)?;
+    algorithms::register_gaussianfactor(&submodule(
+        &polys,
+        "gaussianfactor",
+        "sympy_extras_rs.polys.gaussianfactor",
+    )?)?;
     algorithms::register_f4(&submodule(&polys, "f4", "sympy_extras_rs.polys.f4")?)?;
     dense::register_subresultants(&submodule(
         &polys,

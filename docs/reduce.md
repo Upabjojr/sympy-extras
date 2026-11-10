@@ -28,7 +28,7 @@ sympy-extras, or nowhere yet.
 | Univariate polynomial equations over the integers: Cucker–Koiran–Smale | `solveset(..., S.Integers)`, `diophantine` (integer roots by factorisation) | — |
 | Binary quadratic Diophantine equations: Hardy–Muskat–Williams, Gauss/Dirichlet/Lagrange (Pell) | `diophantine` (`diop_quadratic`, `diop_DN`) | — |
 | Thue equations (Tzanakis–de Weger, Bilu–Hanrot) | — | `solvers.thue_equation`: units of the order by enumeration and saturation, Baker–Wüstholz bound, de Weger's LLL reduction, enumeration |
-| Exponential Diophantine equations | — | — (see the issue tracker) |
+| Exponential Diophantine equations | — | `solvers.exponential_diophantine`: `pillai` (all the solutions of `r a**x - s b**y = c`: Baker–Wüstholz bound, continued fraction or Baker–Davenport reduction, search), `exponential_polynomial_roots` (the integer zeros of `sum p_i(n) a_i**n`); more than two exponentials: not yet |
 | Assumptions in `Simplify`/`Refine`: CAD, simplex/Loos–Weispfenning, Gröbner bases | — | `ask`, `refine`, `simplify` with statement assumptions; linear formulas decided by Loos–Weispfenning virtual substitution before the CAD |
 | Number theory rules for integer functions | `Q.even`/`Q.odd` handlers | residues of integer polynomials in `refine` (`(-1)**(n**2 + n)`, `Mod(n**3 - n, 6)`) |
 

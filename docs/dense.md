@@ -120,6 +120,34 @@ The last line is the gcd of `(x + y)(x - y)` and `(x + y)**2` in `ZZ[y][x]`.
   `lc * prod f_i` over the subsets of increasing size. `dup_zz_factor`
   and `dup_qq_factor` return the content and the primitive factors with
   their multiplicities.
+- From ten modular factors on, the recombination is van Hoeij's
+  (`dup_zz_van_hoeij`): the subset search costs `2**(r - 1)` trial
+  divisions on a polynomial with `r` modular factors and few rational
+  ones (the Swinnerton-Dyer polynomials, the resolvents and minimal
+  polynomials of sums of roots), the knapsack lattice a few LLL
+  reductions in dimension `r + 2`. The scaled power sums of the roots
+  `S_k(g) = lc**k sum alpha**k` of the lifted factors are additive, and
+  integers of bounded size on the rational factors; their middle `p`-adic
+  digits make a lattice in which the 0-1 vectors of the rational factors
+  are short, and the LLL-reduced basis vectors whose Gram–Schmidt length
+  passes the bound are discarded until the rest is a partition of the
+  modular factors, proved by trial division (rank one: irreducible).
+  The Swinnerton-Dyer polynomial of degree 32 takes 0.04 s instead of
+  2 s, those of degree 64 and 128 (out of reach of the subset search)
+  0.2 s and 2 s.
+- `lattice`: the LLL algorithm in de Weger's all-integer form (`lll`,
+  `lll_reduction` with the Gram determinants, from which the
+  Gram–Schmidt lengths and `short_part`, the vectors spanning everything
+  below a length), and the Hermite normal form (`hermite_normal_form`,
+  which also extracts a basis from dependent generators). No fractions
+  and no floating point: entries of any size (SymPy's
+  `DomainMatrix.lll` fails on entries of a few hundred bits). The Thue
+  solver uses it.
+  The same row operations carried along on an identity matrix give
+  `integer_kernel` (a reduced basis of the integer solutions of
+  `A x = 0`), `solve_integer_system` (all the integer solutions of
+  `A x = b`, the particular one shortened by Babai's nearest plane
+  algorithm) and `smith_normal_form` (the invariant factors).
 - Over a number field `QQ(alpha)`, Trager's algorithm (`dup_ext_factor`):
   a shift `x - s alpha` making the norm `N(f) = Res_alpha(m, f)`
   square-free, the norm factored over `QQ`, and each factor `N_i` giving
@@ -135,6 +163,26 @@ The last line is the gcd of `(x + y)(x - y)` and `(x + y)**2` in `ZZ[y][x]`.
 (1, [([1, 1], 1), ([1, 2], 1), ([1, 3], 1), ([1, 4], 1)])
 >>> dup_zz_factor([1, 0, 0, 0, -1], ZZ)
 (1, [([1, -1], 1), ([1, 1], 1), ([1, 0, 1], 1)])
+>>> from sympy_extras.polys.lattice import lll
+>>> lll([[1, 0, 0, 1000000], [0, 1, 0, 1414214], [0, 0, 1, 2828427]])[0]
+[0, -2, 1, -1]
+
+```
+
+`domains.galoisfield.GaloisField(p, n)` is the field with `p**n` elements,
+`GF(p)[a]/(m)` for the first monic irreducible `m` of degree `n` (or a
+given one); `galoisfactor.gfq_factor` factors over it: the square-free
+decomposition in characteristic `p` (the `p`-th roots of the coefficients
+are their powers `q/p`), distinct degrees by `gcd(f, x**(q**d) - x)`,
+equal degrees by Cantor and Zassenhaus (the trace map in characteristic
+2).
+
+```python
+>>> from sympy_extras.polys.domains.galoisfield import GaloisField
+>>> from sympy_extras.polys.galoisfactor import gfq_factor
+>>> GF4 = GaloisField(2, 2)
+>>> gfq_factor([[1], [1], [1]], GF4)             # x**2 + x + 1 = (x + a)(x + a + 1) over GF(4)
+([1], [([[1], [1, 0]], 1), ([[1], [1, 1]], 1)])
 
 ```
 
@@ -163,6 +211,153 @@ interval below a width.
 [((Fraction(-91, 64), Fraction(-181, 128)), 1), ((Fraction(181, 128), Fraction(91, 64)), 1)]
 >>> dup_count_real_roots([Fraction(1), Fraction(0), Fraction(-2)], Fraction(0), Fraction(3))
 1
+
+```
+
+## Complex roots
+
+`complexroots`: the roots which are not real are isolated in rectangles
+with rational corners by exact winding numbers. On each edge `z = z0 + t
+w` of a rectangle, `c f(z) = u(t) + i v(t)` (`c` a constant making `u`
+non-zero at the corners), and the winding number of `f` along the
+boundary is minus half the sum of the Cauchy indices of `v/u` on
+`[0, 1]`, which the sign variations of the signed remainder sequence of
+`(u, v)` give at the two ends (Sturm); the last polynomial of the
+sequence is `gcd(u, v)`, whose roots in `[0, 1]` are the roots of `f` on
+the edge, so that a root on the boundary is detected, not miscounted
+(`dup_count_complex_roots` raises `ValueError`). Integer arithmetic
+throughout.
+
+`dup_isolate_complex_roots_sqf` returns the rectangles of the roots above
+the real axis of a square-free polynomial (the conjugate rectangles
+isolate the others): the number of pairs is known from the real root
+count, a strip around the real axis free of them is found by halving its
+height, and the rectangle above it is bisected along its longer side, the
+cut being moved when it meets a root. With `eps`, each rectangle is
+refined by Newton's iteration in fixed point arithmetic from its centre,
+and the small square around the last iterate is accepted when Rouché's
+theorem on the Taylor expansion at its centre (or else its winding
+number) proves that it contains the root; bisection is the fallback.
+`dup_isolate_complex_roots` handles multiplicities (the rectangles of
+different square-free factors are refined until disjoint),
+`dup_isolate_all_roots_sqf` returns the real intervals and the
+rectangles, `dup_refine_complex_root` refines one rectangle.
+
+```python
+>>> from sympy_extras.polys.complexroots import Rectangle, dup_count_complex_roots, dup_isolate_complex_roots_sqf
+>>> f = [Fraction(1), Fraction(0), Fraction(0), Fraction(0), Fraction(4)]       # roots 1 + i, 1 - i, -1 + i, -1 - i
+>>> dup_isolate_complex_roots_sqf(f)
+[Rectangle(-5, 0, 5/8, 5), Rectangle(0, 5, 5/8, 5)]
+>>> dup_isolate_complex_roots_sqf(f, Fraction(1, 1000))[1].contains(Fraction(1), Fraction(1))
+True
+>>> dup_count_complex_roots(f, Rectangle(Fraction(0), Fraction(2), Fraction(-2), Fraction(2)))
+2
+
+```
+
+The Cauchy index on a whole line counts the roots on one side of it:
+`dup_count_roots_right_of(f, a)` (real part larger than `a`),
+`dup_hurwitz_stable_p` (the criterion of Routh and Hurwitz), and through
+the map `w -> c + rho (w - 1)/(w + 1)` of a half-plane onto a disc,
+`dup_count_roots_in_disc(f, center, radius)` and `dup_schur_stable_p`
+(Schur–Cohn).
+
+```python
+>>> from sympy_extras.polys.complexroots import dup_count_roots_right_of, dup_count_roots_in_disc, dup_hurwitz_stable_p
+>>> dup_count_roots_right_of(f), dup_count_roots_in_disc(f, (Fraction(1), Fraction(1)), Fraction(1, 2))
+(2, 1)
+>>> dup_hurwitz_stable_p([Fraction(1), Fraction(3), Fraction(3), Fraction(1)])
+True
+
+```
+
+On random polynomials of degree 10, 20, 30 with coefficients below 100
+the isolation takes 0.01, 0.1 and 1 s (SymPy's
+`dup_isolate_complex_roots_sqf`: 0.07, 0.25, 1.7 s), and the refinement
+to `10**-50` 0.01, 0.17 and 1.7 s in all (SymPy's refinement to
+`10**-10`: 1.8 s and 21 s at degrees 10 and 20).
+
+## Algebraic numbers
+
+`numberfields.qqbar`: exact arithmetic in the field of all algebraic
+numbers. An `Algebraic` is its minimal polynomial over `QQ` together with
+a region isolating it among the roots (a rational point, an interval, a
+rectangle). For a sum or a product, a resultant of the two minimal
+polynomials vanishes at the result; it is factored over `ZZ`, and the
+factor and the root are identified by enclosures: the operands are
+refined, interval arithmetic gives a box for the result, and the roots
+of each factor in the box are counted by winding numbers until one root
+of one factor is left (real exactly when the box made symmetric about
+the real axis still has one root). Equality, the order of the real
+numbers and signs are decided exactly; `algebraic_roots(f)` lists the
+roots of a polynomial, real ones first in increasing order.
+
+```python
+>>> from sympy_extras.polys.numberfields.qqbar import Algebraic, algebraic_roots
+>>> sqrt2 = algebraic_roots([1, 0, -2])[1]
+>>> sqrt3 = algebraic_roots([1, 0, -3])[1]
+>>> sqrt2 + sqrt3
+Algebraic([1, 0, -10, 0, 1], 3.14626437)
+>>> 1/(sqrt3 - sqrt2) == sqrt2 + sqrt3, (1 + sqrt2)**2 == 3 + 2*sqrt2
+(True, True)
+>>> (5 + 2*(sqrt2*sqrt3)).sqrt() == sqrt2 + sqrt3          # a denesting, decided
+True
+>>> Algebraic.from_rational(-8).nth_root(3)                # the principal cube root
+Algebraic([1, -2, 4], 1 + 1.732050808*I)
+>>> a, b, c = algebraic_roots([1, 0, 0, -2])
+>>> a + b + c == 0, b.conjugate() == c, (b*c).is_real
+(True, True, True)
+
+```
+
+`numberfields.recognize.recognize_algebraic(re, im, digits, max_degree)`
+goes from a decimal approximation to the exact number: a short vector of
+the lattice of the powers of the approximation (LLL) is an integer
+polynomial which nearly vanishes there, accepted when it is much shorter
+than a number without relation would give, and its root nearest to the
+approximation is returned.
+
+```python
+>>> from fractions import Fraction
+>>> from sympy_extras.polys.numberfields.recognize import recognize_algebraic
+>>> recognize_algebraic(Fraction(3146264369941972, 10**15), digits=15)
+Algebraic([1, 0, -10, 0, 1], 3.14626437)
+>>> recognize_algebraic(Fraction(3141592653589793, 10**15), digits=15) is None
+True
+
+```
+
+`primitive_element(a, b)` returns `theta = a + c b` generating the field
+of the two numbers, with `a` and `b` as polynomials in `theta` (the gcd
+of `m_b(x)` and `m_a(theta - c x)` over `QQ(theta)` is `x - b`): the
+entry to computing in one fixed field.
+
+```python
+>>> from sympy_extras.polys.numberfields.qqbar import primitive_element
+>>> theta, p, q = primitive_element(sqrt2, sqrt3)
+>>> theta.minpoly, p == [Fraction(1, 2), 0, Fraction(-9, 2), 0], theta.polynomial_value(q) == sqrt3
+([1, 0, -10, 0, 1], True, True)
+
+```
+
+The resultant of a sum or product has the product of the degrees (a
+power keeps the degree): this representation is convenient up to
+degrees of a few dozen, not a replacement for computing in one fixed
+number field (`AlgebraicField`).
+
+`numberfields.basis`: `integral_basis(T)` and `field_discriminant(T)` for
+the field `QQ(theta)`, `T(theta) = 0`, by the Round 2 algorithm: at each
+prime whose square divides the discriminant of `T`, the order is replaced
+by the multiplier ring of its `p`-radical (the kernel of a power of the
+Frobenius map on `O/pO`) until it no longer grows (Pohst–Zassenhaus);
+linear algebra modulo `p` and Hermite normal forms.
+
+```python
+>>> from sympy_extras.polys.numberfields.basis import integral_basis, field_discriminant
+>>> integral_basis([1, -1, -2, -8])[2] == [Fraction(1, 2), Fraction(1, 2), 0]      # Dedekind's cubic: (theta**2 + theta)/2
+True
+>>> field_discriminant([1, -1, -2, -8]), field_discriminant([1, 0, -10, 0, 1])
+(-503, 2304)
 
 ```
 
@@ -240,6 +435,47 @@ representation of F4 and of the strong Gröbner bases.
 
 ```
 
+`fglm` changes the monomial order of the reduced Gröbner basis of a
+zero-dimensional ideal on these rings (Faugère, Gianni, Lazard, Mora):
+the monomials are visited in increasing order for the new order, the
+normal form of each is computed from that of the monomial it is a
+multiple of, and a linear dependence between the normal forms kept is an
+element of the new basis. `groebner_by_fglm` computes the basis for
+`grevlex` with F4 and converts it: Katsura-4 for `lex` in 0.14 s instead
+of 1.1 s by F4 directly, the conversion of Katsura-5 in 1.5 s (SymPy's
+`matrix_fglm`: 1.9 s).
+
+```python
+>>> from sympy_extras.polys.rings import grevlex, lex
+>>> from sympy_extras.polys.f4 import f4
+>>> from sympy_extras.polys.fglm import fglm
+>>> graded = PolyRing(QQ, ['x', 'y'], grevlex)
+>>> gx, gy = graded.gens
+>>> basis = f4([gx*gx + gy*gy - graded.from_int(5), gx*gy - graded.from_int(2)], graded)
+>>> [str(g) for g in fglm(basis, graded, lex)]
+['x + 1/2*y**3 - 5/2*y', 'y**4 - 5*y**2 + 4']
+
+```
+
+`zerodim.solve_zero_dimensional(polys, ring)` puts these together into
+exact solutions of systems with finitely many: the ideal is made radical
+(the square-free parts of the univariate polynomials of the ideal, found
+by linear algebra on normal forms), the lexicographic basis by FGLM is
+brought to the shape `x_i - g_i(x_n), h(x_n)` by a change of the last
+coordinate when needed, and each solution is the list of the algebraic
+numbers `g_i(t)` for a root `t` of `h` (`Algebraic.polynomial_value`,
+one resultant each).
+
+```python
+>>> from sympy_extras.polys.zerodim import solve_zero_dimensional
+>>> plane = PolyRing(QQ, ['x', 'y'], lex)
+>>> px, py = plane.gens
+>>> points = solve_zero_dimensional([px*px + py*py - plane.one, py - px*px], plane)     # a circle and a parabola
+>>> len(points), [p for p in points if p[0].is_real and p[0] > 0]
+(4, [[Algebraic([1, 0, 1, 0, -1], 0.7861513778), Algebraic([1, 1, -1], 0.6180339887)]])
+
+```
+
 ## Independence from SymPy
 
 The domains, the dense and sparse polynomials and every algorithm above
@@ -286,3 +522,13 @@ gcd over `ZZ` (the heuristic gcd) and over `GF(p)`.
   Cambridge University Press, 2013, Chapters 14 and 15.
 - D. G. Cantor, H. Zassenhaus, *A new algorithm for factoring polynomials
   over finite fields*, Mathematics of Computation 36 (1981), 587-592.
+- H. S. Wilf, *A global bisection algorithm for computing the zeros of
+  polynomials in the complex plane*, Journal of the ACM 25 (1978), 415-420.
+- G. E. Collins, W. Krandick, *An efficient algorithm for infallible
+  polynomial complex root isolation*, ISSAC '92, 189-194.
+- M. van Hoeij, *Factoring polynomials and the knapsack problem*, Journal
+  of Number Theory 95 (2002), 167-189.
+- A. K. Lenstra, H. W. Lenstra, L. Lovász, *Factoring polynomials with
+  rational coefficients*, Mathematische Annalen 261 (1982), 515-534.
+- H. Cohen, *A Course in Computational Algebraic Number Theory*, Springer,
+  1993, Sections 2.4 and 2.6.

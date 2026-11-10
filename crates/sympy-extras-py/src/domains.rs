@@ -316,6 +316,21 @@ impl PyDomain {
         }
     }
 
+    /// `nullspace(rows, ncols)`: the canonical basis of the null space.
+    fn nullspace<'py>(&self, py: Python<'py>, rows: &Bound<'py, PyAny>, ncols: usize) -> PyResult<Bound<'py, PyAny>> {
+        with_domain!(self, k => {
+            let mut matrix = Vec::new();
+            for row in rows.try_iter()? {
+                let mut values = Vec::new();
+                for value in row?.try_iter()? {
+                    values.push(k.extract(&value?)?);
+                }
+                matrix.push(values);
+            }
+            crate::convert::out_polys(k, py, &k.nullspace(&matrix, ncols).map_err(err)?)
+        })
+    }
+
     fn factor_dense<'py>(&self, py: Python<'py>, f: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
         if !self.is_base() {
             return Err(pyo3::exceptions::PyNotImplementedError::new_err(format!(

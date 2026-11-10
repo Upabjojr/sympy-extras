@@ -85,6 +85,7 @@ from sympy.polys.polytools import Poly
 from sympy.polys.domains import ZZ
 
 from sympy_extras._typing import as_expr
+from sympy_extras.polys.lattice import lll as _integral_lll
 
 __all__ = ['thue', 'ThueEquation', 'units_of_order', 'elements_of_norm', 'lll', 'short_vectors', 'OrderElement']
 
@@ -714,8 +715,8 @@ def _baker_wustholz(k: int, d: int, heights: Sequence[float]) -> float:
 
 def lll(rows: Sequence[Sequence[int]], delta: Fraction = Fraction(3, 4)) -> list[list[int]]:
     """An LLL reduced basis of the lattice spanned by the integer row
-    vectors (exact arithmetic on fractions; SymPy's ``DomainMatrix.lll``
-    fails on very large entries).
+    vectors: :func:`sympy_extras.polys.lattice.lll`, the all-integer
+    algorithm (SymPy's ``DomainMatrix.lll`` fails on very large entries).
 
     Examples
     ========
@@ -724,40 +725,7 @@ def lll(rows: Sequence[Sequence[int]], delta: Fraction = Fraction(3, 4)) -> list
     >>> lll([[1, 0, 3], [0, 1, 5], [0, 0, 7]])
     [[-1, -1, -1], [-1, 2, 0], [-2, 0, 1]]
     """
-    b = [[int(v) for v in row] for row in rows]
-    m = len(b)
-
-    def dot(u: Sequence[Fraction], v: Sequence[Fraction]) -> Fraction:
-        return sum((a*c for a, c in zip(u, v)), Fraction(0))
-
-    def gram_schmidt() -> tuple[list[list[Fraction]], list[list[Fraction]], list[Fraction]]:
-        star: list[list[Fraction]] = []
-        mu: list[list[Fraction]] = [[Fraction(0)]*m for _ in range(m)]
-        norms: list[Fraction] = []
-        for i in range(m):
-            v = [Fraction(c) for c in b[i]]
-            for j in range(i):
-                mu[i][j] = dot([Fraction(c) for c in b[i]], star[j])/norms[j] if norms[j] else Fraction(0)
-                v = [a - mu[i][j]*c for a, c in zip(v, star[j])]
-            star.append(v)
-            norms.append(dot(v, v))
-        return star, mu, norms
-
-    star, mu, norms = gram_schmidt()
-    k = 1
-    while k < m:
-        for j in range(k - 1, -1, -1):
-            q = round(mu[k][j])
-            if q:
-                b[k] = [a - q*c for a, c in zip(b[k], b[j])]
-                star, mu, norms = gram_schmidt()
-        if norms[k] >= (delta - mu[k][k - 1]**2)*norms[k - 1]:
-            k += 1
-        else:
-            b[k], b[k - 1] = b[k - 1], b[k]
-            star, mu, norms = gram_schmidt()
-            k = max(k - 1, 1)
-    return b
+    return _integral_lll(rows, delta)
 
 
 def _lll_reduce(deltas: Sequence[mpmath.mpf], delta0: mpmath.mpf, B0: float, K1: float, K2: float) -> Optional[float]:

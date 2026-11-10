@@ -791,6 +791,125 @@ subresultant sequence, which are needed by Hong's projection operator.
 
 ```
 
+### Lattices, roots, algebraic numbers and exact solving on the typed layer
+
+A group of algorithms written on the typed polynomial layer (no SymPy
+inside), each described in `docs/dense.md` or `docs/solvers.md`.
+
+**Lattice reduction and integer linear algebra** (`polys.lattice`): the
+LLL algorithm in all-integer form, Hermite and Smith normal forms,
+integer kernels and linear Diophantine systems. On top of it, van
+Hoeij's knapsack factorisation replaces the exponential subset search of
+Zassenhaus' algorithm in `polys.factortools`.
+
+```python
+>>> from sympy_extras.polys.lattice import lll, solve_integer_system, smith_normal_form
+>>> lll([[1, 0, 0, 1000000], [0, 1, 0, 1414214], [0, 0, 1, 2828427]])[0]      # sqrt(8) = 2 sqrt(2)
+[0, -2, 1, -1]
+>>> solve_integer_system([[1, 2, 3], [4, 5, 6]], [6, 15], 3)
+IntegerSolutions([1, 1, 1], [[1, -2, 1]])
+>>> smith_normal_form([[2, 4, 4], [-6, 6, 12], [10, -4, -16]])
+[2, 6, 12]
+
+```
+
+**Complex roots** (`polys.complexroots`): isolation in rectangles by
+exact winding numbers, certified refinement, root counts in half-planes
+and discs (the criteria of Routh–Hurwitz and Schur–Cohn).
+
+```python
+>>> from fractions import Fraction
+>>> from sympy_extras.polys.complexroots import dup_isolate_complex_roots_sqf, dup_hurwitz_stable_p
+>>> quartic = [Fraction(c) for c in (1, 0, 0, 0, 4)]                          # roots 1 + i, 1 - i, -1 + i, -1 - i
+>>> dup_isolate_complex_roots_sqf(quartic, Fraction(1, 1000))[1].contains(Fraction(1), Fraction(1))
+True
+>>> dup_hurwitz_stable_p([Fraction(c) for c in (1, 3, 3, 1)]), dup_hurwitz_stable_p(quartic)
+(True, False)
+
+```
+
+**Algebraic numbers** (`polys.numberfields`): exact arithmetic in the
+field of all algebraic numbers (`qqbar.Algebraic`: a minimal polynomial
+and an isolating region), principal roots, primitive elements,
+recognition of a number from its decimals by LLL, integral bases and
+field discriminants (Round 2).
+
+```python
+>>> from sympy_extras.polys.numberfields.qqbar import Algebraic, algebraic_roots
+>>> from sympy_extras.polys.numberfields.recognize import recognize_algebraic
+>>> from sympy_extras.polys.numberfields.basis import field_discriminant
+>>> sqrt2, sqrt3 = Algebraic.from_rational(2).sqrt(), Algebraic.from_rational(3).sqrt()
+>>> sqrt2 + sqrt3
+Algebraic([1, 0, -10, 0, 1], 3.14626437)
+>>> (5 + 2*sqrt2*sqrt3).sqrt() == sqrt2 + sqrt3, 1/(sqrt3 - sqrt2) == sqrt2 + sqrt3
+(True, True)
+>>> recognize_algebraic(Fraction(3146264369941972, 10**15), digits=15)
+Algebraic([1, 0, -10, 0, 1], 3.14626437)
+>>> field_discriminant([1, -1, -2, -8]), field_discriminant([1, 0, -10, 0, 1])
+(-503, 2304)
+
+```
+
+**Polynomial systems** (`polys.fglm`, `polys.zerodim`): the change of
+monomial order for zero-dimensional ideals, and all the solutions of a
+system with finitely many, with exact coordinates.
+
+```python
+>>> from sympy_extras.polys.domains import QQ
+>>> from sympy_extras.polys.rings import PolyRing, lex
+>>> from sympy_extras.polys.zerodim import solve_zero_dimensional
+>>> R = PolyRing(QQ, ['x', 'y'], lex)
+>>> x, y = R.gens
+>>> points = solve_zero_dimensional([x*x + y*y - R.one, y - x*x], R)          # a circle and a parabola
+>>> len(points), [p for p in points if p[0].is_real and p[0] > 0]
+(4, [[Algebraic([1, 0, 1, 0, -1], 0.7861513778), Algebraic([1, 1, -1], 0.6180339887)]])
+
+```
+
+**Finite fields** (`polys.domains.galoisfield`, `polys.galoisfactor`):
+`GF(p**n)` as a coefficient domain and factorisation over it.
+
+```python
+>>> from sympy_extras.polys.domains.galoisfield import GaloisField
+>>> from sympy_extras.polys.galoisfactor import gfq_factor
+>>> gfq_factor([[1], [1], [1]], GaloisField(2, 2))                            # x**2 + x + 1 over GF(4)
+([1], [([[1], [1, 0]], 1), ([[1], [1, 1]], 1)])
+
+```
+
+**Guessing** (`concrete.guess`): the recurrence, differential or
+algebraic equation behind the first terms of a sequence, and closed forms
+through the recurrence solver.
+
+```python
+>>> from sympy_extras.core import Function, Symbol
+>>> from sympy_extras.concrete.guess import guess_recurrence, guess_closed_form
+>>> n = Symbol('n')
+>>> guess_recurrence([1, 1, 2, 5, 14, 42, 132, 429, 1430, 4862, 16796]).as_expr(Function('a'), n)
+(-4*n - 2)*a(n) + (n + 2)*a(n + 1)
+>>> guess_closed_form([1, 0, 1, 2, 9, 44, 265, 1854, 14833, 133496, 1334961, 14684570], n)
+-factorial(n)*Sum((-1)**k/factorial(k + 1), (k, 0, n - 1)) + factorial(n)
+
+```
+
+**Diophantine equations and linear arithmetic** (`solvers`): all the
+solutions of `r a**x - s b**y = c` (Baker's method with reduction), the
+integer zeros of exponential polynomials, exact linear and integer
+programming with certificates, Fourier–Motzkin elimination.
+
+```python
+>>> from sympy_extras.solvers.exponential_diophantine import pillai
+>>> from sympy_extras.solvers.simplex import linear_program, integer_program
+>>> pillai(3, 2, 1), pillai(2, 3, 13)
+([(1, 1), (2, 3)], [(4, 1), (8, 5)])
+>>> best = linear_program([5, 4], [[6, 4], [1, 2], [-1, 0], [0, -1]], [24, 6, 0, 0])
+>>> best.value == 21, best.point == [3, Fraction(3, 2)], best.dual == [Fraction(3, 4), Fraction(1, 2), 0, 0]
+(True, True, True)
+>>> integer_program([5, 4], [[6, 4], [1, 2], [-1, 0], [0, -1]], [24, 6, 0, 0])
+IntegerProgramResult('optimal', value=20, point=[4, 0])
+
+```
+
 ## What this adds to SymPy
 
 [docs/comparison.md](docs/comparison.md) puts seventy questions to SymPy
@@ -852,6 +971,7 @@ sympy_extras/
         pisigma.py           ΠΣ-fields and Karr's solver for first order difference equations
         karr.py              karr_sum, karr_term, summation
         creative.py          creative_telescoping, definite_sum
+        guess.py             guessing recurrences, differential and algebraic equations, closed forms from the first terms
         zeilberger.py        Zeilberger's algorithm, WZ certificates, definite sums
         qhyper.py            q-Pochhammer symbols, q-Gosper, q-Zeilberger
         rational.py          Abramov's decomposition of rational summands
@@ -892,6 +1012,8 @@ sympy_extras/
         special.py           Bessel, Whittaker, hypergeometric solutions
         linear_systems.py    systems Y' = A Y + b: cyclic vectors, rational solutions, variation of constants
         first_order.py       Abel, Chini, d'Alembert-Lagrange equations
+        exponential_diophantine.py  Pillai's equation a**x - b**y = c (Baker–Wüstholz, continued fractions), integer zeros of exponential polynomials (native)
+        simplex.py           exact linear programming over QQ with certificates (duality, Farkas, rays), strict inequalities (native)
         recurr.py            linear recurrences: polynomial, hypergeometric (Petkovšek), d'Alembertian (Abramov–Petkovšek) solutions (native)
         charpit.py           complete integrals of first order PDEs
         kovacic.py           Kovacic's algorithm (Liouvillian solutions of second order linear ODEs)
@@ -922,8 +1044,14 @@ sympy_extras/
         polyutils.py         conversions between core expressions and the typed polynomials
         sqfreetools.py       square-free decomposition (Yun; over GF(p) with p-th roots)
         galoistools.py       factorisation over GF(p): distinct-degree, Cantor–Zassenhaus, Rabin's test
-        factortools.py       factorisation over ZZ and QQ (Zassenhaus with quadratic Hensel lifting) and over number fields (Trager)
+        factortools.py       factorisation over ZZ and QQ (Zassenhaus with quadratic Hensel lifting, van Hoeij's knapsack recombination) and over number fields (Trager)
+        lattice.py           lattice reduction: the all-integer LLL algorithm, Hermite and Smith normal forms, integer linear systems
+        fglm.py              change of monomial order for zero-dimensional ideals (FGLM) on the typed rings
+        zerodim.py           exact solutions of zero-dimensional systems (shape lemma, algebraic coordinates)
+        galoisfactor.py      factorisation over GF(p**n) (domains/galoisfield.py)
+        numberfields/        qqbar.py (exact algebraic numbers), recognize.py (LLL recognition), basis.py (integral bases, Round 2), minpoly.py
         rootisolation.py     real root isolation (Descartes with bisection), Sturm counts, refinement
+        complexroots.py      complex root isolation in rectangles: exact winding numbers, certified Newton refinement
         polyclasses.py       DensePoly: the typed polynomial class over a domain, with the algorithms as methods
         rings.py             PolyRing, PolyElement: sparse multivariate polynomials with monomial orders, the division algorithm
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals

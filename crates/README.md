@@ -31,7 +31,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 
 | Python module | Rust | Notes |
 |---|---|---|
-| `polys/domains/domain.py` | done | trait `Domain` with `factor_dense`; `to_expr`/`from_expr` and the root isolation hooks wait for the ported modules |
+| `polys/domains/domain.py` | done | trait `Domain` with `factor_dense` and `nullspace` (`try_sparse_echelon` gives the `ValueError` of a non-unit pivot over a ring); `to_expr`/`from_expr` and the root isolation hooks wait for the ported modules |
 | `polys/domains/integerring.py` | done | |
 | `polys/domains/rationalfield.py` | done | with the fraction-free sparse echelon form |
 | `polys/domains/algebraicfield.py` | done | elements `Vec<Rat>`; `alpha_expr` a core node (the bindings take any object and name the root by its `str`); `to_expr`/`from_expr` and the conversion between different fields wait for the core; a separate Python class in the bindings, not a `DomainKind` |
@@ -62,6 +62,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/polyclasses.py` | `DensePoly` | generic over the domain, the variable a core `Symbol`; binary operations return `Err(Value)` for different domains or variables; `from_expr`/`to_expr` wait for the core; no binding (it needs the core's `Symbol` in Python) |
 | `polys/multisqf.py` | done | the `SqfDomain` classes as a trait with three implementations |
 | `polys/multifactor.py` | done | the diophantine equations over `BigFiniteField` (the modulus is the next prime above a Mignotte bound) |
+| `polys/gaussianfactor.py` | done | with `polytools._factor_all` as `factor_all`; `PolyRing` over `QQ_I` in the bindings; `to_expr` waits for the core |
 | (new) `polys/domains/bigfinitefield.rs` | | `GF(p)` with `Int` elements for moduli beyond the machine words: Python's one `FiniteField` is split in two |
 | `core/assumptions.py` | the rules and the structural facts | `Predicate` enum (alphabetical, so sorted as the names), implications, closure, consistency, minimal generators; `constant_facts`, `add_facts`, `mul_facts`, `pow_facts`, `numeric_facts`, `facts_of` (cached on the node), `ask_structural`, from the Python file at 2d17798. Two calls to evaluating functions are structural until they are ported: the consecutive-factor test (`g - f` an odd integer) and the irrationality of a rational power (`integer_root_parts`). `sympy_facts`/the function classes and `check_assumptions` & co. later |
 | `core/sorting.py` | `compare` | the `compare` key; `sort_key`/`ordered` come with `Expr` |

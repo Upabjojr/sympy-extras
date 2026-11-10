@@ -205,6 +205,12 @@ pub trait Domain: Clone + PartialEq + Debug {
     /// columns, leading coefficient one, and no entry in the leading
     /// column of another row, sorted by leading column.
     fn sparse_echelon(&self, rows: &[SparseRow<Self::Elem>]) -> Vec<SparseRow<Self::Elem>> {
+        self.try_sparse_echelon(rows).expect("a nonzero element of a field")
+    }
+
+    /// [`Domain::sparse_echelon`], with the error of [`Domain::invert`] when
+    /// a leading coefficient is not a unit (over a ring).
+    fn try_sparse_echelon(&self, rows: &[SparseRow<Self::Elem>]) -> PolyResult<Vec<SparseRow<Self::Elem>>> {
         let mut pivots: BTreeMap<usize, SparseRow<Self::Elem>> = BTreeMap::new();
         for original in rows {
             let reduced: Vec<SparseRow<Self::Elem>> = self.sparse_reduce(std::slice::from_ref(original), &pivots);
@@ -213,7 +219,7 @@ pub trait Domain: Clone + PartialEq + Debug {
             }
             let row: &SparseRow<Self::Elem> = &reduced[0];
             let (lead, lead_value) = row.iter().next().expect("a nonzero row");
-            let inverse: Self::Elem = self.invert(lead_value).expect("a nonzero element of a field");
+            let inverse: Self::Elem = self.invert(lead_value)?;
             let monic: SparseRow<Self::Elem> = row
                 .iter()
                 .map(|(column, value)| (*column, self.mul(value, &inverse)))
@@ -232,7 +238,46 @@ pub trait Domain: Clone + PartialEq + Debug {
                 eliminate_with_pivot(self, row, &factor, &pivot);
             }
         }
-        pivots.into_values().collect()
+        Ok(pivots.into_values().collect())
+    }
+
+    /// A basis of the null space of the matrix with these rows (`ncols`
+    /// columns): one vector per free column of the reduced row echelon
+    /// form, its free coordinate one (the canonical basis), in the order of
+    /// the free columns; the error of [`Domain::invert`] over a ring when a
+    /// pivot is not a unit.
+    fn nullspace(&self, rows: &[Vec<Self::Elem>], ncols: usize) -> PolyResult<Vec<Vec<Self::Elem>>> {
+        let sparse: Vec<SparseRow<Self::Elem>> = rows
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .enumerate()
+                    .filter(|(_, c)| !self.is_zero(c))
+                    .map(|(j, c)| (j, c.clone()))
+                    .collect::<SparseRow<Self::Elem>>()
+            })
+            .filter(|r| !r.is_empty())
+            .collect();
+        let echelon: Vec<SparseRow<Self::Elem>> = self.try_sparse_echelon(&sparse)?;
+        let pivot_rows: BTreeMap<usize, SparseRow<Self::Elem>> = echelon
+            .into_iter()
+            .map(|r| (*r.keys().next().expect("a nonzero row"), r))
+            .collect();
+        let mut basis: Vec<Vec<Self::Elem>> = Vec::new();
+        for free in 0..ncols {
+            if pivot_rows.contains_key(&free) {
+                continue;
+            }
+            let mut vector: Vec<Self::Elem> = vec![self.zero(); ncols];
+            vector[free] = self.one();
+            for (pivot, r) in &pivot_rows {
+                if let Some(value) = r.get(&free) {
+                    vector[*pivot] = self.neg(value);
+                }
+            }
+            basis.push(vector);
+        }
+        Ok(basis)
     }
 
     // -- dense polynomial kernels

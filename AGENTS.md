@@ -209,6 +209,7 @@ sympy_extras/
         karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation (native)
         karr_sympy.py        the SymPy face of karr: karr_sum, karr_term, summation, with_sum_special_values, reliable_value_of_core
         creative.py          creative telescoping in PiSigma-fields: creative_telescoping, definite_sum (native)
+        guess.py             guess_recurrence, guess_differential_equation, guess_algebraic_equation, guess_closed_form: equations from the first terms (native)
         zeilberger.py        Zeilberger's algorithm, WZ certificates, zeilberger_sum (native)
         zeilberger_sympy.py  the SymPy face of zeilberger: zeilberger_sum, wz_certificate, wz_prove
         qhyper.py            q-Pochhammer symbols (QPochhammer node, qpochhammer), q-Gosper, q-Zeilberger (native)
@@ -274,15 +275,23 @@ sympy_extras/
         subresultants.py     dup_psc, dmp_psc, psc: principal subresultant coefficients on SymPy's dense representation (the CAD)
         polyutils.py         dict_from_expr, expr_from_dict: core expressions <-> typed polynomials (no SymPy)
         sqfreetools.py       dup_sqf_list/part/p (Yun, and GF(p))
+        galoisfactor.py      gfq_factor, gfq_sqf_list, gfq_ddf, gfq_edf over domains.galoisfield.GaloisField (GF(p**n))
         galoistools.py       gf_factor, gf_ddf, gf_edf, gf_irreducible_p over FiniteField
-        factortools.py       dup_zz_factor, dup_qq_factor (Zassenhaus), dup_zz_hensel_lift, dup_ext_factor (Trager)
+        factortools.py       dup_zz_factor, dup_qq_factor (Zassenhaus; van Hoeij's knapsack recombination from 10 modular factors on), dup_zz_hensel_lift, dup_ext_factor (Trager)
+        lattice.py           lll, lll_reduction (integral LLL, Gram determinants), hermite_normal_form, integer_kernel, solve_integer_system, smith_normal_form (typed, no SymPy)
         rootisolation.py     dup_isolate_real_roots(_sqf), dup_count_real_roots (Sturm), dup_refine_real_root, over QQ
+        numberfields/basis.py  integral_basis, field_discriminant (Round 2), polynomial_discriminant
+        numberfields/qqbar.py  Algebraic: exact arithmetic on algebraic numbers (minimal polynomial + isolating region), algebraic_roots
+        complexroots.py      Rectangle, dup_count_complex_roots (winding numbers by Sturm), dup_isolate_complex_roots(_sqf), dup_refine_complex_root, dup_count_roots_right_of, dup_count_roots_in_disc, Hurwitz and Schur stability, over QQ
         polyclasses.py       DensePoly[T]: rep, domain, gen; the dense algorithms as methods, factorisation and roots through the domain
         rings.py             PolyRing[T], PolyElement[T] (dict[Monomial, T]), MonomialOrder (lex, grlex, grevlex), div by a list
         ideals.py            Ideal: operations and invariants on top of sympy.groebner
         hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
         f4.py                f4 on rings.PolyRing (typed, no SymPy): reduced Gröbner bases by Faugère's F4 (the default direct algorithm); row_echelon
+        zerodim.py           solve_zero_dimensional: exact solutions (Algebraic coordinates) of zero-dimensional systems over QQ by the shape lemma
+        berlekampmassey.py   berlekamp_massey: the shortest linear recurrence of a sequence over a field
+        fglm.py              fglm, groebner_by_fglm on rings.PolyRing (typed, no SymPy): change of order for zero-dimensional ideals
         interop.py           qq/zz/gf_from_sympy and _to_sympy, typed_order: the boundary with SymPy's rings
         hilbert.py           hilbert_numerator, hilbert_series, minimal_generators: Bigatti's algorithm for monomial ideals
         rur.py               rur, RationalUnivariateRepresentation: Rouillier's representation of zero-dimensional ideals from traces
