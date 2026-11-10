@@ -70,16 +70,19 @@ PREAMBLE = """
 from sympy import *
 from sympy.abc import a, b, c, k, m, n, p, q, s, t, u, v, w, x, y, z
 import sympy_extras
-from sympy_extras.assumptions import (ask as xask, refine as xrefine, simplify as xsimplify, resolve,
-    solve as xsolve, element,
-    ForAll, Exists, satisfiable, tautology, find_instance, limit as xlimit, limit_seq as xlimit_seq,
-    series as xseries)
+from sympy_extras.assumptions.ask import ask as xask
+from sympy_extras.assumptions.refine import refine as xrefine, simplify as xsimplify
+from sympy_extras.assumptions.resolve import resolve
+from sympy_extras.assumptions.solve import solve as xsolve
+from sympy_extras.assumptions.facts_sympy import element
+from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
+from sympy_extras.assumptions.sat import satisfiable, tautology, find_instance
+from sympy_extras.assumptions.limits import limit as xlimit, limit_seq as xlimit_seq, series as xseries
 from sympy_extras.concrete.karr_sympy import karr_sum, summation as xsummation
-from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
 from sympy_extras.concrete.convergence import sum_convergence, product_convergence
 from sympy_extras.concrete.dirichlet import dirichlet_series
 from sympy_extras.concrete.eulersums import polygamma_series, euler_sum
-from sympy_extras.concrete.qhyper import qgosper_sum, qzeilberger
+from sympy_extras.concrete.qhyper_sympy import qgosper_sum, qzeilberger
 from sympy_extras.concrete.rational import rational_sum
 from sympy_extras.solvers.kovacic import dsolve_kovacic
 from sympy_extras.solvers.linear_ode import dsolve_linear
@@ -101,7 +104,7 @@ from sympy_extras.polys.groebnerwalk import groebner_walk
 from sympy_extras.polys.euclidtools import psc
 from sympy_extras.polys.cad import quantifier_elimination, solution_set
 from sympy_extras.polys.virtual_substitution import eliminate_linear
-from sympy_extras.concrete.qhyper import qpochhammer, qbinomial
+from sympy_extras.concrete.qhyper_sympy import qpochhammer, qbinomial
 from sympy_extras.integrals import definite_integral, IntegralByRanges, mellin_transform as xmellin
 from sympy.solvers.ode import dsolve
 from sympy.series.limitseq import limit_seq
@@ -134,6 +137,8 @@ from sympy_extras.interop import expr_from_sympy as _core, to_sympy as _sympy
 from sympy_extras.concrete.dirichlet import dirichlet_series as _dirichlet_series
 from sympy_extras.concrete.eulersums import polygamma_series as _polygamma_series
 from sympy_extras.concrete.rational import rational_sum as _rational_sum
+# zeilberger is native too: its SymPy face converts at the call
+from sympy_extras.concrete.zeilberger_sympy import zeilberger_sum, wz_prove
 
 
 def dirichlet_series(term, n, *args, **kwargs):

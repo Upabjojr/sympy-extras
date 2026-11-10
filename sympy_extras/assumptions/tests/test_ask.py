@@ -7,7 +7,9 @@ from sympy.testing.pytest import raises
 from sympy_extras._testing import untyped
 from sympy.abc import x, y
 
-from sympy_extras.assumptions import ask, element, ForAll, Exists
+from sympy_extras.assumptions.ask import ask
+from sympy_extras.assumptions.facts_sympy import element
+from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 
 
 def test_ask_predicates() -> None:
@@ -218,7 +220,7 @@ def test_the_structure_theorem_does_not_call_itself() -> None:
     # the question comes back
     from sympy import exp, log, sqrt
     import importlib
-    from sympy_extras.assumptions import ask as ask_
+    from sympy_extras.assumptions.ask import ask as ask_
     module = importlib.import_module('sympy_extras.assumptions.ask')     # the package exports the function ask
     assert ask_(Eq(log((exp(x) + 1) * (exp(x) + 2)), log(exp(x) + 1) + log(exp(x) + 2)), x > 0) is True
     assert ask_(Eq(sqrt((exp(x) + 1)**2), exp(x) + 1), x > 0) is True

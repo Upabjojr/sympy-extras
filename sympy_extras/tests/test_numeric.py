@@ -74,7 +74,7 @@ def test_the_checks_of_the_package_go_through_them() -> None:
     assert numerically_equal(as_expr(parametric), as_expr(log(2 * sqrt(2) * positive) + I * pi)) is True
     assert numerically_equal(as_expr(parametric), as_expr(log(2 * sqrt(2) * positive) - I * pi)) is False
     from sympy_extras.assumptions.ask import _clearly_not_zero
-    from sympy_extras.assumptions.facts import Facts
+    from sympy_extras.assumptions.facts_sympy import Facts
     assert _clearly_not_zero(as_expr(parametric - log(2 * sqrt(2) * positive) - I * pi), Facts([])) is False
     from sympy_extras.assumptions.solve import _clearly_not_real
     assert _clearly_not_real(as_expr(L - I * pi)) is False

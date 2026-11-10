@@ -39,7 +39,9 @@ from sympy.logic.boolalg import Boolean
 
 from sympy_extras._typing import as_boolean, as_expr
 
-from sympy_extras.assumptions import ask, refine, simplify, satisfiable, tautology
+from sympy_extras.assumptions.ask import ask
+from sympy_extras.assumptions.refine import refine, simplify
+from sympy_extras.assumptions.sat import satisfiable, tautology
 from sympy_extras._timeout import attempt
 
 x, y = Symbol('x'), Symbol('y')

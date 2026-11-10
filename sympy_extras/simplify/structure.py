@@ -129,7 +129,7 @@ from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import DomainElement, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
-from sympy_extras.assumptions.facts import element as member
+from sympy_extras.assumptions.facts_sympy import element as member
 from sympy_extras.settings import settings
 
 __all__ = ['ElementaryTower', 'Element', 'Generator', 'NotElementary', 'canonical_form', 'is_zero', 'equal']

@@ -133,18 +133,23 @@ definite sums of hypergeometric terms `F(n, k)`: a recurrence
 `sum_j a_j(n) S(n + j) = 0` for `S(n) = sum_k F(n, k)` with its rational
 certificate (`zeilberger`), Wilf–Zeilberger certificates proving
 identities `sum_k F(n, k) = f(n)` (`wz_certificate`, `wz_prove`), and
-closed forms of definite sums through the recurrence, solved by SymPy's
-`rsolve` or by the hypergeometric and d'Alembertian solver of
+closed forms of definite sums through the recurrence, solved by the
+hypergeometric and d'Alembertian solver of
 `sympy_extras.solvers.recurr` (`zeilberger_sum`: the harmonic numbers
 `sum_{k=1}^n 1/k` come out as `harmonic(n)`). SymPy has Gosper's algorithm for indefinite
 sums and closed forms of hypergeometric functions for some definite
 ones, but no creative telescoping: Dixon's sum and Apéry's numbers get no
 recurrence from `summation`.
 
+The module is native: it takes and returns core expressions
+(`sympy_extras.core`); `sympy_extras.concrete.zeilberger_sympy` has
+`zeilberger_sum`, `wz_certificate` and `wz_prove` on SymPy expressions.
+
 ```python
->>> from sympy import binomial, symbols
+>>> from sympy_extras.core import Symbol
+>>> from sympy_extras.functions import binomial
 >>> from sympy_extras.concrete.zeilberger import zeilberger, zeilberger_sum, wz_prove
->>> n, k = symbols('n k', integer=True)
+>>> n, k = Symbol('n', integer=True), Symbol('k', integer=True)
 >>> zeilberger(binomial(n, k)**2, n, k)
 Telescoper([-2*(2*n + 1), n + 1], k**2*(2*k - 3*n - 3)/(k - n - 1)**2)
 >>> zeilberger_sum((-1)**k*binomial(2*n, k)**3, (k, 0, 2*n))
@@ -247,15 +252,18 @@ n*(3*n + 5)/(4*(n + 1)*(n + 2))
 ## q-analogues: q-Gosper and q-Zeilberger
 
 `sympy_extras.concrete.qhyper` adds q-Pochhammer symbols
-(`QPochhammer(a, q, k)`, `qbinomial`), the q-Gosper algorithm for
-indefinite sums of q-hypergeometric terms (terms whose ratio
-`t(k+1)/t(k)` is rational in `q**k`) and the q-Zeilberger algorithm for
-their definite sums. SymPy has no q-summation at all.
+(`QPochhammer(a, q, k)`, the node, and `qpochhammer`, which evaluates;
+`qbinomial`), the q-Gosper algorithm for indefinite sums of
+q-hypergeometric terms (terms whose ratio `t(k+1)/t(k)` is rational in
+`q**k`) and the q-Zeilberger algorithm for their definite sums, on the
+expressions of the core; `sympy_extras.concrete.qhyper_sympy` is the same
+on SymPy expressions. SymPy has no q-summation at all.
 
 ```python
->>> from sympy import factor
->>> from sympy.abc import q, k, n, x
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.polys.polytools import factor
 >>> from sympy_extras.concrete.qhyper import qgosper_sum, qzeilberger, qbinomial
+>>> q, k, n, x = symbols('q k n x')
 >>> factor(qgosper_sum(q**k, (k, 0, n), q, special_values=False))
 (q**(n + 1) - 1)/(q - 1)
 >>> qzeilberger(qbinomial(n, k, q)*q**(k*(k - 1)/2)*x**k, n, k, q).coefficients
@@ -283,16 +291,17 @@ off (the functions pass it to one another for their inner sums).
 >>> from sympy_extras.concrete.qhyper import qgosper_term
 >>> y, s = symbols('y s')
 >>> k, n = symbols('k n')
->>> zeilberger_sum(k*y**k, (k, 0, n), n)
-Piecewise((n*(n + 1)/2, Eq(y, 1)), ((-n*y**(n + 1) + n*y**(n + 2) + y - y**(n + 1))/(y - 1)**2, True))
 >>> from sympy_extras.core import Symbol as CoreSymbol
 >>> from sympy_extras.functions import binomial as core_binomial
 >>> y_, k_, n_ = CoreSymbol('y'), CoreSymbol('k'), CoreSymbol('n')
+>>> zeilberger_sum(k_*y_**k_, (k_, 0, n_), n_)
+Piecewise((n*(n + 1)/2, Eq(y, 1)), ((-n*y**(n + 1) + n*y**(n + 2) + y - y**(n + 1))/(y - 1)**2, True))
 >>> karr_term(y_**k_, k_)
 Piecewise((k, Eq(y, 1)), (y**k/(y - 1), True))
->>> qgosper_sum(q**(2*k), (k, 0, n), q)
+>>> q_ = CoreSymbol('q')
+>>> qgosper_sum(q_**(2*k_), (k_, 0, n_), q_)
 Piecewise((n + 1, Eq(q, -1) | Eq(q, 1)), (q**(2*n + 2)/((q - 1)*(q + 1)) - 1/((q - 1)*(q + 1)), True))
->>> qgosper_term(q**k, k, q)
+>>> qgosper_term(q_**k_, k_, q_)
 Piecewise((k, Eq(q, 1)), (q**k/(q - 1), True))
 >>> definite_sum(core_binomial(n_, k_)*y_**k_/(k_ + 1), (k_, 0, n_))
 Piecewise((1, Eq(y, 0)), ((y*(y + 1)**n + (y + 1)**n - 1)/(y*(n + 1)), True))
@@ -353,8 +362,11 @@ Piecewise((1, Eq(y, 0)), ((y*(y + 1)**n + (y + 1)**n - 1)/(y*(n + 1)), True))
 - These take and return core expressions; `karr_sum`, `karr_term`,
   `summation` and `with_sum_special_values` of
   `sympy_extras.concrete.karr_sympy` take and return SymPy expressions.
-- `creative_telescoping` and `definite_sum` take and return core
-  expressions too.
+- `creative_telescoping`, `definite_sum`, `zeilberger`,
+  `wz_certificate`, `wz_prove` and `zeilberger_sum` take and return core
+  expressions too; `zeilberger_sum`, `wz_certificate` and `wz_prove` of
+  `sympy_extras.concrete.zeilberger_sympy` take and return SymPy
+  expressions.
 - `creative_telescoping(f, k, n, order=4, extensions=())`: a
   `CreativeTelescoper` with the `coefficients` `c_i(n)`, the `certificate`
   `g(n, k)`, `recurrence()` and `check()`, or `None`.

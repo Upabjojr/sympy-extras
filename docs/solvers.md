@@ -67,7 +67,7 @@ Eq(u(x, t), C1*exp(-x**2/(4*t))/sqrt(t))
 
 ## Solving with assumptions
 
-`sympy_extras.assumptions.solve(equations, symbols, assumptions, domain)`
+`sympy_extras.assumptions.solve.solve(equations, symbols, assumptions, domain)`
 is `Solve` with `Assumptions` and a domain. One unknown with polynomial
 equations and inequalities over the reals goes to the cylindrical
 algebraic decomposition (exact intervals and points with algebraic
@@ -79,7 +79,7 @@ hold at it, fail, or cannot be decided.
 ```python
 >>> from sympy import S
 >>> from sympy.abc import a, y
->>> from sympy_extras.assumptions import solve
+>>> from sympy_extras.assumptions.solve import solve
 >>> solve(x**2 - 2, x, x > 0)
 {sqrt(2)}
 >>> solve((x**2 - 2 > 0) & (x < 3), x, domain=S.Reals)
@@ -498,7 +498,7 @@ Every solution is checked by substitution at six consecutive integers
 before it is returned (`is_recurrence_solution`).
 
 The module is native: it takes and returns expressions of the core and
-does not import SymPy (`zeilberger_sum` converts at the call). The
+does not import SymPy (`zeilberger_sum`, native too, calls it directly). The
 coefficients are dense polynomials in `n` over `QQ`, over the rational
 functions `QQ(a, b, ...)` of the parameters, or over a number field
 `QQ(alpha)` for one radical `alpha`; a root `z` outside the field is

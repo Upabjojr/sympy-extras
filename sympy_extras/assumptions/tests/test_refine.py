@@ -6,7 +6,9 @@ from sympy import (S, Q, Eq, Ne, And, Or, Abs, sign, Max, Min, floor, ceiling,
     factorial, Integral)
 from sympy.abc import x, y, z, n
 
-from sympy_extras.assumptions import refine, simplify, element, ForAll, Exists
+from sympy_extras.assumptions.refine import refine, simplify
+from sympy_extras.assumptions.facts_sympy import element
+from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 
 
 def test_refine_abs() -> None:
@@ -167,7 +169,7 @@ def test_refine_symbols() -> None:
 
 
 def test_refine_global() -> None:
-    from sympy_extras.assumptions import global_assumptions
+    from sympy_extras.assumptions.context_sympy import global_assumptions
     global_assumptions.add(x > 0)
     try:
         assert refine(Abs(x)) == x
@@ -347,7 +349,7 @@ def test_simplifications_which_are_proved() -> None:
     # structure theorem (sympy_extras.simplify) keeps them where it proves
     # them, and finds constants and zeros which no rewriting finds
     from sympy import Rational, asin, atan, log, pi, sqrt, symbols
-    from sympy_extras.assumptions import simplify as simplify_
+    from sympy_extras.assumptions.refine import simplify as simplify_
     u, v = symbols('u v')
     assert simplify_(4 * atan(Rational(1, 5)) - atan(Rational(1, 239))) == pi / 4
     assert simplify_(asin(u) - atan(u / sqrt(1 - u**2)), (u > -1) & (u < 1)) == 0

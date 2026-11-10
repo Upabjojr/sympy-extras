@@ -171,6 +171,7 @@ REWRITE_TARGETS: dict[str, frozenset[str]] = {
     'PrimePi': frozenset(),
     'PrincipalBranch': frozenset(),
     'Product': frozenset({'Sum'}),
+    'QPochhammer': frozenset(),
     'Rational': frozenset(),
     'Re': frozenset({'im'}),
     'ReducedTotient': frozenset(),

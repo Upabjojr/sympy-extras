@@ -119,7 +119,7 @@ def test_bounds_solved_for_the_last_variable() -> None:
     # a polynomial region, cross-checked between the two routes:
     # Integral(x (sqrt(x)**2 - x**4)/2, (x, 0, 1)) = (1/3 - 1/6)/2 = 1/12
     from sympy_extras.integrals.regions import _solved_bounds, _decomposed
-    from sympy_extras.assumptions.facts import normalize
+    from sympy_extras.assumptions.facts_sympy import normalize
     condition = (x > 0) & (x < 1) & (y > x**2) & (y < sqrt(x))
     assert integrate_by_ranges(x*y, condition) == Rational(1, 12)
     assert _solved_bounds(x*y, normalize(condition), (x, y), []) == Rational(1, 12)
@@ -302,7 +302,7 @@ def test_polynomials_over_polytopes_agree_with_the_decomposition() -> None:
     # triangulation, Dirichlet's formula on each simplex) is taken before
     # the decomposition and must agree with it
     from sympy import And, Symbol
-    from sympy_extras.assumptions.facts import normalize
+    from sympy_extras.assumptions.facts_sympy import normalize
     from sympy_extras.integrals.regions import _polytope, _decomposed
     z = Symbol('z')
     pentagon = (x > 0) & (y > 0) & (x + y < 3) & (x < 2) & (y < 2)

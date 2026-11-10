@@ -539,6 +539,98 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- **Breaking:** `sympy_extras.assumptions` exports nothing any more, like
+  `concrete`, `simplify` and `solvers`: import the functions from their
+  modules (`from sympy_extras.assumptions.ask import ask`; `refine` and
+  `simplify` from `.refine`, `resolve` from `.resolve`, `satisfiable`,
+  `tautology`, `find_instance` from `.sat`, `solve` from `.solve`,
+  `limit`, `limit_seq`, `series` from `.limits`, `element` and `Facts`
+  from `.facts_sympy`, `ForAll`, `Exists`, `Quantifier`, `prenex` from
+  `.quantifiers_sympy`, `global_assumptions`, `assuming`,
+  `AssumptionsContext` from `.context_sympy`), so that importing the
+  native leaves does not load the modules still written on SymPy.
+- The leaves of `sympy_extras.assumptions` are native (**breaking**: core
+  expressions and Booleans in and out of `assumptions.facts`,
+  `assumptions.quantifiers`, `assumptions.bounds` and
+  `assumptions.context`, which import no SymPy). `ForAll` and `Exists`
+  are Boolean nodes of the core which never evaluate, `forall` and
+  `exists` the functions which do (the formula for a constant one or
+  one without the variables, the absent variables dropped); `prenex`,
+  `element`, `normalize`, `conjuncts`, `to_predicates`, `to_polynomial`,
+  `Facts` (immutable: its attributes are `Final`, and it asks the core's
+  `ask`), `polynomial_abstraction` (MetiTarski bounds), the native
+  `global_assumptions` and an `assuming` that pushes the predicates to the
+  core's global assumptions. The SymPy faces `facts_sympy`,
+  `quantifiers_sympy`, `bounds_sympy` and `context_sympy` take and
+  return SymPy objects, converted by `sympy_extras.interop` around the
+  native functions; `ForAll`/`Exists` of the face are SymPy Booleans which
+  `interop` converts to and from the nodes, the face's
+  `global_assumptions` is the native collection seen with SymPy objects,
+  and `predicates_consistent` stays on SymPy (SymPy's SAT solver on its
+  known facts of the predicates). The upper modules (`ask`, `refine`,
+  `resolve`, `sat`, `limits`, `solve`, `analysis`, `intervals`), the
+  integrals and the docs use the faces. The same printed results as
+  before on 159 compared calls through the faces, and through the
+  native functions with the inputs converted (the native `element` and
+  `predicates_consistent` excepted: the first takes only the sets of
+  `sympy_extras.sets`, the second is not native).
+- `sympy_extras.sets.fancysets`: `Naturals`, `Naturals0`, `Integers`,
+  `Rationals` and `Complexes` on the core (memberships as SymPy's,
+  `Complexes` by `is_complex`), converted to and from SymPy's by
+  `interop`. `interop.SymPyBooleanNode` wraps the Booleans of SymPy with
+  no class here (`Contains(x, ProductSet(...))`), which were wrapped as
+  non-Boolean nodes before.
+- `sympy_extras.concrete.qhyper` is native (breaking: core expressions in
+  and out): `QPochhammer` is a node of the core which never evaluates,
+  `qpochhammer` the function which does (`QPochhammer(a, q, 2)` was the
+  product, it is now `qpochhammer(a, q, 2)`); `qbinomial`, `q_ratio`,
+  `normal_in`, `qgosper_term`, `qgosper_sum` and `qzeilberger` on the
+  core's `cancel`, `factor`, `gcd`, `lcm_list`, `powsimp` and `expand`,
+  the null space of `concrete.zeilberger` and the linear solver of
+  `concrete.gosper`; `QTelescoper` is immutable. Only the isolated
+  values of the parameters go through SymPy, at the call. The new
+  `sympy_extras.concrete.qhyper_sympy` is the face on SymPy expressions
+  (`QPochhammer` as a SymPy function, which `sympy_extras.interop`
+  converts to and from the node), used by `docs/comparison.md` and
+  `benchmarks/comparison.py`. The same printed results as
+  before on 64 of 66 compared calls (q-Pochhammer symbols, q-binomials,
+  ratios, 12 antidifferences and 21 sums with and without special
+  values, 8 q-Zeilberger calls); the other two: the sum of
+  `q**k/((1 - q**k)*(1 - q**(k + 1)))` contained the free unknown `_f0`
+  of the q-Gosper equation, now set to 0 (a regression test), and
+  `qzeilberger` on `qbinomial(n, k, q)**2*q**(k**2)` returns `None` in
+  13 s where the SymPy-based version ran for more than 300 s. The gcds
+  of the q-Gosper normal form are the native multivariate `gcd` of the
+  numerators: `qzeilberger(qbinomial(n, k, q), n, k, q)` takes 1.2 s
+  instead of 10 s.
+- `sympy_extras.concrete.zeilberger` is native (breaking: core expressions
+  in and out): `zeilberger`, `wz_certificate`, `wz_prove` and
+  `zeilberger_sum` on the core's `cancel`, `factor`, `lcm_list`,
+  `gcd_list`, `combsimp`, `gammasimp`, `simplify`, `limit`, `product` and
+  `Sum`, the native `gosper_normal`, the null space over the rational
+  functions of the parameters (`SparseFractionField.nullspace`), and
+  `Telescoper` is immutable. The recurrence is solved by the native
+  `rsolve_linear` only (SymPy's `rsolve` is gone: where it found a
+  solution, `rsolve_linear` finds the same; SymPy's `rsolve` also returned
+  `0` for recurrences without hypergeometric solutions whatever the
+  initial values). The integer zeros of the leading coefficient come from
+  its native factorisation, so a leading coefficient with parameters no
+  longer raises `NotImplementedError` from SymPy's `real_roots`: the sums
+  of `(-1)**k*binomial(n, k)/(k + a)` and `binomial(n, k)*binomial(n, k +
+  a)` get their closed forms. The same printed results as before on the
+  70 other compared calls (16 telescopers, 7 WZ certificates and proofs,
+  42 sums, with and without special values); only the isolated values of
+  the parameters go through SymPy, at the call. The new
+  `sympy_extras.concrete.zeilberger_sympy` (`zeilberger_sum`,
+  `wz_certificate`, `wz_prove` on SymPy expressions) is used by
+  `sympy_extras.integrals.series`, `docs/comparison.md` and
+  `benchmarks/comparison.py`. `gosper_normal` computes its resultant with
+  the typed polynomials (the Sylvester determinant only as a fallback),
+  four times faster on Apéry's summand.
+- `sympy_extras.solvers.recurr.rsolve_linear` no longer multiplies the
+  equation by a denominator of the right-hand side which is no
+  polynomial in `n` (`S(n + 1) - 4*S(n) = -(2n)!/(n! (n + 1)!)` raised
+  `ValueError`).
 - `sympy_extras.concrete.dirichlet` is native (breaking: core expressions
   in and out): `dirichlet_series` on the core's arithmetic functions,
   `zeta`, `re`, `max_` and `Derivative`; the same printed results as

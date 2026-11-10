@@ -4,8 +4,9 @@ from sympy import Abs, Q, ask as sympy_ask, refine as sympy_refine, sqrt
 from sympy.assumptions import global_assumptions as sympy_global_assumptions
 from sympy.abc import x, y
 
-from sympy_extras.assumptions import (assuming, global_assumptions, ask, refine,
-    AssumptionsContext)
+from sympy_extras.assumptions.context_sympy import assuming, global_assumptions, AssumptionsContext
+from sympy_extras.assumptions.ask import ask
+from sympy_extras.assumptions.refine import refine
 
 
 def test_assumptions_context() -> None:
@@ -73,3 +74,26 @@ def test_assuming() -> None:
     except RuntimeError:
         pass
     assert len(global_assumptions) == 0 and len(sympy_global_assumptions) == 0
+
+
+def test_native_context() -> None:
+    from sympy_extras.core import Symbol, Q, ask as core_ask, global_assumptions as core_global_assumptions
+    from sympy_extras.assumptions import context as nc
+    a, b = Symbol('x'), Symbol('y')
+    c = nc.AssumptionsContext([a > 0, b > 0, a > 0])
+    assert len(c) == 2 and (a > 0) in c and list(c) == [a > 0, b > 0]
+    c.remove(b > 0, a > 5)
+    assert repr(c) == 'AssumptionsContext([x > 0])' and c.as_boolean() == (a > 0)
+    with nc.assuming(a > 1):
+        assert (a > 1) in nc.global_assumptions
+        # the face sees the same collection
+        assert (x > 1) in global_assumptions
+        assert core_ask(Q.positive(a)) is True
+    assert len(nc.global_assumptions) == 0 and len(core_global_assumptions) == 0
+    assert core_ask(Q.positive(a)) is None
+    # and the native one sees what the face adds
+    global_assumptions.add(x > 0)
+    try:
+        assert (a > 0) in nc.global_assumptions
+    finally:
+        global_assumptions.clear()

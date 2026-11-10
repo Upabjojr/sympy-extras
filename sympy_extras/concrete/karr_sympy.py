@@ -1,11 +1,8 @@
 r"""The SymPy face of Karr's algorithm (:mod:`sympy_extras.concrete.karr`).
 
 :mod:`~sympy_extras.concrete.karr` is written on the core and takes and
-returns core expressions. The summation modules still written on SymPy
-(:mod:`~sympy_extras.concrete.zeilberger`,
-:mod:`~sympy_extras.concrete.rational`,
-:mod:`~sympy_extras.concrete.dirichlet`,
-:mod:`~sympy_extras.concrete.qhyper`) use this module instead:
+returns core expressions. Code still written on SymPy uses this module
+instead:
 
 - :func:`karr_sum`, :func:`karr_term` and :func:`summation` take and
   return SymPy expressions, converted at the boundary
@@ -15,7 +12,8 @@ returns core expressions. The summation modules still written on SymPy
   SymPy), for these modules and, through
   :func:`sum_special_values_of_core`, for the native ones
   (:mod:`~sympy_extras.concrete.karr`,
-  :mod:`~sympy_extras.concrete.creative`);
+  :mod:`~sympy_extras.concrete.creative`,
+  :mod:`~sympy_extras.concrete.zeilberger`, ...);
 - :func:`reliable_value_of_core` evaluates a core expression at sample
   values of its parameters with
   :func:`~sympy_extras._numeric.reliable_value`, for the checks of

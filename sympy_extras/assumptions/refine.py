@@ -60,8 +60,8 @@ from sympy.simplify.simplify import simplify as _sympy_simplify
 from sympy_extras._typing import Truth, as_boolean, as_expr, free_symbols, sorted_symbols
 
 from .ask import Assumptions, _facts, _evaluate, _evaluate_atom
-from .facts import Facts, normalize
-from .quantifiers import Quantifier
+from .facts_sympy import Facts, normalize
+from .quantifiers_sympy import Quantifier
 
 __all__ = ['refine', 'simplify']
 
@@ -624,7 +624,8 @@ def refine(expr: Union[Expr, Boolean, bool], assumptions: Assumptions = None,
 
     >>> from sympy import Abs, sqrt, sign, Max, floor, Piecewise, S, re, im, log, atan2
     >>> from sympy.abc import x, y, n
-    >>> from sympy_extras.assumptions import refine, element
+    >>> from sympy_extras.assumptions.refine import refine
+    >>> from sympy_extras.assumptions.facts_sympy import element
     >>> refine(Abs(x - 1) + sqrt(x**2), x > 2)
     2*x - 1
     >>> refine(sqrt(x**2 - 2*x + 1), x > 1)
@@ -700,7 +701,8 @@ def simplify(expr: Union[Expr, Boolean, bool], assumptions: Assumptions = None,
 
     >>> from sympy import Abs, sqrt, cos, sin, log, exp, Eq
     >>> from sympy.abc import x, y, n
-    >>> from sympy_extras.assumptions import simplify, element
+    >>> from sympy_extras.assumptions.refine import simplify
+    >>> from sympy_extras.assumptions.facts_sympy import element
     >>> simplify(sqrt(x**2) + Abs(x)*sin(x)**2 + Abs(x)*cos(x)**2, x < 0)
     -2*x
     >>> simplify((x**2 - 1)/(x - 1), x > 1)
@@ -747,7 +749,7 @@ def _proved_simplification(expr: Expr, facts: Facts) -> Expr:
     are kept where the proof says so.
 
     >>> from sympy import atan, Rational, sqrt, asin, log, symbols
-    >>> from sympy_extras.assumptions import simplify
+    >>> from sympy_extras.assumptions.refine import simplify
     >>> x, y = symbols('x y')
     >>> simplify(4*atan(Rational(1, 5)) - atan(Rational(1, 239)))
     pi/4

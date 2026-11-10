@@ -7,7 +7,7 @@ from sympy.testing.pytest import raises
 from sympy_extras._testing import untyped
 from sympy.abc import x, y, z
 
-from sympy_extras.assumptions import ForAll, Exists, Quantifier, prenex
+from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists, Quantifier, prenex
 
 
 def test_construction() -> None:
@@ -88,3 +88,41 @@ def test_prenex() -> None:
     # quantifiers under Not under And
     prefix, matrix = prenex(And(Not(ForAll(x, x > y)), z > 0))
     assert prefix == [('exists', x)] and matrix == And(x <= y, z > 0)
+
+
+def test_native_quantifiers() -> None:
+    # the nodes of the core: unevaluating classes, evaluating functions
+    from sympy_extras.core import Symbol as CSymbol, Dummy as CDummy, true as ctrue, And as CAnd, Not as CNot
+    from sympy_extras.assumptions import quantifiers as nq
+    a, b, c = CSymbol('x'), CSymbol('y'), CSymbol('z')
+    f = nq.ForAll(a, a > b)
+    assert isinstance(f, nq.Quantifier) and f.quantifier == 'forall'
+    assert f.variables == (a,) and f.formula == (a > b) and f.free_symbols == {b} and f.bound_symbols == (a,)
+    assert str(f) == 'ForAll(x, x > y)' and str(nq.Exists([a, b], a > b)) == 'Exists((x, y), x > y)'
+    assert nq.ForAll((a, b), a > b) == nq.ForAll([a, b], a > b) != nq.Exists([a, b], a > b)
+    assert isinstance(nq.ForAll(a, True), nq.ForAll)
+    assert nq.forall(a, True) == ctrue and nq.forall(a, b > 0) == (b > 0)
+    assert nq.forall([a, c], a > b) == nq.ForAll(a, a > b)
+    assert nq.exists(a, a > 0) == nq.Exists(a, a > 0)
+    assert f.subs(b, 2) == nq.ForAll(a, a > 2) and f.subs(a, 2) == f
+    assert f.doit() == f and nq.ForAll([a, c], a > b).doit() == f
+    assert isinstance(f & (b > 0), CAnd) and isinstance(~f, CNot)
+    raises(ValueError, lambda: nq.ForAll([], a > 0))
+    raises(ValueError, lambda: nq.ForAll([a, a], a > 0))
+    raises(TypeError, lambda: untyped(nq.ForAll)(2, a > 0))
+    # prenex: the same results as the SymPy face
+    assert nq.prenex(~nq.ForAll(a, nq.Exists(b, a < b))) == ([('exists', a), ('forall', b)], a >= b)
+    prefix, matrix = nq.prenex(nq.ForAll(a, a > 0) & nq.Exists(a, a < 0))
+    [d] = [v for _, v in prefix if v != a]
+    assert isinstance(d, CDummy) and d.name == 'x' and matrix.free_symbols == {a, d}
+    assert nq.prenex(nq.ForAll(a, True)) == ([], ctrue)
+
+
+def test_quantifiers_convert_both_ways() -> None:
+    from sympy_extras.interop import from_sympy, to_sympy
+    from sympy_extras.assumptions import quantifiers as nq
+    for q in [ForAll(x, x > y), Exists([x, y], (x > y) | (z < 0)), ForAll(x, Exists(y, x < y))]:
+        n = from_sympy(q)
+        assert isinstance(n, nq.Quantifier) and str(n) == str(q)
+        assert to_sympy(n) == q
+    assert isinstance(to_sympy(from_sympy(ForAll(x, x > 0) & (y > 0))), And)

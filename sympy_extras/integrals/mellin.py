@@ -95,7 +95,7 @@ from sympy.logic.boolalg import And, Boolean, true
 
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask import Assumptions, ask
-from sympy_extras.assumptions.facts import element
+from sympy_extras.assumptions.facts_sympy import element
 
 __all__ = ['GammaFactor', 'GammaQuotient', 'MellinTransform', 'Kernel', 'mellin_kernel',
            'mellin_transform', 'monomial', 'KERNELS', 'Match', 'Product', 'decompose_integrand', 'poles_separated']

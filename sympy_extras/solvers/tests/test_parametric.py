@@ -4,7 +4,8 @@ from sympy import And, Eq, Equivalent, FiniteSet, Integer, Ne, Or, Rational, S, 
 from sympy.abc import a, b, c, x, y
 
 from sympy_extras._typing import as_expr, free_symbols, sorted_symbols
-from sympy_extras.assumptions import ForAll, resolve
+from sympy_extras.assumptions.quantifiers_sympy import ForAll
+from sympy_extras.assumptions.resolve import resolve
 from sympy_extras.polys.regularchains import triangularize
 from sympy_extras.solvers.parametric import parametric_cases
 

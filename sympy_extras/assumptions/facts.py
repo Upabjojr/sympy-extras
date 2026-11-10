@@ -1,17 +1,17 @@
-"""Assumptions written as ordinary mathematical statements.
+"""Assumptions written as ordinary mathematical statements, on the core.
 
 In this module an assumption is a Boolean combination of
 
 * relations between expressions, ``x > 0``, ``x**2 + y**2 <= 1``,
   ``Eq(x, y)``, ``Ne(x, 0)``;
-* memberships in SymPy sets, ``element(x, S.Integers)`` (that is
-  ``Contains(x, S.Integers)``), ``element(x, Interval(0, 1))``,
-  ``element(n, S.Naturals)``;
-* for compatibility, predicates of SymPy's assumptions system such as
+* memberships in sets, ``element(x, Integers)`` (that is
+  ``Contains(x, Integers)``), ``element(x, Interval(0, 1))``,
+  ``element(n, Naturals)``, with the sets of :mod:`sympy_extras.sets`;
+* for compatibility, predicates of the core's ``Q`` such as
   ``Q.positive(x)``.
 
-The pieces are combined with ``&``, ``|``, ``~`` or ``And``, ``Or``, ``Not``,
-``Implies``, ``Equivalent``, ``Xor``.
+The pieces are combined with ``&``, ``|``, ``~`` or the connectives of
+:mod:`sympy_extras.core.logic`.
 
 Following the convention of Mathematica, an inequality between two
 expressions is only true when both sides are real: ``x > 0`` says that ``x``
@@ -19,94 +19,140 @@ is a positive *real* number. Equations and ``Ne`` do not carry this
 implication.
 
 The :class:`Facts` class translates such assumptions into the two forms
-used by the backends: predicates of :mod:`sympy.assumptions` (for
-:func:`sympy.ask` and :func:`sympy.refine`) and Boolean combinations of
-polynomial relations between real variables (for the cylindrical algebraic
-decomposition of :mod:`sympy_extras.polys.cad`).
+used by the backends: predicates of ``Q`` (for ``ask`` and ``refine``)
+and Boolean combinations of polynomial relations between real variables
+(for the cylindrical algebraic decomposition of
+:mod:`sympy_extras.polys.cad`).
+
+This module imports no SymPy: it takes and returns the expressions and
+Booleans of :mod:`sympy_extras.core`. Code on SymPy objects uses
+:mod:`sympy_extras.assumptions.facts_sympy`, which also keeps
+``predicates_consistent`` (a question to the SAT solver of SymPy's
+assumptions with its known facts about the predicates, not ported).
+
+Examples
+========
+
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.sets import Integers
+>>> from sympy_extras.assumptions.facts import Facts, element
+>>> x, y, z = symbols('x y z')
+>>> f = Facts([x > 2, element(y, Integers), z**3 > x*y])
+>>> f.polynomial, sorted(f.real, key=str), sorted(f.integer, key=str)
+((x > 2) & (z**3 > x*y), [x, y, z], [y])
 """
 from __future__ import annotations
 
-from typing import Callable, Iterable, Optional, Union
+from typing import Callable, Final, Iterable, Optional, Union
 
-from sympy.assumptions import Q, ask as _sympy_ask
-from sympy.assumptions.assume import AppliedPredicate
-from sympy.assumptions.cnf import CNF
-from sympy.assumptions.satask import get_all_relevant_facts
-from sympy.core.basic import Basic
-from sympy.core.expr import Expr
-from sympy.core.relational import Relational, Eq, Ne, Lt, Le, Gt, Ge
-from sympy.core.singleton import S
-from sympy.core.symbol import Symbol
-from sympy.core.sympify import sympify
-from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or,
-    Not, Implies, Equivalent, Xor, ITE, true, false)
-from sympy.logic.inference import satisfiable as _sympy_satisfiable
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly
+from sympy_extras.core.ask import Q, ask
+from sympy_extras.core.assume import AppliedPredicate, Predicate
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.logic import (ITE, And, Boolean, BooleanAtom, BooleanLike, Equivalent, Implies, Not, Or,
+    Xor, and_, false, not_, or_, to_boolean, true)
+from sympy_extras.core.numbers import Infinity, NegativeInfinity
+from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, eq, ge, gt, le, lt, ne
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.sets.fancysets import ComplexesClass, IntegersClass, Naturals0Class, NaturalsClass, RationalsClass
+from sympy_extras.sets.sets import (Complement, Contains, EmptySetClass, FiniteSet, Intersection, Interval,
+    RealsClass, Reals, Set, Union as SetUnion, UniversalSetClass)
 
-from sympy_extras._typing import as_boolean, as_expr, as_set, free_symbols
-from sympy.sets.contains import Contains
-from sympy.sets.fancysets import Naturals, Naturals0, Integers, Rationals, Reals, Complexes
-from sympy.sets.sets import (Set, Interval, FiniteSet, Union as SetUnion,
-    Intersection, Complement, EmptySet, UniversalSet)
+__all__ = ['element', 'normalize', 'conjuncts', 'to_predicates', 'to_polynomial', 'Facts']
 
-__all__ = ['element', 'normalize', 'conjuncts', 'to_predicates',
-    'to_polynomial', 'Facts']
+#: what the functions taking assumptions accept
+Assumption = BooleanLike
 
 
 # ---------------------------------------------------------------------------
 # Building blocks
 
-def element(x: Union[Expr, int], domain: Set) -> Boolean:
-    """Membership of ``x`` in the SymPy set ``domain``, the counterpart of
+def element(x: ExprLike, domain: Set) -> Boolean:
+    """Membership of ``x`` in the set ``domain``, the counterpart of
     Mathematica's ``Element[x, dom]``.
 
-    It is :class:`~sympy.sets.contains.Contains` and evaluates when the
-    answer is known.
+    It is :class:`~sympy_extras.sets.sets.Contains`, evaluated to ``True``
+    or ``False`` when the answer is known.
 
     Examples
     ========
 
-    >>> from sympy import S, Interval
-    >>> from sympy.abc import x
-    >>> from sympy_extras.assumptions import element
-    >>> element(x, S.Integers)
-    Contains(x, Integers)
-    >>> element(2, S.Integers)
-    True
-    >>> element(x, Interval(0, 1))
-    Contains(x, Interval(0, 1))
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.sets import Integers, interval
+    >>> from sympy_extras.assumptions.facts import element
+    >>> x = Symbol('x')
+    >>> element(x, Integers), element(2, Integers), element(x, interval(0, 1)), element(2, interval(0, 1))
+    (Contains(x, Integers), True, Contains(x, Interval(0, 1)), False)
     """
-    return Contains(sympify(x), sympify(domain))
+    if not isinstance(domain, Set):
+        raise TypeError("expected a set, got %s" % (domain,))
+    member = to_expr(x)
+    result = domain.contains(member)
+    if isinstance(result, BooleanAtom):
+        return result
+    return Contains(member, domain)
 
 
-_NAMED_SETS = (Naturals, Naturals0, Integers, Rationals, Reals, Complexes)
+#: the named sets of numbers, kept as atoms by normalize
+_NAMED_SETS: Final = (NaturalsClass, Naturals0Class, IntegersClass, RationalsClass, RealsClass, ComplexesClass)
 
-# predicate of sympy.assumptions equivalent to the membership in a named set
-# (Naturals0 is a subclass of Naturals, so it must come first)
-_SET_PREDICATES: list[tuple[type, Callable[[Expr], Boolean]]] = [
-    (Naturals0, lambda x: And(Q.integer(x), Q.nonnegative(x))),
-    (Naturals, lambda x: And(Q.integer(x), Q.positive(x))),
-    (Integers, Q.integer),
-    (Rationals, Q.rational),
-    (Reals, Q.real),
-    (Complexes, Q.complex),
+#: the named sets whose members are real numbers
+_REAL_SETS: Final = (NaturalsClass, Naturals0Class, IntegersClass, RationalsClass, RealsClass)
+
+
+def _naturals0(x: Expr) -> Boolean:
+    return and_(Q.integer(x), Q.nonnegative(x))
+
+
+def _naturals(x: Expr) -> Boolean:
+    return and_(Q.integer(x), Q.positive(x))
+
+
+def _integers(x: Expr) -> Boolean:
+    return Q.integer(x)
+
+
+def _rationals(x: Expr) -> Boolean:
+    return Q.rational(x)
+
+
+def _reals(x: Expr) -> Boolean:
+    return Q.real(x)
+
+
+def _complexes(x: Expr) -> Boolean:
+    return Q.complex(x)
+
+
+#: the predicate equivalent to the membership in a named set
+_SET_PREDICATES: Final[list[tuple[type[Set], Callable[[Expr], Boolean]]]] = [
+    (Naturals0Class, _naturals0),
+    (NaturalsClass, _naturals),
+    (IntegersClass, _integers),
+    (RationalsClass, _rationals),
+    (RealsClass, _reals),
+    (ComplexesClass, _complexes),
 ]
 
-# named sets whose members are real numbers
-_REAL_SETS = (Naturals, Naturals0, Integers, Rationals, Reals)
-
-# predicates equivalent to a sign condition on a real number
-_SIGN_PREDICATES: dict[object, type] = {
-    Q.positive: Gt, Q.negative: Lt, Q.nonnegative: Ge, Q.nonpositive: Le,
-    Q.zero: Eq, Q.nonzero: Ne,
+#: the predicates equivalent to a sign condition on a real number
+_SIGN_PREDICATES: Final[dict[Predicate, Callable[[Expr, Expr], Boolean]]] = {
+    Q.positive: gt, Q.negative: lt, Q.nonnegative: ge, Q.nonpositive: le, Q.zero: eq, Q.nonzero: ne,
 }
 
-_COMPOUND = (And, Or, Not, Implies, Equivalent, Xor, ITE)
+#: the predicates which hold for every polynomial with rational
+#: coefficients in real variables
+_REAL_PREDICATES: Final[frozenset[Predicate]] = frozenset({Q.real, Q.complex, Q.extended_real, Q.finite})
+
+_COMPOUND: Final = (And, Or, Not, Implies, Equivalent, Xor, ITE)
 
 
 def _is_atom(formula: Boolean) -> bool:
     return not isinstance(formula, _COMPOUND)
+
+
+def _rebuilt(formula: Boolean, args: list[Boolean]) -> Boolean:
+    """The connective ``formula`` with ``args``, evaluated."""
+    return to_boolean(formula._evaluated(tuple(args)))
 
 
 def _cleared_denominator(atom: Relational) -> Optional[Boolean]:
@@ -118,132 +164,142 @@ def _cleared_denominator(atom: Relational) -> Optional[Boolean]:
     The quantifier elimination, ``ask`` and ``refine`` all rejected a
     parameter in a denominator before (sympy-extras#32).
     """
-    from sympy.polys.rationaltools import together
-    difference = as_expr(together(as_expr(atom.lhs - atom.rhs)))
-    numerator, denominator = (as_expr(part) for part in difference.as_numer_denom())
+    from sympy_extras.polys.rationaltools import together
+    numerator, denominator = together(atom.lhs - atom.rhs).as_numer_denom()
     if not denominator.free_symbols:
         return None
     # only a polynomial denominator: the point is polynomial quantifier
     # elimination, and a transcendental one (exp(-x) - x**2 < 0 has exp(x)
     # below the line) is left for the solvers that read it as it is
-    symbols = sorted(free_symbols(denominator) | free_symbols(numerator), key=lambda s: s.name)
+    symbols = sorted(denominator.free_symbols | numerator.free_symbols, key=lambda s: s.name)
     if not (denominator.is_polynomial(*symbols) and numerator.is_polynomial(*symbols)):
         return None
-    nonzero = Ne(denominator, 0)
+    nonzero = ne(denominator, 0)
     if isinstance(atom, Eq):
-        return as_boolean(And(Eq(numerator, 0), nonzero))
+        return and_(eq(numerator, 0), nonzero)
     if isinstance(atom, Ne):
-        return as_boolean(And(Ne(numerator, 0), nonzero))
-    product = as_expr(numerator*denominator)
+        return and_(ne(numerator, 0), nonzero)
+    product = numerator*denominator
     if isinstance(atom, Gt):
-        return as_boolean(product > 0)
+        return gt(product, 0)
     if isinstance(atom, Lt):
-        return as_boolean(product < 0)
+        return lt(product, 0)
     if isinstance(atom, Ge):
-        return as_boolean(And(product >= 0, nonzero))
+        return and_(ge(product, 0), nonzero)
     if isinstance(atom, Le):
-        return as_boolean(And(product <= 0, nonzero))
+        return and_(le(product, 0), nonzero)
     return None
 
 
-def normalize(formula: Union[Boolean, bool]) -> Boolean:
+def normalize(formula: Assumption) -> Boolean:
     """Normal form of an assumption or query.
 
     Memberships in intervals, finite sets and combinations of sets are
     rewritten as relations and Boolean combinations; memberships in the
-    named sets (``S.Integers``, ``S.Reals``, ...) and predicates of
-    :mod:`sympy.assumptions` are kept as atoms. ``True``/``False`` and
-    Python Booleans become ``S.true``/``S.false``.
+    named sets (``Integers``, ``Reals``, ...) and predicates of ``Q`` are
+    kept as atoms; relations are put in canonical form, with their
+    symbolic denominators cleared. ``True``/``False`` become
+    ``true``/``false``.
 
     Examples
     ========
 
-    >>> from sympy import S, Interval, FiniteSet, Union, oo
-    >>> from sympy.abc import x
-    >>> from sympy_extras.assumptions import element
-    >>> from sympy_extras.assumptions.facts import normalize
-    >>> normalize(element(x, Interval(0, 1)))
+    >>> from sympy_extras.core import Symbol, oo
+    >>> from sympy_extras.sets import Integers, interval, finite_set, Union
+    >>> from sympy_extras.assumptions.facts import element, normalize
+    >>> x = Symbol('x')
+    >>> normalize(element(x, interval(0, 1)))
     (x >= 0) & (x <= 1)
-    >>> normalize(element(x, Union(FiniteSet(1, 2), Interval.open(3, 4))))
+    >>> normalize(element(x, Union(finite_set(1, 2), interval(3, 4, True, True))))
     Eq(x, 1) | Eq(x, 2) | ((x > 3) & (x < 4))
-    >>> normalize(element(x, Interval(0, oo)))
-    x >= 0
-    >>> normalize(element(x, S.Integers) & (x > 0))
-    Contains(x, Integers) & (x > 0)
+    >>> normalize(element(x, interval(0, oo))), normalize(element(x, Integers) & (x > 0))
+    (x >= 0, Contains(x, Integers) & (x > 0))
     """
-    formula_ = as_boolean(formula)
-    if isinstance(formula_, (BooleanTrue, BooleanFalse)):
-        return formula_
-    if isinstance(formula_, Contains):
-        return _normalize_contains(as_expr(formula_.args[0]), as_set(formula_.args[1]))
-    if isinstance(formula_, ITE):
-        c, a, b = [normalize(as_boolean(arg)) for arg in formula_.args]
-        return Or(And(c, a), And(Not(c), b))
-    if isinstance(formula_, _COMPOUND):
-        return as_boolean(formula_.func(*[normalize(as_boolean(arg)) for arg in formula_.args]))
-    if isinstance(formula_, Relational):
-        cleared = _cleared_denominator(formula_)
+    f = to_boolean(formula)
+    if isinstance(f, BooleanAtom):
+        return f
+    if isinstance(f, Contains):
+        member, domain = f.args
+        if not isinstance(member, Expr) or not isinstance(domain, Set):
+            raise TypeError("Contains takes an expression and a set")
+        return _normalize_contains(member, domain)
+    if isinstance(f, ITE):
+        c, a, b = [normalize(arg) for arg in f.args]
+        return or_(and_(c, a), and_(not_(c), b))
+    if isinstance(f, _COMPOUND):
+        return _rebuilt(f, [normalize(arg) for arg in f.args])
+    if isinstance(f, Relational):
+        cleared = _cleared_denominator(f)
         if cleared is not None:
             return normalize(cleared)
-        canonical = as_boolean(formula_.canonical)
-        if isinstance(canonical, Relational):
-            # bounds at infinity, as produced by unbounded intervals
-            if canonical.rhs is S.Infinity and isinstance(canonical, (Lt, Le)):
-                return true
-            if canonical.rhs is S.NegativeInfinity and isinstance(canonical, (Gt, Ge)):
-                return true
+        canonical = f.canonical
+        # bounds at infinity, as produced by unbounded intervals
+        if isinstance(canonical.rhs, Infinity) and isinstance(canonical, (Lt, Le)):
+            return true
+        if isinstance(canonical.rhs, NegativeInfinity) and isinstance(canonical, (Gt, Ge)):
+            return true
         return canonical
-    return formula_
+    return f
 
 
 def _normalize_contains(x: Expr, domain: Set) -> Boolean:
-    if not isinstance(domain, Set):
-        raise TypeError("expected a SymPy set, got %s" % (domain,))
     if isinstance(domain, _NAMED_SETS):
         return Contains(x, domain)
     if isinstance(domain, Interval):
-        return normalize(as_boolean(domain.as_relational(x)))
+        return normalize(domain.as_relational(x))
     if isinstance(domain, FiniteSet):
-        return Or(*[Eq(x, v) for v in domain.args])
+        return or_(*[eq(x, v) for v in domain.elements])
     if isinstance(domain, SetUnion):
-        return Or(*[_normalize_contains(x, as_set(s)) for s in domain.args])
+        return or_(*[_normalize_contains(x, s) for s in domain.sets])
     if isinstance(domain, Intersection):
-        return And(*[_normalize_contains(x, as_set(s)) for s in domain.args])
+        return and_(*[_normalize_contains(x, s) for s in domain.sets])
     if isinstance(domain, Complement):
-        a, b = domain.args
-        return And(_normalize_contains(x, as_set(a)), Not(_normalize_contains(x, as_set(b))))
-    if isinstance(domain, EmptySet):
+        a, b = domain.args_sets
+        return and_(_normalize_contains(x, a), not_(_normalize_contains(x, b)))
+    if isinstance(domain, EmptySetClass):
         return false
-    if isinstance(domain, UniversalSet):
+    if isinstance(domain, UniversalSetClass):
         return true
     result = domain.contains(x)
-    if result in (true, false):
+    if isinstance(result, BooleanAtom):
         return result
     return Contains(x, domain)
 
 
 def conjuncts(formula: Boolean) -> list[Boolean]:
-    """The top level conjuncts of a normalized formula."""
+    """The top level conjuncts of a normalized formula.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols, true
+    >>> from sympy_extras.assumptions.facts import conjuncts
+    >>> x, y = symbols('x y')
+    >>> conjuncts((x > 0) & (y > 0)), conjuncts((x > 0) | (y > 0)), conjuncts(true)
+    ([x > 0, y > 0], [(x > 0) | (y > 0)], [])
+    """
     if isinstance(formula, And):
         return list(formula.args)
-    if formula is true:
+    if formula == true:
         return []
     return [formula]
 
 
 # ---------------------------------------------------------------------------
-# Translation to the predicates of sympy.assumptions
+# Translation to the predicates of Q
 
 def _predicate_of_atom(atom: Boolean) -> Optional[Boolean]:
-    """Predicate of :mod:`sympy.assumptions` equivalent to an atom, or
-    ``None`` if there is none."""
+    """Predicate of ``Q`` equivalent to an atom, or ``None`` if there is
+    none."""
     if isinstance(atom, AppliedPredicate):
         return atom
     if isinstance(atom, Contains):
         x, domain = atom.args
+        if not isinstance(x, Expr):
+            return None
         for cls, pred in _SET_PREDICATES:
             if isinstance(domain, cls):
-                return pred(as_expr(x))
+                return pred(x)
         return None
     if isinstance(atom, Relational):
         d = atom.lhs - atom.rhs
@@ -264,28 +320,28 @@ def _predicate_of_atom(atom: Boolean) -> Optional[Boolean]:
 
 def to_predicates(formula: Boolean) -> Optional[Boolean]:
     """Translate a normalized formula to an equivalent Boolean combination of
-    predicates of :mod:`sympy.assumptions`, or ``None`` if some atom has no
-    equivalent.
+    predicates of ``Q``, or ``None`` if some atom has no equivalent.
 
     Examples
     ========
 
-    >>> from sympy import S
-    >>> from sympy.abc import x, y
-    >>> from sympy_extras.assumptions import element
-    >>> from sympy_extras.assumptions.facts import to_predicates
-    >>> to_predicates((x > 0) | element(y, S.Integers))
-    Q.integer(y) | Q.positive(x)
-    >>> to_predicates(x - y >= 2)
-    Q.nonnegative(x - y - 2)
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.sets import Integers
+    >>> from sympy_extras.assumptions.facts import element, to_predicates
+    >>> x, y = symbols('x y')
+    >>> to_predicates((x > 0) | element(y, Integers)), to_predicates(x - y >= 2)
+    (Q.integer(y) | Q.positive(x), Q.nonnegative(x - y - 2))
     """
-    if isinstance(formula, (BooleanTrue, BooleanFalse)):
+    if isinstance(formula, BooleanAtom):
         return formula
     if isinstance(formula, _COMPOUND):
-        args = [to_predicates(as_boolean(arg)) for arg in formula.args]
-        if any(arg is None for arg in args):
-            return None
-        return as_boolean(formula.func(*args))
+        args: list[Boolean] = []
+        for arg in formula.args:
+            p = to_predicates(arg)
+            if p is None:
+                return None
+            args.append(p)
+        return _rebuilt(formula, args)
     return _predicate_of_atom(formula)
 
 
@@ -298,7 +354,7 @@ def _consequences(atom: Boolean) -> list[Boolean]:
         return result
     lhs, rhs = atom.lhs, atom.rhs
     if isinstance(atom, (Gt, Lt, Ge, Le)):
-        result.extend(Q.real(s) for s in free_symbols(atom))
+        result.extend(Q.real(s) for s in sorted(atom.free_symbols, key=lambda s: s.name))
     # sign conditions on the non-numeric side
     if lhs.is_number and not rhs.is_number:
         lhs, rhs = rhs, lhs
@@ -306,22 +362,22 @@ def _consequences(atom: Boolean) -> list[Boolean]:
     if rhs.is_number and not lhs.is_number and rhs.is_extended_real:
         c = rhs
         if isinstance(atom, Gt):
-            if c >= 0:
+            if _holds(ge(c, 0)):
                 result.append(Q.positive(lhs))
         elif isinstance(atom, Ge):
-            if c > 0:
+            if _holds(gt(c, 0)):
                 result.append(Q.positive(lhs))
-            elif c == 0:
+            elif _holds(eq(c, 0)):
                 result.append(Q.nonnegative(lhs))
             else:
                 result.append(Q.real(lhs))
         elif isinstance(atom, Lt):
-            if c <= 0:
+            if _holds(le(c, 0)):
                 result.append(Q.negative(lhs))
         elif isinstance(atom, Le):
-            if c < 0:
+            if _holds(lt(c, 0)):
                 result.append(Q.negative(lhs))
-            elif c == 0:
+            elif _holds(eq(c, 0)):
                 result.append(Q.nonpositive(lhs))
             else:
                 result.append(Q.real(lhs))
@@ -332,13 +388,21 @@ def _consequences(atom: Boolean) -> list[Boolean]:
                 result.append(Q.rational(lhs))
             else:
                 result.append(Q.real(lhs))
-            if c > 0:
+            if _holds(gt(c, 0)):
                 result.append(Q.positive(lhs))
-            elif c < 0:
+            elif _holds(lt(c, 0)):
                 result.append(Q.negative(lhs))
             else:
                 result.append(Q.zero(lhs))
     return result
+
+
+def _holds(b: Boolean) -> bool:
+    """The truth of a comparison of real numbers (which SymPy decides when
+    a comparison of them is used as a Python ``bool``)."""
+    if isinstance(b, BooleanAtom):
+        return bool(b)
+    raise TypeError("cannot determine truth value of Relational: %s" % (b,))
 
 
 # ---------------------------------------------------------------------------
@@ -347,18 +411,22 @@ def _consequences(atom: Boolean) -> list[Boolean]:
 def _is_polynomial(expr: Expr, symbols: set[Symbol]) -> bool:
     """Whether ``expr`` is a polynomial with rational coefficients in
     ``symbols`` (which must contain its free symbols)."""
-    if not expr.free_symbols <= symbols:
+    from sympy_extras.polys.polyerrors import BasePolynomialError
+    from sympy_extras.polys.polytools import Poly
+    free = expr.free_symbols
+    if not free <= symbols:
         return False
-    if not expr.free_symbols:
+    if not free:
         # a constant is polynomial when it is a rational number; anything
         # else without free symbols (an ``AccumBounds``, an unevaluated
         # limit) would become a generator of ``Poly`` and pass for one
         return bool(expr.is_rational)
     try:
-        p = Poly(expr, *sorted(free_symbols(expr), key=lambda s: s.name))
-    except PolynomialError:
+        p = Poly(expr, *sorted(free, key=lambda s: s.name))
+    except BasePolynomialError:
+        # not a polynomial, or coefficients outside ZZ, QQ, ZZ[a], QQ[a]
         return False
-    return p.domain.is_QQ or p.domain.is_ZZ
+    return p.domain in ('ZZ', 'QQ')
 
 
 def _relational_of_atom(atom: Boolean, real: set[Symbol]) -> Optional[Boolean]:
@@ -370,7 +438,7 @@ def _relational_of_atom(atom: Boolean, real: set[Symbol]) -> Optional[Boolean]:
         return None
     if isinstance(atom, Contains):
         x, domain = atom.args
-        if isinstance(domain, Reals) and isinstance(x, Expr) and _is_polynomial(x, real):
+        if isinstance(domain, RealsClass) and isinstance(x, Expr) and _is_polynomial(x, real):
             # a polynomial with rational coefficients in real variables;
             # (a + I*b)**2 has real variables and is not real
             return true
@@ -379,13 +447,14 @@ def _relational_of_atom(atom: Boolean, real: set[Symbol]) -> Optional[Boolean]:
         if len(atom.arguments) != 1:
             return None
         [x] = atom.arguments
-        if not _is_polynomial(x, real):
+        if not isinstance(x, Expr) or not _is_polynomial(x, real):
             return None
-        if atom.function in (Q.real, Q.complex, Q.extended_real, Q.finite):
+        p = atom.function
+        if p in _REAL_PREDICATES:
             return true
-        rel = _SIGN_PREDICATES.get(atom.function)
-        if rel is not None:
-            return rel(x, 0)
+        relation = _SIGN_PREDICATES.get(p)
+        if relation is not None:
+            return relation(x, to_expr(0))
         return None
     return None
 
@@ -399,50 +468,26 @@ def to_polynomial(formula: Boolean, real: set[Symbol]) -> Optional[Boolean]:
     Examples
     ========
 
-    >>> from sympy import Q, S
-    >>> from sympy.abc import x, y
-    >>> from sympy_extras.assumptions import element
-    >>> from sympy_extras.assumptions.facts import to_polynomial
-    >>> to_polynomial(Q.positive(x) & (x*y < 1) & element(y, S.Reals), {x, y})
+    >>> from sympy_extras.core import symbols, Q
+    >>> from sympy_extras.sets import Reals
+    >>> from sympy_extras.assumptions.facts import element, to_polynomial
+    >>> x, y = symbols('x y')
+    >>> to_polynomial(Q.positive(x) & (x*y < 1) & element(y, Reals), {x, y})
     (x > 0) & (x*y < 1)
     >>> to_polynomial(x*y < 1, {x}) is None
     True
     """
-    if isinstance(formula, (BooleanTrue, BooleanFalse)):
+    if isinstance(formula, BooleanAtom):
         return formula
     if isinstance(formula, _COMPOUND):
-        args = [to_polynomial(as_boolean(arg), real) for arg in formula.args]
-        if any(arg is None for arg in args):
-            return None
-        return as_boolean(formula.func(*args))
+        args: list[Boolean] = []
+        for arg in formula.args:
+            p = to_polynomial(arg, real)
+            if p is None:
+                return None
+            args.append(p)
+        return _rebuilt(formula, args)
     return _relational_of_atom(formula, real)
-
-
-# ---------------------------------------------------------------------------
-# Consistency of predicates
-
-def predicates_consistent(predicates: Boolean) -> bool:
-    """Whether a Boolean combination of predicates of
-    :mod:`sympy.assumptions` is consistent with the known facts about the
-    predicates (``Q.positive(x) & Q.negative(x)`` is not).
-
-    Examples
-    ========
-
-    >>> from sympy import Q
-    >>> from sympy.abc import x
-    >>> from sympy_extras.assumptions.facts import predicates_consistent
-    >>> predicates_consistent(Q.positive(x) & Q.integer(x))
-    True
-    >>> predicates_consistent(Q.positive(x) & Q.negative(x))
-    False
-    """
-    cnf = CNF.from_prop(predicates)
-    # the relevant known facts are gathered from the proposition, so the
-    # predicates are passed as such too
-    sat = get_all_relevant_facts(cnf, cnf, CNF())
-    sat.add_from_cnf(cnf)
-    return bool(_sympy_satisfiable(sat))
 
 
 # ---------------------------------------------------------------------------
@@ -458,9 +503,9 @@ class Facts:
         Assumptions written as mathematical statements, see the module
         documentation.
     domain : Set, optional
-        A named SymPy set (``S.Reals``, ``S.Integers``, ...) all the
-        variables in ``symbols`` are assumed to belong to, like the domain
-        argument of Mathematica's ``Reduce`` or ``Resolve``.
+        A named set (``Reals``, ``Integers``, ...) all the variables in
+        ``symbols`` are assumed to belong to, like the domain argument of
+        Mathematica's ``Reduce`` or ``Resolve``.
     symbols : iterable of Symbol, optional
         The variables of the expression the assumptions are used for; with
         ``domain`` they are all assumed to be in the domain.
@@ -470,9 +515,10 @@ class Facts:
 
     formula : Boolean
         The conjunction of all assumptions in normal form.
+    conjuncts : list of Boolean
+        Its conjuncts.
     predicates : Boolean
-        Consequences of the assumptions as predicates of
-        :mod:`sympy.assumptions`.
+        Consequences of the assumptions as predicates of ``Q``.
     real : set of Symbol
         The variables known to be real.
     integer : set of Symbol
@@ -482,46 +528,43 @@ class Facts:
         polynomial relations with rational coefficients between real
         variables, as used by the CAD.
 
+    The attributes are set once by the constructor and not changed.
+
     Examples
     ========
 
-    >>> from sympy import S
-    >>> from sympy.abc import x, y, z
-    >>> from sympy_extras.assumptions import element
-    >>> from sympy_extras.assumptions.facts import Facts
-    >>> f = Facts([x > 2, element(y, S.Integers), z**3 > x*y])
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.sets import Integers
+    >>> from sympy_extras.assumptions.facts import Facts, element
+    >>> x, y, z = symbols('x y z')
+    >>> f = Facts([x > 2, element(y, Integers), z**3 > x*y])
     >>> f.predicates
     Q.integer(y) & Q.positive(x) & Q.real(x) & Q.real(y) & Q.real(z) & Q.positive(x - 2) & Q.positive(-x*y + z**3)
-    >>> sorted(f.real, key=str), sorted(f.integer, key=str)
-    ([x, y, z], [y])
-    >>> f.polynomial
-    (x > 2) & (z**3 > x*y)
+    >>> f.polynomial, f
+    ((x > 2) & (z**3 > x*y), Facts(Contains(y, Integers) & (x > 2) & (z**3 > x*y)))
     """
 
-    def __init__(self, assumptions: Union[None, Boolean, bool, Iterable[Union[Boolean, bool]]] = None,
+    def __init__(self, assumptions: Union[None, Assumption, Iterable[Assumption]] = None,
                  domain: Optional[Set] = None, symbols: Iterable[Symbol] = ()) -> None:
-        items: list[Union[Boolean, bool]] = []
+        items: list[Boolean] = []
         if assumptions is not None:
             if isinstance(assumptions, (Basic, bool)):
-                items.append(assumptions)
+                items.append(to_boolean(assumptions))
             else:
-                items.extend(assumptions)
-        symbols = set(symbols)
-        self.domain: Optional[Set] = None
+                items.extend(to_boolean(a) for a in assumptions)
+        variables_given = set(symbols)
+        self.domain: Final[Optional[Set]] = domain
         if domain is not None:
-            domain = sympify(domain)
             if not isinstance(domain, Set):
-                raise TypeError("domain must be a SymPy set, got %s" % (domain,))
-            self.domain = domain
+                raise TypeError("domain must be a set, got %s" % (domain,))
             for item in items:
-                symbols |= free_symbols(sympify(item))
-            items.extend(Contains(s, domain) for s in sorted(symbols, key=lambda s: s.name))
-        self.formula: Boolean = normalize(And(*[as_boolean(a) for a in items]))
-        if self.formula is false:
+                variables_given |= item.free_symbols
+            items.extend(Contains(s, domain) for s in sorted(variables_given, key=lambda s: s.name))
+        formula = normalize(and_(*items))
+        if formula == false:
             raise ValueError("the assumptions are contradictory: %s" % (items,))
-        if not isinstance(self.formula, Boolean):
-            raise TypeError("the assumptions must be Booleans, got %s" % (items,))
-        self.conjuncts: list[Boolean] = conjuncts(self.formula)
+        self.formula: Final[Boolean] = formula
+        self.conjuncts: Final[list[Boolean]] = conjuncts(formula)
 
         # predicates implied by the assumptions
         predicates: list[Boolean] = []
@@ -531,36 +574,33 @@ class Facts:
                 predicates.append(p)
             if _is_atom(c):
                 predicates.extend(_consequences(c))
-            elif isinstance(c, Not) and _is_atom(c.args[0]):
-                pass
-        self.predicates: Boolean = And(*predicates)
+        self.predicates: Final[Boolean] = and_(*predicates)
 
         # variables known to be real or integer
-        variables = self.formula.free_symbols | symbols
-        self.real: set[Symbol] = set()
-        self.integer: set[Symbol] = set()
-        for s in variables:
-            if not isinstance(s, Symbol):
-                continue
+        real: set[Symbol] = set()
+        integer: set[Symbol] = set()
+        for s in formula.free_symbols | variables_given:
             if s.is_extended_real or self._known(Q.real(s)):
-                self.real.add(s)
+                real.add(s)
             if s.is_integer or self._known(Q.integer(s)):
-                self.integer.add(s)
+                integer.add(s)
         for c in self.conjuncts:
             if isinstance(c, (Gt, Lt, Ge, Le)):
-                self.real.update(s for s in c.free_symbols if isinstance(s, Symbol))
+                real.update(c.free_symbols)
+        self.real: Final[set[Symbol]] = real
+        self.integer: Final[set[Symbol]] = integer
 
         # the polynomial part
         polynomial: list[Boolean] = []
         for c in self.conjuncts:
-            p = to_polynomial(c, self.real)
-            if p is not None and p is not true:
+            p = to_polynomial(c, real)
+            if p is not None and p != true:
                 polynomial.append(p)
-        self.polynomial: Boolean = And(*polynomial)
+        self.polynomial: Final[Boolean] = and_(*polynomial)
 
     def _known(self, predicate: Boolean) -> bool:
         try:
-            return _sympy_ask(predicate, self.predicates) is True
+            return ask(predicate, self.predicates) is True
         except ValueError:
             return False
 
@@ -577,4 +617,4 @@ class Facts:
         extra = [s for s in symbols if s not in self.real]
         if not extra:
             return self
-        return Facts(self.conjuncts + [Contains(s, S.Reals) for s in extra])
+        return Facts(self.conjuncts + [Contains(s, Reals) for s in extra])

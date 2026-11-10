@@ -247,7 +247,7 @@ from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
-from sympy_extras.assumptions.facts import element, normalize
+from sympy_extras.assumptions.facts_sympy import element, normalize
 from sympy_extras.assumptions.solve import solve
 from sympy_extras.assumptions.refine import refine
 from sympy_extras.polys.cad.lifting import CAD, CADCell, cylindrical_algebraic_decomposition
@@ -1637,7 +1637,7 @@ def _polytope(f: Expr, formula: Boolean, names: Sequence[Symbol], assumptions: l
 
     >>> from sympy import symbols
     >>> from sympy_extras.integrals.regions import _polytope
-    >>> from sympy_extras.assumptions.facts import element, normalize
+    >>> from sympy_extras.assumptions.facts_sympy import element, normalize
     >>> x, y = symbols('x y')
     >>> _polytope(x*y, normalize((x > 0) & (y > 0) & (x + y < 1)), [x, y], [])
     1/24

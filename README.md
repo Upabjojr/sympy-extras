@@ -135,7 +135,12 @@ assumptions, and rewrite with the CAD what SymPy cannot decide.
 ```python
 >>> from sympy import S, Abs, sqrt, Eq, log
 >>> from sympy.abc import b, c, x, y, n
->>> from sympy_extras.assumptions import ask, refine, simplify, element, resolve, satisfiable, ForAll, Exists
+>>> from sympy_extras.assumptions.ask import ask
+>>> from sympy_extras.assumptions.refine import refine, simplify
+>>> from sympy_extras.assumptions.facts_sympy import element
+>>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.sat import satisfiable
+>>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 >>> ask(x**2 - 2*x + 1 >= 0, x > 0)
 True
 >>> ask(x > 1, x > 2)
@@ -339,7 +344,9 @@ parameters carrying their assumptions.
 ```python
 >>> from sympy import S, Eq, Mod, exp, sin, cos
 >>> from sympy.abc import a, b, x, y
->>> from sympy_extras.assumptions import resolve, solve, Exists, ForAll
+>>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.solve import solve
+>>> from sympy_extras.assumptions.quantifiers_sympy import Exists, ForAll
 >>> resolve(Exists(y, Eq(a*y + b, 0) & (y > 0)))
 (Eq(a, 0) & Eq(b, 0)) | ((a > 0) & (b < 0)) | ((b > 0) & (a < 0))
 >>> resolve(Exists(x, Eq(x**2 + a*x + b, 0) & Eq(2*x + a, 0)), domain=S.Complexes)
@@ -374,7 +381,7 @@ statement assumptions and case distinctions.
 >>> from sympy_extras.solvers.linear_ode import dsolve_linear
 >>> from sympy_extras.solvers.charpit import complete_integral
 >>> from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
->>> from sympy_extras.assumptions import limit
+>>> from sympy_extras.assumptions.limits import limit
 >>> x, y = symbols('x y')
 >>> f = Function('y')(x)
 >>> dsolve_kovacic(f.diff(x, 2) + f.diff(x)/x + (1 - 1/(4*x**2))*f, f)
@@ -384,10 +391,12 @@ statement assumptions and case distinctions.
 >>> u = Function('u')(x, y)
 >>> complete_integral(u.diff(x)*u.diff(y) - 1, u)
 Eq(u(x, y), a*x + b + y/a)
->>> n, k = symbols('n k', integer=True)
->>> zeilberger_sum((-1)**k*binomial(2*n, k)**3, (k, 0, 2*n))
+>>> from sympy_extras.core import Symbol as CoreSymbol
+>>> from sympy_extras.functions import binomial as core_binomial
+>>> n, k = CoreSymbol('n', integer=True), CoreSymbol('k', integer=True)
+>>> zeilberger_sum((-1)**k*core_binomial(2*n, k)**3, (k, 0, 2*n))
 (-1)**n*factorial(3*n)/factorial(n)**3
->>> wz_prove(binomial(n, k)**2, binomial(2*n, n), n, k)
+>>> wz_prove(core_binomial(n, k)**2, core_binomial(2*n, n), n, k)
 True
 >>> limit(exp(a*x), x, oo)
 Piecewise((oo, a > 0), (1, Eq(a, 0)), (0, a < 0))
@@ -503,7 +512,10 @@ decided by virtual substitution and the parity of integer polynomials in
 ```python
 >>> from sympy import cos, exp, Eq, S, Matrix, sin, mobius, Mod
 >>> from sympy.abc import x, n, p
->>> from sympy_extras.assumptions import solve, refine, limit_seq, element
+>>> from sympy_extras.assumptions.solve import solve
+>>> from sympy_extras.assumptions.refine import refine
+>>> from sympy_extras.assumptions.limits import limit_seq
+>>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.solvers.dae import dsolve_dae
 >>> from sympy_extras.concrete.convergence import sum_convergence
 >>> solve(Eq(x, cos(x)), x, domain=S.Reals)
@@ -547,7 +559,7 @@ of intervals by the cylindrical algebraic decomposition. See
 
 ```python
 >>> from sympy import symbols, exp, sin, cos, sqrt, Abs, log, oo, pi, S
->>> from sympy_extras.assumptions import element
+>>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.integrals import definite_integral, IntegralByRanges, mellin_transform
 >>> x, y, k, s = symbols('x y k s')
 >>> a, b = symbols('a b', positive=True)
@@ -963,7 +975,8 @@ sympy_extras/
         zeilberger.py        Zeilberger's algorithm, WZ certificates, definite sums
         qhyper.py            q-Pochhammer symbols, q-Gosper, q-Zeilberger
         rational.py          Abramov's decomposition of rational summands
-        zeilberger.py        Zeilberger's algorithm, WZ certificates, definite sums
+        zeilberger_sympy.py  the SymPy face of zeilberger: zeilberger_sum, wz_certificate, wz_prove
+        qhyper_sympy.py      the SymPy face of qhyper: QPochhammer as a SymPy function, qgosper_sum, qzeilberger, ...
     integrals/
         mellin.py            Mellin transforms as gamma quotients, the table of kernels
         slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem

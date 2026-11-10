@@ -50,7 +50,7 @@ from sympy_extras.settings import settings
 Engine = Callable[[Expr, Symbol], Expr]
 
 from .ask import Assumptions, _facts, _evaluate
-from .facts import Facts, normalize
+from .facts_sympy import Facts, normalize
 from .refine import _Refiner
 from .sat import satisfiable
 
@@ -179,7 +179,7 @@ def limit(expr: Union[Expr, int], x: Symbol, x0: Union[Expr, int], direction: st
 
     >>> from sympy import exp, oo, log
     >>> from sympy.abc import a, x
-    >>> from sympy_extras.assumptions import limit
+    >>> from sympy_extras.assumptions.limits import limit
     >>> limit(exp(a*x), x, oo, assumptions=a < 0)
     0
     >>> limit(exp(a*x), x, oo)
@@ -546,7 +546,7 @@ def limit_seq(expr: Union[Expr, int], n: Symbol, assumptions: Assumptions = None
 
     >>> from sympy import factorial, binomial
     >>> from sympy.abc import a, n, x
-    >>> from sympy_extras.assumptions import limit_seq
+    >>> from sympy_extras.assumptions.limits import limit_seq
     >>> limit_seq(x**n/factorial(n), n)
     0
     >>> limit_seq(a**n, n, assumptions=(a > 0) & (a < 1))
@@ -621,7 +621,7 @@ def series(expr: Union[Expr, int], x: Symbol, x0: Union[Expr, int] = 0, n: int =
 
     >>> from sympy import sqrt, log
     >>> from sympy.abc import a, x
-    >>> from sympy_extras.assumptions import series
+    >>> from sympy_extras.assumptions.limits import series
     >>> series(sqrt(a**2 + x), x, 0, 2, assumptions=a > 0)
     x/(2*a) + a + O(x**2)
     >>> series(sqrt(a**2 + x), x, 0, 2, assumptions=a < 0)

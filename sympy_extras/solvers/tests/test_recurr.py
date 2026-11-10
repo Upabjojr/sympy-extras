@@ -247,3 +247,15 @@ def test_zero_test_on_roots_of_a_cubic() -> None:
     # the zeros are still proved: the sum of the roots is 1, their product 1
     assert attempt(lambda: _is_zero(r0 + r1 + r2 - 1), 10, native=True) is True
     assert attempt(lambda: _is_zero(r0*r1*r2 - 1), 10, native=True) is True
+
+
+def test_right_hand_side_with_factorials_in_the_denominator() -> None:
+    # the bug: the equation was multiplied by the denominator of its
+    # right-hand side, factorial(n)*factorial(n + 1), and the coefficients
+    # were no rational functions any more (ValueError); the recurrence of
+    # the sums of binomial(2n, k) up to n (1, 3, 11, 42, 163, ...)
+    S = Function('S')
+    rhs = factorial(2*n)/(factorial(n)*factorial(n + 1))
+    solution = rsolve_linear(S(n + 1) - 4*S(n) + rhs, S(n), {S(Integer(0)): 1})
+    assert solution is not None
+    assert [solution.subs(n, Integer(i)).doit() for i in range(5)] == [1, 3, 11, 42, 163]

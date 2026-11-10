@@ -150,10 +150,15 @@ module into SymPy later.
 ```
 sympy_extras/
     __init__.py              __version__
-    assumptions/             assumptions written as mathematical statements
-        facts.py             element(), normalize(), Facts: translation to predicates and polynomial relations
-        quantifiers.py       ForAll, Exists, prenex()
-        context.py           assuming(), global_assumptions
+    assumptions/             assumptions written as mathematical statements (exports nothing: import the modules)
+        facts.py             element(), normalize(), Facts: translation to predicates and polynomial relations (native)
+        facts_sympy.py       the SymPy face of facts, and predicates_consistent (SymPy's SAT on its known facts)
+        quantifiers.py       ForAll, Exists (nodes), forall, exists, prenex() (native)
+        quantifiers_sympy.py the SymPy face: ForAll, Exists as SymPy Booleans (interop converts), prenex
+        context.py           assuming(), global_assumptions (native)
+        context_sympy.py     the SymPy face: the same global_assumptions, assuming() pushing to SymPy's
+        bounds.py            polynomial_abstraction: MetiTarski bounds of elementary functions (native)
+        bounds_sympy.py      the SymPy face of bounds
         ask.py               ask(): sympy.ask first, then the CAD
         refine.py            refine(), simplify(): sympy.refine plus CAD-decided handlers
         resolve.py           resolve(): quantifier elimination through the CAD
@@ -200,6 +205,10 @@ sympy_extras/
         karr_sympy.py        the SymPy face of karr: karr_sum, karr_term, summation, with_sum_special_values, reliable_value_of_core
         creative.py          creative telescoping in PiSigma-fields: creative_telescoping, definite_sum (native)
         guess.py             guess_recurrence, guess_differential_equation, guess_algebraic_equation, guess_closed_form: equations from the first terms (native)
+        zeilberger.py        Zeilberger's algorithm, WZ certificates, zeilberger_sum (native)
+        zeilberger_sympy.py  the SymPy face of zeilberger: zeilberger_sum, wz_certificate, wz_prove
+        qhyper.py            q-Pochhammer symbols (QPochhammer node, qpochhammer), q-Gosper, q-Zeilberger (native)
+        qhyper_sympy.py      the SymPy face of qhyper: QPochhammer as a SymPy function, qgosper_sum, qzeilberger, ...
         tests/
     integrals/               definite integration extending sympy.integrals
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels
@@ -241,7 +250,7 @@ sympy_extras/
         tests/
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
     series/                  residue (ported from SymPy)
-    sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains (ported from SymPy)
+    sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains; Naturals, Naturals0, Integers, Rationals, Complexes (fancysets.py) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)
     polys/
         domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, AlgebraicField, PolynomialRing, FractionField, SparsePolynomialRing with SymPy's PolyElement gcd, RationalPolynomialRing, IteratedPolynomialRing for dmp_rr_prs_gcd); see docs/dense.md
