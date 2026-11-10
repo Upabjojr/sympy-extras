@@ -879,6 +879,7 @@ sympy_extras/
         special.py           Bessel, Whittaker, hypergeometric solutions
         linear_systems.py    systems Y' = A Y + b: cyclic vectors, rational solutions, variation of constants
         first_order.py       Abel, Chini, d'Alembert-Lagrange equations
+        exponential_diophantine.py  Pillai's equation a**x - b**y = c (Baker–Wüstholz, continued fractions), integer zeros of exponential polynomials (native)
         recurr.py            linear recurrences: polynomial, hypergeometric (Petkovšek), d'Alembertian (Abramov–Petkovšek) solutions (native)
         charpit.py           complete integrals of first order PDEs
         kovacic.py           Kovacic's algorithm (Liouvillian solutions of second order linear ODEs)

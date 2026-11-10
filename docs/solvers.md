@@ -587,6 +587,50 @@ three of their generating function. A guess is a conjecture which holds
 on the terms given: a few exceptions to a pattern are absorbed by a
 coefficient vanishing at them, and more terms settle such a case.
 
+## Exponential Diophantine equations
+
+`sympy_extras.solvers.exponential_diophantine` solves two families
+completely, with a proof that nothing is missed.
+
+`pillai(a, b, c)` returns all the non-negative integers `x, y` with
+`a**x - b**y = c` (`a, b >= 2`, `c != 0`). For multiplicatively
+dependent bases the equation is `g**u - g**v = c` and the smaller power
+divides `c`. Otherwise `Lambda = x log a - y log b = log(1 + c/b**y)` is
+a non-zero linear form in two logarithms with `|Lambda| <= 2 |c|/b**y`,
+and the theorem of Baker and Wüstholz bounds `y` (by about `10**11`);
+the continued fraction of `log b/log a` reduces the bound: a solution
+beyond a few dozen would make `x/y` a convergent approximating too well
+for the partial quotients met below the Baker bound. The rest is
+searched with exact integers.
+
+`exponential_polynomial_roots(terms)` returns all the integers `n` with
+`sum p_i(n) a_i**n = 0` (rational polynomials, positive rational bases):
+beyond a bound which is logarithmic in the coefficients the term of the
+largest base dominates wherever its polynomial does not vanish, and the
+zeros beyond it are the common zeros of that polynomial and of the sum
+of the other terms, found recursively; negative `n` by the mirrored sum.
+
+```python
+>>> from fractions import Fraction
+>>> from sympy_extras.solvers.exponential_diophantine import pillai, exponential_polynomial_roots
+>>> pillai(3, 2, 1)
+[(1, 1), (2, 3)]
+>>> pillai(2, 3, 13)
+[(4, 1), (8, 5)]
+>>> pillai(13, 3, 10)
+[(1, 1), (3, 7)]
+>>> one = [Fraction(1)]
+>>> exponential_polynomial_roots([(one, Fraction(3)), (one, Fraction(4)), ([Fraction(-1)], Fraction(5))])    # 3**n + 4**n = 5**n
+[2]
+>>> exponential_polynomial_roots([(one, Fraction(2)), ([Fraction(-1), Fraction(0), Fraction(0)], Fraction(1))])   # 2**n = n**2
+[2, 4]
+
+```
+
+Not covered: coefficients (`r a**x - s b**y = c`, a linear form in three
+logarithms, which needs the LLL reduction of `polys.lattice`), more than
+two exponentials (S-unit equations), unknown bases.
+
 ## Darboux polynomials and the Prelle–Singer procedure
 
 `sympy_extras.solvers.darboux` solves `y' = P(x, y)/Q(x, y)` with
