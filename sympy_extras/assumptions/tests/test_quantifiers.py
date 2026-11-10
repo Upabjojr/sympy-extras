@@ -92,9 +92,9 @@ def test_prenex() -> None:
 
 def test_native_quantifiers() -> None:
     # the nodes of the core: unevaluating classes, evaluating functions
-    from sympy_extras.core import symbols as csymbols, Dummy as CDummy, true as ctrue, And as CAnd, Not as CNot
+    from sympy_extras.core import Symbol as CSymbol, Dummy as CDummy, true as ctrue, And as CAnd, Not as CNot
     from sympy_extras.assumptions import quantifiers as nq
-    a, b, c = csymbols('x y z')
+    a, b, c = CSymbol('x'), CSymbol('y'), CSymbol('z')
     f = nq.ForAll(a, a > b)
     assert isinstance(f, nq.Quantifier) and f.quantifier == 'forall'
     assert f.variables == (a,) and f.formula == (a > b) and f.free_symbols == {b} and f.bound_symbols == (a,)

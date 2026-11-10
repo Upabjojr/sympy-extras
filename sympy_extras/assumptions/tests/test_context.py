@@ -77,9 +77,9 @@ def test_assuming() -> None:
 
 
 def test_native_context() -> None:
-    from sympy_extras.core import symbols, Q, ask as core_ask, global_assumptions as core_global_assumptions
+    from sympy_extras.core import Symbol, Q, ask as core_ask, global_assumptions as core_global_assumptions
     from sympy_extras.assumptions import context as nc
-    a, b = symbols('x y')
+    a, b = Symbol('x'), Symbol('y')
     c = nc.AssumptionsContext([a > 0, b > 0, a > 0])
     assert len(c) == 2 and (a > 0) in c and list(c) == [a > 0, b > 0]
     c.remove(b > 0, a > 5)

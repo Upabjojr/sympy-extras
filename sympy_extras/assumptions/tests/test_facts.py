@@ -212,11 +212,12 @@ def test_real_variables_do_not_make_a_complex_expression_real() -> None:
 
 
 def test_native_facts() -> None:
-    from sympy_extras.core import symbols, Q as CQ, Symbol as CSymbol, Rational as CRational, Eq as CEq, true as ctrue
+    from sympy_extras.core import Q as CQ, Symbol as CSymbol, Rational as CRational, Eq as CEq, true as ctrue
     from sympy_extras.sets import Integers as CIntegers, Naturals as CNaturals, Reals as CReals, interval, finite_set
     from sympy_extras.assumptions import facts as nf
-    a, b, c, d = symbols('x y z a')
-    assert nf.element(a, CIntegers) == nf.Contains(a, CIntegers)
+    from sympy_extras.sets.sets import Contains as CContains
+    a, b, c, d = CSymbol('x'), CSymbol('y'), CSymbol('z'), CSymbol('a')
+    assert nf.element(a, CIntegers) == CContains(a, CIntegers)
     assert nf.element(2, CIntegers) == ctrue and nf.element(CRational(1, 2), CIntegers) == False
     raises(TypeError, lambda: untyped(nf.element)(a, 3))
     assert nf.normalize(nf.element(a, interval(0, 1))) == ((a >= 0) & (a <= 1))
