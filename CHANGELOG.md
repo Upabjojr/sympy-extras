@@ -446,6 +446,47 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- **Breaking:** `sympy_extras.assumptions` exports nothing any more, like
+  `concrete`, `simplify` and `solvers`: import the functions from their
+  modules (`from sympy_extras.assumptions.ask import ask`; `refine` and
+  `simplify` from `.refine`, `resolve` from `.resolve`, `satisfiable`,
+  `tautology`, `find_instance` from `.sat`, `solve` from `.solve`,
+  `limit`, `limit_seq`, `series` from `.limits`, `element` and `Facts`
+  from `.facts_sympy`, `ForAll`, `Exists`, `Quantifier`, `prenex` from
+  `.quantifiers_sympy`, `global_assumptions`, `assuming`,
+  `AssumptionsContext` from `.context_sympy`), so that importing the
+  native leaves does not load the modules still written on SymPy.
+- The leaves of `sympy_extras.assumptions` are native (**breaking**: core
+  expressions and Booleans in and out of `assumptions.facts`,
+  `assumptions.quantifiers`, `assumptions.bounds` and
+  `assumptions.context`, which import no SymPy). `ForAll` and `Exists`
+  are Boolean nodes of the core which never evaluate, `forall` and
+  `exists` the functions which do (the formula for a constant one or
+  one without the variables, the absent variables dropped); `prenex`,
+  `element`, `normalize`, `conjuncts`, `to_predicates`, `to_polynomial`,
+  `Facts` (immutable: its attributes are `Final`, and it asks the core's
+  `ask`), `polynomial_abstraction` (MetiTarski bounds), the native
+  `global_assumptions` and an `assuming` that pushes the predicates to the
+  core's global assumptions. The SymPy faces `facts_sympy`,
+  `quantifiers_sympy`, `bounds_sympy` and `context_sympy` take and
+  return SymPy objects, converted by `sympy_extras.interop` around the
+  native functions; `ForAll`/`Exists` of the face are SymPy Booleans which
+  `interop` converts to and from the nodes, the face's
+  `global_assumptions` is the native collection seen with SymPy objects,
+  and `predicates_consistent` stays on SymPy (SymPy's SAT solver on its
+  known facts of the predicates). The upper modules (`ask`, `refine`,
+  `resolve`, `sat`, `limits`, `solve`, `analysis`, `intervals`), the
+  integrals and the docs use the faces. The same printed results as
+  before on 159 compared calls through the faces, and through the
+  native functions with the inputs converted (the native `element` and
+  `predicates_consistent` excepted: the first takes only the sets of
+  `sympy_extras.sets`, the second is not native).
+- `sympy_extras.sets.fancysets`: `Naturals`, `Naturals0`, `Integers`,
+  `Rationals` and `Complexes` on the core (memberships as SymPy's,
+  `Complexes` by `is_complex`), converted to and from SymPy's by
+  `interop`. `interop.SymPyBooleanNode` wraps the Booleans of SymPy with
+  no class here (`Contains(x, ProductSet(...))`), which were wrapped as
+  non-Boolean nodes before.
 - `sympy_extras.concrete.qhyper` is native (breaking: core expressions in
   and out): `QPochhammer` is a node of the core which never evaluates,
   `qpochhammer` the function which does (`QPochhammer(a, q, 2)` was the

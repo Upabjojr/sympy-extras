@@ -39,7 +39,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 
 from .ask import Assumptions, _facts, _evaluate
-from .facts import Facts, normalize, conjuncts, to_polynomial
+from .facts_sympy import Facts, normalize, conjuncts, to_polynomial
 from .refine import _Refiner
 from .analysis import domain_of, certified_sign, _pieces
 
@@ -857,7 +857,8 @@ def solve(equations: Union[Statement, Sequence[Statement]],
 
     >>> from sympy import S, Eq, sqrt, sin, exp
     >>> from sympy.abc import x, y, a
-    >>> from sympy_extras.assumptions import solve, element
+    >>> from sympy_extras.assumptions.solve import solve
+    >>> from sympy_extras.assumptions.facts_sympy import element
     >>> solve(x**2 - 2, x, x > 0)
     {sqrt(2)}
     >>> solve(x**2 - 2, x)

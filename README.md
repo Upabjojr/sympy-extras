@@ -135,7 +135,12 @@ assumptions, and rewrite with the CAD what SymPy cannot decide.
 ```python
 >>> from sympy import S, Abs, sqrt, Eq, log
 >>> from sympy.abc import b, c, x, y, n
->>> from sympy_extras.assumptions import ask, refine, simplify, element, resolve, satisfiable, ForAll, Exists
+>>> from sympy_extras.assumptions.ask import ask
+>>> from sympy_extras.assumptions.refine import refine, simplify
+>>> from sympy_extras.assumptions.facts_sympy import element
+>>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.sat import satisfiable
+>>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 >>> ask(x**2 - 2*x + 1 >= 0, x > 0)
 True
 >>> ask(x > 1, x > 2)
@@ -339,7 +344,9 @@ parameters carrying their assumptions.
 ```python
 >>> from sympy import S, Eq, Mod, exp, sin, cos
 >>> from sympy.abc import a, b, x, y
->>> from sympy_extras.assumptions import resolve, solve, Exists, ForAll
+>>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.solve import solve
+>>> from sympy_extras.assumptions.quantifiers_sympy import Exists, ForAll
 >>> resolve(Exists(y, Eq(a*y + b, 0) & (y > 0)))
 (Eq(a, 0) & Eq(b, 0)) | ((a > 0) & (b < 0)) | ((b > 0) & (a < 0))
 >>> resolve(Exists(x, Eq(x**2 + a*x + b, 0) & Eq(2*x + a, 0)), domain=S.Complexes)
@@ -374,7 +381,7 @@ statement assumptions and case distinctions.
 >>> from sympy_extras.solvers.linear_ode import dsolve_linear
 >>> from sympy_extras.solvers.charpit import complete_integral
 >>> from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
->>> from sympy_extras.assumptions import limit
+>>> from sympy_extras.assumptions.limits import limit
 >>> x, y = symbols('x y')
 >>> f = Function('y')(x)
 >>> dsolve_kovacic(f.diff(x, 2) + f.diff(x)/x + (1 - 1/(4*x**2))*f, f)
@@ -505,7 +512,10 @@ decided by virtual substitution and the parity of integer polynomials in
 ```python
 >>> from sympy import cos, exp, Eq, S, Matrix, sin, mobius, Mod
 >>> from sympy.abc import x, n, p
->>> from sympy_extras.assumptions import solve, refine, limit_seq, element
+>>> from sympy_extras.assumptions.solve import solve
+>>> from sympy_extras.assumptions.refine import refine
+>>> from sympy_extras.assumptions.limits import limit_seq
+>>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.solvers.dae import dsolve_dae
 >>> from sympy_extras.concrete.convergence import sum_convergence
 >>> solve(Eq(x, cos(x)), x, domain=S.Reals)
@@ -549,7 +559,7 @@ of intervals by the cylindrical algebraic decomposition. See
 
 ```python
 >>> from sympy import symbols, exp, sin, cos, sqrt, Abs, log, oo, pi, S
->>> from sympy_extras.assumptions import element
+>>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.integrals import definite_integral, IntegralByRanges, mellin_transform
 >>> x, y, k, s = symbols('x y k s')
 >>> a, b = symbols('a b', positive=True)

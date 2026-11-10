@@ -128,7 +128,7 @@ from sympy.polys.polytools import cancel
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask import Assumptions, ask
-from sympy_extras.assumptions.facts import element
+from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.concrete.convergence import sum_convergence
 from sympy_extras.concrete.eulersums import polygamma_series
 from sympy_extras.concrete.zeilberger_sympy import zeilberger_sum

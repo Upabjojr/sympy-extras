@@ -4,10 +4,13 @@ from sympy import (S, sin, cos, exp, log, sqrt, pi, E, Abs, Interval, Union, Rat
     Eq, Ne, atan, tanh, Max, Piecewise)
 from sympy.abc import x, y
 
-from sympy_extras.assumptions import ask, refine, simplify, element, solve
+from sympy_extras.assumptions.ask import ask
+from sympy_extras.assumptions.refine import refine, simplify
+from sympy_extras.assumptions.facts_sympy import element
+from sympy_extras.assumptions.solve import solve
 from sympy_extras.assumptions.analysis import (certified_sign, domain_of, sign_on,
     decide_relational)
-from sympy_extras.assumptions.facts import Facts
+from sympy_extras.assumptions.facts_sympy import Facts
 from sympy_extras.settings import settings, configure
 
 

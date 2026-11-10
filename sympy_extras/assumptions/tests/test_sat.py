@@ -10,8 +10,9 @@ from sympy.abc import x, y, z
 
 from sympy_extras.assumptions.sat import Model, Witness
 
-from sympy_extras.assumptions import (satisfiable, tautology, find_instance,
-    element, ForAll, Exists)
+from sympy_extras.assumptions.sat import satisfiable, tautology, find_instance
+from sympy_extras.assumptions.facts_sympy import element
+from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 
 p, q, r = symbols('p q r')
 

@@ -5,7 +5,8 @@ from sympy import (S, Eq, sqrt, exp, log, sin, cos, acos, pi, Interval, Union, F
 from sympy.abc import x, y, a, n
 from sympy.testing.pytest import raises
 
-from sympy_extras.assumptions import solve, element
+from sympy_extras.assumptions.solve import solve
+from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras._testing import untyped
 from sympy_extras._typing import as_expr
 

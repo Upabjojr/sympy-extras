@@ -26,7 +26,7 @@ from sympy.logic.boolalg import Boolean
 
 from sympy_extras._typing import as_boolean, as_expr
 
-from sympy_extras.assumptions import solve
+from sympy_extras.assumptions.solve import solve
 
 x = Symbol('x')
 

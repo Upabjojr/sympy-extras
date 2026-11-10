@@ -1,5 +1,5 @@
 """Polynomial bounds of elementary functions, handed to the cylindrical
-algebraic decomposition (the method of MetiTarski).
+algebraic decomposition (the method of MetiTarski), on the core.
 
 A relation containing ``exp``, ``log``, ``sin``, ``cos``, ``atan``,
 ``sinh``, ``cosh``, ``tanh``, square roots, rational powers or absolute
@@ -14,6 +14,10 @@ bounds are the classical Taylor and Padé inequalities; they are tight
 enough for statements with some slack, never for statements which are
 tight at a point.
 
+This module imports no SymPy: it takes and returns the expressions of
+:mod:`sympy_extras.core` (and the functions of :mod:`sympy_extras.functions`);
+:mod:`sympy_extras.assumptions.bounds_sympy` is its SymPy face.
+
 References
 ==========
 
@@ -23,22 +27,20 @@ References
 """
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Callable, Final, Optional
 
-from sympy.core.basic import Basic
-from sympy.core.expr import Expr
-from sympy.core.numbers import Rational
-from sympy.core.power import Pow
-from sympy.core.relational import Relational, Eq
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.complexes import Abs
-from sympy.functions.elementary.exponential import exp, log
-from sympy.functions.elementary.hyperbolic import sinh, cosh, tanh
-from sympy.functions.elementary.trigonometric import sin, cos, atan
-from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or, Not,
-    Implies, Equivalent, Xor, ITE)
-
-from sympy_extras._typing import as_boolean, as_expr, free_symbols
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.logic import (ITE, And, Boolean, BooleanAtom, Equivalent, Implies, Not, Or, Xor, and_,
+    implies, or_, to_boolean)
+from sympy_extras.core.numbers import Rational
+from sympy_extras.core.power import Pow
+from sympy_extras.core.relational import Relational, eq
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.complexes import Abs
+from sympy_extras.functions.elementary.exponential import Exp, Log
+from sympy_extras.functions.elementary.hyperbolic import Cosh, Sinh, Tanh
+from sympy_extras.functions.elementary.trigonometric import Atan, Cos, Sin
 
 __all__ = ['polynomial_abstraction', 'Abstraction']
 
@@ -48,25 +50,25 @@ BoundRule = Callable[[Symbol, Expr], list[Boolean]]
 
 def _exp_bounds(t: Symbol, u: Expr) -> list[Boolean]:
     return [t > 0, t >= 1 + u,
-            Implies(u >= 0, t >= 1 + u + u**2/2 + u**3/6 + u**4/24),
-            Implies(u <= 0, t <= 1 + u + u**2/2),
-            Implies(u < 1, t*(1 - u) <= 1),
-            Implies(And(u >= 0, u <= 1), t <= 1 + u + u**2/2 + u**3/6 + u**4/8)]
+            implies(u >= 0, t >= 1 + u + u**2/2 + u**3/6 + u**4/24),
+            implies(u <= 0, t <= 1 + u + u**2/2),
+            implies(u < 1, t*(1 - u) <= 1),
+            implies(and_(u >= 0, u <= 1), t <= 1 + u + u**2/2 + u**3/6 + u**4/8)]
 
 
 def _log_bounds(t: Symbol, u: Expr) -> list[Boolean]:
     # valid for u > 0, which the reality of log(u) requires
     return [u > 0, t <= u - 1, u*t >= u - 1,
-            Implies(u >= 1, t*(u + 1) >= 2*(u - 1)),
-            Implies(u <= 1, t*(u + 1) <= 2*(u - 1))]
+            implies(u >= 1, t*(u + 1) >= 2*(u - 1)),
+            implies(u <= 1, t*(u + 1) <= 2*(u - 1))]
 
 
 def _sin_bounds(t: Symbol, u: Expr) -> list[Boolean]:
     return [t >= -1, t <= 1,
-            Implies(u >= 0, t <= u), Implies(u <= 0, t >= u),
-            Implies(u >= 0, t >= u - u**3/6), Implies(u <= 0, t <= u - u**3/6),
-            Implies(u >= 0, t <= u - u**3/6 + u**5/120),
-            Implies(u <= 0, t >= u - u**3/6 + u**5/120)]
+            implies(u >= 0, t <= u), implies(u <= 0, t >= u),
+            implies(u >= 0, t >= u - u**3/6), implies(u <= 0, t <= u - u**3/6),
+            implies(u >= 0, t <= u - u**3/6 + u**5/120),
+            implies(u <= 0, t >= u - u**3/6 + u**5/120)]
 
 
 def _cos_bounds(t: Symbol, u: Expr) -> list[Boolean]:
@@ -75,29 +77,36 @@ def _cos_bounds(t: Symbol, u: Expr) -> list[Boolean]:
 
 def _atan_bounds(t: Symbol, u: Expr) -> list[Boolean]:
     return [t > -Rational(8, 5), t < Rational(8, 5),
-            Implies(u >= 0, And(t >= 0, t <= u, t >= u - u**3/3, t*(1 + u**2) >= u)),
-            Implies(u <= 0, And(t <= 0, t >= u, t <= u - u**3/3, t*(1 + u**2) <= u))]
+            implies(u >= 0, and_(t >= 0, t <= u, t >= u - u**3/3, t*(1 + u**2) >= u)),
+            implies(u <= 0, and_(t <= 0, t >= u, t <= u - u**3/3, t*(1 + u**2) <= u))]
 
 
 def _tanh_bounds(t: Symbol, u: Expr) -> list[Boolean]:
     return [t > -1, t < 1,
-            Implies(u >= 0, And(t >= 0, t <= u, t >= u - u**3/3)),
-            Implies(u <= 0, And(t <= 0, t >= u, t <= u - u**3/3))]
+            implies(u >= 0, and_(t >= 0, t <= u, t >= u - u**3/3)),
+            implies(u <= 0, and_(t <= 0, t >= u, t <= u - u**3/3))]
 
 
 def _sinh_bounds(t: Symbol, u: Expr) -> list[Boolean]:
-    return [Implies(u >= 0, And(t >= u, t >= u + u**3/6)),
-            Implies(u <= 0, And(t <= u, t <= u + u**3/6))]
+    return [implies(u >= 0, and_(t >= u, t >= u + u**3/6)),
+            implies(u <= 0, and_(t <= u, t <= u + u**3/6))]
 
 
 def _cosh_bounds(t: Symbol, u: Expr) -> list[Boolean]:
     return [t >= 1, t >= 1 + u**2/2]
 
 
-_RULES: dict[type, BoundRule] = {
-    exp: _exp_bounds, log: _log_bounds, sin: _sin_bounds, cos: _cos_bounds,
-    atan: _atan_bounds, tanh: _tanh_bounds, sinh: _sinh_bounds, cosh: _cosh_bounds,
-}
+_RULES: Final[list[tuple[type[Expr], BoundRule]]] = [
+    (Exp, _exp_bounds), (Log, _log_bounds), (Sin, _sin_bounds), (Cos, _cos_bounds),
+    (Atan, _atan_bounds), (Tanh, _tanh_bounds), (Sinh, _sinh_bounds), (Cosh, _cosh_bounds),
+]
+
+
+def _rule(e: Expr) -> Optional[BoundRule]:
+    for cls, rule in _RULES:
+        if type(e) is cls:
+            return rule
+    return None
 
 
 class Abstraction:
@@ -120,24 +129,26 @@ class Abstraction:
         they allow.
     """
 
+    __slots__ = ('formula', 'constraints', 'variables', 'requirements')
+
     def __init__(self, formula: Boolean, constraints: list[Boolean], variables: list[Symbol],
                  requirements: Optional[list[Boolean]] = None) -> None:
-        self.formula = formula
-        self.constraints = constraints
-        self.variables = variables
-        self.requirements = list(requirements or [])
+        self.formula: Final[Boolean] = formula
+        self.constraints: Final[list[Boolean]] = list(constraints)
+        self.variables: Final[list[Symbol]] = list(variables)
+        self.requirements: Final[list[Boolean]] = list(requirements or [])
 
     def __repr__(self) -> str:
-        return "Abstraction(%s, %s)" % (self.formula, self.constraints)
+        return "Abstraction(%s, [%s])" % (self.formula, ", ".join(str(c) for c in self.constraints))
 
 
 class _Abstractor:
     def __init__(self, real: set[Symbol]) -> None:
-        self.real = real
-        self.constraints: list[Boolean] = []
-        self.requirements: list[Boolean] = []
-        self.variables: list[Symbol] = []
-        self.known: dict[Expr, Symbol] = {}
+        self.real: Final[set[Symbol]] = real
+        self.constraints: Final[list[Boolean]] = []
+        self.requirements: Final[list[Boolean]] = []
+        self.variables: Final[list[Symbol]] = []
+        self.known: Final[dict[Expr, Symbol]] = {}
 
     def _fresh(self, name: str) -> Symbol:
         t = Dummy(name, real=True)
@@ -145,37 +156,53 @@ class _Abstractor:
         return t
 
     def _polynomial(self, e: Expr) -> bool:
-        symbols = free_symbols(e)
-        return symbols <= (self.real | set(self.variables)) and e.is_polynomial(*symbols) and \
-            all(c.is_rational for c in e.as_poly(*symbols).coeffs()) if symbols else e.is_rational is True
+        from sympy_extras.polys.polyerrors import BasePolynomialError
+        from sympy_extras.polys.polytools import Poly
+        symbols = e.free_symbols
+        if not symbols:
+            return e.is_rational is True
+        if not (symbols <= (self.real | set(self.variables))):
+            return False
+        ordered = sorted(symbols, key=lambda s: s.sort_key())
+        if not e.is_polynomial(*ordered):
+            return False
+        try:
+            p = Poly(e, *ordered)
+        except BasePolynomialError:
+            return False
+        return all(c.is_rational for c in p.coeffs())
 
     def expression(self, e: Expr) -> Optional[Expr]:
         """``e`` with its function applications replaced, bottom-up."""
         if e in self.known:
             return self.known[e]
-        if isinstance(e, tuple(_RULES)) or isinstance(e, Abs):
-            inner = self.expression(as_expr(e.args[0]))
+        rule = _rule(e)
+        if rule is not None or isinstance(e, Abs):
+            argument = e.args[0]
+            if not isinstance(argument, Expr):
+                return None
+            inner = self.expression(argument)
             if inner is None or not self._polynomial(inner):
                 return None
             t = self._fresh('t')
-            if isinstance(e, Abs):
-                self.constraints.extend([t >= 0, Or(Eq(t, inner), Eq(t, -inner))])
+            if rule is None:
+                self.constraints.extend([t >= 0, or_(eq(t, inner), eq(t, -inner))])
             else:
-                if isinstance(e, log):
-                    self.requirements.append(as_boolean(inner > 0))
-                self.constraints.extend(_RULES[type(e)](t, inner))
+                if isinstance(e, Log):
+                    self.requirements.append(inner > 0)
+                self.constraints.extend(rule(t, inner))
             self.known[e] = t
             return t
         if isinstance(e, Pow) and isinstance(e.exp, Rational) and not e.exp.is_integer:
-            inner = self.expression(as_expr(e.base))
+            inner = self.expression(e.base)
             if inner is None or not self._polynomial(inner):
                 return None
-            p, q = int(e.exp.p), int(e.exp.q)
+            p, q = e.exp.p, e.exp.q
             t = self._fresh('t')
             # a real root of a nonnegative base (the reality of the power)
-            self.requirements.append(as_boolean(inner >= 0 if p > 0 else inner > 0))
-            self.constraints.extend([inner >= 0, t >= 0, Eq(t**q, inner**p)] if p > 0
-                                    else [inner > 0, t > 0, Eq(t**q*inner**(-p), 1)])
+            self.requirements.append(inner >= 0 if p > 0 else inner > 0)
+            self.constraints.extend([inner >= 0, t >= 0, eq(t**q, inner**p)] if p > 0
+                                    else [inner > 0, t > 0, eq(t**q*inner**(-p), 1)])
             self.known[e] = t
             return t
         if e.args and not isinstance(e, Symbol):
@@ -190,24 +217,27 @@ class _Abstractor:
                     new_args.append(b)
                 else:
                     new_args.append(a)
-            return as_expr(e.func(*new_args)) if changed else e
+            if not changed:
+                return e
+            rebuilt = e._evaluated(tuple(new_args))
+            return rebuilt if isinstance(rebuilt, Expr) else None
         return e
 
     def formula(self, f: Boolean) -> Optional[Boolean]:
         if isinstance(f, Relational):
-            lhs, rhs = self.expression(as_expr(f.lhs)), self.expression(as_expr(f.rhs))
+            lhs, rhs = self.expression(f.lhs), self.expression(f.rhs)
             if lhs is None or rhs is None:
                 return None
-            return as_boolean(f.func(lhs, rhs))
+            return to_boolean(f._evaluated((lhs, rhs)))
         if isinstance(f, (And, Or, Not, Implies, Equivalent, Xor, ITE)):
             parts: list[Boolean] = []
             for a in f.args:
-                b = self.formula(as_boolean(a))
+                b = self.formula(a)
                 if b is None:
                     return None
                 parts.append(b)
-            return as_boolean(f.func(*parts))
-        if isinstance(f, (BooleanTrue, BooleanFalse)):
+            return to_boolean(f._evaluated(tuple(parts)))
+        if isinstance(f, BooleanAtom):
             return f
         # memberships and predicates are not polynomial statements
         return None
@@ -220,9 +250,10 @@ def polynomial_abstraction(formula: Boolean, real: set[Symbol], max_variables: i
     Examples
     ========
 
-    >>> from sympy import exp, sqrt
-    >>> from sympy.abc import x
+    >>> from sympy_extras.core import Symbol, sqrt
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.assumptions.bounds import polynomial_abstraction
+    >>> x = Symbol('x')
     >>> a = polynomial_abstraction(exp(x) > 1 + x, {x})
     >>> a.formula, len(a.constraints)
     (_t > x + 1, 6)

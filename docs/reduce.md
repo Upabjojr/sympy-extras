@@ -82,7 +82,8 @@ space is needed, so parameters do not slow it down.
 
 ```python
 >>> from sympy import Eq, symbols
->>> from sympy_extras.assumptions import resolve, Exists, ForAll
+>>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.quantifiers_sympy import Exists, ForAll
 >>> from sympy_extras.polys.virtual_substitution import eliminate_linear
 >>> a, b, x, y, z = symbols('a b x y z')
 >>> eliminate_linear((x > y) & (x < 1), x)
@@ -144,7 +145,7 @@ False
 
 ```python
 >>> from sympy import Mod
->>> from sympy_extras.assumptions import solve
+>>> from sympy_extras.assumptions.solve import solve
 >>> from sympy_extras.solvers.integers import linear_diophantine_system, minimal_nonnegative_solutions, cooper
 >>> linear_diophantine_system([Eq(3*x + 5*y, 7)], [x, y])
 ([14 - 5*t0, 3*t0 - 7], [t0])
@@ -266,7 +267,7 @@ parameters like `limit`.
 >>> from sympy.abc import n, p
 >>> from sympy_extras.concrete.convergence import sum_convergence, product_convergence
 >>> from sympy_extras.concrete.dirichlet import dirichlet_series
->>> from sympy_extras.assumptions import limit_seq
+>>> from sympy_extras.assumptions.limits import limit_seq
 >>> sum_convergence(x**n/n, n)
 (x >= -1) & (x < 1)
 >>> sum_convergence(1/n**p, n)

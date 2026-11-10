@@ -8,8 +8,8 @@ from sympy.testing.pytest import raises
 from sympy_extras._testing import untyped
 from sympy.abc import x, y, z
 
-from sympy_extras.assumptions import element, Facts
-from sympy_extras.assumptions.facts import (normalize, conjuncts, to_predicates,
+from sympy_extras.assumptions.facts_sympy import element, Facts
+from sympy_extras.assumptions.facts_sympy import (normalize, conjuncts, to_predicates,
     to_polynomial, predicates_consistent, _is_polynomial)
 
 
@@ -202,10 +202,41 @@ def test_real_variables_do_not_make_a_complex_expression_real() -> None:
     # real is not real, and the argument condition of a Mellin kernel
     # with the complex scale (a + I b)**2 was rewritten as (a + I b)**2 > 0
     from sympy import I
-    from sympy_extras.assumptions import ask
+    from sympy_extras.assumptions.ask import ask
     a, b = Symbol('a', positive=True), Symbol('b', positive=True)
     assert ask(Contains((a + I * b)**2, S.Reals)) is None
     assert ask(Contains(a + I * b, S.Reals)) is False
     assert ask(Contains(a * b - 3, S.Reals)) is True
     assert to_polynomial(Contains(x**2 + I, S.Reals), {x}) is None
     assert to_polynomial(Contains(x**2 + 1, S.Reals), {x}) is true
+
+
+def test_native_facts() -> None:
+    from sympy_extras.core import symbols, Q as CQ, Symbol as CSymbol, Rational as CRational, Eq as CEq, true as ctrue
+    from sympy_extras.sets import Integers as CIntegers, Naturals as CNaturals, Reals as CReals, interval, finite_set
+    from sympy_extras.assumptions import facts as nf
+    a, b, c, d = symbols('x y z a')
+    assert nf.element(a, CIntegers) == nf.Contains(a, CIntegers)
+    assert nf.element(2, CIntegers) == ctrue and nf.element(CRational(1, 2), CIntegers) == False
+    raises(TypeError, lambda: untyped(nf.element)(a, 3))
+    assert nf.normalize(nf.element(a, interval(0, 1))) == ((a >= 0) & (a <= 1))
+    assert nf.normalize(nf.element(a, finite_set(1, 2))) == (CEq(a, 1) | CEq(a, 2))
+    assert str(nf.normalize(a/d > 1)) == 'a*(-a + x) > 0'
+    assert nf.to_predicates(a > b) == CQ.positive(a - b)
+    assert nf.to_predicates(nf.element(a, CNaturals)) == (CQ.integer(a) & CQ.positive(a))
+    assert nf.to_polynomial(CQ.positive(a) & (a*b < 1) & nf.element(b, CReals), {a, b}) == ((a > 0) & (a*b < 1))
+    assert nf.to_polynomial(a*b < 1, {a}) is None
+    f = nf.Facts([a > 2, nf.element(b, CIntegers), c**3 > a*b])
+    assert f.real == {a, b, c} and f.integer == {b}
+    assert f.polynomial == ((a > 2) & (c**3 > a*b))
+    assert CQ.positive(a) in f.predicates.args and CQ.integer(b) in f.predicates.args
+    p, n = CSymbol('p', positive=True), CSymbol('n', integer=True)
+    g = nf.Facts([p*n > 1])
+    assert g.real == {p, n} and g.integer == {n}
+    assert nf.Facts([], domain=CIntegers, symbols=[a]).integer == {a}
+    assert nf.Facts(a > 0).with_reals([b]).real == {a, b}
+    raises(ValueError, lambda: nf.Facts([a > 0, False]))
+    # unported SymPy sets are wrapped as Booleans by interop and left alone
+    from sympy_extras.interop import from_sympy, SymPyBooleanNode
+    w = from_sympy(Contains(x, S.Reals**2))
+    assert isinstance(w, SymPyBooleanNode) and nf.to_predicates(w) is None and nf.normalize(w) == w

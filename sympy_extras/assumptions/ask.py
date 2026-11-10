@@ -32,9 +32,9 @@ from sympy_extras.polys.cad import truth_tables
 from sympy_extras.polys.virtual_substitution import is_linear_in, linear_quantifier_elimination
 from sympy_extras._typing import QuantifierPrefix
 
-from .context import global_assumptions
-from .facts import Facts, normalize, to_polynomial, _predicate_of_atom
-from .quantifiers import Quantifier
+from .context_sympy import global_assumptions
+from .facts_sympy import Facts, normalize, to_polynomial, _predicate_of_atom
+from .quantifiers_sympy import Quantifier
 
 __all__ = ['ask']
 
@@ -170,7 +170,7 @@ def _structure_ask(atom: Relational, facts: Facts) -> Truth:
     other than zero.
 
     >>> from sympy import Eq, atan, pi, Rational, symbols, log
-    >>> from sympy_extras.assumptions import ask
+    >>> from sympy_extras.assumptions.ask import ask
     >>> x = symbols('x')
     >>> ask(Eq(4*atan(Rational(1, 5)) - atan(Rational(1, 239)), pi/4))
     True
@@ -323,10 +323,10 @@ def _realness(e: Expr, facts: Facts) -> Truth:
 def _bounded_cad_ask(formula: Boolean, facts: Facts) -> Truth:
     """Decide a formula with elementary functions by replacing them with
     variables constrained by polynomial bounds (see
-    :mod:`sympy_extras.assumptions.bounds`) and asking the CAD whether the
+    :mod:`sympy_extras.assumptions.bounds_sympy`) and asking the CAD whether the
     formula holds, or fails, for every allowed value of the new
     variables."""
-    from .bounds import polynomial_abstraction
+    from .bounds_sympy import polynomial_abstraction
     if not formula.atoms(Function):
         return None
     abstraction = polynomial_abstraction(normalize(formula), facts.real)
@@ -448,7 +448,9 @@ def ask(query: Union[Boolean, bool], assumptions: Assumptions = None, domain: Op
 
     >>> from sympy import S, Eq, Q
     >>> from sympy.abc import x, y
-    >>> from sympy_extras.assumptions import ask, element, ForAll
+    >>> from sympy_extras.assumptions.ask import ask
+    >>> from sympy_extras.assumptions.facts_sympy import element
+    >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll
     >>> ask(x**3 > 0, x > 0)
     True
     >>> ask(x**2 - 2*x + 1 >= 0, x > 0)

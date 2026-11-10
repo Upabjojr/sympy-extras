@@ -65,7 +65,7 @@ from sympy.simplify.powsimp import powsimp
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols
 from sympy_extras.assumptions.ask import Assumptions, ask
-from sympy_extras.assumptions.facts import element
+from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.settings import settings
 
 __all__ = ['Substitution', 'rewritten_forms', 'power_substitutions', 'substitute_back', 'implied_assumptions']

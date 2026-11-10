@@ -9,7 +9,7 @@ from sympy.testing.pytest import raises
 
 from sympy_extras.solvers.isolation import (TranscendentalRoot, isolate_real_roots, real_roots_of, point_between,
     compare_points)
-from sympy_extras.assumptions import solve
+from sympy_extras.assumptions.solve import solve
 from sympy_extras._testing import untyped
 
 x = Symbol('x')

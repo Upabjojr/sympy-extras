@@ -15,19 +15,41 @@ interface of Mathematica but with Python names. Instead of predicates like
   ``Equivalent``, ``Xor`` to combine them;
 * ``ForAll(x, ...)`` and ``Exists(x, ...)`` for quantified statements.
 
-The functions are
+The functions are, by module (the package exports nothing, so that
+importing the native modules does not load the ones still written on
+SymPy):
 
-* :func:`ask` -- the truth value of a statement under assumptions;
-* :func:`refine` and :func:`simplify` -- ``Refine`` and ``Simplify`` with
+* :func:`~sympy_extras.assumptions.ask.ask` -- the truth value of a
+  statement under assumptions;
+* :func:`~sympy_extras.assumptions.refine.refine` and
+  :func:`~sympy_extras.assumptions.refine.simplify` -- ``Refine`` and
+  ``Simplify`` with assumptions;
+* :func:`~sympy_extras.assumptions.context_sympy.assuming` and
+  :data:`~sympy_extras.assumptions.context_sympy.global_assumptions` --
+  ``Assuming`` and ``$Assumptions``;
+* :func:`~sympy_extras.assumptions.resolve.resolve` -- ``Resolve``,
+  quantifier elimination over the reals;
+* :func:`~sympy_extras.assumptions.sat.satisfiable`, ``tautology`` and
+  ``find_instance`` -- ``SatisfiableQ``, ``TautologyQ`` and ``FindInstance``;
+* :func:`~sympy_extras.assumptions.solve.solve` -- ``Solve`` with
+  assumptions and a domain;
+* :func:`~sympy_extras.assumptions.limits.limit`, ``limit_seq`` and
+  ``series`` -- limits and expansions with the parameters carrying the
   assumptions;
-* :func:`assuming` and :data:`global_assumptions` -- ``Assuming`` and
-  ``$Assumptions``;
-* :func:`resolve` -- ``Resolve``, quantifier elimination over the reals;
-* :func:`satisfiable`, :func:`tautology` and :func:`find_instance` --
-  ``SatisfiableQ``, ``TautologyQ`` and ``FindInstance``;
-* :func:`solve` -- ``Solve`` with assumptions and a domain;
-* :func:`limit`, :func:`limit_seq` and :func:`series` -- limits and
-  expansions with the parameters carrying the assumptions.
+* :func:`~sympy_extras.assumptions.facts_sympy.element`,
+  :class:`~sympy_extras.assumptions.facts_sympy.Facts`,
+  :class:`~sympy_extras.assumptions.quantifiers_sympy.ForAll`,
+  :class:`~sympy_extras.assumptions.quantifiers_sympy.Exists` and
+  :func:`~sympy_extras.assumptions.quantifiers_sympy.prenex` -- the
+  building blocks.
+
+The leaves :mod:`~sympy_extras.assumptions.facts`,
+:mod:`~sympy_extras.assumptions.quantifiers`,
+:mod:`~sympy_extras.assumptions.context` and
+:mod:`~sympy_extras.assumptions.bounds` are written on the core (no SymPy);
+the modules ``facts_sympy``, ``quantifiers_sympy``, ``context_sympy`` and
+``bounds_sympy`` are their SymPy faces, used by the modules above, which
+are still written on SymPy objects.
 
 Two backends are used: the assumptions system of SymPy (:func:`sympy.ask`,
 :func:`sympy.refine` and its SAT solver), which receives the predicates
@@ -40,7 +62,11 @@ Examples
 
 >>> from sympy import Abs, sqrt, S, Eq
 >>> from sympy.abc import x, y, n
->>> from sympy_extras.assumptions import ask, refine, element, resolve, ForAll, Exists
+>>> from sympy_extras.assumptions.ask import ask
+>>> from sympy_extras.assumptions.refine import refine
+>>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.facts_sympy import element
+>>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 >>> ask(x**2 - 2*x + 1 >= 0, x > 0)
 True
 >>> refine(Abs(x - 1) + sqrt(x**2), x > 2)
@@ -54,17 +80,4 @@ x > 1
 """
 from __future__ import annotations
 
-from .facts import element, Facts
-from .quantifiers import ForAll, Exists, Quantifier, prenex
-from .context import global_assumptions, assuming, AssumptionsContext
-from .ask import ask
-from .refine import refine, simplify
-from .resolve import resolve
-from .sat import satisfiable, tautology, find_instance
-from .solve import solve
-from .limits import limit, limit_seq, series
-
-__all__ = ['element', 'Facts', 'ForAll', 'Exists', 'Quantifier', 'prenex',
-    'global_assumptions', 'assuming', 'AssumptionsContext', 'ask', 'refine',
-    'simplify', 'resolve', 'satisfiable', 'tautology', 'find_instance', 'solve',
-    'limit', 'limit_seq', 'series']
+__all__: list[str] = []

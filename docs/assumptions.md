@@ -92,7 +92,8 @@ variables.
 ```python
 >>> from sympy import S, sin, exp, log, Abs, Max, pi
 >>> from sympy.abc import x
->>> from sympy_extras.assumptions import ask, refine
+>>> from sympy_extras.assumptions.ask import ask
+>>> from sympy_extras.assumptions.refine import refine
 >>> ask(sin(x) > 0, (x > 0) & (x < pi))
 True
 >>> refine(Abs(exp(x) - 2) + Abs(log(x)), x > 1)
@@ -163,7 +164,8 @@ integration runs with 3.
 ```python
 >>> from sympy import S, Eq, Q, Abs, sqrt, sign, Max, floor, Piecewise
 >>> from sympy.abc import a, b, c, x, y, n
->>> from sympy_extras.assumptions import ask, element
+>>> from sympy_extras.assumptions.ask import ask
+>>> from sympy_extras.assumptions.facts_sympy import element
 >>> ask(x**3 > 0, x > 0)
 True
 >>> ask(x > 1, x > 2)
@@ -200,7 +202,7 @@ input.
 
 ```python
 >>> from sympy import log, exp, atan2, gamma
->>> from sympy_extras.assumptions import refine, simplify
+>>> from sympy_extras.assumptions.refine import refine, simplify
 >>> refine(Abs(x - 1) + sqrt(x**2), x > 2)
 2*x - 1
 >>> refine(sqrt(x**2 - 2*x + 1) + log(x**2), x > 1)
@@ -245,7 +247,7 @@ Eq(x, 1)
 ### Assuming
 
 ```python
->>> from sympy_extras.assumptions import assuming, global_assumptions
+>>> from sympy_extras.assumptions.context_sympy import assuming, global_assumptions
 >>> with assuming(x > 1):
 ...     refine(Abs(x - 1))
 x - 1
@@ -262,7 +264,8 @@ predicates implied by the assumptions.
 ### Quantifiers and quantifier elimination
 
 ```python
->>> from sympy_extras.assumptions import ForAll, Exists, resolve
+>>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
+>>> from sympy_extras.assumptions.resolve import resolve
 >>> resolve(ForAll(x, x**2 + b*x + c > 0))
 b**2 < 4*c
 >>> resolve(Exists(x, Eq(x**2 + a*x + b, 0)))
@@ -307,7 +310,7 @@ Mathematica's `GenerateConditions`).
 
 ```python
 >>> from sympy import exp, oo, sqrt
->>> from sympy_extras.assumptions import limit, series
+>>> from sympy_extras.assumptions.limits import limit, series
 >>> limit(exp(a*x), x, oo, assumptions=a < 0)
 0
 >>> limit(exp(a*x), x, oo)
@@ -328,7 +331,7 @@ witness is returned.
 
 ```python
 >>> from sympy import symbols
->>> from sympy_extras.assumptions import satisfiable, tautology, find_instance
+>>> from sympy_extras.assumptions.sat import satisfiable, tautology, find_instance
 >>> p, q = symbols('p q')
 >>> satisfiable(p & ~q)
 {p: True, q: False}

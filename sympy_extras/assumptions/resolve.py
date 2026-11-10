@@ -12,13 +12,13 @@ from sympy.sets.sets import Set
 from sympy_extras.polys.cad import quantifier_elimination
 from sympy_extras.polys.virtual_substitution import virtual_substitution_elimination, with_sides
 
-from .facts import Facts, normalize, to_polynomial
+from .facts_sympy import Facts, normalize, to_polynomial
 from sympy_extras.settings import settings
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import QuantifierPrefix
 from sympy_extras._typing import as_boolean, free_symbols, sorted_symbols
 
-from .quantifiers import prenex
+from .quantifiers_sympy import prenex
 from .ask import Assumptions, _facts
 
 __all__ = ['resolve']
@@ -78,7 +78,8 @@ def resolve(formula: Union[Boolean, bool], domain: Optional[Set] = S.Reals,
 
     >>> from sympy import S, Eq
     >>> from sympy.abc import a, b, c, x, y
-    >>> from sympy_extras.assumptions import resolve, ForAll, Exists
+    >>> from sympy_extras.assumptions.resolve import resolve
+    >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
     >>> resolve(ForAll(x, x**2 + b*x + c > 0))
     b**2 < 4*c
     >>> resolve(Exists(x, Eq(a*x**2 + b*x + c, 0) & (a > 0)))

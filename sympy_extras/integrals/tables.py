@@ -64,7 +64,7 @@ from sympy.simplify.trigsimp import trigsimp
 
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask import Assumptions
-from sympy_extras.assumptions.facts import element
+from sympy_extras.assumptions.facts_sympy import element
 from .conditions import ConditionalValue, decide
 
 __all__ = ['TableEntry', 'TABLE', 'lookup', 'table_integral', 'X', 'A', 'B', 'N', 'M', 'C', 'K']

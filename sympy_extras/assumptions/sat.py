@@ -52,10 +52,10 @@ from sympy_extras._timeout import attempt
 from typing import Literal, overload
 
 from .ask import Assumptions, _facts
-from .facts import Facts
-from .facts import (normalize, to_predicates, to_polynomial,
+from .facts_sympy import Facts
+from .facts_sympy import (normalize, to_predicates, to_polynomial,
     predicates_consistent, _consequences, _is_atom, _REAL_SETS)
-from .quantifiers import Quantifier
+from .quantifiers_sympy import Quantifier
 
 __all__ = ['satisfiable', 'tautology', 'find_instance']
 
@@ -318,7 +318,8 @@ def satisfiable(formula: Union[Boolean, bool], assumptions: Assumptions = None,
 
     >>> from sympy import symbols, S, Eq
     >>> from sympy.abc import x, y
-    >>> from sympy_extras.assumptions import satisfiable, element
+    >>> from sympy_extras.assumptions.sat import satisfiable
+    >>> from sympy_extras.assumptions.facts_sympy import element
     >>> p, q = symbols('p q')
     >>> satisfiable(p & ~q)
     {p: True, q: False}
@@ -387,7 +388,7 @@ def tautology(formula: Union[Boolean, bool], assumptions: Assumptions = None,
 
     >>> from sympy import symbols, S
     >>> from sympy.abc import x, y
-    >>> from sympy_extras.assumptions import tautology
+    >>> from sympy_extras.assumptions.sat import tautology
     >>> p, q = symbols('p q')
     >>> tautology(p | ~p)
     True
@@ -441,7 +442,7 @@ def find_instance(formula: Union[Boolean, bool], variables: Union[Symbol, Sequen
 
     >>> from sympy import S, Eq
     >>> from sympy.abc import x, y
-    >>> from sympy_extras.assumptions import find_instance
+    >>> from sympy_extras.assumptions.sat import find_instance
     >>> find_instance((x**2 + y**2 < 1) & (x > y), [x, y])
     [{x: 0, y: -1/2}]
     >>> find_instance((x**2 + y**2 < 1) & (x > y), [x, y], count=3)

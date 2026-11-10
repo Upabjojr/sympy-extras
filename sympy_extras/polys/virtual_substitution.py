@@ -255,7 +255,7 @@ def _sides(atom: Relational) -> Boolean:
 def _clean(formula: Boolean) -> Boolean:
     """Light simplification of the result."""
     from sympy.logic.boolalg import simplify_logic
-    from sympy_extras.assumptions.facts import normalize
+    from sympy_extras.assumptions.facts_sympy import normalize
     result = normalize(formula)
     if isinstance(result, (BooleanTrue, BooleanFalse)):
         return result

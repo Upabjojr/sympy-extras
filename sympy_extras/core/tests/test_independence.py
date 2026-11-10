@@ -119,3 +119,35 @@ def test_native_qhyper_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_QHYPER], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ASSUMPTIONS = r'''
+import sys
+from sympy_extras.core import symbols, Q, ask
+from sympy_extras.functions import exp
+from sympy_extras.sets import Integers, interval
+from sympy_extras.assumptions.facts import Facts, element, normalize, to_predicates, to_polynomial
+from sympy_extras.assumptions.quantifiers import ForAll, Exists, forall, prenex
+from sympy_extras.assumptions.bounds import polynomial_abstraction
+from sympy_extras.assumptions.context import assuming, global_assumptions
+x, y, z, a = symbols('x y z a')
+f = Facts([x > 2, element(y, Integers), z**3 > x*y, x/a > 1])
+assert str(f.polynomial) == '(x > 2) & (z**3 > x*y) & (a*(-a + x) > 0)', f.polynomial
+assert f.integer == {y} and f.real == {x, y, z, a}
+assert str(normalize(element(x, interval(0, 1)))) == '(x >= 0) & (x <= 1)'
+assert str(to_predicates(x - y >= 2)) == 'Q.nonnegative(x - y - 2)'
+assert str(prenex(ForAll(x, x > 0) & Exists(x, x < 0))) == "([('exists', x), ('forall', _x)], (_x > 0) & (x < 0))"
+assert str(forall([x, z], x > y)) == 'ForAll(x, x > y)'
+assert str(polynomial_abstraction(exp(x) > 1 + x, {x}).formula) == '_t > x + 1'
+with assuming(x > 1):
+    assert ask(Q.positive(x)) is True and len(global_assumptions) == 1
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_assumptions_leaves_do_not_load_sympy() -> None:
+    """The leaves of :mod:`sympy_extras.assumptions` (facts, quantifiers,
+    bounds, context) do not load SymPy."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ASSUMPTIONS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

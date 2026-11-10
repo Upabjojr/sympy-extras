@@ -30,6 +30,7 @@ from sympy.core.function import UndefinedFunction as SymPyUndefinedFunction
 from sympy.assumptions.assume import AppliedPredicate as SymPyAppliedPredicate
 from sympy.assumptions.assume import Predicate as SymPyPredicate
 from sympy.core.relational import Relational as SymPyRelational
+from sympy.logic.boolalg import Boolean as SymPyBoolean
 from sympy.functions.elementary.piecewise import ExprCondPair as SymPyExprCondPair
 
 from sympy_extras.core.add import Add
@@ -62,7 +63,7 @@ if TYPE_CHECKING:
     from sympy_extras.core.printing import StrPrinter
 
 __all__ = ['to_sympy', 'from_sympy', 'expr_from_sympy', 'sympy_expr', 'through_sympy', 'expr_through_sympy',
-    'rewrite_targets', 'SymPyNode', 'SymPyExprNode', 'SymPyFunction', 'AppliedSymPyFunction', 'apply_sympy',
+    'rewrite_targets', 'SymPyNode', 'SymPyExprNode', 'SymPyBooleanNode', 'SymPyFunction', 'AppliedSymPyFunction', 'apply_sympy',
     'sympy_facts', 'SymPyBridge']
 
 #: the dummies already converted, so that a dummy bound in one place and
@@ -191,6 +192,44 @@ class SymPyNode(_SymPyNodeMixin, Basic):
     @classmethod
     def class_key(cls) -> ClassKey:
         return (5, 0, 'SymPyNode')
+
+    def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
+        return from_sympy(self._sympy_class(*[to_sympy(a) for a in args]))
+
+    def doit(self) -> Basic:
+        return from_sympy(self._sympy().doit())
+
+
+class SymPyBooleanNode(_SymPyNodeMixin, Boolean):
+    """A wrapper of a Boolean of SymPy with no class here (a membership in
+    a set not ported, ...): the class of SymPy and the converted
+    arguments.
+
+    Examples
+    ========
+
+    >>> import sympy
+    >>> from sympy_extras.interop import from_sympy, to_sympy
+    >>> x = sympy.Symbol('x')
+    >>> t = from_sympy(sympy.Contains(x, sympy.S.Reals**2))
+    >>> t, type(t).__name__, to_sympy(t ^ (from_sympy(x) > 0))
+    (Contains(x, ProductSet(Reals, Reals)), 'SymPyBooleanNode', (x > 0) ^ Contains(x, ProductSet(Reals, Reals)))
+    """
+
+    __slots__ = ('_sympy_class', '_node_args')
+
+    def __init__(self, sympy_class: type[SymPyBasic], *args: Basic) -> None:
+        self._sympy_class: type[SymPyBasic] = sympy_class
+        self._node_args: tuple[Basic, ...] = args
+        Basic.__init__(self)
+
+    @property
+    def func(self) -> Callable[..., Basic]:
+        return partial(SymPyBooleanNode, self._sympy_class)
+
+    @classmethod
+    def class_key(cls) -> ClassKey:
+        return (5, 0, 'SymPyBooleanNode')
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return from_sympy(self._sympy_class(*[to_sympy(a) for a in args]))
@@ -351,7 +390,7 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
     if isinstance(e, AlgebraicNumber):
         alias = None if e.alias is None else e.alias.name
         return sympy.AlgebraicNumber(to_sympy(e.root), [to_sympy(c) for c in e.coeffs()], alias=alias)
-    if isinstance(e, (SymPyNode, SymPyExprNode)):
+    if isinstance(e, (SymPyNode, SymPyExprNode, SymPyBooleanNode)):
         return e._sympy()
     from sympy_extras.functions.elementary.piecewise import ExprCondPair, Piecewise
     if isinstance(e, Piecewise):
@@ -433,6 +472,10 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         return _sympy_predicate(e)
     if isinstance(e, AppliedPredicate):
         return _sympy_predicate(e.function)(*[to_sympy(a, evaluate) for a in e.arguments])
+    from sympy_extras.assumptions.quantifiers import Quantifier
+    if isinstance(e, Quantifier):
+        from sympy_extras.assumptions.quantifiers_sympy import sympy_quantifier
+        return sympy_quantifier(e)
     raise TypeError("cannot convert %s to SymPy" % (e,))
 
 
@@ -641,8 +684,13 @@ def _from_sympy(e: SymPyBasic) -> Basic:
         if native is not None:
             return native(*[_expr(a) for a in e.args])
         return AppliedSymPyFunction(cls, *[_expr(a) for a in e.args])
+    from sympy_extras.assumptions.quantifiers_sympy import Quantifier as SymPyQuantifier, native_quantifier
+    if isinstance(e, SymPyQuantifier):
+        return native_quantifier(e)
     if isinstance(e, SymPyExpr):
         return SymPyExprNode(type(e), *[from_sympy(a) for a in e.args])
+    if isinstance(e, SymPyBoolean):
+        return SymPyBooleanNode(type(e), *[from_sympy(a) for a in e.args])
     if isinstance(e, SymPyBasic):
         return SymPyNode(type(e), *[from_sympy(a) for a in e.args])
     raise TypeError("cannot convert %s (%s) from SymPy" % (e, type(e).__name__))
@@ -1035,9 +1083,19 @@ def _sympy_to_native() -> dict[type[SymPyFunctionClass], type[DefinedFunction]]:
 
 def _set_to_sympy(e: Basic, args: list[SymPyBasic], evaluate: bool) -> SymPyBasic:
     """A set of :mod:`sympy_extras.sets` as SymPy's."""
-    from sympy_extras.sets import sets as native_sets
+    from sympy_extras.sets import fancysets, sets as native_sets
     if isinstance(e, native_sets.RealsClass):
         return sympy.S.Reals
+    if isinstance(e, fancysets.NaturalsClass):
+        return sympy.S.Naturals
+    if isinstance(e, fancysets.Naturals0Class):
+        return sympy.S.Naturals0
+    if isinstance(e, fancysets.IntegersClass):
+        return sympy.S.Integers
+    if isinstance(e, fancysets.RationalsClass):
+        return sympy.S.Rationals
+    if isinstance(e, fancysets.ComplexesClass):
+        return sympy.S.Complexes
     if isinstance(e, native_sets.EmptySetClass):
         return sympy.S.EmptySet
     if isinstance(e, native_sets.UniversalSetClass):
@@ -1059,10 +1117,20 @@ def _set_to_sympy(e: Basic, args: list[SymPyBasic], evaluate: bool) -> SymPyBasi
 
 def _set_from_sympy(e: SymPyBasic) -> Basic:
     """A SymPy set as a set of :mod:`sympy_extras.sets` (unevaluated)."""
-    from sympy_extras.sets import sets as native_sets
+    from sympy_extras.sets import fancysets, sets as native_sets
 
     if e is sympy.S.Reals:
         return native_sets.Reals
+    if e is sympy.S.Naturals:
+        return fancysets.Naturals
+    if e is sympy.S.Naturals0:
+        return fancysets.Naturals0
+    if e is sympy.S.Integers:
+        return fancysets.Integers
+    if e is sympy.S.Rationals:
+        return fancysets.Rationals
+    if e is sympy.S.Complexes:
+        return fancysets.Complexes
     if e is sympy.S.EmptySet:
         return native_sets.EmptySet
     if e is sympy.S.UniversalSet:
@@ -1082,6 +1150,8 @@ def _set_from_sympy(e: SymPyBasic) -> Basic:
     if isinstance(e, sympy.Contains) and isinstance(parts[0], Expr) and isinstance(parts[1], native_sets.Set):
         return native_sets.Contains(parts[0], parts[1])
     # a set not ported, or with a part not ported
+    if isinstance(e, SymPyBoolean):
+        return SymPyBooleanNode(type(e), *parts)
     return SymPyNode(type(e), *parts)
 
 

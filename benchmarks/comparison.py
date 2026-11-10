@@ -70,10 +70,14 @@ PREAMBLE = """
 from sympy import *
 from sympy.abc import a, b, c, k, m, n, p, q, s, t, u, v, w, x, y, z
 import sympy_extras
-from sympy_extras.assumptions import (ask as xask, refine as xrefine, simplify as xsimplify, resolve,
-    solve as xsolve, element,
-    ForAll, Exists, satisfiable, tautology, find_instance, limit as xlimit, limit_seq as xlimit_seq,
-    series as xseries)
+from sympy_extras.assumptions.ask import ask as xask
+from sympy_extras.assumptions.refine import refine as xrefine, simplify as xsimplify
+from sympy_extras.assumptions.resolve import resolve
+from sympy_extras.assumptions.solve import solve as xsolve
+from sympy_extras.assumptions.facts_sympy import element
+from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
+from sympy_extras.assumptions.sat import satisfiable, tautology, find_instance
+from sympy_extras.assumptions.limits import limit as xlimit, limit_seq as xlimit_seq, series as xseries
 from sympy_extras.concrete.karr_sympy import karr_sum, summation as xsummation
 from sympy_extras.concrete.convergence import sum_convergence, product_convergence
 from sympy_extras.concrete.dirichlet import dirichlet_series

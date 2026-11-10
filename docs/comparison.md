@@ -45,8 +45,14 @@ The setup used throughout:
 ```python
 >>> from sympy import *
 >>> from sympy.abc import a, b, c, k, n, p, q, s, t, x, y, z
->>> from sympy_extras.assumptions import (ask, refine, simplify, resolve, solve, element,
-...     ForAll, Exists, satisfiable, find_instance, limit, limit_seq, series)
+>>> from sympy_extras.assumptions.ask import ask
+>>> from sympy_extras.assumptions.refine import refine, simplify
+>>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.solve import solve
+>>> from sympy_extras.assumptions.facts_sympy import element
+>>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
+>>> from sympy_extras.assumptions.sat import satisfiable, find_instance
+>>> from sympy_extras.assumptions.limits import limit, limit_seq, series
 >>> from sympy_extras.concrete.karr import karr_sum
 >>> from sympy_extras.concrete.zeilberger_sympy import zeilberger_sum, wz_prove
 >>> from sympy_extras.concrete.convergence import sum_convergence, product_convergence

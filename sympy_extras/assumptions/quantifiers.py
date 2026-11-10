@@ -1,27 +1,74 @@
-"""Quantified formulas.
+"""Quantified formulas on the core.
 
 :class:`ForAll` and :class:`Exists` are the counterparts of Mathematica's
-``ForAll[x, expr]`` and ``Exists[x, expr]``. They are Boolean objects and
-can be combined with the other Boolean operators; :func:`prenex` puts a
-formula in prenex normal form, with all the quantifiers in front, which is
-what the quantifier elimination of :func:`~sympy_extras.assumptions.resolve`
-works on.
+``ForAll[x, expr]`` and ``Exists[x, expr]``. They are Boolean nodes of
+:mod:`sympy_extras.core`, unevaluating like every node: ``ForAll(x, True)``
+stays a ``ForAll``, and the functions :func:`forall` and :func:`exists`
+evaluate (they give the formula when it is a truth value or contains none
+of the variables, and drop the variables which do not occur in it).
+:func:`prenex` puts a formula in prenex normal form, with all the
+quantifiers in front, which is what the quantifier elimination of
+:func:`~sympy_extras.assumptions.resolve.resolve` works on.
+
+This module imports no SymPy; code on SymPy objects uses
+:mod:`sympy_extras.assumptions.quantifiers_sympy`, whose classes
+:mod:`sympy_extras.interop` converts to and from these.
+
+Examples
+========
+
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.assumptions.quantifiers import ForAll, Exists, forall, prenex
+>>> x, y = symbols('x y')
+>>> ForAll(x, Exists(y, x < y)), forall([x, y], y > 0)
+(ForAll(x, Exists(y, x < y)), ForAll(y, y > 0))
+>>> prenex(~ForAll(x, Exists(y, x < y)))
+([('exists', x), ('forall', y)], x >= y)
 """
 from __future__ import annotations
 
-from typing import Iterable, Union
+from typing import Final, Iterable, Union
 
-from sympy.core.basic import Basic
-from sympy.core.containers import Tuple
-from sympy.core.symbol import Symbol, Dummy
-from sympy.core.sympify import sympify
-from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or,
-    Not, Implies, Equivalent, Xor, ITE)
-from sympy.printing.printer import Printer
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.containers import Tuple
+from sympy_extras.core.logic import (ITE, And, Boolean, BooleanAtom, BooleanLike, Equivalent, Implies, Not, Or,
+    Xor, and_, implies, not_, or_, to_boolean, xor)
+from sympy_extras.core.printing import StrPrinter
+from sympy_extras.core.sorting import ClassKey
+from sympy_extras.core.symbol import Dummy, Symbol
 
-from sympy_extras._typing import QuantifierPrefix, as_boolean
+__all__ = ['Quantifier', 'ForAll', 'Exists', 'forall', 'exists', 'prenex', 'Prefix', 'QuantifierKind']
 
-__all__ = ['Quantifier', 'ForAll', 'Exists', 'prenex']
+#: 'forall' or 'exists'
+QuantifierKind = str
+
+#: the quantifier prefix of a prenex formula: ``(kind, variable)`` pairs,
+#: outermost first
+Prefix = list[tuple[QuantifierKind, Symbol]]
+#: the variables a quantifier accepts: one symbol or a sequence of them
+Variables = Union[Symbol, Iterable[Symbol], Tuple]
+
+
+def _variables(variables: Variables) -> tuple[Symbol, ...]:
+    raw: tuple[Basic, ...]
+    if isinstance(variables, Symbol):
+        raw = (variables,)
+    elif isinstance(variables, Tuple):
+        raw = variables.args
+    elif isinstance(variables, Iterable):
+        raw = tuple(variables)
+    else:
+        raw = (variables,)
+    result: list[Symbol] = []
+    for v in raw:
+        if not isinstance(v, Symbol):
+            raise TypeError("quantified variables must be symbols, got %s" % (v,))
+        result.append(v)
+    if len(set(result)) != len(result):
+        raise ValueError("repeated quantified variable in %s" % (tuple(result),))
+    if not result:
+        raise ValueError("a quantifier needs at least one variable")
+    return tuple(result)
 
 
 class Quantifier(Boolean):
@@ -30,142 +77,207 @@ class Quantifier(Boolean):
     ``Quantifier(variables, formula)`` binds one symbol or a sequence of
     symbols in ``formula``. The constructor does not evaluate: the trivial
     cases (a constant formula, variables which do not occur in the formula)
-    are reduced by :meth:`~sympy.core.basic.Basic.simplify`, by
-    :func:`prenex` and by the functions taking quantified formulas.
+    are reduced by :func:`forall` and :func:`exists`, :meth:`simplify`,
+    :func:`prenex` and the functions taking quantified formulas.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.assumptions.quantifiers import ForAll
+    >>> x, y = symbols('x y')
+    >>> f = ForAll([x, y], x > y)
+    >>> f.variables, f.formula, f.free_symbols, ForAll(x, x > y).free_symbols
+    ((x, y), x > y, set(), {y})
+    >>> ForAll(x, x > y).subs(y, 2), ForAll(x, x > y).subs(x, 2)
+    (ForAll(x, x > 2), ForAll(x, x > y))
     """
 
-    #: 'forall' or 'exists' (``kind`` is taken by SymPy's Basic)
-    quantifier: str = ''
+    __slots__ = ('_variables', '_formula')
 
-    def __new__(cls, variables: Union[Symbol, Iterable[Symbol]],
-                formula: Union[Boolean, bool]) -> Quantifier:
-        if isinstance(variables, (list, tuple, set, frozenset, Tuple)):
-            raw = tuple(variables)
-        else:
-            raw = (variables,)
-        variables = tuple(sympify(v) for v in raw)
-        for v in variables:
-            if not isinstance(v, Symbol):
-                raise TypeError("quantified variables must be symbols, got %s" % (v,))
-        if len(set(variables)) != len(variables):
-            raise ValueError("repeated quantified variable in %s" % (variables,))
-        if not variables:
-            raise ValueError("a quantifier needs at least one variable")
-        formula_ = as_boolean(formula)
-        result = Basic.__new__(cls, Tuple(*variables), formula_)
-        assert isinstance(result, Quantifier)
-        return result
+    #: 'forall' or 'exists'
+    quantifier: QuantifierKind = 'forall'
+
+    def __init__(self, variables: Variables, formula: BooleanLike) -> None:
+        self._variables: Final[tuple[Symbol, ...]] = _variables(variables)
+        self._formula: Final[Boolean] = to_boolean(formula)
+        Basic.__init__(self)
+
+    @property
+    def args(self) -> tuple[Basic, ...]:
+        return (Tuple(*self._variables), self._formula)
 
     @property
     def variables(self) -> tuple[Symbol, ...]:
         """The quantified variables."""
-        args0 = self.args[0]
-        assert isinstance(args0, Tuple)
-        return tuple(args0)
+        return self._variables
 
     @property
     def formula(self) -> Boolean:
         """The quantified formula."""
-        return as_boolean(self.args[1])
+        return self._formula
+
+    @classmethod
+    def class_key(cls) -> ClassKey:
+        return (5, 0, cls.__name__)
 
     @property
-    def free_symbols(self) -> set[Basic]:
-        return self.formula.free_symbols - set(self.variables)
+    def free_symbols(self) -> set[Symbol]:
+        return self._formula.free_symbols - set(self._variables)
 
     @property
-    def bound_symbols(self) -> list[Symbol]:
-        return list(self.variables)
+    def bound_symbols(self) -> tuple[Symbol, ...]:
+        return self._variables
 
     @property
     def binary_symbols(self) -> set[Basic]:
-        return self.formula.binary_symbols - set(self.variables)
+        return self._formula.binary_symbols - set(self._variables)
 
-    def _sympystr(self, printer: Printer) -> str:
-        variables = self.variables
-        v = printer._print(variables[0]) if len(variables) == 1 else \
-            "(%s)" % ", ".join(printer._print(x) for x in variables)
-        return "%s(%s, %s)" % (type(self).__name__, v, printer._print(self.formula))
+    def _sympystr(self, printer: StrPrinter) -> str:
+        variables = self._variables
+        v = printer.doprint(variables[0]) if len(variables) == 1 else \
+            "(%s)" % ", ".join(printer.doprint(x) for x in variables)
+        return "%s(%s, %s)" % (type(self).__name__, v, printer.doprint(self._formula))
 
-    _sympyrepr = _sympystr
+    def _rebuild(self, args: tuple[Basic, ...]) -> Basic:
+        variables, formula = args
+        if not isinstance(variables, Tuple):
+            raise TypeError("the variables of a quantifier are a Tuple")
+        return type(self)(variables, to_boolean(formula))
 
-    def _latex(self, printer: Printer) -> str:
-        symbol = r"\forall" if self.quantifier == 'forall' else r"\exists"
-        return r"%s %s \, %s" % (symbol,
-            ", ".join(printer._print(x) for x in self.variables),
-            printer._print(self.formula))
+    def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
+        variables, formula = args
+        if not isinstance(variables, Tuple):
+            raise TypeError("the variables of a quantifier are a Tuple")
+        return _quantify(self.quantifier, _variables(variables), to_boolean(formula))
 
-    def _eval_simplify(self, **kwargs: object) -> Boolean:
+    def _subs(self, old: Basic, new: Basic) -> Basic:
+        if self == old:
+            return new
+        if old in self._variables:
+            return self
+        return type(self)(self._variables, to_boolean(self._formula._subs(old, new)))
+
+    def simplify(self) -> Basic:
         """The formula itself when it is a constant or does not contain
         the quantified variables; the variables which do not occur in the
-        formula are dropped."""
-        formula = self.formula.simplify(**kwargs)
-        if isinstance(formula, (BooleanTrue, BooleanFalse)):
-            return formula
-        occurring = tuple(v for v in self.variables if v in formula.free_symbols)
-        if not occurring:
-            return formula
-        return type(self)(occurring, formula)
+        formula are dropped (the formula is simplified first).
 
-    def _eval_subs(self, old: Basic, new: Basic) -> Boolean:
-        if old in self.variables:
-            return self
-        return type(self)(self.variables, self.formula._subs(old, new))
+        Examples
+        ========
+
+        >>> import sympy_extras.interop  # SymPy's simplify (core.bridge)
+        >>> from sympy_extras.core import symbols, true
+        >>> from sympy_extras.assumptions.quantifiers import ForAll
+        >>> x, y, z = symbols('x y z')
+        >>> ForAll(x, True).simplify(), ForAll([x, z], y > x).simplify(), ForAll(x, y > 0).simplify()
+        (True, ForAll(x, x < y), y > 0)
+        """
+        return _quantify(self.quantifier, self._variables, to_boolean(self._formula.simplify()))
 
 
 class ForAll(Quantifier):
-    """Universal quantification, ``ForAll(x, formula)``.
+    """Universal quantification, ``ForAll(x, formula)``; :func:`forall`
+    evaluates.
 
     Examples
     ========
 
-    >>> from sympy.abc import b, c, x
-    >>> from sympy_extras.assumptions import ForAll, resolve
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.assumptions.quantifiers import ForAll
+    >>> x, b, c = symbols('x b c')
     >>> f = ForAll(x, x**2 + b*x + c > 0)
-    >>> f
-    ForAll(x, b*x + c + x**2 > 0)
-    >>> sorted(f.free_symbols, key=str)
-    [b, c]
-    >>> resolve(f)
-    b**2 < 4*c
+    >>> f, sorted(f.free_symbols, key=str)
+    (ForAll(x, b*x + c + x**2 > 0), [b, c])
     """
-    quantifier = 'forall'
+
+    __slots__ = ()
+
+    quantifier: QuantifierKind = 'forall'
 
 
 class Exists(Quantifier):
-    """Existential quantification, ``Exists(x, formula)``.
+    """Existential quantification, ``Exists(x, formula)``; :func:`exists`
+    evaluates.
 
     Examples
     ========
 
-    >>> from sympy import Eq
-    >>> from sympy.abc import a, b, x
-    >>> from sympy_extras.assumptions import Exists, resolve
-    >>> resolve(Exists(x, Eq(x**2 + a*x + b, 0)))
-    a**2 >= 4*b
-    >>> resolve(Exists([a, b], Eq(x**2 + a*x + b, 0) & (a > 0)))
-    True
+    >>> from sympy_extras.core import symbols, Eq
+    >>> from sympy_extras.assumptions.quantifiers import Exists
+    >>> x, a, b = symbols('x a b')
+    >>> Exists(x, Eq(x**2 + a*x + b, 0))
+    Exists(x, Eq(a*x + b + x**2, 0))
     """
-    quantifier = 'exists'
+
+    __slots__ = ()
+
+    quantifier: QuantifierKind = 'exists'
 
 
-_DUAL = {'forall': 'exists', 'exists': 'forall'}
+def _quantify(kind: QuantifierKind, variables: tuple[Symbol, ...], formula: Boolean) -> Boolean:
+    if isinstance(formula, BooleanAtom):
+        return formula
+    symbols = formula.free_symbols
+    occurring = tuple(v for v in variables if v in symbols)
+    if not occurring:
+        return formula
+    if kind == 'forall':
+        return ForAll(occurring, formula)
+    return Exists(occurring, formula)
 
 
-def prenex(formula: Union[Boolean, bool]) -> tuple[QuantifierPrefix, Boolean]:
+def forall(variables: Variables, formula: BooleanLike) -> Boolean:
+    """``ForAll(variables, formula)`` evaluated: the formula when it is a
+    truth value or contains none of the variables, the variables which do
+    not occur in it dropped.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.assumptions.quantifiers import forall
+    >>> x, y, z = symbols('x y z')
+    >>> forall(x, True), forall(x, y > 0), forall([x, z], x > y)
+    (True, y > 0, ForAll(x, x > y))
+    """
+    return _quantify('forall', _variables(variables), to_boolean(formula))
+
+
+def exists(variables: Variables, formula: BooleanLike) -> Boolean:
+    """``Exists(variables, formula)`` evaluated, as :func:`forall`.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols, false
+    >>> from sympy_extras.assumptions.quantifiers import exists
+    >>> x, y = symbols('x y')
+    >>> exists(x, false), exists([x, y], x > 1)
+    (False, Exists(x, x > 1))
+    """
+    return _quantify('exists', _variables(variables), to_boolean(formula))
+
+
+_DUAL: Final[dict[QuantifierKind, QuantifierKind]] = {'forall': 'exists', 'exists': 'forall'}
+
+
+def prenex(formula: BooleanLike) -> tuple[Prefix, Boolean]:
     """Prenex normal form of a formula with quantifiers.
 
     Returns ``(prefix, matrix)`` where ``prefix`` is a list of pairs
     ``(kind, variable)`` with ``kind`` ``'forall'`` or ``'exists'``,
     outermost first, and ``matrix`` is quantifier-free. Quantifiers under
     ``Not`` are flipped and quantifiers under ``And``, ``Or``, ``Implies``,
-    ``Equivalent`` and ``Xor`` are moved in front, renaming the bound
-    variables when they clash.
+    ``Equivalent``, ``Xor`` and ``ITE`` are moved in front, renaming the
+    bound variables (to dummies) when they clash.
 
     Examples
     ========
 
-    >>> from sympy.abc import x, y
-    >>> from sympy_extras.assumptions import ForAll, Exists, prenex
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.assumptions.quantifiers import ForAll, Exists, prenex
+    >>> x, y = symbols('x y')
     >>> prenex(~ForAll(x, Exists(y, x < y)))
     ([('exists', x), ('forall', y)], x >= y)
     >>> prefix, matrix = prenex(ForAll(x, x > 0) & Exists(x, x < 0))
@@ -174,51 +286,52 @@ def prenex(formula: Union[Boolean, bool]) -> tuple[QuantifierPrefix, Boolean]:
     >>> matrix
     (_x > 0) & (x < 0)
     """
-    prefix, matrix = _prenex(as_boolean(formula), set())
-    return prefix, matrix
+    return _prenex(to_boolean(formula), set())
 
 
-def _prenex(formula: Boolean, taken: set[Basic]) -> tuple[QuantifierPrefix, Boolean]:
+def _prenex(formula: Boolean, taken: set[Symbol]) -> tuple[Prefix, Boolean]:
     """``taken`` is the set of symbols which are already used elsewhere:
     bound variables clashing with it are renamed."""
     if isinstance(formula, Quantifier):
         inner_prefix, matrix = _prenex(formula.formula, taken | set(formula.variables))
-        prefix: QuantifierPrefix = []
+        prefix: Prefix = []
         for v in formula.variables:
             if v not in matrix.free_symbols:
                 continue
             if v in taken:
                 new = Dummy(v.name, **v.assumptions0)
-                matrix = matrix.xreplace({v: new})
+                matrix = to_boolean(matrix.subs(v, new))
                 inner_prefix = [(k, new if u == v else u) for k, u in inner_prefix]
                 v = new
             prefix.append((formula.quantifier, v))
         return prefix + inner_prefix, matrix
     if isinstance(formula, Not):
-        prefix, matrix = _prenex(as_boolean(formula.args[0]), taken)
-        return [(_DUAL[k], v) for k, v in prefix], Not(matrix)
+        prefix, matrix = _prenex(formula.arg, taken)
+        return [(_DUAL[k], v) for k, v in prefix], not_(matrix)
     if isinstance(formula, (And, Or)):
         prefix = []
         matrices: list[Boolean] = []
-        used = set(taken) | set().union(*[a.free_symbols for a in formula.args])
+        used: set[Symbol] = set(taken)
+        for a in formula.args:
+            used |= a.free_symbols
         for arg in formula.args:
-            p, m = _prenex(as_boolean(arg), used)
+            p, m = _prenex(arg, used)
             used |= {v for _, v in p}
             prefix.extend(p)
             matrices.append(m)
-        return prefix, formula.func(*matrices)
+        return prefix, and_(*matrices) if isinstance(formula, And) else or_(*matrices)
     if isinstance(formula, Implies):
         a, b = formula.args
-        return _prenex(Or(Not(as_boolean(a)), as_boolean(b)), taken)
+        return _prenex(or_(not_(a), b), taken)
     if isinstance(formula, Equivalent):
-        args = [as_boolean(a) for a in formula.args]
-        return _prenex(And(*[Implies(a, b) for a, b in zip(args, args[1:] + args[:1])]), taken)
+        args = list(formula.args)
+        return _prenex(and_(*[implies(a, b) for a, b in zip(args, args[1:] + args[:1])]), taken)
     if isinstance(formula, Xor):
-        a = as_boolean(formula.args[0])
-        rest = [as_boolean(r) for r in formula.args[1:]]
-        b = Xor(*rest) if len(rest) > 1 else rest[0]
-        return _prenex(Or(And(a, Not(b)), And(Not(a), b)), taken)
+        first = formula.args[0]
+        rest = list(formula.args[1:])
+        second = xor(*rest) if len(rest) > 1 else rest[0]
+        return _prenex(or_(and_(first, not_(second)), and_(not_(first), second)), taken)
     if isinstance(formula, ITE):
-        c, a, b = [as_boolean(arg) for arg in formula.args]
-        return _prenex(Or(And(c, a), And(Not(c), b)), taken)
+        c, a, b = formula.args
+        return _prenex(or_(and_(c, a), and_(not_(c), b)), taken)
     return [], formula

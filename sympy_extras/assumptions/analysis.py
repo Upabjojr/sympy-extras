@@ -50,7 +50,7 @@ from sympy_extras._typing import Sign, Truth, as_expr, as_set, free_symbols
 from sympy_extras.polys.cad import solution_set
 from sympy_extras.settings import settings
 
-from .facts import Facts, to_polynomial
+from .facts_sympy import Facts, to_polynomial
 from .intervals import Box, Openness, signs_on_box, corner_signs, range_on_box, monotone_range, isolate_signs
 
 __all__ = ['certified_sign', 'domain_of', 'sign_on', 'signs_multivariate', 'box_of', 'decide_relational']
@@ -535,7 +535,8 @@ def decide_relational(atom: Relational, facts: Facts) -> Truth:
 
     >>> from sympy import sin, exp, pi, Abs
     >>> from sympy.abc import x
-    >>> from sympy_extras.assumptions import ask, refine
+    >>> from sympy_extras.assumptions.ask import ask
+    >>> from sympy_extras.assumptions.refine import refine
     >>> ask(sin(x) > 0, (x > 0) & (x < pi))
     True
     >>> ask(exp(x) > 2, x > 1)
