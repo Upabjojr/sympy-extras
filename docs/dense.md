@@ -310,6 +310,19 @@ True
 
 ```
 
+`primitive_element(a, b)` returns `theta = a + c b` generating the field
+of the two numbers, with `a` and `b` as polynomials in `theta` (the gcd
+of `m_b(x)` and `m_a(theta - c x)` over `QQ(theta)` is `x - b`): the
+entry to computing in one fixed field.
+
+```python
+>>> from sympy_extras.polys.numberfields.qqbar import primitive_element
+>>> theta, p, q = primitive_element(sqrt2, sqrt3)
+>>> theta.minpoly, p == [Fraction(1, 2), 0, Fraction(-9, 2), 0], theta.polynomial_value(q) == sqrt3
+([1, 0, -10, 0, 1], True, True)
+
+```
+
 The resultant of a sum or product has the product of the degrees (a
 power keeps the degree): this representation is convenient up to
 degrees of a few dozen, not a replacement for computing in one fixed

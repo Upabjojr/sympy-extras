@@ -195,3 +195,32 @@ def test_principal_roots() -> None:
         expected = cmath.exp(cmath.log(complex(a))/n)
         assert abs(complex(r) - expected) < 1e-9
     raises(ValueError, lambda: two.nth_root(0))
+
+
+def test_primitive_element() -> None:
+    from sympy_extras.polys.numberfields.qqbar import primitive_element
+    sqrt2 = _positive_root([1, 0, -2])
+    sqrt3 = _positive_root([1, 0, -3])
+    theta, p, q = primitive_element(sqrt2, sqrt3)
+    # the classical formulas: sqrt 2 = (theta**3 - 9 theta)/2, sqrt 3 = (11 theta - theta**3)/2
+    assert theta == sqrt2 + sqrt3
+    assert p == [Fraction(1, 2), 0, Fraction(-9, 2), 0] and q == [Fraction(-1, 2), 0, Fraction(11, 2), 0]
+    rng = random.Random(64)
+    pool: list[Algebraic] = []
+    for f in ([1, 0, -2], [1, 0, -3], [1, -1, -1], [1, 0, 0, -2], [1, 0, 1], [1, 1, 1], [1, 0, -1, -1]):
+        pool.extend(algebraic_roots(f))
+    pool.append(Algebraic.from_rational(Fraction(2, 3)))
+    for _ in range(20):
+        a, b = rng.choice(pool), rng.choice(pool)
+        theta, p, q = primitive_element(a, b)
+        assert theta.polynomial_value(p) == a and theta.polynomial_value(q) == b
+        # the degree of the field divides the product of the degrees and is a multiple of each
+        assert theta.degree % a.degree == 0 and theta.degree % b.degree == 0
+        assert theta.degree <= a.degree*b.degree
+    # a number and its conjugate: the splitting field of x**3 - 2 has degree 6
+    roots = algebraic_roots([1, 0, 0, -2])
+    theta, p, q = primitive_element(roots[0], roots[1])
+    assert theta.degree == 6
+    # dependent numbers: sqrt 2 and 1 + sqrt 2 generate a field of degree 2
+    theta, p, q = primitive_element(sqrt2, 1 + sqrt2)
+    assert theta.degree == 2 and theta.polynomial_value(p) == sqrt2

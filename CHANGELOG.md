@@ -16,6 +16,10 @@ remove public functions. Breaking changes are listed here when they happen.
   the shape lemma with a change of the last coordinate when needed;
   `univariate_in_ideal`; `Algebraic.polynomial_value` (a rational
   polynomial at an algebraic number by one resultant). Typed, no SymPy.
+- `sympy_extras.polys.numberfields.qqbar.primitive_element(a, b)`: a
+  primitive element `theta = a + c b` of the field of two algebraic
+  numbers, with `a` and `b` as polynomials in `theta` (a gcd over
+  `QQ(theta)`).
 - `sympy_extras.polys.fglm`: `fglm` (change of monomial order for
   zero-dimensional ideals on the typed rings, by linear algebra on normal
   forms), `groebner_by_fglm` (F4 for `grevlex`, then the conversion) and
