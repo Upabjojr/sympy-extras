@@ -19,6 +19,12 @@ limit on the size of the entries. Linearly dependent generators are
 replaced first by a basis (the Hermite normal form, by Euclidean row
 operations).
 
+The same row operations, carried along on an identity matrix, solve
+linear systems over the integers: :func:`integer_kernel` (a reduced
+basis of the integer solutions of $A x = 0$), :func:`solve_integer_system`
+(all the integer solutions of $A x = b$: a short particular solution and
+the kernel) and :func:`smith_normal_form` (the invariant factors).
+
 Examples
 ========
 
@@ -50,9 +56,10 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Final, Sequence
+from typing import Final, Optional, Sequence
 
-__all__ = ['lll', 'lll_reduction', 'LatticeReduction', 'hermite_normal_form', 'is_lll_reduced']
+__all__ = ['lll', 'lll_reduction', 'LatticeReduction', 'hermite_normal_form', 'is_lll_reduced', 'integer_kernel',
+           'solve_integer_system', 'IntegerSolutions', 'smith_normal_form']
 
 
 class LatticeReduction:
@@ -314,3 +321,210 @@ def is_lll_reduced(rows: Sequence[Sequence[int]], delta: Fraction = Fraction(3, 
         star.append(current)
         norms.append(norm)
     return True
+
+
+# ---------------------------------------------------------------------------
+# linear systems over the integers
+
+def _transposed_echelon(matrix: Sequence[Sequence[int]], unknowns: int) -> tuple[list[list[int]], list[list[int]], list[int]]:
+    """Unimodular row operations on the transpose of the matrix, carried
+    along on the identity: rows ``(h, u)`` with ``h = A u`` (``u`` a
+    vector of the unknowns). Returns the rows with ``h != 0`` in echelon
+    form (as ``h + u``), their pivot positions, and the ``u`` of the rows
+    with ``h = 0``: a basis of the kernel."""
+    equations = len(matrix)
+    for row in matrix:
+        if len(row) != unknowns:
+            raise ValueError('the rows must have %d entries' % unknowns)
+    work = [[int(matrix[i][j]) for i in range(equations)] + [1 if k == j else 0 for k in range(unknowns)]
+            for j in range(unknowns)]
+    echelon: list[list[int]] = []
+    pivots: list[int] = []
+    for column in range(equations):
+        while True:
+            candidates = [row for row in work if row[column]]
+            if len(candidates) <= 1:
+                break
+            smallest = min(candidates, key=lambda row: abs(row[column]))
+            for row in candidates:
+                if row is smallest:
+                    continue
+                q = row[column]//smallest[column]
+                if q:
+                    for j in range(len(row)):
+                        row[j] -= q*smallest[j]
+        pivot_rows = [row for row in work if row[column]]
+        if not pivot_rows:
+            continue
+        pivot = pivot_rows[0]
+        work = [row for row in work if row is not pivot]
+        echelon.append(pivot)
+        pivots.append(column)
+    return echelon, [row[equations:] for row in work], pivots
+
+
+def integer_kernel(matrix: Sequence[Sequence[int]], unknowns: int) -> list[list[int]]:
+    """An LLL reduced basis of the integer vectors ``x`` with ``A x = 0``,
+    ``A`` the integer matrix with these rows and ``unknowns`` columns.
+
+    The basis generates all the integer solutions (not a sublattice of
+    finite index).
+
+    Examples
+    ========
+
+    >>> from sympy_extras.polys.lattice import integer_kernel
+    >>> integer_kernel([[2, 4, 6]], 3)
+    [[-1, -1, 1], [-2, 1, 0]]
+    >>> integer_kernel([[1, 0], [0, 1]], 2)
+    []
+    >>> integer_kernel([], 2)
+    [[1, 0], [0, 1]]
+    """
+    _, kernel, _ = _transposed_echelon(matrix, unknowns)
+    return lll(kernel)
+
+
+class IntegerSolutions:
+    """The integer solutions of a linear system: ``particular`` plus the
+    integer combinations of the vectors of ``kernel`` (an LLL reduced
+    basis)."""
+
+    def __init__(self, particular: list[int], kernel: list[list[int]]) -> None:
+        self.particular: Final[list[int]] = particular
+        self.kernel: Final[list[list[int]]] = kernel
+
+    def __repr__(self) -> str:
+        return 'IntegerSolutions(%r, %r)' % (self.particular, self.kernel)
+
+
+def _nearest_plane(vector: list[int], basis: list[list[int]]) -> list[int]:
+    """``vector`` minus a lattice vector close to it (Babai's nearest
+    plane algorithm on a reduced basis): a short representative of its
+    class."""
+    star: list[list[Fraction]] = []
+    norms: list[Fraction] = []
+    for i, row in enumerate(basis):
+        current = [Fraction(c) for c in row]
+        for j in range(i):
+            mu = sum((a*c for a, c in zip(row, star[j])), Fraction(0))/norms[j]
+            current = [a - mu*c for a, c in zip(current, star[j])]
+        star.append(current)
+        norms.append(sum((a*a for a in current), Fraction(0)))
+    result = list(vector)
+    for i in range(len(basis) - 1, -1, -1):
+        coefficient = sum((a*c for a, c in zip(result, star[i])), Fraction(0))/norms[i]
+        q = (2*coefficient.numerator + coefficient.denominator)//(2*coefficient.denominator)
+        if q:
+            result = [a - q*c for a, c in zip(result, basis[i])]
+    return result
+
+
+def solve_integer_system(matrix: Sequence[Sequence[int]], rhs: Sequence[int], unknowns: int) -> Optional[IntegerSolutions]:
+    """All the integer solutions of ``A x = b``, or ``None`` when there
+    is none (the system may have rational solutions).
+
+    Parameters
+    ==========
+
+    matrix : the rows of the integer matrix ``A``.
+    rhs : the integers ``b``, one for each row.
+    unknowns : the number of columns.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.polys.lattice import solve_integer_system
+    >>> solve_integer_system([[3, 5]], [1], 2)
+    IntegerSolutions([2, -1], [[-5, 3]])
+    >>> solve_integer_system([[2, 4]], [1], 2) is None
+    True
+    >>> solve_integer_system([[1, 2, 3], [4, 5, 6]], [6, 15], 3)
+    IntegerSolutions([1, 1, 1], [[1, -2, 1]])
+    >>> solve_integer_system([[2, 0], [0, 3]], [4, 9], 2)
+    IntegerSolutions([2, 3], [])
+    """
+    equations = len(matrix)
+    if len(rhs) != equations:
+        raise ValueError('one right-hand side for each row')
+    echelon, kernel, pivots = _transposed_echelon(matrix, unknowns)
+    rest = [int(v) for v in rhs]
+    particular = [0]*unknowns
+    for row, column in zip(echelon, pivots):
+        if any(rest[:column]):
+            return None
+        q, r = divmod(rest[column], row[column])
+        if r:
+            return None
+        if q:
+            rest = [a - q*c for a, c in zip(rest, row[:equations])]
+            particular = [a + q*c for a, c in zip(particular, row[equations:])]
+    if any(rest):
+        return None
+    reduced = lll(kernel)
+    return IntegerSolutions(_nearest_plane(particular, reduced), reduced)
+
+
+def smith_normal_form(matrix: Sequence[Sequence[int]]) -> list[int]:
+    """The invariant factors ``d_1 | d_2 | ...`` (positive) of an integer
+    matrix: the non-zero diagonal of its Smith normal form. Their number
+    is the rank, and the abelian group ``Z**n/(rows)`` is the product of
+    the ``Z/d_i`` and of ``Z**(n - rank)``.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.polys.lattice import smith_normal_form
+    >>> smith_normal_form([[2, 4, 4], [-6, 6, 12], [10, -4, -16]])
+    [2, 6, 12]
+    >>> smith_normal_form([[2, 0], [0, 3]])
+    [1, 6]
+    >>> smith_normal_form([[0, 0]])
+    []
+    """
+    work = [[int(v) for v in row] for row in matrix]
+    width = len(work[0]) if work else 0
+    for row in work:
+        if len(row) != width:
+            raise ValueError('the rows must have the same length')
+    factors: list[int] = []
+    start = 0
+    while start < len(work) and start < width:
+        # the entry of smallest absolute value of the remaining block
+        best: Optional[tuple[int, int]] = None
+        for i in range(start, len(work)):
+            for j in range(start, width):
+                if work[i][j] and (best is None or abs(work[i][j]) < abs(work[best[0]][best[1]])):
+                    best = (i, j)
+        if best is None:
+            break
+        work[start], work[best[0]] = work[best[0]], work[start]
+        for row in work:
+            row[start], row[best[1]] = row[best[1]], row[start]
+        pivot = work[start][start]
+        clean = True
+        for i in range(start + 1, len(work)):
+            q = work[i][start]//pivot
+            if q:
+                work[i] = [a - q*c for a, c in zip(work[i], work[start])]
+            if work[i][start]:
+                clean = False
+        for j in range(start + 1, width):
+            q = work[start][j]//pivot
+            if q:
+                for row in work:
+                    row[j] -= q*row[start]
+            if work[start][j]:
+                clean = False
+        if not clean:
+            # a smaller entry appeared: choose the pivot again
+            continue
+        # the pivot must divide the rest of the block
+        offender = next((i for i in range(start + 1, len(work))
+                         if any(work[i][j] % pivot for j in range(start + 1, width))), -1)
+        if offender >= 0:
+            work[start] = [a + c for a, c in zip(work[start], work[offender])]
+            continue
+        factors.append(abs(pivot))
+        start += 1
+    return factors

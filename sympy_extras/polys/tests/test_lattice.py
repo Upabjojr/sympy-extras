@@ -11,7 +11,8 @@ from sympy.polys.domains import ZZ as SZZ
 from sympy.polys.matrices import DomainMatrix
 from sympy.testing.pytest import raises
 
-from sympy_extras.polys.lattice import hermite_normal_form, is_lll_reduced, lll, lll_reduction
+from sympy_extras.polys.lattice import (hermite_normal_form, integer_kernel, is_lll_reduced, lll, lll_reduction,
+                                         smith_normal_form, solve_integer_system)
 
 
 def _random_rows(rng: random.Random, n: int, m: int, bound: int) -> list[list[int]]:
@@ -140,3 +141,88 @@ def test_hermite_normal_form() -> None:
                 q = rest[column]//basis_row[column]
                 rest = [a - q*b for a, b in zip(rest, basis_row)]
             assert not any(rest)
+
+
+# ---------------------------------------------------------------------------
+# linear systems over the integers
+
+def _apply(matrix: list[list[int]], vector: list[int]) -> list[int]:
+    return [sum(a*c for a, c in zip(row, vector)) for row in matrix]
+
+
+def test_integer_kernel() -> None:
+    rng = random.Random(16)
+    for _ in range(80):
+        m, n = rng.randint(0, 4), rng.randint(1, 5)
+        matrix = _random_rows(rng, m, n, 6)
+        kernel = integer_kernel(matrix, n)
+        assert len(kernel) == n - (Matrix(matrix).rank() if m else 0)
+        for vector in kernel:
+            assert not any(_apply(matrix, vector))
+        # saturated: a rational combination with integer entries is an
+        # integer combination, i.e. the Smith invariants of the basis are 1
+        assert smith_normal_form(kernel) == [1]*len(kernel)
+        assert kernel == [] or is_lll_reduced(kernel)
+
+
+def test_solve_integer_system() -> None:
+    rng = random.Random(17)
+    solvable = 0
+    for _ in range(150):
+        m, n = rng.randint(1, 4), rng.randint(1, 5)
+        matrix = _random_rows(rng, m, n, 5)
+        if rng.random() < 0.6:
+            rhs = _apply(matrix, [rng.randint(-9, 9) for _ in range(n)])
+        else:
+            rhs = [rng.randint(-9, 9) for _ in range(m)]
+        solutions = solve_integer_system(matrix, rhs, n)
+        # brute force over a box
+        box = 3 if n >= 4 else 6
+        found = False
+        point = [-box]*n
+        while True:
+            if _apply(matrix, point) == rhs:
+                found = True
+                break
+            k = 0
+            while k < n and point[k] == box:
+                point[k] = -box
+                k += 1
+            if k == n:
+                break
+            point[k] += 1
+        if solutions is None:
+            assert not found
+            continue
+        solvable += 1
+        assert _apply(matrix, solutions.particular) == rhs
+        for vector in solutions.kernel:
+            assert not any(_apply(matrix, vector))
+        assert hermite_normal_form(solutions.kernel) == hermite_normal_form(integer_kernel(matrix, n))
+    assert solvable > 60
+    # 3 x + 5 y = 1 (Bezout), 2 x + 4 y = 1 (no solution), a short particular solution
+    bezout = solve_integer_system([[3, 5]], [1], 2)
+    assert bezout is not None and 3*bezout.particular[0] + 5*bezout.particular[1] == 1
+    assert solve_integer_system([[2, 4]], [1], 2) is None
+    big = solve_integer_system([[1, 1]], [1000], 2)
+    assert big is not None and sorted(big.particular) == [500, 500]
+    raises(ValueError, lambda: solve_integer_system([[1, 2]], [1, 2], 2))
+    raises(ValueError, lambda: solve_integer_system([[1, 2, 3]], [1], 2))
+
+
+def test_smith_normal_form() -> None:
+    from sympy.matrices.normalforms import smith_normal_form as sympy_smith
+    # the example of the textbooks: diag(2, 6, 12)
+    assert smith_normal_form([[2, 4, 4], [-6, 6, 12], [10, -4, -16]]) == [2, 6, 12]
+    assert smith_normal_form([[2, 0], [0, 3]]) == [1, 6]
+    assert smith_normal_form([]) == [] and smith_normal_form([[0, 0], [0, 0]]) == []
+    rng = random.Random(18)
+    for _ in range(80):
+        m, n = rng.randint(1, 4), rng.randint(1, 4)
+        matrix = _random_rows(rng, m, n, 8)
+        factors = smith_normal_form(matrix)
+        assert all(d > 0 for d in factors)
+        assert all(b % a == 0 for a, b in zip(factors, factors[1:]))
+        theirs = sympy_smith(Matrix(matrix), domain=SZZ)
+        diagonal = [abs(int(theirs[i, i])) for i in range(min(m, n)) if theirs[i, i] != 0]
+        assert factors == sorted(diagonal)

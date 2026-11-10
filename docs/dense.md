@@ -143,6 +143,11 @@ The last line is the gcd of `(x + y)(x - y)` and `(x + y)**2` in `ZZ[y][x]`.
   and no floating point: entries of any size (SymPy's
   `DomainMatrix.lll` fails on entries of a few hundred bits). The Thue
   solver uses it.
+  The same row operations carried along on an identity matrix give
+  `integer_kernel` (a reduced basis of the integer solutions of
+  `A x = 0`), `solve_integer_system` (all the integer solutions of
+  `A x = b`, the particular one shortened by Babai's nearest plane
+  algorithm) and `smith_normal_form` (the invariant factors).
 - Over a number field `QQ(alpha)`, Trager's algorithm (`dup_ext_factor`):
   a shift `x - s alpha` making the norm `N(f) = Res_alpha(m, f)`
   square-free, the norm factored over `QQ`, and each factor `N_i` giving

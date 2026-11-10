@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.lattice`: `integer_kernel` (an LLL reduced basis of
+  the integer solutions of `A x = 0`), `solve_integer_system` (all the
+  integer solutions of `A x = b`: a short particular solution by Babai's
+  nearest plane algorithm and the kernel; `None` when there is none) and
+  `smith_normal_form` (the invariant factors).
 - `sympy_extras.concrete.guess`: `guess_recurrence`,
   `guess_differential_equation`, `guess_algebraic_equation` (the equation
   with polynomial coefficients, with the fewest coefficients, which the
@@ -1017,6 +1022,16 @@ remove public functions. Breaking changes are listed here when they happen.
   embedding by a gcd, no root evaluated numerically (SymPy's
   constructions refine complex roots by bisection, which takes minutes
   at the precisions they ask).
+
+### Fixed
+
+- `rsolve_linear` with initial values did not return on a recurrence
+  whose characteristic polynomial is an irreducible cubic (the
+  tribonacci numbers): the zero test of the linear system for the
+  constants computed the minimal polynomial of every entry, by
+  resultants on Cardano's formulas. A number which is not small at 120
+  digits is now known not to be zero; the minimal polynomial only proves
+  the zeros.
 
 ## 0.0.3 - 2026-10-06
 
