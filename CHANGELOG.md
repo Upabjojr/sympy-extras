@@ -457,6 +457,8 @@ remove public functions. Breaking changes are listed here when they happen.
   coefficients or free of the unknown (`solvers.linsolve.solve_one`,
   `numeric_linear_solution`, same results as SymPy's `solve`); about 200
   of the 220 calls the tests made to SymPy's `solve` from there are gone.
+  `telescopic` finds its shift natively for equations rational in it
+  (`polys.rationalsolve.solveset_rational`); 10 calls are left.
 - **Breaking:** the package `sympy_extras.solvers` exports nothing (as
   `sympy_extras.concrete`): its functions are imported from their modules
   (`from sympy_extras.solvers.ode import dsolve_lie`,

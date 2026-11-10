@@ -98,6 +98,20 @@ def _solve(e: Expr, v: Symbol) -> list[Expr]:
     return [expr_from_sympy(s) for s in sympy.solve(to_sympy(e), to_sympy(v))]
 
 
+def _shift_candidates(e: Expr, m: Symbol) -> list[Expr]:
+    """The solutions of ``e = 0`` for ``m`` among which :func:`telescopic`
+    looks for the integer shift (it keeps the integers it checks, so their
+    order does not matter): natively for an equation rational in ``m``
+    (SymPy's ``solveset``, the excluded points removed), through SymPy's
+    ``solve`` otherwise."""
+    from sympy_extras.polys.rationalsolve import solveset_rational
+    found = solveset_rational(e, m)
+    if found is None:
+        return _solve(e, m)
+    solutions, excluded = found
+    return [s for s in solutions if s not in excluded]
+
+
 # PORTED FROM SYMPY: sympy/concrete/summations.py:telescopic_direct
 def telescopic_direct(L: Expr, R: Expr, n: int, limits: Limits) -> Expr:
     """The sum of ``L + R`` when ``R`` is ``-L`` shifted by ``n``."""
@@ -122,7 +136,7 @@ def telescopic(L: Expr, R: Expr, limits: Limits) -> Optional[Expr]:
     if s is None:
         m = Dummy('m')
         try:
-            found = _solve(_e(L.subs(i, i + m)) + R, m)
+            found = _shift_candidates(_e(L.subs(i, i + m)) + R, m)
         except NotImplementedError:
             return None
         found = [si for si in found if isinstance(si, Integer) and (_e(L.subs(i, i + si)) + R).expand().is_zero]
