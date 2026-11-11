@@ -283,6 +283,10 @@ sympy_extras/
         recognize.py         PSLQ recognition of constants and integrals (an oracle, off by default) (native: the
                              quadrature evaluates by the numerical rules of the core's nodes)
         recognize_sympy.py   the SymPy face of recognize, used by definite
+        validated.py         validated_integral, enclosure: values with proved error bounds by interval quadrature (Simpson,
+                             Gauss–Legendre), endpoint models, maps of infinite ranges, oscillatory tails (native: the
+                             native interval evaluator, cancel, simplify, powdenest, limits, Sturm sequences)
+        validated_sympy.py   the SymPy face of validated, used by definite
         risch/               the transcendental Risch algorithm ported from Aaron Meurer's SymPy pull requests
         trager.py            Trager's algorithm for integrands rational in x and one square root of a polynomial
         curves.py            Trager's algorithm on an arbitrary curve: several or nested radicals through a primitive element, the change of variable x = N + 1/z, Hermite reduction in a normal integral basis, residues by Puiseux expansions, the logarithmic part by linear algebra

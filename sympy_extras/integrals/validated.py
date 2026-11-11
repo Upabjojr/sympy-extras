@@ -43,20 +43,28 @@ that the remainder is below the tolerance. The method follows the
 principles of verified quadrature [Petras]_ and of Arb's ball-arithmetic
 integration [Johansson]_ in a simple form.
 
+The module works on the objects of the core (:mod:`sympy_extras.core`, the
+functions of :mod:`sympy_extras.functions`) and imports no SymPy: the
+enclosures come from the native interval evaluator, the symbolic
+preparations (derivatives, ``together``, ``cancel``, ``simplify``,
+``powdenest``, limits at infinity) are the core's, the polynomials in the
+variable are lists of coefficients and Sturm's theorem is that of
+:mod:`sympy_extras.polys.rootisolation`.
+:mod:`sympy_extras.integrals.validated_sympy` is its face on SymPy objects.
+
 Examples
 ========
 
->>> from sympy import symbols, exp, sqrt, pi, erf, oo
+>>> from sympy_extras.core import symbols, sqrt, pi, oo
+>>> from sympy_extras.functions import exp, erf
 >>> from sympy_extras.integrals.validated import validated_integral
 >>> x = symbols('x')
 >>> value, error = validated_integral(exp(-x**2), x, 0, 1)
->>> round(value, 12), error < 1e-15
+>>> round(float(value), 12), float(error) < 1e-15
 (0.746824132812, True)
->>> abs(value - sqrt(pi)*erf(1)/2) < error
-True
 >>> value, error = validated_integral(exp(-x**2), x, 0, oo)
->>> abs(value - sqrt(pi)/2) < error, error < 1e-15
-(True, True)
+>>> float(error) < 1e-15
+True
 
 References
 ==========
@@ -74,37 +82,38 @@ from __future__ import annotations
 import heapq
 import math
 import time
-from typing import Callable, Optional, TypeGuard
+from fractions import Fraction
+from typing import Callable, Final, Optional, TypeGuard
 
 import mpmath
 from mpmath.ctx_iv import ivmpf
 
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.function import count_ops, expand, expand_power_exp
-from sympy.core.mul import Mul
-from sympy.core.numbers import Float, Integer, Rational, oo
-from sympy.core.power import Pow
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.complexes import Abs
-from sympy.functions.elementary.exponential import exp, log
-from sympy.functions.elementary.hyperbolic import cosh, sinh, tanh
-from sympy.functions.elementary.integers import ceiling
-from sympy.functions.elementary.trigonometric import atan, cos, sin, tan
-from sympy.integrals.integrals import integrate
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly, cancel, factor
-from sympy.polys.rationaltools import together
-from sympy.series.limits import limit
-from sympy.simplify.powsimp import powdenest
-from sympy.simplify.simplify import simplify
-
 from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_expr, free_symbols
-from sympy_extras.assumptions.ask_sympy import Assumptions
-from sympy_extras.assumptions.intervals_sympy import Box, evaluate
+from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.assumptions.intervals import evaluate
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
+from sympy_extras.core.function import count_ops, expand, expand_power_exp
+from sympy_extras.core.limits import limit
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import Float, Integer, Rational, number_from_fraction, oo
+from sympy_extras.core.numbers import dps_to_prec
+from sympy_extras.core.power import Pow, pow
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.complexes import Abs
+from sympy_extras.functions.elementary.exponential import Exp, Log, log
+from sympy_extras.functions.elementary.hyperbolic import Cosh, Sinh, Tanh
+from sympy_extras.functions.elementary.integers import ceiling
+from sympy_extras.functions.elementary.trigonometric import Atan, Cos, Sin, Tan, cos, sin
+from sympy_extras.polys.polyerrors import BasePolynomialError
+from sympy_extras.polys.polytools import cancel, factor
+from sympy_extras.polys.rationaltools import together
+from sympy_extras.polys.rootisolation import dup_count_real_roots
 from sympy_extras.settings import settings
+from sympy_extras.simplify.powsimp import powdenest
+from sympy_extras.simplify.simplify import simplify
 
 __all__ = ['validated_integral', 'enclosure']
 
@@ -120,11 +129,15 @@ _MAX_OPS = 5000
 #: how many times an oscillatory tail is integrated by parts at most
 _MAX_PARTS = 10
 
-_FUNCTIONS = (exp, log, sin, cos, tan, atan, sinh, cosh, tanh, Abs)
+_FUNCTIONS = (Exp, Log, Sin, Cos, Tan, Atan, Sinh, Cosh, Tanh, Abs)
 
 #: when the whole computation must stop refining (set by
 #: :func:`validated_integral` from ``settings.timeout``)
 _deadline: Optional[float] = None
+
+#: the coefficients of a polynomial in the variable, lowest degree first
+#: (no trailing zero; the zero polynomial is ``[0]``)
+Coefficients = list[Expr]
 
 
 def _budget() -> Optional[float]:
@@ -145,7 +158,7 @@ def _rational(value: Expr) -> Optional[Rational]:
     if isinstance(value, Rational):
         return value
     if isinstance(value, Float):
-        return Rational(value)
+        return number_from_fraction(value.as_fraction())
     return None
 
 
@@ -153,10 +166,10 @@ def _exact(value: mpmath.mpf) -> Rational:
     """An mpmath float as the exact rational it represents."""
     sign, mantissa, exponent, _ = value._mpf_
     if exponent >= 0:
-        result = Rational(int(mantissa) * 2**int(exponent))
+        result = Fraction(int(mantissa) * 2**int(exponent))
     else:
-        result = Rational(int(mantissa), 2**(-int(exponent)))
-    return -result if sign else result
+        result = Fraction(int(mantissa), 2**(-int(exponent)))
+    return number_from_fraction(-result if sign else result)
 
 
 def _interval(value: Rational) -> ivmpf:
@@ -164,25 +177,102 @@ def _interval(value: Rational) -> ivmpf:
 
 
 def _sum(lo: Rational, hi: Rational) -> Rational:
-    result = _rational(as_expr(lo + hi))
-    assert result is not None
-    return result
+    return number_from_fraction(lo.as_fraction() + hi.as_fraction())
 
 
 def _difference(hi: Rational, lo: Rational) -> Rational:
-    result = _rational(as_expr(hi - lo))
-    assert result is not None
-    return result
+    return number_from_fraction(hi.as_fraction() - lo.as_fraction())
 
 
 def _scaled(value: Rational, factor_: Rational) -> Rational:
-    result = _rational(as_expr(value * factor_))
-    assert result is not None
-    return result
+    return number_from_fraction(value.as_fraction() * factor_.as_fraction())
 
 
 def _mid(lo: Rational, hi: Rational) -> Rational:
-    return _scaled(_sum(lo, hi), Rational(1, 2))
+    return number_from_fraction((lo.as_fraction() + hi.as_fraction()) / 2)
+
+
+def _integer(e: Basic) -> Optional[int]:
+    """``e`` as a Python integer when it is an integer number (an
+    ``Integer``, or a ``Rational`` with denominator one)."""
+    if isinstance(e, Rational) and e.q == 1:
+        return e.p
+    return None
+
+
+def _ops(e: Expr) -> int:
+    counted = _integer(count_ops(e))
+    return 0 if counted is None else counted
+
+
+def _is_true(value: Optional[bool]) -> bool:
+    return value is True
+
+
+# ---------------------------------------------------------------------------
+# polynomials in the variable
+# ---------------------------------------------------------------------------
+
+def _polynomial(expr: Expr, x: Symbol) -> Optional[Coefficients]:
+    """The coefficients of ``expr`` as a polynomial in ``x`` (after
+    expansion), any expressions free of ``x``; ``None`` when ``x`` occurs
+    otherwise than in powers with nonnegative integer exponents (what
+    ``Poly(expr, x)`` raises ``PolynomialError`` on)."""
+    expanded = expand(expr)
+    collected: dict[int, list[Expr]] = {}
+    for term in Add.make_args(expanded):
+        degree = 0
+        rest: list[Expr] = []
+        for factor_ in Mul.make_args(term):
+            if factor_ == x:
+                degree += 1
+            elif isinstance(factor_, Pow) and factor_.base == x:
+                n = _integer(factor_.exp)
+                if n is None or n < 0:
+                    return None
+                degree += n
+            elif x in factor_.free_symbols:
+                return None
+            else:
+                rest.append(factor_)
+        collected.setdefault(degree, []).append(mul(*rest))
+    top = max(collected) if collected else 0
+    coefficients: Coefficients = [add(*collected.get(k, [])) for k in range(top + 1)]
+    while len(coefficients) > 1 and coefficients[-1] == 0:
+        coefficients.pop()
+    return coefficients
+
+
+def _degree(p: Coefficients) -> int:
+    return len(p) - 1 if len(p) > 1 or p[0] != 0 else -1
+
+
+def _divided(p: Coefficients, c: Expr) -> tuple[Coefficients, Expr]:
+    """The quotient of ``p`` by ``x - c`` and the remainder ``p(c)``
+    (Ruffini–Horner)."""
+    quotient: list[Expr] = []
+    carry: Expr = S.Zero
+    for coefficient in reversed(p):
+        carry = add(mul(carry, c), coefficient)
+        quotient.append(carry)
+    remainder = quotient.pop()
+    quotient.reverse()
+    return (quotient if quotient else [S.Zero]), remainder
+
+
+def _expr_of(p: Coefficients, x: Symbol) -> Expr:
+    return add(*[mul(c, pow(x, Integer(k))) for k, c in enumerate(p)])
+
+
+def _rational_coefficients(p: Coefficients) -> Optional[list[Fraction]]:
+    """The coefficients as fractions, highest degree first, when they
+    are all rational numbers."""
+    fractions: list[Fraction] = []
+    for c in reversed(p):
+        if not isinstance(c, Rational):
+            return None
+        fractions.append(c.as_fraction())
+    return fractions
 
 
 # ---------------------------------------------------------------------------
@@ -197,8 +287,7 @@ def _enclose(expr: Expr, x: Symbol, lo: Expr, hi: Expr, removable: bool = True) 
     expression only (the recursion would try every subexpression), by the
     Taylor remainder at removable singularities (``sin(x)/x`` at ``0``).
     The result may be infinite (the panel is then unbounded)."""
-    box: Box = {x: (lo, hi)}
-    value = evaluate(expr, box)
+    value = evaluate(expr, {x: (lo, hi)})
     if value is None:
         value = _extended(expr, x, lo, hi)
     if _finite(value) or not removable:
@@ -222,7 +311,7 @@ def _extended(expr: Expr, x: Symbol, lo: Expr, hi: Expr) -> Optional[ivmpf]:
                 total = total * value
         return total
     if isinstance(expr, Pow):
-        return _extended_power(as_expr(expr.base), as_expr(expr.exp), x, lo, hi)
+        return _extended_power(expr.base, expr.exp, x, lo, hi)
     if isinstance(expr, _FUNCTIONS):
         argument = _enclose(as_expr(expr.args[0]), x, lo, hi, removable=False)
         if argument is None:
@@ -233,27 +322,27 @@ def _extended(expr: Expr, x: Symbol, lo: Expr, hi: Expr) -> Optional[ivmpf]:
 
 def _apply(f: Expr, v: ivmpf) -> Optional[ivmpf]:
     try:
-        if isinstance(f, exp):
+        if isinstance(f, Exp):
             return _iv.exp(v)
-        if isinstance(f, log):
+        if isinstance(f, Log):
             if v.a > 0:
                 return _iv.log(v)
             if v.a == 0 and v.b > 0:
                 return _iv.mpf([-mpmath.inf, _iv.log(_iv.mpf(v.b)).b])
             return None
-        if isinstance(f, sin):
+        if isinstance(f, Sin):
             return _iv.sin(v)
-        if isinstance(f, cos):
+        if isinstance(f, Cos):
             return _iv.cos(v)
-        if isinstance(f, tan):
+        if isinstance(f, Tan):
             return _iv.tan(v)
-        if isinstance(f, atan):
+        if isinstance(f, Atan):
             return _iv.atan2(v, _iv.mpf(1))
-        if isinstance(f, sinh):
+        if isinstance(f, Sinh):
             return (_iv.exp(v) - _iv.exp(-v)) / 2
-        if isinstance(f, cosh):
+        if isinstance(f, Cosh):
             return (_iv.exp(v) + _iv.exp(-v)) / 2
-        if isinstance(f, tanh):
+        if isinstance(f, Tanh):
             w = _iv.exp(2 * v)
             return (w - 1) / (w + 1)
         if isinstance(f, Abs):
@@ -268,8 +357,8 @@ def _extended_power(base_: Expr, exponent_: Expr, x: Symbol, lo: Expr, hi: Expr)
     if base is None:
         return None
     try:
-        if isinstance(exponent_, Integer):
-            n = int(exponent_)
+        n = _integer(exponent_)
+        if n is not None:
             if n >= 0:
                 return base**n
             if base.a > 0 or base.b < 0:
@@ -285,7 +374,7 @@ def _extended_power(base_: Expr, exponent_: Expr, x: Symbol, lo: Expr, hi: Expr)
             return None
         if base.a > 0:
             return _iv.exp(exponent * _iv.log(base))
-        if exponent_.is_number and exponent_.is_extended_real:
+        if _is_true(exponent_.is_number) and _is_true(exponent_.is_extended_real):
             if base.a == 0 and base.b > 0:
                 at_top = _iv.exp(exponent * _iv.log(_iv.mpf(base.b)))
                 if exponent.a > 0:
@@ -312,13 +401,6 @@ def _extended_power(base_: Expr, exponent_: Expr, x: Symbol, lo: Expr, hi: Expr)
 _removable_forms: dict[tuple[Expr, Symbol, Expr], Optional[Expr]] = {}
 
 
-def _polynomial(expr: Expr, x: Symbol) -> Optional[Poly]:
-    try:
-        return Poly(expr, x)
-    except PolynomialError:
-        return None
-
-
 def _removable_form(expr: Expr, x: Symbol, c: Expr) -> Optional[Expr]:
     """``g**(n)/n!`` when ``expr = g/(x - c)**n`` with ``g`` and its first
     ``n - 1`` derivatives vanishing at ``c``: by Taylor's theorem with the
@@ -329,29 +411,47 @@ def _removable_form(expr: Expr, x: Symbol, c: Expr) -> Optional[Expr]:
         return _removable_forms[key]
     if len(_removable_forms) > 2000:
         _removable_forms.clear()
-    _removable_forms[key] = form = attempt(lambda: _find_removable_form(expr, x, c), _budget())
+    _removable_forms[key] = form = attempt(lambda: _find_removable_form(expr, x, c), _budget(), native=True)
     return form
+
+
+def _at(e: Expr, x: Symbol, c: Expr) -> Expr:
+    return as_expr(e.subs(x, c))
 
 
 def _find_removable_form(expr: Expr, x: Symbol, c: Expr) -> Optional[Expr]:
     numerator, denominator = expr.as_numer_denom()
-    if as_expr(denominator).subs(x, c) != 0:
+    if _at(denominator, x, c) != 0:
         return None
-    p = _polynomial(as_expr(denominator), x)
+    p = _polynomial(denominator, x)
     if p is None:
         return None
     n = 0
-    linear = Poly(x - c, x)
-    while p.degree() > 0 and p.eval(c) == 0:
-        p = p.quo(linear)
+    while _degree(p) > 0:
+        quotient, remainder = _divided(p, c)
+        if remainder != 0:
+            break
+        p = quotient
         n += 1
     if n == 0:
         return None
-    g = as_expr(cancel(as_expr(numerator) / as_expr(p.as_expr())))
+    derivative = _cancelled(numerator / _expr_of(p, x))
+    # the derivatives one after the other (each from the one before)
     for i in range(n):
-        if as_expr(g.diff(x, i)).subs(x, c) != 0:
+        if _at(derivative, x, c) != 0:
             return None
-    return as_expr(g.diff(x, n) / math.factorial(n))
+        derivative = derivative.diff(x)
+    return derivative / math.factorial(n)
+
+
+def _cancelled(e: Expr) -> Expr:
+    """``cancel(e)``, or ``e`` itself when the coefficients are in a
+    domain the typed polynomials do not have (``pi``, ``E``, ``sqrt(2)``:
+    SymPy's ``EX``)."""
+    try:
+        return cancel(e)
+    except BasePolynomialError:
+        return e
 
 
 def _removable(expr: Expr, x: Symbol, lo: Expr, hi: Expr) -> Optional[ivmpf]:
@@ -376,11 +476,12 @@ class _Rule:
     ``(n!)**4/((2n + 1) ((2n)!)**3)`` of the error bound."""
 
     def __init__(self, n: int, nodes: list[tuple[Rational, Rational]], weights: list[ivmpf]) -> None:
-        self.n = n
-        self.nodes = nodes
-        self.weights = weights
-        self.order = 2 * n
-        self.constant = _interval(Rational(math.factorial(n)**4, (2 * n + 1) * math.factorial(2 * n)**3))
+        self.n: Final[int] = n
+        self.nodes: Final[list[tuple[Rational, Rational]]] = nodes
+        self.weights: Final[list[ivmpf]] = weights
+        self.order: Final[int] = 2 * n
+        self.constant: Final[ivmpf] = _interval(Rational(math.factorial(n)**4,
+                                                         (2 * n + 1) * math.factorial(2 * n)**3))
 
 
 _rules: dict[tuple[int, int], Optional[_Rule]] = {}
@@ -395,7 +496,7 @@ def _legendre(n: int, t: ivmpf) -> tuple[ivmpf, ivmpf]:
 
 
 def _gauss_rule(n: int) -> Optional[_Rule]:
-    key = (n, _iv.dps)
+    key = (n, int(_iv.dps))
     if key not in _rules:
         _rules[key] = _make_rule(n)
     return _rules[key]
@@ -410,6 +511,7 @@ def _make_rule(n: int) -> Optional[_Rule]:
     nodes: list[tuple[Rational, Rational]] = []
     weights: list[ivmpf] = []
     dps = _iv.dps
+    half = Rational(1, 2)
     try:
         _iv.dps = dps + 20
         with mpmath.mp.workdps(dps + 20):
@@ -425,12 +527,11 @@ def _make_rule(n: int) -> Optional[_Rule]:
                 pn, pn1 = _legendre(n, t)
                 derivative = n * (t * pn - pn1) / (t**2 - 1)
                 weights.append(2 / ((1 - t**2) * derivative**2))
-                nodes.append((_scaled(_sum(Rational(1), lo), Rational(1, 2)),
-                              _scaled(_sum(Rational(1), hi), Rational(1, 2))))
+                nodes.append((_scaled(_sum(Integer(1), lo), half), _scaled(_sum(Integer(1), hi), half)))
     finally:
         _iv.dps = dps
-    ordered = sorted(nodes)
-    if any(ordered[i][1] >= ordered[i + 1][0] for i in range(len(ordered) - 1)):
+    ordered = sorted(nodes, key=lambda node: (node[0].as_fraction(), node[1].as_fraction()))
+    if any(ordered[i][1].as_fraction() >= ordered[i + 1][0].as_fraction() for i in range(len(ordered) - 1)):
         return None
     return _Rule(n, nodes, weights)
 
@@ -439,17 +540,22 @@ def _make_rule(n: int) -> Optional[_Rule]:
 # the endpoint model
 # ---------------------------------------------------------------------------
 
+#: a term ``c(v) v**alpha log(v)**j`` of the model: the enclosure of
+#: ``alpha``, ``j`` and the coefficient ``c``
+ModelTerm = tuple[ivmpf, int, Expr]
+
+
 class _Model:
     """The integrand near an endpoint as a sum of terms ``c(v) v**alpha
     log(v)**j`` with ``alpha > -1`` and ``c`` bounded, ``v`` the distance
     from the endpoint, which bounds the integral over ``[0, h]``."""
 
-    def __init__(self, v: Symbol, terms: list[tuple[ivmpf, int, Expr]]) -> None:
-        self.v = v
-        self.terms = terms
+    def __init__(self, v: Symbol, terms: list[ModelTerm]) -> None:
+        self.v: Final[Symbol] = v
+        self.terms: Final[list[ModelTerm]] = terms
 
     def bound(self, h: Rational) -> Optional[mpmath.mpf]:
-        if h >= 1:
+        if h.as_fraction() >= 1:
             return None
         width = _interval(h)
         total = _iv.mpf(0)
@@ -475,32 +581,34 @@ def _model_integral(alpha: ivmpf, j: int, h: ivmpf) -> ivmpf:
 
 def _model(f: Expr, x: Symbol, end: Rational, side: str) -> Optional[_Model]:
     v = Dummy('v', positive=True)
-    g = as_expr(f.subs(x, end + v if side == 'left' else end - v))
-    expanded = attempt(lambda: as_expr(expand(g)), _budget())
+    g = _at(f, x, end + v if side == 'left' else end - v)
+    expanded = attempt(lambda: expand(g), _budget(), native=True)
     if expanded is not None:
         g = expanded
-    terms: list[tuple[ivmpf, int, Expr]] = []
+    log_v = log(v)
+    terms: list[ModelTerm] = []
     for term in Add.make_args(g):
         alpha: Expr = S.Zero
         j = 0
         rest: list[Expr] = []
         for factor_ in Mul.make_args(term):
-            base: Expr = as_expr(factor_)
+            base: Expr = factor_
             exponent: Expr = S.One
             if isinstance(factor_, Pow):
-                base, exponent = as_expr(factor_.base), as_expr(factor_.exp)
-            if base == v and exponent.is_number and exponent.is_extended_real:
-                alpha = as_expr(alpha + exponent)
-            elif base == log(v) and isinstance(exponent, Integer) and exponent > 0:
-                j += int(exponent)
+                base, exponent = factor_.base, factor_.exp
+            n = _integer(exponent)
+            if base == v and _is_true(exponent.is_number) and _is_true(exponent.is_extended_real):
+                alpha = alpha + exponent
+            elif base == log_v and n is not None and n > 0:
+                j += n
             else:
-                rest.append(as_expr(factor_))
-        if not (alpha + 1).is_positive:
+                rest.append(factor_)
+        if not _is_true((alpha + 1).is_positive):
             return None
         alpha_ = _enclose(alpha, v, S.Zero, S.Zero)
         if alpha_ is None:
             return None
-        terms.append((alpha_, j, as_expr(Mul(*rest))))
+        terms.append((alpha_, j, mul(*rest)))
     return _Model(v, terms)
 
 
@@ -518,11 +626,11 @@ class _Form:
     is a quotient of polynomials of degrees 10 and 22 whose naive
     enclosure is wider by many orders of magnitude)."""
 
-    def __init__(self, x: Symbol, numerator: list[Expr], denominator: list[Expr]) -> None:
-        self.x = x
+    def __init__(self, x: Symbol, numerator: Coefficients, denominator: Coefficients) -> None:
+        self.x: Final[Symbol] = x
         #: the coefficients, lowest degree first
-        self.numerator = numerator
-        self.denominator = denominator
+        self.numerator: Final[Coefficients] = numerator
+        self.denominator: Final[Coefficients] = denominator
 
     def evaluate(self, lo: Rational, hi: Rational) -> Optional[ivmpf]:
         mid = _interval(_mid(lo, hi))
@@ -559,17 +667,21 @@ def _sum_of_powers(coefficients: list[ivmpf], offset: ivmpf) -> ivmpf:
     return total
 
 
-def _hidden(expr: Expr, x: Symbol, back: dict[Expr, Expr]) -> Expr:
+def _hidden(expr: Expr, x: Symbol, back: dict[Basic, Basic]) -> Expr:
     """``expr`` with its transcendental subexpressions in ``x`` replaced
     by dummies (recorded in ``back``), a polynomial in ``x``."""
-    if x not in free_symbols(expr):
+    if x not in expr.free_symbols:
         return expr
     if expr == x:
         return expr
-    if isinstance(expr, (Add, Mul)):
-        return as_expr(expr.func(*[_hidden(as_expr(a), x, back) for a in expr.args]))
-    if isinstance(expr, Pow) and isinstance(expr.exp, Integer) and expr.exp > 0:
-        return as_expr(Pow(_hidden(as_expr(expr.base), x, back), expr.exp))
+    if isinstance(expr, Add):
+        return add(*[_hidden(as_expr(a), x, back) for a in expr.args])
+    if isinstance(expr, Mul):
+        return mul(*[_hidden(as_expr(a), x, back) for a in expr.args])
+    if isinstance(expr, Pow):
+        n = _integer(expr.exp)
+        if n is not None and n > 0:
+            return pow(_hidden(expr.base, x, back), expr.exp)
     dummy = Dummy('g')
     back[dummy] = expr
     return dummy
@@ -579,18 +691,19 @@ def _form(expr: Expr, x: Symbol) -> Optional[_Form]:
     """The centred form of ``expr`` within the budget of a preparation,
     ``None`` when it is not a quotient of polynomials in ``x`` with
     transcendental coefficients or the budget is spent."""
-    return attempt(lambda: _make_form(expr, x), _budget())
+    return attempt(lambda: _make_form(expr, x), _budget(), native=True)
 
 
 def _make_form(expr: Expr, x: Symbol) -> Optional[_Form]:
-    combined = as_expr(together(expr))
-    parts: list[list[Expr]] = []
+    combined = together(expr)
+    parts: list[Coefficients] = []
     for part in combined.as_numer_denom():
-        back: dict[Expr, Expr] = {}
-        p = _polynomial(_hidden(as_expr(part), x, back), x)
-        if p is None or p.degree() > 80:
+        back: dict[Basic, Basic] = {}
+        p = _polynomial(_hidden(part, x, back), x)
+        if p is None or _degree(p) > 80:
             return None
-        parts.append([as_expr(c).xreplace(back) for c in reversed(p.all_coeffs())])
+        # the rebuilt coefficients evaluated, as SymPy's xreplace does
+        parts.append([as_expr(c._xreplace_evaluated(back)) for c in p])
     return _Form(x, parts[0], parts[1])
 
 
@@ -603,22 +716,23 @@ class _Problem:
     rule, and the endpoint models (made when first needed)."""
 
     def __init__(self, f: Expr, x: Symbol, a: Rational, b: Rational) -> None:
-        self.f = f
-        self.x = x
-        self.a = a
-        self.b = b
-        self.fourth = attempt(lambda: as_expr(f.diff(x, 4)), _budget())
-        self.rule = _gauss_rule(_GAUSS_NODES)
-        self.high: Optional[Expr] = None
+        self.f: Final[Expr] = f
+        self.x: Final[Symbol] = x
+        self.a: Final[Rational] = a
+        self.b: Final[Rational] = b
+        self.fourth: Final[Optional[Expr]] = attempt(lambda: f.diff(x, 4), _budget(), native=True)
+        self.rule: Final[Optional[_Rule]] = _gauss_rule(_GAUSS_NODES)
+        high: Optional[Expr] = None
         if self.rule is not None and not _out_of_time():
-            high = attempt(lambda: as_expr(f.diff(x, 2 * _GAUSS_NODES)), _budget())
-            if high is not None and count_ops(high) <= _MAX_OPS:
-                self.high = high
-        self.forms: dict[Expr, Optional[_Form]] = {}
+            derivative = attempt(lambda: f.diff(x, 2 * _GAUSS_NODES), _budget(), native=True)
+            if derivative is not None and _ops(derivative) <= _MAX_OPS:
+                high = derivative
+        self.high: Final[Optional[Expr]] = high
+        self.forms: Final[dict[Expr, Optional[_Form]]] = {}
         for expr in (f, self.fourth, self.high):
             if expr is not None and not _out_of_time():
                 self.forms[expr] = _form(expr, x)
-        self.models: dict[str, Optional[_Model]] = {}
+        self.models: Final[dict[str, Optional[_Model]]] = {}
 
     def bound(self, expr: Expr, lo: Rational, hi: Rational) -> Optional[ivmpf]:
         """An enclosure of ``expr`` on the panel, through its centred
@@ -642,14 +756,14 @@ class _Panel:
     """A panel of the subdivision with its enclosure and error bound."""
 
     def __init__(self, lo: Rational, hi: Rational, value: ivmpf, error: mpmath.mpf) -> None:
-        self.lo = lo
-        self.hi = hi
-        self.value = value
-        self.error = error
-        #: what splitting the panel can gain: the bound and the width of
+        self.lo: Final[Rational] = lo
+        self.hi: Final[Rational] = hi
+        self.value: Final[ivmpf] = value
+        self.error: Final[mpmath.mpf] = error
+        #: what splitting the panel can gain: the bound and the radius of
         #: the enclosure of the value
-        #: the enclosure of the value (the panel's radius)
-        self.priority: mpmath.mpf = error + mpmath.mpf(value.delta) / 2 if mpmath.isfinite(error) else error
+        self.priority: Final[mpmath.mpf] = (error + mpmath.mpf(value.delta) / 2
+                                            if mpmath.isfinite(error) else error)
 
     def __lt__(self, other: _Panel) -> bool:
         return bool(self.priority > other.priority)    # the largest first
@@ -678,6 +792,10 @@ def _gauss_value(problem: _Problem, lo: Rational, hi: Rational) -> Optional[ivmp
     return _interval(width) / 2 * total
 
 
+#: a quadrature rule on a panel
+PanelRule = Callable[[_Problem, Rational, Rational], Optional[ivmpf]]
+
+
 def _panel(problem: _Problem, lo: Rational, hi: Rational) -> _Panel:
     """The panel with the rule of the smaller bound; the range bound when
     no derivative has a finite enclosure; the endpoint model at an
@@ -685,7 +803,7 @@ def _panel(problem: _Problem, lo: Rational, hi: Rational) -> _Panel:
     (the panel is then split first: interval arithmetic loses its
     dependency problem on narrow panels)."""
     width = _interval(_difference(hi, lo))
-    candidates: list[tuple[mpmath.mpf, Callable[[_Problem, Rational, Rational], Optional[ivmpf]]]] = []
+    candidates: list[tuple[mpmath.mpf, PanelRule]] = []
     if problem.high is not None and problem.rule is not None:
         bound = problem.bound(problem.high, lo, hi)
         if _finite(bound):
@@ -719,9 +837,9 @@ class _Subdivision:
     a finite bound."""
 
     def __init__(self) -> None:
-        self.heap: list[_Panel] = []
-        self.estimate = mpmath.mpf(0)
-        self.unbounded = 0
+        self.heap: Final[list[_Panel]] = []
+        self.estimate: mpmath.mpf = mpmath.mpf(0)
+        self.unbounded: int = 0
 
     def push(self, panel: _Panel) -> None:
         heapq.heappush(self.heap, panel)
@@ -758,11 +876,25 @@ def enclosure(f: Expr, x: Symbol, a: Rational, b: Rational, tolerance: mpmath.mp
     of :func:`validated_integral`) is spent; ``None``
     when a panel narrower than the tolerance still cannot be bounded (a
     non-integrable singularity, or a function the interval evaluator does
-    not know)."""
+    not know).
+
+    Examples
+    ========
+
+    >>> import mpmath
+    >>> from sympy_extras.core import Rational, symbols
+    >>> from sympy_extras.functions import log
+    >>> from sympy_extras.integrals.validated import enclosure
+    >>> x = symbols('x')
+    >>> r = enclosure(log(1 + x), x, Rational(0), Rational(1), mpmath.mpf('1e-12'))
+    >>> r.a < 2*mpmath.log(2) - 1 < r.b, r.delta < 1e-12
+    (True, True)
+    """
     problem = _Problem(f, x, a, b)
     panels = _Subdivision()
     panels.push(_panel(problem, a, b))
     iterations = 0
+    span = float(b.as_fraction() - a.as_fraction())
     while len(panels.heap) < max_panels:
         # the estimate drifts by the rounding of the large early bounds
         # it has subtracted, so it is reset now and then
@@ -774,7 +906,8 @@ def enclosure(f: Expr, x: Symbol, a: Rational, b: Rational, tolerance: mpmath.mp
         if _out_of_time():
             break
         worst = panels.pop()
-        if not mpmath.isfinite(worst.error) and float(worst.hi - worst.lo) < float(tolerance) * float(b - a):
+        if (not mpmath.isfinite(worst.error)
+                and float(worst.hi.as_fraction() - worst.lo.as_fraction()) < float(tolerance) * span):
             return None
         mid_ = _mid(worst.lo, worst.hi)
         panels.push(_panel(problem, worst.lo, mid_))
@@ -794,16 +927,16 @@ def _denest(g: Expr) -> Expr:
     substitution leaves ``sqrt(1 - (1 - w**2)**2)``, which is
     ``w*sqrt(2 - w**2)``."""
 
-    def factored(node: Expr) -> Expr:
+    def factored(node: Basic) -> Basic:
         if not isinstance(node, Pow):
             return node
-        return as_expr(Pow(factor(expand(as_expr(node.base))), node.exp))
+        return pow(factor(expand(node.base)), node.exp)
 
-    def is_radical(node: Expr) -> bool:
+    def is_radical(node: Basic) -> bool:
         return isinstance(node, Pow) and isinstance(node.exp, Rational) and node.exp.q > 1
 
     replaced = as_expr(g.replace(is_radical, factored))
-    return as_expr(powdenest(replaced, force=True))
+    return powdenest(replaced, force=True)
 
 
 def _remove_power_singularity(f: Expr, x: Symbol, a: Rational, b: Rational,
@@ -816,9 +949,11 @@ def _remove_power_singularity(f: Expr, x: Symbol, a: Rational, b: Rational,
     end = a if side == 'left' else b
     denominators: set[int] = set()
     for node in f.atoms(Pow):
-        exponent = as_expr(node.exp)
-        if (isinstance(exponent, Rational) and 1 < exponent.q <= 12 and exponent > -1
-                and as_expr(node.base).subs(x, end) == 0):
+        if not isinstance(node, Pow):
+            continue
+        exponent = node.exp
+        if (isinstance(exponent, Rational) and 1 < exponent.q <= 12 and exponent.as_fraction() > -1
+                and _at(node.base, x, end) == 0):
             denominators.add(int(exponent.q))
     if not denominators:
         return None
@@ -826,8 +961,8 @@ def _remove_power_singularity(f: Expr, x: Symbol, a: Rational, b: Rational,
     u = Dummy('u', positive=True)
     scale = _difference(b, a)
     image = a + scale * u**k if side == 'left' else b - scale * u**k
-    g = as_expr(f.subs(x, image) * scale * k * u**(k - 1))
-    denested = attempt(lambda: _denest(g), _budget())
+    g = _at(f, x, image) * scale * k * u**(k - 1)
+    denested = attempt(lambda: _denest(g), _budget(), native=True)
     return (denested if denested is not None else g), u
 
 
@@ -837,28 +972,38 @@ def _desingularised(f: Expr, x: Symbol, lo: Rational, hi: Rational) -> tuple[Exp
         transformed = _remove_power_singularity(g, u, a, b, side)
         if transformed is not None:
             g, u = transformed
-            a, b = Rational(0), Rational(1)
+            a, b = Integer(0), Integer(1)
     return g, u, a, b
 
 
-def _bounds(a: Expr, b: Expr) -> Optional[tuple[Rational, Rational, list[tuple[Rational, Rational]]]]:
+def _rounded(value: mpmath.mpf) -> Rational:
+    """``value`` rounded to 40 digits, as the exact rational it is."""
+    with mpmath.mp.workprec(dps_to_prec(40)):
+        return _exact(+mpmath.mpf(value))
+
+
+#: rational bounds inside the range and the strips at irrational endpoints
+Bounds = tuple[Rational, Rational, list[tuple[Rational, Rational]]]
+
+
+def _bounds(a: Expr, b: Expr) -> Optional[Bounds]:
     """Rational bounds inside ``[a, b]`` and the strips left over at
     irrational endpoints (``pi``), each a rational interval containing
     the endpoint."""
     strips: list[tuple[Rational, Rational]] = []
     lo, hi = _rational(a), _rational(b)
     if lo is None:
-        value = _enclose(a, Dummy('x'), Rational(0), Rational(0))
+        value = _enclose(a, Dummy('x'), Integer(0), Integer(0))
         if value is None:
             return None
-        lo = Rational(Float(mpmath.mpf(value.b), 40))
-        strips.append((Rational(Float(mpmath.mpf(value.a), 40)), lo))
+        lo = _rounded(value.b)
+        strips.append((_rounded(value.a), lo))
     if hi is None:
-        value = _enclose(b, Dummy('x'), Rational(0), Rational(0))
+        value = _enclose(b, Dummy('x'), Integer(0), Integer(0))
         if value is None:
             return None
-        hi = Rational(Float(mpmath.mpf(value.a), 40))
-        strips.append((hi, Rational(Float(mpmath.mpf(value.b), 40))))
+        hi = _rounded(value.a)
+        strips.append((hi, _rounded(value.b)))
     return lo, hi, strips
 
 
@@ -874,7 +1019,7 @@ def _enclosed(f: Expr, x: Symbol, a: Expr, b: Expr, tolerance: mpmath.mpf) -> Op
     if bounds is None:
         return None
     lo, hi, strips = bounds
-    if lo > hi:
+    if lo.as_fraction() > hi.as_fraction():
         reversed_ = _enclosed(f, x, b, a, tolerance)
         return None if reversed_ is None else -reversed_
     g, u, lo_, hi_ = _desingularised(f, x, lo, hi)
@@ -899,23 +1044,32 @@ def _tidy(g: Expr) -> Expr:
     """The transformed integrand with the exponentials of the
     substitution expanded and cancelled (``exp(-x)`` under ``x = -log(1 -
     t)`` is ``1 - t``)."""
-    tidied = attempt(lambda: as_expr(cancel(expand_power_exp(g))), _budget())
+    tidied = attempt(lambda: cancel(expand_power_exp(g)), _budget(), native=True)
     return g if tidied is None else tidied
 
 
 def _rational_map(f: Expr, x: Symbol, a: Expr, tolerance: mpmath.mpf) -> Optional[ivmpf]:
     """``x = a + t/(1 - t)`` on ``[0, 1]``: algebraic decay."""
     t = Dummy('t', positive=True)
-    g = as_expr(f.subs(x, a + t / (1 - t)) / (1 - t)**2)
-    simpler = attempt(lambda: as_expr(simplify(cancel(g))), _budget())
+    g = _at(f, x, a + t / (1 - t)) / (1 - t)**2
+    simpler = attempt(lambda: simplify(cancel(g)), _budget(), native=True)
     return _enclosed(simpler if simpler is not None else g, t, S.Zero, S.One, tolerance)
 
 
 def _exponential_map(f: Expr, x: Symbol, a: Expr, tolerance: mpmath.mpf) -> Optional[ivmpf]:
     """``x = a - log(1 - t)`` on ``[0, 1]``: exponential decay."""
     t = Dummy('t', positive=True)
-    g = _tidy(as_expr(f.subs(x, a - log(1 - t)) / (1 - t)))
+    g = _tidy(_at(f, x, a - log(1 - t)) / (1 - t))
     return _enclosed(g, t, S.Zero, S.One, tolerance)
+
+
+def _ceiling(a: Expr) -> Optional[int]:
+    """The ceiling of the number ``a`` as a Python integer, ``None`` when
+    it is not found."""
+    exact = _rational(a)
+    if exact is not None:
+        return math.ceil(exact.as_fraction())
+    return _integer(ceiling(a))
 
 
 def _stretched(f: Expr, x: Symbol, a: Expr, tolerance: mpmath.mpf) -> Optional[ivmpf]:
@@ -923,25 +1077,55 @@ def _stretched(f: Expr, x: Symbol, a: Expr, tolerance: mpmath.mpf) -> Optional[i
     max(1, ceiling(a))``, and ``x = s**(1/k)`` on ``[C, oo)`` makes the
     decay exponential in ``s``."""
     degrees: set[int] = set()
-    for node in f.atoms(exp):
+    for node in f.atoms(Exp):
+        if not isinstance(node, Exp):
+            continue
         argument = as_expr(node.args[0])
-        if x not in free_symbols(argument):
+        if x not in argument.free_symbols:
             continue
         p = _polynomial(argument, x)
-        if p is None or p.degree() < 2 or not as_expr(p.LC()).is_negative:
+        if p is None or _degree(p) < 2 or not _is_true(p[-1].is_negative):
             return None
-        degrees.add(int(p.degree()))
+        degrees.add(_degree(p))
     if len(degrees) != 1:
         return None
     k = degrees.pop()
-    cut = Integer(max(int(ceiling(a)), 1))
+    start = _ceiling(a)
+    if start is None:
+        return None
+    cut = Integer(max(start, 1))
     finite = _enclosed(f, x, a, cut, tolerance / 2)
     if finite is None:
         return None
     s = Dummy('s', positive=True)
-    g = as_expr(f.subs(x, s**Rational(1, k)) * s**(Rational(1, k) - 1) / k)
+    g = _at(f, x, s**Rational(1, k)) * s**(Rational(1, k) - 1) / k
     tail = _exponential_map(g, s, cut**k, tolerance / 2)
     return None if tail is None else finite + tail
+
+
+def _trigonometric_antiderivative(e: Expr, x: Symbol) -> Optional[Expr]:
+    """An antiderivative of ``c sin(w x + d)`` or ``c cos(w x + d)``,
+    ``c`` and ``w`` free of ``x``: ``-c cos(w x + d)/w`` and ``c sin(w x +
+    d)/w``; ``None`` for any other expression."""
+    rest: list[Expr] = []
+    found: Optional[Expr] = None
+    for factor_ in Mul.make_args(e):
+        if isinstance(factor_, (Sin, Cos)) and found is None:
+            found = factor_
+        elif x in factor_.free_symbols:
+            return None
+        else:
+            rest.append(factor_)
+    if found is None:
+        return None
+    argument = as_expr(found.args[0])
+    p = _polynomial(argument, x)
+    if p is None or _degree(p) != 1:
+        return None
+    c = mul(*rest) / p[1]
+    if isinstance(found, Sin):
+        return -c * cos(argument)
+    return c * sin(argument)
 
 
 def _oscillatory(f: Expr, x: Symbol, a: Expr, tolerance: mpmath.mpf) -> Optional[ivmpf]:
@@ -957,39 +1141,47 @@ def _oscillatory(f: Expr, x: Symbol, a: Expr, tolerance: mpmath.mpf) -> Optional
     mean value theorem); ``A`` and ``k`` are the first pair that brings
     it below half the tolerance."""
     factors = list(Mul.make_args(f))
-    trigonometric = [i for i, factor_ in enumerate(factors) if isinstance(factor_, (sin, cos))]
+    trigonometric = [i for i, factor_ in enumerate(factors) if isinstance(factor_, (Sin, Cos))]
     if len(trigonometric) != 1:
         return None
-    phi = as_expr(factors.pop(trigonometric[0]))
-    g = as_expr(Mul(*factors))
-    if g.has(sin, cos, tan):
+    phi = factors.pop(trigonometric[0])
+    g = mul(*factors)
+    if g.has(Sin, Cos, Tan):
         return None
-    p = _polynomial(as_expr(phi.args[0]), x)
-    if p is None or p.degree() != 1:
+    argument = as_expr(phi.args[0])
+    p = _polynomial(argument, x)
+    if p is None or _degree(p) != 1:
         return None
-    w = as_expr(p.LC())
-    if not w.is_number:
+    w = p[1]
+    if not _is_true(w.is_number):
         return None
-    if w.is_negative:
-        # sin(-y) = -sin(y), cos(-y) = cos(y)
-        phi, w = as_expr(phi.func(-as_expr(phi.args[0]))), as_expr(-w)
-        if isinstance(phi, sin):
-            g = as_expr(-g)
+    if _is_true(w.is_negative):
+        # sin(-y) = -sin(y), cos(-y) = cos(y), the nodes kept unevaluated
+        if isinstance(phi, Sin):
+            phi, g = Sin(-argument), -g
+        else:
+            phi = Cos(-argument)
+        w = -w
     w_ = _enclose(w, x, S.Zero, S.Zero)
     if not _finite(w_) or w_.a <= 0:
         return None
     derivatives = [g]
     antiderivatives = [phi]
-    start = Integer(int(ceiling(a)) + 1)
+    start = _ceiling(a)
+    if start is None:
+        return None
     for m in range(24):
-        A = as_expr(start * Integer(2)**m)
+        A = Integer((start + 1) * 2**m)
         for k in range(_MAX_PARTS + 1):
             if _out_of_time():
                 return None
             while len(derivatives) <= k + 1:
-                derivatives.append(as_expr(derivatives[-1].diff(x)))
+                derivatives.append(derivatives[-1].diff(x))
             while len(antiderivatives) <= k:
-                antiderivatives.append(as_expr(integrate(antiderivatives[-1], x)))
+                antiderivative = _trigonometric_antiderivative(antiderivatives[-1], x)
+                if antiderivative is None:
+                    return None
+                antiderivatives.append(antiderivative)
             at_a = _enclose(derivatives[k], x, A, A)
             if not _finite(at_a):
                 break
@@ -1000,7 +1192,7 @@ def _oscillatory(f: Expr, x: Symbol, a: Expr, tolerance: mpmath.mpf) -> Optional
                 continue
             tail = _iv.mpf(0)
             for i in range(k):
-                term = _enclose(as_expr((-1)**(i + 1) * derivatives[i] * antiderivatives[i + 1]), x, A, A)
+                term = _enclose(Integer((-1)**(i + 1)) * derivatives[i] * antiderivatives[i + 1], x, A, A)
                 if not _finite(term):
                     return None
                 tail = tail + term
@@ -1011,33 +1203,46 @@ def _oscillatory(f: Expr, x: Symbol, a: Expr, tolerance: mpmath.mpf) -> Optional
     return None
 
 
-def _sign_on_ray(expr: Expr, x: Symbol, A: Expr) -> Optional[int]:
+def _sign_on_ray(expr: Expr, x: Symbol, A: Integer) -> Optional[int]:
     """The sign of ``expr`` on ``[A, oo)``: the polynomial factors in
     ``x`` of its numerator and denominator have no root there by Sturm's
-    theorem (``count_roots``) and so the sign of their value at ``A``,
-    the other factors a sign read from their enclosure on the ray; ``1``
-    or ``-1`` for a constant sign, ``0`` for the zero expression, ``None``
-    when undecided."""
+    theorem and so the sign of their value at ``A``, the other factors a
+    sign read from their enclosure on the ray; ``1`` or ``-1`` for a
+    constant sign, ``0`` for the zero expression, ``None`` when
+    undecided."""
     if expr == 0:
         return 0
-    return attempt(lambda: _find_sign_on_ray(expr, x, A), _budget())
+    return attempt(lambda: _find_sign_on_ray(expr, x, A), _budget(), native=True)
 
 
-def _find_sign_on_ray(expr: Expr, x: Symbol, A: Expr) -> Optional[int]:
-    combined = as_expr(together(expr))
+def _roots_on_ray(p: list[Fraction], A: Fraction) -> int:
+    """The number of distinct roots of ``p`` (highest degree first) in
+    ``[A, oo)``."""
+    at_a = Fraction(0)
+    for c in p:
+        at_a = at_a * A + c
+    return dup_count_real_roots(p, A) + (1 if at_a == 0 and len(p) > 1 else 0)
+
+
+def _find_sign_on_ray(expr: Expr, x: Symbol, A: Integer) -> Optional[int]:
+    combined = together(expr)
     sign = 1
     for part in combined.as_numer_denom():
-        for factor_ in Mul.make_args(as_expr(part)):
-            base, exponent = as_expr(factor_), 1
-            if isinstance(factor_, Pow) and isinstance(factor_.exp, Integer):
-                base, exponent = as_expr(factor_.base), int(factor_.exp)
-            if x not in free_symbols(base):
+        for factor_ in Mul.make_args(part):
+            base, exponent = factor_, 1
+            if isinstance(factor_, Pow):
+                n = _integer(factor_.exp)
+                if n is not None:
+                    base, exponent = factor_.base, n
+            factor_sign: Optional[int] = None
+            if x not in base.free_symbols:
                 enclosed = _enclose(base, x, S.Zero, S.Zero)
                 factor_sign = None if enclosed is None else _interval_sign(enclosed)
             else:
                 p = _polynomial(base, x)
-                if p is not None and p.domain.is_QQ or p is not None and p.domain.is_ZZ:
-                    if p.count_roots(A) != 0:
+                rational = None if p is None else _rational_coefficients(p)
+                if rational is not None:
+                    if _roots_on_ray(rational, A.as_fraction()) != 0:
                         return None
                     at_a = _enclose(base, x, A, A)
                     factor_sign = None if at_a is None else _interval_sign(at_a)
@@ -1059,7 +1264,7 @@ def _interval_sign(value: ivmpf) -> Optional[int]:
     return None
 
 
-def _monotone_to_zero(derivatives: list[Expr], x: Symbol, A: Expr) -> bool:
+def _monotone_to_zero(derivatives: list[Expr], x: Symbol, A: Integer) -> bool:
     """Whether the last derivative but one has a constant sign and the
     last the opposite sign (or vanishes) on ``[A, oo)``, and all of them
     vanish at infinity."""
@@ -1067,8 +1272,8 @@ def _monotone_to_zero(derivatives: list[Expr], x: Symbol, A: Expr) -> bool:
     if last is None or next_ is None or last * next_ > 0:
         return False
     for derivative in derivatives[:-1]:
-        at_infinity = attempt(lambda: as_expr(limit(derivative, x, oo)), _budget())
-        if at_infinity != 0:
+        at_infinity = attempt(lambda: limit(derivative, x, oo), _budget(), native=True)
+        if at_infinity is None or at_infinity != 0:
             return False
     return True
 
@@ -1084,16 +1289,17 @@ def _infinite(f: Expr, x: Symbol, a: Expr, b: Expr, tolerance: mpmath.mpf) -> Op
             return None
         return left + right
     if a == -oo:
-        return _infinite(as_expr(f.subs(x, -x)), x, as_expr(-b), oo, tolerance)
+        return _infinite(_at(f, x, -x), x, -b, oo, tolerance)
     if a == oo:
         reversed_ = _infinite(f, x, b, oo, tolerance)
         return None if reversed_ is None else -reversed_
     if b != oo:
         return None
     result = _oscillatory(f, x, a, tolerance)
-    if result is None and f.has(exp):
+    if result is None and f.has(Exp):
         result = _stretched(f, x, a, tolerance)
-    maps = [_exponential_map, _rational_map] if f.has(exp) else [_rational_map, _exponential_map]
+    maps: list[Callable[[Expr, Symbol, Expr, mpmath.mpf], Optional[ivmpf]]] = (
+        [_exponential_map, _rational_map] if f.has(Exp) else [_rational_map, _exponential_map])
     for mapping in maps:
         if result is not None or _out_of_time():
             break
@@ -1106,7 +1312,7 @@ def _infinite(f: Expr, x: Symbol, a: Expr, b: Expr, tolerance: mpmath.mpf) -> Op
 # ---------------------------------------------------------------------------
 
 def validated_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, digits: int = 15,
-                       assumptions: Assumptions = None) -> Optional[tuple[Expr, Expr]]:
+                       assumptions: Assumptions = None) -> Optional[tuple[Float, Float]]:
     """``(value, error)`` with ``|Integral(f, (x, a, b)) - value| <= error``
     proved by interval arithmetic, the error aimed at ``10**(-digits)``
     (it may be larger when the panel budget or the time limit is spent
@@ -1115,31 +1321,36 @@ def validated_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, digits:
     panel (a non-integrable singularity, an infinite range on which no
     transformation makes the integrand bounded). Irrational bounds are
     enclosed and the strips between the enclosures bounded by the range
-    of ``f``.
+    of ``f``. The value and the error are floats of ``digits + 3`` and
+    of 5 digits.
 
     Examples
     ========
 
-    >>> from sympy import symbols, sqrt, pi, oo, Rational, log, sin
+    >>> from fractions import Fraction
+    >>> import mpmath
+    >>> from sympy_extras.core import symbols, sqrt, oo
+    >>> from sympy_extras.functions import log, sin
     >>> from sympy_extras.integrals.validated import validated_integral
     >>> x = symbols('x')
     >>> value, error = validated_integral(sqrt(x), x, 0, 1)
-    >>> abs(value - Rational(2, 3)) < error, error < 1e-15
+    >>> abs(value.as_fraction() - Fraction(2, 3)) < error.as_fraction(), float(error) < 1e-15
     (True, True)
     >>> value, error = validated_integral(1/(1 + x**2), x, 0, oo, 20)
-    >>> abs(value - pi/2) < error, error < 1e-20
+    >>> with mpmath.workdps(30):
+    ...     abs(mpmath.mpf(str(value)) - mpmath.pi/2) < mpmath.mpf(str(error)), float(error) < 1e-20
     (True, True)
     >>> value, error = validated_integral(log(x), x, 0, 1)
-    >>> abs(value + 1) < error
+    >>> abs(value.as_fraction() + 1) < error.as_fraction()
     True
     >>> value, error = validated_integral(sin(x)/x, x, 0, oo, 8)
-    >>> abs(value - pi/2) < error, error < 1e-8
+    >>> abs(float(value) - float(mpmath.pi/2)) < float(error), float(error) < 1e-8
     (True, True)
     >>> validated_integral(1/x, x, 0, 1) is None
     True
     """
-    f_, a_, b_ = as_expr(f), as_expr(a), as_expr(b)
-    if free_symbols(f_) - {x} or free_symbols(a_) or free_symbols(b_):
+    f_, a_, b_ = to_expr(f), to_expr(a), to_expr(b)
+    if f_.free_symbols - {x} or a_.free_symbols or b_.free_symbols:
         return None
     if a_ == b_:
         return (Float(0, digits), Float(0, digits))
@@ -1161,7 +1372,7 @@ def validated_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, digits:
         _iv.dps, _deadline = previous, previous_deadline
 
 
-def _pair(result: ivmpf, digits: int) -> tuple[Expr, Expr]:
+def _pair(result: ivmpf, digits: int) -> tuple[Float, Float]:
     """The midpoint and the radius of the enclosure as floats, converted
     at the working precision (the default 53 bits would round the
     midpoint outside the enclosure)."""

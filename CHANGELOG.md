@@ -539,6 +539,20 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The validated numerical integration is native (**breaking**):
+  `sympy_extras.integrals.validated` (`validated_integral`, `enclosure`)
+  takes and returns objects of the core and imports no SymPy (the value
+  and the error are floats of the core). The enclosures come from the
+  native interval evaluator of `assumptions.intervals` instead of its
+  SymPy face (no conversion per panel and node), the derivatives,
+  `together`, `cancel`, `simplify`, `powdenest` and the limits at
+  infinity are the core's, the polynomials in the variable are lists of
+  any coefficients (the typed `Poly` has no `EX` for `pi` or `sqrt(2)`),
+  Sturm's count on a ray is `polys.rootisolation`'s, and the
+  antiderivatives of the trigonometric factor of an oscillatory tail are
+  written down instead of asking `integrate`. The old API on SymPy objects
+  is `sympy_extras.integrals.validated_sympy` (used by `definite`); it
+  returns SymPy floats as before (a zero stays `Float(0, digits)`).
 - The antiderivatives of exponentials and the recognition of constants are
   native (**breaking**): `sympy_extras.integrals.exponential`
   (`exponential_antiderivative`, `power_exponential`,
