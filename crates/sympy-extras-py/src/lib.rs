@@ -29,6 +29,7 @@ mod ntheory;
 mod numberfields;
 mod polyerrors;
 mod qqbar;
+mod regularchains;
 mod rings;
 mod simplex;
 mod sparse;
@@ -151,6 +152,18 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &polys,
         "algebraicfactor",
         "sympy_extras_rs.polys.algebraicfactor",
+    )?)?;
+    let regularchains_module: Bound<'_, PyModule> =
+        submodule(&polys, "regularchains", "sympy_extras_rs.polys.regularchains")?;
+    regularchains::register_recursive(&submodule(
+        &regularchains_module,
+        "recursive",
+        "sympy_extras_rs.polys.regularchains.recursive",
+    )?)?;
+    regularchains::register_operations(&submodule(
+        &regularchains_module,
+        "operations",
+        "sympy_extras_rs.polys.regularchains.operations",
     )?)?;
     galois::register_galoisfactor(&submodule(
         &polys,

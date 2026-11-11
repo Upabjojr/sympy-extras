@@ -26,6 +26,7 @@ pub mod multisqf;
 pub mod numberfields;
 pub mod polyclasses;
 pub mod polytools;
+pub mod regularchains;
 pub mod rings;
 pub mod rootisolation;
 pub mod sqfreetools;

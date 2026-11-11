@@ -65,6 +65,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/zerodim.py` | done | the pivot of `univariate_in_ideal` is the largest monomial (the dependence does not depend on it); over the `QQ` rings of the bindings |
 | `polys/algebraicfactor.py` | done | `AlgebraicPolynomialRing` its own `Domain` (no order, monic gcd, recursive multivariate gcd); `PolyRing` over an `AlgebraicField` in the bindings (`RingKind::Algebraic`) |
 | `polys/polytools.py` | partly | only the core-free helpers `_factor_all` (`factor_all`, moved here from `gaussianfactor.rs`) and `_resultant_first`; `Poly` waits for the core |
+| `polys/regularchains/recursive.py`, `operations.py` | done | the pool of factors in insertion order, chains told apart by position where Python compares identities, caches keyed by terms; `Decomposer` a mutable class in the bindings; `regularchain.py` waits for the core |
 | `polys/fglm.py` | done | the pivot of a new echelon row is its largest monomial (Python: the first dict key); the reduced basis does not depend on it |
 | `polys/berlekampmassey.py` | done | generic over `Domain`; the bindings run it over every domain kind |
 | `polys/bigatti.py` | done | moved out of `hilbert.rs` as in Python (5786e1d..eb367b4), with `hilbert_numerator_coefficients` |
