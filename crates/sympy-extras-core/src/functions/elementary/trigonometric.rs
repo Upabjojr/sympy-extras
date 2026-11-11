@@ -16,7 +16,7 @@ use crate::core::add::add;
 use crate::core::assumptions::{facts_of, FactList, Predicate};
 use crate::core::basic::{Basic, Function, Head};
 use crate::core::expr::{as_coeff_mul, as_coefficient, is, is_rational_value, is_true};
-use crate::core::function::{expand, expand_method};
+use crate::core::function::expand;
 use crate::core::mul::mul;
 use crate::core::parameters::evaluate;
 use crate::core::power::pow;
@@ -709,26 +709,44 @@ pub fn trigonometric_conjugate(f: Function, arg: &Basic) -> PolyResult<Basic> {
 }
 
 /// The parts of the argument (`_argument_parts`), expanded when `deep`.
-fn argument_parts(arg: &Basic, deep: bool) -> PolyResult<Option<RealImag>> {
+fn argument_parts(
+    arg: &Basic,
+    deep: bool,
+    hints: Option<&crate::core::function::Hints>,
+) -> PolyResult<Option<RealImag>> {
+    use crate::core::function::expand_with_hints;
     if is_true(arg, extended_real) {
         return Ok(Some((
-            if deep { expand_method(arg)? } else { arg.clone() },
+            if deep {
+                expand_with_hints(arg, hints, Some(false))?
+            } else {
+                arg.clone()
+            },
             Basic::zero(),
         )));
     }
-    let expanded: Basic = if deep { expand_method(arg)? } else { arg.clone() };
+    let expanded: Basic = if deep {
+        expand_with_hints(arg, hints, None)?
+    } else {
+        arg.clone()
+    };
     as_real_imag(&expanded, true, None)
 }
 
 /// The real and imaginary parts of a node of this module
 /// (`_eval_as_real_imag`).
-pub fn trigonometric_real_imag(f: Function, arg: &Basic, deep: bool) -> PolyResult<Option<RealImag>> {
+pub fn trigonometric_real_imag(
+    f: Function,
+    arg: &Basic,
+    deep: bool,
+    hints: Option<&crate::core::function::Hints>,
+) -> PolyResult<Option<RealImag>> {
     match f {
         Function::Sec => return as_real_imag(&pow(&cos(arg)?, &Basic::negative_one())?, deep, None),
         Function::Csc => return as_real_imag(&pow(&sin(arg)?, &Basic::negative_one())?, deep, None),
         _ => {}
     }
-    let Some((r, i)) = argument_parts(arg, deep)? else {
+    let Some((r, i)) = argument_parts(arg, deep, hints)? else {
         return Ok(None);
     };
     use super::hyperbolic::{cosh, sinh};

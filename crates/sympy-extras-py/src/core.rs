@@ -1227,7 +1227,7 @@ fn pisigma_report_ops<'py>(
 
 /// `expand(e, deep, mul, multinomial, power_base, power_exp, log, force)`.
 #[pyfunction]
-#[pyo3(signature = (e, deep=true, mul=true, multinomial=true, power_base=true, power_exp=true, log=true, force=false))]
+#[pyo3(signature = (e, deep=true, mul=true, multinomial=true, power_base=true, power_exp=true, log=true, force=false, complex=false))]
 #[allow(clippy::too_many_arguments)]
 fn expand<'py>(
     py: Python<'py>,
@@ -1239,6 +1239,7 @@ fn expand<'py>(
     power_exp: bool,
     log: bool,
     force: bool,
+    complex: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
     use rust_core::function::{expand_with, Hints};
     let hints = Hints {
@@ -1248,6 +1249,7 @@ fn expand<'py>(
         power_exp,
         log,
         force,
+        complex,
     };
     to_python(
         py,

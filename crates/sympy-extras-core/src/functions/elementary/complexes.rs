@@ -378,7 +378,14 @@ fn pow_real_imag(e: &Basic, deep: bool, ignore: Option<&Basic>) -> PolyResult<Op
 }
 
 /// The real and imaginary parts of a function node (`_eval_as_real_imag`).
-fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>) -> PolyResult<Option<RealImag>> {
+fn function_real_imag(
+    e: &Basic,
+    f: Function,
+    deep: bool,
+    ignore: Option<&Basic>,
+    hints: Option<&crate::core::function::Hints>,
+) -> PolyResult<Option<RealImag>> {
+    use crate::core::function::expand_with_hints;
     match f {
         Function::Re | Function::Im | Function::Abs => Ok(Some((e.clone(), Basic::zero()))),
         Function::Exp => {
@@ -387,8 +394,8 @@ fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>
                 return Ok(None);
             };
             if deep {
-                r = crate::core::function::expand_method(&r)?;
-                im_part = crate::core::function::expand_method(&im_part)?;
+                r = expand_with_hints(&r, hints, None)?;
+                im_part = expand_with_hints(&im_part, hints, None)?;
             }
             let modulus: Basic = exp(&r)?;
             use super::trigonometric::{cos, sin};
@@ -398,14 +405,14 @@ fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>
             )))
         }
         Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
-            super::trigonometric::trigonometric_real_imag(f, &e.args()[0], deep)
+            super::trigonometric::trigonometric_real_imag(f, &e.args()[0], deep, hints)
         }
         Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
-            super::hyperbolic::hyperbolic_real_imag(e, f, deep)
+            super::hyperbolic::hyperbolic_real_imag(e, f, deep, hints)
         }
         Function::Log => {
             let z: Basic = if deep {
-                crate::core::function::expand_method(&e.args()[0])?
+                expand_with_hints(&e.args()[0], hints, None)?
             } else {
                 e.args()[0].clone()
             };
@@ -413,7 +420,14 @@ fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>
             if modulus == z {
                 return Ok(Some((e.clone(), Basic::zero())));
             }
-            Ok(Some((super::exponential::log(&modulus)?, super::argument::arg(&z)?)))
+            let log_modulus: Basic = super::exponential::log(&modulus)?;
+            if let Some(h) = hints.filter(|h| h.log) {
+                return Ok(Some((
+                    expand_with_hints(&log_modulus, Some(h), Some(false))?,
+                    super::argument::arg(&z)?,
+                )));
+            }
+            Ok(Some((log_modulus, super::argument::arg(&z)?)))
         }
         g @ (Function::Asin
         | Function::Acos
@@ -446,6 +460,18 @@ fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>
 /// The real and imaginary parts of `e` by complex expansion; `None` when
 /// they would only be `re(ignore)`, `im(ignore)` (`as_real_imag`).
 pub fn as_real_imag(e: &Basic, deep: bool, ignore: Option<&Basic>) -> PolyResult<Option<RealImag>> {
+    as_real_imag_with(e, deep, ignore, None)
+}
+
+/// [`as_real_imag`] with the hints of an `expand` call, which a function
+/// node expands its parts with (the sums, products and powers recurse
+/// without them, as in SymPy).
+pub fn as_real_imag_with(
+    e: &Basic,
+    deep: bool,
+    ignore: Option<&Basic>,
+    hints: Option<&crate::core::function::Hints>,
+) -> PolyResult<Option<RealImag>> {
     if e.as_rational().is_some() {
         return Ok(Some((e.clone(), Basic::zero())));
     }
@@ -467,7 +493,7 @@ pub fn as_real_imag(e: &Basic, deep: bool, ignore: Option<&Basic>) -> PolyResult
         }
         Head::Mul => mul_real_imag(e, deep, ignore),
         Head::Pow => pow_real_imag(e, deep, ignore),
-        Head::Function(f) => function_real_imag(e, *f, deep, ignore),
+        Head::Function(f) => function_real_imag(e, *f, deep, ignore, hints),
         _ => {
             if ignore == Some(e) {
                 return Ok(None);
