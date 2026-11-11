@@ -2,4 +2,5 @@
 
 pub mod complexes;
 pub mod exponential;
+pub mod hyperbolic;
 pub mod trigonometric;

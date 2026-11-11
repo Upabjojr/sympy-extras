@@ -7,7 +7,7 @@ use crate::error::PolyResult;
 
 /// The evaluating function of a function head (`cls.apply`).
 pub fn apply_function(f: Function, x: &Basic) -> PolyResult<Basic> {
-    use elementary::{complexes as c, exponential as e, trigonometric as t};
+    use elementary::{complexes as c, exponential as e, hyperbolic as h, trigonometric as t};
     match f {
         Function::Exp => e::exp(x),
         Function::Log => e::log(x),
@@ -22,5 +22,11 @@ pub fn apply_function(f: Function, x: &Basic) -> PolyResult<Basic> {
         Function::Cot => t::cot(x),
         Function::Sec => t::sec(x),
         Function::Csc => t::csc(x),
+        Function::Sinh => h::sinh(x),
+        Function::Cosh => h::cosh(x),
+        Function::Tanh => h::tanh(x),
+        Function::Coth => h::coth(x),
+        Function::Sech => h::sech(x),
+        Function::Csch => h::csch(x),
     }
 }

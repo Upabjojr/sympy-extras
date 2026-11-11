@@ -277,6 +277,46 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                         }
                     }
                 }
+                super::basic::Function::Sinh
+                | super::basic::Function::Cosh
+                | super::basic::Function::Tanh
+                | super::basic::Function::Coth
+                | super::basic::Function::Sech
+                | super::basic::Function::Csch => {
+                    use super::basic::Function as F;
+                    if parts(&v).0.repr().exponent() > 40 {
+                        return None;
+                    }
+                    let (a, b) = (v.exp(), (-&v).exp());
+                    let two: Complex = complex_real(real_int(&Int::from(2u8), wp), wp);
+                    let one: Complex = complex_real(real_int(&Int::ONE, wp), wp);
+                    let s: Complex = &(&a - &b) / &two;
+                    let c: Complex = &(&a + &b) / &two;
+                    match f {
+                        F::Sinh => s,
+                        F::Cosh => c,
+                        F::Tanh | F::Sech => {
+                            if is_zero(&c) {
+                                return None;
+                            }
+                            if matches!(f, F::Tanh) {
+                                &s / &c
+                            } else {
+                                &one / &c
+                            }
+                        }
+                        _ => {
+                            if is_zero(&s) {
+                                return None;
+                            }
+                            if matches!(f, F::Coth) {
+                                &c / &s
+                            } else {
+                                &one / &s
+                            }
+                        }
+                    }
+                }
                 super::basic::Function::Re => complex_real(parts(&v).0, wp),
                 super::basic::Function::Im => complex_real(parts(&v).1, wp),
                 super::basic::Function::Conjugate => {

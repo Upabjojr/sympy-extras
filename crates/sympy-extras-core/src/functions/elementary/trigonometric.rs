@@ -5,9 +5,9 @@
 //! `pi/2` off sums, the facts, values, conjugates and real and imaginary
 //! parts.
 //!
-//! The arguments `oo`, `-oo` (accumulation bounds) and the imaginary ones
-//! (the hyperbolic functions) are the error `NotImplemented` until those
-//! modules are ported, as are the inverse functions, `atan2` and `sinc`.
+//! The arguments `oo`, `-oo` (accumulation bounds) are the error
+//! `NotImplemented` until those are ported, as are the inverse functions,
+//! `atan2` and `sinc`.
 
 // PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py (SymPy 1.14),
 // through sympy_extras; BSD 3-clause license, see sympy_extras/LICENSE-SymPy.
@@ -234,8 +234,8 @@ fn sin_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
             sin(&mul(&[Basic::negative_one(), arg.clone()])?)?,
         ])?));
     }
-    if imaginary_coefficient(arg)?.is_some() {
-        return Err(not_ported("sinh"));
+    if let Some(c) = imaginary_coefficient(arg)? {
+        return Ok(Some(mul(&[Basic::imaginary_unit(), super::hyperbolic::sinh(&c)?])?));
     }
     if let Some(coefficient) = pi_coeff(arg)? {
         if is_true(&coefficient, integer) {
@@ -304,8 +304,8 @@ fn cos_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
     if could_extract_minus_sign(arg) {
         return Ok(Some(cos(&mul(&[Basic::negative_one(), arg.clone()])?)?));
     }
-    if imaginary_coefficient(arg)?.is_some() {
-        return Err(not_ported("cosh"));
+    if let Some(c) = imaginary_coefficient(arg)? {
+        return Ok(Some(super::hyperbolic::cosh(&c)?));
     }
     if let Some(coefficient) = pi_coeff(arg)? {
         if is_true(&coefficient, integer) {
@@ -434,8 +434,8 @@ fn tan_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
             tan(&mul(&[Basic::negative_one(), arg.clone()])?)?,
         ])?));
     }
-    if imaginary_coefficient(arg)?.is_some() {
-        return Err(not_ported("tanh"));
+    if let Some(c) = imaginary_coefficient(arg)? {
+        return Ok(Some(mul(&[Basic::imaginary_unit(), super::hyperbolic::tanh(&c)?])?));
     }
     if let Some(coefficient) = pi_coeff(arg)? {
         if is_true(&coefficient, integer) {
@@ -519,8 +519,12 @@ fn cot_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
             cot(&mul(&[Basic::negative_one(), arg.clone()])?)?,
         ])?));
     }
-    if imaginary_coefficient(arg)?.is_some() {
-        return Err(not_ported("coth"));
+    if let Some(c) = imaginary_coefficient(arg)? {
+        return Ok(Some(mul(&[
+            Basic::negative_one(),
+            Basic::imaginary_unit(),
+            super::hyperbolic::coth(&c)?,
+        ])?));
     }
     if let Some(coefficient) = pi_coeff(arg)? {
         if is_true(&coefficient, integer) {
@@ -717,8 +721,7 @@ fn argument_parts(arg: &Basic, deep: bool) -> PolyResult<Option<RealImag>> {
 }
 
 /// The real and imaginary parts of a node of this module
-/// (`_eval_as_real_imag`); the non-real arguments need the hyperbolic
-/// functions.
+/// (`_eval_as_real_imag`).
 pub fn trigonometric_real_imag(f: Function, arg: &Basic, deep: bool) -> PolyResult<Option<RealImag>> {
     match f {
         Function::Sec => return as_real_imag(&pow(&cos(arg)?, &Basic::negative_one())?, deep, None),
@@ -728,15 +731,37 @@ pub fn trigonometric_real_imag(f: Function, arg: &Basic, deep: bool) -> PolyResu
     let Some((r, i)) = argument_parts(arg, deep)? else {
         return Ok(None);
     };
-    if !is_rational_value(&i, 0) {
-        return Err(not_ported("cosh and sinh of the imaginary part"));
-    }
-    // cosh(0) = 1, sinh(0) = 0
+    use super::hyperbolic::{cosh, sinh};
+    let two = |e: &Basic| mul(&[Basic::int(2), e.clone()]);
     Ok(Some(match f {
-        Function::Sin => (sin(&r)?, Basic::zero()),
-        Function::Cos => (cos(&r)?, Basic::zero()),
-        Function::Tan => (tan(&r)?, Basic::zero()),
-        Function::Cot => (cot(&r)?, Basic::zero()),
+        Function::Sin => (mul(&[sin(&r)?, cosh(&i)?])?, mul(&[cos(&r)?, sinh(&i)?])?),
+        Function::Cos => (
+            mul(&[cos(&r)?, cosh(&i)?])?,
+            mul(&[Basic::negative_one(), sin(&r)?, sinh(&i)?])?,
+        ),
+        Function::Tan => {
+            if is_rational_value(&i, 0) {
+                (tan(&r)?, Basic::zero())
+            } else {
+                let denominator: Basic = pow(&add(&[cos(&two(&r)?)?, cosh(&two(&i)?)?])?, &Basic::negative_one())?;
+                (
+                    mul(&[sin(&two(&r)?)?, denominator.clone()])?,
+                    mul(&[sinh(&two(&i)?)?, denominator])?,
+                )
+            }
+        }
+        Function::Cot => {
+            if is_rational_value(&i, 0) {
+                (cot(&r)?, Basic::zero())
+            } else {
+                let difference: Basic = add(&[cos(&two(&r)?)?, mul(&[Basic::negative_one(), cosh(&two(&i)?)?])?])?;
+                let denominator: Basic = pow(&difference, &Basic::negative_one())?;
+                (
+                    mul(&[Basic::negative_one(), sin(&two(&r)?)?, denominator.clone()])?,
+                    mul(&[sinh(&two(&i)?)?, denominator])?,
+                )
+            }
+        }
         _ => unreachable!("not a trigonometric function"),
     }))
 }

@@ -106,6 +106,9 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
             Ok(Some(super::trigonometric::trigonometric_conjugate(f, arg)?))
         }
+        Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
+            Ok(Some(super::hyperbolic::hyperbolic_conjugate(f, arg)?))
+        }
         Function::Log => {
             // DefinedFunction._eval_conjugate
             if is_true(e, extended_real) {
@@ -359,6 +362,9 @@ fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>
         }
         Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
             super::trigonometric::trigonometric_real_imag(f, &e.args()[0], deep)
+        }
+        Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
+            super::hyperbolic::hyperbolic_real_imag(e, f, deep)
         }
         Function::Log => {
             let z: &Basic = &e.args()[0];

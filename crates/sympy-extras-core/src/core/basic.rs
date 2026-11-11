@@ -70,6 +70,12 @@ pub enum Function {
     Cot,
     Sec,
     Csc,
+    Sinh,
+    Cosh,
+    Tanh,
+    Coth,
+    Sech,
+    Csch,
 }
 
 impl Function {
@@ -89,6 +95,12 @@ impl Function {
             Function::Cot => "cot",
             Function::Sec => "sec",
             Function::Csc => "csc",
+            Function::Sinh => "sinh",
+            Function::Cosh => "cosh",
+            Function::Tanh => "tanh",
+            Function::Coth => "coth",
+            Function::Sech => "sech",
+            Function::Csch => "csch",
         }
     }
 
@@ -108,6 +120,12 @@ impl Function {
             Function::Cot => "Cot",
             Function::Sec => "Sec",
             Function::Csc => "Csc",
+            Function::Sinh => "Sinh",
+            Function::Cosh => "Cosh",
+            Function::Tanh => "Tanh",
+            Function::Coth => "Coth",
+            Function::Sech => "Sech",
+            Function::Csch => "Csch",
         }
     }
 
@@ -123,7 +141,11 @@ impl Function {
             Function::Cos => 21,
             Function::Tan => 22,
             Function::Cot => 23,
-            Function::Sign | Function::Abs | Function::Sec | Function::Csc => 10000,
+            Function::Sinh => 30,
+            Function::Cosh => 31,
+            Function::Tanh => 32,
+            Function::Coth => 33,
+            Function::Sign | Function::Abs | Function::Sec | Function::Csc | Function::Sech | Function::Csch => 10000,
         }
     }
 }

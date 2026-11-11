@@ -20,7 +20,7 @@ use pyo3::types::{PyDict, PyList, PyModule, PyTuple};
 use sympy_extras_core::core::assumptions::{facts_of, is_number, Predicate};
 use sympy_extras_core::core::evalf::{numeric_value, parts, Real};
 use sympy_extras_core::core::{self as rust_core, Basic, Dummy, Function, Head, Symbol};
-use sympy_extras_core::functions::elementary::{complexes, exponential, trigonometric};
+use sympy_extras_core::functions::elementary::{complexes, exponential, hyperbolic, trigonometric};
 #[allow(unused_imports)]
 use sympy_extras_core::numbers::rat;
 use sympy_extras_core::numbers::{denom, rat_from_parts, Int, Rat};
@@ -124,6 +124,12 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Cot" => Basic::new(Head::Function(Function::Cot), args()?),
         "Sec" => Basic::new(Head::Function(Function::Sec), args()?),
         "Csc" => Basic::new(Head::Function(Function::Csc), args()?),
+        "Sinh" => Basic::new(Head::Function(Function::Sinh), args()?),
+        "Cosh" => Basic::new(Head::Function(Function::Cosh), args()?),
+        "Tanh" => Basic::new(Head::Function(Function::Tanh), args()?),
+        "Coth" => Basic::new(Head::Function(Function::Coth), args()?),
+        "Sech" => Basic::new(Head::Function(Function::Sech), args()?),
+        "Csch" => Basic::new(Head::Function(Function::Csch), args()?),
         other => return Err(PyTypeError::new_err(format!("the Rust core has no {} yet", other))),
     })
 }
@@ -183,6 +189,9 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 Function::Exp | Function::Log => "exponential",
                 Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
                     "trigonometric"
+                }
+                Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
+                    "hyperbolic"
                 }
                 _ => "complexes",
             };
@@ -400,6 +409,12 @@ unary!(tan, trigonometric::tan);
 unary!(cot, trigonometric::cot);
 unary!(sec, trigonometric::sec);
 unary!(csc, trigonometric::csc);
+unary!(sinh, hyperbolic::sinh);
+unary!(cosh, hyperbolic::cosh);
+unary!(tanh, hyperbolic::tanh);
+unary!(coth, hyperbolic::coth);
+unary!(sech, hyperbolic::sech);
+unary!(csch, hyperbolic::csch);
 
 #[pyfunction]
 fn as_real_imag<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyTuple>> {
@@ -448,6 +463,12 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cot, m)?)?;
     m.add_function(wrap_pyfunction!(sec, m)?)?;
     m.add_function(wrap_pyfunction!(csc, m)?)?;
+    m.add_function(wrap_pyfunction!(sinh, m)?)?;
+    m.add_function(wrap_pyfunction!(cosh, m)?)?;
+    m.add_function(wrap_pyfunction!(tanh, m)?)?;
+    m.add_function(wrap_pyfunction!(coth, m)?)?;
+    m.add_function(wrap_pyfunction!(sech, m)?)?;
+    m.add_function(wrap_pyfunction!(csch, m)?)?;
     m.add_function(wrap_pyfunction!(as_real_imag, m)?)?;
     m.add_function(wrap_pyfunction!(fraction, m)?)?;
     m.add_function(wrap_pyfunction!(expand_mul, m)?)?;
