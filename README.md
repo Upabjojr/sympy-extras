@@ -1025,7 +1025,7 @@ The rank-dependent operations return the generic answer for symbols; with
 other kernels (`sin(t)`, `sqrt(2)`) every pivot must be proved nonzero by
 the zero test, otherwise `NotImplementedError` is raised.
 
-### Padé approximants, rational interpolation, series reversion (`sympy_extras.series`)
+### Padé approximants, rational interpolation, series reversion (`sympy_extras.series.approximants`)
 
 The `[m/n]` Padé approximant of a function at a point, computed by the
 extended Euclidean algorithm on its Taylor polynomial (no linear system,
@@ -1035,7 +1035,7 @@ power series of an inverse function by Lagrange's formula:
 ```python
 >>> from sympy_extras.core import Rational, Symbol
 >>> from sympy_extras.functions import exp, sin, tan
->>> from sympy_extras.series import pade, rational_interpolate, series_reversion
+>>> from sympy_extras.series.approximants import pade, rational_interpolate, series_reversion
 >>> x, y, a = Symbol('x'), Symbol('y'), Symbol('a')
 >>> pade(exp(x), x, 2, 2), pade(tan(x), x, 3, 2)
 ((x**2 + 6*x + 12)/(x**2 - 6*x + 12), (x**3 - 15*x)/(6*x**2 - 15))
