@@ -43,8 +43,9 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/euclidtools.py` | done | |
 | `polys/sqfreetools.py` | done | |
 | `polys/galoistools.py` | done | the random choices from a seeded SplitMix64 (`random.rs`); the factorisations are sorted, so equal to Python's |
-| `polys/factortools.py` | done | with Trager's algorithm over number fields (`dup_ext_norm`, `dup_ext_sqf_norm`, `dup_ext_factor`) |
-| `polys/rings.py` | done | orders as the enum `MonomialOrder` (lex, grlex, grevlex, and the weight, block and homogeneous orders of `orderings.py` and `modulargroebner.py`); `from_expr`/`to_expr` wait for the core |
+| `polys/factortools.py` | done | with Trager's algorithm over number fields (`dup_ext_norm`, `dup_ext_sqf_norm`, `dup_ext_factor`) and van Hoeij's knapsack recombination (`dup_zz_van_hoeij`, from ten modular factors on) |
+| `polys/lattice.py` | done | de Weger's integral LLL, Hermite and Smith normal forms, integer kernels and systems; `ArithmeticError` as `PolyError::Arithmetic`; 2-4x faster than Python |
+| `polys/rings.py` | done | orders as the enum `MonomialOrder` (lex, grlex, grevlex, and the weight, block and homogeneous orders, now in `rings.py` too); `as_order`, `WeightOrder`, `BlockOrder`, `elimination_order` in the bindings (the two classes as functions returning a `MonomialOrder`); `MonomialOrder::is_graded` is the test of `f4.is_graded` (nothing reads the `is_graded` attribute of the Python orders); `from_expr`/`to_expr` wait for the core |
 | `polys/heuristicgcd.py` | done | |
 | `polys/polyerrors.py` | `HeuristicGCDFailed` | the others as they are needed |
 | `polys/domains/sparsepolynomialring.py` | done | the Integer/Rational flavours as `SparsePolynomialRing::sympy` with `SparseGround` hooks; `IteratedPolynomialRing` one recursive type; over `ZZ`/`QQ` (the gcd needs an ordered ground, in Python too) |
@@ -55,10 +56,26 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/f4.py` | done | Katsura-4: the same bases, 2.5x (lex over `QQ`) to 7x (`GF(32003)`) faster than Python, untuned |
 | `polys/stronggroebner.py` | done | 10-20x faster than Python on the random test systems |
 | `polys/subresultants.py` | `dup_psc` | `dmp_psc` is `dup_psc` over a `PolynomialRing` tower; `psc` on SymPy's `PolyElement` has no counterpart |
+| `polys/domains/galoisfield.py` | done | `GaloisField` (a word-sized prime, as `FiniteField`), its own Python class in the bindings (`DomainKind` is `Copy` and cannot hold a modulus); `to_str` prints the generator by name, `to_expr` waits for the core |
+| `polys/galoisfactor.py` | done | the equal-degree stage on the seeded `Rng`; the factors are sorted, so the result is Python's |
+| `polys/complexroots.py` | done | `Rectangle` a struct (a class in the bindings, compared by its corners); the factors of `dup_isolate_complex_roots` told apart by index instead of list identity |
+| `polys/numberfields/basis.py` | done | the Round 2 algorithm; the multiplication table computed with the order (Python: on first use); `minpoly.py` waits for the core |
+| `polys/numberfields/qqbar.py` | done | the isolating region behind a mutex (refined in place as in Python, the methods take `&self`); `minpoly._sum_resultant`/`_product_resultant` as `sum_resultant`/`product_resultant`; Python's `%.10g` for the reprs; the `TypeError`s of the decisions in the bindings |
+| `polys/numberfields/recognize.py` | done | |
+| `polys/zerodim.py` | done | the pivot of `univariate_in_ideal` is the largest monomial (the dependence does not depend on it); over the `QQ` rings of the bindings |
+| `polys/algebraicfactor.py` | done | `AlgebraicPolynomialRing` its own `Domain` (no order, monic gcd, recursive multivariate gcd); `PolyRing` over an `AlgebraicField` in the bindings (`RingKind::Algebraic`) |
+| `polys/polytools.py` | partly | only the core-free helpers `_factor_all` (`factor_all`, moved here from `gaussianfactor.rs`) and `_resultant_first`; `Poly` waits for the core |
+| `polys/regularchains/recursive.py`, `operations.py` | done | the pool of factors in insertion order, chains told apart by position where Python compares identities, caches keyed by terms; `Decomposer` a mutable class in the bindings; `regularchain.py` waits for the core |
+| `polys/fglm.py` | done | the pivot of a new echelon row is its largest monomial (Python: the first dict key); the reduced basis does not depend on it |
+| `polys/berlekampmassey.py` | done | generic over `Domain`; the bindings run it over every domain kind |
+| `polys/bigatti.py` | done | moved out of `hilbert.rs` as in Python (5786e1d..eb367b4), with `hilbert_numerator_coefficients` |
 | `polys/hilbert.py` | done | the numerator dense over `ZZ`, the series a `HilbertSeries { numerator, exponent }` (Python: `Poly` and an expression in `t`) |
 | `polys/groebnerwalk.py` | done | both liftings; the bases of the initial forms by the Rust F4 (Python: SymPy's Buchberger, the same reduced bases); over fields only (SymPy also walks over `ZZ`) |
+| `solvers/exponential_diophantine.py` | done | the `mpmath` steps on `dashu-float` at mpmath's binary precision for the same decimal digits; the bounds keep their margins, the partial quotients are checked at twice the digits |
+| `solvers/simplex.py` | done | the first module of `solvers`; the status an enum (a string in the bindings); the rows of `_without_redundant` in the dict's insertion order |
 | `ntheory/primetest.py`, `generate.py`, `factor_.py` | done | `primerange` is an iterator struct (a list in the bindings) |
-| `polys/modulargroebner.py` | the modular algorithm | `modular_groebner` over `QQ` and `ZZ` (`modular_groebner_zz`), with the same images (F4 over `BigFiniteField`), luckiness, reconstruction, verification and trace as Python; `direct_groebner`/`groebner` (time limits around SymPy's Buchberger) not ported |
+| `polys/modulargroebner.py` | done | on the typed rings as the Python now is (7686069): `direct_groebner` with the algorithm as an argument (`settings` is not ported; the images use F4), `homogeneous_order`; `groebner` (the time-limited choice through `_timeout.attempt`) is not ported, it needs an interruptible F4 |
+| `polys/buchberger.py` | done | ordered sets instead of Python sets (the reduced basis is unique) |
 | `polys/polyclasses.py` | `DensePoly` | generic over the domain, the variable a core `Symbol`; binary operations return `Err(Value)` for different domains or variables; `from_expr`/`to_expr` wait for the core; no binding (it needs the core's `Symbol` in Python) |
 | `polys/multisqf.py` | done | the `SqfDomain` classes as a trait with three implementations |
 | `polys/multifactor.py` | done | the diophantine equations over `BigFiniteField` (the modulus is the next prime above a Mignotte bound) |
@@ -66,8 +83,12 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | (new) `polys/domains/bigfinitefield.rs` | | `GF(p)` with `Int` elements for moduli beyond the machine words: Python's one `FiniteField` is split in two |
 | `core/assumptions.py` | the rules and the structural facts | `Predicate` enum (alphabetical, so sorted as the names), implications, closure, consistency, minimal generators; `constant_facts`, `add_facts`, `mul_facts`, `pow_facts`, `numeric_facts`, `facts_of` (cached on the node), `ask_structural`, from the Python file at 2d17798. Two calls to evaluating functions are structural until they are ported: the consecutive-factor test (`g - f` an odd integer) and the irrationality of a rational power (`integer_root_parts`). `sympy_facts`/the function classes and `check_assumptions` & co. later |
 | `core/sorting.py` | `compare` | the `compare` key; `sort_key`/`ordered` come with `Expr` |
+| the bridge (`sympy_extras_rs.core`) | done | Python core expressions to Rust nodes by class name and arguments and back through the unevaluating classes, dummies kept in a registry both ways; `facts`, `is_number`, `numeric_value`, `compare`, `equal`, `free_symbols` compared on random trees (`tests/core`) |
+| `core/add.py`, `core/mul.py`, `core/power.py` | the evaluation | `add`, `sub`, `mul`, `div`, `neg`, `keep_coeff`, `pow`, `number_pow`, `minus_one_pow`; the branches which build functions not ported (`exp`, `Abs`, `re`, `floor`, the relationals), `Float`, `Order` and the bounds are `PolyError::NotImplemented` (Python's `NotImplementedError`); 1181 random operations equal to Python's, structure and classes included (`tests/core`) |
+| `core/printing.py`, `core/sorting.py` (sort keys) | printing | `sstr` (`str(e)`), `ordered_terms`, `precedence`, `could_extract_minus_sign`, `sort_key` (`default_sort_key`), `as_ordered_factors`; 11332 random evaluated expressions print as in Python (`tests/core`) |
+| `core/expr.py` | the decompositions | `as_coeff_Mul`, `as_base_exp`, `terms_of`, `factors_of`; the `is_*` properties are the structural facts, as `Expr._ask` |
 | `core/basic.py` | the structure | `Basic` = `Arc<Node>` with a `Head` per class (cached hash and compare key), `rebuild`, `atoms`, `free_symbols`, `has`, structural `xreplace`; `subs`/`doit`/`match`/`replace` come with the evaluating functions |
 | `core/numbers.py` | exact numbers | `Integer`/`Rational` (one head, the class kept), infinities, `nan`, constants, `I`; `Float`, `AlgebraicNumber` and the number arithmetic next |
-| `core/evalf.py` | `numeric_value` | on `dashu-float`/`dashu-cmplx` 0.6 (MIT/Apache) for `mpmath`; `EulerGamma` (Brent-McMillan), `Catalan` (Ramanujan), golden ratio and tribonacci constant computed here; `z**w` as `exp(w ln z)` because `dashu-cmplx` 0.6.2's `powf` hangs on exact results with a zero part (`(-1)**(1/2)`); `evalf`/`N` and `Float` next |
+| `core/evalf.py` | `numeric_value` | on `dashu-float`/`dashu-cmplx` 0.6 (MIT/Apache) for `mpmath`; `EulerGamma` (Brent-McMillan), `Catalan` (Ramanujan), golden ratio and tribonacci constant computed here; `z**w` as `exp(w ln z)` because `dashu-cmplx` 0.6.2's `powf` hangs on exact results with a zero part (`(-1)**(1/2)`); `evalf`/`N` and `Float` next; a power beyond the machine-word exponents of dashu's floats (`2**(10**30)`) has no value (mpmath's exponents are unbounded) |
 | `core/symbol.py` | the classes | `Symbol`, `Dummy`, `Wild` heads with typed views; `symbols()` next |
 | everything else | not yet | the core continues: `expr`, `add`/`mul`/`power` (the evaluating functions), `printing`; then the polynomial `from_expr`/`to_expr` |

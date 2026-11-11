@@ -195,7 +195,7 @@ impl fmt::Display for MonomialOrder {
                 let parts: Vec<String> = blocks.iter().map(|(o, s)| format!("({}, {})", o, s)).collect();
                 write!(f, "BlockOrder({})", parts.join(", "))
             }
-            MonomialOrder::Homogeneous { base, nvars } => write!(f, "_HomogeneousOrder({}, {})", base, nvars),
+            MonomialOrder::Homogeneous { base, nvars } => write!(f, "HomogeneousOrder({}, {})", base, nvars),
         }
     }
 }

@@ -16,7 +16,8 @@ use sympy_extras_core::polys::modulargroebner as mg;
 use sympy_extras_core::polys::rings::PolyElement;
 use sympy_extras_core::polys::rings::{Monomial, MonomialOrder};
 use sympy_extras_core::polys::{
-    f4 as groebner, gaussianfactor as gf, hilbert, multifactor as mf, rootisolation as ri, stronggroebner as sg,
+    berlekampmassey as bm, bigatti, buchberger as bb, f4 as groebner, fglm as fglm_mod, gaussianfactor as gf, hilbert,
+    multifactor as mf, rootisolation as ri, stronggroebner as sg,
 };
 
 use crate::convert::{err, extract_int, out_int, out_poly, out_polys, out_usize, poly, tuple, Bridge};
@@ -181,6 +182,10 @@ fn f4<'py>(py: Python<'py>, polys: &Bound<'py, PyAny>, ring: &PyPolyRing) -> PyR
             groebner::f4(&same_kind!(&items, GaussianQQ), r).map_err(err)?,
             ElemKind::GaussianQQ,
         ),
+        RingKind::Algebraic(r) => wrap(
+            groebner::f4(&same_kind!(&items, Algebraic), r).map_err(err)?,
+            ElemKind::Algebraic,
+        ),
     };
     out_elements(py, result)
 }
@@ -196,6 +201,10 @@ fn reduced_basis<'py>(py: Python<'py>, basis: &Bound<'py, PyAny>, ring: &PyPolyR
             groebner::reduced_basis(&same_kind!(&items, GaussianQQ), r),
             ElemKind::GaussianQQ,
         ),
+        RingKind::Algebraic(r) => wrap(
+            groebner::reduced_basis(&same_kind!(&items, Algebraic), r),
+            ElemKind::Algebraic,
+        ),
     };
     out_elements(py, result)
 }
@@ -207,6 +216,7 @@ fn is_graded(ring: &PyPolyRing) -> bool {
         RingKind::QQ(r) => groebner::is_graded(r),
         RingKind::GF(r) => groebner::is_graded(r),
         RingKind::GaussianQQ(r) => groebner::is_graded(r),
+        RingKind::Algebraic(r) => groebner::is_graded(r),
     }
 }
 
@@ -391,6 +401,118 @@ pub fn register_multifactor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+// -- fglm
+
+#[pyfunction]
+fn is_zero_dimensional(basis: &Bound<'_, PyAny>, ring: &PyPolyRing) -> PyResult<bool> {
+    let items: Vec<ElemKind> = elements(basis)?;
+    Ok(match &ring.inner {
+        RingKind::ZZ(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, ZZ), r),
+        RingKind::QQ(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, QQ), r),
+        RingKind::GF(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, GF), r),
+        RingKind::GaussianQQ(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, GaussianQQ), r),
+        RingKind::Algebraic(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, Algebraic), r),
+    })
+}
+
+#[pyfunction]
+fn fglm<'py>(
+    py: Python<'py>,
+    basis: &Bound<'py, PyAny>,
+    ring: &PyPolyRing,
+    order: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let items: Vec<ElemKind> = elements(basis)?;
+    let order: MonomialOrder = crate::rings::order_from(order)?;
+    let result: Vec<ElemKind> = match &ring.inner {
+        RingKind::ZZ(r) => wrap(
+            fglm_mod::fglm(&same_kind!(&items, ZZ), r, &order).map_err(err)?,
+            ElemKind::ZZ,
+        ),
+        RingKind::QQ(r) => wrap(
+            fglm_mod::fglm(&same_kind!(&items, QQ), r, &order).map_err(err)?,
+            ElemKind::QQ,
+        ),
+        RingKind::GF(r) => wrap(
+            fglm_mod::fglm(&same_kind!(&items, GF), r, &order).map_err(err)?,
+            ElemKind::GF,
+        ),
+        RingKind::GaussianQQ(r) => wrap(
+            fglm_mod::fglm(&same_kind!(&items, GaussianQQ), r, &order).map_err(err)?,
+            ElemKind::GaussianQQ,
+        ),
+        RingKind::Algebraic(r) => wrap(
+            fglm_mod::fglm(&same_kind!(&items, Algebraic), r, &order).map_err(err)?,
+            ElemKind::Algebraic,
+        ),
+    };
+    out_elements(py, result)
+}
+
+#[pyfunction]
+fn groebner_by_fglm<'py>(py: Python<'py>, polys: &Bound<'py, PyAny>, ring: &PyPolyRing) -> PyResult<Bound<'py, PyAny>> {
+    let items: Vec<ElemKind> = elements(polys)?;
+    let result: Vec<ElemKind> = match &ring.inner {
+        RingKind::ZZ(r) => wrap(
+            fglm_mod::groebner_by_fglm(&same_kind!(&items, ZZ), r).map_err(err)?,
+            ElemKind::ZZ,
+        ),
+        RingKind::QQ(r) => wrap(
+            fglm_mod::groebner_by_fglm(&same_kind!(&items, QQ), r).map_err(err)?,
+            ElemKind::QQ,
+        ),
+        RingKind::GF(r) => wrap(
+            fglm_mod::groebner_by_fglm(&same_kind!(&items, GF), r).map_err(err)?,
+            ElemKind::GF,
+        ),
+        RingKind::GaussianQQ(r) => wrap(
+            fglm_mod::groebner_by_fglm(&same_kind!(&items, GaussianQQ), r).map_err(err)?,
+            ElemKind::GaussianQQ,
+        ),
+        RingKind::Algebraic(r) => wrap(
+            fglm_mod::groebner_by_fglm(&same_kind!(&items, Algebraic), r).map_err(err)?,
+            ElemKind::Algebraic,
+        ),
+    };
+    out_elements(py, result)
+}
+
+pub fn register_fglm(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(is_zero_dimensional, m)?)?;
+    m.add_function(wrap_pyfunction!(fglm, m)?)?;
+    m.add_function(wrap_pyfunction!(groebner_by_fglm, m)?)?;
+    Ok(())
+}
+
+// -- berlekampmassey
+
+#[pyfunction]
+fn berlekamp_massey<'py>(py: Python<'py>, sequence: &Bound<'py, PyAny>, K: &PyDomain) -> PyResult<Bound<'py, PyAny>> {
+    with_domain!(K, k => out_poly(k, py, &bm::berlekamp_massey(&poly(k, sequence)?, k).map_err(err)?))
+}
+
+#[pyfunction]
+fn satisfies_recurrence(sequence: &Bound<'_, PyAny>, polynomial: &Bound<'_, PyAny>, K: &PyDomain) -> PyResult<bool> {
+    with_domain!(K, k => Ok(bm::satisfies_recurrence(&poly(k, sequence)?, &poly(k, polynomial)?, k)))
+}
+
+#[pyfunction]
+fn extend_sequence<'py>(
+    py: Python<'py>,
+    sequence: &Bound<'py, PyAny>,
+    K: &PyDomain,
+    count: usize,
+) -> PyResult<Bound<'py, PyAny>> {
+    with_domain!(K, k => out_poly(k, py, &bm::extend_sequence(&poly(k, sequence)?, k, count).map_err(err)?))
+}
+
+pub fn register_berlekampmassey(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(berlekamp_massey, m)?)?;
+    m.add_function(wrap_pyfunction!(satisfies_recurrence, m)?)?;
+    m.add_function(wrap_pyfunction!(extend_sequence, m)?)?;
+    Ok(())
+}
+
 // -- gaussianfactor
 
 fn qq_i_elem(f: &PyPolyElement) -> PyResult<PolyElement<GaussianRationalField>> {
@@ -528,6 +650,22 @@ fn hilbert_series<'py>(py: Python<'py>, monoms: &Bound<'py, PyAny>, variables: u
     )
 }
 
+/// The coefficients lowest degree first, without trailing zeros.
+#[pyfunction]
+fn hilbert_numerator_coefficients<'py>(py: Python<'py>, monoms: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    out_poly(
+        &IntegerRing,
+        py,
+        &bigatti::hilbert_numerator_coefficients(&monomials(monoms)?),
+    )
+}
+
+pub fn register_bigatti(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(minimal_generators, m)?)?;
+    m.add_function(wrap_pyfunction!(hilbert_numerator_coefficients, m)?)?;
+    Ok(())
+}
+
 pub fn register_hilbert(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(minimal_generators, m)?)?;
     m.add_function(wrap_pyfunction!(hilbert_numerator, m)?)?;
@@ -553,6 +691,7 @@ fn initial_form(f: &PyPolyElement, weights: &Bound<'_, PyAny>) -> PyResult<PyPol
         ElemKind::QQ(p) => ElemKind::QQ(walk::initial_form(p, &w)),
         ElemKind::GF(p) => ElemKind::GF(walk::initial_form(p, &w)),
         ElemKind::GaussianQQ(p) => ElemKind::GaussianQQ(walk::initial_form(p, &w)),
+        ElemKind::Algebraic(p) => ElemKind::Algebraic(walk::initial_form(p, &w)),
     };
     Ok(PyPolyElement { inner })
 }
@@ -597,6 +736,11 @@ fn extended_groebner<'py>(py: Python<'py>, F: &Bound<'py, PyAny>, ring: &PyPolyR
             walk::extended_groebner(&same_kind!(&items, GaussianQQ), r).map_err(err)?,
             ElemKind::GaussianQQ,
         ),
+        RingKind::Algebraic(r) => representations(
+            py,
+            walk::extended_groebner(&same_kind!(&items, Algebraic), r).map_err(err)?,
+            ElemKind::Algebraic,
+        ),
     }
 }
 
@@ -608,6 +752,7 @@ fn is_groebner(G: &Bound<'_, PyAny>, ring: &PyPolyRing) -> PyResult<bool> {
         RingKind::QQ(r) => walk::is_groebner(&same_kind!(&items, QQ), r).map_err(err),
         RingKind::GF(r) => walk::is_groebner(&same_kind!(&items, GF), r).map_err(err),
         RingKind::GaussianQQ(r) => walk::is_groebner(&same_kind!(&items, GaussianQQ), r).map_err(err),
+        RingKind::Algebraic(r) => walk::is_groebner(&same_kind!(&items, Algebraic), r).map_err(err),
     }
 }
 
@@ -660,6 +805,10 @@ fn groebner_walk<'py>(
         RingKind::GaussianQQ(r) => wrap(
             walk::groebner_walk(&same_kind!(&items, GaussianQQ), r, &target, check, lift).map_err(failed)?,
             ElemKind::GaussianQQ,
+        ),
+        RingKind::Algebraic(r) => wrap(
+            walk::groebner_walk(&same_kind!(&items, Algebraic), r, &target, check, lift).map_err(failed)?,
+            ElemKind::Algebraic,
         ),
     };
     out_elements(py, result)
@@ -855,10 +1004,12 @@ fn modular_groebner<'py>(
             RingKind::ZZ(r) => mg::modular_groebner_zz(&same_kind!(&items, ZZ), r, primes_arg, Some(&mut record))
                 .map(|g| wrap(g, ElemKind::ZZ))
                 .map_err(err),
-            RingKind::GF(r) => groebner::f4(&same_kind!(&items, GF), r)
-                .map(|g| wrap(g, ElemKind::GF))
-                .map_err(err),
-            RingKind::GaussianQQ(_) => Err(PyTypeError::new_err("modular Groebner bases over QQ or ZZ")),
+            RingKind::GF(_) | RingKind::GaussianQQ(_) | RingKind::Algebraic(_) => {
+                Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "the modular algorithm needs QQ or ZZ as the coefficient domain, got {}",
+                    crate::rings::domain_name(&ring.inner)
+                )))
+            }
         }
     };
     if let Some(e) = given.and_then(|g| g.error) {
@@ -870,6 +1021,103 @@ fn modular_groebner<'py>(
     out_elements(py, result?)
 }
 
+fn algorithm_from(name: &str) -> PyResult<mg::GroebnerAlgorithm> {
+    match name {
+        "f4" => Ok(mg::GroebnerAlgorithm::F4),
+        "buchberger" => Ok(mg::GroebnerAlgorithm::Buchberger),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown Groebner algorithm {}",
+            other
+        ))),
+    }
+}
+
+/// `direct_groebner(polys, ring, algorithm='f4')`: the algorithm is an
+/// argument here (Python reads `settings.groebner_algorithm`).
+#[pyfunction]
+#[pyo3(signature = (polys, ring, algorithm = "f4"))]
+fn direct_groebner<'py>(
+    py: Python<'py>,
+    polys: &Bound<'py, PyAny>,
+    ring: &PyPolyRing,
+    algorithm: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    let items: Vec<ElemKind> = elements(polys)?;
+    let algorithm: mg::GroebnerAlgorithm = algorithm_from(algorithm)?;
+    let result: Vec<ElemKind> = match &ring.inner {
+        RingKind::ZZ(r) => wrap(
+            mg::direct_groebner(&same_kind!(&items, ZZ), r, algorithm).map_err(err)?,
+            ElemKind::ZZ,
+        ),
+        RingKind::QQ(r) => wrap(
+            mg::direct_groebner(&same_kind!(&items, QQ), r, algorithm).map_err(err)?,
+            ElemKind::QQ,
+        ),
+        RingKind::GF(r) => wrap(
+            mg::direct_groebner(&same_kind!(&items, GF), r, algorithm).map_err(err)?,
+            ElemKind::GF,
+        ),
+        RingKind::GaussianQQ(r) => wrap(
+            mg::direct_groebner(&same_kind!(&items, GaussianQQ), r, algorithm).map_err(err)?,
+            ElemKind::GaussianQQ,
+        ),
+        RingKind::Algebraic(r) => wrap(
+            mg::direct_groebner(&same_kind!(&items, Algebraic), r, algorithm).map_err(err)?,
+            ElemKind::Algebraic,
+        ),
+    };
+    out_elements(py, result)
+}
+
+#[pyfunction]
+fn homogeneous_order(base: &Bound<'_, PyAny>, nvars: usize) -> PyResult<crate::rings::PyOrder> {
+    Ok(crate::rings::PyOrder {
+        order: mg::homogeneous_order(&crate::rings::order_from(base)?, nvars),
+    })
+}
+
+// -- buchberger
+
+#[pyfunction]
+fn buchberger<'py>(py: Python<'py>, polys: &Bound<'py, PyAny>, ring: &PyPolyRing) -> PyResult<Bound<'py, PyAny>> {
+    let items: Vec<ElemKind> = elements(polys)?;
+    let result: Vec<ElemKind> = match &ring.inner {
+        // the domain is checked first, as in Python
+        RingKind::ZZ(r) => wrap(bb::buchberger(&[], r).map_err(err)?, ElemKind::ZZ),
+        RingKind::QQ(r) => wrap(bb::buchberger(&same_kind!(&items, QQ), r).map_err(err)?, ElemKind::QQ),
+        RingKind::GF(r) => wrap(bb::buchberger(&same_kind!(&items, GF), r).map_err(err)?, ElemKind::GF),
+        RingKind::GaussianQQ(r) => wrap(
+            bb::buchberger(&same_kind!(&items, GaussianQQ), r).map_err(err)?,
+            ElemKind::GaussianQQ,
+        ),
+        RingKind::Algebraic(r) => wrap(
+            bb::buchberger(&same_kind!(&items, Algebraic), r).map_err(err)?,
+            ElemKind::Algebraic,
+        ),
+    };
+    out_elements(py, result)
+}
+
+#[pyfunction]
+fn s_polynomial(p1: &PyPolyElement, p2: &PyPolyElement) -> PyResult<PyPolyElement> {
+    let inner: ElemKind = match (&p1.inner, &p2.inner) {
+        (ElemKind::ZZ(a), ElemKind::ZZ(b)) => ElemKind::ZZ(bb::s_polynomial(a, b).map_err(err)?),
+        (ElemKind::QQ(a), ElemKind::QQ(b)) => ElemKind::QQ(bb::s_polynomial(a, b).map_err(err)?),
+        (ElemKind::GF(a), ElemKind::GF(b)) => ElemKind::GF(bb::s_polynomial(a, b).map_err(err)?),
+        (ElemKind::GaussianQQ(a), ElemKind::GaussianQQ(b)) => {
+            ElemKind::GaussianQQ(bb::s_polynomial(a, b).map_err(err)?)
+        }
+        _ => return Err(PyTypeError::new_err("polynomials of different rings")),
+    };
+    Ok(PyPolyElement { inner })
+}
+
+pub fn register_buchberger(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(buchberger, m)?)?;
+    m.add_function(wrap_pyfunction!(s_polynomial, m)?)?;
+    Ok(())
+}
+
 pub fn register_modulargroebner(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("GUARD_BITS", mg::GUARD_BITS)?;
     m.add_class::<PyModularTrace>()?;
@@ -878,5 +1126,7 @@ pub fn register_modulargroebner(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(chinese_remainder, m)?)?;
     m.add_function(wrap_pyfunction!(default_primes, m)?)?;
     m.add_function(wrap_pyfunction!(modular_groebner, m)?)?;
+    m.add_function(wrap_pyfunction!(direct_groebner, m)?)?;
+    m.add_function(wrap_pyfunction!(homogeneous_order, m)?)?;
     Ok(())
 }

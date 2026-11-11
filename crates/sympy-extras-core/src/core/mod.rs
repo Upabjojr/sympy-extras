@@ -27,12 +27,16 @@
 // never read it, so nodes are sound keys of maps and sets
 #![allow(clippy::mutable_key_type)]
 
+pub mod add;
 pub mod assumptions;
 pub mod basic;
 pub mod evalf;
+pub mod expr;
+pub mod mul;
 pub mod numbers;
 pub mod parameters;
 pub mod power;
+pub mod printing;
 pub mod sorting;
 pub mod symbol;
 

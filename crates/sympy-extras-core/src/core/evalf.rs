@@ -143,18 +143,35 @@ pub fn parts(z: &Complex) -> (Real, Real) {
 
 /// `z**w` on the principal branch: repeated squaring for an integer `w`,
 /// `exp(w ln z)` otherwise (`z` nonzero).
-fn power(z: &Complex, w: &Basic, wz: &Complex, prec: usize) -> Complex {
+fn power(z: &Complex, w: &Basic, wz: &Complex, prec: usize) -> Option<Complex> {
     if let Some(r) = w.as_rational() {
         if r.is_int() {
             let n: Int = numer(r);
+            if bits(&n) > 62 {
+                // beyond the exponents of dashu's floats unless |z| = 1 exactly
+                let (re, im) = parts(z);
+                let unit: bool = im.repr().significand().is_zero()
+                    && (re == real_int(&Int::ONE, prec) || re == real_int(&-Int::ONE, prec));
+                if !unit {
+                    return None;
+                }
+                let odd: bool = bit(&n, 0);
+                let sign: Int = if odd && re < Real::ZERO { -Int::ONE } else { Int::ONE };
+                return Some(complex_real(real_int(&sign, prec + GUARD), prec + GUARD));
+            }
+            if n.is_zero() {
+                // dashu's powi(0) is a one of unlimited precision, on which
+                // later operations panic
+                return Some(complex_real(real_int(&Int::ONE, prec + GUARD), prec + GUARD));
+            }
             if is_negative(&n) {
                 let one: Complex = complex_real(real_int(&Int::ONE, prec + GUARD), prec + GUARD);
-                return &one / &z.powi(-n);
+                return Some(&one / &z.powi(-n));
             }
-            return z.powi(n);
+            return Some(z.powi(n));
         }
     }
-    (wz * &z.ln()).exp()
+    Some((wz * &z.ln()).exp())
 }
 
 /// The value of a numerical expression at the working precision `prec`
@@ -193,7 +210,14 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 }
                 return None;
             }
-            Some(power(&b, exponent, &x, wp))
+            let value: Complex = power(&b, exponent, &x, wp)?;
+            // mpmath's exponents are unbounded, dashu's are machine words: a
+            // value beyond them has no representation here (no panic)
+            let (re, im) = parts(&value);
+            if re.repr().is_infinite() || im.repr().is_infinite() {
+                return None;
+            }
+            Some(value)
         }
         _ => None,
     }

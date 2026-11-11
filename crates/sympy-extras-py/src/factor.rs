@@ -239,6 +239,11 @@ fn dup_zz_zassenhaus<'py>(py: Python<'py>, f: &Bound<'py, PyAny>) -> PyResult<Bo
 }
 
 #[pyfunction]
+fn dup_zz_van_hoeij<'py>(py: Python<'py>, f: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    int_polys(py, &ft::dup_zz_van_hoeij(&int_poly(f)?).map_err(err)?)
+}
+
+#[pyfunction]
 fn dup_zz_cyclotomic_poly<'py>(py: Python<'py>, n: usize) -> PyResult<Bound<'py, PyAny>> {
     if n == 0 {
         return Err(pyo3::exceptions::PyValueError::new_err("n must be positive"));
@@ -300,6 +305,7 @@ pub fn register_factortools(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dup_zz_hensel_step, m)?)?;
     m.add_function(wrap_pyfunction!(dup_zz_hensel_lift, m)?)?;
     m.add_function(wrap_pyfunction!(dup_zz_zassenhaus, m)?)?;
+    m.add_function(wrap_pyfunction!(dup_zz_van_hoeij, m)?)?;
     m.add_function(wrap_pyfunction!(dup_zz_cyclotomic_poly, m)?)?;
     m.add_function(wrap_pyfunction!(dup_zz_cyclotomic_factor, m)?)?;
     m.add_function(wrap_pyfunction!(dup_zz_factor_sqf, m)?)?;
