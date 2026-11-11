@@ -176,8 +176,50 @@ impl GaussianIntegerRing {
     }
 }
 
+/// `x + I*y` (`_gaussian_expr`).
+fn gaussian_expr(x: crate::core::Basic, y: crate::core::Basic) -> crate::error::PolyResult<crate::core::Basic> {
+    use crate::core::{add::add, mul::mul, Basic};
+    add(&[x, mul(&[Basic::imaginary_unit(), y])?])
+}
+
+/// `(x, y)` of `x + y*I` (`_gaussian_parts`); `Value` otherwise.
+fn gaussian_parts(e: &crate::core::Basic) -> crate::error::PolyResult<(crate::core::Basic, crate::core::Basic)> {
+    use crate::core::expr::{as_coeff_add, as_coeff_mul};
+    use crate::core::Basic;
+    let (r, b) = as_coeff_add(e);
+    if b.as_rational().is_some_and(|v| v.is_zero()) {
+        return Ok((r, Basic::zero()));
+    }
+    let (c, rest) = as_coeff_mul(&b);
+    if rest == Basic::imaginary_unit() {
+        return Ok((r, c));
+    }
+    Err(crate::error::PolyError::Value(format!("{} is not Gaussian", e)))
+}
+
 impl Domain for GaussianIntegerRing {
     type Elem = GaussianInteger;
+
+    fn to_expr(&self, a: &GaussianInteger) -> crate::error::PolyResult<crate::core::Basic> {
+        gaussian_expr(
+            crate::core::Basic::integer(a.x.clone()),
+            crate::core::Basic::integer(a.y.clone()),
+        )
+    }
+
+    fn from_expr(&self, e: &crate::core::Basic) -> crate::error::PolyResult<GaussianInteger> {
+        let (x, y) = gaussian_parts(e)?;
+        if !(crate::core::expr::is_integer_class(&x) && crate::core::expr::is_integer_class(&y)) {
+            return Err(crate::error::PolyError::Value(format!(
+                "{} is not a Gaussian integer",
+                e
+            )));
+        }
+        Ok(GaussianInteger {
+            x: x.as_rational().expect("an integer").numerator().clone(),
+            y: y.as_rational().expect("an integer").numerator().clone(),
+        })
+    }
 
     fn name(&self) -> String {
         "ZZ_I".to_string()
@@ -333,6 +375,27 @@ impl GaussianRationalField {
 
 impl Domain for GaussianRationalField {
     type Elem = GaussianRational;
+
+    fn to_expr(&self, a: &GaussianRational) -> crate::error::PolyResult<crate::core::Basic> {
+        gaussian_expr(
+            crate::core::Basic::from_rational(a.x.clone()),
+            crate::core::Basic::from_rational(a.y.clone()),
+        )
+    }
+
+    fn from_expr(&self, e: &crate::core::Basic) -> crate::error::PolyResult<GaussianRational> {
+        let (x, y) = gaussian_parts(e)?;
+        match (x.as_rational(), y.as_rational()) {
+            (Some(a), Some(b)) => Ok(GaussianRational {
+                x: a.clone(),
+                y: b.clone(),
+            }),
+            _ => Err(crate::error::PolyError::Value(format!(
+                "{} is not a Gaussian rational",
+                e
+            ))),
+        }
+    }
 
     fn name(&self) -> String {
         "QQ_I".to_string()

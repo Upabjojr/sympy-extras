@@ -441,6 +441,20 @@ fn from_univariate<K: Domain>(ring: &Arc<PolyRing<K>>, f: &[PolyElement<K>]) -> 
 impl<K: SparseGround> Domain for SparsePolynomialRing<K> {
     type Elem = PolyElement<K>;
 
+    /// `PolyRing.to_expr`: `expr_from_dict` in the variables.
+    fn to_expr(&self, a: &PolyElement<K>) -> PolyResult<crate::core::Basic> {
+        crate::polys::polyutils::expr_from_dict(&a.terms, &self.names, &self.ground)
+    }
+
+    /// `PolyRing.from_expr`: `dict_from_expr` in the variables.
+    fn from_expr(&self, e: &crate::core::Basic) -> PolyResult<PolyElement<K>> {
+        let terms = crate::polys::polyutils::dict_from_expr(e, &self.names, &self.ground)?;
+        Ok(PolyElement {
+            terms,
+            ring: self.ring.clone(),
+        })
+    }
+
     fn name(&self) -> String {
         format!("{}[{}]", self.ground.name(), self.names.join(","))
     }

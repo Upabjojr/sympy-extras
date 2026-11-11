@@ -629,7 +629,9 @@ pub fn constant_facts(e: &Basic) -> FactList {
 
 /// Whether `e` is built from numbers and constants only.
 pub fn is_number(e: &Basic) -> bool {
-    if e.is_symbol() {
+    // an undefined function, a derivative, and a node with a Tuple argument
+    // (not an expression: Subs) are not numbers
+    if e.is_symbol() || matches!(e.head(), Head::Undefined(_) | Head::Derivative | Head::Tuple) {
         return false;
     }
     e.args().iter().all(is_number)
@@ -1238,8 +1240,74 @@ fn eval_facts(e: &Basic) -> FactList {
         Head::Add => add_facts(e.args()),
         Head::Mul => mul_facts(e.args()),
         Head::Pow => pow_facts(&e.args()[0], &e.args()[1]),
+        Head::Function(f) => function_facts(e, *f),
+        Head::Undefined(u) => {
+            // AppliedUndef._eval_facts: the given assumptions, commutative
+            // from the arguments; then facts_of's rule of the functions
+            let mut facts: FactList = FactList(u.assumptions.clone());
+            let args: Vec<Option<bool>> = e
+                .args()
+                .iter()
+                .map(|a| facts_of(a).get(&commutative).copied())
+                .collect();
+            if args.iter().all(|v| *v == Some(true)) {
+                facts.set_default(commutative, true);
+            } else if args.contains(&Some(false)) {
+                facts.set_default(commutative, false);
+            }
+            if facts.get(commutative) == Some(true) && e.args().iter().any(|a| no(facts_of(a), commutative)) {
+                facts.set(commutative, false);
+            }
+            facts
+        }
+        Head::Derivative | Head::Subs => {
+            let mut facts: FactList = FactList::new();
+            if let Some(v) = facts_of(&e.args()[0]).get(&commutative) {
+                facts.set(commutative, *v);
+            }
+            facts
+        }
+        Head::Tuple => FactList::new(),
         _ => constant_facts(e),
     }
+}
+
+/// The facts of an applied function: its class's, then (as Python's
+/// `facts_of`) not commutative with a noncommutative argument, and the sign
+/// of a real numerical value found by evaluating it.
+fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
+    use crate::functions::elementary::exponential::{exp_facts, log_facts};
+    let mut facts: FactList = match f {
+        super::basic::Function::Exp => exp_facts(&e.args()[0]),
+        super::basic::Function::Log => log_facts(&e.args()[0]),
+        super::basic::Function::Sin
+        | super::basic::Function::Cos
+        | super::basic::Function::Tan
+        | super::basic::Function::Cot
+        | super::basic::Function::Sec
+        | super::basic::Function::Csc => {
+            crate::functions::elementary::trigonometric::trigonometric_facts(f, &e.args()[0])
+        }
+        super::basic::Function::Sinh
+        | super::basic::Function::Cosh
+        | super::basic::Function::Tanh
+        | super::basic::Function::Coth
+        | super::basic::Function::Sech
+        | super::basic::Function::Csch => crate::functions::elementary::hyperbolic::hyperbolic_facts(f, &e.args()[0]),
+        other => crate::functions::elementary::complexes::complexes_facts(other, &e.args()[0]),
+    };
+    if facts.get(commutative) == Some(true) && e.args().iter().any(|a| no(facts_of(a), commutative)) {
+        facts.set(commutative, false);
+    }
+    if ![positive, negative, zero].iter().any(|p| facts.contains(*p)) && is_number(e) {
+        let found: FactList = numeric_facts(e);
+        if found.get(real) == Some(true) {
+            for (name, known) in found.0.iter() {
+                facts.set_default(*name, *known);
+            }
+        }
+    }
+    facts
 }
 
 /// The closed facts of `e`, computed once and cached on the node.
