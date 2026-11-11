@@ -408,6 +408,23 @@ $k > 0$. The system solved has $mn$ unknowns for an $m \times n$
 unknown matrix; the Bartels–Stewart reduction to triangular form, which
 avoids it, needs the eigenvalues and is not used.
 
+The algebraic Riccati equation $A^T X + X A - X B R^{-1} B^T X + Q = 0$
+of the linear-quadratic regulator is quadratic in $X$:
+`sympy_extras.matrices.riccati` solves it as a polynomial system for
+rational data and selects the stabilising solution by the criterion of
+Routh and Hurwitz, certified in interval arithmetic and, when a sign
+stays undecided, in exact arithmetic on algebraic numbers.
+
+```python
+>>> from sympy_extras.matrices.riccati import care_solve, lqr, riccati_solutions
+>>> A2, B2 = ExprMatrix.from_rows([[0, 1], [0, 0]]), ExprMatrix.column([0, 1])
+>>> riccati_solutions(A2, B2, ExprMatrix.eye(2), ExprMatrix.eye(1))
+[ExprMatrix([[-sqrt(3), 1], [1, -sqrt(3)]]), ExprMatrix([[sqrt(3), 1], [1, sqrt(3)]])]
+>>> lqr(A2, B2, ExprMatrix.eye(2), ExprMatrix.eye(1))
+(ExprMatrix([[1, sqrt(3)]]), ExprMatrix([[sqrt(3), 1], [1, sqrt(3)]]))
+
+```
+
 ## Normal forms without eigenvalues
 
 `sympy_extras.matrices.normalforms` computes the Smith normal form of a

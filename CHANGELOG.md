@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.riccati`: the continuous algebraic Riccati
+  equation solved exactly for rational data: `riccati_solutions` (all
+  the real symmetric solutions, from the polynomial system),
+  `care_solve` (the stabilising one, selected by a certified
+  Routh-Hurwitz test), `lqr` (the optimal gain), `closed_loop_is_stable`.
 - `sympy_extras.diffgeom.classical`: `Curve` (speed, curvature, signed
   curvature, torsion, Frenet frame) and `Surface` (first and second
   fundamental forms, unit normal, area element, Gaussian, mean and
