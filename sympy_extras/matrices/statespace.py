@@ -18,6 +18,10 @@ counterpart) with matrices of expressions:
 
   .. math:: K = (0, \dots, 0, 1)\, (B, A B, \dots, A^{n-1} B)^{-1}\, p(A);
 
+* :func:`controllable_decomposition` and :func:`observable_decomposition`
+  are Kalman's decompositions: a change of state which separates the
+  part the inputs reach (the outputs see) from the rest;
+  :func:`minimal_realization` removes both remainders;
 * :func:`realization` writes a proper rational function $G(s)$ as a
   system in controllable canonical form [1]_, of the order of its
   denominator (minimal when the fraction is in lowest terms).
@@ -62,10 +66,10 @@ from sympy_extras.simplify.radsimp import fraction
 
 from .dense import ExprMatrix
 from .eigen import _coefficients
-from .linalg import _square, inverse, normal, rank
+from .linalg import _square, inverse, normal, rank, rref
 
 __all__ = ['controllability_matrix', 'observability_matrix', 'is_controllable', 'is_observable', 'transfer_function',
-           'pole_placement', 'realization']
+           'pole_placement', 'realization', 'controllable_decomposition', 'observable_decomposition', 'minimal_realization']
 
 
 def _hstack(blocks: Sequence[ExprMatrix]) -> ExprMatrix:
@@ -224,3 +228,74 @@ def realization(G: ExprLike, s: Symbol) -> tuple[ExprMatrix, ExprMatrix, ExprMat
     return A, B, C, ExprMatrix(1, 1, [direct])
 
 
+
+
+def _completed_basis(M: ExprMatrix) -> tuple[ExprMatrix, int]:
+    """A square invertible matrix whose first ``r`` columns are a basis
+    of the column space of ``M`` (its pivot columns), completed by
+    vectors of the standard basis; and ``r``."""
+    n = M.rows
+    extended = _hstack([M, ExprMatrix.eye(n)]) if M.cols else ExprMatrix.eye(n)
+    _, pivots = rref(extended)
+    r = sum(1 for column in pivots if column < M.cols)
+    return ExprMatrix(n, n, [extended[i, j] for i in range(n) for j in pivots]), r
+
+
+def controllable_decomposition(A: ExprMatrix, B: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix, ExprMatrix, int]:
+    """``(T, A1, B1, r)``: a change of state ``x = T z`` after which the
+    first ``r`` coordinates are the controllable part,
+
+    ``A1 = T**-1 A T = [[Ac, *], [0, Au]]``, ``B1 = T**-1 B = [[Bc], [0]]``
+
+    with ``(Ac, Bc)`` controllable of order ``r`` (Kalman's
+    decomposition; the eigenvalues of ``Au`` are the modes which no input
+    reaches).
+
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.statespace import controllable_decomposition
+    >>> T, A1, B1, r = controllable_decomposition(ExprMatrix.from_rows([[1, 1], [0, 2]]), ExprMatrix.column([1, 0]))
+    >>> A1, B1, r
+    (ExprMatrix([[1, 1], [0, 2]]), ExprMatrix([[1], [0]]), 1)
+    """
+    T, r = _completed_basis(controllability_matrix(A, B))
+    inverted = inverse(T)
+    return T, (inverted*A*T).applyfunc(normal), (inverted*B).applyfunc(normal), r
+
+
+def observable_decomposition(A: ExprMatrix, C: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix, ExprMatrix, int]:
+    """``(T, A1, C1, r)``: a change of state after which the first ``r``
+    coordinates are the observable part,
+
+    ``A1 = T**-1 A T = [[Ao, 0], [*, Au]]``, ``C1 = C T = [Co, 0]``
+
+    with ``(Ao, Co)`` observable of order ``r``."""
+    S, _, _, r = controllable_decomposition(A.transpose(), C.transpose())
+    # the dual change of basis: T = (S^T)**-1
+    T = inverse(S.transpose())
+    return T, (S.transpose()*A*T).applyfunc(normal), (C*T).applyfunc(normal), r
+
+
+def minimal_realization(A: ExprMatrix, B: ExprMatrix, C: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix, ExprMatrix]:
+    """A controllable and observable system ``(A, B, C)`` with the same
+    transfer function ``C (s I - A)**-1 B``: the uncontrollable part is
+    removed, then the unobservable part of what remains.
+
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.statespace import minimal_realization
+    >>> A = ExprMatrix.from_rows([[-1, 0], [0, -2]])
+    >>> minimal_realization(A, ExprMatrix.column([1, 1]), ExprMatrix.from_rows([[1, 0]]))        # 1/(s + 1)
+    (ExprMatrix([[-1]]), ExprMatrix([[1]]), ExprMatrix([[1]]))
+    """
+    if C.cols != A.rows:
+        raise ValueError('C has %d columns for a state of dimension %d' % (C.cols, A.rows))
+    T, A1, B1, r = controllable_decomposition(A, B)
+    C1 = (C*T).applyfunc(normal)
+    Ac = ExprMatrix(r, r, [A1[i, j] for i in range(r) for j in range(r)])
+    Bc = ExprMatrix(r, B.cols, [B1[i, j] for i in range(r) for j in range(B.cols)])
+    Cc = ExprMatrix(C.rows, r, [C1[i, j] for i in range(C.rows) for j in range(r)])
+    _, A2, C2, q = observable_decomposition(Ac, Cc)
+    S, _, _, _ = controllable_decomposition(Ac.transpose(), Cc.transpose())
+    B2 = (S.transpose()*Bc).applyfunc(normal)
+    return (ExprMatrix(q, q, [A2[i, j] for i in range(q) for j in range(q)]),
+            ExprMatrix(q, B.cols, [B2[i, j] for i in range(q) for j in range(B.cols)]),
+            ExprMatrix(C.rows, q, [C2[i, j] for i in range(C.rows) for j in range(q)]))

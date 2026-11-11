@@ -14,8 +14,9 @@ from sympy_extras.core import Integer, Rational, Symbol
 from sympy_extras.core.expr import Expr
 from sympy_extras.interop import sympy_expr, to_sympy
 from sympy_extras.matrices import ExprMatrix
-from sympy_extras.matrices.linalg import charpoly, normal
-from sympy_extras.matrices.statespace import (controllability_matrix, is_controllable, is_observable, observability_matrix,
+from sympy_extras.matrices.linalg import charpoly, inverse, normal
+from sympy_extras.matrices.statespace import (controllable_decomposition, minimal_realization, observable_decomposition,
+                                              controllability_matrix, is_controllable, is_observable, observability_matrix,
                                               pole_placement, realization, transfer_function)
 
 s, a, b = Symbol('s'), Symbol('a'), Symbol('b')
@@ -124,3 +125,60 @@ def test_realization_round_trip() -> None:
     assert realization(Integer(3), s)[3] == ExprMatrix.from_rows([[3]])
     with pytest.raises(ValueError):
         realization(s**2/(s + 1), s)
+
+
+def _hidden_modes(rnd: random.Random, n: int) -> tuple[ExprMatrix, ExprMatrix, ExprMatrix]:
+    """A system with uncontrollable or unobservable modes hidden by a
+    change of state."""
+    diagonal = [Integer(rnd.randint(-3, 3)) for _ in range(n)]
+    A0 = ExprMatrix(n, n, [diagonal[i] if i == j else Integer(0) for i in range(n) for j in range(n)])
+    B0 = ExprMatrix.column([Integer(rnd.choice([0, 1, 1])) for _ in range(n)])
+    C0 = ExprMatrix(1, n, [Integer(rnd.choice([0, 1, 1])) for _ in range(n)])
+    while True:
+        P = ExprMatrix(n, n, [Integer(rnd.randint(-1, 2)) for _ in range(n*n)])
+        if _sympy_matrix(P).det() != 0:
+            break
+    Pi = inverse(P)
+    return (Pi*A0*P).applyfunc(normal), (Pi*B0).applyfunc(normal), (C0*P).applyfunc(normal)
+
+
+def test_kalman_decompositions() -> None:
+    rnd = random.Random(115)
+    for _ in range(15):
+        n = rnd.randint(1, 4)
+        A, B, C = _hidden_modes(rnd, n)
+        T, A1, B1, r = controllable_decomposition(A, B)
+        ST = _sympy_matrix(T)
+        assert ST.det() != 0 and _sympy_matrix(A1) == ST.inv()*_sympy_matrix(A)*ST and _sympy_matrix(B1) == ST.inv()*_sympy_matrix(B)
+        assert r == _sympy_matrix(controllability_matrix(A, B)).rank()
+        assert all(A1[i, j] == 0 for i in range(r, n) for j in range(r)) and all(B1[i, 0] == 0 for i in range(r, n))
+        Ac = ExprMatrix(r, r, [A1[i, j] for i in range(r) for j in range(r)])
+        Bc = ExprMatrix(r, 1, [B1[i, 0] for i in range(r)])
+        assert r == 0 or is_controllable(Ac, Bc)
+        T, A1, C1, q = observable_decomposition(A, C)
+        ST = _sympy_matrix(T)
+        assert ST.det() != 0 and _sympy_matrix(A1) == ST.inv()*_sympy_matrix(A)*ST and _sympy_matrix(C1) == _sympy_matrix(C)*ST
+        assert all(A1[i, j] == 0 for i in range(q) for j in range(q, n)) and all(C1[0, j] == 0 for j in range(q, n))
+        Ao = ExprMatrix(q, q, [A1[i, j] for i in range(q) for j in range(q)])
+        Co = ExprMatrix(1, q, [C1[0, j] for j in range(q)])
+        assert q == 0 or is_observable(Ao, Co)
+
+
+def test_minimal_realization() -> None:
+    rnd = random.Random(116)
+    reduced = 0
+    for _ in range(15):
+        n = rnd.randint(1, 4)
+        A, B, C = _hidden_modes(rnd, n)
+        Am, Bm, Cm = minimal_realization(A, B, C)
+        G = sympy.cancel(sympy_expr(to_sympy(transfer_function(A, B, C, s)[0, 0])))
+        Gm = sympy_expr(to_sympy(transfer_function(Am, Bm, Cm, s)[0, 0])) if Am.rows else sympy.Integer(0)
+        assert sympy.cancel(G - Gm) == 0
+        # the order is the degree of the denominator in lowest terms (the McMillan degree)
+        degree = 0 if G == 0 else sympy.degree(sympy.fraction(G)[1], ss)
+        assert Am.rows == degree
+        assert Am.rows == 0 or (is_controllable(Am, Bm) and is_observable(Am, Cm))
+        reduced += Am.rows < n
+    assert reduced > 5
+    with pytest.raises(ValueError):
+        minimal_realization(ExprMatrix.eye(2), ExprMatrix.column([1, 0]), ExprMatrix.from_rows([[1, 0, 0]]))

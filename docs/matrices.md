@@ -465,6 +465,9 @@ rational function. The stability conditions with parameters are in
 ExprMatrix([[-k + 2*m, 3*m]])
 >>> realization((s + 3)/(s**2 + 3*s + 2), s)
 (ExprMatrix([[0, 1], [-2, -3]]), ExprMatrix([[0], [1]]), ExprMatrix([[3, 1]]), ExprMatrix([[0]]))
+>>> from sympy_extras.matrices.statespace import minimal_realization
+>>> minimal_realization(ExprMatrix.from_rows([[-1, 0], [0, -2]]), ExprMatrix.column([1, 1]), ExprMatrix.from_rows([[1, 0]]))
+(ExprMatrix([[-1]]), ExprMatrix([[1]]), ExprMatrix([[1]]))
 
 ```
 

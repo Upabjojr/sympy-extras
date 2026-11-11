@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `matrices.statespace`: `controllable_decomposition`,
+  `observable_decomposition` (Kalman's decompositions) and
+  `minimal_realization`.
 - `matrices.riccati`: the discrete algebraic Riccati equation,
   `dare_solve`, `dlqr`, `discrete_riccati_solutions` (the gain as a
   second unknown makes the equation polynomial; Schur stability of the
