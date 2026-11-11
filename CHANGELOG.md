@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.physics.dimensional`: `pi_groups` (the dimensionless
+  groups of the Buckingham Pi theorem, an LLL reduced basis of all the
+  integer solutions), `solve_for` (the law the dimensions impose: the
+  period of a pendulum), `dimension_matrix`, `dimension_of`, the table
+  `SI` of the usual dimensions.
 - `sympy_extras.calculus.interpolation`: `interpolating_polynomial` and
   `divided_differences` (symbolic nodes allowed), `hermite_interpolation`
   (values and derivatives), `cubic_spline` (natural, clamped, not-a-knot,
