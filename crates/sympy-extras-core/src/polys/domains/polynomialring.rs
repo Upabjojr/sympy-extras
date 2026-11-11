@@ -49,6 +49,26 @@ impl<K: Domain> PolynomialRing<K> {
 impl<K: Domain> Domain for PolynomialRing<K> {
     type Elem = Vec<K::Elem>;
 
+    /// The polynomial as an expression in the variable (`to_expr`).
+    fn to_expr(&self, a: &Vec<K::Elem>) -> PolyResult<crate::core::Basic> {
+        let n: usize = a.len().saturating_sub(1);
+        let mut terms: crate::polys::rings::Terms<K::Elem> = crate::polys::rings::Terms::new();
+        for (i, c) in a.iter().enumerate() {
+            if !self.ground.is_zero(c) {
+                terms.insert(vec![(n - i) as u32], c.clone());
+            }
+        }
+        crate::polys::polyutils::expr_from_dict(&terms, std::slice::from_ref(&self.variable), &self.ground)
+    }
+
+    /// An expression which is a polynomial in the variable (`from_expr`).
+    fn from_expr(&self, e: &crate::core::Basic) -> PolyResult<Vec<K::Elem>> {
+        let terms = crate::polys::polyutils::dict_from_expr(e, std::slice::from_ref(&self.variable), &self.ground)?;
+        let dict: std::collections::BTreeMap<usize, K::Elem> =
+            terms.into_iter().map(|(m, c)| (m[0] as usize, c)).collect();
+        Ok(super::super::densebasic::dup_from_dict(&dict, &self.ground))
+    }
+
     fn name(&self) -> String {
         format!("{}[{}]", self.ground.name(), self.variable)
     }

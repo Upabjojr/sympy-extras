@@ -1051,6 +1051,49 @@ fn janet_basis_ops<'py>(
     Ok(d)
 }
 
+/// `functionfields.integral_basis(F, x, y)`.
+#[pyfunction]
+fn integral_basis<'py>(
+    py: Python<'py>,
+    f: &Bound<'py, PyAny>,
+    x: &Bound<'py, PyAny>,
+    y: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyList>> {
+    use sympy_extras_core::polys::functionfields::integral_basis as basis;
+    let found = basis(&from_python(f)?, &from_python(x)?, &from_python(y)?).map_err(crate::convert::err)?;
+    expression_list(py, &found)
+}
+
+/// The bases of `function_field(F, x, y, QQ)` as expressions:
+/// `(integral, local at infinity, normal, pole orders of the normal one)`.
+#[pyfunction]
+#[allow(clippy::type_complexity)]
+fn function_field_bases<'py>(
+    py: Python<'py>,
+    f: &Bound<'py, PyAny>,
+    x: &Bound<'py, PyAny>,
+    y: &Bound<'py, PyAny>,
+) -> PyResult<(Bound<'py, PyList>, Bound<'py, PyList>, Bound<'py, PyList>, Vec<i64>)> {
+    use sympy_extras_core::polys::domains::rationalfield::QQ;
+    use sympy_extras_core::polys::functionfields::function_field;
+    let e_ = crate::convert::err;
+    let field = function_field(&from_python(f)?, &from_python(x)?, &from_python(y)?, QQ).map_err(e_)?;
+    let shown = |basis: &[sympy_extras_core::polys::functionfields::Element<_>]| -> PyResult<Vec<Basic>> {
+        basis.iter().map(|w| field.as_expr(w).map_err(e_)).collect()
+    };
+    let integral = shown(&field.integral_basis().map_err(e_)?)?;
+    let local = shown(&field.local_basis_at_infinity().map_err(e_)?)?;
+    let normal_basis = field.normal_basis().map_err(e_)?;
+    let normal = shown(&normal_basis)?;
+    let orders = field.pole_orders_at_infinity(&normal_basis).map_err(e_)?;
+    Ok((
+        expression_list(py, &integral)?,
+        expression_list(py, &local)?,
+        expression_list(py, &normal)?,
+        orders,
+    ))
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -1093,6 +1136,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(differential_leader, m)?)?;
     m.add_function(wrap_pyfunction!(differential_polynomial_ops, m)?)?;
     m.add_function(wrap_pyfunction!(janet_basis_ops, m)?)?;
+    m.add_function(wrap_pyfunction!(integral_basis, m)?)?;
+    m.add_function(wrap_pyfunction!(function_field_bases, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;
