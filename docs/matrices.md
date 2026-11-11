@@ -375,6 +375,37 @@ ExprMatrix([[2, 0, 0], [1, 2, 0], [1, 1, 2]])
 
 ```
 
+## Matrix equations
+
+`sympy_extras.matrices.equations` solves equations which are linear in
+an unknown matrix, $\sum_i A_i X B_i = C$, through the identity
+$\operatorname{vec}(A X B) = (B^T \otimes A) \operatorname{vec}(X)$ and
+the elimination above. Sylvester's equation $A X + X B = C$ and the
+Lyapunov equations of stability theory are the usual cases; when the
+solution is not unique the solutions of the homogeneous equation come
+with it.
+
+```python
+>>> from sympy_extras.matrices.equations import sylvester_solve, lyapunov_solve, commuting_matrices
+>>> k = Symbol('k')
+>>> lyapunov_solve(ExprMatrix.from_rows([[0, 1], [-1, -k]]), ExprMatrix.eye(2)).particular
+ExprMatrix([[(k**2 + 2)/(2*k), -1/2], [-1/2, 1/k]])
+>>> A = ExprMatrix.from_rows([[1, 2], [3, 4]])
+>>> sylvester_solve(A, ExprMatrix.from_rows([[0, 1], [1, 1]]), ExprMatrix.eye(2))
+MatrixSolution(ExprMatrix([[-26/41, 23/41], [22/41, -10/41]]), [])
+>>> sylvester_solve(A, -A, ExprMatrix.eye(2)) is None
+True
+>>> commuting_matrices(ExprMatrix.from_rows([[0, 1], [0, 0]]))
+[ExprMatrix([[0, 1], [0, 0]]), ExprMatrix([[1, 0], [0, 1]])]
+
+```
+
+The first result is the matrix of the Lyapunov function of the damped
+oscillator $x'' + k x' + x = 0$: it is positive definite exactly for
+$k > 0$. The system solved has $mn$ unknowns for an $m \times n$
+unknown matrix; the Bartels–Stewart reduction to triangular form, which
+avoids it, needs the eigenvalues and is not used.
+
 ## Not done
 
 * eigenvalues when square roots remain in the coefficients of the

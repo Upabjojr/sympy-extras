@@ -10,6 +10,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.equations`: `sylvester_solve` (`A X + X B = C`),
+  `lyapunov_solve` (`A X + X A^* + Q = 0`), `discrete_lyapunov_solve`
+  (`A X A^* - X + Q = 0`), `linear_matrix_equation` (any sum of terms
+  `A X B`), with the solutions of the homogeneous equation when the
+  solution is not unique; `commuting_matrices`, `kronecker_product`,
+  `vec`, `unvec`, `adjoint`.
 - `sympy_extras.matrices.decompositions`: exact `lu` (any shape and
   rank, `P M = L U`), `ldl`, `cholesky`, `qr` and `gram_schmidt`
   (orthogonalisation without square roots, rank-deficient matrices
