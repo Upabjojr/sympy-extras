@@ -19,13 +19,13 @@ checked natively. The steps which are not ported go through SymPy at run
 time (the face holds them, the functions ending in ``_of_core``): SymPy's
 ``solveset`` (the other equations and the inequalities in one unknown),
 ``nonlinsolve``, ``periodicity`` and the evaluation of an intersection of
-sets which is not ported (with ``Range``, ...), the cylindrical algebraic
-decomposition (:mod:`sympy_extras.polys.cad`: ``solution_set``,
-``cylindrical_set``, ``cylindrical_formula``, ``cylindrical_cases``),
-the triangular decompositions (:mod:`sympy_extras.polys.regularchains`,
+sets which is not ported (with ``Range``, ...), the triangular decompositions (:mod:`sympy_extras.polys.regularchains`,
 :func:`sympy_extras.solvers.parametric.parametric_cases`), the
 transcendental equations (:mod:`sympy_extras.solvers.transcendental`) and
 the reliable numerical values of :mod:`sympy_extras._numeric`. The
+cylindrical algebraic decomposition (:mod:`sympy_extras.polys.cad.qe`:
+``solution_set``; :mod:`sympy_extras.polys.cad.cylindrical`:
+``cylindrical_set``, ``cylindrical_formula``, ``cylindrical_cases``), the
 radical forms of the roots of the CAD (:mod:`sympy_extras.polys.roots`),
 the isolation of real roots (:mod:`sympy_extras.solvers.isolation`) and
 the linear Diophantine systems (:mod:`sympy_extras.solvers.integers`) are
@@ -389,9 +389,9 @@ def _restrict(result: Set, x: Symbol, condition: Boolean, facts: Facts, formula:
 
 def _solution_set(formula: Boolean, x: Symbol) -> Set:
     """The real solutions of a polynomial formula in one unknown by the
-    CAD (:func:`sympy_extras.polys.cad.solution_set`, on SymPy)."""
-    from .solve_sympy import solution_set_of_core
-    return solution_set_of_core(formula, x)
+    CAD (:func:`sympy_extras.polys.cad.qe.solution_set`)."""
+    from sympy_extras.polys.cad.qe import solution_set
+    return solution_set(formula, x)
 
 
 def _radicals(result: Set) -> Set:
@@ -784,8 +784,9 @@ def _parametric(statements: Sequence[Boolean], symbols: Sequence[Symbol], facts:
     pieces: list[Set] = []
     if dom == Reals:
         system = and_(*relations, *[c for c in hypotheses if c.free_symbols <= set(parameters) | set(symbols)])
-        from .solve_sympy import cylindrical_cases_of_core
-        discussed = attempt(lambda: cylindrical_cases_of_core(system, parameters, list(symbols)), settings.timeout)
+        from sympy_extras.polys.cad.cylindrical import cylindrical_cases
+        discussed = attempt(lambda: cylindrical_cases(system, parameters, list(symbols)), settings.timeout,
+                            native=True)
         if discussed is None:
             return None
         for condition, found in discussed:
@@ -831,13 +832,13 @@ def _cylindrical(equations: Sequence[Expr], conditions: Sequence[Boolean], symbo
                  facts: Facts) -> Optional[Set]:
     """The real solutions of a system of polynomial equations and
     inequalities with rational coefficients, from a cylindrical algebraic
-    decomposition (:func:`~sympy_extras.polys.cad.cylindrical_set`): the
+    decomposition (:func:`~sympy_extras.polys.cad.cylindrical.cylindrical_set`): the
     isolated points, and a condition set which bounds the first unknown by
     numbers, the second by functions of the first, and so on. The
     parameters come before the unknowns, with what the assumptions say of
     them, and the condition bounds them first. ``None`` when the system is
     not of this kind or the decomposition does not end in time."""
-    from .solve_sympy import cylindrical_formula_of_core, cylindrical_set_of_core
+    from sympy_extras.polys.cad.cylindrical import cylindrical_formula, cylindrical_set
     system = and_(*[c for c in conditions if _informative(c)], *[eq(e, 0) for e in equations])
     parameters = _sorted_symbols(system.free_symbols - set(symbols))
     hypotheses = [c for c in facts.conjuncts
@@ -845,13 +846,13 @@ def _cylindrical(equations: Sequence[Expr], conditions: Sequence[Boolean], symbo
 
     def decompose() -> Set:
         if not parameters:
-            return cylindrical_set_of_core(system, list(symbols))
-        formula = cylindrical_formula_of_core(and_(system, *hypotheses), parameters + list(symbols))
+            return cylindrical_set(system, list(symbols))
+        formula = cylindrical_formula(and_(system, *hypotheses), parameters + list(symbols))
         if formula == false:
             return EmptySet
         return condition_set(Tuple(*symbols), formula, product_set(*[Reals] * len(symbols)))
 
-    return attempt(decompose, settings.timeout)
+    return attempt(decompose, settings.timeout, native=True)
 
 
 def _refuted(solutions: PointSet, equations: Sequence[Expr], symbols: Sequence[Symbol]) -> bool:
@@ -1010,7 +1011,7 @@ def solve(equations: Union[Statement, Sequence[Statement]],
         the reals (``domain=Reals``, the parameters are then real numbers
         too), with inequalities as well, those of a cylindrical
         decomposition with the parameters first
-        (:func:`~sympy_extras.polys.cad.cylindrical_cases`). Without it
+        (:func:`~sympy_extras.polys.cad.cylindrical.cylindrical_cases`). Without it
         the solutions are the generic ones: ``{b/a}`` for ``a*x = b``.
 
     Returns
@@ -1036,7 +1037,7 @@ def solve(equations: Union[Statement, Sequence[Statement]],
     polynomial inequalities in several unknowns, with or without
     equations, and a system of equations with infinitely many solutions,
     are described cylindrically
-    (:func:`~sympy_extras.polys.cad.cylindrical_set`): the points with
+    (:func:`~sympy_extras.polys.cad.cylindrical.cylindrical_set`): the points with
     algebraic coordinates as a finite set of points, and the rest as a
     ``ConditionSet`` whose condition bounds the first unknown by numbers,
     the second one by functions of the first, and so on. The parameters

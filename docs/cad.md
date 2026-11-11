@@ -67,9 +67,11 @@ point, so a system of polynomial equations and inequalities is satisfiable
 if and only if it holds at one of the sample points:
 
 ```python
->>> from sympy_extras.polys.cad.qe import sample_points
->>> sample_points((x**2 + y**2 < 1) & (x > y), [x, y])
-[{x: 0, y: -1/2}, {x: CRootOf(2*x**2 - 1, 1), y: 0}, {x: 3/4, y: 0}]
+>>> from sympy import CRootOf, Interval, Rational
+>>> from sympy_extras.polys.cad.qe_sympy import sample_points
+>>> r = CRootOf(2*x**2 - 1, 1)     # sqrt(2)/2 (SymPy prints it in the variable it cached first)
+>>> sample_points((x**2 + y**2 < 1) & (x > y), [x, y]) == [{x: 0, y: -Rational(1, 2)}, {x: r, y: 0}, {x: Rational(3, 4), y: 0}]
+True
 >>> sample_points((x**2 + y**2 < 1) & (x > 1), [x, y])
 []
 
@@ -84,13 +86,13 @@ polynomials computed by the projection (a *solution formula*, see below).
 ```python
 >>> from sympy import Eq
 >>> from sympy.abc import a, b, c
->>> from sympy_extras.polys.cad.qe import quantifier_elimination, decide, solution_set
+>>> from sympy_extras.polys.cad.qe_sympy import quantifier_elimination, decide, solution_set
 >>> quantifier_elimination(x**2 + b*x + c > 0, [('forall', x)])
 b**2 - 4*c < 0
 >>> quantifier_elimination(Eq(x**2 + a*x + b, 0), [('exists', x)])
 a**2 - 4*b >= 0
->>> solution_set(Eq(x**2 + y**2, 1) & (y > x), x, [('exists', y)])
-Interval.Ropen(-1, CRootOf(2*x**2 - 1, 1))
+>>> solution_set(Eq(x**2 + y**2, 1) & (y > x), x, [('exists', y)]) == Interval.Ropen(-1, r)
+True
 >>> decide(Eq(y, x**2), [('forall', x), ('exists', y)])
 True
 >>> decide(Eq(x, y**2), [('forall', x), ('exists', y)])
@@ -155,7 +157,7 @@ this way only when the augmentation does not end).
 
 ```python
 >>> from sympy.abc import z
->>> from sympy_extras.polys.cad.cylindrical import cylindrical_formula, cylindrical_set, IndexedRoot
+>>> from sympy_extras.polys.cad.cylindrical_sympy import cylindrical_formula, cylindrical_set, IndexedRoot
 >>> cylindrical_formula(x**2 + y**2 <= 1, [x, y])
 (x >= -1) & (x <= 1) & (y <= sqrt(1 - x**2)) & (y >= -sqrt(1 - x**2))
 >>> cylindrical_formula(Eq(z**2, x) & (z > y), [x, y], [('exists', z)])
@@ -277,8 +279,16 @@ coordinates of the sample points are real
 polynomial and an isolating interval); they import no SymPy. Their SymPy
 faces `projection_sympy`, `samplepoints_sympy` and `lifting_sympy` take
 and return SymPy's `Poly`, symbols and numbers (`Rational`, `CRootOf`)
-with the same names and signatures; `qe` and `cylindrical` are written
-on the faces.
+with the same names and signatures. The top layer is native too: `qe`
+(quantifier elimination, decision, solution sets, sample points) and
+`cylindrical` (the cylindrical descriptions) work on the formulas, sets
+and expressions of the core, and write the real algebraic numbers of
+their answers as rational numbers and `IndexedRoot` nodes
+(`sympy_extras.polys.cad.indexedroot`: the root of a polynomial with
+rational coefficients is the node of its minimal polynomial and its index
+among the real roots, SymPy's `CRootOf`). Their faces `qe_sympy`,
+`cylindrical_sympy` and `indexedroot_sympy` take and return SymPy's
+formulas, sets and symbols (`CRootOf` for those roots).
 
 ```python
 >>> from sympy_extras.core import symbols
@@ -287,6 +297,9 @@ on the faces.
 >>> native = native_cad([u**2 + v**2 - 1, u - v], [u, v])
 >>> native, native.cells_at(1)[3].point
 (CAD(47 cells, u, v), (Algebraic([2, 0, -1], -0.7071067812),))
+>>> from sympy_extras.polys.cad.qe import solution_set as native_solution_set
+>>> native_solution_set((u**2 + v**2 < 1) & (u > v), u, [('exists', v)])
+Interval.open(IndexedRoot(2*u**2 - 1, u, 0), 1)
 
 ```
 
@@ -314,7 +327,7 @@ on the faces.
 - `NotWellOriented`: raised with `method='mccallum'` when a projection
   factor vanishes identically on a cell of positive dimension.
 
-### Formulas (`sympy_extras.polys.cad.qe`)
+### Formulas (`sympy_extras.polys.cad.qe_sympy`, native: `qe`)
 
 Formulas are Boolean combinations (`And`, `Or`, `Not`, `Implies`,
 `Equivalent`, `Xor`) of polynomial equations and inequalities with
@@ -341,7 +354,7 @@ outermost first.
 `partial=False` builds the full decomposition instead of the partial one
 (see above).
 
-### Cylindrical descriptions (`sympy_extras.polys.cad.cylindrical`)
+### Cylindrical descriptions (`sympy_extras.polys.cad.cylindrical_sympy`, native: `cylindrical`)
 
 - `cylindrical_formula(formula, gens, quantifiers=(), method=None, partial=True)`: the
   set of the points `gens` at which the (quantified) formula holds, as a
@@ -356,7 +369,10 @@ outermost first.
   solutions under it (a finite set, a union of intervals for one unknown,
   a `ConditionSet` otherwise); the cases with one set are joined.
 - `IndexedRoot(f, t, k)`: the `k`-th distinct real root (from 0) of the
-  polynomial `f` in `t`, a function of the other symbols of `f`.
+  polynomial `f` in `t`, a function of the other symbols of `f` (in
+  `indexedroot_sympy`, a SymPy function which evaluates; the native node
+  is `indexedroot.IndexedRoot` and its evaluating function
+  `indexed_root`).
 
 ### Projection (`sympy_extras.polys.cad.projection_sympy`, native: `projection`)
 

@@ -35,11 +35,12 @@ in ``_of_core``): SymPy's SAT solver
 (:func:`sympy.logic.inference.satisfiable`) on the propositional
 abstraction, the consistency of predicates with SymPy's known facts
 (:func:`~sympy_extras.assumptions.facts_sympy.predicates_consistent`),
-the sample points and solution sets of the cylindrical algebraic
-decomposition (:mod:`sympy_extras.polys.cad`), the count of real
-solutions by Hermite's form (:mod:`sympy_extras.polys.hermite`) and the
-floor and the comparison of real algebraic numbers which are not rational
-(SymPy's ``CRootOf``, not ported).
+the count of real solutions by Hermite's form
+(:mod:`sympy_extras.polys.hermite`) and the floor and the comparison of
+SymPy's ``CRootOf`` (not ported). The sample points and the solution sets
+of the cylindrical algebraic decomposition are native
+(:mod:`sympy_extras.polys.cad.qe`), and so are the floor and the
+comparison of the real algebraic numbers they give.
 """
 from __future__ import annotations
 
@@ -116,6 +117,11 @@ def _floor(a: Expr) -> int:
     """The floor of a real algebraic number."""
     if isinstance(a, Rational):
         return a.p // a.q
+    from sympy_extras.polys.cad.indexedroot import algebraic_of
+    from sympy_extras.polys.cad.samplepoints import floor_scaled
+    number = algebraic_of(a)
+    if number is not None:
+        return floor_scaled(number, 0)
     from .sat_sympy import floor_of_core
     return floor_of_core(a)
 
@@ -125,6 +131,11 @@ def _compare(a: Expr, b: Expr) -> int:
     if isinstance(a, Rational) and isinstance(b, Rational):
         d = Fraction(a.p, a.q) - Fraction(b.p, b.q)
         return (d > 0) - (d < 0)
+    from sympy_extras.polys.cad.indexedroot import algebraic_of
+    from sympy_extras.polys.cad.samplepoints import compare_real
+    first, second = algebraic_of(a), algebraic_of(b)
+    if first is not None and second is not None:
+        return compare_real(first, second)
     from .sat_sympy import compare_real_of_core
     return compare_real_of_core(a, b)
 
@@ -168,19 +179,23 @@ def _integer_witness(formula: Boolean, points: Sequence[Witness], integer: set[S
     intervals is searched for an integer. With several integer variables
     only the neighbourhood of the real sample points is searched.
     """
-    from .sat_sympy import sample_points_of_core, solution_set_of_core
+    from sympy_extras.polys.cad.qe import sample_points, solution_set
     integer_gens = [g for g in gens if g in integer]
     if len(integer_gens) == 1:
         [n] = integer_gens
         others = [g for g in gens if g != n]
-        sets = solution_set_of_core(formula, n, others)
+        sets: Optional[Set]
+        try:
+            sets = solution_set(formula, n, [('exists', others)] if others else [])
+        except NotImplementedError:
+            sets = None
         if sets is not None:
             k = _integer_in(sets)
             if k is None:
                 return False
             witness: Witness = {n: k}
             if others:
-                points_ = sample_points_of_core(to_boolean(formula.subs(n, k)), others)
+                points_ = sample_points(to_boolean(formula.subs(n, k)), others)
                 if not points_:
                     return None
                 witness.update(points_[0])
@@ -228,7 +243,8 @@ def _theory_check(literals: Sequence[Boolean], facts: Facts) -> Union[Witness, b
     satisfiable, ``False`` if they are not and ``None`` if it cannot be
     decided.
     """
-    from .sat_sympy import predicates_consistent_of_core, sample_points_of_core
+    from sympy_extras.polys.cad.qe import sample_points
+    from .sat_sympy import predicates_consistent_of_core
     predicates: list[Boolean] = []
     for lit in literals:
         p = to_predicates(lit)
@@ -285,7 +301,7 @@ def _theory_check(literals: Sequence[Boolean], facts: Facts) -> Union[Witness, b
         gens = _sorted_symbols(_symbols(formula))
         if set(gens) <= real and _without_real_solution(formula, gens):
             return False
-        points = sample_points_of_core(formula, gens)
+        points = sample_points(formula, gens)
         if not points:
             return False if set(gens) <= real else None
         integer_gens = [g for g in gens if g in integer]
@@ -487,8 +503,8 @@ def find_instance(formula: BooleanLike, variables: Union[Symbol, Sequence[Symbol
                 return [{v: Integer(0) for v in variables_}]
             if isinstance(poly, BooleanFalse):
                 return []
-            from .sat_sympy import sample_points_of_core
-            points = sample_points_of_core(poly, variables_)
+            from sympy_extras.polys.cad.qe import sample_points
+            points = sample_points(poly, variables_)
             return points[:count]
     results: list[Witness] = []
     models = satisfiable(formula_, domain=domain, all_models=True)

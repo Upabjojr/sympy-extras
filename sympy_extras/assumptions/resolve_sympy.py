@@ -8,9 +8,7 @@ not ported.
 
 The eliminations stay written on SymPy's polynomials and are called from
 the native ``resolve`` at run time (the functions ending in ``_of_core``,
-which take and return objects of the core): the cylindrical algebraic
-decomposition (:func:`sympy_extras.polys.cad.quantifier_elimination`),
-virtual substitution (:func:`~sympy_extras.polys.virtual_substitution.virtual_substitution_elimination`,
+which take and return objects of the core): virtual substitution (:func:`~sympy_extras.polys.virtual_substitution.virtual_substitution_elimination`,
 :func:`~sympy_extras.polys.virtual_substitution.with_sides`) and
 comprehensive Gröbner systems
 (:func:`~sympy_extras.polys.comprehensive.complex_quantifier_elimination`,
@@ -25,28 +23,19 @@ from sympy.logic.boolalg import Boolean
 from sympy.sets.sets import Set
 
 from sympy_extras.core.logic import Boolean as CoreBoolean
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 
 from . import resolve as native
-from .ask_sympy import (Assumptions, _sympy_symbol, core_assumptions, core_boolean, core_domain, core_prefix,
+from .ask_sympy import (Assumptions, core_assumptions, core_boolean, core_domain, core_prefix,
     sympy_boolean, sympy_prefix)
 from .quantifiers import Prefix
 
-__all__ = ['resolve', 'quantifier_elimination_of_core', 'virtual_substitution_elimination_of_core',
+__all__ = ['resolve', 'virtual_substitution_elimination_of_core',
     'with_sides_of_core',
     'complex_quantifier_elimination_of_core', 'reduce_complex_of_core']
 
 
 # ---------------------------------------------------------------------------
 # the eliminations of the native resolve which stay on SymPy
-
-def quantifier_elimination_of_core(formula: CoreBoolean, prefix: Prefix, free: list[CoreSymbol],
-                                   method: Optional[str]) -> CoreBoolean:
-    """:func:`sympy_extras.polys.cad.quantifier_elimination`."""
-    from sympy_extras.polys.cad.qe import quantifier_elimination
-    return core_boolean(quantifier_elimination(sympy_boolean(formula), sympy_prefix(prefix),
-                                               free=[_sympy_symbol(s) for s in free], method=method))
-
 
 def virtual_substitution_elimination_of_core(formula: CoreBoolean, prefix: Prefix) -> tuple[CoreBoolean, Prefix]:
     """:func:`sympy_extras.polys.virtual_substitution.virtual_substitution_elimination`."""
@@ -131,8 +120,9 @@ def resolve(formula: Union[Boolean, bool], domain: Optional[Set] = S.Reals,
     (x >= -1) & (x <= 1)
     >>> resolve(~ForAll(x, x**2 > 0))
     True
-    >>> resolve(x**2 > 2)
-    (x > CRootOf(x**2 - 2, 1)) | (x < CRootOf(x**2 - 2, 0))
+    >>> from sympy import CRootOf       # SymPy prints a CRootOf in the variable it cached first
+    >>> resolve(x**2 > 2) == (x > CRootOf(x**2 - 2, 1)) | (x < CRootOf(x**2 - 2, 0))
+    True
     >>> resolve(Exists(x, Eq(2*x, y)), domain=S.Integers)
     Eq(Mod(y, 2), 0)
     >>> resolve(Exists(x, Eq(x**2 + 1, 0)), domain=S.Complexes)

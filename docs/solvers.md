@@ -99,7 +99,7 @@ many solutions, are described cylindrically, as Mathematica's `Reduce`
 does: the points with algebraic coordinates as a finite set, and the rest
 as a `ConditionSet` whose condition bounds the first unknown by numbers,
 the second by functions of the first, and so on
-(`sympy_extras.polys.cad.cylindrical.cylindrical_set`, see [docs/cad.md](cad.md)). The
+(`sympy_extras.polys.cad.cylindrical_sympy.cylindrical_set`, see [docs/cad.md](cad.md)). The
 parameters are bounded before the unknowns, within the assumptions.
 
 ```python
@@ -151,7 +151,7 @@ order of the variables.
 
 Over the reals (`domain=S.Reals`; the parameters are real too), with
 inequalities as well, they are the cells of a cylindrical decomposition
-with the parameters first (`sympy_extras.polys.cad.cylindrical.cylindrical_cases`):
+with the parameters first (`sympy_extras.polys.cad.cylindrical_sympy.cylindrical_cases`):
 the conditions bound the first parameter by numbers and the next ones by
 functions of those before, the solutions of one unknown are intervals and
 points with endpoints in the parameters, and the cases with the same

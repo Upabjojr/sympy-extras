@@ -162,20 +162,20 @@ sympy_extras/
         intervals.py         rigorous interval arithmetic: evaluate, signs_on_box, corner_signs, isolate_signs (native)
         intervals_sympy.py   the SymPy face of intervals
         analysis.py          signs beyond polynomials: certified_sign, sign_on, domain_of, decide_relational (native;
-                             continuous_domain/solveset of non-rational expressions and the CAD through analysis_sympy)
+                             the native CAD; continuous_domain/solveset of non-rational expressions through analysis_sympy)
         analysis_sympy.py    the SymPy face of analysis, and the steps which stay on SymPy (the *_of_core functions)
-        ask.py               ask(): the core's ask first, then the CAD (native; the CAD, virtual substitution,
+        ask.py               ask(): the core's ask first, then the CAD (native, with the native CAD; virtual substitution,
                              the structure theorem and the sample points through ask_sympy)
         ask_sympy.py         the SymPy face of ask, and the steps which stay on SymPy (the *_of_core functions)
         refine.py            refine(), simplify(): the core's refine and simplify plus CAD-decided handlers (native)
         refine_sympy.py      the SymPy face of refine (_Refiner too), SymPy's simplify of Booleans, the proofs
-        resolve.py           resolve(): quantifier elimination over R, Z, C (native)
-        resolve_sympy.py     the SymPy face of resolve, and the eliminations (CAD, virtual substitution, Cooper,
+        resolve.py           resolve(): quantifier elimination over R, Z, C (native, with the native CAD)
+        resolve_sympy.py     the SymPy face of resolve, and the eliminations (virtual substitution,
                              comprehensive Groebner systems) which stay on SymPy
-        sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check (native; SymPy's SAT
-                             solver, predicates_consistent, the CAD and Hermite's count through sat_sympy)
+        sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check (native, with the native CAD;
+                             SymPy's SAT solver, predicates_consistent and Hermite's count through sat_sympy)
         sat_sympy.py         the SymPy face of sat, and the steps which stay on SymPy (the *_of_core functions)
-        solve.py             solve(): Solve under assumptions (native; solveset, nonlinsolve, the CAD, regular chains,
+        solve.py             solve(): Solve under assumptions (native, with the native CAD; solveset, nonlinsolve, regular chains,
                              transcendental equations, root isolation, Diophantine systems through solve_sympy)
         solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions)
         limits.py            limit(), limit_seq(), series() under assumptions, with case distinctions (native; the core's
@@ -335,8 +335,13 @@ sympy_extras/
             samplepoints_sympy.py the SymPy face of samplepoints (Rational and CRootOf in and out)
             lifting.py       lifting phase, cylindrical_algebraic_decomposition, CAD, CADCell, Lifting (native)
             lifting_sympy.py the SymPy face of lifting (cells with SymPy points), used by qe, cylindrical, regions
-            qe.py            quantifier_elimination, decide, sample_points, solution_set (on SymPy, through the faces)
-            cylindrical.py   cylindrical_formula, cylindrical_set, cylindrical_cases, IndexedRoot (on SymPy)
+            qe.py            quantifier_elimination, decide, sample_points, solution_set, truth_tables (native)
+            qe_sympy.py      the SymPy face of qe (SymPy formulas and sets, CRootOf), and _compile for the regions
+            cylindrical.py   cylindrical_formula, cylindrical_set, cylindrical_cases (native)
+            cylindrical_sympy.py the SymPy face of cylindrical
+            indexedroot.py   IndexedRoot (node), indexed_root, real_root, real_number, algebraic_of: root functions and
+                             real algebraic numbers of the answers (native)
+            indexedroot_sympy.py IndexedRoot as a SymPy Function; interop converts (a root with rational coefficients is CRootOf)
             tests/
         differential/        differential algebra
             ring.py          DifferentialRing: derivatives, rankings (orderly, elimination by blocks), conversion

@@ -251,7 +251,7 @@ from sympy_extras.assumptions.facts_sympy import element, normalize
 from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.assumptions.refine_sympy import refine
 from sympy_extras.polys.cad.lifting_sympy import CAD, CADCell, cylindrical_algebraic_decomposition
-from sympy_extras.polys.cad.qe import _compile
+from sympy_extras.polys.cad.qe_sympy import _compile
 from sympy_extras.polys.cad.samplepoints_sympy import RealAlgebraic, compare_real
 from sympy_extras.settings import settings
 from .conditions import numerically_equal

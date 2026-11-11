@@ -276,7 +276,7 @@ def test_signs_from_the_roots() -> None:
 def test_liftings_are_kept() -> None:
     from sympy_extras.polys.cad.lifting_sympy import lifting_for, _liftings, _KEPT
     from sympy_extras.polys.cad.projection_sympy import projection_sets
-    from sympy_extras.polys.cad.qe import decide, sample_points, solution_set
+    from sympy_extras.polys.cad.qe_sympy import decide, sample_points, solution_set
     projection = projection_sets([x**2 + y**2 - 1, x - y], [x, y])
     lifting = lifting_for(projection, [x, y], 'mccallum')
     assert lifting_for(projection, [x, y], 'mccallum') is lifting

@@ -288,8 +288,10 @@ predicates implied by the assumptions.
 b**2 < 4*c
 >>> resolve(Exists(x, Eq(x**2 + a*x + b, 0)))
 a**2 >= 4*b
->>> resolve(Exists(y, Eq(x**2 + y**2, 1) & (y > x)))
-(x >= -1) & (x < CRootOf(2*x**2 - 1, 1))
+>>> from sympy import CRootOf
+>>> r = CRootOf(2*x**2 - 1, 1)     # sqrt(2)/2 (SymPy prints it in the variable it cached first)
+>>> resolve(Exists(y, Eq(x**2 + y**2, 1) & (y > x))) == (x >= -1) & (x < r)
+True
 >>> resolve(ForAll(x, Exists(y, y > x)))
 True
 >>> resolve(~ForAll(x, x**2 > 0))
@@ -361,8 +363,10 @@ False
 {x: 2}
 >>> tautology((x > 0) | (x <= 0))
 True
->>> find_instance((x**2 + y**2 < 1) & (x > y), [x, y], count=3)
-[{x: 0, y: -1/2}, {x: CRootOf(2*x**2 - 1, 1), y: 0}, {x: 3/4, y: 0}]
+>>> from sympy import CRootOf, Rational
+>>> find_instance((x**2 + y**2 < 1) & (x > y), [x, y], count=3) == [
+...     {x: 0, y: -Rational(1, 2)}, {x: CRootOf(2*x**2 - 1, 1), y: 0}, {x: Rational(3, 4), y: 0}]
+True
 >>> find_instance((x**2 > 5) & (x < 0), [x], S.Integers)
 [{x: -3}]
 

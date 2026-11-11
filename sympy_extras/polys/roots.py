@@ -66,7 +66,19 @@ def polynomial_root(e: Basic) -> Optional[tuple[Poly, int]]:
     >>> from sympy_extras.polys.roots import polynomial_root
     >>> polynomial_root(Symbol('x')) is None
     True
+
+    The real roots with rational coefficients of the CAD
+    (:class:`~sympy_extras.polys.cad.indexedroot.IndexedRoot`) are root
+    objects too:
+
+    >>> from sympy_extras.polys.cad.indexedroot import IndexedRoot
+    >>> x = Symbol('x')
+    >>> polynomial_root(IndexedRoot(x**3 - 2*x, x, 2))
+    (Poly(x**2 - 2, x, domain='ZZ'), 1)
     """
+    from sympy_extras.polys.cad.indexedroot import IndexedRoot
+    if isinstance(e, IndexedRoot):
+        return e.polynomial_root()
     if not (e._is_foreign_node() and e._compare_name() == _ROOT_CLASS and len(e.args) == 2):
         return None
     expr, index = e.args

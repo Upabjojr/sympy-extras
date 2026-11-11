@@ -8,9 +8,9 @@ whose sample points are SymPy numbers (``Rational`` and ``CRootOf``, see
 liftings: a :class:`CADCell` of the face wraps one native cell (the same
 face for the same native cell, so that cells can be keys), and the
 stacks are those of the native lifting. :class:`CAD` is the container of
-the decompositions which :mod:`sympy_extras.polys.cad.qe` and
-:mod:`sympy_extras.polys.cad.cylindrical` build from the cells of a
-lifting. Nothing of the lifting stays on SymPy.
+the decompositions on SymPy polynomials (the region integrals of
+:mod:`sympy_extras.integrals.regions` build them from the cells of a
+lifting). Nothing of the lifting stays on SymPy.
 
 Examples
 ========

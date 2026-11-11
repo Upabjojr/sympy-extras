@@ -37,15 +37,14 @@ from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
-from sympy_extras.sets.sets import Set as CoreSet
 
 from . import sat as native
 from .ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions, core_boolean, core_domain, \
     sympy_boolean
-from .intervals_sympy import core_expr, core_set, sympy_expr
+from .intervals_sympy import sympy_expr
 
 __all__ = ['satisfiable', 'tautology', 'find_instance', 'Model', 'Witness', 'propositional_models_of_core',
-    'predicates_consistent_of_core', 'sample_points_of_core', 'solution_set_of_core',
+    'predicates_consistent_of_core',
     'decide_zero_dimensional_of_core', 'floor_of_core', 'compare_real_of_core']
 
 
@@ -76,30 +75,6 @@ def predicates_consistent_of_core(predicates: CoreBoolean) -> bool:
     """:func:`sympy_extras.assumptions.facts_sympy.predicates_consistent`."""
     from .facts_sympy import predicates_consistent
     return predicates_consistent(sympy_boolean(predicates))
-
-
-def sample_points_of_core(formula: CoreBoolean, gens: Sequence[CoreSymbol]) -> list[dict[CoreSymbol, CoreExpr]]:
-    """:func:`sympy_extras.polys.cad.sample_points`."""
-    from sympy_extras.polys.cad.qe import sample_points
-    points = sample_points(sympy_boolean(formula), [_sympy_symbol(g) for g in gens])
-    return [{_core_symbol(k): core_expr(v) for k, v in point.items()} for point in points]
-
-
-def solution_set_of_core(formula: CoreBoolean, x: CoreSymbol, others: Sequence[CoreSymbol]) -> Optional[CoreSet]:
-    """The values of ``x`` for which ``formula`` holds for some values of
-    ``others`` (:func:`sympy_extras.polys.cad.solution_set`), ``None``
-    when the decomposition does not apply."""
-    from sympy_extras.polys.cad.qe import solution_set
-    sympy_others: list[Symbol] = [_sympy_symbol(g) for g in others]
-    quantifiers: list[tuple[str, Union[Symbol, Sequence[Symbol]]]] = [('exists', sympy_others)] if others else []
-    try:
-        found = solution_set(sympy_boolean(formula), _sympy_symbol(x), quantifiers)
-    except NotImplementedError:
-        return None
-    converted = core_set(found)
-    if converted is None:
-        raise TypeError("the solution set %s is not a set of the core" % (found,))
-    return converted
 
 
 def decide_zero_dimensional_of_core(formula: CoreBoolean, gens: list[CoreSymbol]) -> Truth:

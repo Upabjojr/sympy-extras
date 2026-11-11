@@ -396,3 +396,49 @@ def test_native_isolation_integers_roots_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ISOLATION], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_CAD_QE = r'''
+import sys
+from sympy_extras.core import symbols, Eq
+from sympy_extras.polys.cad.qe import quantifier_elimination, decide, solution_set, sample_points, truth_tables
+from sympy_extras.polys.cad.cylindrical import cylindrical_formula, cylindrical_set, cylindrical_cases
+from sympy_extras.polys.cad.indexedroot import indexed_root
+assert 'sympy' not in sys.modules
+a, b, c, x, y, z = symbols('a b c x y z')
+assert str(quantifier_elimination(Eq(a*x**2 + b*x + c, 0), [('exists', x)])) == \
+    'Eq(c, 0) | (4*a*c - b**2 < 0) | (Ne(b, 0) & (4*a*c - b**2 <= 0))'
+assert str(quantifier_elimination(Eq(z**2, x) & (z > y), [('exists', z)], free=[x, y])) == \
+    '((x >= 0) & (y < 0)) | (x - y**2 > 0)'
+assert decide(Eq(y, x**2), [('forall', x), ('exists', y)]) is True
+assert str(solution_set(x**2 > 2, x)) == \
+    'Union(Interval.open(-oo, IndexedRoot(x**2 - 2, x, 0)), Interval.open(IndexedRoot(x**2 - 2, x, 1), oo))'
+assert str(sample_points((x**2 + y**2 < 1) & (x > y), [x, y])) == \
+    '[{x: 0, y: -1/2}, {x: IndexedRoot(2*x**2 - 1, x, 1), y: 0}, {x: 3/4, y: 0}]'
+assert truth_tables([x > 0, x**3 > 0], [x])[1] == [[False, False, True], [False, False, True]]
+assert str(cylindrical_formula(x**2 + y**2 < 1, [x, y])) == '(x > -1) & (x < 1) & (y < sqrt(1 - x**2)) & (y > -sqrt(1 - x**2))'
+assert 'IndexedRoot(x + y**3 - 3*y, y, 2)' in str(cylindrical_formula((y**3 - 3*y + x > 0) & (x > 1), [x, y]))
+assert str(cylindrical_set((x**2 + y**2)*((x - 3)**2 + y**2 - 1) <= 0, [x, y])).endswith('{(0, 0)})')
+assert str(cylindrical_cases(Eq(a*x, 1), [a], [x])) == '[((a > 0) | (a < 0), {1/a})]'
+assert str(indexed_root(y**3 + x*y - 1, y, 0).subs(x, 1).evalf(20)) == '0.68232780382801932737'
+from sympy_extras.sets import Reals
+from sympy_extras.assumptions.sat import find_instance
+from sympy_extras.assumptions.solve import solve
+assert str(find_instance((x**2 + y**2 < 1) & (x > y), [x, y], domain=Reals)) == '[{x: 0, y: -1/2}]'
+assert str(solve((x**2 + y**2 <= 1) & (x + y >= 1), [x, y], domain=Reals)) == \
+    'ConditionSet((x, y), (x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2)), ProductSet(Reals, Reals))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_cad_qe_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.cad.qe`,
+    :mod:`sympy_extras.polys.cad.cylindrical` and
+    :mod:`sympy_extras.polys.cad.indexedroot` does not load SymPy, nor do
+    quantifier elimination, the decisions, solution sets, sample points,
+    truth tables and cylindrical descriptions, nor the instances of
+    ``find_instance`` and the systems of inequalities of ``solve`` which
+    they answer."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CAD_QE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

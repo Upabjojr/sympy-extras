@@ -81,17 +81,19 @@ sample points of systems of polynomial equations and inequalities are built
 on top of the decomposition:
 
 ```python
->>> from sympy_extras.polys.cad.qe import quantifier_elimination, decide, solution_set, sample_points
+>>> from sympy_extras.polys.cad.qe_sympy import quantifier_elimination, decide, solution_set, sample_points
 >>> quantifier_elimination(x**2 + b*x + c > 0, [('forall', x)])
 b**2 - 4*c < 0
 >>> quantifier_elimination(Eq(x**2 + a*x + b, 0), [('exists', x)])
 a**2 - 4*b >= 0
->>> solution_set(Eq(x**2 + y**2, 1) & (y > x), x, [('exists', y)])
-Interval.Ropen(-1, CRootOf(2*x**2 - 1, 1))
+>>> from sympy import CRootOf, Interval, Rational
+>>> r = CRootOf(2*x**2 - 1, 1)     # sqrt(2)/2 (SymPy prints it in the variable it cached first)
+>>> solution_set(Eq(x**2 + y**2, 1) & (y > x), x, [('exists', y)]) == Interval.Ropen(-1, r)
+True
 >>> decide(Eq(y, x**2), [('forall', x), ('exists', y)])
 True
->>> sample_points((x**2 + y**2 < 1) & (x > y), [x, y])
-[{x: 0, y: -1/2}, {x: CRootOf(2*x**2 - 1, 1), y: 0}, {x: 3/4, y: 0}]
+>>> sample_points((x**2 + y**2 < 1) & (x > y), [x, y]) == [{x: 0, y: -Rational(1, 2)}, {x: r, y: 0}, {x: Rational(3, 4), y: 0}]
+True
 
 ```
 
@@ -102,7 +104,7 @@ roots up to degree two, `IndexedRoot` beyond; `solve` answers systems of
 inequalities in several unknowns this way):
 
 ```python
->>> from sympy_extras.polys.cad.cylindrical import cylindrical_formula
+>>> from sympy_extras.polys.cad.cylindrical_sympy import cylindrical_formula
 >>> cylindrical_formula((x**2 + y**2 <= 1) & (x + y >= 1), [x, y])
 (x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2))
 
@@ -157,8 +159,8 @@ x + log(x*y) - 1
 True
 >>> resolve(ForAll(x, x**2 + b*x + c > 0))
 b**2 < 4*c
->>> resolve(Exists(y, Eq(x**2 + y**2, 1) & (y > x)))
-(x >= -1) & (x < CRootOf(2*x**2 - 1, 1))
+>>> resolve(Exists(y, Eq(x**2 + y**2, 1) & (y > x))) == (x >= -1) & (x < CRootOf(2*x**2 - 1, 1))
+True
 >>> satisfiable((x**2 + y**2 < 1) & (x + y > 1))
 {x: 1/2, y: 2/3}
 

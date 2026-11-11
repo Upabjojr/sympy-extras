@@ -12,14 +12,14 @@ from it at run time (the functions ending in ``_of_core``, which take and
 return objects of the core): SymPy's ``solveset`` for the equations which
 are not rational and for the inequalities, ``nonlinsolve``,
 ``periodicity`` and the intersections of sets which the core does not
-evaluate (with ``Range``, ``ImageSet``, ...); the cylindrical algebraic
-decomposition (:mod:`sympy_extras.polys.cad`), the triangular
+evaluate (with ``Range``, ``ImageSet``, ...); the triangular
 decompositions (:func:`sympy_extras.polys.regularchains.triangularize`,
 :func:`sympy_extras.solvers.parametric.parametric_cases`), all written on
 SymPy's polynomials; the transcendental equations
 (:func:`sympy_extras.solvers.transcendental.solve_transcendental`), on
 SymPy's ``solveset``; and :func:`sympy_extras._numeric.reliable_value`.
-The radical forms of the roots (:mod:`sympy_extras.polys.roots`), the
+The cylindrical algebraic decomposition (:mod:`sympy_extras.polys.cad`),
+the radical forms of the roots (:mod:`sympy_extras.polys.roots`), the
 isolation of real roots (:mod:`sympy_extras.solvers.isolation`) and the
 linear Diophantine systems (:mod:`sympy_extras.solvers.integers`) are
 native.
@@ -50,8 +50,7 @@ from .ask_sympy import Assumptions, _sympy_symbol, core_assumptions, core_boolea
 from .intervals_sympy import core_expr, core_symbol, sympy_expr, sympy_set
 
 __all__ = ['solve', 'Statement', 'evaluated_set_of_core', 'solveset_of_core', 'reliable_value_of_core',
-    'solution_set_of_core', 'solve_transcendental_of_core', 'periodicity_of_core', 'nonlinsolve_of_core',
-    'cylindrical_set_of_core', 'cylindrical_formula_of_core', 'cylindrical_cases_of_core',
+    'solve_transcendental_of_core', 'periodicity_of_core', 'nonlinsolve_of_core',
     'triangularize_of_core', 'parametric_cases_of_core']
 
 #: an equation or inequality to solve: an expression (equated to zero), a
@@ -98,15 +97,6 @@ def reliable_value_of_core(e: CoreExpr, digits: int) -> Optional[CoreExpr]:
     return None if value is None else core_expr(value)
 
 
-def solution_set_of_core(formula: CoreBoolean, x: CoreSymbol) -> CoreSet:
-    """The real solutions of a polynomial formula by the CAD
-    (:func:`sympy_extras.polys.cad.solution_set`)."""
-    from sympy_extras.polys.cad.qe import solution_set
-    return _core_set(solution_set(sympy_boolean(formula), _sympy_symbol(x)))
-
-
-
-
 def solve_transcendental_of_core(formula: CoreBoolean, x: CoreSymbol,
                                  solver: Callable[[CoreBoolean, CoreSymbol], CoreSet],
                                  decide: Callable[[CoreBoolean], Truth]) -> Optional[CoreSet]:
@@ -150,26 +140,6 @@ def nonlinsolve_of_core(equations: list[CoreExpr], symbols: list[CoreSymbol]) ->
         # - 5/4), Interval.open(-oo, 5/6)) for two equations in x, y, z
         return None
     return _core_set(found)
-
-
-def cylindrical_set_of_core(formula: CoreBoolean, symbols: list[CoreSymbol]) -> CoreSet:
-    """:func:`sympy_extras.polys.cad.cylindrical_set`."""
-    from sympy_extras.polys.cad.cylindrical import cylindrical_set
-    return _core_set(cylindrical_set(sympy_boolean(formula), _core_symbols(symbols)))
-
-
-def cylindrical_formula_of_core(formula: CoreBoolean, gens: list[CoreSymbol]) -> CoreBoolean:
-    """:func:`sympy_extras.polys.cad.cylindrical_formula`."""
-    from sympy_extras.polys.cad.cylindrical import cylindrical_formula
-    return core_boolean(cylindrical_formula(sympy_boolean(formula), _core_symbols(gens)))
-
-
-def cylindrical_cases_of_core(formula: CoreBoolean, parameters: list[CoreSymbol],
-                              unknowns: list[CoreSymbol]) -> list[tuple[CoreBoolean, CoreSet]]:
-    """:func:`sympy_extras.polys.cad.cylindrical_cases`."""
-    from sympy_extras.polys.cad.cylindrical import cylindrical_cases
-    found = cylindrical_cases(sympy_boolean(formula), _core_symbols(parameters), _core_symbols(unknowns))
-    return [(core_boolean(condition), _core_set(solutions)) for condition, solutions in found]
 
 
 def triangularize_of_core(equations: list[CoreExpr], symbols: list[CoreSymbol]
@@ -282,7 +252,7 @@ def solve(equations: Union[Statement, Sequence[Statement]],
         the reals (``domain=S.Reals``, the parameters are then real
         numbers too), with inequalities as well, those of a cylindrical
         decomposition with the parameters first
-        (:func:`~sympy_extras.polys.cad.cylindrical_cases`). Without it
+        (:func:`~sympy_extras.polys.cad.cylindrical.cylindrical_cases`). Without it
         the solutions are the generic ones: ``{b/a}`` for ``a*x = b``.
 
     Returns
@@ -308,11 +278,11 @@ def solve(equations: Union[Statement, Sequence[Statement]],
     polynomial inequalities in several unknowns, with or without
     equations, and a system of equations with infinitely many solutions,
     are described cylindrically
-    (:func:`~sympy_extras.polys.cad.cylindrical_set`): the points with
+    (:func:`~sympy_extras.polys.cad.cylindrical.cylindrical_set`): the points with
     algebraic coordinates as a finite set, and the rest as a
     ``ConditionSet`` whose condition bounds the first unknown by numbers,
     the second one by functions of the first, and so on (explicit roots of
-    polynomials of degree at most two, :class:`~sympy_extras.polys.cad.IndexedRoot`
+    polynomials of degree at most two, :class:`~sympy_extras.polys.cad.indexedroot_sympy.IndexedRoot`
     beyond). The parameters of the system are bounded before the unknowns,
     within what the assumptions say of them.
 

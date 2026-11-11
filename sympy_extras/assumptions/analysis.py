@@ -34,8 +34,9 @@ objects. Three steps are not ported and go through SymPy at run time
 (the face holds them): ``continuous_domain`` and ``solveset`` for
 expressions which are not rational in the variable (the rational ones
 are handled by :func:`~sympy_extras.polys.rationalsolve.solveset_rational`),
-and the CAD's ``solution_set`` for a polynomial assumption which is not
-a bound.
+and the intersection of the solutions of a polynomial assumption which is
+not a bound (the native CAD's ``solution_set``) with other intervals,
+when the core does not compare their ends.
 """
 from __future__ import annotations
 
@@ -234,7 +235,6 @@ def domain_of(x: Symbol, facts: Facts) -> Optional[Set]:
     if x not in facts.real:
         return None
     domain: Set = Reals
-    on_sympy = False
     for atom in facts.conjuncts:
         symbols = _symbols(atom)
         if x not in symbols:
@@ -248,24 +248,38 @@ def domain_of(x: Symbol, facts: Facts) -> Optional[Set]:
                 piece = candidate
         if piece is None:
             piece = _interval_of_bound(atom, x)
+        on_roots = False
         if piece is None and to_polynomial(atom, facts.real) is not None:
-            # the CAD (on SymPy) describes the solutions of the polynomial
-            from .analysis_sympy import solution_set_of_core
-            piece = solution_set_of_core(atom, x)
-            on_sympy = True
+            # the CAD describes the solutions of the polynomial
+            piece = _cad_solution_set(atom, x)
+            on_roots = True
         if piece is None:
             return None
-        if on_sympy:
-            # its ends may be roots SymPy compares (CRootOf, not ported)
+        found = intersection(domain, piece)
+        if on_roots and not _is_union_of_intervals(found):
+            # ends which the core does not compare (roots of polynomials
+            # against other numbers): SymPy's intersection
             from .analysis_sympy import intersection_of_core
-            domain = intersection_of_core(domain, piece)
-        else:
-            domain = intersection(domain, piece)
+            found = intersection_of_core(domain, piece)
+        domain = found
     if isinstance(domain, (EmptySetClass, Interval)):
         return domain
     if isinstance(domain, Union) and all(isinstance(a, Interval) for a in domain.args):
         return domain
     return None
+
+
+def _cad_solution_set(atom: Boolean, x: Symbol) -> Optional[Set]:
+    """The solutions of a polynomial relation in ``x`` by the CAD
+    (:func:`sympy_extras.polys.cad.qe.solution_set`), ``None`` when it
+    fails or does not end in time."""
+    from sympy_extras.polys.cad.qe import solution_set
+    return attempt(lambda: solution_set(atom, x), settings.timeout, native=True)
+
+
+def _is_union_of_intervals(s: Set) -> bool:
+    return isinstance(s, (EmptySetClass, Interval)) or (isinstance(s, Union) and
+                                                        all(isinstance(a, Interval) for a in s.args))
 
 
 def _pieces(domain: Set) -> Optional[list[Interval]]:

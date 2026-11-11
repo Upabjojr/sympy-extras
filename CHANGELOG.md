@@ -539,6 +539,44 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The top layer of the cylindrical algebraic decomposition is native
+  (**breaking**): `sympy_extras.polys.cad.qe` (`quantifier_elimination`,
+  `decide`, `sample_points`, `solution_set`, `truth_tables`) and
+  `sympy_extras.polys.cad.cylindrical` (`cylindrical_formula`,
+  `cylindrical_set`, `cylindrical_cases`) take and return the formulas,
+  expressions, symbols and sets of the core, run on the native lifting and
+  import no SymPy (the prime implicants and the minimum covers of the
+  solution formulas were already the package's own). Their real algebraic
+  numbers are rational numbers and nodes of the new
+  `sympy_extras.polys.cad.indexedroot`: `IndexedRoot(f, t, k)`, the `k`-th
+  distinct real root of `f` in the bound variable `t`, is an immutable node
+  of the core (it was a SymPy `Function`), with the evaluating function
+  `indexed_root` (the bound variable made the dummy of its name, rational
+  coefficients giving a number), `real_root` (an `Algebraic` as the node of
+  its minimal polynomial, SymPy's `CRootOf`), `real_number` (the same in
+  radicals when `roots.radical_form` allows) and `algebraic_of`; the root
+  with rational coefficients evaluates exactly, compares, has signs, has
+  `polynomial_root` (so `radical_form` and `in_radicals` take it), and
+  `interop` converts it to `CRootOf` and the root functions to the SymPy
+  `IndexedRoot` both ways. The old SymPy API is in the new faces
+  `qe_sympy`, `cylindrical_sympy` (with `_compile` for the region
+  integrals) and `indexedroot_sympy` (the SymPy `IndexedRoot`); **import
+  them instead of `qe` and `cylindrical`** for SymPy objects. One result
+  differs: a bound of a cylindrical description which is a root of a
+  binomial whose `CRootOf` SymPy scales (`3*CRootOf(4*x**3 - 1, 0)`) is now
+  written in radicals (`3*2**(1/3)/2`), as the other roots of binomials
+  were. The native `sat` (`satisfiable`, `find_instance`), `solve`,
+  `resolve`, `ask` and `analysis.domain_of` call the native CAD directly:
+  `sat_sympy.sample_points_of_core` and `.solution_set_of_core`,
+  `solve_sympy.solution_set_of_core`, `.cylindrical_set_of_core`,
+  `.cylindrical_formula_of_core` and `.cylindrical_cases_of_core`,
+  `resolve_sympy.quantifier_elimination_of_core`,
+  `ask_sympy.truth_tables_of_core` and `analysis_sympy.solution_set_of_core`
+  are gone; the floor and the comparison of the real roots of the CAD in
+  `sat` are native (`floor_of_core` and `compare_real_of_core` stay for
+  SymPy's `CRootOf`), and `domain_of` intersects natively, with SymPy's
+  intersection (`intersection_of_core`) when the core does not compare
+  the ends.
 - The bottom layer of the cylindrical algebraic decomposition is native
   (**breaking**): `sympy_extras.polys.cad.projection`, `.samplepoints` and
   `.lifting` work on the typed `Poly` of `polys.polytools` in symbols of the

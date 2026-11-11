@@ -505,6 +505,10 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
     if isinstance(e, TranscendentalRoot):
         from sympy_extras.solvers.isolation_sympy import sympy_root
         return sympy_root(e)
+    from sympy_extras.polys.cad.indexedroot import IndexedRoot
+    if isinstance(e, IndexedRoot):
+        from sympy_extras.polys.cad.indexedroot_sympy import sympy_indexed_root
+        return sympy_indexed_root(e)
     args = [to_sympy(a, evaluate) for a in e.args]
     if isinstance(e, Add):
         return sympy.Add(*[_sympy_expr(a) for a in args], evaluate=evaluate)
@@ -778,6 +782,9 @@ def _from_sympy(e: SymPyBasic) -> Basic:
         from sympy_extras.functions.elementary.miscellaneous import Max, Min
         lattice = Max if isinstance(e, sympy.Max) else Min
         return lattice(*[_expr(a) for a in e.args])
+    from sympy_extras.polys.cad.indexedroot_sympy import IndexedRoot as SymPyIndexedRoot, native_indexed_root
+    if isinstance(e, SymPyIndexedRoot):
+        return native_indexed_root(e)
     if isinstance(e, SymPyFunctionClass) and all(isinstance(a, SymPyExpr) for a in e.args):
         cls = type(e)
         native = _sympy_to_native().get(cls)

@@ -9,15 +9,15 @@ combinations and the quantified formulas of
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.assumptions.ask_sympy` is its face on SymPy objects.
 The steps which are not ported go through SymPy at run time (the face
-holds them, the functions ending in ``_of_core``): the cylindrical
-algebraic decomposition (:mod:`sympy_extras.polys.cad`) and virtual
-substitution (:mod:`sympy_extras.polys.virtual_substitution`), both
-written on SymPy's polynomials, and the sample points and the
+holds them, the functions ending in ``_of_core``): virtual substitution
+(:mod:`sympy_extras.polys.virtual_substitution`), written on SymPy's
+polynomials, and the sample points and the
 reliable numerical values with which a difference is shown not to be
 identically zero (:mod:`sympy_extras.integrals.conditions`,
 :mod:`sympy_extras._numeric`). The questions about predicates go to the
 core's :func:`~sympy_extras.core.ask.ask` (which asks SymPy's ``ask``,
-through the bridge, what it cannot answer).
+through the bridge, what it cannot answer). The cylindrical algebraic
+decomposition is native (:func:`sympy_extras.polys.cad.qe.truth_tables`).
 """
 from __future__ import annotations
 
@@ -112,8 +112,8 @@ def _cad_ask(formula: Boolean, facts: Facts) -> Truth:
     linear = _linear_ask(poly, premise, gens)
     if linear is not None:
         return linear
-    from .ask_sympy import truth_tables_of_core
-    holds, values = truth_tables_of_core([premise, poly], gens)
+    from sympy_extras.polys.cad.qe import truth_tables
+    _, (holds, values) = truth_tables([premise, poly], gens)
     relevant = [v for h, v in zip(holds, values) if h]
     if not relevant:
         # the assumptions have no real solution: nothing can be said
