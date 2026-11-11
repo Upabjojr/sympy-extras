@@ -1106,6 +1106,24 @@ Interval(-1/2, 1/2)
 
 ```
 
+### Interpolation and fitting (`sympy_extras.calculus.interpolation`)
+
+Interpolating polynomials (also with prescribed derivatives), cubic
+splines and least squares fits, with exact coefficients:
+
+```python
+>>> from sympy_extras.core import Symbol
+>>> from sympy_extras.calculus.interpolation import hermite_interpolation, cubic_spline, polynomial_fit
+>>> x = Symbol('x')
+>>> hermite_interpolation([(0, [0, 1]), (1, [1, 0])], x)
+-x**3 + x**2 + x
+>>> cubic_spline([(0, 0), (1, 1), (2, 0)], x)
+Piecewise((-x**3/2 + 3*x/2, x <= 1), (x**3/2 - 3*x**2 + 9*x/2 - 1, True))
+>>> polynomial_fit([(0, 1), (1, 2), (2, 2), (3, 4)], x, 1)
+9*x/10 + 9/10
+
+```
+
 ### Conics and quadrics (`sympy_extras.geometry.quadrics`)
 
 The type of a conic or of a quadric surface from its equation, with the

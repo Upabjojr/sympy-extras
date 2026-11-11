@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.calculus.interpolation`: `interpolating_polynomial` and
+  `divided_differences` (symbolic nodes allowed), `hermite_interpolation`
+  (values and derivatives), `cubic_spline` (natural, clamped, not-a-knot,
+  periodic; a `Piecewise`), `least_squares` and `polynomial_fit` (exact
+  coefficients from the normal equations).
 - `sympy_extras.geometry.quadrics`: `classify_conic` (the type, centre,
   semi-axes, eccentricity, parameter and principal form of a conic from
   its equation) and `classify_quadric` (the seventeen affine types of

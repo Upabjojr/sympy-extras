@@ -283,7 +283,8 @@ sympy_extras/
         normalform.py        normal_form: rational normal form modulo sin**2 + cos**2 = 1, radicals and I (a Groebner basis of coprime leading monomials)
         hyperexpand.py       hyperexpand: formula tables, shift operators, plans, Slater's theorem (ported from SymPy)
         tests/
-    calculus/                optimization.py: minimize, maximize, value_range, minimize_parametric (exact global optima of polynomials under polynomial constraints, by CAD)
+    calculus/                interpolation.py: interpolating_polynomial, hermite_interpolation, cubic_spline, least_squares, polynomial_fit;
+                             optimization.py: minimize, maximize, value_range, minimize_parametric (exact global optima of polynomials under polynomial constraints, by CAD)
     geometry/                quadrics.py: classify_conic, classify_quadric (affine types by rank and signature; centre, axes, eccentricity)
     diffgeom/                metric.py: Metric (Christoffel symbols, Riemann, Ricci, Einstein, Weyl, geodesics, Killing equations); classical.py: Curve (curvature, torsion, Frenet frame), Surface (fundamental forms, Gaussian and mean curvature)
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
