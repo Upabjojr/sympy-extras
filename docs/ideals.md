@@ -414,8 +414,7 @@ univariate representation (`sympy_extras.polys.rur`, the method
 The face `sympy_extras.polys.ideals_sympy.Ideal` has the API the module
 had before: SymPy expressions, `Poly` generators, the domain inferred with
 `extension=True`, `Poly` bases, SymPy matrices, the SymPy rings and ring
-elements of `ring(order)` and `_basis(order)` (which
-`rosenfeld_groebner` uses), and the same results: on 8037 recorded calls
+elements of `ring(order)` and `_basis(order)`, and the same results: on 8037 recorded calls
 (the doctests and tests of these modules and 50 more) the face returned
 what the old class returned, and the native class, its inputs and outputs
 converted, what the face returned.

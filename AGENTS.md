@@ -368,12 +368,16 @@ sympy_extras/
                              real algebraic numbers of the answers (native)
             indexedroot_sympy.py IndexedRoot as a SymPy Function; interop converts (a root with rational coefficients is CRootOf)
             tests/
-        differential/        differential algebra
-            ring.py          DifferentialRing: derivatives, rankings (orderly, elimination by blocks), conversion
+        differential/        differential algebra on the core (native; coefficients in ZZ[p, x] of the typed layer)
+            ring.py          DifferentialRing: derivatives, rankings (orderly, elimination by blocks), conversion of
+                             core expressions, integer_product/integer_quotient (fast ZZ[p, x] arithmetic)
             janet.py         janet_basis, JanetBasis: linear systems of PDEs, Hilbert series, series solutions
             polynomial.py    DifferentialPolynomial: leader, initial, separant, Ritt's reduction
             rosenfeld_groebner.py  rosenfeld_groebner: regular differential systems of polynomial ODEs and PDEs
-            tests/
+                             (the native Ideal, regular chains and factor_list)
+            tests/           test_differential_native.py on the core; the other tests on the face
+        differential_sympy.py the SymPy face of differential (the old API on SymPy objects, SymPy's QQ(p, x) and
+                             ZZ[p, x] coefficients, the chains of regularchains_sympy)
         regularchains/       triangular decompositions of polynomial systems (native; the exact solutions of a chain,
                              SymPy's CRootOf, through regularchains_sympy)
             recursive.py     polynomials of rings.PolyRing over ZZ in their main variable: initial, lazy pseudo-division,

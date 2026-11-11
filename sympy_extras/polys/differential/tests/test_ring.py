@@ -1,4 +1,4 @@
-"""Tests of the differential rings, the rankings and the differential
+"""Tests (on the SymPy face) of the differential rings, the rankings and the differential
 polynomials."""
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from sympy.core.expr import Expr
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras.polys.differential import DifferentialPolynomial, DifferentialRing
+from sympy_extras.polys.differential_sympy import DifferentialPolynomial, DifferentialRing
 
 x, y, a = symbols('x y a')
 u = Function('u')(x, y)

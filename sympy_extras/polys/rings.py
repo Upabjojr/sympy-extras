@@ -310,6 +310,19 @@ class PolyRing(Generic[T]):
         return PolyRing(self.domain, self.names, order)
 
 
+def _accumulate(terms: dict[Monomial, T], monomial: Monomial, c: T, K: Domain[T]) -> None:
+    """``terms += c*monomial`` in place, as :meth:`PolyElement.__add__`
+    adds a term."""
+    if monomial in terms:
+        s = K.add(terms[monomial], c)
+        if K.is_zero(s):
+            del terms[monomial]
+        else:
+            terms[monomial] = s
+    else:
+        terms[monomial] = c
+
+
 class PolyElement(Generic[T]):
     """A sparse polynomial: ``terms`` maps exponent tuples to nonzero
     coefficients of the ring's domain."""
@@ -499,24 +512,31 @@ class PolyElement(Generic[T]):
         by a leading monomial of the divisors (the leading coefficients
         must divide exactly: a field, or divisors with unit leading
         coefficients)."""
+        # the remainder and the quotients are updated in place, with the
+        # terms in the order of ``p - q*g`` and ``q + t`` (no new dict per step)
         K = self.ring.domain
-        quotients = [self.ring.zero for _ in divisors]
+        quotients: list[dict[Monomial, T]] = [{} for _ in divisors]
         remainder: dict[Monomial, T] = {}
-        p = self.copy()
+        p = dict(self.terms)
         leading = [(g.LM, g.LC) for g in divisors]
-        while p.terms:
-            m, c = p.LT
+        key = self.ring.order.key
+        lexicographic = key is _lex_key
+        while p:
+            m = max(p) if lexicographic else max(p, key=key)
+            c = p[m]
             for i, (lm, lc) in enumerate(leading):
                 if divisors[i].terms and monomial_divides(lm, m):
                     q_monomial = monomial_div(m, lm)
                     q_coefficient = K.exquo(c, lc)
-                    quotients[i] = quotients[i] + self.ring.term(q_monomial, q_coefficient)
-                    p = p - divisors[i].mul_term(q_monomial, q_coefficient)
+                    if not K.is_zero(q_coefficient):
+                        _accumulate(quotients[i], q_monomial, q_coefficient, K)
+                        for mg, cg in divisors[i].terms.items():
+                            _accumulate(p, monomial_mul(mg, q_monomial), K.neg(K.mul(cg, q_coefficient)), K)
                     break
             else:
                 remainder[m] = c
-                del p.terms[m]
-        return quotients, PolyElement(remainder, self.ring)
+                del p[m]
+        return [PolyElement(q, self.ring) for q in quotients], PolyElement(remainder, self.ring)
 
     def rem(self, divisors: Sequence[PolyElement[T]]) -> PolyElement[T]:
         return self.div(divisors)[1]

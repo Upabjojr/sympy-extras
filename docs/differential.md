@@ -4,6 +4,24 @@
 Gröbner bases: canonical forms of systems of differential equations which
 contain all their integrability conditions, without solving anything.
 
+The package works on the objects of the core (`sympy_extras.core`:
+functions, derivatives, expressions) and imports no SymPy: the
+coefficients are elements of the typed rings `ZZ[p, x]` and `QQ(p, x)` of
+`sympy_extras.polys.domains`, the saturations native ideals, the
+components native regular chains. `sympy_extras.polys.differential_sympy`
+is its face on SymPy objects, with the same API and the same results; the
+examples below use the face.
+
+```python
+>>> from sympy_extras.core import Function as CoreFunction, symbols as core_symbols
+>>> from sympy_extras.polys import differential
+>>> cx = core_symbols('x')
+>>> q = CoreFunction('q')(cx)
+>>> [c.equations for c in differential.rosenfeld_groebner([q.diff(cx)**2 - 4*q], [q]).components]
+[[-4*q(x) + Derivative(q(x), x)**2], [q(x)]]
+
+```
+
 ## What SymPy has and what is added
 
 SymPy solves differential equations (`dsolve`, `pdsolve`) and has Gröbner
@@ -40,7 +58,7 @@ space has the dimension 12.
 
 ```python
 >>> from sympy import Function, symbols, oo
->>> from sympy_extras.polys.differential import janet_basis
+>>> from sympy_extras.polys.differential_sympy import janet_basis
 >>> x, y, z, t = symbols('x y z t')
 >>> u = Function('u')(x, y, z)
 >>> J = janet_basis([u.diff(z, 2) + y*u.diff(x, 2), u.diff(y, 2)], [u])
@@ -143,7 +161,7 @@ The general and the singular solutions of `u'^2 = 4 u` (the parabolas
 `(x + c)^2` and their envelope `0`):
 
 ```python
->>> from sympy_extras.polys.differential import rosenfeld_groebner
+>>> from sympy_extras.polys.differential_sympy import rosenfeld_groebner
 >>> p = Function('p')(x)
 >>> I = rosenfeld_groebner([p.diff(x)**2 - 4*p], [p])
 >>> [(c.equations, c.inequations) for c in I.components]

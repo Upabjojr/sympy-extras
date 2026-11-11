@@ -24,33 +24,29 @@ References
    1950, chapter I.
 .. [Kolchin] E. R. Kolchin, Differential Algebra and Algebraic Groups,
    Academic Press 1973, chapter I, section 9.
+
+The module works on objects of the core and imports no SymPy; the
+coefficients are elements of ``ZZ[p, x]``, the polynomials with integer
+coefficients in the parameters and the variables (fraction-free
+arithmetic).
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import Final, Optional, Sequence
 
-from sympy.core.add import Add
-from sympy.core.expr import Expr
+from sympy_extras.core.add import add
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.numbers import Integer
 
-from sympy_extras._typing import DomainElement, as_expr
-
-from .ring import DifferentialRing, Equation, Jet, JetMonomial, Terms
+from .ring import (DifferentialRing, Equation, IntegerCoefficient, Jet, JetMonomial, Terms, integer_product,
+                   integer_quotient, monomial_product)
 
 __all__ = ['DifferentialPolynomial', 'Rank']
 
 #: the rank of a differential polynomial: the key of its leader and its degree
 Rank = tuple[tuple[int, ...], int]
 
-
-def _times(m: JetMonomial, k: JetMonomial) -> JetMonomial:
-    if not m:
-        return k
-    if not k:
-        return m
-    powers = dict(m)
-    for jet, e in k:
-        powers[jet] = powers.get(jet, 0) + e
-    return tuple(sorted(powers.items()))
+_times = monomial_product
 
 
 class DifferentialPolynomial:
@@ -60,7 +56,7 @@ class DifferentialPolynomial:
     Examples
     ========
 
-    >>> from sympy import Function, symbols
+    >>> from sympy_extras.core import Function, symbols
     >>> from sympy_extras.polys.differential import DifferentialRing, DifferentialPolynomial
     >>> x = symbols('x')
     >>> u = Function('u')(x)
@@ -73,10 +69,10 @@ class DifferentialPolynomial:
     """
 
     def __init__(self, ring: DifferentialRing, terms: Terms) -> None:
-        self.ring: DifferentialRing = ring
-        self.terms: Terms = terms
+        self.ring: Final[DifferentialRing] = ring
+        self.terms: Final[Terms] = terms
         self._leader: Optional[Jet] = None
-        self._derivatives: dict[int, DifferentialPolynomial] = {}
+        self._derivatives: Final[dict[int, DifferentialPolynomial]] = {}
 
     @classmethod
     def from_expr(cls, ring: DifferentialRing, equation: Equation) -> DifferentialPolynomial:
@@ -84,14 +80,14 @@ class DifferentialPolynomial:
         return cls(ring, ring.integral(ring.terms(equation))).primitive()
 
     def to_expr(self) -> Expr:
-        """The SymPy expression."""
+        """The expression."""
         parts: list[Expr] = []
         for monomial in sorted(self.terms, key=self._monomial_key, reverse=True):
-            term = as_expr(self.ring.integers.to_sympy(self.terms[monomial]))
+            term = self.ring.integer_expr(self.terms[monomial])
             for jet, e in monomial:
                 term = term*self.ring.to_expr(jet)**e
             parts.append(term)
-        return Add(*parts)
+        return add(*parts) if parts else Integer(0)
 
     def __repr__(self) -> str:
         return "DifferentialPolynomial(%s)" % (self.to_expr(),)
@@ -110,7 +106,7 @@ class DifferentialPolynomial:
     # ------------------------------------------------------------------
     # arithmetic
 
-    def constant(self, c: DomainElement) -> DifferentialPolynomial:
+    def constant(self, c: IntegerCoefficient) -> DifferentialPolynomial:
         """The element ``c`` of the ring of coefficients."""
         return DifferentialPolynomial(self.ring, {(): c} if c else {})
 
@@ -135,7 +131,8 @@ class DifferentialPolynomial:
         for m, c in self.terms.items():
             for k, d in other.terms.items():
                 product = _times(m, k)
-                value = terms[product] + c*d if product in terms else c*d
+                cd = integer_product(c, d)
+                value = terms[product] + cd if product in terms else cd
                 if value:
                     terms[product] = value
                 else:
@@ -153,19 +150,20 @@ class DifferentialPolynomial:
         coefficients, with a positive leading coefficient."""
         if not self.terms:
             return self
-        one = self.ring.integers.one
+        Z = self.ring.integers
+        one = Z.one
         values = list(self.terms.values())
         divisor = values[0]
         for c in values[1:]:
             if divisor == one:
                 break
-            divisor = divisor.gcd(c)
+            divisor = Z.gcd(divisor, c)
         first = self.terms[max(self.terms, key=self._monomial_key)]
         if (first.LC < 0) != (divisor.LC < 0):
             divisor = -divisor
         if divisor == one:
             return self
-        return DifferentialPolynomial(self.ring, {m: c.exquo(divisor) for m, c in self.terms.items()})
+        return DifferentialPolynomial(self.ring, {m: integer_quotient(c, divisor) for m, c in self.terms.items()})
 
     def _monomial_key(self, m: JetMonomial) -> list[tuple[tuple[int, ...], int]]:
         return sorted(((self.ring.rank_key(jet), e) for jet, e in m), reverse=True)
@@ -228,14 +226,14 @@ class DifferentialPolynomial:
         result = self.constant(self.ring.integers.zero)
         for e, c in self.coefficients(v).items():
             if e:
-                result = result + c.scaled(self.ring.integers.convert(e))*self.power(v, e - 1)
+                result = result + c.scaled(self.ring.integers.from_int(e))*self.power(v, e - 1)
         return result
 
-    def scaled(self, c: DomainElement) -> DifferentialPolynomial:
+    def scaled(self, c: IntegerCoefficient) -> DifferentialPolynomial:
         """The product with an element of the field."""
         if not c:
             return self.constant(c)
-        return DifferentialPolynomial(self.ring, {m: d*c for m, d in self.terms.items()})
+        return DifferentialPolynomial(self.ring, {m: integer_product(d, c) for m, d in self.terms.items()})
 
     def power(self, jet: Jet, e: int) -> DifferentialPolynomial:
         """The power of a derivative."""
@@ -250,7 +248,7 @@ class DifferentialPolynomial:
         ring = self.ring
         terms: Terms = {}
 
-        def add(m: JetMonomial, c: DomainElement) -> None:
+        def accumulate(m: JetMonomial, c: IntegerCoefficient) -> None:
             value = terms[m] + c if m in terms else c
             if value:
                 terms[m] = value
@@ -260,12 +258,12 @@ class DifferentialPolynomial:
         for m, c in self.terms.items():
             d = ring.integer_derivative(c, i)
             if d:
-                add(m, d)
+                accumulate(m, d)
             for k, (jet, e) in enumerate(m):
                 rest = m[:k] + m[k + 1:]
                 factor: JetMonomial = ((jet, e - 1),) if e > 1 else ()
                 product = _times(_times(rest, factor), ((ring.differentiate(jet, i), 1),))
-                add(product, c*e)
+                accumulate(product, c.mul_ground(e))
         result = DifferentialPolynomial(ring, terms)
         self._derivatives[i] = result
         return result
