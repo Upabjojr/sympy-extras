@@ -240,7 +240,7 @@ fn factors_of(e: &Basic) -> Vec<Basic> {
 }
 
 /// The monomials with the coefficients of their terms.
-type Decomposed = BTreeMap<Monomial, Vec<Basic>>;
+pub(crate) type Decomposed = BTreeMap<Monomial, Vec<Basic>>;
 
 fn exponent_of(n: i64) -> PolyResult<u32> {
     u32::try_from(n).map_err(|_| polynomial_error("a huge exponent".to_string()))
@@ -248,7 +248,7 @@ fn exponent_of(n: i64) -> PolyResult<u32> {
 
 /// The terms of `e` (expanded) in the generators `gens`
 /// (`_parallel_dict_from_expr_if_gens`).
-fn decompose_with_gens(e: &Basic, gens: &[Basic]) -> PolyResult<Decomposed> {
+pub(crate) fn decompose_with_gens(e: &Basic, gens: &[Basic]) -> PolyResult<Decomposed> {
     let mut result: Decomposed = Decomposed::new();
     for term in terms_of(&expand_default(e)?) {
         let mut coefficient: Vec<Basic> = Vec::new();
@@ -622,7 +622,7 @@ impl Poly {
 
     // -- structure
 
-    fn split(&self) -> BTreeMap<Monomial, BTreeMap<Monomial, Rat>> {
+    pub(crate) fn split(&self) -> BTreeMap<Monomial, BTreeMap<Monomial, Rat>> {
         let n: usize = self.gens.len();
         let mut grouped: BTreeMap<Monomial, BTreeMap<Monomial, Rat>> = BTreeMap::new();
         for (m, c) in &self.rep.terms {
@@ -634,7 +634,7 @@ impl Poly {
         grouped
     }
 
-    fn coefficient_expr(&self, terms: &BTreeMap<Monomial, Rat>) -> PolyResult<Basic> {
+    pub(crate) fn coefficient_expr(&self, terms: &BTreeMap<Monomial, Rat>) -> PolyResult<Basic> {
         let mut parts: Vec<Basic> = Vec::new();
         for (m, c) in terms {
             let mut factors: Vec<Basic> = vec![Basic::from_rational(c.clone())];
@@ -746,6 +746,16 @@ impl Poly {
 
     pub fn is_zero(&self) -> bool {
         self.rep.terms.is_empty()
+    }
+
+    /// The number of terms in the generators (`length`).
+    pub fn length(&self) -> usize {
+        self.split().len()
+    }
+
+    /// Whether the polynomial is a constant in its generators.
+    pub fn is_ground(&self) -> bool {
+        self.split().keys().all(|m| m.iter().all(|e| *e == 0))
     }
 
     // -- printing

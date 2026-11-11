@@ -1453,6 +1453,45 @@ fn polytools_call<'py>(
     }
 }
 
+/// `roots(f, *gens, cubics, quartics, multiple, filter)`: a dict of the
+/// roots with their multiplicities, or the list with `multiple`.
+#[pyfunction]
+#[pyo3(signature = (f, gens, cubics=true, quartics=true, multiple=false, filter=None))]
+fn roots<'py>(
+    py: Python<'py>,
+    f: &Bound<'py, PyAny>,
+    gens: Vec<Bound<'py, PyAny>>,
+    cubics: bool,
+    quartics: bool,
+    multiple: bool,
+    filter: Option<&str>,
+) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::polys::polyroots;
+    let gens: Vec<Basic> = gens.iter().map(from_python).collect::<PyResult<_>>()?;
+    let f: Basic = from_python(f)?;
+    let e = crate::convert::err;
+    if multiple {
+        let listed = polyroots::roots_list(&f, &gens, cubics, quartics, filter).map_err(e)?;
+        let items: Vec<Bound<'py, PyAny>> = listed.iter().map(|r| to_python(py, r)).collect::<PyResult<_>>()?;
+        return Ok(PyList::new(py, items)?.into_any());
+    }
+    let found = polyroots::roots(&f, &gens, cubics, quartics, filter).map_err(e)?;
+    let out = PyDict::new(py);
+    for (r, m) in found.iter() {
+        out.set_item(to_python(py, r)?, *m)?;
+    }
+    Ok(out.into_any())
+}
+
+/// The expressions sorted by the canonical key (`sort_key`).
+#[pyfunction]
+fn sorted_by_key<'py>(py: Python<'py>, items: Vec<Bound<'py, PyAny>>) -> PyResult<Bound<'py, PyList>> {
+    let mut items: Vec<Basic> = items.iter().map(from_python).collect::<PyResult<_>>()?;
+    items.sort_by_cached_key(rust_core::sorting::sort_key);
+    let out: Vec<Bound<'py, PyAny>> = items.iter().map(|e| to_python(py, e)).collect::<PyResult<_>>()?;
+    PyList::new(py, out)
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -1501,6 +1540,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(expand, m)?)?;
     m.add_function(wrap_pyfunction!(poly_report, m)?)?;
     m.add_function(wrap_pyfunction!(polytools_call, m)?)?;
+    m.add_function(wrap_pyfunction!(roots, m)?)?;
+    m.add_function(wrap_pyfunction!(sorted_by_key, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;

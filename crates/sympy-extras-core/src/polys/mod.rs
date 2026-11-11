@@ -28,6 +28,7 @@ pub mod multisqf;
 pub mod numberfields;
 pub mod partfrac;
 pub mod polyclasses;
+pub mod polyroots;
 pub mod polytools;
 pub mod polyutils;
 pub mod rationaltools;
