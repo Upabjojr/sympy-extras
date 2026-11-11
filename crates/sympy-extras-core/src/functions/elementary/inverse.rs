@@ -274,7 +274,9 @@ thread_local! {
     static TABLES: RefCell<HashMap<&'static str, Table>> = RefCell::new(HashMap::new());
 }
 
-fn lookup(
+/// The entry of `key` in the table `name`, built by `build` at the first
+/// lookup (once per thread).
+pub(crate) fn lookup(
     name: &'static str,
     build: fn() -> PolyResult<Vec<(Basic, Basic)>>,
     key: &Basic,

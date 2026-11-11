@@ -1713,7 +1713,7 @@ pub fn discriminant_expr(f: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
 
 /// SymPy's `sring` of several expressions without generators, the
 /// coefficients rational (`_joint_rings`; `CoercionFailed` otherwise).
-fn joint_rings(exprs: &[Basic], expand: bool) -> PolyResult<(Vec<Basic>, Vec<BTreeMap<Monomial, Rat>>)> {
+pub(crate) fn joint_rings(exprs: &[Basic], expand: bool) -> PolyResult<(Vec<Basic>, Vec<BTreeMap<Monomial, Rat>>)> {
     let (decomposed, gens) = decompose_without_gens_many(exprs, expand)?;
     if gens.is_empty() {
         return Ok((gens, exprs.iter().map(|_| BTreeMap::new()).collect()));

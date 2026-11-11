@@ -301,7 +301,7 @@ fn mul_real_imag(e: &Basic, deep: bool, ignore: Option<&Basic>) -> PolyResult<Op
 }
 
 /// `Pow.as_real_imag`.
-fn pow_real_imag(e: &Basic, deep: bool) -> PolyResult<Option<RealImag>> {
+fn pow_real_imag(e: &Basic, deep: bool, ignore: Option<&Basic>) -> PolyResult<Option<RealImag>> {
     let (base, exponent) = (&e.args()[0], &e.args()[1]);
     if let Some(x) = exponent.as_rational() {
         let Some((re_e, im_e)) = as_real_imag(base, deep, None)? else {
@@ -342,13 +342,37 @@ fn pow_real_imag(e: &Basic, deep: bool) -> PolyResult<Option<RealImag>> {
                 return Ok(Some((Basic::zero(), pow(&neg(base)?, exponent)?)));
             }
         }
-        return Err(not_ported("atan2, cos and sin of a rational power"));
+        // the modulus and the argument
+        let modulus: Basic = pow(
+            &add(&[pow(&re_e, &Basic::int(2))?, pow(&im_e, &Basic::int(2))?])?,
+            &Basic::half(),
+        )?;
+        let angle: Basic = super::argument::atan2(&im_e, &re_e)?;
+        let (rp, tp) = (pow(&modulus, exponent)?, mul(&[angle, exponent.clone()])?);
+        use super::trigonometric::{cos, sin};
+        return Ok(Some((mul(&[rp.clone(), cos(&tp)?])?, mul(&[rp, sin(&tp)?])?)));
     }
     if matches!(base.head(), Head::Exp1) {
-        return Err(not_ported("cos and sin of a power of E"));
+        let Some((mut re_e, mut im_e)) = as_real_imag(exponent, deep, None)? else {
+            return Ok(None);
+        };
+        if deep {
+            re_e = crate::core::function::expand_method(&re_e)?;
+            im_e = crate::core::function::expand_method(&im_e)?;
+        }
+        use super::trigonometric::{cos, sin};
+        let modulus: Basic = exp(&re_e)?;
+        return Ok(Some((
+            mul(&[modulus.clone(), cos(&im_e)?])?,
+            mul(&[modulus, sin(&im_e)?])?,
+        )));
     }
     if deep {
-        return Err(not_ported("expand(complex=False) of a power"));
+        let expanded: Basic = crate::core::function::expand_method(e)?;
+        if ignore == Some(&expanded) {
+            return Ok(None);
+        }
+        return Ok(Some((re(&expanded)?, im(&expanded)?)));
     }
     Ok(Some((re(e)?, im(e)?)))
 }
@@ -380,14 +404,16 @@ fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>
             super::hyperbolic::hyperbolic_real_imag(e, f, deep)
         }
         Function::Log => {
-            let z: &Basic = &e.args()[0];
-            if deep && !z.is_atom() {
-                return Err(not_ported("expand of the argument of log"));
-            }
-            if abs_(z)? == *z {
+            let z: Basic = if deep {
+                crate::core::function::expand_method(&e.args()[0])?
+            } else {
+                e.args()[0].clone()
+            };
+            let modulus: Basic = abs_(&z)?;
+            if modulus == z {
                 return Ok(Some((e.clone(), Basic::zero())));
             }
-            Err(not_ported("arg"))
+            Ok(Some((super::exponential::log(&modulus)?, super::argument::arg(&z)?)))
         }
         g @ (Function::Asin
         | Function::Acos
@@ -440,7 +466,7 @@ pub fn as_real_imag(e: &Basic, deep: bool, ignore: Option<&Basic>) -> PolyResult
             Ok(Some((add(&real_parts)?, add(&imaginary_parts)?)))
         }
         Head::Mul => mul_real_imag(e, deep, ignore),
-        Head::Pow => pow_real_imag(e, deep),
+        Head::Pow => pow_real_imag(e, deep, ignore),
         Head::Function(f) => function_real_imag(e, *f, deep, ignore),
         _ => {
             if ignore == Some(e) {
