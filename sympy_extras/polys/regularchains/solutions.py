@@ -6,7 +6,7 @@ with algebraic numbers:
 
 * a polynomial whose coefficients at the point found so far are rational
   numbers has its roots as root objects (``CRootOf``), in radicals where
-  :func:`~sympy_extras.polys.roots.radical_form` writes them so;
+  :func:`~sympy_extras.polys.roots_sympy.radical_form` writes them so;
 * a polynomial of degree one in its main variable is solved by a
   division: the coordinate is a rational function of the ones below (every
   coordinate but the first one, for a system in shape position), which is
@@ -44,7 +44,7 @@ from sympy.simplify.radsimp import radsimp
 
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_expr
-from sympy_extras.polys.roots import radical_form
+from sympy_extras.polys.roots_sympy import radical_form
 
 __all__ = ['exact_solutions']
 

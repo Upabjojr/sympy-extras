@@ -6,7 +6,7 @@ from sympy.abc import x, a
 
 from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.solvers.transcendental import solve_transcendental, polynomialize
-from sympy_extras.polys.roots import radical_form, in_radicals
+from sympy_extras.polys.roots_sympy import radical_form, in_radicals
 from sympy import CRootOf
 
 

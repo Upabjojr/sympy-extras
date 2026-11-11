@@ -21,14 +21,15 @@ time (the face holds them, the functions ending in ``_of_core``): SymPy's
 ``nonlinsolve``, ``periodicity`` and the evaluation of an intersection of
 sets which is not ported (with ``Range``, ...), the cylindrical algebraic
 decomposition (:mod:`sympy_extras.polys.cad`: ``solution_set``,
-``cylindrical_set``, ``cylindrical_formula``, ``cylindrical_cases``) and
-the radical forms of its roots (:func:`sympy_extras.polys.roots.in_radicals`),
+``cylindrical_set``, ``cylindrical_formula``, ``cylindrical_cases``),
 the triangular decompositions (:mod:`sympy_extras.polys.regularchains`,
 :func:`sympy_extras.solvers.parametric.parametric_cases`), the
-transcendental equations (:mod:`sympy_extras.solvers.transcendental`),
-the isolation of real roots (:mod:`sympy_extras.solvers.isolation`), the
-linear Diophantine systems (:mod:`sympy_extras.solvers.integers`) and the
-reliable numerical values of :mod:`sympy_extras._numeric`.
+transcendental equations (:mod:`sympy_extras.solvers.transcendental`) and
+the reliable numerical values of :mod:`sympy_extras._numeric`. The
+radical forms of the roots of the CAD (:mod:`sympy_extras.polys.roots`),
+the isolation of real roots (:mod:`sympy_extras.solvers.isolation`) and
+the linear Diophantine systems (:mod:`sympy_extras.solvers.integers`) are
+native.
 """
 from __future__ import annotations
 
@@ -396,8 +397,8 @@ def _solution_set(formula: Boolean, x: Symbol) -> Set:
 def _radicals(result: Set) -> Set:
     """Write the algebraic numbers in radicals when that is reasonable
     (see :func:`sympy_extras.polys.roots.in_radicals`)."""
-    from .solve_sympy import in_radicals_of_core
-    return in_radicals_of_core(result)
+    from sympy_extras.polys.roots import in_radicals
+    return in_radicals(result)
 
 
 def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]) -> Set:
@@ -623,7 +624,7 @@ def _isolated(formula: Boolean, x: Symbol, facts: Facts, dom: Set) -> Optional[S
     (:mod:`sympy_extras.solvers.isolation`): exact roots where SymPy finds
     them, :class:`~sympy_extras.solvers.isolation.TranscendentalRoot`
     objects otherwise; ``None`` when the roots cannot be isolated."""
-    from .solve_sympy import compare_points_of_core, isolate_real_roots_of_core, point_between_of_core
+    from sympy_extras.solvers.isolation import compare_points, isolate_real_roots, point_between
     if not isinstance(formula, Relational) or formula.free_symbols != {x}:
         return None
     region = _region(x, facts, dom)
@@ -631,7 +632,7 @@ def _isolated(formula: Boolean, x: Symbol, facts: Facts, dom: Set) -> Optional[S
     if pieces is None:
         return None
     f = as_expr(formula.lhs - formula.rhs)
-    roots = isolate_real_roots_of_core(f, x, region)
+    roots = isolate_real_roots(f, x, region)
     if roots is None:
         return None
     if isinstance(formula, Eq):
@@ -643,10 +644,10 @@ def _isolated(formula: Boolean, x: Symbol, facts: Facts, dom: Set) -> Optional[S
     parts: list[Set] = []
     for piece in pieces:
         a, b = piece.start, piece.end
-        inner = [r for r in roots if compare_points_of_core(r, a) == 1 and compare_points_of_core(b, r) == 1]
+        inner = [r for r in roots if compare_points(r, a) == 1 and compare_points(b, r) == 1]
         points: list[Expr] = [a] + inner + [b]
         for p, q in zip(points, points[1:]):
-            sample = point_between_of_core(p, q)
+            sample = point_between(p, q)
             if sample is None:
                 return None
             s = certified_sign(as_expr(f.subs(x, sample)))
@@ -937,12 +938,11 @@ def _integer_linear_system(equations: Sequence[Expr], conditions: Sequence[Boole
     nonnegative solutions (Contejean–Devie) when the unknowns are known to
     be nonnegative and the solutions are finitely many. ``None`` when the
     system is not linear."""
-    from .solve_sympy import (linear_diophantine_system_of_core, linear_system_of_core,
-        minimal_nonnegative_solutions_of_core)
-    system = linear_system_of_core(equations, symbols)
+    from sympy_extras.solvers.integers import _linear_system, linear_diophantine_system, minimal_nonnegative_solutions
+    system = _linear_system(equations, symbols)
     if system is None:
         return None
-    general = linear_diophantine_system_of_core(equations, symbols)
+    general = linear_diophantine_system(equations, symbols)
     if general is None:
         return EmptySet
     values, parameters = general
@@ -961,7 +961,7 @@ def _integer_linear_system(equations: Sequence[Expr], conditions: Sequence[Boole
     if nonnegative:
         A, b = system
         try:
-            particular, homogeneous = minimal_nonnegative_solutions_of_core(A, b)
+            particular, homogeneous = minimal_nonnegative_solutions(A, b)
         except RuntimeError:
             particular, homogeneous = [], [[0]]
         if not homogeneous:

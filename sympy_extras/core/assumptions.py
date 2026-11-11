@@ -769,6 +769,9 @@ def is_number(e: Expr) -> bool:
         return False
     if isinstance(e, Symbol):
         return False
+    own = e._is_number_node()
+    if own is not None:
+        return own
     if not e.args:
         return True
     return all(is_number(a) if isinstance(a, Expr) else False for a in e.args)

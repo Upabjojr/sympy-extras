@@ -253,6 +253,14 @@ sympy_extras/
         rewriting.py         canonical forms (exponentials, logarithms of inverse hyperbolic functions) and substitutions x = t**k, u = exp(c x), x = exp(t)
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
         tests/
+    solvers/                 solvers extending sympy.solvers (exports nothing: import the modules)
+        isolation.py         TranscendentalRoot (node), isolate_real_roots, point_between, compare_points: exact real roots of
+                             exp-log functions (native; SymPy's real_roots with CRootOf and continuous_domain through isolation_sympy)
+        isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts), the *_of_core functions
+        integers.py          linear Diophantine systems (Hermite), Contejean-Devie, Cooper's algorithm, with_sides (native;
+                             SymPy's simplify_logic through integers_sympy)
+        integers_sympy.py    the SymPy face of integers, and simplify_logic_of_core
+        tests/
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native; the sample
                              points and the reliable values through structure_sympy)
@@ -289,6 +297,8 @@ sympy_extras/
         multisqf.py          sqf_list over ZZ, QQ, ZZ[a], QQ[a] in several variables (SqfDomain; ported from SymPy)
         partfrac.py          apart by undetermined coefficients (ported from SymPy; no full=True, no ZZ(a))
         polyroots.py         roots: linear, quadratic, binomial, cyclotomic, cubic, quartic, decomposition, factoring (ported from SymPy; no EX/simplify)
+        roots.py             radical_form, in_radicals: SymPy's CRootOf (wrapped foreign nodes) in radicals (native; SymPy's roots over EX through roots_sympy)
+        roots_sympy.py       the SymPy face of roots, and roots_of_core
         subresultants.py     dup_psc, dmp_psc, psc: principal subresultant coefficients on SymPy's dense representation (the CAD)
         polyutils.py         dict_from_expr, expr_from_dict: core expressions <-> typed polynomials (no SymPy)
         sqfreetools.py       dup_sqf_list/part/p (Yun, and GF(p))

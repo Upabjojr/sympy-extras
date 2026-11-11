@@ -501,6 +501,10 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
                              to_sympy(e.argument, evaluate))
     if isinstance(e, ExprCondPair):
         return SymPyExprCondPair(to_sympy(e.expr, evaluate), to_sympy(e.cond, evaluate))
+    from sympy_extras.solvers.isolation import TranscendentalRoot
+    if isinstance(e, TranscendentalRoot):
+        from sympy_extras.solvers.isolation_sympy import sympy_root
+        return sympy_root(e)
     args = [to_sympy(a, evaluate) for a in e.args]
     if isinstance(e, Add):
         return sympy.Add(*[_sympy_expr(a) for a in args], evaluate=evaluate)
@@ -783,6 +787,9 @@ def _from_sympy(e: SymPyBasic) -> Basic:
     from sympy_extras.assumptions.quantifiers_sympy import Quantifier as SymPyQuantifier, native_quantifier
     if isinstance(e, SymPyQuantifier):
         return native_quantifier(e)
+    from sympy_extras.solvers.isolation_sympy import TranscendentalRoot as SymPyTranscendentalRoot, native_root
+    if isinstance(e, SymPyTranscendentalRoot):
+        return native_root(e)
     if isinstance(e, SymPyExpr):
         return SymPyExprNode(type(e), *[from_sympy(a) for a in e.args])
     if isinstance(e, SymPyBoolean):
