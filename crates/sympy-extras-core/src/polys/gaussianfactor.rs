@@ -19,9 +19,8 @@
 //! multiplicity, the dense coefficients, Gaussian numbers compared by their
 //! imaginary parts first).
 //!
-//! [`factor_all`] is the port of `polytools._factor_all` (the factorisation
-//! over `QQ` in all the variables of the ring) which the Python module
-//! imports; the rest of `polytools` waits for the core.
+//! The factorisation of the norm over `QQ` is [`super::polytools::factor_all`],
+//! the port of `polytools._factor_all`.
 
 // ---------------------------------------------------------------------
 // PORTED FROM SYMPY (through sympy_extras/polys/gaussianfactor.py):
@@ -44,10 +43,10 @@ use crate::error::{value_error, PolyResult};
 use crate::numbers::*;
 
 use super::domains::{
-    ConvertFrom, Domain, GaussianInteger, GaussianIntegerRing, GaussianRational, GaussianRationalField, IntegerRing,
-    RationalField, SparsePolynomialRing, QQ, QQ_I, ZZ, ZZ_I,
+    ConvertFrom, Domain, GaussianInteger, GaussianIntegerRing, GaussianRational, GaussianRationalField, RationalField,
+    SparsePolynomialRing, QQ, QQ_I, ZZ_I,
 };
-use super::multifactor as mf;
+use super::polytools::factor_all;
 use super::rings::{Monomial, MonomialOrder, PolyElement, PolyRing, Terms};
 
 /// A polynomial over `QQ_I`.
@@ -265,78 +264,6 @@ fn trial_division(f: &GaussPoly, factors: &[GaussPoly]) -> PolyResult<GaussFacto
 fn sorted(mut factors: GaussFactors) -> GaussFactors {
     factors.sort_by_cached_key(gaussian_sort_key);
     factors
-}
-
-/// The coefficient and the integer primitive factors (positive leading
-/// coefficients), sorted, of `f` over `QQ` in all the variables of its ring
-/// (SymPy's `dup_factor_list`/`dmp_factor_list` over `ZZ` or `QQ`; the
-/// port of `polytools._factor_all`); `ValueError` for zero.
-pub fn factor_all(f: &PolyElement<RationalField>) -> PolyResult<(Rat, mf::Factors)> {
-    if f.is_zero() {
-        return Err(value_error("min() arg is an empty sequence".to_string()));
-    }
-    let names: Vec<String> = f.ring.names.clone();
-    let n: usize = names.len();
-    let exponents: Vec<u32> = (0..n)
-        .map(|i| f.terms.keys().map(|m| m[i]).min().expect("a nonzero polynomial"))
-        .collect();
-    let shifted: Terms<Rat> = f
-        .terms
-        .iter()
-        .map(|(m, c)| (m.iter().zip(&exponents).map(|(e, s)| e - s).collect(), c.clone()))
-        .collect();
-    let mut content: Rat = Rat::ZERO;
-    for c in shifted.values() {
-        let (cn, cd) = (numer(&content), denom(&content));
-        let (vn, vd) = (numer(c), denom(c));
-        content = rat_from_parts(gcd(&cn, &vn), &cd * &vd / gcd(&cd, &vd));
-    }
-    let ints: Terms<Int> = shifted
-        .iter()
-        .map(|(m, c)| (m.clone(), numer(&(c / &content))))
-        .collect();
-    let ring: Arc<PolyRing<IntegerRing>> = PolyRing::new(ZZ, names.clone(), MonomialOrder::Lex)?;
-    let (coefficient, mut factors): (Int, mf::Factors) = if n == 1 {
-        // dup_zz_factor, sorted below as the Python sorts it
-        mf::zz_factor(&ring.from_dict(ints))?
-    } else {
-        let used: Vec<usize> = (0..n).filter(|&i| ints.keys().any(|m| m[i] != 0)).collect();
-        if used.is_empty() {
-            let zero: Monomial = vec![0; n];
-            (ints.get(&zero).cloned().unwrap_or(Int::ZERO), Vec::new())
-        } else {
-            let sub: Arc<PolyRing<IntegerRing>> =
-                PolyRing::new(ZZ, used.iter().map(|&i| names[i].clone()).collect(), MonomialOrder::Lex)?;
-            let g: PolyElement<IntegerRing> = sub.from_dict(
-                ints.iter()
-                    .map(|(m, c)| (used.iter().map(|&i| m[i]).collect(), c.clone()))
-                    .collect(),
-            );
-            let (coefficient, sub_factors) = mf::zz_factor(&g)?;
-            let mut factors: mf::Factors = Vec::new();
-            for (h, k) in sub_factors {
-                let mut terms: Terms<Int> = Terms::new();
-                for (m, value) in &h.terms {
-                    let mut full: Monomial = vec![0; n];
-                    for (position, e) in used.iter().zip(m) {
-                        full[*position] = *e;
-                    }
-                    terms.insert(full, value.clone());
-                }
-                factors.push((ring.from_dict(terms), k));
-            }
-            (coefficient, factors)
-        }
-    };
-    for i in (0..n).rev() {
-        if exponents[i] != 0 {
-            let monomial: Monomial = (0..n).map(|k| u32::from(k == i)).collect();
-            factors.insert(0, (ring.term(monomial, Int::ONE), exponents[i] as usize));
-        }
-    }
-    // the key of the univariate branch (degree, multiplicity, dense
-    // coefficients) is that of `_sorted` in one variable
-    Ok((rat_from_int(&coefficient) * content, mf::sorted(factors)))
 }
 
 /// The leading coefficient and the monic irreducible factors over `QQ<I>`

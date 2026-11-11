@@ -182,6 +182,10 @@ fn f4<'py>(py: Python<'py>, polys: &Bound<'py, PyAny>, ring: &PyPolyRing) -> PyR
             groebner::f4(&same_kind!(&items, GaussianQQ), r).map_err(err)?,
             ElemKind::GaussianQQ,
         ),
+        RingKind::Algebraic(r) => wrap(
+            groebner::f4(&same_kind!(&items, Algebraic), r).map_err(err)?,
+            ElemKind::Algebraic,
+        ),
     };
     out_elements(py, result)
 }
@@ -197,6 +201,10 @@ fn reduced_basis<'py>(py: Python<'py>, basis: &Bound<'py, PyAny>, ring: &PyPolyR
             groebner::reduced_basis(&same_kind!(&items, GaussianQQ), r),
             ElemKind::GaussianQQ,
         ),
+        RingKind::Algebraic(r) => wrap(
+            groebner::reduced_basis(&same_kind!(&items, Algebraic), r),
+            ElemKind::Algebraic,
+        ),
     };
     out_elements(py, result)
 }
@@ -208,6 +216,7 @@ fn is_graded(ring: &PyPolyRing) -> bool {
         RingKind::QQ(r) => groebner::is_graded(r),
         RingKind::GF(r) => groebner::is_graded(r),
         RingKind::GaussianQQ(r) => groebner::is_graded(r),
+        RingKind::Algebraic(r) => groebner::is_graded(r),
     }
 }
 
@@ -402,6 +411,7 @@ fn is_zero_dimensional(basis: &Bound<'_, PyAny>, ring: &PyPolyRing) -> PyResult<
         RingKind::QQ(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, QQ), r),
         RingKind::GF(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, GF), r),
         RingKind::GaussianQQ(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, GaussianQQ), r),
+        RingKind::Algebraic(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, Algebraic), r),
     })
 }
 
@@ -431,6 +441,10 @@ fn fglm<'py>(
             fglm_mod::fglm(&same_kind!(&items, GaussianQQ), r, &order).map_err(err)?,
             ElemKind::GaussianQQ,
         ),
+        RingKind::Algebraic(r) => wrap(
+            fglm_mod::fglm(&same_kind!(&items, Algebraic), r, &order).map_err(err)?,
+            ElemKind::Algebraic,
+        ),
     };
     out_elements(py, result)
 }
@@ -454,6 +468,10 @@ fn groebner_by_fglm<'py>(py: Python<'py>, polys: &Bound<'py, PyAny>, ring: &PyPo
         RingKind::GaussianQQ(r) => wrap(
             fglm_mod::groebner_by_fglm(&same_kind!(&items, GaussianQQ), r).map_err(err)?,
             ElemKind::GaussianQQ,
+        ),
+        RingKind::Algebraic(r) => wrap(
+            fglm_mod::groebner_by_fglm(&same_kind!(&items, Algebraic), r).map_err(err)?,
+            ElemKind::Algebraic,
         ),
     };
     out_elements(py, result)
@@ -673,6 +691,7 @@ fn initial_form(f: &PyPolyElement, weights: &Bound<'_, PyAny>) -> PyResult<PyPol
         ElemKind::QQ(p) => ElemKind::QQ(walk::initial_form(p, &w)),
         ElemKind::GF(p) => ElemKind::GF(walk::initial_form(p, &w)),
         ElemKind::GaussianQQ(p) => ElemKind::GaussianQQ(walk::initial_form(p, &w)),
+        ElemKind::Algebraic(p) => ElemKind::Algebraic(walk::initial_form(p, &w)),
     };
     Ok(PyPolyElement { inner })
 }
@@ -717,6 +736,11 @@ fn extended_groebner<'py>(py: Python<'py>, F: &Bound<'py, PyAny>, ring: &PyPolyR
             walk::extended_groebner(&same_kind!(&items, GaussianQQ), r).map_err(err)?,
             ElemKind::GaussianQQ,
         ),
+        RingKind::Algebraic(r) => representations(
+            py,
+            walk::extended_groebner(&same_kind!(&items, Algebraic), r).map_err(err)?,
+            ElemKind::Algebraic,
+        ),
     }
 }
 
@@ -728,6 +752,7 @@ fn is_groebner(G: &Bound<'_, PyAny>, ring: &PyPolyRing) -> PyResult<bool> {
         RingKind::QQ(r) => walk::is_groebner(&same_kind!(&items, QQ), r).map_err(err),
         RingKind::GF(r) => walk::is_groebner(&same_kind!(&items, GF), r).map_err(err),
         RingKind::GaussianQQ(r) => walk::is_groebner(&same_kind!(&items, GaussianQQ), r).map_err(err),
+        RingKind::Algebraic(r) => walk::is_groebner(&same_kind!(&items, Algebraic), r).map_err(err),
     }
 }
 
@@ -780,6 +805,10 @@ fn groebner_walk<'py>(
         RingKind::GaussianQQ(r) => wrap(
             walk::groebner_walk(&same_kind!(&items, GaussianQQ), r, &target, check, lift).map_err(failed)?,
             ElemKind::GaussianQQ,
+        ),
+        RingKind::Algebraic(r) => wrap(
+            walk::groebner_walk(&same_kind!(&items, Algebraic), r, &target, check, lift).map_err(failed)?,
+            ElemKind::Algebraic,
         ),
     };
     out_elements(py, result)
@@ -975,10 +1004,12 @@ fn modular_groebner<'py>(
             RingKind::ZZ(r) => mg::modular_groebner_zz(&same_kind!(&items, ZZ), r, primes_arg, Some(&mut record))
                 .map(|g| wrap(g, ElemKind::ZZ))
                 .map_err(err),
-            RingKind::GF(_) | RingKind::GaussianQQ(_) => Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "the modular algorithm needs QQ or ZZ as the coefficient domain, got {}",
-                crate::rings::domain_name(&ring.inner)
-            ))),
+            RingKind::GF(_) | RingKind::GaussianQQ(_) | RingKind::Algebraic(_) => {
+                Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "the modular algorithm needs QQ or ZZ as the coefficient domain, got {}",
+                    crate::rings::domain_name(&ring.inner)
+                )))
+            }
         }
     };
     if let Some(e) = given.and_then(|g| g.error) {
@@ -1030,6 +1061,10 @@ fn direct_groebner<'py>(
             mg::direct_groebner(&same_kind!(&items, GaussianQQ), r, algorithm).map_err(err)?,
             ElemKind::GaussianQQ,
         ),
+        RingKind::Algebraic(r) => wrap(
+            mg::direct_groebner(&same_kind!(&items, Algebraic), r, algorithm).map_err(err)?,
+            ElemKind::Algebraic,
+        ),
     };
     out_elements(py, result)
 }
@@ -1054,6 +1089,10 @@ fn buchberger<'py>(py: Python<'py>, polys: &Bound<'py, PyAny>, ring: &PyPolyRing
         RingKind::GaussianQQ(r) => wrap(
             bb::buchberger(&same_kind!(&items, GaussianQQ), r).map_err(err)?,
             ElemKind::GaussianQQ,
+        ),
+        RingKind::Algebraic(r) => wrap(
+            bb::buchberger(&same_kind!(&items, Algebraic), r).map_err(err)?,
+            ElemKind::Algebraic,
         ),
     };
     out_elements(py, result)

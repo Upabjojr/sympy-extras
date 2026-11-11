@@ -1,5 +1,6 @@
 //! Port of `sympy_extras.polys`: the typed polynomial algorithms.
 
+pub mod algebraicfactor;
 pub mod berlekampmassey;
 pub mod bigatti;
 pub mod buchberger;
@@ -24,6 +25,7 @@ pub mod multifactor;
 pub mod multisqf;
 pub mod numberfields;
 pub mod polyclasses;
+pub mod polytools;
 pub mod rings;
 pub mod rootisolation;
 pub mod sqfreetools;
