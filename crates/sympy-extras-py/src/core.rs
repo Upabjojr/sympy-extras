@@ -1219,6 +1219,99 @@ fn expand<'py>(
     )
 }
 
+/// The operations of `Poly(e, *gens)` and `Poly(other, *gens)` as
+/// strings (`str` of each result, or the error).
+#[pyfunction]
+fn poly_report<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    other: &Bound<'py, PyAny>,
+    gens: Vec<Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::polys::polytools::Poly;
+    let gens: Vec<Basic> = gens.iter().map(from_python).collect::<PyResult<_>>()?;
+    let (e, other) = (from_python(e)?, from_python(other)?);
+    let out = PyDict::new(py);
+    let shown = |r: Result<String, sympy_extras_core::error::PolyError>| -> String {
+        match r {
+            Ok(s) => s,
+            Err(err) => format!(
+                "ERROR {}",
+                crate::convert::err(err)
+                    .get_type(py)
+                    .name()
+                    .map(|n| n.to_string())
+                    .unwrap_or_default()
+            ),
+        }
+    };
+    let f = match Poly::new(&e, &gens) {
+        Ok(f) => f,
+        Err(err) => {
+            out.set_item("poly", shown(Err(err)))?;
+            return Ok(out);
+        }
+    };
+    out.set_item("poly", shown(f.to_str()))?;
+    out.set_item("gens", f.gens.iter().map(|g| g.to_string()).collect::<Vec<_>>())?;
+    out.set_item("as_expr", shown(f.as_expr().map(|x| x.to_string())))?;
+    out.set_item(
+        "degrees",
+        (0..f.gens.len()).map(|i| f.degree(i).unwrap_or(-2)).collect::<Vec<_>>(),
+    )?;
+    out.set_item("total_degree", f.total_degree())?;
+    out.set_item(
+        "terms",
+        shown(f.terms().map(|t| {
+            format!(
+                "{:?}",
+                t.iter().map(|(m, c)| (m.clone(), c.to_string())).collect::<Vec<_>>()
+            )
+        })),
+    )?;
+    out.set_item("pow", shown(f.pow(2).to_str()))?;
+    out.set_item("diff", shown(f.diff(0).to_str()))?;
+    let g = match Poly::new(&other, &f.gens) {
+        Ok(g) => g,
+        Err(err) => {
+            out.set_item("other", shown(Err(err)))?;
+            return Ok(out);
+        }
+    };
+    out.set_item("other", shown(g.to_str()))?;
+    out.set_item("add", shown(f.add(&g).and_then(|h| h.to_str())))?;
+    out.set_item("sub", shown(f.sub(&g).and_then(|h| h.to_str())))?;
+    out.set_item("mul", shown(f.mul(&g).and_then(|h| h.to_str())))?;
+    out.set_item("gcd", shown(f.gcd(&g).and_then(|h| h.to_str())))?;
+    out.set_item("lcm", shown(f.lcm(&g).and_then(|h| h.to_str())))?;
+    out.set_item(
+        "cofactors",
+        shown(
+            f.cofactors(&g)
+                .and_then(|(a, b, c)| Ok(format!("{} {} {}", a.to_str()?, b.to_str()?, c.to_str()?))),
+        ),
+    )?;
+    out.set_item(
+        "cancel",
+        shown(
+            f.cancel(&g)
+                .and_then(|(c, p, q)| Ok(format!("{} {} {}", c, p.to_str()?, q.to_str()?))),
+        ),
+    )?;
+    out.set_item(
+        "div",
+        shown(
+            f.div(&g)
+                .and_then(|(q, r)| Ok(format!("{} {}", q.to_str()?, r.to_str()?))),
+        ),
+    )?;
+    out.set_item(
+        "exquo",
+        shown(f.mul(&g).and_then(|h| h.exquo(&g)).and_then(|h| h.to_str())),
+    )?;
+    Ok(out)
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -1265,6 +1358,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(function_field_bases, m)?)?;
     m.add_function(wrap_pyfunction!(pisigma_report_ops, m)?)?;
     m.add_function(wrap_pyfunction!(expand, m)?)?;
+    m.add_function(wrap_pyfunction!(poly_report, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;
