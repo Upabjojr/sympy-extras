@@ -270,7 +270,7 @@ step which holds alternatives.
 
 ## Not done
 
-* equations: exponentials of different bases (`4**x - 2**x - 2`), sums
+* equations: exponentials of unrelated bases (`4**x - 3**x = 1`), sums
   of trigonometric functions of different arguments; systems with
   infinitely many solutions (parametrised solution sets);
   inequalities with radicals, exponentials or parameters; case

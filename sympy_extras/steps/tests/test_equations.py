@@ -188,6 +188,8 @@ MORE: list[tuple[Expr, Expr]] = [
     (abs_(x**2 - 4), Integer(3)), (abs_(x - 2), 2*x + 5), (3*abs_(x + 1), Integer(0)),
     (2**x, Integer(8)), (exp(2*x), Integer(5)), (3*2**(x + 1), Integer(48)), (exp(x), Integer(-1)),
     (2**(x + 1), 2**(3*x - 5)), (exp(2*x) - 3*exp(x) + 2, Integer(0)), (exp(x) + 2, Integer(7)), (exp(x**2), Integer(3)),
+    (Integer(4)**x - Integer(2)**x - 2, Integer(0)), (Integer(9)**x - 4*Integer(3)**x + 3, Integer(0)),
+    (Integer(4)**(x + 1) - Integer(2)**(x + 1), Integer(12)), (Integer(4)**x + Integer(2)**x, Integer(-1)),
     (log(x), Integer(2)), (2*log(x - 1), Integer(4)), (log(x) + log(x - 3), log(Integer(10))), (log(x + 1), log(2*x - 3)),
     (log(x)**2 - 3*log(x) + 2, Integer(0)), (log(x - 5), log(1 - x)),
     (x**3 + x + 1, Integer(0)), (x**3 - 3*x + 1, Integer(0)), (x**4 - x - 1, Integer(0)), (x**5 - x - 1, Integer(0)),
@@ -306,3 +308,14 @@ def test_trigonometric_equations() -> None:
     periodic = solve_steps(sin(x), Rational(1, 2), x)
     assert isinstance(periodic, PeriodicRule) and periodic.function == 'sin' and str(periodic.parameter) == 'n'
     assert periodic.parameter.is_integer and len(periodic.cases) == 2
+
+
+def test_exponentials_of_related_bases() -> None:
+    # 4**x is (2**x)**2: the substitution u = 2**x (the equation was not solved before)
+    steps = solve_steps(Integer(4)**x - Integer(2)**x - 2, 0, x)
+    assert isinstance(steps, SubstitutionRule) and steps.expression == Integer(2)**x
+    assert steps.substep.solutions() == finite_set(-1, 2) and steps.solutions() == finite_set(1)
+    assert solve_steps(Integer(9)**x - 4*Integer(3)**x + 3, 0, x).solutions() == finite_set(0, 1)
+    assert solve_steps(Integer(8)**x, 2*Integer(4)**x, x).solutions() == finite_set(1)
+    # 4 and 3 are not powers of one integer
+    assert solve_steps(Integer(4)**x - Integer(3)**x, 1, x).contains_dont_know()

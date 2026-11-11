@@ -947,6 +947,36 @@ def _fresh(name: str, problem: EquationProblem, integer: bool = False) -> Symbol
     return Symbol(candidate, integer=True) if integer else Symbol(candidate)
 
 
+def _primitive_root(n: int) -> tuple[int, int]:
+    """``(r, k)`` with ``n == r**k`` and ``k`` as large as possible
+    (``n >= 2``)."""
+    for k in range(n.bit_length(), 1, -1):
+        r = round(n**(1.0/k))
+        for candidate in (r - 1, r, r + 1):
+            if candidate >= 2 and candidate**k == n:
+                return candidate, k
+    return n, 1
+
+
+def _common_base(difference: Expr, x: Symbol, u: Symbol) -> Optional[tuple[Expr, Expr]]:
+    """Powers of integers with one exponent, the bases being powers of
+    one integer: ``4**x - 2**x - 2`` is ``u**2 - u - 2`` with ``u = 2**x``."""
+    powers: list[tuple[Pow, int]] = []
+    for node in sorted(difference.atoms(Pow), key=str):
+        if isinstance(node, Pow) and node.exp.has(x):
+            base = node.base
+            if isinstance(base, Integer) and base.p >= 2:
+                powers.append((node, base.p))
+    if len(powers) < 2 or len({node.exp for node, _ in powers}) != 1:
+        return None
+    roots = [_primitive_root(base) for _, base in powers]
+    if len({root for root, _ in roots}) != 1:
+        return None
+    root = roots[0][0]
+    rule: dict[Basic, Basic] = {node: pow(u, Integer(k)) for (node, _), (_, k) in zip(powers, roots)}
+    return difference.xreplace(rule), pow(Integer(root), powers[0][0].exp)
+
+
 def _substitution(problem: EquationProblem, context: Context) -> _Run:
     """The equation is a polynomial of degree two or more in one
     transcendental expression of the unknown."""
@@ -964,6 +994,9 @@ def _substitution(problem: EquationProblem, context: Context) -> _Run:
         if isinstance(node, Expr) and node.has(x):
             rule: dict[Basic, Basic] = {node: u}
             candidates.append((difference.xreplace(rule), node))
+    common = _common_base(difference, x, u)
+    if common is not None:
+        candidates.append(common)
     for equation, expression in candidates:
         coefficients = None if equation.has(x) else _polynomial(equation, u)
         if coefficients is None or len(coefficients) < 3:
