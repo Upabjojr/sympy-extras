@@ -228,6 +228,16 @@ def test_congruence_symbolic() -> None:
         congruence_diagonalize(ExprMatrix.from_rows([[1, 2], [3, 4]]))
 
 
+def test_inertia_with_irrational_entries() -> None:
+    root = sqrt(Integer(2))
+    # eigenvalues sqrt(2) +- 1 and sqrt(2) +- 2
+    assert inertia(ExprMatrix.from_rows([[root, 1], [1, root]])) == (2, 0, 0)
+    assert inertia(ExprMatrix.from_rows([[root, 2], [2, root]])) == (1, 1, 0)
+    assert inertia(ExprMatrix.from_rows([[root, root], [root, root]])) == (1, 0, 1)
+    p = Symbol('p', positive=True)
+    assert inertia(ExprMatrix.from_rows([[p, 0], [0, -p]])) == (1, 1, 0) and is_positive_definite(ExprMatrix.from_rows([[p + 1]]))
+
+
 def test_congruence_of_a_zero_block() -> None:
     assert congruence_diagonalize(ExprMatrix.zeros(2, 2)) == (ExprMatrix.eye(2), ExprMatrix.zeros(2, 2))
     assert inertia(ExprMatrix.from_rows([[0, 0, 1], [0, 0, 0], [1, 0, 0]])) == (1, 1, 1)

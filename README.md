@@ -1037,6 +1037,37 @@ x/(x + 1)
 
 ```
 
+### Curvature of a metric (`sympy_extras.diffgeom`)
+
+`Metric` takes the components of a metric (or a line element) and
+computes the Christoffel symbols, the Riemann, Ricci, Einstein and Weyl
+tensors, the scalar curvature, the geodesic equations and the Killing
+equations, each component reduced to a normal form modulo
+`sin**2 + cos**2 = 1` and the relations of radicals
+(`sympy_extras.simplify.normalform.normal_form`), so that a tensor which
+vanishes is returned as zero:
+
+```python
+>>> from sympy_extras.core import Function, Symbol
+>>> from sympy_extras.functions import sin
+>>> from sympy_extras.diffgeom import Metric
+>>> t, r, theta, phi, m = (Symbol(s) for s in ['t', 'r', 'theta', 'phi', 'm'])
+>>> f = 1 - 2*m/r
+>>> schwarzschild = Metric([[-f, 0, 0, 0], [0, 1/f, 0, 0], [0, 0, r**2, 0], [0, 0, 0, r**2*sin(theta)**2]],
+...                        [t, r, theta, phi])
+>>> schwarzschild.christoffel(1, 0, 0), schwarzschild.ricci_scalar(), schwarzschild.kretschmann()
+((-2*m**2 + m*r)/r**3, 0, 48*m**2/r**6)
+>>> schwarzschild.is_killing([0, 0, 0, 1])
+True
+>>> a = Function('a')(t)
+>>> Metric([[-1, 0, 0, 0], [0, a**2, 0, 0], [0, 0, a**2, 0], [0, 0, 0, a**2]],
+...        [t, Symbol('x'), Symbol('y'), Symbol('z')]).ricci_scalar()
+(6*a(t)*Derivative(a(t), (t, 2)) + 6*Derivative(a(t), t)**2)/a(t)**2
+>>> Metric([[1, 0], [0, r**2]], [r, phi]).geodesic_equations(Symbol('s'))[0]
+-r(s)*Derivative(phi(s), s)**2 + Derivative(r(s), (s, 2))
+
+```
+
 ## What this adds to SymPy
 
 [docs/comparison.md](docs/comparison.md) puts seventy questions to SymPy

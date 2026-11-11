@@ -144,8 +144,19 @@ class _Lift(Generic[T]):
                 p, q = self.fraction(a)
                 if q == d:
                     n = K.add(n, p)
+                elif K.is_one(q):
+                    n = K.add(n, K.mul(p, d))
+                elif K.is_one(d):
+                    n, d = K.add(K.mul(n, q), p), q
                 else:
-                    n, d = K.add(K.mul(n, q), K.mul(p, d)), K.mul(d, q)
+                    # over the least common denominator: the sums of many terms (the components of a curvature
+                    # tensor) have denominators which are powers of the same few polynomials
+                    common = K.gcd(d, q)
+                    if K.is_one(common):
+                        n, d = K.add(K.mul(n, q), K.mul(p, d)), K.mul(d, q)
+                    else:
+                        cofactor = K.exquo(q, common)
+                        n, d = K.add(K.mul(n, cofactor), K.mul(p, K.exquo(d, common))), K.mul(d, cofactor)
             return n, d
         if isinstance(e, Mul):
             n, d = K.one, K.one

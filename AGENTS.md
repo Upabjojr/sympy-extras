@@ -252,8 +252,10 @@ sympy_extras/
         fu.py                fu and its TR rules (TR0-TR22, TRmorrie, TRpower), greedy strategies, hyper_as_trig (ported from SymPy)
         powsimp.py           powsimp, powdenest, multiplicity, _denest_pow (ported from SymPy)
         simplify.py          simplify, logcombine, posify, nsimplify, collect_abs, nc_simplify, besselsimp (ported from SymPy)
+        normalform.py        normal_form: rational normal form modulo sin**2 + cos**2 = 1, radicals and I (a Groebner basis of coprime leading monomials)
         hyperexpand.py       hyperexpand: formula tables, shift operators, plans, Slater's theorem (ported from SymPy)
         tests/
+    diffgeom/                metric.py: Metric (Christoffel symbols, Riemann, Ricci, Einstein, Weyl, geodesics, Killing equations)
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
       domainmatrix.py        DomainMatrix[T] over a Domain[T]: Bareiss determinant, fraction-free Gauss-Jordan (rank, null space, inverse, systems), Berkowitz characteristic polynomial, adjugate
       linalg.py              the same on ExprMatrix: entries as fractions over ZZ[kernels], pivots certified by the zero test when the kernels are not symbols
@@ -262,8 +264,10 @@ sympy_extras/
       equations.py           sylvester_solve, lyapunov_solve, discrete_lyapunov_solve, linear_matrix_equation, commuting_matrices, kronecker_product
       normalforms.py         smith_normal_form over K[x], invariant_factors, matrix_minimal_polynomial, frobenius_form, elementary_divisors, is_similar
       steps.py               step-by-step elimination: rref_steps, echelon_steps, inverse_steps, solve_steps, determinant_steps (RowOperation, Step)
+      calculus.py            jacobian, gradient, hessian (bordered), wronskian, classify_critical_point
       svd.py                 singular_values, exact compact svd of rational matrices
       functions.py           component matrices, matrix_exp, matrix_power, matrix_function
+    vector/                  orthogonal.py: OrthogonalCoordinates (gradient, divergence, curl, laplacian), cartesian, cylindrical, spherical
     series/                  residue (ported from SymPy); approximants.py: pade, rational_interpolate, series_reversion (Euclid, Lagrange inversion)
     sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains; Naturals, Naturals0, Integers, Rationals, Complexes (fancysets.py) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)

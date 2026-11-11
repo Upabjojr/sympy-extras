@@ -31,7 +31,7 @@ values of the symbols at which no pivot vanishes.
   first brought onto it, by adding $\bar a_{ij}$ times column $j$ to
   column $i$. By Sylvester's law of inertia the signs of $D$ do not
   depend on $P$: :func:`inertia`, :func:`is_positive_definite`,
-  :func:`is_positive_semidefinite` for matrices of rational numbers.
+  :func:`is_positive_semidefinite` for matrices of numbers.
   With symbols, :func:`leading_principal_minors` gives the quantities of
   Sylvester's criterion.
 
@@ -511,8 +511,17 @@ def inertia(M: ExprMatrix) -> tuple[int, int, int]:
     """The numbers of positive, negative and zero eigenvalues of a
     symmetric (Hermitian) matrix, counted with multiplicity, by
     Sylvester's law of inertia: no eigenvalue is computed. ``ValueError``
-    when the diagonal of :func:`congruence_diagonalize` is not made of
-    rational numbers (symbols, or irrational entries).
+    when the sign of an entry of the diagonal of
+    :func:`congruence_diagonalize` is not known: the signs are those of
+    rational numbers, and otherwise the ones the assumptions of the core
+    decide (``is_positive``, ``is_negative``: numbers with square roots,
+    symbols declared positive).
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import sqrt
+    >>> p = Symbol('p', positive=True)
+    >>> inertia(ExprMatrix.from_rows([[sqrt(2), 1], [1, sqrt(2)]])), inertia(ExprMatrix.from_rows([[p, 0], [0, -p - 1]]))
+    ((2, 0, 0), (1, 1, 0))
 
     >>> from sympy_extras.matrices import ExprMatrix
     >>> from sympy_extras.matrices.decompositions import inertia
@@ -523,14 +532,14 @@ def inertia(M: ExprMatrix) -> tuple[int, int, int]:
     positive = negative = zero = 0
     for k in range(D.rows):
         entry = D[k, k]
-        if not isinstance(entry, Rational):
-            raise ValueError('the sign of %s is not known' % (entry,))
-        if entry.p > 0:
+        if entry.is_positive is True:
             positive += 1
-        elif entry.p < 0:
+        elif entry.is_negative is True:
             negative += 1
-        else:
+        elif entry.is_zero is True:
             zero += 1
+        else:
+            raise ValueError('the sign of %s is not known' % (entry,))
     return positive, negative, zero
 
 

@@ -10,6 +10,34 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.vector`: `OrthogonalCoordinates` (gradient, divergence,
+  curl, Laplacian, vector Laplacian in orthogonal curvilinear
+  coordinates, physical components), `cartesian`, `cylindrical`,
+  `spherical`, and `OrthogonalCoordinates.from_transformation` (scale
+  factors from the change of coordinates, orthogonality checked).
+- `sympy_extras.matrices.calculus`: `jacobian`, `gradient`, `hessian`
+  (bordered with constraints), `wronskian`, and
+  `classify_critical_point` (the second derivative test through the
+  inertia of the Hessian).
+- `matrices.decompositions.inertia` (and the definiteness tests) accept
+  entries whose sign the assumptions of the core decide (`sqrt(2) - 1`,
+  symbols declared positive).
+- Sums of fractions in `matrices.linalg` (and so in `normal`,
+  `normal_form`) are taken over the least common denominator instead of
+  the product of the denominators: the Riemann tensor of a generic
+  three-dimensional metric went from 23 s to 0.9 s.
+- `sympy_extras.diffgeom.Metric`: the curvature of a metric given by its
+  components (or by a line element, `Metric.from_line_element`):
+  Christoffel symbols, Riemann, Ricci, Einstein and Weyl tensors, scalar
+  curvature, Kretschmann scalar, geodesic equations, covariant
+  derivative, divergence, gradient, Laplace-Beltrami operator, Killing
+  equations. Undefined functions (`a(t)`) are allowed in the metric.
+- `sympy_extras.simplify.normalform.normal_form`: the quotient of
+  polynomials in the kernels reduced modulo `sin**2 + cos**2 = 1`
+  (`tan`, `cot`, `sec`, `csc` written with `sin` and `cos`; the
+  hyperbolic functions likewise), the relations of fractional powers
+  (`rho**q = b` for the roots) and `I**2 = -1`: zero exactly when the
+  expression vanishes by these relations.
 - `sympy_extras.series.approximants`: `pade` (the `[m/n]` Padé
   approximant at any point, by the extended Euclidean algorithm, with
   parameters in the coefficients; `strict=True` for Baker's definition),

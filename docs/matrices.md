@@ -361,8 +361,10 @@ ExprMatrix([[2, 0, 0], [1, 2, 0], [1, 1, 2]])
   form, with a step for a zero diagonal). By Sylvester's law of inertia
   the signs of that diagonal are those of the eigenvalues: `inertia`,
   `is_positive_definite`, `is_positive_semidefinite` decide the
-  definiteness of a matrix of rational numbers without computing an
-  eigenvalue. With symbols, `leading_principal_minors` gives the
+  definiteness of a matrix of numbers without computing an eigenvalue
+  (the signs of the pivots are those of rational numbers, or the ones
+  the assumptions of the core decide: `sqrt(2) - 1`, a symbol declared
+  positive). With symbols, `leading_principal_minors` gives the
   quantities of Sylvester's criterion.
 
 ```python
@@ -480,6 +482,30 @@ R1 <- R1 - R2
 A `RowOperation` knows its elementary matrix (`operation.matrix(n)`),
 so the product of the steps is the transformation.
 
+## Derivatives
+
+`sympy_extras.matrices.calculus` builds the matrices of derivatives:
+`jacobian`, `gradient`, `hessian` (bordered by the Jacobian of
+constraints when they are given) and the `wronskian` determinant, which
+is reduced modulo $\sin^2 + \cos^2 = 1$ so that dependent functions give
+zero. `classify_critical_point` is the second derivative test: the signs
+of the eigenvalues of the Hessian at the point come from `inertia`, with
+no eigenvalue computed.
+
+```python
+>>> from sympy_extras.functions import cos, exp, sin
+>>> from sympy_extras.matrices.calculus import jacobian, hessian, wronskian, classify_critical_point
+>>> y = Symbol('y')
+>>> jacobian([x**2*y, x + y], [x, y]), hessian(x**3 + x*y**2, [x, y])
+(ExprMatrix([[2*x*y, x**2], [1, 1]]), ExprMatrix([[6*x, 2*y], [2*y, 2*x]]))
+>>> wronskian([cos(x), sin(x)], x), wronskian([sin(x)**2, cos(x)**2, 1], x)
+(1, 0)
+>>> f = x**3 + y**3 - 3*x*y
+>>> classify_critical_point(f, [x, y], [1, 1]), classify_critical_point(f, [x, y], [0, 0])
+('minimum', 'saddle')
+
+```
+
 ## Not done
 
 * eigenvalues when square roots remain in the coefficients of the
@@ -491,8 +517,8 @@ so the product of the steps is the transformation.
 * the Hermite and Popov forms of matrices of polynomials; a Smith form
   which controls the growth of the coefficients (modular, or by the
   determinantal divisors) for large matrices;
-* the inertia of matrices with irrational entries (the signs of the
-  pivots in a real multiquadratic field), pivoting strategies for `ldl`
+* the inertia when the core does not decide the sign of a pivot (a
+  general real algebraic number), pivoting strategies for `ldl`
   (Bunch–Kaufman);
 * case distinctions on the parameters inside these functions;
 * a sparse representation, and modular or evaluation-interpolation
