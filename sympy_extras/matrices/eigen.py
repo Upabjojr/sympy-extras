@@ -211,6 +211,10 @@ class _Field(Generic[T]):
     def expr(self, a: T) -> Expr:
         raise NotImplementedError
 
+    def conjugate(self, a: T) -> T:
+        """The complex conjugate, the symbols being real."""
+        return a
+
 
 class _RationalField(_Field[Fraction]):
     def __init__(self) -> None:
@@ -253,6 +257,10 @@ class _GaussianField(_Field[_Radical]):
 
     def expr(self, a: _Radical) -> Expr:
         return self.lift.expr(a)
+
+    def conjugate(self, a: _Radical) -> _Radical:
+        position = self.lift.position.get(-1)
+        return a if position is None else self.lift.field.conjugate(a, position)
 
 
 def _fresh_symbol(M: ExprMatrix) -> Symbol:

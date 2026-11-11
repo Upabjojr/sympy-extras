@@ -25,12 +25,15 @@ ExprMatrix([[0, 1, 0], [0, 0, 1], [1, 2, 3]])
 """
 from __future__ import annotations
 
-from typing import Callable, Iterator, Sequence, Union
+from typing import TYPE_CHECKING, Callable, Iterator, Sequence, Union
 
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.numbers import Integer
 from sympy_extras.core.symbol import Symbol
+
+if TYPE_CHECKING:
+    from .decompositions import LUDecomposition
 
 __all__ = ['ExprMatrix']
 
@@ -234,6 +237,28 @@ class ExprMatrix:
         """The Moore-Penrose pseudoinverse (real entries)."""
         from .linalg import pseudoinverse
         return pseudoinverse(self)
+
+    # decompositions (sympy_extras.matrices.decompositions)
+
+    def lu(self) -> LUDecomposition:
+        """``P * self = L * U`` (see :func:`sympy_extras.matrices.decompositions.lu`)."""
+        from .decompositions import lu
+        return lu(self)
+
+    def ldl(self) -> tuple[ExprMatrix, ExprMatrix]:
+        """``(L, D)`` with ``self = L * D * L.transpose()`` (symmetric matrices)."""
+        from .decompositions import ldl
+        return ldl(self)
+
+    def cholesky(self) -> ExprMatrix:
+        """The lower triangular ``C`` with ``self = C * C.transpose()``."""
+        from .decompositions import cholesky
+        return cholesky(self)
+
+    def qr(self) -> tuple[ExprMatrix, ExprMatrix]:
+        """``(Q, R)`` with ``self = Q * R``, the columns of ``Q`` orthonormal."""
+        from .decompositions import qr
+        return qr(self)
 
     # eigenvalues (sympy_extras.matrices.eigen)
 

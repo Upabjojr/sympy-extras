@@ -10,6 +10,15 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.decompositions`: exact `lu` (any shape and
+  rank, `P M = L U`), `ldl`, `cholesky`, `qr` and `gram_schmidt`
+  (orthogonalisation without square roots, rank-deficient matrices
+  included), `rank_factorization`, `congruence_diagonalize` (`P^* M P`
+  diagonal for any symmetric or Hermitian matrix), `inertia`,
+  `is_positive_definite`, `is_positive_semidefinite` (Sylvester's law of
+  inertia, no eigenvalue computed), `leading_principal_minors`,
+  `is_hermitian`; `ExprMatrix.lu`, `.ldl`, `.cholesky`, `.qr`. Entries:
+  rational functions of symbols, `I`, square roots of rationals.
 - `sympy_extras.polys.domains.multiquadratic.MultiquadraticField`: the
   field `K(sqrt(d1), ..., sqrt(dk))` over any typed field of
   characteristic zero. `matrices.linalg` uses it for entries with `I` and

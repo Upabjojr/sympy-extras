@@ -258,6 +258,7 @@ sympy_extras/
       domainmatrix.py        DomainMatrix[T] over a Domain[T]: Bareiss determinant, fraction-free Gauss-Jordan (rank, null space, inverse, systems), Berkowitz characteristic polynomial, adjugate
       linalg.py              the same on ExprMatrix: entries as fractions over ZZ[kernels], pivots certified by the zero test when the kernels are not symbols
       eigen.py               eigenspaces per irreducible factor of the characteristic polynomial (elimination over K[x]/(f)), eigenvalues, eigenvectors, diagonalize, jordan_chains, jordan_form
+      decompositions.py      lu, ldl, cholesky, qr, gram_schmidt, rank_factorization, congruence_diagonalize, inertia, positive definiteness
       svd.py                 singular_values, exact compact svd of rational matrices
       functions.py           component matrices, matrix_exp, matrix_power, matrix_function
     series/                  residue (ported from SymPy)

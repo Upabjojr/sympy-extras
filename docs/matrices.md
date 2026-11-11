@@ -323,6 +323,58 @@ True
 `NotImplementedError` for them and when the singular values are not
 expressed in radicals.
 
+## Decompositions
+
+`sympy_extras.matrices.decompositions` factors matrices exactly, in the
+field of the entries (rational functions of symbols, with `I` and square
+roots of rationals): every zero test of the eliminations is exact. With
+`I` in the entries the symbols are real and the transposes are conjugate
+transposes.
+
+```python
+>>> from sympy_extras.matrices.decompositions import (lu, ldl, cholesky, qr, congruence_diagonalize, inertia,
+...     leading_principal_minors)
+>>> F = lu(ExprMatrix.from_rows([[0, 1, 2], [1, x, 0], [2, 2*x, 1]]))
+>>> F.L, F.U, F.permutation
+(ExprMatrix([[1, 0, 0], [0, 1, 0], [2, 0, 1]]), ExprMatrix([[1, x, 0], [0, 1, 2], [0, 0, 1]]), (1, 0, 2))
+>>> S = ExprMatrix.from_rows([[4, 2, 2], [2, 5, 3], [2, 3, 6]])
+>>> ldl(S)
+(ExprMatrix([[1, 0, 0], [1/2, 1, 0], [1/2, 1/2, 1]]), ExprMatrix([[4, 0, 0], [0, 4, 0], [0, 0, 4]]))
+>>> S.cholesky()
+ExprMatrix([[2, 0, 0], [1, 2, 0], [1, 1, 2]])
+>>> ExprMatrix.from_rows([[1, 1], [1, 0], [0, 1]]).qr()
+(ExprMatrix([[sqrt(2)/2, sqrt(6)/6], [sqrt(2)/2, -sqrt(6)/6], [0, sqrt(6)/3]]), ExprMatrix([[sqrt(2), sqrt(2)/2], [0, sqrt(6)/2]]))
+
+```
+
+* `lu` takes any shape and rank: $P M = L U$ with $U$ in row echelon
+  form, and a row is moved only when the entry at the pivot position is
+  zero.
+* `ldl` ($M = L D L^*$) needs nonzero leading principal minors;
+  `cholesky` multiplies $L$ by the square roots of the pivots, and
+  rejects a rational pivot which is not positive.
+* `qr` and `gram_schmidt` orthogonalise without square roots and take
+  the norms at the end; for dependent columns $Q$ has as many columns as
+  the rank and $R$ is in row echelon form, so that $M = Q R$ always.
+* `congruence_diagonalize` finds $P$ with $P^* M P$ diagonal for *any*
+  symmetric or Hermitian matrix (Lagrange's reduction of the quadratic
+  form, with a step for a zero diagonal). By Sylvester's law of inertia
+  the signs of that diagonal are those of the eigenvalues: `inertia`,
+  `is_positive_definite`, `is_positive_semidefinite` decide the
+  definiteness of a matrix of rational numbers without computing an
+  eigenvalue. With symbols, `leading_principal_minors` gives the
+  quantities of Sylvester's criterion.
+
+```python
+>>> congruence_diagonalize(ExprMatrix.from_rows([[0, 1], [1, 0]]))
+(ExprMatrix([[1, -1/2], [1, 1/2]]), ExprMatrix([[2, 0], [0, -1/2]]))
+>>> inertia(ExprMatrix.from_rows([[2, -1, 0], [-1, 2, -1], [0, -1, 2]])), inertia(ExprMatrix.from_rows([[0, 1], [1, 0]]))
+((3, 0, 0), (1, 1, 0))
+>>> leading_principal_minors(ExprMatrix.from_rows([[2, a, 0], [a, 2, a], [0, a, 2]]))
+[2, 4 - a**2, 8 - 4*a**2]
+
+```
+
 ## Not done
 
 * eigenvalues when square roots remain in the coefficients of the
@@ -330,8 +382,11 @@ expressed in radicals.
   factorisation over the field they generate is needed; eigenvalues as
   `RootOf` objects when a factor is not solved in radicals;
 * the Smith and rational canonical forms of symbolic matrices; the
-  singular value decomposition with parameters, the full (square `U`,
-  `V`) decomposition and the pseudoinverse;
+  singular value decomposition with parameters and the full (square `U`,
+  `V`) decomposition;
+* the inertia of matrices with irrational entries (the signs of the
+  pivots in a real multiquadratic field), pivoting strategies for `ldl`
+  (Bunch–Kaufman);
 * case distinctions on the parameters inside these functions;
 * a sparse representation, and modular or evaluation-interpolation
   methods for large matrices of polynomials.
