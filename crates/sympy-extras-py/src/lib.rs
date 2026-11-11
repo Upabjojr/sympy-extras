@@ -18,6 +18,7 @@ mod algebraic;
 mod algorithms;
 mod complexroots;
 mod convert;
+mod core;
 mod dense;
 mod domains;
 mod expdioph;
@@ -62,6 +63,7 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "exponential_diophantine",
         "sympy_extras_rs.solvers.exponential_diophantine",
     )?)?;
+    core::register(&submodule(m, "core", "sympy_extras_rs.core")?)?;
     let polys: Bound<'_, PyModule> = submodule(m, "polys", "sympy_extras_rs.polys")?;
     let domains_module: Bound<'_, PyModule> = submodule(&polys, "domains", "sympy_extras_rs.polys.domains")?;
     domains::register(&domains_module)?;
