@@ -902,3 +902,43 @@ def test_native_polys_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_POLYS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_KOVACIC = r'''
+import sys
+from sympy_extras.core import Eq, Function, Rational, symbols
+from sympy_extras.functions import exp
+from sympy_extras.solvers.kovacic import KovacicSolution, dsolve_kovacic, liouvillian_solution, normal_form
+from sympy_extras.solvers._special_values import (as_zero, determinant, explicit_solution, general_solution_cases,
+    ode_order, solution_jacobian, defined_equation)
+assert 'sympy' not in sys.modules
+x, a, b, C1, C2 = symbols('x a b C1 C2')
+y = Function('y')(x)
+assert normal_form(1/x, 1 - 1/(4*x**2), x) == -1
+assert liouvillian_solution(x, x) is None and liouvillian_solution(x**3, x) is None
+assert liouvillian_solution(1/x**3, x) is None
+z = liouvillian_solution(Rational(0), x)
+assert isinstance(z, KovacicSolution) and z.case == 1 and z.solution == 1
+assert dsolve_kovacic(y.diff(x, 2) - x*y, y) is None and dsolve_kovacic(y.diff(x, 2) - y**2, y) is None
+assert ode_order(y.diff(x, 2) + y.diff(x)**3, y) == 2
+assert str(solution_jacobian(C1*exp(a*x) + C2*exp(b*x), [C1, C2], x)) == '-a*exp(a*x)*exp(b*x) + b*exp(a*x)*exp(b*x)'
+assert determinant([[a, b, 0, 0], [0, a, b, 0], [0, 0, a, b], [b, 0, 0, a]]).expand() == a**4 - b**4
+assert explicit_solution([Eq(y, C1*exp(x))], y) == C1*exp(x) and as_zero(Eq(y, x)) == y - x
+assert general_solution_cases(C1*exp(x), y.diff(x) - y, y, lambda e: None) == C1*exp(x)
+assert not defined_equation((a**(b*x)).subs(a, 0), x)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_kovacic_and_ode_special_values_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.kovacic` and
+    :mod:`sympy_extras.solvers._special_values` does not load SymPy, nor
+    do the normal form, the decision that an equation has no Liouvillian
+    solution (the poles, the sets of the cases and their linear systems),
+    the order of an equation, the Jacobians of the solutions and an
+    equation without parameters (SymPy's ``integrate``, its Riccati
+    solver and the candidate points of the parameters go through SymPy
+    at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_KOVACIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

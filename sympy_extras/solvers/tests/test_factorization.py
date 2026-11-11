@@ -15,7 +15,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_expr
 from sympy_extras.solvers.factorization import (OperatorFactorization, factor_operator, left_factor, _rational_ratio,
     right_factor, solve_factored, variation_of_parameters)
-from sympy_extras.solvers.kovacic import liouvillian_solution, normal_form
+from sympy_extras.solvers.kovacic_sympy import liouvillian_solution, normal_form
 from sympy_extras.solvers.linear_ode import (LinearOperator, dsolve_linear, gcrd, hyperexponential_search,
     hyperexponential_solutions, lclm, log_derivative, rational_solutions, _exponential_parts, _exponents, _independent,
     _proportional)

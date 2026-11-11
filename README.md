@@ -387,7 +387,7 @@ statement assumptions and case distinctions.
 
 ```python
 >>> from sympy import Function, binomial, exp, oo, symbols
->>> from sympy_extras.solvers.kovacic import dsolve_kovacic
+>>> from sympy_extras.solvers.kovacic_sympy import dsolve_kovacic
 >>> from sympy_extras.solvers.linear_ode import dsolve_linear
 >>> from sympy_extras.solvers.charpit import complete_integral
 >>> from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove

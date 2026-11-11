@@ -199,7 +199,11 @@ SymPy lacks:
   cases (rational, quadratic and finite-group `omega = z'/z`), with the
   second solution by reduction of order. SymPy's rational Riccati solver
   covers only the first case (and misses equations without finite
-  poles).
+  poles). `sympy_extras.solvers.kovacic` is native (core expressions,
+  the native polynomials, roots, series and linear systems); its SymPy
+  face is `sympy_extras.solvers.kovacic_sympy`, and SymPy's `integrate`
+  and Riccati solver are called through the face (`integrate_of_core`,
+  `integral_of_core`, `riccati_of_core`).
 - **Polynomial, rational and hyperexponential solutions** of equations
   of any order with polynomial coefficients (`polynomial_solutions`,
   `rational_solutions`, `hyperexponential_solutions`): degree bounds
@@ -432,7 +436,7 @@ Eq(..., C1 + x)
 >>> from sympy import Function, Rational
 >>> from sympy.abc import n
 >>> from sympy_extras.solvers.linear_ode import dsolve_linear
->>> from sympy_extras.solvers.kovacic import dsolve_kovacic, liouvillian_solution
+>>> from sympy_extras.solvers.kovacic_sympy import dsolve_kovacic, liouvillian_solution
 >>> y = Function('y')(x)
 >>> dsolve_linear(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y)
 [x**2 + 2*x + 2, exp(x)]

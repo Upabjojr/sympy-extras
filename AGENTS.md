@@ -266,6 +266,15 @@ sympy_extras/
         thue_equation.py     thue, ThueEquation, units_of_order, elements_of_norm: Thue equations F(x, y) = m by
                              Baker's bound and de Weger's LLL reduction (native; mpmath for the numerics)
         thue_equation_sympy.py the SymPy face of thue_equation (thue on SymPy forms)
+        kovacic.py           liouvillian_solution, dsolve_kovacic, normal_form, KovacicSolution: Kovacic's algorithm (native;
+                             SymPy's integrate and rational Riccati solver through kovacic_sympy)
+        kovacic_sympy.py     the SymPy face of kovacic (used by linear_ode, factorization, special), and the steps which
+                             stay on SymPy (integrate_of_core, integral_of_core, riccati_of_core)
+        _special_values.py   the isolated values of the parameters of ODE solutions: general_solution_cases, basis_cases,
+                             solution_cases, solution_jacobian, ode_order (native; the candidate points of
+                             sympy_extras._special_values through _special_values_sympy)
+        _special_values_sympy.py the SymPy face of _special_values (used by ode, first_order, second_order, linear_ode),
+                             and special_values_of_core
         tests/
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native; the sample

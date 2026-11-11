@@ -539,6 +539,34 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- Kovacic's algorithm and the special values of the ODE solutions are
+  native (**breaking**): `sympy_extras.solvers.kovacic`
+  (`liouvillian_solution`, `dsolve_kovacic`, `normal_form`,
+  `KovacicSolution`) and `sympy_extras.solvers._special_values`
+  (`general_solution_cases`, `basis_cases`, `solution_cases`,
+  `solution_jacobian`, `explicit_solution`, `as_zero`, and the new
+  `ode_order`, `determinant`, `defined_equation`) take and return the
+  expressions, functions and symbols of the core and import no SymPy:
+  the poles are the native `roots` (the irrational numbers and the
+  functions of the parameters in the coefficients taken as generators,
+  as SymPy's `Poly` does), the Laurent parts of `sqrt(r)` the native
+  series, the linear systems of the cases Gaussian elimination on
+  expressions (`recurr._solve_linear`), the Jacobians SymPy's
+  determinant formulas and Berkowitz's algorithm, the simplifications the
+  native `simplify`. SymPy's `integrate` (`integrate_of_core`,
+  `integral_of_core` for the unevaluated integrals) and its rational
+  Riccati solver (`riccati_of_core`) are called through the new face
+  `sympy_extras.solvers.kovacic_sympy`, the candidate points of
+  `sympy_extras._special_values.with_special_values` through
+  `sympy_extras.solvers._special_values_sympy.special_values_of_core`.
+  The old API on SymPy objects moves to these faces, which
+  `linear_ode`, `factorization`, `special`, `ode`, `first_order`,
+  `second_order`, the tests, the benchmarks, the README and the docs
+  use. The second solution of case 2 comes from the conjugate root
+  `phi - omega` (Vieta) instead of SymPy's `roots` of the quadratic, so
+  its form may differ (`exp(-2*x*sqrt(1/x))` for
+  `exp(-2*sqrt(x**3)/x)`); every other recorded call gives the same
+  result (see the commit message for the comparison).
 - The Thue equation solver is native (**breaking**):
   `sympy_extras.solvers.thue_equation.thue` takes a form and generators
   (symbols or other expressions, as `Poly`) of the core and imports no

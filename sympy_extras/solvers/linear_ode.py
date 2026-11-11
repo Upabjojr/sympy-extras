@@ -1106,7 +1106,7 @@ def dsolve_linear(equation: Basic, f: AppliedUndef, use_kovacic: bool = True,
     found = _solve_operator(L, f, use_kovacic, use_dsolve)
     if not special_values:
         return found
-    from ._special_values import as_zero, basis_cases
+    from ._special_values_sympy import as_zero, basis_cases
 
     def solve_at(at: Expr) -> Optional[list[Expr]]:
         return dsolve_linear(at, f, use_kovacic, use_dsolve)
@@ -1147,7 +1147,7 @@ def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_d
         if reduced_found is not None and len(reduced_found) == 2 and not reduced_found[1].has(Integral):
             return reduced_found
     if len(found) < n and n == 2 and use_kovacic:
-        from .kovacic import dsolve_kovacic
+        from .kovacic_sympy import dsolve_kovacic
         y = Function('y')(x)
         equation = as_expr(Add(*[c*y.diff(x, i) if i else c*y for i, c in enumerate(L.coefficients)]))
         liouvillian = attempt(lambda: dsolve_kovacic(equation, y, special_values=False), settings.timeout)
