@@ -1094,6 +1094,101 @@ fn function_field_bases<'py>(
     ))
 }
 
+fn pisigma_report<'py, Cs: sympy_extras_core::concrete::pisigma::Constants>(
+    py: Python<'py>,
+    base: sympy_extras_core::concrete::pisigma::PiSigmaField<Cs>,
+    extensions: &Bound<'py, PyAny>,
+    a: &Bound<'py, PyAny>,
+    fs: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::concrete::pisigma::{Kind, PiSigmaElement};
+    let e_ = crate::convert::err;
+    let mut field = base;
+    for item in extensions.try_iter()? {
+        let item = item?;
+        let kind: String = item.get_item(0)?.extract()?;
+        let symbol: Basic = from_python(&item.get_item(1)?)?;
+        let value: PiSigmaElement = field.from_expr(&from_python(&item.get_item(2)?)?).map_err(e_)?;
+        // the sequence when the Rust core has its functions, else the generator itself
+        let sequence: Basic = from_python(&item.get_item(3)?).unwrap_or_else(|_| symbol.clone());
+        let kind = if kind == "pi" { Kind::Pi } else { Kind::Sigma };
+        field = field
+            .extend(kind, &value, &sequence, None, Some(&symbol))
+            .map_err(e_)?
+            .0;
+    }
+    let shown = |f: &PiSigmaElement| field.to_expr(f, false, false).map_err(e_);
+    let a: PiSigmaElement = field.from_expr(&from_python(a)?).map_err(e_)?;
+    let mut elements: Vec<PiSigmaElement> = Vec::new();
+    for f in fs.try_iter()? {
+        elements.push(field.from_expr(&from_python(&f?)?).map_err(e_)?);
+    }
+    let d: Bound<'py, PyDict> = PyDict::new(py);
+    let mut shifted: Vec<Basic> = Vec::new();
+    let mut levels: Vec<i64> = Vec::new();
+    let mut telescoped: Vec<Option<Bound<'py, PyAny>>> = Vec::new();
+    for f in &elements {
+        shifted.push(shown(&field.sigma(f, 1).map_err(e_)?)?);
+        shifted.push(shown(&field.sigma(f, -2).map_err(e_)?)?);
+        levels.push(field.level_of(f));
+        telescoped.push(match field.telescope(f).map_err(e_)? {
+            Some(g) => Some(to_python(py, &shown(&g)?)?),
+            None => None,
+        });
+    }
+    d.set_item("sigma", expression_list(py, &shifted)?)?;
+    d.set_item("level_of", levels)?;
+    d.set_item("telescope", telescoped)?;
+    match field.solve(&a, &elements, None).map_err(e_)? {
+        None => d.set_item("solve", py.None())?,
+        Some(sols) => {
+            let mut out: Vec<Bound<'py, PyTuple>> = Vec::new();
+            for (c, g) in sols {
+                let mut constants: Vec<Basic> = Vec::new();
+                for ci in &c {
+                    constants.push(field.constant_to_expr(ci).map_err(e_)?);
+                }
+                out.push(PyTuple::new(
+                    py,
+                    [expression_list(py, &constants)?.into_any(), to_python(py, &shown(&g)?)?],
+                )?);
+            }
+            d.set_item("solve", PyList::new(py, out)?)?;
+        }
+    }
+    Ok(d)
+}
+
+/// The ΠΣ-field over `QQ(params)` (`QQ` without parameters) with the
+/// `extensions` `(kind, symbol, value, sequence)` as built in Python, and
+/// for the elements `fs`: their shifts by `1` and `-2`, levels, telescoped
+/// sums, and the basis of `solve(a, fs)` (all with `substitute=False`).
+#[pyfunction]
+fn pisigma_report_ops<'py>(
+    py: Python<'py>,
+    k: &Bound<'py, PyAny>,
+    params: &Bound<'py, PyAny>,
+    extensions: &Bound<'py, PyAny>,
+    a: &Bound<'py, PyAny>,
+    fs: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::concrete::pisigma::{parametric_pisigma_field, rational_pisigma_field};
+    let e_ = crate::convert::err;
+    let k: Basic = from_python(k)?;
+    let params: Vec<Basic> = expressions(params)?;
+    if params.is_empty() {
+        pisigma_report(py, rational_pisigma_field(&k).map_err(e_)?, extensions, a, fs)
+    } else {
+        pisigma_report(
+            py,
+            parametric_pisigma_field(&k, &params).map_err(e_)?,
+            extensions,
+            a,
+            fs,
+        )
+    }
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -1138,6 +1233,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(janet_basis_ops, m)?)?;
     m.add_function(wrap_pyfunction!(integral_basis, m)?)?;
     m.add_function(wrap_pyfunction!(function_field_bases, m)?)?;
+    m.add_function(wrap_pyfunction!(pisigma_report_ops, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;
