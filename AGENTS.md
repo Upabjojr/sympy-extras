@@ -176,8 +176,8 @@ sympy_extras/
         sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check (native, with the native CAD;
                              SymPy's SAT solver, predicates_consistent and Hermite's count through sat_sympy)
         sat_sympy.py         the SymPy face of sat, and the steps which stay on SymPy (the *_of_core functions)
-        solve.py             solve(): Solve under assumptions (native, with the native CAD; solveset, nonlinsolve, regular chains,
-                             transcendental equations, root isolation, Diophantine systems through solve_sympy)
+        solve.py             solve(): Solve under assumptions (native, with the native CAD, regular chains and parametric cases;
+                             solveset, nonlinsolve, transcendental equations through solve_sympy)
         solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions)
         limits.py            limit(), limit_seq(), series() under assumptions, with case distinctions (native; the core's
                              Gruntz and series; SymPy's limit_seq and the reliable numerical values through limits_sympy)
@@ -261,6 +261,9 @@ sympy_extras/
         integers.py          linear Diophantine systems (Hermite), Contejean-Devie, Cooper's algorithm (native;
                              SymPy's simplify_logic through integers_sympy)
         integers_sympy.py    the SymPy face of integers, and simplify_logic_of_core (from virtual_substitution_sympy)
+        parametric.py        parametric_cases, ParametricCase: the cases of the parameters of a polynomial system, from
+                             the regular chains (native)
+        parametric_sympy.py  the SymPy face of parametric
         tests/
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native; the sample
@@ -359,11 +362,16 @@ sympy_extras/
             polynomial.py    DifferentialPolynomial: leader, initial, separant, Ritt's reduction
             rosenfeld_groebner.py  rosenfeld_groebner: regular differential systems of polynomial ODEs and PDEs
             tests/
-        regularchains/       triangular decompositions of polynomial systems
-            recursive.py     polynomials in their main variable: initial, lazy pseudo-division, subresultant chains
+        regularchains/       triangular decompositions of polynomial systems (native; the exact solutions of a chain,
+                             SymPy's CRootOf, through regularchains_sympy)
+            recursive.py     polynomials of rings.PolyRing over ZZ in their main variable: initial, lazy pseudo-division,
+                             subresultant chains (prem, subresultants ported from SymPy)
             operations.py    Chain, Decomposer: regularize, regular_gcd, intersect, extend, triangularize (Lazard, Kalkbrener)
-            regularchain.py  RegularChain, triangularize, regular_gcd (the public interface on expressions)
-            tests/           oracle.py checks the decompositions with Gröbner bases
+            regularchain.py  RegularChain, triangularize, regular_gcd (the public interface on core expressions)
+            tests/           oracle.py checks the decompositions of the face with Gröbner bases
+        regularchains_sympy/ the SymPy face of regularchains (RegularChain, triangularize, regular_gcd on SymPy objects),
+                             and exact_solutions_of_core
+            solutions.py     exact_solutions: the points of a chain without free variables (CRootOf, radicals)
 docs/                        longer documentation per module
 .github/workflows/           tests.yml (CI), release.yml (PyPI publishing on tags)
 conftest.py                  pytest configuration (SymPy-style doctest display)

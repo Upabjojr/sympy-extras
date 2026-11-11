@@ -12,16 +12,16 @@ from it at run time (the functions ending in ``_of_core``, which take and
 return objects of the core): SymPy's ``solveset`` for the equations which
 are not rational and for the inequalities, ``nonlinsolve``,
 ``periodicity`` and the intersections of sets which the core does not
-evaluate (with ``Range``, ``ImageSet``, ...); the triangular
-decompositions (:func:`sympy_extras.polys.regularchains.triangularize`,
-:func:`sympy_extras.solvers.parametric.parametric_cases`), all written on
-SymPy's polynomials; the transcendental equations
+evaluate (with ``Range``, ``ImageSet``, ...); the transcendental equations
 (:func:`sympy_extras.solvers.transcendental.solve_transcendental`), on
 SymPy's ``solveset``; and :func:`sympy_extras._numeric.reliable_value`.
 The cylindrical algebraic decomposition (:mod:`sympy_extras.polys.cad`),
 the radical forms of the roots (:mod:`sympy_extras.polys.roots`), the
 isolation of real roots (:mod:`sympy_extras.solvers.isolation`) and the
-linear Diophantine systems (:mod:`sympy_extras.solvers.integers`) are
+linear Diophantine systems (:mod:`sympy_extras.solvers.integers`), the
+triangular decompositions (:mod:`sympy_extras.polys.regularchains`, whose
+exact points go through :mod:`sympy_extras.polys.regularchains_sympy`) and
+the cases of the parameters (:mod:`sympy_extras.solvers.parametric`) are
 native.
 """
 from __future__ import annotations
@@ -42,16 +42,13 @@ from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
 from sympy_extras.sets.sets import PointSet as CorePointSet
 from sympy_extras.sets.sets import Set as CoreSet
-from sympy_extras._timeout import attempt
-from sympy_extras.settings import settings
 
 from . import solve as native
 from .ask_sympy import Assumptions, _sympy_symbol, core_assumptions, core_boolean, core_domain, sympy_boolean
 from .intervals_sympy import core_expr, core_symbol, sympy_expr, sympy_set
 
 __all__ = ['solve', 'Statement', 'evaluated_set_of_core', 'solveset_of_core', 'reliable_value_of_core',
-    'solve_transcendental_of_core', 'periodicity_of_core', 'nonlinsolve_of_core',
-    'triangularize_of_core', 'parametric_cases_of_core']
+    'solve_transcendental_of_core', 'periodicity_of_core', 'nonlinsolve_of_core']
 
 #: an equation or inequality to solve: an expression (equated to zero), a
 #: relation or a Boolean combination of relations
@@ -122,12 +119,6 @@ def periodicity_of_core(f: CoreExpr, x: CoreSymbol) -> Optional[CoreExpr]:
     return core_expr(value) if isinstance(value, Expr) else None
 
 
-
-
-
-
-
-
 def nonlinsolve_of_core(equations: list[CoreExpr], symbols: list[CoreSymbol]) -> Optional[CoreSet]:
     """SymPy's ``nonlinsolve`` (its exceptions go on); ``None`` for a
     finite set of points with sets among their coordinates (which no
@@ -140,49 +131,6 @@ def nonlinsolve_of_core(equations: list[CoreExpr], symbols: list[CoreSymbol]) ->
         # - 5/4), Interval.open(-oo, 5/6)) for two equations in x, y, z
         return None
     return _core_set(found)
-
-
-def triangularize_of_core(equations: list[CoreExpr], symbols: list[CoreSymbol]
-                          ) -> Optional[list[native.TriangularChain]]:
-    """The regular chains of :func:`sympy_extras.polys.regularchains.triangularize`
-    (``None`` when it fails or does not end in time)."""
-    from sympy_extras.polys.regularchains import RegularChain, triangularize
-    sympy_equations, sympy_symbols = [sympy_expr(e) for e in equations], _core_symbols(symbols)
-    try:
-        chains = attempt(lambda: triangularize(sympy_equations, *sympy_symbols), settings.timeout)
-    except ZeroDivisionError:
-        chains = None
-    if chains is None:
-        return None
-
-    def points(chain: RegularChain) -> Callable[[bool], Optional[native.ChainPoints]]:
-        def found(real: bool) -> Optional[native.ChainPoints]:
-            return [{core_symbol(s): core_expr(v) for s, v in solution.items()} for solution in chain.solutions(real)]
-        return found
-
-    result: list[native.TriangularChain] = []
-    for chain in chains:
-        polys = [core_expr(p) for p in chain.polys] if chain.dimension else []
-        variables = [core_symbol(v) for v in chain.main_variables] if chain.dimension else []
-        result.append(native.TriangularChain(chain.dimension, polys, variables, points(chain)))
-    return result
-
-
-
-
-
-
-
-
-def parametric_cases_of_core(equations: list[CoreExpr], unknowns: list[CoreSymbol], parameters: list[CoreSymbol],
-                             inequations: list[CoreExpr]) -> list[native.ParametricCase]:
-    """:func:`sympy_extras.solvers.parametric.parametric_cases`."""
-    from sympy_extras.solvers.parametric import parametric_cases
-    found = parametric_cases([sympy_expr(e) for e in equations], _core_symbols(unknowns),
-                             _core_symbols(parameters), [sympy_expr(e) for e in inequations])
-    return [native.ParametricCase(core_boolean(case.condition),
-                                  None if case.solutions is None else _core_set(case.solutions),
-                                  [core_expr(e) for e in case.equations]) for case in found]
 
 
 # ---------------------------------------------------------------------------

@@ -136,7 +136,8 @@ ConditionSet(x, a >= 0, Interval(-sqrt(a), sqrt(a)))
 Over the complex numbers (equations and inequations) the cases are read
 from a triangular decomposition in the sense of Lazard with the parameters
 as the smallest variables (`sympy_extras.solvers.parametric.parametric_cases`,
-on `sympy_extras.polys.regularchains`): the zeros of the system are the
+on `sympy_extras.polys.regularchains`, both native; their SymPy faces are
+`solvers.parametric_sympy` and `polys.regularchains_sympy`): the zeros of the system are the
 union of the quasi-components of the regular chains, and in a chain the
 polynomials in the parameters alone are the equations of the case, the
 initials its inequations, and the polynomials in the unknowns give them

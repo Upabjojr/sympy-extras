@@ -19,22 +19,25 @@ checked natively. The steps which are not ported go through SymPy at run
 time (the face holds them, the functions ending in ``_of_core``): SymPy's
 ``solveset`` (the other equations and the inequalities in one unknown),
 ``nonlinsolve``, ``periodicity`` and the evaluation of an intersection of
-sets which is not ported (with ``Range``, ...), the triangular decompositions (:mod:`sympy_extras.polys.regularchains`,
-:func:`sympy_extras.solvers.parametric.parametric_cases`), the
+sets which is not ported (with ``Range``, ...), the exact points of
+the zero-dimensional regular chains (SymPy's ``CRootOf``, through
+:mod:`sympy_extras.polys.regularchains_sympy`), the
 transcendental equations (:mod:`sympy_extras.solvers.transcendental`) and
 the reliable numerical values of :mod:`sympy_extras._numeric`. The
 cylindrical algebraic decomposition (:mod:`sympy_extras.polys.cad.qe`:
 ``solution_set``; :mod:`sympy_extras.polys.cad.cylindrical`:
 ``cylindrical_set``, ``cylindrical_formula``, ``cylindrical_cases``), the
 radical forms of the roots of the CAD (:mod:`sympy_extras.polys.roots`),
-the isolation of real roots (:mod:`sympy_extras.solvers.isolation`) and
-the linear Diophantine systems (:mod:`sympy_extras.solvers.integers`) are
-native.
+the isolation of real roots (:mod:`sympy_extras.solvers.isolation`),
+the triangular decompositions (:mod:`sympy_extras.polys.regularchains`),
+the cases of the parameters
+(:func:`sympy_extras.solvers.parametric.parametric_cases`) and the linear
+Diophantine systems (:mod:`sympy_extras.solvers.integers`) are native.
 """
 from __future__ import annotations
 
 import random
-from typing import Callable, Final, Optional, Sequence, Union
+from typing import Optional, Sequence, Union
 
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.containers import Tuple
@@ -63,53 +66,11 @@ from .ask import Assumptions, Truth, _evaluate, _facts
 from .facts import Facts, conjuncts, normalize, to_polynomial
 from .refine import _Refiner
 
-__all__ = ['solve', 'Statement', 'TriangularChain', 'ParametricCase']
+__all__ = ['solve', 'Statement']
 
 #: an equation or inequality to solve: an expression (equated to zero), a
 #: relation or a Boolean combination of relations
 Statement = Union[Expr, Boolean, bool]
-
-#: the points of a zero-dimensional chain, as values of the unknowns
-ChainPoints = list[dict[Symbol, Expr]]
-
-
-class TriangularChain:
-    """A regular chain of a triangular decomposition, as the solver uses
-    it (built by the face from :class:`sympy_extras.polys.regularchains.RegularChain`).
-
-    Attributes
-    ==========
-
-    dimension : int
-        The number of free variables.
-    polys : list of Expr
-        The polynomials of the chain.
-    main_variables : list of Symbol
-        Their main variables.
-    solutions : callable
-        ``solutions(real)``: the points of a chain of dimension zero (the
-        real ones only with ``real``), ``None`` when they are not found.
-    """
-
-    def __init__(self, dimension: int, polys: list[Expr], main_variables: list[Symbol],
-                 solutions: Callable[[bool], Optional[ChainPoints]]) -> None:
-        self.dimension: Final[int] = dimension
-        self.polys: Final[list[Expr]] = polys
-        self.main_variables: Final[list[Symbol]] = main_variables
-        self.solutions: Final[Callable[[bool], Optional[ChainPoints]]] = solutions
-
-
-class ParametricCase:
-    """A case of a system with parameters
-    (:class:`sympy_extras.solvers.parametric.ParametricCase` on the core):
-    the condition on the parameters, the solutions (a finite set of
-    points, or ``None``) and the equations of the chain."""
-
-    def __init__(self, condition: Boolean, solutions: Optional[Set], equations: list[Expr]) -> None:
-        self.condition: Final[Boolean] = condition
-        self.solutions: Final[Optional[Set]] = solutions
-        self.equations: Final[list[Expr]] = equations
-
 
 def _sorted_symbols(symbols: set[Symbol]) -> list[Symbol]:
     return sorted(symbols, key=lambda s: s.name)
@@ -798,9 +759,9 @@ def _parametric(statements: Sequence[Boolean], symbols: Sequence[Symbol], facts:
     inequations = [as_expr(c.lhs - c.rhs) for c in relations if isinstance(c, Ne)]
     if not equations:
         return None
-    from .solve_sympy import parametric_cases_of_core
-    found_cases = attempt(lambda: parametric_cases_of_core(equations, list(symbols), parameters, inequations),
-                          settings.timeout)
+    from sympy_extras.solvers.parametric import parametric_cases
+    found_cases = attempt(lambda: parametric_cases(equations, list(symbols), parameters, inequations),
+                          settings.timeout, native=True)
     if found_cases is None:
         return None
     space: Set = Complexes if len(symbols) == 1 else product_set(*[Complexes] * len(symbols))
@@ -892,8 +853,8 @@ def _by_regular_chains(equations: Sequence[Expr], symbols: Sequence[Symbol], rea
     themselves as in ``nonlinsolve`` (not with ``isolated``: the systems
     with finitely many solutions only); ``None`` otherwise."""
     from sympy_extras.polys.polytools import Poly, cancel
-    from .solve_sympy import triangularize_of_core
-    chains = triangularize_of_core(list(equations), list(symbols))
+    from sympy_extras.polys.regularchains import triangularize
+    chains = attempt(lambda: triangularize(list(equations), *symbols), settings.timeout, native=True)
     if chains is None or (isolated and any(chain.dimension for chain in chains)):
         return None
     points: list[Tuple] = []

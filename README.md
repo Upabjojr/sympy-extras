@@ -710,7 +710,7 @@ the Janet basis of its determining equations:
 
 See [docs/differential.md](docs/differential.md).
 
-### Triangular decompositions: regular chains (`sympy_extras.polys.regularchains`)
+### Triangular decompositions: regular chains (`sympy_extras.polys.regularchains`, face `regularchains_sympy`)
 
 `triangularize` solves a system of polynomial equations by writing its
 zeros as a union of *regular chains*: triangular systems which are solved
@@ -720,7 +720,7 @@ in any dimension, separates the components, and discusses the parameters
 
 ```python
 >>> from sympy.abc import a, b, c, p, q, x, y, z
->>> from sympy_extras.polys.regularchains import triangularize
+>>> from sympy_extras.polys.regularchains_sympy import triangularize
 >>> triangularize([x*z - y, y*z - x], x, y, z)
 [RegularChain([y, x], x, y, z), RegularChain([z + 1, x + y], x, y, z), RegularChain([z - 1, x - y], x, y, z)]
 >>> for chain in triangularize([a*x**2 + b*x + c], x, a, b, c):
@@ -1095,7 +1095,8 @@ sympy_extras/
         regularchains/
             recursive.py     polynomials in their main variable: lazy pseudo-division, subresultant chains
             operations.py    regularize, regular gcd, intersect, extend; the decompositions
-            regularchain.py  RegularChain, triangularize, regular_gcd
+            regularchain.py  RegularChain, triangularize, regular_gcd (native)
+        regularchains_sympy/ the SymPy face of regularchains; solutions.py: exact solutions (CRootOf)
 
 ```
 

@@ -72,7 +72,7 @@ from sympy_extras._typing import as_expr
 from .ideals_sympy import Ideal, separating_forms
 from .modulargroebner import groebner
 from .orderings import elimination_order
-from .regularchains import RegularChain, triangularize
+from .regularchains_sympy import RegularChain, triangularize
 
 __all__ = ['radical', 'equidimensional_parts', 'minimal_primes', 'primary_decomposition',
            'associated_primes', 'is_primary', 'independent_set', 'PrimaryComponent']

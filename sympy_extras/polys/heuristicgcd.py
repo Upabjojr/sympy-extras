@@ -67,12 +67,33 @@ def _divides(f: PolyElement[int], h: PolyElement[int]) -> Optional[PolyElement[i
     return None if remainder.terms else quotient[0]
 
 
+def _powers(x: int, d: int) -> list[int]:
+    """``[1, x, ..., x**d]``, by successive products."""
+    result = [1]
+    for _ in range(d):
+        result.append(result[-1] * x)
+    return result
+
+
 def _evaluate_first(f: PolyElement[int], x: int, rest: PolyRing[int]) -> PolyElement[int]:
+    powers = _powers(x, max(m[0] for m in f.terms))
     terms: dict[Monomial, int] = {}
     for m, c in f.terms.items():
         key = m[1:]
-        terms[key] = terms.get(key, 0) + c * x ** m[0]
+        terms[key] = terms.get(key, 0) + c * powers[m[0]]
     return rest.from_dict(terms)
+
+
+# PORTED FROM SYMPY: sympy/polys/densetools.py:dup_eval
+def _horner(f: PolyElement[int], x: int) -> int:
+    """The value of a univariate polynomial at ``x`` (Horner's scheme)."""
+    dense = [0] * (max(m[0] for m in f.terms) + 1)
+    for m, c in f.terms.items():
+        dense[m[0]] = c
+    result = 0
+    for c in reversed(dense):
+        result = result * x + c
+    return result
 
 
 # PORTED FROM SYMPY: sympy/polys/heuristicgcd.py:_gcd_interpolate
@@ -130,8 +151,8 @@ def heugcd(f: PolyElement[int], g: PolyElement[int]) -> Cofactors:
     rest = PolyRing(ZZ, ring.names[1:]) if ring.ngens > 1 else None
     for _ in range(HEU_GCD_MAX):
         if rest is None:
-            ff = sum(c * x ** m[0] for m, c in f.terms.items())
-            gg = sum(c * x ** m[0] for m, c in g.terms.items())
+            ff = _horner(f, x)
+            gg = _horner(g, x)
             if ff and gg:
                 hi = gcd(ff, gg)
                 h = _primitive_part(_interpolate_integer(hi, x, ring))

@@ -515,3 +515,46 @@ def test_native_ideals_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_IDEALS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_REGULAR_CHAINS = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.polys.regularchains import RegularChain, triangularize, regular_gcd
+from sympy_extras.solvers.parametric import parametric_cases
+assert 'sympy' not in sys.modules
+a, b, c, p, q, x, y, z = symbols('a b c p q x y z')
+assert str(triangularize([x**2 + y + z - 1, x + y**2 + z - 1, x + y + z**2 - 1], x, y, z)[0].polys) == \
+    '[z**2 + 2*z - 1, y - z, x - z]'
+f = x**3 + p*x + q
+assert str(triangularize([f, f.diff(x)], x, p, q, mode='kalkbrener')) == \
+    '[RegularChain([4*p**3 + 27*q**2, 2*p*x + 3*q], x, p, q)]'
+assert str(triangularize([x**2 - y**2, x*(y - 1)], x, y, inequations=[x])) == \
+    '[RegularChain([y - 1, x + 1], x, y), RegularChain([y - 1, x - 1], x, y)]'
+T = RegularChain([z**2 - 2, y**2 - z, (y + 1)*x - 1], x, y, z)
+assert T.contains(y**4 - 2) and str(T.reduce(y**3 + x)) == 'y*z + 3' and T.is_regular(y - z)
+assert str(RegularChain([y**2 - 1, x**2 - y], x, y).regularize(y - 1)[0]) == '[RegularChain([y - 1, x**2 - y], x, y)]'
+assert str(regular_gcd(x**2 - y, x**2 - 3*x + 2*y, x, RegularChain([y**2 - 1], x, y))) == \
+    '[(1, RegularChain([y + 1], x, y)), (x - 1, RegularChain([y - 1], x, y))]'
+assert str(RegularChain([z*y - 1, y*x - z], x, y, z).saturated_ideal().reduced().exprs) == '[x*y - z, y*z - 1, -x + z**2]'
+[chain] = triangularize([x**2 + y**2 - 5, x*y - 1], x, y)
+assert str(chain.numerical_solutions(5)[0]) == '{y: -2.1889, x: -0.45685}'
+assert str(parametric_cases([a*x**2 + b*x + c], [x])[1]) == 'ParametricCase(Eq(a, 0) & Ne(b, 0), {(-c/b,)})'
+assert str(parametric_cases([a*x + y - 1, x + a*y - 1], [x, y])) == \
+    '[ParametricCase(Eq(a, 1), {(1 - y, y)}), ParametricCase(Ne(a + 1, 0), {(1/(a + 1), 1/(a + 1))})]'
+from sympy_extras.assumptions.solve import solve
+assert str(solve([a*x - 1], [x], cases=True)) == 'ConditionSet(x, Ne(a, 0), {1/a})'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_regular_chains_and_parametric_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.regularchains` and
+    :mod:`sympy_extras.solvers.parametric` does not load SymPy, nor do the
+    triangular decompositions, the operations on chains, their saturated
+    ideals and numerical solutions, the cases of the parameters and the
+    ``solve(..., cases=True)`` which they answer (the exact solutions of a
+    chain, SymPy's ``CRootOf``, go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REGULAR_CHAINS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

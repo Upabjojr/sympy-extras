@@ -539,6 +539,40 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The regular chains and the cases of systems with parameters are native
+  (**breaking**): `sympy_extras.polys.regularchains` (`RegularChain`,
+  `triangularize`, `regular_gcd`, and the modules `recursive` and
+  `operations`) and `sympy_extras.solvers.parametric` (`parametric_cases`,
+  `ParametricCase`) take and return the expressions, equalities, symbols,
+  Booleans and sets of the core and import no SymPy. The polynomials are
+  the native `rings.PolyElement` over `ZZ` (the gcds of
+  `IntegerPolynomialRing`, Wang's `multifactor.zz_factor`); SymPy's
+  `PolyElement.prem` and `PolyElement.subresultants`, behind the
+  subresultant chains, and `Poly.nroots`, behind `numerical_solutions`
+  (on mpmath), are ported. `RegularChain.saturated_ideal` is a native
+  `ideals.Ideal` over `QQ`, `ParametricCase.solutions` a native
+  `PointSet`. One step stays on SymPy and goes through it at run time: the
+  exact solutions of a chain without free variables (`RegularChain.solutions`,
+  SymPy's `CRootOf`), whose module `regularchains.solutions` moved to the
+  face as `regularchains_sympy.solutions`. The old SymPy API is in the new
+  faces `sympy_extras.polys.regularchains_sympy` (`RegularChain`,
+  `triangularize`, `regular_gcd`, `exact_solutions`) and
+  `sympy_extras.solvers.parametric_sympy` (`parametric_cases`,
+  `ParametricCase`); **import them instead of `regularchains` and
+  `solvers.parametric`** for SymPy objects. `idealdecomposition` and
+  `differential.rosenfeld_groebner` use the face. The native
+  `assumptions.solve` calls the native modules directly:
+  `solve_sympy.triangularize_of_core` and
+  `solve_sympy.parametric_cases_of_core` are removed, and so are
+  `assumptions.solve.TriangularChain` and `assumptions.solve.ParametricCase`
+  (the native `RegularChain` and `parametric.ParametricCase` take their
+  place). The results are those of the old modules on every call made by
+  the tests, the doctests and 143 more (1076 calls), in the same time (9.3 s
+  for their 360 decompositions); `numerical_solutions` is three times
+  faster. The heuristic gcd of `heuristicgcd` evaluates its univariate
+  polynomials by Horner's scheme and its multivariate ones with the
+  powers computed once (it computed each power of the evaluation point
+  again: 2.4 s of the 8 s of the decomposition of a parametric quartic).
 - The top layer of the cylindrical algebraic decomposition is native
   (**breaking**): `sympy_extras.polys.cad.qe` (`quantifier_elimination`,
   `decide`, `sample_points`, `solution_set`, `truth_tables`) and

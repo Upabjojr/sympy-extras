@@ -1,7 +1,7 @@
 """The exact solutions of a regular chain without free variables.
 
 The chain ``T_1(v_1), T_2(v_1, v_2), ...`` is solved from the bottom, like
-:meth:`~sympy_extras.polys.regularchains.RegularChain.numerical_solutions`,
+:meth:`~sympy_extras.polys.regularchains_sympy.RegularChain.numerical_solutions`,
 with algebraic numbers:
 
 * a polynomial whose coefficients at the point found so far are rational
@@ -164,7 +164,7 @@ def exact_solutions(polys: list[Expr], variables: list[Symbol], real: bool = Fal
     ========
 
     >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.regularchains.solutions import exact_solutions
+    >>> from sympy_extras.polys.regularchains_sympy.solutions import exact_solutions
     >>> exact_solutions([y**2 - 2, x*y - 1], [y, x])
     [{y: -sqrt(2), x: -sqrt(2)/2}, {y: sqrt(2), x: sqrt(2)/2}]
     >>> exact_solutions([y**2 + 1, x - y], [y, x], real=True)
