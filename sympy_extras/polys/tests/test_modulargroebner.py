@@ -1,4 +1,6 @@
-"""Tests of the modular Gröbner bases. The oracle is SymPy's own
+"""Tests of the modular Gröbner bases through the SymPy face
+(:mod:`sympy_extras.polys.modulargroebner_sympy`; the internal steps of
+the native module on the typed orders). The oracle is SymPy's own
 ``groebner`` over ``QQ``: the results must be equal, not only equivalent
 (for the two largest lexicographic bases, which take SymPy a minute, the
 oracle is SymPy's FGLM conversion of its ``grevlex`` basis)."""
@@ -18,10 +20,11 @@ from sympy.testing.pytest import raises
 
 from sympy_extras._typing import Monomial
 from sympy_extras.polys.ideals_sympy import Ideal
+from sympy_extras.polys import rings as typed
 from sympy_extras.polys.modulargroebner import (
-    GRADED_FACTOR, IntPoly, ModularTrace, _HomogeneousOrder, _critical_pairs, _image, _is_groebner, _luckiness, _normal_form,
-    _s_polynomial, _verified,
-    chinese_remainder, default_primes, groebner, modular_groebner, rational_reconstruction)
+    IntPoly, _critical_pairs, _image, _is_groebner, _luckiness, _normal_form, _s_polynomial, _verified, homogeneous_order)
+from sympy_extras.polys.modulargroebner_sympy import (
+    GRADED_FACTOR, ModularTrace, chinese_remainder, default_primes, groebner, modular_groebner, rational_reconstruction)
 from sympy_extras.polys.orderings import elimination_order
 from sympy_extras.settings import configure, settings
 
@@ -102,19 +105,19 @@ def test_default_primes() -> None:
 # ----------------------------------------------------------------------
 # the verification
 
-def _int_polys(polys: Sequence[PolyElement], order: MonomialOrder) -> list[tuple[Monomial, IntPoly]]:
+def _int_polys(polys: Sequence[PolyElement], order: typed.MonomialOrder) -> list[tuple[Monomial, IntPoly]]:
     result: list[tuple[Monomial, IntPoly]] = []
     for f in polys:
         g: IntPoly = {tuple(m): int(c) for m, c in f.items()}
-        result.append((max(g, key=order), g))
+        result.append((max(g, key=order.key), g))
     return result
 
 
-def _is_groebner_all_pairs(basis: Sequence[tuple[Monomial, IntPoly]], order: MonomialOrder) -> bool:
+def _is_groebner_all_pairs(basis: Sequence[tuple[Monomial, IntPoly]], order: typed.MonomialOrder) -> bool:
     for i in range(len(basis)):
         for j in range(i):
             s = _s_polynomial(basis[i][0], basis[i][1], basis[j][0], basis[j][1])
-            if _normal_form(s, basis, order, True):
+            if _normal_form(s, basis, order.key, True):
                 return False
     return True
 
@@ -140,9 +143,9 @@ def test_critical_pairs_against_all_pairs() -> None:
         if rng.random() < 0.3:
             polys = polys + [g for g in sympy_groebner(polys, R)]
             rng.shuffle(polys)
-        basis = _int_polys(polys, grevlex)
-        expected = _is_groebner_all_pairs(basis, grevlex)
-        assert _is_groebner(basis, grevlex) == expected
+        basis = _int_polys(polys, typed.grevlex)
+        expected = _is_groebner_all_pairs(basis, typed.grevlex)
+        assert _is_groebner(basis, typed.grevlex.key) == expected
         yes += expected
         no += not expected
         saved += len(basis)*(len(basis) - 1)//2 - len(_critical_pairs([lm for lm, _ in basis]))
@@ -159,7 +162,7 @@ def test_the_theorem_fails_without_homogenisation() -> None:
     R, x, z, y = ring("x,z,y", QQ, lex)
     F = [x*(z + 210*y + 1), x*(z + 420*y + 2)]
     wrong: IntPoly = {(1, 0, 0): 1}
-    assert _verified([{(1, 0, 0): (1, 1)}], [(1, 0, 0)], [g for _, g in _int_polys(F, lex)], lex) == [wrong]
+    assert _verified([{(1, 0, 0): (1, 1)}], [(1, 0, 0)], [g for _, g in _int_polys(F, typed.lex)], typed.lex.key) == [wrong]
     for p in (2, 3, 5, 7):
         Rp = R.clone(domain=GF(p))
         assert sympy_groebner([f.set_ring(Rp) for f in F], Rp) == [Rp.gens[0]]
@@ -193,12 +196,12 @@ def test_unlucky_primes_are_discarded() -> None:
     # modulo 5; the image with the smaller monomials is the unlucky one
     R, x, y, z = ring("x,y,z", QQ, lex)
     F = [x*y + z**2, x*y + 5*x*z + y*z]
-    order = _HomogeneousOrder(lex, 3)
-    integer = [g for _, g in _int_polys(F, lex)]
-    at5, at7 = ([lm for lm, _ in _image(integer, R.symbols, order, order, p)] for p in (5, 7))
+    order = homogeneous_order(typed.lex, 3)
+    integer = [g for _, g in _int_polys(F, typed.lex)]
+    at5, at7 = ([lm for lm, _ in _image(integer, ['x', 'y', 'z'], order, p)] for p in (5, 7))
     assert at5 == [(0, 1, 1), (1, 1, 0), (1, 0, 2)] and at7 == [(1, 0, 1), (1, 1, 0), (0, 2, 1)]
-    assert [n for n, _ in _luckiness(at5, order)] == [n for n, _ in _luckiness(at7, order)] == [0, 0, 2, 1]
-    assert _luckiness(at5, order) < _luckiness(at7, order)
+    assert [n for n, _ in _luckiness(at5, order.key)] == [n for n, _ in _luckiness(at7, order.key)] == [0, 0, 2, 1]
+    assert _luckiness(at5, order.key) < _luckiness(at7, order.key)
     trace = ModularTrace()
     assert modular_groebner(F, R, primes=tiny_primes(), trace=trace) == sympy_groebner(F, R)
     assert trace.unlucky == [5] and trace.lucky == [2, 3, 7, 11, 13] and not trace.homogenized

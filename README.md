@@ -251,7 +251,8 @@ reduction, two to twenty times faster than SymPy's Buchberger on the
 Katsura and cyclic systems, the same reduced basis) and, over the
 rationals, those which the direct computation does not finish in a quarter
 of a second by the modular algorithm of Arnold
-(`sympy_extras.polys.modulargroebner`): modulo large primes, on the
+(`sympy_extras.polys.modulargroebner`, native, with its SymPy face
+`modulargroebner_sympy`): modulo large primes, on the
 homogenised input, with a verification which proves the result. Strong
 Gröbner bases over the integers (`sympy_extras.polys.stronggroebner`)
 decide membership in ideals of `ZZ[x]`, where SymPy's `groebner` with
@@ -282,7 +283,7 @@ True
 >>> from sympy_extras.polys.domains import QQ as TQQ, ZZ as TZZ
 >>> from sympy_extras.polys.rings import PolyRing, lex as typed_lex
 >>> from sympy_extras.polys.f4 import f4
->>> from sympy_extras.polys.modulargroebner import modular_groebner
+>>> from sympy_extras.polys.modulargroebner_sympy import modular_groebner
 >>> T = PolyRing(TQQ, ['u', 'v', 'w'], typed_lex)
 >>> from sympy_extras.polys.interop import ring_from_sympy, ring_to_sympy
 >>> F = [ring_from_sympy(T, e) for e in (u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w)]
@@ -1079,7 +1080,9 @@ sympy_extras/
         rur.py               the rational univariate representation of zero-dimensional ideals (Rouillier, native)
         rur_sympy.py         its SymPy face
         stronggroebner.py    strong Gröbner bases over the integers (Kandri-Rody–Kapur, Lichtblau)
-        modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold)
+        modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold) (native)
+        modulargroebner_sympy.py  the SymPy face of modulargroebner
+        buchberger.py        Buchberger's algorithm on the typed rings (ported from SymPy)
         orderings.py         WeightOrder, BlockOrder
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (native)
         virtual_substitution_sympy.py  its SymPy face, and simplify_logic_of_core

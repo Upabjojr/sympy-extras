@@ -25,17 +25,13 @@ Its Gröbner bases are computed lazily, by Faugère's F4
 
 :mod:`sympy_extras.polys.ideals_sympy` is the SymPy face of this module:
 the same :class:`Ideal` on SymPy expressions, polynomials and domains. The
-steps which stay written on SymPy are called from here at run time
-through the face (the functions ending in ``_of_core``): the modular
-Gröbner bases over ``QQ`` when F4 does not finish within
-``settings.groebner_direct_time``
-(:func:`sympy_extras.polys.modulargroebner.modular_groebner`) and SymPy's
-Buchberger algorithm when ``settings.groebner_algorithm`` is
-``'buchberger'``. The decompositions of positive-dimensional ideals
-through regular chains (the radical, the equidimensional parts, the
-minimal and associated primes, the primary decomposition) are those of
-:mod:`sympy_extras.polys.idealdecomposition`, the rational univariate
-representation that of :mod:`sympy_extras.polys.rur`, both native.
+steps which stay written on SymPy are few: the Gröbner bases (F4,
+Buchberger's algorithm, the modular algorithm over ``QQ`` of
+:mod:`sympy_extras.polys.modulargroebner`), the decompositions of
+positive-dimensional ideals through regular chains
+(:mod:`sympy_extras.polys.idealdecomposition`) and the rational
+univariate representation (:mod:`sympy_extras.polys.rur`) are all
+native.
 
 Examples
 ========
@@ -81,20 +77,20 @@ from itertools import product
 from math import lcm
 from typing import Generic, Iterable, Iterator, Optional, Sequence, TypeVar, Union
 
-from sympy_extras._timeout import attempt
 from sympy_extras.core.add import add
 from sympy_extras.core.expr import Expr, as_expr
 from sympy_extras.core.mul import mul
 from sympy_extras.core.numbers import Integer
 from sympy_extras.core.power import pow
 from sympy_extras.core.symbol import Dummy, Symbol
-from sympy_extras.settings import settings
 
 from .bigatti import hilbert_numerator_coefficients
+from . import modulargroebner as _modular
 from .domains.domain import Domain
 from .domains.integerring import ZZ
 from .domains.rationalfield import QQ, RationalField
 from .f4 import f4, reduced_basis
+from .modulargroebner import GRADED_FACTOR
 from .fglm import fglm
 from .polyclasses import DensePoly
 from .polyutils import dict_from_expr
@@ -112,11 +108,6 @@ OrderLike = Union[str, MonomialOrder]
 Terms = dict[Monomial, T]
 #: a polynomial given to an ideal: a core expression or a ring element
 PolyLike = Union[Expr, PolyElement[T]]
-
-#: for the graded orders F4 is given this many times
-#: ``settings.groebner_direct_time`` before the modular algorithm takes
-#: over (the factor of :mod:`sympy_extras.polys.modulargroebner`)
-GRADED_FACTOR = 20
 
 
 def _is_graded(order: MonomialOrder) -> bool:
@@ -185,14 +176,15 @@ def groebner(polys: Sequence[PolyElement[T]], ring: PolyRing[T]) -> list[PolyEle
     """The reduced Gröbner basis of ``polys`` in ``ring`` (over a field),
     sorted by decreasing leading monomial: what :class:`Ideal` computes.
 
-    F4 (:func:`sympy_extras.polys.f4.f4`) by default. Over ``QQ`` F4 is
-    given ``settings.groebner_direct_time`` seconds (``GRADED_FACTOR``
-    times as long for ``grevlex`` and ``grlex``), and the modular algorithm
-    of :mod:`sympy_extras.polys.modulargroebner` (on SymPy, through the
-    face) computes the basis when it has not finished, unless
-    ``settings.modular_groebner`` is off. With
-    ``settings.groebner_algorithm`` ``'buchberger'`` SymPy's Buchberger
-    algorithm is used.
+    This is :func:`sympy_extras.polys.modulargroebner.groebner`: F4
+    (:func:`sympy_extras.polys.f4.f4`) by default, or Buchberger's
+    algorithm (:mod:`sympy_extras.polys.buchberger`) with
+    ``settings.groebner_algorithm`` ``'buchberger'``. Over ``QQ`` the
+    direct computation is given ``settings.groebner_direct_time`` seconds
+    (``GRADED_FACTOR`` times as long for ``grevlex`` and ``grlex``), and
+    the modular algorithm of :mod:`sympy_extras.polys.modulargroebner`
+    computes the basis when it has not finished, unless
+    ``settings.modular_groebner`` is off.
 
     >>> from sympy_extras.polys.domains import QQ
     >>> from sympy_extras.polys.rings import PolyRing, grevlex
@@ -202,25 +194,7 @@ def groebner(polys: Sequence[PolyElement[T]], ring: PolyRing[T]) -> list[PolyEle
     >>> [str(g) for g in groebner([x**2 + y**2 - R.one, x*y - R.from_int(2)], R)]
     ['y**3 + 2*x - y', 'x**2 + y**2 - 1', 'x*y - 2']
     """
-    nonzero = [f if f.ring == ring else PolyElement(dict(f.terms), ring) for f in polys if f.terms]
-    if not nonzero:
-        return []
-    if settings.groebner_algorithm != 'f4':
-        from .ideals_sympy import direct_groebner_of_core
-        return direct_groebner_of_core(nonzero, ring)
-    if settings.modular_groebner and isinstance(ring.domain, RationalField):
-        seconds = settings.groebner_direct_time
-        if _is_graded(ring.order):
-            seconds *= GRADED_FACTOR
-        if seconds > 0:
-            direct = attempt(lambda: f4(nonzero, ring), seconds, native=True)
-            if direct is not None:
-                return direct
-        from .ideals_sympy import modular_groebner_of_core
-        found = modular_groebner_of_core(nonzero, ring)
-        if found is not None:
-            return found
-    return f4(nonzero, ring)
+    return _modular.groebner(polys, ring)
 
 
 def normal_form(f: PolyElement[T], basis: Sequence[PolyElement[T]]) -> PolyElement[T]:

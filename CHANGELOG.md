@@ -562,6 +562,31 @@ remove public functions. Breaking changes are listed here when they happen.
   `rur_sympy.solutions_of_core`). `DensePoly.to_expr` and `from_expr` keep
   a `Dummy` generator (they wrote it as the `Symbol` of the same name).
 
+- The modular Gröbner bases are native (**breaking**):
+  `sympy_extras.polys.modulargroebner` (`modular_groebner`,
+  `direct_groebner`, `groebner`, `rational_reconstruction`,
+  `chinese_remainder`, `default_primes`, `ModularTrace`, and the new
+  `homogeneous_order`) works on the typed `rings.PolyRing` over `QQ` and
+  `ZZ` (the images over the typed `GF(p)`) and imports no SymPy;
+  `direct_groebner` and `groebner` take any typed field. The old API on
+  SymPy's ring elements, with the same results, is the face
+  `sympy_extras.polys.modulargroebner_sympy` (SymPy's `groebner` for the
+  other domains and the orders which are not global, as before): callers
+  of `modulargroebner` with SymPy rings import from the face (the private
+  `_HomogeneousOrder` is gone, `_image` takes variable names and one
+  typed order). New `sympy_extras.polys.buchberger` (`buchberger`,
+  `s_polynomial`): a typed port of SymPy's Buchberger algorithm, which
+  `settings.groebner_algorithm = 'buchberger'` now selects everywhere,
+  the images of the modular algorithm included (with these images the
+  modular bases of Katsura-4/5, cyclic-5 and random dense systems took
+  1.3 to 4.2 times less CPU time than with SymPy's; with the default F4
+  images the times are unchanged). The native `polys.ideals.groebner` calls
+  the native dispatcher: `modular_groebner_of_core` and
+  `direct_groebner_of_core` are removed from `polys.ideals_sympy`, the
+  modular algorithm now also serves the typed orders without a SymPy
+  counterpart (weight orders), and with `'buchberger'` the modular
+  algorithm takes over after `settings.groebner_direct_time` as it does
+  with F4.
 - The regular chains and the cases of systems with parameters are native
   (**breaking**): `sympy_extras.polys.regularchains` (`RegularChain`,
   `triangularize`, `regular_gcd`, and the modules `recursive` and

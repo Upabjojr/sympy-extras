@@ -21,11 +21,7 @@ on the native ideal; the rational univariate representation is that of
 :mod:`sympy_extras.polys.rur_sympy` (the native
 :mod:`sympy_extras.polys.rur` with SymPy objects around it).
 
-What stays here, on SymPy: the inference of the coefficient domain. The
-native module calls the following at run time (the ``_of_core``
-functions, which take and return native objects):
-:func:`modular_groebner_of_core` and :func:`direct_groebner_of_core`
-(:mod:`sympy_extras.polys.modulargroebner`).
+What stays here, on SymPy: the inference of the coefficient domain.
 
 Examples
 ========
@@ -90,8 +86,7 @@ from .domains.sparsepolynomialring import RationalPolynomialRing
 from .hilbert import hilbert_numerator
 from .orderings import BlockOrder, WeightOrder, as_order
 
-__all__ = ['Ideal', 'hilbert_numerator', 'separating_forms', 'core_order', 'sympy_order', 'native_ideal',
-           'direct_groebner_of_core', 'modular_groebner_of_core']
+__all__ = ['Ideal', 'hilbert_numerator', 'separating_forms', 'core_order', 'sympy_order', 'native_ideal']
 
 T = TypeVar('T')
 
@@ -1101,38 +1096,6 @@ def native_ideal(ideal: Ideal, K: CoreDomain[T]) -> native.Ideal[T]:
     if known is not None:
         result._set_basis([coefficients.terms_in(dict(g)) for g in known])
     return result
-
-
-def _sympy_ring(ring: typed.PolyRing[T]) -> tuple[PolyRing, _Coefficients[T]]:
-    from sympy import symbols
-    domain = _sympy_domain(ring.domain)
-    return _ring(symbols(ring.names), domain, sympy_order(ring.order))[0], _Coefficients(ring.domain, domain)
-
-
-def direct_groebner_of_core(polys: Sequence[typed.PolyElement[T]], ring: typed.PolyRing[T]
-                            ) -> list[typed.PolyElement[T]]:
-    """The reduced Gröbner basis of native polynomials by
-    :func:`sympy_extras.polys.modulargroebner.direct_groebner` (SymPy's
-    Buchberger algorithm when ``settings.groebner_algorithm`` is
-    ``'buchberger'``)."""
-    from .modulargroebner import direct_groebner
-    R, coefficients = _sympy_ring(ring)
-    basis = direct_groebner([R.from_dict(coefficients.terms_out(f.terms)) for f in polys], R)
-    return [typed.PolyElement(coefficients.terms_in(dict(g)), ring) for g in basis]
-
-
-def modular_groebner_of_core(polys: Sequence[typed.PolyElement[T]], ring: typed.PolyRing[T]
-                             ) -> Optional[list[typed.PolyElement[T]]]:
-    """The reduced Gröbner basis of native polynomials over ``QQ`` by
-    :func:`sympy_extras.polys.modulargroebner.modular_groebner`; ``None``
-    for an order which has no SymPy counterpart."""
-    from .modulargroebner import modular_groebner
-    try:
-        R, coefficients = _sympy_ring(ring)
-    except NotImplementedError:
-        return None
-    basis = modular_groebner([R.from_dict(coefficients.terms_out(f.terms)) for f in polys], R)
-    return [typed.PolyElement(coefficients.terms_in(dict(g)), ring) for g in basis]
 
 
 # rur_sympy builds on this module (imported at the end: it imports Ideal from here)

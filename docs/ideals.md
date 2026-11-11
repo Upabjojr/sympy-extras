@@ -2,7 +2,9 @@
 
 Modules: `sympy_extras.polys.ideals` (native) and its SymPy face
 `sympy_extras.polys.ideals_sympy`, `sympy_extras.polys.groebnerwalk`,
-`sympy_extras.polys.modulargroebner`, `sympy_extras.polys.orderings`,
+`sympy_extras.polys.modulargroebner` (native) and its SymPy face
+`sympy_extras.polys.modulargroebner_sympy`, `sympy_extras.polys.buchberger`
+(native), `sympy_extras.polys.orderings`,
 `sympy_extras.polys.hermite` (native) and its SymPy face `sympy_extras.polys.hermite_sympy`
 
 ## What SymPy has and what is added here
@@ -398,17 +400,15 @@ True
 
 ```
 
-The steps without a native counterpart are called at run time through the
-face, as the functions ending in `_of_core` of
-`sympy_extras.polys.ideals_sympy`: `modular_groebner_of_core` (the modular
-algorithm over `QQ`, when F4 has not finished within
-`settings.groebner_direct_time`), `direct_groebner_of_core` (SymPy's
-Buchberger with `settings.groebner_algorithm = 'buchberger'`). The
-decompositions through regular chains
-(`sympy_extras.polys.idealdecomposition`) and the rational univariate
-representation (`sympy_extras.polys.rur`, the method `Ideal.rur`) are
-native; only the exact solutions of a representation, SymPy's `CRootOf`
-objects, are computed on SymPy (`solutions_of_core` of
+Every step is native: the Gröbner bases (F4, Buchberger's algorithm,
+`sympy_extras.polys.buchberger`, a typed port of SymPy's, and the modular
+algorithm over `QQ`, `sympy_extras.polys.modulargroebner`, through its
+dispatcher `groebner`, also for the orders which have no SymPy
+counterpart such as weight orders), the decompositions through regular
+chains (`sympy_extras.polys.idealdecomposition`) and the rational
+univariate representation (`sympy_extras.polys.rur`, the method
+`Ideal.rur`). Only the exact solutions of a representation, SymPy's
+`CRootOf` objects, are computed on SymPy (`solutions_of_core` of
 `sympy_extras.polys.rur_sympy`).
 
 The face `sympy_extras.polys.ideals_sympy.Ideal` has the API the module
@@ -446,9 +446,9 @@ sorted by decreasing leading monomial. It does not use SymPy: the matrix
 reduction is a sparse Gauss–Jordan elimination of its own, fraction-free
 over the integers for `QQ`. The native `Ideal` calls it directly, over
 every coefficient field (the bases over algebraic fields and fields of
-fractions were computed by SymPy's Buchberger before the port); the
-modular algorithm still builds SymPy rings and reaches it through
-`direct_groebner`, which converts at the boundary
+fractions were computed by SymPy's Buchberger before the port), and so
+does the native modular algorithm for its images over `GF(p)`; the SymPy
+face `sympy_extras.polys.modulargroebner_sympy` converts at the boundary
 (`sympy_extras.polys.interop`); the results equal SymPy's `groebner`, the
 reduced basis being unique.
 
@@ -524,7 +524,8 @@ coefficients of the new elements grow to thousands of digits.
 On 400 random ideals in two to four variables (one to four polynomials of
 degree up to three, over `QQ`, `GF(7)` and `GF(32003)`, the three orders)
 the two bases were equal every time. `settings.groebner_algorithm`
-(`'f4'`, or `'buchberger'` for SymPy's) chooses the algorithm of every
+(`'f4'`, or `'buchberger'` for Buchberger's algorithm, a typed port of
+SymPy's since the native port of the modular algorithm) chooses the algorithm of every
 direct computation of the package, those of the images of the modular
 algorithm included: the modular basis of cyclic-6 for `grevlex` took 10 s
 with F4 images and 56 s with Buchberger images.
@@ -613,12 +614,16 @@ bits and the polynomials met on the way are far larger.
 `modular_groebner(polys, ring)` returns the same reduced Gröbner basis as
 `sympy.polys.groebnertools.groebner(polys, ring)` (monic over `QQ`,
 primitive over `ZZ`, sorted by decreasing leading monomials), computed from
-its images modulo primes after E. Arnold:
+its images modulo primes after E. Arnold. The algorithm is native
+(`sympy_extras.polys.modulargroebner`, on the typed rings over `QQ` and
+`ZZ`, with F4 or Buchberger's algorithm over the typed `GF(p)` for the
+images); its SymPy face `sympy_extras.polys.modulargroebner_sympy` takes
+SymPy's ring elements, as below:
 
 ```python
 >>> from sympy import QQ, ring, lex
 >>> from sympy.polys.groebnertools import groebner
->>> from sympy_extras.polys.modulargroebner import modular_groebner, ModularTrace
+>>> from sympy_extras.polys.modulargroebner_sympy import modular_groebner, ModularTrace
 >>> R, u, v, w = ring("u,v,w", QQ, lex)
 >>> F = [u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w]
 >>> modular_groebner(F, R)
@@ -634,9 +639,11 @@ The steps (the module docstring has the proofs):
    new variable; the order becomes "total degree, then the given order on
    the old variables", for which setting the new variable to 1 in a Gröbner
    basis gives a Gröbner basis of the input for the given order;
-2. the reduced Gröbner basis modulo a prime is computed by SymPy's own
-   `groebner` over `GF(p)`, for primes which divide no leading coefficient
-   of the input;
+2. the reduced Gröbner basis modulo a prime is computed over the typed
+   `GF(p)` by `direct_groebner` (F4, or Buchberger's algorithm with
+   `settings.groebner_algorithm = 'buchberger'`; SymPy's `groebner` before
+   the native port), for primes which divide no leading coefficient of the
+   input;
 3. **unlucky primes** are detected by comparing the leading monomials of
    the images, as Arnold does: degree by degree, the image with fewer
    leading monomials (a larger Hilbert function) is unlucky, and with
@@ -755,8 +762,9 @@ among the leading monomials of the `grevlex` basis) is converted from the
 algorithm remains what computes the `lex` and elimination bases of the
 ideals of positive dimension, where FGLM does not apply.
 
-Hence the rule of `Ideal`, which computes its bases through
-`sympy_extras.polys.modulargroebner.groebner`: the direct computation
+Hence the rule of `Ideal`, which computes its bases through the native
+`sympy_extras.polys.modulargroebner.groebner` (the face
+`modulargroebner_sympy.groebner` on SymPy rings): the direct computation
 (`direct_groebner`, F4 by default, see above; the table above this
 paragraph was measured with SymPy's Buchberger) is given
 `settings.groebner_direct_time` seconds (0.25), twenty times as long for
@@ -766,10 +774,11 @@ modular algorithm costs about twice as much (3.9 ms against 1.7 ms on
 three quadrics in three variables), which is why it is not run first, and
 nothing cheap was found which tells in advance the inputs where it wins;
 `settings.modular_groebner = False` (or `configure(modular_groebner=False)`)
-turns it off, and time limits need the main thread: elsewhere SymPy's
-computation runs to its end. Other coefficient
-domains (finite fields, algebraic fields, fields of fractions) always go to
-SymPy.
+turns it off, and time limits need the main thread: elsewhere the direct
+computation runs to its end. Over the other coefficient fields (finite
+fields, algebraic fields, fields of fractions) only the direct computation
+is used; the face sends the SymPy rings over algebraic fields and fields
+of fractions to SymPy's `groebner`.
 
 ## Reference
 
@@ -831,9 +840,14 @@ the conversions from and to SymPy rings (`qq_from_sympy`, `gf_from_sympy`,
 `s_polynomial_zz(f, g)` and `g_polynomial_zz(f, g)` in
 `sympy_extras.polys.stronggroebner`;
 `modular_groebner(polys, ring, primes=None, trace=None)`, `direct_groebner(polys, ring)`, `groebner(polys,
-ring)` (the dispatcher used by `Ideal`), `rational_reconstruction(a, m,
-bound=None)`, `chinese_remainder(a, m, b, p)`, `default_primes()` and
-`ModularTrace` are in `sympy_extras.polys.modulargroebner`.
+ring)` (the dispatcher used by `Ideal`), `homogeneous_order(base, nvars)`,
+`rational_reconstruction(a, m, bound=None)`, `chinese_remainder(a, m, b,
+p)`, `default_primes()` and `ModularTrace` are in
+`sympy_extras.polys.modulargroebner` (typed rings over `QQ` and `ZZ`;
+`direct_groebner` and `groebner` over every typed field), and the same
+functions on SymPy's rings, `homogeneous_order` excepted, in
+`sympy_extras.polys.modulargroebner_sympy`; `buchberger(polys, ring)` and
+`s_polynomial(f, g)` in `sympy_extras.polys.buchberger` (typed rings).
 
 `rur(system, *gens, t=None)` and `RationalUnivariateRepresentation`
 (attributes `form`, `polynomial`, `characteristic`, `denominator`,
