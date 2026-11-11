@@ -768,9 +768,7 @@ def _forced(expr: Expr) -> list[Expr]:
 def _proved_simplification(expr: Expr, facts: Facts) -> Expr:
     """``expr`` or a smaller expression *proved* equal to it on the region
     of the facts by the structure theorem
-    (:mod:`sympy_extras.simplify.structure`, at run time through
-    :func:`~sympy_extras.assumptions.refine_sympy.proved_simplification_of_core`):
-    zero when it vanishes, its canonical form, or what the transformations
+    (:mod:`sympy_extras.simplify.structure`): zero when it vanishes, its canonical form, or what the transformations
     of :func:`_forced` give, which are right on part of the plane only and
     are kept where the proof says so.
 
@@ -784,9 +782,37 @@ def _proved_simplification(expr: Expr, facts: Facts) -> Expr:
     0
     """
     from sympy_extras._timeout import attempt
-    from .refine_sympy import proved_simplification_of_core
     if not (_has_function(expr) or _has_fractional_power(expr) or expr.has(pi)):
         return expr
     conjuncts = list(facts.conjuncts)
-    found = attempt(lambda: proved_simplification_of_core(expr, conjuncts, lambda: _forced(expr)), _PROOF_SECONDS)
+    found = attempt(lambda: _proved_on(expr, conjuncts, lambda: _forced(expr)), _PROOF_SECONDS, native=True)
     return expr if found is None else found
+
+
+def _proved_on(expr: Expr, conjuncts: list[Boolean], forced: Callable[[], list[Expr]]) -> Expr:
+    """``expr`` or a smaller expression proved equal to it on the region
+    of the conjuncts by the structure theorem
+    (:class:`sympy_extras.simplify.structure.ElementaryTower`): zero when
+    it vanishes, its canonical form, or the smallest of the ``forced``
+    candidates which the tower proves equal to it."""
+    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
+    tower = ElementaryTower(conjuncts or None)
+    try:
+        value = tower.element(expr)
+    except (NotElementary, ZeroDivisionError):
+        return expr
+    if tower.vanishes(value):
+        return Integer(0)
+    best = expr
+    canonical = tower.to_expr(value)
+    if _size(canonical) < _size(best):
+        best = canonical                                    # equal by construction
+    for candidate in forced():
+        if _size(candidate) >= _size(best) or candidate == expr:
+            continue
+        try:
+            if tower.vanishes(tower.element(candidate) - value):
+                best = candidate
+        except (NotElementary, ZeroDivisionError):
+            continue
+    return best

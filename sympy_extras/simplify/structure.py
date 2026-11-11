@@ -7,6 +7,17 @@ elementary expression as a rational function of generators which are
 *proven* algebraically independent, so that the expression vanishes
 identically exactly when its numerator does.
 
+The module works on the expressions of the typed core
+(:mod:`sympy_extras.core`, the functions of :mod:`sympy_extras.functions`)
+with the polynomials of :mod:`sympy_extras.polys`, and imports no SymPy:
+:mod:`sympy_extras.simplify.structure_sympy` is its face on SymPy
+objects. Two steps of the numerical side go through SymPy at run time
+(the face holds them, the functions ending in ``_of_core``): the sample
+points of the region of the assumptions
+(:func:`sympy_extras.integrals.conditions.sample_values`) and the reliable
+numerical values with which ``is_zero`` shows a difference not to vanish
+(:func:`sympy_extras._numeric.reliable_value`).
+
 The tower
 =========
 
@@ -20,7 +31,7 @@ grows as algebraic numbers are met, and each generator is one of
 * a *logarithm* `L = \\log(v)`, `L' = v'/v`;
 * a *root* `\\rho = \\exp(z/q)`, where `z` is the argument of an exponential
   generator (`\\rho^q = \\exp(z)`) or a logarithm generator `\\log(v)`
-  (`\\rho = v^{1/q}`, the principal root, which SymPy defines as
+  (`\\rho = v^{1/q}`, the principal root, which is defined as
   `\\exp(\\log(v)/q)`); it is the one kind of algebraic generator, kept
   with its relation `\\rho^q = e`.
 
@@ -29,6 +40,13 @@ their inverses with logarithms (the principal values agree, which the
 tests check at complex points), `a^b` is `\\exp(b \\log a)`, and `\\pi` is
 `-i \\log(-1)`: the constants `\\pi`, `e`, `\\log 2`, ... are generators
 like the others.
+
+The number field `K` is `\\mathbb{Q}(\\theta)` for a primitive element
+`\\theta = e_1 + c_2 e_2 + \\dots` of the algebraic numbers met
+(:func:`~sympy_extras.polys.numberfields.qqbar.primitive_element`); a
+number is placed in it through its sum, product and power structure, or
+by a linear factor of its minimal polynomial over `K` whose root is the
+number (decided exactly, :mod:`~sympy_extras.polys.numberfields.qqbar`).
 
 The structure theorem
 =====================
@@ -98,38 +116,39 @@ from __future__ import annotations
 
 import math
 import random
-from typing import Optional
+from fractions import Fraction
+from typing import Optional, Sequence
 
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.mul import Mul
-from sympy.core.numbers import E as EulerE
-from sympy.core.numbers import Float, I, Integer, Rational, pi
-from sympy.core.power import Pow
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.exponential import exp, log
-from sympy.functions.elementary.hyperbolic import (acosh, acoth, asinh, atanh, cosh, coth, csch, sech, sinh,
-                                                   tanh)
-from sympy.functions.elementary.trigonometric import (acos, acot, asin, atan, cos, cot, csc, sec, sin, tan)
-from sympy.logic.boolalg import Boolean
-from sympy.matrices.dense import Matrix
-from sympy.matrices.normalforms import smith_normal_form
-from sympy_extras.ntheory.factor_ import factorint
-from sympy.polys.domains import QQ, ZZ
-from sympy.polys.domains.algebraicfield import AlgebraicField
-from sympy.polys.domains.domain import Domain
-from sympy.polys.matrices import DomainMatrix
-from sympy.polys.numberfields.minpoly import minimal_polynomial
-from sympy.polys.polyerrors import CoercionFailed, DomainError, NotAlgebraic, NotInvertible, PolynomialError
-from sympy.polys.polytools import Poly
-from sympy.polys.rings import PolyElement, PolyRing
+import mpmath
 
-from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import DomainElement, as_boolean, as_expr, free_symbols, sorted_symbols
-from sympy_extras.assumptions.ask_sympy import Assumptions, ask
-from sympy_extras.assumptions.facts_sympy import element as member
+from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.facts import element as member
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, as_expr
+from sympy_extras.core.logic import And, Boolean, BooleanTrue, or_, to_boolean
+from sympy_extras.core.mul import Mul, div, mul
+from sympy_extras.core.numbers import (Exp1, Float, GoldenRatioType, ImaginaryUnit, Integer, Pi, Rational, I,
+                                       number_from_fraction, pi)
+from sympy_extras.core.power import Pow, pow
+from sympy_extras.core.relational import Ge, Gt, Le, Lt, eq, ne
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.exponential import Exp, Log, exp, log
+from sympy_extras.functions.elementary.hyperbolic import (Acosh, Acoth, Asinh, Atanh, Cosh, Coth, Csch, Sech, Sinh,
+                                                          Tanh)
+from sympy_extras.functions.elementary.trigonometric import (Acos, Acot, Asin, Atan, Cos, Cot, Csc, Sec, Sin, Tan)
+from sympy_extras.ntheory.factor_ import factorint
+from sympy_extras.polys.algebraicfactor import AlgebraicPolynomialRing, ext_factor_list
+from sympy_extras.polys.domains.algebraicfield import AlgebraicField
+from sympy_extras.polys.domains.rationalfield import QQ
+from sympy_extras.polys.domains.sparsepolynomialring import RationalPolynomialRing
+from sympy_extras.polys.factortools import dup_ext_factor
+from sympy_extras.polys.lattice import smith_normal_form
+from sympy_extras.polys.numberfields.qqbar import Algebraic, primitive_element
+from sympy_extras.polys.polyerrors import BasePolynomialError
+from sympy_extras.polys.rings import Monomial, PolyElement, PolyRing
+from sympy_extras.sets.sets import Reals
 from sympy_extras.settings import settings
 
 __all__ = ['ElementaryTower', 'Element', 'Generator', 'NotElementary', 'canonical_form', 'is_zero', 'equal']
@@ -139,8 +158,8 @@ EXPONENTIAL = 'exp'
 LOGARITHM = 'log'
 ROOT = 'root'
 
-_EXPONENTIAL_FORMS = (sin, cos, tan, cot, sec, csc, sinh, cosh, tanh, coth, sech, csch)
-_LOGARITHMIC_FORMS = (asin, acos, atan, acot, asinh, acosh, atanh, acoth)
+_EXPONENTIAL_FORMS = (Sin, Cos, Tan, Cot, Sec, Csc, Sinh, Cosh, Tanh, Coth, Sech, Csch)
+_LOGARITHMIC_FORMS = (Asin, Acos, Atan, Acot, Asinh, Acosh, Atanh, Acoth)
 
 #: the largest degree the number field is allowed to reach
 _FIELD_DEGREE_LIMIT = 32
@@ -148,10 +167,117 @@ _FIELD_DEGREE_LIMIT = 32
 #: the budget of one question put to ``ask`` about the sign of an argument
 _ASK_SECONDS = 5.0
 
+#: an element of the number field: its coordinates in the powers of the
+#: primitive element, highest degree first
+Coefficient = list[Fraction]
+#: a polynomial in the generators over the number field
+TowerPolynomial = PolyElement[list[Fraction]]
+
+#: the name of the one variable of the ring of a tower without generators
+_PLACEHOLDER = '_'
+
 
 class NotElementary(ValueError):
     """The expression is outside the towers of this module: a function
     which is not elementary, a floating point number, ``log(0)``."""
+
+
+class _NotInField(ValueError):
+    """A number which is not in the number field (yet)."""
+
+
+class _Rationals(AlgebraicField):
+    """``QQ`` as the number field of degree one (the field of a tower
+    which has met no irrational number): its elements are the lists of
+    the other fields, with the arithmetic done directly."""
+
+    def __init__(self) -> None:
+        super().__init__([Fraction(1), Fraction(0)], Integer(0))
+        self.name = 'QQ'
+
+    def add(self, a: list[Fraction], b: list[Fraction]) -> list[Fraction]:
+        s = (a[0] if a else Fraction(0)) + (b[0] if b else Fraction(0))
+        return [s] if s else []
+
+    def sub(self, a: list[Fraction], b: list[Fraction]) -> list[Fraction]:
+        s = (a[0] if a else Fraction(0)) - (b[0] if b else Fraction(0))
+        return [s] if s else []
+
+    def neg(self, a: list[Fraction]) -> list[Fraction]:
+        return [-a[0]] if a else []
+
+    def mul(self, a: list[Fraction], b: list[Fraction]) -> list[Fraction]:
+        return [a[0] * b[0]] if a and b else []
+
+    def invert(self, a: list[Fraction]) -> list[Fraction]:
+        if not a:
+            raise ZeroDivisionError('0 has no inverse')
+        return [1 / a[0]]
+
+
+def _rational(value: Expr) -> Fraction:
+    """A rational number of the core as a fraction."""
+    if not isinstance(value, Rational):
+        raise TypeError("a rational number is expected, got %s" % (value,))
+    return Fraction(int(value.p), int(value.q))
+
+
+def _algebraic(e: Expr) -> Algebraic:
+    """The algebraic number which ``e`` is, built from rational numbers and
+    ``I`` by sums, products and powers with rational exponents (principal
+    roots); :class:`_NotInField` for anything else."""
+    if isinstance(e, Rational):
+        return Algebraic.from_rational(_rational(e))
+    if isinstance(e, ImaginaryUnit):
+        return Algebraic.imaginary_unit()
+    if isinstance(e, GoldenRatioType):
+        return (Algebraic.from_rational(1) + Algebraic.from_rational(5).nth_root(2)) / 2
+    if isinstance(e, Add):
+        total = Algebraic.from_rational(0)
+        for term in e.args:
+            total = total + _algebraic(as_expr(term))
+        return total
+    if isinstance(e, Mul):
+        product = Algebraic.from_rational(1)
+        for factor in e.args:
+            product = product * _algebraic(as_expr(factor))
+        return product
+    if isinstance(e, Pow) and isinstance(e.exp, Rational):
+        base = _algebraic(as_expr(e.base))
+        p, q = int(e.exp.p), int(e.exp.q)
+        if q != 1:
+            if base.is_zero:
+                raise _NotInField("a root of zero")
+            base = base.nth_root(q)
+        if p < 0:
+            if base.is_zero:
+                raise _NotInField("a negative power of zero")
+            return (1 / base)**(-p)
+        return base**p
+    raise _NotInField("%s is not an algebraic number this module can hold" % (e,))
+
+
+def _rational_power(e: Expr) -> Optional[tuple[Fraction, Fraction]]:
+    """``(b, r)`` when ``e`` is the principal power ``b**r`` of rational
+    numbers (``I`` is ``(-1)**(1/2)``), ``None`` otherwise."""
+    if isinstance(e, ImaginaryUnit):
+        return Fraction(-1), Fraction(1, 2)
+    if isinstance(e, Pow) and isinstance(e.base, Rational) and isinstance(e.exp, Rational) and e.base != 0:
+        return _rational(e.base), _rational(e.exp)
+    return None
+
+
+def _extended_gcd(a: int, b: int) -> tuple[int, int, int]:
+    """``(g, u, v)`` with ``u*a + v*b == g == gcd(a, b)``."""
+    u0, v0, u1, v1 = 1, 0, 0, 1
+    while b:
+        q = a // b
+        a, b = b, a - q * b
+        u0, u1 = u1, u0 - q * u1
+        v0, v1 = v1, v0 - q * v1
+    if a < 0:
+        return -a, -u0, -v0
+    return a, u0, v0
 
 
 class Element:
@@ -163,10 +289,10 @@ class Element:
 
     __slots__ = ('tower', 'num', 'den')
 
-    def __init__(self, tower: ElementaryTower, num: PolyElement, den: PolyElement) -> None:
-        self.tower = tower
-        self.num = num
-        self.den = den
+    def __init__(self, tower: ElementaryTower, num: TowerPolynomial, den: TowerPolynomial) -> None:
+        self.tower: ElementaryTower = tower
+        self.num: TowerPolynomial = num
+        self.den: TowerPolynomial = den
 
     def __add__(self, other: Element) -> Element:
         return self.tower._combine(self, other, 1)
@@ -194,11 +320,12 @@ class Element:
             return Element(self.tower, self.den**(-n), self.num**(-n))
         return Element(self.tower, self.num**n, self.den**n)
 
-    def times(self, r: Rational) -> Element:
+    def times(self, r: Fraction) -> Element:
         """``r`` times the element, ``r`` a rational number."""
         a = self.tower._lift(self)
         K = self.tower.domain
-        return self.tower._fraction(a.num.mul_ground(K.convert(int(r.p))), a.den.mul_ground(K.convert(int(r.q))))
+        return self.tower._fraction(a.num.mul_ground(K.from_int(r.numerator)),
+                                    a.den.mul_ground(K.from_int(r.denominator)))
 
     def __repr__(self) -> str:
         return "Element(%s)" % (self.tower.to_expr(self),)
@@ -211,8 +338,8 @@ class Generator:
     ==========
 
     kind : ``'variable'``, ``'exp'``, ``'log'`` or ``'root'``
-    symbol : the generator of the polynomial ring
-    expression : its meaning as a SymPy expression
+    name : the name of its variable in the polynomial ring
+    expression : its meaning as an expression of the core
     argument : ``a`` of ``exp(a)``, ``v`` of ``log(v)``
     index, source, radicand, scale : for a root ``rho = exp(z/q)`` of the
         pair ``source``: the ring generator is ``sigma = scale*rho`` with
@@ -222,13 +349,13 @@ class Generator:
     certified : whether it is independent of the generators before it
     """
 
-    def __init__(self, kind: str, symbol: Symbol, expression: Expr, argument: Optional[Element] = None,
+    def __init__(self, kind: str, name: str, expression: Expr, argument: Optional[Element] = None,
                  certified: bool = True) -> None:
-        self.kind = kind
-        self.symbol = symbol
-        self.expression = expression
-        self.argument = argument
-        self.certified = certified
+        self.kind: str = kind
+        self.name: str = name
+        self.expression: Expr = expression
+        self.argument: Optional[Element] = argument
+        self.certified: bool = certified
         self.index: int = 1
         self.source: int = -1
         self.radicand: Optional[Element] = None
@@ -245,11 +372,44 @@ class _Pair:
     generator of the largest index taken of ``e`` so far."""
 
     def __init__(self, z: Element, e: Element, generator: int, logarithmic: bool) -> None:
-        self.z = z
-        self.e = e
-        self.generator = generator
-        self.logarithmic = logarithmic
+        self.z: Element = z
+        self.e: Element = e
+        self.generator: int = generator
+        self.logarithmic: bool = logarithmic
         self.master: int = -1
+
+
+def _facts_of(assumptions: Assumptions) -> list[Boolean]:
+    """The assumptions as a list of statements."""
+    if assumptions is None:
+        return []
+    if isinstance(assumptions, (Boolean, bool)):
+        return [to_boolean(assumptions)]
+    return [to_boolean(fact) for fact in assumptions]
+
+
+def _rref(rows: list[list[Fraction]], width: int) -> tuple[list[list[Fraction]], list[int]]:
+    """The reduced row echelon form of a matrix over the rationals and the
+    columns of its pivots (Gauss–Jordan elimination)."""
+    work = [list(row) for row in rows]
+    pivots: list[int] = []
+    r = 0
+    for column in range(width):
+        if r == len(work):
+            break
+        pivot = next((i for i in range(r, len(work)) if work[i][column]), -1)
+        if pivot < 0:
+            continue
+        work[r], work[pivot] = work[pivot], work[r]
+        inverse = 1 / work[r][column]
+        work[r] = [v * inverse for v in work[r]]
+        for i in range(len(work)):
+            if i != r and work[i][column]:
+                factor = work[i][column]
+                work[i] = [a - factor * b for a, b in zip(work[i], work[r])]
+        pivots.append(column)
+        r += 1
+    return work, pivots
 
 
 class ElementaryTower:
@@ -267,7 +427,8 @@ class ElementaryTower:
     Examples
     ========
 
-    >>> from sympy import symbols, exp, log, sqrt, sin, cos
+    >>> from sympy_extras.core import symbols, sqrt
+    >>> from sympy_extras.functions import exp, log, sin, cos
     >>> from sympy_extras.simplify.structure import ElementaryTower
     >>> x, y = symbols('x y')
     >>> tower = ElementaryTower()
@@ -301,11 +462,21 @@ class ElementaryTower:
     """
 
     def __init__(self, assumptions: Assumptions = None) -> None:
-        self.assumptions: Assumptions = assumptions
+        self.assumptions: list[Boolean] = _facts_of(assumptions)
         self.extensions: list[Expr] = []
-        self.domain: Domain = QQ
+        self._numbers: list[Algebraic] = []
+        self._coordinates: list[Coefficient] = []
+        self._theta: Optional[Algebraic] = None
+        self._theta_expression: Expr = Integer(0)
+        self._degrees: list[int] = []
+        self._to_basis: list[list[Fraction]] = []
+        self._basis_expressions: list[Expr] = []
+        self.domain: AlgebraicField = _Rationals()
+        self._embeddings: dict[AlgebraicField, Coefficient] = {}
         self.generators: list[Generator] = []
-        self.ring: PolyRing = PolyRing([], QQ)
+        self.ring: PolyRing[list[Fraction]] = PolyRing(self.domain, [_PLACEHOLDER])
+        self._rationals: Optional[RationalPolynomialRing] = None
+        self._polynomials: Optional[AlgebraicPolynomialRing] = None
         self.pairs: list[_Pair] = []
         self._variables: dict[Symbol, int] = {}
         self._cache: dict[Expr, Element] = {}
@@ -318,29 +489,78 @@ class ElementaryTower:
     # ------------------------------------------------------------------
     # the ring and the elements
 
+    def _names(self) -> list[str]:
+        return [g.name for g in self.generators] or [_PLACEHOLDER]
+
     def _rebuild(self) -> None:
-        self.ring = PolyRing([g.symbol for g in self.generators], self.domain)
+        self.ring = PolyRing(self.domain, self._names())
+        self._rationals = None
+        self._polynomials = None
         self._kummer = None
 
-    def _poly(self, p: PolyElement) -> PolyElement:
-        return p if p.ring == self.ring else p.set_ring(self.ring)
+    @staticmethod
+    def _count(ring: PolyRing[list[Fraction]]) -> int:
+        """The number of generators of the tower when its ring was ``ring``."""
+        return 0 if ring.names == [_PLACEHOLDER] else ring.ngens
+
+    def _embed(self, c: Coefficient, theta: Coefficient) -> Coefficient:
+        """The number ``c`` of an earlier field, whose primitive element
+        is ``theta`` in the current one, in the current field."""
+        K = self.domain
+        result = K.zero
+        for coefficient in c:
+            result = K.add(K.mul(result, theta), K.from_rational(coefficient))
+        return result
+
+    def _poly(self, p: TowerPolynomial) -> TowerPolynomial:
+        if p.ring is self.ring or p.ring == self.ring:
+            return p
+        old = self._count(p.ring)
+        width = max(len(self.generators), 1)
+        pad = (0,) * (width - old)
+        theta: Optional[Coefficient] = None
+        old_field = p.ring.domain
+        if old_field != self.domain and isinstance(old_field, AlgebraicField):
+            theta = self._embeddings[old_field]
+        terms: dict[Monomial, Coefficient] = {}
+        for m, c in p.terms.items():
+            terms[m[:old] + pad] = self._embed(c, theta) if theta is not None else c
+        return self.ring.from_dict(terms)
 
     def _lift(self, a: Element) -> Element:
         if a.tower is not self:
             raise ValueError("an element of another tower")
-        if a.num.ring == self.ring:
+        if a.num.ring is self.ring:
             return a
         return Element(self, self._poly(a.num), self._poly(a.den))
 
-    def _fraction(self, num: PolyElement, den: PolyElement) -> Element:
+    def _cancel(self, num: TowerPolynomial, den: TowerPolynomial) -> tuple[TowerPolynomial, TowerPolynomial]:
+        """``num/den`` in lowest terms (the denominator up to a unit)."""
+        if isinstance(self.domain, _Rationals):
+            if self._rationals is None:
+                self._rationals = RationalPolynomialRing(self.ring.names)
+            R = self._rationals
+            p, q = R.cancel(R.ring.from_dict({m: c[0] for m, c in num.terms.items()}),
+                            R.ring.from_dict({m: c[0] for m, c in den.terms.items()}))
+            return (self.ring.from_dict({m: [c] for m, c in p.terms.items()}),
+                    self.ring.from_dict({m: [c] for m, c in q.terms.items()}))
+        if self._polynomials is None:
+            self._polynomials = AlgebraicPolynomialRing(self.domain, self.ring.names)
+        h = self._polynomials.gcd(num, den)
+        if h.is_ground:
+            return num, den
+        return num.exquo(h), den.exquo(h)
+
+    def _fraction(self, num: TowerPolynomial, den: TowerPolynomial) -> Element:
         if not den:
             raise ZeroDivisionError("division by the zero of the tower")
         if not num:
             return Element(self, self.ring.zero, self.ring.one)
-        p, q = num.cancel(den)
+        p, q = self._cancel(num, den)
         lead = q.LC
-        if lead != self.domain.one:
-            p, q = p.quo_ground(lead), q.quo_ground(lead)
+        if not self.domain.is_one(lead):
+            inverse = self.domain.invert(lead)
+            p, q = p.mul_ground(inverse), q.mul_ground(inverse)
         return Element(self, p, q)
 
     def _combine(self, a: Element, b: Element, sign: int) -> Element:
@@ -350,10 +570,11 @@ class ElementaryTower:
         return self._fraction(a.num * b.den + b.num * a.den if sign > 0 else a.num * b.den - b.num * a.den,
                               a.den * b.den)
 
-    def constant(self, value: Rational) -> Element:
+    def constant(self, value: Fraction) -> Element:
         """The rational number ``value`` as an element."""
         K = self.domain
-        return Element(self, self.ring.ground_new(K.convert(int(value.p))), self.ring.ground_new(K.convert(int(value.q))))
+        return Element(self, self.ring.ground(K.from_int(value.numerator)),
+                       self.ring.ground(K.from_int(value.denominator)))
 
     @property
     def zero(self) -> Element:
@@ -371,10 +592,13 @@ class ElementaryTower:
         self._rebuild()
         return len(self.generators) - 1
 
+    def _new_name(self) -> str:
+        return 'g%d' % len(self.generators)
+
     # ------------------------------------------------------------------
     # normal forms
 
-    def _reduce(self, p: PolyElement) -> PolyElement:
+    def _reduce(self, p: TowerPolynomial) -> TowerPolynomial:
         """``p`` with every root generator below its index, by the
         relations ``sigma**q == radicand``."""
         p = self._poly(p)
@@ -385,15 +609,14 @@ class ElementaryTower:
                 g = self.generators[position]
                 if g.kind != ROOT or g.eliminated is not None or g.radicand is None:
                     continue
-                if p.degree(self.ring.gens[position]) < g.index:
+                if p.degree_in(position) < g.index:
                     continue
                 radicand = self._lift(g.radicand).num
                 result = self.ring.zero
-                for monomial, coefficient in p.terms():
+                for monomial, coefficient in p.terms.items():
                     e = monomial[position]
-                    rest = list(monomial)
-                    rest[position] = e % g.index
-                    term = self.ring.from_dict({tuple(rest): coefficient})
+                    rest = monomial[:position] + (e % g.index,) + monomial[position + 1:]
+                    term = self.ring.term(rest, coefficient)
                     if e >= g.index:
                         term = term * radicand**(e // g.index)
                     result = result + term
@@ -401,14 +624,13 @@ class ElementaryTower:
                 changed = True
         return p
 
-    def _substituted(self, p: PolyElement, position: int, value: Element) -> Element:
+    def _substituted(self, p: TowerPolynomial, position: int, value: Element) -> Element:
         """``p`` with the generator at ``position`` replaced by ``value``."""
-        parts: dict[int, PolyElement] = {}
-        for monomial, coefficient in p.terms():
+        parts: dict[int, TowerPolynomial] = {}
+        for monomial, coefficient in p.terms.items():
             e = monomial[position]
-            rest = list(monomial)
-            rest[position] = 0
-            parts[e] = parts.get(e, self.ring.zero) + self.ring.from_dict({tuple(rest): coefficient})
+            rest = monomial[:position] + (0,) + monomial[position + 1:]
+            parts[e] = parts.get(e, self.ring.zero) + self.ring.term(rest, coefficient)
         total = self.zero
         for e, part in parts.items():
             total = total + Element(self, part, self.ring.one) * value**e
@@ -422,8 +644,7 @@ class ElementaryTower:
         for position, g in enumerate(self.generators):
             if g.eliminated is None:
                 continue
-            x = self.ring.gens[position]
-            if a.num.degree(x) > 0 or a.den.degree(x) > 0:
+            if a.num.degree_in(position) > 0 or a.den.degree_in(position) > 0:
                 value = self._lift(g.eliminated)
                 a = self._substituted(a.num, position, value) / self._substituted(a.den, position, value)
                 a = self._lift(a)
@@ -456,7 +677,7 @@ class ElementaryTower:
         elif g.kind == ROOT and g.radicand is not None:
             # sigma**q == S: sigma' = S'*sigma/(q*S)
             value = self.derivative(g.radicand, variable) * self._generator_element(position) \
-                / (g.radicand.times(Integer(g.index)))
+                / (g.radicand.times(Fraction(g.index)))
         else:
             value = self.zero
         self._derivatives[key] = value
@@ -467,13 +688,12 @@ class ElementaryTower:
         at position ``variable``."""
         a = self.normal(a)
 
-        def of_polynomial(p: PolyElement) -> Element:
+        def of_polynomial(p: TowerPolynomial) -> Element:
             total = self.zero
             for position in range(len(self.generators)):
-                x = self.ring.gens[position]
-                if p.degree(x) <= 0:
+                if p.degree_in(position) <= 0:
                     continue
-                partial = self._poly(p).diff(self.ring.gens[position])
+                partial = self._poly(p).diff(position)
                 if not partial:
                     continue
                 total = total + Element(self, partial, self.ring.one) * self._generator_derivative(position, variable)
@@ -491,17 +711,17 @@ class ElementaryTower:
         functions, which the roots follow by their relations)."""
         a = self.normal(a)
 
-        def of_polynomial(p: PolyElement) -> Element:
+        def of_polynomial(p: TowerPolynomial) -> Element:
             p = self._poly(p)
-            total = Element(self, p.diff(self.ring.gens[position]), self.ring.one)
+            total = Element(self, p.diff(position), self.ring.one)
             for j, g in enumerate(self.generators):
-                if g.kind != ROOT or g.eliminated is not None or g.radicand is None or p.degree(self.ring.gens[j]) <= 0:
+                if g.kind != ROOT or g.eliminated is not None or g.radicand is None or p.degree_in(j) <= 0:
                     continue
                 inner = self._formal_derivative(g.radicand, position)
                 if not self._lift(inner).num:
                     continue
-                total = total + Element(self, p.diff(self.ring.gens[j]), self.ring.one) * inner \
-                    * self._generator_element(j) / g.radicand.times(Integer(g.index))
+                total = total + Element(self, p.diff(j), self.ring.one) * inner \
+                    * self._generator_element(j) / g.radicand.times(Fraction(g.index))
             return total
 
         n, d = Element(self, a.num, self.ring.one), Element(self, a.den, self.ring.one)
@@ -516,21 +736,15 @@ class ElementaryTower:
 
     def _field_degree(self) -> int:
         """The degree of the number field over the rationals."""
-        K = self.domain
-        if isinstance(K, AlgebraicField):
-            return len(K.mod.to_list()) - 1
-        return 1
+        return self.domain.degree
 
-    def _components(self, coefficient: DomainElement) -> list[DomainElement]:
+    def _components(self, coefficient: Coefficient) -> list[Fraction]:
         """The coordinates of an element of the number field over the
         rationals."""
         degree = self._field_degree()
-        if degree == 1:
-            return [coefficient]
-        coordinates = list(coefficient.to_list())
-        return [QQ.zero] * (degree - len(coordinates)) + [QQ.convert(c) for c in coordinates]
+        return [Fraction(0)] * (degree - len(coefficient)) + list(coefficient)
 
-    def _solve(self, equations: list[tuple[Element, list[Element]]]) -> Optional[list[Rational]]:
+    def _solve(self, equations: list[tuple[Element, list[Element]]]) -> Optional[list[Fraction]]:
         """Rational numbers ``r`` with ``target == sum(r[i]*basis[i])`` for
         every ``(target, basis)`` of ``equations``, or ``None`` when there
         are none. The equations are compared through their normal forms,
@@ -539,36 +753,44 @@ class ElementaryTower:
         if not equations:
             return []
         unknowns = len(equations[0][1])
-        rows: list[list[DomainElement]] = []
+        rows: list[list[Fraction]] = []
+        width = self._field_degree()
         for target, basis in equations:
             members = [self.normal(target)] + [self.normal(b) for b in basis]
             common = self.ring.one
             for m in members:
-                common = common.lcm(m.den)
-            numerators = [self._reduce(m.num * common.quo(m.den)) for m in members]
-            monomials: set[tuple[int, ...]] = set()
+                common = self._lcm(common, m.den)
+            numerators = [self._reduce(m.num * common.exquo(m.den)) for m in members]
+            monomials: set[Monomial] = set()
             for p in numerators:
-                monomials.update(p.itermonoms())
-            width = self._field_degree()
+                monomials.update(p.terms)
             for monomial in monomials:
-                columns = [self._components(p.get(monomial, self.domain.zero)) if p.get(monomial, None) is not None
-                           else [QQ.zero] * width for p in numerators]
+                columns = [self._components(p.terms[monomial]) if monomial in p.terms else [Fraction(0)] * width
+                           for p in numerators]
                 for k in range(width):
                     rows.append([columns[i + 1][k] for i in range(unknowns)] + [columns[0][k]])
         rows = [row for row in rows if any(row)]
         if not rows:
-            return [Rational(0)] * unknowns
+            return [Fraction(0)] * unknowns
         if unknowns == 0:
             return None
-        matrix = DomainMatrix(rows, (len(rows), unknowns + 1), QQ)
-        reduced, pivots = matrix.rref()
+        table, pivots = _rref(rows, unknowns + 1)
         if unknowns in pivots:
             return None
-        table = reduced.to_list()
-        solution = [Rational(0)] * unknowns
+        solution = [Fraction(0)] * unknowns
         for row, pivot in enumerate(pivots):
-            solution[pivot] = as_rational(QQ.to_sympy(table[row][unknowns]))
+            solution[pivot] = table[row][unknowns]
         return solution
+
+    def _lcm(self, a: TowerPolynomial, b: TowerPolynomial) -> TowerPolynomial:
+        """A least common multiple of two denominators."""
+        a, b = self._poly(a), self._poly(b)
+        if a.is_ground:
+            return b
+        if b.is_ground or a == b:
+            return a
+        _, cofactor = self._cancel(a, b)
+        return a * cofactor
 
     # ------------------------------------------------------------------
     # numbers
@@ -577,63 +799,231 @@ class ElementaryTower:
         """An algebraic number as an element, the number field extended
         when it is not in it yet."""
         if isinstance(value, Rational):
-            return self.constant(value)
+            return self.constant(_rational(value))
         try:
             converted = self._field_element(value)
-        except (CoercionFailed, NotAlgebraic, DomainError, PolynomialError, NotImplementedError, ValueError):
+        except (_NotInField, ArithmeticError):
             # the field grows by a primitive element, whose cost explodes
             # with the degree: sqrt(2), I, 2**(1/3) and exp(I*pi/5) together
-            # have degree 48 and SymPy does not finish
-            t = Dummy('t')
+            # have degree 48
             try:
-                degree = int(Poly(minimal_polynomial(value, t), t).degree())
-            except (NotAlgebraic, NotImplementedError, PolynomialError, ValueError):
+                number = _algebraic(value)
+            except (_NotInField, ArithmeticError):
                 raise NotElementary("%s is not an algebraic number this module can hold" % (value,))
+            if number.is_rational:
+                return self.constant(number.rational_value())
+            degree = number.degree
             if degree * self._field_degree() > _FIELD_DEGREE_LIMIT:
                 raise NotElementary("the number field of %s would have degree up to %d"
                                     % (value, degree * self._field_degree()))
-            # without its rational coefficient: QQ.algebraic_field(2*I, 2*(-1)**(1/3))
-            # raises NotInvertible in SymPy 1.14 where (I, (-1)**(1/3)) works
+            # without its rational coefficient
             _, core = value.as_coeff_Mul()
-            self.extensions.append(as_expr(core))
+            before = self._field_degree()
             try:
-                self.domain = QQ.algebraic_field(*self.extensions)
+                self._extend(core)
                 converted = self._field_element(value)
-            except (CoercionFailed, NotAlgebraic, DomainError, PolynomialError, NotImplementedError, ValueError,
-                    NotInvertible):
-                self.extensions.pop()
-                self.domain = QQ.algebraic_field(*self.extensions) if self.extensions else QQ
+            except (_NotInField, ArithmeticError):
                 raise NotElementary("%s is not an algebraic number this module can hold" % (value,))
-            self._rebuild()
-            self._derivatives.clear()
-        return Element(self, self.ring.ground_new(converted), self.ring.one)
+            finally:
+                if self._field_degree() != before:
+                    self._rebuild()
+                    self._derivatives.clear()
+        return Element(self, self.ring.ground(converted), self.ring.one)
 
-    def _field_element(self, value: Expr) -> DomainElement:
-        """``value`` in the number field, sums, products and integer powers
-        taken apart first: ``QQ.algebraic_field(w).from_sympy(2*w)`` fails
-        in SymPy 1.14 for ``w = (-1)**(1/3)`` where ``w`` and ``1 + w``
-        convert."""
+    def _extend(self, extension: Expr) -> None:
+        """The number field extended by the algebraic number
+        ``extension``: a new primitive element ``theta + c*extension``, the
+        coordinates of the old numbers rewritten in it."""
+        number = _algebraic(extension)
+        if number.is_rational:
+            raise _NotInField("%s is rational" % (extension,))
+        if self._theta is None:
+            theta, old, new = number, [Fraction(1), Fraction(0)], [Fraction(1), Fraction(0)]
+            expression = extension
+        else:
+            theta, old, new = primitive_element(self._theta, number)
+        if theta.degree == self._field_degree():
+            raise _NotInField("%s is in the field already" % (extension,))
+        leading = theta.minpoly[0]
+        K = AlgebraicField([Fraction(c, leading) for c in theta.minpoly], Integer(0))
+        if self._theta is not None:
+            # theta = old + c*new: c is a rational number
+            ratio = K.quo(K.sub(K.alpha, K._reduce(old)), K._reduce(new))
+            c = ratio[0] if ratio else Fraction(0)
+            expression = add(self._theta_expression, mul(number_from_fraction(c), extension))
+        K = AlgebraicField([Fraction(c, leading) for c in theta.minpoly], expression)
+        previous = self.domain
+        embedding = K._reduce(list(old))
+        self.domain = K
+        self._embeddings = {field: self._embed(rep, embedding) for field, rep in self._embeddings.items()}
+        self._embeddings[previous] = embedding
+        self._coordinates = [self._embed(c, embedding) for c in self._coordinates] + [K._reduce(list(new))]
+        self.extensions.append(extension)
+        self._numbers.append(number)
+        self._degrees.append(K.degree // previous.degree)
+        self._theta = theta
+        self._theta_expression = expression
+        self._monomial_basis()
+
+    def _monomial_basis(self) -> None:
+        """The basis of the products ``prod(e_i**k_i)``, ``k_i`` below the
+        relative degree of the extension ``e_i``, in which the numbers are
+        written as expressions: their expressions, and the matrix taking
+        coordinates in the powers of the primitive element to coordinates
+        in it."""
+        K = self.domain
+        n = K.degree
+        exponents: list[list[int]] = [[]]
+        for d in self._degrees:
+            exponents = [e + [k] for e in exponents for k in range(d)]
+        rows: list[list[Fraction]] = []
+        expressions: list[Expr] = []
+        for e in exponents:
+            c = K.one
+            factors: list[Expr] = []
+            for k, coordinates, extension in zip(e, self._coordinates, self.extensions):
+                if k:
+                    c = K.mul(c, K.pow(coordinates, k))
+                    factors.append(pow(extension, Integer(k)))
+            rows.append(self._components(c))
+            expressions.append(mul(*factors) if factors else Integer(1))
+        # coordinates y in the basis of a number with coordinates c (in the
+        # powers, highest first): sum(y_j*rows[j]) == c, solved once by
+        # inverting the transposed matrix
+        width = len(rows)
+        augmented = [[rows[j][i] for j in range(width)] + [Fraction(int(i == k)) for k in range(n)] for i in range(n)]
+        reduced, pivots = _rref(augmented, width)
+        if pivots != list(range(width)):
+            raise _NotInField("the products of the extensions are not a basis")
+        self._to_basis = [row[width:] for row in reduced[:width]]
+        self._basis_expressions = expressions
+
+    def _field_element(self, value: Expr) -> Coefficient:
+        """``value`` in the number field: rational numbers, the extensions,
+        their sums, products and integer powers, and the other numbers by
+        a linear factor of their minimal polynomial over the field whose
+        root they are; :class:`_NotInField` otherwise."""
         K = self.domain
         if isinstance(value, Rational):
-            return K.convert(value.p) / K.convert(value.q)
+            return K.from_rational(_rational(value))
+        for extension, coordinates in zip(self.extensions, self._coordinates):
+            if value == extension:
+                return coordinates
         try:
-            return K.from_sympy(value)                       # whole: 1 + sqrt(3)*I is in QQ<(-1)**(1/3)>, I is not
-        except (CoercionFailed, NotAlgebraic, DomainError, PolynomialError, NotImplementedError, ValueError):
-            if not isinstance(value, (Add, Mul, Pow)):
-                raise
-        if isinstance(value, Add):
-            total = K.zero
-            for term in value.args:
-                total = total + self._field_element(as_expr(term))
-            return total
-        if isinstance(value, Mul):
-            product = K.one
-            for factor in value.args:
-                product = product * self._field_element(as_expr(factor))
-            return product
-        if isinstance(value, Pow) and isinstance(value.exp, Integer):
-            return self._field_element(as_expr(value.base))**int(value.exp)
-        return K.from_sympy(value)
+            if isinstance(value, Add):
+                total = K.zero
+                for term in value.args:
+                    total = K.add(total, self._field_element(as_expr(term)))
+                return total
+            if isinstance(value, Mul):
+                product = K.one
+                for factor in value.args:
+                    product = K.mul(product, self._field_element(as_expr(factor)))
+                return product
+            if isinstance(value, Pow) and isinstance(value.exp, Integer):
+                base = self._field_element(as_expr(value.base))
+                n = int(value.exp.p)
+                if n < 0:
+                    if not base:
+                        raise _NotInField("a negative power of zero")
+                    return K.pow(K.invert(base), -n)
+                return K.pow(base, n)
+        except _NotInField:
+            # the parts are not in the field, the whole may be: sqrt(3)*I
+            # in QQ<(-1)**(1/3)>
+            pass
+        theta = self._theta
+        if theta is None:
+            raise _NotInField("%s is not rational" % (value,))
+        power = self._radical_element(value)
+        if power is not None:
+            return power
+        number = _algebraic(value)
+        if number.is_rational:
+            return K.from_rational(number.rational_value())
+        leading = number.minpoly[0]
+        f = [K.from_rational(Fraction(c, leading)) for c in number.minpoly]
+        _, factors = dup_ext_factor(f, K)
+        for g, _ in factors:
+            if len(g) == 2:
+                root = K.neg(K.quo(g[1], g[0]))
+                if theta.polynomial_value(root) == number:
+                    return root
+        raise _NotInField("%s is not in %s" % (value, K))
+
+    def _radical_element(self, value: Expr) -> Optional[Coefficient]:
+        """``b**r`` (``b`` and ``r`` rational) as a product of powers of the
+        extensions ``b**s``: the principal power ``exp(r*log(b))`` is a
+        homomorphism in ``r``, so that ``b**r = prod((b**s_i)**n_i)`` for
+        integers with ``r = sum(n_i*s_i)``; ``None`` when ``r`` is not such
+        a combination."""
+        radical = _rational_power(value)
+        if radical is None:
+            return None
+        base, r = radical
+        direct = self._power_of_extensions(base, r)
+        if direct is not None:
+            return direct
+        # b**r = (-1)**r * prod(p**(e*r)) over the primes of b, exactly for
+        # the principal powers (|b|**r is a positive real number)
+        K = self.domain
+        result = K.one
+        parts: list[tuple[Fraction, Fraction]] = [(Fraction(-1), r)] if base < 0 else []
+        for n, sign in ((abs(base.numerator), 1), (base.denominator, -1)):
+            for prime, exponent in factorint(n).items():
+                parts.append((Fraction(prime), r * exponent * sign))
+        if len(parts) < 2:
+            return None
+        for b, t in parts:
+            found = self._power_of_extensions(b, t) if t.denominator > 1 else K.pow(K.from_rational(b), t.numerator) \
+                if t >= 0 else K.pow(K.invert(K.from_rational(b)), -t.numerator)
+            if found is None:
+                return None
+            result = K.mul(result, found)
+        return result
+
+    def _power_of_extensions(self, base: Fraction, r: Fraction) -> Optional[Coefficient]:
+        """``base**r`` as a product of integer powers of the extensions
+        ``base**s``, ``None`` when there is none."""
+        same: list[tuple[Fraction, Coefficient]] = []
+        for extension, coordinates in zip(self.extensions, self._coordinates):
+            other = _rational_power(extension)
+            if other is not None and other[0] == base:
+                same.append((other[1], coordinates))
+        if not same:
+            return None
+        L = math.lcm(*[e.denominator for e, _ in same], r.denominator)
+        steps = [int(e * L) for e, _ in same]
+        # Bezout coefficients of the steps, one at a time
+        g, coefficients = steps[0], [1] + [0] * (len(steps) - 1)
+        for i in range(1, len(steps)):
+            d, u, v = _extended_gcd(g, steps[i])
+            coefficients = [c * u for c in coefficients]
+            coefficients[i] = v
+            g = d
+        target = int(r * L)
+        if target % g:
+            return None
+        K = self.domain
+        result = K.one
+        for n, (_, coordinates) in zip(coefficients, same):
+            n *= target // g
+            if n:
+                result = K.mul(result, K.pow(coordinates, n) if n > 0 else K.pow(K.invert(coordinates), -n))
+        return result
+
+    def _coefficient_expr(self, c: Coefficient) -> Expr:
+        """A number of the field as an expression in the extensions: a
+        rational combination of the products of their powers."""
+        if len(c) <= 1:
+            return number_from_fraction(c[0]) if c else Integer(0)
+        vector = self._components(c)
+        terms: list[Expr] = []
+        for row, expression in zip(self._to_basis, self._basis_expressions):
+            y = sum((a * b for a, b in zip(row, vector)), Fraction(0))
+            if y:
+                terms.append(mul(number_from_fraction(y), expression))
+        return add(*terms) if terms else Integer(0)
 
     def as_number(self, a: Element) -> Optional[Expr]:
         """The algebraic number which ``a`` is, or ``None`` when it
@@ -641,23 +1031,19 @@ class ElementaryTower:
         a = self.normal(a)
         if not a.num.is_ground or not a.den.is_ground:
             return None
-        return as_expr(self.domain.to_sympy(a.num.LC if a.num else self.domain.zero)
-                       / self.domain.to_sympy(a.den.LC))
+        return div(self._coefficient_expr(a.num.LC), self._coefficient_expr(a.den.LC))
 
     # ------------------------------------------------------------------
     # questions about the region
 
     def _facts(self) -> list[Boolean]:
-        if self.assumptions is None:
-            return []
-        if isinstance(self.assumptions, (Boolean, bool)):
-            return [as_boolean(self.assumptions)]
-        return [as_boolean(fact) for fact in self.assumptions]
+        return list(self.assumptions)
 
     def _ask(self, query: Boolean, more: Optional[list[Boolean]] = None) -> Optional[bool]:
         facts = self._facts() + list(more or [])
         found = attempt(lambda: ask(query, facts or None),
-                        _ASK_SECONDS if settings.timeout is None else min(_ASK_SECONDS, settings.timeout))
+                        _ASK_SECONDS if settings.timeout is None else min(_ASK_SECONDS, settings.timeout),
+                        native=True)
         return found
 
     def _positive(self, a: Element) -> bool:
@@ -678,10 +1064,9 @@ class ElementaryTower:
             elif value.free_symbols and value.is_extended_real is not False and not value.has(I):
                 # a value written with I is not asked about: a sign is a
                 # property of real values, and the question is only safe for them
-                # (SymPy refuses to compare a number it knows not to be real)
-                if self._ask(as_boolean(value > 0)) is True:
+                if self._ask(value > 0) is True:
                     sign = 1
-                elif self._ask(as_boolean(value < 0)) is True:
+                elif self._ask(value < 0) is True:
                     sign = -1
             self._signs[value] = sign
         return self._signs[value]
@@ -690,7 +1075,7 @@ class ElementaryTower:
         value = self.to_expr(a)
         if value.is_extended_real:
             return True
-        return self._ask(as_boolean(member(value, S.Reals))) is True if value.free_symbols else False
+        return self._ask(member(value, Reals)) is True if value.free_symbols else False
 
     # ------------------------------------------------------------------
     # exponentials
@@ -721,7 +1106,7 @@ class ElementaryTower:
             return self.normal(result)
         variables = self._variable_positions()
         moving, still = self._split_pairs()
-        factors: list[tuple[int, Rational]] = []
+        factors: list[tuple[int, Fraction]] = []
         constant = a
         if not self.is_constant(a):
             found = self._solve([(self.derivative(a, k), [self.derivative(self.pairs[i].z, k) for i in moving])
@@ -757,8 +1142,7 @@ class ElementaryTower:
         kind."""
         a = self.normal(a)
         for position in range(len(self.generators)):
-            x = self.ring.gens[position]
-            if (a.num.degree(x) > 0 or a.den.degree(x) > 0) \
+            if (a.num.degree_in(position) > 0 or a.den.degree_in(position) > 0) \
                     and not self.is_constant(self._generator_element(position)):
                 return False
         return True
@@ -775,16 +1159,16 @@ class ElementaryTower:
     def _new_exponential(self, a: Element, certified: bool = True) -> Element:
         certified = certified and self._sound()
         expression = exp(self.to_expr(a))
-        position = self._add_generator(Generator(EXPONENTIAL, Dummy('e'), expression, a, certified))
+        position = self._add_generator(Generator(EXPONENTIAL, self._new_name(), expression, a, certified))
         theta = self._generator_element(position)
         self.pairs.append(_Pair(a, theta, position, False))
         return theta
 
-    def _pair_power(self, i: int, r: Rational) -> Element:
+    def _pair_power(self, i: int, r: Fraction) -> Element:
         """``exp(r*z_i)``."""
-        if r.q == 1:
-            return self.pairs[i].e**int(r.p)
-        return self._root(i, int(r.q))**int(r.p)
+        if r.denominator == 1:
+            return self.pairs[i].e**r.numerator
+        return self._root(i, r.denominator)**r.numerator
 
     def _root(self, i: int, q: int) -> Element:
         """``exp(z_i/q)``: an algebraic number when ``e_i`` is one, the
@@ -793,7 +1177,7 @@ class ElementaryTower:
         pair = self.pairs[i]
         number = self.as_number(pair.e)
         if number is not None and pair.logarithmic:
-            return self._number(as_expr(Pow(number, Rational(1, q))))
+            return self._number(pow(number, number_from_fraction(Fraction(1, q))))
         if pair.master >= 0:
             master = self.generators[pair.master]
             if master.index % q == 0 and master.scale is not None:
@@ -805,10 +1189,10 @@ class ElementaryTower:
         n, d = Element(self, e.num, self.ring.one), Element(self, e.den, self.ring.one)
         # the ring generator is sigma = d*rho, whose power is a polynomial
         if pair.logarithmic:
-            expression = as_expr(self.to_expr(d) * Pow(self.to_expr(e), Rational(1, index)))
+            expression = mul(self.to_expr(d), pow(self.to_expr(e), number_from_fraction(Fraction(1, index))))
         else:
-            expression = as_expr(self.to_expr(d) * exp(self.to_expr(pair.z) / index))
-        generator = Generator(ROOT, Dummy('r'), expression)
+            expression = mul(self.to_expr(d), exp(div(self.to_expr(pair.z), Integer(index))))
+        generator = Generator(ROOT, self._new_name(), expression)
         generator.index = index
         generator.source = i
         generator.radicand = n * d**(index - 1)
@@ -838,46 +1222,56 @@ class ElementaryTower:
         v = self.normal(v)
         if not v.num:
             raise NotElementary("the logarithm of zero")
-        number = self.as_number(v)
-        if number is not None:
-            return self._number_logarithm(number)
+        if self._is_number(v):
+            return self._number_logarithm(v)
         positive, rest = self._positive_part(v)
         if not positive:
             return self._structured_logarithm(v)
         total = self.zero
         for factor, power in positive:
-            number = self.as_number(factor)
-            piece = self._number_logarithm(number) if number is not None else self._structured_logarithm(factor)
-            total = total + piece.times(Integer(power))
+            piece = self._number_logarithm(factor) if self._is_number(factor) else self._structured_logarithm(factor)
+            total = total + piece.times(Fraction(power))
         if not self.vanishes(rest - self.one):
-            number = self.as_number(rest)
-            total = total + (self._number_logarithm(number) if number is not None
+            total = total + (self._number_logarithm(rest) if self._is_number(rest)
                              else self._structured_logarithm(rest))
         return self.normal(total)
+
+    def _factor_list(self, p: TowerPolynomial) -> tuple[Coefficient, list[tuple[TowerPolynomial, int]]]:
+        """The coefficient and the irreducible factors of ``p`` over the
+        number field: over the rationals the primitive integral factors
+        with a positive leading coefficient, over a larger field the
+        monic ones."""
+        p = self._poly(p)
+        if isinstance(self.domain, _Rationals):
+            from sympy_extras.polys.polytools import _factor_all
+            ring = PolyRing(QQ, self.ring.names)
+            coefficient, factors = _factor_all(ring.from_dict({m: c[0] for m, c in p.terms.items()}))
+            return (self.domain.from_rational(coefficient),
+                    [(self.ring.from_dict({m: [Fraction(c)] for m, c in f.terms.items()}), k) for f, k in factors])
+        return ext_factor_list(p)
 
     def _positive_part(self, v: Element) -> tuple[list[tuple[Element, int]], Element]:
         """The irreducible factors of ``v`` which are positive on the
         region, with their exponents, and the rest of ``v``; nothing is
         split when ``v`` involves a root or is one positive factor."""
-        roots = [self.ring.gens[i] for i, g in enumerate(self.generators) if g.kind == ROOT]
-        if any(v.num.degree(x) > 0 or v.den.degree(x) > 0 for x in roots):
+        roots = [i for i, g in enumerate(self.generators) if g.kind == ROOT]
+        if any(v.num.degree_in(x) > 0 or v.den.degree_in(x) > 0 for x in roots):
             return [], v
         pieces: list[tuple[Element, int]] = []
         content = self.one
         for polynomial, sign in ((v.num, 1), (v.den, -1)):
-            coefficient, factors = polynomial.factor_list()
-            content = content * Element(self, self.ring.ground_new(coefficient), self.ring.one)**sign
-            for factor, multiplicity in factors:
-                pieces.append((Element(self, factor, self.ring.one), sign * int(multiplicity)))
+            coefficient, factors = self._factor_list(polynomial)
+            content = content * Element(self, self.ring.ground(coefficient), self.ring.one)**sign
+            for polynomial_factor, multiplicity in factors:
+                pieces.append((Element(self, polynomial_factor, self.ring.one), sign * multiplicity))
         if len(pieces) == 1 and pieces[0][1] == 1 and self.vanishes(content - self.one):
             return [], v
         positive: list[tuple[Element, int]] = []
         rest = self.one
-        value = self.as_number(content)
-        if value is not None and value.is_positive:
-            if value != 1:
+        if self._is_number(content) and self._positive_number(content):
+            if not self.vanishes(content - self.one):
                 positive.append((content, 1))
-        elif value is not None and value.is_negative:
+        elif self._is_number(content) and self._negative_number(content):
             positive.append((-content, 1))
             rest = -rest
         else:
@@ -898,9 +1292,8 @@ class ElementaryTower:
     def _structured_logarithm(self, v: Element) -> Element:
         """``log(v)`` by the structure theorem, ``v`` taken whole."""
         v = self.normal(v)
-        number = self.as_number(v)
-        if number is not None:
-            return self._number_logarithm(number)
+        if self._is_number(v):
+            return self._number_logarithm(v)
         known = self._known_logarithm(v)
         if known is not None:
             return known
@@ -918,7 +1311,7 @@ class ElementaryTower:
             return self._new_logarithm(v, certified=True)
         used = [(i, r) for i, r in zip(moving, found) if r != 0]
         if self._positive(v) and all(self._pair_is_real(i) for i, _ in used):
-            scale = math.lcm(*[int(r.q) for _, r in used]) if used else 1
+            scale = math.lcm(*[r.denominator for _, r in used]) if used else 1
             m = v**scale
             total = self.zero
             for i, r in used:
@@ -928,7 +1321,7 @@ class ElementaryTower:
             if self.is_constant(m):
                 rest = self._positive_constant_logarithm(m)
                 if rest is not None:
-                    return self.normal(total + rest.times(Rational(1, scale)))
+                    return self.normal(total + rest.times(Fraction(1, scale)))
         if self._negative(v):
             return self.normal(self._minus_one_logarithm() + self._structured_logarithm(-v))
         pinned = self._pinned_logarithm(v, used)
@@ -956,12 +1349,12 @@ class ElementaryTower:
             for k in range(1, g.index):
                 power = power * rho
                 if self.vanishes(power - v):
-                    return source.z.times(Rational(k, g.index))
+                    return source.z.times(Fraction(k, g.index))
                 if self.vanishes(power * v - self.one):
-                    return source.z.times(Rational(-k, g.index))
+                    return source.z.times(Fraction(-k, g.index))
         return None
 
-    def _pinned_logarithm(self, v: Element, used: list[tuple[int, Rational]]) -> Optional[Element]:
+    def _pinned_logarithm(self, v: Element, used: list[tuple[int, Fraction]]) -> Optional[Element]:
         """``log(v) = sum(r_i*z_i) + c`` with the locally constant ``c``
         pinned at a sample point: exact when the variables are real, the
         region of the assumptions is convex (so connected) and no
@@ -969,13 +1362,13 @@ class ElementaryTower:
         negative axis on it; then ``scale*c`` is a logarithm of the number
         ``v**scale * prod(e_i**(-r_i*scale))``, which the value of ``c`` at
         one point tells from the others (they differ by ``2*pi*I``)."""
-        from sympy.core.relational import Ne
-        from sympy.logic.boolalg import Or
         if not self._convex_region():
             return None
-        from sympy.core.relational import Eq
         arguments = [v] + [self.pairs[i].e for i, _ in used if self.pairs[i].logarithmic]
-        symbols = sorted_symbols(set().union(*[free_symbols(self.to_expr(w)) for w in arguments]))
+        found_symbols: set[Symbol] = set()
+        for w in arguments:
+            found_symbols |= self.to_expr(w).free_symbols
+        symbols = sorted(found_symbols, key=lambda s: s.name)
         if not all(self._real(self.variable(symbol)) for symbol in symbols):
             return None
         # a root of a radicand positive on the region is a positive number:
@@ -990,55 +1383,62 @@ class ElementaryTower:
                 if source.logarithmic and self._positive(source.e):
                     rho = Dummy('rho', positive=True)
                     stand_ins.append(rho)
-                    meaning = as_expr(self.to_expr(g.scale) * rho)
-                    facts.extend([as_boolean(rho > 0), as_boolean(Eq(rho**g.index, self.to_expr(source.e)))])
+                    meaning = mul(self.to_expr(g.scale), rho)
+                    facts.extend([rho > 0, eq(pow(rho, Integer(g.index)), self.to_expr(source.e))])
             meanings.append(meaning)
-        reals = {symbol: Dummy(symbol.name, **{**symbol.assumptions0, 'real': True}) for symbol in symbols}
-        back = {dummy: symbol for symbol, dummy in reals.items()}
+        reals: dict[Basic, Basic] = {}
+        back: dict[Basic, Basic] = {}
+        for symbol in symbols:
+            dummy = Dummy(symbol.name, **{**symbol.assumptions0, 'real': True})
+            reals[symbol] = dummy
+            back[dummy] = symbol
 
         def parts(value: Expr) -> tuple[Expr, Expr]:
-            real_part, imaginary_part = as_expr(value.xreplace(reals)).as_real_imag()
-            return as_expr(real_part.xreplace(back)), as_expr(imaginary_part.xreplace(back))
+            real_part, imaginary_part = value.xreplace(reals).as_real_imag()
+            return real_part.xreplace(back), imaginary_part.xreplace(back)
 
         # everything in log(v) - sum(r_i*z_i) must be analytic on the whole
         # region: no pole of an argument or of a z_i inside it (the bug:
         # atan(x) + atan(1/x) - pi/2 was "proved" for every real x from
         # its value at one point, the pole at 0 cutting the line in two)
         for w in arguments + [self.pairs[i].z for i, _ in used]:
-            denominator = as_expr(self.normal(w).den.as_expr(*meanings))
+            denominator = self._polynomial_expr(self.normal(w).den, meanings)
             if denominator.free_symbols:
                 if not denominator.is_rational_function(*symbols, *stand_ins):
                     return None
                 real_part, imaginary_part = parts(denominator)
-                if self._ask(as_boolean(Or(Ne(real_part, 0), Ne(imaginary_part, 0))), facts) is not True:
+                if self._ask(or_(ne(real_part, 0), ne(imaginary_part, 0)), facts) is not True:
                     return None
         for w in arguments:
             w = self.normal(w)
-            value = as_expr(as_expr(w.num.as_expr(*meanings)) / as_expr(w.den.as_expr(*meanings)))
+            value = div(self._polynomial_expr(w.num, meanings), self._polynomial_expr(w.den, meanings))
             if not value.is_rational_function(*symbols, *stand_ins):
                 return None
             real_part, imaginary_part = parts(value)
             if imaginary_part == 0:
                 if self._sign(self.to_expr(w)) == 0:
                     return None
-            elif self._ask(as_boolean(Or(Ne(imaginary_part, 0), real_part > 0)), facts) is not True:
+            elif self._ask(or_(ne(imaginary_part, 0), real_part > 0), facts) is not True:
                 return None
-        scale = math.lcm(*[int(r.q) for _, r in used]) if used else 1
+        scale = math.lcm(*[r.denominator for _, r in used]) if used else 1
         m = v**scale
         total = self.zero
         for i, r in used:
             m = m * self.pairs[i].e**(-int(r * scale))
             total = total + self.pairs[i].z.times(r)
-        number = self.as_number(self.normal(m))
-        if number is None:
+        m = self.normal(m)
+        if not self._is_number(m):
             return None
-        principal = self._number_logarithm(number)
-        from sympy_extras.integrals.conditions import sample_values
-        values = sample_values(symbols, self.assumptions, random.Random(str(self.to_expr(v)))) if symbols else {}
+        principal = self._number_logarithm(m)
+        values: Optional[dict[Symbol, Expr]] = {}
+        if symbols:
+            from .structure_sympy import sample_values_of_core
+            values = sample_values_of_core(symbols, self.assumptions, random.Random(str(self.to_expr(v))))
         if values is None:
             return None
-        gap = as_expr(scale * (log(self.to_expr(v)) - self.to_expr(total)) - self.to_expr(principal))
-        measured = attempt(lambda: complex(as_expr(gap.xreplace(values)).evalf(40)), settings.timeout)
+        point: dict[Basic, Basic] = {s: value for s, value in values.items()}
+        gap = add(mul(Integer(scale), add(log(self.to_expr(v)), -self.to_expr(total))), -self.to_expr(principal))
+        measured = attempt(lambda: complex(gap.xreplace(point).evalf(40)), settings.timeout, native=True)
         if measured is None:
             return None
         turns = measured.imag / (2 * math.pi)
@@ -1046,34 +1446,33 @@ class ElementaryTower:
             return None
         constant = principal
         if round(turns) != 0:
-            constant = constant + self._minus_one_logarithm().times(Integer(2 * round(turns)))
-        return self.normal(total + constant.times(Rational(1, scale)))
+            constant = constant + self._minus_one_logarithm().times(Fraction(2 * round(turns)))
+        return self.normal(total + constant.times(Fraction(1, scale)))
 
     def _convex_region(self) -> bool:
         """Whether the assumptions are a conjunction of relations linear
         in the symbols (or there are none): a convex set, hence
         connected."""
-        from sympy.core.relational import Ge, Gt, Le, Lt
-        from sympy.logic.boolalg import And
+        from sympy_extras.polys.polytools import Poly
         parts: list[Boolean] = []
         pending: list[Boolean] = self._facts()
         while pending:
             part = pending.pop()
             if isinstance(part, And):
-                pending.extend(as_boolean(arg) for arg in part.args)
+                pending.extend(to_boolean(arg) for arg in part.args)
             else:
                 parts.append(part)
         for part in parts:
-            if part is S.true:
+            if isinstance(part, BooleanTrue):
                 continue
             if not isinstance(part, (Gt, Ge, Lt, Le)):
                 return False
-            difference = as_expr(part.lhs - part.rhs)
-            symbols = sorted_symbols(free_symbols(difference))
+            difference = add(part.lhs, -part.rhs)
+            symbols = sorted(difference.free_symbols, key=lambda s: s.name)
             try:
                 if symbols and Poly(difference, *symbols).total_degree() > 1:
                     return False
-            except PolynomialError:
+            except (BasePolynomialError, ValueError):
                 return False
         return True
 
@@ -1086,7 +1485,7 @@ class ElementaryTower:
     def _new_logarithm(self, v: Element, certified: bool) -> Element:
         certified = certified and self._sound()
         expression = log(self.to_expr(v))
-        position = self._add_generator(Generator(LOGARITHM, Dummy('l'), expression, v, certified))
+        position = self._add_generator(Generator(LOGARITHM, self._new_name(), expression, v, certified))
         L = self._generator_element(position)
         self.pairs.append(_Pair(L, v, position, True))
         return L
@@ -1094,58 +1493,59 @@ class ElementaryTower:
     def _minus_one_logarithm(self) -> Element:
         """``log(-1) = I*pi``, the generator which carries ``pi``."""
         if self._minus_one < 0:
-            v = self.constant(Rational(-1))
-            position = self._add_generator(Generator(LOGARITHM, Dummy('l'), as_expr(I * pi), v))
+            v = self.constant(Fraction(-1))
+            position = self._add_generator(Generator(LOGARITHM, self._new_name(), mul(I, pi), v))
             self.pairs.append(_Pair(self._generator_element(position), v, position, True))
             self._minus_one = position
         return self._generator_element(self._minus_one)
 
     def _prime_logarithm(self, p: int) -> Element:
         if p not in self._prime_logs:
-            v = self.constant(Rational(p))
-            position = self._add_generator(Generator(LOGARITHM, Dummy('l'), log(Integer(p)), v))
+            v = self.constant(Fraction(p))
+            position = self._add_generator(Generator(LOGARITHM, self._new_name(), log(Integer(p)), v))
             self.pairs.append(_Pair(self._generator_element(position), v, position, True))
             self._prime_logs[p] = position
         return self._generator_element(self._prime_logs[p])
 
-    def _number_logarithm(self, value: Expr) -> Element:
-        """The principal logarithm of a nonzero algebraic number: the
-        logarithms of the primes for a positive rational, ``I*pi`` more
-        for a negative one, a fraction of those when a power of the
-        number is rational, a generator otherwise."""
-        if isinstance(value, Rational):
-            if value < 0:
-                return self.normal(self._minus_one_logarithm() + self._number_logarithm(-value))
+    def _number_logarithm(self, a: Element) -> Element:
+        """The principal logarithm of a nonzero algebraic number ``a`` of
+        the field: the logarithms of the primes for a positive rational,
+        ``I*pi`` more for a negative one, a fraction of those when a power
+        of the number is rational, a generator otherwise."""
+        q = self._rational_of(a)
+        if q is not None:
+            if q < 0:
+                return self.normal(self._minus_one_logarithm() + self._number_logarithm(self.constant(-q)))
             total = self.zero
-            for prime, exponent in factorint(int(value.p)).items():
-                total = total + self._prime_logarithm(prime).times(Integer(exponent))
-            for prime, exponent in factorint(int(value.q)).items():
-                total = total - self._prime_logarithm(prime).times(Integer(exponent))
+            for prime, exponent in factorint(q.numerator).items():
+                total = total + self._prime_logarithm(prime).times(Fraction(exponent))
+            for prime, exponent in factorint(q.denominator).items():
+                total = total - self._prime_logarithm(prime).times(Fraction(exponent))
             return self.normal(total)
-        degree = int(Poly(minimal_polynomial(value, Dummy('t'))).degree())
-        a = self._number(value)
+        a = self.normal(a)
+        number = self._algebraic_value(a)
         power = self.one
-        for k in range(1, 2 * degree + 1):
+        for k in range(1, 2 * number.degree + 1):
             power = self.normal(power * a)
-            rational = self.as_number(power)
-            if isinstance(rational, Rational):
+            r = self._rational_of(power)
+            if r is not None:
                 # k*log(value) = log(rational) + 2*pi*I*j for an integer j
-                real = self._number_logarithm(as_rational(abs(rational)))
-                argument = complex(as_expr(value).evalf(30))
-                angle = k * math.atan2(argument.imag, argument.real) - (math.pi if rational < 0 else 0.0)
+                real = self._number_logarithm(self.constant(abs(r)))
+                argument = complex(number)
+                angle = k * math.atan2(argument.imag, argument.real) - (math.pi if r < 0 else 0.0)
                 turns = round(angle / (2 * math.pi))
-                extra = Rational(2 * turns + (1 if rational < 0 else 0), 1)
+                extra = Fraction(2 * turns + (1 if r < 0 else 0))
                 total = real + self._minus_one_logarithm().times(extra) if extra != 0 else real
-                return self.normal(total.times(Rational(1, k)))
-        related = self._related_logarithm(value, a)
+                return self.normal(total.times(Fraction(1, k)))
+        related = self._related_logarithm(a, number)
         if related is not None:
             return related
-        certified = self._moduli_differ(value) and not any(
-            g.kind == LOGARITHM and g.argument is not None and not isinstance(self.as_number(g.argument), Rational)
-            and self.as_number(g.argument) is not None for g in self.generators)
+        certified = _moduli_differ(number.minpoly) and not any(
+            g.kind == LOGARITHM and g.argument is not None and self._is_number(g.argument)
+            and self._rational_of(g.argument) is None for g in self.generators)
         return self._new_logarithm(a, certified=certified)
 
-    def _related_logarithm(self, value: Expr, a: Element) -> Optional[Element]:
+    def _related_logarithm(self, a: Element, number_a: Algebraic) -> Optional[Element]:
         """The logarithm of an algebraic number through a multiplicative
         relation with the numbers whose logarithms are generators
         already: integers with ``value**n0 == u * prod(e_j**n_j)``, ``u`` a
@@ -1154,20 +1554,17 @@ class ElementaryTower:
         exactly in the number field; the multiple of ``2*pi*I`` is told by
         the numerical value. Machin's formula is such a relation between
         ``5 + I``, ``239 - I``, ``1 + I`` and ``2``, ``13``."""
-        import mpmath
-        candidates: list[tuple[int, Expr]] = []
+        candidates: list[tuple[int, Algebraic]] = []
         for j, pair in enumerate(self.pairs):
-            number = self.as_number(pair.e) if pair.logarithmic else None
-            if number is not None and j != self._pair_of(self._minus_one):
-                candidates.append((j, number))
+            if pair.logarithmic and j != self._pair_of(self._minus_one) and self._is_number(pair.e):
+                candidates.append((j, self._algebraic_value(pair.e)))
         # the primes of the norm, whose logarithms a relation may need
-        t = Dummy('t')
-        polynomial = Poly(minimal_polynomial(value, t), t)
-        norm = as_rational(polynomial.all_coeffs()[-1] / polynomial.all_coeffs()[0])
-        for prime in sorted(set(factorint(abs(int(norm.p)))) | set(factorint(int(norm.q)))):
-            if prime > 1 and int(prime) not in self._prime_logs and len(candidates) < 12:
-                self._prime_logarithm(int(prime))
-                candidates.append((self._pair_of(self._prime_logs[int(prime)]), Integer(prime)))
+        minimal = number_a.minpoly
+        norm = Fraction(minimal[-1], minimal[0])
+        for prime in sorted(set(factorint(abs(norm.numerator))) | set(factorint(norm.denominator))):
+            if prime > 1 and prime not in self._prime_logs and len(candidates) < 12:
+                self._prime_logarithm(prime)
+                candidates.append((self._pair_of(self._prime_logs[prime]), Algebraic.from_rational(prime)))
         if not candidates:
             return None
         # one relation for the moduli and the arguments at once: a generic
@@ -1175,11 +1572,11 @@ class ElementaryTower:
         with mpmath.workdps(80):
             t = mpmath.sqrt(mpmath.mpf(3)) + mpmath.mpf(1) / 7
 
-            def coordinate(number: Expr) -> mpmath.mpf:
-                z = mpmath.mpmathify(as_expr(number).evalf(80))
+            def coordinate(number: Algebraic) -> mpmath.mpf:
+                z = _approximation(number, 90)
                 return mpmath.log(abs(z)) + t * mpmath.arg(z)
 
-            vector = [coordinate(value)] + [coordinate(number) for _, number in candidates] + [2 * mpmath.pi * t]
+            vector = [coordinate(number_a)] + [coordinate(number) for _, number in candidates] + [2 * mpmath.pi * t]
             relation = mpmath.pslq(vector, maxcoeff=10**4, maxsteps=10**5)
         if relation is None or relation[0] == 0:
             return None
@@ -1193,15 +1590,15 @@ class ElementaryTower:
         # n0*log(value) = -sum(n_j*w_j) + 2*pi*I*k, k told by the numerical value
         total = self.zero
         for (j, _), n in zip(candidates, relation[1:-1]):
-            total = total - self.pairs[j].z.times(Integer(int(n)))
-        gap = as_expr(n0 * log(value) - self.to_expr(total))
-        measured = complex(gap.evalf(40))
+            total = total - self.pairs[j].z.times(Fraction(int(n)))
+        with mpmath.workdps(40):
+            measured = complex(n0 * mpmath.log(_approximation(number_a, 45)) - complex(self.to_expr(total).evalf(40)))
         turns = measured.imag / (2 * math.pi)
         if abs(measured.real) > 1e-12 or abs(turns - round(turns)) > 1e-9:
             return None
         if round(turns) != 0:
-            total = total + self._minus_one_logarithm().times(Integer(2 * round(turns)))
-        return self.normal(total.times(Rational(1, n0)))
+            total = total + self._minus_one_logarithm().times(Fraction(2 * round(turns)))
+        return self.normal(total.times(Fraction(1, n0)))
 
     def _pair_of(self, generator: int) -> int:
         for j, pair in enumerate(self.pairs):
@@ -1214,18 +1611,50 @@ class ElementaryTower:
         """Whether two conjugates of the algebraic number have different
         absolute values: then no power of it is rational, and its
         logarithm is independent of the logarithms of the primes."""
-        t = Dummy('t')
-        roots = Poly(minimal_polynomial(value, t), t).nroots(n=30)
-        moduli = sorted(abs(complex(root)) for root in roots)
-        return moduli[-1] - moduli[0] > 1e-12 * (1 + moduli[-1])
+        return _moduli_differ(_algebraic(value).minpoly)
+
+    def _is_number(self, a: Element) -> bool:
+        """Whether ``a`` involves no generator."""
+        a = self.normal(a)
+        return a.num.is_ground and a.den.is_ground
+
+    def _rational_of(self, a: Element) -> Optional[Fraction]:
+        """The rational number which ``a`` is, ``None`` when it is not one."""
+        a = self.normal(a)
+        if not a.num.is_ground or not a.den.is_ground:
+            return None
+        c = self.domain.mul(a.num.LC, self.domain.invert(a.den.LC)) if a.num else []
+        if len(c) > 1:
+            return None
+        return c[0] if c else Fraction(0)
+
+    def _positive_number(self, a: Element) -> bool:
+        """Whether the number ``a`` is a positive real number."""
+        number = self._algebraic_value(a)
+        return number.is_real and number > 0
+
+    def _negative_number(self, a: Element) -> bool:
+        number = self._algebraic_value(a)
+        return number.is_real and number < 0
+
+    def _algebraic_value(self, a: Element) -> Algebraic:
+        """The algebraic number which the constant ``a`` is, from its
+        coordinates in the primitive element."""
+        a = self.normal(a)
+        if not a.num.is_ground or not a.den.is_ground:
+            raise ValueError("not a number of the field")
+        c = self.domain.mul(a.num.LC, self.domain.invert(a.den.LC))
+        theta = self._theta
+        if theta is None or len(c) <= 1:
+            return Algebraic.from_rational(c[0] if c else Fraction(0))
+        return theta.polynomial_value(c)
 
     def _positive_constant_logarithm(self, m: Element) -> Optional[Element]:
         """The real logarithm of a positive constant of the field: of a
         number, or of a product of a number and powers of the ``e_j`` of
         constant pairs which are positive; ``None`` otherwise."""
-        number = self.as_number(m)
-        if number is not None:
-            return self._number_logarithm(number) if number.is_positive else None
+        if self._is_number(m):
+            return self._number_logarithm(m) if self._positive_number(m) else None
         _, still = self._split_pairs()
         independent = [self.pairs[j].generator for j in still if self.generators[self.pairs[j].generator].kind
                        in (EXPONENTIAL, LOGARITHM)]
@@ -1239,16 +1668,16 @@ class ElementaryTower:
         used = [(j, s) for j, s in zip(still, found) if s != 0]
         if not all(self._pair_is_real(j) for j, _ in used):
             return None
-        scale = math.lcm(*[int(s.q) for _, s in used]) if used else 1
+        scale = math.lcm(*[s.denominator for _, s in used]) if used else 1
         rest = m**scale
         total = self.zero
         for j, s in used:
             rest = rest * self.pairs[j].e**(-int(s * scale))
             total = total + self.pairs[j].z.times(s)
-        value = self.as_number(self.normal(rest))
-        if value is None or not value.is_positive:
+        rest = self.normal(rest)
+        if not self._is_number(rest) or not self._positive_number(rest):
             return None
-        return self.normal(total + self._number_logarithm(value).times(Rational(1, scale)))
+        return self.normal(total + self._number_logarithm(rest).times(Fraction(1, scale)))
 
     # ------------------------------------------------------------------
     # expressions in, expressions out
@@ -1256,78 +1685,87 @@ class ElementaryTower:
     def variable(self, symbol: Symbol) -> Element:
         """The generator of a free symbol."""
         if symbol not in self._variables:
-            self._variables[symbol] = self._add_generator(Generator(VARIABLE, Dummy(symbol.name), symbol))
+            self._variables[symbol] = self._add_generator(Generator(VARIABLE, self._new_name(), symbol))
             self._derivatives.clear()
         return self._generator_element(self._variables[symbol])
 
-    def element(self, expression: object) -> Element:
+    def element(self, expression: Expr) -> Element:
         """The element of the tower which ``expression`` is; the tower
         grows by the generators it needs.
 
         Raises :class:`NotElementary` for an expression outside the
         elementary functions."""
-        e = as_expr(expression)
-        if e in self._cache:
-            return self._cache[e]
-        value = self._element(e)
-        self._cache[e] = value
+        if expression in self._cache:
+            return self._cache[expression]
+        value = self._element(expression)
+        self._cache[expression] = value
         return value
 
     def _element(self, e: Expr) -> Element:
         if isinstance(e, Rational):
-            return self.constant(e)
+            return self.constant(_rational(e))
         if isinstance(e, Float) or e.has(Float):
             raise NotElementary("a floating point number: %s" % (e,))
         if isinstance(e, Symbol):
             return self.variable(e)
-        if e is pi:
-            return self.normal(self._minus_one_logarithm() * self._number(as_expr(-I)))
-        if e is EulerE:
+        if isinstance(e, Pi):
+            return self.normal(self._minus_one_logarithm() * self._number(mul(Integer(-1), I)))
+        if isinstance(e, Exp1):
             return self.exponential(self.one)
-        if e is I or (e.is_number and e.is_algebraic and not e.has(exp, log, pi)):
+        if isinstance(e, ImaginaryUnit) or (e.is_number and e.is_algebraic and not e.has(Exp, Log, pi)):
             return self._number(e)
         if isinstance(e, Add):
             total = self.zero
             for term in e.args:
-                total = total + self.element(term)
+                total = total + self.element(as_expr(term))
             return total
         if isinstance(e, Mul):
             product = self.one
             for factor in e.args:
-                product = product * self.element(factor)
+                product = product * self.element(as_expr(factor))
             return product
-        if isinstance(e, exp):
-            return self.exponential(self.element(e.args[0]))
-        if isinstance(e, log):
-            return self.logarithm(self.element(e.args[0]))
+        if isinstance(e, Exp):
+            return self.exponential(self.element(as_expr(e.args[0])))
+        if isinstance(e, Log) and len(e.args) == 1:
+            return self.logarithm(self.element(as_expr(e.args[0])))
         if isinstance(e, Pow):
-            base, exponent = as_expr(e.base), as_expr(e.exp)
+            base, exponent = e.base, e.exp
             if isinstance(exponent, Integer):
-                return self.element(base)**int(exponent)
-            if base is EulerE:
+                return self.element(base)**int(exponent.p)
+            if isinstance(base, Exp1):
                 return self.exponential(self.element(exponent))
             b = self.element(base)
             if self.vanishes(b):
                 raise NotElementary("a power of zero: %s" % (e,))
             return self.exponential(self.element(exponent) * self.logarithm(b))
         if isinstance(e, _EXPONENTIAL_FORMS):
-            rewritten = as_expr(e.rewrite(exp))
+            rewritten = e.rewrite(Exp)
             if not rewritten.has(*_EXPONENTIAL_FORMS):
                 return self.element(rewritten)
         if isinstance(e, _LOGARITHMIC_FORMS):
-            rewritten = as_expr(e.rewrite(log))
+            rewritten = e.rewrite(Log)
             if not rewritten.has(*_LOGARITHMIC_FORMS):
                 return self.element(rewritten)
         raise NotElementary("not an elementary expression this module knows: %s" % (e,))
 
+    def _polynomial_expr(self, p: TowerPolynomial, meanings: Sequence[Expr]) -> Expr:
+        """``p`` as an expression, its generators replaced by ``meanings``."""
+        p = self._poly(p)
+        terms: list[Expr] = []
+        for monomial, coefficient in p.terms.items():
+            factors = [self._coefficient_expr(coefficient)]
+            for meaning, e in zip(meanings, monomial):
+                if e:
+                    factors.append(pow(meaning, Integer(e)))
+            terms.append(mul(*factors))
+        return add(*terms) if terms else Integer(0)
+
     def to_expr(self, a: Element) -> Expr:
-        """The element as a SymPy expression in the meanings of the
+        """The element as an expression of the core in the meanings of the
         generators."""
         a = self.normal(a)
         meanings = [g.expression for g in self.generators]
-        numerator = as_expr(a.num.as_expr(*meanings))
-        denominator = as_expr(a.den.as_expr(*meanings))
-        return as_expr(numerator / denominator)
+        return div(self._polynomial_expr(a.num, meanings), self._polynomial_expr(a.den, meanings))
 
     # ------------------------------------------------------------------
     # certification
@@ -1344,22 +1782,22 @@ class ElementaryTower:
         self._kummer = True
         if not roots:
             return True
-        root_gens = [self.ring.gens[i] for i, g in enumerate(self.generators) if g.kind == ROOT]
-        factors: list[PolyElement] = []
+        root_positions = [i for i, g in enumerate(self.generators) if g.kind == ROOT]
+        factors: list[TowerPolynomial] = []
         vectors: list[dict[int, int]] = []
         for g in roots:
             if g.radicand is None:
                 continue
             radicand = self.normal(g.radicand).num
-            if any(radicand.degree(x) > 0 for x in root_gens):
+            if any(radicand.degree_in(x) > 0 for x in root_positions):
                 self._kummer = False
                 return False
             vector: dict[int, int] = {}
-            for factor, multiplicity in radicand.factor_list()[1]:
+            for factor, multiplicity in self._factor_list(radicand)[1]:
                 monic = factor.monic()
                 if monic not in factors:
                     factors.append(monic)
-                vector[factors.index(monic)] = int(multiplicity)
+                vector[factors.index(monic)] = multiplicity
             vectors.append(vector)
         if not factors:
             self._kummer = False
@@ -1368,10 +1806,10 @@ class ElementaryTower:
         width = len(factors)
         rows = [[(N // g.index) * vector.get(j, 0) for j in range(width)] for g, vector in zip(roots, vectors)]
         rows += [[N if i == j else 0 for j in range(width)] for i in range(width)]
-        normal_form = smith_normal_form(Matrix(rows), domain=ZZ)
+        invariants = smith_normal_form(rows)
         index = 1
         for k in range(width):
-            index *= abs(int(normal_form[k, k]))
+            index *= invariants[k] if k < len(invariants) else 0
         order = N**width // index if index else 0
         expected = 1
         for g in roots:
@@ -1387,8 +1825,7 @@ class ElementaryTower:
         and ``log(x + 1)`` when they are there, and is not in the root)."""
         a = self.normal(a)
         for position, g in enumerate(self.generators):
-            x = self.ring.gens[position]
-            if not g.certified and (a.num.degree(x) > 0 or a.den.degree(x) > 0):
+            if not g.certified and (a.num.degree_in(position) > 0 or a.den.degree_in(position) > 0):
                 return False
         return self._roots_certified()
 
@@ -1400,15 +1837,28 @@ class ElementaryTower:
         return all(g.certified for g in self.generators) and self._roots_certified()
 
 
-def as_rational(value: object) -> Rational:
-    """``value`` as a SymPy :class:`~sympy.core.numbers.Rational`."""
-    r = as_expr(value)
-    if not isinstance(r, Rational):
-        raise TypeError("a rational number is expected, got %s" % (r,))
-    return r
+def _approximation(number: Algebraic, digits: int) -> mpmath.mpc:
+    """A complex approximation of an algebraic number to ``digits`` digits
+    (at the working precision of mpmath)."""
+    box = number.enclosure(Fraction(1, 10**digits))
+    re = (box[0] + box[1]) / 2
+    im = (box[2] + box[3]) / 2
+    return mpmath.mpc(mpmath.mpf(re.numerator) / re.denominator, mpmath.mpf(im.numerator) / im.denominator)
 
 
-def canonical_form(expression: object, assumptions: Assumptions = None) -> Expr:
+def _moduli_differ(minimal: list[int]) -> bool:
+    """Whether two roots of the polynomial (integer coefficients, highest
+    degree first) have different absolute values."""
+    with mpmath.workdps(30):
+        try:
+            roots = mpmath.polyroots(minimal, maxsteps=200, extraprec=60)
+        except mpmath.NoConvergence:
+            return False
+        moduli = sorted(float(abs(root)) for root in roots)
+    return moduli[-1] - moduli[0] > 1e-12 * (1 + moduli[-1])
+
+
+def canonical_form(expression: Expr, assumptions: Assumptions = None) -> Expr:
     """The canonical form of an elementary expression: a quotient of two
     polynomials in generators which the structure theorem proves
     independent (see the module documentation), the denominator monic.
@@ -1418,7 +1868,8 @@ def canonical_form(expression: object, assumptions: Assumptions = None) -> Expr:
     Examples
     ========
 
-    >>> from sympy import symbols, exp, log, sqrt, sin, cos, tan, atan, pi, I
+    >>> from sympy_extras.core import symbols, sqrt, pi, I
+    >>> from sympy_extras.functions import exp, log, sin, cos
     >>> from sympy_extras.simplify.structure import canonical_form
     >>> x, y = symbols('x y')
     >>> canonical_form(exp(x + y) - exp(x)*exp(y))
@@ -1436,7 +1887,7 @@ def canonical_form(expression: object, assumptions: Assumptions = None) -> Expr:
     return tower.to_expr(tower.element(expression))
 
 
-def is_zero(expression: object, assumptions: Assumptions = None) -> Optional[bool]:
+def is_zero(expression: Expr, assumptions: Assumptions = None) -> Optional[bool]:
     """Whether an elementary expression vanishes identically on the
     region of the assumptions: ``True`` is a proof (the numerator of the
     canonical form is zero), ``False`` means that it does not vanish
@@ -1447,7 +1898,8 @@ def is_zero(expression: object, assumptions: Assumptions = None) -> Optional[boo
     Examples
     ========
 
-    >>> from sympy import symbols, exp, log, sqrt, sin, cos, cosh, sinh, atan, asin
+    >>> from sympy_extras.core import symbols, sqrt
+    >>> from sympy_extras.functions import exp, log, cosh, sinh
     >>> from sympy_extras.simplify.structure import is_zero
     >>> x = symbols('x')
     >>> is_zero(cosh(x)**2 - sinh(x)**2 - 1)
@@ -1459,70 +1911,70 @@ def is_zero(expression: object, assumptions: Assumptions = None) -> Optional[boo
     >>> is_zero(log(x**2) - 2*log(x)), is_zero(log(x**2) - 2*log(x), x > 0)
     (False, True)
     """
-    e = as_expr(expression)
     tower = ElementaryTower(assumptions)
 
     def decide() -> Optional[bool]:
         try:
-            value = tower.element(e)
+            value = tower.element(expression)
             if tower.vanishes(value):
                 return True
             return False if tower.certifies(value) else None
         except NotElementary:
             return None
 
-    found = attempt(decide, settings.timeout)
+    found = attempt(decide, settings.timeout, native=True)
     if found is not None:
         return found
-    return False if _witness(e, assumptions) else None
+    return False if _witness(expression, tower.assumptions) else None
 
 
-def equal(a: object, b: object, assumptions: Assumptions = None) -> Optional[bool]:
+def equal(a: Expr, b: Expr, assumptions: Assumptions = None) -> Optional[bool]:
     """Whether two elementary expressions are equal on the region of the
     assumptions, by :func:`is_zero` of their difference.
 
-    >>> from sympy import symbols, tan, sin, cos, sqrt
+    >>> from sympy_extras.core import symbols, sqrt
+    >>> from sympy_extras.functions import tan, sin, cos
     >>> from sympy_extras.simplify.structure import equal
     >>> x = symbols('x')
     >>> equal(tan(x), sin(x)/cos(x)), equal(sqrt(x)*sqrt(x), x), equal(sin(x), x)
     (True, True, False)
     """
-    return is_zero(as_expr(a) - as_expr(b), assumptions)
+    return is_zero(add(a, -b), assumptions)
 
 
 def _witness(e: Expr, assumptions: Assumptions) -> bool:
     """Whether ``e`` is clearly not zero at a sample point of the region."""
     if not settings.numerical_checks:
         return False
-    from sympy_extras.integrals.conditions import sample_values
-    symbols = sorted_symbols(free_symbols(e))
+    from .structure_sympy import reliable_value_of_core, sample_values_of_core
+    facts = _facts_of(assumptions)
+    symbols = sorted(e.free_symbols, key=lambda s: s.name)
     # a symbol with no flag which the assumptions do not mention is a
     # complex number: real points of both signs, then complex ones; the
     # others are sampled where their flags and the assumptions put them
     mentioned: set[Symbol] = set()
-    if assumptions is not None:
-        facts = [assumptions] if isinstance(assumptions, (Boolean, bool)) else list(assumptions)
-        for fact in facts:
-            mentioned |= free_symbols(as_boolean(fact))
+    for fact in facts:
+        mentioned |= fact.free_symbols
     unconstrained = [s for s in symbols if s not in mentioned and set(s.assumptions0) <= {'commutative'}]
     constrained = [s for s in symbols if s not in unconstrained]
     rng = random.Random(str(e))
     for attempt_number in range(6):
-        values: Optional[dict[Symbol, Expr]] = sample_values(constrained, assumptions, rng) if constrained else {}
+        values: Optional[dict[Symbol, Expr]] = sample_values_of_core(constrained, facts, rng) if constrained else {}
         if values is None:
             return False
         for s in unconstrained:
-            values[s] = as_expr(Rational(rng.randint(-300, 300), 100)
-                                + (I * Rational(rng.randint(-1000, 1000), 100) if attempt_number >= 3 else 0))
+            real = number_from_fraction(Fraction(rng.randint(-300, 300), 100))
+            values[s] = add(real, mul(I, number_from_fraction(Fraction(rng.randint(-1000, 1000), 100)))) \
+                if attempt_number >= 3 else real
         for s in constrained:
             # the other sign of a real symbol, where its flags and the
             # assumptions allow it (the sampler tends to one side)
             if s.is_nonnegative is None and s.is_nonpositive is None and s.is_integer is None \
                     and values[s].is_extended_real and rng.random() < 0.5:
                 flipped = dict(values)
-                flipped[s] = as_expr(-values[s])
-                if assumptions is None or all(as_boolean(fact).xreplace(flipped) is S.true for fact in (
-                        [assumptions] if isinstance(assumptions, (Boolean, bool)) else list(assumptions))):
+                flipped[s] = -values[s]
+                substitution: dict[Basic, Basic] = {k: v for k, v in flipped.items()}
+                if all(isinstance(fact._xreplace_evaluated(substitution), BooleanTrue) for fact in facts):
                     values = flipped
         # a point where an argument lies on a branch cut on a side which
         # the rounding chooses is no witness (see reliable_form). The bug:
@@ -1532,10 +1984,10 @@ def _witness(e: Expr, assumptions: Assumptions) -> bool:
         # came out as 1e-41 of either sign: the difference evaluated to
         # 1.87*I and is_zero answered False (found by evaluating the
         # verdicts with Mathematica)
-        number = attempt(lambda: reliable_value(e, 40, values), settings.timeout)
+        point = values
+        number = attempt(lambda: reliable_value_of_core(e, 40, point), settings.timeout, native=True)
         if number is None:
             continue
-        size = abs(complex(number))
-        if size > 1e-25:
+        if abs(number) > 1e-25:
             return True
     return False

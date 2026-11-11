@@ -7,15 +7,14 @@ converted by :mod:`sympy_extras.interop` around the native functions;
 :class:`_Refiner` is the face of the native refiner (its dummies are
 SymPy dummies carrying the assumptions).
 
-Three steps of the native refinement stay written on SymPy and are called
+Two steps of the native refinement stay written on SymPy and are called
 from it at run time (the functions ending in ``_of_core``, which take and
 return objects of the core): SymPy's ``simplify`` of a Boolean formula
 (:func:`simplify_boolean_of_core`: ``simplify_logic`` and the rules of the
-relations, not ported), the factorisation of a polynomial whose
+relations, not ported) and the factorisation of a polynomial whose
 coefficients are not rational (:func:`factor_list_of_core`, over SymPy's
-``EX``), and the proofs of the structure theorem
-(:func:`proved_simplification_of_core`,
-:class:`sympy_extras.simplify.structure.ElementaryTower`).
+``EX``). The proofs of the structure theorem are native
+(:class:`sympy_extras.simplify.structure.ElementaryTower`).
 
 Examples
 ========
@@ -34,7 +33,7 @@ log(x)
 """
 from __future__ import annotations
 
-from typing import Callable, Final, Optional, Union
+from typing import Final, Optional, Union
 
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
@@ -55,7 +54,7 @@ from .ask_sympy import Assumptions, _core_expr, _sympy_expr, core_assumptions, c
     sympy_boolean
 from .facts_sympy import Facts
 
-__all__ = ['refine', 'simplify', 'simplify_boolean_of_core', 'factor_list_of_core', 'proved_simplification_of_core']
+__all__ = ['refine', 'simplify', 'simplify_boolean_of_core', 'factor_list_of_core']
 
 
 def _core(e: Union[Basic, int, bool]) -> CoreBasic:
@@ -85,37 +84,6 @@ def factor_list_of_core(f: CoreExpr, gens: list[CoreSymbol]) -> Optional[tuple[C
     except (PolynomialError, ValueError):
         return None
     return _core_expr(as_expr(c)), [(_core_expr(as_expr(g)), int(m)) for g, m in factors]
-
-
-def proved_simplification_of_core(expr: CoreExpr, conjuncts: list[CoreBoolean],
-                                  forced: Callable[[], list[CoreExpr]]) -> CoreExpr:
-    """``expr`` or a smaller expression proved equal to it on the region
-    of the conjuncts by the structure theorem
-    (:class:`sympy_extras.simplify.structure.ElementaryTower`): zero when
-    it vanishes, its canonical form, or the smallest of the ``forced``
-    candidates which the tower proves equal to it. The sizes are those of
-    the native :func:`~sympy_extras.assumptions.refine._size`."""
-    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
-    tower = ElementaryTower([sympy_boolean(c) for c in conjuncts] or None)
-    try:
-        value = tower.element(_sympy_expr(expr))
-    except (NotElementary, ZeroDivisionError):
-        return expr
-    if tower.vanishes(value):
-        return _core_expr(sympify(0))
-    best = expr
-    canonical = _core_expr(as_expr(tower.to_expr(value)))
-    if native._size(canonical) < native._size(best):
-        best = canonical                                    # equal by construction
-    for candidate in forced():
-        if native._size(candidate) >= native._size(best) or candidate == expr:
-            continue
-        try:
-            if tower.vanishes(tower.element(_sympy_expr(candidate)) - value):
-                best = candidate
-        except (NotElementary, ZeroDivisionError):
-            continue
-    return best
 
 
 # ---------------------------------------------------------------------------

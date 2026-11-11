@@ -1,19 +1,26 @@
-"""Tests of the machinery of the tower, algorithm by algorithm: the field
-arithmetic and the lifting of elements, the normal form, the derivations,
-the linear algebra over the rationals, the number field, the questions
-about the region."""
+"""Tests of the machinery of the native tower, algorithm by algorithm, on
+objects of the core: the field arithmetic and the lifting of elements,
+the normal form, the derivations, the linear algebra over the rationals,
+the number field, the questions about the region."""
 from __future__ import annotations
 
-from sympy import (E, I, Integer, Rational, S, Symbol, cos, diff, exp, log, pi, simplify, sin, sqrt, symbols)
-from sympy.core.expr import Expr
-from sympy.polys.domains import QQ
-from sympy.testing.pytest import raises
+from fractions import Fraction
+from typing import Callable
 
-from sympy_extras._typing import as_expr
+import pytest
+
+from sympy_extras.core import E, Expr, I, Integer, Ne, Rational, S, Symbol, as_expr, diff, pi, sqrt
+from sympy_extras.functions import cos, exp, log, sin
 from sympy_extras.simplify.structure import Element, ElementaryTower
-from sympy_extras.simplify.structure import EXPONENTIAL, LOGARITHM, ROOT, VARIABLE, as_rational
+from sympy_extras.simplify.structure import EXPONENTIAL, LOGARITHM, ROOT, VARIABLE, _rational
 
-x, y, z = symbols('x y z')
+
+def raises(exception: type[BaseException], f: Callable[[], object]) -> None:
+    with pytest.raises(exception):
+        f()
+
+
+x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
 
 
 def _same(tower: ElementaryTower, a: Element, expression: Expr) -> bool:
@@ -38,16 +45,16 @@ def test_field_operations() -> None:
     assert tower.to_expr(a * b) == x * y and tower.to_expr(a / b) == x / y
     assert tower.to_expr(-a) == -x
     assert tower.to_expr(a**3) == x**3 and tower.to_expr(a**-2) == x**-2 and tower.to_expr(a**0) == 1
-    assert tower.to_expr(a.times(Rational(3, 7))) == 3 * x / 7
+    assert tower.to_expr(a.times(Fraction(3, 7))) == 3 * x / 7
     assert tower.to_expr((a + b) * (a - b) - a * a + b * b) == 0
     # fractions are cancelled, the denominator monic
-    u = (a * a - b * b) / (a.times(Integer(2)) - b.times(Integer(2)))
+    u = (a * a - b * b) / (a.times(Fraction(2)) - b.times(Fraction(2)))
     assert tower.to_expr(u) == (x + y) / 2
     assert u.den == tower.ring.one
-    v = tower.one / (a.times(Integer(3)) + tower.one)
-    assert v.den.LC == QQ.one
+    v = tower.one / (a.times(Fraction(3)) + tower.one)
+    assert v.den.LC == tower.domain.one
     assert tower.to_expr(tower.zero) == 0 and tower.to_expr(tower.one) == 1
-    assert tower.to_expr(tower.constant(Rational(-5, 3))) == Rational(-5, 3)
+    assert tower.to_expr(tower.constant(Fraction(-5, 3))) == Rational(-5, 3)
     assert repr(a) == 'Element(x)'
 
 
@@ -70,11 +77,11 @@ def test_elements_are_lifted_when_the_tower_grows() -> None:
     assert tower.ring != ring_before and a.num.ring == ring_before
     assert tower.to_expr(a * b) == x * exp(x)
     c = tower.element(sqrt(2) * x)                  # the number field grows
-    assert not tower.domain.is_QQ
+    assert tower._field_degree() > 1
     assert tower.to_expr(a + b + c) == x + sqrt(2) * x + exp(x) or _same(tower, a + b + c, x + sqrt(2) * x + exp(x))
     d = tower.element(I * y)                         # and grows again
     assert _same(tower, a * c + d * b, sqrt(2) * x**2 + I * y * exp(x))
-    assert tower.vanishes(c * c - a * a.times(Integer(2)))
+    assert tower.vanishes(c * c - a * a.times(Fraction(2)))
 
 
 def test_elements_of_another_tower_are_refused() -> None:
@@ -187,8 +194,8 @@ def test_formal_derivatives() -> None:
 def test_rational_combinations() -> None:
     tower = ElementaryTower()
     a, b, c = tower.element(x), tower.element(y), tower.element(exp(x))
-    target = a.times(Rational(2, 3)) - b.times(Integer(5)) + c
-    assert tower._solve([(target, [a, b, c])]) == [Rational(2, 3), -5, 1]
+    target = a.times(Fraction(2, 3)) - b.times(Fraction(5)) + c
+    assert tower._solve([(target, [a, b, c])]) == [Fraction(2, 3), -5, 1]
     assert tower._solve([(target, [a, b])]) is None
     assert tower._solve([(tower.zero, [a, b])]) == [0, 0]
     assert tower._solve([(tower.zero, [])]) == [] and tower._solve([(a, [])]) is None
@@ -198,11 +205,11 @@ def test_rational_combinations() -> None:
     v = tower.element(x / (3 * y + 3))
     assert tower._solve([(u, [v, a])]) == [3, 0]
     # a dependent basis: a free unknown is set to zero
-    found = tower._solve([(a, [a, a.times(Integer(2))])])
+    found = tower._solve([(a, [a, a.times(Fraction(2))])])
     assert found is not None and found[0] + 2 * found[1] == 1
     # several equations at once
     assert tower._solve([(a, [a, b]), (b, [a, b])]) is None
-    assert tower._solve([(a + b, [a, b]), (a.times(Integer(2)) + b.times(Integer(2)), [a.times(Integer(2)), b.times(Integer(2))])]) == [1, 1]
+    assert tower._solve([(a + b, [a, b]), (a.times(Fraction(2)) + b.times(Fraction(2)), [a.times(Fraction(2)), b.times(Fraction(2))])]) == [1, 1]
 
 
 def test_rational_combinations_over_a_number_field() -> None:
@@ -211,12 +218,12 @@ def test_rational_combinations_over_a_number_field() -> None:
     a = tower.element(x)
     b = tower.element(sqrt(2) * x)
     assert tower._solve([(b, [a])]) is None
-    assert tower._solve([(b + a.times(Integer(3)), [a, b])]) == [3, 1]
+    assert tower._solve([(b + a.times(Fraction(3)), [a, b])]) == [3, 1]
     c = tower.element(I * x + sqrt(2) * y)
     assert tower._solve([(c, [a, b])]) is None
-    assert tower._solve([(c.times(Rational(1, 2)), [c])]) == [Rational(1, 2)]
+    assert tower._solve([(c.times(Fraction(1, 2)), [c])]) == [Fraction(1, 2)]
     assert tower._field_degree() == 4
-    assert len(tower._components(tower.domain.from_sympy(sqrt(2) * I + 1))) == 4
+    assert len(tower._components(tower._field_element(sqrt(2) * I + 1))) == 4
     # with roots: sqrt(x)**3 = x*sqrt(x)
     tower = ElementaryTower()
     r = tower.element(sqrt(x))
@@ -228,17 +235,17 @@ def test_rational_combinations_over_a_number_field() -> None:
 
 def test_algebraic_numbers() -> None:
     tower = ElementaryTower()
-    assert tower.domain.is_QQ and tower._field_degree() == 1
+    assert tower._field_degree() == 1
     a = tower._number(sqrt(2))
     assert tower._field_degree() == 2 and tower.as_number(a) == sqrt(2)
     b = tower._number(sqrt(8))                                  # in the field already
-    assert tower._field_degree() == 2 and tower.vanishes(b - a.times(Integer(2)))
+    assert tower._field_degree() == 2 and tower.vanishes(b - a.times(Fraction(2)))
     c = tower._number(I)
     assert tower._field_degree() == 4 and tower.as_number(c * c) == -1
     assert tower.as_number(a * a) == 2                        # the old element in the new field
     assert tower.as_number(tower.element(x)) is None
     assert tower.as_number(tower.element(exp(1))) is None
-    assert tower.as_number(tower.constant(Rational(3, 4))) == Rational(3, 4)
+    assert tower.as_number(tower.constant(Fraction(3, 4))) == Rational(3, 4)
     assert tower.as_number(tower.zero) == 0
     other = ElementaryTower()
     d = other.element(2**Rational(1, 3) * I + exp(I * pi / 3))
@@ -258,10 +265,10 @@ def test_the_number_field_is_not_allowed_to_explode() -> None:
     assert is_zero(sqrt(2) + I + 2**Rational(1, 3) + exp(I * pi / 5)) is False
 
 
-def test_as_rational() -> None:
-    assert as_rational(Rational(3, 4)) == Rational(3, 4) and as_rational(5) == 5
-    raises(TypeError, lambda: as_rational(sqrt(2)))
-    raises(TypeError, lambda: as_rational(x))
+def test_rational() -> None:
+    assert _rational(Rational(3, 4)) == Fraction(3, 4) and _rational(Integer(5)) == 5
+    raises(TypeError, lambda: _rational(sqrt(2)))
+    raises(TypeError, lambda: _rational(x))
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +282,7 @@ def test_signs_on_the_region() -> None:
     assert tower._positive(tower.element(p**2 + 1)) and tower._positive(tower.element(r**2 + 1))
     assert not tower._positive(tower.element(x)) and not tower._positive(tower.element(x**2 + 1))
     assert tower._real(tower.element(r)) and tower._real(tower.element(p * n)) and not tower._real(tower.element(x))
-    assert tower._positive(tower.constant(Rational(1, 2))) and tower._negative(tower._number(-sqrt(2)))
+    assert tower._positive(tower.constant(Fraction(1, 2))) and tower._negative(tower._number(-sqrt(2)))
     assert not tower._positive(tower._number(I)) and not tower._negative(tower._number(I))
     tower = ElementaryTower([x > 1, y < 0])
     assert tower._positive(tower.element(x)) and tower._positive(tower.element(x - 1))
@@ -308,7 +315,6 @@ def test_convex_regions() -> None:
     assert not ElementaryTower([x > 0, x * y < 1])._convex_region()
     assert not ElementaryTower((x > 0) | (x < -1))._convex_region()
     assert not ElementaryTower(S.true & (exp(x) > 2))._convex_region()
-    from sympy import Ne
     assert not ElementaryTower(Ne(x, 0))._convex_region()
 
 
@@ -322,4 +328,4 @@ def test_generator_kinds() -> None:
     # the expression of a generator is its meaning
     for g in tower.generators:
         assert g.expression in (x, exp(x), log(x), sqrt(x))
-    assert simplify(tower.to_expr(tower.element(x + exp(x) + log(x) + sqrt(x))) - (x + exp(x) + log(x) + sqrt(x))) == 0
+    assert _same(tower, tower.element(x + exp(x) + log(x) + sqrt(x)), x + exp(x) + log(x) + sqrt(x))

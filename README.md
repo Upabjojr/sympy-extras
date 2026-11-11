@@ -646,7 +646,7 @@ region of the assumptions.
 
 ```python
 >>> from sympy import symbols, exp, log, sqrt, sin, cos, atan, pi, Rational
->>> from sympy_extras.simplify.structure import is_zero, canonical_form
+>>> from sympy_extras.simplify.structure_sympy import is_zero, canonical_form
 >>> x, y = symbols('x y')
 >>> is_zero(sin(x + y) - sin(x)*cos(y) - cos(x)*sin(y)), is_zero(exp(x) - x - 1)
 (True, False)
@@ -662,7 +662,9 @@ True
 ```
 
 SymPy's `simplify` leaves Machin's formula as it is and its `equals` samples
-it. See [docs/simplify.md](docs/simplify.md).
+it. `sympy_extras.simplify.structure` is native (written on the core,
+without SymPy); `structure_sympy` is its face on SymPy expressions. See
+[docs/simplify.md](docs/simplify.md).
 
 ### Differential elimination: Janet bases and Rosenfeld–Gröbner (`sympy_extras.polys.differential`)
 
@@ -1025,7 +1027,8 @@ sympy_extras/
         linear_ode.py        polynomial, rational, hyperexponential solutions; reduction of order
         charpit.py           complete integrals of first order nonlinear PDEs
     simplify/
-        structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
+        structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native)
+        structure_sympy.py   the SymPy face of structure
         tests/
     ntheory/
         primetest.py         isprime (Baillie–PSW), jacobi_symbol

@@ -162,7 +162,7 @@ def _exactly_zero(difference: Expr, assumptions: Assumptions) -> bool:
     """Whether ``difference`` is zero in the tower of the structure
     theorem (:mod:`sympy_extras.simplify.structure`); ``False`` when it is
     not, or not elementary."""
-    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
+    from sympy_extras.simplify.structure_sympy import ElementaryTower, NotElementary
     tower = ElementaryTower(assumptions)
     try:
         return tower.vanishes(tower.element(difference))

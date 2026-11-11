@@ -13,9 +13,7 @@ from it at run time (the functions ending in ``_of_core``, which take and
 return objects of the core): the truth tables of the cylindrical
 algebraic decomposition (:func:`sympy_extras.polys.cad.truth_tables`),
 the linearity test and the linear quantifier elimination of
-:mod:`sympy_extras.polys.virtual_substitution`, the zero test of the
-structure theorem (:class:`sympy_extras.simplify.structure.ElementaryTower`),
-the sample points of :func:`sympy_extras.integrals.conditions.sample_values`
+:mod:`sympy_extras.polys.virtual_substitution`, the sample points of :func:`sympy_extras.integrals.conditions.sample_values`
 and :func:`sympy_extras._numeric.reliable_value`.
 
 Examples
@@ -56,7 +54,7 @@ from .facts_sympy import Facts
 from .quantifiers import Prefix
 
 __all__ = ['ask', 'Assumptions', 'truth_tables_of_core', 'is_linear_in_of_core',
-    'linear_quantifier_elimination_of_core', 'structure_zero_of_core', 'sample_values_of_core',
+    'linear_quantifier_elimination_of_core', 'sample_values_of_core',
     'reliable_complex_of_core', 'core_boolean', 'core_assumptions', 'core_domain', 'sympy_boolean']
 
 
@@ -158,25 +156,6 @@ def linear_quantifier_elimination_of_core(formula: CoreBoolean, prefix: Prefix) 
     from sympy_extras.polys.virtual_substitution import linear_quantifier_elimination
     result, rest = linear_quantifier_elimination(sympy_boolean(formula), sympy_prefix(prefix))
     return core_boolean(result), core_prefix(rest)
-
-
-def structure_zero_of_core(difference: CoreExpr, conjuncts: list[CoreBoolean]) -> Optional[bool]:
-    """By the structure theorem on the region of the conjuncts: ``True``
-    when ``difference`` is identically zero, ``False`` when it is a
-    constant other than zero, ``None`` otherwise
-    (:class:`sympy_extras.simplify.structure.ElementaryTower`)."""
-    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
-    e = _sympy_expr(difference)
-    tower = ElementaryTower([sympy_boolean(c) for c in conjuncts] or None)
-    try:
-        value = tower.element(e)
-    except (NotElementary, ZeroDivisionError):
-        return None
-    if tower.vanishes(value):
-        return True
-    if not e.free_symbols and tower.certifies(value):
-        return False
-    return None
 
 
 def sample_values_of_core(symbols: list[CoreSymbol], conjuncts: list[CoreBoolean],

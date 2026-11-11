@@ -407,11 +407,11 @@ _EXACT_SIZE = 120
 
 def _provably_different(a: Expr, b: Expr, assumptions: Assumptions) -> bool:
     """Whether the structure theorem
-    (:mod:`sympy_extras.simplify.structure`) proves that ``a - b`` is not
+    (:mod:`sympy_extras.simplify.structure_sympy`) proves that ``a - b`` is not
     identically zero: a nonzero canonical form in generators which are
     independent. ``False`` when it proves nothing (equal, not elementary,
     uncertified, too large, out of time)."""
-    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
+    from sympy_extras.simplify.structure_sympy import ElementaryTower, NotElementary
     difference = as_expr(a - b)
     if difference == 0 or difference.count_ops() > _EXACT_SIZE:
         return False

@@ -29,9 +29,18 @@ exactly when its numerator does:
   generators which the element `a` involves are independent (a dependent
   generator which `a` does not involve does not matter).
 
+The module `sympy_extras.simplify.structure` is native: it works on the
+expressions of the core (`sympy_extras.core`, `sympy_extras.functions`) with
+the polynomials of `sympy_extras.polys` and does not import SymPy. The same
+functions on SymPy expressions are in `sympy_extras.simplify.structure_sympy`,
+which converts through `sympy_extras.interop`; the examples below use it.
+Two numerical steps go through SymPy at run time: the sample points of the
+region of the assumptions and the reliable values of an expression at them
+(`sample_values_of_core`, `reliable_value_of_core` in the face).
+
 ```python
 >>> from sympy import symbols, exp, log, sqrt, sin, cos, atan, asin, acos, pi, Rational, I
->>> from sympy_extras.simplify.structure import is_zero, canonical_form, ElementaryTower
+>>> from sympy_extras.simplify.structure_sympy import is_zero, canonical_form, ElementaryTower
 >>> x, y = symbols('x y')
 >>> is_zero(sin(x + y) - sin(x)*cos(y) - cos(x)*sin(y))
 True

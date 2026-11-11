@@ -12,8 +12,7 @@ The steps which are not ported go through SymPy at run time (the face
 holds them, the functions ending in ``_of_core``): the cylindrical
 algebraic decomposition (:mod:`sympy_extras.polys.cad`) and virtual
 substitution (:mod:`sympy_extras.polys.virtual_substitution`), both
-written on SymPy's polynomials, the zero test of the structure theorem
-(:mod:`sympy_extras.simplify.structure`), and the sample points and the
+written on SymPy's polynomials, and the sample points and the
 reliable numerical values with which a difference is shown not to be
 identically zero (:mod:`sympy_extras.integrals.conditions`,
 :mod:`sympy_extras._numeric`). The questions about predicates go to the
@@ -233,14 +232,13 @@ def _structure_ask(atom: Relational, facts: Facts) -> Truth:
     if not (_has_function(difference) or _has_fractional_power(difference) or difference.has(pi, E)):
         return None                                         # polynomial: the decomposition's business
     from sympy_extras._timeout import attempt
-    from .ask_sympy import structure_zero_of_core
     if difference.free_symbols and _clearly_not_zero(difference, facts):
         return None                                         # the common case, told at one point
 
     conjuncts = list(facts.conjuncts)
     _structure_depth += 1
     try:
-        zero = attempt(lambda: structure_zero_of_core(difference, conjuncts), _STRUCTURE_SECONDS)
+        zero = attempt(lambda: _structure_zero(difference, conjuncts), _STRUCTURE_SECONDS, native=True)
     finally:
         _structure_depth -= 1
     if zero is None:
@@ -254,6 +252,24 @@ def _structure_ask(atom: Relational, facts: Facts) -> Truth:
     if isinstance(atom, (Gt, Lt)):
         return False
     return True if _realness(atom.lhs, facts) is True else None
+
+
+def _structure_zero(difference: Expr, conjuncts: list[Boolean]) -> Truth:
+    """By the structure theorem on the region of the conjuncts: ``True``
+    when ``difference`` is identically zero, ``False`` when it is a
+    constant other than zero, ``None`` otherwise
+    (:class:`sympy_extras.simplify.structure.ElementaryTower`)."""
+    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
+    tower = ElementaryTower(conjuncts or None)
+    try:
+        value = tower.element(difference)
+    except (NotElementary, ZeroDivisionError):
+        return None
+    if tower.vanishes(value):
+        return True
+    if not difference.free_symbols and tower.certifies(value):
+        return False
+    return None
 
 
 def _clearly_not_zero(difference: Expr, facts: Facts) -> bool:

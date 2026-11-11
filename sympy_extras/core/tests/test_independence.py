@@ -271,3 +271,31 @@ def test_native_sat_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_SAT], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_STRUCTURE = r'''
+import sys
+from sympy_extras.core import symbols, sqrt, pi, I, Rational
+from sympy_extras.functions import exp, log, sin, cos, atan
+from sympy_extras.simplify.structure import ElementaryTower, canonical_form, is_zero, equal
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+assert is_zero(sin(x + y) - sin(x)*cos(y) - cos(x)*sin(y)) is True and is_zero(exp(x) - x - 1) is False
+assert is_zero(log(x*y) - log(x) - log(y), [x > 0, y > 0]) is True
+assert is_zero(pi/4 - 4*atan(Rational(1, 5)) + atan(Rational(1, 239))) is True
+assert str(canonical_form((sqrt(x) + 1)**2 - x - 1)) == '2*sqrt(x)' and equal(exp(I*pi), -1) is True
+tower = ElementaryTower()
+tower.element(sqrt(x) + sqrt(y) + sqrt(x + y) + sqrt(2) + I)
+assert tower.certified
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_structure_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.simplify.structure` does not load SymPy,
+    nor do the identities which the tower decides without a sample point
+    (the sample points of the region and the reliable values of the
+    witnesses go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_STRUCTURE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

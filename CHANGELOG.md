@@ -539,6 +539,32 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.simplify.structure` (the structure theorem: `ElementaryTower`,
+  `canonical_form`, `is_zero`, `equal`) is native (**breaking**: core
+  expressions and Booleans in and out; it imports no SymPy). The number
+  field is the native `AlgebraicField` of a primitive element
+  (`qqbar.primitive_element`), numbers are placed in it exactly
+  (`qqbar.Algebraic`, a linear factor of the minimal polynomial over the
+  field), the polynomials are the native sparse rings (`cancel` through
+  `RationalPolynomialRing` over `QQ`), the multivariate factorisation over a
+  number field is the new `polys.algebraicfactor` (Trager:
+  `ext_factor_list`, `AlgebraicPolynomialRing`), the Smith normal form is
+  `polys.lattice`'s, the PSLQ coordinates come from exact enclosures, and
+  the signs from the native `ask`. Two steps go through the new face
+  `simplify.structure_sympy` at run time: `sample_values_of_core`
+  (`integrals.conditions.sample_values`) and `reliable_value_of_core`
+  (`_numeric.reliable_value`). `structure_sympy` keeps the old API on SymPy
+  objects; **import it instead of the old module**: `from
+  sympy_extras.simplify.structure_sympy import is_zero, canonical_form,
+  ElementaryTower`. Its `Element` wraps the native element (`.native`; no
+  `num`/`den` on SymPy rings), its `Generator` shows `kind`, `expression`,
+  `certified`, `index`, `source`, `argument`, `radicand`, `scale`,
+  `eliminated` (no `symbol`), and the internals of the old tower
+  (`ring`, `domain`, `_solve`, ...) are those of the native one; `as_rational`
+  is gone. The native `Element.times` and `ElementaryTower.constant` take a
+  `Fraction`. The native `ask` and `refine` call the native tower directly:
+  `assumptions.ask_sympy.structure_zero_of_core` and
+  `assumptions.refine_sympy.proved_simplification_of_core` are removed.
 - `sympy_extras.assumptions.solve` is native (**breaking**: core
   expressions, Booleans, symbols and sets in and out, the native `ask`,
   `facts`, `refine` and `analysis` underneath; it imports no SymPy).

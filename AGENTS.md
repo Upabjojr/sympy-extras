@@ -251,7 +251,9 @@ sympy_extras/
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
         tests/
     simplify/
-        structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
+        structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native; the sample
+                             points and the reliable values through structure_sympy)
+        structure_sympy.py   the SymPy face of structure, and the steps which stay on SymPy (the *_of_core functions)
         signsimp.py          signsimp, sub_pre, sub_post (ported from SymPy)
         radsimp.py           fraction, numer, denom, collect, collect_dict, rcollect, radsimp, rad_rationalize, split_surds (ported from SymPy)
         sqrtdenest.py        sqrtdenest, sqrt_depth, is_algebraic (ported from SymPy)
@@ -277,6 +279,7 @@ sympy_extras/
         polytools.py         Poly over ZZ, QQ, ZZ[a,..], QQ[a,..] (ported from SymPy, printed as SymPy): gcd, lcm, resultant, factor_list (multivariate, ZZ[a]), sqf_list, div; degree, LC, gcd, lcm, resultant, factor, factor_list, sqf, sqf_list, cancel
         gaussianfactor.py    multivariate factorisation over ZZ_I and QQ_I (Trager over QQ<I>, ported from SymPy)
         polyerrors.py        SymPy's polynomial exceptions (ported)
+        algebraicfactor.py   ext_factor_list, AlgebraicPolynomialRing: multivariate factorisation and gcd over a number field QQ(alpha) (Trager)
         heuristicgcd.py      heugcd over ZZ (ported from SymPy), deflate/inflate; IntegerPolynomialRing uses it
         rationaltools.py     together (ported from SymPy)
         multifactor.py       zz_factor, zz_wang: multivariate factorisation over ZZ by Wang's EEZ on sparse PolyElement (ported from SymPy)
