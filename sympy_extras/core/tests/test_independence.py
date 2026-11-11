@@ -1687,3 +1687,40 @@ def test_native_asymptotic_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ASYMPTOTIC], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_VALIDATED = r'''
+import sys
+import mpmath
+from sympy_extras.core import Integer, Rational, Symbol, oo, pi, sqrt
+from sympy_extras.functions import cos, exp, log, sin
+from sympy_extras.integrals.validated import enclosure, validated_integral
+assert 'sympy' not in sys.modules
+x = Symbol('x')
+found = validated_integral(exp(-x**2), x, 0, 1)
+assert found is not None and str(found[0]).startswith('0.7468241328124270') and float(found[1]) < 1e-15
+found = validated_integral(cos(x)**2, x, 0, pi, 10)                       # irrational bounds
+assert found is not None and abs(float(found[0]) - 1.5707963267948966) < 1e-9
+assert validated_integral(x**Rational(-1, 2), x, 0, 1) is not None           # x = u**2
+assert validated_integral(log(x), x, 0, 1) is not None                       # the endpoint model
+assert validated_integral(1/(1 + x**2), x, 0, oo, 12) is not None            # the rational map
+assert validated_integral(x*exp(-x), x, 0, oo) is not None                   # the exponential map
+assert validated_integral(exp(-x**2), x, 0, oo) is not None                  # the stretched map
+assert validated_integral(sin(x)/x, x, 0, oo, 8) is not None                 # the oscillatory tail
+assert validated_integral(1/x, x, 0, 1) is None
+r = enclosure(log(1 + x), x, Integer(0), Integer(1), mpmath.mpf('1e-12'))
+assert r is not None and r.a <= 2*mpmath.log(2) - 1 <= r.b
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_validated_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.validated` does not load
+    SymPy, nor does the validated integration on finite and irrational
+    ranges, the power substitution, the endpoint model, the rational,
+    exponential and stretched maps of infinite ranges and the oscillatory
+    tail (the native interval evaluator, derivatives, ``together``,
+    ``cancel``, ``simplify``, ``powdenest``, limits and Sturm sequences)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_VALIDATED], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

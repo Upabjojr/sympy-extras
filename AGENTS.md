@@ -287,6 +287,10 @@ sympy_extras/
                              phase, steepest descent, uniform Airy/erfc expansions (native: the native series, Order,
                              solve, ask and limits; quadratures by mpmath)
         asymptotic_sympy.py  the SymPy face of asymptotic
+        validated.py         validated_integral, enclosure: values with proved error bounds by interval quadrature (Simpson,
+                             Gauss–Legendre), endpoint models, maps of infinite ranges, oscillatory tails (native: the
+                             native interval evaluator, cancel, simplify, powdenest, limits, Sturm sequences)
+        validated_sympy.py   the SymPy face of validated, used by definite
         risch/               the transcendental Risch algorithm ported from Aaron Meurer's SymPy pull requests
         trager.py            Trager's algorithm for integrands rational in x and one square root of a polynomial
         curves.py            Trager's algorithm on an arbitrary curve: several or nested radicals through a primitive element, the change of variable x = N + 1/z, Hermite reduction in a normal integral basis, residues by Puiseux expansions, the logarithmic part by linear algebra

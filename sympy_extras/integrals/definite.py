@@ -201,7 +201,7 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
         When every symbolic method fails and the integral has no
         parameters, a ``Float`` with ``digits`` correct digits, proved by
         validated integration in interval arithmetic
-        (:func:`~sympy_extras.integrals.validated.validated_integral`);
+        (:func:`~sympy_extras.integrals.validated_sympy.validated_integral`);
         ``None`` there leaves the integral unevaluated.
     regularize : bool
         Analytic (Riesz) regularisation of the Mellin method: the value
@@ -270,7 +270,7 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
         if guessed is not None:
             return guessed
     if (found is None or found.value.has(nan)) and numeric:
-        from .validated import validated_integral
+        from .validated_sympy import validated_integral
         enclosed = validated_integral(f_, x, a, b, digits, assumptions)
         if enclosed is not None:
             return enclosed[0]
