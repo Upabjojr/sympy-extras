@@ -575,6 +575,13 @@ fn decompose_power<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<(Bou
 }
 
 #[pyfunction]
+#[pyo3(signature = (e, deep=false, fraction=true))]
+fn together<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, deep: bool, fraction: bool) -> PyResult<Bound<'py, PyAny>> {
+    let value = sympy_extras_core::polys::rationaltools::together(&from_python(e)?, deep, fraction);
+    to_python(py, &value.map_err(crate::convert::err)?)
+}
+
+#[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
         py,
@@ -604,6 +611,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(as_numer_denom, m)?)?;
     m.add_function(wrap_pyfunction!(dict_from_expr, m)?)?;
     m.add_function(wrap_pyfunction!(gcd_terms, m)?)?;
+    m.add_function(wrap_pyfunction!(together, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;

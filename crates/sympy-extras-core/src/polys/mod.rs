@@ -27,6 +27,7 @@ pub mod numberfields;
 pub mod polyclasses;
 pub mod polytools;
 pub mod polyutils;
+pub mod rationaltools;
 pub mod regularchains;
 pub mod rings;
 pub mod rootisolation;

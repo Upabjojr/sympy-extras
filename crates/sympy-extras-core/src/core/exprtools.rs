@@ -414,7 +414,7 @@ fn mask(terms: &[Basic]) -> PolyResult<(Vec<Basic>, HashMap<Basic, Basic>)> {
 }
 
 /// `gcd_terms` of a sum (`_gcd_terms_sum`).
-fn gcd_terms_sum(terms: &[Basic], isprimitive: bool, clear: bool, fraction: bool) -> PolyResult<Basic> {
+pub fn gcd_terms_sum(terms: &[Basic], isprimitive: bool, clear: bool, fraction: bool) -> PolyResult<Basic> {
     let (masked, replacements) = mask(terms)?;
     let (content, mut numer, denominator) = gcd_terms_parts(&masked, isprimitive, fraction)?;
     if !replacements.is_empty() {
