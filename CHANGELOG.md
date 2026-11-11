@@ -567,6 +567,34 @@ remove public functions. Breaking changes are listed here when they happen.
   its form may differ (`exp(-2*x*sqrt(1/x))` for
   `exp(-2*sqrt(x**3)/x)`); every other recorded call gives the same
   result (see the commit message for the comparison).
+- Charpit's method and the differential-algebraic solver are native
+  (**breaking**): `sympy_extras.solvers.charpit` (`complete_integral`,
+  `check_complete_integral`) takes equations of the core and imports no
+  SymPy (the equations polynomial in the unknown are solved by the native
+  `roots`, in the order and with the simplification of SymPy's `solve`;
+  sums of powers are integrated term by term; the checks use the native
+  `simplify`); `sympy_extras.solvers.dae` (`dsolve_dae`,
+  `core_nilpotent_decomposition`, `dae_index`, `dae_matrices`,
+  `check_dae`, `DAESolution`) works on `ExprMatrix` of the core, with
+  exact Gaussian elimination by the native `cancel` and a new
+  `matrix_exponential` by Putzer's algorithm (eigenvalues by the native
+  `roots`) instead of SymPy's `Matrix.exp`. What stays on SymPy is called
+  at run time through the faces: `solve` for equations not polynomial in
+  the unknown and `integrate` for integrands which are not sums of powers
+  (`charpit_sympy.solve_of_core`, `charpit_sympy.antiderivative_of_core`),
+  `integrate` of the particular solution of the regular part
+  (`dae_sympy.integral_of_core`, SymPy's `Integral` when it finds none).
+  The old API on SymPy objects moves to the faces
+  `sympy_extras.solvers.charpit_sympy` and
+  `sympy_extras.solvers.dae_sympy`, with the same results on 92 recorded
+  calls (the tests, the doctests and about 50 more equations, matrices
+  and systems); the benchmarks, the README and the docs use the faces.
+  `dae_matrices` raises `ValueError` ("... is not linear in the functions
+  and their first derivatives") instead of SymPy's `NonlinearError` (a
+  subclass of `ValueError`) for nonlinear equations. The constant factor
+  of an integrand stays out of the antiderivative, as in SymPy's
+  `integrate`: SymPy's `solve` finds no root of `a*log(u) + log(u) - 1`.
+
 - The Thue equation solver is native (**breaking**):
   `sympy_extras.solvers.thue_equation.thue` takes a form and generators
   (symbols or other expressions, as `Poly`) of the core and imports no

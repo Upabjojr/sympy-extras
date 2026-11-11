@@ -275,6 +275,13 @@ sympy_extras/
                              sympy_extras._special_values through _special_values_sympy)
         _special_values_sympy.py the SymPy face of _special_values (used by ode, first_order, second_order, linear_ode),
                              and special_values_of_core
+        charpit.py           complete_integral, check_complete_integral: complete integrals of first order PDEs by
+                             Charpit's method (native; SymPy's solve and integrate through charpit_sympy)
+        charpit_sympy.py     the SymPy face of charpit, and solve_of_core, antiderivative_of_core
+        dae.py               dsolve_dae, core_nilpotent_decomposition, dae_index, dae_matrices, check_dae,
+                             matrix_exponential (Putzer): linear DAEs with constant coefficients on ExprMatrix
+                             (native; SymPy's integrate of the particular solution through dae_sympy)
+        dae_sympy.py         the SymPy face of dae (SymPy matrices), and integral_of_core
         tests/
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native; the sample

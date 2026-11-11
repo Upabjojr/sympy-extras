@@ -389,7 +389,7 @@ statement assumptions and case distinctions.
 >>> from sympy import Function, binomial, exp, oo, symbols
 >>> from sympy_extras.solvers.kovacic_sympy import dsolve_kovacic
 >>> from sympy_extras.solvers.linear_ode import dsolve_linear
->>> from sympy_extras.solvers.charpit import complete_integral
+>>> from sympy_extras.solvers.charpit_sympy import complete_integral
 >>> from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
 >>> from sympy_extras.assumptions.limits_sympy import limit
 >>> x, y = symbols('x y')
@@ -526,7 +526,7 @@ decided by virtual substitution and the parity of integer polynomials in
 >>> from sympy_extras.assumptions.refine_sympy import refine
 >>> from sympy_extras.assumptions.limits_sympy import limit_seq
 >>> from sympy_extras.assumptions.facts_sympy import element
->>> from sympy_extras.solvers.dae import dsolve_dae
+>>> from sympy_extras.solvers.dae_sympy import dsolve_dae
 >>> from sympy_extras.concrete.convergence import sum_convergence
 >>> solve(Eq(x, cos(x)), x, domain=S.Reals)
 {TranscendentalRoot(x - cos(x), x, 5/8, 3/4)}
@@ -1033,10 +1033,12 @@ sympy_extras/
         exponential_diophantine.py  Pillai's equation a**x - b**y = c (Baker–Wüstholz, continued fractions), integer zeros of exponential polynomials (native)
         simplex.py           exact linear programming over QQ with certificates (duality, Farkas, rays), strict inequalities (native)
         recurr.py            linear recurrences: polynomial, hypergeometric (Petkovšek), d'Alembertian (Abramov–Petkovšek) solutions (native)
-        charpit.py           complete integrals of first order PDEs
+        charpit.py           complete integrals of first order nonlinear PDEs by Charpit's method (native)
+        charpit_sympy.py     the SymPy face of charpit
+        dae.py               linear differential-algebraic equations, core-nilpotent decomposition (native)
+        dae_sympy.py         the SymPy face of dae
         kovacic.py           Kovacic's algorithm (Liouvillian solutions of second order linear ODEs)
         linear_ode.py        polynomial, rational, hyperexponential solutions; reduction of order
-        charpit.py           complete integrals of first order nonlinear PDEs
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native)
         structure_sympy.py   the SymPy face of structure

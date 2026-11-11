@@ -3,7 +3,7 @@ from __future__ import annotations
 from sympy import Matrix, Symbol, Function, Eq, sin, cos, exp, eye, diag, zeros, simplify
 from sympy.testing.pytest import raises
 
-from sympy_extras.solvers.dae import (core_nilpotent_decomposition, dae_index, dsolve_dae, dae_matrices,
+from sympy_extras.solvers.dae_sympy import (core_nilpotent_decomposition, dae_index, dsolve_dae, dae_matrices,
     check_dae, DAESolution)
 
 x = Symbol('x')

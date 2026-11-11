@@ -90,8 +90,8 @@ from sympy_extras.solvers.special import special_solutions
 from sympy_extras.solvers.ode import dsolve_lie
 from sympy_extras.solvers.first_order import dsolve_first_order
 from sympy_extras.solvers.second_order import dsolve_second_order, integrating_factor_xy, is_linearizable
-from sympy_extras.solvers.dae import dsolve_dae, dae_matrices
-from sympy_extras.solvers.charpit import complete_integral
+from sympy_extras.solvers.dae_sympy import dsolve_dae, dae_matrices
+from sympy_extras.solvers.charpit_sympy import complete_integral
 from sympy_extras.solvers.isolation_sympy import isolate_real_roots
 from sympy_extras.solvers.thue_equation_sympy import thue
 from sympy_extras.solvers.abel import abel_by_invariants, abel_invariants
