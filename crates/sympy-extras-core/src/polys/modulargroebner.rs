@@ -5,7 +5,7 @@
 //! homogenised; the order is then the homogeneous order (total degree
 //! first, then the order of the ring on the original variables). For
 //! every prime dividing no leading coefficient the reduced Gröbner basis
-//! modulo `p` is computed (by [`f4`] over [`BigFiniteField`]), the images
+//! modulo `p` is computed (by [`direct_groebner`] over [`BigFiniteField`]), the images
 //! of unlucky primes are discarded by comparing their leading monomials
 //! degree by degree ([`Luckiness`]), the images of the kept primes are
 //! combined by the Chinese remainder theorem and the rational coefficients
@@ -17,10 +17,12 @@
 //! one and interreducing gives the reduced basis of the input. See the
 //! Python module for the full discussion.
 //!
-//! The Python module also offers `direct_groebner` and `groebner`, which
-//! choose between SymPy's Buchberger algorithm, F4 and the modular
-//! algorithm by time limits; they are not ported ([`f4`] is the direct
-//! computation here).
+//! [`direct_groebner`] is the direct computation of the Python module, by
+//! the algorithm given as an argument ([`GroebnerAlgorithm`]) instead of
+//! `settings.groebner_algorithm` (the images use its default, F4). The
+//! Python `groebner`, which gives the direct computation a time limit
+//! before the modular algorithm (`_timeout.attempt`), is not ported: it
+//! needs an interruptible F4.
 //!
 //! References
 //! ==========
@@ -44,6 +46,8 @@ use crate::error::{value_error, PolyResult};
 use crate::ntheory::generate::prevprime;
 use crate::numbers::*;
 
+use super::buchberger::buchberger;
+use super::domains::Domain;
 use super::domains::{BigFiniteField, IntegerRing, RationalField};
 use super::f4::f4;
 use super::rings::{monomial_divides, Monomial, MonomialOrder, PolyElement, PolyRing, Terms};
@@ -404,7 +408,10 @@ fn image(polys: &[IntPoly], names: &[String], order: &MonomialOrder, p: &Int) ->
         .map(|f| ring.from_dict(f.iter().map(|(m, c)| (m.clone(), mod_floor(c, p))).collect()))
         .filter(|f| !f.is_zero())
         .collect();
-    let mut result: Vec<Led> = f4(&reduced, &ring)?.into_iter().map(|g| (g.LM(), g.terms)).collect();
+    let mut result: Vec<Led> = direct_groebner(&reduced, &ring, GroebnerAlgorithm::F4)?
+        .into_iter()
+        .map(|g| (g.LM(), g.terms))
+        .collect();
     result.sort_by(|a, b| order.cmp(&a.0, &b.0));
     Ok(result)
 }
@@ -586,6 +593,40 @@ fn integer_poly(f: &PolyElement<RationalField>) -> IntPoly {
     primitive(g, None)
 }
 
+/// The direct computation of a Gröbner basis (`settings.groebner_algorithm`
+/// of the Python module).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum GroebnerAlgorithm {
+    /// [`f4`], the default.
+    #[default]
+    F4,
+    /// [`buchberger`].
+    Buchberger,
+}
+
+/// The reduced Gröbner basis over a field by the direct computation of
+/// `algorithm` (the zero polynomials dropped).
+pub fn direct_groebner<K: Domain>(
+    polys: &[PolyElement<K>],
+    ring: &Arc<PolyRing<K>>,
+    algorithm: GroebnerAlgorithm,
+) -> PolyResult<Vec<PolyElement<K>>> {
+    let nonzero: Vec<PolyElement<K>> = polys.iter().filter(|f| !f.is_zero()).cloned().collect();
+    match algorithm {
+        GroebnerAlgorithm::F4 => f4(&nonzero, ring),
+        GroebnerAlgorithm::Buchberger => buchberger(&nonzero, ring),
+    }
+}
+
+/// The order which compares the total degree first, then `base` on the
+/// first `nvars` exponents: the order of the images of [`modular_groebner`].
+pub fn homogeneous_order(base: &MonomialOrder, nvars: usize) -> MonomialOrder {
+    MonomialOrder::Homogeneous {
+        base: Box::new(base.clone()),
+        nvars,
+    }
+}
+
 /// The modular computation on primitive integer polynomials in `nvars`
 /// variables (`names`) for `base`: the reduced basis up to integer factors
 /// (primitive, positive leading coefficients), by decreasing leading
@@ -606,7 +647,8 @@ fn modular_basis(
     let mut symbols: Vec<String> = names.to_vec();
     let mut integer: Vec<IntPoly> = integer;
     if homogenized {
-        let mut t: String = "t".to_string();
+        // a name which is none of the variables (it is only printed)
+        let mut t: String = "_t".to_string();
         while symbols.contains(&t) {
             t.insert(0, '_');
         }
@@ -625,10 +667,7 @@ fn modular_basis(
             })
             .collect();
     }
-    let order: MonomialOrder = MonomialOrder::Homogeneous {
-        base: Box::new(base.clone()),
-        nvars,
-    };
+    let order: MonomialOrder = homogeneous_order(base, nvars);
     let leading_coefficients: Vec<Int> = integer
         .iter()
         .map(|f| f[&leading_monomial(f, &order)].clone())

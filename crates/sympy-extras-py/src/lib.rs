@@ -146,6 +146,7 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "sympy_extras_rs.polys.gaussianfactor",
     )?)?;
     algorithms::register_f4(&submodule(&polys, "f4", "sympy_extras_rs.polys.f4")?)?;
+    algorithms::register_buchberger(&submodule(&polys, "buchberger", "sympy_extras_rs.polys.buchberger")?)?;
     algorithms::register_fglm(&submodule(&polys, "fglm", "sympy_extras_rs.polys.fglm")?)?;
     dense::register_subresultants(&submodule(
         &polys,

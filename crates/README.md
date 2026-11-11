@@ -68,7 +68,8 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `solvers/exponential_diophantine.py` | done | the `mpmath` steps on `dashu-float` at mpmath's binary precision for the same decimal digits; the bounds keep their margins, the partial quotients are checked at twice the digits |
 | `solvers/simplex.py` | done | the first module of `solvers`; the status an enum (a string in the bindings); the rows of `_without_redundant` in the dict's insertion order |
 | `ntheory/primetest.py`, `generate.py`, `factor_.py` | done | `primerange` is an iterator struct (a list in the bindings) |
-| `polys/modulargroebner.py` | the modular algorithm | `modular_groebner` over `QQ` and `ZZ` (`modular_groebner_zz`), with the same images (F4 over `BigFiniteField`), luckiness, reconstruction, verification and trace as Python; `direct_groebner`/`groebner` (time limits around SymPy's Buchberger) not ported |
+| `polys/modulargroebner.py` | done | on the typed rings as the Python now is (7686069): `direct_groebner` with the algorithm as an argument (`settings` is not ported; the images use F4), `homogeneous_order`; `groebner` (the time-limited choice through `_timeout.attempt`) is not ported, it needs an interruptible F4 |
+| `polys/buchberger.py` | done | ordered sets instead of Python sets (the reduced basis is unique) |
 | `polys/polyclasses.py` | `DensePoly` | generic over the domain, the variable a core `Symbol`; binary operations return `Err(Value)` for different domains or variables; `from_expr`/`to_expr` wait for the core; no binding (it needs the core's `Symbol` in Python) |
 | `polys/multisqf.py` | done | the `SqfDomain` classes as a trait with three implementations |
 | `polys/multifactor.py` | done | the diophantine equations over `BigFiniteField` (the modulus is the next prime above a Mignotte bound) |

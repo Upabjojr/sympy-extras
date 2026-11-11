@@ -2,6 +2,7 @@
 
 pub mod berlekampmassey;
 pub mod bigatti;
+pub mod buchberger;
 pub mod complexroots;
 pub mod densearith;
 pub mod densebasic;

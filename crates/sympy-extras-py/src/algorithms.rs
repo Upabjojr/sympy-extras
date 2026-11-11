@@ -16,8 +16,8 @@ use sympy_extras_core::polys::modulargroebner as mg;
 use sympy_extras_core::polys::rings::PolyElement;
 use sympy_extras_core::polys::rings::{Monomial, MonomialOrder};
 use sympy_extras_core::polys::{
-    berlekampmassey as bm, bigatti, f4 as groebner, fglm as fglm_mod, gaussianfactor as gf, hilbert, multifactor as mf,
-    rootisolation as ri, stronggroebner as sg,
+    berlekampmassey as bm, bigatti, buchberger as bb, f4 as groebner, fglm as fglm_mod, gaussianfactor as gf, hilbert,
+    multifactor as mf, rootisolation as ri, stronggroebner as sg,
 };
 
 use crate::convert::{err, extract_int, out_int, out_poly, out_polys, out_usize, poly, tuple, Bridge};
@@ -975,10 +975,10 @@ fn modular_groebner<'py>(
             RingKind::ZZ(r) => mg::modular_groebner_zz(&same_kind!(&items, ZZ), r, primes_arg, Some(&mut record))
                 .map(|g| wrap(g, ElemKind::ZZ))
                 .map_err(err),
-            RingKind::GF(r) => groebner::f4(&same_kind!(&items, GF), r)
-                .map(|g| wrap(g, ElemKind::GF))
-                .map_err(err),
-            RingKind::GaussianQQ(_) => Err(PyTypeError::new_err("modular Groebner bases over QQ or ZZ")),
+            RingKind::GF(_) | RingKind::GaussianQQ(_) => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "the modular algorithm needs QQ or ZZ as the coefficient domain, got {}",
+                crate::rings::domain_name(&ring.inner)
+            ))),
         }
     };
     if let Some(e) = given.and_then(|g| g.error) {
@@ -990,6 +990,95 @@ fn modular_groebner<'py>(
     out_elements(py, result?)
 }
 
+fn algorithm_from(name: &str) -> PyResult<mg::GroebnerAlgorithm> {
+    match name {
+        "f4" => Ok(mg::GroebnerAlgorithm::F4),
+        "buchberger" => Ok(mg::GroebnerAlgorithm::Buchberger),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown Groebner algorithm {}",
+            other
+        ))),
+    }
+}
+
+/// `direct_groebner(polys, ring, algorithm='f4')`: the algorithm is an
+/// argument here (Python reads `settings.groebner_algorithm`).
+#[pyfunction]
+#[pyo3(signature = (polys, ring, algorithm = "f4"))]
+fn direct_groebner<'py>(
+    py: Python<'py>,
+    polys: &Bound<'py, PyAny>,
+    ring: &PyPolyRing,
+    algorithm: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    let items: Vec<ElemKind> = elements(polys)?;
+    let algorithm: mg::GroebnerAlgorithm = algorithm_from(algorithm)?;
+    let result: Vec<ElemKind> = match &ring.inner {
+        RingKind::ZZ(r) => wrap(
+            mg::direct_groebner(&same_kind!(&items, ZZ), r, algorithm).map_err(err)?,
+            ElemKind::ZZ,
+        ),
+        RingKind::QQ(r) => wrap(
+            mg::direct_groebner(&same_kind!(&items, QQ), r, algorithm).map_err(err)?,
+            ElemKind::QQ,
+        ),
+        RingKind::GF(r) => wrap(
+            mg::direct_groebner(&same_kind!(&items, GF), r, algorithm).map_err(err)?,
+            ElemKind::GF,
+        ),
+        RingKind::GaussianQQ(r) => wrap(
+            mg::direct_groebner(&same_kind!(&items, GaussianQQ), r, algorithm).map_err(err)?,
+            ElemKind::GaussianQQ,
+        ),
+    };
+    out_elements(py, result)
+}
+
+#[pyfunction]
+fn homogeneous_order(base: &Bound<'_, PyAny>, nvars: usize) -> PyResult<crate::rings::PyOrder> {
+    Ok(crate::rings::PyOrder {
+        order: mg::homogeneous_order(&crate::rings::order_from(base)?, nvars),
+    })
+}
+
+// -- buchberger
+
+#[pyfunction]
+fn buchberger<'py>(py: Python<'py>, polys: &Bound<'py, PyAny>, ring: &PyPolyRing) -> PyResult<Bound<'py, PyAny>> {
+    let items: Vec<ElemKind> = elements(polys)?;
+    let result: Vec<ElemKind> = match &ring.inner {
+        // the domain is checked first, as in Python
+        RingKind::ZZ(r) => wrap(bb::buchberger(&[], r).map_err(err)?, ElemKind::ZZ),
+        RingKind::QQ(r) => wrap(bb::buchberger(&same_kind!(&items, QQ), r).map_err(err)?, ElemKind::QQ),
+        RingKind::GF(r) => wrap(bb::buchberger(&same_kind!(&items, GF), r).map_err(err)?, ElemKind::GF),
+        RingKind::GaussianQQ(r) => wrap(
+            bb::buchberger(&same_kind!(&items, GaussianQQ), r).map_err(err)?,
+            ElemKind::GaussianQQ,
+        ),
+    };
+    out_elements(py, result)
+}
+
+#[pyfunction]
+fn s_polynomial(p1: &PyPolyElement, p2: &PyPolyElement) -> PyResult<PyPolyElement> {
+    let inner: ElemKind = match (&p1.inner, &p2.inner) {
+        (ElemKind::ZZ(a), ElemKind::ZZ(b)) => ElemKind::ZZ(bb::s_polynomial(a, b).map_err(err)?),
+        (ElemKind::QQ(a), ElemKind::QQ(b)) => ElemKind::QQ(bb::s_polynomial(a, b).map_err(err)?),
+        (ElemKind::GF(a), ElemKind::GF(b)) => ElemKind::GF(bb::s_polynomial(a, b).map_err(err)?),
+        (ElemKind::GaussianQQ(a), ElemKind::GaussianQQ(b)) => {
+            ElemKind::GaussianQQ(bb::s_polynomial(a, b).map_err(err)?)
+        }
+        _ => return Err(PyTypeError::new_err("polynomials of different rings")),
+    };
+    Ok(PyPolyElement { inner })
+}
+
+pub fn register_buchberger(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(buchberger, m)?)?;
+    m.add_function(wrap_pyfunction!(s_polynomial, m)?)?;
+    Ok(())
+}
+
 pub fn register_modulargroebner(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("GUARD_BITS", mg::GUARD_BITS)?;
     m.add_class::<PyModularTrace>()?;
@@ -998,5 +1087,7 @@ pub fn register_modulargroebner(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(chinese_remainder, m)?)?;
     m.add_function(wrap_pyfunction!(default_primes, m)?)?;
     m.add_function(wrap_pyfunction!(modular_groebner, m)?)?;
+    m.add_function(wrap_pyfunction!(direct_groebner, m)?)?;
+    m.add_function(wrap_pyfunction!(homogeneous_order, m)?)?;
     Ok(())
 }
