@@ -138,7 +138,7 @@ def sympy_prefix(prefix: Prefix) -> QuantifierPrefix:
 def truth_tables_of_core(formulas: list[CoreBoolean], gens: list[CoreSymbol]) -> list[list[bool]]:
     """The truth values of the formulas on the cells of one decomposition
     (:func:`sympy_extras.polys.cad.truth_tables`)."""
-    from sympy_extras.polys.cad import truth_tables
+    from sympy_extras.polys.cad.qe import truth_tables
     _, tables = truth_tables([sympy_boolean(f) for f in formulas], [_sympy_symbol(g) for g in gens])
     return [list(t) for t in tables]
 

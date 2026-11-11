@@ -563,6 +563,41 @@ remove public functions. Breaking changes are listed here when they happen.
   by `interop`), on 120 calls: the doctests, the tests of the module, the
   `resolve` calls reaching it and 65 linear and quadratic eliminations
   with parameters.
+- The bottom layer of the cylindrical algebraic decomposition is native
+  (**breaking**): `sympy_extras.polys.cad.projection`, `.samplepoints` and
+  `.lifting` work on the typed `Poly` of `polys.polytools` in symbols of the
+  core and import no SymPy. The sample points are real
+  `qqbar.Algebraic` numbers (minimal polynomial and isolating interval;
+  `compare_real` tells two isolations of one number equal by a Sturm count),
+  their fields the native `AlgebraicField` of a primitive element, the real
+  roots over `QQ(theta)` come from the norm (`factortools.dup_ext_norm`) and
+  Sturm sequences over the field, Hong's principal subresultant
+  coefficients from the typed `dup_inner_subresultants` over
+  `IntegerPolynomialRing`. Cells give their points as `Algebraic` numbers;
+  `CADCell.factor_sign`, `lifting.factor_signs`, `projection.to_polys`,
+  `PROJECTIONS`, `KEPT`, `samplepoints.floor_scaled`, `real_roots_of` are the
+  public names of what was private. The new faces `projection_sympy`,
+  `samplepoints_sympy` and `lifting_sympy` keep the old API on SymPy objects
+  (`Poly`, `Rational`, `CRootOf`; the points are named `CRootOf(m, i)` of
+  the minimal polynomial in the variable of the level, so that the printed
+  variable of a root may differ, as it did with SymPy's cache) and are what
+  `qe`, `cylindrical`, `integrals.regions` and the assumptions use; **import
+  them instead of the old modules**. The face's `SamplePoint` has no
+  `field` and `coords` (its `native` point has them), `lifting._merge_roots`
+  is gone. **`sympy_extras.polys.cad` exports nothing**: import from
+  `polys.cad.qe` (`quantifier_elimination`, `decide`, `sample_points`,
+  `solution_set`, `truth_tables`), `polys.cad.cylindrical`
+  (`cylindrical_formula`, `cylindrical_set`, `cylindrical_cases`,
+  `IndexedRoot`), `polys.cad.lifting_sympy` (`cylindrical_algebraic_decomposition`,
+  `CAD`, `CADCell`, `NotWellOriented`), `polys.cad.projection_sympy` and
+  `polys.cad.samplepoints_sympy`. Native `Poly`: `discriminant` divides by
+  the leading coefficient exactly (it raised when that coefficient was a
+  polynomial in the other generators), `__eq__` and `__hash__` work on the
+  representation (no expression is built), new `Poly.from_dict`, `rep`,
+  `is_integral`; `qqbar.Algebraic.real_interval` and `refine_real`.
+  `interop`: `subs` and `xreplace` no longer go into the polynomial of a
+  wrapped `CRootOf` (its variable is bound; `(x + CRootOf(x**3 - x - 1,
+  0)).subs(x, 1)` raised `GeneratorsNeeded`).
 - `sympy_extras.solvers.isolation`, `sympy_extras.solvers.integers` and
   `sympy_extras.polys.roots` are native (**breaking**: core expressions,
   symbols, Booleans and sets in and out; they import no SymPy). The

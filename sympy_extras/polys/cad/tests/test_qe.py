@@ -20,7 +20,7 @@ from sympy.sets.sets import Interval, FiniteSet, Union
 from sympy_extras._typing import QuantifierSpec, as_boolean
 from sympy_extras.polys.cad.qe import (quantifier_elimination, decide,
     sample_points, solution_set, _truth_values, CellTruth)
-from sympy_extras.polys.cad.lifting import CAD
+from sympy_extras.polys.cad.lifting_sympy import CAD
 from sympy.testing.pytest import raises
 from sympy.abc import a, b, c, d, e, x, y, z
 
@@ -399,8 +399,8 @@ def test_inherited_truth_of_the_refined_cells() -> None:
     # which vanishes identically over the cell below has no section (the
     # refined stack over x = 0 has the double root y = 0 of x - y**2 and
     # the root of y, one section)
-    from sympy_extras.polys.cad.lifting import Lifting
-    from sympy_extras.polys.cad.projection import augmented_projection_sets, projection_sets
+    from sympy_extras.polys.cad.lifting_sympy import Lifting
+    from sympy_extras.polys.cad.projection_sympy import augmented_projection_sets, projection_sets
     from sympy_extras.polys.cad.qe import _inherited_truth
     projection = projection_sets([x - y**2, x*y], [x, y])
     lifting = Lifting(projection, [x, y], 'mccallum')

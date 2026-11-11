@@ -8,7 +8,7 @@ from sympy.abc import a, b, c, x, y, z
 from sympy_extras.assumptions.resolve_sympy import resolve
 from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 from sympy_extras.assumptions.facts_sympy import element
-from sympy_extras.polys.cad import decide
+from sympy_extras.polys.cad.qe import decide
 from sympy_extras.polys.cad.tests.test_qe import _equivalent
 
 

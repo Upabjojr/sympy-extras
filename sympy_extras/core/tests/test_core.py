@@ -877,6 +877,23 @@ def test_termwise_integrate_and_tuple_simplify() -> None:
     assert str(t.simplify()) == '(1, x)'
 
 
+def test_the_variable_of_a_crootof_is_bound() -> None:
+    # subs and xreplace went into the polynomial of a wrapped CRootOf:
+    # (x + CRootOf(x**3 - x - 1, 0)).subs(x, 1) rebuilt CRootOf(-1, 0) and
+    # SymPy raised GeneratorsNeeded (a cell point of the CAD in the variable
+    # of its level, put into an expression of that variable, in
+    # analysis.sign_on); the root is a number
+    import sympy
+    from sympy_extras.interop import from_sympy, to_sympy
+    sx = sympy.Symbol('x')
+    root = sympy.CRootOf(sx**3 - sx - 1, 0)
+    e = as_expr(from_sympy(root + sx))
+    x = from_sympy(sx)
+    assert to_sympy(e.subs(x, 1)) == root + 1
+    assert to_sympy(e.xreplace({x: Integer(2)})) == root + 2
+    assert to_sympy(e.subs(from_sympy(root), 0)) == sx
+
+
 def test_expand_splits_logarithms_before_distributing() -> None:
     # SymPy runs the log hint over the whole tree before the mul hint:
     # log(a*(-1 - I)) with a < 0 is log(-a) + log(2)/2 + I*pi/4; the core

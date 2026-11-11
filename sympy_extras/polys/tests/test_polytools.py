@@ -6,6 +6,7 @@ against the Sylvester determinant: SymPy returns ``Res(g, f)`` when
 from __future__ import annotations
 
 import random
+from fractions import Fraction
 from typing import Callable, Union
 
 import pytest
@@ -187,3 +188,38 @@ def test_gcd_list_and_lcm_list_match_sympy() -> None:
         assert sympy.srepr(to_sympy(gcd_list(native))) == sympy.srepr(sympy.gcd_list(c)), c
         assert sympy.srepr(to_sympy(lcm_list(native))) == sympy.srepr(sympy.lcm_list(c)), c
     assert str(gcd_list([])) == '0' and str(lcm_list([])) == '1'
+
+
+def test_discriminant_with_a_polynomial_leading_coefficient() -> None:
+    # Res(f, f')/lc(f) was divided as an expression: with the leading
+    # coefficient x + 1 in y the quotient 1/(x + 1) was left in it and
+    # Poly(...) raised "1/(x + 1) contains an element of the set of
+    # generators"; the division is now exact on the representation
+    x, y, a = Symbol('x'), Symbol('y'), Symbol('a')
+    f = Poly((x + 1)*y**2 + y + x, y, x)
+    d = f.discriminant()
+    assert isinstance(d, Poly) and d.gens == (x,)
+    assert sympy.expand(to_sympy(d.as_expr())) == sympy.discriminant((sx + 1)*sy**2 + sy + sx, sy)
+    g = Poly((x*y - 1)*(x + y)*y**2 + x**2, y, x)
+    expected = sympy.discriminant(sympy.expand((sx*sy - 1)*(sx + sy)*sy**2 + sx**2), sy)
+    found = g.discriminant()
+    assert isinstance(found, Poly) and sympy.expand(to_sympy(found.as_expr()) - expected) == 0
+    # with a parameter, and univariate
+    h = Poly(a*x**2 + x + 1, x).discriminant()
+    assert isinstance(h, Expr) and sympy.expand(to_sympy(h) - (1 - 4*sa)) == 0
+    assert str(Poly(2*x**3 - x, x).discriminant()) == str(sympy.discriminant(2*sx**3 - sx, sx)) == '8'
+
+
+def test_equality_and_hash_on_the_representation() -> None:
+    # equal polynomials are equal and hash alike, over ZZ and QQ, and over
+    # polynomial domains with the same parameters in another order
+    x, y, a, b = Symbol('x'), Symbol('y'), Symbol('a'), Symbol('b')
+    p, q = Poly(2*x + 2, x), Poly(x + 1, x)*2
+    assert p == q and hash(p) == hash(q)
+    assert Poly(x*y + 1, x, y) != Poly(x*y + 1, y, x)
+    r = Poly(a*x + b*x, x)
+    s = Poly(b*x, x) + Poly(a*x, x)
+    assert r == s and hash(r) == hash(s)
+    assert Poly(x/2, x) == Poly.from_dict({(1,): Fraction(1, 2)}, x)
+    assert Poly.from_dict({(1, 0): 3, (0, 2): -1}, x, y) == Poly(3*x - y**2, x, y)
+    assert Poly.from_dict({(1, 0): 3, (0, 2): -1}, x, y).domain == 'ZZ'

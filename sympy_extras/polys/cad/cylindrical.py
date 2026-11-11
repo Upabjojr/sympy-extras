@@ -72,9 +72,9 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import QuantifierSpec, as_expr, as_symbol
 from sympy_extras.polys.roots_sympy import radical_form
 
-from .lifting import CAD, CADCell
+from .lifting_sympy import CAD, CADCell
 from .qe import CellTruth, _truth_values
-from .samplepoints import RealAlgebraic, _order, rational_real_roots
+from .samplepoints_sympy import RealAlgebraic, _order, rational_real_roots
 
 __all__ = ['IndexedRoot', 'cylindrical_formula', 'cylindrical_set', 'cylindrical_cases']
 
@@ -108,7 +108,7 @@ class IndexedRoot(Function):
     ========
 
     >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import IndexedRoot
+    >>> from sympy_extras.polys.cad.cylindrical import IndexedRoot
     >>> r = IndexedRoot(y**3 + x*y - 1, y, 0); r
     IndexedRoot(x*y + y**3 - 1, y, 0)
     >>> r.subs(x, 0), r.subs(x, 1).evalf(10), r.free_symbols       # a CRootOf at x = 1
@@ -468,7 +468,7 @@ def cylindrical_formula(formula: Union[Boolean, bool], gens: Sequence[Symbol],
 
     >>> from sympy import Eq
     >>> from sympy.abc import x, y, z
-    >>> from sympy_extras.polys.cad import cylindrical_formula
+    >>> from sympy_extras.polys.cad.cylindrical import cylindrical_formula
     >>> cylindrical_formula(x**2 + y**2 < 1, [x, y])
     (x > -1) & (x < 1) & (y < sqrt(1 - x**2)) & (y > -sqrt(1 - x**2))
     >>> cylindrical_formula((x**2 + y**2 <= 1) & (y >= x), [x, y])
@@ -573,7 +573,7 @@ def cylindrical_set(formula: Union[Boolean, bool], gens: Sequence[Symbol], metho
     ========
 
     >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import cylindrical_set
+    >>> from sympy_extras.polys.cad.cylindrical import cylindrical_set
     >>> cylindrical_set((x**2 + y**2 <= 1) & (x + y >= 1), [x, y])
     ConditionSet((x, y), (x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2)), ProductSet(Reals, Reals))
     >>> cylindrical_set((x**2 + y**2)*((x - 3)**2 + y**2 - 1) <= 0, [x, y])
@@ -636,7 +636,7 @@ def cylindrical_cases(formula: Union[Boolean, bool], parameters: Sequence[Symbol
 
     >>> from sympy import Eq
     >>> from sympy.abc import a, x
-    >>> from sympy_extras.polys.cad import cylindrical_cases
+    >>> from sympy_extras.polys.cad.cylindrical import cylindrical_cases
     >>> cylindrical_cases(Eq(x**2, a), [a], [x])
     [(a >= 0, {-sqrt(a), sqrt(a)})]
     >>> cylindrical_cases(x**2 <= a, [a], [x])

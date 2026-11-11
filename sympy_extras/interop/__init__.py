@@ -35,7 +35,7 @@ from sympy.functions.elementary.piecewise import ExprCondPair as SymPyExprCondPa
 
 from sympy_extras.core.add import Add
 from sympy_extras.core.assume import AppliedPredicate, Predicate
-from sympy_extras.core.basic import Basic, SubsMapping
+from sympy_extras.core.basic import Basic, ReplacementRule, SubsMapping
 from sympy_extras.core.bridge import Bridge, RewriteTarget, register_bridge
 from sympy_extras.core.containers import Dict, Tuple
 from sympy_extras.core.assumptions import Facts, Truth
@@ -362,6 +362,23 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return from_sympy(self._sympy_class(*[to_sympy(a) for a in args]))
+
+    def _subs(self, old: Basic, new: Basic) -> Basic:
+        # the variable of the polynomial of a CRootOf is bound: the root
+        # is a number, which no substitution changes
+        if issubclass(self._sympy_class, sympy.ComplexRootOf) and self != old:
+            return self
+        return Expr._subs(self, old, new)
+
+    def _xreplace(self, rule: ReplacementRule) -> Basic:
+        if issubclass(self._sympy_class, sympy.ComplexRootOf) and self not in rule:
+            return self
+        return Expr._xreplace(self, rule)
+
+    def _xreplace_evaluated(self, rule: ReplacementRule) -> Basic:
+        if issubclass(self._sympy_class, sympy.ComplexRootOf) and self not in rule:
+            return self
+        return Expr._xreplace_evaluated(self, rule)
 
     def doit(self) -> Expr:
         return expr_from_sympy(self._sympy().doit())
