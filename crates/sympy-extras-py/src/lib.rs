@@ -28,6 +28,7 @@ mod lattice;
 mod ntheory;
 mod numberfields;
 mod polyerrors;
+mod qqbar;
 mod rings;
 mod simplex;
 mod sparse;
@@ -134,6 +135,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &numberfields_module,
         "basis",
         "sympy_extras_rs.polys.numberfields.basis",
+    )?)?;
+    qqbar::register(&submodule(
+        &numberfields_module,
+        "qqbar",
+        "sympy_extras_rs.polys.numberfields.qqbar",
     )?)?;
     galois::register_galoisfactor(&submodule(
         &polys,

@@ -245,7 +245,7 @@ fn scaled(r: &Rat, scale: &Int) -> Int {
 
 /// The number of roots of the integer polynomial `a` inside the rectangle;
 /// `None` when a root lies on the boundary.
-fn winding_number(a: &[Int], rectangle: &Rectangle) -> PolyResult<Option<i64>> {
+pub(crate) fn winding_number(a: &[Int], rectangle: &Rectangle) -> PolyResult<Option<i64>> {
     let (x0, x1, y0, y1) = (
         &rectangle.re_min,
         &rectangle.re_max,
@@ -440,7 +440,7 @@ fn one_root_near(a: &[Int], x: &Int, y: &Int, precision: usize) -> bool {
 }
 
 /// A rectangle with one root shrunk until its sides are below `eps`.
-fn refine(a: &[Int], rectangle: Rectangle, eps: Option<&Rat>) -> PolyResult<Rectangle> {
+pub(crate) fn refine(a: &[Int], rectangle: Rectangle, eps: Option<&Rat>) -> PolyResult<Rectangle> {
     let Some(eps) = eps else {
         return Ok(rectangle);
     };
