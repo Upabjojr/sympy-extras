@@ -298,7 +298,7 @@ pub fn subs_node(expr: &Basic, variables: Vec<Basic>, point: Vec<Basic>) -> Basi
 
 /// `expr` with the variables replaced by the points, a `Subs` kept around
 /// the variables of a derivative which are not replaced by symbols
-/// (`_substituted`; the replacement itself needs `subs`, not ported).
+/// (`_substituted`).
 pub fn substituted(expr: &Basic, variables: &[Basic], point: &[Basic]) -> PolyResult<Basic> {
     let derivatives: Vec<Basic> = expr
         .preorder()
@@ -319,14 +319,16 @@ pub fn substituted(expr: &Basic, variables: &[Basic], point: &[Basic]) -> PolyRe
             free.push((v.clone(), p.clone()));
         }
     }
-    if !free.is_empty() {
-        return Err(crate::error::not_ported("subs"));
-    }
+    let inner: Basic = if free.is_empty() {
+        expr.clone()
+    } else {
+        super::subs::subs_pairs(expr, &free)?
+    };
     if blocked.is_empty() {
-        return Ok(expr.clone());
+        return Ok(inner);
     }
     let (vs, ps): (Vec<Basic>, Vec<Basic>) = blocked.into_iter().unzip();
-    Ok(subs_node(expr, vs, ps))
+    Ok(subs_node(&inner, vs, ps))
 }
 
 fn is_zero_rational(e: &Basic) -> bool {

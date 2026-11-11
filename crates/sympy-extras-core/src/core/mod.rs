@@ -41,6 +41,7 @@ pub mod power;
 pub mod printing;
 pub mod relational;
 pub mod sorting;
+pub mod subs;
 pub mod symbol;
 
 pub use basic::{Basic, Function, Head, Node};

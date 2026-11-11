@@ -664,6 +664,38 @@ fn diff<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, spec: &Bound<'py, PyTuple>)
     )
 }
 
+/// `e.subs(old, new)`, `e.subs([(old, new), ...])` or `e.subs({old: new})`.
+#[pyfunction(signature = (e, *args))]
+fn subs<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, args: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::core::subs as s;
+    let expr: Basic = from_python(e)?;
+    let result = if args.len() == 2 {
+        s::subs(
+            &expr,
+            &from_python(&args.get_item(0)?)?,
+            &from_python(&args.get_item(1)?)?,
+        )
+    } else if args.len() == 1 {
+        let rules: Bound<'py, PyAny> = args.get_item(0)?;
+        let mut pairs: Vec<(Basic, Basic)> = Vec::new();
+        if let Ok(d) = rules.downcast::<PyDict>() {
+            for (k, v) in d.iter() {
+                pairs.push((from_python(&k)?, from_python(&v)?));
+            }
+            s::subs_mapping(&expr, &pairs)
+        } else {
+            for item in rules.try_iter()? {
+                let item = item?;
+                pairs.push((from_python(&item.get_item(0)?)?, from_python(&item.get_item(1)?)?));
+            }
+            s::subs_pairs(&expr, &pairs)
+        }
+    } else {
+        return Err(PyTypeError::new_err("subs takes (old, new), a mapping or pairs"));
+    };
+    to_python(py, &result.map_err(crate::convert::err)?)
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -696,6 +728,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(gcd_terms, m)?)?;
     m.add_function(wrap_pyfunction!(together, m)?)?;
     m.add_function(wrap_pyfunction!(diff, m)?)?;
+    m.add_function(wrap_pyfunction!(subs, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;
