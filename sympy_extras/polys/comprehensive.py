@@ -48,7 +48,7 @@ from sympy.polys.rings import ring as _ring, PolyElement
 
 from sympy_extras._typing import QuantifierPrefix, as_boolean, as_expr, free_symbols, sorted_symbols
 
-from .ideals import Ideal
+from .ideals_sympy import Ideal
 from .orderings import elimination_order
 
 __all__ = ['Branch', 'comprehensive_groebner_system', 'exists_complex',

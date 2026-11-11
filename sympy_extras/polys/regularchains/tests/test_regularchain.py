@@ -9,7 +9,7 @@ from sympy.core.expr import Expr
 from sympy.testing.pytest import raises
 
 from sympy_extras._typing import as_expr
-from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.ideals_sympy import Ideal
 from sympy_extras.polys.regularchains import RegularChain, regular_gcd, triangularize
 
 from .oracle import covers, is_squarefree_regular_chain, saturated

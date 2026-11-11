@@ -83,7 +83,7 @@ from sympy.polys.rings import PolyElement, PolyRing
 
 from sympy_extras._typing import DomainElement, Monomial, Sign, Truth, as_expr
 
-from .ideals import Ideal
+from .ideals_sympy import Ideal
 
 __all__ = ['SignCounts', 'hermite_matrix', 'tarski_query', 'count_real_solutions',
            'count_complex_solutions', 'real_sign_counts', 'sign_determination',

@@ -1,6 +1,7 @@
 # Polynomial ideals and Gröbner bases
 
-Modules: `sympy_extras.polys.ideals`, `sympy_extras.polys.groebnerwalk`,
+Modules: `sympy_extras.polys.ideals` (native) and its SymPy face
+`sympy_extras.polys.ideals_sympy`, `sympy_extras.polys.groebnerwalk`,
 `sympy_extras.polys.modulargroebner`, `sympy_extras.polys.orderings`,
 `sympy_extras.polys.hermite`
 
@@ -63,7 +64,7 @@ coefficients to the rationals).
 
 ```python
 >>> from sympy.abc import x, y, z, t, d
->>> from sympy_extras.polys.ideals import Ideal
+>>> from sympy_extras.polys.ideals_sympy import Ideal
 >>> I = Ideal([x*z - y**2, x**2 - y*z], x, y, z)
 >>> I.groebner_basis()
 [Poly(x**2 - y*z, x, y, z, domain='QQ'), Poly(-x*z + y**2, x, y, z, domain='QQ')]
@@ -365,10 +366,67 @@ Orders with SymPy's own `groebner`:
 
 ```
 
+## The native ideals and the SymPy face
+
+`sympy_extras.polys.ideals` imports no SymPy: its `Ideal` takes core
+expressions (or elements of a typed `sympy_extras.polys.rings.PolyRing`),
+core symbols, a typed coefficient field of `sympy_extras.polys.domains`
+(`QQ`, `GF(p)`, `AlgebraicField`, `QQ_I`, a `SparseFractionField`; the
+domain is not inferred and must be given) and a typed monomial order
+(`lex`, `grlex`, `grevlex`, and `WeightOrder`, `BlockOrder`,
+`elimination_order` of `sympy_extras.polys.rings`). Its bases are lists
+of ring elements, its univariate and minimal polynomials `DensePoly`
+objects, its multiplication matrices lists of rows of domain elements.
+F4 computes the bases, FGLM converts them in dimension zero, a native
+Gröbner walk (initial forms by F4, lifting by normal forms) converts them
+otherwise, and Bigatti's algorithm (`sympy_extras.polys.bigatti`) gives
+the Hilbert series.
+
+```python
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.polys.domains import QQ, GF
+>>> from sympy_extras.polys.ideals import Ideal as NativeIdeal
+>>> a, b, c = symbols('a b c')
+>>> J = NativeIdeal([a*c - b**2, a**2 - b*c], a, b, c, domain=QQ)
+>>> J.dimension(), J.degree(), J.eliminate([a])
+(1, 4, Ideal([b**4 - b*c**3], b, c))
+>>> [str(g) for g in J.change_order('lex')]
+['a**2 - b*c', 'a*b**2 - b*c**2', 'a*c - b**2', 'b**4 - b*c**3']
+>>> NativeIdeal([a**3 + 2*a + 1, b**2 - a], a, b, domain=GF(7)).is_maximal()
+True
+
+```
+
+The steps without a native counterpart are called at run time through the
+face, as the functions ending in `_of_core` of
+`sympy_extras.polys.ideals_sympy`: `modular_groebner_of_core` (the modular
+algorithm over `QQ`, when F4 has not finished within
+`settings.groebner_direct_time`), `direct_groebner_of_core` (SymPy's
+Buchberger with `settings.groebner_algorithm = 'buchberger'`), and
+`radical_of_core`, `equidimensional_parts_of_core`,
+`minimal_primes_of_core`, `primary_decomposition_of_core`,
+`associated_primes_of_core`, `is_primary_of_core` (the decompositions of
+`sympy_extras.polys.idealdecomposition` through regular chains, which stay
+on SymPy). The rational univariate representation is a method of the face
+only.
+
+The face `sympy_extras.polys.ideals_sympy.Ideal` has the API the module
+had before: SymPy expressions, `Poly` generators, the domain inferred with
+`extension=True`, `Poly` bases, SymPy matrices, the SymPy rings and ring
+elements of `ring(order)` and `_basis(order)` (which `hermite`, `rur`,
+`comprehensive`, `idealdecomposition`, `regularchains` and
+`rosenfeld_groebner` use), and the same results: on 8037 recorded calls
+(the doctests and tests of these modules and 50 more) the face returned
+what the old class returned, and the native class, its inputs and outputs
+converted, what the face returned.
+
 ## The Gröbner walk
 
-`groebner_walk(G, ring, target)` converts the reduced Gröbner basis `G` of
-a SymPy `PolyRing` (whose order is the source order) to the target order.
+`groebner_walk(G, ring, target)` of `sympy_extras.polys.groebnerwalk`
+converts the reduced Gröbner basis `G` of a SymPy `PolyRing` (whose order
+is the source order) to the target order; `Ideal.change_order` uses the
+native walk of `sympy_extras.polys.ideals`, the same algorithm on the
+typed rings with F4 for the initial forms and the lifting by normal forms.
 The source and target orders are represented by weight vectors; along the
 segment between them, at every point where the ordering of the monomials
 of the basis changes, the initial forms of the basis elements are computed,
@@ -386,10 +444,13 @@ field (`QQ`, `GF(p)`, an algebraic number field of
 `sympy_extras.polys.domains.algebraicfield`) for the order of the ring,
 sorted by decreasing leading monomial. It does not use SymPy: the matrix
 reduction is a sparse Gauss–Jordan elimination of its own, fraction-free
-over the integers for `QQ`. `Ideal` and the modular algorithm still build
-SymPy rings and reach it through `direct_groebner`, which converts at the
-boundary (`sympy_extras.polys.interop`); the results equal SymPy's
-`groebner`, the reduced basis being unique.
+over the integers for `QQ`. The native `Ideal` calls it directly, over
+every coefficient field (the bases over algebraic fields and fields of
+fractions were computed by SymPy's Buchberger before the port); the
+modular algorithm still builds SymPy rings and reaches it through
+`direct_groebner`, which converts at the boundary
+(`sympy_extras.polys.interop`); the results equal SymPy's `groebner`, the
+reduced basis being unique.
 
 ```python
 >>> from sympy_extras.polys.domains import QQ as TQQ, GF as TGF
@@ -712,7 +773,12 @@ SymPy.
 
 ## Reference
 
-`Ideal(gens, *symbols, domain=None, order='grevlex')` with
+`Ideal(gens, *symbols, domain=None, order='grevlex')` (the face,
+`sympy_extras.polys.ideals_sympy`; the native class of
+`sympy_extras.polys.ideals` takes `domain=` as a required typed domain and
+has the same methods, `rur` excepted, plus `normal_form(f, order)`,
+`standard_exponents(order)`, `hilbert_data()`, `to_expr(f)` and
+`Ideal.from_terms(terms, symbols, domain, order)`) with
 
 - bases: `groebner_basis(order)`, `leading_monomials(order)`,
   `change_order(order)`, `reduced()`, `ring(order)`;
@@ -742,7 +808,12 @@ polys, *gens)`, `hermite_matrix(system, g, *gens)` and
 polynomials with rational coefficients.
 
 `separating_forms(variables, points)` enumerates the linear forms with
-small integer coefficients among which one separates any `points` points.
+small integer coefficients among which one separates any `points` points
+(`separating_coefficients(nvars, points)` their coefficients, natively).
+`groebner(polys, ring)`, `normal_form(f, basis)`, `groebner_walk(G, ring,
+target)` and `initial_form(f, weights)` on typed rings are in the native
+`sympy_extras.polys.ideals`; `hilbert_numerator_coefficients(monomials)`
+in `sympy_extras.polys.bigatti`.
 
 `f4(polys, ring)`, `reduced_basis(basis, ring)`, `is_graded(ring)` and
 `row_echelon(rows, K)` are in `sympy_extras.polys.f4` (typed rings);

@@ -80,7 +80,7 @@ from sympy.polys.polytools import Poly
 from sympy.polys.rings import PolyElement, PolyRing
 
 from sympy_extras._typing import as_expr, as_symbol, free_symbols, sorted_symbols
-from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.ideals_sympy import Ideal
 
 from .operations import Chain, Decomposer
 from .recursive import degree, initial, main_variable, normalize

@@ -9,7 +9,7 @@ from sympy import symbols
 from sympy.abc import t, x, y, z
 from sympy.testing.pytest import raises
 
-from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.ideals_sympy import Ideal
 from sympy_extras.polys.idealdecomposition import equidimensional_parts, minimal_primes, radical
 
 

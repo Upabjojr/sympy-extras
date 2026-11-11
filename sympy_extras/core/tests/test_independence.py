@@ -431,6 +431,38 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_IDEALS = r'''
+import sys
+from sympy_extras.core import Symbol, Integer, sqrt
+from sympy_extras.polys.domains import QQ, GF
+from sympy_extras.polys.domains.algebraicfield import AlgebraicField
+from sympy_extras.polys.ideals import Ideal, separating_forms
+from sympy_extras.polys.rings import WeightOrder, grevlex, lex
+from fractions import Fraction
+assert 'sympy' not in sys.modules
+x, y, z, t, d = [Symbol(name) for name in 'xyztd']
+I = Ideal([x*z - y**2, x**2 - y*z], x, y, z, domain=QQ)
+assert (I.dimension(), I.degree()) == (1, 4) and str(I.eliminate([x])) == 'Ideal([y**4 - y*z**3], y, z)'
+assert str(I.saturate(y)) == 'Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)'
+assert str(I.hilbert_series(t)) == '(t**2 + 2*t + 1)/(1 - t)' and str(I.hilbert_polynomial(d)) == '4'
+assert [str(g) for g in I.change_order(lex)] == ['x**2 - y*z', 'x*y**2 - y*z**2', 'x*z - y**2', 'y**4 - y*z**3']
+assert len(I.change_order(WeightOrder((1, 2, 3), grevlex))) == 3
+J = Ideal([x**2 - 2, y**2 - 3], x, y, domain=QQ)
+assert str(J.minimal_polynomial(x + y, z).to_expr()) == 'z**4 - 10*z**2 + 1' and J.is_maximal() and J.is_prime()
+assert J.radical() == J and [str(g) for g in J.groebner_basis(lex)] == ['x**2 - 2', 'y**2 - 3']
+K = Ideal([x**3 + 2*x + 1, y**2 - x], x, y, domain=GF(7))
+assert K.vector_space_dimension() == 6 and K.is_maximal()
+A = Ideal([sqrt(Integer(2))*x - y, y**2 - 2], x, y,
+          domain=AlgebraicField([Fraction(1), Fraction(0), Fraction(-2)], sqrt(Integer(2))))
+assert A.univariate(x).to_expr() == x**2 - 1 and not A.is_maximal()
+assert str(Ideal([x], x, y, domain=QQ).intersect(Ideal([y], x, y, domain=QQ))) == 'Ideal([x*y], x, y)'
+assert str(Ideal([x**2*y, x*y**2], x, y, domain=QQ).quotient(x*y)) == 'Ideal([x, y], x, y)'
+assert Ideal([x**2, y**3], x, y, domain=QQ).radical_contains(x*y)
+assert str(list(separating_forms([x, y], 3))) == '[x, x + y, x - y, x + 2*y, x - 2*y]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 _NATIVE_VIRTUAL_SUBSTITUTION = r'''
 import sys
 from sympy_extras.core import symbols, Eq, Implies, Not
@@ -469,5 +501,17 @@ def test_native_virtual_substitution_does_not_load_sympy() -> None:
     goes through it at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_VIRTUAL_SUBSTITUTION], capture_output=True, text=True,
                          timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_ideals_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.ideals` does not load SymPy, nor
+    do the Gröbner bases (F4, FGLM, the walk), the eliminations, quotients,
+    saturations, Hilbert series and the operations on zero-dimensional
+    ideals (the modular Gröbner bases when F4 takes too long, SymPy's
+    Buchberger algorithm on request and the decompositions of
+    positive-dimensional ideals go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_IDEALS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

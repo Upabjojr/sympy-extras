@@ -9,7 +9,7 @@ from sympy.testing.pytest import raises
 from sympy_extras._testing import untyped
 from sympy.abc import x, y, z, w, t, d
 
-from sympy_extras.polys.ideals import Ideal, hilbert_numerator
+from sympy_extras.polys.ideals_sympy import Ideal, hilbert_numerator
 from sympy_extras.polys.orderings import WeightOrder, BlockOrder, elimination_order
 
 
@@ -222,3 +222,14 @@ def test_lexicographic_bases_in_dimension_zero_are_converted() -> None:
     K = Ideal(katsura, *u)
     last = K.groebner_basis('lex')[-1]
     assert K.vector_space_dimension() == 16 and last.free_symbols == {f} and last.degree(f) == 16
+
+
+def test_hermite_imported_first() -> None:
+    # importing hermite before the face raised ImportError (a cycle: hermite
+    # -> ideals_sympy -> rur -> hermite's names, not yet defined)
+    import subprocess
+    import sys
+    for module in ('hermite', 'rur', 'ideals_sympy', 'idealdecomposition'):
+        code = 'import sympy_extras.polys.%s; from sympy_extras.polys.hermite import decide_zero_dimensional' % module
+        out = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, timeout=600)
+        assert out.returncode == 0, (module, out.stderr)

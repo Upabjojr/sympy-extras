@@ -83,8 +83,9 @@ from sympy.polys.polytools import Poly, invert
 
 from sympy_extras._typing import DomainElement, as_expr, as_symbol
 
-from .hermite import Rows, System, Vector, _algebra
-from .ideals import Ideal, separating_forms
+# the module, not its names: hermite and ideals_sympy import this module back
+from . import hermite as _hermite
+from .ideals_sympy import Ideal, separating_forms
 
 __all__ = ['rur', 'RationalUnivariateRepresentation']
 
@@ -239,7 +240,7 @@ class RationalUnivariateRepresentation:
         return count
 
 
-def _newton_characteristic(power_sums: Vector, t: Symbol) -> Poly:
+def _newton_characteristic(power_sums: _hermite.Vector, t: Symbol) -> Poly:
     """The characteristic polynomial of an endomorphism in dimension ``D``
     from the power sums ``Tr(u), ..., Tr(u**D)`` (Newton's identities, in
     characteristic zero)."""
@@ -259,7 +260,7 @@ def _horner(coefficients: Sequence[DomainElement], j: int, t: Symbol) -> Poly:
     return Poly({j - i: coefficients[i] for i in range(j + 1)}, t, domain=QQ)
 
 
-def rur(system: System, *gens: Symbol, t: Optional[Symbol] = None) -> RationalUnivariateRepresentation:
+def rur(system: _hermite.System, *gens: Symbol, t: Optional[Symbol] = None) -> RationalUnivariateRepresentation:
     """The rational univariate representation of a zero-dimensional
     system of polynomial equations with rational coefficients (Rouillier's
     algorithm), with the first separating form among the candidates of
@@ -312,7 +313,7 @@ def rur(system: System, *gens: Symbol, t: Optional[Symbol] = None) -> RationalUn
     [{x: 0, y: 1, z: 1}]
     """
     T = Symbol('t') if t is None else as_symbol(t)
-    A = _algebra(system, gens)
+    A = _hermite._algebra(system, gens)
     ideal: Ideal = A.ideal
     symbols = list(ideal.symbols)
     if A.empty:
@@ -329,7 +330,7 @@ def rur(system: System, *gens: Symbol, t: Optional[Symbol] = None) -> RationalUn
         if not _is_separating(A.trace, transposed, one_index, count, T):
             continue
         # the linear forms h -> Tr(u**j h), j = 0, ..., D
-        forms: list[Vector] = [list(A.trace)]
+        forms: list[_hermite.Vector] = [list(A.trace)]
         for _ in range(D):
             forms.append(A.compose(forms[-1], transposed))
         characteristic = _newton_characteristic([f[one_index] for f in forms[1:]], T)
@@ -340,7 +341,7 @@ def rur(system: System, *gens: Symbol, t: Optional[Symbol] = None) -> RationalUn
         coefficients = squarefree.all_coeffs()
         horner = [_horner(coefficients, j, T) for j in range(delta)]
 
-        def g_of(values: Vector) -> Poly:
+        def g_of(values: _hermite.Vector) -> Poly:
             total = Poly(0, T, domain=QQ)
             for j in range(delta):
                 total += horner[delta - 1 - j]*values[j]
@@ -377,7 +378,7 @@ def _candidates(symbols: list[Symbol], count: int) -> Iterator[Expr]:
         yield candidate
 
 
-def _is_separating(trace: Vector, transposed: Rows, one_index: int, count: int, t: Symbol) -> bool:
+def _is_separating(trace: _hermite.Vector, transposed: _hermite.Rows, one_index: int, count: int, t: Symbol) -> bool:
     """Whether the form with the given transposed multiplication matrix is
     separating, decided modulo a prime: the squarefree part of its
     characteristic polynomial modulo ``p`` has at most the degree of the
