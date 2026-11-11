@@ -6,7 +6,7 @@ from sympy.matrices import Matrix
 from sympy.polys import ring, ZZ
 from sympy.testing.pytest import raises
 
-from sympy_extras.polys.subresultants import dup_psc, dmp_psc, psc
+from sympy_extras.polys.subresultants_sympy import dup_psc, dmp_psc, psc
 
 
 def test_dup_psc() -> None:

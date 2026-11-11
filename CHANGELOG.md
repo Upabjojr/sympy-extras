@@ -558,6 +558,52 @@ remove public functions. Breaking changes are listed here when they happen.
   `ThueEquation.small_solutions` now lists the roots for each `y` in
   increasing order (the same set); the errors of the native polynomials
   come out of the face as SymPy's `PolynomialError`.
+- The last polynomial modules on SymPy are native (**breaking**): every
+  module of `sympy_extras.polys` but `interop` and the SymPy faces
+  (`*_sympy`) imports no SymPy (a test of `core/tests/test_independence.py`
+  imports them all).
+  - `polys.groebnerwalk`: `groebner_walk(G, ring, target, check, lift)`
+    (both liftings), `extended_groebner`, `initial_form`, and the new
+    `is_groebner` and `normal_form` on the typed `rings.PolyRing` over a
+    field (moved from `polys.ideals`, which re-exports `groebner_walk`,
+    `normal_form` and `initial_form`). The old API on SymPy's rings and
+    orders moves to the face `polys.groebnerwalk_sympy`, computed by the
+    native walk over `QQ`, `GF(p)`, `QQ<a>`, `QQ_I` and `QQ(t)`/`ZZ(t)`
+    (`NotImplementedError` over the others, `EX`, `RR`); over a ring which
+    is not a field it walks over the field of fractions and clears the
+    denominators, as SymPy's `groebner` does: the old walk over `ZZ`
+    returned `[]` for `(2*x**2 - 3*y, x*y - 4)` (and the cofactor lifting
+    failed), now `[8*x - 3*y**2, 3*y**3 - 32]`.
+  - `polys.orderings`: the typed orders (`MonomialOrder`, `lex`, `grlex`,
+    `grevlex`, `WeightOrder`, `BlockOrder`, `elimination_order`,
+    `as_order`), moved from `polys.rings` (which re-exports them); the
+    SymPy `MonomialOrder` subclasses of the old module (for SymPy's
+    `groebner`) move to `polys.orderings_sympy`.
+  - `polys.hilbert`: `hilbert_numerator` returns a `DensePoly` over `ZZ`
+    in a core symbol, `hilbert_series` a core expression, and the new
+    `reduced_hilbert_series` the reduced numerator and the dimension; the
+    SymPy `Poly` and expression move to `polys.hilbert_sympy`
+    (`ideals_sympy` uses it).
+  - `polys.subresultants`: `dup_psc(f, g, K)` over a typed domain (several
+    variables: over a `PolynomialRing` or `SparsePolynomialRing` tower)
+    and `psc(f, g)` on `rings.PolyRing`, whose coefficients are elements of
+    the same ring free of the first generator; `dup_psc`, `dmp_psc` on
+    SymPy's dense representation and `psc` on SymPy's rings (the native
+    `psc` over `ZZ`, `QQ`, `GF(p)`) move to `polys.subresultants_sympy`.
+  - `polys.polytools` imports no SymPy: `invert` of several generators
+    raises `ValueError('univariate polynomial expected')` and of two
+    rationals which are not both integers `NotInvertible` natively (what
+    SymPy does); the calls to SymPy which remain (`invert` of numbers in
+    `ZZ_I`, `RR`, `EX`; `cancel` over `CC`, `EX`, with generators over the
+    other unported domains or with a generator which is not a factor;
+    `factor` over `EX` and over `ZZ_I`, `QQ_I`, `RR` with generators) are
+    `invert_of_core`, `cancel_of_core` and `factor_of_core` of the new
+    `polys.polytools_sympy`, imported only when needed.
+
+  On 520 recorded calls (the tests and doctests of these modules and 40
+  more) the faces return what the old modules returned, except the walk
+  over `ZZ` above; the native modules, inputs and outputs converted,
+  return what the faces return on 1097 checks.
 - The differential algebra is native (**breaking**):
   `sympy_extras.polys.differential` (`DifferentialRing`,
   `DifferentialPolynomial`, `janet_basis`, `JanetBasis`,

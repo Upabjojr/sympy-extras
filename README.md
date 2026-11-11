@@ -792,13 +792,16 @@ random expressions, and the arithmetic runs within a factor of two of
 
 ### Principal subresultant coefficients (`sympy_extras.polys.subresultants`)
 
-`dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
-coefficients of two polynomials, the leading coefficients of the
-subresultant sequence, which are needed by Hong's projection operator.
+`dup_psc` and `psc` compute the principal subresultant coefficients of two
+polynomials, the leading coefficients of the subresultant sequence, which
+are needed by Hong's projection operator: natively on the typed dense
+polynomials and rings, and in the SymPy face
+`sympy_extras.polys.subresultants_sympy` (with `dmp_psc`) on SymPy's dense
+representation and rings.
 
 ```python
 >>> from sympy import ring, ZZ
->>> from sympy_extras.polys.subresultants import psc
+>>> from sympy_extras.polys.subresultants_sympy import psc
 >>> R, x, y = ring("x,y", ZZ)
 >>> psc(x**2*y + x, x + y)
 [y**3 - y, 1]
@@ -1056,7 +1059,8 @@ sympy_extras/
         multisqf.py          square-free decomposition of multivariate polynomials
         partfrac.py          apart: partial fraction decomposition
         polyroots.py         roots of univariate polynomials in radicals
-        subresultants.py     principal subresultant coefficients on SymPy's dense representation (CAD projections)
+        subresultants.py     principal subresultant coefficients on the typed layer (CAD projections) (native)
+        subresultants_sympy.py  its SymPy face (SymPy's dense representation and rings)
         polyutils.py         conversions between core expressions and the typed polynomials
         sqfreetools.py       square-free decomposition (Yun; over GF(p) with p-th roots)
         galoistools.py       factorisation over GF(p): distinct-degree, Cantor–Zassenhaus, Rabin's test
@@ -1075,17 +1079,21 @@ sympy_extras/
         idealdecomposition_sympy.py  its SymPy face
         hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination (native)
         hermite_sympy.py     its SymPy face
-        groebnerwalk.py      Gröbner walk (order conversion for any ideal)
+        groebnerwalk.py      Gröbner walk (order conversion for any ideal) on the typed rings (native)
+        groebnerwalk_sympy.py  its SymPy face (SymPy's rings and orders)
         f4.py                Faugère's F4 on the typed rings: Gröbner bases by its own sparse row reduction, over any field
         interop.py           conversions between SymPy's polynomial rings and the typed ones (QQ, ZZ, GF(p))
-        hilbert.py           Hilbert series of monomial ideals by Bigatti's algorithm
+        hilbert.py           Hilbert series of monomial ideals by Bigatti's algorithm (native)
+        hilbert_sympy.py     its SymPy face (Poly, SymPy expressions)
         rur.py               the rational univariate representation of zero-dimensional ideals (Rouillier, native)
         rur_sympy.py         its SymPy face
         stronggroebner.py    strong Gröbner bases over the integers (Kandri-Rody–Kapur, Lichtblau)
         modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold) (native)
         modulargroebner_sympy.py  the SymPy face of modulargroebner
         buchberger.py        Buchberger's algorithm on the typed rings (ported from SymPy)
-        orderings.py         WeightOrder, BlockOrder
+        orderings.py         monomial orders: lex, grlex, grevlex, WeightOrder, BlockOrder, elimination_order (native)
+        orderings_sympy.py   WeightOrder, BlockOrder as SymPy monomial orders (its SymPy face)
+        polytools_sympy.py   the steps of polytools which stay on SymPy (cancel, factor, invert over EX, CC, ...)
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (native)
         virtual_substitution_sympy.py  its SymPy face, and simplify_logic_of_core
         comprehensive.py     comprehensive Gröbner systems, reduction over the complex numbers (native)

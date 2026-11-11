@@ -293,7 +293,8 @@ sympy_extras/
         densearith.py        dup_add/mul/pow/div/pdiv/exquo over a Domain[T]
         densetools.py        dup_diff/eval/shift/compose/content/primitive/monic/trunc/clear_denoms
         euclidtools.py       dup_gcd (Euclid, subresultant PRS), dup_resultant, dup_prs_resultant (ported), dup_discriminant, dup_gcdex (typed, no SymPy)
-        polytools.py         Poly over ZZ, QQ, ZZ[a,..], QQ[a,..] (ported from SymPy, printed as SymPy): gcd, lcm, resultant, factor_list (multivariate, ZZ[a]), sqf_list, div; degree, LC, gcd, lcm, resultant, factor, factor_list, sqf, sqf_list, cancel
+        polytools.py         Poly over ZZ, QQ, ZZ[a,..], QQ[a,..] (ported from SymPy, printed as SymPy): gcd, lcm, resultant, factor_list (multivariate, ZZ[a]), sqf_list, div; degree, LC, gcd, lcm, resultant, factor, factor_list, sqf, sqf_list, cancel, invert (no SymPy; EX, CC and the other domains not ported through polytools_sympy)
+        polytools_sympy.py   the steps of polytools which stay on SymPy: invert_of_core, cancel_of_core, factor_of_core
         gaussianfactor.py    multivariate factorisation over ZZ_I and QQ_I (Trager over QQ<I>, ported from SymPy)
         polyerrors.py        SymPy's polynomial exceptions (ported)
         algebraicfactor.py   ext_factor_list, AlgebraicPolynomialRing: multivariate factorisation and gcd over a number field QQ(alpha) (Trager)
@@ -305,7 +306,9 @@ sympy_extras/
         polyroots.py         roots: linear, quadratic, binomial, cyclotomic, cubic, quartic, decomposition, factoring (ported from SymPy; no EX/simplify)
         roots.py             radical_form, in_radicals: SymPy's CRootOf (wrapped foreign nodes) in radicals (native; SymPy's roots over EX through roots_sympy)
         roots_sympy.py       the SymPy face of roots, and roots_of_core
-        subresultants.py     dup_psc, dmp_psc, psc: principal subresultant coefficients on SymPy's dense representation (the CAD)
+        subresultants.py     dup_psc (over a Domain[T], towers for several variables), psc (on rings.PolyRing): principal
+                             subresultant coefficients (native)
+        subresultants_sympy.py the SymPy face of subresultants: dup_psc, dmp_psc on SymPy's dense representation, psc on SymPy's rings
         polyutils.py         dict_from_expr, expr_from_dict: core expressions <-> typed polynomials (no SymPy)
         sqfreetools.py       dup_sqf_list/part/p (Yun, and GF(p))
         galoisfactor.py      gfq_factor, gfq_sqf_list, gfq_ddf, gfq_edf over domains.galoisfield.GaloisField (GF(p**n))
@@ -317,7 +320,7 @@ sympy_extras/
         numberfields/qqbar.py  Algebraic: exact arithmetic on algebraic numbers (minimal polynomial + isolating region), algebraic_roots
         complexroots.py      Rectangle, dup_count_complex_roots (winding numbers by Sturm), dup_isolate_complex_roots(_sqf), dup_refine_complex_root, dup_count_roots_right_of, dup_count_roots_in_disc, Hurwitz and Schur stability, over QQ
         polyclasses.py       DensePoly[T]: rep, domain, gen; the dense algorithms as methods, factorisation and roots through the domain
-        rings.py             PolyRing[T], PolyElement[T] (dict[Monomial, T]), MonomialOrder (lex, grlex, grevlex, WeightOrder, BlockOrder, elimination_order), div by a list
+        rings.py             PolyRing[T], PolyElement[T] (dict[Monomial, T]), the orders of orderings.py, div by a list
         ideals.py            Ideal: operations and invariants of ideals over the typed fields, groebner (F4, the modular
                              fallback of modulargroebner), normal_form, the Gröbner walk, separating_forms, the decompositions
                              and rur (native)
@@ -333,13 +336,17 @@ sympy_extras/
         comprehensive.py     comprehensive Gröbner systems (Kapur-Sun-Wang), exists_complex,
                              complex_quantifier_elimination, reduce_complex: reduction over C (native)
         comprehensive_sympy.py the SymPy face of comprehensive
-        groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
+        groebnerwalk.py      groebner_walk (liftings by normal forms and by cofactors), extended_groebner (Buchberger with
+                             representations), is_groebner, normal_form, initial_form on rings.PolyRing (native; ideals re-exports)
+        groebnerwalk_sympy.py the SymPy face of groebnerwalk (SymPy's rings and orders; ZZ through QQ, as SymPy's groebner)
         f4.py                f4 on rings.PolyRing (typed, no SymPy): reduced Gröbner bases by Faugère's F4 (the default direct algorithm); row_echelon
         zerodim.py           solve_zero_dimensional: exact solutions (Algebraic coordinates) of zero-dimensional systems over QQ by the shape lemma
         berlekampmassey.py   berlekamp_massey: the shortest linear recurrence of a sequence over a field
         fglm.py              fglm, groebner_by_fglm on rings.PolyRing (typed, no SymPy): change of order for zero-dimensional ideals
         interop.py           qq/zz/gf_from_sympy and _to_sympy, typed_order: the boundary with SymPy's rings
-        hilbert.py           hilbert_numerator, hilbert_series, minimal_generators: Bigatti's algorithm for monomial ideals (SymPy Poly; bigatti.py computes)
+        hilbert.py           hilbert_numerator (DensePoly over ZZ), hilbert_series, reduced_hilbert_series, minimal_generators:
+                             Bigatti's algorithm for monomial ideals (native; bigatti.py computes)
+        hilbert_sympy.py     the SymPy face of hilbert (SymPy Poly and expressions)
         rur.py               rur, RationalUnivariateRepresentation: Rouillier's representation of zero-dimensional ideals from
                              traces (native; the exact solutions, SymPy's CRootOf, through rur_sympy)
         rur_sympy.py         the SymPy face of rur (Poly and SymPy expressions), and solutions_of_core
@@ -348,7 +355,9 @@ sympy_extras/
         modulargroebner_sympy.py the SymPy face of modulargroebner (SymPy's ring elements; SymPy's groebner over the other domains)
         buchberger.py        buchberger, s_polynomial on rings.PolyRing over a typed field (settings.groebner_algorithm 'buchberger'), PORTED FROM SYMPY
         stronggroebner.py    strong_groebner, strong_reduce on rings.PolyRing over ZZ (typed, no SymPy): S- and G-polynomials
-        orderings.py         WeightOrder, BlockOrder, elimination_order (hashable monomial orders)
+        orderings.py         MonomialOrder, lex, grlex, grevlex, WeightOrder, BlockOrder, elimination_order, as_order: the
+                             orders of rings.PolyRing (native; rings re-exports them)
+        orderings_sympy.py   the SymPy face of orderings: WeightOrder, BlockOrder, elimination_order as SymPy MonomialOrder
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (Loos-Weispfenning,
                              Weispfenning), with_sides, to_nnf (native; SymPy's simplify_logic of the results through
                              virtual_substitution_sympy)

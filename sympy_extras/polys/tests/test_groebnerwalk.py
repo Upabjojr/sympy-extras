@@ -8,8 +8,8 @@ from sympy_extras._typing import OrderSpec
 from sympy.polys.groebnertools import groebner, is_groebner, is_reduced
 from sympy.testing.pytest import raises
 
-from sympy_extras.polys.groebnerwalk import groebner_walk, extended_groebner, initial_form
-from sympy_extras.polys.orderings import WeightOrder
+from sympy_extras.polys.groebnerwalk_sympy import groebner_walk, extended_groebner, initial_form
+from sympy_extras.polys.orderings_sympy import WeightOrder
 
 
 def _check_walk(F: list[str], gens: str, source: OrderSpec, target: OrderSpec,
@@ -60,3 +60,27 @@ def test_walk() -> None:
     assert groebner_walk([x**2 + 1], R, lex) == [T.from_expr(x.as_expr()**2 + 1)]
     from sympy.polys.orderings import ilex
     raises(ValueError, lambda: groebner_walk([x**2 + 1], R.clone(order=ilex), lex))
+
+
+def test_walk_over_rings_and_other_fields() -> None:
+    from sympy import EX, ZZ, sqrt
+    # over ZZ the walk returned [] for (2*x**2 - 3*y, x*y - 4) (and the
+    # cofactor lifting failed): it now walks over QQ and clears the
+    # denominators, which is what SymPy's groebner returns over ZZ
+    R, x, y = ring("x,y", ZZ, grevlex)
+    G = groebner([2*x**2 - 3*y, x*y - 4], R)
+    T = R.clone(order=lex)
+    expected = groebner([T.from_dict(dict(g)) for g in G], T)
+    assert [str(g) for g in expected] == ['8*x - 3*y**2', '3*y**3 - 32']
+    for lift in ('normal_form', 'cofactors'):
+        assert groebner_walk(G, R, lex, lift=lift) == expected
+    # an algebraic field
+    A = QQ.algebraic_field(sqrt(2))
+    S, u, v = ring("u,v", A, grevlex)
+    F = [u**2 - A.from_sympy(sqrt(2))*v, u*v - 1]
+    G2 = groebner(F, S)
+    L = S.clone(order=lex)
+    assert groebner_walk(G2, S, lex, check=True) == groebner([L.from_dict(dict(f)) for f in F], L)
+    # EX is not converted to the typed layer
+    E, p, q = ring("p,q", EX, grevlex)
+    raises(NotImplementedError, lambda: groebner_walk([p**2 - q], E, lex))

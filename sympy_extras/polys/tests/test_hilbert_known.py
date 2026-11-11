@@ -8,7 +8,7 @@ from itertools import product
 from sympy import Poly, binomial, series
 from sympy.abc import t
 
-from sympy_extras.polys.hilbert import hilbert_numerator, hilbert_series
+from sympy_extras.polys.hilbert_sympy import hilbert_numerator, hilbert_series
 
 
 def test_complete_intersections() -> None:

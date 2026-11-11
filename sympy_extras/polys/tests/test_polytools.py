@@ -174,6 +174,33 @@ def test_invert_matches_sympy() -> None:
         assert ours == theirs, (f, g)
 
 
+def test_invert_of_numbers_and_several_variables_matches_sympy() -> None:
+    # computed natively since the SymPy calls moved to polytools_sympy:
+    # several generators are a ValueError (SymPy's DMP.invert), two
+    # rationals not both integers are never invertible (SymPy's QQ.gcdex)
+    from sympy_extras.polys.polyerrors import NotInvertible
+    from sympy_extras.polys.polytools import invert
+    sx, sy = sympy.symbols('x y')
+    half, third = sympy.Rational(1, 2), sympy.Rational(1, 3)
+    pairs = [(sx*sy + 1, sy**2 + 1), (sx + 1, sx**2 + sy), (sympy.sqrt(2), sympy.sqrt(3)), (half, 3), (half, third),
+             (sympy.Integer(3), sympy.Rational(7, 2)), (sympy.Rational(2, 3), 5), (0, sympy.Rational(7, 2)),
+             (sympy.Rational(5, 3), sympy.Rational(2, 3)), (6, 4), (2, -7), (0, 1), (sympy.I, 3), (2 + sympy.I, 3)]
+    for f, g in pairs:
+        try:
+            theirs = str(sympy.invert(f, g))
+        except sympy.polys.polyerrors.NotInvertible:
+            theirs = 'not invertible'
+        except ValueError as e:
+            theirs = 'ValueError %s' % e
+        try:
+            ours = str(to_sympy(invert(expr_from_sympy(sympy.sympify(f)), expr_from_sympy(sympy.sympify(g)))))
+        except NotInvertible:
+            ours = 'not invertible'
+        except ValueError as e:
+            ours = 'ValueError %s' % e
+        assert ours == theirs, (f, g)
+
+
 def test_gcd_list_and_lcm_list_match_sympy() -> None:
     import sympy
     from sympy_extras.interop import expr_from_sympy, to_sympy
