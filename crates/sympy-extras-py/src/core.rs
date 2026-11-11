@@ -19,7 +19,8 @@ use pyo3::types::{PyDict, PyList, PyModule, PyTuple};
 
 use sympy_extras_core::core::assumptions::{facts_of, is_number, Predicate};
 use sympy_extras_core::core::evalf::{numeric_value, parts, Real};
-use sympy_extras_core::core::{self as rust_core, Basic, Dummy, Head, Symbol};
+use sympy_extras_core::core::{self as rust_core, Basic, Dummy, Function, Head, Symbol};
+use sympy_extras_core::functions::elementary::{complexes, exponential, hyperbolic, trigonometric};
 #[allow(unused_imports)]
 use sympy_extras_core::numbers::rat;
 use sympy_extras_core::numbers::{denom, rat_from_parts, Int, Rat};
@@ -110,6 +111,57 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Add" => Basic::new(Head::Add, args()?),
         "Mul" => Basic::new(Head::Mul, args()?),
         "Pow" => Basic::new(Head::Pow, args()?),
+        "AppliedUndef" => {
+            let function: Bound<'_, PyAny> = ob.getattr("function")?;
+            let name: String = function.getattr("name")?.extract()?;
+            let nargs_ob: Bound<'_, PyAny> = function.getattr("nargs")?;
+            let nargs: Option<Vec<usize>> = if nargs_ob.is_none() {
+                None
+            } else {
+                let mut n: Vec<usize> = Vec::new();
+                for k in nargs_ob.try_iter()? {
+                    n.push(k?.extract()?);
+                }
+                Some(n)
+            };
+            let mut assumptions: Vec<(Predicate, bool)> = Vec::new();
+            let given: Bound<'_, PyAny> = function.getattr("assumptions")?;
+            for (k, v) in given.downcast::<PyDict>()?.iter() {
+                let key: String = k.extract()?;
+                let Some(p) = Predicate::from_name(&key) else {
+                    return Err(PyTypeError::new_err(format!("unknown assumption {}", key)));
+                };
+                assumptions.push((p, v.extract()?));
+            }
+            let u = std::sync::Arc::new(sympy_extras_core::core::basic::UndefinedFunction::new(
+                &name,
+                nargs,
+                &assumptions,
+            ));
+            Basic::new(Head::Undefined(u), args()?)
+        }
+        "Tuple" => Basic::new(Head::Tuple, args()?),
+        "Derivative" => Basic::new(Head::Derivative, args()?),
+        "Subs" => Basic::new(Head::Subs, args()?),
+        "Exp" => Basic::new(Head::Function(Function::Exp), args()?),
+        "Log" => Basic::new(Head::Function(Function::Log), args()?),
+        "Re" => Basic::new(Head::Function(Function::Re), args()?),
+        "Im" => Basic::new(Head::Function(Function::Im), args()?),
+        "Conjugate" => Basic::new(Head::Function(Function::Conjugate), args()?),
+        "Sign" => Basic::new(Head::Function(Function::Sign), args()?),
+        "Abs" => Basic::new(Head::Function(Function::Abs), args()?),
+        "Sin" => Basic::new(Head::Function(Function::Sin), args()?),
+        "Cos" => Basic::new(Head::Function(Function::Cos), args()?),
+        "Tan" => Basic::new(Head::Function(Function::Tan), args()?),
+        "Cot" => Basic::new(Head::Function(Function::Cot), args()?),
+        "Sec" => Basic::new(Head::Function(Function::Sec), args()?),
+        "Csc" => Basic::new(Head::Function(Function::Csc), args()?),
+        "Sinh" => Basic::new(Head::Function(Function::Sinh), args()?),
+        "Cosh" => Basic::new(Head::Function(Function::Cosh), args()?),
+        "Tanh" => Basic::new(Head::Function(Function::Tanh), args()?),
+        "Coth" => Basic::new(Head::Function(Function::Coth), args()?),
+        "Sech" => Basic::new(Head::Function(Function::Sech), args()?),
+        "Csch" => Basic::new(Head::Function(Function::Csch), args()?),
         other => return Err(PyTypeError::new_err(format!("the Rust core has no {} yet", other))),
     })
 }
@@ -155,14 +207,59 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             let given: Vec<(Predicate, bool)> = Symbol(e.clone()).given_assumptions().to_vec();
             class("symbol", "Symbol")?.call((data.name.clone(),), Some(&kwargs(py, &given)?))?
         }
-        Head::Dummy(_, index) => match with_dummies(|d| d.to_python.get(index).map(|o| o.clone_ref(py))) {
+        Head::Dummy(data, index) => match with_dummies(|d| d.to_python.get(index).map(|o| o.clone_ref(py))) {
             Some(object) => object.into_bound(py),
-            None => return Err(PyTypeError::new_err("a dummy which did not come from Python")),
+            None => {
+                // a dummy made in Rust: a new Python dummy, registered both ways
+                let given: Vec<(Predicate, bool)> = data.given.clone();
+                let object: Bound<'py, PyAny> =
+                    class("symbol", "Dummy")?.call((data.name.clone(),), Some(&kwargs(py, &given)?))?;
+                let python_index: i64 = object.getattr("dummy_index")?.extract()?;
+                let unbound: Py<PyAny> = object.clone().unbind();
+                with_dummies(|d| {
+                    d.from_python.insert(python_index, e.clone());
+                    d.to_python.insert(*index, unbound);
+                });
+                object
+            }
         },
         Head::Wild(_) => return Err(PyTypeError::new_err("wilds are not converted")),
         Head::Add => rebuilt("Add", "add")?,
         Head::Mul => rebuilt("Mul", "mul")?,
         Head::Pow => rebuilt("Pow", "power")?,
+        Head::Undefined(u) => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            let given: Vec<(Predicate, bool)> = u.assumptions.clone();
+            let nargs: Bound<'py, PyAny> = match &u.nargs {
+                None => py.None().into_bound(py),
+                Some(n) => PyTuple::new(py, n.iter().copied())?.into_any(),
+            };
+            let function: Bound<'py, PyAny> =
+                class("function", "Function")?.call((u.name.clone(), nargs), Some(&kwargs(py, &given)?))?;
+            function.call1(PyTuple::new(py, items)?)?
+        }
+        Head::Tuple => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            class("containers", "Tuple")?.call1(PyTuple::new(py, items)?)?
+        }
+        Head::Derivative => rebuilt("Derivative", "function")?,
+        Head::Subs => rebuilt("Subs", "function")?,
+        Head::Function(f) => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            let module: &str = match f {
+                Function::Exp | Function::Log => "exponential",
+                Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
+                    "trigonometric"
+                }
+                Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
+                    "hyperbolic"
+                }
+                _ => "complexes",
+            };
+            py.import(format!("sympy_extras.functions.elementary.{}", module))?
+                .getattr(f.class_name())?
+                .call1(PyTuple::new(py, items)?)?
+        }
     })
 }
 
@@ -300,6 +397,374 @@ fn sstr(e: &Bound<'_, PyAny>) -> PyResult<String> {
 }
 
 #[pyfunction]
+fn exp<'py>(py: Python<'py>, x: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    to_python(py, &exponential::exp(&from_python(x)?).map_err(crate::convert::err)?)
+}
+
+#[pyfunction]
+#[pyo3(signature = (x, base=None))]
+fn log<'py>(py: Python<'py>, x: &Bound<'py, PyAny>, base: Option<&Bound<'py, PyAny>>) -> PyResult<Bound<'py, PyAny>> {
+    let value = match base {
+        None => exponential::log(&from_python(x)?),
+        Some(b) => exponential::log_base(&from_python(x)?, &from_python(b)?),
+    };
+    to_python(py, &value.map_err(crate::convert::err)?)
+}
+
+fn pair<'py>(py: Python<'py>, value: PyResult<(Basic, Basic)>) -> PyResult<Bound<'py, PyTuple>> {
+    let (a, b) = value?;
+    PyTuple::new(py, [to_python(py, &a)?, to_python(py, &b)?])
+}
+
+#[pyfunction]
+fn as_numer_denom<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyTuple>> {
+    pair(
+        py,
+        rust_core::expr::as_numer_denom(&from_python(e)?).map_err(crate::convert::err),
+    )
+}
+
+#[pyfunction]
+fn fraction<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyTuple>> {
+    pair(
+        py,
+        sympy_extras_core::simplify::radsimp::fraction(&from_python(e)?).map_err(crate::convert::err),
+    )
+}
+
+#[pyfunction]
+#[pyo3(signature = (e, deep=true))]
+fn expand_mul<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, deep: bool) -> PyResult<Bound<'py, PyAny>> {
+    to_python(
+        py,
+        &rust_core::function::expand_mul(&from_python(e)?, deep).map_err(crate::convert::err)?,
+    )
+}
+
+#[pyfunction]
+#[pyo3(signature = (e, deep=true))]
+fn expand_multinomial<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, deep: bool) -> PyResult<Bound<'py, PyAny>> {
+    to_python(
+        py,
+        &rust_core::function::expand_multinomial(&from_python(e)?, deep).map_err(crate::convert::err)?,
+    )
+}
+
+macro_rules! unary {
+    ($name:ident, $path:path) => {
+        #[pyfunction]
+        fn $name<'py>(py: Python<'py>, x: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+            to_python(py, &$path(&from_python(x)?).map_err(crate::convert::err)?)
+        }
+    };
+}
+
+unary!(re, complexes::re);
+unary!(im, complexes::im);
+unary!(conjugate, complexes::conjugate);
+unary!(sign, complexes::sign);
+unary!(abs_, complexes::abs_);
+unary!(sin, trigonometric::sin);
+unary!(cos, trigonometric::cos);
+unary!(tan, trigonometric::tan);
+unary!(cot, trigonometric::cot);
+unary!(sec, trigonometric::sec);
+unary!(csc, trigonometric::csc);
+unary!(sinh, hyperbolic::sinh);
+unary!(cosh, hyperbolic::cosh);
+unary!(tanh, hyperbolic::tanh);
+unary!(coth, hyperbolic::coth);
+unary!(sech, hyperbolic::sech);
+unary!(csch, hyperbolic::csch);
+
+#[pyfunction]
+fn as_real_imag<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyTuple>> {
+    pair(
+        py,
+        complexes::real_imag_parts(&from_python(e)?).map_err(crate::convert::err),
+    )
+}
+
+fn terms_to_py<'py, K: crate::convert::Bridge>(
+    py: Python<'py>,
+    k: &K,
+    terms: &sympy_extras_core::polys::rings::Terms<K::Elem>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let d: Bound<'py, PyDict> = PyDict::new(py);
+    for (m, c) in terms {
+        d.set_item(PyTuple::new(py, m.iter().copied())?, k.to_py(py, c)?)?;
+    }
+    Ok(d)
+}
+
+fn terms_from_py<K: crate::convert::Bridge>(
+    k: &K,
+    d: &Bound<'_, PyDict>,
+) -> PyResult<sympy_extras_core::polys::rings::Terms<K::Elem>> {
+    let mut terms = sympy_extras_core::polys::rings::Terms::new();
+    for (m, c) in d.iter() {
+        let monomial: Vec<u32> = m.extract()?;
+        terms.insert(monomial, k.extract(&c)?);
+    }
+    Ok(terms)
+}
+
+/// `polyutils.dict_from_expr` over `ZZ`, `QQ`, `ZZ_I`, `QQ_I` or `GF(p)`
+/// (the domain given by its name, or by the prime `p`).
+#[pyfunction]
+fn dict_from_expr<'py>(
+    py: Python<'py>,
+    expr: &Bound<'py, PyAny>,
+    gens: Vec<String>,
+    domain: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::polys::domains as d;
+    use sympy_extras_core::polys::polyutils::dict_from_expr as convert;
+    let e: Basic = from_python(expr)?;
+    let e_ = crate::convert::err;
+    if let Ok(p) = domain.extract::<u64>() {
+        let k = d::finitefield::FiniteField::new(p).map_err(crate::convert::err)?;
+        return terms_to_py(py, &k, &convert(&e, &gens, &k).map_err(e_)?);
+    }
+    let name: String = domain.extract()?;
+    match name.as_str() {
+        "ZZ" => terms_to_py(
+            py,
+            &d::integerring::ZZ,
+            &convert(&e, &gens, &d::integerring::ZZ).map_err(e_)?,
+        ),
+        "QQ" => terms_to_py(
+            py,
+            &d::rationalfield::QQ,
+            &convert(&e, &gens, &d::rationalfield::QQ).map_err(e_)?,
+        ),
+        "ZZ_I" => {
+            let k = d::gaussiandomains::GaussianIntegerRing;
+            terms_to_py(py, &k, &convert(&e, &gens, &k).map_err(e_)?)
+        }
+        "QQ_I" => {
+            let k = d::gaussiandomains::GaussianRationalField;
+            terms_to_py(py, &k, &convert(&e, &gens, &k).map_err(e_)?)
+        }
+        other => Err(PyTypeError::new_err(format!("no domain {}", other))),
+    }
+}
+
+/// `polyutils.expr_from_dict` over the same domains.
+#[pyfunction]
+fn expr_from_dict<'py>(
+    py: Python<'py>,
+    terms: &Bound<'py, PyDict>,
+    gens: Vec<String>,
+    domain: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::polys::domains as d;
+    use sympy_extras_core::polys::polyutils::expr_from_dict as convert;
+    let e_ = crate::convert::err;
+    let result: Basic = if let Ok(p) = domain.extract::<u64>() {
+        let k = d::finitefield::FiniteField::new(p).map_err(crate::convert::err)?;
+        convert(&terms_from_py(&k, terms)?, &gens, &k).map_err(e_)?
+    } else {
+        let name: String = domain.extract()?;
+        match name.as_str() {
+            "ZZ" => convert(&terms_from_py(&d::integerring::ZZ, terms)?, &gens, &d::integerring::ZZ).map_err(e_)?,
+            "QQ" => convert(
+                &terms_from_py(&d::rationalfield::QQ, terms)?,
+                &gens,
+                &d::rationalfield::QQ,
+            )
+            .map_err(e_)?,
+            "ZZ_I" => {
+                let k = d::gaussiandomains::GaussianIntegerRing;
+                convert(&terms_from_py(&k, terms)?, &gens, &k).map_err(e_)?
+            }
+            "QQ_I" => {
+                let k = d::gaussiandomains::GaussianRationalField;
+                convert(&terms_from_py(&k, terms)?, &gens, &k).map_err(e_)?
+            }
+            other => return Err(PyTypeError::new_err(format!("no domain {}", other))),
+        }
+    };
+    to_python(py, &result)
+}
+
+#[pyfunction]
+#[pyo3(signature = (e, isprimitive=false, clear=true, fraction=true))]
+fn gcd_terms<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    isprimitive: bool,
+    clear: bool,
+    fraction: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let value = rust_core::exprtools::gcd_terms(&from_python(e)?, isprimitive, clear, fraction);
+    to_python(py, &value.map_err(crate::convert::err)?)
+}
+
+#[pyfunction]
+#[pyo3(signature = (e, radical=false, clear=false, fraction=false, sign=true))]
+fn factor_terms<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    radical: bool,
+    clear: bool,
+    fraction: bool,
+    sign: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let value = rust_core::exprtools::factor_terms(&from_python(e)?, radical, clear, fraction, sign);
+    to_python(py, &value.map_err(crate::convert::err)?)
+}
+
+#[pyfunction]
+#[pyo3(signature = (e, radical=false, clear=true))]
+fn as_content_primitive<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    radical: bool,
+    clear: bool,
+) -> PyResult<Bound<'py, PyTuple>> {
+    pair(
+        py,
+        rust_core::exprtools::as_content_primitive(&from_python(e)?, radical, clear).map_err(crate::convert::err),
+    )
+}
+
+#[pyfunction]
+fn decompose_power<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<(Bound<'py, PyAny>, i64)> {
+    let (b, n) = rust_core::exprtools::decompose_power(&from_python(e)?).map_err(crate::convert::err)?;
+    Ok((to_python(py, &b)?, n))
+}
+
+#[pyfunction]
+#[pyo3(signature = (e, deep=false, fraction=true))]
+fn together<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, deep: bool, fraction: bool) -> PyResult<Bound<'py, PyAny>> {
+    let value = sympy_extras_core::polys::rationaltools::together(&from_python(e)?, deep, fraction);
+    to_python(py, &value.map_err(crate::convert::err)?)
+}
+
+/// `diff(e, *spec)`: symbols, a symbol and a count, or `(symbol, n)`.
+#[pyfunction(signature = (e, *spec))]
+fn diff<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, spec: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, PyAny>> {
+    let mut counts: Vec<(Basic, u64)> = Vec::new();
+    for item in spec.iter() {
+        if let Ok(n) = item.extract::<u64>() {
+            let Some(last) = counts.last_mut() else {
+                return Err(PyTypeError::new_err("a count must follow a symbol"));
+            };
+            last.1 = last.1 - 1 + n;
+        } else if let Ok(t) = item.downcast::<PyTuple>() {
+            counts.push((from_python(&t.get_item(0)?)?, t.get_item(1)?.extract()?));
+        } else {
+            counts.push((from_python(&item)?, 1));
+        }
+    }
+    to_python(
+        py,
+        &rust_core::function::diff(&from_python(e)?, &counts).map_err(crate::convert::err)?,
+    )
+}
+
+/// `e.subs(old, new)`, `e.subs([(old, new), ...])` or `e.subs({old: new})`.
+#[pyfunction(signature = (e, *args))]
+fn subs<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, args: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::core::subs as s;
+    let expr: Basic = from_python(e)?;
+    let result = if args.len() == 2 {
+        s::subs(
+            &expr,
+            &from_python(&args.get_item(0)?)?,
+            &from_python(&args.get_item(1)?)?,
+        )
+    } else if args.len() == 1 {
+        let rules: Bound<'py, PyAny> = args.get_item(0)?;
+        let mut pairs: Vec<(Basic, Basic)> = Vec::new();
+        if let Ok(d) = rules.downcast::<PyDict>() {
+            for (k, v) in d.iter() {
+                pairs.push((from_python(&k)?, from_python(&v)?));
+            }
+            s::subs_mapping(&expr, &pairs)
+        } else {
+            for item in rules.try_iter()? {
+                let item = item?;
+                pairs.push((from_python(&item.get_item(0)?)?, from_python(&item.get_item(1)?)?));
+            }
+            s::subs_pairs(&expr, &pairs)
+        }
+    } else {
+        return Err(PyTypeError::new_err("subs takes (old, new), a mapping or pairs"));
+    };
+    to_python(py, &result.map_err(crate::convert::err)?)
+}
+
+fn expressions(items: &Bound<'_, PyAny>) -> PyResult<Vec<Basic>> {
+    let mut result: Vec<Basic> = Vec::new();
+    for item in items.try_iter()? {
+        result.push(from_python(&item?)?);
+    }
+    Ok(result)
+}
+
+fn expression_list<'py>(py: Python<'py>, items: &[Basic]) -> PyResult<Bound<'py, PyList>> {
+    let converted: Vec<Bound<'py, PyAny>> = items.iter().map(|e| to_python(py, e)).collect::<PyResult<_>>()?;
+    PyList::new(py, converted)
+}
+
+/// `linsolve.solve_linear_unique`.
+#[pyfunction]
+fn solve_linear_unique<'py>(
+    py: Python<'py>,
+    equations: &Bound<'py, PyAny>,
+    unknowns: &Bound<'py, PyAny>,
+) -> PyResult<Option<Bound<'py, PyList>>> {
+    use sympy_extras_core::solvers::linsolve as l;
+    let found =
+        l::solve_linear_unique(&expressions(equations)?, &expressions(unknowns)?).map_err(crate::convert::err)?;
+    found.map(|values| expression_list(py, &values)).transpose()
+}
+
+/// `linsolve.linear_root`.
+#[pyfunction]
+fn linear_root<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    v: &Bound<'py, PyAny>,
+) -> PyResult<Option<Bound<'py, PyAny>>> {
+    use sympy_extras_core::solvers::linsolve as l;
+    let found = l::linear_root(&from_python(e)?, &from_python(v)?).map_err(crate::convert::err)?;
+    found.map(|root| to_python(py, &root)).transpose()
+}
+
+/// `linsolve.solve_one`.
+#[pyfunction]
+fn solve_one<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    v: &Bound<'py, PyAny>,
+) -> PyResult<Option<Bound<'py, PyList>>> {
+    use sympy_extras_core::solvers::linsolve as l;
+    let found = l::solve_one(&from_python(e)?, &from_python(v)?).map_err(crate::convert::err)?;
+    found.map(|roots| expression_list(py, &roots)).transpose()
+}
+
+/// `linsolve.numeric_linear_solution`.
+#[pyfunction]
+fn numeric_linear_solution<'py>(
+    py: Python<'py>,
+    equations: &Bound<'py, PyAny>,
+) -> PyResult<Option<Bound<'py, PyDict>>> {
+    use sympy_extras_core::solvers::linsolve as l;
+    let found = l::numeric_linear_solution(&expressions(equations)?).map_err(crate::convert::err)?;
+    let Some(pairs) = found else {
+        return Ok(None);
+    };
+    let d: Bound<'py, PyDict> = PyDict::new(py);
+    for (k, v) in pairs {
+        d.set_item(to_python(py, &k)?, to_python(py, &v)?)?;
+    }
+    Ok(Some(d))
+}
+
+#[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
         py,
@@ -324,5 +789,42 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(neg, m)?)?;
     m.add_function(wrap_pyfunction!(number_pow, m)?)?;
     m.add_function(wrap_pyfunction!(sstr, m)?)?;
+    m.add_function(wrap_pyfunction!(exp, m)?)?;
+    m.add_function(wrap_pyfunction!(log, m)?)?;
+    m.add_function(wrap_pyfunction!(as_numer_denom, m)?)?;
+    m.add_function(wrap_pyfunction!(dict_from_expr, m)?)?;
+    m.add_function(wrap_pyfunction!(gcd_terms, m)?)?;
+    m.add_function(wrap_pyfunction!(together, m)?)?;
+    m.add_function(wrap_pyfunction!(diff, m)?)?;
+    m.add_function(wrap_pyfunction!(subs, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_linear_unique, m)?)?;
+    m.add_function(wrap_pyfunction!(linear_root, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_one, m)?)?;
+    m.add_function(wrap_pyfunction!(numeric_linear_solution, m)?)?;
+    m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
+    m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
+    m.add_function(wrap_pyfunction!(decompose_power, m)?)?;
+    m.add_function(wrap_pyfunction!(expr_from_dict, m)?)?;
+    m.add_function(wrap_pyfunction!(re, m)?)?;
+    m.add_function(wrap_pyfunction!(im, m)?)?;
+    m.add_function(wrap_pyfunction!(conjugate, m)?)?;
+    m.add_function(wrap_pyfunction!(sign, m)?)?;
+    m.add_function(wrap_pyfunction!(abs_, m)?)?;
+    m.add_function(wrap_pyfunction!(sin, m)?)?;
+    m.add_function(wrap_pyfunction!(cos, m)?)?;
+    m.add_function(wrap_pyfunction!(tan, m)?)?;
+    m.add_function(wrap_pyfunction!(cot, m)?)?;
+    m.add_function(wrap_pyfunction!(sec, m)?)?;
+    m.add_function(wrap_pyfunction!(csc, m)?)?;
+    m.add_function(wrap_pyfunction!(sinh, m)?)?;
+    m.add_function(wrap_pyfunction!(cosh, m)?)?;
+    m.add_function(wrap_pyfunction!(tanh, m)?)?;
+    m.add_function(wrap_pyfunction!(coth, m)?)?;
+    m.add_function(wrap_pyfunction!(sech, m)?)?;
+    m.add_function(wrap_pyfunction!(csch, m)?)?;
+    m.add_function(wrap_pyfunction!(as_real_imag, m)?)?;
+    m.add_function(wrap_pyfunction!(fraction, m)?)?;
+    m.add_function(wrap_pyfunction!(expand_mul, m)?)?;
+    m.add_function(wrap_pyfunction!(expand_multinomial, m)?)?;
     Ok(())
 }

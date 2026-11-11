@@ -219,6 +219,128 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             }
             Some(value)
         }
+        Head::Function(f) => {
+            let v: Complex = numeric_value(&e.args()[0], prec)?;
+            let value: Complex = match f {
+                super::basic::Function::Exp => {
+                    // beyond the exponents of dashu's floats (mpmath's are unbounded)
+                    if parts(&v).0.repr().exponent() > 40 {
+                        return None;
+                    }
+                    v.exp()
+                }
+                super::basic::Function::Log => {
+                    if is_zero(&v) {
+                        return None;
+                    }
+                    v.ln()
+                }
+                super::basic::Function::Sin
+                | super::basic::Function::Cos
+                | super::basic::Function::Tan
+                | super::basic::Function::Cot
+                | super::basic::Function::Sec
+                | super::basic::Function::Csc => {
+                    use super::basic::Function as F;
+                    if parts(&v).1.repr().exponent() > 40 {
+                        return None;
+                    }
+                    // sin z = (e^(iz) - e^(-iz))/(2i), cos z = (e^(iz) + e^(-iz))/2
+                    let i: Complex = complex(real_zero(wp), real_int(&Int::ONE, wp));
+                    let iz: Complex = &i * &v;
+                    let (a, b) = (iz.exp(), (-&iz).exp());
+                    let two: Complex = complex_real(real_int(&Int::from(2u8), wp), wp);
+                    let s: Complex = &(&a - &b) / &(&two * &i);
+                    let c: Complex = &(&a + &b) / &two;
+                    match f {
+                        F::Sin => s,
+                        F::Cos => c,
+                        F::Tan | F::Sec => {
+                            if is_zero(&c) {
+                                return None;
+                            }
+                            if matches!(f, F::Tan) {
+                                &s / &c
+                            } else {
+                                &complex_real(real_int(&Int::ONE, wp), wp) / &c
+                            }
+                        }
+                        _ => {
+                            if is_zero(&s) {
+                                return None;
+                            }
+                            if matches!(f, F::Cot) {
+                                &c / &s
+                            } else {
+                                &complex_real(real_int(&Int::ONE, wp), wp) / &s
+                            }
+                        }
+                    }
+                }
+                super::basic::Function::Sinh
+                | super::basic::Function::Cosh
+                | super::basic::Function::Tanh
+                | super::basic::Function::Coth
+                | super::basic::Function::Sech
+                | super::basic::Function::Csch => {
+                    use super::basic::Function as F;
+                    if parts(&v).0.repr().exponent() > 40 {
+                        return None;
+                    }
+                    let (a, b) = (v.exp(), (-&v).exp());
+                    let two: Complex = complex_real(real_int(&Int::from(2u8), wp), wp);
+                    let one: Complex = complex_real(real_int(&Int::ONE, wp), wp);
+                    let s: Complex = &(&a - &b) / &two;
+                    let c: Complex = &(&a + &b) / &two;
+                    match f {
+                        F::Sinh => s,
+                        F::Cosh => c,
+                        F::Tanh | F::Sech => {
+                            if is_zero(&c) {
+                                return None;
+                            }
+                            if matches!(f, F::Tanh) {
+                                &s / &c
+                            } else {
+                                &one / &c
+                            }
+                        }
+                        _ => {
+                            if is_zero(&s) {
+                                return None;
+                            }
+                            if matches!(f, F::Coth) {
+                                &c / &s
+                            } else {
+                                &one / &s
+                            }
+                        }
+                    }
+                }
+                super::basic::Function::Re => complex_real(parts(&v).0, wp),
+                super::basic::Function::Im => complex_real(parts(&v).1, wp),
+                super::basic::Function::Conjugate => {
+                    let (re, im) = parts(&v);
+                    complex(re, -im)
+                }
+                super::basic::Function::Abs | super::basic::Function::Sign => {
+                    let (re, im) = parts(&v);
+                    let modulus: Real = (&re * &re + &im * &im).sqrt();
+                    if matches!(f, super::basic::Function::Abs) {
+                        complex_real(modulus, wp)
+                    } else if is_zero(&v) {
+                        complex_real(real_zero(wp), wp)
+                    } else {
+                        complex(re / &modulus, im / &modulus)
+                    }
+                }
+            };
+            let (re, im) = parts(&value);
+            if re.repr().is_infinite() || im.repr().is_infinite() {
+                return None;
+            }
+            Some(value)
+        }
         _ => None,
     }
 }

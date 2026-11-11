@@ -29,10 +29,12 @@
 
 pub mod core;
 pub mod error;
+pub mod functions;
 pub mod ntheory;
 pub mod numbers;
 pub mod polys;
 pub mod random;
+pub mod simplify;
 pub mod solvers;
 
 /// Version of the crate, kept equal to `sympy_extras.__version__`.

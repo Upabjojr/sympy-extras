@@ -74,6 +74,27 @@ impl<K: SparseGround> SparseFractionField<K> {
 impl<K: SparseGround> Domain for SparseFractionField<K> {
     type Elem = SparseFracElement<K>;
 
+    fn to_expr(&self, a: &SparseFracElement<K>) -> PolyResult<crate::core::Basic> {
+        let numer = self.ring.to_expr(&a.numer)?;
+        if self.ring.is_one(&a.denom) {
+            return Ok(numer);
+        }
+        let denom = self.ring.to_expr(&a.denom)?;
+        crate::core::mul::mul(&[
+            numer,
+            crate::core::power::pow(&denom, &crate::core::Basic::negative_one())?,
+        ])
+    }
+
+    /// A rational function of the variables. Python takes the numerator and
+    /// the denominator of `cancel(e)` (`polytools`, not ported); those of
+    /// `e` give the same element, which `new_element` reduces to lowest
+    /// terms.
+    fn from_expr(&self, e: &crate::core::Basic) -> PolyResult<SparseFracElement<K>> {
+        let (numer, denom) = crate::core::expr::as_numer_denom(e)?;
+        self.new_element(&self.ring.from_expr(&numer)?, &self.ring.from_expr(&denom)?)
+    }
+
     /// `K(y1,...,yk)`.
     fn name(&self) -> String {
         format!("{}({})", self.ring.ground.name(), self.ring.names.join(","))
