@@ -235,6 +235,26 @@ square roots):
 
 ```
 
+### Pencils
+
+`sympy_extras.matrices.pencils` solves the generalised problem $A v =
+\lambda B v$ in the same way: $\det(A - \lambda B)$ is factored and the
+null space of $A - \lambda B$ is computed over $K[\lambda]/(f)$ for each
+factor, without inverting $B$. A singular $B$ gives the eigenvalue
+`oo`, with the multiplicity by which the degree of the determinant
+drops.
+
+```python
+>>> from sympy_extras.matrices.pencils import generalized_eigenvalues, generalized_eigenspaces
+>>> generalized_eigenvalues(ExprMatrix.from_rows([[0, 1], [1, 0]]), ExprMatrix.from_rows([[1, 0], [0, 2]]))
+{-sqrt(2)/2: 1, sqrt(2)/2: 1}
+>>> generalized_eigenvalues(ExprMatrix.from_rows([[1, 2], [3, 4]]), ExprMatrix.from_rows([[1, 0], [0, 0]]))
+{-1/2: 1, oo: 1}
+>>> generalized_eigenspaces(ExprMatrix.from_rows([[0, 1], [1, 0]]), ExprMatrix.from_rows([[1, 0], [0, 2]]), x)
+[Eigenspace(2*x**2 - 1, 1, [ExprMatrix([[2*x], [1]])])]
+
+```
+
 ### The Jordan form
 
 `jordan_chains(M, x)` computes the chains of generalised eigenvectors in

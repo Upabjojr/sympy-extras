@@ -296,6 +296,7 @@ sympy_extras/
       calculus.py            jacobian, gradient, hessian (bordered), wronskian, classify_critical_point
       riccati.py             riccati_solutions, care_solve, lqr (exact, by the polynomial system and a certified Routh-Hurwitz test)
       statespace.py          controllability, observability, transfer_function, pole_placement (Ackermann), realization
+      pencils.py             generalized eigenvalues and eigenvectors of A v = x B v (finite and infinite), pencil_polynomial
       svd.py                 singular_values, exact compact svd of rational matrices
       functions.py           component matrices, matrix_exp, matrix_power, matrix_function
     vector/                  orthogonal.py: OrthogonalCoordinates (gradient, divergence, curl, laplacian), cartesian, cylindrical, spherical

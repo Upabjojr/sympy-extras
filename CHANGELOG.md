@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.pencils`: the generalised eigenvalue problem
+  `A v = x B v`: `pencil_polynomial`, `generalized_eigenspaces` (per
+  irreducible factor, `B` never inverted), `generalized_eigenvalues`
+  (with `oo` for a singular `B`), `generalized_eigenvectors`.
 - `sympy_extras.matrices.statespace`: `controllability_matrix`,
   `observability_matrix`, `is_controllable`, `is_observable`,
   `transfer_function` (`C (s I - A)**-1 B + D` in lowest terms),
