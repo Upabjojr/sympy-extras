@@ -16,8 +16,8 @@ use sympy_extras_core::polys::modulargroebner as mg;
 use sympy_extras_core::polys::rings::PolyElement;
 use sympy_extras_core::polys::rings::{Monomial, MonomialOrder};
 use sympy_extras_core::polys::{
-    bigatti, f4 as groebner, gaussianfactor as gf, hilbert, multifactor as mf, rootisolation as ri,
-    stronggroebner as sg,
+    berlekampmassey as bm, bigatti, f4 as groebner, fglm as fglm_mod, gaussianfactor as gf, hilbert, multifactor as mf,
+    rootisolation as ri, stronggroebner as sg,
 };
 
 use crate::convert::{err, extract_int, out_int, out_poly, out_polys, out_usize, poly, tuple, Bridge};
@@ -389,6 +389,109 @@ pub fn register_multifactor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sqf_part, m)?)?;
     m.add_function(wrap_pyfunction!(trial_division, m)?)?;
     m.add_function(wrap_pyfunction!(factor_sort_key, m)?)?;
+    Ok(())
+}
+
+// -- fglm
+
+#[pyfunction]
+fn is_zero_dimensional(basis: &Bound<'_, PyAny>, ring: &PyPolyRing) -> PyResult<bool> {
+    let items: Vec<ElemKind> = elements(basis)?;
+    Ok(match &ring.inner {
+        RingKind::ZZ(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, ZZ), r),
+        RingKind::QQ(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, QQ), r),
+        RingKind::GF(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, GF), r),
+        RingKind::GaussianQQ(r) => fglm_mod::is_zero_dimensional(&same_kind!(&items, GaussianQQ), r),
+    })
+}
+
+#[pyfunction]
+fn fglm<'py>(
+    py: Python<'py>,
+    basis: &Bound<'py, PyAny>,
+    ring: &PyPolyRing,
+    order: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let items: Vec<ElemKind> = elements(basis)?;
+    let order: MonomialOrder = crate::rings::order_from(order)?;
+    let result: Vec<ElemKind> = match &ring.inner {
+        RingKind::ZZ(r) => wrap(
+            fglm_mod::fglm(&same_kind!(&items, ZZ), r, &order).map_err(err)?,
+            ElemKind::ZZ,
+        ),
+        RingKind::QQ(r) => wrap(
+            fglm_mod::fglm(&same_kind!(&items, QQ), r, &order).map_err(err)?,
+            ElemKind::QQ,
+        ),
+        RingKind::GF(r) => wrap(
+            fglm_mod::fglm(&same_kind!(&items, GF), r, &order).map_err(err)?,
+            ElemKind::GF,
+        ),
+        RingKind::GaussianQQ(r) => wrap(
+            fglm_mod::fglm(&same_kind!(&items, GaussianQQ), r, &order).map_err(err)?,
+            ElemKind::GaussianQQ,
+        ),
+    };
+    out_elements(py, result)
+}
+
+#[pyfunction]
+fn groebner_by_fglm<'py>(py: Python<'py>, polys: &Bound<'py, PyAny>, ring: &PyPolyRing) -> PyResult<Bound<'py, PyAny>> {
+    let items: Vec<ElemKind> = elements(polys)?;
+    let result: Vec<ElemKind> = match &ring.inner {
+        RingKind::ZZ(r) => wrap(
+            fglm_mod::groebner_by_fglm(&same_kind!(&items, ZZ), r).map_err(err)?,
+            ElemKind::ZZ,
+        ),
+        RingKind::QQ(r) => wrap(
+            fglm_mod::groebner_by_fglm(&same_kind!(&items, QQ), r).map_err(err)?,
+            ElemKind::QQ,
+        ),
+        RingKind::GF(r) => wrap(
+            fglm_mod::groebner_by_fglm(&same_kind!(&items, GF), r).map_err(err)?,
+            ElemKind::GF,
+        ),
+        RingKind::GaussianQQ(r) => wrap(
+            fglm_mod::groebner_by_fglm(&same_kind!(&items, GaussianQQ), r).map_err(err)?,
+            ElemKind::GaussianQQ,
+        ),
+    };
+    out_elements(py, result)
+}
+
+pub fn register_fglm(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(is_zero_dimensional, m)?)?;
+    m.add_function(wrap_pyfunction!(fglm, m)?)?;
+    m.add_function(wrap_pyfunction!(groebner_by_fglm, m)?)?;
+    Ok(())
+}
+
+// -- berlekampmassey
+
+#[pyfunction]
+fn berlekamp_massey<'py>(py: Python<'py>, sequence: &Bound<'py, PyAny>, K: &PyDomain) -> PyResult<Bound<'py, PyAny>> {
+    with_domain!(K, k => out_poly(k, py, &bm::berlekamp_massey(&poly(k, sequence)?, k).map_err(err)?))
+}
+
+#[pyfunction]
+fn satisfies_recurrence(sequence: &Bound<'_, PyAny>, polynomial: &Bound<'_, PyAny>, K: &PyDomain) -> PyResult<bool> {
+    with_domain!(K, k => Ok(bm::satisfies_recurrence(&poly(k, sequence)?, &poly(k, polynomial)?, k)))
+}
+
+#[pyfunction]
+fn extend_sequence<'py>(
+    py: Python<'py>,
+    sequence: &Bound<'py, PyAny>,
+    K: &PyDomain,
+    count: usize,
+) -> PyResult<Bound<'py, PyAny>> {
+    with_domain!(K, k => out_poly(k, py, &bm::extend_sequence(&poly(k, sequence)?, k, count).map_err(err)?))
+}
+
+pub fn register_berlekampmassey(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(berlekamp_massey, m)?)?;
+    m.add_function(wrap_pyfunction!(satisfies_recurrence, m)?)?;
+    m.add_function(wrap_pyfunction!(extend_sequence, m)?)?;
     Ok(())
 }
 

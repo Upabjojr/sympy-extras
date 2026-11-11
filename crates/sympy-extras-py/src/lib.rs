@@ -112,6 +112,7 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "sympy_extras_rs.polys.gaussianfactor",
     )?)?;
     algorithms::register_f4(&submodule(&polys, "f4", "sympy_extras_rs.polys.f4")?)?;
+    algorithms::register_fglm(&submodule(&polys, "fglm", "sympy_extras_rs.polys.fglm")?)?;
     dense::register_subresultants(&submodule(
         &polys,
         "subresultants",
@@ -121,6 +122,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &polys,
         "modulargroebner",
         "sympy_extras_rs.polys.modulargroebner",
+    )?)?;
+    algorithms::register_berlekampmassey(&submodule(
+        &polys,
+        "berlekampmassey",
+        "sympy_extras_rs.polys.berlekampmassey",
     )?)?;
     algorithms::register_bigatti(&submodule(&polys, "bigatti", "sympy_extras_rs.polys.bigatti")?)?;
     algorithms::register_hilbert(&submodule(&polys, "hilbert", "sympy_extras_rs.polys.hilbert")?)?;

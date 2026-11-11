@@ -1,5 +1,6 @@
 //! Port of `sympy_extras.polys`: the typed polynomial algorithms.
 
+pub mod berlekampmassey;
 pub mod bigatti;
 pub mod densearith;
 pub mod densebasic;
@@ -8,6 +9,7 @@ pub mod domains;
 pub mod euclidtools;
 pub mod f4;
 pub mod factortools;
+pub mod fglm;
 pub mod galoistools;
 pub mod gaussianfactor;
 pub mod groebnerwalk;

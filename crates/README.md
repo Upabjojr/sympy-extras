@@ -56,6 +56,8 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/f4.py` | done | Katsura-4: the same bases, 2.5x (lex over `QQ`) to 7x (`GF(32003)`) faster than Python, untuned |
 | `polys/stronggroebner.py` | done | 10-20x faster than Python on the random test systems |
 | `polys/subresultants.py` | `dup_psc` | `dmp_psc` is `dup_psc` over a `PolynomialRing` tower; `psc` on SymPy's `PolyElement` has no counterpart |
+| `polys/fglm.py` | done | the pivot of a new echelon row is its largest monomial (Python: the first dict key); the reduced basis does not depend on it |
+| `polys/berlekampmassey.py` | done | generic over `Domain`; the bindings run it over every domain kind |
 | `polys/bigatti.py` | done | moved out of `hilbert.rs` as in Python (5786e1d..eb367b4), with `hilbert_numerator_coefficients` |
 | `polys/hilbert.py` | done | the numerator dense over `ZZ`, the series a `HilbertSeries { numerator, exponent }` (Python: `Poly` and an expression in `t`) |
 | `polys/groebnerwalk.py` | done | both liftings; the bases of the initial forms by the Rust F4 (Python: SymPy's Buchberger, the same reduced bases); over fields only (SymPy also walks over `ZZ`) |
