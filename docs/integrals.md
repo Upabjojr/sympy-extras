@@ -808,9 +808,10 @@ in any number of radicals of rational functions of `x`, nested or not,
 of any index: `1/(sqrt(x + 1) + sqrt(x - 1))`, `cbrt(x**2*(x + 1))`
 together with its powers, `sqrt(x + sqrt(x))`. The radicals `g_i` are
 replaced by a primitive element `y = sum k_i g_i` (small integer weights,
-the minimal polynomial `F` of `y` over `Q(x)` by SymPy's
-`minimal_polynomial`, its degree the product of the indices when the
-radicals are independent, which is checked), and the integrand becomes
+the minimal polynomial `F` of `y` over `Q(x)` read off the powers of `y`
+in the monomial basis of the radicals, its degree the product of the
+indices when the radicals are independent, which is checked by its
+irreducibility), and the integrand becomes
 an element of the function field `Q(x)[y]/(F)` of
 `sympy_extras.polys.functionfields` (`AlgebraicIntegrand`). Trager's
 change of variable `x = N + 1/z`, with `N` an integer which is neither a
@@ -840,11 +841,14 @@ question open). The answer is written back in `x` and the original
 radicals through the monomial basis of the radicals, and
 `indefinite_integral` checks it by differentiation as every candidate.
 `trager_antiderivative`, `trager_reduce` and `is_nonelementary_algebraic`
-fall back to this route for the integrands beyond one radical.
+fall back to this route for the integrands beyond one radical. The
+module is native (objects of the core, no SymPy imported);
+`sympy_extras.integrals.curves_sympy` is its face on SymPy objects,
+used below.
 
 ```python
 >>> from sympy import symbols, sqrt, cbrt
->>> from sympy_extras.integrals.curves import curve_antiderivative, is_nonelementary_on_curve
+>>> from sympy_extras.integrals.curves_sympy import curve_antiderivative, is_nonelementary_on_curve
 >>> x = symbols('x')
 >>> curve_antiderivative(1/(sqrt(x + 1) + sqrt(x - 1)), x)
 -x*sqrt(x - 1)/3 + x*sqrt(x + 1)/3 + sqrt(x - 1)/3 + sqrt(x + 1)/3

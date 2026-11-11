@@ -539,6 +539,30 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- Trager's algorithm on a general curve is native (**breaking**):
+  `sympy_extras.integrals.curves` (`curve_antiderivative`, `curve_reduce`,
+  `is_nonelementary_on_curve`, `integrate_on_curve`, `AlgebraicIntegrand`,
+  `CurveIntegral`) takes and returns objects of the core and imports no
+  SymPy. It runs on the native function fields, Puiseux expansions and
+  number fields without their faces (the rationals as the number field
+  `RATIONALS` of degree one, the integral basis normal at infinity
+  computed over the plain rationals), the minimal polynomial of the
+  primitive element is read off its powers in the monomial basis of the
+  radicals (the radicals independent when it is irreducible over
+  `Q(x)`: a specialisation of `x`, else the bivariate factorisation)
+  instead of SymPy's `minimal_polynomial` with symbols, and the
+  expressions are cancelled by the native `cancel` after the coefficients
+  of the monomials of the radicals are reduced over `Q(x)` (the
+  logarithms come out shorter than before, SymPy's `cancel` keeping the
+  common factors of `x` and `sqrt(x)`). The field of the residues is
+  named by its largest real root (an `IndexedRoot`) or in radicals;
+  `CurveIntegral.elementary_part(theta)` and `remainder_expr(theta)` take
+  the expression of a generator which has neither (the native
+  `curve_antiderivative` returns `None` then). The old API on SymPy
+  objects is `sympy_extras.integrals.curves_sympy` (used by `trager`),
+  which writes such a generator as SymPy's `CRootOf`; its `CurveIntegral`
+  wraps the native one (`remainder` is the native element), and
+  `AlgebraicIntegrand.algebra` is the native algebra.
 - The validated numerical integration is native (**breaking**):
   `sympy_extras.integrals.validated` (`validated_integral`, `enclosure`)
   takes and returns objects of the core and imports no SymPy (the value

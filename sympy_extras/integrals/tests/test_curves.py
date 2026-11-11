@@ -9,8 +9,8 @@ import random
 from sympy import symbols, sqrt, cbrt, log, Rational, N, Poly, cancel, S, exp
 
 from sympy_extras._typing_sympy import as_expr
-from sympy_extras.integrals.curves import (AlgebraicIntegrand, curve_antiderivative, curve_reduce,
-                                           is_nonelementary_on_curve, integrate_on_curve)
+from sympy_extras.integrals.curves_sympy import (AlgebraicIntegrand, curve_antiderivative, curve_reduce,
+                                                 is_nonelementary_on_curve, integrate_on_curve)
 
 x, a = symbols('x a')
 
