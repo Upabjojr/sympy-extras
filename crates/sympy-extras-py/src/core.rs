@@ -1379,6 +1379,35 @@ fn polytools_call<'py>(
             let (p, q) = pt::cancel_fraction(&args[0], &args[1]).map_err(e)?;
             Ok(PyTuple::new(py, [to_python(py, &p)?, to_python(py, &q)?])?.into_any())
         }
+        "factor" => one(pt::factor(&args[0], &gens, false, true)),
+        "factor_deep" => one(pt::factor(&args[0], &gens, true, true)),
+        "factor_nofraction" => one(pt::factor(&args[0], &gens, false, false)),
+        "sqf" => one(pt::sqf(&args[0], &gens, true)),
+        "factor_list" | "sqf_list" | "factor_list_fraction" | "sqf_list_fraction" => {
+            let factors = |py: Python<'py>, fs: Vec<(Basic, Basic)>| -> PyResult<Bound<'py, PyAny>> {
+                let mut items: Vec<Bound<'py, PyAny>> = Vec::new();
+                for (g, k) in fs {
+                    items.push(PyTuple::new(py, [to_python(py, &g)?, to_python(py, &k)?])?.into_any());
+                }
+                Ok(PyList::new(py, items)?.into_any())
+            };
+            let method = if name.starts_with("sqf") {
+                pt::FactorMethod::Sqf
+            } else {
+                pt::FactorMethod::Factor
+            };
+            if name.ends_with("fraction") {
+                let (c, fp, fq) = pt::factor_list_fraction(&args[0], &gens, method).map_err(e)?;
+                return Ok(PyTuple::new(py, [to_python(py, &c)?, factors(py, fp)?, factors(py, fq)?])?.into_any());
+            }
+            let (c, fs) = if method == pt::FactorMethod::Sqf {
+                pt::sqf_list(&args[0], &gens)
+            } else {
+                pt::factor_list(&args[0], &gens)
+            }
+            .map_err(e)?;
+            Ok(PyTuple::new(py, [to_python(py, &c)?, factors(py, fs)?])?.into_any())
+        }
         _ => Err(PyTypeError::new_err(format!("unknown polytools function {}", name))),
     }
 }
