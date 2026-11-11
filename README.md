@@ -1106,6 +1106,24 @@ Interval(-1/2, 1/2)
 
 ```
 
+### Conics and quadrics (`sympy_extras.geometry.quadrics`)
+
+The type of a conic or of a quadric surface from its equation, with the
+centre, the semi-axes and the eccentricity, decided by ranks and
+signatures (no eigenvalue is computed for the type):
+
+```python
+>>> from sympy_extras.core import Symbol
+>>> from sympy_extras.geometry.quadrics import classify_conic, classify_quadric
+>>> x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+>>> c = classify_conic(5*x**2 + 4*x*y + 8*y**2 - 36, x, y)
+>>> c.kind, c.center, c.semi_axes, c.eccentricity
+('ellipse', (0, 0), (3, 2), sqrt(5)/3)
+>>> [classify_quadric(e, x, y, z).kind for e in (x*y + y*z + z*x - 1, x*y - z, x**2 + y**2 - z**2)]
+['hyperboloid of two sheets', 'hyperbolic paraboloid', 'cone']
+
+```
+
 ### Curvature of a metric (`sympy_extras.diffgeom`)
 
 `Metric` takes the components of a metric (or a line element) and

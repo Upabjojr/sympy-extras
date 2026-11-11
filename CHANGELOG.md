@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.geometry.quadrics`: `classify_conic` (the type, centre,
+  semi-axes, eccentricity, parameter and principal form of a conic from
+  its equation) and `classify_quadric` (the seventeen affine types of
+  quadric surfaces), by the ranks and signatures of the two matrices;
+  `quadric_matrices`.
 - `sympy_extras.matrices.markov.MarkovChain`: finite Markov chains with
   rational or symbolic transition matrices: communicating classes,
   recurrence, periods, stationary distributions, the fundamental matrix,

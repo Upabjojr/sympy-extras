@@ -284,6 +284,7 @@ sympy_extras/
         hyperexpand.py       hyperexpand: formula tables, shift operators, plans, Slater's theorem (ported from SymPy)
         tests/
     calculus/                optimization.py: minimize, maximize, value_range, minimize_parametric (exact global optima of polynomials under polynomial constraints, by CAD)
+    geometry/                quadrics.py: classify_conic, classify_quadric (affine types by rank and signature; centre, axes, eccentricity)
     diffgeom/                metric.py: Metric (Christoffel symbols, Riemann, Ricci, Einstein, Weyl, geodesics, Killing equations); classical.py: Curve (curvature, torsion, Frenet frame), Surface (fundamental forms, Gaussian and mean curvature)
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
       domainmatrix.py        DomainMatrix[T] over a Domain[T]: Bareiss determinant, fraction-free Gauss-Jordan (rank, null space, inverse, systems), Berkowitz characteristic polynomial, adjugate
