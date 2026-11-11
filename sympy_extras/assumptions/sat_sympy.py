@@ -18,7 +18,7 @@ decomposition (:func:`sympy_extras.polys.cad.sample_points`,
 :func:`sympy_extras.polys.cad.solution_set`), the count of real solutions
 of :func:`sympy_extras.polys.hermite.decide_zero_dimensional`, and the
 floor and the comparison of real algebraic numbers
-(:mod:`sympy_extras.polys.cad.samplepoints`, on SymPy's ``CRootOf``).
+(:mod:`sympy_extras.polys.cad.samplepoints_sympy`, on SymPy's ``CRootOf``).
 """
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ def predicates_consistent_of_core(predicates: CoreBoolean) -> bool:
 
 def sample_points_of_core(formula: CoreBoolean, gens: Sequence[CoreSymbol]) -> list[dict[CoreSymbol, CoreExpr]]:
     """:func:`sympy_extras.polys.cad.sample_points`."""
-    from sympy_extras.polys.cad import sample_points
+    from sympy_extras.polys.cad.qe import sample_points
     points = sample_points(sympy_boolean(formula), [_sympy_symbol(g) for g in gens])
     return [{_core_symbol(k): core_expr(v) for k, v in point.items()} for point in points]
 
@@ -89,7 +89,7 @@ def solution_set_of_core(formula: CoreBoolean, x: CoreSymbol, others: Sequence[C
     """The values of ``x`` for which ``formula`` holds for some values of
     ``others`` (:func:`sympy_extras.polys.cad.solution_set`), ``None``
     when the decomposition does not apply."""
-    from sympy_extras.polys.cad import solution_set
+    from sympy_extras.polys.cad.qe import solution_set
     sympy_others: list[Symbol] = [_sympy_symbol(g) for g in others]
     quantifiers: list[tuple[str, Union[Symbol, Sequence[Symbol]]]] = [('exists', sympy_others)] if others else []
     try:
@@ -111,14 +111,14 @@ def decide_zero_dimensional_of_core(formula: CoreBoolean, gens: list[CoreSymbol]
 def floor_of_core(a: CoreExpr) -> int:
     """The floor of a real algebraic number (a rational number, a real
     ``CRootOf`` or a product of the two), exactly."""
-    from sympy_extras.polys.cad.samplepoints import _floor_scaled
+    from sympy_extras.polys.cad.samplepoints_sympy import _floor_scaled
     return _floor_scaled(sympy_expr(a), 0)
 
 
 def compare_real_of_core(a: CoreExpr, b: CoreExpr) -> int:
-    """:func:`sympy_extras.polys.cad.samplepoints.compare_real`: the sign
+    """:func:`sympy_extras.polys.cad.samplepoints_sympy.compare_real`: the sign
     of ``a - b`` for real algebraic numbers."""
-    from sympy_extras.polys.cad.samplepoints import compare_real
+    from sympy_extras.polys.cad.samplepoints_sympy import compare_real
     return compare_real(sympy_expr(a), sympy_expr(b))
 
 
@@ -290,8 +290,9 @@ def find_instance(formula: Union[Boolean, bool], variables: Union[Symbol, Sequen
     >>> from sympy_extras.assumptions.sat_sympy import find_instance
     >>> find_instance((x**2 + y**2 < 1) & (x > y), [x, y])
     [{x: 0, y: -1/2}]
-    >>> find_instance((x**2 + y**2 < 1) & (x > y), [x, y], count=3)
-    [{x: 0, y: -1/2}, {x: CRootOf(2*x**2 - 1, 1), y: 0}, {x: 3/4, y: 0}]
+    >>> found = find_instance((x**2 + y**2 < 1) & (x > y), [x, y], count=3)
+    >>> found[0], found[2], found[1][x].evalf(10), found[1][y]    # SymPy prints a CRootOf in the variable it met first
+    ({x: 0, y: -1/2}, {x: 3/4, y: 0}, 0.7071067812, 0)
     >>> find_instance(Eq(x**2, 2), [x])
     [{x: CRootOf(x**2 - 2, 0)}]
     >>> find_instance(Eq(x**2, 2), [x], S.Integers)

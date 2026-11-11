@@ -318,11 +318,15 @@ sympy_extras/
         puiseux.py           Newton–Puiseux expansions of the branches of a plane curve at a point and at infinity, conjugate branches over number fields (Duval)
         functionfields.py    FunctionField: arithmetic in K(x)[y]/(F), integral bases (Trager's Round 2 over K[x]), local bases at infinity, bases normal at infinity
         tests/
-        cad/                 cylindrical algebraic decomposition
-            projection.py    projection operators (McCallum, Hong), projection_sets
-            samplepoints.py  exact real algebraic sample points (SamplePoint)
-            lifting.py       lifting phase, cylindrical_algebraic_decomposition, CAD, CADCell
-            qe.py            quantifier_elimination, decide, sample_points, solution_set
+        cad/                 cylindrical algebraic decomposition (exports nothing: import the modules)
+            projection.py    projection operators (McCallum, Hong), projection_sets, on the typed Poly (native)
+            projection_sympy.py the SymPy face of projection (SymPy's Poly in and out)
+            samplepoints.py  exact real algebraic sample points (SamplePoint) on qqbar.Algebraic and AlgebraicField (native)
+            samplepoints_sympy.py the SymPy face of samplepoints (Rational and CRootOf in and out)
+            lifting.py       lifting phase, cylindrical_algebraic_decomposition, CAD, CADCell, Lifting (native)
+            lifting_sympy.py the SymPy face of lifting (cells with SymPy points), used by qe, cylindrical, regions
+            qe.py            quantifier_elimination, decide, sample_points, solution_set (on SymPy, through the faces)
+            cylindrical.py   cylindrical_formula, cylindrical_set, cylindrical_cases, IndexedRoot (on SymPy)
             tests/
         differential/        differential algebra
             ring.py          DifferentialRing: derivatives, rankings (orderly, elimination by blocks), conversion

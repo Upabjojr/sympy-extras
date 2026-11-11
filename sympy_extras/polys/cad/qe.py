@@ -40,9 +40,9 @@ from sympy.sets.sets import Interval, FiniteSet, Set, Union as SetUnion
 from sympy_extras._typing import (QuantifierPrefix, QuantifierSpec, Sign,
     as_boolean, as_symbol, free_symbols, sorted_symbols)
 
-from .lifting import (CAD, CADCell, Lifting, NotWellOriented, _factor_signs,
+from .lifting_sympy import (CAD, CADCell, Lifting, NotWellOriented, _factor_signs,
     cylindrical_algebraic_decomposition, lifting_for)
-from .projection import _PROJECTIONS, _to_polys, augmented_projection_sets, projection_sets
+from .projection_sympy import _PROJECTIONS, _to_polys, augmented_projection_sets, projection_sets
 
 #: the truth value of a formula on a cell
 CellTruth = tuple[CADCell, bool]
@@ -924,7 +924,7 @@ def truth_tables(formulas: Sequence[Union[Boolean, bool]], gens: Sequence[Symbol
     cells are those of `\\mathbb{R}^n` of the full decomposition.
 
     >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import truth_tables
+    >>> from sympy_extras.polys.cad.qe import truth_tables
     >>> cells, (a, b) = truth_tables([x > 0, x**3 > 0], [x])
     >>> [c.point for c in cells]
     [(-1,), (0,), (1,)]
@@ -1003,7 +1003,7 @@ def quantifier_elimination(formula: Union[Boolean, bool], quantifiers: Quantifie
 
     >>> from sympy import Eq
     >>> from sympy.abc import a, b, c, x, y
-    >>> from sympy_extras.polys.cad import quantifier_elimination as qe
+    >>> from sympy_extras.polys.cad.qe import quantifier_elimination as qe
     >>> qe(x**2 + b*x + c > 0, [('forall', x)])
     b**2 - 4*c < 0
     >>> qe(Eq(a*x**2 + b*x + c, 0), [('exists', x)])
@@ -1050,7 +1050,7 @@ def decide(formula: Union[Boolean, bool], quantifiers: QuantifierSpec, method: O
 
     >>> from sympy import Eq
     >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import decide
+    >>> from sympy_extras.polys.cad.qe import decide
     >>> decide(Eq(x, 2*y), [('forall', x), ('exists', y)])
     True
     >>> decide(x**2 + y**2 < 0, [('exists', [x, y])])
@@ -1069,9 +1069,12 @@ def sample_points(formula: Union[Boolean, bool], gens: Sequence[Symbol],
     ``formula``; the list is empty if the formula is not satisfiable.
 
     >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import sample_points
-    >>> sample_points((x**2 + y**2 < 1) & (x > y), [x, y])
-    [{x: 0, y: -1/2}, {x: CRootOf(2*x**2 - 1, 1), y: 0}, {x: 3/4, y: 0}]
+    >>> from sympy_extras.polys.cad.qe import sample_points
+    >>> points = sample_points((x**2 + y**2 < 1) & (x > y), [x, y])
+    >>> points[0], points[2]
+    ({x: 0, y: -1/2}, {x: 3/4, y: 0})
+    >>> type(points[1][x]).__name__, points[1][x].evalf(10), points[1][y]   # a root of 2*x**2 - 1
+    ('ComplexRootOf', 0.7071067812, 0)
     >>> sample_points(x**2 + y**2 < 0, [x, y])
     []
     """
@@ -1087,7 +1090,7 @@ def solution_set(formula: Union[Boolean, bool], x: Symbol, quantifiers: Quantifi
 
     >>> from sympy import Eq
     >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import solution_set
+    >>> from sympy_extras.polys.cad.qe import solution_set
     >>> solution_set(Eq(3*x**2 + 2*x*y + y**2 - x + y - 7, 0), x, [('exists', y)])
     Interval(CRootOf(8*x**2 - 8*x - 29, 0), CRootOf(8*x**2 - 8*x - 29, 1))
     >>> solution_set(x**2 > 2, x)

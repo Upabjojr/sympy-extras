@@ -875,3 +875,20 @@ def test_termwise_integrate_and_tuple_simplify() -> None:
     assert _integrate_terms(expr_from_sympy(1/x), (nx, expr_from_sympy(sympy.Integer(1)), expr_from_sympy(sympy.Integer(2)))) is None
     t = Tuple(expr_from_sympy(sympy.sin(x)**2 + sympy.cos(x)**2), expr_from_sympy(2*x - x))
     assert str(t.simplify()) == '(1, x)'
+
+
+def test_the_variable_of_a_crootof_is_bound() -> None:
+    # subs and xreplace went into the polynomial of a wrapped CRootOf:
+    # (x + CRootOf(x**3 - x - 1, 0)).subs(x, 1) rebuilt CRootOf(-1, 0) and
+    # SymPy raised GeneratorsNeeded (a cell point of the CAD in the variable
+    # of its level, put into an expression of that variable, in
+    # analysis.sign_on); the root is a number
+    import sympy
+    from sympy_extras.interop import from_sympy, to_sympy
+    sx = sympy.Symbol('x')
+    root = sympy.CRootOf(sx**3 - sx - 1, 0)
+    e = as_expr(from_sympy(root + sx))
+    x = from_sympy(sx)
+    assert to_sympy(e.subs(x, 1)) == root + 1
+    assert to_sympy(e.xreplace({x: Integer(2)})) == root + 2
+    assert to_sympy(e.subs(from_sympy(root), 0)) == sx

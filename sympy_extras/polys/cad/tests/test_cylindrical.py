@@ -14,7 +14,7 @@ from sympy.testing.pytest import raises
 from sympy.abc import a, x, y, z
 
 from sympy_extras._typing import as_boolean, as_expr
-from sympy_extras.polys.cad import IndexedRoot, cylindrical_cases, cylindrical_formula, cylindrical_set
+from sympy_extras.polys.cad.cylindrical import IndexedRoot, cylindrical_cases, cylindrical_formula, cylindrical_set
 from sympy_extras.polys.cad.qe import _truth_values
 
 

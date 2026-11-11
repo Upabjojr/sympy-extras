@@ -51,7 +51,7 @@ from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.relational import Relational as CoreRelational
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
-from sympy_extras.polys.cad import solution_set
+from sympy_extras.polys.cad.qe import solution_set
 from sympy_extras.sets.sets import Interval as CoreInterval
 from sympy_extras.sets.sets import Set as CoreSet
 from sympy_extras.settings import settings

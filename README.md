@@ -67,7 +67,7 @@ and quantifier elimination for the first order theory of the real numbers.
 ```python
 >>> from sympy import Eq
 >>> from sympy.abc import a, b, c, x, y
->>> from sympy_extras.polys.cad import cylindrical_algebraic_decomposition
+>>> from sympy_extras.polys.cad.lifting_sympy import cylindrical_algebraic_decomposition
 >>> cad = cylindrical_algebraic_decomposition([x**2 + y**2 - 1], [x, y])
 >>> cad
 CAD(13 cells, x, y)
@@ -81,7 +81,7 @@ sample points of systems of polynomial equations and inequalities are built
 on top of the decomposition:
 
 ```python
->>> from sympy_extras.polys.cad import quantifier_elimination, decide, solution_set, sample_points
+>>> from sympy_extras.polys.cad.qe import quantifier_elimination, decide, solution_set, sample_points
 >>> quantifier_elimination(x**2 + b*x + c > 0, [('forall', x)])
 b**2 - 4*c < 0
 >>> quantifier_elimination(Eq(x**2 + a*x + b, 0), [('exists', x)])
@@ -102,7 +102,7 @@ roots up to degree two, `IndexedRoot` beyond; `solve` answers systems of
 inequalities in several unknowns this way):
 
 ```python
->>> from sympy_extras.polys.cad import cylindrical_formula
+>>> from sympy_extras.polys.cad.cylindrical import cylindrical_formula
 >>> cylindrical_formula((x**2 + y**2 <= 1) & (x + y >= 1), [x, y])
 (x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2))
 

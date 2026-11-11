@@ -324,3 +324,35 @@ def test_native_limits_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_LIMITS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_CAD = r'''
+import sys
+from fractions import Fraction
+from sympy_extras.core import symbols
+from sympy_extras.polys.cad.projection import projection_sets
+from sympy_extras.polys.cad.samplepoints import SamplePoint, compare_real, real_roots_of
+from sympy_extras.polys.cad.lifting import Lifting, cylindrical_algebraic_decomposition, lifting_for
+assert 'sympy' not in sys.modules
+x, y, z, w = symbols('x y z w')
+cad = cylindrical_algebraic_decomposition([x**2 + y**2 + z**2 - 1, z - x*y], [x, y, z])
+assert len(cad) == 137 and all(len(c.signs) == 2 for c in cad)
+hong = cylindrical_algebraic_decomposition([x*w + y], [x, y, z, w])
+assert hong.method == 'hong' and len(hong) == 21
+projection = projection_sets([x**2 + y**2 - 1, x - y], [x, y], method='hong')
+lifting = lifting_for(projection, [x, y], 'hong')
+assert len(lifting.lift_all()[-1]) > 0
+point = SamplePoint().extend(real_roots_of([1, 0, -2])[1]).extend(Fraction(1, 2))
+assert point.sign(x**2 + y**2 - 2, [x, y]) == 1 and compare_real(real_roots_of([2, 0, -4])[1], point.values[0]) == 0
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_cad_lifting_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.cad.lifting` (with the
+    projection and the sample points) does not load SymPy, nor do the
+    decompositions, McCallum's and Hong's, and the sample points in
+    algebraic number fields."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CAD], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

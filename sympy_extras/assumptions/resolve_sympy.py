@@ -45,7 +45,7 @@ __all__ = ['resolve', 'quantifier_elimination_of_core', 'virtual_substitution_el
 def quantifier_elimination_of_core(formula: CoreBoolean, prefix: Prefix, free: list[CoreSymbol],
                                    method: Optional[str]) -> CoreBoolean:
     """:func:`sympy_extras.polys.cad.quantifier_elimination`."""
-    from sympy_extras.polys.cad import quantifier_elimination
+    from sympy_extras.polys.cad.qe import quantifier_elimination
     return core_boolean(quantifier_elimination(sympy_boolean(formula), sympy_prefix(prefix),
                                                free=[_sympy_symbol(s) for s in free], method=method))
 

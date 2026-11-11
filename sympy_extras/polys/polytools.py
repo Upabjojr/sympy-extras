@@ -307,6 +307,38 @@ class Poly:
         obj._domain = domain
         return obj
 
+    @classmethod
+    def from_dict(cls, terms: dict[Monomial, Union[int, Fraction]], *gens: ExprLike) -> Poly:
+        """The polynomial with the rational coefficients ``terms`` (a
+        monomial in ``gens`` to its coefficient) over ``ZZ`` when they are
+        integers, ``QQ`` otherwise (SymPy's ``Poly.from_dict``)."""
+        generators = tuple(to_expr(g) for g in gens)
+        if not generators:
+            raise GeneratorsNeeded("generators are needed to build a polynomial from a dictionary")
+        if len(set(generators)) != len(generators):
+            raise GeneratorsError('duplicated generators: %s' % (generators,))
+        values: dict[Monomial, Fraction] = {}
+        for m, c in terms.items():
+            if len(m) != len(generators):
+                raise PolynomialError('the monomial %s does not match the generators %s' % (m, generators))
+            if c:
+                values[m] = values.get(m, Fraction(0)) + Fraction(c)
+        ring = PolyRing(QQ, _internal_names(len(generators), 0))
+        integral = all(c.denominator == 1 for c in values.values())
+        return cls._new(ring.from_dict(values), generators, _Domain(integral, ()))
+
+    @property
+    def rep(self) -> PolyElement[Fraction]:
+        """The representation: a sparse polynomial over ``QQ`` in the
+        generators followed by the parameters of the domain (internal
+        variable names)."""
+        return self._rep
+
+    @property
+    def is_integral(self) -> bool:
+        """Whether the domain is ``ZZ`` or ``ZZ[params]``."""
+        return self._domain.integral
+
     # -- structure
 
     @property
@@ -508,11 +540,20 @@ class Poly:
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Poly):
-            return self._gens == other._gens and self.as_expr() == other.as_expr()
+            if self._gens != other._gens:
+                return False
+            if self._domain.params == other._domain.params:
+                # one ring: the representations are equal exactly when the
+                # polynomials are (whatever ZZ or QQ says)
+                return self._rep.terms == other._rep.terms
+            return self.as_expr() == other.as_expr()
         return NotImplemented
 
     def __hash__(self) -> int:
-        return hash(('Poly', self._gens, self.as_expr()))
+        # the monomials in the generators which have a nonzero
+        # coefficient, whatever the parameters of the domain
+        n = len(self._gens)
+        return hash(('Poly', self._gens, frozenset(m[:n] for m in self._rep.terms)))
 
     # -- arithmetic
 
@@ -817,26 +858,23 @@ class Poly:
         return rest
 
     def discriminant(self) -> Union[Poly, Expr]:
+        """``(-1)**(n (n - 1)/2) Res(f, f')/lc(f)`` in the first generator,
+        the division exact on the representation (the leading coefficient
+        may be a polynomial in the other generators)."""
         n = self.degree()
         if n < 1:
             return Integer(0)
-        derivative = self.diff()
-        r = self.resultant(derivative)
-        sign = Integer((-1) ** (n * (n - 1) // 2))
-        lc = self._leading_in_first()
-        if isinstance(r, Poly):
-            return Poly(_expanded(mul(sign, r.as_expr(), pow(lc, Integer(-1)))), *r.gens)
-        return _expanded(mul(sign, r, pow(lc, Integer(-1))))
-
-    def _leading_in_first(self) -> Expr:
-        """The leading coefficient in the first generator, an expression in
-        the others and the parameters."""
-        top = self.degree()
-        parts: list[Expr] = []
-        for m, c in self.terms():
-            if m[0] == top:
-                parts.append(mul(c, *[pow(g, Integer(k)) for g, k in zip(self._gens[1:], m[1:]) if k]))
-        return add(*parts)
+        k = len(self._gens)
+        names = _internal_names(k, len(self._domain.params))
+        value = _resultant_first(self._rep, self._rep.diff(0), names, self._domain.integral)
+        lc = self._rep.ring.from_dict({(0,) + m[1:]: c for m, c in self._rep.terms.items() if m[0] == n})
+        value = value.exquo(lc)
+        if (n * (n - 1) // 2) % 2:
+            value = -value
+        if k == 1:
+            return self._coefficient_expr({m[1:]: c for m, c in value.terms.items()})
+        return Poly._new(PolyRing(QQ, _internal_names(k - 1, len(self._domain.params))).from_dict(
+            {m[1:]: c for m, c in value.terms.items()}), self._gens[1:], self._domain)
 
     # PORTED FROM SYMPY: sympy/polys/sqfreetools.py:dup_sqf_list, dmp_sqf_list
     def sqf_list(self) -> tuple[Expr, list[tuple[Poly, int]]]:

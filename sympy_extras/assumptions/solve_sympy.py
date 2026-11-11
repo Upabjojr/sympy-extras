@@ -103,7 +103,7 @@ def reliable_value_of_core(e: CoreExpr, digits: int) -> Optional[CoreExpr]:
 def solution_set_of_core(formula: CoreBoolean, x: CoreSymbol) -> CoreSet:
     """The real solutions of a polynomial formula by the CAD
     (:func:`sympy_extras.polys.cad.solution_set`)."""
-    from sympy_extras.polys.cad import solution_set
+    from sympy_extras.polys.cad.qe import solution_set
     return _core_set(solution_set(sympy_boolean(formula), _sympy_symbol(x)))
 
 
@@ -175,20 +175,20 @@ def nonlinsolve_of_core(equations: list[CoreExpr], symbols: list[CoreSymbol]) ->
 
 def cylindrical_set_of_core(formula: CoreBoolean, symbols: list[CoreSymbol]) -> CoreSet:
     """:func:`sympy_extras.polys.cad.cylindrical_set`."""
-    from sympy_extras.polys.cad import cylindrical_set
+    from sympy_extras.polys.cad.cylindrical import cylindrical_set
     return _core_set(cylindrical_set(sympy_boolean(formula), _core_symbols(symbols)))
 
 
 def cylindrical_formula_of_core(formula: CoreBoolean, gens: list[CoreSymbol]) -> CoreBoolean:
     """:func:`sympy_extras.polys.cad.cylindrical_formula`."""
-    from sympy_extras.polys.cad import cylindrical_formula
+    from sympy_extras.polys.cad.cylindrical import cylindrical_formula
     return core_boolean(cylindrical_formula(sympy_boolean(formula), _core_symbols(gens)))
 
 
 def cylindrical_cases_of_core(formula: CoreBoolean, parameters: list[CoreSymbol],
                               unknowns: list[CoreSymbol]) -> list[tuple[CoreBoolean, CoreSet]]:
     """:func:`sympy_extras.polys.cad.cylindrical_cases`."""
-    from sympy_extras.polys.cad import cylindrical_cases
+    from sympy_extras.polys.cad.cylindrical import cylindrical_cases
     found = cylindrical_cases(sympy_boolean(formula), _core_symbols(parameters), _core_symbols(unknowns))
     return [(core_boolean(condition), _core_set(solutions)) for condition, solutions in found]
 

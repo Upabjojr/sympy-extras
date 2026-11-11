@@ -5,8 +5,8 @@ from sympy.core.expr import Expr
 from sympy.core.numbers import Rational
 from sympy.polys.polytools import Poly
 from sympy.polys.polyerrors import PolynomialError
-from sympy_extras.polys.cad.projection import (squarefree_basis, mccallum_projection,
-    hong_projection, projection_sets, _reducta, _psc, _coefficients)
+from sympy_extras.polys.cad.projection_sympy import (squarefree_basis, mccallum_projection,
+    hong_projection, projection_sets)
 from sympy.testing.pytest import raises
 from sympy.abc import x, y, z, w
 
@@ -32,26 +32,6 @@ def test_squarefree_basis() -> None:
     assert squarefree_basis([Poly(x**2 - y, x, y)], [x, y]) == [
         [], [Poly(x**2 - y, x, y)]]
     raises(PolynomialError, lambda: squarefree_basis([x + z], [x, y]))
-
-
-def test_coefficients_and_reducta() -> None:
-    f = Poly(x*y**2 + (x - 1)*y + 3, y, x)
-    assert _coefficients(f) == [Poly(x, x), Poly(x - 1, x), Poly(3, x)]
-    assert _reducta(f) == [f, Poly((x - 1)*y + 3, y, x), Poly(3, y, x)]
-    g = Poly(x*y**2 + 3, y, x)
-    assert _reducta(g) == [g, Poly(3, y, x)]
-    h = Poly(x**3 - 2*x, x)
-    assert _coefficients(h) == [1, 0, -2, 0]
-    assert _reducta(h) == [h, Poly(-2*x, x)]
-
-
-def test_psc() -> None:
-    f = Poly(x**2 + y**2 - 1, y, x)
-    assert _psc(f, f.diff(y)) == [Poly(4*x**2 - 4, x), Poly(2, x)]
-    g = Poly(y - x, y, x)
-    assert _psc(f, g) == [Poly(2*x**2 - 1, x), Poly(1, x)]
-    u = Poly(x**2 + 1, x)
-    assert _psc(u, Poly(x**2 - 1, x)) == [4, 0, 1]
 
 
 def test_mccallum_projection() -> None:
@@ -156,7 +136,7 @@ def test_equational_constraint() -> None:
 
 
 def test_augmented_projection_sets() -> None:
-    from sympy_extras.polys.cad.projection import augmented_projection_sets
+    from sympy_extras.polys.cad.projection_sympy import augmented_projection_sets
     projection = projection_sets([x - y**2, y - x], [x, y])
     assert projection == [[Poly(x, x), Poly(x - 1, x)], [Poly(x - y**2, x, y), Poly(x - y, x, y)]]
     # the factors are added at their levels and the new ones projected:

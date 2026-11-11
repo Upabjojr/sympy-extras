@@ -249,6 +249,23 @@ class Algebraic:
             self._rectangle = rectangle
         return rectangle.corners()
 
+    def real_interval(self) -> Interval:
+        """The current isolating interval ``(a, b)`` of a real number: the
+        number is in the open interval when ``a < b``, the number is ``a``
+        when ``a == b`` (``TypeError`` for a number which is not real)."""
+        if self._interval is None:
+            raise TypeError('not a real number')
+        return self._interval
+
+    def refine_real(self) -> None:
+        """Halve the isolating interval of a real number (a bisection:
+        the interval becomes the point when its midpoint is the number)."""
+        if self._interval is None:
+            raise TypeError('not a real number')
+        low, high = self._interval
+        if low != high:
+            self._interval = dup_refine_real_root(self._rational_minpoly, low, high, high - low)
+
     def enclosure(self, eps: Fraction) -> Box:
         """``(re_min, re_max, im_min, im_max)``: a box with rational
         corners and sides shorter than ``eps`` containing the number (a
