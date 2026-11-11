@@ -9,7 +9,6 @@ which is not ported.
 point as a SymPy expression and return SymPy objects), converted by
 :mod:`sympy_extras.interop` around the native functions. The ODE solvers
 still written on SymPy (:mod:`~sympy_extras.solvers.ode`,
-:mod:`~sympy_extras.solvers.first_order`,
 :mod:`~sympy_extras.solvers.second_order`) use them.
 
 The step of the native module which stays written on SymPy is called from

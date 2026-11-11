@@ -7,7 +7,7 @@ from sympy.solvers.ode import checkodesol
 
 from sympy_extras.solvers.darboux import (DarbouxPolynomial, darboux_polynomials, exponential_factors,
     darboux_integrating_factor, darboux_first_integral, prelle_singer, vector_field)
-from sympy_extras.solvers.first_order import dsolve_first_order
+from sympy_extras.solvers.first_order_sympy import dsolve_first_order
 from sympy_extras._typing import ExprLike, as_expr
 
 

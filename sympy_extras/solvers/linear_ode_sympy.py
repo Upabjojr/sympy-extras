@@ -8,9 +8,8 @@ the functions :func:`polynomial_solutions`, :func:`rational_solutions`,
 :func:`reduce_order_linear`, :func:`dsolve_linear`, :func:`gcrd`,
 :func:`lclm` and :func:`log_derivative` take and return SymPy objects,
 converted by :mod:`sympy_extras.interop` around the native module. The
-modules still written on SymPy (:mod:`~sympy_extras.solvers.linear_systems`,
-:mod:`~sympy_extras.solvers.first_order`) use them, and the private
-helpers they share (``_solve_operator``, ``_nullspace``, ``_indicial_at``,
+module still written on SymPy (:mod:`~sympy_extras.solvers.linear_systems`)
+uses them, and the private helpers it shares (``_solve_operator``, ``_nullspace``, ``_indicial_at``,
 ``_indicial_at_infinity``).
 
 The step of the native module which stays written on SymPy is called from

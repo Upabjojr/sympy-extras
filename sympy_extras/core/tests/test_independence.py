@@ -1199,3 +1199,48 @@ def test_native_linear_ode_cluster_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_LINEAR_ODE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_FIRST_ORDER = r'''
+import sys
+from sympy_extras.core import Eq, Function, Integer, Rational, symbols
+from sympy_extras.solvers.first_order import (_derivative_polynomial, _explicit_rhs, abel_ode, chini_ode,
+    dsolve_first_order, lagrange_ode, riccati_ode)
+from sympy_extras.solvers.abel import (_defines_solution, _transformed, abel_coefficients, abel_invariants,
+    constant_invariant)
+assert 'sympy' not in sys.modules
+x, t, C1 = symbols('x t C1')
+y = Function('y')(x)
+F, _, u, p = _derivative_polynomial(Eq(y.diff(x), x*y**2), y)
+assert _explicit_rhs(F, p) == x*u**2
+assert abel_coefficients(y.diff(x) - x*y**3 - y**2 + 1, y) == ((x, Integer(1), Integer(0), Integer(-1)), x)
+assert str(abel_invariants((-1, -2*x, 0, 0), x).I1) == '11664*x**6*(8*x**3 - 15)**3/(8*x**3 - 9)**5'
+assert abel_invariants((1, 0, 0, x**Rational(-3, 2)), x).I1 == Rational(-27, 8)
+assert constant_invariant((-1, -2*x, 0, 0), x) is False
+airy = (Integer(-1), -2*t, Integer(0), Integer(0))
+assert str(_transformed(airy, t, x**2, x, Integer(1), x)) == \
+    '(-2*x**3, -4*x**4 - 6*x**2, (-8*x**4 - 6*x**2 - 1)/x, -4*x**2 - 2)'
+# a relation without x implies y' = 0 (sympy-extras#38); 1/y**2 + 2 x = C1 solves y' = y**3
+assert not _defines_solution(y - C1, (x, Integer(1), Integer(0), Integer(0)), x, y, C1)
+assert _defines_solution(1/y**2 + 2*x - C1, (Integer(1), Integer(0), Integer(0), Integer(0)), x, y, C1)
+assert all(found is None for found in (chini_ode(y.diff(x) - y**3 - x, y), abel_ode(y.diff(x) - y**2, y),
+                                       lagrange_ode(y.diff(x) - y**2, y), riccati_ode(y.diff(x) - y**3, y),
+                                       lagrange_ode(Eq(y, x*y.diff(x) + y.diff(x)**2), y),
+                                       chini_ode(y.diff(x) - y**2*x - y**3, y)))
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_first_order_and_abel_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.first_order` and
+    :mod:`sympy_extras.solvers.abel` does not load SymPy, nor do the
+    reading of an equation, the coefficients, the invariants and the
+    transformations of Abel equations, the decision that the invariant is
+    not constant, the numerical check of an implicit relation and the
+    equations outside the classes recognised (SymPy's ``integrate``,
+    ``dsolve`` and ``solve``, and the Prelle–Singer procedure of
+    :mod:`~sympy_extras.solvers.darboux`, go through the faces at run
+    time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_FIRST_ORDER], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

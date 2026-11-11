@@ -431,7 +431,7 @@ parametrically. SymPy has hints for Bernoulli, Riccati (rational
 particular solutions) and Clairaut equations only.
 
 ```python
->>> from sympy_extras.solvers.first_order import lagrange_ode, abel_ode, riccati_ode
+>>> from sympy_extras.solvers.first_order_sympy import lagrange_ode, abel_ode, riccati_ode
 >>> riccati_ode(y.diff(x) + y**2 - 2/x**2, y)
 Eq(y(x), (2*C1*x**3 - 1)/(C1*x**4 + x))
 >>> lagrange_ode(Eq(y, 2*x*y.diff(x) + y.diff(x)**2), y)
@@ -939,7 +939,7 @@ equivalence with the representatives of the database. `abel_ode` uses
 it when the invariant is not constant.
 
 ```python
->>> from sympy_extras.solvers.abel import abel_invariants, abel_equivalence
+>>> from sympy_extras.solvers.abel_sympy import abel_invariants, abel_equivalence
 >>> abel_invariants((-1, -2*x, 0, 0), x).I1
 11664*x**6*(8*x**3 - 15)**3/(8*x**3 - 9)**5
 >>> from sympy import Symbol

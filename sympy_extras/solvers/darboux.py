@@ -303,7 +303,7 @@ def vector_field(equation: Basic, f: AppliedUndef) -> Optional[tuple[Expr, Expr,
     >>> vector_field((x - y)*y.diff(x) - x - y, y)
     (x + y, x - y, x, y)
     """
-    from .first_order import _derivative_polynomial, _explicit_rhs
+    from .first_order_sympy import _derivative_polynomial, _explicit_rhs
     F, x, u, p = _derivative_polynomial(equation, f)
     rhs = _explicit_rhs(F, p)
     if rhs is None:

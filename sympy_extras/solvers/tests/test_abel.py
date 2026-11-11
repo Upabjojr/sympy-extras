@@ -6,9 +6,9 @@ from sympy.core.expr import Expr
 from sympy.solvers.solvers import solve
 from sympy.testing.pytest import raises
 
-from sympy_extras.solvers.abel import (CoefficientsLike, abel_coefficients, abel_invariants, abel_equivalence, particular_solution,
+from sympy_extras.solvers.abel_sympy import (CoefficientsLike, abel_coefficients, abel_invariants, abel_equivalence, particular_solution,
     air_solution, abel_by_invariants, constant_invariant, REPRESENTATIVES, _transformed)
-from sympy_extras.solvers.first_order import abel_ode
+from sympy_extras.solvers.first_order_sympy import abel_ode
 from sympy_extras._typing import as_expr
 
 x, t = symbols('x t')
@@ -109,7 +109,7 @@ def test_a_relation_implying_zero_derivative_is_not_returned() -> None:
     # Either no answer or a relation whose implied y' matches the equation.
     from sympy import Function, Eq, Dummy, Rational, N
     from sympy.abc import x
-    from sympy_extras.solvers.first_order import abel_ode
+    from sympy_extras.solvers.first_order_sympy import abel_ode
     y = Function('y')(x)
     result = abel_ode(Eq(y.diff(x), x*y**3 + y**2), y)
     if isinstance(result, Eq):

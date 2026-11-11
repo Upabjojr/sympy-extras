@@ -41,7 +41,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras.settings import configure
 from sympy_extras.solvers.ode import dsolve_lie
 from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
-from sympy_extras.solvers.first_order import dsolve_first_order
+from sympy_extras.solvers.first_order_sympy import dsolve_first_order
 
 from kamke_data import ODEEntry, load, x, y
 
