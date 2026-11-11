@@ -41,7 +41,7 @@ solvers always return.
 
 ```python
 >>> from sympy import Function, symbols
->>> from sympy_extras.solvers.pde import pde_symmetries, pdsolve_lie
+>>> from sympy_extras.solvers.pde_sympy import pde_symmetries, pdsolve_lie
 >>> from sympy_extras.solvers.ode import dsolve_lie
 >>> x, t = symbols('x t')
 >>> u = Function('u')(x, t)

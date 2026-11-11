@@ -3,7 +3,7 @@
 SymPy's :func:`sympy.dsolve` has a ``lie_group`` hint for first order
 equations with heuristics for the infinitesimals. Here the symmetries of an
 equation of any order are computed from the determining equations with a
-polynomial ansatz (:mod:`sympy_extras.solvers.lie`), and a symmetry is used
+polynomial ansatz (:mod:`sympy_extras.solvers.lie_sympy`), and a symmetry is used
 in the classical way: in canonical coordinates `(r, s)` in which the
 symmetry is the translation `\\partial_s`, the equation does not contain
 `s`, so an equation of order `n` becomes one of order `n - 1` for
@@ -44,7 +44,7 @@ from sympy_extras.settings import settings
 from sympy_extras._typing import as_expr, free_symbols
 
 from ._special_values_sympy import solution_cases
-from .lie import Equation, JetSpace, Symmetry, symmetries, _as_zero, _leading_derivatives
+from .lie_sympy import Equation, JetSpace, Symmetry, symmetries, _as_zero, _leading_derivatives
 
 __all__ = ['ode_symmetries', 'canonical_coordinates', 'reduce_order',
     'dsolve_lie', 'solve_ode', 'ReducedODE']
@@ -77,7 +77,7 @@ def ode_symmetries(ode: Equation, y: AppliedUndef, degree: int = 2,
     """The point symmetries of an ordinary differential equation with
     polynomial infinitesimals of total degree at most ``degree`` (times
     the functions of ``basis``), see
-    :func:`sympy_extras.solvers.lie.symmetries`.
+    :func:`sympy_extras.solvers.lie_sympy.symmetries`.
 
     Examples
     ========
@@ -244,7 +244,7 @@ def reduce_order(ode: Equation, y: AppliedUndef, symmetry: Symmetry,
 
     >>> from sympy import Function, symbols
     >>> from sympy_extras.solvers.ode import reduce_order
-    >>> from sympy_extras.solvers.lie import JetSpace, Symmetry
+    >>> from sympy_extras.solvers.lie_sympy import JetSpace, Symmetry
     >>> x = symbols('x')
     >>> y = Function('y')(x)
     >>> eq = y.diff(x, 2) - y.diff(x)**2/y

@@ -88,7 +88,7 @@ from sympy.solvers.solvers import solve as _solve
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_expr, free_symbols
 from sympy_extras.settings import settings
-from .lie import Symmetry
+from .lie_sympy import Symmetry
 from ._special_values_sympy import solution_cases
 
 __all__ = ['second_order_rhs', 'integrating_factor_xy', 'integrating_factor_p', 'is_linearizable',

@@ -993,3 +993,41 @@ def test_native_charpit_and_dae_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_CHARPIT_DAE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_LIE_PDE = r'''
+import sys
+from sympy_extras.core import Function, symbols
+from sympy_extras.functions import exp, sin
+from sympy_extras.solvers.lie import JetSpace, Symmetry, symmetries, check_symmetry, symmetry_janet_basis
+from sympy_extras.solvers.pde import pde_symmetries, similarity_reduction, check_pde_solution
+x, t, m = symbols('x t m')
+u = Function('u')(x, t)
+y = Function('y')(x)
+burgers = u.diff(t) + u*u.diff(x) - u.diff(x, 2)
+syms = symmetries(burgers, u)
+assert len(syms) == 5 and all(check_symmetry(burgers, u, s) for s in syms)
+assert str(symmetry_janet_basis(u.diff(t) + u*u.diff(x) + u.diff(x, 3), u).dimension) == '4'
+assert len(symmetries(u.diff(t) - (u**m*u.diff(x)).diff(x), u)) == 4
+assert len(pde_symmetries(u.diff(t) - u.diff(x, 2), u, degree=3)) == 6
+assert len(symmetries(y.diff(x) + 2*x*y - x*exp(-x**2), y, basis=[exp(-x**2)])) >= 1
+assert len(symmetries(u.diff(x, 2)**2 - u.diff(t), u, degree=1)) == 6
+r = similarity_reduction(burgers, u, Symmetry(JetSpace([u]), [0, 1], [0]))
+assert str(r.z) == 'x', r
+assert check_pde_solution(u.diff(t) - u.diff(x, 2), u, exp(-t)*sin(x))
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_lie_and_pde_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.lie` and
+    :mod:`sympy_extras.solvers.pde` does not load SymPy, nor do the
+    symmetries with parameters, a basis of functions and a quadratic
+    leading derivative, their checks, the Janet basis of the determining
+    system, the similarity reductions which need no ODE solution and the
+    check of a solution (SymPy's ``dsolve``, and ``solve`` for equations
+    which are not linear in the unknown, go through the faces at run
+    time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LIE_PDE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
