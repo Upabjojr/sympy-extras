@@ -10,7 +10,7 @@ from sympy.integrals.integrals import integrate
 from sympy.polys.polytools import Poly, cancel
 from sympy.simplify.simplify import simplify
 
-from sympy_extras.integrals.risch.rationaltools import (ratint, ratint_logpart,
+from sympy_extras.integrals.risch.rationaltools_sympy import (ratint, ratint_logpart,
     log_to_atan, log_to_real)
 
 from sympy.abc import a, b, x, t, y

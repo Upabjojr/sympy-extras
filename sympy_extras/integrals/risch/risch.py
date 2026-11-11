@@ -68,7 +68,7 @@ from sympy.functions.elementary.trigonometric import (atan, sin, cos,
     tan, acot, cot, asin, acos, sec, csc)
 from sympy.integrals.integrals import integrate, Integral
 from sympy.integrals.heurisch import _symbols
-from .rationaltools import log_to_real
+from .rationaltools_sympy import log_to_real
 from sympy.simplify.radsimp import fraction
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import (cancel, Poly, gcd,

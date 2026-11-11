@@ -82,14 +82,14 @@ expressions, the scalar equations the native
 factors and roots, the linear algebra (inverses, null spaces,
 determinants) and the simplifications are the native ones;
 :mod:`sympy_extras.solvers.linear_systems_sympy` is its face on SymPy
-matrices. Three steps are not ported and go through SymPy at run time:
-the antiderivative of the trace in Liouville's formula and the
-quadratures of variation of constants
+matrices. The antiderivatives of rational functions are the native
+ones (``ratint_ratpart`` and ``ratint_logpart`` of
+:mod:`sympy_extras.integrals.risch.rationaltools`, with the native
+``RootSum`` of :mod:`sympy_extras.polys.rootoftools`). Two steps are not
+ported and go through SymPy at run time: the antiderivative of the trace
+in Liouville's formula and the quadratures of variation of constants
 (:func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`,
-:func:`~sympy_extras.solvers.kovacic_sympy.integral_of_core`), the
-antiderivatives of rational functions with their ``RootSum``
-(:func:`~sympy_extras.solvers.linear_systems_sympy.rational_integral_of_core`:
-SymPy's ``ratint_ratpart`` and ``ratint_logpart``), and SymPy's
+:func:`~sympy_extras.solvers.kovacic_sympy.integral_of_core`), and SymPy's
 ``linodesolve``, the last resort for a fundamental matrix
 (:func:`~sympy_extras.solvers.linear_systems_sympy.linodesolve_of_core`).
 
@@ -148,7 +148,7 @@ from .linear_ode import (_FIELD_FAILURES, LinearOperator, UPoly, _RationalRows, 
 
 __all__ = ['CyclicReduction', 'LinearSystemSolution', 'cyclic_vector', 'cyclic_reduction', 'system_to_scalar',
            'rational_system_solutions', 'hyperexponential_system_solutions', 'dsolve_system',
-           'dsolve_linear_system']
+           'dsolve_linear_system', 'rational_integral']
 
 #: the rows of a matrix of rational functions
 Rows = list[list[Expr]]
@@ -279,6 +279,62 @@ class CyclicReduction:
         return "CyclicReduction(%s, %s)" % ([list(self.vector.entries)], self.operator)
 
 
+def rational_integral(f: Expr, x: Symbol) -> Expr:
+    """An antiderivative of a rational function: the polynomial and
+    rational parts (Hermite's reduction) and the logarithmic part of
+    Lazard, Rioboo and Trager, with the roots of its factors of degree at
+    most two written out and a ``RootSum`` for the others (SymPy's
+    ``integrate`` writes them in radicals, nested ones for quartics).
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.solvers.linear_systems import rational_integral
+    >>> x = symbols('x')
+    >>> rational_integral(1/(x**3 - x - 1) + 1/x**2, x)
+    RootSum(23*_t**3 + 3*_t - 1, Lambda(_t, _t*log(-46*_t**2/9 - 23*_t/9 + x - 4/9))) - 1/x
+    """
+    from sympy_extras.core.function import Lambda
+    from sympy_extras.functions.elementary.exponential import log
+    from sympy_extras.integrals.risch.rationaltools import polynomial_part, ratint_logpart, ratint_ratpart
+    from sympy_extras.polys.polyerrors import BasePolynomialError
+    from sympy_extras.polys.polyroots import roots
+    from sympy_extras.polys.polytools import cancel, factor_list
+    from sympy_extras.polys.rootoftools import polynomial_coefficients, root_sum
+    failures = (BasePolynomialError, NotImplementedError, ValueError, TypeError)
+    numerator, denominator = cancel(f).as_numer_denom()
+    result, remainder = polynomial_part(numerator, denominator, x)
+    if remainder == _ZERO:
+        return result
+    rational, logarithmic = ratint_ratpart(remainder, denominator, x)
+    result = result + rational
+    top, bottom = cancel(logarithmic).as_numer_denom()
+    if top == _ZERO:
+        return result
+    t = Dummy('t')
+    for argument, resultant_poly in ratint_logpart(top, bottom, x, t):
+        try:
+            _, found = factor_list(resultant_poly, t)
+            factors = [g for g, _ in found]
+        except failures:
+            factors = [resultant_poly]
+        for factor in factors:
+            degree = len(polynomial_coefficients(factor, t)) - 1
+            if degree <= 0:
+                continue
+            zeros: Optional[dict[Expr, int]] = None
+            if degree <= 2:
+                try:
+                    listed = roots(factor, t)
+                    zeros = listed if isinstance(listed, dict) else None
+                except failures:
+                    zeros = None
+            if zeros is not None and sum(zeros.values()) == degree:
+                for a in zeros:
+                    result = result + a*log(argument.subs(t, a))
+            else:
+                result = result + root_sum(factor, Lambda(t, t*log(argument)), t)
+    return result
+
+
 def _has_foreign(e: Basic, names: tuple[str, ...]) -> bool:
     """Whether ``e`` has a node of SymPy (wrapped in the core) of one of
     the classes ``names``."""
@@ -295,7 +351,8 @@ def _simplified(e: Expr) -> Expr:
     with integrals, which simplify evaluates (into polylogarithms of
     ``exp_polar`` arguments, which the quadratures had refused), and with
     ``RootSum``s, which it writes in radicals."""
-    if _ops(e) >= 400 or _has_foreign(e, ('Integral', 'RootSum')):
+    from sympy_extras.polys.rootoftools import RootSum
+    if _ops(e) >= 400 or e.has(RootSum) or _has_foreign(e, ('Integral', 'RootSum')):
         return e
     simplified = attempt(lambda: simplify(e), settings.timeout, native=True)
     if simplified is None or simplified.has(ExpPolar, Piecewise) \
@@ -811,7 +868,6 @@ def _variation_of_constants(A: Rows, fundamental: ExprMatrix, b: list[Expr], x: 
     Cramer's rule."""
     from .factorization import _quadrature
     from .kovacic_sympy import integral_of_core
-    from .linear_systems_sympy import rational_integral_of_core
     n = len(A)
     rows = [list(fundamental.row(i)) for i in range(n)]
     W = _liouville(A, determinant(rows), x)
@@ -822,7 +878,7 @@ def _variation_of_constants(A: Rows, fundamental: ExprMatrix, b: list[Expr], x: 
         replaced = [[b[i] if k == j else rows[i][k] for k in range(n)] for i in range(n)]
         integrand = determinant(replaced)/W
         if integrand.is_rational_function(x) is True:
-            c = rational_integral_of_core(integrand, x)
+            c = rational_integral(integrand, x)
         elif has_integral(integrand):
             # an integrand with the unevaluated integrals of a fundamental
             # matrix: SymPy does not integrate it, and trying takes the

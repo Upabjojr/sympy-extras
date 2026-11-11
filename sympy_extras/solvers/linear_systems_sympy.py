@@ -12,10 +12,6 @@ SymPy matrices and the SymPy
 The steps of the native module which stay written on SymPy are called
 from it at run time (they take and return objects of the core):
 
-- :func:`rational_integral_of_core`: the antiderivative of a rational
-  function by SymPy's ``ratint_ratpart`` (Hermite's reduction) and
-  ``ratint_logpart`` (Rothstein–Trager), with a ``RootSum`` for the
-  factors of degree three and more;
 - :func:`linodesolve_of_core`: SymPy's ``linodesolve``, the last resort
   for a fundamental matrix (systems with a commuting antiderivative).
 
@@ -47,7 +43,7 @@ from sympy.matrices.matrixbase import MatrixBase
 from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import Truth, as_expr
 from sympy_extras.assumptions.analysis_sympy import as_symbol_of
-from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr
+from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.matrices.dense import ExprMatrix
@@ -59,53 +55,11 @@ from .linear_ode_sympy import LinearOperator
 
 __all__ = ['CyclicReduction', 'LinearSystemSolution', 'cyclic_vector', 'cyclic_reduction', 'system_to_scalar',
            'rational_system_solutions', 'hyperexponential_system_solutions', 'dsolve_system',
-           'dsolve_linear_system', 'rational_integral_of_core', 'linodesolve_of_core']
+           'dsolve_linear_system', 'linodesolve_of_core']
 
 
 # ---------------------------------------------------------------------------
 # the steps of the native module which stay on SymPy
-
-def rational_integral_of_core(f: CoreExpr, x: CoreSymbol) -> CoreExpr:
-    """An antiderivative of a rational function: the polynomial and
-    rational parts (Hermite's reduction) and the logarithmic part of
-    Rothstein and Trager, with the roots of its factors of degree at most
-    two written out and a ``RootSum`` for the others (SymPy's
-    ``integrate`` writes them in radicals, nested ones for quartics)."""
-    from sympy.core.function import Lambda
-    from sympy.core.symbol import Dummy
-    from sympy.functions.elementary.exponential import log
-    from sympy.integrals.rationaltools import ratint_logpart, ratint_ratpart
-    from sympy.polys.polyroots import roots
-    from sympy.polys.polytools import Poly, cancel, factor_list
-    from sympy.polys.rootoftools import RootSum
-    variable = as_symbol_of(x)
-    numerator, denominator = as_expr(cancel(sympy_expr(f))).as_numer_denom()
-    P = Poly(numerator, variable)
-    Q = Poly(denominator, variable)
-    quotient, remainder = P.div(Q)
-    result = as_expr(quotient.integrate().as_expr())
-    if remainder.is_zero:
-        return core_expr(result)
-    rational, logarithmic = ratint_ratpart(remainder, Q, variable)
-    result = as_expr(result + rational)
-    top, bottom = as_expr(cancel(as_expr(logarithmic))).as_numer_denom()
-    if top == 0:
-        return core_expr(result)
-    t = Dummy('t')
-    for argument, resultant_poly in ratint_logpart(Poly(top, variable), Poly(bottom, variable), variable, t):
-        S_ = as_expr(argument.as_expr())
-        _, factors = factor_list(as_expr(resultant_poly.as_expr()), t)
-        for factor, _ in factors:
-            F = Poly(factor, t)
-            if F.degree() == 0:
-                continue
-            if F.degree() <= 2:
-                for a in roots(F):
-                    result = as_expr(result + a*log(as_expr(S_.subs(t, a))))
-            else:
-                result = as_expr(result + RootSum(F, Lambda(t, t*log(S_))))
-    return core_expr(result)
-
 
 def linodesolve_of_core(A: ExprMatrix, x: CoreSymbol) -> Optional[list[CoreExpr]]:
     """The general solution vector of ``Y' = A Y`` given by SymPy's

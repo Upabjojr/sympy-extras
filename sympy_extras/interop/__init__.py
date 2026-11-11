@@ -522,6 +522,12 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
     if isinstance(e, IndexedRoot):
         from sympy_extras.polys.cad.indexedroot_sympy import sympy_indexed_root
         return sympy_indexed_root(e)
+    from sympy_extras.polys.rootoftools import RootSum
+    if isinstance(e, RootSum):
+        # SymPy's constructor on the stored polynomial (an irreducible
+        # factor, already preprocessed) and function gives the same node
+        return sympy.RootSum(sympy.Poly(to_sympy(e.expr), to_sympy(e.variable)),
+                             sympy.Lambda(tuple(to_sympy(v) for v in e.fun.variables), to_sympy(e.fun.expr, evaluate)))
     args = [to_sympy(a, evaluate) for a in e.args]
     if isinstance(e, Add):
         return sympy.Add(*[_sympy_expr(a) for a in args], evaluate=evaluate)
@@ -798,6 +804,14 @@ def _from_sympy(e: SymPyBasic) -> Basic:
     from sympy_extras.polys.cad.indexedroot_sympy import IndexedRoot as SymPyIndexedRoot, native_indexed_root
     if isinstance(e, SymPyIndexedRoot):
         return native_indexed_root(e)
+    if isinstance(e, sympy.RootSum):
+        from sympy_extras.polys.rootoftools import RootSum
+        # SymPy's arguments: the expression of the polynomial, the
+        # function and the generator
+        polynomial, fun, gen = (from_sympy(a) for a in e.args)
+        if not (isinstance(polynomial, Expr) and isinstance(fun, Lambda) and isinstance(gen, Symbol)):
+            raise TypeError("cannot convert %s" % (e,))
+        return RootSum(polynomial, fun, gen)
     if isinstance(e, SymPyFunctionClass) and all(isinstance(a, SymPyExpr) for a in e.args):
         cls = type(e)
         native = _sympy_to_native().get(cls)

@@ -295,7 +295,14 @@ sympy_extras/
                              Gauss–Legendre), endpoint models, maps of infinite ranges, oscillatory tails (native: the
                              native interval evaluator, cancel, simplify, powdenest, limits, Sturm sequences)
         validated_sympy.py   the SymPy face of validated, used by definite
-        risch/               the transcendental Risch algorithm ported from Aaron Meurer's SymPy pull requests
+        risch/               the transcendental Risch algorithm ported from Aaron Meurer's SymPy pull requests (exports
+                             nothing: import the modules)
+            risch_sympy.py   risch_antiderivative, is_nonelementary: the typed entry point of the Risch port (on SymPy)
+            rationaltools.py ratint, ratint_ratpart, ratint_logpart, log_to_real, log_to_atan, polynomial_part: rational
+                             functions by Hermite's reduction and Lazard–Rioboo–Trager over QQ and EX, the real forms
+                             of Rioboo, the native RootSum (native), PORTED FROM SYMPY
+            rationaltools_sympy.py the SymPy face of rationaltools (used by risch, trager, indefinite, trigonometric,
+                             radicals)
         trager.py            Trager's algorithm for integrands rational in x and one square root of a polynomial
         curves.py            Trager's algorithm on an arbitrary curve: several or nested radicals through a primitive element, the change of variable x = N + 1/z, Hermite reduction in a normal integral basis, residues by Puiseux expansions, the logarithmic part by linear algebra
                              (native: the native function fields, Puiseux expansions, number fields and cancel)
@@ -311,8 +318,8 @@ sympy_extras/
         heurisch_sympy.py    the SymPy face of heurisch (components, heurisch_antiderivative, heurisch_cases), which indefinite uses
         rewriting.py         canonical forms (exponentials, logarithms of inverse hyperbolic functions) and substitutions x = t**k, u = exp(c x), x = exp(t)
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
-                             (native; SymPy's ratint through exponential_sympy)
-        exponential_sympy.py the SymPy face of exponential, used by indefinite, and ratint_of_core
+                             (native, with the native ratint)
+        exponential_sympy.py the SymPy face of exponential, used by indefinite
         elliptic.py          elliptic_integral, radicand, real_roots, legendre_reduction, Reduction: square roots of cubics
                              and quartics reduced to Legendre's integrals (native: the native factorisations, the partial
                              fractions over the number field of the constants, indexed roots, the native ask; SymPy's
@@ -360,11 +367,10 @@ sympy_extras/
         factorization_sympy.py the SymPy face of factorization, and solve_of_core
         linear_systems.py    CyclicReduction, cyclic_reduction, cyclic_vector, system_to_scalar, rational_system_solutions,
                              hyperexponential_system_solutions, dsolve_system, LinearSystemSolution: Y' = A Y + b by cyclic
-                             vectors, Barkatou's rational solutions, variation of constants, on ExprMatrix (native; the
-                             native linear_ode, factorization and matrix exponential; SymPy's integrate, rational integrator
-                             with RootSum and linodesolve through linear_systems_sympy)
-        linear_systems_sympy.py the SymPy face of linear_systems (SymPy matrices), and rational_integral_of_core,
-                             linodesolve_of_core
+                             vectors, Barkatou's rational solutions, variation of constants, rational_integral, on
+                             ExprMatrix (native; the native linear_ode, factorization, matrix exponential, rational
+                             integrator and RootSum; SymPy's integrate and linodesolve through linear_systems_sympy)
+        linear_systems_sympy.py the SymPy face of linear_systems (SymPy matrices), and linodesolve_of_core
         irregular.py         Place, irregular_places, local_exponential_parts, finite_exponential_parts, conjugate_sum:
                              exponential parts at irregular finite points (native; number fields of polys.domains)
         irregular_sympy.py   the SymPy face of irregular (alpha as SymPy's CRootOf)
@@ -432,7 +438,7 @@ sympy_extras/
                              Naturals, Naturals0, Integers, Rationals, Complexes, ImageSet (fancysets.py); ConditionSet (conditionset.py) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)
     polys/
-        domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, AlgebraicField, PolynomialRing, FractionField, SparsePolynomialRing with SymPy's PolyElement gcd, RationalPolynomialRing, IteratedPolynomialRing for dmp_rr_prs_gcd); see docs/dense.md
+        domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, AlgebraicField, PolynomialRing, FractionField, SparsePolynomialRing with SymPy's PolyElement gcd, RationalPolynomialRing, IteratedPolynomialRing for dmp_rr_prs_gcd, ExpressionDomain EX: expressions of the core, PORTED FROM SYMPY); see docs/dense.md
         densebasic.py        dense univariate polynomials over a Domain[T] (list[T], highest degree first)
         densearith.py        dup_add/mul/pow/div/pdiv/exquo over a Domain[T]
         densetools.py        dup_diff/eval/shift/compose/content/primitive/monic/trunc/clear_denoms
@@ -447,6 +453,8 @@ sympy_extras/
         multifactor.py       zz_factor, zz_wang: multivariate factorisation over ZZ by Wang's EEZ on sparse PolyElement (ported from SymPy)
         multisqf.py          sqf_list over ZZ, QQ, ZZ[a], QQ[a] in several variables (SqfDomain; ported from SymPy)
         partfrac.py          apart by undetermined coefficients (ported from SymPy; no full=True, no ZZ(a))
+        rootoftools.py       RootSum (node), root_sum: sums of a function over the roots of a polynomial (the rational
+                             case by the trace, doit, diff, numerical values; native), PORTED FROM SYMPY
         polyroots.py         roots: linear, quadratic, binomial, cyclotomic, cubic, quartic, decomposition, factoring (ported from SymPy; no EX/simplify)
         roots.py             radical_form, in_radicals: SymPy's CRootOf (wrapped foreign nodes) in radicals (native; SymPy's roots over EX through roots_sympy)
         roots_sympy.py       the SymPy face of roots, and roots_of_core

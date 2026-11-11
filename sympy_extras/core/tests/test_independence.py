@@ -1582,7 +1582,7 @@ from sympy_extras.core import Float, Rational, symbols, oo, pi, sqrt
 from sympy_extras.functions import atan, exp, log
 from sympy_extras.integrals.exponential import (composite_gaussian, exponential_antiderivative, power_exponential,
                                                 rational_exponential, reciprocal_square_exponential,
-                                                nested_power_exponential)
+                                                nested_power_exponential, exponential_rational)
 from sympy_extras.integrals.recognize import quadrature, recognize_constant, recognize_integral
 assert 'sympy' not in sys.modules
 x, c = symbols('x c')
@@ -1598,6 +1598,8 @@ assert str(reciprocal_square_exponential(exp(-x**2 - 1/x**2), x)) == 'sqrt(pi)*(
 assert str(nested_power_exponential(exp(c*sqrt(x**2)), x)) == 'x*exp(c*sqrt(x**2))/(c*sqrt(x**2))'
 assert str(recognize_constant(Float('1.6449340668482264364724151666460251892', 38))) == 'pi**2/6'
 assert str(recognize_integral(1/(x**3 + 1), (x, 0, 1))) == 'log(2)/3 + sqrt(3)*pi/9'
+assert str(exponential_rational(1/(exp(x) + 1), x)) == 'x - log(exp(x) + 1)'
+assert str(exponential_rational(exp(x)/sqrt(exp(x) + 1), x)) == '2*sqrt(exp(x) + 1)'
 assert str(recognize_integral(atan(x)/x, (x, 0, 1))) == 'Catalan'
 assert quadrature(exp(-x**2), x, -oo, oo) is not None
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
@@ -1655,8 +1657,8 @@ def test_native_exponential_and_recognize_do_not_load_sympy() -> None:
     quadratics, of rational functions times an exponential (the native
     ``roots``), of composite and reciprocal-square Gaussians and of nested
     powers (the native ``hyperexpand``, ``simplify`` and numerical checks),
-    the quadrature and the PSLQ recognition; SymPy's ``ratint`` is reached
-    through the face only by the substitution ``u = exp(c*x)``."""
+    the quadrature and the PSLQ recognition, nor the rational functions of
+    ``exp(c*x)`` (the native ``ratint``)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_EXPONENTIAL_RECOGNIZE], capture_output=True, text=True,
                          timeout=600)
     assert out.returncode == 0, out.stderr
@@ -1710,6 +1712,33 @@ assert validated_integral(sin(x)/x, x, 0, oo, 8) is not None                 # t
 assert validated_integral(1/x, x, 0, 1) is None
 r = enclosure(log(1 + x), x, Integer(0), Integer(1), mpmath.mpf('1e-12'))
 assert r is not None and r.a <= 2*mpmath.log(2) - 1 <= r.b
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_RATINT = r'''
+import sys
+from sympy_extras.core import symbols, Lambda, I
+from sympy_extras.functions import log
+from sympy_extras.integrals.risch.rationaltools import ratint, ratint_ratpart, ratint_logpart, log_to_real
+from sympy_extras.polys.rootoftools import RootSum, root_sum
+from sympy_extras.solvers.linear_systems import rational_integral
+x, a, b, t = symbols('x a b t')
+p = symbols('p', positive=True)
+assert str(ratint(36/(x**5 - 2*x**4 - 2*x**3 + 4*x**2 + x - 2), x)) == '(12*x + 6)/(x**2 - 1) + 4*log(x - 2) - 4*log(x + 1)'
+assert str(ratint(1/(x**2 + x + 1), x)) == '2*sqrt(3)*atan(2*sqrt(3)*x/3 + sqrt(3)/3)/3'
+assert str(ratint(1/(x*(a + b*x)**3), x)) == '(3*a + 2*b*x)/(2*a**4 + 4*a**3*b*x + 2*a**2*b**2*x**2) + (log(x) - log(a/b + x))/a**3'
+assert str(ratint(1/(x**2 + a**2), x)) == '(-I*log(-I*a + x)/2 + I*log(I*a + x)/2)/a'
+assert str(ratint(1/(x**2 + p**2), x)) == 'atan(x/p)/p'
+F = ratint(1/(x**3 - x - 1), x, real=False)
+assert isinstance(F, RootSum)
+assert str(F.diff(x)) == '1/(x**3 - x - 1)', F.diff(x)
+assert ratint(1/(x**3 - x - 1), x).has(RootSum) is False
+assert str(ratint_ratpart(36, x**5 - 2*x**4 - 2*x**3 + 4*x**2 + x - 2, x)) == '((12*x + 6)/(x**2 - 1), 12/(x**2 - x - 2))'
+assert str(ratint_logpart(1, x**2 + x + 1, x, t)) == '[(3*t/2 + x + 1/2, 3*t**2 + 1)]'
+# the value of SymPy's RootSum(...).subs(x, 2).evalf(10)
+assert str(root_sum(t**3 - t - 1, Lambda(t, t*log(x + t)), t).subs(x, 2).evalf(10)) == '0.6508608717'
+assert str(rational_integral(1/(x**3 - x - 1) + 1/x**2, x)).endswith('- 1/x')
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -1826,5 +1855,17 @@ def test_native_elliptic_does_not_load_sympy() -> None:
     SymPy's ``integrate`` is reached through the face only by the
     elementary odd part of the two-pairs case."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_ELLIPTIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_ratint_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.risch.rationaltools`,
+    :mod:`sympy_extras.polys.rootoftools` and running the rational
+    integrator over ``QQ`` and with parameters (the domain ``EX``), its
+    ``RootSum`` (the derivative by the trace, the numerical value) and the
+    rational antiderivatives of :mod:`sympy_extras.solvers.linear_systems`
+    does not load SymPy."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RATINT], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

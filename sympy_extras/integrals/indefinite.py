@@ -375,7 +375,7 @@ def conjugate_logarithms(F: Expr, x: Symbol) -> Expr:
 
 
 def _rational(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
-    from .risch.rationaltools import ratint
+    from .risch.rationaltools_sympy import ratint
     if not f.is_rational_function(x):
         return None
     return attempt(lambda: as_expr(ratint(f, x)), _budget())
@@ -397,7 +397,7 @@ def _trigonometric(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Exp
 
 
 def _risch(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
-    from .risch import risch_antiderivative
+    from .risch.risch_sympy import risch_antiderivative
     return attempt(lambda: risch_antiderivative(f, x), _budget())
 
 

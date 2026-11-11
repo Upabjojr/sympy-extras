@@ -609,6 +609,49 @@ remove public functions. Breaking changes are listed here when they happen.
   `integrals.definite` and the tests use. The unused helper
   `_square_root` is gone.
 
+- The rational integrator is native (**breaking**):
+  `sympy_extras.integrals.risch.rationaltools` (`ratint`,
+  `ratint_ratpart`, `ratint_logpart`, `log_to_real`, `log_to_atan`, and
+  the new `polynomial_part`) takes and returns objects of the core and
+  imports no SymPy: Hermite's reduction (the linear system of
+  Horowitz–Ostrogradsky solved by elimination over the domain) and
+  Lazard–Rioboo–Trager by the native subresultant PRS, square-free
+  decompositions, gcds and `roots`, on typed dense polynomials over `QQ`
+  or over the new domain `EX` of core expressions
+  (`sympy_extras.polys.domains.expressiondomain`, ported from SymPy: the
+  normal form `cancel` expanded over the products, as SymPy's `EX`);
+  SymPy's domain normalisations (the `cancel` over `ZZ`, the primitive
+  parts, the fraction-field forms of `Poly.as_expr`) are reproduced. The
+  sums over the roots are the new native `RootSum` node of
+  `sympy_extras.polys.rootoftools` (ported from SymPy: `RootSum` never
+  evaluates, `root_sum` evaluates as SymPy's constructor, with
+  `preprocess_roots`, the factors, the roots of linear and quadratic
+  factors and the rational case by the trace in `K[t]/(q)`; `doit` by
+  `roots`, `diff`, numerical values; `interop` converts both ways). The old
+  API on SymPy objects (`Poly` arguments, SymPy's `RootSum`) moves to the
+  new face `sympy_extras.integrals.risch.rationaltools_sympy`, which
+  `risch.risch`, `trager`, `indefinite`, `trigonometric`, `radicals` and the
+  tests use. `exponential.exponential_rational` calls the native `ratint`
+  (`exponential_sympy.ratint_of_core` is removed), and
+  `solvers.linear_systems` the new native `rational_integral`
+  (`linear_systems_sympy.rational_integral_of_core` is removed). The
+  package `sympy_extras.integrals.risch` exports nothing, so that the
+  native module imports without SymPy: `risch_antiderivative` and
+  `is_nonelementary` move to `sympy_extras.integrals.risch.risch_sympy`.
+  Fixed on the way: the derivative of a `RootSum` whose function is
+  constant in the variable is the degree times it (SymPy 1.14 returns the
+  function itself: `RootSum(t**3 - t - 1, Lambda(t, log(t*x))).diff(x)` is
+  `1/x`). Over coefficients with
+  square roots of numbers the arithmetic rationalizes the denominators
+  (`EXR`, which keeps the gcds from growing); the transcendental constants
+  (`pi`, `tan(1)`) are parameters of the root formulas, as in SymPy's
+  `ZZ(tan(1))`. Compared with the old code on the 750 distinct calls of
+  the integrals and solvers suites and 78 more integrands: the same
+  results but for 33 calls and 6 integrands (radical coefficients, rationalized and often
+  shorter; the forms of the roots of cubics in radicals; parameters in
+  the arguments of the logarithms; the sign of the arctangent pairs), every
+  antiderivative checked by differentiation; two integrands which the old
+  code did not finish in a minute take a second.
 - The antiderivatives of exponentials and the recognition of constants are
   native (**breaking**): `sympy_extras.integrals.exponential`
   (`exponential_antiderivative`, `power_exponential`,

@@ -49,9 +49,9 @@ returned, symbolically or at random points where the integrand is real.
 
 The module works on the objects of the core (:mod:`sympy_extras.core`, the
 functions of :mod:`sympy_extras.functions`) with the native polynomials,
-``simplify``, ``ask`` and :mod:`.conditions`, and imports no SymPy. One
-step stays on SymPy, reached only by the fourth route: the rational
-integrator ``ratint`` (:func:`~sympy_extras.integrals.exponential_sympy.ratint_of_core`).
+``simplify``, ``ask``, :mod:`.conditions` and the rational integrator
+:func:`~sympy_extras.integrals.risch.rationaltools.ratint` of the fourth
+route, and imports no SymPy.
 :mod:`sympy_extras.integrals.exponential_sympy` is the face of the module
 on SymPy objects.
 
@@ -484,10 +484,9 @@ def _exponential_generator(f: Expr, x: Symbol) -> Optional[Expr]:
 
 
 def _ratint(f: Expr, x: Symbol) -> Optional[Expr]:
-    """SymPy's rational integrator, through the face (the step of the
-    module which stays on SymPy)."""
-    from .exponential_sympy import ratint_of_core
-    return ratint_of_core(f, x, _budget())
+    """The native rational integrator within the budget."""
+    from .risch.rationaltools import ratint
+    return attempt(lambda: ratint(f, x), _budget(), native=True)
 
 
 def _is_log_of_exp(e: Basic) -> bool:
@@ -503,8 +502,6 @@ def exponential_rational(f: ExprLike, x: Symbol, assumptions: Assumptions = None
     ``u = exp(c*x)``, and for ``(a + b*exp(c*x))**(m/q) * R(exp(c*x))`` by
     ``t**q = a + b*exp(c*x)``, through the rational integrator; ``None``
     otherwise.
-
-    The rational integrator is SymPy's (see the module documentation).
 
     >>> from sympy_extras.core import symbols, sqrt
     >>> from sympy_extras.functions import exp

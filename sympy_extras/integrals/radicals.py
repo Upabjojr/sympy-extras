@@ -484,7 +484,7 @@ def euler_substitution_antiderivative(f: Expr, x: Symbol, assumptions: Assumptio
     >>> euler_substitution_antiderivative(sqrt(x + 1)/x, x)
     2*sqrt(x + 1) + log(sqrt(x + 1) - 1) - log(sqrt(x + 1) + 1)
     """
-    from .risch.rationaltools import ratint
+    from .risch.rationaltools_sympy import ratint
     f_ = as_expr(f)
     found = _radicand(f_, x)
     if found is None:

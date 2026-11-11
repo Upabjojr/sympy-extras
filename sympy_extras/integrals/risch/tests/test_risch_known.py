@@ -8,7 +8,7 @@ from sympy import symbols, tan, exp, log, atan, cancel, together, diff, S, sin, 
 from sympy.integrals.integrals import Integral
 
 from sympy_extras._typing_sympy import as_expr
-from sympy_extras.integrals.risch import risch_antiderivative, is_nonelementary
+from sympy_extras.integrals.risch.risch_sympy import risch_antiderivative, is_nonelementary
 
 x = symbols('x')
 

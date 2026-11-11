@@ -361,11 +361,13 @@ The module is native: it takes and returns the `ExprMatrix` of core
 expressions, with the native scalar solvers, polynomials, linear algebra
 (over the field of rational functions) and simplification; its SymPy face
 `linear_systems_sympy`, which the examples below use, keeps the API on
-SymPy matrices. SymPy's `integrate` (Liouville's formula, variation of
-constants), its rational integrator with `RootSum` (`ratint_ratpart`,
-`ratint_logpart`: `rational_integral_of_core`) and its `linodesolve` (the
-last resort for a fundamental matrix, after the native matrix exponential
-of a constant system: `linodesolve_of_core`) are called through the face.
+SymPy matrices. The antiderivatives of rational functions are native
+(`rational_integral`: `ratint_ratpart` and `ratint_logpart` of
+`integrals.risch.rationaltools`, with the native `RootSum` of
+`polys.rootoftools`). SymPy's `integrate` (Liouville's formula, variation
+of constants) and its `linodesolve` (the last resort for a fundamental
+matrix, after the native matrix exponential of a constant system:
+`linodesolve_of_core`) are called through the face.
 
 - **Cyclic vectors** (`cyclic_reduction`, `cyclic_vector`,
   `system_to_scalar`): for a row vector `c`, `u = c Y` has the derivatives

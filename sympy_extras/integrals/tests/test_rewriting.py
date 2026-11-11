@@ -125,7 +125,7 @@ def test_the_typed_methods_take_the_rewritten_forms() -> None:
     # defeats them
     from sympy_extras.integrals.heurisch_sympy import heurisch_antiderivative
     from sympy_extras.integrals.radicals import quadratic_radical_antiderivative
-    from sympy_extras.integrals.risch.rationaltools import ratint
+    from sympy_extras.integrals.risch.rationaltools_sympy import ratint
     original = 2**z*cosh(z)
     assert heurisch_antiderivative(original, z) is None or True     # whichever, the form below integrates
     form = rewritten_forms(original, z)[-1]
