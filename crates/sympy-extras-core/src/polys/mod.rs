@@ -26,6 +26,7 @@ pub mod modulargroebner;
 pub mod multifactor;
 pub mod multisqf;
 pub mod numberfields;
+pub mod partfrac;
 pub mod polyclasses;
 pub mod polytools;
 pub mod polyutils;

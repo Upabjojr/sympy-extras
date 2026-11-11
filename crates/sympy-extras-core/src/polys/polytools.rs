@@ -685,6 +685,16 @@ impl Poly {
         core_add(&parts)
     }
 
+    /// The coefficient of the monomial `exponents` (`nth`, `coeff_monomial`).
+    pub fn nth(&self, exponents: &[u32]) -> PolyResult<Basic> {
+        Ok(self
+            .terms()?
+            .into_iter()
+            .find(|(m, _)| m.as_slice() == exponents)
+            .map(|(_, c)| c)
+            .unwrap_or_else(Basic::zero))
+    }
+
     #[allow(non_snake_case)]
     pub fn LC(&self) -> PolyResult<Basic> {
         Ok(self.coeffs()?.remove(0))
@@ -1601,7 +1611,7 @@ pub fn LC(f: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
 }
 
 /// The generators of `f` and `g` together (`_common_gens`).
-fn common_gens(f: &Basic, g: &Basic) -> PolyResult<Vec<Basic>> {
+pub(crate) fn common_gens(f: &Basic, g: &Basic) -> PolyResult<Vec<Basic>> {
     Ok(decompose_without_gens_many(&[f.clone(), g.clone()], true)?.1)
 }
 
