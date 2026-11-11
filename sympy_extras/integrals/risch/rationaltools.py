@@ -34,7 +34,7 @@ from sympy.polys.polytools import cancel
 from sympy.polys.rootoftools import RootSum
 from sympy.polys import Poly, resultant, ZZ
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 
 
 def ratint(f: Union[Expr, tuple[Expr, Expr]], x: Symbol, *, symbol: Union[str, Symbol] = 't',

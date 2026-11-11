@@ -126,7 +126,7 @@ from sympy.simplify.simplify import simplify
 from sympy.utilities.iterables import uniq
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols
+from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr, free_symbols
 from sympy_extras.settings import settings
 from .conditions_sympy import numerically_equal
 

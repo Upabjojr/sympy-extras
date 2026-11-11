@@ -79,7 +79,7 @@ from sympy.polys.polytools import cancel, degree
 from sympy.simplify.fu import TR8
 from sympy.simplify.simplify import logcombine, simplify
 
-from sympy_extras._typing import ExprLike, as_boolean, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from .conditions_sympy import ConditionalValue
 from .mellin_sympy import monomial

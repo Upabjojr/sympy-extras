@@ -47,7 +47,7 @@ from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
 from sympy.polys.polytools import Poly
 
-from sympy_extras._typing import as_expr, as_symbol
+from sympy_extras._typing_sympy import as_expr, as_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.relational import Equality as CoreEquality

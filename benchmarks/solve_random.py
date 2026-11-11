@@ -24,7 +24,7 @@ from sympy import (Poly, Symbol, S, FiniteSet, Rational, And, Expr, exp, log,
     sin, cos, sqrt, lambdify, nsolve, N, sympify)
 from sympy.logic.boolalg import Boolean
 
-from sympy_extras._typing import as_boolean, as_expr
+from sympy_extras._typing_sympy import as_boolean, as_expr
 
 from sympy_extras.assumptions.solve_sympy import solve
 

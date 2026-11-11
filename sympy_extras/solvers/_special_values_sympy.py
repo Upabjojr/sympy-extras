@@ -9,13 +9,9 @@ which is not ported.
 point as a SymPy expression and return SymPy objects), converted by
 :mod:`sympy_extras.interop` around the native functions (the ODE solvers
 are native and call :mod:`~sympy_extras.solvers._special_values`
-directly).
-
-The step of the native module which stays written on SymPy is called from
-it at run time (:func:`special_values_of_core`, which takes and returns
-objects of the core): the candidate points, their budget and the
-flattening of the cases of
-:func:`sympy_extras._special_values.with_special_values`.
+directly). Not to be confused with
+:mod:`sympy_extras._special_values_sympy`, the face of the candidate points
+and their bookkeeping shared with the integrals and the sums.
 
 Examples
 ========
@@ -39,20 +35,18 @@ from sympy.core.function import AppliedUndef
 from sympy.core.relational import Eq
 from sympy.core.symbol import Symbol
 
-from sympy_extras._typing import as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol
+from sympy_extras._typing_sympy import as_expr
+from sympy_extras.assumptions.ask_sympy import _core_symbol
 from sympy_extras.assumptions.intervals_sympy import core_expr, sympy_expr
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
 
 from . import _special_values as native
-from ._special_values import Point as CorePoint
 
 __all__ = ['general_solution_cases', 'basis_cases', 'solution_jacobian', 'explicit_solution', 'solution_cases',
-           'as_zero', 'special_values_of_core']
+           'as_zero']
 
 
 # ---------------------------------------------------------------------------
@@ -72,44 +66,8 @@ def _core_basic(e: Basic) -> CoreBasic:
     return converted
 
 
-def _core_point(point: dict[Symbol, Expr]) -> CorePoint:
-    return {_core_symbol(s): core_expr(v) for s, v in point.items()}
-
-
-def _sympy_point(point: CorePoint) -> dict[Symbol, Expr]:
-    return {_sympy_symbol(s): sympy_expr(v) for s, v in point.items()}
-
-
 def _optional(value: Optional[Expr]) -> Optional[CoreExpr]:
     return None if value is None else core_expr(value)
-
-
-# ---------------------------------------------------------------------------
-# the step of the native module which stays on SymPy
-
-def special_values_of_core(value: CoreExpr, parameters: Sequence[CoreSymbol],
-                           compute: Callable[[CorePoint], Optional[CoreExpr]],
-                           defined: Callable[[CorePoint], bool],
-                           degenerate: Callable[[CoreExpr], list[CoreExpr]]) -> CoreExpr:
-    """:func:`sympy_extras._special_values.with_special_values` for core
-    expressions, without assumptions: the problem at a point solved by
-    ``compute``, the points refuted by ``defined`` and the degenerate
-    candidates of the branches given by ``degenerate``, all three on core
-    objects."""
-    from sympy_extras._special_values import with_special_values
-
-    def at_point(point: dict[Symbol, Expr], assumptions: Assumptions) -> Optional[Expr]:
-        found = compute(_core_point(point))
-        return None if found is None else sympy_expr(found)
-
-    def defined_at(point: dict[Symbol, Expr]) -> bool:
-        return defined(_core_point(point))
-
-    def degenerate_parts(branch: Expr) -> list[Expr]:
-        return [sympy_expr(e) for e in degenerate(core_expr(branch))]
-
-    return core_expr(with_special_values(sympy_expr(value), [_sympy_symbol(p) for p in parameters], None, at_point,
-                                         defined_at, degenerate=degenerate_parts))
 
 
 # ---------------------------------------------------------------------------

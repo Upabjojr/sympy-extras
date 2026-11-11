@@ -34,7 +34,7 @@ from sympy.core.function import AppliedUndef, Derivative
 from sympy.core.relational import Eq
 from sympy.core.symbol import Symbol
 
-from sympy_extras._typing import Monomial, as_expr, as_symbol
+from sympy_extras._typing_sympy import Monomial, as_expr, as_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef

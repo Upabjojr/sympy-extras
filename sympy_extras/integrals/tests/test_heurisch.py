@@ -8,7 +8,7 @@ from typing import Optional, Sequence
 from sympy.core.expr import Expr
 from sympy.logic.boolalg import Boolean
 
-from sympy_extras._typing import ExprLike, as_boolean, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr
 from sympy_extras.integrals.conditions_sympy import numerically_equal
 from sympy_extras.integrals.heurisch import (components, heurisch_antiderivative, heurisch_cases, _real_forms,
                                               _verified)

@@ -37,7 +37,7 @@ from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import Boolean
 from sympy.sets.sets import Set
 
-from sympy_extras._typing import Truth, as_boolean, as_expr, as_set
+from sympy_extras._typing_sympy import Truth, as_boolean, as_expr, as_set
 from sympy_extras.assumptions.ask_sympy import core_boolean, sympy_boolean
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr, sympy_set
 from sympy_extras.core.expr import Expr as CoreExpr

@@ -5,7 +5,7 @@ from __future__ import annotations
 from sympy import Expr, N, Poly, Symbol, sqrt, symbols
 from sympy.solvers.polysys import solve_poly_system
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.polys.rur_sympy import rur
 
 x, y, z, t = symbols('x y z t')

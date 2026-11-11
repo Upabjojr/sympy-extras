@@ -8,7 +8,7 @@ from sympy import (Abs, DiracDelta, Eq, Integral, Piecewise, Rational, S, cos, d
                    simplify, symbols)
 from sympy.core.expr import Expr
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.integrals.definite import definite_integral, verify_numerically
 from sympy_extras.integrals.indefinite import indefinite_integral
 

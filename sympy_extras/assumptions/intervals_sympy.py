@@ -29,7 +29,7 @@ from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
 from sympy.sets.sets import Interval, Set
 
-from sympy_extras._typing import Sign, as_expr, as_set
+from sympy_extras._typing_sympy import Sign, as_expr, as_set
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol

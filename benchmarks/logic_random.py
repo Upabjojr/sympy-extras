@@ -37,7 +37,7 @@ from sympy import (S, Symbol, Rational, And, Or, Not, Implies, Equivalent, Xor,
     Eq, Ne, Basic, Expr, true, false, exp, log, sin, cos, sqrt, atan, Abs, N)
 from sympy.logic.boolalg import Boolean
 
-from sympy_extras._typing import as_boolean, as_expr
+from sympy_extras._typing_sympy import as_boolean, as_expr
 
 from sympy_extras.assumptions.ask_sympy import ask
 from sympy_extras.assumptions.refine_sympy import refine, simplify

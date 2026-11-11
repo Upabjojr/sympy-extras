@@ -102,7 +102,7 @@ from sympy.polys.polyerrors import CoercionFailed, PolynomialError, NotInvertibl
 from sympy.polys.polytools import Poly, cancel
 from sympy.simplify.radsimp import fraction
 
-from sympy_extras._typing import DomainElement, ExprLike, as_expr, free_symbols
+from sympy_extras._typing_sympy import DomainElement, ExprLike, as_expr, free_symbols
 from sympy_extras.polys.functionfields_sympy import FunctionField, Element
 from sympy_extras.polys.puiseux_sympy import (PuiseuxExpansion, LaurentSeries, Embedding, expansions_in_field,
                                         adjoin_root, in_subfield, minimal_polynomial_of, generator, degree,

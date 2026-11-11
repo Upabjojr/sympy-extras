@@ -46,7 +46,7 @@ from sympy.core.symbol import Symbol
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 
-from sympy_extras._typing import ExprLike, Sign
+from sympy_extras._typing_sympy import ExprLike, Sign
 from sympy_extras.polys.polyerrors import BasePolynomialError
 
 from . import lifting as native

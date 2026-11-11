@@ -5,7 +5,7 @@ from sympy.core.expr import Expr
 from sympy.testing.pytest import raises
 
 from sympy_extras.solvers.first_order_sympy import riccati_ode, chini_ode, abel_ode, lagrange_ode, dsolve_first_order
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 
 x = Symbol('x')
 y = Function('y')(x)

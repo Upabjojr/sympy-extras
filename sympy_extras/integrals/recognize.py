@@ -60,7 +60,7 @@ from sympy.functions.special.gamma_functions import gamma
 from sympy.functions.special.zeta_functions import zeta
 from sympy.utilities.lambdify import lambdify
 
-from sympy_extras._typing import ExprLike, as_expr, free_symbols
+from sympy_extras._typing_sympy import ExprLike, as_expr, free_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.settings import settings
 

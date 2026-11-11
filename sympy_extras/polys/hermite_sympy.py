@@ -31,7 +31,7 @@ from sympy.matrices.dense import MutableDenseMatrix
 from sympy.polys.domains import QQ
 from sympy.polys.polytools import Poly
 
-from sympy_extras._typing import DomainElement, Truth, as_boolean, as_expr
+from sympy_extras._typing_sympy import DomainElement, Truth, as_boolean, as_expr
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.symbol import Symbol as CoreSymbol

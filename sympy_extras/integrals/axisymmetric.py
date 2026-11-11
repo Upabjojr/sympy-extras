@@ -72,7 +72,7 @@ from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, cancel
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
+from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.settings import settings
 from .conditions_sympy import numerically_equal
 

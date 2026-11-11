@@ -8,7 +8,7 @@ from sympy.testing.pytest import raises
 from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras._testing import untyped
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 
 
 def test_solve_univariate_polynomial() -> None:

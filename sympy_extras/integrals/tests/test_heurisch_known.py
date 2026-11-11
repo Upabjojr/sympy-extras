@@ -12,7 +12,7 @@ from sympy.logic.boolalg import Boolean
 
 from sympy.core.expr import Expr
 
-from sympy_extras._typing import ExprLike, as_boolean, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr
 from sympy_extras.integrals.conditions_sympy import numerically_equal
 from sympy_extras.integrals.heurisch import heurisch_antiderivative
 

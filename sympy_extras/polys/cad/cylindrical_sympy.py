@@ -28,7 +28,7 @@ from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import Boolean
 from sympy.sets.sets import Set
 
-from sympy_extras._typing import QuantifierSpec, as_set
+from sympy_extras._typing_sympy import QuantifierSpec, as_set
 
 from sympy_extras.sets.sets import Set as CoreSet
 

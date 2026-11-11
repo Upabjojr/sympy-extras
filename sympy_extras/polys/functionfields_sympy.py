@@ -44,7 +44,7 @@ from sympy.polys.domains.polynomialring import PolynomialRing
 from sympy.polys.polyerrors import CoercionFailed
 from sympy.polys.polytools import Poly, cancel
 
-from sympy_extras._typing import DomainElement, ExprLike, as_expr, free_symbols, sorted_symbols
+from sympy_extras._typing_sympy import DomainElement, ExprLike, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr
 from sympy_extras.polys.domains import QQ as NativeQQ
 from sympy_extras.polys.domains.fractionfield import FracElement

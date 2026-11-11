@@ -5,7 +5,7 @@ from __future__ import annotations
 from sympy import (symbols, exp, sqrt, pi, erf, erfi, Ei, uppergamma, hyper, Piecewise, Rational,
                    diff, simplify, atan, log)
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.integrals.conditions_sympy import numerically_equal
 from sympy_extras.integrals.exponential import exponential_antiderivative, power_exponential, exponential_rational

@@ -42,7 +42,7 @@ from sympy.printing.printer import Printer
 from sympy.sets.sets import Complement, EmptySet, FiniteSet, Intersection, Interval, Set
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import Sign, as_expr, as_set
+from sympy_extras._typing_sympy import Sign, as_expr, as_set
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_set, core_symbol, sympy_expr, sympy_set
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol

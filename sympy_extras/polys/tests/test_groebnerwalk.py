@@ -4,7 +4,7 @@ from sympy import QQ, GF, grevlex, grlex, lex, ring
 from sympy.polys.domains.domain import Domain
 from sympy.polys.rings import PolyElement
 
-from sympy_extras._typing import OrderSpec
+from sympy_extras._typing_sympy import OrderSpec
 from sympy.polys.groebnertools import groebner, is_groebner, is_reduced
 from sympy.testing.pytest import raises
 

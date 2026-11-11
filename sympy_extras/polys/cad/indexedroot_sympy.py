@@ -38,7 +38,7 @@ from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import ComplexRootOf
 from sympy.printing.printer import Printer
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.polys.roots_sympy import radical_form

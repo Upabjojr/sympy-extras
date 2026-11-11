@@ -57,7 +57,7 @@ from sympy.polys.domains.domain import Domain
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import rootof
 
-from sympy_extras._typing import DomainElement, ExprLike, as_expr
+from sympy_extras._typing_sympy import DomainElement, ExprLike, as_expr
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol
 from sympy_extras.polys.domains.algebraicfield import AlgebraicField as NativeField
 

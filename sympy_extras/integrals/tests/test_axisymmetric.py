@@ -6,7 +6,7 @@ import mpmath
 from sympy import symbols, Eq, And, Or, Not, sqrt, pi, S, Rational, N, asin
 from sympy.core.expr import Expr
 
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.integrals.axisymmetric import axisymmetric_integral, rotation_group
 from sympy_extras.integrals.regions import integrate_by_ranges
 

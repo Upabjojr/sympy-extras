@@ -35,7 +35,7 @@ from sympy.core.relational import Eq
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import Boolean
 
-from sympy_extras._typing import QuantifierPrefix, as_expr
+from sympy_extras._typing_sympy import QuantifierPrefix, as_expr
 from sympy_extras.assumptions.ask_sympy import _sympy_symbol, core_boolean, core_prefix, sympy_boolean
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr
 from sympy_extras.polys.virtual_substitution_sympy import simplify_logic_of_core

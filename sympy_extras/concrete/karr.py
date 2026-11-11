@@ -542,8 +542,11 @@ def _with_special_values(value: Expr, f: Expr, indices: Sequence[Symbol], limits
     """:func:`~sympy_extras.concrete.karr_sympy.with_sum_special_values`
     for core expressions. A summand without parameters (symbols other
     than the ``indices`` and those of the ``limits``) has no such values;
-    the others go through SymPy (:mod:`sympy_extras._special_values` is
-    not ported). ``defined`` refutes the points where the sum is not
+    the others go through SymPy (the summation rules of
+    :func:`~sympy_extras.concrete.karr_sympy.with_sum_special_values`,
+    its numerical checks and the poles in the range of summation, are not
+    ported; the native :mod:`sympy_extras._special_values` is used through
+    its face :mod:`sympy_extras._special_values_sympy`). ``defined`` refutes the points where the sum is not
     defined (outside the region of convergence of a series)."""
     excluded: set[Symbol] = set(indices)
     for limit in limits:

@@ -115,7 +115,7 @@ from sympy.solvers.solveset import linsolve
 from sympy.sets.sets import FiniteSet
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_expr, free_symbols
+from sympy_extras._typing_sympy import ExprLike, as_expr, free_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.settings import settings
 from .conditions_sympy import ConditionalValue

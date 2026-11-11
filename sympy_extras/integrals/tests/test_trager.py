@@ -6,7 +6,7 @@ from sympy.polys.polyerrors import NotInvertible
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.integrals.trager import (trager_antiderivative, trager_reduce, hermite_reduce_algebraic,
                                            is_nonelementary_algebraic)
 
@@ -14,7 +14,7 @@ x, a = symbols('x a')
 
 
 def _derivative_matches(F: object, f: object) -> bool:
-    from sympy_extras._typing import as_expr
+    from sympy_extras._typing_sympy import as_expr
     return simplify(as_expr(F).diff(x) - as_expr(f)) == 0
 
 

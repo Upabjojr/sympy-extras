@@ -76,7 +76,7 @@ from sympy.polys.polytools import (cancel, Poly, gcd,
 from sympy.polys.rootoftools import RootSum
 from sympy.utilities.iterables import numbered_symbols
 
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 
 #: the type of an extension of the tower, exts[i] describing T[i + 1]
 _Extension = Literal['exp', 'log', 'tan', 'atan']

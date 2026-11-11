@@ -35,7 +35,7 @@ from sympy.core.sympify import sympify
 from sympy.logic.boolalg import Boolean
 from sympy.sets.sets import FiniteSet, Set
 
-from sympy_extras._typing import as_set
+from sympy_extras._typing_sympy import as_set
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.symbol import Symbol as CoreSymbol

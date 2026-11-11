@@ -42,7 +42,7 @@ from sympy.core.symbol import Symbol
 from sympy.solvers.ode import dsolve
 from sympy.solvers.solvers import solve
 
-from sympy_extras._typing import as_expr, as_symbol
+from sympy_extras._typing_sympy import as_expr, as_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef

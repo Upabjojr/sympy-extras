@@ -38,7 +38,7 @@ from sympy.logic.boolalg import Boolean, BooleanTrue, BooleanFalse, And, true
 from sympy.polys.polytools import Poly, cancel
 
 from sympy_extras._timeout import attempt, time_limit, TimeLimitExceeded
-from sympy_extras._typing import as_boolean, as_expr
+from sympy_extras._typing_sympy import as_boolean, as_expr
 from sympy_extras.assumptions.ask_sympy import ask
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.solve_sympy import solve

@@ -30,7 +30,7 @@ from sympy.polys.polyroots import roots
 from sympy.polys.rootoftools import ComplexRootOf
 from sympy.sets.sets import Set
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.ask_sympy import _sympy_symbol
 from sympy_extras.assumptions.intervals_sympy import core_expr, sympy_expr, sympy_set
 from sympy_extras.core.expr import Expr as CoreExpr

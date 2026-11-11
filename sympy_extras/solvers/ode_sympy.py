@@ -30,7 +30,7 @@ from sympy.core.function import AppliedUndef
 from sympy.core.relational import Eq
 from sympy.core.symbol import Symbol
 
-from sympy_extras._typing import as_symbol
+from sympy_extras._typing_sympy import as_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.relational import Eq as CoreEq
 from sympy_extras.interop import from_sympy, to_sympy

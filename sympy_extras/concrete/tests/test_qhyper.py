@@ -3,7 +3,7 @@ from __future__ import annotations
 import sympy
 from sympy.testing.pytest import raises
 
-from sympy_extras._typing import as_expr, as_symbol
+from sympy_extras._typing_sympy import as_expr, as_symbol
 from sympy_extras.concrete.qhyper import (QPochhammer, qpochhammer, qbinomial, q_ratio, qgosper_term,
     qgosper_sum, qzeilberger, normal_in)
 from sympy_extras.core import Basic, Dummy, Eq, Expr, Integer, Rational, Symbol, add

@@ -27,7 +27,7 @@ from sympy.core.sympify import sympify
 from sympy.logic.boolalg import Boolean, BooleanTrue, BooleanFalse
 from sympy.printing.printer import Printer
 
-from sympy_extras._typing import QuantifierPrefix, as_boolean, as_symbol
+from sympy_extras._typing_sympy import QuantifierPrefix, as_boolean, as_symbol
 from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy

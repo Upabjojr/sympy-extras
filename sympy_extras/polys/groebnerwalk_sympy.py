@@ -37,7 +37,7 @@ from sympy.polys.domains.fractionfield import FractionField as SymPyFractionFiel
 from sympy.polys.orderings import MonomialOrder, igrevlex, igrlex, ilex
 from sympy.polys.rings import PolyElement, PolyRing
 
-from sympy_extras._typing import OrderSpec
+from sympy_extras._typing_sympy import OrderSpec
 from sympy_extras.core.expr import as_expr as core_as_expr
 from sympy_extras.interop import from_sympy as core_from_sympy
 

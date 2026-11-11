@@ -9,7 +9,7 @@ from sympy.polys.domains import ZZ as SymPyZZ
 from sympy.polys.rings import PolyElement as SymPyPolyElement, ring
 from sympy.testing.pytest import raises
 
-from sympy_extras._typing import as_expr, as_symbol
+from sympy_extras._typing_sympy import as_expr, as_symbol
 
 from sympy_extras.core import Integer, Symbol
 from sympy_extras.core.expr import Expr

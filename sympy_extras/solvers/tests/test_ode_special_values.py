@@ -9,8 +9,8 @@ from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
 
-from sympy_extras._special_values import Point, condition_point
-from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
+from sympy_extras._special_values_sympy import Point, condition_point
+from sympy_extras._typing_sympy import as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.solvers.first_order_sympy import dsolve_first_order, riccati_ode
 from sympy_extras.solvers.kovacic_sympy import dsolve_kovacic
 from sympy_extras.solvers.linear_ode_sympy import dsolve_linear

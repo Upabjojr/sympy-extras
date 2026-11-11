@@ -5,7 +5,7 @@ from sympy import CRootOf, Rational, sqrt, symbols
 from sympy.polys.rootoftools import ComplexRootOf
 from sympy.testing.pytest import raises
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.polys.regularchains_sympy import RegularChain, triangularize
 from sympy_extras.polys.regularchains_sympy.solutions import exact_solutions
 

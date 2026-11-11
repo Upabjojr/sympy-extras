@@ -33,7 +33,7 @@ from sympy.polys.domains import QQ, ZZ
 from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 
-from sympy_extras._typing import ExprLike, as_expr, as_symbol
+from sympy_extras._typing_sympy import ExprLike, as_expr, as_symbol
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.interop import from_sympy, to_sympy
 from sympy_extras.polys.polyerrors import BasePolynomialError

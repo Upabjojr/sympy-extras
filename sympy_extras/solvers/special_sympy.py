@@ -26,7 +26,7 @@ from sympy.core.expr import Expr
 from sympy.core.function import AppliedUndef
 from sympy.core.symbol import Symbol
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.ask_sympy import _core_symbol
 from sympy_extras.assumptions.intervals_sympy import core_expr, sympy_expr
 from sympy_extras.core.expr import Expr as CoreExpr

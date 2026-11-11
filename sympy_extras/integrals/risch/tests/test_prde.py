@@ -17,7 +17,7 @@ from sympy.testing.pytest import raises
 
 from sympy.core import Add, Dummy
 from sympy.core.expr import Expr
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy.matrices import MutableDenseMatrix
 from sympy.core.numbers import I, Rational, oo
 from sympy.functions.elementary.exponential import exp

@@ -32,7 +32,7 @@ from sympy.core.expr import Expr
 from sympy.core.numbers import Rational
 from sympy.core.symbol import Symbol
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr
 

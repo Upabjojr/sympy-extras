@@ -20,7 +20,7 @@ from sympy.core.basic import Basic
 from sympy.core.sympify import sympify
 from sympy.logic.boolalg import And, Boolean
 
-from sympy_extras._typing import as_boolean
+from sympy_extras._typing_sympy import as_boolean
 from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.interop import from_sympy, to_sympy
 

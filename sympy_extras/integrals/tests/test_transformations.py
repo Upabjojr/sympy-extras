@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sympy import symbols, exp, cos, atan, log, sqrt, pi, oo, S, simplify
 
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.integrals.definite import definite_integral
 from sympy_extras.integrals.definite import verify_numerically
 from sympy_extras.integrals.transformations import frullani, glasser, transformation_integral

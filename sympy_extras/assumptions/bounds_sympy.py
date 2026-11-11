@@ -24,7 +24,7 @@ from typing import Final, Optional
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import Boolean
 
-from sympy_extras._typing import as_boolean, as_symbol
+from sympy_extras._typing_sympy import as_boolean, as_symbol
 from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy

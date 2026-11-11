@@ -80,7 +80,7 @@ from sympy.simplify.powsimp import powsimp
 from sympy.simplify.simplify import simplify as _sympy_simplify
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import Truth, as_boolean, as_expr, free_symbols
+from sympy_extras._typing_sympy import Truth, as_boolean, as_expr, free_symbols
 from sympy_extras.settings import settings
 from sympy_extras.assumptions.ask_sympy import ask, Assumptions, _facts
 from sympy_extras.assumptions.analysis_sympy import sign_on, certified_sign

@@ -67,7 +67,7 @@ from sympy.polys.orderings import MonomialOrder, grevlex, grlex, lex
 from sympy.polys.polytools import Poly
 from sympy.polys.rings import PolyElement, PolyRing, ring as _ring
 
-from sympy_extras._typing import DomainElement, Monomial, OrderSpec, as_expr, as_symbol, free_symbols, sorted_symbols
+from sympy_extras._typing_sympy import DomainElement, Monomial, OrderSpec, as_expr, as_symbol, free_symbols, sorted_symbols
 from sympy_extras.core.expr import as_expr as core_as_expr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy as core_from_sympy, to_sympy as core_to_sympy

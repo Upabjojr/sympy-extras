@@ -43,7 +43,7 @@ from sympy.polys.rootoftools import ComplexRootOf
 from sympy.simplify.radsimp import radsimp
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.polys.roots_sympy import radical_form
 
 __all__ = ['exact_solutions']

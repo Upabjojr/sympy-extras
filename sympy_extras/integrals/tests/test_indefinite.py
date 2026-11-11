@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from sympy import symbols, sqrt, exp, sin, cos, log, tan, atan, asin, Integral, I, S, diff, simplify, erf
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.integrals.indefinite import indefinite_integral, verified_antiderivative, is_antiderivative
 from sympy_extras.integrals import indefinite as module
 

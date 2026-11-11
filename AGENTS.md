@@ -153,6 +153,18 @@ sympy_extras/
     _numeric.py              reliable_form, reliable_value, reliable_complex: numerical values which no rounding error
                              decides (hidden zeros proved, cuts; native)
     _numeric_sympy.py        the SymPy face of _numeric
+    _special_values.py       with_special_values, special_points, condition_point, defined_problem, ...: the cases of
+                             the isolated values of the parameters at which a closed form fails (native; the real roots
+                             of polynomials with irrational coefficients and the transcendental factors the native
+                             solver does not reduce through roots_sympy and transcendental_sympy)
+    _special_values_sympy.py the SymPy face of _special_values (used by integrals/definite, indefinite, concrete/karr_sympy;
+                             not the solvers/_special_values_sympy of the ODE cases)
+    _timeout.py              attempt, time_limit, remaining_time, prepare_sympy: time limits (no SymPy imported; SymPy's
+                             tables prepared lazily by limits without native=True)
+    _typing.py               the type aliases which need no SymPy (Dup, Dmp, Monomial, Sign, Truth, Weights, ...)
+    _typing_sympy.py         the aliases written with SymPy's classes (ExprLike, OrderSpec, QuantifierPrefix) and the
+                             narrowing helpers of the SymPy-side code (as_expr, as_boolean, as_symbol, as_set,
+                             free_symbols, sorted_symbols)
     assumptions/             assumptions written as mathematical statements (exports nothing: import the modules)
         facts.py             element(), normalize(), Facts: translation to predicates and polynomial relations (native)
         facts_sympy.py       the SymPy face of facts, and predicates_consistent (SymPy's SAT on its known facts)
@@ -315,9 +327,9 @@ sympy_extras/
                              whittaker_m (native)
         special_sympy.py     the SymPy face of special
         _special_values.py   the isolated values of the parameters of ODE solutions: general_solution_cases, basis_cases,
-                             solution_cases, solution_jacobian, ode_order (native; the candidate points of
-                             sympy_extras._special_values through _special_values_sympy)
-        _special_values_sympy.py the SymPy face of _special_values, and special_values_of_core
+                             solution_cases, solution_jacobian, ode_order (native, with the native
+                             sympy_extras._special_values)
+        _special_values_sympy.py the SymPy face of _special_values
         charpit.py           complete_integral, check_complete_integral: complete integrals of first order PDEs by
                              Charpit's method (native; SymPy's solve and integrate through charpit_sympy)
         charpit_sympy.py     the SymPy face of charpit, and solve_of_core, antiderivative_of_core
@@ -546,9 +558,11 @@ Rules, all of them mandatory for every change:
 3. **Narrow at the SymPy boundary.** SymPy 1.14 ships no `py.typed` and
    few annotations, so its results are `Basic` or `Any`. The moment a
    SymPy value enters our code, convert it with the helpers of
-   `sympy_extras/_typing.py` (`as_expr`, `as_boolean`, `as_symbol`,
+   `sympy_extras/_typing_sympy.py` (`as_expr`, `as_boolean`, `as_symbol`,
    `as_set`, `free_symbols`, `sorted_symbols`), which check the class at
-   run time and raise `TypeError`. Never use `typing.cast` to silence a
+   run time and raise `TypeError` (the code written on the core uses the
+   core's `as_expr` and `to_boolean`; `sympy_extras/_typing.py` imports no
+   SymPy and holds only the aliases which need none). Never use `typing.cast` to silence a
    SymPy type; never rely on duck typing across a union.
 4. **Unions are narrowed with `isinstance` before use**, `Optional` values
    are checked before use, and a function returns one type of value (or a
@@ -556,8 +570,9 @@ Rules, all of them mandatory for every change:
    argument, except through `@overload` on a literal argument (as
    `satisfiable` does with `all_models`).
 5. **Name the structures.** Recurring shapes get an alias in
-   `sympy_extras/_typing.py` (`Monomial`, `Sign`, `Truth`, `Weights`,
-   `OrderSpec`, `QuantifierPrefix`, ...) or in the module that owns them
+   `sympy_extras/_typing.py` (`Monomial`, `Sign`, `Truth`, `Weights`, ...;
+   those written with SymPy's classes, `OrderSpec`, `QuantifierPrefix`,
+   `ExprLike`, in `sympy_extras/_typing_sympy.py`) or in the module that owns them
    (`Solution`, `Rhs` in `pisigma.py`, `CellTruth` in `qe.py`, `Model`,
    `Witness` in `sat.py`). Use them instead of repeating tuple types.
 6. **Attributes are declared with their type**, in `__init__` or as class

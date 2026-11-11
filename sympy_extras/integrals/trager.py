@@ -153,7 +153,7 @@ from sympy.simplify.powsimp import powdenest
 from sympy.simplify.radsimp import fraction
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import DomainElement, ExprLike, as_expr, free_symbols, sorted_symbols
+from sympy_extras._typing_sympy import DomainElement, ExprLike, as_expr, free_symbols, sorted_symbols
 from sympy_extras.settings import settings
 from .risch.rationaltools import ratint, ratint_ratpart
 

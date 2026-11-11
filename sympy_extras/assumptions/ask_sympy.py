@@ -29,7 +29,7 @@ from sympy.core.sympify import sympify
 from sympy.logic.boolalg import Boolean
 from sympy.sets.sets import Set
 
-from sympy_extras._typing import QuantifierPrefix, Truth, as_boolean, as_symbol
+from sympy_extras._typing_sympy import QuantifierPrefix, Truth, as_boolean, as_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean
