@@ -4,11 +4,7 @@ quadratics and of rational functions of an exponential
 still written on SymPy (:mod:`.indefinite`).
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
-the native code and convert the antiderivatives back. The step of the
-native module which stays on SymPy is here too: SymPy's rational
-integrator ``ratint`` (:func:`ratint_of_core`, the port of
-:mod:`.risch.rationaltools` which works on SymPy objects), which the
-substitution ``u = exp(c*x)`` needs.
+the native code and convert the antiderivatives back.
 
 Examples
 ========
@@ -36,8 +32,7 @@ from sympy.core.sympify import sympify
 from sympy.functions.elementary.exponential import exp
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike
 from sympy_extras.assumptions.ask import Assumptions as CoreAssumptions
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions
 from sympy_extras.core.expr import Expr as CoreExpr
@@ -47,7 +42,7 @@ from sympy_extras.interop import from_sympy, to_sympy
 from . import exponential as native
 
 __all__ = ['exponential_antiderivative', 'power_exponential', 'exponential_rational', 'nested_power_exponential',
-           'rational_exponential', 'composite_gaussian', 'reciprocal_square_exponential', 'ratint_of_core']
+           'rational_exponential', 'composite_gaussian', 'reciprocal_square_exponential']
 
 #: a function of the native module
 _Native = Callable[[CoreExpr, CoreSymbol, CoreAssumptions], Optional[CoreExpr]]
@@ -65,21 +60,6 @@ def _sympy_symbol(s: CoreSymbol) -> Symbol:
     if not isinstance(converted, Symbol):
         raise TypeError("%s is not a symbol" % (converted,))
     return converted
-
-
-def ratint_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
-    """SymPy's ``ratint(f, x)`` (the port in :mod:`.risch.rationaltools`)
-    within ``seconds``, on core expressions; ``None`` when it does not
-    finish or its antiderivative cannot be converted."""
-    from .risch.rationaltools import ratint
-    integrand, variable = sympy_expr(f), _sympy_symbol(x)
-    found = attempt(lambda: as_expr(ratint(integrand, variable)), seconds)
-    if found is None:
-        return None
-    try:
-        return core_expr(found)
-    except (TypeError, ValueError, NotImplementedError):
-        return None
 
 
 def _run(function: _Native, f: ExprLike, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:

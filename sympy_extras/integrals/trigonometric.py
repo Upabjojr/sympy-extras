@@ -115,7 +115,7 @@ from sympy_extras._typing_sympy import as_boolean, as_expr, free_symbols, sorted
 from sympy_extras.settings import settings
 from .conditions_sympy import numerically_equal
 from .radicals import quadratic_radical_antiderivative
-from .risch.rationaltools import ratint
+from .risch.rationaltools_sympy import ratint
 
 __all__ = ['trigonometric_antiderivative']
 

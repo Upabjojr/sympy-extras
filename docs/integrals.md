@@ -554,7 +554,7 @@ Meurer's branch `risch-typing` (sympy/sympy#30282) as the starting point.
 
 ```python
 >>> from sympy import symbols, tan, exp, log
->>> from sympy_extras.integrals.risch import risch_antiderivative, is_nonelementary
+>>> from sympy_extras.integrals.risch.risch_sympy import risch_antiderivative, is_nonelementary
 >>> x = symbols('x')
 >>> risch_antiderivative(tan(x)**5, x)
 log(tan(x)**2 + 1)/2 + tan(x)**4/4 - tan(x)**2/2
