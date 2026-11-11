@@ -164,10 +164,9 @@ class _Worker(_Algorithms, Generic[T]):
     def _pivot(self, a: T) -> T:
         """The nonzero element ``a``, proved nonzero as a quantity."""
         if not self.exact:
-            from sympy_extras.interop import to_sympy
             from sympy_extras.simplify.structure import is_zero
             e = self.field.expr(a)
-            if not (isinstance(e, Rational) and e.p != 0) and is_zero(to_sympy(e)) is not False:
+            if not (isinstance(e, Rational) and e.p != 0) and is_zero(e) is not False:
                 raise NotImplementedError('the pivot %s is not proved nonzero: simplify the entries of the matrix first'
                                           % (e,))
         return a

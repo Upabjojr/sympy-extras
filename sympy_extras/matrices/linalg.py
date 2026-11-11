@@ -272,13 +272,12 @@ def _certify(lift: _Lift[T], pivots: Sequence[T]) -> None:
     ``NotImplementedError``."""
     if lift.exact:
         return
-    from sympy_extras.interop import to_sympy
     from sympy_extras.simplify.structure import is_zero
     for value in pivots:
         e = lift.expr(value)
         if isinstance(e, Rational) and e.p != 0:
             continue
-        if is_zero(to_sympy(e)) is not False:
+        if is_zero(e) is not False:
             raise NotImplementedError('the pivot %s is not proved nonzero: simplify the entries of the matrix first' % (e,))
 
 

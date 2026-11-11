@@ -120,10 +120,9 @@ class _Worker(_Approximation, Generic[T]):
         """The polynomial, its leading coefficient proved nonzero as a
         quantity."""
         if f and not self.exact:
-            from sympy_extras.interop import to_sympy
             from sympy_extras.simplify.structure import is_zero
             e = self.field.expr(f[0])
-            if not (isinstance(e, Rational) and e.p != 0) and is_zero(to_sympy(e)) is not False:
+            if not (isinstance(e, Rational) and e.p != 0) and is_zero(e) is not False:
                 raise NotImplementedError('the coefficient %s is not proved nonzero: simplify the coefficients first' % (e,))
         return f
 
