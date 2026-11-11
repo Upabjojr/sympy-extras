@@ -5,7 +5,7 @@
 //! `as_content_primitive` of the classes of the core.
 //!
 //! `factor_nc`, the `Factors` with symbolic exponents of `fu`
-//! (`ExprFactors`), the `radical` option (`_common_radicals`) and the sums
+//! (`ExprFactors`) and the sums
 //! of `concrete` are not ported yet.
 
 use std::collections::HashMap;
@@ -522,23 +522,92 @@ fn add_content_primitive(e: &Basic, radical: bool, clear: bool) -> PolyResult<(B
             return as_content_primitive(&total, radical, clear);
         }
     }
-    if radical {
-        return Err(not_ported("_common_radicals"));
-    }
     let (c, p) = primitive(e)?;
     let cv: Rat = c.as_rational().expect("a rational content").clone();
+    let radicals = |x: Basic| -> PolyResult<Basic> {
+        if radical {
+            common_radicals(&x)
+        } else {
+            Ok(x)
+        }
+    };
     if clear || cv.is_int() || clearable(e) {
-        return Ok((c, p));
+        return Ok((c, radicals(p)?));
     }
     if numer(&cv) == Int::ONE {
-        return Ok((Basic::one(), e.clone()));
+        return Ok((Basic::one(), radicals(e.clone())?));
     }
     let inverse: Basic = Basic::from_rational(rat_from_parts(Int::ONE, numer(&cv)));
     let mut terms: Vec<Basic> = Vec::new();
     for t in e.args() {
         terms.push(mul(&[inverse.clone(), t.clone()])?);
     }
-    Ok((Basic::integer(numer(&cv)), add(&terms)?))
+    Ok((Basic::integer(numer(&cv)), radicals(add(&terms)?)?))
+}
+
+/// `prim` with the radicals of integers common to all its terms taken out
+/// (`_common_radicals`): for each root index `q` present in every term,
+/// the gcd `g` of the products of the `q`-th roots, `g**(1/q)`.
+fn common_radicals(prim: &Basic) -> PolyResult<Basic> {
+    if !prim.is_add() {
+        return Ok(prim.clone());
+    }
+    let mut radicals: Vec<std::collections::BTreeMap<Int, Int>> = Vec::new();
+    let mut common: Option<std::collections::BTreeSet<Int>> = None;
+    for term in prim.args() {
+        let mut products: std::collections::BTreeMap<Int, Int> = std::collections::BTreeMap::new();
+        for f in factors_of(term) {
+            if f.is_pow() {
+                let (b, ex) = (&f.args()[0], &f.args()[1]);
+                if let (Some(ev), true) = (ex.as_rational(), is_integer_class(b)) {
+                    let p: Int = numer(ev);
+                    if p > Int::ZERO {
+                        let base: Int = abs(&numer(b.as_rational().expect("an integer")));
+                        let power: Int = base.pow(usize::try_from(&p).map_err(|_| not_ported("a huge radical"))?);
+                        let entry = products.entry(denom(ev)).or_insert(Int::ONE);
+                        *entry = &*entry * &power;
+                    }
+                }
+            }
+        }
+        if products.is_empty() {
+            return Ok(prim.clone());
+        }
+        let keys: std::collections::BTreeSet<Int> = products.keys().cloned().collect();
+        let both: std::collections::BTreeSet<Int> = match common {
+            None => keys,
+            Some(c) => c.intersection(&keys).cloned().collect(),
+        };
+        if both.is_empty() {
+            return Ok(prim.clone());
+        }
+        common = Some(both);
+        radicals.push(products);
+    }
+    let Some(common) = common else { return Ok(prim.clone()) };
+    let mut taken: Vec<Basic> = Vec::new();
+    for q in &common {
+        let mut g: Int = Int::ZERO;
+        for r in &radicals {
+            g = gcd(&g, &r[q]);
+        }
+        if g != Int::ONE {
+            taken.push(pow(
+                &Basic::integer(g),
+                &Basic::from_rational(rat_from_parts(Int::ONE, q.clone())),
+            )?);
+        }
+    }
+    if taken.is_empty() {
+        return Ok(prim.clone());
+    }
+    let big_g: Basic = mul(&taken)?;
+    let inverse: Basic = pow(&big_g, &Basic::negative_one())?;
+    let mut terms: Vec<Basic> = Vec::new();
+    for t in prim.args() {
+        terms.push(mul(&[t.clone(), inverse.clone()])?);
+    }
+    mul(&[big_g, add(&terms)?])
 }
 
 fn pow_content_primitive(e: &Basic, radical: bool, clear: bool) -> PolyResult<(Basic, Basic)> {

@@ -3,6 +3,8 @@
 //! variables of a ring) and `_resultant_first` (the resultant in the first
 //! variable). The class `Poly` and the rest of the module wait for the core.
 
+#![allow(clippy::mutable_key_type)]
+
 use std::sync::Arc;
 
 use crate::error::{value_error, PolyResult};
@@ -277,45 +279,61 @@ fn decompose_with_gens(e: &Basic, gens: &[Basic]) -> PolyResult<Decomposed> {
     Ok(result)
 }
 
-/// The terms of `e` with every factor which is not a number a generator
-/// (`_parallel_dict_from_expr_no_gens`).
-fn decompose_without_gens(e: &Basic) -> PolyResult<(Decomposed, Vec<Basic>)> {
+/// The terms of the expressions with every factor which is not a number a
+/// generator, the generators of all of them together
+/// (`_decompose_without_gens_many`, SymPy's
+/// `_parallel_dict_from_expr_no_gens`).
+fn decompose_without_gens_many(exprs: &[Basic], expand: bool) -> PolyResult<(Vec<Decomposed>, Vec<Basic>)> {
     let mut found: Vec<Basic> = Vec::new();
-    let mut raw: Vec<(Vec<Basic>, Vec<(Basic, i64)>)> = Vec::new();
-    for term in terms_of(&expand_default(e)?) {
-        let mut coefficient: Vec<Basic> = Vec::new();
-        let mut elements: Vec<(Basic, i64)> = Vec::new();
-        for factor in factors_of(&term) {
-            if factor.is_number_class() || matches!(factor.head(), Head::ImaginaryUnit) {
-                coefficient.push(factor);
-                continue;
+    let mut raws: Vec<Vec<(Vec<Basic>, Vec<(Basic, i64)>)>> = Vec::new();
+    for e in exprs {
+        let mut raw: Vec<(Vec<Basic>, Vec<(Basic, i64)>)> = Vec::new();
+        let expanded: Basic = if expand { expand_default(e)? } else { e.clone() };
+        for term in terms_of(&expanded) {
+            let mut coefficient: Vec<Basic> = Vec::new();
+            let mut elements: Vec<(Basic, i64)> = Vec::new();
+            for factor in factors_of(&term) {
+                if factor.is_number_class() || matches!(factor.head(), Head::ImaginaryUnit) {
+                    coefficient.push(factor);
+                    continue;
+                }
+                let (mut base, mut exponent) = decompose_power(&factor)?;
+                if exponent < 0 {
+                    exponent = -exponent;
+                    base = core_pow(&base, &Basic::negative_one())?;
+                }
+                match elements.iter_mut().find(|(b, _)| *b == base) {
+                    Some((_, k)) => *k += exponent,
+                    None => elements.push((base.clone(), exponent)),
+                }
+                if !found.contains(&base) {
+                    found.push(base);
+                }
             }
-            let (mut base, mut exponent) = decompose_power(&factor)?;
-            if exponent < 0 {
-                exponent = -exponent;
-                base = core_pow(&base, &Basic::negative_one())?;
-            }
-            match elements.iter_mut().find(|(b, _)| *b == base) {
-                Some((_, k)) => *k += exponent,
-                None => elements.push((base.clone(), exponent)),
-            }
-            if !found.contains(&base) {
-                found.push(base);
-            }
+            raw.push((coefficient, elements));
         }
-        raw.push((coefficient, elements));
+        raws.push(raw);
     }
     let gens: Vec<Basic> = sort_gens(&found);
-    let mut result: Decomposed = Decomposed::new();
-    for (coefficient, elements) in raw {
-        let mut monomial: Monomial = vec![0; gens.len()];
-        for (base, exponent) in elements {
-            let i: usize = gens.iter().position(|g| *g == base).expect("a generator");
-            monomial[i] = exponent_of(exponent)?;
+    let mut results: Vec<Decomposed> = Vec::new();
+    for raw in raws {
+        let mut result: Decomposed = Decomposed::new();
+        for (coefficient, elements) in raw {
+            let mut monomial: Monomial = vec![0; gens.len()];
+            for (base, exponent) in elements {
+                let i: usize = gens.iter().position(|g| *g == base).expect("a generator");
+                monomial[i] = exponent_of(exponent)?;
+            }
+            result.entry(monomial).or_default().push(core_mul(&coefficient)?);
         }
-        result.entry(monomial).or_default().push(core_mul(&coefficient)?);
+        results.push(result);
     }
-    Ok((result, gens))
+    Ok((results, gens))
+}
+
+fn decompose_without_gens(e: &Basic) -> PolyResult<(Decomposed, Vec<Basic>)> {
+    let (mut decomposed, gens) = decompose_without_gens_many(std::slice::from_ref(e), true)?;
+    Ok((decomposed.remove(0), gens))
 }
 
 /// SymPy's domain of a `Poly`, restricted to `ZZ`, `QQ`, `ZZ[params]`,
@@ -1214,24 +1232,6 @@ pub enum PolyOrExpr {
     Expr(Basic),
 }
 
-/// `_xreplace_evaluated`: the rebuilt nodes evaluated.
-fn xreplace_evaluated(e: &Basic, rule: &[(Basic, Basic)]) -> PolyResult<Basic> {
-    if let Some((_, v)) = rule.iter().find(|(k, _)| k == e) {
-        return Ok(v.clone());
-    }
-    if e.args().is_empty() {
-        return Ok(e.clone());
-    }
-    let mut args: Vec<Basic> = Vec::new();
-    for a in e.args() {
-        args.push(xreplace_evaluated(a, rule)?);
-    }
-    if args.iter().zip(e.args()).all(|(a, b)| a.ptr_eq(b)) {
-        return Ok(e.clone());
-    }
-    crate::core::function::rebuild_evaluated(e, args)
-}
-
 /// SymPy's sort key of a polynomial over a polynomial domain
 /// (`_domain_key`): nested over the generators, the coefficients by their
 /// number of terms and then their terms in decreasing lex order.
@@ -1341,12 +1341,11 @@ impl Poly {
                 i
             )));
         }
-        let rule: Vec<(Basic, Basic)> = if self.gens[i] != *value {
-            vec![(self.gens[i].clone(), value.clone())]
-        } else {
-            Vec::new()
-        };
-        let result: Basic = expand_default(&xreplace_evaluated(&self.as_expr()?, &rule)?)?;
+        let mut rule: std::collections::HashMap<Basic, Basic> = std::collections::HashMap::new();
+        if self.gens[i] != *value {
+            rule.insert(self.gens[i].clone(), value.clone());
+        }
+        let result: Basic = expand_default(&crate::core::function::xreplace_evaluated(&self.as_expr()?, &rule)?)?;
         let mut rest: Vec<Basic> = self.gens.clone();
         rest.remove(i);
         if rest.is_empty() {
@@ -1576,4 +1575,410 @@ impl Poly {
                 .collect(),
         ))
     }
+}
+
+// ---------------------------------------------------------------------
+// the functions of the module (on expressions)
+
+/// `Poly(expr, *gens)`.
+pub fn poly(expr: &Basic, gens: &[Basic]) -> PolyResult<Poly> {
+    Poly::new(expr, gens)
+}
+
+/// The degree of `f` in the generator `gen` (`degree(f, gen)`).
+pub fn degree(f: &Basic, gen: &Basic) -> PolyResult<i64> {
+    Poly::new(f, std::slice::from_ref(gen))?.degree(0)
+}
+
+/// The degree of `f` in its generator of index `i` (`degree(f, i)`).
+pub fn degree_index(f: &Basic, i: usize) -> PolyResult<i64> {
+    Poly::new(f, &[])?.degree(i)
+}
+
+#[allow(non_snake_case)]
+pub fn LC(f: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
+    Poly::new(f, gens)?.LC()
+}
+
+/// The generators of `f` and `g` together (`_common_gens`).
+fn common_gens(f: &Basic, g: &Basic) -> PolyResult<Vec<Basic>> {
+    Ok(decompose_without_gens_many(&[f.clone(), g.clone()], true)?.1)
+}
+
+fn numbers_only(f: &Basic, g: &Basic, gens: &[Basic]) -> PolyResult<bool> {
+    Ok(gens.is_empty() && common_gens(f, g)?.is_empty())
+}
+
+fn integer_lcm(a: &Int, b: &Int) -> Int {
+    if a.is_zero() || b.is_zero() {
+        return Int::ZERO;
+    }
+    abs(&(a * b)) / gcd(a, b)
+}
+
+fn first_poly(f: &Basic, g: &Basic, gens: &[Basic]) -> PolyResult<Poly> {
+    if !gens.is_empty() {
+        return Poly::new(f, gens);
+    }
+    Poly::new(f, &common_gens(f, g)?)
+}
+
+/// The gcd of two polynomial expressions (`gcd`): of two rationals the gcd
+/// of the numerators over the lcm of the denominators, of other numbers 1.
+pub fn gcd_expr(f: &Basic, g: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
+    if numbers_only(f, g, gens)? {
+        if let (Some(a), Some(b)) = (f.as_rational(), g.as_rational()) {
+            return Ok(Basic::from_rational(rat_from_parts(
+                gcd(&numer(a), &numer(b)),
+                integer_lcm(&denom(a), &denom(b)),
+            )));
+        }
+        return Ok(Basic::one());
+    }
+    let pf: Poly = first_poly(f, g, gens)?;
+    let pg: Poly = Poly::new(g, &pf.gens)?;
+    pf.gcd(&pg)?.as_expr()
+}
+
+/// The lcm of two polynomial expressions (`lcm`): of two rationals the lcm
+/// of the numerators over the gcd of the denominators, of other numbers
+/// their product.
+pub fn lcm_expr(f: &Basic, g: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
+    if numbers_only(f, g, gens)? {
+        if let (Some(a), Some(b)) = (f.as_rational(), g.as_rational()) {
+            return Ok(Basic::from_rational(rat_from_parts(
+                integer_lcm(&numer(a), &numer(b)),
+                gcd(&denom(a), &denom(b)),
+            )));
+        }
+        return core_mul(&[f.clone(), g.clone()]);
+    }
+    let pf: Poly = first_poly(f, g, gens)?;
+    let pg: Poly = Poly::new(g, &pf.gens)?;
+    pf.lcm(&pg)?.as_expr()
+}
+
+/// The gcd of a list (`0` of an empty list), folding [`gcd_expr`].
+pub fn gcd_list(seq: &[Basic], gens: &[Basic]) -> PolyResult<Basic> {
+    let Some(first) = seq.first() else {
+        return Ok(Basic::zero());
+    };
+    let mut result: Basic = first.clone();
+    for g in &seq[1..] {
+        result = gcd_expr(&result, g, gens)?;
+    }
+    Ok(result)
+}
+
+/// The lcm of a list (`1` of an empty list), folding [`lcm_expr`].
+pub fn lcm_list(seq: &[Basic], gens: &[Basic]) -> PolyResult<Basic> {
+    let Some(first) = seq.first() else {
+        return Ok(Basic::one());
+    };
+    let mut result: Basic = first.clone();
+    for g in &seq[1..] {
+        result = lcm_expr(&result, g, gens)?;
+    }
+    Ok(result)
+}
+
+fn either_expr(r: PolyOrExpr) -> PolyResult<Basic> {
+    match r {
+        PolyOrExpr::Poly(p) => p.as_expr(),
+        PolyOrExpr::Expr(e) => Ok(e),
+    }
+}
+
+/// The resultant in the first generator, as an expression.
+pub fn resultant_expr(f: &Basic, g: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
+    let pf: Poly = Poly::new(f, gens)?;
+    let pg: Poly = Poly::new(g, if gens.is_empty() { &pf.gens } else { gens })?;
+    either_expr(pf.resultant(&pg)?)
+}
+
+/// The discriminant in the first generator, as an expression.
+pub fn discriminant_expr(f: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
+    either_expr(Poly::new(f, gens)?.discriminant()?)
+}
+
+/// SymPy's `sring` of several expressions without generators, the
+/// coefficients rational (`_joint_rings`; `CoercionFailed` otherwise).
+fn joint_rings(exprs: &[Basic], expand: bool) -> PolyResult<(Vec<Basic>, Vec<BTreeMap<Monomial, Rat>>)> {
+    let (decomposed, gens) = decompose_without_gens_many(exprs, expand)?;
+    if gens.is_empty() {
+        return Ok((gens, exprs.iter().map(|_| BTreeMap::new()).collect()));
+    }
+    let mut result: Vec<BTreeMap<Monomial, Rat>> = Vec::new();
+    for terms in decomposed {
+        let mut rep: BTreeMap<Monomial, Rat> = BTreeMap::new();
+        for (m, cs) in terms {
+            let c: Basic = core_add(&cs)?;
+            let Some(v) = c.as_rational() else {
+                return Err(polys_error(
+                    PolysErrorKind::CoercionFailed,
+                    format!("the domain of {} (ZZ_I, RR, EX) is not ported yet", c),
+                ));
+            };
+            let value: Rat = rep.remove(&m).unwrap_or(Rat::ZERO) + v;
+            if !value.is_zero() {
+                rep.insert(m, value);
+            }
+        }
+        result.push(rep);
+    }
+    Ok((gens, result))
+}
+
+fn denominators_lcm_of(f: &BTreeMap<Monomial, Rat>) -> Int {
+    let mut result: Int = Int::ONE;
+    for c in f.values() {
+        let d: Int = denom(c);
+        result = &result * &d / gcd(&result, &d);
+    }
+    result
+}
+
+/// `f/g` in lowest terms over `ZZ` (`_cancel_reps`), the leading
+/// coefficient of the denominator positive.
+fn cancel_reps(
+    f: &BTreeMap<Monomial, Rat>,
+    g: &BTreeMap<Monomial, Rat>,
+    n: usize,
+) -> PolyResult<(PolyElement<IntegerRing>, PolyElement<IntegerRing>)> {
+    let z: SparsePolynomialRing<IntegerRing> = SparsePolynomialRing::sympy(ZZ, internal_names(n, 0));
+    if f.is_empty() {
+        return Ok((z.ring.zero(), z.ring.one()));
+    }
+    let (cq, cp) = (denominators_lcm_of(f), denominators_lcm_of(g));
+    let to_int = |h: &BTreeMap<Monomial, Rat>, c: &Int| -> PolyElement<IntegerRing> {
+        z.ring.from_dict(
+            h.iter()
+                .map(|(m, v)| (m.clone(), numer(&(v * rat_from_int(c)))))
+                .collect(),
+        )
+    };
+    let (big_f, big_g) = (to_int(f, &cq), to_int(g, &cp));
+    let h = Domain::gcd(&z, &big_f, &big_g);
+    let (mut p, mut q) = (big_f.exquo(&h)?, big_g.exquo(&h)?);
+    let common: Int = gcd(&cp, &cq);
+    p = p.mul_ground(&(&cp / &common));
+    q = q.mul_ground(&(&cq / &common));
+    if is_negative(&q.LC()) {
+        p = p.neg();
+        q = q.neg();
+    }
+    Ok((p, q))
+}
+
+fn expr_of(f: &PolyElement<IntegerRing>, gens: &[Basic]) -> PolyResult<Basic> {
+    let mut parts: Vec<Basic> = Vec::new();
+    for (m, c) in f.terms.iter().rev() {
+        let mut factors: Vec<Basic> = vec![Basic::integer(c.clone())];
+        for (g, k) in gens.iter().zip(m) {
+            if *k > 0 {
+                factors.push(core_pow(g, &Basic::int(i64::from(*k)))?);
+            }
+        }
+        parts.push(core_mul(&factors)?);
+    }
+    core_add(&parts)
+}
+
+fn not_invertible() -> PolyError {
+    polys_error(PolysErrorKind::NotInvertible, "zero divisor".to_string())
+}
+
+fn modular_inverse(a: &Int, m: &Int) -> PolyResult<Basic> {
+    // Python's pow(a, -1, m): the result in [0, |m|) for m > 0, (m, 0] for m < 0
+    if m.is_zero() {
+        return Err(not_invertible());
+    }
+    let modulus: Int = abs(m);
+    let Some(mut r) = crate::numbers::mod_inverse(a, &modulus) else {
+        return Err(not_invertible());
+    };
+    if is_negative(m) && !r.is_zero() {
+        r -= &modulus;
+    }
+    Ok(Basic::integer(r))
+}
+
+/// The inverse of `f` modulo `g` (`invert`): of two integers the modular
+/// inverse, of univariate polynomials over `QQ` the polynomial `s` with
+/// `s*f = 1 (mod g)`; `NotInvertible` when they are not coprime.
+pub fn invert(f: &Basic, g: &Basic) -> PolyResult<Basic> {
+    if let (
+        Head::Rational {
+            value: a,
+            integer_class: true,
+        },
+        Head::Rational {
+            value: b,
+            integer_class: true,
+        },
+    ) = (f.head(), g.head())
+    {
+        return modular_inverse(&numer(a), &numer(b));
+    }
+    let (gens, reps) = joint_rings(&[f.clone(), g.clone()], true)?;
+    if gens.len() > 1 {
+        return Err(value_error("univariate polynomial expected".to_string()));
+    }
+    if gens.is_empty() {
+        let (Some(a), Some(b)) = (f.as_rational(), g.as_rational()) else {
+            return Err(crate::error::not_ported(
+                "invert of numbers in ZZ_I, QQ_I, RR, CC or EX",
+            ));
+        };
+        if a.is_int() && b.is_int() {
+            return modular_inverse(&numer(a), &numer(b));
+        }
+        return Err(not_invertible());
+    }
+    let dense = |terms: &BTreeMap<Monomial, Rat>| -> Vec<Rat> {
+        let n: u32 = terms.keys().map(|m| m[0]).max().unwrap_or(0);
+        (0..=n)
+            .rev()
+            .map(|k| terms.get(&vec![k]).cloned().unwrap_or(Rat::ZERO))
+            .collect()
+    };
+    let h: Vec<Rat> = match super::euclidtools::dup_invert(&dense(&reps[0]), &dense(&reps[1]), &QQ) {
+        Ok(h) => h,
+        Err(PolyError::Value(_)) | Err(PolyError::ZeroDivision(_)) => return Err(not_invertible()),
+        Err(e) => return Err(e),
+    };
+    let n: usize = h.len().saturating_sub(1);
+    let mut parts: Vec<Basic> = Vec::new();
+    for (i, c) in h.iter().enumerate() {
+        if !c.is_zero() {
+            parts.push(core_mul(&[
+                Basic::from_rational(c.clone()),
+                core_pow(&gens[0], &Basic::int((n - i) as i64))?,
+            ])?);
+        }
+    }
+    core_add(&parts)
+}
+
+/// `p/q` in lowest terms as a pair of expanded polynomials, the leading
+/// coefficient of the denominator positive (`cancel_fraction`).
+pub fn cancel_fraction(p: &Basic, q: &Basic) -> PolyResult<(Basic, Basic)> {
+    let (gens, reps) = joint_rings(&[expand_default(p)?, expand_default(q)?], true)?;
+    if gens.is_empty() {
+        return Ok((
+            expand_default(&core_mul(&[p.clone(), core_pow(q, &Basic::negative_one())?])?)?,
+            Basic::one(),
+        ));
+    }
+    if reps[1].is_empty() {
+        return Err(crate::error::zero_division(&format!("cancel of {}/0", p)));
+    }
+    let (big_p, big_q) = cancel_reps(&reps[0], &reps[1], gens.len())?;
+    Ok((expr_of(&big_p, &gens)?, expr_of(&big_q, &gens)?))
+}
+
+/// A rational function in lowest terms `P/Q` (`cancel`), the generators
+/// every non-numeric factor, or `gens` with the other factors in the
+/// coefficients; the domains `ZZ_I`, `RR` and `EX` are `NotImplemented`.
+pub fn cancel(f: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
+    let e: Basic = crate::simplify::signsimp::signsimp(f, true)?;
+    if e.is_number_class() || crate::core::expr::is_false(&e, crate::core::assumptions::Predicate::commutative) {
+        return Ok(e);
+    }
+    let factored: Basic = crate::core::exprtools::factor_terms(&e, true, false, false, true)?;
+    let (p, q) = crate::core::expr::as_numer_denom(&factored)?;
+    let (p, q) = (expand_default(&p)?, expand_default(&q)?);
+    if !gens.is_empty() {
+        return cancel_with_gens(&p, &q, &factored, gens);
+    }
+    let (joint, reps) = match joint_rings(&[p, q], true) {
+        Ok(r) => r,
+        Err(PolyError::Polys(PolysErrorKind::CoercionFailed, _)) => {
+            return Err(crate::error::not_ported("cancel over ZZ_I, RR or EX"))
+        }
+        Err(e) => return Err(e),
+    };
+    if joint.is_empty() {
+        return expand_default(&factored);
+    }
+    let (big_p, big_q) = cancel_reps(&reps[0], &reps[1], joint.len())?;
+    core_mul(&[
+        expr_of(&big_p, &joint)?,
+        core_pow(&expr_of(&big_q, &joint)?, &Basic::negative_one())?,
+    ])
+}
+
+fn cancel_with_gens(p: &Basic, q: &Basic, factored: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
+    let (joint, reps) = match joint_rings(&[p.clone(), q.clone()], true) {
+        Ok(r) => r,
+        Err(PolyError::Polys(PolysErrorKind::CoercionFailed, _)) => {
+            return Err(crate::error::not_ported("cancel with generators over ZZ_I, RR or EX"))
+        }
+        Err(e) => return Err(e),
+    };
+    let mut joint_symbols: Vec<Basic> = Vec::new();
+    for j in &joint {
+        joint_symbols.extend(j.free_symbols());
+    }
+    if gens
+        .iter()
+        .any(|g| !joint.contains(g) && g.free_symbols().iter().any(|s| joint_symbols.contains(s)))
+    {
+        return Err(crate::error::not_ported(
+            "cancel by a generator which is not one of the factors",
+        ));
+    }
+    if joint.is_empty() {
+        return expand_default(factored);
+    }
+    let (mut big_p, mut big_q) = cancel_reps(&reps[0], &reps[1], joint.len())?;
+    let gen_index: Vec<Option<usize>> = gens.iter().map(|g| joint.iter().position(|j| j == g)).collect();
+    let param_index: Vec<usize> = (0..joint.len()).filter(|i| !gens.contains(&joint[*i])).collect();
+    let split = |m: &Monomial| -> (Vec<u32>, Vec<u32>) {
+        (
+            gen_index.iter().map(|i| i.map(|i| m[i]).unwrap_or(0)).collect(),
+            param_index.iter().map(|&i| m[i]).collect(),
+        )
+    };
+    let lead: &Monomial = big_q
+        .terms
+        .keys()
+        .max_by_key(|m| split(m))
+        .expect("a nonzero denominator");
+    if is_negative(&big_q.terms[lead]) {
+        big_p = big_p.neg();
+        big_q = big_q.neg();
+    }
+    let expr_of_split = |f: &PolyElement<IntegerRing>| -> PolyResult<Basic> {
+        let mut grouped: Vec<(Vec<u32>, Vec<Basic>)> = Vec::new();
+        for (m, c) in &f.terms {
+            let (gm, pm) = split(m);
+            let mut factors: Vec<Basic> = vec![Basic::integer(c.clone())];
+            for (i, k) in param_index.iter().zip(&pm) {
+                if *k > 0 {
+                    factors.push(core_pow(&joint[*i], &Basic::int(i64::from(*k)))?);
+                }
+            }
+            let term: Basic = core_mul(&factors)?;
+            match grouped.iter_mut().find(|(g, _)| *g == gm) {
+                Some((_, cs)) => cs.push(term),
+                None => grouped.push((gm, vec![term])),
+            }
+        }
+        let mut parts: Vec<Basic> = Vec::new();
+        for (gm, cs) in grouped {
+            let mut factors: Vec<Basic> = vec![core_add(&cs)?];
+            for (g, k) in gens.iter().zip(&gm) {
+                if *k > 0 {
+                    factors.push(core_pow(g, &Basic::int(i64::from(*k)))?);
+                }
+            }
+            parts.push(core_mul(&factors)?);
+        }
+        core_add(&parts)
+    };
+    core_mul(&[
+        expr_of_split(&big_p)?,
+        core_pow(&expr_of_split(&big_q)?, &Basic::negative_one())?,
+    ])
 }

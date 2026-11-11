@@ -161,6 +161,48 @@ fn small(n: &Int) -> PolyResult<usize> {
     usize::try_from(n).map_err(|_| crate::error::not_ported("the expansion of a huge power"))
 }
 
+/// `_xreplace_evaluated`: the keys of `rule` replaced by their values,
+/// the rebuilt nodes evaluated (the largest subtrees first).
+pub fn xreplace_evaluated(e: &Basic, rule: &std::collections::HashMap<Basic, Basic>) -> PolyResult<Basic> {
+    if let Some(v) = rule.get(e) {
+        return Ok(v.clone());
+    }
+    if e.args().is_empty() {
+        return Ok(e.clone());
+    }
+    let mut args: Vec<Basic> = Vec::new();
+    for a in e.args() {
+        args.push(xreplace_evaluated(a, rule)?);
+    }
+    if args.iter().zip(e.args()).all(|(a, b)| a.ptr_eq(b)) {
+        return Ok(e.clone());
+    }
+    rebuild_evaluated(e, args)
+}
+
+/// `replace(query, value)` with a predicate on nodes: bottom up, the
+/// rebuilt nodes evaluated, a replaced subtree not examined again.
+pub fn replace_where(
+    e: &Basic,
+    query: &dyn Fn(&Basic) -> bool,
+    value: &dyn Fn(&Basic) -> PolyResult<Basic>,
+) -> PolyResult<Basic> {
+    let mut node: Basic = e.clone();
+    if !node.args().is_empty() {
+        let mut args: Vec<Basic> = Vec::new();
+        for a in node.args() {
+            args.push(replace_where(a, query, value)?);
+        }
+        if args.iter().zip(node.args()).any(|(a, b)| !a.ptr_eq(b) && a != b) {
+            node = rebuild_evaluated(&node, args)?;
+        }
+    }
+    if query(&node) {
+        return value(&node);
+    }
+    Ok(node)
+}
+
 /// The hints of an expansion (`expand`'s keywords; `func`, `trig` and
 /// `complex` are not ported).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

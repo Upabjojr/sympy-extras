@@ -55,6 +55,12 @@ create_exception!(
     BasePolynomialError,
     "polys.polyerrors.OperationNotSupported"
 );
+create_exception!(
+    polyerrors,
+    NotInvertible,
+    BasePolynomialError,
+    "polys.polyerrors.NotInvertible"
+);
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let py: Python<'_> = m.py();
@@ -66,6 +72,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("CoercionFailed", py.get_type::<CoercionFailed>())?;
     m.add("ExactQuotientFailed", py.get_type::<ExactQuotientFailed>())?;
     m.add("OperationNotSupported", py.get_type::<OperationNotSupported>())?;
+    m.add("NotInvertible", py.get_type::<NotInvertible>())?;
 
     Ok(())
 }
@@ -80,5 +87,6 @@ pub fn polys_error(kind: sympy_extras_core::error::PolysErrorKind, message: Stri
         K::CoercionFailed => CoercionFailed::new_err(message),
         K::ExactQuotientFailed => ExactQuotientFailed::new_err(message),
         K::OperationNotSupported => OperationNotSupported::new_err(message),
+        K::NotInvertible => NotInvertible::new_err(message),
     }
 }

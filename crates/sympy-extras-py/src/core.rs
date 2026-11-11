@@ -1339,6 +1339,50 @@ fn poly_report<'py>(
     Ok(out)
 }
 
+/// The functions of `polytools` on expressions and `signsimp`:
+/// `polytools_call(name, args, gens)`.
+#[pyfunction]
+fn polytools_call<'py>(
+    py: Python<'py>,
+    name: &str,
+    args: Vec<Bound<'py, PyAny>>,
+    gens: Vec<Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::polys::polytools as pt;
+    let args: Vec<Basic> = args.iter().map(from_python).collect::<PyResult<_>>()?;
+    let gens: Vec<Basic> = gens.iter().map(from_python).collect::<PyResult<_>>()?;
+    let e = crate::convert::err;
+    let one = |r: Result<Basic, sympy_extras_core::error::PolyError>| -> PyResult<Bound<'py, PyAny>> {
+        to_python(py, &r.map_err(e)?)
+    };
+    match name {
+        "signsimp" => one(sympy_extras_core::simplify::signsimp::signsimp(&args[0], true)),
+        "signsimp_unevaluated" => one(sympy_extras_core::simplify::signsimp::signsimp(&args[0], false)),
+        "cancel" => one(pt::cancel(&args[0], &gens)),
+        "invert" => one(pt::invert(&args[0], &args[1])),
+        "gcd" => one(pt::gcd_expr(&args[0], &args[1], &gens)),
+        "lcm" => one(pt::lcm_expr(&args[0], &args[1], &gens)),
+        "gcd_list" => one(pt::gcd_list(&args, &gens)),
+        "lcm_list" => one(pt::lcm_list(&args, &gens)),
+        "resultant" => one(pt::resultant_expr(&args[0], &args[1], &gens)),
+        "discriminant" => one(pt::discriminant_expr(&args[0], &gens)),
+        "LC" => one(pt::LC(&args[0], &gens)),
+        "degree" => {
+            let d = if gens.is_empty() {
+                pt::degree_index(&args[0], 0)
+            } else {
+                pt::degree(&args[0], &gens[0])
+            };
+            Ok(d.map_err(e)?.into_pyobject(py)?.into_any())
+        }
+        "cancel_fraction" => {
+            let (p, q) = pt::cancel_fraction(&args[0], &args[1]).map_err(e)?;
+            Ok(PyTuple::new(py, [to_python(py, &p)?, to_python(py, &q)?])?.into_any())
+        }
+        _ => Err(PyTypeError::new_err(format!("unknown polytools function {}", name))),
+    }
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -1386,6 +1430,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pisigma_report_ops, m)?)?;
     m.add_function(wrap_pyfunction!(expand, m)?)?;
     m.add_function(wrap_pyfunction!(poly_report, m)?)?;
+    m.add_function(wrap_pyfunction!(polytools_call, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;

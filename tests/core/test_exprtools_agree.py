@@ -24,9 +24,10 @@ def checks(rc: Any) -> dict[str, tuple[Callable[[Any, Options], Any], Callable[[
         "gcd_terms": (lambda e, o: et.gcd_terms(e, **o), lambda e, o: rc.gcd_terms(e, **o),
                       [{}, {"clear": False}, {"fraction": False}, {"isprimitive": True}]),
         "factor_terms": (lambda e, o: et.factor_terms(e, **o), lambda e, o: rc.factor_terms(e, **o),
-                         [{}, {"clear": True}, {"fraction": True}, {"sign": False}]),
+                         [{}, {"clear": True}, {"fraction": True}, {"sign": False}, {"radical": True}]),
         "as_content_primitive": (lambda e, o: e.as_content_primitive(**o),
-                                 lambda e, o: rc.as_content_primitive(e, **o), [{}, {"clear": False}]),
+                                 lambda e, o: rc.as_content_primitive(e, **o),
+                                 [{}, {"clear": False}, {"radical": True}, {"radical": True, "clear": False}]),
         "decompose_power": (lambda e, o: et.decompose_power(e), lambda e, o: rc.decompose_power(e), [{}]),
     }
 
@@ -65,3 +66,18 @@ def test_exprtools_agree(rust: Any, seed: int) -> None:
                 assert agree(got, expected), (name, o, e, got, expected)
                 compared += 1
     assert compared >= 100
+
+
+def test_common_radicals(rust: Any) -> None:
+    from sympy_extras.core import Integer, Rational, Symbol, sqrt
+    from sympy_extras.core.power import pow
+    rc = load("sympy_extras_rs.core")
+    x, y = Symbol('x'), Symbol('y')
+    cube = pow(Integer(4), Rational(1, 3))
+    cases = [sqrt(2)*x + sqrt(6), sqrt(2)*x + sqrt(3)*y, 2*sqrt(2)*x + 4*sqrt(6), sqrt(8)*x/3 + sqrt(12)/2,
+             cube*x + pow(Integer(6), Rational(1, 3))*y, sqrt(2)*cube*x + sqrt(6)*cube, sqrt(2) + x,
+             (sqrt(2)*x + sqrt(6))/(sqrt(10)*y + sqrt(15)), x*pow(Integer(12), Rational(3, 2)) + sqrt(18)]
+    for e in cases:
+        for name, (python, rust_function, options) in checks(rc).items():
+            for o in options:
+                assert agree(rust_function(e, o), python(e, o)), (name, o, e)
