@@ -539,6 +539,17 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The mean value integrals of periodic integrands are native
+  (**breaking**): `sympy_extras.integrals.periodic` (`mean_value_integral`,
+  `laurent_coefficient`, `to_laurent`) takes and returns objects of the
+  core and imports no SymPy. It runs on the native `brackets`, `mellin`
+  and `conditions` instead of their faces, the native expansion,
+  summation and `simplify`; the Taylor series of `exp`, `sin`, `cos`,
+  `sinh` and `cosh` are written down (in the forms of the formal power
+  series), so that only the other functions reach SymPy's `fps` through
+  `brackets`, and the bounds of the sums of two series are computed with
+  an exact rational slope instead of a float. The old API on SymPy
+  objects is `sympy_extras.integrals.periodic_sympy` (used by `definite`).
 - Trager's algorithm on a general curve is native (**breaking**):
   `sympy_extras.integrals.curves` (`curve_antiderivative`, `curve_reduce`,
   `is_nonelementary_on_curve`, `integrate_on_curve`, `AlgebraicIntegrand`,

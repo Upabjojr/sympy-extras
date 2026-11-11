@@ -1759,3 +1759,35 @@ def test_native_curves_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_CURVES], capture_output=True, text=True, timeout=900)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PERIODIC = r'''
+import sys
+from sympy_extras.core import Symbol, symbols, pi
+from sympy_extras.functions import exp, cos, sin, cosh, sinh, tan
+from sympy_extras.integrals.periodic import laurent_coefficient, mean_value_integral, to_laurent
+assert 'sympy' not in sys.modules
+x, z = symbols('x z')
+a = Symbol('a', positive=True)
+assert str(to_laurent(cos(2*x) + sin(x), x, z)) == 'z**2/2 - I*(z - 1/z)/2 + 1/(2*z**2)'
+assert to_laurent(x*cos(x), x, z) is None and to_laurent(tan(x), x, z) is not None
+assert str(mean_value_integral(exp(cos(x))*cos(sin(x)), x, 0, 2*pi)) == 'ConditionalValue(2*pi)'
+assert str(mean_value_integral(exp(a*cos(x))*cos(x), x, 0, 2*pi)) == 'ConditionalValue(2*pi*besseli(1, a))'
+assert str(mean_value_integral(cos(cos(x)), x, 0, 2*pi)) == 'ConditionalValue(2*pi*besselj(0, 1))'
+assert str(mean_value_integral(cos(x)**4, x, 0, 4*pi)) == 'ConditionalValue(3*pi/2)'
+assert mean_value_integral(cosh(cos(x))*sinh(sin(x)), x, -pi, pi) is not None
+assert mean_value_integral(1/(2 + cos(x)), x, 0, 2*pi) is None
+assert str(laurent_coefficient(exp(z)*exp(2/z), z, 1)) == 'sqrt(2)*besseli(1, 2*sqrt(2))/2'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_periodic_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.periodic` does not load
+    SymPy, nor do the mean value integrals over whole periods: the Laurent
+    form in ``exp(I*x)``, the Taylor series of ``exp``, ``sin``, ``cos``,
+    ``sinh`` and ``cosh`` written down, the native summation of the
+    products of two series and ``simplify``."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PERIODIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

@@ -302,7 +302,9 @@ The driver tries, after the Mellin method and the residues:
   Laurent coefficient of `f` written in `z = exp(I*x)`, read off or summed
   from the Taylor coefficients of the factors (`exp(cos(x))*cos(sin(x))`
   gives `2*pi`, `exp(a*cos(x))*cos(n*x)` gives `2*pi*besseli(n, a)`);
-  rational functions of `sin` and `cos` go to the residues instead.
+  rational functions of `sin` and `cos` go to the residues instead. The
+  module is native, on the core; `sympy_extras.integrals.periodic_sympy`
+  is its face on SymPy objects.
 - **A table** (`sympy_extras.integrals.tables`): seventy-six entries of
   Gradshteyn and Ryzhik, of Abramowitz and Stegun's Laplace transforms
   and of the literature which no algorithm here reproduces (the Poisson

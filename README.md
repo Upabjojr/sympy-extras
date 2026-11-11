@@ -1012,6 +1012,8 @@ sympy_extras/
         parametric.py        differentiation under the integral sign
         antiderivative.py    antiderivatives evaluated by one-sided limits
         brackets.py          Ramanujan's master theorem, method of brackets
+        periodic.py          integrals over whole periods by the constant Laurent coefficient (native)
+        periodic_sympy.py    the SymPy face of periodic
         recognize.py         PSLQ recognition of integrals (an oracle)
         risch/               Risch algorithm ported from Aaron Meurer's SymPy pull requests
         trager.py            Trager's algorithm for algebraic functions (one square root)
