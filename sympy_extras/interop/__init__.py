@@ -31,6 +31,7 @@ from sympy.assumptions.assume import AppliedPredicate as SymPyAppliedPredicate
 from sympy.assumptions.assume import Predicate as SymPyPredicate
 from sympy.core.relational import Relational as SymPyRelational
 from sympy.logic.boolalg import Boolean as SymPyBoolean
+from sympy.concrete.expr_with_limits import ExprWithLimits
 from sympy.functions.elementary.piecewise import ExprCondPair as SymPyExprCondPair
 
 from sympy_extras.core.add import Add
@@ -368,6 +369,11 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
         # is a number, which no substitution changes
         if issubclass(self._sympy_class, sympy.ComplexRootOf) and self != old:
             return self
+        # the variables of an integral, a sum or a product are bound: SymPy's
+        # subs (Integral(f(r), r).subs(r, g) is Integral(f(r), (r, g)); the
+        # limits rebuilt with the variable replaced, ((g,),), were invalid)
+        if issubclass(self._sympy_class, ExprWithLimits) and self != old:
+            return from_sympy(self._sympy().subs(to_sympy(old), to_sympy(new)))
         return Expr._subs(self, old, new)
 
     def _xreplace(self, rule: ReplacementRule) -> Basic:

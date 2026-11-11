@@ -7,9 +7,9 @@ which is not ported.
 :func:`solution_cases` and :func:`as_zero` take and return SymPy objects
 (the callbacks too: ``solve_at`` and ``solve`` receive the equation at a
 point as a SymPy expression and return SymPy objects), converted by
-:mod:`sympy_extras.interop` around the native functions. The ODE solvers
-still written on SymPy (:mod:`~sympy_extras.solvers.ode`,
-:mod:`~sympy_extras.solvers.second_order`) use them.
+:mod:`sympy_extras.interop` around the native functions (the ODE solvers
+are native and call :mod:`~sympy_extras.solvers._special_values`
+directly).
 
 The step of the native module which stays written on SymPy is called from
 it at run time (:func:`special_values_of_core`, which takes and returns

@@ -544,6 +544,18 @@ def test_a_wrapped_integral_differentiates() -> None:
     assert diff(integral, y) == 0
 
 
+def test_a_wrapped_integral_substitutes_its_bound_variable() -> None:
+    # the variable of a wrapped Integral(f(r), r) substituted by sqrt(x) was
+    # replaced in the limits too, and SymPy refused to rebuild the node
+    # (ValueError: Invalid limits given: ((sqrt(x),),)); SymPy's subs gives
+    # Integral(f(r), (r, sqrt(x))) (dsolve_lie's quadratures)
+    sr, sx = sympy.symbols('r x')
+    r = Symbol('r')
+    integral = as_expr(from_sympy(sympy.Integral(sympy.exp(sr**2), sr)))
+    assert to_sympy(integral.subs(r, sqrt(x))) == sympy.Integral(sympy.exp(sr**2), (sr, sympy.sqrt(sx)))
+    assert to_sympy(as_expr(from_sympy(sympy.Integral(sx*sr, sr))).subs(x, 2)) == sympy.Integral(2*sr, sr)
+
+
 def test_the_connectives() -> None:
     """The connectives are unevaluating classes with evaluating functions,
     equal up to the order of their arguments, printed as SymPy prints them."""

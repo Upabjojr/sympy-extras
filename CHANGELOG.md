@@ -539,6 +539,42 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The symmetry method for ODEs and the second order solvers are native
+  (**breaking**): `sympy_extras.solvers.ode` (`ode_symmetries`,
+  `canonical_coordinates`, `reduce_order`, `dsolve_lie`, `solve_ode`,
+  `ReducedODE`) and `sympy_extras.solvers.second_order`
+  (`second_order_rhs`, `integrating_factor_xy`, `integrating_factor_p`,
+  `is_linearizable`, `linearize`, `rectify_symmetries`,
+  `commuting_pair`, `transformed_rhs`, `dsolve_second_order`,
+  `FirstIntegral`, `Linearization`) take and return objects of the core
+  and the native `lie.Symmetry`, and import no SymPy: the symmetries,
+  the jets, the coefficients, the factorisations, the cancellations and
+  the simplifications are the native ones, a first order equation goes
+  to the native `first_order.dsolve_first_order`, the structure
+  constants of the symmetries are solved by the native
+  `linsolve.solve_linear_unique` (SymPy's `solve` only for a system
+  without a unique solution) and their centralizers by the native null
+  spaces, and the solutions are checked by the new
+  `ode.check_ode_solution`, a port of SymPy's `checkodesol`
+  (PORTED FROM SYMPY, `sympy/solvers/ode/subscheck.py`). SymPy's
+  `dsolve` and `solve` (`pde_sympy.dsolve_of_core`,
+  `pde_sympy.solve_of_core`, `first_order_sympy.dsolve_of_core`,
+  `charpit_sympy.solve_of_core`, `factorization_sympy.solve_of_core`) and
+  `integrate` (`kovacic_sympy.integrate_of_core`, `integral_of_core`) are
+  called through the faces; no new `*_of_core` function. The old API on
+  SymPy objects moves to the new faces `sympy_extras.solvers.ode_sympy`
+  (also `check_ode_solution`) and `sympy_extras.solvers.second_order_sympy`,
+  which the tests, the benchmarks, the README and the docs use. Two
+  differences with the old modules: a quadrature which SymPy evaluates
+  only in part is kept as the whole unevaluated `Integral(V, r)` (the
+  same function, written `Integral(c*V, r)` rather than `c*Integral(V,
+  r)`), and a relation which SymPy's `solve` splits into several
+  branches is a solution only when every branch is (the old check read
+  the first `(verdict, residual)` pair of `checkodesol`'s list, a
+  nonempty tuple and always true). A wrapped SymPy `Integral`, `Sum` or
+  `Product` substitutes its bound variable as SymPy does
+  (`Integral(f(r), r).subs(r, g)` is `Integral(f(r), (r, g))`; the
+  interop rebuilt invalid limits and raised `ValueError`).
 - The linear systems `Y' = A Y + b` are native (**breaking**):
   `sympy_extras.solvers.linear_systems` (`CyclicReduction`,
   `cyclic_reduction`, `cyclic_vector`, `system_to_scalar`,
