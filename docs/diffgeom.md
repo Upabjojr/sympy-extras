@@ -171,7 +171,7 @@ for instance `sympy_extras.simplify.simplify.simplify`.
 * tensors as objects with index positions (only the components of the
   listed tensors), tetrads and the Newman–Penrose formalism;
 * relations between kernels beyond the ones above (`sin(2*x)` against
-  `sin(x)`, `cosh(x)` against `exp(x)`, logarithms): such metrics are
+  `sin(x)`, logarithms): such metrics are
   computed, but a vanishing component may not be reduced to zero;
 * solving the Killing equations or the geodesic equations (they are
   returned as expressions).

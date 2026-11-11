@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `normal_form` writes the hyperbolic functions of a multiple of `w`
+  with exponentials when `exp(r*w)` occurs too: `cosh(x) + sinh(x) -
+  exp(x)` reduces to zero.
 - `matrices.normalforms`: `hermite_normal_form` of matrices of
   polynomials over `K[x]` (`U M = H`, a canonical form of the row
   module), `polynomial_matrix_rank`, `is_unimodular`.

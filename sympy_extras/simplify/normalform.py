@@ -20,7 +20,9 @@ the kernels are first brought to a set with known relations:
   the same base and denominator become powers of one kernel;
 * the exponentials $e^{r w}$ with rational $r$ are integer powers of one
   kernel $e^{g w}$ for each $w$ ($g$ the greatest common divisor of the
-  $r$), so that $e^{x} e^{-x} = 1$ and $e^{2x} = (e^x)^2$ hold;
+  $r$), so that $e^{x} e^{-x} = 1$ and $e^{2x} = (e^x)^2$ hold; the
+  hyperbolic functions of a multiple of $w$ are written with these
+  exponentials when both occur;
 * the imaginary unit satisfies $i^2 = -1$.
 
 With the roots ordered from the outermost in, then the cosines, then the
@@ -39,7 +41,7 @@ kernels) is returned.
 The result is zero exactly when the numerator lies in the ideal of the
 relations: a zero test for these expressions as long as the kernels have
 no relation beyond the ones listed (``sin(2*x)`` and ``sin(x)`` are
-independent kernels here, and so are ``exp(x)`` and ``exp(x**2)`` or
+independent kernels here, and so are ``exp(x)`` and ``exp(x**2)``, or
 ``log(x)`` and ``log(2*x)``). The
 common factors are those of the polynomials: ``(x - 1)/(sqrt(x) - 1)``
 is left as it is.
@@ -195,6 +197,43 @@ class _Abstraction:
         return e
 
 
+def _hyperbolic_as_exponentials(expression: Expr) -> Expr:
+    """The hyperbolic functions of ``c*w`` written with exponentials
+    when the expression has an exponential ``exp(r*w)`` with the same
+    ``w`` (``c`` and ``r`` rational): the two families are then related."""
+    bases: set[Expr] = set()
+    for node in expression.atoms(Exp):
+        argument = node.args[0]
+        if isinstance(argument, Expr):
+            coefficient, rest = argument.as_coeff_Mul()
+            if isinstance(coefficient, Rational):
+                bases.add(rest)
+    if not bases:
+        return expression
+    rule: dict[Basic, Basic] = {}
+    for node in expression.atoms(Sinh, Cosh, Tanh, Coth, Sech, Csch):
+        argument = node.args[0]
+        if not isinstance(argument, Expr):
+            continue
+        coefficient, rest = argument.as_coeff_Mul()
+        if not isinstance(coefficient, Rational) or rest not in bases:
+            continue
+        up, down = exp(argument), exp(-argument)
+        if isinstance(node, Sinh):
+            rule[node] = (up - down)/2
+        elif isinstance(node, Cosh):
+            rule[node] = (up + down)/2
+        elif isinstance(node, Tanh):
+            rule[node] = (up - down)/(up + down)
+        elif isinstance(node, Coth):
+            rule[node] = (up + down)/(up - down)
+        elif isinstance(node, Sech):
+            rule[node] = 2/(up + down)
+        else:
+            rule[node] = 2/(up - down)
+    return expression.xreplace(rule) if rule else expression
+
+
 def _exponentials(expressions: Sequence[Expr], back: dict[Symbol, Expr]) -> list[Expr]:
     """The expressions with ``exp(r*w)``, ``r`` rational, written as
     integer powers of one indeterminate standing for ``exp(g*w)`` (``g``
@@ -296,7 +335,7 @@ def normal_form(e: ExprLike) -> Expr:
     """
     expression = to_expr(e)
     abstraction = _Abstraction()
-    [prepared] = _exponentials([expression], abstraction.back)
+    [prepared] = _exponentials([_hyperbolic_as_exponentials(expression)], abstraction.back)
     abstracted = abstraction.abstract(prepared)
     found: dict[Expr, int] = {}
     _collect_kernels(abstracted, found)
