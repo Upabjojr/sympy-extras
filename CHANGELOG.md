@@ -26,7 +26,9 @@ remove public functions. Breaking changes are listed here when they happen.
   are rejected.
   `steps.inequalities`: `inequality_steps`, `manual_inequality` (linear
   inequalities, sign charts of polynomials and rational functions,
-  absolute values). `steps.derivatives`: `derivative_steps`,
+  absolute values). `steps.systems`: `system_steps`, `manual_system`
+  (substitution with checked solutions, elimination as an alternative).
+  `steps.derivatives`: `derivative_steps`,
   `manual_derivative`. See docs/steps.md.
 - `normal_form` splits the logarithms of positive rational numbers over
   the primes and those of products and powers of symbols declared

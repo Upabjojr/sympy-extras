@@ -2,7 +2,8 @@
 rule dataclasses, produced by generator rules which a solver drives
 (:mod:`sympy_extras.steps.core`), for equations
 (:mod:`sympy_extras.steps.equations`), inequalities
-(:mod:`sympy_extras.steps.inequalities`) and derivatives
+(:mod:`sympy_extras.steps.inequalities`), systems
+(:mod:`sympy_extras.steps.systems`) and derivatives
 (:mod:`sympy_extras.steps.derivatives`).
 
 The package exports nothing: import the modules by their paths."""

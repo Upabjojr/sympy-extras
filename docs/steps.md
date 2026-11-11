@@ -159,6 +159,41 @@ Union(Interval.open(-1, 1), Interval.open(1, oo))
 The tests compare the solution set of every node with the inequality
 evaluated directly at several hundred rational points.
 
+## Systems
+
+`sympy_extras.steps.systems.system_steps` solves a system in several
+unknowns by **substitution**: an equation is solved for an unknown (that
+derivation is the first substep), the result is substituted in the
+others, and the smaller system is solved; an equation with two values
+for the unknown gives two cases. Every solution is checked in the whole
+system (`rejected`). With `branch=True` every choice of equation and
+unknown is kept, and for linear unknowns the **elimination** by a
+combination of two equations.
+
+```python
+>>> from sympy_extras.steps.systems import system_steps, manual_system
+>>> y = Symbol('y')
+>>> print(format_steps(system_steps([(x + y, 3), (x - y, 1)], [x, y])))
+SubstitutionRule: x + y = 3, x - y = 1 -> {(2, 1)}
+  AddToBothSidesRule: x + y = 3 -> {3 - y}
+    SolvedRule: x = 3 - y -> {3 - y}
+  SingleEquationRule: 3 - 2*y = 1 -> {(1,)}
+    AddToBothSidesRule: 3 - 2*y = 1 -> {1}
+      DivideBothSidesRule: -2*y = -2 -> {1}
+        SolvedRule: y = 1 -> {1}
+>>> manual_system([(x**2 + y**2, 5), (x + y, 1)], [x, y]), manual_system([(x + y, 1), (2*x + 2*y, 3)], [x, y])
+(((2, -1), (-1, 2)), ())
+>>> ways = system_steps([(2*x + 3*y, 7), (4*x - y, 7)], [x, y], branch=True)
+>>> sorted({way.rule for way in ways.alternatives}), ways.solutions()
+(['EliminationRule', 'SubstitutionRule'], ((2, 1),))
+
+```
+
+Systems with infinitely many solutions are not solved (`manual_system`
+returns `None`). The tests substitute every solution of every node in
+that node's system and check that none of the real solutions SymPy
+finds is missing.
+
 ## Derivatives
 
 ```python
@@ -236,7 +271,8 @@ step which holds alternatives.
 ## Not done
 
 * equations: exponentials of different bases (`4**x - 2**x - 2`), sums
-  of trigonometric functions of different arguments, systems;
+  of trigonometric functions of different arguments; systems with
+  infinitely many solutions (parametrised solution sets);
   inequalities with radicals, exponentials or parameters; case
   distinctions on parameters (a coefficient by which
   a side is divided is taken to be nonzero);
