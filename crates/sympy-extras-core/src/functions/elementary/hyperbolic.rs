@@ -13,7 +13,6 @@ use crate::core::add::add;
 use crate::core::assumptions::{facts_of, FactList, Predicate};
 use crate::core::basic::{Basic, Function, Head};
 use crate::core::expr::{as_coefficient, is_true};
-use crate::core::function::expand_default;
 use crate::core::mul::{mul, raw_mul};
 use crate::core::parameters::evaluate;
 use crate::core::power::pow;
@@ -277,7 +276,13 @@ pub fn hyperbolic_conjugate(f: Function, arg: &Basic) -> PolyResult<Basic> {
 
 /// The real and imaginary parts of a node of this module
 /// (`_eval_as_real_imag`).
-pub fn hyperbolic_real_imag(e: &Basic, f: Function, deep: bool) -> PolyResult<Option<RealImag>> {
+pub fn hyperbolic_real_imag(
+    e: &Basic,
+    f: Function,
+    deep: bool,
+    hints: Option<&crate::core::function::Hints>,
+) -> PolyResult<Option<RealImag>> {
+    use crate::core::function::expand_with_hints;
     let arg: &Basic = &e.args()[0];
     match f {
         Function::Sech => return as_real_imag(&pow(&cosh(arg)?, &Basic::negative_one())?, deep, None),
@@ -285,9 +290,20 @@ pub fn hyperbolic_real_imag(e: &Basic, f: Function, deep: bool) -> PolyResult<Op
         _ => {}
     }
     if is_true(arg, extended_real) {
-        return Ok(Some((if deep { expand_default(e)? } else { e.clone() }, Basic::zero())));
+        return Ok(Some((
+            if deep {
+                expand_with_hints(e, hints, Some(false))?
+            } else {
+                e.clone()
+            },
+            Basic::zero(),
+        )));
     }
-    let expanded: Basic = if deep { expand_default(arg)? } else { arg.clone() };
+    let expanded: Basic = if deep {
+        expand_with_hints(arg, hints, None)?
+    } else {
+        arg.clone()
+    };
     let Some((r, im_part)) = as_real_imag(&expanded, true, None)? else {
         return Ok(None);
     };

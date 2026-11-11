@@ -21,7 +21,7 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         Head::Add => add(&args),
         Head::Mul => mul(&args),
         Head::Pow => pow(&args[0], &args[1]),
-        Head::Function(f) => crate::functions::apply_function(*f, &args[0]),
+        Head::Function(f) => crate::functions::apply_function(*f, &args),
         Head::Derivative => {
             // Derivative._evaluated: diff of the new expression
             let counts: Vec<(Basic, u64)> = derivative_counts(&e.rebuild(args.clone()));
@@ -203,8 +203,8 @@ pub fn replace_where(
     Ok(node)
 }
 
-/// The hints of an expansion (`expand`'s keywords; `func`, `trig` and
-/// `complex` are not ported).
+/// The hints of an expansion (`expand`'s keywords; `func` and `trig` are
+/// not ported).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Hints {
     pub mul: bool,
@@ -213,6 +213,8 @@ pub struct Hints {
     pub power_exp: bool,
     pub log: bool,
     pub force: bool,
+    /// Every node as `re + I*im` (SymPy's `complex`), before the others.
+    pub complex: bool,
 }
 
 impl Hints {
@@ -224,6 +226,7 @@ impl Hints {
         power_exp: true,
         log: true,
         force: false,
+        complex: false,
     };
     const NONE: Hints = Hints {
         mul: false,
@@ -232,6 +235,7 @@ impl Hints {
         power_exp: false,
         log: false,
         force: false,
+        complex: false,
     };
 }
 
@@ -609,6 +613,21 @@ fn expand_pass(e: &Basic, deep: bool, hints: Hints) -> PolyResult<Basic> {
 /// SymPy's `Expr.expand`.
 pub fn expand_with(e: &Basic, deep: bool, hints: Hints) -> PolyResult<Basic> {
     let mut e: Basic = e.clone();
+    let mut hints: Hints = hints;
+    if hints.complex {
+        // SymPy applies its hints in sorted order: complex before log,
+        // multinomial, mul and the power hints (ExpandHints carries no force)
+        e = expand_complex(
+            &e,
+            deep,
+            &Hints {
+                complex: true,
+                force: false,
+                ..hints
+            },
+        )?;
+        hints.complex = false;
+    }
     if hints.log && (hints.mul || hints.multinomial) {
         e = expand_pass(
             &e,
@@ -661,9 +680,68 @@ pub fn expand_multinomial(e: &Basic, deep: bool) -> PolyResult<Basic> {
     expand(e, deep, false, true)
 }
 
-/// `e.expand()` with the default hints.
+/// `expand(e)` with the default hints of the function `expand`
+/// (logarithms split).
 pub fn expand_default(e: &Basic) -> PolyResult<Basic> {
     expand_with(e, true, Hints::DEFAULT)
+}
+
+/// `e.expand()`, the method: its defaults leave the logarithms (`log =
+/// False`), unlike the function `expand`.
+pub fn expand_method(e: &Basic) -> PolyResult<Basic> {
+    expand_with(
+        e,
+        true,
+        Hints {
+            log: false,
+            ..Hints::DEFAULT
+        },
+    )
+}
+
+/// `e.expand(deep, **hints)` inside `as_real_imag` (`expand_with_hints`):
+/// the hints of the `expand` call (`complex` replaced when given), the
+/// defaults of the method without a call.
+pub fn expand_with_hints(e: &Basic, hints: Option<&Hints>, complex: Option<bool>) -> PolyResult<Basic> {
+    match hints {
+        None => expand_method(e),
+        Some(h) => {
+            let mut h: Hints = *h;
+            if let Some(c) = complex {
+                h.complex = c;
+            }
+            h.force = false;
+            expand_with(e, true, h)
+        }
+    }
+}
+
+/// Every node (its arguments first) as `re + I*im` (`_expand_complex`).
+fn expand_complex(e: &Basic, deep: bool, hints: &Hints) -> PolyResult<Basic> {
+    let mut e: Basic = e.clone();
+    if deep && !e.args().is_empty() {
+        let mut args: Vec<Basic> = Vec::new();
+        for a in e.args() {
+            args.push(expand_complex(a, deep, hints)?);
+        }
+        if args
+            .iter()
+            .zip(e.args())
+            .any(|(new, old)| !new.ptr_eq(old) && new != old)
+        {
+            e = rebuild_evaluated(&e, args)?;
+        }
+    }
+    use crate::functions::elementary::complexes::{as_real_imag_with, im, re};
+    let (real, imaginary) = match as_real_imag_with(&e, true, None, Some(hints))? {
+        Some(parts) => parts,
+        None => (re(&e)?, im(&e)?),
+    };
+    let new: Basic = add(&[real, mul(&[Basic::imaginary_unit(), imaginary])?])?;
+    if new != e {
+        return Ok(new);
+    }
+    Ok(e)
 }
 
 // ---------------------------------------------------------------------
@@ -792,9 +870,11 @@ pub fn derivative(e: &Basic, s: &Basic) -> PolyResult<Basic> {
                 return Ok(own);
             }
             let mut chain: Vec<Basic> = Vec::new();
-            let da: Basic = derivative(&e.args()[0], s)?;
-            if !is_zero_rational(&da) {
-                chain.push(mul(&[crate::functions::fdiff(*f, e)?, da])?);
+            for (i, a) in e.args().iter().enumerate() {
+                let da: Basic = derivative(a, s)?;
+                if !is_zero_rational(&da) {
+                    chain.push(mul(&[crate::functions::fdiff(*f, e, i + 1)?, da])?);
+                }
             }
             add(&chain)
         }

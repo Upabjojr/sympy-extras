@@ -109,6 +109,19 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
             Ok(Some(super::hyperbolic::hyperbolic_conjugate(f, arg)?))
         }
+        g @ (Function::Asin
+        | Function::Acos
+        | Function::Atan
+        | Function::Acot
+        | Function::Asec
+        | Function::Acsc
+        | Function::Asinh
+        | Function::Acosh
+        | Function::Atanh
+        | Function::Acoth
+        | Function::Asech
+        | Function::Acsch) => super::inverse::inverse_conjugate(e, g),
+        Function::Arg | Function::Atan2 => super::argument::argument_conjugate(e, f),
         Function::Log => {
             // DefinedFunction._eval_conjugate
             if is_true(e, extended_real) {
@@ -288,7 +301,7 @@ fn mul_real_imag(e: &Basic, deep: bool, ignore: Option<&Basic>) -> PolyResult<Op
 }
 
 /// `Pow.as_real_imag`.
-fn pow_real_imag(e: &Basic, deep: bool) -> PolyResult<Option<RealImag>> {
+fn pow_real_imag(e: &Basic, deep: bool, ignore: Option<&Basic>) -> PolyResult<Option<RealImag>> {
     let (base, exponent) = (&e.args()[0], &e.args()[1]);
     if let Some(x) = exponent.as_rational() {
         let Some((re_e, im_e)) = as_real_imag(base, deep, None)? else {
@@ -329,19 +342,50 @@ fn pow_real_imag(e: &Basic, deep: bool) -> PolyResult<Option<RealImag>> {
                 return Ok(Some((Basic::zero(), pow(&neg(base)?, exponent)?)));
             }
         }
-        return Err(not_ported("atan2, cos and sin of a rational power"));
+        // the modulus and the argument
+        let modulus: Basic = pow(
+            &add(&[pow(&re_e, &Basic::int(2))?, pow(&im_e, &Basic::int(2))?])?,
+            &Basic::half(),
+        )?;
+        let angle: Basic = super::argument::atan2(&im_e, &re_e)?;
+        let (rp, tp) = (pow(&modulus, exponent)?, mul(&[angle, exponent.clone()])?);
+        use super::trigonometric::{cos, sin};
+        return Ok(Some((mul(&[rp.clone(), cos(&tp)?])?, mul(&[rp, sin(&tp)?])?)));
     }
     if matches!(base.head(), Head::Exp1) {
-        return Err(not_ported("cos and sin of a power of E"));
+        let Some((mut re_e, mut im_e)) = as_real_imag(exponent, deep, None)? else {
+            return Ok(None);
+        };
+        if deep {
+            re_e = crate::core::function::expand_method(&re_e)?;
+            im_e = crate::core::function::expand_method(&im_e)?;
+        }
+        use super::trigonometric::{cos, sin};
+        let modulus: Basic = exp(&re_e)?;
+        return Ok(Some((
+            mul(&[modulus.clone(), cos(&im_e)?])?,
+            mul(&[modulus, sin(&im_e)?])?,
+        )));
     }
     if deep {
-        return Err(not_ported("expand(complex=False) of a power"));
+        let expanded: Basic = crate::core::function::expand_method(e)?;
+        if ignore == Some(&expanded) {
+            return Ok(None);
+        }
+        return Ok(Some((re(&expanded)?, im(&expanded)?)));
     }
     Ok(Some((re(e)?, im(e)?)))
 }
 
 /// The real and imaginary parts of a function node (`_eval_as_real_imag`).
-fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>) -> PolyResult<Option<RealImag>> {
+fn function_real_imag(
+    e: &Basic,
+    f: Function,
+    deep: bool,
+    ignore: Option<&Basic>,
+    hints: Option<&crate::core::function::Hints>,
+) -> PolyResult<Option<RealImag>> {
+    use crate::core::function::expand_with_hints;
     match f {
         Function::Re | Function::Im | Function::Abs => Ok(Some((e.clone(), Basic::zero()))),
         Function::Exp => {
@@ -350,8 +394,8 @@ fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>
                 return Ok(None);
             };
             if deep {
-                r = crate::core::function::expand_default(&r)?;
-                im_part = crate::core::function::expand_default(&im_part)?;
+                r = expand_with_hints(&r, hints, None)?;
+                im_part = expand_with_hints(&im_part, hints, None)?;
             }
             let modulus: Basic = exp(&r)?;
             use super::trigonometric::{cos, sin};
@@ -361,22 +405,50 @@ fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>
             )))
         }
         Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
-            super::trigonometric::trigonometric_real_imag(f, &e.args()[0], deep)
+            super::trigonometric::trigonometric_real_imag(f, &e.args()[0], deep, hints)
         }
         Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
-            super::hyperbolic::hyperbolic_real_imag(e, f, deep)
+            super::hyperbolic::hyperbolic_real_imag(e, f, deep, hints)
         }
         Function::Log => {
-            let z: &Basic = &e.args()[0];
-            if deep && !z.is_atom() {
-                return Err(not_ported("expand of the argument of log"));
-            }
-            if abs_(z)? == *z {
+            let z: Basic = if deep {
+                expand_with_hints(&e.args()[0], hints, None)?
+            } else {
+                e.args()[0].clone()
+            };
+            let modulus: Basic = abs_(&z)?;
+            if modulus == z {
                 return Ok(Some((e.clone(), Basic::zero())));
             }
-            Err(not_ported("arg"))
+            let log_modulus: Basic = super::exponential::log(&modulus)?;
+            if let Some(h) = hints.filter(|h| h.log) {
+                return Ok(Some((
+                    expand_with_hints(&log_modulus, Some(h), Some(false))?,
+                    super::argument::arg(&z)?,
+                )));
+            }
+            Ok(Some((log_modulus, super::argument::arg(&z)?)))
         }
-        Function::Sign | Function::Conjugate => {
+        g @ (Function::Asin
+        | Function::Acos
+        | Function::Atan
+        | Function::Acot
+        | Function::Asec
+        | Function::Acsc
+        | Function::Asinh
+        | Function::Acosh
+        | Function::Atanh
+        | Function::Acoth
+        | Function::Asech
+        | Function::Acsch) => {
+            let _ = g;
+            if ignore == Some(e) {
+                return Ok(None);
+            }
+            Ok(Some((re(e)?, im(e)?)))
+        }
+        Function::Arg => Ok(Some((e.clone(), Basic::zero()))),
+        Function::Atan2 | Function::Sign | Function::Conjugate => {
             if ignore == Some(e) {
                 return Ok(None);
             }
@@ -388,6 +460,18 @@ fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>
 /// The real and imaginary parts of `e` by complex expansion; `None` when
 /// they would only be `re(ignore)`, `im(ignore)` (`as_real_imag`).
 pub fn as_real_imag(e: &Basic, deep: bool, ignore: Option<&Basic>) -> PolyResult<Option<RealImag>> {
+    as_real_imag_with(e, deep, ignore, None)
+}
+
+/// [`as_real_imag`] with the hints of an `expand` call, which a function
+/// node expands its parts with (the sums, products and powers recurse
+/// without them, as in SymPy).
+pub fn as_real_imag_with(
+    e: &Basic,
+    deep: bool,
+    ignore: Option<&Basic>,
+    hints: Option<&crate::core::function::Hints>,
+) -> PolyResult<Option<RealImag>> {
     if e.as_rational().is_some() {
         return Ok(Some((e.clone(), Basic::zero())));
     }
@@ -408,8 +492,8 @@ pub fn as_real_imag(e: &Basic, deep: bool, ignore: Option<&Basic>) -> PolyResult
             Ok(Some((add(&real_parts)?, add(&imaginary_parts)?)))
         }
         Head::Mul => mul_real_imag(e, deep, ignore),
-        Head::Pow => pow_real_imag(e, deep),
-        Head::Function(f) => function_real_imag(e, *f, deep, ignore),
+        Head::Pow => pow_real_imag(e, deep, ignore),
+        Head::Function(f) => function_real_imag(e, *f, deep, ignore, hints),
         _ => {
             if ignore == Some(e) {
                 return Ok(None);
