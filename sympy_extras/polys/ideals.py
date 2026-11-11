@@ -29,12 +29,13 @@ steps which stay written on SymPy are called from here at run time
 through the face (the functions ending in ``_of_core``): the modular
 Gröbner bases over ``QQ`` when F4 does not finish within
 ``settings.groebner_direct_time``
-(:func:`sympy_extras.polys.modulargroebner.modular_groebner`), SymPy's
+(:func:`sympy_extras.polys.modulargroebner.modular_groebner`) and SymPy's
 Buchberger algorithm when ``settings.groebner_algorithm`` is
-``'buchberger'``, and the decompositions of positive-dimensional ideals
-through regular chains (:mod:`sympy_extras.polys.idealdecomposition`: the
-radical, the equidimensional parts, the minimal and associated primes,
-the primary decomposition).
+``'buchberger'``. The decompositions of positive-dimensional ideals
+through regular chains (the radical, the equidimensional parts, the
+minimal and associated primes, the primary decomposition) are those of
+:mod:`sympy_extras.polys.idealdecomposition`, the rational univariate
+representation that of :mod:`sympy_extras.polys.rur`, both native.
 
 Examples
 ========
@@ -1045,6 +1046,35 @@ class Ideal(Generic[T]):
             v = [_dot(row, v, K) for row in M]
             k += 1
 
+    def rur(self, t: Optional[Symbol] = None) -> _rur.RationalUnivariateRepresentation:
+        """The rational univariate representation of the ideal
+        (zero-dimensional ideals over ``QQ``, Rouillier's algorithm,
+        :func:`sympy_extras.polys.rur.rur`): a separating linear form, the
+        squarefree polynomial in ``t`` of its values at the zeros and the
+        coordinates of the zeros as rational functions of the root.
+
+        >>> from sympy_extras.core import symbols
+        >>> from sympy_extras.polys.domains import QQ
+        >>> from sympy_extras.polys.ideals import Ideal
+        >>> x, y, t = symbols('x y t')
+        >>> R = Ideal([x**2 - 2, y - x**3], x, y, domain=QQ).rur(t)
+        >>> R.polynomial.to_expr(), [g.to_expr() for g in R.polynomials()]
+        (t**2 - 2, [t, 2*t])
+        """
+        return _rur.rur(self._over_rationals(), t=t)
+
+    def _over_rationals(self) -> Ideal[Fraction]:
+        """The same ideal over ``QQ`` (``NotImplementedError`` for another
+        coefficient field), with its basis for the default order when it
+        is known."""
+        if not isinstance(self.domain, RationalField):
+            raise NotImplementedError("real zeros are counted for ideals over QQ, not %s" % (self.domain,))
+        result = Ideal.from_terms([_rational_terms(g) for g in self.gens], self.symbols, QQ, self.order)
+        known = self._bases.get(self.order)
+        if known is not None:
+            result._set_basis([_rational_terms(g) for g in known])
+        return result
+
     def univariate(self, x: Symbol) -> DensePoly[T]:
         """The monic generator of $I \\cap K[x]$ for a variable ``x``
         (zero-dimensional ideals).
@@ -1065,8 +1095,8 @@ class Ideal(Generic[T]):
         zero (the ideal plus the squarefree parts of the univariate
         polynomials in each variable), and as the intersection of the
         saturated ideals of squarefree regular chains otherwise
-        (:mod:`sympy_extras.polys.idealdecomposition`, over the rationals,
-        through the face).
+        (:func:`sympy_extras.polys.idealdecomposition.radical`, over the
+        rationals).
 
         >>> from sympy_extras.core import symbols
         >>> from sympy_extras.polys.domains import QQ
@@ -1078,8 +1108,8 @@ class Ideal(Generic[T]):
         if self.is_whole_ring():
             return self.reduced()
         if not self.is_zero_dimensional():
-            from .ideals_sympy import radical_of_core
-            return radical_of_core(self)
+            from .idealdecomposition import radical
+            return radical(self)
         R = self.ring()
         n = len(self.symbols)
         extra: list[PolyElement[T]] = []
@@ -1119,39 +1149,34 @@ class Ideal(Generic[T]):
 
     def equidimensional_parts(self) -> list[Ideal[T]]:
         """The equidimensional parts of the radical, by decreasing
-        dimension (:func:`~sympy_extras.polys.idealdecomposition.equidimensional_parts`,
-        through the face)."""
-        from .ideals_sympy import equidimensional_parts_of_core
-        return equidimensional_parts_of_core(self)
+        dimension (:func:`~sympy_extras.polys.idealdecomposition.equidimensional_parts`)."""
+        from .idealdecomposition import equidimensional_parts
+        return equidimensional_parts(self)
 
     def minimal_primes(self) -> list[Ideal[T]]:
         """The minimal primes of the ideal, by decreasing dimension
-        (:func:`~sympy_extras.polys.idealdecomposition.minimal_primes`,
-        through the face)."""
-        from .ideals_sympy import minimal_primes_of_core
-        return minimal_primes_of_core(self)
+        (:func:`~sympy_extras.polys.idealdecomposition.minimal_primes`)."""
+        from .idealdecomposition import minimal_primes
+        return minimal_primes(self)
 
     def primary_decomposition(self) -> list[tuple[Ideal[T], Ideal[T]]]:
         """An irredundant primary decomposition, as pairs of a primary
         ideal and its associated prime
-        (:func:`~sympy_extras.polys.idealdecomposition.primary_decomposition`,
-        through the face)."""
-        from .ideals_sympy import primary_decomposition_of_core
-        return primary_decomposition_of_core(self)
+        (:func:`~sympy_extras.polys.idealdecomposition.primary_decomposition`)."""
+        from .idealdecomposition import primary_decomposition
+        return primary_decomposition(self)
 
     def associated_primes(self) -> list[Ideal[T]]:
         """The associated primes, minimal and embedded, by decreasing
-        dimension (:func:`~sympy_extras.polys.idealdecomposition.associated_primes`,
-        through the face)."""
-        from .ideals_sympy import associated_primes_of_core
-        return associated_primes_of_core(self)
+        dimension (:func:`~sympy_extras.polys.idealdecomposition.associated_primes`)."""
+        from .idealdecomposition import associated_primes
+        return associated_primes(self)
 
     def is_primary(self) -> bool:
         """Whether the ideal is primary
-        (:func:`~sympy_extras.polys.idealdecomposition.is_primary`, through
-        the face)."""
-        from .ideals_sympy import is_primary_of_core
-        return is_primary_of_core(self)
+        (:func:`~sympy_extras.polys.idealdecomposition.is_primary`)."""
+        from .idealdecomposition import is_primary
+        return is_primary(self)
 
     def is_maximal(self) -> bool:
         """Whether the ideal is maximal, i.e. $K[x]/I$ is a field: the
@@ -1242,9 +1267,20 @@ class Ideal(Generic[T]):
         return self.groebner_basis(target)
 
 
+def _rational_terms(f: PolyElement[T]) -> Terms[Fraction]:
+    """The terms of a polynomial over a domain standing for ``QQ``, with
+    rational coefficients."""
+    K = f.ring.domain
+    return {m: QQ.convert(c, K) for m, c in f.terms.items()}
+
+
 def _dot(row: Sequence[T], v: Sequence[T], K: Domain[T]) -> T:
     total = K.zero
     for a, b in zip(row, v):
         if not K.is_zero(a) and not K.is_zero(b):
             total = K.add(total, K.mul(a, b))
     return total
+
+
+# rur builds on this module (imported at the end: it imports Ideal from here)
+from . import rur as _rur  # noqa: E402

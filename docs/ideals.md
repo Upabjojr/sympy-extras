@@ -30,7 +30,8 @@ This package adds, on top of SymPy's Gröbner basis engine:
   quotient algebra, multiplication matrices, the univariate polynomial in
   each variable, the **radical** (Seidenberg's lemma), the test for
   **maximal** ideals and the **rational univariate representation**
-  (Rouillier, `sympy_extras.polys.rur`);
+  (Rouillier, `sympy_extras.polys.rur`, and its SymPy face
+  `sympy_extras.polys.rur_sympy`);
 - for zero-dimensional ideals over the rationals: the number of **real
   solutions** and the **signs** of other polynomials at them, counted
   without solving, by Hermite's quadratic form and sign determination;
@@ -203,7 +204,7 @@ the characteristic polynomial.
 
 ```python
 >>> from sympy.abc import x, y, t
->>> from sympy_extras.polys.rur import rur
+>>> from sympy_extras.polys.rur_sympy import rur
 >>> R = rur([x**2 + y**2 - 1, x*y], x, y, t=t)
 >>> R.form, R.polynomial
 (x + 2*y, Poly(t**4 - 5*t**2 + 4, t, domain='QQ'))
@@ -402,20 +403,19 @@ face, as the functions ending in `_of_core` of
 `sympy_extras.polys.ideals_sympy`: `modular_groebner_of_core` (the modular
 algorithm over `QQ`, when F4 has not finished within
 `settings.groebner_direct_time`), `direct_groebner_of_core` (SymPy's
-Buchberger with `settings.groebner_algorithm = 'buchberger'`), and
-`radical_of_core`, `equidimensional_parts_of_core`,
-`minimal_primes_of_core`, `primary_decomposition_of_core`,
-`associated_primes_of_core`, `is_primary_of_core` (the decompositions of
-`sympy_extras.polys.idealdecomposition` through regular chains, which stay
-on SymPy). The rational univariate representation is a method of the face
-only.
+Buchberger with `settings.groebner_algorithm = 'buchberger'`). The
+decompositions through regular chains
+(`sympy_extras.polys.idealdecomposition`) and the rational univariate
+representation (`sympy_extras.polys.rur`, the method `Ideal.rur`) are
+native; only the exact solutions of a representation, SymPy's `CRootOf`
+objects, are computed on SymPy (`solutions_of_core` of
+`sympy_extras.polys.rur_sympy`).
 
 The face `sympy_extras.polys.ideals_sympy.Ideal` has the API the module
 had before: SymPy expressions, `Poly` generators, the domain inferred with
 `extension=True`, `Poly` bases, SymPy matrices, the SymPy rings and ring
-elements of `ring(order)` and `_basis(order)` (which `rur`,
-`idealdecomposition`, `regularchains` and
-`rosenfeld_groebner` use), and the same results: on 8037 recorded calls
+elements of `ring(order)` and `_basis(order)` (which
+`rosenfeld_groebner` uses), and the same results: on 8037 recorded calls
 (the doctests and tests of these modules and 50 more) the face returned
 what the old class returned, and the native class, its inputs and outputs
 converted, what the face returned.
@@ -797,7 +797,10 @@ has the same methods, `rur` excepted, plus `normal_form(f, order)`,
   `sympy_extras.polys.idealdecomposition` compute them from the chains, in
   dimension zero too), `primary_decomposition()`, `associated_primes()`,
   `is_primary()` (and the functions of the same names, with
-  `independent_set`, in `sympy_extras.polys.idealdecomposition`).
+  `independent_set`, in the native `sympy_extras.polys.idealdecomposition`,
+  on the ideals of `sympy_extras.polys.ideals`, and in its SymPy face
+  `sympy_extras.polys.idealdecomposition_sympy`, on those of
+  `sympy_extras.polys.ideals_sympy`).
 
 `count_real_solutions(system, *gens)`, `count_complex_solutions(system,
 *gens)`, `tarski_query(system, g, *gens)`, `real_sign_counts(system, g,
@@ -835,7 +838,10 @@ bound=None)`, `chinese_remainder(a, m, b, p)`, `default_primes()` and
 `rur(system, *gens, t=None)` and `RationalUnivariateRepresentation`
 (attributes `form`, `polynomial`, `characteristic`, `denominator`,
 `numerators`; methods `polynomials`, `solutions`, `coordinates`,
-`multiplicity`) are in `sympy_extras.polys.rur`; `Ideal.rur(t)` calls it.
+`multiplicity`) are in `sympy_extras.polys.rur` (native: core
+expressions, `DensePoly` polynomials over `QQ`) and in its SymPy face
+`sympy_extras.polys.rur_sympy` (SymPy expressions, `Poly` objects);
+`Ideal.rur(t)` calls them.
 `hilbert_numerator(monomials, t)`, `hilbert_series(monomials, variables,
 t)` and `minimal_generators(monomials)` in `sympy_extras.polys.hilbert`
 compute the Hilbert series of a monomial ideal by Bigatti's algorithm. `groebner_walk`, `extended_groebner` and

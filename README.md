@@ -1068,14 +1068,16 @@ sympy_extras/
         polyclasses.py       DensePoly: the typed polynomial class over a domain, with the algorithms as methods
         rings.py             PolyRing, PolyElement: sparse multivariate polynomials with monomial orders, the division algorithm
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
-        idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension
+        idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension (native)
+        idealdecomposition_sympy.py  its SymPy face
         hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination (native)
         hermite_sympy.py     its SymPy face
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
         f4.py                Faugère's F4 on the typed rings: Gröbner bases by its own sparse row reduction, over any field
         interop.py           conversions between SymPy's polynomial rings and the typed ones (QQ, ZZ, GF(p))
         hilbert.py           Hilbert series of monomial ideals by Bigatti's algorithm
-        rur.py               the rational univariate representation of zero-dimensional ideals (Rouillier)
+        rur.py               the rational univariate representation of zero-dimensional ideals (Rouillier, native)
+        rur_sympy.py         its SymPy face
         stronggroebner.py    strong Gröbner bases over the integers (Kandri-Rody–Kapur, Lichtblau)
         modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold)
         orderings.py         WeightOrder, BlockOrder

@@ -7,9 +7,7 @@ ideals of :mod:`sympy_extras.polys.ideals_sympy` (over ``QQ``), convert
 them to the core (:mod:`sympy_extras.interop`) and to the native ideals
 (:func:`~sympy_extras.polys.ideals_sympy.native_ideal`), run the native
 functions and convert the answers back: integers, sign conditions, SymPy
-matrices of rationals. Nothing of the computation stays on SymPy. The
-quotient algebra :class:`_Algebra` of a face ideal, with its vectors over
-SymPy's ``QQ``, is what :mod:`sympy_extras.polys.rur` builds on.
+matrices of rationals. Nothing of the computation stays on SymPy.
 
 Examples
 ========
@@ -23,7 +21,6 @@ Examples
 """
 from __future__ import annotations
 
-from fractions import Fraction
 from typing import Sequence, Union
 
 from sympy.core.expr import Expr
@@ -33,7 +30,6 @@ from sympy.logic.boolalg import Boolean
 from sympy.matrices.dense import MutableDenseMatrix
 from sympy.polys.domains import QQ
 from sympy.polys.polytools import Poly
-from sympy.polys.rings import PolyElement as SymPyPolyElement
 
 from sympy_extras._typing import DomainElement, Truth, as_boolean, as_expr
 from sympy_extras.core.expr import Expr as CoreExpr
@@ -45,7 +41,6 @@ from . import hermite as native
 from .domains.rationalfield import QQ as CoreQQ
 from .hermite import SignCondition, SignCounts
 from .ideals_sympy import Ideal, native_ideal
-from .rings import PolyElement
 
 __all__ = ['SignCounts', 'System', 'Vector', 'Rows', 'SignCondition', 'hermite_matrix', 'tarski_query',
            'count_real_solutions', 'count_complex_solutions', 'real_sign_counts', 'sign_determination',
@@ -60,26 +55,6 @@ Vector = list[DomainElement]
 Rows = list[list[DomainElement]]
 #: a polynomial of the face
 Polynomial = Union[Expr, Poly, int]
-
-
-def _fraction(c: DomainElement) -> Fraction:
-    return Fraction(int(QQ.numer(c)), int(QQ.denom(c)))
-
-
-def _vector_out(v: native.Vector) -> Vector:
-    return [QQ(c.numerator, c.denominator) for c in v]
-
-
-def _vector_in(v: Vector) -> native.Vector:
-    return [_fraction(c) for c in v]
-
-
-def _rows_out(rows: native.Rows) -> Rows:
-    return [_vector_out(row) for row in rows]
-
-
-def _rows_in(rows: Rows) -> native.Rows:
-    return [_vector_in(row) for row in rows]
 
 
 def _core_expr(e: Union[Expr, Poly]) -> CoreExpr:
@@ -103,53 +78,8 @@ def _core_symbol(s: Symbol) -> CoreSymbol:
     return converted
 
 
-class _Algebra:
-    """The quotient algebra of a zero-dimensional ideal of the face over
-    ``QQ`` (the native :class:`sympy_extras.polys.hermite._Algebra`), with
-    its vectors and matrices over SymPy's ``QQ``; its elements are those
-    of the ring of the native ideal."""
-
-    def __init__(self, ideal: Ideal) -> None:
-        if ideal.domain != QQ:
-            raise NotImplementedError("real zeros are counted for ideals over QQ, not %s" % ideal.domain)
-        self.ideal: Ideal = ideal
-        self.native: native._Algebra = native._Algebra(native_ideal(ideal, CoreQQ))
-        self.empty: bool = self.native.empty
-        self.index: dict[tuple[int, ...], int] = self.native.index
-        R = ideal.ring()
-        one = R.domain.one
-        #: the standard monomials, as elements of the ring of the face
-        self.basis: list[SymPyPolyElement] = [R.from_dict({m: one}) for m in self.native.monomials]
-        self.trace: Vector = _vector_out(self.native.trace)
-
-    def element(self, g: Polynomial) -> PolyElement[Fraction]:
-        """``g`` as an element of the ring of the native ideal."""
-        return self.native.element(_element(g))
-
-    def coordinates(self, f: PolyElement[Fraction]) -> Vector:
-        """The coordinates of the normal form of ``f``."""
-        return _vector_out(self.native.coordinates(f))
-
-    def transposed_multiplication(self, g: PolyElement[Fraction]) -> Rows:
-        """The transpose of the matrix of multiplication by ``g``."""
-        return _rows_out(self.native.transposed_multiplication(g))
-
-    def compose(self, form: Vector, transposed: Rows) -> Vector:
-        """The linear form ``h -> form(g h)``, for ``transposed`` the
-        transposed multiplication matrix of ``g``."""
-        return _vector_out(self.native.compose(_vector_in(form), _rows_in(transposed)))
-
-    def hermite(self, form: Vector) -> Rows:
-        """The matrix of ``(p, q) -> form(p q)`` in the standard monomials."""
-        return _rows_out(self.native.hermite(_vector_in(form)))
-
-
 def _ideal(system: System, gens: Sequence[Symbol]) -> Ideal:
     return system if isinstance(system, Ideal) else Ideal(list(system), *gens)
-
-
-def _algebra(system: System, gens: Sequence[Symbol]) -> _Algebra:
-    return _Algebra(_ideal(system, gens))
 
 
 def _native_system(system: System, gens: Sequence[Symbol]) -> native.System:

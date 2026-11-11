@@ -15,18 +15,17 @@ algebraic fields ``QQ<a>``, ``QQ_I``, the fields of rational functions
 over ``QQ`` or ``ZZ``), the symbols and the orders by
 :mod:`sympy_extras.interop`.
 
-What stays here, on SymPy: the inference of the coefficient domain, the
-rational univariate representation (:mod:`sympy_extras.polys.rur`) and
-the decompositions of positive-dimensional ideals through regular chains
-(:mod:`sympy_extras.polys.idealdecomposition`), which the face calls on
-itself. The native module calls the following at run time (the
-``_of_core`` functions, which take and return native objects):
+The decompositions of positive-dimensional ideals through regular chains
+are those of the native :mod:`sympy_extras.polys.idealdecomposition`, run
+on the native ideal; the rational univariate representation is that of
+:mod:`sympy_extras.polys.rur_sympy` (the native
+:mod:`sympy_extras.polys.rur` with SymPy objects around it).
+
+What stays here, on SymPy: the inference of the coefficient domain. The
+native module calls the following at run time (the ``_of_core``
+functions, which take and return native objects):
 :func:`modular_groebner_of_core` and :func:`direct_groebner_of_core`
-(:mod:`sympy_extras.polys.modulargroebner`), and
-:func:`radical_of_core`, :func:`equidimensional_parts_of_core`,
-:func:`minimal_primes_of_core`, :func:`primary_decomposition_of_core`,
-:func:`associated_primes_of_core`, :func:`is_primary_of_core`
-(:mod:`sympy_extras.polys.idealdecomposition`).
+(:mod:`sympy_extras.polys.modulargroebner`).
 
 Examples
 ========
@@ -77,6 +76,7 @@ from sympy_extras.core.expr import as_expr as core_as_expr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy as core_from_sympy, to_sympy as core_to_sympy
 
+from . import idealdecomposition as decomposition
 from . import ideals as native
 from . import rings as typed
 from .domains.algebraicfield import AlgebraicField
@@ -91,9 +91,7 @@ from .hilbert import hilbert_numerator
 from .orderings import BlockOrder, WeightOrder, as_order
 
 __all__ = ['Ideal', 'hilbert_numerator', 'separating_forms', 'core_order', 'sympy_order', 'native_ideal',
-           'direct_groebner_of_core', 'modular_groebner_of_core', 'radical_of_core', 'equidimensional_parts_of_core',
-           'minimal_primes_of_core', 'primary_decomposition_of_core', 'associated_primes_of_core',
-           'is_primary_of_core']
+           'direct_groebner_of_core', 'modular_groebner_of_core']
 
 T = TypeVar('T')
 
@@ -304,6 +302,24 @@ class _Backend(ABC):
     def reduced(self) -> _Backend: ...
 
     @abstractmethod
+    def chain_radical(self) -> _Backend: ...
+
+    @abstractmethod
+    def equidimensional_parts(self) -> list[_Backend]: ...
+
+    @abstractmethod
+    def minimal_primes(self) -> list[_Backend]: ...
+
+    @abstractmethod
+    def primary_decomposition(self) -> list[tuple[_Backend, _Backend]]: ...
+
+    @abstractmethod
+    def is_primary(self) -> bool: ...
+
+    @abstractmethod
+    def independent_set(self) -> list[int]: ...
+
+    @abstractmethod
     def is_maximal(self) -> bool: ...
 
     @abstractmethod
@@ -404,6 +420,24 @@ class _TypedBackend(_Backend, Generic[T]):
 
     def reduced(self) -> _Backend:
         return self._wrap(self.ideal.reduced())
+
+    def chain_radical(self) -> _Backend:
+        return self._wrap(decomposition.radical(self.ideal))
+
+    def equidimensional_parts(self) -> list[_Backend]:
+        return [self._wrap(I) for I in decomposition.equidimensional_parts(self.ideal)]
+
+    def minimal_primes(self) -> list[_Backend]:
+        return [self._wrap(I) for I in decomposition.minimal_primes(self.ideal)]
+
+    def primary_decomposition(self) -> list[tuple[_Backend, _Backend]]:
+        return [(self._wrap(Q), self._wrap(P)) for Q, P in decomposition.primary_decomposition(self.ideal)]
+
+    def is_primary(self) -> bool:
+        return decomposition.is_primary(self.ideal)
+
+    def independent_set(self) -> list[int]:
+        return [self.ideal.symbols.index(s) for s in decomposition.independent_set(self.ideal)]
 
     def is_maximal(self) -> bool:
         return self.ideal.is_maximal()
@@ -846,7 +880,7 @@ class Ideal:
     def rur(self, t: Optional[Symbol] = None) -> _rur.RationalUnivariateRepresentation:
         """The rational univariate representation of the ideal
         (zero-dimensional ideals over the rationals, Rouillier's algorithm,
-        :mod:`sympy_extras.polys.rur`): a separating linear form, the
+        :mod:`sympy_extras.polys.rur_sympy`): a separating linear form, the
         squarefree polynomial in ``t`` of its values at the zeros and the
         coordinates of the zeros as rational functions of the root.
 
@@ -858,8 +892,7 @@ class Ideal:
         >>> R.solutions()
         [{x: -sqrt(2), y: -2*sqrt(2)}, {x: sqrt(2), y: 2*sqrt(2)}]
         """
-        from .rur import rur
-        return rur(self, t=t)
+        return _rur.rur(self, t=t)
 
     def _polynomial(self, coefficients: Sequence[DomainElement], y: Symbol) -> Poly:
         n = len(coefficients) - 1
@@ -896,7 +929,8 @@ class Ideal:
         """The radical of the ideal: by Seidenberg's lemma in dimension
         zero (natively), and as the intersection of the saturated ideals of
         squarefree regular chains otherwise
-        (:mod:`sympy_extras.polys.idealdecomposition`; over the rationals).
+        (:func:`sympy_extras.polys.idealdecomposition.radical`; over the
+        rationals), both natively.
 
         >>> from sympy.abc import x, y
         >>> from sympy_extras.polys.ideals_sympy import Ideal
@@ -905,11 +939,6 @@ class Ideal:
         >>> Ideal([x**2*y, x*y**3], x, y).radical()
         Ideal([x*y], x, y)
         """
-        if self.is_whole_ring():
-            return self.reduced()
-        if not self.is_zero_dimensional():
-            from .idealdecomposition import radical
-            return radical(self)
         return self._wrap(self._native.radical())
 
     def reduced(self) -> Ideal:
@@ -948,8 +977,7 @@ class Ideal:
         >>> Ideal([x*z, x*y], x, y, z).equidimensional_parts()
         [Ideal([x], x, y, z), Ideal([y, z], x, y, z)]
         """
-        from .idealdecomposition import equidimensional_parts
-        return equidimensional_parts(self)
+        return [self._wrap(b) for b in self._native.equidimensional_parts()]
 
     def minimal_primes(self) -> list[Ideal]:
         """The minimal primes of the ideal, by decreasing dimension
@@ -960,8 +988,7 @@ class Ideal:
         >>> Ideal([x**2 - y**2, x*z - y], x, y, z).minimal_primes()
         [Ideal([x + y, z + 1], x, y, z), Ideal([x - y, z - 1], x, y, z), Ideal([x, y], x, y, z)]
         """
-        from .idealdecomposition import minimal_primes
-        return minimal_primes(self)
+        return [self._wrap(b) for b in self._native.minimal_primes()]
 
     def primary_decomposition(self) -> list[tuple[Ideal, Ideal]]:
         """An irredundant primary decomposition, as pairs of a primary
@@ -973,8 +1000,7 @@ class Ideal:
         >>> Ideal([x**2*y, x*y**2], x, y).primary_decomposition()
         [(Ideal([x], x, y), Ideal([x], x, y)), (Ideal([y], x, y), Ideal([y], x, y)), (Ideal([x**2, y**2], x, y), Ideal([x, y], x, y))]
         """
-        from .idealdecomposition import primary_decomposition
-        return primary_decomposition(self)
+        return [(self._wrap(Q), self._wrap(P)) for Q, P in self._native.primary_decomposition()]
 
     def associated_primes(self) -> list[Ideal]:
         """The associated primes, minimal and embedded, by decreasing
@@ -985,8 +1011,7 @@ class Ideal:
         >>> Ideal([x**2, x*y, x*z], x, y, z).associated_primes()
         [Ideal([x], x, y, z), Ideal([x, y, z], x, y, z)]
         """
-        from .idealdecomposition import associated_primes
-        return associated_primes(self)
+        return [P for _, P in self.primary_decomposition()]
 
     def is_primary(self) -> bool:
         """Whether the ideal is primary
@@ -997,8 +1022,7 @@ class Ideal:
         >>> Ideal([x**2, y**2], x, y).is_primary(), Ideal([x**2, x*y], x, y).is_primary()
         (True, False)
         """
-        from .idealdecomposition import is_primary
-        return is_primary(self)
+        return self._native.is_primary()
 
     def is_maximal(self) -> bool:
         """Whether the ideal is maximal, i.e. $K[x]/I$ is a field: the
@@ -1079,13 +1103,6 @@ def native_ideal(ideal: Ideal, K: CoreDomain[T]) -> native.Ideal[T]:
     return result
 
 
-def _face(ideal: native.Ideal[T]) -> Ideal:
-    """The face of a native ideal (sharing it)."""
-    domain = _sympy_domain(ideal.domain)
-    backend = _TypedBackend(ideal, _Coefficients(ideal.domain, domain))
-    return Ideal._from_backend(backend, [_sympy_symbol(s) for s in ideal.symbols], domain, sympy_order(ideal.order))
-
-
 def _sympy_ring(ring: typed.PolyRing[T]) -> tuple[PolyRing, _Coefficients[T]]:
     from sympy import symbols
     domain = _sympy_domain(ring.domain)
@@ -1118,52 +1135,5 @@ def modular_groebner_of_core(polys: Sequence[typed.PolyElement[T]], ring: typed.
     return [typed.PolyElement(coefficients.terms_in(dict(g)), ring) for g in basis]
 
 
-def _natives(ideals: Sequence[Ideal], K: CoreDomain[T]) -> list[native.Ideal[T]]:
-    return [native_ideal(I, K) for I in ideals]
-
-
-def radical_of_core(ideal: native.Ideal[T]) -> native.Ideal[T]:
-    """The radical of a native ideal of positive dimension
-    (:func:`sympy_extras.polys.idealdecomposition.radical`)."""
-    from .idealdecomposition import radical
-    return native_ideal(radical(_face(ideal)), ideal.domain)
-
-
-def equidimensional_parts_of_core(ideal: native.Ideal[T]) -> list[native.Ideal[T]]:
-    """:func:`sympy_extras.polys.idealdecomposition.equidimensional_parts`
-    of a native ideal."""
-    from .idealdecomposition import equidimensional_parts
-    return _natives(equidimensional_parts(_face(ideal)), ideal.domain)
-
-
-def minimal_primes_of_core(ideal: native.Ideal[T]) -> list[native.Ideal[T]]:
-    """:func:`sympy_extras.polys.idealdecomposition.minimal_primes` of a
-    native ideal."""
-    from .idealdecomposition import minimal_primes
-    return _natives(minimal_primes(_face(ideal)), ideal.domain)
-
-
-def primary_decomposition_of_core(ideal: native.Ideal[T]) -> list[tuple[native.Ideal[T], native.Ideal[T]]]:
-    """:func:`sympy_extras.polys.idealdecomposition.primary_decomposition`
-    of a native ideal."""
-    from .idealdecomposition import primary_decomposition
-    K = ideal.domain
-    return [(native_ideal(Q, K), native_ideal(P, K)) for Q, P in primary_decomposition(_face(ideal))]
-
-
-def associated_primes_of_core(ideal: native.Ideal[T]) -> list[native.Ideal[T]]:
-    """:func:`sympy_extras.polys.idealdecomposition.associated_primes` of a
-    native ideal."""
-    from .idealdecomposition import associated_primes
-    return _natives(associated_primes(_face(ideal)), ideal.domain)
-
-
-def is_primary_of_core(ideal: native.Ideal[T]) -> bool:
-    """:func:`sympy_extras.polys.idealdecomposition.is_primary` of a
-    native ideal."""
-    from .idealdecomposition import is_primary
-    return is_primary(_face(ideal))
-
-
-# rur builds on this module (imported at the end: it imports Ideal from here)
-from . import rur as _rur  # noqa: E402
+# rur_sympy builds on this module (imported at the end: it imports Ideal from here)
+from . import rur_sympy as _rur  # noqa: E402

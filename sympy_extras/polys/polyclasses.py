@@ -67,7 +67,10 @@ class DensePoly(Generic[T]):
         """The polynomial of a core expression in ``gen`` whose
         coefficients belong to ``domain`` (``ValueError`` otherwise)."""
         ring: PolynomialRing[U] = PolynomialRing(domain, gen.name)
-        return DensePoly(ring.from_expr(expr), domain, gen)
+        plain = Symbol(gen.name)
+        # the ring knows its variable by name: a Dummy generator is renamed
+        named = expr if plain == gen else expr.xreplace({gen: plain})
+        return DensePoly(ring.from_expr(named), domain, gen)
 
     @classmethod
     def from_list(cls, coefficients: Sequence[int], gen: Symbol, domain: Domain[U]) -> DensePoly[U]:
@@ -77,7 +80,10 @@ class DensePoly(Generic[T]):
 
     def to_expr(self) -> Expr:
         """The polynomial as a core expression."""
-        return PolynomialRing(self.domain, self.gen.name).to_expr(self.rep)
+        e = PolynomialRing(self.domain, self.gen.name).to_expr(self.rep)
+        plain = Symbol(self.gen.name)
+        # the ring writes its variable by name: give a Dummy generator back
+        return e if plain == self.gen else e.xreplace({plain: self.gen})
 
     def convert(self, domain: Domain[U]) -> DensePoly[U]:
         """The same polynomial over another domain."""

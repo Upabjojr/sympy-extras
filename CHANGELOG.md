@@ -539,6 +539,29 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The decompositions of ideals and the rational univariate representation
+  are native (**breaking**): `sympy_extras.polys.idealdecomposition`
+  (`radical`, `equidimensional_parts`, `minimal_primes`,
+  `primary_decomposition`, `associated_primes`, `is_primary`,
+  `independent_set`) takes and returns the native ideals of
+  `sympy_extras.polys.ideals` (over `QQ`), with the native regular chains,
+  F4 and the typed `polytools.Poly` factorisation, and
+  `sympy_extras.polys.rur` (`rur`, `RationalUnivariateRepresentation`)
+  takes native ideals or core expressions and returns `DensePoly`
+  polynomials over `QQ` in `t`; neither imports SymPy. The old API on
+  SymPy objects moves to the faces `sympy_extras.polys.idealdecomposition_sympy`
+  and `sympy_extras.polys.rur_sympy` (same results on 704 recorded calls of
+  the tests and doctests and 117 more). The native `Ideal` calls the
+  decompositions directly and gains `Ideal.rur`; the run-time routes
+  `radical_of_core`, `equidimensional_parts_of_core`,
+  `minimal_primes_of_core`, `primary_decomposition_of_core`,
+  `associated_primes_of_core` and `is_primary_of_core` of `ideals_sympy`
+  are removed, and so is the quotient algebra `hermite_sympy._Algebra`
+  which the old `rur` built on. One step stays on SymPy, at run time: the
+  exact solutions of a representation (`CRootOf`,
+  `rur_sympy.solutions_of_core`). `DensePoly.to_expr` and `from_expr` keep
+  a `Dummy` generator (they wrote it as the `Symbol` of the same name).
+
 - The regular chains and the cases of systems with parameters are native
   (**breaking**): `sympy_extras.polys.regularchains` (`RegularChain`,
   `triangularize`, `regular_gcd`, and the modules `recursive` and

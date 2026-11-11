@@ -12,7 +12,7 @@ from sympy.abc import x, y, z
 from sympy.testing.pytest import raises
 
 from sympy_extras.polys.ideals_sympy import Ideal, separating_forms
-from sympy_extras.polys.idealdecomposition import (associated_primes, independent_set, is_primary,
+from sympy_extras.polys.idealdecomposition_sympy import (associated_primes, independent_set, is_primary,
                                                    primary_decomposition)
 
 from .primary_oracle import check_decomposition, intersection

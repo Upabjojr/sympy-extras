@@ -86,3 +86,15 @@ def test_other_domains() -> None:
     assert DensePoly.from_list([1, 0, 1], x, ZZ).is_irreducible is True
     assert DensePoly.from_list([1, 0, -2], x, ZZ).real_root_intervals(Fraction(1, 10)) == \
         [((Fraction(-23, 16), Fraction(-11, 8)), 1), ((Fraction(11, 8), Fraction(23, 16)), 1)]
+
+
+def test_dummy_generator_is_kept() -> None:
+    from sympy_extras.core.symbol import Dummy, Symbol as CoreSymbol
+    d = Dummy('y')
+    p = DensePoly([Fraction(1), Fraction(0), Fraction(-2)], QQ, d)
+    # to_expr wrote the polynomial in Symbol('y'), not in the Dummy: the
+    # factors of a minimal polynomial in a Dummy could not be substituted
+    # (the primary decomposition lost the components of irrational points)
+    e = p.to_expr()
+    assert d in e.free_symbols and CoreSymbol('y') not in e.free_symbols
+    assert DensePoly.from_expr(e, d, QQ) == p

@@ -509,9 +509,8 @@ def test_native_ideals_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.polys.ideals` does not load SymPy, nor
     do the Gröbner bases (F4, FGLM, the walk), the eliminations, quotients,
     saturations, Hilbert series and the operations on zero-dimensional
-    ideals (the modular Gröbner bases when F4 takes too long, SymPy's
-    Buchberger algorithm on request and the decompositions of
-    positive-dimensional ideals go through SymPy at run time)."""
+    ideals (the modular Gröbner bases when F4 takes too long and SymPy's
+    Buchberger algorithm on request go through SymPy at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_IDEALS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -599,6 +598,58 @@ def test_native_hermite_comprehensive_do_not_load_sympy() -> None:
     comprehensive Gröbner systems, the eliminations over the complex
     numbers and ``resolve`` with ``domain=Complexes``."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_HERMITE_COMPREHENSIVE], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_DECOMPOSITION_RUR = r"""
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.polys.domains import QQ
+from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.idealdecomposition import (radical, equidimensional_parts, minimal_primes,
+    primary_decomposition, associated_primes, is_primary, independent_set)
+from sympy_extras.polys.rur import rur
+assert 'sympy' not in sys.modules
+t, x, y, z = symbols('t x y z')
+assert str(radical(Ideal([x**2*y, x*y**2], x, y, domain=QQ))) == 'Ideal([x*y], x, y)'
+assert str(Ideal([x**2*y, x*y**3], x, y, domain=QQ).radical()) == 'Ideal([x*y], x, y)'
+assert str(minimal_primes(Ideal([x*z - y**2, x**2 - y*z], x, y, z, domain=QQ))) == \
+    '[Ideal([x - z, y - z], x, y, z), Ideal([x, y], x, y, z), Ideal([y**2 + y*z + z**2, x + y + z], x, y, z)]'
+assert str(equidimensional_parts(Ideal([x*z, x*y, x*(x - 1)*(z - 1)], x, y, z, domain=QQ))) == \
+    '[Ideal([x], x, y, z), Ideal([x - 1, y, z], x, y, z)]'
+assert str(primary_decomposition(Ideal([x**2, x*y], x, y, domain=QQ))) == \
+    '[(Ideal([x], x, y), Ideal([x], x, y)), (Ideal([x**2, y], x, y), Ideal([x, y], x, y))]'
+# an irrational embedded point and a point of dimension zero
+f = x**2 - 2
+pair, point = Ideal([f, y], x, y, domain=QQ), Ideal([x - 1, y - 1], x, y, domain=QQ)
+assert len(primary_decomposition((pair**2).intersect(point))) == 2
+assert str(associated_primes(Ideal([x*y, x*z, y*z], x, y, z, domain=QQ))) == \
+    '[Ideal([x, y], x, y, z), Ideal([x, z], x, y, z), Ideal([y, z], x, y, z)]'
+assert is_primary(Ideal([x**2, y**3], x, y, domain=QQ)) and not Ideal([x**2, x*y], x, y, domain=QQ).is_primary()
+assert str(independent_set(Ideal([x*y, x*z], x, y, z, domain=QQ))) == '[y, z]'
+assert Ideal([x**2 - y**3], x, y, domain=QQ).is_prime()
+R = rur([x**2 + y**2 - 1, x*y], x, y, t=t)
+assert str(R.form) == 'x + 2*y' and str(R.polynomial.to_expr()) == 't**4 - 5*t**2 + 4'
+assert str([g.to_expr() for g in R.polynomials()]) == '[-t**3/3 + 4*t/3, t**3/6 - t/6]'
+assert str(R.numerical_solutions(5)[1]) == '{x: -1.0000, y: 0.0}'
+S = Ideal([(x - 1)**2*(x + 2), y - x**2], x, y, domain=QQ).rur(t)
+assert S.multiplicity(1) == 2 and S.multiplicity(-2) == 1 and S.multiplicity(5) == 0
+assert str(rur([x**2 - 2, y - x - 1], x, y, t=t).coordinates(2)) == '[1, 2]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+"""
+
+
+def test_native_decomposition_and_rur_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.idealdecomposition` and
+    :mod:`sympy_extras.polys.rur` does not load SymPy, nor do the radicals,
+    equidimensional parts, minimal and associated primes, primary
+    decompositions and the methods of the native ``Ideal`` which call them,
+    nor the rational univariate representations, their coordinate
+    polynomials, numerical solutions, multiplicities and coordinates (the
+    exact solutions, SymPy's ``CRootOf``, go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DECOMPOSITION_RUR], capture_output=True, text=True,
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
