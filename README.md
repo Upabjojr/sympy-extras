@@ -984,6 +984,32 @@ ExprMatrix([[2**n, 2**n*n/2], [0, 2**n]])
 
 ```
 
+Exact decompositions (LU, LDL, Cholesky, QR, the inertia of symmetric
+matrices), matrix equations (Sylvester, Lyapunov), the normal forms which
+need no eigenvalue (Smith over `K[x]`, Frobenius, minimal polynomial,
+similarity) and step-by-step elimination:
+
+```python
+>>> from sympy_extras.matrices.decompositions import inertia
+>>> from sympy_extras.matrices.equations import lyapunov_solve
+>>> from sympy_extras.matrices.normalforms import frobenius_form, matrix_minimal_polynomial
+>>> from sympy_extras.matrices.steps import rref_steps
+>>> ExprMatrix.from_rows([[4, 2], [2, 3]]).cholesky(), inertia(ExprMatrix.from_rows([[0, 1], [1, 0]]))
+(ExprMatrix([[2, 0], [1, sqrt(2)]]), (1, 1, 0))
+>>> lyapunov_solve(ExprMatrix.from_rows([[0, 1], [-1, -a]]), ExprMatrix.eye(2)).particular
+ExprMatrix([[(a**2 + 2)/(2*a), -1/2], [-1/2, 1/a]])
+>>> matrix_minimal_polynomial(ExprMatrix.from_rows([[2, 0, 0], [0, 2, 0], [0, 0, 3]]), x)
+x**2 - 5*x + 6
+>>> frobenius_form(ExprMatrix.from_rows([[1, 2], [3, 4]]))[1]
+ExprMatrix([[0, 2], [1, 5]])
+>>> for step in rref_steps(ExprMatrix.from_rows([[2, 4], [1, 3]])):
+...     print(step.operation, ' ', step.matrix)
+R1 <- (1/2)*R1   ExprMatrix([[1, 2], [1, 3]])
+R2 <- R2 - R1   ExprMatrix([[1, 2], [0, 1]])
+R1 <- R1 - (2)*R2   ExprMatrix([[1, 0], [0, 1]])
+
+```
+
 The rank-dependent operations return the generic answer for symbols; with
 other kernels (`sin(t)`, `sqrt(2)`) every pivot must be proved nonzero by
 the zero test, otherwise `NotImplementedError` is raised.

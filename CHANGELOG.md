@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.steps`: step-by-step Gaussian elimination as
+  the textbooks do it, each elementary row operation (`RowOperation`,
+  printed `R2 <- R2 - (3)*R1`) with the matrix it gives: `rref_steps`,
+  `echelon_steps`, `inverse_steps` (on `[M | I]`), `solve_steps` (on
+  `[A | B]`), `determinant_steps`, `format_steps`.
 - `sympy_extras.matrices.normalforms`: `smith_normal_form` of matrices of
   polynomials over `K[x]` with the unimodular transformations,
   `invariant_factors`, `matrix_minimal_polynomial`, `frobenius_form`

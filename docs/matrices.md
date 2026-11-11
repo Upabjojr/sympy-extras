@@ -444,6 +444,42 @@ $U^{-1}$, evaluated at $A$, generate the cyclic summands. The
 elementary divisors (the invariant factors split into powers of
 irreducible polynomials) give the sizes of the Jordan blocks.
 
+## Step by step
+
+The fraction-free methods above produce intermediate matrices which mean
+nothing to a reader. `sympy_extras.matrices.steps` does the elimination
+of the textbooks instead and returns every elementary row operation with
+the matrix it gives: `rref_steps`, `echelon_steps` (forward elimination
+only), `inverse_steps` (on $[M \mid I]$), `solve_steps` (on the
+augmented matrix) and `determinant_steps` (the product of the pivots,
+with the sign of the row exchanges).
+
+```python
+>>> from sympy_extras.matrices.steps import rref_steps, inverse_steps, determinant_steps, format_steps
+>>> E = ExprMatrix.from_rows([[0, 2, 4], [1, 1, 1]])
+>>> print(format_steps(E, rref_steps(E)))
+[0, 2, 4]
+[1, 1, 1]
+R1 <-> R2
+[1, 1, 1]
+[0, 2, 4]
+R2 <- (1/2)*R2
+[1, 1, 1]
+[0, 1, 2]
+R1 <- R1 - R2
+[1, 0, -1]
+[0, 1,  2]
+>>> [str(step.operation) for step in inverse_steps(ExprMatrix.from_rows([[1, 2], [3, 7]]))]
+['R2 <- R2 - (3)*R1', 'R1 <- R1 - (2)*R2']
+>>> steps = determinant_steps(ExprMatrix.from_rows([[1, a], [a, 1]]))
+>>> steps.steps[0].operation, steps.diagonal, steps.value
+(R2 <- R2 - (a)*R1, (1, 1 - a**2), 1 - a**2)
+
+```
+
+A `RowOperation` knows its elementary matrix (`operation.matrix(n)`),
+so the product of the steps is the transformation.
+
 ## Not done
 
 * eigenvalues when square roots remain in the coefficients of the
