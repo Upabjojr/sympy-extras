@@ -24,8 +24,10 @@ remove public functions. Breaking changes are listed here when they happen.
   real roots of polynomials which do not factor), each step tagged as an
   equivalence, a case split or an implication whose extraneous solutions
   are rejected.
-  `steps.derivatives`: `derivative_steps`, `manual_derivative`. See
-  docs/steps.md.
+  `steps.inequalities`: `inequality_steps`, `manual_inequality` (linear
+  inequalities, sign charts of polynomials and rational functions,
+  absolute values). `steps.derivatives`: `derivative_steps`,
+  `manual_derivative`. See docs/steps.md.
 - `normal_form` splits the logarithms of positive rational numbers over
   the primes and those of products and powers of symbols declared
   positive: `log(12)/log(2) - 2 - log(3)/log(2)` and `log(p*q) - log(p) -

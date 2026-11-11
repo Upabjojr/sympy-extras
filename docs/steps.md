@@ -128,6 +128,37 @@ included, with the real solution set SymPy finds for that node's own
 equation, and check the trigonometric families by substitution and by
 counting the roots on an interval.
 
+## Inequalities
+
+`sympy_extras.steps.inequalities.inequality_steps` solves an inequality
+in one unknown. Linear inequalities are solved by the operations on both
+sides (a division by a negative number reverses the inequality: the
+step is `flipped`); polynomial and rational ones by a **sign chart**:
+the function is factored, its zeros and poles are ordered exactly, and
+the sign of each interval follows from the parity of the exponents,
+from the right, without evaluating a test point. The chart is data
+(`points`, `poles`, `signs`) and the derivations of the roots are its
+substeps. An absolute value is split into the cases of its sign.
+
+```python
+>>> from sympy_extras.steps.inequalities import inequality_steps, manual_inequality
+>>> print(format_steps(inequality_steps(3 - 2*x < 7, x)))
+AddToBothSidesRule: 3 - 2*x < 7 -> Interval.open(-2, oo)
+  DivideBothSidesRule: -2*x < 4 -> Interval.open(-2, oo)
+    SolvedRule: x > -2 -> Interval.open(-2, oo)
+>>> chart = inequality_steps((x - 1)/(x + 2) <= 0, x)
+>>> chart.rule, chart.points, chart.poles, chart.signs, chart.solutions()
+('SignChartRule', (-2, 1), (-2,), (1, -1, 1), Interval.Lopen(-2, 1))
+>>> manual_inequality(x**3 - x >= 0, x), manual_inequality(abs_(x - 1) < 3, x)
+(Union(Interval(-1, 0), Interval(1, oo)), Interval.open(-2, 4))
+>>> manual_inequality((x**2 - 1)/(x - 1) > 0, x)              # the common factor is not cancelled: 1 is excluded
+Union(Interval.open(-1, 1), Interval.open(1, oo))
+
+```
+
+The tests compare the solution set of every node with the inequality
+evaluated directly at several hundred rational points.
+
 ## Derivatives
 
 ```python
@@ -205,8 +236,9 @@ step which holds alternatives.
 ## Not done
 
 * equations: exponentials of different bases (`4**x - 2**x - 2`), sums
-  of trigonometric functions of different arguments, systems,
-  inequalities; case distinctions on parameters (a coefficient by which
+  of trigonometric functions of different arguments, systems;
+  inequalities with radicals, exponentials or parameters; case
+  distinctions on parameters (a coefficient by which
   a side is divided is taken to be nonzero);
 * integrals are deliberately left out (maintainer's decision of
   2026-11-11): SymPy's `manualintegrate` is the model of the engine, not
