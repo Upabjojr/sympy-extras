@@ -33,7 +33,7 @@ from .add import Add
 from .basic import Basic
 from .cache import cacheit
 from .coreerrors import PoleError
-from .expr import Expr, factors_of
+from .expr import Expr, as_expr, factors_of
 from .function import AppliedUndef, Application, Derivative
 from .intfunc import ilcm
 from .mul import Mul
@@ -225,6 +225,23 @@ def mrv(e: Expr, x: Symbol) -> tuple[SubsSet, Expr]:
         s, ss = nonempty[0], SubsSet()
         args = [ss.do_subs(r) for _, r in found]
         return s, e._rebuilt(args)
+    if e.is_Function:
+        # a function of SymPy which is not an Application of the core (hyper,
+        # meijerg, Piecewise): its arguments which are not expressions
+        # (the parameter tuples) are free of x and kept
+        found_args: list[tuple[SubsSet, Basic]] = []
+        for argument in e.args:
+            if isinstance(argument, Expr):
+                found_args.append(mrv(argument, x))
+            elif argument.has(x):
+                raise NotImplementedError("Don't know how to calculate the mrv of '%s'" % (e,))
+            else:
+                found_args.append((SubsSet(), argument))
+        nonempty = [s for (s, _) in found_args if not s.is_empty()]
+        if len(nonempty) != 1:
+            raise NotImplementedError("MRV set computation for functions in several variables not implemented.")
+        s, ss = nonempty[0], SubsSet()
+        return s, as_expr(e._evaluated(tuple(ss.do_subs(r) if isinstance(r, Expr) else r for _, r in found_args)))
     if isinstance(e, Derivative):
         raise NotImplementedError("MRV set computation for derivatives not implemented yet.")
     raise NotImplementedError("Don't know how to calculate the mrv of '%s'" % (e,))

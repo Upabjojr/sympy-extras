@@ -88,3 +88,15 @@ def test_native_series() -> None:
     assert series(sqrt(a**2 + x), x, 0, 2, assumptions=a < 0) == -a - x/(2*a) + Order(x**2)
     assert series(log(a*x), x, 1, 2, assumptions=a > 0).removeO() == log(a) + x - 1
     assert series(exp(a*x), x, 0, 3) == 1 + a*x + a**2*x**2/2 + Order(x**3)
+
+
+def test_native_limit_of_logarithms_with_a_negative_parameter() -> None:
+    # test_regions' agreeing cases: the boundary value at t = 0 came back as
+    # I*a*log(-a - I*a)/2 - I*a*log(-a + I*a)/2, equal to -pi*a/4 but not
+    # recognised as such, and the cases of the region integral no longer merged
+    from sympy_extras.core import Dummy, pi
+    t = Dummy('t', positive=True)
+    r = sqrt(a**2 - t**2*a**2)/(t + 1)
+    e = -a*(-I*log(-I*a + r)/2 + I*log(I*a + r)/2)
+    assert limit(e, t, Integer(0), '+', assumptions=a < 0) == -pi*a/4
+    assert limit(e, t, Integer(0), '+', assumptions=a > 0) == pi*a/4
