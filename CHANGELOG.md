@@ -568,6 +568,30 @@ remove public functions. Breaking changes are listed here when they happen.
   rational `a` (the parameters of an instantiated formula were not
   evaluated, `1/3 + 1` was shifted towards `4/3`).
 
+- The heuristic Risch integrator and the table of definite integrals are
+  native (**breaking**): `sympy_extras.integrals.heurisch`
+  (`components`, `heurisch_antiderivative`, `heurisch_cases`) and
+  `sympy_extras.integrals.tables` (`TABLE`, `TableEntry`, `lookup`,
+  `table_integral`, the patterns' `X`, `A`, `B`, `N`, `M`, `C`, `K`)
+  take and return objects of the core (the native `ConditionalValue`)
+  and import no SymPy. The polynomial steps of heurisch run on the typed
+  `Poly`, `gcd`, `lcm`, `factor_list`, `cancel` and `roots`, the
+  constants the typed `Poly` does not take as coefficients (`pi`,
+  `exp(y)`, `sqrt(2)`, `I`) replaced by placeholder symbols, as SymPy's
+  composite domains make them generators; the linear system of the
+  candidate is solved by its reduced row echelon form (unique for the
+  order of the unknowns, so the solution of SymPy's `solve_lin_sys`)
+  over `QQ`, over the number field of the algebraic constants (`I` and
+  radicals of rationals through a primitive element: the arctangents of
+  `1/(x**4 + 1)` need `sqrt(2)**2 = 2`, which SymPy's `EX` decided), or
+  over the fractions of the parameters; the tangents of the half angle,
+  SymPy's `root_factors`, `denoms` and the single-equation `solve` of
+  `heurisch_cases` are ported in the module; the verification by the
+  native `cancel`, `simplify` and `numerically_equal`. The old API on
+  SymPy objects is in the faces `sympy_extras.integrals.heurisch_sympy`
+  and `sympy_extras.integrals.tables_sympy` (`TableEntry.from_core`,
+  `to_core`, the table converted), which `indefinite`, `definite` and
+  the tests use.
 - The convergence tests of series and products are native
   (**breaking**): `sympy_extras.concrete.convergence` (`sum_convergence`,
   `product_convergence`, `is_convergent`) takes and returns objects of

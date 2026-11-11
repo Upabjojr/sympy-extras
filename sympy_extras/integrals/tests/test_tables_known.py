@@ -13,7 +13,7 @@ from sympy.core.symbol import Wild
 
 from sympy_extras._typing_sympy import as_expr
 from sympy_extras.integrals.definite import verify_numerically
-from sympy_extras.integrals.tables import TABLE, TableEntry
+from sympy_extras.integrals.tables_sympy import TABLE, TableEntry
 
 x = symbols('x')
 
