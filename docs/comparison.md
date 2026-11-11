@@ -55,7 +55,7 @@ The setup used throughout:
 >>> from sympy_extras.assumptions.limits_sympy import limit, limit_seq, series
 >>> from sympy_extras.concrete.karr import karr_sum
 >>> from sympy_extras.concrete.zeilberger_sympy import zeilberger_sum, wz_prove
->>> from sympy_extras.concrete.convergence import sum_convergence, product_convergence
+>>> from sympy_extras.concrete.convergence_sympy import sum_convergence, product_convergence
 >>> from sympy_extras.concrete.dirichlet import dirichlet_series
 >>> from sympy_extras.concrete.eulersums import polygamma_series
 >>> from sympy_extras.concrete.qhyper_sympy import qgosper_sum, qzeilberger

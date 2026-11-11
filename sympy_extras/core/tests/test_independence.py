@@ -1421,3 +1421,33 @@ def test_native_ode_and_second_order_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ODE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_CONVERGENCE = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.functions import sin
+from sympy_extras.concrete.convergence import is_convergent, product_convergence, sum_convergence
+assert 'sympy' not in sys.modules
+n = symbols('n')
+assert str(sum_convergence(0, n)) == 'True' and str(sum_convergence(1, n)) == 'False'
+assert str(sum_convergence(1/n**2, n)) == 'True' and str(sum_convergence(1/n, n)) == 'False'
+assert str(sum_convergence(((-1)**n - 1)/n**3, n)) == 'True'
+assert str(sum_convergence((sin(n) + 3)/(n**2 + 1), n)) == 'True'
+assert str(sum_convergence(2**(-n), n)) == 'True'
+assert str(product_convergence(1, n)) == 'True' and str(product_convergence(1 + 1/n**2, n)) == 'True'
+assert is_convergent(1/(n**2 + 1), n) is True
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_convergence_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.concrete.convergence` does not load
+    SymPy, nor do the comparison with a rational majorant, the term test
+    and the ratio and Raabe tests on series without parameters, and the
+    products reduced to them (SymPy's ``integrate`` of the integral test,
+    its ``Sum.is_convergent`` and the steps of the native assumptions which
+    stay on SymPy go through the faces at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CONVERGENCE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

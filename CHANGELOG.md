@@ -539,6 +539,34 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The convergence tests of series and products are native
+  (**breaking**): `sympy_extras.concrete.convergence` (`sum_convergence`,
+  `product_convergence`, `is_convergent`) takes and returns objects of
+  the core and imports no SymPy: the limits, the decisions under
+  assumptions, the boundary points, the signs, the quantifier-free
+  simplification of the conditions and the simplifications of the ratios
+  are the native ones of `sympy_extras.assumptions` and
+  `sympy_extras.simplify`, and the polynomial coefficients of the
+  majorants are read from the expansion (the typed `Poly` has no domain
+  for `pi*n + 1`). Two steps of the last resort for terms without
+  parameters go through the new face at run time:
+  `convergence_sympy.improper_integral_of_core` (SymPy's `integrate` of
+  the integral test) and `convergence_sympy.is_convergent_of_core`
+  (SymPy's `Sum.is_convergent`). The old API on SymPy objects moves to
+  the new face `sympy_extras.concrete.convergence_sympy`, which
+  `integrals.series`, the tests, the benchmarks, the README and the docs
+  use. The core's `rewrite(Factorial)` gains SymPy's rules for `gamma`,
+  `binomial`, `rf` and `ff` (PORTED FROM SYMPY). In `concrete.delta` and
+  `concrete.summations` the equations which `linsolve` does not solve go
+  to the native `assumptions.solve` (a finite set of solutions over the
+  complex numbers, those contradicting the assumptions of the unknown
+  dropped as SymPy's `solve` does) before SymPy's `solve`, and SymPy's
+  `as_set() == EmptySet` of a condition in one symbol is the native
+  `solve` over the reals; SymPy's `solve(..., dict=True)` of the systems
+  of several deltas, SymPy's `Integral` of
+  `eulersums.polygamma_integral_representation`, the residue method with
+  `CRootOf` poles and the zeta function match of `Sum.doit` stay on
+  SymPy.
 - The symmetry method for ODEs and the second order solvers are native
   (**breaking**): `sympy_extras.solvers.ode` (`ode_symmetries`,
   `canonical_coordinates`, `reduce_order`, `dsolve_lie`, `solve_ode`,

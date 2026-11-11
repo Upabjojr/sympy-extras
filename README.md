@@ -513,7 +513,8 @@ equations with constant coefficients through the core-nilpotent
 decomposition of the pencil (`sympy_extras.solvers.dae`); convergence
 of series and infinite products with conditions on the parameters by the
 tests of d'Alembert, Raabe, Bertrand, Cauchy and Leibniz
-(`sympy_extras.concrete.convergence`); Dirichlet series of the
+(`sympy_extras.concrete.convergence`, native; on SymPy objects
+`sympy_extras.concrete.convergence_sympy`); Dirichlet series of the
 arithmetic functions by pattern matching (`sympy_extras.concrete.dirichlet`);
 sequence limits with assumptions (`limit_seq`); linear questions in `ask`
 decided by virtual substitution and the parity of integer polynomials in
@@ -527,7 +528,7 @@ decided by virtual substitution and the parity of integer polynomials in
 >>> from sympy_extras.assumptions.limits_sympy import limit_seq
 >>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.solvers.dae_sympy import dsolve_dae
->>> from sympy_extras.concrete.convergence import sum_convergence
+>>> from sympy_extras.concrete.convergence_sympy import sum_convergence
 >>> solve(Eq(x, cos(x)), x, domain=S.Reals)
 {TranscendentalRoot(x - cos(x), x, 5/8, 3/4)}
 >>> dsolve_dae(Matrix([[1, 0], [0, 0]]), Matrix([[0, -1], [1, 0]]), Matrix([0, sin(x)]), x).solution.T

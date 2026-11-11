@@ -2,8 +2,14 @@
 and ``deltaproduct``): a delta linear in the index picks the term at its
 solution, as a ``Piecewise`` on the solution lying in the range.
 
-Ported from SymPy's ``sympy.concrete.delta``. The equations of the deltas
-are solved through SymPy (``solve``), the rest is native.
+Ported from SymPy's ``sympy.concrete.delta``. The equation of a delta in
+the index is solved natively (by
+:mod:`~sympy_extras.solvers.linsolve` and
+:func:`~sympy_extras.assumptions.solve.solve`), through SymPy's ``solve``
+when they do not list its solutions; the systems of several deltas (and
+the equation of one delta solved for all its symbols) go through SymPy's
+``solve(..., dict=True)`` unless they are linear with rational
+coefficients and a unique solution; the rest is native.
 
 Examples
 ========
@@ -21,7 +27,7 @@ KroneckerDelta(0, n) + KroneckerDelta(1, i)*KroneckerDelta(1, n)
 # PORTED FROM SYMPY: sympy/concrete/delta.py (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
-# Changes: typed; solve goes through SymPy; no caching.
+# Changes: typed; solve native where possible (linsolve, assumptions.solve); no caching.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -58,20 +64,49 @@ def _delta(i: Expr, j: Expr) -> Expr:
     return KroneckerDelta(i, j)
 
 
-def _solve(e: Expr, v: Optional[Symbol] = None) -> list[Expr]:
+def _solve(e: Expr, v: Symbol) -> list[Expr]:
     """SymPy's ``solve(e, v)``: native for an equation free of ``v`` or
     linear in it with a rational coefficient
-    (:func:`~sympy_extras.solvers.linsolve.solve_one`), through SymPy
-    otherwise."""
+    (:func:`~sympy_extras.solvers.linsolve.solve_one`) and for the
+    equations whose solutions over the complex numbers the native
+    :func:`~sympy_extras.assumptions.solve.solve` lists (a finite set; the
+    assumptions of ``v``, an integer index say, are honoured as SymPy's
+    ``solve`` does), through SymPy otherwise."""
     from sympy_extras.solvers.linsolve import solve_one
-    if v is not None:
-        known = solve_one(e, v)
-        if known is not None:
-            return known
+    known = solve_one(e, v)
+    if known is not None:
+        return known
+    listed = _finite_solutions(e, v)
+    if listed is not None:
+        return listed
     import sympy
     from sympy_extras.interop import expr_from_sympy, to_sympy
-    found = sympy.solve(to_sympy(e), to_sympy(v)) if v is not None else sympy.solve(to_sympy(e))
-    return [expr_from_sympy(s) for s in found]
+    return [expr_from_sympy(s) for s in sympy.solve(to_sympy(e), to_sympy(v))]
+
+
+def _finite_solutions(e: Expr, v: Symbol) -> Optional[list[Expr]]:
+    """The solutions of ``e = 0`` for ``v`` over the complex numbers when
+    the native :func:`~sympy_extras.assumptions.solve.solve` finds finitely
+    many (in the order of its ``FiniteSet``), ``None`` otherwise (a
+    condition set, infinitely many solutions, a time limit)."""
+    from sympy_extras.core.relational import eq
+    from sympy_extras.sets.fancysets import Complexes
+    from sympy_extras.sets.sets import EmptySetClass, FiniteSet
+    from sympy_extras.assumptions.solve import solve
+    from sympy_extras._timeout import attempt
+    from sympy_extras.settings import settings
+    found = attempt(lambda: solve(eq(e, Integer(0)), v, domain=Complexes), settings.timeout, native=True)
+    if isinstance(found, EmptySetClass):
+        return []
+    if not isinstance(found, FiniteSet):
+        return None
+    solutions = [a for a in found.args if isinstance(a, Expr)]
+    if len(solutions) != len(found.args) or any(s.has(v) for s in solutions):
+        return None
+    # SymPy's solve drops the solutions contradicting the assumptions of v;
+    # the native solve keeps 1/pi for pi*k = 1 with an integer k
+    from sympy_extras.core.assumptions import check_assumptions
+    return [s for s in solutions if check_assumptions(s, v) is not False]
 
 
 def _solve_dicts(eqs: list[Expr]) -> list[dict[Expr, Expr]]:

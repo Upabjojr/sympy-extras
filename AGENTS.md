@@ -230,6 +230,10 @@ sympy_extras/
         zeilberger_sympy.py  the SymPy face of zeilberger: zeilberger_sum, wz_certificate, wz_prove
         qhyper.py            q-Pochhammer symbols (QPochhammer node, qpochhammer), q-Gosper, q-Zeilberger (native)
         qhyper_sympy.py      the SymPy face of qhyper: QPochhammer as a SymPy function, qgosper_sum, qzeilberger, ...
+        convergence.py       sum_convergence, product_convergence, is_convergent: the conditions on the parameters for
+                             convergence by the ratio, Raabe, Bertrand, root, power, Leibniz, Dirichlet and integral
+                             tests (native; SymPy's integrate and Sum.is_convergent through convergence_sympy)
+        convergence_sympy.py the SymPy face of convergence, and improper_integral_of_core, is_convergent_of_core
         tests/
     integrals/               definite integration extending sympy.integrals (exports nothing: import the modules)
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels, the matching of
