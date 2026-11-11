@@ -7,7 +7,7 @@ from sympy import Poly, series
 from sympy.abc import t
 
 from sympy_extras._typing import Monomial
-from sympy_extras.polys.hilbert import hilbert_numerator, hilbert_series, minimal_generators
+from sympy_extras.polys.hilbert_sympy import hilbert_numerator, hilbert_series, minimal_generators
 
 
 def _divides(u: Monomial, m: Monomial) -> bool:

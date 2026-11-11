@@ -1,33 +1,49 @@
-r"""The Gröbner walk: conversion of Gröbner bases between monomial orders.
+r"""The Gröbner walk: conversion of Gröbner bases between monomial orders,
+on the typed rings of :mod:`sympy_extras.polys.rings` over a field (no
+SymPy).
 
-SymPy converts Gröbner bases with the FGLM algorithm
-(:meth:`sympy.polys.polytools.GroebnerBasis.fglm`), which only applies to
-zero-dimensional ideals. The Gröbner walk of Collart, Kalkbrener and Mall
-[1]_ works for every ideal: the source and target orders are represented by
-weight vectors $\omega$ and $\tau$, and the basis is transformed along the
-segment from $\omega$ to $\tau$. At every point where the ordering of the
-monomials of the basis changes, the *initial forms* of the basis elements
-(their terms of maximal weight) are computed, a Gröbner basis of the ideal
-they generate is computed with the Buchberger algorithm keeping track of
-the representations, and the representations are used to lift it to a
-Gröbner basis of the whole ideal for the new weight. The initial forms are
-usually much smaller than the polynomials, so each step is cheap.
+The FGLM algorithm (:mod:`sympy_extras.polys.fglm`) converts the Gröbner
+bases of zero-dimensional ideals only. The Gröbner walk of Collart,
+Kalkbrener and Mall [1]_ works for every ideal: the source and target
+orders are represented by weight vectors $\omega$ and $\tau$, and the basis
+is transformed along the segment from $\omega$ to $\tau$. At every point
+where the ordering of the monomials of the basis changes, the *initial
+forms* of the basis elements (their terms of maximal weight) are computed,
+a Gröbner basis of the ideal they generate is computed, and it is lifted
+to a Gröbner basis of the whole ideal for the new weight. The initial
+forms are usually much smaller than the polynomials, so each step is
+cheap.
 
-The lifting used here is the one of [2]_: if $G$ is the basis for the
+The default lifting is the one of [2]_: if $G$ is the basis for the
 previous order and $\omega$ lies in the closure of its Gröbner cone, then
 for every element $h$ of a Gröbner basis of the initial ideal the
 polynomial $h - \mathrm{NF}_G(h)$ (normal form for the previous order)
-belongs to the ideal and has initial form $h$. This allows the initial
-forms to be handled by SymPy's own Buchberger implementation;
-:func:`extended_groebner`, a Buchberger algorithm keeping the
-representations, is kept as an alternative lifting (``lift='cofactors'``).
+belongs to the ideal and has initial form $h$; the bases of the initial
+ideals are computed by F4 (:mod:`sympy_extras.polys.f4`). The lifting
+through the representations of the basis of the initial ideal in terms of
+the initial forms, computed by :func:`extended_groebner` (a Buchberger
+algorithm keeping the representations), is the alternative
+``lift='cofactors'``.
 
-For zero-dimensional ideals the FGLM algorithm of SymPy is usually faster
-than the walk; :meth:`sympy_extras.polys.ideals.Ideal.change_order` uses
-it in that case.
+The weight orders along the walk are
+:class:`~sympy_extras.polys.orderings.WeightOrder` instances: a weight
+vector refined by the target order. :mod:`sympy_extras.polys.groebnerwalk_sympy`
+is the SymPy face of this module (SymPy's rings and orders);
+:meth:`sympy_extras.polys.ideals.Ideal.change_order` walks with
+:func:`groebner_walk` when FGLM does not apply.
 
-The weight orders used along the walk are :class:`~.WeightOrder` instances:
-a weight vector refined by the target order.
+Examples
+========
+
+>>> from sympy_extras.polys.domains import QQ
+>>> from sympy_extras.polys.rings import PolyRing, grevlex, lex
+>>> from sympy_extras.polys.f4 import f4
+>>> from sympy_extras.polys.groebnerwalk import groebner_walk
+>>> R = PolyRing(QQ, ['x', 'y', 'z'], grevlex)
+>>> x, y, z = R.gens
+>>> G = f4([x*z - y**2, x**2 - y*z], R)
+>>> [str(g) for g in groebner_walk(G, R, lex)]
+['x**2 - y*z', 'x*y**2 - y*z**2', 'x*z - y**2', 'y**4 - y*z**3']
 
 References
 ==========
@@ -41,220 +57,305 @@ from __future__ import annotations
 
 from fractions import Fraction
 from math import lcm
-from typing import Sequence, Union
+from typing import Optional, Sequence, TypeVar, Union
 
-from sympy.polys.groebnertools import groebner as _groebner, red_groebner, is_groebner
-from sympy.polys.monomials import monomial_lcm, monomial_div
-from sympy.polys.orderings import lex, grlex, grevlex, ilex, igrlex, igrevlex
-from sympy.polys.rings import PolyElement, PolyRing
+from .f4 import f4, reduced_basis
+from .orderings import Monomial, MonomialOrder, OrderValue, WeightOrder, as_order, grevlex, grlex, lex
+from .rings import PolyElement, PolyRing, monomial_div, monomial_divides, monomial_lcm, monomial_mul
 
-from sympy_extras._typing import OrderSpec, Weights
+__all__ = ['groebner_walk', 'initial_form', 'extended_groebner', 'is_groebner', 'normal_form']
 
-from .orderings import WeightOrder, as_order
+T = TypeVar('T')
 
-__all__ = ['groebner_walk', 'initial_form', 'extended_groebner']
-
-
-def _weight_of(order: OrderSpec, nvars: int, G: Sequence[PolyElement]) -> Weights:
-    """A weight vector in the closure of the Gröbner cone of ``G`` for the
-    given order: the degree vector for graded orders, a vector of
-    decreasing powers for ``lex``."""
-    order = as_order(order)
-    if isinstance(order, WeightOrder):
-        return tuple(Fraction(w) for w in order.weights)
-    if order in (grlex, grevlex):
-        return tuple(Fraction(1) for _ in range(nvars))
-    if order == lex:
-        d = 1 + max([max(sum(m) for m in g.monoms()) for g in G] + [1])
-        return tuple(Fraction(d)**(nvars - 1 - i) for i in range(nvars))
-    if order in (ilex, igrlex, igrevlex):
-        raise ValueError("inverse orders are not global orders")
-    raise ValueError("no weight vector is known for the order %s" % (order,))
+#: the terms of a polynomial
+Terms = dict[Monomial, T]
 
 
-def _target_weight(order: OrderSpec, nvars: int) -> Weights:
-    """The weight vector such that its refinement by ``order`` is ``order``
-    itself."""
-    order = as_order(order)
-    if isinstance(order, WeightOrder):
-        return tuple(Fraction(w) for w in order.weights)
-    if order in (grlex, grevlex):
-        return tuple(Fraction(1) for _ in range(nvars))
-    if order == lex:
-        return tuple(Fraction(1 if i == 0 else 0) for i in range(nvars))
-    raise ValueError("no weight vector is known for the order %s" % (order,))
+def normal_form(f: PolyElement[T], basis: Sequence[PolyElement[T]]) -> PolyElement[T]:
+    """The remainder of the division of ``f`` by ``basis`` (over a field,
+    for the order of the ring of ``f``): no term is divisible by a leading
+    monomial of the basis; the normal form when ``basis`` is a Gröbner
+    basis.
 
-
-def _integral(weights: Sequence[Fraction]) -> tuple[int, ...]:
-    """Scale a rational weight vector to integers."""
-    den = 1
-    for w in weights:
-        den = lcm(den, Fraction(w).denominator)
-    return tuple(int(Fraction(w)*den) for w in weights)
-
-
-def initial_form(f: PolyElement, weights: Sequence[Union[int, Fraction]]) -> PolyElement:
-    """The terms of ``f`` of maximal weight for the weight vector."""
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.rings import PolyRing, grevlex
+    >>> from sympy_extras.polys.groebnerwalk import normal_form
+    >>> R = PolyRing(QQ, ['x', 'y'], grevlex)
+    >>> x, y = R.gens
+    >>> print(normal_form(x**3 + y, [x**2 - y]))
+    x*y + y
+    """
     ring = f.ring
-    best, terms = None, []
-    for monom, coeff in f.terms():
-        w = sum(a*b for a, b in zip(weights, monom))
+    K = ring.domain
+    key = ring.order.key
+    divisors: list[tuple[Monomial, T, list[tuple[Monomial, T]]]] = []
+    for g in basis:
+        if g.terms:
+            lm = max(g.terms, key=key)
+            divisors.append((lm, K.invert(g.terms[lm]), list(g.terms.items())))
+    p = dict(f.terms)
+    remainder: Terms[T] = {}
+    while p:
+        m = max(p, key=key)
+        c = p[m]
+        for lm, inverse, terms in divisors:
+            if monomial_divides(lm, m):
+                q = monomial_div(m, lm)
+                factor = K.mul(c, inverse)
+                for gm, gc in terms:
+                    t = monomial_mul(gm, q)
+                    old = p.get(t)
+                    value = K.neg(K.mul(factor, gc)) if old is None else K.sub(old, K.mul(factor, gc))
+                    if K.is_zero(value):
+                        if old is not None:
+                            del p[t]
+                    else:
+                        p[t] = value
+                break
+        else:
+            remainder[m] = c
+            del p[m]
+    return PolyElement(remainder, ring)
+
+
+def initial_form(f: PolyElement[T], weights: Sequence[OrderValue]) -> PolyElement[T]:
+    """The terms of ``f`` of maximal weight for the weight vector.
+
+    >>> from fractions import Fraction
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.rings import PolyRing
+    >>> from sympy_extras.polys.groebnerwalk import initial_form
+    >>> R = PolyRing(QQ, ['x', 'y'])
+    >>> x, y = R.gens
+    >>> print(initial_form(x**2 + x*y + y**3, [Fraction(1), Fraction(1)]))
+    y**3
+    >>> print(initial_form(x**2*y + x*y**2 + x, [1, 2]))
+    x*y**2
+    """
+    best: Optional[Fraction] = None
+    terms: Terms[T] = {}
+    for m, c in f.terms.items():
+        w = sum((Fraction(a)*b for a, b in zip(weights, m)), Fraction(0))
         if best is None or w > best:
-            best, terms = w, [(monom, coeff)]
+            best, terms = w, {m: c}
         elif w == best:
-            terms.append((monom, coeff))
-    return ring.from_dict(dict(terms))
+            terms[m] = c
+    return PolyElement(terms, f.ring)
 
 
-def _spoly_cofactors(f: PolyElement, g: PolyElement, cf: list[PolyElement],
-                     cg: list[PolyElement], ring: PolyRing) -> tuple[PolyElement, list[PolyElement]]:
-    """The S-polynomial of ``f`` and ``g`` with its representation."""
+def _s_polynomial(f: PolyElement[T], g: PolyElement[T]) -> tuple[PolyElement[T], Monomial, T, Monomial, T]:
+    """The S-polynomial ``mf*f - mg*g`` of ``f`` and ``g`` (the leading
+    terms cancelled), with the monomials and coefficients of ``mf`` and
+    ``mg``."""
+    K = f.ring.domain
     L = monomial_lcm(f.LM, g.LM)
-    mf = ring.term_new(monomial_div(L, f.LM), ring.domain.one/f.LC)
-    mg = ring.term_new(monomial_div(L, g.LM), ring.domain.one/g.LC)
-    s = mf*f - mg*g
-    cof = [mf*a - mg*b for a, b in zip(cf, cg)]
-    return s, cof
+    uf, cf = monomial_div(L, f.LM), K.invert(f.LC)
+    ug, cg = monomial_div(L, g.LM), K.invert(g.LC)
+    return f.mul_term(uf, cf) - g.mul_term(ug, cg), uf, cf, ug, cg
 
 
-def extended_groebner(F: Sequence[PolyElement], ring: PolyRing) -> tuple[list[PolyElement], list[list[PolyElement]]]:
+def is_groebner(G: Sequence[PolyElement[T]], ring: PolyRing[T]) -> bool:
+    """Whether ``G`` is a Gröbner basis for the order of ``ring`` (over a
+    field): every S-polynomial reduces to zero (Buchberger's criterion).
+
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.rings import PolyRing, lex
+    >>> from sympy_extras.polys.f4 import f4
+    >>> from sympy_extras.polys.groebnerwalk import is_groebner
+    >>> R = PolyRing(QQ, ['x', 'y'], lex)
+    >>> x, y = R.gens
+    >>> is_groebner([x**2 - y, x*y - R.one], R), is_groebner(f4([x**2 - y, x*y - R.one], R), R)
+    (False, True)
+    """
+    basis = [PolyElement(dict(g.terms), ring) for g in G if g.terms]
+    for i in range(len(basis)):
+        for j in range(i):
+            if monomial_lcm(basis[i].LM, basis[j].LM) == monomial_mul(basis[i].LM, basis[j].LM):
+                continue  # product criterion
+            s = _s_polynomial(basis[i], basis[j])[0]
+            if normal_form(s, basis).terms:
+                return False
+    return True
+
+
+def extended_groebner(F: Sequence[PolyElement[T]], ring: PolyRing[T]
+                      ) -> tuple[list[PolyElement[T]], list[list[PolyElement[T]]]]:
     """A Gröbner basis of the ideal generated by ``F`` with the
     representations of its elements in terms of ``F``.
 
     Returns ``(H, C)`` where ``H`` is a list of polynomials forming a
-    Gröbner basis for the order of ``ring`` and ``C[i]`` is a list of
-    polynomials with ``H[i] == sum(C[i][j]*F[j] for j)``. This is the
-    Buchberger algorithm without any of the optimizations of
-    :func:`sympy.polys.groebnertools.groebner`, meant for small inputs such
-    as the initial forms of the Gröbner walk.
+    Gröbner basis for the order of ``ring`` (over a field) and ``C[i]`` is
+    a list of polynomials with ``H[i] == sum(C[i][j]*F[j] for j)``. This
+    is the Buchberger algorithm with the product criterion only, meant for
+    small inputs such as the initial forms of the Gröbner walk.
 
     Examples
     ========
 
-    >>> from sympy import ring, QQ
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.rings import PolyRing, lex
     >>> from sympy_extras.polys.groebnerwalk import extended_groebner
-    >>> R, x, y = ring("x,y", QQ)
-    >>> H, C = extended_groebner([x**2 - y, x*y - 1], R)
-    >>> all(h == sum(c*f for c, f in zip(cs, [x**2 - y, x*y - 1])) for h, cs in zip(H, C))
+    >>> R = PolyRing(QQ, ['x', 'y'], lex)
+    >>> x, y = R.gens
+    >>> F = [x**2 - y, x*y - R.one]
+    >>> H, C = extended_groebner(F, R)
+    >>> [str(h) for h in H]
+    ['x**2 - y', 'x*y - 1', '-x + y**2', '-y**3 + 1']
+    >>> all(h == sum((c*f for c, f in zip(cs, F)), R.zero) for h, cs in zip(H, C))
     True
     """
-    F = [ring(f) for f in F]
-    n = len(F)
-    H: list[PolyElement] = []
-    C: list[list[PolyElement]] = []
-    for i, f in enumerate(F):
-        if f:
+    polys = [PolyElement(dict(f.terms), ring) for f in F]
+    n = len(polys)
+    H: list[PolyElement[T]] = []
+    C: list[list[PolyElement[T]]] = []
+    for i, f in enumerate(polys):
+        if f.terms:
             H.append(f)
             C.append([ring.one if j == i else ring.zero for j in range(n)])
     pairs = [(i, j) for i in range(len(H)) for j in range(i)]
     while pairs:
         i, j = pairs.pop()
-        if monomial_lcm(H[i].LM, H[j].LM) == tuple(a + b for a, b in zip(H[i].LM, H[j].LM)):
+        if monomial_lcm(H[i].LM, H[j].LM) == monomial_mul(H[i].LM, H[j].LM):
             continue  # product criterion
-        s, cof = _spoly_cofactors(H[i], H[j], C[i], C[j], ring)
-        if not s:
+        s, uf, cf, ug, cg = _s_polynomial(H[i], H[j])
+        if not s.terms:
             continue
-        q, r = s.div(H)
-        if not r:
+        cofactors = [a.mul_term(uf, cf) - b.mul_term(ug, cg) for a, b in zip(C[i], C[j])]
+        quotients, r = s.div(H)
+        if not r.terms:
             continue
-        for ql, cl in zip(q, C):
-            if ql:
-                cof = [a - ql*b for a, b in zip(cof, cl)]
+        for q, row in zip(quotients, C):
+            if q.terms:
+                cofactors = [a - q*b for a, b in zip(cofactors, row)]
         H.append(r)
-        C.append(cof)
-        pairs.extend((len(H) - 1, l) for l in range(len(H) - 1))
+        C.append(cofactors)
+        pairs.extend((len(H) - 1, k) for k in range(len(H) - 1))
     return H, C
 
 
-def _convert(G: Sequence[PolyElement], ring: PolyRing) -> list[PolyElement]:
-    return [ring.from_dict(dict(g)) for g in G]
+def _is_graded(order: MonomialOrder) -> bool:
+    return order == grevlex or order == grlex
 
 
-def _next_weight(G: Sequence[PolyElement], weights: Weights, target: Weights) -> Weights:
+def _weight_of(order: MonomialOrder, nvars: int, G: Sequence[PolyElement[T]]) -> list[Fraction]:
+    """A weight vector in the closure of the Gröbner cone of ``G`` for the
+    order: the degree vector for graded orders, decreasing powers for
+    ``lex``."""
+    if isinstance(order, WeightOrder):
+        return [Fraction(w) for w in order.weights]
+    if _is_graded(order):
+        return [Fraction(1) for _ in range(nvars)]
+    if order == lex:
+        d = 1 + max([max(sum(m) for m in g.terms) for g in G] + [1])
+        return [Fraction(d)**(nvars - 1 - i) for i in range(nvars)]
+    raise ValueError("no weight vector is known for the order %s" % (order,))
+
+
+def _target_weight(order: MonomialOrder, nvars: int) -> list[Fraction]:
+    """The weight vector whose refinement by ``order`` is ``order``."""
+    if isinstance(order, WeightOrder):
+        return [Fraction(w) for w in order.weights]
+    if _is_graded(order):
+        return [Fraction(1) for _ in range(nvars)]
+    if order == lex:
+        return [Fraction(1 if i == 0 else 0) for i in range(nvars)]
+    raise ValueError("no weight vector is known for the order %s" % (order,))
+
+
+def _integral(weights: Sequence[Fraction]) -> tuple[int, ...]:
+    """The rational weight vector scaled to integers."""
+    den = 1
+    for w in weights:
+        den = lcm(den, w.denominator)
+    return tuple(int(w*den) for w in weights)
+
+
+def _next_weight(G: Sequence[PolyElement[T]], weights: list[Fraction], target: list[Fraction]) -> list[Fraction]:
     """The point of the segment from ``weights`` to ``target`` where the
     ordering of the monomials of ``G`` first changes (``target`` if it
     never does)."""
     tmin = Fraction(1)
     for g in G:
         lm = g.LM
-        for m in g.monoms():
+        for m in g.terms:
             if m == lm:
                 continue
             v = [a - b for a, b in zip(lm, m)]
-            wv = sum(a*b for a, b in zip(weights, v))
-            tv = sum(a*b for a, b in zip(target, v))
+            wv = sum((a*b for a, b in zip(weights, v)), Fraction(0))
+            tv = sum((a*b for a, b in zip(target, v)), Fraction(0))
             if tv < 0 < wv:
                 t = wv/(wv - tv)
                 if t < tmin:
                     tmin = t
-    return tuple(w + tmin*(t - w) for w, t in zip(weights, target))
+    return [w + tmin*(t - w) for w, t in zip(weights, target)]
 
 
-def groebner_walk(G: Sequence[PolyElement], ring: PolyRing, target: OrderSpec,
-                  check: bool = False, lift: str = 'normal_form') -> list[PolyElement]:
-    """Convert the reduced Gröbner basis ``G`` of ``ring`` (elements of the
-    ring, whose order is the source order) to the reduced Gröbner basis for
-    the ``target`` order, returned in the ring with that order.
+def groebner_walk(G: Sequence[PolyElement[T]], ring: PolyRing[T], target: Union[str, MonomialOrder],
+                  check: bool = False, lift: str = 'normal_form') -> list[PolyElement[T]]:
+    r"""The reduced Gröbner basis for ``target`` of the ideal whose reduced
+    Gröbner basis for the order of ``ring`` is ``G`` (over a field), by
+    the Gröbner walk: in the ring with the order ``target``, sorted by
+    decreasing leading monomial.
 
-    ``lift`` is ``'normal_form'`` (lifting by normal forms modulo the
-    previous basis, the initial forms handled by SymPy's Buchberger
-    algorithm) or ``'cofactors'`` (lifting through the representations
-    computed by :func:`extended_groebner`).
+    The source and target orders are represented by weight vectors
+    $\omega$ and $\tau$ (``lex``, ``grlex``, ``grevlex`` and
+    :class:`~sympy_extras.polys.orderings.WeightOrder`), and the basis is
+    transformed along the segment from $\omega$ to $\tau$: at every point
+    where the ordering of the monomials of the basis changes, a Gröbner
+    basis of the initial forms (the terms of maximal weight) is computed
+    and lifted. ``lift`` is ``'normal_form'`` (the basis of the initial
+    forms by F4, each element $h$ lifted to $h - \mathrm{NF}_G(h)$, normal
+    form for the previous order [2]_) or ``'cofactors'`` (through the
+    representations computed by :func:`extended_groebner`). With
+    ``check`` every intermediate basis is checked with
+    :func:`is_groebner` (``RuntimeError`` if one is not a Gröbner basis).
 
-    Examples
-    ========
-
-    >>> from sympy import ring, QQ, grevlex, lex
-    >>> from sympy.polys.groebnertools import groebner
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.rings import PolyRing, grevlex, lex
+    >>> from sympy_extras.polys.f4 import f4
     >>> from sympy_extras.polys.groebnerwalk import groebner_walk
-    >>> R, x, y, z = ring("x,y,z", QQ, grevlex)
-    >>> G = groebner([x*z - y**2, x**2 - y*z], R)
-    >>> groebner_walk(G, R, lex)
-    [x**2 - y*z, x*y**2 - y*z**2, x*z - y**2, y**4 - y*z**3]
-    >>> T = R.clone(order=lex)
-    >>> groebner_walk(G, R, lex) == groebner([T.from_dict(dict(g)) for g in [x*z - y**2, x**2 - y*z]], T)
-    True
-    >>> groebner_walk(groebner_walk(G, R, lex), T, grevlex) == G
+    >>> R = PolyRing(QQ, ['x', 'y', 'z'], grevlex)
+    >>> x, y, z = R.gens
+    >>> G = f4([x*z - y**2, x**2 - y*z], R)
+    >>> [str(g) for g in groebner_walk(G, R, lex, lift='cofactors')]
+    ['x**2 - y*z', 'x*y**2 - y*z**2', 'x*z - y**2', 'y**4 - y*z**3']
+    >>> T = R.with_order(lex)
+    >>> groebner_walk(groebner_walk(G, R, 'lex'), T, grevlex, check=True) == G
     True
     """
-    target = as_order(target)
-    n = ring.ngens
-    G = [ring.from_dict(dict(g)) for g in G]
-    if not G or all(not g for g in G):
-        return _convert(G, ring.clone(order=target))
+    order = as_order(target)
     if lift not in ('normal_form', 'cofactors'):
         raise ValueError("lift must be 'normal_form' or 'cofactors'")
-    weights = _weight_of(ring.order, n, G)
-    tau = _target_weight(target, n)
+    n = ring.ngens
+    basis = [PolyElement(dict(g.terms), ring) for g in G if g.terms]
+    final = ring.with_order(order)
+    if not basis:
+        return []
+    weights = _weight_of(ring.order, n, basis)
+    tau = _target_weight(order, n)
     current = ring
-    lifted: list[PolyElement]
     while True:
-        new_order = WeightOrder(_integral(weights), target)
-        new_ring = ring.clone(order=new_order)
-        initial = [_convert([initial_form(g, weights)], new_ring)[0] for g in G]
+        new_ring = ring.with_order(WeightOrder(_integral(weights), order))
+        initial = [PolyElement(initial_form(g, weights).terms, new_ring) for g in basis]
+        lifted: list[PolyElement[T]] = []
         if lift == 'cofactors':
-            H, C = extended_groebner(initial, new_ring)
-            G_new = _convert(G, new_ring)
-            lifted = []
-            for cof in C:
+            _, cofactors = extended_groebner(initial, new_ring)
+            moved = [PolyElement(g.terms, new_ring) for g in basis]
+            for row in cofactors:
                 h = new_ring.zero
-                for c, g in zip(cof, G_new):
-                    if c:
-                        h += c*g
+                for c, g in zip(row, moved):
+                    if c.terms:
+                        h = h + c*g
                 lifted.append(h)
         else:
-            H = _groebner(initial, new_ring)
-            lifted = []
-            for h in H:
-                h_old = _convert([h], current)[0]
-                lifted.append(_convert([h_old - h_old.rem(G)], new_ring)[0])
-        G = red_groebner(lifted, new_ring)
+            for h in f4(initial, new_ring):
+                h_old = PolyElement(h.terms, current)
+                lifted.append(PolyElement((h_old - normal_form(h_old, basis)).terms, new_ring))
+        basis = reduced_basis(lifted, new_ring)
         current = new_ring
-        if check and not is_groebner(G, new_ring):
+        if check and not is_groebner(basis, new_ring):
             raise RuntimeError("the lifted basis is not a Groebner basis")
         if weights == tau:
             break
-        weights = _next_weight(G, weights, tau)
-    R = ring.clone(order=target)
-    G = red_groebner(_convert(G, R), R)
-    return sorted(G, key=lambda g: R.order(g.LM), reverse=True)
+        weights = _next_weight(basis, weights, tau)
+    return reduced_basis([PolyElement(dict(g.terms), final) for g in basis], final)

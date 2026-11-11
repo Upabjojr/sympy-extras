@@ -22,6 +22,9 @@ domains ``EX`` (coefficients like ``exp(y)`` with explicit generators),
 in ``Poly`` (``factor`` without generators factors over ``ZZ_I``/``QQ_I``,
 :mod:`~sympy_extras.polys.gaussianfactor`, and ``RR``); the division of
 multivariate polynomials and of polynomials with symbolic coefficients.
+``cancel``, ``factor`` and ``invert`` of expressions which need such a
+domain go through SymPy, in :mod:`sympy_extras.polys.polytools_sympy`
+(imported only then: this module does not load SymPy).
 
 Examples
 ========
@@ -1609,7 +1612,9 @@ def invert(f: ExprLike, g: ExprLike) -> Expr:
     """The inverse of ``f`` modulo ``g``: for two integers the modular
     inverse, for univariate polynomials the polynomial ``s`` of degree
     below ``g``'s with ``s*f = 1 (mod g)`` over ``QQ`` (``NotInvertible``
-    when they are not coprime). Several generators go through SymPy.
+    when they are not coprime); ``ValueError`` for several generators, as
+    in SymPy. Numbers other than rationals go through SymPy
+    (:func:`~sympy_extras.polys.polytools_sympy.invert_of_core`).
 
     >>> from sympy_extras.core import Symbol
     >>> x = Symbol('x')
@@ -1624,10 +1629,25 @@ def invert(f: ExprLike, g: ExprLike) -> Expr:
         except ValueError:
             raise NotInvertible('zero divisor') from None
     gens, (pf, pg) = _joint_rings([a, b])
-    if len(gens) != 1:
-        import sympy
-        from sympy_extras.interop import expr_from_sympy, to_sympy
-        return expr_from_sympy(sympy.invert(to_sympy(a), to_sympy(b)))
+    if len(gens) > 1:
+        # SymPy's DMP.invert: an inverse modulo a polynomial in several variables is not defined
+        raise ValueError('univariate polynomial expected')
+    if not gens:
+        if not (isinstance(a, Rational) and isinstance(b, Rational)):
+            # two numbers in ZZ_I, QQ_I, RR, CC or EX: SymPy's invert
+            from .polytools_sympy import invert_of_core
+            return invert_of_core(a, b)
+        fa, fb = a.as_fraction(), b.as_fraction()
+        if fa.denominator == 1 and fb.denominator == 1:
+            try:
+                return Integer(builtins_pow(fa.numerator, -1, fb.numerator))
+            except ValueError:
+                raise NotInvertible('zero divisor') from None
+        # SymPy's QQ.invert: gcdex(a, b) over QQ gives the gcd
+        # gcd(numerators)/lcm(denominators), never 1 when a denominator
+        # is not 1 (a prime of that denominator divides the gcd of the
+        # numerators, but not the numerator it belongs to)
+        raise NotInvertible('zero divisor')
     def dense(terms: dict[Monomial, Fraction]) -> list[Fraction]:
         n = max((m[0] for m in terms), default=0)
         return [terms.get((k,), Fraction(0)) for k in range(n, -1, -1)]
@@ -1706,19 +1726,15 @@ def _cancel_with_gens(p: Expr, q: Expr, e: Expr, factored: Expr, gens: tuple[Exp
         joint, (fp, fq) = _joint_rings([p, q])
     except CoercionFailed:
         # the domains other than ZZ[...] and QQ[...] are not ported: SymPy's cancel
-        import sympy
-        from sympy_extras.interop import expr_through_sympy, to_sympy
-        sympy_gens = [to_sympy(g) for g in gens]
-        return expr_through_sympy(e, lambda s: sympy.cancel(s, *sympy_gens))
+        from .polytools_sympy import cancel_of_core
+        return cancel_of_core(e, gens)
     joint_symbols: set[Symbol] = set()
     for j in joint:
         joint_symbols |= j.free_symbols
     if any(g not in joint and g.free_symbols & joint_symbols for g in gens):
         # a generator which is not one of the factors (x**2 for x): SymPy's
-        import sympy
-        from sympy_extras.interop import expr_through_sympy, to_sympy
-        sympy_gens = [to_sympy(g) for g in gens]
-        return expr_through_sympy(e, lambda s: sympy.cancel(s, *sympy_gens))
+        from .polytools_sympy import cancel_of_core
+        return cancel_of_core(e, gens)
     if not joint:
         return _expanded(factored)
     P, Q, Z = _cancel_reps(fp, fq, len(joint))
@@ -1761,9 +1777,8 @@ def _cancel_expanded(p: Expr, q: Expr, e: Expr, factored: Expr) -> Expr:
                 rgens, (rp, rq), prec = _joint_rings_real([p, q])
             except CoercionFailed:
                 # the domains CC and EX are not ported: SymPy's cancel
-                import sympy
-                from sympy_extras.interop import expr_through_sympy
-                return expr_through_sympy(e, sympy.cancel)
+                from .polytools_sympy import cancel_of_core
+                return cancel_of_core(e, ())
             if not rgens:
                 return _expanded(factored)
             RP, RQ = _cancel_real(rp, rq, len(rgens), prec)
@@ -2021,10 +2036,8 @@ def factor(f: ExprLike, *gens: ExprLike, deep: bool = False, fraction: bool = Tr
     except CoercionFailed:
         # EX, and ZZ_I, QQ_I or RR with explicit generators, are not
         # ported: SymPy's factor
-        import sympy
-        from sympy_extras.interop import expr_through_sympy, to_sympy
-        sympy_gens = [to_sympy(to_expr(g)) for g in gens]
-        return expr_through_sympy(e, lambda s: sympy.factor(s, *sympy_gens, fraction=fraction))
+        from .polytools_sympy import factor_of_core
+        return factor_of_core(e, [to_expr(g) for g in gens], fraction)
 
 
 def _symbolic_factor(e: Expr, gens: Sequence[ExprLike], fraction: bool, method: Method = 'factor') -> Expr:

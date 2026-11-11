@@ -797,3 +797,74 @@ def test_native_puiseux_and_function_fields_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_POLYS = r"""
+import importlib
+import pkgutil
+import sys
+import sympy_extras.polys as polys
+modules = []
+packages = [(list(polys.__path__), 'sympy_extras.polys.')]
+while packages:
+    path, prefix = packages.pop()
+    for info in pkgutil.iter_modules(path, prefix):
+        last = info.name.rsplit('.', 1)[-1]
+        if last in ('tests', 'interop') or last.endswith('_sympy'):
+            continue
+        module = importlib.import_module(info.name)
+        modules.append(info.name)
+        if info.ispkg:
+            packages.append((list(module.__path__), info.name + '.'))
+assert len(modules) > 70, modules
+assert 'sympy' not in sys.modules, [m for m in modules if 'sympy' in sys.modules]
+from fractions import Fraction
+from sympy_extras.core import Integer, Rational, symbols
+from sympy_extras.polys.domains import GF, QQ, ZZ
+from sympy_extras.polys.f4 import f4
+from sympy_extras.polys.groebnerwalk import extended_groebner, groebner_walk
+from sympy_extras.polys.hilbert import hilbert_numerator, hilbert_series
+from sympy_extras.polys.orderings import WeightOrder, elimination_order, grevlex, lex
+from sympy_extras.polys.polyerrors import NotInvertible
+from sympy_extras.polys.polytools import cancel, factor, invert
+from sympy_extras.polys.rings import PolyRing
+from sympy_extras.polys.subresultants import dup_psc, psc
+x, y, z, t = symbols('x y z t')
+R = PolyRing(QQ, ['x', 'y', 'z'], grevlex)
+X, Y, Z = R.gens
+G = f4([X*Z - Y**2, X**2 - Y*Z], R)
+for lift in ('normal_form', 'cofactors'):
+    assert [str(g) for g in groebner_walk(G, R, lex, check=True, lift=lift)] == \
+        ['x**2 - y*z', 'x*y**2 - y*z**2', 'x*z - y**2', 'y**4 - y*z**3']
+assert [str(g) for g in groebner_walk(G, R, WeightOrder((1, 2, 3), lex))] == ['y**3 - x**3', 'y*z - x**2', 'x*z - y**2']
+S = PolyRing(GF(7), ['x', 'y'], elimination_order(1, 2))
+H, C = extended_groebner([S.gens[0]**2 - S.gens[1], S.gens[0]*S.gens[1] - S.one], S)
+assert len(H) == len(C)
+assert hilbert_numerator([(2, 0), (0, 2)], t).rep == [1, 0, -2, 0, 1]
+assert str(hilbert_series([(2, 0, 0), (1, 1, 0), (0, 2, 0)], 3, t)) == '(2*t + 1)/(1 - t)'
+assert dup_psc([1, 0, 1], [1, 0, -1], ZZ) == [4, 0, 1]
+T2 = PolyRing(ZZ, ['x', 'y'])
+assert [str(c) for c in psc(T2.gens[0]**2*T2.gens[1] + T2.gens[0], T2.gens[0] + T2.gens[1])] == ['y**3 - y', '1']
+assert str(invert(x**2 - 1, 2*x - 1)) == '-4/3' and invert(Integer(3), Integer(7)) == Integer(5)
+for a, b, error in [(x*y + 1, y**2 + 1, ValueError), (Rational(1, 2), Integer(3), NotInvertible)]:
+    try:
+        invert(a, b)
+    except error:
+        pass
+    else:
+        raise AssertionError('%s expected' % error.__name__)
+assert str(cancel((x**2 - 1)/(x - 1))) == 'x + 1' and str(cancel((-x*y - y)/(x*y + x), x)) == '(-x*y - y)/(x*(y + 1))'
+assert str(factor(x**2*y - y**3)) == 'y*(x - y)*(x + y)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+"""
+
+
+def test_native_polys_do_not_load_sympy() -> None:
+    """Every module of :mod:`sympy_extras.polys` but ``interop`` and the
+    SymPy faces (``*_sympy``) imports without SymPy, and the Gröbner walk,
+    the orders, the Hilbert series, the principal subresultant
+    coefficients and ``invert``, ``cancel`` and ``factor`` over the ported
+    domains run without it."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_POLYS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

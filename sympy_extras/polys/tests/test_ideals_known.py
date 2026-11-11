@@ -117,7 +117,7 @@ def test_macaulay2_singular_documented_examples() -> None:
 
 def test_benchmark_systems() -> None:
     # Katsura-m has 2^m solutions
-    from sympy_extras.polys.groebnerwalk import groebner_walk
+    from sympy_extras.polys.groebnerwalk_sympy import groebner_walk
     for m_, count in [(2, 4), (3, 8), (4, 16)]:
         eqs, us = katsura(m_)
         I = Ideal(eqs, *us)

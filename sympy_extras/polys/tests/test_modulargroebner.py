@@ -25,7 +25,7 @@ from sympy_extras.polys.modulargroebner import (
     IntPoly, _critical_pairs, _image, _is_groebner, _luckiness, _normal_form, _s_polynomial, _verified, homogeneous_order)
 from sympy_extras.polys.modulargroebner_sympy import (
     GRADED_FACTOR, ModularTrace, chinese_remainder, default_primes, groebner, modular_groebner, rational_reconstruction)
-from sympy_extras.polys.orderings import elimination_order
+from sympy_extras.polys.orderings_sympy import elimination_order
 from sympy_extras.settings import configure, settings
 
 

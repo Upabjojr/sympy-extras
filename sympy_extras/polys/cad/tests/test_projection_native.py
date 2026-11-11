@@ -110,13 +110,17 @@ def _sympy_factors(items: list[sympy.Expr], gens: list[sympy.Symbol]) -> set[sym
 def test_mccallum_and_hong_against_sympy() -> None:
     # the projection of the last level, from SymPy's coefficients,
     # discriminants and resultants (McCallum) and from the principal
-    # subresultant coefficients of sympy_extras.polys.subresultants, on
-    # SymPy's dense polynomials (Hong)
+    # subresultant coefficients of sympy_extras.polys.subresultants_sympy,
+    # by SymPy's subresultant PRS on SymPy's dense polynomials (Hong)
     from itertools import combinations
-    from sympy_extras.polys.subresultants import psc
+    from sympy.polys.rings import PolyElement as SymPyPolyElement
+    from sympy_extras.polys.subresultants_sympy import dmp_psc
     rng = random.Random(11)
     sx, sy = sympy.symbols('x y')
     R, Ry, _ = sympy.ring("y,x", sympy.ZZ)
+
+    def psc(f: SymPyPolyElement, g: SymPyPolyElement) -> list[SymPyPolyElement]:
+        return [R[1:].from_dense(c) for c in dmp_psc(f.to_dense(), g.to_dense(), 1, R.domain)]
     for _ in range(15):
         polys = [_random_polynomial(rng, [sx, sy]) + sy**rng.randint(1, 3) for _ in range(rng.randint(1, 3))]
         basis = sorted(_sympy_factors(polys, [sx, sy]) - {g for g in _sympy_factors(polys, [sx, sy])
