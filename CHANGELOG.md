@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.solvers.stability`: `stability_conditions` (the
+  conditions on the parameters under which a polynomial or a matrix is
+  Hurwitz stable, or Schur stable with `discrete=True`, simplified by
+  quantifier elimination: `(k > -1) & (k < 8)`), `is_stable`,
+  `hurwitz_matrix`, `hurwitz_determinants`, `routh_array`.
 - `simplify.normalform.normal_form` relates the exponentials with
   commensurable arguments: `exp(r*w)` for rational `r` are powers of one
   kernel, so that `exp(x)*exp(-x) - 1` and `exp(2*x) - exp(x)**2` reduce

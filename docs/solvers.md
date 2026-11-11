@@ -1024,3 +1024,31 @@ which depend on the properties of that function are not found. The
 closure theorem applies: the zero set of the result is the smallest
 variety containing the projection, which may be larger than the
 projection itself (a missing point of a rational curve).
+
+## Stability with parameters
+
+`sympy_extras.solvers.stability.stability_conditions` returns the
+conditions on the parameters under which all the roots of a polynomial
+(or all the eigenvalues of a matrix) have negative real parts: the
+inequalities $a_0^i \Delta_i > 0$ on the Hurwitz determinants,
+simplified by a decomposition of the parameter space
+(`sympy_extras.assumptions.resolve`). With `discrete=True` the roots
+are required inside the unit circle, through the Möbius map $z = (s +
+1)/(s - 1)$.
+
+```python
+>>> from sympy_extras.matrices import ExprMatrix
+>>> from sympy_extras.solvers.stability import stability_conditions, hurwitz_determinants, routh_array
+>>> k, a, b = Symbol('k'), Symbol('a'), Symbol('b')
+>>> stability_conditions(s*(s + 1)*(s + 2) + k, s), stability_conditions((s + 1)**3 + k, s)
+((k > 0) & (k < 6), (k > -1) & (k < 8))
+>>> stability_conditions(z**2 + a*z + b, z, discrete=True)
+(b - 1 < 0) & (a + b + 1 > 0) & (a - b - 1 < 0)
+>>> stability_conditions(ExprMatrix.from_rows([[0, 1], [-k, -1]]))
+k > 0
+>>> hurwitz_determinants(s**3 + a*s**2 + b*s + 1, s)
+[a, a*b - 1, a*b - 1]
+>>> routh_array(s**4 + 2*s**3 + 3*s**2 + 4*s + 5, s)
+[[1, 3, 5], [2, 4, 0], [1, 5, 0], [-6, 0, 0], [5, 0, 0]]
+
+```
