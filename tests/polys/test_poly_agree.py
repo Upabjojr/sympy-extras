@@ -1,8 +1,10 @@
 """``Poly`` of the Rust port against ``sympy_extras.polys.polytools.Poly``:
 construction with and without generators (the domains ``ZZ``, ``QQ``,
-``ZZ[a, b]``, ``QQ[a, b]`` and the errors), printing, terms, degrees and
-the arithmetic, gcd, lcm, cofactors, cancel, division and exact quotient
-of random polynomials sharing a factor, compared through ``str``."""
+``ZZ[a, b]``, ``QQ[a, b]`` and the errors), printing, terms, degrees,
+monic, content, eval, the discriminant, the square-free and irreducible
+factorisations, and the arithmetic, gcd, lcm, cofactors, cancel,
+division, resultant and exact quotient of random polynomials sharing a
+factor, compared through ``str``."""
 
 from __future__ import annotations
 
@@ -21,6 +23,11 @@ def failed(f: Callable[[], Any]) -> Any:
         return 'ERROR ' + type(exc).__name__
 
 
+def listed(result: Any) -> str:
+    c, factors = result
+    return ' '.join([str(c)] + ['(%s, %d)' % (g, k) for g, k in factors])
+
+
 def python_report(e: Any, other: Any, gens: list[Any]) -> dict[str, Any]:
     from sympy_extras.polys.polytools import Poly
     out: dict[str, Any] = {}
@@ -37,6 +44,13 @@ def python_report(e: Any, other: Any, gens: list[Any]) -> dict[str, Any]:
     out['terms'] = repr([(list(m), str(c)) for m, c in f.terms()]).replace("'", '"')
     out['pow'] = str(f**2)
     out['diff'] = str(f.diff(f.gens[0]))
+    out['monic'] = failed(lambda: str(f.monic()))
+    out['content'] = failed(lambda: str(f.content()))
+    out['primitive'] = failed(lambda: ' '.join(map(str, f.primitive())))
+    out['eval2'] = failed(lambda: str(f.eval(f.gens[0], 2)))
+    out['discriminant'] = failed(lambda: str(f.discriminant()))
+    out['sqf_list'] = failed(lambda: listed(f.sqf_list()))
+    out['factor_list'] = failed(lambda: listed(f.factor_list()))
     try:
         g = Poly(other, *f.gens)
     except Exception as exc:
@@ -51,6 +65,8 @@ def python_report(e: Any, other: Any, gens: list[Any]) -> dict[str, Any]:
     out['cofactors'] = failed(lambda: ' '.join(map(str, f.cofactors(g))))
     out['cancel'] = failed(lambda: ' '.join(map(str, f.cancel(g))))
     out['div'] = failed(lambda: ' '.join(map(str, f.div(g))))
+    out['resultant'] = failed(lambda: str(f.resultant(g)))
+    out['eval_other'] = failed(lambda: str(f.eval(f.gens[0], other)))
     out['exquo'] = failed(lambda: str((f * g).exquo(g)))
     return out
 

@@ -1202,3 +1202,378 @@ ring_ops!(IntegerRingOps, IntegerRing, SparsePolynomialRing<IntegerRing>);
 ring_ops!(IntegerRingOps, IntegerRing, IteratedPolynomialRing<IntegerRing>);
 ring_ops!(RationalRingOps, RationalField, SparsePolynomialRing<RationalField>);
 ring_ops!(RationalRingOps, RationalField, IteratedPolynomialRing<RationalField>);
+
+// ---------------------------------------------------------------------
+// Poly, stage 2: monic, content, eval, resultants, sqf_list, factor_list
+
+/// A polynomial, or an expression when no generator is left (the results
+/// of `eval`, `resultant`, `discriminant`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PolyOrExpr {
+    Poly(Poly),
+    Expr(Basic),
+}
+
+/// `_xreplace_evaluated`: the rebuilt nodes evaluated.
+fn xreplace_evaluated(e: &Basic, rule: &[(Basic, Basic)]) -> PolyResult<Basic> {
+    if let Some((_, v)) = rule.iter().find(|(k, _)| k == e) {
+        return Ok(v.clone());
+    }
+    if e.args().is_empty() {
+        return Ok(e.clone());
+    }
+    let mut args: Vec<Basic> = Vec::new();
+    for a in e.args() {
+        args.push(xreplace_evaluated(a, rule)?);
+    }
+    if args.iter().zip(e.args()).all(|(a, b)| a.ptr_eq(b)) {
+        return Ok(e.clone());
+    }
+    crate::core::function::rebuild_evaluated(e, args)
+}
+
+/// SymPy's sort key of a polynomial over a polynomial domain
+/// (`_domain_key`): nested over the generators, the coefficients by their
+/// number of terms and then their terms in decreasing lex order.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum DomainKey {
+    Coefficient(usize, Vec<(Monomial, Int)>),
+    Level(Vec<DomainKey>),
+}
+
+fn domain_key_level(terms: &[(Monomial, Int)], i: usize, n: usize) -> DomainKey {
+    if i == n {
+        let mut ordered: Vec<(Monomial, Int)> = terms.iter().map(|(m, c)| (m[n..].to_vec(), c.clone())).collect();
+        ordered.sort();
+        ordered.reverse();
+        return DomainKey::Coefficient(ordered.len(), ordered);
+    }
+    if terms.is_empty() {
+        return DomainKey::Level(Vec::new());
+    }
+    let top: u32 = terms.iter().map(|(m, _)| m[i]).max().expect("terms");
+    DomainKey::Level(
+        (0..=top)
+            .rev()
+            .map(|d| {
+                let part: Vec<(Monomial, Int)> = terms.iter().filter(|(m, _)| m[i] == d).cloned().collect();
+                domain_key_level(&part, i + 1, n)
+            })
+            .collect(),
+    )
+}
+
+fn domain_key(f: &PolyElement<IntegerRing>, n: usize) -> DomainKey {
+    let terms: Vec<(Monomial, Int)> = f.terms.iter().map(|(m, c)| (m.clone(), c.clone())).collect();
+    domain_key_level(&terms, 0, n)
+}
+
+impl Poly {
+    fn param_ring_rep(&self, terms: Terms<Rat>, n_gens: usize) -> Poly {
+        let ring = rational_ring(internal_names(n_gens, self.domain.params.len()));
+        Poly {
+            rep: ring.from_dict(terms),
+            gens: self.gens[self.gens.len() - n_gens..].to_vec(),
+            domain: self.domain.clone(),
+        }
+    }
+
+    /// The polynomial divided by its leading coefficient (`monic`; over a
+    /// polynomial domain only when that coefficient is a number).
+    pub fn monic(&self) -> PolyResult<Poly> {
+        if self.is_zero() {
+            return Ok(self.clone());
+        }
+        let lc: Rat = self.rep.LC();
+        if !self.domain.params.is_empty() {
+            let split = self.split();
+            let lead = split.values().next_back().expect("a nonzero polynomial");
+            let zero: Monomial = vec![0; self.domain.params.len()];
+            if lead.len() != 1 || !lead.contains_key(&zero) {
+                return Err(polys_error(
+                    PolysErrorKind::CoercionFailed,
+                    format!("monic of {} needs the fraction field (not ported yet)", self.to_str()?),
+                ));
+            }
+        }
+        let integral: Option<bool> = if lc != Rat::ONE { Some(false) } else { None };
+        Ok(self.same_ring(self.rep.exquo_ground(&lc)?, integral))
+    }
+
+    /// The content (`content`; over `ZZ` the gcd of the coefficients, over
+    /// `QQ` one).
+    pub fn content(&self) -> PolyResult<Basic> {
+        if !self.domain.params.is_empty() {
+            return Err(polys_error(
+                PolysErrorKind::OperationNotSupported,
+                "the content over a polynomial domain is not ported yet".to_string(),
+            ));
+        }
+        let values: Vec<Rat> = self.rep.terms.values().cloned().collect();
+        if values.is_empty() {
+            return Ok(Basic::zero());
+        }
+        if self.domain.integral {
+            return Ok(Basic::integer(terms_gcd(&values)));
+        }
+        Ok(Basic::one())
+    }
+
+    /// `(content, primitive part)`.
+    pub fn primitive(&self) -> PolyResult<(Basic, Poly)> {
+        let c: Basic = self.content()?;
+        match c.as_rational() {
+            Some(v) if !(v.is_zero() || *v == Rat::ONE) => {
+                let q = self.rep.exquo_ground(v)?;
+                Ok((c.clone(), self.same_ring(q, None)))
+            }
+            _ => Ok((c, self.clone())),
+        }
+    }
+
+    /// The polynomial with the generator of index `i` set to `value`.
+    pub fn eval(&self, i: usize, value: &Basic) -> PolyResult<PolyOrExpr> {
+        if i >= self.gens.len() {
+            return Err(polynomial_error(format!(
+                "-{} <= gen < {} expected, got {}",
+                self.gens.len(),
+                self.gens.len(),
+                i
+            )));
+        }
+        let rule: Vec<(Basic, Basic)> = if self.gens[i] != *value {
+            vec![(self.gens[i].clone(), value.clone())]
+        } else {
+            Vec::new()
+        };
+        let result: Basic = expand_default(&xreplace_evaluated(&self.as_expr()?, &rule)?)?;
+        let mut rest: Vec<Basic> = self.gens.clone();
+        rest.remove(i);
+        if rest.is_empty() {
+            return Ok(PolyOrExpr::Expr(result));
+        }
+        Ok(PolyOrExpr::Poly(Poly::new(&result, &rest)?))
+    }
+
+    fn drop_first(&self, value: &PolyElement<RationalField>) -> PolyResult<PolyOrExpr> {
+        let n: usize = self.gens.len();
+        if n == 1 {
+            let terms: BTreeMap<Monomial, Rat> =
+                value.terms.iter().map(|(m, c)| (m[1..].to_vec(), c.clone())).collect();
+            return Ok(PolyOrExpr::Expr(self.coefficient_expr(&terms)?));
+        }
+        let terms: Terms<Rat> = value.terms.iter().map(|(m, c)| (m[1..].to_vec(), c.clone())).collect();
+        Ok(PolyOrExpr::Poly(self.param_ring_rep(terms, n - 1)))
+    }
+
+    /// The resultant in the first generator.
+    pub fn resultant(&self, other: &Poly) -> PolyResult<PolyOrExpr> {
+        let (a, b) = self.unified(other)?;
+        let value = resultant_first(&a.rep, &b.rep, &a.names(), a.domain.integral);
+        a.drop_first(&value)
+    }
+
+    /// `(-1)**(n (n - 1)/2) Res(f, f')/lc(f)` in the first generator.
+    pub fn discriminant(&self) -> PolyResult<PolyOrExpr> {
+        let n: i64 = self.degree(0)?;
+        if n < 1 {
+            return Ok(PolyOrExpr::Expr(Basic::zero()));
+        }
+        let mut value = resultant_first(&self.rep, &self.rep.diff(0), &self.names(), self.domain.integral);
+        let lc_terms: Terms<Rat> = self
+            .rep
+            .terms
+            .iter()
+            .filter(|(m, _)| i64::from(m[0]) == n)
+            .map(|(m, c)| {
+                let mut key: Monomial = vec![0];
+                key.extend_from_slice(&m[1..]);
+                (key, c.clone())
+            })
+            .collect();
+        value = value.exquo(&self.rep.ring.from_dict(lc_terms))?;
+        if (n * (n - 1) / 2) % 2 == 1 {
+            value = value.neg();
+        }
+        self.drop_first(&value)
+    }
+
+    fn with_int_coefficients(&self, f: &PolyElement<IntegerRing>) -> Poly {
+        self.same_ring(
+            self.rep
+                .ring
+                .from_dict(f.terms.iter().map(|(m, c)| (m.clone(), rat_from_int(c))).collect()),
+            None,
+        )
+    }
+
+    fn coefficient_of_full(&self, f: &Terms<Rat>) -> PolyResult<Basic> {
+        let n: usize = self.gens.len();
+        let terms: BTreeMap<Monomial, Rat> = f.iter().map(|(m, c)| (m[n..].to_vec(), c.clone())).collect();
+        self.coefficient_expr(&terms)
+    }
+
+    /// The square-free decomposition `(coeff, [(g, k)])` (`sqf_list`).
+    pub fn sqf_list(&self) -> PolyResult<(Basic, Vec<(Poly, usize)>)> {
+        use super::multisqf::{sqf_list, IntegerSqfDomain, ParameterSqfDomain, RationalSqfDomain};
+        use super::sqfreetools::dup_sqf_list;
+        let n: usize = self.gens.len();
+        let names: Vec<String> = self.rep.ring.names.clone();
+        if self.domain.params.is_empty() && n == 1 {
+            let f: Vec<Rat> = self.univariate_rational()?;
+            if self.domain.integral {
+                let ints: Vec<Int> = f.iter().map(numer).collect();
+                let (coefficient, factors) = dup_sqf_list(&ints, &ZZ);
+                return Ok((
+                    Basic::integer(coefficient),
+                    factors
+                        .into_iter()
+                        .map(|(g, k)| {
+                            (
+                                self.from_univariate(&g.iter().map(rat_from_int).collect::<Vec<_>>(), true),
+                                k,
+                            )
+                        })
+                        .collect(),
+                ));
+            }
+            let (coefficient, factors) = dup_sqf_list(&f, &QQ);
+            return Ok((
+                Basic::from_rational(coefficient),
+                factors
+                    .into_iter()
+                    .map(|(g, k)| (self.from_univariate(&g, false), k))
+                    .collect(),
+            ));
+        }
+        if self.domain.integral {
+            let to_int = |ring: &Arc<PolyRing<IntegerRing>>| -> PolyElement<IntegerRing> {
+                ring.from_dict(self.rep.terms.iter().map(|(m, c)| (m.clone(), numer(c))).collect())
+            };
+            let (cz, fz) = if self.domain.params.is_empty() {
+                let d = IntegerSqfDomain::new(names);
+                sqf_list(&to_int(&d.domain.ring), &d, false)
+            } else {
+                let d = ParameterSqfDomain::new(
+                    SparsePolynomialRing::sympy(ZZ, names[n..].to_vec()),
+                    names[..n].to_vec(),
+                );
+                sqf_list(&to_int(d.iterated.ring()), &d, false)
+            };
+            let c: Terms<Rat> = cz.terms.iter().map(|(m, c)| (m.clone(), rat_from_int(c))).collect();
+            return Ok((
+                self.coefficient_of_full(&c)?,
+                fz.iter().map(|(g, k)| (self.with_int_coefficients(g), *k)).collect(),
+            ));
+        }
+        let (cq, fq) = if self.domain.params.is_empty() {
+            let d = RationalSqfDomain::new(names);
+            let f = d.domain.ring.from_dict(self.rep.terms.clone());
+            sqf_list(&f, &d, false)
+        } else {
+            let d = ParameterSqfDomain::new(
+                SparsePolynomialRing::sympy(QQ, names[n..].to_vec()),
+                names[..n].to_vec(),
+            );
+            let f = d.iterated.ring().from_dict(self.rep.terms.clone());
+            sqf_list(&f, &d, false)
+        };
+        Ok((
+            self.coefficient_of_full(&cq.terms)?,
+            fq.iter().map(|(g, k)| (self.from_rationals(g), *k)).collect(),
+        ))
+    }
+
+    /// The irreducible factors with their multiplicities and the leading
+    /// constant (`factor_list`), sorted as SymPy sorts them.
+    pub fn factor_list(&self) -> PolyResult<(Basic, Vec<(Poly, usize)>)> {
+        if self.is_zero() {
+            return Ok((Basic::zero(), Vec::new()));
+        }
+        if self.domain.params.is_empty() {
+            let (coefficient, factors) = factor_all(&self.rep)?;
+            return Ok((
+                Basic::from_rational(coefficient),
+                factors
+                    .iter()
+                    .map(|(f, k)| (self.with_int_coefficients(f), *k))
+                    .collect(),
+            ));
+        }
+        let n: usize = self.gens.len();
+        let names: Vec<String> = self.names();
+        let exponents: Vec<u32> = (0..n)
+            .map(|i| self.rep.terms.keys().map(|m| m[i]).min().expect("terms"))
+            .collect();
+        let shifted: Terms<Rat> = self
+            .rep
+            .terms
+            .iter()
+            .map(|(m, c)| {
+                let key: Monomial = m
+                    .iter()
+                    .enumerate()
+                    .map(|(i, e)| if i < n { e - exponents[i] } else { *e })
+                    .collect();
+                (key, c.clone())
+            })
+            .collect();
+        let (f, content): (PolyElement<RationalField>, Basic) = if self.domain.integral {
+            let z = IteratedPolynomialRing::new(
+                SparsePolynomialRing::sympy(ZZ, names[n..].to_vec()),
+                names[..n].to_vec(),
+            );
+            let mut fz: PolyElement<IntegerRing> = z
+                .ring()
+                .from_dict(shifted.iter().map(|(m, c)| (m.clone(), numer(c))).collect());
+            let content_z = z.ground_content(&fz);
+            if !z.params.is_one(&content_z) {
+                fz = fz.exquo(&z.embed_params(&content_z))?;
+            }
+            let c: BTreeMap<Monomial, Rat> = content_z
+                .terms
+                .iter()
+                .map(|(m, c)| (m.clone(), rat_from_int(c)))
+                .collect();
+            (
+                self.rep
+                    .ring
+                    .from_dict(fz.terms.iter().map(|(m, c)| (m.clone(), rat_from_int(c))).collect()),
+                self.coefficient_expr(&c)?,
+            )
+        } else {
+            let q = IteratedPolynomialRing::new(
+                SparsePolynomialRing::sympy(QQ, names[n..].to_vec()),
+                names[..n].to_vec(),
+            );
+            let mut fq: PolyElement<RationalField> = q.ring().from_dict(shifted);
+            let content_q = q.ground_content(&fq);
+            if !q.params.is_one(&content_q) {
+                fq = fq.exquo(&q.embed_params(&content_q))?;
+            }
+            let c: BTreeMap<Monomial, Rat> = content_q.terms.clone().into_iter().collect();
+            (self.rep.ring.from_dict(fq.terms.clone()), self.coefficient_expr(&c)?)
+        };
+        let (coefficient, factors) = factor_all(&f)?;
+        let mut result: mf::Factors = factors;
+        let ring_z: Arc<PolyRing<IntegerRing>> = PolyRing::new(ZZ, self.rep.ring.names.clone(), MonomialOrder::Lex)?;
+        let ngens: usize = ring_z.names.len();
+        for i in (0..n).rev() {
+            if exponents[i] != 0 {
+                let monomial: Monomial = (0..ngens).map(|k| u32::from(k == i)).collect();
+                result.insert(0, (ring_z.term(monomial, Int::ONE), exponents[i] as usize));
+            }
+        }
+        result.sort_by_cached_key(|(g, k)| {
+            let first: i64 = g.terms.keys().map(|m| i64::from(m[0])).max().unwrap_or(-1);
+            (first + 1, *k, domain_key(g, n))
+        });
+        Ok((
+            core_mul(&[Basic::from_rational(coefficient), content])?,
+            result
+                .iter()
+                .map(|(g, k)| (self.with_int_coefficients(g), *k))
+                .collect(),
+        ))
+    }
+}

@@ -1271,6 +1271,31 @@ fn poly_report<'py>(
     )?;
     out.set_item("pow", shown(f.pow(2).to_str()))?;
     out.set_item("diff", shown(f.diff(0).to_str()))?;
+    use sympy_extras_core::polys::polytools::PolyOrExpr;
+    let either = |r: Result<PolyOrExpr, sympy_extras_core::error::PolyError>| match r {
+        Ok(PolyOrExpr::Poly(p)) => p.to_str(),
+        Ok(PolyOrExpr::Expr(x)) => Ok(x.to_string()),
+        Err(e) => Err(e),
+    };
+    let listed = |r: Result<(Basic, Vec<(Poly, usize)>), sympy_extras_core::error::PolyError>| {
+        r.and_then(|(c, fs)| {
+            let mut parts: Vec<String> = vec![c.to_string()];
+            for (g, k) in fs {
+                parts.push(format!("({}, {})", g.to_str()?, k));
+            }
+            Ok(parts.join(" "))
+        })
+    };
+    out.set_item("monic", shown(f.monic().and_then(|h| h.to_str())))?;
+    out.set_item("content", shown(f.content().map(|c| c.to_string())))?;
+    out.set_item(
+        "primitive",
+        shown(f.primitive().and_then(|(c, h)| Ok(format!("{} {}", c, h.to_str()?)))),
+    )?;
+    out.set_item("eval2", shown(either(f.eval(0, &Basic::int(2)))))?;
+    out.set_item("discriminant", shown(either(f.discriminant())))?;
+    out.set_item("sqf_list", shown(listed(f.sqf_list())))?;
+    out.set_item("factor_list", shown(listed(f.factor_list())))?;
     let g = match Poly::new(&other, &f.gens) {
         Ok(g) => g,
         Err(err) => {
@@ -1305,6 +1330,8 @@ fn poly_report<'py>(
                 .and_then(|(q, r)| Ok(format!("{} {}", q.to_str()?, r.to_str()?))),
         ),
     )?;
+    out.set_item("resultant", shown(either(f.resultant(&g))))?;
+    out.set_item("eval_other", shown(either(f.eval(0, &other))))?;
     out.set_item(
         "exquo",
         shown(f.mul(&g).and_then(|h| h.exquo(&g)).and_then(|h| h.to_str())),
