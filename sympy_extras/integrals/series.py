@@ -133,7 +133,7 @@ from sympy_extras.concrete.convergence import sum_convergence
 from sympy_extras.concrete.eulersums import polygamma_series
 from sympy_extras.concrete.zeilberger_sympy import zeilberger_sum
 from sympy_extras.settings import settings
-from .brackets import SeriesCoefficient, taylor_coefficient
+from .brackets_sympy import SeriesCoefficient, taylor_coefficient
 from .conditions_sympy import ConditionalValue
 from .marichev import tidy
 from .mellin_sympy import monomial

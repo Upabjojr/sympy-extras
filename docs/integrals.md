@@ -513,7 +513,7 @@ pi**3/4
 >>> n = symbols('n', positive=True)
 >>> definite_integral(1/(1 + x**n), (x, 0, oo), n > 1)
 pi/(n*sin(pi/n))
->>> from sympy_extras.integrals.brackets import ramanujan_master_theorem
+>>> from sympy_extras.integrals.brackets_sympy import ramanujan_master_theorem
 >>> from sympy_extras.integrals.recognize import recognize_integral
 >>> s = symbols('s')
 >>> ramanujan_master_theorem(exp(-x**2), x, s)

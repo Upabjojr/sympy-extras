@@ -73,7 +73,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.settings import settings
-from .brackets import SeriesCoefficient, taylor_coefficient
+from .brackets_sympy import SeriesCoefficient, taylor_coefficient
 from .conditions_sympy import ConditionalValue
 from .mellin_sympy import monomial
 
