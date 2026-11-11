@@ -1,4 +1,4 @@
-# Curvature of a metric, vector calculus
+# Curvature of a metric, curves and surfaces, vector calculus
 
 `sympy_extras.diffgeom.Metric` computes, from the components $g_{ij}$ of
 a (pseudo-)Riemannian metric in coordinates, the objects of Riemannian
@@ -70,6 +70,46 @@ are written for functions of a parameter:
 (True, -r(s)*Derivative(phi(s), s)**2 + Derivative(r(s), (s, 2)))
 >>> polar.laplacian(Function('u')(r, phi))
 (r**2*Derivative(u(r, phi), (r, 2)) + r*Derivative(u(r, phi), r) + Derivative(u(r, phi), (phi, 2)))/r**2
+
+```
+
+## Curves and surfaces
+
+`sympy_extras.diffgeom.classical` has the classical objects: for a
+parametrised `Curve` the speed, the curvature, the torsion and the Frenet
+frame; for a parametrised `Surface` the two fundamental forms, the unit
+normal, the Gaussian, mean and principal curvatures. The symbols are
+real; square roots of squares are taken out, as absolute values unless
+the factor is known to be positive.
+
+```python
+>>> from sympy_extras.diffgeom import Curve, Surface
+>>> from sympy_extras.functions import cosh
+>>> u, v = Symbol('u'), Symbol('v')
+>>> p, q = Symbol('p', positive=True), Symbol('q', positive=True)
+>>> helix = Curve([p*cos(t), p*sin(t), q*t], t)
+>>> helix.curvature(), helix.torsion()
+(p/(p**2 + q**2), q/(p**2 + q**2))
+>>> Curve([t, t**2], t).curvature()
+2/(4*t**2 + 1)**(3/2)
+>>> torus = Surface([(2 + cos(u))*cos(v), (2 + cos(u))*sin(v), sin(u)], u, v)
+>>> torus.first_fundamental_form(), torus.gaussian_curvature()
+((1, 0, cos(u)**2 + 4*cos(u) + 4), cos(u)/(cos(u) + 2))
+>>> Surface([cosh(u)*cos(v), cosh(u)*sin(v), u], u, v).mean_curvature()          # the catenoid
+0
+
+```
+
+The Gaussian curvature is computed from the determinants $[\mathbf{r}_{uu},
+\mathbf{r}_u, \mathbf{r}_v]$, without the square root of the normal. By
+the Theorema Egregium it equals half the scalar curvature of the first
+fundamental form, which `Metric` computes independently:
+
+```python
+>>> from sympy_extras.simplify.normalform import normal_form
+>>> E, F, G = torus.first_fundamental_form()
+>>> normal_form(Metric([[E, F], [F, G]], [u, v]).ricci_scalar()/2 - torus.gaussian_curvature())
+0
 
 ```
 

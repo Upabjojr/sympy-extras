@@ -30,7 +30,8 @@ the quotient is cancelled again; the reduction is in fact done after
 every operation, so that the denominators met on the way are in one form
 and have common factors to find. With the sines before the cosines the
 same holds with $\sin^2 u \to 1 - \cos^2 u$: the result is converted to
-that form at the end, and the one with fewer terms is returned.
+that form at the end, and the one with fewer terms (then with fewer
+kernels) is returned.
 
 The result is zero exactly when the numerator lies in the ideal of the
 relations: a zero test for these expressions as long as the kernels have
@@ -222,6 +223,15 @@ def _lift(abstraction: _Abstraction, found: dict[Expr, int], sines_first: bool) 
     return lift
 
 
+def _measure(numerator: PolyElement[int], denominator: PolyElement[int]) -> tuple[int, int]:
+    """The number of terms, then the number of kernels which occur."""
+    used: set[int] = set()
+    for f in (numerator, denominator):
+        for monomial in f.terms:
+            used.update(i for i, exponent in enumerate(monomial) if exponent)
+    return len(numerator.terms) + len(denominator.terms), len(used)
+
+
 def _moved(f: PolyElement[int], source: _QuotientLift, target: _QuotientLift) -> PolyElement[int]:
     """The polynomial in the ring of ``target`` (the same kernels in
     another order), reduced there."""
@@ -261,13 +271,13 @@ def normal_form(e: ExprLike) -> Expr:
     lift = _lift(abstraction, found, False)
     numerator, denominator = lift.cancel(*lift.fraction(abstracted))
     best = lift.ratio(numerator, denominator)
-    if abstraction.sines and len(numerator.terms) + len(denominator.terms) > 2:
+    if abstraction.sines:
         # sin**2 -> 1 - cos**2 gives another normal form: the one with fewer terms is returned
         other = _lift(abstraction, found, True)
         p, q = _moved(numerator, lift, other), _moved(denominator, lift, other)
         if not q:
             raise ZeroDivisionError('division by zero in %s' % (expression,))
         p, q = other.cancel(p, q)
-        if len(p.terms) + len(q.terms) < len(numerator.terms) + len(denominator.terms):
+        if _measure(p, q) < _measure(numerator, denominator):
             best = other.ratio(p, q)
     return abstraction._restore(best)

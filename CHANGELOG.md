@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.diffgeom.classical`: `Curve` (speed, curvature, signed
+  curvature, torsion, Frenet frame) and `Surface` (first and second
+  fundamental forms, unit normal, area element, Gaussian, mean and
+  principal curvatures) for parametrised curves and surfaces in space.
 - `sympy_extras.calculus.optimization`: `minimize`, `maximize` and
   `value_range`, the exact *global* optimum of a polynomial or rational
   function under a Boolean combination of polynomial equations and

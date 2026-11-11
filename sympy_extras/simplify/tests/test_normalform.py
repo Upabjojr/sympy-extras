@@ -86,6 +86,8 @@ def test_forms() -> None:
     # the shorter of the forms in sines and in cosines
     assert normal_form(cos(x)**2) == cos(x)**2 and normal_form(1 - sin(x)**2) == cos(x)**2
     assert normal_form(1 - cos(x)**2) == sin(x)**2 and normal_form(1 + tan(x)**2) == 1/cos(x)**2
+    # as many terms in both forms: the one with fewer kernels
+    assert normal_form((2 + cos(x))**2) == cos(x)**2 + 4*cos(x) + 4 and normal_form((2 + sin(x))**2) == sin(x)**2 + 4*sin(x) + 4
     assert normal_form((1 - cos(x)**2)/sin(x)) == sin(x)
     assert normal_form(sqrt(x)**3) == x*sqrt(x)
     assert normal_form(Integer(6)/4) == Rational(3, 2) and normal_form(x - x) == 0
