@@ -892,3 +892,18 @@ def test_the_variable_of_a_crootof_is_bound() -> None:
     assert to_sympy(e.subs(x, 1)) == root + 1
     assert to_sympy(e.xreplace({x: Integer(2)})) == root + 2
     assert to_sympy(e.subs(from_sympy(root), 0)) == sx
+
+
+def test_expand_splits_logarithms_before_distributing() -> None:
+    # SymPy runs the log hint over the whole tree before the mul hint:
+    # log(a*(-1 - I)) with a < 0 is log(-a) + log(2)/2 + I*pi/4; the core
+    # distributed the product first (log(-a - a*I)), which no longer splits,
+    # and cancel left I*log(a*(-1 + I))/2 - I*log(a*(-1 - I))/2 instead of pi/4
+    from sympy_extras.core.mul import Mul as MulNode
+    from sympy_extras.functions import log
+    from sympy_extras.polys.polytools import cancel
+    a = Dummy('a', negative=True)
+    e = log(MulNode(a, -1 - I))
+    assert expand(e) == log(-a) + log(2)/2 + I*pi/4
+    assert str(to_sympy(expand(e))) == str(sympy.expand(to_sympy(e)))
+    assert cancel(I*log(MulNode(a, -1 + I))/2 - I*log(MulNode(a, -1 - I))/2) == pi/4

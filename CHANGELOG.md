@@ -654,6 +654,16 @@ remove public functions. Breaking changes are listed here when they happen.
   doctests, the calls of the tests of limits and 69 more with parametric
   signs, sequences and series), and natively with the inputs converted
   and the result converted back.
+- The core's `expand` runs the `log` hint over the whole tree before
+  distributing products, in SymPy's order: `log(a*(-1 - I))` with `a < 0`
+  is `log(-a) + log(2)/2 + I*pi/4` (it became `log(-a - a*I)`), so
+  `cancel` and the leading terms of sums of such logarithms simplify as
+  SymPy's do. The core's Gruntz computes the mrv set of `hyper`,
+  `meijerg` and the other functions which are not `Application`s (it
+  raised `NotImplementedError`). Both left limits unevaluated or
+  unsimplified through the native `assumptions.limits`, and broke
+  `test_definite`'s binomial differentials and `test_regions`' merged
+  cases.
 - `functions.elementary.exponential.exp` of `oo` (or `-oo`) times a
   number evaluates as SymPy's: `zoo` when the real part of the number
   is positive and its imaginary part nonzero, `0` when it is negative,
