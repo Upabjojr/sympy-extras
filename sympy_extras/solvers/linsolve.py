@@ -108,18 +108,27 @@ def linear_root(e: Expr, v: Symbol) -> Optional[Expr]:
 def solve_one(e: Expr, v: Symbol) -> Optional[list[Expr]]:
     """SymPy's ``solve(e, v)`` when it is known natively: ``[]`` for an
     equation free of ``v`` (SymPy gives no solution then, even for
-    ``0``), the root of :func:`linear_root`; ``None`` otherwise.
+    ``0``), the root of :func:`linear_root`; ``None`` otherwise. As in
+    SymPy, a root contradicting the assumptions of ``v``
+    (``check_assumptions`` is ``False``: ``1/2`` for an integer ``v``) is
+    dropped.
 
-    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.core import Symbol, symbols
     >>> from sympy_extras.solvers.linsolve import solve_one
     >>> i, k, m = symbols('i k m')
     >>> solve_one(2*k + 1, m), solve_one(i - 2*m, m), solve_one(m**2 - i, m) is None
     ([], [i/2], True)
+    >>> j = Symbol('j', integer=True)
+    >>> solve_one(2*j - 1, j), solve_one(2*j - 4, j)
+    ([], [2])
     """
     if not e.has(v):
         return []
     root = linear_root(e, v)
-    return [root] if root is not None else None
+    if root is None:
+        return None
+    from sympy_extras.core.assumptions import check_assumptions
+    return [] if check_assumptions(root, v) is False else [root]
 
 
 def numeric_linear_solution(equations: Sequence[Expr]) -> Optional[dict[Symbol, Expr]]:

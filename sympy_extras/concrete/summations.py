@@ -73,14 +73,13 @@ def _two_terms(e: Expr) -> tuple[Expr, Expr]:
 # the steps going through SymPy
 
 
-def _through(name: str, f: Expr, limits: Limits) -> Optional[Expr]:
-    """``sympy.concrete.<module>.<name>(f, limits)``, ``None`` kept."""
-    import importlib
+def _sympy_eval_sum_residue(f: Expr, limits: Limits) -> Optional[Expr]:
+    """SymPy's ``sympy.concrete.summations.eval_sum_residue(f, limits)``,
+    ``None`` kept."""
+    from sympy.concrete.summations import eval_sum_residue as sympy_eval_sum_residue
     from sympy_extras.interop import expr_from_sympy, to_sympy
-    module, function = name.rsplit('.', 1)
-    fn = getattr(importlib.import_module('sympy.concrete.' + module), function)
     i, a, b = limits
-    r = fn(to_sympy(f), (to_sympy(i), to_sympy(a), to_sympy(b)))
+    r = sympy_eval_sum_residue(to_sympy(f), (to_sympy(i), to_sympy(a), to_sympy(b)))
     if r is None:
         return None
     return expr_from_sympy(r)
@@ -556,7 +555,7 @@ def eval_sum_residue(f: Expr, limits: Limits) -> Optional[Expr]:
     try:
         return _eval_sum_residue(f, limits)
     except _NotPorted:
-        return _through('summations.eval_sum_residue', f, limits)
+        return _sympy_eval_sum_residue(f, limits)
 
 
 def _eval_sum_residue(f: Expr, limits: Limits) -> Optional[Expr]:

@@ -2228,6 +2228,20 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- The native `solve` (`sympy_extras.assumptions.solve`) kept the
+  solutions contradicting the flags of the unknown: `pi*k = 1` gave
+  `{1/pi}` for `k = Symbol('k', integer=True)`, `p**2 = 4` gave `{-2, 2}`
+  for a positive `p`. As SymPy's `solve` does with `check_assumptions`,
+  the finitely many solutions (points of a system included) at which the
+  native `ask` finds a flag false are now dropped, the undecided ones
+  kept; the workaround in `concrete.delta._finite_solutions` is gone.
+- `solvers.linsolve.solve_one` gave `[1/2]` for `2*j - 1` with an integer
+  `j`, where SymPy's `solve` gives `[]`: a root for which the core's
+  `check_assumptions` is `False` is dropped.
+- `concrete.summations` reached SymPy's `eval_sum_residue` through
+  `getattr(importlib.import_module(...))`, which AGENTS.md forbids: a
+  typed wrapper with an explicit import replaces it, and the unused copy
+  of the helper in `concrete.products` is removed.
 - `abel_ode` returned the relation `0 = C1 - 11**(2/3)*log(x)/9`, with
   no `y` in it, for the Abel equation of the second kind `y y' = y + x`:
   the separable class of the transformed equation was not checked. The

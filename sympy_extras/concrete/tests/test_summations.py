@@ -97,6 +97,28 @@ def test_residue_sums_match_sympy() -> None:
         assert str(to_sympy(summation(expr_from_sympy(f), limits), evaluate=False)) == str(sympy.summation(f, (v, lo, hi)))
 
 
+def test_residue_sums_through_sympy() -> None:
+    # the cases the native eval_sum_residue does not take (a pole which is a
+    # CRootOf) go to SymPy's eval_sum_residue, reached by an explicit
+    # import: it was looked up by name with getattr(importlib.import_module(
+    # ...)), which AGENTS.md forbids
+    import pathlib
+    from sympy.concrete.summations import eval_sum_residue as sympy_eval_sum_residue
+    from sympy_extras.concrete.summations import eval_sum_residue
+    import sympy_extras.concrete as concrete
+    i = sympy.Symbol('i')
+    f = 1/(i**3 + i + 1)
+    var = from_sympy(i)
+    assert isinstance(var, Symbol)
+    limits = (var, expr_from_sympy(-oo), expr_from_sympy(oo))
+    ours = eval_sum_residue(expr_from_sympy(f), limits)
+    theirs = sympy_eval_sum_residue(f, (i, -oo, oo))
+    assert (None if ours is None else str(to_sympy(ours, evaluate=False))) == (None if theirs is None else str(theirs))
+    for path in pathlib.Path(concrete.__file__).parent.glob('*.py'):
+        source = path.read_text()
+        assert 'getattr(' not in source and 'import_module(' not in source, path
+
+
 def test_geometric_sum_with_ratio_one() -> None:
     # the bug: the sum of (-1)**(2*k) was nan, the geometric formula
     # (q**a - q**(b + 1))/(1 - q) at q = (-1)**2 = 1: the case Eq(q, 1) was

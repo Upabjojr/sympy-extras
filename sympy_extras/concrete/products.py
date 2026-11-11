@@ -51,16 +51,6 @@ def _e(b: Basic) -> Expr:
     return b
 
 
-def _through(name: str, f: Expr, limits: Limits) -> Optional[Expr]:
-    import importlib
-    from sympy_extras.interop import expr_from_sympy, to_sympy
-    module, function = name.rsplit('.', 1)
-    fn = getattr(importlib.import_module('sympy.concrete.' + module), function)
-    k, a, n = limits
-    r = fn(to_sympy(f), (to_sympy(k), to_sympy(a), to_sympy(n)))
-    return None if r is None else expr_from_sympy(r)
-
-
 # PORTED FROM SYMPY: sympy/concrete/products.py:Product._eval_product_direct
 def _eval_product_direct(term: Expr, limits: Limits) -> Expr:
     k, a, n = limits
