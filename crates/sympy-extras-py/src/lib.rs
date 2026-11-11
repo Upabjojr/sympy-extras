@@ -26,6 +26,7 @@ mod lattice;
 mod ntheory;
 mod polyerrors;
 mod rings;
+mod simplex;
 mod sparse;
 mod sparsefrac;
 
@@ -49,6 +50,8 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &submodule(&ntheory_module, "generate", "sympy_extras_rs.ntheory.generate")?,
         &submodule(&ntheory_module, "factor_", "sympy_extras_rs.ntheory.factor_")?,
     )?;
+    let solvers: Bound<'_, PyModule> = submodule(m, "solvers", "sympy_extras_rs.solvers")?;
+    simplex::register(&submodule(&solvers, "simplex", "sympy_extras_rs.solvers.simplex")?)?;
     let polys: Bound<'_, PyModule> = submodule(m, "polys", "sympy_extras_rs.polys")?;
     let domains_module: Bound<'_, PyModule> = submodule(&polys, "domains", "sympy_extras_rs.polys.domains")?;
     domains::register(&domains_module)?;
