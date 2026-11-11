@@ -988,7 +988,10 @@ def solve(equations: Union[Statement, Sequence[Statement]],
     solutions are kept when the assumptions hold at them, dropped when
     they fail and collected in a
     :class:`~sympy_extras.sets.conditionset.ConditionSet` when this cannot
-    be decided. The points of ``nonlinsolve`` are substituted back in the
+    be decided. As with SymPy's ``solve``, the finitely many solutions
+    contradicting the flags of an unknown (``Symbol('k', integer=True)``)
+    are dropped: ``pi*k = 1`` has no solution for an integer ``k``. The
+    points of ``nonlinsolve`` are substituted back in the
     equations: a polynomial system with rational coefficients which they
     do not satisfy (``nonlinsolve`` leaves free an unknown it cannot solve
     for) is solved by a triangular decomposition into regular chains
@@ -1055,5 +1058,61 @@ def solve(equations: Union[Statement, Sequence[Statement]],
     if len(unknowns) == 1:
         x = unknowns[0]
         formula = normalize(and_(*statements))
-        return _univariate(formula, x, facts, domain)
-    return _multivariate(statements, unknowns, facts, domain)
+        return _respecting_flags(_univariate(formula, x, facts, domain), unknowns, facts)
+    return _respecting_flags(_multivariate(statements, unknowns, facts, domain), unknowns, facts)
+
+
+def _flags(x: Symbol) -> Boolean:
+    """The assumptions given to the symbol (``Symbol('k', integer=True)``)
+    as a statement about it: ``Q.integer(k)``, a flag set to ``False``
+    negated."""
+    from sympy_extras.core.ask import PREDICATES_OF_Q
+    statements: list[Boolean] = []
+    for name, value in sorted(x.given_assumptions.items()):
+        predicate = PREDICATES_OF_Q.get(name)
+        if name == 'commutative' or predicate is None or predicate.arity != 1:
+            continue
+        statements.append(predicate(x) if value else Not(predicate(x)))
+    return and_(*statements)
+
+
+def _respecting_flags(result: Set, unknowns: Sequence[Symbol], facts: Facts) -> Set:
+    """The solution set without the finitely many solutions which
+    contradict the flags of the unknowns, as SymPy's ``solve`` drops those
+    for which ``check_assumptions`` is ``False`` (``1/pi`` for ``pi*k = 1``
+    with an integer ``k``): the flags are decided at each solution by the
+    native ``ask`` under the facts, and a solution at which they cannot be
+    decided is kept."""
+    flags = and_(*[_flags(u) for u in unknowns])
+    if flags is true:
+        return result
+    return _drop_contradicting(result, unknowns, flags, facts)
+
+
+def _contradicts(point: Tuple, unknowns: Sequence[Symbol], flags: Boolean, facts: Facts) -> bool:
+    if len(point.args) != len(unknowns):
+        return False
+    values: dict[Basic, Basic] = {u: c for u, c in zip(unknowns, point.args)}
+    return _holds_at(flags, values, facts) is False
+
+
+def _drop_contradicting(result: Set, unknowns: Sequence[Symbol], flags: Boolean, facts: Facts) -> Set:
+    if isinstance(result, FiniteSet) and len(unknowns) == 1:
+        x = unknowns[0]
+        kept = [e for e in result.elements if _holds_at(flags, {x: e}, facts) is not False]
+        return result if len(kept) == len(result.elements) else finite_set(*kept)
+    if isinstance(result, PointSet):
+        points = [p for p in result.points if not _contradicts(p, unknowns, flags, facts)]
+        return result if len(points) == len(result.points) else point_set(*points)
+    if isinstance(result, SetUnion):
+        return union(*[_drop_contradicting(a, unknowns, flags, facts) for a in result.sets])
+    if isinstance(result, Intersection):
+        return _intersect(*[_drop_contradicting(a, unknowns, flags, facts) for a in result.sets])
+    if isinstance(result, Complement):
+        a, b = result.args_sets
+        kept_a = _drop_contradicting(a, unknowns, flags, facts)
+        return result if kept_a is a else _evaluated_set(complement(kept_a, b))
+    if isinstance(result, ConditionSet):
+        base = _drop_contradicting(result.base_set, unknowns, flags, facts)
+        return result if base is result.base_set else condition_set(result.sym, result.condition, base)
+    return result

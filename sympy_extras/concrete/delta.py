@@ -103,10 +103,7 @@ def _finite_solutions(e: Expr, v: Symbol) -> Optional[list[Expr]]:
     solutions = [a for a in found.args if isinstance(a, Expr)]
     if len(solutions) != len(found.args) or any(s.has(v) for s in solutions):
         return None
-    # SymPy's solve drops the solutions contradicting the assumptions of v;
-    # the native solve keeps 1/pi for pi*k = 1 with an integer k
-    from sympy_extras.core.assumptions import check_assumptions
-    return [s for s in solutions if check_assumptions(s, v) is not False]
+    return solutions
 
 
 def _solve_dicts(eqs: list[Expr]) -> list[dict[Expr, Expr]]:

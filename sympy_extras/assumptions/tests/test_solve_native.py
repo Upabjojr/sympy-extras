@@ -101,3 +101,28 @@ def test_errors() -> None:
     else:
         raise AssertionError('a set is not an equation')
     assert isinstance(solve(x - 1, x, true), FiniteSet)
+
+
+def test_solutions_contradicting_the_flags_of_the_unknown_are_dropped() -> None:
+    from sympy_extras.core import pi
+    from sympy_extras.core.relational import eq
+    k = Symbol('k', integer=True)
+    p = Symbol('p', positive=True)
+    # pi*k = 1 gave {1/pi} for an integer k, which 1/pi is not (SymPy's
+    # solve drops it, as the native solve did for 2*k = 1)
+    assert solve(eq(pi*k - 1, Integer(0)), k) == EmptySet
+    assert solve(2*k - 1, k) == EmptySet
+    # p**2 = 4 gave {-2, 2} for a positive p
+    assert solve(p**2 - 4, p) == finite_set(2)
+    # k**2 = 2 gave {-sqrt(2), sqrt(2)} for an integer k
+    assert solve(k**2 - 2, k) == EmptySet
+    # a solution whose flags cannot be decided is kept, the facts about
+    # the parameters decide the others
+    assert solve(a*k - 1, k) == finite_set(1/a)
+    q = Symbol('q', positive=True)
+    assert solve(a*q + 1, q, a > 0) == EmptySet
+    assert solve(a*q + 1, q, a < 0) == finite_set(-1/a)
+    # systems: the points are checked for every unknown
+    assert solve([x + y - 1, x - y], [x, y]) == point_set(Tuple(Rational(1, 2), Rational(1, 2)))
+    m = Symbol('m', integer=True)
+    assert solve([x + m - 1, x - m], [x, m]) == EmptySet
