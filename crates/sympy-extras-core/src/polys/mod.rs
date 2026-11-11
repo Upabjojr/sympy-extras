@@ -8,6 +8,7 @@ pub mod complexroots;
 pub mod densearith;
 pub mod densebasic;
 pub mod densetools;
+pub mod differential;
 pub mod domains;
 pub mod euclidtools;
 pub mod f4;

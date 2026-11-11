@@ -676,13 +676,8 @@ impl fmt::Display for Basic {
             Head::Symbol(s) => write!(f, "{}", s.name),
             Head::Dummy(s, _) => write!(f, "_{}", s.name),
             Head::Wild(w) => write!(f, "{}_", w.symbol.name),
-            Head::Function(_) | Head::Undefined(_) | Head::Tuple | Head::Derivative | Head::Subs => {
-                write!(f, "{}", super::printing::sstr(self))
-            }
-            _ => {
-                let args: Vec<String> = self.0.args.iter().map(|a| a.to_string()).collect();
-                write!(f, "{}({})", self.class_name(), args.join(", "))
-            }
+            // Python's str: the printer
+            _ => write!(f, "{}", super::printing::sstr(self)),
         }
     }
 }

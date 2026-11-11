@@ -764,6 +764,129 @@ fn numeric_linear_solution<'py>(
     Ok(Some(d))
 }
 
+/// An equation as an expression: `lhs - rhs` of an `Equality`.
+fn equation(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
+    let class: String = ob.get_type().name()?.to_string();
+    if class == "Equality" || class == "Eq" {
+        return from_python(&ob.getattr("lhs")?.call_method1("__sub__", (ob.getattr("rhs")?,))?);
+    }
+    from_python(ob)
+}
+
+fn differential_ring(
+    functions: &Bound<'_, PyAny>,
+    variables: Option<&Bound<'_, PyAny>>,
+    ranking: Option<&Bound<'_, PyAny>>,
+    parameters: &Bound<'_, PyAny>,
+) -> PyResult<sympy_extras_core::polys::differential::ring::DifferentialRing> {
+    let functions: Vec<Basic> = expressions(functions)?;
+    let variables: Option<Vec<Basic>> = variables.map(expressions).transpose()?;
+    let ranking: Option<Vec<Vec<Basic>>> = match ranking {
+        None => None,
+        Some(r) => {
+            let mut blocks: Vec<Vec<Basic>> = Vec::new();
+            for block in r.try_iter()? {
+                blocks.push(expressions(&block?)?);
+            }
+            Some(blocks)
+        }
+    };
+    sympy_extras_core::polys::differential::ring::DifferentialRing::new(
+        &functions,
+        variables.as_deref(),
+        ranking.as_deref(),
+        &expressions(parameters)?,
+    )
+    .map_err(crate::convert::err)
+}
+
+fn jet_monomial<'py>(py: Python<'py>, m: &[((i64, Vec<u32>), u32)]) -> PyResult<Bound<'py, PyTuple>> {
+    let mut items: Vec<Bound<'py, PyTuple>> = Vec::new();
+    for ((a, j), e) in m {
+        let jet: Bound<'py, PyTuple> = PyTuple::new(
+            py,
+            [
+                a.into_pyobject(py)?.into_any(),
+                PyTuple::new(py, j.iter().copied())?.into_any(),
+            ],
+        )?;
+        items.push(PyTuple::new(py, [jet.into_any(), e.into_pyobject(py)?.into_any()])?);
+    }
+    PyTuple::new(py, items)
+}
+
+/// `DifferentialRing(functions, variables, ranking, parameters).terms(eq)`
+/// as `[(monomial, coefficient expression)]`.
+#[pyfunction]
+#[pyo3(signature = (functions, eq, variables=None, ranking=None, parameters=None))]
+fn differential_terms<'py>(
+    py: Python<'py>,
+    functions: &Bound<'py, PyAny>,
+    eq: &Bound<'py, PyAny>,
+    variables: Option<&Bound<'py, PyAny>>,
+    ranking: Option<&Bound<'py, PyAny>>,
+    parameters: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyList>> {
+    let empty = PyTuple::empty(py).into_any();
+    let ring = differential_ring(functions, variables, ranking, parameters.unwrap_or(&empty))?;
+    let terms = ring.terms(&equation(eq)?).map_err(crate::convert::err)?;
+    let mut items: Vec<Bound<'py, PyTuple>> = Vec::new();
+    for (m, c) in terms.iter() {
+        let c_expr: Basic = ring.coefficient_expr(c).map_err(crate::convert::err)?;
+        items.push(PyTuple::new(
+            py,
+            [jet_monomial(py, m)?.into_any(), to_python(py, &c_expr)?],
+        )?);
+    }
+    PyList::new(py, items)
+}
+
+/// `...integral(ring.terms(eq))` as `[(monomial, integer coefficient expression)]`.
+#[pyfunction]
+#[pyo3(signature = (functions, eq, variables=None, ranking=None, parameters=None))]
+fn differential_integral<'py>(
+    py: Python<'py>,
+    functions: &Bound<'py, PyAny>,
+    eq: &Bound<'py, PyAny>,
+    variables: Option<&Bound<'py, PyAny>>,
+    ranking: Option<&Bound<'py, PyAny>>,
+    parameters: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyList>> {
+    let empty = PyTuple::empty(py).into_any();
+    let ring = differential_ring(functions, variables, ranking, parameters.unwrap_or(&empty))?;
+    let terms = ring.integral(&ring.terms(&equation(eq)?).map_err(crate::convert::err)?);
+    let mut items: Vec<Bound<'py, PyTuple>> = Vec::new();
+    for (m, c) in terms.iter() {
+        let c_expr: Basic = ring.integer_expr(c, None).map_err(crate::convert::err)?;
+        items.push(PyTuple::new(
+            py,
+            [jet_monomial(py, m)?.into_any(), to_python(py, &c_expr)?],
+        )?);
+    }
+    PyList::new(py, items)
+}
+
+/// `...leader(eq)` and the expression of the terms (`from_terms`).
+#[pyfunction]
+#[pyo3(signature = (functions, eq, variables=None, ranking=None, parameters=None))]
+fn differential_leader<'py>(
+    py: Python<'py>,
+    functions: &Bound<'py, PyAny>,
+    eq: &Bound<'py, PyAny>,
+    variables: Option<&Bound<'py, PyAny>>,
+    ranking: Option<&Bound<'py, PyAny>>,
+    parameters: Option<&Bound<'py, PyAny>>,
+) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>)> {
+    let empty = PyTuple::empty(py).into_any();
+    let ring = differential_ring(functions, variables, ranking, parameters.unwrap_or(&empty))?;
+    let e: Basic = equation(eq)?;
+    let leader: Basic = ring.leader(&e).map_err(crate::convert::err)?;
+    let back: Basic = ring
+        .from_terms(&ring.terms(&e).map_err(crate::convert::err)?)
+        .map_err(crate::convert::err)?;
+    Ok((to_python(py, &leader)?, to_python(py, &back)?))
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -801,6 +924,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(linear_root, m)?)?;
     m.add_function(wrap_pyfunction!(solve_one, m)?)?;
     m.add_function(wrap_pyfunction!(numeric_linear_solution, m)?)?;
+    m.add_function(wrap_pyfunction!(differential_terms, m)?)?;
+    m.add_function(wrap_pyfunction!(differential_integral, m)?)?;
+    m.add_function(wrap_pyfunction!(differential_leader, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;

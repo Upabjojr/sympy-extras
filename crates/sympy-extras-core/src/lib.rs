@@ -32,6 +32,7 @@ pub mod error;
 pub mod functions;
 pub mod ntheory;
 pub mod numbers;
+pub mod orderedmap;
 pub mod polys;
 pub mod random;
 pub mod simplify;

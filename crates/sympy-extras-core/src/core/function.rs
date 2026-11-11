@@ -447,6 +447,18 @@ pub fn diff(e: &Basic, counts: &[(Basic, u64)]) -> PolyResult<Basic> {
     Ok(result)
 }
 
+/// The tree evaluated bottom up with the evaluating functions (`doit`).
+pub fn doit(e: &Basic) -> PolyResult<Basic> {
+    if e.args().is_empty() {
+        return Ok(e.clone());
+    }
+    let mut args: Vec<Basic> = Vec::new();
+    for a in e.args() {
+        args.push(doit(a)?);
+    }
+    rebuild_evaluated(e, args)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
