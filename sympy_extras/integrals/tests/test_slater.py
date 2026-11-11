@@ -7,7 +7,7 @@ from sympy import (symbols, S, Rational, meijerg, exp, sqrt, pi, erf, gamma, bes
                    Piecewise, lambdify, oo)
 
 from sympy_extras.integrals.mellin_sympy import GammaQuotient
-from sympy_extras.integrals.slater import MeijerG, mellin_barnes, slater_expansion, expand_meijerg, line_conditions
+from sympy_extras.integrals.slater_sympy import MeijerG, mellin_barnes, slater_expansion, expand_meijerg, line_conditions
 
 z = symbols('z', positive=True)
 a, b = symbols('a b', positive=True)

@@ -634,7 +634,7 @@ table are integrated termwise:
 ```python
 >>> from sympy import besselj, I
 >>> definite_integral(exp(-2*x)*cos(x)*besselj(0, x), (x, 0, oo))
-2**(3/4)*sqrt(sqrt(2) + 2)/8
+2**(3/4)*sqrt(5)*(sin(atan(1/7)/2) + 2*cos(atan(1/7)/2))/20
 >>> definite_integral(x**(-S(3)/2)*exp(-x), (x, 0, oo), regularize=True)
 -2*sqrt(pi)
 >>> definite_integral(x*log(sin(x)), (x, 0, pi/2))
@@ -1001,8 +1001,10 @@ sympy_extras/
     integrals/
         mellin.py            Mellin transforms as gamma quotients, the table of kernels (native)
         mellin_sympy.py      the SymPy face of mellin
-        slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem
-        marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo)
+        slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem (native)
+        slater_sympy.py      the SymPy face of slater
+        marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo) (native)
+        marichev_sympy.py    the SymPy face of marichev
         residues.py          rational, Fourier and trigonometric integrals by residues
         definite.py          definite_integral: splitting, range mappings, verified fallback
         regions.py           IntegralByRanges: integrals over semialgebraic regions (CAD)

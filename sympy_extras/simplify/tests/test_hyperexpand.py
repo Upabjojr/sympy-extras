@@ -149,3 +149,27 @@ def test_residue_matches_sympy() -> None:
     for e, p in cases:
         got = residue(expr_from_sympy(e), ox, expr_from_sympy(sympy.sympify(p)))
         assert str(to_sympy(got, evaluate=False)) == str(sympy.residue(e, x, p)), (e, p)
+
+
+def test_instantiated_parameters_are_evaluated() -> None:
+    # the bug: the symbolic formulas were instantiated with the core's
+    # xreplace, which does not evaluate, so that HyperRep_power2(a, z) at
+    # a = nu/2 + 1/2 had the parameter nu/2 + 1/2 - 1/2 (not nu/2), no
+    # origin was found and 2F1(nu/2 + 1/2, nu/2 + 1; nu + 1; -w) stayed
+    # unexpanded (SymPy expands it)
+    from sympy_extras.core import Rational, Symbol
+    from sympy_extras.functions import hyper
+    from sympy_extras.functions.special.hyper import Hyper
+    from sympy_extras.simplify.hyperexpand import hyperexpand
+    nu, w = Symbol('nu', positive=True), Symbol('w', positive=True)
+    found = FormulaCollection().lookup_origin(HyperFunction([nu / 2 + Rational(1, 2), nu / 2 + 1], [nu + 1]))
+    assert found is not None
+    assert set(found.func.ap) == {nu / 2, nu / 2 + Rational(1, 2)}
+    e = hyper([nu / 2 + Rational(1, 2), nu / 2 + 1], [nu + 1], -w)
+    expanded = hyperexpand(e)
+    assert not expanded.has(Hyper)
+    from sympy_extras._numeric_sympy import sympy_expr
+    theirs = sympy.hyperexpand(sympy_expr(e))
+    snu, sw = sympy.Symbol('nu', positive=True), sympy.Symbol('w', positive=True)
+    ours = sympy_expr(expanded).subs(snu, R(1, 3)).subs(sw, R(1, 2))
+    assert abs(complex(ours.evalf(30)) - complex(theirs.subs(snu, R(1, 3)).subs(sw, R(1, 2)).evalf(30))) < 1e-20

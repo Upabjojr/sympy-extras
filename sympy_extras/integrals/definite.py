@@ -141,7 +141,7 @@ from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.settings import settings
 from .conditions_sympy import (ConditionalValue, _items, decide, plain_symbols, sample_values,
                          with_symbol_facts)
-from .marichev import checked_tidy, mellin_integrate, tidy
+from .marichev_sympy import checked_tidy, mellin_integrate, tidy
 from .mellin_sympy import mellin_transform, monomial
 
 __all__ = ['definite_integral', 'conditional_integral', 'verify_numerically', 'Limits']

@@ -1409,6 +1409,30 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_SLATER_MARICHEV = r'''
+import sys
+from sympy_extras.core import Integer, S, symbols, sqrt
+from sympy_extras.functions import besselj, exp, exp_polar, log, meijerg, sin
+from sympy_extras.integrals.mellin import GammaQuotient
+from sympy_extras.integrals.slater import expand_meijerg, line_conditions, mellin_barnes, slater_expansion
+from sympy_extras.integrals.marichev import checked_tidy, mellin_integrate
+x, k = symbols('x k')
+a, b, z = symbols('a b z', positive=True)
+g = mellin_barnes(GammaQuotient(1, [(3, -1)], [(0, S.One), (1, -S.One)], [], 0, 1))
+assert str(g) == 'MeijerG(1, meijerg(((1,), ()), ((1,), ()), 1/3))'
+assert str(expand_meijerg(g)) == 'ConditionalValue(1/4)' and line_conditions(g, Integer(0), Integer(1)) is S.true
+assert str(slater_expansion(meijerg([1 - a], [], [0], [], z))) == 'gamma(a)/(z + 1)**a'
+assert str(mellin_integrate(exp(-a*x)*sin(b*x), x)) == 'ConditionalValue(b/(a**2 + b**2))'
+assert str(mellin_integrate(x**k/(x + 3), x)) == 'ConditionalValue(-3**k*pi/sin(pi*k), (k > -1) & (k < 0))'
+assert str(mellin_integrate(exp(-x**2)*log(x), x)) == 'ConditionalValue(sqrt(pi)*(-log(4) - EulerGamma)/4)'
+assert str(mellin_integrate(x**(b - 1)*(1 - x)**(a - 1), x, cutoff='lower')) == \
+    'ConditionalValue(gamma(a)*gamma(b)/gamma(a + b))'
+assert str(mellin_integrate(exp(-x)*besselj(Integer(0), x), x)) == 'ConditionalValue(sqrt(2)/2)'
+assert str(checked_tidy(sqrt(a**2) + log(a*exp_polar(Integer(0))))) == 'a + log(a)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 _NATIVE_BRACKETS_DIRICHLET = r'''
 import sys
 from sympy_extras.core import Integer, Rational, I, oo, symbols
@@ -1486,5 +1510,17 @@ def test_native_convergence_does_not_load_sympy() -> None:
     its ``Sum.is_convergent`` and the steps of the native assumptions which
     stay on SymPy go through the faces at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_CONVERGENCE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_slater_and_marichev_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.slater` and
+    :mod:`sympy_extras.integrals.marichev` does not load SymPy, nor do the
+    Mellin–Barnes conversion, Slater's theorem with the native
+    ``hyperexpand``, the Marichev–Adamchik integrals of one and two kernels
+    and the simplification of their values."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SLATER_MARICHEV], capture_output=True, text=True,
+                         timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

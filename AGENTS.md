@@ -238,10 +238,15 @@ sympy_extras/
     integrals/               definite integration extending sympy.integrals (exports nothing: import the modules)
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels, the matching of
                              the integrands (decompose_integrand) (native: the native ask)
-        mellin_sympy.py      the SymPy face of mellin, which slater, marichev, brackets, definite and the other
+        mellin_sympy.py      the SymPy face of mellin, which brackets, definite and the other
                              integrators written on SymPy use (GammaQuotient, Match, Product, ... on SymPy objects)
-        slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem
-        marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo)
+        slater.py            Mellin–Barnes integrals as Meijer G-functions (MeijerG), Slater's theorem (native: the native
+                             hyperexpand, simplify, limits and ask)
+        slater_sympy.py      the SymPy face of slater (MeijerG on SymPy objects, mellin_barnes, slater_expansion, ...)
+        marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo), tidy, checked_tidy (native: the
+                             native slater, refine, gammasimp, factor and unpolarify)
+        marichev_sympy.py    the SymPy face of marichev, which definite, laplace, algebraic, series and the other
+                             integrators written on SymPy use (mellin_integrate, tidy, checked_tidy, ...)
         residues.py          rational, Fourier and trigonometric integrals by the residue theorem
         definite.py          definite_integral: splitting, range mappings, the verified SymPy fallback
         regions.py           IntegralByRanges: integrals over semialgebraic regions through the CAD

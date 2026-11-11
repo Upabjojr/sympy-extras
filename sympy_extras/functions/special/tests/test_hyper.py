@@ -70,3 +70,17 @@ def test_meijerg_with_half_integer_parameters_has_a_value() -> None:
     half = sympy.Rational(1, 2)
     expected = sympy.meijerg(((), (half,)), ((-7 * half, -half, 7 * half), ()), sympy.Rational(9, 100)).evalf(30)
     assert value is not None and abs(complex(value) - complex(expected)) < 1e-6 * abs(complex(value))
+
+
+def test_polar_arguments_are_unpolarified_where_single_valued() -> None:
+    # the bug: hyper kept exp_polar(I*pi) where SymPy's hyper.eval writes
+    # -1 (p <= q, or p = q + 1 and |z| <= 1), so that simplify, through a
+    # hyperexpand which found no formula, returned a polar number which
+    # the Marichev-Adamchik method then refused as an unresolved branch
+    from sympy_extras.core import I, pi
+    from sympy_extras.functions import exp_polar
+    w = exp_polar(I * pi)
+    assert hyper([Rational(1, 6)], [Rational(1, 2)], w) == hyper([Rational(1, 6)], [Rational(1, 2)], -1)
+    assert hyper([1, 1], [2], w) == hyper([1, 1], [2], -1)
+    # p = q + 2: multivalued, the polar number stays (as in SymPy)
+    assert hyper([1, 1, 1], [2], w).args[-1] == w

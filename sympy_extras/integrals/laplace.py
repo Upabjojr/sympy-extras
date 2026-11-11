@@ -77,7 +77,7 @@ from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.settings import settings
 from .conditions_sympy import ConditionalValue
 from .mellin_sympy import monomial
-from .marichev import tidy
+from .marichev_sympy import tidy
 
 __all__ = ['laplace_rules', 'laplace_integral', 'laplace_of_convolution', 'transform', 'real_arguments']
 

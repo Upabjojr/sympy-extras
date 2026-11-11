@@ -189,7 +189,7 @@ def test_logarithms_of_negative_arguments_are_made_real() -> None:
     # of the disc of radius -c (c < 0) was kept as it was, and the region
     # integral then refined it to 0
     c = symbols('c')
-    from sympy_extras.integrals.marichev import real_logarithms
+    from sympy_extras.integrals.marichev_sympy import real_logarithms
     assert real_logarithms(I * c**2 * (log(c**2) - log(-c**2)), c < 0) == pi * c**2
     assert _same(definite_integral(2 * sqrt(c**2 - x**2), (x, c, -c), c < 0), pi * c**2)
     from sympy_extras.integrals.regions import integrate_by_ranges
@@ -720,14 +720,15 @@ def test_the_last_simplification_is_checked(monkeypatch: object) -> None:
     # against the quadrature, and the tidied form was returned unchecked: a
     # tidy which changes the value (this one adds 1) must not be believed
     import pytest
-    from sympy.core.expr import Expr
-    from sympy.logic.boolalg import Boolean, true
-    from sympy_extras.assumptions.ask_sympy import Assumptions
+    from sympy_extras.assumptions.ask import Assumptions
+    from sympy_extras.core.expr import Expr
+    from sympy_extras.core.logic import Boolean, true
+    # the face runs the native checked_tidy, which calls the native tidy
     from sympy_extras.integrals import marichev
     assert isinstance(monkeypatch, pytest.MonkeyPatch)
 
     def wrong(value: Expr, assumptions: Assumptions = None, condition: Boolean = true) -> Expr:
-        return as_expr(value + 1)
+        return value + 1
 
     monkeypatch.setattr(marichev, 'tidy', wrong)
     assert definite_integral(x**2, (x, 0, a)) == a**3 / 3

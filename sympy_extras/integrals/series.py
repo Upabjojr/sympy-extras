@@ -135,7 +135,7 @@ from sympy_extras.concrete.zeilberger_sympy import zeilberger_sum
 from sympy_extras.settings import settings
 from .brackets_sympy import SeriesCoefficient, taylor_coefficient
 from .conditions_sympy import ConditionalValue
-from .marichev import tidy
+from .marichev_sympy import tidy
 from .mellin_sympy import monomial
 
 __all__ = ['Expansion', 'expansions', 'fourier_expansion', 'moments', 'sum_series', 'fourier_integral',
