@@ -11,12 +11,17 @@ remove public functions. Breaking changes are listed here when they happen.
 ### Added
 
 - `sympy_extras.steps`: step-by-step solutions (SymPy issue 11088) on
-  the design of `manualintegrate` in SymPy master. `steps.core`: steps
-  as frozen dataclasses, rules as generators which yield their
+  the architecture of `manualintegrate` in SymPy master. `steps.core`:
+  steps as frozen dataclasses, rules as generators which yield their
   subproblems, the `StepSolver` (loop protection, memory, depth limit,
   alternatives with `branch=True`), `format_steps` (collapsible detail).
-  `steps.derivatives`: `derivative_steps`, `manual_derivative` and the
-  rules of differentiation. See docs/steps.md.
+  `steps.equations`: `solve_steps` and `manual_solve` for equations in
+  one unknown over the reals (linear, quadratic by factoring, formula or
+  completed square, polynomials which factor, denominators, a square
+  root), each step tagged as an equivalence, a case split or an
+  implication whose extraneous solutions are rejected.
+  `steps.derivatives`: `derivative_steps`, `manual_derivative`. See
+  docs/steps.md.
 - `normal_form` splits the logarithms of positive rational numbers over
   the primes and those of products and powers of symbols declared
   positive: `log(12)/log(2) - 2 - log(3)/log(2)` and `log(p*q) - log(p) -
