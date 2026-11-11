@@ -10,6 +10,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.calculus.optimization`: `minimize`, `maximize` and
+  `value_range`, the exact *global* optimum of a polynomial or rational
+  function under a Boolean combination of polynomial equations and
+  inequalities, by cylindrical algebraic decomposition of the set of
+  values: the infimum or supremum (a rational number, a real root or an
+  infinity), whether it is attained, and exact points where it is. No
+  convexity or compactness is assumed.
 - `sympy_extras.vector`: `OrthogonalCoordinates` (gradient, divergence,
   curl, Laplacian, vector Laplacian in orthogonal curvilinear
   coordinates, physical components), `cartesian`, `cylindrical`,

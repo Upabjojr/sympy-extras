@@ -1048,6 +1048,32 @@ x/(x + 1)
 
 ```
 
+### Exact global optimisation (`sympy_extras.calculus.optimization`)
+
+The global minimum or maximum of a polynomial (or rational function)
+under polynomial equations and inequalities, exactly: the set of values
+`{t : exists x, C(x) and f(x) = t}` is computed by quantifier
+elimination, and its ends are the infimum and the supremum. Whether they
+are attained is part of the answer, with exact points where they are;
+nothing is assumed about convexity or compactness.
+
+```python
+>>> from sympy_extras.core import Eq, Symbol
+>>> from sympy_extras.calculus.optimization import minimize, maximize, value_range
+>>> x, y = Symbol('x'), Symbol('y')
+>>> minimize((1 - x)**2 + 100*(y - x**2)**2)
+Optimum(0, attained at [{x: 1, y: 1}])
+>>> maximize(x + y, Eq(x**4 + y**4, 1)).value
+IndexedRoot(t**4 - 8, t, 1)
+>>> minimize((x*y - 1)**2 + x**2), minimize(x**3 - x)
+(Optimum(0, not attained), Optimum(-oo, not attained))
+>>> maximize(x + y, (x + 2*y <= 4) & (3*x + y <= 6) & (x >= 0) & (y >= 0))
+Optimum(14/5, attained at [{x: 8/5, y: 6/5}])
+>>> value_range(x/(1 + x**2))
+Interval(-1/2, 1/2)
+
+```
+
 ### Curvature of a metric (`sympy_extras.diffgeom`)
 
 `Metric` takes the components of a metric (or a line element) and

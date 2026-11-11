@@ -281,6 +281,7 @@ sympy_extras/
         normalform.py        normal_form: rational normal form modulo sin**2 + cos**2 = 1, radicals and I (a Groebner basis of coprime leading monomials)
         hyperexpand.py       hyperexpand: formula tables, shift operators, plans, Slater's theorem (ported from SymPy)
         tests/
+    calculus/                optimization.py: minimize, maximize, value_range (exact global optima of polynomials under polynomial constraints, by CAD)
     diffgeom/                metric.py: Metric (Christoffel symbols, Riemann, Ricci, Einstein, Weyl, geodesics, Killing equations)
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
       domainmatrix.py        DomainMatrix[T] over a Domain[T]: Bareiss determinant, fraction-free Gauss-Jordan (rank, null space, inverse, systems), Berkowitz characteristic polynomial, adjugate
