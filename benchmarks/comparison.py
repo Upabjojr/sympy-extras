@@ -107,7 +107,7 @@ from sympy_extras.polys.virtual_substitution_sympy import eliminate_linear
 from sympy_extras.concrete.qhyper_sympy import qpochhammer, qbinomial
 from sympy_extras.integrals.definite import definite_integral
 from sympy_extras.integrals.regions import IntegralByRanges
-from sympy_extras.integrals.mellin import mellin_transform as xmellin
+from sympy_extras.integrals.mellin_sympy import mellin_transform as xmellin
 from sympy.solvers.ode import dsolve
 from sympy.series.limitseq import limit_seq
 from sympy.polys import ring, QQ, ZZ, grevlex, lex

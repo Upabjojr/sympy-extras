@@ -136,7 +136,7 @@ from sympy_extras.settings import settings
 from .brackets import SeriesCoefficient, taylor_coefficient
 from .conditions_sympy import ConditionalValue
 from .marichev import tidy
-from .mellin import monomial
+from .mellin_sympy import monomial
 
 __all__ = ['Expansion', 'expansions', 'fourier_expansion', 'moments', 'sum_series', 'fourier_integral',
            'series_integral']

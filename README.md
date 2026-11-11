@@ -572,7 +572,7 @@ of intervals by the cylindrical algebraic decomposition. See
 >>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.integrals.definite import definite_integral
 >>> from sympy_extras.integrals.regions import IntegralByRanges
->>> from sympy_extras.integrals.mellin import mellin_transform
+>>> from sympy_extras.integrals.mellin_sympy import mellin_transform
 >>> x, y, k, s = symbols('x y k s')
 >>> a, b = symbols('a b', positive=True)
 >>> definite_integral(x**k/(x + 3), (x, 0, oo))
@@ -998,7 +998,8 @@ sympy_extras/
         zeilberger_sympy.py  the SymPy face of zeilberger: zeilberger_sum, wz_certificate, wz_prove
         qhyper_sympy.py      the SymPy face of qhyper: QPochhammer as a SymPy function, qgosper_sum, qzeilberger, ...
     integrals/
-        mellin.py            Mellin transforms as gamma quotients, the table of kernels
+        mellin.py            Mellin transforms as gamma quotients, the table of kernels (native)
+        mellin_sympy.py      the SymPy face of mellin
         slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem
         marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo)
         residues.py          rational, Fourier and trigonometric integrals by residues

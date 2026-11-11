@@ -75,7 +75,7 @@ from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.settings import settings
 from .brackets import SeriesCoefficient, taylor_coefficient
 from .conditions_sympy import ConditionalValue
-from .mellin import monomial
+from .mellin_sympy import monomial
 
 __all__ = ['to_laurent', 'laurent_coefficient', 'mean_value_integral']
 

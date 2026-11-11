@@ -6,7 +6,7 @@ from sympy import (Symbol, symbols, exp, sin, cos, log, sqrt, besselj, besseli, 
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras.integrals.mellin import (GammaQuotient, mellin_kernel, mellin_transform, monomial,
+from sympy_extras.integrals.mellin_sympy import (GammaQuotient, mellin_kernel, mellin_transform, monomial,
                                            decompose_integrand, KERNELS)
 
 x, s, a, b, k = symbols('x s a b k')
