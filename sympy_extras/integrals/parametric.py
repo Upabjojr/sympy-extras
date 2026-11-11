@@ -61,7 +61,7 @@ from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, so
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.assumptions.limits_sympy import limit
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue
+from .conditions_sympy import ConditionalValue
 
 __all__ = ['parametric_integral', 'candidate_parameters']
 

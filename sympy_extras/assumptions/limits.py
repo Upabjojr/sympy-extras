@@ -15,13 +15,14 @@ negative) compatible with the assumptions and returned as a
 
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.assumptions.limits_sympy` is its face on SymPy objects.
-Two steps are not ported and go through SymPy at run time (the face holds
-them, the functions ending in ``_of_core``): SymPy's ``limit_seq``
-(:func:`sympy.series.limitseq.limit_seq`, the limits of sequences by the
-Stolz--Cesaro theorem and the dominant terms), and the reliable
-numerical values of :func:`sympy_extras._numeric.reliable_value`, with
-which an infinite limit of a function taking complex values on the
-approach is recognised as ``zoo``.
+One step is not ported and goes through SymPy at run time (the face
+holds it, :func:`~sympy_extras.assumptions.limits_sympy.limit_seq_of_core`):
+SymPy's ``limit_seq`` (:func:`sympy.series.limitseq.limit_seq`, the
+limits of sequences by the Stolz--Cesaro theorem and the dominant terms).
+The reliable numerical values of
+:func:`sympy_extras._numeric.reliable_value`, with which an infinite limit
+of a function taking complex values on the approach is recognised as
+``zoo``, are native.
 """
 from __future__ import annotations
 
@@ -397,9 +398,9 @@ def _undirected(result: Expr, expr: Expr, x: Symbol, x0: Expr, direction: str) -
         return result
     if expr.free_symbols != {x}:
         return result                           # parameters: not sampled
-    from .limits_sympy import reliable_value_of_core
+    from sympy_extras._numeric import reliable_value
     for sample in _approach_samples(x0, direction):
-        number = reliable_value_of_core(expr, 30, {x: sample})
+        number = reliable_value(expr, 30, {x: sample})
         if number is None:
             return result
         try:

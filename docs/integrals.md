@@ -69,7 +69,8 @@ The strips of the transforms are the convergence conditions:
 
 ```python
 >>> from sympy import symbols, exp, sin, log, sqrt, Abs, oo, pi, cos, S
->>> from sympy_extras.integrals import definite_integral, mellin_transform
+>>> from sympy_extras.integrals.definite import definite_integral
+>>> from sympy_extras.integrals.mellin import mellin_transform
 >>> x, k, s = symbols('x k s')
 >>> a, b = symbols('a b', positive=True)
 >>> mellin_transform(1/(1 + x), x, s)
@@ -471,7 +472,9 @@ The driver tries, after the Mellin method and the residues:
 
 ```python
 >>> from sympy import symbols, exp, sin, log, atan, cos, oo, pi
->>> from sympy_extras.integrals import definite_integral, holonomic_ode, parametric_integral
+>>> from sympy_extras.integrals.definite import definite_integral
+>>> from sympy_extras.integrals.telescoping import holonomic_ode
+>>> from sympy_extras.integrals.parametric import parametric_integral
 >>> x = symbols('x')
 >>> p, t = symbols('p t', positive=True)
 >>> holonomic_ode(exp(-x**2)*cos(2*t*x), x, 0, oo, t)
@@ -508,13 +511,14 @@ pi**3/4
 >>> n = symbols('n', positive=True)
 >>> definite_integral(1/(1 + x**n), (x, 0, oo), n > 1)
 pi/(n*sin(pi/n))
->>> from sympy_extras.integrals import ramanujan_master_theorem, recognize_integral
+>>> from sympy_extras.integrals.brackets import ramanujan_master_theorem
+>>> from sympy_extras.integrals.recognize import recognize_integral
 >>> s = symbols('s')
 >>> ramanujan_master_theorem(exp(-x**2), x, s)
 MellinTransform(gamma(s/2)/2, (0, oo))
 >>> recognize_integral(1/(x**3 + 1), (x, 0, 1))
 log(2)/3 + sqrt(3)*pi/9
->>> from sympy_extras.integrals import asymptotic_integral
+>>> from sympy_extras.integrals.asymptotic import asymptotic_integral
 >>> asymptotic_integral(exp(-t*x)/(1 + x), x, 0, oo, t)
 2/t**3 - 1/t**2 + 1/t + O(t**(-4), (t, oo))
 >>> definite_integral(x**x, (x, 0, 1), numeric=True, digits=6)
@@ -545,7 +549,7 @@ Meurer's branch `risch-typing` (sympy/sympy#30282) as the starting point.
 
 ```python
 >>> from sympy import symbols, tan, exp, log
->>> from sympy_extras.integrals import risch_antiderivative, is_nonelementary
+>>> from sympy_extras.integrals.risch import risch_antiderivative, is_nonelementary
 >>> x = symbols('x')
 >>> risch_antiderivative(tan(x)**5, x)
 log(tan(x)**2 + 1)/2 + tan(x)**4/4 - tan(x)**2/2
@@ -658,7 +662,7 @@ and mapped (which hide the binomial), cut where `z = 1`:
 
 ```python
 >>> from sympy import symbols, sqrt, log, tan
->>> from sympy_extras.integrals import indefinite_integral, verified_antiderivative
+>>> from sympy_extras.integrals.indefinite import indefinite_integral, verified_antiderivative
 >>> x = symbols('x')
 >>> indefinite_integral(sqrt(1 - x**2), x)
 x*sqrt(1 - x**2)/2 + asin(x)/2
@@ -755,7 +759,8 @@ the bound is left undecided, never answered.
 
 ```python
 >>> from sympy import symbols, sqrt, log, Rational
->>> from sympy_extras.integrals import trager_antiderivative, is_nonelementary_algebraic, definite_integral
+>>> from sympy_extras.integrals.trager import trager_antiderivative, is_nonelementary_algebraic
+>>> from sympy_extras.integrals.definite import definite_integral
 >>> x = symbols('x')
 >>> trager_antiderivative(x/sqrt(x**4 + 1), x)
 log(x**2 + sqrt(x**4 + 1))/2
@@ -870,7 +875,7 @@ bounds found by `solve`, and unbounded outer variables allowed.
 
 ```python
 >>> from sympy import symbols, exp
->>> from sympy_extras.integrals import IntegralByRanges, integrate_by_ranges
+>>> from sympy_extras.integrals.regions import IntegralByRanges, integrate_by_ranges
 >>> x, y, z, r = symbols('x y z r')
 >>> IntegralByRanges(1, x**2 + y**2 < 1).doit()
 pi

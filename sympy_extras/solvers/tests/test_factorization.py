@@ -10,7 +10,7 @@ from sympy.simplify.simplify import simplify
 from sympy.core.expr import Expr
 from sympy.testing.pytest import raises
 
-from sympy_extras._numeric import reliable_value
+from sympy_extras._numeric_sympy import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_expr
 from sympy_extras.solvers.factorization import (OperatorFactorization, factor_operator, left_factor, _rational_ratio,

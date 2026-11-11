@@ -73,7 +73,7 @@ from sympy_extras._typing import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.assumptions.limits_sympy import limit
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue, decide
+from .conditions_sympy import ConditionalValue, decide
 
 __all__ = ['summable_integral', 'oscillatory_tail', 'METHODS']
 
@@ -141,7 +141,7 @@ def oscillatory_tail(f: ExprLike, x: Symbol, a: ExprLike, method: str,
     """The ``method`` mean of the tail ``Integral(f, (x, a, oo))``, or
     ``None``: the shifted integrand ``f(a + t)`` on ``(0, oo)`` times
     the kernel of the method, integrated by
-    :func:`~sympy_extras.integrals.definite_integral` under the
+    :func:`~sympy_extras.integrals.definite.definite_integral` under the
     assumptions and ``eps > 0`` (``R > 0``), and the limit ``eps -> 0+``
     (``R -> oo``) under the assumptions; the mean exists when the limit
     is a finite number free of the regulator. The conditions of the

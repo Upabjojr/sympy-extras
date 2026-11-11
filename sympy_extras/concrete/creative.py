@@ -53,13 +53,12 @@ The module is written on the core (:mod:`sympy_extras.core`, the native
 functions, polynomials, simplifications and sums, the native
 $\Pi\Sigma$-fields of :mod:`~sympy_extras.concrete.pisigma` built by the
 builder of :mod:`~sympy_extras.concrete.karr`) and takes and returns its
-expressions. Two steps still go through SymPy for the call, and only for
+expressions. One step still goes through SymPy for the call, and only for
 summands with parameters other than the limit: the cases of the isolated
 values of the parameters (:mod:`sympy_extras._special_values`, through
-:mod:`~sympy_extras.concrete.karr`) and the numerical comparison of the
-closed form with the sum at sample values of the parameters
-(:func:`~sympy_extras._numeric.reliable_value`, through
-:mod:`~sympy_extras.concrete.karr_sympy`).
+:mod:`~sympy_extras.concrete.karr`). The numerical comparison of the
+closed form with the sum at sample values of the parameters is native
+(:func:`~sympy_extras._numeric.reliable_value`).
 
 Examples
 ========
@@ -886,11 +885,11 @@ def _numeric(e: Expr, digits: int, values: SumPoint) -> Optional[complex]:
     """The value of ``e`` at the ``values`` of its symbols as a complex
     number, ``None`` when it is not a reliable finite number. With
     parameters the value comes from
-    :func:`~sympy_extras._numeric.reliable_value` (through SymPy, which
-    tells the hidden zeros); without, it is evaluated natively."""
+    :func:`~sympy_extras._numeric.reliable_value` (which tells the hidden
+    zeros); without, it is evaluated directly."""
     if values:
-        from .karr_sympy import reliable_value_of_core
-        return reliable_value_of_core(e, digits, values)
+        from sympy_extras._numeric import reliable_complex
+        return reliable_complex(e, digits, values)
     if e.free_symbols:
         return None
     z = numeric_value(e, int(3.33*digits) + 20)

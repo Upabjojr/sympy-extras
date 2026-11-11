@@ -50,7 +50,7 @@ of a linear function, `c = 0`) with `t^n = (a x + b)/(c x + d)`, so that
 `x = (d t^n - b)/(a - c t^n)`.
 
 The value of the rational integral is computed by
-:func:`sympy_extras.integrals.definite_integral` and confirmed numerically
+:func:`sympy_extras.integrals.definite.definite_integral` and confirmed numerically
 when ``settings.numerical_checks`` is on.
 
 Examples
@@ -111,7 +111,7 @@ from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, so
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.limits_sympy import limit
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue
+from .conditions_sympy import ConditionalValue
 from .marichev import tidy
 
 __all__ = ['algebraic_integral', 'euler_substitution', 'euler_substitutions', 'binomial_differential', 'moebius_root',

@@ -74,7 +74,7 @@ from sympy_extras._typing import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.settings import settings
 from .brackets import SeriesCoefficient, taylor_coefficient
-from .conditions import ConditionalValue
+from .conditions_sympy import ConditionalValue
 from .mellin import monomial
 
 __all__ = ['to_laurent', 'laurent_coefficient', 'mean_value_integral']

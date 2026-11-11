@@ -13,7 +13,7 @@ from sympy.core.expr import Expr
 from sympy.polys.rootoftools import ComplexRootOf
 
 from sympy_extras._typing import as_expr
-from sympy_extras.integrals.conditions import ConditionalValue
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
 from sympy_extras.integrals.residues import (fourier_integral, keyhole_integral, period_integral,
                                              poles, rational_function, real_line_integral,
                                              residue_integral)

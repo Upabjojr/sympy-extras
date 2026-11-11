@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sympy import CRootOf, Gt, I, Integer, Rational, asin, atan, cos, exp, im, log, pi, sin, sqrt, symbols
 
-from sympy_extras._numeric import reliable_form, reliable_value
+from sympy_extras._numeric_sympy import reliable_form, reliable_value
 from sympy_extras._typing import as_boolean, as_expr
 
 x = symbols('x')
@@ -66,7 +66,7 @@ def test_the_checks_of_the_package_go_through_them() -> None:
     # each of these gave the wrong answer, or raised RecursionError, in
     # some runs: the thirty digits of numerically_equal put the argument of
     # the logarithm below the cut
-    from sympy_extras.integrals.conditions import numerically_equal
+    from sympy_extras.integrals.conditions_sympy import numerically_equal
     assert numerically_equal(as_expr(L), as_expr(RIGHT)) is True
     assert numerically_equal(as_expr(L), as_expr(WRONG)) is False
     positive = symbols('p', positive=True)

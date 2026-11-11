@@ -76,7 +76,7 @@ from sympy.simplify.radsimp import fraction
 from sympy.simplify.simplify import simplify
 from sympy.solvers.deutils import ode_order
 
-from sympy_extras._numeric import reliable_value
+from sympy_extras._numeric_sympy import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
 

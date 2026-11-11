@@ -25,7 +25,7 @@ is a bijection of each interval between consecutive poles onto the real
 line with Jacobians summing to one (Boros and Moll, chapter 13).
 
 The functions here recognise the shapes and hand the transformed integral
-to :func:`sympy_extras.integrals.definite_integral`.
+to :func:`sympy_extras.integrals.definite.definite_integral`.
 
 Examples
 ========
@@ -75,7 +75,7 @@ from sympy_extras._typing import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.limits_sympy import limit
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue
+from .conditions_sympy import ConditionalValue
 from .mellin import monomial
 
 __all__ = ['frullani', 'glasser', 'transformation_integral']
@@ -186,7 +186,7 @@ def glasser(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     real line, or over ``(0, oo)`` when ``F`` is even (the
     Cauchy–Schlömilch transformation, ``f = G(u**2)``); the transformed
     integral ``Integral(F, (x, -oo, oo))`` is computed by
-    :func:`~sympy_extras.integrals.definite_integral`. ``None`` when the
+    :func:`~sympy_extras.integrals.definite.definite_integral`. ``None`` when the
     shape is not recognised."""
     from .definite import conditional_integral
     a_, b_ = as_expr(a), as_expr(b)

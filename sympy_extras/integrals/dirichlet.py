@@ -81,7 +81,7 @@ from sympy.simplify.simplify import logcombine, simplify
 
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
-from .conditions import ConditionalValue
+from .conditions_sympy import ConditionalValue
 from .mellin import monomial
 
 __all__ = ['dirichlet_integral', 'trigonometric_sum']

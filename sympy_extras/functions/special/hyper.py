@@ -84,13 +84,17 @@ def _depends(parameters: Sequence[Expr], s: Symbol) -> bool:
 
 
 def _numeric_list(parameters: Sequence[Expr], prec: int) -> Optional[list[mpmath.mpc]]:
+    """The values of the parameters, the real ones as mpmath reals (the
+    bug: mpmath's ``meijerg`` compares its parameters with integers to
+    find the poles, which raises ``TypeError`` on complex numbers, so the
+    G-functions with half-integer parameters had no value)."""
     from sympy_extras.core.evalf import numeric_value
     values: list[mpmath.mpc] = []
     for a in parameters:
         value = numeric_value(a, prec)
         if value is None:
             return None
-        values.append(value)
+        values.append(mpmath.mpf(value.real) if value.imag == 0 else value)
     return values
 
 

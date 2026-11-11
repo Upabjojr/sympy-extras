@@ -570,7 +570,9 @@ of intervals by the cylindrical algebraic decomposition. See
 ```python
 >>> from sympy import symbols, exp, sin, cos, sqrt, Abs, log, oo, pi, S
 >>> from sympy_extras.assumptions.facts_sympy import element
->>> from sympy_extras.integrals import definite_integral, IntegralByRanges, mellin_transform
+>>> from sympy_extras.integrals.definite import definite_integral
+>>> from sympy_extras.integrals.regions import IntegralByRanges
+>>> from sympy_extras.integrals.mellin import mellin_transform
 >>> x, y, k, s = symbols('x y k s')
 >>> a, b = symbols('a b', positive=True)
 >>> definite_integral(x**k/(x + 3), (x, 0, oo))

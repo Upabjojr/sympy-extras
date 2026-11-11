@@ -54,7 +54,7 @@ definite integral `I(t) = \\int_a^b F\\, dx` satisfies
     \\sum_k a_k(t)\\, I^{(k)}(t) = \\bigl[G\\bigr]_{x=a}^{x=b},
 
 which ``dsolve`` solves, the constants fixed by the values of the
-integral at a point (:func:`~sympy_extras.integrals.definite_integral`),
+integral at a point (:func:`~sympy_extras.integrals.definite.definite_integral`),
 as in :func:`~sympy_extras.integrals.telescoping.holonomic_integral`.
 For a hyperexponential `F` (`r = s = 1`) the certificate is the single
 rational function of the Almkvist–Zeilberger algorithm.
@@ -118,7 +118,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_expr, free_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue
+from .conditions_sympy import ConditionalValue
 from .telescoping import _boundary, _constants, _initial_values, _order
 
 __all__ = ['Annihilator', 'DFiniteTelescoper', 'Factor', 'annihilators', 'normal_form', 'closure', 'chyzak',
@@ -739,7 +739,7 @@ def dfinite_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol
     Chyzak's algorithm: the equation of :func:`dfinite_ode` solved by
     ``dsolve``, its constants fixed by the values of the integral and its
     derivatives at a point (``1``, ``2``, ``1/2``, ``3``) computed by
-    :func:`~sympy_extras.integrals.definite_integral`; checked
+    :func:`~sympy_extras.integrals.definite.definite_integral`; checked
     numerically when ``settings.numerical_checks`` is on. ``None`` when
     a step fails.
 

@@ -26,7 +26,7 @@ iterated integral with explicit bounds:
    objects here; when SymPy finds no explicit branch the integral is
    left unevaluated);
 4. the iterated integral is computed innermost variable first with
-   :func:`~sympy_extras.integrals.definite_integral`, the outer bounds
+   :func:`~sympy_extras.integrals.definite.definite_integral`, the outer bounds
    being passed as assumptions, and the cells are summed;
 5. the cells of the parameter space give a case distinction: the result
    is a ``Piecewise`` whose conditions are the sign conditions of the
@@ -57,11 +57,11 @@ Four routes are tried around the decomposition [Apostol]_:
   each point of the other variables, the interval `\\max(\\text{lower}) < y <
   \\min(\\text{upper})`; the range of the other variables is cut where the
   two bounds cross (with :func:`sympy_extras.assumptions.solve_sympy.solve`), the
-  inner integral is computed with :func:`~sympy_extras.integrals.definite_integral`
+  inner integral is computed with :func:`~sympy_extras.integrals.definite.definite_integral`
   and the outer integral by the same function on the remaining variables
   (Fubini's theorem); an outer variable without bounds ranges over the
   whole line, and the outer integral over an infinite range is again a
-  matter for :func:`~sympy_extras.integrals.definite_integral`.
+  matter for :func:`~sympy_extras.integrals.definite.definite_integral`.
 
 A polynomial over a bounded polytope (a conjunction of inequalities
 linear in the variables, with parameters allowed in the constant terms)
@@ -243,7 +243,7 @@ from sympy.polys.polytools import Poly, degree, factor
 from sympy.solvers.solvers import solve as sympy_solve
 from sympy.solvers.simplex import linprog
 
-from sympy_extras._numeric import reliable_value
+from sympy_extras._numeric_sympy import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
@@ -254,7 +254,7 @@ from sympy_extras.polys.cad.lifting_sympy import CAD, CADCell, cylindrical_algeb
 from sympy_extras.polys.cad.qe_sympy import _compile
 from sympy_extras.polys.cad.samplepoints_sympy import RealAlgebraic, compare_real
 from sympy_extras.settings import settings
-from .conditions import numerically_equal
+from .conditions_sympy import numerically_equal
 from .axisymmetric import rotation_invariant
 from .definite import definite_integral
 from .axisymmetric import axisymmetric_integral
