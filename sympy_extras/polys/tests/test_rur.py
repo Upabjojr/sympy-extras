@@ -8,7 +8,7 @@ from sympy.testing.pytest import raises
 
 from sympy_extras.polys.hermite_sympy import count_complex_solutions, count_real_solutions
 from sympy_extras.polys.ideals_sympy import Ideal
-from sympy_extras.polys.rur import rur, RationalUnivariateRepresentation
+from sympy_extras.polys.rur_sympy import rur, RationalUnivariateRepresentation
 
 x, y, z, t = symbols('x y z t')
 

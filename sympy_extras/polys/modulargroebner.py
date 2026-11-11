@@ -1,13 +1,19 @@
 r"""Reduced Gröbner bases over the rationals by the modular algorithm.
 
-SymPy computes Gröbner bases over ``QQ`` with Buchberger's algorithm on
-rational coefficients (:func:`sympy.polys.groebnertools.groebner`), where
-the growth of the intermediate coefficients dominates the running time:
-the basis itself may have coefficients of a few digits while the
-polynomials met on the way have hundreds. :func:`modular_groebner` is a
-drop-in replacement which computes the same reduced Gröbner basis from its
-images modulo primes, following Arnold [1]_ (see also [2]_, [3]_, [4]_),
-and *proves* the result, so that it is not a probabilistic algorithm.
+The direct computation of a Gröbner basis over ``QQ`` (F4,
+:mod:`sympy_extras.polys.f4`, or Buchberger's algorithm,
+:mod:`sympy_extras.polys.buchberger`) works on rational coefficients,
+whose growth dominates the running time: the basis itself may have
+coefficients of a few digits while the polynomials met on the way have
+hundreds. :func:`modular_groebner` computes the same reduced Gröbner basis
+from its images modulo primes, following Arnold [1]_ (see also [2]_, [3]_,
+[4]_), and *proves* the result, so that it is not a probabilistic
+algorithm.
+
+The module works on the typed rings of :mod:`sympy_extras.polys.rings`
+over the typed ``QQ``, ``ZZ`` and ``GF(p)`` and imports no SymPy;
+:mod:`sympy_extras.polys.modulargroebner_sympy` is its SymPy face (the
+same functions on SymPy's ring elements).
 
 The algorithm
 =============
@@ -26,16 +32,19 @@ $I = \langle F \rangle$.
    it picks the leading monomial of $f$ times a power of $t$, and a
    homogeneous ideal has the same reduced Gröbner basis for $>$ and for
    $>_h$. Homogenising is what makes the proof below possible, and it
-   is also what makes the images cheap for the orders where SymPy's
-   direct computation is slow: Buchberger's algorithm with the normal
-   selection strategy then works degree by degree, which for ``lex`` was
-   ten (Katsura-4) and twenty-five (cyclic-5) times faster than the
+   is also what makes the images cheap for the orders where the direct
+   computation is slow: Buchberger's algorithm with the normal selection
+   strategy then works degree by degree, which for ``lex`` was ten
+   (Katsura-4) and twenty-five (cyclic-5) times faster than the
    computation on the input modulo the same prime; for ``grevlex`` it was
-   1.4 (Katsura-5) to 2.5 (cyclic-5) times slower.
+   1.4 (Katsura-5) to 2.5 (cyclic-5) times slower (measured with SymPy's
+   Buchberger algorithm, before F4).
 
 3. **Images.** For a prime $p$ which divides no leading coefficient of
    $F^h$, the reduced Gröbner basis $G_p$ of $\langle F^h \bmod p \rangle$
-   for $>_h$ is computed by SymPy's own ``groebner`` over ``GF(p)``.
+   for $>_h$ is computed over the typed ``GF(p)`` by the algorithm of
+   ``settings.groebner_algorithm`` (:func:`direct_groebner`: F4 by
+   default).
 
 4. **Unlucky primes.** $p$ is *lucky* when $G_p$ has the leading monomials
    of the reduced Gröbner basis $G$ of $\langle F^h \rangle$ over
@@ -86,7 +95,7 @@ $I = \langle F \rangle$.
    $k$, its leading monomial is that of $f$ times a power of $t$, and it
    is divisible by the leading monomial of an element of the basis). The
    redundant elements are removed and the tails reduced, which gives the
-   reduced basis, the one SymPy returns.
+   reduced basis, the one F4 returns.
 
 What is proven
 ==============
@@ -125,8 +134,8 @@ homogeneous and non-homogeneous input alike, whatever the primes.
 The primes
 ==========
 
-With SymPy's pure Python ground types the time of a Gröbner basis over
-``GF(p)`` hardly depends on the size of $p$ (Katsura-4, ``lex``,
+With Python's integers the time of a Gröbner basis over ``GF(p)``
+hardly depends on the size of $p$ (Katsura-4, ``lex``,
 homogenised, one run each, wall-clock on a loaded machine: 0.66 s for
 $p < 2^{31}$, 0.77 s below $2^{64}$, 0.84 s below $2^{256}$, 1.04 s below
 $2^{1024}$, 1.7 s below $2^{2048}$, where finding the prime takes 5 s as
@@ -166,36 +175,38 @@ References
 """
 from __future__ import annotations
 
+from fractions import Fraction
 from math import gcd, isqrt
-from typing import Iterable, Iterator, Optional, Sequence
-
-from sympy.core.expr import Expr
-from sympy.core.symbol import Dummy
-from sympy.polys.domains import GF, QQ
-from sympy.polys.domains.finitefield import FiniteField
-from sympy.polys.groebnertools import groebner as _groebner
-from sympy.polys.orderings import MonomialOrder, grevlex, grlex
-from sympy.polys.rings import PolyElement, PolyRing
+from typing import Callable, Iterable, Iterator, Optional, Sequence, TypeVar
 
 from sympy_extras._timeout import attempt
 from sympy_extras.ntheory.generate import prevprime
-from sympy_extras._typing import Monomial, OrderKey
 from sympy_extras.settings import settings
 
-from .domains.finitefield import FiniteField as FiniteField_
-from .rings import MonomialOrder as TypedOrder, PolyRing as PolyRing_
+from .buchberger import buchberger
+from .domains.finitefield import FiniteField
+from .domains.integerring import ZZ, IntegerRing
+from .domains.rationalfield import QQ, RationalField
+from .f4 import f4
+from .rings import Monomial, MonomialOrder, OrderKeyValue, PolyElement, PolyRing
 
 __all__ = ['direct_groebner', 'groebner', 'modular_groebner', 'rational_reconstruction', 'chinese_remainder',
-    'default_primes', 'ModularTrace']
+    'default_primes', 'homogeneous_order', 'ModularTrace', 'GRADED_FACTOR', 'GUARD_BITS']
+
+T = TypeVar('T')
 
 #: a polynomial with integer coefficients, by exponent vectors
 IntPoly = dict[Monomial, int]
 #: a polynomial with rational coefficients ``(numerator, denominator)``
 RatPoly = dict[Monomial, tuple[int, int]]
+#: the key of a monomial order
+OrderKey = Callable[[Monomial], OrderKeyValue]
 #: the sort key of the leading monomials of an image, see ``_luckiness``
-Luckiness = tuple[tuple[int, tuple[object, ...]], ...]
+Luckiness = tuple[tuple[int, tuple[OrderKeyValue, ...]], ...]
+#: an image: the leading monomials and the polynomials with coefficients in ``range(p)``
+Image = list[tuple[Monomial, IntPoly]]
 
-#: for the graded orders SymPy's direct computation is given this many times
+#: for the graded orders the direct computation is given this many times
 #: ``settings.groebner_direct_time``: see :func:`groebner`
 GRADED_FACTOR = 20
 
@@ -323,7 +334,7 @@ def default_primes() -> Iterator[int]:
     i = 0
     while True:
         if i == len(_large_primes):
-            _large_primes.append(int(prevprime(_large_primes[-1])))
+            _large_primes.append(prevprime(_large_primes[-1]))
         yield _large_primes[i]
         i += 1
 
@@ -331,38 +342,35 @@ def default_primes() -> Iterator[int]:
 # ----------------------------------------------------------------------
 # polynomials with integer coefficients
 
-class _HomogeneousOrder(MonomialOrder):
-    """Total degree first, then ``base`` on the first ``nvars`` exponents
-    (all of them, or all but the homogenising variable)."""
-    alias = 'homogeneous'
-    is_global = True
+def homogeneous_order(base: MonomialOrder, nvars: int) -> MonomialOrder:
+    """The order which compares the total degree first, then ``base`` on
+    the first ``nvars`` exponents (all of them, or all but the
+    homogenising variable): the order of the images of
+    :func:`modular_groebner`. Its keys are remembered (the leading monomial
+    of a polynomial under reduction is searched at every step).
 
-    def __init__(self, base: MonomialOrder, nvars: int) -> None:
-        self.base = base
-        self.nvars = nvars
+    >>> from sympy_extras.polys.rings import lex
+    >>> from sympy_extras.polys.modulargroebner import homogeneous_order
+    >>> H = homogeneous_order(lex, 2)
+    >>> H, H((0, 2, 0)) > H((1, 0, 0)), H((1, 0, 1)) > H((0, 2, 0))
+    (HomogeneousOrder(lex, 2), True, True)
+    """
+    base_key = base.key
+    cache: dict[Monomial, OrderKeyValue] = {}
 
-    def __call__(self, monomial: Monomial) -> tuple[int, object]:
-        return (sum(monomial), self.base(monomial[:self.nvars]))
-
-    def __hash__(self) -> int:
-        return hash((self.__class__, self.base, self.nvars))
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, _HomogeneousOrder) and \
-            (self.base, self.nvars) == (other.base, other.nvars)
-
-    def __str__(self) -> str:
-        return "_HomogeneousOrder(%s, %d)" % (self.base, self.nvars)
-
-    __repr__ = __str__
+    def key(monomial: Monomial) -> OrderKeyValue:
+        found = cache.get(monomial)
+        if found is None:
+            found = cache[monomial] = (sum(monomial),) + base_key(monomial[:nvars])
+        return found
+    return MonomialOrder('HomogeneousOrder(%s, %d)' % (base, nvars), key, True)
 
 
 def _cached(order: OrderKey) -> OrderKey:
-    """``order`` with its values remembered: the leading monomial of a
-    polynomial under reduction is searched at every step."""
-    cache: dict[Monomial, object] = {}
+    """``order`` with its values remembered."""
+    cache: dict[Monomial, OrderKeyValue] = {}
 
-    def key(monomial: Monomial) -> object:
+    def key(monomial: Monomial) -> OrderKeyValue:
         value = cache.get(monomial)
         if value is None:
             value = cache[monomial] = order(monomial)
@@ -389,8 +397,7 @@ def _primitive(f: IntPoly, leading: Optional[Monomial] = None) -> IntPoly:
     return {m: c//content for m, c in f.items()}
 
 
-def _normal_form(f: IntPoly, basis: Sequence[tuple[Monomial, IntPoly]], key: OrderKey,
-                 full: bool) -> IntPoly:
+def _normal_form(f: IntPoly, basis: Sequence[tuple[Monomial, IntPoly]], key: OrderKey, full: bool) -> IntPoly:
     """A non-zero integer multiple of the normal form of ``f`` modulo
     ``basis`` (pairs of a leading monomial and a polynomial), computed
     without fractions. With ``full=False`` the reduction stops at the first
@@ -401,15 +408,18 @@ def _normal_form(f: IntPoly, basis: Sequence[tuple[Monomial, IntPoly]], key: Ord
     while f:
         m = max(f, key=key)
         c = f[m]
+        divisor: Optional[tuple[Monomial, IntPoly]] = None
         for lm, g in basis:
             if _divides(lm, m):
+                divisor = (lm, g)
                 break
-        else:
+        if divisor is None:
             if not full:
                 return f
             rest[m] = c
             del f[m]
             continue
+        lm, g = divisor
         a = g[lm]
         d = gcd(a, c)
         u, v = a//d, c//d
@@ -529,7 +539,7 @@ def _luckiness(leading: Sequence[Monomial], key: OrderKey) -> Luckiness:
     comes from an unlucky prime (see the module documentation)."""
     if not leading:
         return ()
-    by_degree: list[list[object]] = [[] for _ in range(max(sum(m) for m in leading) + 1)]
+    by_degree: list[list[OrderKeyValue]] = [[] for _ in range(max(sum(m) for m in leading) + 1)]
     for m in sorted(leading, key=key, reverse=True):
         by_degree[sum(m)].append(key(m))
     return tuple((len(keys), tuple(keys)) for keys in by_degree)
@@ -559,12 +569,16 @@ class ModularTrace:
     Examples
     ========
 
-    >>> from sympy import QQ, ring, lex, primerange
+    >>> from sympy_extras.ntheory.generate import primerange
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.rings import PolyRing, lex
     >>> from sympy_extras.polys.modulargroebner import modular_groebner, ModularTrace
-    >>> R, x, y = ring("x,y", QQ, lex)
+    >>> R = PolyRing(QQ, ['x', 'y'], lex)
+    >>> x, y = R.gens
     >>> trace = ModularTrace()
-    >>> modular_groebner([x**2 + y, x**2 + 7*y], R, primes=primerange(2, 100), trace=trace)
-    [x**2, y]
+    >>> G = modular_groebner([x**2 + y, x**2 + y.mul_ground(QQ.from_int(7))], R, primes=primerange(2, 100), trace=trace)
+    >>> [str(g) for g in G]
+    ['x**2', 'y']
     >>> trace.unlucky, trace.lucky
     ([2, 3], [5, 7])
 
@@ -588,51 +602,17 @@ class ModularTrace:
             self.used, self.skipped, self.unlucky, self.lucky, self.failed_verifications)
 
 
-_fields: dict[int, FiniteField] = {}
-
-
-def _image(polys: Sequence[IntPoly], symbols: Sequence[Expr], order: MonomialOrder, key: OrderKey,
-           p: int) -> list[tuple[Monomial, IntPoly]]:
+def _image(polys: Sequence[IntPoly], names: Sequence[str], order: MonomialOrder, p: int) -> Image:
     """The reduced Gröbner basis of the polynomials modulo ``p``, by
-    increasing leading monomials, with coefficients in ``range(p)``: by
-    the typed F4 over ``GF(p)`` (``settings.groebner_algorithm`` 'f4'), by
-    SymPy's Buchberger otherwise."""
-    if settings.groebner_algorithm == 'f4':
-        from .f4 import f4
-        typed = PolyRing_(FiniteField_(p), [str(s) for s in symbols], _typed_order(order, len(symbols)))
-        reduced = [typed.from_dict({m: c % p for m, c in f.items()}) for f in polys]
-        typed_basis = f4([f for f in reduced if f.terms], typed)
-        image: list[tuple[Monomial, IntPoly]] = [(g.LM, dict(g.terms)) for g in typed_basis]
-        image.sort(key=lambda pair: key(pair[0]))
-        return image
-    field = _fields.get(p)
-    if field is None:
-        # SymPy tests the primality of the modulus the first time a finite
-        # field is asked whether it is a field (13 ms for 1024 bits), which
-        # ``groebner`` does: the domains are kept
-        field = _fields[p] = GF(p)
-    ring = PolyRing(symbols, field, order)
-    sympy_reduced = [ring.from_dict({m: c % p for m, c in f.items()}) for f in polys]
-    basis = list(_groebner([f for f in sympy_reduced if f], ring))
-    sympy_image: list[tuple[Monomial, IntPoly]] = []
-    for g in basis:
-        coefficients: IntPoly = {tuple(m): int(field.to_int(c)) % p for m, c in g.items()}
-        sympy_image.append((max(coefficients, key=key), coefficients))
-    sympy_image.sort(key=lambda pair: key(pair[0]))
-    return sympy_image
-
-
-_typed_orders: dict[tuple[MonomialOrder, int], TypedOrder] = {}
-
-
-def _typed_order(order: MonomialOrder, n: int) -> TypedOrder:
-    """The typed order of a SymPy order, kept per order (its memoised
-    keys serve every prime)."""
-    found = _typed_orders.get((order, n))
-    if found is None:
-        from .interop import typed_order
-        found = _typed_orders[(order, n)] = typed_order(order, n)
-    return found
+    increasing leading monomials, with coefficients in ``range(p)``, by
+    :func:`direct_groebner` over ``GF(p)``."""
+    ring = PolyRing(FiniteField(p), names, order)
+    reduced = [ring.from_dict({m: c % p for m, c in f.items()}) for f in polys]
+    basis = direct_groebner([f for f in reduced if f.terms], ring)
+    key = order.key
+    image: Image = [(g.LM, {m: c % p for m, c in g.terms.items()}) for g in basis]
+    image.sort(key=lambda pair: key(pair[0]))
+    return image
 
 
 class _Lifting:
@@ -656,7 +636,7 @@ class _Lifting:
         self.residues = []
         self.hardest = None
 
-    def add(self, image: Sequence[tuple[Monomial, IntPoly]], p: int) -> None:
+    def add(self, image: Image, p: int) -> None:
         if not self.primes:
             self.leading = [lm for lm, _ in image]
             self.residues = [dict(g) for _, g in image]
@@ -713,7 +693,7 @@ class _Lifting:
         return candidate, guarded
 
 
-def _agrees(candidate: Sequence[RatPoly], image: Sequence[tuple[Monomial, IntPoly]], p: int) -> bool:
+def _agrees(candidate: Sequence[RatPoly], image: Image, p: int) -> bool:
     """Whether the candidate reduces to the image modulo ``p``."""
     for g, (_, gp) in zip(candidate, image):
         count = 0
@@ -756,99 +736,44 @@ def _verified(candidate: Sequence[RatPoly], leading: Sequence[Monomial], polys: 
 # ----------------------------------------------------------------------
 # the interface
 
-def _applies(ring: PolyRing) -> bool:
-    """Whether the modular algorithm applies: rational or integer
-    coefficients and a global monomial order."""
-    order = ring.order
-    return bool(ring.domain.is_QQ or ring.domain.is_ZZ) and isinstance(order, MonomialOrder) \
-        and order.is_global is True
-
-
-def _integer_polys(polys: Sequence[PolyElement]) -> list[IntPoly]:
+def _integer_polys(polys: Sequence[PolyElement[T]]) -> list[IntPoly]:
+    """The non-zero polynomials over ``QQ`` or ``ZZ`` with their
+    denominators and contents removed."""
     result: list[IntPoly] = []
     for f in polys:
-        if not f:
+        if not f.terms:
             continue
-        g = f.set_ring(f.ring.clone(domain=QQ)).clear_denoms()[1]
-        result.append(_primitive({tuple(m): int(QQ.numer(c)) for m, c in g.items()}))
+        K = f.ring.domain
+        fractions = {m: QQ.convert(c, K) for m, c in f.terms.items()}
+        common = 1
+        for c in fractions.values():
+            common = common*c.denominator//gcd(common, c.denominator)
+        result.append(_primitive({m: c.numerator*(common//c.denominator) for m, c in fractions.items()}))
     return result
 
 
-def modular_groebner(polys: Sequence[PolyElement], ring: PolyRing, primes: Optional[Iterable[int]] = None,
-                     trace: Optional[ModularTrace] = None) -> list[PolyElement]:
-    """The reduced Gröbner basis of the ideal generated by ``polys`` in
-    ``ring``, computed modulo primes and proven; the result is the one of
-    :func:`sympy.polys.groebnertools.groebner`.
-
-    Parameters
-    ==========
-
-    polys : sequence of PolyElement
-        The generators, elements of ``ring``.
-    ring : PolyRing
-        The ring, whose order is the order of the Gröbner basis. Over
-        ``QQ`` the result is monic, over ``ZZ`` primitive with positive
-        leading coefficients, sorted by decreasing leading monomials, as
-        SymPy's is. For other domains (finite fields, algebraic fields,
-        fields of fractions) and for orders which are not global SymPy's
-        ``groebner`` is called.
-    primes : iterable of int, optional
-        The primes to use, in this order; :func:`default_primes` if
-        omitted. They must be distinct primes; ``ValueError`` is raised if
-        they run out.
-    trace : ModularTrace, optional
-        Filled in with the primes used, skipped and discarded.
-
-    Returns
-    =======
-
-    The reduced Gröbner basis as a list of elements of ``ring``. It is
-    proven, not probabilistic, for every input and every sequence of
-    primes: see the module documentation.
-
-    Examples
-    ========
-
-    >>> from sympy import QQ, ring, lex
-    >>> from sympy.polys.groebnertools import groebner
-    >>> from sympy_extras.polys.modulargroebner import modular_groebner
-    >>> R, x, y, z = ring("x,y,z", QQ, lex)
-    >>> F = [x**2 + y**2 + z**2 - 1, x*y - z/3, x + y - 2*z]
-    >>> G = modular_groebner(F, R)
-    >>> G
-    [x + y - 2*z, y**2 - 2*y*z + 1/3*z, z**2 - 2/15*z - 1/5]
-    >>> G == groebner(F, R)
-    True
-
-    References
-    ==========
-
-    .. [1] E. A. Arnold, Modular algorithms for computing Gröbner bases,
-           J. Symbolic Computation 35 (2003) 403-419.
-    .. [2] N. Idrees, G. Pfister, S. Steidel, Parallelization of modular
-           algorithms, J. Symbolic Computation 46 (2011) 672-684.
-    """
-    domain = ring.domain
-    if not _applies(ring):
-        return list(_groebner(list(polys), ring))
-    if trace is None:
-        trace = ModularTrace()
-    integer = _integer_polys(polys)
-    if not integer:
-        return []
+def _integer_basis(integer: list[IntPoly], ring: PolyRing[T], primes: Optional[Iterable[int]],
+                   trace: ModularTrace) -> list[tuple[Monomial, IntPoly]]:
+    """The reduced Gröbner basis of the polynomials with integer
+    coefficients in the variables and the order of ``ring``, primitive,
+    with positive leading coefficients, by decreasing leading monomials."""
     nvars = ring.ngens
     homogenized = any(len({sum(m) for m in f}) > 1 for f in integer)
     trace.homogenized = homogenized
-    symbols: tuple[Expr, ...] = tuple(ring.symbols)
+    names = list(ring.names)
     if homogenized:
-        symbols = symbols + (Dummy('t'),)
+        # a name which is none of the variables (it is only printed)
+        t = '_t'
+        while t in names:
+            t = '_' + t
+        names.append(t)
         homogeneous: list[IntPoly] = []
         for f in integer:
             degree = max(sum(m) for m in f)
             homogeneous.append({m + (degree - sum(m),): c for m, c in f.items()})
         integer = homogeneous
-    order = _HomogeneousOrder(ring.order, nvars)
-    key = _cached(order)
+    order = homogeneous_order(ring.order, nvars)
+    key = order.key
     leading_coefficients = [f[max(f, key=key)] for f in integer]
 
     lifting = _Lifting()
@@ -860,7 +785,7 @@ def modular_groebner(polys: Sequence[PolyElement], ring: PolyRing, primes: Optio
         if any(c % p == 0 for c in leading_coefficients):
             trace.skipped.append(p)
             continue
-        image = _image(integer, symbols, order, key, p)
+        image = _image(integer, names, order, p)
         trace.used.append(p)
         luckiness = _luckiness([lm for lm, _ in image], key)
         if lifting.primes and luckiness < lifting.luckiness:
@@ -892,86 +817,158 @@ def modular_groebner(polys: Sequence[PolyElement], ring: PolyRing, primes: Optio
     if proven is None:
         raise ValueError("the primes ran out before the Gröbner basis was found")
     trace.lucky = list(lifting.primes)
-
-    base = _cached(ring.order)
     if homogenized:
         proven = [{m[:nvars]: c for m, c in g.items()} for g in proven]
-    result: list[PolyElement] = []
-    for lm, g in _reduced(proven, base):
-        if domain.is_ZZ:
-            result.append(ring.from_dict(g))
-        else:
-            lc = g[lm]
-            result.append(ring.from_dict({m: QQ(c, lc) for m, c in g.items()}))
-    return result
+    return _reduced(proven, _cached(ring.order.key))
 
 
-def direct_groebner(polys: Sequence[PolyElement], ring: PolyRing) -> list[PolyElement]:
-    """The reduced Gröbner basis by the direct computation of
-    ``settings.groebner_algorithm``: the typed F4
-    (:mod:`sympy_extras.polys.f4`) over ``QQ`` and ``GF(p)``, SymPy's
-    Buchberger otherwise.
+def modular_groebner(polys: Sequence[PolyElement[T]], ring: PolyRing[T], primes: Optional[Iterable[int]] = None,
+                     trace: Optional[ModularTrace] = None) -> list[PolyElement[T]]:
+    """The reduced Gröbner basis of the ideal generated by ``polys`` in
+    ``ring`` (over ``QQ`` or ``ZZ``), computed modulo primes and proven.
+
+    Parameters
+    ==========
+
+    polys : sequence of PolyElement
+        The generators, elements of ``ring`` (or of a ring with the same
+        variables over ``QQ`` or ``ZZ``).
+    ring : PolyRing
+        The ring, over ``QQ`` or ``ZZ`` (``ValueError`` otherwise), whose
+        order (a global one) is the order of the Gröbner basis. Over ``QQ``
+        the result is monic, over ``ZZ`` primitive with positive leading
+        coefficients (the basis over ``QQ`` with its denominators
+        cleared), sorted by decreasing leading monomials.
+    primes : iterable of int, optional
+        The primes to use, in this order; :func:`default_primes` if
+        omitted. They must be distinct primes; ``ValueError`` is raised if
+        they run out.
+    trace : ModularTrace, optional
+        Filled in with the primes used, skipped and discarded.
+
+    Returns
+    =======
+
+    The reduced Gröbner basis as a list of elements of ``ring``, the one
+    :func:`sympy_extras.polys.f4.f4` computes. It is proven, not
+    probabilistic, for every input and every sequence of primes: see the
+    module documentation.
 
     Examples
     ========
 
-    >>> from sympy import QQ, ZZ, ring, grevlex
-    >>> from sympy_extras.polys.modulargroebner import direct_groebner
-    >>> R, x, y = ring("x,y", QQ, grevlex)
-    >>> direct_groebner([x**2 + y**2 - 1, x*y - 2], R)
-    [y**3 + 2*x - y, x**2 + y**2 - 1, x*y - 2]
+    >>> from fractions import Fraction
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.rings import PolyRing, lex
+    >>> from sympy_extras.polys.f4 import f4
+    >>> from sympy_extras.polys.modulargroebner import modular_groebner
+    >>> R = PolyRing(QQ, ['x', 'y', 'z'], lex)
+    >>> x, y, z = R.gens
+    >>> F = [x**2 + y**2 + z**2 - R.one, x*y - z.mul_ground(Fraction(1, 3)), x + y - z.mul_ground(QQ.from_int(2))]
+    >>> G = modular_groebner(F, R)
+    >>> [str(g) for g in G]
+    ['x + y - 2*z', 'y**2 - 2*y*z + 1/3*z', 'z**2 - 2/15*z - 1/5']
+    >>> G == f4(F, R)
+    True
+
+    References
+    ==========
+
+    .. [1] E. A. Arnold, Modular algorithms for computing Gröbner bases,
+           J. Symbolic Computation 35 (2003) 403-419.
+    .. [2] N. Idrees, G. Pfister, S. Steidel, Parallelization of modular
+           algorithms, J. Symbolic Computation 46 (2011) 672-684.
     """
-    nonzero = [f for f in polys if f]
-    if settings.groebner_algorithm == 'f4' and ring.domain.is_Field:
-        # the typed F4 over QQ and GF(p), through the conversions of
-        # sympy_extras.polys.interop; other fields keep SymPy's algorithm
-        from .f4 import f4
-        from .interop import gf_from_sympy, gf_to_sympy, qq_from_sympy, qq_to_sympy, sympy_modulus
-        if ring.domain.is_QQ:
-            typed_qq, polys_qq = qq_from_sympy(nonzero, ring)
-            return qq_to_sympy(f4(polys_qq, typed_qq), ring)
-        p = sympy_modulus(ring)
-        if p is not None:
-            typed_gf, polys_gf = gf_from_sympy(nonzero, ring, p)
-            return gf_to_sympy(f4(polys_gf, typed_gf), ring)
-    return list(_groebner(nonzero, ring))
+    K = ring.domain
+    if not isinstance(K, (RationalField, IntegerRing)):
+        raise ValueError("the modular algorithm needs QQ or ZZ as the coefficient domain, got %s" % K)
+    integral = isinstance(K, IntegerRing)
+    if trace is None:
+        trace = ModularTrace()
+    integer = _integer_polys(polys)
+    if not integer:
+        return []
+    result: list[PolyElement[T]] = []
+    for lm, g in _integer_basis(integer, ring, primes, trace):
+        if integral:
+            result.append(PolyElement({m: ring.domain.convert(c, ZZ) for m, c in g.items()}, ring))
+        else:
+            lc = g[lm]
+            result.append(PolyElement({m: ring.domain.convert(Fraction(c, lc), QQ) for m, c in g.items()}, ring))
+    return result
 
 
-def groebner(polys: Sequence[PolyElement], ring: PolyRing) -> list[PolyElement]:
+def direct_groebner(polys: Sequence[PolyElement[T]], ring: PolyRing[T]) -> list[PolyElement[T]]:
+    """The reduced Gröbner basis over a field by the direct computation of
+    ``settings.groebner_algorithm``: F4 (:mod:`sympy_extras.polys.f4`,
+    ``'f4'``, the default) or Buchberger's algorithm
+    (:mod:`sympy_extras.polys.buchberger`, ``'buchberger'``).
+
+    Examples
+    ========
+
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.rings import PolyRing, grevlex
+    >>> from sympy_extras.polys.modulargroebner import direct_groebner
+    >>> from sympy_extras.settings import configure
+    >>> R = PolyRing(QQ, ['x', 'y'], grevlex)
+    >>> x, y = R.gens
+    >>> F = [x**2 + y**2 - R.one, x*y - R.from_int(2)]
+    >>> [str(g) for g in direct_groebner(F, R)]
+    ['y**3 + 2*x - y', 'x**2 + y**2 - 1', 'x*y - 2']
+    >>> with configure(groebner_algorithm='buchberger'):
+    ...     direct_groebner(F, R) == direct_groebner(F, R)
+    True
+    """
+    nonzero = [f for f in polys if f.terms]
+    if settings.groebner_algorithm == 'f4':
+        return f4(nonzero, ring)
+    return buchberger(nonzero, ring)
+
+
+def _is_graded(order: MonomialOrder) -> bool:
+    return order.name in ('grevlex', 'grlex')
+
+
+def groebner(polys: Sequence[PolyElement[T]], ring: PolyRing[T]) -> list[PolyElement[T]]:
     """The reduced Gröbner basis of ``polys`` in ``ring``, by the direct
     computation (:func:`direct_groebner`) or by :func:`modular_groebner`,
     whichever is expected to be faster; this is what
     :class:`~sympy_extras.polys.ideals.Ideal` calls.
 
-    Over ``QQ`` and ``ZZ``, SymPy's ``groebner`` is given
+    Over ``QQ`` the direct computation is given
     ``settings.groebner_direct_time`` seconds (a quarter of a second), and
     ``GRADED_FACTOR`` times as long (five seconds) for ``grevlex`` and
     ``grlex``; if it has not finished, the modular algorithm computes the
     basis. The reasons, from the measurements in ``docs/ideals.md``: on the
-    inputs which SymPy handles in milliseconds the modular algorithm costs
-    about twice as much; for ``lex`` and the elimination orders it is
-    faster by one to two orders of magnitude as soon as SymPy needs
-    seconds, and no cheap inspection of the input tells the two kinds
-    apart, so that the lost quarter of a second is the price of telling
-    them apart; for the graded orders, where the coefficients grow less
-    and the homogenised images are larger than the basis, it was 1.3 to
-    2.4 times *slower* than SymPy on everything measured, and is only the
-    last resort. With ``settings.modular_groebner`` off, with other
-    coefficient domains, and where time limits are not available (outside
-    the main thread) only SymPy's computation is used.
+    inputs which the direct computation handles in milliseconds the
+    modular algorithm costs about twice as much; for ``lex`` and the
+    elimination orders it is faster by one to two orders of magnitude as
+    soon as the direct computation needs seconds, and no cheap inspection
+    of the input tells the two kinds apart, so that the lost quarter of a
+    second is the price of telling them apart; for the graded orders,
+    where the coefficients grow less and the homogenised images are larger
+    than the basis, it was slower on everything measured, and is only the
+    last resort. With ``settings.modular_groebner`` off, over other fields,
+    and where time limits are not available (outside the main thread)
+    only the direct computation is used. Over ``ZZ`` (which is not a
+    field) the result is the one of :func:`modular_groebner`.
 
     Examples
     ========
 
-    >>> from sympy import QQ, ring, grevlex
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.rings import PolyRing, grevlex
     >>> from sympy_extras.polys.modulargroebner import groebner
     >>> from sympy_extras.settings import configure
-    >>> R, x, y = ring("x,y", QQ, grevlex)
-    >>> groebner([x**2 + y**2 - 1, x*y - 2], R)
-    [y**3 + 2*x - y, x**2 + y**2 - 1, x*y - 2]
+    >>> R = PolyRing(QQ, ['x', 'y'], grevlex)
+    >>> x, y = R.gens
+    >>> F = [x**2 + y**2 - R.one, x*y - R.from_int(2)]
+    >>> [str(g) for g in groebner(F, R)]
+    ['y**3 + 2*x - y', 'x**2 + y**2 - 1', 'x*y - 2']
     >>> with configure(groebner_direct_time=0):
-    ...     groebner([x**2 + y**2 - 1, x*y - 2], R)
-    [y**3 + 2*x - y, x**2 + y**2 - 1, x*y - 2]
+    ...     [str(g) for g in groebner(F, R)]
+    ['y**3 + 2*x - y', 'x**2 + y**2 - 1', 'x*y - 2']
 
     References
     ==========
@@ -979,14 +976,18 @@ def groebner(polys: Sequence[PolyElement], ring: PolyRing) -> list[PolyElement]:
     .. [1] E. A. Arnold, Modular algorithms for computing Gröbner bases,
            J. Symbolic Computation 35 (2003) 403-419.
     """
-    nonzero = [f for f in polys if f]
-    if not settings.modular_groebner or not _applies(ring):
+    nonzero = [f if f.ring == ring else PolyElement(dict(f.terms), ring) for f in polys if f.terms]
+    if not nonzero:
+        return []
+    if isinstance(ring.domain, IntegerRing):
+        return modular_groebner(nonzero, ring)
+    if not settings.modular_groebner or not isinstance(ring.domain, RationalField):
         return direct_groebner(nonzero, ring)
     seconds = settings.groebner_direct_time
-    if ring.order in (grevlex, grlex):
+    if _is_graded(ring.order):
         seconds *= GRADED_FACTOR
     if seconds > 0:
-        direct = attempt(lambda: direct_groebner(list(nonzero), ring), seconds)
+        direct = attempt(lambda: direct_groebner(nonzero, ring), seconds, native=True)
         if direct is not None:
             return direct
     return modular_groebner(nonzero, ring)

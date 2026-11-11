@@ -241,7 +241,7 @@ def test_modular_fallback_and_settings() -> None:
         assert _strs(Ideal(eqs, x, y, z, domain=QQ).groebner_basis('lex')) == expected
 
 
-def test_decompositions_through_the_face() -> None:
+def test_decompositions() -> None:
     I = Ideal([x**2 - y**2, x*z - y], x, y, z, domain=QQ)
     primes = I.minimal_primes()
     assert [str(P) for P in primes] == ['Ideal([x + y, z + 1], x, y, z)', 'Ideal([x - y, z - 1], x, y, z)',

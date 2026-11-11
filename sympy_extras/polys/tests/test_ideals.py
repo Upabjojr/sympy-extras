@@ -230,8 +230,10 @@ def test_hermite_imported_first() -> None:
     # is now hermite_sympy -> ideals_sympy -> rur -> hermite_sympy
     import subprocess
     import sys
-    for module in ('hermite', 'hermite_sympy', 'rur', 'ideals_sympy', 'idealdecomposition'):
+    for module in ('hermite', 'hermite_sympy', 'rur', 'rur_sympy', 'ideals', 'ideals_sympy', 'idealdecomposition',
+                   'idealdecomposition_sympy'):
         code = 'import sympy_extras.polys.%s; from sympy_extras.polys.hermite_sympy import decide_zero_dimensional; ' \
-               'from sympy_extras.polys.rur import rur' % module
+               'from sympy_extras.polys.rur_sympy import rur; from sympy_extras.polys.rur import rur as native_rur; ' \
+               'from sympy_extras.polys.idealdecomposition import minimal_primes' % module
         out = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, timeout=600)
         assert out.returncode == 0, (module, out.stderr)

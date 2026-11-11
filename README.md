@@ -251,7 +251,8 @@ reduction, two to twenty times faster than SymPy's Buchberger on the
 Katsura and cyclic systems, the same reduced basis) and, over the
 rationals, those which the direct computation does not finish in a quarter
 of a second by the modular algorithm of Arnold
-(`sympy_extras.polys.modulargroebner`): modulo large primes, on the
+(`sympy_extras.polys.modulargroebner`, native, with its SymPy face
+`modulargroebner_sympy`): modulo large primes, on the
 homogenised input, with a verification which proves the result. Strong
 Gröbner bases over the integers (`sympy_extras.polys.stronggroebner`)
 decide membership in ideals of `ZZ[x]`, where SymPy's `groebner` with
@@ -282,7 +283,7 @@ True
 >>> from sympy_extras.polys.domains import QQ as TQQ, ZZ as TZZ
 >>> from sympy_extras.polys.rings import PolyRing, lex as typed_lex
 >>> from sympy_extras.polys.f4 import f4
->>> from sympy_extras.polys.modulargroebner import modular_groebner
+>>> from sympy_extras.polys.modulargroebner_sympy import modular_groebner
 >>> T = PolyRing(TQQ, ['u', 'v', 'w'], typed_lex)
 >>> from sympy_extras.polys.interop import ring_from_sympy, ring_to_sympy
 >>> F = [ring_from_sympy(T, e) for e in (u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w)]
@@ -670,7 +671,7 @@ it. `sympy_extras.simplify.structure` is native (written on the core,
 without SymPy); `structure_sympy` is its face on SymPy expressions. See
 [docs/simplify.md](docs/simplify.md).
 
-### Differential elimination: Janet bases and Rosenfeld–Gröbner (`sympy_extras.polys.differential`)
+### Differential elimination: Janet bases and Rosenfeld–Gröbner (`sympy_extras.polys.differential`, face `differential_sympy`)
 
 The differential counterpart of Gröbner bases. `janet_basis` completes a
 linear system of partial differential equations with all its
@@ -679,11 +680,13 @@ consequence, and counts the solutions without solving. `rosenfeld_groebner`
 splits a polynomial system of ordinary or partial differential equations
 into regular differential systems, which separates the general solution
 from the singular ones, finds the hidden constraints of
-differential-algebraic systems and eliminates unknowns.
+differential-algebraic systems and eliminates unknowns. The package works
+on the objects of the core and imports no SymPy; `differential_sympy` is
+its face on SymPy objects:
 
 ```python
 >>> from sympy import Function, symbols
->>> from sympy_extras.polys.differential import janet_basis, rosenfeld_groebner
+>>> from sympy_extras.polys.differential_sympy import janet_basis, rosenfeld_groebner
 >>> x, y, z = symbols('x y z')
 >>> u = Function('u')(x, y, z)
 >>> J = janet_basis([u.diff(z, 2) + y*u.diff(x, 2), u.diff(y, 2)], [u])
@@ -1281,16 +1284,20 @@ sympy_extras/
         polyclasses.py       DensePoly: the typed polynomial class over a domain, with the algorithms as methods
         rings.py             PolyRing, PolyElement: sparse multivariate polynomials with monomial orders, the division algorithm
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
-        idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension
+        idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension (native)
+        idealdecomposition_sympy.py  its SymPy face
         hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination (native)
         hermite_sympy.py     its SymPy face
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
         f4.py                Faugère's F4 on the typed rings: Gröbner bases by its own sparse row reduction, over any field
         interop.py           conversions between SymPy's polynomial rings and the typed ones (QQ, ZZ, GF(p))
         hilbert.py           Hilbert series of monomial ideals by Bigatti's algorithm
-        rur.py               the rational univariate representation of zero-dimensional ideals (Rouillier)
+        rur.py               the rational univariate representation of zero-dimensional ideals (Rouillier, native)
+        rur_sympy.py         its SymPy face
         stronggroebner.py    strong Gröbner bases over the integers (Kandri-Rody–Kapur, Lichtblau)
-        modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold)
+        modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold) (native)
+        modulargroebner_sympy.py  the SymPy face of modulargroebner
+        buchberger.py        Buchberger's algorithm on the typed rings (ported from SymPy)
         orderings.py         WeightOrder, BlockOrder
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (native)
         virtual_substitution_sympy.py  its SymPy face, and simplify_logic_of_core
@@ -1307,6 +1314,7 @@ sympy_extras/
             janet.py         Janet bases of linear systems of partial differential equations
             polynomial.py    differential polynomials, Ritt's reduction
             rosenfeld_groebner.py  the Rosenfeld–Gröbner algorithm
+        differential_sympy.py  the SymPy face of differential
         regularchains/
             recursive.py     polynomials in their main variable: lazy pseudo-division, subresultant chains
             operations.py    regularize, regular gcd, intersect, extend; the decompositions

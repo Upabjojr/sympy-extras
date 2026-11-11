@@ -336,14 +336,17 @@ sympy_extras/
         polyclasses.py       DensePoly[T]: rep, domain, gen; the dense algorithms as methods, factorisation and roots through the domain
         rings.py             PolyRing[T], PolyElement[T] (dict[Monomial, T]), MonomialOrder (lex, grlex, grevlex, WeightOrder, BlockOrder, elimination_order), div by a list
         ideals.py            Ideal: operations and invariants of ideals over the typed fields, groebner (F4, the modular
-                             fallback), normal_form, the Gröbner walk, separating_forms (native; the modular Gröbner bases,
-                             SymPy's Buchberger and the decompositions of idealdecomposition through ideals_sympy)
-        ideals_sympy.py      the SymPy face of ideals (the old API on SymPy objects, rur), and the steps which stay on SymPy
+                             fallback of modulargroebner), normal_form, the Gröbner walk, separating_forms, the decompositions
+                             and rur (native)
+        ideals_sympy.py      the SymPy face of ideals (the old API on SymPy objects), and the steps which stay on SymPy
                              (the *_of_core functions)
+        idealdecomposition.py radical, equidimensional_parts, minimal_primes, primary_decomposition (GTZ + SY),
+                             associated_primes, is_primary, independent_set through regular chains (native)
+        idealdecomposition_sympy.py the SymPy face of idealdecomposition (the ideals of ideals_sympy)
         bigatti.py           hilbert_numerator_coefficients, minimal_generators: Bigatti's algorithm on exponent tuples (no SymPy)
         hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination,
                              decide_zero_dimensional (native)
-        hermite_sympy.py     the SymPy face of hermite, and the quotient algebra over SymPy's QQ that rur builds on
+        hermite_sympy.py     the SymPy face of hermite
         comprehensive.py     comprehensive Gröbner systems (Kapur-Sun-Wang), exists_complex,
                              complex_quantifier_elimination, reduce_complex: reduction over C (native)
         comprehensive_sympy.py the SymPy face of comprehensive
@@ -354,8 +357,13 @@ sympy_extras/
         fglm.py              fglm, groebner_by_fglm on rings.PolyRing (typed, no SymPy): change of order for zero-dimensional ideals
         interop.py           qq/zz/gf_from_sympy and _to_sympy, typed_order: the boundary with SymPy's rings
         hilbert.py           hilbert_numerator, hilbert_series, minimal_generators: Bigatti's algorithm for monomial ideals (SymPy Poly; bigatti.py computes)
-        rur.py               rur, RationalUnivariateRepresentation: Rouillier's representation of zero-dimensional ideals from traces
-        modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ modulo primes, proven (Arnold); direct_groebner
+        rur.py               rur, RationalUnivariateRepresentation: Rouillier's representation of zero-dimensional ideals from
+                             traces (native; the exact solutions, SymPy's CRootOf, through rur_sympy)
+        rur_sympy.py         the SymPy face of rur (Poly and SymPy expressions), and solutions_of_core
+        modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ and ZZ modulo primes, proven (Arnold), on rings.PolyRing;
+                             direct_groebner (F4 or Buchberger), groebner (the dispatcher Ideal calls) (native)
+        modulargroebner_sympy.py the SymPy face of modulargroebner (SymPy's ring elements; SymPy's groebner over the other domains)
+        buchberger.py        buchberger, s_polynomial on rings.PolyRing over a typed field (settings.groebner_algorithm 'buchberger'), PORTED FROM SYMPY
         stronggroebner.py    strong_groebner, strong_reduce on rings.PolyRing over ZZ (typed, no SymPy): S- and G-polynomials
         orderings.py         WeightOrder, BlockOrder, elimination_order (hashable monomial orders)
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (Loos-Weispfenning,
@@ -380,12 +388,16 @@ sympy_extras/
                              real algebraic numbers of the answers (native)
             indexedroot_sympy.py IndexedRoot as a SymPy Function; interop converts (a root with rational coefficients is CRootOf)
             tests/
-        differential/        differential algebra
-            ring.py          DifferentialRing: derivatives, rankings (orderly, elimination by blocks), conversion
+        differential/        differential algebra on the core (native; coefficients in ZZ[p, x] of the typed layer)
+            ring.py          DifferentialRing: derivatives, rankings (orderly, elimination by blocks), conversion of
+                             core expressions, integer_product/integer_quotient (fast ZZ[p, x] arithmetic)
             janet.py         janet_basis, JanetBasis: linear systems of PDEs, Hilbert series, series solutions
             polynomial.py    DifferentialPolynomial: leader, initial, separant, Ritt's reduction
             rosenfeld_groebner.py  rosenfeld_groebner: regular differential systems of polynomial ODEs and PDEs
-            tests/
+                             (the native Ideal, regular chains and factor_list)
+            tests/           test_differential_native.py on the core; the other tests on the face
+        differential_sympy.py the SymPy face of differential (the old API on SymPy objects, SymPy's QQ(p, x) and
+                             ZZ[p, x] coefficients, the chains of regularchains_sympy)
         regularchains/       triangular decompositions of polynomial systems (native; the exact solutions of a chain,
                              SymPy's CRootOf, through regularchains_sympy)
             recursive.py     polynomials of rings.PolyRing over ZZ in their main variable: initial, lazy pseudo-division,

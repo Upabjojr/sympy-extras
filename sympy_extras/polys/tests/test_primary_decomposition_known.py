@@ -13,7 +13,7 @@ from __future__ import annotations
 from sympy.abc import t, w, x, y, z
 
 from sympy_extras.polys.ideals_sympy import Ideal
-from sympy_extras.polys.idealdecomposition import primary_decomposition
+from sympy_extras.polys.idealdecomposition_sympy import primary_decomposition
 
 from .primary_oracle import check_decomposition, intersection
 

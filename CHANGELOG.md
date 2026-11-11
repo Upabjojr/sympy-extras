@@ -730,6 +730,83 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The differential algebra is native (**breaking**):
+  `sympy_extras.polys.differential` (`DifferentialRing`,
+  `DifferentialPolynomial`, `janet_basis`, `JanetBasis`,
+  `janet_multiplicative_variables`, `rosenfeld_groebner`,
+  `RadicalDifferentialIdeal`, `RegularDifferentialSystem`) takes and
+  returns the functions, derivatives, expressions, equalities and symbols
+  of the core and imports no SymPy. The coefficients of
+  `DifferentialRing.terms` are elements of the typed field `QQ(p, x)`
+  (`SparseFractionField`) and those of a `DifferentialPolynomial` elements
+  of the typed `ZZ[p, x]` (`IntegerPolynomialRing`), with SymPy's gcd and
+  canonical fractions; the saturations are native `Ideal`s, the
+  `regular_chains()` native `RegularChain`s and the factors those of the
+  typed `polytools.factor_list`. The old API on SymPy objects moves to the
+  face `sympy_extras.polys.differential_sympy` (SymPy's `QQ(p, x)` and
+  `ZZ[p, x]` coefficients, the chains of `regularchains_sympy`), with the
+  same results on 1519 recorded values of the tests, the doctests, the
+  callers' tests and 40 more calls; `solvers.lie` uses the face. API
+  changes: the attribute `RegularDifferentialSystem._symbols` is now
+  `symbols` (a `JetSymbols`), `DifferentialRing` gains `symbols`,
+  `terms_of`, `field_element`, `integer_expr` and `coefficient_expr`, and
+  the face's ring the conversions `integer_in`/`integer_out`,
+  `field_in`/`field_out`. Floats in the equations are refused (SymPy's
+  `QQ(p, x)` converted them to rationals). The products and exact
+  quotients of the large coefficients go through `ring.integer_product`
+  and `ring.integer_quotient` (Python integers directly), and
+  `rings.PolyElement.div` updates its remainder and quotients in place
+  (the same terms in the same order): the dense Janet basis of the tests
+  which took 10 s on SymPy takes 8.5 s.
+
+- The decompositions of ideals and the rational univariate representation
+  are native (**breaking**): `sympy_extras.polys.idealdecomposition`
+  (`radical`, `equidimensional_parts`, `minimal_primes`,
+  `primary_decomposition`, `associated_primes`, `is_primary`,
+  `independent_set`) takes and returns the native ideals of
+  `sympy_extras.polys.ideals` (over `QQ`), with the native regular chains,
+  F4 and the typed `polytools.Poly` factorisation, and
+  `sympy_extras.polys.rur` (`rur`, `RationalUnivariateRepresentation`)
+  takes native ideals or core expressions and returns `DensePoly`
+  polynomials over `QQ` in `t`; neither imports SymPy. The old API on
+  SymPy objects moves to the faces `sympy_extras.polys.idealdecomposition_sympy`
+  and `sympy_extras.polys.rur_sympy` (same results on 704 recorded calls of
+  the tests and doctests and 117 more). The native `Ideal` calls the
+  decompositions directly and gains `Ideal.rur`; the run-time routes
+  `radical_of_core`, `equidimensional_parts_of_core`,
+  `minimal_primes_of_core`, `primary_decomposition_of_core`,
+  `associated_primes_of_core` and `is_primary_of_core` of `ideals_sympy`
+  are removed, and so is the quotient algebra `hermite_sympy._Algebra`
+  which the old `rur` built on. One step stays on SymPy, at run time: the
+  exact solutions of a representation (`CRootOf`,
+  `rur_sympy.solutions_of_core`). `DensePoly.to_expr` and `from_expr` keep
+  a `Dummy` generator (they wrote it as the `Symbol` of the same name).
+
+- The modular Gröbner bases are native (**breaking**):
+  `sympy_extras.polys.modulargroebner` (`modular_groebner`,
+  `direct_groebner`, `groebner`, `rational_reconstruction`,
+  `chinese_remainder`, `default_primes`, `ModularTrace`, and the new
+  `homogeneous_order`) works on the typed `rings.PolyRing` over `QQ` and
+  `ZZ` (the images over the typed `GF(p)`) and imports no SymPy;
+  `direct_groebner` and `groebner` take any typed field. The old API on
+  SymPy's ring elements, with the same results, is the face
+  `sympy_extras.polys.modulargroebner_sympy` (SymPy's `groebner` for the
+  other domains and the orders which are not global, as before): callers
+  of `modulargroebner` with SymPy rings import from the face (the private
+  `_HomogeneousOrder` is gone, `_image` takes variable names and one
+  typed order). New `sympy_extras.polys.buchberger` (`buchberger`,
+  `s_polynomial`): a typed port of SymPy's Buchberger algorithm, which
+  `settings.groebner_algorithm = 'buchberger'` now selects everywhere,
+  the images of the modular algorithm included (with these images the
+  modular bases of Katsura-4/5, cyclic-5 and random dense systems took
+  1.3 to 4.2 times less CPU time than with SymPy's; with the default F4
+  images the times are unchanged). The native `polys.ideals.groebner` calls
+  the native dispatcher: `modular_groebner_of_core` and
+  `direct_groebner_of_core` are removed from `polys.ideals_sympy`, the
+  modular algorithm now also serves the typed orders without a SymPy
+  counterpart (weight orders), and with `'buchberger'` the modular
+  algorithm takes over after `settings.groebner_direct_time` as it does
+  with F4.
 - The regular chains and the cases of systems with parameters are native
   (**breaking**): `sympy_extras.polys.regularchains` (`RegularChain`,
   `triangularize`, `regular_gcd`, and the modules `recursive` and

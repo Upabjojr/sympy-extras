@@ -1,4 +1,4 @@
-"""Tests of the Rosenfeld-Groebner algorithm."""
+"""Tests (on the SymPy face) of the Rosenfeld-Groebner algorithm."""
 from __future__ import annotations
 
 from sympy import Function, Rational, cos, exp, expand, simplify, sin, symbols
@@ -6,10 +6,10 @@ from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.testing.pytest import raises
 
-from sympy_extras.polys.differential import (DifferentialPolynomial, RadicalDifferentialIdeal,
+from sympy_extras.polys.differential_sympy import (DifferentialPolynomial, RadicalDifferentialIdeal,
     RegularDifferentialSystem, janet_basis, rosenfeld_groebner)
 from sympy_extras.polys.ideals_sympy import Ideal
-from sympy_extras.polys.differential.rosenfeld_groebner import _characteristic_set, _delta_polynomials
+from sympy_extras.polys.differential_sympy import _characteristic_set, _delta_polynomials
 
 x, y, t, c, g = symbols('x y t c g')
 u = Function('u')(x)
@@ -231,8 +231,8 @@ def _contains_by_groebner(component: RegularDifferentialSystem, expr: Expr) -> b
     jets = set(partial.jets())
     for q in component.chain + component.nonzero:
         jets |= q.jets()
-    ordered = [component._symbols.symbol(jet) for jet in sorted(jets, key=ring.rank_key, reverse=True)]
-    return Ideal(component.saturation(), *ordered, domain=ring.domain).contains(component._symbols.expr(partial))
+    ordered = [component.symbols.symbol(jet) for jet in sorted(jets, key=ring.rank_key, reverse=True)]
+    return Ideal(component.saturation(), *ordered, domain=ring.domain).contains(component.symbols.expr(partial))
 
 
 def test_regular_chains_of_the_components() -> None:
@@ -253,7 +253,7 @@ def test_regular_chains_of_the_components() -> None:
         for component in ideal.components:
             chains = component.regular_chains()
             assert chains
-            leaders = {component._symbols.symbol(p.leader()) for p in component.chain}
+            leaders = {component.symbols.symbol(p.leader()) for p in component.chain}
             for chain in chains:
                 # as many polynomials as equations, with the leaders as main variables
                 assert set(chain.main_variables) == leaders

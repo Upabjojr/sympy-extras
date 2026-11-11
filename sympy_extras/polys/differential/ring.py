@@ -1,5 +1,5 @@
 """Differential polynomial rings: derivatives, rankings and the conversion
-of SymPy expressions.
+of expressions of the core.
 
 A *differential polynomial ring* `K\\{u_1, \\ldots, u_m\\}` with the
 commuting derivations `\\partial_1, \\ldots, \\partial_n` is the polynomial
@@ -28,6 +28,15 @@ default; it is an orderly ranking.
 
 The *leader* of a differential polynomial is its highest derivative.
 
+The module works on objects of the core and imports no SymPy: the field
+`K` is :class:`~sympy_extras.polys.domains.sparsefractionfield.SparseFractionField`
+over ``QQ[p, x]`` and the coefficients of the differential polynomials
+are elements of ``ZZ[p, x]``
+(:class:`~sympy_extras.polys.domains.sparsepolynomialring.IntegerPolynomialRing`),
+with SymPy's conventions for the gcd and the canonical form of the
+fractions. :mod:`sympy_extras.polys.differential_sympy` is the face on
+SymPy objects.
+
 References
 ==========
 
@@ -39,34 +48,42 @@ References
 """
 from __future__ import annotations
 
-from math import gcd
-from typing import Optional, Sequence, Union
+from fractions import Fraction
+from heapq import heapify, heappop, heappush
+from math import lcm
+from operator import add as add_exponents
+from typing import Final, Mapping, Optional, Sequence, Union
 
-from sympy.core.add import Add
-from sympy.core.basic import Basic
-from sympy.core.expr import Expr
-from sympy.core.function import AppliedUndef, Derivative
-from sympy.core.numbers import Integer
-from sympy.core.relational import Equality
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.polys.domains import QQ, ZZ
-from sympy.polys.domains.domain import Domain
-from sympy.polys.polyerrors import CoercionFailed, GeneratorsError, PolynomialError
-from sympy.polys.polytools import Poly
-from sympy.simplify.radsimp import fraction
-from sympy.polys.rationaltools import together
+from sympy_extras.polys.rings import Monomial
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.function import AppliedUndef, Derivative
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import Integer, Rational, number_from_fraction
+from sympy_extras.core.power import Pow, pow
+from sympy_extras.core.relational import Equality
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.polys.domains.sparsefractionfield import SparseFracElement, SparseFractionField
+from sympy_extras.polys.domains.sparsepolynomialring import IntegerPolynomialRing, RationalPolynomialRing
+from sympy_extras.polys.rings import PolyElement, lex
 
-from sympy_extras._typing import DomainElement, Monomial, as_expr, free_symbols
-
-__all__ = ['DifferentialRing', 'Jet', 'JetMonomial', 'Terms', 'Equation', 'unit_jet']
+__all__ = ['DifferentialRing', 'Jet', 'JetMonomial', 'Coefficient', 'IntegerCoefficient', 'FieldTerms', 'Terms',
+           'Equation', 'unit_jet', 'monomial_product', 'integer_product', 'integer_quotient']
 
 #: a derivative: the index of the function and the orders in the variables
 Jet = tuple[int, Monomial]
 #: a product of powers of derivatives, sorted by derivative
 JetMonomial = tuple[tuple[Jet, int], ...]
-#: a differential polynomial as a map from monomials to coefficients
-Terms = dict[JetMonomial, DomainElement]
+#: an element of the field of coefficients ``QQ(p, x)``
+Coefficient = SparseFracElement[Fraction]
+#: an element of the ring ``ZZ[p, x]`` of the coefficients of the
+#: differential polynomials
+IntegerCoefficient = PolyElement[int]
+#: a differential polynomial with coefficients in the field
+FieldTerms = dict[JetMonomial, Coefficient]
+#: a differential polynomial with coefficients in ``ZZ[p, x]``
+Terms = dict[JetMonomial, IntegerCoefficient]
 #: an equation: an expression which is to vanish, or an equality
 Equation = Union[Expr, Equality]
 
@@ -75,6 +92,105 @@ def unit_jet(n: int) -> Jet:
     """The pseudo derivative standing for the constant `1` in a linear
     form (the lowest of the ranking; its derivatives are zero)."""
     return (-1, (0,)*n)
+
+
+def monomial_product(m: JetMonomial, k: JetMonomial) -> JetMonomial:
+    """The product of two monomials in the derivatives."""
+    if not m:
+        return k
+    if not k:
+        return m
+    powers = dict(m)
+    for jet, e in k:
+        powers[jet] = powers.get(jet, 0) + e
+    return tuple(sorted(powers.items()))
+
+
+def integer_product(a: IntegerCoefficient, b: IntegerCoefficient) -> IntegerCoefficient:
+    """The product of two elements of ``ZZ[p, x]``: the product of
+    :class:`~sympy_extras.polys.rings.PolyElement` (the same terms) on
+    Python integers directly, the zeros removed at the end, without the
+    calls to the domain, which take most of the time of the large normal
+    forms."""
+    result: dict[Monomial, int] = {}
+    get = result.get
+    second = list(b.terms.items())
+    n = a.ring.ngens
+    for m1, c1 in a.terms.items():
+        if n == 2:
+            i, j = m1
+            for (k, l), c2 in second:
+                m: Monomial = (i + k, j + l)
+                result[m] = get(m, 0) + c1*c2
+        elif n == 3:
+            i, j, h = m1
+            for (k, l, o), c2 in second:
+                m = (i + k, j + l, h + o)
+                result[m] = get(m, 0) + c1*c2
+        else:
+            for m2, c2 in second:
+                m = tuple(map(add_exponents, m1, m2))
+                result[m] = get(m, 0) + c1*c2
+    return PolyElement({m: c for m, c in result.items() if c}, a.ring)
+
+
+def integer_quotient(a: IntegerCoefficient, b: IntegerCoefficient) -> IntegerCoefficient:
+    """The exact quotient of two elements of ``ZZ[p, x]`` (``ValueError``
+    when ``b`` does not divide ``a``): term by term when ``b`` is a term,
+    otherwise the division of :meth:`~sympy_extras.polys.rings.PolyElement.exquo`
+    (the same quotient) with the leading terms of the remainder kept in a
+    heap instead of searched for at every step."""
+    if not b.terms:
+        raise ZeroDivisionError('division by zero')
+    if len(b.terms) == 1:
+        ((n, d),) = b.terms.items()
+        result: dict[Monomial, int] = {}
+        for m, c in a.terms.items():
+            q, r = divmod(c, d)
+            if r or any(i < j for i, j in zip(m, n)):
+                raise ValueError('%s does not divide %s' % (b, a))
+            result[tuple(i - j for i, j in zip(m, n))] = q
+        return PolyElement(result, a.ring)
+    if a.ring.order != lex:
+        return a.exquo(b)
+    leading = max(b.terms)
+    lc = b.terms[leading]
+    rest = dict(a.terms)
+    heap = [tuple(-e for e in m) for m in rest]
+    heapify(heap)
+    quotient: dict[Monomial, int] = {}
+    while rest:
+        m = tuple(-e for e in heappop(heap))
+        value = rest.get(m)
+        if value is None:
+            continue
+        q, r = divmod(value, lc)
+        if r or any(i < j for i, j in zip(m, leading)):
+            raise ValueError('%s does not divide %s' % (b, a))
+        shift = tuple(i - j for i, j in zip(m, leading))
+        quotient[shift] = q
+        for k, e in b.terms.items():
+            product = tuple(map(add_exponents, shift, k))
+            s = rest.get(product)
+            if s is None:
+                rest[product] = -q*e
+                heappush(heap, tuple(-i for i in product))
+            else:
+                s -= q*e
+                if s:
+                    rest[product] = s
+                else:
+                    del rest[product]
+    return PolyElement(quotient, a.ring)
+
+
+class _NotPolynomial(Exception):
+    """The expression is not a polynomial in the derivatives (a derivative
+    in a denominator)."""
+
+
+class _NotRational(Exception):
+    """The expression is not a polynomial with rational coefficients."""
 
 
 class DifferentialRing:
@@ -100,7 +216,7 @@ class DifferentialRing:
     Examples
     ========
 
-    >>> from sympy import Function, symbols
+    >>> from sympy_extras.core import Function, symbols
     >>> from sympy_extras.polys.differential import DifferentialRing
     >>> x, y = symbols('x y')
     >>> u, v = Function('u'), Function('v')
@@ -112,19 +228,20 @@ class DifferentialRing:
     Derivative(u(x, y), x)
     """
 
-    def __init__(self, functions: Sequence[AppliedUndef], variables: Optional[Sequence[Symbol]] = None,
-                 ranking: Optional[Sequence[Sequence[AppliedUndef]]] = None,
+    def __init__(self, functions: Sequence[Basic], variables: Optional[Sequence[Basic]] = None,
+                 ranking: Optional[Sequence[Sequence[Basic]]] = None,
                  parameters: Sequence[Symbol] = ()) -> None:
         if not functions:
             raise ValueError("at least one function is expected")
         found: list[Symbol] = []
         heads: set[str] = set()
+        checked: list[AppliedUndef] = []
         for f in functions:
             if not isinstance(f, AppliedUndef):
                 raise TypeError("an applied undefined function such as u(x, y) is expected, got %s" % (f,))
-            if f.func.__name__ in heads:
-                raise ValueError("the function %s is given twice" % (f.func.__name__,))
-            heads.add(f.func.__name__)
+            if f.name in heads:
+                raise ValueError("the function %s is given twice" % (f.name,))
+            heads.add(f.name)
             for arg in f.args:
                 if not isinstance(arg, Symbol):
                     raise ValueError("the arguments of %s must be symbols" % (f,))
@@ -132,38 +249,43 @@ class DifferentialRing:
                     found.append(arg)
             if len(set(f.args)) != len(f.args):
                 raise ValueError("the arguments of %s must be distinct" % (f,))
+            checked.append(f)
+        chosen: list[Symbol] = []
         if variables is None:
             chosen = list(found)
         else:
-            chosen = list(variables)
-            for s in chosen:
+            for s in variables:
                 if not isinstance(s, Symbol):
                     raise TypeError("the variables must be symbols, got %s" % (s,))
+                chosen.append(s)
             missing = [s for s in found if s not in chosen]
             if missing:
                 raise ValueError("%s is not among the variables" % (missing[0],))
         if len(set(chosen)) != len(chosen):
             raise ValueError("the variables must be distinct")
-        self.functions: tuple[AppliedUndef, ...] = tuple(functions)
-        self.variables: tuple[Symbol, ...] = tuple(chosen)
-        self.parameters: tuple[Symbol, ...] = tuple(p for p in parameters if p not in chosen)
-        self.domain: Domain = QQ.frac_field(*self.parameters, *self.variables)
+        self.functions: Final[tuple[AppliedUndef, ...]] = tuple(checked)
+        self.variables: Final[tuple[Symbol, ...]] = tuple(chosen)
+        self.parameters: Final[tuple[Symbol, ...]] = tuple(p for p in parameters if p not in chosen)
+        #: the symbols of the coefficients: the parameters, then the variables
+        self.symbols: Final[tuple[Symbol, ...]] = self.parameters + self.variables
+        names = [s.name for s in self.symbols]
+        #: the field of coefficients ``QQ(p, x)``
+        self.domain: Final[SparseFractionField[Fraction]] = SparseFractionField(RationalPolynomialRing(names))
         #: the polynomials with integer coefficients in the parameters and
         #: the variables: the coefficients of the differential polynomials
-        self.integers: Domain = ZZ.poly_ring(*self.parameters, *self.variables)
-        self._rationals: Domain = QQ.poly_ring(*self.parameters, *self.variables)
-        self.blocks: tuple[tuple[int, ...], ...] = self._blocks(ranking)
-        self._level: dict[int, tuple[int, int]] = {}
+        self.integers: Final[IntegerPolynomialRing] = IntegerPolynomialRing(names)
+        self._rationals: Final[RationalPolynomialRing] = RationalPolynomialRing(names)
+        self._index: Final[dict[Symbol, int]] = {s: i for i, s in enumerate(self.symbols)}
+        self._generators: Final[list[Coefficient]] = self.domain.gens
+        self.blocks: Final[tuple[tuple[int, ...], ...]] = self._blocks(ranking)
+        level: dict[int, tuple[int, int]] = {}
         for b, block in enumerate(self.blocks):
             for position, a in enumerate(block):
-                self._level[a] = (len(self.blocks) - b, len(block) - position)
-        self._keys: dict[Jet, tuple[int, ...]] = {}
-        self._generators: list[DomainElement] = [
-            self.domain.from_sympy(s) for s in self.variables]
-        self._integer_generators: list[DomainElement] = [
-            self.integers.from_sympy(s) for s in self.variables]
+                level[a] = (len(self.blocks) - b, len(block) - position)
+        self._level: Final[dict[int, tuple[int, int]]] = level
+        self._keys: Final[dict[Jet, tuple[int, ...]]] = {}
 
-    def _blocks(self, ranking: Optional[Sequence[Sequence[AppliedUndef]]]) -> tuple[tuple[int, ...], ...]:
+    def _blocks(self, ranking: Optional[Sequence[Sequence[Basic]]]) -> tuple[tuple[int, ...], ...]:
         if ranking is None:
             return (tuple(range(len(self.functions))),)
         blocks: list[tuple[int, ...]] = []
@@ -171,7 +293,7 @@ class DifferentialRing:
         for block in ranking:
             indices: list[int] = []
             for f in block:
-                if f not in self.functions:
+                if not isinstance(f, AppliedUndef) or f not in self.functions:
                     raise ValueError("%s of the ranking is not a function of the ring" % (f,))
                 a = self.functions.index(f)
                 if a in seen:
@@ -240,6 +362,78 @@ class DifferentialRing:
         return result
 
     # ------------------------------------------------------------------
+    # coefficients
+
+    def field_element(self, c: IntegerCoefficient) -> Coefficient:
+        """An element of :attr:`integers` as an element of the field."""
+        return self.domain.from_ring(self._rationals.ring.from_dict({m: Fraction(e) for m, e in c.terms.items()}))
+
+    def integer_expr(self, c: IntegerCoefficient, at: Optional[Mapping[Symbol, Expr]] = None) -> Expr:
+        """The expression of an element of :attr:`integers`, with the
+        values ``at`` of some symbols substituted."""
+        return self._polynomial_expr({m: Fraction(e) for m, e in c.terms.items()}, at)
+
+    def coefficient_expr(self, c: Coefficient) -> Expr:
+        """The expression of an element of the field."""
+        numerator = self._polynomial_expr(dict(c.numer.terms))
+        if self._rationals.is_one(c.denom):
+            return numerator
+        return mul(numerator, pow(self._polynomial_expr(dict(c.denom.terms)), Integer(-1)))
+
+    def _polynomial_expr(self, terms: dict[Monomial, Fraction], at: Optional[Mapping[Symbol, Expr]] = None) -> Expr:
+        parts: list[Expr] = []
+        for m, c in terms.items():
+            factors: list[Expr] = [number_from_fraction(c)]
+            for s, e in zip(self.symbols, m):
+                if e:
+                    value: Expr = s if at is None else at.get(s, s)
+                    factors.append(pow(value, Integer(e)) if e > 1 else value)
+            parts.append(mul(*factors))
+        return add(*parts) if parts else Integer(0)
+
+    def coefficient(self, expr: Expr) -> Coefficient:
+        """An expression as an element of the field of coefficients."""
+        try:
+            terms = self._convert(expr, {})
+        except (_NotPolynomial, _NotRational):
+            raise ValueError("%s is not a rational function of the variables %s and the parameters %s"
+                             % (expr, list(self.variables), list(self.parameters))) from None
+        return terms.get((), self.domain.zero)
+
+    def coefficient_derivative(self, c: Coefficient, i: int) -> Coefficient:
+        """The derivative of a coefficient with respect to the variable of
+        index ``i``."""
+        return self.domain.diff(c, len(self.parameters) + i)
+
+    def integer_derivative(self, c: IntegerCoefficient, i: int) -> IntegerCoefficient:
+        """The derivative of an element of :attr:`integers`."""
+        return c.diff(len(self.parameters) + i)
+
+    def integral(self, terms: FieldTerms) -> Terms:
+        """The terms multiplied by an element of the field which makes the
+        coefficients elements of :attr:`integers`."""
+        if not terms:
+            return {}
+        K, Q = self.domain, self._rationals
+        values = list(terms.values())
+        multiple = values[0].denom
+        for c in values[1:]:
+            multiple = Q.lcm(multiple, c.denom)
+        factor = K.from_ring(multiple)
+        cleared: dict[JetMonomial, PolyElement[Fraction]] = {}
+        denominator = 1
+        for m, c in terms.items():
+            scaled = K.mul(c, factor)
+            q = scaled.numer.mul_ground(1/scaled.denom.LC)
+            cleared[m] = q
+            for e in q.terms.values():
+                denominator = lcm(denominator, e.denominator)
+        result: Terms = {}
+        for m, q in cleared.items():
+            result[m] = self.integers.ring.from_dict({k: int(e*denominator) for k, e in q.terms.items()})
+        return result
+
+    # ------------------------------------------------------------------
     # conversion
 
     def jet(self, expr: Basic) -> Optional[Jet]:
@@ -252,63 +446,98 @@ class DifferentialRing:
         if isinstance(expr, Derivative) and expr.expr in self.functions:
             orders = [0]*self.n
             for s, count in expr.variable_count:
-                if s not in self.variables or not isinstance(count, Integer):
+                if s not in self.variables:
                     return None
-                orders[self.variables.index(s)] += int(count)
+                orders[self.variables.index(s)] += count
             return (self.functions.index(expr.expr), tuple(orders))
         return None
 
     def to_expr(self, jet: Jet) -> Expr:
-        """The SymPy expression of a derivative."""
+        """The expression of a derivative."""
         a, J = jet
         if a < 0:
-            return S.One
+            return Integer(1)
         counts = [(s, j) for s, j in zip(self.variables, J) if j]
         if not counts:
             return self.functions[a]
         return Derivative(self.functions[a], *counts)
 
-    def coefficient(self, expr: Expr) -> DomainElement:
-        """An expression as an element of the field of coefficients."""
-        try:
-            return self.domain.from_sympy(expr)
-        except (CoercionFailed, GeneratorsError, PolynomialError, ValueError, TypeError):
-            raise ValueError("%s is not a rational function of the variables %s and the parameters %s"
-                             % (expr, list(self.variables), list(self.parameters))) from None
+    def _convert(self, e: Expr, jets: Mapping[Basic, Jet]) -> FieldTerms:
+        """The terms of an expression, polynomial in the derivatives
+        ``jets`` (expressions standing for them), with coefficients
+        rational in the variables and the parameters."""
+        K = self.domain
+        jet = jets.get(e)
+        if jet is not None:
+            return {((jet, 1),): K.one}
+        if isinstance(e, Rational):
+            if e.p == 0:
+                return {}
+            return {(): K.from_ring(self._rationals.ring.ground(Fraction(e.p, e.q)))}
+        if isinstance(e, Symbol):
+            i = self._index.get(e)
+            if i is None:
+                raise _NotRational()
+            return {(): self._generators[i]}
+        if isinstance(e, Add):
+            result: FieldTerms = {}
+            for arg in e.args:
+                for m, c in self._convert(arg, jets).items():
+                    value = K.add(result[m], c) if m in result else c
+                    if K.is_zero(value):
+                        del result[m]
+                    else:
+                        result[m] = value
+            return result
+        if isinstance(e, Mul):
+            product: FieldTerms = {(): K.one}
+            for arg in e.args:
+                product = self._multiply(product, self._convert(arg, jets))
+            return product
+        if isinstance(e, Pow) and isinstance(e.exp, Integer):
+            base = self._convert(e.base, jets)
+            n = e.exp.p
+            if n < 0:
+                if any(m for m in base):
+                    raise _NotPolynomial()
+                c = base.get((), K.zero)
+                if K.is_zero(c):
+                    raise ZeroDivisionError("division by zero in %s" % (e,))
+                return {(): K.pow(c, n)}
+            power: FieldTerms = {(): K.one}
+            for _ in range(n):
+                power = self._multiply(power, base)
+            return power
+        raise _NotRational()
 
-    def coefficient_derivative(self, c: DomainElement, i: int) -> DomainElement:
-        """The derivative of a coefficient with respect to the variable of
-        index ``i``."""
-        return c.diff(self._generators[i])
-
-    def integer_derivative(self, c: DomainElement, i: int) -> DomainElement:
-        """The derivative of an element of :attr:`integers`."""
-        return c.diff(self._integer_generators[i])
-
-    def integral(self, terms: Terms) -> Terms:
-        """The terms multiplied by an element of the field which makes the
-        coefficients elements of :attr:`integers`."""
-        if not terms:
-            return {}
-        values = list(terms.values())
-        multiple = values[0].denom
-        for c in values[1:]:
-            multiple = multiple.lcm(c.denom)
-        factor = self.domain.convert(multiple, self._rationals)
-        cleared: dict[JetMonomial, DomainElement] = {}
-        denominator = 1
-        for m, c in terms.items():
-            scaled = c*factor
-            q = scaled.numer.mul_ground(1/scaled.denom.coeffs()[0])
-            cleared[m] = q
-            for e in q.coeffs():
-                denominator = denominator*int(e.denominator)//gcd(denominator, int(e.denominator))
-        result: Terms = {}
-        for m, q in cleared.items():
-            result[m] = self.integers.convert(q.mul_ground(denominator), self._rationals)
+    def _multiply(self, a: FieldTerms, b: FieldTerms) -> FieldTerms:
+        K = self.domain
+        result: FieldTerms = {}
+        for m, c in a.items():
+            for k, d in b.items():
+                product = monomial_product(m, k)
+                value = K.mul(c, d)
+                if product in result:
+                    value = K.add(result[product], value)
+                if K.is_zero(value):
+                    result.pop(product, None)
+                else:
+                    result[product] = value
         return result
 
-    def terms(self, equation: Equation) -> Terms:
+    def terms_of(self, expr: Expr, jets: Mapping[Basic, Jet]) -> FieldTerms:
+        """The terms of an expression in which the keys of ``jets`` (symbols,
+        say) stand for the derivatives, with coefficients rational in the
+        variables and the parameters."""
+        try:
+            return self._convert(expr, jets)
+        except _NotPolynomial:
+            raise ValueError("%s is not a polynomial in the derivatives" % (expr,)) from None
+        except _NotRational:
+            raise ValueError("%s is not a polynomial in the derivatives with rational coefficients"
+                             % (expr,)) from None
+
+    def terms(self, equation: Equation) -> FieldTerms:
         """The monomials and coefficients of a differential polynomial
         given as an expression.
 
@@ -316,10 +545,9 @@ class DifferentialRing:
         the derivatives of the functions with coefficients rational in the
         variables and the parameters.
         """
-        expr = equation.lhs - equation.rhs if isinstance(equation, Equality) else as_expr(equation)
+        expr = equation.lhs - equation.rhs if isinstance(equation, Equality) else equation
         expr = expr.doit()
-        symbols: dict[Basic, Dummy] = {}
-        jets: list[Jet] = []
+        jets: dict[Basic, Jet] = {}
         atoms = sorted(expr.atoms(Derivative) | expr.atoms(AppliedUndef), key=lambda e: e.sort_key())
         for atom in atoms:
             jet = self.jet(atom)
@@ -330,54 +558,50 @@ class DifferentialRing:
                     if isinstance(atom, AppliedUndef):
                         raise ValueError("%s is not a function of the ring" % (atom,))
                 raise ValueError("%s is not a derivative of a function of the ring" % (atom,))
-            symbols[atom] = Dummy('jet%d' % len(jets))
-            jets.append(jet)
-        extra = free_symbols(expr) - set(self.variables) - set(self.parameters)
+            jets[atom] = jet
+        extra = expr.free_symbols - set(self.variables) - set(self.parameters)
         if extra:
             raise ValueError("%s is neither a variable nor a parameter of the ring"
                              % (sorted(extra, key=lambda s: s.name)[0],))
-        replaced = as_expr(expr.xreplace(symbols))
-        numerator, denominator = fraction(together(replaced))
-        gens = [symbols[atom] for atom in atoms]
-        if any(denominator.has(g) for g in gens):
-            raise ValueError("%s is not a polynomial in the derivatives" % (expr,))
-        if not gens:
-            c = self.coefficient(replaced)
-            return {(): c} if c else {}
+        if not atoms:
+            c = self.coefficient(expr)
+            return {(): c} if not self.domain.is_zero(c) else {}
         try:
-            poly = Poly(numerator, *gens, domain=self.domain)
-        except (PolynomialError, CoercionFailed, GeneratorsError):
+            result = self._convert(expr, jets)
+        except _NotPolynomial:
+            raise ValueError("%s is not a polynomial in the derivatives" % (expr,)) from None
+        except _NotRational:
             raise ValueError("%s is not a polynomial in the derivatives with rational coefficients"
                              % (expr,)) from None
-        scale = self.coefficient(denominator)
-        result: Terms = {}
-        for exponents, c in poly.as_dict(native=True).items():
-            powers: dict[Jet, int] = {}
-            for jet, e in zip(jets, exponents):
-                if e:
-                    powers[jet] = powers.get(jet, 0) + e
-            monomial = tuple(sorted(powers.items()))
-            value = result.get(monomial, self.domain.zero) + c/scale
-            if value:
-                result[monomial] = value
-            else:
-                result.pop(monomial, None)
-        return result
+        # SymPy's order of the terms of a Poly in the atoms sorted by
+        # sort_key: increasing exponent vectors
+        ordered = [jets[atom] for atom in atoms]
 
-    def from_terms(self, terms: Terms) -> Expr:
+        def exponents(m: JetMonomial) -> tuple[int, ...]:
+            powers = dict(m)
+            seen: set[Jet] = set()
+            vector: list[int] = []
+            for jet in ordered:
+                vector.append(powers.get(jet, 0) if jet not in seen else 0)
+                seen.add(jet)
+            return tuple(vector)
+
+        return {m: result[m] for m in sorted(result, key=exponents)}
+
+    def from_terms(self, terms: FieldTerms) -> Expr:
         """The expression of a differential polynomial."""
         parts: list[Expr] = []
         for monomial, c in terms.items():
-            term = as_expr(self.domain.to_sympy(c))
+            term = self.coefficient_expr(c)
             for jet, e in monomial:
                 term = term*self.to_expr(jet)**e
             parts.append(term)
-        return Add(*parts)
+        return add(*parts) if parts else Integer(0)
 
     def leader(self, equation: Equation) -> Expr:
         """The highest derivative of a differential polynomial.
 
-        >>> from sympy import Function, symbols
+        >>> from sympy_extras.core import Function, symbols
         >>> from sympy_extras.polys.differential import DifferentialRing
         >>> x, y = symbols('x y')
         >>> u = Function('u')(x, y)

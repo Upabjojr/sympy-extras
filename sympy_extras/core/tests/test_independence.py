@@ -509,13 +509,52 @@ def test_native_ideals_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.polys.ideals` does not load SymPy, nor
     do the Gröbner bases (F4, FGLM, the walk), the eliminations, quotients,
     saturations, Hilbert series and the operations on zero-dimensional
-    ideals (the modular Gröbner bases when F4 takes too long, SymPy's
-    Buchberger algorithm on request and the decompositions of
-    positive-dimensional ideals go through SymPy at run time)."""
+    ideals, the modular Gröbner bases and Buchberger's algorithm."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_IDEALS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
 
+
+
+_NATIVE_MODULAR_GROEBNER = r'''
+import sys
+from fractions import Fraction
+from itertools import chain
+from sympy_extras.core import Symbol
+from sympy_extras.ntheory.generate import primerange
+from sympy_extras.polys.buchberger import buchberger
+from sympy_extras.polys.domains import QQ, ZZ, GF
+from sympy_extras.polys.f4 import f4
+from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.modulargroebner import (ModularTrace, default_primes, direct_groebner, groebner,
+    modular_groebner, rational_reconstruction)
+from sympy_extras.polys.rings import PolyRing, WeightOrder, grevlex, lex
+from sympy_extras.settings import configure
+assert 'sympy' not in sys.modules
+R = PolyRing(QQ, ['x', 'z', 'y'], lex)
+x, z, y = R.gens
+F = [x*(z + y.mul_ground(Fraction(210)) + R.one), x*(z + y.mul_ground(Fraction(420)) + R.from_int(2))]
+trace = ModularTrace()
+G = modular_groebner(F, R, primes=chain(primerange(2, 100), default_primes()), trace=trace)
+assert [str(g) for g in G] == ['x*z', 'x*y + 1/210*x'] and trace.unlucky == [2, 3, 5, 7] and trace.lucky[0] == 11
+assert modular_groebner(F, R) == f4(F, R) == buchberger(F, R) == groebner(F, R)
+S = PolyRing(ZZ, ['x', 'y'], grevlex)
+X, Y = S.gens
+assert [str(g) for g in modular_groebner([(X*X).mul_ground(2) - Y, X*Y - S.one], S)] == ['2*x**2 - y', 'x*y - 1', 'y**2 - 2*x']
+W = PolyRing(QQ, ['x', 'y'], WeightOrder((1, 3)))
+assert modular_groebner([W.gens[0]**3 - W.gens[1], W.gens[1]**2 - W.one], W) == f4([W.gens[0]**3 - W.gens[1], W.gens[1]**2 - W.one], W)
+assert rational_reconstruction(pow(3, -1, 101)*(-2) % 101, 101) == (-2, 3)
+P = PolyRing(GF(7), ['x', 'y'], lex)
+with configure(groebner_algorithm='buchberger'):
+    assert direct_groebner([P.gens[0]**2 - P.gens[1]], P) == [P.gens[0]**2 - P.gens[1]]
+u, v, w = [Symbol(name) for name in 'uvw']
+for algorithm in ('f4', 'buchberger'):
+    with configure(groebner_direct_time=0, groebner_algorithm=algorithm):
+        I = Ideal([u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w], u, v, w, domain=QQ)
+        assert [str(g) for g in I.groebner_basis(lex)] == ['u + v - 2*w', 'v**2 - 2*v*w + 1/3*w', 'w**2 - 2/15*w - 1/5']
+        assert I.vector_space_dimension() == 4
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
 
 _NATIVE_REGULAR_CHAINS = r'''
 import sys
@@ -579,6 +618,19 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+
+def test_native_modular_groebner_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.modulargroebner` and
+    :mod:`sympy_extras.polys.buchberger` does not load SymPy, nor do the
+    modular Gröbner bases over ``QQ`` and ``ZZ`` (with unlucky primes, a
+    weight order), Buchberger's algorithm, the dispatcher, and the Gröbner
+    bases of :class:`~sympy_extras.polys.ideals.Ideal` by the modular
+    algorithm and by Buchberger's algorithm."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_MODULAR_GROEBNER], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
 def test_native_regular_chains_and_parametric_do_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.polys.regularchains` and
     :mod:`sympy_extras.solvers.parametric` does not load SymPy, nor do the
@@ -600,5 +652,98 @@ def test_native_hermite_comprehensive_do_not_load_sympy() -> None:
     numbers and ``resolve`` with ``domain=Complexes``."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_HERMITE_COMPREHENSIVE], capture_output=True, text=True,
                          timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_DECOMPOSITION_RUR = r"""
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.polys.domains import QQ
+from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.idealdecomposition import (radical, equidimensional_parts, minimal_primes,
+    primary_decomposition, associated_primes, is_primary, independent_set)
+from sympy_extras.polys.rur import rur
+assert 'sympy' not in sys.modules
+t, x, y, z = symbols('t x y z')
+assert str(radical(Ideal([x**2*y, x*y**2], x, y, domain=QQ))) == 'Ideal([x*y], x, y)'
+assert str(Ideal([x**2*y, x*y**3], x, y, domain=QQ).radical()) == 'Ideal([x*y], x, y)'
+assert str(minimal_primes(Ideal([x*z - y**2, x**2 - y*z], x, y, z, domain=QQ))) == \
+    '[Ideal([x - z, y - z], x, y, z), Ideal([x, y], x, y, z), Ideal([y**2 + y*z + z**2, x + y + z], x, y, z)]'
+assert str(equidimensional_parts(Ideal([x*z, x*y, x*(x - 1)*(z - 1)], x, y, z, domain=QQ))) == \
+    '[Ideal([x], x, y, z), Ideal([x - 1, y, z], x, y, z)]'
+assert str(primary_decomposition(Ideal([x**2, x*y], x, y, domain=QQ))) == \
+    '[(Ideal([x], x, y), Ideal([x], x, y)), (Ideal([x**2, y], x, y), Ideal([x, y], x, y))]'
+# an irrational embedded point and a point of dimension zero
+f = x**2 - 2
+pair, point = Ideal([f, y], x, y, domain=QQ), Ideal([x - 1, y - 1], x, y, domain=QQ)
+assert len(primary_decomposition((pair**2).intersect(point))) == 2
+assert str(associated_primes(Ideal([x*y, x*z, y*z], x, y, z, domain=QQ))) == \
+    '[Ideal([x, y], x, y, z), Ideal([x, z], x, y, z), Ideal([y, z], x, y, z)]'
+assert is_primary(Ideal([x**2, y**3], x, y, domain=QQ)) and not Ideal([x**2, x*y], x, y, domain=QQ).is_primary()
+assert str(independent_set(Ideal([x*y, x*z], x, y, z, domain=QQ))) == '[y, z]'
+assert Ideal([x**2 - y**3], x, y, domain=QQ).is_prime()
+R = rur([x**2 + y**2 - 1, x*y], x, y, t=t)
+assert str(R.form) == 'x + 2*y' and str(R.polynomial.to_expr()) == 't**4 - 5*t**2 + 4'
+assert str([g.to_expr() for g in R.polynomials()]) == '[-t**3/3 + 4*t/3, t**3/6 - t/6]'
+assert str(R.numerical_solutions(5)[1]) == '{x: -1.0000, y: 0.0}'
+S = Ideal([(x - 1)**2*(x + 2), y - x**2], x, y, domain=QQ).rur(t)
+assert S.multiplicity(1) == 2 and S.multiplicity(-2) == 1 and S.multiplicity(5) == 0
+assert str(rur([x**2 - 2, y - x - 1], x, y, t=t).coordinates(2)) == '[1, 2]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+"""
+
+
+def test_native_decomposition_and_rur_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.idealdecomposition` and
+    :mod:`sympy_extras.polys.rur` does not load SymPy, nor do the radicals,
+    equidimensional parts, minimal and associated primes, primary
+    decompositions and the methods of the native ``Ideal`` which call them,
+    nor the rational univariate representations, their coordinate
+    polynomials, numerical solutions, multiplicities and coordinates (the
+    exact solutions, SymPy's ``CRootOf``, go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DECOMPOSITION_RUR], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_DIFFERENTIAL = r'''
+import sys
+from sympy_extras.core import Eq, Function, symbols
+from sympy_extras.polys.differential import (DifferentialPolynomial, DifferentialRing, janet_basis,
+    janet_multiplicative_variables, rosenfeld_groebner)
+assert 'sympy' not in sys.modules
+x, y, z, t, g = symbols('x y z t g')
+u = Function('u')(x, y, z)
+J = janet_basis([u.diff(z, 2) + y*u.diff(x, 2), u.diff(y, 2)], [u])
+assert len(J.equations) == 7 and J.dimension == 12 and J.contains(u.diff(z, 4)) and not J.contains(u.diff(z, 3))
+assert str(J.hilbert_series(t)) == 't**4 + 3*t**3 + 4*t**2 + 3*t + 1' and J.hilbert_polynomial(t) == 0
+v = Function('v')(x, y)
+E = janet_basis([v.diff(x, 2) - y**2*v, Eq(v.diff(y), x*v)], [v])
+assert str(E.reduce(v.diff(x, y))) == '(x*y + 1)*v(x, y)' and str(E.series_solution(2)[v]) == 'C0*x*y + C0'
+assert janet_multiplicative_variables([(2, 1), (1, 2), (0, 3)]) == [(True, True), (False, True), (False, True)]
+p = Function('p')(x)
+I = rosenfeld_groebner([p.diff(x)**2 - 4*p], [p])
+assert str([(c.equations, c.inequations) for c in I.components]) == \
+    '[([-4*p(x) + Derivative(p(x), x)**2], [Derivative(p(x), x)]), ([p(x)], [])]'
+assert I.contains(p.diff(x)*(p.diff(x, 2) - 2)) and not I.contains(p.diff(x, 2) - 2)
+assert [len(c.regular_chains()) for c in I.components] == [1, 1] and I.components[0].saturation()
+X, Y, L = Function('X')(t), Function('Y')(t), Function('L')(t)
+P = rosenfeld_groebner([X.diff(t, 2) + L*X, Y.diff(t, 2) + L*Y + g, X**2 + Y**2 - 1], [L, X, Y])
+assert len(P.components) == 3 and P.components[0].contains(L.diff(t) + 3*g*Y.diff(t))
+R = DifferentialRing([v])
+q = DifferentialPolynomial.from_expr(R, (x*v - 1)*v.diff(x)**3 + v*v.diff(x))
+assert q.degree() == 3 and str(q.initial().to_expr()) == 'x*v(x, y) - 1'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_differential_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.differential` does not load
+    SymPy, nor do the Janet bases (normal forms, Hilbert series, series
+    solutions), the Rosenfeld-Groebner algorithm (factors, saturations,
+    regular chains, membership) and Ritt's reduction."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DIFFERENTIAL], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

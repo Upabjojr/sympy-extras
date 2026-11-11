@@ -68,30 +68,36 @@ References
 .. [Schwarz] F. Schwarz, Algorithmic Lie Theory for Solving Ordinary
    Differential Equations, Chapman & Hall 2008, chapter 2.
 .. [Seiler] W. M. Seiler, Involution, Springer 2010.
+
+The module works on objects of the core and imports no SymPy; the forms
+have coefficients in ``ZZ[p, x]`` (fraction-free).
+:mod:`sympy_extras.polys.differential_sympy` is the face on SymPy
+objects.
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from fractions import Fraction
+from math import comb, factorial
+from typing import Final, Optional, Sequence
 
-from sympy.core.add import Add
-from sympy.core.basic import Basic
-from sympy.core.expr import Expr
-from sympy.core.function import AppliedUndef
-from sympy.core.numbers import Integer
-from sympy.core.singleton import S
-from sympy.core.symbol import Symbol
-from sympy.functions.combinatorial.factorials import binomial, factorial
-from sympy.core.function import expand, expand_func
+from sympy_extras.polys.rings import Monomial
+from sympy_extras.core.add import add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.function import AppliedUndef, expand
+from sympy_extras.core.mul import mul
+from sympy_extras.core.numbers import Integer, oo, number_from_fraction
+from sympy_extras.core.power import pow
+from sympy_extras.core.symbol import Symbol
 
-from sympy_extras._typing import DomainElement, ExprLike, Monomial, as_expr, free_symbols
-
-from .ring import DifferentialRing, Equation, Jet, unit_jet
+from .ring import (Coefficient, DifferentialRing, Equation, IntegerCoefficient, Jet, integer_product,
+                   integer_quotient, unit_jet)
 
 __all__ = ['JanetBasis', 'janet_basis', 'janet_multiplicative_variables', 'LinearForm', 'Cone']
 
 #: a linear differential polynomial: the coefficients of the derivatives
 #: (the derivative of index -1 stands for the inhomogeneous part)
-LinearForm = dict[Jet, DomainElement]
+LinearForm = dict[Jet, IntegerCoefficient]
 #: a cone of multi-indices: the vertex and the flags of the multiplicative variables
 Cone = tuple[Monomial, tuple[bool, ...]]
 
@@ -145,7 +151,7 @@ def _complement(monomials: Sequence[Monomial], n: int) -> list[Cone]:
     return cones
 
 
-def _add(form: LinearForm, jet: Jet, c: DomainElement) -> None:
+def _add(form: LinearForm, jet: Jet, c: IntegerCoefficient) -> None:
     value = form[jet] + c if jet in form else c
     if value:
         form[jet] = value
@@ -157,10 +163,10 @@ class _Forms:
     """The arithmetic of linear forms over a ring."""
 
     def __init__(self, ring: DifferentialRing) -> None:
-        self.ring: DifferentialRing = ring
-        self.unit: Jet = unit_jet(ring.n)
+        self.ring: Final[DifferentialRing] = ring
+        self.unit: Final[Jet] = unit_jet(ring.n)
 
-    def parse(self, equation: Equation) -> tuple[LinearForm, DomainElement]:
+    def parse(self, equation: Equation) -> tuple[LinearForm, Coefficient]:
         """The form of an equation with coefficients in the ring of the
         integers, and the element of the field it was multiplied by."""
         terms = self.ring.terms(equation)
@@ -172,19 +178,19 @@ class _Forms:
         scale = self.ring.domain.one
         for monomial, c in self.ring.integral(terms).items():
             form[monomial[0][0] if monomial else self.unit] = c
-            scale = self.ring.domain.convert(c, self.ring.integers)/terms[monomial]
+            scale = self.ring.domain.exquo(self.ring.field_element(c), terms[monomial])
         return form, scale
 
-    def to_expr(self, form: LinearForm, divisor: Optional[DomainElement] = None) -> Expr:
+    def to_expr(self, form: LinearForm, divisor: Optional[Coefficient] = None) -> Expr:
         """The expression of the form divided by ``divisor`` (by the
         coefficient of its leader by default)."""
         if not form:
-            return S.Zero
-        domain = self.ring.domain
-        below = domain.convert(form[self.leader(form)], self.ring.integers) if divisor is None else divisor
-        ordered = sorted(form, key=self.ring.rank_key, reverse=True)
-        return Add(*[as_expr(domain.to_sympy(domain.convert(form[jet], self.ring.integers)/below))
-                     * self.ring.to_expr(jet) for jet in ordered])
+            return Integer(0)
+        ring, domain = self.ring, self.ring.domain
+        below = ring.field_element(form[self.leader(form)]) if divisor is None else divisor
+        ordered = sorted(form, key=ring.rank_key, reverse=True)
+        return add(*[ring.coefficient_expr(domain.exquo(ring.field_element(form[jet]), below))
+                     * ring.to_expr(jet) for jet in ordered])
 
     def leader(self, form: LinearForm) -> Jet:
         return max(form, key=self.ring.rank_key)
@@ -192,18 +198,19 @@ class _Forms:
     def primitive(self, form: LinearForm) -> LinearForm:
         """The form divided by the greatest common divisor of its
         coefficients, with a positive coefficient of the leader."""
-        one = self.ring.integers.one
+        Z = self.ring.integers
+        one = Z.one
         values = list(form.values())
         divisor = values[0]
         for c in values[1:]:
             if divisor == one:
                 break
-            divisor = divisor.gcd(c)
+            divisor = Z.gcd(divisor, c)
         if (form[self.leader(form)].LC < 0) != (divisor.LC < 0):
             divisor = -divisor
         if divisor == one:
             return form
-        return {jet: c.exquo(divisor) for jet, c in form.items()}
+        return {jet: integer_quotient(c, divisor) for jet, c in form.items()}
 
     def derivative(self, form: LinearForm, i: int) -> LinearForm:
         result: LinearForm = {}
@@ -229,11 +236,11 @@ class _Division:
 
     def __init__(self, forms: _Forms, elements: list[LinearForm],
                  multiplicative: Optional[list[tuple[bool, ...]]]) -> None:
-        self.forms: _Forms = forms
-        self.elements: list[LinearForm] = elements
-        self.leaders: list[Jet] = [forms.leader(p) for p in elements]
-        self.multiplicative: Optional[list[tuple[bool, ...]]] = multiplicative
-        self._prolonged: dict[tuple[int, Monomial], LinearForm] = {}
+        self.forms: Final[_Forms] = forms
+        self.elements: Final[list[LinearForm]] = elements
+        self.leaders: Final[list[Jet]] = [forms.leader(p) for p in elements]
+        self.multiplicative: Final[Optional[list[tuple[bool, ...]]]] = multiplicative
+        self._prolonged: Final[dict[tuple[int, Monomial], LinearForm]] = {}
 
     def divisor(self, jet: Jet, skip: int = -1) -> Optional[tuple[int, Monomial]]:
         """The index of an element whose leader divides the derivative,
@@ -262,12 +269,13 @@ class _Division:
             self._prolonged[key] = form
         return form
 
-    def normal_form(self, form: LinearForm, skip: int = -1) -> tuple[LinearForm, DomainElement]:
+    def normal_form(self, form: LinearForm, skip: int = -1) -> tuple[LinearForm, IntegerCoefficient]:
         """A multiple of the form with every divisible term reduced, and
         the multiplier (an element of the ring of the integers; the
         reduction is free of fractions)."""
         ring = self.forms.ring
-        one = ring.integers.one
+        Z = ring.integers
+        one = Z.one
         multiplier = one
         result: LinearForm = {}
         rest = dict(form)
@@ -280,15 +288,15 @@ class _Division:
                 continue
             divisor = self.prolonged(*found)
             lead = divisor[jet]
-            common = lead.gcd(c)
-            a, b = lead.exquo(common), c.exquo(common)
+            common = Z.gcd(lead, c)
+            a, b = integer_quotient(lead, common), integer_quotient(c, common)
             if a != one:
-                rest = {other: e*a for other, e in rest.items()}
-                result = {other: e*a for other, e in result.items()}
-                multiplier = multiplier*a
+                rest = {other: integer_product(e, a) for other, e in rest.items()}
+                result = {other: integer_product(e, a) for other, e in result.items()}
+                multiplier = integer_product(multiplier, a)
             for other, e in divisor.items():
                 if other != jet:
-                    _add(rest, other, -b*e)
+                    _add(rest, other, -integer_product(b, e))
         return result, multiplier
 
 
@@ -362,11 +370,11 @@ class JanetBasis:
 
     def __init__(self, ring: DifferentialRing, forms: list[LinearForm],
                  multiplicative: list[tuple[bool, ...]]) -> None:
-        self.ring: DifferentialRing = ring
-        self.forms: list[LinearForm] = forms
-        self.multiplicative: list[tuple[bool, ...]] = multiplicative
-        self._arithmetic: _Forms = _Forms(ring)
-        self._division: _Division = _Division(self._arithmetic, forms, multiplicative)
+        self.ring: Final[DifferentialRing] = ring
+        self.forms: Final[list[LinearForm]] = forms
+        self.multiplicative: Final[list[tuple[bool, ...]]] = multiplicative
+        self._arithmetic: Final[_Forms] = _Forms(ring)
+        self._division: Final[_Division] = _Division(self._arithmetic, forms, multiplicative)
 
     def __repr__(self) -> str:
         return "JanetBasis(%s)" % (self.equations,)
@@ -423,7 +431,7 @@ class JanetBasis:
         unique expression in the parametric derivatives which differs from
         it by a consequence of the system.
 
-        >>> from sympy import Function, symbols
+        >>> from sympy_extras.core import Function, symbols
         >>> from sympy_extras.polys.differential import janet_basis
         >>> x, y = symbols('x y')
         >>> u = Function('u')(x, y)
@@ -433,7 +441,7 @@ class JanetBasis:
         """
         form, scale = self._arithmetic.parse(expr)
         reduced, multiplier = self._division.normal_form(form)
-        return self._arithmetic.to_expr(reduced, scale*self.ring.domain.convert(multiplier, self.ring.integers))
+        return self._arithmetic.to_expr(reduced, self.ring.domain.mul(scale, self.ring.field_element(multiplier)))
 
     def contains(self, expr: Equation) -> bool:
         """Whether the expression vanishes on the solutions of the system:
@@ -494,12 +502,12 @@ class JanetBasis:
             if k == 0:
                 total += 1 if d == 0 else 0
             else:
-                total += int(binomial(d + k - 1, k - 1))
+                total += comb(d + k - 1, k - 1)
         return total
 
     def hilbert_series(self, t: Symbol) -> Expr:
         """The generating function of :meth:`hilbert_function`."""
-        return Add(*[t**sum(vertex)/(1 - t)**sum(flags) for _, (vertex, flags) in self._cones()])
+        return add(*[t**sum(vertex)/(1 - t)**sum(flags) for _, (vertex, flags) in self._cones()])
 
     def hilbert_polynomial(self, s: Symbol) -> Expr:
         """The polynomial which :meth:`hilbert_function` equals for the
@@ -507,12 +515,24 @@ class JanetBasis:
         dimension. Its degree `d` and its leading coefficient `c/d!` say
         that the general solution depends on `c` arbitrary functions of
         `d + 1` variables."""
-        parts: list[Expr] = []
+        # binomial(s - |v| + k - 1, k - 1) as a polynomial in s, summed
+        total: list[Fraction] = []
         for _, (vertex, flags) in self._cones():
             k = sum(flags)
             if k:
-                parts.append(expand_func(binomial(s - sum(vertex) + k - 1, k - 1)))
-        return expand(Add(*parts))
+                shift = k - 1 - sum(vertex)
+                coefficients = [Fraction(1)]
+                for i in range(k - 1):
+                    # times (s + shift - i)/(i + 1)
+                    c = Fraction(shift - i, i + 1)
+                    coefficients = [(coefficients[j] if j < len(coefficients) else Fraction(0))*c
+                                    + (coefficients[j - 1]/(i + 1) if j > 0 else Fraction(0))
+                                    for j in range(len(coefficients) + 1)]
+                for j, c in enumerate(coefficients):
+                    while len(total) <= j:
+                        total.append(Fraction(0))
+                    total[j] += c
+        return add(*[mul(number_from_fraction(c), pow(s, Integer(j))) for j, c in enumerate(total) if c])
 
     @property
     def dimension(self) -> Expr:
@@ -521,7 +541,7 @@ class JanetBasis:
         parametric derivatives, ``oo`` when there are infinitely many."""
         cones = self._cones()
         if any(any(flags) for _, (_, flags) in cones):
-            return S.Infinity
+            return oo
         return Integer(len(cones))
 
     # ------------------------------------------------------------------
@@ -538,7 +558,7 @@ class JanetBasis:
         of the derivatives. The point must not be a zero of a denominator
         of the basis.
 
-        >>> from sympy import Function, symbols
+        >>> from sympy_extras.core import Function, symbols
         >>> from sympy_extras.polys.differential import janet_basis
         >>> x = symbols('x')
         >>> u = Function('u')(x)
@@ -546,18 +566,19 @@ class JanetBasis:
         C0*x**4/24 - C0*x**2/2 + C0 - C1*x**3/6 + C1*x
         """
         self._require_consistent()
-        n = self.ring.n
-        values = [as_expr(v) for v in point] if point is not None else [S.Zero]*n
+        ring = self.ring
+        n = ring.n
+        values: list[Expr] = [to_expr(v) for v in point] if point is not None else [Integer(0)]*n
         if len(values) != n:
             raise ValueError("the point must have %d coordinates" % n)
-        at: dict[Basic, Basic] = dict(zip(self.ring.variables, values))
+        at: dict[Symbol, Expr] = dict(zip(ring.variables, values))
         for form in self.forms:
-            lead = as_expr(self.ring.integers.to_sympy(form[self._arithmetic.leader(form)]))
-            if lead.xreplace(at) == 0:
+            lead = ring.integer_expr(form[self._arithmetic.leader(form)], at)
+            if lead == 0:
                 raise ValueError("the point %s is singular: the coefficient of a leader vanishes there"
                                  % (tuple(values),))
         constants: dict[Jet, Symbol] = {}
-        expansions: list[tuple[int, Monomial, LinearForm, DomainElement]] = []
+        expansions: list[tuple[int, Monomial, LinearForm, IntegerCoefficient]] = []
         needed: set[Jet] = set()
         for a in range(len(self.ring.functions)):
             for J in _multi_indices(n, order):
@@ -566,17 +587,17 @@ class JanetBasis:
                 needed |= {jet for jet in form if jet[0] >= 0}
         for k, jet in enumerate(sorted(needed, key=self.ring.rank_key)):
             constants[jet] = Symbol('%s%d' % (constant, k))
-        result: dict[AppliedUndef, Expr] = {f: S.Zero for f in self.ring.functions}
+        result: dict[AppliedUndef, Expr] = {f: Integer(0) for f in ring.functions}
         for a, J, form, multiplier in expansions:
-            value: Expr = S.Zero
-            below = as_expr(as_expr(self.ring.integers.to_sympy(multiplier)).xreplace(at))
+            value: Expr = Integer(0)
+            below = ring.integer_expr(multiplier, at)
             for jet, c in form.items():
-                factor = as_expr(as_expr(self.ring.integers.to_sympy(c)).xreplace(at))/below
-                value += factor*(constants[jet] if jet[0] >= 0 else S.One)
+                factor = ring.integer_expr(c, at)/below
+                value += factor*(constants[jet] if jet[0] >= 0 else Integer(1))
             term = value
-            for s, x0, j in zip(self.ring.variables, values, J):
+            for s, x0, j in zip(ring.variables, values, J):
                 term = term*(s - x0)**j/factorial(j)
-            result[self.ring.functions[a]] += term
+            result[ring.functions[a]] += term
         return {f: expand(e) for f, e in result.items()}
 
 
@@ -588,9 +609,9 @@ def _multi_indices(n: int, order: int) -> list[Monomial]:
     return result
 
 
-def janet_basis(equations: Sequence[Equation], functions: Sequence[AppliedUndef],
-                variables: Optional[Sequence[Symbol]] = None,
-                ranking: Optional[Sequence[Sequence[AppliedUndef]]] = None) -> JanetBasis:
+def janet_basis(equations: Sequence[Equation], functions: Sequence[Basic],
+                variables: Optional[Sequence[Basic]] = None,
+                ranking: Optional[Sequence[Sequence[Basic]]] = None) -> JanetBasis:
     """The Janet basis of a linear system of differential equations with
     coefficients rational in the variables.
 
@@ -625,7 +646,7 @@ def janet_basis(equations: Sequence[Equation], functions: Sequence[AppliedUndef]
     hidden integrability conditions of order three and four, and a solution
     space of dimension 12 [Janet]_:
 
-    >>> from sympy import Function, symbols
+    >>> from sympy_extras.core import Function, symbols
     >>> from sympy_extras.polys.differential import janet_basis
     >>> x, y, z = symbols('x y z')
     >>> u = Function('u')(x, y, z)
@@ -659,7 +680,7 @@ def janet_basis(equations: Sequence[Equation], functions: Sequence[AppliedUndef]
     probe = DifferentialRing(functions, chosen, ranking)
     symbols: set[Symbol] = set()
     for equation in given:
-        symbols |= free_symbols(equation)
+        symbols |= equation.free_symbols
     parameters = sorted(symbols - set(probe.variables), key=lambda s: s.name)
     ring = DifferentialRing(functions, chosen, ranking, parameters)
     forms = _Forms(ring)
@@ -687,7 +708,7 @@ def janet_basis(equations: Sequence[Equation], functions: Sequence[AppliedUndef]
     for k, p in enumerate(completed):
         leader = division.leaders[k]
         tail, multiplier = division.normal_form({jet: c for jet, c in p.items() if jet != leader})
-        tail[leader] = p[leader]*multiplier
+        tail[leader] = integer_product(p[leader], multiplier)
         reduced.append(forms.primitive(tail))
     order = sorted(range(len(reduced)), key=lambda k: ring.rank_key(division.leaders[k]))
     return JanetBasis(ring, [reduced[k] for k in order], [multiplicative[k] for k in order])
