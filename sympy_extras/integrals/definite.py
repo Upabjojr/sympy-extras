@@ -1718,7 +1718,7 @@ class _Integrator:
         """A trigonometric integrand over whole periods as `2 pi k` times
         the constant Laurent coefficient of its form in ``exp(I x)``
         (:mod:`.periodic`)."""
-        from .periodic import mean_value_integral
+        from .periodic_sympy import mean_value_integral
         if not f.has(TrigonometricFunction) or a in (-oo, oo) or b in (-oo, oo):
             return None
         return self._finish(mean_value_integral(f, x, a, b, self.assumptions))

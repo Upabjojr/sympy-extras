@@ -1,7 +1,6 @@
 """The SymPy face of Ramanujan's master theorem and the method of brackets
 (:mod:`sympy_extras.integrals.brackets`), for the integrators which are
-still written on SymPy (:mod:`.definite`, :mod:`.series`,
-:mod:`.periodic`).
+still written on SymPy (:mod:`.definite`, :mod:`.series`).
 
 :class:`SeriesCoefficient` is the container of the native module on SymPy
 objects, with ``to_core`` and ``from_core``; the functions convert their

@@ -1,7 +1,7 @@
 """The SymPy face of the Mellin transforms written as gamma quotients
 (:mod:`sympy_extras.integrals.mellin`), for the integrators which are
 still written on SymPy (:mod:`.brackets`, :mod:`.definite`, :mod:`.laplace`,
-:mod:`.periodic`, ...).
+...).
 
 :class:`GammaQuotient`, :class:`Kernel`, :class:`Match`, :class:`Product`
 and :class:`MellinTransform` are the containers of the native module on
