@@ -249,6 +249,13 @@ sympy_extras/
         parametric.py        differentiation under the integral sign (Feynman's trick)
         antiderivative.py    antiderivatives evaluated by one-sided limits at every discontinuity
         brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)
+                             (native: the native series, limits, summation, gammasimp, hyperexpand; SymPy's fps and
+                             the strip of its mellin_transform through brackets_sympy)
+        brackets_sympy.py    the SymPy face of brackets (SeriesCoefficient on SymPy objects, used by series and
+                             periodic), and fps_of_core, mellin_strip_of_core
+        dirichlet.py         dirichlet_integral, trigonometric_sum: the Dirichlet, Frullani and Borwein integrals of
+                             trigonometric sums over powers of x (native)
+        dirichlet_sympy.py   the SymPy face of dirichlet
         recognize.py         PSLQ recognition of constants and integrals (an oracle, off by default)
         risch/               the transcendental Risch algorithm ported from Aaron Meurer's SymPy pull requests
         trager.py            Trager's algorithm for integrands rational in x and one square root of a polynomial

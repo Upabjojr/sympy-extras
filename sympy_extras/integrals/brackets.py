@@ -26,18 +26,32 @@ index to eliminate is decided by convergence: the rule of the method is
 to keep the series which converge, and the method is a heuristic --
 its rules are not proved in general, and a result is only as good as
 the check made of it. Here the series left after the bracket is summed
-exactly by SymPy (as a hypergeometric function, expanded when
-possible), so the value is right whenever the summation converges.
+exactly (:func:`sympy_extras.concrete.summations.summation`, as a
+hypergeometric function, expanded when possible), so the value is right
+whenever the summation converges.
 
 The coefficient functions come from SymPy's formal power series
-(:func:`sympy.series.formal.fps`), which gives a closed form of the
-`k`-th coefficient with factorials and rising factorials, rewritten with
-the gamma function so that `k` can be replaced by `-s`.
+(``sympy.series.formal.fps``), which gives a closed form of the `k`-th
+coefficient with factorials and rising factorials, rewritten with the
+gamma function so that `k` can be replaced by `-s`.
+
+The module works on the objects of the core (:mod:`sympy_extras.core`, the
+functions of :mod:`sympy_extras.functions`) with the native ``ask``,
+series, limits, summation, ``gammasimp`` and ``hyperexpand``, and imports
+no SymPy. Two steps stay on SymPy and go through the face
+:mod:`sympy_extras.integrals.brackets_sympy` when they are reached (the
+functions ending in ``_of_core``): the formal power series
+(:func:`~sympy_extras.integrals.brackets_sympy.fps_of_core`, SymPy's
+``fps``, not ported: its rational and hypergeometric algorithms are a
+module of their own) and, for a function whose decay at infinity the
+series do not give, the strip of SymPy's ``mellin_transform``
+(:func:`~sympy_extras.integrals.brackets_sympy.mellin_strip_of_core`).
 
 Examples
 ========
 
->>> from sympy import symbols, exp, sin, atan, besselj
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.functions import exp, sin, atan
 >>> from sympy_extras.integrals.brackets import ramanujan_master_theorem, mellin_transform_series
 >>> x, s = symbols('x s')
 >>> ramanujan_master_theorem(exp(-x), x, s)
@@ -62,41 +76,43 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional
-
-from sympy.concrete.summations import Sum
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.function import Function, PoleError
-from sympy.series.limits import limit
-from sympy.core.mul import Mul
-from sympy.core.numbers import Integer, oo
-from sympy.core.power import Pow
-from sympy.core.relational import Equality
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.combinatorial.factorials import factorial
-from sympy.functions.elementary.complexes import Abs
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.functions.special.gamma_functions import gamma
-from sympy.functions.special.hyper import hyper
-from sympy.integrals.transforms import mellin_transform as sympy_mellin, MellinTransform as SympyMellin
-from sympy.logic.boolalg import true
-from sympy.series.formal import fps, FormalPowerSeries
-from sympy.series.order import Order
-from sympy.simplify.gammasimp import gammasimp
-from sympy.simplify.hyperexpand import hyperexpand
-from sympy.simplify.powsimp import powsimp
-from sympy.simplify.simplify import simplify
+from typing import Final, Optional
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import as_boolean, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions, ask
+from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.concrete.expr_with_limits import Sum
+from sympy_extras.concrete.summations import summation
+from sympy_extras.core.add import Add
+from sympy_extras.core.coreerrors import PoleError
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.limits import limit
+from sympy_extras.core.logic import BooleanTrue
+from sympy_extras.core.mod import Mod
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import Integer, oo
+from sympy_extras.core.order import Order
+from sympy_extras.core.power import Pow
+from sympy_extras.core.relational import Equality
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.combinatorial.factorials import factorial
+from sympy_extras.functions.elementary.complexes import abs_ as Abs
+from sympy_extras.functions.elementary.miscellaneous import max_ as Max, min_ as Min
+from sympy_extras.functions.elementary.piecewise import Piecewise
+from sympy_extras.functions.special.gamma_functions import Gamma, gamma
+from sympy_extras.functions.special.hyper import Hyper
 from sympy_extras.settings import settings
-from .mellin_sympy import MellinTransform, monomial
+from sympy_extras.simplify.gammasimp import gammasimp
+from sympy_extras.simplify.hyperexpand import hyperexpand
+from sympy_extras.simplify.powsimp import powsimp
+from sympy_extras.simplify.simplify import simplify
+from .mellin import MellinTransform, monomial
 
-__all__ = ['SeriesCoefficient', 'taylor_coefficient', 'ramanujan_master_theorem', 'method_of_brackets',
-           'mellin_transform_series']
+__all__ = ['SeriesCoefficient', 'FormalSeriesTerms', 'taylor_coefficient', 'ramanujan_master_theorem',
+           'method_of_brackets', 'mellin_transform_series']
+
+#: ``(g_i(y), beta_i, gamma_i)``: a factor ``g_i(beta_i x**gamma_i)`` of a product
+Factor = tuple[Expr, Expr, Expr]
 
 
 class SeriesCoefficient:
@@ -116,11 +132,13 @@ class SeriesCoefficient:
         `r`, the exponent of the first term.
     """
 
+    __slots__ = ('coefficient', 'index', 'period', 'offset')
+
     def __init__(self, coefficient: Expr, index: Dummy, period: int, offset: Expr) -> None:
-        self.coefficient = coefficient
-        self.index = index
-        self.period = period
-        self.offset = offset
+        self.coefficient: Final[Expr] = coefficient
+        self.index: Final[Dummy] = index
+        self.period: Final[int] = period
+        self.offset: Final[Expr] = offset
 
     def __repr__(self) -> str:
         return "SeriesCoefficient(%s, %s, period=%d, offset=%s)" % (self.coefficient, self.index,
@@ -130,22 +148,50 @@ class SeriesCoefficient:
         """`\\varphi(j) = (-1)^j j!\\, c(j)` of the master theorem, with the
         gamma function in place of the factorials; ``None`` when a factor
         `(-1)^j` remains (no Mellin transform: the series has positive
-        coefficients growing like those of `e^x`)."""
+        coefficients growing like those of `e^x`).
+
+        >>> from sympy_extras.core import symbols
+        >>> from sympy_extras.functions import log
+        >>> from sympy_extras.integrals.brackets import taylor_coefficient
+        >>> x = symbols('x')
+        >>> c = taylor_coefficient(log(1 + x), x)
+        >>> c.phi().subs(c.index, 3)
+        -2
+        """
         j = self.index
-        value = as_expr(powsimp(as_expr(S.NegativeOne**j * factorial(j) * self.coefficient), combine='exp'))
-        value = as_expr(value.rewrite(gamma))
-        value = as_expr(gammasimp(value))
+        value = powsimp(S.NegativeOne**j * factorial(j) * self.coefficient, combine='exp')
+        value = gammasimp(value.rewrite(Gamma))
         if value.has(S.NegativeOne**j) or _has_sign_power(value, j):
             return None
         return value
+
+
+class FormalSeriesTerms:
+    """SymPy's formal power series of a function read on the core (see
+    :func:`~sympy_extras.integrals.brackets_sympy.fps_of_core`): the
+    ``formula`` of the coefficient of ``x**index``, a ``Piecewise`` on the
+    residue classes of the index or a single expression, valid from
+    ``start`` on, and the ``independent`` terms, the polynomial part which
+    the formula does not give."""
+
+    __slots__ = ('formula', 'index', 'start', 'independent')
+
+    def __init__(self, formula: Expr, index: Symbol, start: Expr, independent: Expr) -> None:
+        self.formula: Final[Expr] = formula
+        self.index: Final[Symbol] = index
+        self.start: Final[Expr] = start
+        self.independent: Final[Expr] = independent
+
+    def __repr__(self) -> str:
+        return "FormalSeriesTerms(%s, %s, start=%s, independent=%s)" % (self.formula, self.index, self.start,
+                                                                         self.independent)
 
 
 def _has_sign_power(e: Expr, j: Dummy) -> bool:
     """Whether ``e`` still has a power of a negative number with the
     index in the exponent."""
     for node in e.atoms(Pow):
-        base = as_expr(node.base)
-        if base.is_negative and node.exp.has(j):
+        if isinstance(node, Pow) and node.base.is_negative is True and node.exp.has(j):
             return True
     return False
 
@@ -158,23 +204,31 @@ def _residue_class(formula: Expr, k: Symbol) -> Optional[tuple[Expr, int, int]]:
         return (formula, 1, 0)
     found: Optional[tuple[Expr, int, int]] = None
     for pair in formula.args:
-        value, condition = as_expr(pair.args[0]), as_boolean(pair.args[1])
+        value, condition = pair.expr, pair.cond
         if value == 0:
             continue
-        if condition is true and found is None:
+        if isinstance(condition, BooleanTrue) and found is None:
             return (value, 1, 0)
         if not isinstance(condition, Equality):
             return None
-        lhs, rhs = as_expr(condition.lhs), as_expr(condition.rhs)
-        if not (lhs.func.__name__ == 'Mod' and len(lhs.args) == 2 and lhs.args[0] == k):
+        lhs, rhs = condition.lhs, condition.rhs
+        if not (isinstance(lhs, Mod) and lhs.args[0] == k):
             return None
-        modulus, remainder = as_expr(lhs.args[1]), rhs
+        modulus, remainder = lhs.args[1], rhs
         if not isinstance(modulus, Integer) or not isinstance(remainder, Integer):
             return None
         if found is not None:
             return None
         found = (value, int(modulus), int(remainder))
     return found
+
+
+def _replaced(e: Expr, old: Symbol, new: Expr) -> Optional[Expr]:
+    """``e.subs(old, new)``, ``None`` when the substitution fails."""
+    try:
+        return e.subs(old, new)
+    except (ValueError, TypeError):
+        return None
 
 
 def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
@@ -185,44 +239,36 @@ def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
     Examples
     ========
 
-    >>> from sympy import symbols, exp, sin
+    >>> from sympy_extras.core import Integer, symbols
+    >>> from sympy_extras.functions import exp, sin
     >>> from sympy_extras.integrals.brackets import taylor_coefficient
     >>> x = symbols('x')
     >>> c = taylor_coefficient(exp(-x), x)
-    >>> c.coefficient.subs(c.index, 3), c.period, c.offset
+    >>> c.coefficient.subs(c.index, Integer(3)), c.period, c.offset
     (-1/6, 1, 0)
     >>> c = taylor_coefficient(sin(x), x)
-    >>> c.period, c.offset, c.coefficient.subs(c.index, 1)
+    >>> c.period, c.offset, c.coefficient.subs(c.index, Integer(1))
     (2, 1, -1/6)
     """
-    if f.is_polynomial(x):
+    if f.is_polynomial(x) is True:
         return None
-    try:
-        series = attempt(lambda: fps(f, x), settings.timeout)
-    except (KeyError, IndexError, ValueError, TypeError):
-        # fps fails inside its hypergeometric algorithm on some inputs
-        # (a KeyError popping the symbol of a constant)
+    from .brackets_sympy import fps_of_core
+    series = fps_of_core(f, x)
+    if series is None:
         return None
-    if not isinstance(series, FormalPowerSeries):
-        return None
-    k = series.ak.variables[0]
-    if not isinstance(k, Symbol):
-        return None
-    formula = as_expr(series.ak.formula)
-    found = _residue_class(formula, k)
+    k = series.index
+    found = _residue_class(series.formula, k)
     if found is None:
         return None
     value, m, r = found
     # the independent terms must agree with the formula
-    independent = as_expr(series.ind)
-    present: set[int] = set()
-    for term in Add.make_args(independent):
+    for term in Add.make_args(series.independent):
         if term == 0:
             continue
-        coefficient, rest = as_expr(term).as_independent(x, as_Add=False)
-        exponent = monomial(as_expr(rest), x)
+        coefficient, rest = term.as_independent(x, as_Add=False)
+        exponent = monomial(rest, x)
         if exponent is None:
-            if as_expr(rest) == 1:
+            if rest == 1:
                 power: Expr = S.Zero
             else:
                 return None
@@ -230,9 +276,9 @@ def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
             power = exponent[1]
         if not isinstance(power, Integer) or (int(power) - r) % m != 0:
             return None
-        if simplify(as_expr(value.subs(k, power)) - as_expr(coefficient)) != 0:
+        at_power = _replaced(value, k, power)
+        if at_power is None or simplify(at_power - coefficient) != 0:
             return None
-        present.add(int(power))
     # and the whole must agree with the Taylor expansion by the other
     # algorithm for the first terms: fps is not to be trusted alone. Its
     # formula for (exp(4*x) - exp(-4*x))**2 holds from k = 3 and gives 2
@@ -241,13 +287,13 @@ def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
     # 1/(x**2 + x + 1) is (-1)**k, the series of 1/(x + 1) (the bug: the
     # integral of (1 - x)/(x**2 + x + 1) over (0, 1) came out as
     # log(4) - 1, an eighth too much)
-    first = as_expr(series.ak.start)
+    first = series.start
     if not isinstance(first, Integer):
         return None
     terms = max(6, int(first) + 2 * m)
     try:
-        truncated = attempt(lambda: as_expr(f.series(x, 0, terms).removeO()), settings.timeout)
-    except (PoleError, ValueError, TypeError, NotImplementedError):
+        truncated = attempt(lambda: f.series(x, S.Zero, terms).removeO(), settings.timeout, native=True)
+    except PoleError:
         return None
     if truncated is None:
         return None
@@ -256,24 +302,21 @@ def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
     # infinite (-x**k/k for log(1 - x) at k = 0) the callers start the sum
     # after it, so the coefficient must be zero there
     for k0 in range(terms):
-        actual = as_expr(truncated.coeff(x, k0)) if k0 else as_expr(truncated.subs(x, 0))
+        actual = truncated.coeff(x, k0) if k0 else truncated.subs(x, S.Zero)
         if (k0 - r) % m:
             predicted: Expr = S.Zero
         else:
-            try:
-                predicted = as_expr(value.subs(k, k0))
-            except (ValueError, TypeError):
+            at_k0 = _replaced(value, k, Integer(k0))
+            if at_k0 is None:
                 return None
-            if predicted.is_finite is False:
-                predicted = S.Zero
+            predicted = S.Zero if at_k0.is_finite is False else at_k0
         if simplify(predicted - actual) != 0:
             return None
     j = Dummy('j', integer=True, nonnegative=True)
-    try:
-        coefficient = as_expr(value.subs(k, m * j + r))
-    except (ValueError, TypeError):
+    coefficient_ = _replaced(value, k, m * j + r)
+    if coefficient_ is None:
         return None
-    return SeriesCoefficient(coefficient, j, m, Integer(r))
+    return SeriesCoefficient(coefficient_, j, m, Integer(r))
 
 
 def _order_at_infinity(f: Expr, x: Symbol) -> Optional[Expr]:
@@ -281,38 +324,36 @@ def _order_at_infinity(f: Expr, x: Symbol) -> Optional[Expr]:
     the leading term), from the series of ``f(1/y)`` at ``y = 0``; ``oo``
     when ``f`` decays faster than every power (an exponential)."""
     y = Dummy('y', positive=True)
-    g = as_expr(f.subs(x, 1 / y))
+    g = f.subs(x, 1 / y)
     try:
-        leading = attempt(lambda: g.series(y, 0, 1).removeO(), settings.timeout)
+        leading = attempt(lambda: g.series(y, S.Zero, 1).removeO(), settings.timeout, native=True)
     except PoleError:
         # an essential singularity at infinity: exponential decay or oscillation
-        decays = attempt(lambda: as_expr(limit(f * x**50, x, oo)), settings.timeout)
+        decays = attempt(lambda: limit(f * x**50, x, oo), settings.timeout, native=True)
         if decays is not None and decays == 0:
             return oo
         return None
     if leading is None or leading == 0:
         # the leading term is beyond the first order: ask for the leading term itself
         try:
-            found = attempt(lambda: g.leadterm(y), settings.timeout)
+            found = attempt(lambda: g.leadterm(y), settings.timeout, native=True)
         except PoleError:
             return None
         if found is None:
             return None
-        coefficient, exponent = found
-        return as_expr(exponent)
+        return found[1]
     if isinstance(leading, Order):
         return None
-    terms = Add.make_args(as_expr(leading))
     exponents: list[Expr] = []
-    for term in terms:
-        found_ = monomial(as_expr(term), x) if as_expr(term).has(x) else None
+    for term in Add.make_args(leading):
+        found_ = monomial(term, x) if term.has(x) else None
         if found_ is not None:
             return None
-        coefficient, rest = as_expr(term).as_independent(y, as_Add=False)
-        if not as_expr(rest).has(y):
+        rest = term.as_independent(y, as_Add=False)[1]
+        if not rest.has(y):
             exponents.append(S.Zero)
             continue
-        mono = monomial(as_expr(rest), y)
+        mono = monomial(rest, y)
         if mono is None:
             return None
         exponents.append(mono[1])
@@ -327,13 +368,8 @@ def _strip(f: Expr, x: Symbol, s: Symbol, offset: Expr) -> Optional[tuple[Expr, 
     the decay cannot be found."""
     upper = _order_at_infinity(f, x)
     if upper is None or upper.has(x):
-        known = attempt(lambda: sympy_mellin(f, x, s), settings.timeout)
-        if isinstance(known, tuple) and len(known) == 3:
-            strip = known[1]
-            return (as_expr(strip[0]), as_expr(strip[1]))
-        if isinstance(known, SympyMellin) or known is None:
-            return None
-        return None
+        from .brackets_sympy import mellin_strip_of_core
+        return mellin_strip_of_core(f, x, s)
     return (-offset, upper)
 
 
@@ -346,7 +382,8 @@ def ramanujan_master_theorem(f: Expr, x: Symbol, s: Symbol,
     Examples
     ========
 
-    >>> from sympy import symbols, exp, log, cos
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.brackets import ramanujan_master_theorem
     >>> x, s = symbols('x s')
     >>> ramanujan_master_theorem(1/(1 + x), x, s)
@@ -363,9 +400,8 @@ def ramanujan_master_theorem(f: Expr, x: Symbol, s: Symbol,
     if phi is None:
         return None
     # f = x^r g(x^m): M[f](s) = M[g]((s + r)/m) / m
-    sigma = as_expr((s + c.offset) / c.period)
-    value = as_expr(gamma(sigma) * phi.subs(c.index, -sigma) / c.period)
-    value = as_expr(gammasimp(value))
+    sigma = (s + c.offset) / c.period
+    value = gammasimp(gamma(sigma) * phi.subs(c.index, -sigma) / c.period)
     strip = _strip(f, x, s, c.offset)
     if strip is None:
         return None
@@ -375,15 +411,14 @@ def ramanujan_master_theorem(f: Expr, x: Symbol, s: Symbol,
     return MellinTransform(value, (lower, upper))
 
 
-def _factors(f: Expr, x: Symbol) -> Optional[tuple[Expr, Expr, list[tuple[Expr, Expr, Expr]]]]:
+def _factors(f: Expr, x: Symbol) -> Optional[tuple[Expr, Expr, list[Factor]]]:
     """``f`` as ``constant * x**alpha * prod g_i(beta_i x**gamma_i)``:
     the constant, ``alpha`` and the list of ``(g_i(y), beta_i, gamma_i)``
     with ``y`` a fresh symbol per factor."""
     constant: Expr = S.One
     alpha: Expr = S.Zero
-    factors: list[tuple[Expr, Expr, Expr]] = []
-    for factor in Mul.make_args(f):
-        e = as_expr(factor)
+    factors: list[Factor] = []
+    for e in Mul.make_args(f):
         if not e.has(x):
             constant = constant * e
             continue
@@ -393,36 +428,38 @@ def _factors(f: Expr, x: Symbol) -> Optional[tuple[Expr, Expr, list[tuple[Expr, 
             alpha = alpha + mono[1]
             continue
         argument: Optional[Expr] = None
-        if isinstance(e, Function) and len(e.args) >= 1:
-            argument = as_expr(e.args[-1])
+        if e.is_Function and len(e.args) >= 1:
+            last = e.args[-1]
+            if isinstance(last, Expr):
+                argument = last
         elif isinstance(e, Pow) and isinstance(e.base, Add):
-            argument = as_expr(e.base)
+            argument = e.base
         if argument is None:
             return None
-        inner_constant, rest = argument.as_independent(x, as_Add=True)
-        mono = monomial(as_expr(rest), x)
+        rest = argument.as_independent(x, as_Add=True)[1]
+        mono = monomial(rest, x)
         if mono is None:
             return None
         beta, g_ = mono
         # a positive scale, so that g is read on (0, oo)
-        if beta.is_negative:
+        if beta.is_negative is True:
             beta = -beta
         y = Dummy('y', positive=True)
-        factors.append((as_expr(e.subs(x, (y / beta)**(1 / g_))), beta, g_))
+        factors.append((e.subs(x, (y / beta)**(1 / g_)), beta, g_))
     return constant, alpha, factors
 
 
 def _scaled(transform: MellinTransform, beta: Expr, g_: Expr, s: Symbol) -> MellinTransform:
     """The transform of ``g(beta x**gamma)`` from that of ``g``."""
-    value = as_expr(transform.transform.subs(s, s / g_) * beta**(-s / g_) / Abs(g_))
+    value = transform.transform.subs(s, s / g_) * beta**(-s / g_) / Abs(g_)
     lower, upper = transform.strip
-    if g_ > 0:
+    if g_.is_positive is True:
         return MellinTransform(value, (lower * g_, upper * g_), transform.condition)
     return MellinTransform(value, (upper * g_, lower * g_), transform.condition)
 
 
 def _shifted(transform: MellinTransform, alpha: Expr, constant: Expr, s: Symbol) -> MellinTransform:
-    value = as_expr(constant * transform.transform.subs(s, s + alpha))
+    value = constant * transform.transform.subs(s, s + alpha)
     lower, upper = transform.strip
     return MellinTransform(value, (lower - alpha, upper - alpha), transform.condition)
 
@@ -430,15 +467,16 @@ def _shifted(transform: MellinTransform, alpha: Expr, constant: Expr, s: Symbol)
 def method_of_brackets(f: Expr, x: Symbol, s: Symbol, assumptions: Assumptions = None) -> Optional[MellinTransform]:
     """The Mellin transform of a product of two series-expandable factors
     by the method of brackets: one index is eliminated by the bracket
-    rule and the remaining series is summed by SymPy as a hypergeometric
-    function, which is expanded when possible. Both eliminations are
-    tried and the one whose series converges is kept. The strip is the
-    intersection of the strips of the factors' own transforms.
+    rule and the remaining series is summed as a hypergeometric function,
+    which is expanded when possible. Both eliminations are tried and the
+    one whose series converges is kept. The strip is the intersection of
+    the strips of the factors' own transforms.
 
     Examples
     ========
 
-    >>> from sympy import symbols, exp, sin, besselj
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp, sin
     >>> from sympy_extras.integrals.brackets import method_of_brackets
     >>> x, s = symbols('x s')
     >>> method_of_brackets(exp(-x)*sin(x), x, s)
@@ -448,7 +486,7 @@ def method_of_brackets(f: Expr, x: Symbol, s: Symbol, assumptions: Assumptions =
     if decomposed is None or len(decomposed[2]) != 2:
         return None
     constant, alpha, factors = decomposed
-    series: list[tuple[SeriesCoefficient, Expr, Expr, Expr]] = []
+    series: list[tuple[SeriesCoefficient, Expr, Expr]] = []
     strips: list[tuple[Expr, Expr]] = []
     for g, beta, g_ in factors:
         variable = _variable(g)
@@ -461,7 +499,7 @@ def method_of_brackets(f: Expr, x: Symbol, s: Symbol, assumptions: Assumptions =
         if single is None:
             return None
         scaled = _scaled(single, beta, g_, s)
-        series.append((c, beta, g_, variable))
+        series.append((c, beta, g_))
         strips.append(scaled.strip)
     lower = _max(strips[0][0], strips[1][0])
     upper = _min(strips[0][1], strips[1][1])
@@ -469,11 +507,11 @@ def method_of_brackets(f: Expr, x: Symbol, s: Symbol, assumptions: Assumptions =
         return None
     # the double series: sum_{n, k} phi1(n) (-1)^n/n! phi2(k) (-1)^k/k! beta1^(...) beta2^(...)
     # x^(g1 (m1 n + r1) + g2 (m2 k + r2) + alpha); the bracket <A n + B k + C + s>
-    (c1, beta1, g1, _), (c2, beta2, g2, _) = series
+    (c1, beta1, g1), (c2, beta2, g2) = series
     phi1, phi2 = c1.phi(), c2.phi()
     if phi1 is None or phi2 is None:
         return None
-    for first, second in ((0, 1), (1, 0)):
+    for first in (0, 1):
         ca, cb = (c1, c2) if first == 0 else (c2, c1)
         phia, phib = (phi1, phi2) if first == 0 else (phi2, phi1)
         betaa, betab = (beta1, beta2) if first == 0 else (beta2, beta1)
@@ -483,26 +521,28 @@ def method_of_brackets(f: Expr, x: Symbol, s: Symbol, assumptions: Assumptions =
         A = ga * ca.period
         B = gb * cb.period
         C = ga * ca.offset + gb * cb.offset + alpha
-        k_star = as_expr(-(A * n + C + s) / B)
+        k_star = -(A * n + C + s) / B
         term = (phia * S.NegativeOne**n / factorial(n) * betaa**(ca.period * n + ca.offset)
-                * as_expr(phib.subs(cb.index, k_star)) * betab**(cb.period * k_star + cb.offset)
+                * phib.subs(cb.index, k_star) * betab**(cb.period * k_star + cb.offset)
                 * gamma(-k_star) / Abs(B))
-        term = as_expr(gammasimp(as_expr(term)))
-        total = attempt(lambda: as_expr(Sum(term, (n, 0, oo)).doit()), settings.timeout)
+        term = gammasimp(term)
+        total = attempt(lambda: summation(term, (n, S.Zero, oo)), settings.timeout, native=True)
         if total is None:
             continue
         if isinstance(total, Piecewise):
             # the closed form where the series converges, continued
             # analytically to the strip (the bracket rule keeps it)
-            total = _closed_branch(total)
-            if total is None:
+            closed = _closed_branch(total)
+            if closed is None:
                 continue
+            total = closed
         if total.has(Sum):
             continue
-        if total.has(hyper) and not _converges(total, assumptions):
+        if total.has(Hyper) and not _converges(total, assumptions):
             continue
-        expanded = attempt(lambda: as_expr(hyperexpand(total)), settings.timeout)
-        value = as_expr(gammasimp(constant * (expanded if expanded is not None else total)))
+        summed = total
+        expanded = attempt(lambda: hyperexpand(summed), settings.timeout, native=True)
+        value = gammasimp(constant * (expanded if expanded is not None else total))
         decay = _order_at_infinity(f, x)
         if decay is not None and not decay.has(x):
             # the true strip of the product: from its order at 0 and its decay
@@ -514,12 +554,11 @@ def method_of_brackets(f: Expr, x: Symbol, s: Symbol, assumptions: Assumptions =
 
 
 def _closed_branch(total: Piecewise) -> Optional[Expr]:
-    """The first branch of a ``Piecewise`` returned by ``Sum.doit`` whose
+    """The first branch of a ``Piecewise`` returned by the summation whose
     other branch is the unevaluated sum."""
     for pair in total.args:
-        value = as_expr(pair.args[0])
-        if not value.has(Sum):
-            return value
+        if not pair.expr.has(Sum):
+            return pair.expr
     return None
 
 
@@ -531,14 +570,14 @@ def _variable(g: Expr) -> Optional[Symbol]:
 def _converges(e: Expr, assumptions: Assumptions) -> bool:
     """Whether every hypergeometric series in ``e`` converges: ``p <= q``,
     or ``p = q + 1`` with ``|z| < 1`` (decided with the assumptions)."""
-    for node in e.atoms(hyper):
+    for node in e.atoms(Hyper):
+        if not isinstance(node, Hyper):
+            continue
         p, q = len(node.ap), len(node.bq)
         if p <= q:
             continue
-        if p == q + 1:
-            z = as_expr(node.argument)
-            if ask(as_boolean(Abs(z) < 1), assumptions) is True:
-                continue
+        if p == q + 1 and ask(Abs(node.argument) < 1, assumptions) is True:
+            continue
         return False
     return True
 
@@ -548,13 +587,12 @@ def _max(a: Expr, b: Expr) -> Expr:
         return b
     if b == -oo:
         return a
-    d = as_expr(a - b)
-    if d.is_nonnegative:
+    d = a - b
+    if d.is_nonnegative is True:
         return a
-    if d.is_negative:
+    if d.is_negative is True:
         return b
-    from sympy.functions.elementary.miscellaneous import Max
-    return as_expr(Max(a, b))
+    return Max(a, b)
 
 
 def _min(a: Expr, b: Expr) -> Expr:
@@ -562,13 +600,12 @@ def _min(a: Expr, b: Expr) -> Expr:
         return b
     if b == oo:
         return a
-    d = as_expr(a - b)
-    if d.is_nonpositive:
+    d = a - b
+    if d.is_nonpositive is True:
         return a
-    if d.is_positive:
+    if d.is_positive is True:
         return b
-    from sympy.functions.elementary.miscellaneous import Min
-    return as_expr(Min(a, b))
+    return Min(a, b)
 
 
 def mellin_transform_series(f: Expr, x: Symbol, s: Symbol, assumptions: Assumptions = None) -> Optional[MellinTransform]:
@@ -579,7 +616,8 @@ def mellin_transform_series(f: Expr, x: Symbol, s: Symbol, assumptions: Assumpti
     Examples
     ========
 
-    >>> from sympy import symbols, exp, cos, sqrt
+    >>> from sympy_extras.core import sqrt, symbols
+    >>> from sympy_extras.functions import exp, cos
     >>> from sympy_extras.integrals.brackets import mellin_transform_series
     >>> x, s = symbols('x s')
     >>> mellin_transform_series(x**2*exp(-3*x), x, s)
@@ -587,6 +625,8 @@ def mellin_transform_series(f: Expr, x: Symbol, s: Symbol, assumptions: Assumpti
     >>> mellin_transform_series(cos(sqrt(x)), x, s)
     MellinTransform(2**(2*s)*sqrt(pi)*gamma(s)/gamma(1/2 - s), (0, 1/2))
     """
+    if not isinstance(f, Expr):
+        raise TypeError("expected an expression of the core, got %r" % (f,))
     decomposed = _factors(f, x)
     if decomposed is None:
         return None

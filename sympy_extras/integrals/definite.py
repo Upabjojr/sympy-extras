@@ -1630,7 +1630,7 @@ class _Integrator:
         """``Integral(g, (t, 0, oo))`` as the Mellin transform at ``s = 1``
         found by Ramanujan's master theorem or the method of brackets
         (:mod:`.brackets`), for factors outside the table."""
-        from .brackets import mellin_transform_series
+        from .brackets_sympy import mellin_transform_series
         s = Dummy('s')
         found = mellin_transform_series(g, t, s)
         if found is None:
@@ -2345,7 +2345,7 @@ class _Integrator:
         """Trigonometric sums over powers of ``x`` on the half-lines and
         the real line (:mod:`.dirichlet`): the Dirichlet, Frullani and
         Borwein integrals."""
-        from .dirichlet import dirichlet_integral
+        from .dirichlet_sympy import dirichlet_integral
         if a not in (S.Zero, -oo) or b not in (S.Zero, oo) or not f.has(sin, cos, exp):
             return None
         return self._finish(dirichlet_integral(f, x, a, b, self.assumptions))

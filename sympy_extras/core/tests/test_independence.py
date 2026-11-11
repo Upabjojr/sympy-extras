@@ -1409,6 +1409,29 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_BRACKETS_DIRICHLET = r'''
+import sys
+from sympy_extras.core import Integer, Rational, I, oo, symbols
+from sympy_extras.core.symbol import Dummy
+from sympy_extras.functions import atan, exp, factorial, rf, sin
+from sympy_extras.functions.elementary.trigonometric import Cos, Sin
+from sympy_extras.integrals.brackets import SeriesCoefficient, _factors, _order_at_infinity
+from sympy_extras.integrals.dirichlet import dirichlet_integral, trigonometric_sum
+x, a = symbols('x a')
+assert str(dirichlet_integral(sin(x)**3/x**2, x, 0, oo)) == 'ConditionalValue(3*log(3)/4)'
+assert str(dirichlet_integral(sin(x)*sin(3*x)*sin(5*x)*sin(7*x)/(105*x**4), x, -oo, oo)) == 'ConditionalValue(44*pi/315)'
+assert dirichlet_integral(sin(x)**2/x, x, 0, oo) is None
+assert str(dirichlet_integral(sin(a*x)/x, x, 0, oo, a < 0)) == 'ConditionalValue(-pi/2)'
+assert trigonometric_sum(exp(2*I*x), x)[1] == {(Integer(2), Cos): Integer(1), (Integer(2), Sin): I}
+j = Dummy('j', integer=True, nonnegative=True)
+c = SeriesCoefficient((Integer(-1)/4)**j/(rf(Rational(3, 2), j)*factorial(j)), j, 2, Integer(1))
+assert str(c.phi()) == 'sqrt(pi)/(2*2**(2*_j)*gamma(_j + 3/2))'
+assert str(_factors(3*x**2*exp(-x)*sin(2*x), x)) == '(3, 2, [(exp(-_y), 1, 1), (sin(_y), 2, 1)])'
+assert (_order_at_infinity(1/(1 + x)**2, x), _order_at_infinity(atan(x), x)) == (2, 0)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 def test_native_ode_and_second_order_do_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.solvers.ode` and
     :mod:`sympy_extras.solvers.second_order` does not load SymPy, nor do
@@ -1419,5 +1442,19 @@ def test_native_ode_and_second_order_do_not_load_sympy() -> None:
     in a centralizer (SymPy's ``dsolve``, ``solve`` and ``integrate`` go
     through the faces at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_ODE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_brackets_and_dirichlet_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.brackets` and
+    :mod:`sympy_extras.integrals.dirichlet` does not load SymPy, nor do the
+    Dirichlet integrals (the product formulas, the native ``ask``,
+    ``simplify`` and ``logcombine``) and the steps of the method of
+    brackets after the formal power series (the coefficient function,
+    the factors, the decay at infinity by the native series); SymPy's
+    ``fps`` is reached through the face only when a series is needed."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_BRACKETS_DIRICHLET], capture_output=True, text=True,
+                         timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

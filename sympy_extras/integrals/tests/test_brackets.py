@@ -6,7 +6,7 @@ from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
 from sympy_extras._typing import ExprLike, as_expr
-from sympy_extras.integrals.brackets import (taylor_coefficient, ramanujan_master_theorem, method_of_brackets,
+from sympy_extras.integrals.brackets_sympy import (taylor_coefficient, ramanujan_master_theorem, method_of_brackets,
                                              mellin_transform_series)
 from sympy_extras.integrals.marichev import mellin_integrate
 from sympy_extras.integrals.mellin_sympy import mellin_transform
@@ -122,3 +122,11 @@ def test_formulas_which_fail_below_their_start_are_refused() -> None:
     # 1/(x + 1); the coefficients are checked against the Taylor expansion
     assert taylor_coefficient(1 / (x**2 + x + 1), x) is None
     assert series_integral((1 - x) / (x**2 + x + 1), x, 0, 1) is None
+
+
+def test_divergent_bracket_series_give_no_transform() -> None:
+    # the bug: SymPy's Sum.doit summed the series left by the bracket of
+    # exp(-x)/(1 + x) and the method returned E*pi/sin(pi*s); the transform
+    # is E*gamma(s)*uppergamma(1 - s, 1), 1.3433 at s = 1/2 and not 8.5397
+    found = method_of_brackets(exp(-x) / (1 + x), x, s)
+    assert found is None or abs(complex(found.transform.subs(s, S.Half).evalf(20)) - 1.34329342097686) < 1e-10

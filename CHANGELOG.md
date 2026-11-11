@@ -575,6 +575,30 @@ remove public functions. Breaking changes are listed here when they happen.
   `Product` substitutes its bound variable as SymPy does
   (`Integral(f(r), r).subs(r, g)` is `Integral(f(r), (r, g))`; the
   interop rebuilt invalid limits and raised `ValueError`).
+- The method of brackets and the Dirichlet integrals are native
+  (**breaking**): `sympy_extras.integrals.brackets` (`SeriesCoefficient`,
+  `taylor_coefficient`, `ramanujan_master_theorem`, `method_of_brackets`,
+  `mellin_transform_series`, the new `FormalSeriesTerms`) and
+  `sympy_extras.integrals.dirichlet` (`dirichlet_integral`,
+  `trigonometric_sum`, whose kinds are now the classes `Sin` and `Cos` of
+  the core) take and return core expressions, the native
+  `MellinTransform` and `ConditionalValue`, and import no SymPy: the
+  coefficient functions, the checks of the formal series against the
+  native Taylor series, the decay at infinity (native series and
+  limits), the bracket sums (the native `summation`), `gammasimp`,
+  `hyperexpand`, `powsimp`, `simplify`, `logcombine`, `TR8` and `ask`
+  are the native ones. SymPy's formal power series (`fps`, not ported)
+  and, when the decay is not found, the strip of SymPy's
+  `mellin_transform` are called through the face
+  (`brackets_sympy.fps_of_core`, `brackets_sympy.mellin_strip_of_core`).
+  The old API on SymPy objects moves to the new faces
+  `sympy_extras.integrals.brackets_sympy` and
+  `sympy_extras.integrals.dirichlet_sympy` (same results), which
+  `definite`, `series` and `periodic` now import. One result changes: the
+  method of brackets no longer returns `E*pi/sin(pi*s)` for
+  `exp(-x)/(1 + x)` (a wrong transform, from SymPy's `Sum.doit` of the
+  series left by the bracket; the native summation leaves it unevaluated
+  and the method gives up).
 - The linear systems `Y' = A Y + b` are native (**breaking**):
   `sympy_extras.solvers.linear_systems` (`CyclicReduction`,
   `cyclic_reduction`, `cyclic_vector`, `system_to_scalar`,
