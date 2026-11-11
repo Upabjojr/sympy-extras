@@ -98,6 +98,66 @@ impl<K: Domain> FractionField<K> {
 impl<K: Domain> Domain for FractionField<K> {
     type Elem = FracElement<K::Elem>;
 
+    fn to_expr(&self, a: &FracElement<K::Elem>) -> PolyResult<crate::core::Basic> {
+        let numer = self.ring.to_expr(&a.numer)?;
+        if self.ring.is_one(&a.denom) {
+            return Ok(numer);
+        }
+        let denom = self.ring.to_expr(&a.denom)?;
+        crate::core::mul::mul(&[
+            numer,
+            crate::core::power::pow(&denom, &crate::core::Basic::negative_one())?,
+        ])
+    }
+
+    /// A rational function of the variable: sums, products and integer
+    /// powers evaluated in the field, the parts free of the variable
+    /// converted by the ground domain (`from_expr`).
+    fn from_expr(&self, e: &crate::core::Basic) -> PolyResult<FracElement<K::Elem>> {
+        use crate::core::basic::Head;
+        let name: &str = &self.ring.variable;
+        let is_variable =
+            |s: &crate::core::Basic| matches!(s.head(), Head::Symbol(d) | Head::Dummy(d, _) if d.name == name);
+        if is_variable(e) {
+            return Ok(self.from_ring(&[self.ring.ground.one(), self.ring.ground.zero()]));
+        }
+        if !e.free_symbols().iter().any(is_variable) {
+            let c = self.ring.ground.from_expr(e)?;
+            return Ok(self.from_ring(&if self.ring.ground.is_zero(&c) {
+                Vec::new()
+            } else {
+                vec![c]
+            }));
+        }
+        match e.head() {
+            Head::Add => {
+                let mut total = self.zero();
+                for a in e.args() {
+                    total = self.add(&total, &self.from_expr(a)?);
+                }
+                Ok(total)
+            }
+            Head::Mul => {
+                let mut product = self.one();
+                for a in e.args() {
+                    product = self.mul(&product, &self.from_expr(a)?);
+                }
+                Ok(product)
+            }
+            Head::Pow if crate::core::expr::is_integer_class(&e.args()[1]) => {
+                let base = self.from_expr(&e.args()[0])?;
+                let n: &Int = e.args()[1].as_rational().expect("an integer").numerator();
+                let k: u64 = u64::try_from(&abs(n)).map_err(|_| value_error("a huge exponent".to_string()))?;
+                if is_negative(n) {
+                    Ok(self.pow(&self.invert(&base)?, k))
+                } else {
+                    Ok(self.pow(&base, k))
+                }
+            }
+            _ => Err(value_error(format!("{} is not a rational function of {}", e, name))),
+        }
+    }
+
     fn name(&self) -> String {
         format!("{}({})", self.ground().name(), self.ring.variable)
     }

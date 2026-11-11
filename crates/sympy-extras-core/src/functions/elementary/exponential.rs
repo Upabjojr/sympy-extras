@@ -3,11 +3,9 @@
 //! ([`Head::Function`]), [`exp`] and [`log`] evaluate (`Exp.eval`,
 //! `Log.eval`), with their facts ([`exp_facts`], [`log_facts`]).
 //!
-//! The rules which need what the Rust core does not have yet are the error
-//! `NotImplemented`: `exp(oo*z)` of a number `z` (`re`, `im`), the log of
-//! an algebraic number `r + i*I` with `r != 0` (the arctangent table) and
-//! of one which needs `expand_mul`. The accumulation bounds, `ExpPolar`,
-//! `LambertW`, the series and the derivatives are not ported.
+//! The log of an algebraic number `r + i*I` with `r != 0` needs the
+//! arctangent table and is the error `NotImplemented`. The accumulation
+//! bounds, `ExpPolar`, `LambertW` and the series are not ported.
 
 // PORTED FROM SYMPY: sympy/functions/elementary/exponential.py (SymPy 1.14),
 // through sympy_extras; BSD 3-clause license, see sympy_extras/LICENSE-SymPy.
@@ -237,9 +235,7 @@ pub fn log_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
             // no imaginary part after expand_mul either
             return Ok(None);
         }
-        if rest.preorder().iter().any(|n| n.is_add()) {
-            return Err(not_ported("expand_mul in the log of an algebraic number"));
-        }
+        let rest: Basic = crate::core::function::expand_mul(&rest, true)?;
         let (real_part, imaginary_term) = as_independent(&rest, &i, true)?;
         let imaginary_part: Option<Basic> = as_coefficient(&imaginary_term, &i)?;
         if let Some(imaginary_part) = imaginary_part {
