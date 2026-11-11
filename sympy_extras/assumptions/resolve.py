@@ -9,11 +9,11 @@ objects. The eliminations themselves are not ported and go through SymPy
 at run time (the face holds them, the functions ending in ``_of_core``):
 the cylindrical algebraic decomposition
 (:func:`sympy_extras.polys.cad.quantifier_elimination`), virtual
-substitution (:mod:`sympy_extras.polys.virtual_substitution`), Cooper's
-algorithm (:mod:`sympy_extras.solvers.integers`) and comprehensive
-Gröbner systems (:mod:`sympy_extras.polys.comprehensive`), all written on
-SymPy's polynomials. The prenex form, the assumptions and the
-simplification of the result under them are native.
+substitution (:mod:`sympy_extras.polys.virtual_substitution`) and
+comprehensive Gröbner systems (:mod:`sympy_extras.polys.comprehensive`),
+all written on SymPy's polynomials. Cooper's algorithm over the integers
+(:mod:`sympy_extras.solvers.integers`), the prenex form, the assumptions
+and the simplification of the result under them are native.
 """
 from __future__ import annotations
 
@@ -159,7 +159,7 @@ def resolve(formula: BooleanLike, domain: Optional[Set] = Reals, assumptions: As
 
 def _resolve_integers(formula: Boolean, assumptions: Assumptions) -> Boolean:
     """Quantifier elimination over the integers (Presburger arithmetic)."""
-    from .resolve_sympy import is_presburger_of_core, presburger_quantifier_elimination_of_core
+    from sympy_extras.solvers.integers import is_presburger, presburger_quantifier_elimination
     prefix, matrix = prenex(formula)
     bound = [v for _, v in prefix]
     facts = _facts(assumptions, Integers, matrix.free_symbols | set(bound))
@@ -169,7 +169,7 @@ def _resolve_integers(formula: Boolean, assumptions: Assumptions) -> Boolean:
                      and not _is_membership_in(c, Integers)])
     if not isinstance(premise, BooleanTrue):
         matrix = and_(premise, matrix)
-    if not is_presburger_of_core(matrix, integers):
+    if not is_presburger(matrix, integers):
         # Z is a subset of R: a universal statement true over the reals is
         # true over the integers, an existential one false over the reals
         # is false over them. Neither reverses, so the relaxation can only
@@ -181,7 +181,7 @@ def _resolve_integers(formula: Boolean, assumptions: Assumptions) -> Boolean:
         raise ValueError(
             "over the integers the formula must be a Boolean combination of linear "
             "relations with integer coefficients and divisibilities: %s" % (matrix,))
-    result = presburger_quantifier_elimination_of_core(matrix, prefix)
+    result = presburger_quantifier_elimination(matrix, prefix)
     if not isinstance(premise, BooleanTrue) and not isinstance(result, BooleanAtom):
         from .refine import _refine_boolean
         result = _refine_boolean(result, facts)

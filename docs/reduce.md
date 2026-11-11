@@ -146,7 +146,7 @@ False
 ```python
 >>> from sympy import Mod
 >>> from sympy_extras.assumptions.solve_sympy import solve
->>> from sympy_extras.solvers.integers import linear_diophantine_system, minimal_nonnegative_solutions, cooper
+>>> from sympy_extras.solvers.integers_sympy import linear_diophantine_system, minimal_nonnegative_solutions, cooper
 >>> linear_diophantine_system([Eq(3*x + 5*y, 7)], [x, y])
 ([14 - 5*t0, 3*t0 - 7], [t0])
 >>> minimal_nonnegative_solutions([[3, -5]], [1])
@@ -235,7 +235,7 @@ through the same roots and the signs between them.
 
 ```python
 >>> from sympy import cos, exp
->>> from sympy_extras.solvers.isolation import isolate_real_roots
+>>> from sympy_extras.solvers.isolation_sympy import isolate_real_roots
 >>> isolate_real_roots(x - cos(x), x)
 [TranscendentalRoot(x - cos(x), x, 5/8, 3/4)]
 >>> solve(Eq(x, cos(x)), x, domain=S.Reals)

@@ -1056,6 +1056,12 @@ class Expr(Basic):
         return expand(self, deep=deep, mul=mul, multinomial=multinomial, power_base=power_base,
                       power_exp=power_exp, log=log, func=func, trig=trig, complex=complex)
 
+    def _is_number_node(self) -> Optional[bool]:
+        """Whether a node of a class defined outside the core is a number
+        although its arguments are not all numbers (a root object holding
+        its polynomial in a variable); ``None`` for the structural rule."""
+        return None
+
     def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
         """The value of a numerical node of a class the core's evaluation
         does not know (``hyper``, ``meijerg``) at ``prec`` bits; ``None``

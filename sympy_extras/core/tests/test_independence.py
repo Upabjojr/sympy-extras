@@ -324,3 +324,43 @@ def test_native_limits_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_LIMITS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ISOLATION = r'''
+import sys
+from sympy_extras.core import symbols, Eq, Mod, oo
+from sympy_extras.functions import exp, cos
+from sympy_extras.sets import interval, finite_set
+from sympy_extras.solvers.isolation import TranscendentalRoot, isolate_real_roots, point_between, compare_points
+from sympy_extras.solvers.integers import (linear_diophantine_system, minimal_nonnegative_solutions, cooper,
+    is_presburger, with_sides)
+from sympy_extras.polys.roots import in_radicals, radical_form
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+assert str(isolate_real_roots(x**4 - 5*x**2 + 6, x)) == '[-sqrt(3), -sqrt(2), sqrt(2), sqrt(3)]'
+assert str(isolate_real_roots((x**2 - 2)/(x + 3), x, interval(0, 5))) == '[sqrt(2)]'
+r, s = TranscendentalRoot(exp(x) - x - 2, x, 1, 2), TranscendentalRoot(x - cos(x), x, 0, 1)
+assert str(r.refined(4)) == 'TranscendentalRoot(-x + exp(x) - 2, x, 9/8, 19/16)'
+assert str(r.evalf(20)) == '1.1461932206205825852'
+assert compare_points(s, r) == -1 and str(point_between(s, r)) == '7/8' and point_between(r, oo) == 3
+assert str(linear_diophantine_system([Eq(3*x + 5*y, 7)], [x, y])) == '([14 - 5*t0, 3*t0 - 7], [t0])'
+assert minimal_nonnegative_solutions([[3, 5]], [22]) == ([[4, 2]], [])
+assert str(cooper((x > y) & (x < y + 2), x)) == 'True' and is_presburger(Eq(Mod(x, 3), 1), {x})
+assert str(with_sides(x - y > 0)) == 'x > y'
+assert radical_form(x) is None and in_radicals(finite_set(1, 2)) == finite_set(1, 2)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_isolation_integers_roots_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.isolation`,
+    :mod:`sympy_extras.solvers.integers` and :mod:`sympy_extras.polys.roots`
+    does not load SymPy, nor do the polynomial and rational roots, the root
+    objects, the Diophantine systems and the eliminations which need no
+    simplification (SymPy's ``real_roots`` with ``CRootOf``,
+    ``continuous_domain``, ``solveset`` of the transcendental functions,
+    ``simplify_logic`` and ``roots`` over ``EX`` go through it at run
+    time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ISOLATION], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

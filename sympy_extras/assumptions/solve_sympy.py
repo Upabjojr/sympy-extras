@@ -13,16 +13,16 @@ return objects of the core): SymPy's ``solveset`` for the equations which
 are not rational and for the inequalities, ``nonlinsolve``,
 ``periodicity`` and the intersections of sets which the core does not
 evaluate (with ``Range``, ``ImageSet``, ...); the cylindrical algebraic
-decomposition (:mod:`sympy_extras.polys.cad`) and the radical forms of
-its roots (:func:`sympy_extras.polys.roots.in_radicals`), the triangular
+decomposition (:mod:`sympy_extras.polys.cad`), the triangular
 decompositions (:func:`sympy_extras.polys.regularchains.triangularize`,
 :func:`sympy_extras.solvers.parametric.parametric_cases`), all written on
 SymPy's polynomials; the transcendental equations
-(:func:`sympy_extras.solvers.transcendental.solve_transcendental`) and
-the isolation of real roots (:mod:`sympy_extras.solvers.isolation`), on
-SymPy's ``solveset``; the linear Diophantine systems
-(:mod:`sympy_extras.solvers.integers`) and
-:func:`sympy_extras._numeric.reliable_value`.
+(:func:`sympy_extras.solvers.transcendental.solve_transcendental`), on
+SymPy's ``solveset``; and :func:`sympy_extras._numeric.reliable_value`.
+The radical forms of the roots (:mod:`sympy_extras.polys.roots`), the
+isolation of real roots (:mod:`sympy_extras.solvers.isolation`) and the
+linear Diophantine systems (:mod:`sympy_extras.solvers.integers`) are
+native.
 """
 from __future__ import annotations
 
@@ -50,11 +50,9 @@ from .ask_sympy import Assumptions, _sympy_symbol, core_assumptions, core_boolea
 from .intervals_sympy import core_expr, core_symbol, sympy_expr, sympy_set
 
 __all__ = ['solve', 'Statement', 'evaluated_set_of_core', 'solveset_of_core', 'reliable_value_of_core',
-    'solution_set_of_core', 'in_radicals_of_core', 'solve_transcendental_of_core', 'periodicity_of_core',
-    'isolate_real_roots_of_core', 'point_between_of_core', 'compare_points_of_core', 'nonlinsolve_of_core',
+    'solution_set_of_core', 'solve_transcendental_of_core', 'periodicity_of_core', 'nonlinsolve_of_core',
     'cylindrical_set_of_core', 'cylindrical_formula_of_core', 'cylindrical_cases_of_core',
-    'triangularize_of_core', 'linear_system_of_core', 'linear_diophantine_system_of_core',
-    'minimal_nonnegative_solutions_of_core', 'parametric_cases_of_core']
+    'triangularize_of_core', 'parametric_cases_of_core']
 
 #: an equation or inequality to solve: an expression (equated to zero), a
 #: relation or a Boolean combination of relations
@@ -107,11 +105,6 @@ def solution_set_of_core(formula: CoreBoolean, x: CoreSymbol) -> CoreSet:
     return _core_set(solution_set(sympy_boolean(formula), _sympy_symbol(x)))
 
 
-def in_radicals_of_core(s: CoreSet) -> CoreSet:
-    """:func:`sympy_extras.polys.roots.in_radicals`: the roots of
-    polynomials written in radicals when that is reasonable."""
-    from sympy_extras.polys.roots import in_radicals
-    return _core_set(in_radicals(sympy_set(s)))
 
 
 def solve_transcendental_of_core(formula: CoreBoolean, x: CoreSymbol,
@@ -139,24 +132,10 @@ def periodicity_of_core(f: CoreExpr, x: CoreSymbol) -> Optional[CoreExpr]:
     return core_expr(value) if isinstance(value, Expr) else None
 
 
-def isolate_real_roots_of_core(f: CoreExpr, x: CoreSymbol, region: CoreSet) -> Optional[list[CoreExpr]]:
-    """:func:`sympy_extras.solvers.isolation.isolate_real_roots`."""
-    from sympy_extras.solvers.isolation import isolate_real_roots
-    roots = isolate_real_roots(sympy_expr(f), _sympy_symbol(x), sympy_set(region))
-    return None if roots is None else [core_expr(r) for r in roots]
 
 
-def point_between_of_core(p: CoreExpr, q: CoreExpr) -> Optional[CoreExpr]:
-    """:func:`sympy_extras.solvers.isolation.point_between`."""
-    from sympy_extras.solvers.isolation import point_between
-    found = point_between(sympy_expr(p), sympy_expr(q))
-    return None if found is None else core_expr(found)
 
 
-def compare_points_of_core(p: CoreExpr, q: CoreExpr) -> Optional[int]:
-    """:func:`sympy_extras.solvers.isolation.compare_points`."""
-    from sympy_extras.solvers.isolation import compare_points
-    return compare_points(sympy_expr(p), sympy_expr(q))
 
 
 def nonlinsolve_of_core(equations: list[CoreExpr], symbols: list[CoreSymbol]) -> Optional[CoreSet]:
@@ -219,29 +198,10 @@ def triangularize_of_core(equations: list[CoreExpr], symbols: list[CoreSymbol]
     return result
 
 
-def linear_system_of_core(equations: Sequence[CoreExpr], symbols: Sequence[CoreSymbol]
-                          ) -> Optional[tuple[list[list[int]], list[int]]]:
-    """``A``, ``b`` with the equations ``A x = b`` with integer
-    coefficients (``None`` when the system is not of this kind)."""
-    from sympy_extras.solvers.integers import _linear_system
-    return _linear_system([sympy_expr(e) for e in equations], _core_symbols(list(symbols)))
 
 
-def linear_diophantine_system_of_core(equations: Sequence[CoreExpr], symbols: Sequence[CoreSymbol]
-                                      ) -> Optional[tuple[list[CoreExpr], list[CoreSymbol]]]:
-    """:func:`sympy_extras.solvers.integers.linear_diophantine_system`."""
-    from sympy_extras.solvers.integers import linear_diophantine_system
-    found = linear_diophantine_system([sympy_expr(e) for e in equations], _core_symbols(list(symbols)))
-    if found is None:
-        return None
-    values, parameters = found
-    return [core_expr(v) for v in values], [core_symbol(p) for p in parameters]
 
 
-def minimal_nonnegative_solutions_of_core(A: list[list[int]], b: list[int]) -> tuple[list[list[int]], list[list[int]]]:
-    """:func:`sympy_extras.solvers.integers.minimal_nonnegative_solutions`."""
-    from sympy_extras.solvers.integers import minimal_nonnegative_solutions
-    return minimal_nonnegative_solutions(A, b)
 
 
 def parametric_cases_of_core(equations: list[CoreExpr], unknowns: list[CoreSymbol], parameters: list[CoreSymbol],

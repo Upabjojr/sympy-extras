@@ -539,6 +539,45 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.solvers.isolation`, `sympy_extras.solvers.integers` and
+  `sympy_extras.polys.roots` are native (**breaking**: core expressions,
+  symbols, Booleans and sets in and out; they import no SymPy). The
+  isolation runs on the native `analysis` and `intervals` (signs, limits,
+  zeros of rational functions), the native `Poly`, `preprocess_roots` and
+  Sturm counts (the real roots of a polynomial in radicals as SymPy's
+  `real_roots` writes them); its `TranscendentalRoot` is a node of the core
+  (immutable, `refined(k)` instead of `refine(k)`, `lower_fraction`,
+  `upper_fraction`, `approximation(prec)`; a number for `is_number`
+  through the new hook `Expr._is_number_node`). The Diophantine systems
+  use the native `Poly`; Cooper's algorithm the core's Booleans with a
+  port of SymPy's `to_nnf` and a native `with_sides`. The radical forms
+  use the native `polyroots` and recognise SymPy's `CRootOf` wrapped in
+  the core. What is not ported is called at run time through the new
+  faces (`*_of_core`): `isolation_sympy.real_roots_of_core` (SymPy's
+  `real_roots`, for the factors needing `CRootOf`),
+  `isolation_sympy.continuous_on_of_core` (`continuous_domain` of a
+  function which is not rational), `integers_sympy.simplify_logic_of_core`
+  and `roots_sympy.roots_of_core` (SymPy's `roots` over `EX`). The faces
+  `isolation_sympy`, `integers_sympy` and `roots_sympy` keep the old API on
+  SymPy objects (`isolation_sympy.TranscendentalRoot` is the SymPy
+  expression, which `interop` converts to and from the native node);
+  **import them instead of the old modules**: `from
+  sympy_extras.solvers.isolation_sympy import isolate_real_roots`. The
+  native `solve` calls the three modules directly and the native `resolve`
+  calls the native `is_presburger` and `presburger_quantifier_elimination`:
+  `assumptions.solve_sympy.isolate_real_roots_of_core`,
+  `point_between_of_core`, `compare_points_of_core`,
+  `linear_system_of_core`, `linear_diophantine_system_of_core`,
+  `minimal_nonnegative_solutions_of_core`, `in_radicals_of_core`,
+  `assumptions.resolve_sympy.is_presburger_of_core` and
+  `presburger_quantifier_elimination_of_core` are removed. The CAD,
+  `regularchains.solutions`, `solvers.transcendental`, the tests, docs and
+  benchmarks use the faces. The same results as before through the faces
+  on 134 calls and on the calls of the doctests and of the tests of the
+  three modules and of `solve`, and the same results natively (converted
+  by `interop`) on the 134 calls; the forms of Cooper's results which
+  differ come from SymPy's `simplify_logic`, which depends on the hash
+  seed.
 - `sympy_extras.simplify.structure` (the structure theorem: `ElementaryTower`,
   `canonical_form`, `is_zero`, `equal`) is native (**breaking**: core
   expressions and Booleans in and out; it imports no SymPy). The number

@@ -11,10 +11,8 @@ the native ``resolve`` at run time (the functions ending in ``_of_core``,
 which take and return objects of the core): the cylindrical algebraic
 decomposition (:func:`sympy_extras.polys.cad.quantifier_elimination`),
 virtual substitution (:func:`~sympy_extras.polys.virtual_substitution.virtual_substitution_elimination`,
-:func:`~sympy_extras.polys.virtual_substitution.with_sides`), Cooper's
-algorithm (:func:`~sympy_extras.solvers.integers.is_presburger`,
-:func:`~sympy_extras.solvers.integers.presburger_quantifier_elimination`)
-and comprehensive Gröbner systems
+:func:`~sympy_extras.polys.virtual_substitution.with_sides`) and
+comprehensive Gröbner systems
 (:func:`~sympy_extras.polys.comprehensive.complex_quantifier_elimination`,
 :func:`~sympy_extras.polys.comprehensive.reduce_complex`).
 """
@@ -35,7 +33,7 @@ from .ask_sympy import (Assumptions, _sympy_symbol, core_assumptions, core_boole
 from .quantifiers import Prefix
 
 __all__ = ['resolve', 'quantifier_elimination_of_core', 'virtual_substitution_elimination_of_core',
-    'with_sides_of_core', 'is_presburger_of_core', 'presburger_quantifier_elimination_of_core',
+    'with_sides_of_core',
     'complex_quantifier_elimination_of_core', 'reduce_complex_of_core']
 
 
@@ -61,18 +59,6 @@ def with_sides_of_core(formula: CoreBoolean) -> CoreBoolean:
     """:func:`sympy_extras.polys.virtual_substitution.with_sides`."""
     from sympy_extras.polys.virtual_substitution import with_sides
     return core_boolean(with_sides(sympy_boolean(formula)))
-
-
-def is_presburger_of_core(formula: CoreBoolean, integers: set[CoreSymbol]) -> bool:
-    """:func:`sympy_extras.solvers.integers.is_presburger`."""
-    from sympy_extras.solvers.integers import is_presburger
-    return is_presburger(sympy_boolean(formula), {_sympy_symbol(s) for s in integers})
-
-
-def presburger_quantifier_elimination_of_core(formula: CoreBoolean, prefix: Prefix) -> CoreBoolean:
-    """:func:`sympy_extras.solvers.integers.presburger_quantifier_elimination`."""
-    from sympy_extras.solvers.integers import presburger_quantifier_elimination
-    return core_boolean(presburger_quantifier_elimination(sympy_boolean(formula), sympy_prefix(prefix)))
 
 
 def complex_quantifier_elimination_of_core(formula: CoreBoolean, prefix: Prefix) -> CoreBoolean:

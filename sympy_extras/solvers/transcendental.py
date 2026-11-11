@@ -55,7 +55,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import Truth, as_boolean, as_expr, as_set
 from sympy_extras.settings import settings
 from sympy_extras.polys.cad import solution_set
-from sympy_extras.polys.roots import in_radicals
+from sympy_extras.polys.roots_sympy import in_radicals
 
 __all__ = ['solve_transcendental', 'polynomialize', 'Reduction', 'Solver', 'Decider']
 

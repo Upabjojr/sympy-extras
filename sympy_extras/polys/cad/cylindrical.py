@@ -70,7 +70,7 @@ from sympy.sets.sets import FiniteSet, Interval, ProductSet, Set, Union as SetUn
 
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import QuantifierSpec, as_expr, as_symbol
-from sympy_extras.polys.roots import radical_form
+from sympy_extras.polys.roots_sympy import radical_form
 
 from .lifting import CAD, CADCell
 from .qe import CellTruth, _truth_values
