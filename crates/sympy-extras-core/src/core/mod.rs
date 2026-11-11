@@ -32,6 +32,7 @@ pub mod assumptions;
 pub mod basic;
 pub mod evalf;
 pub mod expr;
+pub mod exprtools;
 pub mod function;
 pub mod mul;
 pub mod numbers;

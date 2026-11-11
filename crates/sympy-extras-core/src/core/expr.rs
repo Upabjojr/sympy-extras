@@ -111,6 +111,38 @@ pub fn as_coeff_add(e: &Basic) -> (Basic, Basic) {
     (number, super::add::raw_add(rest))
 }
 
+/// `as_coeff_mul` (rational coefficients only): the coefficient and the
+/// tuple of the other factors.
+pub fn as_coeff_mul_tuple(e: &Basic) -> (Basic, Vec<Basic>) {
+    if e.is_number_class() {
+        if e.as_rational().is_some() {
+            return (e.clone(), Vec::new());
+        }
+        if is_true(e, Predicate::negative) {
+            return (
+                Basic::negative_one(),
+                vec![super::mul::neg(e).expect("the negation of a number")],
+            );
+        }
+        return (Basic::one(), vec![e.clone()]);
+    }
+    if e.is_mul() {
+        let first: &Basic = &e.args()[0];
+        if first.is_number_class() {
+            if first.as_rational().is_some() {
+                return (first.clone(), e.args()[1..].to_vec());
+            }
+            if is_true(first, Predicate::extended_negative) {
+                let mut rest: Vec<Basic> = vec![super::mul::neg(first).expect("the negation of a number")];
+                rest.extend(e.args()[1..].iter().cloned());
+                return (Basic::negative_one(), rest);
+            }
+        }
+        return (Basic::one(), e.args().to_vec());
+    }
+    (Basic::one(), vec![e.clone()])
+}
+
 /// The base and the exponent (`as_base_exp`): `(1/q)**e` is `q**(-e)`, a
 /// product of powers with one integer exponent is `(product, exponent)`,
 /// `I` is `(-1, 1/2)`, anything else is `(self, 1)`.

@@ -520,6 +520,13 @@ pub fn neg(a: &Basic) -> PolyResult<Basic> {
 /// `coeff*factors` without distributing a number over a sum (`2*(x + y)`),
 /// the number put first in a product (SymPy's `_keep_coeff`).
 pub fn keep_coeff(coeff: &Basic, factors: &Basic) -> PolyResult<Basic> {
+    keep_coeff_with(coeff, factors, true, false)
+}
+
+/// `_keep_coeff` with its options: with `clear=False` a fraction is
+/// distributed over a sum when that gives a term an integer coefficient;
+/// with `sign` a coefficient `-1` stays in front of a sum.
+pub fn keep_coeff_with(coeff: &Basic, factors: &Basic, clear: bool, sign: bool) -> PolyResult<Basic> {
     let (mut coeff, mut factors) = (coeff.clone(), factors.clone());
     if !coeff.is_number_node() {
         if factors.is_number_node() {
@@ -534,10 +541,30 @@ pub fn keep_coeff(coeff: &Basic, factors: &Basic) -> PolyResult<Basic> {
     if is_rational_value(&coeff, 1) {
         return Ok(factors);
     }
-    if is_rational_value(&coeff, -1) {
+    if is_rational_value(&coeff, -1) && !sign {
         return mul(&[Basic::negative_one(), factors]);
     }
     if factors.is_add() {
+        if !clear && coeff.as_rational().is_some_and(|v| !v.is_int()) {
+            let mut scaled: Vec<(Basic, Basic)> = Vec::new();
+            for t in factors.args() {
+                let (c, m) = as_coeff_mul(t);
+                scaled.push((keep_coeff(&c, &coeff)?, m));
+            }
+            if scaled.iter().any(|(c, _)| super::expr::is_integer_class(c)) {
+                let terms: Vec<Basic> = scaled
+                    .into_iter()
+                    .map(|(c, m)| {
+                        if is_rational_value(&c, 1) {
+                            m
+                        } else {
+                            Basic::new(Head::Mul, vec![c, m])
+                        }
+                    })
+                    .collect();
+                return Ok(Basic::new(Head::Add, terms));
+            }
+        }
         return Ok(Basic::new(Head::Mul, vec![coeff, factors]));
     }
     if factors.is_mul() {

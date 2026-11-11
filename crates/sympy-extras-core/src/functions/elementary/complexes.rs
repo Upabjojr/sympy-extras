@@ -505,39 +505,10 @@ pub fn im_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
 // ---------------------------------------------------------------------
 // sign
 
-/// `as_coeff_mul` (rational coefficients only): the coefficient and the
-/// tuple of the other factors.
-fn as_coeff_mul_tuple(e: &Basic) -> (Basic, Vec<Basic>) {
-    if e.is_number_class() {
-        if e.as_rational().is_some() {
-            return (e.clone(), Vec::new());
-        }
-        if is_true(e, negative) {
-            return (minus_one(), vec![neg(e).expect("the negation of a number")]);
-        }
-        return (Basic::one(), vec![e.clone()]);
-    }
-    if e.is_mul() {
-        let first: &Basic = &e.args()[0];
-        if first.is_number_class() {
-            if first.as_rational().is_some() {
-                return (first.clone(), e.args()[1..].to_vec());
-            }
-            if is_true(first, extended_negative) {
-                let mut rest: Vec<Basic> = vec![neg(first).expect("the negation of a number")];
-                rest.extend(e.args()[1..].iter().cloned());
-                return (minus_one(), rest);
-            }
-        }
-        return (Basic::one(), e.args().to_vec());
-    }
-    (Basic::one(), vec![e.clone()])
-}
-
 /// `sign.eval`.
 pub fn sign_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
     if arg.is_mul() {
-        let (c, factors) = as_coeff_mul_tuple(arg);
+        let (c, factors) = crate::core::expr::as_coeff_mul_tuple(arg);
         let mut unknown: Vec<Basic> = Vec::new();
         let mut s: Basic = sign(&c)?;
         for a in &factors {

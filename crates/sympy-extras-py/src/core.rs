@@ -528,6 +528,53 @@ fn expr_from_dict<'py>(
 }
 
 #[pyfunction]
+#[pyo3(signature = (e, isprimitive=false, clear=true, fraction=true))]
+fn gcd_terms<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    isprimitive: bool,
+    clear: bool,
+    fraction: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let value = rust_core::exprtools::gcd_terms(&from_python(e)?, isprimitive, clear, fraction);
+    to_python(py, &value.map_err(crate::convert::err)?)
+}
+
+#[pyfunction]
+#[pyo3(signature = (e, radical=false, clear=false, fraction=false, sign=true))]
+fn factor_terms<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    radical: bool,
+    clear: bool,
+    fraction: bool,
+    sign: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let value = rust_core::exprtools::factor_terms(&from_python(e)?, radical, clear, fraction, sign);
+    to_python(py, &value.map_err(crate::convert::err)?)
+}
+
+#[pyfunction]
+#[pyo3(signature = (e, radical=false, clear=true))]
+fn as_content_primitive<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    radical: bool,
+    clear: bool,
+) -> PyResult<Bound<'py, PyTuple>> {
+    pair(
+        py,
+        rust_core::exprtools::as_content_primitive(&from_python(e)?, radical, clear).map_err(crate::convert::err),
+    )
+}
+
+#[pyfunction]
+fn decompose_power<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<(Bound<'py, PyAny>, i64)> {
+    let (b, n) = rust_core::exprtools::decompose_power(&from_python(e)?).map_err(crate::convert::err)?;
+    Ok((to_python(py, &b)?, n))
+}
+
+#[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
         py,
@@ -556,6 +603,10 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(log, m)?)?;
     m.add_function(wrap_pyfunction!(as_numer_denom, m)?)?;
     m.add_function(wrap_pyfunction!(dict_from_expr, m)?)?;
+    m.add_function(wrap_pyfunction!(gcd_terms, m)?)?;
+    m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
+    m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
+    m.add_function(wrap_pyfunction!(decompose_power, m)?)?;
     m.add_function(wrap_pyfunction!(expr_from_dict, m)?)?;
     m.add_function(wrap_pyfunction!(re, m)?)?;
     m.add_function(wrap_pyfunction!(im, m)?)?;
