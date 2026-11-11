@@ -16,8 +16,9 @@ from sympy_extras.functions import sin, sqrt
 from sympy_extras.interop import sympy_expr, to_sympy
 from sympy_extras.matrices import ExprMatrix
 from sympy_extras.matrices.eigen import jordan_chains
-from sympy_extras.matrices.normalforms import (companion_matrix, elementary_divisors, frobenius_form, invariant_factors,
-                                               is_similar, matrix_minimal_polynomial, smith_normal_form)
+from sympy_extras.matrices.normalforms import (companion_matrix, elementary_divisors, frobenius_form, hermite_normal_form,
+                                               invariant_factors, is_similar, is_unimodular, matrix_minimal_polynomial,
+                                               polynomial_matrix_rank, smith_normal_form)
 
 x, a, b = Symbol('x'), Symbol('a'), Symbol('b')
 sx = sympy.Symbol('x')
@@ -206,3 +207,56 @@ def test_companion_matrix() -> None:
     assert invariant_factors(C, x) == [x**3 - 2*x + 3]
     with pytest.raises(ValueError):
         companion_matrix(Integer(3), x)
+
+
+def test_hermite_form_random() -> None:
+    rnd = random.Random(36)
+    for trial in range(30):
+        m, n = rnd.randint(1, 3), rnd.randint(1, 3)
+        M = ExprMatrix(m, n, [_random_polynomial(rnd, trial % 3 == 2) for _ in range(m*n)])
+        H, U = hermite_normal_form(M, x)
+        S, SH, SU = _sympy_matrix(M), _sympy_matrix(H), _sympy_matrix(U)
+        assert _same(SU*S, SH)
+        determinant = sympy.cancel(SU.det(method='berkowitz'))
+        assert determinant != 0 and sx not in determinant.free_symbols
+        # row echelon form, monic pivots, lower degrees above the pivots
+        pivots = [next((j for j in range(n) if SH[i, j] != 0), n) for i in range(m)]
+        assert all(p < q or p == q == n for p, q in zip(pivots, pivots[1:]))
+        rank = sum(1 for p in pivots if p < n)
+        assert rank == S.rank() == polynomial_matrix_rank(M, x)
+        for i in range(rank):
+            pivot = sympy.Poly(SH[i, pivots[i]], sx)
+            assert pivot.LC() == 1
+            for above in range(i):
+                entry = SH[above, pivots[i]]
+                assert entry == 0 or sympy.degree(entry, sx) < pivot.degree()
+        # a canonical form of the row module: unchanged by unimodular row operations
+        V = sympy.eye(m)
+        for _ in range(3):
+            i, j = rnd.randrange(m), rnd.randrange(m)
+            if i != j:
+                V = V.elementary_row_op('n->n+km', row=i, k=sx + rnd.randint(-1, 1), row2=j)
+        mixed = (V*S).applyfunc(sympy.expand)
+        other = ExprMatrix(m, n, [_from_sympy(e) for e in mixed])
+        assert hermite_normal_form(other, x)[0] == H
+
+
+def _from_sympy(e: sympy.Expr) -> Expr:
+    """A polynomial in x and a with rational coefficients, rebuilt on the core."""
+    polynomial = sympy.Poly(e, sx, sympy.Symbol('a'))
+    total: Expr = Integer(0)
+    for (i, j), c in polynomial.terms():
+        total = total + Rational(int(c.p), int(c.q))*x**i*a**j
+    return total
+
+
+def test_hermite_form_known_and_unimodular() -> None:
+    # Euclid on a column: gcd(x**2 - 1, x**2 - 2 x + 1) = x - 1
+    H, U = hermite_normal_form(ExprMatrix.from_rows([[x**2 - 1], [x**2 - 2*x + 1]]), x)
+    assert H == ExprMatrix.from_rows([[x - 1], [0]])
+    assert is_unimodular(ExprMatrix.from_rows([[1, x], [0, 1]]), x) and is_unimodular(ExprMatrix.from_rows([[x, x + 1], [x - 1, x]]), x)
+    assert not is_unimodular(ExprMatrix.from_rows([[x, 0], [0, 1]]), x) and not is_unimodular(ExprMatrix.zeros(2, 2), x)
+    assert is_unimodular(U, x)
+    assert hermite_normal_form(ExprMatrix.zeros(2, 3), x) == (ExprMatrix.zeros(2, 3), ExprMatrix.eye(2))
+    with pytest.raises(ValueError):
+        hermite_normal_form(ExprMatrix.from_rows([[1/x]]), x)

@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `matrices.normalforms`: `hermite_normal_form` of matrices of
+  polynomials over `K[x]` (`U M = H`, a canonical form of the row
+  module), `polynomial_matrix_rank`, `is_unimodular`.
 - `sympy_extras.matrices.pencils`: the generalised eigenvalue problem
   `A v = x B v`: `pencil_polynomial`, `generalized_eigenspaces` (per
   irreducible factor, `B` never inverted), `generalized_eigenvalues`
