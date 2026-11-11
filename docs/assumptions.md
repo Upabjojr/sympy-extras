@@ -37,9 +37,11 @@ The examples below use SymPy objects, through the modules ending in
 `sympy_extras.core` and import no SymPy: they take and return its
 expressions, Booleans and sets. They call SymPy at run time, through the
 faces, only for what is not ported: the cylindrical algebraic
-decomposition, virtual substitution, Cooper's algorithm, comprehensive
-Gröbner systems, the structure theorem's proofs, SymPy's `simplify` of
-Boolean formulas, and the predicates the core's `ask` cannot answer.
+decomposition, virtual substitution, Cooper's algorithm, the structure
+theorem's proofs, SymPy's `simplify` of Boolean formulas, and the
+predicates the core's `ask` cannot answer (the comprehensive Gröbner
+systems of `resolve` over the complex numbers and Hermite's count of
+`satisfiable` are native).
 
 ## Conventions
 

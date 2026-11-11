@@ -34,13 +34,13 @@ go through SymPy at run time (the face holds them, the functions ending
 in ``_of_core``): SymPy's SAT solver
 (:func:`sympy.logic.inference.satisfiable`) on the propositional
 abstraction, the consistency of predicates with SymPy's known facts
-(:func:`~sympy_extras.assumptions.facts_sympy.predicates_consistent`),
+(:func:`~sympy_extras.assumptions.facts_sympy.predicates_consistent`)
+and the floor and the comparison of SymPy's ``CRootOf`` (not ported).
+The sample points and the solution sets of the cylindrical algebraic
+decomposition are native (:mod:`sympy_extras.polys.cad.qe`), and so are
+the floor and the comparison of the real algebraic numbers they give and
 the count of real solutions by Hermite's form
-(:mod:`sympy_extras.polys.hermite`) and the floor and the comparison of
-SymPy's ``CRootOf`` (not ported). The sample points and the solution sets
-of the cylindrical algebraic decomposition are native
-(:mod:`sympy_extras.polys.cad.qe`), and so are the floor and the
-comparison of the real algebraic numbers they give.
+(:mod:`sympy_extras.polys.hermite`).
 """
 from __future__ import annotations
 
@@ -226,8 +226,8 @@ def _without_real_solution(formula: Boolean, gens: Sequence[Symbol]) -> bool:
     the decomposition decides."""
     if len(gens) < 2:
         return False
-    from .sat_sympy import decide_zero_dimensional_of_core
-    decided = attempt(lambda: decide_zero_dimensional_of_core(formula, list(gens)), _HERMITE_TIME_LIMIT)
+    from sympy_extras.polys.hermite import decide_zero_dimensional
+    decided = attempt(lambda: decide_zero_dimensional(formula, list(gens)), _HERMITE_TIME_LIMIT, native=True)
     return decided is False
 
 

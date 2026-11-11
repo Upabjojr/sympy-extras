@@ -573,6 +573,28 @@ remove public functions. Breaking changes are listed here when they happen.
   polynomials by Horner's scheme and its multivariate ones with the
   powers computed once (it computed each power of the evaluation point
   again: 2.4 s of the 8 s of the decomposition of a parametric quartic).
+- Hermite's root counting and the comprehensive Gröbner systems are native
+  (**breaking**): `sympy_extras.polys.hermite` (`count_real_solutions`,
+  `count_complex_solutions`, `tarski_query`, `real_sign_counts`,
+  `sign_determination`, `hermite_matrix`, `decide_zero_dimensional`) and
+  `sympy_extras.polys.comprehensive` (`comprehensive_groebner_system`,
+  `exists_complex`, `complex_quantifier_elimination`, `reduce_complex`,
+  `Branch`) take and return the expressions, symbols and formulas of the
+  core and the native ideals of `sympy_extras.polys.ideals` over `QQ`,
+  compute with Python fractions and F4, and import no SymPy.
+  `hermite_matrix` gives an `ExprMatrix`, a native `Branch` holds tuples,
+  and a system with coefficients that are not rational raises
+  `ValueError` (the face keeps `NotImplementedError`). The old SymPy API
+  is in the new faces `hermite_sympy` (also the quotient algebra with
+  vectors over SymPy's `QQ` on which `rur` builds) and
+  `comprehensive_sympy`, with the same results on every call of the tests,
+  the doctests and the assumptions; **import them instead of `hermite` and
+  `comprehensive`** for SymPy objects. The native `satisfiable` (the proof
+  that a zero-dimensional system has no real solution, now under a native
+  time limit) and `resolve(..., domain=Complexes)` call them directly: the
+  functions `decide_zero_dimensional_of_core` (`sat_sympy`),
+  `complex_quantifier_elimination_of_core` and `reduce_complex_of_core`
+  (`resolve_sympy`) are removed.
 - The top layer of the cylindrical algebraic decomposition is native
   (**breaking**): `sympy_extras.polys.cad.qe` (`quantifier_elimination`,
   `decide`, `sample_points`, `solution_set`, `truth_tables`) and

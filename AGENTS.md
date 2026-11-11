@@ -170,11 +170,10 @@ sympy_extras/
         refine.py            refine(), simplify(): the core's refine and simplify plus CAD-decided handlers (native)
         refine_sympy.py      the SymPy face of refine (_Refiner too), SymPy's simplify of Booleans, the proofs
         resolve.py           resolve(): quantifier elimination over R, Z, C (native, with the native CAD, virtual
-                             substitution and Cooper; comprehensive Groebner systems through resolve_sympy)
-        resolve_sympy.py     the SymPy face of resolve, and the eliminations (comprehensive Groebner systems)
-                             which stay on SymPy
-        sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check (native, with the native CAD;
-                             SymPy's SAT solver, predicates_consistent and Hermite's count through sat_sympy)
+                             substitution, Cooper and comprehensive Groebner systems)
+        resolve_sympy.py     the SymPy face of resolve
+        sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check (native, with the native CAD
+                             and Hermite's count; SymPy's SAT solver and predicates_consistent through sat_sympy)
         sat_sympy.py         the SymPy face of sat, and the steps which stay on SymPy (the *_of_core functions)
         solve.py             solve(): Solve under assumptions (native, with the native CAD, regular chains and parametric cases;
                              solveset, nonlinsolve, transcendental equations through solve_sympy)
@@ -322,7 +321,12 @@ sympy_extras/
         ideals_sympy.py      the SymPy face of ideals (the old API on SymPy objects, rur), and the steps which stay on SymPy
                              (the *_of_core functions)
         bigatti.py           hilbert_numerator_coefficients, minimal_generators: Bigatti's algorithm on exponent tuples (no SymPy)
-        hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination
+        hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination,
+                             decide_zero_dimensional (native)
+        hermite_sympy.py     the SymPy face of hermite, and the quotient algebra over SymPy's QQ that rur builds on
+        comprehensive.py     comprehensive Gröbner systems (Kapur-Sun-Wang), exists_complex,
+                             complex_quantifier_elimination, reduce_complex: reduction over C (native)
+        comprehensive_sympy.py the SymPy face of comprehensive
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
         f4.py                f4 on rings.PolyRing (typed, no SymPy): reduced Gröbner bases by Faugère's F4 (the default direct algorithm); row_echelon
         zerodim.py           solve_zero_dimensional: exact solutions (Algebraic coordinates) of zero-dimensional systems over QQ by the shape lemma

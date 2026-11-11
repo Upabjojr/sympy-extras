@@ -15,9 +15,8 @@ abstraction, the consistency of predicates with SymPy's known facts
 (:func:`sympy_extras.assumptions.facts_sympy.predicates_consistent`), the
 sample points and the solution sets of the cylindrical algebraic
 decomposition (:func:`sympy_extras.polys.cad.sample_points`,
-:func:`sympy_extras.polys.cad.solution_set`), the count of real solutions
-of :func:`sympy_extras.polys.hermite.decide_zero_dimensional`, and the
-floor and the comparison of real algebraic numbers
+:func:`sympy_extras.polys.cad.solution_set`), and the floor and the
+comparison of real algebraic numbers
 (:mod:`sympy_extras.polys.cad.samplepoints_sympy`, on SymPy's ``CRootOf``).
 """
 from __future__ import annotations
@@ -35,7 +34,6 @@ from sympy_extras._typing import Truth, as_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
 
 from . import sat as native
@@ -44,8 +42,7 @@ from .ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumption
 from .intervals_sympy import sympy_expr
 
 __all__ = ['satisfiable', 'tautology', 'find_instance', 'Model', 'Witness', 'propositional_models_of_core',
-    'predicates_consistent_of_core',
-    'decide_zero_dimensional_of_core', 'floor_of_core', 'compare_real_of_core']
+    'predicates_consistent_of_core', 'floor_of_core', 'compare_real_of_core']
 
 
 #: a model: Boolean variables to truth values, real variables to values
@@ -75,12 +72,6 @@ def predicates_consistent_of_core(predicates: CoreBoolean) -> bool:
     """:func:`sympy_extras.assumptions.facts_sympy.predicates_consistent`."""
     from .facts_sympy import predicates_consistent
     return predicates_consistent(sympy_boolean(predicates))
-
-
-def decide_zero_dimensional_of_core(formula: CoreBoolean, gens: list[CoreSymbol]) -> Truth:
-    """:func:`sympy_extras.polys.hermite.decide_zero_dimensional`."""
-    from sympy_extras.polys.hermite import decide_zero_dimensional
-    return decide_zero_dimensional(sympy_boolean(formula), [_sympy_symbol(g) for g in gens])
 
 
 def floor_of_core(a: CoreExpr) -> int:

@@ -548,6 +548,37 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_HERMITE_COMPREHENSIVE = r'''
+import sys
+from sympy_extras.core import symbols, Eq, Ne
+from sympy_extras.polys.hermite import count_real_solutions, count_complex_solutions, sign_determination, \
+    real_sign_counts, tarski_query, hermite_matrix, decide_zero_dimensional
+from sympy_extras.polys.comprehensive import comprehensive_groebner_system, exists_complex, \
+    complex_quantifier_elimination, reduce_complex
+assert 'sympy' not in sys.modules
+a, b, x, y = symbols('a b x y')
+assert count_real_solutions([x**2 + y**2 - 1, x - y], x, y) == 2 and count_complex_solutions([x**2 + 1, (y - 1)**2], x, y) == 2
+assert str(sign_determination([x**2 - 1, y**2 - 1], [x + y, x], x, y)) == '{(-1, -1): 1, (0, -1): 1, (0, 1): 1, (1, 1): 1}'
+assert str(real_sign_counts([x**3 - x, y - x**2], x - y, x, y)) == 'SignCounts(zero=2, positive=0, negative=1)'
+assert tarski_query([x**3 - x, y - x**2], 2*y - 1, x, y) == 1 and str(hermite_matrix([x**2 - 2], x, x)) == 'ExprMatrix([[0, 4], [4, 0]])'
+assert decide_zero_dimensional(Eq(x**2 + y**2, 4) & Eq(x*y, 1) & (x > y), [x, y]) is True
+assert [repr(r) for r in comprehensive_groebner_system([a*x - b], [x], [a, b])] == \
+    ['Branch([], [a], [a*x - b])', 'Branch([a], [b], [1])', 'Branch([a, b], [], [])']
+assert str(exists_complex([a*x - b], [], [x])) == 'Ne(a, 0) | (Eq(a, 0) & Eq(b, 0))'
+assert str(complex_quantifier_elimination(Eq(x**2 + a*x + b, 0) & Eq(2*x + a, 0), [('exists', x)])) == 'Eq(a**2 - 4*b, 0)'
+assert str(reduce_complex(Eq(x**2 - y, 0) & Eq(x*y - 1, 0) & Ne(x, 0))) == 'Eq(x*y - 1, 0) & Eq(-x + y**2, 0) & Eq(x**2 - y, 0)'
+from sympy_extras.sets.fancysets import Complexes
+from sympy_extras.assumptions.quantifiers import Exists, ForAll
+from sympy_extras.assumptions.resolve import resolve
+from sympy_extras.assumptions.sat import _without_real_solution
+assert str(resolve(Exists(x, Eq(a*x, 1)), domain=Complexes)) == 'Ne(a, 0)'
+assert str(resolve(ForAll(x, Ne(x**2, a)), domain=Complexes)) == 'False'
+assert str(resolve(Exists(x, Eq(a*x, b)), domain=Complexes, assumptions=Ne(a, 0))) == 'True'
+assert _without_real_solution(Eq(x**2 + y**2, 1) & Eq(x*y, 1) & (x > 0), [x, y])
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 def test_native_regular_chains_and_parametric_do_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.polys.regularchains` and
     :mod:`sympy_extras.solvers.parametric` does not load SymPy, nor do the
@@ -556,5 +587,18 @@ def test_native_regular_chains_and_parametric_do_not_load_sympy() -> None:
     ``solve(..., cases=True)`` which they answer (the exact solutions of a
     chain, SymPy's ``CRootOf``, go through SymPy at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_REGULAR_CHAINS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_hermite_comprehensive_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.hermite` and
+    :mod:`sympy_extras.polys.comprehensive` does not load SymPy, nor do the
+    counts of real solutions, the sign determination, the decisions of
+    zero-dimensional systems (also the one of ``satisfiable``), the
+    comprehensive Gröbner systems, the eliminations over the complex
+    numbers and ``resolve`` with ``domain=Complexes``."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_HERMITE_COMPREHENSIVE], capture_output=True, text=True,
+                         timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

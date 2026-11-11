@@ -1,17 +1,12 @@
 """The SymPy face of quantifier elimination
-(:mod:`sympy_extras.assumptions.resolve`), and the eliminations which are
-not ported.
+(:mod:`sympy_extras.assumptions.resolve`).
 
 :func:`resolve` takes and returns SymPy objects (the quantifiers of
 :mod:`sympy_extras.assumptions.quantifiers_sympy`), converted by
-:mod:`sympy_extras.interop` around the native function.
-
-The eliminations stay written on SymPy's polynomials and are called from
-the native ``resolve`` at run time (the functions ending in ``_of_core``,
-which take and return objects of the core): the
-comprehensive Gröbner systems
-(:func:`~sympy_extras.polys.comprehensive.complex_quantifier_elimination`,
-:func:`~sympy_extras.polys.comprehensive.reduce_complex`).
+:mod:`sympy_extras.interop` around the native function. Nothing of the
+elimination stays on SymPy: the comprehensive Gröbner systems over the
+complex numbers are native too (:mod:`sympy_extras.polys.comprehensive`,
+whose face is :mod:`sympy_extras.polys.comprehensive_sympy`).
 """
 from __future__ import annotations
 
@@ -21,30 +16,10 @@ from sympy.core.singleton import S
 from sympy.logic.boolalg import Boolean
 from sympy.sets.sets import Set
 
-from sympy_extras.core.logic import Boolean as CoreBoolean
-
 from . import resolve as native
-from .ask_sympy import (Assumptions, core_assumptions, core_boolean, core_domain, sympy_boolean, sympy_prefix)
-from .quantifiers import Prefix
+from .ask_sympy import Assumptions, core_assumptions, core_boolean, core_domain, sympy_boolean
 
-__all__ = ['resolve', 'complex_quantifier_elimination_of_core', 'reduce_complex_of_core']
-
-
-# ---------------------------------------------------------------------------
-# the eliminations of the native resolve which stay on SymPy
-
-
-
-def complex_quantifier_elimination_of_core(formula: CoreBoolean, prefix: Prefix) -> CoreBoolean:
-    """:func:`sympy_extras.polys.comprehensive.complex_quantifier_elimination`."""
-    from sympy_extras.polys.comprehensive import complex_quantifier_elimination
-    return core_boolean(complex_quantifier_elimination(sympy_boolean(formula), sympy_prefix(prefix)))
-
-
-def reduce_complex_of_core(formula: CoreBoolean) -> CoreBoolean:
-    """:func:`sympy_extras.polys.comprehensive.reduce_complex`."""
-    from sympy_extras.polys.comprehensive import reduce_complex
-    return core_boolean(reduce_complex(sympy_boolean(formula)))
+__all__ = ['resolve']
 
 
 # ---------------------------------------------------------------------------
