@@ -402,7 +402,7 @@ def _risch(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
 
 
 def _heurisch(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
-    from .heurisch import heurisch_cases
+    from .heurisch_sympy import heurisch_cases
     found = attempt(lambda: heurisch_cases(f, x), _budget())
     if found is not None:
         return found

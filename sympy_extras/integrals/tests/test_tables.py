@@ -7,7 +7,7 @@ from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
 from sympy_extras.integrals.conditions_sympy import ConditionalValue
-from sympy_extras.integrals.tables import TABLE, TableEntry, lookup, table_integral, X, A
+from sympy_extras.integrals.tables_sympy import TABLE, TableEntry, lookup, table_integral, X, A
 
 x, a, b = symbols('x a b')
 p = symbols('p', positive=True)

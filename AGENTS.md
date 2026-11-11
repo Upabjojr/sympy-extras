@@ -250,6 +250,9 @@ sympy_extras/
         residues.py          rational, Fourier and trigonometric integrals by the residue theorem
         definite.py          definite_integral: splitting, range mappings, the verified SymPy fallback
         regions.py           IntegralByRanges: integrals over semialgebraic regions through the CAD
+        tables.py            TABLE, TableEntry, lookup, table_integral: definite integrals by table lookup (Gradshteyn–Ryzhik)
+                             with the conditions on the parameters (native: the native decide, powsimp and trigsimp)
+        tables_sympy.py      the SymPy face of tables (the entries on SymPy objects, TableEntry.from_core), which definite uses
         conditions.py        ConditionalValue: values with the conditions under which they hold; decide, sample_values,
                              numerically_equal, numerical_verdict (native: the native ask, find_instance, structure theorem)
         conditions_sympy.py  the SymPy face of conditions, which the integrators written on SymPy use (ConditionalValue
@@ -274,7 +277,10 @@ sympy_extras/
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic (Gradshteyn-Ryzhik 2.26), for the slices of regions
         indefinite.py        indefinite_integral: the typed methods in turn, then SymPy's, each antiderivative checked by differentiation
         trigonometric.py     powers, products and rational functions of trigonometric and hyperbolic functions, inverse functions by parts
-        heurisch.py          typed port of SymPy's heuristic Risch integrator (BSD, see risch/LICENSE-SymPy), every result verified
+        heurisch.py          typed port of SymPy's heuristic Risch integrator, every result verified, PORTED FROM SYMPY (native: the
+                             typed polynomials with placeholders for the constants, linear systems over QQ, number fields and
+                             the fractions of the parameters, the native simplify and numerical comparison)
+        heurisch_sympy.py    the SymPy face of heurisch (components, heurisch_antiderivative, heurisch_cases), which indefinite uses
         rewriting.py         canonical forms (exponentials, logarithms of inverse hyperbolic functions) and substitutions x = t**k, u = exp(c x), x = exp(t)
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
         tests/

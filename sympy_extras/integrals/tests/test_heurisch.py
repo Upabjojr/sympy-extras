@@ -10,7 +10,7 @@ from sympy.logic.boolalg import Boolean
 
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
 from sympy_extras.integrals.conditions_sympy import numerically_equal
-from sympy_extras.integrals.heurisch import (components, heurisch_antiderivative, heurisch_cases, _real_forms,
+from sympy_extras.integrals.heurisch_sympy import (components, heurisch_antiderivative, heurisch_cases, _real_forms,
                                               _verified)
 
 x, y, n = symbols('x y n')

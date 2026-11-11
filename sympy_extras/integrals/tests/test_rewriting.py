@@ -123,7 +123,7 @@ def test_the_typed_methods_take_the_rewritten_forms() -> None:
     # the heuristic integrator, the radical table and the rational
     # integrator do the rewritten or substituted form where the original
     # defeats them
-    from sympy_extras.integrals.heurisch import heurisch_antiderivative
+    from sympy_extras.integrals.heurisch_sympy import heurisch_antiderivative
     from sympy_extras.integrals.radicals import quadratic_radical_antiderivative
     from sympy_extras.integrals.risch.rationaltools import ratint
     original = 2**z*cosh(z)

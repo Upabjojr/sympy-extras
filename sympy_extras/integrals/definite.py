@@ -2353,7 +2353,7 @@ class _Integrator:
     def _table(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """The table of Gradshteyn and Ryzhik (:mod:`.tables`), cheap and
         first."""
-        from .tables import table_integral
+        from .tables_sympy import table_integral
         return self._finish(table_integral(f, x, a, b, self.assumptions))
 
     def _table_termwise(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
@@ -2363,7 +2363,7 @@ class _Integrator:
         ``specint`` 107) is the difference of two entries, which the
         term-by-term route at the end of the chain reached with no budget
         left."""
-        from .tables import table_integral
+        from .tables_sympy import table_integral
         terms = Add.make_args(as_expr(expand(f, power_exp=False)))
         if len(terms) < 2 or len(terms) > _TERMWISE_LIMIT:
             return None

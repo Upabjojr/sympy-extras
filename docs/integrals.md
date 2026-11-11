@@ -311,7 +311,9 @@ The driver tries, after the Mellin method and the residues:
   Bessel functions of `sqrt(t**2 - k**2)`, Fresnel's integrals, Ahmed's
   integral, ...), matched with their conditions on the parameters and
   checked numerically at sample values in the tests; tried first because
-  it is cheap, term by term for a sum.
+  it is cheap, term by term for a sum. The table is native, on the core;
+  `sympy_extras.integrals.tables_sympy` is its face on SymPy objects
+  (the entries converted, `TableEntry.from_core`).
 - **Elliptic integrals** (`sympy_extras.integrals.elliptic`): square roots
   of cubics and quartics with real roots, `R(x)/sqrt(P(x))` and
   `R(x)*sqrt(P(x))` over a cell between the roots, reduced by the
@@ -638,7 +640,14 @@ differentiation, refuses floating-point coefficients, and writes the
 logarithms of conjugates as arctangents; `heurisch_cases`
 splits the parameters as SymPy's wrapper does. Sixty-six integrands of
 Gradshteyn–Ryzhik's chapter 2 families, rational to Lambert W, integrate
-in twelve seconds together.
+in twelve seconds together. The integrator is native: it works on the
+core with the typed polynomials (the constants which the typed `Poly`
+does not take as coefficients, `pi`, `exp(y)`, `sqrt(2)`, are
+placeholder symbols, as SymPy's `ZZ(pi)` makes them generators) and
+solves its linear systems over `QQ`, over the number field of the
+algebraic constants (`I`, `sqrt(2)`: the arctangents of `1/(x**4 + 1)`
+need `sqrt(2)**2 = 2`) and over the fractions of the parameters;
+`sympy_extras.integrals.heurisch_sympy` is its face on SymPy objects.
 
 A binomial differential `x**m*(a + b*x**n)**p` with rational exponents
 whose integral Chebyshev's criterion proves non-elementary (none of

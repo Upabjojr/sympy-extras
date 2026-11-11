@@ -1524,3 +1524,37 @@ def test_native_slater_and_marichev_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_HEURISCH_TABLES = r'''
+import sys
+from sympy_extras.core import Symbol, oo, pi, symbols
+from sympy_extras.functions import cos, erf, exp, log, sin, sqrt, tan
+from sympy_extras.integrals.heurisch import components, heurisch_antiderivative, heurisch_cases
+from sympy_extras.integrals.tables import lookup, table_integral
+x, y, n, a = symbols('x y n a')
+assert str(heurisch_antiderivative(y*x*cos(x**2), x)) == 'y*sin(x**2)/2'
+assert str(heurisch_antiderivative(exp(x)/x, x)) == 'Ei(x)'
+assert str(heurisch_antiderivative(exp(-x**2)*erf(x), x)) == 'sqrt(pi)*erf(x)**2/4'
+assert heurisch_antiderivative(1/(x**4 + 1), x) is not None             # arctangents over QQ(sqrt(2), I)
+assert heurisch_antiderivative(1/(sin(x) + cos(x)), x) is not None      # tangents of the half angle
+assert str(heurisch_antiderivative(y*tan(x), x)) == 'y*log(tan(x)**2 + 1)/2'
+assert str(heurisch_cases(cos(n*x), x)) == 'Piecewise((sin(n*x)/n, Ne(n, 0)), (x, True))'
+assert sorted(map(str, components(sin(x)*cos(x)**2, x))) == ['cos(x)', 'sin(x)', 'x']
+assert str(table_integral(log(1 - 2*a*cos(x) + a**2), x, 0, pi, a > 1)) == 'ConditionalValue(2*pi*log(a))'
+assert lookup(sin(a*x)**2/x**2, x, 0, oo)[0].reference == 'GR 3.821.9'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_heurisch_and_tables_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.heurisch` and
+    :mod:`sympy_extras.integrals.tables` does not load SymPy, nor do the
+    heuristic Risch integrator (its linear systems over number fields and
+    over the fractions of the parameters, the tangents of the half angle,
+    the special functions of the tower, the cases of the parameters) and
+    the lookups of the table."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_HEURISCH_TABLES], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
