@@ -38,7 +38,7 @@ def test_hilbert_known(rust: Any) -> None:
 
 @pytest.mark.parametrize("seed", range(30))
 def test_hilbert_agrees(rust: Any, seed: int) -> None:
-    from sympy import Poly, Symbol, cancel
+    from sympy_extras.core import Symbol
     from sympy_extras.polys import hilbert as py
     h = rs("hilbert")
     t = Symbol("t")
@@ -49,10 +49,10 @@ def test_hilbert_agrees(rust: Any, seed: int) -> None:
         monomials += [tuple(rng.randint(1, 5) if i == j else 0 for i in range(n)) for j in range(n)]
     assert h.minimal_generators(monomials) == py.minimal_generators(monomials)
     expected = py.hilbert_numerator(monomials, t)
-    assert h.hilbert_numerator(monomials) == ([] if expected.is_zero else [int(c) for c in expected.all_coeffs()])
-    numerator, exponent = h.hilbert_series(monomials, n)
-    q = Poly(numerator, t).as_expr() if numerator else 0
-    assert cancel(py.hilbert_series(monomials, n, t) - q/(1 - t)**exponent) == 0
+    assert h.hilbert_numerator(monomials) == list(expected.rep)
+    # Python's reduced series lists the coefficients lowest degree first
+    q, d = py.reduced_hilbert_series(monomials, n)
+    assert h.hilbert_series(monomials, n) == (list(reversed(q)), d)
 
 
 # -- subresultants
@@ -69,8 +69,10 @@ def test_psc_known(rust: Any) -> None:
 
 @pytest.mark.parametrize("seed", range(30))
 def test_psc_agrees(rust: Any, seed: int) -> None:
-    from sympy.polys.domains import QQ as SQQ, ZZ as SZZ
     from sympy_extras.polys import subresultants as py
+    from sympy_extras.polys.densearith import dup_mul
+    from sympy_extras.polys.domains import QQ as NQQ, ZZ as NZZ
+    from sympy_extras.polys.domains.polynomialring import PolynomialRing as NPolynomialRing
     sr, d = rs("subresultants"), rs("domains")
     rng = random.Random(stable_seed("psc", seed))
 
@@ -86,17 +88,15 @@ def test_psc_agrees(rust: Any, seed: int) -> None:
 
     if rng.random() < 0.5:
         common = dup(rng.randint(0, 2))  # a common factor gives defective subresultants
-        from sympy.polys.densearith import dup_mul
-        f = dup_mul(dup(rng.randint(0, 4)), common, SZZ)
-        g = dup_mul(dup(rng.randint(0, 4)), common, SZZ)
+        f = dup_mul(dup(rng.randint(0, 4)), common, NZZ)
+        g = dup_mul(dup(rng.randint(0, 4)), common, NZZ)
     else:
         f, g = dup(rng.randint(0, 6)), dup(rng.randint(0, 6))
-    assert sr.dup_psc(f, g, d.ZZ) == [int(c) for c in py.dup_psc(f, g, SZZ)]
+    assert sr.dup_psc(f, g, d.ZZ) == py.dup_psc(f, g, NZZ)
     fq = [F(c, rng.randint(1, 3)) for c in f]
-    assert sr.dup_psc(fq, g, d.QQ) == list(py.dup_psc([SQQ(c.numerator, c.denominator) for c in fq],
-                                                       [SQQ(c) for c in g], SQQ))
+    assert sr.dup_psc(fq, g, d.QQ) == py.dup_psc(fq, [F(c) for c in g], NQQ)
     f2, g2 = dmp(rng.randint(1, 3), 2), dmp(rng.randint(1, 3), 2)
-    expected = [[int(a) for a in c] for c in py.dmp_psc(f2, g2, 1, SZZ)]
+    expected = py.dup_psc(f2, g2, NPolynomialRing(NZZ, "y"))
     assert sr.dup_psc(f2, g2, rs("domains.polynomialring").PolynomialRing(d.ZZ, "y")) == expected
 
 
@@ -143,6 +143,10 @@ def test_walk_agrees(rust: Any, seed: int, orders: tuple[str, str]) -> None:
     from sympy import QQ as SQQ, GF as SGF, grevlex, grlex, lex, ring
     from sympy.polys.groebnertools import groebner
     from sympy_extras.polys import groebnerwalk as py
+    from sympy_extras.polys import rings as nrings
+    from sympy_extras.polys.domains import QQ as NQQ
+    from sympy_extras.polys.domains.finitefield import FiniteField
+    from sympy_extras.polys.f4 import f4 as native_f4
     from sympy_extras.polys.orderings import WeightOrder
     w, rings, d, f4 = rs("groebnerwalk"), rs("rings"), rs("domains"), rs("f4")
     rng = random.Random(stable_seed("walk", seed, orders))
@@ -150,7 +154,11 @@ def test_walk_agrees(rust: Any, seed: int, orders: tuple[str, str]) -> None:
     n = rng.randint(2, 3)
     names = ["x", "y", "z"][:n]
     weights = [rng.randint(1, 3) for _ in range(n)]
-    sympy_orders = {"lex": lex, "grlex": grlex, "grevlex": grevlex, "weight": WeightOrder(weights, "lex")}
+    # the weight orders are only targets: SymPy (the oracle of the starting
+    # basis) needs the source orders only
+    sympy_orders: dict[str, Any] = {"lex": lex, "grlex": grlex, "grevlex": grevlex}
+    native_orders: dict[str, Any] = {"lex": nrings.lex, "grlex": nrings.grlex, "grevlex": nrings.grevlex,
+                                     "weight": WeightOrder(weights, nrings.lex)}
     rust_orders = {"lex": rings.lex, "grlex": rings.grlex, "grevlex": rings.grevlex,
                    "weight": rings.MonomialOrder.weight(weights, "lex")}
     source, target = orders
@@ -172,7 +180,10 @@ def test_walk_agrees(rust: Any, seed: int, orders: tuple[str, str]) -> None:
     Gr = f4.f4([R.from_dict({m: (c.numerator * pow(c.denominator, -1, p)) % p if p else c
                              for m, c in t.items()}) for t in system], R)
     assert [g.terms for g in Gr] == [_sympy_terms(g, p) for g in Gs]
+    N: Any = nrings.PolyRing(FiniteField(p) if p else NQQ, names, native_orders[source])
+    Gn = native_f4([N.from_dict({m: (c.numerator * pow(c.denominator, -1, p)) % p if p else c
+                                 for m, c in t.items()}) for t in system], N)
     for lift in ("normal_form", "cofactors"):
-        expected = py.groebner_walk(Gs, S, sympy_orders[target], lift=lift)
+        expected = py.groebner_walk(Gn, N, native_orders[target], lift=lift)
         walked = w.groebner_walk(Gr, R, rust_orders[target], check=True, lift=lift)
-        assert [g.terms for g in walked] == [_sympy_terms(g, p) for g in expected]
+        assert [g.terms for g in walked] == [dict(g.terms) for g in expected]

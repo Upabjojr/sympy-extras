@@ -209,7 +209,7 @@ mod tests {
         ];
         items.sort_by(|a, b| a.compare_key().cmp(b.compare_key()));
         let shown: Vec<String> = items.iter().map(|e| e.to_string()).collect();
-        assert_eq!(shown, vec!["2", "x", "y", "n", "Pow(x, 2)", "Mul(x, y)", "Add(1, x)"]);
+        assert_eq!(shown, vec!["2", "x", "y", "n", "x**2", "x*y", "x + 1"]);
         assert_eq!(
             (
                 x.0.compare(&y.0),
@@ -222,7 +222,7 @@ mod tests {
         // xreplace is structural
         let mut rules: HashMap<Basic, Basic> = HashMap::new();
         rules.insert(x.0.clone(), y.0.clone());
-        assert_eq!(x1.xreplace(&rules).to_string(), "Add(1, y)");
+        assert_eq!(x1.xreplace(&rules).to_string(), "y + 1");
         assert_eq!(xy.free_symbols().len(), 2);
         assert!(x2.has(&Basic::int(2)) && !x2.has(&y.0));
         assert_eq!(x1.count_nodes(), 3);

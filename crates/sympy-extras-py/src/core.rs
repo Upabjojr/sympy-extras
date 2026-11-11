@@ -764,6 +764,625 @@ fn numeric_linear_solution<'py>(
     Ok(Some(d))
 }
 
+/// An equation as an expression: `lhs - rhs` of an `Equality`.
+fn equation(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
+    let class: String = ob.get_type().name()?.to_string();
+    if class == "Equality" || class == "Eq" {
+        return from_python(&ob.getattr("lhs")?.call_method1("__sub__", (ob.getattr("rhs")?,))?);
+    }
+    from_python(ob)
+}
+
+fn differential_ring(
+    functions: &Bound<'_, PyAny>,
+    variables: Option<&Bound<'_, PyAny>>,
+    ranking: Option<&Bound<'_, PyAny>>,
+    parameters: &Bound<'_, PyAny>,
+) -> PyResult<sympy_extras_core::polys::differential::ring::DifferentialRing> {
+    let functions: Vec<Basic> = expressions(functions)?;
+    let variables: Option<Vec<Basic>> = variables.map(expressions).transpose()?;
+    let ranking: Option<Vec<Vec<Basic>>> = match ranking {
+        None => None,
+        Some(r) => {
+            let mut blocks: Vec<Vec<Basic>> = Vec::new();
+            for block in r.try_iter()? {
+                blocks.push(expressions(&block?)?);
+            }
+            Some(blocks)
+        }
+    };
+    sympy_extras_core::polys::differential::ring::DifferentialRing::new(
+        &functions,
+        variables.as_deref(),
+        ranking.as_deref(),
+        &expressions(parameters)?,
+    )
+    .map_err(crate::convert::err)
+}
+
+fn jet_monomial<'py>(py: Python<'py>, m: &[((i64, Vec<u32>), u32)]) -> PyResult<Bound<'py, PyTuple>> {
+    let mut items: Vec<Bound<'py, PyTuple>> = Vec::new();
+    for ((a, j), e) in m {
+        let jet: Bound<'py, PyTuple> = PyTuple::new(
+            py,
+            [
+                a.into_pyobject(py)?.into_any(),
+                PyTuple::new(py, j.iter().copied())?.into_any(),
+            ],
+        )?;
+        items.push(PyTuple::new(py, [jet.into_any(), e.into_pyobject(py)?.into_any()])?);
+    }
+    PyTuple::new(py, items)
+}
+
+/// `DifferentialRing(functions, variables, ranking, parameters).terms(eq)`
+/// as `[(monomial, coefficient expression)]`.
+#[pyfunction]
+#[pyo3(signature = (functions, eq, variables=None, ranking=None, parameters=None))]
+fn differential_terms<'py>(
+    py: Python<'py>,
+    functions: &Bound<'py, PyAny>,
+    eq: &Bound<'py, PyAny>,
+    variables: Option<&Bound<'py, PyAny>>,
+    ranking: Option<&Bound<'py, PyAny>>,
+    parameters: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyList>> {
+    let empty = PyTuple::empty(py).into_any();
+    let ring = differential_ring(functions, variables, ranking, parameters.unwrap_or(&empty))?;
+    let terms = ring.terms(&equation(eq)?).map_err(crate::convert::err)?;
+    let mut items: Vec<Bound<'py, PyTuple>> = Vec::new();
+    for (m, c) in terms.iter() {
+        let c_expr: Basic = ring.coefficient_expr(c).map_err(crate::convert::err)?;
+        items.push(PyTuple::new(
+            py,
+            [jet_monomial(py, m)?.into_any(), to_python(py, &c_expr)?],
+        )?);
+    }
+    PyList::new(py, items)
+}
+
+/// `...integral(ring.terms(eq))` as `[(monomial, integer coefficient expression)]`.
+#[pyfunction]
+#[pyo3(signature = (functions, eq, variables=None, ranking=None, parameters=None))]
+fn differential_integral<'py>(
+    py: Python<'py>,
+    functions: &Bound<'py, PyAny>,
+    eq: &Bound<'py, PyAny>,
+    variables: Option<&Bound<'py, PyAny>>,
+    ranking: Option<&Bound<'py, PyAny>>,
+    parameters: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyList>> {
+    let empty = PyTuple::empty(py).into_any();
+    let ring = differential_ring(functions, variables, ranking, parameters.unwrap_or(&empty))?;
+    let terms = ring.integral(&ring.terms(&equation(eq)?).map_err(crate::convert::err)?);
+    let mut items: Vec<Bound<'py, PyTuple>> = Vec::new();
+    for (m, c) in terms.iter() {
+        let c_expr: Basic = ring.integer_expr(c, None).map_err(crate::convert::err)?;
+        items.push(PyTuple::new(
+            py,
+            [jet_monomial(py, m)?.into_any(), to_python(py, &c_expr)?],
+        )?);
+    }
+    PyList::new(py, items)
+}
+
+/// `...leader(eq)` and the expression of the terms (`from_terms`).
+#[pyfunction]
+#[pyo3(signature = (functions, eq, variables=None, ranking=None, parameters=None))]
+fn differential_leader<'py>(
+    py: Python<'py>,
+    functions: &Bound<'py, PyAny>,
+    eq: &Bound<'py, PyAny>,
+    variables: Option<&Bound<'py, PyAny>>,
+    ranking: Option<&Bound<'py, PyAny>>,
+    parameters: Option<&Bound<'py, PyAny>>,
+) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>)> {
+    let empty = PyTuple::empty(py).into_any();
+    let ring = differential_ring(functions, variables, ranking, parameters.unwrap_or(&empty))?;
+    let e: Basic = equation(eq)?;
+    let leader: Basic = ring.leader(&e).map_err(crate::convert::err)?;
+    let back: Basic = ring
+        .from_terms(&ring.terms(&e).map_err(crate::convert::err)?)
+        .map_err(crate::convert::err)?;
+    Ok((to_python(py, &leader)?, to_python(py, &back)?))
+}
+
+/// The operations of `DifferentialPolynomial.from_expr(ring, eq)` as a
+/// dict of expressions: `to_expr`, `leader`, `degree`, `initial`,
+/// `separant`, `derivative_<i>`, and the pseudo-, partial and full
+/// remainders by the polynomials of `chain` (whose leaders must differ).
+#[pyfunction]
+#[pyo3(signature = (functions, eq, chain, variables=None, ranking=None, parameters=None))]
+fn differential_polynomial_ops<'py>(
+    py: Python<'py>,
+    functions: &Bound<'py, PyAny>,
+    eq: &Bound<'py, PyAny>,
+    chain: &Bound<'py, PyAny>,
+    variables: Option<&Bound<'py, PyAny>>,
+    ranking: Option<&Bound<'py, PyAny>>,
+    parameters: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::polys::differential::polynomial::DifferentialPolynomial as P;
+    let e_ = crate::convert::err;
+    let empty = PyTuple::empty(py).into_any();
+    let ring = std::rc::Rc::new(differential_ring(
+        functions,
+        variables,
+        ranking,
+        parameters.unwrap_or(&empty),
+    )?);
+    let p: P = P::from_expr(ring.clone(), &equation(eq)?).map_err(e_)?;
+    let mut members: Vec<P> = Vec::new();
+    for c in chain.try_iter()? {
+        members.push(P::from_expr(ring.clone(), &equation(&c?)?).map_err(e_)?);
+    }
+    let d: Bound<'py, PyDict> = PyDict::new(py);
+    d.set_item("to_expr", to_python(py, &p.to_expr().map_err(e_)?)?)?;
+    if !p.is_ground() {
+        d.set_item("leader", to_python(py, &p.leader_expr().map_err(e_)?)?)?;
+        d.set_item("degree", p.degree().map_err(e_)?)?;
+        d.set_item(
+            "initial",
+            to_python(py, &p.initial().map_err(e_)?.to_expr().map_err(e_)?)?,
+        )?;
+        d.set_item(
+            "separant",
+            to_python(py, &p.separant().map_err(e_)?.to_expr().map_err(e_)?)?,
+        )?;
+    }
+    for i in 0..ring.n() {
+        d.set_item(
+            format!("derivative_{}", i),
+            to_python(py, &p.derivative(i).to_expr().map_err(e_)?)?,
+        )?;
+    }
+    if let Some(first) = members.first() {
+        if !first.is_ground() {
+            let jet = first.leader().map_err(e_)?;
+            d.set_item(
+                "pseudo_remainder",
+                to_python(py, &p.pseudo_remainder(first, &jet).to_expr().map_err(e_)?)?,
+            )?;
+        }
+    }
+    if members.iter().all(|m| !m.is_ground()) && !members.is_empty() {
+        d.set_item(
+            "partial_remainder",
+            to_python(py, &p.partial_remainder(&members).map_err(e_)?.to_expr().map_err(e_)?)?,
+        )?;
+        d.set_item(
+            "remainder",
+            to_python(py, &p.remainder(&members).map_err(e_)?.to_expr().map_err(e_)?)?,
+        )?;
+    }
+    Ok(d)
+}
+
+/// The queries of `janet_basis(equations, functions, variables, ranking)`
+/// as a dict: `equations`, `leaders`, `multiplicative_variables`,
+/// `is_consistent`, and for a consistent basis `dimension`,
+/// `hilbert_function` (orders up to `order`), `hilbert_series` (in `t`),
+/// `hilbert_polynomial` (in `s`), `parametric_derivatives`, `reduce` and
+/// `contains` of the `probes`, `series_solution` (absent when it needs the
+/// hints of `expand` which are not ported).
+#[pyfunction]
+#[pyo3(signature = (equations, functions, t, s, probes, order, variables=None, ranking=None))]
+#[allow(clippy::too_many_arguments)]
+fn janet_basis_ops<'py>(
+    py: Python<'py>,
+    equations: &Bound<'py, PyAny>,
+    functions: &Bound<'py, PyAny>,
+    t: &Bound<'py, PyAny>,
+    s: &Bound<'py, PyAny>,
+    probes: &Bound<'py, PyAny>,
+    order: u32,
+    variables: Option<&Bound<'py, PyAny>>,
+    ranking: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::polys::differential::janet::janet_basis;
+    let e_ = crate::convert::err;
+    let mut eqs: Vec<Basic> = Vec::new();
+    for e in equations.try_iter()? {
+        eqs.push(equation(&e?)?);
+    }
+    let variables: Option<Vec<Basic>> = variables.map(expressions).transpose()?;
+    let ranking: Option<Vec<Vec<Basic>>> = match ranking {
+        None => None,
+        Some(r) => {
+            let mut blocks: Vec<Vec<Basic>> = Vec::new();
+            for block in r.try_iter()? {
+                blocks.push(expressions(&block?)?);
+            }
+            Some(blocks)
+        }
+    };
+    let basis = janet_basis(&eqs, &expressions(functions)?, variables.as_deref(), ranking.as_deref()).map_err(e_)?;
+    let d: Bound<'py, PyDict> = PyDict::new(py);
+    d.set_item("equations", expression_list(py, &basis.equations().map_err(e_)?)?)?;
+    d.set_item("leaders", expression_list(py, &basis.leaders())?)?;
+    let mv: Vec<Bound<'py, PyTuple>> = basis
+        .multiplicative_variables()
+        .iter()
+        .map(|vs| PyTuple::new(py, vs.iter().map(|v| to_python(py, v)).collect::<PyResult<Vec<_>>>()?))
+        .collect::<PyResult<_>>()?;
+    d.set_item("multiplicative_variables", PyList::new(py, mv)?)?;
+    d.set_item("is_consistent", basis.is_consistent())?;
+    if basis.is_consistent() {
+        d.set_item("dimension", to_python(py, &basis.dimension().map_err(e_)?)?)?;
+        let mut hf: Vec<Bound<'py, PyAny>> = Vec::new();
+        for q in 0..=order {
+            hf.push(crate::convert::out_int(py, &basis.hilbert_function(q).map_err(e_)?)?);
+        }
+        d.set_item("hilbert_function", PyList::new(py, hf)?)?;
+        d.set_item(
+            "hilbert_series",
+            to_python(py, &basis.hilbert_series(&from_python(t)?).map_err(e_)?)?,
+        )?;
+        d.set_item(
+            "hilbert_polynomial",
+            to_python(py, &basis.hilbert_polynomial(&from_python(s)?).map_err(e_)?)?,
+        )?;
+        d.set_item(
+            "parametric_derivatives",
+            expression_list(py, &basis.parametric_derivatives(order).map_err(e_)?)?,
+        )?;
+        let mut reduced: Vec<Basic> = Vec::new();
+        let mut contained: Vec<bool> = Vec::new();
+        for p in probes.try_iter()? {
+            let p: Basic = equation(&p?)?;
+            reduced.push(basis.reduce(&p).map_err(e_)?);
+            contained.push(basis.contains(&p).map_err(e_)?);
+        }
+        d.set_item("reduce", expression_list(py, &reduced)?)?;
+        d.set_item("contains", contained)?;
+        match basis.series_solution(order, None, "C") {
+            Ok(series) => {
+                let out: Bound<'py, PyDict> = PyDict::new(py);
+                for (f, e) in series {
+                    out.set_item(to_python(py, &f)?, to_python(py, &e)?)?;
+                }
+                d.set_item("series_solution", out)?;
+            }
+            Err(sympy_extras_core::error::PolyError::NotImplemented(_)) => {}
+            Err(sympy_extras_core::error::PolyError::Value(message)) => d.set_item("series_solution_error", message)?,
+            Err(other) => return Err(e_(other)),
+        }
+    }
+    Ok(d)
+}
+
+/// `functionfields.integral_basis(F, x, y)`.
+#[pyfunction]
+fn integral_basis<'py>(
+    py: Python<'py>,
+    f: &Bound<'py, PyAny>,
+    x: &Bound<'py, PyAny>,
+    y: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyList>> {
+    use sympy_extras_core::polys::functionfields::integral_basis as basis;
+    let found = basis(&from_python(f)?, &from_python(x)?, &from_python(y)?).map_err(crate::convert::err)?;
+    expression_list(py, &found)
+}
+
+/// The bases of `function_field(F, x, y, QQ)` as expressions:
+/// `(integral, local at infinity, normal, pole orders of the normal one)`.
+#[pyfunction]
+#[allow(clippy::type_complexity)]
+fn function_field_bases<'py>(
+    py: Python<'py>,
+    f: &Bound<'py, PyAny>,
+    x: &Bound<'py, PyAny>,
+    y: &Bound<'py, PyAny>,
+) -> PyResult<(Bound<'py, PyList>, Bound<'py, PyList>, Bound<'py, PyList>, Vec<i64>)> {
+    use sympy_extras_core::polys::domains::rationalfield::QQ;
+    use sympy_extras_core::polys::functionfields::function_field;
+    let e_ = crate::convert::err;
+    let field = function_field(&from_python(f)?, &from_python(x)?, &from_python(y)?, QQ).map_err(e_)?;
+    let shown = |basis: &[sympy_extras_core::polys::functionfields::Element<_>]| -> PyResult<Vec<Basic>> {
+        basis.iter().map(|w| field.as_expr(w).map_err(e_)).collect()
+    };
+    let integral = shown(&field.integral_basis().map_err(e_)?)?;
+    let local = shown(&field.local_basis_at_infinity().map_err(e_)?)?;
+    let normal_basis = field.normal_basis().map_err(e_)?;
+    let normal = shown(&normal_basis)?;
+    let orders = field.pole_orders_at_infinity(&normal_basis).map_err(e_)?;
+    Ok((
+        expression_list(py, &integral)?,
+        expression_list(py, &local)?,
+        expression_list(py, &normal)?,
+        orders,
+    ))
+}
+
+fn pisigma_report<'py, Cs: sympy_extras_core::concrete::pisigma::Constants>(
+    py: Python<'py>,
+    base: sympy_extras_core::concrete::pisigma::PiSigmaField<Cs>,
+    extensions: &Bound<'py, PyAny>,
+    a: &Bound<'py, PyAny>,
+    fs: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::concrete::pisigma::{Kind, PiSigmaElement};
+    let e_ = crate::convert::err;
+    let mut field = base;
+    for item in extensions.try_iter()? {
+        let item = item?;
+        let kind: String = item.get_item(0)?.extract()?;
+        let symbol: Basic = from_python(&item.get_item(1)?)?;
+        let value: PiSigmaElement = field.from_expr(&from_python(&item.get_item(2)?)?).map_err(e_)?;
+        // the sequence when the Rust core has its functions, else the generator itself
+        let sequence: Basic = from_python(&item.get_item(3)?).unwrap_or_else(|_| symbol.clone());
+        let kind = if kind == "pi" { Kind::Pi } else { Kind::Sigma };
+        field = field
+            .extend(kind, &value, &sequence, None, Some(&symbol))
+            .map_err(e_)?
+            .0;
+    }
+    let shown = |f: &PiSigmaElement| field.to_expr(f, false, false).map_err(e_);
+    let a: PiSigmaElement = field.from_expr(&from_python(a)?).map_err(e_)?;
+    let mut elements: Vec<PiSigmaElement> = Vec::new();
+    for f in fs.try_iter()? {
+        elements.push(field.from_expr(&from_python(&f?)?).map_err(e_)?);
+    }
+    let d: Bound<'py, PyDict> = PyDict::new(py);
+    let mut shifted: Vec<Basic> = Vec::new();
+    let mut levels: Vec<i64> = Vec::new();
+    let mut telescoped: Vec<Option<Bound<'py, PyAny>>> = Vec::new();
+    for f in &elements {
+        shifted.push(shown(&field.sigma(f, 1).map_err(e_)?)?);
+        shifted.push(shown(&field.sigma(f, -2).map_err(e_)?)?);
+        levels.push(field.level_of(f));
+        telescoped.push(match field.telescope(f).map_err(e_)? {
+            Some(g) => Some(to_python(py, &shown(&g)?)?),
+            None => None,
+        });
+    }
+    d.set_item("sigma", expression_list(py, &shifted)?)?;
+    d.set_item("level_of", levels)?;
+    d.set_item("telescope", telescoped)?;
+    match field.solve(&a, &elements, None).map_err(e_)? {
+        None => d.set_item("solve", py.None())?,
+        Some(sols) => {
+            let mut out: Vec<Bound<'py, PyTuple>> = Vec::new();
+            for (c, g) in sols {
+                let mut constants: Vec<Basic> = Vec::new();
+                for ci in &c {
+                    constants.push(field.constant_to_expr(ci).map_err(e_)?);
+                }
+                out.push(PyTuple::new(
+                    py,
+                    [expression_list(py, &constants)?.into_any(), to_python(py, &shown(&g)?)?],
+                )?);
+            }
+            d.set_item("solve", PyList::new(py, out)?)?;
+        }
+    }
+    Ok(d)
+}
+
+/// The ΠΣ-field over `QQ(params)` (`QQ` without parameters) with the
+/// `extensions` `(kind, symbol, value, sequence)` as built in Python, and
+/// for the elements `fs`: their shifts by `1` and `-2`, levels, telescoped
+/// sums, and the basis of `solve(a, fs)` (all with `substitute=False`).
+#[pyfunction]
+fn pisigma_report_ops<'py>(
+    py: Python<'py>,
+    k: &Bound<'py, PyAny>,
+    params: &Bound<'py, PyAny>,
+    extensions: &Bound<'py, PyAny>,
+    a: &Bound<'py, PyAny>,
+    fs: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::concrete::pisigma::{parametric_pisigma_field, rational_pisigma_field};
+    let e_ = crate::convert::err;
+    let k: Basic = from_python(k)?;
+    let params: Vec<Basic> = expressions(params)?;
+    if params.is_empty() {
+        pisigma_report(py, rational_pisigma_field(&k).map_err(e_)?, extensions, a, fs)
+    } else {
+        pisigma_report(
+            py,
+            parametric_pisigma_field(&k, &params).map_err(e_)?,
+            extensions,
+            a,
+            fs,
+        )
+    }
+}
+
+/// `expand(e, deep, mul, multinomial, power_base, power_exp, log, force)`.
+#[pyfunction]
+#[pyo3(signature = (e, deep=true, mul=true, multinomial=true, power_base=true, power_exp=true, log=true, force=false))]
+#[allow(clippy::too_many_arguments)]
+fn expand<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    deep: bool,
+    mul: bool,
+    multinomial: bool,
+    power_base: bool,
+    power_exp: bool,
+    log: bool,
+    force: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    use rust_core::function::{expand_with, Hints};
+    let hints = Hints {
+        mul,
+        multinomial,
+        power_base,
+        power_exp,
+        log,
+        force,
+    };
+    to_python(
+        py,
+        &expand_with(&from_python(e)?, deep, hints).map_err(crate::convert::err)?,
+    )
+}
+
+/// The operations of `Poly(e, *gens)` and `Poly(other, *gens)` as
+/// strings (`str` of each result, or the error).
+#[pyfunction]
+fn poly_report<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    other: &Bound<'py, PyAny>,
+    gens: Vec<Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::polys::polytools::Poly;
+    let gens: Vec<Basic> = gens.iter().map(from_python).collect::<PyResult<_>>()?;
+    let (e, other) = (from_python(e)?, from_python(other)?);
+    let out = PyDict::new(py);
+    let shown = |r: Result<String, sympy_extras_core::error::PolyError>| -> String {
+        match r {
+            Ok(s) => s,
+            Err(err) => format!(
+                "ERROR {}",
+                crate::convert::err(err)
+                    .get_type(py)
+                    .name()
+                    .map(|n| n.to_string())
+                    .unwrap_or_default()
+            ),
+        }
+    };
+    let f = match Poly::new(&e, &gens) {
+        Ok(f) => f,
+        Err(err) => {
+            out.set_item("poly", shown(Err(err)))?;
+            return Ok(out);
+        }
+    };
+    out.set_item("poly", shown(f.to_str()))?;
+    out.set_item("gens", f.gens.iter().map(|g| g.to_string()).collect::<Vec<_>>())?;
+    out.set_item("as_expr", shown(f.as_expr().map(|x| x.to_string())))?;
+    out.set_item(
+        "degrees",
+        (0..f.gens.len()).map(|i| f.degree(i).unwrap_or(-2)).collect::<Vec<_>>(),
+    )?;
+    out.set_item("total_degree", f.total_degree())?;
+    out.set_item(
+        "terms",
+        shown(f.terms().map(|t| {
+            format!(
+                "{:?}",
+                t.iter().map(|(m, c)| (m.clone(), c.to_string())).collect::<Vec<_>>()
+            )
+        })),
+    )?;
+    out.set_item("pow", shown(f.pow(2).to_str()))?;
+    out.set_item("diff", shown(f.diff(0).to_str()))?;
+    use sympy_extras_core::polys::polytools::PolyOrExpr;
+    let either = |r: Result<PolyOrExpr, sympy_extras_core::error::PolyError>| match r {
+        Ok(PolyOrExpr::Poly(p)) => p.to_str(),
+        Ok(PolyOrExpr::Expr(x)) => Ok(x.to_string()),
+        Err(e) => Err(e),
+    };
+    let listed = |r: Result<(Basic, Vec<(Poly, usize)>), sympy_extras_core::error::PolyError>| {
+        r.and_then(|(c, fs)| {
+            let mut parts: Vec<String> = vec![c.to_string()];
+            for (g, k) in fs {
+                parts.push(format!("({}, {})", g.to_str()?, k));
+            }
+            Ok(parts.join(" "))
+        })
+    };
+    out.set_item("monic", shown(f.monic().and_then(|h| h.to_str())))?;
+    out.set_item("content", shown(f.content().map(|c| c.to_string())))?;
+    out.set_item(
+        "primitive",
+        shown(f.primitive().and_then(|(c, h)| Ok(format!("{} {}", c, h.to_str()?)))),
+    )?;
+    out.set_item("eval2", shown(either(f.eval(0, &Basic::int(2)))))?;
+    out.set_item("discriminant", shown(either(f.discriminant())))?;
+    out.set_item("sqf_list", shown(listed(f.sqf_list())))?;
+    out.set_item("factor_list", shown(listed(f.factor_list())))?;
+    let g = match Poly::new(&other, &f.gens) {
+        Ok(g) => g,
+        Err(err) => {
+            out.set_item("other", shown(Err(err)))?;
+            return Ok(out);
+        }
+    };
+    out.set_item("other", shown(g.to_str()))?;
+    out.set_item("add", shown(f.add(&g).and_then(|h| h.to_str())))?;
+    out.set_item("sub", shown(f.sub(&g).and_then(|h| h.to_str())))?;
+    out.set_item("mul", shown(f.mul(&g).and_then(|h| h.to_str())))?;
+    out.set_item("gcd", shown(f.gcd(&g).and_then(|h| h.to_str())))?;
+    out.set_item("lcm", shown(f.lcm(&g).and_then(|h| h.to_str())))?;
+    out.set_item(
+        "cofactors",
+        shown(
+            f.cofactors(&g)
+                .and_then(|(a, b, c)| Ok(format!("{} {} {}", a.to_str()?, b.to_str()?, c.to_str()?))),
+        ),
+    )?;
+    out.set_item(
+        "cancel",
+        shown(
+            f.cancel(&g)
+                .and_then(|(c, p, q)| Ok(format!("{} {} {}", c, p.to_str()?, q.to_str()?))),
+        ),
+    )?;
+    out.set_item(
+        "div",
+        shown(
+            f.div(&g)
+                .and_then(|(q, r)| Ok(format!("{} {}", q.to_str()?, r.to_str()?))),
+        ),
+    )?;
+    out.set_item("resultant", shown(either(f.resultant(&g))))?;
+    out.set_item("eval_other", shown(either(f.eval(0, &other))))?;
+    out.set_item(
+        "exquo",
+        shown(f.mul(&g).and_then(|h| h.exquo(&g)).and_then(|h| h.to_str())),
+    )?;
+    Ok(out)
+}
+
+/// The functions of `polytools` on expressions and `signsimp`:
+/// `polytools_call(name, args, gens)`.
+#[pyfunction]
+fn polytools_call<'py>(
+    py: Python<'py>,
+    name: &str,
+    args: Vec<Bound<'py, PyAny>>,
+    gens: Vec<Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::polys::polytools as pt;
+    let args: Vec<Basic> = args.iter().map(from_python).collect::<PyResult<_>>()?;
+    let gens: Vec<Basic> = gens.iter().map(from_python).collect::<PyResult<_>>()?;
+    let e = crate::convert::err;
+    let one = |r: Result<Basic, sympy_extras_core::error::PolyError>| -> PyResult<Bound<'py, PyAny>> {
+        to_python(py, &r.map_err(e)?)
+    };
+    match name {
+        "signsimp" => one(sympy_extras_core::simplify::signsimp::signsimp(&args[0], true)),
+        "signsimp_unevaluated" => one(sympy_extras_core::simplify::signsimp::signsimp(&args[0], false)),
+        "cancel" => one(pt::cancel(&args[0], &gens)),
+        "invert" => one(pt::invert(&args[0], &args[1])),
+        "gcd" => one(pt::gcd_expr(&args[0], &args[1], &gens)),
+        "lcm" => one(pt::lcm_expr(&args[0], &args[1], &gens)),
+        "gcd_list" => one(pt::gcd_list(&args, &gens)),
+        "lcm_list" => one(pt::lcm_list(&args, &gens)),
+        "resultant" => one(pt::resultant_expr(&args[0], &args[1], &gens)),
+        "discriminant" => one(pt::discriminant_expr(&args[0], &gens)),
+        "LC" => one(pt::LC(&args[0], &gens)),
+        "degree" => {
+            let d = if gens.is_empty() {
+                pt::degree_index(&args[0], 0)
+            } else {
+                pt::degree(&args[0], &gens[0])
+            };
+            Ok(d.map_err(e)?.into_pyobject(py)?.into_any())
+        }
+        "cancel_fraction" => {
+            let (p, q) = pt::cancel_fraction(&args[0], &args[1]).map_err(e)?;
+            Ok(PyTuple::new(py, [to_python(py, &p)?, to_python(py, &q)?])?.into_any())
+        }
+        _ => Err(PyTypeError::new_err(format!("unknown polytools function {}", name))),
+    }
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -801,6 +1420,17 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(linear_root, m)?)?;
     m.add_function(wrap_pyfunction!(solve_one, m)?)?;
     m.add_function(wrap_pyfunction!(numeric_linear_solution, m)?)?;
+    m.add_function(wrap_pyfunction!(differential_terms, m)?)?;
+    m.add_function(wrap_pyfunction!(differential_integral, m)?)?;
+    m.add_function(wrap_pyfunction!(differential_leader, m)?)?;
+    m.add_function(wrap_pyfunction!(differential_polynomial_ops, m)?)?;
+    m.add_function(wrap_pyfunction!(janet_basis_ops, m)?)?;
+    m.add_function(wrap_pyfunction!(integral_basis, m)?)?;
+    m.add_function(wrap_pyfunction!(function_field_bases, m)?)?;
+    m.add_function(wrap_pyfunction!(pisigma_report_ops, m)?)?;
+    m.add_function(wrap_pyfunction!(expand, m)?)?;
+    m.add_function(wrap_pyfunction!(poly_report, m)?)?;
+    m.add_function(wrap_pyfunction!(polytools_call, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;
