@@ -14,8 +14,8 @@ from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbo
 from sympy_extras.solvers.first_order_sympy import dsolve_first_order, riccati_ode
 from sympy_extras.solvers.kovacic_sympy import dsolve_kovacic
 from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
-from sympy_extras.solvers.second_order import dsolve_second_order
-from sympy_extras.solvers.ode import solve_ode
+from sympy_extras.solvers.second_order_sympy import dsolve_second_order
+from sympy_extras.solvers.ode_sympy import solve_ode
 from sympy_extras.solvers._special_values_sympy import solution_jacobian
 
 x, k, a, b = symbols('x k a b')

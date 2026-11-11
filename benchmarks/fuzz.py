@@ -602,7 +602,7 @@ def ode_case(rng: random.Random) -> tuple[str, Check]:
 
     def check() -> Optional[str]:
         from sympy import checkodesol
-        from sympy_extras.solvers.ode import solve_ode
+        from sympy_extras.solvers.ode_sympy import solve_ode
         solutions = attempt(lambda: solve_ode(equation, y), TIMEOUT)
         if not solutions:
             return None

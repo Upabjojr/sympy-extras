@@ -5,9 +5,9 @@ from sympy.core.expr import Expr
 from sympy.solvers.solvers import solve
 from sympy.testing.pytest import raises
 
-from sympy_extras.solvers.second_order import (second_order_rhs, integrating_factor_xy, integrating_factor_p,
+from sympy_extras.solvers.second_order_sympy import (second_order_rhs, integrating_factor_xy, integrating_factor_p,
     is_linearizable, linearize, rectify_symmetries, commuting_pair, dsolve_second_order, FirstIntegral)
-from sympy_extras.solvers.ode import ode_symmetries
+from sympy_extras.solvers.ode_sympy import ode_symmetries
 
 x, y, p = symbols('x y p')
 f = Function('y')(x)
@@ -114,7 +114,7 @@ def test_the_unknown_is_not_left_under_an_integral() -> None:
     # integral is the honest reduction when that happens.
     from sympy import Function, Eq, Integral
     from sympy.abc import x
-    from sympy_extras.solvers.second_order import dsolve_second_order
+    from sympy_extras.solvers.second_order_sympy import dsolve_second_order
     y = Function('y')(x)
     results = dsolve_second_order(Eq(y.diff(x, 2) + y.diff(x)/x - y, 0), y)
     assert results is not None

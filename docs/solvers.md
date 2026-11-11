@@ -42,7 +42,7 @@ solvers always return.
 ```python
 >>> from sympy import Function, symbols
 >>> from sympy_extras.solvers.pde_sympy import pde_symmetries, pdsolve_lie
->>> from sympy_extras.solvers.ode import dsolve_lie
+>>> from sympy_extras.solvers.ode_sympy import dsolve_lie
 >>> x, t = symbols('x t')
 >>> u = Function('u')(x, t)
 >>> heat = u.diff(t) - u.diff(x, 2)
@@ -857,7 +857,7 @@ the cases off.
 
 ```python
 >>> from sympy import Function, symbols, exp, sin
->>> from sympy_extras.solvers.ode import solve_ode
+>>> from sympy_extras.solvers.ode_sympy import solve_ode
 >>> from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
 >>> x, k, a = symbols('x k a')
 >>> y = Function('y')(x)
@@ -934,7 +934,7 @@ commuting point symmetries into translations, after which the equation
 is `u'' = F(u')`, solvable by quadratures.
 
 ```python
->>> from sympy_extras.solvers.second_order import dsolve_second_order
+>>> from sympy_extras.solvers.second_order_sympy import dsolve_second_order
 >>> f = Function('y')(x)
 >>> dsolve_second_order(f.diff(x, 2) + 3*f*f.diff(x) + f**3, f)
 [Eq(y(x), 2*(C2 + x)/(2*C1 + 2*C2*x + x**2))]

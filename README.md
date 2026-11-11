@@ -313,7 +313,7 @@ first order equations and `pdsolve` has no symmetry analysis.
 ```python
 >>> from sympy import Function, symbols
 >>> from sympy_extras.solvers.pde_sympy import pde_symmetries, pdsolve_lie
->>> from sympy_extras.solvers.ode import dsolve_lie
+>>> from sympy_extras.solvers.ode_sympy import dsolve_lie
 >>> x, t = symbols('x t')
 >>> u = Function('u')(x, t)
 >>> burgers = u.diff(t) + u*u.diff(x) - u.diff(x, 2)
@@ -487,7 +487,7 @@ polygamma functions in zeta values.
 
 ```python
 >>> from sympy_extras.solvers.thue_equation_sympy import thue
->>> from sympy_extras.solvers.second_order import dsolve_second_order
+>>> from sympy_extras.solvers.second_order_sympy import dsolve_second_order
 >>> from sympy_extras.concrete.eulersums import polygamma_series
 >>> thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y)
 [(-9, 5), (-1, -1), (-1, 1), (-1, 2), (0, -1), (1, 0), (2, -1), (4, -9), (5, 4)]

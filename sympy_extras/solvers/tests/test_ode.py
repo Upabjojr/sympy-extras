@@ -3,7 +3,7 @@ from __future__ import annotations
 from sympy import Function, symbols, exp, log, sqrt, simplify, Eq, dsolve, Integral
 from sympy.solvers.ode import checkodesol
 
-from sympy_extras.solvers.ode import ode_symmetries, canonical_coordinates, reduce_order, dsolve_lie, solve_ode
+from sympy_extras.solvers.ode_sympy import ode_symmetries, canonical_coordinates, reduce_order, dsolve_lie, solve_ode
 from sympy_extras.solvers.lie_sympy import JetSpace, Symmetry
 from sympy_extras._timeout import attempt
 
@@ -84,7 +84,7 @@ def test_check_applies_to_the_dsolve_branch() -> None:
     # each caught by checkodesol.
     from sympy import Function, Eq, Order, nan
     from sympy.abc import x
-    from sympy_extras.solvers.ode import solve_ode
+    from sympy_extras.solvers.ode_sympy import solve_ode
     y = Function('y')(x)
     # a truncated power series is not a solution
     series = Eq(y.diff(x, 2) + (-2*x**2 - x + 1)*y.diff(x) + 3*y, 0)

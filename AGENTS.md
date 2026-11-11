@@ -314,8 +314,7 @@ sympy_extras/
         _special_values.py   the isolated values of the parameters of ODE solutions: general_solution_cases, basis_cases,
                              solution_cases, solution_jacobian, ode_order (native; the candidate points of
                              sympy_extras._special_values through _special_values_sympy)
-        _special_values_sympy.py the SymPy face of _special_values (used by ode, second_order),
-                             and special_values_of_core
+        _special_values_sympy.py the SymPy face of _special_values, and special_values_of_core
         charpit.py           complete_integral, check_complete_integral: complete integrals of first order PDEs by
                              Charpit's method (native; SymPy's solve and integrate through charpit_sympy)
         charpit_sympy.py     the SymPy face of charpit, and solve_of_core, antiderivative_of_core
@@ -326,7 +325,18 @@ sympy_extras/
         lie.py               JetSpace, Symmetry, symmetries, check_symmetry, determining_system, symmetry_janet_basis:
                              Lie point symmetries by a polynomial ansatz (native; the Janet basis of polys.differential;
                              SymPy's solve of a leading derivative of degree three or more through charpit_sympy)
-        lie_sympy.py         the SymPy face of lie (used by ode, second_order, pde_sympy)
+        lie_sympy.py         the SymPy face of lie (used by ode_sympy, second_order_sympy, pde_sympy)
+        ode.py               ode_symmetries, canonical_coordinates, reduce_order, dsolve_lie, solve_ode, ReducedODE,
+                             check_ode_solution (SymPy's checkodesol, PORTED FROM SYMPY): ODEs of any order by
+                             reduction in canonical coordinates, and the dispatcher solve_ode (native; SymPy's dsolve and
+                             solve through pde_sympy, its integrate through kovacic_sympy)
+        ode_sympy.py         the SymPy face of ode (ReducedODE with SymPy attributes, the symmetries of lie_sympy)
+        second_order.py      second_order_rhs, integrating_factor_xy, integrating_factor_p, is_linearizable, linearize,
+                             rectify_symmetries, commuting_pair, transformed_rhs, dsolve_second_order, FirstIntegral,
+                             Linearization: integrating factors and linearisations of y'' = Phi (native; SymPy's
+                             integrate, dsolve and solve through kovacic_sympy, first_order_sympy, charpit_sympy and
+                             factorization_sympy)
+        second_order_sympy.py the SymPy face of second_order
         pde.py               pde_symmetries, similarity_reduction, pdsolve_lie, check_pde_solution: similarity
                              reductions of PDEs (native; SymPy's dsolve and solve through pde_sympy)
         pde_sympy.py         the SymPy face of pde, and dsolve_of_core, solve_of_core

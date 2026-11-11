@@ -1338,3 +1338,46 @@ def test_native_first_order_and_abel_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_FIRST_ORDER], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ODE = r'''
+import sys
+from sympy_extras.core import Eq, Function, Symbol, symbols
+from sympy_extras.functions import exp
+from sympy_extras.solvers.lie import JetSpace, Symmetry
+from sympy_extras.solvers.ode import canonical_coordinates, check_ode_solution, ode_symmetries
+from sympy_extras.solvers.second_order import (commuting_pair, integrating_factor_p, integrating_factor_xy,
+    is_linearizable, linearize, second_order_rhs)
+assert 'sympy' not in sys.modules
+x, yy, p, C1 = symbols('x y p C1')
+y = Function('y')(x)
+assert len(ode_symmetries(y.diff(x, 2), y)) == 8
+assert [X.generator() for X in ode_symmetries(y.diff(x, 2) + 2*y.diff(x)/x + y**5, y)] == ['x*d/dx - y/2*d/dy']
+jets = JetSpace([y])
+u = jets.u[0]
+assert canonical_coordinates(Symmetry(jets, [0], [0])) is None
+assert check_ode_solution(y.diff(x) - y, Eq(y, C1*exp(x)), y)
+assert not check_ode_solution(y.diff(x) - y, Eq(y, C1*exp(2*x)), y)
+assert check_ode_solution(y.diff(x, 2) - y, C1*exp(-x), y)
+assert str(second_order_rhs(x*y.diff(x, 2) + y.diff(x) - y**2, y)[0]) == '(-_p + _y**2)/x'
+assert is_linearizable(-3*yy*p - yy**3, x, yy, p) and not is_linearizable(yy**2, x, yy, p)
+assert linearize(yy**2, x, yy, p) is None
+assert integrating_factor_xy(p**3, x, yy, p) is None and integrating_factor_p(p**3*(yy**2 + x*p), x, yy, p) is None
+basis = [Symmetry(jets, [1], [1]), Symmetry(jets, [1], [-1]), Symmetry(jets, [x], [u])]
+assert commuting_pair(basis, x, u) is not None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_ode_and_second_order_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.ode` and
+    :mod:`sympy_extras.solvers.second_order` does not load SymPy, nor do
+    the symmetries of an equation, the check of an explicit solution (the
+    port of SymPy's ``checkodesol``), the right-hand side of a second
+    order equation, Lie's linearisation test, the integrating factors
+    refused before a quadrature and a commuting pair of symmetries found
+    in a centralizer (SymPy's ``dsolve``, ``solve`` and ``integrate`` go
+    through the faces at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ODE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

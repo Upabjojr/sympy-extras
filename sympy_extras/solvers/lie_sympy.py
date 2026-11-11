@@ -5,9 +5,9 @@
 SymPy objects, converted by :mod:`sympy_extras.interop` around the native
 module: a :class:`JetSpace` and a :class:`Symmetry` keep their native
 counterpart (``native``) and their coordinates as SymPy objects. The
-modules which stay on SymPy (:mod:`sympy_extras.solvers.ode`,
-:mod:`sympy_extras.solvers.second_order`, :mod:`sympy_extras.solvers.pde_sympy`)
-use this face.
+faces :mod:`sympy_extras.solvers.ode_sympy`,
+:mod:`sympy_extras.solvers.second_order_sympy` and
+:mod:`sympy_extras.solvers.pde_sympy` use it.
 
 Examples
 ========
