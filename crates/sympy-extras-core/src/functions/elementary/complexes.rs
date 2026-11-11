@@ -103,6 +103,9 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         Function::Re | Function::Im | Function::Abs => Ok(Some(e.clone())),
         Function::Sign => Ok(Some(sign(&conjugate(arg)?)?)),
         Function::Conjugate => Ok(Some(arg.clone())),
+        Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
+            Ok(Some(super::trigonometric::trigonometric_conjugate(f, arg)?))
+        }
         Function::Log => {
             // DefinedFunction._eval_conjugate
             if is_true(e, extended_real) {
@@ -338,7 +341,25 @@ fn pow_real_imag(e: &Basic, deep: bool) -> PolyResult<Option<RealImag>> {
 fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>) -> PolyResult<Option<RealImag>> {
     match f {
         Function::Re | Function::Im | Function::Abs => Ok(Some((e.clone(), Basic::zero()))),
-        Function::Exp => Err(not_ported("cos and sin of the parts of exp")),
+        Function::Exp => {
+            // exp.as_real_imag: exp(re)*cos(im), exp(re)*sin(im)
+            let Some((mut r, mut im_part)) = as_real_imag(&e.args()[0], true, None)? else {
+                return Ok(None);
+            };
+            if deep {
+                r = crate::core::function::expand_default(&r)?;
+                im_part = crate::core::function::expand_default(&im_part)?;
+            }
+            let modulus: Basic = exp(&r)?;
+            use super::trigonometric::{cos, sin};
+            Ok(Some((
+                mul(&[modulus.clone(), cos(&im_part)?])?,
+                mul(&[modulus, sin(&im_part)?])?,
+            )))
+        }
+        Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
+            super::trigonometric::trigonometric_real_imag(f, &e.args()[0], deep)
+        }
         Function::Log => {
             let z: &Basic = &e.args()[0];
             if deep && !z.is_atom() {
@@ -804,7 +825,7 @@ pub fn complexes_facts(f: Function, arg: &Basic) -> FactList {
                 facts.set(commutative, *v);
             }
         }
-        Function::Exp | Function::Log => unreachable!("the facts of exp and log are in exponential"),
+        _ => unreachable!("the facts of the other functions are in their modules"),
     }
     facts
 }

@@ -64,6 +64,12 @@ pub enum Function {
     Conjugate,
     Sign,
     Abs,
+    Sin,
+    Cos,
+    Tan,
+    Cot,
+    Sec,
+    Csc,
 }
 
 impl Function {
@@ -77,6 +83,12 @@ impl Function {
             Function::Conjugate => "conjugate",
             Function::Sign => "sign",
             Function::Abs => "Abs",
+            Function::Sin => "sin",
+            Function::Cos => "cos",
+            Function::Tan => "tan",
+            Function::Cot => "cot",
+            Function::Sec => "sec",
+            Function::Csc => "csc",
         }
     }
 
@@ -90,6 +102,12 @@ impl Function {
             Function::Conjugate => "Conjugate",
             Function::Sign => "Sign",
             Function::Abs => "Abs",
+            Function::Sin => "Sin",
+            Function::Cos => "Cos",
+            Function::Tan => "Tan",
+            Function::Cot => "Cot",
+            Function::Sec => "Sec",
+            Function::Csc => "Csc",
         }
     }
 
@@ -101,7 +119,11 @@ impl Function {
             Function::Conjugate => 40,
             Function::Re => 41,
             Function::Im => 42,
-            Function::Sign | Function::Abs => 10000,
+            Function::Sin => 20,
+            Function::Cos => 21,
+            Function::Tan => 22,
+            Function::Cot => 23,
+            Function::Sign | Function::Abs | Function::Sec | Function::Csc => 10000,
         }
     }
 }

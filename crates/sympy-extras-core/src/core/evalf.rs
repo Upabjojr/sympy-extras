@@ -235,6 +235,48 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                     }
                     v.ln()
                 }
+                super::basic::Function::Sin
+                | super::basic::Function::Cos
+                | super::basic::Function::Tan
+                | super::basic::Function::Cot
+                | super::basic::Function::Sec
+                | super::basic::Function::Csc => {
+                    use super::basic::Function as F;
+                    if parts(&v).1.repr().exponent() > 40 {
+                        return None;
+                    }
+                    // sin z = (e^(iz) - e^(-iz))/(2i), cos z = (e^(iz) + e^(-iz))/2
+                    let i: Complex = complex(real_zero(wp), real_int(&Int::ONE, wp));
+                    let iz: Complex = &i * &v;
+                    let (a, b) = (iz.exp(), (-&iz).exp());
+                    let two: Complex = complex_real(real_int(&Int::from(2u8), wp), wp);
+                    let s: Complex = &(&a - &b) / &(&two * &i);
+                    let c: Complex = &(&a + &b) / &two;
+                    match f {
+                        F::Sin => s,
+                        F::Cos => c,
+                        F::Tan | F::Sec => {
+                            if is_zero(&c) {
+                                return None;
+                            }
+                            if matches!(f, F::Tan) {
+                                &s / &c
+                            } else {
+                                &complex_real(real_int(&Int::ONE, wp), wp) / &c
+                            }
+                        }
+                        _ => {
+                            if is_zero(&s) {
+                                return None;
+                            }
+                            if matches!(f, F::Cot) {
+                                &c / &s
+                            } else {
+                                &complex_real(real_int(&Int::ONE, wp), wp) / &s
+                            }
+                        }
+                    }
+                }
                 super::basic::Function::Re => complex_real(parts(&v).0, wp),
                 super::basic::Function::Im => complex_real(parts(&v).1, wp),
                 super::basic::Function::Conjugate => {

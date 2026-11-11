@@ -20,7 +20,7 @@ use pyo3::types::{PyDict, PyList, PyModule, PyTuple};
 use sympy_extras_core::core::assumptions::{facts_of, is_number, Predicate};
 use sympy_extras_core::core::evalf::{numeric_value, parts, Real};
 use sympy_extras_core::core::{self as rust_core, Basic, Dummy, Function, Head, Symbol};
-use sympy_extras_core::functions::elementary::{complexes, exponential};
+use sympy_extras_core::functions::elementary::{complexes, exponential, trigonometric};
 #[allow(unused_imports)]
 use sympy_extras_core::numbers::rat;
 use sympy_extras_core::numbers::{denom, rat_from_parts, Int, Rat};
@@ -118,6 +118,12 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Conjugate" => Basic::new(Head::Function(Function::Conjugate), args()?),
         "Sign" => Basic::new(Head::Function(Function::Sign), args()?),
         "Abs" => Basic::new(Head::Function(Function::Abs), args()?),
+        "Sin" => Basic::new(Head::Function(Function::Sin), args()?),
+        "Cos" => Basic::new(Head::Function(Function::Cos), args()?),
+        "Tan" => Basic::new(Head::Function(Function::Tan), args()?),
+        "Cot" => Basic::new(Head::Function(Function::Cot), args()?),
+        "Sec" => Basic::new(Head::Function(Function::Sec), args()?),
+        "Csc" => Basic::new(Head::Function(Function::Csc), args()?),
         other => return Err(PyTypeError::new_err(format!("the Rust core has no {} yet", other))),
     })
 }
@@ -175,6 +181,9 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             let module: &str = match f {
                 Function::Exp | Function::Log => "exponential",
+                Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
+                    "trigonometric"
+                }
                 _ => "complexes",
             };
             py.import(format!("sympy_extras.functions.elementary.{}", module))?
@@ -385,6 +394,12 @@ unary!(im, complexes::im);
 unary!(conjugate, complexes::conjugate);
 unary!(sign, complexes::sign);
 unary!(abs_, complexes::abs_);
+unary!(sin, trigonometric::sin);
+unary!(cos, trigonometric::cos);
+unary!(tan, trigonometric::tan);
+unary!(cot, trigonometric::cot);
+unary!(sec, trigonometric::sec);
+unary!(csc, trigonometric::csc);
 
 #[pyfunction]
 fn as_real_imag<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyTuple>> {
@@ -427,6 +442,12 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(conjugate, m)?)?;
     m.add_function(wrap_pyfunction!(sign, m)?)?;
     m.add_function(wrap_pyfunction!(abs_, m)?)?;
+    m.add_function(wrap_pyfunction!(sin, m)?)?;
+    m.add_function(wrap_pyfunction!(cos, m)?)?;
+    m.add_function(wrap_pyfunction!(tan, m)?)?;
+    m.add_function(wrap_pyfunction!(cot, m)?)?;
+    m.add_function(wrap_pyfunction!(sec, m)?)?;
+    m.add_function(wrap_pyfunction!(csc, m)?)?;
     m.add_function(wrap_pyfunction!(as_real_imag, m)?)?;
     m.add_function(wrap_pyfunction!(fraction, m)?)?;
     m.add_function(wrap_pyfunction!(expand_mul, m)?)?;

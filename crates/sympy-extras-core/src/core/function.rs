@@ -5,7 +5,6 @@
 //! derivatives, `Lambda` and `Subs` are not ported yet.
 
 use crate::error::PolyResult;
-use crate::functions::elementary::exponential::{exp, log};
 use crate::numbers::*;
 use crate::simplify::radsimp::fraction;
 
@@ -22,8 +21,7 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         Head::Add => add(&args),
         Head::Mul => mul(&args),
         Head::Pow => pow(&args[0], &args[1]),
-        Head::Function(Function::Exp) => exp(&args[0]),
-        Head::Function(Function::Log) => log(&args[0]),
+        Head::Function(f) => crate::functions::apply_function(*f, &args[0]),
         _ => Ok(e.rebuild(args)),
     }
 }
@@ -225,4 +223,28 @@ pub fn expand_mul(e: &Basic, deep: bool) -> PolyResult<Basic> {
 /// Integer powers of sums expanded only.
 pub fn expand_multinomial(e: &Basic, deep: bool) -> PolyResult<Basic> {
     expand(e, deep, false, true)
+}
+
+/// Whether a node is one on which the hints `power_base`, `power_exp` or
+/// `log` of the default `expand` can act.
+fn touched_by_power_or_log_hints(e: &Basic) -> bool {
+    e.preorder().iter().any(|n| {
+        (n.is_pow() && (n.args()[0].is_mul() || n.args()[1].is_add()))
+            || (n.is_function(Function::Exp) && n.args()[0].is_add())
+            || n.is_function(Function::Log)
+    })
+}
+
+/// `e.expand()` with the default hints, when the hints `power_base`,
+/// `power_exp` and `log` have nothing to act on (before and after): then it
+/// is the expansion by `mul` and `multinomial`; otherwise `NotImplemented`.
+pub fn expand_default(e: &Basic) -> PolyResult<Basic> {
+    if touched_by_power_or_log_hints(e) {
+        return Err(crate::error::not_ported("expand with the power and log hints"));
+    }
+    let result: Basic = expand(e, true, true, true)?;
+    if touched_by_power_or_log_hints(&result) {
+        return Err(crate::error::not_ported("expand with the power and log hints"));
+    }
+    Ok(result)
 }
