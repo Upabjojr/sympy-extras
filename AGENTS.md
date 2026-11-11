@@ -290,6 +290,10 @@ sympy_extras/
                              (polynomials with any constant coefficients) (native; SymPy's integrate through kovacic_sympy,
                              its dsolve through linear_ode_sympy)
         linear_ode_sympy.py  the SymPy face of linear_ode (used by first_order), and dsolve_of_core
+        darboux.py           darboux_polynomials, exponential_factors, darboux_integrating_factor, darboux_first_integral,
+                             prelle_singer, vector_field: Darboux polynomials and the Prelle–Singer procedure (native, over
+                             QQ, number fields and QQ(parameters); SymPy's integrate through kovacic_sympy)
+        darboux_sympy.py     the SymPy face of darboux (used by first_order)
         factorization.py     factor_operator, right_factor, left_factor, OperatorFactorization (Beke), variation_of_parameters,
                              solve_factored (native; SymPy's solve of the Grassmann–Plücker relations through
                              factorization_sympy)

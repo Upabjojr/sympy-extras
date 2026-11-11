@@ -5,7 +5,7 @@ from sympy.abc import x, y, a
 from sympy.core.expr import Expr
 from sympy.solvers.ode import checkodesol
 
-from sympy_extras.solvers.darboux import (DarbouxPolynomial, darboux_polynomials, exponential_factors,
+from sympy_extras.solvers.darboux_sympy import (DarbouxPolynomial, darboux_polynomials, exponential_factors,
     darboux_integrating_factor, darboux_first_integral, prelle_singer, vector_field)
 from sympy_extras.solvers.first_order import dsolve_first_order
 from sympy_extras._typing import ExprLike, as_expr
@@ -207,7 +207,7 @@ def test_degree_bound_raised_one_by_one() -> None:
     # the rationals: with degree one the search over Q(i) (the roots of
     # x**2 + y**2) gives the complex Darboux first integral
     # (x + I y)/(x - I y)**I instead; with degree two, the real one
-    from sympy_extras.solvers.darboux import _field_of, _first_integral_over
+    from sympy_extras.solvers.darboux_sympy import _field_of, _first_integral_over
     assert _first_integral_over(_field_of(x + y, x - y, x, y), 1) is None
     complex_form = darboux_first_integral(x + y, x - y, x, y, degree=1)
     assert complex_form is not None and complex_form.has(I) and _is_first_integral(x + y, x - y, complex_form)
@@ -248,7 +248,7 @@ def test_explicit_when_the_relation_is_rational() -> None:
 
 
 def test_quadratic_extension_of_the_top_part() -> None:
-    from sympy_extras.solvers.darboux import _field_of, _quadratic_extension
+    from sympy_extras.solvers.darboux_sympy import _field_of, _quadratic_extension
     # x P_d - y Q_d = (x**2 + y**2) * ... : the search over the rationals
     # is repeated over Q(i), where the conjugate lines appear
     P, Q = -(2*x**2 + x*y + y**2), x*(y - x)
@@ -290,3 +290,16 @@ def test_solve_ode_reaches_the_first_order_solvers() -> None:
     assert solutions
     for solution in solutions:
         assert checkodesol(equation, solution, f, solve_for_func=False)[0] is True
+
+
+def test_parameters_in_the_cofactor_point() -> None:
+    # Kamke 1.23 again, through darboux_polynomials: the old module raised
+    # ValueError("0**0") from SymPy's PolyElement.evaluate over ZZ(a, b)
+    # at a point with a zero coordinate (sympy-extras#25); the native
+    # evaluation finds y**2 - b/a with the cofactor -2 a y
+    b = Symbol('b')
+    found = darboux_polynomials(b - a*y**2, 1, x, y)
+    assert [d.polynomial for d in found] == [y**2 - b/a]
+    assert _D(b - a*y**2, 1, found[0].polynomial) == cancel(found[0].cofactor*found[0].polynomial)
+    R = darboux_integrating_factor(b - a*y**2, 1, x, y)
+    assert R is not None and cancel(R*(y**2 - b/a)) == 1

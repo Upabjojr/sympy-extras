@@ -409,7 +409,7 @@ def dsolve_first_order(equation: Basic, f: AppliedUndef, special_values: bool = 
     solution of an equation with parameters gets cases for the isolated
     values of the parameters at which it is undefined or loses its
     constant (:mod:`sympy_extras.solvers._special_values`)."""
-    from .darboux import prelle_singer
+    from .darboux_sympy import prelle_singer
     for method in (_riccati, abel_ode, chini_ode, prelle_singer):
         solution = attempt(lambda: method(equation, f), settings.timeout)
         if solution is not None:

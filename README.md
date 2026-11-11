@@ -445,7 +445,7 @@ system for their exponents, and the first integral by quadrature
 [x**2 + 2*x + 2, exp(x)]
 >>> special_solutions(x**2*y.diff(x, 2) + x*y.diff(x) + (x**2 - n**2)*y, y)
 [besselj(n, x), bessely(n, x)]
->>> from sympy_extras.solvers.darboux import prelle_singer
+>>> from sympy_extras.solvers.darboux_sympy import prelle_singer
 >>> prelle_singer(x*(1 - y)*y.diff(x) - y*(x - 1), y)          # Lotka–Volterra
 Eq(-x - y(x) + log(x) + log(y(x)), C1)
 
