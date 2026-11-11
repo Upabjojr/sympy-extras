@@ -52,6 +52,57 @@ pub enum Head {
     Pow,
     /// An applied function of the core (`Exp(x)`, `Log(x)`), unevaluated.
     Function(Function),
+    /// An undefined function applied to the arguments (`f(x)`,
+    /// `AppliedUndef`).
+    Undefined(Arc<UndefinedFunction>),
+    /// `Tuple(a, b, ...)` (a container, not an expression).
+    Tuple,
+    /// `Derivative(expr, Tuple(x, n), ...)`, unevaluated.
+    Derivative,
+    /// `Subs(expr, Tuple(variables), Tuple(points))`, unevaluated.
+    Subs,
+}
+
+/// An undefined function (`UndefinedFunction`): its name, numbers of
+/// arguments (any when `None`) and assumptions.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UndefinedFunction {
+    pub name: String,
+    pub nargs: Option<Vec<usize>>,
+    pub assumptions: Vec<(super::assumptions::Predicate, bool)>,
+}
+
+impl UndefinedFunction {
+    pub fn new(name: &str, nargs: Option<Vec<usize>>, assumptions: &[(super::assumptions::Predicate, bool)]) -> Self {
+        let mut given: Vec<(super::assumptions::Predicate, bool)> = assumptions.to_vec();
+        // Python's tuple(sorted(assumptions.items())): by the names
+        given.sort_by(|a, b| a.0.name().cmp(b.0.name()));
+        UndefinedFunction {
+            name: name.to_string(),
+            nargs: nargs.map(|mut n| {
+                n.sort();
+                n.dedup();
+                n
+            }),
+            assumptions: given,
+        }
+    }
+
+    /// The function applied to `args` (`f(*args)`); `Value` for a wrong
+    /// number of arguments (Python's `TypeError`).
+    pub fn apply(self: &Arc<Self>, args: Vec<Basic>) -> crate::error::PolyResult<Basic> {
+        if let Some(n) = &self.nargs {
+            if !n.contains(&args.len()) {
+                return Err(crate::error::PolyError::Value(format!(
+                    "{} takes {:?} arguments, {} given",
+                    self.name,
+                    n,
+                    args.len()
+                )));
+            }
+        }
+        Ok(Basic::new(Head::Undefined(self.clone()), args))
+    }
 }
 
 /// The functions of the core (Python's `DefinedFunction` subclasses).
@@ -178,6 +229,10 @@ impl Head {
             Head::Mul => "Mul",
             Head::Pow => "Pow",
             Head::Function(f) => f.class_name(),
+            Head::Undefined(_) => "AppliedUndef",
+            Head::Tuple => "Tuple",
+            Head::Derivative => "Derivative",
+            Head::Subs => "Subs",
         }
     }
 
@@ -206,13 +261,28 @@ impl Head {
             Head::GoldenRatio => "GoldenRatio",
             Head::TribonacciConstant => "TribonacciConstant",
             Head::Function(f) => f.name(),
+            Head::Undefined(u) => {
+                // the compare name is the function's name, a String: leaked
+                // once per distinct name so that the key stays 'static
+                intern(&u.name)
+            }
             other => other.class_name(),
         }
     }
 
     /// Whether the class is an atom (no arguments).
     pub fn is_atom(&self) -> bool {
-        !matches!(self, Head::Add | Head::Mul | Head::Pow | Head::Function(_))
+        !matches!(
+            self,
+            Head::Add
+                | Head::Mul
+                | Head::Pow
+                | Head::Function(_)
+                | Head::Undefined(_)
+                | Head::Tuple
+                | Head::Derivative
+                | Head::Subs
+        )
     }
 
     fn same(&self, other: &Head) -> bool {
@@ -223,6 +293,7 @@ impl Head {
             (Head::Dummy(a, i), Head::Dummy(b, j)) => i == j && a.name == b.name,
             (Head::Wild(a), Head::Wild(b)) => a.same(b),
             (Head::Function(a), Head::Function(b)) => a == b,
+            (Head::Undefined(a), Head::Undefined(b)) => a == b,
             (a, b) => std::mem::discriminant(a) == std::mem::discriminant(b),
         }
     }
@@ -247,9 +318,28 @@ impl Head {
                 w.symbol.assumptions.hash(state);
             }
             Head::Function(f) => f.hash(state),
+            Head::Undefined(u) => u.hash(state),
             _ => {}
         }
     }
+}
+
+/// A `'static` copy of a name (the names of the undefined functions in
+/// the `compare` keys), interned.
+fn intern(name: &str) -> &'static str {
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+    static NAMES: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
+    let mut names = NAMES
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .expect("the name table");
+    if let Some(found) = names.get(name) {
+        return found;
+    }
+    let leaked: &'static str = Box::leak(name.to_string().into_boxed_str());
+    names.insert(leaked);
+    leaked
 }
 
 /// A node: its head and its arguments, with the hash and the `compare` key
@@ -472,7 +562,29 @@ impl Basic {
 
     /// The symbols of the tree (`free_symbols`; nothing binds symbols yet).
     pub fn free_symbols(&self) -> BTreeSet<Basic> {
-        self.preorder().into_iter().filter(|n| n.is_symbol()).collect()
+        match &self.0.head {
+            Head::Subs => {
+                // the variables are bound
+                let variables: BTreeSet<Basic> = self.0.args[1].args().iter().cloned().collect();
+                let mut result: BTreeSet<Basic> = self.0.args[0]
+                    .free_symbols()
+                    .into_iter()
+                    .filter(|s| !variables.contains(s))
+                    .collect();
+                for p in self.0.args[2].args() {
+                    result.extend(p.free_symbols());
+                }
+                result
+            }
+            _ if self.is_symbol() => std::iter::once(self.clone()).collect(),
+            _ => {
+                let mut result: BTreeSet<Basic> = BTreeSet::new();
+                for a in &self.0.args {
+                    result.extend(a.free_symbols());
+                }
+                result
+            }
+        }
     }
 
     /// Whether the tree contains `pattern` as a subtree.
@@ -564,9 +676,8 @@ impl fmt::Display for Basic {
             Head::Symbol(s) => write!(f, "{}", s.name),
             Head::Dummy(s, _) => write!(f, "_{}", s.name),
             Head::Wild(w) => write!(f, "{}_", w.symbol.name),
-            Head::Function(g) => {
-                let args: Vec<String> = self.0.args.iter().map(super::printing::sstr).collect();
-                write!(f, "{}({})", g.name(), args.join(", "))
+            Head::Function(_) | Head::Undefined(_) | Head::Tuple | Head::Derivative | Head::Subs => {
+                write!(f, "{}", super::printing::sstr(self))
             }
             _ => {
                 let args: Vec<String> = self.0.args.iter().map(|a| a.to_string()).collect();

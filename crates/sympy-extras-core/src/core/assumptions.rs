@@ -629,7 +629,9 @@ pub fn constant_facts(e: &Basic) -> FactList {
 
 /// Whether `e` is built from numbers and constants only.
 pub fn is_number(e: &Basic) -> bool {
-    if e.is_symbol() {
+    // an undefined function, a derivative, and a node with a Tuple argument
+    // (not an expression: Subs) are not numbers
+    if e.is_symbol() || matches!(e.head(), Head::Undefined(_) | Head::Derivative | Head::Tuple) {
         return false;
     }
     e.args().iter().all(is_number)
@@ -1239,6 +1241,33 @@ fn eval_facts(e: &Basic) -> FactList {
         Head::Mul => mul_facts(e.args()),
         Head::Pow => pow_facts(&e.args()[0], &e.args()[1]),
         Head::Function(f) => function_facts(e, *f),
+        Head::Undefined(u) => {
+            // AppliedUndef._eval_facts: the given assumptions, commutative
+            // from the arguments; then facts_of's rule of the functions
+            let mut facts: FactList = FactList(u.assumptions.clone());
+            let args: Vec<Option<bool>> = e
+                .args()
+                .iter()
+                .map(|a| facts_of(a).get(&commutative).copied())
+                .collect();
+            if args.iter().all(|v| *v == Some(true)) {
+                facts.set_default(commutative, true);
+            } else if args.contains(&Some(false)) {
+                facts.set_default(commutative, false);
+            }
+            if facts.get(commutative) == Some(true) && e.args().iter().any(|a| no(facts_of(a), commutative)) {
+                facts.set(commutative, false);
+            }
+            facts
+        }
+        Head::Derivative | Head::Subs => {
+            let mut facts: FactList = FactList::new();
+            if let Some(v) = facts_of(&e.args()[0]).get(&commutative) {
+                facts.set(commutative, *v);
+            }
+            facts
+        }
+        Head::Tuple => FactList::new(),
         _ => constant_facts(e),
     }
 }

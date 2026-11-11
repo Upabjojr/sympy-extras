@@ -138,6 +138,7 @@ pub fn class_key(e: &Basic) -> ClassKey {
         Head::Mul => (3, 0, name),
         Head::Pow => (3, 2, name),
         Head::Function(f) => (4, f.rank(), f.name().to_string()),
+        Head::Undefined(u) => (4, 0, u.name.clone()),
         _ if e.is_atom() => (2, 0, name),
         _ => (5, 0, name),
     }
@@ -174,6 +175,15 @@ pub fn sort_key(e: &Basic) -> SortKey {
             args: (0, ArgsItems::Keys(Vec::new())),
             exp: None,
             coefficient: sort_value(e),
+        };
+    }
+    if matches!(e.head(), Head::Tuple) {
+        // Basic._compute_sort_key (a Tuple is not an expression)
+        return SortKey {
+            class: class_key(e),
+            args: (e.args().len(), ArgsItems::Keys(e.args().iter().map(sort_key).collect())),
+            exp: None,
+            coefficient: rat(1, 1),
         };
     }
     if e.is_atom() {

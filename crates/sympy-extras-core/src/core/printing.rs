@@ -13,7 +13,7 @@ use crate::numbers::*;
 use super::assumptions::{is_number, Predicate};
 use super::basic::{Basic, Head};
 use super::evalf::{numeric_value, parts};
-use super::expr::{as_base_exp, as_coeff_mul, factors_of, is_false, is_true};
+use super::expr::{as_base_exp, as_coeff_mul, factors_of, is_false, is_rational_value, is_true};
 use super::mul::{mul, neg};
 use super::power::pow;
 use super::sorting::{sort_key, SortKey};
@@ -295,6 +295,45 @@ impl StrPrinter {
             Head::Function(f) => {
                 let args: Vec<String> = e.args().iter().map(|a| self.doprint(a)).collect();
                 format!("{}({})", f.name(), args.join(", "))
+            }
+            Head::Undefined(u) => {
+                let args: Vec<String> = e.args().iter().map(|a| self.doprint(a)).collect();
+                format!("{}({})", u.name, args.join(", "))
+            }
+            Head::Tuple => {
+                let args: Vec<String> = e.args().iter().map(|a| self.doprint(a)).collect();
+                if args.len() == 1 {
+                    format!("({},)", args[0])
+                } else {
+                    format!("({})", args.join(", "))
+                }
+            }
+            Head::Derivative => {
+                let mut parts: Vec<String> = vec![self.doprint(&e.args()[0])];
+                for pair in &e.args()[1..] {
+                    let (s, n) = (&pair.args()[0], &pair.args()[1]);
+                    if is_rational_value(n, 1) {
+                        parts.push(self.doprint(s));
+                    } else {
+                        parts.push(format!("({}, {})", self.doprint(s), n));
+                    }
+                }
+                format!("Derivative({})", parts.join(", "))
+            }
+            Head::Subs => {
+                let (expr, variables, point) = (&e.args()[0], e.args()[1].args(), e.args()[2].args());
+                if variables.len() == 1 {
+                    format!(
+                        "Subs({}, {}, {})",
+                        self.doprint(expr),
+                        self.doprint(&variables[0]),
+                        self.doprint(&point[0])
+                    )
+                } else {
+                    let vs: Vec<String> = variables.iter().map(|v| self.doprint(v)).collect();
+                    let ps: Vec<String> = point.iter().map(|p| self.doprint(p)).collect();
+                    format!("Subs({}, ({}), ({}))", self.doprint(expr), vs.join(", "), ps.join(", "))
+                }
             }
             _ => e.to_string(),
         }

@@ -22,6 +22,12 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         Head::Mul => mul(&args),
         Head::Pow => pow(&args[0], &args[1]),
         Head::Function(f) => crate::functions::apply_function(*f, &args[0]),
+        Head::Derivative => {
+            // Derivative._evaluated: diff of the new expression
+            let counts: Vec<(Basic, u64)> = derivative_counts(&e.rebuild(args.clone()));
+            diff(&args[0], &counts)
+        }
+        Head::Subs => substituted(&args[0], args[1].args(), args[2].args()),
         _ => Ok(e.rebuild(args)),
     }
 }
@@ -247,4 +253,228 @@ pub fn expand_default(e: &Basic) -> PolyResult<Basic> {
         return Err(crate::error::not_ported("expand with the power and log hints"));
     }
     Ok(result)
+}
+
+// ---------------------------------------------------------------------
+// derivatives (`Derivative`, `Subs`, `diff`)
+
+/// `Tuple(*items)`.
+pub fn tuple(items: Vec<Basic>) -> Basic {
+    Basic::new(Head::Tuple, items)
+}
+
+/// The unevaluated `Derivative(expr, (s1, n1), ...)`, consecutive counts
+/// of the same variable merged (`_merge_counts`).
+pub fn derivative_node(expr: &Basic, counts: &[(Basic, u64)]) -> Basic {
+    let mut merged: Vec<(Basic, u64)> = Vec::new();
+    for (s, n) in counts {
+        match merged.last_mut() {
+            Some((last, m)) if last == s => *m += n,
+            _ => merged.push((s.clone(), *n)),
+        }
+    }
+    let mut args: Vec<Basic> = vec![expr.clone()];
+    for (s, n) in merged {
+        args.push(tuple(vec![s, Basic::integer(Int::from(n))]));
+    }
+    Basic::new(Head::Derivative, args)
+}
+
+/// The variables and counts of a `Derivative` node.
+pub fn derivative_counts(e: &Basic) -> Vec<(Basic, u64)> {
+    e.args()[1..]
+        .iter()
+        .map(|pair| {
+            let n: u64 = u64::try_from(pair.args()[1].as_rational().expect("a count").numerator()).expect("a count");
+            (pair.args()[0].clone(), n)
+        })
+        .collect()
+}
+
+/// The unevaluated `Subs(expr, variables, point)`.
+pub fn subs_node(expr: &Basic, variables: Vec<Basic>, point: Vec<Basic>) -> Basic {
+    Basic::new(Head::Subs, vec![expr.clone(), tuple(variables), tuple(point)])
+}
+
+/// `expr` with the variables replaced by the points, a `Subs` kept around
+/// the variables of a derivative which are not replaced by symbols
+/// (`_substituted`; the replacement itself needs `subs`, not ported).
+pub fn substituted(expr: &Basic, variables: &[Basic], point: &[Basic]) -> PolyResult<Basic> {
+    let derivatives: Vec<Basic> = expr
+        .preorder()
+        .into_iter()
+        .filter(|n| matches!(n.head(), Head::Derivative))
+        .collect();
+    let free_symbols = expr.free_symbols();
+    let mut blocked: Vec<(Basic, Basic)> = Vec::new();
+    let mut free: Vec<(Basic, Basic)> = Vec::new();
+    for (v, p) in variables.iter().zip(point) {
+        let differentiated: bool = derivatives
+            .iter()
+            .any(|d| derivative_counts(d).iter().any(|(s, _)| s == v));
+        let capturing: bool = !p.is_symbol() || (free_symbols.contains(p) && p != v);
+        if differentiated && capturing {
+            blocked.push((v.clone(), p.clone()));
+        } else {
+            free.push((v.clone(), p.clone()));
+        }
+    }
+    if !free.is_empty() {
+        return Err(crate::error::not_ported("subs"));
+    }
+    if blocked.is_empty() {
+        return Ok(expr.clone());
+    }
+    let (vs, ps): (Vec<Basic>, Vec<Basic>) = blocked.into_iter().unzip();
+    Ok(subs_node(expr, vs, ps))
+}
+
+fn is_zero_rational(e: &Basic) -> bool {
+    e.as_rational().is_some_and(|v| v.is_zero())
+}
+
+/// The derivative of `e` with respect to the symbol `s` (`_derivative`).
+pub fn derivative(e: &Basic, s: &Basic) -> PolyResult<Basic> {
+    if e == s {
+        return Ok(Basic::one());
+    }
+    if !e.free_symbols().contains(s) {
+        return Ok(Basic::zero());
+    }
+    match e.head() {
+        Head::Add => {
+            let mut terms: Vec<Basic> = Vec::new();
+            for t in e.args() {
+                terms.push(derivative(t, s)?);
+            }
+            add(&terms)
+        }
+        Head::Mul => {
+            let mut terms: Vec<Basic> = Vec::new();
+            for (i, f) in e.args().iter().enumerate() {
+                let d: Basic = derivative(f, s)?;
+                if is_zero_rational(&d) {
+                    continue;
+                }
+                let mut factors: Vec<Basic> = e.args()[..i].to_vec();
+                factors.push(d);
+                factors.extend(e.args()[i + 1..].iter().cloned());
+                terms.push(mul(&factors)?);
+            }
+            add(&terms)
+        }
+        Head::Pow => {
+            let (b, ex) = (&e.args()[0], &e.args()[1]);
+            if !ex.free_symbols().contains(s) {
+                let inner: Basic = mul(&[ex.clone(), derivative(b, s)?])?;
+                return mul(&[inner, e.clone(), pow(b, &Basic::negative_one())?]);
+            }
+            let log_b: Basic = crate::functions::elementary::exponential::log(b)?;
+            let first: Basic = mul(&[derivative(ex, s)?, log_b])?;
+            let second: Basic = mul(&[ex.clone(), derivative(b, s)?, pow(b, &Basic::negative_one())?])?;
+            mul(&[e.clone(), add(&[first, second])?])
+        }
+        Head::Function(f) => {
+            if let Some(own) = crate::functions::eval_derivative(*f, e, s)? {
+                return Ok(own);
+            }
+            let mut chain: Vec<Basic> = Vec::new();
+            let da: Basic = derivative(&e.args()[0], s)?;
+            if !is_zero_rational(&da) {
+                chain.push(mul(&[crate::functions::fdiff(*f, e)?, da])?);
+            }
+            add(&chain)
+        }
+        Head::Undefined(u) => {
+            let depending: usize = e.args().iter().filter(|a| a.free_symbols().contains(s)).count();
+            let mut terms: Vec<Basic> = Vec::new();
+            for (i, a) in e.args().iter().enumerate() {
+                if !a.free_symbols().contains(s) {
+                    continue;
+                }
+                if a.is_symbol() && depending <= 1 {
+                    terms.push(derivative_node(e, &[(a.clone(), 1)]));
+                    continue;
+                }
+                let xi: Basic = super::Dummy::new(&format!("xi_{}", i + 1), &[]).0;
+                let mut args: Vec<Basic> = e.args().to_vec();
+                args[i] = xi.clone();
+                let inner: Basic = u.apply(args)?;
+                let at: Basic = substituted(
+                    &derivative_node(&inner, &[(xi.clone(), 1)]),
+                    &[xi],
+                    std::slice::from_ref(a),
+                )?;
+                terms.push(mul(&[at, derivative(a, s)?])?);
+            }
+            add(&terms)
+        }
+        Head::Derivative => {
+            let mut counts: Vec<(Basic, u64)> = derivative_counts(e);
+            counts.push((s.clone(), 1));
+            Ok(derivative_node(&e.args()[0], &counts))
+        }
+        Head::Subs => {
+            let (expr, variables, point) = (&e.args()[0], e.args()[1].args(), e.args()[2].args());
+            let mut terms: Vec<Basic> = Vec::new();
+            if expr.free_symbols().contains(s) && !variables.contains(s) {
+                terms.push(substituted(&derivative(expr, s)?, variables, point)?);
+            }
+            for (v, p) in variables.iter().zip(point) {
+                let dp: Basic = derivative(p, s)?;
+                if is_zero_rational(&dp) {
+                    continue;
+                }
+                terms.push(mul(&[substituted(&derivative(expr, v)?, variables, point)?, dp])?);
+            }
+            add(&terms)
+        }
+        _ => Ok(derivative_node(e, &[(s.clone(), 1)])),
+    }
+}
+
+/// The derivative of `e` with respect to the symbols with their counts
+/// (`diff(e, (x, 2), y)`).
+pub fn diff(e: &Basic, counts: &[(Basic, u64)]) -> PolyResult<Basic> {
+    let mut result: Basic = e.clone();
+    for (s, n) in counts {
+        for _ in 0..*n {
+            result = derivative(&result, s)?;
+        }
+    }
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::basic::UndefinedFunction;
+    use crate::core::printing::sstr;
+    use crate::core::Symbol;
+    use std::sync::Arc;
+
+    #[test]
+    fn docstring_examples() {
+        let x: Basic = Symbol::new("x", &[]).0;
+        let show = |e: PolyResult<Basic>| sstr(&e.unwrap());
+        let cube: Basic = pow(&x, &Basic::int(3)).unwrap();
+        assert_eq!(show(diff(&cube, &[(x.clone(), 1)])), "3*x**2");
+        assert_eq!(
+            show(diff(&pow(&x, &Basic::half()).unwrap(), &[(x.clone(), 1)])),
+            "1/(2*sqrt(x))"
+        );
+        let f = Arc::new(UndefinedFunction::new("f", None, &[]));
+        let fx: Basic = f.apply(vec![x.clone()]).unwrap();
+        assert_eq!(
+            show(diff(&mul(&[x.clone(), fx]).unwrap(), &[(x.clone(), 1)])),
+            "x*Derivative(f(x), x) + f(x)"
+        );
+        let fx2: Basic = f.apply(vec![pow(&x, &Basic::int(2)).unwrap()]).unwrap();
+        assert_eq!(
+            show(diff(&fx2, &[(x.clone(), 1)])),
+            "2*x*Subs(Derivative(f(_xi_1), _xi_1), _xi_1, x**2)"
+        );
+        let two_x: Basic = pow(&Basic::int(2), &x).unwrap();
+        assert_eq!(show(diff(&two_x, &[(x.clone(), 1)])), "2**x*log(2)");
+    }
 }

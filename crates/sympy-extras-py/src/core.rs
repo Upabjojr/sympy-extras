@@ -111,6 +111,38 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Add" => Basic::new(Head::Add, args()?),
         "Mul" => Basic::new(Head::Mul, args()?),
         "Pow" => Basic::new(Head::Pow, args()?),
+        "AppliedUndef" => {
+            let function: Bound<'_, PyAny> = ob.getattr("function")?;
+            let name: String = function.getattr("name")?.extract()?;
+            let nargs_ob: Bound<'_, PyAny> = function.getattr("nargs")?;
+            let nargs: Option<Vec<usize>> = if nargs_ob.is_none() {
+                None
+            } else {
+                let mut n: Vec<usize> = Vec::new();
+                for k in nargs_ob.try_iter()? {
+                    n.push(k?.extract()?);
+                }
+                Some(n)
+            };
+            let mut assumptions: Vec<(Predicate, bool)> = Vec::new();
+            let given: Bound<'_, PyAny> = function.getattr("assumptions")?;
+            for (k, v) in given.downcast::<PyDict>()?.iter() {
+                let key: String = k.extract()?;
+                let Some(p) = Predicate::from_name(&key) else {
+                    return Err(PyTypeError::new_err(format!("unknown assumption {}", key)));
+                };
+                assumptions.push((p, v.extract()?));
+            }
+            let u = std::sync::Arc::new(sympy_extras_core::core::basic::UndefinedFunction::new(
+                &name,
+                nargs,
+                &assumptions,
+            ));
+            Basic::new(Head::Undefined(u), args()?)
+        }
+        "Tuple" => Basic::new(Head::Tuple, args()?),
+        "Derivative" => Basic::new(Head::Derivative, args()?),
+        "Subs" => Basic::new(Head::Subs, args()?),
         "Exp" => Basic::new(Head::Function(Function::Exp), args()?),
         "Log" => Basic::new(Head::Function(Function::Log), args()?),
         "Re" => Basic::new(Head::Function(Function::Re), args()?),
@@ -175,14 +207,43 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             let given: Vec<(Predicate, bool)> = Symbol(e.clone()).given_assumptions().to_vec();
             class("symbol", "Symbol")?.call((data.name.clone(),), Some(&kwargs(py, &given)?))?
         }
-        Head::Dummy(_, index) => match with_dummies(|d| d.to_python.get(index).map(|o| o.clone_ref(py))) {
+        Head::Dummy(data, index) => match with_dummies(|d| d.to_python.get(index).map(|o| o.clone_ref(py))) {
             Some(object) => object.into_bound(py),
-            None => return Err(PyTypeError::new_err("a dummy which did not come from Python")),
+            None => {
+                // a dummy made in Rust: a new Python dummy, registered both ways
+                let given: Vec<(Predicate, bool)> = data.given.clone();
+                let object: Bound<'py, PyAny> =
+                    class("symbol", "Dummy")?.call((data.name.clone(),), Some(&kwargs(py, &given)?))?;
+                let python_index: i64 = object.getattr("dummy_index")?.extract()?;
+                let unbound: Py<PyAny> = object.clone().unbind();
+                with_dummies(|d| {
+                    d.from_python.insert(python_index, e.clone());
+                    d.to_python.insert(*index, unbound);
+                });
+                object
+            }
         },
         Head::Wild(_) => return Err(PyTypeError::new_err("wilds are not converted")),
         Head::Add => rebuilt("Add", "add")?,
         Head::Mul => rebuilt("Mul", "mul")?,
         Head::Pow => rebuilt("Pow", "power")?,
+        Head::Undefined(u) => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            let given: Vec<(Predicate, bool)> = u.assumptions.clone();
+            let nargs: Bound<'py, PyAny> = match &u.nargs {
+                None => py.None().into_bound(py),
+                Some(n) => PyTuple::new(py, n.iter().copied())?.into_any(),
+            };
+            let function: Bound<'py, PyAny> =
+                class("function", "Function")?.call((u.name.clone(), nargs), Some(&kwargs(py, &given)?))?;
+            function.call1(PyTuple::new(py, items)?)?
+        }
+        Head::Tuple => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            class("containers", "Tuple")?.call1(PyTuple::new(py, items)?)?
+        }
+        Head::Derivative => rebuilt("Derivative", "function")?,
+        Head::Subs => rebuilt("Subs", "function")?,
         Head::Function(f) => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             let module: &str = match f {
@@ -581,6 +642,28 @@ fn together<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, deep: bool, fraction: b
     to_python(py, &value.map_err(crate::convert::err)?)
 }
 
+/// `diff(e, *spec)`: symbols, a symbol and a count, or `(symbol, n)`.
+#[pyfunction(signature = (e, *spec))]
+fn diff<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, spec: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, PyAny>> {
+    let mut counts: Vec<(Basic, u64)> = Vec::new();
+    for item in spec.iter() {
+        if let Ok(n) = item.extract::<u64>() {
+            let Some(last) = counts.last_mut() else {
+                return Err(PyTypeError::new_err("a count must follow a symbol"));
+            };
+            last.1 = last.1 - 1 + n;
+        } else if let Ok(t) = item.downcast::<PyTuple>() {
+            counts.push((from_python(&t.get_item(0)?)?, t.get_item(1)?.extract()?));
+        } else {
+            counts.push((from_python(&item)?, 1));
+        }
+    }
+    to_python(
+        py,
+        &rust_core::function::diff(&from_python(e)?, &counts).map_err(crate::convert::err)?,
+    )
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -612,6 +695,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dict_from_expr, m)?)?;
     m.add_function(wrap_pyfunction!(gcd_terms, m)?)?;
     m.add_function(wrap_pyfunction!(together, m)?)?;
+    m.add_function(wrap_pyfunction!(diff, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;
