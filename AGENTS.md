@@ -178,8 +178,8 @@ sympy_extras/
         sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check (native, with the native CAD
                              and Hermite's count; SymPy's SAT solver and predicates_consistent through sat_sympy)
         sat_sympy.py         the SymPy face of sat, and the steps which stay on SymPy (the *_of_core functions)
-        solve.py             solve(): Solve under assumptions (native, with the native CAD, regular chains and parametric cases;
-                             solveset, nonlinsolve, transcendental equations through solve_sympy)
+        solve.py             solve(): Solve under assumptions (native, with the native CAD, regular chains, parametric cases
+                             and transcendental equations; solveset, nonlinsolve through solve_sympy)
         solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions)
         limits.py            limit(), limit_seq(), series() under assumptions, with case distinctions (native; the core's
                              Gruntz and series, the native reliable values; SymPy's limit_seq through limits_sympy)
@@ -263,6 +263,15 @@ sympy_extras/
         isolation.py         TranscendentalRoot (node), isolate_real_roots, point_between, compare_points: exact real roots of
                              exp-log functions (native; SymPy's real_roots with CRootOf and continuous_domain through isolation_sympy)
         isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts), the *_of_core functions
+        transcendental.py    solve_transcendental, polynomialize, Reduction: transcendental equations and inequalities
+                             reduced to polynomial ones through kernels (native; SymPy's solveset of the non-rational
+                             polynomial relations, the Lambert W candidates of its solve and _numeric through
+                             transcendental_sympy)
+        transcendental_sympy.py the SymPy face of transcendental, and solveset_of_core, solve_of_core,
+                             reliable_form_of_core, reliable_value_of_core
+        inequalities.py      solve_inequality: a relational solved for one variable (native, the rational case by
+                             the CAD; the others through inequalities_sympy), PORTED FROM SYMPY
+        inequalities_sympy.py solve_inequality_of_core (SymPy's _solve_inequality)
         integers.py          linear Diophantine systems (Hermite), Contejean-Devie, Cooper's algorithm (native;
                              SymPy's simplify_logic through integers_sympy)
         integers_sympy.py    the SymPy face of integers, and simplify_logic_of_core (from virtual_substitution_sympy)

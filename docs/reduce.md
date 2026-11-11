@@ -3,7 +3,7 @@
 Modules: `sympy_extras.assumptions.resolve`, `sympy_extras.assumptions.solve` (SymPy face `solve_sympy`),
 `sympy_extras.polys.virtual_substitution` (SymPy face `virtual_substitution_sympy`), `sympy_extras.polys.comprehensive` (SymPy face `comprehensive_sympy`),
 `sympy_extras.polys.roots`, `sympy_extras.solvers.integers`,
-`sympy_extras.solvers.transcendental`.
+`sympy_extras.solvers.transcendental` (SymPy face `transcendental_sympy`).
 
 Mathematica's notes on its internal implementation list the algorithms
 behind `Solve`, `Reduce` and `Resolve` (and, further down, `DSolve`,
@@ -301,8 +301,9 @@ Piecewise((oo, a > 1), (1, Eq(a, 1)), (0, a < 1))
 - `sympy_extras/solvers/tests/test_integers.py` checks Cooper's algorithm
   against brute force on boxes of integers, and the Hilbert bases against
   enumeration.
-- `sympy_extras/solvers/tests/test_transcendental.py` checks the solutions
-  by membership tests and substitution.
+- `sympy_extras/solvers/tests/test_transcendental.py` (on the face) and
+  `test_transcendental_native.py` (on the core) check the solutions by
+  membership tests and substitution.
 
 ## Thue equations
 

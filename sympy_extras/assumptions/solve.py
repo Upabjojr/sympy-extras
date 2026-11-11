@@ -21,12 +21,13 @@ time (the face holds them, the functions ending in ``_of_core``): SymPy's
 ``nonlinsolve``, ``periodicity`` and the evaluation of an intersection of
 sets which is not ported (with ``Range``, ...), the exact points of
 the zero-dimensional regular chains (SymPy's ``CRootOf``, through
-:mod:`sympy_extras.polys.regularchains_sympy`), the
-transcendental equations (:mod:`sympy_extras.solvers.transcendental`). The
-reliable numerical values of :mod:`sympy_extras._numeric` are native. The
-cylindrical algebraic decomposition (:mod:`sympy_extras.polys.cad.qe`:
-``solution_set``; :mod:`sympy_extras.polys.cad.cylindrical`:
-``cylindrical_set``, ``cylindrical_formula``, ``cylindrical_cases``), the
+:mod:`sympy_extras.polys.regularchains_sympy`). The transcendental
+equations (:mod:`sympy_extras.solvers.transcendental`, whose Lambert W
+candidates go through SymPy's ``solve``), the reliable numerical values
+of :mod:`sympy_extras._numeric`, the cylindrical algebraic decomposition
+(:mod:`sympy_extras.polys.cad.qe`: ``solution_set``;
+:mod:`sympy_extras.polys.cad.cylindrical`: ``cylindrical_set``,
+``cylindrical_formula``, ``cylindrical_cases``), the
 radical forms of the roots of the CAD (:mod:`sympy_extras.polys.roots`),
 the isolation of real roots (:mod:`sympy_extras.solvers.isolation`),
 the triangular decompositions (:mod:`sympy_extras.polys.regularchains`),
@@ -385,11 +386,11 @@ def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]
         # carry their assumptions into the polynomial solving and the
         # inversion of the kernels
         facts_ = facts
-        from .solve_sympy import solve_transcendental_of_core
+        from sympy_extras.solvers.transcendental import solve_transcendental
         transcendental = attempt(
-            lambda: solve_transcendental_of_core(formula, x,
-                                                 lambda f, v: _univariate(f, v, facts_, Reals),
-                                                 lambda c: _evaluate(normalize(c), facts_)),
+            lambda: solve_transcendental(formula, x,
+                                         lambda f, v: _univariate(f, v, facts_, Reals),
+                                         lambda c: _evaluate(normalize(c), facts_)),
             settings.timeout)
         if transcendental is not None:
             if polynomial_on_x is not true:
