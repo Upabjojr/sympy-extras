@@ -86,7 +86,7 @@ from .core import AlternativeStep, Context, Step, StepSolver, atomic
 
 __all__ = ['DerivativeProblem', 'DerivativeStep', 'ConstantRule', 'VariableRule', 'PowerRule', 'ExponentialRule',
            'FunctionRule', 'ConstantMultipleRule', 'SumRule', 'ProductRule', 'QuotientRule', 'ChainRule', 'RewriteRule',
-           'AlternativeRule', 'DontKnowRule', 'derivative_steps', 'manual_derivative']
+           'AlternativeRule', 'DontKnowRule', 'InProgressRule', 'derivative_steps', 'manual_derivative']
 
 
 @dataclass(frozen=True)
@@ -318,6 +318,19 @@ class DontKnowRule(DerivativeStep):
         return Derivative(self.expression, self.variable)
 
 
+@dataclass(frozen=True)
+class InProgressRule(DerivativeStep):
+    """The problem is met again while it is being solved (the derivation
+    leads around in a loop): a placeholder for work in progress, where
+    ``DontKnowRule`` says that no rule applies."""
+
+    def contains_dont_know(self) -> bool:
+        return True
+
+    def result(self) -> Expr:
+        return Derivative(self.expression, self.variable)
+
+
 # ---------------------------------------------------------------------
 # the rules: generators which yield the subproblems and return the step
 
@@ -480,6 +493,10 @@ def _dont_know(problem: DerivativeProblem) -> DerivativeStep:
     return DontKnowRule(problem.expression, problem.variable)
 
 
+def _in_progress(problem: DerivativeProblem) -> DerivativeStep:
+    return InProgressRule(problem.expression, problem.variable)
+
+
 def _alternative(problem: DerivativeProblem, alternatives: Sequence[DerivativeStep]) -> DerivativeStep:
     return AlternativeRule(problem.expression, problem.variable, tuple(alternatives))
 
@@ -499,7 +516,7 @@ def derivative_steps(f: ExprLike, x: Symbol, branch: bool = False, max_depth: Op
     >>> derivative_steps(x**x, x).result()
     (log(x) + 1)*exp(x*log(x))
     """
-    solver: StepSolver[DerivativeProblem, DerivativeStep] = StepSolver(_candidates, _dont_know, _alternative, branch, max_depth)
+    solver: StepSolver[DerivativeProblem, DerivativeStep] = StepSolver(_candidates, _dont_know, _in_progress, _alternative, branch, max_depth)
     return solver.solve(DerivativeProblem(to_expr(f), x))
 
 

@@ -118,7 +118,13 @@ class StepSolver(Generic[P, S]):
     ==========
 
     candidates : the rules to try on a problem, in order of preference.
-    dont_know : the step which leaves a problem undone.
+    dont_know : the step for a problem no rule solves (or which lies
+        beyond ``max_depth``).
+    in_progress : the step which stands for a problem met again while
+        it is being solved (the derivation leads around in a loop): a
+        placeholder for work in progress, not the verdict that no rule
+        applies. It must also answer ``contains_dont_know()`` with
+        ``True``, so that the rule which met it is not taken as solved.
     alternative : the step which holds several derivations of a problem.
     branch : collect every workable rule (``True``) or keep the first.
     max_depth : the limit on the depth of nested subproblems (``None``
@@ -126,10 +132,11 @@ class StepSolver(Generic[P, S]):
     """
 
     def __init__(self, candidates: Callable[[P], Sequence[Callable[[P, Context], Generator[P, S, Optional[S]]]]],
-                 dont_know: Callable[[P], S], alternative: Callable[[P, Sequence[S]], S], branch: bool = False,
+                 dont_know: Callable[[P], S], in_progress: Callable[[P], S], alternative: Callable[[P, Sequence[S]], S], branch: bool = False,
                  max_depth: Optional[int] = 100) -> None:
         self.candidates = candidates
         self.dont_know = dont_know
+        self.in_progress = in_progress
         self.alternative = alternative
         self.branch: bool = branch
         self.max_depth: Optional[int] = max_depth
@@ -147,8 +154,8 @@ class StepSolver(Generic[P, S]):
             self._starved = True
             return self.dont_know(problem)
         if problem in self._active:
-            # the attempt leads around in a loop
-            return self.dont_know(problem)
+            # the attempt leads around in a loop: the problem is still being worked on
+            return self.in_progress(problem)
         outer, self._starved = self._starved if self._active else False, False
         self._active.append(problem)
         try:

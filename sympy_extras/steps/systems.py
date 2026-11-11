@@ -19,6 +19,7 @@ equations with its unknowns; the subproblems are smaller systems:
 ``InconsistentRule``        no unknown is left and an equation fails
 ``AlternativeRule``         several derivations
 ``DontKnowRule``            no rule applies
+``InProgressRule``          the problem met again while being solved
 ==========================  =================================================
 
 **Substitution.** The equation and the unknown are chosen so that the
@@ -82,7 +83,7 @@ from .core import AlternativeStep, Context, Step, StepSolver, atomic
 from .equations import EquationStep, solve_steps
 
 __all__ = ['SystemProblem', 'SystemStep', 'SingleEquationRule', 'SubstitutionRule', 'EliminationRule', 'ConsistentRule',
-           'InconsistentRule', 'AlternativeRule', 'DontKnowRule', 'system_steps', 'manual_system']
+           'InconsistentRule', 'AlternativeRule', 'DontKnowRule', 'InProgressRule', 'system_steps', 'manual_system']
 
 _Equation = tuple[Expr, Expr]
 _Solution = tuple[Expr, ...]
@@ -214,6 +215,19 @@ class AlternativeRule(SystemStep, AlternativeStep):
 
 @dataclass(frozen=True)
 class DontKnowRule(SystemStep):
+    def contains_dont_know(self) -> bool:
+        return True
+
+    def solutions(self) -> tuple[_Solution, ...]:
+        raise ValueError('the system is not solved')
+
+
+@dataclass(frozen=True)
+class InProgressRule(SystemStep):
+    """The problem is met again while it is being solved (the derivation
+    leads around in a loop): a placeholder for work in progress, where
+    ``DontKnowRule`` says that no rule applies."""
+
     def contains_dont_know(self) -> bool:
         return True
 
@@ -404,6 +418,10 @@ def _dont_know(problem: SystemProblem) -> SystemStep:
     return DontKnowRule(problem.equations, problem.variables)
 
 
+def _in_progress(problem: SystemProblem) -> SystemStep:
+    return InProgressRule(problem.equations, problem.variables)
+
+
 def _alternative(problem: SystemProblem, alternatives: Sequence[SystemStep]) -> SystemStep:
     return AlternativeRule(problem.equations, problem.variables, tuple(alternatives))
 
@@ -425,7 +443,7 @@ def system_steps(equations: Sequence[tuple[ExprLike, ExprLike]], variables: Sequ
     problem = SystemProblem(tuple((to_expr(lhs), to_expr(rhs)) for lhs, rhs in equations), tuple(variables))
     if len(set(problem.variables)) != len(problem.variables):
         raise ValueError('the unknowns are not distinct')
-    solver: StepSolver[SystemProblem, SystemStep] = StepSolver(_candidates, _dont_know, _alternative, branch, max_depth)
+    solver: StepSolver[SystemProblem, SystemStep] = StepSolver(_candidates, _dont_know, _in_progress, _alternative, branch, max_depth)
     return solver.solve(problem)
 
 

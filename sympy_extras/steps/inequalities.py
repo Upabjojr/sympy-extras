@@ -19,6 +19,7 @@ dataclasses):
                             $-A$ where $A < 0$
 ``AlternativeRule``         several derivations
 ``DontKnowRule``            no rule applies
+``InProgressRule``          the problem met again while being solved
 ==========================  =================================================
 
 **The sign chart.** A rational function with rational coefficients is
@@ -87,7 +88,7 @@ from .core import AlternativeStep, Context, Step, StepSolver, atomic
 from .equations import EquationStep, solve_steps
 
 __all__ = ['InequalityProblem', 'InequalityStep', 'SolvedRule', 'TrueRule', 'FalseRule', 'AddToBothSidesRule',
-           'DivideBothSidesRule', 'SignChartRule', 'AbsoluteValueRule', 'AlternativeRule', 'DontKnowRule',
+           'DivideBothSidesRule', 'SignChartRule', 'AbsoluteValueRule', 'AlternativeRule', 'DontKnowRule', 'InProgressRule',
            'inequality_steps', 'manual_inequality']
 
 _REVERSED: dict[str, str] = {'<': '>', '<=': '>=', '>': '<', '>=': '<='}
@@ -247,6 +248,19 @@ class AlternativeRule(InequalityStep, AlternativeStep):
 
 @dataclass(frozen=True)
 class DontKnowRule(InequalityStep):
+    def contains_dont_know(self) -> bool:
+        return True
+
+    def solutions(self) -> Set:
+        raise ValueError('the inequality %s %s %s is not solved' % (self.lhs, self.relation, self.rhs))
+
+
+@dataclass(frozen=True)
+class InProgressRule(InequalityStep):
+    """The problem is met again while it is being solved (the derivation
+    leads around in a loop): a placeholder for work in progress, where
+    ``DontKnowRule`` says that no rule applies."""
+
     def contains_dont_know(self) -> bool:
         return True
 
@@ -498,6 +512,10 @@ def _dont_know(problem: InequalityProblem) -> InequalityStep:
     return DontKnowRule(problem.lhs, problem.rhs, problem.relation, problem.variable)
 
 
+def _in_progress(problem: InequalityProblem) -> InequalityStep:
+    return InProgressRule(problem.lhs, problem.rhs, problem.relation, problem.variable)
+
+
 def _alternative(problem: InequalityProblem, alternatives: Sequence[InequalityStep]) -> InequalityStep:
     return AlternativeRule(problem.lhs, problem.rhs, problem.relation, problem.variable, tuple(alternatives))
 
@@ -540,7 +558,7 @@ def inequality_steps(inequality: Boolean, x: Symbol, branch: bool = False, max_d
       AddToBothSidesRule: x + 2 = 0 -> {-2}
         SolvedRule: x = -2 -> {-2}
     """
-    solver: StepSolver[InequalityProblem, InequalityStep] = StepSolver(_candidates, _dont_know, _alternative, branch,
+    solver: StepSolver[InequalityProblem, InequalityStep] = StepSolver(_candidates, _dont_know, _in_progress, _alternative, branch,
                                                                        max_depth)
     return solver.solve(_problem(inequality, x))
 

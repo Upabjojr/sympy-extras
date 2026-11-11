@@ -122,7 +122,10 @@ Union(ImageSet(Lambda(n, 2*pi*n + pi/6), Integers), ImageSet(Lambda(n, 2*pi*n + 
 A solution must make both sides real: `log(x - 5) = log(1 - x)` has the
 candidate 3, where the two logarithms are equal complex numbers, and no
 real solution. An equation the rules do not solve gives a tree which
-`contains_dont_know()`, and `manual_solve` returns `None`. The tests
+`contains_dont_know()`, and `manual_solve` returns `None`. Two rules
+mark the unsolved places: `DontKnowRule` where no rule applies, and
+`InProgressRule` where a derivation came back to a problem it was still
+working on (a loop). The tests
 compare the solution set of every node of every tree, the alternatives
 included, with the real solution set SymPy finds for that node's own
 equation, and check the trigonometric families by substitution and by

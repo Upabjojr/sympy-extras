@@ -199,6 +199,16 @@ def test_solver_memory_and_loops() -> None:
         def statement(self) -> str:
             return '?'
 
+    @dataclass(frozen=True)
+    class Pending(Step):
+        problem: int
+
+        def contains_dont_know(self) -> bool:
+            return True
+
+        def statement(self) -> str:
+            return '...'
+
     counter = _Counter()
 
     def leaf(problem: int) -> Optional[Step]:
@@ -217,10 +227,20 @@ def test_solver_memory_and_loops() -> None:
     def first(problem: int, found: Sequence[Step]) -> Step:
         return found[0]
 
-    solver: StepSolver[int, Step] = StepSolver(candidates, Unknown, first)
+    solver: StepSolver[int, Step] = StepSolver(candidates, Unknown, Pending, first)
     tree = solver.solve(12)
     # 2**12 leaves in the tree, but each subproblem is solved once
     assert count_steps(tree) == 2**13 - 1 and counter.calls == 12
-    again: StepSolver[int, Step] = StepSolver(candidates, Unknown, first)
+    again: StepSolver[int, Step] = StepSolver(candidates, Unknown, Pending, first)
     looping = again.solve(-1)
-    assert looping.contains_dont_know() and isinstance(looping, Node) and isinstance(looping.left, Unknown)
+    # the problem met again while it is worked on is the in-progress step, not the "no rule applies" one
+    assert looping.contains_dont_know() and isinstance(looping, Node) and looping.left == Pending(-1)
+    assert not isinstance(looping.left, Unknown)
+    # no rule at all, or a problem beyond the depth limit, is the other one
+    def nothing(problem: int) -> Sequence[Callable[[int, Context], Generator[int, Step, Optional[Step]]]]:
+        return []
+    stuck: StepSolver[int, Step] = StepSolver(nothing, Unknown, Pending, first)
+    assert stuck.solve(3) == Unknown(3)
+    shallow: StepSolver[int, Step] = StepSolver(candidates, Unknown, Pending, first, max_depth=2)
+    limited = shallow.solve(5)
+    assert isinstance(limited, Node) and isinstance(limited.left, Node) and limited.left.left == Unknown(3)

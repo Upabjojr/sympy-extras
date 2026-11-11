@@ -35,6 +35,7 @@ equation, or into several, and yields them as subproblems:
 ``RealRootsRule``            the real roots of a polynomial, isolated
 ``AlternativeRule``          several derivations of the same solution
 ``DontKnowRule``             no rule applies
+``InProgressRule``           the problem met again while being solved
 ===========================  ================================================
 
 **What a step does to the solutions.** Each rule has a ``kind``:
@@ -129,7 +130,7 @@ __all__ = ['EquationProblem', 'EquationStep', 'SolvedRule', 'IdentityRule', 'Con
            'DivideBothSidesRule', 'RewriteRule', 'ZeroProductRule', 'QuadraticFormulaRule', 'CompleteSquareRule', 'RootRule',
            'ClearDenominatorsRule', 'SquareBothSidesRule', 'SwapSidesRule', 'AbsoluteValueRule', 'TakeLogarithmRule',
            'EqualExponentsRule', 'ExponentiateRule', 'EqualArgumentsRule', 'CombineLogarithmsRule', 'SubstitutionRule',
-           'PeriodicRule', 'TangentRule', 'CardanoRule', 'RealRootsRule', 'AlternativeRule', 'DontKnowRule',
+           'PeriodicRule', 'TangentRule', 'CardanoRule', 'RealRootsRule', 'AlternativeRule', 'DontKnowRule', 'InProgressRule',
            'solve_steps', 'manual_solve']
 
 
@@ -489,6 +490,19 @@ class AlternativeRule(EquationStep, AlternativeStep):
 @dataclass(frozen=True)
 class DontKnowRule(EquationStep):
     """No rule applies to the equation."""
+
+    def contains_dont_know(self) -> bool:
+        return True
+
+    def solutions(self) -> Set:
+        raise ValueError('the equation %s = %s is not solved' % (self.lhs, self.rhs))
+
+
+@dataclass(frozen=True)
+class InProgressRule(EquationStep):
+    """The problem is met again while it is being solved (the derivation
+    leads around in a loop): a placeholder for work in progress, where
+    ``DontKnowRule`` says that no rule applies."""
 
     def contains_dont_know(self) -> bool:
         return True
@@ -1173,6 +1187,10 @@ def _dont_know(problem: EquationProblem) -> EquationStep:
     return DontKnowRule(problem.lhs, problem.rhs, problem.variable)
 
 
+def _in_progress(problem: EquationProblem) -> EquationStep:
+    return InProgressRule(problem.lhs, problem.rhs, problem.variable)
+
+
 def _alternative(problem: EquationProblem, alternatives: Sequence[EquationStep]) -> EquationStep:
     return AlternativeRule(problem.lhs, problem.rhs, problem.variable, tuple(alternatives))
 
@@ -1196,7 +1214,7 @@ def solve_steps(lhs: ExprLike, rhs: ExprLike, x: Symbol, branch: bool = False, m
     >>> steps.kind, steps.rejected
     ('implication', (1,))
     """
-    solver: StepSolver[EquationProblem, EquationStep] = StepSolver(_candidates, _dont_know, _alternative, branch, max_depth)
+    solver: StepSolver[EquationProblem, EquationStep] = StepSolver(_candidates, _dont_know, _in_progress, _alternative, branch, max_depth)
     return solver.solve(EquationProblem(to_expr(lhs), to_expr(rhs), x))
 
 

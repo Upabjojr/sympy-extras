@@ -24,6 +24,9 @@ remove public functions. Breaking changes are listed here when they happen.
   real roots of polynomials which do not factor), each step tagged as an
   equivalence, a case split or an implication whose extraneous solutions
   are rejected.
+  A problem met again while it is being solved is an `InProgressRule`
+  (`in_progress` of `StepSolver`), distinct from `DontKnowRule` (no
+  rule applies).
   `steps.inequalities`: `inequality_steps`, `manual_inequality` (linear
   inequalities, sign charts of polynomials and rational functions,
   absolute values). `steps.systems`: `system_steps`, `manual_system`
