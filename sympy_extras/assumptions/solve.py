@@ -391,7 +391,7 @@ def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]
             lambda: solve_transcendental(formula, x,
                                          lambda f, v: _univariate(f, v, facts_, Reals),
                                          lambda c: _evaluate(normalize(c), facts_)),
-            settings.timeout)
+            settings.timeout, native=True)
         if transcendental is not None:
             if polynomial_on_x is not true:
                 transcendental = _intersect(transcendental, _radicals(_solution_set(polynomial_on_x, x)))
@@ -422,7 +422,7 @@ def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]
                 condition = and_(_membership(x, dom), condition)
     if not parameters and dom.is_subset(Reals) is True:
         # a periodic inequality: SymPy answers over one period only
-        periodic = attempt(lambda: _periodic(formula, x, facts, dom), settings.timeout)
+        periodic = attempt(lambda: _periodic(formula, x, facts, dom), settings.timeout, native=True)
         if periodic is not None:
             # the conditions on the unknown which are not a region of the
             # real line (an integrality) are applied as for any answer
@@ -432,7 +432,7 @@ def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]
     restricted = _restrict(result, x, condition, facts, formula, real=dom.is_subset(Reals) is True)
     if not parameters and restricted.has(ConditionSet) and dom.is_subset(Reals) is True:
         # no closed form: the real roots are isolated instead
-        isolated = attempt(lambda: _isolated(formula, x, facts, dom), settings.timeout)
+        isolated = attempt(lambda: _isolated(formula, x, facts, dom), settings.timeout, native=True)
         if isolated is not None:
             return isolated
     return restricted
@@ -571,7 +571,8 @@ def _base_over_period(formula: Boolean, x: Symbol, period: Expr) -> Optional[Set
     ``solveset`` over the bounded window otherwise."""
     window = interval(Integer(0), period, False, True)
     facts = Facts([], Reals, [x])
-    isolated = attempt(lambda: _isolated(formula, x, facts, interval(Integer(0), period)), settings.timeout)
+    isolated = attempt(lambda: _isolated(formula, x, facts, interval(Integer(0), period)), settings.timeout,
+                       native=True)
     if isolated is not None:
         return _intersect(isolated, window)
     solved = _solveset(formula, x, window)
@@ -839,7 +840,7 @@ def _refuted(solutions: PointSet, equations: Sequence[Expr], symbols: Sequence[S
         return False
 
     try:
-        return attempt(check, settings.timeout) is True
+        return attempt(check, settings.timeout, native=True) is True
     except ZeroDivisionError:
         return False
 
@@ -862,7 +863,7 @@ def _by_regular_chains(equations: Sequence[Expr], symbols: Sequence[Symbol], rea
     for chain in chains:
         if chain.dimension == 0:
             solutions = chain.solutions
-            found = attempt(lambda: solutions(real), settings.timeout)
+            found = attempt(lambda: solutions(real), settings.timeout, native=True)
             if found is None:
                 return None
             points.extend(Tuple(*[solution[s] for s in symbols]) for solution in found)
