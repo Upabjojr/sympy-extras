@@ -43,7 +43,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 from sympy_extras._typing import as_expr, free_symbols
 
-from ._special_values import solution_cases
+from ._special_values_sympy import solution_cases
 from .lie import Equation, JetSpace, Symmetry, symmetries, _as_zero, _leading_derivatives
 
 __all__ = ['ode_symmetries', 'canonical_coordinates', 'reduce_order',

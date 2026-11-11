@@ -56,7 +56,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_expr
 from sympy_extras.settings import settings
 
-from .kovacic import normal_form
+from .kovacic_sympy import normal_form
 from .linear_ode import LinearOperator
 
 __all__ = ['special_solutions', 'bessel_solutions', 'whittaker_solutions', 'hypergeometric_solutions',

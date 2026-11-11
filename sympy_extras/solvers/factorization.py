@@ -176,7 +176,7 @@ def _kovacic_factor(M: LinearOperator, complete: bool) -> tuple[Optional[LinearO
     gives the right factor ``D - (omega - p/2)``; no Liouvillian solution
     or cases 2 and 3 prove ``M`` irreducible (when the poles of the
     normal form were all found)."""
-    from .kovacic import liouvillian_solution, normal_form
+    from .kovacic_sympy import liouvillian_solution, normal_form
     x = M.x
     q, p = M.coefficients[0], M.coefficients[1]
     r = normal_form(p, q, x)

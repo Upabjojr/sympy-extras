@@ -55,7 +55,7 @@ from sympy.solvers.ode import dsolve
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_expr
 from sympy_extras.settings import settings
-from ._special_values import solution_cases
+from ._special_values_sympy import solution_cases
 
 __all__ = ['riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order']
 
