@@ -1189,6 +1189,36 @@ fn pisigma_report_ops<'py>(
     }
 }
 
+/// `expand(e, deep, mul, multinomial, power_base, power_exp, log, force)`.
+#[pyfunction]
+#[pyo3(signature = (e, deep=true, mul=true, multinomial=true, power_base=true, power_exp=true, log=true, force=false))]
+#[allow(clippy::too_many_arguments)]
+fn expand<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    deep: bool,
+    mul: bool,
+    multinomial: bool,
+    power_base: bool,
+    power_exp: bool,
+    log: bool,
+    force: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    use rust_core::function::{expand_with, Hints};
+    let hints = Hints {
+        mul,
+        multinomial,
+        power_base,
+        power_exp,
+        log,
+        force,
+    };
+    to_python(
+        py,
+        &expand_with(&from_python(e)?, deep, hints).map_err(crate::convert::err)?,
+    )
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -1234,6 +1264,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(integral_basis, m)?)?;
     m.add_function(wrap_pyfunction!(function_field_bases, m)?)?;
     m.add_function(wrap_pyfunction!(pisigma_report_ops, m)?)?;
+    m.add_function(wrap_pyfunction!(expand, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;

@@ -161,64 +161,452 @@ fn small(n: &Int) -> PolyResult<usize> {
     usize::try_from(n).map_err(|_| crate::error::not_ported("the expansion of a huge power"))
 }
 
-/// One pass of the expansion (`_expand` with the hints `mul` and
-/// `multinomial` only).
-fn expand_pass(e: &Basic, deep: bool, distribute: bool, multinomial: bool) -> PolyResult<Basic> {
+/// The hints of an expansion (`expand`'s keywords; `func`, `trig` and
+/// `complex` are not ported).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Hints {
+    pub mul: bool,
+    pub multinomial: bool,
+    pub power_base: bool,
+    pub power_exp: bool,
+    pub log: bool,
+    pub force: bool,
+}
+
+impl Hints {
+    /// The default hints of `expand()`.
+    pub const DEFAULT: Hints = Hints {
+        mul: true,
+        multinomial: true,
+        power_base: true,
+        power_exp: true,
+        log: true,
+        force: false,
+    };
+    const NONE: Hints = Hints {
+        mul: false,
+        multinomial: false,
+        power_base: false,
+        power_exp: false,
+        log: false,
+        force: false,
+    };
+}
+
+/// Whether the terms of a sum are all nonnegative or all nonpositive
+/// (`_all_nonneg_or_nonpos`).
+fn all_nonneg_or_nonpos(e: &Basic) -> bool {
+    use super::assumptions::Predicate;
+    use super::expr::is_true;
+    let (mut nonnegative, mut nonpositive) = (false, false);
+    for a in e.args() {
+        if is_true(a, Predicate::nonnegative) {
+            if nonpositive {
+                return false;
+            }
+            nonnegative = true;
+        } else if is_true(a, Predicate::nonpositive) {
+            if nonnegative {
+                return false;
+            }
+            nonpositive = true;
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+/// `(a*b)**e` split into `a**e*b**e` for the factors which allow it
+/// (`_expand_power_base_node`); `None` when the base is not a product.
+fn expand_power_base_node(e: &Basic, force: bool) -> PolyResult<Option<Basic>> {
+    use super::assumptions::Predicate;
+    use super::expr::{is, is_false, is_integer_class, is_rational_value, is_true};
+    use super::mul::neg;
+    let (b, ex) = (&e.args()[0], &e.args()[1]);
+    if !b.is_mul() {
+        return Ok(None);
+    }
+    let cargs: Vec<Basic> = b
+        .args()
+        .iter()
+        .filter(|f| !is_false(f, Predicate::commutative))
+        .cloned()
+        .collect();
+    let mut nc: Vec<Basic> = b
+        .args()
+        .iter()
+        .filter(|f| is_false(f, Predicate::commutative))
+        .cloned()
+        .collect();
+    if !nc.is_empty() {
+        let mut expanded: Vec<Basic> = Vec::new();
+        for f in &nc {
+            expanded.push(if f.is_pow() {
+                expand_power_base_node(f, force)?.unwrap_or_else(|| f.clone())
+            } else {
+                f.clone()
+            });
+        }
+        nc = expanded;
+        if is_integer_class(ex) {
+            let n: i64 = i64::try_from(ex.as_rational().expect("an integer").numerator())
+                .map_err(|_| crate::error::not_ported("a huge power"))?;
+            let mut rv: Basic = if n > 0 {
+                let repeated: Vec<Basic> = (0..n).flat_map(|_| nc.iter().cloned()).collect();
+                Basic::new(Head::Mul, repeated)
+            } else {
+                let mut inverses: Vec<Basic> = Vec::new();
+                for f in nc.iter().rev() {
+                    inverses.push(pow(f, &Basic::negative_one())?);
+                }
+                let repeated: Vec<Basic> = (0..-n).flat_map(|_| inverses.iter().cloned()).collect();
+                Basic::new(Head::Mul, repeated)
+            };
+            if !cargs.is_empty() {
+                rv = mul(&[rv, pow(&mul(&cargs)?, ex)?])?;
+            }
+            return Ok(Some(rv));
+        }
+        if cargs.is_empty() {
+            return Ok(Some(Basic::new(Head::Pow, vec![Basic::new(Head::Mul, nc), ex.clone()])));
+        }
+        nc = vec![Basic::new(Head::Mul, nc)];
+    }
+    let mut other: Vec<Basic> = cargs
+        .iter()
+        .filter(|f| is_false(f, Predicate::extended_real))
+        .cloned()
+        .collect();
+    let maybe_real: Vec<Basic> = cargs
+        .iter()
+        .filter(|f| !is_false(f, Predicate::extended_real))
+        .cloned()
+        .collect();
+    let mut nonneg: Vec<Basic> = Vec::new();
+    let mut negative: Vec<Basic> = Vec::new();
+    let mut imag: usize = 0;
+    for f in maybe_real {
+        if matches!(f.head(), Head::ImaginaryUnit) {
+            imag += 1;
+            continue;
+        }
+        match is(&f, Predicate::polar) {
+            Some(true) => nonneg.push(f),
+            None => match is(&f, Predicate::extended_nonnegative) {
+                Some(true) => nonneg.push(f),
+                Some(false) => negative.push(f),
+                None => other.push(f),
+            },
+            Some(false) => other.push(f),
+        }
+    }
+    if imag > 0 {
+        let i: usize = imag % 4;
+        if i == 1 {
+            other.push(Basic::imaginary_unit());
+        } else if i == 2 || i == 3 {
+            if let Some(last) = negative.pop() {
+                let nonn: Basic = neg(&last)?;
+                if !(is_integer_class(&nonn) && is_rational_value(&nonn, 1)) {
+                    nonneg.push(nonn);
+                }
+            } else {
+                negative.push(Basic::negative_one());
+            }
+            if i == 3 {
+                other.push(Basic::imaginary_unit());
+            }
+        }
+    }
+    let cargs: Vec<Basic>;
+    if force || is_true(ex, Predicate::integer) {
+        let mut all: Vec<Basic> = nonneg;
+        all.extend(negative);
+        all.extend(other);
+        cargs = all;
+        other = nc;
+    } else {
+        if negative.len() > 1 {
+            let mut o: Basic = Basic::one();
+            if other.is_empty() && negative[0].is_number_class() {
+                o = mul(&[o, negative.remove(0)])?;
+            }
+            if negative.len() % 2 == 1 {
+                o = neg(&o)?;
+            }
+            for n in &negative {
+                nonneg.push(neg(n)?);
+            }
+            if !(is_integer_class(&o) && is_rational_value(&o, 1)) {
+                other.push(o);
+            }
+        } else if !negative.is_empty() && !other.is_empty() {
+            if negative[0].is_number_class() && !(is_integer_class(&negative[0]) && is_rational_value(&negative[0], -1))
+            {
+                other.push(Basic::negative_one());
+                nonneg.push(neg(&negative[0])?);
+            } else {
+                other.extend(negative);
+            }
+        } else {
+            other.extend(negative);
+        }
+        other.extend(nc);
+        cargs = nonneg;
+    }
+    let mut evaluated: Vec<Basic> = Vec::new();
+    let mut kept: Vec<Basic> = Vec::new();
+    if !cargs.is_empty() {
+        let mut rest: Vec<Basic> = Vec::new();
+        if ex.as_rational().is_some() {
+            for f in cargs {
+                if f.is_pow() && f.args()[1].as_rational().is_some() && super::assumptions::is_number(&f.args()[0]) {
+                    evaluated.push(pow(&doit(&f)?, ex)?);
+                } else {
+                    rest.push(f);
+                }
+            }
+        } else {
+            rest = cargs;
+        }
+        kept = rest;
+    }
+    if !other.is_empty() {
+        kept.push(mul(&other)?);
+    }
+    if evaluated.is_empty() && kept.len() == 1 {
+        return Ok(Some(Basic::new(Head::Pow, vec![kept.remove(0), ex.clone()])));
+    }
+    let mut factors: Vec<Basic> = evaluated;
+    for f in &kept {
+        factors.push(pow(f, ex)?);
+    }
+    Ok(Some(mul(&factors)?))
+}
+
+/// `unpolarify` on the core, which has no polar numbers: the tree
+/// evaluated again until it does not change.
+fn unpolarify(e: &Basic) -> PolyResult<Basic> {
+    let mut current: Basic = e.clone();
+    loop {
+        let next: Basic = doit(&current)?;
+        if next == current {
+            return Ok(current);
+        }
+        current = next;
+    }
+}
+
+/// The logarithm split by the hint `log` (`_expand_log_node`; `factor`
+/// is that of `expand_log`).
+pub fn expand_log_node(node: &Basic, force: bool, factor: bool) -> PolyResult<Basic> {
+    use super::assumptions::Predicate;
+    use super::expr::{as_base_exp, is_integer_class, is_true};
+    use crate::functions::elementary::exponential::log;
+    let arg: &Basic = &node.args()[0];
+    if is_integer_class(arg) {
+        let value: Int = arg.as_rational().expect("an integer").numerator().clone();
+        let mut logarg: Option<Basic> = None;
+        let mut coeff: Basic = Basic::one();
+        let mut base: Int = value.clone();
+        if value > Int::ONE {
+            if let Some((b, k)) = crate::ntheory::factor_::perfect_power(&value) {
+                base = b;
+                coeff = Basic::integer(Int::from(k));
+                logarg = Some(log(&Basic::integer(base.clone()))?);
+            }
+        }
+        if factor {
+            let primes = if base > Int::ONE {
+                crate::ntheory::factor_::factorint(&base, None)
+            } else {
+                Default::default()
+            };
+            if !primes.contains_key(&base) {
+                let mut terms: Vec<Basic> = Vec::new();
+                for (p, k) in primes {
+                    terms.push(mul(&[Basic::integer(Int::from(k)), log(&Basic::integer(p))?])?);
+                }
+                logarg = Some(add(&terms)?);
+            }
+        }
+        if let Some(l) = logarg {
+            return mul(&[coeff, l]);
+        }
+    } else if let Some(v) = arg.as_rational() {
+        return add(&[
+            log(&Basic::integer(numer(v)))?,
+            mul(&[Basic::negative_one(), log(&Basic::integer(denom(v)))?])?,
+        ]);
+    } else if arg.is_mul() {
+        let mut terms: Vec<Basic> = Vec::new();
+        let mut nonpos: Vec<Basic> = Vec::new();
+        for x in arg.args() {
+            if force || is_true(x, Predicate::positive) || is_true(x, Predicate::polar) {
+                let a: Basic = log(x)?;
+                terms.push(if a.is_function(Function::Log) {
+                    expand_log_node(&a, force, factor)?
+                } else {
+                    a
+                });
+            } else if is_true(x, Predicate::negative) {
+                terms.push(log(&mul(&[Basic::negative_one(), x.clone()])?)?);
+                nonpos.push(Basic::negative_one());
+            } else {
+                nonpos.push(x.clone());
+            }
+        }
+        return add(&[add(&terms)?, log(&mul(&nonpos)?)?]);
+    } else if arg.is_pow() || arg.is_function(Function::Exp) {
+        let (b, ex) = as_base_exp(arg)?;
+        let in_range = || -> PolyResult<bool> {
+            Ok(is_true(&add(&[ex.clone(), Basic::one()])?, Predicate::positive)
+                && is_true(&add(&[ex.clone(), Basic::negative_one()])?, Predicate::nonpositive))
+        };
+        if force
+            || (is_true(&ex, Predicate::extended_real) && (is_true(&b, Predicate::positive) || in_range()?))
+            || is_true(&b, Predicate::polar)
+        {
+            let a: Basic = log(&b)?;
+            if a.is_function(Function::Log) {
+                return mul(&[unpolarify(&ex)?, expand_log_node(&a, force, factor)?]);
+            }
+            return mul(&[unpolarify(&ex)?, a]);
+        }
+    }
+    log(arg)
+}
+
+/// One pass of the expansion with the hints (`_expand`).
+fn expand_pass(e: &Basic, deep: bool, hints: Hints) -> PolyResult<Basic> {
     let mut e: Basic = e.clone();
-    if deep && !e.args().is_empty() {
+    if deep && !e.args().is_empty() && !matches!(e.head(), Head::Derivative) {
         let mut args: Vec<Basic> = Vec::new();
         for a in e.args() {
-            args.push(expand_pass(a, deep, distribute, multinomial)?);
+            args.push(expand_pass(a, deep, hints)?);
         }
         if args.iter().zip(e.args()).any(|(new, old)| new != old) {
             e = rebuild_evaluated(&e, args)?;
         }
     }
-    if e.is_mul() && distribute {
+    if e.is_mul() && hints.mul {
         return expand_mul_node(&e, deep);
     }
-    if e.is_pow() && multinomial && e.args()[0].is_add() {
-        let b: &Basic = &e.args()[0];
-        if let Some(x) = e.args()[1].as_rational() {
-            let (p, q) = (numer(x), denom(x));
-            if q == Int::ONE && !p.is_zero() {
-                let power: Basic = expand_power(b, small(&abs(&p))?)?;
-                return if is_negative(&p) {
-                    pow(&power, &Basic::negative_one())
-                } else {
-                    Ok(power)
-                };
-            }
-            if q > Int::ONE && p > q {
-                let whole: Int = div_floor(&p, &q);
-                let rest: Basic = Basic::from_rational(rat_from_parts(&p - &whole * &q, q.clone()));
-                return expand_product(&expand_power(b, small(&whole)?)?, &pow(b, &rest)?);
-            }
-            if q > Int::ONE && -&p > q {
-                let whole: Int = div_floor(&-&p, &q);
-                let rest: Basic = Basic::from_rational(rat_from_parts(-&p - &whole * &q, q.clone()));
-                let product: Basic = expand_product(&expand_power(b, small(&whole)?)?, &pow(b, &rest)?)?;
-                return pow(&product, &Basic::negative_one());
+    if e.is_pow() {
+        let (b, ex) = (e.args()[0].clone(), e.args()[1].clone());
+        if hints.multinomial && b.is_add() {
+            if let Some(x) = ex.as_rational() {
+                let (p, q) = (numer(x), denom(x));
+                if q == Int::ONE && !p.is_zero() {
+                    let power: Basic = expand_power(&b, small(&abs(&p))?)?;
+                    return if is_negative(&p) {
+                        pow(&power, &Basic::negative_one())
+                    } else {
+                        Ok(power)
+                    };
+                }
+                if q > Int::ONE && p > q {
+                    let whole: Int = div_floor(&p, &q);
+                    let rest: Basic = Basic::from_rational(rat_from_parts(&p - &whole * &q, q.clone()));
+                    return expand_product(&expand_power(&b, small(&whole)?)?, &pow(&b, &rest)?);
+                }
+                if q > Int::ONE && -&p > q {
+                    let whole: Int = div_floor(&-&p, &q);
+                    let rest: Basic = Basic::from_rational(rat_from_parts(-&p - &whole * &q, q.clone()));
+                    let product: Basic = expand_product(&expand_power(&b, small(&whole)?)?, &pow(&b, &rest)?)?;
+                    return pow(&product, &Basic::negative_one());
+                }
             }
         }
+        if hints.power_base && b.is_mul() {
+            if let Some(split) = expand_power_base_node(&e, hints.force)? {
+                // the power_exp hint is a later pass of SymPy over the whole
+                // tree: the new powers are split too
+                if hints.power_exp {
+                    let again = Hints {
+                        power_exp: true,
+                        force: hints.force,
+                        ..Hints::NONE
+                    };
+                    return expand_pass(&split, true, again);
+                }
+                return Ok(split);
+            }
+        }
+        if hints.power_exp
+            && ex.is_add()
+            && (hints.force
+                || super::expr::is_false(&b, super::assumptions::Predicate::zero)
+                || all_nonneg_or_nonpos(&ex))
+            && !super::expr::is_false(&ex, super::assumptions::Predicate::commutative)
+        {
+            let mut factors: Vec<Basic> = Vec::new();
+            for t in ex.args() {
+                factors.push(pow(&b, t)?);
+            }
+            return mul(&factors);
+        }
+    }
+    if hints.power_exp && e.is_function(Function::Exp) && e.args()[0].is_add() {
+        let mut factors: Vec<Basic> = Vec::new();
+        for t in e.args()[0].args() {
+            factors.push(pow(&Basic::e(), t)?);
+        }
+        return mul(&factors);
+    }
+    if hints.log && e.is_function(Function::Log) {
+        return expand_log_node(&e, hints.force, false);
     }
     Ok(e)
 }
 
-/// `expand` with the hints `mul` and `multinomial` (the passes repeated
-/// until nothing changes, as SymPy's `Expr.expand`).
-pub fn expand(e: &Basic, deep: bool, mul_hint: bool, multinomial: bool) -> PolyResult<Basic> {
-    let mut result: Basic = expand_pass(e, deep, mul_hint, multinomial)?;
-    if mul_hint || multinomial {
+/// `expand` with the given hints: the log hint first over the whole tree
+/// (with `mul` or `multinomial`), then all the hints, then the passes of
+/// `mul`, `multinomial` and `log` repeated until nothing changes, as
+/// SymPy's `Expr.expand`.
+pub fn expand_with(e: &Basic, deep: bool, hints: Hints) -> PolyResult<Basic> {
+    let mut e: Basic = e.clone();
+    if hints.log && (hints.mul || hints.multinomial) {
+        e = expand_pass(
+            &e,
+            deep,
+            Hints {
+                log: true,
+                force: hints.force,
+                ..Hints::NONE
+            },
+        )?;
+    }
+    let mut result: Basic = expand_pass(&e, deep, hints)?;
+    if hints.mul || hints.multinomial || hints.log {
+        let repeated = Hints {
+            power_exp: false,
+            power_base: false,
+            ..hints
+        };
         loop {
             let was: Basic = result.clone();
-            result = expand_pass(&result, deep, mul_hint, multinomial)?;
+            result = expand_pass(&result, deep, repeated)?;
             if result == was {
                 break;
             }
         }
     }
     Ok(result)
+}
+
+/// `expand` with the hints `mul` and `multinomial` only.
+pub fn expand(e: &Basic, deep: bool, mul_hint: bool, multinomial: bool) -> PolyResult<Basic> {
+    expand_with(
+        e,
+        deep,
+        Hints {
+            mul: mul_hint,
+            multinomial,
+            ..Hints::NONE
+        },
+    )
 }
 
 /// Products distributed over sums only.
@@ -231,28 +619,9 @@ pub fn expand_multinomial(e: &Basic, deep: bool) -> PolyResult<Basic> {
     expand(e, deep, false, true)
 }
 
-/// Whether a node is one on which the hints `power_base`, `power_exp` or
-/// `log` of the default `expand` can act.
-fn touched_by_power_or_log_hints(e: &Basic) -> bool {
-    e.preorder().iter().any(|n| {
-        (n.is_pow() && (n.args()[0].is_mul() || n.args()[1].is_add()))
-            || (n.is_function(Function::Exp) && n.args()[0].is_add())
-            || n.is_function(Function::Log)
-    })
-}
-
-/// `e.expand()` with the default hints, when the hints `power_base`,
-/// `power_exp` and `log` have nothing to act on (before and after): then it
-/// is the expansion by `mul` and `multinomial`; otherwise `NotImplemented`.
+/// `e.expand()` with the default hints.
 pub fn expand_default(e: &Basic) -> PolyResult<Basic> {
-    if touched_by_power_or_log_hints(e) {
-        return Err(crate::error::not_ported("expand with the power and log hints"));
-    }
-    let result: Basic = expand(e, true, true, true)?;
-    if touched_by_power_or_log_hints(&result) {
-        return Err(crate::error::not_ported("expand with the power and log hints"));
-    }
-    Ok(result)
+    expand_with(e, true, Hints::DEFAULT)
 }
 
 // ---------------------------------------------------------------------
