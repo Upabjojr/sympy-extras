@@ -8,7 +8,7 @@ from sympy.testing.pytest import raises
 
 from sympy_extras.polys.differential import (DifferentialPolynomial, RadicalDifferentialIdeal,
     RegularDifferentialSystem, janet_basis, rosenfeld_groebner)
-from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.ideals_sympy import Ideal
 from sympy_extras.polys.differential.rosenfeld_groebner import _characteristic_set, _delta_polynomials
 
 x, y, t, c, g = symbols('x y t c g')

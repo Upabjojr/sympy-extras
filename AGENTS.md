@@ -311,8 +311,13 @@ sympy_extras/
         numberfields/qqbar.py  Algebraic: exact arithmetic on algebraic numbers (minimal polynomial + isolating region), algebraic_roots
         complexroots.py      Rectangle, dup_count_complex_roots (winding numbers by Sturm), dup_isolate_complex_roots(_sqf), dup_refine_complex_root, dup_count_roots_right_of, dup_count_roots_in_disc, Hurwitz and Schur stability, over QQ
         polyclasses.py       DensePoly[T]: rep, domain, gen; the dense algorithms as methods, factorisation and roots through the domain
-        rings.py             PolyRing[T], PolyElement[T] (dict[Monomial, T]), MonomialOrder (lex, grlex, grevlex), div by a list
-        ideals.py            Ideal: operations and invariants on top of sympy.groebner
+        rings.py             PolyRing[T], PolyElement[T] (dict[Monomial, T]), MonomialOrder (lex, grlex, grevlex, WeightOrder, BlockOrder, elimination_order), div by a list
+        ideals.py            Ideal: operations and invariants of ideals over the typed fields, groebner (F4, the modular
+                             fallback), normal_form, the Gröbner walk, separating_forms (native; the modular Gröbner bases,
+                             SymPy's Buchberger and the decompositions of idealdecomposition through ideals_sympy)
+        ideals_sympy.py      the SymPy face of ideals (the old API on SymPy objects, rur), and the steps which stay on SymPy
+                             (the *_of_core functions)
+        bigatti.py           hilbert_numerator_coefficients, minimal_generators: Bigatti's algorithm on exponent tuples (no SymPy)
         hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
         f4.py                f4 on rings.PolyRing (typed, no SymPy): reduced Gröbner bases by Faugère's F4 (the default direct algorithm); row_echelon
@@ -320,7 +325,7 @@ sympy_extras/
         berlekampmassey.py   berlekamp_massey: the shortest linear recurrence of a sequence over a field
         fglm.py              fglm, groebner_by_fglm on rings.PolyRing (typed, no SymPy): change of order for zero-dimensional ideals
         interop.py           qq/zz/gf_from_sympy and _to_sympy, typed_order: the boundary with SymPy's rings
-        hilbert.py           hilbert_numerator, hilbert_series, minimal_generators: Bigatti's algorithm for monomial ideals
+        hilbert.py           hilbert_numerator, hilbert_series, minimal_generators: Bigatti's algorithm for monomial ideals (SymPy Poly; bigatti.py computes)
         rur.py               rur, RationalUnivariateRepresentation: Rouillier's representation of zero-dimensional ideals from traces
         modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ modulo primes, proven (Arnold); direct_groebner
         stronggroebner.py    strong_groebner, strong_reduce on rings.PolyRing over ZZ (typed, no SymPy): S- and G-polynomials

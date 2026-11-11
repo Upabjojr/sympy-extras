@@ -99,7 +99,7 @@ from sympy_extras.solvers.integers_sympy import linear_diophantine_system, minim
 from sympy_extras.solvers.linear_systems import dsolve_linear_system, rational_system_solutions
 from sympy_extras.solvers.lie import symmetries
 from sympy_extras.solvers.pde import pde_symmetries
-from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.ideals_sympy import Ideal
 from sympy_extras.polys.groebnerwalk import groebner_walk
 from sympy_extras.polys.subresultants import psc
 from sympy_extras.polys.cad import quantifier_elimination, solution_set

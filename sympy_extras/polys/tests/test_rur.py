@@ -7,7 +7,7 @@ from sympy.polys.polyerrors import NotInvertible
 from sympy.testing.pytest import raises
 
 from sympy_extras.polys.hermite import count_complex_solutions, count_real_solutions
-from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.ideals_sympy import Ideal
 from sympy_extras.polys.rur import rur, RationalUnivariateRepresentation
 
 x, y, z, t = symbols('x y z t')

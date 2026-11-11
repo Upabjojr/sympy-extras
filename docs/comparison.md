@@ -75,7 +75,7 @@ The setup used throughout:
 >>> from sympy_extras.solvers.integers_sympy import linear_diophantine_system, minimal_nonnegative_solutions
 >>> from sympy_extras.solvers.lie import symmetries
 >>> from sympy_extras.solvers.pde import pde_symmetries, pdsolve_lie
->>> from sympy_extras.polys.ideals import Ideal
+>>> from sympy_extras.polys.ideals_sympy import Ideal
 >>> from sympy_extras.polys.subresultants import psc
 >>> from sympy_extras.polys.groebnerwalk import groebner_walk
 >>> from sympy_extras.polys.virtual_substitution import eliminate_linear

@@ -539,6 +539,49 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.polys.ideals` is native (**breaking**: it imports no SymPy;
+  its `Ideal` takes core expressions or typed ring elements, core symbols,
+  a required typed coefficient field `domain=` of
+  `sympy_extras.polys.domains` and a typed order; bases are lists of
+  `PolyElement`, univariate and minimal polynomials `DensePoly`,
+  multiplication matrices lists of rows, `reduce` and `standard_monomials`
+  core expressions; no `rur` method). Gröbner bases by F4 over every field
+  (algebraic fields and fields of fractions went to SymPy's Buchberger
+  before), FGLM and a native Gröbner walk (`groebner_walk`,
+  `initial_form`: F4 on the initial forms, lifting by normal forms) for
+  `change_order`, a native `normal_form`, the Hilbert series by the new
+  `sympy_extras.polys.bigatti` (`hilbert_numerator_coefficients`,
+  `minimal_generators`, also used by `polys.hilbert`), the minimal
+  polynomial by an incremental Krylov elimination, `separating_forms` on
+  core symbols and `separating_coefficients`. `sympy_extras.polys.rings`
+  gains `as_order`, `WeightOrder`, `BlockOrder` and `elimination_order`
+  (named as the orders of `polys.orderings`). What is not native is called
+  at run time through the new face `sympy_extras.polys.ideals_sympy` (the
+  `*_of_core` functions): `modular_groebner_of_core` (over `QQ`, when F4
+  has not finished within `settings.groebner_direct_time`),
+  `direct_groebner_of_core` (`settings.groebner_algorithm = 'buchberger'`),
+  and `radical_of_core`, `equidimensional_parts_of_core`,
+  `minimal_primes_of_core`, `primary_decomposition_of_core`,
+  `associated_primes_of_core`, `is_primary_of_core` (the decompositions of
+  `idealdecomposition` through regular chains). The face keeps the old API
+  on SymPy objects (domain inference with `extension=True`, `Poly` bases,
+  SymPy rings in `ring()` and `_basis()`, matrices, `rur`, the
+  decompositions; an explicit `domain=ZZ` now becomes `QQ` as an inferred
+  one did); **import it instead of the old module**: `from
+  sympy_extras.polys.ideals_sympy import Ideal, separating_forms,
+  hilbert_numerator`. `hermite`, `rur`, `comprehensive`,
+  `idealdecomposition`, `regularchains`, `differential.rosenfeld_groebner`,
+  the tests, docs and the in-repository benchmarks use the face. The same
+  results as before through the face on 8037 recorded calls (the doctests
+  and tests of `ideals`, `hermite`, `rur`, `comprehensive`,
+  `idealdecomposition`, the primary decomposition, `regularchains`,
+  `rosenfeld_groebner` and `solvers.parametric`, and 50 more over `GF(7)`,
+  `QQ(sqrt 2)`, `QQ_I`, `QQ(a)`, weight and block orders, Katsura-4,
+  cyclic-4 and cyclic-5), and the same results natively (inputs and
+  outputs converted by `interop`) on all of them but the three `rur`
+  calls; replaying them took 26.6 s through the face against 31.2 s
+  before (`change_order` 3.1 s to 0.6 s, saturations, quotients and
+  intersections about twice as fast).
 - `sympy_extras.solvers.isolation`, `sympy_extras.solvers.integers` and
   `sympy_extras.polys.roots` are native (**breaking**: core expressions,
   symbols, Booleans and sets in and out; they import no SymPy). The

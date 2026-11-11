@@ -217,7 +217,7 @@ extension of Zeilberger's algorithm), with harmonic numbers in the summand:
 
 See [docs/karr.md](docs/karr.md).
 
-### Polynomial ideals and the Gröbner walk (`sympy_extras.polys.ideals`)
+### Polynomial ideals and the Gröbner walk (`sympy_extras.polys.ideals`, `ideals_sympy`)
 
 SymPy computes Gröbner bases and converts them with FGLM for
 zero-dimensional ideals, but its ideal class leaves saturation, radicals,
@@ -234,7 +234,9 @@ polynomial); in any dimension, through regular chains, the radical, its
 equidimensional parts, the minimal primes and the tests for radical and
 prime ideals, and the primary decomposition with the embedded primes
 (Gianni–Trager–Zacharias). The Gröbner walk converts bases between orders for ideals of
-any dimension.
+any dimension. `sympy_extras.polys.ideals` is native (core expressions and
+the typed domains and rings, no SymPy); `sympy_extras.polys.ideals_sympy`
+is its SymPy face, used below.
 The real solutions of a zero-dimensional system, and the signs of other
 polynomials at them, are counted without solving the system by the
 signature of Hermite's quadratic form on the quotient algebra
@@ -256,7 +258,7 @@ and neither `x` nor `y`.
 
 ```python
 >>> from sympy.abc import x, y, z, t
->>> from sympy_extras.polys.ideals import Ideal
+>>> from sympy_extras.polys.ideals_sympy import Ideal
 >>> I = Ideal([x*z - y**2, x**2 - y*z], x, y, z)
 >>> I.dimension(), I.degree(), I.hilbert_series(t)
 (1, 4, (t**2 + 2*t + 1)/(1 - t))

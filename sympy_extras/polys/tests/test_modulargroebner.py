@@ -17,7 +17,7 @@ from sympy.polys.rings import PolyElement, PolyRing, ring
 from sympy.testing.pytest import raises
 
 from sympy_extras._typing import Monomial
-from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.ideals_sympy import Ideal
 from sympy_extras.polys.modulargroebner import (
     GRADED_FACTOR, IntPoly, ModularTrace, _HomogeneousOrder, _critical_pairs, _image, _is_groebner, _luckiness, _normal_form,
     _s_polynomial, _verified,

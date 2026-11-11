@@ -11,7 +11,7 @@ from sympy import QQ, Expr, I, Matrix, S, Symbol
 from sympy.abc import x, y, z
 from sympy.testing.pytest import raises
 
-from sympy_extras.polys.ideals import Ideal, separating_forms
+from sympy_extras.polys.ideals_sympy import Ideal, separating_forms
 from sympy_extras.polys.idealdecomposition import (associated_primes, independent_set, is_primary,
                                                    primary_decomposition)
 

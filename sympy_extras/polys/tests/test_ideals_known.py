@@ -13,7 +13,7 @@ from sympy import QQ, Expr, Rational, Symbol, symbols, groebner, cancel
 from sympy import S
 from sympy.abc import x, y, z, w, t, u, d
 
-from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.ideals_sympy import Ideal
 
 
 def katsura(m: int) -> tuple[list[Expr], tuple[Symbol, ...]]:

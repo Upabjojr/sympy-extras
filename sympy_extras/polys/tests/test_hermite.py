@@ -24,7 +24,7 @@ from sympy_extras._typing import DomainElement, as_boolean
 from sympy_extras.polys.cad import sample_points
 from sympy_extras.polys.hermite import (SignCounts, count_complex_solutions, count_real_solutions,
     decide_zero_dimensional, hermite_matrix, real_sign_counts, sign_determination, tarski_query, _inertia)
-from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.ideals_sympy import Ideal
 
 
 def test_circle_and_line() -> None:
