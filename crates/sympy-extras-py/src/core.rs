@@ -696,6 +696,74 @@ fn subs<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, args: &Bound<'py, PyTuple>)
     to_python(py, &result.map_err(crate::convert::err)?)
 }
 
+fn expressions(items: &Bound<'_, PyAny>) -> PyResult<Vec<Basic>> {
+    let mut result: Vec<Basic> = Vec::new();
+    for item in items.try_iter()? {
+        result.push(from_python(&item?)?);
+    }
+    Ok(result)
+}
+
+fn expression_list<'py>(py: Python<'py>, items: &[Basic]) -> PyResult<Bound<'py, PyList>> {
+    let converted: Vec<Bound<'py, PyAny>> = items.iter().map(|e| to_python(py, e)).collect::<PyResult<_>>()?;
+    PyList::new(py, converted)
+}
+
+/// `linsolve.solve_linear_unique`.
+#[pyfunction]
+fn solve_linear_unique<'py>(
+    py: Python<'py>,
+    equations: &Bound<'py, PyAny>,
+    unknowns: &Bound<'py, PyAny>,
+) -> PyResult<Option<Bound<'py, PyList>>> {
+    use sympy_extras_core::solvers::linsolve as l;
+    let found =
+        l::solve_linear_unique(&expressions(equations)?, &expressions(unknowns)?).map_err(crate::convert::err)?;
+    found.map(|values| expression_list(py, &values)).transpose()
+}
+
+/// `linsolve.linear_root`.
+#[pyfunction]
+fn linear_root<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    v: &Bound<'py, PyAny>,
+) -> PyResult<Option<Bound<'py, PyAny>>> {
+    use sympy_extras_core::solvers::linsolve as l;
+    let found = l::linear_root(&from_python(e)?, &from_python(v)?).map_err(crate::convert::err)?;
+    found.map(|root| to_python(py, &root)).transpose()
+}
+
+/// `linsolve.solve_one`.
+#[pyfunction]
+fn solve_one<'py>(
+    py: Python<'py>,
+    e: &Bound<'py, PyAny>,
+    v: &Bound<'py, PyAny>,
+) -> PyResult<Option<Bound<'py, PyList>>> {
+    use sympy_extras_core::solvers::linsolve as l;
+    let found = l::solve_one(&from_python(e)?, &from_python(v)?).map_err(crate::convert::err)?;
+    found.map(|roots| expression_list(py, &roots)).transpose()
+}
+
+/// `linsolve.numeric_linear_solution`.
+#[pyfunction]
+fn numeric_linear_solution<'py>(
+    py: Python<'py>,
+    equations: &Bound<'py, PyAny>,
+) -> PyResult<Option<Bound<'py, PyDict>>> {
+    use sympy_extras_core::solvers::linsolve as l;
+    let found = l::numeric_linear_solution(&expressions(equations)?).map_err(crate::convert::err)?;
+    let Some(pairs) = found else {
+        return Ok(None);
+    };
+    let d: Bound<'py, PyDict> = PyDict::new(py);
+    for (k, v) in pairs {
+        d.set_item(to_python(py, &k)?, to_python(py, &v)?)?;
+    }
+    Ok(Some(d))
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -729,6 +797,10 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(together, m)?)?;
     m.add_function(wrap_pyfunction!(diff, m)?)?;
     m.add_function(wrap_pyfunction!(subs, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_linear_unique, m)?)?;
+    m.add_function(wrap_pyfunction!(linear_root, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_one, m)?)?;
+    m.add_function(wrap_pyfunction!(numeric_linear_solution, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;
