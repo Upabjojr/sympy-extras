@@ -289,11 +289,11 @@ sympy_extras/
                              hyperexponential_solutions/search, reduce_order_linear, dsolve_linear, gcrd, lclm, UPoly
                              (polynomials with any constant coefficients) (native; SymPy's integrate through kovacic_sympy,
                              its dsolve through linear_ode_sympy)
-        linear_ode_sympy.py  the SymPy face of linear_ode (used by first_order), and dsolve_of_core
+        linear_ode_sympy.py  the SymPy face of linear_ode (the old API; its dsolve_of_core)
         darboux.py           darboux_polynomials, exponential_factors, darboux_integrating_factor, darboux_first_integral,
                              prelle_singer, vector_field: Darboux polynomials and the Prelle–Singer procedure (native, over
                              QQ, number fields and QQ(parameters); SymPy's integrate through kovacic_sympy)
-        darboux_sympy.py     the SymPy face of darboux (used by first_order)
+        darboux_sympy.py     the SymPy face of darboux
         factorization.py     factor_operator, right_factor, left_factor, OperatorFactorization (Beke), variation_of_parameters,
                              solve_factored (native; SymPy's solve of the Grassmann–Plücker relations through
                              factorization_sympy)
@@ -314,7 +314,7 @@ sympy_extras/
         _special_values.py   the isolated values of the parameters of ODE solutions: general_solution_cases, basis_cases,
                              solution_cases, solution_jacobian, ode_order (native; the candidate points of
                              sympy_extras._special_values through _special_values_sympy)
-        _special_values_sympy.py the SymPy face of _special_values (used by ode, first_order, second_order),
+        _special_values_sympy.py the SymPy face of _special_values (used by ode, second_order),
                              and special_values_of_core
         charpit.py           complete_integral, check_complete_integral: complete integrals of first order PDEs by
                              Charpit's method (native; SymPy's solve and integrate through charpit_sympy)
@@ -330,6 +330,16 @@ sympy_extras/
         pde.py               pde_symmetries, similarity_reduction, pdsolve_lie, check_pde_solution: similarity
                              reductions of PDEs (native; SymPy's dsolve and solve through pde_sympy)
         pde_sympy.py         the SymPy face of pde, and dsolve_of_core, solve_of_core
+        first_order.py       riccati_ode, chini_ode, abel_ode, lagrange_ode, dsolve_first_order: Riccati, Chini, Abel
+                             and d'Alembert–Lagrange equations (native; SymPy's integrate and dsolve and the
+                             Prelle–Singer procedure of darboux through first_order_sympy)
+        first_order_sympy.py the SymPy face of first_order (used by ode, darboux), and integrate_of_core,
+                             dsolve_of_core, prelle_singer_of_core
+        abel.py              abel_coefficients, abel_invariants, abel_equivalence, particular_solution, air_solution,
+                             abel_by_invariants, AbelInvariants, AbelTransformation: invariants and integrable classes
+                             of Abel equations (native; SymPy's integrate and solve through the faces of kovacic,
+                             factorization and charpit)
+        abel_sympy.py        the SymPy face of abel
         tests/
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native, with the

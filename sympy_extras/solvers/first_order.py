@@ -29,35 +29,123 @@ d'Alembert–Lagrange type.
 SymPy's ``dsolve`` has hints for Bernoulli, Riccati and Clairaut
 equations but none for Abel, Chini or Lagrange equations.
 
+The module works on the objects of the core and imports no SymPy: the
+coefficients, the cancellations, the roots and the simplifications are
+the native ones, the linearised Riccati equations are solved by the
+native :mod:`~sympy_extras.solvers.linear_ode` and
+:mod:`~sympy_extras.solvers.special`, and
+:mod:`sympy_extras.solvers.first_order_sympy` is its face on SymPy
+objects. Two steps are not ported and go through SymPy at run time
+(the face holds them, the functions ending in ``_of_core``): the
+antiderivatives of Chini's separated equation
+(SymPy's ``integrate``, :func:`~sympy_extras.solvers.first_order_sympy.integrate_of_core`)
+and the linear equation of a Lagrange equation (SymPy's ``dsolve``,
+:func:`~sympy_extras.solvers.first_order_sympy.dsolve_of_core`). The
+Prelle–Singer procedure of :mod:`sympy_extras.solvers.darboux` is native.
+
 References
 ==========
 
 .. [Kamke] E. Kamke, Differentialgleichungen: Lösungsmethoden und
    Lösungen, Band 1, §4.9 (Abel), §4.10 (Chini), §4.11 (d'Alembert).
+
+Examples
+========
+
+>>> import sympy_extras.interop  # SymPy's integrate (first_order_sympy.integrate_of_core)
+>>> from sympy_extras.core import Function, Symbol
+>>> from sympy_extras.solvers.first_order import riccati_ode
+>>> x = Symbol('x')
+>>> y = Function('y')(x)
+>>> riccati_ode(y.diff(x) + y**2 - 2/x**2, y)
+Eq(y(x), (2*C1*x**3 - 1)/(C1*x**4 + x))
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Callable, Final, Optional
 
-from sympy.core.basic import Basic
-from sympy.core.expr import Expr
-from sympy.core.function import Function, AppliedUndef, Derivative, expand
-from sympy.core.relational import Eq
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.exponential import exp
-from sympy.integrals.integrals import Integral, integrate
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly, cancel
-from sympy.simplify.simplify import simplify
-from sympy.solvers.ode import dsolve
-
+from sympy_extras.core.add import Add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.containers import Tuple
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.function import AppliedUndef, Derivative, Function, expand
+from sympy_extras.core.numbers import Integer
+from sympy_extras.core.power import Pow
+from sympy_extras.core.relational import Eq
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.exponential import exp
+from sympy_extras.functions.elementary.miscellaneous import real_root
+from sympy_extras.polys.polyerrors import BasePolynomialError
+from sympy_extras.polys.polytools import cancel
+from sympy_extras.simplify.powsimp import powdenest
+from sympy_extras.simplify.simplify import simplify
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import as_expr
 from sympy_extras.settings import settings
-from ._special_values_sympy import solution_cases
+
+from ._special_values import solution_cases
+from .kovacic import _coefficients
+from .linear_ode import has_integral
 
 __all__ = ['riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order']
+
+_ZERO: Final[Expr] = Integer(0)
+_ONE: Final[Expr] = Integer(1)
+
+#: what the polynomial routines raise on coefficients they cannot take
+_FAILURES = (BasePolynomialError, NotImplementedError, ValueError, TypeError, ZeroDivisionError)
+
+#: a solver of first order equations: an (implicit) solution or ``None``
+Solver = Callable[[Basic, AppliedUndef], Optional[Basic]]
+
+
+def _replaced(e: Expr, rule: dict[Basic, Basic]) -> Expr:
+    """``e`` with the keys of ``rule`` replaced, evaluated (SymPy's
+    ``xreplace``)."""
+    value = e._xreplace_evaluated(rule)
+    if not isinstance(value, Expr):
+        raise TypeError("%s is not an expression" % (value,))
+    return value
+
+
+def _normal(e: Expr) -> Expr:
+    """The normal form ``p/q`` of a rational function (``e`` itself when
+    the native ``cancel`` cannot take its coefficients)."""
+    try:
+        return cancel(e)
+    except _FAILURES:
+        return e
+
+
+def _all_coeffs(e: Expr, v: Symbol, normal_form: bool = True) -> Optional[list[Expr]]:
+    """The coefficients of ``e`` as a polynomial in ``v``, from the leading
+    one down and each in its normal form (SymPy's ``Poly(e, v).all_coeffs()``,
+    the coefficients any expressions free of ``v``), ``None`` when ``e`` is
+    no polynomial in ``v``; ``[]`` for zero. Without ``normal_form`` the
+    coefficients are the sums of the expanded terms (SymPy's domain
+    ``EX``)."""
+    try:
+        terms = _coefficients(e, v)
+    except ValueError:
+        return None
+    normal = {k: _normal(c) if normal_form else c for k, c in terms.items()}
+    normal = {k: c for k, c in normal.items() if c != _ZERO}
+    if not normal:
+        return []
+    return [normal.get(k, _ZERO) for k in range(max(normal), -1, -1)]
+
+
+def _degree(coefficients: list[Expr]) -> int:
+    """The degree of the polynomial of :func:`_all_coeffs` (``-1`` for
+    zero)."""
+    return len(coefficients) - 1
+
+
+def _as_zero(equation: Basic) -> Expr:
+    if isinstance(equation, Eq):
+        return equation.lhs - equation.rhs
+    if not isinstance(equation, Expr):
+        raise TypeError("%s is not an equation" % (equation,))
+    return equation
 
 
 def _derivative_polynomial(equation: Basic, f: AppliedUndef) -> tuple[Expr, Symbol, Symbol, Symbol]:
@@ -65,31 +153,33 @@ def _derivative_polynomial(equation: Basic, f: AppliedUndef) -> tuple[Expr, Symb
     x_ = f.args[0]
     if not isinstance(x_, Symbol):
         raise ValueError("the function must depend on a symbol")
-    lhs = equation.lhs - equation.rhs if isinstance(equation, Eq) else as_expr(equation)
+    lhs = _as_zero(equation)
     u, p = Dummy('y'), Dummy('p')
-    replaced = as_expr(lhs).xreplace({Derivative(f, x_): p}).xreplace({f: u})
+    in_p = _replaced(lhs, {Derivative(f, x_): p})
+    # the derivatives left are looked for before f is replaced: the
+    # evaluating replacement makes Derivative(u, (x, 2)) zero
+    if in_p.atoms(Derivative):
+        raise ValueError("a first order equation in %s is expected" % (f,))
+    replaced = _replaced(in_p, {f: u})
     if replaced.atoms(Derivative) or replaced.has(f):
         raise ValueError("a first order equation in %s is expected" % (f,))
     return replaced, x_, u, p
 
 
 def _integrate(e: Expr, v: Symbol) -> Expr:
-    result = attempt(lambda: integrate(e, v, conds='none'), settings.timeout)
-    if result is None:
-        return Integral(e, v)
-    return as_expr(result)
+    """SymPy's antiderivative (an unevaluated ``Integral`` when it does
+    not finish)."""
+    from .first_order_sympy import integrate_of_core
+    return integrate_of_core(e, v)
 
 
 def _explicit_rhs(F: Expr, p: Symbol) -> Optional[Expr]:
     """``p`` solved from ``F = 0`` when ``F`` is linear in ``p``."""
-    try:
-        poly = Poly(F, p)
-    except PolynomialError:
+    coefficients = _all_coeffs(F, p)
+    if coefficients is None or _degree(coefficients) != 1:
         return None
-    if poly.degree() != 1:
-        return None
-    a1, a0 = poly.all_coeffs()
-    return as_expr(cancel(-a0/a1))
+    a1, a0 = coefficients
+    return _normal(-a0/a1)
 
 
 def chini_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
@@ -100,9 +190,10 @@ def chini_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     Examples
     ========
 
-    >>> from sympy import Function
-    >>> from sympy.abc import x
+    >>> import sympy_extras.interop  # SymPy's integrate (first_order_sympy.integrate_of_core)
+    >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.first_order import chini_ode
+    >>> x = Symbol('x')
     >>> y = Function('y')(x)
     >>> chini_ode(y.diff(x) - x**2*y**3 + x**2, y)      # doctest: +ELLIPSIS
     Eq(...)
@@ -114,54 +205,50 @@ def chini_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     return _chini(rhs, x, u, f)
 
 
-def _chini(rhs: Expr, x: Symbol, u: Symbol, f: AppliedUndef) -> Optional[Basic]:
-    from sympy.core.add import Add
-    from sympy.core.power import Pow
+def _chini(rhs: Expr, x: Symbol, u: Symbol, f: Expr) -> Optional[Basic]:
     terms: dict[Expr, Expr] = {}
     for term in Add.make_args(expand(rhs)):
-        coefficient, part = as_expr(term).as_independent(u, as_Add=False)
+        coefficient, part = term.as_independent(u, as_Add=False)
         exponent: Expr
-        if part == 1:
-            exponent = S.Zero
+        if part == _ONE:
+            exponent = _ZERO
         elif part == u:
-            exponent = S.One
+            exponent = _ONE
         elif isinstance(part, Pow) and part.base == u and not part.exp.has(u, x):
-            exponent = as_expr(part.exp)
+            exponent = part.exp
         else:
             return None
-        terms[exponent] = as_expr(terms.get(exponent, S.Zero) + coefficient)
-    exponents = [e for e in terms if e not in (0, 1)]
+        terms[exponent] = terms.get(exponent, _ZERO) + coefficient
+    exponents = [e for e in terms if e != _ZERO and e != _ONE]
     if len(exponents) != 1:
         return None
     n = exponents[0]
-    if not n.is_number or n == 0:
+    if not n.is_number or n == _ZERO:
         return None
-    fn, g, h = terms[n], terms.get(S.One, S.Zero), terms.get(S.Zero, S.Zero)
-    if fn == 0 or h == 0:
+    fn, g, h = terms[n], terms.get(_ONE, _ZERO), terms.get(_ZERO, _ZERO)
+    if fn == _ZERO or h == _ZERO:
         return None
     # y = v exp(G), G = Integral(g): v' = fn exp((n-1)G) v**n + h exp(-G)
-    G = _integrate(g, x) if g != 0 else S.Zero
-    if G.has(Integral):
+    G = _integrate(g, x) if g != _ZERO else _ZERO
+    if has_integral(G):
         return None
-    Fx = as_expr(fn*exp((n - 1)*G))
-    Hx = as_expr(h*exp(-G))
-    from sympy.simplify.powsimp import powdenest
-    from sympy.functions.elementary.miscellaneous import real_root
-    ratio = as_expr(cancel(Hx/Fx))
+    Fx = fn*exp((n - 1)*G)
+    Hx = h*exp(-G)
+    ratio = _normal(Hx/Fx)
     if n.is_integer and n.is_odd:
         # the real n-th root (the principal root of a negative number is complex)
-        s = as_expr(powdenest(real_root(ratio, int(n)), force=True))
+        s = powdenest(real_root(ratio, n), force=True)
     else:
-        s = as_expr(powdenest(ratio**(1/n), force=True))
-    c = as_expr(simplify(powdenest(s.diff(x)/Hx, force=True)))
+        s = powdenest(ratio**(1/n), force=True)
+    c = simplify(powdenest(s.diff(x)/Hx, force=True))
     if c.has(x):
         return None
     w = Dummy('w')
-    left = _integrate(as_expr(1/(w**n + 1 - c*w)), w)
-    right = _integrate(as_expr(cancel(Hx/s)), x)
+    left = _integrate(1/(w**n + 1 - c*w), w)
+    right = _integrate(_normal(Hx/s), x)
     C1 = Symbol('C1')
-    w_value = as_expr(f*exp(-G)/s)
-    return Eq(as_expr(left.subs(w, w_value)), as_expr(right + C1))
+    w_value = f*exp(-G)/s
+    return Eq(left.subs(w, w_value), right + C1)
 
 
 def _abel_relation_holds(solution: Basic, coefficients: tuple[Expr, Expr, Expr, Expr], x: Symbol,
@@ -171,7 +258,7 @@ def _abel_relation_holds(solution: Basic, coefficients: tuple[Expr, Expr, Expr, 
     from .abel import _defines_solution
     if not isinstance(solution, Eq):
         return True
-    relation = as_expr(solution.lhs - solution.rhs)
+    relation = solution.lhs - solution.rhs
     return _defines_solution(relation, coefficients, x, f, Symbol('C1'))
 
 
@@ -183,27 +270,25 @@ def abel_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     Examples
     ========
 
-    >>> from sympy import Function, Eq
-    >>> from sympy.abc import x
+    >>> import sympy_extras.interop  # SymPy's integrate (first_order_sympy.integrate_of_core)
+    >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.first_order import abel_ode
+    >>> x = Symbol('x')
     >>> y = Function('y')(x)
     >>> abel_ode(y.diff(x) - y**3 - 3*y**2 - 3*y, y)     # doctest: +ELLIPSIS
     Eq(...)
     """
+    from .abel import abel_by_invariants, constant_invariant, abel_coefficients
     F, x, u, p = _derivative_polynomial(equation, f)
-    try:
-        poly = Poly(F, p)
-    except PolynomialError:
+    in_p = _all_coeffs(F, p)
+    if in_p is None or _degree(in_p) != 1:
         return None
-    if poly.degree() != 1:
-        return None
-    a1, a0 = [as_expr(c) for c in poly.all_coeffs()]
+    a1, a0 = in_p
     # a1(x, y) y' + a0(x, y) = 0
     if not a1.has(u):
-        from .abel import abel_by_invariants, constant_invariant, abel_coefficients
-        rhs = as_expr(cancel(-a0/a1))
+        rhs = _normal(-a0/a1)
         try:
-            coefficients, _ = abel_coefficients(Eq(f.diff(x), rhs.subs(u, f)), f)
+            coefficients, _ = abel_coefficients(Eq(f.diff(x), _replaced(rhs, {u: f})), f)
         except ValueError:
             return None
         if constant_invariant(coefficients, x) is not False:
@@ -216,53 +301,50 @@ def abel_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
         # through the invariants (the AIR class and the representatives)
         return abel_by_invariants(equation, f)
     # second kind: a1 linear in y, a0 quadratic in y
-    try:
-        p1 = Poly(a1, u)
-        p0 = Poly(-a0, u)
-    except PolynomialError:
+    p1 = _all_coeffs(a1, u)
+    p0 = _all_coeffs(-a0, u)
+    if p1 is None or p0 is None or _degree(p1) != 1 or _degree(p0) > 2:
         return None
-    if p1.degree() != 1 or p0.degree() > 2:
-        return None
-    lead = as_expr(p1.LC())
-    g = as_expr(cancel(p1.all_coeffs()[1]/lead))
-    rhs = as_expr(cancel(p0.as_expr()/lead))
+    lead = p1[0]
+    g = _normal(p1[1]/lead)
+    rhs = _normal(-a0/lead)
     # y + g = 1/w: w' = -(y + g)' w**2 = -(rhs/(y + g) - g') w**2
     w = Dummy('w')
-    v = as_expr(1/w - g)
-    w_rhs = as_expr(cancel(-(rhs.subs(u, v)*w - g.diff(x))*w**2))
-    from .abel import abel_by_invariants, constant_invariant, abel_coefficients
+    v = 1/w - g
+    w_rhs = _normal(-(_replaced(rhs, {u: v})*w - g.diff(x))*w**2)
     W = Function('W')(x)
     try:
-        coefficients, _ = abel_coefficients(Eq(W.diff(x), w_rhs.subs(w, W)), W)
+        coefficients, _ = abel_coefficients(Eq(W.diff(x), _replaced(w_rhs, {w: W})), W)
     except ValueError:
         return None
     if constant_invariant(coefficients, x) is not False:
-        solution = _abel_first_kind(w_rhs, x, w, as_expr(1/(f + g)), f)
-        if solution is not None:
+        solution = _abel_first_kind(w_rhs, x, w, 1/(f + g), f)
+        # checked on the equation for W = 1/(y + g) (sympy-extras#38: the
+        # relation of y y' = y + x had lost y and x altogether)
+        if solution is not None and _abel_relation_holds(solution._xreplace_evaluated({f: 1/W - g}),
+                                                         coefficients, x, W):
             return solution
-    first_kind = abel_by_invariants(Eq(W.diff(x), w_rhs.subs(w, W)), W)
+    first_kind = abel_by_invariants(Eq(W.diff(x), _replaced(w_rhs, {w: W})), W)
     if not isinstance(first_kind, Eq):
         return None
-    return Eq(as_expr(first_kind.lhs.subs(W, 1/(f + g))), as_expr(first_kind.rhs.subs(W, 1/(f + g))))
+    back: dict[Basic, Basic] = {W: 1/(f + g)}
+    return Eq(first_kind.lhs.subs(back), first_kind.rhs.subs(back))
 
 
 def _abel_first_kind(rhs: Expr, x: Symbol, u: Symbol, value: Expr, f: AppliedUndef) -> Optional[Basic]:
     """``u' = rhs(x, u)`` cubic in ``u``, with ``u`` standing for ``value``
     (an expression in ``f``)."""
-    try:
-        poly = Poly(expand(rhs), u)
-    except PolynomialError:
+    coefficients = _all_coeffs(expand(rhs), u)
+    if coefficients is None or _degree(coefficients) != 3:
         return None
-    if poly.degree() != 3:
-        return None
-    f3, f2, f1, f0 = [as_expr(c) for c in poly.all_coeffs()]
-    if f2 == 0:
-        return _chini(rhs, x, u, as_expr(value)) if False else _chini_for(rhs, x, u, value)
-    shift = as_expr(cancel(f2/(3*f3)))
+    f3, f2, f1, f0 = coefficients
+    if f2 == _ZERO:
+        return _chini_for(rhs, x, u, value)
+    shift = _normal(f2/(3*f3))
     v = Dummy('v')
     # u = v - shift: v' = rhs(x, v - shift) + shift'
-    new_rhs = as_expr(expand(rhs.subs(u, v - shift) + shift.diff(x)))
-    return _chini_for(new_rhs, x, v, as_expr(value + shift))
+    new_rhs = expand(_replaced(rhs, {u: v - shift}) + shift.diff(x))
+    return _chini_for(new_rhs, x, v, value + shift)
 
 
 def _chini_for(rhs: Expr, x: Symbol, u: Symbol, value: Expr) -> Optional[Basic]:
@@ -270,7 +352,7 @@ def _chini_for(rhs: Expr, x: Symbol, u: Symbol, value: Expr) -> Optional[Basic]:
     solution = _chini(rhs, x, u, placeholder)
     if solution is None:
         return None
-    return solution.xreplace({placeholder: value})
+    return solution._xreplace_evaluated({placeholder: value})
 
 
 def lagrange_ode(equation: Basic, f: AppliedUndef) -> Optional[list[Basic]]:
@@ -281,44 +363,40 @@ def lagrange_ode(equation: Basic, f: AppliedUndef) -> Optional[list[Basic]]:
     Examples
     ========
 
-    >>> from sympy import Function, Eq
-    >>> from sympy.abc import x
+    >>> import sympy_extras.interop  # SymPy's dsolve (first_order_sympy.dsolve_of_core)
+    >>> from sympy_extras.core import Function, Symbol, Eq
     >>> from sympy_extras.solvers.first_order import lagrange_ode
+    >>> x = Symbol('x')
     >>> y = Function('y')(x)
     >>> lagrange_ode(Eq(y, 2*x*y.diff(x) + y.diff(x)**2), y)
     [Eq(x, C1/p**2 - 2*p/3), Eq(y(x), (6*C1 - p**3)/(3*p))]
     """
     F, x, u, p = _derivative_polynomial(equation, f)
-    try:
-        poly = Poly(F, u)
-    except PolynomialError:
+    in_u = _all_coeffs(F, u)
+    if in_u is None or _degree(in_u) != 1:
         return None
-    if poly.degree() != 1:
+    a1, a0 = in_u
+    rhs = _normal(-a0/a1)   # y = rhs(x, p)
+    in_x = _all_coeffs(rhs, x)
+    if in_x is None or _degree(in_x) != 1:
         return None
-    a1, a0 = [as_expr(c) for c in poly.all_coeffs()]
-    rhs = as_expr(cancel(-a0/a1))   # y = rhs(x, p)
-    try:
-        in_x = Poly(rhs, x)
-    except PolynomialError:
-        return None
-    if in_x.degree() != 1:
-        return None
-    Fp, Gp = [as_expr(c) for c in in_x.all_coeffs()]
+    Fp, Gp = in_x
     if Fp.has(x) or Gp.has(x):
         return None
-    if cancel(Fp - p) == 0:
+    if _normal(Fp - p) == _ZERO:
         return None   # Clairaut: SymPy's hint
     parameter = Symbol('p')
-    Fp, Gp = as_expr(Fp.subs(p, parameter)), as_expr(Gp.subs(p, parameter))
+    Fp, Gp = _replaced(Fp, {p: parameter}), _replaced(Gp, {p: parameter})
+    from .first_order_sympy import dsolve_of_core
     X = Function('X')(parameter)
     linear = Eq(X.diff(parameter) - X*Fp.diff(parameter)/(parameter - Fp), Gp.diff(parameter)/(parameter - Fp))
-    solved = attempt(lambda: dsolve(linear, X), settings.timeout)
+    solved = attempt(lambda: dsolve_of_core(linear, X), settings.timeout, native=True)
     if not isinstance(solved, Eq) or solved.lhs != X:
         return None
-    X_value = as_expr(solved.rhs)
-    if X_value.has(Integral):
+    X_value = solved.rhs
+    if has_integral(X_value):
         return None
-    return [Eq(x, X_value), Eq(f, as_expr(simplify(X_value*Fp + Gp)))]
+    return [Eq(x, X_value), Eq(f, simplify(X_value*Fp + Gp))]
 
 
 def riccati_ode(equation: Basic, f: AppliedUndef, special_values: bool = True) -> Optional[Basic]:
@@ -339,9 +417,10 @@ def riccati_ode(equation: Basic, f: AppliedUndef, special_values: bool = True) -
     Examples
     ========
 
-    >>> from sympy import Function
-    >>> from sympy.abc import x
+    >>> import sympy_extras.interop  # SymPy's integrate (kovacic_sympy.integrate_of_core)
+    >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.first_order import riccati_ode
+    >>> x = Symbol('x')
     >>> y = Function('y')(x)
     >>> riccati_ode(y.diff(x) + y**2 - 2/x**2, y)
     Eq(y(x), (2*C1*x**3 - 1)/(C1*x**4 + x))
@@ -359,18 +438,16 @@ def _solutions_of(solution: Optional[Basic]) -> list[Basic]:
 
 
 def _riccati(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
-    from .linear_ode_sympy import dsolve_linear
+    from .linear_ode import dsolve_linear
+    from .special import special_solutions
     F, x, u, p = _derivative_polynomial(equation, f)
     rhs = _explicit_rhs(F, p)
     if rhs is None:
         return None
-    try:
-        poly = Poly(expand(rhs), u)
-    except PolynomialError:
+    coefficients = _all_coeffs(expand(rhs), u)
+    if coefficients is None or _degree(coefficients) != 2:
         return None
-    if poly.degree() != 2:
-        return None
-    a, b, c = [as_expr(coefficient) for coefficient in poly.all_coeffs()]
+    a, b, c = coefficients
     if not all(coefficient.is_rational_function(x) for coefficient in (a, b, c)):
         return None
     w = Function('u')(x)
@@ -378,25 +455,29 @@ def _riccati(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     # the special functions are recognised at once; Kovacic's algorithm
     # (inside dsolve_linear) is slow to fail on equations without
     # Liouvillian solutions
-    from .special_sympy import special_solutions
-    solutions = attempt(lambda: special_solutions(linear, w), settings.timeout)
+    solutions = attempt(lambda: special_solutions(linear, w), settings.timeout, native=True)
     if not solutions:
-        solutions = attempt(lambda: dsolve_linear(linear, w, special_values=False), settings.timeout)
+        solutions = attempt(lambda: dsolve_linear(linear, w, special_values=False), settings.timeout, native=True)
     if not solutions:
         return None
     C1 = Symbol('C1')
     if len(solutions) >= 2:
         u1, u2 = solutions[0], solutions[1]
-        numerator = as_expr(u1.diff(x) + C1*u2.diff(x))
-        denominator = as_expr(a*(u1 + C1*u2))
+        numerator = u1.diff(x) + C1*u2.diff(x)
+        denominator = a*(u1 + C1*u2)
     else:
         # a particular solution only
         u1 = solutions[0]
-        numerator, denominator = as_expr(u1.diff(x)), as_expr(a*u1)
-    value = as_expr(-numerator/denominator)
+        numerator, denominator = u1.diff(x), a*u1
+    value = -numerator/denominator
     if value.is_rational_function(x):
-        value = as_expr(cancel(value))
+        value = _normal(value)
     return Eq(f, value)
+
+
+def _prelle_singer(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
+    from .darboux import prelle_singer
+    return prelle_singer(equation, f)
 
 
 def dsolve_first_order(equation: Basic, f: AppliedUndef, special_values: bool = True) -> Optional[Basic]:
@@ -404,14 +485,26 @@ def dsolve_first_order(equation: Basic, f: AppliedUndef, special_values: bool = 
     the implicit solution of an equation ``y' = P(x, y)/Q(x, y)`` with
     polynomial ``P``, ``Q`` from the first integral of the Prelle–Singer
     procedure (:func:`~sympy_extras.solvers.darboux.prelle_singer`)
-    or the Lagrange parametric solution (as a list) of a first order
+    or the Lagrange parametric solution (as a ``Tuple``) of a first order
     equation, else ``None``. With ``special_values``, an explicit
     solution of an equation with parameters gets cases for the isolated
     values of the parameters at which it is undefined or loses its
-    constant (:mod:`sympy_extras.solvers._special_values`)."""
-    from .darboux_sympy import prelle_singer
-    for method in (_riccati, abel_ode, chini_ode, prelle_singer):
-        solution = attempt(lambda: method(equation, f), settings.timeout)
+    constant (:mod:`sympy_extras.solvers._special_values`).
+
+    Examples
+    ========
+
+    >>> import sympy_extras.interop  # SymPy's integrate and dsolve (the *_of_core functions)
+    >>> from sympy_extras.core import Function, Symbol, Eq
+    >>> from sympy_extras.solvers.first_order import dsolve_first_order
+    >>> x = Symbol('x')
+    >>> y = Function('y')(x)
+    >>> dsolve_first_order(Eq(y, 2*x*y.diff(x) + y.diff(x)**2), y)
+    (Eq(x, C1/p**2 - 2*p/3), Eq(y(x), (6*C1 - p**3)/(3*p)))
+    """
+    methods: tuple[Solver, ...] = (_riccati, abel_ode, chini_ode, _prelle_singer)
+    for method in methods:
+        solution = attempt(lambda: method(equation, f), settings.timeout, native=True)
         if solution is not None:
             if special_values and isinstance(solution, Eq):
                 cased = solution_cases([solution], equation, f,
@@ -419,8 +512,7 @@ def dsolve_first_order(equation: Basic, f: AppliedUndef, special_values: bool = 
                 if cased is not None:
                     return cased
             return solution
-    parametric = attempt(lambda: lagrange_ode(equation, f), settings.timeout)
+    parametric = attempt(lambda: lagrange_ode(equation, f), settings.timeout, native=True)
     if parametric:
-        from sympy.core.containers import Tuple
         return Tuple(*parametric)
     return None

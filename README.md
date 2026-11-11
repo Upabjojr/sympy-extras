@@ -1036,7 +1036,10 @@ sympy_extras/
         special_sympy.py     the SymPy face of special
         linear_systems.py    systems Y' = A Y + b: cyclic vectors, rational solutions, variation of constants (native)
         linear_systems_sympy.py the SymPy face of linear_systems
-        first_order.py       Abel, Chini, d'Alembert-Lagrange equations
+        first_order.py       Riccati, Abel, Chini, d'Alembert-Lagrange equations (native)
+        first_order_sympy.py the SymPy face of first_order
+        abel.py              invariants, equivalence classes and the AIR class of Abel equations (native)
+        abel_sympy.py        the SymPy face of abel
         exponential_diophantine.py  Pillai's equation a**x - b**y = c (Baker–Wüstholz, continued fractions), integer zeros of exponential polynomials (native)
         simplex.py           exact linear programming over QQ with certificates (duality, Farkas, rays), strict inequalities (native)
         recurr.py            linear recurrences: polynomial, hypergeometric (Petkovšek), d'Alembertian (Abramov–Petkovšek) solutions (native)

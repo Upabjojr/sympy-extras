@@ -602,6 +602,37 @@ remove public functions. Breaking changes are listed here when they happen.
   b)` (sympy-extras#25); they give `y**2 - b/a` and `1/(y**2 - b/a)`.
   Coefficients with both parameters and algebraic numbers are refused
   with a `ValueError`, as before.
+- The first order solvers and the Abel equations are native
+  (**breaking**): `sympy_extras.solvers.first_order` (`riccati_ode`,
+  `chini_ode`, `abel_ode`, `lagrange_ode`, `dsolve_first_order`) and
+  `sympy_extras.solvers.abel` (`abel_coefficients`, `abel_invariants`,
+  `constant_invariant`, `abel_equivalence`, `particular_solution`,
+  `air_solution`, `abel_by_invariants`, `AbelInvariants`,
+  `AbelTransformation`, `REPRESENTATIVES`) take and return the
+  expressions, functions and symbols of the core and import no SymPy: the
+  coefficients (read from the expanded terms, SymPy's domain `EX` not
+  being ported), the cancellations, `factor`, `together`, `powdenest`,
+  `real_root`, `simplify`, the gcd of the equivalence (`UPoly`), the
+  linearised Riccati equations (the native `special_solutions` and
+  `dsolve_linear`) and the cases of the isolated parameter values are
+  native, and so is the numerical check of an implicit relation (a
+  secant method in mpmath at 30 digits in place of SymPy's `nsolve`).
+  SymPy's `integrate` (`first_order_sympy.integrate_of_core`,
+  `kovacic_sympy.integrate_of_core`), its `dsolve` of the linear
+  equation of a Lagrange equation and of an inverse Riccati equation
+  (`first_order_sympy.dsolve_of_core`), its `solve` of the undetermined
+  coefficients of a particular solution and of a common factor of the
+  equivalence (`factorization_sympy.solve_of_core`,
+  `charpit_sympy.solve_of_core`) and the Prelle–Singer procedure of
+  `solvers.darboux` (`prelle_singer_of_core`) are called through the
+  faces at run time. The old API on SymPy objects is in the new faces
+  `sympy_extras.solvers.first_order_sympy` and
+  `sympy_extras.solvers.abel_sympy` (results compared on the tests, the
+  doctests and 40 further first order equations; see the commit
+  message); `solvers.ode`, `solvers.darboux` (its private helpers
+  `_derivative_polynomial`, `_explicit_rhs` stay on SymPy in
+  `first_order_sympy`), the tests, the benchmarks and the documentation
+  use the faces.
 
 - The Lie point symmetries and the similarity reductions are native
   (**breaking**): `sympy_extras.solvers.lie` (`JetSpace`, `Symmetry`,
@@ -2085,6 +2116,13 @@ remove public functions. Breaking changes are listed here when they happen.
   at the precisions they ask).
 
 ### Fixed
+
+- `abel_ode` returned the relation `0 = C1 - 11**(2/3)*log(x)/9`, with
+  no `y` in it, for the Abel equation of the second kind `y y' = y + x`:
+  the separable class of the transformed equation was not checked. The
+  relation is now checked on the transformed equation, and a relation
+  without the unknown is never taken for a solution (`dsolve_first_order`
+  goes on to the Prelle–Singer first integral).
 
 - `rsolve_linear` with initial values did not return on a recurrence
   whose characteristic polynomial is an irreducible cubic (the

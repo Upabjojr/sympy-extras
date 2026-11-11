@@ -481,7 +481,7 @@ def _first_order(ode: Equation, y: AppliedUndef, check: bool, timeout: Optional[
     """The solution of a first order equation by the first order solvers
     (an ``Eq``, explicit or implicit; a parametric solution is left to
     the symmetry method), verified when ``check``."""
-    from .first_order import dsolve_first_order
+    from .first_order_sympy import dsolve_first_order
     equation = _as_zero(ode)
     orders = [max((int(n) for _, n in d.variable_count), default=0) for d in equation.atoms(Derivative) if d.expr == y]
     if not orders or max(orders) != 1:
