@@ -312,7 +312,7 @@ first order equations and `pdsolve` has no symmetry analysis.
 
 ```python
 >>> from sympy import Function, symbols
->>> from sympy_extras.solvers.pde import pde_symmetries, pdsolve_lie
+>>> from sympy_extras.solvers.pde_sympy import pde_symmetries, pdsolve_lie
 >>> from sympy_extras.solvers.ode import dsolve_lie
 >>> x, t = symbols('x t')
 >>> u = Function('u')(x, t)
@@ -707,7 +707,7 @@ The size of the symmetry algebra of a differential equation follows from
 the Janet basis of its determining equations:
 
 ```python
->>> from sympy_extras.solvers.lie import symmetry_janet_basis
+>>> from sympy_extras.solvers.lie_sympy import symmetry_janet_basis
 >>> symmetry_janet_basis(p.diff(x, 2), p).dimension
 8
 

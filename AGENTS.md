@@ -288,6 +288,13 @@ sympy_extras/
                              matrix_exponential (Putzer): linear DAEs with constant coefficients on ExprMatrix
                              (native; SymPy's integrate of the particular solution through dae_sympy)
         dae_sympy.py         the SymPy face of dae (SymPy matrices), and integral_of_core
+        lie.py               JetSpace, Symmetry, symmetries, check_symmetry, determining_system, symmetry_janet_basis:
+                             Lie point symmetries by a polynomial ansatz (native; the Janet basis of polys.differential;
+                             SymPy's solve of a leading derivative of degree three or more through charpit_sympy)
+        lie_sympy.py         the SymPy face of lie (used by ode, second_order, pde_sympy)
+        pde.py               pde_symmetries, similarity_reduction, pdsolve_lie, check_pde_solution: similarity
+                             reductions of PDEs (native; SymPy's dsolve and solve through pde_sympy)
+        pde_sympy.py         the SymPy face of pde, and dsolve_of_core, solve_of_core
         tests/
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native, with the

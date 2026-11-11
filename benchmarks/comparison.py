@@ -97,8 +97,8 @@ from sympy_extras.solvers.thue_equation_sympy import thue
 from sympy_extras.solvers.abel import abel_by_invariants, abel_invariants
 from sympy_extras.solvers.integers_sympy import linear_diophantine_system, minimal_nonnegative_solutions, cooper
 from sympy_extras.solvers.linear_systems import dsolve_linear_system, rational_system_solutions
-from sympy_extras.solvers.lie import symmetries
-from sympy_extras.solvers.pde import pde_symmetries
+from sympy_extras.solvers.lie_sympy import symmetries
+from sympy_extras.solvers.pde_sympy import pde_symmetries
 from sympy_extras.polys.ideals_sympy import Ideal
 from sympy_extras.polys.groebnerwalk_sympy import groebner_walk
 from sympy_extras.polys.subresultants_sympy import psc
@@ -113,7 +113,7 @@ from sympy.series.limitseq import limit_seq
 from sympy.polys import ring, QQ, ZZ, grevlex, lex
 from sympy.polys.groebnertools import groebner as ring_groebner
 from sympy.logic.inference import satisfiable as sympy_satisfiable
-from sympy_extras.solvers.pde import pdsolve_lie
+from sympy_extras.solvers.pde_sympy import pdsolve_lie
 
 f = Function('y')(x)
 g = Function('u')(x, y)

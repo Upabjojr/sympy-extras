@@ -539,6 +539,33 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The Lie point symmetries and the similarity reductions are native
+  (**breaking**): `sympy_extras.solvers.lie` (`JetSpace`, `Symmetry`,
+  `symmetries`, `check_symmetry`, `infinitesimal_condition`,
+  `determining_equations`, `determining_system`, `symmetry_janet_basis`,
+  and the new `leading_derivatives`) and `sympy_extras.solvers.pde`
+  (`pde_symmetries`, `similarity_reduction`, `pdsolve_lie`, `Reduction`,
+  and the new `check_pde_solution`) take and return the expressions,
+  functions and symbols of the core and import no SymPy: the linear
+  system of the ansatz is solved over `QQ` or the field of rational
+  functions of the parameters (`SparseFractionField`, the constants
+  outside it such as `sqrt(2)` taken as generic symbols), the
+  determining system goes to the native Janet basis of
+  `sympy_extras.polys.differential` (no longer through
+  `polys.differential_sympy`), a quadratic leading derivative is solved
+  by the native `roots_quadratic`, the reduced equations are normalised
+  by the native `factor_list`, and the solutions of `pdsolve_lie` are
+  checked by substitution with the native `simplify` (no longer SymPy's
+  `checkpdesol`). The old API on SymPy objects is in the new faces
+  `sympy_extras.solvers.lie_sympy` and `sympy_extras.solvers.pde_sympy`
+  (same results on the tests, the doctests and 34 further equations);
+  SymPy's `dsolve` (`dsolve_of_core`) and `solve` for the equations not
+  linear in the unknown (`pde_sympy.solve_of_core`; `lie` uses
+  `charpit_sympy.solve_of_core` for a leading derivative which is
+  neither linear nor quadratic) are called through them. `solvers.ode`,
+  `solvers.second_order`, the benchmarks and the documentation use the
+  faces.
+
 - Kovacic's algorithm and the special values of the ODE solutions are
   native (**breaking**): `sympy_extras.solvers.kovacic`
   (`liouvillian_solution`, `dsolve_kovacic`, `normal_form`,

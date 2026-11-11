@@ -4,7 +4,7 @@ from sympy import Function, symbols, exp, log, sqrt, simplify, Eq, dsolve, Integ
 from sympy.solvers.ode import checkodesol
 
 from sympy_extras.solvers.ode import ode_symmetries, canonical_coordinates, reduce_order, dsolve_lie, solve_ode
-from sympy_extras.solvers.lie import JetSpace, Symmetry
+from sympy_extras.solvers.lie_sympy import JetSpace, Symmetry
 from sympy_extras._timeout import attempt
 
 x = symbols('x')
