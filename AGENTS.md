@@ -294,7 +294,7 @@ sympy_extras/
       normalforms.py         smith_normal_form and hermite_normal_form over K[x], invariant_factors, matrix_minimal_polynomial, frobenius_form, elementary_divisors, is_similar
       steps.py               step-by-step elimination: rref_steps, echelon_steps, inverse_steps, solve_steps, determinant_steps (RowOperation, Step)
       calculus.py            jacobian, gradient, hessian (bordered), wronskian, classify_critical_point
-      riccati.py             riccati_solutions, care_solve, lqr (exact, by the polynomial system and a certified Routh-Hurwitz test)
+      riccati.py             riccati_solutions, care_solve, lqr, dare_solve, dlqr (exact, by the polynomial system and a certified Routh-Hurwitz test)
       statespace.py          controllability, observability, transfer_function, pole_placement (Ackermann), realization
       pencils.py             generalized eigenvalues and eigenvectors of A v = x B v (finite and infinite), pencil_polynomial
       svd.py                 singular_values, exact compact svd of rational matrices

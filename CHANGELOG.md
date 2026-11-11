@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `matrices.riccati`: the discrete algebraic Riccati equation,
+  `dare_solve`, `dlqr`, `discrete_riccati_solutions` (the gain as a
+  second unknown makes the equation polynomial; Schur stability of the
+  closed loop certified through the Moebius map).
 - `normal_form` writes the hyperbolic functions of a multiple of `w`
   with exponentials when `exp(r*w)` occurs too: `cosh(x) + sinh(x) -
   exp(x)` reduces to zero.

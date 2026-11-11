@@ -442,6 +442,9 @@ stays undecided, in exact arithmetic on algebraic numbers.
 [ExprMatrix([[-sqrt(3), 1], [1, -sqrt(3)]]), ExprMatrix([[sqrt(3), 1], [1, sqrt(3)]])]
 >>> lqr(A2, B2, ExprMatrix.eye(2), ExprMatrix.eye(1))
 (ExprMatrix([[1, sqrt(3)]]), ExprMatrix([[sqrt(3), 1], [1, sqrt(3)]]))
+>>> from sympy_extras.matrices.riccati import dare_solve, dlqr
+>>> dare_solve(ExprMatrix.eye(1), ExprMatrix.eye(1), ExprMatrix.eye(1), ExprMatrix.eye(1))        # discrete time
+ExprMatrix([[1/2 + sqrt(5)/2]])
 
 ```
 
