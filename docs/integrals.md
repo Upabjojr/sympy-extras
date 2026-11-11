@@ -417,7 +417,8 @@ The driver tries, after the Mellin method and the residues:
   is summed. The theorem is checked against the table on the kernels both
   know; the method of brackets is a heuristic and is used only where its
   series converge.
-- **Asymptotic expansions** (`sympy_extras.integrals.asymptotic`,
+- **Asymptotic expansions** (`sympy_extras.integrals.asymptotic` on the
+  core, its SymPy face `sympy_extras.integrals.asymptotic_sympy`,
   `asymptotic_integral`): for a parametric integral without a closed form,
   the first terms as the parameter grows, by Watson's lemma
   (`exp(-t*x)*phi(x)`), Laplace's method (`phi*exp(t*h)` with the maxima
@@ -522,7 +523,7 @@ pi/(n*sin(pi/n))
 MellinTransform(gamma(s/2)/2, (0, oo))
 >>> recognize_integral(1/(x**3 + 1), (x, 0, 1))
 log(2)/3 + sqrt(3)*pi/9
->>> from sympy_extras.integrals.asymptotic import asymptotic_integral
+>>> from sympy_extras.integrals.asymptotic_sympy import asymptotic_integral
 >>> asymptotic_integral(exp(-t*x)/(1 + x), x, 0, oo, t)
 2/t**3 - 1/t**2 + 1/t + O(t**(-4), (t, oo))
 >>> definite_integral(x**x, (x, 0, 1), numeric=True, digits=6)

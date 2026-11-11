@@ -167,6 +167,12 @@ def test_assumptions() -> None:
     assert sqrt(Symbol('c', complex=True)).is_extended_negative is False and sqrt(p).is_negative is False
     assert pi.is_positive and pi.is_irrational and (pi + 2).is_rational is False and I.is_real is False
     assert I.is_imaginary and (2*I).is_imaginary and (1 + I).is_real is False and (1 + I).is_zero is False
+    # a sum of imaginary terms which cancel was imaginary, so not zero:
+    # I - 4*w**3 with w = 2**(1/3)*(I - sqrt(3))/4 is 0, and solve(4*x**3 - I, x)
+    # dropped two of the three roots (SymPy's Add._eval_is_imaginary says None)
+    w = -Integer(2)**Rational(1, 3)*sqrt(3)/4 + Integer(2)**Rational(1, 3)*I/4
+    assert (I - 4*w**3).is_zero is None and (I - 4*w**3).is_imaginary is None
+    assert (I*p + I*sqrt(2)).is_imaginary is True and (I + I*Symbol('r', real=True)).is_imaginary is None
     assert oo.is_finite is False and oo.is_extended_real and oo.is_real is False and zoo.is_finite is False
     assert (x + 1).is_number is False and (pi + 2).is_number and sqrt(2).is_number
     assert Symbol('p', positive=True, real=True) == p and Symbol('x', real=True) != x
