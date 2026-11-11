@@ -2379,7 +2379,7 @@ class _Integrator:
     def _elliptic(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Square roots of cubics and quartics reduced to Legendre's
         elliptic integrals (:mod:`.elliptic`)."""
-        from .elliptic import elliptic_integral
+        from .elliptic_sympy import elliptic_integral
         if not any(isinstance(node, Pow) and isinstance(node.exp, Rational) and node.exp.q == 2
                    for node in f.atoms(Pow)):
             return None
