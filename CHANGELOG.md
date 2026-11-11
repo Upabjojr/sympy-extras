@@ -595,6 +595,55 @@ remove public functions. Breaking changes are listed here when they happen.
   condition on them (`x < 1` for `(x < 1) & Ne(x, 0)`). Every recorded
   call gives the same result as before (see the commit message for the
   comparison).
+- The linear ODE solvers are native (**breaking**):
+  `sympy_extras.solvers.linear_ode` (`LinearOperator`,
+  `polynomial_solutions`, `rational_solutions`,
+  `hyperexponential_solutions`, `hyperexponential_search`,
+  `reduce_order_linear`, `dsolve_linear`, `gcrd`, `lclm`,
+  `log_derivative`), `sympy_extras.solvers.factorization`
+  (`factor_operator`, `right_factor`, `left_factor`,
+  `OperatorFactorization`, `variation_of_parameters`, `solve_factored`),
+  `sympy_extras.solvers.irregular` (`Place`, `irregular_places`,
+  `local_exponential_parts`, `finite_exponential_parts`,
+  `conjugate_sum`) and `sympy_extras.solvers.special`
+  (`special_solutions`, `bessel_solutions`, `whittaker_solutions`,
+  `hypergeometric_solutions`, `whittaker_m`) take and return the
+  expressions, functions and symbols of the core and import no SymPy.
+  The polynomials in one variable are the new `linear_ode.UPoly`
+  (coefficients any constant expressions, normalised by the native
+  `cancel`; the native `factor_list`, `gcd`, `resultant` and `roots`
+  with the coefficients the typed `Poly` refuses taken as generators),
+  the linear algebra the native field of rational functions
+  (`SparseFractionField`: null spaces, the inverse of Beke's cyclic
+  matrix) with Gaussian elimination on expressions as the fallback, the
+  determinants those of `_special_values`, the number fields of the
+  irregular points `polys.domains.AlgebraicField` with Trager's
+  factorisation (the root `alpha` of a place of degree more than one is
+  a symbol, the generator of the field; `irregular_places` returns
+  `UPoly`), the integral of an exponential part the conjugate sum of
+  `-r/((m - 1) (x - alpha)**(m - 1))` instead of SymPy's
+  `ratint_ratpart`, the integrals of the polynomial exponential parts
+  term by term, the special functions those of
+  `sympy_extras.functions`. `LinearOperator.coefficients` and
+  `OperatorFactorization.factors`/`irreducible` are tuples on the core.
+  SymPy's `integrate` (`kovacic_sympy.integrate_of_core`,
+  `integral_of_core`), `dsolve` (the new
+  `linear_ode_sympy.dsolve_of_core`) and `solve` on the
+  Grassmann–Plücker relations of Beke's method (the new
+  `factorization_sympy.solve_of_core`) are called through the faces. The
+  old API on SymPy objects moves to the new faces
+  `sympy_extras.solvers.linear_ode_sympy`, `factorization_sympy`,
+  `irregular_sympy` and `special_sympy` (with the private helpers that
+  `linear_systems` and the tests use: `_solve_operator`, `_nullspace`,
+  `_indicial_at`, `_indicial_at_infinity`, `_quadrature`, ...), which
+  `linear_systems`, `first_order`, the tests, the benchmarks, the README
+  and the docs use. The wrapped SymPy expressions of the interop
+  (`SymPyExprNode`) now differentiate through SymPy: the derivative of an
+  unevaluated `Integral(f, x)` by `x` is `f` (it stayed
+  `Derivative(Integral(f, x), x)`). Every recorded call of the tests and
+  the doctests gives the same result on the faces except the form of
+  some expanded `L(y)` and the order of two hyperexponential solutions,
+  and so do 40 further equations (see the commit message).
 - Kovacic's algorithm and the special values of the ODE solutions are
   native (**breaking**): `sympy_extras.solvers.kovacic`
   (`liouvillian_solution`, `dsolve_kovacic`, `normal_form`,

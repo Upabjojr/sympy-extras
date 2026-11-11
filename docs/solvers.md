@@ -254,10 +254,19 @@ SymPy lacks:
   same machinery, rational solutions by Barkatou's method, variation of
   constants; see [Linear systems](#linear-systems-with-rational-coefficients).
 
+`linear_ode`, `factorization`, `irregular` and `special` are native
+(core expressions, the native polynomials, roots, number fields, linear
+algebra and simplification); their SymPy faces are `linear_ode_sympy`,
+`factorization_sympy`, `irregular_sympy` and `special_sympy`, which the
+examples below use. SymPy's `integrate`, `dsolve` (the last resort on the
+reduced equations) and `solve` (the Grassmann–Plücker relations of Beke's
+method) are called through the faces (`integrate_of_core`,
+`integral_of_core`, `dsolve_of_core`, `solve_of_core`).
+
 ```python
 >>> from sympy import Matrix, Function
 >>> from sympy.abc import n
->>> from sympy_extras.solvers.special import special_solutions
+>>> from sympy_extras.solvers.special_sympy import special_solutions
 >>> from sympy_extras.solvers.linear_systems import dsolve_linear_system
 >>> y = Function('y')(x)
 >>> special_solutions(y.diff(x, 2) + x*y, y)
@@ -305,8 +314,8 @@ with the integrals left unevaluated when SymPy cannot evaluate them.
 
 ```python
 >>> from sympy import Function
->>> from sympy_extras.solvers.linear_ode import LinearOperator, gcrd, lclm, dsolve_linear
->>> from sympy_extras.solvers.factorization import factor_operator, right_factor, left_factor
+>>> from sympy_extras.solvers.linear_ode_sympy import LinearOperator, gcrd, lclm, dsolve_linear
+>>> from sympy_extras.solvers.factorization_sympy import factor_operator, right_factor, left_factor
 >>> D = LinearOperator([0, 1], x)
 >>> A = LinearOperator([-x, 0, 1], x)          # Airy: y'' - x y
 >>> B = LinearOperator([1, 1/x, 1], x)         # Bessel of order 0
@@ -435,7 +444,7 @@ Eq(..., C1 + x)
 ```python
 >>> from sympy import Function, Rational
 >>> from sympy.abc import n
->>> from sympy_extras.solvers.linear_ode import dsolve_linear
+>>> from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
 >>> from sympy_extras.solvers.kovacic_sympy import dsolve_kovacic, liouvillian_solution
 >>> y = Function('y')(x)
 >>> dsolve_linear(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y)
@@ -835,7 +844,7 @@ the cases off.
 ```python
 >>> from sympy import Function, symbols, exp, sin
 >>> from sympy_extras.solvers.ode import solve_ode
->>> from sympy_extras.solvers.linear_ode import dsolve_linear
+>>> from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
 >>> x, k, a = symbols('x k a')
 >>> y = Function('y')(x)
 >>> solve_ode(y.diff(x) - k*y - exp(x), y)

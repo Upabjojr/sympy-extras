@@ -3,9 +3,9 @@ from __future__ import annotations
 from sympy import Eq, Function, Piecewise, Symbol, symbols, N, besselj, bessely, hyper, log, sqrt, Rational, Basic, S, exp
 from sympy.core.expr import Expr
 
-from sympy_extras.solvers.special import (special_solutions, bessel_solutions, whittaker_solutions,
+from sympy_extras.solvers.special_sympy import (special_solutions, bessel_solutions, whittaker_solutions,
     hypergeometric_solutions, whittaker_m)
-from sympy_extras.solvers.linear_ode import dsolve_linear
+from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
 
 x = Symbol('x')
 y = Function('y')(x)
@@ -81,7 +81,7 @@ def test_zero_normal_form_does_not_crash() -> None:
     # no singular points at all, and the pole bookkeeping indexed an
     # empty list. None is the acceptable answer, an IndexError is not.
     from sympy import Symbol, Integer, Function, Eq
-    from sympy_extras.solvers.special import bessel_solutions, whittaker_solutions
+    from sympy_extras.solvers.special_sympy import bessel_solutions, whittaker_solutions
     from sympy_extras.solvers.first_order import riccati_ode
     x = Symbol('x')
     assert bessel_solutions(Integer(0), x) is None

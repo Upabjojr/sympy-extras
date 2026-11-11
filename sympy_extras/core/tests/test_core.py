@@ -531,6 +531,19 @@ def test_every_sympy_object_converts() -> None:
     assert from_sympy(sympy.Sum(sx, (sx, 1, 10))).doit() == 55
 
 
+def test_a_wrapped_integral_differentiates() -> None:
+    # the derivative of a wrapped unevaluated Integral(f, x) by x was the
+    # unevaluated Derivative(Integral(f, x), x) (the native linear ODE
+    # solvers differentiate their solutions with quadratures), SymPy's is f
+    from sympy_extras.functions import exp
+    sx = sympy.Symbol('x')
+    integral = as_expr(from_sympy(sympy.Integral(sympy.exp(sx)/sx, sx)))
+    assert type(integral).__name__ == 'SymPyExprNode'
+    assert diff(integral, x) == exp(x)/x
+    assert diff(x*integral, x) == integral + exp(x)
+    assert diff(integral, y) == 0
+
+
 def test_the_connectives() -> None:
     """The connectives are unevaluating classes with evaluating functions,
     equal up to the order of their arguments, printed as SymPy prints them."""

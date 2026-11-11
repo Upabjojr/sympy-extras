@@ -1117,6 +1117,45 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_LINEAR_ODE = r'''
+import sys
+from sympy_extras.core import Function, Integer, Rational, Symbol
+from sympy_extras.core.power import sqrt
+from sympy_extras.functions import exp
+from sympy_extras.solvers.linear_ode import (LinearOperator, UPoly, gcrd, hyperexponential_search,
+    hyperexponential_solutions, lclm, log_derivative, polynomial_solutions, rational_solutions, reduce_order_linear)
+from sympy_extras.solvers.factorization import factor_operator, left_factor, right_factor
+from sympy_extras.solvers.irregular import Place, conjugate_sum, finite_exponential_parts, irregular_places
+from sympy_extras.solvers.special import bessel_solutions, hypergeometric_solutions, whittaker_m
+assert 'sympy' not in sys.modules
+x = Symbol('x')
+y = Function('y')(x)
+zero, one = Integer(0), Integer(1)
+D = LinearOperator([zero, one], x)
+R = D - LinearOperator([1/x], x)
+assert gcrd((D*D + LinearOperator([one], x))*R, (D - LinearOperator([x], x))*R) == R
+assert lclm(D - LinearOperator([one], x), LinearOperator([-one, x], x)).order == 2
+L = LinearOperator.from_equation(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y)
+assert polynomial_solutions(L) == [x**2 + 2*x + 2]
+assert hyperexponential_solutions(L) == [x**2 + 2*x + 2, exp(x)]
+assert rational_solutions(LinearOperator.from_equation(x**2*y.diff(x, 2) + 4*x*y.diff(x) + 2*y, y)) == [x**-2, 1/x]
+L = LinearOperator.from_equation(x**4*y.diff(x, 2) + 2*x**3*y.diff(x) - y, y)
+assert finite_exponential_parts(L) == ([zero, 1/x, -1/x], True) and len(irregular_places(L)) == 1
+assert hyperexponential_search(LinearOperator([-one, zero, x**2], x)) == ([], False)
+assert reduce_order_linear(LinearOperator([Integer(2), Integer(-3), one], x), exp(x)) == LinearOperator([-one, one], x)
+P = Place(UPoly.of(x**2 - 2, x), x)
+assert conjugate_sum(P, P.alpha, 2) == 8*x/(x**2 - 2)**2
+assert log_derivative(sqrt(x)*exp(x), x) == (2*x + 1)/(2*x)
+F = factor_operator(LinearOperator([zero, -one, zero, one], x))
+assert len(F.factors) == 3 and F.is_complete
+assert left_factor(R*(D*D + LinearOperator([one], x)), 1) == R
+assert right_factor((D*D + LinearOperator([one], x))*R, 1) == R
+assert bessel_solutions(-x, x) is not None and hypergeometric_solutions(x, x) is None
+assert str(whittaker_m(zero, Rational(1, 2), x)) == 'x*exp(-x/2)*hyper((1,), (2,), x)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 def test_native_lie_and_pde_do_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.solvers.lie` and
     :mod:`sympy_extras.solvers.pde` does not load SymPy, nor do the
@@ -1142,5 +1181,21 @@ def test_native_transcendental_and_inequalities_do_not_load_sympy() -> None:
     SymPy's ``_solve_inequality`` of the other relationals go through it
     at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_TRANSCENDENTAL], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_linear_ode_cluster_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.linear_ode`,
+    :mod:`~sympy_extras.solvers.factorization`,
+    :mod:`~sympy_extras.solvers.irregular` and
+    :mod:`~sympy_extras.solvers.special` does not load SymPy, nor do the
+    operator arithmetic, the polynomial, rational and hyperexponential
+    solutions, the exponential parts at irregular points, Beke's
+    factorisation of an operator whose factors are of order one and the
+    special function forms (SymPy's ``integrate``, ``dsolve`` and
+    ``solve``, which Beke's method asks for the Grassmann–Plücker
+    relations of several solutions, go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LINEAR_ODE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

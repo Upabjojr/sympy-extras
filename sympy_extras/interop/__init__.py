@@ -383,6 +383,13 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
     def doit(self) -> Expr:
         return expr_from_sympy(self._sympy().doit())
 
+    def _eval_derivative_node(self, s: Symbol) -> Optional[Expr]:
+        # the derivative of a wrapped expression is SymPy's: the derivative
+        # of Integral(f, x) by x is f, which the native linear ODE solvers
+        # need for the solutions with unevaluated quadratures (it was the
+        # unevaluated Derivative(Integral(f, x), x))
+        return expr_through_sympy(self, lambda node: sympy.diff(node, to_sympy(s)))
+
     def evalf(self, n: int = 15, subs: Optional[SubsMapping] = None) -> Expr:
         node: Expr = self
         if subs:

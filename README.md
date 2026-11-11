@@ -388,7 +388,7 @@ statement assumptions and case distinctions.
 ```python
 >>> from sympy import Function, binomial, exp, oo, symbols
 >>> from sympy_extras.solvers.kovacic_sympy import dsolve_kovacic
->>> from sympy_extras.solvers.linear_ode import dsolve_linear
+>>> from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
 >>> from sympy_extras.solvers.charpit_sympy import complete_integral
 >>> from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
 >>> from sympy_extras.assumptions.limits_sympy import limit
@@ -438,8 +438,8 @@ system for their exponents, and the first integral by quadrature
 ```python
 >>> from sympy import Function
 >>> from sympy.abc import x, a, n
->>> from sympy_extras.solvers.linear_ode import dsolve_linear
->>> from sympy_extras.solvers.special import special_solutions
+>>> from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
+>>> from sympy_extras.solvers.special_sympy import special_solutions
 >>> y = Function('y')(x)
 >>> dsolve_linear(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y)
 [x**2 + 2*x + 2, exp(x)]
@@ -1026,10 +1026,14 @@ sympy_extras/
         integers.py          Hermite normal form, Contejean-Devie, Cooper's algorithm
         transcendental.py    transcendental equations reduced to polynomial ones
         kovacic.py           Kovacic's algorithm
-        linear_ode.py        polynomial/rational/hyperexponential solutions, reduction of order, operator arithmetic
-        irregular.py         exponential parts at irregular finite singular points (local Newton polygons)
-        factorization.py     factorisation of linear differential operators (Beke), solving through the factors
-        special.py           Bessel, Whittaker, hypergeometric solutions
+        linear_ode.py        polynomial/rational/hyperexponential solutions, reduction of order, operator arithmetic (native)
+        linear_ode_sympy.py  the SymPy face of linear_ode
+        irregular.py         exponential parts at irregular finite singular points (local Newton polygons) (native)
+        irregular_sympy.py   the SymPy face of irregular
+        factorization.py     factorisation of linear differential operators (Beke), solving through the factors (native)
+        factorization_sympy.py the SymPy face of factorization
+        special.py           Bessel, Whittaker, hypergeometric solutions (native)
+        special_sympy.py     the SymPy face of special
         linear_systems.py    systems Y' = A Y + b: cyclic vectors, rational solutions, variation of constants
         first_order.py       Abel, Chini, d'Alembert-Lagrange equations
         exponential_diophantine.py  Pillai's equation a**x - b**y = c (Baker–Wüstholz, continued fractions), integer zeros of exponential polynomials (native)
@@ -1040,7 +1044,7 @@ sympy_extras/
         dae.py               linear differential-algebraic equations, core-nilpotent decomposition (native)
         dae_sympy.py         the SymPy face of dae
         kovacic.py           Kovacic's algorithm (Liouvillian solutions of second order linear ODEs)
-        linear_ode.py        polynomial, rational, hyperexponential solutions; reduction of order
+        linear_ode.py        polynomial, rational, hyperexponential solutions; reduction of order (native; linear_ode_sympy the face)
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native)
         structure_sympy.py   the SymPy face of structure

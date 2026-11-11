@@ -119,7 +119,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import Truth, as_expr, free_symbols
 from sympy_extras.settings import settings
 
-from .linear_ode import (LinearOperator, _solve_operator, _nullspace, _indicial_at, _indicial_at_infinity,
+from .linear_ode_sympy import (LinearOperator, _solve_operator, _nullspace, _indicial_at, _indicial_at_infinity,
     hyperexponential_search, log_derivative)
 
 __all__ = ['CyclicReduction', 'LinearSystemSolution', 'cyclic_vector', 'cyclic_reduction', 'system_to_scalar',
@@ -711,7 +711,7 @@ def _rational_integral(f: Expr, x: Symbol) -> Expr:
 def _variation_of_constants(A: Rows, fundamental: MutableDenseMatrix, b: list[Expr], x: Symbol) -> list[Expr]:
     """``Phi Integral(Phi**-1 b)``, the components of ``Phi**-1 b`` by
     Cramer's rule."""
-    from .factorization import _quadrature
+    from .factorization_sympy import _quadrature
     n = len(A)
     W = _liouville(A, as_expr(fundamental.det(method='berkowitz')), x)
     if W == 0:

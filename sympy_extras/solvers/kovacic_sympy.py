@@ -6,14 +6,13 @@ ported.
 :func:`normal_form` take and return SymPy objects, converted by
 :mod:`sympy_extras.interop` around the native functions; the
 :class:`KovacicSolution` of :func:`liouvillian_solution` carries SymPy
-expressions. The modules still written on SymPy
-(:mod:`~sympy_extras.solvers.linear_ode`,
-:mod:`~sympy_extras.solvers.factorization`,
-:mod:`~sympy_extras.solvers.special`) use them.
+expressions.
 
 The steps of the native module which stay written on SymPy are called
 from it at run time (the functions ending in ``_of_core``, which take and
-return objects of the core):
+return objects of the core; the native :mod:`~sympy_extras.solvers.linear_ode`,
+:mod:`~sympy_extras.solvers.factorization` and
+:mod:`~sympy_extras.solvers.special` call the first two as well):
 
 - :func:`integrate_of_core`: SymPy's ``integrate``, for the
   exponentials of the integrals of ``omega``, the factor
