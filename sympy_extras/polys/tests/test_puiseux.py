@@ -9,7 +9,7 @@ from sympy import symbols, sqrt, I, Poly, CRootOf, Rational, Add, S, Expr
 from sympy.polys.domains import QQ
 
 from sympy_extras._typing import as_expr
-from sympy_extras.polys.puiseux import (puiseux_expansions, adjoin_root, Embedding, LaurentSeries,
+from sympy_extras.polys.puiseux_sympy import (puiseux_expansions, adjoin_root, Embedding, LaurentSeries,
                                         PuiseuxExpansion)
 
 x, y, z = symbols('x y z')

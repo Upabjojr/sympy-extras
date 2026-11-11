@@ -13,8 +13,8 @@ from sympy.polys.domains.algebraicfield import AlgebraicField
 from sympy.polys.matrices import DomainMatrix
 
 from sympy_extras._typing import as_expr
-from sympy_extras.polys.functionfields import FunctionField, Element, integral_basis
-from sympy_extras.polys.puiseux import puiseux_expansions
+from sympy_extras.polys.functionfields_sympy import FunctionField, Element, integral_basis
+from sympy_extras.polys.puiseux_sympy import puiseux_expansions
 
 x, y, z, a, b = symbols('x y z a b')
 
@@ -128,6 +128,26 @@ def test_parameters_in_the_coefficients() -> None:
     assert [w.as_expr() for w in E.integral_basis()] == [1, y]
     E = FunctionField(y**2 - (x - a)**2 * (x - b), x, y)
     assert _same([w.as_expr() for w in E.integral_basis()], [S.One, y / (x - a)])
+
+
+def test_constant_polynomials_over_parameters() -> None:
+    # SymPy 1.14: K.frac_field(x).convert(p, K.poly_ring(x)) raises
+    # CoercionFailed for a constant p over K = QQ(a) ("Cannot convert 1/(3*a)
+    # ... from QQ(a) to QQ(a)(x)"), which the basis of y^3 = a x^2 needed
+    assert integral_basis(y**3 - a * x**2, x, y) == [1, y, y**2 / x]
+
+
+def test_coordinates_follow_a_basis_which_changes() -> None:
+    # the inverses of the bases were cached by the identity of the list: a
+    # list changed in place (or a new list at the address of a freed one, as
+    # in the loop of Trager's algorithm, which made the maximality test fail
+    # in a full run with "1/(6*x + 6) is not a polynomial") got the inverse
+    # of the old one, and the coordinates [0, 1] instead of [0, x]
+    E = FunctionField(y**2 - x**3, x, y)
+    basis = [E.one(), E.generator()]
+    assert E.coordinates(E.generator(), basis) == [E.Kx.zero, E.Kx.one]
+    basis[1] = E.generator().scaled(E.Kx.from_sympy(1 / x))
+    assert E.coordinates(E.generator(), basis) == [E.Kx.zero, E.Kx.from_sympy(x)]
 
 
 def test_arithmetic() -> None:

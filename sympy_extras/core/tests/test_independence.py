@@ -653,3 +653,53 @@ def test_native_decomposition_and_rur_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PUISEUX_FUNCTIONFIELDS = r"""
+import sys
+from fractions import Fraction
+from sympy_extras.core import symbols, Integer, I, oo, sqrt
+from sympy_extras.polys.domains import QQ
+from sympy_extras.polys.puiseux import (puiseux_expansions, adjoin_root, field_from_polynomial, field_of,
+    minimal_polynomial_of, in_subfield)
+from sympy_extras.polys.functionfields import function_field, integral_basis
+from sympy_extras.polys.cad.indexedroot import IndexedRoot, bound_variable
+assert 'sympy' not in sys.modules
+x, y, a = symbols('x y a')
+assert str([b.as_expr() for b in puiseux_expansions(y**2 - x**3 - x**2, x, y, Integer(0), 4)]) == \
+    '[x**3/8 - x**2/2 - x, -x**3/8 + x**2/2 + x]'
+assert str([b.as_expr() for b in puiseux_expansions(y**2 - x**3 - 1, x, y, oo, 3)]) == '[x**(3/2) + 1/(2*x**(3/2))]'
+[b] = puiseux_expansions(y**2 - 2 - x, x, y, Integer(0), 2)
+assert (b.conjugates, str(b.field)) == (2, 'QQ<sqrt(2)>')
+assert sum(b.ramification * b.conjugates for b in puiseux_expansions(y**2 - x**2 - 1, x, y, I, 3)) == 2
+t = bound_variable('t')
+branches = puiseux_expansions(y**4 - 4*x*y**2 + 4, x, y, IndexedRoot(t**3 - t - 1, t, 0), 2)
+assert sum(b.ramification * b.conjugates for b in branches) == 4
+K = field_from_polynomial([Fraction(1), Fraction(0), Fraction(-2)])
+L, into, u = adjoin_root(K, [K.one, K.zero, K.neg(K.alpha)])
+assert minimal_polynomial_of(u, L) == [1, 0, 0, 0, -2] and in_subfield(u, L, into) is None
+assert field_of(sqrt(Integer(3)))[0].degree == 2
+E = function_field(y**4 + (x**2 + x)*y - x**2, x, y, QQ)
+assert str([w.as_expr() for w in E.integral_basis()]) == '[1, y, y**2, y**3/x]'
+assert str([w.as_expr() for w in E.normal_basis()]) == '[1, y, y**2, y**3/x]'
+assert E.pole_orders_at_infinity(E.normal_basis()) == [0, 1, 2, 1]
+assert str([w.as_expr() for w in E.local_basis_at_infinity()]) == '[1, y/x, y**2/x**2, y**3/x**2]'
+assert E.is_integral(E.element(y**3/x)) and not E.is_integral(E.element(y/x))
+assert str(integral_basis(y**2 - (x - a)**2*(x - 1), x, y)) == '[1, y/(-a + x)]'
+F = function_field(y**2 - 2*x**2 - x**3, x, y, K)
+assert str([w.as_expr() for w in F.integral_basis()]) == '[1, y/x]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+"""
+
+
+def test_native_puiseux_and_function_fields_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.puiseux` and
+    :mod:`sympy_extras.polys.functionfields` does not load SymPy, nor do
+    the expansions at rational, algebraic (radicals, ``I``, real roots) and
+    infinite points, the exact number fields, the integral bases over the
+    rationals, a number field and the parameters, the local and normal
+    bases at infinity and the integrality test."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PUISEUX_FUNCTIONFIELDS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

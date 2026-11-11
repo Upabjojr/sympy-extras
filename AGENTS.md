@@ -347,8 +347,12 @@ sympy_extras/
                              Weispfenning), with_sides, to_nnf (native; SymPy's simplify_logic of the results through
                              virtual_substitution_sympy)
         virtual_substitution_sympy.py  the SymPy face of virtual_substitution, and simplify_logic_of_core
-        puiseux.py           Newton–Puiseux expansions of the branches of a plane curve at a point and at infinity, conjugate branches over number fields (Duval)
-        functionfields.py    FunctionField: arithmetic in K(x)[y]/(F), integral bases (Trager's Round 2 over K[x]), local bases at infinity, bases normal at infinity
+        puiseux.py           Newton–Puiseux expansions of the branches of a plane curve at a point and at infinity, conjugate branches over
+                             exact number fields (Duval; AlgebraicField, the rationals as RATIONALS) (native)
+        puiseux_sympy.py     the SymPy face of puiseux (Poly, SymPy's number fields both ways), and field_of (CRootOf points)
+        functionfields.py    FunctionField[T]: arithmetic in K(x)[y]/(F), integral bases (Trager's Round 2 over K[x]), local bases at
+                             infinity, bases normal at infinity, over QQ, number fields, parameters (native)
+        functionfields_sympy.py the SymPy face of functionfields (coordinates in SymPy's K(x)), used by integrals/curves.py
         tests/
         cad/                 cylindrical algebraic decomposition (exports nothing: import the modules)
             projection.py    projection operators (McCallum, Hong), projection_sets, on the typed Poly (native)
