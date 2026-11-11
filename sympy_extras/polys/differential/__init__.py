@@ -1,6 +1,7 @@
 """Differential algebra: rankings, Janet bases of linear systems of partial
 differential equations and the Rosenfeld-Groebner algorithm for polynomial
-ones."""
+ones, on objects of the core (no SymPy; :mod:`sympy_extras.polys.differential_sympy`
+is the face on SymPy objects)."""
 from .ring import DifferentialRing
 from .janet import JanetBasis, janet_basis, janet_multiplicative_variables
 from .polynomial import DifferentialPolynomial

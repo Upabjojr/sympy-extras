@@ -670,7 +670,7 @@ it. `sympy_extras.simplify.structure` is native (written on the core,
 without SymPy); `structure_sympy` is its face on SymPy expressions. See
 [docs/simplify.md](docs/simplify.md).
 
-### Differential elimination: Janet bases and Rosenfeld–Gröbner (`sympy_extras.polys.differential`)
+### Differential elimination: Janet bases and Rosenfeld–Gröbner (`sympy_extras.polys.differential`, face `differential_sympy`)
 
 The differential counterpart of Gröbner bases. `janet_basis` completes a
 linear system of partial differential equations with all its
@@ -679,11 +679,13 @@ consequence, and counts the solutions without solving. `rosenfeld_groebner`
 splits a polynomial system of ordinary or partial differential equations
 into regular differential systems, which separates the general solution
 from the singular ones, finds the hidden constraints of
-differential-algebraic systems and eliminates unknowns.
+differential-algebraic systems and eliminates unknowns. The package works
+on the objects of the core and imports no SymPy; `differential_sympy` is
+its face on SymPy objects:
 
 ```python
 >>> from sympy import Function, symbols
->>> from sympy_extras.polys.differential import janet_basis, rosenfeld_groebner
+>>> from sympy_extras.polys.differential_sympy import janet_basis, rosenfeld_groebner
 >>> x, y, z = symbols('x y z')
 >>> u = Function('u')(x, y, z)
 >>> J = janet_basis([u.diff(z, 2) + y*u.diff(x, 2), u.diff(y, 2)], [u])
@@ -1096,6 +1098,7 @@ sympy_extras/
             janet.py         Janet bases of linear systems of partial differential equations
             polynomial.py    differential polynomials, Ritt's reduction
             rosenfeld_groebner.py  the Rosenfeld–Gröbner algorithm
+        differential_sympy.py  the SymPy face of differential
         regularchains/
             recursive.py     polynomials in their main variable: lazy pseudo-division, subresultant chains
             operations.py    regularize, regular gcd, intersect, extend; the decompositions

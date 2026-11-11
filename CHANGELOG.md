@@ -539,6 +539,35 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The differential algebra is native (**breaking**):
+  `sympy_extras.polys.differential` (`DifferentialRing`,
+  `DifferentialPolynomial`, `janet_basis`, `JanetBasis`,
+  `janet_multiplicative_variables`, `rosenfeld_groebner`,
+  `RadicalDifferentialIdeal`, `RegularDifferentialSystem`) takes and
+  returns the functions, derivatives, expressions, equalities and symbols
+  of the core and imports no SymPy. The coefficients of
+  `DifferentialRing.terms` are elements of the typed field `QQ(p, x)`
+  (`SparseFractionField`) and those of a `DifferentialPolynomial` elements
+  of the typed `ZZ[p, x]` (`IntegerPolynomialRing`), with SymPy's gcd and
+  canonical fractions; the saturations are native `Ideal`s, the
+  `regular_chains()` native `RegularChain`s and the factors those of the
+  typed `polytools.factor_list`. The old API on SymPy objects moves to the
+  face `sympy_extras.polys.differential_sympy` (SymPy's `QQ(p, x)` and
+  `ZZ[p, x]` coefficients, the chains of `regularchains_sympy`), with the
+  same results on 1519 recorded values of the tests, the doctests, the
+  callers' tests and 40 more calls; `solvers.lie` uses the face. API
+  changes: the attribute `RegularDifferentialSystem._symbols` is now
+  `symbols` (a `JetSymbols`), `DifferentialRing` gains `symbols`,
+  `terms_of`, `field_element`, `integer_expr` and `coefficient_expr`, and
+  the face's ring the conversions `integer_in`/`integer_out`,
+  `field_in`/`field_out`. Floats in the equations are refused (SymPy's
+  `QQ(p, x)` converted them to rationals). The products and exact
+  quotients of the large coefficients go through `ring.integer_product`
+  and `ring.integer_quotient` (Python integers directly), and
+  `rings.PolyElement.div` updates its remainder and quotients in place
+  (the same terms in the same order): the dense Janet basis of the tests
+  which took 10 s on SymPy takes 8.5 s.
+
 - The decompositions of ideals and the rational univariate representation
   are native (**breaking**): `sympy_extras.polys.idealdecomposition`
   (`radical`, `equidimensional_parts`, `minimal_primes`,

@@ -67,70 +67,86 @@ References
    Lecture Notes in Computer Science 2630, Springer 2003, 40-87.
 .. [Rosenfeld] A. Rosenfeld, Specializations in differential algebra,
    Trans. Amer. Math. Soc. 90 (1959), 394-407.
+
+The module works on objects of the core and imports no SymPy: the
+saturations are ideals of :mod:`sympy_extras.polys.ideals`, the regular
+chains those of :mod:`sympy_extras.polys.regularchains` and the factors
+those of :func:`sympy_extras.polys.polytools.factor_list`, all native.
+:mod:`sympy_extras.polys.differential_sympy` is the face on SymPy
+objects.
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import Final, Optional, Sequence
 
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.function import AppliedUndef
-from sympy.core.mul import Mul
-from sympy.core.symbol import Dummy, Symbol
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly, factor_list
-
-from sympy_extras._typing import as_expr, free_symbols
-from sympy_extras.polys.ideals_sympy import Ideal
-from sympy_extras.polys.regularchains_sympy import RegularChain, triangularize
+from sympy_extras.core.add import add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.mul import mul
+from sympy_extras.core.numbers import Integer
+from sympy_extras.core.power import pow
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.polyerrors import PolynomialError
+from sympy_extras.polys.polytools import factor_list
+from sympy_extras.polys.regularchains.regularchain import RegularChain, triangularize
 
 from .polynomial import DifferentialPolynomial
-from .ring import DifferentialRing, Equation, Jet, Terms
+from .ring import Coefficient, DifferentialRing, Equation, Jet
 
 __all__ = ['RegularDifferentialSystem', 'RadicalDifferentialIdeal', 'rosenfeld_groebner']
 
+#: the terms of a polynomial in the symbols of the derivatives, with
+#: coefficients in the field
+_SymbolTerms = dict[tuple[int, ...], Coefficient]
 
-class _JetSymbols:
+
+class JetSymbols:
     """Symbols standing for the derivatives in the polynomial rings."""
 
     def __init__(self, ring: DifferentialRing) -> None:
-        self.ring: DifferentialRing = ring
-        self.symbols: dict[Jet, Symbol] = {}
+        self.ring: Final[DifferentialRing] = ring
+        self.symbols: Final[dict[Jet, Dummy]] = {}
 
-    def symbol(self, jet: Jet) -> Symbol:
+    def symbol(self, jet: Jet) -> Dummy:
+        """The symbol of a derivative."""
         s = self.symbols.get(jet)
         if s is None:
             a, J = jet
-            s = Dummy('%s_%s' % (self.ring.functions[a].func.__name__, ''.join(str(j) for j in J)))
+            s = Dummy('%s_%s' % (self.ring.functions[a].name, ''.join(str(j) for j in J)))
             self.symbols[jet] = s
         return s
 
     def expr(self, p: DifferentialPolynomial) -> Expr:
+        """The polynomial as an expression in the symbols."""
         parts: list[Expr] = []
         for monomial, c in p.terms.items():
-            term = as_expr(self.ring.integers.to_sympy(c))
+            factors: list[Expr] = [self.ring.integer_expr(c)]
             for jet, e in monomial:
-                term = term*self.symbol(jet)**e
-            parts.append(term)
-        return Add(*parts)
+                factors.append(pow(self.symbol(jet), Integer(e)) if e > 1 else self.symbol(jet))
+            parts.append(mul(*factors))
+        return add(*parts) if parts else Integer(0)
 
     def polynomial(self, expr: Expr) -> DifferentialPolynomial:
         """The differential polynomial of an expression in the symbols.
 
-        (Not through the expressions of the derivatives: SymPy evaluates
-        the derivative of ``a(x)`` with respect to ``y`` to zero, and that
+        (Not through the expressions of the derivatives: the derivative of
+        ``a(x)`` with respect to ``y`` evaluates to zero, and that
         derivative is an element of the ring like any other.)"""
-        ring = self.ring
-        pairs = [(jet, s) for jet, s in self.symbols.items() if expr.has(s)]
-        if not pairs:
-            c = ring.coefficient(expr)
-            return DifferentialPolynomial(ring, ring.integral({(): c} if c else {}))
-        poly = Poly(expr, *[s for _, s in pairs], domain=ring.domain)
-        terms: Terms = {}
-        for exponents, c in poly.as_dict(native=True).items():
-            monomial = tuple(sorted((jet, e) for (jet, _), e in zip(pairs, exponents) if e))
-            terms[monomial] = c
-        return DifferentialPolynomial(ring, ring.integral(terms))
+        jets: dict[Basic, Jet] = {s: jet for jet, s in self.symbols.items()}
+        return DifferentialPolynomial(self.ring, self.ring.integral(self.ring.terms_of(expr, jets)))
+
+    def terms(self, p: DifferentialPolynomial, jets: Sequence[Jet], shift: int = 0) -> _SymbolTerms:
+        """The terms of a polynomial in the derivatives ``jets`` (after
+        ``shift`` other variables), with coefficients in the field."""
+        position = {jet: shift + k for k, jet in enumerate(jets)}
+        result: _SymbolTerms = {}
+        for monomial, c in p.terms.items():
+            exponents = [0]*(shift + len(jets))
+            for jet, e in monomial:
+                exponents[position[jet]] = e
+            result[tuple(exponents)] = self.ring.field_element(c)
+        return result
 
 
 class RegularDifferentialSystem:
@@ -144,10 +160,10 @@ class RegularDifferentialSystem:
 
     def __init__(self, ring: DifferentialRing, chain: list[DifferentialPolynomial],
                  inequations: list[DifferentialPolynomial]) -> None:
-        self.ring: DifferentialRing = ring
-        self.chain: list[DifferentialPolynomial] = chain
-        self.nonzero: list[DifferentialPolynomial] = inequations
-        self._symbols: _JetSymbols = _JetSymbols(ring)
+        self.ring: Final[DifferentialRing] = ring
+        self.chain: Final[list[DifferentialPolynomial]] = chain
+        self.nonzero: Final[list[DifferentialPolynomial]] = inequations
+        self.symbols: Final[JetSymbols] = JetSymbols(ring)
         self._basis: Optional[list[Expr]] = None
         self._chains: Optional[list[RegularChain]] = None
 
@@ -177,24 +193,35 @@ class RegularDifferentialSystem:
         ring of the derivatives which occur in the system, in symbols
         standing for the derivatives."""
         if self._basis is None:
-            gens = [self._symbols.expr(p) for p in self.chain]
-            product = Mul(*[self._symbols.expr(h) for h in self.nonzero])
+            K = self.ring.domain
             jets: set[Jet] = set()
             for p in self.chain + self.nonzero:
                 jets |= p.jets()
-            ordered = [self._symbols.symbol(jet) for jet in sorted(jets, key=self.ring.rank_key, reverse=True)]
+            ordered = sorted(jets, key=self.ring.rank_key, reverse=True)
+            symbols: list[Symbol] = [self.symbols.symbol(jet) for jet in ordered]
             if not self.nonzero:
-                ideal = Ideal(gens, *ordered, domain=self.ring.domain)
+                ideal = Ideal.from_terms([self.symbols.terms(p, ordered) for p in self.chain], symbols, K)
             else:
+                product = DifferentialPolynomial(self.ring, {(): self.ring.integers.one})
+                for h in self.nonzero:
+                    product = product*h
+                # 1 - t*product
+                last: dict[tuple[int, ...], Coefficient] = {
+                    (1,) + m[1:]: K.neg(c) for m, c in self.symbols.terms(product, ordered, 1).items()}
+                origin = (0,)*(len(ordered) + 1)
+                last[origin] = K.add(last[origin], K.one) if origin in last else K.one
+                if K.is_zero(last[origin]):
+                    del last[origin]
                 t = Dummy('t')
-                ideal = Ideal(gens + [1 - t*product], t, *ordered, domain=self.ring.domain).eliminate([t])
+                gens = [self.symbols.terms(p, ordered, 1) for p in self.chain] + [last]
+                ideal = Ideal.from_terms(gens, [t] + symbols, K).eliminate([t])
             self._basis = ideal.exprs
         return self._basis
 
     def _ordered(self, jets: set[Jet]) -> list[Symbol]:
         """The symbols of the derivatives by decreasing rank, then the
         variables and the parameters."""
-        ordered = [self._symbols.symbol(jet) for jet in sorted(jets, key=self.ring.rank_key, reverse=True)]
+        ordered: list[Symbol] = [self.symbols.symbol(jet) for jet in sorted(jets, key=self.ring.rank_key, reverse=True)]
         return ordered + list(self.ring.variables) + list(self.ring.parameters)
 
     def regular_chains(self) -> list[RegularChain]:
@@ -217,8 +244,8 @@ class RegularDifferentialSystem:
             for p in self.chain + self.nonzero:
                 jets |= p.jets()
             coefficients = set(self.ring.variables) | set(self.ring.parameters)
-            chains = triangularize([self._symbols.expr(p) for p in self.chain], *self._ordered(jets),
-                inequations=[self._symbols.expr(h) for h in self.nonzero], mode='kalkbrener')
+            chains = triangularize([self.symbols.expr(p) for p in self.chain], *self._ordered(jets),
+                inequations=[self.symbols.expr(h) for h in self.nonzero], mode='kalkbrener')
             self._chains = [T for T in chains if not coefficients & set(T.main_variables)]
         return self._chains
 
@@ -246,7 +273,7 @@ class RegularDifferentialSystem:
         jets: set[Jet] = set(partial.jets())
         for q in self.chain + self.nonzero:
             jets |= q.jets()
-        target = self._symbols.expr(partial)
+        target = self.symbols.expr(partial)
         symbols = self._ordered(jets)
         return all(T.with_symbols(*symbols).contains(target) for T in self.regular_chains())
 
@@ -260,8 +287,8 @@ class RadicalDifferentialIdeal:
     :func:`rosenfeld_groebner`."""
 
     def __init__(self, ring: DifferentialRing, components: list[RegularDifferentialSystem]) -> None:
-        self.ring: DifferentialRing = ring
-        self.components: list[RegularDifferentialSystem] = components
+        self.ring: Final[DifferentialRing] = ring
+        self.components: Final[list[RegularDifferentialSystem]] = components
 
     def __repr__(self) -> str:
         return "RadicalDifferentialIdeal(%s)" % (self.components,)
@@ -320,9 +347,9 @@ def _distinct(polynomials: Sequence[DifferentialPolynomial]) -> list[Differentia
 class _Factorizer:
     """The irreducible factors of differential polynomials, remembered."""
 
-    def __init__(self, symbols: _JetSymbols) -> None:
-        self.symbols: _JetSymbols = symbols
-        self._known: dict[DifferentialPolynomial, list[DifferentialPolynomial]] = {}
+    def __init__(self, symbols: JetSymbols) -> None:
+        self.symbols: Final[JetSymbols] = symbols
+        self._known: Final[dict[DifferentialPolynomial, list[DifferentialPolynomial]]] = {}
 
     def factors(self, p: DifferentialPolynomial) -> list[DifferentialPolynomial]:
         """The distinct irreducible factors which are not in the field of
@@ -332,13 +359,14 @@ class _Factorizer:
             return known
         result: list[DifferentialPolynomial] = []
         if not p.is_ground:
+            found: list[tuple[Expr, Expr]]
             try:
                 _, found = factor_list(self.symbols.expr(p))
             except PolynomialError:
                 found = []
                 result = [p]
             for f, _ in found:
-                q = self.symbols.polynomial(as_expr(f)).primitive()
+                q = self.symbols.polynomial(f).primitive()
                 if not q.is_ground and q not in result:
                     result.append(q)
         self._known[p] = result
@@ -357,7 +385,7 @@ class _Factorizer:
         return result
 
 
-def _without_factors(symbols: _JetSymbols, a: DifferentialPolynomial,
+def _without_factors(symbols: JetSymbols, a: DifferentialPolynomial,
                      nonzero: Sequence[DifferentialPolynomial]) -> DifferentialPolynomial:
     """The equation without its factors which are free of its leader and
     are known not to vanish. The ideal `[A] : H^\\infty` does not change,
@@ -366,25 +394,28 @@ def _without_factors(symbols: _JetSymbols, a: DifferentialPolynomial,
     kept: Optional[DifferentialPolynomial] = None
     dropped = False
     expr = symbols.expr(a)
-    gens = sorted(free_symbols(expr) & set(symbols.symbols.values()), key=lambda s: s.name)
+    known: set[Symbol] = set(symbols.symbols.values())
+    gens = sorted(expr.free_symbols & known, key=lambda s: s.name)
     try:
         _, factors = factor_list(expr, *gens)
     except PolynomialError:
         return a
     for f, e in factors:
-        q = symbols.polynomial(as_expr(f)).primitive()
+        q = symbols.polynomial(f).primitive()
         if leader not in q.jets() and (q in nonzero or q.is_ground):
             dropped = dropped or not q.is_ground
             continue
-        kept = q**e if kept is None else kept*q**e
+        if not isinstance(e, Integer):
+            raise TypeError("an integer multiplicity is expected, got %s" % (e,))
+        kept = q**e.p if kept is None else kept*q**e.p
     if kept is None or not dropped:
         return a
     return kept.primitive()
 
 
-def rosenfeld_groebner(equations: Sequence[Equation], functions: Sequence[AppliedUndef],
-                       variables: Optional[Sequence[Symbol]] = None,
-                       ranking: Optional[Sequence[Sequence[AppliedUndef]]] = None,
+def rosenfeld_groebner(equations: Sequence[Equation], functions: Sequence[Basic],
+                       variables: Optional[Sequence[Basic]] = None,
+                       ranking: Optional[Sequence[Sequence[Basic]]] = None,
                        inequations: Sequence[Expr] = ()) -> RadicalDifferentialIdeal:
     """The radical of the differential ideal of a polynomial system of
     differential equations, as an intersection of regular differential
@@ -423,7 +454,7 @@ def rosenfeld_groebner(equations: Sequence[Equation], functions: Sequence[Applie
     The equation `u'^2 = 4u` has the general solution `(x + c)^2` and the
     singular solution `0`, on which the separant `2u'` vanishes:
 
-    >>> from sympy import Function, symbols
+    >>> from sympy_extras.core import Function, symbols
     >>> from sympy_extras.polys.differential import rosenfeld_groebner
     >>> x = symbols('x')
     >>> u = Function('u')(x)
@@ -443,17 +474,17 @@ def rosenfeld_groebner(equations: Sequence[Equation], functions: Sequence[Applie
     False
     """
     given = list(equations)
-    excluded = [as_expr(h) for h in inequations]
+    excluded = list(inequations)
     chosen = list(variables) if variables is not None else None
     probe = DifferentialRing(functions, chosen, ranking)
     found: set[Symbol] = set()
     for equation in given:
-        found |= free_symbols(equation)
+        found |= equation.free_symbols
     for excluded_expr in excluded:
-        found |= free_symbols(excluded_expr)
+        found |= excluded_expr.free_symbols
     parameters = sorted(found - set(probe.variables), key=lambda s: s.name)
     ring = DifferentialRing(functions, chosen, ranking, parameters)
-    symbols = _JetSymbols(ring)
+    symbols = JetSymbols(ring)
     one = ring.integers.one
     start = [DifferentialPolynomial.from_expr(ring, e).primitive() for e in given]
     start += [DifferentialPolynomial(ring, {((jet, 1),): one}) for jet in ring.constancy()]

@@ -1,4 +1,4 @@
-"""Tests of the Janet bases: the division, the algorithm, the invariants,
+"""Tests (on the SymPy face) of the Janet bases: the division, the algorithm, the invariants,
 and a comparison with an oracle of linear algebra."""
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from sympy.polys.matrices import DomainMatrix
 from sympy.testing.pytest import raises
 
 from sympy_extras._typing import Monomial
-from sympy_extras.polys.differential import DifferentialRing, janet_basis, janet_multiplicative_variables
+from sympy_extras.polys.differential_sympy import DifferentialRing, janet_basis, janet_multiplicative_variables
 from sympy_extras.polys.differential.janet import _complement, _multi_indices
 
 x, y, z, t, a = symbols('x y z t a')

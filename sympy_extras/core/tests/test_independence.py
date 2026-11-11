@@ -653,3 +653,44 @@ def test_native_decomposition_and_rur_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_DIFFERENTIAL = r'''
+import sys
+from sympy_extras.core import Eq, Function, symbols
+from sympy_extras.polys.differential import (DifferentialPolynomial, DifferentialRing, janet_basis,
+    janet_multiplicative_variables, rosenfeld_groebner)
+assert 'sympy' not in sys.modules
+x, y, z, t, g = symbols('x y z t g')
+u = Function('u')(x, y, z)
+J = janet_basis([u.diff(z, 2) + y*u.diff(x, 2), u.diff(y, 2)], [u])
+assert len(J.equations) == 7 and J.dimension == 12 and J.contains(u.diff(z, 4)) and not J.contains(u.diff(z, 3))
+assert str(J.hilbert_series(t)) == 't**4 + 3*t**3 + 4*t**2 + 3*t + 1' and J.hilbert_polynomial(t) == 0
+v = Function('v')(x, y)
+E = janet_basis([v.diff(x, 2) - y**2*v, Eq(v.diff(y), x*v)], [v])
+assert str(E.reduce(v.diff(x, y))) == '(x*y + 1)*v(x, y)' and str(E.series_solution(2)[v]) == 'C0*x*y + C0'
+assert janet_multiplicative_variables([(2, 1), (1, 2), (0, 3)]) == [(True, True), (False, True), (False, True)]
+p = Function('p')(x)
+I = rosenfeld_groebner([p.diff(x)**2 - 4*p], [p])
+assert str([(c.equations, c.inequations) for c in I.components]) == \
+    '[([-4*p(x) + Derivative(p(x), x)**2], [Derivative(p(x), x)]), ([p(x)], [])]'
+assert I.contains(p.diff(x)*(p.diff(x, 2) - 2)) and not I.contains(p.diff(x, 2) - 2)
+assert [len(c.regular_chains()) for c in I.components] == [1, 1] and I.components[0].saturation()
+X, Y, L = Function('X')(t), Function('Y')(t), Function('L')(t)
+P = rosenfeld_groebner([X.diff(t, 2) + L*X, Y.diff(t, 2) + L*Y + g, X**2 + Y**2 - 1], [L, X, Y])
+assert len(P.components) == 3 and P.components[0].contains(L.diff(t) + 3*g*Y.diff(t))
+R = DifferentialRing([v])
+q = DifferentialPolynomial.from_expr(R, (x*v - 1)*v.diff(x)**3 + v*v.diff(x))
+assert q.degree() == 3 and str(q.initial().to_expr()) == 'x*v(x, y) - 1'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_differential_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.differential` does not load
+    SymPy, nor do the Janet bases (normal forms, Hilbert series, series
+    solutions), the Rosenfeld-Groebner algorithm (factors, saturations,
+    regular chains, membership) and Ritt's reduction."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DIFFERENTIAL], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

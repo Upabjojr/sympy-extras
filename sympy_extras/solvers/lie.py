@@ -56,7 +56,7 @@ from sympy.solvers.solveset import linear_eq_to_matrix
 from sympy.solvers.solvers import solve
 
 from sympy_extras._typing import Monomial, as_expr, free_symbols
-from sympy_extras.polys.differential.janet import JanetBasis, janet_basis
+from sympy_extras.polys.differential_sympy import JanetBasis, janet_basis
 
 __all__ = ['JetSpace', 'Symmetry', 'symmetries', 'check_symmetry',
     'infinitesimal_condition', 'determining_equations', 'determining_system',
