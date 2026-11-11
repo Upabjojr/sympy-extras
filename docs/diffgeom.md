@@ -73,6 +73,36 @@ are written for functions of a parameter:
 
 ```
 
+## Tensors with index positions
+
+`sympy_extras.diffgeom.tensors.Tensor` holds the components of a tensor
+on a metric together with the position of each index (`'u'` up, `'d'`
+down), and does the index gymnastics: raising and lowering, contraction,
+products, symmetric parts, and the covariant derivative (which adds a
+lower index, the last). The metric is covariantly constant and the
+Einstein tensor has no divergence:
+
+```python
+>>> from sympy_extras.diffgeom.tensors import Tensor, metric_tensor, riemann_tensor, einstein_tensor
+>>> unit = Metric([[1, 0], [0, sin(theta)**2]], [theta, phi])
+>>> g = metric_tensor(unit)
+>>> g.covariant_derivative().is_zero, g.raise_index(0).components
+(True, (1, 0, 0, 1))
+>>> R = riemann_tensor(unit)
+>>> R.positions, R.contract(0, 2).components
+('uddd', (1, 0, 0, sin(theta)**2))
+>>> einstein_tensor(frw).divergence(0).is_zero
+True
+>>> V = Tensor(unit, [0, 1], 'u')                      # the Killing field of the rotations
+>>> V.lower_index(0).covariant_derivative().symmetrize(0, 1).is_zero
+True
+
+```
+
+The tests check the Ricci identity $(\nabla_c \nabla_d - \nabla_d
+\nabla_c) V^a = R^a{}_{bcd} V^b$, which fixes the order of the indices
+and the sign of the curvature, and both Bianchi identities.
+
 ## Curves and surfaces
 
 `sympy_extras.diffgeom.classical` has the classical objects: for a
@@ -168,8 +198,8 @@ for instance `sympy_extras.simplify.simplify.simplify`.
 
 ## Not done
 
-* tensors as objects with index positions (only the components of the
-  listed tensors), tetrads and the Newman–Penrose formalism;
+* tetrads and the Newman–Penrose formalism, abstract index notation
+  (the tensors are arrays of components in one chart);
 * relations between kernels beyond the ones above (`sin(2*x)` against
   `sin(x)`, logarithms): such metrics are
   computed, but a vanishing component may not be reduced to zero;

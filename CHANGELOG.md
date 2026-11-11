@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.diffgeom.tensors.Tensor`: tensors by components on a
+  `Metric` with index positions (`'u'`, `'d'`): raising and lowering,
+  contraction, tensor product, symmetric and antisymmetric parts, trace,
+  covariant derivative and divergence; `metric_tensor`, `riemann_tensor`,
+  `ricci_tensor`, `einstein_tensor`.
 - `matrices.normalforms.popov_form`: the Popov (polynomial echelon) form
   of a matrix of polynomials over `K[x]`, with the unimodular
   transformation (Mulders and Storjohann).

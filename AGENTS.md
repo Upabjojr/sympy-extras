@@ -288,7 +288,7 @@ sympy_extras/
                              optimization.py: minimize, maximize, value_range, minimize_parametric (exact global optima of polynomials under polynomial constraints, by CAD)
     geometry/                quadrics.py: classify_conic, classify_quadric (affine types by rank and signature; centre, axes, eccentricity)
     physics/                 dimensional.py: pi_groups (Buckingham Pi by an LLL reduced integer kernel), solve_for, SI
-    diffgeom/                metric.py: Metric (Christoffel symbols, Riemann, Ricci, Einstein, Weyl, geodesics, Killing equations); classical.py: Curve (curvature, torsion, Frenet frame), Surface (fundamental forms, Gaussian and mean curvature)
+    diffgeom/                metric.py: Metric (Christoffel symbols, Riemann, Ricci, Einstein, Weyl, geodesics, Killing equations); tensors.py: Tensor (index positions, contraction, covariant derivative); classical.py: Curve (curvature, torsion, Frenet frame), Surface (fundamental forms, Gaussian and mean curvature)
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
       domainmatrix.py        DomainMatrix[T] over a Domain[T]: Bareiss determinant, fraction-free Gauss-Jordan (rank, null space, inverse, systems), Berkowitz characteristic polynomial, adjugate
       linalg.py              the same on ExprMatrix: entries as fractions over ZZ[kernels], pivots certified by the zero test when the kernels are not symbols
