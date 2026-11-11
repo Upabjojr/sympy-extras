@@ -1138,7 +1138,9 @@ pub fn pow_facts(base: &Basic, exp: &Basic) -> FactList {
     }
     // SymPy's Pow._eval_is_extended_negative
     let mut negative_value: Option<bool> = None;
-    if exp_rational == Some(&crate::numbers::rat(1, 2)) {
+    if exp_rational == Some(&crate::numbers::rat(1, 2)) && (yes(b, complex) || yes(b, extended_real)) {
+        // only for a base known to be a number: sqrt(a) of a plain symbol is
+        // not known to be non-negative (SymPy's is_extended_negative is None)
         negative_value = Some(false);
     } else if yes(b, extended_negative) {
         if yes(e, odd) && yes(b, finite) {
@@ -1304,6 +1306,12 @@ mod structural_tests {
             Some(true)
         );
         assert_eq!(ask_structural(&pow(Basic::int(4), Basic::half()), irrational), None);
+        // sqrt(x) of a plain symbol is not known to be non-negative, sqrt(2) is
+        assert_eq!(ask_structural(&pow(x.clone(), Basic::half()), extended_negative), None);
+        assert_eq!(
+            ask_structural(&pow(Basic::int(2), Basic::half()), extended_negative),
+            Some(false)
+        );
         // n*(n + 1) is even
         let consecutive = mul(vec![n.clone(), add(vec![Basic::one(), n.clone()])]);
         assert_eq!(ask_structural(&consecutive, even), Some(true));

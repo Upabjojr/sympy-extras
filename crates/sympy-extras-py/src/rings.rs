@@ -715,6 +715,41 @@ fn monomial_gcd<'py>(py: Python<'py>, a: Monomial, b: Monomial) -> PyResult<Boun
     monomial_to_py(py, &rings::monomial_gcd(&a, &b))
 }
 
+/// `rings.as_order(order)`: the order of a name, or the order itself.
+#[pyfunction]
+fn as_order(order: &Bound<'_, PyAny>) -> PyResult<PyOrder> {
+    Ok(PyOrder {
+        order: order_from(order)?,
+    })
+}
+
+/// `rings.WeightOrder(weights, tail=lex)`.
+#[pyfunction(name = "WeightOrder")]
+#[pyo3(signature = (weights, tail = None))]
+fn weight_order(weights: &Bound<'_, PyAny>, tail: Option<&Bound<'_, PyAny>>) -> PyResult<PyOrder> {
+    PyOrder::weight(weights, tail)
+}
+
+/// `rings.BlockOrder(blocks)`: pairs `(order, size)`.
+#[pyfunction(name = "BlockOrder")]
+fn block_order(blocks: &Bound<'_, PyAny>) -> PyResult<PyOrder> {
+    PyOrder::block(blocks)
+}
+
+/// `rings.elimination_order(neliminate, nvars, order=grevlex)`.
+#[pyfunction]
+#[pyo3(signature = (neliminate, nvars, order = None))]
+fn elimination_order(neliminate: i64, nvars: usize, order: Option<&Bound<'_, PyAny>>) -> PyResult<PyOrder> {
+    let order: MonomialOrder = match order {
+        Some(o) => order_from(o)?,
+        None => MonomialOrder::Grevlex,
+    };
+    let neliminate: usize = if neliminate < 0 { 0 } else { neliminate as usize };
+    Ok(PyOrder {
+        order: MonomialOrder::elimination(neliminate, nvars, order),
+    })
+}
+
 pub fn register_rings(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyOrder>()?;
     m.add_class::<PyPolyRing>()?;
@@ -737,6 +772,10 @@ pub fn register_rings(m: &Bound<'_, PyModule>) -> PyResult<()> {
             order: MonomialOrder::Grevlex,
         },
     )?;
+    m.add_function(wrap_pyfunction!(as_order, m)?)?;
+    m.add_function(wrap_pyfunction!(weight_order, m)?)?;
+    m.add_function(wrap_pyfunction!(block_order, m)?)?;
+    m.add_function(wrap_pyfunction!(elimination_order, m)?)?;
     m.add_function(wrap_pyfunction!(monomial_mul, m)?)?;
     m.add_function(wrap_pyfunction!(monomial_div, m)?)?;
     m.add_function(wrap_pyfunction!(monomial_divides, m)?)?;

@@ -16,7 +16,8 @@ use sympy_extras_core::polys::modulargroebner as mg;
 use sympy_extras_core::polys::rings::PolyElement;
 use sympy_extras_core::polys::rings::{Monomial, MonomialOrder};
 use sympy_extras_core::polys::{
-    f4 as groebner, gaussianfactor as gf, hilbert, multifactor as mf, rootisolation as ri, stronggroebner as sg,
+    bigatti, f4 as groebner, gaussianfactor as gf, hilbert, multifactor as mf, rootisolation as ri,
+    stronggroebner as sg,
 };
 
 use crate::convert::{err, extract_int, out_int, out_poly, out_polys, out_usize, poly, tuple, Bridge};
@@ -526,6 +527,22 @@ fn hilbert_series<'py>(py: Python<'py>, monoms: &Bound<'py, PyAny>, variables: u
             series.exponent.into_pyobject(py)?.into_any(),
         ],
     )
+}
+
+/// The coefficients lowest degree first, without trailing zeros.
+#[pyfunction]
+fn hilbert_numerator_coefficients<'py>(py: Python<'py>, monoms: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    out_poly(
+        &IntegerRing,
+        py,
+        &bigatti::hilbert_numerator_coefficients(&monomials(monoms)?),
+    )
+}
+
+pub fn register_bigatti(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(minimal_generators, m)?)?;
+    m.add_function(wrap_pyfunction!(hilbert_numerator_coefficients, m)?)?;
+    Ok(())
 }
 
 pub fn register_hilbert(m: &Bound<'_, PyModule>) -> PyResult<()> {

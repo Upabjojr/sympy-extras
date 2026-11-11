@@ -45,7 +45,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/galoistools.py` | done | the random choices from a seeded SplitMix64 (`random.rs`); the factorisations are sorted, so equal to Python's |
 | `polys/factortools.py` | done | with Trager's algorithm over number fields (`dup_ext_norm`, `dup_ext_sqf_norm`, `dup_ext_factor`) and van Hoeij's knapsack recombination (`dup_zz_van_hoeij`, from ten modular factors on) |
 | `polys/lattice.py` | done | de Weger's integral LLL, Hermite and Smith normal forms, integer kernels and systems; `ArithmeticError` as `PolyError::Arithmetic`; 2-4x faster than Python |
-| `polys/rings.py` | done | orders as the enum `MonomialOrder` (lex, grlex, grevlex, and the weight, block and homogeneous orders of `orderings.py` and `modulargroebner.py`); `from_expr`/`to_expr` wait for the core |
+| `polys/rings.py` | done | orders as the enum `MonomialOrder` (lex, grlex, grevlex, and the weight, block and homogeneous orders, now in `rings.py` too); `as_order`, `WeightOrder`, `BlockOrder`, `elimination_order` in the bindings (the two classes as functions returning a `MonomialOrder`); `MonomialOrder::is_graded` is the test of `f4.is_graded` (nothing reads the `is_graded` attribute of the Python orders); `from_expr`/`to_expr` wait for the core |
 | `polys/heuristicgcd.py` | done | |
 | `polys/polyerrors.py` | `HeuristicGCDFailed` | the others as they are needed |
 | `polys/domains/sparsepolynomialring.py` | done | the Integer/Rational flavours as `SparsePolynomialRing::sympy` with `SparseGround` hooks; `IteratedPolynomialRing` one recursive type; over `ZZ`/`QQ` (the gcd needs an ordered ground, in Python too) |
@@ -56,6 +56,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/f4.py` | done | Katsura-4: the same bases, 2.5x (lex over `QQ`) to 7x (`GF(32003)`) faster than Python, untuned |
 | `polys/stronggroebner.py` | done | 10-20x faster than Python on the random test systems |
 | `polys/subresultants.py` | `dup_psc` | `dmp_psc` is `dup_psc` over a `PolynomialRing` tower; `psc` on SymPy's `PolyElement` has no counterpart |
+| `polys/bigatti.py` | done | moved out of `hilbert.rs` as in Python (5786e1d..eb367b4), with `hilbert_numerator_coefficients` |
 | `polys/hilbert.py` | done | the numerator dense over `ZZ`, the series a `HilbertSeries { numerator, exponent }` (Python: `Poly` and an expression in `t`) |
 | `polys/groebnerwalk.py` | done | both liftings; the bases of the initial forms by the Rust F4 (Python: SymPy's Buchberger, the same reduced bases); over fields only (SymPy also walks over `ZZ`) |
 | `ntheory/primetest.py`, `generate.py`, `factor_.py` | done | `primerange` is an iterator struct (a list in the bindings) |
