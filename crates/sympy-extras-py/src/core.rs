@@ -958,6 +958,99 @@ fn differential_polynomial_ops<'py>(
     Ok(d)
 }
 
+/// The queries of `janet_basis(equations, functions, variables, ranking)`
+/// as a dict: `equations`, `leaders`, `multiplicative_variables`,
+/// `is_consistent`, and for a consistent basis `dimension`,
+/// `hilbert_function` (orders up to `order`), `hilbert_series` (in `t`),
+/// `hilbert_polynomial` (in `s`), `parametric_derivatives`, `reduce` and
+/// `contains` of the `probes`, `series_solution` (absent when it needs the
+/// hints of `expand` which are not ported).
+#[pyfunction]
+#[pyo3(signature = (equations, functions, t, s, probes, order, variables=None, ranking=None))]
+#[allow(clippy::too_many_arguments)]
+fn janet_basis_ops<'py>(
+    py: Python<'py>,
+    equations: &Bound<'py, PyAny>,
+    functions: &Bound<'py, PyAny>,
+    t: &Bound<'py, PyAny>,
+    s: &Bound<'py, PyAny>,
+    probes: &Bound<'py, PyAny>,
+    order: u32,
+    variables: Option<&Bound<'py, PyAny>>,
+    ranking: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::polys::differential::janet::janet_basis;
+    let e_ = crate::convert::err;
+    let mut eqs: Vec<Basic> = Vec::new();
+    for e in equations.try_iter()? {
+        eqs.push(equation(&e?)?);
+    }
+    let variables: Option<Vec<Basic>> = variables.map(expressions).transpose()?;
+    let ranking: Option<Vec<Vec<Basic>>> = match ranking {
+        None => None,
+        Some(r) => {
+            let mut blocks: Vec<Vec<Basic>> = Vec::new();
+            for block in r.try_iter()? {
+                blocks.push(expressions(&block?)?);
+            }
+            Some(blocks)
+        }
+    };
+    let basis = janet_basis(&eqs, &expressions(functions)?, variables.as_deref(), ranking.as_deref()).map_err(e_)?;
+    let d: Bound<'py, PyDict> = PyDict::new(py);
+    d.set_item("equations", expression_list(py, &basis.equations().map_err(e_)?)?)?;
+    d.set_item("leaders", expression_list(py, &basis.leaders())?)?;
+    let mv: Vec<Bound<'py, PyTuple>> = basis
+        .multiplicative_variables()
+        .iter()
+        .map(|vs| PyTuple::new(py, vs.iter().map(|v| to_python(py, v)).collect::<PyResult<Vec<_>>>()?))
+        .collect::<PyResult<_>>()?;
+    d.set_item("multiplicative_variables", PyList::new(py, mv)?)?;
+    d.set_item("is_consistent", basis.is_consistent())?;
+    if basis.is_consistent() {
+        d.set_item("dimension", to_python(py, &basis.dimension().map_err(e_)?)?)?;
+        let mut hf: Vec<Bound<'py, PyAny>> = Vec::new();
+        for q in 0..=order {
+            hf.push(crate::convert::out_int(py, &basis.hilbert_function(q).map_err(e_)?)?);
+        }
+        d.set_item("hilbert_function", PyList::new(py, hf)?)?;
+        d.set_item(
+            "hilbert_series",
+            to_python(py, &basis.hilbert_series(&from_python(t)?).map_err(e_)?)?,
+        )?;
+        d.set_item(
+            "hilbert_polynomial",
+            to_python(py, &basis.hilbert_polynomial(&from_python(s)?).map_err(e_)?)?,
+        )?;
+        d.set_item(
+            "parametric_derivatives",
+            expression_list(py, &basis.parametric_derivatives(order).map_err(e_)?)?,
+        )?;
+        let mut reduced: Vec<Basic> = Vec::new();
+        let mut contained: Vec<bool> = Vec::new();
+        for p in probes.try_iter()? {
+            let p: Basic = equation(&p?)?;
+            reduced.push(basis.reduce(&p).map_err(e_)?);
+            contained.push(basis.contains(&p).map_err(e_)?);
+        }
+        d.set_item("reduce", expression_list(py, &reduced)?)?;
+        d.set_item("contains", contained)?;
+        match basis.series_solution(order, None, "C") {
+            Ok(series) => {
+                let out: Bound<'py, PyDict> = PyDict::new(py);
+                for (f, e) in series {
+                    out.set_item(to_python(py, &f)?, to_python(py, &e)?)?;
+                }
+                d.set_item("series_solution", out)?;
+            }
+            Err(sympy_extras_core::error::PolyError::NotImplemented(_)) => {}
+            Err(sympy_extras_core::error::PolyError::Value(message)) => d.set_item("series_solution_error", message)?,
+            Err(other) => return Err(e_(other)),
+        }
+    }
+    Ok(d)
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -999,6 +1092,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(differential_integral, m)?)?;
     m.add_function(wrap_pyfunction!(differential_leader, m)?)?;
     m.add_function(wrap_pyfunction!(differential_polynomial_ops, m)?)?;
+    m.add_function(wrap_pyfunction!(janet_basis_ops, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;
