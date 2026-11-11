@@ -6,6 +6,29 @@ curve (`sympy_extras.integrals.curves`): the branches of a plane curve
 `F(x, y) = 0` above a point, and the ring of the functions on the curve
 which are finite above every finite point.
 
+Both modules are native: they work on the expressions of the typed core
+and on the typed domains of `sympy_extras.polys.domains` (the number
+fields are `AlgebraicField`, the rationals the field `RATIONALS` of
+degree one) and import no SymPy. Their faces
+`sympy_extras.polys.puiseux_sympy` and
+`sympy_extras.polys.functionfields_sympy` keep the API on SymPy's `Poly`,
+expressions and domains (`QQ`, `AlgebraicField`, `QQ.frac_field(a)`),
+converting to the native modules and back; the integration on curves
+calls the faces. The examples below use the faces; natively:
+
+```python
+>>> from sympy_extras.core import symbols, Integer
+>>> from sympy_extras.polys.domains import QQ
+>>> from sympy_extras.polys.puiseux import puiseux_expansions
+>>> from sympy_extras.polys.functionfields import function_field
+>>> x, y = symbols('x y')
+>>> [(b.ramification, b.field, b.as_expr()) for b in puiseux_expansions(y**2 - 2 - x, x, y, Integer(0), order=2)]
+[(1, QQ<sqrt(2)>, sqrt(2)*x/4 + sqrt(2))]
+>>> [w.as_expr() for w in function_field(y**3 - x**2*(x + 1), x, y, QQ).integral_basis()]
+[1, y, y**2/x]
+
+```
+
 ## What SymPy has and what is added
 
 SymPy computes with algebraic *numbers* (`AlgebraicField`, `minpoly`,
@@ -16,7 +39,7 @@ given explicitly, and in integer powers), no integral closure of `Q[x]`
 in `Q(x)[y]/(F)`. Both are needed by Trager's integration algorithm and
 by anything which reasons about the places of a curve.
 
-## Puiseux expansions (`sympy_extras.polys.puiseux`)
+## Puiseux expansions (`sympy_extras.polys.puiseux`, face `puiseux_sympy`)
 
 `puiseux_expansions(F, x, y, point, order)` returns the branches of
 `F(x, y) = 0` above `x = point` (an algebraic number, or `oo`), one per
@@ -34,7 +57,7 @@ term until one root is left, which Newton's iteration completes.
 
 ```python
 >>> from sympy import symbols, oo
->>> from sympy_extras.polys.puiseux import puiseux_expansions
+>>> from sympy_extras.polys.puiseux_sympy import puiseux_expansions
 >>> x, y = symbols('x y')
 >>> for b in puiseux_expansions(y**4 + (x**2 + x)*y - x**2, x, y, 0, order=1):
 ...     print(b.ramification, b.conjugates, b.as_expr())
@@ -60,9 +83,13 @@ the image of `theta` in `Q(Theta)` is the common root of its minimal
 polynomial and of `psi((Theta - t)/k; t)`, a gcd. No root is evaluated
 numerically: SymPy's own `primitive_element` and `to_number_field`
 identify roots by refining complex isolating intervals, which takes
-minutes at the precisions they ask for degrees beyond four.
+minutes at the precisions they ask for degrees beyond four. A new field
+is written natively with the largest real root of its minimal polynomial
+as the generator (an `IndexedRoot`, in radicals for quadratic and
+binomial polynomials), and by the face as SymPy's
+`QQ.algebraic_field(rootof(N, k, radicals=True))` for the same root.
 
-## Function fields and integral bases (`sympy_extras.polys.functionfields`)
+## Function fields and integral bases (`sympy_extras.polys.functionfields`, face `functionfields_sympy`)
 
 `FunctionField(F, x, y)` is `K(x)[y]/(F)`, `K` the rationals or the
 field of the parameters of `F`; when the leading coefficient `a_n(x)` of
@@ -82,7 +109,7 @@ Hermite normal form: the `i`-th element has degree `i` in `y`.
 
 ```python
 >>> from sympy import symbols
->>> from sympy_extras.polys.functionfields import integral_basis, FunctionField
+>>> from sympy_extras.polys.functionfields_sympy import integral_basis, FunctionField
 >>> x, y, a = symbols('x y a')
 >>> integral_basis(y**3 - x**2*(x + 1), x, y)
 [1, y, y**2/x]

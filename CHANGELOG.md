@@ -567,6 +567,36 @@ remove public functions. Breaking changes are listed here when they happen.
   `rings.PolyElement.div` updates its remainder and quotients in place
   (the same terms in the same order): the dense Janet basis of the tests
   which took 10 s on SymPy takes 8.5 s.
+- The Puiseux expansions and the function fields of algebraic curves are
+  native (**breaking**): `sympy_extras.polys.puiseux` (`puiseux_expansions`,
+  `expansions_in_field`, `adjoin_root`, `PuiseuxExpansion`,
+  `LaurentSeries`, `Embedding`, `field_of`, `minimal_polynomial_of`,
+  `in_subfield`) works on core expressions and the typed number fields
+  (`AlgebraicField`; the rationals are `RATIONALS`, of degree one; the
+  curves are dictionaries `{i: {k: coefficient of x**k y**i}}`;
+  `minimal_polynomial_of` returns the monic coefficients; the new
+  `field_from_polynomial`, `factor_over`, `curve_from_expr`,
+  `PuiseuxExpansion.evaluate_expr`), and `sympy_extras.polys.functionfields`
+  (`FunctionField[T]`, `Element[T]`, `function_field(F, x, y, K)`,
+  `integral_basis`) is generic in its field of constants (`QQ`, a number
+  field, `SparseFractionField` of the parameters); neither imports SymPy.
+  The old API on SymPy objects moves to the faces
+  `sympy_extras.polys.puiseux_sympy` and
+  `sympy_extras.polys.functionfields_sympy` (same results on the recorded
+  calls of the tests, the integrals on curves and 40 more curves, except
+  the choice between `t` and `-t` in some branches, now SymPy's as before),
+  which `sympy_extras.integrals.curves` calls. A new number field is named
+  natively by the largest real root of its minimal polynomial
+  (`IndexedRoot`, radicals for quadratic and binomial polynomials, the
+  symbol `theta` for a field with no real generator and no radicals); the
+  face gives SymPy's `QQ.algebraic_field(rootof(N, k, radicals=True))` as
+  before. Fixed on the way: the inverse of a basis was cached by the
+  identity of the list, so that a basis changed in place, or a new list at
+  the address of a freed one (the loop of Trager's algorithm), got a stale
+  inverse (the occasional `ValueError: 1/(6*x + 6) is not a polynomial` of
+  `test_bases_are_maximal_by_puiseux_expansions` in a full run); and the
+  integral basis of a curve with parameters such as `y**3 - a*x**2` no
+  longer fails on SymPy's conversion of constants into `QQ(a)(x)`.
 
 - The decompositions of ideals and the rational univariate representation
   are native (**breaking**): `sympy_extras.polys.idealdecomposition`

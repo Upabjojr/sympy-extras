@@ -40,7 +40,10 @@ closure:
 The chain of orders is finite since the discriminant is divided by the
 square of the index at every step. Everything happens in `K[x]` with
 column echelon forms by the Euclidean algorithm (no number fields, and
-the parameters of a field `K = \mathbb{Q}(a, b)` are allowed).
+the parameters of a field `K = \mathbb{Q}(a, b)` are allowed). The basis
+returned is in Hermite normal form (monic pivots, the entries above them
+reduced), which the module determines: the result does not depend on
+the choices made along the way.
 
 **At infinity.** The elements integral at infinity, `O_\infty`, are
 those with no pole on any branch above `x = \infty`; a local basis of
@@ -57,6 +60,15 @@ infinity, a kernel vector gives a combination `\sum_i c_i x^{k - k_i}
 w_i` of smaller pole order, which replaces one of the `w_i` of pole
 order `k`; the sum of the pole orders decreases and the process stops.
 
+The module is native: it imports no SymPy. The field of constants `K` is
+any typed field of characteristic zero (``QQ``, a number field
+:class:`~sympy_extras.polys.domains.algebraicfield.AlgebraicField`, the
+rational functions of the parameters
+:class:`~sympy_extras.polys.domains.sparsefractionfield.SparseFractionField`),
+so that :class:`FunctionField` is generic in the type of its constants;
+:mod:`sympy_extras.polys.functionfields_sympy` is the face on SymPy's
+domains, used by the integration on curves.
+
 References
 ==========
 
@@ -71,54 +83,71 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional
+from fractions import Fraction
+from typing import Final, Generic, Optional, TypeVar
 
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.symbol import Symbol
-from sympy.polys.domains import QQ
-from sympy.polys.domains.domain import Domain
-from sympy.polys.domains.fractionfield import FractionField
-from sympy.polys.domains.polynomialring import PolynomialRing
-from sympy.polys.matrices import DomainMatrix
-from sympy.polys.polyerrors import CoercionFailed
-from sympy.polys.polytools import Poly, cancel
-from sympy.simplify.radsimp import fraction
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.function import expand
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import Integer
+from sympy_extras.core.power import Pow, pow
+from sympy_extras.core.symbol import Symbol
 
-from sympy_extras._typing import DomainElement, ExprLike, as_expr, free_symbols, sorted_symbols
+from . import densebasic, sqfreetools
+from .domains.domain import Domain
+from .domains.fractionfield import FracElement, FractionField
+from .domains.polynomialring import PolynomialRing
+from .domains.rationalfield import QQ
+from .domains.sparsefractionfield import SparseFracElement, SparseFractionField
+from .domains.sparsepolynomialring import RationalPolynomialRing
+from .polyutils import dict_from_expr
 
-__all__ = ['FunctionField', 'Element', 'integral_basis']
+__all__ = ['FunctionField', 'Element', 'function_field', 'integral_basis', 'parameters_of']
+
+T = TypeVar('T')
+U = TypeVar('U')
+
+#: a matrix, by rows
+Matrix = list[list[T]]
 
 
-class Element:
+class Element(Generic[T]):
     """An element of a :class:`FunctionField`, by its coordinates in the
-    power basis `1, y, \\ldots, y^{n-1}` over `K(x)` (``coefficients[i]``
-    the coefficient of `y^i`, elements of the fraction field)."""
+    power basis `1, Y, \\ldots, Y^{n-1}` of the integral generator over
+    `K(x)` (``coefficients[i]`` the coefficient of `Y^i`, elements of
+    the fraction field ``field.Kx``)."""
 
-    def __init__(self, field: FunctionField, coefficients: list[DomainElement]) -> None:
-        self.field = field
+    __slots__ = ('field', 'coefficients')
+
+    def __init__(self, field: FunctionField[T], coefficients: list[FracElement[T]]) -> None:
         n = field.n
-        Kx = field.Kx
-        padded = list(coefficients) + [Kx.zero] * (n - len(coefficients))
-        self.coefficients: list[DomainElement] = padded[:n]
+        padded = list(coefficients) + [field.Kx.zero] * (n - len(coefficients))
+        self.field: Final[FunctionField[T]] = field
+        self.coefficients: Final[list[FracElement[T]]] = padded[:n]
 
-    def __add__(self, other: Element) -> Element:
-        return Element(self.field, [a + b for a, b in zip(self.coefficients, other.coefficients)])
+    def __add__(self, other: Element[T]) -> Element[T]:
+        Kx = self.field.Kx
+        return Element(self.field, [Kx.add(a, b) for a, b in zip(self.coefficients, other.coefficients)])
 
-    def __sub__(self, other: Element) -> Element:
-        return Element(self.field, [a - b for a, b in zip(self.coefficients, other.coefficients)])
+    def __sub__(self, other: Element[T]) -> Element[T]:
+        Kx = self.field.Kx
+        return Element(self.field, [Kx.sub(a, b) for a, b in zip(self.coefficients, other.coefficients)])
 
-    def __neg__(self) -> Element:
-        return Element(self.field, [-a for a in self.coefficients])
+    def __neg__(self) -> Element[T]:
+        Kx = self.field.Kx
+        return Element(self.field, [Kx.neg(a) for a in self.coefficients])
 
-    def scaled(self, c: DomainElement) -> Element:
+    def scaled(self, c: FracElement[T]) -> Element[T]:
         """The element times ``c`` of `K(x)`."""
-        return Element(self.field, [c * a for a in self.coefficients])
+        Kx = self.field.Kx
+        return Element(self.field, [Kx.mul(c, a) for a in self.coefficients])
 
-    def __mul__(self, other: Element) -> Element:
-        return Element(self.field, self.field.reduce(_poly_mul(self.coefficients, other.coefficients, self.field.Kx)))
+    def __mul__(self, other: Element[T]) -> Element[T]:
+        field = self.field
+        return Element(field, field.reduce(_poly_mul(self.coefficients, other.coefficients, field.Kx)))
 
-    def power(self, k: int) -> Element:
+    def power(self, k: int) -> Element[T]:
         result = self.field.one()
         base = self
         while k > 0:
@@ -130,227 +159,250 @@ class Element:
         return result
 
     def is_zero(self) -> bool:
-        return all(a == self.field.Kx.zero for a in self.coefficients)
+        return all(not a.numer for a in self.coefficients)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Element) and other.field is self.field and other.coefficients == self.coefficients
 
     def __hash__(self) -> int:
-        return hash(tuple(self.coefficients))
+        return hash(tuple(str(c) for c in self.coefficients))
 
-    def inverse(self) -> Element:
+    def inverse(self) -> Element[T]:
         return self.field.invert(self)
 
-    def __truediv__(self, other: Element) -> Element:
+    def __truediv__(self, other: Element[T]) -> Element[T]:
         return self * other.inverse()
 
-    def derivative(self) -> Element:
+    def derivative(self) -> Element[T]:
         """The derivative with respect to `x` (`y' = -F_x/F_y`)."""
         field = self.field
         Kx = field.Kx
-        # d/dx of sum c_i y^i = sum c_i' y^i + (sum i c_i y^(i-1)) y'
+        # d/dx of sum c_i Y^i = sum c_i' Y^i + (sum i c_i Y^(i-1)) Y'
         plain = Element(field, [_derivative_of_fraction(c, Kx) for c in self.coefficients])
-        chain = Element(field, [self.coefficients[i] * Kx.convert(i, QQ) for i in range(1, field.n)])
+        chain = Element(field, [Kx.mul(self.coefficients[i], Kx.from_int(i)) for i in range(1, field.n)])
         return plain + chain * field.derivative_of_y()
 
-    def trace(self) -> DomainElement:
+    def trace(self) -> FracElement[T]:
         return self.field.trace(self)
 
     def as_expr(self) -> Expr:
         """The element as an expression in `x` and in the generator of
         the field as given (the original `y`, before the leading
-        coefficient was absorbed)."""
+        coefficient was absorbed): a polynomial over a polynomial
+        denominator."""
         field = self.field
-        Kx = field.Kx
-        y_integral = field.unit * field.y  # the integral generator in terms of the original one
-        return as_expr(cancel(Add(*[Kx.to_sympy(c) * y_integral**i for i, c in enumerate(self.coefficients)])))
+        R = field.R
+        denominator = R.one
+        for c in self.coefficients:
+            denominator = R.lcm(denominator, c.denom)
+        y_integral = R.to_expr(field.unit) * field.y  # the integral generator in terms of the original one
+        terms: list[Expr] = []
+        for i, c in enumerate(self.coefficients):
+            if c.numer:
+                numerator = R.exquo(R.mul(c.numer, denominator), c.denom)
+                terms.append(R.to_expr(numerator) * pow(y_integral, Integer(i)))
+        if not terms:
+            return Integer(0)
+        return expand(add(*terms)) / R.to_expr(denominator)
 
     def __repr__(self) -> str:
         return f"Element({self.as_expr()})"
 
 
-def _strip(a: list[DomainElement], K: Domain) -> list[DomainElement]:
-    """The coefficients (low degree first) without trailing zeros."""
-    while a and a[-1] == K.zero:
-        a = a[:-1]
-    return a
-
-
-def _sub(a: list[DomainElement], b: list[DomainElement], K: Domain) -> list[DomainElement]:
-    n = max(len(a), len(b))
-    return [(a[i] if i < len(a) else K.zero) - (b[i] if i < len(b) else K.zero) for i in range(n)]
-
-
-def _divmod(a: list[DomainElement], b: list[DomainElement], K: Domain
-            ) -> tuple[list[DomainElement], list[DomainElement]]:
-    """Quotient and remainder of the polynomials ``a`` by ``b`` (low
-    degree first, ``b`` nonzero)."""
-    b = _strip(list(b), K)
-    r = _strip(list(a), K)
-    if not b:
-        raise ZeroDivisionError("division by zero")
-    lead = b[-1]
-    q = [K.zero] * max(len(r) - len(b) + 1, 1)
-    while len(r) >= len(b):
-        k = len(r) - len(b)
-        c = r[-1] / lead
-        q[k] = c
-        for i, coefficient in enumerate(b):
-            r[k + i] = r[k + i] - c * coefficient
-        r = _strip(r[:-1], K) if r[-1] == K.zero else _strip(r, K)
-    return q, r
-
-
-def _derivative_of_fraction(c: DomainElement, Kx: FractionField) -> DomainElement:
-    """The derivative of an element of `K(x)` (through the numerator and
-    the denominator: the round trip through expressions fails over a
-    number field)."""
-    if c == Kx.zero:
-        return c
-    n, d = c.numer, c.denom
-    gen = n.ring.gens[0]
-    field = Kx.field
-    return (field(n.diff(gen)) * field(d) - field(n) * field(d.diff(gen))) / (field(d) * field(d))
-
-
-def _poly_mul(a: list[DomainElement], b: list[DomainElement], K: Domain) -> list[DomainElement]:
+def _poly_mul(a: list[FracElement[T]], b: list[FracElement[T]], K: FractionField[T]) -> list[FracElement[T]]:
     """The product of two polynomials given by their coefficients, low
     degree first."""
     if not a or not b:
         return []
     result = [K.zero] * (len(a) + len(b) - 1)
     for i, c in enumerate(a):
-        if c == K.zero:
+        if not c.numer:
             continue
         for j, d in enumerate(b):
-            result[i + j] = result[i + j] + c * d
+            if d.numer:
+                result[i + j] = K.add(result[i + j], K.mul(c, d))
     return result
 
 
-class FunctionField:
-    """The algebraic function field `K(x)[y]/(F)` of the curve `F(x, y) =
-    0` (`F` squarefree in `y` with polynomial coefficients; when its
-    leading coefficient `a_n(x)` is not constant the generator is `a_n
-    y`, which is integral, and ``unit`` records `a_n`).
+def _strip(a: list[FracElement[T]]) -> list[FracElement[T]]:
+    """The coefficients (low degree first) without trailing zeros."""
+    end = len(a)
+    while end and not a[end - 1].numer:
+        end -= 1
+    return a[:end]
 
-    >>> from sympy import symbols
-    >>> from sympy_extras.polys.functionfields import FunctionField
+
+def _sub(a: list[FracElement[T]], b: list[FracElement[T]], K: FractionField[T]) -> list[FracElement[T]]:
+    n = max(len(a), len(b))
+    return [K.sub(a[i] if i < len(a) else K.zero, b[i] if i < len(b) else K.zero) for i in range(n)]
+
+
+def _divmod(a: list[FracElement[T]], b: list[FracElement[T]], K: FractionField[T]
+            ) -> tuple[list[FracElement[T]], list[FracElement[T]]]:
+    """Quotient and remainder of the polynomials ``a`` by ``b`` (low
+    degree first, ``b`` nonzero)."""
+    b = _strip(list(b))
+    r = _strip(list(a))
+    if not b:
+        raise ZeroDivisionError("division by zero")
+    lead = b[-1]
+    q = [K.zero] * max(len(r) - len(b) + 1, 1)
+    while len(r) >= len(b):
+        k = len(r) - len(b)
+        c = K.quo(r[-1], lead)
+        q[k] = c
+        for i, coefficient in enumerate(b):
+            r[k + i] = K.sub(r[k + i], K.mul(c, coefficient))
+        r = _strip(r[:-1]) if not r[-1].numer else _strip(r)
+    return q, r
+
+
+def _derivative_of_fraction(c: FracElement[T], Kx: FractionField[T]) -> FracElement[T]:
+    """The derivative of an element of `K(x)`."""
+    if not c.numer:
+        return c
+    R = Kx.ring
+    n, d = c.numer, c.denom
+    return Kx.new(R.sub(R.mul(R.diff(n), d), R.mul(n, R.diff(d))), R.mul(d, d))
+
+
+class FunctionField(Generic[T]):
+    """The algebraic function field `K(x)[y]/(F)` of the curve `F(x, y) =
+    0` over the field of constants ``K`` (`F` squarefree in `y` with
+    polynomial coefficients, given by ``coefficients``, its coefficients
+    in `y` from the highest degree, polynomials in `x` over ``K``, highest
+    degree first; :func:`function_field` reads them from an expression).
+    When the leading coefficient `a_n(x)` is not constant the generator
+    is `Y = a_n y`, which is integral, and ``unit`` records `a_n`.
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.polys.domains import QQ
+    >>> from sympy_extras.polys.functionfields import function_field
     >>> x, y = symbols('x y')
-    >>> E = FunctionField(y**3 - x**2*(x + 1), x, y)
+    >>> E = function_field(y**3 - x**2*(x + 1), x, y, QQ)
     >>> [w.as_expr() for w in E.integral_basis()]
     [1, y, y**2/x]
     >>> E.element(y**2/x) * E.element(y)
     Element(x**2 + x)
     """
 
-    def __init__(self, F: ExprLike, x: Symbol, y: Symbol, domain: Optional[Domain] = None) -> None:
-        F_ = as_expr(F)
-        self.x = x
-        self.y = y
-        P = Poly(F_, y)
-        n = P.degree()
-        if n < 1:
-            raise ValueError(f"{F_} has no root y")
-        parameters = sorted_symbols(free_symbols(F_) - {x, y})
-        K: Domain
-        if domain is not None:
-            K = domain
-        else:
-            K = QQ.frac_field(*parameters) if parameters else QQ
-        self.K = K
-        self.R: PolynomialRing = K.poly_ring(x)
-        self.Kx: FractionField = K.frac_field(x)
-        self.n = n
-        leading = as_expr(P.LC())
-        coefficients = [as_expr(c) for c in P.all_coeffs()]  # high to low
+    def __init__(self, coefficients: list[list[T]], x: Symbol, y: Symbol, K: Domain[T]) -> None:
+        n = len(coefficients) - 1
+        if n < 1 or not coefficients[0]:
+            raise ValueError("the curve has no root y")
+        R: PolynomialRing[T] = PolynomialRing(K, x.name)
+        Kx: FractionField[T] = FractionField(R)
+        leading = densebasic.dup_strip(list(coefficients[0]), K)
         # a_n y^n + ... + a_0 = 0: Y = a_n y satisfies Y^n + a_{n-1} Y^{n-1} +
         # a_n a_{n-2} Y^{n-2} + ... + a_n^{n-1} a_0 = 0
-        self.unit: Expr = leading
-        monic: list[Expr] = []
-        for k, c in enumerate(coefficients):
-            # coefficient of Y^(n-k): a_{n-k} a_n^(k-1) for k >= 1, 1 for k = 0
-            monic.append(as_expr(cancel(c * leading**(k - 1))) if k >= 1 else as_expr(1))
-        self.F: list[DomainElement] = [self.Kx.from_sympy(c) for c in monic]  # high to low, monic
-        for c in monic:
-            try:
-                self.R.from_sympy(c)
-            except CoercionFailed:
-                raise ValueError(f"{F_}: polynomial coefficients expected") from None
-        self.original = F_
-        self._dy: Optional[Element] = None
-        self._power_traces: Optional[list[DomainElement]] = None
-        self._integral_basis: Optional[list[Element]] = None
-        self._local_at_infinity: Optional[list[Element]] = None
-        self._normal: Optional[list[Element]] = None
-        self._inverses: dict[int, DomainMatrix] = {}
+        monic: list[list[T]] = [R.one]
+        for k in range(1, n + 1):
+            monic.append(R.mul(densebasic.dup_strip(list(coefficients[k]), K), R.pow(leading, k - 1)))
+        self.x: Final[Symbol] = x
+        self.y: Final[Symbol] = y
+        self.K: Final[Domain[T]] = K
+        self.R: Final[PolynomialRing[T]] = R
+        self.Kx: Final[FractionField[T]] = Kx
+        self.n: Final[int] = n
+        #: the leading coefficient `a_n` of the curve, a polynomial in `x`
+        self.unit: Final[list[T]] = leading
+        #: the monic polynomial of `Y` over `K[x]`, highest degree first
+        self.F: Final[list[FracElement[T]]] = [Kx.from_ring(c) for c in monic]
+        self.curve: Final[list[list[T]]] = [densebasic.dup_strip(list(c), K) for c in coefficients]
+        self._dy: Optional[Element[T]] = None
+        self._power_traces: Optional[list[FracElement[T]]] = None
+        self._integral_basis: Optional[list[Element[T]]] = None
+        self._local_at_infinity: Optional[list[Element[T]]] = None
+        self._normal: Optional[list[Element[T]]] = None
+        # the inverses of the matrices of the bases, with the bases they
+        # were computed for (a basis is a list, which may be changed)
+        self._inverses: dict[int, tuple[list[list[FracElement[T]]], Matrix[FracElement[T]]]] = {}
+
+    @property
+    def original(self) -> Expr:
+        """The polynomial of the curve as an expression."""
+        R = self.R
+        n = self.n
+        return add(*[R.to_expr(c) * pow(self.y, Integer(n - k)) for k, c in enumerate(self.curve) if c])
 
     # Construction of elements
 
-    def convert(self, e: Element) -> Element:
+    def convert(self, e: Element[U]) -> Element[T]:
         """The element ``e`` of the field of the same curve over a smaller
-        coefficient field, here."""
-        if e.field is self:
-            return e
-        Kx = self.Kx
-        return Element(self, [Kx.from_sympy(as_expr(e.field.Kx.to_sympy(c))) for c in e.coefficients])
+        field of constants, here (its coordinates converted)."""
+        source = e.field.Kx
+        return Element(self, [self.Kx.convert(c, source) for c in e.coefficients])
 
-    def zero(self) -> Element:
+    def zero(self) -> Element[T]:
         return Element(self, [])
 
-    def one(self) -> Element:
+    def one(self) -> Element[T]:
         return Element(self, [self.Kx.one])
 
-    def generator(self) -> Element:
+    def generator(self) -> Element[T]:
         """The integral generator `Y = a_n y`."""
         return Element(self, [self.Kx.zero, self.Kx.one])
 
-    def constant(self, c: ExprLike) -> Element:
-        return Element(self, [self.Kx.from_sympy(as_expr(c))])
+    def constant(self, c: Expr) -> Element[T]:
+        """The element of `K(x)` given by the expression ``c``."""
+        return Element(self, [self.Kx.from_expr(c)])
 
-    def element(self, expr: ExprLike) -> Element:
-        """The element given by a rational expression in `x` and `y`."""
-        e = as_expr(expr)
-        numerator, denominator = fraction(cancel(e))
-        num = self._polynomial_in_y(as_expr(numerator))
-        den = self._polynomial_in_y(as_expr(denominator))
-        if den.is_zero():
-            raise ZeroDivisionError(str(expr))
-        return num * den.inverse()
+    def element(self, expr: Expr) -> Element[T]:
+        """The element given by a rational expression in `x` and `y`.
 
-    def _polynomial_in_y(self, p: Expr) -> Element:
-        Kx = self.Kx
-        P = Poly(p, self.y)
-        # y = Y/a_n
-        inverse_unit = Kx.from_sympy(as_expr(1 / self.unit))
-        coefficients: list[DomainElement] = []
-        for i, c in enumerate(reversed(P.all_coeffs())):
-            coefficients.append(Kx.from_sympy(as_expr(c)) * inverse_unit**i)
-        return Element(self, self.reduce(coefficients))
+        >>> from sympy_extras.core import symbols
+        >>> from sympy_extras.polys.domains import QQ
+        >>> from sympy_extras.polys.functionfields import function_field
+        >>> x, y = symbols('x y')
+        >>> E = function_field(x*y**2 - 1, x, y, QQ)
+        >>> E.element(1/y), E.element(y).power(2)
+        (Element(x*y), Element(1/x))
+        """
+        if self.y not in expr.free_symbols:
+            return self.constant(expr)
+        if expr == self.y:
+            # y = Y/a_n
+            return Element(self, [self.Kx.zero, self.Kx.invert(self.Kx.from_ring(self.unit))])
+        if isinstance(expr, Add):
+            total = self.zero()
+            for a in expr.args:
+                total = total + self.element(a)
+            return total
+        if isinstance(expr, Mul):
+            product = self.one()
+            for a in expr.args:
+                product = product * self.element(a)
+            return product
+        if isinstance(expr, Pow) and isinstance(expr.exp, Integer):
+            base = self.element(expr.base)
+            k = expr.exp.p
+            return base.power(k) if k >= 0 else base.inverse().power(-k)
+        raise ValueError(f"{expr} is not a rational function of {self.x} and {self.y}")
 
     # Arithmetic
 
-    def reduce(self, coefficients: list[DomainElement]) -> list[DomainElement]:
+    def reduce(self, coefficients: list[FracElement[T]]) -> list[FracElement[T]]:
         """The coefficients (low degree first) reduced modulo `F`."""
         Kx = self.Kx
         n = self.n
         work = list(coefficients)
-        # F monic: y^n = -(a_{n-1} y^{n-1} + ... + a_0)
+        # F monic: Y^n = -(a_{n-1} Y^{n-1} + ... + a_0)
         lower = list(reversed(self.F[1:]))  # a_0, ..., a_{n-1}
         for k in range(len(work) - 1, n - 1, -1):
             c = work[k]
-            if c == Kx.zero:
+            if not c.numer:
                 continue
             work[k] = Kx.zero
             for i in range(n):
-                work[k - n + i] = work[k - n + i] - c * lower[i]
+                if lower[i].numer:
+                    work[k - n + i] = Kx.sub(work[k - n + i], Kx.mul(c, lower[i]))
         return work[:n] + [Kx.zero] * max(0, n - len(work))
 
-    def invert(self, e: Element) -> Element:
+    def invert(self, e: Element[T]) -> Element[T]:
         """The inverse of ``e``: the extended Euclidean algorithm modulo
-        `F` (written out, since SymPy's ``dup_invert`` fails over the
-        fraction field of a number field)."""
+        `F`."""
         Kx = self.Kx
-        f = _strip(list(e.coefficients), Kx)
+        f = _strip(list(e.coefficients))
         if not f:
             raise ZeroDivisionError("inverse of zero")
         g = list(reversed(self.F))  # low degree first, monic
@@ -359,15 +411,15 @@ class FunctionField:
         s0, s1 = [Kx.zero], [Kx.one]
         while len(r1) > 1:
             q, r = _divmod(r0, r1, Kx)
-            r0, r1 = r1, _strip(r, Kx)
-            s0, s1 = s1, _strip(_sub(s0, _poly_mul(q, s1, Kx), Kx), Kx)
+            r0, r1 = r1, _strip(r)
+            s0, s1 = s1, _strip(_sub(s0, _poly_mul(q, s1, Kx), Kx))
             if not r1:
                 raise ZeroDivisionError("not invertible: the curve is reducible")
         c = r1[0]
-        inverse = [a / c for a in s1]
+        inverse = [Kx.quo(a, c) for a in s1]
         return Element(self, self.reduce(inverse))
 
-    def derivative_of_y(self) -> Element:
+    def derivative_of_y(self) -> Element[T]:
         """`Y' = -F_x(Y)/F_Y(Y)` for the integral generator."""
         if self._dy is None:
             Kx = self.Kx
@@ -375,11 +427,11 @@ class FunctionField:
             # F(Y) = sum a_k Y^k, a_n = 1: F_x = sum a_k' Y^k, F_Y = sum k a_k Y^(k-1)
             low = list(reversed(self.F))  # a_0 ... a_n
             F_x = Element(self, [_derivative_of_fraction(a, Kx) for a in low[:n]])
-            F_Y = Element(self, [low[k] * Kx.convert(k, QQ) for k in range(1, n + 1)])
+            F_Y = Element(self, [Kx.mul(low[k], Kx.from_int(k)) for k in range(1, n + 1)])
             self._dy = -(F_x * F_Y.inverse())
         return self._dy
 
-    def power_traces(self) -> list[DomainElement]:
+    def power_traces(self) -> list[FracElement[T]]:
         """`\\operatorname{Tr}(Y^k)` for `k < 2n - 1` by Newton's identities."""
         if self._power_traces is None:
             Kx = self.Kx
@@ -387,69 +439,78 @@ class FunctionField:
             a = list(reversed(self.F))  # a_0 ... a_n, a_n = 1
             # p_k + a_{n-1} p_{k-1} + ... + a_{n-k+1} p_1 + k a_{n-k} = 0 for
             # k <= n, p_k + a_{n-1} p_{k-1} + ... + a_0 p_{k-n} = 0 beyond
-            p: list[DomainElement] = [Kx.convert(n, QQ)]
+            p: list[FracElement[T]] = [Kx.from_int(n)]
             for k in range(1, 2 * n - 1):
                 total = Kx.zero
                 for i in range(1, min(k - 1, n) + 1):
-                    total = total - a[n - i] * p[k - i]
+                    total = Kx.sub(total, Kx.mul(a[n - i], p[k - i]))
                 if k <= n:
-                    total = total - Kx.convert(k, QQ) * a[n - k]
+                    total = Kx.sub(total, Kx.mul(Kx.from_int(k), a[n - k]))
                 p.append(total)
             self._power_traces = p
         return self._power_traces
 
-    def trace(self, e: Element) -> DomainElement:
+    def trace(self, e: Element[T]) -> FracElement[T]:
         p = self.power_traces()
-        total = self.Kx.zero
+        Kx = self.Kx
+        total = Kx.zero
         for k, c in enumerate(e.coefficients):
-            if c != self.Kx.zero:
-                total = total + c * p[k]
+            if c.numer:
+                total = Kx.add(total, Kx.mul(c, p[k]))
         return total
 
     # Bases
 
-    def coordinates(self, e: Element, basis: list[Element]) -> list[DomainElement]:
+    def coordinates(self, e: Element[T], basis: list[Element[T]]) -> list[FracElement[T]]:
         """The coordinates of ``e`` in ``basis`` (elements of `K(x)`)."""
+        rows = [list(w.coefficients) for w in basis]
         key = id(basis)
-        inverse = self._inverses.get(key)
-        if inverse is None:
-            matrix = DomainMatrix([list(w.coefficients) for w in basis], (self.n, self.n), self.Kx)
-            inverse = matrix.inv()
-            self._inverses[key] = inverse
-        row = DomainMatrix([list(e.coefficients)], (1, self.n), self.Kx)
-        return list((row * inverse).to_list()[0])
+        cached = self._inverses.get(key)
+        if cached is None or cached[0] != rows:
+            inverse = _inverse(rows, self.Kx)
+            self._inverses[key] = (rows, inverse)
+        else:
+            inverse = cached[1]
+        Kx = self.Kx
+        result: list[FracElement[T]] = []
+        for j in range(self.n):
+            total = Kx.zero
+            for i, c in enumerate(e.coefficients):
+                if c.numer and inverse[i][j].numer:
+                    total = Kx.add(total, Kx.mul(c, inverse[i][j]))
+            result.append(total)
+        return result
 
-    def discriminant(self, basis: list[Element]) -> DomainElement:
+    def discriminant(self, basis: list[Element[T]]) -> FracElement[T]:
         """`\\det(\\operatorname{Tr}(w_i w_j))`, an element of `K(x)` (a
         polynomial for integral elements)."""
         traces = [[(u * v).trace() for v in basis] for u in basis]
-        return DomainMatrix(traces, (self.n, self.n), self.Kx).det()
+        return _determinant_over_field(traces, self.Kx)
 
-    def is_integral(self, e: Element) -> bool:
+    def is_integral(self, e: Element[T]) -> bool:
         """Whether ``e`` is integral over `K[x]`: the characteristic
         polynomial of the multiplication by ``e`` has polynomial
         coefficients."""
-        rows = [list((e * Element(self, [self.Kx.zero] * k + [self.Kx.one])).coefficients) for k in range(self.n)]
-        matrix = DomainMatrix(rows, (self.n, self.n), self.Kx)
-        for c in matrix.charpoly():
-            if not _is_polynomial(c, self.Kx):
-                return False
-        return True
+        Kx = self.Kx
+        rows = [list((e * Element(self, [Kx.zero] * k + [Kx.one])).coefficients) for k in range(self.n)]
+        return all(_is_polynomial(c) for c in _charpoly(rows, Kx))
 
-    def integral_basis(self) -> list[Element]:
+    def integral_basis(self) -> list[Element[T]]:
         """An integral basis, triangular: the `i`-th element is a
         polynomial of degree `i` in `Y` whose leading coefficient is a
         monic polynomial in `x`, over a polynomial denominator (Trager's
         algorithm; the basis is in Hermite normal form).
 
-        >>> from sympy import symbols
-        >>> from sympy_extras.polys.functionfields import FunctionField
+        >>> from sympy_extras.core import symbols
+        >>> from sympy_extras.polys.domains import QQ
+        >>> from sympy_extras.polys.functionfields import function_field
         >>> x, y = symbols('x y')
-        >>> [w.as_expr() for w in FunctionField(y**4 + (x**2 + x)*y - x**2, x, y).integral_basis()]
+        >>> [w.as_expr() for w in function_field(y**4 + (x**2 + x)*y - x**2, x, y, QQ).integral_basis()]
         [1, y, y**2, y**3/x]
         """
         if self._integral_basis is None:
-            basis = [Element(self, [self.Kx.zero] * k + [self.Kx.one]) for k in range(self.n)]
+            Kx = self.Kx
+            basis = [Element(self, [Kx.zero] * k + [Kx.one]) for k in range(self.n)]
             while True:
                 enlarged = self._round2_step(basis)
                 if enlarged is None:
@@ -458,59 +519,60 @@ class FunctionField:
             self._integral_basis = self._triangular(basis)
         return self._integral_basis
 
-    def _round2_step(self, basis: list[Element]) -> Optional[list[Element]]:
+    def _round2_step(self, basis: list[Element[T]]) -> Optional[list[Element[T]]]:
         """One step of Trager's algorithm: the idealizer of the
         `Q`-trace radical of the order generated by ``basis``, as a new
         basis, or ``None`` when the order is maximal."""
         R = self.R
         Kx = self.Kx
+        K = self.K
         n = self.n
-        traces = [[_as_polynomial((u * v).trace(), Kx, R) for v in basis] for u in basis]
+        traces = [[_as_polynomial((u * v).trace(), R) for v in basis] for u in basis]
         disc = _determinant(traces, R)
-        if disc == R.zero:
+        if not disc:
             raise ValueError("the curve is not squarefree")
         Q = R.one
-        for factor, multiplicity in Poly(R.to_sympy(disc), self.x, domain=self.K).sqf_list()[1]:
+        for factor, multiplicity in sqfreetools.dup_sqf_list(disc, K)[1]:
             if multiplicity >= 2:
-                Q = Q * R.from_sympy(factor.as_expr())
-        if _degree(Q) < 1:
+                Q = R.mul(Q, factor)
+        if densebasic.dup_degree(Q) < 1:
             return None
         # the trace radical: the kernel over K[x] of [T | -Q I]
-        augmented = [row + [(-Q if i == j else R.zero) for j in range(n)] for i, row in enumerate(traces)]
-        _, U, pivots = _column_echelon(augmented, R, self.K)
+        augmented = [row + [(R.neg(Q) if i == j else R.zero) for j in range(n)] for i, row in enumerate(traces)]
+        _, U, pivots = _column_echelon(augmented, R, K)
         kernel = [[U[r][c] for r in range(2 * n)] for c in range(2 * n) if c not in pivots]
         if len(kernel) != n:
             raise ValueError("the trace radical has the wrong rank")
         A = [vector[:n] for vector in kernel]  # the basis of J in the coordinates of `basis`
-        J = [_combination(vector[:n], basis, R, Kx) for vector in kernel]
+        J = [_combination(vector[:n], basis, Kx) for vector in kernel]
         # the idealizer: u with u M_k adj(A) in det(A) K[x]^n for every k
         det_A = _determinant(A, R)
-        adj_A = _adjugate(A, R)
-        stacked: list[list[DomainElement]] = [[] for _ in range(n)]
+        adj_A = _adjugate(A, R, Kx)
+        stacked: list[list[list[T]]] = [[] for _ in range(n)]
         for j_k in J:
-            M_k = [[_as_polynomial(c, Kx, R) for c in self.coordinates(w * j_k, basis)] for w in basis]
+            M_k = [[_as_polynomial(c, R) for c in self.coordinates(w * j_k, basis)] for w in basis]
             product = _matrix_product(M_k, adj_A, R)
             for i in range(n):
                 stacked[i].extend(product[i])
-        H, _, pivots = _column_echelon(stacked, R, self.K)
+        H, _, pivots = _column_echelon(stacked, R, K)
         H_square = [[H[i][c] for c in pivots] for i in range(n)]
         det_H = _determinant(H_square, R)
-        adj_H = _adjugate(H_square, R)
+        adj_H = _adjugate(H_square, R, Kx)
         # rows of det(A) H^{-1} = det(A) adj(H) / det(H): the new basis in
         # the coordinates of `basis`
-        rows = [[det_A * adj_H[i][j] for j in range(n)] for i in range(n)]
-        rows = _row_hermite(rows, R, self.K)
-        # the index of the old order in the new one: det(rows)/det_H^n a unit?
-        new_basis: list[Element] = []
+        rows = [[R.mul(det_A, adj_H[i][j]) for j in range(n)] for i in range(n)]
+        rows = _row_hermite(rows, R, K)
+        new_basis: list[Element[T]] = []
         for row in rows:
-            vector = [Kx.convert(c, R) / Kx.convert(det_H, R) for c in row]
+            vector = [Kx.new(c, det_H) for c in row]
             new_basis.append(_combination_fraction(vector, basis, Kx))
-        change = DomainMatrix([[Kx.convert(c, R) / Kx.convert(det_H, R) for c in row] for row in rows], (n, n), Kx).det()
-        if _degree_of_fraction(change, Kx) == 0:
+        # the index of the old order in the new one: det(rows)/det_H^n a unit?
+        change = _determinant_over_field([[Kx.new(c, det_H) for c in row] for row in rows], Kx)
+        if _degree_of_fraction(change) == 0:
             return None
         return new_basis
 
-    def _triangular(self, basis: list[Element]) -> list[Element]:
+    def _triangular(self, basis: list[Element[T]]) -> list[Element[T]]:
         """The basis of the same module in triangular form: the `i`-th
         element of degree `i` in `Y` and monic there, each over its
         denominator."""
@@ -519,175 +581,189 @@ class FunctionField:
         denominator = R.one
         for w in basis:
             for c in w.coefficients:
-                denominator = _lcm(denominator, _denominator(c, Kx, R), R)
-        rows = [[_as_polynomial(c * Kx.convert(denominator, R), Kx, R) for c in w.coefficients] for w in basis]
+                denominator = R.lcm(denominator, c.denom)
+        scale = Kx.from_ring(denominator)
+        rows = [[_as_polynomial(Kx.mul(c, scale), R) for c in w.coefficients] for w in basis]
         rows = _row_hermite(rows, R, self.K)
-        result: list[Element] = []
-        for row in rows:
-            # the pivot of the row, its coefficient of the highest power of
-            # Y, is a monic polynomial in x
-            result.append(Element(self, [Kx.convert(c, R) / Kx.convert(denominator, R) for c in row]))
-        result.sort(key=lambda w: max(i for i, c in enumerate(w.coefficients) if c != Kx.zero))
+        # the pivot of each row, its coefficient of the highest power of Y,
+        # is a monic polynomial in x
+        result = [Element(self, [Kx.new(c, denominator) if c else Kx.zero for c in row]) for row in rows]
+        result.sort(key=lambda w: max(i for i, c in enumerate(w.coefficients) if c.numer))
         return result
 
-    def local_basis_at_infinity(self) -> list[Element]:
+    def local_basis_at_infinity(self) -> list[Element[T]]:
         """A basis of the elements integral at infinity over the local
         ring at `x = \\infty`: the integral basis of the curve in `z =
         1/x`, with `Y = z^m y` integral (`m` the least integer with `\\deg
         a_i \\le m (n - i)`), written back in `x` and `Y`.
 
-        >>> from sympy import symbols
-        >>> from sympy_extras.polys.functionfields import FunctionField
+        >>> from sympy_extras.core import symbols
+        >>> from sympy_extras.polys.domains import QQ
+        >>> from sympy_extras.polys.functionfields import function_field
         >>> x, y = symbols('x y')
-        >>> [w.as_expr() for w in FunctionField(y**2 - x**3 - 1, x, y).local_basis_at_infinity()]
+        >>> [w.as_expr() for w in function_field(y**2 - x**3 - 1, x, y, QQ).local_basis_at_infinity()]
         [1, y/x**2]
         """
         if self._local_at_infinity is None:
-            x, y = self.x, self.y
-            z = Symbol('z')
             n = self.n
+            K = self.K
+            R = self.R
             Kx = self.Kx
-            low = list(reversed(self.F))
+            low = [c.numer for c in reversed(self.F)]  # a_0, ..., a_n: polynomials
             m = 0
             for i in range(n):
-                a = Kx.to_sympy(low[i])
-                if a != 0:
-                    degree = Poly(a, x).degree()
-                    m = max(m, -(-degree // (n - i)))
-            # G(z, Y) = sum a_i(1/z) z^(m (n - i)) Y^i
-            G = as_expr(Add(*[as_expr(cancel(Kx.to_sympy(low[i]).xreplace({x: 1 / z}) * z**(m * (n - i)))) * y**i
-                              for i in range(n + 1)]))
-            other = FunctionField(G, z, y)
-            result: list[Element] = []
+                if low[i]:
+                    m = max(m, -(-densebasic.dup_degree(low[i]) // (n - i)))
+            # G(z, Y) = sum a_i(1/z) z^(m (n - i)) Y^i, Y = z^m (a_n y)
+            G: list[list[T]] = []
+            for i in range(n, -1, -1):
+                reversed_coefficients = list(reversed(low[i])) + [K.zero] * (m * (n - i) + 1 - len(low[i]))
+                G.append(densebasic.dup_strip(reversed_coefficients, K))
+            other = FunctionField(G, self.x, self.y, K)
+            result: list[Element[T]] = []
             for w in other.integral_basis():
                 # Y_z^i = z^(m i) Y^i, z = 1/x
-                coefficients = [Kx.from_sympy(as_expr(cancel(other.Kx.to_sympy(c).xreplace({z: 1 / x}) * x**(-m * i))))
-                                for i, c in enumerate(w.coefficients)]
+                coefficients: list[FracElement[T]] = []
+                for i, c in enumerate(w.coefficients):
+                    if not c.numer:
+                        coefficients.append(Kx.zero)
+                        continue
+                    p, q = c.numer, c.denom
+                    exponent = densebasic.dup_degree(q) - densebasic.dup_degree(p) - m * i
+                    numerator = densebasic.dup_strip(list(reversed(p)), K)
+                    denominator = densebasic.dup_strip(list(reversed(q)), K)
+                    if exponent >= 0:
+                        numerator = R.mul(numerator, _monomial(exponent, K))
+                    else:
+                        denominator = R.mul(denominator, _monomial(-exponent, K))
+                    coefficients.append(Kx.new(numerator, denominator))
                 result.append(Element(self, coefficients))
             self._local_at_infinity = result
         return self._local_at_infinity
 
-    def pole_order_at_infinity(self, e: Element) -> int:
+    def pole_order_at_infinity(self, e: Element[T]) -> int:
         """The least `k` with `x^{-k} e` integral at infinity (negative
         for a zero at infinity)."""
         local = self.local_basis_at_infinity()
-        orders = [_degree_of_fraction(c, self.Kx) for c in self.coordinates(e, local)]
+        orders = [_degree_of_fraction(c) for c in self.coordinates(e, local)]
         finite = [k for k in orders if k is not None]
         if not finite:
             raise ValueError("the pole order of zero")
         return max(finite)
 
-    def normal_basis(self) -> list[Element]:
+    def normal_basis(self) -> list[Element[T]]:
         """An integral basis normal at infinity (Trager): `(x^{-k_i}
         w_i)`, `k_i` the pole orders at infinity, is a local basis at
         infinity, so that `\\sum a_i w_i` with polynomial `a_i` has pole
         order `\\max(\\deg a_i + k_i)` there.
 
-        >>> from sympy import symbols
-        >>> from sympy_extras.polys.functionfields import FunctionField
+        >>> from sympy_extras.core import symbols
+        >>> from sympy_extras.polys.domains import QQ
+        >>> from sympy_extras.polys.functionfields import function_field
         >>> x, y = symbols('x y')
-        >>> E = FunctionField(y**2 - x**3 - 1, x, y)
+        >>> E = function_field(y**2 - x**3 - 1, x, y, QQ)
         >>> [w.as_expr() for w in E.normal_basis()], E.pole_orders_at_infinity(E.normal_basis())
         ([1, y], [0, 2])
         """
         if self._normal is None:
             basis = list(self.integral_basis())
             local = self.local_basis_at_infinity()
+            K = self.K
             Kx = self.Kx
             n = self.n
-            x = self.x
             while True:
                 orders = [self.pole_order_at_infinity(w) for w in basis]
                 # the leading forms: x^(-k_i) w_i in the local basis, at infinity
-                leading: list[list[DomainElement]] = []
-                for w, k in zip(basis, orders):
-                    row: list[DomainElement] = []
-                    for c in self.coordinates(w, local):
-                        row.append(_value_at_infinity(c, k, Kx, self.K))
-                    leading.append(row)
-                matrix = DomainMatrix(leading, (n, n), self.K)
-                kernel = matrix.transpose().nullspace()
-                if kernel.shape[0] == 0:
+                leading = [[_value_at_infinity(c, k, K) for c in self.coordinates(w, local)]
+                           for w, k in zip(basis, orders)]
+                transposed = [[leading[i][j] for i in range(n)] for j in range(n)]
+                kernel = K.nullspace(transposed, n)
+                if not kernel:
                     break
-                vector = kernel.to_list()[0]
-                k = max(orders[i] for i in range(n) if vector[i] != self.K.zero)
-                replaced = max(i for i in range(n) if vector[i] != self.K.zero and orders[i] == k)
+                vector = kernel[0]
+                k = max(orders[i] for i in range(n) if not K.is_zero(vector[i]))
+                replaced = max(i for i in range(n) if not K.is_zero(vector[i]) and orders[i] == k)
                 combination = self.zero()
                 for i in range(n):
-                    if vector[i] != self.K.zero:
+                    if not K.is_zero(vector[i]):
                         combination = combination + basis[i].scaled(
-                            Kx.convert(vector[i], self.K) * Kx.from_sympy(x**(k - orders[i])))
+                            Kx.from_ring(_monomial_times(vector[i], k - orders[i], K)))
                 basis[replaced] = combination
             self._normal = basis
         return self._normal
 
-    def pole_orders_at_infinity(self, basis: list[Element]) -> list[int]:
+    def pole_orders_at_infinity(self, basis: list[Element[T]]) -> list[int]:
         return [self.pole_order_at_infinity(w) for w in basis]
 
     def __repr__(self) -> str:
         return f"FunctionField({self.original}, {self.x}, {self.y})"
 
 
+def _monomial(k: int, K: Domain[T]) -> list[T]:
+    """`x^k`."""
+    return [K.one] + [K.zero] * k
+
+
+def _monomial_times(c: T, k: int, K: Domain[T]) -> list[T]:
+    """`c x^k` as a dense polynomial."""
+    return [c] + [K.zero] * k
+
+
+def parameters_of(F: Expr, x: Symbol, y: Symbol) -> list[Symbol]:
+    """The symbols of ``F`` other than ``x`` and ``y``, sorted by name."""
+    return sorted((s for s in F.free_symbols if isinstance(s, Symbol) and s not in (x, y)), key=lambda s: s.name)
+
+
+def function_field(F: Expr, x: Symbol, y: Symbol, K: Domain[T]) -> FunctionField[T]:
+    """The function field of the curve given by the polynomial ``F`` in
+    ``x`` and ``y`` with coefficients in ``K`` (``ValueError`` when the
+    coefficients are not polynomials in `x` over ``K``)."""
+    terms = dict_from_expr(F, [y.name, x.name], K)
+    n = max((i for i, _ in terms), default=0)
+    if n < 1:
+        raise ValueError(f"{F} has no root {y}")
+    dense: list[dict[int, T]] = [{} for _ in range(n + 1)]
+    for (i, k), c in terms.items():
+        dense[n - i][k] = c
+    coefficients = [densebasic.dup_from_dict(d, K) for d in dense]
+    return FunctionField(coefficients, x, y, K)
+
+
 # Polynomial matrices over K[x]
 
-def _degree(p: DomainElement) -> int:
-    """The degree of a univariate polynomial of a polynomial ring."""
-    if p == 0:
-        return -1
-    return int(p.degree())
+def _is_polynomial(c: FracElement[T]) -> bool:
+    return densebasic.dup_degree(c.denom) <= 0
 
 
-def _is_polynomial(c: DomainElement, Kx: FractionField) -> bool:
-    return c.denom == Kx.field.ring.one or _degree(c.denom) == 0
-
-
-def _as_polynomial(c: DomainElement, Kx: FractionField, R: PolynomialRing) -> DomainElement:
+def _as_polynomial(c: FracElement[T], R: PolynomialRing[T]) -> list[T]:
     """An element of `K(x)` which is a polynomial, as an element of `K[x]`."""
-    if _degree(c.denom) > 0:
-        raise ValueError(f"{Kx.to_sympy(c)} is not a polynomial")
-    if c.denom == Kx.field.ring.one:
-        return _same_ring(c.numer, R)
-    return R.from_sympy(as_expr(Kx.to_sympy(c)))
+    if densebasic.dup_degree(c.denom) > 0:
+        raise ValueError(f"{R.to_expr(c.numer)}/({R.to_expr(c.denom)}) is not a polynomial")
+    if R.is_one(c.denom):
+        return c.numer
+    return R.mul(c.numer, [R.ground.invert(c.denom[0])])
 
 
-def _same_ring(p: DomainElement, R: PolynomialRing) -> DomainElement:
-    """A polynomial of the ring underlying `K(x)` as an element of `K[x]`
-    (the same ring object: the numerators and denominators of the
-    fractions are its elements)."""
-    if p.ring == R.ring:
-        return R.ring.from_dict(p.to_dict())
-    return R.from_sympy(as_expr(p.as_expr()))
-
-
-def _denominator(c: DomainElement, Kx: FractionField, R: PolynomialRing) -> DomainElement:
-    return _same_ring(c.denom, R)
-
-
-def _degree_of_fraction(c: DomainElement, Kx: FractionField) -> Optional[int]:
+def _degree_of_fraction(c: FracElement[T]) -> Optional[int]:
     """`\\deg` numerator `- \\deg` denominator, ``None`` for zero."""
-    if c == Kx.zero:
+    if not c.numer:
         return None
-    return _degree(c.numer) - _degree(c.denom)
+    return densebasic.dup_degree(c.numer) - densebasic.dup_degree(c.denom)
 
 
-def _value_at_infinity(c: DomainElement, k: int, Kx: FractionField, K: Domain) -> DomainElement:
+def _value_at_infinity(c: FracElement[T], k: int, K: Domain[T]) -> T:
     """The value at infinity of `x^{-k} c` for `c \\in K(x)` with `\\deg c
     \\le k`: the ratio of the leading coefficients when `\\deg c = k`,
     zero below."""
-    if c == Kx.zero:
+    if not c.numer:
         return K.zero
-    if _degree(c.numer) - _degree(c.denom) < k:
+    if densebasic.dup_degree(c.numer) - densebasic.dup_degree(c.denom) < k:
         return K.zero
-    ground = Kx.field.ring.domain
-    return K.convert(c.numer.LC, ground) / K.convert(c.denom.LC, ground)
+    return K.quo(c.numer[0], c.denom[0])
 
 
-def _lcm(a: DomainElement, b: DomainElement, R: PolynomialRing) -> DomainElement:
-    return R.lcm(a, b)
-
-
-def _column_echelon(M: list[list[DomainElement]], R: PolynomialRing, K: Domain
-                    ) -> tuple[list[list[DomainElement]], list[list[DomainElement]], list[int]]:
+def _column_echelon(M: Matrix[list[T]], R: PolynomialRing[T], K: Domain[T]
+                    ) -> tuple[Matrix[list[T]], Matrix[list[T]], list[int]]:
     """``(H, U, pivots)`` with ``M U = H`` in column echelon form, ``U``
     unimodular over `K[x]` (the Euclidean algorithm on the entries of a
     row), ``pivots`` the columns of ``H`` which are not zero, one per
@@ -703,44 +779,46 @@ def _column_echelon(M: list[list[DomainElement]], R: PolynomialRing, K: Domain
             break
         # eliminate the entries of row i in the columns >= current, into column `current`
         for j in range(current + 1, columns):
-            while H[i][j] != R.zero:
-                if H[i][current] == R.zero:
+            while H[i][j]:
+                if not H[i][current]:
                     _swap_columns(H, U, current, j)
                     continue
-                q, r = H[i][j].div(H[i][current])
-                _add_column(H, U, j, current, -q)
-                if H[i][j] != R.zero:
+                q = R.quo(H[i][j], H[i][current])
+                _add_column(H, U, j, current, R.neg(q), R)
+                if H[i][j]:
                     _swap_columns(H, U, current, j)
-        if H[i][current] != R.zero:
+        if H[i][current]:
             # monic pivot
-            lc = H[i][current].LC
-            if lc != K.one:
-                inverse = R.convert(K.quo(K.one, lc), K)
+            lc = H[i][current][0]
+            if not K.is_one(lc):
+                inverse = [K.invert(lc)]
                 for r in range(rows):
-                    H[r][current] = H[r][current] * inverse
+                    H[r][current] = R.mul(H[r][current], inverse)
                 for r in range(columns):
-                    U[r][current] = U[r][current] * inverse
+                    U[r][current] = R.mul(U[r][current], inverse)
             pivots.append(current)
             current += 1
     return H, U, pivots
 
 
-def _swap_columns(H: list[list[DomainElement]], U: list[list[DomainElement]], a: int, b: int) -> None:
+def _swap_columns(H: Matrix[list[T]], U: Matrix[list[T]], a: int, b: int) -> None:
     for row in H:
         row[a], row[b] = row[b], row[a]
     for row in U:
         row[a], row[b] = row[b], row[a]
 
 
-def _add_column(H: list[list[DomainElement]], U: list[list[DomainElement]], target: int, source: int,
-                factor: DomainElement) -> None:
+def _add_column(H: Matrix[list[T]], U: Matrix[list[T]], target: int, source: int, factor: list[T],
+                R: PolynomialRing[T]) -> None:
     for row in H:
-        row[target] = row[target] + factor * row[source]
+        if row[source]:
+            row[target] = R.add(row[target], R.mul(factor, row[source]))
     for row in U:
-        row[target] = row[target] + factor * row[source]
+        if row[source]:
+            row[target] = R.add(row[target], R.mul(factor, row[source]))
 
 
-def _row_hermite(rows: list[list[DomainElement]], R: PolynomialRing, K: Domain) -> list[list[DomainElement]]:
+def _row_hermite(rows: Matrix[list[T]], R: PolynomialRing[T], K: Domain[T]) -> Matrix[list[T]]:
     """The rows of a square matrix over `K[x]` spanning the same
     `K[x]`-module, in echelon form (row `i` starting at column `i`, its
     pivot monic, the entries above a pivot reduced)."""
@@ -749,77 +827,185 @@ def _row_hermite(rows: list[list[DomainElement]], R: PolynomialRing, K: Domain) 
     result = [[H[r][c] for r in range(len(H))] for c in pivots]
     # reduce the entries above each pivot
     for i, row in enumerate(result):
-        pivot_column = min(c for c, v in enumerate(row) if v != R.zero)
+        pivot_column = min(c for c, v in enumerate(row) if v)
         for j in range(i):
             other = result[j]
-            if other[pivot_column] != R.zero:
-                q, _ = other[pivot_column].div(row[pivot_column])
-                result[j] = [a - q * b for a, b in zip(other, row)]
+            if other[pivot_column]:
+                q = R.quo(other[pivot_column], row[pivot_column])
+                result[j] = [R.sub(a, R.mul(q, b)) for a, b in zip(other, row)]
     return result
 
 
-def _determinant(M: list[list[DomainElement]], R: PolynomialRing) -> DomainElement:
+def _determinant(M: Matrix[list[T]], R: PolynomialRing[T]) -> list[T]:
+    """The determinant over `K[x]`, fraction-free (Bareiss)."""
     n = len(M)
     if n == 0:
         return R.one
-    matrix = DomainMatrix([list(row) for row in M], (n, n), R)
-    return matrix.det()
+    A = [list(row) for row in M]
+    sign = 1
+    previous = R.one
+    for k in range(n - 1):
+        if not A[k][k]:
+            swap = next((i for i in range(k + 1, n) if A[i][k]), None)
+            if swap is None:
+                return R.zero
+            A[k], A[swap] = A[swap], A[k]
+            sign = -sign
+        for i in range(k + 1, n):
+            for j in range(k + 1, n):
+                A[i][j] = R.exquo(R.sub(R.mul(A[i][j], A[k][k]), R.mul(A[i][k], A[k][j])), previous)
+            A[i][k] = R.zero
+        previous = A[k][k]
+    return A[n - 1][n - 1] if sign > 0 else R.neg(A[n - 1][n - 1])
 
 
-def _adjugate(M: list[list[DomainElement]], R: PolynomialRing) -> list[list[DomainElement]]:
-    """The adjugate matrix, `\\operatorname{adj}(M) = \\det(M) M^{-1}`."""
+def _determinant_over_field(M: Matrix[FracElement[T]], F: FractionField[T]) -> FracElement[T]:
+    """The determinant over a field (Gaussian elimination)."""
     n = len(M)
-    matrix = DomainMatrix([list(row) for row in M], (n, n), R)
-    adj = matrix.adjugate()
-    return [list(row) for row in adj.to_list()]
+    A = [list(row) for row in M]
+    result = F.one
+    for k in range(n):
+        pivot = next((i for i in range(k, n) if A[i][k].numer), None)
+        if pivot is None:
+            return F.zero
+        if pivot != k:
+            A[k], A[pivot] = A[pivot], A[k]
+            result = F.neg(result)
+        result = F.mul(result, A[k][k])
+        inverse = F.invert(A[k][k])
+        for i in range(k + 1, n):
+            if A[i][k].numer:
+                factor = F.mul(A[i][k], inverse)
+                for j in range(k + 1, n):
+                    if A[k][j].numer:
+                        A[i][j] = F.sub(A[i][j], F.mul(factor, A[k][j]))
+    return result
 
 
-def _matrix_product(A: list[list[DomainElement]], B: list[list[DomainElement]], R: PolynomialRing
-                    ) -> list[list[DomainElement]]:
+def _inverse(M: Matrix[FracElement[T]], F: FractionField[T]) -> Matrix[FracElement[T]]:
+    """The inverse of a square matrix over a field (Gauss–Jordan);
+    ``ZeroDivisionError`` when it is singular."""
+    n = len(M)
+    A = [list(row) + [F.one if i == j else F.zero for j in range(n)] for i, row in enumerate(M)]
+    for k in range(n):
+        pivot = next((i for i in range(k, n) if A[i][k].numer), None)
+        if pivot is None:
+            raise ZeroDivisionError("the matrix is singular")
+        A[k], A[pivot] = A[pivot], A[k]
+        inverse = F.invert(A[k][k])
+        A[k] = [F.mul(v, inverse) for v in A[k]]
+        for i in range(n):
+            if i != k and A[i][k].numer:
+                factor = A[i][k]
+                A[i] = [F.sub(a, F.mul(factor, b)) if b.numer else a for a, b in zip(A[i], A[k])]
+    return [row[n:] for row in A]
+
+
+def _charpoly(M: Matrix[FracElement[T]], F: FractionField[T]) -> list[FracElement[T]]:
+    """The characteristic polynomial `\\det(t I - M)`, highest degree
+    first (Berkowitz's algorithm, division-free)."""
+    n = len(M)
+    # the coefficients of the characteristic polynomial of the leading
+    # principal submatrices, by Berkowitz's recurrence
+    poly: list[FracElement[T]] = [F.one]
+    for k in range(n):
+        # A = M[:k][:k], R = M[k][:k], C = M[:k][k], a = M[k][k]
+        a = M[k][k]
+        R = M[k][:k]
+        C = [M[i][k] for i in range(k)]
+        # the Toeplitz column: 1, -a, -R C, -R A C, -R A^2 C, ...
+        column: list[FracElement[T]] = [F.one, F.neg(a)]
+        vector = C
+        for _ in range(k):
+            column.append(F.neg(_dot(R, vector, F)))
+            vector = [_dot(M[i][:k], vector, F) for i in range(k)]
+        # new = T @ poly, T lower triangular Toeplitz of `column`, (k+2) x (k+1)
+        new: list[FracElement[T]] = []
+        for i in range(k + 2):
+            total = F.zero
+            for j in range(min(i, k) + 1):
+                if i - j < len(column):
+                    total = F.add(total, F.mul(column[i - j], poly[j]))
+            new.append(total)
+        poly = new
+    return poly
+
+
+def _dot(a: list[FracElement[T]], b: list[FracElement[T]], F: FractionField[T]) -> FracElement[T]:
+    total = F.zero
+    for u, v in zip(a, b):
+        if u.numer and v.numer:
+            total = F.add(total, F.mul(u, v))
+    return total
+
+
+def _adjugate(M: Matrix[list[T]], R: PolynomialRing[T], Kx: FractionField[T]) -> Matrix[list[T]]:
+    """The adjugate matrix, `\\operatorname{adj}(M) = \\det(M) M^{-1}`
+    (the cofactors when `M` is singular)."""
+    n = len(M)
+    det = _determinant(M, R)
+    if det:
+        inverse = _inverse([[Kx.from_ring(c) for c in row] for row in M], Kx)
+        scale = Kx.from_ring(det)
+        return [[_as_polynomial(Kx.mul(scale, c), R) for c in row] for row in inverse]
+    adjugate: Matrix[list[T]] = [[R.zero] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(n):
+            minor = [[M[r][c] for c in range(n) if c != i] for r in range(n) if r != j]
+            cofactor = _determinant(minor, R)
+            adjugate[i][j] = cofactor if (i + j) % 2 == 0 else R.neg(cofactor)
+    return adjugate
+
+
+def _matrix_product(A: Matrix[list[T]], B: Matrix[list[T]], R: PolynomialRing[T]) -> Matrix[list[T]]:
     n, m, p = len(A), len(B), len(B[0])
     result = [[R.zero] * p for _ in range(n)]
     for i in range(n):
         for k in range(m):
             a = A[i][k]
-            if a == R.zero:
+            if not a:
                 continue
             for j in range(p):
-                result[i][j] = result[i][j] + a * B[k][j]
+                if B[k][j]:
+                    result[i][j] = R.add(result[i][j], R.mul(a, B[k][j]))
     return result
 
 
-def _combination(vector: list[DomainElement], basis: list[Element], R: PolynomialRing, Kx: FractionField) -> Element:
+def _combination(vector: list[list[T]], basis: list[Element[T]], Kx: FractionField[T]) -> Element[T]:
     total = basis[0].field.zero()
     for c, w in zip(vector, basis):
-        if c != R.zero:
-            total = total + w.scaled(Kx.convert(c, R))
+        if c:
+            total = total + w.scaled(Kx.from_ring(c))
     return total
 
 
-def _combination_fraction(vector: list[DomainElement], basis: list[Element], Kx: FractionField) -> Element:
+def _combination_fraction(vector: list[FracElement[T]], basis: list[Element[T]], Kx: FractionField[T]) -> Element[T]:
     total = basis[0].field.zero()
     for c, w in zip(vector, basis):
-        if c != Kx.zero:
+        if c.numer:
             total = total + w.scaled(c)
     return total
 
 
-def integral_basis(F: ExprLike, x: Symbol, y: Symbol) -> list[Expr]:
+def integral_basis(F: Expr, x: Symbol, y: Symbol) -> list[Expr]:
     """An integral basis of the function field of the curve `F(x, y) = 0`
     (`F` squarefree in `y`): `n = \\deg_y F` elements `p_i(x, y)/d_i(x)`,
     `p_i` monic of degree `i` in the integral generator `a_n y`, which
     generate the integral closure of `K[x]` in `K(x)[y]/(F)` as a
-    `K[x]`-module; Trager's algorithm.
+    `K[x]`-module (`K` the rationals, or the rational functions of the
+    other symbols of ``F``); Trager's algorithm.
 
-    >>> from sympy import symbols
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.polys.functionfields import integral_basis
-    >>> x, y = symbols('x y')
+    >>> x, y, a = symbols('x y a')
     >>> integral_basis(y**3 - x**2*(x + 1), x, y)
     [1, y, y**2/x]
     >>> integral_basis(y**2 - x**3, x, y)
     [1, y/x]
     >>> integral_basis(y**4 + (x**2 + x)*y - x**2, x, y)
     [1, y, y**2, y**3/x]
+    >>> integral_basis(y**2 - (x - a)**2*(x - 1), x, y)
+    [1, y/(-a + x)]
 
     A curve which is not monic in `y`: the basis is written in `y` with
     the leading coefficient absorbed in the generator (`x y` for `x y^2 =
@@ -828,5 +1014,11 @@ def integral_basis(F: ExprLike, x: Symbol, y: Symbol) -> list[Expr]:
     >>> integral_basis(x*y**2 - 1, x, y)
     [1, x*y]
     """
-    E = FunctionField(F, x, y)
+    parameters = parameters_of(F, x, y)
+    if parameters:
+        K: SparseFractionField[Fraction] = SparseFractionField(RationalPolynomialRing([s.name for s in parameters]))
+        E_parametric: FunctionField[SparseFracElement[Fraction]] = function_field(F, x, y, K)
+        return [w.as_expr() for w in E_parametric.integral_basis()]
+    E: FunctionField[Fraction] = function_field(F, x, y, QQ)
     return [w.as_expr() for w in E.integral_basis()]
+
