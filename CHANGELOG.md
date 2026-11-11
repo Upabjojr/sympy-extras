@@ -539,6 +539,32 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The Darboux polynomials and the Prelle–Singer procedure are native
+  (**breaking**): `sympy_extras.solvers.darboux` (`darboux_polynomials`,
+  `exponential_factors`, `darboux_integrating_factor`,
+  `darboux_first_integral`, `prelle_singer`, `vector_field`,
+  `DarbouxPolynomial`, `ExponentialFactor`, `DarbouxIntegral`) takes and
+  returns the expressions, functions and symbols of the core and imports
+  no SymPy: the field is a typed sparse polynomial over `QQ`, a number
+  field `QQ(alpha)` (`AlgebraicField`, of a primitive element of the
+  radicals, `I` and the `extension` among the coefficients) or `QQ(a, b,
+  ...)` (`SparseFractionField`, with the transcendental constants such as
+  `pi` as parameters, as SymPy's `Poly` takes them); the factorisations are Wang's (the parameters
+  as further variables) and Trager's, the leaf systems go to the native
+  Gröbner bases and FGLM, the linear algebra to `sparse_echelon`, and the
+  explicit solution to the native `solveset_rational` and `simplify`.
+  The quadratures of an integrating factor still go through SymPy's
+  `integrate` (`kovacic_sympy.integrate_of_core`). The old API on SymPy
+  objects is in the new face `sympy_extras.solvers.darboux_sympy` (the
+  same results on the tests, the doctests and 275 calls on 63 fields,
+  three to four times faster); `solvers.first_order`, the fuzz driver and the
+  documentation use it. Fixed on the way: Kamke 1.23 `y' = b - a y**2`
+  made `darboux_polynomials` and `darboux_integrating_factor` raise
+  `ValueError("0**0")` from SymPy's `PolyElement.evaluate` over `ZZ(a,
+  b)` (sympy-extras#25); they give `y**2 - b/a` and `1/(y**2 - b/a)`.
+  Coefficients with both parameters and algebraic numbers are refused
+  with a `ValueError`, as before.
+
 - The Lie point symmetries and the similarity reductions are native
   (**breaking**): `sympy_extras.solvers.lie` (`JetSpace`, `Symmetry`,
   `symmetries`, `check_symmetry`, `infinitesimal_condition`,

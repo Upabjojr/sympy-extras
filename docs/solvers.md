@@ -744,10 +744,13 @@ found from their highest degree part (a product of factors of `x P_d -
 y Q_d`, or any form when that vanishes), the rest by linear propagation
 and a parametric elimination in the few cofactor coefficients left.
 SymPy's `dsolve` has nothing of the kind; `dsolve_first_order` tries it
-after the Riccati, Abel and Chini classes.
+after the Riccati, Abel and Chini classes. The module works on the core
+(the polynomials over `QQ`, number fields and fields of parameters are the
+typed ones, only the quadratures go through SymPy's `integrate`);
+`sympy_extras.solvers.darboux_sympy` is its face on SymPy objects, used here.
 
 ```python
->>> from sympy_extras.solvers.darboux import (darboux_polynomials, darboux_integrating_factor,
+>>> from sympy_extras.solvers.darboux_sympy import (darboux_polynomials, darboux_integrating_factor,
 ...     darboux_first_integral, prelle_singer)
 >>> from sympy.abc import x
 >>> from sympy import Symbol

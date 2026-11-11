@@ -687,7 +687,7 @@ def darboux_case(rng: random.Random) -> tuple[str, Check]:
     label = 'darboux_first_integral(%s, %s) for the level curves of %s' % (P, Q, integral)
 
     def check() -> Optional[str]:
-        from sympy_extras.solvers.darboux import darboux_first_integral
+        from sympy_extras.solvers.darboux_sympy import darboux_first_integral
         found = attempt(lambda: darboux_first_integral(P, Q, x, y), TIMEOUT)
         if found is None:
             return 'no first integral found'

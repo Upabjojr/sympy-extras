@@ -1199,3 +1199,44 @@ def test_native_linear_ode_cluster_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_LINEAR_ODE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_DARBOUX = r'''
+import sys
+from sympy_extras.core import Function, I, Integer, Symbol, sqrt
+from sympy_extras.solvers.darboux import (darboux_first_integral, darboux_integrating_factor, darboux_polynomials,
+    exponential_factors, prelle_singer, vector_field)
+assert 'sympy' not in sys.modules
+x, Y, a, b = Symbol('x'), Symbol('y'), Symbol('a'), Symbol('b')
+y = Function('y')(x)
+assert str(darboux_polynomials(Y*(x - 1), x*(1 - Y), x, Y)) == '[DarbouxPolynomial(y, x - 1), DarbouxPolynomial(x, 1 - y)]'
+assert str(darboux_polynomials(x + Y, x - Y, x, Y, degree=1, extension=I)) == \
+    '[DarbouxPolynomial(x - I*y, 1 - I), DarbouxPolynomial(x + I*y, 1 + I)]'
+assert str(darboux_polynomials(sqrt(2)*Y, x, x, Y, degree=1)) == '[DarbouxPolynomial(y, sqrt(2)), DarbouxPolynomial(x, 1)]'
+assert str(darboux_polynomials(b - a*Y**2, 1, x, Y)) == '[DarbouxPolynomial(y**2 - b/a, -2*a*y)]'
+assert str(exponential_factors(x*Y + 1, 1, x, Y, degree=1)) == '[ExponentialFactor(x, 1, 1), ExponentialFactor(x**2/2, 1, x)]'
+assert str(darboux_integrating_factor(x*Y + 1, 1, x, Y, degree=1)) == 'exp(-x**2/2)'
+assert str(darboux_first_integral(Y*(x - 1), x*(1 - Y), x, Y)) == '-x - y + log(x) + log(y)'
+assert str(darboux_first_integral(x*Y**2 - Y, x**2*Y - x, x, Y, degree=2)) == 'x/y'
+assert str(darboux_first_integral(x + Y, x - Y, x, Y, degree=1)) == '(x + I*y)/(x - I*y)**I'
+assert darboux_first_integral(Y**2 + x, 1, x, Y, degree=2) is None
+assert str(vector_field((x - y)*y.diff(x) - x - y, y)) == '(x + y, x - y, x, y)'
+assert str(prelle_singer(x*(1 - y)*y.diff(x) - y*(x - 1), y)) == 'Eq(-x - y(x) + log(x) + log(y(x)), C1)'
+assert str(prelle_singer(y.diff(x) - (x*y**2 - y)/(x**2*y - x), y)) == 'Eq(y(x), x/C1)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_darboux_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.darboux` does not load SymPy,
+    nor do the Darboux polynomials over the rationals, number fields and
+    fields of parameters, the exponential factors, the integrating
+    factors, the first integrals from a vanishing combination of the
+    cofactors (rational or logarithmic, the search repeated over the
+    field of the conjugate lines), the parsing of an equation and an
+    implicit or explicit solution from such a first integral (SymPy's
+    ``integrate``, for the quadratures of an integrating factor, goes
+    through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DARBOUX], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
