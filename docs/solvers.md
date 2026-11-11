@@ -783,7 +783,7 @@ handles first order linear equations only.
 
 ```python
 >>> from sympy import Eq, Function, symbols
->>> from sympy_extras.solvers.charpit import complete_integral
+>>> from sympy_extras.solvers.charpit_sympy import complete_integral
 >>> x, y = symbols('x y')
 >>> u = Function('u')(x, y)
 >>> complete_integral(u.diff(x)*u.diff(y) - 1, u)
@@ -885,7 +885,7 @@ to the index of the equation.
 
 ```python
 >>> from sympy import Function, Matrix, Eq, sin, symbols
->>> from sympy_extras.solvers.dae import dae_matrices, dsolve_dae, dae_index
+>>> from sympy_extras.solvers.dae_sympy import dae_matrices, dsolve_dae, dae_index
 >>> x = symbols('x')
 >>> y1, y2 = Function('y1')(x), Function('y2')(x)
 >>> A, B, f, _ = dae_matrices([Eq(y1.diff(x), y2), Eq(y1, sin(x))], [y1, y2])

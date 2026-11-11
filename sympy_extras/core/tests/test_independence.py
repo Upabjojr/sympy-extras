@@ -831,3 +831,54 @@ def test_native_thue_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_THUE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_CHARPIT_DAE = r'''
+import sys
+from sympy_extras.core import Eq, Function, symbols
+from sympy_extras.functions import cos, sin
+from sympy_extras.matrices.dense import ExprMatrix
+from sympy_extras.solvers.charpit import check_complete_integral, complete_integral
+from sympy_extras.solvers.dae import (check_dae, core_nilpotent_decomposition, dae_index, dae_matrices, dsolve_dae,
+    matrix_exponential)
+assert 'sympy' not in sys.modules
+x, y, a, b = symbols('x y a b')
+u = Function('u')(x, y)
+p, q = u.diff(x), u.diff(y)
+for equation in (p*q - 1, Eq(u, p*x + q*y + p*q), p**2 + q**2 - 1, p**2 - q, p*x - q*y, p*q - x):
+    solution = complete_integral(equation, u)
+    assert solution is not None and check_complete_integral(equation, u, solution), (equation, solution)
+assert str(complete_integral(p*q - 1, u)) == 'Eq(u(x, y), a*x + b + y/a)'
+assert complete_integral(p*q - u*x*y, u) is None
+assert not check_complete_integral(p*q - 1, u, Eq(u, a*x + y + b))
+E = ExprMatrix.from_rows
+T, C, N, k = core_nilpotent_decomposition(E([[2, 0, 0], [0, 0, 1], [0, 0, 0]]))
+assert (C, N, k) == (E([[2]]), E([[0, 1], [0, 0]]), 2)
+assert dae_index(E([[1, 0], [0, 0]]), E([[0, 1], [1, 0]])) == 2
+A, B, f = E([[1, 0], [0, 0]]), E([[0, -1], [1, 0]]), ExprMatrix.column([0, sin(x)])
+result = dsolve_dae(A, B, f, x)
+assert result.solution == ExprMatrix.column([sin(x), cos(x)]) and result.index == 2
+oscillator = dsolve_dae(ExprMatrix.eye(2), B, None, x)
+assert len(oscillator.constants) == 2 and check_dae(ExprMatrix.eye(2), B, None, oscillator.solution, x)
+jordan = dsolve_dae(ExprMatrix.eye(2), E([[1, 1], [0, 1]]), None, x)
+assert check_dae(ExprMatrix.eye(2), E([[1, 1], [0, 1]]), None, jordan.solution, x)
+y1, y2 = Function('y1')(x), Function('y2')(x)
+assert dae_matrices([Eq(y1.diff(x), y2), Eq(y1, sin(x))], [y1, y2])[:3] == (A, B, f)
+assert str(matrix_exponential(E([[1, 1], [0, 1]]), x)) == 'ExprMatrix([[exp(x), x*exp(x)], [0, exp(x)]])'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_charpit_and_dae_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.charpit` and
+    :mod:`sympy_extras.solvers.dae` does not load SymPy, nor do the
+    complete integrals whose equations are polynomial in the unknowns and
+    whose integrands are sums of powers (Charpit's standard forms, Clairaut,
+    the separable and first integral cases, the checks), the
+    core-nilpotent decomposition, the index, the solutions of
+    differential-algebraic systems whose regular part needs no integral
+    (Putzer's matrix exponential with complex and repeated eigenvalues,
+    the nilpotent part) and the extraction of the matrices."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CHARPIT_DAE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

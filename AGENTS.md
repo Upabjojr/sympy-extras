@@ -266,6 +266,13 @@ sympy_extras/
         thue_equation.py     thue, ThueEquation, units_of_order, elements_of_norm: Thue equations F(x, y) = m by
                              Baker's bound and de Weger's LLL reduction (native; mpmath for the numerics)
         thue_equation_sympy.py the SymPy face of thue_equation (thue on SymPy forms)
+        charpit.py           complete_integral, check_complete_integral: complete integrals of first order PDEs by
+                             Charpit's method (native; SymPy's solve and integrate through charpit_sympy)
+        charpit_sympy.py     the SymPy face of charpit, and solve_of_core, antiderivative_of_core
+        dae.py               dsolve_dae, core_nilpotent_decomposition, dae_index, dae_matrices, check_dae,
+                             matrix_exponential (Putzer): linear DAEs with constant coefficients on ExprMatrix
+                             (native; SymPy's integrate of the particular solution through dae_sympy)
+        dae_sympy.py         the SymPy face of dae (SymPy matrices), and integral_of_core
         tests/
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native; the sample
