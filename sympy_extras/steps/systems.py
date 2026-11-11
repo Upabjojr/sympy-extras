@@ -2,7 +2,8 @@ r"""Systems of equations step by step: substitution and elimination, as a
 tree of rules.
 
 :func:`system_steps` solves a system of equations in several unknowns
-over the real numbers the way it is done by hand, on the engine of
+over the complex numbers (the default) or the real numbers
+(``domain=Reals``) the way it is done by hand, on the engine of
 :mod:`sympy_extras.steps.core` (generator rules which yield their
 subproblems and return rule dataclasses). A problem is a tuple of
 equations with its unknowns; the subproblems are smaller systems:
@@ -77,7 +78,8 @@ from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import expand
 from sympy_extras.core.numbers import Integer
 from sympy_extras.core.symbol import Symbol
-from sympy_extras.sets.sets import EmptySetClass, FiniteSet
+from sympy_extras.sets.fancysets import Complexes
+from sympy_extras.sets.sets import EmptySetClass, FiniteSet, Reals, Set
 
 from .core import AlternativeStep, Context, Step, StepSolver, atomic
 from .equations import EquationStep, solve_steps
@@ -95,6 +97,7 @@ class SystemProblem:
 
     equations: tuple[_Equation, ...]
     variables: tuple[Symbol, ...]
+    domain: Set = Complexes
 
 
 @dataclass(frozen=True)
@@ -259,14 +262,17 @@ def _completed(variables: Sequence[Symbol], remaining: Sequence[Symbol], partial
     return tuple(values[v] for v in variables)
 
 
-def _satisfies(equations: Sequence[_Equation], variables: Sequence[Symbol], solution: _Solution) -> Optional[bool]:
+def _satisfies(equations: Sequence[_Equation], variables: Sequence[Symbol], solution: _Solution, real: bool
+               ) -> Optional[bool]:
     """Whether the values satisfy every equation, when that is decided."""
     undecided = False
     for lhs, rhs in equations:
         left, right = lhs, rhs
         for symbol, value in zip(variables, solution):
             left, right = left.subs(symbol, value), right.subs(symbol, value)
-        if left.is_finite is False or right.is_finite is False or left.is_real is False or right.is_real is False:
+        if left.is_finite is False or right.is_finite is False:
+            return False
+        if real and (left.is_real is False or right.is_real is False):
             return False
         difference = _normal(left - right)
         if difference == 0:
@@ -307,7 +313,7 @@ def _linear_coefficient(equation: _Equation, variable: Symbol) -> Optional[Expr]
 def _trivial(problem: SystemProblem) -> Optional[SystemStep]:
     """No unknown occurs any more (2 = 3 after a substitution: no
     solution, whatever unknowns are left)."""
-    holds = _satisfies(problem.equations, (), ())
+    holds = _satisfies(problem.equations, (), (), problem.domain is Reals)
     if holds is True:
         # with unknowns left every value of them is a solution: infinitely many, not solved here
         return None if problem.variables else ConsistentRule(problem.equations, problem.variables)
@@ -318,7 +324,7 @@ def _trivial(problem: SystemProblem) -> Optional[SystemStep]:
 
 def _single(problem: SystemProblem) -> Optional[SystemStep]:
     (lhs, rhs), = problem.equations
-    step = solve_steps(lhs, rhs, problem.variables[0])
+    step = solve_steps(lhs, rhs, problem.variables[0], problem.domain)
     if step.contains_dont_know():
         return None
     found = step.solutions()
@@ -332,7 +338,7 @@ def _substitution(index: int, variable: Symbol) -> _Rule:
         lhs, rhs = problem.equations[index]
         if not (lhs.has(variable) or rhs.has(variable)):
             return None
-        isolation = solve_steps(lhs, rhs, variable)
+        isolation = solve_steps(lhs, rhs, variable, problem.domain)
         if isolation.contains_dont_know():
             return None
         found = isolation.solutions()
@@ -348,7 +354,7 @@ def _substitution(index: int, variable: Symbol) -> _Rule:
         for expression in expressions:
             substituted = tuple((expand(left.subs(variable, expression)), expand(right.subs(variable, expression)))
                                 for left, right in others)
-            cases.append((yield SystemProblem(substituted, remaining)))
+            cases.append((yield SystemProblem(substituted, remaining, problem.domain)))
         if any(case.contains_dont_know() for case in cases):
             return SubstitutionRule(problem.equations, problem.variables, index, variable, isolation, expressions, remaining,
                                     tuple(cases), ())
@@ -356,7 +362,7 @@ def _substitution(index: int, variable: Symbol) -> _Rule:
         for expression, case in zip(expressions, cases):
             for partial in case.solutions():
                 solution = _completed(problem.variables, remaining, partial, variable, expression)
-                if _satisfies(problem.equations, problem.variables, solution) is False and solution not in rejected:
+                if _satisfies(problem.equations, problem.variables, solution, problem.domain is Reals) is False and solution not in rejected:
                     rejected.append(solution)
         return SubstitutionRule(problem.equations, problem.variables, index, variable, isolation, expressions, remaining,
                                 tuple(cases), tuple(rejected))
@@ -376,7 +382,7 @@ def _elimination(first: int, second: int, variable: Symbol) -> _Rule:
         combined = (left, right)
         equations = tuple(combined if position == second else equation
                           for position, equation in enumerate(problem.equations))
-        substep = yield SystemProblem(equations, problem.variables)
+        substep = yield SystemProblem(equations, problem.variables, problem.domain)
         return EliminationRule(problem.equations, problem.variables, first, second, b, -a, variable, combined, substep)
     rule.__name__ = 'elimination_%d_%d_%s' % (first, second, variable)
     return rule
@@ -426,10 +432,11 @@ def _alternative(problem: SystemProblem, alternatives: Sequence[SystemStep]) -> 
     return AlternativeRule(problem.equations, problem.variables, tuple(alternatives))
 
 
-def system_steps(equations: Sequence[tuple[ExprLike, ExprLike]], variables: Sequence[Symbol], branch: bool = False,
-                 max_depth: Optional[int] = 20) -> SystemStep:
-    """The derivation of the real solutions of the system of equations
-    ``(lhs, rhs)`` in the unknowns ``variables``, as a tree of rules (see
+def system_steps(equations: Sequence[tuple[ExprLike, ExprLike]], variables: Sequence[Symbol], domain: Set = Complexes,
+                 branch: bool = False, max_depth: Optional[int] = 20) -> SystemStep:
+    """The derivation of the solutions over the ``domain`` (``Complexes``,
+    the default, or ``Reals``) of the system of equations ``(lhs, rhs)``
+    in the unknowns ``variables``, as a tree of rules (see
     the module); the tree ``contains_dont_know()`` when the rules do not
     solve the system.
 
@@ -440,14 +447,16 @@ def system_steps(equations: Sequence[tuple[ExprLike, ExprLike]], variables: Sequ
     >>> steps.rule, steps.variable, steps.expressions, steps.solutions()
     ('SubstitutionRule', x, (-y - z + 6,), ((1, 2, 3),))
     """
-    problem = SystemProblem(tuple((to_expr(lhs), to_expr(rhs)) for lhs, rhs in equations), tuple(variables))
+    if domain is not Reals and domain is not Complexes:
+        raise ValueError('the domain is Reals or Complexes, not %s' % (domain,))
+    problem = SystemProblem(tuple((to_expr(lhs), to_expr(rhs)) for lhs, rhs in equations), tuple(variables), domain)
     if len(set(problem.variables)) != len(problem.variables):
         raise ValueError('the unknowns are not distinct')
     solver: StepSolver[SystemProblem, SystemStep] = StepSolver(_candidates, _dont_know, _in_progress, _alternative, branch, max_depth)
     return solver.solve(problem)
 
 
-def manual_system(equations: Sequence[tuple[ExprLike, ExprLike]], variables: Sequence[Symbol]
+def manual_system(equations: Sequence[tuple[ExprLike, ExprLike]], variables: Sequence[Symbol], domain: Set = Complexes
                   ) -> Optional[tuple[tuple[Expr, ...], ...]]:
     """The solutions found by the rules (tuples of values in the order
     of the unknowns, the empty tuple when there is none), or ``None``
@@ -459,5 +468,5 @@ def manual_system(equations: Sequence[tuple[ExprLike, ExprLike]], variables: Seq
     >>> manual_system([(2*x + 3*y, 7), (4*x - y, 7)], [x, y]), manual_system([(y, x**2), (y, x + 2)], [x, y])
     (((2, 1),), ((-1, 1), (2, 4)))
     """
-    steps = system_steps(equations, variables)
+    steps = system_steps(equations, variables, domain)
     return None if steps.contains_dont_know() else steps.solutions()

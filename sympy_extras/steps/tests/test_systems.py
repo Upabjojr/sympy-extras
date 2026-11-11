@@ -5,16 +5,29 @@ systems which are not solved."""
 from __future__ import annotations
 
 import random
+from typing import Optional, Sequence
 
 import sympy
 
-from sympy_extras.core import Integer, Rational, Symbol
-from sympy_extras.core.expr import Expr
+from sympy_extras.core import I, Integer, Rational, Symbol
+from sympy_extras.core.expr import Expr, ExprLike
+from sympy_extras.sets.sets import Reals, Set
 from sympy_extras.interop import sympy_expr, to_sympy
 from sympy_extras.functions import exp, sqrt
 from sympy_extras.steps.core import Step, format_steps
 from sympy_extras.steps.systems import (AlternativeRule, DontKnowRule, EliminationRule, InconsistentRule,
-                                        SingleEquationRule, SubstitutionRule, SystemStep, manual_system, system_steps)
+                                        SingleEquationRule, SubstitutionRule, SystemStep, manual_system as manual_system_in,
+                                        system_steps as system_steps_in)
+
+
+def system_steps(equations: Sequence[tuple[ExprLike, ExprLike]], variables: Sequence[Symbol], branch: bool = False) -> SystemStep:
+    """The tests of this first part are about the real solutions."""
+    return system_steps_in(equations, variables, Reals, branch)
+
+
+def manual_system(equations: Sequence[tuple[ExprLike, ExprLike]], variables: Sequence[Symbol]
+                  ) -> Optional[tuple[tuple[Expr, ...], ...]]:
+    return manual_system_in(equations, variables, Reals)
 
 x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
 
@@ -169,3 +182,31 @@ def test_not_solved() -> None:
         pass
     else:
         raise AssertionError('repeated unknowns accepted')
+
+
+def test_complex_domain() -> None:
+    # the default: x**2 + y**2 = 1, y = x + 5 has two complex solutions and no real one
+    sx, sy = sympy.Symbol('x'), sympy.Symbol('y')
+    for equations in ([(x**2 + y**2, Integer(1)), (y, x + 5)], [(x**2 + y, Integer(0)), (x + y, Integer(1))],
+                      [(x*y, Integer(1)), (x + y, Integer(1))], [(x + y, Integer(3)), (x - y, Integer(1))]):
+        found = manual_system_in(equations, [x, y])
+        assert found is not None
+        expected = sympy.solve([sympy_expr(to_sympy(lhs)) - sympy_expr(to_sympy(rhs)) for lhs, rhs in equations], [sx, sy], dict=True)
+        assert len(found) == len(expected), (equations, found, expected)
+        ours = [tuple(sympy_expr(to_sympy(value)) for value in solution) for solution in found]
+        for solution in expected:
+            assert any(_same(u, solution[sx]) and _same(v, solution[sy]) for u, v in ours), (equations, solution)
+    assert manual_system_in([(x**2 + y**2, 1), (y, x + 5)], [x, y], Reals) == ()
+    assert manual_system_in([(x**2, -1)], [x]) == ((-I,), (I,)) or manual_system_in([(x**2, -1)], [x]) == ((I,), (-I,))
+    assert manual_system_in([(x**2, -1)], [x], Reals) == ()
+    try:
+        system_steps_in([(x, 1)], [x], sympy_free_domain())
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('a domain which is neither Reals nor Complexes was accepted')
+
+
+def sympy_free_domain() -> Set:
+    from sympy_extras.sets.fancysets import Integers
+    return Integers

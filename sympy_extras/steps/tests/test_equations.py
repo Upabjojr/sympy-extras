@@ -5,20 +5,32 @@ alternatives and rendering."""
 from __future__ import annotations
 
 import random
+from typing import Optional
 
 import sympy
 
-from sympy_extras.core import Integer, Rational, Symbol
-from sympy_extras.core.expr import Expr
+from sympy_extras.core import I, Integer, Rational, Symbol
+from sympy_extras.core.expr import Expr, ExprLike
 from sympy_extras.functions import abs_, cos, exp, log, sin, sqrt, tan
 from sympy_extras.interop import sympy_expr, to_sympy
-from sympy_extras.sets.sets import EmptySet, FiniteSet, Reals, finite_set
+from sympy_extras.sets.fancysets import Complexes, Integers
+from sympy_extras.sets.sets import EmptySet, FiniteSet, Reals, Set, finite_set
 from sympy_extras.steps.core import Step, count_steps, format_steps
 from sympy_extras.steps.equations import (AbsoluteValueRule, CardanoRule, PeriodicRule, RealRootsRule, SubstitutionRule,
                                           TakeLogarithmRule, AddToBothSidesRule, AlternativeRule, ClearDenominatorsRule, CompleteSquareRule,
                                           ContradictionRule, DivideBothSidesRule, DontKnowRule, EquationStep, IdentityRule,
                                           QuadraticFormulaRule, RootRule, SolvedRule, SquareBothSidesRule, ZeroProductRule,
-                                          manual_solve, solve_steps)
+                                          manual_solve as manual_solve_in,
+                                          solve_steps as solve_steps_in)
+
+
+def solve_steps(lhs: ExprLike, rhs: ExprLike, variable: Symbol, branch: bool = False) -> EquationStep:
+    """The tests of this first part are about the real solutions."""
+    return solve_steps_in(lhs, rhs, variable, Reals, branch)
+
+
+def manual_solve(lhs: ExprLike, rhs: ExprLike, variable: Symbol) -> Optional[Set]:
+    return manual_solve_in(lhs, rhs, variable, Reals)
 
 x, a = Symbol('x'), Symbol('a')
 sx = sympy.Symbol('x', real=True)
@@ -319,3 +331,119 @@ def test_exponentials_of_related_bases() -> None:
     assert solve_steps(Integer(8)**x, 2*Integer(4)**x, x).solutions() == finite_set(1)
     # 4 and 3 are not powers of one integer
     assert solve_steps(Integer(4)**x - Integer(3)**x, 1, x).contains_dont_know()
+
+
+# ---------------------------------------------------------------------
+# the complex numbers, the default domain
+
+def _complex_agrees(step: EquationStep) -> bool:
+    """The finite solution set of the node against SymPy's complex one,
+    numerically (with multiplicities forgotten on both sides)."""
+    sx = sympy.Symbol('x')
+    found = step.solutions()
+    ours = [sympy_expr(to_sympy(e)) for e in found.args] if isinstance(found, FiniteSet) else []
+    expected = sympy.solveset(sympy_expr(to_sympy(step.lhs)) - sympy_expr(to_sympy(step.rhs)), sx, sympy.S.Complexes)
+    if not isinstance(expected, sympy.FiniteSet):
+        return expected == sympy.S.EmptySet and not ours
+    theirs = list(expected)
+    close = sympy.Float('1e-25')
+    return (len(ours) == len(theirs) and all(any(abs(sympy.N(e - o, 40)) < close for o in ours) for e in theirs))
+
+
+def _check_complex_tree(step: Step) -> None:
+    if isinstance(step, EquationStep) and step.variable == x and not step.contains_dont_know():
+        if isinstance(step.solutions(), FiniteSet) or step.solutions() is EmptySet:
+            assert _complex_agrees(step), (step.lhs, step.rhs, step.solutions())
+    for child in step.substeps():
+        _check_complex_tree(child)
+
+
+POLYNOMIAL: list[tuple[Expr, Expr]] = [
+    (x**2 + 1, Integer(0)), (x**2 - 2*x + 5, Integer(0)), (x**4 + 2*x**2 + 1, Integer(0)), (x**3, Integer(8)),
+    (x**3, Integer(-8)), (x**4, Integer(-4)), (x**4, Integer(16)), (x**6, Integer(1)), (x**5, Integer(2)),
+    (x**3 + x + 1, Integer(0)), (2*x**3 - 4*x, Integer(-5)), (x**3 - 3*x + 1, Integer(0)), (x**4 + 3*x**2 + 1, Integer(0)),
+    (x**4 + x**2 + 1, Integer(0)), (x**2 + x + 1, Integer(0)), (I*x + 1, Integer(0)), (x**2 - 5*x + 6, Integer(0)),
+    (1/(x**2 + 1), Rational(1, 2)), (x + 1/x, Integer(1)), (x**6 - 9*x**3 + 8, Integer(0)), ((x - 1)**2, Integer(-9)),
+    (sqrt(x + 5) + sqrt(x), Integer(5)), (sqrt(x + 1), x - 1), (sqrt(x), Integer(-1)),
+]
+
+
+def test_complex_solutions_against_solveset() -> None:
+    for lhs, rhs in POLYNOMIAL:
+        for branch in (False, True):
+            steps = solve_steps_in(lhs, rhs, x, branch=branch)
+            assert not steps.contains_dont_know(), (lhs, rhs)
+            _check_complex_tree(steps)
+        assert manual_solve_in(lhs, rhs, x) == solve_steps_in(lhs, rhs, x).solutions()
+
+
+def test_the_domain() -> None:
+    # the report: the imaginary roots of x**4 + 2 x**2 + 1 were missing (the reals were the only domain)
+    steps = solve_steps_in(x**4 + 2*x**2 + 1, 0, x)
+    assert isinstance(steps, ZeroProductRule) and steps.solutions() == finite_set(I, -I)
+    [case] = steps.cases
+    assert isinstance(case, QuadraticFormulaRule) and case.domain is Complexes and case.discriminant == -4
+    assert solve_steps_in(x**4 + 2*x**2 + 1, 0, x, Reals).solutions() is EmptySet
+    assert solve_steps_in(x**4 + 2*x**2 + 1, 0, x, domain=Complexes) == steps
+    # the n roots of a number, and those of a negative one
+    cube = solve_steps_in(x**3, 8, x)
+    assert isinstance(cube, RootRule) and len(cube.cases) == 3
+    assert cube.solutions() == finite_set(2, -1 + sqrt(Integer(3))*I, -1 - sqrt(Integer(3))*I)
+    assert manual_solve_in(x**4, -4, x) == finite_set(1 + I, 1 - I, -1 + I, -1 - I)
+    assert manual_solve_in(x**3, 8, x, Reals) == finite_set(2) and manual_solve_in(x**4, -4, x, Reals) is EmptySet
+    # an identity holds on the whole domain
+    assert manual_solve_in(x + 1, x + 1, x) is Complexes and manual_solve_in(x + 1, x + 1, x, Reals) is Reals
+    identity = solve_steps_in(x + 1, x + 1, x)
+    assert isinstance(identity, IdentityRule) and identity.domain is Complexes
+    # a number which is not real is no solution over the reals ({I} before)
+    assert manual_solve_in(I*x + 1, 0, x, Reals) is EmptySet and manual_solve_in(I*x + 1, 0, x) == finite_set(I)
+    # the three roots of a cubic by Cardano; over the reals the real one
+    cardano = solve_steps_in(x**3 + x + 1, 0, x)
+    assert isinstance(cardano, CardanoRule) and len(cardano.solutions().args) == 3
+    assert len(solve_steps_in(x**3 + x + 1, 0, x, Reals).solutions().args) == 1
+    # a biquadratic equation by the substitution u = x**2
+    biquadratic = solve_steps_in(x**4 + 3*x**2 + 1, 0, x)
+    assert isinstance(biquadratic, SubstitutionRule) and biquadratic.expression == x**2
+    assert len(biquadratic.solutions().args) == 4 and manual_solve_in(x**4 + 3*x**2 + 1, 0, x, Reals) is EmptySet
+    # what is not solved over the complex numbers: roots which are not real without a formula, absolute values
+    assert manual_solve_in(x**4 - x - 1, 0, x) is None and manual_solve_in(x**4 - x - 1, 0, x, Reals) is not None
+    assert manual_solve_in(abs_(x - 3), 5, x) is None and manual_solve_in(abs_(x - 3), 5, x, Reals) == finite_set(-2, 8)
+    for wrong in (Integers, finite_set(1)):
+        try:
+            solve_steps_in(x, 1, x, wrong)
+        except ValueError:
+            continue
+        raise AssertionError('the domain %s was accepted' % (wrong,))
+
+
+def test_complex_exponentials_and_trigonometry() -> None:
+    sx = sympy.Symbol('x')
+    cases: list[tuple[Expr, Expr, int]] = [
+        (exp(x), Integer(2), 1), (exp(x), Integer(-1), 1), (Integer(2)**x, Integer(8), 1), (exp(2*x), Integer(5), 1),
+        (exp(2*x) - 3*exp(x) + 2, Integer(0), 2), (Integer(2)**(x + 1), Integer(2)**(3*x - 5), 1),
+        (Integer(4)**x - Integer(2)**x - 2, Integer(0), 2), (sin(x), Integer(2), 2), (cos(x), Integer(-3), 2),
+        (sin(x), Rational(1, 2), 2), (tan(x), Integer(1), 1), (exp(x) + 2, Integer(7), 1),
+    ]
+    for lhs, rhs, families in cases:
+        steps = solve_steps_in(lhs, rhs, x)
+        assert not steps.contains_dont_know(), (lhs, rhs)
+        found = to_sympy(steps.solutions())
+        parts = list(found.args) if isinstance(found, sympy.Union) else [found]
+        assert len(parts) == families, (lhs, rhs, found)
+        difference = sympy_expr(to_sympy(lhs)) - sympy_expr(to_sympy(rhs))
+        for part in parts:
+            assert isinstance(part, sympy.ImageSet)
+            for k in range(-3, 4):
+                rule: dict[sympy.Basic | complex, sympy.Expr | complex] = {sx: part.lamda(k)}
+                assert abs(sympy.N(difference.subs(rule), 40)) < sympy.Float('1e-25'), (lhs, rhs, k)
+    # exp(x) = -1 has no real solution and the solutions I*pi*(2 n + 1); exp(x) = 0 has none at all
+    assert manual_solve_in(exp(x), -1, x, Reals) is EmptySet and manual_solve_in(exp(x), 0, x) is EmptySet
+    logarithm = solve_steps_in(exp(x), 2, x)
+    assert isinstance(logarithm, TakeLogarithmRule) and logarithm.parameter is not None and logarithm.parameter.is_integer
+    real = solve_steps_in(exp(x), 2, x, Reals)
+    assert isinstance(real, TakeLogarithmRule) and real.parameter is None and real.solutions() == finite_set(log(Integer(2)))
+    # the tangent is never I; the sine is 2 somewhere
+    assert manual_solve_in(tan(x), I, x) is EmptySet and manual_solve_in(sin(x), 2, x, Reals) is EmptySet
+    # logarithms: the candidates are checked with the principal logarithm
+    assert manual_solve_in(log(x), 2, x) == finite_set(exp(Integer(2)))
+    assert manual_solve_in(log(x) + log(x - 3), log(Integer(10)), x) == finite_set(5)

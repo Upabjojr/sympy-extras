@@ -97,38 +97,62 @@ AlternativeRule: x**2 - 2*x - 1 = 0 -> {1 - sqrt(2), 1 + sqrt(2)}
 
 ```
 
+**The domain.** `solve_steps(lhs, rhs, x, domain)` and `manual_solve`
+solve over `Complexes` (the default) or `Reals`:
+
+```python
+>>> from sympy_extras.sets import Reals
+>>> from sympy_extras.functions import exp, log, sin, abs_
+>>> print(format_steps(solve_steps(x**4 + 2*x**2 + 1, 0, x), depth=1))
+ZeroProductRule: x**4 + 2*x**2 + 1 = 0 -> {-I, I}
+  QuadraticFormulaRule: x**2 + 1 = 0 -> {-I, I}
+>>> manual_solve(x**4 + 2*x**2 + 1, 0, x, Reals), manual_solve(x**3, 8, x), manual_solve(x**3, 8, x, Reals)
+(EmptySet, {2, -1 - sqrt(3)*I, -1 + sqrt(3)*I}, {2})
+>>> manual_solve(exp(x), 2, x), manual_solve(exp(x), 2, x, Reals)
+(ImageSet(Lambda(n, 2*I*pi*n + log(2)), Integers), {log(2)})
+>>> manual_solve(x + 1, x + 1, x), manual_solve(abs_(x - 3), 5, x), manual_solve(abs_(x - 3), 5, x, Reals)
+(Complexes, None, {-2, 8})
+
+```
+
+Over the complex numbers a quadratic has its two roots whatever the
+discriminant, `u**n = q` its `n` roots, a cubic its three roots (Cardano),
+and `exp(f) = c` a solution for every integer `n`. Equations with
+absolute values are solved over the reals only (`|A| = B` is not two
+cases over the complex numbers).
+
 Radicals, absolute values, exponentials, logarithms and trigonometric
 functions have their rules; an equation which is a polynomial in one of
 them (`exp(x)`, `sin(x)`, `log(x)`) is solved by substitution:
 
 ```python
->>> from sympy_extras.functions import exp, log, sin, abs_
->>> print(format_steps(solve_steps(exp(2*x) - 3*exp(x) + 2, 0, x), depth=1))
+>>> print(format_steps(solve_steps(exp(2*x) - 3*exp(x) + 2, 0, x, Reals), depth=1))
 SubstitutionRule: exp(2*x) - 3*exp(x) + 2 = 0 -> {0, log(2)}
   ZeroProductRule: u**2 - 3*u + 2 = 0 -> {1, 2}
   TakeLogarithmRule: exp(x) = 1 -> {0}
   TakeLogarithmRule: exp(x) = 2 -> {log(2)}
->>> manual_solve(sqrt(x + 5) + sqrt(x), 5, x), manual_solve(abs_(2*x + 1), x + 4, x), manual_solve(2**x, 8, x)
+>>> manual_solve(sqrt(x + 5) + sqrt(x), 5, x), manual_solve(abs_(2*x + 1), x + 4, x, Reals), manual_solve(2**x, 8, x, Reals)
 ({4}, {-5/3, 3}, {3})
->>> manual_solve(log(x) + log(x - 3), log(10), x), solve_steps(abs_(x - 2), 2*x + 5, x).rejected
+>>> manual_solve(log(x) + log(x - 3), log(10), x), solve_steps(abs_(x - 2), 2*x + 5, x, Reals).rejected
 ({5}, (-7,))
 >>> manual_solve(2*sin(x), 1, x)
 Union(ImageSet(Lambda(n, 2*pi*n + pi/6), Integers), ImageSet(Lambda(n, 2*pi*n + 5*pi/6), Integers))
->>> manual_solve(x**3 + x + 1, 0, x), manual_solve(x**3 - 3*x + 1, 0, x)
+>>> manual_solve(x**3 + x + 1, 0, x, Reals), manual_solve(x**3 - 3*x + 1, 0, x)
 ({-(1/2 + sqrt(93)/18)**(1/3) + (-1/2 + sqrt(93)/18)**(1/3)}, {IndexedRoot(x**3 - 3*x + 1, x, 0), IndexedRoot(x**3 - 3*x + 1, x, 1), IndexedRoot(x**3 - 3*x + 1, x, 2)})
 
 ```
 
-A solution must make both sides real: `log(x - 5) = log(1 - x)` has the
-candidate 3, where the two logarithms are equal complex numbers, and no
-real solution. An equation the rules do not solve gives a tree which
+Over the reals a solution must make both sides real: `log(x - 5) =
+log(1 - x)` has the candidate 3, where the two logarithms are equal
+complex numbers; it is the solution over the complex numbers and there
+is none over the reals. An equation the rules do not solve gives a tree which
 `contains_dont_know()`, and `manual_solve` returns `None`. Two rules
 mark the unsolved places: `DontKnowRule` where no rule applies, and
 `InProgressRule` where a derivation came back to a problem it was still
 working on (a loop). The tests
 compare the solution set of every node of every tree, the alternatives
-included, with the real solution set SymPy finds for that node's own
-equation, and check the trigonometric families by substitution and by
+included, with the solution set SymPy finds for that node's own
+equation over the same domain, and check the trigonometric families by substitution and by
 counting the roots on an interval.
 
 ## Inequalities
@@ -171,7 +195,8 @@ others, and the smaller system is solved; an equation with two values
 for the unknown gives two cases. Every solution is checked in the whole
 system (`rejected`). With `branch=True` every choice of equation and
 unknown is kept, and for linear unknowns the **elimination** by a
-combination of two equations.
+combination of two equations. The `domain` argument is `Complexes` (the
+default) or `Reals`, as for one equation.
 
 ```python
 >>> from sympy_extras.steps.systems import system_steps, manual_system
@@ -273,6 +298,10 @@ step which holds alternatives.
 
 ## Not done
 
+* equations over the complex numbers: absolute values, polynomials of
+  degree four or more which do not factor and have roots which are not
+  real (no quartic formula, no complex root object), `log(f) = c` with
+  `c` not real;
 * equations: exponentials of unrelated bases (`4**x - 3**x = 1`), sums
   of trigonometric functions of different arguments; systems with
   infinitely many solutions (parametrised solution sets);

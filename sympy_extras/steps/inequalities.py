@@ -451,7 +451,7 @@ def _sign_chart(problem: InequalityProblem, context: Context) -> _Run:
             sign = -sign
         roots = _factor_roots(coefficients, x)
         if roots:
-            root_steps.append(solve_steps(factor, Integer(0), x))
+            root_steps.append(solve_steps(factor, Integer(0), x, Reals))
         for number, shown in roots:
             located.append((number, shown, exponent, factor in in_denominator))
     located.sort(key=cmp_to_key(_by_value))

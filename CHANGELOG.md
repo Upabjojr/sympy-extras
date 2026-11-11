@@ -24,6 +24,11 @@ remove public functions. Breaking changes are listed here when they happen.
   real roots of polynomials which do not factor), each step tagged as an
   equivalence, a case split or an implication whose extraneous solutions
   are rejected.
+  `solve_steps`, `manual_solve`, `system_steps` and `manual_system`
+  take a `domain`, `Complexes` by default or `Reals`: over the complex
+  numbers the two roots of every quadratic, the `n` roots of `u**n = q`,
+  the three roots of a cubic, a solution of `exp(f) = c` for every
+  integer; biquadratic equations by the substitution `u = x**k`.
   A problem met again while it is being solved is an `InProgressRule`
   (`in_progress` of `StepSolver`), distinct from `DontKnowRule` (no
   rule applies).
