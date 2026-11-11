@@ -23,6 +23,11 @@ the kernels are first brought to a set with known relations:
   $r$), so that $e^{x} e^{-x} = 1$ and $e^{2x} = (e^x)^2$ hold; the
   hyperbolic functions of a multiple of $w$ are written with these
   exponentials when both occur;
+* the logarithm of a product of powers of positive rational numbers
+  and of symbols declared positive is the combination of the logarithms
+  of the primes and of the symbols ($\log 12 = 2 \log 2 + \log 3$),
+  which is an identity of the real logarithm; other logarithms are left
+  alone;
 * the imaginary unit satisfies $i^2 = -1$.
 
 With the roots ordered from the outermost in, then the cosines, then the
@@ -42,7 +47,7 @@ The result is zero exactly when the numerator lies in the ideal of the
 relations: a zero test for these expressions as long as the kernels have
 no relation beyond the ones listed (``sin(2*x)`` and ``sin(x)`` are
 independent kernels here, and so are ``exp(x)`` and ``exp(x**2)``, or
-``log(x)`` and ``log(2*x)``). The
+``log(x)`` and ``log(2*x)`` for a symbol ``x`` of unknown sign). The
 common factors are those of the polynomials: ``(x - 1)/(sqrt(x) - 1)``
 is left as it is.
 
@@ -85,8 +90,8 @@ from sympy_extras.core.power import Pow, pow
 from sympy_extras.core.symbol import Dummy, Symbol
 from sympy_extras.functions.elementary.hyperbolic import Cosh, Coth, Csch, Sech, Sinh, Tanh
 from sympy_extras.functions.elementary.trigonometric import Cos, Cot, Csc, Sec, Sin, Tan
-from sympy_extras.functions import cos, cosh, exp, sin, sinh
-from sympy_extras.functions.elementary.exponential import Exp
+from sympy_extras.functions import cos, cosh, exp, log, sin, sinh
+from sympy_extras.functions.elementary.exponential import Exp, Log
 from sympy_extras.matrices.linalg import _IntegerLift, _PolynomialLift, _collect_kernels
 from sympy_extras.polys.rings import PolyElement
 
@@ -195,6 +200,41 @@ class _Abstraction:
                     return c/s
                 return 1/c if isinstance(e, Sech) else 1/s
         return e
+
+
+def _logarithms_split(expression: Expr) -> Expr:
+    """``log`` of a product of powers of positive quantities (rational
+    numbers, split into primes, and symbols declared positive) written as
+    the combination of the logarithms of the bases: an identity of the
+    real logarithm. A logarithm with any other factor is left as it is."""
+    from sympy_extras.ntheory import factorint
+    rule: dict[Basic, Basic] = {}
+    for node in expression.atoms(Log):
+        argument = node.args[0]
+        if not isinstance(argument, Expr):
+            continue
+        coefficient, rest = argument.as_coeff_Mul()
+        if not isinstance(coefficient, Rational) or coefficient.p <= 0:
+            continue
+        terms: list[Expr] = []
+        for prime, exponent in sorted(factorint(coefficient.p).items()):
+            terms.append(exponent*log(Integer(prime)))
+        for prime, exponent in sorted(factorint(coefficient.q).items()):
+            terms.append(-exponent*log(Integer(prime)))
+        factors = [a for a in rest.args if isinstance(a, Expr)] if isinstance(rest, Mul) else ([] if rest == 1 else [rest])
+        valid = True
+        for factor in factors:
+            base, power = (factor.base, factor.exp) if isinstance(factor, Pow) else (factor, Integer(1))
+            if not (isinstance(base, Symbol) and base.is_positive is True and isinstance(power, Rational)):
+                valid = False
+                break
+            terms.append(power*log(base))
+        if not valid:
+            continue
+        replacement = add(*terms) if terms else Integer(0)
+        if replacement != node:
+            rule[node] = replacement
+    return expression.xreplace(rule) if rule else expression
 
 
 def _hyperbolic_as_exponentials(expression: Expr) -> Expr:
@@ -335,7 +375,7 @@ def normal_form(e: ExprLike) -> Expr:
     """
     expression = to_expr(e)
     abstraction = _Abstraction()
-    [prepared] = _exponentials([_hyperbolic_as_exponentials(expression)], abstraction.back)
+    [prepared] = _exponentials([_hyperbolic_as_exponentials(_logarithms_split(expression))], abstraction.back)
     abstracted = abstraction.abstract(prepared)
     found: dict[Expr, int] = {}
     _collect_kernels(abstracted, found)

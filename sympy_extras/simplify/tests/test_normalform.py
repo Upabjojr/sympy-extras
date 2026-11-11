@@ -111,3 +111,25 @@ def test_forms() -> None:
     assert normal_form(x**Rational(1, 2)*x**Rational(1, 3)*x**Rational(1, 6)) == x
     with pytest.raises(ZeroDivisionError):
         normal_form(1/(sin(x)**2 + cos(x)**2 - 1))
+
+
+def test_logarithms_of_positive_quantities() -> None:
+    from sympy_extras.functions import log
+    p, q = Symbol('p', positive=True), Symbol('q', positive=True)
+    two, three = log(Integer(2)), log(Integer(3))
+    identities: list[Expr] = [
+        log(Integer(6)) - two - three,
+        log(Rational(8, 9)) - 3*two + 2*three,
+        log(Integer(12))/log(Integer(2)) - 2 - three/two,
+        log(p*q) - log(p) - log(q),
+        log(p**3/sqrt(q)) - 3*log(p) + log(q)/2,
+        log(2*p) - two - log(p),
+        (log(Integer(4)) + log(p**2))**2 - 4*(two + log(p))**2,
+    ]
+    for identity in identities:
+        assert normal_form(identity) == 0, identity
+    assert normal_form(log(Integer(8))/log(Integer(2))) == 3
+    # nothing is assumed about a symbol of unknown sign: log(x*y) is not log(x) + log(y) for negative x and y
+    assert normal_form(log(x*y) - log(x) - log(y)) != 0 and normal_form(log(x**2) - 2*log(x)) != 0
+    assert normal_form(log(2*x) - log(Integer(2)) - log(x)) != 0
+    assert normal_form(log(Integer(2)) - log(Integer(3))) != 0

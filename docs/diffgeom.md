@@ -201,7 +201,7 @@ for instance `sympy_extras.simplify.simplify.simplify`.
 * tetrads and the Newman–Penrose formalism, abstract index notation
   (the tensors are arrays of components in one chart);
 * relations between kernels beyond the ones above (`sin(2*x)` against
-  `sin(x)`, logarithms): such metrics are
+  `sin(x)`, logarithms of quantities of unknown sign): such metrics are
   computed, but a vanishing component may not be reduced to zero;
 * solving the Killing equations or the geodesic equations (they are
   returned as expressions).

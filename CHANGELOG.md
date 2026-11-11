@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `normal_form` splits the logarithms of positive rational numbers over
+  the primes and those of products and powers of symbols declared
+  positive: `log(12)/log(2) - 2 - log(3)/log(2)` and `log(p*q) - log(p) -
+  log(q)` reduce to zero; nothing is assumed for other arguments.
 - `sympy_extras.diffgeom.tensors.Tensor`: tensors by components on a
   `Metric` with index positions (`'u'`, `'d'`): raising and lowering,
   contraction, tensor product, symmetric and antisymmetric parts, trace,
