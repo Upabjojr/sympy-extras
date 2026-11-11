@@ -1651,3 +1651,40 @@ def test_native_heurisch_and_tables_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ELLIPTIC = r'''
+import sys
+from sympy_extras.core import Rational, S, Symbol, oo, pi, sqrt, symbols
+from sympy_extras.functions import sin
+from sympy_extras.integrals.elliptic import Reduction, elliptic_integral, legendre_reduction, radicand, real_roots
+x, theta = symbols('x theta')
+k = Symbol('k', positive=True)
+s, m = Symbol('s', positive=True), Symbol('m', positive=True)
+assert str(elliptic_integral(1/sqrt(x*(1 - x)*(1 - k**2*x)), x, 0, 1, k < 1)) == 'ConditionalValue(2*elliptic_k(k**2))'
+assert str(elliptic_integral(1/sqrt(x*(x - 1)*(2 - x)*(3 - x)), x, 1, 2)) == 'ConditionalValue(elliptic_k(3/4))'
+assert str(elliptic_integral(sqrt(1 - k**2*sin(theta)**2), theta, 0, pi/2, k < 1)) == 'ConditionalValue(elliptic_e(k**2))'
+assert str(elliptic_integral(1/sqrt((x**2 + 1)*(x + 2)*(3 - x)), x, -2, 3)) == \
+    'ConditionalValue(2**(3/4)*sqrt(5)*elliptic_k(sqrt(2)/4 + 1/2)/5)'
+assert elliptic_integral(x**2/sqrt((x**2 + 1)*(x + 2)*(3 - x)), x, -2, 3) is not None   # over QQ(2**(1/4), sqrt(5))
+assert str(elliptic_integral(1/sqrt((x**2 + 1)*(x**2 + 4)), x, -oo, oo)) == 'ConditionalValue(elliptic_k(3/4))'
+assert elliptic_integral(1/sqrt(x**3 + 1), x, 0, oo) is not None
+assert elliptic_integral(1/sqrt(x**4 + x - 1), x, 1, 2) is not None     # through the indexed roots
+assert str(real_roots((1 - x**2)*(1 - k**2*x**2), x, k < 1)) == '[-1/k, -1, 1, 1/k]'
+assert str(radicand(x/sqrt((1 - x**2)*(4 - x**2)), x)) == '(x, (1 - x**2)*(4 - x**2), -1/2)'
+assert str(legendre_reduction(Reduction(1/(1 + 2*s)**2, m, s, 0, 1), m < 1)) != 'None'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_elliptic_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.elliptic` does not load SymPy,
+    nor do the reductions to Legendre's integrals on the cells of real
+    roots, the cosine map of a complex pair (partial fractions over the
+    number field of the constants), the tangent map of two pairs, the
+    numeric radicands through indexed roots, and the trigonometric forms;
+    SymPy's ``integrate`` is reached through the face only by the
+    elementary odd part of the two-pairs case."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ELLIPTIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

@@ -539,6 +539,27 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The reduction to Legendre's elliptic integrals is native
+  (**breaking**): `sympy_extras.integrals.elliptic` (`elliptic_integral`,
+  `radicand`, `real_roots`, `legendre_reduction`, `Reduction`) takes and
+  returns objects of the core (the core's `elliptic_k`, `elliptic_e`,
+  `elliptic_f`, `elliptic_pi`) and imports no SymPy: the native
+  factorisations with placeholders for the irrational constants (the
+  typed `Poly` has no `EX`), the partial fractions from the Taylor
+  coefficients at the linear factors of the denominator, factored over
+  the number field of its radicals as SymPy's `apart` does with
+  `extension=True` (Trager's `dup_ext_factor`), the roots of the linear
+  and quadratic factors by the native `roots` instead of `solve`, the
+  real roots of numeric radicands as indexed roots (`CRootOf` through
+  interop) and their complex pairs from mpmath roots and the native
+  resultants, the native `ask` and reliable values. One step stays on
+  SymPy: the rational antiderivative of the elementary odd part of the
+  two-pairs case, SymPy's `integrate` through
+  `elliptic_sympy.integrate_of_core`. The old API on SymPy objects moves
+  to the new face `sympy_extras.integrals.elliptic_sympy`, which
+  `integrals.definite` and the tests use. The unused helper
+  `_square_root` is gone.
+
 - The antiderivatives of exponentials and the recognition of constants are
   native (**breaking**): `sympy_extras.integrals.exponential`
   (`exponential_antiderivative`, `power_exponential`,

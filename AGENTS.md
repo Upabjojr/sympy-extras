@@ -299,6 +299,11 @@ sympy_extras/
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
                              (native; SymPy's ratint through exponential_sympy)
         exponential_sympy.py the SymPy face of exponential, used by indefinite, and ratint_of_core
+        elliptic.py          elliptic_integral, radicand, real_roots, legendre_reduction, Reduction: square roots of cubics
+                             and quartics reduced to Legendre's integrals (native: the native factorisations, the partial
+                             fractions over the number field of the constants, indexed roots, the native ask; SymPy's
+                             integrate of the odd part of the two-pairs case through elliptic_sympy)
+        elliptic_sympy.py    the SymPy face of elliptic, used by definite, and integrate_of_core
         tests/
     solvers/                 solvers extending sympy.solvers (exports nothing: import the modules)
         isolation.py         TranscendentalRoot (node), isolate_real_roots, point_between, compare_points: exact real roots of

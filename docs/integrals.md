@@ -332,7 +332,9 @@ The driver tries, after the Mellin method and the residues:
   `Integral(1/sqrt((x**2 + 1)*(x**2 + 4)), (x, -oo, oo))` is
   `elliptic_k(3/4)`; the irrational quadratic factors of a numeric
   quartic (`x**4 + x - 1`) are built from its `CRootOf` roots, the
-  algebraic numbers travelling as dummies decided numerically.
+  algebraic numbers travelling as dummies decided numerically. The
+  module is native, on the core; `sympy_extras.integrals.elliptic_sympy`
+  is its face on SymPy objects, which `definite` uses.
 - **Substitutions of the definite driver**: `u = q(x)**(1/n)` for the
   radical `q(x)**(k/n)` of the integrand, `q` a polynomial of degree at
   most two, nonnegative and monotone on the range (`z*sqrt(sqrt(z**2 - 1) +
