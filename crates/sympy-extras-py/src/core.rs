@@ -887,6 +887,77 @@ fn differential_leader<'py>(
     Ok((to_python(py, &leader)?, to_python(py, &back)?))
 }
 
+/// The operations of `DifferentialPolynomial.from_expr(ring, eq)` as a
+/// dict of expressions: `to_expr`, `leader`, `degree`, `initial`,
+/// `separant`, `derivative_<i>`, and the pseudo-, partial and full
+/// remainders by the polynomials of `chain` (whose leaders must differ).
+#[pyfunction]
+#[pyo3(signature = (functions, eq, chain, variables=None, ranking=None, parameters=None))]
+fn differential_polynomial_ops<'py>(
+    py: Python<'py>,
+    functions: &Bound<'py, PyAny>,
+    eq: &Bound<'py, PyAny>,
+    chain: &Bound<'py, PyAny>,
+    variables: Option<&Bound<'py, PyAny>>,
+    ranking: Option<&Bound<'py, PyAny>>,
+    parameters: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::polys::differential::polynomial::DifferentialPolynomial as P;
+    let e_ = crate::convert::err;
+    let empty = PyTuple::empty(py).into_any();
+    let ring = std::rc::Rc::new(differential_ring(
+        functions,
+        variables,
+        ranking,
+        parameters.unwrap_or(&empty),
+    )?);
+    let p: P = P::from_expr(ring.clone(), &equation(eq)?).map_err(e_)?;
+    let mut members: Vec<P> = Vec::new();
+    for c in chain.try_iter()? {
+        members.push(P::from_expr(ring.clone(), &equation(&c?)?).map_err(e_)?);
+    }
+    let d: Bound<'py, PyDict> = PyDict::new(py);
+    d.set_item("to_expr", to_python(py, &p.to_expr().map_err(e_)?)?)?;
+    if !p.is_ground() {
+        d.set_item("leader", to_python(py, &p.leader_expr().map_err(e_)?)?)?;
+        d.set_item("degree", p.degree().map_err(e_)?)?;
+        d.set_item(
+            "initial",
+            to_python(py, &p.initial().map_err(e_)?.to_expr().map_err(e_)?)?,
+        )?;
+        d.set_item(
+            "separant",
+            to_python(py, &p.separant().map_err(e_)?.to_expr().map_err(e_)?)?,
+        )?;
+    }
+    for i in 0..ring.n() {
+        d.set_item(
+            format!("derivative_{}", i),
+            to_python(py, &p.derivative(i).to_expr().map_err(e_)?)?,
+        )?;
+    }
+    if let Some(first) = members.first() {
+        if !first.is_ground() {
+            let jet = first.leader().map_err(e_)?;
+            d.set_item(
+                "pseudo_remainder",
+                to_python(py, &p.pseudo_remainder(first, &jet).to_expr().map_err(e_)?)?,
+            )?;
+        }
+    }
+    if members.iter().all(|m| !m.is_ground()) && !members.is_empty() {
+        d.set_item(
+            "partial_remainder",
+            to_python(py, &p.partial_remainder(&members).map_err(e_)?.to_expr().map_err(e_)?)?,
+        )?;
+        d.set_item(
+            "remainder",
+            to_python(py, &p.remainder(&members).map_err(e_)?.to_expr().map_err(e_)?)?,
+        )?;
+    }
+    Ok(d)
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -927,6 +998,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(differential_terms, m)?)?;
     m.add_function(wrap_pyfunction!(differential_integral, m)?)?;
     m.add_function(wrap_pyfunction!(differential_leader, m)?)?;
+    m.add_function(wrap_pyfunction!(differential_polynomial_ops, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;
