@@ -21,6 +21,7 @@ mod dense;
 mod domains;
 mod factor;
 mod gaussian;
+mod lattice;
 mod ntheory;
 mod polyerrors;
 mod rings;
@@ -104,6 +105,7 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     sparse::register_multisqf(&submodule(&polys, "multisqf", "sympy_extras_rs.polys.multisqf")?)?;
     algorithms::register_multifactor(&submodule(&polys, "multifactor", "sympy_extras_rs.polys.multifactor")?)?;
+    lattice::register(&submodule(&polys, "lattice", "sympy_extras_rs.polys.lattice")?)?;
     algorithms::register_gaussianfactor(&submodule(
         &polys,
         "gaussianfactor",

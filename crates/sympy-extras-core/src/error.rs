@@ -14,6 +14,9 @@ pub enum PolyError {
     Value(String),
     /// `polyerrors.HeuristicGCDFailed`: no evaluation point gave the gcd.
     HeuristicGCDFailed(String),
+    /// `ArithmeticError`: an internal invariant of an exact computation
+    /// failed (a bug, not a property of the data).
+    Arithmetic(String),
 }
 
 /// The result of a computation which may fail.
@@ -25,6 +28,7 @@ impl fmt::Display for PolyError {
             PolyError::ZeroDivision(message) => write!(f, "{}", message),
             PolyError::Value(message) => write!(f, "{}", message),
             PolyError::HeuristicGCDFailed(message) => write!(f, "{}", message),
+            PolyError::Arithmetic(message) => write!(f, "{}", message),
         }
     }
 }
@@ -39,4 +43,9 @@ pub fn zero_division(message: &str) -> PolyError {
 /// `ValueError(message)`.
 pub fn value_error(message: String) -> PolyError {
     PolyError::Value(message)
+}
+
+/// `ArithmeticError(message)`.
+pub fn arithmetic_error(message: String) -> PolyError {
+    PolyError::Arithmetic(message)
 }

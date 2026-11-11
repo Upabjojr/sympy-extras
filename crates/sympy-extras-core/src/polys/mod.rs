@@ -12,6 +12,7 @@ pub mod gaussianfactor;
 pub mod groebnerwalk;
 pub mod heuristicgcd;
 pub mod hilbert;
+pub mod lattice;
 pub mod modulargroebner;
 pub mod multifactor;
 pub mod multisqf;

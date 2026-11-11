@@ -43,7 +43,8 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/euclidtools.py` | done | |
 | `polys/sqfreetools.py` | done | |
 | `polys/galoistools.py` | done | the random choices from a seeded SplitMix64 (`random.rs`); the factorisations are sorted, so equal to Python's |
-| `polys/factortools.py` | done | with Trager's algorithm over number fields (`dup_ext_norm`, `dup_ext_sqf_norm`, `dup_ext_factor`) |
+| `polys/factortools.py` | done | with Trager's algorithm over number fields (`dup_ext_norm`, `dup_ext_sqf_norm`, `dup_ext_factor`) and van Hoeij's knapsack recombination (`dup_zz_van_hoeij`, from ten modular factors on) |
+| `polys/lattice.py` | done | de Weger's integral LLL, Hermite and Smith normal forms, integer kernels and systems; `ArithmeticError` as `PolyError::Arithmetic`; 2-4x faster than Python |
 | `polys/rings.py` | done | orders as the enum `MonomialOrder` (lex, grlex, grevlex, and the weight, block and homogeneous orders of `orderings.py` and `modulargroebner.py`); `from_expr`/`to_expr` wait for the core |
 | `polys/heuristicgcd.py` | done | |
 | `polys/polyerrors.py` | `HeuristicGCDFailed` | the others as they are needed |
