@@ -127,7 +127,7 @@ from sympy.polys.polytools import cancel
 
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.concrete.convergence import sum_convergence
 from sympy_extras.concrete.eulersums import polygamma_series
@@ -328,7 +328,7 @@ def _cosine_kernel(h: Expr, assumptions: Assumptions) -> Optional[tuple[Expr, Ex
     verdict = ask(condition, assumptions)
     if verdict is False:
         return None
-    from sympy_extras.assumptions.refine import refine
+    from sympy_extras.assumptions.refine_sympy import refine
     root = as_expr(refine(sqrt(P**2 - Q_**2), assumptions))
     a = as_expr(cancel((root - P) / Q_))
     return (P, Q_, a, true if verdict is True else condition)

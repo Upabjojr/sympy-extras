@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from sympy import discriminant, expand, symbols
 
-from sympy_extras.polys.ideals import Ideal
-from sympy_extras.polys.regularchains import RegularChain, triangularize
+from sympy_extras.polys.ideals_sympy import Ideal
+from sympy_extras.polys.regularchains_sympy import RegularChain, triangularize
 
 from .oracle import same_radical
 

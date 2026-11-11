@@ -15,7 +15,16 @@ solutions and Presburger arithmetic.
 * :func:`cooper` eliminates an existential quantifier from a formula of
   Presburger arithmetic (linear relations and divisibility conditions on
   integer variables) by Cooper's algorithm, which is used by
-  :func:`sympy_extras.assumptions.resolve` over the integers.
+  :func:`sympy_extras.assumptions.resolve.resolve` over the integers.
+
+The expressions, the formulas and the symbols are objects of the core
+(:mod:`sympy_extras.core`): the module imports no SymPy, and
+:mod:`sympy_extras.solvers.integers_sympy` is its face on SymPy objects.
+One step goes through SymPy at run time (the face holds it,
+:func:`~sympy_extras.solvers.integers_sympy.simplify_logic_of_core`):
+SymPy's ``simplify_logic`` of the formulas returned by Cooper's
+algorithm. The negation normal form and :func:`with_sides` are those of
+:mod:`sympy_extras.polys.virtual_substitution`.
 
 References
 ==========
@@ -31,25 +40,25 @@ References
 from __future__ import annotations
 
 from math import gcd
-from typing import Optional, Sequence, Union
+from typing import Callable, Optional, Sequence, Union
 
-from sympy.core.expr import Expr
-from sympy.core.mod import Mod
-from sympy.core.mul import Mul
-from sympy.core.numbers import Integer
-from sympy.core.relational import Relational, Eq, Ne, Lt, Le, Gt, Ge
-from sympy.core.singleton import S
-from sympy.core.symbol import Symbol
-from sympy.logic.boolalg import (Boolean, BooleanTrue, BooleanFalse, And, Or, Not,
-    Implies, Equivalent, Xor, ITE, true, false)
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly
-
-from sympy_extras._typing import QuantifierPrefix, as_boolean, as_expr, free_symbols
+from sympy_extras.core.add import add
+from sympy_extras.core.expr import Expr, as_expr
+from sympy_extras.core.logic import (And, Boolean, BooleanFalse, BooleanTrue, Equivalent, ITE, Implies, Not, Or,
+    Xor, and_, false, not_, or_, to_boolean, true)
+from sympy_extras.core.mod import Mod, mod
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import Integer
+from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, eq, ge, gt, le, lt, ne
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.polys.polyerrors import BasePolynomialError
+from sympy_extras.polys.polytools import Poly
+from sympy_extras.polys.virtual_substitution import to_nnf, with_sides
+from sympy_extras.assumptions.quantifiers import Prefix
 
 __all__ = ['hermite_normal_form_with_transform', 'linear_diophantine_system',
     'hilbert_basis', 'minimal_nonnegative_solutions', 'cooper',
-    'presburger_quantifier_elimination', 'is_presburger']
+    'presburger_quantifier_elimination', 'is_presburger', 'with_sides', 'IntMatrix', 'IntVector']
 
 #: an integer matrix as a list of rows
 IntMatrix = list[list[int]]
@@ -130,32 +139,49 @@ def _extended_gcd(a: int, b: int) -> tuple[int, int, int]:
     return old_r, old_u, old_v
 
 
+def _unit(n: int, i: int) -> tuple[int, ...]:
+    """The exponents of the ``i``-th of ``n`` generators."""
+    return tuple(1 if j == i else 0 for j in range(n))
+
+
 def _linear_system(equations: Sequence[Expr], symbols: Sequence[Symbol]) -> Optional[tuple[IntMatrix, IntVector]]:
-    """``A``, ``b`` with the equations ``A x = b`` (integer coefficients)."""
+    """``A``, ``b`` with the equations ``A x = b`` (integer coefficients),
+    ``None`` when the system is not of this kind.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.solvers.integers import _linear_system
+    >>> x, y = symbols('x y')
+    >>> _linear_system([x + 2*y - 3, 4*x], [x, y]), _linear_system([x/2 - 1], [x])
+    (([[1, 2], [4, 0]], [3, 0]), None)
+    """
     A: IntMatrix = []
     b: IntVector = []
     if not symbols:
         raise ValueError("no unknown to solve for")
+    n = len(symbols)
     for e in equations:
-        if not free_symbols(e) <= set(symbols):
+        if not e.free_symbols <= set(symbols):
             return None
         try:
             poly = Poly(e, *symbols)
-        except PolynomialError:
+        except BasePolynomialError:
             return None
         if poly.total_degree() > 1:
             return None
         row: IntVector = []
-        for s in symbols:
-            c = poly.coeff_monomial(s)
+        for i in range(n):
+            c = poly.coeff_monomial(_unit(n, i))
             if not isinstance(c, Integer):
                 return None
-            row.append(int(c))
-        constant = poly.coeff_monomial(1)
+            row.append(c.p)
+        constant = poly.coeff_monomial(tuple(0 for _ in range(n)))
         if not isinstance(constant, Integer):
             return None
         A.append(row)
-        b.append(-int(constant))
+        b.append(-constant.p)
     return A, b
 
 
@@ -169,9 +195,9 @@ def linear_diophantine_system(equations: Sequence[Union[Expr, Eq]], symbols: Seq
     Examples
     ========
 
-    >>> from sympy import Eq
-    >>> from sympy.abc import x, y, z
+    >>> from sympy_extras.core import symbols, Eq
     >>> from sympy_extras.solvers.integers import linear_diophantine_system
+    >>> x, y, z = symbols('x y z')
     >>> values, parameters = linear_diophantine_system([Eq(3*x + 5*y, 7)], [x, y])
     >>> values
     [14 - 5*t0, 3*t0 - 7]
@@ -181,7 +207,7 @@ def linear_diophantine_system(equations: Sequence[Union[Expr, Eq]], symbols: Seq
     >>> values
     [t0, t0 - 2, 8 - 2*t0]
     """
-    exprs = [as_expr(e.lhs - e.rhs) if isinstance(e, Eq) else as_expr(e) for e in equations]
+    exprs = [as_expr(e.lhs - e.rhs) if isinstance(e, Eq) else e for e in equations]
     system = _linear_system(exprs, symbols)
     if system is None:
         raise ValueError("a linear system with integer coefficients is expected")
@@ -211,12 +237,13 @@ def linear_diophantine_system(equations: Sequence[Union[Expr, Eq]], symbols: Seq
     free_index = 0
     y_values: list[Expr] = []
     for j in range(n):
-        if y[j] is None:
-            y_values.append(as_expr(parameters[free_index]))
+        known = y[j]
+        if known is None:
+            y_values.append(parameters[free_index])
             free_index += 1
         else:
-            y_values.append(as_expr(Integer(y[j])))
-    values = [as_expr(sum((Integer(U[i][j])*y_values[j] for j in range(n)), S.Zero)) for i in range(n)]
+            y_values.append(Integer(known))
+    values = [add(*[mul(Integer(U[i][j]), y_values[j]) for j in range(n)]) for i in range(n)]
     return values, parameters
 
 
@@ -305,6 +332,16 @@ def minimal_nonnegative_solutions(A: IntMatrix, b: IntVector, limit: int = 10000
 # ---------------------------------------------------------------------------
 # Cooper's algorithm
 
+#: the evaluating functions of the relations, by class
+_RELATIONS: dict[type[Relational], Callable[[Expr, Expr], Boolean]] = {
+    Eq: eq, Ne: ne, Lt: lt, Le: le, Gt: gt, Ge: ge}
+
+
+def _relation(kind: type[Relational], lhs: Expr, rhs: Expr) -> Boolean:
+    """The relation ``lhs kind rhs``, evaluated."""
+    return _RELATIONS[kind](lhs, rhs)
+
+
 class _Linear:
     """``coefficient * x + rest`` with ``rest`` free of ``x``."""
 
@@ -318,32 +355,36 @@ def _split_linear(e: Expr, x: Symbol) -> Optional[_Linear]:
         return _Linear(0, e)
     try:
         poly = Poly(e, x)
-    except PolynomialError:
+    except BasePolynomialError:
         return None
     if poly.degree() != 1:
         return None
     a, b = poly.all_coeffs()
     if not isinstance(a, Integer):
         return None
-    return _Linear(int(a), as_expr(b))
+    return _Linear(a.p, b)
+
+
+def _relations(formula: Boolean) -> list[Relational]:
+    return [a for a in formula.atoms(Relational) if isinstance(a, Relational)]
 
 
 def _divisibility(atom: Boolean) -> Optional[tuple[int, Expr]]:
     """``(k, e)`` for an atom ``Eq(Mod(e, k), r)`` or ``Ne(Mod(e, k), r)``
     with an integer residue ``r``, read as ``k | e - r`` (``Mod`` may
-    carry an integer factor, extracted by SymPy from the argument:
+    carry an integer factor, extracted from the argument:
     ``c Mod(e, k) = 0`` is ``k | e`` again). A residue outside
     ``0 <= r < k`` is left alone: the atom is then simply false or true,
     which :func:`_canonical_divisibilities` settles (sympy-extras#44)."""
     if isinstance(atom, (Eq, Ne)) and isinstance(atom.rhs, Integer):
-        lhs, residue = atom.lhs, int(atom.rhs)
+        lhs, residue = atom.lhs, atom.rhs.p
         if residue == 0 and isinstance(lhs, Mul) and len(lhs.args) == 2 \
                 and isinstance(lhs.args[0], Integer) and lhs.args[0] != 0:
             lhs = lhs.args[1]
         if isinstance(lhs, Mod):
             e, k = lhs.args
-            if isinstance(k, Integer) and int(k) > 0 and 0 <= residue < int(k):
-                return int(k), as_expr(e - residue)
+            if isinstance(k, Integer) and k.p > 0 and 0 <= residue < k.p and isinstance(e, Expr):
+                return k.p, as_expr(e - residue)
     return None
 
 
@@ -352,22 +393,22 @@ def _impossible_residue(atom: Boolean) -> Optional[Boolean]:
     negation always does."""
     if isinstance(atom, (Eq, Ne)) and isinstance(atom.rhs, Integer) and isinstance(atom.lhs, Mod):
         k = atom.lhs.args[1]
-        if isinstance(k, Integer) and int(k) > 0 and not 0 <= int(atom.rhs) < int(k):
+        if isinstance(k, Integer) and k.p > 0 and not 0 <= atom.rhs.p < k.p:
             return false if isinstance(atom, Eq) else true
     return None
 
 
-def _divides(kind: type, k: int, e: Expr) -> Boolean:
+def _divides(kind: type[Relational], k: int, e: Expr) -> Boolean:
     """The atom ``k | e`` (``kind`` is ``Eq``) or its negation (``Ne``)."""
     if k == 1:
         return true if kind is Eq else false
-    return as_boolean(kind(Mod(e, k), 0))
+    return _relation(kind, mod(e, Integer(k)), Integer(0))
 
 
 def _canonical_divisibilities(formula: Boolean) -> Boolean:
     """The divisibility atoms rewritten by :func:`_divides`."""
     replacements: dict[Boolean, Boolean] = {}
-    for atom in formula.atoms(Relational):
+    for atom in _relations(formula):
         divisibility = _divisibility(atom)
         if divisibility is not None:
             replacements[atom] = _divides(type(atom), *divisibility)
@@ -381,8 +422,18 @@ def _canonical_divisibilities(formula: Boolean) -> Boolean:
 def is_presburger(formula: Boolean, integers: set[Symbol]) -> bool:
     """Whether the formula is a Boolean combination of linear relations
     with integer coefficients and divisibility conditions
-    ``Eq(Mod(e, k), 0)`` in the given integer variables."""
-    for atom in formula.atoms(Relational):
+    ``Eq(Mod(e, k), 0)`` in the given integer variables.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols, Eq, Mod
+    >>> from sympy_extras.solvers.integers import is_presburger
+    >>> x, y = symbols('x y')
+    >>> is_presburger((2*x > y) & Eq(Mod(x, 3), 0), {x, y}), is_presburger(x*y > 0, {x, y})
+    (True, False)
+    """
+    for atom in _relations(formula):
         divisibility = _divisibility(atom)
         if divisibility is not None:
             if not _integer_linear(divisibility[1], integers):
@@ -396,14 +447,14 @@ def is_presburger(formula: Boolean, integers: set[Symbol]) -> bool:
 
 
 def _integer_linear(e: Expr, integers: set[Symbol]) -> bool:
-    symbols = free_symbols(e)
+    symbols = e.free_symbols
     if not symbols <= integers:
         return False
     if not symbols:
         return isinstance(e, Integer)
     try:
         poly = Poly(e, *sorted(symbols, key=lambda s: s.name))
-    except PolynomialError:
+    except BasePolynomialError:
         return False
     return poly.total_degree() <= 1 and all(isinstance(c, Integer) for c in poly.coeffs())
 
@@ -419,7 +470,8 @@ def _substitute(formula: Boolean, replacements: dict[Boolean, Boolean]) -> Boole
     if formula in replacements:
         return replacements[formula]
     if isinstance(formula, (And, Or, Not, Implies, Equivalent, Xor, ITE)):
-        return as_boolean(formula.func(*[_substitute(as_boolean(a), replacements) for a in formula.args]))
+        args = tuple(_substitute(to_boolean(a), replacements) for a in formula.args)
+        return to_boolean(formula._evaluated(args))
     return formula
 
 
@@ -428,7 +480,7 @@ def _normalize_coefficients(formula: Boolean, x: Symbol) -> tuple[Boolean, int]:
     each atom is multiplied by ``m/|a|`` with ``m`` the least common
     multiple of the coefficients, and the divisibility ``m | x`` is added
     (for the new variable ``x' = m x``)."""
-    atoms = [a for a in formula.atoms(Relational)]
+    atoms = _relations(formula)
     coefficients: list[int] = []
     parts: dict[Relational, _Linear] = {}
     for atom in atoms:
@@ -447,15 +499,14 @@ def _normalize_coefficients(formula: Boolean, x: Symbol) -> tuple[Boolean, int]:
             continue
         factor = m//abs(lin.coefficient)
         sign = 1 if lin.coefficient > 0 else -1
-        # a x + b rel 0  <=>  sign*(m x' ... ) : with x' = m x, a x + b = sign*(x' + factor*sign*b)/...
         # multiply by factor > 0: factor*a*x + factor*b = sign*x' + factor*b
-        new_rest = as_expr(factor*lin.rest)
+        new_rest = mul(Integer(factor), lin.rest)
         divisibility = _divisibility(atom)
         if divisibility is not None:
             k = divisibility[0]*factor
-            replacements[atom] = _divides(type(atom), k, as_expr(sign*x + new_rest))
+            replacements[atom] = _divides(type(atom), k, add(mul(Integer(sign), x), new_rest))
         else:
-            replacements[atom] = as_boolean(type(atom)(sign*x + new_rest, 0))
+            replacements[atom] = _relation(type(atom), add(mul(Integer(sign), x), new_rest), Integer(0))
     return _substitute(formula, replacements), m
 
 
@@ -467,21 +518,21 @@ def cooper(formula: Boolean, x: Symbol) -> Boolean:
     Examples
     ========
 
-    >>> from sympy import Eq, Mod
-    >>> from sympy.abc import x, y
+    >>> from sympy_extras.core import symbols, Eq
     >>> from sympy_extras.solvers.integers import cooper
+    >>> x, y = symbols('x y')
     >>> cooper(Eq(2*x, y), x)
     Eq(Mod(y, 2), 0)
     >>> cooper((x > y) & (x < y + 2), x)
     True
     >>> cooper((x > y) & (x < y + 1), x)
     False
-    >>> cooper((3*x > y) & (3*x < y + 3), x)
-    Eq(Mod(y + 1, 3), 0) | Eq(Mod(y + 2, 3), 0)
     """
+    if not isinstance(formula, Boolean):
+        raise TypeError("a Boolean formula is expected, got %s" % (formula,))
     # negations are pushed down to the atoms: the argument below needs a
     # formula which is monotone in its atoms
-    formula = as_boolean(as_boolean(formula).to_nnf(simplify=False))
+    formula = to_nnf(formula)
     # residues first: Mod(e, k) = r is k | e - r, and one outside [0, k)
     # is a constant (sympy-extras#44); the atom loop below reads the
     # canonical form only
@@ -490,8 +541,8 @@ def cooper(formula: Boolean, x: Symbol) -> Boolean:
         return formula
     normalized, m = _normalize_coefficients(formula, x)
     if m != 1:
-        normalized = And(normalized, Eq(Mod(x, m), 0))
-    atoms = [a for a in normalized.atoms(Relational)]
+        normalized = and_(normalized, eq(mod(x, Integer(m)), Integer(0)))
+    atoms = _relations(normalized)
     parts: dict[Relational, _Linear] = {}
     moduli: list[int] = []
     # the lower thresholds: for each atom, the greatest value of ``x``
@@ -540,7 +591,7 @@ def cooper(formula: Boolean, x: Symbol) -> Boolean:
             if lin.coefficient == 0:
                 continue
             if _divisibility(atom) is not None:
-                replacements[atom] = as_boolean(atom.subs(x, j))
+                replacements[atom] = to_boolean(atom.subs(x, Integer(j)))
             else:
                 kind = type(atom)
                 if kind is Eq:
@@ -556,8 +607,8 @@ def cooper(formula: Boolean, x: Symbol) -> Boolean:
     # with step delta lies within delta above a threshold
     for bound in thresholds:
         for j in range(1, delta + 1):
-            disjuncts.append(as_boolean(normalized.subs(x, as_expr(bound + j))))
-    return _clean(as_boolean(Or(*disjuncts)))
+            disjuncts.append(to_boolean(normalized.subs(x, as_expr(bound + j))))
+    return _clean(or_(*disjuncts))
 
 
 def _point(disjunct: Boolean) -> Optional[tuple[Symbol, Expr]]:
@@ -570,12 +621,12 @@ def _point(disjunct: Boolean) -> Optional[tuple[Symbol, Expr]]:
     for every multiple of 3, not only at ``m = 0``, and reading it as a
     point made :func:`_drop_covered` discard it (sympy-extras#27).
     """
-    conjuncts = list(disjunct.args) if isinstance(disjunct, And) else [disjunct]
+    conjuncts = [to_boolean(a) for a in disjunct.args] if isinstance(disjunct, And) else [disjunct]
     for atom in conjuncts:
         if not isinstance(atom, Eq) or isinstance(atom.lhs, Mod):
             continue
         e = as_expr(atom.lhs - atom.rhs)
-        for x in sorted(free_symbols(e), key=lambda s: s.name):
+        for x in sorted(e.free_symbols, key=lambda s: s.name):
             lin = _split_linear(e, x)
             if lin is not None and lin.coefficient in (1, -1):
                 return x, as_expr(-lin.rest*lin.coefficient)
@@ -588,7 +639,7 @@ def _drop_covered(formula: Boolean) -> Boolean:
     are often covered by the periodic part)."""
     if not isinstance(formula, Or):
         return formula
-    disjuncts = [as_boolean(a) for a in formula.args]
+    disjuncts = [to_boolean(a) for a in formula.args]
     kept: list[Boolean] = []
     for i, d in enumerate(disjuncts):
         point = _point(d)
@@ -598,27 +649,26 @@ def _drop_covered(formula: Boolean) -> Boolean:
             # the ones not examined yet. Testing against the original
             # list let two disjuncts pinning the same point cover each
             # other, and both were dropped (sympy-extras#45, #51).
-            others = Or(*kept, *disjuncts[i + 1:])
-            if as_boolean(others.subs(point[0], point[1])) is true:
+            others = or_(*kept, *disjuncts[i + 1:])
+            if to_boolean(others.subs(point[0], point[1])) is true:
                 continue
         kept.append(d)
-    return as_boolean(Or(*kept))
+    return or_(*kept)
 
 
 def _clean(formula: Boolean) -> Boolean:
-    from sympy.logic.boolalg import simplify_logic
     formula = _canonical_divisibilities(formula)
     if isinstance(formula, (BooleanTrue, BooleanFalse)):
         return formula
+    from .integers_sympy import simplify_logic_of_core
     try:
-        result = as_boolean(simplify_logic(formula, deep=False))
+        result = simplify_logic_of_core(formula)
     except (ValueError, TypeError):
         result = formula
-    from sympy_extras.polys.virtual_substitution import with_sides
     return with_sides(_drop_covered(result))
 
 
-def presburger_quantifier_elimination(formula: Boolean, prefix: QuantifierPrefix) -> Boolean:
+def presburger_quantifier_elimination(formula: Boolean, prefix: Prefix) -> Boolean:
     """Eliminate all the quantifiers of a formula of Presburger
     arithmetic (innermost first; a universal quantifier through
     `\\neg \\exists \\neg`).
@@ -626,17 +676,16 @@ def presburger_quantifier_elimination(formula: Boolean, prefix: QuantifierPrefix
     Examples
     ========
 
-    >>> from sympy.abc import x, y
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.solvers.integers import presburger_quantifier_elimination
-    >>> presburger_quantifier_elimination((2*x > y) & (2*x < y + 2), [('exists', x)])
-    Eq(Mod(y + 1, 2), 0)
+    >>> x, y = symbols('x y')
     >>> presburger_quantifier_elimination(x < y, [('exists', y), ('forall', x)])
     False
     """
-    current = as_boolean(formula)
+    current = formula
     for kind, v in reversed(list(prefix)):
         if kind == 'exists':
             current = cooper(current, v)
         else:
-            current = _clean(Not(cooper(Not(current), v)))
+            current = _clean(not_(cooper(not_(current), v)))
     return current

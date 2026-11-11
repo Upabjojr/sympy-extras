@@ -26,9 +26,14 @@ A root function is written explicitly when the polynomial has degree one
 or two in its variable on the cell (the coefficients of a projection
 polynomial have constant signs on the cell, which tell its degree there
 and the branch of the quadratic formula), and as an
-:class:`IndexedRoot` otherwise. Consecutive cells of a stack with the
+:class:`~sympy_extras.polys.cad.indexedroot.IndexedRoot` otherwise. Consecutive cells of a stack with the
 same description of their higher coordinates are joined (a sector, the
 section which closes it and the next sector give one interval).
+
+The module is native: formulas, expressions and sets are those of the
+core, on the native decompositions of :mod:`sympy_extras.polys.cad.qe`;
+SymPy is not imported. The SymPy face is
+:mod:`sympy_extras.polys.cad.cylindrical_sympy`.
 
 References
 ==========
@@ -45,171 +50,41 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence, Union
-
-from mpmath.libmp.libhyper import NoConvergence
-from mpmath.libmp.libmpf import prec_to_dps
-from sympy.core.basic import Basic
-from sympy.core.expr import Expr
-from sympy.core.exprtools import factor_terms
-from sympy.core.function import Function
-from sympy.core.numbers import Float, Integer
-from sympy.core.relational import Eq
-from sympy.core.singleton import S
-from sympy.core.containers import Tuple
-from sympy.core.symbol import Dummy, Symbol
-from sympy.core.sympify import sympify
-from sympy.functions.elementary.miscellaneous import sqrt
-from sympy.logic.boolalg import And, Boolean, Or, false, true
-from sympy.polys.polyerrors import BasePolynomialError
-from sympy.polys.polytools import Poly
-from sympy.polys.rootoftools import ComplexRootOf
-from sympy.printing.printer import Printer
-from sympy.sets.conditionset import ConditionSet
-from sympy.sets.sets import FiniteSet, Interval, ProductSet, Set, Union as SetUnion
+from typing import Callable, Optional, Sequence, Union
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import QuantifierSpec, as_expr, as_symbol
-from sympy_extras.polys.roots import radical_form
+from sympy_extras.core.containers import Tuple
+from sympy_extras.core.exprtools import factor_terms
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.logic import Boolean, BooleanLike, and_, false, or_, true
+from sympy_extras.core.numbers import ComplexInfinity, Infinity, NaN, NegativeInfinity, Rational, oo
+from sympy_extras.core.power import sqrt
+from sympy_extras.core.relational import eq, ge, gt, le, lt
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.polys.numberfields.qqbar import Algebraic
+from sympy_extras.polys.polytools import Poly
+from sympy_extras.sets.conditionset import condition_set
+from sympy_extras.sets.sets import EmptySet, Reals, Set, finite_set, interval, point_set, product_set, union
 
+from .indexedroot import IndexedRoot, indexed_root, real_number
 from .lifting import CAD, CADCell
-from .qe import CellTruth, _truth_values
-from .samplepoints import RealAlgebraic, _order, rational_real_roots
+from .qe import CellTruth, QuantifierSpec, _truth_values
+from .samplepoints import _order
 
-__all__ = ['IndexedRoot', 'cylindrical_formula', 'cylindrical_set', 'cylindrical_cases']
+__all__ = ['IndexedRoot', 'cylindrical_formula', 'cylindrical_set', 'cylindrical_cases', 'CylindricalCase']
 
-#: the seconds given to SymPy to tell whether two bounds meet
+#: a case of :func:`cylindrical_cases`: a condition on the parameters and
+#: the set of the solutions under it
+CylindricalCase = tuple[Boolean, Set]
+
+#: the seconds given to the core to tell whether two bounds meet
 _PROOF_SECONDS = 2.0
 
-#: the bound variables of the root functions, by the name of the variable:
-#: one per name, so that equal root functions are equal expressions
-_BOUND: dict[str, Dummy] = {}
 
-
-def _bound_variable(name: str) -> Dummy:
-    if name not in _BOUND:
-        _BOUND[name] = Dummy(name, real=True)
-    return _BOUND[name]
-
-
-class IndexedRoot(Function):
-    """``IndexedRoot(f, t, k)``: the ``k``-th distinct real root, counted
-    from 0 in increasing order, of the polynomial ``f`` in ``t`` whose
-    coefficients depend on other symbols, the counterpart of Mathematica's
-    parametric ``Root[f, k]``. It is a function of those symbols where the
-    polynomial has more than ``k`` real roots, and becomes a number when
-    they are given rational values.
-
-    The variable ``t`` is bound: it is replaced by a dummy of the same
-    name, which a substitution of ``t`` in the formula around does not
-    reach.
-
-    Examples
-    ========
-
-    >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import IndexedRoot
-    >>> r = IndexedRoot(y**3 + x*y - 1, y, 0); r
-    IndexedRoot(x*y + y**3 - 1, y, 0)
-    >>> r.subs(x, 0), r.subs(x, 1).evalf(10), r.free_symbols       # a CRootOf at x = 1
-    (1, 0.6823278038, {x})
-    >>> IndexedRoot(y**3 - 3*y + x, y, 2).subs(x, 5)     # one real root only
-    IndexedRoot(y**3 - 3*y + 5, y, 2)
-    """
-
-    @classmethod
-    def eval(cls, f: Expr, t: Expr, k: Expr) -> Optional[Expr]:
-        if not (isinstance(t, Symbol) and isinstance(k, Integer) and k >= 0):
-            raise ValueError("IndexedRoot(f, t, k) takes a symbol t and an index k, from 0")
-        bound = _bound_variable(t.name)
-        if t != bound:
-            return cls(as_expr(f.xreplace({t: bound})), bound, k)
-        if not f.has(bound):
-            # a polynomial which the values of the parameters made constant
-            # has no root: the object stays as it is, like one whose index
-            # is beyond the number of the roots
-            return None
-        if f.free_symbols == {bound}:
-            return _numerical_root(f, bound, int(k))
-        return None
-
-    def _eval_is_extended_real(self) -> bool:
-        return True
-
-    @property
-    def expr(self) -> Expr:
-        return as_expr(self.args[0])
-
-    @property
-    def variable(self) -> Dummy:
-        variable = self.args[1]
-        assert isinstance(variable, Dummy)
-        return variable
-
-    @property
-    def index(self) -> int:
-        return int(as_expr(self.args[2]))
-
-    @property
-    def free_symbols(self) -> set[Basic]:
-        return set(self.expr.free_symbols) - {self.variable}
-
-    @property
-    def bound_symbols(self) -> list[Symbol]:
-        return [self.variable]
-
-    def _eval_evalf(self, prec: int) -> Optional[Expr]:
-        # coefficients which are not rational numbers: the real ones among
-        # the numerical roots. A multiple root (which is what the polynomial
-        # has over a section of its discriminant) is found with half of the
-        # working digits, slowly: twice the digits asked for, and as many
-        # steps as it takes
-        if self.free_symbols:
-            return None
-        digits = max(15, prec_to_dps(prec))
-        working = 2 * digits + 10
-        try:
-            numerical = Poly(self.expr.evalf(working + 10), self.variable).nroots(n=working, maxsteps=5000)
-        except (BasePolynomialError, NoConvergence, ValueError, TypeError, ArithmeticError):
-            return None
-        tolerance = Float(10)**(3 - digits)
-        values: list[Expr] = []
-        for root in numerical:
-            real_part, imaginary_part = as_expr(root).as_real_imag()
-            if abs(imaginary_part) < tolerance * (1 + abs(real_part)):
-                values.append(as_expr(real_part))
-        values.sort(key=lambda value: float(value))
-        distinct: list[Expr] = []
-        for value in values:
-            if not distinct or abs(value - distinct[-1]) > tolerance * (1 + abs(value)):
-                distinct.append(value)
-        if self.index >= len(distinct):
-            return None
-        return as_expr(distinct[self.index].evalf(digits))
-
-    def _sympystr(self, printer: Printer) -> str:
-        shown = Symbol(self.variable.name)
-        return "IndexedRoot(%s, %s, %s)" % (printer._print(self.expr.xreplace({self.variable: shown})),
-                                            printer._print(shown), self.index)
-
-
-def _numerical_root(expression: Expr, t: Symbol, index: int) -> Optional[Expr]:
-    """The ``index``-th distinct real root of a polynomial with rational
-    coefficients, when it has that many."""
-    try:
-        # in a plain symbol: the root object shows its generator
-        plain = Symbol(t.name)
-        poly = Poly(expression.xreplace({t: plain}), plain, domain='QQ')
-    except BasePolynomialError:
-        return None
-    if poly.degree() < 1:
-        return None
-    roots = [as_expr(r) for r, _ in rational_real_roots(poly)]
-    if index >= len(roots):
-        return None
-    root = roots[index]
-    form = radical_form(root) if isinstance(root, ComplexRootOf) else None
-    return root if form is None else form
+def _symbol(v: Expr) -> Symbol:
+    if not isinstance(v, Symbol):
+        raise TypeError("expected a symbol, got %s" % (v,))
+    return v
 
 
 class _Root:
@@ -217,20 +92,20 @@ class _Root:
 
     __slots__ = ('poly', 'index', 'value', 'degree')
 
-    def __init__(self, poly: Poly, index: int, value: RealAlgebraic, degree: int) -> None:
+    def __init__(self, poly: Poly, index: int, value: Algebraic, degree: int) -> None:
         self.poly = poly
         self.index = index
         self.value = value
         self.degree = degree
 
 
-def _coefficients(poly: Poly, gens: Sequence[Symbol]) -> list[Expr]:
+def _coefficients(poly: Poly, gens: Sequence[Expr]) -> list[Expr]:
     """The coefficients of the polynomial in its last generator, the
     leading one first, as expressions in the others."""
-    return [as_expr(c) for c in Poly(poly.as_expr(), gens[-1]).all_coeffs()]
+    return Poly(poly.as_expr(), gens[-1]).all_coeffs()
 
 
-def _degree_over(poly: Poly, parent: CADCell, gens: Sequence[Symbol]) -> tuple[int, list[Expr], list[int]]:
+def _degree_over(poly: Poly, parent: CADCell, gens: Sequence[Expr]) -> tuple[int, list[Expr], list[int]]:
     """The degree of the polynomial in the last generator over the parent
     cell, with the coefficients from that degree down and their signs
     there: the coefficients of a projection polynomial have constant signs
@@ -240,16 +115,18 @@ def _degree_over(poly: Poly, parent: CADCell, gens: Sequence[Symbol]) -> tuple[i
     signs: list[int] = []
     for c in coefficients:
         if not lower:
-            signs.append(int(bool(c > 0)) - int(bool(c < 0)))
+            if not isinstance(c, Rational):
+                raise ValueError("a rational coefficient expected, got %s" % (c,))  # pragma: no cover
+            signs.append((c.p > 0) - (c.p < 0))
         else:
-            signs.append(int(parent.sample.sign(Poly(c, *lower), lower)))
+            signs.append(parent.sample.sign(c, lower))
     while signs and signs[0] == 0:
         signs.pop(0)
         coefficients.pop(0)
     return len(coefficients) - 1, coefficients, signs
 
 
-def _root_sequence(parent: CADCell, polys: Sequence[Poly], gens: Sequence[Symbol]) -> list[_Root]:
+def _root_sequence(parent: CADCell, polys: Sequence[Poly], gens: Sequence[Expr]) -> list[_Root]:
     """The distinct real roots of the polynomials of a level over the
     parent cell, in increasing order (they are the sections of the stack),
     each as a root of the polynomial of least degree which has it."""
@@ -265,24 +142,23 @@ def _root_sequence(parent: CADCell, polys: Sequence[Poly], gens: Sequence[Symbol
             for group in _order([root.value for root in found])]
 
 
-def _root_function(root: _Root, parent: CADCell, gens: Sequence[Symbol]) -> Expr:
+def _root_function(root: _Root, parent: CADCell, gens: Sequence[Expr]) -> Expr:
     """The root as an expression in the variables of the parent cell."""
+    x = _symbol(gens[-1])
     if len(gens) == 1:
-        value = as_expr(sympify(root.value))
-        form = radical_form(value) if isinstance(value, ComplexRootOf) else None
-        return value if form is None else form
+        return real_number(root.value, x.name)
     degree, coefficients, signs = _degree_over(root.poly, parent, gens)
     if degree == 1:
-        return as_expr(-coefficients[1] / coefficients[0])
+        return -coefficients[1]/coefficients[0]
     if degree == 2:
         a, b, c = coefficients
         roots = parent.sample.real_roots(root.poly, gens)
         if roots is not None and len(roots) == 1:
-            return as_expr(-b / (2 * a))
+            return -b/(2*a)
         # the smaller root has the sign of -a before its square root
-        branch = (-1 if signs[0] > 0 else 1) * (1 if root.index == 0 else -1)
-        return as_expr((-b + branch * sqrt(factor_terms(b**2 - 4 * a * c))) / (2 * a))
-    return IndexedRoot(root.poly.as_expr(), gens[-1], root.index)
+        branch = (-1 if signs[0] > 0 else 1)*(1 if root.index == 0 else -1)
+        return (-b + branch*sqrt(factor_terms(b**2 - 4*a*c)))/(2*a)
+    return indexed_root(root.poly.as_expr(), x, root.index)
 
 
 class _Run:
@@ -320,6 +196,12 @@ def _key(description: _Description) -> _Key:
     return tuple(run.key() for run in description)
 
 
+def _is_zero(gap: Expr) -> Callable[[], Optional[bool]]:
+    def decide() -> Optional[bool]:
+        return gap.is_zero
+    return decide
+
+
 def _specialized(description: _Description, x: Symbol, value: Expr, own: bool) -> Optional[_Description]:
     """The description at ``x = value``, a point of the closure of the
     cell it was made on: the bounds are continuous functions there when
@@ -339,8 +221,10 @@ def _specialized(description: _Description, x: Symbol, value: Expr, own: bool) -
                 continue
             if not own and end.has(IndexedRoot) and end.has(x):
                 return None
-            moved = as_expr(end.subs(x, value))
-            if moved.has(S.NaN, S.ComplexInfinity, S.Infinity, S.NegativeInfinity) or moved.is_extended_real is False:
+            moved = end.subs(x, value)
+            if not isinstance(moved, Expr):
+                return None  # pragma: no cover
+            if moved.has(NaN, ComplexInfinity, Infinity, NegativeInfinity) or moved.is_extended_real is False:
                 return None
             ends.append(moved)
         lower, upper = ends
@@ -348,9 +232,9 @@ def _specialized(description: _Description, x: Symbol, value: Expr, own: bool) -
         if inner is None:
             return None
         if lower is not None and upper is not None and lower != upper:
-            gap = as_expr(upper - lower)
+            gap = upper - lower
             if not gap.free_symbols:
-                met = attempt(lambda: gap.is_zero, _PROOF_SECONDS)
+                met = attempt(_is_zero(gap), _PROOF_SECONDS, native=True)
                 if met is None:
                     return None
                 if met:
@@ -371,7 +255,7 @@ def _stack(cad: CAD, children: dict[CADCell, list[CADCell]], truth: dict[CADCell
            parent: CADCell, level: int, last: int) -> _Description:
     """The description of the true cells over ``parent``."""
     gens = cad.gens[:level]
-    x = gens[-1]
+    x = _symbol(gens[-1])
     cells = children.get(parent, [])
     descriptions: list[_Description] = []
     for cell in cells:
@@ -389,7 +273,7 @@ def _stack(cad: CAD, children: dict[CADCell, list[CADCell]], truth: dict[CADCell
     def bound(position: int) -> Expr:
         # the section at ``position`` of the stack (the odd positions, from 0)
         if position not in functions:
-            functions[position] = _root_function(roots[(position - 1) // 2], parent, gens)
+            functions[position] = _root_function(roots[(position - 1)//2], parent, gens)
         return functions[position]
 
     # a section whose description is that of a neighbour at the boundary
@@ -420,7 +304,7 @@ def _stack(cad: CAD, children: dict[CADCell, list[CADCell]], truth: dict[CADCell
         if i == j and cells[i].is_section:
             value = bound(i)
             # at a number, the higher bounds are written there
-            if value.is_number and not value.has(ComplexRootOf):
+            if value.is_number and not value.has(IndexedRoot):
                 at_value = _specialized(inner, x, value, True)
                 inner = inner if at_value is None else at_value
             runs.append(_Run(value, True, value, True, inner))
@@ -443,32 +327,31 @@ def _formula(description: _Description, gens: Sequence[Symbol], level: int) -> B
         conditions: list[Boolean] = []
         if run.point:
             assert run.lower is not None
-            conditions.append(Eq(x, run.lower))
+            conditions.append(eq(x, run.lower))
         else:
             if run.lower is not None:
-                conditions.append(x >= run.lower if run.lower_closed else x > run.lower)
+                conditions.append(ge(x, run.lower) if run.lower_closed else gt(x, run.lower))
             if run.upper is not None:
-                conditions.append(x <= run.upper if run.upper_closed else x < run.upper)
-        parts.append(And(*conditions, _formula(run.inner, gens, level + 1)))
-    return Or(*parts)
+                conditions.append(le(x, run.upper) if run.upper_closed else lt(x, run.upper))
+        parts.append(and_(*conditions, _formula(run.inner, gens, level + 1)))
+    return or_(*parts)
 
 
-def cylindrical_formula(formula: Union[Boolean, bool], gens: Sequence[Symbol],
-                        quantifiers: QuantifierSpec = (), method: Optional[str] = None,
-                        partial: bool = True) -> Boolean:
+def cylindrical_formula(formula: BooleanLike, gens: Sequence[Symbol], quantifiers: QuantifierSpec = (),
+                        method: Optional[str] = None, partial: bool = True) -> Boolean:
     """A cylindrical description of the set of the real points
     ``gens`` at which the formula (with its ``quantifiers``, over other
     variables) holds: a disjunction of conjunctions which bound the first
     variable by numbers, the second by root functions of the first, and so
-    on; ``True`` for the whole space and ``False`` for the empty set. The
+    on; ``true`` for the whole space and ``false`` for the empty set. The
     counterpart of Mathematica's ``CylindricalDecomposition``.
 
     Examples
     ========
 
-    >>> from sympy import Eq
-    >>> from sympy.abc import x, y, z
-    >>> from sympy_extras.polys.cad import cylindrical_formula
+    >>> from sympy_extras.core import symbols, Eq
+    >>> from sympy_extras.polys.cad.cylindrical import cylindrical_formula
+    >>> x, y, z = symbols('x y z')
     >>> cylindrical_formula(x**2 + y**2 < 1, [x, y])
     (x > -1) & (x < 1) & (y < sqrt(1 - x**2)) & (y > -sqrt(1 - x**2))
     >>> cylindrical_formula((x**2 + y**2 <= 1) & (y >= x), [x, y])
@@ -490,9 +373,9 @@ def cylindrical_formula(formula: Union[Boolean, bool], gens: Sequence[Symbol],
     return _formula(description, free, 1)
 
 
-def _description(formula: Union[Boolean, bool], gens: Sequence[Symbol], quantifiers: QuantifierSpec,
+def _description(formula: BooleanLike, gens: Sequence[Symbol], quantifiers: QuantifierSpec,
                  method: Optional[str], partial: bool = True) -> tuple[list[Symbol], _Description]:
-    variables = [as_symbol(g) for g in gens]
+    variables = [_symbol(g) for g in gens]
     # a cell over which the formula has one truth value is not lifted: the
     # description of the stack over it is that truth value
     cad, free, _, cells = _truth_values(formula, variables, quantifiers, method, partial, 'both')
@@ -518,8 +401,8 @@ def _described(cad: CAD, last: int, cells: Sequence[CellTruth]) -> _Description:
 def described_by_root_functions(cad: CAD, free: Sequence[Symbol], cells: Sequence[CellTruth]) -> Boolean:
     """The cylindrical formula of the true ``cells`` of the space of the
     ``free`` variables of a decomposition (for
-    :func:`~sympy_extras.polys.cad.quantifier_elimination`, when the signs
-    of the projection factors do not describe them)."""
+    :func:`~sympy_extras.polys.cad.qe.quantifier_elimination`, when the
+    signs of the projection factors do not describe them)."""
     return _formula(_described(cad, len(free), cells), free, 1)
 
 
@@ -554,13 +437,24 @@ def _points(description: _Description, gens: Sequence[Symbol]) -> list[tuple[Exp
         return [()]
     found: list[tuple[Expr, ...]] = []
     for run in description:
-        value = as_expr(run.lower)
+        value = run.lower
+        assert value is not None
         for tail in _points(run.inner, gens[1:]):
-            found.append((value,) + tuple(as_expr(coordinate.subs(gens[0], value)) for coordinate in tail))
+            moved: list[Expr] = []
+            for coordinate in tail:
+                substituted = coordinate.subs(gens[0], value)
+                if not isinstance(substituted, Expr):
+                    raise TypeError("expected an expression, got %s" % (substituted,))  # pragma: no cover
+                moved.append(substituted)
+            found.append((value,) + tuple(moved))
     return found
 
 
-def cylindrical_set(formula: Union[Boolean, bool], gens: Sequence[Symbol], method: Optional[str] = None,
+def _space(n: int) -> Set:
+    return product_set(*[Reals]*n)
+
+
+def cylindrical_set(formula: BooleanLike, gens: Sequence[Symbol], method: Optional[str] = None,
                     partial: bool = True) -> Set:
     """The set of the real points ``gens`` at which the formula holds:
     its isolated points with algebraic coordinates as a finite set, and
@@ -572,8 +466,9 @@ def cylindrical_set(formula: Union[Boolean, bool], gens: Sequence[Symbol], metho
     Examples
     ========
 
-    >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import cylindrical_set
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.polys.cad.cylindrical import cylindrical_set
+    >>> x, y = symbols('x y')
     >>> cylindrical_set((x**2 + y**2 <= 1) & (x + y >= 1), [x, y])
     ConditionSet((x, y), (x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2)), ProductSet(Reals, Reals))
     >>> cylindrical_set((x**2 + y**2)*((x - 3)**2 + y**2 - 1) <= 0, [x, y])
@@ -582,38 +477,41 @@ def cylindrical_set(formula: Union[Boolean, bool], gens: Sequence[Symbol], metho
     EmptySet
     """
     free, description = _description(formula, gens, (), method, partial)
-    space = ProductSet(*[S.Reals] * len(free))
+    space = _space(len(free))
     if description is True:
         return space
     points, rest = _isolated(description, free)
-    finite: Set = FiniteSet(*[Tuple(*point) for point in points]) if points else S.EmptySet
+    finite: Set = point_set(*[Tuple(*point) for point in points]) if points else EmptySet
     if rest is False:
         return finite
-    region = ConditionSet(Tuple(*free), _formula(rest, free, 1), space)
-    return SetUnion(finite, region) if points else region
+    region = condition_set(Tuple(*free), _formula(rest, free, 1), space)
+    return union(finite, region) if points else region
 
 
 def _as_set(description: _Description, gens: Sequence[Symbol]) -> Set:
     """The set of the points ``gens`` of a description: a finite set when
     every coordinate is given, a union of intervals for one variable, a
     condition set otherwise."""
-    space: Set = S.Reals if len(gens) == 1 else ProductSet(*[S.Reals] * len(gens))
+    space: Set = Reals if len(gens) == 1 else _space(len(gens))
     if isinstance(description, bool):
-        return space if description else S.EmptySet
+        return space if description else EmptySet
     if _every_run_is_a_point(description):
         points = _points(description, gens)
-        return FiniteSet(*[point[0] if len(gens) == 1 else Tuple(*point) for point in points])
+        if len(gens) == 1:
+            return finite_set(*[point[0] for point in points])
+        return point_set(*[Tuple(*point) for point in points])
     if len(gens) == 1:
         pieces: list[Set] = []
         for run in description:
             if run.point:
-                pieces.append(FiniteSet(as_expr(run.lower)))
+                assert run.lower is not None
+                pieces.append(finite_set(run.lower))
             else:
-                pieces.append(Interval(S.NegativeInfinity if run.lower is None else run.lower,
-                                       S.Infinity if run.upper is None else run.upper,
+                pieces.append(interval(-oo if run.lower is None else run.lower,
+                                       oo if run.upper is None else run.upper,
                                        not run.lower_closed, not run.upper_closed))
-        return SetUnion(*pieces)
-    return ConditionSet(Tuple(*gens), _formula(description, gens, 1), space)
+        return union(*pieces)
+    return condition_set(Tuple(*gens), _formula(description, gens, 1), space)
 
 
 def _every_run_is_a_point(description: _Description) -> bool:
@@ -622,8 +520,8 @@ def _every_run_is_a_point(description: _Description) -> bool:
     return all(run.point and _every_run_is_a_point(run.inner) for run in description)
 
 
-def cylindrical_cases(formula: Union[Boolean, bool], parameters: Sequence[Symbol], unknowns: Sequence[Symbol],
-                      method: Optional[str] = None, partial: bool = True) -> list[tuple[Boolean, Set]]:
+def cylindrical_cases(formula: BooleanLike, parameters: Sequence[Symbol], unknowns: Sequence[Symbol],
+                      method: Optional[str] = None, partial: bool = True) -> list[CylindricalCase]:
     """The real solutions in the ``unknowns`` of a formula in polynomial
     relations, for every real value of its ``parameters``: pairs of a
     condition on the parameters (cylindrical: the first one between
@@ -634,9 +532,9 @@ def cylindrical_cases(formula: Union[Boolean, bool], parameters: Sequence[Symbol
     Examples
     ========
 
-    >>> from sympy import Eq
-    >>> from sympy.abc import a, x
-    >>> from sympy_extras.polys.cad import cylindrical_cases
+    >>> from sympy_extras.core import symbols, Eq
+    >>> from sympy_extras.polys.cad.cylindrical import cylindrical_cases
+    >>> a, x = symbols('a x')
     >>> cylindrical_cases(Eq(x**2, a), [a], [x])
     [(a >= 0, {-sqrt(a), sqrt(a)})]
     >>> cylindrical_cases(x**2 <= a, [a], [x])
@@ -644,18 +542,18 @@ def cylindrical_cases(formula: Union[Boolean, bool], parameters: Sequence[Symbol
     >>> cylindrical_cases(Eq(a*x, 1), [a], [x])
     [((a > 0) | (a < 0), {1/a})]
     """
-    names = [as_symbol(p) for p in parameters]
-    variables = [as_symbol(u) for u in unknowns]
+    names = [_symbol(p) for p in parameters]
+    variables = [_symbol(u) for u in unknowns]
     free, description = _description(formula, names + variables, (), method, partial)
     if free != names + variables:
         raise ValueError("the parameters and the unknowns are the symbols of the formula")
-    cases: list[tuple[Boolean, Set]] = []
+    cases: list[CylindricalCase] = []
 
     def walk(current: _Description, level: int, conditions: list[Boolean]) -> None:
         if level == len(names):
             found = _as_set(current, variables)
-            if found != S.EmptySet:
-                cases.append((And(*conditions), found))
+            if found is not EmptySet:
+                cases.append((and_(*conditions), found))
             return
         if isinstance(current, bool):
             if current:
@@ -667,11 +565,11 @@ def cylindrical_cases(formula: Union[Boolean, bool], parameters: Sequence[Symbol
 
     walk(description, 0, [])
     # the cases with one set of solutions are one case
-    merged: list[tuple[Boolean, Set]] = []
+    merged: list[CylindricalCase] = []
     for condition, found in cases:
         for position, (other, same) in enumerate(merged):
             if same == found:
-                merged[position] = (Or(other, condition), found)
+                merged[position] = (or_(other, condition), found)
                 break
         else:
             merged.append((condition, found))

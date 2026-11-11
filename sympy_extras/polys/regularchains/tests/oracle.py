@@ -11,8 +11,8 @@ from sympy.core.numbers import Integer
 from sympy.core.symbol import Symbol
 
 from sympy_extras._typing import as_expr
-from sympy_extras.polys.ideals import Ideal
-from sympy_extras.polys.regularchains import RegularChain
+from sympy_extras.polys.ideals_sympy import Ideal
+from sympy_extras.polys.regularchains_sympy import RegularChain
 
 
 def saturated(chain: RegularChain) -> Ideal:

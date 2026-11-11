@@ -40,3 +40,37 @@ def test_limit_node() -> None:
     assert node.doit() == 1
     assert to_sympy(node, evaluate=False) == s.Limit(s.sin(x) / x, x, 0)
     assert expr_from_sympy(s.Limit(s.sin(x) / x, x, 0)) == node
+
+
+def test_limit_through_a_hypergeometric_function() -> None:
+    # mrv raised NotImplementedError ("Don't know how to calculate the mrv
+    # of 'hyper(...)'") because Hyper is not an Application of the core,
+    # so the limit stayed unevaluated where SymPy's gruntz treats hyper as
+    # a Function (test_definite's binomial differentials lost their value)
+    from sympy_extras.core.numbers import Rational
+    from sympy_extras.core.power import sqrt
+    from sympy_extras.functions.special.hyper import hyper
+    t = Symbol('t')
+    h = hyper([Rational(-7, 4), Rational(1, 2)], [Rational(-3, 4)], 1/(5*t**2))
+    e = 2*sqrt(5)*t*sqrt(t**7/(1 - 5*t**2))*sqrt(5 - 1/t**2)*h/35
+    value = limit(e, t, Rational(-1, 2), '-')
+    expected = -sqrt(10)*hyper([Rational(-7, 4), Rational(1, 2)], [Rational(-3, 4)], Rational(4, 5))/280
+    assert value == expected
+    T = s.Symbol('t')
+    assert to_sympy(value) == s.limit(to_sympy(e), T, s.Rational(-1, 2), '-')
+
+
+def test_logarithms_of_products_cancel_in_the_leading_term() -> None:
+    # expand split log(a*(-1 - I)) only after distributing the product into
+    # -a - a*I, so the leading term of I*log(a*(-1 + I))/2 - I*log(a*(-1 - I))/2
+    # (a < 0) stayed a sum of logarithms instead of SymPy's pi/4
+    from sympy_extras.core.numbers import I
+    from sympy_extras.core.symbol import Dummy
+    from sympy_extras.functions import log
+    a = Dummy('a', negative=True)
+    t = Dummy('t', positive=True)
+    from sympy_extras.core.power import sqrt
+    r = sqrt(a**2 - t**2*a**2)/(t + 1)
+    e = -a*(-I*log(-I*a + r)/2 + I*log(I*a + r)/2)
+    from sympy_extras.core.numbers import pi
+    assert limit(e, t, 0, '+') == -pi*a/4

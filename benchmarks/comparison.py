@@ -70,14 +70,14 @@ PREAMBLE = """
 from sympy import *
 from sympy.abc import a, b, c, k, m, n, p, q, s, t, u, v, w, x, y, z
 import sympy_extras
-from sympy_extras.assumptions.ask import ask as xask
-from sympy_extras.assumptions.refine import refine as xrefine, simplify as xsimplify
-from sympy_extras.assumptions.resolve import resolve
-from sympy_extras.assumptions.solve import solve as xsolve
+from sympy_extras.assumptions.ask_sympy import ask as xask
+from sympy_extras.assumptions.refine_sympy import refine as xrefine, simplify as xsimplify
+from sympy_extras.assumptions.resolve_sympy import resolve
+from sympy_extras.assumptions.solve_sympy import solve as xsolve
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
-from sympy_extras.assumptions.sat import satisfiable, tautology, find_instance
-from sympy_extras.assumptions.limits import limit as xlimit, limit_seq as xlimit_seq, series as xseries
+from sympy_extras.assumptions.sat_sympy import satisfiable, tautology, find_instance
+from sympy_extras.assumptions.limits_sympy import limit as xlimit, limit_seq as xlimit_seq, series as xseries
 from sympy_extras.concrete.karr_sympy import karr_sum, summation as xsummation
 from sympy_extras.concrete.convergence import sum_convergence, product_convergence
 from sympy_extras.concrete.dirichlet import dirichlet_series
@@ -92,18 +92,18 @@ from sympy_extras.solvers.first_order import dsolve_first_order
 from sympy_extras.solvers.second_order import dsolve_second_order, integrating_factor_xy, is_linearizable
 from sympy_extras.solvers.dae import dsolve_dae, dae_matrices
 from sympy_extras.solvers.charpit import complete_integral
-from sympy_extras.solvers.isolation import isolate_real_roots
+from sympy_extras.solvers.isolation_sympy import isolate_real_roots
 from sympy_extras.solvers.thue_equation import thue
 from sympy_extras.solvers.abel import abel_by_invariants, abel_invariants
-from sympy_extras.solvers.integers import linear_diophantine_system, minimal_nonnegative_solutions, cooper
+from sympy_extras.solvers.integers_sympy import linear_diophantine_system, minimal_nonnegative_solutions, cooper
 from sympy_extras.solvers.linear_systems import dsolve_linear_system, rational_system_solutions
 from sympy_extras.solvers.lie import symmetries
 from sympy_extras.solvers.pde import pde_symmetries
-from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.ideals_sympy import Ideal
 from sympy_extras.polys.groebnerwalk import groebner_walk
 from sympy_extras.polys.subresultants import psc
-from sympy_extras.polys.cad import quantifier_elimination, solution_set
-from sympy_extras.polys.virtual_substitution import eliminate_linear
+from sympy_extras.polys.cad.qe_sympy import quantifier_elimination, solution_set
+from sympy_extras.polys.virtual_substitution_sympy import eliminate_linear
 from sympy_extras.concrete.qhyper_sympy import qpochhammer, qbinomial
 from sympy_extras.integrals import definite_integral, IntegralByRanges, mellin_transform as xmellin
 from sympy.solvers.ode import dsolve

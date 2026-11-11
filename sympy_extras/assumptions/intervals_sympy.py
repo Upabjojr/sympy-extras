@@ -33,7 +33,7 @@ from sympy_extras._typing import Sign, as_expr, as_set
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
-from sympy_extras.interop import from_sympy, to_sympy
+from sympy_extras.interop import SymPySetNode, from_sympy, to_sympy
 from sympy_extras.sets.sets import Interval as CoreInterval
 from sympy_extras.sets.sets import Set as CoreSet
 
@@ -76,9 +76,10 @@ def core_symbol(s: Basic) -> CoreSymbol:
 
 
 def core_set(s: Set) -> Optional[CoreSet]:
-    """A SymPy set as a set of the core, ``None`` when it is not ported."""
+    """A SymPy set as a set of the core, ``None`` when it is not ported
+    (the wrapper of a set of SymPy is not)."""
     converted = from_sympy(s)
-    return converted if isinstance(converted, CoreSet) else None
+    return converted if isinstance(converted, CoreSet) and not isinstance(converted, SymPySetNode) else None
 
 
 def sympy_expr(e: CoreBasic) -> Expr:

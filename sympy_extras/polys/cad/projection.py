@@ -29,6 +29,11 @@ their resultants with the others [3]_: the other polynomials are then
 sign-invariant on the sections of the constraint, which is where the
 formula can hold. See :func:`mccallum_projection`.
 
+The module is native: the polynomials are the typed
+:class:`~sympy_extras.polys.polytools.Poly` over ``ZZ`` in symbols of the
+core, and SymPy is not imported; the SymPy face, on SymPy's ``Poly``, is
+:mod:`sympy_extras.polys.cad.projection_sympy`.
+
 References
 ==========
 
@@ -42,43 +47,92 @@ References
 """
 from __future__ import annotations
 
+from fractions import Fraction
 from itertools import combinations
-from typing import Iterable, Optional, Sequence, Union
+from math import lcm
+from typing import Callable, Iterable, Optional, Sequence, Union
 
-from sympy.core.symbol import Symbol
-from sympy.polys.densebasic import dmp_strip, dmp_zero_p
-from sympy.polys.domains import ZZ
-from sympy_extras.polys.subresultants import dmp_psc
-from sympy.polys.polyclasses import DMP
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly
+from sympy_extras.core.expr import Expr, ExprLike
+from sympy_extras.polys.domains.sparsepolynomialring import IntegerPolynomialRing
+from sympy_extras.polys.euclidtools import dup_inner_subresultants
+from sympy_extras.polys.polyerrors import BasePolynomialError, PolynomialError
+from sympy_extras.polys.polytools import Poly
+from sympy_extras.polys.rings import Monomial, PolyElement
 
-from sympy_extras._typing import Dmp, DomainElement, ExprLike
+__all__ = ['squarefree_basis', 'mccallum_projection', 'hong_projection', 'projection_sets',
+           'augmented_projection_sets', 'to_polys', 'PROJECTIONS', 'level_of', 'Projection']
+
+#: the polynomial arguments
+PolyLike = Union[Poly, ExprLike]
+
+#: the coefficients of a polynomial: monomials to rational numbers
+Terms = dict[Monomial, Fraction]
+
+#: a projection operator
+Projection = Callable[[Sequence[Poly], Expr], list[Poly]]
 
 
-def _to_polys(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbol]) -> list[Poly]:
-    """Convert ``polys`` to primitive polynomials over ZZ in ``gens``."""
+def _in_gens(f: Poly, gens: Sequence[Expr]) -> Poly:
+    """``f`` written in the generators ``gens``, which must contain those
+    of its generators which it depends on."""
+    target = tuple(gens)
+    if f.gens == target:
+        return f
+    positions: list[int] = []
+    for i, g in enumerate(f.gens):
+        if g in target:
+            positions.append(target.index(g))
+        elif f.degree(i) > 0:
+            raise PolynomialError("%s depends on %s, which is not in %s" % (f, g, target))
+        else:
+            positions.append(-1)
+    terms: dict[Monomial, Union[int, Fraction]] = {}
+    for m, c in f.rep.terms.items():
+        exponents = [0]*len(target)
+        for i, e in enumerate(m[:len(positions)]):
+            if e:
+                exponents[positions[i]] = e
+        terms[tuple(exponents)] = c
+    return Poly.from_dict(terms, *target)
+
+
+def to_polys(polys: Iterable[PolyLike], gens: Sequence[Expr]) -> list[Poly]:
+    """Convert ``polys`` to polynomials over ZZ in ``gens``: rational
+    coefficients are cleared of their denominators (``PolynomialError``
+    for coefficients which are not rational)."""
     result = []
+    generators = tuple(gens)
     for p in polys:
-        if isinstance(p, Poly):
-            p = p.as_expr()
-        p = Poly(p, *gens)
-        if not p.domain.is_ZZ:
-            if not (p.domain.is_QQ or p.domain.is_ZZ):
-                raise PolynomialError(
-                    "polynomial with rational coefficients expected, got %s" % p)
-            _, p = p.clear_denoms()
-            p = p.set_domain(ZZ)
-        result.append(p)
+        try:
+            if isinstance(p, Poly):
+                q = p if p.gens == generators else Poly(p.as_expr(), *generators)
+            else:
+                q = Poly(p, *generators)
+        except BasePolynomialError as error:
+            raise PolynomialError("polynomial with rational coefficients expected: %s" % (error,))
+        if q.domain not in ('ZZ', 'QQ'):
+            raise PolynomialError("polynomial with rational coefficients expected, got %s" % (q,))
+        if not q.is_integral:
+            d = 1
+            for c in q.rep.terms.values():
+                d = lcm(d, c.denominator)
+            q = Poly.from_dict({m: int(c*d) for m, c in q.rep.terms.items()}, *generators)
+        result.append(q)
     return result
 
 
-def _level(f: Poly, gens: Sequence[Symbol]) -> int:
+def level_of(f: Poly, gens: Sequence[Expr]) -> int:
     """Index of the last generator of ``gens`` that ``f`` depends on."""
     for k in range(len(gens), 0, -1):
         if gens[k - 1] in f.gens and f.degree(gens[k - 1]) > 0:
             return k
     return 0
+
+
+def _leading_negative(f: Poly) -> bool:
+    """Whether the leading coefficient of ``f`` (lexicographic order of
+    its generators) is negative."""
+    return f.rep.terms[max(f.rep.terms)] < 0
 
 
 def _factors(f: Poly) -> list[Poly]:
@@ -88,13 +142,13 @@ def _factors(f: Poly) -> list[Poly]:
     for g, _ in f.factor_list()[1]:
         if g.is_ground:
             continue
-        if g.LC() < 0:
+        if _leading_negative(g):
             g = -g
         factors.append(g)
     return factors
 
 
-def squarefree_basis(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbol]) -> list[list[Poly]]:
+def squarefree_basis(polys: Iterable[PolyLike], gens: Sequence[Expr]) -> list[list[Poly]]:
     """Finest squarefree basis of ``polys``, split by level.
 
     Returns a list ``[B_1, ..., B_n]`` where ``n = len(gens)`` and ``B_k``
@@ -105,8 +159,9 @@ def squarefree_basis(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symb
     Examples
     ========
 
-    >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import squarefree_basis
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.polys.cad.projection import squarefree_basis
+    >>> x, y = symbols('x y')
     >>> squarefree_basis([(x**2 - 1)*(x + y)**2, 6], [x, y])
     [[Poly(x - 1, x, y, domain='ZZ'), Poly(x + 1, x, y, domain='ZZ')], [Poly(x + y, x, y, domain='ZZ')]]
 
@@ -115,68 +170,87 @@ def squarefree_basis(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symb
     elements.
     """
     levels: list[list[Poly]] = [[] for _ in gens]
-    for f in _to_polys(polys, gens):
+    for f in to_polys(polys, gens):
         for g in _factors(f):
-            k = _level(g, gens)
+            k = level_of(g, gens)
             if k and g not in levels[k - 1]:
                 levels[k - 1].append(g)
     return levels
 
 
-def _main_first(f: Poly, x: Symbol) -> Poly:
+def _main_first(f: Poly, x: Expr) -> Poly:
     """Reorder the generators of ``f`` so that ``x`` comes first."""
-    gens = [x] + [g for g in f.gens if g != x]
-    return f.reorder(*gens)
+    return _in_gens(f, (x,) + tuple(g for g in f.gens if g != x))
 
 
-def _from_dense(rep: Union[Dmp, DomainElement], f: Poly) -> Union[Poly, DomainElement]:
-    """Polynomial in the generators of ``f`` after the first one from the
-    dense representation ``rep``. Univariate ``f`` give domain elements."""
-    rest = f.gens[1:]
-    if not rest:
-        return rep
-    return Poly.new(DMP(rep, f.domain, len(rest) - 1), *rest)
-
-
-def _coefficients(f: Poly) -> list[Union[Poly, DomainElement]]:
+def _coefficients(f: Poly) -> list[Terms]:
     """Coefficients of ``f`` with respect to its first generator, from the
-    leading one down, as polynomials in the other generators."""
-    return [_from_dense(c, f) for c in f.rep.to_list()]
+    leading one down (zeros included), as terms in the other generators."""
+    n = f.degree()
+    coefficients: list[Terms] = [{} for _ in range(n + 1)]
+    for m, c in f.rep.terms.items():
+        coefficients[n - m[0]][m[1:]] = c
+    return coefficients
 
 
-def _psc(f: Poly, g: Poly) -> list[Union[Poly, DomainElement]]:
-    """Principal subresultant coefficients of ``f`` and ``g`` with respect
-    to their first generator."""
-    lev = len(f.gens) - 1
-    psc = dmp_psc(f.rep.to_list(), g.rep.to_list(), lev, f.domain)
-    return [_from_dense(c, f) for c in psc]
+def _is_constant(terms: Terms) -> bool:
+    return all(not any(m) for m in terms)
+
+
+def _poly_of(terms: Terms, f: Poly) -> Poly:
+    """The polynomial with the coefficients ``terms`` in the generators of
+    ``f`` after the first one."""
+    return Poly.from_dict(dict(terms), *f.gens[1:])
+
+
+def _psc(f: Poly, g: Poly) -> list[Poly]:
+    """Principal subresultant coefficients of ``f`` and ``g`` (with the
+    same generators, at least two) with respect to their first generator;
+    the constant ones are left out."""
+    rest = f.gens[1:]
+    names = ['_r%d' % i for i in range(len(rest))]
+    R = IntegerPolynomialRing(names)
+
+    def dense(h: Poly) -> list[PolyElement[int]]:
+        n = h.degree()
+        by_degree: list[dict[Monomial, int]] = [{} for _ in range(n + 1)]
+        for m, c in h.rep.terms.items():
+            by_degree[n - m[0]][m[1:]] = int(c)
+        return [R.ring.from_dict(d) for d in by_degree]
+
+    a, b = dense(f), dense(g)
+    if not a or not b:
+        return []
+    S, T = dup_inner_subresultants(a, b, R)
+    if not S:
+        return []
+    # the coefficient of degree j is the leading coefficient of the
+    # subresultant of degree j, zero when it is defective; in increasing
+    # order of j
+    m = min(len(a), len(b)) - 1
+    psc: list[PolyElement[int]] = [R.zero]*(m + 1)
+    for r, s in zip(S[1:], T[1:]):
+        psc[len(r) - 1] = s
+    return [Poly.from_dict({m: c for m, c in s.terms.items()}, *rest) for s in psc if not s.is_ground]
 
 
 def _reducta(f: Poly) -> list[Poly]:
     """The nonzero reducta of ``f`` with respect to its first generator:
     ``f``, ``f`` minus its leading term, and so on."""
-    rep = f.rep.to_list()
-    lev = len(f.gens) - 1
     reducta = []
-    while not dmp_zero_p(rep, lev):
-        reducta.append(Poly.new(DMP(rep, f.domain, lev), *f.gens))
-        rep = dmp_strip(rep[1:], lev)
+    terms = dict(f.rep.terms)
+    while terms:
+        reducta.append(Poly.from_dict(dict(terms), *f.gens))
+        top = max(m[0] for m in terms)
+        terms = {m: c for m, c in terms.items() if m[0] != top}
     return reducta
 
 
-def _is_constant(c: Union[Poly, DomainElement]) -> bool:
-    return not isinstance(c, Poly) or c.is_ground
-
-
-def _is_zero(c: Union[Poly, DomainElement]) -> bool:
-    return c.is_zero if isinstance(c, Poly) else not c
-
-
-def _collect(items: Iterable[Union[Poly, DomainElement]]) -> list[Poly]:
+def _collect(items: Iterable[Poly]) -> list[Poly]:
     """Irreducible factors of the non-constant polynomials in ``items``."""
     result: list[Poly] = []
     for c in items:
-        if _is_constant(c):
+        if c.is_ground:
             continue
         for g in _factors(c):
             if g not in result:
@@ -184,7 +258,7 @@ def _collect(items: Iterable[Union[Poly, DomainElement]]) -> list[Poly]:
     return result
 
 
-def mccallum_projection(polys: Iterable[Poly], x: Symbol, equational: Iterable[Poly] = ()) -> list[Poly]:
+def mccallum_projection(polys: Sequence[Poly], x: Expr, equational: Sequence[Poly] = ()) -> list[Poly]:
     """McCallum's projection of ``polys`` with respect to ``x``.
 
     ``polys`` must be a squarefree basis (pairwise coprime squarefree
@@ -202,19 +276,15 @@ def mccallum_projection(polys: Iterable[Poly], x: Symbol, equational: Iterable[P
     implies that one of them vanishes (the factors of an equational
     constraint): the projection is then reduced to the coefficients and
     discriminants of the elements of `E`, their pairwise resultants and
-    their resultants with the other polynomials [3]_. Over a cell of a
-    decomposition order-invariant for the reduced projection on which no
-    element of `E` vanishes identically, the elements of `E` are
-    delineable and every other polynomial is sign-invariant on each of
-    their sections, which is where the formula can hold; the other
-    polynomials are not sign-invariant on the sectors.
+    their resultants with the other polynomials [3]_.
 
     Examples
     ========
 
-    >>> from sympy import Poly
-    >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import mccallum_projection
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.polys.polytools import Poly
+    >>> from sympy_extras.polys.cad.projection import mccallum_projection
+    >>> x, y = symbols('x y')
     >>> mccallum_projection([Poly(x**2 + y**2 - 1, x, y)], y)
     [Poly(x - 1, x, domain='ZZ'), Poly(x + 1, x, domain='ZZ')]
     >>> mccallum_projection([Poly(x*y - 1, x, y), Poly(y - x, x, y)], y)
@@ -222,32 +292,38 @@ def mccallum_projection(polys: Iterable[Poly], x: Symbol, equational: Iterable[P
     >>> mccallum_projection([Poly(x*y - 1, x, y), Poly(y - x, x, y)], y, equational=[Poly(y - x, x, y)])
     [Poly(x - 1, x, domain='ZZ'), Poly(x + 1, x, domain='ZZ')]
     """
-    polys = [_main_first(f, x) for f in polys]
+    main = [_main_first(f, x) for f in polys]
     constraints = [_main_first(f, x) for f in equational]
     if constraints:
-        if any(e not in polys for e in constraints):
+        if any(e not in main for e in constraints):
             raise ValueError("the equational constraints must be among the polynomials")
     else:
-        constraints = polys
-    others = [f for f in polys if f not in constraints]
-    items: list[Union[Poly, DomainElement]] = []
+        constraints = main
+    others = [f for f in main if f not in constraints]
+    items: list[Poly] = []
+
+    def add(value: Union[Poly, Expr]) -> None:
+        if isinstance(value, Poly):
+            items.append(value)
+
     for f in constraints:
-        for c in _coefficients(f):
-            if not _is_constant(c):
-                items.append(c)
-            elif not _is_zero(c):
-                break
+        if len(f.gens) > 1:
+            for c in _coefficients(f):
+                if not _is_constant(c):
+                    items.append(_poly_of(c, f))
+                elif c:
+                    break
         if f.degree() >= 2:
-            items.append(f.discriminant())
+            add(f.discriminant())
     for f, g in combinations(constraints, 2):
-        items.append(f.resultant(g))
+        add(f.resultant(g))
     for f in constraints:
         for g in others:
-            items.append(f.resultant(g))
+            add(f.resultant(g))
     return _collect(items)
 
 
-def hong_projection(polys: Iterable[Poly], x: Symbol) -> list[Poly]:
+def hong_projection(polys: Sequence[Poly], x: Expr) -> list[Poly]:
     """Hong's projection of ``polys`` with respect to ``x``.
 
     ``polys`` must be a squarefree basis of positive degree in ``x``. For
@@ -259,38 +335,42 @@ def hong_projection(polys: Iterable[Poly], x: Symbol) -> list[Poly]:
     Examples
     ========
 
-    >>> from sympy import Poly
-    >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import hong_projection
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.polys.polytools import Poly
+    >>> from sympy_extras.polys.cad.projection import hong_projection
+    >>> x, y = symbols('x y')
     >>> hong_projection([Poly(x**2 + y**2 - 1, x, y)], y)
     [Poly(x - 1, x, domain='ZZ'), Poly(x + 1, x, domain='ZZ')]
     >>> hong_projection([Poly(x*y - 1, x, y), Poly(y - x, x, y)], y)
     [Poly(x, x, domain='ZZ'), Poly(x - 1, x, domain='ZZ'), Poly(x + 1, x, domain='ZZ')]
     """
-    polys = [_main_first(f, x) for f in polys]
-    items: list[Union[Poly, DomainElement]] = []
-    for f in polys:
+    main = [_main_first(f, x) for f in polys]
+    items: list[Poly] = []
+    if all(len(f.gens) == 1 for f in main):
+        return []
+    for f in main:
         for r in _reducta(f):
-            items.append(_coefficients(r)[0])
+            items.append(_poly_of(_coefficients(r)[0], r))
             if r.degree() >= 2:
-                items.extend(_psc(r, r.diff(r.gens[0])))
-    for f, g in combinations(polys, 2):
+                items.extend(_psc(r, r.diff(0)))
+    for f, g in combinations(main, 2):
         for r in _reducta(f):
             if r.degree() == 0:
-                items.append(_coefficients(r)[0])
+                items.append(_poly_of(_coefficients(r)[0], r))
             else:
                 items.extend(_psc(r, g))
     return _collect(items)
 
 
-_PROJECTIONS = {
+#: the projection operators by name
+PROJECTIONS: dict[str, Projection] = {
     'mccallum': mccallum_projection,
     'hong': hong_projection,
 }
 
 
-def projection_sets(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbol],
-                    method: str = 'mccallum', equational: Optional[Union[ExprLike, Poly]] = None) -> list[list[Poly]]:
+def projection_sets(polys: Iterable[PolyLike], gens: Sequence[Expr], method: str = 'mccallum',
+                    equational: Optional[PolyLike] = None) -> list[list[Poly]]:
     """Projection factor sets of ``polys`` for the variables ``gens``.
 
     The last generator is projected first. Returns a list
@@ -304,59 +384,58 @@ def projection_sets(polys: Iterable[Union[ExprLike, Poly]], gens: Sequence[Symbo
     projection, ``equational`` may be one of ``polys`` which the formula
     to be decided implies to vanish: the projection of the last level is
     reduced to its factors (see :func:`mccallum_projection`), when they
-    all depend on the last generator. The cells of the decomposition are
-    then not sign-invariant for the other polynomials of the last level
-    off the sections of the constraint, and the lower levels have fewer
-    polynomials.
+    all depend on the last generator.
 
     Examples
     ========
 
-    >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import projection_sets
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.polys.cad.projection import projection_sets
+    >>> x, y = symbols('x y')
     >>> projection_sets([x**2 + y**2 - 1, x - y], [x, y])
     [[Poly(x - 1, x, domain='ZZ'), Poly(x + 1, x, domain='ZZ'), Poly(2*x**2 - 1, x, domain='ZZ')], [Poly(x**2 + y**2 - 1, x, y, domain='ZZ'), Poly(x - y, x, y, domain='ZZ')]]
     >>> projection_sets([x**2 + y**2 - 1, x - y], [x, y], equational=x - y)
     [[Poly(2*x**2 - 1, x, domain='ZZ')], [Poly(x**2 + y**2 - 1, x, y, domain='ZZ'), Poly(x - y, x, y, domain='ZZ')]]
     """
     try:
-        project = _PROJECTIONS[method]
+        project = PROJECTIONS[method]
     except KeyError:
         raise ValueError("unknown projection method %r" % (method,))
 
-    gens = list(gens)
-    if not gens:
+    generators = list(gens)
+    if not generators:
         raise ValueError("at least one generator is needed")
 
-    levels = squarefree_basis(polys, gens)
-    n = len(gens)
+    levels = squarefree_basis(polys, generators)
+    n = len(generators)
     constraints: list[Poly] = []
     if equational is not None and method == 'mccallum':
-        [constraint] = _to_polys([equational], gens)
+        [constraint] = to_polys([equational], generators)
         factors = _factors(constraint)
-        if factors and all(_level(g, gens) == n for g in factors):
+        if factors and all(level_of(g, generators) == n for g in factors):
             constraints = factors
 
     result: list[list[Poly]] = [[] for _ in range(n)]
     for k in range(n, 0, -1):
-        current = [Poly(f.as_expr(), *gens[:k]) for f in levels[k - 1]]
+        current = [_in_gens(f, generators[:k]) for f in levels[k - 1]]
         result[k - 1] = current
         if k == 1:
             break
         if k == n and constraints:
-            projected = mccallum_projection(current, gens[k - 1], [Poly(f.as_expr(), *gens[:k]) for f in constraints])
+            projected = mccallum_projection(current, generators[k - 1],
+                                            [_in_gens(f, generators[:k]) for f in constraints])
         else:
-            projected = project(current, gens[k - 1])
+            projected = project(current, generators[k - 1])
         for g in projected:
-            g = Poly(g.as_expr(), *gens)
-            j = _level(g, gens)
+            g = _in_gens(g, generators)
+            j = level_of(g, generators)
             if j and g not in levels[j - 1]:
                 levels[j - 1].append(g)
     return result
 
 
-def augmented_projection_sets(projection: Sequence[Sequence[Poly]], gens: Sequence[Symbol],
-                              extra: Iterable[Union[ExprLike, Poly]], method: str = 'mccallum') -> list[list[Poly]]:
+def augmented_projection_sets(projection: Sequence[Sequence[Poly]], gens: Sequence[Expr],
+                              extra: Iterable[PolyLike], method: str = 'mccallum') -> list[list[Poly]]:
     """The projection factor sets ``projection`` (``P_1, ..., P_n`` for
     the variables ``gens``, as :func:`projection_sets` gives them) with
     the irreducible factors of the polynomials ``extra`` added at their
@@ -373,9 +452,9 @@ def augmented_projection_sets(projection: Sequence[Sequence[Poly]], gens: Sequen
     Examples
     ========
 
-    >>> from sympy.abc import x, y
-    >>> from sympy_extras.polys.cad import projection_sets
-    >>> from sympy_extras.polys.cad.projection import augmented_projection_sets
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.polys.cad.projection import projection_sets, augmented_projection_sets
+    >>> x, y = symbols('x y')
     >>> projection = projection_sets([x - y**2], [x, y])
     >>> projection
     [[Poly(x, x, domain='ZZ')], [Poly(x - y**2, x, y, domain='ZZ')]]
@@ -392,35 +471,35 @@ def augmented_projection_sets(projection: Sequence[Sequence[Poly]], gens: Sequen
            1992, pp. 177-188.
     """
     try:
-        project = _PROJECTIONS[method]
+        project = PROJECTIONS[method]
     except KeyError:
         raise ValueError("unknown projection method %r" % (method,))
-    gens = list(gens)
-    n = len(gens)
+    generators = list(gens)
+    n = len(generators)
     if len(projection) != n:
         raise ValueError("expected %d projection factor sets" % n)
     levels: list[list[Poly]] = [list(level) for level in projection]
-    new: list[list[Poly]] = [[] for _ in gens]
+    new: list[list[Poly]] = [[] for _ in generators]
 
     def add(g: Poly) -> None:
-        g = Poly(g.as_expr(), *gens)
-        j = _level(g, gens)
+        g = _in_gens(g, generators)
+        j = level_of(g, generators)
         if j:
-            g = Poly(g.as_expr(), *gens[:j])
+            g = _in_gens(g, generators[:j])
             if g not in levels[j - 1]:
                 levels[j - 1].append(g)
                 new[j - 1].append(g)
 
-    for f in _to_polys(extra, gens):
+    for f in to_polys(extra, generators):
         for g in _factors(f):
             add(g)
     for k in range(n, 1, -1):
         if not new[k - 1]:
             continue
         if method == 'mccallum':
-            projected = mccallum_projection(levels[k - 1], gens[k - 1], new[k - 1])
+            projected = mccallum_projection(levels[k - 1], generators[k - 1], new[k - 1])
         else:
-            projected = project(levels[k - 1], gens[k - 1])
+            projected = project(levels[k - 1], generators[k - 1])
         for g in projected:
             add(g)
     return levels

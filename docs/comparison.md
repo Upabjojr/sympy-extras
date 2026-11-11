@@ -45,14 +45,14 @@ The setup used throughout:
 ```python
 >>> from sympy import *
 >>> from sympy.abc import a, b, c, k, n, p, q, s, t, x, y, z
->>> from sympy_extras.assumptions.ask import ask
->>> from sympy_extras.assumptions.refine import refine, simplify
->>> from sympy_extras.assumptions.resolve import resolve
->>> from sympy_extras.assumptions.solve import solve
+>>> from sympy_extras.assumptions.ask_sympy import ask
+>>> from sympy_extras.assumptions.refine_sympy import refine, simplify
+>>> from sympy_extras.assumptions.resolve_sympy import resolve
+>>> from sympy_extras.assumptions.solve_sympy import solve
 >>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
->>> from sympy_extras.assumptions.sat import satisfiable, find_instance
->>> from sympy_extras.assumptions.limits import limit, limit_seq, series
+>>> from sympy_extras.assumptions.sat_sympy import satisfiable, find_instance
+>>> from sympy_extras.assumptions.limits_sympy import limit, limit_seq, series
 >>> from sympy_extras.concrete.karr import karr_sum
 >>> from sympy_extras.concrete.zeilberger_sympy import zeilberger_sum, wz_prove
 >>> from sympy_extras.concrete.convergence import sum_convergence, product_convergence
@@ -69,16 +69,16 @@ The setup used throughout:
 >>> from sympy_extras.solvers.dae import dsolve_dae
 >>> from sympy_extras.solvers.linear_systems import dsolve_linear_system
 >>> from sympy_extras.solvers.charpit import complete_integral
->>> from sympy_extras.solvers.isolation import isolate_real_roots
+>>> from sympy_extras.solvers.isolation_sympy import isolate_real_roots
 >>> from sympy_extras.solvers.thue_equation import thue
 >>> from sympy_extras.solvers.abel import abel_by_invariants
->>> from sympy_extras.solvers.integers import linear_diophantine_system, minimal_nonnegative_solutions
+>>> from sympy_extras.solvers.integers_sympy import linear_diophantine_system, minimal_nonnegative_solutions
 >>> from sympy_extras.solvers.lie import symmetries
 >>> from sympy_extras.solvers.pde import pde_symmetries, pdsolve_lie
->>> from sympy_extras.polys.ideals import Ideal
+>>> from sympy_extras.polys.ideals_sympy import Ideal
 >>> from sympy_extras.polys.subresultants import psc
 >>> from sympy_extras.polys.groebnerwalk import groebner_walk
->>> from sympy_extras.polys.virtual_substitution import eliminate_linear
+>>> from sympy_extras.polys.virtual_substitution_sympy import eliminate_linear
 >>> from sympy_extras.integrals import definite_integral, IntegralByRanges
 >>> from sympy_extras.integrals import mellin_transform as xmellin
 >>> f = Function('y')(x)

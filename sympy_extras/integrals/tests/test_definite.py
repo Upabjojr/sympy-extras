@@ -15,7 +15,7 @@ from sympy.testing.pytest import raises
 from sympy_extras._testing import untyped
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.facts_sympy import element
-from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.integrals import definite_integral, conditional_integral, verify_numerically, ConditionalValue
 from sympy_extras.settings import configure
 
@@ -721,7 +721,7 @@ def test_the_last_simplification_is_checked(monkeypatch: object) -> None:
     import pytest
     from sympy.core.expr import Expr
     from sympy.logic.boolalg import Boolean, true
-    from sympy_extras.assumptions.ask import Assumptions
+    from sympy_extras.assumptions.ask_sympy import Assumptions
     from sympy_extras.integrals import marichev
     assert isinstance(monkeypatch, pytest.MonkeyPatch)
 

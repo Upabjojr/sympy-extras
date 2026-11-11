@@ -47,7 +47,7 @@ class AssumptionsContext:
 
     >>> from sympy.abc import x
     >>> from sympy_extras.assumptions.context_sympy import global_assumptions
-    >>> from sympy_extras.assumptions.ask import ask
+    >>> from sympy_extras.assumptions.ask_sympy import ask
     >>> global_assumptions.add(x > 0)
     >>> global_assumptions
     AssumptionsContext([x > 0])
@@ -126,7 +126,7 @@ def assuming(*assumptions: Union[Boolean, bool]) -> Iterator[None]:
     >>> from sympy import Abs, sqrt, ask, Q
     >>> from sympy.abc import x
     >>> from sympy_extras.assumptions.context_sympy import assuming
-    >>> from sympy_extras.assumptions.refine import refine
+    >>> from sympy_extras.assumptions.refine_sympy import refine
     >>> with assuming(x > 1):
     ...     print(refine(Abs(x - 1) + sqrt(x**2)))
     ...     print(ask(Q.positive(x)))

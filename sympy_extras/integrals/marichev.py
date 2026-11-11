@@ -97,9 +97,9 @@ from sympy.logic.boolalg import And, Boolean, true
 
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import element
-from sympy_extras.assumptions.refine import refine
+from sympy_extras.assumptions.refine_sympy import refine
 from sympy_extras.settings import settings
 from .conditions import ConditionalValue, decide, numerical_verdict
 from .mellin import BETA_LOWER, GammaQuotient, Match, Product, _beta_kernel, decompose_integrand

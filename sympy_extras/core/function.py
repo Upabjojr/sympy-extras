@@ -1320,6 +1320,12 @@ def expand(expr: ExprLike, deep: bool = True, mul: bool = True, multinomial: boo
         trig = False
         if not (mul or multinomial or log):
             return e
+    if log and (mul or multinomial):
+        # SymPy's sorted hints run the log hint over the whole tree before
+        # the mul hint: log(a*(-1 - I)) with a < 0 is split into
+        # log(-a) + log(1 + I) before the product is distributed into
+        # -a - a*I, where it no longer splits
+        e = _expand(e, deep, False, False, False, True, False, force)
     result = _expand(e, deep, mul, multinomial, power_exp, log, power_base, force)
     # SymPy's Expr.expand repeats the multinomial and mul hints until
     # nothing changes (sqrt(c)**2 = c may create a new product with a sum)

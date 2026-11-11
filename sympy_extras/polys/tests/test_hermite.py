@@ -9,6 +9,7 @@ lifting, no quadratic form)."""
 from __future__ import annotations
 
 import random
+from fractions import Fraction
 from itertools import product
 
 from sympy import And, Eq, Matrix, Ne, Or, Rational, sqrt
@@ -16,15 +17,15 @@ from sympy.abc import x, y, z
 from sympy.core.expr import Expr
 from sympy.core.relational import Relational
 from sympy.logic.boolalg import Boolean
-from sympy.polys.domains import QQ
 from sympy.polys.polytools import Poly, real_roots
 from sympy.testing.pytest import raises
 
-from sympy_extras._typing import DomainElement, as_boolean
-from sympy_extras.polys.cad import sample_points
-from sympy_extras.polys.hermite import (SignCounts, count_complex_solutions, count_real_solutions,
-    decide_zero_dimensional, hermite_matrix, real_sign_counts, sign_determination, tarski_query, _inertia)
-from sympy_extras.polys.ideals import Ideal
+from sympy_extras._typing import as_boolean
+from sympy_extras.polys.cad.qe_sympy import sample_points
+from sympy_extras.polys.hermite_sympy import (SignCounts, count_complex_solutions, count_real_solutions,
+    decide_zero_dimensional, hermite_matrix, real_sign_counts, sign_determination, tarski_query)
+from sympy_extras.polys.hermite import _inertia
+from sympy_extras.polys.ideals_sympy import Ideal
 
 
 def test_circle_and_line() -> None:
@@ -120,7 +121,7 @@ def test_whole_ring_and_invalid_input() -> None:
 
 
 def test_inertia() -> None:
-    q = QQ
+    q = Fraction
     # zero diagonal: the 2x2 step replaces e_0 by e_0 + e_1
     assert _inertia([[q(0), q(1)], [q(1), q(0)]]) == (1, 1)
     assert _inertia([[q(0), q(1), q(0)], [q(1), q(0), q(0)], [q(0), q(0), q(0)]]) == (1, 1)
@@ -141,7 +142,7 @@ def test_inertia_random() -> None:
         rows = [[rng.choice([0, 0, 1, -1, 2]) for _ in range(k)] for _ in range(n)]
         signs = [rng.choice([1, -1]) for _ in range(k)]
         M = Matrix(n, n, lambda i, j: sum(signs[t]*rows[i][t]*rows[j][t] for t in range(k)))
-        entries: list[list[DomainElement]] = [[QQ(int(M[i, j])) for j in range(n)] for i in range(n)]
+        entries: list[list[Fraction]] = [[Fraction(int(M[i, j])) for j in range(n)] for i in range(n)]
         assert _inertia(entries) == _descartes(M), M
 
 

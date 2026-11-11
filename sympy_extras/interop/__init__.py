@@ -6,7 +6,7 @@ constructors, or with ``evaluate=False`` to keep the structure);
 which have no class here (``sin``, ``exp``, ``log``, ...) are represented
 by :class:`~sympy_extras.core.function.AppliedSymPyFunction`, and any
 other object of SymPy (``Integral``, ``Piecewise``, ``And``, a set, ...)
-by :class:`SymPyExprNode` or :class:`SymPyNode`, generic wrappers which
+by :class:`SymPyExprNode`, :class:`SymPySetNode` or :class:`SymPyNode`, generic wrappers which
 keep the SymPy class and the converted arguments, so that every
 expression of SymPy has a tree here and the round trip is exact; symbols
 keep the assumptions given to their constructor; floats keep their
@@ -35,7 +35,7 @@ from sympy.functions.elementary.piecewise import ExprCondPair as SymPyExprCondPa
 
 from sympy_extras.core.add import Add
 from sympy_extras.core.assume import AppliedPredicate, Predicate
-from sympy_extras.core.basic import Basic, SubsMapping
+from sympy_extras.core.basic import Basic, ReplacementRule, SubsMapping
 from sympy_extras.core.bridge import Bridge, RewriteTarget, register_bridge
 from sympy_extras.core.containers import Dict, Tuple
 from sympy_extras.core.assumptions import Facts, Truth
@@ -56,6 +56,7 @@ from sympy_extras.core.limits import Limit
 from sympy_extras.core.accumbounds import AccumBounds
 from sympy_extras.core.power import Pow
 from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
+from sympy_extras.sets.sets import Set as NativeSet
 from sympy_extras.core.sorting import ClassKey, CompareItem
 from sympy_extras.core.symbol import Dummy, Symbol, Wild
 
@@ -63,7 +64,7 @@ if TYPE_CHECKING:
     from sympy_extras.core.printing import StrPrinter
 
 __all__ = ['to_sympy', 'from_sympy', 'expr_from_sympy', 'sympy_expr', 'through_sympy', 'expr_through_sympy',
-    'rewrite_targets', 'SymPyNode', 'SymPyExprNode', 'SymPyBooleanNode', 'SymPyFunction', 'AppliedSymPyFunction', 'apply_sympy',
+    'rewrite_targets', 'SymPyNode', 'SymPyExprNode', 'SymPyBooleanNode', 'SymPySetNode', 'SymPyFunction', 'AppliedSymPyFunction', 'apply_sympy',
     'sympy_facts', 'SymPyBridge']
 
 #: the dummies already converted, so that a dummy bound in one place and
@@ -72,7 +73,9 @@ _dummies_from_sympy: dict[tuple[str, int], Dummy] = {}
 _dummies_to_sympy: dict[tuple[str, int], sympy.Dummy] = {}
 #: the objects of SymPy already converted (cleared when full, and by
 #: ``clear_cache``)
-_from_sympy_cache: dict[SymPyBasic, Basic] = {}
+#: (keyed by the class too: SymPy's Interval(-oo, oo) equals S.Reals, and
+#: they are different nodes)
+_from_sympy_cache: dict[tuple[type, SymPyBasic], Basic] = {}
 _FROM_SYMPY_CACHE_SIZE = 20000
 #: the SymPy forms of the nodes already converted, by identity of the node
 #: (the node is kept with its form, so that its id is not reused)
@@ -173,9 +176,9 @@ class SymPyNode(_SymPyNodeMixin, Basic):
     >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.interop import from_sympy, to_sympy
     >>> x = sympy.Symbol('x')
-    >>> t = from_sympy(sympy.Range(0, x))
-    >>> t, type(t).__name__, t.args, to_sympy(t) == sympy.Range(0, x)
-    (Range(0, x, 1), 'SymPyNode', (0, x, 1), True)
+    >>> t = from_sympy(sympy.Poly(x**2 + 1, x))
+    >>> type(t).__name__, t.args, to_sympy(t) == sympy.Poly(x**2 + 1, x)
+    ('SymPyNode', (x**2 + 1, x), True)
     """
 
     __slots__ = ('_sympy_class', '_node_args')
@@ -200,10 +203,78 @@ class SymPyNode(_SymPyNodeMixin, Basic):
         return from_sympy(self._sympy().doit())
 
 
+class SymPySetNode(_SymPyNodeMixin, NativeSet):
+    """A wrapper of a set of SymPy with no class here (a ``Range``, a
+    ``ComplexRegion``, ...): the class of SymPy and the converted
+    arguments; the memberships, the emptiness and the bounds are SymPy's.
+
+    Examples
+    ========
+
+    >>> import sympy
+    >>> from sympy_extras.core import Integer
+    >>> from sympy_extras.interop import from_sympy, to_sympy
+    >>> x = sympy.Symbol('x')
+    >>> t = from_sympy(sympy.Range(0, 5))
+    >>> t, type(t).__name__, t.contains(Integer(3)), t.contains(Integer(7)), t.inf, t.is_finite_set
+    (Range(0, 5, 1), 'SymPySetNode', True, False, 0, True)
+    >>> to_sympy(t) == sympy.Range(0, 5)
+    True
+    """
+
+    __slots__ = ('_sympy_class', '_node_args')
+
+    def __init__(self, sympy_class: type[SymPyBasic], *args: Basic) -> None:
+        self._sympy_class: type[SymPyBasic] = sympy_class
+        self._node_args: tuple[Basic, ...] = args
+        Basic.__init__(self)
+
+    @property
+    def func(self) -> Callable[..., Basic]:
+        return partial(SymPySetNode, self._sympy_class)
+
+    @classmethod
+    def class_key(cls) -> ClassKey:
+        return (5, 0, 'SymPySetNode')
+
+    def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
+        return from_sympy(self._sympy_class(*[to_sympy(a) for a in args]))
+
+    def doit(self) -> Basic:
+        return from_sympy(self._sympy().doit())
+
+    def _sympy_set(self) -> sympy.Set:
+        s = self._sympy()
+        if not isinstance(s, sympy.Set):
+            raise TypeError("%s is not a set of SymPy" % (s,))
+        return s
+
+    def _contains(self, other: Expr) -> Optional[Boolean]:
+        found = from_sympy(self._sympy_set().contains(to_sympy(other)))
+        if isinstance(found, Boolean) and not isinstance(found, SymPyBooleanNode):
+            return found
+        return None
+
+    @property
+    def is_empty(self) -> Truth:
+        value = self._sympy_set().is_empty
+        return value if isinstance(value, bool) else None
+
+    @property
+    def is_finite_set(self) -> Truth:
+        value = self._sympy_set().is_finite_set
+        return value if isinstance(value, bool) else None
+
+    def _inf(self) -> Expr:
+        return expr_from_sympy(self._sympy_set().inf)
+
+    def _sup(self) -> Expr:
+        return expr_from_sympy(self._sympy_set().sup)
+
+
 class SymPyBooleanNode(_SymPyNodeMixin, Boolean):
-    """A wrapper of a Boolean of SymPy with no class here (a membership in
-    a set not ported, ...): the class of SymPy and the converted
-    arguments.
+    """A wrapper of a Boolean of SymPy with no class here (the membership
+    of a point, ...): the class of SymPy and the converted arguments.
 
     Examples
     ========
@@ -211,9 +282,9 @@ class SymPyBooleanNode(_SymPyNodeMixin, Boolean):
     >>> import sympy
     >>> from sympy_extras.interop import from_sympy, to_sympy
     >>> x = sympy.Symbol('x')
-    >>> t = from_sympy(sympy.Contains(x, sympy.S.Reals**2))
+    >>> t = from_sympy(sympy.Contains(sympy.Tuple(x, x), sympy.S.Reals**2, evaluate=False))
     >>> t, type(t).__name__, to_sympy(t ^ (from_sympy(x) > 0))
-    (Contains(x, ProductSet(Reals, Reals)), 'SymPyBooleanNode', (x > 0) ^ Contains(x, ProductSet(Reals, Reals)))
+    (Contains((x, x), ProductSet(Reals, Reals)), 'SymPyBooleanNode', (x > 0) ^ Contains((x, x), ProductSet(Reals, Reals)))
     """
 
     __slots__ = ('_sympy_class', '_node_args')
@@ -291,6 +362,23 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return from_sympy(self._sympy_class(*[to_sympy(a) for a in args]))
+
+    def _subs(self, old: Basic, new: Basic) -> Basic:
+        # the variable of the polynomial of a CRootOf is bound: the root
+        # is a number, which no substitution changes
+        if issubclass(self._sympy_class, sympy.ComplexRootOf) and self != old:
+            return self
+        return Expr._subs(self, old, new)
+
+    def _xreplace(self, rule: ReplacementRule) -> Basic:
+        if issubclass(self._sympy_class, sympy.ComplexRootOf) and self not in rule:
+            return self
+        return Expr._xreplace(self, rule)
+
+    def _xreplace_evaluated(self, rule: ReplacementRule) -> Basic:
+        if issubclass(self._sympy_class, sympy.ComplexRootOf) and self not in rule:
+            return self
+        return Expr._xreplace_evaluated(self, rule)
 
     def doit(self) -> Expr:
         return expr_from_sympy(self._sympy().doit())
@@ -397,7 +485,7 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
     if isinstance(e, AlgebraicNumber):
         alias = None if e.alias is None else e.alias.name
         return sympy.AlgebraicNumber(to_sympy(e.root), [to_sympy(c) for c in e.coeffs()], alias=alias)
-    if isinstance(e, (SymPyNode, SymPyExprNode, SymPyBooleanNode)):
+    if isinstance(e, (SymPyNode, SymPyExprNode, SymPyBooleanNode, SymPySetNode)):
         return e._sympy()
     from sympy_extras.functions.elementary.piecewise import ExprCondPair, Piecewise
     if isinstance(e, Piecewise):
@@ -413,6 +501,14 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
                              to_sympy(e.argument, evaluate))
     if isinstance(e, ExprCondPair):
         return SymPyExprCondPair(to_sympy(e.expr, evaluate), to_sympy(e.cond, evaluate))
+    from sympy_extras.solvers.isolation import TranscendentalRoot
+    if isinstance(e, TranscendentalRoot):
+        from sympy_extras.solvers.isolation_sympy import sympy_root
+        return sympy_root(e)
+    from sympy_extras.polys.cad.indexedroot import IndexedRoot
+    if isinstance(e, IndexedRoot):
+        from sympy_extras.polys.cad.indexedroot_sympy import sympy_indexed_root
+        return sympy_indexed_root(e)
     args = [to_sympy(a, evaluate) for a in e.args]
     if isinstance(e, Add):
         return sympy.Add(*[_sympy_expr(a) for a in args], evaluate=evaluate)
@@ -540,13 +636,14 @@ def from_sympy(e: Union[SymPyBasic, int]) -> Basic:
     """
     if isinstance(e, int):
         return Integer(e)
-    cached = _from_sympy_cache.get(e)
+    key = (type(e), e)
+    cached = _from_sympy_cache.get(key)
     if cached is not None:
         return cached
     converted = _from_sympy(e)
     if len(_from_sympy_cache) >= _FROM_SYMPY_CACHE_SIZE:
         _from_sympy_cache.clear()
-    _from_sympy_cache[e] = converted
+    _from_sympy_cache[key] = converted
     if id(converted) not in _to_sympy_cache and not isinstance(e, sympy.Float):
         _remember(converted, e)  # the round trip is exact
     return converted
@@ -685,6 +782,9 @@ def _from_sympy(e: SymPyBasic) -> Basic:
         from sympy_extras.functions.elementary.miscellaneous import Max, Min
         lattice = Max if isinstance(e, sympy.Max) else Min
         return lattice(*[_expr(a) for a in e.args])
+    from sympy_extras.polys.cad.indexedroot_sympy import IndexedRoot as SymPyIndexedRoot, native_indexed_root
+    if isinstance(e, SymPyIndexedRoot):
+        return native_indexed_root(e)
     if isinstance(e, SymPyFunctionClass) and all(isinstance(a, SymPyExpr) for a in e.args):
         cls = type(e)
         native = _sympy_to_native().get(cls)
@@ -694,6 +794,9 @@ def _from_sympy(e: SymPyBasic) -> Basic:
     from sympy_extras.assumptions.quantifiers_sympy import Quantifier as SymPyQuantifier, native_quantifier
     if isinstance(e, SymPyQuantifier):
         return native_quantifier(e)
+    from sympy_extras.solvers.isolation_sympy import TranscendentalRoot as SymPyTranscendentalRoot, native_root
+    if isinstance(e, SymPyTranscendentalRoot):
+        return native_root(e)
     if isinstance(e, SymPyExpr):
         return SymPyExprNode(type(e), *[from_sympy(a) for a in e.args])
     if isinstance(e, SymPyBoolean):
@@ -1119,6 +1222,15 @@ def _set_to_sympy(e: Basic, args: list[SymPyBasic], evaluate: bool) -> SymPyBasi
         return sympy.Complement(args[0], args[1], evaluate=evaluate)
     if isinstance(e, native_sets.Contains):
         return sympy.Contains(args[0], args[1], evaluate=False)
+    if isinstance(e, native_sets.ProductSet):
+        return sympy.ProductSet(*args)
+    if isinstance(e, native_sets.PointSet):
+        return sympy.FiniteSet(*args, evaluate=evaluate)
+    from sympy_extras.sets.conditionset import ConditionSet
+    if isinstance(e, ConditionSet):
+        return sympy.ConditionSet(*args)
+    if isinstance(e, fancysets.ImageSet):
+        return sympy.ImageSet(sympy.Lambda(args[0], args[1]), *args[2:])
     raise TypeError('no SymPy counterpart of %s' % (type(e).__name__,))
 
 
@@ -1144,8 +1256,26 @@ def _set_from_sympy(e: SymPyBasic) -> Basic:
         return native_sets.UniversalSet
     if isinstance(e, sympy.Interval):
         return native_sets.Interval(_expr(e.start), _expr(e.end), bool(e.left_open), bool(e.right_open))
-    if isinstance(e, sympy.FiniteSet):
+    if isinstance(e, sympy.FiniteSet) and all(isinstance(a, SymPyExpr) for a in e.args):
         return native_sets.FiniteSet(*[_expr(a) for a in e.args])
+    if isinstance(e, sympy.FiniteSet) and all(isinstance(a, sympy.Tuple) for a in e.args):
+        points = [from_sympy(a) for a in e.args]
+        if all(isinstance(p, Tuple) and all(isinstance(c, Expr) for c in p.args) for p in points):
+            return native_sets.PointSet(*[p for p in points if isinstance(p, Tuple)])
+    if isinstance(e, sympy.ImageSet) and all(isinstance(v, sympy.Symbol) for v in e.lamda.signature):
+        from sympy_extras.sets.fancysets import ImageSet
+        image = from_sympy(e.lamda.expr)
+        bases = [from_sympy(b) for b in e.base_sets]
+        if (isinstance(image, Expr) or (isinstance(image, Tuple) and all(isinstance(c, Expr) for c in image.args))) \
+                and all(isinstance(b, native_sets.Set) for b in bases):
+            return ImageSet(Tuple(*[_symbol(v) for v in e.lamda.signature]), image,
+                            *[b for b in bases if isinstance(b, native_sets.Set)])
+    if isinstance(e, sympy.ConditionSet):
+        from sympy_extras.sets.conditionset import ConditionSet
+        sym, condition, base = [from_sympy(a) for a in e.args]
+        if (isinstance(sym, Symbol) or (isinstance(sym, Tuple) and all(isinstance(v, Symbol) for v in sym.args))) \
+                and isinstance(condition, Boolean) and isinstance(base, native_sets.Set):
+            return ConditionSet(sym, condition, base)
     parts = [from_sympy(a) for a in e.args]
     sets = [a for a in parts if isinstance(a, native_sets.Set)]
     if isinstance(e, sympy.Union) and len(sets) == len(parts):
@@ -1154,11 +1284,15 @@ def _set_from_sympy(e: SymPyBasic) -> Basic:
         return native_sets.Intersection(*sets)
     if isinstance(e, sympy.Complement) and len(sets) == 2:
         return native_sets.Complement(sets[0], sets[1])
+    if isinstance(e, sympy.ProductSet) and len(sets) == len(parts):
+        return native_sets.ProductSet(*sets)
     if isinstance(e, sympy.Contains) and isinstance(parts[0], Expr) and isinstance(parts[1], native_sets.Set):
         return native_sets.Contains(parts[0], parts[1])
     # a set not ported, or with a part not ported
     if isinstance(e, SymPyBoolean):
         return SymPyBooleanNode(type(e), *parts)
+    if isinstance(e, sympy.Set):
+        return SymPySetNode(type(e), *parts)
     return SymPyNode(type(e), *parts)
 
 

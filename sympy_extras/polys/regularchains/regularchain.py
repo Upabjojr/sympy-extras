@@ -4,8 +4,9 @@ A *triangular decomposition* writes the solutions of a system of polynomial
 equations as a union of triangular systems, each of which is solved one
 variable after the other, like a linear system in row echelon form:
 
->>> from sympy.abc import x, y, z
+>>> from sympy_extras.core import symbols
 >>> from sympy_extras.polys.regularchains import triangularize
+>>> x, y, z = symbols('x y z')
 >>> for chain in triangularize([x**2 + y + z - 1, x + y**2 + z - 1, x + y + z**2 - 1], x, y, z):
 ...     print(chain.polys)
 [z**2 + 2*z - 1, y - z, x - z]
@@ -14,9 +15,9 @@ variable after the other, like a linear system in row echelon form:
 [z - 1, y, x]
 
 The variables are ordered, the first one being the greatest (as for the
-lexicographic Gröbner bases of SymPy). A polynomial is seen as a polynomial
-in its greatest variable, its *main variable*, whose leading coefficient is
-its *initial*. A *regular chain* `T` is a set of polynomials with distinct
+lexicographic Gröbner bases). A polynomial is seen as a polynomial in its
+greatest variable, its *main variable*, whose leading coefficient is its
+*initial*. A *regular chain* `T` is a set of polynomials with distinct
 main variables such that the initial of each of them is not a zero divisor
 modulo the *saturated ideal* `\\operatorname{sat}(T') = (T') : h^\\infty` of
 the polynomials `T'` below it, `h` being the product of their initials. The
@@ -29,7 +30,7 @@ Unlike a lexicographic Gröbner basis, the decomposition works in any
 dimension, separates the components of different dimensions, and with the
 parameters as smallest variables it discusses them:
 
->>> from sympy.abc import a, b, c
+>>> a, b, c = symbols('a b c')
 >>> for chain in triangularize([a*x**2 + b*x + c], x, a, b, c):
 ...     print(chain.polys, chain.initials)
 [a*x**2 + b*x + c] [a]
@@ -50,6 +51,15 @@ The chains are *squarefree*: their saturated ideals are radical, and a
 polynomial belongs to the saturated ideal exactly when its pseudo-remainder
 by the chain is zero.
 
+The module works on objects of the core and imports no SymPy
+(:mod:`sympy_extras.polys.regularchains_sympy` is its face on SymPy
+objects). One step goes through SymPy at run time: the exact solutions of
+a chain without free variables (:meth:`RegularChain.solutions`), whose
+coordinates are SymPy's root objects ``CRootOf``, which are not ported
+(:func:`~sympy_extras.polys.regularchains_sympy.exact_solutions_of_core`).
+The numerical solutions are those of mpmath's ``polyroots``, as SymPy's
+``Poly.nroots`` computes them (ported).
+
 References
 ==========
 
@@ -64,68 +74,150 @@ References
    computing triangular representations of algebraic varieties, Journal of
    Symbolic Computation 15 (1993), 143-167.
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/polys/polytools.py (Poly.nroots), sympy/core/evalf.py
+# (chop_parts) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: the numerical roots of the triangular system computed on mpmath
+# numbers directly; typed.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Iterable, Optional, Sequence, Union
+from fractions import Fraction
+from math import lcm
+from typing import Final, Iterable, Optional, Sequence, Union
 
-from sympy.core.expr import Expr
-from sympy.core.mul import Mul
-from sympy.core.numbers import Integer
-from sympy.core.relational import Equality
-from sympy.core.symbol import Symbol
-from sympy.core.sympify import sympify
-from sympy.polys.domains import ZZ
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly
-from sympy.polys.rings import PolyElement, PolyRing
+import mpmath
+from mpmath.libmp.libhyper import NoConvergence
 
-from sympy_extras._typing import as_expr, as_symbol, free_symbols, sorted_symbols
+from sympy_extras.core.add import add
+from sympy_extras.core.evalf import mpf_to_fraction
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.mul import mul
+from sympy_extras.core.numbers import Float, ImaginaryUnit, Integer, dps_to_prec, number_from_fraction
+from sympy_extras.core.power import pow
+from sympy_extras.core.relational import Equality
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.polys.domains.integerring import ZZ
+from sympy_extras.polys.domains.rationalfield import QQ
 from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.polyerrors import PolynomialError
+from sympy_extras.polys.polytools import Poly
+from sympy_extras.polys.rings import PolyRing
 
 from .operations import Chain, Decomposer
-from .recursive import degree, initial, main_variable, normalize
-from .solutions import exact_solutions
+from .recursive import ZPoly, degree, initial, main_variable, max_norm, normalize
 
-__all__ = ['RegularChain', 'triangularize', 'regular_gcd']
+__all__ = ['RegularChain', 'triangularize', 'regular_gcd', 'Equation', 'Point']
 
 #: an equation: a polynomial expression which vanishes, or an equality
 Equation = Union[Expr, Equality, int]
+#: a point: values of the variables
+Point = dict[Symbol, Expr]
 
 
-def _polynomial(ring: PolyRing, symbols: Sequence[Symbol], equation: Equation) -> PolyElement:
+def _as_expr(equation: Equation) -> Expr:
+    if isinstance(equation, bool):
+        raise TypeError("an equation is expected, got %s" % (equation,))
+    if isinstance(equation, int):
+        return Integer(equation)
+    if isinstance(equation, Equality):
+        return equation.lhs - equation.rhs
+    if isinstance(equation, Expr):
+        return equation
+    raise TypeError("an equation is expected, got %s" % (equation,))
+
+
+def _polynomial(ring: PolyRing[int], symbols: Sequence[Symbol], equation: Equation) -> ZPoly:
     """The polynomial over the integers of an equation (the numerator of a
     polynomial with rational coefficients)."""
-    given = sympify(equation)
-    expr = as_expr(given.lhs - given.rhs) if isinstance(given, Equality) else as_expr(given)
-    unknown = free_symbols(expr) - set(symbols)
+    expr = _as_expr(equation)
+    unknown = expr.free_symbols - set(symbols)
     if unknown:
-        raise ValueError("symbols which are not variables: %s" % sorted_symbols(unknown))
+        raise ValueError("symbols which are not variables: %s" % sorted(unknown, key=lambda s: s.name))
     try:
-        poly = Poly(expr, *symbols, domain='QQ')
+        poly = Poly(expr, *symbols)
     except PolynomialError:
         raise ValueError("not a polynomial in the variables: %s" % expr)
     except Exception:
         raise ValueError("not a polynomial with rational coefficients: %s" % expr)
-    result: PolyElement = ring.from_expr(poly.clear_denoms()[1].as_expr())
-    return result
+    n = len(symbols)
+    terms = {m[:n]: c for m, c in poly.rep.terms.items()}
+    if any(any(m[n:]) for m in poly.rep.terms):
+        raise ValueError("not a polynomial with rational coefficients: %s" % expr)
+    denominator = 1
+    for c in terms.values():
+        denominator = lcm(denominator, c.denominator)
+    return ring.from_dict({m: int(c*denominator) for m, c in terms.items()})
+
+
+def _expr(p: ZPoly, symbols: Sequence[Symbol]) -> Expr:
+    """The expression of a polynomial in the actual symbols."""
+    parts: list[Expr] = []
+    for m, c in p.terms.items():
+        factors: list[Expr] = [Integer(c)]
+        for s, e in zip(symbols, m):
+            if e:
+                factors.append(pow(s, Integer(e)) if e > 1 else s)
+        parts.append(mul(*factors))
+    return add(*parts) if parts else Integer(0)
 
 
 def _variables(equations: Sequence[Equation], symbols: Sequence[Symbol]) -> tuple[Symbol, ...]:
     """The given variables followed by the other symbols, as parameters."""
-    variables = [as_symbol(s) for s in symbols]
+    variables = [_as_symbol(s) for s in symbols]
     if len(set(variables)) != len(variables):
         raise ValueError("repeated variables")
     found: set[Symbol] = set()
     for equation in equations:
-        given = sympify(equation)
-        if isinstance(given, Equality):
-            found |= free_symbols(as_expr(given.lhs)) | free_symbols(as_expr(given.rhs))
-        else:
-            found |= free_symbols(as_expr(given))
-    variables.extend(sorted_symbols(found - set(variables)))
+        found |= _as_expr(equation).free_symbols
+    variables.extend(sorted(found - set(variables), key=lambda s: s.name))
     if not variables:
         raise ValueError("no variables")
     return tuple(variables)
+
+
+def _as_symbol(s: object) -> Symbol:
+    if not isinstance(s, Symbol):
+        raise TypeError("a symbol is expected, got %s" % (s,))
+    return s
+
+
+def _ring(symbols: Sequence[Symbol]) -> PolyRing[int]:
+    return PolyRing(ZZ, [s.name for s in symbols])
+
+
+class _Parts:
+    """What a chain is made of, for the chains built by the operations."""
+
+    def __init__(self, chain: Chain, ring: PolyRing[int], decomposer: Decomposer) -> None:
+        self.chain: Final[Chain] = chain
+        self.ring: Final[PolyRing[int]] = ring
+        self.decomposer: Final[Decomposer] = decomposer
+
+
+def _validated(equations: list[Equation], symbols: Sequence[Symbol]) -> tuple[_Parts, tuple[Symbol, ...]]:
+    """The chain of the polynomials, checked to be a squarefree regular chain."""
+    variables = _variables(equations, symbols)
+    ring = _ring(variables)
+    decomposer = Decomposer(ring)
+    elements = [normalize(_polynomial(ring, variables, p)) for p in equations]
+    levels = [main_variable(p) for p in elements]
+    if any(level == ring.ngens for level in levels):
+        raise ValueError("a constant polynomial")
+    if len(set(levels)) != len(levels):
+        raise ValueError("two polynomials with the same main variable")
+    chain = decomposer.empty
+    for level, p in sorted(zip(levels, elements), key=lambda pair: -pair[0]):
+        if not decomposer.is_regular(initial(p), chain):
+            raise ValueError("the initial %s is a zero divisor modulo the polynomials below"
+                % _expr(initial(p), variables))
+        added = [t for t in (T.get(level) for T in decomposer.add(chain, p)) if t is not None]
+        if len(added) != 1 or degree(added[0], level) != degree(p, level):
+            raise ValueError("%s is not squarefree modulo the polynomials below" % _expr(p, variables))
+        chain = chain.with_poly(level, p)
+    return _Parts(chain, ring, decomposer), variables
 
 
 class RegularChain:
@@ -151,8 +243,9 @@ class RegularChain:
     Examples
     ========
 
-    >>> from sympy.abc import x, y, z
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.polys.regularchains import RegularChain
+    >>> x, y, z = symbols('x y z')
     >>> T = RegularChain([z**2 - 2, y**2 - z, (y + 1)*x - 1], x, y, z)
     >>> T.main_variables, T.dimension, T.degree
     ([z, y, x], 0, 4)
@@ -183,36 +276,13 @@ class RegularChain:
     ValueError: the initial y - z is a zero divisor modulo the polynomials below
     """
 
-    def __init__(self, polys: Iterable[Equation], *symbols: Symbol) -> None:
-        equations = list(polys)
-        self.symbols: tuple[Symbol, ...] = _variables(equations, symbols)
-        self._ring: PolyRing = PolyRing(self.symbols, ZZ)
-        self._decomposer: Decomposer = Decomposer(self._ring)
-        elements = [normalize(_polynomial(self._ring, self.symbols, p)) for p in equations]
-        levels = [main_variable(p) for p in elements]
-        if any(level == self._ring.ngens for level in levels):
-            raise ValueError("a constant polynomial")
-        if len(set(levels)) != len(levels):
-            raise ValueError("two polynomials with the same main variable")
-        chain = self._decomposer.empty
-        for level, p in sorted(zip(levels, elements), key=lambda pair: -pair[0]):
-            if not self._decomposer.is_regular(initial(p), chain):
-                raise ValueError("the initial %s is a zero divisor modulo the polynomials below"
-                    % initial(p).as_expr())
-            added = [t for t in (T.get(level) for T in self._decomposer.add(chain, p)) if t is not None]
-            if len(added) != 1 or degree(added[0], level) != degree(p, level):
-                raise ValueError("%s is not squarefree modulo the polynomials below" % p.as_expr())
-            chain = chain.with_poly(level, p)
-        self._chain: Chain = chain
-
-    @classmethod
-    def _new(cls, chain: Chain, symbols: tuple[Symbol, ...], ring: PolyRing, decomposer: Decomposer) -> RegularChain:
-        self = object.__new__(cls)
-        self.symbols = symbols
-        self._ring = ring
-        self._decomposer = decomposer
-        self._chain = chain
-        return self
+    def __init__(self, polys: Iterable[Equation], *symbols: Symbol, parts: Optional[_Parts] = None) -> None:
+        if parts is None:
+            parts, symbols = _validated(list(polys), symbols)
+        self.symbols: Final[tuple[Symbol, ...]] = tuple(symbols)
+        self._ring: Final[PolyRing[int]] = parts.ring
+        self._decomposer: Final[Decomposer] = parts.decomposer
+        self._chain: Final[Chain] = parts.chain
 
     def with_symbols(self, *symbols: Symbol) -> RegularChain:
         """The same chain in a ring with more variables, which are free: the
@@ -221,36 +291,45 @@ class RegularChain:
         Examples
         ========
 
-        >>> from sympy.abc import t, x, y
+        >>> from sympy_extras.core import symbols
         >>> from sympy_extras.polys.regularchains import RegularChain
+        >>> t, x, y = symbols('t x y')
         >>> T = RegularChain([y**2 - 2, x - y], x, y).with_symbols(x, t, y)
         >>> T.free_variables, T.contains(t*x**2 - 2*t)
         ([t], True)
         """
-        variables = tuple(as_symbol(s) for s in symbols)
+        variables = tuple(_as_symbol(s) for s in symbols)
         if len(set(variables)) != len(variables):
             raise ValueError("repeated variables")
         if [s for s in variables if s in self.symbols] != list(self.symbols):
             raise ValueError("the variables %s must be kept, in this order" % (self.symbols,))
-        ring = PolyRing(variables, ZZ)
+        ring = _ring(variables)
         decomposer = Decomposer(ring)
-        polys = [ring.from_expr(p) for p in self.polys]
-        return RegularChain._new(decomposer.empty.union(polys), variables, ring, decomposer)
+        polys = [_polynomial(ring, variables, p) for p in self.polys]
+        return RegularChain([], *variables, parts=_Parts(decomposer.empty.union(polys), ring, decomposer))
 
     def _wrap(self, chain: Chain) -> RegularChain:
-        return RegularChain._new(chain, self.symbols, self._ring, self._decomposer)
+        return RegularChain([], *self.symbols, parts=_Parts(chain, self._ring, self._decomposer))
 
-    def _element(self, f: Equation) -> PolyElement:
+    def _element(self, f: Equation) -> ZPoly:
         return _polynomial(self._ring, self.symbols, f)
+
+    def _expr(self, p: ZPoly) -> Expr:
+        return _expr(p, self.symbols)
 
     # ------------------------------------------------------------------
     # description
 
     @property
+    def chain(self) -> Chain:
+        """The chain of polynomials over the integers (of :mod:`.operations`)."""
+        return self._chain
+
+    @property
     def polys(self) -> list[Expr]:
         """The polynomials, by increasing main variable: the order in which
         the triangular system is solved."""
-        return [as_expr(p.as_expr()) for p in self._chain.elements()]
+        return [self._expr(p) for p in self._chain.elements()]
 
     @property
     def main_variables(self) -> list[Symbol]:
@@ -266,7 +345,7 @@ class RegularChain:
     def initials(self) -> list[Expr]:
         """The leading coefficients in the main variables: the solutions of
         the chain are its zeros where none of them vanishes."""
-        return [as_expr(initial(p).as_expr()) for p in self._chain.elements()]
+        return [self._expr(initial(p)) for p in self._chain.elements()]
 
     @property
     def height(self) -> int:
@@ -307,7 +386,7 @@ class RegularChain:
         integers: `h f = r` modulo the chain for a product `h` of divisors of
         the initials, the degree of `r` in every main variable being lower
         than the one of the polynomial of the chain."""
-        return as_expr(self._decomposer.reduce(self._element(f), self._chain).as_expr())
+        return self._expr(self._decomposer.reduce(self._element(f), self._chain))
 
     def contains(self, f: Equation) -> bool:
         """Whether ``f`` is in the saturated ideal, that is vanishes on the
@@ -317,23 +396,31 @@ class RegularChain:
     def __contains__(self, f: Equation) -> bool:
         return self.contains(f)
 
-    def saturated_ideal(self) -> Ideal:
+    def saturated_ideal(self) -> Ideal[Fraction]:
         """The saturated ideal, by a Gröbner basis computation.
 
         Examples
         ========
 
-        >>> from sympy.abc import x, y, z
+        >>> from sympy_extras.core import symbols
         >>> from sympy_extras.polys.regularchains import RegularChain
+        >>> x, y, z = symbols('x y z')
         >>> RegularChain([z*y - 1, y*x - z], x, y, z).saturated_ideal().reduced().exprs
         [x*y - z, y*z - 1, -x + z**2]
         """
-        ideal = Ideal(self.polys if self.polys else [Integer(0)], *self.symbols)
-        if not self.polys:
+        polys = self.polys
+        ideal = Ideal(polys if polys else [Integer(0)], *self.symbols, domain=QQ)
+        if not polys:
             return ideal
-        return ideal.saturate(as_expr(Mul(*self.initials)))
+        return ideal.saturate(mul(*self.initials))
 
-    def numerical_solutions(self, n: int = 15) -> list[dict[Symbol, Expr]]:
+    def _univariate(self, v: Symbol) -> Expr:
+        """The generator of the saturated ideal in ``v`` alone."""
+        p = self.saturated_ideal().univariate(v)
+        d = len(p.rep) - 1
+        return add(*[mul(number_from_fraction(c), pow(v, Integer(d - k))) for k, c in enumerate(p.rep)])
+
+    def numerical_solutions(self, n: int = 15) -> list[Point]:
         """The points of a chain without free variables, numerically.
 
         The triangular system is solved from the bottom: the roots of the
@@ -357,8 +444,9 @@ class RegularChain:
         Examples
         ========
 
-        >>> from sympy.abc import x, y
+        >>> from sympy_extras.core import symbols
         >>> from sympy_extras.polys.regularchains import triangularize
+        >>> x, y = symbols('x y')
         >>> [chain] = triangularize([x**2 + y**2 - 5, x*y - 1], x, y)
         >>> chain.polys
         [y**4 - 5*y**2 + 1, x*y - 1]
@@ -372,32 +460,35 @@ class RegularChain:
         if self.dimension:
             raise ValueError("the chain has the free variables %s: its solutions are not isolated"
                 % self.free_variables)
+        elements = self._chain.elements()
         # the coefficients of a chain are large, and as many digits cancel
-        digits = 2*n + 10 + sum(len(str(p.max_norm())) for p in self._chain.elements())
-        solutions: list[dict[Symbol, Expr]] = [{}]
-        for p, v in zip(self.polys, self.main_variables):
-            following: list[dict[Symbol, Expr]] = []
+        digits = 2*n + 10 + sum(len(str(max_norm(p))) for p in elements)
+        solutions: list[dict[int, mpmath.mpc]] = [{}]
+        for p in elements:
+            i = main_variable(p)
+            following: list[dict[int, mpmath.mpc]] = []
             for solution in solutions:
-                poly = Poly(p.xreplace(solution), v)
-                for root in poly.nroots(n=digits, maxsteps=200):
+                for root in _nroots(_coefficients(p, i, solution, digits), digits):
                     extended = dict(solution)
-                    extended[v] = as_expr(root)
+                    extended[i] = root
                     following.append(extended)
             solutions = following
-        return [{v: as_expr(value.n(n, chop=True)) for v, value in solution.items()} for solution in solutions]
+        levels = [main_variable(p) for p in elements]
+        return [{self.symbols[i]: _number(solution[i], n) for i in levels} for solution in solutions]
 
-    def solutions(self, real: bool = False) -> list[dict[Symbol, Expr]]:
+    def solutions(self, real: bool = False) -> list[Point]:
         """The points of a chain without free variables, exactly.
 
-        The coordinates are rational numbers, root objects (``CRootOf``,
-        in radicals where the package writes them so) and rational
-        functions of them, see :mod:`.solutions`: the chain is solved from
-        the bottom; a polynomial of degree one in its main variable gives
-        its coordinate by a division (written as a root object of its own
-        polynomial when it involves root objects), and the roots of another one, whose
-        coefficients are algebraic numbers, are root objects of a
-        polynomial with rational coefficients (an iterated resultant)
-        which are told from its other roots numerically.
+        The coordinates are rational numbers, root objects (SymPy's
+        ``CRootOf``, in radicals where the package writes them so) and
+        rational functions of them, see
+        :func:`~sympy_extras.polys.regularchains_sympy.solutions.exact_solutions`
+        (on SymPy, called through the face at run time): the chain is
+        solved from the bottom; a polynomial of degree one in its main
+        variable gives its coordinate by a division, and the roots of
+        another one, whose coefficients are algebraic numbers, are root
+        objects of a polynomial with rational coefficients (an iterated
+        resultant) which are told from its other roots numerically.
 
         Parameters
         ==========
@@ -417,20 +508,18 @@ class RegularChain:
         Examples
         ========
 
-        >>> from sympy.abc import x, y
+        >>> from sympy_extras.core import symbols
         >>> from sympy_extras.polys.regularchains import triangularize
-        >>> [chain] = triangularize([x**2 + y**2 - 5, x*y - 1], x, y)
-        >>> chain.solutions()[0]
-        {y: CRootOf(x**4 - 5*x**2 + 1, 0), x: CRootOf(x**4 - 5*x**2 + 1, 1)}
-        >>> [chain] = triangularize([x**5 - x - 1 - y, y**2 - 2], x, y)
-        >>> len(chain.solutions()), chain.solutions(real=True)[0]
-        (10, {y: -sqrt(2), x: CRootOf(x**10 - 2*x**6 - 2*x**5 + x**2 + 2*x - 1, 0)})
+        >>> x, y = symbols('x y')
+        >>> [chain] = triangularize([y**2 - 2, x*y - 1], x, y)
+        >>> chain.solutions()
+        [{y: -sqrt(2), x: -sqrt(2)/2}, {y: sqrt(2), x: sqrt(2)/2}]
         """
         if self.dimension:
             raise ValueError("the chain has the free variables %s: its solutions are not isolated"
                 % self.free_variables)
-        return exact_solutions(self.polys, self.main_variables, real,
-            lambda v: self.saturated_ideal().univariate(v))
+        from sympy_extras.polys.regularchains_sympy import exact_solutions_of_core
+        return exact_solutions_of_core(self.polys, self.main_variables, real, self._univariate)
 
     # ------------------------------------------------------------------
     # operations
@@ -468,14 +557,81 @@ class RegularChain:
         Examples
         ========
 
-        >>> from sympy.abc import x, y
+        >>> from sympy_extras.core import symbols
         >>> from sympy_extras.polys.regularchains import RegularChain
+        >>> x, y = symbols('x y')
         >>> RegularChain([x**2 + y**2 - 1], x, y).intersect(x - y)
         [RegularChain([2*y**2 - 1, x - y], x, y)]
         """
         decomposer = self._decomposer
         chains = decomposer.irredundant(decomposer.intersect(self._element(f), self._chain))
         return [self._wrap(chain) for chain in chains]
+
+
+def _coefficients(p: ZPoly, i: int, values: dict[int, mpmath.mpc], digits: int) -> list[mpmath.mpc]:
+    """The coefficients of ``p`` in the variable ``i`` (highest degree
+    first) at the values of the smaller variables, at ``digits`` digits:
+    integers for the first polynomial, complex numbers otherwise."""
+    d = degree(p, i)
+    with mpmath.workdps(digits):
+        if not values:
+            integers = [0]*(d + 1)
+            for m, c in p.terms.items():
+                integers[d - m[i]] += c
+            return [mpmath.mpf(c) for c in integers]
+        result = [mpmath.mpc(0)]*(d + 1)
+        for m, c in p.terms.items():
+            term = mpmath.mpc(c)
+            for j, e in enumerate(m):
+                if e and j != i:
+                    term *= values[j]**e
+            result[d - m[i]] += term
+        return result
+
+
+def _root_key(r: mpmath.mpc) -> tuple[int, mpmath.mpf, mpmath.mpf, int]:
+    imag = mpmath.im(r)
+    return (1 if imag else 0, mpmath.re(r), abs(imag), (imag > 0) - (imag < 0))
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:Poly.nroots
+def _nroots(coefficients: list[mpmath.mpc], digits: int) -> list[mpmath.mpc]:
+    """The numerical roots of a polynomial, as SymPy's ``Poly.nroots(n=digits,
+    maxsteps=200)``: real ones first."""
+    degree_ = len(coefficients) - 1
+    if degree_ <= 0:
+        return []
+    with mpmath.workdps(digits):
+        try:
+            roots = mpmath.polyroots(coefficients, maxsteps=200, cleanup=True, error=False,
+                                     extraprec=degree_*10)
+        except NoConvergence:
+            roots = mpmath.polyroots(coefficients, maxsteps=200, cleanup=True, error=False,
+                                     extraprec=degree_*15)
+        found: list[mpmath.mpc] = [mpmath.mpc(r) for r in roots]
+        return sorted(found, key=_root_key)
+
+
+def _float(x: mpmath.mpf, n: int) -> Float:
+    return Float(number_from_fraction(mpf_to_fraction(x)), dps=n)
+
+
+# PORTED FROM SYMPY: sympy/core/evalf.py:chop_parts (for numbers of full accuracy)
+def _number(z: mpmath.mpc, n: int) -> Expr:
+    """``z`` to ``n`` digits, its real or imaginary part dropped when it is
+    below the precision, as SymPy's ``evalf(n, chop=True)`` does."""
+    prec = dps_to_prec(n)
+    re, im = mpmath.re(z), mpmath.im(z)
+    if re and abs(re) < mpmath.ldexp(1, -prec):
+        re = mpmath.mpf(0)
+    if im and abs(im) < mpmath.ldexp(1, -prec):
+        im = mpmath.mpf(0)
+    if not im:
+        return _float(re, n)
+    imaginary = mul(_float(im, n), ImaginaryUnit())
+    if not re:
+        return imaginary
+    return add(_float(re, n), imaginary)
 
 
 def triangularize(equations: Iterable[Equation], *symbols: Symbol, inequations: Iterable[Equation] = (),
@@ -518,8 +674,9 @@ def triangularize(equations: Iterable[Equation], *symbols: Symbol, inequations: 
     A plane and a line, which a lexicographic Gröbner basis does not
     separate (the system is its own basis), then three lines:
 
-    >>> from sympy.abc import x, y, z
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.polys.regularchains import triangularize
+    >>> x, y, z = symbols('x y z')
     >>> triangularize([x*y, x*z], x, y, z)
     [RegularChain([x], x, y, z), RegularChain([z, y], x, y, z)]
     >>> triangularize([x*z - y, y*z - x], x, y, z)
@@ -528,7 +685,7 @@ def triangularize(equations: Iterable[Equation], *symbols: Symbol, inequations: 
     The double roots of a cubic, in the sense of Kalkbrener: the discriminant
     and the root as a rational function of the coefficients.
 
-    >>> from sympy.abc import p, q
+    >>> p, q = symbols('p q')
     >>> f = x**3 + p*x + q
     >>> triangularize([f, f.diff(x)], x, p, q, mode='kalkbrener')
     [RegularChain([4*p**3 + 27*q**2, 2*p*x + 3*q], x, p, q)]
@@ -549,7 +706,7 @@ def triangularize(equations: Iterable[Equation], *symbols: Symbol, inequations: 
     if mode not in ('lazard', 'kalkbrener'):
         raise ValueError("mode must be 'lazard' or 'kalkbrener'")
     variables = _variables(given + excluded, symbols)
-    ring = PolyRing(variables, ZZ)
+    ring = _ring(variables)
     polys = [_polynomial(ring, variables, p) for p in given]
     nonzero = [_polynomial(ring, variables, p) for p in excluded]
     if any(not h for h in nonzero):
@@ -560,7 +717,7 @@ def triangularize(equations: Iterable[Equation], *symbols: Symbol, inequations: 
     chains = Decomposer(ring, bound).triangularize(polys, nonzero)
     # the chains which are returned keep every chain of their own operations
     decomposer = Decomposer(ring)
-    return [RegularChain._new(chain, variables, ring, decomposer) for chain in chains]
+    return [RegularChain([], *variables, parts=_Parts(chain, ring, decomposer)) for chain in chains]
 
 
 def regular_gcd(p: Equation, q: Equation, x: Symbol, chain: RegularChain) -> list[tuple[Expr, RegularChain]]:
@@ -593,8 +750,9 @@ def regular_gcd(p: Equation, q: Equation, x: Symbol, chain: RegularChain) -> lis
 
     Over the two roots of `y^2 - 1` the polynomials have different gcds:
 
-    >>> from sympy.abc import x, y
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.polys.regularchains import RegularChain, regular_gcd
+    >>> x, y = symbols('x y')
     >>> T = RegularChain([y**2 - 1], x, y)
     >>> regular_gcd(x**2 - y, x**2 - 3*x + 2*y, x, T)
     [(1, RegularChain([y + 1], x, y)), (x - 1, RegularChain([y - 1], x, y))]
@@ -602,16 +760,17 @@ def regular_gcd(p: Equation, q: Equation, x: Symbol, chain: RegularChain) -> lis
     decomposer = chain._decomposer
     if x not in chain.symbols:
         raise ValueError("%s is not a variable of the chain" % x)
-    level = chain.symbols.index(as_symbol(x))
+    level = chain.symbols.index(x)
     first, second = chain._element(p), chain._element(q)
     if main_variable(first) != level or main_variable(second) != level:
         raise ValueError("the main variable of the polynomials must be %s" % x)
-    if any(t is not None for t in chain._chain.polys[:level + 1]):
+    if any(t is not None for t in chain.chain.polys[:level + 1]):
         raise ValueError("%s must be greater than the main variables of the chain" % x)
     for f in (first, second):
-        if not decomposer.is_regular(initial(f), chain._chain):
-            raise ValueError("the initial %s is not regular modulo the chain" % initial(f).as_expr())
+        if not decomposer.is_regular(initial(f), chain.chain):
+            raise ValueError("the initial %s is not regular modulo the chain" % chain._expr(initial(f)))
     result: list[tuple[Expr, RegularChain]] = []
-    for g, part, _ in decomposer.regular_gcd(first, second, level, chain._chain):
-        result.append((Integer(0) if g is None else as_expr(g.as_expr()), chain._wrap(part)))
+    for g, part, _ in decomposer.regular_gcd(first, second, level, chain.chain):
+        result.append((Integer(0) if g is None else chain._expr(g), chain._wrap(part)))
     return result
+

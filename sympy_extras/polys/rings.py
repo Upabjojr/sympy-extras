@@ -48,7 +48,8 @@ from sympy_extras.core.symbol import Symbol
 
 from .domains.domain import Domain
 
-__all__ = ['PolyRing', 'PolyElement', 'Monomial', 'MonomialOrder', 'OrderValue', 'OrderKeyValue', 'lex', 'grlex', 'grevlex', 'monomial_mul', 'monomial_div',
+__all__ = ['PolyRing', 'PolyElement', 'Monomial', 'MonomialOrder', 'OrderValue', 'OrderKeyValue', 'lex', 'grlex', 'grevlex',
+           'as_order', 'WeightOrder', 'BlockOrder', 'elimination_order', 'monomial_mul', 'monomial_div',
            'monomial_lcm', 'monomial_gcd', 'monomial_divides']
 
 T = TypeVar('T')
@@ -124,6 +125,120 @@ def _grevlex_key(m: Monomial) -> OrderKeyValue:
 lex = MonomialOrder('lex', _lex_key, False)
 grlex = MonomialOrder('grlex', _grlex_key, True)
 grevlex = MonomialOrder('grevlex', _grevlex_key, True)
+
+_named_orders: dict[str, MonomialOrder] = {'lex': lex, 'grlex': grlex, 'grevlex': grevlex}
+
+
+def as_order(order: Union[str, MonomialOrder]) -> MonomialOrder:
+    """The order of a name (``'lex'``, ``'grlex'``, ``'grevlex'``), or the
+    order itself.
+
+    >>> from sympy_extras.polys.rings import as_order, grevlex
+    >>> as_order('grevlex') is grevlex, as_order(grevlex) is grevlex
+    (True, True)
+    """
+    if isinstance(order, MonomialOrder):
+        return order
+    found = _named_orders.get(order)
+    if found is None:
+        raise ValueError("unknown monomial order %r" % (order,))
+    return found
+
+
+def _memoised(key: Callable[[Monomial], OrderKeyValue]) -> Callable[[Monomial], OrderKeyValue]:
+    """``key`` with its values remembered (the Gröbner basis algorithms
+    compare the same monomials many times)."""
+    cache: dict[Monomial, OrderKeyValue] = {}
+
+    def memoised(monomial: Monomial) -> OrderKeyValue:
+        found = cache.get(monomial)
+        if found is None:
+            found = key(monomial)
+            cache[monomial] = found
+        return found
+    return memoised
+
+
+def _probably_graded(key: Callable[[Monomial], OrderKeyValue], nvars: int) -> bool:
+    """Whether the square of every variable is above every variable."""
+    variables = [tuple(1 if k == i else 0 for k in range(nvars)) for i in range(nvars)]
+    squares = [tuple(2 if k == i else 0 for k in range(nvars)) for i in range(nvars)]
+    return all(key(s) > key(v) for s in squares for v in variables)
+
+
+class WeightOrder(MonomialOrder):
+    """A vector of non-negative integer weights refined by another order
+    (``tail``, ``lex`` by default): the weighted degrees are compared
+    first, then ``tail`` breaks the ties. These are the orders along a
+    Gröbner walk; the name is that of
+    :class:`sympy_extras.polys.orderings.WeightOrder`.
+
+    >>> from sympy_extras.polys.rings import WeightOrder, lex
+    >>> W = WeightOrder((1, 3))
+    >>> W, W((2, 0)), W((2, 0)) < W((0, 1)), W == WeightOrder((1, 3), lex)
+    (WeightOrder((1, 3), lex), (2, 2, 0), True, True)
+    """
+
+    def __init__(self, weights: Sequence[int], tail: MonomialOrder = lex) -> None:
+        self.weights: tuple[int, ...] = tuple(weights)
+        if any(w < 0 for w in self.weights):
+            raise ValueError("the weights must be non-negative")
+        self.tail: MonomialOrder = tail
+        weighted = self.weights
+        tail_key = tail.key
+
+        def key(m: Monomial) -> OrderKeyValue:
+            return (sum(w*e for w, e in zip(weighted, m)),) + tail_key(m)
+        graded = bool(weighted) and len(set(weighted)) == 1 and weighted[0] > 0
+        super().__init__('WeightOrder(%s, %s)' % (self.weights, tail), _memoised(key), graded)
+
+
+class BlockOrder(MonomialOrder):
+    """A block (product) order: consecutive blocks of variables, each
+    compared with its own order, the first block first; ``blocks`` are
+    pairs ``(order, size)``. With the variables to eliminate in the first
+    block it is an elimination order (:func:`elimination_order`). The name
+    is that of :class:`sympy_extras.polys.orderings.BlockOrder`.
+
+    >>> from sympy_extras.polys.rings import BlockOrder, grevlex
+    >>> B = BlockOrder([(grevlex, 1), (grevlex, 2)])
+    >>> B, B((0, 1, 1)) < B((1, 0, 0))
+    (BlockOrder((grevlex, 1), (grevlex, 2)), True)
+    """
+
+    def __init__(self, blocks: Sequence[tuple[MonomialOrder, int]]) -> None:
+        self.blocks: tuple[tuple[MonomialOrder, int], ...] = tuple((order, size) for order, size in blocks)
+        if any(size <= 0 for _, size in self.blocks):
+            raise ValueError("block sizes must be positive")
+        slices: list[tuple[Callable[[Monomial], OrderKeyValue], int, int]] = []
+        start = 0
+        for order, size in self.blocks:
+            slices.append((order.key, start, start + size))
+            start += size
+        nvars = start
+
+        def key(m: Monomial) -> OrderKeyValue:
+            result: OrderKeyValue = ()
+            for block_key, begin, end in slices:
+                result = result + block_key(m[begin:end])
+            return result
+        memoised = _memoised(key)
+        name = 'BlockOrder(%s)' % ', '.join('(%s, %d)' % (o, s) for o, s in self.blocks)
+        super().__init__(name, memoised, _probably_graded(memoised, nvars))
+
+
+def elimination_order(neliminate: int, nvars: int, order: MonomialOrder = grevlex) -> MonomialOrder:
+    """The block order eliminating the first ``neliminate`` of ``nvars``
+    variables, ``order`` on each block (``order`` itself when nothing or
+    everything is eliminated).
+
+    >>> from sympy_extras.polys.rings import elimination_order
+    >>> elimination_order(1, 3), elimination_order(0, 3)
+    (BlockOrder((grevlex, 1), (grevlex, 2)), grevlex)
+    """
+    if neliminate <= 0 or neliminate >= nvars:
+        return order
+    return BlockOrder([(order, neliminate), (order, nvars - neliminate)])
 
 
 class PolyRing(Generic[T]):

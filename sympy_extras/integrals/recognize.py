@@ -61,7 +61,7 @@ from sympy.functions.special.zeta_functions import zeta
 from sympy.utilities.lambdify import lambdify
 
 from sympy_extras._typing import ExprLike, as_expr, free_symbols
-from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.settings import settings
 
 __all__ = ['DEFAULT_CONSTANTS', 'recognize_constant', 'recognize_integral', 'quadrature']

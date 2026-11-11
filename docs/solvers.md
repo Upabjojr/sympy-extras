@@ -1,6 +1,7 @@
 # Differential equations: Lie point symmetries, linear equations, first order PDEs, and solving with assumptions
 
-Modules: `sympy_extras.solvers` and `sympy_extras.assumptions.solve`.
+Modules: `sympy_extras.solvers` and `sympy_extras.assumptions.solve` (native,
+on the core) with its SymPy face `sympy_extras.assumptions.solve_sympy`.
 
 ## What SymPy has and what is added
 
@@ -67,8 +68,9 @@ Eq(u(x, t), C1*exp(-x**2/(4*t))/sqrt(t))
 
 ## Solving with assumptions
 
-`sympy_extras.assumptions.solve.solve(equations, symbols, assumptions, domain)`
-is `Solve` with `Assumptions` and a domain. One unknown with polynomial
+`sympy_extras.assumptions.solve_sympy.solve(equations, symbols, assumptions, domain)`
+(the native `sympy_extras.assumptions.solve.solve` takes and returns objects
+of the core) is `Solve` with `Assumptions` and a domain. One unknown with polynomial
 equations and inequalities over the reals goes to the cylindrical
 algebraic decomposition (exact intervals and points with algebraic
 endpoints); otherwise `solveset` or `nonlinsolve` solve the equations,
@@ -79,7 +81,7 @@ hold at it, fail, or cannot be decided.
 ```python
 >>> from sympy import S
 >>> from sympy.abc import a, y
->>> from sympy_extras.assumptions.solve import solve
+>>> from sympy_extras.assumptions.solve_sympy import solve
 >>> solve(x**2 - 2, x, x > 0)
 {sqrt(2)}
 >>> solve((x**2 - 2 > 0) & (x < 3), x, domain=S.Reals)
@@ -97,7 +99,7 @@ many solutions, are described cylindrically, as Mathematica's `Reduce`
 does: the points with algebraic coordinates as a finite set, and the rest
 as a `ConditionSet` whose condition bounds the first unknown by numbers,
 the second by functions of the first, and so on
-(`sympy_extras.polys.cad.cylindrical_set`, see [docs/cad.md](cad.md)). The
+(`sympy_extras.polys.cad.cylindrical_sympy.cylindrical_set`, see [docs/cad.md](cad.md)). The
 parameters are bounded before the unknowns, within the assumptions.
 
 ```python
@@ -134,7 +136,8 @@ ConditionSet(x, a >= 0, Interval(-sqrt(a), sqrt(a)))
 Over the complex numbers (equations and inequations) the cases are read
 from a triangular decomposition in the sense of Lazard with the parameters
 as the smallest variables (`sympy_extras.solvers.parametric.parametric_cases`,
-on `sympy_extras.polys.regularchains`): the zeros of the system are the
+on `sympy_extras.polys.regularchains`, both native; their SymPy faces are
+`solvers.parametric_sympy` and `polys.regularchains_sympy`): the zeros of the system are the
 union of the quasi-components of the regular chains, and in a chain the
 polynomials in the parameters alone are the equations of the case, the
 initials its inequations, and the polynomials in the unknowns give them
@@ -149,7 +152,7 @@ order of the variables.
 
 Over the reals (`domain=S.Reals`; the parameters are real too), with
 inequalities as well, they are the cells of a cylindrical decomposition
-with the parameters first (`sympy_extras.polys.cad.cylindrical_cases`):
+with the parameters first (`sympy_extras.polys.cad.cylindrical_sympy.cylindrical_cases`):
 the conditions bound the first parameter by numbers and the next ones by
 functions of those before, the solutions of one unknown are intervals and
 points with endpoints in the parameters, and the cases with the same

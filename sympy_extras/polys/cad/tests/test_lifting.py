@@ -4,9 +4,9 @@ from sympy.core.numbers import Rational
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import CRootOf
 from sympy.sets.sets import Interval
-from sympy_extras.polys.cad.lifting import (cylindrical_algebraic_decomposition, CAD,
-    CADCell, NotWellOriented, _merge_roots)
-from sympy_extras.polys.cad.samplepoints import SamplePoint, compare_real
+from sympy_extras.polys.cad.lifting_sympy import (cylindrical_algebraic_decomposition, CAD,
+    CADCell, NotWellOriented)
+from sympy_extras.polys.cad.samplepoints_sympy import SamplePoint, compare_real
 from sympy.testing.pytest import raises
 from sympy.abc import x, y, z, w
 
@@ -51,14 +51,6 @@ def _check_structure(cad: CAD) -> None:
         for c in cells:
             assert c.dimension == sum(i % 2 for i in c.index)
     assert cad.cells is cad.cells_at(n)
-
-
-def test_merge_roots() -> None:
-    r = CRootOf(x**2 - 2, 1)
-    assert _merge_roots([], []) == []
-    assert _merge_roots([1], []) == [1]
-    assert _merge_roots([Rational(-1), r], [Rational(1), r, 2]) == [-1, 1, r, 2]
-    assert _merge_roots([0, 3], [1, 2]) == [0, 1, 2, 3]
 
 
 def test_univariate() -> None:
@@ -242,8 +234,8 @@ def test_errors() -> None:
 
 
 def test_lifting_on_demand() -> None:
-    from sympy_extras.polys.cad.lifting import Lifting
-    from sympy_extras.polys.cad.projection import projection_sets
+    from sympy_extras.polys.cad.lifting_sympy import Lifting
+    from sympy_extras.polys.cad.projection_sympy import projection_sets
     polys = [x**2 + y**2 + z**2 - 1, z - x*y]
     projection = projection_sets(polys, [x, y, z])
     lifting = Lifting(projection, [x, y, z], 'mccallum')
@@ -282,9 +274,9 @@ def test_signs_from_the_roots() -> None:
 
 
 def test_liftings_are_kept() -> None:
-    from sympy_extras.polys.cad.lifting import lifting_for, _liftings, _KEPT
-    from sympy_extras.polys.cad.projection import projection_sets
-    from sympy_extras.polys.cad.qe import decide, sample_points, solution_set
+    from sympy_extras.polys.cad.lifting_sympy import lifting_for, _liftings, _KEPT
+    from sympy_extras.polys.cad.projection_sympy import projection_sets
+    from sympy_extras.polys.cad.qe_sympy import decide, sample_points, solution_set
     projection = projection_sets([x**2 + y**2 - 1, x - y], [x, y])
     lifting = lifting_for(projection, [x, y], 'mccallum')
     assert lifting_for(projection, [x, y], 'mccallum') is lifting

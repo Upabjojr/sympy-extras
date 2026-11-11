@@ -84,7 +84,7 @@ if TYPE_CHECKING:
     # (imported when used: sympy_extras._special_values imports the
     # assumptions, which import the solvers)
     from sympy_extras._special_values import Point
-    from sympy_extras.assumptions.ask import Assumptions
+    from sympy_extras.assumptions.ask_sympy import Assumptions
 
 __all__ = ['general_solution_cases', 'basis_cases', 'solution_jacobian', 'explicit_solution', 'solution_cases',
            'as_zero']

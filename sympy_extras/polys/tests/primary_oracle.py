@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from sympy import Add, Expr, Mul
 
-from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.ideals_sympy import Ideal
 
 
 def intersection(ideals: list[Ideal]) -> Ideal:

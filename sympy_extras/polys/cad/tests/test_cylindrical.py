@@ -14,8 +14,8 @@ from sympy.testing.pytest import raises
 from sympy.abc import a, x, y, z
 
 from sympy_extras._typing import as_boolean, as_expr
-from sympy_extras.polys.cad import IndexedRoot, cylindrical_cases, cylindrical_formula, cylindrical_set
-from sympy_extras.polys.cad.qe import _truth_values
+from sympy_extras.polys.cad.cylindrical_sympy import IndexedRoot, cylindrical_cases, cylindrical_formula, cylindrical_set
+from sympy_extras.polys.cad.qe_sympy import truth_tables
 
 
 def _holds(formula: Boolean, point: dict[Symbol, Expr]) -> bool:
@@ -59,8 +59,8 @@ def _agrees_on_every_cell(formula: Boolean, gens: list[Symbol]) -> bool:
     """Whether the cylindrical formula has the truth value of the formula
     at the sample point of every cell of its decomposition."""
     described = cylindrical_formula(formula, gens)
-    _, _, _, cells = _truth_values(formula, gens, [], None)
-    return all(_holds(described, dict(zip(gens, cell.point))) == value for cell, value in cells)
+    cells, [table] = truth_tables([formula], gens, partial=False)
+    return all(_holds(described, dict(zip(gens, cell.point))) == value for cell, value in zip(cells, table))
 
 
 def test_the_disc_and_its_pieces() -> None:

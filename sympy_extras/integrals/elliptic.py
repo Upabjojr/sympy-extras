@@ -153,7 +153,7 @@ from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols
 from sympy.logic.boolalg import Boolean
-from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.settings import settings
 from .conditions import ConditionalValue, plain_symbols, with_symbol_facts
 

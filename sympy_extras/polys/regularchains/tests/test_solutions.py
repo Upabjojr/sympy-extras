@@ -6,8 +6,8 @@ from sympy.polys.rootoftools import ComplexRootOf
 from sympy.testing.pytest import raises
 
 from sympy_extras._typing import as_expr
-from sympy_extras.polys.regularchains import RegularChain, triangularize
-from sympy_extras.polys.regularchains.solutions import exact_solutions
+from sympy_extras.polys.regularchains_sympy import RegularChain, triangularize
+from sympy_extras.polys.regularchains_sympy.solutions import exact_solutions
 
 x, y, z = symbols('x y z')
 

@@ -10,8 +10,8 @@ from sympy.core.symbol import Symbol
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras.polys.ideals import Ideal
-from sympy_extras.polys.regularchains import RegularChain, triangularize
+from sympy_extras.polys.ideals_sympy import Ideal
+from sympy_extras.polys.regularchains_sympy import RegularChain, triangularize
 
 from .oracle import covers, is_squarefree_regular_chain, lies_in, same_radical
 

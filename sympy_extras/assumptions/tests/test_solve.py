@@ -5,7 +5,7 @@ from sympy import (S, Eq, sqrt, exp, log, sin, cos, acos, pi, Interval, Union, F
 from sympy.abc import x, y, a, n
 from sympy.testing.pytest import raises
 
-from sympy_extras.assumptions.solve import solve
+from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras._testing import untyped
 from sympy_extras._typing import as_expr
@@ -195,7 +195,7 @@ def test_an_unknown_nonlinsolve_leaves_free_is_solved_by_regular_chains() -> Non
 
 def test_points_which_do_not_satisfy_the_equations_are_refuted() -> None:
     import sys
-    module = sys.modules['sympy_extras.assumptions.solve']
+    module = sys.modules['sympy_extras.assumptions.solve_sympy']
     equations = [x**5 - x - 1 - y, y**2 - 2]
     assert module._refuted(FiniteSet((x, sqrt(2))), equations, [x, y]) is True
     root = CRootOf(x**10 - 2*x**6 - 2*x**5 + x**2 + 2*x - 1, 3)

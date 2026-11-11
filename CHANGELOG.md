@@ -671,6 +671,404 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The regular chains and the cases of systems with parameters are native
+  (**breaking**): `sympy_extras.polys.regularchains` (`RegularChain`,
+  `triangularize`, `regular_gcd`, and the modules `recursive` and
+  `operations`) and `sympy_extras.solvers.parametric` (`parametric_cases`,
+  `ParametricCase`) take and return the expressions, equalities, symbols,
+  Booleans and sets of the core and import no SymPy. The polynomials are
+  the native `rings.PolyElement` over `ZZ` (the gcds of
+  `IntegerPolynomialRing`, Wang's `multifactor.zz_factor`); SymPy's
+  `PolyElement.prem` and `PolyElement.subresultants`, behind the
+  subresultant chains, and `Poly.nroots`, behind `numerical_solutions`
+  (on mpmath), are ported. `RegularChain.saturated_ideal` is a native
+  `ideals.Ideal` over `QQ`, `ParametricCase.solutions` a native
+  `PointSet`. One step stays on SymPy and goes through it at run time: the
+  exact solutions of a chain without free variables (`RegularChain.solutions`,
+  SymPy's `CRootOf`), whose module `regularchains.solutions` moved to the
+  face as `regularchains_sympy.solutions`. The old SymPy API is in the new
+  faces `sympy_extras.polys.regularchains_sympy` (`RegularChain`,
+  `triangularize`, `regular_gcd`, `exact_solutions`) and
+  `sympy_extras.solvers.parametric_sympy` (`parametric_cases`,
+  `ParametricCase`); **import them instead of `regularchains` and
+  `solvers.parametric`** for SymPy objects. `idealdecomposition` and
+  `differential.rosenfeld_groebner` use the face. The native
+  `assumptions.solve` calls the native modules directly:
+  `solve_sympy.triangularize_of_core` and
+  `solve_sympy.parametric_cases_of_core` are removed, and so are
+  `assumptions.solve.TriangularChain` and `assumptions.solve.ParametricCase`
+  (the native `RegularChain` and `parametric.ParametricCase` take their
+  place). The results are those of the old modules on every call made by
+  the tests, the doctests and 143 more (1076 calls), in the same time (9.3 s
+  for their 360 decompositions); `numerical_solutions` is three times
+  faster. The heuristic gcd of `heuristicgcd` evaluates its univariate
+  polynomials by Horner's scheme and its multivariate ones with the
+  powers computed once (it computed each power of the evaluation point
+  again: 2.4 s of the 8 s of the decomposition of a parametric quartic).
+- Hermite's root counting and the comprehensive Gröbner systems are native
+  (**breaking**): `sympy_extras.polys.hermite` (`count_real_solutions`,
+  `count_complex_solutions`, `tarski_query`, `real_sign_counts`,
+  `sign_determination`, `hermite_matrix`, `decide_zero_dimensional`) and
+  `sympy_extras.polys.comprehensive` (`comprehensive_groebner_system`,
+  `exists_complex`, `complex_quantifier_elimination`, `reduce_complex`,
+  `Branch`) take and return the expressions, symbols and formulas of the
+  core and the native ideals of `sympy_extras.polys.ideals` over `QQ`,
+  compute with Python fractions and F4, and import no SymPy.
+  `hermite_matrix` gives an `ExprMatrix`, a native `Branch` holds tuples,
+  and a system with coefficients that are not rational raises
+  `ValueError` (the face keeps `NotImplementedError`). The old SymPy API
+  is in the new faces `hermite_sympy` (also the quotient algebra with
+  vectors over SymPy's `QQ` on which `rur` builds) and
+  `comprehensive_sympy`, with the same results on every call of the tests,
+  the doctests and the assumptions; **import them instead of `hermite` and
+  `comprehensive`** for SymPy objects. The native `satisfiable` (the proof
+  that a zero-dimensional system has no real solution, now under a native
+  time limit) and `resolve(..., domain=Complexes)` call them directly: the
+  functions `decide_zero_dimensional_of_core` (`sat_sympy`),
+  `complex_quantifier_elimination_of_core` and `reduce_complex_of_core`
+  (`resolve_sympy`) are removed.
+- The top layer of the cylindrical algebraic decomposition is native
+  (**breaking**): `sympy_extras.polys.cad.qe` (`quantifier_elimination`,
+  `decide`, `sample_points`, `solution_set`, `truth_tables`) and
+  `sympy_extras.polys.cad.cylindrical` (`cylindrical_formula`,
+  `cylindrical_set`, `cylindrical_cases`) take and return the formulas,
+  expressions, symbols and sets of the core, run on the native lifting and
+  import no SymPy (the prime implicants and the minimum covers of the
+  solution formulas were already the package's own). Their real algebraic
+  numbers are rational numbers and nodes of the new
+  `sympy_extras.polys.cad.indexedroot`: `IndexedRoot(f, t, k)`, the `k`-th
+  distinct real root of `f` in the bound variable `t`, is an immutable node
+  of the core (it was a SymPy `Function`), with the evaluating function
+  `indexed_root` (the bound variable made the dummy of its name, rational
+  coefficients giving a number), `real_root` (an `Algebraic` as the node of
+  its minimal polynomial, SymPy's `CRootOf`), `real_number` (the same in
+  radicals when `roots.radical_form` allows) and `algebraic_of`; the root
+  with rational coefficients evaluates exactly, compares, has signs, has
+  `polynomial_root` (so `radical_form` and `in_radicals` take it), and
+  `interop` converts it to `CRootOf` and the root functions to the SymPy
+  `IndexedRoot` both ways. The old SymPy API is in the new faces
+  `qe_sympy`, `cylindrical_sympy` (with `_compile` for the region
+  integrals) and `indexedroot_sympy` (the SymPy `IndexedRoot`); **import
+  them instead of `qe` and `cylindrical`** for SymPy objects. One result
+  differs: a bound of a cylindrical description which is a root of a
+  binomial whose `CRootOf` SymPy scales (`3*CRootOf(4*x**3 - 1, 0)`) is now
+  written in radicals (`3*2**(1/3)/2`), as the other roots of binomials
+  were. The native `sat` (`satisfiable`, `find_instance`), `solve`,
+  `resolve`, `ask` and `analysis.domain_of` call the native CAD directly:
+  `sat_sympy.sample_points_of_core` and `.solution_set_of_core`,
+  `solve_sympy.solution_set_of_core`, `.cylindrical_set_of_core`,
+  `.cylindrical_formula_of_core` and `.cylindrical_cases_of_core`,
+  `resolve_sympy.quantifier_elimination_of_core`,
+  `ask_sympy.truth_tables_of_core` and `analysis_sympy.solution_set_of_core`
+  are gone; the floor and the comparison of the real roots of the CAD in
+  `sat` are native (`floor_of_core` and `compare_real_of_core` stay for
+  SymPy's `CRootOf`), and `domain_of` intersects natively, with SymPy's
+  intersection (`intersection_of_core`) when the core does not compare
+  the ends.
+- `sympy_extras.polys.virtual_substitution` is native (**breaking**: core
+  expressions, symbols and Booleans in and out, prefixes of core symbols;
+  it imports no SymPy). The coefficients in the eliminated variable come
+  from the native `Poly` (with the expression coefficients of its
+  decomposition for the domains it does not port, `QQ(a)` and `EX`), the
+  normal form of the relations from the native `assumptions.facts`; it
+  holds the port of SymPy's `to_nnf` (now public, `to_nnf`) and
+  `with_sides`, which `solvers.integers` imports from it (and still
+  exports). SymPy's `simplify_logic` of a compound result is called at
+  run time through `virtual_substitution_sympy.simplify_logic_of_core`
+  (which `integers_sympy` re-exports); a result which is a truth value or
+  a single relation does not go through SymPy. The new face
+  `sympy_extras.polys.virtual_substitution_sympy` keeps the old API on
+  SymPy objects; **import it instead of the old module**: `from
+  sympy_extras.polys.virtual_substitution_sympy import eliminate_linear`.
+  The native `resolve` and `ask` call the native functions directly:
+  `assumptions.resolve_sympy.virtual_substitution_elimination_of_core`,
+  `resolve_sympy.with_sides_of_core`, `assumptions.ask_sympy.is_linear_in_of_core`
+  and `ask_sympy.linear_quantifier_elimination_of_core` are removed. The
+  tests, docs and benchmarks use the face. The same results as before
+  (`srepr`) through the face, and natively (inputs and outputs converted
+  by `interop`), on 120 calls: the doctests, the tests of the module, the
+  `resolve` calls reaching it and 65 linear and quadratic eliminations
+  with parameters.
+- The bottom layer of the cylindrical algebraic decomposition is native
+  (**breaking**): `sympy_extras.polys.cad.projection`, `.samplepoints` and
+  `.lifting` work on the typed `Poly` of `polys.polytools` in symbols of the
+  core and import no SymPy. The sample points are real
+  `qqbar.Algebraic` numbers (minimal polynomial and isolating interval;
+  `compare_real` tells two isolations of one number equal by a Sturm count),
+  their fields the native `AlgebraicField` of a primitive element, the real
+  roots over `QQ(theta)` come from the norm (`factortools.dup_ext_norm`) and
+  Sturm sequences over the field, Hong's principal subresultant
+  coefficients from the typed `dup_inner_subresultants` over
+  `IntegerPolynomialRing`. Cells give their points as `Algebraic` numbers;
+  `CADCell.factor_sign`, `lifting.factor_signs`, `projection.to_polys`,
+  `PROJECTIONS`, `KEPT`, `samplepoints.floor_scaled`, `real_roots_of` are the
+  public names of what was private. The new faces `projection_sympy`,
+  `samplepoints_sympy` and `lifting_sympy` keep the old API on SymPy objects
+  (`Poly`, `Rational`, `CRootOf`; the points are named `CRootOf(m, i)` of
+  the minimal polynomial in the variable of the level, so that the printed
+  variable of a root may differ, as it did with SymPy's cache) and are what
+  `qe`, `cylindrical`, `integrals.regions` and the assumptions use; **import
+  them instead of the old modules**. The face's `SamplePoint` has no
+  `field` and `coords` (its `native` point has them), `lifting._merge_roots`
+  is gone. **`sympy_extras.polys.cad` exports nothing**: import from
+  `polys.cad.qe` (`quantifier_elimination`, `decide`, `sample_points`,
+  `solution_set`, `truth_tables`), `polys.cad.cylindrical`
+  (`cylindrical_formula`, `cylindrical_set`, `cylindrical_cases`,
+  `IndexedRoot`), `polys.cad.lifting_sympy` (`cylindrical_algebraic_decomposition`,
+  `CAD`, `CADCell`, `NotWellOriented`), `polys.cad.projection_sympy` and
+  `polys.cad.samplepoints_sympy`. Native `Poly`: `discriminant` divides by
+  the leading coefficient exactly (it raised when that coefficient was a
+  polynomial in the other generators), `__eq__` and `__hash__` work on the
+  representation (no expression is built), new `Poly.from_dict`, `rep`,
+  `is_integral`; `qqbar.Algebraic.real_interval` and `refine_real`.
+  `interop`: `subs` and `xreplace` no longer go into the polynomial of a
+  wrapped `CRootOf` (its variable is bound; `(x + CRootOf(x**3 - x - 1,
+  0)).subs(x, 1)` raised `GeneratorsNeeded`).
+- `sympy_extras.polys.ideals` is native (**breaking**: it imports no SymPy;
+  its `Ideal` takes core expressions or typed ring elements, core symbols,
+  a required typed coefficient field `domain=` of
+  `sympy_extras.polys.domains` and a typed order; bases are lists of
+  `PolyElement`, univariate and minimal polynomials `DensePoly`,
+  multiplication matrices lists of rows, `reduce` and `standard_monomials`
+  core expressions; no `rur` method). Gröbner bases by F4 over every field
+  (algebraic fields and fields of fractions went to SymPy's Buchberger
+  before), FGLM and a native Gröbner walk (`groebner_walk`,
+  `initial_form`: F4 on the initial forms, lifting by normal forms) for
+  `change_order`, a native `normal_form`, the Hilbert series by the new
+  `sympy_extras.polys.bigatti` (`hilbert_numerator_coefficients`,
+  `minimal_generators`, also used by `polys.hilbert`), the minimal
+  polynomial by an incremental Krylov elimination, `separating_forms` on
+  core symbols and `separating_coefficients`. `sympy_extras.polys.rings`
+  gains `as_order`, `WeightOrder`, `BlockOrder` and `elimination_order`
+  (named as the orders of `polys.orderings`). What is not native is called
+  at run time through the new face `sympy_extras.polys.ideals_sympy` (the
+  `*_of_core` functions): `modular_groebner_of_core` (over `QQ`, when F4
+  has not finished within `settings.groebner_direct_time`),
+  `direct_groebner_of_core` (`settings.groebner_algorithm = 'buchberger'`),
+  and `radical_of_core`, `equidimensional_parts_of_core`,
+  `minimal_primes_of_core`, `primary_decomposition_of_core`,
+  `associated_primes_of_core`, `is_primary_of_core` (the decompositions of
+  `idealdecomposition` through regular chains). The face keeps the old API
+  on SymPy objects (domain inference with `extension=True`, `Poly` bases,
+  SymPy rings in `ring()` and `_basis()`, matrices, `rur`, the
+  decompositions; an explicit `domain=ZZ` now becomes `QQ` as an inferred
+  one did); **import it instead of the old module**: `from
+  sympy_extras.polys.ideals_sympy import Ideal, separating_forms,
+  hilbert_numerator`. `hermite`, `rur`, `comprehensive`,
+  `idealdecomposition`, `regularchains`, `differential.rosenfeld_groebner`,
+  the tests, docs and the in-repository benchmarks use the face. The same
+  results as before through the face on 8037 recorded calls (the doctests
+  and tests of `ideals`, `hermite`, `rur`, `comprehensive`,
+  `idealdecomposition`, the primary decomposition, `regularchains`,
+  `rosenfeld_groebner` and `solvers.parametric`, and 50 more over `GF(7)`,
+  `QQ(sqrt 2)`, `QQ_I`, `QQ(a)`, weight and block orders, Katsura-4,
+  cyclic-4 and cyclic-5), and the same results natively (inputs and
+  outputs converted by `interop`) on all of them but the three `rur`
+  calls; replaying them took 26.6 s through the face against 31.2 s
+  before (`change_order` 3.1 s to 0.6 s, saturations, quotients and
+  intersections about twice as fast).
+- `sympy_extras.solvers.isolation`, `sympy_extras.solvers.integers` and
+  `sympy_extras.polys.roots` are native (**breaking**: core expressions,
+  symbols, Booleans and sets in and out; they import no SymPy). The
+  isolation runs on the native `analysis` and `intervals` (signs, limits,
+  zeros of rational functions), the native `Poly`, `preprocess_roots` and
+  Sturm counts (the real roots of a polynomial in radicals as SymPy's
+  `real_roots` writes them); its `TranscendentalRoot` is a node of the core
+  (immutable, `refined(k)` instead of `refine(k)`, `lower_fraction`,
+  `upper_fraction`, `approximation(prec)`; a number for `is_number`
+  through the new hook `Expr._is_number_node`). The Diophantine systems
+  use the native `Poly`; Cooper's algorithm the core's Booleans with a
+  port of SymPy's `to_nnf` and a native `with_sides`. The radical forms
+  use the native `polyroots` and recognise SymPy's `CRootOf` wrapped in
+  the core. What is not ported is called at run time through the new
+  faces (`*_of_core`): `isolation_sympy.real_roots_of_core` (SymPy's
+  `real_roots`, for the factors needing `CRootOf`),
+  `isolation_sympy.continuous_on_of_core` (`continuous_domain` of a
+  function which is not rational), `integers_sympy.simplify_logic_of_core`
+  and `roots_sympy.roots_of_core` (SymPy's `roots` over `EX`). The faces
+  `isolation_sympy`, `integers_sympy` and `roots_sympy` keep the old API on
+  SymPy objects (`isolation_sympy.TranscendentalRoot` is the SymPy
+  expression, which `interop` converts to and from the native node);
+  **import them instead of the old modules**: `from
+  sympy_extras.solvers.isolation_sympy import isolate_real_roots`. The
+  native `solve` calls the three modules directly and the native `resolve`
+  calls the native `is_presburger` and `presburger_quantifier_elimination`:
+  `assumptions.solve_sympy.isolate_real_roots_of_core`,
+  `point_between_of_core`, `compare_points_of_core`,
+  `linear_system_of_core`, `linear_diophantine_system_of_core`,
+  `minimal_nonnegative_solutions_of_core`, `in_radicals_of_core`,
+  `assumptions.resolve_sympy.is_presburger_of_core` and
+  `presburger_quantifier_elimination_of_core` are removed. The CAD,
+  `regularchains.solutions`, `solvers.transcendental`, the tests, docs and
+  benchmarks use the faces. The same results as before through the faces
+  on 134 calls and on the calls of the doctests and of the tests of the
+  three modules and of `solve`, and the same results natively (converted
+  by `interop`) on the 134 calls; the forms of Cooper's results which
+  differ come from SymPy's `simplify_logic`, which depends on the hash
+  seed.
+- `sympy_extras.simplify.structure` (the structure theorem: `ElementaryTower`,
+  `canonical_form`, `is_zero`, `equal`) is native (**breaking**: core
+  expressions and Booleans in and out; it imports no SymPy). The number
+  field is the native `AlgebraicField` of a primitive element
+  (`qqbar.primitive_element`), numbers are placed in it exactly
+  (`qqbar.Algebraic`, a linear factor of the minimal polynomial over the
+  field), the polynomials are the native sparse rings (`cancel` through
+  `RationalPolynomialRing` over `QQ`), the multivariate factorisation over a
+  number field is the new `polys.algebraicfactor` (Trager:
+  `ext_factor_list`, `AlgebraicPolynomialRing`), the Smith normal form is
+  `polys.lattice`'s, the PSLQ coordinates come from exact enclosures, and
+  the signs from the native `ask`. Two steps go through the new face
+  `simplify.structure_sympy` at run time: `sample_values_of_core`
+  (`integrals.conditions.sample_values`) and `reliable_value_of_core`
+  (`_numeric.reliable_value`). `structure_sympy` keeps the old API on SymPy
+  objects; **import it instead of the old module**: `from
+  sympy_extras.simplify.structure_sympy import is_zero, canonical_form,
+  ElementaryTower`. Its `Element` wraps the native element (`.native`; no
+  `num`/`den` on SymPy rings), its `Generator` shows `kind`, `expression`,
+  `certified`, `index`, `source`, `argument`, `radicand`, `scale`,
+  `eliminated` (no `symbol`), and the internals of the old tower
+  (`ring`, `domain`, `_solve`, ...) are those of the native one; `as_rational`
+  is gone. The native `Element.times` and `ElementaryTower.constant` take a
+  `Fraction`. The native `ask` and `refine` call the native tower directly:
+  `assumptions.ask_sympy.structure_zero_of_core` and
+  `assumptions.refine_sympy.proved_simplification_of_core` are removed.
+- `sympy_extras.assumptions.limits` is native (**breaking**: core
+  expressions, symbols and Booleans in and out; the native `ask`,
+  `facts`, `refine`, `sat`, `resolve`, the core's `limit`/`Limit`
+  (Gruntz), `series` and `AccumBounds`, and the native `simplify`
+  underneath; it imports no SymPy). What is not ported is called at run
+  time through the new face `assumptions.limits_sympy` (the `*_of_core`
+  functions): SymPy's `limit_seq` and `_numeric.reliable_value`.
+  `limits_sympy.limit`, `limit_seq` and `series` keep the old API on
+  SymPy objects; **import them instead of the old module**: `from
+  sympy_extras.assumptions.limits_sympy import limit`. The integrals,
+  `concrete.convergence`, the tests, README, docs and benchmarks use it.
+  The same `srepr` as before through the face on 123 calls (the
+  doctests, the calls of the tests of limits and 69 more with parametric
+  signs, sequences and series), and natively with the inputs converted
+  and the result converted back.
+- The core's `expand` runs the `log` hint over the whole tree before
+  distributing products, in SymPy's order: `log(a*(-1 - I))` with `a < 0`
+  is `log(-a) + log(2)/2 + I*pi/4` (it became `log(-a - a*I)`), so
+  `cancel` and the leading terms of sums of such logarithms simplify as
+  SymPy's do. The core's Gruntz computes the mrv set of `hyper`,
+  `meijerg` and the other functions which are not `Application`s (it
+  raised `NotImplementedError`). Both left limits unevaluated or
+  unsimplified through the native `assumptions.limits`, and broke
+  `test_definite`'s binomial differentials and `test_regions`' merged
+  cases.
+- `functions.elementary.exponential.exp` of `oo` (or `-oo`) times a
+  number evaluates as SymPy's: `zoo` when the real part of the number
+  is positive and its imaginary part nonzero, `0` when it is negative,
+  `nan` when it is zero (`exp(oo*sign(log(5/2) + I*pi))` stayed
+  unevaluated, and the core's limit of `(-5/2)**x` at `oo` with it).
+- `sympy_extras.assumptions.solve` is native (**breaking**: core
+  expressions, Booleans, symbols and sets in and out, the native `ask`,
+  `facts`, `refine` and `analysis` underneath; it imports no SymPy).
+  Rational equations over the complex numbers with numerators of degree
+  at most 3 are solved by the native `polys.rationalsolve.solveset_rational`
+  (its quartics are written in another form than SymPy's), the families
+  of a regular chain with the native `Poly`, `cancel` and `sqrt`, the
+  candidates checked with the native `simplify`, `minimal_polynomial`
+  and evaluation. What is not ported is called at run time through the
+  new face `assumptions.solve_sympy` (the `*_of_core` functions): SymPy's
+  `solveset`, `nonlinsolve`, `periodicity` and the intersections the
+  core's sets do not evaluate, the CAD (`solution_set`,
+  `cylindrical_set`, `cylindrical_formula`, `cylindrical_cases`) and
+  `polys.roots.in_radicals`, `regularchains.triangularize` and
+  `solvers.parametric.parametric_cases`, `solvers.transcendental`,
+  `solvers.isolation`, `solvers.integers` (linear Diophantine systems)
+  and `_numeric.reliable_value`. `solve_sympy.solve` keeps the old API
+  on SymPy objects (also `_refuted` and `_clearly_not_real`); **import
+  it instead of the old module**: `from
+  sympy_extras.assumptions.solve_sympy import solve`. The integrals,
+  `concrete.convergence`, the tests, README, docs and benchmarks use it.
+  The same classes and `srepr` as before through the face on 189 calls
+  (the doctests, the calls of the tests of solve and of the solvers, and
+  68 more), and natively with the inputs converted and the result
+  converted back.
+- `sympy_extras.sets`: `ConditionSet`/`condition_set`
+  (`sets.conditionset`), `ImageSet`/`image_set` (`sets.fancysets`; the
+  function is its variables and an image which may be a tuple),
+  `ProductSet`/`product_set` and `PointSet`/`point_set` (a finite set of
+  tuples, SymPy's `FiniteSet` of `Tuple`), with their conversions;
+  `interop.SymPySetNode` wraps the sets of SymPy not ported (`Range`,
+  ...) as sets of the core (memberships, emptiness and bounds asked of
+  SymPy), where `SymPyNode` did. `Union` and `Intersection` print their
+  sets sorted as SymPy does.
+- Fixed on the way: the order of the sets of an intersection raised
+  `ValueError` for a finite set of complex numbers (their infimum; SymPy's
+  key catches it); `from_sympy` gave `Reals` for SymPy's `Interval(-oo,
+  oo)`, which equals it in SymPy (the cache is keyed by the class too).
+- `sympy_extras.assumptions.sat` is native (**breaking**: `satisfiable`,
+  `tautology` and `find_instance` take and return core Booleans,
+  symbols, sets and expressions, and the module imports no SymPy). The
+  propositional abstraction, the theory check of the literals, the
+  search for integer points (the floor and the comparison of rational
+  endpoints included) and the evaluation of the candidates run on the
+  core, with the native `ask._facts`, `facts`, `quantifiers` and
+  `resolve`. What is not ported is called at run time through the new
+  face `assumptions.sat_sympy` (the `*_of_core` functions): SymPy's SAT
+  solver on the abstraction, `facts_sympy.predicates_consistent`, the
+  CAD's `sample_points` and `solution_set`, `hermite.decide_zero_dimensional`,
+  and the floor and the comparison of `CRootOf` numbers. The face keeps
+  the old API on SymPy objects (also `Model`, `Witness`,
+  `_without_real_solution`); **import it instead of the old module**:
+  `from sympy_extras.assumptions.sat_sympy import satisfiable`. `limits`,
+  the integrals, `_special_values`, the tests, README, docs and
+  benchmarks use it. The native `find_instance` takes `domain=None` (no
+  domain) like the old one. The same printed results and classes as
+  before through the face on 201 calls (the 20 doctest examples, 90
+  calls of `test_sat` and 91 more), except where the old function
+  already depended on the hash seed (which of two equivalent models
+  SymPy's SAT solver enumerates first, 5 calls); through the native
+  functions with converted inputs, the same printed values (the classes
+  of the core differ: `Integer` for `0` and `1`, `Rational` for `1/2`,
+  `CRootOf` wrapped as `SymPyExprNode`).
+- `sympy_extras.assumptions.ask`, `sympy_extras.assumptions.refine` and
+  `sympy_extras.assumptions.resolve` are native (**breaking**: core
+  expressions, Booleans, sets and the native `Facts` in and out; none of
+  them imports SymPy). `ask` asks the core's `ask` (which asks SymPy's,
+  through the bridge, what it cannot answer), decides the reality of
+  roots, logarithms and inverse functions, and calls the native
+  `analysis.decide_relational` and `bounds.polynomial_abstraction`;
+  `refine` and `simplify` abstract the symbols and subexpressions into
+  dummies of the core and apply the core's automatic evaluation, its
+  `refine` and the native `simplify`, `factor_list`, `posify`,
+  `powsimp`, `powdenest`, `logcombine` and `expand_log`; `resolve` puts
+  the formula in prenex form and simplifies the result under the
+  assumptions natively. What is not ported is called at run time through
+  the new faces: the CAD's `truth_tables` and `quantifier_elimination`,
+  virtual substitution (`is_linear_in`, `linear_quantifier_elimination`,
+  `virtual_substitution_elimination`, `with_sides`), Cooper's algorithm
+  (`is_presburger`, `presburger_quantifier_elimination`), comprehensive
+  Gröbner systems (`complex_quantifier_elimination`, `reduce_complex`),
+  the structure theorem's `ElementaryTower` (the zero test of `ask`, the
+  proofs of `simplify`), `integrals.conditions.sample_values` and
+  `_numeric.reliable_value`, SymPy's `simplify` of a Boolean formula
+  (`simplify_logic` and the rules of the relations) and SymPy's
+  `factor_list` of a polynomial with coefficients which are not rational.
+  The new faces `assumptions.ask_sympy`, `assumptions.refine_sympy` and
+  `assumptions.resolve_sympy` keep the old API on SymPy objects (also the
+  helpers `Assumptions`, `_facts`, `_evaluate`, `_evaluate_atom`,
+  `_linear_ask`, `_clearly_not_zero`, `_Refiner`, `_refine_boolean`);
+  **import them instead of the old modules**: `from
+  sympy_extras.assumptions.ask_sympy import ask`, `refine` and `simplify`
+  from `.refine_sympy`, `resolve` from `.resolve_sympy`. `sat`, `limits`,
+  `solve`, the integrals, `concrete.convergence`, `simplify.structure`,
+  the docs and the benchmarks use the faces. The face's `simplify` takes
+  `ratio`, `rational`, `inverse` and `doit` as keyword arguments (no
+  `measure` and no other keyword of SymPy's `simplify` any more). The
+  same printed results and classes as before through the faces on 98
+  extra calls, the 45 doctest examples and the 439 calls of the tests of
+  the three modules; through the native functions with the inputs
+  converted, the same printed results (the classes of the core differ:
+  `Integer` for `0` and `1`, `Gt` for `StrictGreaterThan`, ...).
+- Fixed in the core on the way: `sqrt(a)` of a symbol not known to be a
+  number was not negative (`is_extended_negative` `False`); as in SymPy's
+  `Pow._eval_is_extended_negative` that needs a complex or extended real
+  base (`None` otherwise). Asked through the core's `ask`, it made
+  `solve(x**2 - a, x, x > 0)` drop `-sqrt(a)`.
 - `sympy_extras.assumptions.intervals` and `sympy_extras.assumptions.analysis`
   are native (**breaking**: core expressions, symbols, sets and the native
   `Facts` in and out; neither imports SymPy). The interval arithmetic,

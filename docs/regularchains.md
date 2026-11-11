@@ -5,6 +5,13 @@ by *triangular decomposition*: the solutions are written as a union of
 triangular systems, each of which is solved one variable after the other,
 like a linear system in row echelon form.
 
+The module works on the expressions and symbols of the core
+(`sympy_extras.core`) and imports no SymPy; its face
+`sympy_extras.polys.regularchains_sympy` has the same API on SymPy
+objects, which the examples below use. The exact solutions of a chain
+without free variables are SymPy's `CRootOf` and go through SymPy
+(`regularchains_sympy.solutions`).
+
 ## What SymPy has and what is added
 
 SymPy solves polynomial systems through a lexicographic Gröbner basis
@@ -43,7 +50,7 @@ Here:
   distinctions they need.
 
 ```python
->>> from sympy_extras.polys.regularchains import triangularize
+>>> from sympy_extras.polys.regularchains_sympy import triangularize
 >>> triangularize([x*y, x*z], x, y, z)
 [RegularChain([x], x, y, z), RegularChain([z, y], x, y, z)]
 >>> triangularize([x*z - y, y*z - x], x, y, z)
@@ -73,7 +80,7 @@ free, their number is the dimension of `W(T)`, and for every value of them
 solving univariate polynomials one after the other.
 
 ```python
->>> from sympy_extras.polys.regularchains import RegularChain
+>>> from sympy_extras.polys.regularchains_sympy import RegularChain
 >>> T = RegularChain([y**2 - z, (z - 1)*x**2 - y], x, y, z)
 >>> T.main_variables, T.free_variables, T.initials
 ([y, x], [z], [1, z - 1])
@@ -275,7 +282,7 @@ both and pseudo-divides both, modulo the saturated ideal; it may differ
 from one part of the chain to another:
 
 ```python
->>> from sympy_extras.polys.regularchains import regular_gcd
+>>> from sympy_extras.polys.regularchains_sympy import regular_gcd
 >>> regular_gcd(x**2 - y, x**2 - 3*x + 2*y, x, RegularChain([y**2 - 1], x, y))
 [(1, RegularChain([y + 1], x, y)), (x - 1, RegularChain([y - 1], x, y))]
 

@@ -81,8 +81,8 @@ from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly, factor_list
 
 from sympy_extras._typing import as_expr, free_symbols
-from sympy_extras.polys.ideals import Ideal
-from sympy_extras.polys.regularchains import RegularChain, triangularize
+from sympy_extras.polys.ideals_sympy import Ideal
+from sympy_extras.polys.regularchains_sympy import RegularChain, triangularize
 
 from .polynomial import DifferentialPolynomial
 from .ring import DifferentialRing, Equation, Jet, Terms

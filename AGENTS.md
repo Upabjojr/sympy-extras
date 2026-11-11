@@ -162,12 +162,25 @@ sympy_extras/
         intervals.py         rigorous interval arithmetic: evaluate, signs_on_box, corner_signs, isolate_signs (native)
         intervals_sympy.py   the SymPy face of intervals
         analysis.py          signs beyond polynomials: certified_sign, sign_on, domain_of, decide_relational (native;
-                             continuous_domain/solveset of non-rational expressions and the CAD through analysis_sympy)
+                             the native CAD; continuous_domain/solveset of non-rational expressions through analysis_sympy)
         analysis_sympy.py    the SymPy face of analysis, and the steps which stay on SymPy (the *_of_core functions)
-        ask.py               ask(): sympy.ask first, then the CAD
-        refine.py            refine(), simplify(): sympy.refine plus CAD-decided handlers
-        resolve.py           resolve(): quantifier elimination through the CAD
-        sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check
+        ask.py               ask(): the core's ask first, then the CAD (native, with the native CAD and virtual
+                             substitution; the structure theorem and the sample points through ask_sympy)
+        ask_sympy.py         the SymPy face of ask, and the steps which stay on SymPy (the *_of_core functions)
+        refine.py            refine(), simplify(): the core's refine and simplify plus CAD-decided handlers (native)
+        refine_sympy.py      the SymPy face of refine (_Refiner too), SymPy's simplify of Booleans, the proofs
+        resolve.py           resolve(): quantifier elimination over R, Z, C (native, with the native CAD, virtual
+                             substitution, Cooper and comprehensive Groebner systems)
+        resolve_sympy.py     the SymPy face of resolve
+        sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check (native, with the native CAD
+                             and Hermite's count; SymPy's SAT solver and predicates_consistent through sat_sympy)
+        sat_sympy.py         the SymPy face of sat, and the steps which stay on SymPy (the *_of_core functions)
+        solve.py             solve(): Solve under assumptions (native, with the native CAD, regular chains and parametric cases;
+                             solveset, nonlinsolve, transcendental equations through solve_sympy)
+        solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions)
+        limits.py            limit(), limit_seq(), series() under assumptions, with case distinctions (native; the core's
+                             Gruntz and series; SymPy's limit_seq and the reliable numerical values through limits_sympy)
+        limits_sympy.py      the SymPy face of limits, and the steps which stay on SymPy (the *_of_core functions)
         tests/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
         elementary/
@@ -241,8 +254,21 @@ sympy_extras/
         rewriting.py         canonical forms (exponentials, logarithms of inverse hyperbolic functions) and substitutions x = t**k, u = exp(c x), x = exp(t)
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
         tests/
+    solvers/                 solvers extending sympy.solvers (exports nothing: import the modules)
+        isolation.py         TranscendentalRoot (node), isolate_real_roots, point_between, compare_points: exact real roots of
+                             exp-log functions (native; SymPy's real_roots with CRootOf and continuous_domain through isolation_sympy)
+        isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts), the *_of_core functions
+        integers.py          linear Diophantine systems (Hermite), Contejean-Devie, Cooper's algorithm (native;
+                             SymPy's simplify_logic through integers_sympy)
+        integers_sympy.py    the SymPy face of integers, and simplify_logic_of_core (from virtual_substitution_sympy)
+        parametric.py        parametric_cases, ParametricCase: the cases of the parameters of a polynomial system, from
+                             the regular chains (native)
+        parametric_sympy.py  the SymPy face of parametric
+        tests/
     simplify/
-        structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
+        structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native; the sample
+                             points and the reliable values through structure_sympy)
+        structure_sympy.py   the SymPy face of structure, and the steps which stay on SymPy (the *_of_core functions)
         signsimp.py          signsimp, sub_pre, sub_post (ported from SymPy)
         radsimp.py           fraction, numer, denom, collect, collect_dict, rcollect, radsimp, rad_rationalize, split_surds (ported from SymPy)
         sqrtdenest.py        sqrtdenest, sqrt_depth, is_algebraic (ported from SymPy)
@@ -269,7 +295,8 @@ sympy_extras/
       functions.py           component matrices, matrix_exp, matrix_power, matrix_function
     vector/                  orthogonal.py: OrthogonalCoordinates (gradient, divergence, curl, laplacian), cartesian, cylindrical, spherical
     series/                  residue (ported from SymPy); approximants.py: pade, rational_interpolate, series_reversion (Euclid, Lagrange inversion)
-    sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains; Naturals, Naturals0, Integers, Rationals, Complexes (fancysets.py) (ported from SymPy)
+    sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains, ProductSet, PointSet (finite sets of tuples);
+                             Naturals, Naturals0, Integers, Rationals, Complexes, ImageSet (fancysets.py); ConditionSet (conditionset.py) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)
     polys/
         domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, AlgebraicField, PolynomialRing, FractionField, SparsePolynomialRing with SymPy's PolyElement gcd, RationalPolynomialRing, IteratedPolynomialRing for dmp_rr_prs_gcd); see docs/dense.md
@@ -280,12 +307,15 @@ sympy_extras/
         polytools.py         Poly over ZZ, QQ, ZZ[a,..], QQ[a,..] (ported from SymPy, printed as SymPy): gcd, lcm, resultant, factor_list (multivariate, ZZ[a]), sqf_list, div; degree, LC, gcd, lcm, resultant, factor, factor_list, sqf, sqf_list, cancel
         gaussianfactor.py    multivariate factorisation over ZZ_I and QQ_I (Trager over QQ<I>, ported from SymPy)
         polyerrors.py        SymPy's polynomial exceptions (ported)
+        algebraicfactor.py   ext_factor_list, AlgebraicPolynomialRing: multivariate factorisation and gcd over a number field QQ(alpha) (Trager)
         heuristicgcd.py      heugcd over ZZ (ported from SymPy), deflate/inflate; IntegerPolynomialRing uses it
         rationaltools.py     together (ported from SymPy)
         multifactor.py       zz_factor, zz_wang: multivariate factorisation over ZZ by Wang's EEZ on sparse PolyElement (ported from SymPy)
         multisqf.py          sqf_list over ZZ, QQ, ZZ[a], QQ[a] in several variables (SqfDomain; ported from SymPy)
         partfrac.py          apart by undetermined coefficients (ported from SymPy; no full=True, no ZZ(a))
         polyroots.py         roots: linear, quadratic, binomial, cyclotomic, cubic, quartic, decomposition, factoring (ported from SymPy; no EX/simplify)
+        roots.py             radical_form, in_radicals: SymPy's CRootOf (wrapped foreign nodes) in radicals (native; SymPy's roots over EX through roots_sympy)
+        roots_sympy.py       the SymPy face of roots, and roots_of_core
         subresultants.py     dup_psc, dmp_psc, psc: principal subresultant coefficients on SymPy's dense representation (the CAD)
         polyutils.py         dict_from_expr, expr_from_dict: core expressions <-> typed polynomials (no SymPy)
         sqfreetools.py       dup_sqf_list/part/p (Yun, and GF(p))
@@ -298,28 +328,51 @@ sympy_extras/
         numberfields/qqbar.py  Algebraic: exact arithmetic on algebraic numbers (minimal polynomial + isolating region), algebraic_roots
         complexroots.py      Rectangle, dup_count_complex_roots (winding numbers by Sturm), dup_isolate_complex_roots(_sqf), dup_refine_complex_root, dup_count_roots_right_of, dup_count_roots_in_disc, Hurwitz and Schur stability, over QQ
         polyclasses.py       DensePoly[T]: rep, domain, gen; the dense algorithms as methods, factorisation and roots through the domain
-        rings.py             PolyRing[T], PolyElement[T] (dict[Monomial, T]), MonomialOrder (lex, grlex, grevlex), div by a list
-        ideals.py            Ideal: operations and invariants on top of sympy.groebner
-        hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination
+        rings.py             PolyRing[T], PolyElement[T] (dict[Monomial, T]), MonomialOrder (lex, grlex, grevlex, WeightOrder, BlockOrder, elimination_order), div by a list
+        ideals.py            Ideal: operations and invariants of ideals over the typed fields, groebner (F4, the modular
+                             fallback), normal_form, the Gröbner walk, separating_forms (native; the modular Gröbner bases,
+                             SymPy's Buchberger and the decompositions of idealdecomposition through ideals_sympy)
+        ideals_sympy.py      the SymPy face of ideals (the old API on SymPy objects, rur), and the steps which stay on SymPy
+                             (the *_of_core functions)
+        bigatti.py           hilbert_numerator_coefficients, minimal_generators: Bigatti's algorithm on exponent tuples (no SymPy)
+        hermite.py           real solutions of zero-dimensional systems: Hermite's quadratic form, sign determination,
+                             decide_zero_dimensional (native)
+        hermite_sympy.py     the SymPy face of hermite, and the quotient algebra over SymPy's QQ that rur builds on
+        comprehensive.py     comprehensive Gröbner systems (Kapur-Sun-Wang), exists_complex,
+                             complex_quantifier_elimination, reduce_complex: reduction over C (native)
+        comprehensive_sympy.py the SymPy face of comprehensive
         groebnerwalk.py      groebner_walk, extended_groebner (Buchberger with representations)
         f4.py                f4 on rings.PolyRing (typed, no SymPy): reduced Gröbner bases by Faugère's F4 (the default direct algorithm); row_echelon
         zerodim.py           solve_zero_dimensional: exact solutions (Algebraic coordinates) of zero-dimensional systems over QQ by the shape lemma
         berlekampmassey.py   berlekamp_massey: the shortest linear recurrence of a sequence over a field
         fglm.py              fglm, groebner_by_fglm on rings.PolyRing (typed, no SymPy): change of order for zero-dimensional ideals
         interop.py           qq/zz/gf_from_sympy and _to_sympy, typed_order: the boundary with SymPy's rings
-        hilbert.py           hilbert_numerator, hilbert_series, minimal_generators: Bigatti's algorithm for monomial ideals
+        hilbert.py           hilbert_numerator, hilbert_series, minimal_generators: Bigatti's algorithm for monomial ideals (SymPy Poly; bigatti.py computes)
         rur.py               rur, RationalUnivariateRepresentation: Rouillier's representation of zero-dimensional ideals from traces
         modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ modulo primes, proven (Arnold); direct_groebner
         stronggroebner.py    strong_groebner, strong_reduce on rings.PolyRing over ZZ (typed, no SymPy): S- and G-polynomials
         orderings.py         WeightOrder, BlockOrder, elimination_order (hashable monomial orders)
+        virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (Loos-Weispfenning,
+                             Weispfenning), with_sides, to_nnf (native; SymPy's simplify_logic of the results through
+                             virtual_substitution_sympy)
+        virtual_substitution_sympy.py  the SymPy face of virtual_substitution, and simplify_logic_of_core
         puiseux.py           Newton–Puiseux expansions of the branches of a plane curve at a point and at infinity, conjugate branches over number fields (Duval)
         functionfields.py    FunctionField: arithmetic in K(x)[y]/(F), integral bases (Trager's Round 2 over K[x]), local bases at infinity, bases normal at infinity
         tests/
-        cad/                 cylindrical algebraic decomposition
-            projection.py    projection operators (McCallum, Hong), projection_sets
-            samplepoints.py  exact real algebraic sample points (SamplePoint)
-            lifting.py       lifting phase, cylindrical_algebraic_decomposition, CAD, CADCell
-            qe.py            quantifier_elimination, decide, sample_points, solution_set
+        cad/                 cylindrical algebraic decomposition (exports nothing: import the modules)
+            projection.py    projection operators (McCallum, Hong), projection_sets, on the typed Poly (native)
+            projection_sympy.py the SymPy face of projection (SymPy's Poly in and out)
+            samplepoints.py  exact real algebraic sample points (SamplePoint) on qqbar.Algebraic and AlgebraicField (native)
+            samplepoints_sympy.py the SymPy face of samplepoints (Rational and CRootOf in and out)
+            lifting.py       lifting phase, cylindrical_algebraic_decomposition, CAD, CADCell, Lifting (native)
+            lifting_sympy.py the SymPy face of lifting (cells with SymPy points), used by qe, cylindrical, regions
+            qe.py            quantifier_elimination, decide, sample_points, solution_set, truth_tables (native)
+            qe_sympy.py      the SymPy face of qe (SymPy formulas and sets, CRootOf), and _compile for the regions
+            cylindrical.py   cylindrical_formula, cylindrical_set, cylindrical_cases (native)
+            cylindrical_sympy.py the SymPy face of cylindrical
+            indexedroot.py   IndexedRoot (node), indexed_root, real_root, real_number, algebraic_of: root functions and
+                             real algebraic numbers of the answers (native)
+            indexedroot_sympy.py IndexedRoot as a SymPy Function; interop converts (a root with rational coefficients is CRootOf)
             tests/
         differential/        differential algebra
             ring.py          DifferentialRing: derivatives, rankings (orderly, elimination by blocks), conversion
@@ -327,11 +380,16 @@ sympy_extras/
             polynomial.py    DifferentialPolynomial: leader, initial, separant, Ritt's reduction
             rosenfeld_groebner.py  rosenfeld_groebner: regular differential systems of polynomial ODEs and PDEs
             tests/
-        regularchains/       triangular decompositions of polynomial systems
-            recursive.py     polynomials in their main variable: initial, lazy pseudo-division, subresultant chains
+        regularchains/       triangular decompositions of polynomial systems (native; the exact solutions of a chain,
+                             SymPy's CRootOf, through regularchains_sympy)
+            recursive.py     polynomials of rings.PolyRing over ZZ in their main variable: initial, lazy pseudo-division,
+                             subresultant chains (prem, subresultants ported from SymPy)
             operations.py    Chain, Decomposer: regularize, regular_gcd, intersect, extend, triangularize (Lazard, Kalkbrener)
-            regularchain.py  RegularChain, triangularize, regular_gcd (the public interface on expressions)
-            tests/           oracle.py checks the decompositions with Gröbner bases
+            regularchain.py  RegularChain, triangularize, regular_gcd (the public interface on core expressions)
+            tests/           oracle.py checks the decompositions of the face with Gröbner bases
+        regularchains_sympy/ the SymPy face of regularchains (RegularChain, triangularize, regular_gcd on SymPy objects),
+                             and exact_solutions_of_core
+            solutions.py     exact_solutions: the points of a chain without free variables (CRootOf, radicals)
 docs/                        longer documentation per module
 .github/workflows/           tests.yml (CI), release.yml (PyPI publishing on tags)
 conftest.py                  pytest configuration (SymPy-style doctest display)

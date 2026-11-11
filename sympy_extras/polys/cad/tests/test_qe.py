@@ -18,9 +18,9 @@ from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import CRootOf
 from sympy.sets.sets import Interval, FiniteSet, Union
 from sympy_extras._typing import QuantifierSpec, as_boolean
-from sympy_extras.polys.cad.qe import (quantifier_elimination, decide,
-    sample_points, solution_set, _truth_values, CellTruth)
-from sympy_extras.polys.cad.lifting import CAD
+from sympy_extras.polys.cad.qe_sympy import quantifier_elimination, decide, sample_points, solution_set, truth_tables
+from sympy_extras.polys.cad import qe as native_qe
+from sympy_extras.polys.cad.lifting import CAD as NativeCAD
 from sympy.testing.pytest import raises
 from sympy.abc import a, b, c, d, e, x, y, z
 
@@ -30,8 +30,8 @@ qe = quantifier_elimination
 def _equivalent(f: Boolean, g: Boolean, gens: list[Symbol]) -> bool:
     """Whether two quantifier-free formulas agree on every cell of a
     decomposition sign-invariant for the polynomials of both."""
-    _, _, _, cells = _truth_values(Equivalent(f, g), gens, [], None)
-    return all(value for _, value in cells)
+    _, [table] = truth_tables([Equivalent(f, g)], gens)
+    return all(table)
 
 
 def test_decide() -> None:
@@ -217,7 +217,7 @@ def test_sign_formula_minimization() -> None:
 def test_trial_evaluation() -> None:
     # the three-valued evaluation of a compiled formula on partial sign
     # vectors (None for a sign which is not known yet)
-    from sympy_extras.polys.cad.qe import _compile
+    from sympy_extras.polys.cad.qe_sympy import _compile
     polys: list[Poly] = []
     index: dict[Poly, int] = {}
     gens = [x, y]
@@ -267,7 +267,6 @@ def test_partial_decomposition_agrees_with_the_full_one() -> None:
 
 
 def test_partial_decomposition_lifts_fewer_cells() -> None:
-    from sympy_extras.polys.cad.qe import _truth_values
     formula = And(x**2 + y**2 + z**2 < 4, z > x*y, y > x)
     prefix: list[tuple[str, Symbol]] = [('exists', y), ('exists', z)]
     # the full decomposition of this one takes minutes (the old code, which
@@ -280,49 +279,10 @@ def test_partial_decomposition_lifts_fewer_cells() -> None:
     assert decide(formula.subs(x, Rational(112, 100)), prefix) is False
     assert decide(formula.subs(x, Rational(-199, 100)), prefix) is True
     assert decide(formula.subs(x, -2), prefix) is False
-    formula = Implies(x**2 + y**2 < 1, And(z**2 > x, z < y))
-    blocks: QuantifierSpec = [('forall', [x, y]), ('exists', z)]
-    partial, _, value, _ = _truth_values(formula, [], blocks, None)
-    full, _, value_, _ = _truth_values(formula, [], blocks, None, partial=False)
-    assert value is value_ is True
-    assert len(full.cells_at(3)) > 4 * len(partial.cells_at(3)) and len(partial.cells_at(3)) > 0
     # over a cell where the signs of the factors of the lower levels decide
-    # the formula, nothing is lifted for the sample points either
+    # the formula, nothing is lifted for the sample points either (the
+    # decompositions themselves are checked in test_qe_native)
     assert sample_points(And(x > 0, x**2 + y**2 < 1, y > x), [x, y]) == [{x: Rational(1, 2), y: Rational(2, 3)}]
-    cad, _, _, cells = _truth_values(And(x > 0, x**2 + y**2 < 1), [x, y], [], None, True, 'false')
-    assert [c.point for c in cad.cells_at(1)] == [(-2,), (-1,), (-Rational(1, 2),), (0,), (Rational(1, 2),), (1,), (2,)]
-    # x > 0 fails on the first four cells of the line: nothing is lifted
-    # over them; over the others the sign of the circle is not known
-    assert [(c.index, v) for c, v in cells] == [((1,), False), ((2,), False), ((3,), False), ((4,), False),
-        ((5, 1), False), ((5, 2), False), ((5, 3), True), ((5, 4), False), ((5, 5), False),
-        ((6, 1), False), ((6, 2), False), ((6, 3), False), ((7, 1), False)]
-
-
-def test_equational_constraint_in_the_formula() -> None:
-    from sympy_extras.polys.cad.qe import _equational_constraint, _truth_values
-    assert _equational_constraint(Eq(x*y, 1), [x, y]) == Poly(x*y - 1, x, y)
-    assert _equational_constraint(And(x > 0, Eq(y, x**2), Eq(x, 2)), [x, y]) == Poly(y - x**2, x, y)
-    # not implied by the formula, or not of the last level
-    assert _equational_constraint(Or(Eq(x*y, 1), x > 0), [x, y]) is None
-    assert _equational_constraint(And(Eq(x, 2), y > 0), [x, y]) is None
-    # the reduced projection is used when the last variable is quantified;
-    # the answer is that of the full decomposition
-    formula = And(Eq(x**2 + y**2, 1), Eq(y, a*x + b))
-    prefix: QuantifierSpec = [('exists', [x, y])]
-    reduced, _, _, cells = _truth_values(formula, [a, b], prefix, None)
-    full, _, _, cells_ = _truth_values(formula, [a, b], prefix, None, partial=False)
-    assert len(reduced.projection[2]) < len(full.projection[2]) and len(reduced.projection[0]) < len(full.projection[0])
-    # the space of the free variables is decomposed more coarsely (fewer
-    # polynomials are projected); the truth values are right on every cell
-    assert 0 < len(cells) < len(cells_)
-    for cell, value in cells:
-        if all(coordinate.is_Rational for coordinate in cell.point):
-            assert decide(formula.subs(dict(zip([a, b], cell.point))), prefix) is value
-    assert qe(formula, prefix, free=[a, b]) == qe(formula, prefix, free=[a, b], partial=False) == (a**2 - b**2 + 1 >= 0)
-    # with the last variable free the cells must be sign-invariant for
-    # every polynomial: no reduction
-    plain, _, _, _ = _truth_values(formula, [a, b, x, y], [], None)
-    assert plain.projection == full.projection
 
 
 def _agrees_at_random_points(formula: Boolean, prefix: QuantifierSpec, answer: Boolean,
@@ -346,7 +306,6 @@ def test_solution_formula_by_the_augmented_projection() -> None:
     # raised, then the answer was written with the root function sqrt(x);
     # Hong's augmented projection adds the derivative y of the factor and
     # the answer is a formula in polynomial sign conditions
-    from sympy_extras.polys.cad.qe import _separating_refinement, _sign_formula
     formula: Boolean = Eq(z**2, x) & (z > y)
     prefix: QuantifierSpec = [('exists', z)]
     answer = qe(formula, prefix, free=[x, y])
@@ -355,19 +314,7 @@ def test_solution_formula_by_the_augmented_projection() -> None:
     assert qe(formula, prefix, free=[x, y], method='hong') == answer
     assert _equivalent(answer, And(x >= 0, Or(y < 0, y**2 < x)), [x, y])
     _agrees_at_random_points(formula, prefix, answer, [x, y], 300, 9)
-    # the refinement: every cell of the refined decomposition takes the
-    # truth value of the cell of the first one which contains it; the
-    # refined projection has the derivative and its cells are more
-    cad, _, _, cells = _truth_values(formula, [x, y], prefix, None)
-    assert _sign_formula(cad, cells, 2) is None
-    refined = _separating_refinement(cad, cells, 2)
-    assert refined is not None
-    cad_, cells_ = refined
-    assert [f.as_expr() for f in cad_.projection[1]] == [x - y**2, y] and cad_.projection[0] == cad.projection[0]
-    assert len(cells_) > len(cells)
-    for cell, value in cells_:
-        if all(coordinate.is_Rational for coordinate in cell.point):
-            assert decide(formula.subs(dict(zip([x, y], cell.point))), prefix) is value
+    # the refinement itself is checked in test_qe_native
     # the order of the free variables: the same set
     answer_ = qe(formula, prefix, free=[y, x])
     assert _equivalent(answer_, answer, [x, y])
@@ -393,27 +340,6 @@ def test_solution_formula_by_the_augmented_projection() -> None:
     assert qe(x**2 + y**2 < 1, [], free=[x, y]) == (x**2 + y**2 - 1 < 0)
 
 
-def test_inherited_truth_of_the_refined_cells() -> None:
-    # the cells of the refinement are mapped to the cells of the coarser
-    # decomposition by counting the sections of the old factors: a factor
-    # which vanishes identically over the cell below has no section (the
-    # refined stack over x = 0 has the double root y = 0 of x - y**2 and
-    # the root of y, one section)
-    from sympy_extras.polys.cad.lifting import Lifting
-    from sympy_extras.polys.cad.projection import augmented_projection_sets, projection_sets
-    from sympy_extras.polys.cad.qe import _inherited_truth
-    projection = projection_sets([x - y**2, x*y], [x, y])
-    lifting = Lifting(projection, [x, y], 'mccallum')
-    levels = lifting.lift_all()
-    truth = {cell.index: bool(cell.point[1] < 0) for cell in levels[1]}
-    refined = augmented_projection_sets(projection, [x, y], [y - 1, x - 1])
-    refined_lifting = Lifting(refined, [x, y], 'mccallum')
-    cells = _inherited_truth(refined_lifting, [len(level) for level in projection], truth, 2)
-    assert len(cells) > len(levels[1])
-    assert all(value is bool(cell.point[1] < 0) for cell, value in cells)
-    assert [cell.point for cell, _ in cells if cell.point[0] == 0] == [(0, -1), (0, 0), (0, S.Half), (0, 1), (0, 2)]
-
-
 def test_solution_formulas_at_random_points() -> None:
     # random formulas with two free variables and one bound one, of
     # degree two: an equation of degree two in the bound variable with a
@@ -422,8 +348,7 @@ def test_solution_formulas_at_random_points() -> None:
     # answers are formulas in polynomial sign conditions, compared with
     # decide at random rational points, and some take the augmented
     # projection
-    from sympy_extras.polys.cad import qe as qe_module
-    from sympy_extras.polys.cad.cylindrical import IndexedRoot
+    from sympy_extras.polys.cad.cylindrical_sympy import IndexedRoot
     rng = random.Random(2024)
     gens = [x, y, z]
 
@@ -452,14 +377,16 @@ def test_solution_formulas_at_random_points() -> None:
         return formula
 
     refinements = 0
-    original = qe_module._separating_refinement
+    # the face runs the native elimination, whose refinement is counted
+    original = native_qe._separating_refinement
 
-    def counted(cad: CAD, cells: Sequence[CellTruth], k: int) -> Optional[tuple[CAD, list[CellTruth]]]:
+    def counted(cad: NativeCAD, cells: Sequence[native_qe.CellTruth], k: int
+                ) -> Optional[tuple[NativeCAD, list[native_qe.CellTruth]]]:
         nonlocal refinements
         refinements += 1
         return original(cad, cells, k)
 
-    qe_module._separating_refinement = counted
+    native_qe._separating_refinement = counted
     try:
         for i in range(10):
             formula = structured() if i % 2 == 0 else combination()
@@ -468,5 +395,5 @@ def test_solution_formulas_at_random_points() -> None:
             assert not answer.has(IndexedRoot) and not answer.has(sqrt(x)), answer
             _agrees_at_random_points(formula, prefix, answer, [x, y], 30, i)
     finally:
-        qe_module._separating_refinement = original
+        native_qe._separating_refinement = original
     assert refinements > 0

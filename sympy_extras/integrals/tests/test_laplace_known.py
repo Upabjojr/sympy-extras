@@ -6,7 +6,7 @@ from __future__ import annotations
 from sympy import symbols, sin, cos, exp, oo, Abs, pi, atan, log, coth, Integral, S, Rational, simplify, Heaviside, besselj
 
 from sympy_extras._typing import ExprLike, as_expr
-from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.assumptions.ask_sympy import Assumptions
 
 from sympy_extras.integrals.conditions import numerically_equal
 from sympy_extras.integrals.definite import verify_numerically

@@ -100,7 +100,7 @@ from sympy.simplify.simplify import simplify
 
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.settings import settings
 from .conditions import numerically_equal
 

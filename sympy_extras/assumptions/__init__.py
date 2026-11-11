@@ -31,10 +31,13 @@ SymPy):
   quantifier elimination over the reals;
 * :func:`~sympy_extras.assumptions.sat.satisfiable`, ``tautology`` and
   ``find_instance`` -- ``SatisfiableQ``, ``TautologyQ`` and ``FindInstance``;
-* :func:`~sympy_extras.assumptions.solve.solve` -- ``Solve`` with
-  assumptions and a domain;
+* :func:`~sympy_extras.assumptions.solve.solve` (native, on the core) and
+  :func:`~sympy_extras.assumptions.solve_sympy.solve` (on SymPy objects) --
+  ``Solve`` with assumptions and a domain;
 * :func:`~sympy_extras.assumptions.limits.limit`, ``limit_seq`` and
-  ``series`` -- limits and expansions with the parameters carrying the
+  ``series`` (native, on the core) and
+  :func:`~sympy_extras.assumptions.limits_sympy.limit`, ... (on SymPy
+  objects) -- limits and expansions with the parameters carrying the
   assumptions;
 * :func:`~sympy_extras.assumptions.facts_sympy.element`,
   :class:`~sympy_extras.assumptions.facts_sympy.Facts`,
@@ -62,9 +65,9 @@ Examples
 
 >>> from sympy import Abs, sqrt, S, Eq
 >>> from sympy.abc import x, y, n
->>> from sympy_extras.assumptions.ask import ask
->>> from sympy_extras.assumptions.refine import refine
->>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.ask_sympy import ask
+>>> from sympy_extras.assumptions.refine_sympy import refine
+>>> from sympy_extras.assumptions.resolve_sympy import resolve
 >>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 >>> ask(x**2 - 2*x + 1 >= 0, x > 0)

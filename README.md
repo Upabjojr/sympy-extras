@@ -67,7 +67,7 @@ and quantifier elimination for the first order theory of the real numbers.
 ```python
 >>> from sympy import Eq
 >>> from sympy.abc import a, b, c, x, y
->>> from sympy_extras.polys.cad import cylindrical_algebraic_decomposition
+>>> from sympy_extras.polys.cad.lifting_sympy import cylindrical_algebraic_decomposition
 >>> cad = cylindrical_algebraic_decomposition([x**2 + y**2 - 1], [x, y])
 >>> cad
 CAD(13 cells, x, y)
@@ -81,17 +81,19 @@ sample points of systems of polynomial equations and inequalities are built
 on top of the decomposition:
 
 ```python
->>> from sympy_extras.polys.cad import quantifier_elimination, decide, solution_set, sample_points
+>>> from sympy_extras.polys.cad.qe_sympy import quantifier_elimination, decide, solution_set, sample_points
 >>> quantifier_elimination(x**2 + b*x + c > 0, [('forall', x)])
 b**2 - 4*c < 0
 >>> quantifier_elimination(Eq(x**2 + a*x + b, 0), [('exists', x)])
 a**2 - 4*b >= 0
->>> solution_set(Eq(x**2 + y**2, 1) & (y > x), x, [('exists', y)])
-Interval.Ropen(-1, CRootOf(2*x**2 - 1, 1))
+>>> from sympy import CRootOf, Interval, Rational
+>>> r = CRootOf(2*x**2 - 1, 1)     # sqrt(2)/2 (SymPy prints it in the variable it cached first)
+>>> solution_set(Eq(x**2 + y**2, 1) & (y > x), x, [('exists', y)]) == Interval.Ropen(-1, r)
+True
 >>> decide(Eq(y, x**2), [('forall', x), ('exists', y)])
 True
->>> sample_points((x**2 + y**2 < 1) & (x > y), [x, y])
-[{x: 0, y: -1/2}, {x: CRootOf(2*x**2 - 1, 1), y: 0}, {x: 3/4, y: 0}]
+>>> sample_points((x**2 + y**2 < 1) & (x > y), [x, y]) == [{x: 0, y: -Rational(1, 2)}, {x: r, y: 0}, {x: Rational(3, 4), y: 0}]
+True
 
 ```
 
@@ -102,7 +104,7 @@ roots up to degree two, `IndexedRoot` beyond; `solve` answers systems of
 inequalities in several unknowns this way):
 
 ```python
->>> from sympy_extras.polys.cad import cylindrical_formula
+>>> from sympy_extras.polys.cad.cylindrical_sympy import cylindrical_formula
 >>> cylindrical_formula((x**2 + y**2 <= 1) & (x + y >= 1), [x, y])
 (x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2))
 
@@ -125,21 +127,25 @@ user interface with Python names. Assumptions are written as ordinary
 statements instead of predicates: `x > 0` for `Q.positive(x)`,
 `element(n, S.Integers)` (that is `Contains(n, S.Integers)`) for
 `Q.integer(n)`, intervals and other sets, combined with `&`, `|`, `~`, and
-quantified with `ForAll` and `Exists`. SymPy's `ask`, `refine`, `simplify`
-and SAT solver are the backends, together with the cylindrical algebraic
+quantified with `ForAll` and `Exists`. The `ask`, `refine` and `simplify`
+of the typed core (which ask SymPy what they cannot answer) and SymPy's
+SAT solver are the backends, together with the cylindrical algebraic
 decomposition above for everything polynomial over the reals. `refine` and
 `simplify` decide the signs of the symbols and of the relevant
-subexpressions, hand SymPy's algorithms symbols carrying the equivalent
-assumptions, and rewrite with the CAD what SymPy cannot decide.
+subexpressions, hand the algorithms symbols carrying the equivalent
+assumptions, and rewrite with the CAD what they cannot decide. The
+modules `ask`, `refine` and `resolve` are written on the core (its
+expressions in and out); the examples use their SymPy faces
+`ask_sympy`, `refine_sympy` and `resolve_sympy`.
 
 ```python
 >>> from sympy import S, Abs, sqrt, Eq, log
 >>> from sympy.abc import b, c, x, y, n
->>> from sympy_extras.assumptions.ask import ask
->>> from sympy_extras.assumptions.refine import refine, simplify
+>>> from sympy_extras.assumptions.ask_sympy import ask
+>>> from sympy_extras.assumptions.refine_sympy import refine, simplify
 >>> from sympy_extras.assumptions.facts_sympy import element
->>> from sympy_extras.assumptions.resolve import resolve
->>> from sympy_extras.assumptions.sat import satisfiable
+>>> from sympy_extras.assumptions.resolve_sympy import resolve
+>>> from sympy_extras.assumptions.sat_sympy import satisfiable
 >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 >>> ask(x**2 - 2*x + 1 >= 0, x > 0)
 True
@@ -153,8 +159,8 @@ x + log(x*y) - 1
 True
 >>> resolve(ForAll(x, x**2 + b*x + c > 0))
 b**2 < 4*c
->>> resolve(Exists(y, Eq(x**2 + y**2, 1) & (y > x)))
-(x >= -1) & (x < CRootOf(2*x**2 - 1, 1))
+>>> resolve(Exists(y, Eq(x**2 + y**2, 1) & (y > x))) == (x >= -1) & (x < CRootOf(2*x**2 - 1, 1))
+True
 >>> satisfiable((x**2 + y**2 < 1) & (x + y > 1))
 {x: 1/2, y: 2/3}
 
@@ -213,7 +219,7 @@ extension of Zeilberger's algorithm), with harmonic numbers in the summand:
 
 See [docs/karr.md](docs/karr.md).
 
-### Polynomial ideals and the Gröbner walk (`sympy_extras.polys.ideals`)
+### Polynomial ideals and the Gröbner walk (`sympy_extras.polys.ideals`, `ideals_sympy`)
 
 SymPy computes Gröbner bases and converts them with FGLM for
 zero-dimensional ideals, but its ideal class leaves saturation, radicals,
@@ -230,11 +236,13 @@ polynomial); in any dimension, through regular chains, the radical, its
 equidimensional parts, the minimal primes and the tests for radical and
 prime ideals, and the primary decomposition with the embedded primes
 (Gianni–Trager–Zacharias). The Gröbner walk converts bases between orders for ideals of
-any dimension.
+any dimension. `sympy_extras.polys.ideals` is native (core expressions and
+the typed domains and rings, no SymPy); `sympy_extras.polys.ideals_sympy`
+is its SymPy face, used below.
 The real solutions of a zero-dimensional system, and the signs of other
 polynomials at them, are counted without solving the system by the
 signature of Hermite's quadratic form on the quotient algebra
-(`sympy_extras.polys.hermite`, Pedersen–Roy–Szpirglas, with the sign
+(`sympy_extras.polys.hermite`, native, SymPy face `hermite_sympy`, Pedersen–Roy–Szpirglas, with the sign
 determination of Ben-Or–Kozen–Reif); `satisfiable` uses it to prove that
 such a system has no real solution before trying a CAD.
 The bases are computed by Faugère's F4 (`sympy_extras.polys.f4`: the
@@ -252,7 +260,7 @@ and neither `x` nor `y`.
 
 ```python
 >>> from sympy.abc import x, y, z, t
->>> from sympy_extras.polys.ideals import Ideal
+>>> from sympy_extras.polys.ideals_sympy import Ideal
 >>> I = Ideal([x*z - y**2, x**2 - y*z], x, y, z)
 >>> I.dimension(), I.degree(), I.hilbert_series(t)
 (1, 4, (t**2 + 2*t + 1)/(1 - t))
@@ -264,7 +272,7 @@ Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)
 True
 >>> Ideal([x**2, x*y], x, y).primary_decomposition()
 [(Ideal([x], x, y), Ideal([x], x, y)), (Ideal([x**2, y], x, y), Ideal([x, y], x, y))]
->>> from sympy_extras.polys.hermite import count_real_solutions, sign_determination
+>>> from sympy_extras.polys.hermite_sympy import count_real_solutions, sign_determination
 >>> count_real_solutions([x**2 + y**2 - 1, x - y], x, y)
 2
 >>> sign_determination([x**2 - 1, y**2 - 1], [x + y, x], x, y)
@@ -323,7 +331,8 @@ Eq(u(x, t), C1 + C2*erf(x/(2*sqrt(t))))
 
 ```
 
-`sympy_extras.assumptions.solve` is `Solve` with assumptions: polynomial
+`sympy_extras.assumptions.solve_sympy.solve` (the SymPy face of the native
+`sympy_extras.assumptions.solve`) is `Solve` with assumptions: polynomial
 equations and inequalities in one real unknown go to the CAD, the rest to
 `solveset`/`nonlinsolve` with the parameters carrying the assumptions and
 the solutions filtered by `ask`. See [docs/solvers.md](docs/solvers.md).
@@ -344,8 +353,8 @@ parameters carrying their assumptions.
 ```python
 >>> from sympy import S, Eq, Mod, exp, sin, cos
 >>> from sympy.abc import a, b, x, y
->>> from sympy_extras.assumptions.resolve import resolve
->>> from sympy_extras.assumptions.solve import solve
+>>> from sympy_extras.assumptions.resolve_sympy import resolve
+>>> from sympy_extras.assumptions.solve_sympy import solve
 >>> from sympy_extras.assumptions.quantifiers_sympy import Exists, ForAll
 >>> resolve(Exists(y, Eq(a*y + b, 0) & (y > 0)))
 (Eq(a, 0) & Eq(b, 0)) | ((a > 0) & (b < 0)) | ((b > 0) & (a < 0))
@@ -381,7 +390,7 @@ statement assumptions and case distinctions.
 >>> from sympy_extras.solvers.linear_ode import dsolve_linear
 >>> from sympy_extras.solvers.charpit import complete_integral
 >>> from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
->>> from sympy_extras.assumptions.limits import limit
+>>> from sympy_extras.assumptions.limits_sympy import limit
 >>> x, y = symbols('x y')
 >>> f = Function('y')(x)
 >>> dsolve_kovacic(f.diff(x, 2) + f.diff(x)/x + (1 - 1/(4*x**2))*f, f)
@@ -512,9 +521,9 @@ decided by virtual substitution and the parity of integer polynomials in
 ```python
 >>> from sympy import cos, exp, Eq, S, Matrix, sin, mobius, Mod
 >>> from sympy.abc import x, n, p
->>> from sympy_extras.assumptions.solve import solve
->>> from sympy_extras.assumptions.refine import refine
->>> from sympy_extras.assumptions.limits import limit_seq
+>>> from sympy_extras.assumptions.solve_sympy import solve
+>>> from sympy_extras.assumptions.refine_sympy import refine
+>>> from sympy_extras.assumptions.limits_sympy import limit_seq
 >>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.solvers.dae import dsolve_dae
 >>> from sympy_extras.concrete.convergence import sum_convergence
@@ -641,7 +650,7 @@ region of the assumptions.
 
 ```python
 >>> from sympy import symbols, exp, log, sqrt, sin, cos, atan, pi, Rational
->>> from sympy_extras.simplify.structure import is_zero, canonical_form
+>>> from sympy_extras.simplify.structure_sympy import is_zero, canonical_form
 >>> x, y = symbols('x y')
 >>> is_zero(sin(x + y) - sin(x)*cos(y) - cos(x)*sin(y)), is_zero(exp(x) - x - 1)
 (True, False)
@@ -657,7 +666,9 @@ True
 ```
 
 SymPy's `simplify` leaves Machin's formula as it is and its `equals` samples
-it. See [docs/simplify.md](docs/simplify.md).
+it. `sympy_extras.simplify.structure` is native (written on the core,
+without SymPy); `structure_sympy` is its face on SymPy expressions. See
+[docs/simplify.md](docs/simplify.md).
 
 ### Differential elimination: Janet bases and Rosenfeld–Gröbner (`sympy_extras.polys.differential`)
 
@@ -699,7 +710,7 @@ the Janet basis of its determining equations:
 
 See [docs/differential.md](docs/differential.md).
 
-### Triangular decompositions: regular chains (`sympy_extras.polys.regularchains`)
+### Triangular decompositions: regular chains (`sympy_extras.polys.regularchains`, face `regularchains_sympy`)
 
 `triangularize` solves a system of polynomial equations by writing its
 zeros as a union of *regular chains*: triangular systems which are solved
@@ -709,7 +720,7 @@ in any dimension, separates the components, and discusses the parameters
 
 ```python
 >>> from sympy.abc import a, b, c, p, q, x, y, z
->>> from sympy_extras.polys.regularchains import triangularize
+>>> from sympy_extras.polys.regularchains_sympy import triangularize
 >>> triangularize([x*z - y, y*z - x], x, y, z)
 [RegularChain([y, x], x, y, z), RegularChain([z + 1, x + y], x, y, z), RegularChain([z - 1, x - y], x, y, z)]
 >>> for chain in triangularize([a*x**2 + b*x + c], x, a, b, c):
@@ -1096,7 +1107,8 @@ sympy_extras/
         resolve.py           resolve (quantifier elimination over the reals, integers, complexes)
         sat.py               satisfiable, tautology, find_instance
         solve.py             solve with assumptions and a domain
-        limits.py            limit and series with assumptions and case distinctions
+        limits.py            limit, limit_seq and series with assumptions and case distinctions (native)
+        limits_sympy.py      the SymPy face of limits, and SymPy's limit_seq
     core/                    an experimental core: unevaluating classes, evaluating functions (docs/core.md)
     functions/
         elementary/
@@ -1178,7 +1190,8 @@ sympy_extras/
         linear_ode.py        polynomial, rational, hyperexponential solutions; reduction of order
         charpit.py           complete integrals of first order nonlinear PDEs
     simplify/
-        structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal
+        structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native)
+        structure_sympy.py   the SymPy face of structure
         tests/
     ntheory/
         primetest.py         isprime (Baillie–PSW), jacobi_symbol
@@ -1214,7 +1227,8 @@ sympy_extras/
         rings.py             PolyRing, PolyElement: sparse multivariate polynomials with monomial orders, the division algorithm
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
         idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension
-        hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination
+        hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination (native)
+        hermite_sympy.py     its SymPy face
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
         f4.py                Faugère's F4 on the typed rings: Gröbner bases by its own sparse row reduction, over any field
         interop.py           conversions between SymPy's polynomial rings and the typed ones (QQ, ZZ, GF(p))
@@ -1223,8 +1237,10 @@ sympy_extras/
         stronggroebner.py    strong Gröbner bases over the integers (Kandri-Rody–Kapur, Lichtblau)
         modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold)
         orderings.py         WeightOrder, BlockOrder
-        virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution
-        comprehensive.py     comprehensive Gröbner systems, reduction over the complex numbers
+        virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (native)
+        virtual_substitution_sympy.py  its SymPy face, and simplify_logic_of_core
+        comprehensive.py     comprehensive Gröbner systems, reduction over the complex numbers (native)
+        comprehensive_sympy.py  its SymPy face
         roots.py             roots in radicals through functional decomposition
         cad/
             projection.py    projection operators (McCallum, Hong)
@@ -1239,7 +1255,8 @@ sympy_extras/
         regularchains/
             recursive.py     polynomials in their main variable: lazy pseudo-division, subresultant chains
             operations.py    regularize, regular gcd, intersect, extend; the decompositions
-            regularchain.py  RegularChain, triangularize, regular_gcd
+            regularchain.py  RegularChain, triangularize, regular_gcd (native)
+        regularchains_sympy/ the SymPy face of regularchains; solutions.py: exact solutions (CRootOf)
 
 ```
 

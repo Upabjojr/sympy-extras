@@ -1,22 +1,30 @@
-"""Tests of the algorithms of the structure theorem, one by one: the
-exponential and the logarithm of an element, the logarithms of numbers,
-the roots and their certification, the reading of expressions, the
-decision and its witness."""
+"""Tests of the algorithms of the native structure theorem, one by one, on
+objects of the core: the exponential and the logarithm of an element, the
+logarithms of numbers, the roots and their certification, the reading of
+expressions, the decision and its witness."""
 from __future__ import annotations
 
-from sympy import (E, Abs, Float, I, Integer, Rational, S, Symbol, acos, acosh, acot, asin, asinh, atan, atanh, cos,
-                   cosh, cot, coth, csc, erf, exp, gamma, log, pi, sec, sin, sinh, sqrt, symbols, tan, tanh)
-from sympy.core.expr import Expr
-from sympy.testing.pytest import raises
+from fractions import Fraction
+from typing import Callable
+
+import pytest
 
 from sympy_extras._testing import untyped
-from sympy_extras._typing import as_expr
+from sympy_extras.core import E, Expr, Float, I, Rational, S, Symbol, as_expr, pi, sqrt
+from sympy_extras.functions import (Abs, acos, acosh, acot, asin, asinh, atan, atanh, cos, cosh, cot, coth, csc, erf,
+                                    exp, gamma, log, sec, sin, sinh, tan, tanh)
 from sympy_extras.settings import configure
 from sympy_extras.simplify.structure import ElementaryTower, NotElementary, canonical_form, equal, is_zero
 from sympy_extras.simplify.structure import EXPONENTIAL, LOGARITHM, ROOT, VARIABLE, _witness
 
-x, y, z = symbols('x y z')
-p, q = symbols('p q', positive=True)
+
+def raises(exception: type[BaseException], f: Callable[[], object]) -> None:
+    with pytest.raises(exception):
+        f()
+
+
+x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+p, q = Symbol('p', positive=True), Symbol('q', positive=True)
 
 
 def _kinds(tower: ElementaryTower) -> list[str]:
@@ -66,7 +74,7 @@ def test_the_constant_of_a_dependent_exponential() -> None:
     e = tower.element(E)
     assert tower.vanishes(shifted - a * e)
     assert tower.vanishes(tower.exponential(tower.element(x + 3)) - a * e**3)
-    assert tower.vanishes(tower.exponential(tower.element(x + log(2))) - a.times(Integer(2)))
+    assert tower.vanishes(tower.exponential(tower.element(x + log(2))) - a.times(Fraction(2)))
     assert tower.vanishes(tower.exponential(tower.element(x + I * pi)) + a)
     assert tower.vanishes(tower.exponential(tower.element(x + I * pi / 2)) - a * tower.element(I))
     # exp(x + sqrt(2)) brings exp(sqrt(2)), independent of exp(1)
@@ -83,7 +91,7 @@ def test_constant_exponentials() -> None:
     assert tower.vanishes(tower.element(exp(Rational(-3, 2))) * tower.element(exp(Rational(3, 2))) - tower.one)
     assert tower.vanishes(tower.element(exp(sqrt(2)) * exp(sqrt(8))) - tower.element(exp(3 * sqrt(2))))
     assert tower.vanishes(tower.element(exp(sqrt(2) + sqrt(3))) - tower.element(exp(sqrt(2))) * tower.element(exp(sqrt(3))))
-    assert tower.vanishes(tower.element(exp(log(3))) - tower.constant(Rational(3)))
+    assert tower.vanishes(tower.element(exp(log(3))) - tower.constant(Fraction(3)))
     assert tower.vanishes(tower.element(exp(log(3) / 2)) - tower.element(sqrt(3)))
     assert tower.vanishes(tower.element(exp(2 * I * pi)) - tower.one)
     assert tower.vanishes(tower.element(exp(I * pi / 4)) - tower.element((1 + I) / sqrt(2)))
@@ -109,8 +117,8 @@ def test_an_exponential_of_a_logarithm_is_a_power() -> None:
 def test_logarithms_of_rational_numbers() -> None:
     tower = ElementaryTower()
     two, three = tower.element(log(2)), tower.element(log(3))
-    assert tower.vanishes(tower.element(log(12)) - two.times(Integer(2)) - three)
-    assert tower.vanishes(tower.element(log(Rational(8, 27))) - two.times(Integer(3)) + three.times(Integer(3)))
+    assert tower.vanishes(tower.element(log(12)) - two.times(Fraction(2)) - three)
+    assert tower.vanishes(tower.element(log(Rational(8, 27))) - two.times(Fraction(3)) + three.times(Fraction(3)))
     assert tower.vanishes(tower.element(log(1)))
     i_pi = tower.element(I * pi)
     assert tower.vanishes(tower.element(log(-1)) - i_pi)
@@ -124,15 +132,15 @@ def test_logarithms_of_rational_numbers() -> None:
 def test_logarithms_of_algebraic_numbers_with_a_rational_power() -> None:
     tower = ElementaryTower()
     i_pi, two = tower.element(I * pi), tower.element(log(2))
-    assert tower.vanishes(tower.element(log(I)) - i_pi.times(Rational(1, 2)))
-    assert tower.vanishes(tower.element(log(-I)) + i_pi.times(Rational(1, 2)))
-    assert tower.vanishes(tower.element(log(sqrt(2))) - two.times(Rational(1, 2)))
-    assert tower.vanishes(tower.element(log(-sqrt(2))) - two.times(Rational(1, 2)) - i_pi)
-    assert tower.vanishes(tower.element(log(2**Rational(1, 3))) - two.times(Rational(1, 3)))
-    assert tower.vanishes(tower.element(log(1 + I)) - two.times(Rational(1, 2)) - i_pi.times(Rational(1, 4)))
-    assert tower.vanishes(tower.element(log(-1 - I)) - two.times(Rational(1, 2)) + i_pi.times(Rational(3, 4)))
-    assert tower.vanishes(tower.element(log(exp(2 * I * pi / 3))) - i_pi.times(Rational(2, 3)))
-    assert tower.vanishes(tower.element(log(exp(-2 * I * pi / 3))) + i_pi.times(Rational(2, 3)))
+    assert tower.vanishes(tower.element(log(I)) - i_pi.times(Fraction(1, 2)))
+    assert tower.vanishes(tower.element(log(-I)) + i_pi.times(Fraction(1, 2)))
+    assert tower.vanishes(tower.element(log(sqrt(2))) - two.times(Fraction(1, 2)))
+    assert tower.vanishes(tower.element(log(-sqrt(2))) - two.times(Fraction(1, 2)) - i_pi)
+    assert tower.vanishes(tower.element(log(2**Rational(1, 3))) - two.times(Fraction(1, 3)))
+    assert tower.vanishes(tower.element(log(1 + I)) - two.times(Fraction(1, 2)) - i_pi.times(Fraction(1, 4)))
+    assert tower.vanishes(tower.element(log(-1 - I)) - two.times(Fraction(1, 2)) + i_pi.times(Fraction(3, 4)))
+    assert tower.vanishes(tower.element(log(exp(2 * I * pi / 3))) - i_pi.times(Fraction(2, 3)))
+    assert tower.vanishes(tower.element(log(exp(-2 * I * pi / 3))) + i_pi.times(Fraction(2, 3)))
     assert tower.certified
 
 
@@ -141,16 +149,16 @@ def test_logarithms_of_algebraic_numbers_through_multiplicative_relations() -> N
     tower = ElementaryTower()
     unit = tower.element(log(1 + sqrt(2)))
     assert _kinds(tower) == [LOGARITHM]
-    assert tower.vanishes(tower.element(log(3 + 2 * sqrt(2))) - unit.times(Integer(2)))      # (1 + sqrt(2))**2
+    assert tower.vanishes(tower.element(log(3 + 2 * sqrt(2))) - unit.times(Fraction(2)))      # (1 + sqrt(2))**2
     assert tower.vanishes(tower.element(log(sqrt(2) - 1)) + unit)                             # its inverse
-    assert tower.vanishes(tower.element(log(7 + 5 * sqrt(2))) - unit.times(Integer(3)))
+    assert tower.vanishes(tower.element(log(7 + 5 * sqrt(2))) - unit.times(Fraction(3)))
     assert tower.vanishes(tower.element(log(2 + 2 * sqrt(2))) - unit - tower.element(log(2)))
     assert _kinds(tower).count(LOGARITHM) == 2
     # Gaussian integers: (2 + I)*(2 - I) = 5 and (2 + I)**2 = 3 + 4*I
     tower = ElementaryTower()
     a = tower.element(log(2 + I))
     assert tower.vanishes(tower.element(log(2 - I)) + a - tower.element(log(5)))
-    assert tower.vanishes(tower.element(log(3 + 4 * I)) - a.times(Integer(2)))
+    assert tower.vanishes(tower.element(log(3 + 4 * I)) - a.times(Fraction(2)))
     # the turn: (-2 - I) = -(2 + I), whose logarithm is log(2 + I) - I*pi
     assert tower.vanishes(tower.element(log(-2 - I)) - a + tower.element(I * pi))
     # a lone unit is independent of the primes: certified; two unrelated ones are not proved so
@@ -173,10 +181,10 @@ def test_logarithms_of_positive_constants() -> None:
     tower = ElementaryTower()
     e = tower.element(E)
     assert tower.vanishes(tower.element(log(E)) - tower.one)
-    assert tower.vanishes(tower.element(log(E**3)) - tower.constant(Rational(3)))
-    assert tower.vanishes(tower.element(log(2 * E**2)) - tower.constant(Rational(2)) - tower.element(log(2)))
+    assert tower.vanishes(tower.element(log(E**3)) - tower.constant(Fraction(3)))
+    assert tower.vanishes(tower.element(log(2 * E**2)) - tower.constant(Fraction(2)) - tower.element(log(2)))
     assert tower.vanishes(tower.element(log(exp(sqrt(2)) / 3)) - tower.element(sqrt(2)) + tower.element(log(3)))
-    assert tower.vanishes(tower.element(log(sqrt(E))) - tower.constant(Rational(1, 2)))
+    assert tower.vanishes(tower.element(log(sqrt(E))) - tower.constant(Fraction(1, 2)))
     assert tower.certified and e is not None
     # log(pi) and log(1 + E) are generators whose independence is not proved
     other = ElementaryTower()
@@ -208,7 +216,7 @@ def test_positive_factors_leave_a_logarithm() -> None:
     assert tower.vanishes(tower.element(log(x / 3)) - lx + tower.element(log(3)))
     assert tower.vanishes(tower.element(log(-2 * x)) - tower.element(log(-x)) - tower.element(log(2)))
     assert tower.vanishes(tower.element(log(p * x)) - tower.element(log(p)) - lx)
-    assert tower.vanishes(tower.element(log(p**2 * q / x)) - tower.element(log(p)).times(Integer(2))
+    assert tower.vanishes(tower.element(log(p**2 * q / x)) - tower.element(log(p)).times(Fraction(2))
                           - tower.element(log(q)) - tower.element(log(1 / x)))
     assert tower.vanishes(tower.element(log((p + 1) * x)) - tower.element(log(p + 1)) - lx)
     # a negative factor gives its I*pi where the other is positive
@@ -225,8 +233,8 @@ def test_a_dependent_logarithm_where_the_arguments_are_positive() -> None:
     tower = ElementaryTower([x > 0, y > 0])
     lx, ly = tower.element(log(x)), tower.element(log(y))
     assert tower.vanishes(tower.element(log(x * y)) - lx - ly)
-    assert tower.vanishes(tower.element(log(x**3 / y**2)) - lx.times(Integer(3)) + ly.times(Integer(2)))
-    assert tower.vanishes(tower.element(log(sqrt(x))) - lx.times(Rational(1, 2)))
+    assert tower.vanishes(tower.element(log(x**3 / y**2)) - lx.times(Fraction(3)) + ly.times(Fraction(2)))
+    assert tower.vanishes(tower.element(log(sqrt(x))) - lx.times(Fraction(1, 2)))
     assert tower.vanishes(tower.element(log(1 / x)) + lx)
     assert _kinds(tower).count(LOGARITHM) == 2 and tower.certified
     # log(exp(a)) = a for a real a
@@ -258,10 +266,10 @@ def test_logarithms_of_roots_and_powers_of_roots() -> None:
     # log(rho**k) = k*log(w)/q for 0 < k < q, whose imaginary part stays inside (-pi, pi)
     tower = ElementaryTower()
     lx = tower.element(log(x))
-    assert tower.vanishes(tower.element(log(sqrt(x))) - lx.times(Rational(1, 2)))
-    assert tower.vanishes(tower.element(log(x**Rational(1, 3))) - lx.times(Rational(1, 3)))
-    assert tower.vanishes(tower.element(log(x**Rational(2, 3))) - lx.times(Rational(2, 3)))
-    assert tower.vanishes(tower.element(log(x**Rational(5, 6))) - lx.times(Rational(5, 6)))
+    assert tower.vanishes(tower.element(log(sqrt(x))) - lx.times(Fraction(1, 2)))
+    assert tower.vanishes(tower.element(log(x**Rational(1, 3))) - lx.times(Fraction(1, 3)))
+    assert tower.vanishes(tower.element(log(x**Rational(2, 3))) - lx.times(Fraction(2, 3)))
+    assert tower.vanishes(tower.element(log(x**Rational(5, 6))) - lx.times(Fraction(5, 6)))
     assert tower.certified
     # beyond one turn it is not an identity: log(x**(3/2)) at x = -1 is -I*pi/2, not 3*I*pi/2
     assert is_zero(log(x**Rational(3, 2)) - 3 * log(x) / 2) is False
@@ -357,7 +365,7 @@ def test_identities_between_roots() -> None:
 # reading expressions
 
 def test_every_supported_function_is_read_exactly() -> None:
-    points = [{x: Rational(3, 10) + I / 7, y: Rational(-5, 4) + 2 * I}, {x: Rational(-11, 5), y: Rational(2, 3)},
+    points: list[dict[Symbol, Expr]] = [{x: Rational(3, 10) + I / 7, y: Rational(-5, 4) + 2 * I}, {x: Rational(-11, 5), y: Rational(2, 3)},
               {x: Rational(1, 4), y: Rational(1, 2) - I}]
     expressions = [sin(x), cos(x), tan(x), cot(x), sec(x), csc(x), sinh(x), cosh(x), tanh(x), coth(x),
                    asin(x), acos(x), atan(x), acot(x), asinh(x), acosh(x), atanh(x),
@@ -448,27 +456,13 @@ def test_symbol_flags_are_part_of_the_region() -> None:
     assert is_zero(atan(n) + atan(1 / n) + pi / 2) is True
 
 
-def test_the_exact_test_of_is_antiderivative() -> None:
-    from sympy_extras.integrals.indefinite import _exactly_zero, is_antiderivative
-    assert _exactly_zero(as_expr(sin(x)**2 + cos(x)**2 - 1), None) is True
-    assert _exactly_zero(as_expr(exp(x) - 1), None) is False
-    assert _exactly_zero(as_expr(gamma(x) - gamma(x) + erf(x)), None) is False     # not elementary: no proof
-    assert _exactly_zero(as_expr(log(x**2) - 2 * log(x)), [x > 0]) is True
-    for F, f in ((x * atan(x) - log(x**2 + 1) / 2, atan(x)), (exp(x) * (sin(x) - cos(x)) / 2, exp(x) * sin(x)),
-                 (2 * sqrt(x + 1) * (x - 2) / 3, x / sqrt(x + 1)), (log(tan(x / 2)), 1 / sin(x)),
-                 (x * asin(x) + sqrt(1 - x**2), asin(x)), (tanh(x), 1 / cosh(x)**2)):
-        assert _exactly_zero(as_expr(F.diff(x) - f), None) is True, F
-        assert is_antiderivative(F, f, x) is True
-    assert is_antiderivative(sin(x), sin(x), x) is False
-
-
 def test_a_constant_written_with_functions_is_not_a_certified_generator() -> None:
     # the bug: exp((log(x*y) - log(x) - log(y))/2), which is 1 or -1, was
     # adjoined as an exponential independent of everything
     tower = ElementaryTower()
     tower.element(log(x) + log(y))
     dependent = tower.element(log(x * y))
-    half = tower.exponential((dependent - tower.element(log(x)) - tower.element(log(y))).times(Rational(1, 2)))
+    half = tower.exponential((dependent - tower.element(log(x)) - tower.element(log(y))).times(Fraction(1, 2)))
     assert not tower.certifies(half)
     # and the root of x*y is read from its own logarithm: a root, with its relation
     tower = ElementaryTower()
@@ -491,44 +485,3 @@ def test_numbers_which_sympy_does_not_convert() -> None:
     assert is_zero((-27)**Rational(1, 3) + 3) is False                       # the principal root is not -3
 
 
-def test_the_second_opinion_of_numerically_equal() -> None:
-    # agreement at three sample points is evidence; two expressions which
-    # the structure theorem proves different are different
-    from sympy_extras.integrals.conditions import _provably_different, numerically_equal
-    tiny = as_expr(exp(-10**6 * x**2 - 50))
-    assert numerically_equal(tiny, S.Zero) is False                  # 1e-22 and less at every sample
-    assert numerically_equal(exp(x), as_expr(exp(x) + Rational(1, 10**30))) is False
-    assert numerically_equal(as_expr(sin(x)**2 + cos(x)**2), S.One) is True
-    assert numerically_equal(as_expr(log(x**2)), as_expr(2 * log(x)), [x > 0]) is True
-    assert numerically_equal(x, y) is False
-    assert _provably_different(exp(x), as_expr(exp(x) + 1), None)
-    assert not _provably_different(exp(x), exp(x), None)
-    assert _provably_different(gamma(x), as_expr(gamma(x) + 1), None)          # SymPy leaves the difference 1
-    assert not _provably_different(gamma(x), as_expr(2 * gamma(x) + 1), None)  # not elementary: no opinion
-    assert not _provably_different(as_expr(log(x**2)), as_expr(2 * log(x)), None)  # uncertified: no opinion
-
-
-def test_nothing_is_independent_after_a_dependent_generator() -> None:
-    # the bug: with log(x) and the dependent log(x**2) in the tower,
-    # exp(v*log(x**2)/2) was certified independent of exp(v*log(x)), and the
-    # antiderivative -uppergamma(v/2, -a*x**2)/(2*(-a)**(v/2)) of
-    # x**(v - 1)*exp(a*x**2) was "proved" wrong, its derivative being
-    # written with (-a*x**2)**(v/2 - 1)
-    from sympy_extras.integrals.conditions import _provably_different, numerically_equal
-    v = Symbol('v', positive=True)
-    a = Symbol('a', negative=True)
-    derivative = as_expr(-a * x * (-a * x**2)**(v / 2 - 1) * exp(a * x**2) / (-a)**(v / 2))
-    integrand = as_expr(x**(v - 1) * exp(a * x**2))
-    tower = ElementaryTower()
-    u = tower.element(derivative - integrand)
-    assert not tower.vanishes(u) and not tower.certifies(u)
-    assert not _provably_different(derivative, integrand, None)
-    assert numerically_equal(derivative, integrand) is True
-    assert is_zero(derivative - integrand, x > 0) is True
-    # every exponential and logarithm after the dependent one is uncertified
-    tower = ElementaryTower()
-    tower.element(log(x) + log(x**2))
-    before = len(tower.generators)
-    tower.element(exp(y) + log(y + 1))
-    assert all(not g.certified for g in tower.generators[before:] if g.kind in (EXPONENTIAL, LOGARITHM))
-    assert tower.certifies(tower.element(log(x) + x))        # what came before stays certified

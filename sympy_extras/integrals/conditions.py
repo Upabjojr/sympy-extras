@@ -44,9 +44,9 @@ from sympy.polys.polytools import Poly
 from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
-from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import Facts, element
-from sympy_extras.assumptions.sat import find_instance
+from sympy_extras.assumptions.sat_sympy import find_instance
 
 __all__ = ['ConditionalValue', 'decide', 'combine', 'real_form', 'numerically_equal', 'positive', 'canonical',
            'symbol_facts', 'with_symbol_facts', 'plain_symbols', 'sample_values']
@@ -407,11 +407,11 @@ _EXACT_SIZE = 120
 
 def _provably_different(a: Expr, b: Expr, assumptions: Assumptions) -> bool:
     """Whether the structure theorem
-    (:mod:`sympy_extras.simplify.structure`) proves that ``a - b`` is not
+    (:mod:`sympy_extras.simplify.structure_sympy`) proves that ``a - b`` is not
     identically zero: a nonzero canonical form in generators which are
     independent. ``False`` when it proves nothing (equal, not elementary,
     uncertified, too large, out of time)."""
-    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
+    from sympy_extras.simplify.structure_sympy import ElementaryTower, NotElementary
     difference = as_expr(a - b)
     if difference == 0 or difference.count_ops() > _EXACT_SIZE:
         return False

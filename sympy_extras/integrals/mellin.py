@@ -94,7 +94,7 @@ from sympy.functions.special.delta_functions import Heaviside
 from sympy.logic.boolalg import And, Boolean, true
 
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import element
 
 __all__ = ['GammaFactor', 'GammaQuotient', 'MellinTransform', 'Kernel', 'mellin_kernel',

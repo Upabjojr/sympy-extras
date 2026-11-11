@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from sympy import I, Rational, acos, acosh, asin, asinh, atan, cos, exp, log, pi, sin, sqrt, symbols, tan
 
-from sympy_extras.simplify.structure import is_zero
+from sympy_extras.simplify.structure_sympy import is_zero
 
 x = symbols('x')
 

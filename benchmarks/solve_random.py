@@ -1,4 +1,4 @@
-"""Random check of ``sympy_extras.assumptions.solve`` on polynomial
+"""Random check of ``sympy_extras.assumptions.solve_sympy.solve`` on polynomial
 equations with sign assumptions against an independent oracle.
 
 Usage::
@@ -26,7 +26,7 @@ from sympy.logic.boolalg import Boolean
 
 from sympy_extras._typing import as_boolean, as_expr
 
-from sympy_extras.assumptions.solve import solve
+from sympy_extras.assumptions.solve_sympy import solve
 
 x = Symbol('x')
 

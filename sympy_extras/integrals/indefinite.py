@@ -90,7 +90,7 @@ from sympy_extras._numeric import reliable_value
 from sympy_extras._special_values import Point, defined_problem, with_special_values
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
-from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.settings import settings
 from .conditions import sample_values
 from .rewriting import Substitution
@@ -162,7 +162,7 @@ def _exactly_zero(difference: Expr, assumptions: Assumptions) -> bool:
     """Whether ``difference`` is zero in the tower of the structure
     theorem (:mod:`sympy_extras.simplify.structure`); ``False`` when it is
     not, or not elementary."""
-    from sympy_extras.simplify.structure import ElementaryTower, NotElementary
+    from sympy_extras.simplify.structure_sympy import ElementaryTower, NotElementary
     tower = ElementaryTower(assumptions)
     try:
         return tower.vanishes(tower.element(difference))

@@ -13,9 +13,10 @@ from it at run time (the functions ending in ``_of_core``, which take and
 return objects of the core): SymPy's ``continuous_domain`` and
 ``solveset`` for the expressions which are not rational in the variable
 (the finite sets of zeros, and whether the zeros are isolated points: a
-union of ``ImageSet`` over the integers), and the CAD's ``solution_set``
-(:mod:`sympy_extras.polys.cad`, on SymPy's polynomials) for a polynomial
-assumption which is not a bound.
+union of ``ImageSet`` over the integers), and the intersection of
+intervals whose ends the core does not compare (the solutions of a
+polynomial assumption which is not a bound, by the native CAD, against
+other intervals).
 
 Examples
 ========
@@ -45,13 +46,11 @@ from sympy.sets.sets import EmptySet, FiniteSet, Intersection, Interval, Set, Un
 from sympy.solvers.solveset import solveset
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import Sign, Truth, as_boolean, as_set
+from sympy_extras._typing import Sign, Truth, as_set
 from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.relational import Relational as CoreRelational
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
-from sympy_extras.polys.cad import solution_set
 from sympy_extras.sets.sets import Interval as CoreInterval
 from sympy_extras.sets.sets import Set as CoreSet
 from sympy_extras.settings import settings
@@ -62,7 +61,7 @@ from .intervals_sympy import Box, Signs, core_expr, core_set, core_symbol, sympy
 
 __all__ = ['certified_sign', 'certified_compare', 'domain_of', 'sign_on', 'signs_multivariate', 'box_of',
     'decide_relational', 'continuous_on_of_core', 'finite_zeros_of_core', 'has_discrete_zeros_of_core',
-    'solution_set_of_core', 'intersection_of_core']
+    'intersection_of_core']
 
 
 # ---------------------------------------------------------------------------
@@ -116,15 +115,6 @@ def has_discrete_zeros_of_core(f: CoreExpr, x: CoreSymbol, piece: CoreSet) -> bo
     piece as isolated points (finite sets, or images of the integers)."""
     zeros = _solveset(f, x, piece)
     return zeros is not None and _is_discrete(zeros)
-
-
-def solution_set_of_core(atom: CoreBoolean, x: CoreSymbol) -> Optional[CoreSet]:
-    """The solutions of a polynomial relation in ``x`` by the CAD
-    (:func:`sympy_extras.polys.cad.solution_set`), ``None`` when it fails
-    or gives a set which is not ported."""
-    sympy_atom, sympy_x = as_boolean(to_sympy(atom)), as_symbol_of(x)
-    found = attempt(lambda: solution_set(sympy_atom, sympy_x), settings.timeout)
-    return None if found is None else core_set(found)
 
 
 def intersection_of_core(a: CoreSet, b: CoreSet) -> CoreSet:
@@ -235,8 +225,8 @@ def decide_relational(atom: Relational, facts: Facts) -> Truth:
 
     >>> from sympy import sin, exp, pi, Abs
     >>> from sympy.abc import x
-    >>> from sympy_extras.assumptions.ask import ask
-    >>> from sympy_extras.assumptions.refine import refine
+    >>> from sympy_extras.assumptions.ask_sympy import ask
+    >>> from sympy_extras.assumptions.refine_sympy import refine
     >>> ask(sin(x) > 0, (x > 0) & (x < pi))
     True
     >>> ask(exp(x) > 2, x > 1)

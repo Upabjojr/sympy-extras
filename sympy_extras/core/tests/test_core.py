@@ -160,6 +160,11 @@ def test_assumptions() -> None:
     assert (2*n + 1).is_odd and (n**2).is_nonnegative and (n**2 + 1).is_positive and (p**2).is_positive
     assert (p*Symbol('q', negative=True)).is_negative and (-p).is_negative and (p + 1).is_positive
     assert (x - x).is_zero and (0*x).is_zero and Integer(0).is_zero and Integer(7).is_prime
+    # sqrt(x) of a symbol not known to be a number was not negative (False),
+    # SymPy's Pow._eval_is_extended_negative says so only for a complex or
+    # extended real base (None here): solve(x**2 - a, x, x > 0) lost -sqrt(a)
+    assert sqrt(x).is_extended_negative is None and sqrt(x).is_negative is None
+    assert sqrt(Symbol('c', complex=True)).is_extended_negative is False and sqrt(p).is_negative is False
     assert pi.is_positive and pi.is_irrational and (pi + 2).is_rational is False and I.is_real is False
     assert I.is_imaginary and (2*I).is_imaginary and (1 + I).is_real is False and (1 + I).is_zero is False
     assert oo.is_finite is False and oo.is_extended_real and oo.is_real is False and zoo.is_finite is False
@@ -870,3 +875,35 @@ def test_termwise_integrate_and_tuple_simplify() -> None:
     assert _integrate_terms(expr_from_sympy(1/x), (nx, expr_from_sympy(sympy.Integer(1)), expr_from_sympy(sympy.Integer(2)))) is None
     t = Tuple(expr_from_sympy(sympy.sin(x)**2 + sympy.cos(x)**2), expr_from_sympy(2*x - x))
     assert str(t.simplify()) == '(1, x)'
+
+
+def test_the_variable_of_a_crootof_is_bound() -> None:
+    # subs and xreplace went into the polynomial of a wrapped CRootOf:
+    # (x + CRootOf(x**3 - x - 1, 0)).subs(x, 1) rebuilt CRootOf(-1, 0) and
+    # SymPy raised GeneratorsNeeded (a cell point of the CAD in the variable
+    # of its level, put into an expression of that variable, in
+    # analysis.sign_on); the root is a number
+    import sympy
+    from sympy_extras.interop import from_sympy, to_sympy
+    sx = sympy.Symbol('x')
+    root = sympy.CRootOf(sx**3 - sx - 1, 0)
+    e = as_expr(from_sympy(root + sx))
+    x = from_sympy(sx)
+    assert to_sympy(e.subs(x, 1)) == root + 1
+    assert to_sympy(e.xreplace({x: Integer(2)})) == root + 2
+    assert to_sympy(e.subs(from_sympy(root), 0)) == sx
+
+
+def test_expand_splits_logarithms_before_distributing() -> None:
+    # SymPy runs the log hint over the whole tree before the mul hint:
+    # log(a*(-1 - I)) with a < 0 is log(-a) + log(2)/2 + I*pi/4; the core
+    # distributed the product first (log(-a - a*I)), which no longer splits,
+    # and cancel left I*log(a*(-1 + I))/2 - I*log(a*(-1 - I))/2 instead of pi/4
+    from sympy_extras.core.mul import Mul as MulNode
+    from sympy_extras.functions import log
+    from sympy_extras.polys.polytools import cancel
+    a = Dummy('a', negative=True)
+    e = log(MulNode(a, -1 - I))
+    assert expand(e) == log(-a) + log(2)/2 + I*pi/4
+    assert str(to_sympy(expand(e))) == str(sympy.expand(to_sympy(e)))
+    assert cancel(I*log(MulNode(a, -1 + I))/2 - I*log(MulNode(a, -1 - I))/2) == pi/4

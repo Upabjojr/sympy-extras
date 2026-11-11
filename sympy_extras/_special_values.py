@@ -127,8 +127,8 @@ from sympy.solvers.solveset import solveset
 
 from sympy_extras._timeout import attempt, remaining_time
 from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
-from sympy_extras.assumptions.ask import Assumptions
-from sympy_extras.assumptions.sat import satisfiable
+from sympy_extras.assumptions.ask_sympy import Assumptions
+from sympy_extras.assumptions.sat_sympy import satisfiable
 from sympy_extras.settings import settings
 
 __all__ = ['Point', 'special_points', 'with_special_values', 'point_condition', 'condition_point', 'point_assumptions',

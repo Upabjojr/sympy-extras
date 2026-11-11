@@ -1,7 +1,7 @@
 # Exact equation solving and reduction
 
-Modules: `sympy_extras.assumptions.resolve`, `sympy_extras.assumptions.solve`,
-`sympy_extras.polys.virtual_substitution`, `sympy_extras.polys.comprehensive`,
+Modules: `sympy_extras.assumptions.resolve`, `sympy_extras.assumptions.solve` (SymPy face `solve_sympy`),
+`sympy_extras.polys.virtual_substitution` (SymPy face `virtual_substitution_sympy`), `sympy_extras.polys.comprehensive` (SymPy face `comprehensive_sympy`),
 `sympy_extras.polys.roots`, `sympy_extras.solvers.integers`,
 `sympy_extras.solvers.transcendental`.
 
@@ -82,9 +82,9 @@ space is needed, so parameters do not slow it down.
 
 ```python
 >>> from sympy import Eq, symbols
->>> from sympy_extras.assumptions.resolve import resolve
+>>> from sympy_extras.assumptions.resolve_sympy import resolve
 >>> from sympy_extras.assumptions.quantifiers_sympy import Exists, ForAll
->>> from sympy_extras.polys.virtual_substitution import eliminate_linear
+>>> from sympy_extras.polys.virtual_substitution_sympy import eliminate_linear
 >>> a, b, x, y, z = symbols('a b x y z')
 >>> eliminate_linear((x > y) & (x < 1), x)
 y < 1
@@ -104,7 +104,7 @@ variables remain.
 >>> from sympy.abc import c
 >>> resolve(ForAll(x, x**2 + b*x + c > 0))
 b**2 < 4*c
->>> from sympy_extras.polys.virtual_substitution import eliminate_quadratic
+>>> from sympy_extras.polys.virtual_substitution_sympy import eliminate_quadratic
 >>> eliminate_quadratic((x**2 < a) & (x > 1), x)
 a > 1
 
@@ -124,7 +124,7 @@ membership.
 
 ```python
 >>> from sympy import S, Ne
->>> from sympy_extras.polys.comprehensive import comprehensive_groebner_system
+>>> from sympy_extras.polys.comprehensive_sympy import comprehensive_groebner_system
 >>> for branch in comprehensive_groebner_system([a*x - b], [x], [a, b]):
 ...     print(branch)
 Branch([], [a], [a*x - b])
@@ -145,8 +145,8 @@ False
 
 ```python
 >>> from sympy import Mod
->>> from sympy_extras.assumptions.solve import solve
->>> from sympy_extras.solvers.integers import linear_diophantine_system, minimal_nonnegative_solutions, cooper
+>>> from sympy_extras.assumptions.solve_sympy import solve
+>>> from sympy_extras.solvers.integers_sympy import linear_diophantine_system, minimal_nonnegative_solutions, cooper
 >>> linear_diophantine_system([Eq(3*x + 5*y, 7)], [x, y])
 ([14 - 5*t0, 3*t0 - 7], [t0])
 >>> minimal_nonnegative_solutions([[3, -5]], [1])
@@ -235,7 +235,7 @@ through the same roots and the signs between them.
 
 ```python
 >>> from sympy import cos, exp
->>> from sympy_extras.solvers.isolation import isolate_real_roots
+>>> from sympy_extras.solvers.isolation_sympy import isolate_real_roots
 >>> isolate_real_roots(x - cos(x), x)
 [TranscendentalRoot(x - cos(x), x, 5/8, 3/4)]
 >>> solve(Eq(x, cos(x)), x, domain=S.Reals)
@@ -267,7 +267,7 @@ parameters like `limit`.
 >>> from sympy.abc import n, p
 >>> from sympy_extras.concrete.convergence import sum_convergence, product_convergence
 >>> from sympy_extras.concrete.dirichlet import dirichlet_series
->>> from sympy_extras.assumptions.limits import limit_seq
+>>> from sympy_extras.assumptions.limits_sympy import limit_seq
 >>> sum_convergence(x**n/n, n)
 (x >= -1) & (x < 1)
 >>> sum_convergence(1/n**p, n)
@@ -292,7 +292,9 @@ Piecewise((oo, a > 1), (1, Eq(a, 1)), (0, a < 1))
 ## Verification
 
 - `sympy_extras/polys/tests/test_virtual_substitution.py` checks every
-  elimination against the CAD (`tautology(Equivalent(...))`).
+  elimination against the CAD (`tautology(Equivalent(...))`), through
+  the SymPy face; `test_virtual_substitution_native.py` checks the native
+  functions on the objects of the core.
 - `sympy_extras/polys/tests/test_comprehensive.py` checks the parameter
   conditions of `exists_complex` at random rational parameter values
   against Gröbner bases of the specialised systems.

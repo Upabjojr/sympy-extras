@@ -197,3 +197,408 @@ def test_native_analysis_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ANALYSIS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ASK = r'''
+import sys
+from sympy_extras.core import symbols, Q, Eq, sqrt
+from sympy_extras.functions import Abs, sign, exp
+from sympy_extras.sets import Integers, Reals
+from sympy_extras.assumptions.facts import element
+from sympy_extras.assumptions.ask import ask
+from sympy_extras.assumptions.refine import refine
+from sympy_extras.assumptions.resolve import resolve
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+assert ask(x**3 > 0, x > 0) is True and ask(x*y > 0, (x > 0) & (y < 0)) is False
+assert ask(Q.positive(x), Eq(x, 3)) is True and ask(x + y > 0, (x > 0) & (y > 0)) is True
+assert ask(element(x + 1, Integers), element(x, Integers)) is True and ask(exp(x) > 0, element(x, Reals)) is True
+assert str(refine(Abs(x) + sqrt(x**2), x > 0)) == '2*x' and str(refine(sign(x*y), (x > 0) & (y < 0))) == '-1'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_ask_refine_resolve_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.assumptions.ask`, ``refine`` and
+    ``resolve`` does not load SymPy, nor do the questions answered by the
+    predicates (the CAD, virtual substitution and the structure theorem go
+    through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ASK], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SOLVE = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.assumptions.solve import solve
+assert 'sympy' not in sys.modules
+x, a = symbols('x a')
+assert str(solve(x**2 + 1, x)) == '{-I, I}' and str(solve(x**2 - 2, x)) == '{-sqrt(2), sqrt(2)}'
+assert str(solve(a*x - 1, x, a > 0)) == '{1/a}'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_SAT = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.assumptions.sat import satisfiable, tautology, find_instance
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+assert satisfiable(True) == {} and satisfiable(False) is False and satisfiable((x > 1) & (x <= 1)) is False
+assert tautology(True) is True and tautology((x > 0) | (x <= 0)) is True
+assert str(find_instance(True, [x, y])) == '[{x: 0, y: 0}]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_solve_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.assumptions.solve` does not load SymPy,
+    nor do the rational equations over the complex numbers (``solveset``,
+    the CAD and the triangular decompositions go through SymPy at run
+    time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_sat_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.assumptions.sat` does not load SymPy,
+    nor do the formulas decided without a SAT search or a decomposition
+    (SymPy's SAT solver, the predicates' facts, the CAD and Hermite's
+    count go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SAT], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_STRUCTURE = r'''
+import sys
+from sympy_extras.core import symbols, sqrt, pi, I, Rational
+from sympy_extras.functions import exp, log, sin, cos, atan
+from sympy_extras.simplify.structure import ElementaryTower, canonical_form, is_zero, equal
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+assert is_zero(sin(x + y) - sin(x)*cos(y) - cos(x)*sin(y)) is True and is_zero(exp(x) - x - 1) is False
+assert is_zero(log(x*y) - log(x) - log(y), [x > 0, y > 0]) is True
+assert is_zero(pi/4 - 4*atan(Rational(1, 5)) + atan(Rational(1, 239))) is True
+assert str(canonical_form((sqrt(x) + 1)**2 - x - 1)) == '2*sqrt(x)' and equal(exp(I*pi), -1) is True
+tower = ElementaryTower()
+tower.element(sqrt(x) + sqrt(y) + sqrt(x + y) + sqrt(2) + I)
+assert tower.certified
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_LIMITS = r'''
+import sys
+from sympy_extras.core import symbols, oo, sqrt, Integer
+from sympy_extras.functions import exp, sin
+from sympy_extras.assumptions.limits import limit, limit_seq, series
+assert 'sympy' not in sys.modules
+a, x = symbols('a x')
+assert limit(sin(x)/x, x, Integer(0)) == 1 and limit(exp(a*x), x, oo, assumptions=a < 0) == 0
+assert limit(x**a, x, oo, assumptions=a > 0) == oo
+assert str(series(sqrt(a**2 + x), x, 0, 2, assumptions=a > 0)) == 'x/(2*a) + a + O(x**2)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_structure_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.simplify.structure` does not load SymPy,
+    nor do the identities which the tower decides without a sample point
+    (the sample points of the region and the reliable values of the
+    witnesses go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_STRUCTURE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_limits_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.assumptions.limits` does not load
+    SymPy, nor do the limits and series whose parameters have signs
+    decided by the predicates (SymPy's ``limit_seq``, the reliable
+    numerical values, and the SAT and CAD of the case distinctions go
+    through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LIMITS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_CAD = r'''
+import sys
+from fractions import Fraction
+from sympy_extras.core import symbols
+from sympy_extras.polys.cad.projection import projection_sets
+from sympy_extras.polys.cad.samplepoints import SamplePoint, compare_real, real_roots_of
+from sympy_extras.polys.cad.lifting import Lifting, cylindrical_algebraic_decomposition, lifting_for
+assert 'sympy' not in sys.modules
+x, y, z, w = symbols('x y z w')
+cad = cylindrical_algebraic_decomposition([x**2 + y**2 + z**2 - 1, z - x*y], [x, y, z])
+assert len(cad) == 137 and all(len(c.signs) == 2 for c in cad)
+hong = cylindrical_algebraic_decomposition([x*w + y], [x, y, z, w])
+assert hong.method == 'hong' and len(hong) == 21
+projection = projection_sets([x**2 + y**2 - 1, x - y], [x, y], method='hong')
+lifting = lifting_for(projection, [x, y], 'hong')
+assert len(lifting.lift_all()[-1]) > 0
+point = SamplePoint().extend(real_roots_of([1, 0, -2])[1]).extend(Fraction(1, 2))
+assert point.sign(x**2 + y**2 - 2, [x, y]) == 1 and compare_real(real_roots_of([2, 0, -4])[1], point.values[0]) == 0
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_ISOLATION = r'''
+import sys
+from sympy_extras.core import symbols, Eq, Mod, oo
+from sympy_extras.functions import exp, cos
+from sympy_extras.sets import interval, finite_set
+from sympy_extras.solvers.isolation import TranscendentalRoot, isolate_real_roots, point_between, compare_points
+from sympy_extras.solvers.integers import (linear_diophantine_system, minimal_nonnegative_solutions, cooper,
+    is_presburger, with_sides)
+from sympy_extras.polys.roots import in_radicals, radical_form
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+assert str(isolate_real_roots(x**4 - 5*x**2 + 6, x)) == '[-sqrt(3), -sqrt(2), sqrt(2), sqrt(3)]'
+assert str(isolate_real_roots((x**2 - 2)/(x + 3), x, interval(0, 5))) == '[sqrt(2)]'
+r, s = TranscendentalRoot(exp(x) - x - 2, x, 1, 2), TranscendentalRoot(x - cos(x), x, 0, 1)
+assert str(r.refined(4)) == 'TranscendentalRoot(-x + exp(x) - 2, x, 9/8, 19/16)'
+assert str(r.evalf(20)) == '1.1461932206205825852'
+assert compare_points(s, r) == -1 and str(point_between(s, r)) == '7/8' and point_between(r, oo) == 3
+assert str(linear_diophantine_system([Eq(3*x + 5*y, 7)], [x, y])) == '([14 - 5*t0, 3*t0 - 7], [t0])'
+assert minimal_nonnegative_solutions([[3, 5]], [22]) == ([[4, 2]], [])
+assert str(cooper((x > y) & (x < y + 2), x)) == 'True' and is_presburger(Eq(Mod(x, 3), 1), {x})
+assert str(with_sides(x - y > 0)) == 'x > y'
+assert radical_form(x) is None and in_radicals(finite_set(1, 2)) == finite_set(1, 2)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_cad_lifting_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.cad.lifting` (with the
+    projection and the sample points) does not load SymPy, nor do the
+    decompositions, McCallum's and Hong's, and the sample points in
+    algebraic number fields."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CAD], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_isolation_integers_roots_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.isolation`,
+    :mod:`sympy_extras.solvers.integers` and :mod:`sympy_extras.polys.roots`
+    does not load SymPy, nor do the polynomial and rational roots, the root
+    objects, the Diophantine systems and the eliminations which need no
+    simplification (SymPy's ``real_roots`` with ``CRootOf``,
+    ``continuous_domain``, ``solveset`` of the transcendental functions,
+    ``simplify_logic`` and ``roots`` over ``EX`` go through it at run
+    time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ISOLATION], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_CAD_QE = r'''
+import sys
+from sympy_extras.core import symbols, Eq
+from sympy_extras.polys.cad.qe import quantifier_elimination, decide, solution_set, sample_points, truth_tables
+from sympy_extras.polys.cad.cylindrical import cylindrical_formula, cylindrical_set, cylindrical_cases
+from sympy_extras.polys.cad.indexedroot import indexed_root
+assert 'sympy' not in sys.modules
+a, b, c, x, y, z = symbols('a b c x y z')
+assert str(quantifier_elimination(Eq(a*x**2 + b*x + c, 0), [('exists', x)])) == \
+    'Eq(c, 0) | (4*a*c - b**2 < 0) | (Ne(b, 0) & (4*a*c - b**2 <= 0))'
+assert str(quantifier_elimination(Eq(z**2, x) & (z > y), [('exists', z)], free=[x, y])) == \
+    '((x >= 0) & (y < 0)) | (x - y**2 > 0)'
+assert decide(Eq(y, x**2), [('forall', x), ('exists', y)]) is True
+assert str(solution_set(x**2 > 2, x)) == \
+    'Union(Interval.open(-oo, IndexedRoot(x**2 - 2, x, 0)), Interval.open(IndexedRoot(x**2 - 2, x, 1), oo))'
+assert str(sample_points((x**2 + y**2 < 1) & (x > y), [x, y])) == \
+    '[{x: 0, y: -1/2}, {x: IndexedRoot(2*x**2 - 1, x, 1), y: 0}, {x: 3/4, y: 0}]'
+assert truth_tables([x > 0, x**3 > 0], [x])[1] == [[False, False, True], [False, False, True]]
+assert str(cylindrical_formula(x**2 + y**2 < 1, [x, y])) == '(x > -1) & (x < 1) & (y < sqrt(1 - x**2)) & (y > -sqrt(1 - x**2))'
+assert 'IndexedRoot(x + y**3 - 3*y, y, 2)' in str(cylindrical_formula((y**3 - 3*y + x > 0) & (x > 1), [x, y]))
+assert str(cylindrical_set((x**2 + y**2)*((x - 3)**2 + y**2 - 1) <= 0, [x, y])).endswith('{(0, 0)})')
+assert str(cylindrical_cases(Eq(a*x, 1), [a], [x])) == '[((a > 0) | (a < 0), {1/a})]'
+assert str(indexed_root(y**3 + x*y - 1, y, 0).subs(x, 1).evalf(20)) == '0.68232780382801932737'
+from sympy_extras.sets import Reals
+from sympy_extras.assumptions.sat import find_instance
+from sympy_extras.assumptions.solve import solve
+assert str(find_instance((x**2 + y**2 < 1) & (x > y), [x, y], domain=Reals)) == '[{x: 0, y: -1/2}]'
+assert str(solve((x**2 + y**2 <= 1) & (x + y >= 1), [x, y], domain=Reals)) == \
+    'ConditionSet((x, y), (x >= 0) & (x <= 1) & (y >= 1 - x) & (y <= sqrt(1 - x**2)), ProductSet(Reals, Reals))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_IDEALS = r'''
+import sys
+from sympy_extras.core import Symbol, Integer, sqrt
+from sympy_extras.polys.domains import QQ, GF
+from sympy_extras.polys.domains.algebraicfield import AlgebraicField
+from sympy_extras.polys.ideals import Ideal, separating_forms
+from sympy_extras.polys.rings import WeightOrder, grevlex, lex
+from fractions import Fraction
+assert 'sympy' not in sys.modules
+x, y, z, t, d = [Symbol(name) for name in 'xyztd']
+I = Ideal([x*z - y**2, x**2 - y*z], x, y, z, domain=QQ)
+assert (I.dimension(), I.degree()) == (1, 4) and str(I.eliminate([x])) == 'Ideal([y**4 - y*z**3], y, z)'
+assert str(I.saturate(y)) == 'Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)'
+assert str(I.hilbert_series(t)) == '(t**2 + 2*t + 1)/(1 - t)' and str(I.hilbert_polynomial(d)) == '4'
+assert [str(g) for g in I.change_order(lex)] == ['x**2 - y*z', 'x*y**2 - y*z**2', 'x*z - y**2', 'y**4 - y*z**3']
+assert len(I.change_order(WeightOrder((1, 2, 3), grevlex))) == 3
+J = Ideal([x**2 - 2, y**2 - 3], x, y, domain=QQ)
+assert str(J.minimal_polynomial(x + y, z).to_expr()) == 'z**4 - 10*z**2 + 1' and J.is_maximal() and J.is_prime()
+assert J.radical() == J and [str(g) for g in J.groebner_basis(lex)] == ['x**2 - 2', 'y**2 - 3']
+K = Ideal([x**3 + 2*x + 1, y**2 - x], x, y, domain=GF(7))
+assert K.vector_space_dimension() == 6 and K.is_maximal()
+A = Ideal([sqrt(Integer(2))*x - y, y**2 - 2], x, y,
+          domain=AlgebraicField([Fraction(1), Fraction(0), Fraction(-2)], sqrt(Integer(2))))
+assert A.univariate(x).to_expr() == x**2 - 1 and not A.is_maximal()
+assert str(Ideal([x], x, y, domain=QQ).intersect(Ideal([y], x, y, domain=QQ))) == 'Ideal([x*y], x, y)'
+assert str(Ideal([x**2*y, x*y**2], x, y, domain=QQ).quotient(x*y)) == 'Ideal([x, y], x, y)'
+assert Ideal([x**2, y**3], x, y, domain=QQ).radical_contains(x*y)
+assert str(list(separating_forms([x, y], 3))) == '[x, x + y, x - y, x + 2*y, x - 2*y]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_VIRTUAL_SUBSTITUTION = r'''
+import sys
+from sympy_extras.core import symbols, Eq, Implies, Not
+from sympy_extras.polys.virtual_substitution import (is_linear_in, is_quadratic_in, eliminate_linear,
+    eliminate_quadratic, linear_quantifier_elimination, virtual_substitution_elimination, with_sides, to_nnf)
+assert 'sympy' not in sys.modules
+x, y, z = symbols('x y z')
+assert is_linear_in((2*x + y > 0) & (x*y < 1), x) and not is_quadratic_in(x**3 > y, x)
+assert str(with_sides((x - y > 0) & (x + 1 < 0))) == '(x > y) & (x < -1)'
+assert str(to_nnf(Implies(x > 0, Not(y < 1)))) == '(y >= 1) | (x <= 0)'
+assert str(eliminate_linear((x > y) & (x < 1), x)) == 'y < 1' and str(eliminate_linear(Eq(x, 2) & (x > y), x)) == 'y < 2'
+assert str(eliminate_linear((x > 0) & (x < 0), x)) == 'False' and str(eliminate_quadratic(x**2 + 1 > 0, x)) == 'True'
+assert str(linear_quantifier_elimination((x > y) & (y > z), [('exists', z), ('exists', x)])) == '(True, [])'
+assert str(virtual_substitution_elimination(x**3 > y, [('exists', x)])) == "(x**3 > y, [('exists', x)])"
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_cad_qe_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.cad.qe`,
+    :mod:`sympy_extras.polys.cad.cylindrical` and
+    :mod:`sympy_extras.polys.cad.indexedroot` does not load SymPy, nor do
+    quantifier elimination, the decisions, solution sets, sample points,
+    truth tables and cylindrical descriptions, nor the instances of
+    ``find_instance`` and the systems of inequalities of ``solve`` which
+    they answer."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CAD_QE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_virtual_substitution_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.virtual_substitution` does not
+    load SymPy, nor do the eliminations whose result is a truth value or
+    a single relation (SymPy's ``simplify_logic`` of a compound result
+    goes through it at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_VIRTUAL_SUBSTITUTION], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_ideals_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.ideals` does not load SymPy, nor
+    do the Gröbner bases (F4, FGLM, the walk), the eliminations, quotients,
+    saturations, Hilbert series and the operations on zero-dimensional
+    ideals (the modular Gröbner bases when F4 takes too long, SymPy's
+    Buchberger algorithm on request and the decompositions of
+    positive-dimensional ideals go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_IDEALS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_REGULAR_CHAINS = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.polys.regularchains import RegularChain, triangularize, regular_gcd
+from sympy_extras.solvers.parametric import parametric_cases
+assert 'sympy' not in sys.modules
+a, b, c, p, q, x, y, z = symbols('a b c p q x y z')
+assert str(triangularize([x**2 + y + z - 1, x + y**2 + z - 1, x + y + z**2 - 1], x, y, z)[0].polys) == \
+    '[z**2 + 2*z - 1, y - z, x - z]'
+f = x**3 + p*x + q
+assert str(triangularize([f, f.diff(x)], x, p, q, mode='kalkbrener')) == \
+    '[RegularChain([4*p**3 + 27*q**2, 2*p*x + 3*q], x, p, q)]'
+assert str(triangularize([x**2 - y**2, x*(y - 1)], x, y, inequations=[x])) == \
+    '[RegularChain([y - 1, x + 1], x, y), RegularChain([y - 1, x - 1], x, y)]'
+T = RegularChain([z**2 - 2, y**2 - z, (y + 1)*x - 1], x, y, z)
+assert T.contains(y**4 - 2) and str(T.reduce(y**3 + x)) == 'y*z + 3' and T.is_regular(y - z)
+assert str(RegularChain([y**2 - 1, x**2 - y], x, y).regularize(y - 1)[0]) == '[RegularChain([y - 1, x**2 - y], x, y)]'
+assert str(regular_gcd(x**2 - y, x**2 - 3*x + 2*y, x, RegularChain([y**2 - 1], x, y))) == \
+    '[(1, RegularChain([y + 1], x, y)), (x - 1, RegularChain([y - 1], x, y))]'
+assert str(RegularChain([z*y - 1, y*x - z], x, y, z).saturated_ideal().reduced().exprs) == '[x*y - z, y*z - 1, -x + z**2]'
+[chain] = triangularize([x**2 + y**2 - 5, x*y - 1], x, y)
+assert str(chain.numerical_solutions(5)[0]) == '{y: -2.1889, x: -0.45685}'
+assert str(parametric_cases([a*x**2 + b*x + c], [x])[1]) == 'ParametricCase(Eq(a, 0) & Ne(b, 0), {(-c/b,)})'
+assert str(parametric_cases([a*x + y - 1, x + a*y - 1], [x, y])) == \
+    '[ParametricCase(Eq(a, 1), {(1 - y, y)}), ParametricCase(Ne(a + 1, 0), {(1/(a + 1), 1/(a + 1))})]'
+from sympy_extras.assumptions.solve import solve
+assert str(solve([a*x - 1], [x], cases=True)) == 'ConditionSet(x, Ne(a, 0), {1/a})'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_HERMITE_COMPREHENSIVE = r'''
+import sys
+from sympy_extras.core import symbols, Eq, Ne
+from sympy_extras.polys.hermite import count_real_solutions, count_complex_solutions, sign_determination, \
+    real_sign_counts, tarski_query, hermite_matrix, decide_zero_dimensional
+from sympy_extras.polys.comprehensive import comprehensive_groebner_system, exists_complex, \
+    complex_quantifier_elimination, reduce_complex
+assert 'sympy' not in sys.modules
+a, b, x, y = symbols('a b x y')
+assert count_real_solutions([x**2 + y**2 - 1, x - y], x, y) == 2 and count_complex_solutions([x**2 + 1, (y - 1)**2], x, y) == 2
+assert str(sign_determination([x**2 - 1, y**2 - 1], [x + y, x], x, y)) == '{(-1, -1): 1, (0, -1): 1, (0, 1): 1, (1, 1): 1}'
+assert str(real_sign_counts([x**3 - x, y - x**2], x - y, x, y)) == 'SignCounts(zero=2, positive=0, negative=1)'
+assert tarski_query([x**3 - x, y - x**2], 2*y - 1, x, y) == 1 and str(hermite_matrix([x**2 - 2], x, x)) == 'ExprMatrix([[0, 4], [4, 0]])'
+assert decide_zero_dimensional(Eq(x**2 + y**2, 4) & Eq(x*y, 1) & (x > y), [x, y]) is True
+assert [repr(r) for r in comprehensive_groebner_system([a*x - b], [x], [a, b])] == \
+    ['Branch([], [a], [a*x - b])', 'Branch([a], [b], [1])', 'Branch([a, b], [], [])']
+assert str(exists_complex([a*x - b], [], [x])) == 'Ne(a, 0) | (Eq(a, 0) & Eq(b, 0))'
+assert str(complex_quantifier_elimination(Eq(x**2 + a*x + b, 0) & Eq(2*x + a, 0), [('exists', x)])) == 'Eq(a**2 - 4*b, 0)'
+assert str(reduce_complex(Eq(x**2 - y, 0) & Eq(x*y - 1, 0) & Ne(x, 0))) == 'Eq(x*y - 1, 0) & Eq(-x + y**2, 0) & Eq(x**2 - y, 0)'
+from sympy_extras.sets.fancysets import Complexes
+from sympy_extras.assumptions.quantifiers import Exists, ForAll
+from sympy_extras.assumptions.resolve import resolve
+from sympy_extras.assumptions.sat import _without_real_solution
+assert str(resolve(Exists(x, Eq(a*x, 1)), domain=Complexes)) == 'Ne(a, 0)'
+assert str(resolve(ForAll(x, Ne(x**2, a)), domain=Complexes)) == 'False'
+assert str(resolve(Exists(x, Eq(a*x, b)), domain=Complexes, assumptions=Ne(a, 0))) == 'True'
+assert _without_real_solution(Eq(x**2 + y**2, 1) & Eq(x*y, 1) & (x > 0), [x, y])
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_regular_chains_and_parametric_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.regularchains` and
+    :mod:`sympy_extras.solvers.parametric` does not load SymPy, nor do the
+    triangular decompositions, the operations on chains, their saturated
+    ideals and numerical solutions, the cases of the parameters and the
+    ``solve(..., cases=True)`` which they answer (the exact solutions of a
+    chain, SymPy's ``CRootOf``, go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REGULAR_CHAINS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_hermite_comprehensive_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.hermite` and
+    :mod:`sympy_extras.polys.comprehensive` does not load SymPy, nor do the
+    counts of real solutions, the sign determination, the decisions of
+    zero-dimensional systems (also the one of ``satisfiable``), the
+    comprehensive Gröbner systems, the eliminations over the complex
+    numbers and ``resolve`` with ``domain=Complexes``."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_HERMITE_COMPREHENSIVE], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

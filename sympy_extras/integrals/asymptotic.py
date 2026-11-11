@@ -123,8 +123,8 @@ from sympy.logic.boolalg import Boolean
 
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set
-from sympy_extras.assumptions.ask import Assumptions, ask
-from sympy_extras.assumptions.solve import solve
+from sympy_extras.assumptions.ask_sympy import Assumptions, ask
+from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.settings import settings
 
 __all__ = ['asymptotic_integral', 'watson_lemma', 'laplace_method', 'stationary_phase',
@@ -393,7 +393,7 @@ def _power_expansion(phi: Expr, h: Expr, x: Symbol, x0: Expr, t: Symbol, correct
 def _edges_below(h: Expr, x: Symbol, value: Expr, a: Expr, b: Expr, assumptions: Assumptions) -> bool:
     """Whether ``h`` stays below ``value`` at the infinite ends of the
     range (its limits there are smaller)."""
-    from sympy_extras.assumptions.limits import limit
+    from sympy_extras.assumptions.limits_sympy import limit
     for endpoint in (a, b):
         if endpoint not in (-oo, oo):
             continue
@@ -431,7 +431,7 @@ def _maxima(phi: Expr, h: Expr, x: Symbol, a: Expr, b: Expr,
         derivatives = [as_expr(h.diff(x, n).subs(x, endpoint)) for n in (1, 2)]
         if any(d.has(zoo, nan, oo, -oo) for d in derivatives):
             # a singular endpoint (log(x) at 0): no maximum when h falls to -oo there
-            from sympy_extras.assumptions.limits import limit
+            from sympy_extras.assumptions.limits_sympy import limit
             edge = attempt(lambda: limit(h, x, endpoint, '+' if side == 'right' else '-', assumptions=assumptions),
                            settings.timeout)
             if edge == -oo:

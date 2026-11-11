@@ -73,13 +73,14 @@ References
 """
 from __future__ import annotations
 
-from typing import Iterable, Optional, Sequence
+from typing import Final, Iterable, Optional, Sequence
 
 from sympy_extras.ntheory.generate import nextprime
-from sympy.polys.rings import PolyElement, PolyRing
+from sympy_extras.polys.rings import PolyRing
 
-from .recursive import (coefficient, degree, distinct_factors, exact_quotient, initial, main_variable, normalize,
-    primitive_part, pseudo_divide, pseudo_remainder, subresultant_chain, tail)
+from .recursive import (ZPoly, coefficient, degree, distinct_factors, exact_quotient, initial, main_variable,
+    max_norm, normalize, primitive_part, pseudo_divide, pseudo_remainder, sort_key, sqf_part, subresultant_chain,
+    tail)
 
 __all__ = ['Chain', 'Decomposer', 'Regularized', 'RegularGcd']
 
@@ -94,45 +95,46 @@ class Chain:
     (the first generator of the ring is the greatest variable), or ``None``.
     """
 
-    __slots__ = ('polys', 'height')
+    __slots__ = ('polys', 'height', '_hash')
 
-    def __init__(self, polys: Sequence[Optional[PolyElement]]) -> None:
-        self.polys: tuple[Optional[PolyElement], ...] = tuple(polys)
-        self.height: int = sum(1 for p in self.polys if p is not None)
+    def __init__(self, polys: Sequence[Optional[ZPoly]]) -> None:
+        self.polys: Final[tuple[Optional[ZPoly], ...]] = tuple(polys)
+        self.height: Final[int] = sum(1 for p in self.polys if p is not None)
+        self._hash: Final[int] = hash(self.polys)
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Chain) and self.polys == other.polys
+        return isinstance(other, Chain) and self._hash == other._hash and self.polys == other.polys
 
     def __hash__(self) -> int:
-        return hash(self.polys)
+        return self._hash
 
     def __repr__(self) -> str:
         return 'Chain(%s)' % ', '.join(str(p) for p in self.polys if p is not None)
 
-    def get(self, i: int) -> Optional[PolyElement]:
+    def get(self, i: int) -> Optional[ZPoly]:
         return self.polys[i]
 
     def below(self, i: int) -> Chain:
         """The polynomials whose main variable is smaller than the variable ``i``."""
         return Chain([None]*(i + 1) + list(self.polys[i + 1:]))
 
-    def above(self, i: int) -> list[PolyElement]:
+    def above(self, i: int) -> list[ZPoly]:
         """The polynomials whose main variable is greater than the variable
         ``i``, by increasing main variable."""
         return [p for p in reversed(self.polys[:i]) if p is not None]
 
-    def with_poly(self, i: int, p: PolyElement) -> Chain:
+    def with_poly(self, i: int, p: ZPoly) -> Chain:
         polys = list(self.polys)
         polys[i] = p
         return Chain(polys)
 
-    def union(self, polys: Iterable[PolyElement]) -> Chain:
+    def union(self, polys: Iterable[ZPoly]) -> Chain:
         result = list(self.polys)
         for p in polys:
             result[main_variable(p)] = p
         return Chain(result)
 
-    def elements(self) -> list[PolyElement]:
+    def elements(self) -> list[ZPoly]:
         """The polynomials by increasing main variable."""
         return [p for p in reversed(self.polys) if p is not None]
 
@@ -141,7 +143,15 @@ class Chain:
 Regularized = tuple[Chain, bool]
 #: a regular gcd (``None`` on a chain of greater height), the chain, and the
 #: polynomial outside whose zeros the gcd specializes
-RegularGcd = tuple[Optional[PolyElement], Chain, PolyElement]
+RegularGcd = tuple[Optional[ZPoly], Chain, ZPoly]
+
+
+def _divided(p: ZPoly, q: ZPoly) -> Optional[ZPoly]:
+    """``p/q`` when ``q`` divides ``p``, ``None`` otherwise."""
+    try:
+        return exact_quotient(p, q)
+    except ValueError:
+        return None
 
 
 def _distinct(chains: Iterable[Chain]) -> list[Chain]:
@@ -162,17 +172,17 @@ class Decomposer:
     Kalkbrener mode), ``None`` to keep them all.
     """
 
-    def __init__(self, ring: PolyRing, bound: Optional[int] = None) -> None:
-        self.ring: PolyRing = ring
+    def __init__(self, ring: PolyRing[int], bound: Optional[int] = None) -> None:
+        self.ring: PolyRing[int] = ring
         self.n: int = ring.ngens
         self.bound: Optional[int] = bound
         self.empty: Chain = Chain([None]*self.n)
-        self._regularized: dict[tuple[PolyElement, Chain], list[Regularized]] = {}
-        self._intersected: dict[tuple[PolyElement, Chain], list[Chain]] = {}
-        self._subresultants: dict[tuple[PolyElement, PolyElement, int], list[PolyElement]] = {}
-        self._factors: dict[PolyElement, list[PolyElement]] = {}
+        self._regularized: dict[tuple[ZPoly, Chain], list[Regularized]] = {}
+        self._intersected: dict[tuple[ZPoly, Chain], list[Chain]] = {}
+        self._subresultants: dict[tuple[ZPoly, ZPoly, int], list[ZPoly]] = {}
+        self._factors: dict[ZPoly, list[ZPoly]] = {}
         #: the irreducible factors met so far, with their values at the point
-        self._pool: dict[PolyElement, int] = {}
+        self._pool: dict[ZPoly, int] = {}
         self._point: list[int] = [nextprime(100*(i + 1)) for i in range(self.n)]
 
     # ------------------------------------------------------------------
@@ -181,7 +191,7 @@ class Decomposer:
     def kept(self, chain: Chain) -> bool:
         return self.bound is None or chain.height <= self.bound
 
-    def factors(self, p: PolyElement) -> list[PolyElement]:
+    def factors(self, p: ZPoly) -> list[ZPoly]:
         """Distinct factors of ``p`` with the same zeros.
 
         Splitting is only an optimization, and the factorization of the
@@ -197,7 +207,7 @@ class Decomposer:
             return found
         if p.is_ground:
             found = []
-        elif p.max_norm() < _FACTOR_NORM:
+        elif max_norm(p) < _FACTOR_NORM:
             found = self._irreducible_factors(p)
         else:
             found = []
@@ -207,13 +217,13 @@ class Decomposer:
                 at = self._pool[q]
                 if not at or value % at:
                     continue
-                quotient, remainder = rest.div(q)
-                if remainder:
+                quotient = _divided(rest, q)
+                if quotient is None:
                     continue
                 found.append(q)
-                while not remainder:
-                    rest = quotient.copy()
-                    quotient, remainder = rest.div(q)
+                while quotient is not None:
+                    rest = quotient
+                    quotient = _divided(rest, q)
                 value = self._value(rest)
             rest = normalize(rest)
             if not rest.is_ground:
@@ -223,26 +233,31 @@ class Decomposer:
                 if primitive != rest:
                     parts.append(normalize(exact_quotient(rest, primitive)))
                 for part in parts:
-                    if part.max_norm() < _FACTOR_NORM or part != rest:
+                    if max_norm(part) < _FACTOR_NORM or part != rest:
                         found.extend(q for q in self.factors(part) if q not in found)
                     else:
                         found.append(part)
         self._factors[p] = found
         return found
 
-    def _irreducible_factors(self, p: PolyElement) -> list[PolyElement]:
+    def _irreducible_factors(self, p: ZPoly) -> list[ZPoly]:
         found = distinct_factors(p)
         for q in found:
             if q not in self._pool:
                 self._pool[q] = self._value(q)
         return found
 
-    def _value(self, p: PolyElement) -> int:
+    def _value(self, p: ZPoly) -> int:
         """The value at a fixed integer point: a divisor divides there."""
-        value = p.evaluate(list(zip(self.ring.gens, self._point)))
-        return int(value)
+        value = 0
+        for m, c in p.terms.items():
+            for a, e in zip(self._point, m):
+                if e:
+                    c *= a**e
+            value += c
+        return value
 
-    def subresultants(self, f: PolyElement, g: PolyElement, i: int) -> list[PolyElement]:
+    def subresultants(self, f: ZPoly, g: ZPoly, i: int) -> list[ZPoly]:
         key = (f, g, i)
         found = self._subresultants.get(key)
         if found is None:
@@ -250,7 +265,7 @@ class Decomposer:
             self._subresultants[key] = found
         return found
 
-    def reduce(self, p: PolyElement, chain: Chain) -> PolyElement:
+    def reduce(self, p: ZPoly, chain: Chain) -> ZPoly:
         """The pseudo-remainder of ``p`` by the chain, normalized: it is zero
         if and only if ``p`` is in the saturated ideal."""
         for i, t in enumerate(chain.polys):
@@ -260,16 +275,10 @@ class Decomposer:
                 p = pseudo_remainder(p, t, i)
         return normalize(p)
 
-    def _monomial(self, p: PolyElement, i: int, d: int) -> PolyElement:
-        monom = [0]*self.n
-        monom[i] = d
-        result: PolyElement = p.mul_monom(tuple(monom))
-        return result
-
     # ------------------------------------------------------------------
     # regularize
 
-    def regularize(self, p: PolyElement, chain: Chain) -> list[Regularized]:
+    def regularize(self, p: ZPoly, chain: Chain) -> list[Regularized]:
         """Split the chain so that ``p`` is zero or regular modulo each part."""
         if p.is_ground:
             return [(chain, not p)]
@@ -316,7 +325,7 @@ class Decomposer:
         self._regularized[key] = result
         return result
 
-    def _regularize_reduced(self, f: PolyElement, chain: Chain) -> list[tuple[Chain, Optional[bool]]]:
+    def _regularize_reduced(self, f: ZPoly, chain: Chain) -> list[tuple[Chain, Optional[bool]]]:
         """``regularize`` for ``f`` reduced with respect to the chain and not
         constant; the chains of greater height come with ``None``."""
         v = main_variable(f)
@@ -360,13 +369,13 @@ class Decomposer:
     # ------------------------------------------------------------------
     # regular gcd
 
-    def regular_gcd(self, p: PolyElement, q: PolyElement, v: int, chain: Chain) -> list[RegularGcd]:
+    def regular_gcd(self, p: ZPoly, q: ZPoly, v: int, chain: Chain) -> list[RegularGcd]:
         """Regular gcds of ``p`` and ``q``, of main variable ``v`` and with
         initials regular modulo the chain, whose variables are smaller."""
         if degree(p, v) < degree(q, v):
             p, q = q, p
         subresultants = self.subresultants(p, q, v)
-        zero: PolyElement = self.ring.zero
+        zero: ZPoly = self.ring.zero
         out: list[RegularGcd] = []
         pending = [chain]
         for j, S in enumerate(subresultants):
@@ -397,7 +406,7 @@ class Decomposer:
     # ------------------------------------------------------------------
     # building chains
 
-    def add(self, chain: Chain, f: PolyElement) -> list[Chain]:
+    def add(self, chain: Chain, f: ZPoly) -> list[Chain]:
         """Put ``f`` on top of the chain, whose variables are smaller than
         its main variable and modulo which its initial is regular: the
         chains with the squarefree part of ``f``."""
@@ -410,9 +419,9 @@ class Decomposer:
         if d == 1:
             return [chain.with_poly(v, g)]
         if not chain.height:
-            squarefree: PolyElement = self.ring.one
+            squarefree: ZPoly = self.ring.one
             for part in self.factors(g):
-                squarefree = squarefree*(part if part in self._pool else normalize(part.sqf_part()))
+                squarefree = squarefree*(part if part in self._pool else sqf_part(part))
             return [chain.with_poly(v, squarefree)]
         out: list[Chain] = []
         for common, F, lost in self.regular_gcd(g, g.diff(v), v, chain):
@@ -430,7 +439,7 @@ class Decomposer:
                 out.extend(self.extend(F2, [f]))
         return [T for T in out if self.kept(T)]
 
-    def extend(self, chain: Chain, polys: Sequence[PolyElement]) -> list[Chain]:
+    def extend(self, chain: Chain, polys: Sequence[ZPoly]) -> list[Chain]:
         """Put the polynomials, of increasing main variables greater than the
         ones of the chain, on top of it; the parts of the chain where an
         initial vanishes identically are dropped."""
@@ -448,7 +457,7 @@ class Decomposer:
     # ------------------------------------------------------------------
     # intersect
 
-    def intersect(self, p: PolyElement, chain: Chain) -> list[Chain]:
+    def intersect(self, p: ZPoly, chain: Chain) -> list[Chain]:
         """The zeros of ``p`` in the quasi-component of the chain."""
         if not p:
             return [chain]
@@ -465,7 +474,7 @@ class Decomposer:
         self._intersected[key] = result
         return result
 
-    def _intersect(self, f: PolyElement, fr: PolyElement, chain: Chain) -> list[Chain]:
+    def _intersect(self, f: ZPoly, fr: ZPoly, chain: Chain) -> list[Chain]:
         """The zeros of ``fr`` in the quasi-component, where a regular
         multiple of ``f`` is a multiple of ``fr`` modulo the saturated ideal;
         ``f`` is in the saturated ideal of every result."""
@@ -480,7 +489,7 @@ class Decomposer:
                     out.extend(self._intersect_regular(f, h, E))
         return out
 
-    def _intersect_regular(self, f: PolyElement, h: PolyElement, chain: Chain) -> list[Chain]:
+    def _intersect_regular(self, f: ZPoly, h: ZPoly, chain: Chain) -> list[Chain]:
         """The same for ``h`` reduced, not constant and regular modulo the chain."""
         u = main_variable(h)
         t = chain.get(u)
@@ -523,7 +532,7 @@ class Decomposer:
     # ------------------------------------------------------------------
     # decompositions
 
-    def is_regular(self, p: PolyElement, chain: Chain) -> bool:
+    def is_regular(self, p: ZPoly, chain: Chain) -> bool:
         """Whether ``p`` is regular modulo the saturated ideal of the chain."""
         return all(not zero for E, zero in self.regularize(p, chain) if E.height == chain.height)
 
@@ -581,12 +590,12 @@ class Decomposer:
             pending = following
         return out
 
-    def triangularize(self, equations: Sequence[PolyElement], inequations: Sequence[PolyElement] = ()) -> list[Chain]:
+    def triangularize(self, equations: Sequence[ZPoly], inequations: Sequence[ZPoly] = ()) -> list[Chain]:
         """Chains whose quasi-components cover the zeros of the equations
         where no inequation vanishes (in the Kalkbrener mode, the closures
         cover them); every inequation is regular modulo every chain."""
         polys = sorted((normalize(p) for p in equations if p),
-            key=lambda p: (-main_variable(p), len(p), p.sort_key()))
+            key=lambda p: (-main_variable(p), len(p.terms), sort_key(p)))
         chains = [self.empty]
         for p in polys:
             chains = self.irredundant(_distinct(T2 for T in chains for T2 in self.intersect(p, T)))
@@ -602,4 +611,4 @@ class Decomposer:
         total = 1
         for p in elements:
             total *= degree(p, main_variable(p))
-        return chain.height, -total, [(len(p), str(p)) for p in elements]
+        return chain.height, -total, [(len(p.terms), str(p)) for p in elements]

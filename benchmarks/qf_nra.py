@@ -28,8 +28,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from sympy import S, Rational, Basic, true, false, count_ops
 from sympy.logic.boolalg import Boolean
 
-from sympy_extras.assumptions.sat import satisfiable
-from sympy_extras.assumptions.refine import simplify, refine
+from sympy_extras.assumptions.sat_sympy import satisfiable
+from sympy_extras.assumptions.refine_sympy import simplify, refine
 from sympy_extras._timeout import attempt
 
 from smtlib_data import Problem, load, translate

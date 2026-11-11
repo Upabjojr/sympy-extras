@@ -69,10 +69,10 @@ from sympy.polys.rings import ring
 
 from sympy_extras._typing import as_expr
 
-from .ideals import Ideal, separating_forms
+from .ideals_sympy import Ideal, separating_forms
 from .modulargroebner import groebner
 from .orderings import elimination_order
-from .regularchains import RegularChain, triangularize
+from .regularchains_sympy import RegularChain, triangularize
 
 __all__ = ['radical', 'equidimensional_parts', 'minimal_primes', 'primary_decomposition',
            'associated_primes', 'is_primary', 'independent_set', 'PrimaryComponent']
@@ -132,7 +132,7 @@ def radical(ideal: Ideal) -> Ideal:
     ========
 
     >>> from sympy.abc import x, y, z
-    >>> from sympy_extras.polys.ideals import Ideal
+    >>> from sympy_extras.polys.ideals_sympy import Ideal
     >>> from sympy_extras.polys.idealdecomposition import radical
     >>> radical(Ideal([x**2*y, x*y**2], x, y))
     Ideal([x*y], x, y)
@@ -158,7 +158,7 @@ def equidimensional_parts(ideal: Ideal) -> list[Ideal]:
     A plane, a line and a point:
 
     >>> from sympy.abc import x, y, z
-    >>> from sympy_extras.polys.ideals import Ideal
+    >>> from sympy_extras.polys.ideals_sympy import Ideal
     >>> from sympy_extras.polys.idealdecomposition import equidimensional_parts
     >>> equidimensional_parts(Ideal([x*z*(z - 1), x*y*(z - 1), x*(x - 1)*(z - 1)], x, y, z))
     [Ideal([x*z - x], x, y, z), Ideal([x - 1, y, z], x, y, z)]
@@ -218,7 +218,7 @@ def minimal_primes(ideal: Ideal) -> list[Ideal]:
     ========
 
     >>> from sympy.abc import x, y, z
-    >>> from sympy_extras.polys.ideals import Ideal
+    >>> from sympy_extras.polys.ideals_sympy import Ideal
     >>> from sympy_extras.polys.idealdecomposition import minimal_primes
     >>> minimal_primes(Ideal([x*z - y**2, x**2 - y*z], x, y, z))
     [Ideal([x - z, y - z], x, y, z), Ideal([x, y], x, y, z), Ideal([y**2 + y*z + z**2, x + y + z], x, y, z)]
@@ -255,7 +255,7 @@ def independent_set(ideal: Ideal) -> list[Symbol]:
     ========
 
     >>> from sympy.abc import x, y, z
-    >>> from sympy_extras.polys.ideals import Ideal
+    >>> from sympy_extras.polys.ideals_sympy import Ideal
     >>> from sympy_extras.polys.idealdecomposition import independent_set
     >>> independent_set(Ideal([x*y, x*z], x, y, z))
     [y, z]
@@ -423,7 +423,7 @@ def primary_decomposition(ideal: Ideal) -> list[PrimaryComponent]:
     The ``y`` axis with an embedded point at the origin:
 
     >>> from sympy.abc import x, y, z
-    >>> from sympy_extras.polys.ideals import Ideal
+    >>> from sympy_extras.polys.ideals_sympy import Ideal
     >>> from sympy_extras.polys.idealdecomposition import primary_decomposition
     >>> primary_decomposition(Ideal([x**2, x*y], x, y))
     [(Ideal([x], x, y), Ideal([x], x, y)), (Ideal([x**2, y], x, y), Ideal([x, y], x, y))]
@@ -499,7 +499,7 @@ def associated_primes(ideal: Ideal) -> list[Ideal]:
     ========
 
     >>> from sympy.abc import x, y, z
-    >>> from sympy_extras.polys.ideals import Ideal
+    >>> from sympy_extras.polys.ideals_sympy import Ideal
     >>> from sympy_extras.polys.idealdecomposition import associated_primes
     >>> associated_primes(Ideal([x**2, x*y], x, y))
     [Ideal([x], x, y), Ideal([x, y], x, y)]
@@ -521,7 +521,7 @@ def is_primary(ideal: Ideal) -> bool:
     ========
 
     >>> from sympy.abc import x, y, z
-    >>> from sympy_extras.polys.ideals import Ideal
+    >>> from sympy_extras.polys.ideals_sympy import Ideal
     >>> from sympy_extras.polys.idealdecomposition import is_primary
     >>> is_primary(Ideal([x**2, y**3], x, y)), is_primary(Ideal([x**2, x*y], x, y))
     (True, False)

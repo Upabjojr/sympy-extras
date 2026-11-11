@@ -56,7 +56,7 @@ Four routes are tried around the decomposition [Apostol]_:
   conjunction of relations linear in the last variable `y` describes, over
   each point of the other variables, the interval `\\max(\\text{lower}) < y <
   \\min(\\text{upper})`; the range of the other variables is cut where the
-  two bounds cross (with :func:`sympy_extras.assumptions.solve`), the
+  two bounds cross (with :func:`sympy_extras.assumptions.solve_sympy.solve`), the
   inner integral is computed with :func:`~sympy_extras.integrals.definite_integral`
   and the outer integral by the same function on the remaining variables
   (Fubini's theorem); an outer variable without bounds ranges over the
@@ -89,7 +89,7 @@ the unit ball). With an integer dimension and the condition written in
 the variables, the polar route below applies in any dimension.
 
 The bounds solved for the last variable need not be linear in it: a
-relation which :func:`sympy_extras.assumptions.solve` turns into an
+relation which :func:`sympy_extras.assumptions.solve_sympy.solve` turns into an
 interval of `y` with explicit endpoints (`y^2 < e^x` with `y > 0` into
 `y < e^{x/2}`, `e^y < x` into `y < \\log x`, `y^3 < x` into `y <
 x^{1/3}`) contributes its endpoints to the bounds.
@@ -246,13 +246,13 @@ from sympy.solvers.simplex import linprog
 from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
-from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import element, normalize
-from sympy_extras.assumptions.solve import solve
-from sympy_extras.assumptions.refine import refine
-from sympy_extras.polys.cad.lifting import CAD, CADCell, cylindrical_algebraic_decomposition
-from sympy_extras.polys.cad.qe import _compile
-from sympy_extras.polys.cad.samplepoints import RealAlgebraic, compare_real
+from sympy_extras.assumptions.solve_sympy import solve
+from sympy_extras.assumptions.refine_sympy import refine
+from sympy_extras.polys.cad.lifting_sympy import CAD, CADCell, cylindrical_algebraic_decomposition
+from sympy_extras.polys.cad.qe_sympy import _compile
+from sympy_extras.polys.cad.samplepoints_sympy import RealAlgebraic, compare_real
 from sympy_extras.settings import settings
 from .conditions import numerically_equal
 from .axisymmetric import rotation_invariant
@@ -1194,7 +1194,7 @@ def _solved_bound(atom: Relational, y: Symbol, assumptions: list[Boolean]) -> Op
     """The bounds ``(upper, bound)`` on ``y`` from a relation: the one of
     :func:`_linear_bound` when the relation is linear in ``y``, else the
     finite endpoints of the interval of ``y`` which
-    :func:`sympy_extras.assumptions.solve` finds under the assumptions
+    :func:`sympy_extras.assumptions.solve_sympy.solve` finds under the assumptions
     (``y**2 < x`` with ``x > 0`` gives ``-sqrt(x) < y < sqrt(x)``,
     ``exp(y) < x`` gives ``y < log(x)``); ``None`` when the solution is
     not one interval."""

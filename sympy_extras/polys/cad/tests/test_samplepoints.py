@@ -7,9 +7,9 @@ from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.polys.domains import QQ
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import CRootOf
-from sympy_extras.polys.cad.samplepoints import (SamplePoint, compare_real, _root_poly,
-    simplest_between, rational_between, rational_below, rational_above,
-    _floor_scaled, _join, _sign_in_field, _minpoly)
+from sympy_extras.polys.cad.samplepoints_sympy import (SamplePoint, compare_real,
+    simplest_between, rational_between, rational_below, rational_above, _floor_scaled)
+from sympy.core.cache import clear_cache
 from sympy.testing.pytest import raises
 from sympy.abc import x, y, z, w
 
@@ -83,11 +83,6 @@ def test_compare_real() -> None:
     assert compare_real(r1, Rational(3, 2)) == 1
     assert compare_real(r1, CRootOf(x**2 - 5, 1)) == -1
     assert compare_real(r0, -2) == -1
-    assert _minpoly(r0).all_coeffs() == _minpoly(r1).all_coeffs() == [2, 0, -9]
-    root = r0.args[1]
-    assert isinstance(root, CRootOf)
-    assert _minpoly(r0).gens == _root_poly(root).gens
-    assert _minpoly(CRootOf(x**3 - 2, 0)).all_coeffs() == [1, 0, 0, -2]
     assert rational_between(r0, r1) == 0
     assert rational_between(2, r1) == Rational(33, 16)
     assert rational_below(r0) == -3
@@ -160,51 +155,6 @@ def test_rational_below_above() -> None:
     assert rational_above(r) == 0
 
 
-def test_sign_in_field() -> None:
-    s2 = CRootOf(x**2 - 2, 1)
-    K = QQ.algebraic_field(s2)
-    assert _sign_in_field(s2, K.zero) == 0
-    assert _sign_in_field(s2, K.unit) == 1
-    assert _sign_in_field(s2, -K.unit) == -1
-    # sqrt(2) - 1.4142 is positive although small
-    a = K.unit - K.convert(QQ(14142, 10000))
-    assert _sign_in_field(s2, a) == 1
-    a = K.unit - K.convert(QQ(141421356237, 10**11))
-    assert _sign_in_field(s2, a) == 1
-    a = K.unit - K.convert(QQ(141421356238, 10**11))
-    assert _sign_in_field(s2, a) == -1
-    # elements whose leading representation coefficient has the wrong sign
-    a = K.unit - K.convert(QQ(2))
-    assert _sign_in_field(s2, a) == -1
-    a = -K.unit + K.convert(QQ(2))
-    assert _sign_in_field(s2, a) == 1
-
-
-def test_join() -> None:
-    s2, ms2 = CRootOf(x**2 - 2, 1), CRootOf(x**2 - 2, 0)
-    s3 = CRootOf(x**2 - 3, 1)
-    g, K, tK, bK = _join(s2, s3)
-    assert _root_poly(g).degree() == 4
-    assert abs(K.to_sympy(tK).evalf(20) - sqrt(2).evalf(20)) < 1e-15
-    assert abs(K.to_sympy(bK).evalf(20) - sqrt(3).evalf(20)) < 1e-15
-    assert abs(g.evalf(20) - sqrt(2).evalf(20) - sqrt(3).evalf(20)) < 1e-15
-    assert _sign_in_field(g, tK**2 - K.convert(QQ(2))) == 0
-    assert _sign_in_field(g, bK**2 - K.convert(QQ(3))) == 0
-    # conjugates and elements of the same field give no bigger field
-    g, K, tK, bK = _join(s2, ms2)
-    assert _root_poly(g).degree() == 2
-    assert K.to_sympy(tK) == -ms2 and K.to_sympy(bK) == ms2
-    assert _sign_in_field(g, tK + bK) == 0
-    g, K, tK, bK = _join(s2, CRootOf(x**2 - 8, 1))
-    assert _root_poly(g).degree() == 2
-    assert K.to_sympy(tK)*2 == K.to_sympy(bK)
-    c2 = CRootOf(x**3 - 2, 0)
-    g, K, tK, bK = _join(c2, s2)
-    assert _root_poly(g).degree() == 6
-    assert abs(K.to_sympy(tK).evalf(20) - c2.evalf(20)) < 1e-15
-    assert abs(K.to_sympy(bK).evalf(20) - s2.evalf(20)) < 1e-15
-
-
 def test_sample_point() -> None:
     origin = SamplePoint()
     assert len(origin) == 0 and origin.degree == 1
@@ -221,7 +171,7 @@ def test_sample_point() -> None:
     raises(ValueError, lambda: origin.real_roots(x, [x, y]))
 
     p = origin.extend(Rational(1, 2))
-    assert p.field == QQ and p.theta is None and len(p) == 1
+    assert p.theta is None and len(p) == 1
     assert p.as_exprs() == (Rational(1, 2),)
     assert p.sign(2*x - 1, [x]) == 0
     assert p.sign(x - 1, [x]) == -1
@@ -316,7 +266,7 @@ def test_sample_point() -> None:
 
 
 def test_specialization() -> None:
-    from sympy_extras.polys.cad.samplepoints import Specialization
+    from sympy_extras.polys.cad.samplepoints_sympy import Specialization
     p = SamplePoint().extend(CRootOf(x**2 - 2, 1))
     s = p.specialization((y**2 - x**2)*(y - 1)**2*(y**2 + 1), [x, y])
     assert s.degree == 6 and s.leading_sign == 1
@@ -340,7 +290,7 @@ def test_specialization() -> None:
 
 
 def test_equal_roots_written_differently() -> None:
-    from sympy_extras.polys.cad.samplepoints import _order
+    from sympy_extras.polys.cad.samplepoints_sympy import _order
     # the same number as a root of x**2 - 2 and as twice a root of
     # 2*x**2 - 1 (the form real_roots gives depends on the polynomial it
     # was asked about): compare_real refined the two intervals forever,
@@ -356,16 +306,21 @@ def test_equal_roots_written_differently() -> None:
 
 def test_real_roots_over_an_algebraic_field() -> None:
     # the real roots of a polynomial over QQ<theta> by the Sturm counts of
-    # the candidates, the roots of the norm, against the direct evaluation
-    from sympy_extras.polys.cad.samplepoints import _real_roots_over
+    # the candidates, the roots of the norm (the native _real_roots_over,
+    # through the specialization at a point of QQ<theta>), against SymPy's
+    # roots over the algebraic field
+    # SymPy's oracle first: a root CRootOf(y**3 - 3*y + 1, 2) found in y
+    # is equal to theta, SymPy's cache then returns its powers for those of
+    # theta, and Poly(..., y) takes them for occurrences of y (issue #25)
+    clear_cache()
     theta = CRootOf(x**3 - 3*x + 1, 2)
-    K = QQ.algebraic_field(theta)
-    for f in [(y - x)*(y + x)*(y**2 - x - 3), (y**2 - 2)*(y - x)**2*(y**2 + 1), y**4 - x*y**2 - 1, (3*y - x**2)**3]:
-        poly = Poly(f, x, y).set_domain(K).eval(x, K.unit)
-        found = _real_roots_over(theta, poly)
+    polys = [(y - x)*(y + x)*(y**2 - x - 3), (y**2 - 2)*(y - x)**2*(y**2 + 1), y**4 - x*y**2 - 1, (3*y - x**2)**3]
+    oracle = [Poly(f.subs(x, theta), y, extension=True).real_roots(multiple=False) for f in polys]
+    point = SamplePoint().extend(theta)
+    for f, direct in zip(polys, oracle):
+        found = point.specialization(f, [x, y]).roots
         assert all(compare_real(r, s) < 0 for (r, _), (s, _) in zip(found, found[1:]))
         assert all(abs(f.subs({x: theta, y: r}).evalf(50)) < 1e-40 for r, _ in found)
-        direct = Poly(f.subs(x, theta), y, extension=True).real_roots(multiple=False)
         assert [m for _, m in found] == [m for _, m in direct]
         assert all(abs(r.evalf(50) - s.evalf(50)) < 1e-40 for (r, _), (s, _) in zip(found, direct))
 
@@ -383,7 +338,7 @@ def test_the_roots_of_each_factor_are_isolated_alone() -> None:
     from unittest.mock import patch
     from sympy.polys.rootisolation import RealInterval
     from sympy.polys.rootoftools import ComplexRootOf
-    from sympy_extras.polys.cad.samplepoints import rational_real_roots
+    from sympy_extras.polys.cad.samplepoints_sympy import rational_real_roots
     original = ComplexRootOf._reals_sorted
     factors_seen: list[int] = []
 
@@ -397,7 +352,11 @@ def test_the_roots_of_each_factor_are_isolated_alone() -> None:
         found = rational_real_roots(f)
         point = SamplePoint().extend(Rational(1, 3))
         specialized = point.specialization(f.as_expr() + 0*x, [x, y])
-    assert factors_seen and max(factors_seen) == 1
+    # since the port to the native layer SymPy only names the roots
+    # (CRootOf of one irreducible factor at a time)
+    assert all(n == 1 for n in factors_seen)
+    assert [m for _, m in found] == [1, 1, 1, 1, 1, 2, 1, 1, 1]
+    assert [m for _, m in specialized.roots] == [m for _, m in found]
     assert [m for _, m in found] == [1, 1, 1, 1, 1, 2, 1, 1, 1]
     values = [r for r, _ in found]
     assert all(compare_real(a, b) < 0 for a, b in zip(values, values[1:]))

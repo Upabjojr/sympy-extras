@@ -4,7 +4,7 @@ from sympy import exp, oo, log, Piecewise, Eq, S, sqrt, sin, O, Rational, Limit
 from sympy.calculus.accumulationbounds import AccumBounds
 from sympy.abc import a, b, x
 
-from sympy_extras.assumptions.limits import limit, series
+from sympy_extras.assumptions.limits_sympy import limit, series
 from sympy_extras.assumptions.facts_sympy import element
 
 
@@ -44,7 +44,7 @@ def test_series_with_assumptions() -> None:
 def test_limit_seq_with_assumptions() -> None:
     from sympy import factorial, harmonic, EulerGamma, Limit, pi
     from sympy.abc import n
-    from sympy_extras.assumptions.limits import limit_seq
+    from sympy_extras.assumptions.limits_sympy import limit_seq
     assert limit_seq(x**n/factorial(n), n) == 0
     assert limit_seq((1 + x/n)**n, n) == exp(x)
     assert limit_seq(harmonic(n) - log(n), n) == EulerGamma
