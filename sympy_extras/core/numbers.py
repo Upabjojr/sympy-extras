@@ -229,7 +229,9 @@ class Rational(Number):
     def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
         if self.p == 0:
             return (Integer(1), self)
-        return (Rational(abs(self.p), self.q), Integer(-1 if self.p < 0 else 1))
+        # an integer content is an Integer (Rational(2, 1) was returned, and
+        # factor_terms(a*x**2) then had the exponent Rational(2, 1))
+        return (number_from_fraction(Fraction(abs(self.p), self.q)), Integer(-1 if self.p < 0 else 1))
 
     def __int__(self) -> int:
         return int(Fraction(self.p, self.q))

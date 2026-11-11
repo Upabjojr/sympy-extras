@@ -149,3 +149,18 @@ def test_residue_matches_sympy() -> None:
     for e, p in cases:
         got = residue(expr_from_sympy(e), ox, expr_from_sympy(sympy.sympify(p)))
         assert str(to_sympy(got, evaluate=False)) == str(sympy.residue(e, x, p)), (e, p)
+
+
+def test_the_parameters_of_an_instantiated_formula_are_evaluated() -> None:
+    from sympy_extras._timeout import attempt
+    from sympy_extras.core import Rational, Symbol
+    from sympy_extras.functions import hyper
+    from sympy_extras.functions.special.gamma_functions import LowerGamma
+    from sympy_extras.simplify.hyperexpand import hyperexpand
+    z = Symbol('z')
+    # the formula of 1F1(a; a + 1; z) at a = 1/3 had the parameter 1/3 + 1
+    # unevaluated (the core's xreplace does not evaluate), and devise_plan
+    # shifted it towards 4/3 forever: hyperexpand did not return
+    for a in (Rational(1, 3), Rational(4, 3)):
+        found = attempt(lambda: hyperexpand(hyper((a,), (a + 1,), z)), 60, native=True)
+        assert found is not None and found.has(LowerGamma), a

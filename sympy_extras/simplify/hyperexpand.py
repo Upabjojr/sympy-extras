@@ -125,7 +125,9 @@ def _keys_union(a: dict[Expr, list[Expr]], b: dict[Expr, list[Expr]]) -> list[Ex
 
 
 def _xreplace(e: Expr, repl: Repl) -> Expr:
-    return _expr(e.xreplace(repl))
+    # evaluated, as SymPy's xreplace: the parameter a + 1 of a formula at
+    # a = 1/3 is 4/3, and devise_plan shifted 1/3 + 1 towards 4/3 forever
+    return _expr(e._xreplace_evaluated(repl))
 
 
 # PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:make_simp

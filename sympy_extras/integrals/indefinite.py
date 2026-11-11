@@ -387,7 +387,7 @@ def _radicals(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
 
 
 def _exponential(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
-    from .exponential import exponential_antiderivative
+    from .exponential_sympy import exponential_antiderivative
     return attempt(lambda: exponential_antiderivative(f, x, assumptions), _budget())
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from sympy import symbols, S, pi, log, sqrt, zeta, atan, exp, oo, Rational, Float
 
-from sympy_extras.integrals.recognize import recognize_constant, recognize_integral, quadrature
+from sympy_extras.integrals.recognize_sympy import recognize_constant, recognize_integral, quadrature
 from sympy_extras.settings import configure
 
 x = symbols('x')

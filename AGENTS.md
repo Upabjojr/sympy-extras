@@ -260,7 +260,9 @@ sympy_extras/
         dirichlet.py         dirichlet_integral, trigonometric_sum: the Dirichlet, Frullani and Borwein integrals of
                              trigonometric sums over powers of x (native)
         dirichlet_sympy.py   the SymPy face of dirichlet
-        recognize.py         PSLQ recognition of constants and integrals (an oracle, off by default)
+        recognize.py         PSLQ recognition of constants and integrals (an oracle, off by default) (native: the
+                             quadrature evaluates by the numerical rules of the core's nodes)
+        recognize_sympy.py   the SymPy face of recognize, used by definite
         risch/               the transcendental Risch algorithm ported from Aaron Meurer's SymPy pull requests
         trager.py            Trager's algorithm for integrands rational in x and one square root of a polynomial
         curves.py            Trager's algorithm on an arbitrary curve: several or nested radicals through a primitive element, the change of variable x = N + 1/z, Hermite reduction in a normal integral basis, residues by Puiseux expansions, the logarithmic part by linear algebra
@@ -272,6 +274,8 @@ sympy_extras/
         heurisch.py          typed port of SymPy's heuristic Risch integrator (BSD, see risch/LICENSE-SymPy), every result verified
         rewriting.py         canonical forms (exponentials, logarithms of inverse hyperbolic functions) and substitutions x = t**k, u = exp(c x), x = exp(t)
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
+                             (native; SymPy's ratint through exponential_sympy)
+        exponential_sympy.py the SymPy face of exponential, used by indefinite, and ratint_of_core
         tests/
     solvers/                 solvers extending sympy.solvers (exports nothing: import the modules)
         isolation.py         TranscendentalRoot (node), isolate_real_roots, point_between, compare_points: exact real roots of

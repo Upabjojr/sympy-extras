@@ -932,3 +932,16 @@ def test_expand_splits_logarithms_before_distributing() -> None:
     assert expand(e) == log(-a) + log(2)/2 + I*pi/4
     assert str(to_sympy(expand(e))) == str(sympy.expand(to_sympy(e)))
     assert cancel(I*log(MulNode(a, -1 + I))/2 - I*log(MulNode(a, -1 - I))/2) == pi/4
+
+
+def test_the_integer_content_of_an_integer_is_an_integer() -> None:
+    from sympy_extras.core import Integer, Symbol, factor_terms
+    from sympy_extras.core.power import Pow
+    x, a = Symbol('x'), Symbol('a')
+    # Integer(2).as_content_primitive() was (Rational(2, 1), 1), a Rational which
+    # is not an Integer: factor_terms(a*x**2) had x**Rational(2, 1), and the
+    # exponential integrator took the exponent 2 for a non-integer
+    assert type(Integer(2).as_content_primitive()[0]) is Integer
+    assert type(Integer(-6).as_content_primitive()[0]) is Integer
+    power = [f for f in factor_terms(a*x**2).args if isinstance(f, Pow)][0]
+    assert type(power.exp) is Integer

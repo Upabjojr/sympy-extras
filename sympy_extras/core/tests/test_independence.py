@@ -1488,3 +1488,46 @@ def test_native_convergence_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_CONVERGENCE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_EXPONENTIAL_RECOGNIZE = r'''
+import sys
+from sympy_extras.core import Float, Rational, symbols, oo, pi, sqrt
+from sympy_extras.functions import atan, exp, log
+from sympy_extras.integrals.exponential import (composite_gaussian, exponential_antiderivative, power_exponential,
+                                                rational_exponential, reciprocal_square_exponential,
+                                                nested_power_exponential)
+from sympy_extras.integrals.recognize import quadrature, recognize_constant, recognize_integral
+assert 'sympy' not in sys.modules
+x, c = symbols('x c')
+v = symbols('v', positive=True)
+a = symbols('a', negative=True)
+assert str(exponential_antiderivative(x**(v - 1)*exp(a*x**2), x)) == '-uppergamma(v/2, -a*x**2)/(2*(-a)**(v/2))'
+assert str(exponential_antiderivative(x*exp(x**2 + 2*x), x)) == 'exp(-1)*exp((x + 1)**2)/2 - sqrt(pi)*exp(-1)*erfi(x + 1)/2'
+assert str(power_exponential(x**3*exp(x**2), x)) == 'x**2*exp(x**2)/2 - exp(x**2)/2'
+assert exponential_antiderivative(exp(x**3), x, [x > 0]) is not None
+assert str(rational_exponential(exp(c*x)/(x**2 - 1), x)) == 'exp(c)*Ei(c*(x - 1))/2 - exp(-c)*Ei(c*(x + 1))/2'
+assert str(composite_gaussian((1 - 1/x**2)*exp(-(x + 1/x)**2), x)) == 'sqrt(pi)*erf((x**2 + 1)/x)/2'
+assert str(reciprocal_square_exponential(exp(-x**2 - 1/x**2), x)) == 'sqrt(pi)*(exp(-2)*erf(x - 1/x) + exp(2)*erf(x + 1/x))/4'
+assert str(nested_power_exponential(exp(c*sqrt(x**2)), x)) == 'x*exp(c*sqrt(x**2))/(c*sqrt(x**2))'
+assert str(recognize_constant(Float('1.6449340668482264364724151666460251892', 38))) == 'pi**2/6'
+assert str(recognize_integral(1/(x**3 + 1), (x, 0, 1))) == 'log(2)/3 + sqrt(3)*pi/9'
+assert str(recognize_integral(atan(x)/x, (x, 0, 1))) == 'Catalan'
+assert quadrature(exp(-x**2), x, -oo, oo) is not None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_exponential_and_recognize_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.exponential` and
+    :mod:`sympy_extras.integrals.recognize` does not load SymPy, nor do the
+    antiderivatives of powers times exponentials of powers, of shifted
+    quadratics, of rational functions times an exponential (the native
+    ``roots``), of composite and reciprocal-square Gaussians and of nested
+    powers (the native ``hyperexpand``, ``simplify`` and numerical checks),
+    the quadrature and the PSLQ recognition; SymPy's ``ratint`` is reached
+    through the face only by the substitution ``u = exp(c*x)``."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EXPONENTIAL_RECOGNIZE], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
