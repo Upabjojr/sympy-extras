@@ -232,7 +232,10 @@ sympy_extras/
         qhyper_sympy.py      the SymPy face of qhyper: QPochhammer as a SymPy function, qgosper_sum, qzeilberger, ...
         tests/
     integrals/               definite integration extending sympy.integrals (exports nothing: import the modules)
-        mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels
+        mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels, the matching of
+                             the integrands (decompose_integrand) (native: the native ask)
+        mellin_sympy.py      the SymPy face of mellin, which slater, marichev, brackets, definite and the other
+                             integrators written on SymPy use (GammaQuotient, Match, Product, ... on SymPy objects)
         slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem
         marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo)
         residues.py          rational, Fourier and trigonometric integrals by the residue theorem

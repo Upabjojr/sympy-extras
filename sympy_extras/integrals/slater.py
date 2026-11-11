@@ -94,7 +94,7 @@ from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbo
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.settings import settings
 from .conditions_sympy import ConditionalValue, numerically_equal, sample_values
-from .mellin import GammaFactor, GammaQuotient
+from .mellin_sympy import GammaFactor, GammaQuotient
 
 __all__ = ['MeijerG', 'mellin_barnes', 'slater_expansion', 'expand_meijerg']
 
@@ -167,7 +167,7 @@ def mellin_barnes(quotient: GammaQuotient) -> Optional[MeijerG]:
     ========
 
     >>> from sympy import S
-    >>> from sympy_extras.integrals.mellin import GammaQuotient
+    >>> from sympy_extras.integrals.mellin_sympy import GammaQuotient
     >>> from sympy_extras.integrals.slater import mellin_barnes
     >>> q = GammaQuotient(1, [(3, -1)], [(0, S.One), (1, -S.One)], [], 0, 1)
     >>> mellin_barnes(q)

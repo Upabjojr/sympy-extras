@@ -1087,6 +1087,36 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_MELLIN = r'''
+import sys
+from sympy_extras.core import Integer, S, oo, sqrt, symbols
+from sympy_extras.assumptions.facts import element
+from sympy_extras.functions import Abs, besselj, besselk, erfc, exp, hyper, log, sin
+from sympy_extras.sets import Reals
+from sympy_extras.integrals.mellin import (KERNELS, GammaQuotient, decompose_integrand, mellin_kernel,
+    mellin_transform, monomial, poles_separated)
+x, s, a, b = symbols('x s a b')
+assert str(mellin_transform(exp(-2*x), x, s)) == 'MellinTransform(gamma(s)/2**s, (0, oo))'
+assert str(mellin_transform(sin(x)/x, x, s)) == \
+    'MellinTransform(2**s*sqrt(pi)*gamma(s/2)/(4*gamma(3/2 - s/2)), (0, 2))'
+assert str(mellin_transform(exp(-x)*log(x)**2, x, s).transform) == '(polygamma(0, s)**2 + polygamma(1, s))*gamma(s)'
+assert str(mellin_transform(hyper([a], [b], -x), x, s).transform) == \
+    'gamma(b)*gamma(s)*gamma(a - s)/(gamma(a)*gamma(b - s))'
+assert mellin_transform(besselj(Integer(0), 3*x)/(x**2 + 4), x, s) is None
+assert monomial(3*a*sqrt(x), x) == (3*a, S.Half)
+assert str(mellin_kernel(1/(x + 2)**a, x)) == 'Match((1 + x)**(-a), beta=1/2, gamma=1, constant=2**(-a))'
+p = decompose_integrand(x*besselk(Integer(0), x)**2, x)
+assert [m.kernel.name for m in p.matches] == ['besselk*besselk']
+assert [m.kernel.name for m in decompose_integrand(erfc(x), x, 'lower').matches] == ['erfc', 'theta(1 - x)']
+q = mellin_kernel(sin(a*x), x).quotient(element(a, Reals))
+assert q.bases[-1][0] == Abs(a)
+q = GammaQuotient(1, [(2, -1)], [(0, S.One)], [], 0, oo).compose(1, -2)
+assert str(q.as_expr(s)) == '2**(2*s)*gamma(1 - 2*s)/2' and q.strip == (-oo, S.Half)
+assert all(poles_separated(k.quotient) for k in KERNELS.values())
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 _NATIVE_TRANSCENDENTAL = r'''
 import sys
 from sympy_extras.core import symbols, Eq, Rational, sqrt, cbrt, pi
@@ -1336,5 +1366,15 @@ def test_native_first_order_and_abel_do_not_load_sympy() -> None:
     :mod:`~sympy_extras.solvers.darboux`, go through the faces at run
     time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_FIRST_ORDER], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_mellin_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.mellin` does not load SymPy,
+    nor do the table of transforms, the matching of the integrands, the
+    scale conditions decided by the native ``ask`` and the operations on
+    the gamma quotients."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_MELLIN], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

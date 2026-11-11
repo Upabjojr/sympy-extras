@@ -32,7 +32,9 @@ to elementary and special functions.
 
 The package implements the four pieces:
 
-- `sympy_extras.integrals.mellin`: the representation (`GammaQuotient`,
+- `sympy_extras.integrals.mellin` (native, on the objects of the core;
+  `sympy_extras.integrals.mellin_sympy` is its face on SymPy objects, which
+  the other integrators use): the representation (`GammaQuotient`,
   with the strip and the conditions on the parameters), the table of
   transforms of the elementary and special functions (`exp`, powers of
   `1 + x`, `(1 - x)**b` on `(0, 1)`, `sin`, `cos`, `atan`, `log(1 + x)`,
@@ -70,7 +72,7 @@ The strips of the transforms are the convergence conditions:
 ```python
 >>> from sympy import symbols, exp, sin, log, sqrt, Abs, oo, pi, cos, S
 >>> from sympy_extras.integrals.definite import definite_integral
->>> from sympy_extras.integrals.mellin import mellin_transform
+>>> from sympy_extras.integrals.mellin_sympy import mellin_transform
 >>> x, k, s = symbols('x k s')
 >>> a, b = symbols('a b', positive=True)
 >>> mellin_transform(1/(1 + x), x, s)

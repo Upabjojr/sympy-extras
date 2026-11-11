@@ -739,6 +739,29 @@ remove public functions. Breaking changes are listed here when they happen.
   the doctests gives the same result on the faces except the form of
   some expanded `L(y)` and the order of two hyperexponential solutions,
   and so do 40 further equations (see the commit message).
+- The Mellin transforms are native (**breaking**):
+  `sympy_extras.integrals.mellin` (`GammaQuotient`, `MellinTransform`,
+  `Kernel`, `KERNELS`, `Match`, `Product`, `mellin_kernel`,
+  `mellin_transform`, `monomial`, `decompose_integrand`,
+  `poles_separated`) takes and returns the expressions, functions and
+  symbols of the core and imports no SymPy: the table on the core's
+  `gamma`, `polygamma`, `zeta`, `dirichlet_eta`, `lerchphi`, the
+  matching on the core's function classes, the scale conditions decided
+  by the native `ask`. The old API on SymPy objects moves to the new face
+  `sympy_extras.integrals.mellin_sympy` (the same classes as SymPy
+  containers with `to_core`/`from_core`, the operations and functions
+  running the native code; the entries of `KERNELS` are kept identical),
+  which `slater`, `marichev`, `brackets`, `definite`, `laplace`,
+  `periodic`, `contours`, `dirichlet`, `series`, `transformations`, the
+  tests, the benchmarks, the README and the docs use. The products of two
+  functions which are one kernel (two Bessel functions,
+  `exp(-x)*besseli`, `erfc(x)*exp(x**2)`) are matched without
+  placeholder expressions (`_CombinedBessel`, `_CombinedBesseli`,
+  `_CombinedErfc` are gone) and come after the other kernels, as before.
+  The core's derivatives of order 2 or more are not simplified as
+  SymPy's are, so `mellin_transform` applies SymPy's
+  `factor_terms(signsimp(...))` to the transform of `log(x)**n*f(x)`
+  itself and the results keep SymPy's form.
 - Kovacic's algorithm and the special values of the ODE solutions are
   native (**breaking**): `sympy_extras.solvers.kovacic`
   (`liouvillian_solution`, `dsolve_kovacic`, `normal_form`,

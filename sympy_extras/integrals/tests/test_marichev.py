@@ -17,7 +17,7 @@ from sympy_extras.integrals.conditions_sympy import ConditionalValue, numerical_
 from sympy_extras.integrals.marichev import (mellin_integrate, evaluate_quotient, reduce_positive_powers,
                                              integrate_product, checked_tidy)
 from sympy_extras.settings import configure
-from sympy_extras.integrals.mellin import GammaQuotient, decompose_integrand
+from sympy_extras.integrals.mellin_sympy import GammaQuotient, decompose_integrand
 
 x, k, s = symbols('x k s')
 a, b, nu = symbols('a b nu', positive=True)

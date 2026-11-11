@@ -120,7 +120,7 @@ from sympy_extras._typing import as_boolean, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.settings import settings
 from .conditions_sympy import ConditionalValue
-from .mellin import monomial
+from .mellin_sympy import monomial
 from .residues import _Fraction, _Locator, _Pole, _part, _residue, _tidy, poles, rational_function
 
 __all__ = ['rectangular_integral', 'sector_integral', 'indented_integral', 'contour_integral']

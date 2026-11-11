@@ -9,7 +9,7 @@ from sympy_extras._typing import ExprLike, as_expr
 from sympy_extras.integrals.brackets import (taylor_coefficient, ramanujan_master_theorem, method_of_brackets,
                                              mellin_transform_series)
 from sympy_extras.integrals.marichev import mellin_integrate
-from sympy_extras.integrals.mellin import mellin_transform
+from sympy_extras.integrals.mellin_sympy import mellin_transform
 
 x, s = symbols('x s')
 

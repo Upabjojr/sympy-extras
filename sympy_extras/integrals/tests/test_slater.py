@@ -6,7 +6,7 @@ import mpmath
 from sympy import (symbols, S, Rational, meijerg, exp, sqrt, pi, erf, gamma, besselk, simplify, log,
                    Piecewise, lambdify, oo)
 
-from sympy_extras.integrals.mellin import GammaQuotient
+from sympy_extras.integrals.mellin_sympy import GammaQuotient
 from sympy_extras.integrals.slater import MeijerG, mellin_barnes, slater_expansion, expand_meijerg, line_conditions
 
 z = symbols('z', positive=True)

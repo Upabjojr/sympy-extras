@@ -93,7 +93,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_boolean, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.settings import settings
-from .mellin import MellinTransform, monomial
+from .mellin_sympy import MellinTransform, monomial
 
 __all__ = ['SeriesCoefficient', 'taylor_coefficient', 'ramanujan_master_theorem', 'method_of_brackets',
            'mellin_transform_series']

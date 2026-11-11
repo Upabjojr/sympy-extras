@@ -76,7 +76,7 @@ from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.limits_sympy import limit
 from sympy_extras.settings import settings
 from .conditions_sympy import ConditionalValue
-from .mellin import monomial
+from .mellin_sympy import monomial
 
 __all__ = ['frullani', 'glasser', 'transformation_integral']
 

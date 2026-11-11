@@ -87,7 +87,7 @@ from sympy.core.power import Pow
 from sympy.core.numbers import Integer
 from sympy.functions.special.bessel import besseli, besselk
 from sympy.functions.elementary.integers import ceiling
-from .mellin import monomial
+from .mellin_sympy import monomial
 from sympy.series.limits import Limit, limit
 from sympy.simplify.gammasimp import gammasimp
 from sympy.polys.polytools import cancel, factor
@@ -102,7 +102,7 @@ from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.refine_sympy import refine
 from sympy_extras.settings import settings
 from .conditions_sympy import ConditionalValue, decide, numerical_verdict
-from .mellin import BETA_LOWER, GammaQuotient, Match, Product, _beta_kernel, decompose_integrand
+from .mellin_sympy import BETA_LOWER, GammaQuotient, Match, Product, _beta_kernel, decompose_integrand
 from .slater import expand_meijerg, line_conditions, mellin_barnes
 
 __all__ = ['mellin_integrate', 'integrate_product', 'evaluate_quotient', 'tidy', 'real_logarithms']
