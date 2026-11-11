@@ -19,7 +19,9 @@ use pyo3::types::{PyDict, PyList, PyModule, PyTuple};
 
 use sympy_extras_core::core::assumptions::{facts_of, is_number, Predicate};
 use sympy_extras_core::core::evalf::{numeric_value, parts, Real};
-use sympy_extras_core::core::{Basic, Dummy, Head, Symbol};
+use sympy_extras_core::core::{self as rust_core, Basic, Dummy, Head, Symbol};
+#[allow(unused_imports)]
+use sympy_extras_core::numbers::rat;
 use sympy_extras_core::numbers::{denom, rat_from_parts, Int, Rat};
 
 use crate::convert::{extract_int, out_int};
@@ -74,9 +76,10 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
     Ok(match class.as_str() {
         "Integer" | "Zero" | "One" | "NegativeOne" => Basic::integer(extract_int(&ob.getattr("p")?)?),
         "Rational" | "Half" => {
+            // the class Rational even with denominator one (Rational(3, 1))
             let p: Int = extract_int(&ob.getattr("p")?)?;
             let q: Int = extract_int(&ob.getattr("q")?)?;
-            Basic::from_rational(rat_from_parts(p, q))
+            Basic::rational(p, q).map_err(crate::convert::err)?
         }
         "Infinity" => Basic::oo(),
         "NegativeInfinity" => Basic::negative_oo(),
@@ -129,7 +132,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
     };
     Ok(match e.head() {
         Head::Rational { value, integer_class } => {
-            if *integer_class || denom(value) == Int::ONE {
+            if *integer_class {
                 numbers.getattr("Integer")?.call1((out_int(py, value.numerator())?,))?
             } else {
                 numbers
@@ -241,6 +244,63 @@ fn equal(a: &Bound<'_, PyAny>, b: &Bound<'_, PyAny>) -> PyResult<bool> {
     Ok(from_python(a)? == from_python(b)?)
 }
 
+fn nodes(args: &Bound<'_, PyTuple>) -> PyResult<Vec<Basic>> {
+    let mut result: Vec<Basic> = Vec::new();
+    for a in args.iter() {
+        result.push(from_python(&a)?);
+    }
+    Ok(result)
+}
+
+/// `add(*args)` of the Rust core.
+#[pyfunction(signature = (*args))]
+fn add<'py>(py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, PyAny>> {
+    to_python(py, &rust_core::add::add(&nodes(args)?).map_err(crate::convert::err)?)
+}
+
+/// `mul(*args)` of the Rust core.
+#[pyfunction(signature = (*args))]
+fn mul<'py>(py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, PyAny>> {
+    to_python(py, &rust_core::mul::mul(&nodes(args)?).map_err(crate::convert::err)?)
+}
+
+#[pyfunction]
+fn pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    to_python(
+        py,
+        &rust_core::power::pow(&from_python(b)?, &from_python(e)?).map_err(crate::convert::err)?,
+    )
+}
+
+#[pyfunction]
+fn sub<'py>(py: Python<'py>, a: &Bound<'py, PyAny>, b: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    to_python(
+        py,
+        &rust_core::add::sub(&from_python(a)?, &from_python(b)?).map_err(crate::convert::err)?,
+    )
+}
+
+#[pyfunction]
+fn div<'py>(py: Python<'py>, a: &Bound<'py, PyAny>, b: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    to_python(
+        py,
+        &rust_core::mul::div(&from_python(a)?, &from_python(b)?).map_err(crate::convert::err)?,
+    )
+}
+
+#[pyfunction]
+fn neg<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    to_python(py, &rust_core::mul::neg(&from_python(a)?).map_err(crate::convert::err)?)
+}
+
+#[pyfunction]
+fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    to_python(
+        py,
+        &rust_core::power::number_pow(&from_python(b)?, &from_python(e)?).map_err(crate::convert::err)?,
+    )
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(roundtrip, m)?)?;
     m.add_function(wrap_pyfunction!(facts, m)?)?;
@@ -250,5 +310,12 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(count_nodes, m)?)?;
     m.add_function(wrap_pyfunction!(free_symbols, m)?)?;
     m.add_function(wrap_pyfunction!(equal, m)?)?;
+    m.add_function(wrap_pyfunction!(add, m)?)?;
+    m.add_function(wrap_pyfunction!(mul, m)?)?;
+    m.add_function(wrap_pyfunction!(pow, m)?)?;
+    m.add_function(wrap_pyfunction!(sub, m)?)?;
+    m.add_function(wrap_pyfunction!(div, m)?)?;
+    m.add_function(wrap_pyfunction!(neg, m)?)?;
+    m.add_function(wrap_pyfunction!(number_pow, m)?)?;
     Ok(())
 }

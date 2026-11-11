@@ -17,6 +17,9 @@ pub enum PolyError {
     /// `ArithmeticError`: an internal invariant of an exact computation
     /// failed (a bug, not a property of the data).
     Arithmetic(String),
+    /// `NotImplementedError`: a case which needs a part of the Python core
+    /// which is not ported yet (a function class, `Float`, `Order`).
+    NotImplemented(String),
 }
 
 /// The result of a computation which may fail.
@@ -29,6 +32,7 @@ impl fmt::Display for PolyError {
             PolyError::Value(message) => write!(f, "{}", message),
             PolyError::HeuristicGCDFailed(message) => write!(f, "{}", message),
             PolyError::Arithmetic(message) => write!(f, "{}", message),
+            PolyError::NotImplemented(message) => write!(f, "{}", message),
         }
     }
 }
@@ -48,4 +52,9 @@ pub fn value_error(message: String) -> PolyError {
 /// `ArithmeticError(message)`.
 pub fn arithmetic_error(message: String) -> PolyError {
     PolyError::Arithmetic(message)
+}
+
+/// `NotImplementedError(message)`: a part of the Python core not ported yet.
+pub fn not_ported(message: &str) -> PolyError {
+    PolyError::NotImplemented(format!("not ported to the Rust core yet: {}", message))
 }

@@ -23,6 +23,7 @@ pub fn err(e: PolyError) -> PyErr {
         PolyError::Value(message) => PyValueError::new_err(message),
         PolyError::HeuristicGCDFailed(message) => crate::polyerrors::HeuristicGCDFailed::new_err(message),
         PolyError::Arithmetic(message) => pyo3::exceptions::PyArithmeticError::new_err(message),
+        PolyError::NotImplemented(message) => pyo3::exceptions::PyNotImplementedError::new_err(message),
     }
 }
 
