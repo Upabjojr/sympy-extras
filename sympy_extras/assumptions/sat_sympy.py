@@ -293,8 +293,8 @@ def find_instance(formula: Union[Boolean, bool], variables: Union[Symbol, Sequen
     >>> found = find_instance((x**2 + y**2 < 1) & (x > y), [x, y], count=3)
     >>> found[0], found[2], found[1][x].evalf(10), found[1][y]    # SymPy prints a CRootOf in the variable it met first
     ({x: 0, y: -1/2}, {x: 3/4, y: 0}, 0.7071067812, 0)
-    >>> find_instance(Eq(x**2, 2), [x])
-    [{x: CRootOf(x**2 - 2, 0)}]
+    >>> [s[x].evalf(10) for s in find_instance(Eq(x**2, 2), [x])]    # a CRootOf, printed in a cached variable
+    [-1.414213562]
     >>> find_instance(Eq(x**2, 2), [x], S.Integers)
     []
     >>> find_instance((x**2 > 5) & (x < 0), [x], S.Integers)
