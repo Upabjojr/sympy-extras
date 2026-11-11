@@ -157,6 +157,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Sec" => Basic::new(Head::Function(Function::Sec), args()?),
         "Csc" => Basic::new(Head::Function(Function::Csc), args()?),
         "Sinh" => Basic::new(Head::Function(Function::Sinh), args()?),
+        "Arg" => Basic::new(Head::Function(Function::Arg), args()?),
+        "Atan2" => Basic::new(Head::Function(Function::Atan2), args()?),
         "Asin" => Basic::new(Head::Function(Function::Asin), args()?),
         "Acos" => Basic::new(Head::Function(Function::Acos), args()?),
         "Atan" => Basic::new(Head::Function(Function::Atan), args()?),
@@ -485,6 +487,13 @@ unary!(cot, trigonometric::cot);
 unary!(sec, trigonometric::sec);
 unary!(csc, trigonometric::csc);
 unary!(sinh, hyperbolic::sinh);
+unary!(arg, sympy_extras_core::functions::elementary::argument::arg);
+
+#[pyfunction]
+fn atan2<'py>(py: Python<'py>, y: &Bound<'py, PyAny>, x: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let value = sympy_extras_core::functions::elementary::argument::atan2(&from_python(y)?, &from_python(x)?);
+    to_python(py, &value.map_err(crate::convert::err)?)
+}
 unary!(asin, sympy_extras_core::functions::elementary::inverse::asin);
 unary!(acos, sympy_extras_core::functions::elementary::inverse::acos);
 unary!(atan, sympy_extras_core::functions::elementary::inverse::atan);
@@ -1505,6 +1514,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sec, m)?)?;
     m.add_function(wrap_pyfunction!(csc, m)?)?;
     m.add_function(wrap_pyfunction!(sinh, m)?)?;
+    m.add_function(wrap_pyfunction!(arg, m)?)?;
+    m.add_function(wrap_pyfunction!(atan2, m)?)?;
     m.add_function(wrap_pyfunction!(asin, m)?)?;
     m.add_function(wrap_pyfunction!(acos, m)?)?;
     m.add_function(wrap_pyfunction!(atan, m)?)?;

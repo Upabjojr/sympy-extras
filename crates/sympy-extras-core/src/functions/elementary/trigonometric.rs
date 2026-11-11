@@ -16,7 +16,7 @@ use crate::core::add::add;
 use crate::core::assumptions::{facts_of, FactList, Predicate};
 use crate::core::basic::{Basic, Function, Head};
 use crate::core::expr::{as_coeff_mul, as_coefficient, is, is_rational_value, is_true};
-use crate::core::function::{expand, expand_default};
+use crate::core::function::{expand, expand_method};
 use crate::core::mul::mul;
 use crate::core::parameters::evaluate;
 use crate::core::power::pow;
@@ -712,11 +712,11 @@ pub fn trigonometric_conjugate(f: Function, arg: &Basic) -> PolyResult<Basic> {
 fn argument_parts(arg: &Basic, deep: bool) -> PolyResult<Option<RealImag>> {
     if is_true(arg, extended_real) {
         return Ok(Some((
-            if deep { expand_default(arg)? } else { arg.clone() },
+            if deep { expand_method(arg)? } else { arg.clone() },
             Basic::zero(),
         )));
     }
-    let expanded: Basic = if deep { expand_default(arg)? } else { arg.clone() };
+    let expanded: Basic = if deep { expand_method(arg)? } else { arg.clone() };
     as_real_imag(&expanded, true, None)
 }
 

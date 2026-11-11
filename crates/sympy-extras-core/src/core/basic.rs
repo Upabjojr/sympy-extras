@@ -139,6 +139,8 @@ pub enum Function {
     Acoth,
     Asech,
     Acsch,
+    Arg,
+    Atan2,
 }
 
 impl Function {
@@ -176,6 +178,8 @@ impl Function {
             Function::Acoth => "acoth",
             Function::Asech => "asech",
             Function::Acsch => "acsch",
+            Function::Arg => "arg",
+            Function::Atan2 => "atan2",
         }
     }
 
@@ -213,6 +217,8 @@ impl Function {
             Function::Acoth => "Acoth",
             Function::Asech => "Asech",
             Function::Acsch => "Acsch",
+            Function::Arg => "Arg",
+            Function::Atan2 => "Atan2",
         }
     }
 
@@ -224,6 +230,8 @@ impl Function {
             Function::Conjugate => 40,
             Function::Re => 41,
             Function::Im => 42,
+            Function::Arg => 43,
+            Function::Atan2 => 10000,
             Function::Sin => 20,
             Function::Cos => 21,
             Function::Tan => 22,

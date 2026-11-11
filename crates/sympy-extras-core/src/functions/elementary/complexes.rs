@@ -121,6 +121,7 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Acoth
         | Function::Asech
         | Function::Acsch) => super::inverse::inverse_conjugate(e, g),
+        Function::Arg | Function::Atan2 => super::argument::argument_conjugate(e, f),
         Function::Log => {
             // DefinedFunction._eval_conjugate
             if is_true(e, extended_real) {
@@ -362,8 +363,8 @@ fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>
                 return Ok(None);
             };
             if deep {
-                r = crate::core::function::expand_default(&r)?;
-                im_part = crate::core::function::expand_default(&im_part)?;
+                r = crate::core::function::expand_method(&r)?;
+                im_part = crate::core::function::expand_method(&im_part)?;
             }
             let modulus: Basic = exp(&r)?;
             use super::trigonometric::{cos, sin};
@@ -406,7 +407,8 @@ fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>
             }
             Ok(Some((re(e)?, im(e)?)))
         }
-        Function::Sign | Function::Conjugate => {
+        Function::Arg => Ok(Some((e.clone(), Basic::zero()))),
+        Function::Atan2 | Function::Sign | Function::Conjugate => {
             if ignore == Some(e) {
                 return Ok(None);
             }

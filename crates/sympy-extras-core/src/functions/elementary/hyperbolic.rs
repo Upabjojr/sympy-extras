@@ -13,7 +13,7 @@ use crate::core::add::add;
 use crate::core::assumptions::{facts_of, FactList, Predicate};
 use crate::core::basic::{Basic, Function, Head};
 use crate::core::expr::{as_coefficient, is_true};
-use crate::core::function::expand_default;
+use crate::core::function::expand_method;
 use crate::core::mul::{mul, raw_mul};
 use crate::core::parameters::evaluate;
 use crate::core::power::pow;
@@ -285,9 +285,9 @@ pub fn hyperbolic_real_imag(e: &Basic, f: Function, deep: bool) -> PolyResult<Op
         _ => {}
     }
     if is_true(arg, extended_real) {
-        return Ok(Some((if deep { expand_default(e)? } else { e.clone() }, Basic::zero())));
+        return Ok(Some((if deep { expand_method(e)? } else { e.clone() }, Basic::zero())));
     }
-    let expanded: Basic = if deep { expand_default(arg)? } else { arg.clone() };
+    let expanded: Basic = if deep { expand_method(arg)? } else { arg.clone() };
     let Some((r, im_part)) = as_real_imag(&expanded, true, None)? else {
         return Ok(None);
     };

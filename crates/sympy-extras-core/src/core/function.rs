@@ -21,7 +21,7 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         Head::Add => add(&args),
         Head::Mul => mul(&args),
         Head::Pow => pow(&args[0], &args[1]),
-        Head::Function(f) => crate::functions::apply_function(*f, &args[0]),
+        Head::Function(f) => crate::functions::apply_function(*f, &args),
         Head::Derivative => {
             // Derivative._evaluated: diff of the new expression
             let counts: Vec<(Basic, u64)> = derivative_counts(&e.rebuild(args.clone()));
@@ -661,9 +661,23 @@ pub fn expand_multinomial(e: &Basic, deep: bool) -> PolyResult<Basic> {
     expand(e, deep, false, true)
 }
 
-/// `e.expand()` with the default hints.
+/// `expand(e)` with the default hints of the function `expand`
+/// (logarithms split).
 pub fn expand_default(e: &Basic) -> PolyResult<Basic> {
     expand_with(e, true, Hints::DEFAULT)
+}
+
+/// `e.expand()`, the method: its defaults leave the logarithms (`log =
+/// False`), unlike the function `expand`.
+pub fn expand_method(e: &Basic) -> PolyResult<Basic> {
+    expand_with(
+        e,
+        true,
+        Hints {
+            log: false,
+            ..Hints::DEFAULT
+        },
+    )
 }
 
 // ---------------------------------------------------------------------
@@ -792,9 +806,11 @@ pub fn derivative(e: &Basic, s: &Basic) -> PolyResult<Basic> {
                 return Ok(own);
             }
             let mut chain: Vec<Basic> = Vec::new();
-            let da: Basic = derivative(&e.args()[0], s)?;
-            if !is_zero_rational(&da) {
-                chain.push(mul(&[crate::functions::fdiff(*f, e)?, da])?);
+            for (i, a) in e.args().iter().enumerate() {
+                let da: Basic = derivative(a, s)?;
+                if !is_zero_rational(&da) {
+                    chain.push(mul(&[crate::functions::fdiff(*f, e, i + 1)?, da])?);
+                }
             }
             add(&chain)
         }

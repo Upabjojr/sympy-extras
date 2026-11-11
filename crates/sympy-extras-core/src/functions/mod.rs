@@ -7,7 +7,8 @@ use crate::error::PolyResult;
 
 /// The partial derivative of the node `e` of the function `f` with
 /// respect to its argument (`fdiff`).
-pub fn fdiff(f: Function, e: &Basic) -> PolyResult<Basic> {
+/// `argindex` is the index of the argument from 1 (`Function.fdiff`).
+pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
     use crate::core::add::add;
     use crate::core::mul::mul;
     use crate::core::power::pow;
@@ -42,7 +43,8 @@ pub fn fdiff(f: Function, e: &Basic) -> PolyResult<Basic> {
         | Function::Acoth
         | Function::Asech
         | Function::Acsch) => elementary::inverse::inverse_fdiff(g, x),
-        Function::Re | Function::Im | Function::Conjugate | Function::Sign | Function::Abs => {
+        Function::Atan2 => elementary::argument::atan2_fdiff(e, argindex),
+        Function::Re | Function::Im | Function::Conjugate | Function::Sign | Function::Abs | Function::Arg => {
             unreachable!("these functions have their own derivatives")
         }
     }
@@ -97,6 +99,7 @@ pub fn eval_derivative(f: Function, e: &Basic, s: &Basic) -> PolyResult<Option<B
             }
             unevaluated()
         }
+        Function::Arg => elementary::argument::arg_derivative(e, s)?,
         Function::Conjugate => {
             if is_true(s, real) {
                 c::conjugate(&derivative(a, s)?)?
@@ -111,7 +114,12 @@ pub fn eval_derivative(f: Function, e: &Basic, s: &Basic) -> PolyResult<Option<B
 }
 
 /// The evaluating function of a function head (`cls.apply`).
-pub fn apply_function(f: Function, x: &Basic) -> PolyResult<Basic> {
+/// `args` are the arguments of the node (two for `atan2`, one otherwise).
+pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
+    if f == Function::Atan2 {
+        return elementary::argument::atan2(&args[0], &args[1]);
+    }
+    let x: &Basic = &args[0];
     use elementary::{complexes as c, exponential as e, hyperbolic as h, trigonometric as t};
     match f {
         Function::Exp => e::exp(x),
@@ -145,5 +153,7 @@ pub fn apply_function(f: Function, x: &Basic) -> PolyResult<Basic> {
         Function::Acoth => elementary::inverse::acoth(x),
         Function::Asech => elementary::inverse::asech(x),
         Function::Acsch => elementary::inverse::acsch(x),
+        Function::Arg => elementary::argument::arg(x),
+        Function::Atan2 => unreachable!("atan2 has two arguments"),
     }
 }

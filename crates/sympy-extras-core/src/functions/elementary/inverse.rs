@@ -207,7 +207,7 @@ fn function_of(arg: &Basic, f: Function) -> Option<Basic> {
 // numerical comparisons of angles
 
 /// Whether the comparable `a` is greater than `b` (`_gt`).
-fn gt(a: &Basic, b: &Basic) -> PolyResult<bool> {
+pub(crate) fn gt(a: &Basic, b: &Basic) -> PolyResult<bool> {
     if a == b {
         return Ok(false);
     }
@@ -218,7 +218,7 @@ fn gt(a: &Basic, b: &Basic) -> PolyResult<bool> {
 }
 
 /// `angle % period` for a comparable angle (`_mod`).
-fn modulo(angle: &Basic, period: &Basic) -> PolyResult<Basic> {
+pub(crate) fn modulo(angle: &Basic, period: &Basic) -> PolyResult<Basic> {
     let Some(value) = numeric_value(&div(angle, period)?, 200) else {
         return Ok(angle.clone());
     };
@@ -1075,23 +1075,7 @@ pub fn inverse_value(f: Function, z: &Complex, prec: usize) -> Option<Complex> {
             Some(w.ln())
         }
     };
-    // the principal square root from the parts (exact on the real axis,
-    // so that the products stay on the right side of the cuts)
-    let sqrt = |w: &Complex| -> Option<Complex> {
-        use crate::core::evalf::Real;
-        let (a, b) = parts(w);
-        let two: Real = real_int(&Int::from(2u8), prec);
-        if b.repr().significand().is_zero() {
-            if a >= Real::ZERO {
-                return Some(complex(a.sqrt(), zero_real()));
-            }
-            return Some(complex(zero_real(), (-a).sqrt()));
-        }
-        let modulus: Real = (&a * &a + &b * &b).sqrt();
-        let x: Real = ((&modulus + &a) / &two).sqrt();
-        let y: Real = ((&modulus - &a) / &two).sqrt();
-        Some(complex(x, if b < Real::ZERO { -y } else { y }))
-    };
+    let sqrt = |w: &Complex| -> Option<Complex> { Some(crate::core::evalf::complex_sqrt(w, prec)) };
     let half_pi: Complex = complex_real(crate::core::evalf::Real::pi(prec), prec) / c(2);
     let recip = |w: &Complex| -> Option<Complex> {
         if is_zero(w) {
@@ -1114,7 +1098,7 @@ pub fn inverse_value(f: Function, z: &Complex, prec: usize) -> Option<Complex> {
     let acosh_of = |w: &Complex| -> Option<Complex> { ln(&(w + &(&sqrt(&(w + &c(1)))? * &sqrt(&(w - &c(1)))?))) };
     let atanh_of = |w: &Complex| -> Option<Complex> { Some(&(&ln(&(&c(1) + w))? - &ln(&(&c(1) - w))?) / &c(2)) };
     let is_unit = |w: &Complex| is_zero(&(w - &c(1))) || is_zero(&(w + &c(1)));
-    match f {
+    let value: Option<Complex> = match f {
         Function::Asin => asin_of(z),
         Function::Acos => Some(&half_pi - &asin_of(z)?),
         Function::Atan => atan_of(z),
@@ -1138,10 +1122,39 @@ pub fn inverse_value(f: Function, z: &Complex, prec: usize) -> Option<Complex> {
             if is_unit(z) {
                 return None;
             }
+            if is_zero(z) {
+                return Some(complex(zero_real(), parts(&half_pi).0));
+            }
             atanh_of(&recip(z)?)
         }
         Function::Asech => acosh_of(&recip(z)?),
         Function::Acsch => asinh_of(&recip(z)?),
         _ => unreachable!("not an inverse function"),
+    };
+    // mpmath's value of a real argument in the real domain of the function
+    // is real: no rounding noise in the imaginary part
+    let (a, b) = parts(z);
+    if b.repr().significand().is_zero() && real_domain(f, &a, prec) {
+        let (r, _) = parts(&value?);
+        return Some(complex(r, zero_real()));
+    }
+    value
+}
+
+/// Whether the real `x` is in the domain where `f` is real.
+fn real_domain(f: Function, x: &crate::core::evalf::Real, prec: usize) -> bool {
+    use crate::core::evalf::{real_int, Real};
+    let one: Real = real_int(&Int::ONE, prec);
+    let magnitude: Real = if *x < Real::ZERO { -x.clone() } else { x.clone() };
+    match f {
+        Function::Asin | Function::Acos => magnitude <= one,
+        Function::Atan | Function::Acot | Function::Asinh => true,
+        Function::Asec | Function::Acsc => magnitude >= one,
+        Function::Acsch => !x.repr().significand().is_zero(),
+        Function::Acosh => *x >= one,
+        Function::Atanh => magnitude < one,
+        Function::Acoth => magnitude > one,
+        Function::Asech => *x > Real::ZERO && *x <= one,
+        _ => false,
     }
 }

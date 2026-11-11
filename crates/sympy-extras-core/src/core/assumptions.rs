@@ -1297,6 +1297,9 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         f if crate::functions::elementary::inverse::is_inverse(f) => {
             crate::functions::elementary::inverse::inverse_facts(f, &e.args()[0])
         }
+        g @ (super::basic::Function::Arg | super::basic::Function::Atan2) => {
+            crate::functions::elementary::argument::argument_facts(g, e.args())
+        }
         other => crate::functions::elementary::complexes::complexes_facts(other, &e.args()[0]),
     };
     if facts.get(commutative) == Some(true) && e.args().iter().any(|a| no(facts_of(a), commutative)) {
