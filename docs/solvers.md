@@ -985,3 +985,42 @@ it when the invariant is not constant.
 AbelTransformation(xi=x - 1, P=1, Q=0)
 
 ```
+
+## Eliminating variables
+
+`sympy_extras.solvers.elimination.eliminate(equations, variables)`
+returns generators of the elimination ideal: the polynomial relations
+between the other quantities which follow from the equations (Cox,
+Little, O'Shea, *Ideals, Varieties, and Algorithms*, Chapter 3). The
+equations may be rational (the ideal is saturated by the denominators,
+so that no relation comes from a vanishing denominator) and may contain
+sines and cosines, hyperbolic functions, fractional powers and
+exponentials of the eliminated variables: each becomes an indeterminate
+with its algebraic relation ($\sin^2 + \cos^2 = 1$, $\rho^q = b$, $e^{r
+w} = E^{r/g}$), eliminated with the variable. `implicitize` applies it
+to a parametrisation.
+
+```python
+>>> from sympy_extras.core import Eq, Symbol
+>>> from sympy_extras.functions import cos, sin, sqrt
+>>> from sympy_extras.solvers.elimination import eliminate, implicitize
+>>> s, t, x, y, z = (Symbol(n) for n in 'stxyz')
+>>> implicitize([(1 - t**2)/(1 + t**2), 2*t/(1 + t**2)], [t], [x, y])
+[x**2 + y**2 - 1]
+>>> implicitize([cos(t)**3, sin(t)**3], [t], [x, y])                 # the astroid
+[x**6 + 3*x**4*y**2 - 3*x**4 + 3*x**2*y**4 + 21*x**2*y**2 + 3*x**2 + y**6 - 3*y**4 + 3*y**2 - 1]
+>>> eliminate([x**2 + y**2 - 1, x - y + z], [x])
+[2*y**2 - 2*y*z + z**2 - 1]
+>>> eliminate([Eq(y, sqrt(t)), Eq(x, t + 1)], [t]), eliminate([x, x - 1], [x])
+([-x + y**2 + 1], [1])
+
+```
+
+The result `[1]` means that the equations have no solution, `[]` that
+they imply no relation. A function of the eliminated variables which is
+none of the above (`log(t)`) is an indeterminate of its own: the
+relations returned are still consequences of the equations, but those
+which depend on the properties of that function are not found. The
+closure theorem applies: the zero set of the result is the smallest
+variety containing the projection, which may be larger than the
+projection itself (a missing point of a rational curve).

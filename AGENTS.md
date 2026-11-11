@@ -255,6 +255,7 @@ sympy_extras/
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
         tests/
     solvers/                 solvers extending sympy.solvers (exports nothing: import the modules)
+        elimination.py       eliminate, implicitize: elimination ideals of equations with polynomials, trigonometric functions, radicals, exponentials (native)
         isolation.py         TranscendentalRoot (node), isolate_real_roots, point_between, compare_points: exact real roots of
                              exp-log functions (native; SymPy's real_roots with CRootOf and continuous_domain through isolation_sympy)
         isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts), the *_of_core functions

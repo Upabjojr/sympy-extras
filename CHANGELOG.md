@@ -10,6 +10,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.solvers.elimination`: `eliminate(equations, variables)`
+  (SymPy issue 2720): generators of the elimination ideal, for
+  polynomial and rational equations (saturated by the denominators) and
+  for equations with sines and cosines, hyperbolic functions, radicals
+  and exponentials of the eliminated variables, through their algebraic
+  relations; `implicitize(parametrization, parameters, coordinates)`,
+  the implicit equations of parametrised curves and surfaces.
 - `sympy_extras.matrices.riccati`: the continuous algebraic Riccati
   equation solved exactly for rational data: `riccati_solutions` (all
   the real symmetric solutions, from the polynomial system),

@@ -1048,6 +1048,31 @@ x/(x + 1)
 
 ```
 
+### Eliminating variables (`sympy_extras.solvers.elimination`)
+
+`eliminate` returns the polynomial relations which a system of equations
+implies between the quantities which are not eliminated (the elimination
+ideal, by a Gröbner basis), and `implicitize` the implicit equations of a
+parametrised curve or surface. Rational functions, sines and cosines,
+radicals and exponentials of the eliminated variables are handled
+through their algebraic relations:
+
+```python
+>>> from sympy_extras.core import Eq, Symbol
+>>> from sympy_extras.functions import cos, sin, exp
+>>> from sympy_extras.solvers.elimination import eliminate, implicitize
+>>> s, t, x, y, z, a, b = (Symbol(n) for n in 'stxyzab')
+>>> eliminate([Eq(x, a*cos(t)), Eq(y, b*sin(t))], [t])
+[a**2*b**2 - a**2*y**2 - b**2*x**2]
+>>> implicitize([cos(t), sin(2*t)], [t], [x, y]), implicitize([s*t, s*t**2, s**2], [s, t], [x, y, z])
+([4*x**4 - 4*x**2 + y**2], [x**4 - y**2*z])
+>>> implicitize([sin(s)*cos(t), sin(s)*sin(t), cos(s)], [s, t], [x, y, z])
+[x**2 + y**2 + z**2 - 1]
+>>> eliminate([Eq(2*x, exp(t) + exp(-t)), Eq(2*y, exp(t) - exp(-t))], [t])
+[x**2 - y**2 - 1]
+
+```
+
 ### Exact global optimisation (`sympy_extras.calculus.optimization`)
 
 The global minimum or maximum of a polynomial (or rational function)
