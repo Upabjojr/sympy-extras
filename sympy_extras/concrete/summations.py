@@ -6,9 +6,11 @@ algorithm, the hypergeometric and the residue methods.
 
 Ported from SymPy's ``sympy.concrete.summations`` (Gosper's algorithm
 in :mod:`~sympy_extras.concrete.gosper`). The residue method with poles
-which SymPy writes as ``CRootOf``, the Kronecker delta sums and the
-equation solving of the telescoping go through SymPy for that call (not
-ported yet).
+which SymPy writes as ``CRootOf``, the zeta function match of
+``Sum.doit`` and the equations which neither
+:mod:`~sympy_extras.solvers.linsolve` nor the native
+:func:`~sympy_extras.assumptions.solve.solve` solve (SymPy's ``solve``)
+go through SymPy for that call (not ported yet).
 
 Examples
 ========
@@ -28,8 +30,8 @@ Examples
 # (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
-# Changes: typed; eval_sum_residue,
-# deltasummation, solve and the zeta function match go through SymPy.
+# Changes: typed; eval_sum_residue (CRootOf poles), the zeta function match and
+# the equations the native solvers do not solve go through SymPy.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -87,12 +89,18 @@ def _through(name: str, f: Expr, limits: Limits) -> Optional[Expr]:
 def _solve(e: Expr, v: Symbol) -> list[Expr]:
     """SymPy's ``solve(e, v)``: native for an equation free of ``v`` or
     linear in it with a rational coefficient
-    (:func:`~sympy_extras.solvers.linsolve.solve_one`), through SymPy
+    (:func:`~sympy_extras.solvers.linsolve.solve_one`) and for the
+    equations whose finitely many solutions the native
+    :func:`~sympy_extras.assumptions.solve.solve` lists, through SymPy
     otherwise."""
     from sympy_extras.solvers.linsolve import solve_one
+    from .delta import _finite_solutions
     known = solve_one(e, v)
     if known is not None:
         return known
+    listed = _finite_solutions(e, v)
+    if listed is not None:
+        return listed
     import sympy
     from sympy_extras.interop import expr_from_sympy, to_sympy
     return [expr_from_sympy(s) for s in sympy.solve(to_sympy(e), to_sympy(v))]
@@ -502,7 +510,29 @@ def eval_sum_hyper(f: Expr, limits: Limits) -> Optional[Expr]:
 
 
 def _as_set_is_empty(cond: Boolean) -> bool:
-    """SymPy's ``cond.as_set() == S.EmptySet`` (through SymPy)."""
+    """SymPy's ``cond.as_set() == S.EmptySet``: natively by the native
+    :func:`~sympy_extras.assumptions.solve.solve` over the reals for a
+    condition in one symbol, through SymPy when it leaves a condition set
+    (``as_set`` takes no other conditions: ``False`` for them)."""
+    from sympy_extras.core.logic import BooleanFalse, BooleanTrue
+    from sympy_extras.sets.conditionset import ConditionSet
+    from sympy_extras.sets.sets import EmptySetClass, Reals
+    from sympy_extras.assumptions.solve import solve
+    from sympy_extras._timeout import attempt
+    from sympy_extras.settings import settings
+    if isinstance(cond, (BooleanTrue, BooleanFalse)):
+        return isinstance(cond, BooleanFalse)
+    symbols = [s for s in cond.free_symbols if isinstance(s, Symbol)]
+    if len(symbols) != 1 or len(cond.free_symbols) != 1:
+        return False
+    # as_set takes the symbol for a real number, whatever its assumptions
+    plain = Dummy(symbols[0].name)
+    relaxed = cond._xreplace_evaluated({symbols[0]: plain})
+    if not isinstance(relaxed, Boolean):
+        return False
+    found = attempt(lambda: solve(relaxed, plain, domain=Reals), settings.timeout, native=True)
+    if found is not None and not isinstance(found, ConditionSet) and not found.has(ConditionSet):
+        return isinstance(found, EmptySetClass)
     import sympy
     from sympy_extras.interop import to_sympy
     try:

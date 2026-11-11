@@ -43,7 +43,7 @@ from sympy_extras.assumptions.ask_sympy import ask
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.assumptions.limits_sympy import limit
-from sympy_extras.concrete.convergence import sum_convergence
+from sympy_extras.concrete.convergence_sympy import sum_convergence
 from sympy_extras.concrete.dirichlet import dirichlet_series
 from sympy_extras.concrete.karr_sympy import karr_sum
 from sympy_extras.concrete.rational import rational_sum

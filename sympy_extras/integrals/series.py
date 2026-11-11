@@ -35,7 +35,7 @@ summed in closed form. The steps are
    series expanded by ``hyperexpand``;
 4. the interchange of the sum and the integral is justified when the
    series of the absolute values of the integrated terms converges
-   (:func:`~sympy_extras.concrete.sum_convergence`, dominated convergence);
+   (:func:`~sympy_extras.concrete.convergence_sympy.sum_convergence`, dominated convergence);
    otherwise the value is kept only when the numerical check of
    ``settings.numerical_checks`` confirms it.
 
@@ -129,7 +129,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import element
-from sympy_extras.concrete.convergence import sum_convergence
+from sympy_extras.concrete.convergence_sympy import sum_convergence
 from sympy_extras.concrete.eulersums import polygamma_series
 from sympy_extras.concrete.zeilberger_sympy import zeilberger_sum
 from sympy_extras.settings import settings

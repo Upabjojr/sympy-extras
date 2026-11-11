@@ -265,7 +265,7 @@ parameters like `limit`.
 ```python
 >>> from sympy import factorial, log
 >>> from sympy.abc import n, p
->>> from sympy_extras.concrete.convergence import sum_convergence, product_convergence
+>>> from sympy_extras.concrete.convergence_sympy import sum_convergence, product_convergence
 >>> from sympy_extras.concrete.dirichlet import dirichlet_series
 >>> from sympy_extras.assumptions.limits_sympy import limit_seq
 >>> sum_convergence(x**n/n, n)

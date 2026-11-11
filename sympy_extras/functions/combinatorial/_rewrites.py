@@ -1,10 +1,13 @@
 """The ``rewrite`` rules of the combinatorial functions (and ``beta``) in
-terms of ``gamma`` (SymPy's ``_eval_rewrite_as_gamma``), as a typed table
-for :func:`sympy_extras.core.rewriting.rewrite`.
+terms of ``gamma`` (SymPy's ``_eval_rewrite_as_gamma``), and of ``gamma``,
+``binomial`` and the Pochhammer symbols in terms of ``factorial`` (SymPy's
+``_eval_rewrite_as_factorial``), as a typed table for
+:func:`sympy_extras.core.rewriting.rewrite`.
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py, sympy/functions/combinatorial/numbers.py,
-# sympy/functions/special/beta_functions.py (the _eval_rewrite_as_gamma methods) (SymPy 1.14)
+# sympy/functions/special/beta_functions.py, sympy/functions/special/gamma_functions.py (the
+# _eval_rewrite_as_gamma and _eval_rewrite_as_factorial methods) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; a table keyed by (class, target) in place of methods.
@@ -101,6 +104,44 @@ def _beta(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[E
     return mul(gamma(x), gamma(y), _inv(gamma(add(x, y))))
 
 
+# PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:gamma._eval_rewrite_as_factorial
+def _gamma_as_factorial(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from sympy_extras.functions import factorial
+    return factorial(add(args[0], MINUS_ONE))
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:binomial._eval_rewrite_as_factorial
+def _binomial_as_factorial(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from sympy_extras.functions import factorial
+    n, k = args
+    return mul(factorial(n), _inv(mul(factorial(k), factorial(add(n, neg(k))))))
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:RisingFactorial._eval_rewrite_as_factorial
+def _rising_as_factorial(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from sympy_extras.core.relational import gt
+    from sympy_extras.functions import factorial
+    from sympy_extras.functions.elementary.piecewise import piecewise
+    x, k = args
+    if not (x.is_integer and k.is_integer):
+        return None
+    return piecewise((mul(factorial(add(k, x, MINUS_ONE)), _inv(factorial(add(x, MINUS_ONE)))), gt(x, Integer(0))),
+                     (mul(pow(MINUS_ONE, k), factorial(neg(x)), _inv(factorial(add(neg(k), neg(x))))), true))
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:FallingFactorial._eval_rewrite_as_factorial
+def _falling_as_factorial(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from sympy_extras.core.relational import ge
+    from sympy_extras.functions import factorial
+    from sympy_extras.functions.elementary.piecewise import piecewise
+    x, k = args
+    if not (x.is_integer and k.is_integer):
+        return None
+    return piecewise((mul(factorial(x), _inv(factorial(add(neg(k), x)))), ge(x, Integer(0))),
+                     (mul(pow(MINUS_ONE, k), factorial(add(k, neg(x), MINUS_ONE)), _inv(factorial(add(neg(x), MINUS_ONE)))),
+                      true))
+
+
 def rules() -> dict[tuple[type, type], Rule]:
     """The rules keyed by (the class of the node, the target class)."""
     from sympy_extras.functions.combinatorial import factorials as f, numbers as nb
@@ -110,5 +151,8 @@ def rules() -> dict[tuple[type, type], Rule]:
         (f.Factorial, Gamma): _factorial, (f.Subfactorial, Gamma): _subfactorial,
         (f.Factorial2, Gamma): _factorial2, (f.RisingFactorial, Gamma): _rising,
         (f.FallingFactorial, Gamma): _falling, (f.Binomial, Gamma): _binomial, (nb.Catalan, Gamma): _catalan,
-        (Beta, Gamma): _beta}
+        (Beta, Gamma): _beta,
+        (Gamma, f.Factorial): _gamma_as_factorial, (f.Binomial, f.Factorial): _binomial_as_factorial,
+        (f.RisingFactorial, f.Factorial): _rising_as_factorial,
+        (f.FallingFactorial, f.Factorial): _falling_as_factorial}
     return table
