@@ -23,10 +23,15 @@ but no algebraic derivation supports it. The functions return ``None``
 when :data:`sympy_extras.settings.settings.numerical_checks` is off, and
 the results must be labelled as conjectures wherever they are used.
 
+The module works on the objects of the core (:mod:`sympy_extras.core`, the
+functions of :mod:`sympy_extras.functions`): the integrands are evaluated
+by the numerical rules of the core's nodes, and SymPy is not imported.
+:mod:`sympy_extras.integrals.recognize_sympy` is its face on SymPy objects.
+
 Examples
 ========
 
->>> from sympy import Float, pi, log, sqrt, symbols
+>>> from sympy_extras.core import Float, symbols
 >>> from sympy_extras.integrals.recognize import recognize_constant, recognize_integral
 >>> recognize_constant(Float('1.6449340668482264364724151666460251892', 38))
 pi**2/6
@@ -46,22 +51,24 @@ References
 """
 from __future__ import annotations
 
-from typing import Callable, Optional, Sequence, Union
+from typing import Final, Optional, Sequence, Union
 
 import mpmath
 
-from sympy.core.expr import Expr
-from sympy.core.numbers import Float, Integer, Rational, oo, pi
-from sympy.core.singleton import S
-from sympy.core.symbol import Symbol
-from sympy.functions.elementary.exponential import log
-from sympy.functions.elementary.miscellaneous import sqrt
-from sympy.functions.special.gamma_functions import gamma
-from sympy.functions.special.zeta_functions import zeta
-from sympy.utilities.lambdify import lambdify
-
-from sympy_extras._typing_sympy import ExprLike, as_expr, free_symbols
-from sympy_extras.assumptions.ask_sympy import Assumptions
+from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.core.add import Add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.evalf import numeric_value
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
+from sympy_extras.core.function import DefinedFunction
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import Float, Integer, Rational, oo, pi
+from sympy_extras.core.power import Pow, sqrt
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.functions.elementary.exponential import log
+from sympy_extras.functions.special.gamma_functions import gamma
+from sympy_extras.functions.special.zeta_functions import zeta
 from sympy_extras.settings import settings
 
 __all__ = ['DEFAULT_CONSTANTS', 'recognize_constant', 'recognize_integral', 'quadrature']
@@ -76,19 +83,23 @@ DEFAULT_CONSTANTS: tuple[Expr, ...] = (
 #: the largest coefficient accepted in an integer relation
 _MAX_COEFFICIENT = 10**6
 
+#: the guard digits of the numerical values of exact expressions
+_GUARD = 20
+
 
 def _to_mpf(value: Union[Expr, float, str], digits: int) -> Optional[mpmath.mpf]:
+    """``value`` as a real mpmath number to ``digits`` digits (an exact
+    expression computed with guard digits); ``None`` when it is not a
+    real number or cannot be computed."""
+    if isinstance(value, (float, str)):
+        with mpmath.workdps(digits):
+            return mpmath.mpf(value)
+    with mpmath.workdps(digits + _GUARD):
+        number = numeric_value(value, mpmath.mp.prec)
+    if number is None or mpmath.im(number) != 0:
+        return None
     with mpmath.workdps(digits):
-        if isinstance(value, float):
-            return mpmath.mpf(value)
-        if isinstance(value, str):
-            return mpmath.mpf(value)
-        number = as_expr(value).evalf(digits)
-        if number.is_real is not True and not isinstance(number, Float):
-            return None
-        if not number.is_Number:
-            return None
-        return mpmath.mpf(str(number))
+        return mpmath.mpf(mpmath.re(number))
 
 
 def recognize_constant(value: Union[Expr, float, str], constants: Sequence[Expr] = DEFAULT_CONSTANTS,
@@ -109,7 +120,7 @@ def recognize_constant(value: Union[Expr, float, str], constants: Sequence[Expr]
     Examples
     ========
 
-    >>> from sympy import Float, log, pi
+    >>> from sympy_extras.core import Float
     >>> from sympy_extras.integrals.recognize import recognize_constant
     >>> recognize_constant(Float('0.91596559417721901505460351493238411077', 38))
     Catalan
@@ -134,7 +145,7 @@ def recognize_constant(value: Union[Expr, float, str], constants: Sequence[Expr]
     target = _to_mpf(value, digits)
     if target is None or not mpmath.isfinite(target):
         return None
-    candidate = _relation(target, [as_expr(c) for c in constants], digits)
+    candidate = _relation(target, list(constants), digits)
     if candidate is None:
         return None
     if inexact:
@@ -158,8 +169,13 @@ def _relation(target: mpmath.mpf, constants: list[Expr], digits: int) -> Optiona
     computed to: about six digits per constant for coefficients up to a
     million). The pairs are tried after the single constants, and the
     first relation found wins."""
+    values: list[mpmath.mpf] = []
+    for c in constants:
+        value = _to_mpf(c, digits)
+        if value is None:
+            return None
+        values.append(value)
     with mpmath.workdps(digits):
-        values = [mpmath.mpf(str(c.evalf(digits))) for c in constants]
         subsets: list[list[int]] = [[]] + [[i] for i in range(len(constants))]
         subsets += [[i, j] for i in range(len(constants)) for j in range(i + 1, len(constants))]
         for subset in subsets:
@@ -175,8 +191,67 @@ def _relation(target: mpmath.mpf, constants: list[Expr], digits: int) -> Optiona
             candidate: Expr = -Integer(coefficients[1])
             for m, i in zip(coefficients[2:], subset):
                 candidate = candidate - Integer(m) * constants[i]
-            return as_expr(candidate / Integer(coefficients[0]))
+            return candidate / Integer(coefficients[0])
     return None
+
+
+class _Integrand:
+    """``f`` as a function of the value of ``x``, evaluated by the
+    numerical rules of the nodes at the working precision (what
+    ``lambdify(x, f, 'mpmath')`` does on SymPy objects); the subtrees free
+    of ``x`` are evaluated once per precision. A node with no numerical
+    rule raises ``ValueError``."""
+
+    def __init__(self, f: Expr, x: Symbol) -> None:
+        self.f: Final[Expr] = f
+        self.x: Final[Symbol] = x
+        self.constants: Final[dict[tuple[Basic, int], mpmath.mpc]] = {}
+
+    def __call__(self, t: mpmath.mpf) -> mpmath.mpc:
+        return self.value(self.f, mpmath.mpc(t))
+
+    def value(self, e: Expr, t: mpmath.mpc) -> mpmath.mpc:
+        if e == self.x:
+            return t
+        if not e.has(self.x):
+            key = (e, int(mpmath.mp.prec))
+            if key not in self.constants:
+                found = numeric_value(e, mpmath.mp.prec)
+                if found is None:
+                    raise ValueError('%s has no numerical value' % (e,))
+                self.constants[key] = found
+            return self.constants[key]
+        if isinstance(e, Add):
+            total = mpmath.mpc(0)
+            for a in e.args:
+                total = total + self.value(as_expr(a), t)
+            return total
+        if isinstance(e, Mul):
+            product = mpmath.mpc(1)
+            for a in e.args:
+                product = product * self.value(as_expr(a), t)
+            return product
+        if isinstance(e, Pow):
+            base, exponent = self.value(e.base, t), self.value(e.exp, t)
+            if mpmath.im(base) == 0 and mpmath.im(exponent) == 0:
+                # real arguments as lambdify's: mpmath.power of mpf values
+                return mpmath.mpc(mpmath.power(mpmath.re(base), mpmath.re(exponent)))
+            return mpmath.mpc(mpmath.power(base, exponent))
+        if isinstance(e, DefinedFunction):
+            arguments = [self.value(as_expr(a), t) for a in e.args]
+            found = e.numeric(arguments)
+            if found is None:
+                raise ValueError('%s has no numerical value' % (e,))
+            return mpmath.mpc(found)
+        raise ValueError('%s cannot be evaluated' % (e,))
+
+
+def _endpoint(e: Expr, digits: int) -> Optional[mpmath.mpf]:
+    if e == oo:
+        return mpmath.mpf('inf')
+    if e == -oo:
+        return mpmath.mpf('-inf')
+    return _to_mpf(e, digits)
 
 
 def quadrature(f: Expr, x: Symbol, a: Expr, b: Expr, digits: int = 30) -> Optional[mpmath.mpf]:
@@ -184,11 +259,13 @@ def quadrature(f: Expr, x: Symbol, a: Expr, b: Expr, digits: int = 30) -> Option
     rules at ``digits`` digits, returned only when the two agree to
     ``digits - 5`` digits and the estimated error is as small; ``None``
     otherwise (a complex or oscillatory integrand, a singularity the
-    rules cannot resolve)."""
-    g: Callable[[mpmath.mpf], mpmath.mpf] = lambdify(x, f, 'mpmath')
+    rules cannot resolve, a node without a numerical rule)."""
+    g = _Integrand(f, x)
+    lo_, hi_ = _endpoint(a, digits), _endpoint(b, digits)
+    if lo_ is None or hi_ is None:
+        return None
     with mpmath.workdps(digits):
-        lo = mpmath.mpf('-inf') if a == -oo else mpmath.mpf(str(as_expr(a).evalf(digits)))
-        hi = mpmath.mpf('inf') if b == oo else mpmath.mpf(str(as_expr(b).evalf(digits)))
+        lo, hi = mpmath.mpf(lo_), mpmath.mpf(hi_)
         points: list[mpmath.mpf] = [lo, hi]
         if lo == mpmath.mpf('-inf') and hi == mpmath.mpf('inf'):
             points = [lo, mpmath.mpf(-1), mpmath.mpf(0), mpmath.mpf(1), hi]
@@ -199,8 +276,7 @@ def quadrature(f: Expr, x: Symbol, a: Expr, b: Expr, digits: int = 30) -> Option
         try:
             first, error = mpmath.quad(g, points, method='tanh-sinh', error=True)
             second = mpmath.quad(g, points, method='gauss-legendre')
-        except (ValueError, TypeError, ZeroDivisionError, OverflowError, NameError,
-                mpmath.libmp.NoConvergence):
+        except (ValueError, TypeError, ZeroDivisionError, OverflowError, mpmath.libmp.NoConvergence):
             return None
         if isinstance(first, mpmath.mpc) or isinstance(second, mpmath.mpc):
             if abs(mpmath.im(first)) > mpmath.mpf(10)**(-(digits - 5)):
@@ -229,7 +305,8 @@ def recognize_integral(f: ExprLike, limits: tuple[Symbol, ExprLike, ExprLike],
     Examples
     ========
 
-    >>> from sympy import symbols, atan, log
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import atan, log
     >>> from sympy_extras.integrals.recognize import recognize_integral
     >>> x = symbols('x')
     >>> recognize_integral(atan(x)/x, (x, 0, 1))
@@ -239,9 +316,9 @@ def recognize_integral(f: ExprLike, limits: tuple[Symbol, ExprLike, ExprLike],
     """
     if not settings.numerical_checks:
         return None
-    x, a, b = limits[0], as_expr(limits[1]), as_expr(limits[2])
-    f_ = as_expr(f)
-    if (free_symbols(f_) | free_symbols(a) | free_symbols(b)) - {x}:
+    x, a, b = limits[0], to_expr(limits[1]), to_expr(limits[2])
+    f_ = to_expr(f)
+    if (f_.free_symbols | a.free_symbols | b.free_symbols) - {x}:
         return None
     value = quadrature(f_, x, a, b, digits)
     if value is None:

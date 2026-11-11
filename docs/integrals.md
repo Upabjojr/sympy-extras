@@ -469,6 +469,7 @@ The driver tries, after the Mellin method and the residues:
   antiderivative is a complex `Piecewise`, gives `sqrt(3)/4 - pi/12`, and
   with it the union of two overlapping discs in `IntegralByRanges`.
 - **Symbolic-numeric recognition** (`sympy_extras.integrals.recognize`,
+  native, with its SymPy face `recognize_sympy`;
   `definite_integral(..., recognize=True)`): a high-precision quadrature
   and an integer relation (PSLQ) with a basis of constants propose a
   closed form, re-checked at forty-five digits. A conjecture, not a proof:
@@ -516,7 +517,7 @@ pi**3/4
 >>> definite_integral(1/(1 + x**n), (x, 0, oo), n > 1)
 pi/(n*sin(pi/n))
 >>> from sympy_extras.integrals.brackets_sympy import ramanujan_master_theorem
->>> from sympy_extras.integrals.recognize import recognize_integral
+>>> from sympy_extras.integrals.recognize_sympy import recognize_integral
 >>> s = symbols('s')
 >>> ramanujan_master_theorem(exp(-x**2), x, s)
 MellinTransform(gamma(s/2)/2, (0, oo))
@@ -582,11 +583,11 @@ integrand, and the `Integral` is returned unevaluated otherwise.
 `verified_antiderivative` returns the antiderivative with the name of the
 method which found it. Powers times exponentials of powers,
 `x**(v - 1)*exp(a*x**n + b)` with a symbolic `v`, go through the
-incomplete gamma function (`sympy_extras.integrals.exponential`), in the
-real form `-(-a)**(-s)*uppergamma(s, -a*x**n)/n` for `a < 0` and the
-confluent series `x**v*hyper((s,), (s + 1,), a*x**n)/v` otherwise, with
-the elementary, `Ei` and error-function cases reduced to; polynomials
-times `exp(a*x**2 + b*x + c)` by the completed square; `(a*x + b)**w*exp(c*x + d)`
+incomplete gamma function (`sympy_extras.integrals.exponential`, native,
+with its SymPy face `exponential_sympy`), in the real form
+`-(-a)**(-s)*uppergamma(s, -a*x**n)/n` for `a < 0` and the confluent
+series `x**v*hyper((s,), (s + 1,), a*x**n)/v` otherwise, with the
+elementary, `Ei` and error-function cases reduced to; polynomials times `exp(a*x**2 + b*x + c)` by the completed square; `(a*x + b)**w*exp(c*x + d)`
 by the shift `t = a*x + b` (`exp(c*x)/(a*x + b)**k` is the exponential
 integral `E_k`); rational functions and binomials of an exponential by
 `u = exp(c*x)`; a nested power `(x**r)**p` in the exponent or the

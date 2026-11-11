@@ -539,6 +539,35 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The antiderivatives of exponentials and the recognition of constants are
+  native (**breaking**): `sympy_extras.integrals.exponential`
+  (`exponential_antiderivative`, `power_exponential`,
+  `exponential_rational`, `nested_power_exponential`,
+  `rational_exponential`, `composite_gaussian`,
+  `reciprocal_square_exponential`) and `sympy_extras.integrals.recognize`
+  (`recognize_constant`, `recognize_integral`, `quadrature`,
+  `DEFAULT_CONSTANTS`) take and return objects of the core and import no
+  SymPy: the native `powsimp`, `expand`, `factor`, `cancel`, `simplify`,
+  `roots` (with a dummy for every coefficient outside the polynomial
+  domains, `pi` or `exp(c)`, the typed `Poly` having no `EX`), the native
+  `ask` and the numerical checks of `integrals.conditions`; the
+  quadrature evaluates the integrand by the numerical rules of the core's
+  nodes instead of `lambdify`; the two unknowns of the composite Gaussian
+  are solved by a 2x2 elimination instead of SymPy's `solve` (an
+  underdetermined system is refused). One step stays on SymPy, reached
+  only by the substitution `u = exp(c*x)`: its `ratint`, through
+  `exponential_sympy.ratint_of_core`. The old API on SymPy objects moves
+  to the new faces `sympy_extras.integrals.exponential_sympy` and
+  `sympy_extras.integrals.recognize_sympy`, which `integrals.indefinite`,
+  `integrals.definite`, the tests and the docs use (the results are the
+  same, `srepr` for `srepr`, on the calls of the tests and 70 more).
+  Fixed on the way: `Integer(n).as_content_primitive()` of the core
+  returned the content as a `Rational` which is not an `Integer`
+  (`factor_terms(a*x**2)` had the exponent `Rational(2, 1)`), and the
+  native `hyperexpand` looped forever on `1F1(a; a + 1; z)` with a
+  rational `a` (the parameters of an instantiated formula were not
+  evaluated, `1/3 + 1` was shifted towards `4/3`).
+
 - The convergence tests of series and products are native
   (**breaking**): `sympy_extras.concrete.convergence` (`sum_convergence`,
   `product_convergence`, `is_convergent`) takes and returns objects of

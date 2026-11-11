@@ -265,7 +265,7 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
     else:
         found = conditional_integral(f_, x, a, b, assumptions, principal_value, finite_part, regularize)
     if (found is None or found.value.has(nan)) and recognize:
-        from .recognize import recognize_integral
+        from .recognize_sympy import recognize_integral
         guessed = recognize_integral(f_, (x, a, b), assumptions)
         if guessed is not None:
             return guessed
