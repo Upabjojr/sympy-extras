@@ -16,6 +16,7 @@ use pyo3::types::PyModule;
 
 mod algebraic;
 mod algorithms;
+mod complexroots;
 mod convert;
 mod dense;
 mod domains;
@@ -115,6 +116,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     sparse::register_multisqf(&submodule(&polys, "multisqf", "sympy_extras_rs.polys.multisqf")?)?;
     algorithms::register_multifactor(&submodule(&polys, "multifactor", "sympy_extras_rs.polys.multifactor")?)?;
     lattice::register(&submodule(&polys, "lattice", "sympy_extras_rs.polys.lattice")?)?;
+    complexroots::register(&submodule(
+        &polys,
+        "complexroots",
+        "sympy_extras_rs.polys.complexroots",
+    )?)?;
     galois::register_galoisfactor(&submodule(
         &polys,
         "galoisfactor",

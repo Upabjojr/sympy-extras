@@ -58,6 +58,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/subresultants.py` | `dup_psc` | `dmp_psc` is `dup_psc` over a `PolynomialRing` tower; `psc` on SymPy's `PolyElement` has no counterpart |
 | `polys/domains/galoisfield.py` | done | `GaloisField` (a word-sized prime, as `FiniteField`), its own Python class in the bindings (`DomainKind` is `Copy` and cannot hold a modulus); `to_str` prints the generator by name, `to_expr` waits for the core |
 | `polys/galoisfactor.py` | done | the equal-degree stage on the seeded `Rng`; the factors are sorted, so the result is Python's |
+| `polys/complexroots.py` | done | `Rectangle` a struct (a class in the bindings, compared by its corners); the factors of `dup_isolate_complex_roots` told apart by index instead of list identity |
 | `polys/fglm.py` | done | the pivot of a new echelon row is its largest monomial (Python: the first dict key); the reduced basis does not depend on it |
 | `polys/berlekampmassey.py` | done | generic over `Domain`; the bindings run it over every domain kind |
 | `polys/bigatti.py` | done | moved out of `hilbert.rs` as in Python (5786e1d..eb367b4), with `hilbert_numerator_coefficients` |
