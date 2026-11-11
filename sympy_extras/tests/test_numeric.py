@@ -79,7 +79,7 @@ def test_the_checks_of_the_package_go_through_them() -> None:
     from sympy_extras.assumptions.solve_sympy import _clearly_not_real
     assert _clearly_not_real(as_expr(L - I * pi)) is False
     assert _clearly_not_real(as_expr(L)) is True
-    from sympy_extras.solvers.transcendental import _real_root
+    from sympy_extras.solvers.transcendental_sympy import _real_root
     t = symbols('t', real=True)
     assert _real_root(as_expr(t - log(2 * sqrt(2))), t, as_expr(L - I * pi)) is True
     from sympy_extras.integrals.residues import _numerically

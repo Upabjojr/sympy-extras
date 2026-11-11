@@ -993,3 +993,48 @@ def test_native_charpit_and_dae_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_CHARPIT_DAE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_TRANSCENDENTAL = r'''
+import sys
+from sympy_extras.core import symbols, Eq, Rational, sqrt, cbrt, pi
+from sympy_extras.functions import exp, log, sin, cos, tan, sinh, cosh, Abs
+from sympy_extras.solvers.transcendental import solve_transcendental, polynomialize
+from sympy_extras.solvers.inequalities import solve_inequality
+assert 'sympy' not in sys.modules
+x, = symbols('x,')
+assert str(solve_transcendental(Eq(exp(2*x) - 3*exp(x) + 2, 0), x)) == '{0, log(2)}'
+assert str(solve_transcendental(exp(x) + exp(-x) > 3, x)) == \
+    'Union(Interval.open(-oo, log(3/2 - sqrt(5)/2)), Interval.open(log(sqrt(5)/2 + 3/2), oo))'
+assert str(solve_transcendental(Eq(sin(x) + cos(x), 1), x)) == \
+    'Union(ImageSet(Lambda(_k, 2*_k*pi), Integers), ImageSet(Lambda(_k, 2*_k*pi + pi/2), Integers))'
+assert str(solve_transcendental(Eq(sin(2*x), Rational(1, 2)), x)) == \
+    'Union(ImageSet(Lambda(_k, _k*pi + pi/12), Integers), ImageSet(Lambda(_k, _k*pi + 5*pi/12), Integers))'
+assert str(solve_transcendental(Eq(log(x)**2, 3*log(x) - 2), x)) == '{E, exp(2)}'
+assert str(solve_transcendental(Eq(sqrt(x + 1) + cbrt(x + 1), 2), x)) == '{0}'
+assert str(solve_transcendental(Eq(Abs(x - 1) + Abs(x + 1), 3), x)) == '{-3/2, 3/2}'
+assert str(solve_transcendental(Eq(sinh(x), 2), x)) == '{log(2 + sqrt(5))}'
+assert str(solve_transcendental(Eq(cosh(2*x), 3), x)) == '{-log(3 - 2*sqrt(2))/2, -log(2*sqrt(2) + 3)/2}'
+assert str(solve_transcendental(Eq(2**x, 8), x)) == '{3}' and str(solve_transcendental(Eq(exp(x), pi), x)) == '{log(pi)}'
+assert str(solve_transcendental(Abs(exp(x) - 3) < 1, x)) == 'Interval.open(log(2), log(4))'
+assert str(solve_transcendental(Eq(tan(x), 1), x)).startswith('Union(ImageSet(Lambda(_k, 2*_k*pi - 3*pi/4)')
+assert str(polynomialize(Eq(exp(x/2) + exp(x), 6), x)) == 'Reduction(Eq(_t**2 + _t - 6, 0), _t = exp(x/2))'
+assert str(solve_inequality(x**2 - 4 < 0, x)) == '(-2 < x) & (x < 2)'
+assert str(solve_inequality(x < x*(2/x - 1), x)) == '(x < 1) & Ne(x, 0)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_transcendental_and_inequalities_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.transcendental` and
+    :mod:`sympy_extras.solvers.inequalities` does not load SymPy, nor do
+    the equations and inequalities in exponentials, logarithms, sines and
+    cosines, roots and absolute values whose reduced polynomial formulas
+    are rational or linear, and the relationals rational in the variable
+    (SymPy's ``solveset`` of the other polynomial relations, the Lambert
+    W candidates of its ``solve``, the reliable numerical values and
+    SymPy's ``_solve_inequality`` of the other relationals go through it
+    at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_TRANSCENDENTAL], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

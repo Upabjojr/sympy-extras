@@ -539,6 +539,35 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The transcendental equations and the inequalities in one variable are
+  native (**breaking**): `sympy_extras.solvers.transcendental`
+  (`solve_transcendental`, `polynomialize`, `Reduction`) takes and
+  returns the formulas, symbols and sets of the core and imports no
+  SymPy: the kernels, the functional relations, the clearing of the
+  denominators (the coefficients read from the expanded terms, SymPy's
+  domain `EX` not being ported), the inverse images and the polynomial
+  formulas with rational coefficients (the native CAD and radical forms)
+  are native, and so are the relations linear in the unknown with real
+  coefficients which SymPy's `solveset` solved when no solver is given.
+  SymPy's `solveset` of the other ones (`solveset_of_core`), the Lambert
+  W candidates of SymPy's `solve` (`solve_of_core`) and the reliable
+  numerical values of `sympy_extras._numeric` (`reliable_form_of_core`,
+  `reliable_value_of_core`) are called through the new face
+  `sympy_extras.solvers.transcendental_sympy`, which keeps the old API
+  on SymPy objects (`solve_transcendental`, `polynomialize`, `Reduction`
+  with SymPy attributes); the tests use it. The native
+  `sympy_extras.assumptions.solve` calls `solve_transcendental`
+  directly, and `solve_sympy.solve_transcendental_of_core` is removed.
+  `sympy_extras.solvers.inequalities.solve_inequality` imports no SymPy
+  either: a relational rational in the variable with rational
+  coefficients is solved by the CAD (SymPy's
+  `reduce_rational_inequalities`, the same relational), the others go
+  through `sympy_extras.solvers.inequalities_sympy.solve_inequality_of_core`
+  at run time. Fixed on the way: a linear relational whose denominators
+  vanish somewhere (`x < x*(2/x - 1)`) came back without SymPy's
+  condition on them (`x < 1` for `(x < 1) & Ne(x, 0)`). Every recorded
+  call gives the same result as before (see the commit message for the
+  comparison).
 - Kovacic's algorithm and the special values of the ODE solutions are
   native (**breaking**): `sympy_extras.solvers.kovacic`
   (`liouvillian_solution`, `dsolve_kovacic`, `normal_form`,
