@@ -45,7 +45,7 @@ from sympy.matrices.dense import Matrix, MutableDenseMatrix
 from sympy.matrices.matrixbase import MatrixBase
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import Truth, as_expr
+from sympy_extras._typing_sympy import Truth, as_expr
 from sympy_extras.assumptions.analysis_sympy import as_symbol_of
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr
 from sympy_extras.core.expr import Expr as CoreExpr

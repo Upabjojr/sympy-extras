@@ -567,6 +567,35 @@ remove public functions. Breaking changes are listed here when they happen.
   `eulersums.polygamma_integral_representation`, the residue method with
   `CRootOf` poles and the zeta function match of `Sum.doit` stay on
   SymPy.
+- The top-level helpers import no SymPy (**breaking**):
+  `sympy_extras._special_values` (`with_special_values`,
+  `special_points`, `point_condition`, `condition_point`,
+  `point_assumptions`, `undefined_at`, `equality_points`,
+  `defined_problem`) takes and returns objects of the core, with the
+  native factorisation, roots, transcendental solver and `satisfiable`
+  (SymPy's `roots` of a polynomial with irrational coefficients and its
+  `solveset` of a transcendental factor the native solver does not
+  reduce go through `roots_sympy`/`transcendental_sympy` at run time);
+  the old API on SymPy objects is the new face
+  `sympy_extras._special_values_sympy` (used by `integrals.definite`,
+  `integrals.indefinite` and `concrete.karr_sympy`; not to be confused
+  with `solvers._special_values_sympy`). The native
+  `solvers._special_values` calls it directly, and
+  `solvers._special_values_sympy.special_values_of_core` is removed.
+  The SymPy aliases and narrowing helpers of `sympy_extras._typing`
+  (`ExprLike`, `OrderSpec`, `QuantifierPrefix`, `QuantifierSpec`,
+  `as_expr`, `as_boolean`, `as_symbol`, `as_set`, `free_symbols`,
+  `sorted_symbols`) moved to the new `sympy_extras._typing_sympy`, which
+  re-exports the SymPy-free aliases (`Dup`, `Dmp`, `Monomial`, `Sign`,
+  `Truth`, `DomainElement`, `OrderKey`, `Weights`, `QuantifierKind`)
+  that stay in `_typing`; every SymPy-side importer switched.
+  `sympy_extras._timeout` already imported no SymPy at module level; its
+  preparation of SymPy's integration tables is now the public
+  `prepare_sympy()`, called by the limits without `native=True` and by
+  the callbacks of the `_special_values_sympy` face (which run under the
+  native limits of the native module). The native cases of the ODE
+  solutions no longer load SymPy (the symbolic check of a solution at a
+  point runs under a native limit).
 - The symmetry method for ODEs and the second order solvers are native
   (**breaking**): `sympy_extras.solvers.ode` (`ode_symmetries`,
   `canonical_coordinates`, `reduce_order`, `dsolve_lie`, `solve_ode`,

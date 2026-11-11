@@ -5,7 +5,7 @@ from sympy import Eq, Integral, Piecewise, Rational, S, exp, oo, pi, sqrt, symbo
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.integrals.regions import IntegralByRanges, integrate_by_ranges, _split_roots
 
 x, y, z, r, u = symbols('x y z r u')
@@ -473,7 +473,7 @@ def test_measure_zero_relations_are_dropped() -> None:
     # sympy-extras#63: a box cut along the curve of a Ne was decomposed
     # along it and ran out of memory
     from sympy import Ne
-    from sympy_extras._typing import as_boolean
+    from sympy_extras._typing_sympy import as_boolean
     from sympy_extras.integrals.regions import _full_measure
     box = (x > -1) & (x < 2) & (y > -1) & (y < 2)
     assert integrate_by_ranges(x**2 * y, box & Ne(2 * x**2 + x * y + y - 1, 0)) == Rational(9, 2)

@@ -11,7 +11,7 @@ p, q = u.diff(x), u.diff(y)
 
 
 def _check(equation: object, f: object = u) -> None:
-    from sympy_extras._typing import as_expr
+    from sympy_extras._typing_sympy import as_expr
     from sympy.core.function import AppliedUndef
     assert isinstance(f, AppliedUndef)
     solution = complete_integral(as_expr(equation) if not isinstance(equation, Eq) else equation, f)

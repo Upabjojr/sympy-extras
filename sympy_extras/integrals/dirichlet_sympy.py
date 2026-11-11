@@ -33,7 +33,7 @@ from sympy.core.sympify import sympify
 from sympy.functions.elementary.trigonometric import cos, sin
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._typing import ExprLike
+from sympy_extras._typing_sympy import ExprLike
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.functions.elementary.trigonometric import Sin

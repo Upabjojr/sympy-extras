@@ -34,7 +34,7 @@ from sympy.core.symbol import Dummy, Symbol
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Dummy as CoreDummy, Symbol as CoreSymbol

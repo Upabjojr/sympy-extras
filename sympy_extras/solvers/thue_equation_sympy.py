@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from sympy.core.expr import Expr
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.intervals_sympy import core_expr
 from sympy_extras.polys.cad.projection_sympy import sympy_errors
 

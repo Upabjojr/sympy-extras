@@ -6,7 +6,7 @@ import sympy
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras._typing import as_expr, as_symbol
+from sympy_extras._typing_sympy import as_expr, as_symbol
 from sympy_extras.core import Eq, Expr, Integer, Rational, Symbol
 from sympy_extras.functions import Binomial, harmonic, factorial, binomial, RisingFactorial, sin, sqrt
 from sympy_extras.polys.polytools import Poly, cancel

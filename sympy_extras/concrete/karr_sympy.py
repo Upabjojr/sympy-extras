@@ -8,8 +8,8 @@ instead:
   return SymPy expressions, converted at the boundary
   (:mod:`sympy_extras.interop`) around the native functions;
 - :func:`with_sum_special_values` gives a sum the cases of the isolated
-  values of its parameters (:mod:`sympy_extras._special_values`, on
-  SymPy), for these modules and, through
+  values of its parameters (:mod:`sympy_extras._special_values_sympy`,
+  the SymPy face of :mod:`sympy_extras._special_values`), for these modules and, through
   :func:`sum_special_values_of_core`, for the native ones
   (:mod:`~sympy_extras.concrete.karr`,
   :mod:`~sympy_extras.concrete.creative`,
@@ -46,12 +46,12 @@ from sympy.polys.rationaltools import together
 from sympy.polys.polytools import cancel, factor_list
 
 from sympy_extras._numeric_sympy import reliable_value
-from sympy_extras._special_values import Point, with_special_values
+from sympy_extras._special_values_sympy import Point, with_special_values
 from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 from sympy_extras.assumptions.ask_sympy import Assumptions
 
-from sympy_extras._typing import as_expr, as_symbol, free_symbols, sorted_symbols
+from sympy_extras._typing_sympy import as_expr, as_symbol, free_symbols, sorted_symbols
 
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
@@ -200,7 +200,7 @@ def with_sum_special_values(value: Expr, f: Expr, indices: Sequence[Symbol], lim
     the other parameters at sample values, through
     :func:`~sympy_extras._numeric.reliable_value`; a case which disagrees
     is left out. ``keep_unevaluated`` is that of
-    :func:`~sympy_extras._special_values.with_special_values`.
+    :func:`~sympy_extras._special_values_sympy.with_special_values`.
 
     >>> from sympy.abc import k, n, y
     >>> from sympy_extras.concrete.karr_sympy import with_sum_special_values

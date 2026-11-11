@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from sympy import symbols, exp, cos, sin, pi, besseli, besselj, sqrt, simplify, Rational
 
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.integrals.definite import verify_numerically
 from sympy_extras.integrals.periodic import mean_value_integral
 

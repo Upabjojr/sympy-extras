@@ -17,7 +17,7 @@ from typing import Sequence
 
 from sympy.polys.orderings import MonomialOrder, monomial_key
 
-from sympy_extras._typing import Monomial, OrderSpec
+from sympy_extras._typing_sympy import Monomial, OrderSpec
 
 __all__ = ['WeightOrder', 'BlockOrder', 'elimination_order', 'as_order']
 

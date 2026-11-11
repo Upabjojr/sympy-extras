@@ -10,7 +10,9 @@ not load SymPy: the tables of SymPy which a limit may leave half built
 are not prepared, for the code written on the core
 (:mod:`sympy_extras.concrete.creative`); the polynomial errors of SymPy
 are recognised only once SymPy's polynomials have been imported (none can
-be raised before).
+be raised before). The module itself imports no SymPy: the preparation of
+SymPy's tables (:func:`prepare_sympy`) imports it when a limit without
+``native`` is set.
 """
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ from contextlib import contextmanager
 from types import FrameType
 from typing import Callable, Iterator, Optional, TypeVar
 
-__all__ = ['TimeLimitExceeded', 'Deadline', 'time_limit', 'attempt', 'remaining_time']
+__all__ = ['TimeLimitExceeded', 'Deadline', 'time_limit', 'attempt', 'remaining_time', 'prepare_sympy']
 
 T = TypeVar('T')
 
@@ -172,8 +174,7 @@ def time_limit(seconds: Optional[float], native: bool = False) -> Iterator[Optio
     from sympy_extras.settings import settings
     seconds = seconds * settings.time_scale
     if not native:
-        _complete_sympy_tables()
-        _restore_manualintegrate()
+        prepare_sympy()
     _Bookkeeping.busy = True
     started = time.monotonic()
     # a timer set by other code, around the first limit: honoured
@@ -248,6 +249,19 @@ def remaining_time() -> Optional[float]:
 
 
 _tables_complete = False
+
+
+def prepare_sympy() -> None:
+    """Prepare the global tables of SymPy which an interrupted computation
+    may leave half built (:func:`_complete_sympy_tables`,
+    :func:`_restore_manualintegrate`); SymPy is imported here, not with
+    the module. :func:`time_limit` calls it when a limit is set without
+    ``native``; a native limit around a callback written on SymPy (the
+    problems at the points of :mod:`sympy_extras._special_values_sympy`)
+    calls it at the start of the callback, where no ``manualintegrate``
+    is on the stack either."""
+    _complete_sympy_tables()
+    _restore_manualintegrate()
 
 
 def _restore_manualintegrate() -> None:

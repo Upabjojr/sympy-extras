@@ -32,7 +32,7 @@ from sympy.functions.special.hyper import meijerg
 from sympy.logic.boolalg import Boolean
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions, sympy_boolean
 
 from . import slater as native

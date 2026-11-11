@@ -5,7 +5,7 @@ from __future__ import annotations
 from sympy import CRootOf, Gt, I, Integer, Rational, asin, atan, cos, exp, im, log, pi, sin, sqrt, symbols
 
 from sympy_extras._numeric_sympy import reliable_form, reliable_value
-from sympy_extras._typing import as_boolean, as_expr
+from sympy_extras._typing_sympy import as_boolean, as_expr
 
 x = symbols('x')
 

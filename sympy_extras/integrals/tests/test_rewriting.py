@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from sympy import symbols, exp, sqrt, sinh, cosh, tanh, asech, asinh, atanh, Abs, S, log, diff, simplify, Integral
 
-from sympy_extras._typing import as_boolean, as_expr
+from sympy_extras._typing_sympy import as_boolean, as_expr
 from sympy_extras.integrals.conditions_sympy import numerically_equal
 from sympy_extras.integrals.rewriting import rewritten_forms, power_substitutions, substitute_back
 

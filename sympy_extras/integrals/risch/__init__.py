@@ -74,7 +74,7 @@ from sympy.core.symbol import Symbol
 from sympy.integrals.integrals import Integral
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.settings import settings
 from .risch import NonElementaryIntegral, risch_integrate
 

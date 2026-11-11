@@ -5,7 +5,7 @@ from sympy import symbols, exp, sin, cos, log, atan, erf, sqrt, oo, gamma, pi, S
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.integrals.brackets_sympy import (taylor_coefficient, ramanujan_master_theorem, method_of_brackets,
                                              mellin_transform_series)
 from sympy_extras.integrals.marichev_sympy import mellin_integrate

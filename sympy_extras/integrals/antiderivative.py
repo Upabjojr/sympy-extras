@@ -88,7 +88,7 @@ from sympy.core.add import Add
 
 from sympy_extras._numeric_sympy import reliable_value
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
+from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.limits_sympy import limit

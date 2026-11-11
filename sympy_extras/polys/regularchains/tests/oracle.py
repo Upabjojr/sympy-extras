@@ -10,7 +10,7 @@ from sympy.core.mul import Mul
 from sympy.core.numbers import Integer
 from sympy.core.symbol import Symbol
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.polys.ideals_sympy import Ideal
 from sympy_extras.polys.regularchains_sympy import RegularChain
 

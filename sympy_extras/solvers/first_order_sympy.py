@@ -38,7 +38,7 @@ from sympy.core.basic import Basic
 from sympy.core.function import AppliedUndef
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.ask_sympy import _sympy_symbol
 from sympy_extras.assumptions.intervals_sympy import core_expr, sympy_expr
 from sympy_extras.core.basic import Basic as CoreBasic

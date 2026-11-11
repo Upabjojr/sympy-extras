@@ -27,7 +27,7 @@ from __future__ import annotations
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import Boolean
 
-from sympy_extras._typing import QuantifierPrefix, as_boolean
+from sympy_extras._typing_sympy import QuantifierPrefix, as_boolean
 from sympy_extras.assumptions.ask_sympy import core_boolean, core_prefix, sympy_boolean, sympy_prefix
 from sympy_extras.assumptions.intervals_sympy import core_symbol
 from sympy_extras.core.logic import Boolean as CoreBoolean

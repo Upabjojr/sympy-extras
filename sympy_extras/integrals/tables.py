@@ -62,7 +62,7 @@ from sympy.logic.boolalg import And, Boolean, true
 from sympy.simplify.powsimp import powsimp
 from sympy.simplify.trigsimp import trigsimp
 
-from sympy_extras._typing import ExprLike, as_boolean, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.assumptions.facts_sympy import element
 from .conditions_sympy import ConditionalValue, decide

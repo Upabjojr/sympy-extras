@@ -11,7 +11,7 @@ y = Function('y')(x)
 
 
 def _solves(L: LinearOperator, solution: object) -> bool:
-    from sympy_extras._typing import as_expr
+    from sympy_extras._typing_sympy import as_expr
     return simplify(L(as_expr(solution))) == 0
 
 

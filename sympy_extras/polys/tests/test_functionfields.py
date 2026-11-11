@@ -12,7 +12,7 @@ from sympy.polys.domains import QQ
 from sympy.polys.domains.algebraicfield import AlgebraicField
 from sympy.polys.matrices import DomainMatrix
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.polys.functionfields_sympy import FunctionField, Element, integral_basis
 from sympy_extras.polys.puiseux_sympy import puiseux_expansions
 

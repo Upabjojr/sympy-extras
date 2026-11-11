@@ -9,7 +9,7 @@ from sympy.testing.pytest import raises
 from sympy_extras.solvers.abel_sympy import (CoefficientsLike, abel_coefficients, abel_invariants, abel_equivalence, particular_solution,
     air_solution, abel_by_invariants, constant_invariant, REPRESENTATIVES, _transformed)
 from sympy_extras.solvers.first_order_sympy import abel_ode
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 
 x, t = symbols('x t')
 y = Function('y')(x)

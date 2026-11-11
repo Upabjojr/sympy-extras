@@ -1029,9 +1029,8 @@ def test_native_kovacic_and_ode_special_values_do_not_load_sympy() -> None:
     do the normal form, the decision that an equation has no Liouvillian
     solution (the poles, the sets of the cases and their linear systems),
     the order of an equation, the Jacobians of the solutions and an
-    equation without parameters (SymPy's ``integrate``, its Riccati
-    solver and the candidate points of the parameters go through SymPy
-    at run time)."""
+    equation without parameters (SymPy's ``integrate`` and its Riccati
+    solver go through SymPy at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_KOVACIC], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -1502,6 +1501,43 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_HELPERS = r'''
+import sys
+import sympy_extras._typing, sympy_extras._timeout, sympy_extras._special_values
+assert 'sympy' not in sys.modules
+from sympy_extras._timeout import attempt, time_limit, remaining_time
+from sympy_extras._special_values import (special_points, with_special_values, condition_point, point_assumptions,
+    undefined_at, equality_points, defined_problem, point_condition)
+from sympy_extras.core import Eq, Function, Integer, Rational, symbols, sqrt
+from sympy_extras.functions import exp, log, sin, zeta, DiracDelta
+from sympy_extras.solvers._special_values import general_solution_cases
+a, b, k, y, x, z, C1, C2 = symbols('a b k y x z C1 C2')
+assert special_points((y**2 - 1)/log(y), [y]) == [{y: 0}, {y: 1}]
+assert special_points(1/(a**2 - b**2), [a, b]) == [{a: -b}, {a: b}]
+assert special_points(1/(a**2 - 2), [a]) == [{a: -sqrt(2)}, {a: sqrt(2)}]
+assert special_points((exp(k) - 1)/k + 1/(exp(a) - 1) + zeta(b), [a, b, k]) == [{a: 0}, {b: 1}, {k: 0}]
+assert str(with_special_values((y**2 - 1)/log(y), [y], None, lambda p, at: Integer(2))) == \
+    'Piecewise((2, Eq(y, 1)), ((y**2 - 1)/log(y), True))'
+assert str(with_special_values(exp(k)/k, [k], None, lambda p, at: Integer(1), sympy_style=True)) == \
+    'Piecewise((exp(k)/k, Ne(k, 0)), (1, True))'
+assert with_special_values(1/a, [a], a > 0, lambda p, at: Integer(1)) == 1/a
+assert condition_point(Eq(a, b) & Eq(b, 0)) == {a: 0, b: 0} and point_assumptions({a: Integer(0)}, a > 0) is None
+assert undefined_at(sin(a)/a, {a: Integer(0)}) and not defined_problem(DiracDelta(a*z).subs(a, 0), [z])
+assert equality_points(with_special_values(1/(a - 1), [a], None, lambda p, at: Integer(0)), [a]) == [{a: 1}]
+f = Function('f')(x)
+equation = f.diff(x, 2) - (a + b)*f.diff(x) + a*b*f
+assert str(general_solution_cases(C1*exp(a*x) + C2*exp(b*x), equation, f, lambda e: (C1 + C2*x)*exp(b*x))) == \
+    'Piecewise(((C1 + C2*x)*exp(b*x), Eq(a, b)), (C1*exp(a*x) + C2*exp(b*x), True))'
+def slow() -> int:
+    while True:
+        pass
+assert attempt(slow, 0.1, native=True) is None and remaining_time() is None
+with time_limit(10, native=True):
+    assert 0 < (remaining_time() or 0) <= 10
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 def test_native_convergence_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.concrete.convergence` does not load
     SymPy, nor do the comparison with a rational majorant, the term test
@@ -1522,5 +1558,19 @@ def test_native_slater_and_marichev_do_not_load_sympy() -> None:
     and the simplification of their values."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_SLATER_MARICHEV], capture_output=True, text=True,
                          timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_helpers_do_not_load_sympy() -> None:
+    """Importing the top-level helpers :mod:`sympy_extras._typing`,
+    :mod:`sympy_extras._timeout` and :mod:`sympy_extras._special_values`
+    does not load SymPy, nor do the candidate points of the parameters
+    (zeros of denominators, logarithms and ``zeta``, linear, quadratic and
+    transcendental factors), the cases with their bookkeeping, the cases
+    of an ODE solution at a repeated characteristic root
+    (:mod:`sympy_extras.solvers._special_values`, which no longer goes
+    through SymPy for them) and native time limits."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_HELPERS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

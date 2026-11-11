@@ -1,5 +1,6 @@
 """Tests of the isolated special values of the parameters of a closed form
-(:mod:`sympy_extras._special_values`)."""
+(:mod:`sympy_extras._special_values_sympy`, the SymPy face of
+:mod:`sympy_extras._special_values`)."""
 from __future__ import annotations
 
 import time
@@ -8,11 +9,11 @@ from typing import Optional
 from sympy import DiracDelta, Eq, Integer, Integral, Piecewise, Rational, exp, log, nan, sin, sqrt, symbols, zeta
 from sympy.core.expr import Expr
 
-from sympy_extras._special_values import (Point, condition_point, defined_problem, equality_points,
-                                          point_assumptions, special_points, undefined_at, with_special_values)
+from sympy_extras._special_values_sympy import (Point, condition_point, defined_problem, equality_points,
+                                                point_assumptions, special_points, undefined_at, with_special_values)
 from sympy_extras._timeout import time_limit
 from sympy_extras.settings import configure, settings
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 
 a, b, c, k, y, x = symbols('a b c k y x')

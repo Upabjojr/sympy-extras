@@ -6,7 +6,7 @@ from sympy.testing.pytest import raises
 
 from sympy_extras.solvers.kovacic_sympy import liouvillian_solution, dsolve_kovacic, normal_form, KovacicSolution
 from sympy_extras.settings import configure
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 
 y = Function('y')(x)
 

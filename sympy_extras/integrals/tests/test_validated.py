@@ -6,7 +6,7 @@ import random
 
 from sympy import symbols, exp, sqrt, pi, erf, cos, sin, oo, Rational, Integer, S, Float, log
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.integrals.validated import validated_integral, enclosure
 
 x = symbols('x')

@@ -111,7 +111,7 @@ from sympy.simplify.simplify import simplify
 from sympy.solvers.solvers import solve
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
+from sympy_extras._typing_sympy import as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.settings import settings
 from .conditions_sympy import numerically_equal
 from .radicals import quadratic_radical_antiderivative

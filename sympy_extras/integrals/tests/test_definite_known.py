@@ -7,7 +7,7 @@ from __future__ import annotations
 from sympy import (symbols, exp, sin, cos, log, sqrt, besselj, besselk, oo, gamma, pi, S, Rational, atan,
                    erf, erfc, simplify, EulerGamma)
 
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.integrals.definite import definite_integral, verify_numerically
 from sympy_extras.integrals.conditions_sympy import numerically_equal

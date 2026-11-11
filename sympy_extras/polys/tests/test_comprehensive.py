@@ -7,7 +7,7 @@ from sympy.abc import a, b, c, x, y
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy.testing.pytest import raises
 
 from sympy_extras.assumptions.resolve_sympy import resolve

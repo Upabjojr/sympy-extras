@@ -4,7 +4,7 @@ import sympy
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras._typing import as_expr, as_symbol
+from sympy_extras._typing_sympy import as_expr, as_symbol
 from sympy_extras.core import Basic, Eq, Expr, Function, Integer, Symbol, add, oo
 from sympy_extras.core.evalf import numeric_value
 from sympy_extras.core.function import AppliedUndef

@@ -38,7 +38,7 @@ from sympy.core.sympify import sympify
 from sympy.logic.boolalg import Boolean, true
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._typing import ExprLike, as_boolean, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions, core_boolean, sympy_boolean
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.numbers import Rational as CoreRational

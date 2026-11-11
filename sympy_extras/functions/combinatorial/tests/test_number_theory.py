@@ -9,7 +9,7 @@ import pytest
 import sympy
 import sympy.functions as sympy_functions
 
-from sympy_extras._typing import as_expr as sympy_expr
+from sympy_extras._typing_sympy import as_expr as sympy_expr
 from sympy_extras.core import Integer, Rational, Symbol, oo
 from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr

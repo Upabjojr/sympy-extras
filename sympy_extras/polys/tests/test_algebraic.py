@@ -8,7 +8,7 @@ from fractions import Fraction
 from sympy import CRootOf, Poly, Rational, expand, factor_list, sqrt, symbols
 from sympy.polys.domains import QQ as SQQ
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.polys.densearith import dup_mul, dup_pow
 from sympy_extras.polys.densetools import dup_monic
 from sympy_extras.core.expr import as_expr as core_expr

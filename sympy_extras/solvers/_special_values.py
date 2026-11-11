@@ -47,12 +47,10 @@ found or not checked within the budget of
 
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.solvers._special_values_sympy` is its face on SymPy
-objects. Two steps are not ported and go through SymPy at run time
-(the functions ending in ``_of_core``): the candidate points and their
-bookkeeping (:func:`sympy_extras._special_values.with_special_values`,
-through
-:func:`~sympy_extras.solvers._special_values_sympy.special_values_of_core`)
-and SymPy's ``simplify_logic`` of the joined conditions
+objects. The candidate points and their bookkeeping are those of the
+native :func:`sympy_extras._special_values.with_special_values`; one step
+is not ported and goes through SymPy at run time: SymPy's
+``simplify_logic`` of the joined conditions
 (:func:`~sympy_extras.polys.virtual_substitution_sympy.simplify_logic_of_core`).
 :func:`ode_order`, the determinants of the Jacobians and the
 simplification SymPy applies to them (:func:`dotprodsimp`) are ported
@@ -101,7 +99,9 @@ from sympy_extras.polys.polytools import cancel
 from sympy_extras.polys.rationaltools import together
 from sympy_extras.simplify.radsimp import fraction
 from sympy_extras.simplify.simplify import simplify
+from sympy_extras._special_values import with_special_values
 from sympy_extras._timeout import attempt
+from sympy_extras.assumptions.ask import Assumptions
 
 __all__ = ['general_solution_cases', 'basis_cases', 'solution_jacobian', 'explicit_solution', 'solution_cases',
            'as_zero', 'ode_order', 'determinant', 'dotprodsimp', 'defined_equation', 'Point', 'SolveAt', 'BasisAt']
@@ -457,7 +457,7 @@ def _solves(equation: Expr, f: AppliedUndef, solution: Expr) -> bool:
     residual = substituted.doit()
     if residual.has(Derivative):
         return False
-    simplified = attempt(lambda: simplify(residual), _CHECK_SECONDS)
+    simplified = attempt(lambda: simplify(residual), _CHECK_SECONDS, native=True)
     if simplified is not None and simplified == 0:
         return True
     return _zero_at_samples(residual, x) is True
@@ -519,7 +519,6 @@ def general_solution_cases(general: Expr, equation: Expr, f: AppliedUndef, solve
     parameters = _sorted(_symbols(equation) - {x})
     if not parameters:
         return general
-    from ._special_values_sympy import special_values_of_core
     constants = _sorted(_symbols(general) - _symbols(equation))
     order = ode_order(equation, f)
 
@@ -540,7 +539,10 @@ def general_solution_cases(general: Expr, equation: Expr, f: AppliedUndef, solve
             return None
         return value
 
-    return special_values_of_core(general, parameters, compute, defined, _degenerate_parts(constants, x))
+    def at_point(point: Point, assumptions: Assumptions) -> Optional[Expr]:
+        return compute(point)
+
+    return with_special_values(general, parameters, None, at_point, defined, degenerate=_degenerate_parts(constants, x))
 
 
 def basis_cases(basis: list[Expr], equation: Expr, f: AppliedUndef, solve_at: BasisAt) -> list[Expr]:

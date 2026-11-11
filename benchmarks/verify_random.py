@@ -31,7 +31,7 @@ from sympy import Basic, Derivative, Eq, Expr, Symbol, Rational, Integral, nsolv
 from sympy.solvers.ode import checkodesol
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.solvers.ode_sympy import solve_ode
 
 from kamke_data import ODEEntry, load, x, y

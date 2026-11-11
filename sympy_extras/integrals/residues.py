@@ -116,7 +116,7 @@ from sympy.simplify.simplify import simplify
 
 from sympy_extras._numeric_sympy import reliable_value
 from sympy_extras._timeout import Deadline, TimeLimitExceeded, attempt, time_limit
-from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
+from sympy_extras._typing_sympy import as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import Facts, element
 from sympy_extras.assumptions.sat_sympy import find_instance

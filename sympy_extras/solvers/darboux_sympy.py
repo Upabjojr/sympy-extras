@@ -35,7 +35,7 @@ from sympy.core.relational import Eq
 from sympy.core.symbol import Symbol
 from sympy.functions.elementary.exponential import exp
 
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import _core_symbol, _sympy_symbol
 from sympy_extras.assumptions.intervals_sympy import core_expr, sympy_expr
 from sympy_extras.core.basic import Basic as CoreBasic

@@ -46,7 +46,7 @@ from sympy.sets.sets import EmptySet, FiniteSet, Intersection, Interval, Set, Un
 from sympy.solvers.solveset import solveset
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import Sign, Truth, as_set
+from sympy_extras._typing_sympy import Sign, Truth, as_set
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.relational import Relational as CoreRelational
 from sympy_extras.core.symbol import Symbol as CoreSymbol

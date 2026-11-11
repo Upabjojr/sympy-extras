@@ -7,7 +7,7 @@ from sympy import Ei, Matrix, RootSum, exp_polar, Symbol, cancel, cos, exp, expa
 from sympy.matrices.dense import MutableDenseMatrix
 from sympy.testing.pytest import raises
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras._testing import untyped
 from sympy_extras.solvers.factorization_sympy import factor_operator
 from sympy_extras.solvers.linear_ode_sympy import LinearOperator, rational_solutions

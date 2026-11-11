@@ -45,7 +45,7 @@ from sympy.polys.domains import QQ
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import ComplexRootOf
 
-from sympy_extras._typing import DomainElement, ExprLike, Sign, as_expr, free_symbols
+from sympy_extras._typing_sympy import DomainElement, ExprLike, Sign, as_expr, free_symbols
 from sympy_extras.polys.numberfields.qqbar import Algebraic
 from sympy_extras.polys.rootisolation import dup_count_real_roots
 

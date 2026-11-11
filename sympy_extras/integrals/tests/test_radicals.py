@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from sympy import symbols, sqrt, Rational, asin, asinh, log, simplify, diff, S, N, Integral
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.integrals.radicals import quadratic_radical_antiderivative
 
 x = symbols('x')
@@ -40,7 +40,7 @@ def test_products_of_radicals_of_linear_factors() -> None:
     # split form fell through to SymPy's complex Piecewise, and the three
     # intersecting cylinders stayed unevaluated on it)
     from sympy_extras.integrals.conditions_sympy import numerically_equal
-    from sympy_extras._typing import as_boolean
+    from sympy_extras._typing_sympy import as_boolean
     y = symbols('y')
     F = quadratic_radical_antiderivative(2 * sqrt(1 - y) * sqrt(y + 1), y)
     assert F == y * sqrt(1 - y**2) + asin(y)

@@ -30,7 +30,7 @@ from sympy.core.symbol import Dummy, Symbol
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import CRootOf
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.ask_sympy import _core_symbol
 from sympy_extras.assumptions.intervals_sympy import core_expr, sympy_expr
 from sympy_extras.core.basic import Basic as CoreBasic

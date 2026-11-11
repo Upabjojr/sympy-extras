@@ -23,7 +23,7 @@ merges them first.
 """
 from sympy import Expr, cancel, cos, exp, oo, pi, sqrt, symbols
 
-from sympy_extras._typing import ExprLike
+from sympy_extras._typing_sympy import ExprLike
 from sympy_extras.integrals.conditions_sympy import ConditionalValue
 from sympy_extras.integrals.reduction import reduction_integral, reduction_telescoper
 from sympy_extras.integrals.telescoping import almkvist_zeilberger

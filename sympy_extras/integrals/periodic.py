@@ -70,7 +70,7 @@ from sympy.functions.elementary.hyperbolic import HyperbolicFunction
 from sympy.simplify.simplify import simplify
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.settings import settings
 from .brackets_sympy import SeriesCoefficient, taylor_coefficient

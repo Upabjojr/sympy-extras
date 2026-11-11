@@ -44,7 +44,7 @@ from sympy.functions.elementary.piecewise import Piecewise
 from sympy.logic.boolalg import And, Boolean, Or, true
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_symbol
+from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr, as_symbol
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions, core_boolean, sympy_boolean
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.core.logic import Boolean as CoreBoolean
