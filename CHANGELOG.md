@@ -592,6 +592,29 @@ remove public functions. Breaking changes are listed here when they happen.
   and `sympy_extras.integrals.tables_sympy` (`TableEntry.from_core`,
   `to_core`, the table converted), which `indefinite`, `definite` and
   the tests use.
+- The asymptotic expansions of integrals are native (**breaking**):
+  `sympy_extras.integrals.asymptotic` (`asymptotic_integral`,
+  `watson_lemma`, `laplace_method`, `stationary_phase`,
+  `steepest_descent`, `uniform_expansion`, `exponential_part`,
+  `oscillatory_part`) takes and returns objects of the core and imports
+  no SymPy: the expansions are the core's series and `Order`, the
+  stationary and saddle points the native `solve`, the signs the native
+  `ask`, the limits at infinite ends the native `limit`, and the
+  quadratures which confirm the complex saddle points evaluate the
+  integrand with mpmath through the core (no `lambdify`); the polynomial
+  coefficients in the parameter are read from the expansion (the typed
+  `Poly` has no domain `EX`). The SymPy API is the new face
+  `sympy_extras.integrals.asymptotic_sympy`, with the same results; it
+  leaves a sum unevaluated when SymPy's `Order` cannot compare its terms
+  with the order term, as before. The stationary points of
+  transcendental phases and the complex saddle points still reach
+  SymPy's `solveset` at run time, through the native `solve`. Import the
+  face to keep the old API.
+- A sum of imaginary terms is imaginary (and so nonzero) in the core only
+  when the sum of the terms times `I` is known not to vanish, as SymPy's
+  `Add._eval_is_imaginary` says: `I - 4*w**3` with `w = 2**(1/3)*(I -
+  sqrt(3))/4`, which is zero, was imaginary, and the native `solve`
+  dropped two of the three roots of `4*x**3 - I`.
 - The convergence tests of series and products are native
   (**breaking**): `sympy_extras.concrete.convergence` (`sum_convergence`,
   `product_convergence`, `is_convergent`) takes and returns objects of

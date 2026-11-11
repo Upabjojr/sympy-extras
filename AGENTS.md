@@ -283,6 +283,10 @@ sympy_extras/
         recognize.py         PSLQ recognition of constants and integrals (an oracle, off by default) (native: the
                              quadrature evaluates by the numerical rules of the core's nodes)
         recognize_sympy.py   the SymPy face of recognize, used by definite
+        asymptotic.py        asymptotic expansions for a large parameter: Watson's lemma, Laplace's method, stationary
+                             phase, steepest descent, uniform Airy/erfc expansions (native: the native series, Order,
+                             solve, ask and limits; quadratures by mpmath)
+        asymptotic_sympy.py  the SymPy face of asymptotic
         risch/               the transcendental Risch algorithm ported from Aaron Meurer's SymPy pull requests
         trager.py            Trager's algorithm for integrands rational in x and one square root of a polynomial
         curves.py            Trager's algorithm on an arbitrary curve: several or nested radicals through a primitive element, the change of variable x = N + 1/z, Hermite reduction in a normal integral basis, residues by Puiseux expansions, the logarithmic part by linear algebra

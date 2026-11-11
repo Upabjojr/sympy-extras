@@ -1604,6 +1604,29 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_ASYMPTOTIC = r'''
+import sys
+from sympy_extras.core import oo, symbols
+from sympy_extras.functions import cos, exp, log, sin, sqrt
+from sympy_extras.integrals.asymptotic import (asymptotic_integral, exponential_part, laplace_method,
+    oscillatory_part, stationary_phase, watson_lemma)
+x = symbols('x')
+t = symbols('t', positive=True)
+assert str(exponential_part(x**t*exp(-t*x)/(1 + x), x, t)) == '(1/(x + 1), -x + log(x))'
+assert str(oscillatory_part(cos(t*sin(x)), x, t)) == "(1, sin(x), 'cos')"
+assert str(asymptotic_integral(exp(-t*x)/(1 + x), x, 0, oo, t)) == '2/t**3 - 1/t**2 + 1/t + O(t**(-4), (t, oo))'
+assert str(asymptotic_integral(exp(-t*x)*sqrt(x), x, 0, oo, t)) == 'sqrt(pi)/(2*t**(3/2))'
+assert str(watson_lemma(sin(x), x, t, 2)) == '-1/t**4 + t**(-2) + O(t**(-6), (t, oo))'
+assert str(laplace_method(1, -x**4, x, -oo, oo, t, 1)) == 'gamma(1/4)/(2*t**(1/4)) + O(t**(-3/4), (t, oo))'
+assert str(laplace_method(1, -x - x**2, x, 0, 1, t, 2)) == '(t - 2)/t**2 + O(t**(-3), (t, oo))'
+assert str(laplace_method(1, -(x**2 - 1)**2, x, -oo, oo, t, 1)) == 'sqrt(pi)/sqrt(t) + O(t**(-3/2), (t, oo))'
+assert str(asymptotic_integral(exp(t*(log(x) - x)), x, 0, oo, t, order=2)) == \
+    'sqrt(2)*sqrt(pi)*(t + 1/12)*exp(-t)/t**(3/2) + O(exp(-t)/t**(5/2), (t, oo))'
+assert str(stationary_phase(1, x**2, x, -1, 1, t)) == 'sqrt(pi)*exp(I*pi/4)/sqrt(t) + O(t**(-3/2), (t, oo))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 _NATIVE_HEURISCH_TABLES = r'''
 import sys
 from sympy_extras.core import Symbol, oo, pi, symbols
@@ -1649,5 +1672,18 @@ def test_native_heurisch_and_tables_do_not_load_sympy() -> None:
     the lookups of the table."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_HEURISCH_TABLES], capture_output=True, text=True,
                          timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_asymptotic_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.asymptotic` does not load
+    SymPy, nor do the shapes of the integrands, Watson's lemma (the
+    native series), Laplace's method at interior and endpoint maxima with
+    polynomial and logarithmic exponents (the native CAD for the
+    stationary points, the native limits at infinity) and the stationary
+    phase; the stationary points of transcendental phases and the complex
+    saddle points go through SymPy's ``solveset`` at run time."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ASYMPTOTIC], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

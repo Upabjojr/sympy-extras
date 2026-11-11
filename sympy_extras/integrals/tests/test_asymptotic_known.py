@@ -7,7 +7,7 @@ import mpmath
 
 from sympy import symbols, exp, oo, log, cos, sin, pi, cosh, lambdify, I
 
-from sympy_extras.integrals.asymptotic import asymptotic_integral
+from sympy_extras.integrals.asymptotic_sympy import asymptotic_integral
 
 x = symbols('x')
 t = symbols('t', positive=True)
@@ -103,7 +103,7 @@ def test_saddle_points_against_quadrature() -> None:
 
 
 def test_uniform_expansions_against_quadrature() -> None:
-    from sympy_extras.integrals.asymptotic import uniform_expansion
+    from sympy_extras.integrals.asymptotic_sympy import uniform_expansion
     a = symbols('a', positive=True)
     # the Airy form with an amplitude: relative error like 1/t at fixed a
     value = uniform_expansion(exp(-x**2), x**3/3 - a*x, x, -oo, oo, t)
