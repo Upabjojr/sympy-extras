@@ -26,7 +26,7 @@ summed in closed form. The steps are
    ... ([GR]_ 1.44), and their rescalings;
 2. the moments `\\int_a^b x^{mj + r} h(x)\\, dx` of the rest `h` are computed
    once for a symbolic nonnegative integer `j` by
-   :func:`~sympy_extras.integrals.definite_integral` (the Mellin table gives
+   :func:`~sympy_extras.integrals.definite.definite_integral` (the Mellin table gives
    them for `e^{-x}`, `(1 - x)^b`, `\\log^n x`, `1/(1 + x)`, ...);
 3. the series `\\sum_j c(j) M(j)` is summed by :func:`sympy.summation`, by
    the summation algorithms of :mod:`sympy_extras.concrete`
@@ -134,7 +134,7 @@ from sympy_extras.concrete.eulersums import polygamma_series
 from sympy_extras.concrete.zeilberger_sympy import zeilberger_sum
 from sympy_extras.settings import settings
 from .brackets import SeriesCoefficient, taylor_coefficient
-from .conditions import ConditionalValue
+from .conditions_sympy import ConditionalValue
 from .marichev import tidy
 from .mellin import monomial
 
@@ -1122,7 +1122,7 @@ def fourier_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, assumptio
     ``cos(n*x)``, ``sin(n*x)`` with ``n`` a positive integer) by
     orthogonality, and an expanded factor times any rest through the
     moments ``Integral(cos(omega(k)*x)*rest, (x, a, b))`` computed by
-    :func:`~sympy_extras.integrals.definite_integral` for the symbolic
+    :func:`~sympy_extras.integrals.definite.definite_integral` for the symbolic
     index; ``None`` when no factor has a series on ``(a, b)`` or no step
     closes. The tabulated and parametric series are tried first, then
     the series with computed coefficients of the factors outside the

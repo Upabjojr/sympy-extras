@@ -16,7 +16,8 @@ from sympy_extras._testing import untyped
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.ask_sympy import Assumptions
-from sympy_extras.integrals import definite_integral, conditional_integral, verify_numerically, ConditionalValue
+from sympy_extras.integrals.definite import definite_integral, conditional_integral, verify_numerically
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
 from sympy_extras.settings import configure
 
 x, k, t = symbols('x k t')
@@ -178,7 +179,7 @@ def test_leaked_constants_are_rejected() -> None:
     # inner integral of the ball volume, the constant of integration of
     # dsolve unresolved; a value with symbols absent from the input is
     # not an answer and the next method is tried
-    from sympy_extras.integrals import integrate_by_ranges
+    from sympy_extras.integrals.regions import integrate_by_ranges
     y, z = symbols('y z')
     assert integrate_by_ranges(1, x**2 + y**2 + z**2 < 1) == 4 * pi / 3
 
@@ -191,7 +192,7 @@ def test_logarithms_of_negative_arguments_are_made_real() -> None:
     from sympy_extras.integrals.marichev import real_logarithms
     assert real_logarithms(I * c**2 * (log(c**2) - log(-c**2)), c < 0) == pi * c**2
     assert _same(definite_integral(2 * sqrt(c**2 - x**2), (x, c, -c), c < 0), pi * c**2)
-    from sympy_extras.integrals import integrate_by_ranges
+    from sympy_extras.integrals.regions import integrate_by_ranges
     y = symbols('y')
     assert _same(integrate_by_ranges(1, x**2 + y**2 < c**2, [x, y], c < 0), pi * c**2)
 
@@ -282,7 +283,7 @@ def test_argument_conditions_of_complex_scales_are_decided() -> None:
     # unless w is imaginary, |arg w| < pi/2 when Re w > 0; a disjunction
     # of settled alternatives is settled
     from sympy import arg, And, Or, true
-    from sympy_extras.integrals.conditions import decide, real_form
+    from sympy_extras.integrals.conditions_sympy import decide, real_form
     w = a + I * b
     assert real_form(Abs(arg(w**2)) < 2 * pi, ()) is true
     assert real_form(Abs(arg(w**2)) <= pi, ()) is true
@@ -335,7 +336,7 @@ def test_sampling_under_irrational_bounds() -> None:
     # takes rational coefficients), verify_numerically reported nothing
     # and the driver rejected a correct value
     import random
-    from sympy_extras.integrals.conditions import sample_values, _rational_relation
+    from sympy_extras.integrals.conditions_sympy import sample_values, _rational_relation
     values = sample_values([x], [x > -sqrt(2) / 2, x < 0], random.Random(0))
     assert values is not None and -sqrt(2) / 2 < values[x] < 0
     from sympy import Gt
@@ -404,7 +405,7 @@ def test_periodic_laplace_rule_with_a_symbolic_frequency() -> None:
     # the period 2 pi/Abs(k) of Abs(sin(k t)) under k > 0, and the condition
     # Abs(arg(s/k + I)) < pi/2 of the pieces decided by the real part s/k
     from sympy import coth
-    from sympy_extras.integrals.conditions import decide
+    from sympy_extras.integrals.conditions_sympy import decide
     assert decide((Abs(arg(I + s / k)) < pi / 2) & (Abs(arg(-I + s / k)) < pi / 2), [s > 0, k > 0]) is S.true
     value = definite_integral(exp(-s * t) * Abs(sin(k * t)), (t, 0, oo), k > 0)
     assert _same(value, k * coth(pi * s / (2 * k)) / (k**2 + s**2))
@@ -414,7 +415,7 @@ def test_mellin_conditions_on_combined_exponentials_and_two_scales() -> None:
     # the expanded form kept exp(-(a + s)*t) whole (Mathematica:
     # s/(a + s)**(3/2) under a + s > 0, no condition on a)
     from sympy import acosh, besselk
-    from sympy_extras.integrals.conditions import decide
+    from sympy_extras.integrals.conditions_sympy import decide
     value = definite_integral((1 - 2 * k * t) * exp(-k * t) * exp(-s * t) / (sqrt(pi) * sqrt(t)), (t, 0, oo), k + s > 0)
     assert _same(value, s / (k + s)**Rational(3, 2))
     # an alternative which is a conjunction is settled (the conditions of
@@ -693,7 +694,7 @@ def test_a_hidden_zero_next_to_a_branch_cut() -> None:
     # digits the wrong value evaluated to the right one and passed the
     # numerical check (then simplification showed what it was), in the runs
     # in which the time limits let SymPy's answer through
-    from sympy_extras._numeric import reliable_form
+    from sympy_extras._numeric_sympy import reliable_form
     f = x / 2 + sqrt(x**2 + 8) / 2 - sqrt(x**2 + 4 * x + 2)
     lower, upper = -2 + sqrt(2), Rational(2, 3) - sqrt(10) / 3
     z = -6 + (-2 + sqrt(2))**2 + 4 * sqrt(2)
@@ -748,7 +749,7 @@ def _cases_agree_with_quadrature(f: ExprLike, limits: tuple[Symbol, ExprLike, Ex
     mpmath's quadrature of the integrand on the numeric range, and at the
     first ``integrals`` samples with ``definite_integral`` on that
     range."""
-    from sympy_extras._numeric import reliable_value
+    from sympy_extras._numeric_sympy import reliable_value
     from sympy_extras.integrals.definite import _quadrature
     variable, lower, upper = limits[0], as_expr(limits[1]), as_expr(limits[2])
     f_ = as_expr(f)
@@ -939,7 +940,7 @@ def test_exponentials_of_a_parameter_base_on_every_branch() -> None:
     # numerical check sampled y > 0 only; the principal value at y = -2
     # is 0.2009 - 0.9106*I, not 1.386 + 6.283*I, and 0 at y = -1, not 2*pi*I
     import mpmath
-    from sympy_extras._numeric import reliable_value
+    from sympy_extras._numeric_sympy import reliable_value
     y = symbols('y')
     for f, lower, upper in ((y**x, 0, 2), (y**x, 0, 1), (y**x, 1, 3), (3 * y**x, 0, 2),
                             (y**(2 * x), 0, 2), (x * y**x, 0, 2), (y**x, -1, 2)):
@@ -1028,7 +1029,7 @@ def test_halves_of_the_real_line_on_disjoint_regions() -> None:
 
 def test_nonelementary_binomial_differentials_before_the_range_is_mapped() -> None:
     from sympy import hyper
-    from sympy_extras._numeric import reliable_value
+    from sympy_extras._numeric_sympy import reliable_value
     t = symbols('t')
     # the bug: the range was split at the factors of the radicands and
     # mapped to (0, 1) before the antiderivative route, which then saw

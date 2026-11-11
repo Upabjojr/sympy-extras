@@ -6,8 +6,8 @@ from sympy.core.expr import Expr
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras.integrals import definite_integral
-from sympy_extras.integrals.conditions import ConditionalValue
+from sympy_extras.integrals.definite import definite_integral
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
 from sympy_extras.integrals.definite import verify_numerically
 from sympy_extras.integrals.dirichlet import dirichlet_integral, trigonometric_sum
 

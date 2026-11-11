@@ -17,7 +17,7 @@ on `F` [Doetsch]_, [AS]_ (table 29.2):
   `\\mathcal{L}[f](s) = \\int_0^T f e^{-st} dt / (1 - e^{-sT})`.
 
 Each rule reduces the transform of the given integrand to transforms of
-simpler ones, which :func:`~sympy_extras.integrals.definite_integral`
+simpler ones, which :func:`~sympy_extras.integrals.definite.definite_integral`
 computes (the Mellin table, the antiderivative for the outer integral of
 the division rule, whose lower endpoint is the symbol `s`). The pairs of
 [AS]_ table 29.3 and of [Erdelyi]_ are the test material; Maxima's
@@ -75,7 +75,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue
+from .conditions_sympy import ConditionalValue
 from .mellin import monomial
 from .marichev import tidy
 
@@ -100,7 +100,7 @@ def _renamed(assumptions: Assumptions, s: Expr, u: Symbol) -> list[Boolean]:
 
 
 def transform(f: Expr, t: Symbol, u: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
-    """``Integral(f*exp(-u*t), (t, 0, oo))`` by :func:`~sympy_extras.integrals.definite_integral`
+    """``Integral(f*exp(-u*t), (t, 0, oo))`` by :func:`~sympy_extras.integrals.definite.definite_integral`
     (which does not use the rules of this module again), ``None`` when
     it is not found or comes with an undecided condition."""
     from .definite import definite_integral

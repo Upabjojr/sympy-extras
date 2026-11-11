@@ -88,12 +88,12 @@ from sympy.logic.boolalg import And, Boolean, true
 from sympy.simplify.hyperexpand import hyperexpand
 from sympy.simplify.simplify import simplify
 
-from sympy_extras._numeric import reliable_value
+from sympy_extras._numeric_sympy import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue, numerically_equal, sample_values
+from .conditions_sympy import ConditionalValue, numerically_equal, sample_values
 from .mellin import GammaFactor, GammaQuotient
 
 __all__ = ['MeijerG', 'mellin_barnes', 'slater_expansion', 'expand_meijerg']

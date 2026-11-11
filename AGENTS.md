@@ -150,6 +150,9 @@ module into SymPy later.
 ```
 sympy_extras/
     __init__.py              __version__
+    _numeric.py              reliable_form, reliable_value, reliable_complex: numerical values which no rounding error
+                             decides (hidden zeros proved, cuts; native)
+    _numeric_sympy.py        the SymPy face of _numeric
     assumptions/             assumptions written as mathematical statements (exports nothing: import the modules)
         facts.py             element(), normalize(), Facts: translation to predicates and polynomial relations (native)
         facts_sympy.py       the SymPy face of facts, and predicates_consistent (SymPy's SAT on its known facts)
@@ -165,8 +168,8 @@ sympy_extras/
                              the native CAD; continuous_domain/solveset of non-rational expressions through analysis_sympy)
         analysis_sympy.py    the SymPy face of analysis, and the steps which stay on SymPy (the *_of_core functions)
         ask.py               ask(): the core's ask first, then the CAD (native, with the native CAD and virtual
-                             substitution; the structure theorem and the sample points through ask_sympy)
-        ask_sympy.py         the SymPy face of ask, and the steps which stay on SymPy (the *_of_core functions)
+                             substitution, the native structure theorem, sample points and reliable values)
+        ask_sympy.py         the SymPy face of ask
         refine.py            refine(), simplify(): the core's refine and simplify plus CAD-decided handlers (native)
         refine_sympy.py      the SymPy face of refine (_Refiner too), SymPy's simplify of Booleans, the proofs
         resolve.py           resolve(): quantifier elimination over R, Z, C (native, with the native CAD, virtual
@@ -179,7 +182,7 @@ sympy_extras/
                              solveset, nonlinsolve, transcendental equations through solve_sympy)
         solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions)
         limits.py            limit(), limit_seq(), series() under assumptions, with case distinctions (native; the core's
-                             Gruntz and series; SymPy's limit_seq and the reliable numerical values through limits_sympy)
+                             Gruntz and series, the native reliable values; SymPy's limit_seq through limits_sympy)
         limits_sympy.py      the SymPy face of limits, and the steps which stay on SymPy (the *_of_core functions)
         tests/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
@@ -220,7 +223,7 @@ sympy_extras/
     concrete/                summation algorithms extending sympy.concrete
         pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver (typed, no SymPy)
         karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation (native)
-        karr_sympy.py        the SymPy face of karr: karr_sum, karr_term, summation, with_sum_special_values, reliable_value_of_core
+        karr_sympy.py        the SymPy face of karr: karr_sum, karr_term, summation, with_sum_special_values
         creative.py          creative telescoping in PiSigma-fields: creative_telescoping, definite_sum (native)
         guess.py             guess_recurrence, guess_differential_equation, guess_algebraic_equation, guess_closed_form: equations from the first terms (native)
         zeilberger.py        Zeilberger's algorithm, WZ certificates, zeilberger_sum (native)
@@ -228,14 +231,17 @@ sympy_extras/
         qhyper.py            q-Pochhammer symbols (QPochhammer node, qpochhammer), q-Gosper, q-Zeilberger (native)
         qhyper_sympy.py      the SymPy face of qhyper: QPochhammer as a SymPy function, qgosper_sum, qzeilberger, ...
         tests/
-    integrals/               definite integration extending sympy.integrals
+    integrals/               definite integration extending sympy.integrals (exports nothing: import the modules)
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels
         slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem
         marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo)
         residues.py          rational, Fourier and trigonometric integrals by the residue theorem
         definite.py          definite_integral: splitting, range mappings, the verified SymPy fallback
         regions.py           IntegralByRanges: integrals over semialgebraic regions through the CAD
-        conditions.py        ConditionalValue: values with the conditions under which they hold
+        conditions.py        ConditionalValue: values with the conditions under which they hold; decide, sample_values,
+                             numerically_equal, numerical_verdict (native: the native ask, find_instance, structure theorem)
+        conditions_sympy.py  the SymPy face of conditions, which the integrators written on SymPy use (ConditionalValue
+                             on SymPy objects; the translation of SymPy's symbol flags stays on SymPy)
         telescoping.py       Almkvist–Zeilberger creative telescoping, holonomic_ode, holonomic_integral
         parametric.py        differentiation under the integral sign (Feynman's trick)
         antiderivative.py    antiderivatives evaluated by one-sided limits at every discontinuity
@@ -284,9 +290,9 @@ sympy_extras/
         dae_sympy.py         the SymPy face of dae (SymPy matrices), and integral_of_core
         tests/
     simplify/
-        structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native; the sample
-                             points and the reliable values through structure_sympy)
-        structure_sympy.py   the SymPy face of structure, and the steps which stay on SymPy (the *_of_core functions)
+        structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native, with the
+                             native sample points and reliable values)
+        structure_sympy.py   the SymPy face of structure
         signsimp.py          signsimp, sub_pre, sub_post (ported from SymPy)
         radsimp.py           fraction, numer, denom, collect, collect_dict, rcollect, radsimp, rad_rationalize, split_surds (ported from SymPy)
         sqrtdenest.py        sqrtdenest, sqrt_depth, is_algebraic (ported from SymPy)
@@ -614,7 +620,8 @@ was already published. See the `Releasing` section of `README.md`.
   solvers do, so that every public function returns.
 - Do not decide anything from a plain `evalf` of a closed form (a value
   against a quadrature, a difference at a sample point, a residual, a
-  sign): evaluate it with `sympy_extras._numeric.reliable_value`, which
+  sign): evaluate it with `sympy_extras._numeric.reliable_value` (on SymPy
+  objects `sympy_extras._numeric_sympy.reliable_value`), which
   writes the sums which are exactly zero 0 and returns `None` for a value
   whose branch a rounding error chooses (sympy-extras#65), and treat
   `None` as "nothing was checked".

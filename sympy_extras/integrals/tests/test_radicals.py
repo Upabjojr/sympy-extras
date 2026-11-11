@@ -39,7 +39,7 @@ def test_products_of_radicals_of_linear_factors() -> None:
     # radicand of degree two where both factors are real (the bug: the
     # split form fell through to SymPy's complex Piecewise, and the three
     # intersecting cylinders stayed unevaluated on it)
-    from sympy_extras.integrals.conditions import numerically_equal
+    from sympy_extras.integrals.conditions_sympy import numerically_equal
     from sympy_extras._typing import as_boolean
     y = symbols('y')
     F = quadratic_radical_antiderivative(2 * sqrt(1 - y) * sqrt(y + 1), y)
@@ -73,7 +73,7 @@ def test_symbolic_algebraic_bounds() -> None:
     # of one_sided_limit, which rejected the symbol of the bound; and the
     # sampler of the numerical check, which had no point for an
     # assumption with the irrational bound -sqrt(2)/2
-    from sympy_extras.integrals import definite_integral
+    from sympy_extras.integrals.definite import definite_integral
     y = symbols('y')
     found = definite_integral(2 * sqrt(1 - y**2), (y, -sqrt(1 - x**2), x), [x > -sqrt(2) / 2, x < 0])
     assert not found.has(Integral)
@@ -132,7 +132,7 @@ def test_odd_powers_of_a_quadratic_under_the_root() -> None:
     # sqrt(Q**3) is Q*sqrt(Q) where Q > 0: the radical table's entries
     # for the odd powers of sqrt(Q) (Maxima's rtestint with symbolic
     # coefficients)
-    from sympy_extras.integrals import is_antiderivative, verified_antiderivative
+    from sympy_extras.integrals.indefinite import is_antiderivative, verified_antiderivative
     from sympy_extras.integrals.radicals import _odd_power
     a, b, c = symbols('a b c')
     Q = as_expr(a + b * x + c * x**2)

@@ -18,8 +18,7 @@ from sympy_extras.assumptions.ask_sympy import core_boolean
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr
 from sympy_extras.simplify import structure as native
 from sympy_extras.simplify.structure_sympy import (EXPONENTIAL, LOGARITHM, ElementaryTower, Generator, NotElementary,
-                                                   _witness, canonical_form, is_zero, reliable_value_of_core,
-                                                   sample_values_of_core)
+                                                   _witness, canonical_form, is_zero)
 
 x, y = symbols('x y')
 
@@ -72,13 +71,17 @@ def test_the_face_agrees_with_the_native_functions() -> None:
         assert native.is_zero(core_expr(expression), assumptions) == is_zero(expression, facts or None)
 
 
-def test_the_steps_which_stay_on_sympy() -> None:
+def test_the_numerical_steps_of_the_native_tower() -> None:
+    # the sample points and the reliable values the native tower uses
+    # (through the face until they were ported)
+    from sympy_extras._numeric import reliable_complex
+    from sympy_extras.integrals.conditions import sample_values
     a, b = core_symbol(x), core_symbol(y)
-    point = sample_values_of_core([a, b], [core_boolean(x > 1), core_boolean(y < -2)], random.Random(3))
+    point = sample_values([a, b], [core_boolean(x > 1), core_boolean(y < -2)], random.Random(3))
     assert point is not None and set(point) == {a, b}
     assert sympy_expr(point[a]) > 1 and sympy_expr(point[b]) < -2
-    assert sample_values_of_core([a], [core_boolean(x > 1), core_boolean(x < 0)], random.Random(3)) is None
-    value = reliable_value_of_core(core_expr(exp(x) + 1), 30, {a: core_expr(Rational(1, 2))})
+    assert sample_values([a], [core_boolean(x > 1), core_boolean(x < 0)], random.Random(3)) is None
+    value = reliable_complex(core_expr(exp(x) + 1), 30, {a: core_expr(Rational(1, 2))})
     assert value is not None and abs(value - complex(exp(Rational(1, 2)).evalf(30) + 1)) < 1e-12
     assert _witness(as_expr(log(x**2) - 2 * log(x)), None) and not _witness(as_expr(log(x**2) - 2 * log(x)), x > 0)
 
@@ -111,7 +114,7 @@ def test_the_exact_test_of_is_antiderivative() -> None:
 def test_the_second_opinion_of_numerically_equal() -> None:
     # agreement at three sample points is evidence; two expressions which
     # the structure theorem proves different are different
-    from sympy_extras.integrals.conditions import _provably_different, numerically_equal
+    from sympy_extras.integrals.conditions_sympy import _provably_different, numerically_equal
     tiny = as_expr(exp(-10**6 * x**2 - 50))
     assert numerically_equal(tiny, S.Zero) is False                  # 1e-22 and less at every sample
     assert numerically_equal(exp(x), as_expr(exp(x) + Rational(1, 10**30))) is False
@@ -131,7 +134,7 @@ def test_nothing_is_independent_after_a_dependent_generator() -> None:
     # antiderivative -uppergamma(v/2, -a*x**2)/(2*(-a)**(v/2)) of
     # x**(v - 1)*exp(a*x**2) was "proved" wrong, its derivative being
     # written with (-a*x**2)**(v/2 - 1)
-    from sympy_extras.integrals.conditions import _provably_different, numerically_equal
+    from sympy_extras.integrals.conditions_sympy import _provably_different, numerically_equal
     v = Symbol('v', positive=True)
     a = Symbol('a', negative=True)
     derivative = as_expr(-a * x * (-a * x**2)**(v / 2 - 1) * exp(a * x**2) / (-a)**(v / 2))

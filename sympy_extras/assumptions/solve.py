@@ -22,8 +22,8 @@ time (the face holds them, the functions ending in ``_of_core``): SymPy's
 sets which is not ported (with ``Range``, ...), the exact points of
 the zero-dimensional regular chains (SymPy's ``CRootOf``, through
 :mod:`sympy_extras.polys.regularchains_sympy`), the
-transcendental equations (:mod:`sympy_extras.solvers.transcendental`) and
-the reliable numerical values of :mod:`sympy_extras._numeric`. The
+transcendental equations (:mod:`sympy_extras.solvers.transcendental`). The
+reliable numerical values of :mod:`sympy_extras._numeric` are native. The
 cylindrical algebraic decomposition (:mod:`sympy_extras.polys.cad.qe`:
 ``solution_set``; :mod:`sympy_extras.polys.cad.cylindrical`:
 ``cylindrical_set``, ``cylindrical_formula``, ``cylindrical_cases``), the
@@ -216,8 +216,8 @@ def _holds_at(formula: Boolean, values: dict[Basic, Basic], facts: Facts) -> Tru
 
 
 def _reliable_value(e: Expr, digits: int) -> Optional[Expr]:
-    from .solve_sympy import reliable_value_of_core
-    return reliable_value_of_core(e, digits)
+    from sympy_extras._numeric import reliable_value
+    return reliable_value(e, digits)
 
 
 def _clearly_not_real(e: Basic) -> bool:

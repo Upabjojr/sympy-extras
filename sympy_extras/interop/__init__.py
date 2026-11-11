@@ -49,7 +49,7 @@ from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import (AlgebraicNumber, Catalan, CatalanType, ComplexInfinity, EulerGamma,
     EulerGammaType, Exp1, Float, GoldenRatio, GoldenRatioType, ImaginaryUnit, Infinity, Integer,
     NaN, NegativeInfinity, Number, Pi, Rational, TribonacciConstant, TribonacciConstantType, E, I, nan,
-    number_from_fraction, oo, pi, zoo)
+    fraction_to_mpf, number_from_fraction, oo, pi, zoo)
 from sympy_extras.core.coreerrors import PoleError
 from sympy_extras.core.order import Order
 from sympy_extras.core.limits import Limit
@@ -457,7 +457,7 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
     if isinstance(e, Float):
         value = e.as_fraction()
         with mpmath.workprec(e.precision):
-            return sympy.Float(mpmath.mpf(value.numerator) / value.denominator, precision=e.precision)
+            return sympy.Float(fraction_to_mpf(value), precision=e.precision)
     if isinstance(e, Pi):
         return sympy.pi
     if isinstance(e, Exp1):

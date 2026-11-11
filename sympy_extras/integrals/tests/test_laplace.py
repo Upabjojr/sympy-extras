@@ -4,7 +4,7 @@ from __future__ import annotations
 from sympy import (symbols, sin, cos, exp, oo, Heaviside, Integral, Abs, pi, atan, log, S, Rational, arg, I, besselj,
                    simplify, sqrt)
 
-from sympy_extras.integrals.conditions import ConditionalValue, numerically_equal
+from sympy_extras.integrals.conditions_sympy import ConditionalValue, numerically_equal
 from sympy_extras.integrals.laplace import (laplace_rules, laplace_integral, laplace_of_convolution, transform,
                                             real_arguments)
 

@@ -61,7 +61,7 @@ Examples
 ========
 
 >>> from sympy import symbols, exp, sin, log, sqrt, Abs, oo, pi, cos
->>> from sympy_extras.integrals import definite_integral
+>>> from sympy_extras.integrals.definite import definite_integral
 >>> x, k = symbols('x k')
 >>> a, s = symbols('a s', positive=True)
 >>> definite_integral(x**k/(x + 3), (x, 0, oo))
@@ -129,7 +129,7 @@ from sympy.simplify.powsimp import powdenest
 from sympy.simplify.simplify import nsimplify
 from sympy.utilities.lambdify import lambdify
 
-from sympy_extras._numeric import reliable_value
+from sympy_extras._numeric_sympy import reliable_value
 from sympy_extras._special_values import (Point, condition_point, defined_problem, equality_points,
                                            point_assumptions, with_special_values)
 from sympy_extras._timeout import attempt
@@ -139,7 +139,7 @@ from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.sat_sympy import satisfiable
 from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.settings import settings
-from .conditions import (ConditionalValue, _items, decide, plain_symbols, sample_values,
+from .conditions_sympy import (ConditionalValue, _items, decide, plain_symbols, sample_values,
                          with_symbol_facts)
 from .marichev import checked_tidy, mellin_integrate, tidy
 from .mellin import mellin_transform, monomial
@@ -242,7 +242,7 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
 
     >>> from sympy import symbols, exp, cos, oo, log, pi, S
     >>> from sympy_extras.assumptions.facts_sympy import element
-    >>> from sympy_extras.integrals import definite_integral
+    >>> from sympy_extras.integrals.definite import definite_integral
     >>> x, a, b = symbols('x a b')
     >>> definite_integral(exp(-a*x)*cos(b*x), (x, 0, oo), (a > 0) & element(b, S.Reals))
     a/(a**2 + b**2)

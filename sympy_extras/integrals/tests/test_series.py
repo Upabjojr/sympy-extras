@@ -7,7 +7,7 @@ from sympy import symbols, log, exp, oo, pi, S, Dummy, atan, Catalan, polygamma
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras.integrals.conditions import ConditionalValue
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
 from sympy_extras.integrals.series import expansions, moments, sum_series, series_integral
 from sympy_extras.settings import configure
 

@@ -13,11 +13,7 @@ instead:
   :func:`sum_special_values_of_core`, for the native ones
   (:mod:`~sympy_extras.concrete.karr`,
   :mod:`~sympy_extras.concrete.creative`,
-  :mod:`~sympy_extras.concrete.zeilberger`, ...);
-- :func:`reliable_value_of_core` evaluates a core expression at sample
-  values of its parameters with
-  :func:`~sympy_extras._numeric.reliable_value`, for the checks of
-  :mod:`~sympy_extras.concrete.creative`.
+  :mod:`~sympy_extras.concrete.zeilberger`, ...).
 
 Examples
 ========
@@ -49,7 +45,7 @@ from sympy.core.numbers import Integer, Rational, nan, zoo
 from sympy.polys.rationaltools import together
 from sympy.polys.polytools import cancel, factor_list
 
-from sympy_extras._numeric import reliable_value
+from sympy_extras._numeric_sympy import reliable_value
 from sympy_extras._special_values import Point, with_special_values
 from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
@@ -64,8 +60,7 @@ from sympy_extras.interop import expr_from_sympy, to_sympy
 from . import karr as core_karr
 from .karr import SumCompute, SumPoint
 
-__all__ = ['karr_term', 'karr_sum', 'summation', 'with_sum_special_values', 'sum_special_values_of_core',
-           'reliable_value_of_core']
+__all__ = ['karr_term', 'karr_sum', 'summation', 'with_sum_special_values', 'sum_special_values_of_core']
 
 
 # ----------------------------------------------------------------------
@@ -172,15 +167,6 @@ def sum_special_values_of_core(value: CoreExpr, f: CoreExpr, indices: Sequence[C
     return _core(with_sum_special_values(_sympy(value), _sympy(f), [_sympy_symbol(i) for i in indices],
                                          [_sympy(e) for e in limits], at_point, keep_unevaluated,
                                          sympy_defined))
-
-
-def reliable_value_of_core(e: CoreExpr, digits: int, values: SumPoint) -> Optional[complex]:
-    """:func:`~sympy_extras._numeric.reliable_value` of a core expression
-    at the ``values`` of its symbols, as a complex number (``None`` when
-    it is not reliable), for :mod:`~sympy_extras.concrete.creative`."""
-    point: dict[Symbol, Expr] = {_sympy_symbol(s): _sympy(v) for s, v in values.items()}
-    value = reliable_value(_sympy(e), digits, point)
-    return None if value is None else complex(value)
 
 
 # ----------------------------------------------------------------------

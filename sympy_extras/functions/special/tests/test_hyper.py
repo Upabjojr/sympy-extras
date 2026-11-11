@@ -57,3 +57,16 @@ def test_derivatives_numbers_round_trip() -> None:
         assert abs(complex(sympy_value(ours.evalf(20))) - complex(sympy.N(theirs, 20))) < 1e-14, ours
     f = hyper([a, b], [c], z)
     assert same(f.subs(a, c), sympy.hyper([sympy.Symbol('c'), sympy.Symbol('b')], [sympy.Symbol('c')], sympy.Symbol('z')))
+
+
+def test_meijerg_with_half_integer_parameters_has_a_value() -> None:
+    # the bug: the parameters went to mpmath's meijerg as complex numbers,
+    # which it compares with integers to find the poles: TypeError, so the
+    # G-function (and any reliable value of an expression with it) had none
+    from sympy_extras.core.evalf import numeric_value
+    h = Rational(1, 2)
+    g = meijerg([], [h], [Rational(-7, 2), -h, Rational(7, 2)], [], Rational(9, 100))
+    value = numeric_value(g, 120)
+    half = sympy.Rational(1, 2)
+    expected = sympy.meijerg(((), (half,)), ((-7 * half, -half, 7 * half), ()), sympy.Rational(9, 100)).evalf(30)
+    assert value is not None and abs(complex(value) - complex(expected)) < 1e-6 * abs(complex(value))

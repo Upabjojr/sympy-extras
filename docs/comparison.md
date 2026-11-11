@@ -79,8 +79,9 @@ The setup used throughout:
 >>> from sympy_extras.polys.subresultants_sympy import psc
 >>> from sympy_extras.polys.groebnerwalk_sympy import groebner_walk
 >>> from sympy_extras.polys.virtual_substitution_sympy import eliminate_linear
->>> from sympy_extras.integrals import definite_integral, IntegralByRanges
->>> from sympy_extras.integrals import mellin_transform as xmellin
+>>> from sympy_extras.integrals.definite import definite_integral
+>>> from sympy_extras.integrals.regions import IntegralByRanges
+>>> from sympy_extras.integrals.mellin import mellin_transform as xmellin
 >>> f = Function('y')(x)
 >>> g = Function('u')(x, y)
 

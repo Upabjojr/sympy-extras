@@ -47,13 +47,11 @@ found or not checked within the budget of
 
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.solvers._special_values_sympy` is its face on SymPy
-objects. Three steps are not ported and go through SymPy at run time
+objects. Two steps are not ported and go through SymPy at run time
 (the functions ending in ``_of_core``): the candidate points and their
 bookkeeping (:func:`sympy_extras._special_values.with_special_values`,
 through
-:func:`~sympy_extras.solvers._special_values_sympy.special_values_of_core`),
-the reliable numerical values of the checks
-(:func:`~sympy_extras.assumptions.limits_sympy.reliable_value_of_core`)
+:func:`~sympy_extras.solvers._special_values_sympy.special_values_of_core`)
 and SymPy's ``simplify_logic`` of the joined conditions
 (:func:`~sympy_extras.polys.virtual_substitution_sympy.simplify_logic_of_core`).
 :func:`ode_order`, the determinants of the Jacobians and the
@@ -433,11 +431,11 @@ def _zero_at_samples(e: Expr, x: Symbol) -> Optional[bool]:
     """Whether ``e`` is zero at the sample points of its symbols: ``True``
     when it is negligible at all of them, ``False`` when it is not at
     one, ``None`` when nothing was checked."""
-    from sympy_extras.assumptions.limits_sympy import reliable_value_of_core
+    from sympy_extras._numeric import reliable_value
     tested = 0
     others = _sorted(_symbols(e) - {x})
     for sample in _SAMPLES:
-        number = reliable_value_of_core(e, _DIGITS, _values(x, others, sample))
+        number = reliable_value(e, _DIGITS, _values(x, others, sample))
         if number is None:
             continue
         magnitude = abs_(number)

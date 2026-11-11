@@ -50,7 +50,7 @@ from sympy.sets.sets import Set, FiniteSet, Interval, Union as SetUnion, Interse
 from sympy.core.function import expand, expand_trig, expand_log
 
 
-from sympy_extras._numeric import reliable_form, reliable_value
+from sympy_extras._numeric_sympy import reliable_form, reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import Truth, as_boolean, as_expr, as_set
 from sympy_extras.settings import settings

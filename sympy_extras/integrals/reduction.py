@@ -117,7 +117,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue
+from .conditions_sympy import ConditionalValue
 from .telescoping import (DifferentialTelescoper, is_hyperexponential, logarithmic_derivative, _boundary, _constants,
                           _initial_values, _normalized, _order, _polys, _terms)
 

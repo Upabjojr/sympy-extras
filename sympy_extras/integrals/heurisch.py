@@ -128,7 +128,7 @@ from sympy.utilities.iterables import uniq
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols
 from sympy_extras.settings import settings
-from .conditions import numerically_equal
+from .conditions_sympy import numerically_equal
 
 __all__ = ['components', 'heurisch_antiderivative', 'heurisch_cases']
 

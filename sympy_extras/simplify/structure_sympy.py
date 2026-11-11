@@ -1,6 +1,5 @@
 """The SymPy face of the structure theorem
-(:mod:`sympy_extras.simplify.structure`), and the steps which stay on
-SymPy.
+(:mod:`sympy_extras.simplify.structure`).
 
 :func:`canonical_form`, :func:`is_zero`, :func:`equal` and
 :class:`ElementaryTower` take and return SymPy expressions (the
@@ -8,13 +7,6 @@ assumptions as SymPy Booleans), converted by :mod:`sympy_extras.interop`
 around the native tower of :mod:`sympy_extras.simplify.structure`: the
 elements are those of the native tower, wrapped, and the generators show
 their meanings as SymPy expressions.
-
-The steps of the native module which stay written on SymPy are called
-from it at run time (the functions ending in ``_of_core``, which take and
-return objects of the core): the sample points of the region of the
-assumptions (:func:`sympy_extras.integrals.conditions.sample_values`) and
-the reliable numerical values of an expression
-(:func:`sympy_extras._numeric.reliable_value`).
 
 Examples
 ========
@@ -33,7 +25,6 @@ Examples
 """
 from __future__ import annotations
 
-import random
 from fractions import Fraction
 from typing import Optional
 
@@ -44,38 +35,12 @@ from sympy.core.symbol import Symbol
 from sympy_extras._typing import as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr
-from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.logic import Boolean as CoreBoolean
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 
 from . import structure as native
 from .structure import EXPONENTIAL, LOGARITHM, NotElementary, ROOT, VARIABLE
 
 __all__ = ['ElementaryTower', 'Element', 'Generator', 'NotElementary', 'canonical_form', 'is_zero', 'equal',
-           'sample_values_of_core', 'reliable_value_of_core', 'VARIABLE', 'EXPONENTIAL', 'LOGARITHM', 'ROOT']
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native module which stay on SymPy
-
-def sample_values_of_core(symbols: list[CoreSymbol], conjuncts: list[CoreBoolean],
-                          rng: random.Random) -> Optional[dict[CoreSymbol, CoreExpr]]:
-    """A point of the region of the conjuncts and of the flags of the
-    symbols (:func:`sympy_extras.integrals.conditions.sample_values`, with
-    the random numbers of ``rng``), ``None`` when none is found."""
-    from sympy_extras.assumptions.ask_sympy import _sympy_symbol, sympy_boolean
-    from sympy_extras.integrals.conditions import sample_values
-    found = sample_values([_sympy_symbol(s) for s in symbols], [sympy_boolean(c) for c in conjuncts] or None, rng)
-    if found is None:
-        return None
-    return {core_symbol(s): core_expr(v) for s, v in found.items()}
-
-
-def reliable_value_of_core(e: CoreExpr, digits: int, values: dict[CoreSymbol, CoreExpr]) -> Optional[complex]:
-    """:func:`sympy_extras._numeric.reliable_value` of ``e`` at the values
-    of its symbols as a complex number, ``None`` when it is not reliable."""
-    from sympy_extras.assumptions.ask_sympy import reliable_complex_of_core
-    return reliable_complex_of_core(e, digits, values)
+           'VARIABLE', 'EXPONENTIAL', 'LOGARITHM', 'ROOT']
 
 
 # ---------------------------------------------------------------------------

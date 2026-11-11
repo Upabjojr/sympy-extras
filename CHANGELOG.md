@@ -660,6 +660,53 @@ remove public functions. Breaking changes are listed here when they happen.
   more) the faces return what the old modules returned, except the walk
   over `ZZ` above; the native modules, inputs and outputs converted,
   return what the faces return on 1097 checks.
+- The reliable numerical values and the conditions of the integrals are
+  native (**breaking**): `sympy_extras._numeric` (`reliable_form`,
+  `reliable_value`, and the new `reliable_complex`) and
+  `sympy_extras.integrals.conditions` (`ConditionalValue`, `decide`,
+  `canonical`, `real_form`, `positive`, `plain_symbols`, `symbol_facts`,
+  `with_symbol_facts`, `sample_values`, `numerically_equal`,
+  `numerical_verdict`, `combine`) take and return the objects of the core
+  and import no SymPy: the values are computed with mpmath by the core,
+  with the same rules (a part which is a rounding error is told by
+  evaluations at 15, 30 and 60 more digits, an exact `0.0` of a sum whose
+  terms are not zero is a suspect too, the value returned is refined at
+  doubling precisions), and a hidden zero is proved by the core's
+  `is_zero` or by the native minimal polynomial (SymPy's for a number
+  with a wrapped foreign object such as `CRootOf`); the decisions use the
+  native `ask`, `find_instance` and structure theorem. The old API on
+  SymPy objects moves to the faces `sympy_extras._numeric_sympy` and
+  `sympy_extras.integrals.conditions_sympy`, which the integrators written
+  on SymPy (33 modules of `sympy_extras.integrals`, `solvers._special_values`,
+  `solvers.transcendental`, `concrete.karr_sympy`) now import; the face's
+  `ConditionalValue` is the same container on SymPy objects, with
+  `to_core`/`from_core`. The package `sympy_extras.integrals` exports
+  nothing any more (as `sympy_extras.solvers`), so that importing the
+  native module does not load the integrators: `from sympy_extras.integrals
+  import definite_integral` becomes `from sympy_extras.integrals.definite
+  import definite_integral`, and so on for every name it exported. The
+  native `ask`, `limits`, `solve`, the structure theorem and
+  `concrete.creative` call the native functions, and the wrappers they
+  went through are removed: `ask_sympy.sample_values_of_core`,
+  `ask_sympy.reliable_complex_of_core`, `structure_sympy.sample_values_of_core`,
+  `structure_sympy.reliable_value_of_core`, `limits_sympy.reliable_value_of_core`,
+  `solve_sympy.reliable_value_of_core`, `karr_sympy.reliable_value_of_core`.
+  On the 5765 distinct calls recorded from the tests of `integrals`
+  (definite, regions, indefinite, marichev, laplace), of `assumptions`,
+  of the structure theorem and from the doctests, and 570 more (hidden
+  zeros, cuts, conditions), the face gives the old results except two
+  values which are zero (an expression in `lerchphi` and `exp_polar`:
+  `0.e-167` before, `4.9e-150 - 3.3e-150*I` now); `reliable_value` takes
+  26 s instead of 66 s on them, `reliable_form` 6 s instead of 2 s, the
+  others the same time or less.
+  Fixed on the way: mpmath converts the integer denominator of a float
+  such as `1e-1737200` in about a minute, so printing such a core `Float`,
+  its numerical value and its conversion to SymPy were that slow; they now
+  build the mpmath number from the mantissa and the exponent
+  (`core.numbers.fraction_to_mpf`). The core's `meijerg` had no numerical
+  value with half-integer parameters (they went to mpmath as complex
+  numbers, which its pole test compares with integers).
+
 - The differential algebra is native (**breaking**):
   `sympy_extras.polys.differential` (`DifferentialRing`,
   `DifferentialPolynomial`, `janet_basis`, `JanetBasis`,

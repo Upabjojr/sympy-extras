@@ -114,14 +114,14 @@ from sympy.polys.rootoftools import ComplexRootOf
 from sympy.series.limits import limit
 from sympy.simplify.simplify import simplify
 
-from sympy_extras._numeric import reliable_value
+from sympy_extras._numeric_sympy import reliable_value
 from sympy_extras._timeout import Deadline, TimeLimitExceeded, attempt, time_limit
 from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import Facts, element
 from sympy_extras.assumptions.sat_sympy import find_instance
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue
+from .conditions_sympy import ConditionalValue
 
 __all__ = ['residue_integral', 'rational_function', 'poles', 'real_line_integral',
            'fourier_integral', 'keyhole_integral', 'period_integral']

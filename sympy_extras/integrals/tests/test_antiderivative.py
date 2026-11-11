@@ -5,7 +5,7 @@ from sympy import symbols, cos, pi, oo, sqrt, exp, log, atan, tan, S, integrate,
 
 from sympy_extras.integrals.antiderivative import (antiderivative, discontinuities, one_sided_limit,
                                                    antiderivative_integral)
-from sympy_extras.integrals.conditions import ConditionalValue
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
 
 x = symbols('x')
 a = symbols('a', positive=True)
@@ -156,12 +156,12 @@ def test_the_error_function_times_a_polynomial_exponential_by_parts() -> None:
     # sinh(u - w)*erf(w) over (0, u) (Maxima's laplace 57): G*erf(w) minus
     # the Gaussian remainder, term by term with the exponentials combined
     from sympy import sinh, erf, Rational, Integral
-    from sympy_extras.integrals import verify_numerically
+    from sympy_extras.integrals.definite import verify_numerically
     u, w = symbols('u w', positive=True)
     F = antiderivative(sinh(u - w) * erf(w), w)
     assert F is not None
     assert abs((F.diff(w) - sinh(u - w) * erf(w)).subs({u: Rational(13, 10), w: Rational(3, 7)}).evalf(20)) < 1e-15
-    from sympy_extras.integrals import definite_integral
+    from sympy_extras.integrals.definite import definite_integral
     value = definite_integral(sinh(u - w) * erf(w), (w, 0, u))
     assert not value.has(Integral) and verify_numerically(value, sinh(u - w) * erf(w), w, S.Zero, u) is True
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 from sympy import symbols, sqrt, exp, sin, cos, log, tan, atan, asin, Integral, I, S, diff, simplify, erf
 
 from sympy_extras._typing import as_expr
-from sympy_extras.integrals import indefinite_integral, verified_antiderivative, is_antiderivative
+from sympy_extras.integrals.indefinite import indefinite_integral, verified_antiderivative, is_antiderivative
 from sympy_extras.integrals import indefinite as module
 
 x = symbols('x')
@@ -128,7 +128,7 @@ def test_the_numerical_check_survives_huge_values() -> None:
     # complex overflowed in numerically_equal, and a right antiderivative
     # of the incomplete gamma family was refused
     from sympy import Float
-    from sympy_extras.integrals.conditions import numerically_equal
+    from sympy_extras.integrals.conditions_sympy import numerically_equal
     huge = Float(3e307) * (1 + I)
     assert numerically_equal(huge, huge) is True
     assert numerically_equal(huge, Float(2e307) * (1 + I)) is False
@@ -153,7 +153,7 @@ def test_the_assumptions_reach_the_typed_methods() -> None:
 
 def test_nonelementary_binomial_differentials() -> None:
     from sympy import Rational, cbrt, hyper, im
-    from sympy_extras._numeric import reliable_value
+    from sympy_extras._numeric_sympy import reliable_value
     # sqrt(t**7/(1 - 5*t**2)) came back unevaluated: its integral is not
     # elementary (Chebyshev), and the hypergeometric form was not tried
     f = sqrt(x**7 / (1 - 5 * x**2))
@@ -175,7 +175,7 @@ def test_nonelementary_binomial_differentials() -> None:
 
 def test_binomial_differentials_with_parameters_and_their_special_values() -> None:
     from sympy import Eq, Piecewise, Rational, cbrt, hyper
-    from sympy_extras._numeric import reliable_value
+    from sympy_extras._numeric_sympy import reliable_value
     a, b = symbols('a b')
     # sqrt(t**7/(a - b*t**2)) and x**(1/3)*sqrt(a + x**2) came back
     # unevaluated (the binomial coefficients had to be numbers); at a = 0,

@@ -822,6 +822,22 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_NUMERIC = r'''
+import random, sys
+from sympy_extras.core import symbols, sqrt, Integer, Rational, I, pi
+from sympy_extras.functions import Log, log, sin, cos, exp, atan
+from sympy_extras._numeric import reliable_form, reliable_value, reliable_complex
+x = symbols('x')
+z = -6 + (-2 + sqrt(2))**2 + 4*sqrt(2)
+assert str(reliable_form(Log(-2*sqrt(2) - 2*sqrt(z)))) == 'log(2*sqrt(2)) + I*pi'
+assert reliable_form(sqrt(sin(1)**2 + cos(1)**2 - 1) + 1) is None
+assert str(reliable_value(Log(-x - sqrt(z)), 15, {x: Integer(2)})) == '0.693147180559945 + 3.14159265358979*I'
+assert reliable_complex(sqrt(x), 15, {x: Integer(-4)}) == 2j
+assert str(reliable_value(exp(-1000000*x**2 - 50), 30, {x: Integer(2)})) == '2.27857274099872593085040751845e-1737200'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 def test_native_thue_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.solvers.thue_equation` does not load
     SymPy, nor do the resolution of Thue equations (the units of the
@@ -829,6 +845,15 @@ def test_native_thue_does_not_load_sympy() -> None:
     reduction and the enumeration), on totally complex forms too, and the
     refusal of reducible forms."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_THUE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_numeric_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras._numeric` does not load SymPy, nor do
+    the hidden zeros (proved by the minimal polynomial), the cuts and the
+    values at points."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_NUMERIC], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
 
@@ -930,6 +955,38 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_CONDITIONS = r'''
+import random, sys
+from sympy_extras.core import symbols, sqrt, Integer, Rational, I, pi, Eq
+from sympy_extras.core.logic import or_
+from sympy_extras.functions import Abs, arg, log, sin, cos, exp, piecewise, gamma
+from sympy_extras.sets import Reals
+from sympy_extras.assumptions.facts import element
+from sympy_extras.integrals.conditions import (ConditionalValue, decide, real_form, canonical, positive,
+    sample_values, numerically_equal, numerical_verdict, combine)
+a, b, x, k = symbols('a b x k')
+v = ConditionalValue(1/a, a > 0).add(ConditionalValue(a, a < 1))
+assert str(v) == 'ConditionalValue(a + 1/a, (a > 0) & (a < 1))'
+assert str(ConditionalValue(piecewise((a, a > 1), (-a, a < 0)), or_(a > 1, a < 0)).as_piecewise(Integer(0))) == \
+    'Piecewise((a, a > 1), (-a, a < 0), (0, True))'
+assert str(decide((a > 0) & (b > 1), a > 1)) == 'b > 1' and decide(a < 0, a > 1) is None
+assert str(real_form(Abs(arg(a)) < pi/2, element(a, Reals))) == 'a > 0' and str(canonical(k + 1 < 1)) == 'k < 0'
+assert positive(a*Abs(b), a > 0)
+point = sample_values([a, b], [a > 1, b < a], random.Random(1))
+assert point is not None and point[a] > 1 and point[b] < point[a]
+assert numerically_equal(sin(x)**2 + cos(x)**2, Integer(1)) and not numerically_equal(sqrt(x**2), x, x < 0)
+assert not numerically_equal(exp(-10**6*x**2), Integer(0), x > 1)     # the structure theorem's second opinion
+assert numerical_verdict(log(-a), log(a) + I*pi, None, a > 0) is True
+assert numerical_verdict(gamma(Integer(0)), gamma(Integer(0)) + 1) is None
+assert str(combine([ConditionalValue(a, a > 0), ConditionalValue(1, a < 2)])) == 'ConditionalValue(a + 1, (a > 0) & (a < 2))'
+from sympy_extras.assumptions.ask import ask
+from sympy_extras.functions import atan
+assert ask(Eq(4*atan(Rational(1, 5)) - atan(Rational(1, 239)), pi/4)) is True
+assert ask(Eq(log(x**2), 2*log(x)), x > 0) is True and ask(Eq(log(x**2), 2*log(x))) is None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 _NATIVE_CHARPIT_DAE = r'''
 import sys
 from sympy_extras.core import Eq, Function, symbols
@@ -991,5 +1048,16 @@ def test_native_charpit_and_dae_do_not_load_sympy() -> None:
     (Putzer's matrix exponential with complex and repeated eigenvalues,
     the nilpotent part) and the extraction of the matrices."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_CHARPIT_DAE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_conditions_do_not_load_sympy() -> None:
+    """The package ``sympy_extras.integrals`` exports nothing, so importing
+    :mod:`sympy_extras.integrals.conditions` does not load the integrators
+    written on SymPy; its decisions, sample points and numerical
+    comparisons (with the structure theorem as a second opinion), and the
+    numerical step of the native ``ask``, run without SymPy."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CONDITIONS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

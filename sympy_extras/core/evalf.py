@@ -20,7 +20,7 @@ from .basic import Basic, SubsMapping
 from .coreerrors import PrecisionExhausted
 from .expr import Expr, UnevaluatedExpr, as_expr
 from .numbers import (AlgebraicNumber, CatalanType, EulerGammaType, Exp1, Float, GoldenRatioType,
-    ImaginaryUnit, Number, Pi, TribonacciConstantType, dps_to_prec, number_from_fraction)
+    ImaginaryUnit, Number, Pi, TribonacciConstantType, dps_to_prec, fraction_to_mpf, number_from_fraction)
 
 __all__ = ['evalf', 'N', 'to_float', 'to_complex', 'numeric_value', 'mpf_to_fraction', 'PrecisionExhausted']
 
@@ -55,7 +55,7 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
             value = e.exact_value()
             if value is None:
                 return None
-            return mpmath.mpc(mpmath.mpf(value.numerator) / value.denominator)
+            return mpmath.mpc(fraction_to_mpf(value))
         if isinstance(e, Pi):
             return mpmath.mpc(mpmath.pi)
         if isinstance(e, Exp1):

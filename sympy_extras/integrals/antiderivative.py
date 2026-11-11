@@ -86,7 +86,7 @@ from sympy.series.limits import Limit
 from sympy.series.series import series
 from sympy.core.add import Add
 
-from sympy_extras._numeric import reliable_value
+from sympy_extras._numeric_sympy import reliable_value
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
@@ -94,7 +94,7 @@ from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.limits_sympy import limit
 from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue, sample_values
+from .conditions_sympy import ConditionalValue, sample_values
 
 __all__ = ['antiderivative', 'quick_shape', 'by_parts_shape', 'discontinuities', 'antiderivative_integral', 'one_sided_limit',
            'select_branch',

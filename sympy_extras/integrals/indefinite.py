@@ -86,13 +86,13 @@ from sympy.polys.polytools import cancel
 from sympy.simplify.simplify import simplify
 from sympy.simplify.simplify import logcombine
 
-from sympy_extras._numeric import reliable_value
+from sympy_extras._numeric_sympy import reliable_value
 from sympy_extras._special_values import Point, defined_problem, with_special_values
 from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.settings import settings
-from .conditions import sample_values
+from .conditions_sympy import sample_values
 from .rewriting import Substitution
 
 __all__ = ['indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'real_form', 'conjugate_logarithms']

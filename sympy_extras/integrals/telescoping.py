@@ -49,7 +49,7 @@ Integrating over `x` gives, for the definite integral
 whose right hand side vanishes at natural boundaries. SymPy's ``dsolve``
 solves it and the constants are fixed by the values of the integral (and
 its derivatives) at a convenient point, computed by
-:func:`~sympy_extras.integrals.definite_integral`. This is the
+:func:`~sympy_extras.integrals.definite.definite_integral`. This is the
 *holonomic* method of definite integration: it applies to integrands
 outside the tables of Mellin transforms, and the differential equation
 is an answer in itself when it has no closed form solution. Chyzak's
@@ -112,7 +112,7 @@ from sympy_extras._typing import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.assumptions.limits_sympy import limit
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue
+from .conditions_sympy import ConditionalValue
 
 __all__ = ['DifferentialTelescoper', 'logarithmic_derivative', 'is_hyperexponential',
            'almkvist_zeilberger', 'holonomic_ode', 'holonomic_integral']
@@ -521,7 +521,7 @@ def holonomic_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symb
     :func:`holonomic_ode` solved by ``dsolve``, its constants fixed by
     the values of the integral and its derivatives at a point ``t0``
     (``1``, ``2``, ``1/2``, ``3``, the first at which
-    :func:`~sympy_extras.integrals.definite_integral` gives them).
+    :func:`~sympy_extras.integrals.definite.definite_integral` gives them).
 
     The value holds where the integral converges and may be
     differentiated under the integral sign; it is checked numerically

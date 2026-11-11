@@ -14,7 +14,7 @@ are not rational and for the inequalities, ``nonlinsolve``,
 ``periodicity`` and the intersections of sets which the core does not
 evaluate (with ``Range``, ``ImageSet``, ...); the transcendental equations
 (:func:`sympy_extras.solvers.transcendental.solve_transcendental`), on
-SymPy's ``solveset``; and :func:`sympy_extras._numeric.reliable_value`.
+SymPy's ``solveset``.
 The cylindrical algebraic decomposition (:mod:`sympy_extras.polys.cad`),
 the radical forms of the roots (:mod:`sympy_extras.polys.roots`), the
 isolation of real roots (:mod:`sympy_extras.solvers.isolation`) and the
@@ -47,7 +47,7 @@ from . import solve as native
 from .ask_sympy import Assumptions, _sympy_symbol, core_assumptions, core_boolean, core_domain, sympy_boolean
 from .intervals_sympy import core_expr, core_symbol, sympy_expr, sympy_set
 
-__all__ = ['solve', 'Statement', 'evaluated_set_of_core', 'solveset_of_core', 'reliable_value_of_core',
+__all__ = ['solve', 'Statement', 'evaluated_set_of_core', 'solveset_of_core',
     'solve_transcendental_of_core', 'periodicity_of_core', 'nonlinsolve_of_core']
 
 #: an equation or inequality to solve: an expression (equated to zero), a
@@ -85,13 +85,6 @@ def solveset_of_core(relation: CoreBoolean, x: CoreSymbol, domain: CoreSet) -> C
     """:func:`sympy.solveset` of one relation (its exceptions go on)."""
     from sympy.solvers.solveset import solveset
     return _core_set(solveset(sympy_boolean(relation), _sympy_symbol(x), sympy_set(domain)))
-
-
-def reliable_value_of_core(e: CoreExpr, digits: int) -> Optional[CoreExpr]:
-    """:func:`sympy_extras._numeric.reliable_value` of a constant."""
-    from sympy_extras._numeric import reliable_value
-    value = reliable_value(sympy_expr(e), digits)
-    return None if value is None else core_expr(value)
 
 
 def solve_transcendental_of_core(formula: CoreBoolean, x: CoreSymbol,

@@ -121,7 +121,7 @@ def test_perfect_square_radicands_carry_the_sign() -> None:
     # sqrt(d**2) is d*sign(d): the antiderivative of the rational
     # integrand on each component, and the verification ignores the jump
     from sympy import sign
-    from sympy_extras.integrals import verified_antiderivative
+    from sympy_extras.integrals.indefinite import verified_antiderivative
     b, c = symbols('b c')
     assert trager_antiderivative(sqrt(x**2), x) == x**2 * sign(x) / 2
     assert trager_antiderivative(sqrt(x**2 + 2 * x + 1) / (x + 3), x) == (x - 2 * log(x + 3)) * sign(x + 1)
@@ -135,7 +135,7 @@ def test_several_roots_are_combined_and_restored() -> None:
     # positive and its negative below -2: the algebra runs in the root of
     # the product, the answer is written in the original roots and holds
     # on both sides
-    from sympy_extras.integrals import is_antiderivative, verified_antiderivative
+    from sympy_extras.integrals.indefinite import is_antiderivative, verified_antiderivative
     f = sqrt(x + 1) * sqrt(x + 2) / x
     F = trager_antiderivative(f, x)
     assert F is not None and F.has(sqrt(x + 1) * sqrt(x + 2)) and not F.has(sqrt(x**2 + 3 * x + 2))
@@ -154,7 +154,7 @@ def test_several_roots_are_combined_and_restored() -> None:
 def test_the_logarithmic_part_over_the_parameters() -> None:
     # FriCAS's tests 301 and 19: residues rational in the parameter, the
     # field QQ(a) (the residue at infinity 1/k, the branch sqrt(k**2) taken as k)
-    from sympy_extras.integrals import is_antiderivative
+    from sympy_extras.integrals.indefinite import is_antiderivative
     k = symbols('k')
     f = as_expr((-a + x * (2 * a - 1)) / ((-a + x) * sqrt(a**2 * x + x**3 * (2 * a - 1) - x**2 * (a**2 + 2 * a - 1))))
     F = trager_antiderivative(f, x)
@@ -170,7 +170,7 @@ def test_residues_algebraic_over_the_parameters() -> None:
     # c = gamma**2, b = (beta1**2 + beta2**2)/2), the algorithm runs over
     # QQ<I>(alpha, beta1, beta2, ...), and the answer's radicand is the
     # original one
-    from sympy_extras.integrals import is_antiderivative
+    from sympy_extras.integrals.indefinite import is_antiderivative
     from sympy_extras.integrals.trager import _rational_parameters
     b, c = symbols('b c')
     f = as_expr(sqrt(a + b * x**2 + c * x**4) / (a - c * x**4))
@@ -189,7 +189,7 @@ def test_residues_algebraic_over_the_parameters() -> None:
 def test_rational_radicands() -> None:
     # sqrt(P/Q) is y/Q with y = Q*sqrt(P/Q), y**2 = P*Q everywhere; the
     # answer is written in the root as given
-    from sympy_extras.integrals import is_antiderivative
+    from sympy_extras.integrals.indefinite import is_antiderivative
     f = as_expr(sqrt((x + 1) / x) / x)
     F = trager_antiderivative(f, x)
     assert F is not None and F.has(sqrt((x + 1) / x)) and not F.has(sqrt(x**2 + x))
@@ -204,7 +204,7 @@ def test_roots_of_index_three_and_more() -> None:
     # y = P**(1/n): the components y**k integrate on their own through the
     # Risch differential equation R' + k*P'/(n*P)*R = A_k
     from sympy import Rational
-    from sympy_extras.integrals import is_antiderivative, verified_antiderivative
+    from sympy_extras.integrals.indefinite import is_antiderivative, verified_antiderivative
     from sympy_extras.integrals.trager import _root_components
     cases = [x**2 * (x**3 + 1)**Rational(1, 3), x**5 * (x**3 + 1)**Rational(2, 3), x**2 * (x**3 + a)**Rational(1, 3),
              x / (x**2 + 1)**Rational(1, 3), (x**3 + 1)**Rational(-2, 3) * x**2 + (x**3 + 1)**Rational(1, 3) * x**2]
@@ -236,7 +236,7 @@ def test_logarithmic_part_of_roots_of_index_n() -> None:
     # torsion divisor of an orbit of places, in the resolvent form whose
     # real part has logarithms and arctangents of the root
     from sympy import Rational, atan
-    from sympy_extras.integrals import is_antiderivative, verified_antiderivative
+    from sympy_extras.integrals.indefinite import is_antiderivative, verified_antiderivative
     R = Rational
     elementary = [
         1 / (x * (x**3 + 1)**R(1, 3)),              # the places above x = 0, an orbit of order 3

@@ -98,7 +98,7 @@ from sympy_extras._typing import as_boolean, as_expr
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.settings import settings
-from .conditions import numerically_equal
+from .conditions_sympy import numerically_equal
 
 __all__ = ['quadratic_radical_antiderivative', 'euler_substitution_antiderivative']
 

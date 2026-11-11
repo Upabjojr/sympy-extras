@@ -401,19 +401,19 @@ class Float(Number):
 
     def __str__(self) -> str:
         with mpmath.workprec(self._prec):
-            v = mpmath.mpf(self._value.numerator) / self._value.denominator
+            v = fraction_to_mpf(self._value)
             return str(mpmath.nstr(v, self.dps, strip_zeros=False))
 
     def repr_str(self) -> str:
         """The digits SymPy's ``srepr`` shows (``'0.10000000000000001'`` at 53 bits)."""
         from mpmath.libmp import repr_dps
         with mpmath.workprec(self._prec):
-            return mpmath.nstr(mpmath.mpf(self._value.numerator) / self._value.denominator, repr_dps(self._prec))
+            return mpmath.nstr(fraction_to_mpf(self._value), repr_dps(self._prec))
 
     def short_str(self) -> str:
         """The value without trailing zeros, as printed inside an expression."""
         with mpmath.workprec(self._prec):
-            v = mpmath.mpf(self._value.numerator) / self._value.denominator
+            v = fraction_to_mpf(self._value)
             return str(mpmath.nstr(v, self.dps))
 
     def _sympystr(self, printer: StrPrinter) -> str:
@@ -427,6 +427,20 @@ class Float(Number):
 
     def as_numer_denom(self) -> tuple[Expr, Expr]:
         return (self, Integer(1))
+
+
+def fraction_to_mpf(value: Fraction) -> mpmath.mpf:
+    """``value`` as an mpmath float at the working precision. A dyadic
+    value (the value of a :class:`Float`) is built from its mantissa and
+    exponent: mpmath converts an integer of millions of bits (the
+    denominator of ``1e-1000000``) in about a minute."""
+    numerator, denominator = value.numerator, value.denominator
+    if numerator == 0:
+        return mpmath.mpf(0)
+    if denominator & (denominator - 1) == 0:
+        zeros = (numerator & -numerator).bit_length() - 1
+        return mpmath.ldexp(mpmath.mpf(numerator >> zeros), zeros - (denominator.bit_length() - 1))
+    return mpmath.mpf(numerator) / denominator
 
 
 def _mpf_to_fraction(x: mpmath.mpf) -> Fraction:

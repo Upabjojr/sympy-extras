@@ -11,8 +11,7 @@ relations and the memberships of
 The steps of the native functions which stay written on SymPy are called
 from them at run time (the functions ending in ``_of_core``, which take
 and return objects of the core): SymPy's ``limit_seq``
-(:func:`sympy.series.limitseq.limit_seq`, not ported) and the reliable
-numerical values of :func:`sympy_extras._numeric.reliable_value`.
+(:func:`sympy.series.limitseq.limit_seq`, not ported).
 
 Examples
 ========
@@ -27,7 +26,7 @@ Piecewise((oo, a > 1), (1, Eq(a, 1)), (0, a < 1))
 """
 from __future__ import annotations
 
-from typing import Mapping, Optional, Union
+from typing import Optional, Union
 
 from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
@@ -41,7 +40,7 @@ from . import limits as native
 from .ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions, core_domain
 from .intervals_sympy import core_expr, sympy_expr
 
-__all__ = ['limit', 'limit_seq', 'series', 'limit_seq_of_core', 'reliable_value_of_core']
+__all__ = ['limit', 'limit_seq', 'series', 'limit_seq_of_core']
 
 
 # ---------------------------------------------------------------------------
@@ -54,14 +53,6 @@ def limit_seq_of_core(e: CoreExpr, n: CoreSymbol) -> Optional[CoreExpr]:
     from sympy.series.limitseq import limit_seq as _limit_seq
     value = _limit_seq(sympy_expr(e), _sympy_symbol(n))
     return None if value is None else core_expr(sympify(value))
-
-
-def reliable_value_of_core(e: CoreExpr, digits: int, values: Mapping[CoreSymbol, CoreExpr]) -> Optional[CoreExpr]:
-    """:func:`sympy_extras._numeric.reliable_value` of ``e`` at the
-    ``values`` of its symbols."""
-    from sympy_extras._numeric import reliable_value
-    value = reliable_value(sympy_expr(e), digits, {_sympy_symbol(k): sympy_expr(v) for k, v in values.items()})
-    return None if value is None else core_expr(value)
 
 
 # ---------------------------------------------------------------------------

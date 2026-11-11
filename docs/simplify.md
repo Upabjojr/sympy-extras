@@ -34,9 +34,9 @@ expressions of the core (`sympy_extras.core`, `sympy_extras.functions`) with
 the polynomials of `sympy_extras.polys` and does not import SymPy. The same
 functions on SymPy expressions are in `sympy_extras.simplify.structure_sympy`,
 which converts through `sympy_extras.interop`; the examples below use it.
-Two numerical steps go through SymPy at run time: the sample points of the
-region of the assumptions and the reliable values of an expression at them
-(`sample_values_of_core`, `reliable_value_of_core` in the face).
+The numerical steps are native too: the sample points of the region of the
+assumptions (`sympy_extras.integrals.conditions.sample_values`) and the
+reliable values of an expression at them (`sympy_extras._numeric`).
 
 ```python
 >>> from sympy import symbols, exp, log, sqrt, sin, cos, atan, asin, acos, pi, Rational, I
@@ -187,7 +187,7 @@ True
   rounding error (`sympy_extras._numeric.reliable_value`, which the other
   numerical checks of the package use too): the constant sums, and their
   real and imaginary parts, which have no significant digit are written 0
-  when SymPy proves them zero, and a point at which the argument of a
+  when they are proved zero, and a point at which the argument of a
   logarithm, of a fractional power or of an inverse function still has a
   part which is a rounding error is skipped (the argument lies on an axis,
   where the cuts are, on the side the rounding chooses).

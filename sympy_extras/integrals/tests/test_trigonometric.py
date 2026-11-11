@@ -7,7 +7,7 @@ from sympy import (symbols, sin, cos, tan, cot, sec, csc, sinh, cosh, tanh, coth
 from sympy.logic.boolalg import Boolean
 
 from sympy_extras._typing import as_expr
-from sympy_extras.integrals.conditions import numerically_equal
+from sympy_extras.integrals.conditions_sympy import numerically_equal
 from sympy_extras.integrals.trigonometric import trigonometric_antiderivative, _sin_cos, _sinh_cosh
 
 x = symbols('x')
