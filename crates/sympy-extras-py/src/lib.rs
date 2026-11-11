@@ -25,6 +25,7 @@ mod galois;
 mod gaussian;
 mod lattice;
 mod ntheory;
+mod numberfields;
 mod polyerrors;
 mod rings;
 mod simplex;
@@ -120,6 +121,13 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &polys,
         "complexroots",
         "sympy_extras_rs.polys.complexroots",
+    )?)?;
+    let numberfields_module: Bound<'_, PyModule> =
+        submodule(&polys, "numberfields", "sympy_extras_rs.polys.numberfields")?;
+    numberfields::register_basis(&submodule(
+        &numberfields_module,
+        "basis",
+        "sympy_extras_rs.polys.numberfields.basis",
     )?)?;
     galois::register_galoisfactor(&submodule(
         &polys,

@@ -21,6 +21,7 @@ pub mod lattice;
 pub mod modulargroebner;
 pub mod multifactor;
 pub mod multisqf;
+pub mod numberfields;
 pub mod polyclasses;
 pub mod rings;
 pub mod rootisolation;
