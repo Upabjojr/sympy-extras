@@ -8,8 +8,7 @@ not ported.
 
 The eliminations stay written on SymPy's polynomials and are called from
 the native ``resolve`` at run time (the functions ending in ``_of_core``,
-which take and return objects of the core): virtual substitution (:func:`~sympy_extras.polys.virtual_substitution.virtual_substitution_elimination`,
-:func:`~sympy_extras.polys.virtual_substitution.with_sides`) and
+which take and return objects of the core): the
 comprehensive Gröbner systems
 (:func:`~sympy_extras.polys.comprehensive.complex_quantifier_elimination`,
 :func:`~sympy_extras.polys.comprehensive.reduce_complex`).
@@ -25,29 +24,15 @@ from sympy.sets.sets import Set
 from sympy_extras.core.logic import Boolean as CoreBoolean
 
 from . import resolve as native
-from .ask_sympy import (Assumptions, core_assumptions, core_boolean, core_domain, core_prefix,
-    sympy_boolean, sympy_prefix)
+from .ask_sympy import (Assumptions, core_assumptions, core_boolean, core_domain, sympy_boolean, sympy_prefix)
 from .quantifiers import Prefix
 
-__all__ = ['resolve', 'virtual_substitution_elimination_of_core',
-    'with_sides_of_core',
-    'complex_quantifier_elimination_of_core', 'reduce_complex_of_core']
+__all__ = ['resolve', 'complex_quantifier_elimination_of_core', 'reduce_complex_of_core']
 
 
 # ---------------------------------------------------------------------------
 # the eliminations of the native resolve which stay on SymPy
 
-def virtual_substitution_elimination_of_core(formula: CoreBoolean, prefix: Prefix) -> tuple[CoreBoolean, Prefix]:
-    """:func:`sympy_extras.polys.virtual_substitution.virtual_substitution_elimination`."""
-    from sympy_extras.polys.virtual_substitution import virtual_substitution_elimination
-    result, remaining = virtual_substitution_elimination(sympy_boolean(formula), sympy_prefix(prefix))
-    return core_boolean(result), core_prefix(remaining)
-
-
-def with_sides_of_core(formula: CoreBoolean) -> CoreBoolean:
-    """:func:`sympy_extras.polys.virtual_substitution.with_sides`."""
-    from sympy_extras.polys.virtual_substitution import with_sides
-    return core_boolean(with_sides(sympy_boolean(formula)))
 
 
 def complex_quantifier_elimination_of_core(formula: CoreBoolean, prefix: Prefix) -> CoreBoolean:

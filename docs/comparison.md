@@ -78,7 +78,7 @@ The setup used throughout:
 >>> from sympy_extras.polys.ideals import Ideal
 >>> from sympy_extras.polys.subresultants import psc
 >>> from sympy_extras.polys.groebnerwalk import groebner_walk
->>> from sympy_extras.polys.virtual_substitution import eliminate_linear
+>>> from sympy_extras.polys.virtual_substitution_sympy import eliminate_linear
 >>> from sympy_extras.integrals import definite_integral, IntegralByRanges
 >>> from sympy_extras.integrals import mellin_transform as xmellin
 >>> f = Function('y')(x)

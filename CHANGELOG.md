@@ -577,6 +577,30 @@ remove public functions. Breaking changes are listed here when they happen.
   SymPy's `CRootOf`), and `domain_of` intersects natively, with SymPy's
   intersection (`intersection_of_core`) when the core does not compare
   the ends.
+- `sympy_extras.polys.virtual_substitution` is native (**breaking**: core
+  expressions, symbols and Booleans in and out, prefixes of core symbols;
+  it imports no SymPy). The coefficients in the eliminated variable come
+  from the native `Poly` (with the expression coefficients of its
+  decomposition for the domains it does not port, `QQ(a)` and `EX`), the
+  normal form of the relations from the native `assumptions.facts`; it
+  holds the port of SymPy's `to_nnf` (now public, `to_nnf`) and
+  `with_sides`, which `solvers.integers` imports from it (and still
+  exports). SymPy's `simplify_logic` of a compound result is called at
+  run time through `virtual_substitution_sympy.simplify_logic_of_core`
+  (which `integers_sympy` re-exports); a result which is a truth value or
+  a single relation does not go through SymPy. The new face
+  `sympy_extras.polys.virtual_substitution_sympy` keeps the old API on
+  SymPy objects; **import it instead of the old module**: `from
+  sympy_extras.polys.virtual_substitution_sympy import eliminate_linear`.
+  The native `resolve` and `ask` call the native functions directly:
+  `assumptions.resolve_sympy.virtual_substitution_elimination_of_core`,
+  `resolve_sympy.with_sides_of_core`, `assumptions.ask_sympy.is_linear_in_of_core`
+  and `ask_sympy.linear_quantifier_elimination_of_core` are removed. The
+  tests, docs and benchmarks use the face. The same results as before
+  (`srepr`) through the face, and natively (inputs and outputs converted
+  by `interop`), on 120 calls: the doctests, the tests of the module, the
+  `resolve` calls reaching it and 65 linear and quadratic eliminations
+  with parameters.
 - The bottom layer of the cylindrical algebraic decomposition is native
   (**breaking**): `sympy_extras.polys.cad.projection`, `.samplepoints` and
   `.lifting` work on the typed `Poly` of `polys.polytools` in symbols of the

@@ -7,7 +7,8 @@ import itertools
 
 from sympy_extras.core import Basic, Eq, Integer, Mod, Ne, Symbol, as_expr
 from sympy_extras.core.logic import Boolean, Implies, Not, and_, false, or_, to_boolean, true
-from sympy_extras.solvers.integers import (_drop_covered, _linear_system, _to_nnf, cooper, is_presburger,
+from sympy_extras.polys.virtual_substitution import to_nnf
+from sympy_extras.solvers.integers import (_drop_covered, _linear_system, cooper, is_presburger,
     linear_diophantine_system, presburger_quantifier_elimination, with_sides)
 
 x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
@@ -65,7 +66,7 @@ def test_presburger() -> None:
 
 def test_helpers() -> None:
     # SymPy's to_nnf: the negations reach the relations
-    assert _to_nnf(Not(and_(x > 0, Implies(y > 0, z > 0)))) == or_(x <= 0, and_(y > 0, z <= 0))
+    assert to_nnf(Not(and_(x > 0, Implies(y > 0, z > 0)))) == or_(x <= 0, and_(y > 0, z <= 0))
     assert str(with_sides(and_(x - y > 0, x + 1 < 0))) == '(x > y) & (x < -1)'
     xi = Symbol('x', integer=True)
     # sympy-extras#45 and #51: two disjuncts pinning the same point are not both dropped

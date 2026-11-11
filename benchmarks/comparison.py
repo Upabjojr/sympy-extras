@@ -103,7 +103,7 @@ from sympy_extras.polys.ideals import Ideal
 from sympy_extras.polys.groebnerwalk import groebner_walk
 from sympy_extras.polys.subresultants import psc
 from sympy_extras.polys.cad.qe_sympy import quantifier_elimination, solution_set
-from sympy_extras.polys.virtual_substitution import eliminate_linear
+from sympy_extras.polys.virtual_substitution_sympy import eliminate_linear
 from sympy_extras.concrete.qhyper_sympy import qpochhammer, qbinomial
 from sympy_extras.integrals import definite_integral, IntegralByRanges, mellin_transform as xmellin
 from sympy.solvers.ode import dsolve

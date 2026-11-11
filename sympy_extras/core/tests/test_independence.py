@@ -431,6 +431,24 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_VIRTUAL_SUBSTITUTION = r'''
+import sys
+from sympy_extras.core import symbols, Eq, Implies, Not
+from sympy_extras.polys.virtual_substitution import (is_linear_in, is_quadratic_in, eliminate_linear,
+    eliminate_quadratic, linear_quantifier_elimination, virtual_substitution_elimination, with_sides, to_nnf)
+assert 'sympy' not in sys.modules
+x, y, z = symbols('x y z')
+assert is_linear_in((2*x + y > 0) & (x*y < 1), x) and not is_quadratic_in(x**3 > y, x)
+assert str(with_sides((x - y > 0) & (x + 1 < 0))) == '(x > y) & (x < -1)'
+assert str(to_nnf(Implies(x > 0, Not(y < 1)))) == '(y >= 1) | (x <= 0)'
+assert str(eliminate_linear((x > y) & (x < 1), x)) == 'y < 1' and str(eliminate_linear(Eq(x, 2) & (x > y), x)) == 'y < 2'
+assert str(eliminate_linear((x > 0) & (x < 0), x)) == 'False' and str(eliminate_quadratic(x**2 + 1 > 0, x)) == 'True'
+assert str(linear_quantifier_elimination((x > y) & (y > z), [('exists', z), ('exists', x)])) == '(True, [])'
+assert str(virtual_substitution_elimination(x**3 > y, [('exists', x)])) == "(x**3 > y, [('exists', x)])"
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 def test_native_cad_qe_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.polys.cad.qe`,
     :mod:`sympy_extras.polys.cad.cylindrical` and
@@ -440,5 +458,16 @@ def test_native_cad_qe_does_not_load_sympy() -> None:
     ``find_instance`` and the systems of inequalities of ``solve`` which
     they answer."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_CAD_QE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_virtual_substitution_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.virtual_substitution` does not
+    load SymPy, nor do the eliminations whose result is a truth value or
+    a single relation (SymPy's ``simplify_logic`` of a compound result
+    goes through it at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_VIRTUAL_SUBSTITUTION], capture_output=True, text=True,
+                         timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

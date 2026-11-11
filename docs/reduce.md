@@ -1,7 +1,7 @@
 # Exact equation solving and reduction
 
 Modules: `sympy_extras.assumptions.resolve`, `sympy_extras.assumptions.solve` (SymPy face `solve_sympy`),
-`sympy_extras.polys.virtual_substitution`, `sympy_extras.polys.comprehensive`,
+`sympy_extras.polys.virtual_substitution` (SymPy face `virtual_substitution_sympy`), `sympy_extras.polys.comprehensive`,
 `sympy_extras.polys.roots`, `sympy_extras.solvers.integers`,
 `sympy_extras.solvers.transcendental`.
 
@@ -84,7 +84,7 @@ space is needed, so parameters do not slow it down.
 >>> from sympy import Eq, symbols
 >>> from sympy_extras.assumptions.resolve_sympy import resolve
 >>> from sympy_extras.assumptions.quantifiers_sympy import Exists, ForAll
->>> from sympy_extras.polys.virtual_substitution import eliminate_linear
+>>> from sympy_extras.polys.virtual_substitution_sympy import eliminate_linear
 >>> a, b, x, y, z = symbols('a b x y z')
 >>> eliminate_linear((x > y) & (x < 1), x)
 y < 1
@@ -104,7 +104,7 @@ variables remain.
 >>> from sympy.abc import c
 >>> resolve(ForAll(x, x**2 + b*x + c > 0))
 b**2 < 4*c
->>> from sympy_extras.polys.virtual_substitution import eliminate_quadratic
+>>> from sympy_extras.polys.virtual_substitution_sympy import eliminate_quadratic
 >>> eliminate_quadratic((x**2 < a) & (x > 1), x)
 a > 1
 
@@ -292,7 +292,9 @@ Piecewise((oo, a > 1), (1, Eq(a, 1)), (0, a < 1))
 ## Verification
 
 - `sympy_extras/polys/tests/test_virtual_substitution.py` checks every
-  elimination against the CAD (`tautology(Equivalent(...))`).
+  elimination against the CAD (`tautology(Equivalent(...))`), through
+  the SymPy face; `test_virtual_substitution_native.py` checks the native
+  functions on the objects of the core.
 - `sympy_extras/polys/tests/test_comprehensive.py` checks the parameter
   conditions of `exists_complex` at random rational parameter values
   against Gröbner bases of the specialised systems.

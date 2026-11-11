@@ -5,15 +5,15 @@ with the quantifiers of :mod:`sympy_extras.assumptions.quantifiers`.
 
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.assumptions.resolve_sympy` is its face on SymPy
-objects. The cylindrical algebraic decomposition is native
-(:func:`sympy_extras.polys.cad.qe.quantifier_elimination`); the other
-eliminations are not ported and go through SymPy at run time (the face
-holds them, the functions ending in ``_of_core``): virtual substitution
-(:mod:`sympy_extras.polys.virtual_substitution`) and comprehensive
-Gröbner systems (:mod:`sympy_extras.polys.comprehensive`), both written
-on SymPy's polynomials. Cooper's algorithm over the integers
-(:mod:`sympy_extras.solvers.integers`), the prenex form, the assumptions
-and the simplification of the result under them are native.
+objects. The cylindrical algebraic decomposition
+(:func:`sympy_extras.polys.cad.qe.quantifier_elimination`) and virtual
+substitution (:mod:`sympy_extras.polys.virtual_substitution`) are native;
+comprehensive Gröbner systems (:mod:`sympy_extras.polys.comprehensive`),
+written on SymPy's polynomials, are not ported and go through SymPy at
+run time (the face holds them, the functions ending in ``_of_core``).
+Cooper's algorithm over the integers (:mod:`sympy_extras.solvers.integers`),
+the prenex form, the assumptions and the simplification of the result
+under them are native.
 """
 from __future__ import annotations
 
@@ -120,7 +120,7 @@ def resolve(formula: BooleanLike, domain: Optional[Set] = Reals, assumptions: As
             "quantifier elimination is only implemented over the real numbers, "
             "the complex numbers and, for linear formulas, the integers")
     from sympy_extras.polys.cad.qe import quantifier_elimination
-    from .resolve_sympy import virtual_substitution_elimination_of_core, with_sides_of_core
+    from sympy_extras.polys.virtual_substitution import virtual_substitution_elimination, with_sides
     prefix, matrix = prenex(formula_)
     bound = [v for _, v in prefix]
     facts = _facts(assumptions, Reals, matrix.free_symbols | set(bound))
@@ -143,7 +143,7 @@ def resolve(formula: BooleanLike, domain: Optional[Set] = Reals, assumptions: As
         return true
     # variables occurring linearly are eliminated by virtual substitution,
     # the others by cylindrical algebraic decomposition
-    poly, remaining = virtual_substitution_elimination_of_core(poly, prefix)
+    poly, remaining = virtual_substitution_elimination(poly, prefix)
     if isinstance(poly, BooleanAtom):
         return poly
     eliminated = len(remaining) < len(prefix)
@@ -153,7 +153,7 @@ def resolve(formula: BooleanLike, domain: Optional[Set] = Reals, assumptions: As
         # the decomposition also simplifies a quantifier-free formula
         result = quantifier_elimination(poly, remaining, free, method)
     if eliminated:
-        result = with_sides_of_core(result)
+        result = with_sides(result)
     return _refine_boolean_(result, facts, premise)
 
 
@@ -227,7 +227,7 @@ def _refine_boolean_(result: Boolean, facts: Facts, premise: Optional[Boolean]) 
     """Drop the conditions of the result which are implied by the
     assumptions."""
     if premise is not None and not isinstance(premise, BooleanTrue) and not isinstance(result, BooleanAtom):
+        from sympy_extras.polys.virtual_substitution import with_sides
         from .refine import _refine_boolean
-        from .resolve_sympy import with_sides_of_core
-        result = with_sides_of_core(_refine_boolean(result, facts))
+        result = with_sides(_refine_boolean(result, facts))
     return result

@@ -23,8 +23,8 @@ The expressions, the formulas and the symbols are objects of the core
 One step goes through SymPy at run time (the face holds it,
 :func:`~sympy_extras.solvers.integers_sympy.simplify_logic_of_core`):
 SymPy's ``simplify_logic`` of the formulas returned by Cooper's
-algorithm. The negation normal form is a port of SymPy's ``to_nnf``
-(``sympy/logic/boolalg.py``).
+algorithm. The negation normal form and :func:`with_sides` are those of
+:mod:`sympy_extras.polys.virtual_substitution`.
 
 References
 ==========
@@ -37,20 +37,12 @@ References
 .. [Cohen] H. Cohen, A Course in Computational Algebraic Number Theory,
    Springer 1993, section 2.4 (Hermite normal form).
 """
-# ---------------------------------------------------------------------
-# PORTED FROM SYMPY: sympy/logic/boolalg.py (to_nnf and the to_nnf methods
-# of Not, Implies, Equivalent, Xor, ITE) (SymPy 1.14)
-# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
-# see sympy_extras/LICENSE-SymPy.
-# Changes: typed, on the Booleans of the core, simplify=False only.
-# ---------------------------------------------------------------------
 from __future__ import annotations
 
-from itertools import combinations
 from math import gcd
 from typing import Callable, Optional, Sequence, Union
 
-from sympy_extras.core.add import Add, add
+from sympy_extras.core.add import add
 from sympy_extras.core.expr import Expr, as_expr
 from sympy_extras.core.logic import (And, Boolean, BooleanFalse, BooleanTrue, Equivalent, ITE, Implies, Not, Or,
     Xor, and_, false, not_, or_, to_boolean, true)
@@ -61,6 +53,7 @@ from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, eq,
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.polys.polyerrors import BasePolynomialError
 from sympy_extras.polys.polytools import Poly
+from sympy_extras.polys.virtual_substitution import to_nnf, with_sides
 from sympy_extras.assumptions.quantifiers import Prefix
 
 __all__ = ['hermite_normal_form_with_transform', 'linear_diophantine_system',
@@ -482,62 +475,6 @@ def _substitute(formula: Boolean, replacements: dict[Boolean, Boolean]) -> Boole
     return formula
 
 
-# PORTED FROM SYMPY: sympy/logic/boolalg.py:to_nnf
-def _to_nnf(formula: Boolean) -> Boolean:
-    """The negation normal form (SymPy's ``to_nnf(simplify=False)``): the
-    negations pushed down to the atoms (the negation of a relation is the
-    opposite relation)."""
-    if isinstance(formula, And):
-        return and_(*[_to_nnf(to_boolean(a)) for a in formula.args])
-    if isinstance(formula, Or):
-        return or_(*[_to_nnf(to_boolean(a)) for a in formula.args])
-    if isinstance(formula, Implies):
-        a, b = [to_boolean(c) for c in formula.args]
-        return or_(_to_nnf(not_(a)), _to_nnf(b))
-    if isinstance(formula, Equivalent):
-        items = [to_boolean(c) for c in formula.args]
-        clauses = [or_(not_(a), b) for a, b in zip(items, items[1:])]
-        clauses.append(or_(not_(items[-1]), items[0]))
-        return and_(*[_to_nnf(c) for c in clauses])
-    if isinstance(formula, Xor):
-        items = [to_boolean(c) for c in formula.args]
-        clauses = [or_(*[not_(s) if s in negated else s for s in items])
-                   for i in range(0, len(items) + 1, 2) for negated in combinations(items, i)]
-        return and_(*[_to_nnf(c) for c in clauses])
-    if isinstance(formula, ITE):
-        a, b, c = [to_boolean(d) for d in formula.args]
-        return and_(_to_nnf(or_(not_(a), b)), _to_nnf(or_(a, c)))
-    if isinstance(formula, Not):
-        return _negation_to_nnf(to_boolean(formula.args[0]))
-    return formula
-
-
-# PORTED FROM SYMPY: sympy/logic/boolalg.py:Not.to_nnf
-def _negation_to_nnf(inner: Boolean) -> Boolean:
-    """The negation normal form of ``Not(inner)``."""
-    if isinstance(inner, And):
-        return or_(*[_to_nnf(not_(to_boolean(a))) for a in inner.args])
-    if isinstance(inner, Or):
-        return and_(*[_to_nnf(not_(to_boolean(a))) for a in inner.args])
-    if isinstance(inner, Implies):
-        a, b = [to_boolean(c) for c in inner.args]
-        return and_(_to_nnf(a), _to_nnf(not_(b)))
-    if isinstance(inner, Equivalent):
-        items = [to_boolean(c) for c in inner.args]
-        return and_(_to_nnf(or_(*items)), _to_nnf(or_(*[not_(a) for a in items])))
-    if isinstance(inner, Xor):
-        items = [to_boolean(c) for c in inner.args]
-        clauses = [or_(*[not_(s) if s in negated else s for s in items])
-                   for i in range(1, len(items) + 1, 2) for negated in combinations(items, i)]
-        return and_(*[_to_nnf(c) for c in clauses])
-    if isinstance(inner, ITE):
-        a, b, c = [to_boolean(d) for d in inner.args]
-        return and_(_to_nnf(or_(a, not_(c))), _to_nnf(or_(not_(a), not_(b))))
-    if isinstance(inner, Not):
-        return _to_nnf(to_boolean(inner.args[0]))
-    return not_(inner)
-
-
 def _normalize_coefficients(formula: Boolean, x: Symbol) -> tuple[Boolean, int]:
     """Rewrite the atoms so that ``x`` has coefficient ``+1`` or ``-1``:
     each atom is multiplied by ``m/|a|`` with ``m`` the least common
@@ -595,7 +532,7 @@ def cooper(formula: Boolean, x: Symbol) -> Boolean:
         raise TypeError("a Boolean formula is expected, got %s" % (formula,))
     # negations are pushed down to the atoms: the argument below needs a
     # formula which is monotone in its atoms
-    formula = _to_nnf(formula)
+    formula = to_nnf(formula)
     # residues first: Mod(e, k) = r is k | e - r, and one outside [0, k)
     # is a constant (sympy-extras#44); the atom loop below reads the
     # canonical form only
@@ -717,46 +654,6 @@ def _drop_covered(formula: Boolean) -> Boolean:
                 continue
         kept.append(d)
     return or_(*kept)
-
-
-def _sides(atom: Relational) -> Boolean:
-    """``p - q rel 0`` written as ``p rel q`` with the negative terms moved
-    to the right-hand side."""
-    if atom.rhs != 0:
-        return atom
-    positive: list[Expr] = []
-    negative: list[Expr] = []
-    for term in Add.make_args(atom.lhs):
-        if term.could_extract_minus_sign():
-            negative.append(as_expr(-term))
-        else:
-            positive.append(term)
-    constants = [t for t in positive if t.is_Number]
-    if not negative and len(positive) > 1 and constants:
-        # ``x + 1 < 0`` as ``x < -1``
-        positive.remove(constants[0])
-        negative.append(as_expr(-constants[0]))
-    if not negative or not positive:
-        return atom
-    return _relation(type(atom), add(*positive), add(*negative))
-
-
-def with_sides(formula: Boolean) -> Boolean:
-    """Every relation ``p - q rel 0`` of the formula written as ``p rel q``
-    (:func:`sympy_extras.polys.virtual_substitution.with_sides` on the
-    core).
-
-    Examples
-    ========
-
-    >>> from sympy_extras.core import symbols
-    >>> from sympy_extras.solvers.integers import with_sides
-    >>> x, y = symbols('x y')
-    >>> with_sides((x - y > 0) & (x + 1 < 0))
-    (x > y) & (x < -1)
-    """
-    replacements: dict[Boolean, Boolean] = {a: _sides(a) for a in _relations(formula)}
-    return _substitute(formula, replacements)
 
 
 def _clean(formula: Boolean) -> Boolean:

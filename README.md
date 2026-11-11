@@ -1076,7 +1076,8 @@ sympy_extras/
         stronggroebner.py    strong Gröbner bases over the integers (Kandri-Rody–Kapur, Lichtblau)
         modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold)
         orderings.py         WeightOrder, BlockOrder
-        virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution
+        virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (native)
+        virtual_substitution_sympy.py  its SymPy face, and simplify_logic_of_core
         comprehensive.py     comprehensive Gröbner systems, reduction over the complex numbers
         roots.py             roots in radicals through functional decomposition
         cad/
