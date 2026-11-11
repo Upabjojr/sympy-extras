@@ -359,7 +359,7 @@ def _solutions_of(solution: Optional[Basic]) -> list[Basic]:
 
 
 def _riccati(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
-    from .linear_ode import dsolve_linear
+    from .linear_ode_sympy import dsolve_linear
     F, x, u, p = _derivative_polynomial(equation, f)
     rhs = _explicit_rhs(F, p)
     if rhs is None:
@@ -378,7 +378,7 @@ def _riccati(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     # the special functions are recognised at once; Kovacic's algorithm
     # (inside dsolve_linear) is slow to fail on equations without
     # Liouvillian solutions
-    from .special import special_solutions
+    from .special_sympy import special_solutions
     solutions = attempt(lambda: special_solutions(linear, w), settings.timeout)
     if not solutions:
         solutions = attempt(lambda: dsolve_linear(linear, w, special_values=False), settings.timeout)

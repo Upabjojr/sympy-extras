@@ -9,8 +9,8 @@ from sympy.testing.pytest import raises
 
 from sympy_extras._typing import as_expr
 from sympy_extras._testing import untyped
-from sympy_extras.solvers.factorization import factor_operator
-from sympy_extras.solvers.linear_ode import LinearOperator, rational_solutions
+from sympy_extras.solvers.factorization_sympy import factor_operator
+from sympy_extras.solvers.linear_ode_sympy import LinearOperator, rational_solutions
 from sympy_extras.solvers.linear_systems import (cyclic_vector, cyclic_reduction, system_to_scalar,
     dsolve_linear_system, dsolve_system, rational_system_solutions, hyperexponential_system_solutions)
 

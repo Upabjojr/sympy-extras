@@ -268,12 +268,27 @@ sympy_extras/
         thue_equation_sympy.py the SymPy face of thue_equation (thue on SymPy forms)
         kovacic.py           liouvillian_solution, dsolve_kovacic, normal_form, KovacicSolution: Kovacic's algorithm (native;
                              SymPy's integrate and rational Riccati solver through kovacic_sympy)
-        kovacic_sympy.py     the SymPy face of kovacic (used by linear_ode, factorization, special), and the steps which
-                             stay on SymPy (integrate_of_core, integral_of_core, riccati_of_core)
+        kovacic_sympy.py     the SymPy face of kovacic, and the steps which stay on SymPy (integrate_of_core,
+                             integral_of_core, riccati_of_core; also used by linear_ode, factorization, special)
+        linear_ode.py        LinearOperator (the Ore ring K[D]), polynomial_solutions, rational_solutions,
+                             hyperexponential_solutions/search, reduce_order_linear, dsolve_linear, gcrd, lclm, UPoly
+                             (polynomials with any constant coefficients) (native; SymPy's integrate through kovacic_sympy,
+                             its dsolve through linear_ode_sympy)
+        linear_ode_sympy.py  the SymPy face of linear_ode (used by linear_systems, first_order), and dsolve_of_core
+        factorization.py     factor_operator, right_factor, left_factor, OperatorFactorization (Beke), variation_of_parameters,
+                             solve_factored (native; SymPy's solve of the Grassmann–Plücker relations through
+                             factorization_sympy)
+        factorization_sympy.py the SymPy face of factorization, and solve_of_core
+        irregular.py         Place, irregular_places, local_exponential_parts, finite_exponential_parts, conjugate_sum:
+                             exponential parts at irregular finite points (native; number fields of polys.domains)
+        irregular_sympy.py   the SymPy face of irregular (alpha as SymPy's CRootOf)
+        special.py           special_solutions, bessel_solutions, whittaker_solutions, hypergeometric_solutions,
+                             whittaker_m (native)
+        special_sympy.py     the SymPy face of special
         _special_values.py   the isolated values of the parameters of ODE solutions: general_solution_cases, basis_cases,
                              solution_cases, solution_jacobian, ode_order (native; the candidate points of
                              sympy_extras._special_values through _special_values_sympy)
-        _special_values_sympy.py the SymPy face of _special_values (used by ode, first_order, second_order, linear_ode),
+        _special_values_sympy.py the SymPy face of _special_values (used by ode, first_order, second_order),
                              and special_values_of_core
         tests/
     simplify/

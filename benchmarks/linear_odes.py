@@ -35,7 +35,7 @@ from sympy.solvers.ode import checkodesol
 
 from sympy_extras._timeout import attempt
 from sympy_extras.settings import configure
-from sympy_extras.solvers.linear_ode import LinearOperator, dsolve_linear
+from sympy_extras.solvers.linear_ode_sympy import LinearOperator, dsolve_linear
 
 from kamke_data import ODEEntry, load, x, y
 

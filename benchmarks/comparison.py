@@ -85,8 +85,8 @@ from sympy_extras.concrete.eulersums import polygamma_series, euler_sum
 from sympy_extras.concrete.qhyper_sympy import qgosper_sum, qzeilberger
 from sympy_extras.concrete.rational import rational_sum
 from sympy_extras.solvers.kovacic_sympy import dsolve_kovacic
-from sympy_extras.solvers.linear_ode import dsolve_linear
-from sympy_extras.solvers.special import special_solutions
+from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
+from sympy_extras.solvers.special_sympy import special_solutions
 from sympy_extras.solvers.ode import dsolve_lie
 from sympy_extras.solvers.first_order import dsolve_first_order
 from sympy_extras.solvers.second_order import dsolve_second_order, integrating_factor_xy, is_linearizable
