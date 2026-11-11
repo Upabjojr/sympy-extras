@@ -97,13 +97,36 @@ AlternativeRule: x**2 - 2*x - 1 = 0 -> {1 - sqrt(2), 1 + sqrt(2)}
 
 ```
 
-The rules cover linear equations, quadratics, polynomials which factor
-over the rationals, binomial equations $a x^n + c = 0$, equations with
-denominators, and equations with one square root. An equation they do
-not solve gives a tree which `contains_dont_know()`, and
-`manual_solve` returns `None`. The tests compare the solution set of
-every node of every tree, the alternatives included, with the real
-solution set SymPy finds for that node's own equation.
+Radicals, absolute values, exponentials, logarithms and trigonometric
+functions have their rules; an equation which is a polynomial in one of
+them (`exp(x)`, `sin(x)`, `log(x)`) is solved by substitution:
+
+```python
+>>> from sympy_extras.functions import exp, log, sin, abs_
+>>> print(format_steps(solve_steps(exp(2*x) - 3*exp(x) + 2, 0, x), depth=1))
+SubstitutionRule: exp(2*x) - 3*exp(x) + 2 = 0 -> {0, log(2)}
+  ZeroProductRule: u**2 - 3*u + 2 = 0 -> {1, 2}
+  TakeLogarithmRule: exp(x) = 1 -> {0}
+  TakeLogarithmRule: exp(x) = 2 -> {log(2)}
+>>> manual_solve(sqrt(x + 5) + sqrt(x), 5, x), manual_solve(abs_(2*x + 1), x + 4, x), manual_solve(2**x, 8, x)
+({4}, {-5/3, 3}, {3})
+>>> manual_solve(log(x) + log(x - 3), log(10), x), solve_steps(abs_(x - 2), 2*x + 5, x).rejected
+({5}, (-7,))
+>>> manual_solve(2*sin(x), 1, x)
+Union(ImageSet(Lambda(n, 2*pi*n + pi/6), Integers), ImageSet(Lambda(n, 2*pi*n + 5*pi/6), Integers))
+>>> manual_solve(x**3 + x + 1, 0, x), manual_solve(x**3 - 3*x + 1, 0, x)
+({-(1/2 + sqrt(93)/18)**(1/3) + (-1/2 + sqrt(93)/18)**(1/3)}, {IndexedRoot(x**3 - 3*x + 1, x, 0), IndexedRoot(x**3 - 3*x + 1, x, 1), IndexedRoot(x**3 - 3*x + 1, x, 2)})
+
+```
+
+A solution must make both sides real: `log(x - 5) = log(1 - x)` has the
+candidate 3, where the two logarithms are equal complex numbers, and no
+real solution. An equation the rules do not solve gives a tree which
+`contains_dont_know()`, and `manual_solve` returns `None`. The tests
+compare the solution set of every node of every tree, the alternatives
+included, with the real solution set SymPy finds for that node's own
+equation, and check the trigonometric families by substitution and by
+counting the roots on an interval.
 
 ## Derivatives
 
@@ -181,10 +204,10 @@ step which holds alternatives.
 
 ## Not done
 
-* equations: several radicals, absolute values, exponential and
-  logarithmic and trigonometric equations, cubics and quartics which do
-  not factor, systems, inequalities; case distinctions on parameters (a
-  coefficient by which a side is divided is taken to be nonzero);
+* equations: exponentials of different bases (`4**x - 2**x - 2`), sums
+  of trigonometric functions of different arguments, systems,
+  inequalities; case distinctions on parameters (a coefficient by which
+  a side is divided is taken to be nonzero);
 * integrals are deliberately left out (maintainer's decision of
   2026-11-11): SymPy's `manualintegrate` is the model of the engine, not
   a domain to redo here;

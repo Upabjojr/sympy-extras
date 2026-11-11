@@ -18,8 +18,12 @@ remove public functions. Breaking changes are listed here when they happen.
   `steps.equations`: `solve_steps` and `manual_solve` for equations in
   one unknown over the reals (linear, quadratic by factoring, formula or
   completed square, polynomials which factor, denominators, a square
-  root), each step tagged as an equivalence, a case split or an
-  implication whose extraneous solutions are rejected.
+  root or several, absolute values, exponential and logarithmic
+  equations, substitution of `exp(x)`, `sin(x)`, `log(x)`, trigonometric
+  equations with their periodic families, cubics by Cardano, isolated
+  real roots of polynomials which do not factor), each step tagged as an
+  equivalence, a case split or an implication whose extraneous solutions
+  are rejected.
   `steps.derivatives`: `derivative_steps`, `manual_derivative`. See
   docs/steps.md.
 - `normal_form` splits the logarithms of positive rational numbers over

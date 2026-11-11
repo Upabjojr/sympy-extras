@@ -22,6 +22,17 @@ equation, or into several, and yields them as subproblems:
 ``ClearDenominatorsRule``    both sides multiplied by the denominators
 ``SquareBothSidesRule``      a square root isolated and both sides squared
 ``SwapSidesRule``            the sides exchanged
+``AbsoluteValueRule``        $|A| = B$: the cases $A = B$ and $A = -B$
+``TakeLogarithmRule``        $a^f = c$: $f = \log c/\log a$
+``EqualExponentsRule``       $a^f = a^g$: $f = g$
+``ExponentiateRule``         $\log f = c$: $f = e^c$
+``EqualArgumentsRule``       $\log f = \log g$: $f = g$, checked
+``CombineLogarithmsRule``    a sum of logarithms as one, checked
+``SubstitutionRule``         a polynomial in $e^x$, $\sin x$, $\log x$, ...
+``PeriodicRule``             $\sin f = c$, $\cos f = c$, $\tan f = c$
+``TangentRule``              $a \sin f = b \cos f$ as $\tan f = b/a$
+``CardanoRule``              a cubic with one real root
+``RealRootsRule``            the real roots of a polynomial, isolated
 ``AlternativeRule``          several derivations of the same solution
 ``DontKnowRule``             no rule applies
 ===========================  ================================================
@@ -43,6 +54,14 @@ factors over the rationals, by the formula, and by completing the
 square: the first which applies by default, all of them with
 ``branch=True``. A linear equation may move its constants or its
 unknowns first.
+
+Equations with several square roots are squared as many times as needed.
+A trigonometric equation has the solutions of each of its cases for
+every integer ``n``: ``solutions()`` is then a union of images of the
+integers. A polynomial of degree three or more which does not factor has
+its real roots isolated exactly (``IndexedRoot``: the polynomial and the
+rank of the root); a cubic with a single real root is also solved by
+Cardano's formula.
 
 ``solutions()`` gives the set of the real solutions of a step, assembled
 from its substeps. With symbols other than the unknown the solution is
@@ -89,19 +108,28 @@ from dataclasses import dataclass
 from typing import Callable, ClassVar, Generator, Optional, Sequence
 
 from sympy_extras.core.add import Add, add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.containers import Tuple
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import expand
 from sympy_extras.core.mul import mul
-from sympy_extras.core.numbers import Integer, Rational, nan, zoo
+from sympy_extras.core.numbers import Integer, Rational, nan, pi, zoo
 from sympy_extras.core.power import Pow, pow, sqrt
 from sympy_extras.core.symbol import Symbol
+from sympy_extras.functions import acos, asin, atan, exp, log
+from sympy_extras.functions.elementary.complexes import Abs
+from sympy_extras.functions.elementary.exponential import Exp, Log
+from sympy_extras.functions.elementary.trigonometric import Cos, Sin, Tan
+from sympy_extras.sets.fancysets import Integers, image_set
 from sympy_extras.sets.sets import EmptySet, FiniteSet, Reals, Set, finite_set, union
 
 from .core import AlternativeStep, Context, Step, StepSolver, atomic
 
 __all__ = ['EquationProblem', 'EquationStep', 'SolvedRule', 'IdentityRule', 'ContradictionRule', 'AddToBothSidesRule',
            'DivideBothSidesRule', 'RewriteRule', 'ZeroProductRule', 'QuadraticFormulaRule', 'CompleteSquareRule', 'RootRule',
-           'ClearDenominatorsRule', 'SquareBothSidesRule', 'SwapSidesRule', 'AlternativeRule', 'DontKnowRule',
+           'ClearDenominatorsRule', 'SquareBothSidesRule', 'SwapSidesRule', 'AbsoluteValueRule', 'TakeLogarithmRule',
+           'EqualExponentsRule', 'ExponentiateRule', 'EqualArgumentsRule', 'CombineLogarithmsRule', 'SubstitutionRule',
+           'PeriodicRule', 'TangentRule', 'CardanoRule', 'RealRootsRule', 'AlternativeRule', 'DontKnowRule',
            'solve_steps', 'manual_solve']
 
 
@@ -304,6 +332,148 @@ class SquareBothSidesRule(_Checked):
 
 
 @dataclass(frozen=True)
+class AbsoluteValueRule(EquationStep):
+    """``|inner| = value``: the cases ``inner = value`` and ``inner =
+    -value``, whose solutions are checked in the original equation (the
+    value must not be negative there)."""
+
+    kind: ClassVar[str] = 'implication'
+
+    inner: Expr
+    cases: tuple[EquationStep, ...]
+    rejected: tuple[Expr, ...]
+    unverified: tuple[Expr, ...]
+
+    def substeps(self) -> tuple[Step, ...]:
+        return self.cases
+
+    def solutions(self) -> Set:
+        found = union(*[case.solutions() for case in self.cases])
+        if not isinstance(found, FiniteSet):
+            return found
+        kept = [e for e in found.args if isinstance(e, Expr) and e not in self.rejected]
+        return finite_set(*kept) if kept else EmptySet
+
+
+@dataclass(frozen=True)
+class TakeLogarithmRule(_OneStep):
+    """``base**f = value`` with positive ``base`` and ``value``: the
+    logarithm of both sides."""
+
+    base: Expr
+
+
+@dataclass(frozen=True)
+class EqualExponentsRule(_OneStep):
+    """``base**f = base**g``: the exponents are equal."""
+
+    base: Expr
+
+
+@dataclass(frozen=True)
+class ExponentiateRule(_OneStep):
+    """``log(f) = value``: the exponential of both sides."""
+
+
+@dataclass(frozen=True)
+class EqualArgumentsRule(_Checked):
+    """``log(f) = log(g)``: the arguments are equal, where both are
+    positive (the solutions are checked)."""
+
+
+@dataclass(frozen=True)
+class CombineLogarithmsRule(_Checked):
+    """A sum of logarithms is the logarithm of the product, where each
+    argument is positive (the solutions are checked)."""
+
+
+@dataclass(frozen=True)
+class SubstitutionRule(EquationStep):
+    """The equation is one in ``placeholder = expression``: ``substep``
+    solves it for the placeholder, and ``cases`` solve ``expression =
+    value`` for each value found."""
+
+    kind: ClassVar[str] = 'cases'
+
+    placeholder: Symbol
+    expression: Expr
+    substep: EquationStep
+    cases: tuple[EquationStep, ...]
+
+    def substeps(self) -> tuple[Step, ...]:
+        return (self.substep,) + self.cases
+
+    def solutions(self) -> Set:
+        return union(*[case.solutions() for case in self.cases]) if self.cases else EmptySet
+
+
+@dataclass(frozen=True)
+class PeriodicRule(EquationStep):
+    """``function(f) = value`` for a sine, cosine or tangent: the cases
+    ``f = angle + period*parameter`` for every integer ``parameter``. The
+    solutions are the images of the integers."""
+
+    kind: ClassVar[str] = 'cases'
+
+    function: str
+    value: Expr
+    parameter: Symbol
+    cases: tuple[EquationStep, ...]
+
+    def substeps(self) -> tuple[Step, ...]:
+        return self.cases
+
+    def solutions(self) -> Set:
+        families: list[Set] = []
+        for case in self.cases:
+            found = case.solutions()
+            if not isinstance(found, FiniteSet):
+                raise ValueError('the solutions %s of a periodic case are not expressions in %s' % (found, self.parameter))
+            for expression in found.args:
+                families.append(image_set(Tuple(self.parameter), expression, Integers))
+        return union(*families) if families else EmptySet
+
+
+@dataclass(frozen=True)
+class TangentRule(_OneStep):
+    """``a*sin(f) = b*cos(f)`` divided by ``a*cos(f)``, which does not
+    vanish at a solution: ``tan(f) = b/a``."""
+
+
+@dataclass(frozen=True)
+class CardanoRule(EquationStep):
+    """A cubic with one real root: with ``x = t - shift`` it is ``t**3 +
+    p*t + q = 0`` and ``t`` is the sum of the real cube roots of ``-q/2
+    +- sqrt(q**2/4 + p**3/27)``."""
+
+    shift: Expr
+    p: Expr
+    q: Expr
+
+    def solutions(self) -> Set:
+        inner = sqrt(self.q**2/4 + self.p**3/27)
+        return finite_set(_real_cube_root(-self.q/2 + inner) + _real_cube_root(-self.q/2 - inner) - self.shift)
+
+
+@dataclass(frozen=True)
+class RealRootsRule(EquationStep):
+    """A polynomial with rational coefficients which does not factor:
+    its real roots, isolated exactly (each is given by the polynomial
+    and its rank among the real roots)."""
+
+    roots: tuple[Expr, ...]
+
+    def solutions(self) -> Set:
+        return finite_set(*self.roots) if self.roots else EmptySet
+
+
+def _real_cube_root(value: Expr) -> Expr:
+    if value.is_negative is True:
+        return -pow(-value, Rational(1, 3))
+    return pow(value, Rational(1, 3))
+
+
+@dataclass(frozen=True)
 class AlternativeRule(EquationStep, AlternativeStep):
     """Several derivations; the solutions are those of the first."""
 
@@ -381,6 +551,10 @@ def _satisfies(problem: EquationProblem, value: Expr) -> Optional[bool]:
     if left.is_finite is False or right.is_finite is False or left.has(nan, zoo) or right.has(nan, zoo):
         # a pole of one of the sides: not a solution
         return False
+    if left.is_real is False or right.is_real is False:
+        # a side is not a real number there (the logarithm of a negative number): not a solution over the reals,
+        # even when the two complex values are equal
+        return False
     try:
         difference = _normal(left - right)
     except ZeroDivisionError:
@@ -391,7 +565,13 @@ def _satisfies(problem: EquationProblem, value: Expr) -> Optional[bool]:
         return False
     if difference.is_positive is True or difference.is_negative is True:
         return False
-    return None
+    if difference.free_symbols:
+        return None
+    from sympy_extras.simplify.structure import is_zero
+    try:
+        return is_zero(difference)
+    except (ValueError, NotImplementedError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------
@@ -572,11 +752,12 @@ def _clear_denominators(problem: EquationProblem, context: Context) -> _Run:
 
 
 def _isolate_radical(problem: EquationProblem, context: Context) -> _Run:
-    """One square root alone on the left: the other terms go right."""
+    """One square root alone on the left: the other terms (other square
+    roots among them) go right."""
     x = problem.variable
     terms = [a for a in problem.lhs.args if isinstance(a, Expr)] if isinstance(problem.lhs, Add) else [problem.lhs]
     radical_terms = [t for t in terms if _radicals(t, x)]
-    if len(radical_terms) != 1 or len(terms) == 1:
+    if not radical_terms or len(terms) == 1:
         return None
     moving = add(*[t for t in terms if t is not radical_terms[0]])
     substep = yield EquationProblem(radical_terms[0], expand(problem.rhs - moving), x)
@@ -596,6 +777,306 @@ def _square(problem: EquationProblem, context: Context) -> _Run:
     return SquareBothSidesRule(problem.lhs, problem.rhs, x, substep, rejected, unverified)
 
 
+def _absolute_values(e: Expr, x: Symbol) -> list[Expr]:
+    return [node for node in e.atoms(Abs) if isinstance(node, Expr) and node.has(x)]
+
+
+def _isolate(kind: Callable[[Expr, Symbol], list[Expr]]) -> _Rule:
+    """The first term of the left side with a node of the kind stays;
+    the other terms go right."""
+    def rule(problem: EquationProblem, context: Context) -> _Run:
+        x = problem.variable
+        terms = [a for a in problem.lhs.args if isinstance(a, Expr)] if isinstance(problem.lhs, Add) else [problem.lhs]
+        chosen = [t for t in terms if kind(t, x)]
+        if not chosen or len(terms) == 1:
+            return None
+        moving = add(*[t for t in terms if t is not chosen[0]])
+        substep = yield EquationProblem(chosen[0], expand(problem.rhs - moving), x)
+        return AddToBothSidesRule(problem.lhs, problem.rhs, x, substep, -moving)
+    return rule
+
+
+def _absolute_value(problem: EquationProblem, context: Context) -> _Run:
+    """``c*|A| = B``."""
+    x = problem.variable
+    if isinstance(problem.lhs, Add):
+        return None
+    coefficient, rest = problem.lhs.as_independent(x)
+    if not isinstance(rest, Abs) or coefficient == 0:
+        return None
+    inner = rest.args[0]
+    if not isinstance(inner, Expr):
+        return None
+    value = _normal(problem.rhs/coefficient)
+    if value.is_negative is True:
+        return ContradictionRule(problem.lhs, problem.rhs, x)
+    targets = [value] if value == 0 else [value, -value]
+    cases: list[EquationStep] = []
+    for target in targets:
+        cases.append((yield EquationProblem(inner, expand(target), x)))
+    rejected: list[Expr] = []
+    unverified: list[Expr] = []
+    for case in cases:
+        if case.contains_dont_know():
+            continue
+        found = case.solutions()
+        if not isinstance(found, FiniteSet):
+            continue
+        for candidate in found.args:
+            if not isinstance(candidate, Expr):
+                continue
+            verdict = _satisfies(problem, candidate)
+            if verdict is False and candidate not in rejected:
+                rejected.append(candidate)
+            elif verdict is None and candidate not in unverified:
+                unverified.append(candidate)
+    return AbsoluteValueRule(problem.lhs, problem.rhs, x, inner, tuple(cases), tuple(rejected), tuple(unverified))
+
+
+def _exponential_parts(e: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
+    """``(base, exponent)`` when ``e`` is ``exp(f)`` or ``a**f`` with a
+    constant positive ``a`` and ``f`` containing the unknown."""
+    if isinstance(e, Exp):
+        argument = e.args[0]
+        if isinstance(argument, Expr) and argument.has(x):
+            return exp(Integer(1)), argument
+    if isinstance(e, Pow) and not e.base.has(x) and e.exp.has(x) and e.base.is_positive is True and e.base != 1:
+        return e.base, e.exp
+    return None
+
+
+def _take_logarithm(problem: EquationProblem, context: Context) -> _Run:
+    """``c*a**f = v``."""
+    x = problem.variable
+    if isinstance(problem.lhs, Add) or problem.rhs.has(x):
+        return None
+    coefficient, rest = problem.lhs.as_independent(x)
+    parts = _exponential_parts(rest, x)
+    if parts is None or coefficient == 0:
+        return None
+    base, exponent = parts
+    value = _normal(problem.rhs/coefficient)
+    if value.is_positive is not True:
+        if value.is_negative is True or value == 0:
+            return ContradictionRule(problem.lhs, problem.rhs, x)
+        return None
+    # log(8)/log(2) is 3: the logarithms of rational numbers are split over the primes
+    target = _normal(log(value) if isinstance(rest, Exp) else log(value)/log(base))
+    substep = yield EquationProblem(exponent, target, x)
+    return TakeLogarithmRule(problem.lhs, problem.rhs, x, substep, base)
+
+
+def _equal_exponents(problem: EquationProblem, context: Context) -> _Run:
+    x = problem.variable
+    left, right = _exponential_parts(problem.lhs, x), _exponential_parts(problem.rhs, x)
+    if left is None or right is None or left[0] != right[0]:
+        return None
+    substep = yield EquationProblem(left[1], right[1], x)
+    return EqualExponentsRule(problem.lhs, problem.rhs, x, substep, left[0])
+
+
+def _logarithm_argument(e: Expr, x: Symbol) -> Optional[Expr]:
+    if isinstance(e, Log):
+        argument = e.args[0]
+        if isinstance(argument, Expr) and argument.has(x):
+            return argument
+    return None
+
+
+def _exponentiate(problem: EquationProblem, context: Context) -> _Run:
+    """``c*log(f) = v``."""
+    x = problem.variable
+    if isinstance(problem.lhs, Add) or problem.rhs.has(x):
+        return None
+    coefficient, rest = problem.lhs.as_independent(x)
+    argument = _logarithm_argument(rest, x)
+    if argument is None or coefficient == 0:
+        return None
+    substep = yield EquationProblem(argument, exp(_normal(problem.rhs/coefficient)), x)
+    return ExponentiateRule(problem.lhs, problem.rhs, x, substep)
+
+
+def _equal_arguments(problem: EquationProblem, context: Context) -> _Run:
+    x = problem.variable
+    left, right = _logarithm_argument(problem.lhs, x), _logarithm_argument(problem.rhs, x)
+    if left is None or right is None:
+        return None
+    substep = yield EquationProblem(left, right, x)
+    rejected, unverified = _checked(problem, substep)
+    return EqualArgumentsRule(problem.lhs, problem.rhs, x, substep, rejected, unverified)
+
+
+def _combined(e: Expr, x: Symbol) -> Optional[Expr]:
+    """A sum of multiples of logarithms as one logarithm, with the terms
+    which are not logarithms left over; ``None`` when there is nothing to
+    combine."""
+    terms = [a for a in e.args if isinstance(a, Expr)] if isinstance(e, Add) else [e]
+    product: Expr = Integer(1)
+    others: list[Expr] = []
+    count = 0
+    for term in terms:
+        coefficient, rest = (Integer(1), term) if isinstance(term, Log) else term.as_independent(x)
+        argument = _logarithm_argument(rest, x)
+        if argument is not None and isinstance(coefficient, Integer):
+            product = product*pow(argument, coefficient)
+            count += 1
+        else:
+            others.append(term)
+    if count < 2:
+        return None
+    return add(log(product), *others)
+
+
+def _combine_logarithms(problem: EquationProblem, context: Context) -> _Run:
+    x = problem.variable
+    left, right = _combined(problem.lhs, x), _combined(problem.rhs, x)
+    if left is None and right is None:
+        return None
+    substep = yield EquationProblem(problem.lhs if left is None else left, problem.rhs if right is None else right, x)
+    rejected, unverified = _checked(problem, substep)
+    return CombineLogarithmsRule(problem.lhs, problem.rhs, x, substep, rejected, unverified)
+
+
+def _fresh(name: str, problem: EquationProblem, integer: bool = False) -> Symbol:
+    used = {s.name for e in (problem.lhs, problem.rhs) for s in e.free_symbols if isinstance(s, Symbol)}
+    used.add(problem.variable.name)
+    candidate, k = name, 0
+    while candidate in used:
+        k += 1
+        candidate = '%s%d' % (name, k)
+    return Symbol(candidate, integer=True) if integer else Symbol(candidate)
+
+
+def _substitution(problem: EquationProblem, context: Context) -> _Run:
+    """The equation is a polynomial of degree two or more in one
+    transcendental expression of the unknown."""
+    from sympy_extras.simplify.normalform import _exponentials
+    x = problem.variable
+    difference = expand(problem.lhs - problem.rhs)
+    u = _fresh('u', problem)
+    candidates: list[tuple[Expr, Expr]] = []                 # (the equation in u, what u stands for)
+    back: dict[Symbol, Expr] = {}
+    [prepared] = _exponentials([difference], back)
+    if len(back) == 1:
+        [(placeholder, expression)] = list(back.items())
+        candidates.append((prepared.subs(placeholder, u), expression))
+    for node in sorted(difference.atoms(Sin, Cos, Tan, Log, Abs), key=str):
+        if isinstance(node, Expr) and node.has(x):
+            rule: dict[Basic, Basic] = {node: u}
+            candidates.append((difference.xreplace(rule), node))
+    for equation, expression in candidates:
+        coefficients = None if equation.has(x) else _polynomial(equation, u)
+        if coefficients is None or len(coefficients) < 3:
+            continue
+        substep = yield EquationProblem(equation, Integer(0), u)
+        if substep.contains_dont_know():
+            continue
+        found = substep.solutions()
+        if not isinstance(found, FiniteSet) and found is not EmptySet:
+            continue
+        cases: list[EquationStep] = []
+        for value in (found.args if isinstance(found, FiniteSet) else ()):
+            if isinstance(value, Expr):
+                cases.append((yield EquationProblem(expression, value, x)))
+        return SubstitutionRule(problem.lhs, problem.rhs, x, u, expression, substep, tuple(cases))
+    return None
+
+
+def _periodic(problem: EquationProblem, context: Context) -> _Run:
+    """``c*sin(f) = v``, and the same for the cosine and the tangent."""
+    x = problem.variable
+    if isinstance(problem.lhs, Add) or problem.rhs.has(x):
+        return None
+    coefficient, rest = problem.lhs.as_independent(x)
+    if not isinstance(rest, (Sin, Cos, Tan)) or coefficient == 0:
+        return None
+    argument = rest.args[0]
+    if not isinstance(argument, Expr):
+        return None
+    value = _normal(problem.rhs/coefficient)
+    n = _fresh('n', problem, integer=True)
+    angles: list[Expr]
+    name: str
+    if isinstance(rest, Tan):
+        name, angles = 'tan', [atan(value) + pi*n]
+    else:
+        if (value - 1).is_positive is True or (value + 1).is_negative is True:
+            return ContradictionRule(problem.lhs, problem.rhs, x)
+        if isinstance(rest, Sin):
+            name, principal = 'sin', asin(value)
+            angles = [principal + 2*pi*n] if value in (Integer(1), Integer(-1)) else [principal + 2*pi*n, pi - principal + 2*pi*n]
+        else:
+            name, principal = 'cos', acos(value)
+            angles = [principal + 2*pi*n] if value in (Integer(1), Integer(-1)) else [principal + 2*pi*n, -principal + 2*pi*n]
+    cases: list[EquationStep] = []
+    for angle in angles:
+        cases.append((yield EquationProblem(argument, expand(angle), x)))
+    return PeriodicRule(problem.lhs, problem.rhs, x, name, value, n, tuple(cases))
+
+
+def _tangent(problem: EquationProblem, context: Context) -> _Run:
+    """``a*sin(f) = b*cos(f)``."""
+    x = problem.variable
+    if isinstance(problem.lhs, Add) or isinstance(problem.rhs, Add):
+        return None
+    a, left = problem.lhs.as_independent(x)
+    b, right = problem.rhs.as_independent(x)
+    if isinstance(left, Cos) and isinstance(right, Sin):
+        a, left, b, right = b, right, a, left
+    if not (isinstance(left, Sin) and isinstance(right, Cos)) or left.args != right.args or a == 0:
+        return None
+    argument = left.args[0]
+    if not isinstance(argument, Expr):
+        return None
+    from sympy_extras.functions import tan
+    substep = yield EquationProblem(tan(argument), _normal(b/a), x)
+    return TangentRule(problem.lhs, problem.rhs, x, substep)
+
+
+def _cardano(problem: EquationProblem) -> Optional[EquationStep]:
+    coefficients = _polynomial(problem.lhs, problem.variable)
+    if problem.rhs != 0 or coefficients is None or len(coefficients) != 4:
+        return None
+    if not all(isinstance(c, Rational) for c in coefficients):
+        return None
+    a, b, c, d = coefficients
+    shift = b/(3*a)
+    p = _normal(c/a - b**2/(3*a**2))
+    q = _normal(2*b**3/(27*a**3) - b*c/(3*a**2) + d/a)
+    if (q**2/4 + p**3/27).is_positive is not True:
+        return None                                  # three real roots: the formula goes through complex numbers
+    return CardanoRule(problem.lhs, problem.rhs, problem.variable, shift, p, q)
+
+
+def _real_roots(problem: EquationProblem) -> Optional[EquationStep]:
+    x = problem.variable
+    coefficients = _polynomial(problem.lhs, x)
+    if problem.rhs != 0 or coefficients is None or len(coefficients) < 4:
+        return None
+    from fractions import Fraction
+    values: list[Fraction] = []
+    for c in coefficients:
+        if not isinstance(c, Rational):
+            return None
+        values.append(Fraction(c.p, c.q))
+    from sympy_extras.polys.cad.indexedroot import real_root
+    from sympy_extras.polys.cad.samplepoints import real_roots_of
+    roots = tuple(real_root(r, x.name) for r in real_roots_of(values))
+    return RealRootsRule(problem.lhs, problem.rhs, x, roots)
+
+
+def _transcendental(e: Expr, x: Symbol) -> bool:
+    """Whether ``e`` has an exponential, a logarithm, a sine, cosine or
+    tangent of the unknown."""
+    if any(node.has(x) for node in e.atoms(Exp, Log, Sin, Cos, Tan)):
+        return True
+    return any(isinstance(node, Pow) and not node.base.has(x) and node.exp.has(x) for node in e.atoms(Pow))
+
+
+def _kernel_terms(e: Expr, x: Symbol) -> list[Expr]:
+    return [e] if _transcendental(e, x) else []
+
+
 def _candidates(problem: EquationProblem) -> Sequence[_Rule]:
     lhs, rhs, x = problem.lhs, problem.rhs, problem.variable
     if not lhs.has(x) and not rhs.has(x):
@@ -604,10 +1085,19 @@ def _candidates(problem: EquationProblem) -> Sequence[_Rule]:
         return [atomic(_solved)]
     if _denominator(lhs, x) != 1 or _denominator(rhs, x) != 1:
         return [_clear_denominators]
+    if _absolute_values(lhs, x) or _absolute_values(rhs, x):
+        if not _absolute_values(lhs, x):
+            return [_swap]
+        return [_absolute_value, _isolate(_absolute_values), _substitution]
     if _radicals(lhs, x) or _radicals(rhs, x):
         if not _radicals(lhs, x):
             return [_swap]
         return [_isolate_radical, _square]
+    if _transcendental(lhs, x) or _transcendental(rhs, x):
+        if not _transcendental(lhs, x):
+            return [_swap]
+        return [_take_logarithm, _exponentiate, _periodic, _equal_exponents, _equal_arguments, _tangent,
+                _combine_logarithms, _substitution, _isolate(_kernel_terms), _rewrite]
     if isinstance(lhs, Pow) and isinstance(lhs.exp, Integer) and lhs.exp.p >= 2 and not rhs.has(x):
         coefficients = _polynomial(lhs.base, x)
         if coefficients is not None and len(coefficients) == 2:
@@ -625,9 +1115,13 @@ def _candidates(problem: EquationProblem) -> Sequence[_Rule]:
     if degree == 2:
         return [_zero_product, atomic(_quadratic_formula), _complete_square]
     binomial = all(c == 0 for c in coefficients[1:-1])
+    rules: list[_Rule] = [_zero_product]
     if binomial:
-        return [_zero_product, _binomial]
-    return [_zero_product]
+        rules.append(_binomial)
+    if degree == 3:
+        rules.append(atomic(_cardano))
+    rules.append(atomic(_real_roots))
+    return rules
 
 
 def _binomial(problem: EquationProblem, context: Context) -> _Run:
