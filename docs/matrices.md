@@ -471,6 +471,34 @@ ExprMatrix([[-k + 2*m, 3*m]])
 
 ```
 
+## Markov chains
+
+`sympy_extras.matrices.markov.MarkovChain` takes a transition matrix of
+rational numbers or expressions and answers the standard questions
+exactly: the communicating classes (Tarjan's algorithm on the graph of
+the nonzero entries), which are recurrent and their periods, the
+stationary distribution of each recurrent class, the fundamental matrix
+of the transient states with the absorption probabilities and expected
+times, hitting probabilities and mean hitting times of any set of
+states, and the long run limit.
+
+```python
+>>> from sympy_extras.core import Rational
+>>> from sympy_extras.matrices.markov import MarkovChain
+>>> p, q = Symbol('p'), Symbol('q')
+>>> MarkovChain(ExprMatrix.from_rows([[1 - p, p], [q, 1 - q]])).stationary_distribution()
+ExprMatrix([[q/(p + q), p/(p + q)]])
+>>> h = Rational(1, 2)
+>>> ruin = MarkovChain(ExprMatrix.from_rows([[1, 0, 0, 0], [h, 0, h, 0], [0, h, 0, h], [0, 0, 0, 1]]))
+>>> ruin.classes()
+[CommunicatingClass([0], recurrent, period 1), CommunicatingClass([3], recurrent, period 1), CommunicatingClass([1, 2], transient, period 2)]
+>>> ruin.absorption_probabilities(), ruin.expected_steps()
+(ExprMatrix([[2/3, 1/3], [1/3, 2/3]]), ExprMatrix([[2], [2]]))
+>>> ruin.limiting_matrix()
+ExprMatrix([[1, 0, 0, 0], [2/3, 0, 0, 1/3], [1/3, 0, 0, 2/3], [0, 0, 0, 1]])
+
+```
+
 ## Normal forms without eigenvalues
 
 `sympy_extras.matrices.normalforms` computes the Smith normal form of a

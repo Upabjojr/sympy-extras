@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.markov.MarkovChain`: finite Markov chains with
+  rational or symbolic transition matrices: communicating classes,
+  recurrence, periods, stationary distributions, the fundamental matrix,
+  absorption probabilities, expected steps, hitting probabilities, mean
+  hitting and return times, the limiting matrix.
 - `calculus.optimization`: `minimize_parametric`, `maximize_parametric`,
   the global optimum of a polynomial as a function of parameters, case
   by case (`[(a > 0, -1/(4*a)), (a <= 0, -oo)]`);

@@ -297,6 +297,7 @@ sympy_extras/
       riccati.py             riccati_solutions, care_solve, lqr, dare_solve, dlqr (exact, by the polynomial system and a certified Routh-Hurwitz test)
       statespace.py          controllability, observability, transfer_function, pole_placement (Ackermann), realization, Kalman decompositions, minimal_realization
       pencils.py             generalized eigenvalues and eigenvectors of A v = x B v (finite and infinite), pencil_polynomial
+      markov.py              MarkovChain: classes, periods, stationary distributions, absorption, hitting times, limits (exact)
       svd.py                 singular_values, exact compact svd of rational matrices
       functions.py           component matrices, matrix_exp, matrix_power, matrix_function
     vector/                  orthogonal.py: OrthogonalCoordinates (gradient, divergence, curl, laplacian), cartesian, cylindrical, spherical
