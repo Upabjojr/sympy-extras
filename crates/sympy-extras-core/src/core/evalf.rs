@@ -141,10 +141,53 @@ pub fn parts(z: &Complex) -> (Real, Real) {
     z.clone().into_parts()
 }
 
+/// The principal square root from the parts (mpmath's `mpc_sqrt`: exact
+/// on the real axis).
+pub fn complex_sqrt(z: &Complex, prec: usize) -> Complex {
+    let (a, b) = parts(z);
+    let zero: Real = real_zero(prec);
+    if b.repr().significand().is_zero() {
+        if a >= Real::ZERO {
+            return complex(a.sqrt(), zero);
+        }
+        return complex(zero, (-a).sqrt());
+    }
+    let two: Real = real_int(&Int::from(2u8), prec);
+    let modulus: Real = (&a * &a + &b * &b).sqrt();
+    // the larger half from the modulus, the other as b/(2 x): no
+    // cancellation of |z| - |a| for a small imaginary part (mpmath's way)
+    if a >= Real::ZERO {
+        let x: Real = ((&modulus + &a) / &two).sqrt();
+        let y: Real = &b / &(&two * &x);
+        return complex(x, y);
+    }
+    let t: Real = ((&modulus - &a) / &two).sqrt();
+    let x: Real = abs_of(&b) / (&two * &t);
+    complex(x, if b < Real::ZERO { -t } else { t })
+}
+
+fn abs_of(r: &Real) -> Real {
+    if *r < Real::ZERO {
+        -r.clone()
+    } else {
+        r.clone()
+    }
+}
+
 /// `z**w` on the principal branch: repeated squaring for an integer `w`,
-/// `exp(w ln z)` otherwise (`z` nonzero).
+/// the square root to an integer power for a half-integer (mpmath's
+/// `mpc_pow_mpf`), `exp(w ln z)` otherwise (`z` nonzero).
 fn power(z: &Complex, w: &Basic, wz: &Complex, prec: usize) -> Option<Complex> {
     if let Some(r) = w.as_rational() {
+        if denom(r) == Int::from(2u8) && bits(&numer(r)) <= 62 {
+            let n: Int = numer(r);
+            let root: Complex = complex_sqrt(z, prec);
+            if is_negative(&n) {
+                let one: Complex = complex_real(real_int(&Int::ONE, prec), prec);
+                return Some(&one / &root.powi(-n));
+            }
+            return Some(root.powi(n));
+        }
         if r.is_int() {
             let n: Int = numer(r);
             if bits(&n) > 62 {
@@ -218,6 +261,13 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 return None;
             }
             Some(value)
+        }
+        Head::Function(g @ (super::basic::Function::Arg | super::basic::Function::Atan2)) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec)?);
+            }
+            crate::functions::elementary::argument::argument_value(*g, &values, wp)
         }
         Head::Function(f) => {
             let v: Complex = numeric_value(&e.args()[0], prec)?;
@@ -316,6 +366,21 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                             }
                         }
                     }
+                }
+                g @ (super::basic::Function::Asin
+                | super::basic::Function::Acos
+                | super::basic::Function::Atan
+                | super::basic::Function::Acot
+                | super::basic::Function::Asec
+                | super::basic::Function::Acsc
+                | super::basic::Function::Asinh
+                | super::basic::Function::Acosh
+                | super::basic::Function::Atanh
+                | super::basic::Function::Acoth
+                | super::basic::Function::Asech
+                | super::basic::Function::Acsch) => crate::functions::elementary::inverse::inverse_value(*g, &v, wp)?,
+                super::basic::Function::Arg | super::basic::Function::Atan2 => {
+                    unreachable!("evaluated above with all their arguments")
                 }
                 super::basic::Function::Re => complex_real(parts(&v).0, wp),
                 super::basic::Function::Im => complex_real(parts(&v).1, wp),

@@ -157,6 +157,20 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Sec" => Basic::new(Head::Function(Function::Sec), args()?),
         "Csc" => Basic::new(Head::Function(Function::Csc), args()?),
         "Sinh" => Basic::new(Head::Function(Function::Sinh), args()?),
+        "Arg" => Basic::new(Head::Function(Function::Arg), args()?),
+        "Atan2" => Basic::new(Head::Function(Function::Atan2), args()?),
+        "Asin" => Basic::new(Head::Function(Function::Asin), args()?),
+        "Acos" => Basic::new(Head::Function(Function::Acos), args()?),
+        "Atan" => Basic::new(Head::Function(Function::Atan), args()?),
+        "Acot" => Basic::new(Head::Function(Function::Acot), args()?),
+        "Asec" => Basic::new(Head::Function(Function::Asec), args()?),
+        "Acsc" => Basic::new(Head::Function(Function::Acsc), args()?),
+        "Asinh" => Basic::new(Head::Function(Function::Asinh), args()?),
+        "Acosh" => Basic::new(Head::Function(Function::Acosh), args()?),
+        "Atanh" => Basic::new(Head::Function(Function::Atanh), args()?),
+        "Acoth" => Basic::new(Head::Function(Function::Acoth), args()?),
+        "Asech" => Basic::new(Head::Function(Function::Asech), args()?),
+        "Acsch" => Basic::new(Head::Function(Function::Acsch), args()?),
         "Cosh" => Basic::new(Head::Function(Function::Cosh), args()?),
         "Tanh" => Basic::new(Head::Function(Function::Tanh), args()?),
         "Coth" => Basic::new(Head::Function(Function::Coth), args()?),
@@ -251,6 +265,8 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
                     "trigonometric"
                 }
+                f if sympy_extras_core::functions::elementary::inverse::is_inverse_trigonometric(*f) => "trigonometric",
+                f if sympy_extras_core::functions::elementary::inverse::is_inverse(*f) => "hyperbolic",
                 Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
                     "hyperbolic"
                 }
@@ -471,6 +487,26 @@ unary!(cot, trigonometric::cot);
 unary!(sec, trigonometric::sec);
 unary!(csc, trigonometric::csc);
 unary!(sinh, hyperbolic::sinh);
+unary!(arg, sympy_extras_core::functions::elementary::argument::arg);
+
+#[pyfunction]
+fn atan2<'py>(py: Python<'py>, y: &Bound<'py, PyAny>, x: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let value = sympy_extras_core::functions::elementary::argument::atan2(&from_python(y)?, &from_python(x)?);
+    to_python(py, &value.map_err(crate::convert::err)?)
+}
+unary!(asin, sympy_extras_core::functions::elementary::inverse::asin);
+unary!(acos, sympy_extras_core::functions::elementary::inverse::acos);
+unary!(atan, sympy_extras_core::functions::elementary::inverse::atan);
+unary!(acot, sympy_extras_core::functions::elementary::inverse::acot);
+unary!(asec, sympy_extras_core::functions::elementary::inverse::asec);
+unary!(acsc, sympy_extras_core::functions::elementary::inverse::acsc);
+unary!(asinh, sympy_extras_core::functions::elementary::inverse::asinh);
+unary!(acosh, sympy_extras_core::functions::elementary::inverse::acosh);
+unary!(atanh, sympy_extras_core::functions::elementary::inverse::atanh);
+unary!(acoth, sympy_extras_core::functions::elementary::inverse::acoth);
+unary!(asech, sympy_extras_core::functions::elementary::inverse::asech);
+unary!(acsch, sympy_extras_core::functions::elementary::inverse::acsch);
+
 unary!(cosh, hyperbolic::cosh);
 unary!(tanh, hyperbolic::tanh);
 unary!(coth, hyperbolic::coth);
@@ -1191,7 +1227,7 @@ fn pisigma_report_ops<'py>(
 
 /// `expand(e, deep, mul, multinomial, power_base, power_exp, log, force)`.
 #[pyfunction]
-#[pyo3(signature = (e, deep=true, mul=true, multinomial=true, power_base=true, power_exp=true, log=true, force=false))]
+#[pyo3(signature = (e, deep=true, mul=true, multinomial=true, power_base=true, power_exp=true, log=true, force=false, complex=false))]
 #[allow(clippy::too_many_arguments)]
 fn expand<'py>(
     py: Python<'py>,
@@ -1203,6 +1239,7 @@ fn expand<'py>(
     power_exp: bool,
     log: bool,
     force: bool,
+    complex: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
     use rust_core::function::{expand_with, Hints};
     let hints = Hints {
@@ -1212,6 +1249,7 @@ fn expand<'py>(
         power_exp,
         log,
         force,
+        complex,
     };
     to_python(
         py,
@@ -1379,8 +1417,79 @@ fn polytools_call<'py>(
             let (p, q) = pt::cancel_fraction(&args[0], &args[1]).map_err(e)?;
             Ok(PyTuple::new(py, [to_python(py, &p)?, to_python(py, &q)?])?.into_any())
         }
+        "factor" => one(pt::factor(&args[0], &gens, false, true)),
+        "factor_deep" => one(pt::factor(&args[0], &gens, true, true)),
+        "factor_nofraction" => one(pt::factor(&args[0], &gens, false, false)),
+        "sqf" => one(pt::sqf(&args[0], &gens, true)),
+        "ratsimp" => one(sympy_extras_core::simplify::ratsimp::ratsimp(&args[0])),
+        "apart" => one(sympy_extras_core::polys::partfrac::apart(&args[0], gens.first(), false)),
+        "apart_full" => one(sympy_extras_core::polys::partfrac::apart(&args[0], gens.first(), true)),
+        "factor_list" | "sqf_list" | "factor_list_fraction" | "sqf_list_fraction" => {
+            let factors = |py: Python<'py>, fs: Vec<(Basic, Basic)>| -> PyResult<Bound<'py, PyAny>> {
+                let mut items: Vec<Bound<'py, PyAny>> = Vec::new();
+                for (g, k) in fs {
+                    items.push(PyTuple::new(py, [to_python(py, &g)?, to_python(py, &k)?])?.into_any());
+                }
+                Ok(PyList::new(py, items)?.into_any())
+            };
+            let method = if name.starts_with("sqf") {
+                pt::FactorMethod::Sqf
+            } else {
+                pt::FactorMethod::Factor
+            };
+            if name.ends_with("fraction") {
+                let (c, fp, fq) = pt::factor_list_fraction(&args[0], &gens, method).map_err(e)?;
+                return Ok(PyTuple::new(py, [to_python(py, &c)?, factors(py, fp)?, factors(py, fq)?])?.into_any());
+            }
+            let (c, fs) = if method == pt::FactorMethod::Sqf {
+                pt::sqf_list(&args[0], &gens)
+            } else {
+                pt::factor_list(&args[0], &gens)
+            }
+            .map_err(e)?;
+            Ok(PyTuple::new(py, [to_python(py, &c)?, factors(py, fs)?])?.into_any())
+        }
         _ => Err(PyTypeError::new_err(format!("unknown polytools function {}", name))),
     }
+}
+
+/// `roots(f, *gens, cubics, quartics, multiple, filter)`: a dict of the
+/// roots with their multiplicities, or the list with `multiple`.
+#[pyfunction]
+#[pyo3(signature = (f, gens, cubics=true, quartics=true, multiple=false, filter=None))]
+fn roots<'py>(
+    py: Python<'py>,
+    f: &Bound<'py, PyAny>,
+    gens: Vec<Bound<'py, PyAny>>,
+    cubics: bool,
+    quartics: bool,
+    multiple: bool,
+    filter: Option<&str>,
+) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::polys::polyroots;
+    let gens: Vec<Basic> = gens.iter().map(from_python).collect::<PyResult<_>>()?;
+    let f: Basic = from_python(f)?;
+    let e = crate::convert::err;
+    if multiple {
+        let listed = polyroots::roots_list(&f, &gens, cubics, quartics, filter).map_err(e)?;
+        let items: Vec<Bound<'py, PyAny>> = listed.iter().map(|r| to_python(py, r)).collect::<PyResult<_>>()?;
+        return Ok(PyList::new(py, items)?.into_any());
+    }
+    let found = polyroots::roots(&f, &gens, cubics, quartics, filter).map_err(e)?;
+    let out = PyDict::new(py);
+    for (r, m) in found.iter() {
+        out.set_item(to_python(py, r)?, *m)?;
+    }
+    Ok(out.into_any())
+}
+
+/// The expressions sorted by the canonical key (`sort_key`).
+#[pyfunction]
+fn sorted_by_key<'py>(py: Python<'py>, items: Vec<Bound<'py, PyAny>>) -> PyResult<Bound<'py, PyList>> {
+    let mut items: Vec<Basic> = items.iter().map(from_python).collect::<PyResult<_>>()?;
+    items.sort_by_cached_key(rust_core::sorting::sort_key);
+    let out: Vec<Bound<'py, PyAny>> = items.iter().map(|e| to_python(py, e)).collect::<PyResult<_>>()?;
+    PyList::new(py, out)
 }
 
 #[pyfunction]
@@ -1431,6 +1540,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(expand, m)?)?;
     m.add_function(wrap_pyfunction!(poly_report, m)?)?;
     m.add_function(wrap_pyfunction!(polytools_call, m)?)?;
+    m.add_function(wrap_pyfunction!(roots, m)?)?;
+    m.add_function(wrap_pyfunction!(sorted_by_key, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
     m.add_function(wrap_pyfunction!(decompose_power, m)?)?;
@@ -1447,6 +1558,21 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sec, m)?)?;
     m.add_function(wrap_pyfunction!(csc, m)?)?;
     m.add_function(wrap_pyfunction!(sinh, m)?)?;
+    m.add_function(wrap_pyfunction!(arg, m)?)?;
+    m.add_function(wrap_pyfunction!(atan2, m)?)?;
+    m.add_function(wrap_pyfunction!(asin, m)?)?;
+    m.add_function(wrap_pyfunction!(acos, m)?)?;
+    m.add_function(wrap_pyfunction!(atan, m)?)?;
+    m.add_function(wrap_pyfunction!(acot, m)?)?;
+    m.add_function(wrap_pyfunction!(asec, m)?)?;
+    m.add_function(wrap_pyfunction!(acsc, m)?)?;
+    m.add_function(wrap_pyfunction!(asinh, m)?)?;
+    m.add_function(wrap_pyfunction!(acosh, m)?)?;
+    m.add_function(wrap_pyfunction!(atanh, m)?)?;
+    m.add_function(wrap_pyfunction!(acoth, m)?)?;
+    m.add_function(wrap_pyfunction!(asech, m)?)?;
+    m.add_function(wrap_pyfunction!(acsch, m)?)?;
+
     m.add_function(wrap_pyfunction!(cosh, m)?)?;
     m.add_function(wrap_pyfunction!(tanh, m)?)?;
     m.add_function(wrap_pyfunction!(coth, m)?)?;

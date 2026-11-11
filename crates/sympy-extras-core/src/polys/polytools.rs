@@ -240,7 +240,7 @@ fn factors_of(e: &Basic) -> Vec<Basic> {
 }
 
 /// The monomials with the coefficients of their terms.
-type Decomposed = BTreeMap<Monomial, Vec<Basic>>;
+pub(crate) type Decomposed = BTreeMap<Monomial, Vec<Basic>>;
 
 fn exponent_of(n: i64) -> PolyResult<u32> {
     u32::try_from(n).map_err(|_| polynomial_error("a huge exponent".to_string()))
@@ -248,7 +248,7 @@ fn exponent_of(n: i64) -> PolyResult<u32> {
 
 /// The terms of `e` (expanded) in the generators `gens`
 /// (`_parallel_dict_from_expr_if_gens`).
-fn decompose_with_gens(e: &Basic, gens: &[Basic]) -> PolyResult<Decomposed> {
+pub(crate) fn decompose_with_gens(e: &Basic, gens: &[Basic]) -> PolyResult<Decomposed> {
     let mut result: Decomposed = Decomposed::new();
     for term in terms_of(&expand_default(e)?) {
         let mut coefficient: Vec<Basic> = Vec::new();
@@ -622,7 +622,7 @@ impl Poly {
 
     // -- structure
 
-    fn split(&self) -> BTreeMap<Monomial, BTreeMap<Monomial, Rat>> {
+    pub(crate) fn split(&self) -> BTreeMap<Monomial, BTreeMap<Monomial, Rat>> {
         let n: usize = self.gens.len();
         let mut grouped: BTreeMap<Monomial, BTreeMap<Monomial, Rat>> = BTreeMap::new();
         for (m, c) in &self.rep.terms {
@@ -634,7 +634,7 @@ impl Poly {
         grouped
     }
 
-    fn coefficient_expr(&self, terms: &BTreeMap<Monomial, Rat>) -> PolyResult<Basic> {
+    pub(crate) fn coefficient_expr(&self, terms: &BTreeMap<Monomial, Rat>) -> PolyResult<Basic> {
         let mut parts: Vec<Basic> = Vec::new();
         for (m, c) in terms {
             let mut factors: Vec<Basic> = vec![Basic::from_rational(c.clone())];
@@ -683,6 +683,16 @@ impl Poly {
             parts.push(core_mul(&factors)?);
         }
         core_add(&parts)
+    }
+
+    /// The coefficient of the monomial `exponents` (`nth`, `coeff_monomial`).
+    pub fn nth(&self, exponents: &[u32]) -> PolyResult<Basic> {
+        Ok(self
+            .terms()?
+            .into_iter()
+            .find(|(m, _)| m.as_slice() == exponents)
+            .map(|(_, c)| c)
+            .unwrap_or_else(Basic::zero))
     }
 
     #[allow(non_snake_case)]
@@ -736,6 +746,16 @@ impl Poly {
 
     pub fn is_zero(&self) -> bool {
         self.rep.terms.is_empty()
+    }
+
+    /// The number of terms in the generators (`length`).
+    pub fn length(&self) -> usize {
+        self.split().len()
+    }
+
+    /// Whether the polynomial is a constant in its generators.
+    pub fn is_ground(&self) -> bool {
+        self.split().keys().all(|m| m.iter().all(|e| *e == 0))
     }
 
     // -- printing
@@ -1601,7 +1621,7 @@ pub fn LC(f: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
 }
 
 /// The generators of `f` and `g` together (`_common_gens`).
-fn common_gens(f: &Basic, g: &Basic) -> PolyResult<Vec<Basic>> {
+pub(crate) fn common_gens(f: &Basic, g: &Basic) -> PolyResult<Vec<Basic>> {
     Ok(decompose_without_gens_many(&[f.clone(), g.clone()], true)?.1)
 }
 
@@ -1703,7 +1723,7 @@ pub fn discriminant_expr(f: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
 
 /// SymPy's `sring` of several expressions without generators, the
 /// coefficients rational (`_joint_rings`; `CoercionFailed` otherwise).
-fn joint_rings(exprs: &[Basic], expand: bool) -> PolyResult<(Vec<Basic>, Vec<BTreeMap<Monomial, Rat>>)> {
+pub(crate) fn joint_rings(exprs: &[Basic], expand: bool) -> PolyResult<(Vec<Basic>, Vec<BTreeMap<Monomial, Rat>>)> {
     let (decomposed, gens) = decompose_without_gens_many(exprs, expand)?;
     if gens.is_empty() {
         return Ok((gens, exprs.iter().map(|_| BTreeMap::new()).collect()));
@@ -1981,4 +2001,381 @@ fn cancel_with_gens(p: &Basic, q: &Basic, factored: &Basic, gens: &[Basic]) -> P
         expr_of_split(&big_p)?,
         core_pow(&expr_of_split(&big_q)?, &Basic::negative_one())?,
     ])
+}
+
+// ---------------------------------------------------------------------
+// factorisation of expressions (`factor`, `factor_list`, `sqf`, ...)
+
+/// A factor: a polynomial, or an expression which is not one (a number
+/// base, a constant without generators).
+#[derive(Debug, Clone, PartialEq)]
+pub enum FactorBase {
+    Poly(Poly),
+    Expr(Basic),
+}
+
+impl FactorBase {
+    fn expr(&self) -> PolyResult<Basic> {
+        match self {
+            FactorBase::Poly(p) => p.as_expr(),
+            FactorBase::Expr(e) => Ok(e.clone()),
+        }
+    }
+}
+
+type SymbolicFactors = Vec<(FactorBase, Basic)>;
+
+/// Whether the factorisation is into irreducible or square-free factors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FactorMethod {
+    Factor,
+    Sqf,
+}
+
+/// Whether `v` is `a + b*I` with numbers `a`, `b` (`_pure_complex`).
+fn pure_complex(v: &Basic) -> bool {
+    let (_, t) = crate::core::expr::as_coeff_add(v);
+    if t.is_number_class() && t.as_rational().is_some_and(|r| r.is_zero()) {
+        return false;
+    }
+    let (_, i) = crate::core::expr::as_coeff_mul(&t);
+    matches!(i.head(), Head::ImaginaryUnit)
+}
+
+fn factors_product(factors: &[(FactorBase, Basic)]) -> PolyResult<Basic> {
+    let mut parts: Vec<Basic> = Vec::new();
+    for (g, k) in factors {
+        parts.push(core_pow(&g.expr()?, k)?);
+    }
+    core_mul(&parts)
+}
+
+fn product_of(bases: &[FactorBase]) -> PolyResult<FactorBase> {
+    let mut result: FactorBase = bases[0].clone();
+    for b in &bases[1..] {
+        result = match (&result, b) {
+            (FactorBase::Poly(p), FactorBase::Poly(q)) => FactorBase::Poly(p.mul(q)?),
+            _ => FactorBase::Expr(core_mul(&[result.expr()?, b.expr()?])?),
+        };
+    }
+    Ok(result)
+}
+
+/// `(0, value, "")` for a rational exponent, `(1, 0, str)` otherwise
+/// (`_exponent_key`).
+fn exponent_key(k: &Basic) -> (u8, Rat, String) {
+    match k.as_rational() {
+        Some(v) => (0, v.clone(), String::new()),
+        None => (1, Rat::ZERO, k.to_string()),
+    }
+}
+
+/// `poly.rep.to_list()` as SymPy compares it (`_rep_key`).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum RepKey {
+    Number(Rat),
+    Coefficient(usize, Vec<(Monomial, Rat)>),
+    Level(Vec<RepKey>),
+}
+
+fn rep_level(terms: &[(Monomial, Rat)], i: usize, n: usize, params: bool) -> RepKey {
+    if i == n {
+        if params {
+            let mut ordered: Vec<(Monomial, Rat)> = terms.iter().map(|(m, c)| (m[n..].to_vec(), c.clone())).collect();
+            ordered.sort();
+            ordered.reverse();
+            return RepKey::Coefficient(ordered.len(), ordered);
+        }
+        return RepKey::Number(terms.iter().fold(Rat::ZERO, |s, (_, c)| s + c));
+    }
+    if terms.is_empty() {
+        return RepKey::Level(Vec::new());
+    }
+    let top: u32 = terms.iter().map(|(m, _)| m[i]).max().expect("terms");
+    let part = |d: u32| -> Vec<(Monomial, Rat)> { terms.iter().filter(|(m, _)| m[i] == d).cloned().collect() };
+    if i + 1 == n && !params {
+        return RepKey::Level(
+            (0..=top)
+                .rev()
+                .map(|d| RepKey::Number(part(d).iter().fold(Rat::ZERO, |s, (_, c)| s + c)))
+                .collect(),
+        );
+    }
+    RepKey::Level((0..=top).rev().map(|d| rep_level(&part(d), i + 1, n, params)).collect())
+}
+
+fn rep_key(p: &Poly) -> RepKey {
+    let terms: Vec<(Monomial, Rat)> = p.rep.terms.iter().map(|(m, c)| (m.clone(), c.clone())).collect();
+    rep_level(&terms, 0, p.gens.len(), !p.domain.params.is_empty())
+}
+
+fn rep_length(p: &Poly) -> usize {
+    if p.is_zero() {
+        return 0;
+    }
+    p.degree(0).map(|d| d.max(0) as usize + 1).unwrap_or(0)
+}
+
+/// SymPy's order of the factors (`_sorted_factors`).
+fn sorted_factors(mut factors: Vec<(Poly, Basic)>, method: FactorMethod) -> Vec<(Poly, Basic)> {
+    type Key = (usize, usize, (u8, Rat, String), String, RepKey);
+    let key = |(p, k): &(Poly, Basic)| -> Key {
+        (
+            rep_length(p),
+            p.gens.len(),
+            exponent_key(k),
+            p.domain.name(),
+            rep_key(p),
+        )
+    };
+    match method {
+        FactorMethod::Factor => factors.sort_by_cached_key(key),
+        FactorMethod::Sqf => factors.sort_by_cached_key(|item| {
+            let (a, b, c, d, e) = key(item);
+            (c, a, b, d, e)
+        }),
+    }
+    factors
+}
+
+/// The constant and the factors of a product (`_symbolic_factor_list`).
+fn symbolic_factor_list(expr: &Basic, gens: &[Basic], method: FactorMethod) -> PolyResult<(Basic, SymbolicFactors)> {
+    use crate::core::assumptions::Predicate;
+    use crate::core::expr::is_true;
+    let mut coefficient: Basic = Basic::one();
+    let mut factors: SymbolicFactors = Vec::new();
+    let args: Vec<Basic> = if expr.is_mul() {
+        expr.args().to_vec()
+    } else {
+        vec![expr.clone()]
+    };
+    for arg in args {
+        if arg.is_number_class() || pure_complex(&arg) {
+            coefficient = core_mul(&[coefficient, arg])?;
+            continue;
+        }
+        let (base, exponent) = if arg.is_pow() {
+            let (b, e) = (arg.args()[0].clone(), arg.args()[1].clone());
+            if b.is_number_class() && e.is_number_class() {
+                coefficient = core_mul(&[coefficient, arg])?;
+                continue;
+            }
+            if b.is_number_class() {
+                factors.push((FactorBase::Expr(b), e));
+                continue;
+            }
+            (b, e)
+        } else {
+            (arg.clone(), Basic::one())
+        };
+        let (c, mut found): (Basic, SymbolicFactors) = match Poly::new(&base, gens) {
+            Err(PolyError::Polys(PolysErrorKind::GeneratorsNeeded, _)) => {
+                factors.push((FactorBase::Expr(expand_default(&base)?), exponent));
+                continue;
+            }
+            Err(PolyError::Polys(PolysErrorKind::CoercionFailed, message)) => {
+                if !gens.is_empty() || method != FactorMethod::Factor {
+                    return Err(polys_error(PolysErrorKind::CoercionFailed, message));
+                }
+                return Err(crate::error::not_ported("the factorisation over ZZ_I, QQ_I or RR"));
+            }
+            Err(e) => return Err(e),
+            Ok(p) => {
+                let (c, poly_factors) = match method {
+                    FactorMethod::Factor => p.factor_list()?,
+                    FactorMethod::Sqf => p.sqf_list()?,
+                };
+                (
+                    c,
+                    poly_factors
+                        .into_iter()
+                        .map(|(g, k)| (FactorBase::Poly(g), Basic::int(k as i64)))
+                        .collect(),
+                )
+            }
+        };
+        let exponent_is_integer: bool = matches!(
+            exponent.head(),
+            Head::Rational {
+                integer_class: true,
+                ..
+            }
+        );
+        if !(matches!(
+            c.head(),
+            Head::Rational {
+                integer_class: true,
+                ..
+            }
+        ) && c == Basic::one())
+        {
+            if exponent_is_integer {
+                coefficient = core_mul(&[coefficient, core_pow(&c, &exponent)?])?;
+            } else if is_true(&c, Predicate::positive) {
+                factors.push((FactorBase::Expr(c), exponent.clone()));
+            } else {
+                found.push((FactorBase::Expr(c), Basic::one()));
+            }
+        }
+        if exponent_is_integer && exponent == Basic::one() {
+            factors.extend(found);
+        } else if is_true(&exponent, Predicate::integer) {
+            for (g, k) in found {
+                factors.push((g, core_mul(&[k, exponent.clone()])?));
+            }
+        } else {
+            let mut other: SymbolicFactors = Vec::new();
+            for (g, k) in found {
+                if is_true(&g.expr()?, Predicate::positive) {
+                    factors.push((g, core_mul(&[k, exponent.clone()])?));
+                } else {
+                    other.push((g, k));
+                }
+            }
+            factors.push((FactorBase::Expr(factors_product(&other)?), exponent));
+        }
+    }
+    if method == FactorMethod::Sqf {
+        let mut exponents: Vec<Basic> = Vec::new();
+        for (_, k) in &factors {
+            if !exponents.contains(k) {
+                exponents.push(k.clone());
+            }
+        }
+        exponents.sort_by_cached_key(exponent_key);
+        let mut grouped: SymbolicFactors = Vec::new();
+        for k in exponents {
+            let bases: Vec<FactorBase> = factors
+                .iter()
+                .filter(|(_, m)| *m == k)
+                .map(|(g, _)| g.clone())
+                .collect();
+            grouped.push((product_of(&bases)?, k));
+        }
+        factors = grouped;
+    }
+    let mut collected: SymbolicFactors = Vec::new();
+    for (g, k) in factors {
+        match collected.iter_mut().find(|(h, _)| *h == g) {
+            Some((_, total)) => *total = core_add(&[total.clone(), k])?,
+            None => collected.push((g, k)),
+        }
+    }
+    Ok((coefficient, collected))
+}
+
+type PolyFactors = Vec<(Poly, Basic)>;
+
+fn factor_lists(f: &Basic, gens: &[Basic], method: FactorMethod) -> PolyResult<(Basic, PolyFactors, PolyFactors)> {
+    let together: Basic = super::rationaltools::together(f, false, true)?;
+    let (numer, denom) = crate::core::expr::as_numer_denom(&together)?;
+    let (cp, fp) = symbolic_factor_list(&numer, gens, method)?;
+    let (cq, fq) = symbolic_factor_list(&denom, gens, method)?;
+    let as_polys = |fs: SymbolicFactors| -> PolyResult<PolyFactors> {
+        let mut out: PolyFactors = Vec::new();
+        for (g, k) in fs {
+            out.push((
+                match g {
+                    FactorBase::Poly(p) => p,
+                    FactorBase::Expr(e) => Poly::new(&e, gens)?,
+                },
+                k,
+            ));
+        }
+        Ok(out)
+    };
+    let (pp, pq) = (as_polys(fp)?, as_polys(fq)?);
+    Ok((
+        core_mul(&[cp, core_pow(&cq, &Basic::negative_one())?])?,
+        sorted_factors(pp, method),
+        sorted_factors(pq, method),
+    ))
+}
+
+type ExprFactors = Vec<(Basic, Basic)>;
+
+fn as_exprs(fs: PolyFactors) -> PolyResult<ExprFactors> {
+    let mut out: ExprFactors = Vec::new();
+    for (g, k) in fs {
+        out.push((g.as_expr()?, k));
+    }
+    Ok(out)
+}
+
+fn polynomial_list(f: &Basic, gens: &[Basic], method: FactorMethod) -> PolyResult<(Basic, ExprFactors)> {
+    let (c, fp, fq) = factor_lists(f, gens, method)?;
+    if !fq.is_empty() {
+        return Err(polynomial_error(format!("a polynomial expected, got {}", f)));
+    }
+    Ok((c, as_exprs(fp)?))
+}
+
+/// The constant and the irreducible factors with their multiplicities of
+/// a polynomial expression, sorted as SymPy sorts them (`factor_list`).
+pub fn factor_list(f: &Basic, gens: &[Basic]) -> PolyResult<(Basic, ExprFactors)> {
+    polynomial_list(f, gens, FactorMethod::Factor)
+}
+
+/// The constant and the square-free factors (`sqf_list`).
+pub fn sqf_list(f: &Basic, gens: &[Basic]) -> PolyResult<(Basic, ExprFactors)> {
+    polynomial_list(f, gens, FactorMethod::Sqf)
+}
+
+/// The constant and the factors of the numerator and of the denominator
+/// (`factor_list(f, frac=True)`, `sqf_list(f, frac=True)`).
+pub fn factor_list_fraction(
+    f: &Basic,
+    gens: &[Basic],
+    method: FactorMethod,
+) -> PolyResult<(Basic, ExprFactors, ExprFactors)> {
+    let (c, fp, fq) = factor_lists(f, gens, method)?;
+    Ok((c, as_exprs(fp)?, as_exprs(fq)?))
+}
+
+fn symbolic_factor(e: &Basic, gens: &[Basic], fraction: bool, method: FactorMethod) -> PolyResult<Basic> {
+    let together: Basic = super::rationaltools::together(e, false, fraction)?;
+    let (coefficient, factors) = symbolic_factor_list(&together, gens, method)?;
+    crate::core::mul::keep_coeff(&coefficient, &factors_product(&factors)?)
+}
+
+/// The expression as a product of irreducible factors over `ZZ`/`QQ`
+/// (`factor`); with `deep` the subexpressions too. `EX`, `ZZ_I`, `RR` and
+/// non-commutative expressions are `NotImplemented`.
+pub fn factor(e: &Basic, gens: &[Basic], deep: bool, fraction: bool) -> PolyResult<Basic> {
+    if deep {
+        let attempt = |b: &Basic| -> PolyResult<Basic> {
+            let factored: Basic = factor(b, gens, false, true)?;
+            Ok(if factored.is_mul() || factored.is_pow() {
+                factored
+            } else {
+                b.clone()
+            })
+        };
+        let result: Basic = crate::core::function::replace_where(e, &|b: &Basic| !b.args().is_empty(), &attempt)?;
+        let mut partials: std::collections::HashMap<Basic, Basic> = std::collections::HashMap::new();
+        for node in result.atoms(Some(&|n: &Basic| n.is_mul() || n.is_add())) {
+            let factored: Basic = factor(&node, gens, false, true)?;
+            if (factored.is_mul() || factored.is_pow()) && factored != node {
+                partials.insert(node, factored);
+            }
+        }
+        if partials.is_empty() {
+            return Ok(result);
+        }
+        return crate::core::function::xreplace_evaluated(&result, &partials);
+    }
+    if crate::core::expr::is_false(e, crate::core::assumptions::Predicate::commutative) {
+        return Err(crate::error::not_ported("factor_nc"));
+    }
+    match symbolic_factor(e, gens, fraction, FactorMethod::Factor) {
+        Err(PolyError::Polys(PolysErrorKind::CoercionFailed, _)) => {
+            Err(crate::error::not_ported("factor over EX, ZZ_I, QQ_I or RR"))
+        }
+        r => r,
+    }
+}
+
+/// The square-free factorisation of an expression (`sqf`).
+pub fn sqf(e: &Basic, gens: &[Basic], fraction: bool) -> PolyResult<Basic> {
+    symbolic_factor(e, gens, fraction, FactorMethod::Sqf)
 }

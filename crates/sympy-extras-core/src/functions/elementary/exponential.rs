@@ -3,9 +3,8 @@
 //! ([`Head::Function`]), [`exp`] and [`log`] evaluate (`Exp.eval`,
 //! `Log.eval`), with their facts ([`exp_facts`], [`log_facts`]).
 //!
-//! The log of an algebraic number `r + i*I` with `r != 0` needs the
-//! arctangent table and is the error `NotImplemented`. The accumulation
-//! bounds, `ExpPolar`, `LambertW` and the series are not ported.
+//! The accumulation bounds, `ExpPolar`, `LambertW` and the series are not
+//! ported.
 
 // PORTED FROM SYMPY: sympy/functions/elementary/exponential.py (SymPy 1.14),
 // through sympy_extras; BSD 3-clause license, see sympy_extras/LICENSE-SymPy.
@@ -19,7 +18,7 @@ use crate::core::expr::{
 use crate::core::mul::mul;
 use crate::core::parameters::evaluate;
 use crate::core::power::pow;
-use crate::error::{not_ported, PolyResult};
+use crate::error::PolyResult;
 use crate::numbers::*;
 
 use Predicate::*;
@@ -242,7 +241,7 @@ pub fn log_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
             let not_zero: bool = !(imaginary_part.is_number_class() && is_rational_value(&imaginary_part, 0));
             if is_true(&coefficient, real) && not_zero && is_true(&imaginary_part, real) && is_true(&real_part, real) {
                 if !is_true(&real_part, zero) {
-                    return Err(not_ported("the arctangent table of log"));
+                    return log_of_angle(&coefficient, &rest, &real_part, &imaginary_part);
                 }
                 let half_pi_i: Basic = mul(&[Basic::pi(), i.clone(), Basic::half()])?;
                 if is_true(&imaginary_part, positive) {
@@ -392,6 +391,104 @@ pub fn log_facts(arg: &Basic) -> FactList {
         None => {}
     }
     facts
+}
+
+/// `tan(a) -> a` for the angles of the first quadrant with algebraic
+/// tangents (`_log_atan_table`), the keys built in the order of the
+/// Python's operators.
+fn log_atan_table() -> PolyResult<Vec<(Basic, Basic)>> {
+    let int = Basic::int;
+    let sqrt = |e: &Basic| pow(e, &Basic::half());
+    let s = |n: i64| sqrt(&int(n));
+    let div = |a: &Basic, b: &Basic| mul(&[a.clone(), pow(b, &Basic::negative_one())?]);
+    let sub = |a: &Basic, b: &Basic| add(&[a.clone(), mul(&[Basic::negative_one(), b.clone()])?]);
+    let plus = |a: &Basic, b: &Basic| add(&[a.clone(), b.clone()]);
+    let pi_q = |p: i64, q: i64| mul(&[Basic::pi(), Basic::from_rational(rat(p, q))]);
+    let (s2, s3, s5) = (s(2)?, s(3)?, s(5)?);
+    let one: Basic = int(1);
+    let two_s5: Basic = mul(&[int(2), s5.clone()])?;
+    let two_s5_5: Basic = div(&two_s5, &int(5))?;
+    Ok(vec![
+        (s3.clone(), pi_q(1, 3)?),
+        (one.clone(), pi_q(1, 4)?),
+        (sqrt(&sub(&int(5), &two_s5)?)?, pi_q(1, 5)?),
+        (
+            div(&mul(&[s2.clone(), sqrt(&sub(&int(5), &s5)?)?])?, &plus(&one, &s5)?)?,
+            pi_q(1, 5)?,
+        ),
+        (sqrt(&plus(&int(5), &two_s5)?)?, pi_q(2, 5)?),
+        (
+            div(&mul(&[s2.clone(), sqrt(&plus(&s5, &int(5))?)?])?, &plus(&int(-1), &s5)?)?,
+            pi_q(2, 5)?,
+        ),
+        (div(&s3, &int(3))?, pi_q(1, 6)?),
+        (sub(&s2, &one)?, pi_q(1, 8)?),
+        (
+            div(&sqrt(&sub(&int(2), &s2)?)?, &sqrt(&plus(&s2, &int(2))?)?)?,
+            pi_q(1, 8)?,
+        ),
+        (plus(&s2, &one)?, pi_q(3, 8)?),
+        (
+            div(&sqrt(&plus(&s2, &int(2))?)?, &sqrt(&sub(&int(2), &s2)?)?)?,
+            pi_q(3, 8)?,
+        ),
+        (sqrt(&sub(&one, &two_s5_5)?)?, pi_q(1, 10)?),
+        (
+            div(
+                &plus(&mul(&[Basic::negative_one(), s2.clone()])?, &s(10)?)?,
+                &mul(&[int(2), sqrt(&plus(&s5, &int(5))?)?])?,
+            )?,
+            pi_q(1, 10)?,
+        ),
+        (sqrt(&plus(&one, &two_s5_5)?)?, pi_q(3, 10)?),
+        (
+            div(&plus(&s2, &s(10)?)?, &mul(&[int(2), sqrt(&sub(&int(5), &s5)?)?])?)?,
+            pi_q(3, 10)?,
+        ),
+        (sub(&int(2), &s3)?, pi_q(1, 12)?),
+        (div(&plus(&int(-1), &s3)?, &plus(&one, &s3)?)?, pi_q(1, 12)?),
+        (plus(&int(2), &s3)?, pi_q(5, 12)?),
+        (div(&plus(&one, &s3)?, &plus(&int(-1), &s3)?)?, pi_q(5, 12)?),
+    ])
+}
+
+/// `log(coefficient*(r + i*I)) = log(|...|) + I*a` when `i/r` is the
+/// tangent of a rational multiple `a` of pi in the table (`_log_of_angle`).
+fn log_of_angle(
+    coefficient: &Basic,
+    rest: &Basic,
+    real_part: &Basic,
+    imaginary_part: &Basic,
+) -> PolyResult<Option<Basic>> {
+    use crate::functions::elementary::inverse::lookup;
+    use crate::polys::polytools::cancel;
+    let i: Basic = Basic::imaginary_unit();
+    let t: Basic = cancel(
+        &mul(&[imaginary_part.clone(), pow(real_part, &Basic::negative_one())?])?,
+        &[],
+    )?;
+    let t1: Basic = cancel(&mul(&[Basic::negative_one(), t.clone()])?, &[])?;
+    let modulus = || -> PolyResult<Basic> {
+        crate::simplify::ratsimp::ratsimp(&mul(&[coefficient.clone(), super::complexes::abs_(rest)?])?)
+    };
+    let positive_real: bool = is_true(real_part, Predicate::positive);
+    if let Some(angle) = lookup("log_atan", log_atan_table, &t)? {
+        let a: Basic = if positive_real {
+            angle
+        } else {
+            add(&[angle, mul(&[Basic::negative_one(), Basic::pi()])?])?
+        };
+        return Ok(Some(add(&[log(&modulus()?)?, mul(&[i, a])?])?));
+    }
+    if let Some(angle) = lookup("log_atan", log_atan_table, &t1)? {
+        let a: Basic = if positive_real {
+            mul(&[Basic::negative_one(), angle])?
+        } else {
+            add(&[Basic::pi(), mul(&[Basic::negative_one(), angle])?])?
+        };
+        return Ok(Some(add(&[log(&modulus()?)?, mul(&[i, a])?])?));
+    }
+    Ok(None)
 }
 
 #[cfg(test)]
