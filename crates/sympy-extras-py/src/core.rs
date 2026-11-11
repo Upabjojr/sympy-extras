@@ -293,6 +293,12 @@ fn neg<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny
     to_python(py, &rust_core::mul::neg(&from_python(a)?).map_err(crate::convert::err)?)
 }
 
+/// `str(e)` printed by the Rust core.
+#[pyfunction]
+fn sstr(e: &Bound<'_, PyAny>) -> PyResult<String> {
+    Ok(rust_core::printing::sstr(&from_python(e)?))
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -317,5 +323,6 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(div, m)?)?;
     m.add_function(wrap_pyfunction!(neg, m)?)?;
     m.add_function(wrap_pyfunction!(number_pow, m)?)?;
+    m.add_function(wrap_pyfunction!(sstr, m)?)?;
     Ok(())
 }
