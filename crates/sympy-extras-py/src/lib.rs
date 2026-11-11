@@ -20,6 +20,7 @@ mod convert;
 mod dense;
 mod domains;
 mod factor;
+mod galois;
 mod gaussian;
 mod lattice;
 mod ntheory;
@@ -60,6 +61,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &domains_module,
         "fractionfield",
         "sympy_extras_rs.polys.domains.fractionfield",
+    )?)?;
+    galois::register_galoisfield(&submodule(
+        &domains_module,
+        "galoisfield",
+        "sympy_extras_rs.polys.domains.galoisfield",
     )?)?;
     gaussian::register(&submodule(
         &domains_module,
@@ -106,6 +112,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     sparse::register_multisqf(&submodule(&polys, "multisqf", "sympy_extras_rs.polys.multisqf")?)?;
     algorithms::register_multifactor(&submodule(&polys, "multifactor", "sympy_extras_rs.polys.multifactor")?)?;
     lattice::register(&submodule(&polys, "lattice", "sympy_extras_rs.polys.lattice")?)?;
+    galois::register_galoisfactor(&submodule(
+        &polys,
+        "galoisfactor",
+        "sympy_extras_rs.polys.galoisfactor",
+    )?)?;
     algorithms::register_gaussianfactor(&submodule(
         &polys,
         "gaussianfactor",

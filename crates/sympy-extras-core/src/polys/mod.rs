@@ -10,6 +10,7 @@ pub mod euclidtools;
 pub mod f4;
 pub mod factortools;
 pub mod fglm;
+pub mod galoisfactor;
 pub mod galoistools;
 pub mod gaussianfactor;
 pub mod groebnerwalk;
