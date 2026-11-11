@@ -11,7 +11,7 @@ from sympy_extras._typing import as_expr
 from sympy_extras._testing import untyped
 from sympy_extras.solvers.factorization_sympy import factor_operator
 from sympy_extras.solvers.linear_ode_sympy import LinearOperator, rational_solutions
-from sympy_extras.solvers.linear_systems import (cyclic_vector, cyclic_reduction, system_to_scalar,
+from sympy_extras.solvers.linear_systems_sympy import (cyclic_vector, cyclic_reduction, system_to_scalar,
     dsolve_linear_system, dsolve_system, rational_system_solutions, hyperexponential_system_solutions)
 
 x = Symbol('x')
@@ -133,6 +133,17 @@ def test_rational_system_solutions() -> None:
     found = rational_system_solutions(A, x)
     assert len(found) == 3 and all(_solves(A, Y) for Y in found)
     assert rational_system_solutions(Matrix.zeros(2, 2), x) == [Matrix([1, 0]), Matrix([0, 1])]
+
+
+def test_singular_leading_matrix_with_zero_determinant() -> None:
+    # det N identically zero at a pole of order two (A singular, as every
+    # augmented system of an inhomogeneous one is) had the multiplicity 0,
+    # taken for an invertible leading matrix: no rational solution was
+    # returned for this system, whose solutions include Y = (1, -1)
+    A = Matrix([[1, 1], [1, 1]])/x**2
+    found = rational_system_solutions(A, x)
+    assert len(found) == 1 and _solves(A, found[0])
+    assert found[0][0] + found[0][1] == 0
 
 
 def test_hyperexponential_system_solutions() -> None:

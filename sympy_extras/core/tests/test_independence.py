@@ -1199,3 +1199,56 @@ def test_native_linear_ode_cluster_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_LINEAR_ODE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_LINEAR_SYSTEMS = r'''
+import sys
+from sympy_extras.core import Integer, Symbol
+from sympy_extras.functions import exp
+from sympy_extras.matrices.dense import ExprMatrix
+from sympy_extras.polys.polytools import cancel
+from sympy_extras.solvers.linear_ode import LinearOperator
+from sympy_extras.solvers.linear_systems import (cyclic_reduction, cyclic_vector, dsolve_linear_system, dsolve_system,
+    hyperexponential_system_solutions, rational_system_solutions, system_to_scalar)
+assert 'sympy' not in sys.modules
+x = Symbol('x')
+E = ExprMatrix.from_rows
+c, L = cyclic_vector(E([[1, 0], [0, 2]]), x)
+assert str((c, L)) == '(ExprMatrix([[2, -3]]), LinearOperator([2, -3, 1], x))', (c, L)
+L = LinearOperator([Integer(2), -2*x, x**2], x)
+assert system_to_scalar(E([[1/x, 1], [0, 1/x]]), x) == (L, E([[1, 0], [1/x, 1]]))
+R = cyclic_reduction(E([[0, 1], [2/x**2, 0]]), x)
+assert R.to_system(x**2) == ExprMatrix.column([x**2, 2*x])
+assert rational_system_solutions(E([[1/x, 1], [0, 1/x]]), x) == [ExprMatrix.column([x, 0]),
+                                                             ExprMatrix.column([x**2, x])]
+assert len(rational_system_solutions(E([[-1/x, 0], [1/x, -3/x]]), x)) == 2
+assert rational_system_solutions(E([[1/x**2, 0], [0, -1/x**2]]), x) == []
+assert hyperexponential_system_solutions(E([[1, 1/x], [0, 0]]), x) == [ExprMatrix.column([exp(x), 0])]
+S = dsolve_system(E([[0, 1], [2/x**2, 0]]), x)
+assert S.complete is True and S.fundamental == E([[1/x, x**2], [-1/x**2, 2*x]])
+S = dsolve_system(E([[1, 1], [4, 1]]), x)
+assert S.complete is True and S.fundamental == E([[exp(3*x), exp(-x)], [2*exp(3*x), -2*exp(-x)]]), S
+assert len(dsolve_linear_system(E([[0, 1], [-1, 0]]), x)) == 2
+A = E([[0, 1], [2/x**2, 0]])
+Yp = ExprMatrix.column([1/(x + 1), x**3])
+b = (Yp.diff(x) - A*Yp).applyfunc(cancel)
+S = dsolve_system(A, x, b)
+assert S.complete is True and S.particular is not None
+assert all(e.is_rational_function(x) for e in S.particular.entries)
+# a double pole with det N = 0 (A singular): the constant solution (1, -1)
+assert len(rational_system_solutions(E([[1/x**2, 1/x**2], [1/x**2, 1/x**2]]), x)) == 1
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_linear_systems_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.linear_systems` does not load
+    SymPy, nor do the cyclic vectors and their scalar equations, the
+    rational solutions (Barkatou's bounds), the hyperexponential ones, the
+    fundamental matrices which the scalar solvers find without quadratures
+    and a rational particular solution (SymPy's ``integrate``, its rational
+    integrator with ``RootSum`` and ``linodesolve`` go through
+    :mod:`~sympy_extras.solvers.linear_systems_sympy` at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LINEAR_SYSTEMS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

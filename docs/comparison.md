@@ -67,7 +67,7 @@ The setup used throughout:
 >>> from sympy_extras.solvers.first_order import dsolve_first_order
 >>> from sympy_extras.solvers.second_order import dsolve_second_order, is_linearizable
 >>> from sympy_extras.solvers.dae_sympy import dsolve_dae
->>> from sympy_extras.solvers.linear_systems import dsolve_linear_system
+>>> from sympy_extras.solvers.linear_systems_sympy import dsolve_linear_system
 >>> from sympy_extras.solvers.charpit_sympy import complete_integral
 >>> from sympy_extras.solvers.isolation_sympy import isolate_real_roots
 >>> from sympy_extras.solvers.thue_equation_sympy import thue

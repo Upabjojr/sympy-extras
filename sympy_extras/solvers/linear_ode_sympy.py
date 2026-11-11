@@ -8,10 +8,10 @@ the functions :func:`polynomial_solutions`, :func:`rational_solutions`,
 :func:`reduce_order_linear`, :func:`dsolve_linear`, :func:`gcrd`,
 :func:`lclm` and :func:`log_derivative` take and return SymPy objects,
 converted by :mod:`sympy_extras.interop` around the native module. The
-modules still written on SymPy (:mod:`~sympy_extras.solvers.linear_systems`,
-:mod:`~sympy_extras.solvers.first_order`) use them, and the private
-helpers they share (``_solve_operator``, ``_nullspace``, ``_indicial_at``,
-``_indicial_at_infinity``).
+modules still written on SymPy (:mod:`~sympy_extras.solvers.first_order`)
+use them, and the tests the private helpers (``_solve_operator``,
+``_nullspace``, ``_indicial_at``, ``_indicial_at_infinity``, which the old
+:mod:`~sympy_extras.solvers.linear_systems` used; it is native now).
 
 The step of the native module which stays written on SymPy is called from
 it at run time (it takes and returns objects of the core):
@@ -469,8 +469,8 @@ def dsolve_linear(equation: Basic, f: AppliedUndef, use_kovacic: bool = True,
 
 
 # ---------------------------------------------------------------------------
-# the helpers shared with the modules still on SymPy (linear_systems) and
-# the tests
+# the private helpers on SymPy objects (the old linear_systems used them;
+# the tests)
 
 def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_dsolve: bool,
                     factorize: bool = True) -> list[Expr]:

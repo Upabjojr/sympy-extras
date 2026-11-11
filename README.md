@@ -1034,7 +1034,8 @@ sympy_extras/
         factorization_sympy.py the SymPy face of factorization
         special.py           Bessel, Whittaker, hypergeometric solutions (native)
         special_sympy.py     the SymPy face of special
-        linear_systems.py    systems Y' = A Y + b: cyclic vectors, rational solutions, variation of constants
+        linear_systems.py    systems Y' = A Y + b: cyclic vectors, rational solutions, variation of constants (native)
+        linear_systems_sympy.py the SymPy face of linear_systems
         first_order.py       Abel, Chini, d'Alembert-Lagrange equations
         exponential_diophantine.py  Pillai's equation a**x - b**y = c (Baker–Wüstholz, continued fractions), integer zeros of exponential polynomials (native)
         simplex.py           exact linear programming over QQ with certificates (duality, Farkas, rays), strict inequalities (native)

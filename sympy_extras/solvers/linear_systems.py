@@ -22,8 +22,10 @@ is checked by the invertibility of `M`. The scalar equation is solved
 by :func:`~.dsolve_linear`'s solvers (rational and hyperexponential
 solutions, Beke's factorisation for the order three and more,
 Kovacic's algorithm, special functions) and, when they do not give a
-full basis, by SymPy's ``linodesolve`` (constant coefficients and
-systems with a commuting antiderivative), whose columns are checked.
+full basis, by the matrix exponential for constant coefficients
+(Putzer's algorithm, :func:`~sympy_extras.solvers.dae.matrix_exponential`)
+and by SymPy's ``linodesolve`` (systems with a commuting
+antiderivative), whose columns are checked.
 
 **Rational solutions** (Barkatou's method, with the local bounds of
 Abramov and Bronstein). A rational solution is `Y = P/D` with `P` a
@@ -71,6 +73,26 @@ systems whose coefficient matrix commutes with its antiderivative, and a
 few special types of two and three equations; it has no algorithm for
 general rational coefficients.
 
+The module works on the objects of the core and imports no SymPy: the
+matrices are :class:`~sympy_extras.matrices.dense.ExprMatrix` of core
+expressions, the scalar equations the native
+:class:`~sympy_extras.solvers.linear_ode.LinearOperator` and its solvers
+(:mod:`~sympy_extras.solvers.linear_ode`,
+:mod:`~sympy_extras.solvers.factorization`), and the polynomials, their
+factors and roots, the linear algebra (inverses, null spaces,
+determinants) and the simplifications are the native ones;
+:mod:`sympy_extras.solvers.linear_systems_sympy` is its face on SymPy
+matrices. Three steps are not ported and go through SymPy at run time:
+the antiderivative of the trace in Liouville's formula and the
+quadratures of variation of constants
+(:func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`,
+:func:`~sympy_extras.solvers.kovacic_sympy.integral_of_core`), the
+antiderivatives of rational functions with their ``RootSum``
+(:func:`~sympy_extras.solvers.linear_systems_sympy.rational_integral_of_core`:
+SymPy's ``ratint_ratpart`` and ``ratint_logpart``), and SymPy's
+``linodesolve``, the last resort for a fundamental matrix
+(:func:`~sympy_extras.solvers.linear_systems_sympy.linodesolve_of_core`).
+
 References
 ==========
 
@@ -88,39 +110,41 @@ References
 .. [Coddington] E. A. Coddington, N. Levinson, Theory of Ordinary
    Differential Equations, McGraw-Hill (1955), chapter 3 (Liouville's
    formula, variation of constants).
+
+Examples
+========
+
+>>> import sympy_extras.interop  # SymPy's integrate (the *_of_core functions)
+>>> from sympy_extras.core import Symbol
+>>> from sympy_extras.matrices.dense import ExprMatrix
+>>> from sympy_extras.solvers.linear_systems import dsolve_system
+>>> x = Symbol('x')
+>>> dsolve_system(ExprMatrix.from_rows([[0, 1], [2/x**2, 0]]), x).fundamental
+ExprMatrix([[1/x, x**2], [-1/x**2, 2*x]])
 """
 from __future__ import annotations
 
+from fractions import Fraction
 from random import Random
-from typing import Optional, Sequence
+from typing import Final, Optional, Sequence
 
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.function import Function, expand
-from sympy.core.numbers import Integer
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.core.function import Lambda
-from sympy.functions.elementary.exponential import exp, exp_polar, log
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.integrals.integrals import Integral, integrate
-from sympy.matrices.dense import Matrix, MutableDenseMatrix
-from sympy.matrices.matrixbase import MatrixBase
-from sympy.polys.matrices import DomainMatrix
-from sympy.polys.matrices.exceptions import DMError
-from sympy.polys.polyerrors import CoercionFailed, GeneratorsError
-from sympy.integrals.rationaltools import ratint_logpart, ratint_ratpart
-from sympy.polys.polyroots import roots
-from sympy.polys.polytools import Poly, cancel, factor_list, lcm_list, resultant
-from sympy.polys.rootoftools import RootSum
-from sympy.simplify.simplify import simplify
-
+from sympy_extras.core.basic import Basic, preorder_traversal
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.function import Function, count_ops, expand
+from sympy_extras.core.numbers import Integer
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.exponential import ExpPolar, exp
+from sympy_extras.functions.elementary.piecewise import Piecewise
+from sympy_extras.matrices.dense import ExprMatrix
+from sympy_extras.polys.domains.sparsefractionfield import SparseFracElement, SparseFractionField
+from sympy_extras.simplify.simplify import simplify
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import Truth, as_expr, free_symbols
 from sympy_extras.settings import settings
 
-from .linear_ode_sympy import (LinearOperator, _solve_operator, _nullspace, _indicial_at, _indicial_at_infinity,
-    hyperexponential_search, log_derivative)
+from ._special_values import determinant
+from .linear_ode import (_FIELD_FAILURES, LinearOperator, UPoly, _RationalRows, _factor_list, _indicial_at,
+                         _indicial_at_infinity, _inverse, _lcm, _normal, _nullspace, _replaced, _resultant,
+                         _solve_operator, _sum, has_integral, hyperexponential_search, log_derivative)
 
 __all__ = ['CyclicReduction', 'LinearSystemSolution', 'cyclic_vector', 'cyclic_reduction', 'system_to_scalar',
            'rational_system_solutions', 'hyperexponential_system_solutions', 'dsolve_system',
@@ -129,18 +153,20 @@ __all__ = ['CyclicReduction', 'LinearSystemSolution', 'cyclic_vector', 'cyclic_r
 #: the rows of a matrix of rational functions
 Rows = list[list[Expr]]
 
+#: a truth value of three states (``None`` unknown)
+Truth = Optional[bool]
+
+_ZERO: Final[Expr] = Integer(0)
+_ONE: Final[Expr] = Integer(1)
+
 #: the seed of the generator of candidate cyclic vectors (fixed, so that
 #: the scalar equation, and the form of the solutions, are reproducible)
-_CYCLIC_SEED = 2002
+_CYCLIC_SEED: Final[int] = 2002
 #: the number of random candidates tried after the unit vectors
-_CYCLIC_TRIALS = 24
+_CYCLIC_TRIALS: Final[int] = 24
 
 
-def _normal(e: Expr) -> Expr:
-    return as_expr(cancel(e))
-
-
-def _entries(A: MutableDenseMatrix, x: Symbol) -> Rows:
+def _entries(A: ExprMatrix, x: Symbol) -> Rows:
     """The entries of the square matrix ``A``, checked to be rational in
     ``x`` and normalised."""
     if A.rows != A.cols or A.rows == 0:
@@ -149,44 +175,34 @@ def _entries(A: MutableDenseMatrix, x: Symbol) -> Rows:
     for i in range(A.rows):
         row: list[Expr] = []
         for j in range(A.cols):
-            e = as_expr(A[i, j])
-            if not e.is_rational_function(x):
+            e = A[i, j]
+            if e.is_rational_function(x) is not True:
                 raise ValueError("the entry %s is not a rational function of %s" % (e, x))
             row.append(_normal(e))
         rows.append(row)
     return rows
 
 
-def _column(b: MutableDenseMatrix, n: int, x: Symbol) -> list[Expr]:
-    if not isinstance(b, MatrixBase):
-        raise TypeError("the inhomogeneous term must be a Matrix, not %r" % (b,))
+def _column(b: ExprMatrix, n: int) -> list[Expr]:
     if b.shape != (n, 1):
         raise ValueError("the inhomogeneous term must be a column of length %d" % n)
-    return [as_expr(b[i, 0]) for i in range(n)]
+    return list(b.entries)
+
+
+def _matrix(rows: Rows) -> ExprMatrix:
+    return ExprMatrix.from_rows(rows)
+
+
+def _columns_matrix(columns: Sequence[ExprMatrix], n: int) -> ExprMatrix:
+    """The columns side by side (``n`` rows, possibly no column)."""
+    return ExprMatrix(n, len(columns), [c[i, 0] for i in range(n) for c in columns])
 
 
 def _next_row(A: Rows, c: list[Expr], x: Symbol) -> list[Expr]:
     """``c A + c'``: the row of ``u^(k+1)`` from that of ``u^(k)``."""
     n = len(c)
-    return [_normal(c[j].diff(x) + Add(*[c[i]*A[i][j] for i in range(n) if c[i] != 0 and A[i][j] != 0]))
+    return [_normal(c[j].diff(x) + _sum([c[i]*A[i][j] for i in range(n) if c[i] != _ZERO and A[i][j] != _ZERO]))
             for j in range(n)]
-
-
-def _invert(rows: Rows) -> Optional[Rows]:
-    """The inverse of a matrix of rational functions, ``None`` when it is
-    singular."""
-    matrix = Matrix(rows)
-    try:
-        inverse = DomainMatrix.from_Matrix(matrix).to_field().inv().to_Matrix()
-    except DMError:
-        # DMNonInvertibleMatrixError: singular
-        return None
-    except (CoercionFailed, GeneratorsError, NotImplementedError, ValueError, ZeroDivisionError):
-        determinant = _normal(as_expr(matrix.det(method='berkowitz')))
-        if determinant == 0:
-            return None
-        inverse = matrix.adjugate(method='berkowitz')/determinant
-    return [[_normal(as_expr(inverse[i, j])) for j in range(len(rows))] for i in range(len(rows))]
 
 
 def _candidates(n: int, x: Symbol) -> list[list[Expr]]:
@@ -194,13 +210,13 @@ def _candidates(n: int, x: Symbol) -> list[list[Expr]]:
     then polynomial entries of degree less than ``n`` (a generic vector of
     this kind is cyclic, Katz, Churchill–Kovacic); the generator is
     seeded so that the choice is reproducible."""
-    candidates: list[list[Expr]] = [[S.One if j == i else S.Zero for j in range(n)] for i in range(n)]
+    candidates: list[list[Expr]] = [[_ONE if j == i else _ZERO for j in range(n)] for i in range(n)]
     generator = Random(_CYCLIC_SEED)
     for trial in range(_CYCLIC_TRIALS):
         degree = 0 if trial < _CYCLIC_TRIALS//3 else min(n - 1, 1 + trial % n)
-        vector = [as_expr(Add(*[Integer(generator.randint(-3, 3))*x**k for k in range(degree + 1)]))
-                  for _ in range(n)]
-        if any(v != 0 for v in vector):
+        vector = [_sum([Integer(generator.randint(-3, 3))*x**k if k else Integer(generator.randint(-3, 3))
+                        for k in range(degree + 1)]) for _ in range(n)]
+        if any(v != _ZERO for v in vector):
             candidates.append(vector)
     return candidates
 
@@ -215,51 +231,63 @@ class CyclicReduction:
     Examples
     ========
 
-    >>> from sympy import Matrix
-    >>> from sympy.abc import x
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices.dense import ExprMatrix
     >>> from sympy_extras.solvers.linear_systems import cyclic_reduction
-    >>> R = cyclic_reduction(Matrix([[0, 1], [2/x**2, 0]]), x)
+    >>> x = Symbol('x')
+    >>> R = cyclic_reduction(ExprMatrix.from_rows([[0, 1], [2/x**2, 0]]), x)
     >>> R.operator
     LinearOperator([-2, 0, x**2], x)
-    >>> R.to_system(x**2).T
-    Matrix([[x**2, 2*x]])
+    >>> R.to_system(x**2)
+    ExprMatrix([[x**2], [2*x]])
     """
 
     def __init__(self, vector: list[Expr], rows: Rows, inverse: Rows, operator: LinearOperator, x: Symbol
                  ) -> None:
-        self.vector: MutableDenseMatrix = Matrix([vector])
-        self.matrix: MutableDenseMatrix = Matrix(rows)
-        self.operator = operator
-        self.x = x
-        self._rows = rows
-        self._inverse = inverse
+        self.vector: Final[ExprMatrix] = ExprMatrix(1, len(vector), vector)
+        self.matrix: Final[ExprMatrix] = _matrix(rows)
+        self.operator: Final[LinearOperator] = operator
+        self.x: Final[Symbol] = x
+        self.inverse: Final[tuple[tuple[Expr, ...], ...]] = tuple(tuple(row) for row in inverse)
 
-    def to_system(self, u: Expr) -> MutableDenseMatrix:
+    def to_system(self, u: Expr) -> ExprMatrix:
         """The solution ``Y = matrix**-1 (u, ..., u^(n-1))^T`` of the
         system given by a solution ``u`` of the operator. For a
         hyperexponential ``u`` the vector is written as ``u`` times rational
         functions."""
         x = self.x
-        n = len(self._rows)
-        rho = log_derivative(u, x) if u.has(x) else S.Zero
-        if rho.is_rational_function(x):
+        inverse = self.inverse
+        n = len(inverse)
+        rho = log_derivative(u, x) if u.has(x) else _ZERO
+        if rho.is_rational_function(x) is True:
             # u^(k) = u R_k with R_0 = 1 and R_{k+1} = R_k' + rho R_k
-            ratios: list[Expr] = [S.One]
+            ratios: list[Expr] = [_ONE]
             for _ in range(n - 1):
                 ratios.append(_normal(ratios[-1].diff(x) + rho*ratios[-1]))
-            parts = [_normal(Add(*[self._inverse[i][k]*ratios[k] for k in range(n)])) for i in range(n)]
-            if u.is_rational_function(x):
-                return Matrix([_normal(u*p) for p in parts])
-            return Matrix([as_expr(u*p) for p in parts])
-        derivatives = [u] + [as_expr(u.diff(x, k)) for k in range(1, n)]
+            parts = [_normal(_sum([inverse[i][k]*ratios[k] for k in range(n)])) for i in range(n)]
+            if u.is_rational_function(x) is True:
+                return ExprMatrix.column([_normal(u*p) for p in parts])
+            return ExprMatrix.column([u*p for p in parts])
+        derivatives = [u] + [u.diff(x, k) for k in range(1, n)]
         entries: list[Expr] = []
         for i in range(n):
-            e = as_expr(Add(*[self._inverse[i][k]*derivatives[k] for k in range(n) if self._inverse[i][k] != 0]))
+            e = _sum([inverse[i][k]*derivatives[k] for k in range(n) if inverse[i][k] != _ZERO])
             entries.append(_simplified(e))
-        return Matrix(entries)
+        return ExprMatrix.column(entries)
 
     def __repr__(self) -> str:
-        return "CyclicReduction(%s, %s)" % (self.vector.tolist(), self.operator)
+        return "CyclicReduction(%s, %s)" % ([list(self.vector.entries)], self.operator)
+
+
+def _has_foreign(e: Basic, names: tuple[str, ...]) -> bool:
+    """Whether ``e`` has a node of SymPy (wrapped in the core) of one of
+    the classes ``names``."""
+    return any(node._is_foreign_node() and node._compare_name() in names for node in preorder_traversal(e))
+
+
+def _ops(e: Expr) -> int:
+    count = count_ops(e)
+    return int(count) if isinstance(count, Integer) else 0
 
 
 def _simplified(e: Expr) -> Expr:
@@ -267,44 +295,116 @@ def _simplified(e: Expr) -> Expr:
     with integrals, which simplify evaluates (into polylogarithms of
     ``exp_polar`` arguments, which the quadratures had refused), and with
     ``RootSum``s, which it writes in radicals."""
-    if e.count_ops() >= 400 or e.has(Integral, RootSum):
+    if _ops(e) >= 400 or _has_foreign(e, ('Integral', 'RootSum')):
         return e
-    simplified = attempt(lambda: as_expr(simplify(e)), settings.timeout)
-    if simplified is None or simplified.has(exp_polar, Piecewise):
+    simplified = attempt(lambda: simplify(e), settings.timeout, native=True)
+    if simplified is None or simplified.has(ExpPolar, Piecewise) \
+            or _has_foreign(simplified, ('exp_polar', 'Piecewise')):
         return e
     return simplified
 
 
+def _field_inverse(field: SparseFractionField[Fraction], rows: list[list[SparseFracElement[Fraction]]]
+                   ) -> Optional[list[list[SparseFracElement[Fraction]]]]:
+    """The inverse of a square matrix over the field (the reduced row
+    echelon form of ``[M | 1]``), ``None`` when it is singular."""
+    n = len(rows)
+    sparse: list[dict[int, SparseFracElement[Fraction]]] = []
+    for i, row in enumerate(rows):
+        entries = {j: c for j, c in enumerate(row) if not field.is_zero(c)}
+        entries[n + i] = field.one
+        sparse.append(entries)
+    echelon = field.sparse_echelon(sparse)
+    pivot_rows = {min(r): r for r in echelon}
+    if sorted(pivot_rows)[:n] != list(range(n)):
+        return None
+    return [[pivot_rows[i].get(n + j, field.zero) for j in range(n)] for i in range(n)]
+
+
+def _field_reduction(A: Rows, x: Symbol) -> Optional[CyclicReduction]:
+    """:func:`_reduction` with the rows ``c_k``, the inverse and the
+    coefficients of the scalar equation computed in the native field of
+    rational functions of the symbols (much faster than normalising
+    every entry), ``None`` when an entry is not a rational function with
+    rational coefficients."""
+    n = len(A)
+    try:
+        matrix = _RationalRows(A + [[x]])
+    except _FIELD_FAILURES:
+        return None
+    field = matrix.field
+    variables = list(matrix.restored.values())
+    index = variables.index(x)
+    renamed: dict[Basic, Basic] = {s: name for name, s in matrix.restored.items()}
+    entries = matrix.rows[:n]
+
+    def following(c: list[SparseFracElement[Fraction]]) -> list[SparseFracElement[Fraction]]:
+        result: list[SparseFracElement[Fraction]] = []
+        for j in range(n):
+            value = field.diff(c[j], index)
+            for i in range(n):
+                if not field.is_zero(c[i]) and not field.is_zero(entries[i][j]):
+                    value = field.add(value, field.mul(c[i], entries[i][j]))
+            result.append(value)
+        return result
+
+    for c0 in _candidates(n, x):
+        rows = [[field.from_expr(_replaced(e, renamed)) for e in c0]]
+        for _ in range(n - 1):
+            rows.append(following(rows[-1]))
+        inverse = _field_inverse(field, rows)
+        if inverse is None:
+            continue
+        last = following(rows[-1])
+        # c_n = sum_k a_k c_k with (a_k) = c_n M**-1
+        a: list[SparseFracElement[Fraction]] = []
+        for k in range(n):
+            value = field.zero
+            for j in range(n):
+                if not field.is_zero(last[j]):
+                    value = field.add(value, field.mul(last[j], inverse[j][k]))
+            a.append(value)
+        operator = LinearOperator([_normal(-matrix.expr(e)) for e in a] + [_ONE], x).primitive()
+        return CyclicReduction(c0, [[_normal(matrix.expr(e)) for e in row] for row in rows],
+                               [[_normal(matrix.expr(e)) for e in row] for row in inverse], operator, x)
+    raise ValueError("no cyclic vector was found among the candidates")
+
+
 def _reduction(A: Rows, x: Symbol) -> CyclicReduction:
+    reduction = _field_reduction(A, x)
+    if reduction is not None:
+        return reduction
     n = len(A)
     for c0 in _candidates(n, x):
         rows = [c0]
         for _ in range(n - 1):
             rows.append(_next_row(A, rows[-1], x))
-        inverse = _invert(rows)
+        inverse = _inverse(rows)
         if inverse is None:
             continue
         following = _next_row(A, rows[-1], x)
         # c_n = sum_k a_k c_k with (a_k) = c_n M**-1
-        a = [_normal(Add(*[following[j]*inverse[j][k] for j in range(n) if following[j] != 0])) for k in range(n)]
-        operator = LinearOperator([_normal(-e) for e in a] + [S.One], x).primitive()
+        a = [_normal(_sum([following[j]*inverse[j][k] for j in range(n) if following[j] != _ZERO]))
+             for k in range(n)]
+        operator = LinearOperator([_normal(-e) for e in a] + [_ONE], x).primitive()
         return CyclicReduction(c0, rows, inverse, operator, x)
     raise ValueError("no cyclic vector was found among the candidates")
 
 
-def cyclic_reduction(A: MutableDenseMatrix, x: Symbol) -> CyclicReduction:
+def cyclic_reduction(A: ExprMatrix, x: Symbol) -> CyclicReduction:
     """The scalar equation of a cyclic vector of ``Y' = A Y`` with the
     matrices mapping its solutions to those of the system.
 
     Examples
     ========
 
-    >>> from sympy import Matrix
-    >>> from sympy.abc import x
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices.dense import ExprMatrix
     >>> from sympy_extras.solvers.linear_systems import cyclic_reduction
-    >>> R = cyclic_reduction(Matrix([[1, 0], [0, 2]]), x)
+    >>> x = Symbol('x')
+    >>> R = cyclic_reduction(ExprMatrix.from_rows([[1, 0], [0, 2]]), x)
     >>> R.vector, R.operator
-    (Matrix([[2, -3]]), LinearOperator([2, -3, 1], x))
+    (ExprMatrix([[2, -3]]), LinearOperator([2, -3, 1], x))
 
     The unit vectors are not cyclic for this diagonal system: ``y1`` alone
     satisfies ``y1' = y1``.
@@ -312,38 +412,38 @@ def cyclic_reduction(A: MutableDenseMatrix, x: Symbol) -> CyclicReduction:
     return _reduction(_entries(A, x), x)
 
 
-def cyclic_vector(A: MutableDenseMatrix, x: Symbol) -> tuple[MutableDenseMatrix, LinearOperator]:
+def cyclic_vector(A: ExprMatrix, x: Symbol) -> tuple[ExprMatrix, LinearOperator]:
     """A cyclic row vector ``c_0`` for ``Y' = A Y`` and the scalar operator
     satisfied by ``u = c_0 Y``.
 
     Examples
     ========
 
-    >>> from sympy import Matrix
-    >>> from sympy.abc import x
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices.dense import ExprMatrix
     >>> from sympy_extras.solvers.linear_systems import cyclic_vector
-    >>> c, L = cyclic_vector(Matrix([[0, 1], [-1, 0]]), x)
+    >>> x = Symbol('x')
+    >>> c, L = cyclic_vector(ExprMatrix.from_rows([[0, 1], [-1, 0]]), x)
     >>> c, L.coefficients
-    (Matrix([[1, 0]]), [1, 0, 1])
+    (ExprMatrix([[1, 0]]), (1, 0, 1))
     """
     R = cyclic_reduction(A, x)
     return R.vector, R.operator
 
 
-def system_to_scalar(A: MutableDenseMatrix, x: Symbol) -> tuple[LinearOperator, MutableDenseMatrix]:
+def system_to_scalar(A: ExprMatrix, x: Symbol) -> tuple[LinearOperator, ExprMatrix]:
     """The scalar operator of a cyclic vector and the matrix ``M`` with
     ``(u, u', ..., u**(n-1))**T = M Y``.
 
     Examples
     ========
 
-    >>> from sympy import Matrix
-    >>> from sympy.abc import x
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices.dense import ExprMatrix
     >>> from sympy_extras.solvers.linear_systems import system_to_scalar
-    >>> system_to_scalar(Matrix([[1/x, 1], [0, 1/x]]), x)
-    (LinearOperator([2, -2*x, x**2], x), Matrix([
-    [  1, 0],
-    [1/x, 1]]))
+    >>> x = Symbol('x')
+    >>> system_to_scalar(ExprMatrix.from_rows([[1/x, 1], [0, 1/x]]), x)
+    (LinearOperator([2, -2*x, x**2], x), ExprMatrix([[1, 0], [1/x, 1]]))
     """
     R = cyclic_reduction(A, x)
     return R.operator, R.matrix
@@ -356,20 +456,22 @@ def _integer_roots(p: Expr, variable: Symbol) -> list[int]:
     """The integer roots of a polynomial in ``variable`` (whose other
     symbols are parameters: a root depending on them is not an
     integer)."""
-    _, factors = factor_list(p, variable)
     found: list[int] = []
-    for f, _ in factors:
-        q = Poly(f, variable)
+    for f, _ in _factor_list(p, variable):
+        try:
+            q = UPoly.of(f, variable)
+        except ValueError:
+            continue
         if q.degree() != 1:
             continue
         leading, constant = q.all_coeffs()
-        root = _normal(as_expr(-constant/leading))
+        root = _normal(-constant/leading)
         if isinstance(root, Integer):
             found.append(int(root))
     return sorted(set(found))
 
 
-def _multiplicity(q: Poly, p: Poly) -> int:
+def _multiplicity(q: UPoly, p: UPoly) -> int:
     """The largest ``k`` with ``p**k`` dividing ``q``."""
     k = 0
     while not q.is_zero and q.degree() >= p.degree():
@@ -383,10 +485,22 @@ def _multiplicity(q: Poly, p: Poly) -> int:
 
 def _degree(e: Expr, x: Symbol) -> Optional[int]:
     """``deg numerator - deg denominator``, ``None`` for zero."""
-    if e == 0:
+    if e == _ZERO:
         return None
     numerator, denominator = _normal(e).as_numer_denom()
-    return int(Poly(numerator, x).degree() - Poly(denominator, x).degree())
+    return UPoly.of(numerator, x).degree() - UPoly.of(denominator, x).degree()
+
+
+def _at_infinity(e: Expr, x: Symbol) -> Expr:
+    """The limit at infinity of a rational function of degree at most
+    zero (``deg numerator <= deg denominator``)."""
+    numerator, denominator = _normal(e).as_numer_denom()
+    top, bottom = UPoly.of(numerator, x), UPoly.of(denominator, x)
+    if top.is_zero or top.degree() < bottom.degree():
+        return _ZERO
+    if top.degree() > bottom.degree():
+        raise ValueError("%s has no finite limit at infinity" % (e,))
+    return _normal(top.LC()/bottom.LC())
 
 
 class _ScalarBounds:
@@ -394,8 +508,8 @@ class _ScalarBounds:
     scalar equation of a cyclic vector, built when first needed."""
 
     def __init__(self, A: Rows, x: Symbol) -> None:
-        self.A = A
-        self.x = x
+        self.A: Final[Rows] = A
+        self.x: Final[Symbol] = x
         self._reduction: Optional[CyclicReduction] = None
 
     def reduction(self) -> CyclicReduction:
@@ -403,26 +517,26 @@ class _ScalarBounds:
             self._reduction = _reduction(self.A, self.x)
         return self._reduction
 
-    def pole(self, p: Poly) -> int:
+    def pole(self, p: UPoly) -> int:
         """A bound for the order of the pole at the roots of ``p`` of a
         rational solution."""
         R = self.reduction()
         L = R.operator
         x = self.x
         m = 0
-        if _multiplicity(Poly(L.leading_coefficient, x), p) > 0:
+        if _multiplicity(UPoly.of(L.leading_coefficient, x), p) > 0:
             indicial = _indicial_at(L, p)
-            negative = [r for r in _integer_roots(indicial.as_expr(), indicial.gen) if r < 0]
+            negative = [r for r in _integer_roots(indicial.as_expr(), indicial.x) if r < 0]
             if negative:
                 m = -negative[0]
         n = len(self.A)
         bound = 0
         for i in range(n):
             for k in range(n):
-                e = R._inverse[i][k]
-                if e == 0:
+                e = R.inverse[i][k]
+                if e == _ZERO:
                     continue
-                denominator = Poly(_normal(e).as_numer_denom()[1], x)
+                denominator = UPoly.of(_normal(e).as_numer_denom()[1], x)
                 # the pole of u^(k) is at most m + k when u has one
                 bound = max(bound, _multiplicity(denominator, p) + (m + k if m > 0 else 0))
         return bound
@@ -432,7 +546,7 @@ class _ScalarBounds:
         of a rational solution, ``None`` when there is none."""
         R = self.reduction()
         indicial = _indicial_at_infinity(R.operator)
-        exponents = _integer_roots(indicial.as_expr(), indicial.gen)
+        exponents = _integer_roots(indicial.as_expr(), indicial.x)
         if not exponents:
             return None
         delta = exponents[-1]
@@ -440,61 +554,70 @@ class _ScalarBounds:
         bound: Optional[int] = None
         for i in range(n):
             for k in range(n):
-                d = _degree(R._inverse[i][k], self.x)
+                d = _degree(R.inverse[i][k], self.x)
                 if d is not None:
                     bound = d + delta - k if bound is None else max(bound, d + delta - k)
         return bound
 
 
 def _determinant(rows: Rows) -> Expr:
-    return as_expr(expand(as_expr(Matrix(rows).det(method='berkowitz'))))
+    return expand(determinant(rows))
 
 
-def _residue_bound(N: Rows, d: Poly, p: Poly, x: Symbol) -> int:
+def _characteristic(rows: Rows, lam: Symbol, scale: Expr) -> Expr:
+    """``det(lam scale I - rows)``, expanded."""
+    n = len(rows)
+    return _determinant([[lam*scale - rows[i][j] if i == j else -rows[i][j] for j in range(n)] for i in range(n)])
+
+
+def _residue_bound(N: Rows, d: UPoly, p: UPoly, x: Symbol) -> int:
     """The pole order bound at a simple pole: minus the least negative
     integer eigenvalue of the residue ``N(c)/(p'(c) q(c))``, ``d = p q``,
     at the roots ``c`` of ``p``."""
-    n = len(N)
     lam = Dummy('lambda')
-    q = d.quo(p)
-    scale = as_expr((p.diff(x)*q).as_expr())
-    characteristic = _determinant([[as_expr(lam*scale - N[i][j]) if i == j else as_expr(-N[i][j])
-                                    for j in range(n)] for i in range(n)])
+    q = d.div(p)[0]
+    scale = expand(p.diff().as_expr()*q.as_expr())
+    characteristic = _characteristic(N, lam, scale)
     if p.degree() == 1:
         leading, constant = p.all_coeffs()
-        eigen = as_expr(expand(characteristic.subs(x, as_expr(-constant/leading))))
+        eigen = expand(_replaced(characteristic, {x: _normal(-constant/leading)}))
     else:
-        eigen = as_expr(resultant(characteristic, p.as_expr(), x))
+        eigen = _resultant(characteristic, p.as_expr(), x)
     negative = [r for r in _integer_roots(eigen, lam) if r < 0]
     return -negative[0] if negative else 0
 
 
-def _rational_basis(A: Rows, x: Symbol) -> list[list[Expr]]:
+def _rational_basis(A: Rows, x: Symbol) -> Rows:
     """A basis of the rational solutions of ``Y' = A Y`` (Barkatou)."""
     n = len(A)
     parts = [[_normal(e).as_numer_denom() for e in row] for row in A]
-    d = Poly(as_expr(lcm_list([as_expr(den) for row in parts for _, den in row])), x)
-    N = [[_normal(as_expr(num)*d.as_expr()/as_expr(den)) for num, den in row] for row in parts]
+    d_expr = _lcm([den for row in parts for _, den in row])
+    d = UPoly.of(d_expr, x)
+    N = [[_normal(num*d_expr/den) for num, den in row] for row in parts]
     scalar = _ScalarBounds(A, x)
     # the universal denominator
-    D = Poly(1, x)
-    determinant: Optional[Poly] = None
-    _, factors = factor_list(d.as_expr(), x)
-    for f, e in factors:
-        p = Poly(f, x)
-        if p.degree() == 0:
+    D: Expr = _ONE
+    determinant_: Optional[UPoly] = None
+    for f, e in _factor_list(d_expr, x):
+        p = UPoly.of(f, x)
+        if p.degree() <= 0:
             continue
         if e == 1:
             m = _residue_bound(N, d, p, x)
         else:
-            if determinant is None:
-                determinant = Poly(_determinant(N), x)
-            if _multiplicity(determinant, p) == 0:
+            if determinant_ is None:
+                determinant_ = UPoly.of(_determinant(N), x)
+            # a zero determinant is divisible by every p (the multiplicity
+            # of the zero polynomial came out 0, and the augmented systems
+            # of variation of constants, whose last row is zero, never had
+            # a rational solution at a double pole)
+            if not determinant_.is_zero and _multiplicity(determinant_, p) == 0:
                 # the leading matrix at the pole is invertible: no Laurent
                 # solution, so no rational one
                 return []
             m = scalar.pole(p)
-        D = D*p**m
+        D = D*p.as_expr()**m if m else D
+    D = expand(D)
     # the degree at infinity: deg Y = deg P - deg D
     degrees = [_degree(e, x) for row in A for e in row]
     orders = [-k for k in degrees if k is not None]
@@ -507,60 +630,57 @@ def _rational_basis(A: Rows, x: Symbol) -> list[list[Expr]]:
     elif shift >= 1:
         # A = O(1/x): the integer eigenvalues of lim x A
         lam = Dummy('lambda')
-        residue = [[_normal(as_expr((x*A[i][j]).limit(x, S.Infinity))) if shift == 1 else S.Zero
-                    for j in range(n)] for i in range(n)]
-        characteristic = _determinant([[as_expr(lam - residue[i][j]) if i == j else as_expr(-residue[i][j])
-                                        for j in range(n)] for i in range(n)])
-        exponents = _integer_roots(characteristic, lam)
+        residue = [[_at_infinity(x*A[i][j], x) if shift == 1 else _ZERO for j in range(n)] for i in range(n)]
+        exponents = _integer_roots(_characteristic(residue, lam, _ONE), lam)
         delta = exponents[-1] if exponents else None
     else:
         # A = O(x**q), q = -shift >= 0: the leading matrix
         q = -shift
-        leading = [[_normal(as_expr((A[i][j]/x**q).limit(x, S.Infinity))) for j in range(n)] for i in range(n)]
-        if _normal(_determinant(leading)) != 0:
+        leading = [[_at_infinity(A[i][j]/x**q, x) for j in range(n)] for i in range(n)]
+        if _normal(_determinant(leading)) != _ZERO:
             return []
         delta = scalar.degree()
     if delta is None:
         return []
-    top = D.degree() + delta
+    top = UPoly.of(D, x).degree() + delta
     if top < 0:
         return []
-    return _numerators(A, N, d, D, top, x)
+    return _numerators(A, N, d_expr, D, top, x)
 
 
-def _numerators(A: Rows, N: Rows, d: Poly, D: Poly, top: int, x: Symbol) -> list[list[Expr]]:
+def _numerators(A: Rows, N: Rows, d: Expr, D: Expr, top: int, x: Symbol) -> Rows:
     """The solutions ``P/D`` with ``deg P <= top``: the kernel of the
     linear map ``P -> d (D P' - D' P) - D N P``."""
     n = len(A)
-    dD = d*D
-    dDprime = d*D.diff(x)
-    columns: list[list[Poly]] = []
+    dD = expand(d*D)
+    dDprime = expand(d*D.diff(x))
+    columns: list[list[UPoly]] = []
     for i in range(n):
         for j in range(top + 1):
-            monomial = Poly(x**j, x)
-            image: list[Poly] = []
+            monomial = x**j if j else _ONE
+            image: list[UPoly] = []
             for k in range(n):
-                value = -D*Poly(N[k][i], x)*monomial
+                value = -D*N[k][i]*monomial
                 if k == i:
-                    value = value + dD*monomial.diff(x) - dDprime*monomial
-                image.append(value)
+                    value = value + (dD*j*x**(j - 1) if j else _ZERO) - dDprime*monomial
+                image.append(UPoly.of(expand(value), x))
             columns.append(image)
     size = max((p.degree() for column in columns for p in column if not p.is_zero), default=0) + 1
     rows: Rows = []
     for k in range(n):
         for power in range(size):
-            row = [as_expr(column[k].coeff_monomial(x**power)) for column in columns]
-            if any(e != 0 for e in row):
+            row = [column[k].coeff(power) for column in columns]
+            if any(e != _ZERO for e in row):
                 rows.append(row)
-    denominator = D.as_expr()
-    basis: list[list[Expr]] = []
+    basis: Rows = []
     for vector in _nullspace(rows, len(columns)):
-        P = [as_expr(Add(*[vector[i*(top + 1) + j]*x**j for j in range(top + 1)])) for i in range(n)]
-        basis.append([_normal(p/denominator) for p in P])
+        P = [_sum([vector[i*(top + 1) + j]*x**j if j else vector[i*(top + 1)] for j in range(top + 1)])
+             for i in range(n)]
+        basis.append([_normal(p/D) for p in P])
     return basis
 
 
-def rational_system_solutions(A: MutableDenseMatrix, x: Symbol) -> list[MutableDenseMatrix]:
+def rational_system_solutions(A: ExprMatrix, x: Symbol) -> list[ExprMatrix]:
     """A basis of the rational solutions of ``Y' = A Y``: a universal
     denominator from the finite singularities, a degree bound at
     infinity, and a linear system for the numerators (Barkatou's method;
@@ -570,27 +690,22 @@ def rational_system_solutions(A: MutableDenseMatrix, x: Symbol) -> list[MutableD
     Examples
     ========
 
-    >>> from sympy import Matrix
-    >>> from sympy.abc import x
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices.dense import ExprMatrix
     >>> from sympy_extras.solvers.linear_systems import rational_system_solutions
-    >>> rational_system_solutions(Matrix([[1/x, 1], [0, 1/x]]), x)
-    [Matrix([
-    [x],
-    [0]]), Matrix([
-    [x**2],
-    [   x]])]
-    >>> rational_system_solutions(Matrix([[-1/x, 0], [1, 0]]), x)
-    [Matrix([
-    [0],
-    [1]])]
+    >>> x = Symbol('x')
+    >>> rational_system_solutions(ExprMatrix.from_rows([[1/x, 1], [0, 1/x]]), x)
+    [ExprMatrix([[x], [0]]), ExprMatrix([[x**2], [x]])]
+    >>> rational_system_solutions(ExprMatrix.from_rows([[-1/x, 0], [1, 0]]), x)
+    [ExprMatrix([[0], [1]])]
     """
-    return [Matrix(v) for v in _rational_basis(_entries(A, x), x)]
+    return [ExprMatrix.column(v) for v in _rational_basis(_entries(A, x), x)]
 
 
 def _augmented(A: Rows, b: list[Expr]) -> Rows:
     n = len(A)
     rows = [A[i] + [_normal(b[i])] for i in range(n)]
-    rows.append([S.Zero]*(n + 1))
+    rows.append([_ZERO]*(n + 1))
     return rows
 
 
@@ -600,7 +715,7 @@ def _rational_particular(A: Rows, b: list[Expr], x: Symbol) -> Optional[list[Exp
     n = len(A)
     for vector in _rational_basis(_augmented(A, b), x):
         z = vector[n]
-        if z != 0 and not z.has(x):
+        if z != _ZERO and not z.has(x):
             return [_normal(vector[i]/z) for i in range(n)]
     return None
 
@@ -608,7 +723,7 @@ def _rational_particular(A: Rows, b: list[Expr], x: Symbol) -> Optional[list[Exp
 # ---------------------------------------------------------------------------
 # hyperexponential and general solutions
 
-def hyperexponential_system_solutions(A: MutableDenseMatrix, x: Symbol) -> list[MutableDenseMatrix]:
+def hyperexponential_system_solutions(A: ExprMatrix, x: Symbol) -> list[ExprMatrix]:
     """Independent solutions ``h R`` of ``Y' = A Y`` with ``h'/h`` and the
     vector ``R`` rational, from the hyperexponential solutions of the
     scalar equation of a cyclic vector (complete when that search is, see
@@ -617,13 +732,12 @@ def hyperexponential_system_solutions(A: MutableDenseMatrix, x: Symbol) -> list[
     Examples
     ========
 
-    >>> from sympy import Matrix
-    >>> from sympy.abc import x
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices.dense import ExprMatrix
     >>> from sympy_extras.solvers.linear_systems import hyperexponential_system_solutions
-    >>> hyperexponential_system_solutions(Matrix([[1, 1/x], [0, 0]]), x)
-    [Matrix([
-    [exp(x)],
-    [     0]])]
+    >>> x = Symbol('x')
+    >>> hyperexponential_system_solutions(ExprMatrix.from_rows([[1, 1/x], [0, 0]]), x)
+    [ExprMatrix([[exp(x)], [0]])]
     """
     R = cyclic_reduction(A, x)
     found, _ = hyperexponential_search(R.operator)
@@ -634,109 +748,91 @@ def _verified(A: Rows, Y: list[Expr], x: Symbol) -> bool:
     """Whether ``Y' = A Y``, by simplification within the time limit."""
     n = len(A)
     for i in range(n):
-        residual = as_expr(Y[i].diff(x) - Add(*[A[i][j]*Y[j] for j in range(n)]))
-        zero = attempt(lambda: as_expr(simplify(residual)) == 0, settings.timeout)
+        residual = Y[i].diff(x) - _sum([A[i][j]*Y[j] for j in range(n)])
+        zero = attempt(lambda: simplify(residual) == _ZERO, settings.timeout, native=True)
         if not zero:
             return False
     return True
 
 
-def _sympy_columns(A: Rows, x: Symbol) -> list[list[Expr]]:
+def _is_constant(A: Rows, x: Symbol) -> bool:
+    return all(not e.has(x) for row in A for e in row)
+
+
+def _exponential_columns(A: Rows, x: Symbol) -> Rows:
+    """The columns of ``exp(A x)`` for a constant matrix (Putzer's
+    algorithm), none when its eigenvalues are not found."""
+    from .dae import matrix_exponential
+    n = len(A)
+    try:
+        Phi = matrix_exponential(_matrix(A), x)
+    except NotImplementedError:
+        return []
+    return [[Phi[i, j] for i in range(n)] for j in range(n)]
+
+
+def _sympy_columns(A: Rows, x: Symbol) -> Rows:
     """The fundamental solutions given by SymPy's ``linodesolve``
     (constant coefficients, commuting antiderivatives), each checked."""
-    from sympy.solvers.ode.systems import linodesolve
-    matrix = Matrix(A)
-    result = attempt(lambda: linodesolve(matrix, x), settings.timeout)
-    if result is None:
+    from .linear_systems_sympy import linodesolve_of_core
+    vector = linodesolve_of_core(_matrix(A), x)
+    if vector is None:
         return []
-    vector = [as_expr(e) for e in result]
-    known = {s for row in A for e in row for s in free_symbols(e)} | {x}
-    constants = sorted({s for e in vector for s in free_symbols(e) if s not in known}, key=str)
-    columns: list[list[Expr]] = []
+    known: set[Basic] = {s for row in A for e in row for s in e.free_symbols}
+    known.add(x)
+    constants = sorted({s for e in vector for s in e.free_symbols if s not in known and isinstance(s, Symbol)},
+                       key=str)
+    columns: Rows = []
     for c in constants:
-        column = [as_expr(expand(e).coeff(c)) for e in vector]
-        if any(e != 0 for e in column) and not any(e.has(*constants) for e in column) and _verified(A, column, x):
+        column = [expand(e).coeff(c) for e in vector]
+        if any(e != _ZERO for e in column) and not any(e.has(*constants) for e in column) \
+                and _verified(A, column, x):
             columns.append(column)
     return columns if len(columns) == len(A) else []
 
 
-def _liouville(A: Rows, determinant: Expr, x: Symbol) -> Expr:
+def _liouville(A: Rows, determinant_: Expr, x: Symbol) -> Expr:
     """``det Phi`` as ``C exp(Integral(trace A))`` when the ratio is found
     to be constant, else the simplified determinant."""
-    trace = _normal(Add(*[A[i][i] for i in range(len(A))]))
-    integral = attempt(lambda: integrate(trace, x, conds='none'), settings.timeout)
-    if integral is not None and not integral.has(Integral, Piecewise, exp_polar):
-        abel = as_expr(exp(as_expr(integral)))
-        ratio = attempt(lambda: as_expr(simplify(determinant/abel)), settings.timeout)
-        if ratio is not None and ratio != 0 and not ratio.has(x):
-            return as_expr(ratio*abel)
-    simplified = attempt(lambda: as_expr(simplify(determinant)), settings.timeout)
-    return determinant if simplified is None else simplified
+    from .kovacic_sympy import integrate_of_core
+    trace = _normal(_sum([A[i][i] for i in range(len(A))]))
+    integral = attempt(lambda: integrate_of_core(trace, x, 'none', True), settings.timeout, native=True)
+    if integral is not None:
+        abel = exp(integral)
+        ratio = attempt(lambda: simplify(determinant_/abel), settings.timeout, native=True)
+        if ratio is not None and ratio != _ZERO and not ratio.has(x):
+            return ratio*abel
+    simplified = attempt(lambda: simplify(determinant_), settings.timeout, native=True)
+    return determinant_ if simplified is None else simplified
 
 
-def _rational_integral(f: Expr, x: Symbol) -> Expr:
-    """An antiderivative of a rational function: the polynomial and
-    rational parts (Hermite's reduction) and the logarithmic part of
-    Rothstein and Trager, with the roots of its factors of degree at most
-    two written out and a ``RootSum`` for the others (SymPy's
-    ``integrate`` writes them in radicals, nested ones for quartics)."""
-    numerator, denominator = _normal(f).as_numer_denom()
-    P = Poly(numerator, x)
-    Q = Poly(denominator, x)
-    quotient, remainder = P.div(Q)
-    result = as_expr(quotient.integrate().as_expr())
-    if remainder.is_zero:
-        return result
-    rational, logarithmic = ratint_ratpart(remainder, Q, x)
-    result = as_expr(result + rational)
-    top, bottom = _normal(as_expr(logarithmic)).as_numer_denom()
-    if top == 0:
-        return result
-    t = Dummy('t')
-    for argument, resultant_poly in ratint_logpart(Poly(top, x), Poly(bottom, x), x, t):
-        S_ = as_expr(argument.as_expr())
-        _, factors = factor_list(as_expr(resultant_poly.as_expr()), t)
-        for factor, _ in factors:
-            F = Poly(factor, t)
-            if F.degree() == 0:
-                continue
-            if F.degree() <= 2:
-                for a in roots(F):
-                    result = as_expr(result + a*log(as_expr(S_.subs(t, a))))
-            else:
-                result = as_expr(result + RootSum(F, Lambda(t, t*log(S_))))
-    return result
-
-
-def _variation_of_constants(A: Rows, fundamental: MutableDenseMatrix, b: list[Expr], x: Symbol) -> list[Expr]:
+def _variation_of_constants(A: Rows, fundamental: ExprMatrix, b: list[Expr], x: Symbol) -> list[Expr]:
     """``Phi Integral(Phi**-1 b)``, the components of ``Phi**-1 b`` by
     Cramer's rule."""
-    from .factorization_sympy import _quadrature
+    from .factorization import _quadrature
+    from .kovacic_sympy import integral_of_core
+    from .linear_systems_sympy import rational_integral_of_core
     n = len(A)
-    W = _liouville(A, as_expr(fundamental.det(method='berkowitz')), x)
-    if W == 0:
+    rows = [list(fundamental.row(i)) for i in range(n)]
+    W = _liouville(A, determinant(rows), x)
+    if W == _ZERO:
         raise ValueError("the fundamental matrix is singular")
-    total: list[Expr] = [S.Zero]*n
+    total: list[Expr] = [_ZERO]*n
     for j in range(n):
-        replaced = fundamental.copy()
-        for i in range(n):
-            replaced[i, j] = b[i]
-        integrand = as_expr(as_expr(replaced.det(method='berkowitz'))/W)
-        if integrand.is_rational_function(x):
-            c = _rational_integral(integrand, x)
-        elif integrand.has(Integral):
+        replaced = [[b[i] if k == j else rows[i][k] for k in range(n)] for i in range(n)]
+        integrand = determinant(replaced)/W
+        if integrand.is_rational_function(x) is True:
+            c = rational_integral_of_core(integrand, x)
+        elif has_integral(integrand):
             # an integrand with the unevaluated integrals of a fundamental
             # matrix: SymPy does not integrate it, and trying takes the
             # time limit
-            c = as_expr(Integral(integrand, x))
+            c = integral_of_core(integrand, x)
         else:
             c = _quadrature(integrand, x)
         for i in range(n):
-            total[i] = as_expr(total[i] + as_expr(fundamental[i, j])*c)
-    result: list[Expr] = []
-    for e in total:
-        result.append(_simplified(e))
-    return result
+            total[i] = total[i] + rows[i][j]*c
+    return [_simplified(e) for e in total]
 
 
 class LinearSystemSolution:
@@ -754,57 +850,62 @@ class LinearSystemSolution:
     Examples
     ========
 
-    >>> from sympy import Matrix, symbols
-    >>> from sympy.abc import x
+    >>> import sympy_extras.interop  # SymPy's integrate (the *_of_core functions)
+    >>> from sympy_extras.core import Symbol, symbols
+    >>> from sympy_extras.matrices.dense import ExprMatrix
     >>> from sympy_extras.solvers.linear_systems import dsolve_system
-    >>> S = dsolve_system(Matrix([[0, 1], [2/x**2, 0]]), x)
+    >>> x = Symbol('x')
+    >>> S = dsolve_system(ExprMatrix.from_rows([[0, 1], [2/x**2, 0]]), x)
     >>> S.complete
     True
     >>> S.general_solution(symbols('C1 C2'))
-    Matrix([[C1/x + C2*x**2], [-C1/x**2 + 2*C2*x]])
+    ExprMatrix([[C1/x + C2*x**2], [-C1/x**2 + 2*C2*x]])
     """
 
-    def __init__(self, fundamental: MutableDenseMatrix, particular: Optional[MutableDenseMatrix],
-                 complete: Truth, reduction: CyclicReduction) -> None:
-        self.fundamental = fundamental
-        self.particular = particular
-        self.complete = complete
-        self.reduction = reduction
+    def __init__(self, fundamental: ExprMatrix, particular: Optional[ExprMatrix], complete: Truth,
+                 reduction: CyclicReduction) -> None:
+        self.fundamental: Final[ExprMatrix] = fundamental
+        self.particular: Final[Optional[ExprMatrix]] = particular
+        self.complete: Final[Truth] = complete
+        self.reduction: Final[CyclicReduction] = reduction
 
     @property
     def rank(self) -> int:
         """The number of independent homogeneous solutions found."""
-        return int(self.fundamental.cols)
+        return self.fundamental.cols
 
-    def columns(self) -> list[MutableDenseMatrix]:
+    def columns(self) -> list[ExprMatrix]:
         """The independent homogeneous solutions."""
-        return [Matrix(self.fundamental[:, j]) for j in range(self.rank)]
+        F = self.fundamental
+        return [ExprMatrix.column([F[i, j] for i in range(F.rows)]) for j in range(self.rank)]
 
-    def general_solution(self, constants: Sequence[Symbol]) -> MutableDenseMatrix:
+    def general_solution(self, constants: Sequence[Expr]) -> ExprMatrix:
         """``fundamental * C + particular`` for the given constants (one per
         column); the particular part is left out when it was not found."""
         if len(constants) != self.rank:
             raise ValueError("%d constants are needed" % self.rank)
-        result = Matrix.zeros(self.fundamental.rows, 1)
-        for j, c in enumerate(constants):
-            result += c*Matrix(self.fundamental[:, j])
+        F = self.fundamental
+        entries = [_sum([constants[j]*F[i, j] for j in range(self.rank)]) for i in range(F.rows)]
         if self.particular is not None:
-            result += self.particular
-        return result
+            entries = [e + p for e, p in zip(entries, self.particular.entries)]
+        return ExprMatrix.column(entries)
 
     def __repr__(self) -> str:
-        return "LinearSystemSolution(%s, %s, %s)" % (self.fundamental.tolist(),
-            None if self.particular is None else self.particular.tolist(), self.complete)
+        F = self.fundamental
+        particular = None if self.particular is None else [[e] for e in self.particular.entries]
+        return "LinearSystemSolution(%s, %s, %s)" % ([list(F.row(i)) for i in range(F.rows)], particular,
+                                                     self.complete)
 
 
-def dsolve_system(A: MutableDenseMatrix, x: Symbol, b: Optional[MutableDenseMatrix] = None
-                  ) -> LinearSystemSolution:
-    """The solutions of ``Y' = A Y + b`` with ``A`` rational in ``x``: a fundamental matrix from the scalar equation of a cyclic vector
-    (solved by rational and hyperexponential solutions, Beke's
-    factorisation, Kovacic's algorithm and special functions, see
-    :func:`~.dsolve_linear`), then SymPy's ``linodesolve``; a rational
-    particular solution by Barkatou's method on the augmented system, or
-    one by variation of constants.
+def dsolve_system(A: ExprMatrix, x: Symbol, b: Optional[ExprMatrix] = None) -> LinearSystemSolution:
+    """The solutions of ``Y' = A Y + b`` with ``A`` rational in ``x``: a
+    fundamental matrix from the scalar equation of a cyclic vector (solved
+    by rational and hyperexponential solutions, Beke's factorisation,
+    Kovacic's algorithm and special functions, see
+    :func:`~.dsolve_linear`), then the matrix exponential for constant
+    coefficients and SymPy's ``linodesolve``; a rational particular
+    solution by Barkatou's method on the augmented system, or one by
+    variation of constants.
 
     Parameters
     ==========
@@ -824,14 +925,16 @@ def dsolve_system(A: MutableDenseMatrix, x: Symbol, b: Optional[MutableDenseMatr
     Examples
     ========
 
-    >>> from sympy import Matrix, symbols
-    >>> from sympy.abc import x
+    >>> import sympy_extras.interop  # SymPy's integrate (the *_of_core functions)
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices.dense import ExprMatrix
     >>> from sympy_extras.solvers.linear_systems import dsolve_system
-    >>> S = dsolve_system(Matrix([[1/x, 1], [0, 1/x]]), x, Matrix([1, 0]))
+    >>> x = Symbol('x')
+    >>> S = dsolve_system(ExprMatrix.from_rows([[1/x, 1], [0, 1/x]]), x, ExprMatrix.column([1, 0]))
     >>> S.fundamental
-    Matrix([[x, x**2], [0, x]])
-    >>> S.particular.T
-    Matrix([[x*log(x), 0]])
+    ExprMatrix([[x, x**2], [0, x]])
+    >>> S.particular
+    ExprMatrix([[x*log(x)], [0]])
     >>> S.complete
     True
     """
@@ -839,49 +942,48 @@ def dsolve_system(A: MutableDenseMatrix, x: Symbol, b: Optional[MutableDenseMatr
     n = len(rows)
     vector: Optional[list[Expr]] = None
     if b is not None:
-        vector = _column(b, n, x)
-        if all(e == 0 for e in vector):
+        vector = _column(b, n)
+        if all(e == _ZERO for e in vector):
             vector = None
     R = _reduction(rows, x)
     scalar = _solve_operator(R.operator, Function('y')(x), True, True)
     columns = [R.to_system(u) for u in scalar]
     if len(columns) < n:
-        found = _sympy_columns(rows, x)
+        found = _exponential_columns(rows, x) if _is_constant(rows, x) else []
+        if len(found) < n:
+            found = _sympy_columns(rows, x)
         if len(found) > len(columns):
-            columns = [Matrix(c) for c in found]
-    fundamental = Matrix.hstack(*columns) if columns else Matrix.zeros(n, 0)
-    particular: Optional[MutableDenseMatrix] = Matrix.zeros(n, 1)
+            columns = [ExprMatrix.column(c) for c in found]
+    fundamental = _columns_matrix(columns, n)
+    particular: Optional[ExprMatrix] = ExprMatrix.zeros(n, 1)
     if vector is not None:
-        rational = _rational_particular(rows, vector, x) if all(e.is_rational_function(x) for e in vector) \
-            else None
+        rational = _rational_particular(rows, vector, x) \
+            if all(e.is_rational_function(x) is True for e in vector) else None
         if rational is not None:
-            particular = Matrix(rational)
+            particular = ExprMatrix.column(rational)
         elif len(columns) == n:
-            particular = Matrix(_variation_of_constants(rows, fundamental, vector, x))
+            particular = ExprMatrix.column(_variation_of_constants(rows, fundamental, vector, x))
         else:
             particular = None
     complete: Truth = True if len(columns) == n and particular is not None else None
     return LinearSystemSolution(fundamental, particular, complete, R)
 
 
-def dsolve_linear_system(A: MutableDenseMatrix, x: Symbol) -> list[MutableDenseMatrix]:
+def dsolve_linear_system(A: ExprMatrix, x: Symbol) -> list[ExprMatrix]:
     """Independent solution vectors of ``Y' = A Y`` (the columns of the
     fundamental matrix of :func:`dsolve_system`).
 
     Examples
     ========
 
-    >>> from sympy import Matrix
-    >>> from sympy.abc import x
+    >>> import sympy_extras.interop  # SymPy's integrate (the *_of_core functions)
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices.dense import ExprMatrix
     >>> from sympy_extras.solvers.linear_systems import dsolve_linear_system
-    >>> sorted((list(Y) for Y in dsolve_linear_system(Matrix([[0, 1], [-1, 0]]), x)), key=str)
-    [[exp(-I*x), -I*exp(-I*x)], [exp(I*x), I*exp(I*x)]]
-    >>> dsolve_linear_system(Matrix([[1/x, 1], [0, 1/x]]), x)
-    [Matrix([
-    [x],
-    [0]]), Matrix([
-    [x**2],
-    [   x]])]
+    >>> x = Symbol('x')
+    >>> dsolve_linear_system(ExprMatrix.from_rows([[0, 1], [-1, 0]]), x)
+    [ExprMatrix([[exp(-I*x)], [-I*exp(-I*x)]]), ExprMatrix([[exp(I*x)], [I*exp(I*x)]])]
+    >>> dsolve_linear_system(ExprMatrix.from_rows([[1/x, 1], [0, 1/x]]), x)
+    [ExprMatrix([[x], [0]]), ExprMatrix([[x**2], [x]])]
     """
     return dsolve_system(A, x).columns()
-

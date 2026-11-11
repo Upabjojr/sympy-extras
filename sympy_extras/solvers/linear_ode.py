@@ -1483,12 +1483,14 @@ def _equation(L: LinearOperator) -> Expr:
 
 def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_dsolve: bool,
                     factorize: bool = True) -> list[Expr]:
-    from .kovacic_sympy import integral_of_core, integrate_of_core
     x = L.x
     n = L.order
     if n == 0:
         return []
     if n == 1:
+        # SymPy's integrate, imported here only: the other orders reach it
+        # through the reduction of order alone
+        from .kovacic_sympy import integral_of_core, integrate_of_core
         # y' = -a_0/a_1 y
         rho = _normal(-L.coefficients[0]/L.coefficients[1])
         integral = integrate_of_core(rho, x, 'piecewise', False)

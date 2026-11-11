@@ -539,6 +539,44 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The linear systems `Y' = A Y + b` are native (**breaking**):
+  `sympy_extras.solvers.linear_systems` (`CyclicReduction`,
+  `cyclic_reduction`, `cyclic_vector`, `system_to_scalar`,
+  `rational_system_solutions`, `hyperexponential_system_solutions`,
+  `dsolve_system`, `LinearSystemSolution`, `dsolve_linear_system`) takes
+  and returns the `ExprMatrix` of core expressions and the native
+  `LinearOperator`, and imports no SymPy: the scalar equations go to the
+  native `linear_ode` and `factorization` solvers, the Krylov rows of the
+  cyclic vectors, their inverse and the scalar equation are computed in
+  the native field of rational functions (`SparseFractionField`; the
+  normal forms by the native `cancel` otherwise), Barkatou's bounds use
+  the native `factor_list`, `resultant`, `roots` and null spaces (the
+  limits at infinity of rational functions read from the leading
+  coefficients instead of SymPy's `limit`), the determinants are the
+  native Berkowitz ones, the checks and the final forms the native
+  `simplify`, and a constant system whose scalar equation is not solved
+  gets the columns of the native matrix exponential (Putzer,
+  `dae.matrix_exponential`) before SymPy's `linodesolve`. SymPy's
+  `integrate` (Liouville's formula and the quadratures of variation of
+  constants, `kovacic_sympy.integrate_of_core`/`integral_of_core`), its
+  rational integrator with `RootSum` (the new
+  `linear_systems_sympy.rational_integral_of_core`) and `linodesolve`
+  (the new `linear_systems_sympy.linodesolve_of_core`) are called through
+  the face. The old API on SymPy matrices moves to the new face
+  `sympy_extras.solvers.linear_systems_sympy` (`CyclicReduction` and
+  `LinearSystemSolution` with SymPy matrices), which the tests, the
+  benchmarks and the docs use. `linear_ode._solve_operator` imports
+  `kovacic_sympy` only for first order equations, so that the scalar
+  equations of higher order solved without quadratures load no SymPy.
+  Fixed on the way: at a pole of order two or more whose `det N` is
+  identically zero (a singular `A`, and every augmented system of an
+  inhomogeneous one) the multiplicity of the zero polynomial came out 0
+  and was taken for an invertible leading matrix, so that no rational
+  solution was returned (`Y' = [[1, 1], [1, 1]] Y/x**2` lost `(1, -1)`)
+  and the rational particular solutions at such poles were never found
+  (variation of constants gave another one, with its integrals). Every
+  other recorded call gives the same result as before (see the commit
+  message for the comparison).
 - The Lie point symmetries and the similarity reductions are native
   (**breaking**): `sympy_extras.solvers.lie` (`JetSpace`, `Symmetry`,
   `symmetries`, `check_symmetry`, `infinitesimal_condition`,

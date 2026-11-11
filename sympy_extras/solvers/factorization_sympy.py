@@ -209,8 +209,8 @@ def solve_factored(factors: list[LinearOperator], solver: Solver) -> list[Expr]:
 
 
 # ---------------------------------------------------------------------------
-# the helpers shared with the modules still on SymPy (linear_systems) and
-# the tests
+# the private helpers on SymPy objects (the old linear_systems used them;
+# the tests)
 
 def _quadrature(integrand: Expr, x: Symbol) -> Expr:
     """``Integral(integrand, x)``, evaluated when SymPy can within the time

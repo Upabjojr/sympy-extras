@@ -284,16 +284,23 @@ sympy_extras/
         kovacic.py           liouvillian_solution, dsolve_kovacic, normal_form, KovacicSolution: Kovacic's algorithm (native;
                              SymPy's integrate and rational Riccati solver through kovacic_sympy)
         kovacic_sympy.py     the SymPy face of kovacic, and the steps which stay on SymPy (integrate_of_core,
-                             integral_of_core, riccati_of_core; also used by linear_ode, factorization, special)
+                             integral_of_core, riccati_of_core; also used by linear_ode, factorization, special, linear_systems)
         linear_ode.py        LinearOperator (the Ore ring K[D]), polynomial_solutions, rational_solutions,
                              hyperexponential_solutions/search, reduce_order_linear, dsolve_linear, gcrd, lclm, UPoly
                              (polynomials with any constant coefficients) (native; SymPy's integrate through kovacic_sympy,
                              its dsolve through linear_ode_sympy)
-        linear_ode_sympy.py  the SymPy face of linear_ode (used by linear_systems, first_order), and dsolve_of_core
+        linear_ode_sympy.py  the SymPy face of linear_ode (used by first_order), and dsolve_of_core
         factorization.py     factor_operator, right_factor, left_factor, OperatorFactorization (Beke), variation_of_parameters,
                              solve_factored (native; SymPy's solve of the Grassmann–Plücker relations through
                              factorization_sympy)
         factorization_sympy.py the SymPy face of factorization, and solve_of_core
+        linear_systems.py    CyclicReduction, cyclic_reduction, cyclic_vector, system_to_scalar, rational_system_solutions,
+                             hyperexponential_system_solutions, dsolve_system, LinearSystemSolution: Y' = A Y + b by cyclic
+                             vectors, Barkatou's rational solutions, variation of constants, on ExprMatrix (native; the
+                             native linear_ode, factorization and matrix exponential; SymPy's integrate, rational integrator
+                             with RootSum and linodesolve through linear_systems_sympy)
+        linear_systems_sympy.py the SymPy face of linear_systems (SymPy matrices), and rational_integral_of_core,
+                             linodesolve_of_core
         irregular.py         Place, irregular_places, local_exponential_parts, finite_exponential_parts, conjugate_sum:
                              exponential parts at irregular finite points (native; number fields of polys.domains)
         irregular_sympy.py   the SymPy face of irregular (alpha as SymPy's CRootOf)

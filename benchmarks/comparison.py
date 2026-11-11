@@ -96,7 +96,7 @@ from sympy_extras.solvers.isolation_sympy import isolate_real_roots
 from sympy_extras.solvers.thue_equation_sympy import thue
 from sympy_extras.solvers.abel import abel_by_invariants, abel_invariants
 from sympy_extras.solvers.integers_sympy import linear_diophantine_system, minimal_nonnegative_solutions, cooper
-from sympy_extras.solvers.linear_systems import dsolve_linear_system, rational_system_solutions
+from sympy_extras.solvers.linear_systems_sympy import dsolve_linear_system, rational_system_solutions
 from sympy_extras.solvers.lie_sympy import symmetries
 from sympy_extras.solvers.pde_sympy import pde_symmetries
 from sympy_extras.polys.ideals_sympy import Ideal

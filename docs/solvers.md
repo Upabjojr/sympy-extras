@@ -267,7 +267,7 @@ method) are called through the faces (`integrate_of_core`,
 >>> from sympy import Matrix, Function
 >>> from sympy.abc import n
 >>> from sympy_extras.solvers.special_sympy import special_solutions
->>> from sympy_extras.solvers.linear_systems import dsolve_linear_system
+>>> from sympy_extras.solvers.linear_systems_sympy import dsolve_linear_system
 >>> y = Function('y')(x)
 >>> special_solutions(y.diff(x, 2) + x*y, y)
 [sqrt(x)*besselj(1/3, 2*x**(3/2)/3), sqrt(x)*besselj(-1/3, 2*x**(3/2)/3)]
@@ -357,6 +357,16 @@ an `n x n` matrix of rational functions. SymPy's `dsolve` solves systems
 with constant coefficients, systems whose matrix commutes with its
 antiderivative, and a few special types of two and three equations.
 
+The module is native: it takes and returns the `ExprMatrix` of core
+expressions, with the native scalar solvers, polynomials, linear algebra
+(over the field of rational functions) and simplification; its SymPy face
+`linear_systems_sympy`, which the examples below use, keeps the API on
+SymPy matrices. SymPy's `integrate` (Liouville's formula, variation of
+constants), its rational integrator with `RootSum` (`ratint_ratpart`,
+`ratint_logpart`: `rational_integral_of_core`) and its `linodesolve` (the
+last resort for a fundamental matrix, after the native matrix exponential
+of a constant system: `linodesolve_of_core`) are called through the face.
+
 - **Cyclic vectors** (`cyclic_reduction`, `cyclic_vector`,
   `system_to_scalar`): for a row vector `c`, `u = c Y` has the derivatives
   `u^(k) = c_k Y`, `c_{k+1} = c_k A + c_k'`; when `c_0, ..., c_{n-1}` are
@@ -371,7 +381,8 @@ antiderivative, and a few special types of two and three equations.
   `fundamental * C + particular` and `None` when the solvers found fewer
   than `n` columns. The scalar equation goes through `dsolve_linear`'s
   solvers, so equations of order three and more are factored (Beke), and
-  SymPy's `linodesolve` is tried when they fall short.
+  the matrix exponential of a constant system (Putzer) and SymPy's
+  `linodesolve` are tried when they fall short.
 - **Rational solutions** (`rational_system_solutions`, Barkatou 1999): the
   pole order of a rational solution at a simple pole of `A` is bounded by
   the negative integer eigenvalues of the residue (found over Q through a
@@ -390,7 +401,7 @@ antiderivative, and a few special types of two and three equations.
 
 ```python
 >>> from sympy import Matrix, symbols, simplify, exp
->>> from sympy_extras.solvers.linear_systems import dsolve_system, rational_system_solutions
+>>> from sympy_extras.solvers.linear_systems_sympy import dsolve_system, rational_system_solutions
 >>> A = Matrix([[0, 1], [2/x**2, 0]])
 >>> S = dsolve_system(A, x)
 >>> S.fundamental
