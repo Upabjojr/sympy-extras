@@ -1014,6 +1014,29 @@ The rank-dependent operations return the generic answer for symbols; with
 other kernels (`sin(t)`, `sqrt(2)`) every pivot must be proved nonzero by
 the zero test, otherwise `NotImplementedError` is raised.
 
+### Padé approximants, rational interpolation, series reversion (`sympy_extras.series`)
+
+The `[m/n]` Padé approximant of a function at a point, computed by the
+extended Euclidean algorithm on its Taylor polynomial (no linear system,
+parameters allowed), the rational function through given points, and the
+power series of an inverse function by Lagrange's formula:
+
+```python
+>>> from sympy_extras.core import Rational, Symbol
+>>> from sympy_extras.functions import exp, sin, tan
+>>> from sympy_extras.series import pade, rational_interpolate, series_reversion
+>>> x, y, a = Symbol('x'), Symbol('y'), Symbol('a')
+>>> pade(exp(x), x, 2, 2), pade(tan(x), x, 3, 2)
+((x**2 + 6*x + 12)/(x**2 - 6*x + 12), (x**3 - 15*x)/(6*x**2 - 15))
+>>> pade(exp(a*x), x, 1, 1)
+(-a*x - 2)/(a*x - 2)
+>>> rational_interpolate([(0, 0), (1, Rational(1, 2)), (2, Rational(2, 3)), (3, Rational(3, 4))], x, 1)
+x/(x + 1)
+>>> series_reversion(sin(x), x, y, 6), series_reversion(x*exp(x), x, y, 5)
+(3*y**5/40 + y**3/6 + y, -8*y**4/3 + 3*y**3/2 - y**2 + y)
+
+```
+
 ## What this adds to SymPy
 
 [docs/comparison.md](docs/comparison.md) puts seventy questions to SymPy

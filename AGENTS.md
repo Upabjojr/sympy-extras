@@ -264,7 +264,7 @@ sympy_extras/
       steps.py               step-by-step elimination: rref_steps, echelon_steps, inverse_steps, solve_steps, determinant_steps (RowOperation, Step)
       svd.py                 singular_values, exact compact svd of rational matrices
       functions.py           component matrices, matrix_exp, matrix_power, matrix_function
-    series/                  residue (ported from SymPy)
+    series/                  residue (ported from SymPy); approximants.py: pade, rational_interpolate, series_reversion (Euclid, Lagrange inversion)
     sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains; Naturals, Naturals0, Integers, Rationals, Complexes (fancysets.py) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)
     polys/

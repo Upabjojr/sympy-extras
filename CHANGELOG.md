@@ -10,6 +10,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.series.approximants`: `pade` (the `[m/n]` Padé
+  approximant at any point, by the extended Euclidean algorithm, with
+  parameters in the coefficients; `strict=True` for Baker's definition),
+  `pade_from_coefficients`, `rational_interpolate` (Cauchy interpolation,
+  `None` for unattainable points), `series_reversion` and
+  `revert_coefficients` (Lagrange inversion), `taylor_coefficients`.
 - `sympy_extras.matrices.steps`: step-by-step Gaussian elimination as
   the textbooks do it, each elementary row operation (`RowOperation`,
   printed `R2 <- R2 - (3)*R1`) with the matrix it gives: `rref_steps`,
