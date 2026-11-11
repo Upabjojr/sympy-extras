@@ -6,7 +6,7 @@ from sympy import QQ, Expr, N, Poly, Symbol, symbols
 from sympy.polys.polyerrors import NotInvertible
 from sympy.testing.pytest import raises
 
-from sympy_extras.polys.hermite import count_complex_solutions, count_real_solutions
+from sympy_extras.polys.hermite_sympy import count_complex_solutions, count_real_solutions
 from sympy_extras.polys.ideals_sympy import Ideal
 from sympy_extras.polys.rur import rur, RationalUnivariateRepresentation
 

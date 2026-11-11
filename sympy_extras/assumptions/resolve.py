@@ -6,14 +6,12 @@ with the quantifiers of :mod:`sympy_extras.assumptions.quantifiers`.
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.assumptions.resolve_sympy` is its face on SymPy
 objects. The cylindrical algebraic decomposition
-(:func:`sympy_extras.polys.cad.qe.quantifier_elimination`) and virtual
-substitution (:mod:`sympy_extras.polys.virtual_substitution`) are native;
-comprehensive Gröbner systems (:mod:`sympy_extras.polys.comprehensive`),
-written on SymPy's polynomials, are not ported and go through SymPy at
-run time (the face holds them, the functions ending in ``_of_core``).
-Cooper's algorithm over the integers (:mod:`sympy_extras.solvers.integers`),
-the prenex form, the assumptions and the simplification of the result
-under them are native.
+(:func:`sympy_extras.polys.cad.qe.quantifier_elimination`), virtual
+substitution (:mod:`sympy_extras.polys.virtual_substitution`), the
+comprehensive Gröbner systems over the complex numbers
+(:mod:`sympy_extras.polys.comprehensive`), Cooper's algorithm over the
+integers (:mod:`sympy_extras.solvers.integers`), the prenex form, the
+assumptions and the simplification of the result under them are native.
 """
 from __future__ import annotations
 
@@ -208,19 +206,19 @@ def _real_relaxation(formula: Boolean, prefix: Prefix, assumptions: Assumptions)
 def _resolve_complexes(formula: Boolean, assumptions: Assumptions) -> Boolean:
     """Quantifier elimination over the complex numbers (equations and
     inequations only)."""
-    from .resolve_sympy import complex_quantifier_elimination_of_core, reduce_complex_of_core
+    from sympy_extras.polys.comprehensive import complex_quantifier_elimination, reduce_complex
     prefix, matrix = prenex(formula)
     bound = [v for _, v in prefix]
     facts = _facts(assumptions, Complexes, matrix.free_symbols | set(bound))
     matrix = normalize(matrix)
     conditions = [c for c in facts.conjuncts if _symbols(c) - set(bound) and not _is_membership_in(c, Complexes)]
     if not conditions:
-        return complex_quantifier_elimination_of_core(matrix, prefix)
-    premise = reduce_complex_of_core(and_(*conditions))
-    result = complex_quantifier_elimination_of_core(and_(premise, matrix), prefix)
+        return complex_quantifier_elimination(matrix, prefix)
+    premise = reduce_complex(and_(*conditions))
+    result = complex_quantifier_elimination(and_(premise, matrix), prefix)
     # the result does not repeat the assumptions
     known: dict[Basic, Basic] = {c: true for c in (premise.args if isinstance(premise, And) else (premise,))}
-    return reduce_complex_of_core(to_boolean(result._xreplace_evaluated(known)))
+    return reduce_complex(to_boolean(result._xreplace_evaluated(known)))
 
 
 def _refine_boolean_(result: Boolean, facts: Facts, premise: Optional[Boolean]) -> Boolean:

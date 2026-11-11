@@ -226,10 +226,12 @@ def test_lexicographic_bases_in_dimension_zero_are_converted() -> None:
 
 def test_hermite_imported_first() -> None:
     # importing hermite before the face raised ImportError (a cycle: hermite
-    # -> ideals_sympy -> rur -> hermite's names, not yet defined)
+    # -> ideals_sympy -> rur -> hermite's names, not yet defined); the cycle
+    # is now hermite_sympy -> ideals_sympy -> rur -> hermite_sympy
     import subprocess
     import sys
-    for module in ('hermite', 'rur', 'ideals_sympy', 'idealdecomposition'):
-        code = 'import sympy_extras.polys.%s; from sympy_extras.polys.hermite import decide_zero_dimensional' % module
+    for module in ('hermite', 'hermite_sympy', 'rur', 'ideals_sympy', 'idealdecomposition'):
+        code = 'import sympy_extras.polys.%s; from sympy_extras.polys.hermite_sympy import decide_zero_dimensional; ' \
+               'from sympy_extras.polys.rur import rur' % module
         out = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, timeout=600)
         assert out.returncode == 0, (module, out.stderr)

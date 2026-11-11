@@ -31,7 +31,8 @@ previous one through the transposed multiplication matrix of $u$; the
 power sums $\operatorname{Tr}(u^j)$ give $\chi_u$ by Newton's identities;
 $u$ is separating exactly when $\deg \bar f$ equals the number of distinct
 zeros, the rank of Hermite's quadratic form
-(:mod:`sympy_extras.polys.hermite`). The candidates are the first forms of
+(:mod:`sympy_extras.polys.hermite`, through its face
+:mod:`sympy_extras.polys.hermite_sympy`). The candidates are the first forms of
 :func:`~sympy_extras.polys.ideals.separating_forms`, then forms with random
 coefficients, and each is tested modulo a large prime: the squarefree part
 of $\chi_u$ modulo $p$ has at most the degree of the one over the
@@ -83,8 +84,8 @@ from sympy.polys.polytools import Poly, invert
 
 from sympy_extras._typing import DomainElement, as_expr, as_symbol
 
-# the module, not its names: hermite and ideals_sympy import this module back
-from . import hermite as _hermite
+# the module, not its names: hermite_sympy and ideals_sympy import this module back
+from . import hermite_sympy as _hermite
 from .ideals_sympy import Ideal, separating_forms
 
 __all__ = ['rur', 'RationalUnivariateRepresentation']

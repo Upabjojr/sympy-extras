@@ -3,7 +3,7 @@
 Modules: `sympy_extras.polys.ideals` (native) and its SymPy face
 `sympy_extras.polys.ideals_sympy`, `sympy_extras.polys.groebnerwalk`,
 `sympy_extras.polys.modulargroebner`, `sympy_extras.polys.orderings`,
-`sympy_extras.polys.hermite`
+`sympy_extras.polys.hermite` (native) and its SymPy face `sympy_extras.polys.hermite_sympy`
 
 ## What SymPy has and what is added here
 
@@ -132,7 +132,7 @@ solutions at which `g` is zero, positive and negative.
 
 ```python
 >>> from sympy.abc import x, y
->>> from sympy_extras.polys.hermite import (count_real_solutions,
+>>> from sympy_extras.polys.hermite_sympy import (count_real_solutions,
 ...     count_complex_solutions, real_sign_counts, tarski_query)
 >>> count_real_solutions([x**2 + y**2 - 1, x - y], x, y)
 2
@@ -156,7 +156,7 @@ realizable conditions so far, and the conditions of count zero are
 dropped.
 
 ```python
->>> from sympy_extras.polys.hermite import sign_determination
+>>> from sympy_extras.polys.hermite_sympy import sign_determination
 >>> sign_determination([x**2 - 1, y**2 - 1], [x + y, x], x, y)
 {(-1, -1): 1, (0, -1): 1, (0, 1): 1, (1, 1): 1}
 
@@ -173,7 +173,7 @@ decomposition, which must visit every cell to prove that there is none.
 
 ```python
 >>> from sympy import Eq
->>> from sympy_extras.polys.hermite import decide_zero_dimensional
+>>> from sympy_extras.polys.hermite_sympy import decide_zero_dimensional
 >>> decide_zero_dimensional(Eq(x**2 + y**2, 1) & Eq(x*y, 1), [x, y])
 False
 
@@ -413,8 +413,8 @@ only.
 The face `sympy_extras.polys.ideals_sympy.Ideal` has the API the module
 had before: SymPy expressions, `Poly` generators, the domain inferred with
 `extension=True`, `Poly` bases, SymPy matrices, the SymPy rings and ring
-elements of `ring(order)` and `_basis(order)` (which `hermite`, `rur`,
-`comprehensive`, `idealdecomposition`, `regularchains` and
+elements of `ring(order)` and `_basis(order)` (which `rur`,
+`idealdecomposition`, `regularchains` and
 `rosenfeld_groebner` use), and the same results: on 8037 recorded calls
 (the doctests and tests of these modules and 50 more) the face returned
 what the old class returned, and the native class, its inputs and outputs
@@ -804,8 +804,12 @@ has the same methods, `rur` excepted, plus `normal_form(f, order)`,
 *gens)` (a `SignCounts(zero, positive, negative)`), `sign_determination(system,
 polys, *gens)`, `hermite_matrix(system, g, *gens)` and
 `decide_zero_dimensional(formula, gens, max_dimension=64)` are in
-`sympy_extras.polys.hermite`; `system` is an `Ideal` or a list of
-polynomials with rational coefficients.
+`sympy_extras.polys.hermite` (native: `system` is an `Ideal` of
+`sympy_extras.polys.ideals` over `QQ` or a list of core expressions with
+rational coefficients, `hermite_matrix` an `ExprMatrix`) and in its SymPy
+face `sympy_extras.polys.hermite_sympy` (an `Ideal` of
+`sympy_extras.polys.ideals_sympy` or a list of SymPy polynomials, a SymPy
+`Matrix`).
 
 `separating_forms(variables, points)` enumerates the linear forms with
 small integer coefficients among which one separates any `points` points

@@ -1,7 +1,7 @@
 # Exact equation solving and reduction
 
 Modules: `sympy_extras.assumptions.resolve`, `sympy_extras.assumptions.solve` (SymPy face `solve_sympy`),
-`sympy_extras.polys.virtual_substitution` (SymPy face `virtual_substitution_sympy`), `sympy_extras.polys.comprehensive`,
+`sympy_extras.polys.virtual_substitution` (SymPy face `virtual_substitution_sympy`), `sympy_extras.polys.comprehensive` (SymPy face `comprehensive_sympy`),
 `sympy_extras.polys.roots`, `sympy_extras.solvers.integers`,
 `sympy_extras.solvers.transcendental`.
 
@@ -124,7 +124,7 @@ membership.
 
 ```python
 >>> from sympy import S, Ne
->>> from sympy_extras.polys.comprehensive import comprehensive_groebner_system
+>>> from sympy_extras.polys.comprehensive_sympy import comprehensive_groebner_system
 >>> for branch in comprehensive_groebner_system([a*x - b], [x], [a, b]):
 ...     print(branch)
 Branch([], [a], [a*x - b])

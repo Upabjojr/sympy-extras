@@ -1,5 +1,6 @@
 r"""Real solutions of zero-dimensional systems counted without solving them:
-Hermite's quadratic form and sign determination.
+Hermite's quadratic form and sign determination, on the typed polynomial
+layer (no SymPy).
 
 Let $I \subset \mathbb{Q}[x_1, \ldots, x_n]$ be a zero-dimensional ideal,
 $A = \mathbb{Q}[x]/I$ its quotient algebra (a vector space of finite
@@ -44,15 +45,22 @@ stay independent on the remaining conditions are kept, so that at every
 step at most $3 r$ Tarski queries are computed, $r \le \# (Z \cap
 \mathbb{R}^n)$ the number of realizable conditions.
 
-Everything is exact linear algebra over $\mathbb{Q}$: the matrix of
-$H_g$ has the entries $\operatorname{Tr}(g\, b_i b_j)$, which are the
-linear form $\ell_g(h) = \operatorname{Tr}(g h)$ applied to the normal
+Everything is exact linear algebra over $\mathbb{Q}$ (Python's
+``Fraction``, the elements of :data:`sympy_extras.polys.domains.QQ`): the
+matrix of $H_g$ has the entries $\operatorname{Tr}(g\, b_i b_j)$, which are
+the linear form $\ell_g(h) = \operatorname{Tr}(g h)$ applied to the normal
 forms of the products $b_i b_j$ (computed once per ideal); $\ell_1$ is the
 vector of traces $\operatorname{Tr}(b_k)$ and $\ell_{g h} = M_g^T \ell_h$,
 $M_g$ the multiplication matrix of $g$. The signature is computed by
 Lagrange's reduction of the symmetric matrix to a diagonal one by
 congruence (Sylvester's law of inertia), with a $2 \times 2$ step when the
 remaining diagonal is zero; no floating point number is involved.
+
+The systems are ideals of :mod:`sympy_extras.polys.ideals` over ``QQ`` or
+lists of core expressions, the formulas of :func:`decide_zero_dimensional`
+Booleans of the core. :mod:`sympy_extras.polys.hermite_sympy` is the SymPy
+face of this module (SymPy expressions, ``Poly`` objects, the ideals of
+:mod:`sympy_extras.polys.ideals_sympy` and SymPy matrices).
 
 References
 ==========
@@ -69,35 +77,43 @@ References
 """
 from __future__ import annotations
 
-from typing import NamedTuple, Sequence, Union
+from fractions import Fraction
+from typing import NamedTuple, Optional, Sequence, Union
 
-from sympy.core.expr import Expr
-from sympy.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
-from sympy.core.symbol import Symbol
-from sympy.logic.boolalg import And, Boolean, BooleanFalse, BooleanTrue
-from sympy.matrices.dense import MutableDenseMatrix
-from sympy.polys.domains import QQ
-from sympy.polys.polyerrors import CoercionFailed, PolynomialError
-from sympy.polys.polytools import Poly
-from sympy.polys.rings import PolyElement, PolyRing
+from sympy_extras.core.add import add
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.logic import And, Boolean, BooleanAtom
+from sympy_extras.core.mul import mul
+from sympy_extras.core.numbers import Integer, Rational
+from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.matrices.dense import ExprMatrix
 
-from sympy_extras._typing import DomainElement, Monomial, Sign, Truth, as_expr
+from .domains.rationalfield import QQ, RationalField
+from .ideals import Ideal, normal_form
+from .rings import Monomial, PolyElement, PolyRing
 
-from .ideals_sympy import Ideal
-
-__all__ = ['SignCounts', 'hermite_matrix', 'tarski_query', 'count_real_solutions',
-           'count_complex_solutions', 'real_sign_counts', 'sign_determination',
+__all__ = ['SignCounts', 'System', 'Vector', 'Rows', 'SignCondition', 'hermite_matrix', 'tarski_query',
+           'count_real_solutions', 'count_complex_solutions', 'real_sign_counts', 'sign_determination',
            'decide_zero_dimensional']
 
-#: a system: an ideal, or the polynomials which generate it
-System = Union[Ideal, Sequence[Union[Expr, Poly]]]
+#: a sign: -1, 0 or 1
+Sign = int
+#: a polynomial of the quotient algebra: a core expression, an integer or
+#: an element of the ring of the ideal
+Element = Union[Expr, int, PolyElement[Fraction]]
+#: a system: an ideal over ``QQ``, or the polynomials which generate it
+System = Union[Ideal[Fraction], Sequence[Expr]]
 #: a vector of rationals: coordinates in the basis of standard monomials,
 #: or a linear form on the quotient algebra
-Vector = list[DomainElement]
+Vector = list[Fraction]
 #: a square matrix of rationals, as a list of rows
-Rows = list[list[DomainElement]]
+Rows = list[list[Fraction]]
 #: a sign condition on a list of polynomials
 SignCondition = tuple[Sign, ...]
+
+_ZERO = Fraction(0)
+_ONE = Fraction(1)
 
 
 class SignCounts(NamedTuple):
@@ -113,13 +129,12 @@ class _Algebra:
     the data every Hermite form needs: the normal forms of the products of
     two standard monomials and the traces of the standard monomials."""
 
-    def __init__(self, ideal: Ideal) -> None:
-        if ideal.domain != QQ:
-            raise NotImplementedError("real zeros are counted for ideals over QQ, not %s" % ideal.domain)
-        self.ideal: Ideal = ideal
+    def __init__(self, ideal: Ideal[Fraction]) -> None:
+        if not isinstance(ideal.domain, RationalField):
+            raise NotImplementedError("real zeros are counted for ideals over QQ, not %s" % (ideal.domain,))
+        self.ideal: Ideal[Fraction] = ideal
         self.empty: bool = ideal.is_whole_ring()
-        self.ring: PolyRing = ideal.ring()
-        self.basis: list[PolyElement] = []
+        self.ring: PolyRing[Fraction] = ideal.ring()
         self.monomials: list[Monomial] = []
         self.index: dict[Monomial, int] = {}
         self.products: list[list[Vector]] = []
@@ -127,11 +142,9 @@ class _Algebra:
         if self.empty:
             return
         ideal._require_zero_dimensional()
-        self.monomials = [self.ring.from_expr(b).LM for b in ideal.standard_monomials()]
+        self.monomials = ideal.standard_exponents()
         self.index = {m: i for i, m in enumerate(self.monomials)}
-        one = self.ring.domain.one
-        self.basis = [self.ring.from_dict({m: one}) for m in self.monomials]
-        D = len(self.basis)
+        D = len(self.monomials)
         # the normal forms of the products x_k b_c (the border of the
         # standard monomials) and then of the products b_i b_j, by linear
         # algebra on vectors instead of polynomial division: FGLM's scheme
@@ -147,7 +160,7 @@ class _Algebra:
             k = next(l for l, e in enumerate(m) if e)
             smaller = self.index[tuple(e - 1 if l == k else e for l, e in enumerate(m))]
             for j in range(D):
-                v: Vector = [QQ.zero]*D
+                v: Vector = [_ZERO]*D
                 for c, a in enumerate(rows[smaller][j]):
                     if a:
                         for l, b in enumerate(border[(k, c)]):
@@ -155,11 +168,16 @@ class _Algebra:
                                 v[l] += a*b
                 rows[i][j] = v
         self.products = rows
-        self.trace = [sum((rows[k][l][l] for l in range(D)), QQ.zero) for k in range(D)]
+        self.trace = [sum((rows[k][l][l] for l in range(D)), _ZERO) for k in range(D)]
+
+    @property
+    def dimension(self) -> int:
+        """The dimension of the quotient algebra."""
+        return len(self.monomials)
 
     def _unit(self, j: int) -> Vector:
-        v: Vector = [QQ.zero]*len(self.monomials)
-        v[j] = QQ.one
+        v: Vector = [_ZERO]*len(self.monomials)
+        v[j] = _ONE
         return v
 
     def _border(self) -> dict[tuple[int, int], Vector]:
@@ -168,42 +186,45 @@ class _Algebra:
         standard, the tail of the basis element whose leading monomial it
         is, and otherwise ``x_l`` times the normal form of a smaller
         nonstandard monomial, in increasing order of the monomials."""
-        n = len(self.ring.gens)
+        n = self.ring.ngens
         D = len(self.monomials)
-        leading: dict[Monomial, PolyElement] = {g.LM: g for g in self.ideal._basis()}
+        leading: dict[Monomial, PolyElement[Fraction]] = {g.LM: g for g in self.ideal._basis()}
         forms: dict[Monomial, Vector] = {}
         pending: list[Monomial] = []
         for k in range(n):
-            for c, b in enumerate(self.monomials):
+            for b in self.monomials:
                 m = tuple(e + 1 if l == k else e for l, e in enumerate(b))
                 if m not in self.index and m not in forms and m not in pending:
                     pending.append(m)
-        for m in sorted(pending, key=self.ring.order):
-            if m in leading:
-                g = leading[m]
+        for m in sorted(pending, key=self.ring.order.key):
+            g = leading.get(m)
+            if g is not None:
                 lc = g.LC
-                v: Vector = [QQ.zero]*D
-                for mm, coefficient in g.terms():
+                v: Vector = [_ZERO]*D
+                for mm, coefficient in g.terms.items():
                     if mm != m:
                         v[self.index[mm]] = -coefficient/lc
                 forms[m] = v
                 continue
             # m = x_l m' with m' nonstandard: its normal form is x_l times
             # the normal form of m', whose monomials are smaller than m'
+            position = 0
+            smaller = m
             for l, e in enumerate(m):
                 if not e:
                     continue
+                position = l
                 smaller = tuple(f - 1 if i == l else f for i, f in enumerate(m))
                 if smaller not in self.index:
                     break
-            v = [QQ.zero]*D
+            v = [_ZERO]*D
             for c, a in enumerate(forms[smaller]):
                 if a:
-                    product = tuple(f + 1 if i == l else f for i, f in enumerate(self.monomials[c]))
+                    product = tuple(f + 1 if i == position else f for i, f in enumerate(self.monomials[c]))
                     column = self._unit(self.index[product]) if product in self.index else forms[product]
-                    for i, b in enumerate(column):
-                        if b:
-                            v[i] += a*b
+                    for i, w in enumerate(column):
+                        if w:
+                            v[i] += a*w
             forms[m] = v
         border: dict[tuple[int, int], Vector] = {}
         for k in range(n):
@@ -212,28 +233,29 @@ class _Algebra:
                 border[(k, c)] = self._unit(self.index[m]) if m in self.index else forms[m]
         return border
 
-    def coordinates(self, f: PolyElement) -> Vector:
+    def coordinates(self, f: PolyElement[Fraction]) -> Vector:
         """The coordinates of the normal form of ``f``."""
-        r = f.rem(self.ideal._basis())
-        v: Vector = [QQ.zero]*len(self.monomials)
-        for m, c in r.terms():
+        r = normal_form(f, self.ideal._basis())
+        v: Vector = [_ZERO]*len(self.monomials)
+        for m, c in r.terms.items():
             v[self.index[m]] = c
         return v
 
-    def element(self, g: Union[Expr, Poly, int]) -> PolyElement:
+    def element(self, g: Element) -> PolyElement[Fraction]:
+        """``g`` as an element of the ring of the ideal."""
         if isinstance(g, int):
-            return self.ring.from_dict({self.monomials[0]: QQ(g)}) if g else self.ring.zero
-        return self.ideal._from_expr(g)
+            return self.ring.from_int(g)
+        return self.ideal._poly(g)
 
-    def transposed_multiplication(self, g: PolyElement) -> Rows:
+    def transposed_multiplication(self, g: PolyElement[Fraction]) -> Rows:
         """The transpose of the matrix of multiplication by ``g``: its row
         ``j`` holds the coordinates of the normal form of ``g b_j``
         (through the products of the standard monomials)."""
-        D = len(self.basis)
+        D = len(self.monomials)
         coordinates = self.coordinates(g)
         rows: Rows = []
         for j in range(D):
-            v: Vector = [QQ.zero]*D
+            v: Vector = [_ZERO]*D
             for c, a in enumerate(coordinates):
                 if a:
                     for l, b in enumerate(self.products[c][j]):
@@ -245,20 +267,20 @@ class _Algebra:
     def compose(self, form: Vector, transposed: Rows) -> Vector:
         """The linear form ``h -> form(g h)``, for ``transposed`` the
         transposed multiplication matrix of ``g``."""
-        return [sum((c*w for c, w in zip(row, form)), QQ.zero) for row in transposed]
+        return [sum((c*w for c, w in zip(row, form)), _ZERO) for row in transposed]
 
     def hermite(self, form: Vector) -> Rows:
         """The matrix of ``(p, q) -> form(p q)`` in the standard monomials."""
-        D = len(self.basis)
-        H: Rows = [[QQ.zero]*D for _ in range(D)]
+        D = len(self.monomials)
+        H: Rows = [[_ZERO]*D for _ in range(D)]
         for i in range(D):
             for j in range(i, D):
-                v = sum((c*w for c, w in zip(self.products[i][j], form)), QQ.zero)
+                v = sum((c*w for c, w in zip(self.products[i][j], form)), _ZERO)
                 H[i][j] = v
                 H[j][i] = v
         return H
 
-    def form(self, g: Union[Expr, Poly, int] = 1) -> Vector:
+    def form(self, g: Element = 1) -> Vector:
         """The linear form ``h -> Tr(g h)``."""
         if isinstance(g, int) and g == 1:
             return list(self.trace)
@@ -299,11 +321,15 @@ def _inertia(matrix: Rows) -> tuple[int, int]:
 
 
 def _algebra(system: System, gens: Sequence[Symbol]) -> _Algebra:
-    ideal = system if isinstance(system, Ideal) else Ideal(list(system), *gens)
+    ideal = system if isinstance(system, Ideal) else Ideal(list(system), *gens, domain=QQ)
     return _Algebra(ideal)
 
 
-def hermite_matrix(system: System, g: Union[Expr, Poly, int] = 1, *gens: Symbol) -> MutableDenseMatrix:
+def _rational(c: Fraction) -> Expr:
+    return Rational(c.numerator, c.denominator)
+
+
+def hermite_matrix(system: System, g: Element = 1, *gens: Symbol) -> ExprMatrix:
     r"""The matrix of Hermite's quadratic form $(p, q) \mapsto
     \operatorname{Tr}(g p q)$ on the quotient algebra of a zero-dimensional
     ideal, in the basis of its standard monomials.
@@ -311,9 +337,10 @@ def hermite_matrix(system: System, g: Union[Expr, Poly, int] = 1, *gens: Symbol)
     Parameters
     ==========
 
-    system : Ideal or list of Expr or Poly
-        The ideal, or its generators (with rational coefficients).
-    g : Expr or Poly
+    system : Ideal or list of Expr
+        The ideal over ``QQ``, or its generators (polynomials with rational
+        coefficients).
+    g : Expr
         The polynomial of the form (``1`` by default).
     gens : Symbols
         The variables, when ``system`` is a list of polynomials (all its
@@ -322,24 +349,24 @@ def hermite_matrix(system: System, g: Union[Expr, Poly, int] = 1, *gens: Symbol)
     Examples
     ========
 
-    >>> from sympy.abc import x
+    >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.polys.hermite import hermite_matrix
+    >>> x = Symbol('x')
     >>> hermite_matrix([x**2 - 2], 1, x)
-    Matrix([[2, 0], [0, 4]])
+    ExprMatrix([[2, 0], [0, 4]])
     >>> hermite_matrix([x**2 - 2], x, x)
-    Matrix([[0, 4], [4, 0]])
+    ExprMatrix([[0, 4], [4, 0]])
 
     The first matrix is positive definite (two real roots), the second has
     signature zero (one root of each sign).
     """
     A = _algebra(system, gens)
-    form = A.form(g)
-    D = len(A.basis)
-    H = A.hermite(form)
-    return MutableDenseMatrix(D, D, [QQ.to_sympy(c) for row in H for c in row])
+    H = A.hermite(A.form(g))
+    D = A.dimension
+    return ExprMatrix(D, D, [_rational(c) for row in H for c in row])
 
 
-def tarski_query(system: System, g: Union[Expr, Poly, int] = 1, *gens: Symbol) -> int:
+def tarski_query(system: System, g: Element = 1, *gens: Symbol) -> int:
     r"""The Tarski query of ``g`` on the real zeros of a zero-dimensional
     system: the number of distinct real zeros at which ``g > 0`` minus the
     number at which ``g < 0``, as the signature of Hermite's quadratic
@@ -348,10 +375,10 @@ def tarski_query(system: System, g: Union[Expr, Poly, int] = 1, *gens: Symbol) -
     Parameters
     ==========
 
-    system : Ideal or list of Expr or Poly
-        The ideal, or its generators (with rational coefficients); it must
-        be zero-dimensional or the whole ring.
-    g : Expr or Poly
+    system : Ideal or list of Expr
+        The ideal over ``QQ``, or its generators (with rational
+        coefficients); it must be zero-dimensional or the whole ring.
+    g : Expr
         A polynomial with rational coefficients (``1`` by default, which
         counts the real zeros).
     gens : Symbols
@@ -360,8 +387,9 @@ def tarski_query(system: System, g: Union[Expr, Poly, int] = 1, *gens: Symbol) -
     Examples
     ========
 
-    >>> from sympy.abc import x, y
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.polys.hermite import tarski_query
+    >>> x, y = symbols('x y')
     >>> tarski_query([x**2 + y**2 - 1, x - 2*y], x, x, y)
     0
     >>> tarski_query([x**3 - x, y - x**2], 2*y - 1, x, y)
@@ -382,8 +410,8 @@ def count_real_solutions(system: System, *gens: Symbol) -> int:
     Parameters
     ==========
 
-    system : Ideal or list of Expr or Poly
-        The ideal, or the polynomials (equated to zero).
+    system : Ideal or list of Expr
+        The ideal over ``QQ``, or the polynomials (equated to zero).
     gens : Symbols
         The variables, when ``system`` is a list of polynomials (all its
         free symbols by default).
@@ -392,14 +420,16 @@ def count_real_solutions(system: System, *gens: Symbol) -> int:
     ======
 
     NotImplementedError
-        If the system has infinitely many complex solutions or its
-        coefficients are not rational.
+        If the system has infinitely many complex solutions.
+    ValueError
+        If the generators are not polynomials with rational coefficients.
 
     Examples
     ========
 
-    >>> from sympy.abc import x, y
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.polys.hermite import count_real_solutions
+    >>> x, y = symbols('x y')
     >>> count_real_solutions([x**2 + y**2 - 1, x - y], x, y)
     2
     >>> count_real_solutions([x**2 + 1, y], x, y)
@@ -420,8 +450,9 @@ def count_complex_solutions(system: System, *gens: Symbol) -> int:
     Examples
     ========
 
-    >>> from sympy.abc import x, y
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.polys.hermite import count_complex_solutions
+    >>> x, y = symbols('x y')
     >>> count_complex_solutions([x**2 + 1, (y - 1)**2], x, y)
     2
     """
@@ -432,7 +463,7 @@ def count_complex_solutions(system: System, *gens: Symbol) -> int:
     return positive + negative
 
 
-def real_sign_counts(system: System, g: Union[Expr, Poly], *gens: Symbol) -> SignCounts:
+def real_sign_counts(system: System, g: Element, *gens: Symbol) -> SignCounts:
     r"""The numbers of distinct real solutions of a zero-dimensional system
     at which ``g`` is zero, positive and negative, from the Tarski queries
     of $1$, $g$ and $g^2$.
@@ -440,9 +471,10 @@ def real_sign_counts(system: System, g: Union[Expr, Poly], *gens: Symbol) -> Sig
     Parameters
     ==========
 
-    system : Ideal or list of Expr or Poly
-        The ideal, or its generators (with rational coefficients).
-    g : Expr or Poly
+    system : Ideal or list of Expr
+        The ideal over ``QQ``, or its generators (with rational
+        coefficients).
+    g : Expr
         A polynomial with rational coefficients.
     gens : Symbols
         The variables, when ``system`` is a list of polynomials.
@@ -450,8 +482,9 @@ def real_sign_counts(system: System, g: Union[Expr, Poly], *gens: Symbol) -> Sig
     Examples
     ========
 
-    >>> from sympy.abc import x, y
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.polys.hermite import real_sign_counts
+    >>> x, y = symbols('x y')
     >>> real_sign_counts([x**3 - x, y - x**2], x - y, x, y)
     SignCounts(zero=2, positive=0, negative=1)
     """
@@ -492,8 +525,7 @@ def _independent_rows(matrix: Rows) -> list[int]:
     return chosen
 
 
-def sign_determination(system: System, polys: Sequence[Union[Expr, Poly]],
-                       *gens: Symbol) -> dict[SignCondition, int]:
+def sign_determination(system: System, polys: Sequence[Element], *gens: Symbol) -> dict[SignCondition, int]:
     r"""The realizable sign conditions of a list of polynomials on the real
     solutions of a zero-dimensional system, with the number of distinct
     real solutions realizing each (Ben-Or–Kozen–Reif sign determination on
@@ -502,9 +534,10 @@ def sign_determination(system: System, polys: Sequence[Union[Expr, Poly]],
     Parameters
     ==========
 
-    system : Ideal or list of Expr or Poly
-        The ideal, or its generators (with rational coefficients).
-    polys : list of Expr or Poly
+    system : Ideal or list of Expr
+        The ideal over ``QQ``, or its generators (with rational
+        coefficients).
+    polys : list of Expr
         The polynomials $P_1, \ldots, P_s$, with rational coefficients.
     gens : Symbols
         The variables, when ``system`` is a list of polynomials.
@@ -522,8 +555,9 @@ def sign_determination(system: System, polys: Sequence[Union[Expr, Poly]],
 
     The four points $(\pm 1, \pm 1)$ with the signs of $x + y$ and $x$:
 
-    >>> from sympy.abc import x, y
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.polys.hermite import sign_determination
+    >>> x, y = symbols('x y')
     >>> sign_determination([x**2 - 1, y**2 - 1], [x + y, x], x, y)
     {(-1, -1): 1, (0, -1): 1, (0, 1): 1, (1, 1): 1}
     >>> sign_determination([x**2 + 1, y], [x], x, y)
@@ -538,7 +572,7 @@ def sign_determination(system: System, polys: Sequence[Union[Expr, Poly]],
         return {}
     signs: list[SignCondition] = [()]
     exponents: list[tuple[int, ...]] = [()]
-    counts: Vector = [QQ(total)]
+    counts: Vector = [Fraction(total)]
     forms: dict[tuple[int, ...], Vector] = {(): A.form()}
     for p in polys:
         transposed = A.transposed_multiplication(A.element(p))
@@ -546,15 +580,15 @@ def sign_determination(system: System, polys: Sequence[Union[Expr, Poly]],
         rows = [a + (k,) for a in exponents for k in (0, 1, 2)]
         queries: Vector = []
         for a in rows:
-            form = forms.get(a)
-            if form is None:
-                form = forms[a[:-1] + (a[-1] - 1,)] if a[-1] else forms[a[:-1]]
+            known = forms.get(a)
+            if known is None:
+                known = forms[a[:-1] + (a[-1] - 1,)] if a[-1] else forms[a[:-1]]
                 if a[-1]:
-                    form = A.compose(form, transposed)
-                forms[a] = form
-            positive, negative = _inertia(A.hermite(form))
-            queries.append(QQ(positive - negative))
-        matrix: Rows = [[QQ(_matrix_entry(a, s)) for s in candidates] for a in rows]
+                    known = A.compose(known, transposed)
+                forms[a] = known
+            positive, negative = _inertia(A.hermite(known))
+            queries.append(Fraction(positive - negative))
+        matrix: Rows = [[Fraction(_matrix_entry(a, s)) for s in candidates] for a in rows]
         solution = _solve(matrix, queries)
         kept = [k for k, c in enumerate(solution) if c]
         signs = [candidates[k] for k in kept]
@@ -580,7 +614,7 @@ _ALLOWED: dict[type[Relational], tuple[Sign, ...]] = {
 
 
 def decide_zero_dimensional(formula: Union[Boolean, bool], gens: Sequence[Symbol],
-                            max_dimension: int = 64) -> Truth:
+                            max_dimension: int = 64) -> Optional[bool]:
     r"""Whether a conjunction of polynomial relations with rational
     coefficients has a real solution, when its equations have finitely
     many complex solutions: by sign determination on the quotient algebra
@@ -610,9 +644,9 @@ def decide_zero_dimensional(formula: Union[Boolean, bool], gens: Sequence[Symbol
     Examples
     ========
 
-    >>> from sympy import Eq
-    >>> from sympy.abc import x, y
+    >>> from sympy_extras.core import symbols, Eq
     >>> from sympy_extras.polys.hermite import decide_zero_dimensional
+    >>> x, y = symbols('x y')
     >>> decide_zero_dimensional(Eq(x**2 + y**2, 1) & Eq(x*y, 1), [x, y])
     False
     >>> decide_zero_dimensional(Eq(x**2 + y**2, 4) & Eq(x*y, 1) & (x > y), [x, y])
@@ -620,29 +654,37 @@ def decide_zero_dimensional(formula: Union[Boolean, bool], gens: Sequence[Symbol
     >>> decide_zero_dimensional(Eq(x**2 + y**2, 1) & (x > y), [x, y]) is None
     True
     """
-    if isinstance(formula, bool) or isinstance(formula, (BooleanTrue, BooleanFalse)):
+    if isinstance(formula, bool):
+        return formula
+    if isinstance(formula, BooleanAtom):
         return bool(formula)
-    atoms = formula.args if isinstance(formula, And) else (formula,)
-    equations: list[Poly] = []
-    sides: list[tuple[Poly, tuple[Sign, ...]]] = []
+    atoms: tuple[Boolean, ...] = formula.args if isinstance(formula, And) else (formula,)
+    equations: list[Expr] = []
+    sides: list[tuple[Expr, tuple[Sign, ...]]] = []
     for atom in atoms:
-        allowed = _ALLOWED.get(type(atom)) if isinstance(atom, Relational) else None
-        if allowed is None or not isinstance(atom, Relational):
+        if not isinstance(atom, Relational):
             return None
-        try:
-            p = Poly(as_expr(atom.lhs) - as_expr(atom.rhs), *gens, domain=QQ)
-        except (PolynomialError, CoercionFailed):
+        allowed = _ALLOWED.get(type(atom))
+        if allowed is None:
             return None
+        difference = add(atom.lhs, mul(Integer(-1), atom.rhs))
         if allowed == (0,):
-            equations.append(p)
+            equations.append(difference)
         else:
-            sides.append((p, allowed))
+            sides.append((difference, allowed))
+    if not gens:
+        return None
+    try:
+        ideal: Ideal[Fraction] = Ideal(equations, *gens, domain=QQ)
+        polys = [ideal._poly(p) for p, _ in sides]
+    except ValueError:
+        # not polynomials in the variables with rational coefficients
+        return None
     if len(equations) < len(gens):
         return None
-    ideal = Ideal(equations, *gens)
     if ideal.is_whole_ring():
         return False
     if not ideal.is_zero_dimensional() or ideal.vector_space_dimension() > max_dimension:
         return None
-    counts = sign_determination(ideal, [p for p, _ in sides])
+    counts = sign_determination(ideal, polys)
     return any(all(s in allowed for s, (_, allowed) in zip(condition, sides)) for condition in counts)

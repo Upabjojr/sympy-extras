@@ -242,7 +242,7 @@ is its SymPy face, used below.
 The real solutions of a zero-dimensional system, and the signs of other
 polynomials at them, are counted without solving the system by the
 signature of Hermite's quadratic form on the quotient algebra
-(`sympy_extras.polys.hermite`, Pedersen–Roy–Szpirglas, with the sign
+(`sympy_extras.polys.hermite`, native, SymPy face `hermite_sympy`, Pedersen–Roy–Szpirglas, with the sign
 determination of Ben-Or–Kozen–Reif); `satisfiable` uses it to prove that
 such a system has no real solution before trying a CAD.
 The bases are computed by Faugère's F4 (`sympy_extras.polys.f4`: the
@@ -272,7 +272,7 @@ Ideal([x**2 - y*z, x*y - z**2, -x*z + y**2], x, y, z)
 True
 >>> Ideal([x**2, x*y], x, y).primary_decomposition()
 [(Ideal([x], x, y), Ideal([x], x, y)), (Ideal([x**2, y], x, y), Ideal([x, y], x, y))]
->>> from sympy_extras.polys.hermite import count_real_solutions, sign_determination
+>>> from sympy_extras.polys.hermite_sympy import count_real_solutions, sign_determination
 >>> count_real_solutions([x**2 + y**2 - 1, x - y], x, y)
 2
 >>> sign_determination([x**2 - 1, y**2 - 1], [x + y, x], x, y)
@@ -1069,7 +1069,8 @@ sympy_extras/
         rings.py             PolyRing, PolyElement: sparse multivariate polynomials with monomial orders, the division algorithm
         ideals.py            Ideal: elimination, saturation, dimension, Hilbert series, radicals
         idealdecomposition.py  radical, equidimensional parts, minimal primes, primary decomposition in any dimension
-        hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination
+        hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination (native)
+        hermite_sympy.py     its SymPy face
         groebnerwalk.py      Gröbner walk (order conversion for any ideal)
         f4.py                Faugère's F4 on the typed rings: Gröbner bases by its own sparse row reduction, over any field
         interop.py           conversions between SymPy's polynomial rings and the typed ones (QQ, ZZ, GF(p))
@@ -1080,7 +1081,8 @@ sympy_extras/
         orderings.py         WeightOrder, BlockOrder
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (native)
         virtual_substitution_sympy.py  its SymPy face, and simplify_logic_of_core
-        comprehensive.py     comprehensive Gröbner systems, reduction over the complex numbers
+        comprehensive.py     comprehensive Gröbner systems, reduction over the complex numbers (native)
+        comprehensive_sympy.py  its SymPy face
         roots.py             roots in radicals through functional decomposition
         cad/
             projection.py    projection operators (McCallum, Hong)
