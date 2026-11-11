@@ -260,6 +260,7 @@ sympy_extras/
       eigen.py               eigenspaces per irreducible factor of the characteristic polynomial (elimination over K[x]/(f)), eigenvalues, eigenvectors, diagonalize, jordan_chains, jordan_form
       decompositions.py      lu, ldl, cholesky, qr, gram_schmidt, rank_factorization, congruence_diagonalize, inertia, positive definiteness
       equations.py           sylvester_solve, lyapunov_solve, discrete_lyapunov_solve, linear_matrix_equation, commuting_matrices, kronecker_product
+      normalforms.py         smith_normal_form over K[x], invariant_factors, matrix_minimal_polynomial, frobenius_form, elementary_divisors, is_similar
       svd.py                 singular_values, exact compact svd of rational matrices
       functions.py           component matrices, matrix_exp, matrix_power, matrix_function
     series/                  residue (ported from SymPy)

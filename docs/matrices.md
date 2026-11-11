@@ -406,15 +406,55 @@ $k > 0$. The system solved has $mn$ unknowns for an $m \times n$
 unknown matrix; the Bartels–Stewart reduction to triangular form, which
 avoids it, needs the eigenvalues and is not used.
 
+## Normal forms without eigenvalues
+
+`sympy_extras.matrices.normalforms` computes the Smith normal form of a
+matrix of polynomials over $K[x]$, with the unimodular $U$, $V$ such
+that $U M V$ is diagonal, each diagonal entry dividing the next. Applied
+to $x I - A$ it gives the *invariant factors* of a square matrix $A$:
+the last is the minimal polynomial, their product the characteristic
+polynomial, and two matrices are similar exactly when they have the
+same ones.
+
+```python
+>>> from sympy_extras.matrices.normalforms import (smith_normal_form, invariant_factors, matrix_minimal_polynomial,
+...     frobenius_form, elementary_divisors, is_similar)
+>>> smith_normal_form(ExprMatrix.from_rows([[x, 0], [0, x + 1]]), x).S
+ExprMatrix([[1, 0], [0, x**2 + x]])
+>>> D = ExprMatrix.from_rows([[2, 0, 0], [0, 2, 0], [0, 0, 3]])
+>>> invariant_factors(D, x), matrix_minimal_polynomial(D, x)
+([x - 2, x**2 - 5*x + 6], x**2 - 5*x + 6)
+>>> P, F = frobenius_form(D)
+>>> F, D*P == P*F
+(ExprMatrix([[2, 0, 0], [0, 0, -6], [0, 1, 5]]), True)
+>>> elementary_divisors(ExprMatrix.from_rows([[a, 1, 0], [0, a, 0], [0, 0, a]]), x)
+[(-a + x, 1), (-a + x, 2)]
+>>> is_similar(ExprMatrix.from_rows([[1, 1], [0, 1]]), ExprMatrix.from_rows([[1, 0], [5, 1]]))
+True
+
+```
+
+The Frobenius (rational canonical) form is the block diagonal matrix of
+the companion matrices of the invariant factors. It exists over the
+field of the entries: where the Jordan form needs the roots of the
+characteristic polynomial, `frobenius_form` only divides polynomials.
+The change of basis comes from the reduction itself: $K^n$ is the
+quotient of $K[x]^n$ by the columns of $x I - A$, so the columns of
+$U^{-1}$, evaluated at $A$, generate the cyclic summands. The
+elementary divisors (the invariant factors split into powers of
+irreducible polynomials) give the sizes of the Jordan blocks.
+
 ## Not done
 
 * eigenvalues when square roots remain in the coefficients of the
   characteristic polynomial, or with other kernels (`sin(t)`): the
   factorisation over the field they generate is needed; eigenvalues as
   `RootOf` objects when a factor is not solved in radicals;
-* the Smith and rational canonical forms of symbolic matrices; the
-  singular value decomposition with parameters and the full (square `U`,
-  `V`) decomposition;
+* the singular value decomposition with parameters and the full (square
+  `U`, `V`) decomposition;
+* the Hermite and Popov forms of matrices of polynomials; a Smith form
+  which controls the growth of the coefficients (modular, or by the
+  determinantal divisors) for large matrices;
 * the inertia of matrices with irrational entries (the signs of the
   pivots in a real multiquadratic field), pivoting strategies for `ldl`
   (Bunch–Kaufman);

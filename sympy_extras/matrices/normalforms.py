@@ -1,0 +1,523 @@
+r"""Normal forms of matrices over a field which do not need the
+eigenvalues: the Smith normal form of matrices of polynomials, the
+invariant factors and the minimal polynomial of a square matrix, its
+Frobenius (rational canonical) form with the change of basis, its
+elementary divisors, and the test of similarity.
+
+**The Smith form.** A matrix $M$ with entries in $K[x]$, $K$ a field, is
+brought by invertible row and column operations over $K[x]$ to the
+diagonal form
+
+.. math:: U M V = \operatorname{diag}(s_1, \dots, s_r, 0, \dots, 0),
+          \qquad s_1 \mid s_2 \mid \dots \mid s_r,
+
+with monic $s_i$ which depend only on $M$ ($s_1 \cdots s_k$ is the gcd
+of the minors of order $k$). The algorithm is the classical one [1]_:
+the entry of least degree of the part which remains is brought to the
+corner and divides its row and its column with remainders, which lowers
+the least degree until the row and the column are zero; if it then does
+not divide some other entry the row of that entry is added to its own,
+and the reduction is resumed. $U$, $V$ and $U^{-1}$ are accumulated on
+the way.
+
+**Invariant factors.** For a square matrix $A$ over $K$ the $s_i$ of
+$x I - A$ which are not one are the *invariant factors* of $A$: the
+last is the minimal polynomial, their product is the characteristic
+polynomial, and two matrices are similar exactly when they have the same
+ones [2]_. As a $K[x]$-module ($x$ acting as $A$), $K^n$ is the quotient
+of $K[x]^n$ by the columns of $x I - A$, so that the columns $c_i(x)$ of
+$U^{-1}$ give the cyclic decomposition: with $v_i = c_i(A)$ (the
+coefficient of $x^k$ multiplied by $A^k$) the vectors
+
+.. math:: v_i,\ A v_i,\ \dots,\ A^{\deg s_i - 1} v_i
+
+for the invariant factors $s_i$ form a basis in which $A$ is the block
+diagonal matrix of the companion matrices of the $s_i$: the Frobenius
+form (:func:`frobenius_form`). Unlike the Jordan form it exists over
+$K$ itself, whatever the roots of the characteristic polynomial.
+
+The *elementary divisors* are the powers of irreducible polynomials in
+the factorisations of the invariant factors; for a linear factor $x -
+\lambda$ their exponents are the sizes of the Jordan blocks of
+$\lambda$.
+
+The field $K$ is that of the rational functions of the symbols other
+than $x$, with ``I`` and square roots of rationals; the forms are the
+generic ones (for the values of the symbols at which no leading
+coefficient met vanishes).
+
+Examples
+========
+
+>>> from sympy_extras.core import Symbol
+>>> from sympy_extras.matrices import ExprMatrix
+>>> from sympy_extras.matrices.normalforms import (smith_normal_form, invariant_factors, matrix_minimal_polynomial,
+...     frobenius_form, elementary_divisors, is_similar)
+>>> x, a = Symbol('x'), Symbol('a')
+>>> smith_normal_form(ExprMatrix.from_rows([[x, 1], [0, x]]), x).S
+ExprMatrix([[1, 0], [0, x**2]])
+>>> A = ExprMatrix.from_rows([[2, 0, 0], [0, 2, 0], [0, 0, 3]])
+>>> invariant_factors(A, x), matrix_minimal_polynomial(A, x)
+([x - 2, x**2 - 5*x + 6], x**2 - 5*x + 6)
+>>> P, F = frobenius_form(A)
+>>> F, A*P == P*F
+(ExprMatrix([[2, 0, 0], [0, 0, -6], [0, 1, 5]]), True)
+>>> elementary_divisors(ExprMatrix.from_rows([[a, 1, 0], [0, a, 0], [0, 0, a]]), x)
+[(-a + x, 1), (-a + x, 2)]
+>>> is_similar(ExprMatrix.from_rows([[1, 1], [0, 1]]), ExprMatrix.from_rows([[1, 0], [5, 1]]))
+True
+
+References
+==========
+
+.. [1] M. Newman, *Integral Matrices*, Academic Press, 1972, Chapter 2
+       (equivalence, the Smith normal form over a principal ideal ring).
+.. [2] F. R. Gantmacher, *The Theory of Matrices*, vol. 1, Chelsea, 1959,
+       Chapter VI (invariant polynomials, elementary divisors, the
+       criterion of similarity) and Chapter VII (the natural normal
+       forms).
+.. [3] N. Jacobson, *Basic Algebra I*, 2nd ed., Freeman, 1985, Section
+       3.10 (the rational canonical form from the module over
+       $K[x]$).
+"""
+from __future__ import annotations
+
+from typing import Final, Generic, Optional, Sequence, TypeVar
+
+from sympy_extras.core.add import add
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.function import expand
+from sympy_extras.core.mul import mul
+from sympy_extras.core.numbers import Integer
+from sympy_extras.core.power import pow
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.polys import densearith
+
+from .dense import ExprMatrix
+from .eigen import (_Field, _FunctionField, _GaussianField, _RationalField, _characteristic_factors, _coefficients,
+                    _fresh_symbol)
+from .linalg import _PolynomialLift, _complex_lift, _kernels, _square
+
+__all__ = ['SmithDecomposition', 'smith_normal_form', 'invariant_factors', 'matrix_minimal_polynomial', 'companion_matrix',
+           'frobenius_form', 'elementary_divisors', 'is_similar']
+
+T = TypeVar('T')
+
+_Coefficients = list[Expr]                      # of a polynomial in x, highest degree first
+_PolynomialRows = list[list[_Coefficients]]     # a matrix of polynomials
+
+
+class SmithDecomposition:
+    """``U M V = S``: ``S`` diagonal with monic entries each dividing the
+    next (then zeros), ``U`` and ``V`` invertible over the polynomials
+    (their determinants do not depend on the variable)."""
+
+    __slots__ = ('S', 'U', 'V')
+
+    def __init__(self, S: ExprMatrix, U: ExprMatrix, V: ExprMatrix) -> None:
+        self.S: Final[ExprMatrix] = S
+        self.U: Final[ExprMatrix] = U
+        self.V: Final[ExprMatrix] = V
+
+    @property
+    def invariants(self) -> list[Expr]:
+        """The nonzero diagonal entries."""
+        return [self.S[i, i] for i in range(min(self.S.shape)) if self.S[i, i] != 0]
+
+    def __repr__(self) -> str:
+        return 'SmithDecomposition(%r, %r, %r)' % (self.S, self.U, self.V)
+
+
+class _Reduction(Generic[T]):
+    """The matrices of a Smith reduction, as lists of dense polynomials
+    over the field."""
+
+    def __init__(self, S: list[list[list[T]]], U: list[list[list[T]]], V: list[list[list[T]]],
+                 U_inverse: list[list[list[T]]]) -> None:
+        self.S: Final[list[list[list[T]]]] = S
+        self.U: Final[list[list[list[T]]]] = U
+        self.V: Final[list[list[list[T]]]] = V
+        self.U_inverse: Final[list[list[list[T]]]] = U_inverse
+
+
+class _Forms:
+    """The interface which does not depend on the type of the elements
+    of the field."""
+
+    def smith(self, rows: _PolynomialRows, ncols: int, x: Expr) -> SmithDecomposition:
+        raise NotImplementedError
+
+    def invariants(self, A: ExprMatrix) -> list[_Coefficients]:
+        raise NotImplementedError
+
+    def frobenius(self, A: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix]:
+        raise NotImplementedError
+
+    def multiplicities(self, A: ExprMatrix, factor: _Coefficients) -> list[int]:
+        raise NotImplementedError
+
+
+class _Worker(_Forms, Generic[T]):
+    def __init__(self, field: _Field[T]) -> None:
+        self.field: Final[_Field[T]] = field
+
+    # -- polynomials
+
+    def _polynomial(self, coefficients: Sequence[Expr]) -> list[T]:
+        K = self.field.domain
+        result = [self.field.element(c) for c in coefficients]
+        while result and K.is_zero(result[0]):
+            del result[0]
+        return result
+
+    def _expression(self, f: Sequence[T], x: Expr) -> Expr:
+        degree = len(f) - 1
+        return add(*[mul(self.field.expr(c), pow(x, Integer(degree - k))) for k, c in enumerate(f)])
+
+    def _matrix(self, rows: Sequence[Sequence[list[T]]], ncols: int, x: Expr) -> ExprMatrix:
+        return ExprMatrix(len(rows), ncols, [self._expression(f, x) for row in rows for f in row])
+
+    def _identity(self, n: int) -> list[list[list[T]]]:
+        K = self.field.domain
+        return [[[K.one] if i == j else [] for j in range(n)] for i in range(n)]
+
+    # -- the reduction
+
+    def _reduce(self, B: list[list[list[T]]], ncols: int) -> _Reduction[T]:
+        K = self.field.domain
+        m, n = len(B), ncols
+        U, V, W = self._identity(m), self._identity(n), self._identity(m)      # W = U**-1
+
+        def add_row(target: int, source: int, q: list[T]) -> None:
+            # row target += q * row source
+            B[target] = [densearith.dup_add(a, densearith.dup_mul(q, b, K), K) if b else a
+                         for a, b in zip(B[target], B[source])]
+            U[target] = [densearith.dup_add(a, densearith.dup_mul(q, b, K), K) if b else a
+                         for a, b in zip(U[target], U[source])]
+            negative = densearith.dup_neg(q, K)
+            for row in W:
+                if row[target]:
+                    row[source] = densearith.dup_add(row[source], densearith.dup_mul(negative, row[target], K), K)
+
+        def add_column(target: int, source: int, q: list[T]) -> None:
+            for matrix in (B, V):
+                for row in matrix:
+                    if row[source]:
+                        row[target] = densearith.dup_add(row[target], densearith.dup_mul(q, row[source], K), K)
+
+        def swap_rows(i: int, j: int) -> None:
+            B[i], B[j] = B[j], B[i]
+            U[i], U[j] = U[j], U[i]
+            for row in W:
+                row[i], row[j] = row[j], row[i]
+
+        def swap_columns(i: int, j: int) -> None:
+            for matrix in (B, V):
+                for row in matrix:
+                    row[i], row[j] = row[j], row[i]
+
+        for t in range(min(m, n)):
+            finished = False
+            while True:
+                best: Optional[tuple[int, int]] = None
+                for i in range(t, m):
+                    for j in range(t, n):
+                        if B[i][j] and (best is None or len(B[i][j]) < len(B[best[0]][best[1]])):
+                            best = (i, j)
+                if best is None:
+                    finished = True
+                    break
+                if best[0] != t:
+                    swap_rows(t, best[0])
+                if best[1] != t:
+                    swap_columns(t, best[1])
+                pivot = B[t][t]
+                again = False
+                for i in range(t + 1, m):
+                    if B[i][t]:
+                        quotient, _ = densearith.dup_div(B[i][t], pivot, K)
+                        add_row(i, t, densearith.dup_neg(quotient, K))
+                        again = again or bool(B[i][t])
+                for j in range(t + 1, n):
+                    if B[t][j]:
+                        quotient, _ = densearith.dup_div(B[t][j], pivot, K)
+                        add_column(j, t, densearith.dup_neg(quotient, K))
+                        again = again or bool(B[t][j])
+                if again:
+                    continue
+                # the pivot must divide what remains: otherwise bring an entry it does not divide into its row
+                culprit = next((i for i in range(t + 1, m) for j in range(t + 1, n)
+                                if B[i][j] and densearith.dup_rem(B[i][j], pivot, K)), None)
+                if culprit is None:
+                    break
+                add_row(t, culprit, [K.one])
+            if finished:
+                break
+            leading = B[t][t][0]
+            if not K.is_one(leading):
+                inverse = K.invert(leading)
+                B[t] = [densearith.dup_mul_ground(a, inverse, K) for a in B[t]]
+                U[t] = [densearith.dup_mul_ground(a, inverse, K) for a in U[t]]
+                for row in W:
+                    row[t] = densearith.dup_mul_ground(row[t], leading, K)
+        return _Reduction(B, U, V, W)
+
+    def smith(self, rows: _PolynomialRows, ncols: int, x: Expr) -> SmithDecomposition:
+        B = [[self._polynomial(f) for f in row] for row in rows]
+        result = self._reduce(B, ncols)
+        return SmithDecomposition(self._matrix(result.S, ncols, x), self._matrix(result.U, len(rows), x),
+                                  self._matrix(result.V, ncols, x))
+
+    # -- square matrices over the field
+
+    def _characteristic(self, A: ExprMatrix) -> tuple[list[list[T]], _Reduction[T]]:
+        """The matrix over the field and the reduction of ``x I - A``."""
+        K = self.field.domain
+        n = A.rows
+        values = [[self.field.element(e) for e in A.row(i)] for i in range(n)]
+        B: list[list[list[T]]] = []
+        for i in range(n):
+            line: list[list[T]] = []
+            for j in range(n):
+                constant = K.neg(values[i][j])
+                if i == j:
+                    line.append([K.one, constant])
+                else:
+                    line.append([] if K.is_zero(constant) else [constant])
+            B.append(line)
+        return values, self._reduce(B, n)
+
+    def invariants(self, A: ExprMatrix) -> list[_Coefficients]:
+        _, result = self._characteristic(A)
+        return [[self.field.expr(c) for c in result.S[i][i]] for i in range(A.rows) if len(result.S[i][i]) > 1]
+
+    def multiplicities(self, A: ExprMatrix, factor: _Coefficients) -> list[int]:
+        K = self.field.domain
+        f = self._polynomial(factor)
+        _, result = self._characteristic(A)
+        found: list[int] = []
+        for i in range(A.rows):
+            s = result.S[i][i]
+            exponent = 0
+            while len(s) > 1:
+                quotient, remainder = densearith.dup_div(s, f, K)
+                if remainder:
+                    break
+                s, exponent = quotient, exponent + 1
+            if exponent:
+                found.append(exponent)
+        return found
+
+    def frobenius(self, A: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix]:
+        K = self.field.domain
+        n = A.rows
+        values, result = self._characteristic(A)
+
+        def image(v: Sequence[T]) -> list[T]:
+            out: list[T] = []
+            for row in values:
+                total = K.zero
+                for a, b in zip(row, v):
+                    if not K.is_zero(a) and not K.is_zero(b):
+                        total = K.add(total, K.mul(a, b))
+                out.append(total)
+            return out
+
+        columns: list[list[T]] = []
+        F = [[K.zero] * n for _ in range(n)]
+        for i in range(n):
+            s = result.S[i][i]
+            degree = len(s) - 1
+            if degree < 1:
+                continue
+            # the generator: column i of U**-1 evaluated at A (Horner, the coefficients being vectors)
+            generator = [K.zero] * n
+            top = max(len(result.U_inverse[r][i]) for r in range(n))
+            for k in range(top):
+                generator = image(generator)
+                for r in range(n):
+                    f = result.U_inverse[r][i]
+                    position = k - (top - len(f))
+                    if position >= 0:
+                        generator[r] = K.add(generator[r], f[position])
+            start = len(columns)
+            vector = generator
+            for k in range(degree):
+                columns.append(vector)
+                vector = image(vector)
+                if k:
+                    F[start + k][start + k - 1] = K.one
+                F[start + k][start + degree - 1] = K.neg(s[degree - k])
+        if len(columns) != n:
+            raise ArithmeticError('the degrees of the invariant factors do not add up to %d' % n)
+        P = ExprMatrix(n, n, [self.field.expr(columns[j][i]) for i in range(n) for j in range(n)])
+        return P, ExprMatrix(n, n, [self.field.expr(a) for row in F for a in row])
+
+
+def _forms(coefficients: Sequence[Expr]) -> _Forms:
+    kernels = _kernels([ExprMatrix(1, len(coefficients), coefficients)])
+    gaussian = _complex_lift(kernels)
+    if gaussian is not None:
+        return _Worker(_GaussianField(gaussian))
+    if kernels:
+        if not all(isinstance(k, Symbol) for k in kernels):
+            raise NotImplementedError('normal forms of a matrix whose entries are not rational functions of symbols, I and '
+                                      'square roots of rationals')
+        return _Worker(_FunctionField(_PolynomialLift(kernels)))
+    return _Worker(_RationalField())
+
+
+def _entry_coefficients(e: Expr, x: Symbol) -> _Coefficients:
+    expanded = expand(e)
+    return [Integer(0)] if expanded == 0 else _coefficients(expanded, x)
+
+
+def _polynomial_expr(coefficients: Sequence[Expr], x: Expr) -> Expr:
+    degree = len(coefficients) - 1
+    return add(*[mul(c, pow(x, Integer(degree - k))) for k, c in enumerate(coefficients)])
+
+
+# ---------------------------------------------------------------------
+# the public functions
+
+def smith_normal_form(M: ExprMatrix, x: Symbol) -> SmithDecomposition:
+    """The Smith normal form over ``K[x]`` of a matrix whose entries are
+    polynomials in ``x`` (see :class:`SmithDecomposition`); ``ValueError``
+    for an entry which is not a polynomial in ``x``.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.normalforms import smith_normal_form
+    >>> x = Symbol('x')
+    >>> M = ExprMatrix.from_rows([[x**2 - 1, x - 1], [x + 1, x**2 + x]])
+    >>> D = smith_normal_form(M, x)
+    >>> D.S, D.invariants
+    (ExprMatrix([[1, 0], [0, x**4 + x**3 - 2*x**2 - x + 1]]), [1, x**4 + x**3 - 2*x**2 - x + 1])
+    >>> (D.U*M*D.V).applyfunc(lambda e: e.expand()) == D.S
+    True
+    """
+    rows: _PolynomialRows = [[_entry_coefficients(e, x) for e in M.row(i)] for i in range(M.rows)]
+    return _forms([c for row in rows for f in row for c in f]).smith(rows, M.cols, x)
+
+
+def invariant_factors(A: ExprMatrix, x: Expr) -> list[Expr]:
+    """The invariant factors of a square matrix, as polynomials in ``x``:
+    monic, each dividing the next; the last is the minimal polynomial and
+    their product the characteristic polynomial.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.normalforms import invariant_factors
+    >>> x = Symbol('x')
+    >>> invariant_factors(ExprMatrix.eye(2), x), invariant_factors(ExprMatrix.from_rows([[1, 1], [0, 1]]), x)
+    ([x - 1, x - 1], [x**2 - 2*x + 1])
+    """
+    _square(A)
+    return [_polynomial_expr(f, x) for f in _forms(A.entries).invariants(A)]
+
+
+def matrix_minimal_polynomial(A: ExprMatrix, x: Expr) -> Expr:
+    """The minimal polynomial of a square matrix: the monic polynomial
+    ``p`` of least degree with ``p(A) = 0``.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.normalforms import matrix_minimal_polynomial
+    >>> x, a = Symbol('x'), Symbol('a')
+    >>> matrix_minimal_polynomial(ExprMatrix.from_rows([[a, 0, 0], [0, a, 0], [0, 0, 1]]), x)
+    a + x**2 + x*(-a - 1)
+    >>> matrix_minimal_polynomial(ExprMatrix.from_rows([[0, 1], [0, 0]]), x)
+    x**2
+    """
+    factors = invariant_factors(A, x)
+    return factors[-1] if factors else Integer(1)
+
+
+def companion_matrix(p: Expr, x: Symbol) -> ExprMatrix:
+    """The companion matrix of a polynomial in ``x`` (made monic): ones
+    below the diagonal and the opposites of the coefficients in the last
+    column, so that its characteristic and minimal polynomials are ``p``.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices.normalforms import companion_matrix
+    >>> x = Symbol('x')
+    >>> companion_matrix(x**3 - 2*x + 5, x)
+    ExprMatrix([[0, 0, -5], [1, 0, 2], [0, 1, 0]])
+    """
+    coefficients = _coefficients(p, x)
+    n = len(coefficients) - 1
+    if n < 1:
+        raise ValueError('%s is not a polynomial of positive degree in %s' % (p, x))
+    leading = coefficients[0]
+    entries: list[Expr] = []
+    for i in range(n):
+        for j in range(n):
+            if j == n - 1:
+                entries.append(-coefficients[n - i]/leading)
+            else:
+                entries.append(Integer(1) if i == j + 1 else Integer(0))
+    return ExprMatrix(n, n, entries)
+
+
+def frobenius_form(A: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix]:
+    """``(P, F)`` with ``F`` the Frobenius (rational canonical) form of
+    the square matrix ``A``, the block diagonal matrix of the companion
+    matrices of its invariant factors, and ``A P = P F`` with ``P``
+    invertible. No root of the characteristic polynomial is needed: the
+    form exists over the field of the entries.
+
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.normalforms import frobenius_form
+    >>> A = ExprMatrix.from_rows([[0, 1, 0], [0, 0, 1], [1, 0, 0]])
+    >>> P, F = frobenius_form(A)
+    >>> F, A*P == P*F
+    (ExprMatrix([[0, 0, 1], [1, 0, 0], [0, 1, 0]]), True)
+    >>> frobenius_form(ExprMatrix.from_rows([[1, 2], [3, 4]]))
+    (ExprMatrix([[0, 1], [1/2, 2]]), ExprMatrix([[0, 2], [1, 5]]))
+    """
+    _square(A)
+    return _forms(A.entries).frobenius(A)
+
+
+def elementary_divisors(A: ExprMatrix, x: Symbol) -> list[tuple[Expr, int]]:
+    """The elementary divisors of a square matrix: the pairs ``(f, k)``
+    for the powers ``f**k`` of irreducible polynomials (in ``x``) in the
+    factorisations of the invariant factors. For ``f = x - c`` these are
+    the Jordan blocks of the eigenvalue ``c``, of size ``k``.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.normalforms import elementary_divisors
+    >>> x = Symbol('x')
+    >>> elementary_divisors(ExprMatrix.from_rows([[0, -1, 0, 0], [1, 0, 0, 0], [0, 0, 0, -1], [0, 0, 1, 0]]), x)
+    [(x**2 + 1, 1), (x**2 + 1, 1)]
+    >>> elementary_divisors(ExprMatrix.from_rows([[2, 1, 0], [0, 2, 0], [0, 0, 3]]), x)
+    [(x - 3, 1), (x - 2, 2)]
+    """
+    _square(A)
+    unknown = _fresh_symbol(A)
+    _, factors = _characteristic_factors(A, unknown)
+    forms = _forms(A.entries)
+    result: list[tuple[Expr, int]] = []
+    for factor, _ in factors:
+        for exponent in sorted(forms.multiplicities(A, _coefficients(factor, unknown))):
+            result.append((factor.subs(unknown, x), exponent))
+    return result
+
+
+def is_similar(A: ExprMatrix, B: ExprMatrix) -> bool:
+    """Whether ``B = P**-1 A P`` for some invertible ``P`` (over the
+    field of the entries, and then over any larger one): the two matrices
+    have the same invariant factors.
+
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.normalforms import is_similar
+    >>> N = ExprMatrix.from_rows([[0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 1], [0, 0, 0, 0]])
+    >>> M = ExprMatrix.from_rows([[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+    >>> is_similar(N, M), N.charpoly(Symbol('x')) == M.charpoly(Symbol('x'))
+    (False, True)
+    """
+    if _square(A) != _square(B):
+        return False
+    forms = _forms(list(A.entries) + list(B.entries))
+    return forms.invariants(A) == forms.invariants(B)

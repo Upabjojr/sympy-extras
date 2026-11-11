@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.normalforms`: `smith_normal_form` of matrices of
+  polynomials over `K[x]` with the unimodular transformations,
+  `invariant_factors`, `matrix_minimal_polynomial`, `frobenius_form`
+  (rational canonical form `F` with `A P = P F`, no eigenvalue needed),
+  `elementary_divisors`, `is_similar`, `companion_matrix`.
 - `sympy_extras.matrices.equations`: `sylvester_solve` (`A X + X B = C`),
   `lyapunov_solve` (`A X + X A^* + Q = 0`), `discrete_lyapunov_solve`
   (`A X A^* - X + Q = 0`), `linear_matrix_equation` (any sum of terms
