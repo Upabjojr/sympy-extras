@@ -323,6 +323,33 @@ fn log<'py>(py: Python<'py>, x: &Bound<'py, PyAny>, base: Option<&Bound<'py, PyA
     to_python(py, &value.map_err(crate::convert::err)?)
 }
 
+fn pair<'py>(py: Python<'py>, value: PyResult<(Basic, Basic)>) -> PyResult<Bound<'py, PyTuple>> {
+    let (a, b) = value?;
+    PyTuple::new(py, [to_python(py, &a)?, to_python(py, &b)?])
+}
+
+#[pyfunction]
+fn as_numer_denom<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyTuple>> {
+    pair(py, rust_core::expr::as_numer_denom(&from_python(e)?).map_err(crate::convert::err))
+}
+
+#[pyfunction]
+fn fraction<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyTuple>> {
+    pair(py, sympy_extras_core::simplify::radsimp::fraction(&from_python(e)?).map_err(crate::convert::err))
+}
+
+#[pyfunction]
+#[pyo3(signature = (e, deep=true))]
+fn expand_mul<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, deep: bool) -> PyResult<Bound<'py, PyAny>> {
+    to_python(py, &rust_core::function::expand_mul(&from_python(e)?, deep).map_err(crate::convert::err)?)
+}
+
+#[pyfunction]
+#[pyo3(signature = (e, deep=true))]
+fn expand_multinomial<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, deep: bool) -> PyResult<Bound<'py, PyAny>> {
+    to_python(py, &rust_core::function::expand_multinomial(&from_python(e)?, deep).map_err(crate::convert::err)?)
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -350,5 +377,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sstr, m)?)?;
     m.add_function(wrap_pyfunction!(exp, m)?)?;
     m.add_function(wrap_pyfunction!(log, m)?)?;
+    m.add_function(wrap_pyfunction!(as_numer_denom, m)?)?;
+    m.add_function(wrap_pyfunction!(fraction, m)?)?;
+    m.add_function(wrap_pyfunction!(expand_mul, m)?)?;
+    m.add_function(wrap_pyfunction!(expand_multinomial, m)?)?;
     Ok(())
 }

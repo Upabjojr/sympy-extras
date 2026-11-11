@@ -343,3 +343,110 @@ pub fn is_comparable(e: &Basic) -> bool {
         None => false,
     }
 }
+
+/// A numerator and a denominator whose quotient is `e` (`as_numer_denom`
+/// of the classes of the core).
+pub fn as_numer_denom(e: &Basic) -> PolyResult<(Basic, Basic)> {
+    match e.head() {
+        Head::Rational { value, .. } => Ok((Basic::integer(numer(value)), Basic::integer(denom(value)))),
+        _ if e.is_number_class() => Ok((e.clone(), Basic::one())),
+        Head::Add => add_numer_denom(e),
+        Head::Mul => {
+            let mut ns: Vec<Basic> = Vec::new();
+            let mut ds: Vec<Basic> = Vec::new();
+            for a in e.args() {
+                let (n, d) = as_numer_denom(a)?;
+                ns.push(n);
+                ds.push(d);
+            }
+            Ok((mul(&ns)?, mul(&ds)?))
+        }
+        Head::Pow => pow_numer_denom(e),
+        Head::Function(super::basic::Function::Exp) => {
+            let arg: &Basic = &e.args()[0];
+            if is_true(arg, Predicate::negative) || super::printing::could_extract_minus_sign(arg) {
+                let inverse: Basic =
+                    crate::functions::elementary::exponential::exp(&mul(&[Basic::negative_one(), arg.clone()])?)?;
+                return Ok((Basic::one(), inverse));
+            }
+            Ok((e.clone(), Basic::one()))
+        }
+        _ => Ok((e.clone(), Basic::one())),
+    }
+}
+
+/// `Add.as_numer_denom`: the terms with the same denominator summed first.
+fn add_numer_denom(e: &Basic) -> PolyResult<(Basic, Basic)> {
+    let (content, primitive_part) = primitive(e)?;
+    if !primitive_part.is_add() {
+        return as_numer_denom(&mul(&[content, primitive_part])?);
+    }
+    // the denominators with their numerators, in order (a Python dict)
+    let mut groups: Vec<(Basic, Vec<Basic>)> = Vec::new();
+    for a in primitive_part.args() {
+        let (n, d) = as_numer_denom(a)?;
+        match groups.iter_mut().find(|(g, _)| *g == d) {
+            Some((_, ns)) => ns.push(n),
+            None => groups.push((d, vec![n])),
+        }
+    }
+    let (cn, cd) = as_numer_denom(&content)?;
+    if groups.len() == 1 {
+        let (d, ns) = &groups[0];
+        let _guard = super::parameters::distribute_guard(false);
+        let mut terms: Vec<Basic> = Vec::new();
+        for n in ns {
+            terms.push(mul(&[cn.clone(), n.clone()])?);
+        }
+        return Ok((add(&terms)?, mul(&[cd, d.clone()])?));
+    }
+    let mut numerators: Vec<Basic> = Vec::new();
+    for (i, (_, ns)) in groups.iter().enumerate() {
+        let mut factors: Vec<Basic> = vec![add(ns)?];
+        factors.extend(groups.iter().enumerate().filter(|(j, _)| *j != i).map(|(_, (d, _))| d.clone()));
+        numerators.push(mul(&factors)?);
+    }
+    let _guard = super::parameters::distribute_guard(false);
+    let mut denominators: Vec<Basic> = vec![cd];
+    denominators.extend(groups.iter().map(|(d, _)| d.clone()));
+    Ok((mul(&[cn, add(&numerators)?])?, mul(&denominators)?))
+}
+
+/// `Pow.as_numer_denom`.
+fn pow_numer_denom(e: &Basic) -> PolyResult<(Basic, Basic)> {
+    if is_false(e, Predicate::commutative) {
+        return Ok((e.clone(), Basic::one()));
+    }
+    let (base, mut exp) = as_base_exp(e)?;
+    let (mut n, mut d) = as_numer_denom(&base)?;
+    let mut neg_exp: bool = is_true(&exp, Predicate::negative);
+    if exp.is_mul() && !neg_exp && !is_true(&exp, Predicate::positive) {
+        neg_exp = super::printing::could_extract_minus_sign(&exp);
+    }
+    let int_exp: bool = is_true(&exp, Predicate::integer);
+    if !(is_true(&d, Predicate::extended_real) || int_exp) {
+        (n, d) = (base.clone(), Basic::one());
+    }
+    match is(&d, Predicate::nonpositive) {
+        Some(true) => {
+            n = mul(&[Basic::negative_one(), n])?;
+            d = mul(&[Basic::negative_one(), d])?;
+        }
+        None if !int_exp => (n, d) = (base.clone(), Basic::one()),
+        _ => {}
+    }
+    if neg_exp {
+        (n, d) = (d, n);
+        exp = mul(&[Basic::negative_one(), exp])?;
+    }
+    if is_true(&exp, Predicate::infinite) {
+        let one = |x: &Basic| is_integer_class(x) && is_rational_value(x, 1);
+        if one(&n) && !one(&d) {
+            return Ok((n, pow(&d, &exp)?));
+        }
+        if !one(&n) && one(&d) {
+            return Ok((pow(&n, &exp)?, d));
+        }
+    }
+    Ok((pow(&n, &exp)?, pow(&d, &exp)?))
+}
