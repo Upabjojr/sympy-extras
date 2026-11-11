@@ -28,7 +28,10 @@ remove public functions. Breaking changes are listed here when they happen.
   take a `domain`, `Complexes` by default or `Reals`: over the complex
   numbers the two roots of every quadratic, the `n` roots of `u**n = q`,
   the three roots of a cubic, a solution of `exp(f) = c` for every
-  integer; biquadratic equations by the substitution `u = x**k`.
+  integer; biquadratic equations by the substitution `u = x**k`. The
+  rules of the reals apply over the complex numbers too; a step which
+  does not give every solution there (`|A| = B`, isolated real roots)
+  is not `complete()`.
   A problem met again while it is being solved is an `InProgressRule`
   (`in_progress` of `StepSolver`), distinct from `DontKnowRule` (no
   rule applies).

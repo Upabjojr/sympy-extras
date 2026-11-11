@@ -67,6 +67,13 @@ class Step:
         """Whether some part of the derivation was left undone."""
         return any(step.contains_dont_know() for step in self.substeps())
 
+    def complete(self) -> bool:
+        """Whether the result is the whole answer. A step which is right
+        but partial (a rule which finds the real solutions of an
+        equation asked over the complex numbers) answers ``False``, and so
+        does every step built on it."""
+        return all(step.complete() for step in self.substeps())
+
     @property
     def rule(self) -> str:
         """The identifier of the rule."""
@@ -171,6 +178,7 @@ class StepSolver(Generic[P, S]):
     def _apply(self, problem: P) -> S:
         context = Context(self.branch, len(self._active) - 1)
         complete: list[S] = []
+        some: Optional[S] = None                 # solved, but not the whole answer (see Step.complete)
         partial: Optional[S] = None
         for rule in self.candidates(problem):
             result = self._run(rule(problem, context))
@@ -180,6 +188,11 @@ class StepSolver(Generic[P, S]):
                 if partial is None:
                     partial = result
                 continue
+            if not result.complete():
+                # kept only when no rule gives the whole answer: it is not another derivation of the same result
+                if some is None:
+                    some = result
+                continue
             if not self.branch:
                 return result
             if result not in complete:
@@ -188,6 +201,8 @@ class StepSolver(Generic[P, S]):
             return complete[0]
         if complete:
             return self.alternative(problem, complete)
+        if some is not None:
+            return some
         return partial if partial is not None else self.dont_know(problem)
 
     def _run(self, generator: Generator[P, S, Optional[S]]) -> Optional[S]:

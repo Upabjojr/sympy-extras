@@ -347,6 +347,9 @@ def _complex_agrees(step: EquationStep) -> bool:
         return expected == sympy.S.EmptySet and not ours
     theirs = list(expected)
     close = sympy.Float('1e-25')
+    if not step.complete():
+        # a part of the solutions
+        return len(ours) < len(theirs) and all(any(abs(sympy.N(e - o, 40)) < close for e in theirs) for o in ours)
     return (len(ours) == len(theirs) and all(any(abs(sympy.N(e - o, 40)) < close for o in ours) for e in theirs))
 
 
@@ -405,9 +408,7 @@ def test_the_domain() -> None:
     biquadratic = solve_steps_in(x**4 + 3*x**2 + 1, 0, x)
     assert isinstance(biquadratic, SubstitutionRule) and biquadratic.expression == x**2
     assert len(biquadratic.solutions().args) == 4 and manual_solve_in(x**4 + 3*x**2 + 1, 0, x, Reals) is EmptySet
-    # what is not solved over the complex numbers: roots which are not real without a formula, absolute values
-    assert manual_solve_in(x**4 - x - 1, 0, x) is None and manual_solve_in(x**4 - x - 1, 0, x, Reals) is not None
-    assert manual_solve_in(abs_(x - 3), 5, x) is None and manual_solve_in(abs_(x - 3), 5, x, Reals) == finite_set(-2, 8)
+    assert steps.complete() and cube.complete() and cardano.complete() and biquadratic.complete()
     for wrong in (Integers, finite_set(1)):
         try:
             solve_steps_in(x, 1, x, wrong)
@@ -447,3 +448,39 @@ def test_complex_exponentials_and_trigonometry() -> None:
     # logarithms: the candidates are checked with the principal logarithm
     assert manual_solve_in(log(x), 2, x) == finite_set(exp(Integer(2)))
     assert manual_solve_in(log(x) + log(x - 3), log(Integer(10)), x) == finite_set(5)
+
+
+def test_real_rules_over_the_complex_numbers() -> None:
+    # a real solution is a solution over the complex numbers: the rules of the reals apply there too (they were
+    # switched off, and these equations were not solved); what they miss makes the step not complete
+    quartic = solve_steps_in(x**4 - x - 1, 0, x)
+    assert isinstance(quartic, RealRootsRule) and len(quartic.roots) == 2 and quartic.missing == 2
+    assert not quartic.complete() and not quartic.contains_dont_know()
+    assert quartic.solutions() == solve_steps_in(x**4 - x - 1, 0, x, Reals).solutions()
+    real = solve_steps_in(x**4 - x - 1, 0, x, Reals)
+    assert isinstance(real, RealRootsRule) and real.missing == 0 and real.complete()
+    assert format_steps(quartic).endswith('(not all)') and not format_steps(real).endswith('(not all)')
+    # every root real: nothing is missing
+    assert solve_steps_in(x**3 - 3*x + 1, 0, x).complete()
+    absolute = solve_steps_in(abs_(x - 3), 5, x)
+    assert isinstance(absolute, AbsoluteValueRule) and absolute.partial and not absolute.complete()
+    assert absolute.solutions() == finite_set(-2, 8) and manual_solve_in(abs_(x - 3), 5, x) == finite_set(-2, 8)
+    over_reals = solve_steps_in(abs_(x - 3), 5, x, Reals)
+    assert isinstance(over_reals, AbsoluteValueRule) and not over_reals.partial and over_reals.complete()
+    # |A| = 0 is A = 0 in both domains; the cases are solved in the domain: |x**2 - 4| = 5 also has I and -I
+    zero = solve_steps_in(abs_(x**2 + 1), 0, x)
+    assert zero.complete() and zero.solutions() == finite_set(I, -I)
+    assert manual_solve_in(abs_(x**2 - 4), 5, x) == finite_set(3, -3, I, -I)
+    assert manual_solve_in(abs_(x**2 - 4), 5, x, Reals) == finite_set(3, -3)
+    # an absolute value is never negative, nor a number which is not real
+    assert manual_solve_in(abs_(x), -1, x) is EmptySet and manual_solve_in(abs_(x), I, x) is EmptySet
+    # a step built on a partial one is partial; every real-domain tree of the lists above is complete
+    built = solve_steps_in(abs_(x)**2 - 3*abs_(x) + 2, 0, x)
+    assert not built.complete() and built.solutions() == finite_set(1, -1, 2, -2)
+    for lhs, rhs in EQUATIONS + MORE:
+        assert solve_steps(lhs, rhs, x).complete(), (lhs, rhs)
+    for lhs, rhs in POLYNOMIAL:
+        assert solve_steps_in(lhs, rhs, x).complete(), (lhs, rhs)
+        # a partial rule is not offered as another derivation beside the complete ones
+        ways = solve_steps_in(lhs, rhs, x, branch=True)
+        assert ways.complete() and all(way.complete() for way in ways.substeps()), (lhs, rhs)

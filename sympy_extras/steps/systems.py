@@ -116,7 +116,8 @@ class SystemStep(Step):
         system = ', '.join('%s = %s' % equation for equation in self.equations)
         if self.contains_dont_know():
             return '%s -> ?' % (system,)
-        return '%s -> {%s}' % (system, ', '.join(str(solution) for solution in self.solutions()))
+        return '%s -> {%s}%s' % (system, ', '.join(str(solution) for solution in self.solutions()),
+                                 '' if self.complete() else ' (not all)')
 
 
 @dataclass(frozen=True)
@@ -211,6 +212,9 @@ class AlternativeRule(SystemStep, AlternativeStep):
 
     def substeps(self) -> tuple[Step, ...]:
         return self.alternatives
+
+    def complete(self) -> bool:
+        return self.alternatives[0].complete()
 
     def solutions(self) -> tuple[_Solution, ...]:
         return self.alternatives[0].solutions()
@@ -336,7 +340,8 @@ def _single(problem: SystemProblem) -> Optional[SystemStep]:
 def _substitution(index: int, variable: Symbol) -> _Rule:
     def rule(problem: SystemProblem, context: Context) -> _Run:
         lhs, rhs = problem.equations[index]
-        if not (lhs.has(variable) or rhs.has(variable)):
+        if not expand(lhs - rhs).has(variable):
+            # the unknown is absent, or cancels (y + |x| = y + 2): the equation says nothing about it
             return None
         isolation = solve_steps(lhs, rhs, variable, problem.domain)
         if isolation.contains_dont_know():

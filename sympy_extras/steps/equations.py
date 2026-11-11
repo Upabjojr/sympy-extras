@@ -72,10 +72,14 @@ roots, a cubic its three roots, and $e^f = c$ a solution for every
 integer $n$ (the exponential has the period $2\pi i$); over the reals a
 solution must make both sides real, $|A| = B$ is split into its two
 cases, and a polynomial which does not factor has its real roots
-isolated. Not solved over the complex numbers: equations with absolute
-values, polynomials of degree four or more which do not factor and
-have roots which are not real (unless they are polynomials in $x^k$),
-and $\log f = c$ with $c$ not real.
+isolated. The rules of the reals apply over the complex numbers too,
+since a real solution is a solution: where they do not give every
+solution the step is not ``complete()`` (printed as ``(not all)``).
+That is the case of $|A| = B$, whose two cases miss the other points
+of a circle, and of a polynomial of degree four or more which does not
+factor and has roots which are not real (they have no exact form
+here). Not solved over the complex numbers: $\log f = c$ with $c$ not
+real.
 
 ``solutions()`` gives the set of the solutions of a step in the domain,
 assembled from its substeps. With symbols other than the unknown the solution is
@@ -176,7 +180,7 @@ class EquationStep(Step):
 
     def statement(self) -> str:
         found = '?' if self.contains_dont_know() else str(self.solutions())
-        return '%s = %s -> %s' % (self.lhs, self.rhs, found)
+        return '%s = %s -> %s%s' % (self.lhs, self.rhs, found, '' if self.complete() else ' (not all)')
 
 
 @dataclass(frozen=True)
@@ -357,7 +361,9 @@ class SquareBothSidesRule(_Checked):
 class AbsoluteValueRule(EquationStep):
     """``|inner| = value``: the cases ``inner = value`` and ``inner =
     -value``, whose solutions are checked in the original equation (the
-    value must not be negative there)."""
+    value must not be negative there). Over the complex numbers the two
+    cases give solutions, but not all of them (``|x| = 1`` is a circle):
+    the step is then ``partial`` and not ``complete()``."""
 
     kind: ClassVar[str] = 'implication'
 
@@ -365,9 +371,13 @@ class AbsoluteValueRule(EquationStep):
     cases: tuple[EquationStep, ...]
     rejected: tuple[Expr, ...]
     unverified: tuple[Expr, ...]
+    partial: bool
 
     def substeps(self) -> tuple[Step, ...]:
         return self.cases
+
+    def complete(self) -> bool:
+        return not self.partial and all(case.complete() for case in self.cases)
 
     def solutions(self) -> Set:
         found = union(*[case.solutions() for case in self.cases])
@@ -506,10 +516,16 @@ class CardanoRule(EquationStep):
 class RealRootsRule(EquationStep):
     """A polynomial with rational coefficients which does not factor:
     its real roots, isolated exactly (each is given by the polynomial
-    and its rank among the real roots). Over the complex numbers the
-    rule applies when every root is real."""
+    and its rank among the real roots). ``missing`` is the number of
+    roots which are not real: over the complex numbers they are
+    solutions which the rule does not give, and the step is not
+    ``complete()``."""
 
     roots: tuple[Expr, ...]
+    missing: int
+
+    def complete(self) -> bool:
+        return self.missing == 0
 
     def solutions(self) -> Set:
         return finite_set(*self.roots) if self.roots else EmptySet
@@ -529,6 +545,9 @@ class AlternativeRule(EquationStep, AlternativeStep):
 
     def substeps(self) -> tuple[Step, ...]:
         return self.alternatives
+
+    def complete(self) -> bool:
+        return self.alternatives[0].complete()
 
     def solutions(self) -> Set:
         return self.alternatives[0].solutions()
@@ -873,10 +892,10 @@ def _isolate(kind: Callable[[Expr, Symbol], list[Expr]]) -> _Rule:
 
 
 def _absolute_value(problem: EquationProblem, context: Context) -> _Run:
-    """``c*|A| = B`` (over the reals: over the complex numbers ``|A| =
-    B`` is not the two cases, but a circle)."""
+    """``c*|A| = B`` (over the complex numbers the two cases give only
+    a part of the solutions, unless ``B`` is zero)."""
     x = problem.variable
-    if isinstance(problem.lhs, Add) or problem.domain is not Reals:
+    if isinstance(problem.lhs, Add):
         return None
     coefficient, rest = problem.lhs.as_independent(x)
     if not isinstance(rest, Abs) or coefficient == 0:
@@ -885,7 +904,7 @@ def _absolute_value(problem: EquationProblem, context: Context) -> _Run:
     if not isinstance(inner, Expr):
         return None
     value = _normal(problem.rhs/coefficient)
-    if value.is_negative is True:
+    if value.is_negative is True or value.is_real is False:
         return ContradictionRule(problem.lhs, problem.rhs, x)
     targets = [value] if value == 0 else [value, -value]
     cases: list[EquationStep] = []
@@ -907,7 +926,8 @@ def _absolute_value(problem: EquationProblem, context: Context) -> _Run:
                 rejected.append(candidate)
             elif verdict is None and candidate not in unverified:
                 unverified.append(candidate)
-    return AbsoluteValueRule(problem.lhs, problem.rhs, x, inner, tuple(cases), tuple(rejected), tuple(unverified))
+    return AbsoluteValueRule(problem.lhs, problem.rhs, x, inner, tuple(cases), tuple(rejected), tuple(unverified),
+                             problem.domain is Complexes and value != 0)
 
 
 def _exponential_parts(e: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
@@ -1084,7 +1104,7 @@ def _substitution(problem: EquationProblem, context: Context) -> _Run:
         [(placeholder, expression)] = list(back.items())
         candidates.append((prepared.subs(placeholder, u), expression))
     for node in sorted(difference.atoms(Sin, Cos, Tan, Log, Abs), key=str):
-        if isinstance(node, Expr) and node.has(x) and not (isinstance(node, Abs) and problem.domain is not Reals):
+        if isinstance(node, Expr) and node.has(x):
             rule: dict[Basic, Basic] = {node: u}
             candidates.append((difference.xreplace(rule), node))
     common = _common_base(difference, x, u)
@@ -1190,9 +1210,9 @@ def _real_roots(problem: EquationProblem) -> Optional[EquationStep]:
     from sympy_extras.polys.cad.indexedroot import real_root
     from sympy_extras.polys.cad.samplepoints import real_roots_of
     roots = tuple(real_root(r, x.name) for r in real_roots_of(values))
-    if problem.domain is Complexes and len(roots) != len(coefficients) - 1:
-        return None                                  # the roots which are not real have no exact form here
-    return RealRootsRule(problem.lhs, problem.rhs, x, roots)
+    # over the complex numbers the roots which are not real are solutions too: they have no exact form here
+    missing = len(coefficients) - 1 - len(roots) if problem.domain is Complexes else 0
+    return RealRootsRule(problem.lhs, problem.rhs, x, roots, missing)
 
 
 def _transcendental(e: Expr, x: Symbol) -> bool:
@@ -1216,8 +1236,6 @@ def _candidates(problem: EquationProblem) -> Sequence[_Rule]:
     if _denominator(lhs, x) != 1 or _denominator(rhs, x) != 1:
         return [_clear_denominators]
     if _absolute_values(lhs, x) or _absolute_values(rhs, x):
-        if problem.domain is not Reals:
-            return []
         if not _absolute_values(lhs, x):
             return [_swap]
         return [_absolute_value, _isolate(_absolute_values), _substitution]
@@ -1339,7 +1357,9 @@ def solve_steps(lhs: ExprLike, rhs: ExprLike, x: Symbol, domain: Set = Complexes
 
 def manual_solve(lhs: ExprLike, rhs: ExprLike, x: Symbol, domain: Set = Complexes) -> Optional[Set]:
     """The set of the solutions in the ``domain`` (``Complexes`` by
-    default, or ``Reals``) found by the rules, or ``None``.
+    default, or ``Reals``) found by the rules, or ``None``. The set is
+    a part of the solutions when the derivation is not ``complete()``
+    (see the module).
 
     >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.steps.equations import manual_solve

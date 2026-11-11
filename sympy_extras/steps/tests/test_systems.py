@@ -210,3 +210,19 @@ def test_complex_domain() -> None:
 def sympy_free_domain() -> Set:
     from sympy_extras.sets.fancysets import Integers
     return Integers
+
+
+def test_cancelling_unknown_and_partial_systems() -> None:
+    from sympy_extras.functions import abs_
+    # y + |x| = y + 2 says nothing about y: it was read as an equation in y without solution, and the
+    # elimination branch reported that the system had none
+    equations: list[tuple[Expr, Expr]] = [(abs_(x), y), (y, Integer(2))]
+    for branch in (False, True):
+        steps = system_steps(equations, [x, y], branch=branch)
+        assert set(steps.solutions()) == {(Integer(-2), Integer(2)), (Integer(2), Integer(2))} and steps.complete()
+    assert manual_system([(y + abs_(x), y + 2), (y, Integer(2))], [x, y]) == manual_system(equations, [x, y])
+    # over the complex numbers the same solutions, as a part of them
+    partial = system_steps_in(equations, [x, y])
+    assert set(partial.solutions()) == {(Integer(-2), Integer(2)), (Integer(2), Integer(2))} and not partial.complete()
+    assert format_steps(partial, depth=0).endswith('(not all)')
+    assert system_steps_in([(x + y, 3), (x - y, 1)], [x, y]).complete()

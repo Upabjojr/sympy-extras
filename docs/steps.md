@@ -110,16 +110,34 @@ ZeroProductRule: x**4 + 2*x**2 + 1 = 0 -> {-I, I}
 (EmptySet, {2, -1 - sqrt(3)*I, -1 + sqrt(3)*I}, {2})
 >>> manual_solve(exp(x), 2, x), manual_solve(exp(x), 2, x, Reals)
 (ImageSet(Lambda(n, 2*I*pi*n + log(2)), Integers), {log(2)})
->>> manual_solve(x + 1, x + 1, x), manual_solve(abs_(x - 3), 5, x), manual_solve(abs_(x - 3), 5, x, Reals)
-(Complexes, None, {-2, 8})
+>>> manual_solve(x + 1, x + 1, x)
+Complexes
 
 ```
 
 Over the complex numbers a quadratic has its two roots whatever the
 discriminant, `u**n = q` its `n` roots, a cubic its three roots (Cardano),
-and `exp(f) = c` a solution for every integer `n`. Equations with
-absolute values are solved over the reals only (`|A| = B` is not two
-cases over the complex numbers).
+and `exp(f) = c` a solution for every integer `n`.
+
+A real solution is a solution over the complex numbers too, so the
+rules of the reals apply there as well. Where such a rule does not give
+every solution, the step (and every step built on it) answers `False`
+to `complete()` and is printed with `(not all)`: the two cases of
+`|A| = B` miss the other points of a circle, and the isolated real roots
+of a polynomial which does not factor miss the roots which are not real
+(`missing` counts them).
+
+```python
+>>> quartic = solve_steps(x**4 - x - 1, 0, x)
+>>> print(format_steps(quartic))
+RealRootsRule: x**4 - x - 1 = 0 -> {IndexedRoot(x**4 - x - 1, x, 0), IndexedRoot(x**4 - x - 1, x, 1)} (not all)
+>>> quartic.complete(), quartic.missing, solve_steps(x**4 - x - 1, 0, x, Reals).complete()
+(False, 2, True)
+>>> absolute = solve_steps(abs_(x - 3), 5, x)
+>>> absolute.solutions(), absolute.complete(), solve_steps(abs_(x - 3), 5, x, Reals).complete()
+({-2, 8}, False, True)
+
+```
 
 Radicals, absolute values, exponentials, logarithms and trigonometric
 functions have their rules; an equation which is a polynomial in one of
@@ -298,10 +316,11 @@ step which holds alternatives.
 
 ## Not done
 
-* equations over the complex numbers: absolute values, polynomials of
-  degree four or more which do not factor and have roots which are not
-  real (no quartic formula, no complex root object), `log(f) = c` with
-  `c` not real;
+* equations over the complex numbers: the solutions of `|A| = B` which
+  are not real, the roots which are not real of a polynomial of degree
+  four or more which does not factor (no quartic formula, no complex
+  root object; both are reported by `complete()`), `log(f) = c` with `c`
+  not real;
 * equations: exponentials of unrelated bases (`4**x - 3**x = 1`), sums
   of trigonometric functions of different arguments; systems with
   infinitely many solutions (parametrised solution sets);
