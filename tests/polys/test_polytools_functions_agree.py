@@ -104,3 +104,30 @@ def test_numbers(rust: Any) -> None:
         compare(rc, "cancel", lambda: pt.cancel(e, x), [e], [x])
     assert compare(rc, "gcd_list", lambda: pt.gcd_list([]), [], [])
     assert compare(rc, "lcm_list", lambda: pt.lcm_list([]), [], [])
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_gaussian_cancel(rust: Any, seed: int) -> None:
+    from sympy_extras.core import I, Integer, Rational, Symbol
+    from sympy_extras.core.add import add
+    from sympy_extras.core.mul import mul
+    from sympy_extras.core.power import pow
+    from sympy_extras.polys import polytools as pt
+    rc = load("sympy_extras_rs.core")
+    rng = random.Random(stable_seed("gaussian cancel", seed))
+    x, y = Symbol('x'), Symbol('y')
+
+    def gaussian_polynomial(variables: list[Any]) -> Any:
+        terms = []
+        for _ in range(rng.randint(1, 3)):
+            c: Any = add(Integer(rng.randint(-3, 3)), mul(rng.choice([Integer(rng.randint(-3, 3)), Rational(1, 2)]), I))
+            terms.append(mul(c, *[pow(v, Integer(rng.randint(0, 2))) for v in variables if rng.random() < 0.6]))
+        return add(*terms)
+
+    compared = 0
+    for _ in range(4):
+        variables = rng.choice([[x], [x], [x, y]])
+        common = gaussian_polynomial(variables)
+        e = mul(gaussian_polynomial(variables), common, pow(mul(gaussian_polynomial(variables), common), Integer(-1)))
+        compared += compare(rc, "cancel", lambda: pt.cancel(e), [e], [])
+    assert compared >= 2

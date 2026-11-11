@@ -483,11 +483,8 @@ pub fn as_content_primitive(e: &Basic, radical: bool, clear: bool) -> PolyResult
             } else {
                 value.clone()
             };
-            // Python's Rational(|p|, q): the class Rational even for q = 1
-            let content: Basic = Basic::atom(Head::Rational {
-                value: magnitude,
-                integer_class: false,
-            });
+            // number_from_fraction(|p|/q): an integer content is an Integer
+            let content: Basic = Basic::from_rational(magnitude);
             Ok((content, Basic::int(if rat_is_negative(value) { -1 } else { 1 })))
         }
         Head::Add => add_content_primitive(e, radical, clear),
