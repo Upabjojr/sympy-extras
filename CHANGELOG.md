@@ -539,6 +539,25 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The Thue equation solver is native (**breaking**):
+  `sympy_extras.solvers.thue_equation.thue` takes a form and generators
+  (symbols or other expressions, as `Poly`) of the core and imports no
+  SymPy (the norms are resultants of the typed
+  `euclidtools`, the irreducibility test and the integer roots of
+  `small_solutions` come from `factortools.dup_zz_factor`, de Weger's
+  reduction solves its rational system by Gaussian elimination on
+  `Fraction`s instead of SymPy's `Matrix.LUsolve`; the numerics stay on
+  mpmath). The old API on SymPy objects moves to the face
+  `sympy_extras.solvers.thue_equation_sympy` (`thue`, and the integer
+  level `ThueEquation`, `units_of_order`, `elements_of_norm`,
+  `short_vectors`, `lll`, `at_precision` re-exported), with the same
+  results on 81 recorded calls (the tests, the doctests and 41 more
+  equations: cubic, quartic and quintic forms, several right-hand sides,
+  reducible forms, equations without solutions, the refusals); the
+  benchmarks, the README and the docs use the face.
+  `ThueEquation.small_solutions` now lists the roots for each `y` in
+  increasing order (the same set); the errors of the native polynomials
+  come out of the face as SymPy's `PolynomialError`.
 - The differential algebra is native (**breaking**):
   `sympy_extras.polys.differential` (`DifferentialRing`,
   `DifferentialPolynomial`, `janet_basis`, `JanetBasis`,

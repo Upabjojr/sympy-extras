@@ -70,7 +70,7 @@ The setup used throughout:
 >>> from sympy_extras.solvers.linear_systems import dsolve_linear_system
 >>> from sympy_extras.solvers.charpit import complete_integral
 >>> from sympy_extras.solvers.isolation_sympy import isolate_real_roots
->>> from sympy_extras.solvers.thue_equation import thue
+>>> from sympy_extras.solvers.thue_equation_sympy import thue
 >>> from sympy_extras.solvers.abel import abel_by_invariants
 >>> from sympy_extras.solvers.integers_sympy import linear_diophantine_system, minimal_nonnegative_solutions
 >>> from sympy_extras.solvers.lie import symmetries

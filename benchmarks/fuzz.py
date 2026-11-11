@@ -49,7 +49,7 @@ from sympy_extras.concrete.karr_sympy import karr_sum
 from sympy_extras.concrete.rational import rational_sum
 from sympy_extras.integrals.series import _polygamma_series_sympy
 from sympy_extras.solvers.isolation_sympy import isolate_real_roots
-from sympy_extras.solvers.thue_equation import thue
+from sympy_extras.solvers.thue_equation_sympy import thue
 from sympy_extras.solvers.isolation_sympy import TranscendentalRoot
 
 #: the time limit of one case

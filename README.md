@@ -486,7 +486,7 @@ their invariants, and `polygamma_series` sums Euler sums and series of
 polygamma functions in zeta values.
 
 ```python
->>> from sympy_extras.solvers.thue_equation import thue
+>>> from sympy_extras.solvers.thue_equation_sympy import thue
 >>> from sympy_extras.solvers.second_order import dsolve_second_order
 >>> from sympy_extras.concrete.eulersums import polygamma_series
 >>> thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y)
