@@ -61,6 +61,8 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/complexroots.py` | done | `Rectangle` a struct (a class in the bindings, compared by its corners); the factors of `dup_isolate_complex_roots` told apart by index instead of list identity |
 | `polys/numberfields/basis.py` | done | the Round 2 algorithm; the multiplication table computed with the order (Python: on first use); `minpoly.py` waits for the core |
 | `polys/numberfields/qqbar.py` | done | the isolating region behind a mutex (refined in place as in Python, the methods take `&self`); `minpoly._sum_resultant`/`_product_resultant` as `sum_resultant`/`product_resultant`; Python's `%.10g` for the reprs; the `TypeError`s of the decisions in the bindings |
+| `polys/numberfields/recognize.py` | done | |
+| `polys/zerodim.py` | done | the pivot of `univariate_in_ideal` is the largest monomial (the dependence does not depend on it); over the `QQ` rings of the bindings |
 | `polys/fglm.py` | done | the pivot of a new echelon row is its largest monomial (Python: the first dict key); the reduced basis does not depend on it |
 | `polys/berlekampmassey.py` | done | generic over `Domain`; the bindings run it over every domain kind |
 | `polys/bigatti.py` | done | moved out of `hilbert.rs` as in Python (5786e1d..eb367b4), with `hilbert_numerator_coefficients` |

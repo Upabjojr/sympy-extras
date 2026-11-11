@@ -141,6 +141,12 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "qqbar",
         "sympy_extras_rs.polys.numberfields.qqbar",
     )?)?;
+    qqbar::register_recognize(&submodule(
+        &numberfields_module,
+        "recognize",
+        "sympy_extras_rs.polys.numberfields.recognize",
+    )?)?;
+    qqbar::register_zerodim(&submodule(&polys, "zerodim", "sympy_extras_rs.polys.zerodim")?)?;
     galois::register_galoisfactor(&submodule(
         &polys,
         "galoisfactor",

@@ -29,3 +29,4 @@ pub mod rootisolation;
 pub mod sqfreetools;
 pub mod stronggroebner;
 pub mod subresultants;
+pub mod zerodim;

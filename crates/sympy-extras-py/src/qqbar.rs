@@ -10,6 +10,10 @@ use pyo3::types::{PyList, PyModule};
 use sympy_extras_core::numbers::{Int, Rat};
 use sympy_extras_core::polys::domains::RationalField;
 use sympy_extras_core::polys::numberfields::qqbar::{self as qb, Algebraic};
+use sympy_extras_core::polys::rings::{PolyElement, PolyRing};
+use sympy_extras_core::polys::zerodim as zd;
+
+use crate::rings::{ElemKind, PyPolyElement, PyPolyRing, RingKind};
 
 use crate::convert::{err, extract_int, out_int, tuple, Bridge};
 
@@ -332,6 +336,92 @@ fn primitive_element<'py>(py: Python<'py>, a: &PyAlgebraic, b: &PyAlgebraic) -> 
             out_rationals(py, &q)?,
         ],
     )
+}
+
+/// `recognize_algebraic(re, im=0, digits=15, max_degree=6)`.
+#[pyfunction]
+#[pyo3(signature = (re, im = None, digits = 15, max_degree = 6))]
+fn recognize_algebraic(
+    re: &Bound<'_, PyAny>,
+    im: Option<&Bound<'_, PyAny>>,
+    digits: i64,
+    max_degree: i64,
+) -> PyResult<Option<PyAlgebraic>> {
+    if digits < 1 || max_degree < 1 {
+        return Err(PyValueError::new_err("digits and max_degree must be positive"));
+    }
+    let im: Rat = match im {
+        Some(v) => RationalField.extract(v)?,
+        None => Rat::ZERO,
+    };
+    let found = sympy_extras_core::polys::numberfields::recognize::recognize_algebraic(
+        &RationalField.extract(re)?,
+        &im,
+        digits as usize,
+        max_degree as usize,
+    )
+    .map_err(err)?;
+    Ok(found.map(wrap))
+}
+
+pub fn register_recognize(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(recognize_algebraic, m)?)?;
+    Ok(())
+}
+
+fn qq_elements(ob: &Bound<'_, PyAny>) -> PyResult<Vec<PolyElement<sympy_extras_core::polys::domains::RationalField>>> {
+    let mut result = Vec::new();
+    for item in ob.try_iter()? {
+        match &item?.downcast::<PyPolyElement>()?.get().inner {
+            ElemKind::QQ(f) => result.push(f.clone()),
+            _ => return Err(PyTypeError::new_err("polynomials over QQ are expected")),
+        }
+    }
+    Ok(result)
+}
+
+fn qq_ring(ring: &PyPolyRing) -> PyResult<std::sync::Arc<PolyRing<sympy_extras_core::polys::domains::RationalField>>> {
+    match &ring.inner {
+        RingKind::QQ(r) => Ok(std::sync::Arc::clone(r)),
+        _ => Err(PyTypeError::new_err("a ring over QQ is expected")),
+    }
+}
+
+#[pyfunction]
+fn univariate_in_ideal<'py>(
+    py: Python<'py>,
+    basis: &Bound<'py, PyAny>,
+    ring: &PyPolyRing,
+    index: usize,
+) -> PyResult<Bound<'py, PyAny>> {
+    let values = zd::univariate_in_ideal(&qq_elements(basis)?, &qq_ring(ring)?, index).map_err(err)?;
+    out_rationals(py, &values)
+}
+
+#[pyfunction]
+fn solve_zero_dimensional<'py>(
+    py: Python<'py>,
+    polys: &Bound<'py, PyAny>,
+    ring: &PyPolyRing,
+) -> PyResult<Bound<'py, PyAny>> {
+    let solutions = zd::solve_zero_dimensional(&qq_elements(polys)?, &qq_ring(ring)?).map_err(err)?;
+    let points: Vec<Bound<'py, PyAny>> = solutions
+        .into_iter()
+        .map(|point| {
+            let values: Vec<Bound<'py, PyAny>> = point
+                .into_iter()
+                .map(|a| Ok(Bound::new(py, wrap(a))?.into_any()))
+                .collect::<PyResult<_>>()?;
+            Ok(PyList::new(py, values)?.into_any())
+        })
+        .collect::<PyResult<_>>()?;
+    Ok(PyList::new(py, points)?.into_any())
+}
+
+pub fn register_zerodim(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(univariate_in_ideal, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_zero_dimensional, m)?)?;
+    Ok(())
 }
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {

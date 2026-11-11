@@ -4,3 +4,4 @@
 
 pub mod basis;
 pub mod qqbar;
+pub mod recognize;
