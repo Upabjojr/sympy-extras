@@ -12,8 +12,7 @@ The steps of the native ``ask`` which stay written on SymPy are called
 from it at run time (the functions ending in ``_of_core``, which take and
 return objects of the core): the truth tables of the cylindrical
 algebraic decomposition (:func:`sympy_extras.polys.cad.truth_tables`),
-the linearity test and the linear quantifier elimination of
-:mod:`sympy_extras.polys.virtual_substitution`, the sample points of :func:`sympy_extras.integrals.conditions.sample_values`
+the sample points of :func:`sympy_extras.integrals.conditions.sample_values`
 and :func:`sympy_extras._numeric.reliable_value`.
 
 Examples
@@ -53,8 +52,7 @@ from .context_sympy import global_assumptions
 from .facts_sympy import Facts
 from .quantifiers import Prefix
 
-__all__ = ['ask', 'Assumptions', 'truth_tables_of_core', 'is_linear_in_of_core',
-    'linear_quantifier_elimination_of_core', 'sample_values_of_core',
+__all__ = ['ask', 'Assumptions', 'truth_tables_of_core', 'sample_values_of_core',
     'reliable_complex_of_core', 'core_boolean', 'core_assumptions', 'core_domain', 'sympy_boolean']
 
 
@@ -143,19 +141,6 @@ def truth_tables_of_core(formulas: list[CoreBoolean], gens: list[CoreSymbol]) ->
     from sympy_extras.polys.cad import truth_tables
     _, tables = truth_tables([sympy_boolean(f) for f in formulas], [_sympy_symbol(g) for g in gens])
     return [list(t) for t in tables]
-
-
-def is_linear_in_of_core(formula: CoreBoolean, x: CoreSymbol) -> bool:
-    """:func:`sympy_extras.polys.virtual_substitution.is_linear_in`."""
-    from sympy_extras.polys.virtual_substitution import is_linear_in
-    return is_linear_in(sympy_boolean(formula), _sympy_symbol(x))
-
-
-def linear_quantifier_elimination_of_core(formula: CoreBoolean, prefix: Prefix) -> tuple[CoreBoolean, Prefix]:
-    """:func:`sympy_extras.polys.virtual_substitution.linear_quantifier_elimination`."""
-    from sympy_extras.polys.virtual_substitution import linear_quantifier_elimination
-    result, rest = linear_quantifier_elimination(sympy_boolean(formula), sympy_prefix(prefix))
-    return core_boolean(result), core_prefix(rest)
 
 
 def sample_values_of_core(symbols: list[CoreSymbol], conjuncts: list[CoreBoolean],

@@ -11,8 +11,9 @@ integer matrices and are the native functions themselves.
 
 The step of the native module which stays written on SymPy is called
 from it at run time (:func:`simplify_logic_of_core`, which takes and
-returns a formula of the core): SymPy's ``simplify_logic`` of the
-formulas returned by Cooper's algorithm.
+returns a formula of the core, the function of
+:mod:`sympy_extras.polys.virtual_substitution_sympy`): SymPy's
+``simplify_logic`` of the formulas returned by Cooper's algorithm.
 
 Examples
 ========
@@ -34,10 +35,10 @@ from sympy.core.relational import Eq
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import Boolean
 
-from sympy_extras._typing import QuantifierPrefix, as_boolean, as_expr
+from sympy_extras._typing import QuantifierPrefix, as_expr
 from sympy_extras.assumptions.ask_sympy import _sympy_symbol, core_boolean, core_prefix, sympy_boolean
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr
-from sympy_extras.core.logic import Boolean as CoreBoolean
+from sympy_extras.polys.virtual_substitution_sympy import simplify_logic_of_core
 
 from . import integers as native
 from .integers import (IntMatrix, IntVector, hermite_normal_form_with_transform, hilbert_basis,
@@ -46,16 +47,6 @@ from .integers import (IntMatrix, IntVector, hermite_normal_form_with_transform,
 __all__ = ['hermite_normal_form_with_transform', 'linear_diophantine_system',
     'hilbert_basis', 'minimal_nonnegative_solutions', 'cooper',
     'presburger_quantifier_elimination', 'is_presburger', 'simplify_logic_of_core', 'IntMatrix', 'IntVector']
-
-
-# ---------------------------------------------------------------------------
-# the step of the native module which stays on SymPy
-
-def simplify_logic_of_core(formula: CoreBoolean) -> CoreBoolean:
-    """SymPy's ``simplify_logic(formula, deep=False)`` (its exceptions go
-    on)."""
-    from sympy.logic.boolalg import simplify_logic
-    return core_boolean(as_boolean(simplify_logic(sympy_boolean(formula), deep=False)))
 
 
 # ---------------------------------------------------------------------------

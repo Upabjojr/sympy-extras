@@ -10,9 +10,8 @@ The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.assumptions.ask_sympy` is its face on SymPy objects.
 The steps which are not ported go through SymPy at run time (the face
 holds them, the functions ending in ``_of_core``): the cylindrical
-algebraic decomposition (:mod:`sympy_extras.polys.cad`) and virtual
-substitution (:mod:`sympy_extras.polys.virtual_substitution`), both
-written on SymPy's polynomials, and the sample points and the
+algebraic decomposition (:mod:`sympy_extras.polys.cad`), written on
+SymPy's polynomials, and the sample points and the
 reliable numerical values with which a difference is shown not to be
 identically zero (:mod:`sympy_extras.integrals.conditions`,
 :mod:`sympy_extras._numeric`). The questions about predicates go to the
@@ -131,13 +130,13 @@ def _linear_ask(poly: Boolean, premise: Boolean, gens: list[Symbol]) -> Truth:
     under the premise when ``premise & ~poly`` has no real solution, fails
     when ``premise & poly`` has none; ``None`` otherwise, or when the
     formula is not linear (the CAD decides then)."""
-    from .ask_sympy import is_linear_in_of_core, linear_quantifier_elimination_of_core
+    from sympy_extras.polys.virtual_substitution import is_linear_in, linear_quantifier_elimination
     combined = and_(premise, poly)
-    if not all(is_linear_in_of_core(combined, g) for g in gens):
+    if not all(is_linear_in(combined, g) for g in gens):
         return None
     prefix: Prefix = [('exists', g) for g in gens]
-    counterexamples, rest = linear_quantifier_elimination_of_core(and_(premise, not_(poly)), prefix)
-    examples, rest_ = linear_quantifier_elimination_of_core(combined, prefix)
+    counterexamples, rest = linear_quantifier_elimination(and_(premise, not_(poly)), prefix)
+    examples, rest_ = linear_quantifier_elimination(combined, prefix)
     if rest or rest_ or not isinstance(counterexamples, BooleanAtom) or not isinstance(examples, BooleanAtom):
         return None
     if isinstance(examples, BooleanFalse) and isinstance(counterexamples, BooleanFalse):

@@ -164,14 +164,15 @@ sympy_extras/
         analysis.py          signs beyond polynomials: certified_sign, sign_on, domain_of, decide_relational (native;
                              continuous_domain/solveset of non-rational expressions and the CAD through analysis_sympy)
         analysis_sympy.py    the SymPy face of analysis, and the steps which stay on SymPy (the *_of_core functions)
-        ask.py               ask(): the core's ask first, then the CAD (native; the CAD, virtual substitution,
-                             the structure theorem and the sample points through ask_sympy)
+        ask.py               ask(): the core's ask first, then the CAD (native; the CAD, the structure theorem
+                             and the sample points through ask_sympy)
         ask_sympy.py         the SymPy face of ask, and the steps which stay on SymPy (the *_of_core functions)
         refine.py            refine(), simplify(): the core's refine and simplify plus CAD-decided handlers (native)
         refine_sympy.py      the SymPy face of refine (_Refiner too), SymPy's simplify of Booleans, the proofs
-        resolve.py           resolve(): quantifier elimination over R, Z, C (native)
-        resolve_sympy.py     the SymPy face of resolve, and the eliminations (CAD, virtual substitution, Cooper,
-                             comprehensive Groebner systems) which stay on SymPy
+        resolve.py           resolve(): quantifier elimination over R, Z, C (native; virtual substitution and Cooper
+                             natively, the CAD and comprehensive Groebner systems through resolve_sympy)
+        resolve_sympy.py     the SymPy face of resolve, and the eliminations (CAD, comprehensive Groebner systems)
+                             which stay on SymPy
         sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check (native; SymPy's SAT
                              solver, predicates_consistent, the CAD and Hermite's count through sat_sympy)
         sat_sympy.py         the SymPy face of sat, and the steps which stay on SymPy (the *_of_core functions)
@@ -257,9 +258,9 @@ sympy_extras/
         isolation.py         TranscendentalRoot (node), isolate_real_roots, point_between, compare_points: exact real roots of
                              exp-log functions (native; SymPy's real_roots with CRootOf and continuous_domain through isolation_sympy)
         isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts), the *_of_core functions
-        integers.py          linear Diophantine systems (Hermite), Contejean-Devie, Cooper's algorithm, with_sides (native;
+        integers.py          linear Diophantine systems (Hermite), Contejean-Devie, Cooper's algorithm (native;
                              SymPy's simplify_logic through integers_sympy)
-        integers_sympy.py    the SymPy face of integers, and simplify_logic_of_core
+        integers_sympy.py    the SymPy face of integers, and simplify_logic_of_core (from virtual_substitution_sympy)
         tests/
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native; the sample
@@ -325,6 +326,10 @@ sympy_extras/
         modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ modulo primes, proven (Arnold); direct_groebner
         stronggroebner.py    strong_groebner, strong_reduce on rings.PolyRing over ZZ (typed, no SymPy): S- and G-polynomials
         orderings.py         WeightOrder, BlockOrder, elimination_order (hashable monomial orders)
+        virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (Loos-Weispfenning,
+                             Weispfenning), with_sides, to_nnf (native; SymPy's simplify_logic of the results through
+                             virtual_substitution_sympy)
+        virtual_substitution_sympy.py  the SymPy face of virtual_substitution, and simplify_logic_of_core
         puiseux.py           Newton–Puiseux expansions of the branches of a plane curve at a point and at infinity, conjugate branches over number fields (Duval)
         functionfields.py    FunctionField: arithmetic in K(x)[y]/(F), integral bases (Trager's Round 2 over K[x]), local bases at infinity, bases normal at infinity
         tests/
