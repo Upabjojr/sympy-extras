@@ -30,6 +30,18 @@ pub fn fdiff(f: Function, e: &Basic) -> PolyResult<Basic> {
         Function::Coth => mul(&[minus, pow(&h::sinh(x)?, &Basic::int(-2))?]),
         Function::Sech => mul(&[minus, h::tanh(x)?, e.clone()]),
         Function::Csch => mul(&[minus, h::coth(x)?, e.clone()]),
+        g @ (Function::Asin
+        | Function::Acos
+        | Function::Atan
+        | Function::Acot
+        | Function::Asec
+        | Function::Acsc
+        | Function::Asinh
+        | Function::Acosh
+        | Function::Atanh
+        | Function::Acoth
+        | Function::Asech
+        | Function::Acsch) => elementary::inverse::inverse_fdiff(g, x),
         Function::Re | Function::Im | Function::Conjugate | Function::Sign | Function::Abs => {
             unreachable!("these functions have their own derivatives")
         }
@@ -121,5 +133,17 @@ pub fn apply_function(f: Function, x: &Basic) -> PolyResult<Basic> {
         Function::Coth => h::coth(x),
         Function::Sech => h::sech(x),
         Function::Csch => h::csch(x),
+        Function::Asin => elementary::inverse::asin(x),
+        Function::Acos => elementary::inverse::acos(x),
+        Function::Atan => elementary::inverse::atan(x),
+        Function::Acot => elementary::inverse::acot(x),
+        Function::Asec => elementary::inverse::asec(x),
+        Function::Acsc => elementary::inverse::acsc(x),
+        Function::Asinh => elementary::inverse::asinh(x),
+        Function::Acosh => elementary::inverse::acosh(x),
+        Function::Atanh => elementary::inverse::atanh(x),
+        Function::Acoth => elementary::inverse::acoth(x),
+        Function::Asech => elementary::inverse::asech(x),
+        Function::Acsch => elementary::inverse::acsch(x),
     }
 }

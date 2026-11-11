@@ -157,6 +157,18 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Sec" => Basic::new(Head::Function(Function::Sec), args()?),
         "Csc" => Basic::new(Head::Function(Function::Csc), args()?),
         "Sinh" => Basic::new(Head::Function(Function::Sinh), args()?),
+        "Asin" => Basic::new(Head::Function(Function::Asin), args()?),
+        "Acos" => Basic::new(Head::Function(Function::Acos), args()?),
+        "Atan" => Basic::new(Head::Function(Function::Atan), args()?),
+        "Acot" => Basic::new(Head::Function(Function::Acot), args()?),
+        "Asec" => Basic::new(Head::Function(Function::Asec), args()?),
+        "Acsc" => Basic::new(Head::Function(Function::Acsc), args()?),
+        "Asinh" => Basic::new(Head::Function(Function::Asinh), args()?),
+        "Acosh" => Basic::new(Head::Function(Function::Acosh), args()?),
+        "Atanh" => Basic::new(Head::Function(Function::Atanh), args()?),
+        "Acoth" => Basic::new(Head::Function(Function::Acoth), args()?),
+        "Asech" => Basic::new(Head::Function(Function::Asech), args()?),
+        "Acsch" => Basic::new(Head::Function(Function::Acsch), args()?),
         "Cosh" => Basic::new(Head::Function(Function::Cosh), args()?),
         "Tanh" => Basic::new(Head::Function(Function::Tanh), args()?),
         "Coth" => Basic::new(Head::Function(Function::Coth), args()?),
@@ -251,6 +263,8 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
                     "trigonometric"
                 }
+                f if sympy_extras_core::functions::elementary::inverse::is_inverse_trigonometric(*f) => "trigonometric",
+                f if sympy_extras_core::functions::elementary::inverse::is_inverse(*f) => "hyperbolic",
                 Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
                     "hyperbolic"
                 }
@@ -471,6 +485,19 @@ unary!(cot, trigonometric::cot);
 unary!(sec, trigonometric::sec);
 unary!(csc, trigonometric::csc);
 unary!(sinh, hyperbolic::sinh);
+unary!(asin, sympy_extras_core::functions::elementary::inverse::asin);
+unary!(acos, sympy_extras_core::functions::elementary::inverse::acos);
+unary!(atan, sympy_extras_core::functions::elementary::inverse::atan);
+unary!(acot, sympy_extras_core::functions::elementary::inverse::acot);
+unary!(asec, sympy_extras_core::functions::elementary::inverse::asec);
+unary!(acsc, sympy_extras_core::functions::elementary::inverse::acsc);
+unary!(asinh, sympy_extras_core::functions::elementary::inverse::asinh);
+unary!(acosh, sympy_extras_core::functions::elementary::inverse::acosh);
+unary!(atanh, sympy_extras_core::functions::elementary::inverse::atanh);
+unary!(acoth, sympy_extras_core::functions::elementary::inverse::acoth);
+unary!(asech, sympy_extras_core::functions::elementary::inverse::asech);
+unary!(acsch, sympy_extras_core::functions::elementary::inverse::acsch);
+
 unary!(cosh, hyperbolic::cosh);
 unary!(tanh, hyperbolic::tanh);
 unary!(coth, hyperbolic::coth);
@@ -1478,6 +1505,19 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sec, m)?)?;
     m.add_function(wrap_pyfunction!(csc, m)?)?;
     m.add_function(wrap_pyfunction!(sinh, m)?)?;
+    m.add_function(wrap_pyfunction!(asin, m)?)?;
+    m.add_function(wrap_pyfunction!(acos, m)?)?;
+    m.add_function(wrap_pyfunction!(atan, m)?)?;
+    m.add_function(wrap_pyfunction!(acot, m)?)?;
+    m.add_function(wrap_pyfunction!(asec, m)?)?;
+    m.add_function(wrap_pyfunction!(acsc, m)?)?;
+    m.add_function(wrap_pyfunction!(asinh, m)?)?;
+    m.add_function(wrap_pyfunction!(acosh, m)?)?;
+    m.add_function(wrap_pyfunction!(atanh, m)?)?;
+    m.add_function(wrap_pyfunction!(acoth, m)?)?;
+    m.add_function(wrap_pyfunction!(asech, m)?)?;
+    m.add_function(wrap_pyfunction!(acsch, m)?)?;
+
     m.add_function(wrap_pyfunction!(cosh, m)?)?;
     m.add_function(wrap_pyfunction!(tanh, m)?)?;
     m.add_function(wrap_pyfunction!(coth, m)?)?;

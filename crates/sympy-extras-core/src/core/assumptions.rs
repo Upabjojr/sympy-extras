@@ -1294,6 +1294,9 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::Coth
         | super::basic::Function::Sech
         | super::basic::Function::Csch => crate::functions::elementary::hyperbolic::hyperbolic_facts(f, &e.args()[0]),
+        f if crate::functions::elementary::inverse::is_inverse(f) => {
+            crate::functions::elementary::inverse::inverse_facts(f, &e.args()[0])
+        }
         other => crate::functions::elementary::complexes::complexes_facts(other, &e.args()[0]),
     };
     if facts.get(commutative) == Some(true) && e.args().iter().any(|a| no(facts_of(a), commutative)) {

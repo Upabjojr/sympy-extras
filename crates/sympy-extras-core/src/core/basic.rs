@@ -127,6 +127,18 @@ pub enum Function {
     Coth,
     Sech,
     Csch,
+    Asin,
+    Acos,
+    Atan,
+    Acot,
+    Asec,
+    Acsc,
+    Asinh,
+    Acosh,
+    Atanh,
+    Acoth,
+    Asech,
+    Acsch,
 }
 
 impl Function {
@@ -152,6 +164,18 @@ impl Function {
             Function::Coth => "coth",
             Function::Sech => "sech",
             Function::Csch => "csch",
+            Function::Asin => "asin",
+            Function::Acos => "acos",
+            Function::Atan => "atan",
+            Function::Acot => "acot",
+            Function::Asec => "asec",
+            Function::Acsc => "acsc",
+            Function::Asinh => "asinh",
+            Function::Acosh => "acosh",
+            Function::Atanh => "atanh",
+            Function::Acoth => "acoth",
+            Function::Asech => "asech",
+            Function::Acsch => "acsch",
         }
     }
 
@@ -177,6 +201,18 @@ impl Function {
             Function::Coth => "Coth",
             Function::Sech => "Sech",
             Function::Csch => "Csch",
+            Function::Asin => "Asin",
+            Function::Acos => "Acos",
+            Function::Atan => "Atan",
+            Function::Acot => "Acot",
+            Function::Asec => "Asec",
+            Function::Acsc => "Acsc",
+            Function::Asinh => "Asinh",
+            Function::Acosh => "Acosh",
+            Function::Atanh => "Atanh",
+            Function::Acoth => "Acoth",
+            Function::Asech => "Asech",
+            Function::Acsch => "Acsch",
         }
     }
 
@@ -197,6 +233,18 @@ impl Function {
             Function::Tanh => 32,
             Function::Coth => 33,
             Function::Sign | Function::Abs | Function::Sec | Function::Csc | Function::Sech | Function::Csch => 10000,
+            Function::Asin
+            | Function::Acos
+            | Function::Atan
+            | Function::Acot
+            | Function::Asec
+            | Function::Acsc
+            | Function::Asinh
+            | Function::Acosh
+            | Function::Atanh
+            | Function::Acoth
+            | Function::Asech
+            | Function::Acsch => 10000,
         }
     }
 }

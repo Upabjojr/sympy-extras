@@ -317,6 +317,18 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                         }
                     }
                 }
+                g @ (super::basic::Function::Asin
+                | super::basic::Function::Acos
+                | super::basic::Function::Atan
+                | super::basic::Function::Acot
+                | super::basic::Function::Asec
+                | super::basic::Function::Acsc
+                | super::basic::Function::Asinh
+                | super::basic::Function::Acosh
+                | super::basic::Function::Atanh
+                | super::basic::Function::Acoth
+                | super::basic::Function::Asech
+                | super::basic::Function::Acsch) => crate::functions::elementary::inverse::inverse_value(*g, &v, wp)?,
                 super::basic::Function::Re => complex_real(parts(&v).0, wp),
                 super::basic::Function::Im => complex_real(parts(&v).1, wp),
                 super::basic::Function::Conjugate => {

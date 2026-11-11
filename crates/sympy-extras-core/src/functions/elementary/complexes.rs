@@ -109,6 +109,18 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
             Ok(Some(super::hyperbolic::hyperbolic_conjugate(f, arg)?))
         }
+        g @ (Function::Asin
+        | Function::Acos
+        | Function::Atan
+        | Function::Acot
+        | Function::Asec
+        | Function::Acsc
+        | Function::Asinh
+        | Function::Acosh
+        | Function::Atanh
+        | Function::Acoth
+        | Function::Asech
+        | Function::Acsch) => super::inverse::inverse_conjugate(e, g),
         Function::Log => {
             // DefinedFunction._eval_conjugate
             if is_true(e, extended_real) {
@@ -375,6 +387,24 @@ fn function_real_imag(e: &Basic, f: Function, deep: bool, ignore: Option<&Basic>
                 return Ok(Some((e.clone(), Basic::zero())));
             }
             Err(not_ported("arg"))
+        }
+        g @ (Function::Asin
+        | Function::Acos
+        | Function::Atan
+        | Function::Acot
+        | Function::Asec
+        | Function::Acsc
+        | Function::Asinh
+        | Function::Acosh
+        | Function::Atanh
+        | Function::Acoth
+        | Function::Asech
+        | Function::Acsch) => {
+            let _ = g;
+            if ignore == Some(e) {
+                return Ok(None);
+            }
+            Ok(Some((re(e)?, im(e)?)))
         }
         Function::Sign | Function::Conjugate => {
             if ignore == Some(e) {
