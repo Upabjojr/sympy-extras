@@ -18,6 +18,9 @@ the kernels are first brought to a set with known relations:
   $\rho^q = n\, d^{q-1}$ (no choice of branch is involved: this is an
   identity of the principal root), so that all the fractional powers of
   the same base and denominator become powers of one kernel;
+* the exponentials $e^{r w}$ with rational $r$ are integer powers of one
+  kernel $e^{g w}$ for each $w$ ($g$ the greatest common divisor of the
+  $r$), so that $e^{x} e^{-x} = 1$ and $e^{2x} = (e^x)^2$ hold;
 * the imaginary unit satisfies $i^2 = -1$.
 
 With the roots ordered from the outermost in, then the cosines, then the
@@ -36,7 +39,8 @@ kernels) is returned.
 The result is zero exactly when the numerator lies in the ideal of the
 relations: a zero test for these expressions as long as the kernels have
 no relation beyond the ones listed (``sin(2*x)`` and ``sin(x)`` are
-independent kernels here, and so are ``exp(x)`` and ``exp(2*x)``). The
+independent kernels here, and so are ``exp(x)`` and ``exp(x**2)`` or
+``log(x)`` and ``log(2*x)``). The
 common factors are those of the polynomials: ``(x - 1)/(sqrt(x) - 1)``
 is left as it is.
 
@@ -66,17 +70,21 @@ References
 """
 from __future__ import annotations
 
+from fractions import Fraction
+from math import gcd
 from typing import Final, Sequence
 
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.mul import Mul, mul
-from sympy_extras.core.numbers import I, ImaginaryUnit, Integer, Rational
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.numbers import I, ImaginaryUnit, Integer, Rational, number_from_fraction
 from sympy_extras.core.power import Pow, pow
 from sympy_extras.core.symbol import Dummy, Symbol
 from sympy_extras.functions.elementary.hyperbolic import Cosh, Coth, Csch, Sech, Sinh, Tanh
 from sympy_extras.functions.elementary.trigonometric import Cos, Cot, Csc, Sec, Sin, Tan
-from sympy_extras.functions import cos, cosh, sin, sinh
+from sympy_extras.functions import cos, cosh, exp, sin, sinh
+from sympy_extras.functions.elementary.exponential import Exp
 from sympy_extras.matrices.linalg import _IntegerLift, _PolynomialLift, _collect_kernels
 from sympy_extras.polys.rings import PolyElement
 
@@ -125,7 +133,8 @@ class _Abstraction:
         return self.sines[key], self.cosines[key]
 
     def _restore(self, e: Expr) -> Expr:
-        for placeholder, original in self.back.items():
+        # the latest first: the original of a placeholder may contain the earlier ones (an exponential under a root)
+        for placeholder, original in reversed(list(self.back.items())):
             if e.has(placeholder):
                 e = e.subs(placeholder, original)
         return e
@@ -184,6 +193,36 @@ class _Abstraction:
                     return c/s
                 return 1/c if isinstance(e, Sech) else 1/s
         return e
+
+
+def _exponentials(expressions: Sequence[Expr], back: dict[Symbol, Expr]) -> list[Expr]:
+    """The expressions with ``exp(r*w)``, ``r`` rational, written as
+    integer powers of one indeterminate standing for ``exp(g*w)`` (``g``
+    the greatest common divisor of the ``r`` met for that ``w``), which is
+    recorded in ``back``. The core turns ``exp(t)**2`` into ``exp(2*t)``:
+    without this the two would be unrelated kernels."""
+    groups: dict[Expr, list[tuple[Basic, Fraction]]] = {}
+    for expression in expressions:
+        for node in expression.atoms(Exp):
+            argument = node.args[0]
+            if not isinstance(argument, Expr):
+                continue
+            coefficient, rest = argument.as_coeff_Mul()
+            if isinstance(coefficient, Rational):
+                groups.setdefault(rest, []).append((node, Fraction(coefficient.p, coefficient.q)))
+    rule: dict[Basic, Basic] = {}
+    for rest, nodes in groups.items():
+        numerator, denominator = 0, 1
+        for _, r in nodes:
+            numerator = gcd(numerator*r.denominator, r.numerator*denominator)
+            denominator *= r.denominator
+        step = Fraction(numerator, denominator)
+        placeholder: Symbol = Dummy('E')
+        back[placeholder] = exp(number_from_fraction(step)*rest)
+        for node, r in nodes:
+            power = r/step
+            rule[node] = pow(placeholder, Integer(power.numerator))
+    return [e.xreplace(rule) for e in expressions] if rule else list(expressions)
 
 
 class _QuotientLift(_PolynomialLift):
@@ -257,7 +296,8 @@ def normal_form(e: ExprLike) -> Expr:
     """
     expression = to_expr(e)
     abstraction = _Abstraction()
-    abstracted = abstraction.abstract(expression)
+    [prepared] = _exponentials([expression], abstraction.back)
+    abstracted = abstraction.abstract(prepared)
     found: dict[Expr, int] = {}
     _collect_kernels(abstracted, found)
     relations = abstraction.relations

@@ -35,6 +35,11 @@ def test_identities_reduce_to_zero() -> None:
         sqrt(x/y)*sqrt(x/y) - x/y,
         sqrt(1 - sin(x)**2)**2 - cos(x)**2,
         (1 + I)**4 + 4,
+        exp(x)*exp(-x) - 1,
+        exp(2*x) - exp(x)**2,
+        (exp(x) + exp(-x))**2 - (exp(x) - exp(-x))**2 - 4,
+        exp(x/2)*exp(x/3) - exp(5*x/6),
+        (exp(3*y) - 1)/(exp(y) - 1) - exp(2*y) - exp(y) - 1,
         1/(x + I) - (x - I)/(x**2 + 1),
         (sqrt(2) + sqrt(3))**2 - 5 - 2*sqrt(2)*sqrt(3),
         sqrt(x + sqrt(y))**4 - x**2 - 2*x*sqrt(y) - y,
@@ -43,9 +48,16 @@ def test_identities_reduce_to_zero() -> None:
         assert normal_form(identity) == 0, identity
 
 
+def test_exponential_under_a_root_is_restored() -> None:
+    # the placeholder of exp(x) stayed in the result (_E under the square root) when the root was restored after it
+    result = normal_form(sqrt(1 + exp(2*x))*exp(x))
+    assert all(isinstance(s, type(x)) and s.name == 'x' for s in result.free_symbols)
+    assert normal_form(result**2 - (1 + exp(2*x))*exp(2*x)) == 0
+
+
 def test_non_identities_are_not_zero() -> None:
     for expression in [sin(x)**2 - cos(x)**2, sin(x) - cos(x), sqrt(x) - x, sin(x)**2 + cos(y)**2 - 1, cosh(x)**2 + sinh(x)**2 - 1,
-                       sqrt(x) + sqrt(y), exp(x) - 1, tan(x) - sin(x)]:
+                       sqrt(x) + sqrt(y), exp(x) - 1, tan(x) - sin(x), exp(2*x) - exp(x), exp(x) - exp(y)]:
         assert normal_form(expression) != 0
 
 

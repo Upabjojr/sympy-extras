@@ -146,7 +146,8 @@ is brought to the normal form of
 `sympy_extras.simplify.normalform.normal_form`: a quotient of
 polynomials in the kernels, in lowest terms, reduced modulo
 $\sin^2 + \cos^2 = 1$ (and $\cosh^2 - \sinh^2 = 1$), the relations
-$\rho^q = b$ of the fractional powers and $i^2 = -1$. These relations
+$\rho^q = b$ of the fractional powers, the powers $e^{r w} = (e^{g
+w})^{r/g}$ of exponentials and $i^2 = -1$. These relations
 have coprime leading monomials, so they are a Gröbner basis and the
 remainder is canonical: a component is returned as `0` exactly when it
 vanishes by them. The reduction is applied after every operation, which
@@ -170,7 +171,7 @@ for instance `sympy_extras.simplify.simplify.simplify`.
 * tensors as objects with index positions (only the components of the
   listed tensors), tetrads and the Newman–Penrose formalism;
 * relations between kernels beyond the ones above (`sin(2*x)` against
-  `sin(x)`, `exp(x)` against `exp(2*x)`, logarithms): such metrics are
+  `sin(x)`, `cosh(x)` against `exp(x)`, logarithms): such metrics are
   computed, but a vanishing component may not be reduced to zero;
 * solving the Killing equations or the geodesic equations (they are
   returned as expressions).

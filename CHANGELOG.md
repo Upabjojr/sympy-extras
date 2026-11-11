@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `simplify.normalform.normal_form` relates the exponentials with
+  commensurable arguments: `exp(r*w)` for rational `r` are powers of one
+  kernel, so that `exp(x)*exp(-x) - 1` and `exp(2*x) - exp(x)**2` reduce
+  to zero (also in `Metric`, `Curve`, `Surface`, the vector operators).
 - `sympy_extras.solvers.elimination`: `eliminate(equations, variables)`
   (SymPy issue 2720): generators of the elimination ideal, for
   polynomial and rational equations (saturated by the denominators) and

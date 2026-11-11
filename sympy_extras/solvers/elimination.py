@@ -64,25 +64,20 @@ References
 """
 from __future__ import annotations
 
-from fractions import Fraction
-from math import gcd
 from typing import Sequence, Union
 
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import expand_trig
 from sympy_extras.core.mul import mul
-from sympy_extras.core.numbers import ImaginaryUnit, Integer, Rational, number_from_fraction
-from sympy_extras.core.power import pow
+from sympy_extras.core.numbers import ImaginaryUnit, Integer, Rational
 from sympy_extras.core.relational import Eq
 from sympy_extras.core.sorting import default_sort_key
 from sympy_extras.core.symbol import Dummy, Symbol
-from sympy_extras.functions import exp
-from sympy_extras.functions.elementary.exponential import Exp
 from sympy_extras.matrices.linalg import _collect_kernels
 from sympy_extras.polys.domains import QQ
 from sympy_extras.polys.ideals import Ideal
-from sympy_extras.simplify.normalform import _Abstraction, _numer_denom, normal_form
+from sympy_extras.simplify.normalform import _Abstraction, _exponentials, _numer_denom, normal_form
 
 __all__ = ['eliminate', 'implicitize']
 
@@ -96,36 +91,6 @@ def _expression(equation: Equation) -> Expr:
             raise TypeError('%s is not an equation between expressions' % (equation,))
         return lhs - rhs
     return to_expr(equation)
-
-
-def _exponentials(expressions: Sequence[Expr], back: dict[Symbol, Expr]) -> list[Expr]:
-    """The expressions with ``exp(r*w)``, ``r`` rational, written as
-    integer powers of one indeterminate standing for ``exp(g*w)`` (``g``
-    the greatest common divisor of the ``r`` met for that ``w``), which is
-    recorded in ``back``. The core turns ``exp(t)**2`` into ``exp(2*t)``:
-    without this the two would be unrelated kernels."""
-    groups: dict[Expr, list[tuple[Basic, Fraction]]] = {}
-    for expression in expressions:
-        for node in expression.atoms(Exp):
-            argument = node.args[0]
-            if not isinstance(argument, Expr):
-                continue
-            coefficient, rest = argument.as_coeff_Mul()
-            if isinstance(coefficient, Rational):
-                groups.setdefault(rest, []).append((node, Fraction(coefficient.p, coefficient.q)))
-    rule: dict[Basic, Basic] = {}
-    for rest, nodes in groups.items():
-        numerator, denominator = 0, 1
-        for _, r in nodes:
-            numerator = gcd(numerator*r.denominator, r.numerator*denominator)
-            denominator *= r.denominator
-        step = Fraction(numerator, denominator)
-        placeholder: Symbol = Dummy('E')
-        back[placeholder] = exp(number_from_fraction(step)*rest)
-        for node, r in nodes:
-            power = r/step
-            rule[node] = pow(placeholder, Integer(power.numerator))
-    return [e.xreplace(rule) for e in expressions] if rule else list(expressions)
 
 
 def eliminate(equations: Sequence[Equation], variables: Sequence[Symbol]) -> list[Expr]:
@@ -201,7 +166,7 @@ def eliminate(equations: Sequence[Equation], variables: Sequence[Symbol]) -> lis
     results: list[Expr] = []
     for g in ideal.groebner_basis():
         polynomial = _numer_denom(ideal.to_expr(g))[0]
-        for placeholder, original in back.items():
+        for placeholder, original in reversed(list(back.items())):
             if polynomial.has(placeholder):
                 polynomial = polynomial.subs(placeholder, original)
         # the relations between the kernels which stay (sin(a)**2 + cos(a)**2 - 1) are identities, not results
