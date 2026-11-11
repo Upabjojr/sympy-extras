@@ -84,7 +84,7 @@ from sympy_extras._typing import Truth, as_boolean, as_expr, free_symbols
 from sympy_extras.settings import settings
 from sympy_extras.assumptions.ask_sympy import ask, Assumptions, _facts
 from sympy_extras.assumptions.analysis_sympy import sign_on, certified_sign
-from sympy_extras.assumptions.limits import limit as _limit_with_assumptions
+from sympy_extras.assumptions.limits_sympy import limit as _limit_with_assumptions
 from sympy_extras.assumptions.refine_sympy import simplify as _simplify_with_assumptions, _Refiner
 from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.assumptions.resolve_sympy import resolve

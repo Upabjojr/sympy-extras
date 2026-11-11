@@ -267,7 +267,7 @@ parameters like `limit`.
 >>> from sympy.abc import n, p
 >>> from sympy_extras.concrete.convergence import sum_convergence, product_convergence
 >>> from sympy_extras.concrete.dirichlet import dirichlet_series
->>> from sympy_extras.assumptions.limits import limit_seq
+>>> from sympy_extras.assumptions.limits_sympy import limit_seq
 >>> sum_convergence(x**n/n, n)
 (x >= -1) & (x < 1)
 >>> sum_convergence(1/n**p, n)

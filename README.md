@@ -386,7 +386,7 @@ statement assumptions and case distinctions.
 >>> from sympy_extras.solvers.linear_ode import dsolve_linear
 >>> from sympy_extras.solvers.charpit import complete_integral
 >>> from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
->>> from sympy_extras.assumptions.limits import limit
+>>> from sympy_extras.assumptions.limits_sympy import limit
 >>> x, y = symbols('x y')
 >>> f = Function('y')(x)
 >>> dsolve_kovacic(f.diff(x, 2) + f.diff(x)/x + (1 - 1/(4*x**2))*f, f)
@@ -519,7 +519,7 @@ decided by virtual substitution and the parity of integer polynomials in
 >>> from sympy.abc import x, n, p
 >>> from sympy_extras.assumptions.solve_sympy import solve
 >>> from sympy_extras.assumptions.refine_sympy import refine
->>> from sympy_extras.assumptions.limits import limit_seq
+>>> from sympy_extras.assumptions.limits_sympy import limit_seq
 >>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.solvers.dae import dsolve_dae
 >>> from sympy_extras.concrete.convergence import sum_convergence
@@ -943,7 +943,8 @@ sympy_extras/
         resolve.py           resolve (quantifier elimination over the reals, integers, complexes)
         sat.py               satisfiable, tautology, find_instance
         solve.py             solve with assumptions and a domain
-        limits.py            limit and series with assumptions and case distinctions
+        limits.py            limit, limit_seq and series with assumptions and case distinctions (native)
+        limits_sympy.py      the SymPy face of limits, and SymPy's limit_seq
     core/                    an experimental core: unevaluating classes, evaluating functions (docs/core.md)
     functions/
         elementary/

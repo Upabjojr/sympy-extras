@@ -91,7 +91,7 @@ from sympy_extras._timeout import attempt
 from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
 from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.facts_sympy import element
-from sympy_extras.assumptions.limits import limit
+from sympy_extras.assumptions.limits_sympy import limit
 from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.settings import settings
 from .conditions import ConditionalValue, sample_values

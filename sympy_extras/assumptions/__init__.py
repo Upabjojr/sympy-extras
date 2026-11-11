@@ -35,7 +35,9 @@ SymPy):
   :func:`~sympy_extras.assumptions.solve_sympy.solve` (on SymPy objects) --
   ``Solve`` with assumptions and a domain;
 * :func:`~sympy_extras.assumptions.limits.limit`, ``limit_seq`` and
-  ``series`` -- limits and expansions with the parameters carrying the
+  ``series`` (native, on the core) and
+  :func:`~sympy_extras.assumptions.limits_sympy.limit`, ... (on SymPy
+  objects) -- limits and expansions with the parameters carrying the
   assumptions;
 * :func:`~sympy_extras.assumptions.facts_sympy.element`,
   :class:`~sympy_extras.assumptions.facts_sympy.Facts`,
