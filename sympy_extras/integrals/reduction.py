@@ -627,7 +627,7 @@ def reduction_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symb
     ConditionalValue(sqrt(pi)*exp(-t**2)/2)
     """
     from .definite import verify_numerically
-    from .marichev import tidy
+    from .marichev_sympy import tidy
     F_ = as_expr(sympify(F))
     a_, b_ = as_expr(sympify(a)), as_expr(sympify(b))
     equation = reduction_ode(F_, x, a_, b_, t, assumptions)

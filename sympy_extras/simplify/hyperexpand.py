@@ -125,7 +125,9 @@ def _keys_union(a: dict[Expr, list[Expr]], b: dict[Expr, list[Expr]]) -> list[Ex
 
 
 def _xreplace(e: Expr, repl: Repl) -> Expr:
-    return _expr(e.xreplace(repl))
+    """``e`` with the keys of ``repl`` replaced, evaluated as SymPy's
+    ``xreplace`` evaluates (the core's ``xreplace`` does not)."""
+    return _expr(e._xreplace_evaluated(repl))
 
 
 # PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:make_simp

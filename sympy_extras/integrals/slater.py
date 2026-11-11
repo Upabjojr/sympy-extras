@@ -40,19 +40,26 @@ residues at the poles of the `\\Gamma(b_j - s)`: when no two of
 and the cases `p > q` or `|z| > 1` follow from
 `G^{m,n}_{p,q}(z \\mid a; b) = G^{n,m}_{q,p}(1/z \\mid 1 - b; 1 - a)`. The
 hypergeometric series are then reduced to elementary and special
-functions by :func:`sympy.simplify.hyperexpand.hyperexpand`. When two of
-the `b_j` differ by an integer (a logarithmic case) the expansion is
-left to SymPy's ``hyperexpand`` of the G-function, which takes the limit.
+functions by :func:`sympy_extras.simplify.hyperexpand.hyperexpand`. When
+two of the `b_j` differ by an integer (a logarithmic case) the parameters
+are moved apart and the limit is taken, or the expansion is left to
+``hyperexpand`` of the G-function.
+
+The module works on the objects of the core (:mod:`sympy_extras.core`, the
+functions of :mod:`sympy_extras.functions`) with the native ``ask``,
+``hyperexpand``, ``simplify`` and limits, and imports no SymPy:
+:mod:`sympy_extras.integrals.slater_sympy` is its face on SymPy objects.
 
 Examples
 ========
 
->>> from sympy import symbols, meijerg, S
+>>> from sympy_extras.core import Rational, Symbol
+>>> from sympy_extras.functions import meijerg
 >>> from sympy_extras.integrals.slater import slater_expansion
->>> z = symbols('z', positive=True)
+>>> z = Symbol('z', positive=True)
 >>> slater_expansion(meijerg([], [], [0], [], z))
 exp(-z)
->>> slater_expansion(meijerg([1], [], [S.Half], [0], z))
+>>> slater_expansion(meijerg([1], [], [Rational(1, 2)], [0], z))
 sqrt(pi)*erf(sqrt(z))
 
 References
@@ -66,54 +73,66 @@ References
 from __future__ import annotations
 
 import random
-
 from math import lcm
-from typing import Optional, Sequence
+from typing import Final, Optional, Sequence
 
-from sympy.core.expr import Expr
-from sympy.core.mul import Mul
-from sympy.core.power import Pow
-from sympy.core.add import Add
-from sympy.core.function import Function
-from sympy.core.numbers import Integer, Rational, nan, pi, oo, zoo
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy
-from sympy.series.limits import Limit, limit
-from sympy.functions.elementary.complexes import Abs, arg as arg_, im, re
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.functions.elementary.exponential import exp
-from sympy.functions.special.gamma_functions import gamma, lowergamma
-from sympy.functions.special.hyper import hyper, meijerg
-from sympy.logic.boolalg import And, Boolean, true
-from sympy.simplify.hyperexpand import hyperexpand
-from sympy.simplify.simplify import simplify
-
-from sympy_extras._numeric_sympy import reliable_value
+from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
-from sympy_extras.assumptions.ask_sympy import Assumptions, ask
+from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.core.add import add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.evalf import evalf
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.function import Application
+from sympy_extras.core.limits import Limit, limit
+from sympy_extras.core.logic import Boolean, BooleanTrue, and_, or_, true
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import Infinity, Integer, NegativeInfinity, Rational, pi
+from sympy_extras.core.power import Pow
+from sympy_extras.core.relational import le, lt
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.complexes import Abs, abs_, arg as arg_, im, re
+from sympy_extras.functions.elementary.exponential import ExpPolar, exp
+from sympy_extras.functions.elementary.piecewise import piecewise
+from sympy_extras.functions.special.gamma_functions import gamma, lowergamma
+from sympy_extras.functions.special.hyper import Hyper, MeijerG as MeijerGFunction, hyper, meijerg
 from sympy_extras.settings import settings
-from .conditions_sympy import ConditionalValue, numerically_equal, sample_values
-from .mellin_sympy import GammaFactor, GammaQuotient
+from sympy_extras.simplify.hyperexpand import hyperexpand
+from sympy_extras.simplify.simplify import simplify
+from .conditions import ConditionalValue, numerically_equal, sample_values
+from .mellin import GammaFactor, GammaQuotient
 
-__all__ = ['MeijerG', 'mellin_barnes', 'slater_expansion', 'expand_meijerg']
+__all__ = ['MeijerG', 'mellin_barnes', 'slater_expansion', 'expand_meijerg', 'line_conditions']
 
 
 class MeijerG:
     """A G-function `G^{m,n}_{p,q}(z \\mid a_n, a_p; b_m, b_q)` with a
-    multiplicative prefactor."""
+    multiplicative prefactor.
 
-    def __init__(self, prefactor: Expr, an: Sequence[Expr], ap: Sequence[Expr],
-                 bm: Sequence[Expr], bq: Sequence[Expr], z: Expr) -> None:
-        self.prefactor = prefactor
-        self.an = tuple(an)
-        self.ap = tuple(ap)
-        self.bm = tuple(bm)
-        self.bq = tuple(bq)
-        self.z = z
+    >>> from sympy_extras.core import Integer, Symbol
+    >>> from sympy_extras.integrals.slater import MeijerG
+    >>> z = Symbol('z')
+    >>> g = MeijerG(Integer(2), [Integer(0)], [], [Integer(1)], [], z)
+    >>> g, (g.m, g.n, g.p, g.q, g.delta)
+    (MeijerG(2, meijerg(((0,), ()), ((1,), ()), z)), (1, 1, 1, 1, 1))
+    >>> g.reflected()
+    MeijerG(2, meijerg(((0,), ()), ((1,), ()), 1/z))
+    """
+
+    __slots__ = ('prefactor', 'an', 'ap', 'bm', 'bq', 'z')
+
+    def __init__(self, prefactor: ExprLike, an: Sequence[ExprLike], ap: Sequence[ExprLike],
+                 bm: Sequence[ExprLike], bq: Sequence[ExprLike], z: ExprLike) -> None:
+        self.prefactor: Final[Expr] = to_expr(prefactor)
+        self.an: Final[tuple[Expr, ...]] = tuple(to_expr(a) for a in an)
+        self.ap: Final[tuple[Expr, ...]] = tuple(to_expr(a) for a in ap)
+        self.bm: Final[tuple[Expr, ...]] = tuple(to_expr(b) for b in bm)
+        self.bq: Final[tuple[Expr, ...]] = tuple(to_expr(b) for b in bq)
+        self.z: Final[Expr] = to_expr(z)
 
     def __repr__(self) -> str:
-        return "MeijerG(%s, %s)" % (self.prefactor, self.as_sympy())
+        return "MeijerG(%s, %s)" % (self.prefactor, self.as_expr())
 
     @property
     def m(self) -> int:
@@ -136,10 +155,10 @@ class MeijerG:
         """`m + n - (p + q)/2`."""
         return Rational(2 * (self.m + self.n) - self.p - self.q, 2)
 
-    def as_sympy(self) -> Expr:
-        """The :class:`~sympy.functions.special.hyper.meijerg` expression
-        (without the prefactor)."""
-        return as_expr(meijerg(list(self.an), list(self.ap), list(self.bm), list(self.bq), self.z))
+    def as_expr(self) -> Expr:
+        """The :func:`~sympy_extras.functions.special.hyper.meijerg`
+        expression (without the prefactor)."""
+        return meijerg(list(self.an), list(self.ap), list(self.bm), list(self.bq), self.z)
 
     def reflected(self) -> MeijerG:
         """The same function written with argument ``1/z``."""
@@ -147,14 +166,27 @@ class MeijerG:
                        [1 - a for a in self.an], [1 - a for a in self.ap], 1 / self.z)
 
 
+def _xreplace(e: Expr, rule: dict[Basic, Basic]) -> Expr:
+    """``e`` with the keys of ``rule`` replaced, evaluated (SymPy's ``xreplace``)."""
+    replaced = e._xreplace_evaluated(rule)
+    if not isinstance(replaced, Expr):
+        raise TypeError("an expression is expected, got %s" % (replaced,))
+    return replaced
+
+
+def _has_infinity(e: Expr) -> bool:
+    """``e.has(oo, zoo, nan)``."""
+    return e.has(S.Infinity, S.ComplexInfinity, S.NaN)
+
+
 def _multiplication(shift: Expr, k: int) -> tuple[Expr, Expr, list[GammaFactor]]:
     """Gauss's multiplication formula for ``Gamma(shift + k*u)``: the
     constant, the base of the power ``|k|**(k*u)`` and the factors
     ``Gamma((shift + j)/|k| + sign(k)*u)``."""
     size = abs(k)
-    constant = as_expr((2 * pi)**Rational(1 - size, 2) * Integer(size)**(shift - S.Half))
-    sign = S.One if k > 0 else S.NegativeOne
-    factors: list[GammaFactor] = [(as_expr((shift + j) / size), Rational(sign)) for j in range(size)]
+    constant = (2 * pi)**Rational(1 - size, 2) * Integer(size)**(shift - S.Half)
+    sign = Integer(1) if k > 0 else Integer(-1)
+    factors: list[GammaFactor] = [((shift + j) / size, sign) for j in range(size)]
     return constant, Integer(size), factors
 
 
@@ -166,8 +198,8 @@ def mellin_barnes(quotient: GammaQuotient) -> Optional[MeijerG]:
     Examples
     ========
 
-    >>> from sympy import S
-    >>> from sympy_extras.integrals.mellin_sympy import GammaQuotient
+    >>> from sympy_extras.core import S
+    >>> from sympy_extras.integrals.mellin import GammaQuotient
     >>> from sympy_extras.integrals.slater import mellin_barnes
     >>> q = GammaQuotient(1, [(3, -1)], [(0, S.One), (1, -S.One)], [], 0, 1)
     >>> mellin_barnes(q)
@@ -192,11 +224,12 @@ def mellin_barnes(quotient: GammaQuotient) -> Optional[MeijerG]:
     bq: list[Expr] = []
     for factors, numerator in ((quotient.numerator, True), (quotient.denominator, False)):
         for shift, scale in factors:
-            k = int(scale * lam)
+            # scale * lam, an integer since lam is a multiple of the denominator
+            k = scale.p * (lam // scale.q)
             if k == 0:
                 constant = constant * gamma(shift) if numerator else constant / gamma(shift)
                 continue
-            unit: list[GammaFactor] = [(shift, Rational(k))]
+            unit: list[GammaFactor] = [(shift, Integer(k))]
             if abs(k) > 1:
                 c, base, unit = _multiplication(shift, k)
                 if numerator:
@@ -206,19 +239,19 @@ def mellin_barnes(quotient: GammaQuotient) -> Optional[MeijerG]:
                     constant = constant / c
                     z = z * base**(-k)
             for a, b in unit:
-                if numerator and b > 0:
+                if numerator and b.p > 0:
                     an.append(1 - a)
                 elif numerator:
                     bm.append(a)
-                elif b > 0:
+                elif b.p > 0:
                     bq.append(1 - a)
                 else:
                     ap.append(a)
-    return MeijerG(as_expr(constant), an, ap, bm, bq, as_expr(z))
+    return MeijerG(constant, an, ap, bm, bq, z)
 
 
 def _integer_difference(a: Expr, b: Expr) -> Optional[bool]:
-    d = as_expr(a - b)
+    d = a - b
     if d.is_integer is True:
         return True
     if d.is_integer is False:
@@ -246,7 +279,7 @@ def _slater_series(g: MeijerG) -> Optional[Expr]:
     if coincident:
         return _logarithmic_case(g, coincident)
     total: Expr = S.Zero
-    sign = S.NegativeOne**(g.p - g.m - g.n)
+    sign = Integer(-1)**(g.p - g.m - g.n)
     for h in range(g.m):
         bh = g.bm[h]
         coefficient: Expr = S.One
@@ -262,7 +295,7 @@ def _slater_series(g: MeijerG) -> Optional[Expr]:
         upper = [1 + bh - a for a in as_]
         lower = [1 + bh - b for j, b in enumerate(bs) if j != h]
         total = total + coefficient * g.z**bh * hyper(upper, lower, sign * g.z)
-    return as_expr(total)
+    return total
 
 
 def _logarithmic_case(g: MeijerG, coincident: list[int]) -> Optional[Expr]:
@@ -275,36 +308,36 @@ def _logarithmic_case(g: MeijerG, coincident: list[int]) -> Optional[Expr]:
     value: Optional[Expr] = None
     if series is not None:
         expanded = _hyperexpand(series)
-        if not expanded.has(hyper):
+        if not expanded.has(Hyper):
             # an eighth of the time limit: the limit (gruntz on the perturbed
             # hypergeometric sum) took a minute for the Parseval integrand
-            # of expint(1, a*t)*exp(-(s - a)*t), where SymPy's expansion of
-            # the G-function below is immediate; the limit first, since its
+            # of expint(1, a*t)*exp(-(s - a)*t), where the expansion of the
+            # G-function below is immediate; the limit first, since its
             # forms are the real ones (acosh(s/k)/sqrt(s**2 - k**2) for the
             # transform of besselk(0, k*t), where the expansion gives
             # (pi/2 - asin(s/k))/sqrt(k**2 - s**2), real by a cancellation)
             budget = None if settings.timeout is None else settings.timeout / 8
-            value = attempt(lambda: as_expr(limit(expanded, epsilon, 0)), budget)
-    if value is not None and not value.has(oo, zoo, nan, Limit):
+            value = attempt(lambda: limit(expanded, epsilon, 0), budget, native=True)
+    if value is not None and not (_has_infinity(value) or value.has(Limit)):
         return value
     try:
-        direct = _hyperexpand(g.as_sympy())
+        direct = _hyperexpand(g.as_expr())
     except ValueError:
         return None
-    if direct.has(meijerg, hyper) or direct.has(oo, zoo, nan):
+    if direct.has(MeijerGFunction, Hyper) or _has_infinity(direct):
         return None
     return direct
 
 
 def _hyperexpand(e: Expr) -> Expr:
     try:
-        expanded = attempt(lambda: as_expr(hyperexpand(e)), settings.timeout)
+        expanded = attempt(lambda: hyperexpand(e), settings.timeout, native=True)
     except AttributeError:
-        # SymPy 1.14: meijerg._eval_evalf fails on some arguments
-        # (AttributeError: 'NoneType' object has no attribute 'has')
+        # SymPy 1.14 (through the bridge): meijerg._eval_evalf fails on some
+        # arguments (AttributeError: 'NoneType' object has no attribute 'has')
         return e
     result = e if expanded is None else expanded
-    if result.has(hyper):
+    if result.has(Hyper):
         result = _incomplete_gamma_forms(result)
     return result
 
@@ -314,66 +347,74 @@ def _incomplete_gamma_forms(e: Expr) -> Expr:
     ``(b - 1) z**(1 - b) exp(z) lowergamma(b - 1, z)`` (DLMF 8.5.1) for
     ``b`` not an integer below 2 and ``z`` not negative.
 
-    >>> from sympy import hyper, symbols, Rational
+    >>> from sympy_extras.core import Rational, Symbol
+    >>> from sympy_extras.functions import hyper
     >>> from sympy_extras.integrals.slater import _incomplete_gamma_forms
-    >>> z = symbols('z')
-    >>> _incomplete_gamma_forms(hyper((1,), (Rational(5, 3),), z))
+    >>> z = Symbol('z')
+    >>> _incomplete_gamma_forms(hyper([1], [Rational(5, 3)], z))
     2*exp(z)*lowergamma(2/3, z)/(3*z**(2/3))
     """
-    replacement: dict[Expr, Expr] = {}
-    for h in e.atoms(hyper):
-        ap = [as_expr(a) for a in h.ap]
-        bq = [as_expr(b) for b in h.bq]
+    replacement: dict[Basic, Basic] = {}
+    for h in e.atoms(Hyper):
+        if not isinstance(h, Hyper):
+            continue
+        ap = list(h.ap)
+        bq = list(h.bq)
         if ap == [S.One] and len(bq) == 1:
             b = bq[0]
-            z = as_expr(h.argument)
-            if (b - 1).is_integer and (b - 1).is_nonpositive or z.is_negative:
+            z = h.argument
+            if ((b - 1).is_integer and (b - 1).is_nonpositive) or z.is_negative:
                 # a negative argument gives lowergamma of a polar number,
                 # which no branch resolves: the series stays as it is
                 continue
-            replacement[as_expr(h)] = (b - 1) * z**(1 - b) * exp(z) * lowergamma(b - 1, z)
+            replacement[h] = (b - 1) * z**(1 - b) * exp(z) * lowergamma(b - 1, z)
     if not replacement:
         return e
-    return as_expr(e.xreplace(replacement))
+    return _xreplace(e, replacement)
 
 
 def slater_expansion(g: Expr, assumptions: Assumptions = None) -> Expr:
-    """A :class:`~sympy.functions.special.hyper.meijerg` expression as a
-    sum of hypergeometric functions by Slater's theorem, each then
+    """A :func:`~sympy_extras.functions.special.hyper.meijerg` expression
+    as a sum of hypergeometric functions by Slater's theorem, each then
     expanded by ``hyperexpand``; with ``p = q``, the assumptions decide
     whether ``|z| < 1`` and otherwise a ``Piecewise`` on it is returned.
     The expression is returned unchanged when the theorem does not apply
-    (a logarithmic case SymPy cannot expand either, or ``|z| = 1``).
+    (a logarithmic case ``hyperexpand`` cannot expand either, or ``|z| = 1``).
 
     Examples
     ========
 
-    >>> from sympy import symbols, meijerg, S
+    >>> from sympy_extras.core import Rational, symbols
+    >>> from sympy_extras.functions import meijerg
     >>> from sympy_extras.integrals.slater import slater_expansion
     >>> z, a = symbols('z a', positive=True)
     >>> slater_expansion(meijerg([1 - a], [], [0], [], z))
     gamma(a)/(z + 1)**a
-    >>> slater_expansion(meijerg([1], [], [S.Half], [0], z))
+    >>> slater_expansion(meijerg([1], [], [Rational(1, 2)], [0], z))
     sqrt(pi)*erf(sqrt(z))
     """
-    if not isinstance(g, meijerg):
+    if not isinstance(g, MeijerGFunction):
         return g
-    an = [as_expr(a) for a in g.an]
-    ap = [as_expr(a) for a in g.aother]
-    bm = [as_expr(b) for b in g.bm]
-    bq = [as_expr(b) for b in g.bother]
-    value = expand_meijerg(MeijerG(S.One, an, ap, bm, bq, as_expr(g.argument)), assumptions)
+    value = expand_meijerg(MeijerG(S.One, g.an, g.aother, g.bm, g.bother, g.argument), assumptions)
     return g if value is None else value.value
 
 
 def expand_meijerg(g: MeijerG, assumptions: Assumptions = None) -> Optional[ConditionalValue]:
     """``g`` (with its prefactor) expanded by Slater's theorem, see
-    :func:`slater_expansion`; ``None`` when no expansion is found."""
+    :func:`slater_expansion`; ``None`` when no expansion is found.
+
+    >>> from sympy_extras.core import Integer, Symbol
+    >>> from sympy_extras.integrals.slater import MeijerG, expand_meijerg
+    >>> z = Symbol('z', positive=True)
+    >>> expand_meijerg(MeijerG(Integer(3), [], [], [Integer(0)], [], z))
+    ConditionalValue(3*exp(-z))
+    """
     try:
         return _expand_meijerg(g, assumptions)
     except AttributeError:
-        # SymPy 1.14: the numerical evaluation of a meijerg with polar
-        # arguments raises AttributeError inside the assumptions system
+        # SymPy 1.14 (through the bridge): the numerical evaluation of a
+        # meijerg with polar arguments raises AttributeError inside the
+        # assumptions system
         return None
 
 
@@ -383,10 +424,10 @@ def _expand_meijerg(g: MeijerG, assumptions: Assumptions) -> Optional[Conditiona
     elif g.p > g.q:
         series = _slater_series(g.reflected())
     else:
-        inside = ask(Abs(g.z) < 1, assumptions)
+        inside = ask(abs_(g.z) < 1, assumptions)
         if inside is True:
             series = _slater_series(g)
-        elif inside is False and ask(Abs(g.z) > 1, assumptions) is True:
+        elif inside is False and ask(abs_(g.z) > 1, assumptions) is True:
             series = _slater_series(g.reflected())
         elif inside is False:
             # |z| = 1: the series of the |z| < 1 case, continued analytically
@@ -397,10 +438,10 @@ def _expand_meijerg(g: MeijerG, assumptions: Assumptions) -> Optional[Conditiona
             # sum (the bug: Integral(airyai(x)**2, (x, 0, oo)) came out as zoo)
             series = _slater_series(g)
             if series is not None:
-                if not all(_converges_on_the_circle(h, assumptions) for h in series.atoms(hyper)):
+                if not all(_converges_on_the_circle(h, assumptions) for h in series.atoms(Hyper)):
                     return None
                 series = _hyperexpand(series)
-                if series.has(hyper) or series.has(zoo, nan):
+                if series.has(Hyper) or series.has(S.ComplexInfinity, S.NaN):
                     return None
         else:
             small = _slater_series(g)
@@ -408,12 +449,12 @@ def _expand_meijerg(g: MeijerG, assumptions: Assumptions) -> Optional[Conditiona
             if small is None or large is None:
                 # the logarithmic case on one side (the Parseval integrand
                 # of exp(-s*t)*erf(sqrt(t)) has b's differing by an integer):
-                # SymPy's expansion, one formula on both sides
+                # the expansion of the G-function, one formula on both sides
                 try:
-                    expanded = _hyperexpand(g.as_sympy())
+                    expanded = _hyperexpand(g.as_expr())
                 except ValueError:
                     return None
-                if expanded.has(meijerg, hyper):
+                if expanded.has(MeijerGFunction, Hyper):
                     return None
                 return ConditionalValue(g.prefactor * expanded)
             small, large = _hyperexpand(small), _hyperexpand(large)
@@ -427,38 +468,46 @@ def _expand_meijerg(g: MeijerG, assumptions: Assumptions) -> Optional[Conditiona
                 choice = _real_choice(small, large, assumptions)
                 if choice is not None:
                     return ConditionalValue(g.prefactor * choice)
-            return ConditionalValue(g.prefactor * Piecewise((small, Abs(g.z) < 1), (large, True)),
-                                    as_boolean(Abs(g.z) > 1) | as_boolean(Abs(g.z) < 1))
+            return ConditionalValue(g.prefactor * piecewise((small, abs_(g.z) < 1), (large, true)),
+                                    or_(abs_(g.z) > 1, abs_(g.z) < 1))
     if series is None:
         try:
-            expanded = _hyperexpand(g.as_sympy())
+            expanded = _hyperexpand(g.as_expr())
         except ValueError:
-            # SymPy refuses a_j - b_k a positive integer
+            # meijerg refuses a_j - b_k a positive integer
             return None
-        if expanded.has(meijerg):
+        if expanded.has(MeijerGFunction):
             return None
         return ConditionalValue(g.prefactor * expanded)
     return ConditionalValue(g.prefactor * _hyperexpand(series))
 
 
-def _converges_on_the_circle(h: hyper, assumptions: Assumptions) -> bool:
+def _converges_on_the_circle(h: Basic, assumptions: Assumptions) -> bool:
     """Whether the hypergeometric function is regular at its argument on
     ``|z| = 1``, so that the value ``hyperexpand`` gives there is its
     analytic continuation: ``pFq`` with ``p = q + 1`` is analytic off
     ``[1, oo)``, and at ``z = 1`` itself needs ``Re(sum(b) - sum(a)) > 0``
     (a polynomial, one of the ``a`` a non-positive integer, always is)."""
-    ap = [as_expr(a) for a in h.ap]
-    bq = [as_expr(b) for b in h.bq]
+    if not isinstance(h, Hyper):
+        return True
+    ap = list(h.ap)
+    bq = list(h.bq)
     if any(a.is_integer and a.is_nonpositive for a in ap):
         return True
     if len(ap) < len(bq) + 1:
         return True
     if len(ap) > len(bq) + 1:
         return False
-    if as_expr(h.argument) != 1:
+    if h.argument != 1:
         return True
-    excess = as_expr(re(Add(*bq) - Add(*ap)))
-    return excess.is_positive is True or ask(as_boolean(excess > 0), assumptions) is True
+    excess = re(add(*bq) - add(*ap))
+    return excess.is_positive is True or ask(excess > 0, assumptions) is True
+
+
+def _is_function(node: Basic) -> bool:
+    """Whether the node is a function application (SymPy's ``Function``,
+    the hypergeometric functions included)."""
+    return isinstance(node, (Application, Hyper, MeijerGFunction))
 
 
 def _real_choice(small: Expr, large: Expr, assumptions: Assumptions) -> Optional[Expr]:
@@ -469,11 +518,11 @@ def _real_choice(small: Expr, large: Expr, assumptions: Assumptions) -> Optional
     imaginary parts only, so that the caller keeps the two sides apart
     for the assumptions to choose from (``(pi/2 - asin(s/k))/sqrt(k**2 - s**2)``
     for ``s > k``, where the other side gives ``acosh(s/k)/sqrt(s**2 - k**2)``)."""
-    parameters = sorted_symbols(free_symbols(small) | free_symbols(large))
+    parameters: list[Symbol] = sorted(small.free_symbols | large.free_symbols, key=lambda s: s.name)
     values = sample_values(parameters, assumptions, random.Random(str((small, large)))) if parameters else {}
     if values is None:
         return small
-    number = attempt(lambda: reliable_value(small, 20, values), settings.timeout)
+    number = attempt(lambda: reliable_value(small, 20, values), settings.timeout, native=True)
     if number is None:
         return small
     try:
@@ -483,17 +532,51 @@ def _real_choice(small: Expr, large: Expr, assumptions: Assumptions) -> Optional
         return small
     if imaginary >= 1e-12 * (1 + size):
         return small
-    if any(as_expr(atom.xreplace(values).evalf(20)).is_extended_real is False for atom in small.atoms(Function)):
-        return None
+    rule: dict[Basic, Basic] = {s: v for s, v in values.items()}
+    for atom in small.find(_is_function):
+        if not isinstance(atom, Expr):
+            continue
+        if evalf(_polar_as_exp(_xreplace(atom, rule)), 20).is_extended_real is False:
+            return None
     return small
+
+
+def _is_principal_polar(node: Basic) -> bool:
+    if not isinstance(node, ExpPolar):
+        return False
+    part = im(_expr_arg(node))
+    return isinstance(lt(-pi, part), BooleanTrue) and isinstance(le(part, pi), BooleanTrue)
+
+
+def _expr_arg(node: Basic) -> Expr:
+    argument = node.args[0]
+    if not isinstance(argument, Expr):
+        raise TypeError("an expression is expected, got %s" % (argument,))
+    return argument
+
+
+def _as_exp(node: Basic) -> Basic:
+    return exp(_expr_arg(node))
+
+
+def _polar_as_exp(e: Expr) -> Expr:
+    """``exp_polar(z)`` with ``-pi < im(z) <= pi`` written ``exp(z)``, as
+    SymPy's ``exp_polar._eval_evalf`` evaluates it: ``exp(I*pi)`` is
+    exactly ``-1``, where the numerical exponential of ``I*pi`` leaves an
+    imaginary part of ``1e-28`` which makes ``elliptic_k(4*exp_polar(I*pi)/a**2)``
+    a non-real number."""
+    replaced = e.replace(_is_principal_polar, _as_exp)
+    if not isinstance(replaced, Expr):
+        raise TypeError("an expression is expected, got %s" % (replaced,))
+    return replaced
 
 
 def _same(a: Expr, b: Expr, assumptions: Assumptions) -> bool:
     """Whether two closed forms are the same function (by simplification,
-    then by SymPy's numerical test ``equals``)."""
-    if a.has(hyper) or b.has(hyper):
+    then numerically)."""
+    if a.has(Hyper) or b.has(Hyper):
         return False
-    difference = attempt(lambda: as_expr(simplify(a - b)), settings.timeout)
+    difference = attempt(lambda: simplify(a - b), settings.timeout, native=True)
     if difference is not None and difference == 0:
         return True
     return numerically_equal(a, b, assumptions)
@@ -504,14 +587,22 @@ def line_conditions(g: MeijerG, lower: Expr, upper: Expr) -> Optional[Boolean]:
     in the strip ``lower < Re s < upper`` to converge absolutely (DLMF
     16.17.1): ``delta > 0`` and ``|arg z| < delta*pi``, or ``|arg z| =
     delta*pi`` with the integrand decaying faster than ``1/|t|``; ``None``
-    when it fails."""
+    when it fails.
+
+    >>> from sympy_extras.core import Integer, Symbol, oo
+    >>> from sympy_extras.integrals.slater import MeijerG, line_conditions
+    >>> z = Symbol('z', positive=True)
+    >>> line_conditions(MeijerG(Integer(1), [], [], [Integer(0)], [], z), Integer(0), oo)
+    True
+    """
     delta = g.delta
-    argument = as_expr(arg_(g.z))
-    if delta > 0:
-        strict = as_boolean(Abs(argument) < delta * pi)
-        if strict is true or argument == 0 or _positive_argument(g.z):
+    positive_delta = delta.p > 0
+    argument = arg_(g.z)
+    if positive_delta:
+        strict = abs_(argument) < delta * pi
+        if isinstance(strict, BooleanTrue) or argument == 0 or _positive_argument(g.z):
             return true
-    if delta < 0:
+    if delta.p < 0:
         return None
     # the power of |t| in the modulus of the integrand at Re s = sigma:
     # sum over the numerator of (Re a + b sigma - 1/2), minus the denominator
@@ -527,9 +618,9 @@ def line_conditions(g: MeijerG, lower: Expr, upper: Expr) -> Optional[Boolean]:
         exponent = exponent - (1 - b + sigma - S.Half)
     for a in g.ap:
         exponent = exponent - (a - sigma - S.Half)
-    boundary = as_boolean(And(Abs(argument) <= delta * pi, exponent < -1))
-    if delta > 0:
-        return as_boolean((Abs(argument) < delta * pi) | boundary)
+    boundary = and_(abs_(argument) <= delta * pi, exponent < -1)
+    if positive_delta:
+        return or_(abs_(argument) < delta * pi, boundary)
     return boundary
 
 
@@ -538,7 +629,9 @@ def _positive_argument(z: Expr) -> bool:
     absolute values (of nonzero scales), hence positive."""
     factors = z.args if isinstance(z, Mul) else (z,)
     for factor in factors:
-        base = as_expr(factor.base) if isinstance(factor, Pow) else as_expr(factor)
+        if not isinstance(factor, Expr):
+            return False
+        base = factor.base if isinstance(factor, Pow) else factor
         if not (base.is_positive or isinstance(base, Abs)):
             return False
     return True
@@ -548,11 +641,11 @@ def _sigma(g: MeijerG, lower: Expr, upper: Expr) -> Optional[Expr]:
     """A point of the strip at which the decay of the integrand is best:
     the exponent decreases with ``sigma`` when ``p < q``."""
     if g.p == g.q:
-        if lower != -oo:
+        if not isinstance(lower, NegativeInfinity):
             return lower
-        if upper != oo:
+        if not isinstance(upper, Infinity):
             return upper
         return S.Zero
     if g.p < g.q:
-        return None if upper == oo else upper
-    return None if lower == -oo else lower
+        return None if isinstance(upper, Infinity) else upper
+    return None if isinstance(lower, NegativeInfinity) else lower

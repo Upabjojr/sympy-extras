@@ -112,7 +112,7 @@ from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from sympy_extras.assumptions.limits_sympy import limit
 from sympy_extras.settings import settings
 from .conditions_sympy import ConditionalValue
-from .marichev import tidy
+from .marichev_sympy import tidy
 
 __all__ = ['algebraic_integral', 'euler_substitution', 'euler_substitutions', 'binomial_differential', 'moebius_root',
            'rationalised_integral', 'Rationalisation', 'BinomialDifferential', 'binomial_exponents',

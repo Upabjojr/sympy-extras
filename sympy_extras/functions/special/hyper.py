@@ -290,7 +290,21 @@ def hyper(ap: Parameters, bq: Parameters, z: ExprLike) -> Expr:
     counted_bottom -= common
     new_top = [k for k in sorted(counted_top, key=default_sort_key) for _ in range(counted_top[k])]
     new_bottom = [k for k in sorted(counted_bottom, key=default_sort_key) for _ in range(counted_bottom[k])]
-    return Hyper(new_top, new_bottom, z)
+    return Hyper(new_top, new_bottom, _unpolarified_argument(new_top, new_bottom, to_expr(z)))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper.eval
+def _unpolarified_argument(ap: Sequence[Expr], bq: Sequence[Expr], z: Expr) -> Expr:
+    """The argument without its polar numbers where the series is entire
+    (``p <= q``) or converges on ``|z| <= 1`` (``p = q + 1``): the
+    function is single valued there (``hyperexpand`` leaves
+    ``hyper((1/6,), (1/2,), exp_polar(I*pi))`` when it finds no formula)."""
+    from sympy_extras.core.logic import BooleanTrue
+    from sympy_extras.core.relational import le
+    from sympy_extras.functions.elementary.complexes import abs_, unpolarify
+    if len(ap) <= len(bq) or (len(ap) == len(bq) + 1 and isinstance(le(abs_(z), 1), BooleanTrue)):
+        return unpolarify(z)
+    return z
 
 
 # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg

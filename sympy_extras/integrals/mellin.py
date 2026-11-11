@@ -43,7 +43,8 @@ The module works on the objects of the core (:mod:`sympy_extras.core`, the
 functions of :mod:`sympy_extras.functions`) with the native ``ask`` and
 imports no SymPy: :mod:`sympy_extras.integrals.mellin_sympy` is its face on
 SymPy objects, used by the integrators which are still written on SymPy
-(:mod:`.slater`, :mod:`.marichev`, :mod:`.brackets`, ...).
+(:mod:`.brackets`, :mod:`.definite`, ...); the native :mod:`.slater` and
+:mod:`.marichev` use it directly.
 
 Examples
 ========

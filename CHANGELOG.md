@@ -539,6 +539,42 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- Slater's theorem and the Marichev–Adamchik method are native
+  (**breaking**): `sympy_extras.integrals.slater` (`MeijerG`,
+  `mellin_barnes`, `slater_expansion`, `expand_meijerg`,
+  `line_conditions`) and `sympy_extras.integrals.marichev`
+  (`mellin_integrate`, `integrate_product`, `evaluate_quotient`, `tidy`,
+  `checked_tidy`, `real_logarithms`, `polar_elliptic`, `polar_lowergamma`,
+  `right_half_plane_powers`, `bessel_k_forms`, `exponential_form`,
+  `reduce_positive_powers`) take and return core expressions, the native
+  `GammaQuotient`, `Product` and `ConditionalValue`, and import no SymPy:
+  the expansions by the native `hyperexpand`, the logarithmic case by the
+  native limits, the simplifications by the native `simplify`,
+  `gammasimp`, `factor`, `unpolarify`, `expand_func` and `refine`, the
+  decisions by the native `ask`. `MeijerG.as_sympy` is `MeijerG.as_expr`
+  on the core. The old API on SymPy objects is in the faces
+  `sympy_extras.integrals.slater_sympy` and
+  `sympy_extras.integrals.marichev_sympy` (`MeijerG` with
+  `to_core`/`from_core`), which `definite`, `laplace`, `algebraic`,
+  `series`, `reduction`, `telescoping`, `dfinite` and the tests use. New:
+  `marichev.projected_sums`, the polar numbers in the terms of sums
+  replaced by their projections, which `tidy` applies before
+  `unpolarify` (the value of `exp(-x)*cos(2*x)*besselj(0, x)` over
+  `(0, oo)`, where the native `hyperexpand` writes
+  `1/sqrt(1 - polar_lift(w))`, was refused), and `marichev.real_constant`,
+  a constant written with `I` or roots of `-1` in real terms when that
+  removes them (`3 - log(2) - sqrt(3)*pi/3` for `cbrt(x)/(1 + x)` over
+  `(0, 1)`); the value of `exp(-2*x)*cos(x)*besselj(0, x)` over
+  `(0, oo)` in README and `docs/integrals.md` now comes from the
+  Marichev–Adamchik method in another real form (SymPy's `hyperexpand` of
+  its `1F0` used to time out). Fixed in
+  `sympy_extras.functions.special.hyper.hyper`: the argument is
+  unpolarified where the series is single valued, as SymPy's
+  `hyper.eval` does. Fixed in
+  `sympy_extras.simplify.hyperexpand`: the symbolic formulas were
+  instantiated without evaluation (the core's `xreplace`), so that no
+  origin was found for `2F1(nu/2 + 1/2, nu/2 + 1; nu + 1; z)` and the
+  like, which SymPy expands.
 - The linear systems `Y' = A Y + b` are native (**breaking**):
   `sympy_extras.solvers.linear_systems` (`CyclicReduction`,
   `cyclic_reduction`, `cyclic_vector`, `system_to_scalar`,

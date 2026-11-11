@@ -50,12 +50,14 @@ The package implements the four pieces:
   `cos(x) - 1`, `sin(x) - x`, `atan(x) - pi/2` whose transforms continue
   the strips), and the matching of an integrand against it
   (`mellin_transform`, `mellin_kernel`);
-- `sympy_extras.integrals.slater`: the Mellin–Barnes integral of a quotient
+- `sympy_extras.integrals.slater` (native; `slater_sympy` is its face on
+  SymPy objects): the Mellin–Barnes integral of a quotient
   as a G-function (`mellin_barnes`, through Gauss's multiplication formula
   when the coefficients of `s` are not `±1`) and Slater's theorem
   (`slater_expansion`, `expand_meijerg`), with the case distinction
   `|z| < 1` or `|z| > 1` for `p = q` decided by the assumptions;
-- `sympy_extras.integrals.marichev`: the integrals over `(0, oo)`,
+- `sympy_extras.integrals.marichev` (native; `marichev_sympy` is its face
+  on SymPy objects): the integrals over `(0, oo)`,
   `(0, 1)` and `(1, oo)` (`mellin_integrate`): one factor is the transform
   at `s = alpha + 1`, two factors go through Parseval's formula and the
   G-function, and logarithms are derivatives with respect to the exponent;
@@ -115,7 +117,7 @@ regularisation).
 >>> definite_integral(exp(-a*x)*sin(b*x)*besselj(0, x), (x, 0, oo))
 I/(2*sqrt((a + I*b)**2 + 1)) - I/(2*sqrt((a - I*b)**2 + 1))
 >>> definite_integral(exp(-2*x)*cos(x)*besselj(0, x), (x, 0, oo))
-2**(3/4)*sqrt(sqrt(2) + 2)/8
+2**(3/4)*sqrt(5)*(sin(atan(1/7)/2) + 2*cos(atan(1/7)/2))/20
 >>> definite_integral(x**(-S(3)/2)*exp(-x), (x, 0, oo))          # divergent
 oo
 >>> definite_integral(x**(-S(3)/2)*exp(-x), (x, 0, oo), regularize=True)
