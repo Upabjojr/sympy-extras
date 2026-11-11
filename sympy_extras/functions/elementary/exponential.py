@@ -150,6 +150,18 @@ class Exp(DefinedFunction):
             # a single log factor: exp(c*log(x)) is x**c
             number, terms = arg.as_coeff_Mul()
             if isinstance(number, (Infinity, NegativeInfinity)):
+                # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp.eval (oo times a number)
+                if terms.is_number:
+                    from .complexes import im, re
+                    if isinstance(number, NegativeInfinity):
+                        terms = mul(Integer(-1), terms)
+                    real = re(terms)
+                    if real.is_zero and not (isinstance(terms, Rational) and terms.p == 0):
+                        return nan
+                    if real.is_positive and not (isinstance(im(terms), Rational) and im(terms) == 0):
+                        return zoo
+                    if real.is_negative:
+                        return Integer(0)
                 return None
             coefficients: list[Expr] = [number]
             log_term: Optional[Expr] = None

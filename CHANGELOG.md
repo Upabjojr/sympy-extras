@@ -565,6 +565,26 @@ remove public functions. Breaking changes are listed here when they happen.
   `Fraction`. The native `ask` and `refine` call the native tower directly:
   `assumptions.ask_sympy.structure_zero_of_core` and
   `assumptions.refine_sympy.proved_simplification_of_core` are removed.
+- `sympy_extras.assumptions.limits` is native (**breaking**: core
+  expressions, symbols and Booleans in and out; the native `ask`,
+  `facts`, `refine`, `sat`, `resolve`, the core's `limit`/`Limit`
+  (Gruntz), `series` and `AccumBounds`, and the native `simplify`
+  underneath; it imports no SymPy). What is not ported is called at run
+  time through the new face `assumptions.limits_sympy` (the `*_of_core`
+  functions): SymPy's `limit_seq` and `_numeric.reliable_value`.
+  `limits_sympy.limit`, `limit_seq` and `series` keep the old API on
+  SymPy objects; **import them instead of the old module**: `from
+  sympy_extras.assumptions.limits_sympy import limit`. The integrals,
+  `concrete.convergence`, the tests, README, docs and benchmarks use it.
+  The same `srepr` as before through the face on 123 calls (the
+  doctests, the calls of the tests of limits and 69 more with parametric
+  signs, sequences and series), and natively with the inputs converted
+  and the result converted back.
+- `functions.elementary.exponential.exp` of `oo` (or `-oo`) times a
+  number evaluates as SymPy's: `zoo` when the real part of the number
+  is positive and its imaginary part nonzero, `0` when it is negative,
+  `nan` when it is zero (`exp(oo*sign(log(5/2) + I*pi))` stayed
+  unevaluated, and the core's limit of `(-5/2)**x` at `oo` with it).
 - `sympy_extras.assumptions.solve` is native (**breaking**: core
   expressions, Booleans, symbols and sets in and out, the native `ask`,
   `facts`, `refine` and `analysis` underneath; it imports no SymPy).

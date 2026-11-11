@@ -178,6 +178,9 @@ sympy_extras/
         solve.py             solve(): Solve under assumptions (native; solveset, nonlinsolve, the CAD, regular chains,
                              transcendental equations, root isolation, Diophantine systems through solve_sympy)
         solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions)
+        limits.py            limit(), limit_seq(), series() under assumptions, with case distinctions (native; the core's
+                             Gruntz and series; SymPy's limit_seq and the reliable numerical values through limits_sympy)
+        limits_sympy.py      the SymPy face of limits, and the steps which stay on SymPy (the *_of_core functions)
         tests/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
         elementary/

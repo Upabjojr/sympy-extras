@@ -52,7 +52,7 @@ The setup used throughout:
 >>> from sympy_extras.assumptions.facts_sympy import element
 >>> from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 >>> from sympy_extras.assumptions.sat_sympy import satisfiable, find_instance
->>> from sympy_extras.assumptions.limits import limit, limit_seq, series
+>>> from sympy_extras.assumptions.limits_sympy import limit, limit_seq, series
 >>> from sympy_extras.concrete.karr import karr_sum
 >>> from sympy_extras.concrete.zeilberger_sympy import zeilberger_sum, wz_prove
 >>> from sympy_extras.concrete.convergence import sum_convergence, product_convergence

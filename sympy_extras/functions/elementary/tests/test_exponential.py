@@ -47,6 +47,20 @@ def test_evaluation_matches_sympy() -> None:
             assert str(to_sympy(log(a), evaluate=False)) == str(sympy.log(sa)), a
 
 
+def test_exp_of_infinity_times_a_number() -> None:
+    # exp(oo*sign(log(5/2) + I*pi)) stayed unevaluated, where SymPy's exp
+    # gives zoo; the core's limit of (-5/2)**x at oo was that expression
+    # instead of zoo (found by the port of assumptions.limits)
+    from sympy_extras.core import oo
+    from sympy_extras.core.mul import Mul
+    from sympy_extras.functions import sign
+    c = sign(log(Rational(5, 2)) + I*pi)
+    for a in (Mul(oo, c), Mul(-oo, c), Mul(oo, I), Mul(oo, -c), Mul(oo, 1 + I), Mul(oo, -1 + I)):
+        sa = to_sympy(a, evaluate=False)
+        assert str(to_sympy(exp(a), evaluate=False)) == str(sympy.exp(sa)), a
+    assert str(exp(Mul(oo, c))) == 'zoo' and exp(Mul(-oo, c)) == 0 and str(exp(Mul(oo, I))) == 'nan'
+
+
 def test_log_with_a_base() -> None:
     cases: list[tuple[Expr, Expr]] = [(Integer(24), Integer(2)), (Integer(8), Integer(2)), (Rational(1, 8), Integer(2)),
                                       (Rational(3, 4), Integer(2)), (Integer(81), Integer(3)), (Integer(10), Integer(10)),

@@ -291,11 +291,36 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_LIMITS = r'''
+import sys
+from sympy_extras.core import symbols, oo, sqrt, Integer
+from sympy_extras.functions import exp, sin
+from sympy_extras.assumptions.limits import limit, limit_seq, series
+assert 'sympy' not in sys.modules
+a, x = symbols('a x')
+assert limit(sin(x)/x, x, Integer(0)) == 1 and limit(exp(a*x), x, oo, assumptions=a < 0) == 0
+assert limit(x**a, x, oo, assumptions=a > 0) == oo
+assert str(series(sqrt(a**2 + x), x, 0, 2, assumptions=a > 0)) == 'x/(2*a) + a + O(x**2)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 def test_native_structure_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.simplify.structure` does not load SymPy,
     nor do the identities which the tower decides without a sample point
     (the sample points of the region and the reliable values of the
     witnesses go through SymPy at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_STRUCTURE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_limits_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.assumptions.limits` does not load
+    SymPy, nor do the limits and series whose parameters have signs
+    decided by the predicates (SymPy's ``limit_seq``, the reliable
+    numerical values, and the SAT and CAD of the case distinctions go
+    through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LIMITS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

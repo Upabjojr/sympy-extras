@@ -328,7 +328,7 @@ Mathematica's `GenerateConditions`).
 
 ```python
 >>> from sympy import exp, oo, sqrt
->>> from sympy_extras.assumptions.limits import limit, series
+>>> from sympy_extras.assumptions.limits_sympy import limit, series
 >>> limit(exp(a*x), x, oo, assumptions=a < 0)
 0
 >>> limit(exp(a*x), x, oo)
