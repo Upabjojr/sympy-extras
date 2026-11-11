@@ -1015,6 +1015,8 @@ sympy_extras/
         recognize.py         PSLQ recognition of integrals (an oracle)
         risch/               Risch algorithm ported from Aaron Meurer's SymPy pull requests
         trager.py            Trager's algorithm for algebraic functions (one square root)
+        curves.py            Trager's algorithm on a general curve (several or nested radicals) (native)
+        curves_sympy.py      the SymPy face of curves
         summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals
         axisymmetric.py      region integrals with a rotational symmetry reduced to their profile
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic

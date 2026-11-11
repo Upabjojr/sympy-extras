@@ -946,7 +946,7 @@ def trager_reduce(f: ExprLike, x: Symbol) -> Optional[tuple[Expr, Expr]]:
         if found is None:
             # several or nested radicals, roots of any index together:
             # Trager's algorithm on the curve of a primitive element
-            from .curves import curve_reduce
+            from .curves_sympy import curve_reduce
             found = attempt(lambda: curve_reduce(f_, x), settings.timeout)
         return found
     back: dict[Symbol, Expr] = {}
@@ -2086,7 +2086,7 @@ def is_nonelementary_algebraic(f: ExprLike, x: Symbol) -> Optional[bool]:
         return not chebyshev_elementary(binomial)
     result = attempt(lambda: _integrate(f_, x, True), settings.timeout)
     if result is None:
-        from .curves import is_nonelementary_on_curve
+        from .curves_sympy import is_nonelementary_on_curve
         verdict = attempt(lambda: is_nonelementary_on_curve(f_, x), settings.timeout)
         return None if verdict is None else verdict
     if result.nonelementary is False:

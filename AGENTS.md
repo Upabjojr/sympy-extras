@@ -294,6 +294,8 @@ sympy_extras/
         risch/               the transcendental Risch algorithm ported from Aaron Meurer's SymPy pull requests
         trager.py            Trager's algorithm for integrands rational in x and one square root of a polynomial
         curves.py            Trager's algorithm on an arbitrary curve: several or nested radicals through a primitive element, the change of variable x = N + 1/z, Hermite reduction in a normal integral basis, residues by Puiseux expansions, the logarithmic part by linear algebra
+                             (native: the native function fields, Puiseux expansions, number fields and cancel)
+        curves_sympy.py      the SymPy face of curves (the field of the residues as SymPy's, CRootOf), used by trager
         summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals
         axisymmetric.py      region integrals with a rotational symmetry (bodies and surfaces of revolution) reduced to their profile
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic (Gradshteyn-Ryzhik 2.26), for the slices of regions
@@ -500,7 +502,7 @@ sympy_extras/
         puiseux_sympy.py     the SymPy face of puiseux (Poly, SymPy's number fields both ways), and field_of (CRootOf points)
         functionfields.py    FunctionField[T]: arithmetic in K(x)[y]/(F), integral bases (Trager's Round 2 over K[x]), local bases at
                              infinity, bases normal at infinity, over QQ, number fields, parameters (native)
-        functionfields_sympy.py the SymPy face of functionfields (coordinates in SymPy's K(x)), used by integrals/curves.py
+        functionfields_sympy.py the SymPy face of functionfields (coordinates in SymPy's K(x)), used by integrals/curves_sympy.py
         tests/
         cad/                 cylindrical algebraic decomposition (exports nothing: import the modules)
             projection.py    projection operators (McCallum, Hong), projection_sets, on the typed Poly (native)

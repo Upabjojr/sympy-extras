@@ -1724,3 +1724,38 @@ def test_native_validated_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_VALIDATED], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_CURVES = r'''
+import sys
+from sympy_extras.core import symbols, Dummy
+from sympy_extras.functions import sqrt, cbrt
+from sympy_extras.integrals.curves import (AlgebraicIntegrand, curve_antiderivative, curve_reduce,
+                                           integrate_on_curve, is_nonelementary_on_curve)
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+A = AlgebraicIntegrand(1/(sqrt(x + 1) + sqrt(x - 1)), x)
+assert str(A.curve.xreplace({A.y: y})) == '-4*x*y**2 + y**4 + 4'
+assert str(curve_antiderivative(1/(sqrt(x + 1) + sqrt(x - 1)), x)) == \
+    '-x*sqrt(x - 1)/3 + x*sqrt(x + 1)/3 + sqrt(x - 1)/3 + sqrt(x + 1)/3'
+assert str(curve_reduce(x/sqrt(1 - x**3), x)) == '(-2*sqrt(1 - x**3)/x, 2*sqrt(1 - x**3)/(x**5 - x**2))'
+assert is_nonelementary_on_curve(1/sqrt(x**3 + 1), x) is True
+assert is_nonelementary_on_curve(1/cbrt(x**3 + 1), x) is False
+result = integrate_on_curve(sqrt(x**2 + 1)/(x**2 - 2), x)    # residues in QQ(sqrt(6))
+assert result.nonelementary is False and result.residue_field.degree == 2
+result = integrate_on_curve(sqrt(x**2 + 1)/(x**4 + 1), x)    # a field of degree 8, no real generator
+assert result.nonelementary is False and result.residue_field.degree == 8
+result.elementary_part(Dummy('theta'))
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_curves_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.curves` does not load SymPy,
+    nor does Trager's algorithm on a general curve: the primitive element
+    of the radicals, the Hermite reduction in a normal integral basis,
+    the residues in number fields by Puiseux expansions and the
+    logarithmic part."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CURVES], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
