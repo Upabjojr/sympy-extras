@@ -65,6 +65,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/bigatti.py` | done | moved out of `hilbert.rs` as in Python (5786e1d..eb367b4), with `hilbert_numerator_coefficients` |
 | `polys/hilbert.py` | done | the numerator dense over `ZZ`, the series a `HilbertSeries { numerator, exponent }` (Python: `Poly` and an expression in `t`) |
 | `polys/groebnerwalk.py` | done | both liftings; the bases of the initial forms by the Rust F4 (Python: SymPy's Buchberger, the same reduced bases); over fields only (SymPy also walks over `ZZ`) |
+| `solvers/exponential_diophantine.py` | done | the `mpmath` steps on `dashu-float` at mpmath's binary precision for the same decimal digits; the bounds keep their margins, the partial quotients are checked at twice the digits |
 | `solvers/simplex.py` | done | the first module of `solvers`; the status an enum (a string in the bindings); the rows of `_without_redundant` in the dict's insertion order |
 | `ntheory/primetest.py`, `generate.py`, `factor_.py` | done | `primerange` is an iterator struct (a list in the bindings) |
 | `polys/modulargroebner.py` | the modular algorithm | `modular_groebner` over `QQ` and `ZZ` (`modular_groebner_zz`), with the same images (F4 over `BigFiniteField`), luckiness, reconstruction, verification and trace as Python; `direct_groebner`/`groebner` (time limits around SymPy's Buchberger) not ported |

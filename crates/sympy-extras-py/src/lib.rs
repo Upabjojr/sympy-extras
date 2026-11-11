@@ -20,6 +20,7 @@ mod complexroots;
 mod convert;
 mod dense;
 mod domains;
+mod expdioph;
 mod factor;
 mod galois;
 mod gaussian;
@@ -54,6 +55,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     let solvers: Bound<'_, PyModule> = submodule(m, "solvers", "sympy_extras_rs.solvers")?;
     simplex::register(&submodule(&solvers, "simplex", "sympy_extras_rs.solvers.simplex")?)?;
+    expdioph::register(&submodule(
+        &solvers,
+        "exponential_diophantine",
+        "sympy_extras_rs.solvers.exponential_diophantine",
+    )?)?;
     let polys: Bound<'_, PyModule> = submodule(m, "polys", "sympy_extras_rs.polys")?;
     let domains_module: Bound<'_, PyModule> = submodule(&polys, "domains", "sympy_extras_rs.polys.domains")?;
     domains::register(&domains_module)?;
