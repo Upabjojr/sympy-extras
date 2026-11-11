@@ -263,6 +263,9 @@ sympy_extras/
         parametric.py        parametric_cases, ParametricCase: the cases of the parameters of a polynomial system, from
                              the regular chains (native)
         parametric_sympy.py  the SymPy face of parametric
+        thue_equation.py     thue, ThueEquation, units_of_order, elements_of_norm: Thue equations F(x, y) = m by
+                             Baker's bound and de Weger's LLL reduction (native; mpmath for the numerics)
+        thue_equation_sympy.py the SymPy face of thue_equation (thue on SymPy forms)
         tests/
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native; the sample

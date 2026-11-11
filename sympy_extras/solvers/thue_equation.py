@@ -45,6 +45,15 @@ in the order `O = \\mathbb{Z}[\\alpha]`. The steps:
 SymPy has no Thue equation solver (``diophantine`` handles binary
 quadratic forms).
 
+The module imports no SymPy: :func:`thue` takes a form of the core
+(:mod:`sympy_extras.core`), the exact arithmetic is done on integer
+coordinate vectors with the typed polynomial layer (the norms as
+resultants of :mod:`sympy_extras.polys.euclidtools`, the irreducibility
+and the integer roots by :mod:`sympy_extras.polys.factortools`), the lattice
+reductions by :mod:`sympy_extras.polys.lattice` and the numerical parts by
+mpmath. :mod:`sympy_extras.solvers.thue_equation_sympy` is its face on
+SymPy objects.
+
 Two limitations, both of which raise ``NotImplementedError`` rather than
 return an incomplete list: fields whose fundamental units are too large
 for the search of step 1, and right-hand sides `m` which are too large
@@ -77,15 +86,16 @@ from typing import Iterator, Optional, Sequence
 
 import mpmath
 
-from sympy.core.expr import Expr
-from sympy.core.numbers import Integer
-from sympy.core.symbol import Symbol
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly
-from sympy.polys.domains import ZZ
-
-from sympy_extras._typing import as_expr
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.numbers import Rational
+from sympy_extras.ntheory.generate import primerange
+from sympy_extras.polys.densebasic import dup_strip
+from sympy_extras.polys.domains import ZZ
+from sympy_extras.polys.euclidtools import dup_resultant
+from sympy_extras.polys.factortools import dup_zz_factor
 from sympy_extras.polys.lattice import lll as _integral_lll
+from sympy_extras.polys.polyerrors import CoercionFailed
+from sympy_extras.polys.polytools import Poly
 
 __all__ = ['thue', 'ThueEquation', 'units_of_order', 'elements_of_norm', 'lll', 'short_vectors', 'OrderElement']
 
@@ -227,13 +237,12 @@ class _Order:
         return result
 
     def norm(self, a: OrderElement) -> int:
-        """The norm, as the resultant with ``g``."""
-        X = Symbol('X')
-        element = Poly(sum(c*X**i for i, c in enumerate(a)), X, domain=ZZ)
-        if element.is_zero:
+        """The norm, as the resultant with ``g`` (``g`` monic: the product
+        of the conjugates)."""
+        element = dup_strip([int(c) for c in reversed(a)], ZZ)
+        if not element:
             return 0
-        g = Poly(sum(c*X**(self.n - i) for i, c in enumerate(self.g)), X, domain=ZZ)
-        return int(g.resultant(element))
+        return dup_resultant(list(self.g), element, ZZ)
 
     def conjugates(self, a: OrderElement) -> Conjugates:
         return [sum((mpmath.mpc(c)*root**i for i, c in enumerate(a)), mpmath.mpc(0)) for root in self.roots]
@@ -297,7 +306,7 @@ def _independent_indices(order: _Order) -> list[int]:
 
 def _regulator(order: _Order, units: Sequence[OrderElement]) -> mpmath.mpf:
     indices = _independent_indices(order)
-    rows = []
+    rows: list[list[mpmath.mpf]] = []
     for u in units:
         c = order.conjugates(u)
         rows.append([(2 if i not in order.real_indices else 1)*mpmath.log(abs(c[i])) for i in indices])
@@ -519,13 +528,13 @@ def _reduce_system(order: _Order, units: list[OrderElement]) -> list[OrderElemen
     logarithmic vectors (smaller heights, better constants)."""
     indices = _independent_indices(order)
     scale = 10**12
-    rows = []
+    rows: list[list[int]] = []
     for u in units:
-        rows.append([ZZ(int(mpmath.nint(v*scale))) for v in order.log_vector(u, indices)])
+        rows.append([int(mpmath.nint(v*scale)) for v in order.log_vector(u, indices)])
     r = len(units)
     # the transformation is tracked by appending the identity
-    augmented = [row + [ZZ(1 if i == j else 0) for j in range(r)] for i, row in enumerate(rows)]
-    reduced = lll([[int(v) for v in row] for row in augmented])
+    augmented = [row + [1 if i == j else 0 for j in range(r)] for i, row in enumerate(rows)]
+    reduced = lll(augmented)
     result: list[OrderElement] = []
     for i in range(r):
         element: OrderElement = tuple([1] + [0]*(order.n - 1))
@@ -573,7 +582,6 @@ def _saturate(order: _Order, units: list[OrderElement], torsion: Sequence[OrderE
     """Enlarge the system until its index in the unit group is 1: for
     every prime up to ``R'/0.2052`` (Friedman's bound) the p-th roots of
     the products of the units (and roots of unity) are searched."""
-    from sympy_extras.ntheory.generate import primerange
     while True:
         regulator = _regulator(order, units)
         index_bound = int(floor(regulator/mpmath.mpf('0.2052')))
@@ -739,8 +747,6 @@ def _lll_reduce(deltas: Sequence[mpmath.mpf], delta0: mpmath.mpf, B0: float, K1:
     every lattice vector is at distance at least ``2**(-(s-1)/2) ||sigma_i0||
     ||b_1||`` from ``y``, ``i0`` the last index with a non-integral
     ``sigma`` (``||.||`` the distance to the nearest integer)."""
-    from sympy.matrices.dense import Matrix
-    from sympy.core.numbers import Rational
     s = len(deltas)
     for factor in (100, 10**4, 10**6):
         C = (mpmath.mpf(B0)*factor)**s
@@ -750,18 +756,19 @@ def _lll_reduce(deltas: Sequence[mpmath.mpf], delta0: mpmath.mpf, B0: float, K1:
         rows.append([0]*(s - 1) + [int(mpmath.nint(C*deltas[s - 1]))])
         y = [0]*(s - 1) + [-int(mpmath.nint(C*delta0))]
         reduced = lll(rows)
-        basis = Matrix(reduced)          # rows are the basis vectors
-        try:
-            sigma = basis.T.LUsolve(Matrix(y))
-        except ValueError:
+        # the coordinates of y in the basis (the rows are the basis vectors)
+        sigma = _solve_rational([[Fraction(reduced[j][i]) for j in range(s)] for i in range(s)],
+                                [Fraction(v) for v in y])
+        if sigma is None:
             continue
-        distances = [abs(Rational(v) - round(Rational(v))) for v in sigma]
+        distances = [abs(v - round(v)) for v in sigma]
         nonintegral = [i for i, d in enumerate(distances) if d != 0]
         if not nonintegral:
             continue
         i0 = nonintegral[-1]
         length = mpmath.sqrt(sum(mpmath.mpf(v)**2 for v in reduced[0]))
-        D = mpmath.mpf(2)**(-mpmath.mpf(s - 1)/2)*mpmath.mpf(distances[i0].p)/mpmath.mpf(distances[i0].q)*length
+        distance = distances[i0]
+        D = mpmath.mpf(2)**(-mpmath.mpf(s - 1)/2)*mpmath.mpf(distance.numerator)/mpmath.mpf(distance.denominator)*length
         inside = D**2 - (s - 1)*mpmath.mpf(B0)**2
         if inside <= 0:
             continue
@@ -771,6 +778,24 @@ def _lll_reduce(deltas: Sequence[mpmath.mpf], delta0: mpmath.mpf, B0: float, K1:
         bound = (mpmath.log(C*K1) - mpmath.log(S))/K2
         return float(bound)
     return None
+
+
+def _solve_rational(A: list[list[Fraction]], b: list[Fraction]) -> Optional[list[Fraction]]:
+    """The solution of the square system ``A v = b`` over the rationals
+    (Gaussian elimination), ``None`` when ``A`` is singular."""
+    n = len(A)
+    M = [list(row) + [value] for row, value in zip(A, b)]
+    for col in range(n):
+        pivot = next((r for r in range(col, n) if M[r][col] != 0), None)
+        if pivot is None:
+            return None
+        M[col], M[pivot] = M[pivot], M[col]
+        p = M[col][col]
+        for r in range(n):
+            if r != col and M[r][col] != 0:
+                q = M[r][col]/p
+                M[r] = [a - q*c for a, c in zip(M[r], M[col])]
+    return [M[i][n]/M[i][i] for i in range(n)]
 
 
 class ThueEquation:
@@ -826,19 +851,18 @@ class ThueEquation:
     def small_solutions(self, Y: int) -> list[tuple[int, int]]:
         """The solutions with ``|y| <= Y``, by the integer roots of
         ``F(X, y) - m``."""
-        X = Symbol('X')
         found: list[tuple[int, int]] = []
         for y in range(-Y, Y + 1):
-            polynomial = sum(c*X**(self.n - i)*y**i for i, c in enumerate(self.coefficients)) - self.m
-            try:
-                poly = Poly(polynomial, X, domain=ZZ)
-            except PolynomialError:
+            polynomial = [c*y**i for i, c in enumerate(self.coefficients)]
+            polynomial[-1] -= self.m
+            polynomial = dup_strip(polynomial, ZZ)
+            if len(polynomial) < 2:
                 continue
-            if poly.degree() < 1:
-                continue
-            for root, _ in poly.ground_roots().items():
-                if root.is_Integer:
-                    found.append((int(root), y))
+            _, factors = dup_zz_factor(polynomial, ZZ)
+            # the factors are primitive with a positive leading coefficient:
+            # an integer root is a factor X - root
+            roots = sorted(-f[1] for f, _ in factors if len(f) == 2 and f[0] == 1)
+            found.extend((root, y) for root in roots)
         return found
 
     def solve(self) -> list[tuple[int, int]]:
@@ -1008,38 +1032,43 @@ def _independent_indices_excluding(order: _Order, i0: int) -> list[int]:
     return indices
 
 
-def thue(F: Expr, m: int, x: Symbol, y: Symbol, bound: int = 64) -> list[tuple[int, int]]:
+def thue(F: Expr, m: int, x: Expr, y: Expr, bound: int = 64) -> list[tuple[int, int]]:
     """All the integer solutions of the Thue equation ``F(x, y) = m`` for
-    an irreducible binary form of degree at least 3.
+    an irreducible binary form of degree at least 3, in the generators
+    ``x`` and ``y`` (symbols, or any other expressions as for ``Poly``).
 
     Examples
     ========
 
-    >>> from sympy.abc import x, y
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.solvers.thue_equation import thue
+    >>> x, y = symbols('x y')
     >>> thue(x**3 - 2*y**3, 1, x, y)
     [(-1, -1), (1, 0)]
     >>> thue(x**3 - 3*x*y**2 - y**3, 1, x, y)
     [(-3, 2), (-1, 1), (0, -1), (1, -3), (1, 0), (2, 1)]
     """
-    poly = Poly(as_expr(F), x, y)
-    n = poly.total_degree()
-    if not poly.is_homogeneous or n < 3:
-        raise ValueError("a homogeneous form of degree at least 3 is expected")
-    if not all(c.is_Integer for c in poly.coeffs()):
+    try:
+        poly = Poly(F, x, y)
+    except CoercionFailed:
+        # irrational, complex or floating point coefficients
         raise ValueError("integer coefficients are expected")
-    univariate = Poly(as_expr(F).subs(y, 1), x, domain=ZZ)
-    if not univariate.is_irreducible or univariate.degree() != n:
+    n = poly.total_degree()
+    terms = poly.terms()
+    if any(sum(monomial) != n for monomial, _ in terms) or n < 3:
+        raise ValueError("a homogeneous form of degree at least 3 is expected")
+    coefficient_of: dict[tuple[int, int], int] = {}
+    for monomial, c in terms:
+        if not isinstance(c, Rational) or c.q != 1:
+            raise ValueError("integer coefficients are expected")
+        coefficient_of[(monomial[0], monomial[1])] = c.p
+    coefficients = [coefficient_of.get((n - i, i), 0) for i in range(n + 1)]
+    # F(x, 1), irreducible over the integers and of degree n
+    _, factors = dup_zz_factor(dup_strip(list(coefficients), ZZ), ZZ)
+    irreducible = len(factors) == 1 and factors[0][1] == 1
+    if not irreducible or coefficients[0] == 0:
         raise ValueError("an irreducible form with a nonzero leading coefficient is expected")
-    coefficients = [int(poly.coeff_monomial(x**(n - i)*y**i)) for i in range(n + 1)]
     if int(m) == 0:
         return [(0, 0)]
     equation = ThueEquation(coefficients, int(m), bound)
     return equation.solve()
-
-
-def _unused(*args: object) -> None:
-    del args
-
-
-_unused(Integer, sqrt, exp)

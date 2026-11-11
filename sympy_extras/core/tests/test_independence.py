@@ -797,3 +797,37 @@ def test_native_puiseux_and_function_fields_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_THUE = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.solvers.thue_equation import ThueEquation, elements_of_norm, thue, units_of_order
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+assert thue(x**3 - 2*y**3, 1, x, y) == [(-1, -1), (1, 0)]
+assert thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y) == [(-9, 5), (-1, -1), (-1, 1), (-1, 2), (0, -1), (1, 0),
+                                                          (2, -1), (4, -9), (5, 4)]
+assert thue(x**4 + y**4, 2, x, y) == [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+try:
+    thue(x**3 - y**3, 1, x, y)
+except ValueError:
+    pass
+else:
+    raise AssertionError('a reducible form should be refused')
+units, torsion = units_of_order([1, 0, 0, -2])
+assert units in ([(1, -1, 0)], [(1, 1, 1)]) and elements_of_norm([1, 0, 0, -2], 2, units) == [(0, 1, 0)]
+assert ThueEquation([1, 0, 0, -2], 1).small_solutions(2) == [(-1, -1), (1, 0)]
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_thue_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.thue_equation` does not load
+    SymPy, nor do the resolution of Thue equations (the units of the
+    order, the elements of a given norm, Baker's bound, de Weger's
+    reduction and the enumeration), on totally complex forms too, and the
+    refusal of reducible forms."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_THUE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
