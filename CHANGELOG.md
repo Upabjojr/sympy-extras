@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `calculus.optimization`: `minimize_parametric`, `maximize_parametric`,
+  the global optimum of a polynomial as a function of parameters, case
+  by case (`[(a > 0, -1/(4*a)), (a <= 0, -oo)]`);
+  `polys.cad.cylindrical.cylindrical_cases` takes `quantifiers`.
 - `matrices.statespace`: `controllable_decomposition`,
   `observable_decomposition` (Kalman's decompositions) and
   `minimal_realization`.

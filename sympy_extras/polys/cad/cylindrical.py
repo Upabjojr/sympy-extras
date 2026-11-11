@@ -521,7 +521,8 @@ def _every_run_is_a_point(description: _Description) -> bool:
 
 
 def cylindrical_cases(formula: BooleanLike, parameters: Sequence[Symbol], unknowns: Sequence[Symbol],
-                      method: Optional[str] = None, partial: bool = True) -> list[CylindricalCase]:
+                      method: Optional[str] = None, partial: bool = True,
+                      quantifiers: QuantifierSpec = ()) -> list[CylindricalCase]:
     """The real solutions in the ``unknowns`` of a formula in polynomial
     relations, for every real value of its ``parameters``: pairs of a
     condition on the parameters (cylindrical: the first one between
@@ -541,10 +542,17 @@ def cylindrical_cases(formula: BooleanLike, parameters: Sequence[Symbol], unknow
     [(a >= 0, Interval(-sqrt(a), sqrt(a)))]
     >>> cylindrical_cases(Eq(a*x, 1), [a], [x])
     [((a > 0) | (a < 0), {1/a})]
+
+    With ``quantifiers`` over other variables of the formula (the values
+    ``t`` taken by ``y**2 + a*y`` for each ``a``):
+
+    >>> t, y = symbols('t y')
+    >>> cylindrical_cases(Eq(y**2 + a*y, t), [a], [t], quantifiers=[('exists', y)])
+    [(True, Interval(-a**2/4, oo))]
     """
     names = [_symbol(p) for p in parameters]
     variables = [_symbol(u) for u in unknowns]
-    free, description = _description(formula, names + variables, (), method, partial)
+    free, description = _description(formula, names + variables, quantifiers, method, partial)
     if free != names + variables:
         raise ValueError("the parameters and the unknowns are the symbols of the formula")
     cases: list[CylindricalCase] = []

@@ -25,6 +25,14 @@ optimum is read from that set:
   point for each cell: all the optimal points when they are finitely
   many, and a sample of each piece otherwise.
 
+:func:`minimize_parametric` and :func:`maximize_parametric` give the
+optimum as a function of parameters, case by case: the set of the lower
+bounds $\{m : \forall x\ (C(x) \Rightarrow f(x) \ge m)\}$ is described
+cylindrically over the space of the parameters
+(:func:`sympy_extras.polys.cad.cylindrical.cylindrical_cases`), its
+upper end being the infimum, and the parameters for which $f$ is
+unbounded come from one more elimination.
+
 No assumption of convexity, compactness or regularity is made, and no
 numerical step is involved. The price is that of the decomposition,
 doubly exponential in the number of variables: a few variables of
@@ -67,14 +75,14 @@ from __future__ import annotations
 from typing import Final, Optional, Sequence
 
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
-from sympy_extras.core.logic import And, Boolean, BooleanLike, to_boolean, true
-from sympy_extras.core.numbers import Infinity, NegativeInfinity
+from sympy_extras.core.logic import And, Boolean, BooleanLike, Implies, to_boolean, true
+from sympy_extras.core.numbers import Infinity, NegativeInfinity, Rational, oo
 from sympy_extras.core.relational import Eq, Ne
 from sympy_extras.core.sorting import default_sort_key
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.sets.sets import EmptySetClass, FiniteSet, Interval, Set, Union
 
-__all__ = ['Optimum', 'value_range', 'minimize', 'maximize']
+__all__ = ['Optimum', 'value_range', 'minimize', 'maximize', 'minimize_parametric', 'maximize_parametric']
 
 
 class Optimum:
@@ -259,3 +267,87 @@ def maximize(f: ExprLike, constraints: BooleanLike = True, variables: Optional[S
     return _optimize(f, constraints, variables, False)
 
 
+
+
+def _parametric(f: ExprLike, constraints: BooleanLike, variables: Optional[Sequence[Symbol]], parameters: Sequence[Symbol],
+                lowest: bool) -> list[tuple[Boolean, Expr]]:
+    from sympy_extras.core.logic import false
+    from sympy_extras.core.relational import Ge, Gt, Le, Lt
+    from sympy_extras.matrices.linalg import normal
+    from sympy_extras.polys.cad.cylindrical import cylindrical_cases, cylindrical_formula
+    from sympy_extras.simplify.radsimp import fraction
+    objective = to_expr(f)
+    condition = to_boolean(constraints)
+    names = list(parameters)
+    if not names:
+        raise ValueError('no parameter: use minimize or maximize')
+    symbols = {s for s in objective.free_symbols if isinstance(s, Symbol)}
+    symbols |= {s for s in condition.free_symbols if isinstance(s, Symbol)}
+    chosen = sorted(symbols - set(names), key=default_sort_key) if variables is None else list(variables)
+    if set(chosen) & set(names) or symbols - set(chosen) - set(names):
+        raise ValueError('every symbol is a variable or a parameter, and none is both')
+    numerator, denominator = fraction(normal(objective))
+    if not isinstance(denominator, Rational):
+        raise NotImplementedError('a parametric optimum of a rational function: the objective must be a polynomial')
+    bound = _fresh({s.name for s in symbols} | {s.name for s in chosen} | {s.name for s in names})
+    inner: list[tuple[str, Symbol]] = [('forall', v) for v in chosen]
+    beyond: list[tuple[str, Symbol]] = [('forall', bound)] + [('exists', v) for v in chosen]
+    within: Boolean = Ge(objective, bound) if lowest else Le(objective, bound)
+    outside: Boolean = Lt(objective, bound) if lowest else Gt(objective, bound)
+    if condition is not true:
+        within = Implies(condition, within)
+        outside = And(condition, outside)
+    results: list[tuple[Boolean, Expr]] = []
+    for case, bounds in cylindrical_cases(within, names, [bound], quantifiers=inner):
+        if not isinstance(bounds, Interval):
+            raise NotImplementedError('the set of the bounds %s is not an interval' % (bounds,))
+        end = bounds.end if lowest else bounds.start
+        other = bounds.start if lowest else bounds.end
+        if isinstance(end, (Infinity, NegativeInfinity)) or not isinstance(other, (Infinity, NegativeInfinity)):
+            # every number is a bound: the constraints have no solution for these parameters
+            continue
+        results.append((case, end))
+    unbounded = cylindrical_formula(outside, names, beyond)
+    if unbounded is not false:
+        extreme: Expr = -oo if lowest else oo
+        results.append((unbounded, extreme))
+    return results
+
+
+def minimize_parametric(f: ExprLike, constraints: BooleanLike = True, variables: Optional[Sequence[Symbol]] = None,
+                        parameters: Sequence[Symbol] = ()) -> list[tuple[Boolean, Expr]]:
+    """The global infimum of the polynomial ``f`` over the points
+    satisfying ``constraints``, as a function of ``parameters``: pairs of
+    a condition on the parameters and of the infimum under it (``-oo``
+    where the function is unbounded below). The values of the parameters
+    for which the constraints have no solution are in no pair. The
+    conditions are cylindrical: the first parameter between numbers, the
+    second between functions of the first.
+
+    >>> from sympy_extras.core import Eq, Symbol
+    >>> from sympy_extras.calculus.optimization import minimize_parametric
+    >>> x, y, a, b = Symbol('x'), Symbol('y'), Symbol('a'), Symbol('b')
+    >>> minimize_parametric(a*x**2 + x, parameters=[a])
+    [(a > 0, -1/(4*a)), (a <= 0, -oo)]
+    >>> minimize_parametric(x**2 + y**2, Eq(x + y, a), parameters=[a])
+    [(True, a**2/2)]
+    >>> minimize_parametric(x, Eq(x**2, a), parameters=[a])                   # no solution for a < 0
+    [(a >= 0, -sqrt(a))]
+    >>> minimize_parametric(a*x - x**2, (x >= 0) & (x <= 1), parameters=[a])
+    [(a <= 1, a - 1), (a > 1, 0)]
+    """
+    return _parametric(f, constraints, variables, parameters, True)
+
+
+def maximize_parametric(f: ExprLike, constraints: BooleanLike = True, variables: Optional[Sequence[Symbol]] = None,
+                        parameters: Sequence[Symbol] = ()) -> list[tuple[Boolean, Expr]]:
+    """The global supremum of ``f`` as a function of ``parameters`` (see
+    :func:`minimize_parametric`).
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.calculus.optimization import maximize_parametric
+    >>> x, a = Symbol('x'), Symbol('a')
+    >>> maximize_parametric(x*(a - x), parameters=[a]), maximize_parametric(a*x, (x >= 0) & (x <= 1), parameters=[a])
+    ([(True, a**2/4)], [(a < 0, 0), (a >= 0, a)])
+    """
+    return _parametric(f, constraints, variables, parameters, False)

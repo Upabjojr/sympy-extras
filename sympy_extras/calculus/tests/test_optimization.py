@@ -12,8 +12,9 @@ import sympy
 
 from sympy_extras.core import And, Eq, Integer, Rational, Symbol, oo
 from sympy_extras.core.expr import Expr
-from sympy_extras.core.logic import Boolean, true
-from sympy_extras.calculus.optimization import Optimum, maximize, minimize, value_range
+from sympy_extras.core.logic import Boolean, false, true
+from sympy_extras.calculus.optimization import (Optimum, maximize, maximize_parametric, minimize, minimize_parametric,
+                                                value_range)
 from sympy_extras.interop import sympy_expr, to_sympy
 from sympy_extras.sets.sets import EmptySet, Interval
 from sympy_extras.solvers.simplex import linear_program
@@ -188,3 +189,72 @@ def test_value_range_and_rejections() -> None:
     # a pole inside the region is not a value
     result = minimize(1/x, x > 0)
     assert result.value == 0 and not result.attained and maximize(1/x**2).value == oo
+
+
+def _case_value(cases: list[tuple[Boolean, Expr]], values: dict[Symbol, Expr]) -> list[Expr]:
+    """The values of the cases whose condition holds at the parameters."""
+    found: list[Expr] = []
+    for condition, value in cases:
+        held: Boolean = condition
+        for symbol, number in values.items():
+            substituted = held.subs(symbol, number)
+            assert isinstance(substituted, Boolean)
+            held = substituted
+        assert held is true or held is false, held
+        if held is true:
+            current = value
+            for symbol, number in values.items():
+                current = current.subs(symbol, number)
+            found.append(current)
+    return found
+
+
+def test_parametric_against_fixed_parameters() -> None:
+    rnd = random.Random(74)
+    a, b = Symbol('a'), Symbol('b')
+    problems: list[tuple[Expr, Boolean, list[Symbol]]] = [
+        (a*x**2 + x, true, [a]),
+        (x**2 + a*x + b, true, [a, b]),
+        (x**2 + y**2, Eq(x + y, a), [a]),
+        (x, Eq(x**2, a), [a]),
+        (a*x - x**2, And(x >= 0, x <= 1), [a]),
+        (x*y, Eq(x**2 + y**2, a), [a]),
+        (x**4 - a*x**2, true, [a]),
+        (a*x + y, And(x**2 + y**2 <= 1), [a]),
+    ]
+    for f, constraints, parameters in problems:
+        low = minimize_parametric(f, constraints, parameters=parameters)
+        high = maximize_parametric(f, constraints, parameters=parameters)
+        for _ in range(8):
+            values: dict[Symbol, Expr] = {p: Rational(rnd.randint(-6, 6), 2) for p in parameters}
+            fixed_f, fixed_c = f, constraints
+            for symbol, number in values.items():
+                fixed_f = fixed_f.subs(symbol, number)
+                replaced = fixed_c.subs(symbol, number)
+                assert isinstance(replaced, Boolean)
+                fixed_c = replaced
+            variables = [v for v in (x, y) if f.has(v) or constraints.has(v)]
+            for cases, solver in ((low, minimize), (high, maximize)):
+                found = _case_value(cases, values)
+                try:
+                    expected = solver(fixed_f, fixed_c, variables).value
+                except ValueError:
+                    assert found == []          # no feasible point: the parameters are in no case
+                    continue
+                assert len(found) == 1
+                difference = sympy_expr(to_sympy(found[0])) - sympy_expr(to_sympy(expected))
+                assert found[0] == expected or sympy.simplify(difference) == 0
+
+
+def test_parametric_known_and_rejections() -> None:
+    a = Symbol('a')
+    assert str(minimize_parametric(a*x**2 + x, parameters=[a])) == '[(a > 0, -1/(4*a)), (a <= 0, -oo)]'
+    # the distance from the origin to the line x + y = a, squared
+    assert minimize_parametric(x**2 + y**2, Eq(x + y, a), parameters=[a]) == [(true, a**2/2)]
+    assert maximize_parametric(x**2, parameters=[a]) == [(true, oo)]
+    with pytest.raises(ValueError):
+        minimize_parametric(x**2)
+    with pytest.raises(ValueError):
+        minimize_parametric(x*z + a, variables=[x], parameters=[a])
+    with pytest.raises(NotImplementedError):
+        minimize_parametric(a/(1 + x**2), parameters=[a])

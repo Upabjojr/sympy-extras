@@ -1096,6 +1096,10 @@ IndexedRoot(t**4 - 8, t, 1)
 Optimum(14/5, attained at [{x: 8/5, y: 6/5}])
 >>> value_range(x/(1 + x**2))
 Interval(-1/2, 1/2)
+>>> from sympy_extras.calculus.optimization import minimize_parametric
+>>> a = Symbol('a')
+>>> minimize_parametric(a*x**2 + x, parameters=[a]), minimize_parametric(a*x - x**2, (x >= 0) & (x <= 1), parameters=[a])
+([(a > 0, -1/(4*a)), (a <= 0, -oo)], [(a <= 1, a - 1), (a > 1, 0)])
 
 ```
 
