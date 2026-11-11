@@ -89,6 +89,28 @@ pub fn as_coeff_mul(e: &Basic) -> (Basic, Basic) {
     }
 }
 
+/// The numerical term and the rest of a sum (`as_coeff_Add`): the numbers
+/// among the terms of a sum added and the other terms, a number is
+/// `(self, 0)`, anything else `(0, self)`.
+pub fn as_coeff_add(e: &Basic) -> (Basic, Basic) {
+    if e.is_number_class() {
+        return (e.clone(), Basic::zero());
+    }
+    if !e.is_add() {
+        return (Basic::zero(), e.clone());
+    }
+    let mut number: Basic = Basic::zero();
+    let mut rest: Vec<Basic> = Vec::new();
+    for a in e.args() {
+        if a.is_number_class() {
+            number = super::numbers::number_add(&number, a);
+        } else {
+            rest.push(a.clone());
+        }
+    }
+    (number, super::add::raw_add(rest))
+}
+
 /// The base and the exponent (`as_base_exp`): `(1/q)**e` is `q**(-e)`, a
 /// product of powers with one integer exponent is `(product, exponent)`,
 /// `I` is `(-1, 1/2)`, anything else is `(self, 1)`.

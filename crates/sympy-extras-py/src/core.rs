@@ -424,6 +424,109 @@ fn as_real_imag<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'
     )
 }
 
+fn terms_to_py<'py, K: crate::convert::Bridge>(
+    py: Python<'py>,
+    k: &K,
+    terms: &sympy_extras_core::polys::rings::Terms<K::Elem>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let d: Bound<'py, PyDict> = PyDict::new(py);
+    for (m, c) in terms {
+        d.set_item(PyTuple::new(py, m.iter().copied())?, k.to_py(py, c)?)?;
+    }
+    Ok(d)
+}
+
+fn terms_from_py<K: crate::convert::Bridge>(
+    k: &K,
+    d: &Bound<'_, PyDict>,
+) -> PyResult<sympy_extras_core::polys::rings::Terms<K::Elem>> {
+    let mut terms = sympy_extras_core::polys::rings::Terms::new();
+    for (m, c) in d.iter() {
+        let monomial: Vec<u32> = m.extract()?;
+        terms.insert(monomial, k.extract(&c)?);
+    }
+    Ok(terms)
+}
+
+/// `polyutils.dict_from_expr` over `ZZ`, `QQ`, `ZZ_I`, `QQ_I` or `GF(p)`
+/// (the domain given by its name, or by the prime `p`).
+#[pyfunction]
+fn dict_from_expr<'py>(
+    py: Python<'py>,
+    expr: &Bound<'py, PyAny>,
+    gens: Vec<String>,
+    domain: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::polys::domains as d;
+    use sympy_extras_core::polys::polyutils::dict_from_expr as convert;
+    let e: Basic = from_python(expr)?;
+    let e_ = crate::convert::err;
+    if let Ok(p) = domain.extract::<u64>() {
+        let k = d::finitefield::FiniteField::new(p).map_err(crate::convert::err)?;
+        return terms_to_py(py, &k, &convert(&e, &gens, &k).map_err(e_)?);
+    }
+    let name: String = domain.extract()?;
+    match name.as_str() {
+        "ZZ" => terms_to_py(
+            py,
+            &d::integerring::ZZ,
+            &convert(&e, &gens, &d::integerring::ZZ).map_err(e_)?,
+        ),
+        "QQ" => terms_to_py(
+            py,
+            &d::rationalfield::QQ,
+            &convert(&e, &gens, &d::rationalfield::QQ).map_err(e_)?,
+        ),
+        "ZZ_I" => {
+            let k = d::gaussiandomains::GaussianIntegerRing;
+            terms_to_py(py, &k, &convert(&e, &gens, &k).map_err(e_)?)
+        }
+        "QQ_I" => {
+            let k = d::gaussiandomains::GaussianRationalField;
+            terms_to_py(py, &k, &convert(&e, &gens, &k).map_err(e_)?)
+        }
+        other => Err(PyTypeError::new_err(format!("no domain {}", other))),
+    }
+}
+
+/// `polyutils.expr_from_dict` over the same domains.
+#[pyfunction]
+fn expr_from_dict<'py>(
+    py: Python<'py>,
+    terms: &Bound<'py, PyDict>,
+    gens: Vec<String>,
+    domain: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::polys::domains as d;
+    use sympy_extras_core::polys::polyutils::expr_from_dict as convert;
+    let e_ = crate::convert::err;
+    let result: Basic = if let Ok(p) = domain.extract::<u64>() {
+        let k = d::finitefield::FiniteField::new(p).map_err(crate::convert::err)?;
+        convert(&terms_from_py(&k, terms)?, &gens, &k).map_err(e_)?
+    } else {
+        let name: String = domain.extract()?;
+        match name.as_str() {
+            "ZZ" => convert(&terms_from_py(&d::integerring::ZZ, terms)?, &gens, &d::integerring::ZZ).map_err(e_)?,
+            "QQ" => convert(
+                &terms_from_py(&d::rationalfield::QQ, terms)?,
+                &gens,
+                &d::rationalfield::QQ,
+            )
+            .map_err(e_)?,
+            "ZZ_I" => {
+                let k = d::gaussiandomains::GaussianIntegerRing;
+                convert(&terms_from_py(&k, terms)?, &gens, &k).map_err(e_)?
+            }
+            "QQ_I" => {
+                let k = d::gaussiandomains::GaussianRationalField;
+                convert(&terms_from_py(&k, terms)?, &gens, &k).map_err(e_)?
+            }
+            other => return Err(PyTypeError::new_err(format!("no domain {}", other))),
+        }
+    };
+    to_python(py, &result)
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -452,6 +555,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(exp, m)?)?;
     m.add_function(wrap_pyfunction!(log, m)?)?;
     m.add_function(wrap_pyfunction!(as_numer_denom, m)?)?;
+    m.add_function(wrap_pyfunction!(dict_from_expr, m)?)?;
+    m.add_function(wrap_pyfunction!(expr_from_dict, m)?)?;
     m.add_function(wrap_pyfunction!(re, m)?)?;
     m.add_function(wrap_pyfunction!(im, m)?)?;
     m.add_function(wrap_pyfunction!(conjugate, m)?)?;

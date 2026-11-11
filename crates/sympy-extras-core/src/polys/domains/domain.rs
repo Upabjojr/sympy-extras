@@ -53,6 +53,19 @@ pub trait Domain: Clone + PartialEq + Debug {
     fn zero(&self) -> Self::Elem;
     fn one(&self) -> Self::Elem;
 
+    // -- conversions with the core expressions
+
+    /// The element as an expression of the core (`to_expr`).
+    fn to_expr(&self, _a: &Self::Elem) -> crate::error::PolyResult<crate::core::Basic> {
+        Err(crate::error::not_ported(&format!("to_expr of {}", self.name())))
+    }
+
+    /// A core expression which is an element of the domain, as an element
+    /// (`from_expr`); `Value` when it is not one.
+    fn from_expr(&self, _e: &crate::core::Basic) -> crate::error::PolyResult<Self::Elem> {
+        Err(crate::error::not_ported(&format!("from_expr of {}", self.name())))
+    }
+
     fn is_zero(&self, a: &Self::Elem) -> bool {
         *a == self.zero()
     }

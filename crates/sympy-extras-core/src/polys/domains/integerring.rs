@@ -18,6 +18,17 @@ pub const ZZ: IntegerRing = IntegerRing;
 impl Domain for IntegerRing {
     type Elem = Int;
 
+    fn to_expr(&self, a: &Int) -> crate::error::PolyResult<crate::core::Basic> {
+        Ok(crate::core::Basic::integer(a.clone()))
+    }
+
+    fn from_expr(&self, e: &crate::core::Basic) -> crate::error::PolyResult<Int> {
+        if crate::core::expr::is_integer_class(e) {
+            return Ok(e.as_rational().expect("an integer").numerator().clone());
+        }
+        Err(crate::error::PolyError::Value(format!("{} is not an integer", e)))
+    }
+
     fn name(&self) -> String {
         "ZZ".to_string()
     }

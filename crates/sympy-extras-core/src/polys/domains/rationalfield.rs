@@ -30,6 +30,20 @@ impl RationalField {
 impl Domain for RationalField {
     type Elem = Rat;
 
+    fn to_expr(&self, a: &Rat) -> crate::error::PolyResult<crate::core::Basic> {
+        Ok(crate::core::Basic::from_rational(a.clone()))
+    }
+
+    fn from_expr(&self, e: &crate::core::Basic) -> crate::error::PolyResult<Rat> {
+        match e.as_rational() {
+            Some(v) => Ok(v.clone()),
+            None => Err(crate::error::PolyError::Value(format!(
+                "{} is not a rational number",
+                e
+            ))),
+        }
+    }
+
     fn name(&self) -> String {
         "QQ".to_string()
     }
