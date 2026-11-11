@@ -179,7 +179,11 @@ fn expand_pass(e: &Basic, deep: bool, distribute: bool, multinomial: bool) -> Po
             let (p, q) = (numer(x), denom(x));
             if q == Int::ONE && !p.is_zero() {
                 let power: Basic = expand_power(b, small(&abs(&p))?)?;
-                return if is_negative(&p) { pow(&power, &Basic::negative_one()) } else { Ok(power) };
+                return if is_negative(&p) {
+                    pow(&power, &Basic::negative_one())
+                } else {
+                    Ok(power)
+                };
             }
             if q > Int::ONE && p > q {
                 let whole: Int = div_floor(&p, &q);

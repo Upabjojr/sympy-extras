@@ -13,10 +13,13 @@ use crate::numbers::*;
 
 use super::assumptions::Predicate;
 use super::basic::{Basic, Head};
-use super::expr::{as_base_exp, as_coeff_mul, factors_of, is, is_false, is_rational_value, is_true};
+use super::expr::{
+    as_base_exp, as_coeff_mul, coeff, factors_of, is, is_false, is_rational_value, is_true, is_zero_number,
+};
 use super::mul::mul;
 use super::numbers::number_mul;
 use super::parameters::{divide_error, evaluate};
+use crate::functions::elementary::complexes::{abs_, im, re, real_imag_parts};
 
 /// The integers up to this size are factored completely to find their
 /// perfect powers; larger ones only by trial division up to [`TRIAL`].
@@ -366,21 +369,20 @@ fn gaussian_inverse(base: &Basic) -> Option<Basic> {
     Some(Basic::new(Head::Mul, vec![Basic::from_rational(norm), conjugate]))
 }
 
-/// Whether `expt` is half an integer (`_half`, for a rational exponent; the
-/// symbolic case needs `as_numer_denom`).
+/// Whether `e` is half an integer (`_half`).
 fn half(e: &Basic) -> PolyResult<bool> {
-    match e.as_rational() {
-        Some(v) => Ok(denom(v) == int(2)),
-        None => Err(not_ported("as_numer_denom of a symbolic exponent")),
+    if let Some(v) = e.as_rational() {
+        if denom(v) == int(2) {
+            return Ok(true);
+        }
     }
+    let (n, d) = super::expr::as_numer_denom(e)?;
+    Ok(is_true(&n, Predicate::integer) && is_rational_value(&d, 2))
 }
 
-/// `|e| < 1` for a rational `e` (`_lt(abs_(e), 1)`).
-fn abs_below_one(e: &Basic) -> PolyResult<bool> {
-    match e.as_rational() {
-        Some(v) => Ok((if rat_is_negative(v) { -v } else { v.clone() }) < Rat::ONE),
-        None => Err(not_ported("Abs and Lt of a symbolic exponent")),
-    }
+/// `Lt(Abs(e), bound).doit() is true` (`_lt(abs_(e), bound)`).
+fn abs_below(e: &Basic, bound: i64) -> PolyResult<bool> {
+    super::relational::lt_true(&abs_(e)?, &Basic::int(bound))
 }
 
 /// `(b**e)**expt` as `s*b**(e*expt)` when the factor `s` (the branch
@@ -392,7 +394,7 @@ fn power_of_power(b: &Basic, e: &Basic, expt: &Basic) -> PolyResult<Option<Basic
         s = Some(Basic::one());
     } else if let Some(real) = is(e, Predicate::extended_real) {
         if !real {
-            return Err(not_ported("exp, floor and im of a complex exponent"));
+            return Err(not_ported("floor of the branch of a complex exponent"));
         }
         if is_rational_value(e, -1) {
             if half(expt)? {
@@ -410,24 +412,20 @@ fn power_of_power(b: &Basic, e: &Basic, expt: &Basic) -> PolyResult<Option<Basic
             }
         } else if is_true(e, Predicate::even) {
             if is_true(&b, Predicate::extended_real) {
-                // abs_(b)
-                if is_true(&b, Predicate::extended_nonnegative) {
-                } else if is_true(&b, Predicate::extended_nonpositive) {
-                    b = mul(&[Basic::negative_one(), b])?;
-                } else {
-                    return Err(not_ported("Abs of a real base"));
-                }
+                b = abs_(&b)?;
             }
             if is_true(&b, Predicate::imaginary) {
-                return Err(not_ported("Abs and im of an imaginary base"));
+                b = mul(&[abs_(&im(&b)?)?, Basic::imaginary_unit()])?;
             }
         }
-        if abs_below_one(e)? || is_rational_value(e, 1) || is_true(&b, Predicate::extended_nonnegative) {
+        if abs_below(e, 1)?
+            || is_rational_value(e, 1)
+            || is_true(&b, Predicate::extended_nonnegative)
+            || (is_true(&re(&b)?, Predicate::extended_nonnegative) && abs_below(e, 2)?)
+        {
             s = Some(Basic::one());
-        } else if !is_true(&b, Predicate::extended_real) {
-            return Err(not_ported("re of a base"));
         } else if half(expt)? {
-            return Err(not_ported("exp, floor and arg of a half-integer power"));
+            return Err(not_ported("floor and arg of a half-integer power"));
         }
     }
     match s {
@@ -469,7 +467,14 @@ fn power_of_product(base: &Basic, exp: &Basic) -> PolyResult<Option<Basic>> {
         return Ok(None);
     }
     if denom(x) == int(2) && is_true(base, Predicate::imaginary) {
-        return Err(not_ported("as_real_imag of an imaginary product"));
+        let imaginary: Basic = real_imag_parts(base)?.1;
+        if let Some(v) = imaginary.as_rational() {
+            let half_value: Rat = (if rat_is_negative(v) { -v.clone() } else { v.clone() }) / rat(2, 1);
+            let (n, d) = (numer(&half_value), denom(&half_value));
+            if integer_root_parts(&n, &rat(1, 2)).1 == Int::ONE && integer_root_parts(&d, &rat(1, 2)).1 == Int::ONE {
+                return Err(not_ported("unevaluated_mul of sqrt(2*I)"));
+            }
+        }
     }
     let (coefficient, rest) = as_coeff_mul(base);
     // SymPy's _eval_expand_power_base: the positive and the polar factors
@@ -599,7 +604,24 @@ pub fn pow(base: &Basic, exp: &Basic) -> PolyResult<Basic> {
         && is_false(exp, Predicate::zero)
         && *exp != Basic::one()
     {
-        return Err(not_ported("coeff(I) of a sum with an infinite term"));
+        // Add._eval_power: a + I*b with real a, b and an infinite term
+        let i: Basic = Basic::imaginary_unit();
+        let (mut a, mut b) = (base.args()[0].clone(), base.args()[1].clone());
+        if !is_zero_number(&coeff(&a, &i)?) {
+            std::mem::swap(&mut a, &mut b);
+        }
+        let imaginary: Basic = coeff(&b, &i)?;
+        if !is_zero_number(&imaginary)
+            && is_true(&imaginary, Predicate::extended_real)
+            && is_true(&a, Predicate::extended_real)
+        {
+            if is_true(exp, Predicate::extended_negative) {
+                return Ok(Basic::zero());
+            }
+            if is_true(exp, Predicate::extended_positive) {
+                return Ok(Basic::zoo());
+            }
+        }
     }
     if base.is_mul() {
         if let Some(x) = exp.as_rational() {
@@ -622,6 +644,11 @@ pub fn pow(base: &Basic, exp: &Basic) -> PolyResult<Basic> {
             }
         }
     }
+    if base.is_function(super::basic::Function::Abs) {
+        if let Some(own) = crate::functions::elementary::complexes::abs_power(base, exp)? {
+            return Ok(own);
+        }
+    }
     if matches!(base.head(), Head::Infinity) && !exp.is_number_node() {
         // Infinity._eval_power
         if is_true(exp, Predicate::extended_positive) {
@@ -631,7 +658,16 @@ pub fn pow(base: &Basic, exp: &Basic) -> PolyResult<Basic> {
             return Ok(Basic::zero());
         }
         if is_false(exp, Predicate::extended_real) && super::assumptions::is_number(exp) {
-            return Err(not_ported("re of the exponent of oo"));
+            let real: Basic = re(exp)?;
+            if is_true(&real, Predicate::positive) {
+                return Ok(Basic::zoo());
+            }
+            if is_true(&real, Predicate::negative) {
+                return Ok(Basic::zero());
+            }
+            if is_true(&real, Predicate::zero) {
+                return Ok(Basic::nan());
+            }
         }
     }
     if matches!(base.head(), Head::Exp1) {

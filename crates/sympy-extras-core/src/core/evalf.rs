@@ -235,6 +235,23 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                     }
                     v.ln()
                 }
+                super::basic::Function::Re => complex_real(parts(&v).0, wp),
+                super::basic::Function::Im => complex_real(parts(&v).1, wp),
+                super::basic::Function::Conjugate => {
+                    let (re, im) = parts(&v);
+                    complex(re, -im)
+                }
+                super::basic::Function::Abs | super::basic::Function::Sign => {
+                    let (re, im) = parts(&v);
+                    let modulus: Real = (&re * &re + &im * &im).sqrt();
+                    if matches!(f, super::basic::Function::Abs) {
+                        complex_real(modulus, wp)
+                    } else if is_zero(&v) {
+                        complex_real(real_zero(wp), wp)
+                    } else {
+                        complex(re / &modulus, im / &modulus)
+                    }
+                }
             };
             let (re, im) = parts(&value);
             if re.repr().is_infinite() || im.repr().is_infinite() {

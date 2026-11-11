@@ -59,6 +59,11 @@ pub enum Head {
 pub enum Function {
     Exp,
     Log,
+    Re,
+    Im,
+    Conjugate,
+    Sign,
+    Abs,
 }
 
 impl Function {
@@ -67,6 +72,11 @@ impl Function {
         match self {
             Function::Exp => "exp",
             Function::Log => "log",
+            Function::Re => "re",
+            Function::Im => "im",
+            Function::Conjugate => "conjugate",
+            Function::Sign => "sign",
+            Function::Abs => "Abs",
         }
     }
 
@@ -75,6 +85,11 @@ impl Function {
         match self {
             Function::Exp => "Exp",
             Function::Log => "Log",
+            Function::Re => "Re",
+            Function::Im => "Im",
+            Function::Conjugate => "Conjugate",
+            Function::Sign => "Sign",
+            Function::Abs => "Abs",
         }
     }
 
@@ -83,6 +98,10 @@ impl Function {
         match self {
             Function::Exp => 10,
             Function::Log => 11,
+            Function::Conjugate => 40,
+            Function::Re => 41,
+            Function::Im => 42,
+            Function::Sign | Function::Abs => 10000,
         }
     }
 }

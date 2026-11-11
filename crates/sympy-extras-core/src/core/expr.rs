@@ -126,6 +126,19 @@ pub fn as_base_exp(e: &Basic) -> Result<(Basic, Basic), crate::error::PolyError>
     }
 }
 
+/// The coefficient of `x` among the terms of a sum (`coeff` with `n = 1`).
+pub fn coeff(e: &Basic, x: &Basic) -> PolyResult<Basic> {
+    let mut found: Vec<Basic> = Vec::new();
+    for term in terms_of(e) {
+        let mut factors: Vec<Basic> = factors_of(&term);
+        if let Some(k) = factors.iter().position(|f| f == x) {
+            factors.remove(k);
+            found.push(mul(&factors)?);
+        }
+    }
+    add(&found)
+}
+
 /// The value of a rational number (`exact_value`; `None` for the others).
 fn exact_value(e: &Basic) -> Option<&Rat> {
     e.as_rational()
@@ -403,7 +416,13 @@ fn add_numer_denom(e: &Basic) -> PolyResult<(Basic, Basic)> {
     let mut numerators: Vec<Basic> = Vec::new();
     for (i, (_, ns)) in groups.iter().enumerate() {
         let mut factors: Vec<Basic> = vec![add(ns)?];
-        factors.extend(groups.iter().enumerate().filter(|(j, _)| *j != i).map(|(_, (d, _))| d.clone()));
+        factors.extend(
+            groups
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != i)
+                .map(|(_, (d, _))| d.clone()),
+        );
         numerators.push(mul(&factors)?);
     }
     let _guard = super::parameters::distribute_guard(false);

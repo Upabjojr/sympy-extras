@@ -1251,6 +1251,7 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
     let mut facts: FactList = match f {
         super::basic::Function::Exp => exp_facts(&e.args()[0]),
         super::basic::Function::Log => log_facts(&e.args()[0]),
+        other => crate::functions::elementary::complexes::complexes_facts(other, &e.args()[0]),
     };
     if facts.get(commutative) == Some(true) && e.args().iter().any(|a| no(facts_of(a), commutative)) {
         facts.set(commutative, false);

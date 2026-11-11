@@ -2,7 +2,9 @@
 
 use crate::core::assumptions::Predicate;
 use crate::core::basic::{Basic, Function};
-use crate::core::expr::{as_base_exp, as_numer_denom, factors_of, is_false, is_integer_class, is_rational_value, is_true};
+use crate::core::expr::{
+    as_base_exp, as_numer_denom, factors_of, is_false, is_integer_class, is_rational_value, is_true,
+};
 use crate::core::mul::mul;
 use crate::core::power::pow;
 use crate::error::PolyResult;

@@ -91,7 +91,22 @@ pub fn exp_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
         let (number, terms) = as_coeff_mul(arg);
         if matches!(number.head(), Head::Infinity | Head::NegativeInfinity) {
             if is_number(&terms) {
-                return Err(not_ported("re and im of the direction of exp(oo*z)"));
+                use super::complexes::{im, re};
+                let direction: Basic = if matches!(number.head(), Head::NegativeInfinity) {
+                    mul(&[Basic::negative_one(), terms])?
+                } else {
+                    terms
+                };
+                let real_part: Basic = re(&direction)?;
+                if is_true(&real_part, zero) && !direction.as_rational().is_some_and(|v| v.is_zero()) {
+                    return Ok(Some(Basic::nan()));
+                }
+                if is_true(&real_part, positive) && !im(&direction)?.as_rational().is_some_and(|v| v.is_zero()) {
+                    return Ok(Some(Basic::zoo()));
+                }
+                if is_true(&real_part, negative) {
+                    return Ok(Some(Basic::zero()));
+                }
             }
             return Ok(None);
         }

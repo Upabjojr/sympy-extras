@@ -38,6 +38,7 @@ pub mod numbers;
 pub mod parameters;
 pub mod power;
 pub mod printing;
+pub mod relational;
 pub mod sorting;
 pub mod symbol;
 

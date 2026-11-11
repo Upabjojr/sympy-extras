@@ -20,7 +20,7 @@ use pyo3::types::{PyDict, PyList, PyModule, PyTuple};
 use sympy_extras_core::core::assumptions::{facts_of, is_number, Predicate};
 use sympy_extras_core::core::evalf::{numeric_value, parts, Real};
 use sympy_extras_core::core::{self as rust_core, Basic, Dummy, Function, Head, Symbol};
-use sympy_extras_core::functions::elementary::exponential;
+use sympy_extras_core::functions::elementary::{complexes, exponential};
 #[allow(unused_imports)]
 use sympy_extras_core::numbers::rat;
 use sympy_extras_core::numbers::{denom, rat_from_parts, Int, Rat};
@@ -113,6 +113,11 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Pow" => Basic::new(Head::Pow, args()?),
         "Exp" => Basic::new(Head::Function(Function::Exp), args()?),
         "Log" => Basic::new(Head::Function(Function::Log), args()?),
+        "Re" => Basic::new(Head::Function(Function::Re), args()?),
+        "Im" => Basic::new(Head::Function(Function::Im), args()?),
+        "Conjugate" => Basic::new(Head::Function(Function::Conjugate), args()?),
+        "Sign" => Basic::new(Head::Function(Function::Sign), args()?),
+        "Abs" => Basic::new(Head::Function(Function::Abs), args()?),
         other => return Err(PyTypeError::new_err(format!("the Rust core has no {} yet", other))),
     })
 }
@@ -168,7 +173,11 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
         Head::Pow => rebuilt("Pow", "power")?,
         Head::Function(f) => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
-            py.import("sympy_extras.functions.elementary.exponential")?
+            let module: &str = match f {
+                Function::Exp | Function::Log => "exponential",
+                _ => "complexes",
+            };
+            py.import(format!("sympy_extras.functions.elementary.{}", module))?
                 .getattr(f.class_name())?
                 .call1(PyTuple::new(py, items)?)?
         }
@@ -330,24 +339,59 @@ fn pair<'py>(py: Python<'py>, value: PyResult<(Basic, Basic)>) -> PyResult<Bound
 
 #[pyfunction]
 fn as_numer_denom<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyTuple>> {
-    pair(py, rust_core::expr::as_numer_denom(&from_python(e)?).map_err(crate::convert::err))
+    pair(
+        py,
+        rust_core::expr::as_numer_denom(&from_python(e)?).map_err(crate::convert::err),
+    )
 }
 
 #[pyfunction]
 fn fraction<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyTuple>> {
-    pair(py, sympy_extras_core::simplify::radsimp::fraction(&from_python(e)?).map_err(crate::convert::err))
+    pair(
+        py,
+        sympy_extras_core::simplify::radsimp::fraction(&from_python(e)?).map_err(crate::convert::err),
+    )
 }
 
 #[pyfunction]
 #[pyo3(signature = (e, deep=true))]
 fn expand_mul<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, deep: bool) -> PyResult<Bound<'py, PyAny>> {
-    to_python(py, &rust_core::function::expand_mul(&from_python(e)?, deep).map_err(crate::convert::err)?)
+    to_python(
+        py,
+        &rust_core::function::expand_mul(&from_python(e)?, deep).map_err(crate::convert::err)?,
+    )
 }
 
 #[pyfunction]
 #[pyo3(signature = (e, deep=true))]
 fn expand_multinomial<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, deep: bool) -> PyResult<Bound<'py, PyAny>> {
-    to_python(py, &rust_core::function::expand_multinomial(&from_python(e)?, deep).map_err(crate::convert::err)?)
+    to_python(
+        py,
+        &rust_core::function::expand_multinomial(&from_python(e)?, deep).map_err(crate::convert::err)?,
+    )
+}
+
+macro_rules! unary {
+    ($name:ident, $path:path) => {
+        #[pyfunction]
+        fn $name<'py>(py: Python<'py>, x: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+            to_python(py, &$path(&from_python(x)?).map_err(crate::convert::err)?)
+        }
+    };
+}
+
+unary!(re, complexes::re);
+unary!(im, complexes::im);
+unary!(conjugate, complexes::conjugate);
+unary!(sign, complexes::sign);
+unary!(abs_, complexes::abs_);
+
+#[pyfunction]
+fn as_real_imag<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyTuple>> {
+    pair(
+        py,
+        complexes::real_imag_parts(&from_python(e)?).map_err(crate::convert::err),
+    )
 }
 
 #[pyfunction]
@@ -378,6 +422,12 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(exp, m)?)?;
     m.add_function(wrap_pyfunction!(log, m)?)?;
     m.add_function(wrap_pyfunction!(as_numer_denom, m)?)?;
+    m.add_function(wrap_pyfunction!(re, m)?)?;
+    m.add_function(wrap_pyfunction!(im, m)?)?;
+    m.add_function(wrap_pyfunction!(conjugate, m)?)?;
+    m.add_function(wrap_pyfunction!(sign, m)?)?;
+    m.add_function(wrap_pyfunction!(abs_, m)?)?;
+    m.add_function(wrap_pyfunction!(as_real_imag, m)?)?;
     m.add_function(wrap_pyfunction!(fraction, m)?)?;
     m.add_function(wrap_pyfunction!(expand_mul, m)?)?;
     m.add_function(wrap_pyfunction!(expand_multinomial, m)?)?;
