@@ -295,7 +295,7 @@ sympy_extras/
       eigen.py               eigenspaces per irreducible factor of the characteristic polynomial (elimination over K[x]/(f)), eigenvalues, eigenvectors, diagonalize, jordan_chains, jordan_form
       decompositions.py      lu, ldl, cholesky, qr, gram_schmidt, rank_factorization, congruence_diagonalize, inertia, positive definiteness
       equations.py           sylvester_solve, lyapunov_solve, discrete_lyapunov_solve, linear_matrix_equation, commuting_matrices, kronecker_product
-      normalforms.py         smith_normal_form and hermite_normal_form over K[x], invariant_factors, matrix_minimal_polynomial, frobenius_form, elementary_divisors, is_similar
+      normalforms.py         smith_normal_form, hermite_normal_form and popov_form over K[x], invariant_factors, matrix_minimal_polynomial, frobenius_form, elementary_divisors, is_similar
       steps.py               step-by-step elimination: rref_steps, echelon_steps, inverse_steps, solve_steps, determinant_steps (RowOperation, Step)
       calculus.py            jacobian, gradient, hessian (bordered), wronskian, classify_critical_point
       riccati.py             riccati_solutions, care_solve, lqr, dare_solve, dlqr (exact, by the polynomial system and a certified Routh-Hurwitz test)

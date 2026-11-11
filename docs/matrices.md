@@ -538,6 +538,9 @@ matrix of polynomials has a polynomial inverse:
 (ExprMatrix([[x, 0], [0, 1]]), ExprMatrix([[-1, x + 1], [1, -x]]))
 >>> is_unimodular(ExprMatrix.from_rows([[x, x + 1], [x - 1, x]]), x)
 True
+>>> from sympy_extras.matrices.normalforms import popov_form
+>>> popov_form(ExprMatrix.from_rows([[x**3 + 1, x**2], [x**2, x + 1]]), x)[0]        # least row degrees
+ExprMatrix([[x**2 + 1, 1], [-1, x]])
 
 ```
 
@@ -619,7 +622,7 @@ no eigenvalue computed.
   `RootOf` objects when a factor is not solved in radicals;
 * the singular value decomposition with parameters and the full (square
   `U`, `V`) decomposition;
-* the Popov form of matrices of polynomials; a Smith form
+* a Smith form
   which controls the growth of the coefficients (modular, or by the
   determinantal divisors) for large matrices;
 * the inertia when the core does not decide the sign of a pivot (a

@@ -18,7 +18,7 @@ from sympy_extras.matrices import ExprMatrix
 from sympy_extras.matrices.eigen import jordan_chains
 from sympy_extras.matrices.normalforms import (companion_matrix, elementary_divisors, frobenius_form, hermite_normal_form,
                                                invariant_factors, is_similar, is_unimodular, matrix_minimal_polynomial,
-                                               polynomial_matrix_rank, smith_normal_form)
+                                               polynomial_matrix_rank, popov_form, smith_normal_form)
 
 x, a, b = Symbol('x'), Symbol('a'), Symbol('b')
 sx = sympy.Symbol('x')
@@ -260,3 +260,57 @@ def test_hermite_form_known_and_unimodular() -> None:
     assert hermite_normal_form(ExprMatrix.zeros(2, 3), x) == (ExprMatrix.zeros(2, 3), ExprMatrix.eye(2))
     with pytest.raises(ValueError):
         hermite_normal_form(ExprMatrix.from_rows([[1/x]]), x)
+
+
+def _row_pivot(row: list[sympy.Expr]) -> tuple[int, int]:
+    degree, column = -1, -1
+    for j, entry in enumerate(row):
+        if entry != 0 and sympy.degree(entry, sx) >= degree:
+            degree, column = int(sympy.degree(entry, sx)), j
+    return degree, column
+
+
+def test_popov_form_random() -> None:
+    rnd = random.Random(37)
+    for trial in range(30):
+        m, n = rnd.randint(1, 3), rnd.randint(1, 3)
+        M = ExprMatrix(m, n, [_random_polynomial(rnd, trial % 3 == 2) for _ in range(m*n)])
+        P, U = popov_form(M, x)
+        S, SP, SU = _sympy_matrix(M), _sympy_matrix(P), _sympy_matrix(U)
+        assert _same(SU*S, SP)
+        determinant = sympy.cancel(SU.det(method='berkowitz'))
+        assert determinant != 0 and sx not in determinant.free_symbols
+        pivots = [_row_pivot([SP[i, j] for j in range(n)]) for i in range(m)]
+        nonzero = [pv for pv in pivots if pv[1] >= 0]
+        assert len(nonzero) == S.rank() and pivots[:len(nonzero)] == nonzero        # the zero rows are last
+        columns = [column for _, column in nonzero]
+        assert columns == sorted(set(columns))                                      # distinct, increasing
+        for i, (degree, column) in enumerate(nonzero):
+            assert sympy.Poly(SP[i, column], sx).LC() == 1
+            for other in range(len(nonzero)):
+                if other != i:
+                    entry = SP[other, column]
+                    assert entry == 0 or sympy.degree(entry, sx) < degree
+        if m == n and S.det(method='berkowitz') != 0:
+            # a row reduced matrix: the sum of the row degrees is the degree of the determinant
+            assert sum(degree for degree, _ in nonzero) == sympy.degree(sympy.expand(S.det(method='berkowitz')), sx)
+        # canonical: unchanged by unimodular row operations
+        V = sympy.eye(m)
+        for _ in range(3):
+            i, j = rnd.randrange(m), rnd.randrange(m)
+            if i != j:
+                V = V.elementary_row_op('n->n+km', row=i, k=sx**2 + rnd.randint(-1, 1), row2=j)
+        mixed = (V*S).applyfunc(sympy.expand)
+        other_matrix = ExprMatrix(m, n, [_from_sympy(e) for e in mixed])
+        if S.rank() == m:
+            assert popov_form(other_matrix, x)[0] == P
+
+
+def test_popov_form_known() -> None:
+    # Kailath, Section 6.7: a matrix which is already in polynomial echelon form is its own Popov form
+    P = ExprMatrix.from_rows([[x**2 + 1, 1], [-1, x]])
+    assert popov_form(P, x)[0] == P
+    M = ExprMatrix.from_rows([[x**3 + 1, x**2], [x**2, x + 1]])
+    assert popov_form(M, x)[0] == P
+    assert popov_form(ExprMatrix.zeros(2, 2), x)[0] == ExprMatrix.zeros(2, 2)
+    assert popov_form(ExprMatrix.from_rows([[2*x, 4]]), x)[0] == ExprMatrix.from_rows([[x, 2]])

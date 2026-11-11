@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `matrices.normalforms.popov_form`: the Popov (polynomial echelon) form
+  of a matrix of polynomials over `K[x]`, with the unimodular
+  transformation (Mulders and Storjohann).
 - `sympy_extras.solvers.rootclassification`: `real_root_classification`
   (the number of distinct real roots of a polynomial for every value of
   its parameters, from the signs of the discrimination sequence by the

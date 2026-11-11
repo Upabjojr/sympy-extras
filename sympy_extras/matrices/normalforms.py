@@ -105,7 +105,7 @@ from .eigen import (_Field, _FunctionField, _GaussianField, _RationalField, _cha
                     _fresh_symbol)
 from .linalg import _PolynomialLift, _complex_lift, _kernels, _square
 
-__all__ = ['SmithDecomposition', 'smith_normal_form', 'hermite_normal_form', 'polynomial_matrix_rank', 'is_unimodular', 'invariant_factors', 'matrix_minimal_polynomial', 'companion_matrix',
+__all__ = ['SmithDecomposition', 'smith_normal_form', 'hermite_normal_form', 'popov_form', 'polynomial_matrix_rank', 'is_unimodular', 'invariant_factors', 'matrix_minimal_polynomial', 'companion_matrix',
            'frobenius_form', 'elementary_divisors', 'is_similar']
 
 T = TypeVar('T')
@@ -155,6 +155,9 @@ class _Forms:
         raise NotImplementedError
 
     def hermite(self, rows: _PolynomialRows, ncols: int, x: Expr) -> tuple[ExprMatrix, ExprMatrix, list[int]]:
+        raise NotImplementedError
+
+    def popov(self, rows: _PolynomialRows, ncols: int, x: Expr) -> tuple[ExprMatrix, ExprMatrix]:
         raise NotImplementedError
 
     def invariants(self, A: ExprMatrix) -> list[_Coefficients]:
@@ -330,6 +333,72 @@ class _Worker(_Forms, Generic[T]):
             r += 1
         return self._matrix(B, ncols, x), self._matrix(U, m, x), pivots
 
+    def popov(self, rows: _PolynomialRows, ncols: int, x: Expr) -> tuple[ExprMatrix, ExprMatrix]:
+        K = self.field.domain
+        B = [[self._polynomial(f) for f in row] for row in rows]
+        m = len(B)
+        U = self._identity(m)
+
+        def add_row(target: int, source: int, q: list[T]) -> None:
+            B[target] = [densearith.dup_add(a, densearith.dup_mul(q, b, K), K) if b else a
+                         for a, b in zip(B[target], B[source])]
+            U[target] = [densearith.dup_add(a, densearith.dup_mul(q, b, K), K) if b else a
+                         for a, b in zip(U[target], U[source])]
+
+        def pivot(i: int) -> tuple[int, int]:
+            """``(degree, column)`` of the row: the last entry of the
+            largest degree; ``(-1, -1)`` for a zero row."""
+            degree, column = -1, -1
+            for j, entry in enumerate(B[i]):
+                if entry and len(entry) - 1 >= degree:
+                    degree, column = len(entry) - 1, j
+            return degree, column
+
+        # weak Popov form: simple transformations until the pivots are in different columns (Mulders, Storjohann)
+        while True:
+            seen: dict[int, int] = {}
+            clash: Optional[tuple[int, int]] = None
+            for i in range(m):
+                degree, column = pivot(i)
+                if column < 0:
+                    continue
+                if column in seen:
+                    clash = (seen[column], i)
+                    break
+                seen[column] = i
+            if clash is None:
+                break
+            first, second = clash
+            low, high = (first, second) if pivot(first)[0] <= pivot(second)[0] else (second, first)
+            column = pivot(low)[1]
+            shift = pivot(high)[0] - pivot(low)[0]
+            factor = K.neg(K.mul(B[high][column][0], K.invert(B[low][column][0])))
+            add_row(high, low, [factor] + [K.zero]*shift)
+        # Popov form: monic pivots, and in the column of a pivot the other entries of lower degree
+        for i in range(m):
+            degree, column = pivot(i)
+            if column >= 0 and not K.is_one(B[i][column][0]):
+                inverse = K.invert(B[i][column][0])
+                B[i] = [densearith.dup_mul_ground(a, inverse, K) for a in B[i]]
+                U[i] = [densearith.dup_mul_ground(a, inverse, K) for a in U[i]]
+        for _ in range(64*(m + 1)*(m + 1)):
+            changed = False
+            for r in range(m):
+                degree, column = pivot(r)
+                if column < 0:
+                    continue
+                for i in range(m):
+                    if i != r and B[i][column] and len(B[i][column]) - 1 >= degree:
+                        quotient, _ = densearith.dup_div(B[i][column], B[r][column], K)
+                        add_row(i, r, densearith.dup_neg(quotient, K))
+                        changed = True
+            if not changed:
+                break
+        else:
+            raise ArithmeticError('the reduction to the Popov form did not end')
+        order = sorted(range(m), key=lambda i: (pivot(i)[1] < 0, pivot(i)[1]))
+        return self._matrix([B[i] for i in order], ncols, x), self._matrix([U[i] for i in order], m, x)
+
     # -- square matrices over the field
 
     def _characteristic(self, A: ExprMatrix) -> tuple[list[list[T]], _Reduction[T]]:
@@ -485,6 +554,34 @@ def hermite_normal_form(M: ExprMatrix, x: Symbol) -> tuple[ExprMatrix, ExprMatri
     rows: _PolynomialRows = [[_entry_coefficients(e, x) for e in M.row(i)] for i in range(M.rows)]
     H, U, _ = _forms([c for row in rows for f in row for c in f]).hermite(rows, M.cols, x)
     return H, U
+
+
+def popov_form(M: ExprMatrix, x: Symbol) -> tuple[ExprMatrix, ExprMatrix]:
+    """``(P, U)``: the Popov normal form over ``K[x]`` of a matrix of
+    polynomials in ``x`` and a matrix ``U`` invertible over the
+    polynomials with ``U M = P``. In each nonzero row the *pivot* is the
+    last entry of the largest degree; the pivots are monic and in
+    different columns, the other entries of a pivot's column have a lower
+    degree, the rows are sorted by the columns of their pivots and the
+    zero rows are last. Among the bases of the row module it has the
+    least row degrees, where the Hermite form is triangular with large
+    degrees: the form of choice for matrix fraction descriptions [4]_.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.normalforms import popov_form, hermite_normal_form
+    >>> x = Symbol('x')
+    >>> M = ExprMatrix.from_rows([[x**3 + 1, x**2], [x**2, x + 1]])
+    >>> popov_form(M, x)[0], hermite_normal_form(M, x)[0]
+    (ExprMatrix([[x**2 + 1, 1], [-1, x]]), ExprMatrix([[1, -x], [0, x**3 + x + 1]]))
+
+    .. [4] T. Mulders, A. Storjohann, *On lattice reduction for polynomial
+           matrices*, Journal of Symbolic Computation 35 (2003), 377-401;
+           T. Kailath, *Linear Systems*, Prentice-Hall, 1980, Section 6.7
+           (the Popov or polynomial-echelon form).
+    """
+    rows: _PolynomialRows = [[_entry_coefficients(e, x) for e in M.row(i)] for i in range(M.rows)]
+    return _forms([c for row in rows for f in row for c in f]).popov(rows, M.cols, x)
 
 
 def polynomial_matrix_rank(M: ExprMatrix, x: Symbol) -> int:
