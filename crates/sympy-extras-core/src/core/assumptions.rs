@@ -1238,8 +1238,32 @@ fn eval_facts(e: &Basic) -> FactList {
         Head::Add => add_facts(e.args()),
         Head::Mul => mul_facts(e.args()),
         Head::Pow => pow_facts(&e.args()[0], &e.args()[1]),
+        Head::Function(f) => function_facts(e, *f),
         _ => constant_facts(e),
     }
+}
+
+/// The facts of an applied function: its class's, then (as Python's
+/// `facts_of`) not commutative with a noncommutative argument, and the sign
+/// of a real numerical value found by evaluating it.
+fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
+    use crate::functions::elementary::exponential::{exp_facts, log_facts};
+    let mut facts: FactList = match f {
+        super::basic::Function::Exp => exp_facts(&e.args()[0]),
+        super::basic::Function::Log => log_facts(&e.args()[0]),
+    };
+    if facts.get(commutative) == Some(true) && e.args().iter().any(|a| no(facts_of(a), commutative)) {
+        facts.set(commutative, false);
+    }
+    if ![positive, negative, zero].iter().any(|p| facts.contains(*p)) && is_number(e) {
+        let found: FactList = numeric_facts(e);
+        if found.get(real) == Some(true) {
+            for (name, known) in found.0.iter() {
+                facts.set_default(*name, *known);
+            }
+        }
+    }
+    facts
 }
 
 /// The closed facts of `e`, computed once and cached on the node.

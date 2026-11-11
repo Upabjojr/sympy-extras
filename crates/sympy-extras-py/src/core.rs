@@ -19,7 +19,8 @@ use pyo3::types::{PyDict, PyList, PyModule, PyTuple};
 
 use sympy_extras_core::core::assumptions::{facts_of, is_number, Predicate};
 use sympy_extras_core::core::evalf::{numeric_value, parts, Real};
-use sympy_extras_core::core::{self as rust_core, Basic, Dummy, Head, Symbol};
+use sympy_extras_core::core::{self as rust_core, Basic, Dummy, Function, Head, Symbol};
+use sympy_extras_core::functions::elementary::exponential;
 #[allow(unused_imports)]
 use sympy_extras_core::numbers::rat;
 use sympy_extras_core::numbers::{denom, rat_from_parts, Int, Rat};
@@ -110,6 +111,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Add" => Basic::new(Head::Add, args()?),
         "Mul" => Basic::new(Head::Mul, args()?),
         "Pow" => Basic::new(Head::Pow, args()?),
+        "Exp" => Basic::new(Head::Function(Function::Exp), args()?),
+        "Log" => Basic::new(Head::Function(Function::Log), args()?),
         other => return Err(PyTypeError::new_err(format!("the Rust core has no {} yet", other))),
     })
 }
@@ -163,6 +166,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
         Head::Add => rebuilt("Add", "add")?,
         Head::Mul => rebuilt("Mul", "mul")?,
         Head::Pow => rebuilt("Pow", "power")?,
+        Head::Function(f) => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.functions.elementary.exponential")?
+                .getattr(f.class_name())?
+                .call1(PyTuple::new(py, items)?)?
+        }
     })
 }
 
@@ -300,6 +309,21 @@ fn sstr(e: &Bound<'_, PyAny>) -> PyResult<String> {
 }
 
 #[pyfunction]
+fn exp<'py>(py: Python<'py>, x: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    to_python(py, &exponential::exp(&from_python(x)?).map_err(crate::convert::err)?)
+}
+
+#[pyfunction]
+#[pyo3(signature = (x, base=None))]
+fn log<'py>(py: Python<'py>, x: &Bound<'py, PyAny>, base: Option<&Bound<'py, PyAny>>) -> PyResult<Bound<'py, PyAny>> {
+    let value = match base {
+        None => exponential::log(&from_python(x)?),
+        Some(b) => exponential::log_base(&from_python(x)?, &from_python(b)?),
+    };
+    to_python(py, &value.map_err(crate::convert::err)?)
+}
+
+#[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
         py,
@@ -324,5 +348,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(neg, m)?)?;
     m.add_function(wrap_pyfunction!(number_pow, m)?)?;
     m.add_function(wrap_pyfunction!(sstr, m)?)?;
+    m.add_function(wrap_pyfunction!(exp, m)?)?;
+    m.add_function(wrap_pyfunction!(log, m)?)?;
     Ok(())
 }

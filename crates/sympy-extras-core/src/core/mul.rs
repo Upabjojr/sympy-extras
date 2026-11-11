@@ -7,7 +7,7 @@
 //! The order terms, the accumulation bounds and the products with an
 //! `exp(...)` factor of the Python function are not in the Rust core yet.
 
-use crate::error::{not_ported, PolyResult};
+use crate::error::PolyResult;
 use crate::numbers::*;
 
 use super::add::add;
@@ -219,7 +219,7 @@ fn mul_pass(args: &[Basic]) -> PolyResult<(Basic, Option<Vec<Basic>>)> {
             if factor.is_pow() && as_base_exp(factor)?.1 != exponent {
                 rebuilt.push(pow(base, &exponent)?);
             } else if matches!(base.head(), Head::Exp1) && !factor.args().is_empty() {
-                return Err(not_ported("exp(...) in a product"));
+                rebuilt.push(crate::functions::elementary::exponential::exp(&exponent)?);
             } else {
                 rebuilt.push(factor.clone());
             }

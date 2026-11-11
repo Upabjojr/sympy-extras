@@ -50,6 +50,41 @@ pub enum Head {
     Add,
     Mul,
     Pow,
+    /// An applied function of the core (`Exp(x)`, `Log(x)`), unevaluated.
+    Function(Function),
+}
+
+/// The functions of the core (Python's `DefinedFunction` subclasses).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Function {
+    Exp,
+    Log,
+}
+
+impl Function {
+    /// The printed name, SymPy's (`function_name`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Function::Exp => "exp",
+            Function::Log => "log",
+        }
+    }
+
+    /// The name of the Python class.
+    pub fn class_name(self) -> &'static str {
+        match self {
+            Function::Exp => "Exp",
+            Function::Log => "Log",
+        }
+    }
+
+    /// The rank of the function in the sort key (`_FUNCTION_RANKS`).
+    pub fn rank(self) -> i64 {
+        match self {
+            Function::Exp => 10,
+            Function::Log => 11,
+        }
+    }
 }
 
 impl Head {
@@ -79,6 +114,7 @@ impl Head {
             Head::Add => "Add",
             Head::Mul => "Mul",
             Head::Pow => "Pow",
+            Head::Function(f) => f.class_name(),
         }
     }
 
@@ -106,13 +142,14 @@ impl Head {
             Head::Catalan => "Catalan",
             Head::GoldenRatio => "GoldenRatio",
             Head::TribonacciConstant => "TribonacciConstant",
+            Head::Function(f) => f.name(),
             other => other.class_name(),
         }
     }
 
     /// Whether the class is an atom (no arguments).
     pub fn is_atom(&self) -> bool {
-        !matches!(self, Head::Add | Head::Mul | Head::Pow)
+        !matches!(self, Head::Add | Head::Mul | Head::Pow | Head::Function(_))
     }
 
     fn same(&self, other: &Head) -> bool {
@@ -122,6 +159,7 @@ impl Head {
             (Head::Symbol(a), Head::Symbol(b)) => a.name == b.name && a.assumptions == b.assumptions,
             (Head::Dummy(a, i), Head::Dummy(b, j)) => i == j && a.name == b.name,
             (Head::Wild(a), Head::Wild(b)) => a.same(b),
+            (Head::Function(a), Head::Function(b)) => a == b,
             (a, b) => std::mem::discriminant(a) == std::mem::discriminant(b),
         }
     }
@@ -145,6 +183,7 @@ impl Head {
                 w.symbol.name.hash(state);
                 w.symbol.assumptions.hash(state);
             }
+            Head::Function(f) => f.hash(state),
             _ => {}
         }
     }
@@ -246,6 +285,11 @@ impl Basic {
 
     pub fn is_mul(&self) -> bool {
         matches!(self.0.head, Head::Mul)
+    }
+
+    /// Whether the node is the applied function `f`.
+    pub fn is_function(&self, f: Function) -> bool {
+        matches!(self.0.head, Head::Function(g) if g == f)
     }
 
     pub fn is_pow(&self) -> bool {
@@ -457,6 +501,10 @@ impl fmt::Display for Basic {
             Head::Symbol(s) => write!(f, "{}", s.name),
             Head::Dummy(s, _) => write!(f, "_{}", s.name),
             Head::Wild(w) => write!(f, "{}_", w.symbol.name),
+            Head::Function(g) => {
+                let args: Vec<String> = self.0.args.iter().map(super::printing::sstr).collect();
+                write!(f, "{}({})", g.name(), args.join(", "))
+            }
             _ => {
                 let args: Vec<String> = self.0.args.iter().map(|a| a.to_string()).collect();
                 write!(f, "{}({})", self.class_name(), args.join(", "))

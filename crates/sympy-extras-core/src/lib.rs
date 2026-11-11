@@ -29,6 +29,7 @@
 
 pub mod core;
 pub mod error;
+pub mod functions;
 pub mod ntheory;
 pub mod numbers;
 pub mod polys;

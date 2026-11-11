@@ -219,6 +219,29 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             }
             Some(value)
         }
+        Head::Function(f) => {
+            let v: Complex = numeric_value(&e.args()[0], prec)?;
+            let value: Complex = match f {
+                super::basic::Function::Exp => {
+                    // beyond the exponents of dashu's floats (mpmath's are unbounded)
+                    if parts(&v).0.repr().exponent() > 40 {
+                        return None;
+                    }
+                    v.exp()
+                }
+                super::basic::Function::Log => {
+                    if is_zero(&v) {
+                        return None;
+                    }
+                    v.ln()
+                }
+            };
+            let (re, im) = parts(&value);
+            if re.repr().is_infinite() || im.repr().is_infinite() {
+                return None;
+            }
+            Some(value)
+        }
         _ => None,
     }
 }

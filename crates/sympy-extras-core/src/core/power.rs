@@ -635,7 +635,8 @@ pub fn pow(base: &Basic, exp: &Basic) -> PolyResult<Basic> {
         }
     }
     if matches!(base.head(), Head::Exp1) {
-        return Err(not_ported("exp"));
+        // E**a is exp(a)
+        return crate::functions::elementary::exponential::exp(exp);
     }
     if matches!(base.head(), Head::ImaginaryUnit) {
         if let Some(x) = exp.as_rational() {
@@ -659,7 +660,7 @@ pub fn pow(base: &Basic, exp: &Basic) -> PolyResult<Basic> {
             return Ok(inverse);
         }
     }
-    if base.is_pow() {
+    if base.is_pow() || base.is_function(super::basic::Function::Exp) {
         let (inner_base, inner_exp) = as_base_exp(base)?;
         if let Some(denested) = power_of_power(&inner_base, &inner_exp, exp)? {
             return Ok(denested);

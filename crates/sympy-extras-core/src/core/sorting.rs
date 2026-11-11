@@ -137,6 +137,7 @@ pub fn class_key(e: &Basic) -> ClassKey {
         Head::Add => (3, 1, name),
         Head::Mul => (3, 0, name),
         Head::Pow => (3, 2, name),
+        Head::Function(f) => (4, f.rank(), f.name().to_string()),
         _ if e.is_atom() => (2, 0, name),
         _ => (5, 0, name),
     }

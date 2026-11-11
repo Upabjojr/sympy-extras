@@ -292,6 +292,10 @@ impl StrPrinter {
             Head::Add => self.print_add(e.args()),
             Head::Mul => self.print_mul(e.args()),
             Head::Pow => self.print_pow(&e.args()[0], &e.args()[1]),
+            Head::Function(f) => {
+                let args: Vec<String> = e.args().iter().map(|a| self.doprint(a)).collect();
+                format!("{}({})", f.name(), args.join(", "))
+            }
             _ => e.to_string(),
         }
     }

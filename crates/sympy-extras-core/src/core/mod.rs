@@ -40,5 +40,5 @@ pub mod printing;
 pub mod sorting;
 pub mod symbol;
 
-pub use basic::{Basic, Head, Node};
+pub use basic::{Basic, Function, Head, Node};
 pub use symbol::{Dummy, Symbol, Wild};

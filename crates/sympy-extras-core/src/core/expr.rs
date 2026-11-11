@@ -6,9 +6,12 @@
 
 use crate::numbers::*;
 
+use super::add::add;
 use super::assumptions::{ask_structural, Predicate};
 use super::basic::{Basic, Head};
 use super::mul::{mul, raw_mul};
+use super::power::pow;
+use crate::error::PolyResult;
 
 /// A fact of the node: `Some(true)`, `Some(false)` or unknown.
 pub fn is(e: &Basic, p: Predicate) -> Option<bool> {
@@ -118,6 +121,225 @@ pub fn as_base_exp(e: &Basic) -> Result<(Basic, Basic), crate::error::PolyError>
             Ok((e.clone(), Basic::one()))
         }
         Head::ImaginaryUnit => Ok((Basic::negative_one(), Basic::half())),
+        Head::Function(super::basic::Function::Exp) => Ok((Basic::e(), e.args()[0].clone())),
         _ => Ok((e.clone(), Basic::one())),
+    }
+}
+
+/// The value of a rational number (`exact_value`; `None` for the others).
+fn exact_value(e: &Basic) -> Option<&Rat> {
+    e.as_rational()
+}
+
+/// `gcd` of two fractions: the gcd of the numerators over the lcm of the
+/// denominators (`_gcd_fractions`).
+fn gcd_fractions(a: &Rat, b: &Rat) -> Rat {
+    let (an, ad) = (numer(a), denom(a));
+    let (bn, bd) = (numer(b), denom(b));
+    let n: Int = gcd(&an, &bn);
+    let g: Int = gcd(&ad, &bd);
+    let l: Int = if g.is_zero() { Int::ZERO } else { &ad / &g * &bd };
+    rat_from_parts(n, l)
+}
+
+/// The positive rational content of the terms of a sum and the rest
+/// (`Add.primitive`; `(1, e)` for anything else).
+pub fn primitive(e: &Basic) -> PolyResult<(Basic, Basic)> {
+    if !e.is_add() {
+        return Ok((Basic::one(), e.clone()));
+    }
+    let mut g: Rat = Rat::ZERO;
+    for a in e.args() {
+        let (c, _) = as_coeff_mul(a);
+        let Some(v) = exact_value(&c) else {
+            return Ok((Basic::one(), e.clone()));
+        };
+        let magnitude: Rat = if rat_is_negative(v) { -v.clone() } else { v.clone() };
+        g = gcd_fractions(&g, &magnitude);
+    }
+    if g.is_zero() || g == Rat::ONE {
+        return Ok((Basic::one(), e.clone()));
+    }
+    let inverse: Basic = Basic::from_rational(recip(&g));
+    let mut terms: Vec<Basic> = Vec::new();
+    for a in e.args() {
+        terms.push(mul(&[inverse.clone(), a.clone()])?);
+    }
+    Ok((Basic::from_rational(g), add(&terms)?))
+}
+
+/// `e / c` when `c` can be taken out without a change of form, else `None`
+/// (`extract_multiplicatively`, SymPy's rules).
+pub fn extract_multiplicatively(e: &Basic, other: &Basic) -> PolyResult<Option<Basic>> {
+    if other.is_number_class() && is_rational_value(other, 1) {
+        return Ok(Some(e.clone()));
+    }
+    if e == other {
+        return Ok(Some(Basic::one()));
+    }
+    if e.is_number_class() && is_zero_number(e) {
+        return Ok(Some(e.clone()));
+    }
+    if other.is_mul() {
+        let mut result: Basic = e.clone();
+        for f in other.args() {
+            match extract_multiplicatively(&result, f)? {
+                Some(r) => result = r,
+                None => return Ok(None),
+            }
+        }
+        return Ok(Some(result));
+    }
+    if e.is_add() {
+        let (content, primitive_part) = primitive(e)?;
+        if !is_rational_value(&content, 1) {
+            let product: Basic = Basic::new(Head::Mul, vec![content, primitive_part]);
+            return extract_multiplicatively(&product, other);
+        }
+        if other.as_rational().is_some_and(|v| denom(v) != Int::ONE) {
+            return Ok(None);
+        }
+        let mut parts: Vec<Basic> = Vec::new();
+        for t in e.args() {
+            match extract_multiplicatively(t, other)? {
+                Some(r) => parts.push(r),
+                None => return Ok(None),
+            }
+        }
+        return Ok(Some(add(&parts)?));
+    }
+    let (coefficient, rest) = as_coeff_mul(e);
+    if other.is_number_class() {
+        if matches!(coefficient.head(), Head::Infinity | Head::NegativeInfinity) {
+            if is_true(other, Predicate::positive) {
+                return Ok(Some(e.clone()));
+            }
+            if !is_true(other, Predicate::negative) {
+                return Ok(None);
+            }
+            return Ok(Some(mul(&[Basic::negative_one(), e.clone()])?));
+        }
+        let (Some(vc), Some(vo)) = (exact_value(&coefficient), exact_value(other)) else {
+            return Ok(None);
+        };
+        if vo.is_zero() {
+            return Ok(None);
+        }
+        let integers: bool = vc.is_int() && vo.is_int();
+        if (rat_is_negative(vo) && *vc > Rat::ZERO) || (integers && !mod_floor(&numer(vc), &numer(vo)).is_zero()) {
+            if e.is_mul() {
+                for (i, f) in e.args().iter().enumerate() {
+                    if f.is_add() {
+                        if let Some(reduced) = extract_multiplicatively(f, other)? {
+                            let mut factors: Vec<Basic> = e.args()[..i].to_vec();
+                            factors.push(reduced);
+                            factors.extend(e.args()[i + 1..].iter().cloned());
+                            return Ok(Some(mul(&factors)?));
+                        }
+                    }
+                }
+            }
+            return Ok(None);
+        }
+        let quotient: Basic = Basic::from_rational(vc / vo);
+        if rest.is_number_class() && is_rational_value(&rest, 1) {
+            return Ok(Some(quotient));
+        }
+        return Ok(Some(mul(&[quotient, rest])?));
+    }
+    if e.is_pow() && other.is_pow() && e.args()[0] == other.args()[0] {
+        let (n0, n1) = as_coeff_mul(&e.args()[1]);
+        let (d0, d1) = as_coeff_mul(&other.args()[1]);
+        if n1 == d1 {
+            if let (Some(a), Some(b)) = (n0.as_rational(), d0.as_rational()) {
+                let left: Rat = a - b;
+                if !left.is_zero() && (left > Rat::ZERO) == (*b > Rat::ZERO) {
+                    return Ok(Some(pow(&e.args()[0], &mul(&[Basic::from_rational(left), n1])?)?));
+                }
+            }
+        }
+        return Ok(None);
+    }
+    if e.is_pow() && e.args()[0] == *other {
+        let (c, r) = as_coeff_mul(&e.args()[1]);
+        if let Some(v) = c.as_rational() {
+            if *v > Rat::ONE && r.is_number_class() && is_rational_value(&r, 1) {
+                return Ok(Some(pow(&e.args()[0], &Basic::from_rational(v - Rat::ONE))?));
+            }
+        }
+        return Ok(None);
+    }
+    if e.is_mul() {
+        let factors: &[Basic] = e.args();
+        for (i, f) in factors.iter().enumerate() {
+            let rebuilt = |middle: Option<Basic>| -> PolyResult<Basic> {
+                let mut v: Vec<Basic> = factors[..i].to_vec();
+                v.extend(middle);
+                v.extend(factors[i + 1..].iter().cloned());
+                mul(&v)
+            };
+            if f == other {
+                return Ok(Some(rebuilt(None)?));
+            }
+            if f.is_pow() || f.is_add() || other.is_pow() {
+                if let Some(reduced) = extract_multiplicatively(f, other)? {
+                    return Ok(Some(rebuilt(Some(reduced))?));
+                }
+            }
+        }
+        return Ok(None);
+    }
+    Ok(None)
+}
+
+/// The coefficient of `x` when `e` is `x` times something free of `x`
+/// (`as_coefficient`).
+pub fn as_coefficient(e: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
+    Ok(extract_multiplicatively(e, x)?.filter(|r| !r.has(x)))
+}
+
+/// The part free of `pattern` and the part containing it, of a sum
+/// (`as_add`) or of a product (`as_independent` with a non-symbol pattern:
+/// the dependence is `has`).
+pub fn as_independent(e: &Basic, pattern: &Basic, as_add: bool) -> PolyResult<(Basic, Basic)> {
+    if e.is_number_class() && is_zero_number(e) {
+        return Ok((e.clone(), e.clone()));
+    }
+    if as_add {
+        if !e.is_add() {
+            return Ok(if !e.has(pattern) {
+                (e.clone(), Basic::zero())
+            } else {
+                (Basic::zero(), e.clone())
+            });
+        }
+        let free: Vec<Basic> = e.args().iter().filter(|a| !a.has(pattern)).cloned().collect();
+        let dependent: Vec<Basic> = e.args().iter().filter(|a| a.has(pattern)).cloned().collect();
+        return Ok((add(&free)?, add(&dependent)?));
+    }
+    if !e.is_mul() {
+        return Ok(if !e.has(pattern) {
+            (e.clone(), Basic::one())
+        } else {
+            (Basic::one(), e.clone())
+        });
+    }
+    let free: Vec<Basic> = e.args().iter().filter(|a| !a.has(pattern)).cloned().collect();
+    let dependent: Vec<Basic> = e.args().iter().filter(|a| a.has(pattern)).cloned().collect();
+    Ok((mul(&free)?, mul(&dependent)?))
+}
+
+/// Whether `e` is a real number which can be compared (`is_comparable`):
+/// `oo`, `-oo`, or a number with an exactly zero imaginary part at 64 bits.
+pub fn is_comparable(e: &Basic) -> bool {
+    if matches!(e.head(), Head::Infinity | Head::NegativeInfinity) {
+        return true;
+    }
+    if !super::assumptions::is_number(e) {
+        return false;
+    }
+    match super::evalf::numeric_value(e, 64) {
+        Some(v) => super::evalf::parts(&v).1.repr().significand().is_zero(),
+        None => false,
     }
 }
