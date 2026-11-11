@@ -304,7 +304,7 @@ sympy_extras/
       svd.py                 singular_values, exact compact svd of rational matrices
       functions.py           component matrices, matrix_exp, matrix_power, matrix_function
     vector/                  orthogonal.py: OrthogonalCoordinates (gradient, divergence, curl, laplacian), cartesian, cylindrical, spherical
-    series/                  residue (ported from SymPy); approximants.py: pade, rational_interpolate, series_reversion (Euclid, Lagrange inversion)
+    series/                  residue (ported from SymPy); approximants.py: pade, rational_interpolate, series_reversion (Euclid, Lagrange inversion); fourier.py: fourier_coefficients, fourier_series (piecewise polynomials, symbolic index)
     sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains, ProductSet, PointSet (finite sets of tuples);
                              Naturals, Naturals0, Integers, Rationals, Complexes, ImageSet (fancysets.py); ConditionSet (conditionset.py) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)

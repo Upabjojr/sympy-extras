@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.series.fourier`: `fourier_coefficients` (the Fourier
+  coefficients `a0`, `an`, `bn` of piecewise polynomial functions as
+  formulas in a symbolic integer `n`, by repeated integration by parts)
+  and `fourier_series` (partial sums).
 - `sympy_extras.physics.dimensional`: `pi_groups` (the dimensionless
   groups of the Buckingham Pi theorem, an LLL reduced basis of all the
   integer solutions), `solve_for` (the law the dimensions impose: the

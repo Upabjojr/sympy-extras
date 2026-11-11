@@ -1173,6 +1173,24 @@ True
 
 ```
 
+### Fourier series (`sympy_extras.series.fourier`)
+
+The coefficients of the Fourier series of a piecewise polynomial
+function, as formulas in the index:
+
+```python
+>>> from sympy_extras.core import Symbol, pi
+>>> from sympy_extras.functions import piecewise
+>>> from sympy_extras.series.fourier import fourier_coefficients
+>>> x = Symbol('x')
+>>> square = fourier_coefficients(piecewise((-1, x < 0), (1, True)), x, (-pi, pi))
+>>> square.an, square.bn, square.partial_sum(3)
+(0, (2 - 2*(-1)**n)/(pi*n), 4*sin(x)/pi + 4*sin(3*x)/(3*pi))
+>>> fourier_coefficients(x**2, x, (-pi, pi)).an
+4*(-1)**n/n**2
+
+```
+
 ## What this adds to SymPy
 
 [docs/comparison.md](docs/comparison.md) puts seventy questions to SymPy
