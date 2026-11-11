@@ -19,7 +19,7 @@ from sympy_extras.core import Integer as CoreInteger, sqrt as core_sqrt
 from sympy_extras.polys.domains.algebraicfield import AlgebraicField
 from sympy_extras.polys.f4 import f4, reduced_basis, row_echelon
 from sympy_extras.polys.interop import gf_from_sympy, gf_to_sympy, qq_from_sympy, qq_to_sympy, sympy_modulus
-from sympy_extras.polys.modulargroebner import direct_groebner
+from sympy_extras.polys.modulargroebner_sympy import direct_groebner
 from sympy_extras.polys.rings import PolyRing as TypedRing, grevlex as typed_grevlex, lex as typed_lex
 from sympy_extras.polys.interop import ring_to_sympy
 

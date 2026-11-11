@@ -39,19 +39,20 @@ time_scale : float
 modular_groebner : bool
     Whether the Gröbner bases of :class:`~sympy_extras.polys.ideals.Ideal`
     over the rationals are computed by the modular algorithm
-    (:mod:`sympy_extras.polys.modulargroebner`) when SymPy's direct
+    (:mod:`sympy_extras.polys.modulargroebner`) when the direct
     computation does not finish within ``groebner_direct_time``. The
     results are the same, reduced and proven, either way.
 groebner_direct_time : float
-    The seconds given to SymPy's direct computation of a Gröbner basis
+    The seconds given to the direct computation of a Gröbner basis
     before the modular algorithm takes over (0.25, and twenty times as
     long for the graded orders, where the modular algorithm seldom pays
     off); zero or less to go to the modular algorithm at once.
 groebner_algorithm : str
     The algorithm of the direct computation of a Gröbner basis over a
     field, here and in the images of the modular algorithm: ``'f4'`` (the
-    default, :mod:`sympy_extras.polys.f4`) or ``'buchberger'`` (SymPy's
-    ``groebner``). The reduced basis is the same either way.
+    default, :mod:`sympy_extras.polys.f4`) or ``'buchberger'``
+    (:mod:`sympy_extras.polys.buchberger`, a typed port of SymPy's). The
+    reduced basis is the same either way.
 """
 from __future__ import annotations
 

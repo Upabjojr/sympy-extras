@@ -509,13 +509,53 @@ def test_native_ideals_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.polys.ideals` does not load SymPy, nor
     do the Gröbner bases (F4, FGLM, the walk), the eliminations, quotients,
     saturations, Hilbert series and the operations on zero-dimensional
-    ideals (the modular Gröbner bases when F4 takes too long, SymPy's
-    Buchberger algorithm on request and the decompositions of
-    positive-dimensional ideals go through SymPy at run time)."""
+    ideals (the decompositions of positive-dimensional ideals go through
+    SymPy at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_IDEALS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
 
+
+
+_NATIVE_MODULAR_GROEBNER = r'''
+import sys
+from fractions import Fraction
+from itertools import chain
+from sympy_extras.core import Symbol
+from sympy_extras.ntheory.generate import primerange
+from sympy_extras.polys.buchberger import buchberger
+from sympy_extras.polys.domains import QQ, ZZ, GF
+from sympy_extras.polys.f4 import f4
+from sympy_extras.polys.ideals import Ideal
+from sympy_extras.polys.modulargroebner import (ModularTrace, default_primes, direct_groebner, groebner,
+    modular_groebner, rational_reconstruction)
+from sympy_extras.polys.rings import PolyRing, WeightOrder, grevlex, lex
+from sympy_extras.settings import configure
+assert 'sympy' not in sys.modules
+R = PolyRing(QQ, ['x', 'z', 'y'], lex)
+x, z, y = R.gens
+F = [x*(z + y.mul_ground(Fraction(210)) + R.one), x*(z + y.mul_ground(Fraction(420)) + R.from_int(2))]
+trace = ModularTrace()
+G = modular_groebner(F, R, primes=chain(primerange(2, 100), default_primes()), trace=trace)
+assert [str(g) for g in G] == ['x*z', 'x*y + 1/210*x'] and trace.unlucky == [2, 3, 5, 7] and trace.lucky[0] == 11
+assert modular_groebner(F, R) == f4(F, R) == buchberger(F, R) == groebner(F, R)
+S = PolyRing(ZZ, ['x', 'y'], grevlex)
+X, Y = S.gens
+assert [str(g) for g in modular_groebner([(X*X).mul_ground(2) - Y, X*Y - S.one], S)] == ['2*x**2 - y', 'x*y - 1', 'y**2 - 2*x']
+W = PolyRing(QQ, ['x', 'y'], WeightOrder((1, 3)))
+assert modular_groebner([W.gens[0]**3 - W.gens[1], W.gens[1]**2 - W.one], W) == f4([W.gens[0]**3 - W.gens[1], W.gens[1]**2 - W.one], W)
+assert rational_reconstruction(pow(3, -1, 101)*(-2) % 101, 101) == (-2, 3)
+P = PolyRing(GF(7), ['x', 'y'], lex)
+with configure(groebner_algorithm='buchberger'):
+    assert direct_groebner([P.gens[0]**2 - P.gens[1]], P) == [P.gens[0]**2 - P.gens[1]]
+u, v, w = [Symbol(name) for name in 'uvw']
+for algorithm in ('f4', 'buchberger'):
+    with configure(groebner_direct_time=0, groebner_algorithm=algorithm):
+        I = Ideal([u**2 + v**2 + w**2 - 1, u*v - w/3, u + v - 2*w], u, v, w, domain=QQ)
+        assert [str(g) for g in I.groebner_basis(lex)] == ['u + v - 2*w', 'v**2 - 2*v*w + 1/3*w', 'w**2 - 2/15*w - 1/5']
+        assert I.vector_space_dimension() == 4
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
 
 _NATIVE_REGULAR_CHAINS = r'''
 import sys
@@ -578,6 +618,19 @@ assert _without_real_solution(Eq(x**2 + y**2, 1) & Eq(x*y, 1) & (x > 0), [x, y])
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
+
+
+def test_native_modular_groebner_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.modulargroebner` and
+    :mod:`sympy_extras.polys.buchberger` does not load SymPy, nor do the
+    modular Gröbner bases over ``QQ`` and ``ZZ`` (with unlucky primes, a
+    weight order), Buchberger's algorithm, the dispatcher, and the Gröbner
+    bases of :class:`~sympy_extras.polys.ideals.Ideal` by the modular
+    algorithm and by Buchberger's algorithm."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_MODULAR_GROEBNER], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
 
 def test_native_regular_chains_and_parametric_do_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.polys.regularchains` and

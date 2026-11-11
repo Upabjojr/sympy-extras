@@ -21,8 +21,6 @@ the decompositions of positive-dimensional ideals through regular chains
 (:mod:`sympy_extras.polys.idealdecomposition`), which the face calls on
 itself. The native module calls the following at run time (the
 ``_of_core`` functions, which take and return native objects):
-:func:`modular_groebner_of_core` and :func:`direct_groebner_of_core`
-(:mod:`sympy_extras.polys.modulargroebner`), and
 :func:`radical_of_core`, :func:`equidimensional_parts_of_core`,
 :func:`minimal_primes_of_core`, :func:`primary_decomposition_of_core`,
 :func:`associated_primes_of_core`, :func:`is_primary_of_core`
@@ -91,7 +89,7 @@ from .hilbert import hilbert_numerator
 from .orderings import BlockOrder, WeightOrder, as_order
 
 __all__ = ['Ideal', 'hilbert_numerator', 'separating_forms', 'core_order', 'sympy_order', 'native_ideal',
-           'direct_groebner_of_core', 'modular_groebner_of_core', 'radical_of_core', 'equidimensional_parts_of_core',
+           'radical_of_core', 'equidimensional_parts_of_core',
            'minimal_primes_of_core', 'primary_decomposition_of_core', 'associated_primes_of_core',
            'is_primary_of_core']
 
@@ -1084,38 +1082,6 @@ def _face(ideal: native.Ideal[T]) -> Ideal:
     domain = _sympy_domain(ideal.domain)
     backend = _TypedBackend(ideal, _Coefficients(ideal.domain, domain))
     return Ideal._from_backend(backend, [_sympy_symbol(s) for s in ideal.symbols], domain, sympy_order(ideal.order))
-
-
-def _sympy_ring(ring: typed.PolyRing[T]) -> tuple[PolyRing, _Coefficients[T]]:
-    from sympy import symbols
-    domain = _sympy_domain(ring.domain)
-    return _ring(symbols(ring.names), domain, sympy_order(ring.order))[0], _Coefficients(ring.domain, domain)
-
-
-def direct_groebner_of_core(polys: Sequence[typed.PolyElement[T]], ring: typed.PolyRing[T]
-                            ) -> list[typed.PolyElement[T]]:
-    """The reduced Gröbner basis of native polynomials by
-    :func:`sympy_extras.polys.modulargroebner.direct_groebner` (SymPy's
-    Buchberger algorithm when ``settings.groebner_algorithm`` is
-    ``'buchberger'``)."""
-    from .modulargroebner import direct_groebner
-    R, coefficients = _sympy_ring(ring)
-    basis = direct_groebner([R.from_dict(coefficients.terms_out(f.terms)) for f in polys], R)
-    return [typed.PolyElement(coefficients.terms_in(dict(g)), ring) for g in basis]
-
-
-def modular_groebner_of_core(polys: Sequence[typed.PolyElement[T]], ring: typed.PolyRing[T]
-                             ) -> Optional[list[typed.PolyElement[T]]]:
-    """The reduced Gröbner basis of native polynomials over ``QQ`` by
-    :func:`sympy_extras.polys.modulargroebner.modular_groebner`; ``None``
-    for an order which has no SymPy counterpart."""
-    from .modulargroebner import modular_groebner
-    try:
-        R, coefficients = _sympy_ring(ring)
-    except NotImplementedError:
-        return None
-    basis = modular_groebner([R.from_dict(coefficients.terms_out(f.terms)) for f in polys], R)
-    return [typed.PolyElement(coefficients.terms_in(dict(g)), ring) for g in basis]
 
 
 def _natives(ideals: Sequence[Ideal], K: CoreDomain[T]) -> list[native.Ideal[T]]:

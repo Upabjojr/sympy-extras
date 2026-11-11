@@ -70,7 +70,7 @@ from sympy.polys.rings import ring
 from sympy_extras._typing import as_expr
 
 from .ideals_sympy import Ideal, separating_forms
-from .modulargroebner import groebner
+from .modulargroebner_sympy import groebner
 from .orderings import elimination_order
 from .regularchains_sympy import RegularChain, triangularize
 

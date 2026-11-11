@@ -316,8 +316,8 @@ sympy_extras/
         polyclasses.py       DensePoly[T]: rep, domain, gen; the dense algorithms as methods, factorisation and roots through the domain
         rings.py             PolyRing[T], PolyElement[T] (dict[Monomial, T]), MonomialOrder (lex, grlex, grevlex, WeightOrder, BlockOrder, elimination_order), div by a list
         ideals.py            Ideal: operations and invariants of ideals over the typed fields, groebner (F4, the modular
-                             fallback), normal_form, the Gröbner walk, separating_forms (native; the modular Gröbner bases,
-                             SymPy's Buchberger and the decompositions of idealdecomposition through ideals_sympy)
+                             fallback of modulargroebner), normal_form, the Gröbner walk, separating_forms (native; the
+                             decompositions of idealdecomposition through ideals_sympy)
         ideals_sympy.py      the SymPy face of ideals (the old API on SymPy objects, rur), and the steps which stay on SymPy
                              (the *_of_core functions)
         bigatti.py           hilbert_numerator_coefficients, minimal_generators: Bigatti's algorithm on exponent tuples (no SymPy)
@@ -335,7 +335,10 @@ sympy_extras/
         interop.py           qq/zz/gf_from_sympy and _to_sympy, typed_order: the boundary with SymPy's rings
         hilbert.py           hilbert_numerator, hilbert_series, minimal_generators: Bigatti's algorithm for monomial ideals (SymPy Poly; bigatti.py computes)
         rur.py               rur, RationalUnivariateRepresentation: Rouillier's representation of zero-dimensional ideals from traces
-        modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ modulo primes, proven (Arnold); direct_groebner
+        modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ and ZZ modulo primes, proven (Arnold), on rings.PolyRing;
+                             direct_groebner (F4 or Buchberger), groebner (the dispatcher Ideal calls) (native)
+        modulargroebner_sympy.py the SymPy face of modulargroebner (SymPy's ring elements; SymPy's groebner over the other domains)
+        buchberger.py        buchberger, s_polynomial on rings.PolyRing over a typed field (settings.groebner_algorithm 'buchberger'), PORTED FROM SYMPY
         stronggroebner.py    strong_groebner, strong_reduce on rings.PolyRing over ZZ (typed, no SymPy): S- and G-polynomials
         orderings.py         WeightOrder, BlockOrder, elimination_order (hashable monomial orders)
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (Loos-Weispfenning,

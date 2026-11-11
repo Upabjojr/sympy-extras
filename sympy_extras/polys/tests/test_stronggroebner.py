@@ -19,7 +19,7 @@ from typing import Optional, Sequence, Union
 
 from sympy_extras.polys import stronggroebner as typed
 from sympy_extras.polys.interop import zz_from_sympy, zz_to_sympy
-from sympy_extras.polys.modulargroebner import direct_groebner
+from sympy_extras.polys.modulargroebner_sympy import direct_groebner
 
 # the tests are written in SymPy's ring syntax; the typed functions are
 # called through the conversions of sympy_extras.polys.interop
