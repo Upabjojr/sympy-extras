@@ -425,6 +425,26 @@ stays undecided, in exact arithmetic on algebraic numbers.
 
 ```
 
+Systems in state space form $x' = A x + B u$, $y = C x + D u$ have their
+tools in `sympy_extras.matrices.statespace`: Kalman's matrices and rank
+tests, the transfer function in lowest terms, pole placement by
+Ackermann's formula and the controllable canonical realisation of a
+rational function. The stability conditions with parameters are in
+`sympy_extras.solvers.stability` (see [solvers.md](solvers.md)).
+
+```python
+>>> from sympy_extras.matrices.statespace import is_controllable, transfer_function, pole_placement, realization
+>>> s, k, m = Symbol('s'), Symbol('k'), Symbol('m')
+>>> A3, B3 = ExprMatrix.from_rows([[0, 1], [-k/m, 0]]), ExprMatrix.column([0, 1/m])
+>>> is_controllable(A3, B3), transfer_function(A3, B3, ExprMatrix.from_rows([[1, 0]]), s)
+(True, ExprMatrix([[1/(k + m*s**2)]]))
+>>> pole_placement(A3, B3, (s + 1)*(s + 2), s)
+ExprMatrix([[-k + 2*m, 3*m]])
+>>> realization((s + 3)/(s**2 + 3*s + 2), s)
+(ExprMatrix([[0, 1], [-2, -3]]), ExprMatrix([[0], [1]]), ExprMatrix([[3, 1]]), ExprMatrix([[0]]))
+
+```
+
 ## Normal forms without eigenvalues
 
 `sympy_extras.matrices.normalforms` computes the Smith normal form of a

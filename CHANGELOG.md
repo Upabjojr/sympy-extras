@@ -10,6 +10,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.matrices.statespace`: `controllability_matrix`,
+  `observability_matrix`, `is_controllable`, `is_observable`,
+  `transfer_function` (`C (s I - A)**-1 B + D` in lowest terms),
+  `pole_placement` (Ackermann's formula, symbolic poles allowed),
+  `realization` (controllable canonical form of a proper rational
+  function).
 - `sympy_extras.solvers.stability`: `stability_conditions` (the
   conditions on the parameters under which a polynomial or a matrix is
   Hurwitz stable, or Schur stable with `discrete=True`, simplified by

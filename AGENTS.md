@@ -295,6 +295,7 @@ sympy_extras/
       steps.py               step-by-step elimination: rref_steps, echelon_steps, inverse_steps, solve_steps, determinant_steps (RowOperation, Step)
       calculus.py            jacobian, gradient, hessian (bordered), wronskian, classify_critical_point
       riccati.py             riccati_solutions, care_solve, lqr (exact, by the polynomial system and a certified Routh-Hurwitz test)
+      statespace.py          controllability, observability, transfer_function, pole_placement (Ackermann), realization
       svd.py                 singular_values, exact compact svd of rational matrices
       functions.py           component matrices, matrix_exp, matrix_power, matrix_function
     vector/                  orthogonal.py: OrthogonalCoordinates (gradient, divergence, curl, laplacian), cartesian, cylindrical, spherical
