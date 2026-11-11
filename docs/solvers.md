@@ -1052,3 +1052,27 @@ k > 0
 [[1, 3, 5], [2, 4, 0], [1, 5, 0], [-6, 0, 0], [5, 0, 0]]
 
 ```
+
+## How many real roots, with parameters
+
+`sympy_extras.solvers.rootclassification.real_root_classification`
+gives the number of distinct real roots of a polynomial for every real
+value of its parameters. The count is the signature of Hermite's
+quadratic form (the Hankel matrix of the power sums of the roots), read
+from the signs of its leading principal minors by the rule of Frobenius;
+these minors are the *discrimination sequence*, the last one being the
+discriminant. Every sign pattern is given its count and the conditions
+of each count are simplified by `resolve`; multiple roots and the values
+at which the degree drops are part of the answer.
+
+```python
+>>> from sympy_extras.solvers.rootclassification import real_root_classification, discrimination_sequence
+>>> p, q = Symbol('p'), Symbol('q')
+>>> discrimination_sequence(x**3 + p*x + q, x)
+[3, -6*p, -4*p**3 - 27*q**2]
+>>> real_root_classification(x**3 + p*x + q, x)
+[((p >= 0) | (4*p**3 + 27*q**2 > 0), 1), (Ne(p, 0) & Eq(4*p**3 + 27*q**2, 0), 2), (4*p**3 + 27*q**2 < 0, 3)]
+>>> real_root_classification(a*x**2 + x + 1, x)
+[(a > 1/4, 0), (Eq(a, 0) | Eq(a, 1/4), 1), ((a < 0) | ((a > 0) & (a < 1/4)), 2)]
+
+```

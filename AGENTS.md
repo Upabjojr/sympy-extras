@@ -256,6 +256,7 @@ sympy_extras/
         tests/
     solvers/                 solvers extending sympy.solvers (exports nothing: import the modules)
         stability.py         stability_conditions (Routh-Hurwitz and Schur with parameters, simplified by QE), hurwitz_determinants, routh_array (native)
+        rootclassification.py real_root_classification (Hermite's form, Frobenius' rule, discrimination sequences), with parameters (native)
         elimination.py       eliminate, implicitize: elimination ideals of equations with polynomials, trigonometric functions, radicals, exponentials (native)
         isolation.py         TranscendentalRoot (node), isolate_real_roots, point_between, compare_points: exact real roots of
                              exp-log functions (native; SymPy's real_roots with CRootOf and continuous_domain through isolation_sympy)

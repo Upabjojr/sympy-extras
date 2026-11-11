@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.solvers.rootclassification`: `real_root_classification`
+  (the number of distinct real roots of a polynomial for every value of
+  its parameters, from the signs of the discrimination sequence by the
+  rule of Frobenius on Hermite's form), `discrimination_sequence`,
+  `signature_from_signs`.
 - `sympy_extras.series.fourier`: `fourier_coefficients` (the Fourier
   coefficients `a0`, `an`, `bn` of piecewise polynomial functions as
   formulas in a symbolic integer `n`, by repeated integration by parts)
