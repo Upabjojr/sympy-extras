@@ -10,6 +10,20 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The core's `ask` no longer asks SymPy what its facts do not decide:
+  the last steps of SymPy's `ask` are ported in the new
+  `assumptions.handlers` (the handlers of the predicates by class of the
+  argument, `sympy/assumptions/handlers/sets.py`, `order.py`,
+  `ntheory.py`, then the SAT search of `assumptions.satask`), so the
+  bridge's `ask` is used only for questions about wrapped SymPy objects.
+  The numbers are decided by reliable values (an imaginary part below the
+  precision, as in `exp_polar(I*pi)`, decides nothing) and the integers
+  among them are proved by their minimal polynomial. SymPy's rule
+  `Real**Real -> Real` for a base which may be zero is not ported: SymPy
+  answers `ask(Q.real(sqrt(x)), Q.real(x))` and
+  `ask(Q.real(sqrt(-1 - x**2)), Q.real(x))` with `True` (here `None` and
+  `False`). SymPy's relational step (`lra_satask`) is not ported.
+
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's
   `simplify` of Boolean formulas (`BooleanFunction._eval_simplify`,

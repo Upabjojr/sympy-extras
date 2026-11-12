@@ -3229,3 +3229,27 @@ def test_native_piecewise_relational_conditions_do_not_load_sympy() -> None:
                          text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ASK_HANDLERS = r'''
+import sys
+from sympy_extras.core import Q, Symbol, ask, sqrt, I
+from sympy_extras.functions import log, re, Abs
+x, k, n = Symbol('x'), Symbol('k'), Symbol('n')
+assert ask(Q.real(re(k) + 1)) is True and ask(Q.real(Abs(x) - 1)) is True
+assert ask(Q.positive(log(x)), Q.positive(x) & Q.negative(x - 1)) is False
+assert ask(Q.real(sqrt(x)), Q.real(x)) is None   # SymPy's True is a bug (x = -1)
+assert ask(Q.nonzero(x), Q.positive(x) | Q.negative(x)) is True
+assert ask(Q.even(2*n), Q.integer(n)) is True and ask(Q.real(I*x), Q.real(x) & Q.nonzero(x)) is False
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_ask_handlers_do_not_load_sympy() -> None:
+    """What the facts of the core's ``ask`` do not decide goes to the
+    ported handlers of the classes and the SAT search
+    (:mod:`sympy_extras.assumptions.handlers`; it went to SymPy's
+    ``ask`` through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ASK_HANDLERS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

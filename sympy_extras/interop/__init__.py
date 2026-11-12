@@ -1422,6 +1422,9 @@ class AppliedSymPyFunction(Application):
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
                 return sympy_leading_term(self, x, logx, cdir)
 
+    def _has_foreign_class(self) -> bool:
+        return True
+
     def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
                 return meromorphic_node_through_sympy(self, x, a, False)[1]
 

@@ -291,6 +291,11 @@ class Basic:
         """Whether the node wraps an object of a foreign system."""
         return False
 
+    def _has_foreign_class(self) -> bool:
+        """Whether the node wraps an object or applies a function of a
+        foreign system (whose facts only that system knows)."""
+        return self._is_foreign_node()
+
     def _count_ops_label(self) -> Optional[str]:
         """The label of the node in ``count_ops`` (a function name)."""
         return None

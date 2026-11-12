@@ -193,6 +193,9 @@ sympy_extras/
         sat_sympy.py         the SymPy face of sat
         satask.py            predicates_consistent: predicates against SymPy's known number facts and class facts by the
                              native SAT solver (native, PORTED FROM SYMPY satask, sathandlers, ask_generated)
+        handlers.py          handler_ask, final_ask: the handlers of the predicates by class and the SAT step, the last
+                             steps of the core's ask (native, PORTED FROM SYMPY assumptions/handlers; no lra_satask;
+                             SymPy's zero-base Pow rule of Q.real not ported, a bug)
         solve.py             solve(): Solve under assumptions (native, with the native CAD, regular chains, parametric cases,
                              transcendental equations, solvers.solveset and solvers.solvers.solve_system; no SymPy at
                              run time)
