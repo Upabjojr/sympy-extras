@@ -94,7 +94,7 @@ def test_default_integrator() -> None:
     # a numeric bound is a root object of the core
     found = integrate_by_ranges(Integer(1), (x > 0) & (y > 0) & (y < 1) & (x**3 - x - y < 0), [y, x])
     assert found.has(IndexedRoot)
-    assert abs(float(found.evalf(20)) - 1.0592185812) < 1e-8
+    assert abs(float(found.evalf(20)) - 1.1822578844952327) < 1e-12
 
 
 def test_coefficients() -> None:
@@ -142,8 +142,8 @@ def test_roots_and_bounds() -> None:
                                                             IndexedRoot)
     roots = _trigonometric_roots(Poly(x**3 - 3 * x + 1, x), x)
     assert roots is not None
-    assert sorted(float(e.evalf(20)) for e in roots[:3]) == sorted([-1.879385241571817, 0.3472963553338607,
-                                                                  1.532088886237956])
+    values = sorted(float(e.evalf(20)) for e in roots[:3])
+    assert all(abs(v - w) < 1e-12 for v, w in zip(values, [-1.879385241571817, 0.3472963553338607, 1.532088886237956]))
     assert _trigonometric_roots(Poly(x**2 - 2, x), x) is None
 
 

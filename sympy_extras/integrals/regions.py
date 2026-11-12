@@ -216,7 +216,7 @@ import itertools
 import math
 from fractions import Fraction
 from itertools import combinations, permutations
-from typing import Final, Optional, Sequence
+from typing import Final, Optional, Sequence, Union
 
 import mpmath
 
@@ -356,10 +356,14 @@ class IntegralByRanges(Expr):
     __slots__ = ('_integrand', '_condition', '_variables', '_measure', '_dimension')
 
     def __init__(self, integrand: ExprLike, condition: BooleanLike,
-                 variables: Optional[Sequence[Symbol]] = None,
-                 measure: str = 'lebesgue',
+                 variables: Union[None, Sequence[Symbol], Tuple] = None,
+                 measure: Union[str, Symbol] = 'lebesgue',
                  dimension: Optional[ExprLike] = None,
                  parameters: Optional[Sequence[Symbol]] = None) -> None:
+        # rebuilt from its arguments (func(*args)): the variables a Tuple,
+        # the measure the name of a symbol
+        if isinstance(measure, Symbol):
+            measure = measure.name
         integrand_ = to_expr(integrand)
         condition_ = to_boolean(condition)
         excluded = [_symbol(p) for p in parameters] if parameters is not None else []
@@ -368,7 +372,7 @@ class IntegralByRanges(Expr):
             if dimension is not None:
                 names = [_radial_symbol(names)]
         else:
-            names = [_symbol(v) for v in variables]
+            names = [_symbol(v) for v in (variables.args if isinstance(variables, Tuple) else variables)]
             clash = [v for v in names if v in excluded]
             if clash:
                 raise ValueError("%s cannot be both an integration variable and a parameter" % (clash[0],))
