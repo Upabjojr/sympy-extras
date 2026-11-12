@@ -11,7 +11,7 @@ from sympy_extras.core import Integer, Rational, I, Symbol, oo, pi, sqrt
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.evalf import numeric_value, to_float
 from sympy_extras.core.relational import eq
-from sympy_extras.functions import Piecewise, abs_, atan, cos, exp, gamma, log, sin
+from sympy_extras.functions import Piecewise, abs_, asin, atan, cos, exp, gamma, log, sin
 from sympy_extras.integrals.conditions import ConditionalValue
 from sympy_extras.integrals.definite import (DefiniteIntegrator, _coefficients, _numeric_function, _quadrature,
                                              _singular_points, conditional_integral, definite_integral,
@@ -157,3 +157,28 @@ def test_beta_integrals_by_the_arcsine_substitution() -> None:
     value = definite_integral(f, (x, 0, 2 * pi))
     assert not is_unevaluated(value)
     assert abs(_number(value) - (1.5400426634543828858 + 2.6674321389266885873j)) < 1e-15
+
+
+def test_quadrature_through_a_logarithmic_endpoint() -> None:
+    # the regression of the port: log(cos(x) + 1) is log(0) at x = pi,
+    # where the numerical rule of the node gives nothing; the quadrature
+    # takes the node as one at an end (as lambdify's -inf did) instead of
+    # giving up, and the value -pi*log(2) checks again
+    found = _quadrature(log(cos(x) + 1), x, Integer(0), pi)
+    assert found is not None and abs(found - _number(-pi * log(2))) < 1e-10
+    assert verify_numerically(-pi * log(2), log(cos(x) + 1), x, Integer(0), pi) is True
+    u = Symbol('u')
+    found = _quadrature(u**2 * Integral(Integer(1), x, Integer(0), u), u, Integer(0), Integer(1))
+    assert found is not None and abs(found - 0.25) < 1e-12
+
+
+def test_samples_at_quadratic_roots_in_radicals() -> None:
+    # the regression of the port: the sample a = IndexedRoot(a**2 - 3, a, 0)
+    # left the hidden zero sqrt(3 - a**2) unproved, the check gave nothing
+    # and the area of the parameter cell stayed unevaluated (the old
+    # samples were SymPy's CRootOf, written -sqrt(3))
+    b = Symbol('b')
+    value = -b * sqrt(3 - b**2) / 2 - 3 * asin(sqrt(3) * b / 3) / 2 + 3 * pi / 4
+    assert verify_numerically(value, sqrt(3 - y**2), y, b, sqrt(3), [eq(b**2 - 3, 0)]) is True
+    found = definite_integral(2 * sqrt(3 - y**2), (y, b, sqrt(3)), [eq(b**2 - 3, 0)], special_values=False)
+    assert not is_unevaluated(found)

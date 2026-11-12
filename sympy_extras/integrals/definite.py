@@ -144,12 +144,13 @@ from sympy_extras.functions.special.gamma_functions import gamma
 from sympy_extras.functions.special.hyper import hyper
 from sympy_extras.functions.special.polynomials import Hermite, Laguerre, OrthogonalPolynomial
 from sympy_extras.functions.special.zeta_functions import Zeta, stieltjes
-from sympy_extras.polys.cad.indexedroot import real_root
+from sympy_extras.polys.cad.indexedroot import IndexedRoot, real_root
 from sympy_extras.polys.cad.samplepoints import real_roots_of
 from sympy_extras.polys.polyerrors import BasePolynomialError
 from sympy_extras.polys.polyroots import roots_linear, roots_quadratic
 from sympy_extras.polys.polytools import Poly, cancel, factor
 from sympy_extras.polys.rationaltools import together
+from sympy_extras.polys.roots import radical_form
 from sympy_extras.sets import ConditionSet, EmptySet, FiniteSet, Integers, Intersection, Interval, Reals, Set, Union
 from sympy_extras.settings import settings
 from sympy_extras.simplify.fu import TR8, TR9
@@ -572,9 +573,56 @@ def _function(node: DefinedFunction, parts: list[_Numeric]) -> _Numeric:
     def evaluate(z: mpmath.mpc) -> mpmath.mpc:
         value = node.numeric([part(z) for part in parts])
         if value is None:
-            raise ValueError("%s has no numerical value" % (node,))
+            # no finite value there (log(0), a pole), as mpmath's -inf
+            # through lambdify: the quadrature notes the node
+            return mpmath.mpc(mpmath.nan)
         return mpmath.mpc(value)
     return evaluate
+
+
+def _numeric_integral(integrand: Expr, u: Symbol, lower: Expr, upper: Expr, x: Symbol) -> _Numeric:
+    """A definite integral in ``u`` inside an integrand of ``x`` (an
+    unevaluated ``Integral``, native or SymPy's), by mpmath's quadrature
+    at each value of ``x`` (what lambdify does with ``Integral``)."""
+    lo, hi = _numeric_function(lower, x), _numeric_function(upper, x)
+
+    def evaluate(z: mpmath.mpc) -> mpmath.mpc:
+        a, b = lo(z), hi(z)
+        if mpmath.im(a) != 0 or mpmath.im(b) != 0:
+            raise ValueError("a complex bound of an inner integral")
+        g = _numeric_function(_subs(integrand, x, _number_of(z)), u)
+        return mpmath.mpc(mpmath.quad(lambda w: g(mpmath.mpc(w)), [mpmath.re(a), mpmath.re(b)]))
+    return evaluate
+
+
+def _number_of(z: mpmath.mpc) -> Expr:
+    """An mpmath number as an exact number of the core (the rational of
+    its binary digits), for an inner integrand at a value of ``x``."""
+    value: Expr = number_from_fraction(_fraction(mpmath.re(z)))
+    if mpmath.im(z) != 0:
+        value = value + I * number_from_fraction(_fraction(mpmath.im(z)))
+    return value
+
+
+def _fraction(x: mpmath.mpf) -> Fraction:
+    if not mpmath.isfinite(x):
+        raise ValueError("no exact value of %s" % (x,))
+    man, exp = mpmath.mpf(x).man_exp
+    return Fraction(int(man)) * Fraction(2)**int(exp)
+
+
+def _integral_parts(e: Expr) -> Optional[tuple[Expr, Symbol, Expr, Expr]]:
+    """``(f, u, a, b)`` of a definite integral node: the native one, or
+    SymPy's wrapped in a node of the core (``Integral(f, (u, a, b))``)."""
+    if isinstance(e, Integral) and e.bounds is not None:
+        return e.function, e.variable, e.bounds[0], e.bounds[1]
+    if e._is_foreign_node() and e._compare_name() == 'Integral' and len(e.args) == 2:
+        f, limits = e.args
+        if isinstance(f, Expr) and len(limits.args) == 3:
+            u, a, b = limits.args
+            if isinstance(u, Symbol) and isinstance(a, Expr) and isinstance(b, Expr):
+                return f, u, a, b
+    return None
 
 
 def _real(value: mpmath.mpc) -> mpmath.mpf:
@@ -654,6 +702,9 @@ def _numeric_function(e: Expr, x: Symbol) -> _Numeric:
         return _power(_numeric_function(e.base, x), _numeric_function(e.exp, x))
     if isinstance(e, Piecewise):
         return _numeric_piecewise(e, x)
+    parts = _integral_parts(e)
+    if parts is not None:
+        return _numeric_integral(parts[0], parts[1], parts[2], parts[3], x)
     if isinstance(e, DefinedFunction):
         return _function(e, [_numeric_function(as_expr(a), x) for a in e.args])
     raise ValueError("%s has no numerical rule" % (e,))
@@ -881,7 +932,7 @@ def _quadrature_converges(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Ass
     parameters = _sorted_symbols((f.free_symbols | a.free_symbols | b.free_symbols) - {x})
     rng = random.Random(str((f, a, b)))
     for _ in range(2 if parameters else 1):
-        values = sample_values(parameters, assumptions, rng)
+        values = _sample_values(parameters, assumptions, rng)
         if values is None:
             return False
         g, lower, upper = _xr(f, values), _xr(a, values), _xr(b, values)
@@ -943,7 +994,7 @@ def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
     rng = random.Random(str((f, a, b)))
     verdict: Optional[bool] = None
     for _ in range(samples if parameters else 1):
-        values = sample_values(parameters, assumptions, rng)
+        values = _sample_values(parameters, assumptions, rng)
         if values is None:
             return None
         expected = _quadrature(_xr(f, values), x, _xr(a, values), _xr(b, values), [_xr(p, values) for p in inside])
@@ -970,7 +1021,7 @@ def verify_numerically(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr,
     # be evaluated, gives way to another)
     for region in _branch_regions(value, parameters):
         for _ in range(_BRANCH_SAMPLES):
-            values = sample_values(parameters, _with(assumptions, [region]), rng)
+            values = _sample_values(parameters, _with(assumptions, [region]), rng)
             if values is None:
                 break
             expected = _quadrature(_xr(f, values), x, _xr(a, values), _xr(b, values),
@@ -1005,6 +1056,30 @@ _BRANCHES_CHECKED: Final = 4
 
 #: the samples tried in the region of a branch until one checks it
 _BRANCH_SAMPLES: Final = 3
+
+
+def _sample_values(symbols: Sequence[Symbol], assumptions: Assumptions,
+                   rng: random.Random) -> Optional[dict[Symbol, Expr]]:
+    """:func:`~sympy_extras.integrals.conditions.sample_values` with the
+    roots of linear and quadratic polynomials written in radicals (SymPy's
+    ``CRootOf`` gives them so): ``IndexedRoot(a**2 - 3, a, 0)`` is
+    ``-sqrt(3)``, at which the value ``sqrt(3 - a**2)`` is a zero the
+    reliable values prove (the bug: the area of a parameter cell bounded
+    by a root was left unevaluated, its check giving nothing)."""
+    values = sample_values(symbols, assumptions, rng)
+    if values is None:
+        return None
+    return {s: _radical_sample(v) for s, v in values.items()}
+
+
+def _radical_sample(v: Expr) -> Expr:
+    if not isinstance(v, IndexedRoot):
+        return v
+    coefficients = _coefficients(v.expr, v.variable)
+    if coefficients is None or len(coefficients) > 3:
+        return v
+    found = radical_form(v)
+    return v if found is None or found.has(I) else found
 
 
 def _agrees(value: Expr, expected: complex, values: dict[Symbol, Expr]) -> Optional[bool]:
