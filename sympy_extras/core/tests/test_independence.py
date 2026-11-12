@@ -3212,14 +3212,19 @@ x, y, a = Symbol('x'), Symbol('y'), Symbol('a')
 assert str(_simplify_condition(Ne(log(y), 0))) == 'Ne(log(y), 0)'
 assert str(_simplify_condition(x < -sqrt(5)/5)) == 'x < -sqrt(5)/5'
 assert str(_simplify_condition(2*x + 4 > 6*y)) == 'x - 3*y > -2'
+from sympy_extras.core.logic import and_, or_, not_
+assert str(_simplify_condition(and_(x < y, Ne(x, y)))) == 'x < y'
+assert str(_simplify_condition(or_(x > 1, x > 2, x < 0))) == '(x > 1) | (x < 0)'
+assert str(_simplify_condition(not_(and_(x > 0, x < 1)))) == '(x >= 1) | (x <= 0)'
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
 def test_native_piecewise_relational_conditions_do_not_load_sympy() -> None:
-    """A relation among the conditions of ``piecewise_simplify_arguments``
-    is simplified by the native port of ``Relational._eval_simplify`` (it
-    went to SymPy's ``simplify``; the compound conditions still do)."""
+    """The conditions of ``piecewise_simplify_arguments``, relations and
+    compound formulas, are simplified by the native port of SymPy's
+    ``simplify`` of Booleans (:mod:`sympy_extras.logic.boolsimp`; they
+    went to SymPy's ``simplify``)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_PIECEWISE_RELATIONAL_CONDITIONS], capture_output=True,
                          text=True, timeout=600)
     assert out.returncode == 0, out.stderr

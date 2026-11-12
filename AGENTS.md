@@ -540,6 +540,9 @@ sympy_extras/
     logic/                   propositional logic on the core's Booleans (exports nothing: import the modules)
         boolalg.py           simplify_logic, SOPform, POSform: minimal two-level forms by Quine-McCluskey (native,
                              PORTED FROM SYMPY logic/boolalg)
+        boolsimp.py          simplify_boolean, simplify_univariate: SymPy's simplify of Boolean formulas (the intervals of
+                             one variable, the patterns of the relations of And and Or) (native, PORTED FROM SYMPY
+                             logic/boolalg; no Xor)
         cnf.py               to_clauses, conjunction, Clauses: conjunctive normal forms encoded with integers (native,
                              PORTED FROM SYMPY assumptions/cnf)
         dpll2.py             SATSolver, propositional_models, is_satisfiable: DPLL with watched literals and VSIDS, every

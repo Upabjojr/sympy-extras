@@ -10,12 +10,18 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
-- `piecewise_simplify_arguments` simplifies a relation among the
-  conditions by the native port of SymPy's `Relational._eval_simplify`
-  (`assumptions.refine.simplify_relational`) instead of SymPy's
-  `simplify`; a compound condition (`And`, `Or`) still goes to SymPy
-  (`BooleanFunction._eval_simplify` and the patterns of the relations of
-  `And` and `Or` are not ported).
+- `piecewise_simplify_arguments` simplifies its conditions natively by
+  the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's
+  `simplify` of Boolean formulas (`BooleanFunction._eval_simplify`,
+  `And._eval_simplify`, `Or._eval_simplify`, `simplify_univariate`, the
+  two- and three-term patterns of the relations, `simplify_logic` with
+  its relations simplified first), instead of SymPy's `simplify`; only a
+  condition with an `Xor` still goes to SymPy (`Xor._eval_simplify`, by
+  the algebraic normal form, is not ported). The endpoints of the
+  intervals of `simplify_univariate` are decided on the formula, where
+  SymPy decides them on the relation of the previous interval:
+  SymPy's `simplify(~((x > 0) & (x < 1)))` is `(x >= 1) | (x < 0)`, false
+  at `x = 0`.
 - The series of `Hyper` and `MeijerG` at an argument going to an infinity
   follow SymPy's generic branch of `Function._eval_nseries` natively
   (ported): `PoleError` when the leading term goes to an infinity (these
