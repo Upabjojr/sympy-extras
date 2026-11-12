@@ -625,8 +625,8 @@ def _manual(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
 
 
 def _meijer(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
-    from .indefinite_sympy import meijerint_of_core
-    return meijerint_of_core(f, x, _long_budget())
+    from .meijerint import meijer_antiderivative
+    return attempt(lambda: meijer_antiderivative(f, x), _long_budget(), native=True)
 
 
 def _sympy(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
