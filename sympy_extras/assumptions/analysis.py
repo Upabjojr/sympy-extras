@@ -547,10 +547,14 @@ def _power_continuous_on(f: Pow, x: Symbol, domain: Set) -> bool:
 def _native_solver(formula: Boolean, v: Symbol) -> Optional[Set]:
     """The solver of the relations polynomial in a kernel variable with
     constant coefficients which :func:`solve_transcendental` is given: the
-    linear relations natively, ``None`` for the others."""
+    linear relations and the quadratic equations natively, ``None`` for
+    the others."""
     from sympy_extras.solvers.transcendental import _linear_solution
     if isinstance(formula, Relational):
-        return _linear_solution(formula, v)
+        linear = _linear_solution(formula, v)
+        if linear is not None:
+            return linear
+        return _quadratic_solution(formula, v)
     if isinstance(formula, (And, Or)):
         parts: list[Set] = []
         for a in formula.args:
@@ -562,6 +566,37 @@ def _native_solver(formula: Boolean, v: Symbol) -> Optional[Set]:
             parts.append(part)
         return intersection(*parts) if isinstance(formula, And) else union(*parts)
     return None
+
+
+def _quadratic_solution(relation: Relational, v: Symbol) -> Optional[Set]:
+    """The real solutions of ``a v**2 + b v + c = 0`` with real constant
+    coefficients (``tan(1)``, ...) by the sign of the discriminant, decided
+    by :func:`certified_sign`; ``None`` for another relation or an
+    undecided sign. (SymPy's ``solveset`` before: the half-angle
+    substitution makes ``sin(x) - tan(1)*cos(x)`` such an equation.)"""
+    from sympy_extras.core.function import expand
+    from sympy_extras.core.power import sqrt
+    from sympy_extras.solvers.transcendental import _coefficients
+    if not isinstance(relation, Eq):
+        return None
+    coefficients = _coefficients(expand(relation.lhs - relation.rhs), v)
+    if coefficients is None or set(coefficients) - {0, 1, 2} or 2 not in coefficients:
+        return None
+    a = coefficients[2]
+    b = coefficients.get(1, Integer(0))
+    c = coefficients.get(0, Integer(0))
+    if any(not (e.is_number and e.is_real is True) for e in (a, b, c)) or certified_sign(a) in (None, 0):
+        return None
+    discriminant = b**2 - 4*a*c
+    sign = certified_sign(discriminant)
+    if sign is None:
+        return None
+    if sign < 0:
+        return EmptySet
+    if sign == 0:
+        return finite_set(-b/(2*a))
+    root = sqrt(discriminant)
+    return finite_set((-b - root)/(2*a), (-b + root)/(2*a))
 
 
 def _zero_set(f: Expr, x: Symbol) -> Optional[Set]:
@@ -602,7 +637,50 @@ def _zero_set_of(f: Expr, x: Symbol) -> Optional[Set]:
             return EmptySet
     if isinstance(g, Exp):
         return EmptySet
+    harmonic = _harmonic_zeros(g, x)
+    if harmonic is not None:
+        return harmonic
     return solve_transcendental(Eq(g, Integer(0)), x, solver=_native_solver, lambert=False)
+
+
+def _harmonic_zeros(g: Expr, x: Symbol) -> Optional[Set]:
+    """The zeros of ``a*sin(u) + b*cos(u)`` (``a``, ``b`` real constants,
+    ``u = c*x + d`` linear): ``u = atan(-b/a) + k*pi``, in the form which
+    keeps ``atan(tan(1)) = 1`` exact (the half-angle substitution of the
+    transcendental solver writes the zero 1 of ``sin(x) - tan(1)*cos(x)``
+    as ``2*atan((sqrt(1 + tan(1)**2) - 1)/tan(1))``, which no comparison
+    decides against 1); ``None`` for another expression."""
+    from sympy_extras.core.symbol import Dummy
+    from sympy_extras.sets.fancysets import Integers, image_set
+    from sympy_extras.core.containers import Tuple
+    terms = Add.make_args(g)
+    argument: Optional[Expr] = None
+    a: Expr = Integer(0)
+    b: Expr = Integer(0)
+    for t in terms:
+        coefficient, rest = t.as_independent(x, as_Add=False)
+        if not isinstance(rest, (Sin, Cos)) or not isinstance(rest.args[0], Expr):
+            return None
+        if argument is None:
+            argument = rest.args[0]
+        elif rest.args[0] != argument:
+            return None
+        if isinstance(rest, Sin):
+            a = a + coefficient
+        else:
+            b = b + coefficient
+    if argument is None or len(terms) != 2:
+        return None
+    slope = argument.diff(x)
+    if slope.has(x) or certified_sign(slope) in (None, 0):
+        return None
+    if not all(e.is_number and e.is_real is True for e in (a, b)) or certified_sign(a) in (None, 0):
+        return None
+    offset = as_expr(argument.subs(x, Integer(0)))
+    k = Dummy('k', integer=True)
+    from sympy_extras.functions.elementary.trigonometric import atan
+    from sympy_extras.core.numbers import pi
+    return image_set(Tuple(k), (atan(-b/a) + k*pi - offset)/slope, Integers)
 
 
 #: the most points of a periodic family of zeros listed in a bounded piece
