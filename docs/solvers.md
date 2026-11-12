@@ -875,7 +875,7 @@ the cases off.
 >>> solve_ode(y.diff(x) - k*y - exp(x), y)
 [Eq(y(x), Piecewise(((C1 + x)*exp(x), Eq(k, 1)), (C1*exp(k*x) - exp(x)/(k - 1), True)))]
 >>> solve_ode(y.diff(x, 2) + k**2*y - sin(x), y)
-[Eq(y(x), Piecewise((C2*sin(x) + (C1 - x/2)*cos(x), Eq(k, -1) | Eq(k, 1)), (C1 + C2*x - sin(x), Eq(k, 0)), (C1*exp(-I*k*x) + C2*exp(I*k*x) + sin(x)/(k**2 - 1), True)))]
+[Eq(y(x), Piecewise((C1*sin(x) + C2*cos(x) - x*cos(x)/2, Eq(k, -1) | Eq(k, 1)), (C1 + C2*x - sin(x), Eq(k, 0)), (C1*exp(-I*k*x) + C2*exp(I*k*x) + sin(x)/(k**2 - 1), True)))]
 >>> dsolve_linear(x**2*y.diff(x, 2) + a*x*y.diff(x) + 4*y, y)[1]
 Piecewise((x**2*log(x), Eq(a, -3)), (log(x)/x**2, Eq(a, 5)), (exp(-(a + sqrt(a**2 - 2*a - 15) - 1)*log(x)/2), True))
 

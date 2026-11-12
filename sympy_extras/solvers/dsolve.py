@@ -270,7 +270,10 @@ def _real_imaginary(r: Expr) -> Optional[tuple[Expr, Expr]]:
         return None
     a = _replaced(r, {I: _ZERO})
     b = expand(r - a).coeff(I)
-    if b == _ZERO or b.has(I) or expand(a + b*I - r) != _ZERO:
+    # as SymPy: the real form only for an imaginary part known to be real
+    # (exp(I k x), not sin(k x), for a k which may be complex)
+    if b == _ZERO or b.has(I) or b.is_extended_real is not True or a.is_extended_real is not True \
+            or expand(a + b*I - r) != _ZERO:
         return None
     return expand(a), b
 
@@ -425,7 +428,7 @@ def _linear(coefficients: list[Expr], b: Expr, f: AppliedUndef, taken: set[Symbo
             return None
         if found is None:
             return None
-        particular = _tidy(found, x)
+        particular = _reduced_particular(_tidy(found, x), basis, x)
     constants = _constants(taken, n)
     general = add(particular, *[mul(c, s) for c, s in zip(constants, basis)])
     if n == 1 and particular != _ZERO:
@@ -442,6 +445,21 @@ def _ops(e: Expr) -> int:
     from sympy_extras.core.function import count_ops
     found = count_ops(e)
     return int(found) if isinstance(found, Integer) else 0
+
+
+def _reduced_particular(particular: Expr, basis: list[Expr], x: Symbol) -> Expr:
+    """The particular solution without its terms which are constant
+    multiples of solutions of the basis (the constants absorb them), as
+    SymPy's undetermined coefficients give it."""
+    terms = Add.make_args(expand(particular))
+    kept: list[Expr] = []
+    for term in terms:
+        if any(not _normal(term/b).has(x) for b in basis if b != _ZERO):
+            continue
+        kept.append(term)
+    if len(kept) == len(terms):
+        return particular
+    return _sum(kept)
 
 
 def _without_number(b: Expr, x: Symbol) -> Expr:
