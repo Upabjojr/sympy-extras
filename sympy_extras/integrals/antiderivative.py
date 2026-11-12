@@ -33,11 +33,11 @@ The module works on the objects of :mod:`sympy_extras.core` and imports
 no SymPy. The antiderivative itself is a step of its own, an
 :data:`AntiderivativeStep` which every function takes: by default
 :func:`antiderivative`, which tries the native table of quadratic
-radicals (:mod:`.radicals`) and the verified methods of the native
-:mod:`.indefinite`, whose last methods (SymPy's) and SymPy's
-``integrate`` of the polynomials in elementary functions
-(:func:`~.antiderivative_sympy.integrate_of_core`) load SymPy on their
-paths only. A native antiderivative (the native ``ratint`` of
+radicals (:mod:`.radicals`), the polynomials in elementary functions by
+the native rules of :mod:`.manualintegrate` and the native heuristics
+(:func:`elementary_antiderivative`), and the verified methods of the
+native :mod:`.indefinite`, whose last methods (SymPy's) load SymPy on
+their paths only. A native antiderivative (the native ``ratint`` of
 :mod:`.risch.rationaltools`, say) runs the whole method without SymPy. The singularities of the integrand are those of SymPy's
 ``singularities`` (a port, :func:`singularities`). The functions on SymPy
 objects are in :mod:`.antiderivative_sympy`.
@@ -112,7 +112,7 @@ from sympy_extras.simplify.powsimp import powsimp
 
 from .conditions import ConditionalValue, sample_values
 
-__all__ = ['AntiderivativeStep', 'antiderivative', 'elementary_polynomial', 'quick_shape', 'by_parts_shape',
+__all__ = ['AntiderivativeStep', 'antiderivative', 'elementary_antiderivative', 'elementary_polynomial', 'quick_shape', 'by_parts_shape',
            'singularities', 'discontinuities', 'antiderivative_integral', 'one_sided_limit', 'select_branch',
            'real_logarithms', 'principal_value_integral', 'finite_part_integral']
 
@@ -155,7 +155,7 @@ def _budget(share: int) -> Optional[float]:
 
 
 def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bool = False) -> Optional[Expr]:
-    """An antiderivative of ``f`` by the radical table, by ``integrate``
+    """An antiderivative of ``f`` by the radical table, by :func:`elementary_antiderivative`
     for a polynomial in elementary functions, and by the verified methods
     of :mod:`.indefinite` otherwise, under an eighth of the time limit;
     ``None`` when none is found (an unevaluated ``Integral`` in the result
@@ -165,10 +165,9 @@ def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bo
     are tried instead, under a quarter of the time limit (the second pass
     of the definite driver, after its slow methods).
 
-    The radical table and :mod:`.indefinite` are native; SymPy's
-    ``integrate`` of a polynomial in elementary functions is reached
-    through :mod:`.antiderivative_sympy`, and the last methods of
-    :mod:`.indefinite` through :mod:`.indefinite_sympy`, which load SymPy.
+    The radical table, :func:`elementary_antiderivative` and
+    :mod:`.indefinite` are native; the last methods of :mod:`.indefinite`
+    are reached through :mod:`.indefinite_sympy`, which loads SymPy.
 
     Examples
     ========
@@ -186,15 +185,16 @@ def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bo
         # complex logarithm, whose limits at algebraic bounds fail)
         return found
     if elementary_polynomial(f, x):
-        from .antiderivative_sympy import integrate_of_core
         # a polynomial in x and in exponentials and trigonometric functions
-        # of linear arguments: integrate does it at once, where the Risch
-        # port spends seconds on gcds over the constants of the arguments
-        # (sin(pi*t/4 + pi/4)**3 took 7 s, on every quarter period); the
-        # arguments expanded, since sin(pi*(t/4 + 1/4)) takes integrate
-        # 8 s where sin(pi*t/4 + pi/4) takes a tenth of one
+        # of linear arguments: the rules of manualintegrate and the
+        # heuristic Risch method do it at once (SymPy's integrate answered
+        # them so), where the Risch port spends seconds on gcds over the
+        # constants of the arguments (sin(pi*t/4 + pi/4)**3 took 7 s, on
+        # every quarter period, t**2*cos(3*t - 1) 10 s in a tan(1/2) form);
+        # the arguments expanded (sin(pi*(t/4 + 1/4)) is
+        # sin(pi*t/4 + pi/4))
         g = as_expr(f.replace(lambda n: type(n) in _ELEMENTARY, _expanded_argument))
-        found = integrate_of_core(g, x, settings.timeout)
+        found = elementary_antiderivative(g, x, settings.timeout)
         if found is not None:
             return found
     found = _logarithm_by_parts(f, x)
@@ -218,6 +218,61 @@ def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bo
     verified = attempt(lambda: verified_antiderivative(f, x, assumptions, methods), _budget(4 if late else 8),
                        native=True)
     return None if verified is None else verified[0]
+
+
+#: the methods of the indefinite dispatcher tried on the terms of a
+#: polynomial in elementary functions which the rules do not integrate
+#: (not the trigonometric one: t*cos(t)*sinh(t) took it 14 s, in a complex
+#: form, where the heuristic gives the real one in 1 s)
+_ELEMENTARY_METHODS: Final[list[str]] = ['exponential', 'heurisch']
+
+
+def elementary_antiderivative(f: Expr, x: Symbol, seconds: Optional[float]) -> Optional[Expr]:
+    """An antiderivative of ``f``, a polynomial in ``x`` and in elementary
+    functions of linear arguments (or a part of the integrations by parts
+    of :func:`antiderivative`: an exponential integral, a polynomial times
+    a Gaussian), within ``seconds``: the rules of the native
+    :func:`~.manualintegrate.manualintegrate`, checked by
+    differentiation, and failing them the native exponential and
+    heuristic Risch methods of :mod:`.indefinite` on
+    the whole and then on each term (the routes by which SymPy's
+    ``integrate`` answered these integrands); ``None`` when no
+    antiderivative checks in time.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import cos, sinh
+    >>> from sympy_extras.integrals.antiderivative import elementary_antiderivative
+    >>> t = Symbol('t')
+    >>> elementary_antiderivative(t**2*cos(3*t - 1), t, None)
+    t**2*sin(3*t - 1)/3 + 2*t*cos(3*t - 1)/9 - 2*sin(3*t - 1)/27
+    >>> elementary_antiderivative(t*cos(t)*sinh(t), t, None)
+    t*sin(t)*sinh(t)/2 + t*cos(t)*cosh(t)/2 - sin(t)*cosh(t)/2
+    """
+    from .indefinite import is_antiderivative, verified_antiderivative
+    from .integral import Integral
+    from .manualintegrate import manualintegrate
+
+    def run() -> Optional[Expr]:
+        found = manualintegrate(f, x)
+        if not found.has(Integral) and is_antiderivative(found, f, x) is True:
+            return found
+        verified = verified_antiderivative(f, x, None, _ELEMENTARY_METHODS)
+        if verified is not None:
+            return verified[0]
+        terms = Add.make_args(expand(f))
+        if len(terms) < 2:
+            return None
+        total: Expr = S.Zero
+        for term in terms:
+            piece = manualintegrate(term, x)
+            if piece.has(Integral) or is_antiderivative(piece, term, x) is not True:
+                verified = verified_antiderivative(term, x, None, _ELEMENTARY_METHODS)
+                if verified is None:
+                    return None
+                piece = verified[0]
+            total = total + piece
+        return total
+    return attempt(run, seconds, native=True)
 
 
 def _expanded_argument(node: Basic) -> Basic:
@@ -323,17 +378,16 @@ def _error_function_by_parts(f: Expr, x: Symbol) -> Optional[Expr]:
     g = f / errors[0]
     if g.has(Erf) or not elementary_polynomial(g, x):
         return None
-    from .antiderivative_sympy import integrate_of_core
     plain = _fresh(x.name)
     g = g.subs(x, plain)
     budget = _budget(8)
-    G = integrate_of_core(g, plain, budget)
+    G = elementary_antiderivative(g, plain, budget)
     if G is None:
         return None
     remainder = expand(G.rewrite(Exp) * exp(-k**2 * plain**2))
     H: Expr = S.Zero
     for term in Add.make_args(remainder):
-        piece = integrate_of_core(powsimp(term, combine='exp'), plain, budget)
+        piece = elementary_antiderivative(powsimp(term, combine='exp'), plain, budget)
         if piece is None:
             return None
         H = H + piece
@@ -348,16 +402,15 @@ def _logarithm_by_parts(f: Expr, x: Symbol) -> Optional[Expr]:
     six). ``None`` for another shape."""
     if not by_parts_shape(f, x):
         return None
-    from .antiderivative_sympy import integrate_of_core
-    # on a plain dummy: integrate is four times slower on a symbol
-    # declared positive (the assumptions are consulted at every step)
+    # on a plain dummy: the rules are slower on a symbol declared
+    # positive (the assumptions are consulted at every step)
     plain = _fresh(x.name)
     g = (f / log(x)).subs(x, plain)
     budget = _budget(8)
-    G = integrate_of_core(g, plain, budget)
+    G = elementary_antiderivative(g, plain, budget)
     if G is None:
         return None
-    H = integrate_of_core(cancel(G / plain), plain, budget)
+    H = elementary_antiderivative(cancel(G / plain), plain, budget)
     if H is None:
         return None
     return (G * log(plain) - H).subs(plain, x)
