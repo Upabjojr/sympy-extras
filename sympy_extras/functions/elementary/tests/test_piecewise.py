@@ -142,3 +142,16 @@ def test_relations_with_unknown_symbols_match_sympy() -> None:
     from sympy_extras.core.logic import true
     x, r = Symbol('x'), Symbol('r', real=True)
     assert str(x + 1 > x) == 'x + 1 > x' and (r + 1 > r) is true
+
+
+def test_piecewise_fold_keeps_the_limits_of_a_sum() -> None:
+    from sympy_extras.concrete.expr_with_limits import Sum
+    from sympy_extras.core import Integer, Symbol, gt, oo, true
+    from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise, piecewise_fold
+    k, a = Symbol('k'), Symbol('a')
+    # the bug: the limits, not expressions, were dropped and rebuilding the
+    # Sum raised "Sum requires limits" (series_integral(sin(x) + cos(x), x,
+    # 0, oo) raised it); SymPy gives the pieces of the sum
+    s = Sum(piecewise((a**k, gt(a, 0)), (k, true)), (k, Integer(1), oo))
+    assert piecewise_fold(s) == Piecewise((Sum(a**k, (k, Integer(1), oo)), gt(a, 0)),
+                                          (Sum(k, (k, Integer(1), oo)), true))

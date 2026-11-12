@@ -559,6 +559,34 @@ remove public functions. Breaking changes are listed here when they happen.
   old API on SymPy objects is in `sympy_extras.integrals.algebraic_sympy`
   and `sympy_extras.integrals.rewriting_sympy`, used by `definite`,
   `indefinite`, `trager` and the tests.
+- The integrals by series expansion and the region integrals with a
+  rotational symmetry are native (**breaking**):
+  `sympy_extras.integrals.series` (`series_integral`, `fourier_integral`,
+  `fourier_expansion`, `expansions`, `moments`, `sum_series`,
+  `Expansion`) and `sympy_extras.integrals.axisymmetric`
+  (`axisymmetric_integral`, `rotation_group`, `rotation_invariant`,
+  `aligned_frame` and its result, now the public `Frame`) take and return
+  objects of the core and import no SymPy: the native summation,
+  `hypersimp`, `hyperexpand`, roots, convergence tests, Euler sums,
+  Zeilberger's algorithm, `ask`, `refine`, `tidy`, `cancel` and numerical
+  comparison. The full partial fractions of the rational series are
+  written over the roots of the denominator (SymPy's `apart(full=True)`
+  is not ported), and the frame of `aligned_frame` comes from a port of
+  SymPy's Gram–Schmidt process. The moments, the mean values and the
+  computed Fourier coefficients still come from `definite` and
+  `antiderivative` (not ported yet) through the faces
+  (`laplace_sympy.definite_integral_of_core`,
+  `conditional_integral_of_core`, the new
+  `series_sympy.antiderivative_integral_of_core`), the numerical check of
+  an unjustified interchange from `definite.verify_numerically` through
+  `residues_sympy.verify_numerically_of_core`, and the profile integral
+  from `regions` through the new
+  `axisymmetric_sympy.integrate_by_ranges_of_core`; SymPy is loaded on
+  those paths only. Every dummy has a name of its own (`_k3`, `_Y1_0`:
+  the typed polynomials map their symbols by name). The old API on SymPy
+  objects is in `series_sympy` (used by `definite`, with
+  `_polygamma_series_sympy` for the fuzzer) and `axisymmetric_sympy`
+  (used by `regions`).
 - The Laplace rules, Frullani's and Glasser's theorems, the summability
   means and differentiation under the integral sign are native
   (**breaking**): `sympy_extras.integrals.laplace` (`laplace_rules`,

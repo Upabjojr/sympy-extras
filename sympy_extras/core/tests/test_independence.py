@@ -2199,6 +2199,32 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_SERIES = r'''
+import sys
+from sympy_extras.core import Dummy, Integer, Symbol, pi
+from sympy_extras.functions import cos, log, sin
+from sympy_extras.integrals.series import fourier_expansion, fourier_integral, sum_series
+assert 'sympy' not in sys.modules
+x = Symbol('x')
+a = Symbol('a', positive=True)
+n = Symbol('n', integer=True, positive=True)
+e = fourier_expansion(log(sin(x)), x, 0, pi)
+assert e is not None and str(e.constant) == '-log(2)' and e.basis.subs(e.index, Integer(1)) == cos(2*x)
+assert fourier_expansion(log(sin(x)), x, 0, 2*pi) is None
+e = fourier_expansion(1/(1 - 2*a*cos(x) + a**2), x, 0, pi, a < 1)
+assert e is not None and str(e.constant) == '-1/(a**2 - 1)'
+j = Dummy('j', integer=True, nonnegative=True)
+k = Dummy('k', integer=True, positive=True)
+assert str(sum_series((-1)**j/(2*j + 1)**2, j, 0)) == 'Catalan'
+assert str(sum_series(2/(k*(4*k**2 - 1)), k, 1)) == '-2 + 4*log(2)'
+assert sum_series(sin(k*a)/k**2, k, 1).has(Symbol('a', positive=True))
+assert str(fourier_integral(log(sin(x)), x, 0, pi)) == 'ConditionalValue(-pi*log(2))'
+assert str(fourier_integral(log(2*sin(x/2))*cos(n*x), x, 0, 2*pi)) == 'ConditionalValue(-pi/n)'
+assert fourier_integral(log(sin(x))*log(cos(x)), x, 0, pi/2) is not None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 _NATIVE_DFINITE = r'''
 import sys
 from sympy_extras.core import symbols, oo
@@ -2216,6 +2242,37 @@ assert str(closure(x*exp(-x**2)*besselj(0, t*x), x, t)) == '(x, [Factor(besselj(
 assert str(dfinite_ode(exp(-t*x)*sin(x)/x, x, 0, oo, t)) == 'Eq(Derivative(I(t), t), -1/(t**2 + 1))'
 reduce = normal_form(Annihilator(x, [2*t*x, 1]), Annihilator(t, [x**2, 1]), x, t)
 assert str(reduce(2, 0)) == '{(0, 0): 4*t**2*x**2 - 2*t}'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_series_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.series` does not load SymPy,
+    nor do the tabulated and parametric Fourier series, the summation of
+    the series (the native summation, partial fractions over the roots,
+    polylogarithms) and the Fourier integrals by termwise integration and
+    orthogonality; the moments (``definite``), the computed coefficients
+    (``antiderivative``) and the formal power series (``fps``) reach
+    SymPy through the faces only."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SERIES], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_AXISYMMETRIC = r'''
+import sys
+from sympy_extras.core import Symbol, sqrt
+from sympy_extras.functions import heaviside
+from sympy_extras.integrals.axisymmetric import aligned_frame, rotation_group, rotation_invariant
+assert 'sympy' not in sys.modules
+x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+assert rotation_invariant(x**2 + y**2, [x, y]) and not rotation_invariant(heaviside(x), [x, y])
+assert rotation_group(z, (x**2 + y**2 + z**2 < 1) & (z > x**2 + y**2), [x, y, z]) == (x, y)
+assert rotation_group(1, (x**2 + y**2 + z**2 < 1) & (x > 0), [x, y, z]) == (y, z)
+assert rotation_group(x*y, x**2 + y**2 + z**2 < 1, [x, y, z]) is None
+frame = aligned_frame(1, (x**2 + y**2 + z**2 < 1) & (x + y + z > 1), [x, y, z])
+assert frame is not None and frame.ratio == sqrt(3)
+assert aligned_frame(1, (x**2 + y**2 + z**2 < 1) & (x + y + z > 0) & (x - y > 0), [x, y, z]) is None
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -2271,5 +2328,17 @@ def test_native_dfinite_does_not_load_sympy() -> None:
     of other factors and of whole integrands goes through
     :mod:`~sympy_extras.integrals.dfinite_sympy`)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_DFINITE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_axisymmetric_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.axisymmetric` does not load
+    SymPy, nor do the rotation tests (finite and infinitesimal), the
+    choice of the group and the aligned frame (the ported Gram–Schmidt
+    process); the profile integral reaches SymPy's ``integrate_by_ranges``
+    through the face only."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_AXISYMMETRIC], capture_output=True, text=True,
+                         timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

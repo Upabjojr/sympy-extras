@@ -387,10 +387,11 @@ The driver tries, after the Mellin method and the residues:
   objects (the rational integral of `algebraic` still comes from
   `definite`, through the face).
 - **Series expansion and termwise integration**
-  (`sympy_extras.integrals.series`): one factor expanded in its formal
+  (`sympy_extras.integrals.series`, native on the core; the SymPy face
+  `series_sympy`): one factor expanded in its formal
   power series (or a geometric series of exponentials), the moments of the
   rest integrated in closed form in the index, and the series summed by
-  `summation`, the Zeilberger and polygamma-series algorithms of
+  the native `summation`, the Zeilberger and polygamma-series algorithms of
   `sympy_extras.concrete`, or a hypergeometric closed form; the interchange
   is justified by absolute convergence or checked numerically.
   `Integral(log(x)*log(1 - x), (x, 0, 1))` gives `2 - pi**2/6`.
@@ -968,7 +969,8 @@ pi*(-1 + 5*sqrt(5))/6
 A region with a rotational symmetry, one whose relations and integrand
 see a group of two or more variables only through the sum of their
 squares, is reduced to its profile in the half-plane of the radius
-(`sympy_extras.integrals.axisymmetric`): the group becomes one variable
+(`sympy_extras.integrals.axisymmetric`, native on the core; the SymPy
+face `axisymmetric_sympy`): the group becomes one variable
 `rho > 0` with the weight `2*pi**(k/2)/gamma(k/2)*rho**(k - 1)`, the area
 of the unit sphere `S**(k-1)`, and the profile, one dimension smaller and
 bounded by conics, goes back to the decomposition. Invariance is decided
@@ -1057,7 +1059,7 @@ interchange for two square-integrable factors):
 -pi**2*log(2)/8 + 7*zeta(3)/16
 >>> definite_integral(log(sin(x))*log(cos(x)), (x, 0, pi/2))
 pi*(-pi**2 + 24*log(2)**2)/48
->>> from sympy_extras.integrals.series import fourier_integral
+>>> from sympy_extras.integrals.series_sympy import fourier_integral
 >>> a = symbols('a', positive=True)
 >>> fourier_integral(x**2/(1 - 2*a*cos(x) + a**2), x, 0, pi, [a < 1]).value
 pi*(-12*polylog(2, -a) - pi**2)/(3*(a**2 - 1))
