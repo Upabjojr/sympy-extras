@@ -209,6 +209,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "LerchPhi" => Basic::new(Head::Function(Function::LerchPhi), args()?),
         "RiemannXi" => Basic::new(Head::Function(Function::RiemannXi), args()?),
         "Stieltjes" => Basic::new(Head::Function(Function::Stieltjes), args()?),
+        "Mod" => Basic::new(Head::Function(Function::Mod), args()?),
         "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
@@ -353,6 +354,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 .getattr("IndexedRoot")?
                 .call1(PyTuple::new(py, items)?)?
         }
+        Head::Function(Function::Mod) => rebuilt("Mod", "mod")?,
         Head::Function(f) => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             let module: &str = match f {
@@ -2050,6 +2052,7 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             let v: bool = sympy_extras_core::core::accumbounds::contains(&a[0], &a[1]).map_err(e)?;
             return Ok(pyo3::types::PyBool::new(py, v).to_owned().into_any());
         }
+        "mod" => sympy_extras_core::core::modulo::modulo(&a[0], &a[1]).map_err(e)?,
         "zeta" | "dirichlet_eta" | "polylog" | "lerchphi" | "riemann_xi" | "stieltjes" => {
             use sympy_extras_core::functions::special::zeta_functions as zf;
             match name {

@@ -269,6 +269,8 @@ pub enum Function {
     LerchPhi,
     RiemannXi,
     Stieltjes,
+    /// `Mod(p, q)` (`core.mod`).
+    Mod,
 }
 
 impl Function {
@@ -332,6 +334,7 @@ impl Function {
             Function::LerchPhi => "lerchphi",
             Function::RiemannXi => "riemann_xi",
             Function::Stieltjes => "stieltjes",
+            Function::Mod => "Mod",
         }
     }
 
@@ -395,6 +398,7 @@ impl Function {
             Function::LerchPhi => "LerchPhi",
             Function::RiemannXi => "RiemannXi",
             Function::Stieltjes => "Stieltjes",
+            Function::Mod => "Mod",
         }
     }
 
@@ -422,6 +426,7 @@ impl Function {
             | Function::LerchPhi
             | Function::RiemannXi
             | Function::Stieltjes
+            | Function::Mod
             | Function::Gamma
             | Function::LogGamma
             | Function::PolyGamma

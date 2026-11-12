@@ -460,6 +460,10 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Stieltjes => {
                     unreachable!("evaluated above with all their arguments")
                 }
+                // no value of its own (Python asks SymPy)
+                super::basic::Function::Mod => {
+                    return None;
+                }
                 g
                 @ (super::basic::Function::Floor | super::basic::Function::Ceiling | super::basic::Function::Frac) => {
                     crate::functions::elementary::integers::rounding_value(*g, &v)
