@@ -4,9 +4,9 @@ substitution, and the expected sets are those of SymPy's ``solve`` (SymPy
 1.14) or hand computations."""
 from __future__ import annotations
 
-from sympy_extras.core import Dummy, Function, I, Rational, Symbol, sqrt
+from sympy_extras.core import Dummy, Function, I, Rational, Symbol, pi, sqrt
 from sympy_extras.core.expr import Expr
-from sympy_extras.functions import atan, exp, log, sin
+from sympy_extras.functions import asin, atan, cos, exp, log, sin
 from sympy_extras.functions.elementary.exponential import LambertW
 from sympy_extras.solvers.bivariate import solve_lambert
 from sympy_extras.solvers.solvers import checksol, invert, solve_equation, solve_system, zero_truth
@@ -73,6 +73,23 @@ def test_radicals() -> None:
     # with positive symbols), the two complex ones are kept as by SymPy
     other = solve_equation(-2*u/(3*sqrt(1/(u*a))) - a*y - b - x, u)
     assert other is not None and len(other) == 2
+
+
+def test_cardano_candidates_are_checked_at_their_exact_roots() -> None:
+    # the root 0.7816... of the eliminated cubic (Cardano's radicals with
+    # an imaginary part exactly zero, which reliable values do not decide)
+    # was kept although 5*sqrt(x)/3 + 3 + 1/(3*(x - 1)) is 2.947 there
+    e = 5*sqrt(x)/3 + 3 + 1/(3*(x - 1))
+    found = solve_equation(e, x)
+    assert found is not None and len(found) == 1
+    assert _residual_is_small(e, x, found[0], {})
+
+
+def test_the_sine_and_the_cosine_have_two_inverses() -> None:
+    # SymPy's multi_inverses: [pi - asin(3/2), asin(3/2)]; only asin(3/2)
+    # was returned
+    assert solve_equation(sin(x) - Rational(3, 2), x) == [pi - asin(Rational(3, 2)), asin(Rational(3, 2))]
+    _checked(cos(2*x) - Rational(1, 3), x, 2)
 
 
 def test_lambert() -> None:

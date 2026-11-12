@@ -136,7 +136,7 @@ def checksol(f: Expr, x: Symbol, v: Expr) -> Optional[bool]:
         value = _subs(f, x, v)
     except (TypeError, ValueError, ZeroDivisionError):
         return None
-    if value.has(x):
+    if x in value.free_symbols:
         return None
     return zero_truth(value)
 
@@ -332,11 +332,12 @@ def invert(f: Expr, x: Symbol, rhs: Expr = _ZERO) -> tuple[Expr, Expr]:
 
 def _inverse(f: Expr) -> Optional[Callable[[Expr], Expr]]:
     """The inverse function of a trigonometric or hyperbolic function or
-    of an inverse one (SymPy's ``inverse()``: the principal branch)."""
+    of an inverse one (SymPy's ``inverse()``: the principal branch); the
+    sine and the cosine have two inverses (:func:`_multi_inverses`)."""
     from sympy_extras.functions.elementary import hyperbolic as h
     from sympy_extras.functions.elementary import trigonometric as t
     table: list[tuple[type[Expr], Callable[[Expr], Expr]]] = [
-        (t.Sin, t.asin), (t.Cos, t.acos), (t.Tan, t.atan), (t.Cot, t.acot), (t.Sec, t.asec), (t.Csc, t.acsc),
+        (t.Tan, t.atan), (t.Cot, t.acot), (t.Sec, t.asec), (t.Csc, t.acsc),
         (t.Asin, t.sin), (t.Acos, t.cos), (t.Atan, t.tan), (t.Acot, t.cot), (t.Asec, t.sec), (t.Acsc, t.csc),
         (h.Sinh, h.asinh), (h.Cosh, h.acosh), (h.Tanh, h.atanh), (h.Coth, h.acoth), (h.Sech, h.asech),
         (h.Csch, h.acsch), (h.Asinh, h.sinh), (h.Acosh, h.cosh), (h.Atanh, h.tanh), (h.Acoth, h.coth),
@@ -538,7 +539,43 @@ def _unrad(numerator: Expr, x: Symbol, depth: int) -> Optional[list[Expr]]:
     if not eliminated.has(x):
         # a nonzero constant: no solution (x - sqrt(x**2 - 1) = 0)
         return [] if eliminated != _ZERO else None
-    return _solve(eliminated, x, depth + 1)
+    candidates = _solve(eliminated, x, depth + 1)
+    if candidates is None or eliminated.free_symbols != {x}:
+        return candidates
+    return _checked_by_roots(numerator, x, candidates, eliminated)
+
+
+def _checked_by_roots(numerator: Expr, x: Symbol, candidates: list[Expr], eliminated: Expr) -> list[Expr]:
+    """The candidates (roots in radicals of a polynomial with rational
+    coefficients) which do not provably fail, each checked at the exact
+    complex root it stands for: Cardano's radicals of three real roots
+    have imaginary parts which are exactly zero, and their values tell
+    nothing (sympy-extras#65), those of the isolated roots do."""
+    from sympy_extras.polys.complexrootof import all_roots
+    proxies = attempt(lambda: all_roots(eliminated, x, radicals=False), settings.timeout, native=True)
+    if proxies is None:
+        return candidates
+    values: list[Optional[complex]] = []
+    for p in proxies:
+        try:
+            values.append(complex(p.evalf(30)))
+        except (TypeError, ValueError):
+            values.append(None)
+    kept: list[Expr] = []
+    for c in candidates:
+        if checksol(numerator, x, c) is not None or not c.is_number:
+            kept.append(c)
+            continue
+        try:
+            value = complex(c.evalf(30))
+        except (TypeError, ValueError):
+            kept.append(c)
+            continue
+        near = [p for p, w in zip(proxies, values) if w is not None and abs(w - value) < 1e-12*max(1.0, abs(value))]
+        if len(near) == 1 and checksol(numerator, x, near[0]) is False:
+            continue
+        kept.append(c)
+    return kept
 
 
 def _square_eliminated(polynomial: Expr, t: Symbol, n: Expr, d: Expr) -> Optional[Expr]:
@@ -598,8 +635,31 @@ def _tsolve(numerator: Expr, x: Symbol, depth: int) -> Optional[list[Expr]]:
                 return _solve(e*log(base) - log(rhs), x, depth + 1)
     elif isinstance(lhs, (Exp, Log)) or (isinstance(lhs, LambertW) and len(lhs.args) == 1):
         return _solve(lhs - rhs, x, depth + 1)
+    inverses = _multi_inverses(lhs, rhs)
+    if inverses is not None:
+        argument = _expr(lhs.args[0])
+        result: list[Expr] = []
+        for value in inverses:
+            found = _solve(argument - value, x, depth + 1)
+            if found is None:
+                return None
+            result.extend(found)
+        return _distinct(result)
     from .bivariate import solve_lambert
     return solve_lambert(lhs - rhs, x)
+
+
+# PORTED FROM SYMPY: sympy/solvers/solvers.py:multi_inverses
+def _multi_inverses(f: Expr, r: Expr) -> Optional[list[Expr]]:
+    """The two values of the argument of ``sin(u) = r`` (``asin(r)``,
+    ``pi - asin(r)``) and of ``cos(u) = r`` (``acos(r)``, ``2*pi - acos(r)``)."""
+    from sympy_extras.core.numbers import pi
+    from sympy_extras.functions.elementary import trigonometric as t
+    if isinstance(f, t.Sin) and len(f.args) == 1:
+        return [t.asin(r), pi - t.asin(r)]
+    if isinstance(f, t.Cos) and len(f.args) == 1:
+        return [t.acos(r), 2*pi - t.acos(r)]
+    return None
 
 
 def _nth_roots(base: Expr, r: Expr, n: int, x: Symbol, depth: int) -> Optional[list[Expr]]:
@@ -690,7 +750,7 @@ def _solve(f: Expr, x: Symbol, depth: int) -> Optional[list[Expr]]:
         return None
     result: list[Expr] = []
     for v in _distinct(candidates):
-        if v.has(x):
+        if x in v.free_symbols:
             continue
         if _zeroes_denominator(denominator, x, v):
             continue
