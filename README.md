@@ -1015,7 +1015,7 @@ sympy_extras/
         periodic.py          integrals over whole periods by the constant Laurent coefficient (native)
         periodic_sympy.py    the SymPy face of periodic
         recognize.py         PSLQ recognition of integrals (an oracle)
-        risch/               Risch algorithm ported from Aaron Meurer's SymPy pull requests
+        risch/               Risch algorithm ported from Aaron Meurer's SymPy pull requests (native; risch_sympy.py is the face)
         trager.py            Trager's algorithm for algebraic functions (one square root)
         curves.py            Trager's algorithm on a general curve (several or nested radicals) (native)
         curves_sympy.py      the SymPy face of curves

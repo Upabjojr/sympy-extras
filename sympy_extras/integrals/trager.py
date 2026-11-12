@@ -990,25 +990,20 @@ def _index_n(f: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
     logarithmic part on the curve ``y**n == P``
     (:func:`_component_with_logarithms`); ``h`` collects the components
     left undecided."""
-    from .risch.risch import DifferentialExtension, NonElementaryIntegralException
-    from .risch.rde import rischDE
+    from .risch.risch_sympy import rational_risch_de
     parsed = _root_components(f, x)
     if parsed is None:
         return None
     P, n, components = parsed
     F: Expr = ratint(components[0], x) if components[0] != 0 else S.Zero
     h: Expr = S.Zero
-    DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
     P_ = P.as_expr()
     for k in range(1, n):
         A = components[k]
         if A == 0:
             continue
-        fa, fd = fraction(cancel(k * P.diff(x).as_expr() / (n * P_)))
-        ga, gd = fraction(cancel(A))
-        try:
-            ya, yd = rischDE(Poly(fa, x), Poly(fd, x), Poly(ga, x), Poly(gd, x), DE)
-        except (NonElementaryIntegralException, NotImplementedError):
+        y = rational_risch_de(cancel(k * P.diff(x).as_expr() / (n * P_)), cancel(A), x)
+        if y is None:
             # no rational solution: the logarithmic part on the curve
             found = _component_with_logarithms(A, P, n, k, x)
             if found is None:
@@ -1016,7 +1011,7 @@ def _index_n(f: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
             else:
                 F = F + found
             continue
-        F = F + as_expr(cancel(ya.as_expr() / yd.as_expr())) * P_**Rational(k, n)
+        F = F + as_expr(cancel(y)) * P_**Rational(k, n)
     if not _verified(F, as_expr(f - h), x, P_):
         return None
     return as_expr(F), as_expr(h)

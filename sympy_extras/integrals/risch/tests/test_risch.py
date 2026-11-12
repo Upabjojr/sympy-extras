@@ -1,400 +1,418 @@
-"""Most of these tests come from the examples in Bronstein's book."""
+"""Most of these tests come from the examples in Bronstein's book (the
+Risch algorithm on the typed core)."""
 from __future__ import annotations
-from sympy.core.function import (Function, Lambda, diff, expand_log)
-from sympy.core.numbers import (E, I, Rational, pi)
-from sympy.core.relational import Ne
-from sympy.core.singleton import S
-from sympy.core.symbol import (Symbol, symbols)
-from sympy.functions.elementary.exponential import (exp, log)
-from sympy.functions.elementary.miscellaneous import sqrt
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.functions.elementary.hyperbolic import tanh
-from sympy.functions.elementary.trigonometric import (atan, cot, sin, tan,
-    cos, sec, csc, acot, asin)
-from sympy.polys.polytools import (Poly, cancel, factor)
-from sympy.polys.rationaltools import together
-from sympy.polys.rootoftools import RootSum
+
+from typing import Optional, Union
+
+from pytest import raises
+
+from sympy_extras.core import E, I, Rational, S, pi
+from sympy_extras.core.expr import Expr, as_expr
+from sympy_extras.functions.elementary.exponential import Log
+from sympy_extras.core.function import Function, Lambda, diff, expand_log
+from sympy_extras.core.relational import Ne
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.functions import (acot, asin, atan, cos, cot, csc, exp, log, piecewise as Piecewise, sec, sin,
+                                    sqrt, tan, tanh)
 from sympy_extras.integrals.risch.risch import (gcdex_diophantine, frac_in, as_poly_1t,
-    derivation, splitfactor, splitfactor_sqf, canonical_representation,
+    derivation, derivation_element, splitfactor, splitfactor_sqf, canonical_representation,
     hermite_reduce, polynomial_reduce, residue_reduce, residue_reduce_to_basic,
     integrate_primitive, integrate_hyperexponential_polynomial,
     integrate_hyperexponential, integrate_hypertangent_polynomial,
     integrate_hypertangent_reduced, integrate_hypertangent,
     integrate_nonlinear_no_specials, integer_powers, DifferentialExtension,
-    risch_integrate, DecrementLevel, NonElementaryIntegral, recognize_log_derivative,
-    recognize_derivative, laurent_series)
-from sympy.integrals.integrals import integrate, Integral
-from sympy.testing.pytest import raises
+    risch_integrate, risch_integrate_separate, DecrementLevel, NonElementaryIntegral, recognize_log_derivative,
+    recognize_derivative, laurent_series, LaurentPolynomial)
+from sympy_extras.integrals.risch.tower import RationalFunction, TowerPoly
+from sympy_extras.polys.polytools import cancel, factor
+from sympy_extras.polys.rationaltools import together
+from sympy_extras.polys.rootoftools import RootSum
 
-from sympy.abc import x, t, nu, z, a, y
-t0, t1, t2 = symbols('t:3')
+x, t, nu, z, a, y = Symbol('x'), Symbol('t'), Symbol('nu'), Symbol('z'), Symbol('a'), Symbol('y')
+t0, t1, t2 = Symbol('t0'), Symbol('t1'), Symbol('t2')
 i = Symbol('i')
 
+
+def P(e: Union[Expr, int], gen: Optional[Symbol] = None) -> TowerPoly:
+    """SymPy's ``Poly(e, gen)`` (the only free symbol by default)."""
+    if gen is None:
+        free = sorted(e.free_symbols, key=str) if isinstance(e, Expr) else []
+        if len(free) != 1:
+            raise ValueError('a generator is needed for %s' % (e,))
+        gen = free[0]
+    return TowerPoly.from_expr(e, gen)
+
+
+def HQ(r: tuple[tuple[TowerPoly, TowerPoly], ...]) -> tuple[RationalFunction, ...]:
+    """The fractions of a result of hermite_reduce (SymPy's numerators and
+    denominators up to a common factor)."""
+    return tuple(a.as_element()/d.as_element() for a, d in r)
+
+
+def R(e: Union[Expr, int]) -> RationalFunction:
+    return RationalFunction.from_int(e) if isinstance(e, int) else RationalFunction.from_expr(e)
+
+
 def test_gcdex_diophantine() -> None:
-    assert gcdex_diophantine(Poly(x**4 - 2*x**3 - 6*x**2 + 12*x + 15),
-    Poly(x**3 + x**2 - 4*x - 4), Poly(x**2 - 1)) == \
-        (Poly((-x**2 + 4*x - 3)/5), Poly((x**3 - 7*x**2 + 16*x - 10)/5))
-    assert gcdex_diophantine(Poly(x**3 + 6*x + 7), Poly(x**2 + 3*x + 2), Poly(x + 1)) == \
-        (Poly(1/13, x, domain='QQ'), Poly(-1/13*x + 3/13, x, domain='QQ'))
+    assert gcdex_diophantine(P(x**4 - 2*x**3 - 6*x**2 + 12*x + 15),
+    P(x**3 + x**2 - 4*x - 4), P(x**2 - 1)) == \
+        (P((-x**2 + 4*x - 3)/5), P((x**3 - 7*x**2 + 16*x - 10)/5))
+    assert gcdex_diophantine(P(x**3 + 6*x + 7), P(x**2 + 3*x + 2), P(x + 1)) == \
+        (P(Rational(1, 13), x), P(-x/13 + Rational(3, 13), x))
 
 
 def test_frac_in() -> None:
-    assert frac_in(Poly((x + 1)/x*t, t), x) == \
-        (Poly(t*x + t, x), Poly(x, x))
+    assert frac_in(P((x + 1)/x*t, t), x) == \
+        (P(t*x + t, x), P(x, x))
     assert frac_in((x + 1)/x*t, x) == \
-        (Poly(t*x + t, x), Poly(x, x))
-    assert frac_in((Poly((x + 1)/x*t, t), Poly(t + 1, t)), x) == \
-        (Poly(t*x + t, x), Poly((1 + t)*x, x))
+        (P(t*x + t, x), P(x, x))
+    assert frac_in((P((x + 1)/x*t, t), P(t + 1, t)), x) == \
+        (P(t*x + t, x), P((1 + t)*x, x))
     raises(ValueError, lambda: frac_in((x + 1)/log(x)*t, x))
-    assert frac_in(Poly((2 + 2*x + x*(1 + x))/(1 + x)**2, t), x, cancel=True) == \
-        (Poly(x + 2, x), Poly(x + 1, x))
+    assert frac_in(P((2 + 2*x + x*(1 + x))/(1 + x)**2, t), x, cancel=True) == \
+        (P(x + 2, x), P(x + 1, x))
+
+
+def L(coefficients: dict[int, Expr]) -> LaurentPolynomial:
+    """SymPy's ``Poly(..., t, z)`` with ``z == 1/t``: the coefficients by
+    their exponent."""
+    return LaurentPolynomial({k: R(c) for k, c in coefficients.items()}, t)
 
 
 def test_as_poly_1t() -> None:
-    assert as_poly_1t(2/t + t, t, z) in [
-        Poly(t + 2*z, t, z), Poly(t + 2*z, z, t)]
-    assert as_poly_1t(2/t + 3/t**2, t, z) in [
-        Poly(2*z + 3*z**2, t, z), Poly(2*z + 3*z**2, z, t)]
-    assert as_poly_1t(2/((exp(2) + 1)*t), t, z) in [
-        Poly(2/(exp(2) + 1)*z, t, z), Poly(2/(exp(2) + 1)*z, z, t)]
-    assert as_poly_1t(2/((exp(2) + 1)*t) + t, t, z) in [
-        Poly(t + 2/(exp(2) + 1)*z, t, z), Poly(t + 2/(exp(2) + 1)*z, z, t)]
-    assert as_poly_1t(S.Zero, t, z) == Poly(0, t, z)
+    # SymPy's Poly(t + 2*z, t, z) with z == 1/t
+    assert as_poly_1t(2/t + t, t, z) == L({1: S.One, -1: Rational(2)})
+    assert as_poly_1t(2/t + 3/t**2, t, z) == L({-1: Rational(2), -2: Rational(3)})
+    assert as_poly_1t(2/((exp(2) + 1)*t), t, z) == L({-1: 2/(exp(2) + 1)})
+    assert as_poly_1t(2/((exp(2) + 1)*t) + t, t, z) == L({1: S.One, -1: 2/(exp(2) + 1)})
+    assert as_poly_1t(S.Zero, t, z) == L({})
 
 
 def test_derivation() -> None:
-    p = Poly(4*x**4*t**5 + (-4*x**3 - 4*x**4)*t**4 + (-3*x**2 + 2*x**3)*t**3 +
+    p = P(4*x**4*t**5 + (-4*x**3 - 4*x**4)*t**4 + (-3*x**2 + 2*x**3)*t**3 +
         (2*x + 7*x**2 + 2*x**3)*t**2 + (1 - 4*x - 4*x**2)*t - 1 + 2*x, t)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(-t**2 - 3/(2*x)*t + 1/(2*x), t)]})
-    assert derivation(p, DE) == Poly(-20*x**4*t**6 + (2*x**3 + 16*x**4)*t**5 +
+    DE = DifferentialExtension.manual([P(1, x), P(-t**2 - 3/(2*x)*t + 1/(2*x), t)])
+    assert derivation(p, DE) == P(-20*x**4*t**6 + (2*x**3 + 16*x**4)*t**5 +
         (21*x**2 + 12*x**3)*t**4 + (x*Rational(7, 2) - 25*x**2 - 12*x**3)*t**3 +
         (-5 - x*Rational(15, 2) + 7*x**2)*t**2 - (3 - 8*x - 10*x**2 - 4*x**3)/(2*x)*t +
         (1 - 4*x**2)/(2*x), t)
-    assert derivation(Poly(1, t), DE) == Poly(0, t)
-    assert derivation(Poly(t, t), DE) == DE.d
-    assert derivation(Poly(t**2 + 1/x*t + (1 - 2*x)/(4*x**2), t), DE) == \
-        Poly(-2*t**3 - 4/x*t**2 - (5 - 2*x)/(2*x**2)*t - (1 - 2*x)/(2*x**3), t, domain='ZZ(x)')
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t1), Poly(t, t)]})
-    assert derivation(Poly(x*t*t1, t), DE) == Poly(t*t1 + x*t*t1 + t, t)
-    assert derivation(Poly(x*t*t1, t), DE, coefficientD=True) == \
-        Poly((1 + t1)*t, t)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
-    assert derivation(Poly(x, x), DE) == Poly(1, x)
+    assert derivation(P(1, t), DE) == P(0, t)
+    assert derivation(P(t, t), DE) == DE.d
+    assert derivation(P(t**2 + 1/x*t + (1 - 2*x)/(4*x**2), t), DE) == \
+        P(-2*t**3 - 4/x*t**2 - (5 - 2*x)/(2*x**2)*t - (1 - 2*x)/(2*x**3), t)
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t1), P(t, t)])
+    assert derivation(P(x*t*t1, t), DE) == P(t*t1 + x*t*t1 + t, t)
+    assert derivation(P(x*t*t1, t), DE, coefficientD=True) == \
+        P((1 + t1)*t, t)
+    DE = DifferentialExtension.manual([P(1, x)])
+    assert derivation(P(x, x), DE) == P(1, x)
     # Test basic option
-    assert derivation((x + 1)/(x - 1), DE, basic=True) == -2/(1 - 2*x + x**2)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
-    assert derivation((t + 1)/(t - 1), DE, basic=True) == -2*t/(1 - 2*t + t**2)
-    assert derivation(t + 1, DE, basic=True) == t
+    assert derivation_element(R((x + 1)/(x - 1)), DE) == R(-2/(1 - 2*x + x**2))
+    DE = DifferentialExtension.manual([P(1, x), P(t, t)])
+    assert derivation_element(R((t + 1)/(t - 1)), DE) == R(-2*t/(1 - 2*t + t**2))
+    assert derivation_element(R(t + 1), DE) == R(t)
 
 
 def test_splitfactor() -> None:
-    p = Poly(4*x**4*t**5 + (-4*x**3 - 4*x**4)*t**4 + (-3*x**2 + 2*x**3)*t**3 +
-        (2*x + 7*x**2 + 2*x**3)*t**2 + (1 - 4*x - 4*x**2)*t - 1 + 2*x, t, field=True)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(-t**2 - 3/(2*x)*t + 1/(2*x), t)]})
-    assert splitfactor(p, DE) == (Poly(4*x**4*t**3 + (-8*x**3 - 4*x**4)*t**2 +
-        (4*x**2 + 8*x**3)*t - 4*x**2, t, domain='ZZ(x)'),
-        Poly(t**2 + 1/x*t + (1 - 2*x)/(4*x**2), t, domain='ZZ(x)'))
-    assert splitfactor(Poly(x, t), DE) == (Poly(x, t), Poly(1, t))
-    r = Poly(-4*x**4*z**2 + 4*x**6*z**2 - z*x**3 - 4*x**5*z**3 + 4*x**3*z**3 + x**4 + z*x**5 - x**6, t)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)]})
-    assert splitfactor(r, DE, coefficientD=True) == \
-        (Poly(x*z - x**2 - z*x**3 + x**4, t), Poly(-x**2 + 4*x**2*z**2, t))
-    assert splitfactor_sqf(r, DE, coefficientD=True) == \
-        (((Poly(x*z - x**2 - z*x**3 + x**4, t), 1),), ((Poly(-x**2 + 4*x**2*z**2, t), 1),))
-    assert splitfactor(Poly(0, t), DE) == (Poly(0, t), Poly(1, t))
-    assert splitfactor_sqf(Poly(0, t), DE) == (((Poly(0, t), 1),), ())
+    p = P(4*x**4*t**5 + (-4*x**3 - 4*x**4)*t**4 + (-3*x**2 + 2*x**3)*t**3 +
+        (2*x + 7*x**2 + 2*x**3)*t**2 + (1 - 4*x - 4*x**2)*t - 1 + 2*x, t)
+    DE = DifferentialExtension.manual([P(1, x), P(-t**2 - 3/(2*x)*t + 1/(2*x), t)])
+    assert splitfactor(p, DE) == (P(4*x**4*t**3 + (-8*x**3 - 4*x**4)*t**2 +
+        (4*x**2 + 8*x**3)*t - 4*x**2, t),
+        P(t**2 + 1/x*t + (1 - 2*x)/(4*x**2), t))
+    assert splitfactor(P(x, t), DE) == (P(x, t), P(1, t))
+    # a polynomial in the variable z of a resultant is split in z (SymPy's
+    # Poly in t over ZZ(x, z), the factors up to units of k)
+    r = P(-4*x**4*z**2 + 4*x**6*z**2 - z*x**3 - 4*x**5*z**3 + 4*x**3*z**3 + x**4 + z*x**5 - x**6, z)
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t)])
+    n_, s_ = splitfactor(r, DE, coefficientD=True)
+    assert (n_.monic(), s_.monic()) == (P(z - x, z), P(z**2 - Rational(1, 4), z))
+    assert n_*s_ == r
+    (nn,), (ss,) = splitfactor_sqf(r, DE, coefficientD=True)
+    assert (nn[0].monic(), nn[1], ss[0].monic(), ss[1]) == (P(z - x, z), 1, P(z**2 - Rational(1, 4), z), 1)
+    assert splitfactor(P(0, t), DE) == (P(0, t), P(1, t))
+    assert splitfactor_sqf(P(0, t), DE) == (((P(0, t), 1),), ())
 
 
 def test_canonical_representation() -> None:
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1 + t**2, t)]})
-    assert canonical_representation(Poly(x - t, t), Poly(t**2, t), DE) == \
-        (Poly(0, t, domain='ZZ[x]'), (Poly(0, t, domain='QQ[x]'),
-        Poly(1, t, domain='ZZ')), (Poly(-t + x, t, domain='QQ[x]'),
-        Poly(t**2, t)))
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)]})
-    assert canonical_representation(Poly(t**5 + t**3 + x**2*t + 1, t),
-    Poly((t**2 + 1)**3, t), DE) == \
-        (Poly(0, t, domain='ZZ[x]'), (Poly(t**5 + t**3 + x**2*t + 1, t, domain='QQ[x]'),
-         Poly(t**6 + 3*t**4 + 3*t**2 + 1, t, domain='QQ')),
-        (Poly(0, t, domain='QQ[x]'), Poly(1, t, domain='QQ')))
+    DE = DifferentialExtension.manual([P(1, x), P(1 + t**2, t)])
+    assert canonical_representation(P(x - t, t), P(t**2, t), DE) == \
+        (P(0, t), (P(0, t),
+        P(1, t)), (P(-t + x, t),
+        P(t**2, t)))
+    DE = DifferentialExtension.manual([P(1, x), P(t**2 + 1, t)])
+    assert canonical_representation(P(t**5 + t**3 + x**2*t + 1, t),
+    P((t**2 + 1)**3, t), DE) == \
+        (P(0, t), (P(t**5 + t**3 + x**2*t + 1, t),
+         P(t**6 + 3*t**4 + 3*t**2 + 1, t)),
+        (P(0, t), P(1, t)))
 
 
 def test_hermite_reduce() -> None:
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)]})
+    DE = DifferentialExtension.manual([P(1, x), P(t**2 + 1, t)])
 
-    assert hermite_reduce(Poly(x - t, t), Poly(t**2, t), DE) == \
-        ((Poly(-x, t, domain='QQ[x]'), Poly(t, t, domain='QQ[x]')),
-         (Poly(0, t, domain='QQ[x]'), Poly(1, t, domain='QQ[x]')),
-         (Poly(-x, t, domain='QQ[x]'), Poly(1, t, domain='QQ[x]')))
+    assert HQ(hermite_reduce(P(x - t, t), P(t**2, t), DE)) == HQ(((P(-x, t), P(t, t)),
+         (P(0, t), P(1, t)),
+         (P(-x, t), P(1, t))))
 
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(-t**2 - t/x - (1 - nu**2/x**2), t)]})
+    DE = DifferentialExtension.manual([P(1, x), P(-t**2 - t/x - (1 - nu**2/x**2), t)])
 
-    assert hermite_reduce(
-            Poly(x**2*t**5 + x*t**4 - nu**2*t**3 - x*(x**2 + 1)*t**2 - (x**2 - nu**2)*t - x**5/4, t),
-            Poly(x**2*t**4 + x**2*(x**2 + 2)*t**2 + x**2 + x**4 + x**6/4, t), DE) == \
-        ((Poly(-x**2 - 4, t, domain='ZZ(x,nu)'), Poly(4*t**2 + 2*x**2 + 4, t, domain='ZZ(x,nu)')),
-         (Poly((-2*nu**2 - x**4)*t - (2*x**3 + 2*x), t, domain='ZZ(x,nu)'),
-          Poly(2*x**2*t**2 + x**4 + 2*x**2, t, domain='ZZ(x,nu)')),
-         (Poly(x*t + 1, t, domain='ZZ(x,nu)'), Poly(x, t, domain='ZZ(x,nu)')))
+    assert HQ(hermite_reduce(
+            P(x**2*t**5 + x*t**4 - nu**2*t**3 - x*(x**2 + 1)*t**2 - (x**2 - nu**2)*t - x**5/4, t),
+            P(x**2*t**4 + x**2*(x**2 + 2)*t**2 + x**2 + x**4 + x**6/4, t), DE)) == HQ(((P(-x**2 - 4, t), P(4*t**2 + 2*x**2 + 4, t)),
+         (P((-2*nu**2 - x**4)*t - (2*x**3 + 2*x), t),
+          P(2*x**2*t**2 + x**4 + 2*x**2, t)),
+         (P(x*t + 1, t), P(x, t))))
 
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)]})
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t)])
 
-    a = Poly((-2 + 3*x)*t**3 + (-1 + x)*t**2 + (-4*x + 2*x**2)*t + x**2, t)
-    d = Poly(x*t**6 - 4*x**2*t**5 + 6*x**3*t**4 - 4*x**4*t**3 + x**5*t**2, t)
+    a = P((-2 + 3*x)*t**3 + (-1 + x)*t**2 + (-4*x + 2*x**2)*t + x**2, t)
+    d = P(x*t**6 - 4*x**2*t**5 + 6*x**3*t**4 - 4*x**4*t**3 + x**5*t**2, t)
 
-    assert hermite_reduce(a, d, DE) == \
-        ((Poly(3*t**2 + t + 3*x, t, domain='ZZ(x)'),
-          Poly(3*t**4 - 9*x*t**3 + 9*x**2*t**2 - 3*x**3*t, t, domain='ZZ(x)')),
-         (Poly(0, t, domain='ZZ(x)'), Poly(1, t, domain='ZZ(x)')),
-         (Poly(0, t, domain='ZZ(x)'), Poly(1, t, domain='ZZ(x)')))
+    assert HQ(hermite_reduce(a, d, DE)) == HQ(((P(3*t**2 + t + 3*x, t),
+          P(3*t**4 - 9*x*t**3 + 9*x**2*t**2 - 3*x**3*t, t)),
+         (P(0, t), P(1, t)),
+         (P(0, t), P(1, t))))
 
-    assert hermite_reduce(
-            Poly(-t**2 + 2*t + 2, t, domain='ZZ(x)'),
-            Poly(-x*t**2 + 2*x*t - x, t, domain='ZZ(x)'), DE) == \
-        ((Poly(3, t, domain='ZZ(x)'), Poly(t - 1, t, domain='ZZ(x)')),
-         (Poly(0, t, domain='ZZ(x)'), Poly(1, t, domain='ZZ(x)')),
-         (Poly(1, t, domain='ZZ(x)'), Poly(x, t, domain='ZZ(x)')))
+    assert HQ(hermite_reduce(
+            P(-t**2 + 2*t + 2, t),
+            P(-x*t**2 + 2*x*t - x, t), DE)) == HQ(((P(3, t), P(t - 1, t)),
+         (P(0, t), P(1, t)),
+         (P(1, t), P(x, t))))
 
-    assert hermite_reduce(
-            Poly(-x**2*t**6 + (-1 - 2*x**3 + x**4)*t**3 + (-3 - 3*x**4)*t**2 -
-                2*x*t - x - 3*x**2, t, domain='ZZ(x)'),
-            Poly(x**4*t**6 - 2*x**2*t**3 + 1, t, domain='ZZ(x)'), DE) == \
-        ((Poly(x**3*t + x**4 + 1, t, domain='ZZ(x)'), Poly(x**3*t**3 - x, t, domain='ZZ(x)')),
-         (Poly(0, t, domain='ZZ(x)'), Poly(1, t, domain='ZZ(x)')),
-         (Poly(-1, t, domain='ZZ(x)'), Poly(x**2, t, domain='ZZ(x)')))
+    assert HQ(hermite_reduce(
+            P(-x**2*t**6 + (-1 - 2*x**3 + x**4)*t**3 + (-3 - 3*x**4)*t**2 -
+                2*x*t - x - 3*x**2, t),
+            P(x**4*t**6 - 2*x**2*t**3 + 1, t), DE)) == HQ(((P(x**3*t + x**4 + 1, t), P(x**3*t**3 - x, t)),
+         (P(0, t), P(1, t)),
+         (P(-1, t), P(x**2, t))))
 
-    assert hermite_reduce(
-            Poly((-2 + 3*x)*t**3 + (-1 + x)*t**2 + (-4*x + 2*x**2)*t + x**2, t),
-            Poly(x*t**6 - 4*x**2*t**5 + 6*x**3*t**4 - 4*x**4*t**3 + x**5*t**2, t), DE) == \
-        ((Poly(3*t**2 + t + 3*x, t, domain='ZZ(x)'),
-          Poly(3*t**4 - 9*x*t**3 + 9*x**2*t**2 - 3*x**3*t, t, domain='ZZ(x)')),
-         (Poly(0, t, domain='ZZ(x)'), Poly(1, t, domain='ZZ(x)')),
-         (Poly(0, t, domain='ZZ(x)'), Poly(1, t, domain='ZZ(x)')))
+    assert HQ(hermite_reduce(
+            P((-2 + 3*x)*t**3 + (-1 + x)*t**2 + (-4*x + 2*x**2)*t + x**2, t),
+            P(x*t**6 - 4*x**2*t**5 + 6*x**3*t**4 - 4*x**4*t**3 + x**5*t**2, t), DE)) == HQ(((P(3*t**2 + t + 3*x, t),
+          P(3*t**4 - 9*x*t**3 + 9*x**2*t**2 - 3*x**3*t, t)),
+         (P(0, t), P(1, t)),
+         (P(0, t), P(1, t))))
 
 
 def test_polynomial_reduce() -> None:
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1 + t**2, t)]})
-    assert polynomial_reduce(Poly(1 + x*t + t**2, t), DE) == \
-        (Poly(t, t), Poly(x*t, t))
-    assert polynomial_reduce(Poly(0, t), DE) == \
-        (Poly(0, t), Poly(0, t))
+    DE = DifferentialExtension.manual([P(1, x), P(1 + t**2, t)])
+    assert polynomial_reduce(P(1 + x*t + t**2, t), DE) == \
+        (P(t, t), P(x*t, t))
+    assert polynomial_reduce(P(0, t), DE) == \
+        (P(0, t), P(0, t))
 
 
 def test_laurent_series() -> None:
     # Example 2.7.1 from Bronstein.  The principal parts at the zeros of
     # t**2 - 1 are -9/(t - 1)**2 - 3/(t + 1)**2 - 4/(t + 1) (this is also
     # what apart() gives, together with 4/(t - 2)).
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1, t)]})
-    a = Poly(36, t)
-    d = Poly((t - 2)*(t**2 - 1)**2, t)
-    F = Poly(t**2 - 1, t)
+    DE = DifferentialExtension.manual([P(1, x), P(1, t)])
+    a = P(36, t)
+    d = P((t - 2)*(t**2 - 1)**2, t)
+    F = P(t**2 - 1, t)
     n = 2
     assert laurent_series(a, d, F, n, DE) == \
-        (Poly(-4*t**3 - 8*t**2 - 8*t - 16, t), Poly(t**4 - 2*t**2 + 1, t),
-        [Poly(-3*t**3 - 6*t**2, t, domain='QQ'), Poly(-2*t**6 - 6*t**5 + 8*t**3, t, domain='QQ')])
+        (P(-4*t**3 - 8*t**2 - 8*t - 16, t), P(t**4 - 2*t**2 + 1, t),
+        [P(-3*t**3 - 6*t**2, t), P(-2*t**6 - 6*t**5 + 8*t**3, t)])
     # Example 2.7.2, first factor: the principal part at t == 2 is 4/(t - 2)
-    assert laurent_series(a, d, Poly(t - 2, t), 1, DE)[:2] == \
-        (Poly(4, t), Poly(t - 2, t))
+    assert laurent_series(a, d, P(t - 2, t), 1, DE)[:2] == \
+        (P(4, t), P(t - 2, t))
     # Special irreducible factors (p | Dp) admit no inverse of D(F) mod
     # F, so the construction does not apply (this used to crash with
     # ExactQuotientFailed)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
+    DE = DifferentialExtension.manual([P(1, x), P(t, t)])
     raises(NotImplementedError, lambda: laurent_series(
-        Poly(1, t), Poly(t**2, t), Poly(t, t), 2, DE))
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)]})
+        P(1, t), P(t**2, t), P(t, t), 2, DE))
+    DE = DifferentialExtension.manual([P(1, x), P(t**2 + 1, t)])
     raises(NotImplementedError, lambda: laurent_series(
-        Poly(t, t), Poly((t**2 + 1)**2, t), Poly(t**2 + 1, t), 2, DE))
+        P(t, t), P((t**2 + 1)**2, t), P(t**2 + 1, t), 2, DE))
 
 
 def test_recognize_derivative() -> None:
-    DE = DifferentialExtension(extension={'D': [Poly(1, t)]})
-    a = Poly(36, t)
-    d = Poly((t - 2)*(t**2 - 1)**2, t)
+    DE = DifferentialExtension.manual([P(1, t)])
+    a = P(36, t)
+    d = P((t - 2)*(t**2 - 1)**2, t)
     assert recognize_derivative(a, d, DE) == False
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)]})
-    a = Poly(2, t)
-    d = Poly(t**2 - 1, t)
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t)])
+    a = P(2, t)
+    d = P(t**2 - 1, t)
     assert recognize_derivative(a, d, DE) == False
-    assert recognize_derivative(Poly(x*t, t), Poly(1, t), DE) == True
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)]})
-    assert recognize_derivative(Poly(t, t), Poly(1, t), DE) == True
+    assert recognize_derivative(P(x*t, t), P(1, t), DE) == True
+    DE = DifferentialExtension.manual([P(1, x), P(t**2 + 1, t)])
+    assert recognize_derivative(P(t, t), P(1, t), DE) == True
     # Repeated factors in the denominator used to crash with
     # ExactQuotientFailed (the multiplicity from the squarefree
     # factorization was ignored), and the recognition check compared
     # object identities, so it could not return True on any input that
     # entered the loop.
-    DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
+    DE = DifferentialExtension.manual([P(1, x)])
     # D(1/x) == -1/x**2 and D(-1/x) == 1/x**2 are derivatives
-    assert recognize_derivative(Poly(-1, x), Poly(x**2, x), DE) == True
-    assert recognize_derivative(Poly(1, x), Poly(x**2, x), DE) == True
+    assert recognize_derivative(P(-1, x), P(x**2, x), DE) == True
+    assert recognize_derivative(P(1, x), P(x**2, x), DE) == True
     # 1/x and (x + 1)/x**2 == 1/x + 1/x**2 have nonzero residues
-    assert recognize_derivative(Poly(1, x), Poly(x, x), DE) == False
-    assert recognize_derivative(Poly(x + 1, x), Poly(x**2, x), DE) == False
+    assert recognize_derivative(P(1, x), P(x, x), DE) == False
+    assert recognize_derivative(P(x + 1, x), P(x**2, x), DE) == False
     # residues at complex poles are detected via polynomial divisibility
-    assert recognize_derivative(Poly(x, x), Poly((x**2 + 1)**2, x), DE) == True
-    assert recognize_derivative(Poly(1, x), Poly((x**2 + 1)**2, x), DE) == False
-    assert recognize_derivative(Poly(-2*x, x), Poly((x**2 - 1)**2, x), DE) == True
+    assert recognize_derivative(P(x, x), P((x**2 + 1)**2, x), DE) == True
+    assert recognize_derivative(P(1, x), P((x**2 + 1)**2, x), DE) == False
+    assert recognize_derivative(P(-2*x, x), P((x**2 - 1)**2, x), DE) == True
     # Multiplicity 3: D(1/(x**2 + 1)**2) == -4*x/(x**2 + 1)**3
-    assert recognize_derivative(Poly(-4*x, x), Poly((x**2 + 1)**3, x), DE) == True
-    assert recognize_derivative(Poly(1, x), Poly((x**2 + 1)**3, x), DE) == False
+    assert recognize_derivative(P(-4*x, x), P((x**2 + 1)**3, x), DE) == True
+    assert recognize_derivative(P(1, x), P((x**2 + 1)**3, x), DE) == False
     # Poles at nonconstant normal primes used to be ignored entirely,
     # giving false positives.  A simple such pole always has a nonzero
     # residue: 1/(t + x) with t = log(x) is not a derivative.
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)]})
-    assert recognize_derivative(Poly(1, t), Poly(t + x, t), DE) == False
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t)])
+    assert recognize_derivative(P(1, t), P(t + x, t), DE) == False
     # Higher-order poles at nonconstant primes need residue machinery that
     # is only justified for constant roots, so they raise for now (e.g.
     # D(1/(t + x)) == -(1 + 1/x)/(t + x)**2 would need it).
     raises(NotImplementedError, lambda: recognize_derivative(
-        Poly(-1 - 1/x, t), Poly((t + x)**2, t), DE))
+        P(-1 - 1/x, t), P((t + x)**2, t), DE))
     # Poles at special primes need residue machinery the Laurent series
     # construction cannot provide, so they raise too (these used to
     # crash with ExactQuotientFailed): 1/t**2 with t = exp(x), and
     # t/(t**2 + 1)**2 with t = tan(x)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
+    DE = DifferentialExtension.manual([P(1, x), P(t, t)])
     raises(NotImplementedError, lambda: recognize_derivative(
-        Poly(1, t), Poly(t**2, t), DE))
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)]})
+        P(1, t), P(t**2, t), DE))
+    DE = DifferentialExtension.manual([P(1, x), P(t**2 + 1, t)])
     raises(NotImplementedError, lambda: recognize_derivative(
-        Poly(t, t), Poly((t**2 + 1)**2, t), DE))
+        P(t, t), P((t**2 + 1)**2, t), DE))
     # ... but a conclusive False from a decidable factor is returned
     # even in the presence of an undecidable special factor: the simple
     # pole at t == 2 has a nonzero residue
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
-    assert recognize_derivative(Poly(1, t), Poly(t*(t - 2), t), DE) == False
+    DE = DifferentialExtension.manual([P(1, x), P(t, t)])
+    assert recognize_derivative(P(1, t), P(t*(t - 2), t), DE) == False
 
 
 def test_recognize_log_derivative() -> None:
 
-    a = Poly(2*x**2 + 4*x*t - 2*t - x**2*t, t)
-    d = Poly((2*x + t)*(t + x**2), t)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
+    a = P(2*x**2 + 4*x*t - 2*t - x**2*t, t)
+    d = P((2*x + t)*(t + x**2), t)
+    DE = DifferentialExtension.manual([P(1, x), P(t, t)])
     assert recognize_log_derivative(a, d, DE, z) == True
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)]})
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t)])
     # These two used to wrongly return True: their Rothstein-Trager
     # resultants have the nonconstant roots -x*(x - 1)/(x + 1) and -x, x,
     # respectively, which are not integers.  Nonconstant roots land in the
     # normal part of the splitting factorization, which used to be ignored.
-    assert recognize_log_derivative(Poly(t + 1, t), Poly(t + x, t), DE) == False
-    assert recognize_log_derivative(Poly(2, t), Poly(t**2 - 1, t), DE) == False
+    assert recognize_log_derivative(P(t + 1, t), P(t + x, t), DE) == False
+    assert recognize_log_derivative(P(2, t), P(t**2 - 1, t), DE) == False
     # ... but log derivatives with nonconstant-looking denominators are
     # still recognized: D(t + x)/(t + x) has the integer root 1
-    assert recognize_log_derivative(Poly(1 + 1/x, t), Poly(t + x, t),
+    assert recognize_log_derivative(P(1 + 1/x, t), P(t + x, t),
         DE) == True
-    DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
-    assert recognize_log_derivative(Poly(1, x), Poly(x**2 - 2, x), DE) == False
-    assert recognize_log_derivative(Poly(1, x), Poly(x**2 + x, x), DE) == True
+    DE = DifferentialExtension.manual([P(1, x)])
+    assert recognize_log_derivative(P(1, x), P(x**2 - 2, x), DE) == False
+    assert recognize_log_derivative(P(1, x), P(x**2 + x, x), DE) == True
     # If f == Dv/v, the proper part of f is simple, so a non-normal
     # denominator is conclusive.  These used to wrongly return True
     # (their Rothstein-Trager resultants are constants, so the integer
     # root check was vacuous): 1/x**2, 1/t**2 with t = log(x), and
     # 1/t**2 with t = exp(x) (t special)
-    assert recognize_log_derivative(Poly(1, x), Poly(x**2, x), DE) == False
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)]})
-    assert recognize_log_derivative(Poly(1, t), Poly(t**2, t), DE) == False
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
-    assert recognize_log_derivative(Poly(1, t), Poly(t**2, t), DE) == False
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)]})
-    assert recognize_log_derivative(Poly(1, t), Poly(t**2 - 2, t), DE) == False
-    assert recognize_log_derivative(Poly(1, t), Poly(t**2 + t, t), DE) == False
-    DE = DifferentialExtension(extension={'D': [Poly(1, x)]})
+    assert recognize_log_derivative(P(1, x), P(x**2, x), DE) == False
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t)])
+    assert recognize_log_derivative(P(1, t), P(t**2, t), DE) == False
+    DE = DifferentialExtension.manual([P(1, x), P(t, t)])
+    assert recognize_log_derivative(P(1, t), P(t**2, t), DE) == False
+    DE = DifferentialExtension.manual([P(1, x), P(t**2 + 1, t)])
+    assert recognize_log_derivative(P(1, t), P(t**2 - 2, t), DE) == False
+    assert recognize_log_derivative(P(1, t), P(t**2 + t, t), DE) == False
+    DE = DifferentialExtension.manual([P(1, x)])
     # 1/(x**2 + 1) is not Dv/v for any rational v: the Rothstein-Trager
     # resultant has the non-integer complex roots -I/2, I/2, which used to
     # be missed entirely (only real roots were checked, and there are none).
-    assert recognize_log_derivative(Poly(1, x), Poly(x**2 + 1, x), DE) == False
+    assert recognize_log_derivative(P(1, x), P(x**2 + 1, x), DE) == False
     # ... but complex poles with integer residues are fine:
     # (2*x + 2)/(x**2 + 2*x + 2) == D(x**2 + 2*x + 2)/(x**2 + 2*x + 2)
-    assert recognize_log_derivative(Poly(2*x + 2, x), Poly(x**2 + 2*x + 2, x),
+    assert recognize_log_derivative(P(2*x + 2, x), P(x**2 + 2*x + 2, x),
         DE) == True
 
 
 def test_residue_reduce() -> None:
-    a = Poly(2*t**2 - t - x**2, t)
-    d = Poly(t**3 - x**2*t, t)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)], 'Tfuncs': [log]})
+    a = P(2*t**2 - t - x**2, t)
+    d = P(t**3 - x**2*t, t)
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t)], Tfuncs=[log])
     assert residue_reduce(a, d, DE, z, invert=False) == \
-        ([(Poly(z**2 - Rational(1, 4), z, domain='ZZ(x)'),
-          Poly((1 + 3*x*z - 6*z**2 - 2*x**2 + 4*x**2*z**2)*t - x*z + x**2 +
-              2*x**2*z**2 - 2*z*x**3, t, domain='ZZ(z, x)'))], False)
+        ([(P(z**2 - Rational(1, 4), z),
+          P((1 + 3*x*z - 6*z**2 - 2*x**2 + 4*x**2*z**2)*t - x*z + x**2 +
+              2*x**2*z**2 - 2*z*x**3, t))], False)
     assert residue_reduce(a, d, DE, z, invert=True) == \
-        ([(Poly(z**2 - Rational(1, 4), z, domain='ZZ(x)'), Poly(t + 2*x*z, t))], False)
-    assert residue_reduce(Poly(-2/x, t), Poly(t**2 - 1, t,), DE, z, invert=False) == \
-        ([(Poly(z**2 - 1, z, domain='QQ'), Poly(-2*z*t/x - 2/x, t, domain='ZZ(z,x)'))], True)
-    ans = residue_reduce(Poly(-2/x, t), Poly(t**2 - 1, t), DE, z, invert=True)
-    assert ans == ([(Poly(z**2 - 1, z, domain='QQ'), Poly(t + z, t))], True)
+        ([(P(z**2 - Rational(1, 4), z), P(t + 2*x*z, t))], False)
+    assert residue_reduce(P(-2/x, t), P(t**2 - 1, t), DE, z, invert=False) == \
+        ([(P(z**2 - 1, z), P(-2*z*t/x - 2/x, t))], True)
+    ans = residue_reduce(P(-2/x, t), P(t**2 - 1, t), DE, z, invert=True)
+    assert ans == ([(P(z**2 - 1, z), P(t + z, t))], True)
     assert residue_reduce_to_basic(ans[0], DE, z) == -log(-1 + log(x)) + log(1 + log(x))
 
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(-t**2 - t/x - (1 - nu**2/x**2), t)]})
+    DE = DifferentialExtension.manual([P(1, x), P(-t**2 - t/x - (1 - nu**2/x**2), t)])
     # TODO: Skip or make faster
-    assert residue_reduce(Poly((-2*nu**2 - x**4)/(2*x**2)*t - (1 + x**2)/x, t),
-    Poly(t**2 + 1 + x**2/2, t), DE, z) == \
-        ([(Poly(z + S.Half, z, domain='QQ'), Poly(t**2 + 1 + x**2/2, t,
-            domain='ZZ(x,nu)'))], True)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1 + t**2, t)]})
-    assert residue_reduce(Poly(-2*x*t + 1 - x**2, t),
-    Poly(t**2 + 2*x*t + 1 + x**2, t), DE, z) == \
-        ([(Poly(z**2 + Rational(1, 4), z), Poly(t + x + 2*z, t))], True)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
-    assert residue_reduce(Poly(t, t), Poly(t + sqrt(2), t), DE, z) == \
-        ([(Poly(z - 1, z, domain='QQ'), Poly(t + sqrt(2), t))], True)
+    assert residue_reduce(P((-2*nu**2 - x**4)/(2*x**2)*t - (1 + x**2)/x, t),
+    P(t**2 + 1 + x**2/2, t), DE, z) == \
+        ([(P(z + S.Half, z), P(t**2 + 1 + x**2/2, t))], True)
+    DE = DifferentialExtension.manual([P(1, x), P(1 + t**2, t)])
+    assert residue_reduce(P(-2*x*t + 1 - x**2, t),
+    P(t**2 + 2*x*t + 1 + x**2, t), DE, z) == \
+        ([(P(z**2 + Rational(1, 4), z), P(t + x + 2*z, t))], True)
+    DE = DifferentialExtension.manual([P(1, x), P(t, t)])
+    assert residue_reduce(P(t, t), P(t + sqrt(2), t), DE, z) == \
+        ([(P(z - 1, z), P(t + sqrt(2), t))], True)
 
     # issue 26502: the leading coefficient of the subresultant remainder has
     # a non-monomial denominator in x
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)], 'Tfuncs': [log]})
-    assert residue_reduce(Poly(-2*x*t - 2*x - 2, t),
-        Poly((x**3 + 2*x**2 + x)*t**2 - x, t), DE, z) == \
-        ([(Poly(z**2 - 1, z, domain='QQ'), Poly(t + z/(x + 1), t, domain='ZZ(x,z)'))], True)
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t)], Tfuncs=[log])
+    assert residue_reduce(P(-2*x*t - 2*x - 2, t),
+        P((x**3 + 2*x**2 + x)*t**2 - x, t), DE, z) == \
+        ([(P(z**2 - 1, z), P(t + z/(x + 1), t))], True)
 
 
 def test_integrate_hyperexponential() -> None:
     # TODO: Add tests for integrate_hyperexponential() from the book
-    a = Poly((1 + 2*t1 + t1**2 + 2*t1**3)*t**2 + (1 + t1**2)*t + 1 + t1**2, t)
-    d = Poly(1, t)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1 + t1**2, t1),
-        Poly(t*(1 + t1**2), t)], 'Tfuncs': [tan, Lambda(i, exp(tan(i)))]})
+    a = P((1 + 2*t1 + t1**2 + 2*t1**3)*t**2 + (1 + t1**2)*t + 1 + t1**2, t)
+    d = P(1, t)
+    DE = DifferentialExtension.manual([P(1, x), P(1 + t1**2, t1),
+        P(t*(1 + t1**2), t)], Tfuncs=[tan, Lambda(i, exp(tan(i)))])
     assert integrate_hyperexponential(a, d, DE) == \
         (exp(2*tan(x))*tan(x) + exp(tan(x)), 1 + t1**2, True)
-    a = Poly((t1**3 + (x + 1)*t1**2 + t1 + x + 2)*t, t)
+    a = P((t1**3 + (x + 1)*t1**2 + t1 + x + 2)*t, t)
     assert integrate_hyperexponential(a, d, DE) == \
         ((x + tan(x))*exp(tan(x)), 0, True)
 
-    a = Poly(t, t)
-    d = Poly(1, t)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(2*x*t, t)],
-        'Tfuncs': [Lambda(i, exp(x**2))]})
+    a = P(t, t)
+    d = P(1, t)
+    DE = DifferentialExtension.manual([P(1, x), P(2*x*t, t)], Tfuncs=[Lambda(i, exp(x**2))])
 
     assert integrate_hyperexponential(a, d, DE) == \
         (0, NonElementaryIntegral(exp(x**2), x), False)
 
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)], 'Tfuncs': [exp]})
+    DE = DifferentialExtension.manual([P(1, x), P(t, t)], Tfuncs=[exp])
     assert integrate_hyperexponential(a, d, DE) == (exp(x), 0, True)
 
-    a = Poly(25*t**6 - 10*t**5 + 7*t**4 - 8*t**3 + 13*t**2 + 2*t - 1, t)
-    d = Poly(25*t**6 + 35*t**4 + 11*t**2 + 1, t)
+    a = P(25*t**6 - 10*t**5 + 7*t**4 - 8*t**3 + 13*t**2 + 2*t - 1, t)
+    d = P(25*t**6 + 35*t**4 + 11*t**2 + 1, t)
     assert integrate_hyperexponential(a, d, DE) == \
         (-(11 - 10*exp(x))/(5 + 25*exp(2*x)) + log(1 + exp(2*x)), -1, True)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t0, t0), Poly(t0*t, t)],
-        'Tfuncs': [exp, Lambda(i, exp(exp(i)))]})
-    assert integrate_hyperexponential(Poly(2*t0*t**2, t), Poly(1, t), DE) == (exp(2*exp(x)), 0, True)
+    DE = DifferentialExtension.manual([P(1, x), P(t0, t0), P(t0*t, t)], Tfuncs=[exp, Lambda(i, exp(exp(i)))])
+    assert integrate_hyperexponential(P(2*t0*t**2, t), P(1, t), DE) == (exp(2*exp(x)), 0, True)
 
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t0, t0), Poly(-t0*t, t)],
-        'Tfuncs': [exp, Lambda(i, exp(-exp(i)))]})
-    assert integrate_hyperexponential(Poly(-27*exp(9) - 162*t0*exp(9) +
-    27*x*t0*exp(9), t), Poly((36*exp(18) + x**2*exp(18) - 12*x*exp(18))*t, t), DE) == \
+    DE = DifferentialExtension.manual([P(1, x), P(t0, t0), P(-t0*t, t)], Tfuncs=[exp, Lambda(i, exp(-exp(i)))])
+    assert integrate_hyperexponential(P(-27*exp(9) - 162*t0*exp(9) +
+    27*x*t0*exp(9), t), P((36*exp(18) + x**2*exp(18) - 12*x*exp(18))*t, t), DE) == \
         (27*exp(exp(x))/(-6*exp(9) + x*exp(9)), 0, True)
 
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)], 'Tfuncs': [exp]})
-    assert integrate_hyperexponential(Poly(x**2/2*t, t), Poly(1, t), DE) == \
+    DE = DifferentialExtension.manual([P(1, x), P(t, t)], Tfuncs=[exp])
+    assert integrate_hyperexponential(P(x**2/2*t, t), P(1, t), DE) == \
         ((2 - 2*x + x**2)*exp(x)/2, 0, True)
-    assert integrate_hyperexponential(Poly(1 + t, t), Poly(t, t), DE) == \
+    assert integrate_hyperexponential(P(1 + t, t), P(t, t), DE) == \
         (-exp(-x), 1, True)  # x - exp(-x)
-    assert integrate_hyperexponential(Poly(x, t), Poly(t + 1, t), DE) == \
+    assert integrate_hyperexponential(P(x, t), P(t + 1, t), DE) == \
         (0, NonElementaryIntegral(x/(1 + exp(x)), x), False)
 
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t0), Poly(2*x*t1, t1)],
-        'Tfuncs': [log, Lambda(i, exp(i**2))]})
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t0), P(2*x*t1, t1)], Tfuncs=[log, Lambda(i, exp(i**2))])
 
-    elem, nonelem, b = integrate_hyperexponential(Poly((8*x**7 - 12*x**5 + 6*x**3 - x)*t1**4 +
+    elem, nonelem, b = integrate_hyperexponential(P((8*x**7 - 12*x**5 + 6*x**3 - x)*t1**4 +
         (8*t0*x**7 - 8*t0*x**6 - 4*t0*x**5 + 2*t0*x**3 + 2*t0*x**2 - t0*x +
         24*x**8 - 36*x**6 - 4*x**5 + 22*x**4 + 4*x**3 - 7*x**2 - x + 1)*t1**3
         + (8*t0*x**8 - 4*t0*x**6 - 16*t0*x**5 - 2*t0*x**4 + 12*t0*x**3 +
@@ -403,7 +421,7 @@ def test_integrate_hyperexponential() -> None:
         6*t0*x**4 + 10*t0*x**3 - 2*t0*x**2 - t0*x + 8*x**10 - 12*x**8 - 4*x**7
         + 2*x**6 + 12*x**5 + 3*x**4 - 9*x**3 - x**2 + 2*x)*t1 + 8*t0*x**7 -
         12*t0*x**6 - 4*t0*x**5 + 8*t0*x**4 - t0*x**2 - 4*x**7 + 4*x**6 +
-        4*x**5 - 4*x**4 - x**3 + x**2, t1), Poly((8*x**7 - 12*x**5 + 6*x**3 -
+        4*x**5 - 4*x**4 - x**3 + x**2, t1), P((8*x**7 - 12*x**5 + 6*x**3 -
         x)*t1**4 + (24*x**8 + 8*x**7 - 36*x**6 - 12*x**5 + 18*x**4 + 6*x**3 -
         3*x**2 - x)*t1**3 + (24*x**9 + 24*x**8 - 36*x**7 - 36*x**6 + 18*x**5 +
         18*x**4 - 3*x**3 - 3*x**2)*t1**2 + (8*x**10 + 24*x**9 - 12*x**8 -
@@ -417,7 +435,7 @@ def test_integrate_hyperexponential_polynomial() -> None:
     # Without proper cancellation within integrate_hyperexponential_polynomial(),
     # this will take a long time to complete, and will return a complicated
     # expression
-    p = Poly((-28*x**11*t0 - 6*x**8*t0 + 6*x**9*t0 - 15*x**8*t0**2 +
+    p = as_poly_1t((-28*x**11*t0 - 6*x**8*t0 + 6*x**9*t0 - 15*x**8*t0**2 +
         15*x**7*t0**2 + 84*x**10*t0**2 - 140*x**9*t0**3 - 20*x**6*t0**3 +
         20*x**7*t0**3 - 15*x**6*t0**4 + 15*x**5*t0**4 + 140*x**8*t0**4 -
         84*x**7*t0**5 - 6*x**4*t0**5 + 6*x**5*t0**5 + x**3*t0**6 - x**4*t0**6 +
@@ -433,19 +451,20 @@ def test_integrate_hyperexponential_polynomial() -> None:
         70*x**8*t0**4 - 56*x**7*t0**5 + 28*x**6*t0**6 - 8*x**5*t0**7 +
         x**4*t0**8 + x**12)*t1 + (-2*x**2*t0 + 2*x**3*t0 + x*t0**2 -
         x**2*t0**2 + x**3 - x**4)/(-4*x**5*t0 + 6*x**4*t0**2 - 4*x**3*t0**3 +
-        x**2*t0**4 + x**6), t1, z, expand=False)
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t0), Poly(2*x*t1, t1)]})
-    assert integrate_hyperexponential_polynomial(p, DE, z) == (
-        Poly((x - t0)*t1**2 + (-2*t0 + 2*x)*t1, t1), Poly(-2*x*t0 + x**2 +
-        t0**2, t1), True)
+        x**2*t0**4 + x**6), t1)
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t0), P(2*x*t1, t1)])
+    qa, qd, b = integrate_hyperexponential_polynomial(p, DE, z)
+    # SymPy's (qa, qd) up to a common factor
+    assert b is True and qa.as_element()/qd.as_element() == \
+        R(((x - t0)*t1**2 + (-2*t0 + 2*x)*t1)/(-2*x*t0 + x**2 + t0**2))
 
-    DE = DifferentialExtension(extension={'D':[Poly(1, x), Poly(t0, t0)]})
-    assert integrate_hyperexponential_polynomial(Poly(0, t0), DE, z) == (
-        Poly(0, t0), Poly(1, t0), True)
+    DE = DifferentialExtension.manual([P(1, x), P(t0, t0)])
+    assert integrate_hyperexponential_polynomial(as_poly_1t(S.Zero, t0, z), DE, z) == (
+        P(0, t0), P(1, t0), True)
 
 
 def test_integrate_hyperexponential_returns_piecewise() -> None:
-    a, b = symbols('a b')
+    a, b = Symbol('a'), Symbol('b')
     DE = DifferentialExtension(a**x, x)
     assert integrate_hyperexponential(DE.fa, DE.fd, DE) == (Piecewise(
         (exp(x*log(a))/log(a), Ne(log(a), 0)), (x, True)), 0, True)
@@ -466,9 +485,9 @@ def test_integrate_hyperexponential_returns_piecewise() -> None:
     assert integrate_hyperexponential(DE.fa, DE.fd, DE) == (Piecewise(
         (exp(log(x)*y)/log(x), Ne(log(x), 0)), (y, True)), z, True)
     DE = DifferentialExtension(x**y + z + x**(2*y), y)
+    # (SymPy's numerator and denominator have the common factor log(x))
     assert integrate_hyperexponential(DE.fa, DE.fd, DE) == (Piecewise(
-        ((exp(2*log(x)*y)*log(x) +
-            2*exp(log(x)*y)*log(x))/(2*log(x)**2), Ne(2*log(x)**2, 0)),
+        ((exp(2*log(x)*y) + 2*exp(log(x)*y))/(2*log(x)), Ne(log(x), 0)),
             (2*y, True),
         ), z, True)
     # TODO: Add a test where two different parts of the extension use a
@@ -476,7 +495,7 @@ def test_integrate_hyperexponential_returns_piecewise() -> None:
 
 
 def test_issue_13947() -> None:
-    a, t, s = symbols('a t s')
+    a, t, s = Symbol('a'), Symbol('t'), Symbol('s')
     assert risch_integrate(2**(-pi)/(2**t + 1), t) == \
         2**(-pi)*t - 2**(-pi)*log(2**t + 1)/log(2)
     assert risch_integrate(a**(t - s)/(a**t + 1), t) == \
@@ -484,47 +503,43 @@ def test_issue_13947() -> None:
 
 
 def test_integrate_primitive() -> None:
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)],
-        'Tfuncs': [log]})
-    assert integrate_primitive(Poly(t, t), Poly(1, t), DE) == (x*log(x), -1, True)
-    assert integrate_primitive(Poly(x, t), Poly(t, t), DE) == (0, NonElementaryIntegral(x/log(x), x), False)
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t)], Tfuncs=[log])
+    assert integrate_primitive(P(t, t), P(1, t), DE) == (x*log(x), -1, True)
+    assert integrate_primitive(P(x, t), P(t, t), DE) == (0, NonElementaryIntegral(x/log(x), x), False)
 
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t1), Poly(1/(x + 1), t2)],
-        'Tfuncs': [log, Lambda(i, log(i + 1))]})
-    assert integrate_primitive(Poly(t1, t2), Poly(t2, t2), DE) == \
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t1), P(1/(x + 1), t2)], Tfuncs=[log, Lambda(i, log(i + 1))])
+    assert integrate_primitive(P(t1, t2), P(t2, t2), DE) == \
         (0, NonElementaryIntegral(log(x)/log(1 + x), x), False)
 
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t1), Poly(1/(x*t1), t2)],
-        'Tfuncs': [log, Lambda(i, log(log(i)))]})
-    assert integrate_primitive(Poly(t2, t2), Poly(t1, t2), DE) == \
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t1), P(1/(x*t1), t2)], Tfuncs=[log, Lambda(i, log(log(i)))])
+    assert integrate_primitive(P(t2, t2), P(t1, t2), DE) == \
         (0, NonElementaryIntegral(log(log(x))/log(x), x), False)
 
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t0)],
-        'Tfuncs': [log]})
-    assert integrate_primitive(Poly(x**2*t0**3 + (3*x**2 + x)*t0**2 + (3*x**2
-    + 2*x)*t0 + x**2 + x, t0), Poly(x**2*t0**4 + 4*x**2*t0**3 + 6*x**2*t0**2 +
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t0)], Tfuncs=[log])
+    assert integrate_primitive(P(x**2*t0**3 + (3*x**2 + x)*t0**2 + (3*x**2
+    + 2*x)*t0 + x**2 + x, t0), P(x**2*t0**4 + 4*x**2*t0**3 + 6*x**2*t0**2 +
     4*x**2*t0 + x**2, t0), DE) == \
         (-1/(log(x) + 1), NonElementaryIntegral(1/(log(x) + 1), x), False)
 
 def test_integrate_hypertangent_polynomial() -> None:
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)]})
-    assert integrate_hypertangent_polynomial(Poly(t**2 + x*t + 1, t), DE) == \
-        (Poly(t, t), Poly(x/2, t))
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(a*(t**2 + 1), t)]})
-    assert integrate_hypertangent_polynomial(Poly(t**5, t), DE) == \
-        (Poly(1/(4*a)*t**4 - 1/(2*a)*t**2, t), Poly(1/(2*a), t))
+    DE = DifferentialExtension.manual([P(1, x), P(t**2 + 1, t)])
+    assert integrate_hypertangent_polynomial(P(t**2 + x*t + 1, t), DE) == \
+        (P(t, t), P(x/2, t))
+    DE = DifferentialExtension.manual([P(1, x), P(a*(t**2 + 1), t)])
+    assert integrate_hypertangent_polynomial(P(t**5, t), DE) == \
+        (P(1/(4*a)*t**4 - 1/(2*a)*t**2, t), P(1/(2*a), t))
 
 
 def test_integrate_hypertangent_reduced() -> None:
     # Example 5.10.2 (t == tan(x/2)): sin(x)/x == 2*t/(x*(t**2 + 1)) has
     # no elementary integral
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly((t**2 + 1)/2, t)]})
-    assert integrate_hypertangent_reduced(Poly(2*t/x, t), Poly(t**2 + 1, t),
-        DE) == (Poly(0, t), Poly(1, t), False)
+    DE = DifferentialExtension.manual([P(1, x), P((t**2 + 1)/2, t)])
+    assert integrate_hypertangent_reduced(P(2*t/x, t), P(t**2 + 1, t),
+        DE) == (P(0, t), P(1, t), False)
     # Example 5.10.3 (t == tan(x)): the three reduction steps
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)]})
-    pa = Poly(t**5 + t**3 + x**2*t + 1, t)
-    pd = Poly((t**2 + 1)**3, t)
+    DE = DifferentialExtension.manual([P(1, x), P(t**2 + 1, t)])
+    pa = P(t**5 + t**3 + x**2*t + 1, t)
+    pd = P((t**2 + 1)**3, t)
     qa, qd, b = integrate_hypertangent_reduced(pa, pd, DE)
     assert b is True
     assert cancel(qa.as_expr()/qd.as_expr() -
@@ -536,50 +551,48 @@ def test_integrate_hypertangent_reduced() -> None:
         qa*derivation(qd, DE)).as_expr()/(qd**2).as_expr()) == \
         S(5)/16 + 5*x/48
     # Already polynomial: nothing to do
-    assert integrate_hypertangent_reduced(Poly(t**2 + x, t), Poly(1, t), DE) == \
-        (Poly(0, t), Poly(1, t), True)
+    assert integrate_hypertangent_reduced(P(t**2 + x, t), P(1, t), DE) == \
+        (P(0, t), P(1, t), True)
     # Not reduced
-    raises(ValueError, lambda: integrate_hypertangent_reduced(Poly(1, t),
-        Poly(t, t), DE))
+    raises(ValueError, lambda: integrate_hypertangent_reduced(P(1, t),
+        P(t, t), DE))
 
 
 def test_integrate_hypertangent() -> None:
     # Example 5.10.1: tan(x)**2 + x*tan(x) + 1 == D(tan(x)) + x*tan(x), and
     # x*tan(x) has no elementary integral
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t**2 + 1, t)],
-        'Tfuncs': [tan]})
-    assert integrate_hypertangent(Poly(t**2 + x*t + 1, t), Poly(1, t), DE) == \
+    DE = DifferentialExtension.manual([P(1, x), P(t**2 + 1, t)], Tfuncs=[tan])
+    assert integrate_hypertangent(P(t**2 + x*t + 1, t), P(1, t), DE) == \
         (tan(x), NonElementaryIntegral(x*tan(x), x), False)
     # Example 5.10.3
-    ans, rem, b = integrate_hypertangent(Poly(t**5 + t**3 + x**2*t + 1, t),
-        Poly((t**2 + 1)**3, t), DE)
+    ans, rem, b = integrate_hypertangent(P(t**5 + t**3 + x**2*t + 1, t),
+        P((t**2 + 1)**3, t), DE)
     assert (b, rem) == (True, S(5)/16 + 5*x/48)  # 5*(1 + x/3)/16
     assert cancel(ans.diff(x) + rem - (tan(x)**5 + tan(x)**3 + x**2*tan(x) + 1)/
         (tan(x)**2 + 1)**3) == 0
     # tan(x) == D(log(tan(x)**2 + 1))/2 (c == 1/2 in the polynomial part)
-    assert integrate_hypertangent(Poly(t, t), Poly(1, t), DE) == \
+    assert integrate_hypertangent(P(t, t), P(1, t), DE) == \
         (log(tan(x)**2 + 1)/2, 0, True)
     # Exercise 5.6 f): the residue part gives the real arc-tangent
-    assert integrate_hypertangent(Poly(t**2 + 2, t), Poly((t + x)**2 + 1, t),
+    assert integrate_hypertangent(P(t**2 + 2, t), P((t + x)**2 + 1, t),
         DE) == (atan(x + tan(x)), 0, True)
     # Example 5.10.2 through the whole routine (t == tan(x/2))
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly((t**2 + 1)/2, t)],
-        'Tfuncs': [Lambda(i, tan(i/2))]})
-    assert integrate_hypertangent(Poly(2*t, t), Poly(x*(t**2 + 1), t), DE) == \
+    DE = DifferentialExtension.manual([P(1, x), P((t**2 + 1)/2, t)], Tfuncs=[Lambda(i, tan(i/2))])
+    assert integrate_hypertangent(P(2*t, t), P(x*(t**2 + 1), t), DE) == \
         (0, NonElementaryIntegral(2*tan(x/2)/(x*tan(x/2)**2 + x), x), False)
 
 
 def test_integrate_nonlinear_no_specials() -> None:
-    a, d, = Poly(x**2*t**5 + x*t**4 - nu**2*t**3 - x*(x**2 + 1)*t**2 - (x**2 -
-    nu**2)*t - x**5/4, t), Poly(x**2*t**4 + x**2*(x**2 + 2)*t**2 + x**2 + x**4 + x**6/4, t)
+    a, d, = P(x**2*t**5 + x*t**4 - nu**2*t**3 - x*(x**2 + 1)*t**2 - (x**2 -
+    nu**2)*t - x**5/4, t), P(x**2*t**4 + x**2*(x**2 + 2)*t**2 + x**2 + x**4 + x**6/4, t)
     # f(x) == phi_nu(x), the logarithmic derivative of J_v, the Bessel function,
     # which has no specials (see Chapter 5, note 4 of Bronstein's book).
     f = Function('phi_nu')
-    DE = DifferentialExtension(extension={'D': [Poly(1, x),
-        Poly(-t**2 - t/x - (1 - nu**2/x**2), t)], 'Tfuncs': [f]})
+    DE = DifferentialExtension.manual([P(1, x),
+        P(-t**2 - t/x - (1 - nu**2/x**2), t)], Tfuncs=[f])
     assert integrate_nonlinear_no_specials(a, d, DE) == \
         (-log(1 + f(x)**2 + x**2/2)/2 + (- 4 - x**2)/(4 + 2*x**2 + 4*f(x)**2), True)
-    assert integrate_nonlinear_no_specials(Poly(t, t), Poly(1, t), DE) == \
+    assert integrate_nonlinear_no_specials(P(t, t), P(1, t), DE) == \
         (0, False)
 
 
@@ -591,22 +604,22 @@ def test_integer_powers() -> None:
 
 def test_DifferentialExtension_exp() -> None:
     assert DifferentialExtension(exp(x) + exp(x**2), x)._important_attrs == \
-        (Poly(t1 + t0, t1), Poly(1, t1), [Poly(1, x,), Poly(t0, t0),
-        Poly(2*x*t1, t1)], [x, t0, t1], [Lambda(i, exp(i)),
+        (P(t1 + t0, t1), P(1, t1), [P(1, x), P(t0, t0),
+        P(2*x*t1, t1)], [x, t0, t1], [Lambda(i, exp(i)),
         Lambda(i, exp(i**2))], [], ['exp', 'exp'], [x, x**2])
     assert DifferentialExtension(exp(x) + exp(2*x), x)._important_attrs == \
-        (Poly(t0**2 + t0, t0), Poly(1, t0), [Poly(1, x), Poly(t0, t0)], [x, t0],
+        (P(t0**2 + t0, t0), P(1, t0), [P(1, x), P(t0, t0)], [x, t0],
         [Lambda(i, exp(i))], [], ['exp'], [x])
     assert DifferentialExtension(exp(x) + exp(x/2), x)._important_attrs == \
-        (Poly(t0**2 + t0, t0), Poly(1, t0), [Poly(1, x), Poly(t0/2, t0)],
+        (P(t0**2 + t0, t0), P(1, t0), [P(1, x), P(t0/2, t0)],
         [x, t0], [Lambda(i, exp(i/2))], [], ['exp'], [x/2])
     assert DifferentialExtension(exp(x) + exp(x**2) + exp(x + x**2), x)._important_attrs == \
-        (Poly((1 + t0)*t1 + t0, t1), Poly(1, t1), [Poly(1, x), Poly(t0, t0),
-        Poly(2*x*t1, t1)], [x, t0, t1], [Lambda(i, exp(i)),
+        (P((1 + t0)*t1 + t0, t1), P(1, t1), [P(1, x), P(t0, t0),
+        P(2*x*t1, t1)], [x, t0, t1], [Lambda(i, exp(i)),
         Lambda(i, exp(i**2))], [], ['exp', 'exp'], [x, x**2])
     assert DifferentialExtension(exp(x) + exp(x**2) + exp(x + x**2 + 1), x)._important_attrs == \
-        (Poly((1 + S.Exp1*t0)*t1 + t0, t1), Poly(1, t1), [Poly(1, x),
-        Poly(t0, t0), Poly(2*x*t1, t1)], [x, t0, t1], [Lambda(i, exp(i)),
+        (P((1 + E*t0)*t1 + t0, t1), P(1, t1), [P(1, x),
+        P(t0, t0), P(2*x*t1, t1)], [x, t0, t1], [Lambda(i, exp(i)),
         Lambda(i, exp(i**2))], [], ['exp', 'exp'], [x, x**2])
     # exp(x/2 + x**2) makes the tower use exp(x/2) internally; the answer
     # must stay in that exact form, not be rewritten into the principal
@@ -614,13 +627,13 @@ def test_DifferentialExtension_exp() -> None:
     # by a locally constant sign off the real line), so no backsubs pair
     # is recorded.
     assert DifferentialExtension(exp(x) + exp(x**2) + exp(x/2 + x**2), x)._important_attrs == \
-        (Poly((t0 + 1)*t1 + t0**2, t1), Poly(1, t1), [Poly(1, x),
-        Poly(t0/2, t0), Poly(2*x*t1, t1)], [x, t0, t1],
+        (P((t0 + 1)*t1 + t0**2, t1), P(1, t1), [P(1, x),
+        P(t0/2, t0), P(2*x*t1, t1)], [x, t0, t1],
         [Lambda(i, exp(i/2)), Lambda(i, exp(i**2))],
         [], ['exp', 'exp'], [x/2, x**2])
     assert DifferentialExtension(exp(x) + exp(x**2) + exp(x/2 + x**2 + 3), x)._important_attrs == \
-        (Poly((t0*exp(3) + 1)*t1 + t0**2, t1), Poly(1, t1), [Poly(1, x),
-        Poly(t0/2, t0), Poly(2*x*t1, t1)], [x, t0, t1], [Lambda(i, exp(i/2)),
+        (P((t0*exp(3) + 1)*t1 + t0**2, t1), P(1, t1), [P(1, x),
+        P(t0/2, t0), P(2*x*t1, t1)], [x, t0, t1], [Lambda(i, exp(i/2)),
         Lambda(i, exp(i**2))], [], ['exp', 'exp'],
         [x/2, x**2])
     # A user-written radical of an exponential folds to an opaque
@@ -628,11 +641,11 @@ def test_DifferentialExtension_exp() -> None:
     DE = DifferentialExtension(sqrt(exp(x)), x)
     c = DE.backsubs[-1][0]
     assert DE._important_attrs == \
-        (Poly(c*t0, t0), Poly(1, t0), [Poly(1, x), Poly(t0/2, t0)], [x, t0],
+        (P(c*t0, t0), P(1, t0), [P(1, x), P(t0/2, t0)], [x, t0],
         [Lambda(i, exp(i/2))], [(c, exp(-x/2)*sqrt(exp(x)))], ['exp'], [x/2])
 
     assert DifferentialExtension(exp(x/2), x)._important_attrs == \
-        (Poly(t0, t0), Poly(1, t0), [Poly(1, x), Poly(t0/2, t0)], [x, t0],
+        (P(t0, t0), P(1, t0), [P(1, x), P(t0/2, t0)], [x, t0],
         [Lambda(i, exp(i/2))], [], ['exp'], [x/2])
 
 
@@ -644,15 +657,15 @@ def test_DifferentialExtension_log() -> None:
     DE = DifferentialExtension(log(x)*log(x + 1)*log(2*x**2 + 2*x), x)
     c = DE.backsubs[-1][0]
     assert DE._important_attrs == \
-        (Poly(t0*t1**2 + (c*t0 + t0**2)*t1, t1), Poly(1, t1),
-        [Poly(1, x), Poly(1/x, t0),
-        Poly(1/(x + 1), t1, expand=False)], [x, t0, t1],
+        (P(t0*t1**2 + (c*t0 + t0**2)*t1, t1), P(1, t1),
+        [P(1, x), P(1/x, t0),
+        P(1/(x + 1), t1)], [x, t0, t1],
         [Lambda(i, log(i)), Lambda(i, log(i + 1))],
         [(c, log(2*x**2 + 2*x) - log(x) - log(x + 1))], ['log', 'log'],
         [x, x + 1])
     assert DifferentialExtension(x**x*log(x), x)._important_attrs == \
-        (Poly(t0*t1, t1), Poly(1, t1), [Poly(1, x), Poly(1/x, t0),
-        Poly((1 + t0)*t1, t1)], [x, t0, t1], [Lambda(i, log(i)),
+        (P(t0*t1, t1), P(1, t1), [P(1, x), P(1/x, t0),
+        P((1 + t0)*t1, t1)], [x, t0, t1], [Lambda(i, log(i)),
         Lambda(i, exp(t0*i))], [(exp(x*log(x)), x**x)], ['log', 'exp'],
         [x, t0*x])
 
@@ -662,28 +675,28 @@ def test_DifferentialExtension_symlog() -> None:
     DE = DifferentialExtension(log(x**x), x)
     c = DE.backsubs[-1][0]
     assert DE._important_attrs == \
-        (Poly(t0*x + c, t1), Poly(1, t1), [Poly(1, x), Poly(1/x, t0), Poly((t0 +
+        (P(t0*x + c, t1), P(1, t1), [P(1, x), P(1/x, t0), P((t0 +
             1)*t1, t1)], [x, t0, t1], [Lambda(i, log(i)), Lambda(i, exp(i*t0))],
             [(exp(x*log(x)), x**x), (c, log(x**x) - x*log(x))],
             ['log', 'exp'], [x, t0*x])
     assert DifferentialExtension(log(x**y), x)._important_attrs == \
-        (Poly(y*t0, t0), Poly(1, t0), [Poly(1, x), Poly(1/x, t0)], [x, t0],
+        (P(y*t0, t0), P(1, t0), [P(1, x), P(1/x, t0)], [x, t0],
         [Lambda(i, log(i))], [(y*log(x), log(x**y))], ['log'],
         [x])
     assert DifferentialExtension(log(sqrt(x)), x)._important_attrs == \
-        (Poly(t0, t0), Poly(2, t0), [Poly(1, x), Poly(1/x, t0)], [x, t0],
+        (P(t0, t0), P(2, t0), [P(1, x), P(1/x, t0)], [x, t0],
         [Lambda(i, log(i))], [(log(x)/2, log(sqrt(x)))], ['log'],
         [x])
 
 
 def test_DifferentialExtension_handle_first() -> None:
     assert DifferentialExtension(exp(x)*log(x), x, handle_first='log')._important_attrs == \
-        (Poly(t0*t1, t1), Poly(1, t1), [Poly(1, x), Poly(1/x, t0),
-        Poly(t1, t1)], [x, t0, t1], [Lambda(i, log(i)), Lambda(i, exp(i))],
+        (P(t0*t1, t1), P(1, t1), [P(1, x), P(1/x, t0),
+        P(t1, t1)], [x, t0, t1], [Lambda(i, log(i)), Lambda(i, exp(i))],
         [], ['log', 'exp'], [x, x])
     assert DifferentialExtension(exp(x)*log(x), x, handle_first='exp')._important_attrs == \
-        (Poly(t0*t1, t1), Poly(1, t1), [Poly(1, x), Poly(t0, t0),
-        Poly(1/x, t1)], [x, t0, t1], [Lambda(i, exp(i)), Lambda(i, log(i))],
+        (P(t0*t1, t1), P(1, t1), [P(1, x), P(t0, t0),
+        P(1/x, t1)], [x, t0, t1], [Lambda(i, exp(i)), Lambda(i, log(i))],
         [], ['exp', 'log'], [x, x])
 
     # This one must have the log first, regardless of what we set it to
@@ -692,8 +705,8 @@ def test_DifferentialExtension_handle_first() -> None:
     handle_first='exp')._important_attrs == \
         DifferentialExtension(-x**x*log(x)**2 + x**x - x**x/x, x,
         handle_first='log')._important_attrs == \
-        (Poly((-1 + x - x*t0**2)*t1, t1), Poly(x, t1),
-            [Poly(1, x), Poly(1/x, t0), Poly((1 + t0)*t1, t1)], [x, t0, t1],
+        (P((-1 + x - x*t0**2)*t1, t1), P(x, t1),
+            [P(1, x), P(1/x, t0), P((1 + t0)*t1, t1)], [x, t0, t1],
             [Lambda(i, log(i)), Lambda(i, exp(t0*i))], [(exp(x*log(x)), x**x)],
             ['log', 'exp'], [x, t0*x])
 
@@ -709,24 +722,24 @@ def test_DifferentialExtension_all_attrs() -> None:
 
     assert DE.level == -1
     assert DE.t == t1 == DE.T[DE.level]
-    assert DE.d == Poly(1/x, t1) == DE.D[DE.level]
+    assert DE.d == P(1/x, t1) == DE.D[DE.level]
     raises(ValueError, lambda: DE.increment_level())
     DE.decrement_level()
     assert DE.level == -2
     assert DE.t == t0 == DE.T[DE.level]
-    assert DE.d == Poly(t0, t0) == DE.D[DE.level]
+    assert DE.d == P(t0, t0) == DE.D[DE.level]
     assert DE.case == 'exp'
     DE.decrement_level()
     assert DE.level == -3
     assert DE.t == x == DE.T[DE.level] == DE.x
-    assert DE.d == Poly(1, x) == DE.D[DE.level]
+    assert DE.d == P(1, x) == DE.D[DE.level]
     assert DE.case == 'base'
     raises(ValueError, lambda: DE.decrement_level())
     DE.increment_level()
     DE.increment_level()
     assert DE.level == -1
     assert DE.t == t1 == DE.T[DE.level]
-    assert DE.d == Poly(1/x, t1) == DE.D[DE.level]
+    assert DE.d == P(1/x, t1) == DE.D[DE.level]
     assert DE.case == 'primitive'
 
     # Test methods
@@ -735,29 +748,27 @@ def test_DifferentialExtension_all_attrs() -> None:
 
 
 def test_DifferentialExtension_extension_flag() -> None:
-    raises(ValueError, lambda: DifferentialExtension(extension={'T': [x, t]}))
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)]})
-    assert DE._important_attrs == (None, None, [Poly(1, x), Poly(t, t)], [x, t],
-        None, None, None, None)
-    assert DE.d == Poly(t, t)
+    DE = DifferentialExtension.manual([P(1, x), P(t, t)])
+    # the attributes not given are empty (SymPy's None)
+    assert DE._important_attrs == (P(0, t), P(1, t), [P(1, x), P(t, t)], [x, t],
+        [], [], [], [])
+    assert DE.d == P(t, t)
     assert DE.t == t
     assert DE.level == -1
     assert DE.cases == ['base', 'exp']
     assert DE.x == x
     assert DE.case == 'exp'
 
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(t, t)],
-        'exts': ['exp'], 'extargs': [x]})
-    assert DE._important_attrs == (None, None, [Poly(1, x), Poly(t, t)], [x, t],
-        None, None, ['exp'], [x])
-    raises(ValueError, lambda: DifferentialExtension())
+    DE = DifferentialExtension.manual([P(1, x), P(t, t)], exts=['exp'], extargs=[x])
+    assert DE._important_attrs == (P(0, t), P(1, t), [P(1, x), P(t, t)], [x, t],
+        [], [], ['exp'], [x])
 
 
 def test_DifferentialExtension_misc() -> None:
     # Odd ends
     assert DifferentialExtension(sin(y)*exp(x), x)._important_attrs == \
-        (Poly(sin(y)*t0, t0, domain='ZZ[sin(y)]'), Poly(1, t0, domain='ZZ'),
-        [Poly(1, x, domain='ZZ'), Poly(t0, t0, domain='ZZ')], [x, t0],
+        (P(sin(y)*t0, t0), P(1, t0),
+        [P(1, x), P(t0, t0)], [x, t0],
         [Lambda(i, exp(i))], [], ['exp'], [x])
     # The hyperbolic functions (and asin, acos) used to fall through to the
     # generic "Couldn't find an elementary transcendental extension" error
@@ -769,32 +780,34 @@ def test_DifferentialExtension_misc() -> None:
         assert "Hyperbolic" in str(e)
     raises(NotImplementedError, lambda: DifferentialExtension(asin(x), x))
     assert DifferentialExtension(10**x, x)._important_attrs == \
-        (Poly(t0, t0), Poly(1, t0), [Poly(1, x), Poly(log(10)*t0, t0)], [x, t0],
+        (P(t0, t0), P(1, t0), [P(1, x), P(log(10)*t0, t0)], [x, t0],
         [Lambda(i, exp(i*log(10)))], [(exp(x*log(10)), 10**x)], ['exp'],
         [x*log(10)])
     DE = DifferentialExtension(log(x) + log(x**2), x)
     c = DE.backsubs[-1][0]
     assert DE._important_attrs == \
-        (Poly(3*t0 + c, t0), Poly(1, t0), [Poly(1, x), Poly(1/x, t0)], [x, t0],
+        (P(3*t0 + c, t0), P(1, t0), [P(1, x), P(1/x, t0)], [x, t0],
         [Lambda(i, log(i))], [(c, log(x**2) - 2*log(x))], ['log'], [x])
     assert DifferentialExtension(S.Zero, x)._important_attrs == \
-        (Poly(0, x), Poly(1, x), [Poly(1, x)], [x], [], [], [], [])
-    assert DifferentialExtension(tan(atan(x).rewrite(log)), x)._important_attrs == \
-        (Poly(x, x), Poly(1, x), [Poly(1, x)], [x], [], [], [], [])
+        (P(0, x), P(1, x), [P(1, x)], [x], [], [], [], [])
+    assert DifferentialExtension(tan(as_expr(atan(x).rewrite(Log))), x)._important_attrs == \
+        (P(x, x), P(1, x), [P(1, x)], [x], [], [], [], [])
 
 
 def test_DifferentialExtension_tan() -> None:
     # t0 == tan(x), a hypertangent monomial with Dt0 == t0**2 + 1
     assert DifferentialExtension(tan(x), x)._important_attrs == \
-        (Poly(t0, t0), Poly(1, t0), [Poly(1, x), Poly(t0**2 + 1, t0)], [x, t0],
+        (P(t0, t0), P(1, t0), [P(1, x), P(t0**2 + 1, t0)], [x, t0],
         [Lambda(i, tan(i))], [], ['tan'], [x])
     # Arguments that are integer multiples of each other (up to constants)
     # share the generator, through the multiple-angle and addition
     # formulas: tan(x) == 2*t0/(1 - t0**2) with t0 == tan(x/2), and
     # tan(x + 1) == (t0 + tan(1))/(1 - t0*tan(1)) with t0 == tan(x)
+    # (SymPy's -t0**3 + 3*t0 over 1 - t0**2: the denominator has a
+    # positive leading coefficient here)
     assert DifferentialExtension(tan(x) + tan(x/2), x)._important_attrs == \
-        (Poly(-t0**3 + 3*t0, t0), Poly(1 - t0**2, t0),
-        [Poly(1, x), Poly(t0**2/2 + S.Half, t0)], [x, t0],
+        (P(t0**3 - 3*t0, t0), P(t0**2 - 1, t0),
+        [P(1, x), P(t0**2/2 + S.Half, t0)], [x, t0],
         [Lambda(i, tan(i/2))], [], ['tan'], [x/2])
     DE = DifferentialExtension(tan(x) + tan(x + 1), x)
     assert DE.T == [x, t0] and DE.exts == ['tan'] and DE.extargs == [x]
@@ -804,12 +817,12 @@ def test_DifferentialExtension_tan() -> None:
     # half angle (resp. 1/tan), the trigonometric functions of constants
     # are left alone
     assert DifferentialExtension(sin(x), x)._important_attrs == \
-        (Poly(2*t0, t0), Poly(t0**2 + 1, t0),
-        [Poly(1, x), Poly(t0**2/2 + S.Half, t0)], [x, t0],
+        (P(2*t0, t0), P(t0**2 + 1, t0),
+        [P(1, x), P(t0**2/2 + S.Half, t0)], [x, t0],
         [Lambda(i, tan(i/2))], [], ['tan'], [x/2])
     assert DifferentialExtension(cos(x) + sec(x) + csc(x) + sin(y), x).T == [x, t0]
     assert DifferentialExtension(cot(x), x)._important_attrs == \
-        (Poly(1, t0), Poly(t0, t0), [Poly(1, x), Poly(t0**2 + 1, t0)], [x, t0],
+        (P(1, t0), P(t0, t0), [P(1, x), P(t0**2 + 1, t0)], [x, t0],
         [Lambda(i, tan(i))], [], ['tan'], [x])
     # tan(atan(x)) == x (note that SymPy already evaluates it); over
     # QQ(x, atan(x)), tan(2*atan(x)) is 2*x/(1 - x**2) by the structure
@@ -820,12 +833,12 @@ def test_DifferentialExtension_tan() -> None:
     raises(NotImplementedError, lambda: DifferentialExtension(tan(atan(x)/2), x))
     # Nested towers in both orders
     assert DifferentialExtension(exp(tan(x)), x)._important_attrs == \
-        (Poly(t1, t1), Poly(1, t1), [Poly(1, x), Poly(t0**2 + 1, t0),
-        Poly((t0**2 + 1)*t1, t1)], [x, t0, t1],
+        (P(t1, t1), P(1, t1), [P(1, x), P(t0**2 + 1, t0),
+        P((t0**2 + 1)*t1, t1)], [x, t0, t1],
         [Lambda(i, tan(i)), Lambda(i, exp(t0))], [], ['tan', 'exp'], [x, t0])
     assert DifferentialExtension(tan(log(x)), x)._important_attrs == \
-        (Poly(t1, t1), Poly(1, t1), [Poly(1, x), Poly(1/x, t0),
-        Poly((t1**2 + 1)/x, t1)], [x, t0, t1],
+        (P(t1, t1), P(1, t1), [P(1, x), P(1/x, t0),
+        P((t1**2 + 1)/x, t1)], [x, t0, t1],
         [Lambda(i, log(i)), Lambda(i, tan(t0))], [], ['log', 'tan'], [x, t0])
     # With I present, the complex rewriting is used, as before
     assert DifferentialExtension(I*tan(x), x).exts == ['exp']
@@ -834,7 +847,7 @@ def test_DifferentialExtension_tan() -> None:
 def test_DifferentialExtension_atan() -> None:
     # t0 == atan(x), a primitive monomial with Dt0 == 1/(x**2 + 1)
     assert DifferentialExtension(atan(x), x)._important_attrs == \
-        (Poly(t0, t0), Poly(1, t0), [Poly(1, x), Poly(1/(x**2 + 1), t0)],
+        (P(t0, t0), P(1, t0), [P(1, x), P(1/(x**2 + 1), t0)],
         [x, t0], [Lambda(i, atan(i))], [], ['atan'], [x])
     # atan(1/x) == -atan(x) + c with c == atan(x) + atan(1/x) locally
     # constant (it is sign(x)*pi/2), kept as an opaque constant that is
@@ -842,24 +855,24 @@ def test_DifferentialExtension_atan() -> None:
     DE = DifferentialExtension(atan(x) + atan(1/x), x)
     c = DE.backsubs[-1][0]
     assert DE._important_attrs == \
-        (Poly(c, t0), Poly(1, t0), [Poly(1, x), Poly(1/(x**2 + 1), t0)],
+        (P(c, t0), P(1, t0), [P(1, x), P(1/(x**2 + 1), t0)],
         [x, t0], [Lambda(i, atan(i))], [(c, atan(1/x) + atan(x))], ['atan'], [x])
     # atan(2*x/(1 - x**2)) == 2*atan(x) + c
     DE = DifferentialExtension(atan(2*x/(1 - x**2)) + atan(x), x)
     c = DE.backsubs[-1][0]
-    assert DE.fa == Poly(3*t0 + c, t0) and DE.backsubs == \
+    assert DE.fa == P(3*t0 + c, t0) and DE.backsubs == \
         [(c, -2*atan(x) + atan(2*x/(1 - x**2)))]
     # atan(tan(x)) == x + c
     DE = DifferentialExtension(atan(tan(x)), x)
     c = DE.backsubs[-1][0]
     assert DE._important_attrs == \
-        (Poly(c + x, t0), Poly(1, t0), [Poly(1, x), Poly(t0**2 + 1, t0)],
+        (P(c + x, t0), P(1, t0), [P(1, x), P(t0**2 + 1, t0)],
         [x, t0], [Lambda(i, tan(i))], [(c, -x + atan(tan(x)))], ['tan'], [x])
     # acot(u) is atan(1/u) plus an opaque constant
     DE = DifferentialExtension(acot(x), x)
     c = DE.backsubs[-1][0]
     assert DE._important_attrs == \
-        (Poly(t0 + c, t0), Poly(1, t0), [Poly(1, x), Poly(-1/(x**2 + 1), t0)],
+        (P(t0 + c, t0), P(1, t0), [P(1, x), P(-1/(x**2 + 1), t0)],
         [x, t0], [Lambda(i, atan(1/i))], [(c, acot(x) - atan(1/x))], ['atan'],
         [1/x])
     # Nested trigonometric functions are rewritten inside out:
@@ -868,8 +881,8 @@ def test_DifferentialExtension_atan() -> None:
     DE = DifferentialExtension(acot(sin(x)), x)
     c = DE.backsubs[-1][0]
     assert DE._important_attrs == \
-        (Poly(t1 + c, t1), Poly(1, t1), [Poly(1, x), Poly(t0**2/2 + S.Half, t0),
-        Poly((t0**4 - 1)/(t0**4 + 6*t0**2 + 1), t1)], [x, t0, t1],
+        (P(t1 + c, t1), P(1, t1), [P(1, x), P(t0**2/2 + S.Half, t0),
+        P((t0**4 - 1)/(t0**4 + 6*t0**2 + 1), t1)], [x, t0, t1],
         [Lambda(i, tan(i/2)), Lambda(i, atan((t0**2 + 1)/(2*t0)))],
         [(c, acot(sin(x)) - atan(1/sin(x)))], ['tan', 'atan'],
         [x/2, (t0**2 + 1)/(2*t0)])
@@ -894,14 +907,14 @@ def test_DifferentialExtension_atan() -> None:
     DE = DifferentialExtension(acot(x) + exp(x) + exp(x/2 + 1), x)
     c = DE.backsubs[-1][0]
     assert DE._important_attrs == \
-        (Poly(t0**2 + exp(1)*t0 + t1 + c, t1), Poly(1, t1), [Poly(1, x),
-        Poly(t0/2, t0), Poly(-1/(x**2 + 1), t1)], [x, t0, t1],
+        (P(t0**2 + exp(1)*t0 + t1 + c, t1), P(1, t1), [P(1, x),
+        P(t0/2, t0), P(-1/(x**2 + 1), t1)], [x, t0, t1],
         [Lambda(i, exp(i/2)), Lambda(i, atan(1/i))],
         [(c, acot(x) - atan(1/x))], ['exp', 'atan'], [x/2, 1/x])
     # atan of a non-rational function is a new monomial over the tower
     assert DifferentialExtension(atan(exp(x)), x)._important_attrs == \
-        (Poly(t1, t1), Poly(1, t1), [Poly(1, x), Poly(t0, t0),
-        Poly(t0/(t0**2 + 1), t1)], [x, t0, t1],
+        (P(t1, t1), P(1, t1), [P(1, x), P(t0, t0),
+        P(t0/(t0**2 + 1), t1)], [x, t0, t1],
         [Lambda(i, exp(i)), Lambda(i, atan(t0))], [], ['exp', 'atan'], [x, t0])
 
 
@@ -910,10 +923,10 @@ def test_DifferentialExtension_Rothstein() -> None:
     f = (2581284541*exp(x) + 1757211400)/(39916800*exp(3*x) +
     119750400*exp(x)**2 + 119750400*exp(x) + 39916800)*exp(1/(exp(x) + 1) - 10*x)
     assert DifferentialExtension(f, x)._important_attrs == \
-        (Poly((1757211400 + 2581284541*t0)*t1, t1), Poly(39916800 +
+        (P((1757211400 + 2581284541*t0)*t1, t1), P(39916800 +
         119750400*t0 + 119750400*t0**2 + 39916800*t0**3, t1),
-        [Poly(1, x), Poly(t0, t0), Poly(-(10 + 21*t0 + 10*t0**2)/(1 + 2*t0 +
-        t0**2)*t1, t1, domain='ZZ(t0)')], [x, t0, t1],
+        [P(1, x), P(t0, t0), P(-(10 + 21*t0 + 10*t0**2)/(1 + 2*t0 +
+        t0**2)*t1, t1)], [x, t0, t1],
         [Lambda(i, exp(i)), Lambda(i, exp(1/(t0 + 1) - 10*i))], [],
         ['exp', 'exp'], [x, 1/(t0 + 1) - 10*x])
 
@@ -927,29 +940,29 @@ def test_DecrementLevel() -> None:
     DE = DifferentialExtension(x*log(exp(x) + 1), x)
     assert DE.level == -1
     assert DE.t == t1
-    assert DE.d == Poly(t0/(t0 + 1), t1)
+    assert DE.d == P(t0/(t0 + 1), t1)
     assert DE.case == 'primitive'
 
     with DecrementLevel(DE):
         assert DE.level == -2
         assert DE.t == t0
-        assert DE.d == Poly(t0, t0)
+        assert DE.d == P(t0, t0)
         assert DE.case == 'exp'
 
         with DecrementLevel(DE):
             assert DE.level == -3
             assert DE.t == x
-            assert DE.d == Poly(1, x)
+            assert DE.d == P(1, x)
             assert DE.case == 'base'
 
         assert DE.level == -2
         assert DE.t == t0
-        assert DE.d == Poly(t0, t0)
+        assert DE.d == P(t0, t0)
         assert DE.case == 'exp'
 
     assert DE.level == -1
     assert DE.t == t1
-    assert DE.d == Poly(t0/(t0 + 1), t1)
+    assert DE.d == P(t0/(t0 + 1), t1)
     assert DE.case == 'primitive'
 
     # Test that __exit__ is called after an exception correctly
@@ -963,7 +976,7 @@ def test_DecrementLevel() -> None:
 
     assert DE.level == -1
     assert DE.t == t1
-    assert DE.d == Poly(t0/(t0 + 1), t1)
+    assert DE.d == P(t0/(t0 + 1), t1)
     assert DE.case == 'primitive'
 
 
@@ -977,7 +990,7 @@ def test_risch_integrate() -> None:
         NonElementaryIntegral(exp(-x**2), x) + exp(x**2)/(1 + x**2)
 
 
-    assert risch_integrate(0, x) == 0
+    assert risch_integrate(S.Zero, x) == 0
 
     # also tests prde_cancel()
     e1 = log(x/exp(x) + 1)
@@ -1066,7 +1079,7 @@ def test_risch_integrate_trig() -> None:
     # Example 5.10.3
     f = (tan(x)**5 + tan(x)**3 + x**2*tan(x) + 1)/(tan(x)**2 + 1)**3
     ans = risch_integrate(f, x)
-    assert not ans.has(Integral) and cancel(ans.diff(x) - f) == 0
+    assert not ans.has(NonElementaryIntegral) and cancel(ans.diff(x) - f) == 0
     # Exercise 5.6 f)
     assert risch_integrate((2 + tan(x)**2)/(1 + (tan(x) + x)**2), x) == \
         atan(x + tan(x))
@@ -1144,10 +1157,6 @@ def test_restore_sincos() -> None:
     # A generator whose double angle is not an angle the user wrote
     assert risch_integrate(sin(x/2) + sin(x), x) == \
         2*sin(x/2)**2 - 2*cos(x/2)
-    # integrate() does not use the Risch algorithm for real trigonometric
-    # integrands on its own, except as a last resort
-    assert integrate(sin(x), x) == -cos(x)
-    assert integrate(tan(x), x) == -log(cos(x))
 
 
 def test_risch_integrate_symbolic_constant() -> None:
@@ -1193,12 +1202,11 @@ def test_risch_integrate_log_to_atan() -> None:
 
     # Terms whose residues cannot all be computed explicitly fall back
     # to a RootSum
-    DE = DifferentialExtension(extension={'D': [Poly(1, x), Poly(1/x, t)],
-        'Tfuncs': [log]})
-    H = [(Poly(z**5 - z - 1, z), Poly(t + z, t))]
+    DE = DifferentialExtension.manual([P(1, x), P(1/x, t)], Tfuncs=[log])
+    H = [(P(z**5 - z - 1, z), P(t + z, t))]
     # (SymPy 1.14's RootSum renames the variable of the Lambda to a Dummy)
     r = residue_reduce_to_basic(H, DE, z)
-    assert isinstance(r, RootSum) and r.args[0] == z**5 - z - 1
+    assert isinstance(r, RootSum) and r.expr.subs(r.variable, z) == z**5 - z - 1
     fun = r.args[1]
     assert isinstance(fun, Lambda)
     assert fun.expr.subs(fun.variables[0], z) == z*log(z + log(x))
@@ -1211,7 +1219,7 @@ def test_integrate_primitive_nonelementary_residual() -> None:
     for f in [log(x)*log(log(x)),  # fails after one reduction step (q != 0)
               log(log(x))**2 + log(log(x))/log(x),
               log(log(x))/log(x)]:
-        g, i = risch_integrate(f, x, separate_integral=True)
+        g, i = risch_integrate_separate(f, x)
         assert isinstance(i, NonElementaryIntegral)
         assert cancel(together(diff(g, x) + i.function - f)) == 0
 
@@ -1228,7 +1236,7 @@ def test_risch_integrate_cancellation() -> None:
     # Requires the structure-theorem fallback of parametric_log_deriv()
     # (the heuristic alone raises NotImplementedError on this one)
     e = log(exp(x) + log(x))
-    g, i = risch_integrate(e, x, separate_integral=True)
+    g, i = risch_integrate_separate(e, x)
     assert isinstance(i, NonElementaryIntegral)
     assert cancel(together(diff(g, x) + i.function - e)) == 0
 
@@ -1274,20 +1282,13 @@ def test_DifferentialExtension_equality() -> None:
 
 def test_DifferentialExtension_printing() -> None:
     DE = DifferentialExtension(exp(2*x**2) + log(exp(x**2) + 1), x)
-    assert repr(DE) == ("DifferentialExtension(dict([('f', exp(2*x**2) + log(exp(x**2) + 1)), "
-        "('origf', exp(2*x**2) + log(exp(x**2) + 1)), "
-        "('x', x), ('T', [x, t0, t1]), ('D', [Poly(1, x, domain='ZZ'), Poly(2*x*t0, t0, domain='ZZ[x]'), "
-        "Poly(2*t0*x/(t0 + 1), t1, domain='ZZ(x,t0)')]), ('fa', Poly(t1 + t0**2, t1, domain='ZZ[t0]')), "
-        "('fd', Poly(1, t1, domain='ZZ')), ('Tfuncs', [Lambda(i, exp(i**2)), Lambda(i, log(t0 + 1))]), "
-        "('backsubs', []), ('sincos_args', set()), ('exts', ['exp', 'log']), "
-        "('extargs', [x**2, t0 + 1]), "
-        "('cases', ['base', 'exp', 'primitive']), ('case', 'primitive'), ('t', t1), "
-        "('d', Poly(2*t0*x/(t0 + 1), t1, domain='ZZ(x,t0)')), ('newf', t0**2 + t1), ('level', -1), "
-        "('dummy', False)]))")
-
-    assert str(DE) == ("DifferentialExtension({fa=Poly(t1 + t0**2, t1, domain='ZZ[t0]'), "
-        "fd=Poly(1, t1, domain='ZZ'), D=[Poly(1, x, domain='ZZ'), Poly(2*x*t0, t0, domain='ZZ[x]'), "
-        "Poly(2*t0*x/(t0 + 1), t1, domain='ZZ(x,t0)')]})")
+    # (SymPy's repr lists every attribute)
+    assert repr(DE) == ("DifferentialExtension(fa=TowerPoly(t0**2 + t1, t1), fd=TowerPoly(1, t1), "
+        "D=[TowerPoly(1, x), TowerPoly(2*t0*x, t0), TowerPoly(2*t0*x/(t0 + 1), t1)], T=[x, t0, t1], "
+        "exts=['exp', 'log'], extargs=[x**2, t0 + 1], level=-1)")
+    assert str(DE) == ("DifferentialExtension({fa=TowerPoly(t0**2 + t1, t1), "
+        "fd=TowerPoly(1, t1), D=[TowerPoly(1, x), TowerPoly(2*t0*x, t0), "
+        "TowerPoly(2*t0*x/(t0 + 1), t1)]})")
 
 
 def test_issue_23948() -> None:
@@ -1318,9 +1319,7 @@ def test_parameters_in_the_constant_field() -> None:
     # NotImplementedError), and the rational roots of a polynomial with
     # parameters in its coefficients come from roots(), real_roots
     # refusing ZZ[v]
-    from sympy import symbols, exp, log
-    from sympy_extras.integrals.risch.risch import risch_integrate, NonElementaryIntegral
-    a, b, v, x = symbols('a b v x')
+    a, b, v = Symbol('a'), Symbol('b'), Symbol('v')
     for f in (exp(v*log(-log(x))), (a*x + a)*exp(a*log(x))/(a*x*log(x) + b*x),
               exp(b*x*log(a) + (v - 1)*log(x)), x*exp(v*log(-log(x**2 + 1)))):
         assert isinstance(risch_integrate(f, x), NonElementaryIntegral), f

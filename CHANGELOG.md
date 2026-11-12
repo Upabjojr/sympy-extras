@@ -8,6 +8,33 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ## Unreleased
 
+### Changed
+
+- **Breaking**: the transcendental Risch package `sympy_extras.integrals.risch`
+  (`risch.py`, `rde.py`, `prde.py`, `cde.py`, `polymatrix.py`) is native on
+  the typed core: its functions take and return objects of
+  `sympy_extras.core` and the new `sympy_extras.integrals.risch.tower`
+  (`TowerPoly`, a polynomial of the tower in one generator, over
+  `RationalFunction`, an element of `C(x, t1, ..., tn)` with exact
+  arithmetic over `QQ`, `QQ(I)` and the square roots of integers, in place
+  of SymPy's `Poly` over `ZZ(x, t0)`, `QQ_I(x)` and `EX`); `PolyMatrix`
+  becomes `FieldMatrix`; `DifferentialExtension(extension={'D': ...})`
+  becomes `DifferentialExtension.manual(D, exts=..., extargs=..., Tfuncs=...)`;
+  `derivation(p, DE, basic=True)` becomes `derivation_element(a, DE)`;
+  `risch_integrate(..., separate_integral=True)` becomes
+  `risch_integrate_separate`; `as_poly_1t` returns a `LaurentPolynomial`;
+  the degree bounds are integers (`rde.OO` for `+oo`); `NonElementaryIntegral`
+  is a node of the core (SymPy's, a subclass of `Integral`, is in
+  `risch_sympy`, and `interop` converts both ways). Importing and running it
+  loads no SymPy. The SymPy face `risch/risch_sympy.py` keeps
+  `risch_antiderivative`, `is_nonelementary` and adds `risch_integrate`
+  (SymPy's signature) and `rational_risch_de` (used by `trager`).
+  Constants other than `I` and square roots of integers (cube roots, nested
+  radicals, `CRootOf`) make the algorithm give up (`NotImplementedError`).
+- `rde.weak_normalizer` raises each gcd to the power of its residue
+  (Bronstein's WeakNormalizer): SymPy's took it once per root of the
+  resultant, which leaves `3/(t - 1)` over `t = exp(x)` with the residue 2.
+
 ### Added
 
 - `sympy_extras.polys.berlekampmassey`: `berlekamp_massey` (the shortest

@@ -2,7 +2,7 @@
 # PORTED FROM SYMPY: sympy/integrals/risch.py (the subpackage) (SymPy 1.14 and Aaron Meurer's pull requests)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
-# Changes: imports only, so that the subpackage runs on the released SymPy.
+# Changes: the typed core and the polynomials of integrals.risch.tower.
 # ---------------------------------------------------------------------
 """The transcendental Risch algorithm, ported from SymPy with Aaron
 Meurer's unmerged extensions.
@@ -29,21 +29,22 @@ pull requests to SymPy complete them:
   towers with ``tan`` and ``atan`` are integrated (``risch_integrate(tan(x)**5, x)``).
 
 The modules ``risch.py``, ``rde.py``, ``prde.py``, ``cde.py``,
-``rationaltools.py`` and ``polymatrix.py`` are the files of the branch
-``risch-hypertangent`` at commit ``66bc72d6`` with their imports changed,
-under SymPy's BSD licence (``LICENSE-SymPy``). Two further branches were
-not merged in: ``risch-typing`` (sympy/sympy#30282, annotations written
-against #30221, which conflict with the hypertangent changes) and
+``rationaltools.py`` and ``polymatrix.py`` are ported from the files of the
+branch ``risch-hypertangent`` at commit ``66bc72d6``, under SymPy's BSD
+licence (``LICENSE-SymPy``), and rewritten on the typed core: the
+polynomials of the tower are :class:`.tower.TowerPoly` over the field of
+:class:`.tower.RationalFunction` elements, the matrices
+:class:`.polymatrix.FieldMatrix`. Two further branches were not merged
+in: ``risch-typing`` (sympy/sympy#30282, annotations written against
+#30221, which conflict with the hypertangent changes) and
 ``risch-algebraic`` (sympy/sympy#30239, radicals as ``exp(log(x)/2)``
 handled by the transcendental algorithm, which its author calls
-experimental and which rewrites the same functions). The ported code is
-not typed to the standard of this package (see ``pyproject.toml``);
-:mod:`.risch_sympy` is the typed entry point (``risch_antiderivative``,
-``is_nonelementary``).
+experimental and which rewrites the same functions).
+:mod:`.risch_sympy` is the face on SymPy objects (``risch_integrate``,
+``risch_antiderivative``, ``is_nonelementary``).
 
-The package exports nothing, so that importing its native module
-:mod:`.rationaltools` (the rational integrator on the typed core) does not
-load SymPy: import the modules.
+The package exports nothing, so that importing its native modules does
+not load SymPy: import the modules.
 
 Examples
 ========

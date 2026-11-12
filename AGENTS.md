@@ -297,7 +297,16 @@ sympy_extras/
         validated_sympy.py   the SymPy face of validated, used by definite
         risch/               the transcendental Risch algorithm ported from Aaron Meurer's SymPy pull requests (exports
                              nothing: import the modules)
-            risch_sympy.py   risch_antiderivative, is_nonelementary: the typed entry point of the Risch port (on SymPy)
+            tower.py         RationalFunction (C(x, t1, ..., tn) over QQ(I, sqrt(p)), canonical fractions), TowerPoly
+                             (k[t] dense, SymPy's Poly interface), TowerDomain: the arithmetic of the tower (native)
+            risch.py         DifferentialExtension (manual towers by .manual), derivation, hermite_reduce, residue_reduce,
+                             integrate_* , risch_integrate(_separate), NonElementaryIntegral (node) (native), PORTED FROM SYMPY
+            rde.py           the Risch differential equation, rischDE; degree bounds as integers, OO (native), PORTED FROM SYMPY
+            prde.py          the parametric problems, limited_integrate, the structure theorems (native), PORTED FROM SYMPY
+            cde.py           the coupled differential systems of the hypertangent cases (native), PORTED FROM SYMPY
+            polymatrix.py    FieldMatrix: immutable matrices over the field of the tower, rref, nullspace (native)
+            risch_sympy.py   the SymPy face: risch_integrate, risch_antiderivative, is_nonelementary, NonElementaryIntegral
+                             (a SymPy Integral), rational_risch_de (used by trager)
             rationaltools.py ratint, ratint_ratpart, ratint_logpart, log_to_real, log_to_atan, polynomial_part: rational
                              functions by Hermite's reduction and Lazard–Rioboo–Trager over QQ and EX, the real forms
                              of Rioboo, the native RootSum (native), PORTED FROM SYMPY

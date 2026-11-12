@@ -1869,3 +1869,47 @@ def test_native_ratint_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_RATINT], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_RISCH = r'''
+import sys
+from sympy_extras.core import I, symbols
+from sympy_extras.functions import atan, cos, exp, log, sin, tan
+from sympy_extras.integrals.risch.risch import (DifferentialExtension, NonElementaryIntegral, risch_integrate,
+                                                risch_integrate_separate)
+from sympy_extras.integrals.risch.rde import rischDE
+from sympy_extras.integrals.risch.prde import is_deriv_k, limited_integrate, param_rischDE
+from sympy_extras.integrals.risch.cde import coupled_DE_system
+from sympy_extras.integrals.risch.tower import TowerPoly
+x, a = symbols('x a')
+assert str(risch_integrate(exp(x)*exp(exp(x)), x)) == 'exp(exp(x))'
+assert isinstance(risch_integrate(exp(-x**2), x), NonElementaryIntegral)
+assert str(risch_integrate(tan(x)**2, x)) == '-x + tan(x)'
+assert str(risch_integrate(exp(x)/((exp(x) + 1)**2 + 1), x)) == 'atan(exp(x) + 1)'
+assert str(risch_integrate(1/(x*(log(x)**2 + 1)), x)) == 'atan(log(x))'
+assert str(risch_integrate(sin(x), x)) == '-cos(x)'
+assert str(risch_integrate(x**x*log(x) + x**x, x)) == 'x**x'
+assert str(risch_integrate(exp(x)*log(exp(x) + 1), x)) == 'exp(x)*log(exp(x) + 1) - exp(x) + log(exp(x) + 1)'
+assert risch_integrate(exp(a*x), x).has(x)                       # the Piecewise of a parameter
+assert risch_integrate(sin(x)*exp(I*x), x).has(x)                # rewrite_complex: QQ(I)
+g, i = risch_integrate_separate((2*log(x)**2 - log(x) - x**2)/(log(x)**3 - x**2*log(x)), x)
+assert isinstance(i, NonElementaryIntegral)
+DE = DifferentialExtension.manual([TowerPoly.one(x)])
+P = lambda e: TowerPoly.from_expr(e, x)
+assert rischDE(P(1), P(x), P(1), P(1), DE) == (P(x**2/2), P(x))
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_risch_does_not_load_sympy() -> None:
+    """Importing the transcendental Risch package
+    (:mod:`sympy_extras.integrals.risch`: ``risch``, ``rde``, ``prde``,
+    ``cde``, ``polymatrix``, ``tower``) does not load SymPy, nor do the
+    tower construction (exponentials, logarithms, tangents, the half-angle
+    rewriting of sines and cosines, the complex rewriting with ``I``), the
+    Hermite and residue reductions, the Risch differential equation and its
+    parametric and coupled versions, the structure theorems and the proofs
+    of nonelementarity."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RISCH], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
