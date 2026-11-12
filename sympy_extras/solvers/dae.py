@@ -88,7 +88,7 @@ from sympy_extras.core.power import pow
 from sympy_extras.core.relational import Eq
 from sympy_extras.core.sorting import ordered
 from sympy_extras.core.symbol import Dummy, Symbol
-from sympy_extras.functions.elementary.exponential import exp
+from sympy_extras.functions.elementary.exponential import Exp, exp
 from sympy_extras.functions.elementary.trigonometric import Cos
 from sympy_extras.matrices.dense import ExprMatrix
 from sympy_extras.polys.polyroots import roots
@@ -639,4 +639,14 @@ def check_dae(A: ExprMatrix, B: ExprMatrix, f: Optional[ExprMatrix], y: ExprMatr
     True
     """
     residual = A * y.diff(x) + B * y - (f if f is not None else ExprMatrix.zeros(A.rows, 1))
-    return all(simplify(e.doit()) == 0 for e in residual.entries)
+    return all(_vanishes(e.doit()) for e in residual.entries)
+
+
+def _vanishes(e: Expr) -> bool:
+    """Whether ``simplify`` makes ``e`` zero, as given or with its
+    hyperbolic and trigonometric functions written as exponentials (the
+    native antiderivative of ``exp(x)*sinh(x)`` is ``exp(2*x)/4 - x/2``,
+    and the residual mixing both forms simplifies to zero only so)."""
+    if simplify(e) == 0:
+        return True
+    return simplify(e.rewrite(Exp)) == 0
