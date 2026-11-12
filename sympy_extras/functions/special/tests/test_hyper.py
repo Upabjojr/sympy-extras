@@ -10,7 +10,7 @@ from sympy_extras.core import Integer, Rational, Symbol, oo
 from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.interop import from_sympy
-from sympy_extras.functions import Hyper, hyper, meijerg
+from sympy_extras.functions import Hyper, MeijerG, hyper, meijerg
 
 a, b, c, z, x = Symbol('a'), Symbol('b'), Symbol('c'), Symbol('z'), Symbol('x')
 
@@ -84,3 +84,21 @@ def test_polar_arguments_are_unpolarified_where_single_valued() -> None:
     assert hyper([1, 1], [2], w) == hyper([1, 1], [2], -1)
     # p = q + 2: multivalued, the polar number stays (as in SymPy)
     assert hyper([1, 1, 1], [2], w).args[-1] == w
+
+
+def test_meijerg_convergence_quantities_match_sympy() -> None:
+    # nu, delta and get_period, used by the Meijer G-function integrator
+    h, third, zero, one = Rational(1, 2), Rational(1, 3), Integer(0), Integer(1)
+    cases: list[tuple[list[Expr], list[Expr], list[Expr], list[Expr]]] = [
+        ([a], [], [b, zero], [h]), ([], [], [h], [zero]), ([one], [], [h, third], []), ([], [], [zero, one], []),
+        ([third], [h], [h], [third])]
+    for an, aother, bm, bother in cases:
+        g = meijerg(an, aother, bm, bother, z)
+        assert isinstance(g, MeijerG)
+        expected = sympy.meijerg([to_sympy(e) for e in an], [to_sympy(e) for e in aother],
+                                 [to_sympy(e) for e in bm], [to_sympy(e) for e in bother], to_sympy(z))
+        assert to_sympy(g.nu) == expected.nu
+        assert to_sympy(g.delta) == expected.delta
+        assert to_sympy(g.get_period()) == expected.get_period()
+        assert tuple(to_sympy(e) for e in g.ap) == tuple(expected.ap)
+        assert tuple(to_sympy(e) for e in g.bq) == tuple(expected.bq)

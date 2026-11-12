@@ -961,8 +961,14 @@ class ExpPolar(DefinedFunction):
 
     def _eval_facts(self) -> dict[str, bool]:
         facts: dict[str, bool] = {'commutative': True, 'polar': True, 'zero': False}
-        if facts_of(self.args[0]).get('extended_real'):
+        argument = facts_of(self.args[0])
+        if argument.get('extended_real'):
             facts['extended_real'] = True
+        if argument.get('real') and self.args[0].is_number:
+            # e**r > 0 for a real number r (SymPy finds it numerically:
+            # exp_polar(0).is_positive is True; the conditions of the
+            # integration theorems ask whether a polar argument is positive)
+            facts['positive'] = True
         return facts
 
 
