@@ -287,8 +287,8 @@ def polygamma_series(term: ExprLike, n: Symbol, lower: ExprLike = 1) -> Optional
 def polygamma_integral_representation(term: ExprLike, n: Symbol) -> Optional[Expr]:
     """``Sum(polygamma(0, n)/n**s, (n, 1, oo))`` as an integral through
     ``psi(n) = -EulerGamma + Integral((1 - t**(n - 1))/(1 - t), (t, 0, 1))``,
-    for a symbolic exponent ``s`` (the integral is SymPy's ``Integral``,
-    wrapped: it has no class here yet).
+    for a symbolic exponent ``s`` (the integral is the core's unevaluated
+    :class:`~sympy_extras.integrals.integral.Integral`).
 
     Examples
     ========
@@ -298,13 +298,9 @@ def polygamma_integral_representation(term: ExprLike, n: Symbol) -> Optional[Exp
     >>> from sympy_extras.concrete.eulersums import polygamma_integral_representation
     >>> n, s = Symbol('n'), Symbol('s')
     >>> polygamma_integral_representation(polygamma(0, n)/n**s, n)
-    Integral((zeta(s) - polylog(s, t)/t)/(1 - t), (t, 0, 1)) - EulerGamma*zeta(s)
-
-    (the wrapped SymPy node is printed first: SymPy orders it after)
+    -EulerGamma*zeta(s) + Integral((zeta(s) - polylog(s, t)/t)/(1 - t), (t, 0, 1))
     """
-    import sympy
-    from sympy_extras.interop import from_sympy, sympy_expr
-    from sympy_extras.interop import to_sympy
+    from sympy_extras.integrals.integral import Integral
     term_ = to_expr(term)
     factors = [a for a in term_.args if isinstance(a, Expr)] if isinstance(term_, Mul) else [term_]
     exponent: Optional[Expr] = None
@@ -324,6 +320,5 @@ def polygamma_integral_representation(term: ExprLike, n: Symbol) -> Optional[Exp
     t = Symbol('t')
     s = exponent
     integrand = (zeta(s) - polylog(s, t) / t) / (1 - t)
-    integral = from_sympy(sympy.Integral(sympy_expr(to_sympy(integrand)), (sympy_expr(to_sympy(t)), 0, 1)))
-    assert isinstance(integral, Expr)
+    integral = Integral(integrand, t, Integer(0), Integer(1))
     return mul(*constant) * (-EulerGamma * zeta(s) + integral)

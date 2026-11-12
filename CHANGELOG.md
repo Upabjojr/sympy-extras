@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `concrete.eulersums.polygamma_integral_representation` returns the
+  core's unevaluated `Integral` (`integrals.integral`) instead of SymPy's
+  `Integral` wrapped, and loads no SymPy; it prints in SymPy's order
+  (`-EulerGamma*zeta(s) + Integral(...)`).
 - `concrete.delta` loads no SymPy at run time: the equation of a delta
   the linear and finite solvers do not list goes to the native
   `solve_equation`, and the systems of several deltas which are not

@@ -3078,3 +3078,26 @@ def test_native_delta_routes_do_not_load_sympy() -> None:
                          timeout=900)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_EULERSUMS_INTEGRAL = r'''
+import sys
+from sympy_extras.core import Symbol
+from sympy_extras.functions import polygamma
+from sympy_extras.integrals.integral import Integral
+from sympy_extras.concrete.eulersums import polygamma_integral_representation
+n, s = Symbol('n'), Symbol('s')
+r = polygamma_integral_representation(polygamma(0, n)/n**s, n)
+assert r is not None and r.has(Integral), r
+assert str(r) == '-EulerGamma*zeta(s) + Integral((zeta(s) - polylog(s, t)/t)/(1 - t), (t, 0, 1))', r
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_eulersums_integral_does_not_load_sympy() -> None:
+    """The integral representation of a polygamma series is the core's
+    ``Integral`` (it was SymPy's, wrapped)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EULERSUMS_INTEGRAL], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
