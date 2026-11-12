@@ -1137,7 +1137,7 @@ sympy_extras/
         orderings_sympy.py   WeightOrder, BlockOrder as SymPy monomial orders (its SymPy face)
         polytools_sympy.py   the steps of polytools which stay on SymPy (cancel, factor, invert over EX, CC, ...)
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (native)
-        virtual_substitution_sympy.py  its SymPy face, and simplify_logic_of_core
+        virtual_substitution_sympy.py  its SymPy face
         comprehensive.py     comprehensive Gröbner systems, reduction over the complex numbers (native)
         comprehensive_sympy.py  its SymPy face
         roots.py             roots in radicals through functional decomposition

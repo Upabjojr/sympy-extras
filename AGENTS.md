@@ -409,9 +409,9 @@ sympy_extras/
         inequalities.py      solve_inequality: a relational solved for one variable (native, the rational case by
                              the CAD; the others through inequalities_sympy), PORTED FROM SYMPY
         inequalities_sympy.py solve_inequality_of_core (SymPy's _solve_inequality)
-        integers.py          linear Diophantine systems (Hermite), Contejean-Devie, Cooper's algorithm (native;
-                             SymPy's simplify_logic through integers_sympy)
-        integers_sympy.py    the SymPy face of integers, and simplify_logic_of_core (from virtual_substitution_sympy)
+        integers.py          linear Diophantine systems (Hermite), Contejean-Devie, Cooper's algorithm (native, the
+                             results simplified by logic.boolalg)
+        integers_sympy.py    the SymPy face of integers
         parametric.py        parametric_cases, ParametricCase: the cases of the parameters of a polynomial system, from
                              the regular chains (native)
         parametric_sympy.py  the SymPy face of parametric
@@ -503,6 +503,8 @@ sympy_extras/
         hyperexpand.py       hyperexpand: formula tables, shift operators, plans, Slater's theorem (ported from SymPy)
         tests/
     logic/                   propositional logic on the core's Booleans (exports nothing: import the modules)
+        boolalg.py           simplify_logic, SOPform, POSform: minimal two-level forms by Quine-McCluskey (native,
+                             PORTED FROM SYMPY logic/boolalg)
         cnf.py               to_clauses, conjunction, Clauses: conjunctive normal forms encoded with integers (native,
                              PORTED FROM SYMPY assumptions/cnf)
         dpll2.py             SATSolver, propositional_models, is_satisfiable: DPLL with watched literals and VSIDS, every
@@ -587,9 +589,8 @@ sympy_extras/
                              orders of rings.PolyRing (native; rings re-exports them)
         orderings_sympy.py   the SymPy face of orderings: WeightOrder, BlockOrder, elimination_order as SymPy MonomialOrder
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (Loos-Weispfenning,
-                             Weispfenning), with_sides, to_nnf (native; SymPy's simplify_logic of the results through
-                             virtual_substitution_sympy)
-        virtual_substitution_sympy.py  the SymPy face of virtual_substitution, and simplify_logic_of_core
+                             Weispfenning), with_sides, to_nnf (native, the results simplified by logic.boolalg)
+        virtual_substitution_sympy.py  the SymPy face of virtual_substitution
         puiseux.py           Newton–Puiseux expansions of the branches of a plane curve at a point and at infinity, conjugate branches over
                              exact number fields (Duval; AlgebraicField, the rationals as RATIONALS) (native)
         puiseux_sympy.py     the SymPy face of puiseux (Poly, SymPy's number fields both ways), and field_of (CRootOf points)

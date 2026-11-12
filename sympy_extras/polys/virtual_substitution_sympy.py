@@ -1,15 +1,9 @@
 """The SymPy face of quantifier elimination by virtual substitution
-(:mod:`sympy_extras.polys.virtual_substitution`), and the step which
-stays on SymPy.
+(:mod:`sympy_extras.polys.virtual_substitution`).
 
 The functions take and return SymPy objects (formulas, symbols and
 quantifier prefixes of SymPy symbols), converted by
 :mod:`sympy_extras.interop` around the native functions.
-
-The step of the native module which stays written on SymPy is called
-from it at run time (:func:`simplify_logic_of_core`, which takes and
-returns a formula of the core): SymPy's ``simplify_logic`` of the
-results.
 
 Examples
 ========
@@ -27,7 +21,7 @@ from __future__ import annotations
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import Boolean
 
-from sympy_extras._typing_sympy import QuantifierPrefix, as_boolean
+from sympy_extras._typing_sympy import QuantifierPrefix
 from sympy_extras.assumptions.ask_sympy import core_boolean, core_prefix, sympy_boolean, sympy_prefix
 from sympy_extras.assumptions.intervals_sympy import core_symbol
 from sympy_extras.core.logic import Boolean as CoreBoolean
@@ -35,18 +29,7 @@ from sympy_extras.core.logic import Boolean as CoreBoolean
 from . import virtual_substitution as native
 
 __all__ = ['is_linear_in', 'is_quadratic_in', 'eliminate_linear', 'eliminate_quadratic',
-           'linear_quantifier_elimination', 'virtual_substitution_elimination', 'with_sides',
-           'simplify_logic_of_core']
-
-
-# ---------------------------------------------------------------------------
-# the step of the native module which stays on SymPy
-
-def simplify_logic_of_core(formula: CoreBoolean) -> CoreBoolean:
-    """SymPy's ``simplify_logic(formula, deep=False)`` (its exceptions go
-    on)."""
-    from sympy.logic.boolalg import simplify_logic
-    return core_boolean(as_boolean(simplify_logic(sympy_boolean(formula), deep=False)))
+           'linear_quantifier_elimination', 'virtual_substitution_elimination', 'with_sides']
 
 
 # ---------------------------------------------------------------------------

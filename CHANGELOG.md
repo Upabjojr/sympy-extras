@@ -10,6 +10,15 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- **Breaking**: `simplify_logic_of_core` is removed from
+  `polys.virtual_substitution_sympy` and `solvers.integers_sympy`: the
+  results of virtual substitution and of Cooper's algorithm, and the joined
+  conditions of the cases of the ODE solvers (`solvers._special_values`),
+  are simplified by the new native `sympy_extras.logic.boolalg`
+  (`simplify_logic`, `SOPform`, `POSform`, ported from SymPy's
+  Quine–McCluskey minimisation), without loading SymPy. The relations are
+  numbered in `ordered` order instead of SymPy's hash order, so that an
+  equally small form may be chosen where SymPy's depended on the hashes.
 - **Breaking**: the transcendental Risch package `sympy_extras.integrals.risch`
   (`risch.py`, `rde.py`, `prde.py`, `cde.py`, `polymatrix.py`) is native on
   the typed core: its functions take and return objects of

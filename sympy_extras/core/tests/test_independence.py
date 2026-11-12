@@ -495,9 +495,8 @@ def test_native_cad_qe_does_not_load_sympy() -> None:
 
 def test_native_virtual_substitution_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.polys.virtual_substitution` does not
-    load SymPy, nor do the eliminations whose result is a truth value or
-    a single relation (SymPy's ``simplify_logic`` of a compound result
-    goes through it at run time)."""
+    load SymPy, nor do the eliminations (the compound results are
+    simplified by the native ``simplify_logic``)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_VIRTUAL_SUBSTITUTION], capture_output=True, text=True,
                          timeout=600)
     assert out.returncode == 0, out.stderr
@@ -2466,5 +2465,32 @@ def test_native_sat_search_does_not_load_sympy() -> None:
     with a parameter carrying no assumptions, which asks ``satisfiable``
     for the cases of the parameter."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_SAT_SEARCH], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SIMPLIFY_LOGIC = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.logic.boolalg import simplify_logic
+from sympy_extras.polys.virtual_substitution import linear_quantifier_elimination, eliminate_linear
+from sympy_extras.solvers.integers import cooper
+x, y, z, a, b = symbols('x y z a b')
+assert str(simplify_logic((a & b) | (a & ~b) | (x > 0) | ((x <= 0) & (y > 1)))) == 'a | (x > 0) | (y > 1)'
+assert str(cooper((3*x > y) & (3*x < y + 3), x)) == 'Eq(Mod(y + 1, 3), 0) | Eq(Mod(y + 2, 3), 0)'
+assert str(eliminate_linear(((x > y) | (x > z)) & (x < 1), x)) == '(y < 1) | (z < 1)'
+result, prefix = linear_quantifier_elimination(((x > y) & (x < 1)) | ((x > z) & (x < 2)), [('exists', x)])
+assert not prefix and len(result.args) == 6, result
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_simplify_logic_does_not_load_sympy() -> None:
+    """The simplification of the compound results of virtual substitution
+    and of Cooper's algorithm does not load SymPy: it is the native port
+    of ``simplify_logic`` (:mod:`sympy_extras.logic.boolalg`); it went
+    through SymPy's ``simplify_logic`` (``simplify_logic_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SIMPLIFY_LOGIC], capture_output=True, text=True,
+                         timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

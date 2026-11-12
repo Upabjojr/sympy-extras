@@ -48,10 +48,9 @@ found or not checked within the budget of
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.solvers._special_values_sympy` is its face on SymPy
 objects. The candidate points and their bookkeeping are those of the
-native :func:`sympy_extras._special_values.with_special_values`; one step
-is not ported and goes through SymPy at run time: SymPy's
-``simplify_logic`` of the joined conditions
-(:func:`~sympy_extras.polys.virtual_substitution_sympy.simplify_logic_of_core`).
+native :func:`sympy_extras._special_values.with_special_values`; the
+joined conditions are simplified by the native port of SymPy's
+``simplify_logic`` (:func:`sympy_extras.logic.boolalg.simplify_logic`).
 :func:`ode_order`, the determinants of the Jacobians and the
 simplification SymPy applies to them (:func:`dotprodsimp`) are ported
 from SymPy (``sympy.solvers.deutils``, ``sympy.matrices.determinant``,
@@ -593,13 +592,13 @@ def _function_cases(cases: list[tuple[Expr, Boolean]]) -> Expr:
     """The ``Piecewise`` of the cases of one function, the conditions of
     consecutive cases with the same value joined and simplified
     (``Eq(a, 1) & Eq(b, 1)`` followed by ``Eq(a, 1)`` is ``Eq(a, 1)``)."""
-    from sympy_extras.polys.virtual_substitution_sympy import simplify_logic_of_core
+    from sympy_extras.logic.boolalg import simplify_logic
     joined: list[tuple[Expr, Boolean]] = []
     for e, condition in cases:
         if joined and joined[-1][0] == e:
             condition = or_(joined[-1][1], condition)
             if not isinstance(condition, BooleanTrue) and len(condition.atoms(Eq)) <= _MAX_LOGIC_ATOMS:
-                condition = simplify_logic_of_core(condition)
+                condition = simplify_logic(condition)
             joined[-1] = (e, condition)
         else:
             joined.append((e, condition))
