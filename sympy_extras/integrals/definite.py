@@ -2398,7 +2398,7 @@ class _Integrator:
     def _series(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Series expansion of a factor and termwise integration, the
         series summed in closed form (:mod:`.series`)."""
-        from .series import series_integral
+        from .series_sympy import series_integral
         if depth > 0:
             return None
         if a != 0:

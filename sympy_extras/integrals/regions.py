@@ -255,9 +255,9 @@ from sympy_extras.polys.cad.qe_sympy import _compile
 from sympy_extras.polys.cad.samplepoints_sympy import RealAlgebraic, compare_real
 from sympy_extras.settings import settings
 from .conditions_sympy import numerically_equal
-from .axisymmetric import rotation_invariant
+from .axisymmetric_sympy import rotation_invariant
 from .definite import definite_integral
-from .axisymmetric import axisymmetric_integral
+from .axisymmetric_sympy import axisymmetric_integral
 
 __all__ = ['IntegralByRanges', 'integrate_by_ranges']
 

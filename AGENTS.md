@@ -299,6 +299,13 @@ sympy_extras/
                              constant Laurent coefficient in exp(I x) (native: the native summation and simplify, the
                              series of exp, sin, cos, sinh, cosh written down; other series by brackets' fps)
         periodic_sympy.py    the SymPy face of periodic, used by definite
+        series.py            series_integral, fourier_integral, fourier_expansion, expansions, moments, sum_series: definite
+                             integrals by series expansion of a factor (power, geometric and Fourier series) and termwise
+                             integration (native: the native summation, partial fractions over the roots, hyperexpand,
+                             convergence tests, Euler sums and Zeilberger; the moments by definite through laplace_sympy,
+                             the computed Fourier coefficients by antiderivative through series_sympy, the numerical check
+                             through residues_sympy)
+        series_sympy.py      the SymPy face of series, used by definite, and antiderivative_integral_of_core
         dirichlet.py         dirichlet_integral, trigonometric_sum: the Dirichlet, Frullani and Borwein integrals of
                              trigonometric sums over powers of x (native)
         dirichlet_sympy.py   the SymPy face of dirichlet
@@ -328,7 +335,10 @@ sympy_extras/
         summability.py       summable_integral, oscillatory_tail: Abel, Cesàro and Gaussian means of divergent
                              oscillatory integrals (native: the native limits; the regularised integrals by definite)
         summability_sympy.py the SymPy face of summability, used by definite
-        axisymmetric.py      region integrals with a rotational symmetry (bodies and surfaces of revolution) reduced to their profile
+        axisymmetric.py      region integrals with a rotational symmetry (bodies and surfaces of revolution) reduced to their
+                             profile (native: the native cancel, numerical comparison and Gram–Schmidt process, PORTED FROM
+                             SYMPY; the profile integral by regions through axisymmetric_sympy)
+        axisymmetric_sympy.py the SymPy face of axisymmetric, used by regions, and integrate_by_ranges_of_core
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic (Gradshteyn-Ryzhik 2.26), for the slices of regions,
                              and the Euler substitutions (native, with the native ratint)
         radicals_sympy.py    the SymPy face of radicals

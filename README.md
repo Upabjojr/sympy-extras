@@ -1022,6 +1022,8 @@ sympy_extras/
         brackets.py          Ramanujan's master theorem, method of brackets
         periodic.py          integrals over whole periods by the constant Laurent coefficient (native)
         periodic_sympy.py    the SymPy face of periodic
+        series.py            series expansion of a factor and termwise integration, Fourier series (native)
+        series_sympy.py      the SymPy face of series
         recognize.py         PSLQ recognition of integrals (an oracle)
         risch/               Risch algorithm ported from Aaron Meurer's SymPy pull requests
         trager.py            Trager's algorithm for algebraic functions (one square root)
@@ -1029,7 +1031,8 @@ sympy_extras/
         curves_sympy.py      the SymPy face of curves
         summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals (native)
         summability_sympy.py the SymPy face of summability
-        axisymmetric.py      region integrals with a rotational symmetry reduced to their profile
+        axisymmetric.py      region integrals with a rotational symmetry reduced to their profile (native)
+        axisymmetric_sympy.py the SymPy face of axisymmetric
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic
         indefinite.py        indefinite integration by the typed methods in turn, every antiderivative checked
         trigonometric.py     products and rational functions of trigonometric and hyperbolic functions

@@ -111,7 +111,7 @@ def test_formulas_which_fail_below_their_start_are_refused() -> None:
     # the bug: the formula of fps for (exp(4 x) - exp(-4 x))**2 holds from
     # k = 3 and gives 2 at k = 0, where the series has no term; the
     # integral over (0, 1) came out 2 too much
-    from sympy_extras.integrals.series import series_integral
+    from sympy_extras.integrals.series_sympy import series_integral
     f = (exp(4 * x) - exp(-4 * x))**2
     assert taylor_coefficient(f, x) is None
     assert series_integral(f, x, 0, 1) is None

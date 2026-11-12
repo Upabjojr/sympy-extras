@@ -34,15 +34,27 @@ The largest invariant group is used, the pairs first when there are
 several, and the reduced integral may be reduced again (two groups in
 four variables).
 
+The module works on the objects of :mod:`sympy_extras.core` and imports
+no SymPy: the native ``cancel``, ``expand``, typed polynomials and
+numerical comparison of :mod:`.conditions`. The profile integral is
+computed by :func:`~sympy_extras.integrals.regions.integrate_by_ranges`,
+which is still written on SymPy, through
+:func:`~sympy_extras.integrals.axisymmetric_sympy.integrate_by_ranges_of_core`:
+SymPy is loaded on that path only. The orthonormal frame of
+:func:`aligned_frame` is the Gram–Schmidt process of SymPy's
+``Matrix.orthogonalize``, ported. The functions on SymPy objects are in
+:mod:`.axisymmetric_sympy`.
+
 Examples
 ========
 
->>> from sympy import symbols, Eq, S
+>>> from sympy_extras.core import Symbol, Integer, Rational, eq
 >>> from sympy_extras.integrals.axisymmetric import axisymmetric_integral
->>> x, y, z = symbols('x y z')
->>> axisymmetric_integral(1, (x**2 + y**2 + z**2 < 1) & ((x - 1)**2 + y**2 + z**2 < 1), [x, y, z])
+>>> x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+>>> axisymmetric_integral(Integer(1), (x**2 + y**2 + z**2 < 1) & ((x - 1)**2 + y**2 + z**2 < 1), [x, y, z])
 5*pi/12
->>> axisymmetric_integral(1, Eq(x**2 + y**2 + z**2, 1) & (z > S(1)/2), [x, y, z], measure='hausdorff')
+>>> axisymmetric_integral(Integer(1), eq(x**2 + y**2 + z**2, 1) & (z > Rational(1, 2)), [x, y, z],
+...                       measure='hausdorff')
 pi
 
 References
@@ -51,32 +63,60 @@ References
 .. [Apostol] T. M. Apostol, *Calculus*, vol. II, 2nd ed., Wiley, 1969,
    section 11.28 (solids of revolution and cylindrical coordinates).
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/matrices/decompositions.py (_QRdecomposition_optional),
+# sympy/matrices/subspaces.py (_orthogonalize) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: typed, on lists of core expressions (_orthogonalize only); the
+# rest of the module is original code.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
+import itertools
 import random
 from itertools import combinations
-from typing import Optional, Sequence
-
-from sympy.core.expr import Expr
-from sympy.core.numbers import Integer, Rational, pi
-from sympy.core.singleton import S
-from sympy.functions.elementary.complexes import Abs
-from sympy.core.relational import Eq, Relational
-from sympy.core.symbol import Dummy, Symbol
-from sympy.core.function import expand
-from sympy.functions.elementary.miscellaneous import sqrt
-from sympy.matrices.dense import Matrix
-from sympy.functions.special.gamma_functions import gamma
-from sympy.logic.boolalg import And, Boolean
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly, cancel
+from typing import Final, Optional, Sequence
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
+from sympy_extras.core.add import Add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
+from sympy_extras.core.function import expand, expand_mul
+from sympy_extras.core.logic import Boolean, BooleanTrue, and_, to_boolean
+from sympy_extras.core.numbers import Integer, Rational, pi
+from sympy_extras.core.power import sqrt
+from sympy_extras.core.relational import Eq, Relational
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.complexes import abs_, conjugate
+from sympy_extras.functions.special.gamma_functions import gamma
+from sympy_extras.polys.polytools import cancel
 from sympy_extras.settings import settings
-from .conditions_sympy import numerically_equal
 
-__all__ = ['axisymmetric_integral', 'rotation_group', 'rotation_invariant']
+from .conditions import numerically_equal
+
+__all__ = ['axisymmetric_integral', 'rotation_group', 'rotation_invariant', 'aligned_frame', 'Frame']
+
+_COUNTER: Final = itertools.count()
+
+
+def _fresh(name: str) -> Dummy:
+    """A dummy with a name of its own: the typed polynomials map their
+    symbols by name, so the radius of a group and the radius of the group
+    of the reduced integral would be taken for one symbol."""
+    return Dummy('%s%d' % (name, next(_COUNTER)))
+
+
+def _evaluated(e: Expr, rule: dict[Basic, Basic]) -> Expr:
+    """``e.xreplace(rule)`` with the rebuilt nodes evaluated."""
+    return as_expr(e._xreplace_evaluated(rule))
+
+
+def _relations(formula: Boolean) -> list[Relational]:
+    """The relations of ``formula``, in a fixed order."""
+    found = [atom for atom in formula.atoms(Relational) if isinstance(atom, Relational)]
+    return sorted(found, key=lambda r: r.sort_key())
 
 
 def rotation_invariant(e: Expr, group: Sequence[Symbol], samples: int = 3) -> bool:
@@ -90,30 +130,33 @@ def rotation_invariant(e: Expr, group: Sequence[Symbol], samples: int = 3) -> bo
     measure zero (``Heaviside(x)``, ``Piecewise((1, x*y > 0), (0,
     True))``), whose derivative vanishes at every sample.
 
-    >>> from sympy import symbols, Heaviside
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import heaviside
     >>> from sympy_extras.integrals.axisymmetric import rotation_invariant
-    >>> x, y = symbols('x y')
-    >>> rotation_invariant(x**2 + y**2, [x, y]), rotation_invariant(Heaviside(x), [x, y])
+    >>> x, y = Symbol('x'), Symbol('y')
+    >>> rotation_invariant(x**2 + y**2, [x, y]), rotation_invariant(heaviside(x), [x, y])
     (True, False)
     """
     rng = random.Random(str((e, tuple(group))))
-    others = sorted_symbols(free_symbols(e) - set(group))
+    others = sorted(e.free_symbols - set(group), key=lambda s: s.sort_key())
     for _ in range(samples):
-        point: dict[Symbol, Expr] = {v: Rational(rng.randint(-300, 300), 100) for v in list(group) + others}
-        base = as_expr(as_expr(e.xreplace(point)).evalf(30))
+        point: dict[Basic, Basic] = {v: Rational(rng.randint(-300, 300), 100) for v in list(group) + others}
+        base = _evaluated(e, point).evalf(30)
         if not base.is_number:
             return False
         for u, v in combinations(group, 2):
             for t in (Rational(1, 3), S.One, Integer(2), Integer(3)):
                 c, s = (1 - t**2) / (1 + t**2), 2 * t / (1 + t**2)
+                pu, pv = as_expr(point[u]), as_expr(point[v])
                 rotated = dict(point)
-                rotated[u], rotated[v] = as_expr(c * point[u] - s * point[v]), as_expr(s * point[u] + c * point[v])
-                value = as_expr(as_expr(e.xreplace(rotated)).evalf(30))
+                rotated[u], rotated[v] = c * pu - s * pv, s * pu + c * pv
+                value = _evaluated(e, rotated).evalf(30)
                 if not value.is_number:
                     return False
-                gap = as_expr(Abs(base - value).evalf(30))
-                scale = as_expr((1 + Abs(base) + Abs(value)).evalf(30))
-                if not gap.is_comparable or not scale.is_comparable or gap > scale / 10**12:
+                gap = abs_(base - value).evalf(30)
+                scale = (1 + abs_(base) + abs_(value)).evalf(30)
+                if not gap.is_comparable or not scale.is_comparable or not isinstance(gap <= scale / 10**12,
+                                                                                       BooleanTrue):
                     return False
     return True
 
@@ -128,16 +171,13 @@ def _invariant(e: Expr, group: Sequence[Symbol]) -> bool:
     if not rotation_invariant(e, group):
         return False
     for u, v in combinations(group, 2):
-        generator = as_expr(u * e.diff(v) - v * e.diff(u))
+        generator = u * e.diff(v) - v * e.diff(u)
         if generator == 0:
             continue
-        try:
-            reduced = attempt(lambda: as_expr(cancel(generator)), settings.timeout)
-        except PolynomialError:
-            reduced = None
+        reduced = attempt(lambda: cancel(generator), settings.timeout, native=True)
         if reduced is None:
             return False
-        if reduced != 0 and not numerically_equal(reduced, as_expr(0)):
+        if reduced != 0 and not numerically_equal(reduced, Integer(0)):
             return False
     return True
 
@@ -147,9 +187,9 @@ def rotation_group(f: ExprLike, formula: Boolean, names: Sequence[Symbol]) -> Op
     squares alone the integrand and every relation of the condition
     depend on them; ``None`` when there is none.
 
-    >>> from sympy import symbols
+    >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.integrals.axisymmetric import rotation_group
-    >>> x, y, z = symbols('x y z')
+    >>> x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
     >>> rotation_group(z, (x**2 + y**2 + z**2 < 1) & (z > x**2 + y**2), [x, y, z])
     (x, y)
     >>> rotation_group(1, (x**2 + y**2 + z**2 < 1) & (x > 0), [x, y, z])
@@ -157,9 +197,9 @@ def rotation_group(f: ExprLike, formula: Boolean, names: Sequence[Symbol]) -> Op
     >>> rotation_group(x*y, x**2 + y**2 + z**2 < 1, [x, y, z]) is None
     True
     """
-    expressions: list[Expr] = [as_expr(f)]
-    for atom in formula.atoms(Relational):
-        expressions.append(as_expr(atom.lhs) - as_expr(atom.rhs))
+    expressions: list[Expr] = [to_expr(f)]
+    for atom in _relations(formula):
+        expressions.append(atom.lhs - atom.rhs)
     for size in range(len(names), 1, -1):
         for group in combinations(names, size):
             if all(_invariant(e, group) for e in expressions):
@@ -169,25 +209,95 @@ def rotation_group(f: ExprLike, formula: Boolean, names: Sequence[Symbol]) -> Op
 
 def _sphere_area(k: int) -> Expr:
     """The area of the unit sphere ``S**(k-1)``, ``2 pi**(k/2)/gamma(k/2)``."""
-    return as_expr(2 * pi**(as_expr(k) / 2) / gamma(as_expr(k) / 2))
+    return 2 * pi**(Integer(k) / 2) / gamma(Integer(k) / 2)
 
 
 def _normal(p: Expr, names: Sequence[Symbol]) -> Optional[list[Expr]]:
     """The coefficients of a polynomial of degree one in ``names``, ``None``
-    otherwise."""
+    otherwise (the coefficients may hold other symbols and radicals)."""
     if not p.has(*names):
         return None
-    try:
-        poly = Poly(p, *names)
-    except PolynomialError:
+    coefficients: list[Expr] = [Integer(0)] * len(names)
+    for term in Add.make_args(expand(p)):
+        coefficient, dependent = term.as_independent(*names, as_Add=False)
+        if dependent == 1:
+            continue
+        positions = [i for i, v in enumerate(names) if v == dependent]
+        if not positions:
+            return None
+        i = positions[0]
+        coefficients[i] = coefficients[i] + coefficient
+    if all(c == 0 for c in coefficients):
         return None
-    if poly.total_degree() != 1:
-        return None
-    coefficients = [as_expr(poly.coeff_monomial(v)) for v in names]
-    return None if any(c.has(*names) for c in coefficients) else coefficients
+    return coefficients
 
 
-def aligned_frame(f: Expr, formula: Boolean, names: Sequence[Symbol]) -> Optional[_Frame]:
+def _proportional(u: list[Expr], v: list[Expr]) -> bool:
+    """Whether the nonzero vectors ``u`` and ``v`` are proportional (the
+    matrix of the two has rank one): every minor of order two cancels."""
+    for i, j in combinations(range(len(u)), 2):
+        if cancel(expand(u[i] * v[j] - u[j] * v[i])) != 0:
+            return False
+    return True
+
+
+# PORTED FROM SYMPY: sympy/matrices/decompositions.py:_QRdecomposition_optional
+def _orthogonalize(vectors: list[list[Expr]]) -> list[list[Expr]]:
+    """SymPy's ``Matrix.orthogonalize(*vectors, normalize=True,
+    rankcheck=False)``: the Gram–Schmidt process with the projections
+    expanded, the vectors which become zero dropped, then the others
+    normalised (the dot product conjugates its first argument, the norm
+    is ``sqrt(sum(Abs(v_i)**2))``)."""
+    def dot(u: list[Expr], v: list[Expr]) -> Expr:
+        total: Expr = S.Zero
+        for a, b in zip(u, v):
+            total = total + conjugate(a) * b
+        return total
+
+    def is_zero(v: list[Expr]) -> Optional[bool]:
+        verdicts = [a.is_zero for a in v]
+        if all(t is True for t in verdicts):
+            return True
+        if any(t is False for t in verdicts):
+            return False
+        return None
+
+    Q = [list(v) for v in vectors]
+    ranked: list[int] = []
+    for j in range(len(Q)):
+        for i in range(j):
+            if is_zero(Q[i]) is True:
+                continue
+            r = expand_mul(dot(Q[i], Q[j]) / dot(Q[i], Q[i]))
+            Q[j] = [a - b * r for a, b in zip(Q[j], Q[i])]
+        Q[j] = [expand_mul(a) for a in Q[j]]
+        if is_zero(Q[j]) is not True:
+            ranked.append(j)
+    basis: list[list[Expr]] = []
+    for j in ranked:
+        total: Expr = S.Zero
+        for a in Q[j]:
+            total = total + abs_(a)**2
+        norm = sqrt(total)
+        basis.append([a / norm for a in Q[j]])
+    return basis
+
+
+class Frame:
+    """The transformed problem of :func:`aligned_frame`: the integrand,
+    the condition and the variables in the new frame; the similarity has
+    ratio ``1/ratio``."""
+
+    __slots__ = ('integrand', 'condition', 'variables', 'ratio')
+
+    def __init__(self, integrand: Expr, condition: Boolean, variables: list[Symbol], ratio: Expr) -> None:
+        self.integrand: Final[Expr] = integrand
+        self.condition: Final[Boolean] = condition
+        self.variables: Final[list[Symbol]] = variables
+        self.ratio: Final[Expr] = ratio
+
+
+def aligned_frame(f: ExprLike, formula: Boolean, names: Sequence[Symbol]) -> Optional[Frame]:
     """The integrand, the condition and the variables in the frame whose
     first axis is the common normal ``a`` of the relations of degree one,
     when every other relation is invariant under all rotations (a ball, a
@@ -198,21 +308,23 @@ def aligned_frame(f: Expr, formula: Boolean, names: Sequence[Symbol]) -> Optiona
     ``|a|**(-d)`` times the integral in the new frame, ``d`` the dimension
     of the measure; ``None`` when there is no such frame.
 
-    >>> from sympy import symbols
+    >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.integrals.axisymmetric import aligned_frame
-    >>> x, y, z = symbols('x y z')
+    >>> x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
     >>> frame = aligned_frame(1, (x**2 + y**2 + z**2 < 1) & (x + y + z > 1), [x, y, z])
-    >>> frame.condition, frame.ratio
-    ((_Y1 - 1 > 0) & (_Y1**2/3 + _Y2**2/3 + _Y3**2/3 - 1 < 0), sqrt(3))
+    >>> Y1, Y2, Y3 = frame.variables
+    >>> frame.condition == ((Y1 - 1 > 0) & (Y1**2/3 + Y2**2/3 + Y3**2/3 - 1 < 0)), frame.ratio
+    (True, sqrt(3))
     """
     normal: Optional[list[Expr]] = None
-    for atom in formula.atoms(Relational):
-        p = as_expr(atom.lhs) - as_expr(atom.rhs)
+    relations = _relations(formula)
+    for atom in relations:
+        p = atom.lhs - atom.rhs
         found = _normal(p, names)
         if found is not None:
             if normal is None:
                 normal = found
-            elif Matrix([normal, found]).rank() != 1:
+            elif not _proportional(normal, found):
                 return None
             continue
         if not _invariant(p, names):
@@ -220,54 +332,47 @@ def aligned_frame(f: Expr, formula: Boolean, names: Sequence[Symbol]) -> Optiona
     if normal is None:
         return None
     n = len(names)
-    a = Matrix(normal)
-    length = as_expr(sqrt(as_expr((a.T * a)[0])))
-    basis = Matrix.orthogonalize(a, *[Matrix.eye(n)[:, j] for j in range(n)], normalize=True, rankcheck=False)
+    total: Expr = S.Zero
+    for c in normal:
+        total = total + c * c
+    length = sqrt(total)
+    unit: list[list[Expr]] = [[Integer(1) if i == j else Integer(0) for i in range(n)] for j in range(n)]
+    basis = _orthogonalize([normal] + unit)
     if len(basis) != n:
         return None
-    ys: list[Symbol] = [Dummy('Y%d' % j) for j in range(1, n + 1)]
-    image = Matrix.zeros(n, 1)
+    ys: list[Symbol] = [_fresh('Y%d_' % j) for j in range(1, n + 1)]
+    image: list[Expr] = [Integer(0)] * n
     for e, yj in zip(basis, ys):
-        image = image + e * yj / length
-    replacement = {v: as_expr(cancel(image[i])) for i, v in enumerate(names)}
-    new_atoms: dict[Boolean, Boolean] = {}
-    for atom in formula.atoms(Relational):
-        difference = as_expr(atom.lhs) - as_expr(atom.rhs)
-        rewritten = as_expr(cancel(expand(difference.xreplace(replacement))))
-        new_atoms[as_boolean(atom)] = as_boolean(atom.func(rewritten, 0))
-    condition = as_boolean(formula.xreplace(new_atoms))
-    integrand = as_expr(cancel(expand(as_expr(f).xreplace(replacement))))
-    return _Frame(integrand, condition, ys, length)
+        image = [image[i] + e[i] * yj / length for i in range(n)]
+    replacement: dict[Basic, Basic] = {v: cancel(image[i]) for i, v in enumerate(names)}
+    new_atoms: dict[Basic, Basic] = {}
+    for atom in relations:
+        difference = atom.lhs - atom.rhs
+        rewritten = cancel(expand(_evaluated(difference, replacement)))
+        new_atoms[atom] = atom._evaluated((rewritten, Integer(0)))
+    condition = to_boolean(formula._xreplace_evaluated(new_atoms))
+    integrand = cancel(expand(_evaluated(to_expr(f), replacement)))
+    return Frame(integrand, condition, ys, length)
 
 
-class _Frame:
-    """The transformed problem of :func:`aligned_frame`: the similarity
-    has ratio ``1/ratio``."""
-
-    def __init__(self, integrand: Expr, condition: Boolean, variables: list[Symbol], ratio: Expr) -> None:
-        self.integrand = integrand
-        self.condition = condition
-        self.variables = variables
-        self.ratio = ratio
-
-
-def axisymmetric_integral(f: Expr, formula: Boolean, names: Sequence[Symbol],
+def axisymmetric_integral(f: ExprLike, formula: Boolean, names: Sequence[Symbol],
                           assumptions: Sequence[Boolean] = (), measure: str = 'lebesgue') -> Optional[Expr]:
     """The integral of ``f`` over the region ``formula`` of the variables
     ``names`` through the profile of its rotational symmetry, see the
     module documentation; ``None`` when there is no group of variables to
     rotate or the profile integral is not evaluated. ``measure`` is
     ``'lebesgue'`` or ``'hausdorff'`` as in
-    :func:`~sympy_extras.integrals.regions.integrate_by_ranges`.
+    :func:`~sympy_extras.integrals.regions.integrate_by_ranges`, which
+    computes the profile integral on SymPy's side.
 
-    >>> from sympy import symbols, sqrt, Rational
+    >>> from sympy_extras.core import Symbol, Integer, Rational
     >>> from sympy_extras.integrals.axisymmetric import axisymmetric_integral
-    >>> x, y, z = symbols('x y z')
-    >>> axisymmetric_integral(1, (x**2 + y**2 + z**2 < 1) & (x**2 + y**2 < Rational(1, 4)), [x, y, z])
+    >>> x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+    >>> axisymmetric_integral(Integer(1), (x**2 + y**2 + z**2 < 1) & (x**2 + y**2 < Rational(1, 4)), [x, y, z])
     pi*(16 - 9*sqrt(3))/12 + sqrt(3)*pi/4
     """
-    from .regions import IntegralByRanges, integrate_by_ranges
-    f_ = as_expr(f)
+    from .axisymmetric_sympy import integrate_by_ranges_of_core
+    f_ = to_expr(f)
     group = rotation_group(f_, formula, names)
     if group is None:
         # a ball cut by tilted planes: the frame along their normal
@@ -280,26 +385,24 @@ def axisymmetric_integral(f: Expr, formula: Boolean, names: Sequence[Symbol],
         # a similarity of ratio 1/|a| scales a measure of dimension d by |a|**(-d)
         equations = len([atom for atom in formula.atoms(Relational) if isinstance(atom, Eq)])
         dimension = len(names) - (equations if measure == 'hausdorff' else 0)
-        return as_expr(value / frame.ratio**dimension)
+        return value / frame.ratio**dimension
     k = len(group)
     # a plain dummy: with positive=True the relation rho > 0 evaluates to
     # True and vanishes, the profile is even in rho, and the odd weight
     # rho**(k-1) integrates to 0 over both signs
-    rho = Dummy('rho')
-    replacement: dict[Expr, Expr] = {group[0]: rho}
+    rho = _fresh('rho')
+    replacement: dict[Basic, Basic] = {group[0]: rho}
     for v in group[1:]:
-        replacement[v] = as_expr(0)
-    profile = as_boolean(formula.xreplace(replacement))
+        replacement[v] = Integer(0)
+    profile = to_boolean(formula._xreplace_evaluated(replacement))
     rest = [v for v in names if v not in group]
-    weight = as_expr(_sphere_area(k) * rho**(k - 1))
-    reduced = as_expr(f_.xreplace(replacement) * weight)
-    condition = as_boolean(And(profile, rho > 0))
-    outer = list(assumptions)
+    weight = _sphere_area(k) * rho**(k - 1)
+    reduced = _evaluated(f_, replacement) * weight
+    condition = and_(profile, rho > 0)
     # the radius last first: the profile is solved for it (a cap is
     # rho = sqrt(1 - z**2)), and the other order is the fallback
     for order in (rest + [rho], [rho] + rest):
-        value = attempt(lambda: integrate_by_ranges(reduced, condition, order, outer, measure=measure),
-                        settings.timeout)
-        if value is not None and not value.has(IntegralByRanges) and not free_symbols(value) & {rho}:
+        value = integrate_by_ranges_of_core(reduced, condition, order, list(assumptions), measure, settings.timeout)
+        if value is not None and rho not in value.free_symbols:
             return value
     return None

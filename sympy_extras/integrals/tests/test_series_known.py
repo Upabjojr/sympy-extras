@@ -8,7 +8,7 @@ from sympy import symbols, log, exp, oo, pi, S, atan, Catalan, polygamma, zeta, 
 from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.integrals.definite import verify_numerically
-from sympy_extras.integrals.series import series_integral
+from sympy_extras.integrals.series_sympy import series_integral
 
 x = symbols('x')
 p = symbols('p', positive=True)
