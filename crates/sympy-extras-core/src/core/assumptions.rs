@@ -1304,6 +1304,9 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         f if crate::functions::elementary::inverse::is_inverse(f) => {
             crate::functions::elementary::inverse::inverse_facts(f, &e.args()[0])
         }
+        g @ (super::basic::Function::Max | super::basic::Function::Min) => {
+            crate::functions::elementary::miscellaneous::minmax_facts(g, e.args())
+        }
         g @ (super::basic::Function::Arg | super::basic::Function::Atan2) => {
             crate::functions::elementary::argument::argument_facts(g, e.args())
         }

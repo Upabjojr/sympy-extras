@@ -229,6 +229,8 @@ pub enum Function {
     Acsch,
     Arg,
     Atan2,
+    Max,
+    Min,
 }
 
 impl Function {
@@ -268,6 +270,8 @@ impl Function {
             Function::Acsch => "acsch",
             Function::Arg => "arg",
             Function::Atan2 => "atan2",
+            Function::Max => "Max",
+            Function::Min => "Min",
         }
     }
 
@@ -307,6 +311,8 @@ impl Function {
             Function::Acsch => "Acsch",
             Function::Arg => "Arg",
             Function::Atan2 => "Atan2",
+            Function::Max => "Max",
+            Function::Min => "Min",
         }
     }
 
@@ -319,7 +325,7 @@ impl Function {
             Function::Re => 41,
             Function::Im => 42,
             Function::Arg => 43,
-            Function::Atan2 => 10000,
+            Function::Atan2 | Function::Max | Function::Min => 10000,
             Function::Sin => 20,
             Function::Cos => 21,
             Function::Tan => 22,

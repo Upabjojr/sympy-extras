@@ -176,6 +176,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Csc" => Basic::new(Head::Function(Function::Csc), args()?),
         "Sinh" => Basic::new(Head::Function(Function::Sinh), args()?),
         "Arg" => Basic::new(Head::Function(Function::Arg), args()?),
+        "Max" => Basic::new(Head::Function(Function::Max), args()?),
+        "Min" => Basic::new(Head::Function(Function::Min), args()?),
         "Atan2" => Basic::new(Head::Function(Function::Atan2), args()?),
         "Asin" => Basic::new(Head::Function(Function::Asin), args()?),
         "Acos" => Basic::new(Head::Function(Function::Acos), args()?),
@@ -295,6 +297,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
                     "trigonometric"
                 }
+                Function::Max | Function::Min => "miscellaneous",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse_trigonometric(*f) => "trigonometric",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse(*f) => "hyperbolic",
                 Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
@@ -1739,6 +1742,8 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
         "le" => rl::le(&a[0], &a[1]).map_err(e)?,
         "gt" => rl::gt(&a[0], &a[1]).map_err(e)?,
         "ge" => rl::ge(&a[0], &a[1]).map_err(e)?,
+        "max_" => sympy_extras_core::functions::elementary::miscellaneous::max_(&a).map_err(e)?,
+        "min_" => sympy_extras_core::functions::elementary::miscellaneous::min_(&a).map_err(e)?,
         "reversed" => rl::reversed(&a[0]),
         "negated" => rl::negated(&a[0]),
         "reversedsign" => rl::reversedsign(&a[0]).map_err(e)?,

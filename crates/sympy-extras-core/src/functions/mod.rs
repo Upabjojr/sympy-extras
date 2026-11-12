@@ -44,7 +44,14 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::Asech
         | Function::Acsch) => elementary::inverse::inverse_fdiff(g, x),
         Function::Atan2 => elementary::argument::atan2_fdiff(e, argindex),
-        Function::Re | Function::Im | Function::Conjugate | Function::Sign | Function::Abs | Function::Arg => {
+        Function::Re
+        | Function::Im
+        | Function::Conjugate
+        | Function::Sign
+        | Function::Abs
+        | Function::Arg
+        | Function::Max
+        | Function::Min => {
             unreachable!("these functions have their own derivatives")
         }
     }
@@ -100,6 +107,7 @@ pub fn eval_derivative(f: Function, e: &Basic, s: &Basic) -> PolyResult<Option<B
             unevaluated()
         }
         Function::Arg => elementary::argument::arg_derivative(e, s)?,
+        Function::Max | Function::Min => elementary::miscellaneous::minmax_derivative(e, s)?,
         Function::Conjugate => {
             if is_true(s, real) {
                 c::conjugate(&derivative(a, s)?)?
@@ -118,6 +126,9 @@ pub fn eval_derivative(f: Function, e: &Basic, s: &Basic) -> PolyResult<Option<B
 pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if f == Function::Atan2 {
         return elementary::argument::atan2(&args[0], &args[1]);
+    }
+    if matches!(f, Function::Max | Function::Min) {
+        return elementary::miscellaneous::minmax(f, args);
     }
     let x: &Basic = &args[0];
     use elementary::{complexes as c, exponential as e, hyperbolic as h, trigonometric as t};
@@ -154,6 +165,6 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         Function::Asech => elementary::inverse::asech(x),
         Function::Acsch => elementary::inverse::acsch(x),
         Function::Arg => elementary::argument::arg(x),
-        Function::Atan2 => unreachable!("atan2 has two arguments"),
+        Function::Atan2 | Function::Max | Function::Min => unreachable!("evaluated above with all their arguments"),
     }
 }
