@@ -9,7 +9,7 @@ SymPy dummies carrying the assumptions).
 The native refinement calls no SymPy at run time: the simplification
 of relations and of compound Boolean formulas are ports of SymPy's
 (:func:`~sympy_extras.assumptions.refine.simplify_relational`,
-:mod:`sympy_extras.assumptions.boolsimp`), and the proofs of the
+:mod:`sympy_extras.logic.boolsimp`), and the proofs of the
 structure theorem are native
 (:class:`sympy_extras.simplify.structure.ElementaryTower`).
 

@@ -185,9 +185,6 @@ sympy_extras/
         refine.py            refine(), simplify(): the core's refine and simplify plus CAD-decided handlers, simplify_relational
                              (native, PORTED FROM SYMPY Relational._eval_simplify)
         refine_sympy.py      the SymPy face of refine (_Refiner too)
-        boolsimp.py          simplify_boolean, simplify_univariate: SymPy's simplify of compound Booleans (native, PORTED
-                             FROM SYMPY boolalg's _eval_simplify; the univariate intervals computed natively, the
-                             patterns of And and Or matched structurally; used by refine's simplify)
         resolve.py           resolve(): quantifier elimination over R, Z, C (native, with the native CAD, virtual
                              substitution, Cooper and comprehensive Groebner systems)
         resolve_sympy.py     the SymPy face of resolve
@@ -548,9 +545,10 @@ sympy_extras/
     logic/                   propositional logic on the core's Booleans (exports nothing: import the modules)
         boolalg.py           simplify_logic, SOPform, POSform: minimal two-level forms by Quine-McCluskey (native,
                              PORTED FROM SYMPY logic/boolalg)
-        boolsimp.py          simplify_boolean, simplify_univariate: SymPy's simplify of Boolean formulas (the intervals of
-                             one variable, the patterns of the relations of And and Or) (native, PORTED FROM SYMPY
-                             logic/boolalg; no Xor)
+        boolsimp.py          simplify_boolean, simplify_univariate: SymPy's simplify of Boolean formulas (native, PORTED
+                             FROM SYMPY boolalg's _eval_simplify; the univariate intervals computed natively, maximal,
+                             endpoints decided on the formula; the patterns of And and Or matched structurally; Xor
+                             without the algebraic normal form; used by piecewise and by refine's simplify)
         cnf.py               to_clauses, conjunction, Clauses: conjunctive normal forms encoded with integers (native,
                              PORTED FROM SYMPY assumptions/cnf)
         dpll2.py             SATSolver, propositional_models, is_satisfiable: DPLL with watched literals and VSIDS, every
