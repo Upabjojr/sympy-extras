@@ -8,19 +8,12 @@ ported.
 :class:`KovacicSolution` of :func:`liouvillian_solution` carries SymPy
 expressions.
 
-The steps of the native module which stay written on SymPy are called
-from it at run time (the functions ending in ``_of_core``, which take and
-return objects of the core; the native :mod:`~sympy_extras.solvers.linear_ode`,
-:mod:`~sympy_extras.solvers.factorization` and
-:mod:`~sympy_extras.solvers.special` call the first two as well):
-
-- :func:`integrate_of_core`: SymPy's ``integrate``, for the
-  exponentials of the integrals of ``omega``, the factor
-  ``exp(-Integral(p)/2)`` and the reduction of order;
-- :func:`integral_of_core`: the unevaluated ``Integral`` of SymPy (a
-  wrapped node of the core) of what it cannot integrate;
-- :func:`riccati_of_core`: SymPy's rational Riccati solver
-  (``sympy.solvers.ode.riccati.solve_riccati``), the fallback of case 1.
+The step of the native module which stays written on SymPy is called
+from it at run time (a function ending in ``_of_core``, which takes and
+returns objects of the core): :func:`riccati_of_core`, SymPy's rational
+Riccati solver (``sympy.solvers.ode.riccati.solve_riccati``), the
+fallback of case 1. The antiderivatives are native
+(:func:`sympy_extras.integrals.indefinite.closed_antiderivative`).
 
 Examples
 ========
@@ -34,7 +27,7 @@ Examples
 """
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Optional
 
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
@@ -54,8 +47,7 @@ from sympy_extras.settings import settings
 
 from . import kovacic as native
 
-__all__ = ['liouvillian_solution', 'dsolve_kovacic', 'normal_form', 'KovacicSolution', 'integrate_of_core',
-           'integral_of_core', 'riccati_of_core']
+__all__ = ['liouvillian_solution', 'dsolve_kovacic', 'normal_form', 'KovacicSolution', 'riccati_of_core']
 
 
 class KovacicSolution:
@@ -98,29 +90,8 @@ class KovacicSolution:
 # ---------------------------------------------------------------------------
 # the steps of the native module which stay on SymPy
 
-def integrate_of_core(e: CoreExpr, x: CoreSymbol, conds: Literal['none', 'piecewise'],
-                      closed: bool) -> Optional[CoreExpr]:
-    """SymPy's ``integrate(e, x, conds=conds)`` under the time limit of
-    the settings: ``None`` when it does not finish or leaves an
-    ``Integral``, and with ``closed`` also when the antiderivative has a
-    ``Piecewise`` or an ``exp_polar``."""
-    from sympy.functions.elementary.exponential import exp_polar
-    from sympy.functions.elementary.piecewise import Piecewise
-    from sympy.integrals.integrals import Integral, integrate
-    integrand, variable = sympy_expr(e), _sympy_symbol(x)
-    found = attempt(lambda: integrate(integrand, variable, conds=conds), settings.timeout)
-    if found is None or found.has(Integral):
-        return None
-    if closed and found.has(Piecewise, exp_polar):
-        return None
-    return core_expr(as_expr(found))
 
 
-def integral_of_core(e: CoreExpr, x: CoreSymbol) -> CoreExpr:
-    """The unevaluated ``Integral(e, x)`` of SymPy, as a node of the core
-    (a wrapper of the SymPy object, :mod:`sympy_extras.interop`)."""
-    from sympy.integrals.integrals import Integral
-    return core_expr(Integral(sympy_expr(e), _sympy_symbol(x)))
 
 
 def riccati_of_core(r: CoreExpr, x: CoreSymbol) -> Optional[list[CoreExpr]]:

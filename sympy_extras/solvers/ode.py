@@ -16,14 +16,14 @@ native ones, the first order equations go to the native
 :func:`~sympy_extras.solvers.first_order.dsolve_first_order`, and a
 solution is checked by :func:`check_ode_solution`, a port of SymPy's
 ``checkodesol`` (``sympy.solvers.ode.subscheck``) on the core.
-:mod:`sympy_extras.solvers.ode_sympy` is its face on SymPy objects. Three
+:mod:`sympy_extras.solvers.ode_sympy` is its face on SymPy objects. Two
 steps have no native counterpart and go through SymPy at run time (the
 functions ending in ``_of_core`` of the faces): SymPy's ``dsolve`` of the
-reduced equations (:func:`~sympy_extras.solvers.pde_sympy.dsolve_of_core`),
-its ``solve`` of the canonical coordinates and of the implicit solutions
-(:func:`~sympy_extras.solvers.pde_sympy.solve_of_core`) and its
-``integrate`` of the quadratures
-(:func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`).
+reduced equations (:func:`~sympy_extras.solvers.pde_sympy.dsolve_of_core`)
+and its ``solve`` of the canonical coordinates and of the implicit solutions
+(:func:`~sympy_extras.solvers.pde_sympy.solve_of_core`); the
+quadratures come from the native indefinite integration
+(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`).
 
 The steps which may not terminate (integration, ``dsolve`` and ``solve``
 of SymPy, the verification of the solutions) run under a time limit, see
@@ -145,8 +145,8 @@ def _solve(e: Expr, v: Symbol, timeout: Optional[float]) -> list[Expr]:
 def _integral(e: Expr, v: Symbol, timeout: Optional[float]) -> Optional[Expr]:
     """An antiderivative by SymPy's ``integrate`` within the time limit,
     ``None`` when it gives up or leaves an ``Integral``."""
-    from .kovacic_sympy import integrate_of_core
-    found = _with_limit(lambda: integrate_of_core(e, v, 'piecewise', False), timeout)
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    found = _with_limit(lambda: closed_antiderivative(e, v, cases=True), timeout)
     return found
 
 
@@ -156,8 +156,8 @@ def _quadrature(e: Expr, v: Symbol, timeout: Optional[float]) -> Expr:
     found = _integral(e, v, timeout)
     if found is not None:
         return found
-    from .kovacic_sympy import integral_of_core
-    return integral_of_core(e, v)
+    from sympy_extras.integrals.integral import Integral
+    return Integral(e, v)
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +244,7 @@ def canonical_coordinates(symmetry: Symmetry, timeout: Optional[float] = DEFAULT
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate (kovacic_sympy.integrate_of_core)
+    >>> import sympy_extras.interop  # SymPy's routes of indefinite, if reached
     >>> from sympy_extras.core import Function, symbols
     >>> from sympy_extras.solvers.ode import canonical_coordinates, ode_symmetries
     >>> x = symbols('x')

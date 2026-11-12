@@ -430,17 +430,16 @@ sympy_extras/
                              Baker's bound and de Weger's LLL reduction (native; mpmath for the numerics)
         thue_equation_sympy.py the SymPy face of thue_equation (thue on SymPy forms)
         kovacic.py           liouvillian_solution, dsolve_kovacic, normal_form, KovacicSolution: Kovacic's algorithm (native;
-                             SymPy's integrate and rational Riccati solver through kovacic_sympy)
-        kovacic_sympy.py     the SymPy face of kovacic, and the steps which stay on SymPy (integrate_of_core,
-                             integral_of_core, riccati_of_core; also used by linear_ode, factorization, special, linear_systems)
+                             the native indefinite integration; SymPy's rational Riccati solver through kovacic_sympy)
+        kovacic_sympy.py     the SymPy face of kovacic, and the step which stays on SymPy (riccati_of_core)
         linear_ode.py        LinearOperator (the Ore ring K[D]), polynomial_solutions, rational_solutions,
                              hyperexponential_solutions/search, reduce_order_linear, dsolve_linear, gcrd, lclm, UPoly
-                             (polynomials with any constant coefficients) (native; SymPy's integrate through kovacic_sympy,
-                             its dsolve through linear_ode_sympy)
+                             (polynomials with any constant coefficients) (native; the native indefinite integration;
+                             SymPy's dsolve through linear_ode_sympy)
         linear_ode_sympy.py  the SymPy face of linear_ode (the old API; its dsolve_of_core)
         darboux.py           darboux_polynomials, exponential_factors, darboux_integrating_factor, darboux_first_integral,
                              prelle_singer, vector_field: Darboux polynomials and the Prelle–Singer procedure (native, over
-                             QQ, number fields and QQ(parameters); SymPy's integrate through kovacic_sympy)
+                             QQ, number fields and QQ(parameters); the native indefinite integration)
         darboux_sympy.py     the SymPy face of darboux
         factorization.py     factor_operator, right_factor, left_factor, OperatorFactorization (Beke), variation_of_parameters,
                              solve_factored (native; SymPy's solve of the Grassmann–Plücker relations through
@@ -450,7 +449,8 @@ sympy_extras/
                              hyperexponential_system_solutions, dsolve_system, LinearSystemSolution: Y' = A Y + b by cyclic
                              vectors, Barkatou's rational solutions, variation of constants, rational_integral, on
                              ExprMatrix (native; the native linear_ode, factorization, matrix exponential, rational
-                             integrator and RootSum; SymPy's integrate and linodesolve through linear_systems_sympy)
+                             integrator, indefinite integration and RootSum; SymPy's linodesolve through
+                             linear_systems_sympy)
         linear_systems_sympy.py the SymPy face of linear_systems (SymPy matrices), and linodesolve_of_core
         irregular.py         Place, irregular_places, local_exponential_parts, finite_exponential_parts, conjugate_sum:
                              exponential parts at irregular finite points (native; number fields of polys.domains)
@@ -467,8 +467,8 @@ sympy_extras/
         charpit_sympy.py     the SymPy face of charpit, and solve_of_core, antiderivative_of_core
         dae.py               dsolve_dae, core_nilpotent_decomposition, dae_index, dae_matrices, check_dae,
                              matrix_exponential (Putzer): linear DAEs with constant coefficients on ExprMatrix
-                             (native; SymPy's integrate of the particular solution through dae_sympy)
-        dae_sympy.py         the SymPy face of dae (SymPy matrices), and integral_of_core
+                             (native; the native indefinite integration of the particular solution)
+        dae_sympy.py         the SymPy face of dae (SymPy matrices)
         lie.py               JetSpace, Symmetry, symmetries, check_symmetry, determining_system, symmetry_janet_basis:
                              Lie point symmetries by a polynomial ansatz (native; the Janet basis of polys.differential;
                              SymPy's solve of a leading derivative of degree three or more through charpit_sympy)
@@ -476,26 +476,26 @@ sympy_extras/
         ode.py               ode_symmetries, canonical_coordinates, reduce_order, dsolve_lie, solve_ode, ReducedODE,
                              check_ode_solution (SymPy's checkodesol, PORTED FROM SYMPY): ODEs of any order by
                              reduction in canonical coordinates, and the dispatcher solve_ode (native; SymPy's dsolve and
-                             solve through pde_sympy, its integrate through kovacic_sympy)
+                             solve through pde_sympy; the native indefinite integration)
         ode_sympy.py         the SymPy face of ode (ReducedODE with SymPy attributes, the symmetries of lie_sympy)
         second_order.py      second_order_rhs, integrating_factor_xy, integrating_factor_p, is_linearizable, linearize,
                              rectify_symmetries, commuting_pair, transformed_rhs, dsolve_second_order, FirstIntegral,
-                             Linearization: integrating factors and linearisations of y'' = Phi (native; SymPy's
-                             integrate, dsolve and solve through kovacic_sympy, first_order_sympy, charpit_sympy and
+                             Linearization: integrating factors and linearisations of y'' = Phi (native; the native
+                             indefinite integration; SymPy's dsolve and solve through first_order_sympy, charpit_sympy and
                              factorization_sympy)
         second_order_sympy.py the SymPy face of second_order
         pde.py               pde_symmetries, similarity_reduction, pdsolve_lie, check_pde_solution: similarity
                              reductions of PDEs (native; SymPy's dsolve and solve through pde_sympy)
         pde_sympy.py         the SymPy face of pde, and dsolve_of_core, solve_of_core
         first_order.py       riccati_ode, chini_ode, abel_ode, lagrange_ode, dsolve_first_order: Riccati, Chini, Abel
-                             and d'Alembert–Lagrange equations (native; SymPy's integrate and dsolve and the
-                             Prelle–Singer procedure of darboux through first_order_sympy)
-        first_order_sympy.py the SymPy face of first_order (used by ode, darboux), and integrate_of_core,
-                             dsolve_of_core, prelle_singer_of_core
+                             and d'Alembert–Lagrange equations (native; the native indefinite integration; SymPy's
+                             dsolve and the Prelle–Singer procedure of darboux through first_order_sympy)
+        first_order_sympy.py the SymPy face of first_order (used by ode, darboux), and dsolve_of_core,
+                             prelle_singer_of_core
         abel.py              abel_coefficients, abel_invariants, abel_equivalence, particular_solution, air_solution,
                              abel_by_invariants, AbelInvariants, AbelTransformation: invariants and integrable classes
-                             of Abel equations (native; SymPy's integrate and solve through the faces of kovacic,
-                             factorization and charpit)
+                             of Abel equations (native; the native indefinite integration; SymPy's solve through the
+                             faces of factorization and charpit)
         abel_sympy.py        the SymPy face of abel
         tests/
     simplify/

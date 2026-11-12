@@ -9,16 +9,13 @@ native functions. The private helpers ``_derivative_polynomial`` and
 ``_explicit_rhs`` stay written on SymPy for
 :mod:`~sympy_extras.solvers.darboux`, which is written on SymPy too.
 
-The steps of the native module which stay written on SymPy are called
-from it at run time (the functions ending in ``_of_core``, which take and
-return objects of the core):
-
-- :func:`integrate_of_core`: SymPy's ``integrate``, for the two sides
-  of Chini's separated equation and the integral of the linear term (an
-  unevaluated ``Integral`` when it does not finish);
-- :func:`dsolve_of_core`: SymPy's ``dsolve``, for the linear equation of
-  a Lagrange equation and the inverse Riccati equations of the AIR
-  class (:mod:`~sympy_extras.solvers.abel`) the native solver misses.
+The step of the native module which stays written on SymPy is called
+from it at run time (a function ending in ``_of_core``, which takes and
+returns objects of the core): :func:`dsolve_of_core`, SymPy's ``dsolve``,
+for the linear equation of a Lagrange equation and the inverse Riccati
+equations of the AIR class (:mod:`~sympy_extras.solvers.abel`) the native
+solver misses. The antiderivatives are native
+(:func:`sympy_extras.integrals.indefinite.closed_antiderivative`).
 
 Examples
 ========
@@ -38,20 +35,15 @@ from sympy.core.basic import Basic
 from sympy.core.function import AppliedUndef
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import as_expr
-from sympy_extras.assumptions.ask_sympy import _sympy_symbol
-from sympy_extras.assumptions.intervals_sympy import core_expr, sympy_expr
 from sympy_extras.core.basic import Basic as CoreBasic
-from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
 from sympy_extras.settings import settings
 
 from . import first_order as native
 
 __all__ = ['riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order',
-           'integrate_of_core', 'dsolve_of_core']
+           'dsolve_of_core']
 
 
 # ---------------------------------------------------------------------------
@@ -92,17 +84,6 @@ def _optional(found: Optional[CoreBasic]) -> Optional[Basic]:
 # ---------------------------------------------------------------------------
 # the steps of the native modules which stay on SymPy
 
-def integrate_of_core(e: CoreExpr, x: CoreSymbol) -> CoreExpr:
-    """SymPy's ``integrate(e, x, conds='none')`` under the time limit of
-    the settings, as it comes (an antiderivative with unevaluated parts
-    included), and the unevaluated ``Integral(e, x)`` (a wrapped node of
-    the core) when it does not finish."""
-    from sympy.integrals.integrals import Integral, integrate
-    integrand, variable = sympy_expr(e), _sympy_symbol(x)
-    result = attempt(lambda: integrate(integrand, variable, conds='none'), settings.timeout)
-    if result is None:
-        return core_expr(Integral(integrand, variable))
-    return core_expr(as_expr(result))
 
 
 def dsolve_of_core(equation: CoreBasic, f: CoreAppliedUndef) -> Optional[CoreBasic]:

@@ -108,7 +108,7 @@ from .integral import Integral, is_unevaluated
 from .rewriting import Substitution
 
 __all__ = ['indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'real_form', 'conjugate_logarithms',
-           'METHODS', 'TYPED', 'SYMPY_METHODS']
+           'closed_antiderivative', 'METHODS', 'TYPED', 'SYMPY_METHODS']
 
 Method = Callable[[Expr, Symbol, Assumptions], Optional[Expr]]
 
@@ -716,6 +716,36 @@ def indefinite_integral(f: ExprLike, x: Symbol, assumptions: Assumptions = None,
     Piecewise((x*exp(k*x)/k - exp(k*x)/k**2, Ne(k, 0)), (x**2/2, True))
     """
     return _indefinite(to_expr(f), x, assumptions, special_values, True)
+
+
+def closed_antiderivative(f: ExprLike, x: Symbol, cases: bool = False, closed: bool = False,
+                          seconds: Optional[float] = None) -> Optional[Expr]:
+    """An antiderivative of ``f`` by :func:`indefinite_integral` within
+    ``seconds`` (the time limit of the settings when ``None``), with the
+    cases of the special values of the parameters when ``cases`` (the
+    generic antiderivative alone otherwise, as SymPy's ``integrate(f, x,
+    conds='none')``); ``None`` when no antiderivative checks or the time
+    is up, and with ``closed`` also when it has a ``Piecewise`` or a polar
+    number. The quadratures of the native ODE solvers.
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp
+    >>> from sympy_extras.integrals.indefinite import closed_antiderivative
+    >>> x, k = symbols('x k')
+    >>> closed_antiderivative(exp(k*x), x), closed_antiderivative(exp(k*x), x, cases=True)
+    (exp(k*x)/k, Piecewise((exp(k*x)/k, Ne(k, 0)), (x, True)))
+    >>> closed_antiderivative(exp(k*x), x, cases=True, closed=True) is None
+    True
+    """
+    from sympy_extras.functions.elementary.piecewise import Piecewise
+    f_ = to_expr(f)
+    limit = settings.timeout if seconds is None else seconds
+    found = attempt(lambda: _indefinite(f_, x, None, cases, True), limit, native=True)
+    if found is None or is_unevaluated(found):
+        return None
+    if closed and found.has(Piecewise, ExpPolar):
+        return None
+    return found
 
 
 def _indefinite(f: Expr, x: Symbol, assumptions: Assumptions, special_values: bool, sympy_style: bool) -> Expr:

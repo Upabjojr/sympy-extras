@@ -33,7 +33,16 @@ remove public functions. Breaking changes are listed here when they happen.
   objects is `sympy_extras.integrals.indefinite_sympy`, which `definite`
   uses. The native `antiderivative` calls the native `indefinite`
   directly: `antiderivative_sympy.verified_antiderivative_of_core` is
-  removed.
+  removed. The quadratures of the native ODE solvers (`kovacic`,
+  `linear_ode`, `factorization`, `linear_systems`, `special`, `darboux`,
+  `abel`, `ode`, `second_order`, `first_order`, `dae`) go through the
+  native `indefinite` too (the new `closed_antiderivative`; SymPy's
+  `integrate(conds='none')` becomes the generic antiderivative,
+  `conds='piecewise'` the one with the cases of the special values), and
+  an integral left undone is the native `Integral`:
+  `kovacic_sympy.integrate_of_core` and `integral_of_core`,
+  `first_order_sympy.integrate_of_core` and `dae_sympy.integral_of_core`
+  are removed.
 - **Breaking**: Trager's algorithm `sympy_extras.integrals.trager`
   (`trager_antiderivative`, `trager_reduce`, `hermite_reduce_algebraic`,
   `is_nonelementary_algebraic`) is native on the typed core: its functions
