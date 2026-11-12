@@ -8,12 +8,9 @@ ported.
 :class:`KovacicSolution` of :func:`liouvillian_solution` carries SymPy
 expressions.
 
-The step of the native module which stays written on SymPy is called
-from it at run time (a function ending in ``_of_core``, which takes and
-returns objects of the core): :func:`riccati_of_core`, SymPy's rational
-Riccati solver (``sympy.solvers.ode.riccati.solve_riccati``), the
-fallback of case 1. The antiderivatives are native
-(:func:`sympy_extras.integrals.indefinite.closed_antiderivative`).
+The fallback of case 1, SymPy's rational Riccati solver, is native
+(:func:`sympy_extras.solvers.kovacic.rational_riccati`), and so are the
+antiderivatives (:func:`sympy_extras.integrals.indefinite.closed_antiderivative`).
 
 Examples
 ========
@@ -34,20 +31,16 @@ from sympy.core.expr import Expr
 from sympy.core.function import AppliedUndef
 from sympy.core.symbol import Symbol
 
-from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import as_expr
-from sympy_extras.assumptions.ask_sympy import _core_symbol, _sympy_symbol
+from sympy_extras.assumptions.ask_sympy import _core_symbol
 from sympy_extras.assumptions.intervals_sympy import core_expr, sympy_expr
 from sympy_extras.core.basic import Basic as CoreBasic
-from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy
-from sympy_extras.settings import settings
 
 from . import kovacic as native
 
-__all__ = ['liouvillian_solution', 'dsolve_kovacic', 'normal_form', 'KovacicSolution', 'riccati_of_core']
+__all__ = ['liouvillian_solution', 'dsolve_kovacic', 'normal_form', 'KovacicSolution']
 
 
 class KovacicSolution:
@@ -89,26 +82,6 @@ class KovacicSolution:
 
 # ---------------------------------------------------------------------------
 # the steps of the native module which stay on SymPy
-
-
-
-
-
-def riccati_of_core(r: CoreExpr, x: CoreSymbol) -> Optional[list[CoreExpr]]:
-    """The rational solutions ``omega`` of ``omega' = r - omega**2`` which
-    SymPy's ``solve_riccati`` finds under the time limit of the settings
-    (``None`` when it does not finish)."""
-    from sympy.core.function import Function
-    from sympy.core.relational import Eq
-    from sympy.core.singleton import S
-    from sympy.solvers.ode.riccati import solve_riccati
-    variable = _sympy_symbol(x)
-    f = Function('f')(variable)
-    rhs = sympy_expr(r)
-    solutions = attempt(lambda: solve_riccati(f, variable, rhs, S.Zero, S.NegativeOne), settings.timeout)
-    if solutions is None:
-        return None
-    return [core_expr(as_expr(s.rhs if isinstance(s, Eq) else s)) for s in solutions]
 
 
 # ---------------------------------------------------------------------------
