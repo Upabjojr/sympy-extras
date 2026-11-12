@@ -2279,6 +2279,22 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             }
             .map_err(e)?
         }
+        "bspline_basis" | "bspline_basis_set" => {
+            use sympy_extras_core::functions::special::bsplines as bs;
+            let small = |b: &Basic| -> PyResult<i64> {
+                b.as_rational()
+                    .filter(|v| sympy_extras_core::numbers::denom(v) == sympy_extras_core::numbers::Int::ONE)
+                    .and_then(|v| i64::try_from(&sympy_extras_core::numbers::numer(v)).ok())
+                    .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("an integer is expected"))
+            };
+            let d: i64 = small(&a[0])?;
+            let knots: Vec<Basic> = a[1].args().to_vec();
+            if name == "bspline_basis" {
+                bs::bspline_basis(d, &knots, small(&a[2])?, &a[3]).map_err(e)?
+            } else {
+                Basic::new(Head::Tuple, bs::bspline_basis_set(d, &knots, &a[2]).map_err(e)?)
+            }
+        }
         "piecewise" => {
             sympy_extras_core::functions::elementary::piecewise::piecewise_of_pairs(a.to_vec()).map_err(e)?
         }
