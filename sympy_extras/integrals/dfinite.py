@@ -271,14 +271,25 @@ def _minimal_annihilator(F: Expr, v: Symbol, parameter: Symbol, depth: int = 0) 
     terms = [a for a in F.args if isinstance(a, Expr)] if isinstance(F, Add) else [F]
     spaces: list[list[Factor]] = []
     current: list[Vector] = []
+    keys: list[tuple[str, ...]] = []
     dimension = 0
     for term in terms:
         found = _closure_of(term, v, parameter, True, depth)
         if found is None:
             return None
-        coefficient, factors = found
+        coefficient, factors_ = found
+        factors = sorted(factors_, key=repr)
+        zero: Basis = tuple(0 for _ in factors)
+        # the terms with the same factors share their space (the rational
+        # terms among them: x**2 + 1 is of order one)
+        key = tuple(repr(f) for f in factors)
+        if key in keys:
+            vector = current[keys.index(key)]
+            vector[zero] = add(vector.get(zero, _ZERO), coefficient)
+            continue
+        keys.append(key)
         spaces.append(factors)
-        current.append({tuple(0 for _ in factors): coefficient})
+        current.append({zero: coefficient})
         size = 1
         for factor in factors:
             size *= factor.order

@@ -184,7 +184,10 @@ sympy_extras/
         ask_sympy.py         the SymPy face of ask
         refine.py            refine(), simplify(): the core's refine and simplify plus CAD-decided handlers, simplify_relational
                              (native, PORTED FROM SYMPY Relational._eval_simplify)
-        refine_sympy.py      the SymPy face of refine (_Refiner too), SymPy's simplify of compound Booleans, the proofs
+        refine_sympy.py      the SymPy face of refine (_Refiner too)
+        boolsimp.py          simplify_boolean, simplify_univariate: SymPy's simplify of compound Booleans (native, PORTED
+                             FROM SYMPY boolalg's _eval_simplify; the univariate intervals computed natively, the
+                             patterns of And and Or matched structurally; used by refine's simplify)
         resolve.py           resolve(): quantifier elimination over R, Z, C (native, with the native CAD, virtual
                              substitution, Cooper and comprehensive Groebner systems)
         resolve_sympy.py     the SymPy face of resolve
@@ -299,13 +302,14 @@ sympy_extras/
                              reduction-based creative telescoping by Hermite reduction (native)
         reduction_sympy.py   the SymPy face of reduction
         dfinite.py           Chyzak's algorithm: chyzak, closure, annihilators, normal_form, dfinite_ode, dfinite_integral
-                             (native; SymPy's expr_to_holonomic of annihilators and of the factors not written down
-                             through dfinite_sympy)
-        dfinite_sympy.py     the SymPy face of dfinite, and holonomic_of_core
+                             (native; the annihilators by the first linear dependency of the derivatives in the
+                             closure, the equations of the factors written down or derived from their derivatives)
+        dfinite_sympy.py     the SymPy face of dfinite
         parametric.py        parametric_integral, candidate_parameters, ParametricIntegrator: differentiation under the
                              integral sign (Feynman's trick) (native; the integrals and the numerical check by the native
-                             definite's DefiniteIntegrator; SymPy's integrate in the parameter through parametric_sympy)
-        parametric_sympy.py  the SymPy face of parametric, and antiderivative_of_core
+                             definite's DefiniteIntegrator; the antiderivative in the parameter by the native
+                             indefinite's closed_antiderivative)
+        parametric_sympy.py  the SymPy face of parametric
         laplace.py           laplace_rules, laplace_integral, laplace_of_convolution, transform, real_arguments: the
                              operational rules of the Laplace transform (native; the transforms of the pieces by the
                              native definite; the periods by calculus.util.periodicity)
@@ -476,8 +480,9 @@ sympy_extras/
                              sympy_extras._special_values)
         _special_values_sympy.py the SymPy face of _special_values
         charpit.py           complete_integral, check_complete_integral: complete integrals of first order PDEs by
-                             Charpit's method (native; SymPy's solve and integrate through charpit_sympy)
-        charpit_sympy.py     the SymPy face of charpit, and solve_of_core, antiderivative_of_core
+                             Charpit's method (native; the quadratures by the native closed_antiderivative; SymPy's
+                             solve through charpit_sympy)
+        charpit_sympy.py     the SymPy face of charpit, and solve_of_core
         dae.py               dsolve_dae, core_nilpotent_decomposition, dae_index, dae_matrices, check_dae,
                              matrix_exponential (Putzer): linear DAEs with constant coefficients on ExprMatrix
                              (native; the native indefinite integration of the particular solution)

@@ -2923,3 +2923,46 @@ def test_native_dsolve_routes_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_DSOLVE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_LAST_ROUTES = r'''
+import sys
+from sympy_extras.core import symbols, Symbol, Function, Ne, Eq, and_, or_, oo
+from sympy_extras.functions import exp, besselj, besseli, sin, Si, sqrt
+from sympy_extras.integrals.dfinite import annihilators, closure, chyzak
+from sympy_extras.integrals.parametric import parametric_integral
+from sympy_extras.solvers.charpit import complete_integral
+from sympy_extras.assumptions.refine import simplify
+x, t, y = symbols('x t y')
+# the annihilators went to SymPy's expr_to_holonomic (dfinite_sympy.holonomic_of_core)
+L_x, L_t = annihilators(exp(-x**2)*besselj(0, t*x), x, t)
+assert (L_x.order, L_t.order) == (2, 2)
+assert annihilators(Si(x) + sqrt(x), x, t) is not None
+assert [f.order for f in closure(besseli(0, x)*exp(-t*x), x, t)[1]] == [2, 1]
+assert chyzak(exp(-t*x)*besseli(0, x), x, t).coefficients == [t, t**2 - 1]
+# the antiderivative in the parameter went to SymPy's integrate (parametric_sympy.antiderivative_of_core)
+p = Symbol('p', positive=True)
+assert str(parametric_integral(exp(-p*x)*sin(x)/x, x, 0, oo, p)) == 'ConditionalValue(-atan(p) + pi/2)'
+# the quadratures of Charpit's method too (charpit_sympy.antiderivative_of_core)
+u = Function('u')(x, y)
+assert complete_integral(u.diff(x)**2 - x*u.diff(y), u) is not None
+# compound formulas went to SymPy's simplify (refine_sympy.simplify_boolean_of_core)
+assert str(simplify(and_(x > 1, x < 0))) == 'False' and str(simplify(and_(x > 0, Ne(x, 0)))) == 'x > 0'
+assert str(simplify(or_(x > 2, x < -2))) == 'Abs(x) > 2'
+assert str(simplify(and_(Eq(x, 1), y > x))) == 'Eq(x, 1) & (y > 1)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_last_small_routes_do_not_load_sympy() -> None:
+    """The annihilators of :mod:`sympy_extras.integrals.dfinite` (they
+    came from SymPy's ``expr_to_holonomic``,
+    ``dfinite_sympy.holonomic_of_core``), the antiderivatives of
+    :mod:`~sympy_extras.integrals.parametric` and
+    :mod:`~sympy_extras.solvers.charpit` (SymPy's ``integrate``, the
+    ``antiderivative_of_core`` of their faces) and the simplification of
+    compound Boolean formulas (SymPy's ``simplify``,
+    ``refine_sympy.simplify_boolean_of_core``) load no SymPy."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LAST_ROUTES], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

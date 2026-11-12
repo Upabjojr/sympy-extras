@@ -65,6 +65,34 @@ remove public functions. Breaking changes are listed here when they happen.
   `solvers.ode.check_ode_solution` takes SymPy's `solve_for_func`
   argument (an implicit relation checked through its derivatives without
   being solved).
+- Three more of the small run-time routes into SymPy are gone. The
+  annihilators of `integrals.dfinite` (`annihilators`, and the equations
+  of the factors of `closure` outside its table) no longer come from
+  SymPy's `expr_to_holonomic` (`dfinite_sympy.holonomic_of_core` is
+  removed): the annihilator of an integrand is the first linear
+  dependency among its derivatives in the closure of its factors (sums,
+  products, rational arguments and algebraic powers of rational
+  functions), so of least order there; the Bessel, Hankel and Airy
+  equations are in the table (SymPy gives a third order equation for
+  `besseli` and `bessely` and none for the Airy functions), and a factor
+  whose derivative is in the closure (`Ei`, `Si`, `Ci`, `atan`, `asin`)
+  gets the equation of its derivative composed with `d/du`. The
+  coefficients of an annihilator may differ from SymPy's by a factor (a
+  scaled argument such as `J_0(t x)` is no longer substituted).
+  The antiderivatives of `integrals.parametric` and `solvers.charpit` come
+  from the native `indefinite.closed_antiderivative`
+  (`parametric_sympy.antiderivative_of_core` and
+  `charpit_sympy.antiderivative_of_core` are removed); the integral of
+  `atan(p*x)/(x*(1 + x**2))` over `(0, oo)` is now
+  `pi*log(p + 1)/2`. The native `assumptions.refine.simplify` of compound
+  Boolean formulas no longer calls SymPy's `simplify`
+  (`refine_sympy.simplify_boolean_of_core` is removed): the new
+  `sympy_extras.assumptions.boolsimp` (`simplify_boolean`,
+  `simplify_univariate`) ports the `_eval_simplify` of SymPy's
+  `BooleanFunction`, `And` and `Or`, with the intervals of a univariate
+  formula computed natively (maximal intervals, and exactly where SymPy
+  drops the endpoint of `~((x > -1) & (x < 1))` or gives up on
+  `(x**2 > 4) & (x > 0)`).
 - **Breaking**: the verified indefinite integration
   `sympy_extras.integrals.indefinite` (`indefinite_integral`,
   `verified_antiderivative`, `is_antiderivative`, `real_form`,
