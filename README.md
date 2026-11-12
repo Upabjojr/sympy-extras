@@ -1032,7 +1032,10 @@ sympy_extras/
         trigonometric.py     products and rational functions of trigonometric and hyperbolic functions
         heurisch.py          the heuristic Risch integrator, typed, verified, with an extended candidate table (native)
         heurisch_sympy.py    the SymPy face of heurisch
-        rewriting.py         canonical forms and substitutions tried before SymPy's routes
+        rewriting.py         canonical forms and substitutions tried before SymPy's routes (native)
+        rewriting_sympy.py   the SymPy face of rewriting
+        algebraic.py         Euler's substitutions, Möbius roots, Chebyshev's binomial differentials (native)
+        algebraic_sympy.py   the SymPy face of algebraic
         exponential.py       powers times exponentials of powers by the incomplete gamma function, exponential-rational integrands
     solvers/
         lie.py               jet spaces, prolongation, determining equations, symmetries

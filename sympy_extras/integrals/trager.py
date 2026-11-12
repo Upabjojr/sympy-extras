@@ -2078,7 +2078,7 @@ def is_nonelementary_algebraic(f: ExprLike, x: Symbol) -> Optional[bool]:
     >>> is_nonelementary_algebraic(sqrt(x)/(1 + cbrt(x)), x)
     False
     """
-    from .algebraic import binomial_exponents, chebyshev_elementary
+    from .algebraic_sympy import binomial_exponents, chebyshev_elementary
     f_ = as_expr(f)
     binomial = binomial_exponents(f_, x)
     if binomial is not None and free_symbols(f_) <= {x}:

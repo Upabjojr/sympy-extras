@@ -334,6 +334,14 @@ sympy_extras/
                              the fractions of the parameters, the native simplify and numerical comparison)
         heurisch_sympy.py    the SymPy face of heurisch (components, heurisch_antiderivative, heurisch_cases), which indefinite uses
         rewriting.py         canonical forms (exponentials, logarithms of inverse hyperbolic functions) and substitutions x = t**k, u = exp(c x), x = exp(t)
+                             (native: the native powsimp, cancel, factor and rewriting rules)
+        rewriting_sympy.py   the SymPy face of rewriting, which indefinite uses
+        algebraic.py         algebraic_integral, euler_substitutions, moebius_root, binomial_exponents, chebyshev_elementary,
+                             binomial_hypergeometric_antiderivative: algebraic integrands of genus zero (native: the native
+                             ask, limits and tidy; the rational integral and its numerical check by definite, through
+                             algebraic_sympy)
+        algebraic_sympy.py   the SymPy face of algebraic, used by definite, indefinite and trager, and
+                             verify_numerically_of_core, conditional_integral_of_core
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
                              (native, with the native ratint)
         exponential_sympy.py the SymPy face of exponential, used by indefinite
