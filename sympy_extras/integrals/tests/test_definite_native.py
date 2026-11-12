@@ -144,3 +144,16 @@ def test_definite_integrator_of_parametric() -> None:
 def test_without_numerical_checks() -> None:
     with configure(numerical_checks=False):
         assert definite_integral(exp(-x**2), (x, -oo, oo)) == sqrt(pi)
+
+
+def test_beta_integrals_by_the_arcsine_substitution() -> None:
+    # the regression of the port: sin(asin(sqrt(u))) stays unevaluated on
+    # the core, and the Beta integrals of the quarter periods were lost
+    # (Maxima's rtest_integrate 876, sin(x)**(1/3)*cos(x)**(1/3) over a
+    # period, left unevaluated; the value is the old one, checked by
+    # quadrature)
+    f = sin(x)**Rational(1, 3) * cos(x)**Rational(1, 3)
+    assert definite_integral(f, (x, 0, pi / 2)) == gamma(Rational(2, 3))**2 / (2 * gamma(Rational(4, 3)))
+    value = definite_integral(f, (x, 0, 2 * pi))
+    assert not is_unevaluated(value)
+    assert abs(_number(value) - (1.5400426634543828858 + 2.6674321389266885873j)) < 1e-15

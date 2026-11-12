@@ -2004,7 +2004,7 @@ class _Integrator:
             return self.integrate(_subs(f, x, t + ka * pi / 2), t, S.Zero, pi / 2, depth + 1, False, True)
         u = _fresh('u', positive=True)
         f = self._signed_form(f, x, S.Zero, pi / 2)
-        g = _subs(f, x, asin(sqrt(u))) / (2 * sqrt(u) * sqrt(1 - u))
+        g = _arcsine_substitution(f, x, u) / (2 * sqrt(u) * sqrt(1 - u))
         g = _denest(g, self.assumptions)
         # and after the substitution: -log(cos(x)) is -log(sqrt(1 - u)),
         # which is -log(1 - u)/2 on (0, 1)
@@ -3445,6 +3445,24 @@ def _denest(g: Expr, assumptions: Assumptions) -> Expr:
             return powdenest(g)
     denested = powdenest(_xr(g, replacement), force=True)
     return _xr(denested, back)
+
+
+def _arcsine_substitution(f: Expr, x: Symbol, u: Symbol) -> Expr:
+    """``f`` at ``x = asin(sqrt(u))`` with the trigonometric functions of
+    ``x`` written in ``u`` (``sin(x)`` is ``sqrt(u)``, ``cos(x)`` is
+    ``sqrt(1 - u)``): the compositions ``sin(asin(y))`` and the like,
+    which SymPy evaluates, stay unevaluated on the core.
+
+    >>> from sympy_extras.core import Symbol, Rational
+    >>> from sympy_extras.functions import sin, cos
+    >>> from sympy_extras.integrals.definite import _arcsine_substitution
+    >>> x, u = Symbol('x'), Symbol('u', positive=True)
+    >>> _arcsine_substitution(sin(x)**Rational(1, 3)*cos(x)**Rational(1, 3), x, u)
+    u**(1/6)*(1 - u)**(1/6)
+    """
+    s, c = sqrt(u), sqrt(1 - u)
+    rule: dict[Basic, Basic] = {Sin(x): s, Cos(x): c, Tan(x): s / c, Cot(x): c / s, Sec(x): 1 / c, Csc(x): 1 / s}
+    return _subs(as_expr(f._xreplace_evaluated(rule)), x, asin(s))
 
 
 def _shift(f: Expr, x: Symbol, t: Symbol, a: Expr) -> Expr:
