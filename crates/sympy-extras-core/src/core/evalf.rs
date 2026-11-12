@@ -281,6 +281,13 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             }
             crate::functions::special::gamma_functions::incomplete_value(*g, &values, prec)
         }
+        Head::Function(super::basic::Function::SingularityFunction) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::singularity_functions::singularity_value(&values, prec)
+        }
         Head::Function(
             g @ (super::basic::Function::Gamma
             | super::basic::Function::LogGamma
@@ -522,6 +529,7 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Gamma
                 | super::basic::Function::LogGamma
                 | super::basic::Function::PolyGamma
+                | super::basic::Function::SingularityFunction
                 | super::basic::Function::LowerGamma
                 | super::basic::Function::UpperGamma
                 | super::basic::Function::MultiGamma

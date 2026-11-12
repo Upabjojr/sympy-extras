@@ -1377,6 +1377,9 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::MultiGamma) => {
             crate::functions::special::gamma_functions::incomplete_facts(g, e.args())
         }
+        super::basic::Function::SingularityFunction => {
+            crate::functions::special::singularity_functions::singularity_facts()
+        }
         super::basic::Function::KroneckerDelta | super::basic::Function::LeviCivita => {
             crate::functions::special::tensor_functions::tensor_facts()
         }

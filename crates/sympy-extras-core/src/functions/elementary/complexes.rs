@@ -160,6 +160,7 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Subfactorial
         | Function::Factorial2
         | Function::PolyGamma
+        | Function::SingularityFunction
         | Function::DiGamma
         | Function::TriGamma
         | Function::Zeta
@@ -549,6 +550,7 @@ fn function_real_imag(
         | Function::Gamma
         | Function::LogGamma
         | Function::PolyGamma
+        | Function::SingularityFunction
         | Function::LowerGamma
         | Function::UpperGamma
         | Function::MultiGamma
