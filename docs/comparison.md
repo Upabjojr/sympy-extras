@@ -334,7 +334,7 @@ comprehensive Gröbner system (Kapur–Sun–Wang).
 >>> dsolve_kovacic(f.diff(x, 2) - (x**2 + 3)*f, f)
 [x*exp(x**2/2), (-sqrt(pi)*x*exp(x**2)*erf(x) - 1)*exp(-x**2/2)]
 >>> dsolve_kovacic(x*f.diff(x, 2) + (1 - x)*f.diff(x) - f, f)
-[exp(x), exp(x)*Integral(exp(-x)/x, x)]
+[exp(x), exp(x)*Ei(-x)]
 >>> dsolve_linear(x*f.diff(x, 2) - (x + 2)*f.diff(x) + 2*f, f)
 [x**2 + 2*x + 2, exp(x)]
 >>> special_solutions(f.diff(x, 2) + (-Rational(1, 4) + 1/x + (Rational(1, 4) - n**2)/x**2)*f, f)
