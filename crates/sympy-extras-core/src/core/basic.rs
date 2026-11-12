@@ -90,6 +90,7 @@ pub enum Head {
     Contains,
     ProductSet,
     PointSet,
+    ConditionSet,
 }
 
 /// The relations of `core.relational`.
@@ -418,6 +419,7 @@ impl Head {
             Head::Contains => "Contains",
             Head::ProductSet => "ProductSet",
             Head::PointSet => "PointSet",
+            Head::ConditionSet => "ConditionSet",
         }
     }
 
@@ -485,6 +487,7 @@ impl Head {
                 | Head::Contains
                 | Head::ProductSet
                 | Head::PointSet
+                | Head::ConditionSet
         )
     }
 
@@ -809,6 +812,7 @@ impl Basic {
                     .filter(|s| s != variable)
                     .collect()
             }
+            Head::ConditionSet => crate::sets::conditionset::condition_set_free_symbols(self),
             _ if self.is_symbol() => std::iter::once(self.clone()).collect(),
             _ => {
                 let mut result: BTreeSet<Basic> = BTreeSet::new();

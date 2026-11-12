@@ -46,7 +46,8 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         | Head::Complement
         | Head::Contains
         | Head::ProductSet
-        | Head::PointSet) => crate::sets::sets::rebuild_set(h, &args),
+        | Head::PointSet
+        | Head::ConditionSet) => crate::sets::sets::rebuild_set(h, &args),
         Head::IndexedRoot => {
             let k: usize = args[2]
                 .as_rational()

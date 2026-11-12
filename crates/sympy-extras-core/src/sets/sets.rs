@@ -84,6 +84,7 @@ pub fn is_set(e: &Basic) -> bool {
             | Head::Complement
             | Head::ProductSet
             | Head::PointSet
+            | Head::ConditionSet
     )
 }
 
@@ -266,6 +267,7 @@ fn contains_rule(s: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
             }
         }
         Head::PointSet => Some(false_()),
+        Head::ConditionSet => Some(super::conditionset::condition_set_contains(s, x)?),
         _ => return Err(not_ported("_contains of this set")),
     })
 }
@@ -327,6 +329,7 @@ pub fn as_relational(s: &Basic, x: &Basic) -> PolyResult<Basic> {
             and_(&terms)
         }
         Head::Complement => and_(&[as_relational(&s.args()[0], x)?, not_(&as_relational(&s.args()[1], x)?)]),
+        Head::ConditionSet => super::conditionset::condition_set_as_relational(s, x)?,
         _ => return Err(not_ported("as_relational of this set")),
     })
 }
@@ -1274,6 +1277,7 @@ pub fn rebuild_set(head: &Head, args: &[Basic]) -> PolyResult<Basic> {
         Head::Contains => contains(&args[1], &args[0]),
         Head::ProductSet => product_set(args),
         Head::PointSet => point_set(args),
+        Head::ConditionSet => super::conditionset::condition_set(&args[0], &args[1], &args[2]),
         _ => unreachable!("not a set"),
     }
 }
@@ -1311,7 +1315,7 @@ pub fn print_set(e: &Basic, doprint: &dyn Fn(&Basic) -> String) -> String {
             let shown: Vec<String> = items.iter().map(doprint).collect();
             format!("{}({})", e.class_name(), shown.join(", "))
         }
-        Head::Complement | Head::Contains | Head::ProductSet => {
+        Head::Complement | Head::Contains | Head::ProductSet | Head::ConditionSet => {
             let shown: Vec<String> = e.args().iter().map(doprint).collect();
             format!("{}({})", e.class_name(), shown.join(", "))
         }

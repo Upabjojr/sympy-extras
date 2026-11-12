@@ -172,6 +172,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Contains" => Basic::new(Head::Contains, args()?),
         "ProductSet" => Basic::new(Head::ProductSet, args()?),
         "PointSet" => Basic::new(Head::PointSet, args()?),
+        "ConditionSet" => Basic::new(Head::ConditionSet, args()?),
         "Exp" => Basic::new(Head::Function(Function::Exp), args()?),
         "Log" => Basic::new(Head::Function(Function::Log), args()?),
         "Re" => Basic::new(Head::Function(Function::Re), args()?),
@@ -314,6 +315,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.sets.sets")?
                 .getattr(e.class_name())?
+                .call1(PyTuple::new(py, items)?)?
+        }
+        Head::ConditionSet => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.sets.conditionset")?
+                .getattr("ConditionSet")?
                 .call1(PyTuple::new(py, items)?)?
         }
         Head::IndexedRoot => {
@@ -1865,6 +1872,7 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             st::interval(&a[0], &a[1], a.get(2).is_some_and(flag), a.get(3).is_some_and(flag)).map_err(e)?
         }
         "finite_set" => st::finite_set(&a),
+        "condition_set" => sympy_extras_core::sets::conditionset::condition_set(&a[0], &a[1], &a[2]).map_err(e)?,
         "union" => st::union(&a).map_err(e)?,
         "intersection" => st::intersection(&a).map_err(e)?,
         "complement" => st::complement(&a[0], &a[1]).map_err(e)?,
