@@ -1507,6 +1507,33 @@ fn sorted_by_key<'py>(py: Python<'py>, items: Vec<Bound<'py, PyAny>>) -> PyResul
     PyList::new(py, out)
 }
 
+/// The CAD projection factor sets of `polys` in `gens`, each `Poly`
+/// printed; with `extra`, the augmented sets of those.
+#[pyfunction]
+#[pyo3(signature = (polys, gens, method="mccallum", equational=None, extra=None))]
+fn cad_projection_sets<'py>(
+    polys: Vec<Bound<'py, PyAny>>,
+    gens: Vec<Bound<'py, PyAny>>,
+    method: &str,
+    equational: Option<Bound<'py, PyAny>>,
+    extra: Option<Vec<Bound<'py, PyAny>>>,
+) -> PyResult<Vec<Vec<String>>> {
+    use sympy_extras_core::polys::cad::projection as pr;
+    let e = crate::convert::err;
+    let polys: Vec<Basic> = polys.iter().map(from_python).collect::<PyResult<_>>()?;
+    let gens: Vec<Basic> = gens.iter().map(from_python).collect::<PyResult<_>>()?;
+    let method: pr::Method = pr::Method::from_name(method).map_err(e)?;
+    let equational: Option<Basic> = equational.as_ref().map(from_python).transpose()?;
+    let mut sets = pr::projection_sets(&polys, &gens, method, equational.as_ref()).map_err(e)?;
+    if let Some(extra) = extra {
+        let extra: Vec<Basic> = extra.iter().map(from_python).collect::<PyResult<_>>()?;
+        sets = pr::augmented_projection_sets(&sets, &gens, &extra, method).map_err(e)?;
+    }
+    sets.iter()
+        .map(|level| level.iter().map(|p| p.to_str().map_err(e)).collect())
+        .collect()
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -1556,6 +1583,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(poly_report, m)?)?;
     m.add_function(wrap_pyfunction!(polytools_call, m)?)?;
     m.add_function(wrap_pyfunction!(roots, m)?)?;
+    m.add_function(wrap_pyfunction!(cad_projection_sets, m)?)?;
     m.add_function(wrap_pyfunction!(sorted_by_key, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
