@@ -67,11 +67,11 @@ by synthetic division; the branch of the logarithm is kept as a symbol
 branch-independent.
 
 The module works on the expressions of the typed core
-(:mod:`sympy_extras.core`) and imports no SymPy. One step stays on
-SymPy: the complex roots of a numerical denominator whose roots in
-radicals are unwieldy (SymPy's ``CRootOf``, which the core has no node
-for) come from :func:`sympy_extras.integrals.residues_sympy.complex_roots_of_core`,
-imported only then; the verification of a value placed by sampling,
+(:mod:`sympy_extras.core`) and imports no SymPy. The complex roots of a
+numerical denominator whose roots in radicals are unwieldy are the native
+:class:`~sympy_extras.polys.complexrootof.ComplexRootOf` (SymPy's
+``CRootOf``, in SymPy's order). One step stays on SymPy: the
+verification of a value placed by sampling,
 when no native quadrature settles it, goes to
 :func:`~sympy_extras.integrals.residues_sympy.verify_numerically_of_core`
 (the quadratures of :mod:`.definite`). :mod:`.residues_sympy` is the
@@ -136,6 +136,7 @@ from sympy_extras.functions.combinatorial.factorials import factorial
 from sympy_extras.functions.elementary.complexes import Im, Re, abs_, arg, im, re
 from sympy_extras.functions.elementary.exponential import Exp, Log, exp, log
 from sympy_extras.functions.elementary.trigonometric import Cos, Cot, Csc, Sec, Sin, Tan, cos, sin
+from sympy_extras.polys.complexrootof import all_roots
 from sympy_extras.polys.polyerrors import BasePolynomialError
 from sympy_extras.polys.polyroots import roots
 from sympy_extras.polys.polytools import Poly, cancel, factor
@@ -423,8 +424,8 @@ def rational_function(f: ExprLike, x: Symbol) -> Optional[_Fraction]:
 
 class _Pole:
     """A pole with its multiplicity; ``numeric`` for a root of a numerical
-    polynomial found as SymPy's ``CRootOf`` (whose position is read from
-    its value)."""
+    polynomial found as a ``CRootOf`` (whose position is read from its
+    value)."""
 
     __slots__ = ('point', 'multiplicity', 'numeric')
 
@@ -489,9 +490,8 @@ def _roots_in_radicals(q: _Polynomial) -> Optional[dict[Expr, int]]:
 
 def poles(q: _Polynomial) -> Optional[list[_Pole]]:
     """The roots of ``q`` with multiplicities, or ``None`` when they cannot
-    all be found (``roots`` for parametric coefficients, SymPy's
-    ``CRootOf`` through the face for numerical ones whose radicals are
-    unwieldy).
+    all be found (``roots`` for parametric coefficients, the native
+    ``CRootOf`` for numerical ones whose radicals are unwieldy).
 
     >>> from sympy_extras.core import symbols
     >>> from sympy_extras.integrals.residues import rational_function, poles
@@ -523,14 +523,20 @@ def poles(q: _Polynomial) -> Optional[list[_Pole]]:
                 return None
             result.extend(_Pole(r, m * e) for r, m in low.items())
             continue
-        from .residues_sympy import complex_roots_of_core
-        all_roots = complex_roots_of_core(g.as_expr(), q.x, _budget())
-        if all_roots is None:
+        found_roots = _complex_roots(g, q.x)
+        if found_roots is None:
             return None
-        result.extend(_Pole(r, e, True) for r in all_roots)
+        result.extend(_Pole(r, e, True) for r in found_roots)
     if sum(p.multiplicity for p in result) != q.degree():
         return None
     return result
+
+
+def _complex_roots(g: Poly, x: Symbol) -> Optional[list[Expr]]:
+    """The roots of the irreducible ``g`` with rational coefficients as
+    SymPy's ``Poly.all_roots`` gives them (the native ``CRootOf``, radicals
+    for a binomial), ``None`` when they are not found within the budget."""
+    return attempt(lambda: all_roots(g.as_expr(), x), _budget(), native=True)
 
 
 def _unwieldy(root: Expr) -> bool:

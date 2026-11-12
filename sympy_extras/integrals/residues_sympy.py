@@ -5,12 +5,10 @@ The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of
 :mod:`.conditions_sympy`; the rational functions with SymPy's ``Poly``,
 the poles as SymPy expressions, ``CRootOf`` for the roots of numerical
-denominators whose radicals are unwieldy). Two steps of the native
-module stay on SymPy and are here: :func:`complex_roots_of_core`, the
-``CRootOf`` roots of such a denominator, and
-:func:`verify_numerically_of_core`, the quadratures of :mod:`.definite`
-for a value placed by sampling which the native quadratures do not
-settle.
+denominators whose radicals are unwieldy). One step of the native
+module stays on SymPy and is here: :func:`verify_numerically_of_core`,
+the quadratures of :mod:`.definite` for a value placed by sampling which
+the native quadratures do not settle.
 
 Examples
 ========
@@ -36,11 +34,9 @@ from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import Boolean
-from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr
 from sympy_extras.assumptions.ask import Assumptions as CoreAssumptions
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions, core_boolean
@@ -55,7 +51,7 @@ from .conditions import ConditionalValue as CoreConditionalValue
 from .conditions_sympy import ConditionalValue
 
 __all__ = ['residue_integral', 'rational_function', 'poles', 'real_line_integral',
-           'fourier_integral', 'keyhole_integral', 'period_integral', 'complex_roots_of_core',
+           'fourier_integral', 'keyhole_integral', 'period_integral',
            'verify_numerically_of_core']
 
 
@@ -266,23 +262,6 @@ def residue_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
 
 # ---------------------------------------------------------------------------
 # The steps of the native module which stay on SymPy
-
-def complex_roots_of_core(g: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[list[CoreExpr]]:
-    """The roots of the irreducible polynomial ``g`` in ``x`` with rational
-    coefficients as SymPy's ``CRootOf`` (``all_roots``), on core
-    expressions (the step of :mod:`sympy_extras.integrals.residues` which
-    stays on SymPy: the core has no node for a complex algebraic number);
-    ``None`` when they are not found within ``seconds``."""
-    variable = _sympy_symbol(x)
-    try:
-        poly = Poly(sympy_expr(g), variable)
-    except PolynomialError:
-        return None
-    found = attempt(lambda: [as_expr(r) for r in poly.all_roots()], seconds)
-    if found is None:
-        return None
-    return [core_expr(r) for r in found]
-
 
 def _sympy_assumptions(assumptions: CoreAssumptions) -> Assumptions:
     if assumptions is None:

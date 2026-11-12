@@ -267,9 +267,8 @@ sympy_extras/
                              integrators written on SymPy use (mellin_integrate, tidy, checked_tidy, ...)
         residues.py          rational, Fourier and trigonometric integrals by the residue theorem (native: the native
                              roots with placeholders for the constants, factor over ZZ_I, ask, find_instance, limits,
-                             simplify, the validated quadrature; CRootOf of unwieldy numerical poles through residues_sympy)
-        residues_sympy.py    the SymPy face of residues, used by definite, and complex_roots_of_core,
-                             verify_numerically_of_core
+                             simplify, the validated quadrature, the native CRootOf of unwieldy numerical poles)
+        residues_sympy.py    the SymPy face of residues, used by definite, and verify_numerically_of_core
         contours.py          the rectangle, the sector and the indented real line for the residue theorem (native: the
                              native residues, the core's residue, elimination on core expressions)
         contours_sympy.py    the SymPy face of contours, used by definite
@@ -588,8 +587,8 @@ sympy_extras/
                              Bigatti's algorithm for monomial ideals (native; bigatti.py computes)
         hilbert_sympy.py     the SymPy face of hilbert (SymPy Poly and expressions)
         rur.py               rur, RationalUnivariateRepresentation: Rouillier's representation of zero-dimensional ideals from
-                             traces (native; the exact solutions, SymPy's CRootOf, through rur_sympy)
-        rur_sympy.py         the SymPy face of rur (Poly and SymPy expressions), and solutions_of_core
+                             traces (native; the exact solutions on IndexedRoot and the native CRootOf)
+        rur_sympy.py         the SymPy face of rur (Poly and SymPy expressions)
         modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ and ZZ modulo primes, proven (Arnold), on rings.PolyRing;
                              direct_groebner (F4 or Buchberger), groebner (the dispatcher Ideal calls) (native)
         modulargroebner_sympy.py the SymPy face of modulargroebner (SymPy's ring elements; SymPy's groebner over the other domains)

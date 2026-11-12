@@ -108,7 +108,7 @@ from sympy_extras.polys.rootisolation import Interval, dup_isolate_real_roots_sq
 from sympy_extras.polys.sqfreetools import dup_sqf_part
 
 __all__ = ['ComplexRootOf', 'CRootOf', 'rootof', 'all_roots', 'real_roots', 'polynomial_roots',
-           'algebraic_number', 'root_count', 'complex_rectangles']
+           'algebraic_number', 'root_count', 'complex_rectangles', 'real_roots_indexed']
 
 #: a polynomial with integer coefficients, highest degree first
 IntegerPoly = tuple[int, ...]
@@ -860,3 +860,31 @@ def algebraic_number(e: Expr) -> Optional[Algebraic]:
         return e.algebraic()
     from sympy_extras.polys.cad.indexedroot import algebraic_of
     return algebraic_of(e)
+
+
+def real_roots_indexed(e: Expr) -> Expr:
+    """``e`` with its real :class:`ComplexRootOf` nodes written as the
+    canonical :class:`~sympy_extras.polys.cad.indexedroot.IndexedRoot` of
+    the same number (the real algebraic numbers of the CAD), in the
+    variable of the node.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.polys.complexrootof import ComplexRootOf, real_roots_indexed
+    >>> x = Symbol('x')
+    >>> real_roots_indexed(ComplexRootOf(x**3 - x - 1, 0) + ComplexRootOf(x**3 - x - 1, 1))
+    IndexedRoot(x**3 - x - 1, x, 0) + CRootOf(x**3 - x - 1, 1)
+    """
+    from sympy_extras.core.basic import preorder_traversal
+    from sympy_extras.polys.cad.indexedroot import real_root
+    rule: dict[Basic, Basic] = {}
+    for node in preorder_traversal(e):
+        if isinstance(node, ComplexRootOf) and node not in rule:
+            a = node.algebraic()
+            if a.is_real:
+                rule[node] = real_root(a, node.variable.name)
+    if not rule:
+        return e
+    replaced = e._xreplace_evaluated(rule)
+    if not isinstance(replaced, Expr):
+        raise TypeError("expected an expression, got %s" % (replaced,))
+    return replaced
