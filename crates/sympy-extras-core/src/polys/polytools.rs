@@ -1911,10 +1911,24 @@ pub fn cancel(f: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
     if !gens.is_empty() {
         return cancel_with_gens(&p, &q, &factored, gens);
     }
-    let (joint, reps) = match joint_rings(&[p, q], true) {
+    let (joint, reps) = match joint_rings(&[p.clone(), q.clone()], true) {
         Ok(r) => r,
         Err(PolyError::Polys(PolysErrorKind::CoercionFailed, _)) => {
-            return Err(crate::error::not_ported("cancel over ZZ_I, RR or EX"))
+            let (ggens, greps) = match joint_rings_gaussian(&[p, q], true) {
+                Ok(r) => r,
+                Err(PolyError::Polys(PolysErrorKind::CoercionFailed, _)) => {
+                    return Err(crate::error::not_ported("cancel over RR or EX"))
+                }
+                Err(e) => return Err(e),
+            };
+            if ggens.is_empty() {
+                return expand_default(&factored);
+            }
+            let (gp, gq) = cancel_gaussian(&greps[0], &greps[1], ggens.len())?;
+            return core_mul(&[
+                gaussian_expr_of(&gp, &ggens)?,
+                core_pow(&gaussian_expr_of(&gq, &ggens)?, &Basic::negative_one())?,
+            ]);
         }
         Err(e) => return Err(e),
     };
@@ -2378,4 +2392,115 @@ pub fn factor(e: &Basic, gens: &[Basic], deep: bool, fraction: bool) -> PolyResu
 /// The square-free factorisation of an expression (`sqf`).
 pub fn sqf(e: &Basic, gens: &[Basic], fraction: bool) -> PolyResult<Basic> {
     symbolic_factor(e, gens, fraction, FactorMethod::Sqf)
+}
+
+// ---------------------------------------------------------------------
+// the Gaussian domains ZZ_I and QQ_I in cancel
+
+use super::domains::gaussiandomains::{GaussianInteger, GaussianRational, QQ_I, ZZ_I};
+
+type GaussianTerms = BTreeMap<Monomial, GaussianRational>;
+
+/// `_joint_rings` with Gaussian coefficients `a + b*I`
+/// (`_joint_rings_gaussian`); `CoercionFailed` for other coefficients.
+fn joint_rings_gaussian(exprs: &[Basic], expand: bool) -> PolyResult<(Vec<Basic>, Vec<GaussianTerms>)> {
+    let (decomposed, gens) = decompose_without_gens_many(exprs, expand)?;
+    if gens.is_empty() {
+        return Ok((gens, exprs.iter().map(|_| GaussianTerms::new()).collect()));
+    }
+    let mut result: Vec<GaussianTerms> = Vec::new();
+    for terms in decomposed {
+        let mut rep: GaussianTerms = GaussianTerms::new();
+        for (m, cs) in terms {
+            let total: Basic = core_add(&cs)?;
+            let c: GaussianRational = match QQ_I.from_expr(&total) {
+                Ok(c) => c,
+                Err(PolyError::Value(_)) => {
+                    return Err(polys_error(
+                        PolysErrorKind::CoercionFailed,
+                        format!("the domain of {} (RR, EX) is not ported yet", total),
+                    ))
+                }
+                Err(e) => return Err(e),
+            };
+            let value: GaussianRational = QQ_I.add(&rep.remove(&m).unwrap_or_else(|| QQ_I.zero()), &c);
+            if !value.is_zero() {
+                rep.insert(m, value);
+            }
+        }
+        result.push(rep);
+    }
+    Ok((gens, result))
+}
+
+/// `f/g` in lowest terms over `ZZ_I` (the denominators of `QQ_I`
+/// cleared), canonical with respect to the quadrant of the leading
+/// coefficient of the denominator (`_cancel_gaussian`).
+fn cancel_gaussian(f: &GaussianTerms, g: &GaussianTerms, n: usize) -> PolyResult<(GaussianTerms, GaussianTerms)> {
+    use super::domains::domain::ConvertFrom;
+    let ring: SparsePolynomialRing<super::domains::gaussiandomains::GaussianIntegerRing> =
+        SparsePolynomialRing::new(ZZ_I, internal_names(n, 0));
+    if f.is_empty() {
+        let mut one: GaussianTerms = GaussianTerms::new();
+        one.insert(vec![0; n], QQ_I.one());
+        return Ok((GaussianTerms::new(), one));
+    }
+    let cleared = |h: &GaussianTerms| -> PolyResult<(
+        GaussianInteger,
+        PolyElement<super::domains::gaussiandomains::GaussianIntegerRing>,
+    )> {
+        let mut common: GaussianInteger = ZZ_I.one();
+        for c in h.values() {
+            common = ZZ_I.lcm(&common, &ZZ_I.denom_of(c));
+        }
+        let k: GaussianRational = QQ_I.convert(&common, &ZZ_I)?;
+        let mut terms: Terms<GaussianInteger> = Terms::new();
+        for (m, c) in h {
+            terms.insert(m.clone(), ZZ_I.convert(&QQ_I.mul(c, &k), &QQ_I)?);
+        }
+        Ok((common, ring.ring.from_dict(terms)))
+    };
+    let (cq, big_f) = cleared(f)?;
+    let (cp, big_g) = cleared(g)?;
+    let h = Domain::gcd(&ring, &big_f, &big_g);
+    let (big_p, big_q) = (big_f.exquo(&h)?, big_g.exquo(&h)?);
+    let common: GaussianInteger = ZZ_I.gcd(&cp, &cq);
+    let (cp, cq) = (ZZ_I.quo(&cp, &common)?, ZZ_I.quo(&cq, &common)?);
+    let scaled = |poly: &PolyElement<super::domains::gaussiandomains::GaussianIntegerRing>,
+                  c: &GaussianInteger|
+     -> PolyResult<GaussianTerms> {
+        let factor: GaussianRational = QQ_I.convert(c, &ZZ_I)?;
+        let mut out: GaussianTerms = GaussianTerms::new();
+        for (m, v) in &poly.terms {
+            out.insert(m.clone(), QQ_I.mul(&QQ_I.convert(v, &ZZ_I)?, &factor));
+        }
+        Ok(out)
+    };
+    let mut p: GaussianTerms = scaled(&big_p, &cp)?;
+    let mut q: GaussianTerms = scaled(&big_q, &cq)?;
+    let lead: GaussianRational = q.values().next_back().expect("a nonzero denominator").clone();
+    let u: GaussianRational = QQ_I.canonical_unit(&lead);
+    if u != QQ_I.one() {
+        for c in p.values_mut() {
+            *c = QQ_I.mul(c, &u);
+        }
+        for c in q.values_mut() {
+            *c = QQ_I.mul(c, &u);
+        }
+    }
+    Ok((p, q))
+}
+
+fn gaussian_expr_of(f: &GaussianTerms, gens: &[Basic]) -> PolyResult<Basic> {
+    let mut parts: Vec<Basic> = Vec::new();
+    for (m, c) in f.iter().rev() {
+        let mut factors: Vec<Basic> = vec![QQ_I.to_expr(c)?];
+        for (g, k) in gens.iter().zip(m) {
+            if *k > 0 {
+                factors.push(core_pow(g, &Basic::int(i64::from(*k)))?);
+            }
+        }
+        parts.push(core_mul(&factors)?);
+    }
+    core_add(&parts)
 }

@@ -41,9 +41,9 @@ use super::super::rootisolation::{dup_isolate_real_roots_sqf, dup_refine_real_ro
 pub type Box4 = (Rat, Rat, Rat, Rat);
 
 /// An element of `ZZ[x][y]`: a polynomial in `y` over `ZZ[x]`.
-type BiPoly = Vec<Vec<Int>>;
+pub(crate) type BiPoly = Vec<Vec<Int>>;
 
-fn zx() -> PolynomialRing<super::super::domains::IntegerRing> {
+pub(crate) fn zx() -> PolynomialRing<super::super::domains::IntegerRing> {
     PolynomialRing::new(ZZ, "x")
 }
 
@@ -67,7 +67,7 @@ fn normalised(f: &[Int]) -> Vec<Int> {
 }
 
 /// `m(y)` as a polynomial in `y` over `ZZ[x]`.
-fn in_y(m: &[Int]) -> BiPoly {
+pub(crate) fn in_y(m: &[Int]) -> BiPoly {
     m.iter()
         .map(|c| if c.is_zero() { Vec::new() } else { vec![c.clone()] })
         .collect()

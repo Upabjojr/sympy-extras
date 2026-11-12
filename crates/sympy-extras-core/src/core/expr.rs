@@ -523,3 +523,50 @@ fn pow_numer_denom(e: &Basic) -> PolyResult<(Basic, Basic)> {
     }
     Ok((pow(&n, &exp)?, pow(&d, &exp)?))
 }
+
+/// What [`polynomial_like`] tests: `is_polynomial`, `is_rational_function`
+/// or `is_algebraic_expr`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PolynomialKind {
+    Polynomial,
+    Rational,
+    Algebraic,
+}
+
+/// SymPy's three-valued answer of `is_polynomial(*syms)` and its kin
+/// (`_is_polynomial_like`): `None` for a function of the symbols, `all` of
+/// the arguments of a sum or a product (`None` counting as `False`), and
+/// for a power the answer of the base combined with the exponent.
+pub fn polynomial_like(e: &Basic, syms: &[Basic], kind: PolynomialKind) -> Option<bool> {
+    let free = e.free_symbols();
+    if !free.iter().any(|s| syms.contains(s)) {
+        return Some(true);
+    }
+    if e.is_symbol() {
+        return Some(true);
+    }
+    if e.is_add() || e.is_mul() {
+        return Some(e.args().iter().all(|a| polynomial_like(a, syms, kind) == Some(true)));
+    }
+    if e.is_pow() {
+        let exponent: &Basic = &e.args()[1];
+        if exponent.free_symbols().iter().any(|s| syms.contains(s)) {
+            return Some(false);
+        }
+        let base: Option<bool> = polynomial_like(&e.args()[0], syms, kind);
+        let rational: Option<&crate::numbers::Rat> = exponent.as_rational();
+        if kind == PolynomialKind::Polynomial {
+            return Some(
+                base == Some(true) && rational.is_some_and(|r| r.is_int() && !crate::numbers::rat_is_negative(r)),
+            );
+        }
+        if base != Some(true) {
+            return base;
+        }
+        if kind == PolynomialKind::Rational {
+            return Some(rational.is_some_and(|r| r.is_int()));
+        }
+        return Some(rational.is_some());
+    }
+    None
+}
