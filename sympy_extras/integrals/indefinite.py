@@ -246,22 +246,27 @@ def _vanishes_on_both_sides(difference: Expr, f: Expr, x: Symbol, assumptions: A
     ``f`` is a finite real number; a point where ``f`` is undefined, not
     real, or excluded by the assumptions on ``x`` is skipped, and
     ``None`` is the verdict when fewer than two points remain, the
-    parameters sampled again (up to three times) when a sample leaves
-    it undecided. With ``both_signs`` the verdict ``True`` also needs
-    tested points of both signs."""
+    parameters sampled three times, every sample tested: ``False`` when
+    one of them sees a difference, ``True`` when one at least decides
+    and none sees one (one sample can miss where the candidate goes
+    wrong: the Meijer G antiderivative of ``log(Abs(c - x))`` is right for
+    ``x < c`` only, and a ``c`` drawn large leaves every point there).
+    With ``both_signs`` the verdict ``True`` also needs tested points of
+    both signs."""
     parameters = sorted((s for s in difference.free_symbols if s != x), key=lambda s: s.name)
     facts = _items(assumptions)
     # a sample of the parameters may leave nothing to test (the integrand
-    # real nowhere: c**(d*z) with c drawn negative): up to three samples
+    # real nowhere: c**(d*z) with c drawn negative), or nothing wrong: three samples
     samples = 3 if parameters else 1
     points: list[Expr] = list(_POINTS)
+    decided = False
     for index in range(samples):
         values: dict[Symbol, Expr] = {}
         if parameters:
             seed = str(difference) if index == 0 else '%s#%d' % (difference, index)
             found = sample_values(parameters, assumptions, random.Random(seed))
             if found is None:
-                return None
+                break
             values = found
         verdict, signs = _tested_points(difference, f, x, values, facts, points)
         if verdict is None:
@@ -273,8 +278,8 @@ def _vanishes_on_both_sides(difference: Expr, f: Expr, x: Symbol, assumptions: A
         if verdict is False:
             return False
         if verdict is True and (not both_signs or len(signs) == 2):
-            return True
-    return None
+            decided = True
+    return True if decided else None
 
 
 def _domain_points(f: Expr, x: Symbol, values: dict[Symbol, Expr], rng: random.Random,

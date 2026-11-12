@@ -112,3 +112,16 @@ def test_substitutions_and_rewritings() -> None:
     f = 1 / (x**Rational(1, 3) + sqrt(x))
     found = verified_antiderivative(f, x, methods=['rewriting'])
     assert found is not None and found[1] == 'rewriting' and is_antiderivative(found[0], f, x) is True
+
+
+def test_every_sample_of_the_parameters_is_tested() -> None:
+    # SymPy's Meijer G antiderivative of log(Abs(c - x)) is right for x < c
+    # only (F' - f = I*pi beyond c): the first sample of c was large, every
+    # test point lay below it, and the candidate was accepted
+    from sympy_extras.functions import abs_
+    c = Symbol('c')
+    F = -c * log(1 - x / c) + x * log(1 - x / c) + x * log(abs_(c)) - x
+    assert is_antiderivative(F, log(abs_(c - x)), x) is not True
+    # a right candidate with a parameter still checks on every sample
+    assert is_antiderivative(exp(c * x) / c, exp(c * x), x) is True
+    assert is_antiderivative(x * log(c * x) - x, log(c * x), x) is True
