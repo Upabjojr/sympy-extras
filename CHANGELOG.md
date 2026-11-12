@@ -93,6 +93,14 @@ remove public functions. Breaking changes are listed here when they happen.
   formula computed natively (maximal intervals, and exactly where SymPy
   drops the endpoint of `~((x > -1) & (x < 1))` or gives up on
   `(x**2 > 4) & (x > 0)`).
+- The native indefinite integrator no longer tries SymPy's heuristic
+  Risch integrator after its own (the method `'sympy heurisch'` and
+  `indefinite_sympy.heurisch_of_core` are removed): on the integrals of
+  the test suites which reached it, it answered none, and on the
+  integrands of SymPy's own heurisch tests the native port missed only
+  `1/(x + sin(y))`, which it now does (the transcendental constants of
+  the parameters, `sin(y)`, `exp(y)`, are independent generators of the
+  content of a polynomial, as in SymPy's domains).
 - **Breaking**: the verified indefinite integration
   `sympy_extras.integrals.indefinite` (`indefinite_integral`,
   `verified_antiderivative`, `is_antiderivative`, `real_form`,

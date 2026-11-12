@@ -2950,6 +2950,12 @@ assert complete_integral(u.diff(x)**2 - x*u.diff(y), u) is not None
 assert str(simplify(and_(x > 1, x < 0))) == 'False' and str(simplify(and_(x > 0, Ne(x, 0)))) == 'x > 0'
 assert str(simplify(or_(x > 2, x < -2))) == 'Abs(x) > 2'
 assert str(simplify(and_(Eq(x, 1), y > x))) == 'Eq(x, 1) & (y > 1)'
+# SymPy's heurisch is no longer tried after the native one (indefinite_sympy.heurisch_of_core),
+# which does the integrand of SymPy's tests it missed
+from sympy_extras.integrals.heurisch import heurisch_cases
+from sympy_extras.integrals.indefinite import METHODS
+assert 'sympy heurisch' not in dict(METHODS)
+assert str(heurisch_cases(1/(x + sin(y)), x)) == 'log(x + sin(y))'
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -2962,7 +2968,9 @@ def test_native_last_small_routes_do_not_load_sympy() -> None:
     :mod:`~sympy_extras.solvers.charpit` (SymPy's ``integrate``, the
     ``antiderivative_of_core`` of their faces) and the simplification of
     compound Boolean formulas (SymPy's ``simplify``,
-    ``refine_sympy.simplify_boolean_of_core``) load no SymPy."""
+    ``refine_sympy.simplify_boolean_of_core``) load no SymPy, and SymPy's
+    heuristic Risch integrator is no longer a method of the native
+    indefinite integrator (``indefinite_sympy.heurisch_of_core``)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_LAST_ROUTES], capture_output=True, text=True, timeout=900)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

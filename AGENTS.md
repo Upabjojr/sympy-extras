@@ -392,8 +392,9 @@ sympy_extras/
         indefinite.py        indefinite_integral, verified_antiderivative, is_antiderivative, real_form, conjugate_logarithms:
                              the typed methods in turn, then SymPy's, each antiderivative checked by differentiation (native:
                              the native methods, cancel, simplify, structure theorem, reliable values and special values;
-                             SymPy's heurisch, manualintegrate, meijerint and integrate last, through indefinite_sympy)
-        indefinite_sympy.py  the SymPy face of indefinite, used by definite, and heurisch_of_core, manualintegrate_of_core,
+                             SymPy's manualintegrate, meijerint and integrate last, through indefinite_sympy; not SymPy's
+                             heurisch, whose port is the native heurisch)
+        indefinite_sympy.py  the SymPy face of indefinite, used by definite, and manualintegrate_of_core,
                              meijerint_of_core, integrate_of_core
         integral.py          Integral (node): the unevaluated indefinite integral of the core, is_unevaluated (native)
         trigonometric.py     powers, products and rational functions of trigonometric and hyperbolic functions, inverse functions by parts
