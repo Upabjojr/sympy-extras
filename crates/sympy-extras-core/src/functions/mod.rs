@@ -1,5 +1,6 @@
 //! Port of `sympy_extras/functions`: the function classes on the core.
 
+pub mod combinatorial;
 pub mod elementary;
 pub mod special;
 
@@ -46,6 +47,12 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::Acsch) => elementary::inverse::inverse_fdiff(g, x),
         Function::Atan2 => elementary::argument::atan2_fdiff(e, argindex),
         g @ (Function::DiracDelta | Function::Heaviside) => special::delta_functions::delta_fdiff(g, e),
+        Function::Factorial
+        | Function::Binomial
+        | Function::RisingFactorial
+        | Function::FallingFactorial
+        | Function::Subfactorial
+        | Function::Factorial2 => combinatorial::factorials::combinatorial_derivative(),
         Function::Re
         | Function::Im
         | Function::Conjugate
@@ -144,6 +151,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if matches!(f, Function::DiracDelta | Function::Heaviside) {
         return special::delta_functions::delta_function(f, args);
     }
+    if combinatorial::factorials::is_combinatorial(f) {
+        return combinatorial::factorials::combinatorial(f, args);
+    }
     let x: &Basic = &args[0];
     use elementary::{complexes as c, exponential as e, hyperbolic as h, trigonometric as t};
     match f {
@@ -183,5 +193,11 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         Function::Atan2 | Function::Max | Function::Min | Function::DiracDelta | Function::Heaviside => {
             unreachable!("evaluated above with all their arguments")
         }
+        Function::Factorial
+        | Function::Binomial
+        | Function::RisingFactorial
+        | Function::FallingFactorial
+        | Function::Subfactorial
+        | Function::Factorial2 => unreachable!("evaluated above with all their arguments"),
     }
 }

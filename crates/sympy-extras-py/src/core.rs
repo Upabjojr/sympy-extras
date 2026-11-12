@@ -192,6 +192,12 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Max" => Basic::new(Head::Function(Function::Max), args()?),
         "Floor" => Basic::new(Head::Function(Function::Floor), args()?),
         "DiracDelta" => Basic::new(Head::Function(Function::DiracDelta), args()?),
+        "Factorial" => Basic::new(Head::Function(Function::Factorial), args()?),
+        "Binomial" => Basic::new(Head::Function(Function::Binomial), args()?),
+        "RisingFactorial" => Basic::new(Head::Function(Function::RisingFactorial), args()?),
+        "FallingFactorial" => Basic::new(Head::Function(Function::FallingFactorial), args()?),
+        "Subfactorial" => Basic::new(Head::Function(Function::Subfactorial), args()?),
+        "Factorial2" => Basic::new(Head::Function(Function::Factorial2), args()?),
         "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
@@ -346,6 +352,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 Function::Max | Function::Min => "miscellaneous",
                 Function::Floor | Function::Ceiling | Function::Frac => "integers",
                 Function::DiracDelta | Function::Heaviside => "delta_functions",
+                Function::Factorial
+                | Function::Binomial
+                | Function::RisingFactorial
+                | Function::FallingFactorial
+                | Function::Subfactorial
+                | Function::Factorial2 => "factorials",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse_trigonometric(*f) => "trigonometric",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse(*f) => "hyperbolic",
                 Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
@@ -355,6 +367,8 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             };
             let package: &str = if matches!(f, Function::DiracDelta | Function::Heaviside) {
                 "special"
+            } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f) {
+                "combinatorial"
             } else {
                 "elementary"
             };
@@ -2012,6 +2026,18 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
         "ab_contains" => {
             let v: bool = sympy_extras_core::core::accumbounds::contains(&a[0], &a[1]).map_err(e)?;
             return Ok(pyo3::types::PyBool::new(py, v).to_owned().into_any());
+        }
+        "factorial" | "binomial" | "rf" | "ff" | "subfactorial" | "factorial2" => {
+            use sympy_extras_core::functions::combinatorial::factorials as fc;
+            match name {
+                "factorial" => fc::factorial(&a[0]),
+                "binomial" => fc::binomial(&a[0], &a[1]),
+                "rf" => fc::rf(&a[0], &a[1]),
+                "ff" => fc::ff(&a[0], &a[1]),
+                "subfactorial" => fc::subfactorial(&a[0]),
+                _ => fc::factorial2(&a[0]),
+            }
+            .map_err(e)?
         }
         "reversed" => rl::reversed(&a[0]),
         "negated" => rl::negated(&a[0]),

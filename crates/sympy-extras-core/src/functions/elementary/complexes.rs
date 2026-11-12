@@ -128,7 +128,13 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Ceiling
         | Function::Frac
         | Function::DiracDelta
-        | Function::Heaviside => {
+        | Function::Heaviside
+        | Function::Factorial
+        | Function::Binomial
+        | Function::RisingFactorial
+        | Function::FallingFactorial
+        | Function::Subfactorial
+        | Function::Factorial2 => {
             // DefinedFunction._eval_conjugate
             if is_true(e, extended_real) {
                 return Ok(Some(e.clone()));
@@ -472,6 +478,12 @@ fn function_real_imag(
         | Function::Frac
         | Function::DiracDelta
         | Function::Heaviside
+        | Function::Factorial
+        | Function::Binomial
+        | Function::RisingFactorial
+        | Function::FallingFactorial
+        | Function::Subfactorial
+        | Function::Factorial2
         | Function::Sign
         | Function::Conjugate => {
             if ignore == Some(e) {

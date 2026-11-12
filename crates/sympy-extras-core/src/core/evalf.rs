@@ -270,6 +270,20 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             }
             crate::functions::elementary::argument::argument_value(*g, &values, wp)
         }
+        Head::Function(
+            g @ (super::basic::Function::Factorial
+            | super::basic::Function::Binomial
+            | super::basic::Function::RisingFactorial
+            | super::basic::Function::FallingFactorial
+            | super::basic::Function::Subfactorial
+            | super::basic::Function::Factorial2),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::combinatorial::factorials::combinatorial_value(*g, &values, prec)
+        }
         Head::Function(g @ (super::basic::Function::DiracDelta | super::basic::Function::Heaviside)) => {
             let mut values: Vec<Complex> = Vec::new();
             for a in e.args() {
@@ -399,7 +413,13 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Max
                 | super::basic::Function::Min
                 | super::basic::Function::DiracDelta
-                | super::basic::Function::Heaviside => {
+                | super::basic::Function::Heaviside
+                | super::basic::Function::Factorial
+                | super::basic::Function::Binomial
+                | super::basic::Function::RisingFactorial
+                | super::basic::Function::FallingFactorial
+                | super::basic::Function::Subfactorial
+                | super::basic::Function::Factorial2 => {
                     unreachable!("evaluated above with all their arguments")
                 }
                 g

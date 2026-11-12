@@ -1,0 +1,3 @@
+//! Port of `sympy_extras/functions/combinatorial`.
+
+pub mod factorials;

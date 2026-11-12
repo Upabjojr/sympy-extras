@@ -1312,6 +1312,14 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         g @ (super::basic::Function::Floor | super::basic::Function::Ceiling | super::basic::Function::Frac) => {
             crate::functions::elementary::integers::rounding_facts(g, &e.args()[0])
         }
+        g @ (super::basic::Function::Factorial
+        | super::basic::Function::Binomial
+        | super::basic::Function::RisingFactorial
+        | super::basic::Function::FallingFactorial
+        | super::basic::Function::Subfactorial
+        | super::basic::Function::Factorial2) => {
+            crate::functions::combinatorial::factorials::combinatorial_facts(g, e.args())
+        }
         super::basic::Function::DiracDelta | super::basic::Function::Heaviside => {
             crate::functions::special::delta_functions::delta_facts()
         }

@@ -252,6 +252,12 @@ pub enum Function {
     Frac,
     DiracDelta,
     Heaviside,
+    Factorial,
+    Binomial,
+    RisingFactorial,
+    FallingFactorial,
+    Subfactorial,
+    Factorial2,
 }
 
 impl Function {
@@ -298,6 +304,12 @@ impl Function {
             Function::Frac => "frac",
             Function::DiracDelta => "DiracDelta",
             Function::Heaviside => "Heaviside",
+            Function::Factorial => "factorial",
+            Function::Binomial => "binomial",
+            Function::RisingFactorial => "RisingFactorial",
+            Function::FallingFactorial => "FallingFactorial",
+            Function::Subfactorial => "subfactorial",
+            Function::Factorial2 => "factorial2",
         }
     }
 
@@ -344,6 +356,12 @@ impl Function {
             Function::Frac => "Frac",
             Function::DiracDelta => "DiracDelta",
             Function::Heaviside => "Heaviside",
+            Function::Factorial => "Factorial",
+            Function::Binomial => "Binomial",
+            Function::RisingFactorial => "RisingFactorial",
+            Function::FallingFactorial => "FallingFactorial",
+            Function::Subfactorial => "Subfactorial",
+            Function::Factorial2 => "Factorial2",
         }
     }
 
@@ -359,6 +377,12 @@ impl Function {
             Function::Atan2 | Function::Max | Function::Min => 10000,
             Function::Floor | Function::Ceiling | Function::Frac => 10000,
             Function::DiracDelta | Function::Heaviside => 10000,
+            Function::Factorial
+            | Function::Binomial
+            | Function::RisingFactorial
+            | Function::FallingFactorial
+            | Function::Subfactorial
+            | Function::Factorial2 => 10000,
             Function::Sin => 20,
             Function::Cos => 21,
             Function::Tan => 22,
