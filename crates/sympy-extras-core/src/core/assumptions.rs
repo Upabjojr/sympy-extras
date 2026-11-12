@@ -1383,6 +1383,12 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::MathieuC
         | super::basic::Function::MathieuSPrime
         | super::basic::Function::MathieuCPrime => crate::functions::special::mathieu_functions::mathieu_facts(),
+        g @ (super::basic::Function::EllipticK
+        | super::basic::Function::EllipticF
+        | super::basic::Function::EllipticE
+        | super::basic::Function::EllipticPi) => {
+            crate::functions::special::elliptic_integrals::elliptic_facts(g, e.args())
+        }
         super::basic::Function::Ynm | super::basic::Function::Znm => {
             crate::functions::special::spherical_harmonics::spherical_facts()
         }
