@@ -3253,3 +3253,23 @@ def test_native_ask_handlers_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ASK_HANDLERS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_BASIC_SIMPLIFY = r'''
+import sys
+from sympy_extras.core import Eq, symbols
+x, y = symbols('x y')
+assert str(Eq(x + x, 2*x).simplify()) == 'True' and str((y > x).simplify()) == 'x < y'
+assert str((2*x + 4 > 6*y).simplify()) == 'x - 3*y > -2'
+assert str(((x > 1) | (x > 2)).simplify()) == 'x > 1'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_basic_simplify_does_not_load_sympy() -> None:
+    """``Basic.simplify`` of the relations and formulas is the native port
+    of SymPy's simplify of Booleans (it went to SymPy's ``simplify``
+    through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_BASIC_SIMPLIFY], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

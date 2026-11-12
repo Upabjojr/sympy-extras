@@ -787,7 +787,9 @@ class Basic:
     # through SymPy
 
     def simplify(self) -> Basic:
-        """SymPy's ``simplify`` of the node (converted and back).
+        """SymPy's ``simplify`` of the node: natively for the relations and
+        the formulas (:func:`sympy_extras.logic.boolsimp.simplify_boolean`),
+        through SymPy for the other nodes.
 
         Examples
         ========
@@ -803,7 +805,16 @@ class Basic:
         if isinstance(self, Tuple):
             # the elements simplified (the parameters of hyper and meijerg)
             return Tuple(*[a.simplify() for a in self.args])
-        # the relationals (SymPy canonicalises them) and the other nodes
+        from .logic import Boolean
+        if isinstance(self, Boolean) and not any(node._has_foreign_class() for node in preorder_traversal(self)):
+            # the relations and the formulas: the native port of SymPy's
+            # simplify of Booleans (Xor's is not ported)
+            from sympy_extras.logic.boolsimp import simplify_boolean
+            try:
+                return simplify_boolean(self)
+            except NotImplementedError:
+                pass
+        # the other nodes: SymPy's
         from .bridge import bridge
         return bridge().simplify(self)
 

@@ -29,6 +29,10 @@ remove public functions. Breaking changes are listed here when they happen.
   of SymPy's methods (they went to SymPy through the bridge); an applied
   undefined function is not sent to the bridge to be rewritten (SymPy has
   no rule for it).
+- `Basic.simplify` of a relation or a Boolean formula is native
+  (`logic.boolsimp.simplify_boolean`, the port of SymPy's simplify of
+  Booleans) instead of SymPy's `simplify` through the bridge; a formula
+  with an `Xor` or with wrapped SymPy objects still goes to SymPy.
 
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's
