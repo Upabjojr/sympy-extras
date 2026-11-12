@@ -1697,6 +1697,58 @@ fn samplepoint_report<'py>(
     Ok(out)
 }
 
+/// The functions of `polys.cad.cylindrical` (`cylindrical_formula`,
+/// `cylindrical_set`, `cylindrical_cases`; for the cases `gens` are the
+/// parameters and `unknowns` the unknowns).
+#[pyfunction]
+#[pyo3(signature = (name, formula, gens, quantifiers=Vec::new(), unknowns=Vec::new(), method=None, partial=true))]
+#[allow(clippy::too_many_arguments)]
+fn cylindrical_call<'py>(
+    py: Python<'py>,
+    name: &str,
+    formula: Bound<'py, PyAny>,
+    gens: Vec<Bound<'py, PyAny>>,
+    quantifiers: Vec<(String, Bound<'py, PyAny>)>,
+    unknowns: Vec<Bound<'py, PyAny>>,
+    method: Option<&str>,
+    partial: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::polys::cad::{cylindrical as cy, projection::Method, qe};
+    let e = crate::convert::err;
+    let method: Option<Method> = method.map(Method::from_name).transpose().map_err(e)?;
+    let mut prefix: qe::QuantifierPrefix = Vec::new();
+    for (kind, variables) in &quantifiers {
+        let kind: qe::Quantifier = qe::Quantifier::from_name(kind).map_err(e)?;
+        let class: String = variables.get_type().name()?.to_string();
+        if class == "list" || class == "tuple" {
+            for v in variables.try_iter()? {
+                prefix.push((kind, from_python(&v?)?));
+            }
+        } else {
+            prefix.push((kind, from_python(variables)?));
+        }
+    }
+    let formula: Basic = from_python(&formula)?;
+    let gens: Vec<Basic> = gens.iter().map(from_python).collect::<PyResult<_>>()?;
+    let unknowns: Vec<Basic> = unknowns.iter().map(from_python).collect::<PyResult<_>>()?;
+    Ok(match name {
+        "cylindrical_formula" => to_python(
+            py,
+            &cy::cylindrical_formula(&formula, &gens, &prefix, method, partial).map_err(e)?,
+        )?,
+        "cylindrical_set" => to_python(py, &cy::cylindrical_set(&formula, &gens, method, partial).map_err(e)?)?,
+        "cylindrical_cases" => {
+            let cases = cy::cylindrical_cases(&formula, &gens, &unknowns, method, partial).map_err(e)?;
+            let out = pyo3::types::PyList::empty(py);
+            for (c, s) in cases {
+                out.append(PyTuple::new(py, [to_python(py, &c)?, to_python(py, &s)?])?)?;
+            }
+            out.into_any()
+        }
+        _ => return Err(PyTypeError::new_err(format!("unknown cylindrical function {}", name))),
+    })
+}
+
 /// The functions of `polys.cad.qe` (`quantifier_elimination`, `decide`,
 /// `sample_points`, `solution_set`, `truth_tables`): `formula` is a list of
 /// formulas for `truth_tables`, `free` the free variables (the generators
@@ -1954,6 +2006,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(samplepoint_report, m)?)?;
     m.add_function(wrap_pyfunction!(cad_report, m)?)?;
     m.add_function(wrap_pyfunction!(qe_call, m)?)?;
+    m.add_function(wrap_pyfunction!(cylindrical_call, m)?)?;
     m.add_function(wrap_pyfunction!(indexed_root, m)?)?;
     m.add_function(wrap_pyfunction!(logic_call, m)?)?;
     m.add_function(wrap_pyfunction!(sorted_by_key, m)?)?;

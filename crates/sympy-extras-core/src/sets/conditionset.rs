@@ -3,6 +3,9 @@
 //! on an unknown (a symbol or a tuple of symbols, bound), and its
 //! evaluating function [`condition_set`].
 
+// the nodes are immutable: their cached facts do not change the order
+#![allow(clippy::mutable_key_type)]
+
 use std::collections::{BTreeSet, HashMap};
 
 use crate::core::basic::{Basic, Head};

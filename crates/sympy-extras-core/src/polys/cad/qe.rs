@@ -6,8 +6,8 @@
 //! of intervals (one free variable) or a minimum cover of the true sign
 //! vectors by prime implicants (several), the projection augmented after
 //! Hong when the signs do not tell the true cells from the false ones.
-//! The last resort of `quantifier_elimination`, the root functions of
-//! `cad.cylindrical`, is not ported yet.
+//! The last resort of `quantifier_elimination` is the cylindrical
+//! description of `cad.cylindrical`.
 
 // the nodes are immutable: their cached facts do not change the order
 #![allow(clippy::mutable_key_type)]
@@ -18,7 +18,7 @@ use std::sync::Arc;
 use crate::core::basic::{Basic, Head, RelOp};
 use crate::core::logic::{and_, false_, or_, true_};
 use crate::core::relational::{eq, ge, gt, le, lt, ne};
-use crate::error::{not_ported, value_error, PolyError, PolyResult, PolysErrorKind};
+use crate::error::{value_error, PolyError, PolyResult, PolysErrorKind};
 use crate::polys::polytools::Poly;
 use crate::sets::sets::{finite_set, interval, interval_parts, union};
 
@@ -1256,12 +1256,17 @@ pub fn quantifier_elimination(
     if let Some(f) = sign_formula(&cad, &cells, k)? {
         return Ok(f);
     }
-    if let Some((refined, refined_cells)) = separating_refinement(&cad, &cells, k)? {
-        if let Some(f) = sign_formula(&refined, &refined_cells, k)? {
-            return Ok(f);
+    let (cad, cells) = match separating_refinement(&cad, &cells, k)? {
+        Some((refined, refined_cells)) => {
+            if let Some(f) = sign_formula(&refined, &refined_cells, k)? {
+                return Ok(f);
+            }
+            (refined, refined_cells)
         }
-    }
-    Err(not_ported("described_by_root_functions (polys.cad.cylindrical)"))
+        None => (cad, cells),
+    };
+    // the root functions of the factors describe the set
+    super::cylindrical::described_by_root_functions(&cad, &free_vars, &cells)
 }
 
 /// The truth value of a formula with all its variables quantified
