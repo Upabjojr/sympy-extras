@@ -3,7 +3,8 @@
 numbers, constants, radicals, imaginary terms and symbols with
 assumptions, compared by structure, facts, values, derivatives and
 conjugates; and the powers of powers whose branch needs ``floor``
-(``Pow._eval_power`` with a half-integer exponent)."""
+(``Pow._eval_power`` with a half-integer exponent, and with a complex
+exponent)."""
 
 from __future__ import annotations
 
@@ -84,9 +85,9 @@ def test_powers_of_powers(rust: Any) -> None:
     rc = load("sympy_extras_rs.core")
     x, n, z = Symbol('x', real=True), Symbol('n', negative=True), Symbol('z')
     bases: list[Any] = [x, n, z, 1 + I, -1 + 2*I, x - 1, z**2, x + I]
-    exponents: list[Any] = [3, Rational(5, 2), -3, Rational(2, 3), 2, Rational(-7, 3)]
+    exponents: list[Any] = [3, Rational(5, 2), -3, Rational(2, 3), 2, Rational(-7, 3), I, 1 + I, I/2, 2 - 3*I]
     for b in bases:
         for e in exponents:
             inner = pow(b, e)
-            for expt in [Rational(1, 2), Rational(3, 2), Rational(-1, 2)]:
+            for expt in [Rational(1, 2), Rational(3, 2), Rational(-1, 2), Rational(1, 3)]:
                 assert outcome(lambda: rc.pow(inner, expt)) == outcome(lambda: pow(inner, expt)), (inner, expt)

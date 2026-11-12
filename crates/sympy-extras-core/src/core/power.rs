@@ -395,7 +395,29 @@ fn power_of_power(b: &Basic, e: &Basic, expt: &Basic) -> PolyResult<Option<Basic
         s = Some(Basic::one());
     } else if let Some(real) = is(e, Predicate::extended_real) {
         if !real {
-            return Err(not_ported("floor of the branch of a complex exponent"));
+            // exp(2*I*pi*expt*floor(1/2 - im(e*log(b))/(2*pi))), kept when it
+            // is a real sign
+            use crate::functions::elementary::{
+                exponential::{exp, log},
+                integers::floor,
+            };
+            let two_pi: Basic = mul(&[Basic::int(2), Basic::pi()])?;
+            let angle: Basic = im(&mul(&[e.clone(), log(&b)?])?)?;
+            let inner: Basic = add(&[
+                Basic::half(),
+                mul(&[Basic::negative_one(), angle, pow(&two_pi, &Basic::negative_one())?])?,
+            ])?;
+            let factor: Basic = exp(&mul(&[
+                Basic::int(2),
+                Basic::imaginary_unit(),
+                Basic::pi(),
+                expt.clone(),
+                floor(&inner)?,
+            ])?)?;
+            return match real_sign(&factor)? {
+                Some(s) => Ok(Some(mul(&[s, pow(&b, &mul(&[e.clone(), expt.clone()])?)?])?)),
+                None => Ok(None),
+            };
         }
         if is_rational_value(e, -1) {
             if half(expt)? {
