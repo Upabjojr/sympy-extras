@@ -52,3 +52,24 @@ def test_in_radicals() -> None:
     assert in_radicals(interval(_root(t**2 - 3, 0), Integer(5))) == interval(-sqrt(3), Integer(5))
     plain = finite_set(Integer(1), Integer(2))
     assert in_radicals(plain) is plain
+
+
+def test_roots_over_ex_are_native() -> None:
+    # roots_of_core sent these to SymPy's roots: the components of a
+    # decomposition over EX, and coefficients like pi; checked by substitution
+    from sympy_extras.core import Symbol, pi, expand
+    from sympy_extras.polys.polyroots import ex_roots, roots
+    from sympy_extras.polys.polytools import Poly
+    x = Symbol('x')
+    for f in [x**2 - pi, x**2 + pi*x + 1, pi*x - 1, x**2 - (1 + pi)*x + pi]:
+        found = ex_roots(f, x)
+        assert len(found) == 2 or (len(found) == 1 and f == pi*x - 1), (f, found)
+        for r in found:
+            assert abs(complex(f.subs(x, r).evalf(30))) < 1e-20, (f, r)
+    g = expand((x**2 + x)**3 - 2)
+    listed = roots(Poly(g, x))
+    assert isinstance(listed, dict) and sum(listed.values()) == 6
+    for r in listed:
+        assert abs(complex(g.subs(x, r).evalf(30))) < 1e-20, r
+    # degree five over EX: nothing, as SymPy without quintics
+    assert roots(Poly(x**10 - 2*x**6 - 2*x**5 + x**2 + 2*x - 1, x)) == {}

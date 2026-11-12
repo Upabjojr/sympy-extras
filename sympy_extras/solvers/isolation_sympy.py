@@ -1,6 +1,5 @@
 """The SymPy face of the isolation of real roots of transcendental
-functions (:mod:`sympy_extras.solvers.isolation`), and the steps which
-stay on SymPy.
+functions (:mod:`sympy_extras.solvers.isolation`).
 
 :func:`isolate_real_roots`, :func:`real_roots_of`, :func:`point_between`
 and :func:`compare_points` take and return SymPy objects, converted by
@@ -9,12 +8,6 @@ and :func:`compare_points` take and return SymPy objects, converted by
 native root object (``interop`` converts one into the other): its
 bisections, refinements and numerical values are those of the native
 object.
-
-One step of the native module stays written on SymPy and is called from
-it at run time (:func:`real_roots_of_core`, which takes and returns
-objects of the core): the real roots of a polynomial with rational
-coefficients which are not all in radicals (SymPy's ``real_roots``, with
-its ``CRootOf``).
 
 Examples
 ========
@@ -35,7 +28,6 @@ from sympy.core.expr import Expr
 from sympy.core.numbers import Float, Rational
 from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
-from sympy.polys.polytools import Poly
 from sympy.printing.printer import Printer
 from sympy.sets.sets import FiniteSet, Interval, Set
 
@@ -48,7 +40,7 @@ from sympy_extras.interop import to_sympy
 from . import isolation as native
 
 __all__ = ['TranscendentalRoot', 'isolate_real_roots', 'real_roots_of', 'point_between', 'compare_points',
-    'real_roots_of_core', 'sympy_root', 'native_root']
+    'sympy_root', 'native_root']
 
 #: an exact real number, or an isolated root
 Point = Expr
@@ -59,17 +51,6 @@ def _sympy_symbol(s: CoreSymbol) -> Symbol:
     if not isinstance(converted, Symbol):
         raise TypeError("%s is not a symbol" % (s,))
     return converted
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native module which stay on SymPy
-
-def real_roots_of_core(f: CoreExpr, x: CoreSymbol) -> list[CoreExpr]:
-    """The real roots of a polynomial with rational coefficients, with
-    their multiplicities, in increasing order (SymPy's ``Poly.real_roots``:
-    radicals for the linear, quadratic and binomial factors, ``CRootOf``
-    otherwise)."""
-    return [core_expr(as_expr(r)) for r in Poly(sympy_expr(f), _sympy_symbol(x)).real_roots()]
 
 
 # ---------------------------------------------------------------------------

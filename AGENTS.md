@@ -155,8 +155,8 @@ sympy_extras/
     _numeric_sympy.py        the SymPy face of _numeric
     _special_values.py       with_special_values, special_points, condition_point, defined_problem, ...: the cases of
                              the isolated values of the parameters at which a closed form fails (native; the real roots
-                             of polynomials with irrational coefficients and the transcendental factors the native
-                             solver does not reduce through roots_sympy and transcendental_sympy)
+                             of polynomials with irrational coefficients by polyroots.ex_roots; the transcendental
+                             factors the native solver does not reduce through transcendental_sympy)
     _special_values_sympy.py the SymPy face of _special_values (used by integrals/definite, indefinite, concrete/karr_sympy;
                              not the solvers/_special_values_sympy of the ODE cases)
     _timeout.py              attempt, time_limit, remaining_time, prepare_sympy: time limits (no SymPy imported; SymPy's
@@ -182,8 +182,9 @@ sympy_extras/
         ask.py               ask(): the core's ask first, then the CAD (native, with the native CAD and virtual
                              substitution, the native structure theorem, sample points and reliable values)
         ask_sympy.py         the SymPy face of ask
-        refine.py            refine(), simplify(): the core's refine and simplify plus CAD-decided handlers (native)
-        refine_sympy.py      the SymPy face of refine (_Refiner too), SymPy's simplify of Booleans, the proofs
+        refine.py            refine(), simplify(): the core's refine and simplify plus CAD-decided handlers, simplify_relational
+                             (native, PORTED FROM SYMPY Relational._eval_simplify)
+        refine_sympy.py      the SymPy face of refine (_Refiner too), SymPy's simplify of compound Booleans, the proofs
         resolve.py           resolve(): quantifier elimination over R, Z, C (native, with the native CAD, virtual
                              substitution, Cooper and comprehensive Groebner systems)
         resolve_sympy.py     the SymPy face of resolve
@@ -406,9 +407,8 @@ sympy_extras/
         tests/
     solvers/                 solvers extending sympy.solvers (exports nothing: import the modules)
         isolation.py         TranscendentalRoot (node), isolate_real_roots, point_between, compare_points: exact real roots of
-                             exp-log functions (native; SymPy's real_roots with CRootOf through isolation_sympy)
-        isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts), and
-                             real_roots_of_core
+                             exp-log functions (native, the roots without radicals as IndexedRoot)
+        isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts)
         transcendental.py    solve_transcendental, polynomialize, Reduction: transcendental equations and inequalities
                              reduced to polynomial ones through kernels (native; SymPy's solveset of the non-rational
                              polynomial relations, the Lambert W candidates of its solve (lambert=False skips them)
@@ -417,9 +417,9 @@ sympy_extras/
                              reliable_form_of_core, reliable_value_of_core
         inequalities.py      solve_inequality: a relational solved for one variable (native, the rational case by
                              the CAD, the others by the native transcendental solver), PORTED FROM SYMPY
-        integers.py          linear Diophantine systems (Hermite), Contejean-Devie, Cooper's algorithm (native;
-                             SymPy's simplify_logic through integers_sympy)
-        integers_sympy.py    the SymPy face of integers, and simplify_logic_of_core (from virtual_substitution_sympy)
+        integers.py          linear Diophantine systems (Hermite), Contejean-Devie, Cooper's algorithm (native, the
+                             results simplified by logic.boolalg)
+        integers_sympy.py    the SymPy face of integers
         parametric.py        parametric_cases, ParametricCase: the cases of the parameters of a polynomial system, from
                              the regular chains (native)
         parametric_sympy.py  the SymPy face of parametric
@@ -511,6 +511,8 @@ sympy_extras/
         hyperexpand.py       hyperexpand: formula tables, shift operators, plans, Slater's theorem (ported from SymPy)
         tests/
     logic/                   propositional logic on the core's Booleans (exports nothing: import the modules)
+        boolalg.py           simplify_logic, SOPform, POSform: minimal two-level forms by Quine-McCluskey (native,
+                             PORTED FROM SYMPY logic/boolalg)
         cnf.py               to_clauses, conjunction, Clauses: conjunctive normal forms encoded with integers (native,
                              PORTED FROM SYMPY assumptions/cnf)
         dpll2.py             SATSolver, propositional_models, is_satisfiable: DPLL with watched literals and VSIDS, every
@@ -528,8 +530,7 @@ sympy_extras/
         densearith.py        dup_add/mul/pow/div/pdiv/exquo over a Domain[T]
         densetools.py        dup_diff/eval/shift/compose/content/primitive/monic/trunc/clear_denoms
         euclidtools.py       dup_gcd (Euclid, subresultant PRS), dup_resultant, dup_prs_resultant (ported), dup_discriminant, dup_gcdex (typed, no SymPy)
-        polytools.py         Poly over ZZ, QQ, ZZ[a,..], QQ[a,..] (ported from SymPy, printed as SymPy): gcd, lcm, resultant, factor_list (multivariate, ZZ[a]), sqf_list, div; degree, LC, gcd, lcm, resultant, factor, factor_list, sqf, sqf_list, cancel, invert (no SymPy; EX, CC and the other domains not ported through polytools_sympy)
-        polytools_sympy.py   the steps of polytools which stay on SymPy: invert_of_core, cancel_of_core, factor_of_core
+        polytools.py         Poly over ZZ, QQ, ZZ[a,..], QQ[a,..] (ported from SymPy, printed as SymPy): gcd, lcm, resultant, factor_list (multivariate, ZZ[a]), sqf_list, div; degree, LC, gcd, lcm, resultant, factor, factor_list, sqf, sqf_list, cancel, invert (no SymPy; cancel over CC and EX too)
         gaussianfactor.py    multivariate factorisation over ZZ_I and QQ_I (Trager over QQ<I>, ported from SymPy)
         polyerrors.py        SymPy's polynomial exceptions (ported)
         algebraicfactor.py   ext_factor_list, AlgebraicPolynomialRing: multivariate factorisation and gcd over a number field QQ(alpha) (Trager)
@@ -541,8 +542,8 @@ sympy_extras/
         rootoftools.py       RootSum (node), root_sum: sums of a function over the roots of a polynomial (the rational
                              case by the trace, doit, diff, numerical values; native), PORTED FROM SYMPY
         polyroots.py         roots: linear, quadratic, binomial, cyclotomic, cubic, quartic, decomposition, factoring (ported from SymPy; no EX/simplify)
-        roots.py             radical_form, in_radicals: SymPy's CRootOf (wrapped foreign nodes) in radicals (native; SymPy's roots over EX through roots_sympy)
-        roots_sympy.py       the SymPy face of roots, and roots_of_core
+        roots.py             radical_form, in_radicals: SymPy's CRootOf (wrapped foreign nodes) in radicals (native; the components over EX by polyroots.ex_roots)
+        roots_sympy.py       the SymPy face of roots
         subresultants.py     dup_psc (over a Domain[T], towers for several variables), psc (on rings.PolyRing): principal
                              subresultant coefficients (native)
         subresultants_sympy.py the SymPy face of subresultants: dup_psc, dmp_psc on SymPy's dense representation, psc on SymPy's rings
@@ -596,9 +597,8 @@ sympy_extras/
                              orders of rings.PolyRing (native; rings re-exports them)
         orderings_sympy.py   the SymPy face of orderings: WeightOrder, BlockOrder, elimination_order as SymPy MonomialOrder
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (Loos-Weispfenning,
-                             Weispfenning), with_sides, to_nnf (native; SymPy's simplify_logic of the results through
-                             virtual_substitution_sympy)
-        virtual_substitution_sympy.py  the SymPy face of virtual_substitution, and simplify_logic_of_core
+                             Weispfenning), with_sides, to_nnf (native, the results simplified by logic.boolalg)
+        virtual_substitution_sympy.py  the SymPy face of virtual_substitution
         puiseux.py           Newton–Puiseux expansions of the branches of a plane curve at a point and at infinity, conjugate branches over
                              exact number fields (Duval; AlgebraicField, the rationals as RATIONALS) (native)
         puiseux_sympy.py     the SymPy face of puiseux (Poly, SymPy's number fields both ways), and field_of (CRootOf points)

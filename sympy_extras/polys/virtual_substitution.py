@@ -34,9 +34,8 @@ The formulas, the expressions and the symbols are objects of the core
 objects. The coefficients in the eliminated variable come from the
 native :class:`~sympy_extras.polys.polytools.Poly`, the normal form of
 the relations from the native :func:`sympy_extras.assumptions.facts.normalize`.
-One step goes through SymPy at run time (the face holds it,
-:func:`~sympy_extras.polys.virtual_substitution_sympy.simplify_logic_of_core`):
-SymPy's ``simplify_logic`` of the results. The negation normal form
+The results are simplified by the native port of SymPy's
+``simplify_logic`` (:func:`sympy_extras.logic.boolalg.simplify_logic`). The negation normal form
 :func:`to_nnf` is a port of SymPy's ``to_nnf`` (``sympy/logic/boolalg.py``).
 
 References
@@ -386,9 +385,9 @@ def _clean(formula: Boolean) -> Boolean:
     if not isinstance(result, BooleanFunction):
         # SymPy's simplify_logic returns a relation as it is
         return with_sides(result)
-    from .virtual_substitution_sympy import simplify_logic_of_core
+    from sympy_extras.logic.boolalg import simplify_logic
     try:
-        simplified = simplify_logic_of_core(result)
+        simplified = simplify_logic(result)
     except (ValueError, TypeError):
         simplified = result
     return with_sides(simplified)

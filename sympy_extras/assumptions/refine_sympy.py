@@ -7,13 +7,12 @@ converted by :mod:`sympy_extras.interop` around the native functions;
 :class:`_Refiner` is the face of the native refiner (its dummies are
 SymPy dummies carrying the assumptions).
 
-Two steps of the native refinement stay written on SymPy and are called
-from it at run time (the functions ending in ``_of_core``, which take and
-return objects of the core): SymPy's ``simplify`` of a Boolean formula
-(:func:`simplify_boolean_of_core`: ``simplify_logic`` and the rules of the
-relations, not ported) and the factorisation of a polynomial whose
-coefficients are not rational (:func:`factor_list_of_core`, over SymPy's
-``EX``). The proofs of the structure theorem are native
+One step of the native refinement stays written on SymPy and is called
+from it at run time (:func:`simplify_boolean_of_core`, which takes and
+returns objects of the core): SymPy's ``simplify`` of a compound Boolean
+formula (``simplify_univariate`` and the patterns of the relations of
+``And`` and ``Or``, not ported; a single relation is simplified by the
+native port). The proofs of the structure theorem are native
 (:class:`sympy_extras.simplify.structure.ElementaryTower`).
 
 Examples
@@ -42,19 +41,17 @@ from sympy.core.sympify import sympify
 from sympy.logic.boolalg import Boolean
 from sympy.sets.sets import Set
 
-from sympy_extras._typing_sympy import Truth, as_expr, as_symbol
+from sympy_extras._typing_sympy import Truth, as_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
-from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
 
 from . import refine as native
-from .ask_sympy import Assumptions, _core_expr, _sympy_expr, core_assumptions, core_boolean, core_domain, \
+from .ask_sympy import Assumptions, _core_expr, core_assumptions, core_boolean, core_domain, \
     sympy_boolean
 from .facts_sympy import Facts
 
-__all__ = ['refine', 'simplify', 'simplify_boolean_of_core', 'factor_list_of_core']
+__all__ = ['refine', 'simplify', 'simplify_boolean_of_core']
 
 
 def _core(e: Union[Basic, int, bool]) -> CoreBasic:
@@ -66,24 +63,12 @@ def _core(e: Union[Basic, int, bool]) -> CoreBasic:
 
 def simplify_boolean_of_core(formula: CoreBoolean, ratio: float, rational: Optional[bool], inverse: bool,
                              doit: bool) -> CoreBoolean:
-    """SymPy's ``simplify`` of a Boolean formula (``simplify_logic`` and
-    the rules of the relations, which are not ported)."""
+    """SymPy's ``simplify`` of a compound Boolean formula
+    (``simplify_univariate`` and the patterns of the relations of ``And``
+    and ``Or``, which are not ported)."""
     from sympy.simplify.simplify import simplify as _sympy_simplify
     return core_boolean(sympify(_sympy_simplify(sympy_boolean(formula), ratio=ratio, rational=rational,
                                                 inverse=inverse, doit=doit)))
-
-
-def factor_list_of_core(f: CoreExpr, gens: list[CoreSymbol]) -> Optional[tuple[CoreExpr, list[tuple[CoreExpr, int]]]]:
-    """SymPy's ``factor_list`` of a polynomial whose coefficients are not
-    rational (the native factorisation covers ``ZZ``, ``QQ``, ``ZZ[a]``
-    and ``QQ[a]``), ``None`` when SymPy cannot factor it either."""
-    from sympy.polys.polyerrors import PolynomialError
-    from sympy.polys.polytools import factor_list
-    try:
-        c, factors = factor_list(_sympy_expr(f), *[to_sympy(g) for g in gens])
-    except (PolynomialError, ValueError):
-        return None
-    return _core_expr(as_expr(c)), [(_core_expr(as_expr(g)), int(m)) for g, m in factors]
 
 
 # ---------------------------------------------------------------------------

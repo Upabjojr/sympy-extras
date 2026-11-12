@@ -95,12 +95,12 @@ are found by the native factorisation, roots and transcendental solver
 :func:`~sympy_extras.polys.polyroots.roots`,
 :func:`~sympy_extras.solvers.transcendental.solve_transcendental`) and
 the assumptions at a point decided by the native
-:func:`~sympy_extras.assumptions.sat.satisfiable`. Two steps go through
-SymPy at run time when the native code does not take them (the functions
-ending in ``_of_core``): the real roots of a polynomial whose
-coefficients are not rational (``a**2 - pi``,
-:func:`~sympy_extras.polys.roots_sympy.roots_of_core`), and the solutions
-of a transcendental factor which the native solver does not reduce
+:func:`~sympy_extras.assumptions.sat.satisfiable`; the real roots of a
+polynomial whose coefficients are not rational (``a**2 - pi``) by the
+formulas over ``EX`` of :func:`~sympy_extras.polys.polyroots.ex_roots`.
+One step goes through SymPy at run time when the native code does not
+take it: the solutions of a transcendental factor which the native solver
+does not reduce
 (:func:`~sympy_extras.solvers.transcendental_sympy.solveset_of_core`).
 
 Examples
@@ -439,13 +439,18 @@ def _factor_zeros(g: Expr, symbols: list[Symbol], deadline: _Deadline) -> list[P
 
 def _real_roots(g: Expr, p: Symbol) -> list[Expr]:
     """The real roots of a polynomial in ``p`` with constant coefficients
-    (SymPy's ``roots(g, filter='R')``): by the native roots, by SymPy's
-    for coefficients the native domains do not take (``pi``)."""
+    (SymPy's ``roots(g, filter='R')``): by the native roots, for
+    coefficients the native domains do not take (``pi``) by the formulas
+    over ``EX`` (none when they are not ported: a cubic or a quartic)."""
     try:
         found = roots(g, p, filter='R')
     except BasePolynomialError:
-        from sympy_extras.polys.roots_sympy import roots_of_core
-        return [r for r in roots_of_core(g, p) if all(a.is_real for a in r.as_numer_denom())]
+        from sympy_extras.polys.polyroots import ex_roots
+        try:
+            listed = ex_roots(g, p)
+        except NotImplementedError:
+            return []
+        return [r for r in listed if all(a.is_real for a in r.as_numer_denom())]
     return [r for r in found if isinstance(r, Expr)]
 
 

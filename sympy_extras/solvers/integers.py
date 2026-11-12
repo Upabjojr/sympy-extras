@@ -20,10 +20,9 @@ solutions and Presburger arithmetic.
 The expressions, the formulas and the symbols are objects of the core
 (:mod:`sympy_extras.core`): the module imports no SymPy, and
 :mod:`sympy_extras.solvers.integers_sympy` is its face on SymPy objects.
-One step goes through SymPy at run time (the face holds it,
-:func:`~sympy_extras.solvers.integers_sympy.simplify_logic_of_core`):
-SymPy's ``simplify_logic`` of the formulas returned by Cooper's
-algorithm. The negation normal form and :func:`with_sides` are those of
+The formulas returned by Cooper's algorithm are simplified by the native
+port of SymPy's ``simplify_logic``
+(:func:`sympy_extras.logic.boolalg.simplify_logic`). The negation normal form and :func:`with_sides` are those of
 :mod:`sympy_extras.polys.virtual_substitution`.
 
 References
@@ -660,9 +659,9 @@ def _clean(formula: Boolean) -> Boolean:
     formula = _canonical_divisibilities(formula)
     if isinstance(formula, (BooleanTrue, BooleanFalse)):
         return formula
-    from .integers_sympy import simplify_logic_of_core
+    from sympy_extras.logic.boolalg import simplify_logic
     try:
-        result = simplify_logic_of_core(formula)
+        result = simplify_logic(formula)
     except (ValueError, TypeError):
         result = formula
     return with_sides(_drop_covered(result))

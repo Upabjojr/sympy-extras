@@ -108,6 +108,56 @@ remove public functions. Breaking changes are listed here when they happen.
   linear argument (`x = sqrt(x + 2)`), and no longer rewrites a power of a
   negative base as an exponential: `(-1)**x = 1` gave `{0}` and
   `(-2)**x = 4` no solution; both give `None` now.
+- **Breaking**: `polys.roots_sympy.roots_of_core` is removed: the new
+  `polys.polyroots.ex_roots` gives the roots of a polynomial with
+  coefficients of any kind by SymPy's formulas over `EX` (a root `-1` or
+  `1` divided out, then the linear and quadratic formulas with `simplify`;
+  nothing from a degree five or more, as SymPy without quintics), which
+  the native `roots` now uses for the components of a decomposition and
+  `_special_values` for the real roots of `a**2 - pi`; a cubic or a quartic
+  over `EX` is not ported (`radical_form` then gives no radical form,
+  `_special_values` no candidate).
+- **Breaking**: `assumptions.refine_sympy.factor_list_of_core` is removed (the
+  native factorisation raises `CoercionFailed`, never `NotImplementedError`,
+  for coefficients which are not rational, so the route was not reached);
+  the native `simplify` of a relation which is not polynomial in real
+  variables is the new `assumptions.refine.simplify_relational`, a port of
+  SymPy's `Relational._eval_simplify` (the sides simplified, solved for a
+  single symbol when linear, the coefficients made coprime), the
+  difference of two numbers decided by a reliable value rather than to
+  two digits. `simplify_boolean_of_core` stays for compound formulas
+  (SymPy's `simplify_univariate` and the patterns of `And` and `Or`).
+- **Breaking**: `sympy_extras.polys.polytools_sympy` (`invert_of_core`,
+  `cancel_of_core`, `factor_of_core`) is removed: the native `cancel`
+  cancels over `CC` (the gcd over `QQ_I`, the cofactors rounded back, as
+  SymPy's `PolyElement.cancel` of an inexact domain), over `EX` (numbers
+  such as `zoo` or `oo` among the coefficients; a zero `EX` cannot detect
+  leaves the fraction as it is where SymPy raises `PolynomialDivisionFailed`)
+  and with generators over a composite domain (the other factors as
+  elements of `EX`, the same rational function as SymPy's in another form,
+  and a generator which is not a factor of the expression, `x**2` in `x**3`,
+  through the same path); `factor` with generators over `ZZ_I`, `QQ_I` and
+  `RR` factors in every symbol, factors `zoo`, `oo` and `nan` among the
+  coefficients as generators (SymPy's `ZZ[zoo]`), and leaves a polynomial
+  over `CC` or `EX` otherwise as it is (SymPy's `DomainError`); `invert` of two numbers follows
+  SymPy's `Domain.invert` over `ZZ_I`, `QQ_I` and `RR` (the `TypeError` of
+  SymPy over `CC`). The dense pseudo-division raises
+  `PolynomialDivisionFailed` when the degree does not drop, as SymPy's.
+- **Breaking**: `solvers.isolation_sympy.real_roots_of_core` is removed:
+  the real roots of a polynomial with rational coefficients which are not
+  in radicals are the native canonical `IndexedRoot` of their minimal
+  polynomial (SymPy's `CRootOf` through `interop`), ordered exactly as
+  real algebraic numbers, so that `isolate_real_roots` no longer loads
+  SymPy for them.
+- **Breaking**: `simplify_logic_of_core` is removed from
+  `polys.virtual_substitution_sympy` and `solvers.integers_sympy`: the
+  results of virtual substitution and of Cooper's algorithm, and the joined
+  conditions of the cases of the ODE solvers (`solvers._special_values`),
+  are simplified by the new native `sympy_extras.logic.boolalg`
+  (`simplify_logic`, `SOPform`, `POSform`, ported from SymPy's
+  Quine–McCluskey minimisation), without loading SymPy. The relations are
+  numbered in `ordered` order instead of SymPy's hash order, so that an
+  equally small form may be chosen where SymPy's depended on the hashes.
 - **Breaking**: the transcendental Risch package `sympy_extras.integrals.risch`
   (`risch.py`, `rde.py`, `prde.py`, `cde.py`, `polymatrix.py`) is native on
   the typed core: its functions take and return objects of

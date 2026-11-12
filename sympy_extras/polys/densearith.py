@@ -276,15 +276,20 @@ def dup_pdiv(f: list[T], g: list[T], K: Domain[T]) -> tuple[list[T], list[T]]:
     q: list[T] = []
     r = list(f)
     n = df - dg + 1
+    dr = df
     while True:
-        dr = len(r) - 1
-        if dr < dg:
-            break
         # r = lc r - lc(r) x**(dr - dg) g, q = lc q + lc(r) x**(dr - dg)
         lr = r[0]
         q = dup_add_term(dup_mul_ground(q, lc, K), lr, dr - dg, K)
         r = dup_sub(dup_mul_ground(r, lc, K), dup_mul_term(g, lr, dr - dg, K), K)
         n -= 1
+        previous, dr = dr, len(r) - 1
+        if dr < dg:
+            break
+        if not dr < previous:
+            # PORTED FROM SYMPY: dup_pdiv (a zero the domain does not detect, EX)
+            from .polyerrors import PolynomialDivisionFailed
+            raise PolynomialDivisionFailed('the degree of the remainder did not drop: %s by %s' % (f, g))
     # the remaining factor of lc so that the multiplier is exactly lc**(df - dg + 1)
     if n > 0:
         scale = K.pow(lc, n)

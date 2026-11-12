@@ -534,9 +534,8 @@ def test_native_cad_qe_does_not_load_sympy() -> None:
 
 def test_native_virtual_substitution_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.polys.virtual_substitution` does not
-    load SymPy, nor do the eliminations whose result is a truth value or
-    a single relation (SymPy's ``simplify_logic`` of a compound result
-    goes through it at run time)."""
+    load SymPy, nor do the eliminations (the compound results are
+    simplified by the native ``simplify_logic``)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_VIRTUAL_SUBSTITUTION], capture_output=True, text=True,
                          timeout=600)
     assert out.returncode == 0, out.stderr
@@ -2560,5 +2559,131 @@ def test_native_sat_search_does_not_load_sympy() -> None:
     with a parameter carrying no assumptions, which asks ``satisfiable``
     for the cases of the parameter."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_SAT_SEARCH], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SIMPLIFY_LOGIC = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.logic.boolalg import simplify_logic
+from sympy_extras.polys.virtual_substitution import linear_quantifier_elimination, eliminate_linear
+from sympy_extras.solvers.integers import cooper
+x, y, z, a, b = symbols('x y z a b')
+assert str(simplify_logic((a & b) | (a & ~b) | (x > 0) | ((x <= 0) & (y > 1)))) == 'a | (x > 0) | (y > 1)'
+assert str(cooper((3*x > y) & (3*x < y + 3), x)) == 'Eq(Mod(y + 1, 3), 0) | Eq(Mod(y + 2, 3), 0)'
+assert str(eliminate_linear(((x > y) | (x > z)) & (x < 1), x)) == '(y < 1) | (z < 1)'
+result, prefix = linear_quantifier_elimination(((x > y) & (x < 1)) | ((x > z) & (x < 2)), [('exists', x)])
+assert not prefix and len(result.args) == 6, result
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_simplify_logic_does_not_load_sympy() -> None:
+    """The simplification of the compound results of virtual substitution
+    and of Cooper's algorithm does not load SymPy: it is the native port
+    of ``simplify_logic`` (:mod:`sympy_extras.logic.boolalg`); it went
+    through SymPy's ``simplify_logic`` (``simplify_logic_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SIMPLIFY_LOGIC], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_REAL_ROOTS = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.polys.cad.indexedroot import IndexedRoot
+from sympy_extras.sets import interval
+from sympy_extras.solvers.isolation import isolate_real_roots
+x = symbols('x')
+roots = isolate_real_roots((x**5 - x - 1)*(x**2 - 2)*(3*x - 1), x)
+assert roots is not None and str(roots[:2] + roots[3:]) == '[-sqrt(2), 1/3, sqrt(2)]', roots
+assert isinstance(roots[2], IndexedRoot) and str(roots[2].evalf(10)) == '1.167303978', roots
+assert str(isolate_real_roots(x**5 - x - 1, x, interval(1, 2))) == '[IndexedRoot(x**5 - x - 1, x, 0)]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_real_roots_of_polynomials_do_not_load_sympy() -> None:
+    """The real roots of a polynomial which are not in radicals are
+    native ``IndexedRoot`` nodes (they went through SymPy's
+    ``real_roots`` and its ``CRootOf``, ``real_roots_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REAL_ROOTS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_POLYTOOLS_DOMAINS = r'''
+import sys
+from sympy_extras.core import symbols, I, Float, Integer, zoo, oo
+from sympy_extras.polys.polytools import cancel, factor, invert
+x, y = symbols('x y')
+assert str(cancel(zoo*x)) == 'zoo*x' and str(cancel(oo*x/(x**2 + x))) == 'oo/(x + 1)'
+assert str(cancel((Float(1.5) + I)*x/(x**2 + x))) == '(1.5 + 1.0*I)/(1.0*x + 1.0)'
+assert str(cancel((I*x*y + I*x)/(y + 1), x)) == 'I*x'
+assert str(factor(x**2 + 2*I*x - 1, x)) == '(x + I)**2' and str(factor(zoo*x**2 + zoo)) == 'zoo*(x**2 + 1)'
+assert str(invert(I, Integer(3))) == '-I' and str(invert(Float(1.5), Integer(3))) == '0.666666666666667'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_polytools_domains_do_not_load_sympy() -> None:
+    """``cancel`` over ``CC`` and ``EX`` and with generators over a
+    composite domain, ``factor`` with generators over ``ZZ_I``, ``invert``
+    of Gaussian and float numbers do not load SymPy (they went through
+    ``polytools_sympy``: ``cancel_of_core``, ``factor_of_core``,
+    ``invert_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_POLYTOOLS_DOMAINS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+
+_NATIVE_RELATION_SIMPLIFY = r"""
+import sys
+from sympy_extras.core import symbols, Eq
+from sympy_extras.functions import abs_, sin
+from sympy_extras.assumptions.refine import simplify
+a, x = symbols('a x')
+assert str(simplify(2*a < 1)) == 'a < 1/2' and str(simplify(Eq(2*a, 1))) == 'Eq(a, 1/2)'
+assert str(simplify(abs_(x) > 1)) == 'Abs(x) > 1' and str(simplify(sin(x) > 0)) == 'sin(x) > 0'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+"""
+
+
+def test_native_simplify_of_a_relation_does_not_load_sympy() -> None:
+    """The native ``simplify`` of a relation which is not polynomial in
+    real variables is the port of SymPy's ``Relational._eval_simplify``
+    (it went through ``simplify_boolean_of_core``, which keeps only the
+    compound formulas)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RELATION_SIMPLIFY], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+
+_NATIVE_EX_ROOTS = r"""
+import sys
+from sympy_extras.core import symbols, pi, expand
+from sympy_extras.polys.polyroots import ex_roots, roots
+from sympy_extras.polys.polytools import Poly
+from sympy_extras._special_values import _real_roots
+x, a = symbols('x a')
+assert str(ex_roots(x**2 - pi, x)) == '[-sqrt(pi), sqrt(pi)]'
+assert sum(roots(Poly(expand((x**2 + x)**3 - 2), x)).values()) == 6
+assert roots(Poly(x**10 - 2*x**6 - 2*x**5 + x**2 + 2*x - 1, x)) == {}
+assert str(_real_roots(a**2 - pi, a)) == '[-sqrt(pi), sqrt(pi)]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+"""
+
+
+def test_native_roots_over_ex_do_not_load_sympy() -> None:
+    """The roots of the components of a decomposition over ``EX`` and of
+    polynomials with coefficients like ``pi`` are native (they went
+    through SymPy's ``roots``, ``roots_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EX_ROOTS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
