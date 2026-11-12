@@ -141,6 +141,8 @@ pub fn class_key(e: &Basic) -> ClassKey {
         Head::Undefined(u) => (4, 0, u.name.clone()),
         Head::Relational(op) => (5, 0, op.sympy_name().to_string()),
         Head::AccumBounds => (5, 0, "AccumulationBounds".to_string()),
+        Head::Piecewise => (4, 10000, "Piecewise".to_string()),
+        Head::ExprCondPair => (3, 1, "ExprCondPair".to_string()),
         _ if super::logic::is_boolean(e) || crate::sets::sets::is_set(e) => (5, 0, name),
         _ if e.is_atom() => (2, 0, name),
         _ => (5, 0, name),

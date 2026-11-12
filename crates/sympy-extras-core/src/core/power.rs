@@ -609,6 +609,28 @@ pub fn pow(base: &Basic, exp: &Basic) -> PolyResult<Basic> {
             }
         }
     }
+    if exp.is_symbol()
+        && is_true(exp, Predicate::integer)
+        && (base.is_number_node() || (base.is_mul() && super::assumptions::is_number(base)))
+        && super::printing::could_extract_minus_sign(base)
+        && !(matches!(
+            base.head(),
+            Head::Rational {
+                integer_class: true,
+                ..
+            }
+        ) && is_rational_value(base, -1))
+    {
+        // Pow.__new__: a number base to an even or odd symbol ((-2)**n is
+        // -2**n for an odd n)
+        let negated: Basic = mul(&[Basic::negative_one(), base.clone()])?;
+        if is_true(exp, Predicate::even) {
+            return pow(&negated, exp);
+        }
+        if is_true(exp, Predicate::odd) {
+            return mul(&[Basic::negative_one(), pow(&negated, exp)?]);
+        }
+    }
     if base.is_number_node() {
         if matches!(base.head(), Head::NaN) {
             return Ok(Basic::nan());
@@ -711,6 +733,10 @@ pub fn pow(base: &Basic, exp: &Basic) -> PolyResult<Basic> {
     if super::accumbounds::is_bounds(base) {
         // AccumulationBounds._eval_power
         return super::accumbounds::ab_pow(base, exp);
+    }
+    if matches!(base.head(), Head::Piecewise) {
+        // Piecewise._eval_power
+        return crate::functions::elementary::piecewise::piecewise_power(base, exp);
     }
     if base.is_function(super::basic::Function::KroneckerDelta) {
         if let Some(own) = crate::functions::special::tensor_functions::kronecker_power(base, exp)? {

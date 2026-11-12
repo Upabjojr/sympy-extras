@@ -366,3 +366,109 @@ fn hurwitz_at_nonpositive_integer(s: &Complex, a: &Complex, prec: usize) -> Opti
     }
     Some(finish(&total, prec, false))
 }
+
+fn raise_to(z: &Complex, wp: usize) -> Complex {
+    let (re, im) = parts(z);
+    complex(re.with_precision(wp).value(), im.with_precision(wp).value())
+}
+
+fn is_zero_complex(z: &Complex) -> bool {
+    let (re, im) = parts(z);
+    re == Real::ZERO && im == Real::ZERO
+}
+
+/// `sum_k x**k/(a(a+1)...(a+k))`, the series of the lower incomplete
+/// gamma.
+fn lower_series(a: &Complex, x: &Complex, wp: usize) -> Complex {
+    let mut term: Complex = &c_int(1, wp) / a;
+    let mut total: Complex = term.clone();
+    let mut k: i64 = 1;
+    loop {
+        term = &(&term * x) / &(a + &c_int(k, wp));
+        total = &total + &term;
+        let size: f64 = modulus(&term);
+        if size == 0.0 || (k > 2 && size.log2() < -((wp + 10) as f64) && modulus(x) < k as f64) || k > 400_000 {
+            break;
+        }
+        k += 1;
+    }
+    total
+}
+
+/// mpmath's `gammainc(a, 0, x)`, the lower incomplete gamma; `None` at a
+/// pole of `gamma(a)`.
+pub fn lower_gamma(a: &Complex, x: &Complex, prec: usize) -> Option<Complex> {
+    if is_zero_complex(x) {
+        return Some(complex(real_int(&Int::ZERO, prec), real_int(&Int::ZERO, prec)));
+    }
+    if is_pole(a) || modulus(x) > 2000.0 {
+        return None;
+    }
+    let real: bool = parts(a).1 == Real::ZERO && parts(x).1 == Real::ZERO && parts(x).0 > Real::ZERO;
+    let wp: usize = prec + 40 + (modulus(x) * 1.443) as usize;
+    let (a, x) = (raise_to(a, wp), raise_to(x, wp));
+    let power: Complex = (&a * &x.ln()).exp();
+    let value: Complex = &(&power * &(-&x).exp()) * &lower_series(&a, &x, wp);
+    Some(finish(&value, prec, real))
+}
+
+/// mpmath's `gammainc(a, x)`, the upper incomplete gamma: `gamma(a)` minus
+/// the lower one, and at a pole `a = -N` of gamma the form
+/// `(-1)**N/N!*(E1(x) - exp(-x)*sum_{k<N} (-1)**k*k!/x**(k+1))`.
+pub fn upper_gamma(a: &Complex, x: &Complex, prec: usize) -> Option<Complex> {
+    let (ar, ai) = parts(a);
+    if is_zero_complex(x) {
+        if ar > Real::ZERO {
+            return gamma(a, prec);
+        }
+        return None;
+    }
+    if modulus(x) > 2000.0 {
+        return None;
+    }
+    let real: bool = ai == Real::ZERO && parts(x).1 == Real::ZERO && parts(x).0 > Real::ZERO;
+    let wp: usize = prec + 40 + (modulus(x) * 1.443) as usize * 2;
+    let (aa, xx) = (raise_to(a, wp), raise_to(x, wp));
+    let value: Complex = if is_pole(a) {
+        let n: u64 = (-ar).to_int().value().try_into().ok()?;
+        // E1(x) = -EulerGamma - log(x) - sum (-x)**k/(k*k!)
+        let minus_x: Complex = -&xx;
+        let mut term: Complex = c_int(1, wp);
+        let mut series: Complex = c_int(0, wp);
+        let mut k: i64 = 1;
+        loop {
+            term = &(&term * &minus_x) / &c_int(k, wp);
+            let t: Complex = &term / &c_int(k, wp);
+            series = &series + &t;
+            let size: f64 = modulus(&t);
+            if size == 0.0 || (k > 2 && size.log2() < -((wp + 10) as f64) && modulus(&xx) < k as f64) || k > 400_000 {
+                break;
+            }
+            k += 1;
+        }
+        let g: Complex = complex_real(crate::core::evalf::euler_gamma(wp), wp);
+        let e1: Complex = &(&(-&g) - &xx.ln()) - &series;
+        let mut sum: Complex = c_int(0, wp);
+        let mut factorial: Int = Int::ONE;
+        let mut power: Complex = xx.clone();
+        for k in 0..n {
+            if k > 0 {
+                factorial *= Int::from(k);
+                power = &power * &xx;
+            }
+            let t: Complex = &complex_real(real_int(&factorial, wp), wp) / &power;
+            sum = if k % 2 == 0 { &sum + &t } else { &sum - &t };
+        }
+        let mut nf: Int = Int::ONE;
+        for k in 2..=n {
+            nf *= Int::from(k);
+        }
+        let sign: i64 = if n % 2 == 1 { -1 } else { 1 };
+        let inner: Complex = &e1 - &(&(-&xx).exp() * &sum);
+        &inner * &complex_real(real_int(&Int::from(sign), wp) / real_int(&nf, wp), wp)
+    } else {
+        let lower: Complex = lower_gamma(&aa, &xx, wp)?;
+        &gamma(&aa, wp)? - &lower
+    };
+    Some(finish(&value, prec, real))
+}

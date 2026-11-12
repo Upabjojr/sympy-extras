@@ -53,6 +53,23 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::LerchPhi
         | Function::RiemannXi
         | Function::Stieltjes) => special::zeta_functions::zeta_fdiff(g, e, argindex),
+        g @ (Function::Expint
+        | Function::Ei
+        | Function::Si
+        | Function::Ci
+        | Function::Shi
+        | Function::Chi
+        | Function::LogIntegral
+        | Function::OffsetLogIntegral
+        | Function::FresnelS
+        | Function::FresnelC) => special::error_functions::integral_fdiff(g, e, argindex),
+        g @ (Function::Erf
+        | Function::Erfc
+        | Function::Erfi
+        | Function::Erfinv
+        | Function::Erfcinv
+        | Function::Erf2
+        | Function::Erf2inv) => special::error_functions::error_fdiff(g, e, argindex),
         g @ (Function::Beta | Function::BetaInc | Function::BetaIncRegularized) => {
             special::beta_functions::beta_fdiff(g, e, argindex)
         }
@@ -81,6 +98,14 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::Andre) => combinatorial::numbers::number_fdiff(g, e, argindex),
         Function::Mod | Function::KroneckerDelta | Function::LeviCivita => {
             crate::core::modulo::modulo_fdiff(e, argindex)
+        }
+        Function::SingularityFunction => special::singularity_functions::singularity_fdiff(e, argindex),
+        g @ (Function::Ynm | Function::Znm) => special::spherical_harmonics::spherical_fdiff(g, e, argindex),
+        g @ (Function::MathieuS | Function::MathieuC | Function::MathieuSPrime | Function::MathieuCPrime) => {
+            special::mathieu_functions::mathieu_fdiff(g, e, argindex)
+        }
+        g @ (Function::LowerGamma | Function::UpperGamma | Function::MultiGamma) => {
+            special::gamma_functions::incomplete_fdiff(g, e, argindex)
         }
         g @ (Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma) => {
             special::gamma_functions::gamma_fdiff(g, e, argindex)
@@ -189,6 +214,12 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if matches!(f, Function::DiracDelta | Function::Heaviside) {
         return special::delta_functions::delta_function(f, args);
     }
+    if special::error_functions::is_integral_function(f) {
+        return special::error_functions::integral_function(f, args);
+    }
+    if special::error_functions::is_error_function(f) {
+        return special::error_functions::error_function(f, args);
+    }
     if special::beta_functions::is_beta_function(f) {
         return special::beta_functions::beta_function(f, args);
     }
@@ -206,6 +237,18 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     }
     if special::zeta_functions::is_zeta_function(f) {
         return special::zeta_functions::zeta_function(f, args);
+    }
+    if special::mathieu_functions::is_mathieu(f) && args.len() == 3 {
+        return special::mathieu_functions::mathieu(f, args);
+    }
+    if special::spherical_harmonics::is_spherical_harmonic(f) && args.len() == 4 {
+        return special::spherical_harmonics::spherical_harmonic(f, args);
+    }
+    if f == Function::SingularityFunction && args.len() == 3 {
+        return special::singularity_functions::singularity_function(&args[0], &args[1], &args[2]);
+    }
+    if special::gamma_functions::is_incomplete_gamma(f) {
+        return special::gamma_functions::incomplete_gamma(f, args);
     }
     if special::gamma_functions::is_gamma_function(f) {
         return special::gamma_functions::gamma_function(f, args);
@@ -249,6 +292,23 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         Function::Acsch => elementary::inverse::acsch(x),
         Function::Arg => elementary::argument::arg(x),
         g @ (Function::Floor | Function::Ceiling | Function::Frac) => elementary::integers::rounding(g, x),
+        Function::Erf
+        | Function::Erfc
+        | Function::Erfi
+        | Function::Erfinv
+        | Function::Erfcinv
+        | Function::Erf2
+        | Function::Erf2inv => unreachable!("evaluated above with all their arguments"),
+        Function::Expint
+        | Function::Ei
+        | Function::Si
+        | Function::Ci
+        | Function::Shi
+        | Function::Chi
+        | Function::LogIntegral
+        | Function::OffsetLogIntegral
+        | Function::FresnelS
+        | Function::FresnelC => unreachable!("evaluated above with all their arguments"),
         Function::Beta | Function::BetaInc | Function::BetaIncRegularized => {
             unreachable!("evaluated above with all their arguments")
         }
@@ -294,6 +354,14 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         | Function::Motzkin
         | Function::Andre => unreachable!("evaluated above with all their arguments"),
         Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
+            unreachable!("evaluated above with all their arguments")
+        }
+        Function::SingularityFunction => unreachable!("evaluated above with all their arguments"),
+        Function::Ynm | Function::Znm => unreachable!("evaluated above with all their arguments"),
+        Function::MathieuS | Function::MathieuC | Function::MathieuSPrime | Function::MathieuCPrime => {
+            unreachable!("evaluated above with all their arguments")
+        }
+        Function::LowerGamma | Function::UpperGamma | Function::MultiGamma => {
             unreachable!("evaluated above with all their arguments")
         }
     }

@@ -634,7 +634,7 @@ pub fn is_number(e: &Basic) -> bool {
     if e.is_symbol()
         || matches!(e.head(), Head::Undefined(_) | Head::Derivative | Head::Tuple)
         || crate::sets::sets::is_set(e)
-        || matches!(e.head(), Head::AccumBounds)
+        || matches!(e.head(), Head::AccumBounds | Head::Piecewise | Head::ExprCondPair)
     {
         return false;
     }
@@ -1279,6 +1279,8 @@ fn eval_facts(e: &Basic) -> FactList {
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_facts(e),
         // a boolean is not an expression: no facts
         Head::AccumBounds => super::accumbounds::bounds_facts(e),
+        Head::Piecewise => crate::functions::elementary::piecewise::piecewise_facts(e),
+        Head::ExprCondPair => FactList::new(),
         _ if super::logic::is_boolean(e) || crate::sets::sets::is_set(e) => FactList::new(),
         _ => constant_facts(e),
     }
@@ -1354,6 +1356,38 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::BetaInc
         | super::basic::Function::BetaIncRegularized) => {
             crate::functions::special::beta_functions::beta_facts(g, e.args())
+        }
+        g @ (super::basic::Function::Erf
+        | super::basic::Function::Erfc
+        | super::basic::Function::Erfi
+        | super::basic::Function::Erfinv
+        | super::basic::Function::Erfcinv
+        | super::basic::Function::Erf2
+        | super::basic::Function::Erf2inv) => crate::functions::special::error_functions::error_facts(g, e.args()),
+        g @ (super::basic::Function::Expint
+        | super::basic::Function::Ei
+        | super::basic::Function::Si
+        | super::basic::Function::Ci
+        | super::basic::Function::Shi
+        | super::basic::Function::Chi
+        | super::basic::Function::LogIntegral
+        | super::basic::Function::OffsetLogIntegral
+        | super::basic::Function::FresnelS
+        | super::basic::Function::FresnelC) => crate::functions::special::error_functions::integral_facts(g, e.args()),
+        g @ (super::basic::Function::LowerGamma
+        | super::basic::Function::UpperGamma
+        | super::basic::Function::MultiGamma) => {
+            crate::functions::special::gamma_functions::incomplete_facts(g, e.args())
+        }
+        super::basic::Function::MathieuS
+        | super::basic::Function::MathieuC
+        | super::basic::Function::MathieuSPrime
+        | super::basic::Function::MathieuCPrime => crate::functions::special::mathieu_functions::mathieu_facts(),
+        super::basic::Function::Ynm | super::basic::Function::Znm => {
+            crate::functions::special::spherical_harmonics::spherical_facts()
+        }
+        super::basic::Function::SingularityFunction => {
+            crate::functions::special::singularity_functions::singularity_facts()
         }
         super::basic::Function::KroneckerDelta | super::basic::Function::LeviCivita => {
             crate::functions::special::tensor_functions::tensor_facts()

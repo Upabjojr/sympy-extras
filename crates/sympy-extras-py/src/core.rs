@@ -174,6 +174,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "PointSet" => Basic::new(Head::PointSet, args()?),
         "ConditionSet" => Basic::new(Head::ConditionSet, args()?),
         "AccumBounds" | "AccumulationBounds" => Basic::new(Head::AccumBounds, args()?),
+        "Piecewise" => Basic::new(Head::Piecewise, args()?),
+        "ExprCondPair" => Basic::new(Head::ExprCondPair, args()?),
         "Exp" => Basic::new(Head::Function(Function::Exp), args()?),
         "Log" => Basic::new(Head::Function(Function::Log), args()?),
         "Re" => Basic::new(Head::Function(Function::Re), args()?),
@@ -201,6 +203,16 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Gamma" => Basic::new(Head::Function(Function::Gamma), args()?),
         "LogGamma" => Basic::new(Head::Function(Function::LogGamma), args()?),
         "PolyGamma" => Basic::new(Head::Function(Function::PolyGamma), args()?),
+        "SingularityFunctionNode" => Basic::new(Head::Function(Function::SingularityFunction), args()?),
+        "YnmNode" => Basic::new(Head::Function(Function::Ynm), args()?),
+        "MathieuS" => Basic::new(Head::Function(Function::MathieuS), args()?),
+        "MathieuC" => Basic::new(Head::Function(Function::MathieuC), args()?),
+        "MathieuSPrime" => Basic::new(Head::Function(Function::MathieuSPrime), args()?),
+        "MathieuCPrime" => Basic::new(Head::Function(Function::MathieuCPrime), args()?),
+        "ZnmNode" => Basic::new(Head::Function(Function::Znm), args()?),
+        "LowerGamma" => Basic::new(Head::Function(Function::LowerGamma), args()?),
+        "UpperGamma" => Basic::new(Head::Function(Function::UpperGamma), args()?),
+        "MultiGamma" => Basic::new(Head::Function(Function::MultiGamma), args()?),
         "DiGamma" => Basic::new(Head::Function(Function::DiGamma), args()?),
         "TriGamma" => Basic::new(Head::Function(Function::TriGamma), args()?),
         "Zeta" => Basic::new(Head::Function(Function::Zeta), args()?),
@@ -238,6 +250,23 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Beta" => Basic::new(Head::Function(Function::Beta), args()?),
         "BetaInc" => Basic::new(Head::Function(Function::BetaInc), args()?),
         "BetaIncRegularized" => Basic::new(Head::Function(Function::BetaIncRegularized), args()?),
+        "Erf" => Basic::new(Head::Function(Function::Erf), args()?),
+        "Erfc" => Basic::new(Head::Function(Function::Erfc), args()?),
+        "Erfi" => Basic::new(Head::Function(Function::Erfi), args()?),
+        "Erfinv" => Basic::new(Head::Function(Function::Erfinv), args()?),
+        "Erfcinv" => Basic::new(Head::Function(Function::Erfcinv), args()?),
+        "Erf2" => Basic::new(Head::Function(Function::Erf2), args()?),
+        "Erf2inv" => Basic::new(Head::Function(Function::Erf2inv), args()?),
+        "Expint" => Basic::new(Head::Function(Function::Expint), args()?),
+        "EiNode" => Basic::new(Head::Function(Function::Ei), args()?),
+        "SiNode" => Basic::new(Head::Function(Function::Si), args()?),
+        "CiNode" => Basic::new(Head::Function(Function::Ci), args()?),
+        "ShiNode" => Basic::new(Head::Function(Function::Shi), args()?),
+        "ChiNode" => Basic::new(Head::Function(Function::Chi), args()?),
+        "LiNode" => Basic::new(Head::Function(Function::LogIntegral), args()?),
+        "OffsetLiNode" => Basic::new(Head::Function(Function::OffsetLogIntegral), args()?),
+        "FresnelS" => Basic::new(Head::Function(Function::FresnelS), args()?),
+        "FresnelC" => Basic::new(Head::Function(Function::FresnelC), args()?),
         "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
@@ -370,6 +399,17 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 .call1(PyTuple::new(py, items)?)?
         }
         Head::AccumBounds => rebuilt("AccumBounds", "accumbounds")?,
+        Head::Piecewise | Head::ExprCondPair => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            let name: &str = if matches!(e.head(), Head::Piecewise) {
+                "Piecewise"
+            } else {
+                "ExprCondPair"
+            };
+            py.import("sympy_extras.functions.elementary.piecewise")?
+                .getattr(name)?
+                .call1(PyTuple::new(py, items)?)?
+        }
         Head::ConditionSet => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.sets.conditionset")?
@@ -422,6 +462,28 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::Motzkin
                 | Function::Andre => "numbers",
                 Function::Beta | Function::BetaInc | Function::BetaIncRegularized => "beta_functions",
+                Function::Erf
+                | Function::Erfc
+                | Function::Erfi
+                | Function::Erfinv
+                | Function::Erfcinv
+                | Function::Erf2
+                | Function::Erf2inv => "error_functions",
+                Function::Expint
+                | Function::Ei
+                | Function::Si
+                | Function::Ci
+                | Function::Shi
+                | Function::Chi
+                | Function::LogIntegral
+                | Function::OffsetLogIntegral
+                | Function::FresnelS
+                | Function::FresnelC => "error_functions",
+                Function::SingularityFunction => "singularity_functions",
+                Function::Ynm | Function::Znm => "spherical_harmonics",
+                Function::MathieuS | Function::MathieuC | Function::MathieuSPrime | Function::MathieuCPrime => {
+                    "mathieu_functions"
+                }
                 Function::DiracDelta | Function::Heaviside => "delta_functions",
                 Function::Zeta
                 | Function::DirichletEta
@@ -429,6 +491,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::LerchPhi
                 | Function::RiemannXi
                 | Function::Stieltjes => "zeta_functions",
+                Function::LowerGamma | Function::UpperGamma | Function::MultiGamma => "gamma_functions",
                 Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
                     "gamma_functions"
                 }
@@ -447,8 +510,14 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             };
             let package: &str = if matches!(f, Function::DiracDelta | Function::Heaviside)
                 || sympy_extras_core::functions::special::gamma_functions::is_gamma_function(*f)
+                || sympy_extras_core::functions::special::gamma_functions::is_incomplete_gamma(*f)
+                || *f == Function::SingularityFunction
+                || sympy_extras_core::functions::special::spherical_harmonics::is_spherical_harmonic(*f)
+                || sympy_extras_core::functions::special::mathieu_functions::is_mathieu(*f)
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
+                || sympy_extras_core::functions::special::error_functions::is_error_function(*f)
+                || sympy_extras_core::functions::special::error_functions::is_integral_function(*f)
             {
                 "special"
             } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f)
@@ -2116,6 +2185,35 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
         }
         "mod" => sympy_extras_core::core::modulo::modulo(&a[0], &a[1]).map_err(e)?,
         "beta" => sympy_extras_core::functions::special::beta_functions::beta(&a[0], a.get(1)).map_err(e)?,
+        "expint" | "Ei" | "Si" | "Ci" | "Shi" | "Chi" | "li" | "Li" | "fresnels" | "fresnelc" => {
+            use sympy_extras_core::core::basic::Function as F;
+            let f: F = match name {
+                "expint" => F::Expint,
+                "Ei" => F::Ei,
+                "Si" => F::Si,
+                "Ci" => F::Ci,
+                "Shi" => F::Shi,
+                "Chi" => F::Chi,
+                "li" => F::LogIntegral,
+                "Li" => F::OffsetLogIntegral,
+                "fresnels" => F::FresnelS,
+                _ => F::FresnelC,
+            };
+            sympy_extras_core::functions::special::error_functions::integral_function(f, &a).map_err(e)?
+        }
+        "erf" | "erfc" | "erfi" | "erfinv" | "erfcinv" | "erf2" | "erf2inv" => {
+            use sympy_extras_core::core::basic::Function as F;
+            let f: F = match name {
+                "erf" => F::Erf,
+                "erfc" => F::Erfc,
+                "erfi" => F::Erfi,
+                "erfinv" => F::Erfinv,
+                "erfcinv" => F::Erfcinv,
+                "erf2" => F::Erf2,
+                _ => F::Erf2inv,
+            };
+            sympy_extras_core::functions::special::error_functions::error_function(f, &a).map_err(e)?
+        }
         "betainc" | "betainc_regularized" => {
             use sympy_extras_core::core::basic::Function as F;
             let f: F = if name == "betainc" {
@@ -2190,6 +2288,65 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "lerchphi" => zf::lerchphi(&a[0], &a[1], &a[2]),
                 "riemann_xi" => zf::riemann_xi(&a[0]),
                 _ => zf::stieltjes(&a[0], a.get(1)),
+            }
+            .map_err(e)?
+        }
+        "bspline_basis" | "bspline_basis_set" => {
+            use sympy_extras_core::functions::special::bsplines as bs;
+            let small = |b: &Basic| -> PyResult<i64> {
+                b.as_rational()
+                    .filter(|v| sympy_extras_core::numbers::denom(v) == sympy_extras_core::numbers::Int::ONE)
+                    .and_then(|v| i64::try_from(&sympy_extras_core::numbers::numer(v)).ok())
+                    .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("an integer is expected"))
+            };
+            let d: i64 = small(&a[0])?;
+            let knots: Vec<Basic> = a[1].args().to_vec();
+            if name == "bspline_basis" {
+                bs::bspline_basis(d, &knots, small(&a[2])?, &a[3]).map_err(e)?
+            } else {
+                Basic::new(Head::Tuple, bs::bspline_basis_set(d, &knots, &a[2]).map_err(e)?)
+            }
+        }
+        "piecewise" => {
+            sympy_extras_core::functions::elementary::piecewise::piecewise_of_pairs(a.to_vec()).map_err(e)?
+        }
+        "piecewise_fold" | "piecewise_fold_none" | "piecewise_fold_false" => {
+            let evaluate: Option<bool> = match name {
+                "piecewise_fold" => Some(true),
+                "piecewise_fold_none" => None,
+                _ => Some(false),
+            };
+            sympy_extras_core::functions::elementary::piecewise::piecewise_fold(&a[0], evaluate).map_err(e)?
+        }
+        "mathieus" | "mathieuc" | "mathieusprime" | "mathieucprime" => {
+            use sympy_extras_core::core::basic::Function as F;
+            let f: F = match name {
+                "mathieus" => F::MathieuS,
+                "mathieuc" => F::MathieuC,
+                "mathieusprime" => F::MathieuSPrime,
+                _ => F::MathieuCPrime,
+            };
+            sympy_extras_core::functions::special::mathieu_functions::mathieu(f, &a).map_err(e)?
+        }
+        "Ynm" | "Znm" | "Ynm_c" => {
+            use sympy_extras_core::functions::special::spherical_harmonics as sh;
+            match name {
+                "Ynm" => sh::ynm(&a[0], &a[1], &a[2], &a[3]),
+                "Znm" => sh::znm(&a[0], &a[1], &a[2], &a[3]),
+                _ => sh::ynm_c(&a[0], &a[1], &a[2], &a[3]),
+            }
+            .map_err(e)?
+        }
+        "SingularityFunction" => {
+            sympy_extras_core::functions::special::singularity_functions::singularity_function(&a[0], &a[1], &a[2])
+                .map_err(e)?
+        }
+        "lowergamma" | "uppergamma" | "multigamma" => {
+            use sympy_extras_core::functions::special::gamma_functions as gf;
+            match name {
+                "lowergamma" => gf::lowergamma(&a[0], &a[1]),
+                "uppergamma" => gf::uppergamma(&a[0], &a[1]),
+                _ => gf::multigamma(&a[0], &a[1]),
             }
             .map_err(e)?
         }

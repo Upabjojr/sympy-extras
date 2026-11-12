@@ -93,6 +93,10 @@ pub enum Head {
     ConditionSet,
     /// `AccumBounds(min, max)` (`core.accumbounds`).
     AccumBounds,
+    /// `Piecewise(ExprCondPair(e, c), ...)` and its pairs
+    /// (`functions.elementary.piecewise`).
+    Piecewise,
+    ExprCondPair,
 }
 
 /// The relations of `core.relational`.
@@ -261,6 +265,16 @@ pub enum Function {
     Gamma,
     LogGamma,
     PolyGamma,
+    SingularityFunction,
+    Ynm,
+    MathieuS,
+    MathieuC,
+    MathieuSPrime,
+    MathieuCPrime,
+    Znm,
+    LowerGamma,
+    UpperGamma,
+    MultiGamma,
     DiGamma,
     TriGamma,
     Zeta,
@@ -299,6 +313,23 @@ pub enum Function {
     Beta,
     BetaInc,
     BetaIncRegularized,
+    Erf,
+    Erfc,
+    Erfi,
+    Erfinv,
+    Erfcinv,
+    Erf2,
+    Erf2inv,
+    Expint,
+    Ei,
+    Si,
+    Ci,
+    Shi,
+    Chi,
+    LogIntegral,
+    OffsetLogIntegral,
+    FresnelS,
+    FresnelC,
 }
 
 impl Function {
@@ -354,6 +385,16 @@ impl Function {
             Function::Gamma => "gamma",
             Function::LogGamma => "loggamma",
             Function::PolyGamma => "polygamma",
+            Function::SingularityFunction => "SingularityFunction",
+            Function::Ynm => "Ynm",
+            Function::MathieuS => "mathieus",
+            Function::MathieuC => "mathieuc",
+            Function::MathieuSPrime => "mathieusprime",
+            Function::MathieuCPrime => "mathieucprime",
+            Function::Znm => "Znm",
+            Function::LowerGamma => "lowergamma",
+            Function::UpperGamma => "uppergamma",
+            Function::MultiGamma => "multigamma",
             Function::DiGamma => "digamma",
             Function::TriGamma => "trigamma",
             Function::Zeta => "zeta",
@@ -391,6 +432,23 @@ impl Function {
             Function::Beta => "beta",
             Function::BetaInc => "betainc",
             Function::BetaIncRegularized => "betainc_regularized",
+            Function::Erf => "erf",
+            Function::Erfc => "erfc",
+            Function::Erfi => "erfi",
+            Function::Erfinv => "erfinv",
+            Function::Erfcinv => "erfcinv",
+            Function::Erf2 => "erf2",
+            Function::Erf2inv => "erf2inv",
+            Function::Expint => "expint",
+            Function::Ei => "Ei",
+            Function::Si => "Si",
+            Function::Ci => "Ci",
+            Function::Shi => "Shi",
+            Function::Chi => "Chi",
+            Function::LogIntegral => "li",
+            Function::OffsetLogIntegral => "Li",
+            Function::FresnelS => "fresnels",
+            Function::FresnelC => "fresnelc",
         }
     }
 
@@ -446,6 +504,16 @@ impl Function {
             Function::Gamma => "Gamma",
             Function::LogGamma => "LogGamma",
             Function::PolyGamma => "PolyGamma",
+            Function::SingularityFunction => "SingularityFunctionNode",
+            Function::Ynm => "YnmNode",
+            Function::MathieuS => "MathieuS",
+            Function::MathieuC => "MathieuC",
+            Function::MathieuSPrime => "MathieuSPrime",
+            Function::MathieuCPrime => "MathieuCPrime",
+            Function::Znm => "ZnmNode",
+            Function::LowerGamma => "LowerGamma",
+            Function::UpperGamma => "UpperGamma",
+            Function::MultiGamma => "MultiGamma",
             Function::DiGamma => "DiGamma",
             Function::TriGamma => "TriGamma",
             Function::Zeta => "Zeta",
@@ -483,6 +551,23 @@ impl Function {
             Function::Beta => "Beta",
             Function::BetaInc => "BetaInc",
             Function::BetaIncRegularized => "BetaIncRegularized",
+            Function::Erf => "Erf",
+            Function::Erfc => "Erfc",
+            Function::Erfi => "Erfi",
+            Function::Erfinv => "Erfinv",
+            Function::Erfcinv => "Erfcinv",
+            Function::Erf2 => "Erf2",
+            Function::Erf2inv => "Erf2inv",
+            Function::Expint => "Expint",
+            Function::Ei => "EiNode",
+            Function::Si => "SiNode",
+            Function::Ci => "CiNode",
+            Function::Shi => "ShiNode",
+            Function::Chi => "ChiNode",
+            Function::LogIntegral => "LiNode",
+            Function::OffsetLogIntegral => "OffsetLiNode",
+            Function::FresnelS => "FresnelS",
+            Function::FresnelC => "FresnelC",
         }
     }
 
@@ -539,9 +624,36 @@ impl Function {
             | Function::Beta
             | Function::BetaInc
             | Function::BetaIncRegularized
+            | Function::Erf
+            | Function::Erfc
+            | Function::Erfi
+            | Function::Erfinv
+            | Function::Erfcinv
+            | Function::Erf2
+            | Function::Erf2inv
+            | Function::Expint
+            | Function::Ei
+            | Function::Si
+            | Function::Ci
+            | Function::Shi
+            | Function::Chi
+            | Function::LogIntegral
+            | Function::OffsetLogIntegral
+            | Function::FresnelS
+            | Function::FresnelC
             | Function::Gamma
             | Function::LogGamma
             | Function::PolyGamma
+            | Function::SingularityFunction
+            | Function::Ynm
+            | Function::MathieuS
+            | Function::MathieuC
+            | Function::MathieuSPrime
+            | Function::MathieuCPrime
+            | Function::Znm
+            | Function::LowerGamma
+            | Function::UpperGamma
+            | Function::MultiGamma
             | Function::DiGamma
             | Function::TriGamma => 10000,
             Function::Sin => 20,
@@ -625,6 +737,8 @@ impl Head {
             Head::PointSet => "PointSet",
             Head::ConditionSet => "ConditionSet",
             Head::AccumBounds => "AccumBounds",
+            Head::Piecewise => "Piecewise",
+            Head::ExprCondPair => "ExprCondPair",
         }
     }
 
@@ -694,6 +808,8 @@ impl Head {
                 | Head::PointSet
                 | Head::ConditionSet
                 | Head::AccumBounds
+                | Head::Piecewise
+                | Head::ExprCondPair
         )
     }
 

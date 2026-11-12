@@ -7,4 +7,5 @@ pub mod hyperbolic;
 pub mod integers;
 pub mod inverse;
 pub mod miscellaneous;
+pub mod piecewise;
 pub mod trigonometric;

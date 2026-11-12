@@ -271,6 +271,31 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             crate::functions::elementary::argument::argument_value(*g, &values, wp)
         }
         Head::Function(
+            g @ (super::basic::Function::LowerGamma
+            | super::basic::Function::UpperGamma
+            | super::basic::Function::MultiGamma),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::gamma_functions::incomplete_value(*g, &values, prec)
+        }
+        Head::Function(g @ (super::basic::Function::Ynm | super::basic::Function::Znm)) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::spherical_harmonics::spherical_value(*g, &values, prec)
+        }
+        Head::Function(super::basic::Function::SingularityFunction) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::singularity_functions::singularity_value(&values, prec)
+        }
+        Head::Function(
             g @ (super::basic::Function::Gamma
             | super::basic::Function::LogGamma
             | super::basic::Function::PolyGamma
@@ -282,6 +307,39 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 values.push(numeric_value(a, prec + 40)?);
             }
             crate::functions::special::gamma_functions::gamma_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Expint
+            | super::basic::Function::Ei
+            | super::basic::Function::Si
+            | super::basic::Function::Ci
+            | super::basic::Function::Shi
+            | super::basic::Function::Chi
+            | super::basic::Function::LogIntegral
+            | super::basic::Function::OffsetLogIntegral
+            | super::basic::Function::FresnelS
+            | super::basic::Function::FresnelC),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::error_functions::integral_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Erf
+            | super::basic::Function::Erfc
+            | super::basic::Function::Erfi
+            | super::basic::Function::Erfinv
+            | super::basic::Function::Erfcinv
+            | super::basic::Function::Erf2
+            | super::basic::Function::Erf2inv),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::error_functions::error_value(*g, &values, prec)
         }
         Head::Function(
             g @ (super::basic::Function::Beta
@@ -478,6 +536,12 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Gamma
                 | super::basic::Function::LogGamma
                 | super::basic::Function::PolyGamma
+                | super::basic::Function::SingularityFunction
+                | super::basic::Function::Ynm
+                | super::basic::Function::Znm
+                | super::basic::Function::LowerGamma
+                | super::basic::Function::UpperGamma
+                | super::basic::Function::MultiGamma
                 | super::basic::Function::DiGamma
                 | super::basic::Function::TriGamma
                 | super::basic::Function::Zeta
@@ -488,6 +552,11 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Stieltjes => {
                     unreachable!("evaluated above with all their arguments")
                 }
+                // no numerical value (neither SymPy nor mpmath has one)
+                super::basic::Function::MathieuS
+                | super::basic::Function::MathieuC
+                | super::basic::Function::MathieuSPrime
+                | super::basic::Function::MathieuCPrime => return None,
                 // no value of its own (Python asks SymPy)
                 super::basic::Function::Mod
                 | super::basic::Function::KroneckerDelta
@@ -517,7 +586,24 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Andre
                 | super::basic::Function::Beta
                 | super::basic::Function::BetaInc
-                | super::basic::Function::BetaIncRegularized => {
+                | super::basic::Function::BetaIncRegularized
+                | super::basic::Function::Erf
+                | super::basic::Function::Erfc
+                | super::basic::Function::Erfi
+                | super::basic::Function::Erfinv
+                | super::basic::Function::Erfcinv
+                | super::basic::Function::Erf2
+                | super::basic::Function::Erf2inv
+                | super::basic::Function::Expint
+                | super::basic::Function::Ei
+                | super::basic::Function::Si
+                | super::basic::Function::Ci
+                | super::basic::Function::Shi
+                | super::basic::Function::Chi
+                | super::basic::Function::LogIntegral
+                | super::basic::Function::OffsetLogIntegral
+                | super::basic::Function::FresnelS
+                | super::basic::Function::FresnelC => {
                     return None;
                 }
                 g

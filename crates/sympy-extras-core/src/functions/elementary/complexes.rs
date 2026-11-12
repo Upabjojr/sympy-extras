@@ -122,10 +122,34 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Asech
         | Function::Acsch) => super::inverse::inverse_conjugate(e, g),
         Function::Arg | Function::Atan2 => super::argument::argument_conjugate(e, f),
+        g @ (Function::Expint
+        | Function::Ei
+        | Function::Si
+        | Function::Ci
+        | Function::Shi
+        | Function::Chi
+        | Function::LogIntegral
+        | Function::OffsetLogIntegral
+        | Function::FresnelS
+        | Function::FresnelC) => crate::functions::special::error_functions::integral_conjugate(g, e),
+        g @ (Function::Erf
+        | Function::Erfc
+        | Function::Erfi
+        | Function::Erfinv
+        | Function::Erfcinv
+        | Function::Erf2
+        | Function::Erf2inv) => crate::functions::special::error_functions::error_conjugate(g, e),
         g @ (Function::Beta | Function::BetaInc | Function::BetaIncRegularized) => {
             Ok(Some(crate::functions::special::beta_functions::beta_conjugate(g, e)?))
         }
         g @ (Function::Gamma | Function::LogGamma) => crate::functions::special::gamma_functions::gamma_conjugate(g, e),
+        Function::Ynm => crate::functions::special::spherical_harmonics::spherical_conjugate(e),
+        g @ (Function::MathieuS | Function::MathieuC | Function::MathieuSPrime | Function::MathieuCPrime) => {
+            crate::functions::special::mathieu_functions::mathieu_conjugate(g, e)
+        }
+        g @ (Function::LowerGamma | Function::UpperGamma | Function::MultiGamma) => {
+            crate::functions::special::gamma_functions::incomplete_conjugate(g, e)
+        }
         Function::Max
         | Function::Min
         | Function::Floor
@@ -140,6 +164,8 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Subfactorial
         | Function::Factorial2
         | Function::PolyGamma
+        | Function::SingularityFunction
+        | Function::Znm
         | Function::DiGamma
         | Function::TriGamma
         | Function::Zeta
@@ -204,6 +230,7 @@ pub fn conjugate_of(e: &Basic) -> PolyResult<Option<Basic>> {
         Head::ComplexInfinity => return Ok(None),
         _ if e.is_number_class() => return Ok(Some(e.clone())),
         Head::Function(f) => return function_conjugate(e, *f),
+        Head::Piecewise => return Ok(Some(super::piecewise::map_expressions(e, &conjugate)?)),
         Head::Add | Head::Mul => {
             let mut parts: Vec<Basic> = Vec::new();
             for t in e.args() {
@@ -448,6 +475,9 @@ fn function_real_imag(
 ) -> PolyResult<Option<RealImag>> {
     use crate::core::function::expand_with_hints;
     match f {
+        g @ (Function::Erf | Function::Erfc | Function::Erfi) => {
+            Ok(crate::functions::special::error_functions::error_real_imag(g, e, deep)?.flatten())
+        }
         Function::Re | Function::Im | Function::Abs => Ok(Some((e.clone(), Basic::zero()))),
         Function::Exp => {
             // exp.as_real_imag: exp(re)*cos(im), exp(re)*sin(im)
@@ -526,6 +556,16 @@ fn function_real_imag(
         | Function::Gamma
         | Function::LogGamma
         | Function::PolyGamma
+        | Function::SingularityFunction
+        | Function::Ynm
+        | Function::MathieuS
+        | Function::MathieuC
+        | Function::MathieuSPrime
+        | Function::MathieuCPrime
+        | Function::Znm
+        | Function::LowerGamma
+        | Function::UpperGamma
+        | Function::MultiGamma
         | Function::DiGamma
         | Function::TriGamma
         | Function::Zeta
@@ -560,6 +600,20 @@ fn function_real_imag(
         | Function::Tribonacci
         | Function::Motzkin
         | Function::Andre
+        | Function::Erfinv
+        | Function::Erfcinv
+        | Function::Erf2
+        | Function::Erf2inv
+        | Function::Expint
+        | Function::Ei
+        | Function::Si
+        | Function::Ci
+        | Function::Shi
+        | Function::Chi
+        | Function::LogIntegral
+        | Function::OffsetLogIntegral
+        | Function::FresnelS
+        | Function::FresnelC
         | Function::Beta
         | Function::BetaInc
         | Function::BetaIncRegularized
