@@ -5,7 +5,8 @@ the evaluating functions of the core (sums and products with the bounds
 as coefficients, powers, the operators ``/`` and ``-``), the functions
 which give or take bounds (``sin``, ``cos``, ``tan``, ``cot`` of
 infinities and bounds, ``atan``, ``atanh``, ``asech`` of ``zoo``,
-``frac`` of the infinities), ``abs``, membership, union and intersection,
+``frac`` of the infinities, ``exp`` and ``log`` of bounds, and the
+other functions of bounds), ``abs``, membership, union and intersection,
 with the facts."""
 
 from __future__ import annotations
@@ -72,7 +73,13 @@ def test_accumbounds(rust: Any, seed: int) -> None:
             (lambda: rc.pow(u, s), lambda: pow(u, s)),
             (lambda: rc.logic_call('ab_abs', [s]), lambda: ab_abs(s) if isinstance(s, AccumBounds) else abs(s)),
         ]
-        for name, f in [('sin', sin), ('cos', cos), ('tan', tan), ('cot', cot)]:
+        from sympy_extras.functions.elementary import complexes, exponential, hyperbolic, integers
+        from sympy_extras.functions.elementary.trigonometric import atan
+        more: list[tuple[str, Any]] = [('exp', exponential.exp), ('log', exponential.log),
+                                       ('sinh', hyperbolic.sinh), ('cosh', hyperbolic.cosh), ('atan', atan),
+                                       ('abs_', complexes.abs_), ('re', complexes.re), ('im', complexes.im),
+                                       ('sign', complexes.sign), ('floor', integers.floor)]
+        for name, f in [('sin', sin), ('cos', cos), ('tan', tan), ('cot', cot)] + more:
             cases.append((lambda name=name: getattr(rc, name)(s), lambda f=f: f(s)))
         for got, expected in cases:
             g = outcome(got)
