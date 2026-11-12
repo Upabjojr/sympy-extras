@@ -9,12 +9,6 @@ back; :class:`CyclicReduction` and :class:`LinearSystemSolution` hold
 SymPy matrices and the SymPy
 :class:`~sympy_extras.solvers.linear_ode_sympy.LinearOperator`.
 
-The steps of the native module which stay written on SymPy are called
-from it at run time (they take and return objects of the core):
-
-- :func:`linodesolve_of_core`: SymPy's ``linodesolve``, the last resort
-  for a fundamental matrix (systems with a commuting antiderivative).
-
 The antiderivatives of Liouville's formula and of variation of constants
 are native (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`).
 
@@ -39,14 +33,10 @@ from sympy.core.symbol import Symbol
 from sympy.matrices.dense import Matrix, MutableDenseMatrix
 from sympy.matrices.matrixbase import MatrixBase
 
-from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import Truth, as_expr
 from sympy_extras.assumptions.analysis_sympy import as_symbol_of
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol
-from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.matrices.dense import ExprMatrix
-from sympy_extras.settings import settings
 
 from . import linear_systems as native
 from .dae_sympy import core_matrix, sympy_matrix
@@ -54,24 +44,11 @@ from .linear_ode_sympy import LinearOperator
 
 __all__ = ['CyclicReduction', 'LinearSystemSolution', 'cyclic_vector', 'cyclic_reduction', 'system_to_scalar',
            'rational_system_solutions', 'hyperexponential_system_solutions', 'dsolve_system',
-           'dsolve_linear_system', 'linodesolve_of_core']
+           'dsolve_linear_system']
 
 
 # ---------------------------------------------------------------------------
 # the steps of the native module which stay on SymPy
-
-def linodesolve_of_core(A: ExprMatrix, x: CoreSymbol) -> Optional[list[CoreExpr]]:
-    """The general solution vector of ``Y' = A Y`` given by SymPy's
-    ``linodesolve`` under the time limit of the settings (in its constants
-    ``C1, C2, ...``), ``None`` when it finds none."""
-    from sympy.solvers.ode.systems import linodesolve
-    matrix = sympy_matrix(A)
-    variable = as_symbol_of(x)
-    result = attempt(lambda: linodesolve(matrix, variable), settings.timeout)
-    if result is None:
-        return None
-    return [core_expr(as_expr(e)) for e in result]
-
 
 # ---------------------------------------------------------------------------
 # the face
