@@ -143,6 +143,7 @@ References
 """
 from __future__ import annotations
 
+import functools
 import itertools
 import math
 import random
@@ -469,14 +470,10 @@ def _constant_kind(exprs: Sequence[Expr], x: Symbol) -> tuple[list[Symbol], bool
     return parameters, gaussian, False
 
 
-_GAUSSIAN: list[_NumberField] = []
-
-
+@functools.cache
 def _gaussian() -> _NumberField:
     """The number field ``QQ<I>``."""
-    if not _GAUSSIAN:
-        _GAUSSIAN.append(_NumberField([I]))
-    return _GAUSSIAN[0]
+    return _NumberField([I])
 
 
 def _gaussian_field() -> AlgebraicField:
@@ -1328,6 +1325,10 @@ def _positive_at(e: Expr, values: dict[Basic, Basic]) -> bool:
     v = _replaced(e, values)
     if isinstance(v, Rational):
         return v.p > 0
+    if v.free_symbols:
+        # a parameter of the radicand which is not one of the integrand
+        # (whose remainder was split off): its assumptions decide
+        return v.is_positive is True
     found = reliable_value(v, 30)
     return found is not None and found.is_positive is True
 

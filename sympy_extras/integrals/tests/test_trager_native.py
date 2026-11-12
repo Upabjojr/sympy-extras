@@ -64,6 +64,9 @@ def test_parameters() -> None:
     p = Symbol('p', positive=True)
     F = trager_antiderivative(1 / sqrt(x**2 + p), x)
     assert F is not None and F.free_symbols == {x, p}
+    # the integrand f - h checked is 0, free of p: the sample points were
+    # all refused (p + x**2 has no value) and the reduction was None
+    assert str(hermite_reduce_algebraic(1 / sqrt(x**2 + p), x)) == '(0, 1/sqrt(p + x**2))'
     # FriCAS's test 295: residues algebraic over QQ(a, b, c), the parameters
     # made rational and the algorithm rerun (the radicand of the new
     # parameters has rational coefficients in them, QQ(delta), not EX:
