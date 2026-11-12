@@ -1629,6 +1629,33 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_RADICALS_TRIGONOMETRIC = r'''
+import sys
+from sympy_extras.core import symbols, sqrt
+from sympy_extras.functions import asin, cos, exp, sec, sin, sinh, tan
+from sympy_extras.integrals.radicals import quadratic_radical_antiderivative
+from sympy_extras.integrals.trigonometric import trigonometric_antiderivative
+assert 'sympy' not in sys.modules
+x = symbols('x')
+a, b = symbols('a b', positive=True)
+assert quadratic_radical_antiderivative(sqrt(1 - x**2), x) == x*sqrt(1 - x**2)/2 + asin(x)/2
+assert str(quadratic_radical_antiderivative(x**3*sqrt(x**2 + 1) + x, x)) == \
+    'x**2*(x**2 + 1)**(3/2)/5 + x**2/2 - 2*(x**2 + 1)**(3/2)/15'
+assert str(quadratic_radical_antiderivative(1/(x*sqrt(x**2 + 1)), x)) == '-log((2*sqrt(x**2 + 1) + 2)/x)'
+assert quadratic_radical_antiderivative(sqrt(x**3 + 1), x) is None
+assert str(trigonometric_antiderivative(sin(x)**3*cos(x)**2, x)) == 'cos(x)**5/5 - cos(x)**3/3'
+assert str(trigonometric_antiderivative(tan(x)**3, x)) == 'log(cos(x)) + tan(x)**2/2'
+assert str(trigonometric_antiderivative(sec(x)**3, x)) == '(log(tan(x) + sec(x)) + tan(x)*sec(x))/2'
+assert str(trigonometric_antiderivative(x*exp(x)*sin(x), x)) == '(2*x*(sin(x) - cos(x)) + 2*cos(x))*exp(x)/4'
+assert str(trigonometric_antiderivative(asin(x), x)) == 'x*asin(x) + sqrt(1 - x**2)'
+assert str(trigonometric_antiderivative(exp(-x)*sinh(x)**2, x)) == '(3*exp(x) + 6*exp(-x) - exp(-3*x))/12'
+assert str(trigonometric_antiderivative(sin(a*x)*cos(b*x), x)) == \
+    'Piecewise((-(cos(x*(a + b))/(a + b) + cos(x*(a - b))/(a - b))/2, Ne(a - b, 0)), (-cos(2*a*x)/(4*a), True))'
+assert trigonometric_antiderivative(x**2, x) is None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 _NATIVE_HEURISCH_TABLES = r'''
 import sys
 from sympy_extras.core import Symbol, oo, pi, symbols
@@ -1867,5 +1894,21 @@ def test_native_ratint_does_not_load_sympy() -> None:
     rational antiderivatives of :mod:`sympy_extras.solvers.linear_systems`
     does not load SymPy."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_RATINT], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_radicals_and_trigonometric_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.radicals` and
+    :mod:`sympy_extras.integrals.trigonometric` does not load SymPy, nor
+    do the radical table (Gradshteyn and Ryzhik 2.26 with its numerical
+    check), the powers and products of trigonometric and hyperbolic
+    functions, the polynomials and exponentials times sines and cosines,
+    the frequencies which may vanish and the inverse functions by parts
+    with an algebraic remainder (the rational functions of the Euler and
+    Weierstrass substitutions go through SymPy's ``ratint`` at run
+    time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RADICALS_TRIGONOMETRIC], capture_output=True, text=True,
+                         timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

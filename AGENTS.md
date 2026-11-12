@@ -309,9 +309,13 @@ sympy_extras/
         curves_sympy.py      the SymPy face of curves (the field of the residues as SymPy's, CRootOf), used by trager
         summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals
         axisymmetric.py      region integrals with a rotational symmetry (bodies and surfaces of revolution) reduced to their profile
-        radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic (Gradshteyn-Ryzhik 2.26), for the slices of regions
+        radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic (Gradshteyn-Ryzhik 2.26), for the slices of regions,
+                             and the Euler substitutions (native, with the native ratint)
+        radicals_sympy.py    the SymPy face of radicals
         indefinite.py        indefinite_integral: the typed methods in turn, then SymPy's, each antiderivative checked by differentiation
         trigonometric.py     powers, products and rational functions of trigonometric and hyperbolic functions, inverse functions by parts
+                             (native, with the native ratint)
+        trigonometric_sympy.py the SymPy face of trigonometric, which indefinite uses
         heurisch.py          typed port of SymPy's heuristic Risch integrator, every result verified, PORTED FROM SYMPY (native: the
                              typed polynomials with placeholders for the constants, linear systems over QQ, number fields and
                              the fractions of the parameters, the native simplify and numerical comparison)

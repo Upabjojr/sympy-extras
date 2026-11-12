@@ -1104,6 +1104,27 @@ remove public functions. Breaking changes are listed here when they happen.
   SymPy's are, so `mellin_transform` applies SymPy's
   `factor_terms(signsimp(...))` to the transform of `log(x)**n*f(x)`
   itself and the results keep SymPy's form.
+- The radical table and the trigonometric integrator are native
+  (**breaking**): `sympy_extras.integrals.radicals`
+  (`quadratic_radical_antiderivative`,
+  `euler_substitution_antiderivative`) and
+  `sympy_extras.integrals.trigonometric` (`trigonometric_antiderivative`)
+  take and return the expressions and symbols of the core and import no
+  SymPy: the coefficients of the radicands are read off the expanded
+  polynomial (any coefficients, as SymPy's `Poly` over `EX`), the real
+  roots of an Euler substitution are the native `roots`, the products of
+  sines and cosines the native `TR8`, the hyperbolic ones written in
+  exponentials by hand (SymPy's `rewrite(exp)` forms), the checks the
+  native `cancel`, `simplify` and `numerically_equal`, and the solution
+  of a vanishing frequency the native `roots` with the roots which
+  contradict the assumptions of the symbol left out (as SymPy's `solve`
+  does). The rational functions which the Euler and Weierstrass
+  substitutions and the integrations by parts leave go to the native
+  `ratint` (`sympy_extras.integrals.risch.rationaltools`).
+  The SymPy API with the same results is the new faces
+  `sympy_extras.integrals.radicals_sympy` and
+  `sympy_extras.integrals.trigonometric_sympy`, which `antiderivative`,
+  `definite` and `indefinite` call.
 - Kovacic's algorithm and the special values of the ODE solutions are
   native (**breaking**): `sympy_extras.solvers.kovacic`
   (`liouvillian_solution`, `dsolve_kovacic`, `normal_form`,
