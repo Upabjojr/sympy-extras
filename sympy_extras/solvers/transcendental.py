@@ -914,6 +914,12 @@ def _cleared(formula: Boolean, x: Symbol) -> Optional[Boolean]:
 
 def _solve_transcendental(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
     formula = _without_abs(formula, x)
+    # the relations evaluated: Eq(exp(x) + 2, 0) is False for a real x
+    formula = _map_atoms(formula, lambda a: _relation(a.rel_op, a.lhs, a.rhs))
+    if isinstance(formula, BooleanFalse):
+        return EmptySet
+    if isinstance(formula, BooleanTrue):
+        return Reals
     if _polynomial(formula, x):
         return in_radicals(solution_set(formula, x))
     rational = _cleared(formula, x)

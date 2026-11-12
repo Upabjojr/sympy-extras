@@ -205,11 +205,12 @@ tiled over the region asked for: explicitly when the region meets a few
 periods, and as a condition on `Mod(x, T)` when it meets infinitely many.
 
 ```python
->>> from sympy import Rational, Union, Interval, acos
+>>> from sympy import Rational, Union, Interval, expand_trig
 >>> solve(sin(x) > 0, x, (x > 0) & (x < 10))
 Union(Interval.open(0, pi), Interval.open(2*pi, 3*pi))
->>> solve(cos(x) < Rational(1, 3), x, (x > 0) & (x < 2))
-Interval.open(acos(1/3), 2)
+>>> below = solve(cos(x) < Rational(1, 3), x, (x > 0) & (x < 2))
+>>> below, expand_trig(cos(below.start))
+(Interval.open(2*atan(sqrt(2)/2), 2), 1/3)
 >>> solve(sin(x) > 0, x, domain=S.Reals)
 ConditionSet(x, Contains(Mod(x, 2*pi), Interval.open(0, pi)), Reals)
 

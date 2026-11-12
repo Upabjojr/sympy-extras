@@ -149,6 +149,14 @@ def test_rational_after_the_absolute_values() -> None:
         assert found.contains(outside) is not true
 
 
+def test_relations_decided_by_the_assumptions() -> None:
+    # Eq(exp(v) + 2, 0) evaluates to False for a real v: the reduction
+    # found no kernel in False and gave None, the set is empty
+    v = Symbol('v', real=True)
+    assert solve_transcendental(Eq(exp(v) + 2, 0), v) == EmptySet
+    assert solve_transcendental(exp(v) + 2 > 0, v) == interval(-oo, oo)
+
+
 def test_lambert_can_be_disabled() -> None:
     # without the Lambert W candidates (SymPy's solve) nothing is found
     assert solve_transcendental(Eq(x*exp(x), 1), x, lambert=False) is None
