@@ -756,6 +756,25 @@ remove public functions. Breaking changes are listed here when they happen.
   are public as `real_logarithms` and `elementary_polynomial`. The old
   API on SymPy objects is in `sympy_extras.integrals.antiderivative_sympy`,
   used by `definite`, `series` and the tests.
+- The integrals over regions are native (**breaking**):
+  `sympy_extras.integrals.regions` (`IntegralByRanges`,
+  `integrate_by_ranges`) takes and returns objects of the core and
+  imports no SymPy: the native cylindrical decomposition, `ask`,
+  `refine`, `solve`, `simplify`, the roots of `polys.polyroots` for the
+  explicit branches of the bounds, the native simplex method for the
+  boundedness of a polytope and the native `axisymmetric`, which now
+  calls the native `integrate_by_ranges` directly
+  (`axisymmetric_sympy.integrate_by_ranges_of_core` is gone). The
+  `IntegralByRanges` of the core is an unevaluating node storing its
+  arguments; a numeric bound is an `IndexedRoot` (still `CRootOf` on the
+  face). The one-dimensional integrals are a typed `Integrator`
+  (`integrator=` of `integrate_by_ranges` and `axisymmetric_integral`):
+  by default `definite_integral`, not ported yet, through the face
+  (`regions_sympy.definite_integral_of_core`), so that SymPy is loaded
+  on that path only; an integrator on the core runs the decomposition
+  and the iterated integrals without SymPy. The old API on SymPy objects
+  is in `sympy_extras.integrals.regions_sympy`, used by the tests, the
+  docs and the benchmarks.
 - The rationalising substitutions for algebraic integrands and the
   canonical forms and substitutions before integration are native
   (**breaking**): `sympy_extras.integrals.algebraic`

@@ -274,7 +274,10 @@ sympy_extras/
                              native residues, the core's residue, elimination on core expressions)
         contours_sympy.py    the SymPy face of contours, used by definite
         definite.py          definite_integral: splitting, range mappings, the verified SymPy fallback
-        regions.py           IntegralByRanges: integrals over semialgebraic regions through the CAD
+        regions.py           IntegralByRanges, integrate_by_ranges, Integrator: integrals over semialgebraic regions through
+                             the CAD (native: the native CAD, ask, refine, solve, simplify, roots and simplex; the
+                             one-dimensional integrals by a typed integrator, definite's through regions_sympy by default)
+        regions_sympy.py     the SymPy face of regions (the old API), and definite_integral_of_core
         tables.py            TABLE, TableEntry, lookup, table_integral: definite integrals by table lookup (Gradshteyn–Ryzhik)
                              with the conditions on the parameters (native: the native decide, powsimp and trigsimp)
         tables_sympy.py      the SymPy face of tables (the entries on SymPy objects, TableEntry.from_core), which definite uses
@@ -374,8 +377,8 @@ sympy_extras/
         summability_sympy.py the SymPy face of summability, used by definite
         axisymmetric.py      region integrals with a rotational symmetry (bodies and surfaces of revolution) reduced to their
                              profile (native: the native cancel, numerical comparison and Gram–Schmidt process, PORTED FROM
-                             SYMPY; the profile integral by regions through axisymmetric_sympy)
-        axisymmetric_sympy.py the SymPy face of axisymmetric, used by regions, and integrate_by_ranges_of_core
+                             SYMPY; the profile integral by the native regions, with the integrator given)
+        axisymmetric_sympy.py the SymPy face of axisymmetric
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic (Gradshteyn-Ryzhik 2.26), for the slices of regions,
                              and the Euler substitutions (native, with the native ratint)
         radicals_sympy.py    the SymPy face of radicals

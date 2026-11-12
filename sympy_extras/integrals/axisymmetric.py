@@ -37,10 +37,11 @@ four variables).
 The module works on the objects of :mod:`sympy_extras.core` and imports
 no SymPy: the native ``cancel``, ``expand``, typed polynomials and
 numerical comparison of :mod:`.conditions`. The profile integral is
-computed by :func:`~sympy_extras.integrals.regions.integrate_by_ranges`,
-which is still written on SymPy, through
-:func:`~sympy_extras.integrals.axisymmetric_sympy.integrate_by_ranges_of_core`:
-SymPy is loaded on that path only. The orthonormal frame of
+computed by the native
+:func:`~sympy_extras.integrals.regions.integrate_by_ranges`, with the
+one-dimensional :data:`Integrator` given (by default the definite
+integrals of :mod:`~sympy_extras.integrals.definite`, on SymPy's side:
+SymPy is loaded on that path only). The orthonormal frame of
 :func:`aligned_frame` is the Gram–Schmidt process of SymPy's
 ``Matrix.orthogonalize``, ported. The functions on SymPy objects are in
 :mod:`.axisymmetric_sympy`.
@@ -76,7 +77,7 @@ from __future__ import annotations
 import itertools
 import random
 from itertools import combinations
-from typing import Final, Optional, Sequence
+from typing import Callable, Final, Optional, Sequence
 
 from sympy_extras._timeout import attempt
 from sympy_extras.core.add import Add
@@ -96,7 +97,14 @@ from sympy_extras.settings import settings
 
 from .conditions import numerically_equal
 
-__all__ = ['axisymmetric_integral', 'rotation_group', 'rotation_invariant', 'aligned_frame', 'Frame']
+__all__ = ['axisymmetric_integral', 'rotation_group', 'rotation_invariant', 'aligned_frame', 'Frame', 'Integrator']
+
+#: the one-dimensional integrals of the region integrals
+#: (:func:`~sympy_extras.integrals.regions.integrate_by_ranges`):
+#: ``integrator(f, x, a, b, assumptions)`` is ``Integral(f, (x, a, b))``
+#: under the assumptions, ``None`` when it is not computed; it raises
+#: ``ValueError`` for bounds which contradict the assumptions
+Integrator = Callable[[Expr, Symbol, Expr, Expr, list[Boolean]], Optional[Expr]]
 
 _COUNTER: Final = itertools.count()
 
@@ -356,14 +364,16 @@ def aligned_frame(f: ExprLike, formula: Boolean, names: Sequence[Symbol]) -> Opt
 
 
 def axisymmetric_integral(f: ExprLike, formula: Boolean, names: Sequence[Symbol],
-                          assumptions: Sequence[Boolean] = (), measure: str = 'lebesgue') -> Optional[Expr]:
+                          assumptions: Sequence[Boolean] = (), measure: str = 'lebesgue',
+                          integrator: Optional[Integrator] = None) -> Optional[Expr]:
     """The integral of ``f`` over the region ``formula`` of the variables
     ``names`` through the profile of its rotational symmetry, see the
     module documentation; ``None`` when there is no group of variables to
     rotate or the profile integral is not evaluated. ``measure`` is
     ``'lebesgue'`` or ``'hausdorff'`` as in
     :func:`~sympy_extras.integrals.regions.integrate_by_ranges`, which
-    computes the profile integral on SymPy's side.
+    computes the profile integral with the ``integrator`` (by default the
+    definite integrals on SymPy's side).
 
     >>> from sympy_extras.core import Symbol, Integer, Rational
     >>> from sympy_extras.integrals.axisymmetric import axisymmetric_integral
@@ -371,7 +381,7 @@ def axisymmetric_integral(f: ExprLike, formula: Boolean, names: Sequence[Symbol]
     >>> axisymmetric_integral(Integer(1), (x**2 + y**2 + z**2 < 1) & (x**2 + y**2 < Rational(1, 4)), [x, y, z])
     pi*(16 - 9*sqrt(3))/12 + sqrt(3)*pi/4
     """
-    from .axisymmetric_sympy import integrate_by_ranges_of_core
+    from .regions import IntegralByRanges, integrate_by_ranges
     f_ = to_expr(f)
     group = rotation_group(f_, formula, names)
     if group is None:
@@ -379,7 +389,8 @@ def axisymmetric_integral(f: ExprLike, formula: Boolean, names: Sequence[Symbol]
         frame = aligned_frame(f_, formula, names)
         if frame is None or rotation_group(frame.integrand, frame.condition, frame.variables) is None:
             return None
-        value = axisymmetric_integral(frame.integrand, frame.condition, frame.variables, assumptions, measure)
+        value = axisymmetric_integral(frame.integrand, frame.condition, frame.variables, assumptions, measure,
+                                      integrator)
         if value is None:
             return None
         # a similarity of ratio 1/|a| scales a measure of dimension d by |a|**(-d)
@@ -402,7 +413,8 @@ def axisymmetric_integral(f: ExprLike, formula: Boolean, names: Sequence[Symbol]
     # the radius last first: the profile is solved for it (a cap is
     # rho = sqrt(1 - z**2)), and the other order is the fallback
     for order in (rest + [rho], [rho] + rest):
-        value = integrate_by_ranges_of_core(reduced, condition, order, list(assumptions), measure, settings.timeout)
-        if value is not None and rho not in value.free_symbols:
+        value = attempt(lambda: integrate_by_ranges(reduced, condition, order, list(assumptions), measure=measure,
+                                                    integrator=integrator), settings.timeout, native=True)
+        if value is not None and not value.has(IntegralByRanges) and rho not in value.free_symbols:
             return value
     return None

@@ -1,13 +1,11 @@
 """The SymPy face of the region integrals with a rotational symmetry
-(:mod:`sympy_extras.integrals.axisymmetric`), for the integrators which
-are still written on SymPy (:mod:`.regions`).
+(:mod:`sympy_extras.integrals.axisymmetric`).
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
-the native code and convert the results back. The step of the native
-module which stays on SymPy is here too, on core expressions: the
-integral over the profile by
-:func:`~sympy_extras.integrals.regions.integrate_by_ranges`, not ported
-yet (:func:`integrate_by_ranges_of_core`).
+the native code and convert the results back. Nothing of the module
+stays on SymPy: the integral over the profile is the native
+:func:`~sympy_extras.integrals.regions.integrate_by_ranges`, whose
+one-dimensional integrals reach SymPy's side by its default integrator.
 
 Examples
 ========
@@ -30,18 +28,13 @@ from sympy.core.sympify import sympify
 from sympy.logic.boolalg import Boolean
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_symbol
+from sympy_extras._typing_sympy import ExprLike
 from sympy_extras.assumptions.ask_sympy import _core_symbol, _sympy_symbol, core_boolean, sympy_boolean
-from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.symbol import Symbol as CoreSymbol
-from sympy_extras.interop import to_sympy
 
 from . import axisymmetric as native
 
-__all__ = ['axisymmetric_integral', 'rotation_group', 'rotation_invariant', 'aligned_frame', 'Frame',
-           'integrate_by_ranges_of_core']
+__all__ = ['axisymmetric_integral', 'rotation_group', 'rotation_invariant', 'aligned_frame', 'Frame']
 
 
 def _core_symbols(names: Sequence[Symbol]) -> list[CoreSymbol]:
@@ -144,25 +137,3 @@ def axisymmetric_integral(f: ExprLike, formula: Boolean, names: Sequence[Symbol]
                                          [core_boolean(a) for a in assumptions], measure)
     return None if found is None else sympy_expr(found)
 
-
-# ---------------------------------------------------------------------------
-# the step of the native module which stays on SymPy
-
-def integrate_by_ranges_of_core(f: CoreExpr, condition: CoreBoolean, variables: Sequence[CoreSymbol],
-                                assumptions: Sequence[CoreBoolean], measure: str,
-                                seconds: Optional[float]) -> Optional[CoreExpr]:
-    """:func:`~sympy_extras.integrals.regions.integrate_by_ranges` of ``f``
-    over ``condition`` within ``seconds``, on core expressions (not ported
-    yet); ``None`` when it does not finish, leaves an ``IntegralByRanges``
-    or its value cannot be converted."""
-    from .regions import IntegralByRanges, integrate_by_ranges
-    integrand, region = sympy_expr(f), sympy_boolean(condition)
-    order = [as_symbol(to_sympy(v)) for v in variables]
-    outer: list[Boolean] = [sympy_boolean(a) for a in assumptions]
-    found = attempt(lambda: integrate_by_ranges(integrand, region, order, outer, measure=measure), seconds)
-    if found is None or found.has(IntegralByRanges):
-        return None
-    try:
-        return core_expr(found)
-    except (TypeError, ValueError, NotImplementedError):
-        return None

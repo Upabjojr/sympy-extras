@@ -179,7 +179,7 @@ def test_leaked_constants_are_rejected() -> None:
     # inner integral of the ball volume, the constant of integration of
     # dsolve unresolved; a value with symbols absent from the input is
     # not an answer and the next method is tried
-    from sympy_extras.integrals.regions import integrate_by_ranges
+    from sympy_extras.integrals.regions_sympy import integrate_by_ranges
     y, z = symbols('y z')
     assert integrate_by_ranges(1, x**2 + y**2 + z**2 < 1) == 4 * pi / 3
 
@@ -192,7 +192,7 @@ def test_logarithms_of_negative_arguments_are_made_real() -> None:
     from sympy_extras.integrals.marichev_sympy import real_logarithms
     assert real_logarithms(I * c**2 * (log(c**2) - log(-c**2)), c < 0) == pi * c**2
     assert _same(definite_integral(2 * sqrt(c**2 - x**2), (x, c, -c), c < 0), pi * c**2)
-    from sympy_extras.integrals.regions import integrate_by_ranges
+    from sympy_extras.integrals.regions_sympy import integrate_by_ranges
     y = symbols('y')
     assert _same(integrate_by_ranges(1, x**2 + y**2 < c**2, [x, y], c < 0), pi * c**2)
 
