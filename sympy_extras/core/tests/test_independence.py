@@ -1828,3 +1828,77 @@ def test_native_elliptic_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ELLIPTIC], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_RESIDUES = r'''
+import sys
+from sympy_extras.core import Symbol, symbols, oo, pi, sqrt, Rational
+from sympy_extras.functions import cos, sin, exp, log
+from sympy_extras.integrals.residues import (fourier_integral, keyhole_integral, period_integral, poles,
+                                             rational_function, real_line_integral, residue_integral)
+assert 'sympy' not in sys.modules
+x, k, c = symbols('x k c')
+a, b = Symbol('a', positive=True), Symbol('b', positive=True)
+assert str(residue_integral(1/(x**4 + 1), x, -oo, oo)) == 'ConditionalValue(sqrt(2)*pi/2)'
+assert str(residue_integral(cos(b*x)/(x**2 + a**2), x, -oo, oo)) == 'ConditionalValue(pi*exp(-a*b)/a)'
+assert str(residue_integral(1/(2 + cos(x)), x, 0, 2*pi)) == 'ConditionalValue(2*sqrt(3)*pi/3)'
+assert str(residue_integral(sqrt(x)/(x**2 + 1), x, 0, oo)) == 'ConditionalValue(sqrt(2)*pi/2)'
+assert str(real_line_integral(1/(x**2 + 1)**2, x)) == 'ConditionalValue(pi/2)'
+assert str(fourier_integral(x*sin(k*x)/(x**2 + 4), x)) == 'ConditionalValue(pi*exp(-2*k), k > 0)'
+assert str(keyhole_integral(x**c/(x + 1), x)) == 'ConditionalValue(-pi/sin(pi*c), (c > -1) & (c < 0))'
+assert str(residue_integral(log(x)**2/(x**2 + 1), x, 0, oo)) == 'ConditionalValue(pi**3/8)'
+assert str(residue_integral(x**Rational(1, 3)/(1 + x)**2, x, 0, oo)) != 'None'
+assert str(period_integral(1/(3 + sin(x))**2, x, 0, 2*pi)) != 'None'
+assert str(period_integral(1/(1 - 2*a*cos(x) + a**2), x, 0, 2*pi, a < 1)) == 'ConditionalValue(2*pi/(1 - a**2))'
+assert period_integral(1/(a + b*cos(x)), x, 0, 2*pi, a > b) is not None   # placed at a sample, verified natively
+assert sorted(str(p.point) for p in poles(rational_function(1/((x**2 + 1)**2*(x - 3)), x).denominator)) == \
+    ['-I', '3', 'I']
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_residues_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.residues` does not load
+    SymPy, nor do the integrals over the real line, the Fourier integrals
+    by Jordan's lemma, the keyhole contour with powers and logarithms
+    (the branch of the logarithm as a symbol in the derivatives at a
+    multiple pole), the rational functions of sines and cosines over a
+    period (the poles over ``ZZ_I``), and a pole placed at a sample of the
+    parameters with its value verified by the native quadratures; SymPy
+    is reached through the face only for the ``CRootOf`` of a numerical
+    denominator whose radicals are unwieldy."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RESIDUES], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_CONTOURS = r'''
+import sys
+from sympy_extras.core import Symbol, symbols, oo, pi, sqrt
+from sympy_extras.functions import cos, sin, exp, sinh, cosh
+from sympy_extras.integrals.contours import contour_integral, indented_integral, rectangular_integral, sector_integral
+assert 'sympy' not in sys.modules
+x = symbols('x')
+a, b, n = symbols('a b n', positive=True)
+assert str(contour_integral(x/sinh(x), x, -oo, oo)) == 'ConditionalValue(pi**2/2)'
+assert str(contour_integral(exp(a*x)/(1 + exp(x)), x, -oo, oo, a < 1)) == 'ConditionalValue(pi/sin(pi*a), a < 1)'
+assert str(contour_integral(x**a/(1 + x**n), x, 0, oo, a < n - 1)) == \
+    'ConditionalValue(pi/(n*sin(pi*(a + 1)/n)), a < n - 1)'
+assert str(contour_integral(sin(a*x)/(x*(x**2 + b**2)), x, 0, oo)) == \
+    'ConditionalValue(pi*(exp(a*b) - 1)*exp(-a*b)/(2*b**2))'
+assert str(rectangular_integral(x**2/cosh(x), x)) == 'ConditionalValue(pi**3/4)'
+assert str(rectangular_integral(1/cosh(x)**2, x)) == 'ConditionalValue(2)'     # a double pole: the core's residue
+assert str(sector_integral(x**2/(3 + 2*x**6), x)) == 'ConditionalValue(sqrt(6)*pi/36)'
+assert str(indented_integral(sin(x)/(x*(x**2 + 1)), x, 0, oo)) == 'ConditionalValue(-pi*exp(-1)/2 + pi/2)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_contours_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.contours` does not load
+    SymPy, nor do the rectangle (the triangular system solved on core
+    expressions, the core's residue at a multiple pole), the sector and
+    the indented real line."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CONTOURS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

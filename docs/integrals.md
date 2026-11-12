@@ -266,7 +266,10 @@ The driver tries, after the Mellin method and the residues:
   (`x**2/cosh(x)` is `pi**3/4`, `exp(a*x)/(1 + exp(x))` is `pi/sin(pi*a)`),
   the sector of angle `2*pi/n` for `x**a/(b + c*x**n)` over `(0, oo)` with
   symbolic `a` and `n`, and the indented contour for `R(x)*sin(k*x)` with
-  simple real poles cancelled by the sine.
+  simple real poles cancelled by the sine. The module and the residue
+  theorem integrators it builds on (`sympy_extras.integrals.residues`)
+  are native, on the core; `contours_sympy` and `residues_sympy` are
+  their faces on SymPy objects.
 - **Frullani's theorem and Glasser's master theorem**
   (`sympy_extras.integrals.transformations`): `(f(a x) - f(b x))/x` over
   `(0, oo)` is `(f(0) - f(oo)) log(b/a)`, and `F(x - sum(a_i/(x - b_i)))`

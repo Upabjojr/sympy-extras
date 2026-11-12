@@ -539,6 +539,31 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The residue theorem integrators are native (**breaking**):
+  `sympy_extras.integrals.residues` (`residue_integral`,
+  `real_line_integral`, `fourier_integral`, `keyhole_integral`,
+  `period_integral`, `rational_function`, `poles`) and
+  `sympy_extras.integrals.contours` (`contour_integral`,
+  `rectangular_integral`, `sector_integral`, `indented_integral`) take and
+  return objects of the core and import no SymPy. The rational functions
+  hold dense coefficients (radicals, `I`, parameters; the typed `Poly`
+  has no domain `EX`), the poles are the native `roots` with the
+  irrational constants as placeholders, the denominators with `I` among
+  their coefficients factored over `ZZ_I` first (the double poles of
+  `1/(3 + sin(x))**2` in `exp(I*x)`); a multiple pole is divided out by
+  synthetic division, the branch of the logarithm of the keyhole is a
+  symbol with the derivation `d/dz + (1/z) d/dL` instead of an undefined
+  function, the rectangle's triangular system is solved by elimination on
+  core expressions and its multiple poles by the core's `residue`; a pole
+  placed at a sample of the parameters is verified by the validated
+  quadrature (or mpmath's rules of `recognize`) instead of `definite`'s
+  `verify_numerically`, which is reached through the face only when they
+  settle nothing. The `CRootOf` roots of a numerical denominator whose
+  radicals are unwieldy still come from SymPy, through
+  `residues_sympy.complex_roots_of_core`. The old API on SymPy objects is
+  `sympy_extras.integrals.residues_sympy` and
+  `sympy_extras.integrals.contours_sympy` (used by `definite`).
+
 - The mean value integrals of periodic integrands are native
   (**breaking**): `sympy_extras.integrals.periodic` (`mean_value_integral`,
   `laurent_coefficient`, `to_laurent`) takes and returns objects of the
