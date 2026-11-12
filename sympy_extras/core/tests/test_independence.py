@@ -3125,3 +3125,24 @@ def test_native_product_over_ex_does_not_load_sympy() -> None:
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
 
+
+_NATIVE_EXPR_WITH_LIMITS_DOIT = r'''
+import sys
+from sympy_extras.core import Symbol, Integer
+from sympy_extras.concrete.expr_with_limits import ExprWithLimits, Sum
+from sympy_extras.concrete.summations import summation
+i, n = Symbol('i', integer=True), Symbol('n', integer=True)
+e = ExprWithLimits(summation(i, (i, 1, n)) + Sum(i, (i, 1, n)), (n, Integer(1), Integer(2)))
+assert str(e.doit()) == 'ExprWithLimits(n**2 + n, (n, 1, 2))', e.doit()
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_expr_with_limits_doit_does_not_load_sympy() -> None:
+    """``ExprWithLimits.doit`` (the base class: ``Sum`` and ``Product``
+    have their own) evaluates its function and bounds as SymPy's
+    ``Basic.doit`` (it went through SymPy)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EXPR_WITH_LIMITS_DOIT], capture_output=True,
+                         text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

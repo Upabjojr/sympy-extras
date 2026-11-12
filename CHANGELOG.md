@@ -10,6 +10,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `ExprWithLimits.doit` (the base class of `Sum` and `Product`, which
+  have their own) evaluates its function and bounds natively, as SymPy's
+  `Basic.doit`, instead of going through SymPy.
 - `concrete.products` loads no SymPy at run time: the product of a
   polynomial whose coefficients our `Poly` does not take (`I`, `sqrt(2)`,
   `pi`, floats) is taken by the closed forms of its roots (the native
