@@ -63,16 +63,14 @@ The module works on the objects of :mod:`sympy_extras.core` and imports
 no SymPy: the native summation, ``hypersimp``, ``hyperexpand``, roots,
 convergence tests, Euler sums, Zeilberger's algorithm, ``ask``,
 ``refine``, ``simplify`` and ``tidy``. The moments, the mean values and
-the Fourier coefficients are computed by
+the Fourier coefficients are computed by the native
 :func:`~sympy_extras.integrals.definite.definite_integral`,
 :func:`~sympy_extras.integrals.definite.conditional_integral` and
 :func:`~sympy_extras.integrals.antiderivative.antiderivative_integral`,
-which are still written on SymPy, through the functions ending in
-``_of_core`` of :mod:`.laplace_sympy` and :mod:`.series_sympy`, and so is
-the numerical check of an interchange which the convergence tests do not
-justify (``verify_numerically_of_core`` of :mod:`.residues_sympy`); the
-formal power series of a factor come from SymPy's ``fps`` through
-:mod:`.brackets`. SymPy is loaded on those paths only. The functions on
+and so is the numerical check of an interchange which the convergence
+tests do not justify (:func:`~sympy_extras.integrals.definite.verify_numerically`);
+the formal power series of a factor come from SymPy's ``fps`` through
+:mod:`.brackets`. SymPy is loaded on that path only. The functions on
 SymPy objects are in :mod:`.series_sympy`.
 
 Examples
@@ -426,8 +424,7 @@ def _computed_expansion(g: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assum
     so the series converges to ``g`` in ``L2`` for every square-integrable
     ``g``. The integrals come from the native
     :func:`~sympy_extras.integrals.antiderivative.antiderivative_integral`,
-    then from definite on SymPy's side
-    (:func:`~sympy_extras.integrals.laplace_sympy.conditional_integral_of_core`)."""
+    then from :func:`~sympy_extras.integrals.definite.conditional_integral`."""
     global _nesting
     if _nesting > 0 or a in (oo, -oo) or b in (oo, -oo):
         return None
@@ -435,7 +432,7 @@ def _computed_expansion(g: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assum
         # a harmonic in g resonates with the basis at one index, where
         # the formula computed for the symbolic index is wrong
         return None
-    from .laplace_sympy import conditional_integral_of_core
+    from .definite import conditional_integral
     from .antiderivative import antiderivative_integral
     length = b - a
     k = _fresh('k', integer=True, positive=True)
@@ -458,7 +455,7 @@ def _computed_expansion(g: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assum
         integrand = shifted * weight
         found = antiderivative_integral(integrand, t, S.Zero, length, facts)
         if found is None:
-            found = conditional_integral_of_core(integrand, t, S.Zero, length, facts, None)
+            found = conditional_integral(integrand, t, S.Zero, length, facts)
         if found is None or _bad_value(found.value) or found.value.has(oo, -oo):
             return None
         value = found.value
@@ -673,17 +670,17 @@ def moments(expansion: Expansion, rest: Expr, x: Symbol, a: Expr, b: Expr,
             assumptions: Assumptions = None) -> Optional[Expr]:
     """``Integral(basis(j) * rest, (x, a, b))`` as a closed form in the
     index ``j`` (a symbolic nonnegative integer), or ``None``; computed by
-    :func:`~sympy_extras.integrals.definite.definite_integral` on SymPy's
-    side (:func:`~sympy_extras.integrals.laplace_sympy.definite_integral_of_core`)."""
-    from .laplace_sympy import definite_integral_of_core
+    :func:`~sympy_extras.integrals.definite.definite_integral`."""
+    from .definite import definite_integral
     j = expansion.index
     facts: list[Boolean] = [element(j, Naturals0) if expansion.start == 0 else element(j, Naturals)]
     facts.extend(_statements(assumptions))
     global _nesting
     _nesting += 1
     try:
-        value = definite_integral_of_core(expansion.basis * rest, x, to_expr(a), to_expr(b), facts, False,
-                                          settings.timeout)
+        integrand = expansion.basis * rest
+        value = attempt(lambda: definite_integral(integrand, (x, to_expr(a), to_expr(b)), facts, special_values=False),
+                        settings.timeout, native=True)
     finally:
         _nesting -= 1
     if value is None or _bad_value(value):
@@ -1206,12 +1203,11 @@ def _resonant(expansion: Expansion, rest: Expr, x: Symbol, assumptions: Assumpti
 def _verified(value: Expr, f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions) -> bool:
     """Whether the numerical check of ``settings.numerical_checks``
     confirms ``value`` as ``Integral(f, (x, a, b))``: the quadratures of
-    :func:`~sympy_extras.integrals.definite.verify_numerically`, on SymPy's
-    side (:func:`~sympy_extras.integrals.residues_sympy.verify_numerically_of_core`)."""
+    :func:`~sympy_extras.integrals.definite.verify_numerically`."""
     if not settings.numerical_checks:
         return False
-    from .residues_sympy import verify_numerically_of_core
-    return verify_numerically_of_core(value, f, x, a, b, assumptions) is True
+    from .definite import verify_numerically
+    return verify_numerically(value, f, x, a, b, assumptions) is True
 
 
 def _termwise(expansion: Expansion, rest: Expr, x: Symbol, a: Expr, b: Expr,
@@ -1219,12 +1215,13 @@ def _termwise(expansion: Expansion, rest: Expr, x: Symbol, a: Expr, b: Expr,
     """``Integral(factor * rest, (x, a, b))`` from the Fourier series of the
     factor integrated termwise against the rest: the mean times the
     integral of the rest plus the series of the moments."""
-    from .laplace_sympy import definite_integral_of_core
+    from .definite import definite_integral
     if _resonant(expansion, rest, x, assumptions):
         return None
     mean: Expr = S.Zero
     if expansion.constant != 0:
-        found = definite_integral_of_core(rest, x, a, b, assumptions, False, settings.timeout)
+        found = attempt(lambda: definite_integral(rest, (x, a, b), assumptions, special_values=False),
+                        settings.timeout, native=True)
         if found is None or _bad_value(found):
             return None
         mean = found

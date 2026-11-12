@@ -1,6 +1,5 @@
 """The SymPy face of Chyzak's algorithm
-(:mod:`sympy_extras.integrals.dfinite`), for the integrators which are
-still written on SymPy (:mod:`.definite`) and the old interface.
+(:mod:`sympy_extras.integrals.dfinite`): the old interface on SymPy objects.
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the annihilators, factors

@@ -29,12 +29,9 @@ to :func:`sympy_extras.integrals.definite.definite_integral`.
 
 The module works on the objects of :mod:`sympy_extras.core` and imports
 no SymPy: the native limits under assumptions, ask and partial
-fractions. The transformed integral is computed by
-:func:`~sympy_extras.integrals.definite.conditional_integral`, which is
-still written on SymPy, through
-:func:`sympy_extras.integrals.transformations_sympy.conditional_integral_of_core`
-(SymPy is loaded on that path only). The functions on SymPy objects are
-in :mod:`.transformations_sympy`.
+fractions. The transformed integral is computed by the native
+:func:`~sympy_extras.integrals.definite.conditional_integral`. The
+functions on SymPy objects are in :mod:`.transformations_sympy`.
 
 Examples
 ========
@@ -225,9 +222,7 @@ def glasser(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     real line, or over ``(0, oo)`` when ``F`` is even (the
     Cauchy–Schlömilch transformation, ``f = G(u**2)``); the transformed
     integral ``Integral(F, (x, -oo, oo))`` is computed by
-    :func:`~sympy_extras.integrals.definite.definite_integral` (SymPy's
-    side, through
-    :func:`sympy_extras.integrals.transformations_sympy.conditional_integral_of_core`).
+    :func:`~sympy_extras.integrals.definite.conditional_integral`.
     ``None`` when the shape is not recognised.
 
     >>> from sympy_extras.core import Symbol, oo
@@ -254,8 +249,8 @@ def glasser(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
             # over the half line F must be even
             continue
         lower = -oo if whole_line else S.Zero
-        from .transformations_sympy import conditional_integral_of_core
-        value = conditional_integral_of_core(replaced, y, lower, oo, assumptions, None)
+        from .definite import conditional_integral
+        value = conditional_integral(replaced, y, lower, oo, assumptions)
         if value is not None:
             return value
     return None

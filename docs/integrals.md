@@ -73,7 +73,7 @@ The strips of the transforms are the convergence conditions:
 
 ```python
 >>> from sympy import symbols, exp, sin, log, sqrt, Abs, oo, pi, cos, S
->>> from sympy_extras.integrals.definite import definite_integral
+>>> from sympy_extras.integrals.definite_sympy import definite_integral
 >>> from sympy_extras.integrals.mellin_sympy import mellin_transform
 >>> x, k, s = symbols('x k s')
 >>> a, b = symbols('a b', positive=True)
@@ -513,7 +513,7 @@ The driver tries, after the Mellin method and the residues:
 
 ```python
 >>> from sympy import symbols, exp, sin, log, atan, cos, oo, pi
->>> from sympy_extras.integrals.definite import definite_integral
+>>> from sympy_extras.integrals.definite_sympy import definite_integral
 >>> from sympy_extras.integrals.telescoping_sympy import holonomic_ode
 >>> from sympy_extras.integrals.parametric_sympy import parametric_integral
 >>> x = symbols('x')
@@ -826,7 +826,7 @@ residues of a field without radicals written with `CRootOf`).
 ```python
 >>> from sympy import symbols, sqrt, log, Rational
 >>> from sympy_extras.integrals.trager_sympy import trager_antiderivative, is_nonelementary_algebraic
->>> from sympy_extras.integrals.definite import definite_integral
+>>> from sympy_extras.integrals.definite_sympy import definite_integral
 >>> x = symbols('x')
 >>> trager_antiderivative(x/sqrt(x**4 + 1), x)
 log(x**2 + sqrt(x**4 + 1))/2

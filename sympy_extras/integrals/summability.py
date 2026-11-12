@@ -33,12 +33,9 @@ like `1/(4 \\varepsilon)`; `x^k` with `k \\ge 0`) the functions return
 
 The module works on the objects of :mod:`sympy_extras.core` and imports
 no SymPy: the native limits under assumptions and the native
-conditions. The regularised integrals are computed by
-:func:`~sympy_extras.integrals.definite.conditional_integral`, which is
-still written on SymPy, through
-:func:`sympy_extras.integrals.summability_sympy.conditional_integral_of_core`
-(SymPy is loaded on that path only). The functions on SymPy objects are
-in :mod:`.summability_sympy`.
+conditions. The regularised integrals are computed by the native
+:func:`~sympy_extras.integrals.definite.conditional_integral`. The
+functions on SymPy objects are in :mod:`.summability_sympy`.
 
 Examples
 ========
@@ -109,9 +106,9 @@ def _fresh(name: str, **assumptions: bool) -> Dummy:
 def _integral(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions,
               seconds: Optional[float]) -> Optional[ConditionalValue]:
     """:func:`~sympy_extras.integrals.definite.conditional_integral` within
-    ``seconds`` (SymPy's side, through the face)."""
-    from .summability_sympy import conditional_integral_of_core
-    return conditional_integral_of_core(f, x, a, b, assumptions, seconds)
+    ``seconds``."""
+    from .definite import conditional_integral
+    return attempt(lambda: conditional_integral(f, x, a, b, assumptions), seconds, native=True)
 
 
 def summable_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, method: str,

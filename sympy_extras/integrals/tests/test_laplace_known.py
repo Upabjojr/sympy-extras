@@ -9,7 +9,7 @@ from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 
 from sympy_extras.integrals.conditions_sympy import numerically_equal
-from sympy_extras.integrals.definite import verify_numerically
+from sympy_extras.integrals.definite_sympy import verify_numerically
 from sympy_extras.integrals.laplace_sympy import laplace_rules
 
 t, u = symbols('t u')

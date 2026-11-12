@@ -6,7 +6,7 @@ from sympy import symbols, exp, besselj, sin, cos, oo, sqrt, pi, atan, legendre,
 
 from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.integrals.dfinite_sympy import dfinite_integral
-from sympy_extras.integrals.definite import verify_numerically
+from sympy_extras.integrals.definite_sympy import verify_numerically
 from sympy_extras.integrals.telescoping_sympy import holonomic_integral
 
 x = symbols('x')

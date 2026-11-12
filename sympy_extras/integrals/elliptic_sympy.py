@@ -1,6 +1,6 @@
 """The SymPy face of the reduction to Legendre's elliptic integrals
-(:mod:`sympy_extras.integrals.elliptic`), for the integrators which are
-still written on SymPy (:mod:`sympy_extras.integrals.definite`).
+(:mod:`sympy_extras.integrals.elliptic`): the old interface on SymPy
+objects.
 
 The functions take and return SymPy objects, converted by
 :mod:`sympy_extras.interop` around the native ones: the elliptic

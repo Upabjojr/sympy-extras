@@ -25,11 +25,9 @@ the division rule, whose lower endpoint is the symbol `s`). The pairs of
 
 The module works on the objects of :mod:`sympy_extras.core` and imports
 no SymPy: the native ask, conditions, ``simplify`` and ``tidy``. The
-transforms of the pieces are computed by
-:func:`~sympy_extras.integrals.definite.definite_integral`, which is still
-written on SymPy, through the functions of
-:mod:`sympy_extras.integrals.laplace_sympy` (``definite_integral_of_core``,
-``conditional_integral_of_core``): SymPy is loaded on those paths only.
+transforms of the pieces are computed by the native
+:func:`~sympy_extras.integrals.definite.definite_integral` and
+:func:`~sympy_extras.integrals.definite.conditional_integral`.
 The periods of the periodic rule are native
 (:func:`sympy_extras.calculus.util.periodicity`). The
 ``Integral`` of the convolution rule is SymPy's, wrapped in a node of the
@@ -111,14 +109,16 @@ def _fresh(name: str, **assumptions: bool) -> Dummy:
 
 
 def _is_integral(e: Basic) -> bool:
-    """Whether ``e`` is an ``Integral`` (SymPy's, wrapped in a node of the
-    core: the core has no class of its own)."""
-    return e._is_foreign_node() and e._compare_name() == 'Integral'
+    """Whether ``e`` is an unevaluated ``Integral``: the node of
+    :mod:`.integral` (the value of :mod:`.definite` when no method
+    applies), or SymPy's wrapped in a node of the core."""
+    from .integral import Integral
+    return isinstance(e, Integral) or (e._is_foreign_node() and e._compare_name() == 'Integral')
 
 
 def has_integral(e: Basic) -> bool:
-    """Whether ``e`` has an unevaluated ``Integral`` (SymPy's, wrapped in a
-    node of the core).
+    """Whether ``e`` has an unevaluated ``Integral`` (the node of
+    :mod:`.integral`, or SymPy's wrapped in a node of the core).
 
     >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.integrals.laplace import has_integral
@@ -157,11 +157,11 @@ def _renamed(assumptions: Assumptions, s: Expr, u: Symbol) -> list[Boolean]:
 def transform(f: Expr, t: Symbol, u: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
     """``Integral(f*exp(-u*t), (t, 0, oo))`` by
     :func:`~sympy_extras.integrals.definite.definite_integral` (which does
-    not use the rules of this module again; SymPy's side, through
-    :func:`sympy_extras.integrals.laplace_sympy.definite_integral_of_core`),
-    ``None`` when it is not found or comes with an undecided condition."""
-    from .laplace_sympy import definite_integral_of_core
-    value = definite_integral_of_core(f * exp(-u * t), t, S.Zero, oo, assumptions, False, settings.timeout)
+    not use the rules of this module again), ``None`` when it is not found
+    or comes with an undecided condition."""
+    from .definite import definite_integral
+    value = attempt(lambda: definite_integral(f * exp(-u * t), (t, S.Zero, oo), assumptions, special_values=False),
+                    settings.timeout, native=True)
     if value is None or value.has(Piecewise) or has_integral(value):
         return None
     return value
@@ -169,11 +169,10 @@ def transform(f: Expr, t: Symbol, u: Symbol, assumptions: Assumptions = None) ->
 
 def _conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
                           assumptions: Assumptions) -> Optional[ConditionalValue]:
-    """:func:`~sympy_extras.integrals.definite.conditional_integral`
-    (SymPy's side, through the face); ``None`` for a value with an
-    unevaluated ``Integral``."""
-    from .laplace_sympy import conditional_integral_of_core
-    found = conditional_integral_of_core(f, x, a, b, assumptions, None)
+    """:func:`~sympy_extras.integrals.definite.conditional_integral`;
+    ``None`` for a value with an unevaluated ``Integral``."""
+    from .definite import conditional_integral
+    found = conditional_integral(f, x, a, b, assumptions)
     if found is None or has_integral(found.value):
         return None
     return found

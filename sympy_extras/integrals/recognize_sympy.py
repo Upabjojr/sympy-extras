@@ -1,6 +1,6 @@
 """The SymPy face of the symbolic-numeric recognition of constants
-(:mod:`sympy_extras.integrals.recognize`), for the integrators which are
-still written on SymPy (:mod:`.definite`).
+(:mod:`sympy_extras.integrals.recognize`): the old interface on SymPy
+objects.
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the closed forms back; the integrands are

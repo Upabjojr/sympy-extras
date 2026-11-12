@@ -1,12 +1,11 @@
 """The SymPy face of the summability methods for divergent oscillatory
-integrals (:mod:`sympy_extras.integrals.summability`), for the integrators
-which are still written on SymPy (:mod:`.definite`).
+integrals (:mod:`sympy_extras.integrals.summability`): the old interface on
+SymPy objects.
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of
 :mod:`.conditions_sympy`). The regularised integrals of the native module
-are computed by :func:`~sympy_extras.integrals.definite.conditional_integral`
-through :func:`conditional_integral_of_core` (of :mod:`.laplace_sympy`).
+are computed by the native :func:`~sympy_extras.integrals.definite.conditional_integral`.
 
 Examples
 ========
@@ -38,9 +37,8 @@ from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, core_a
 from . import conditions as native_conditions
 from . import summability as native
 from .conditions_sympy import ConditionalValue
-from .laplace_sympy import conditional_integral_of_core
 
-__all__ = ['summable_integral', 'oscillatory_tail', 'METHODS', 'conditional_integral_of_core']
+__all__ = ['summable_integral', 'oscillatory_tail', 'METHODS']
 
 #: the summability methods (:data:`sympy_extras.integrals.summability.METHODS`)
 METHODS = native.METHODS

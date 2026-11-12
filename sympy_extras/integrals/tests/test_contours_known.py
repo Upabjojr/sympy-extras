@@ -7,7 +7,7 @@ from sympy import symbols, exp, sinh, cosh, sin, cos, oo, pi, S, sqrt, simplify,
 from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.integrals.contours_sympy import contour_integral
-from sympy_extras.integrals.definite import verify_numerically
+from sympy_extras.integrals.definite_sympy import verify_numerically
 
 x = symbols('x')
 a, b, n = symbols('a b n', positive=True)

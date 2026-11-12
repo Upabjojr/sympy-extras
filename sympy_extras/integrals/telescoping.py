@@ -63,12 +63,12 @@ The module works on the expressions of the core and imports no SymPy:
 the polynomials in `x` have their coefficients in the field
 `\\mathbb{Q}(i)(t, \\ldots)` of the typed polynomial layer (factored over
 `\\mathbb{Q}` or `\\mathbb{Q}(i)`), the limits at the bounds are the native
-ones. The steps which stay on SymPy are reached through the functions
-ending in ``_of_core`` of :mod:`.telescoping_sympy`, imported when they are
-needed: the values of the integral at a point
-(:func:`~sympy_extras.integrals.definite.definite_integral`, not ported
-yet), its numerical check (``verify_numerically``) and SymPy's ``dsolve``
-of an equation which the native solvers leave unsolved.
+ones; the values of the integral at a point and its numerical check are
+those of the native :func:`~sympy_extras.integrals.definite.definite_integral`
+and :func:`~sympy_extras.integrals.definite.verify_numerically`. The step
+which stays on SymPy, SymPy's ``dsolve`` of an equation which the native
+solvers leave unsolved, is reached through ``dsolve_of_core`` of
+:mod:`.telescoping_sympy`, imported when it is needed.
 :mod:`.telescoping_sympy` is the old interface on SymPy objects.
 
 Examples
@@ -809,11 +809,12 @@ def _initial_values(F: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol, t0: Expr, o
     """``I^(j)(t0)`` for ``j < order`` by integrating ``d^j F/dt^j`` at
     ``t = t0`` (differentiation under the integral sign), or ``None``."""
     from sympy_extras.solvers.linear_ode import has_integral
-    from .telescoping_sympy import definite_integral_of_core
+    from .definite import definite_integral
     values: list[Expr] = []
     for j in range(order):
         integrand = as_expr(diff(F, (t, j)).subs(t, t0))
-        value = definite_integral_of_core(integrand, x, a, b, assumptions, False, settings.timeout)
+        value = attempt(lambda: definite_integral(integrand, (x, a, b), assumptions, special_values=False),
+                        settings.timeout, native=True)
         if value is None or has_integral(value) or value.has(Piecewise, nan, zoo, oo, -oo):
             return None
         values.append(value)
@@ -906,8 +907,8 @@ def _verified(value: Expr, F: Expr, x: Symbol, a: Expr, b: Expr, assumptions: As
     value."""
     if not settings.numerical_checks:
         return True
-    from .telescoping_sympy import verify_numerically_of_core
-    return verify_numerically_of_core(value, F, x, a, b, assumptions) is not False
+    from .definite import verify_numerically
+    return verify_numerically(value, F, x, a, b, assumptions) is not False
 
 
 def holonomic_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol,

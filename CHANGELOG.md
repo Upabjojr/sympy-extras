@@ -10,6 +10,34 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- **Breaking**: the definite integration driver `sympy_extras.integrals.definite`
+  (`definite_integral`, `conditional_integral`, `verify_numerically`) is
+  native on the typed core: its functions take and return objects of
+  `sympy_extras.core`, and importing it, and the integrals the native
+  methods settle, load no SymPy (the native Marichev–Adamchik method,
+  residues, tables, contours, antiderivatives, telescoping and the other
+  methods of the package called directly; the native `solve`, `ask`, SAT
+  solver, Gruntz limits, factorisation and simplification; the port of
+  `singularities`; the quadratures evaluate the integrands by the
+  numerical rules of the nodes instead of `lambdify`). An integral left
+  undone is the node `sympy_extras.integrals.integral.Integral`, now with
+  bounds (`Integral(f, x, a, b)`, SymPy's `Integral(f, (x, a, b))` through
+  interop; the native `has_integral` of `laplace` and `linear_ode` and the
+  special values treat it as unevaluated). The old API on SymPy objects
+  is `sympy_extras.integrals.definite_sympy`, which keeps SymPy's
+  `integrate` and `meijerint` as the last methods (`integrate_of_core`);
+  the verified antiderivatives come from the native `indefinite`. The private helpers
+  (`_Integrator`, `_quadrature`, `_positions`, ...) take native objects;
+  the native `DefiniteIntegrator` and `definite_integrator` of
+  `definite` replace those of `parametric_sympy`. The native modules call
+  the native driver directly, and the routes back into it are removed:
+  `laplace_sympy.definite_integral_of_core` and
+  `conditional_integral_of_core` (with their re-exports in
+  `summability_sympy`, `transformations_sympy` and `algebraic_sympy`),
+  `telescoping_sympy.definite_integral_of_core` and
+  `verify_numerically_of_core`, `residues_sympy.verify_numerically_of_core`,
+  `algebraic_sympy.verify_numerically_of_core` and
+  `regions_sympy.definite_integral_of_core`.
 - **Breaking**: the verified indefinite integration
   `sympy_extras.integrals.indefinite` (`indefinite_integral`,
   `verified_antiderivative`, `is_antiderivative`, `real_form`,
