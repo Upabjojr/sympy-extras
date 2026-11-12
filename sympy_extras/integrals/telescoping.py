@@ -108,7 +108,7 @@ from sympy_extras.assumptions.limits import limit
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
-from sympy_extras.core.function import AppliedUndef, Function, diff, expand
+from sympy_extras.core.function import Function, diff, expand
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import I, Integer, NaN, ComplexInfinity, Number, Rational, nan, oo, zoo
 from sympy_extras.core.power import Pow
@@ -954,11 +954,3 @@ def holonomic_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symb
         return None
     return ConditionalValue(value)
 
-
-def _order(lhs: Expr, unknown: AppliedUndef, t: Symbol) -> int:
-    """The order of a linear differential expression in ``unknown``."""
-    order = 0
-    for j in range(1, 8):
-        if lhs.has(diff(unknown, (t, j))):
-            order = j
-    return order
