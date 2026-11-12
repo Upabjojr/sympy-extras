@@ -53,11 +53,10 @@ by the chain is zero.
 
 The module works on objects of the core and imports no SymPy
 (:mod:`sympy_extras.polys.regularchains_sympy` is its face on SymPy
-objects). One step goes through SymPy at run time: the exact solutions of
-a chain without free variables (:meth:`RegularChain.solutions`), whose
-coordinates are SymPy's root objects ``CRootOf``, which are not ported
-(:func:`~sympy_extras.polys.regularchains_sympy.exact_solutions_of_core`).
-The numerical solutions are those of mpmath's ``polyroots``, as SymPy's
+objects). The exact solutions of a chain without free variables
+(:meth:`RegularChain.solutions`, :mod:`.solutions`) are written with
+radicals, ``IndexedRoot`` for the real roots and the native ``CRootOf``
+(:mod:`sympy_extras.polys.complexrootof`) for the others. The numerical solutions are those of mpmath's ``polyroots``, as SymPy's
 ``Poly.nroots`` computes them (ported).
 
 References
@@ -479,11 +478,10 @@ class RegularChain:
     def solutions(self, real: bool = False) -> list[Point]:
         """The points of a chain without free variables, exactly.
 
-        The coordinates are rational numbers, root objects (SymPy's
-        ``CRootOf``, in radicals where the package writes them so) and
-        rational functions of them, see
-        :func:`~sympy_extras.polys.regularchains_sympy.solutions.exact_solutions`
-        (on SymPy, called through the face at run time): the chain is
+        The coordinates are rational numbers, root objects (``IndexedRoot``
+        for the real ones, the native ``CRootOf`` for the others, in
+        radicals where the package writes them so) and rational functions
+        of them, see :func:`.solutions.exact_solutions`: the chain is
         solved from the bottom; a polynomial of degree one in its main
         variable gives its coordinate by a division, and the roots of
         another one, whose coefficients are algebraic numbers, are root
@@ -518,8 +516,8 @@ class RegularChain:
         if self.dimension:
             raise ValueError("the chain has the free variables %s: its solutions are not isolated"
                 % self.free_variables)
-        from sympy_extras.polys.regularchains_sympy import exact_solutions_of_core
-        return exact_solutions_of_core(self.polys, self.main_variables, real, self._univariate)
+        from .solutions import exact_solutions
+        return exact_solutions(self.polys, self.main_variables, real, self._univariate)
 
     # ------------------------------------------------------------------
     # operations

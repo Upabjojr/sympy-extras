@@ -109,7 +109,10 @@ def _roots(poly: Poly, digits: int) -> Optional[list[_Root]]:
     for root in poly.all_roots(radicals=False):
         exact = as_expr(root)
         if not isinstance(exact, ComplexRootOf):
-            found.append(_Root(exact, as_expr(exact.evalf(digits)), True))
+            # a rational number, or a root of a factor times an integer
+            # basis (4*CRootOf(x**2 - x + 1, 0) for y**3 + 64), which was
+            # taken for a real root
+            found.append(_Root(exact, as_expr(exact.evalf(digits)), bool(exact.is_extended_real)))
             continue
         matches = [value for value in numerical if _inside(value, exact, tolerance)]
         if len(matches) != 1:

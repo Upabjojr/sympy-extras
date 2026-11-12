@@ -9,8 +9,10 @@ The module works on the expressions and symbols of the core
 (`sympy_extras.core`) and imports no SymPy; its face
 `sympy_extras.polys.regularchains_sympy` has the same API on SymPy
 objects, which the examples below use. The exact solutions of a chain
-without free variables are SymPy's `CRootOf` and go through SymPy
-(`regularchains_sympy.solutions`).
+without free variables are native too (`regularchains.solutions`: radicals,
+`IndexedRoot` for the real roots, the native `CRootOf` of
+`polys.complexrootof` for the others); those of the face are SymPy's
+`CRootOf` (`regularchains_sympy.solutions`).
 
 ## What SymPy has and what is added
 

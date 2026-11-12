@@ -409,9 +409,8 @@ dispatcher `groebner`, also for the orders which have no SymPy
 counterpart such as weight orders), the decompositions through regular
 chains (`sympy_extras.polys.idealdecomposition`) and the rational
 univariate representation (`sympy_extras.polys.rur`, the method
-`Ideal.rur`). Only the exact solutions of a representation, SymPy's
-`CRootOf` objects, are computed on SymPy (`solutions_of_core` of
-`sympy_extras.polys.rur_sympy`).
+`Ideal.rur`), with its exact solutions (the native `CRootOf` of
+`sympy_extras.polys.complexrootof` and the `IndexedRoot` of the CAD).
 
 The face `sympy_extras.polys.ideals_sympy.Ideal` has the API the module
 had before: SymPy expressions, `Poly` generators, the domain inferred with

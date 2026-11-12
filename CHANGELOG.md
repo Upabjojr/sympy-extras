@@ -43,6 +43,21 @@ remove public functions. Breaking changes are listed here when they happen.
   `kovacic_sympy.integrate_of_core` and `integral_of_core`,
   `first_order_sympy.integrate_of_core` and `dae_sympy.integral_of_core`
   are removed.
+- The exact solutions of a rational univariate representation
+  (`polys.rur.RationalUnivariateRepresentation.solutions`, `rur.exact_solutions`),
+  of a regular chain (`polys.regularchains.RegularChain.solutions`, the new
+  native `regularchains.solutions.exact_solutions`, a port of the face's
+  module which matches the roots by their exact values and SymPy's
+  `nroots` order) and the numerical poles without short radicals of the
+  residue integrator (`integrals.residues.poles`) no longer load SymPy at
+  run time: the roots are the native `CRootOf` of `polys.complexrootof` in
+  SymPy's order (the real roots of the solutions as `IndexedRoot`). The
+  routes `rur_sympy.solutions_of_core`,
+  `regularchains_sympy.exact_solutions_of_core` and
+  `residues_sympy.complex_roots_of_core` are removed. `IndexedRoot` prints
+  its polynomial in the order of the plain variable
+  (`IndexedRoot(x**3 - 2*x**2 + x - 1, x, 0)`, which printed
+  `-1 + x**3 - 2*x**2 + x`).
 - **Breaking**: Trager's algorithm `sympy_extras.integrals.trager`
   (`trager_antiderivative`, `trager_reduce`, `hermite_reduce_algebraic`,
   `is_nonelementary_algebraic`) is native on the typed core: its functions
@@ -218,6 +233,20 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.complexrootof`: a native node for the complex roots
+  of polynomials with rational coefficients, `ComplexRootOf` (alias
+  `CRootOf`; SymPy's `CRootOf`, ported), which never evaluates, and the
+  evaluating `rootof`, `all_roots`, `real_roots`, `polynomial_roots`,
+  `root_count`, `algebraic_number`. The roots are in SymPy's order (the
+  real ones increasing, then the others factor by factor, each root after
+  its conjugate, the pairs by SymPy's Collins–Krandick rectangles, which
+  `complex_rectangles` reproduces from exact isolating regions); the
+  numerical values are refined exactly to any precision (a real part on
+  the imaginary axis is exactly zero). `sympy_extras.interop` converts
+  SymPy's `CRootOf` to the node and back (a `CRootOf` coming from SymPy
+  was a wrapped foreign node), `polys.roots.polynomial_root` and
+  `radical_form` recognise it, and the native `minimal_polynomial` knows
+  it and the `IndexedRoot` of the CAD.
 - `sympy_extras.polys.berlekampmassey`: `berlekamp_massey` (the shortest
   linear recurrence of a sequence over any field of the typed layer),
   `extend_sequence`, `satisfies_recurrence`.
@@ -2888,6 +2917,11 @@ remove public functions. Breaking changes are listed here when they happen.
   at the precisions they ask).
 
 ### Fixed
+
+- `polys.regularchains_sympy.solutions.exact_solutions` with `real=True`
+  returned the complex points whose coordinate is a root times an integer
+  basis (`4*CRootOf(x**2 - x + 1, 0)` for `y**3 + 64`, taken for a real
+  root).
 
 - The native `solve` (`sympy_extras.assumptions.solve`) kept the
   solutions contradicting the flags of the unknown: `pi*k = 1` gave

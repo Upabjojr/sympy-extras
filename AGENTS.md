@@ -267,9 +267,8 @@ sympy_extras/
                              integrators written on SymPy use (mellin_integrate, tidy, checked_tidy, ...)
         residues.py          rational, Fourier and trigonometric integrals by the residue theorem (native: the native
                              roots with placeholders for the constants, factor over ZZ_I, ask, find_instance, limits,
-                             simplify, the validated quadrature; CRootOf of unwieldy numerical poles through residues_sympy)
-        residues_sympy.py    the SymPy face of residues, used by definite, and complex_roots_of_core,
-                             verify_numerically_of_core
+                             simplify, the validated quadrature, the native CRootOf of unwieldy numerical poles)
+        residues_sympy.py    the SymPy face of residues, used by definite, and verify_numerically_of_core
         contours.py          the rectangle, the sector and the indented real line for the residue theorem (native: the
                              native residues, the core's residue, elimination on core expressions)
         contours_sympy.py    the SymPy face of contours, used by definite
@@ -550,6 +549,8 @@ sympy_extras/
         partfrac.py          apart by undetermined coefficients (ported from SymPy; no full=True, no ZZ(a))
         rootoftools.py       RootSum (node), root_sum: sums of a function over the roots of a polynomial (the rational
                              case by the trace, doit, diff, numerical values; native), PORTED FROM SYMPY
+        complexrootof.py     ComplexRootOf (node, SymPy's CRootOf), rootof, all_roots, real_roots, algebraic_number: complex
+                             algebraic numbers in SymPy's order of the roots (native), PORTED FROM SYMPY
         polyroots.py         roots: linear, quadratic, binomial, cyclotomic, cubic, quartic, decomposition, factoring (ported from SymPy; no EX/simplify)
         roots.py             radical_form, in_radicals: SymPy's CRootOf (wrapped foreign nodes) in radicals (native; the components over EX by polyroots.ex_roots)
         roots_sympy.py       the SymPy face of roots
@@ -595,8 +596,8 @@ sympy_extras/
                              Bigatti's algorithm for monomial ideals (native; bigatti.py computes)
         hilbert_sympy.py     the SymPy face of hilbert (SymPy Poly and expressions)
         rur.py               rur, RationalUnivariateRepresentation: Rouillier's representation of zero-dimensional ideals from
-                             traces (native; the exact solutions, SymPy's CRootOf, through rur_sympy)
-        rur_sympy.py         the SymPy face of rur (Poly and SymPy expressions), and solutions_of_core
+                             traces (native; the exact solutions on IndexedRoot and the native CRootOf)
+        rur_sympy.py         the SymPy face of rur (Poly and SymPy expressions)
         modulargroebner.py   modular_groebner: reduced Gröbner bases over QQ and ZZ modulo primes, proven (Arnold), on rings.PolyRing;
                              direct_groebner (F4 or Buchberger), groebner (the dispatcher Ideal calls) (native)
         modulargroebner_sympy.py the SymPy face of modulargroebner (SymPy's ring elements; SymPy's groebner over the other domains)
@@ -640,15 +641,15 @@ sympy_extras/
             tests/           test_differential_native.py on the core; the other tests on the face
         differential_sympy.py the SymPy face of differential (the old API on SymPy objects, SymPy's QQ(p, x) and
                              ZZ[p, x] coefficients, the chains of regularchains_sympy)
-        regularchains/       triangular decompositions of polynomial systems (native; the exact solutions of a chain,
-                             SymPy's CRootOf, through regularchains_sympy)
+        regularchains/       triangular decompositions of polynomial systems (native)
             recursive.py     polynomials of rings.PolyRing over ZZ in their main variable: initial, lazy pseudo-division,
                              subresultant chains (prem, subresultants ported from SymPy)
             operations.py    Chain, Decomposer: regularize, regular_gcd, intersect, extend, triangularize (Lazard, Kalkbrener)
             regularchain.py  RegularChain, triangularize, regular_gcd (the public interface on core expressions)
+            solutions.py     exact_solutions: the points of a chain without free variables (IndexedRoot, the native
+                             CRootOf, radicals), PORTED FROM SYMPY (Poly.nroots)
             tests/           oracle.py checks the decompositions of the face with Gröbner bases
-        regularchains_sympy/ the SymPy face of regularchains (RegularChain, triangularize, regular_gcd on SymPy objects),
-                             and exact_solutions_of_core
+        regularchains_sympy/ the SymPy face of regularchains (RegularChain, triangularize, regular_gcd on SymPy objects)
             solutions.py     exact_solutions: the points of a chain without free variables (CRootOf, radicals)
 docs/                        longer documentation per module
 .github/workflows/           tests.yml (CI), release.yml (PyPI publishing on tags)
