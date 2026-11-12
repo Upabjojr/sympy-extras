@@ -420,10 +420,10 @@ The driver tries, after the Mellin method and the residues:
   divergence, reported as `oo` or `-oo` (`1/x` over `(0, 1)`), while
   infinities of both signs and oscillations leave the integral unevaluated.
   The module is native, on the core (the antiderivative is a step of its
-  own, by default the native radical table and the verified methods of
-  the native `indefinite`, with SymPy's `integrate` of the polynomials in
-  elementary functions through the face; a native one, such as the native
-  `ratint`, keeps SymPy out);
+  own, by default the native radical table, the polynomials in
+  elementary functions by the native `manualintegrate` and heuristics
+  (`elementary_antiderivative`), and the verified methods of the native
+  `indefinite`, whose last methods load SymPy);
   `sympy_extras.integrals.antiderivative_sympy` is its face on SymPy
   objects.
   The same verdict is read off the leading term of the integrand at an
@@ -615,8 +615,9 @@ of the package in turn, rational functions by Hermite reduction and the
 Lazard–Rioboo–Trager logarithmic part, radicals of a quadratic by the
 reduction formulas (negative powers of `x` too, the signs of the cases
 decided under the assumptions), the transcendental Risch algorithm, the heuristic
-Risch integrator, Trager's algorithm, and SymPy's rule-based and
-Meijer G routes as the last resort; a candidate is returned only when it
+Risch integrator, Trager's algorithm, and the rule-based
+`manualintegrate` (native, `sympy_extras.integrals.manualintegrate`) and
+SymPy's Meijer G route as the last resort; a candidate is returned only when it
 checks as an antiderivative (`is_antiderivative`: `F' - f` cancels or
 simplifies to zero, or vanishes at random points under the assumptions),
 after a rewriting to a real form when it carries `I` for a real
@@ -625,8 +626,8 @@ integrand, and the `Integral` is returned unevaluated otherwise.
 method which found it. The module is native, on the core (an integral
 left undone is the node `sympy_extras.integrals.integral.Integral`), and
 its native methods, checks and special values load no SymPy; SymPy's
-heuristic Risch integrator, `manualintegrate`, Meijer G route and
-`integrate` are the last methods, reached through the face
+heuristic Risch integrator, Meijer G route and `integrate` are the last
+methods, reached through the face
 `sympy_extras.integrals.indefinite_sympy` (the functions on SymPy objects,
 used below), so that SymPy loads only when every native method failed. Powers times exponentials of powers,
 `x**(v - 1)*exp(a*x**n + b)` with a symbolic `v`, go through the
@@ -760,6 +761,33 @@ Piecewise((exp(k*x)/k, Ne(k, 0)), (x, True))
 Ei(b*x*log(a))
 >>> indefinite_integral(sin(a*x)*sin(b*x), x)
 Piecewise((0, Eq(a, 0) & Eq(b, 0)), (-(b*x - sin(b*x)*cos(b*x))/(2*b), Eq(a, -b)), ((b*x - sin(b*x)*cos(b*x))/(2*b), Eq(a, b)), ((-sin(x*(a + b))/(a + b) + sin(x*(a - b))/(a - b))/2, True))
+
+```
+
+## Integration by hand, with the steps (`sympy_extras.integrals.manualintegrate`)
+
+A native port of SymPy's `manualintegrate` (SymPy 1.14): the integrand is
+matched against the table of a calculus course (powers, exponentials, the
+trigonometric and hyperbolic functions, the special functions with
+elementary derivatives) and transformed by substitution, integration by
+parts (cyclic when the integral comes back), the trigonometric identities
+and substitutions, completed squares and partial fractions.
+`integral_steps(f, x)` is the tree of the rules applied, frozen
+dataclasses whose `eval()` is the antiderivative, and `manualintegrate`
+evaluates it; a part it cannot do stays an unevaluated `Integral`. The
+rules are generators which yield the integrals they need to an
+`IntegralSolver`, as in SymPy's development branch. It is the method
+`'manual'` of the indefinite integration, and the first step of
+`antiderivative.elementary_antiderivative`.
+
+```python
+>>> import sympy_extras.core as core, sympy_extras.functions as fn
+>>> from sympy_extras.integrals.manualintegrate import integral_steps, manualintegrate
+>>> tc = core.Symbol('t')
+>>> manualintegrate(tc**2*fn.cos(3*tc - 1), tc)
+t**2*sin(3*t - 1)/3 + 2*t*cos(3*t - 1)/9 - 2*sin(3*t - 1)/27
+>>> type(integral_steps(fn.exp(tc)*fn.sin(tc), tc)).__name__
+CyclicPartsRule
 
 ```
 

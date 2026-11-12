@@ -2948,6 +2948,31 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_MANUALINTEGRATE = r'''
+import sys
+from sympy_extras.core import Symbol, S, pi
+from sympy_extras.functions import cos, exp, log, sin, sinh, sqrt, atan
+from sympy_extras.integrals.manualintegrate import manualintegrate, integral_steps
+from sympy_extras.integrals.indefinite import verified_antiderivative
+from sympy_extras.integrals.antiderivative import antiderivative, antiderivative_integral, elementary_antiderivative
+x, t = Symbol('x'), Symbol('t')
+assert str(manualintegrate(exp(x)/(1 + exp(2*x)), x)) == 'atan(exp(x))'
+assert str(manualintegrate(x*log(x), x)) == 'x**2*log(x)/2 - x**2/4'
+assert str(manualintegrate(exp(2*x)/x, x)) == 'Ei(2*x)'
+assert not integral_steps(sqrt(1 - x**2), x).contains_dont_know()
+# the method 'manual' went to indefinite_sympy.manualintegrate_of_core
+assert verified_antiderivative(t**2*cos(3*t - 1), t, methods=['manual']) is not None
+# the polynomials in elementary functions and the integrations by parts of
+# antiderivative went to antiderivative_sympy.integrate_of_core
+assert str(antiderivative(t**2*cos(3*t - 1), t)) == 't**2*sin(3*t - 1)/3 + 2*t*cos(3*t - 1)/9 - 2*sin(3*t - 1)/27'
+assert str(elementary_antiderivative(t*cos(t)*sinh(t), t, None)) == \
+    't*sin(t)*sinh(t)/2 + t*cos(t)*cosh(t)/2 - sin(t)*cosh(t)/2'
+assert antiderivative(t**3*exp(-t)*log(t), t) is not None
+assert str(antiderivative_integral(t*exp(-t), t, S.Zero, S.One)) == 'ConditionalValue(1 - 2*exp(-1))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 _NATIVE_LAST_ROUTES = r'''
 import sys
 from sympy_extras.core import symbols, Symbol, Function, Ne, Eq, and_, or_, oo
@@ -3278,5 +3303,18 @@ def test_native_last_small_routes_do_not_load_sympy() -> None:
     heuristic Risch integrator is no longer a method of the native
     indefinite integrator (``indefinite_sympy.heurisch_of_core``)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_LAST_ROUTES], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_manualintegrate_does_not_load_sympy() -> None:
+    """The port of SymPy's ``manualintegrate`` loads no SymPy, nor do the
+    method ``'manual'`` of the native indefinite integration (which went
+    to ``indefinite_sympy.manualintegrate_of_core``) and the
+    antiderivatives of the polynomials in elementary functions and the
+    integrations by parts of the native ``antiderivative`` (which went to
+    SymPy's ``integrate`` through ``antiderivative_sympy.integrate_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_MANUALINTEGRATE], capture_output=True, text=True,
+                         timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

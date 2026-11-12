@@ -8,6 +8,26 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ## Unreleased
 
+### Added
+
+- `sympy_extras.integrals.manualintegrate`: a native port of SymPy's
+  `manualintegrate` (SymPy 1.14) on the typed core, with the steps:
+  `integral_steps(f, x)` returns the tree of the rules (frozen dataclasses,
+  `URule`, `PartsRule`, `CyclicPartsRule`, `TrigSubstitutionRule`, ...,
+  `AlternativeRule`, `DontKnowRule`), whose `eval()` is the antiderivative;
+  `manualintegrate(f, x)` evaluates it. The rules are generators which yield
+  the integrals they need to an `IntegralSolver` (the design of SymPy's
+  development branch), which cuts the cycles and remembers the integrals
+  solved completely. Every rule is ported, the special functions included
+  (`Ei`, `Ci`, `Si`, `Chi`, `Shi`, `li`, `erf`, `erfi`, Fresnel, upper
+  gamma, polylog, elliptic, orthogonal polynomials, `Heaviside`,
+  `DiracDelta`). Against SymPy: the secant substitution says `x > c`
+  (SymPy's `-c < x < c` gave a wrong antiderivative for `x < 0`).
+- `sympy_extras.integrals.antiderivative.elementary_antiderivative`: the
+  antiderivative of a polynomial in elementary functions of linear
+  arguments, by the native `manualintegrate` (checked) and the native
+  exponential and heuristic Risch methods.
+
 ### Changed
 
 - `piecewise_simplify_arguments` simplifies its conditions natively by
@@ -113,6 +133,16 @@ remove public functions. Breaking changes are listed here when they happen.
   branch `-1` whenever it is real (SymPy's `solve` gave only the principal
   branch of `x = exp(x) - 2`, which the transcendental solver completed
   already).
+- **Breaking**: the method `'manual'` of `sympy_extras.integrals.indefinite`
+  is the native `manualintegrate` (in the place SymPy's had);
+  `indefinite_sympy.manualintegrate_of_core` is removed and
+  `indefinite.SYMPY_METHODS` no longer lists `'manual'`. The native
+  `antiderivative` integrates the polynomials in elementary functions and
+  the parts of its integrations by parts by `elementary_antiderivative`
+  instead of SymPy's `integrate`: `antiderivative_sympy.integrate_of_core`
+  is removed, and those antiderivatives load no SymPy
+  (`t**2*cos(3*t - 1)` in SymPy's form at once, `t*cos(t)*sinh(t)` in a
+  real form).
 
 - **Breaking**: the definite integration driver `sympy_extras.integrals.definite`
   (`definite_integral`, `conditional_integral`, `verify_numerically`) is

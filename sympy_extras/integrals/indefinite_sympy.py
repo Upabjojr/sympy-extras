@@ -5,10 +5,10 @@ still written on SymPy (:mod:`.definite`) and the users of SymPy objects.
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back. The methods of the native
 module which stay on SymPy are here too, imported by it at run time and
-tried last, when every native method has failed: SymPy's
-``manualintegrate`` (:func:`manualintegrate_of_core`), its Meijer G-function route
+tried last, when every native method has failed: SymPy's Meijer G-function route
 (:func:`meijerint_of_core`) and its ``integrate``
-(:func:`integrate_of_core`).
+(:func:`integrate_of_core`); its ``manualintegrate`` is the native port
+:mod:`sympy_extras.integrals.manualintegrate`.
 
 Examples
 ========
@@ -43,7 +43,7 @@ from sympy_extras.core.symbol import Symbol as CoreSymbol
 from . import indefinite as native
 
 __all__ = ['indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'real_form', 'conjugate_logarithms',
-           'manualintegrate_of_core', 'meijerint_of_core', 'integrate_of_core']
+           'meijerint_of_core', 'integrate_of_core']
 
 
 def _core(e: ExprLike) -> CoreExpr:
@@ -155,9 +155,6 @@ def _run(route: Callable[[Expr, Symbol], Expr], f: CoreExpr, x: CoreSymbol,
     return _back(attempt(lambda: as_expr(route(integrand, variable)), seconds))
 
 
-def _manualintegrate(f: Expr, x: Symbol) -> Expr:
-    from sympy.integrals.manualintegrate import manualintegrate
-    return as_expr(manualintegrate(f, x))
 
 
 def _meijerint(f: Expr, x: Symbol) -> Expr:
@@ -170,10 +167,6 @@ def _integrate(f: Expr, x: Symbol) -> Expr:
     return as_expr(integrate(f, x))
 
 
-def manualintegrate_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
-    """SymPy's ``manualintegrate(f, x)`` within ``seconds``, on core
-    expressions; ``None`` as :func:`heurisch_of_core`."""
-    return _run(_manualintegrate, f, x, seconds)
 
 
 def meijerint_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:

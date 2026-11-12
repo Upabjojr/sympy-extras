@@ -4,10 +4,10 @@ are still written on SymPy (:mod:`.definite`, :mod:`.series`).
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of
-:mod:`.conditions_sympy`). The steps of the native module which stay on
-SymPy are here too, imported by it at run time: SymPy's ``integrate``
-of the polynomials in elementary functions and of the parts of the
-integrations by parts (:func:`integrate_of_core`).
+:mod:`.conditions_sympy`). The native module has no step left on SymPy:
+the polynomials in elementary functions and the parts of the
+integrations by parts, which SymPy's ``integrate`` did, are integrated by
+the native :func:`~sympy_extras.integrals.antiderivative.elementary_antiderivative`.
 
 Examples
 ========
@@ -27,14 +27,11 @@ from typing import Optional
 from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
-from sympy.integrals.integrals import Integral, integrate
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions
+from sympy_extras._typing_sympy import ExprLike
+from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, core_assumptions
 from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 
 from . import antiderivative as native
 from . import conditions as native_conditions
@@ -42,7 +39,7 @@ from .conditions_sympy import ConditionalValue
 
 __all__ = ['antiderivative', 'elementary_polynomial', 'quick_shape', 'by_parts_shape', 'singularities',
            'discontinuities', 'antiderivative_integral', 'one_sided_limit', 'select_branch', 'real_logarithms',
-           'principal_value_integral', 'finite_part_integral', 'integrate_of_core']
+           'principal_value_integral', 'finite_part_integral']
 
 
 def _conditional(found: Optional[native_conditions.ConditionalValue]) -> Optional[ConditionalValue]:
@@ -63,8 +60,8 @@ def _core(e: ExprLike) -> CoreExpr:
 
 def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bool = False) -> Optional[Expr]:
     """:func:`sympy_extras.integrals.antiderivative.antiderivative` on SymPy
-    objects: an antiderivative of ``f`` by the radical table, by
-    ``integrate`` for a polynomial in elementary functions, by parts for a
+    objects: an antiderivative of ``f`` by the radical table, by the rules
+    of ``manualintegrate`` for a polynomial in elementary functions, by parts for a
     logarithm or an error function times one, and by the verified methods
     of :mod:`.indefinite` otherwise (the heuristic ones with ``late``);
     ``None`` when none is found.
@@ -254,25 +251,3 @@ def finite_part_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
     return _conditional(native.finite_part_integral(_core(f), _core_symbol(x), _core(a), _core(b),
                                                     core_assumptions(assumptions)))
 
-
-# ---------------------------------------------------------------------------
-# the steps of the native module which stay on SymPy
-
-def _back(found: Optional[Expr]) -> Optional[CoreExpr]:
-    if found is None or found.has(Integral):
-        return None
-    try:
-        return core_expr(found)
-    except (TypeError, ValueError, NotImplementedError):
-        return None
-
-
-def integrate_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
-    """SymPy's ``integrate(f, x, risch=False)`` within ``seconds``, on core
-    expressions (the polynomials in elementary functions and the parts of
-    the integrations by parts of
-    :func:`sympy_extras.integrals.antiderivative.antiderivative`); ``None``
-    when it does not finish, leaves an ``Integral`` or its antiderivative
-    cannot be converted."""
-    integrand, variable = sympy_expr(f), _sympy_symbol(x)
-    return _back(attempt(lambda: as_expr(integrate(integrand, variable, risch=False)), seconds))

@@ -327,10 +327,10 @@ sympy_extras/
         antiderivative.py    antiderivative_integral, principal_value_integral, finite_part_integral, singularities,
                              discontinuities, one_sided_limit: antiderivatives evaluated by one-sided limits at every
                              discontinuity (native: the native solve, ask and limits; the antiderivative a typed step,
-                             AntiderivativeStep, by default the native radical table and the verified methods of the native
-                             indefinite; SymPy's integrate of polynomials in elementary functions through
-                             antiderivative_sympy), PORTED FROM SYMPY (singularities)
-        antiderivative_sympy.py the SymPy face of antiderivative, used by definite and series, and integrate_of_core
+                             AntiderivativeStep, by default the native radical table, elementary_antiderivative (polynomials
+                             in elementary functions by the native manualintegrate and heuristics) and the verified methods
+                             of the native indefinite), PORTED FROM SYMPY (singularities)
+        antiderivative_sympy.py the SymPy face of antiderivative, used by definite and series
         brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)
                              (native: the native series, limits, summation, guessing, gammasimp, hyperexpand;
                              formal_series_terms: hypergeometric coefficients guessed and proved by their ODE; the
@@ -399,10 +399,12 @@ sympy_extras/
         indefinite.py        indefinite_integral, verified_antiderivative, is_antiderivative, real_form, conjugate_logarithms:
                              the typed methods in turn, then SymPy's, each antiderivative checked by differentiation (native:
                              the native methods, cancel, simplify, structure theorem, reliable values and special values;
-                             SymPy's manualintegrate, meijerint and integrate last, through indefinite_sympy; not SymPy's
-                             heurisch, whose port is the native heurisch)
-        indefinite_sympy.py  the SymPy face of indefinite, used by definite, and manualintegrate_of_core,
-                             meijerint_of_core, integrate_of_core
+                             the native manualintegrate; SymPy's meijerint and integrate last, through indefinite_sympy;
+                             not SymPy's heurisch, whose port is the native heurisch)
+        indefinite_sympy.py  the SymPy face of indefinite, used by definite, and meijerint_of_core, integrate_of_core
+        manualintegrate.py   integral_steps, manualintegrate, IntegralSolver, the rules (frozen dataclasses: URule,
+                             PartsRule, ...): integration by the rules of a calculus course with the tree of the steps,
+                             generator rules driven by the solver (native), PORTED FROM SYMPY
         integral.py          Integral (node): the unevaluated indefinite integral of the core, is_unevaluated (native)
         trigonometric.py     powers, products and rational functions of trigonometric and hyperbolic functions, inverse functions by parts
                              (native, with the native ratint)
