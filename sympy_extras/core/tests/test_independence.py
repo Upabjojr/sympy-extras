@@ -3401,3 +3401,31 @@ def test_native_order_point_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ORDER_POINT], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_REWRITE_OF_PARAMETER_NODES = r'''
+import sys
+from sympy_extras.core import Symbol, Rational
+from sympy_extras.functions import factorial
+from sympy_extras.functions.elementary.trigonometric import Cos
+from sympy_extras.functions.special.gamma_functions import Gamma
+from sympy_extras.functions.special.hyper import hyper, meijerg
+from sympy_extras.functions.elementary.piecewise import piecewise
+from sympy_extras.polys.cad.indexedroot import IndexedRoot
+a, u, x = Symbol('a'), Symbol('u'), Symbol('x')
+assert str(hyper([a/2], [Rational(1, 2)], -1).rewrite(Cos)) == 'hyper((a/2,), (1/2,), -1)'
+assert str(meijerg([-1], [], [], [0], u*factorial(a)).rewrite(Gamma)) == 'meijerg(((-1,), ()), ((), (0,)), u*gamma(a + 1))'
+assert str(piecewise((factorial(a), a > 0), (0, True)).rewrite(Gamma)) == 'Piecewise((gamma(a + 1), a > 0), (0, True))'
+assert str(IndexedRoot(x**3 - x - 1, x, 0).rewrite(Gamma)) == 'IndexedRoot(x**3 - x - 1, x, 0)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_rewrite_of_parameter_nodes_does_not_load_sympy() -> None:
+    """``hyper``, ``meijerg``, the pairs of ``Piecewise`` and ``IndexedRoot``
+    have no rule for a function target in SymPy: they are rebuilt with
+    their arguments rewritten (SymPy was asked through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REWRITE_OF_PARAMETER_NODES], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

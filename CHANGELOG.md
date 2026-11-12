@@ -79,6 +79,12 @@ remove public functions. Breaking changes are listed here when they happen.
   SymPy through the bridge).
 - `core.bridge.Bridge.is_hypergeometric` (and its SymPy implementation)
   is removed: `Expr.is_hypergeometric` is native and nothing asked it.
+- The rewrites of `hyper`, `meijerg`, the pairs of `Piecewise`,
+  `IndexedRoot`, `CRootOf`, `RootSum`, `Max`, `Min`, the integrals and
+  the sets are decided by the table of SymPy's rules (none for a function
+  target but `Max`/`Min` in terms of `Abs`, `Heaviside`, `Piecewise`):
+  they are rebuilt natively instead of asking SymPy, which answered
+  `None`.
 
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's
