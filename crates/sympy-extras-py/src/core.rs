@@ -190,6 +190,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Arg" => Basic::new(Head::Function(Function::Arg), args()?),
         "Max" => Basic::new(Head::Function(Function::Max), args()?),
         "Floor" => Basic::new(Head::Function(Function::Floor), args()?),
+        "DiracDelta" => Basic::new(Head::Function(Function::DiracDelta), args()?),
+        "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
         "Min" => Basic::new(Head::Function(Function::Min), args()?),
@@ -341,6 +343,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 }
                 Function::Max | Function::Min => "miscellaneous",
                 Function::Floor | Function::Ceiling | Function::Frac => "integers",
+                Function::DiracDelta | Function::Heaviside => "delta_functions",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse_trigonometric(*f) => "trigonometric",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse(*f) => "hyperbolic",
                 Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
@@ -348,7 +351,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 }
                 _ => "complexes",
             };
-            py.import(format!("sympy_extras.functions.elementary.{}", module))?
+            let package: &str = if matches!(f, Function::DiracDelta | Function::Heaviside) {
+                "special"
+            } else {
+                "elementary"
+            };
+            py.import(format!("sympy_extras.functions.{}.{}", package, module))?
                 .getattr(f.class_name())?
                 .call1(PyTuple::new(py, items)?)?
         }
@@ -578,6 +586,34 @@ unary!(asec, sympy_extras_core::functions::elementary::inverse::asec);
 unary!(acsc, sympy_extras_core::functions::elementary::inverse::acsc);
 unary!(asinh, sympy_extras_core::functions::elementary::inverse::asinh);
 unary!(floor, sympy_extras_core::functions::elementary::integers::floor);
+
+/// `dirac_delta(x, k)` (`k` omitted: one argument).
+#[pyfunction]
+#[pyo3(signature = (x, k=None))]
+fn dirac_delta<'py>(
+    py: Python<'py>,
+    x: &Bound<'py, PyAny>,
+    k: Option<Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let k: Option<Basic> = k.as_ref().map(from_python).transpose()?;
+    let value = sympy_extras_core::functions::special::delta_functions::dirac_delta(&from_python(x)?, k.as_ref())
+        .map_err(crate::convert::err)?;
+    to_python(py, &value)
+}
+
+/// `heaviside(x, H0)` (`H0` omitted: 1/2).
+#[pyfunction]
+#[pyo3(signature = (x, h0=None))]
+fn heaviside<'py>(
+    py: Python<'py>,
+    x: &Bound<'py, PyAny>,
+    h0: Option<Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let h0: Option<Basic> = h0.as_ref().map(from_python).transpose()?;
+    let value = sympy_extras_core::functions::special::delta_functions::heaviside(&from_python(x)?, h0.as_ref())
+        .map_err(crate::convert::err)?;
+    to_python(py, &value)
+}
 unary!(ceiling, sympy_extras_core::functions::elementary::integers::ceiling);
 unary!(frac, sympy_extras_core::functions::elementary::integers::frac);
 unary!(acosh, sympy_extras_core::functions::elementary::inverse::acosh);
@@ -2043,6 +2079,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(acsc, m)?)?;
     m.add_function(wrap_pyfunction!(asinh, m)?)?;
     m.add_function(wrap_pyfunction!(floor, m)?)?;
+    m.add_function(wrap_pyfunction!(dirac_delta, m)?)?;
+    m.add_function(wrap_pyfunction!(heaviside, m)?)?;
     m.add_function(wrap_pyfunction!(ceiling, m)?)?;
     m.add_function(wrap_pyfunction!(frac, m)?)?;
     m.add_function(wrap_pyfunction!(acosh, m)?)?;

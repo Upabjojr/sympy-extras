@@ -316,7 +316,8 @@ impl StrPrinter {
             Head::Mul => self.print_mul(e.args()),
             Head::Pow => self.print_pow(&e.args()[0], &e.args()[1]),
             Head::Function(f) => {
-                let args: Vec<String> = e.args().iter().map(|a| self.doprint(a)).collect();
+                let shown: Vec<Basic> = crate::functions::special::delta_functions::printed_args(e);
+                let args: Vec<String> = shown.iter().map(|a| self.doprint(a)).collect();
                 format!("{}({})", f.name(), args.join(", "))
             }
             Head::Undefined(u) => {

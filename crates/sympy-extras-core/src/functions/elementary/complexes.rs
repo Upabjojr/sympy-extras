@@ -122,7 +122,13 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Asech
         | Function::Acsch) => super::inverse::inverse_conjugate(e, g),
         Function::Arg | Function::Atan2 => super::argument::argument_conjugate(e, f),
-        Function::Max | Function::Min | Function::Floor | Function::Ceiling | Function::Frac => {
+        Function::Max
+        | Function::Min
+        | Function::Floor
+        | Function::Ceiling
+        | Function::Frac
+        | Function::DiracDelta
+        | Function::Heaviside => {
             // DefinedFunction._eval_conjugate
             if is_true(e, extended_real) {
                 return Ok(Some(e.clone()));
@@ -464,6 +470,8 @@ fn function_real_imag(
         | Function::Floor
         | Function::Ceiling
         | Function::Frac
+        | Function::DiracDelta
+        | Function::Heaviside
         | Function::Sign
         | Function::Conjugate => {
             if ignore == Some(e) {

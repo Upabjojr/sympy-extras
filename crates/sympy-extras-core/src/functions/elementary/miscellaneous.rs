@@ -3,9 +3,8 @@
 //! [`Function::Max`] and [`Function::Min`] and their evaluation (the
 //! nested nodes flattened, the identity dropped, the zero absorbing, the
 //! arguments collapsed against the numbers and the opposite nodes, common
-//! arguments factored, the arguments of known order removed), facts and
-//! values. The derivative needs `Heaviside` (not ported) unless no argument
-//! depends on the variable.
+//! arguments factored, the arguments of known order removed), facts,
+//! values and derivatives (by `Heaviside`).
 
 use crate::core::add::{add, sub};
 use crate::core::assumptions::{facts_of, is_number, FactList, Predicate};
@@ -406,20 +405,42 @@ pub fn minmax_facts(f: Function, args: &[Basic]) -> FactList {
     facts
 }
 
-/// The derivative (`_eval_derivative`): zero when no argument depends on
-/// `s`, otherwise it needs `Heaviside` (not ported).
+/// The derivative (`_eval_derivative`): the sum over the arguments of
+/// `fdiff` times their derivatives.
 pub fn minmax_derivative(e: &Basic, s: &Basic) -> PolyResult<Basic> {
-    let mut depends: bool = false;
-    for a in e.args() {
+    let f: Function = function_of(e).expect("Max or Min");
+    let mut terms: Vec<Basic> = Vec::new();
+    for (i, a) in e.args().iter().enumerate() {
         let da: Basic = crate::core::function::derivative(a, s)?;
-        if !crate::core::expr::is_true(&da, Predicate::zero) {
-            depends = true;
+        if crate::core::expr::is_true(&da, Predicate::zero) {
+            continue;
         }
+        terms.push(crate::core::mul::mul(&[minmax_fdiff(f, e.args(), i)?, da])?);
     }
-    if depends {
-        return Err(crate::error::not_ported("Heaviside (the derivative of Max and Min)"));
-    }
-    add(&[])
+    add(&terms)
+}
+
+/// The derivative in the argument `i` (from 0): the step of its excess
+/// over the others (`Max.fdiff`, `Min.fdiff`).
+fn minmax_fdiff(f: Function, args: &[Basic], i: usize) -> PolyResult<Basic> {
+    let this: &Basic = &args[i];
+    let other: Basic = if args.len() == 2 {
+        args[1 - i].clone()
+    } else {
+        let rest: Vec<Basic> = args
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| *k != i)
+            .map(|(_, a)| a.clone())
+            .collect();
+        minmax(f, &rest)?
+    };
+    let difference: Basic = if is_max(f) {
+        sub(this, &other)?
+    } else {
+        sub(&other, this)?
+    };
+    crate::functions::special::delta_functions::heaviside(&difference, None)
 }
 
 /// The value: the largest (smallest) of the real values (`numeric`).

@@ -248,6 +248,8 @@ pub enum Function {
     Floor,
     Ceiling,
     Frac,
+    DiracDelta,
+    Heaviside,
 }
 
 impl Function {
@@ -292,6 +294,8 @@ impl Function {
             Function::Floor => "floor",
             Function::Ceiling => "ceiling",
             Function::Frac => "frac",
+            Function::DiracDelta => "DiracDelta",
+            Function::Heaviside => "Heaviside",
         }
     }
 
@@ -336,6 +340,8 @@ impl Function {
             Function::Floor => "Floor",
             Function::Ceiling => "Ceiling",
             Function::Frac => "Frac",
+            Function::DiracDelta => "DiracDelta",
+            Function::Heaviside => "Heaviside",
         }
     }
 
@@ -350,6 +356,7 @@ impl Function {
             Function::Arg => 43,
             Function::Atan2 | Function::Max | Function::Min => 10000,
             Function::Floor | Function::Ceiling | Function::Frac => 10000,
+            Function::DiracDelta | Function::Heaviside => 10000,
             Function::Sin => 20,
             Function::Cos => 21,
             Function::Tan => 22,
