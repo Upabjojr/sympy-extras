@@ -1417,6 +1417,18 @@ fn polytools_call<'py>(
             let (p, q) = pt::cancel_fraction(&args[0], &args[1]).map_err(e)?;
             Ok(PyTuple::new(py, [to_python(py, &p)?, to_python(py, &q)?])?.into_any())
         }
+        "solveset_rational" => {
+            match sympy_extras_core::polys::rationalsolve::solveset_rational(&args[0], &gens[0]).map_err(e)? {
+                None => Ok(py.None().into_bound(py)),
+                Some((solutions, excluded)) => {
+                    let a: Vec<Bound<'py, PyAny>> =
+                        solutions.iter().map(|s| to_python(py, s)).collect::<PyResult<_>>()?;
+                    let b: Vec<Bound<'py, PyAny>> =
+                        excluded.iter().map(|s| to_python(py, s)).collect::<PyResult<_>>()?;
+                    Ok(PyTuple::new(py, [PyList::new(py, a)?.into_any(), PyList::new(py, b)?.into_any()])?.into_any())
+                }
+            }
+        }
         "factor" => one(pt::factor(&args[0], &gens, false, true)),
         "factor_deep" => one(pt::factor(&args[0], &gens, true, true)),
         "factor_nofraction" => one(pt::factor(&args[0], &gens, false, false)),
