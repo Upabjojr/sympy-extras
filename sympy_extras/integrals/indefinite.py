@@ -3,8 +3,8 @@ r"""Indefinite integration: every antiderivative checked before it is returned.
 SymPy's ``integrate`` tries its methods in a fixed order and returns the
 first result, and a few of them are wrong (a heuristic which mistakes a
 component, a branch of a logarithm, a rule applied outside its
-hypotheses); here the methods are the typed ones of this package first,
-then SymPy's, and a candidate antiderivative `F` is returned only when
+hypotheses); here the methods are the typed ones of this package, and a
+candidate antiderivative `F` is returned only when
 it *is* one: `F' - f` cancels to zero, or simplifies to zero, or vanishes
 at random points where `f` is defined (:func:`is_antiderivative`). A
 candidate carrying `i` or a polar number for a real integrand is first
@@ -41,22 +41,17 @@ The order of the methods:
    and then on its canonical forms (on the exponentials of hyperbolic
    functions already in 7, after the substitutions);
 9. The rule-based ``manualintegrate`` (the native port
-   :mod:`.manualintegrate`), then SymPy's Meijer G-function route and its
-   ``integrate`` (SymPy's heuristic Risch integrator is no longer tried:
-   the native one of 8 is its port, and on the integrals the native
-   methods leave it answered only Piecewise integrands, taking them for
-   constants, with antiderivatives which jump).
+   :mod:`.manualintegrate`), then the Meijer G-function route (the native
+   port :mod:`.meijerint`). SymPy's ``integrate`` is no longer tried: its
+   methods are ported (risch, heurisch, manualintegrate, meijerint), and
+   on the integrals the native methods leave it answered nothing more.
 
 The module works on the objects of :mod:`sympy_extras.core` and imports
-no SymPy: the methods 1 to 8, ``manualintegrate``, the checks (the native
-``cancel``, ``simplify``, the structure theorem of
-:mod:`sympy_extras.simplify.structure` and the reliable values of
-:mod:`sympy_extras._numeric`) and the cases of the special values of the
-parameters (:mod:`sympy_extras._special_values`) are native. SymPy's
-other routes of 9 have no native counterpart: they are
-reached last, through the lazily imported ``*_of_core`` functions of the
-face :mod:`.indefinite_sympy`, so that SymPy is loaded only when every
-native method has failed. The functions on SymPy objects are in
+no SymPy: every method, the checks (the native ``cancel``, ``simplify``,
+the structure theorem of :mod:`sympy_extras.simplify.structure` and the
+reliable values of :mod:`sympy_extras._numeric`) and the cases of the
+special values of the parameters (:mod:`sympy_extras._special_values`)
+are native. The functions on SymPy objects are in
 :mod:`.indefinite_sympy`.
 
 Examples
@@ -112,7 +107,7 @@ from .integral import Integral, is_unevaluated
 from .rewriting import Substitution
 
 __all__ = ['indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'real_form', 'conjugate_logarithms',
-           'closed_antiderivative', 'METHODS', 'TYPED', 'SYMPY_METHODS']
+           'closed_antiderivative', 'METHODS', 'TYPED']
 
 Method = Callable[[Expr, Symbol, Assumptions], Optional[Expr]]
 
@@ -615,8 +610,8 @@ def _substituted(f: Expr, x: Symbol, substitution: Substitution, inner: list[Boo
 
 
 # ---------------------------------------------------------------------------
-# SymPy's routes, which have no native counterpart: through the face, last
-# (with the native manualintegrate in the place of SymPy's)
+# the rule-based integrator and the Meijer G-function route, last (the
+# native ports of SymPy's manualintegrate and meijerint)
 
 def _manual(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     from .manualintegrate import manualintegrate
@@ -629,20 +624,12 @@ def _meijer(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     return attempt(lambda: meijer_antiderivative(f, x), _long_budget(), native=True)
 
 
-def _sympy(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
-    from .indefinite_sympy import integrate_of_core
-    return integrate_of_core(f, x, _long_budget())
-
-
 #: the methods in the order they are tried
 METHODS: list[tuple[str, Method]] = [
     ('rational', _rational), ('radicals', _radicals), ('exponential', _exponential), ('trigonometric', _trigonometric),
     ('risch', _risch), ('trager', _trager), ('binomial', _binomial),
     ('rewriting', _rewriting), ('heurisch', _heurisch), ('rewritten heurisch', _rewritten_heurisch),
-    ('manual', _manual), ('meijer', _meijer), ('sympy', _sympy)]
-
-#: the methods which load SymPy (through :mod:`.indefinite_sympy`)
-SYMPY_METHODS: Final[tuple[str, ...]] = ('meijer', 'sympy')
+    ('manual', _manual), ('meijer', _meijer)]
 
 
 def verified_antiderivative(f: ExprLike, x: Symbol, assumptions: Assumptions = None,

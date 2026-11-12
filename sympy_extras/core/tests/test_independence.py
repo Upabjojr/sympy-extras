@@ -3318,3 +3318,38 @@ def test_native_manualintegrate_does_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_MEIJERINT = r'''
+import sys
+from sympy_extras.core import Symbol, Integer, I, oo
+from sympy_extras.functions import besselj, dirac_delta, exp, sin, sinc
+from sympy_extras.integrals.meijerint import meijer_antiderivative, meijerint_definite, meijerint_indefinite
+from sympy_extras.integrals.indefinite import verified_antiderivative
+from sympy_extras.integrals.definite import _Integrator, definite_integral
+from sympy_extras.integrals.deltafunctions import deltaintegrate
+x = Symbol('x')
+assert str(meijerint_definite(sinc(x)**2, x, -oo, oo)) == '(pi, True)'
+assert str(meijerint_definite(exp(-x)*sin(x), x, Integer(0), oo)) == '(1/2, True)'
+assert str(meijerint_indefinite(x*besselj(0, x), x)) == '(x*besselj(1, x), True)'
+assert str(meijer_antiderivative(besselj(1, x), x)) == '-besselj(0, x)'
+# the method 'meijer' of indefinite went to indefinite_sympy.meijerint_of_core
+assert verified_antiderivative(besselj(1, x), x, methods=['meijer']) is not None
+# the last method of definite went to definite_sympy.integrate_of_core
+assert str(_Integrator(None)._last(exp(x), x, Integer(0), I)) == 'ConditionalValue(-1 + exp(I))'
+assert str(deltaintegrate(exp(x)*dirac_delta(x - 1), x)) == 'E*Heaviside(x - 1)'
+assert str(definite_integral(exp(x)*dirac_delta(x - 1), (x, Integer(0), Integer(2)))) == 'E'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_meijerint_does_not_load_sympy() -> None:
+    """The port of SymPy's ``meijerint`` loads no SymPy, nor do the method
+    ``'meijer'`` of the native indefinite integration (which went to
+    ``indefinite_sympy.meijerint_of_core``) and the last method of the
+    native definite integration, the Meijer G-function theorems and the
+    antiderivatives at the endpoints with the delta functions (which went
+    to SymPy's ``integrate`` through ``definite_sympy.integrate_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_MEIJERINT], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

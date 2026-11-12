@@ -65,11 +65,11 @@ native ``solve``, ``ask``, SAT solver, limits, factorisation and
 simplification, the verified antiderivatives of the native
 :mod:`.indefinite`, the native cases of the special values of the
 parameters), and the numerical checks evaluate the integrands by the
-numerical rules of the nodes. One step stays on SymPy and is reached at
-run time through :mod:`.definite_sympy`, SymPy being loaded on that path
-only: SymPy's ``integrate`` and ``meijerint``, the last of the methods
-(:func:`~sympy_extras.integrals.definite_sympy.integrate_of_core`).
-The functions on SymPy objects are in :mod:`.definite_sympy`.
+numerical rules of the nodes. The last of the methods, where SymPy's
+``integrate`` and ``meijerint`` were, is the native Meijer G-function
+integration (:mod:`.meijerint`) with an antiderivative at the endpoints
+(the delta functions by :mod:`.deltafunctions`). The functions on SymPy
+objects are in :mod:`.definite_sympy`.
 
 Examples
 ========
@@ -424,9 +424,10 @@ def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
     parameters under which it holds, or ``None``.
 
     The methods of this package run under half of the time limit of the
-    settings, so that SymPy's ``integrate`` gets the other half when they
+    settings, so that the last method (the Meijer G-function theorems and
+    an antiderivative at the endpoints) gets the other half when they
     fail; a value they find under a condition the assumptions do not
-    settle is kept unless SymPy finds an unconditional one.
+    settle is kept unless the last method finds an unconditional one.
 
     >>> from sympy_extras.core import symbols, oo
     >>> from sympy_extras.functions import exp
@@ -2918,16 +2919,20 @@ class _Integrator:
         the delta functions by :func:`.deltafunctions.deltaintegrate`) at
         the endpoints, by limits, as SymPy's ``integrate`` evaluates it."""
         from .deltafunctions import deltaintegrate
-        from .indefinite import METHODS, verified_antiderivative
+        from .indefinite import verified_antiderivative
         F: Optional[Expr] = None
         if f.has(DiracDelta):
             F = deltaintegrate(f, x)
         else:
-            # not the Meijer G route, which the theorems cover: the check of
-            # its antiderivatives (lerchphi of polar arguments for
-            # x**k/(x + 3)) took the whole budget
-            names = [name for name, _ in METHODS if name not in ('meijer', 'sympy')]
-            found = verified_antiderivative(f, x, self.assumptions, names)
+            # the exact methods and the rules, which fail fast (those of the
+            # antiderivative route of the driver): not the heuristics, which
+            # spent the whole budget where SymPy's integrate gave up in
+            # seconds (the radicals of the cells of regions), nor the Meijer
+            # G route, which the theorems cover and whose antiderivatives
+            # took the budget to check (lerchphi of polar arguments for
+            # x**k/(x + 3))
+            from .antiderivative import _METHODS as EXACT
+            found = verified_antiderivative(f, x, self.assumptions, list(EXACT))
             F = None if found is None else found[0]
         if F is None or is_unevaluated(F) or F.has(Integral):
             return None

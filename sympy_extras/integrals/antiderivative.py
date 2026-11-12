@@ -128,11 +128,11 @@ AntiderivativeStep = Callable[[Expr, Symbol, Assumptions, bool], Optional[Expr]]
 #: method, the substitutions, SymPy's manual and Meijer routes) spend
 #: their whole budget on every piece of every mapped range
 _METHODS: Final[tuple[str, ...]] = ('rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'trager',
-                                    'binomial', 'sympy')
+                                    'binomial', 'manual')
 
 
 #: the heuristic methods, tried late and under a larger budget
-_LATE_METHODS: Final[tuple[str, ...]] = ('heurisch', 'rewriting', 'rewritten heurisch', 'manual', 'meijer', 'sympy')
+_LATE_METHODS: Final[tuple[str, ...]] = ('heurisch', 'rewriting', 'rewritten heurisch', 'manual', 'meijer')
 
 #: the classes of the elementary functions of linear arguments which
 #: integrate takes at once, with their evaluating functions

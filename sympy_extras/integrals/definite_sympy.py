@@ -7,10 +7,10 @@ The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of
 :mod:`.conditions_sympy`; the unevaluated
 :class:`~sympy_extras.integrals.integral.Integral` becomes SymPy's
-``Integral``). The steps of the native module which stay on SymPy are
-here too, on core expressions, imported by it at run time: SymPy's
-``integrate`` and its Meijer G-function route, the last of the methods
-(:func:`integrate_of_core`).
+``Integral``). No step of the native module stays on SymPy: the last of
+its methods, SymPy's ``integrate`` and Meijer G-function route before,
+is the native :mod:`sympy_extras.integrals.meijerint` with the
+antiderivatives at the endpoints.
 
 Examples
 ========
@@ -41,20 +41,17 @@ from typing import Optional, Sequence
 from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
-from sympy.integrals.integrals import integrate
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions
+from sympy_extras._typing_sympy import ExprLike
+from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, core_assumptions
 from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 
 from . import conditions as native_conditions
 from . import definite as native
 from .conditions_sympy import ConditionalValue
 
-__all__ = ['definite_integral', 'conditional_integral', 'verify_numerically', 'Limits', 'integrate_of_core']
+__all__ = ['definite_integral', 'conditional_integral', 'verify_numerically', 'Limits']
 
 #: ``(x, a, b)``
 Limits = tuple[Symbol, ExprLike, ExprLike]
@@ -140,31 +137,3 @@ def verify_numerically(value: ExprLike, f: ExprLike, x: Symbol, a: ExprLike, b: 
     """
     return native.verify_numerically(_core(value), _core(f), _core_symbol(x), _core(a), _core(b),
                                      core_assumptions(assumptions), samples, [_core(p) for p in inside])
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native module which stay on SymPy
-
-def integrate_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr, meijerg: bool,
-                      seconds: Optional[float]) -> Optional[CoreExpr]:
-    """SymPy's ``integrate(f, (x, a, b))`` (with ``meijerg=True`` its Meijer
-    G-function route alone) within ``seconds``, on core expressions: the
-    last of the methods of :mod:`.definite`. ``None`` when it does not
-    finish, gives up, or its value cannot be converted (a ``Piecewise``
-    with SymPy's unevaluated ``Integral`` comes back wrapped)."""
-    integrand, variable, lower, upper = sympy_expr(f), _sympy_symbol(x), sympy_expr(a), sympy_expr(b)
-    keywords = {'meijerg': True} if meijerg else {}
-    try:
-        value = attempt(lambda: as_expr(integrate(integrand, (variable, lower, upper), **keywords)), seconds)
-    except AttributeError:
-        # SymPy 1.14: meijerg._eval_evalf raises AttributeError
-        # ('NoneType' object has no attribute 'has') on some arguments,
-        # e.g. integrate(exp(-x)*sin(x)/x**2, (x, 0, oo))
-        return None
-    if value is None:
-        return None
-    try:
-        return core_expr(value)
-    except (TypeError, ValueError, NotImplementedError):
-        return None
-

@@ -3,12 +3,10 @@
 still written on SymPy (:mod:`.definite`) and the users of SymPy objects.
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
-the native code and convert the results back. The methods of the native
-module which stay on SymPy are here too, imported by it at run time and
-tried last, when every native method has failed: SymPy's Meijer G-function route
-(:func:`meijerint_of_core`) and its ``integrate``
-(:func:`integrate_of_core`); its ``manualintegrate`` is the native port
-:mod:`sympy_extras.integrals.manualintegrate`.
+the native code and convert the results back. No method of the native
+module stays on SymPy: its ``manualintegrate`` and Meijer G-function
+route are the native ports :mod:`sympy_extras.integrals.manualintegrate`
+and :mod:`sympy_extras.integrals.meijerint`.
 
 Examples
 ========
@@ -27,23 +25,20 @@ Integral(x**x, x)
 """
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Optional
 
 from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions
+from sympy_extras._typing_sympy import ExprLike
+from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, core_assumptions
 from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 
 from . import indefinite as native
 
-__all__ = ['indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'real_form', 'conjugate_logarithms',
-           'meijerint_of_core', 'integrate_of_core']
+__all__ = ['indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'real_form', 'conjugate_logarithms']
 
 
 def _core(e: ExprLike) -> CoreExpr:
@@ -129,53 +124,3 @@ def indefinite_integral(f: ExprLike, x: Symbol, assumptions: Assumptions = None,
     """
     return sympy_expr(native.indefinite_integral(_core(f), _core_symbol(x), core_assumptions(assumptions),
                                                  special_values))
-
-
-# ---------------------------------------------------------------------------
-# the methods of the native module which stay on SymPy
-
-def _back(found: Optional[Expr]) -> Optional[CoreExpr]:
-    """A SymPy antiderivative as a core expression; ``None`` when there is
-    none, it has an ``Integral`` or it cannot be converted."""
-    from sympy.integrals.integrals import Integral
-    if found is None or found.has(Integral):
-        return None
-    try:
-        return core_expr(found)
-    except (TypeError, ValueError, NotImplementedError):
-        return None
-
-
-def _run(route: Callable[[Expr, Symbol], Expr], f: CoreExpr, x: CoreSymbol,
-         seconds: Optional[float]) -> Optional[CoreExpr]:
-    """SymPy's ``route(f, x)`` within ``seconds``, on core expressions;
-    ``None`` when it does not finish, leaves an ``Integral`` or its
-    antiderivative cannot be converted."""
-    integrand, variable = sympy_expr(f), _sympy_symbol(x)
-    return _back(attempt(lambda: as_expr(route(integrand, variable)), seconds))
-
-
-
-
-def _meijerint(f: Expr, x: Symbol) -> Expr:
-    from sympy.integrals.integrals import integrate
-    return as_expr(integrate(f, x, meijerg=True, risch=False))
-
-
-def _integrate(f: Expr, x: Symbol) -> Expr:
-    from sympy.integrals.integrals import integrate
-    return as_expr(integrate(f, x))
-
-
-
-
-def meijerint_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
-    """SymPy's ``integrate(f, x, meijerg=True, risch=False)`` within
-    ``seconds``, on core expressions; ``None`` as :func:`_run`."""
-    return _run(_meijerint, f, x, seconds)
-
-
-def integrate_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
-    """SymPy's ``integrate(f, x)`` within ``seconds``, on core expressions;
-    ``None`` as :func:`_run`."""
-    return _run(_integrate, f, x, seconds)
