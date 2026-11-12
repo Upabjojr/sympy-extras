@@ -7,7 +7,6 @@ The functions take and return SymPy objects, converted by
 objects and returns a SymPy expression, ``defined`` receives a SymPy
 point and ``degenerate`` a SymPy expression. The integrators and the sums
 written on SymPy (:mod:`sympy_extras.integrals.definite`,
-:mod:`sympy_extras.integrals.indefinite`,
 :mod:`sympy_extras.concrete.karr_sympy`) use this module; the native code
 (:mod:`sympy_extras.solvers._special_values`, the summation algorithms of
 :mod:`sympy_extras.concrete`) calls :mod:`sympy_extras._special_values`

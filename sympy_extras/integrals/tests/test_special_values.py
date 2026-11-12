@@ -10,7 +10,7 @@ from sympy.core.expr import Expr
 
 from sympy_extras._typing_sympy import as_expr
 from sympy_extras.integrals.definite import definite_integral, verify_numerically
-from sympy_extras.integrals.indefinite import indefinite_integral
+from sympy_extras.integrals.indefinite_sympy import indefinite_integral
 
 x, y, k, a, b, c, n = symbols('x y k a b c n')
 

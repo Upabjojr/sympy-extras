@@ -305,10 +305,10 @@ sympy_extras/
         antiderivative.py    antiderivative_integral, principal_value_integral, finite_part_integral, singularities,
                              discontinuities, one_sided_limit: antiderivatives evaluated by one-sided limits at every
                              discontinuity (native: the native solve, ask and limits; the antiderivative a typed step,
-                             AntiderivativeStep, by default the native radical table, then SymPy's integrate and the
-                             verified methods of indefinite through antiderivative_sympy), PORTED FROM SYMPY (singularities)
-        antiderivative_sympy.py the SymPy face of antiderivative, used by definite and series, and integrate_of_core,
-                             verified_antiderivative_of_core
+                             AntiderivativeStep, by default the native radical table and the verified methods of the native
+                             indefinite; SymPy's integrate of polynomials in elementary functions through
+                             antiderivative_sympy), PORTED FROM SYMPY (singularities)
+        antiderivative_sympy.py the SymPy face of antiderivative, used by definite and series, and integrate_of_core
         brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)
                              (native: the native series, limits, summation, gammasimp, hyperexpand; SymPy's fps and
                              the strip of its mellin_transform through brackets_sympy)
@@ -354,13 +354,13 @@ sympy_extras/
             rationaltools.py ratint, ratint_ratpart, ratint_logpart, log_to_real, log_to_atan, polynomial_part: rational
                              functions by Hermite's reduction and Lazard–Rioboo–Trager over QQ and EX, the real forms
                              of Rioboo, the native RootSum (native), PORTED FROM SYMPY
-            rationaltools_sympy.py the SymPy face of rationaltools (used by risch, indefinite, trigonometric,
+            rationaltools_sympy.py the SymPy face of rationaltools (used by risch, trigonometric,
                              radicals)
         trager.py            Trager's algorithm for integrands rational in x and one square root of a polynomial, and for
                              one root of index n (native: the dense polynomials over QQ, number fields of a primitive
                              element of the constants, QQ(parameters), EX; the native rational integrator, Risch DE,
                              curves and Chebyshev's criterion)
-        trager_sympy.py      the SymPy face of trager, used by indefinite (the residues of the fields without radicals
+        trager_sympy.py      the SymPy face of trager (the residues of the fields without radicals
                              of the general curve as CRootOf, through curves_sympy)
         curves.py            Trager's algorithm on an arbitrary curve: several or nested radicals through a primitive element, the change of variable x = N + 1/z, Hermite reduction in a normal integral basis, residues by Puiseux expansions, the logarithmic part by linear algebra
                              (native: the native function fields, Puiseux expansions, number fields and cancel)
@@ -375,26 +375,32 @@ sympy_extras/
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic (Gradshteyn-Ryzhik 2.26), for the slices of regions,
                              and the Euler substitutions (native, with the native ratint)
         radicals_sympy.py    the SymPy face of radicals
-        indefinite.py        indefinite_integral: the typed methods in turn, then SymPy's, each antiderivative checked by differentiation
+        indefinite.py        indefinite_integral, verified_antiderivative, is_antiderivative, real_form, conjugate_logarithms:
+                             the typed methods in turn, then SymPy's, each antiderivative checked by differentiation (native:
+                             the native methods, cancel, simplify, structure theorem, reliable values and special values;
+                             SymPy's heurisch, manualintegrate, meijerint and integrate last, through indefinite_sympy)
+        indefinite_sympy.py  the SymPy face of indefinite, used by definite, and heurisch_of_core, manualintegrate_of_core,
+                             meijerint_of_core, integrate_of_core
+        integral.py          Integral (node): the unevaluated indefinite integral of the core, is_unevaluated (native)
         trigonometric.py     powers, products and rational functions of trigonometric and hyperbolic functions, inverse functions by parts
                              (native, with the native ratint)
-        trigonometric_sympy.py the SymPy face of trigonometric, which indefinite uses
+        trigonometric_sympy.py the SymPy face of trigonometric
         heurisch.py          typed port of SymPy's heuristic Risch integrator, every result verified, PORTED FROM SYMPY (native: the
                              typed polynomials with placeholders for the constants, linear systems over QQ, number fields and
                              the fractions of the parameters, the native simplify and numerical comparison)
-        heurisch_sympy.py    the SymPy face of heurisch (components, heurisch_antiderivative, heurisch_cases), which indefinite uses
+        heurisch_sympy.py    the SymPy face of heurisch (components, heurisch_antiderivative, heurisch_cases)
         rewriting.py         canonical forms (exponentials, logarithms of inverse hyperbolic functions) and substitutions x = t**k, u = exp(c x), x = exp(t)
                              (native: the native powsimp, cancel, factor and rewriting rules)
-        rewriting_sympy.py   the SymPy face of rewriting, which indefinite uses
+        rewriting_sympy.py   the SymPy face of rewriting
         algebraic.py         algebraic_integral, euler_substitutions, moebius_root, binomial_exponents, chebyshev_elementary,
                              binomial_hypergeometric_antiderivative: algebraic integrands of genus zero (native: the native
                              ask, limits and tidy; the rational integral and its numerical check by definite, through
                              algebraic_sympy)
-        algebraic_sympy.py   the SymPy face of algebraic, used by definite, indefinite and trager, and
+        algebraic_sympy.py   the SymPy face of algebraic, used by definite and trager, and
                              verify_numerically_of_core, conditional_integral_of_core
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
                              (native, with the native ratint)
-        exponential_sympy.py the SymPy face of exponential, used by indefinite
+        exponential_sympy.py the SymPy face of exponential
         elliptic.py          elliptic_integral, radicand, real_roots, legendre_reduction, Reduction: square roots of cubics
                              and quartics reduced to Legendre's integrals (native: the native factorisations, the partial
                              fractions over the number field of the constants, indexed roots, the native ask, the

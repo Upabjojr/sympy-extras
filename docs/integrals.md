@@ -420,9 +420,10 @@ The driver tries, after the Mellin method and the residues:
   divergence, reported as `oo` or `-oo` (`1/x` over `(0, 1)`), while
   infinities of both signs and oscillations leave the integral unevaluated.
   The module is native, on the core (the antiderivative is a step of its
-  own, by default the native radical table, then SymPy's `integrate` and
-  the verified methods of `indefinite` through the face; a native one,
-  such as the native `ratint`, keeps SymPy out);
+  own, by default the native radical table and the verified methods of
+  the native `indefinite`, with SymPy's `integrate` of the polynomials in
+  elementary functions through the face; a native one, such as the native
+  `ratint`, keeps SymPy out);
   `sympy_extras.integrals.antiderivative_sympy` is its face on SymPy
   objects.
   The same verdict is read off the leading term of the integrand at an
@@ -621,7 +622,13 @@ simplifies to zero, or vanishes at random points under the assumptions),
 after a rewriting to a real form when it carries `I` for a real
 integrand, and the `Integral` is returned unevaluated otherwise.
 `verified_antiderivative` returns the antiderivative with the name of the
-method which found it. Powers times exponentials of powers,
+method which found it. The module is native, on the core (an integral
+left undone is the node `sympy_extras.integrals.integral.Integral`), and
+its native methods, checks and special values load no SymPy; SymPy's
+heuristic Risch integrator, `manualintegrate`, Meijer G route and
+`integrate` are the last methods, reached through the face
+`sympy_extras.integrals.indefinite_sympy` (the functions on SymPy objects,
+used below), so that SymPy loads only when every native method failed. Powers times exponentials of powers,
 `x**(v - 1)*exp(a*x**n + b)` with a symbolic `v`, go through the
 incomplete gamma function (`sympy_extras.integrals.exponential`, native,
 with its SymPy face `exponential_sympy`), in the real form
@@ -715,7 +722,7 @@ and mapped (which hide the binomial), cut where `z = 1`:
 
 ```python
 >>> from sympy import symbols, sqrt, log, tan
->>> from sympy_extras.integrals.indefinite import indefinite_integral, verified_antiderivative
+>>> from sympy_extras.integrals.indefinite_sympy import indefinite_integral, verified_antiderivative
 >>> x = symbols('x')
 >>> indefinite_integral(sqrt(1 - x**2), x)
 x*sqrt(1 - x**2)/2 + asin(x)/2

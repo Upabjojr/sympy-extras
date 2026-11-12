@@ -4,8 +4,8 @@ from __future__ import annotations
 from sympy import symbols, sqrt, exp, sin, cos, log, tan, atan, asin, Integral, I, S, diff, simplify, erf
 
 from sympy_extras._typing_sympy import as_expr
-from sympy_extras.integrals.indefinite import indefinite_integral, verified_antiderivative, is_antiderivative
-from sympy_extras.integrals import indefinite as module
+from sympy_extras.integrals.indefinite_sympy import indefinite_integral, verified_antiderivative, is_antiderivative
+from sympy_extras.integrals import indefinite_sympy as module
 
 x = symbols('x')
 
@@ -43,8 +43,10 @@ def test_wrong_candidates_are_refused(monkeypatch: object) -> None:
     # driver moves on, and returns the Integral when nothing checks
     import pytest
     assert isinstance(monkeypatch, pytest.MonkeyPatch)
-    wrong = [('wrong', lambda f, v, assumptions: as_expr(cos(v)))]
-    monkeypatch.setattr(module, 'METHODS', wrong)
+    from sympy_extras.functions import cos as core_cos
+    from sympy_extras.integrals import indefinite as native
+    wrong = [('wrong', lambda f, v, assumptions: core_cos(v))]
+    monkeypatch.setattr(native, 'METHODS', wrong)
     assert indefinite_integral(sin(x), x) == Integral(sin(x), x)
     assert verified_antiderivative(sin(x), x) is None
 

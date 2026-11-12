@@ -137,6 +137,7 @@ from sympy_extras.functions.elementary.exponential import Log
 from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise
 from sympy_extras.functions.special.delta_functions import DiracDelta
 from sympy_extras.functions.special.zeta_functions import Zeta
+from sympy_extras.integrals.integral import Integral
 from sympy_extras.polys.polyerrors import BasePolynomialError
 from sympy_extras.polys.polyroots import roots
 from sympy_extras.polys.polytools import factor
@@ -273,7 +274,7 @@ def _unevaluated(e: Expr) -> bool:
     """Whether ``e`` has an unevaluated sum or product, or an unevaluated
     integral (of SymPy, wrapped in a node of the core)."""
     for node in preorder_traversal(e):
-        if isinstance(node, (Sum, Product)):
+        if isinstance(node, (Sum, Product, Integral)):
             return True
         if node._is_foreign_node() and node._compare_name() in _UNEVALUATED_FOREIGN:
             return True
@@ -281,7 +282,7 @@ def _unevaluated(e: Expr) -> bool:
 
 
 def _not_looked_into(node: Basic) -> bool:
-    if isinstance(node, (Sum, Product)):
+    if isinstance(node, (Sum, Product, Integral)):
         return True
     return node._is_foreign_node() and node._compare_name() in _UNEVALUATED_FOREIGN
 

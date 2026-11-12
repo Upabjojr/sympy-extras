@@ -2124,7 +2124,7 @@ class _Integrator:
         elliptic forms, cheap too, are tried first as in the order of the
         strategies."""
         from .algebraic_sympy import binomial_exponents, chebyshev_elementary
-        from .indefinite import verified_antiderivative
+        from .indefinite_sympy import verified_antiderivative
         if free_symbols(f) != {x} or a.has(x) or b.has(x) or a.is_finite is not True or b.is_finite is not True:
             return None
         if not any(isinstance(node, Pow) and isinstance(node.exp, Rational) and not node.exp.is_integer

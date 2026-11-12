@@ -532,6 +532,9 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
     if isinstance(e, NonElementaryIntegral):
         from sympy_extras.integrals.risch.risch_sympy import NonElementaryIntegral as SymPyNonElementaryIntegral
         return SymPyNonElementaryIntegral(to_sympy(e.function, evaluate), to_sympy(e.variable))
+    from sympy_extras.integrals.integral import Integral as NativeIntegral
+    if isinstance(e, NativeIntegral):
+        return sympy.Integral(to_sympy(e.function, evaluate), to_sympy(e.variable))
     args = [to_sympy(a, evaluate) for a in e.args]
     if isinstance(e, Add):
         return sympy.Add(*[_sympy_expr(a) for a in args], evaluate=evaluate)

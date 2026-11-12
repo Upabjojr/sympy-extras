@@ -2503,3 +2503,39 @@ def test_native_sat_search_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_SAT_SEARCH], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_INDEFINITE = r'''
+import sys
+from sympy_extras.core import symbols, Rational
+from sympy_extras.functions import sqrt, exp, log, sin, tan, atan, cosh, sign
+from sympy_extras.integrals.indefinite import (indefinite_integral, verified_antiderivative, is_antiderivative,
+                                               real_form, conjugate_logarithms)
+from sympy_extras.integrals.integral import Integral
+from sympy_extras.core import I
+x, k, a = symbols('x k a')
+expected = {x/(x**2 + 1): 'rational', sqrt(1 - x**2): 'radicals', x*exp(x): 'exponential', tan(x)**3: 'trigonometric',
+            1/(x*(log(x)**2 + 1)): 'risch', x/sqrt(x**4 + 1): 'trager', sqrt(x**3 + 1): 'binomial',
+            2**x*cosh(x): 'rewriting', sin(a*x)*sin(k*x): 'trigonometric'}
+for f, method in expected.items():
+    found = verified_antiderivative(f, x)
+    assert found is not None and found[1] == method, (f, found)
+assert str(indefinite_integral(x*exp(k*x), x)) == 'Piecewise((x*exp(k*x)/k - exp(k*x)/k**2, Ne(k, 0)), (x**2/2, True))'
+assert is_antiderivative(sin(x), sin(x), x) is False and is_antiderivative(x**2*sign(x)/2, x*sign(x), x) is True
+assert str(real_form(-I*log(x - I)/2 + I*log(x + I)/2, 1/(x**2 + 1), x)) == 'atan(x)'
+assert conjugate_logarithms(-I*log(x - I)/2 + I*log(x + I)/2, x) == atan(x)
+assert Integral(exp(x**2), x).diff(x) == exp(x**2)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_indefinite_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.indefinite` does not load
+    SymPy, nor do its native methods (the rational integrator, the radical,
+    exponential and trigonometric tables, the Risch package, Trager's
+    algorithm, the binomial differentials, the rewritings), the checks of
+    the candidates, the real forms and the cases of the special values:
+    only SymPy's routes, tried last, load it."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_INDEFINITE], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

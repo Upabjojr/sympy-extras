@@ -2,8 +2,7 @@
 integrands (:mod:`sympy_extras.integrals.trigonometric`).
 
 :func:`trigonometric_antiderivative` takes and returns SymPy objects,
-converted by :mod:`sympy_extras.interop` around the native function; the
-integrators still written on SymPy (:mod:`.indefinite`) use it.
+converted by :mod:`sympy_extras.interop` around the native function.
 
 Examples
 ========
