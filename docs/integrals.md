@@ -247,13 +247,17 @@ The driver tries, after the Mellin method and the residues:
   and a rational certificate `R` with `sum(a_j * d^j F/dt^j) = d(R F)/dx`,
   so that the integral `I(t)` satisfies the linear ODE
   `sum(a_j I^(j)) = [R F]` between the bounds. `holonomic_ode` returns the
-  equation, `holonomic_integral` solves it with `dsolve` and fixes the
-  constants at a value of the parameter where the integral is computed
-  directly. This is the continuous analogue of Zeilberger's algorithm of
+  equation, `holonomic_integral` solves it with the linear ODE solvers of
+  `sympy_extras.solvers.linear_ode` (SymPy's `dsolve` when they leave it
+  unsolved) and fixes the constants at a value of the parameter where the
+  integral is computed directly. This is the continuous analogue of Zeilberger's algorithm of
   `sympy_extras.concrete.zeilberger`. `sympy_extras.integrals.reduction`
   finds the same telescopers by Hermite reduction (Bostan, Chen, Chyzak, Li
   and Xin): the reduced forms are canonical, so the order is minimal and no
   bound on the certificate is needed; it is tried first, the ansatz second.
+  The three modules (and `dfinite` below) work on the objects of the core
+  and import no SymPy; `telescoping_sympy`, `reduction_sympy` and
+  `dfinite_sympy` are their interfaces on SymPy objects.
 - **The rules of the Laplace transform** (`sympy_extras.integrals.laplace`):
   for `g(t)*exp(-s*t)` over `(0, oo)`, division by `t` (the transform
   integrated from `s` to `oo`), multiplication by `t**n` (derivatives of the
@@ -502,7 +506,7 @@ The driver tries, after the Mellin method and the residues:
 ```python
 >>> from sympy import symbols, exp, sin, log, atan, cos, oo, pi
 >>> from sympy_extras.integrals.definite import definite_integral
->>> from sympy_extras.integrals.telescoping import holonomic_ode
+>>> from sympy_extras.integrals.telescoping_sympy import holonomic_ode
 >>> from sympy_extras.integrals.parametric_sympy import parametric_integral
 >>> x = symbols('x')
 >>> p, t = symbols('p t', positive=True)

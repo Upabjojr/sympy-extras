@@ -2060,12 +2060,49 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_TELESCOPING = r'''
+import sys
+from sympy_extras.core import symbols, oo
+from sympy_extras.functions import exp, cos, sin
+from sympy_extras.settings import configure
+from sympy_extras.integrals.telescoping import (almkvist_zeilberger, holonomic_ode, holonomic_integral,
+                                                is_hyperexponential, logarithmic_derivative)
+assert 'sympy' not in sys.modules
+x = symbols('x')
+t = symbols('t', positive=True)
+T = almkvist_zeilberger(exp(-x**2 - t**2/x**2), x, t)
+assert str(T) == 'DifferentialTelescoper([-4, 0, 1], 2/x)' and T.check()
+T = almkvist_zeilberger(exp(-x**2)*cos(2*t*x), x, t)
+assert T is not None and T.coefficients == [2*t, 1] and T.check()
+assert str(almkvist_zeilberger(1/(x**2 + t**2), x, t)) == 'DifferentialTelescoper([1, t], -x)'
+assert str(logarithmic_derivative(x**t*exp(-x**2), x)) == '(t - 2*x**2)/x'
+assert is_hyperexponential(exp(-x*t)*x**3/(x**2 + t**2), x, t) and not is_hyperexponential(exp(-x*t)*sin(x), x, t)
+assert str(holonomic_ode(exp(-x**2)*exp(2*x*t), x, -oo, oo, t)) == 'Eq(-2*t*I(t) + Derivative(I(t), t), 0)'
+with configure(numerical_checks=False):
+    assert str(holonomic_integral(x*exp(-t*x**2), x, 0, oo, t)) == 'ConditionalValue(1/(2*t))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 def test_native_summability_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.integrals.summability` does not load
     SymPy, nor do its checks of the method and the range; the regularised
     integrals reach SymPy's side (``conditional_integral``) through the
     face only."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_SUMMABILITY], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_telescoping_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.telescoping` does not load
+    SymPy, nor do the Almkvist–Zeilberger telescopers (over ``QQ(t)`` and,
+    for trigonometric integrands written as exponentials, ``QQ_I(t)``),
+    their check, the equation of the integral with its boundary limits and
+    an integral whose equation has order zero (the initial values, SymPy's
+    ``dsolve`` and the numerical check go through
+    :mod:`~sympy_extras.integrals.telescoping_sympy`)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_TELESCOPING], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
 
@@ -2085,12 +2122,49 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+_NATIVE_REDUCTION = r'''
+import sys
+from sympy_extras.core import symbols, oo
+from sympy_extras.functions import exp, cos
+from sympy_extras.settings import configure
+from sympy_extras.integrals.reduction import (HermiteReducer, hermite_reduce, reduction_integral, reduction_ode,
+                                              reduction_telescoper)
+assert 'sympy' not in sys.modules
+x = symbols('x')
+t = symbols('t', positive=True)
+assert str(hermite_reduce(1/x**2, -2*x, x)) == '(-1/x, -2)'
+assert str(hermite_reduce(1/(x**2 + 1)**2, (2*x + 2)/(x**2 + 1), x)) == '(1/(2*x**2 + 2), 0)'
+reducer = HermiteReducer(2/x + 1/(x - t)**2, x, t)
+assert str((reducer.shell, reducer.A, reducer.B)) == '(x**2, 1, t**2 - 2*t*x + x**2)'
+assert str(reducer.reduce(1/x)) == '(t**2/2 - t*x + x**2/2, t - 1/2)'
+found = reduction_telescoper(exp(-t*x**2) + exp(-t**2*x**2), x, t)
+assert found is not None and str(found.coefficients) == '[1, 5*t, 2*t**2]' and found.check()
+found = reduction_telescoper(exp(-x**2)*cos(2*t*x), x, t)
+assert found is not None and found.order == 1 and found.check()
+assert str(reduction_ode(exp(-x**2)*exp(2*x*t), x, -oo, oo, t)) == 'Eq(-2*t*I(t) + Derivative(I(t), t), 0)'
+with configure(numerical_checks=False):
+    assert str(reduction_integral(x*exp(-t*x**2), x, 0, oo, t)) == 'ConditionalValue(1/(2*t))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 def test_native_parametric_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.integrals.parametric` does not load
     SymPy, nor does the choice of the parameters; the integrals reach
     SymPy's side (the integrator of ``definite`` and ``integrate``)
     through the face only."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_PARAMETRIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_reduction_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.reduction` does not load
+    SymPy, nor do the Hermite reduction (the shell, the poles away from
+    and at the factors of ``B``, the polynomial reduction, conjugate poles
+    refactored over ``QQ_I``), the reduction-based telescopers of single
+    terms and of sums, and the equation of the integral."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REDUCTION], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
 
@@ -2121,6 +2195,27 @@ assert str(binomial_differential(3*x**3*sqrt(x**2 + 1), x)) == '(3, 3, 1, 1, 2, 
 assert str(binomial_hypergeometric_antiderivative(sqrt(x**3 + 1), x)) == 'x*hyper((-1/2, 1/3), (4/3,), -x**3)'
 assert binomial_hypergeometric_antiderivative(sqrt(1 + c*x**3), x).has(c)
 assert binomial_hypergeometric_antiderivative(sqrt(x**7/(1 - 5*x**2)), x) is not None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_DFINITE = r'''
+import sys
+from sympy_extras.core import symbols, oo
+from sympy_extras.functions import exp, sin, besselj, erf, log
+from sympy_extras.integrals.dfinite import Annihilator, chyzak, closure, dfinite_ode, normal_form
+assert 'sympy' not in sys.modules
+x = symbols('x')
+t = symbols('t', positive=True)
+found = chyzak(exp(-t*x)*besselj(0, x), x, t)
+assert str(found) == 'DFiniteTelescoper([t, t**2 + 1], {exp(-t*x)*besselj(0, x): t*x, -exp(-t*x)*besselj(1, x): x})'
+assert found.check()
+assert chyzak(x*exp(-x**2)*besselj(0, t*x), x, t).order == 1
+assert chyzak(erf(t*x)*exp(-x**2), x, t) is not None and chyzak(exp(-t*x)*log(x), x, t) is not None
+assert str(closure(x*exp(-x**2)*besselj(0, t*x), x, t)) == '(x, [Factor(besselj(0, t*x), 2), Factor(exp(-x**2), 1)])'
+assert str(dfinite_ode(exp(-t*x)*sin(x)/x, x, 0, oo, t)) == 'Eq(Derivative(I(t), t), -1/(t**2 + 1))'
+reduce = normal_form(Annihilator(x, [2*t*x, 1]), Annihilator(t, [x**2, 1]), x, t)
+assert str(reduce(2, 0)) == '{(0, 0): 4*t**2*x**2 - 2*t}'
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -2163,5 +2258,18 @@ def test_native_rewriting_does_not_load_sympy() -> None:
     powsimp, cancel) or the substitutions (the Möbius roots by region on
     the native factorisation, Chebyshev's, the nested radicals)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_REWRITING], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_dfinite_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.dfinite` does not load
+    SymPy, nor do Chyzak's telescopers of products of the factors whose
+    equations are written down (``exp``, ``sin``, ``besselj``, ``erf``,
+    ``log``, ...), the closure, the equation of the integral and the
+    normal forms modulo given annihilators (SymPy's ``expr_to_holonomic``
+    of other factors and of whole integrands goes through
+    :mod:`~sympy_extras.integrals.dfinite_sympy`)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DFINITE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

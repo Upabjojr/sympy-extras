@@ -1011,7 +1011,12 @@ sympy_extras/
         contours_sympy.py    the SymPy face of contours
         definite.py          definite_integral: splitting, range mappings, verified fallback
         regions.py           IntegralByRanges: integrals over semialgebraic regions (CAD)
-        telescoping.py       Almkvist–Zeilberger creative telescoping (holonomic integrals)
+        telescoping.py       Almkvist–Zeilberger creative telescoping (holonomic integrals) (native)
+        telescoping_sympy.py the SymPy face of telescoping
+        reduction.py         reduction-based creative telescoping by Hermite reduction (native)
+        reduction_sympy.py   the SymPy face of reduction
+        dfinite.py           Chyzak's algorithm for D-finite integrands (native)
+        dfinite_sympy.py     the SymPy face of dfinite
         parametric.py        differentiation under the integral sign (native)
         parametric_sympy.py  the SymPy face of parametric
         laplace.py           the operational rules of the Laplace transform (native)

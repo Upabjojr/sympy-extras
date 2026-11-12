@@ -46,27 +46,43 @@ Integrating over `x` gives, for the definite integral
 
     \\sum_j a_j(t)\\, I^{(j)}(t) = \\bigl[R F\\bigr]_{x=a}^{x=b},
 
-whose right hand side vanishes at natural boundaries. SymPy's ``dsolve``
-solves it and the constants are fixed by the values of the integral (and
-its derivatives) at a convenient point, computed by
+whose right hand side vanishes at natural boundaries. The equation is
+solved by the linear ODE solvers of :mod:`sympy_extras.solvers.linear_ode`
+(SymPy's ``dsolve`` when they do not give a basis) and the constants are
+fixed by the values of the integral (and its derivatives) at a convenient
+point, computed by
 :func:`~sympy_extras.integrals.definite.definite_integral`. This is the
 *holonomic* method of definite integration: it applies to integrands
 outside the tables of Mellin transforms, and the differential equation
 is an answer in itself when it has no closed form solution. Chyzak's
 algorithm, which does the same for general D-finite integrands (Bessel
-functions, orthogonal polynomials, ...), is not implemented.
+functions, orthogonal polynomials, ...), is in
+:mod:`sympy_extras.integrals.dfinite`.
+
+The module works on the expressions of the core and imports no SymPy:
+the polynomials in `x` have their coefficients in the field
+`\\mathbb{Q}(i)(t, \\ldots)` of the typed polynomial layer (factored over
+`\\mathbb{Q}` or `\\mathbb{Q}(i)`), the limits at the bounds are the native
+ones. The steps which stay on SymPy are reached through the functions
+ending in ``_of_core`` of :mod:`.telescoping_sympy`, imported when they are
+needed: the values of the integral at a point
+(:func:`~sympy_extras.integrals.definite.definite_integral`, not ported
+yet), its numerical check (``verify_numerically``) and SymPy's ``dsolve``
+of an equation which the native solvers leave unsolved.
+:mod:`.telescoping_sympy` is the old interface on SymPy objects.
 
 Examples
 ========
 
->>> from sympy import symbols, exp, oo, sqrt, pi
->>> from sympy_extras.integrals.telescoping import almkvist_zeilberger, holonomic_integral
+>>> from sympy_extras.core import symbols, oo
+>>> from sympy_extras.functions import exp
+>>> from sympy_extras.integrals.telescoping import almkvist_zeilberger, holonomic_ode
 >>> x = symbols('x')
 >>> t = symbols('t', positive=True)
 >>> almkvist_zeilberger(exp(-x**2 - t**2/x**2), x, t)
 DifferentialTelescoper([-4, 0, 1], 2/x)
->>> holonomic_integral(exp(-x**2 - t**2/x**2), x, 0, oo, t)
-ConditionalValue(sqrt(pi)*exp(-2*t)/2)
+>>> holonomic_ode(exp(-x**2)*exp(2*x*t), x, -oo, oo, t)
+Eq(-2*t*I(t) + Derivative(I(t), t), 0)
 
 References
 ==========
@@ -83,39 +99,48 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence
-
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.function import Function, AppliedUndef, diff
-from sympy.core.numbers import Integer, Rational, nan, oo, zoo
-from sympy.core.relational import Eq
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.exponential import exp
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.functions.elementary.trigonometric import TrigonometricFunction
-from sympy.functions.elementary.hyperbolic import HyperbolicFunction
-from sympy.integrals.integrals import Integral
-from sympy.matrices.dense import Matrix
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly, cancel, gcd_list, lcm_list
-from sympy.polys.rationaltools import together
-from sympy.simplify.simplify import simplify
-from sympy.solvers.ode import dsolve
-from sympy.solvers.solveset import linsolve
-from sympy.sets.sets import FiniteSet
-from sympy.core.sympify import sympify
+from fractions import Fraction
+from typing import Final, Optional, Sequence
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions
-from sympy_extras.assumptions.limits_sympy import limit
+from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.assumptions.limits import limit
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
+from sympy_extras.core.function import Function, diff, expand
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import I, Integer, NaN, ComplexInfinity, Number, Rational, nan, oo, zoo
+from sympy_extras.core.power import Pow
+from sympy_extras.core.relational import Eq
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.exponential import Exp
+from sympy_extras.functions.elementary.hyperbolic import Cosh, Coth, Csch, Sech, Sinh, Tanh
+from sympy_extras.functions.elementary.piecewise import Piecewise
+from sympy_extras.functions.elementary.trigonometric import Cos, Cot, Csc, Sec, Sin, Tan
+from sympy_extras.polys.domains.gaussiandomains import QQ_I, GaussianRational
+from sympy_extras.polys.domains.sparsefractionfield import SparseFracElement, SparseFractionField
+from sympy_extras.polys.domains.sparsepolynomialring import RationalPolynomialRing, SparsePolynomialRing
+from sympy_extras.polys.polyclasses import DensePoly
+from sympy_extras.polys.polyerrors import BasePolynomialError
+from sympy_extras.polys.polytools import Poly, cancel, gcd_list, lcm_list
+from sympy_extras.polys.rationaltools import together
+from sympy_extras.polys.rings import PolyElement, PolyRing
 from sympy_extras.settings import settings
-from .conditions_sympy import ConditionalValue
+from sympy_extras.simplify.simplify import simplify
+from .conditions import ConditionalValue
 
 __all__ = ['DifferentialTelescoper', 'logarithmic_derivative', 'is_hyperexponential',
            'almkvist_zeilberger', 'holonomic_ode', 'holonomic_integral']
+
+_ZERO = Integer(0)
+_ONE = Integer(1)
+
+#: the trigonometric and hyperbolic functions written as exponentials
+_TRIGONOMETRIC: Final[tuple[type, ...]] = (Sin, Cos, Tan, Cot, Sec, Csc, Sinh, Cosh, Tanh, Coth, Sech, Csch)
+
+#: what the polynomial layer raises on an expression it cannot take
+_POLYNOMIAL_FAILURES = (BasePolynomialError, ValueError, TypeError, NotImplementedError, ZeroDivisionError)
 
 
 class DifferentialTelescoper:
@@ -133,14 +158,26 @@ class DifferentialTelescoper:
         the sum of their certificates weighted by the terms).
     term, x, t
         The input.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.integrals.telescoping import almkvist_zeilberger
+    >>> x, t = symbols('x t')
+    >>> telescoper = almkvist_zeilberger(1/(x**2 + t**2), x, t)
+    >>> telescoper.order, telescoper.operator()
+    (1, t*Derivative(I(t), t) + I(t))
+    >>> telescoper.check()
+    True
     """
 
     def __init__(self, term: Expr, x: Symbol, t: Symbol, coefficients: Sequence[Expr], certificate: Expr) -> None:
-        self.term = term
-        self.x = x
-        self.t = t
-        self.coefficients = list(coefficients)
-        self.certificate = certificate
+        self.term: Final[Expr] = term
+        self.x: Final[Symbol] = x
+        self.t: Final[Symbol] = t
+        self.coefficients: Final[list[Expr]] = list(coefficients)
+        self.certificate: Final[Expr] = certificate
 
     @property
     def order(self) -> int:
@@ -150,17 +187,62 @@ class DifferentialTelescoper:
         """``sum_j a_j(t) I^(j)(t)``, the left hand side of the equation
         satisfied by the integral over ``x``, in the function ``I(t)``."""
         f = Function(name)(self.t)
-        return as_expr(Add(*[a * diff(f, self.t, j) for j, a in enumerate(self.coefficients)]))
+        return add(*[mul(a, diff(f, (self.t, j))) for j, a in enumerate(self.coefficients)])
 
     def check(self) -> bool:
         """Verify ``sum_j a_j d^j F/dt^j = d(R F)/dx`` by simplification."""
+        if self._check_by_terms():
+            return True
         F = self.term
-        lhs = Add(*[a * diff(F, self.t, j) for j, a in enumerate(self.coefficients)])
-        difference = as_expr((lhs - diff(self.certificate * F, self.x)) / F)
-        if difference.has(TrigonometricFunction, HyperbolicFunction):
-            difference = as_expr(difference.rewrite(exp))
-        difference = as_expr(cancel(difference.expand()))
-        return difference == 0 or simplify(difference) == 0
+        lhs = add(*[mul(a, diff(F, (self.t, j))) for j, a in enumerate(self.coefficients)])
+        difference = (lhs - diff(self.certificate*F, self.x))/F
+        if difference.has(*_TRIGONOMETRIC):
+            difference = difference.rewrite(Exp)
+        difference = cancel(expand(difference))
+        return difference == _ZERO or simplify(difference) == _ZERO
+
+    def _check_by_terms(self) -> bool:
+        """The identity proved on hyperexponential terms: with ``T`` the
+        terms of ``F`` and ``U`` those of ``G = R F``,
+        ``sum_j a_j d^j T/dt^j = T sum_j a_j p_j`` and ``dU/dx = q_U U`` with
+        rational ``p_j`` and ``q_U``, and the rational coefficients of the
+        similar terms add up to zero. ``False`` when this does not prove
+        it (the expression is then simplified as a whole)."""
+        x, t = self.x, self.t
+        try:
+            G = self.certificate*self.term
+            if self.certificate.is_rational_function(x, t) is not True:
+                G = cancel(G)
+            # (representative term, sum of the rational coefficients of the
+            # terms similar to it)
+            groups: list[tuple[Expr, Expr]] = []
+
+            def collect(T: Expr, c: Expr) -> None:
+                for i, (S, sum_) in enumerate(groups):
+                    ratio = cancel(T/S)
+                    if ratio.is_rational_function(x, t) is True:
+                        groups[i] = (S, sum_ + ratio*c)
+                        return
+                groups.append((T, c))
+
+            for T in _terms(self.term, x, t):
+                p = logarithmic_derivative(T, t)
+                if p is None:
+                    return False
+                pj: Expr = _ONE
+                total = self.coefficients[0]
+                for a in self.coefficients[1:]:
+                    pj = cancel(diff(pj, t) + p*pj)
+                    total = total + a*pj
+                collect(T, total)
+            for U in _terms(G, x, t):
+                q = logarithmic_derivative(U, x)
+                if q is None:
+                    return False
+                collect(U, -q)
+            return bool(groups) and all(cancel(sum_) == _ZERO for _, sum_ in groups)
+        except _POLYNOMIAL_FAILURES:
+            return False
 
     def __repr__(self) -> str:
         return "DifferentialTelescoper(%s, %s)" % (self.coefficients, self.certificate)
@@ -170,7 +252,8 @@ def logarithmic_derivative(F: Expr, x: Symbol) -> Optional[Expr]:
     """``diff(F, x)/F`` as a rational function of ``x`` (cancelled), or
     ``None`` when it is not one.
 
-    >>> from sympy import symbols, exp
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.telescoping import logarithmic_derivative
     >>> x, t = symbols('x t')
     >>> logarithmic_derivative(x**t*exp(-x**2), x)
@@ -178,13 +261,16 @@ def logarithmic_derivative(F: Expr, x: Symbol) -> Optional[Expr]:
     >>> logarithmic_derivative(exp(exp(x)), x) is None
     True
     """
-    if F == 0:
+    if F == _ZERO:
         return None
-    ratio = as_expr(cancel(diff(F, x) / F))
-    if ratio.has(exp) and not ratio.is_rational_function(x):
-        # powers written as exponentials of logarithms
-        ratio = as_expr(cancel(ratio.expand(power_exp=True, log=True)))
-    if not ratio.is_rational_function(x):
+    try:
+        ratio = cancel(diff(F, x)/F)
+        if ratio.has(Exp) and ratio.is_rational_function(x) is not True:
+            # powers written as exponentials of logarithms
+            ratio = cancel(expand(ratio, power_exp=True, log=True))
+    except _POLYNOMIAL_FAILURES:
+        return None
+    if ratio.is_rational_function(x) is not True:
         return None
     return ratio
 
@@ -193,7 +279,8 @@ def is_hyperexponential(F: ExprLike, x: Symbol, t: Symbol) -> bool:
     """Whether both logarithmic derivatives of ``F`` are rational
     functions of ``x`` and ``t``.
 
-    >>> from sympy import symbols, exp, sin
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp, sin
     >>> from sympy_extras.integrals.telescoping import is_hyperexponential
     >>> x, t = symbols('x t')
     >>> is_hyperexponential(exp(-x*t)*x**3/(x**2 + t**2), x, t)
@@ -201,50 +288,263 @@ def is_hyperexponential(F: ExprLike, x: Symbol, t: Symbol) -> bool:
     >>> is_hyperexponential(exp(-x*t)*sin(x), x, t)
     False
     """
-    F_ = as_expr(sympify(F))
+    F_ = to_expr(F)
     q = logarithmic_derivative(F_, x)
     p = logarithmic_derivative(F_, t)
-    return q is not None and p is not None and q.is_rational_function(x, t) and p.is_rational_function(x, t)
+    return (q is not None and p is not None and q.is_rational_function(x, t) is True
+            and p.is_rational_function(x, t) is True)
 
 
 # ---------------------------------------------------------------------------
-# The parametrised differential equation R' + q R = sum a_j p_j
+# Rational functions of x over the field of the parameters: the domain
+# QQ_I(t, ...) of the typed polynomial layer (one element type whether I
+# occurs or not), factored over QQ or over QQ_I as SymPy's QQ(t) and
+# QQ_I(t) factor
 
-def _polys(e: Expr, x: Symbol, t: Symbol) -> tuple[Poly, Poly]:
-    """Numerator and denominator of a rational function of ``x`` as
-    polynomials over the field of rational functions of ``t`` (with
-    Gaussian rationals when ``I`` occurs)."""
-    numerator, denominator = together(e).as_numer_denom()
-    A = Poly(numerator, x, field=True)
-    B = Poly(denominator, x, field=True)
-    A, B = A.unify(B)
-    if not A.domain.is_Field:
-        A, B = A.to_field(), B.to_field()
-    return A, B
+Element = SparseFracElement[GaussianRational]
+KPoly = DensePoly[Element]
+
+
+def _real(f: PolyElement[GaussianRational]) -> bool:
+    return all(not c.y for c in f.terms.values())
+
+
+class _GaussianPolynomialRing(SparsePolynomialRing[GaussianRational]):
+    """``QQ_I[y1, ..., yk]`` whose fractions are cancelled as SymPy's
+    ``QQ(y1, ...)`` cancels them when the coefficients are rational (the
+    integer contents, the sign of the denominator), and with a monic
+    denominator otherwise."""
+
+    def __init__(self, names: Sequence[str]) -> None:
+        super().__init__(QQ_I, names)
+        self.rational: Final[RationalPolynomialRing] = RationalPolynomialRing(names)
+
+    def _to_rational(self, f: PolyElement[GaussianRational]) -> PolyElement[Fraction]:
+        return self.rational.ring.from_dict({m: c.x for m, c in f.terms.items()})
+
+    def _from_rational(self, f: PolyElement[Fraction]) -> PolyElement[GaussianRational]:
+        return self.ring.from_dict({m: GaussianRational(c) for m, c in f.terms.items()})
+
+    def gcd(self, a: PolyElement[GaussianRational], b: PolyElement[GaussianRational]) -> PolyElement[GaussianRational]:
+        if _real(a) and _real(b):
+            return self._from_rational(self.rational.gcd(self._to_rational(a), self._to_rational(b)))
+        return super().gcd(a, b)
+
+    def cancel(self, f: PolyElement[GaussianRational], g: PolyElement[GaussianRational]
+               ) -> tuple[PolyElement[GaussianRational], PolyElement[GaussianRational]]:
+        if not f.terms:
+            return f, self.one
+        if _real(f) and _real(g):
+            p, q = self.rational.cancel(self._to_rational(f), self._to_rational(g))
+            return self._from_rational(p), self._from_rational(q)
+        h = super().gcd(f, g)
+        numerator, denominator = f.exquo(h), g.exquo(h)
+        inverse = QQ_I.invert(denominator.LC)
+        return numerator.mul_ground(inverse), denominator.mul_ground(inverse)
+
+
+class _FunctionField(SparseFractionField[GaussianRational]):
+    """The field ``QQ_I(y1, ..., yk)`` of the coefficients, with the
+    factorisation of the polynomials over it in one more variable: over
+    ``QQ`` (Gauss's lemma: the factors of the numerator over ``QQ[x, y]``
+    which depend on ``x``) unless ``gaussian``, over ``QQ_I`` then."""
+
+    def __init__(self, names: Sequence[str], gaussian: bool) -> None:
+        super().__init__(_GaussianPolynomialRing(names))
+        self.variables: Final[list[str]] = list(names)
+        self.gaussian: Final[bool] = gaussian
+
+    def factor_dense(self, f: list[Element]) -> tuple[Element, list[tuple[list[Element], int]]]:
+        if not f:
+            return self.zero, []
+        ring = self.ring
+        common = ring.one
+        for c in f:
+            common = ring.lcm(common, c.denom)
+        n = len(f) - 1
+        terms: dict[tuple[int, ...], GaussianRational] = {}
+        for i, c in enumerate(f):
+            for m, value in (c.numer*common.exquo(c.denom)).terms.items():
+                terms[(n - i,) + m] = value
+        variables = ['_kfx'] + self.variables
+        found: list[tuple[dict[tuple[int, ...], GaussianRational], int]] = []
+        if self.gaussian or not all(not c.y for c in terms.values()):
+            from sympy_extras.polys.gaussianfactor import gaussian_factor_list
+            G = PolyRing(QQ_I, variables)
+            _, factors = gaussian_factor_list(G.from_dict(terms), False)
+            found = [(dict(g.terms), k) for g, k in factors]
+        else:
+            rational = Poly.from_dict({m: c.x for m, c in terms.items()}, *[Symbol(v) for v in variables])
+            _, poly_factors = rational.factor_list()
+            found = [({m: GaussianRational(c) for m, c in g.rep.terms.items()}, k) for g, k in poly_factors]
+        result: list[tuple[list[Element], int]] = []
+        product = self.one
+        for g, k in found:
+            degree = max(m[0] for m in g)
+            if degree == 0:
+                continue
+            by_degree: dict[int, dict[tuple[int, ...], GaussianRational]] = {}
+            for m, value in g.items():
+                by_degree.setdefault(m[0], {})[m[1:]] = value
+            dense = [self.from_ring(ring.ring.from_dict(by_degree.get(degree - i, {}))) for i in range(degree + 1)]
+            result.append((dense, k))
+            product = self.mul(product, self.pow(dense[0], k))
+        return self.quo(f[0], product), result
+
+
+def _generators(e: Expr, x: Symbol, found: list[Expr]) -> None:
+    """The generators of ``e`` as a rational function over ``QQ_I``
+    (its symbols, and the other atoms such as ``pi`` or ``sqrt(2)``, taken
+    as transcendental as SymPy's polynomial domains take them); ``x``
+    excluded, ``ValueError`` when it occurs inside one."""
+    if isinstance(e, (Add, Mul)):
+        for a in e.args:
+            if isinstance(a, Expr):
+                _generators(a, x, found)
+        return
+    if isinstance(e, Pow) and isinstance(e.exp, Integer):
+        _generators(e.base, x, found)
+        return
+    if isinstance(e, Rational) or e == I:
+        return
+    if e == x:
+        return
+    if isinstance(e, Number) or e.has(x):
+        raise ValueError("%s is not a rational function of %s" % (e, x))
+    if e not in found:
+        found.append(e)
+
+
+class _Context:
+    """Rational functions of ``x`` with their coefficients in the field of
+    the generators of the given expressions (the typed polynomials know
+    their variables by name: every generator is renamed)."""
+
+    def __init__(self, exprs: Sequence[Expr], x: Symbol, generators: Sequence[Expr] = (),
+                 gaussian: bool = False) -> None:
+        found: list[Expr] = list(generators)
+        for e in exprs:
+            _generators(e, x, found)
+        found = sorted(found, key=lambda g: g.sort_key()) if not generators else found
+        self.x: Final[Symbol] = x
+        self.generators: Final[list[Expr]] = found
+        self.gaussian: Final[bool] = gaussian or any(e.has(I) for e in exprs)
+        names = ['_k%d' % i for i in range(len(found))] or ['_k']
+        self.renamed: Final[dict[Basic, Basic]] = {g: Symbol(name) for g, name in zip(found, names)}
+        self.restored: Final[dict[Basic, Basic]] = {Symbol(name): g for g, name in zip(found, names)}
+        self.variable: Final[Symbol] = Symbol('_kx')
+        self.renamed[x] = self.variable
+        self.restored[self.variable] = x
+        self.field: Final[_FunctionField] = _FunctionField(names, self.gaussian)
+
+    def covers(self, exprs: Sequence[Expr]) -> bool:
+        """Whether the expressions are rational functions over the field
+        (whose elements may have Gaussian coefficients in any case)."""
+        found: list[Expr] = list(self.generators)
+        for e in exprs:
+            _generators(e, self.x, found)
+        return len(found) == len(self.generators)
+
+    def extended(self, exprs: Sequence[Expr], gaussian: bool = False) -> _Context:
+        """The context of the generators of ``exprs`` too."""
+        found: list[Expr] = list(self.generators)
+        for e in exprs:
+            _generators(e, self.x, found)
+        return _Context(exprs, self.x, found, self.gaussian or gaussian)
+
+    def _internal(self, e: Expr) -> Expr:
+        return as_expr(e.xreplace(self.renamed))
+
+    def restore(self, e: Expr) -> Expr:
+        return as_expr(e._xreplace_evaluated(self.restored))
+
+    def element(self, e: Expr) -> Element:
+        """An expression free of ``x`` as an element of the field."""
+        return self.field.from_expr(self._internal(e))
+
+    def element_expr(self, c: Element) -> Expr:
+        return self.restore(self.field.to_expr(c))
+
+    def poly(self, e: Expr) -> KPoly:
+        """A polynomial in ``x`` with coefficients in the field."""
+        return DensePoly.from_expr(expand(self._internal(e)), self.variable, self.field)
+
+    def from_elements(self, coefficients: list[Element]) -> KPoly:
+        return DensePoly(coefficients, self.field, self.variable)
+
+    def constant(self, c: Element) -> KPoly:
+        return self.from_elements([c])
+
+    def poly_expr(self, p: KPoly) -> Expr:
+        return self.restore(p.to_expr())
+
+    def fraction(self, e: Expr) -> tuple[KPoly, KPoly]:
+        """Numerator and denominator of a rational function of ``x``."""
+        numerator, denominator = together(e).as_numer_denom()
+        return self.poly(numerator), self.poly(denominator)
+
+    def fraction_expr(self, numerator: KPoly, denominator: KPoly) -> Expr:
+        return cancel(self.poly_expr(numerator)/self.poly_expr(denominator))
+
+    def convert(self, p: KPoly, other: _Context) -> KPoly:
+        """A polynomial of the context ``other`` in this one."""
+        return self.poly(other.poly_expr(p)) if other is not self else p
+
+
+def _context(exprs: Sequence[Expr], x: Symbol) -> Optional[_Context]:
+    try:
+        return _Context(exprs, x)
+    except ValueError:
+        return None
+
+
+def _nullspace(rows: Sequence[Sequence[Expr]], columns: int) -> Optional[list[list[Expr]]]:
+    """The canonical basis of the null space of a matrix of rational
+    functions (SymPy's ``Matrix.nullspace``: a vector per free column of
+    the reduced row echelon form, its free coordinate one), over the
+    field of the generators of the entries; ``None`` when an entry is not
+    a rational function."""
+    K = _context([e for row in rows for e in row], Dummy('_kn'))
+    if K is None:
+        return None
+    try:
+        converted = [[K.element(e) for e in row] for row in rows]
+    except _POLYNOMIAL_FAILURES:
+        return None
+    return [[K.element_expr(v) for v in vector] for vector in K.field.nullspace(converted, columns)]
 
 
 def _positive_integer(e: Expr) -> Optional[int]:
-    e_ = as_expr(cancel(e))
-    if isinstance(e_, (Integer, Rational)) and e_.is_integer and e_ > 0:
-        return int(e_)
+    e_ = cancel(e)
+    if isinstance(e_, Integer) and e_.p > 0:
+        return e_.p
     return None
 
 
-def _denominator_bound(A: Poly, B: Poly, denominators: Sequence[Poly], x: Symbol) -> Poly:
+def _irreducibles(P: KPoly) -> list[tuple[KPoly, int]]:
+    """``(factor, multiplicity)`` for the monic irreducible factors of
+    ``P`` which depend on the variable."""
+    _, factors = P.factor_list()
+    return [(d.monic(), k) for d, k in factors if d.degree > 0]
+
+
+def _denominator_bound(K: _Context, A: KPoly, B: KPoly, denominators: Sequence[KPoly]) -> KPoly:
     """The polynomial ``D`` the denominator of ``R`` divides, from the
     local analysis of ``R' + q R = S`` at the irreducible factors of the
     denominators of ``q = A/B`` and of the ``p_j`` (see the module
     documentation)."""
-    K = B.domain
-    factors: dict[Poly, tuple[int, int]] = {}      # factor -> (order in B, max order in the p_j)
-    for _, d, k in _irreducibles(B):
-        factors[d] = (k, 0)
+    # factor -> (order in B, max order in the p_j)
+    factors: list[tuple[KPoly, int, int]] = [(d, k, 0) for d, k in _irreducibles(B)]
     for L in denominators:
-        for _, d, k in _irreducibles(L):
-            previous = factors.get(d, (0, 0))
-            factors[d] = (previous[0], max(previous[1], k))
-    D = Poly(1, x, domain=K)
-    for d, (k, order_s) in factors.items():
+        for d, k in _irreducibles(L):
+            for i, (e, order_b, order_s) in enumerate(factors):
+                if e == d:
+                    factors[i] = (e, order_b, max(order_s, k))
+                    break
+            else:
+                factors.append((d, 0, k))
+    D = K.constant(K.field.one)
+    for d, k, order_s in factors:
         if k <= 1:
             m = order_s - 1
             if k == 1:
@@ -252,117 +552,118 @@ def _denominator_bound(A: Poly, B: Poly, denominators: Sequence[Poly], x: Symbol
                 # allows a pole of order rho of R (the leading terms cancel)
                 cofactor = B.quo(d)
                 try:
-                    residue = (A * cofactor.invert(d)).rem(d)
-                except (PolynomialError, ZeroDivisionError, NotImplementedError):
+                    residue: Optional[KPoly] = (A*cofactor.invert(d)).rem(d)
+                except _POLYNOMIAL_FAILURES:
                     residue = None
-                if residue is not None and residue.degree() <= 0:
-                    rho = _positive_integer(as_expr(residue.as_expr()))
+                if residue is not None and residue.degree <= 0:
+                    rho = _positive_integer(K.element_expr(residue.LC) if not residue.is_zero else _ZERO)
                     if rho is not None:
                         m = max(m, rho)
         else:
             m = order_s - k
         if m > 0:
-            D = D * d**m
+            D = D*d**m
     return D
 
 
-def _irreducibles(P: Poly) -> list[tuple[int, Poly, int]]:
-    """``(index, factor, multiplicity)`` for the irreducible factors of
-    ``P`` which depend on the variable."""
-    result: list[tuple[int, Poly, int]] = []
-    _, factors = P.factor_list()
-    for i, (d, k) in enumerate(factors):
-        if d.degree() > 0:
-            result.append((i, d.monic(), int(k)))
-    return result
+def _degree(P: KPoly) -> Optional[int]:
+    """The degree, ``None`` (minus infinity) for the zero polynomial."""
+    return None if P.is_zero else P.degree
 
 
-def _numerator_degree(A: Poly, B: Poly, D: Poly, degree_s: int) -> int:
+def _numerator_degree(K: _Context, A: KPoly, B: KPoly, D: KPoly, degree_s: int) -> int:
     """The bound on the degree of the numerator ``N`` of ``R = N/D``
     from the behaviour at infinity."""
-    degree_q = A.degree() - B.degree()
-    if degree_q >= 0:
-        n = degree_s + D.degree() - degree_q
+    degree_a = _degree(A)
+    degree_q = None if degree_a is None else degree_a - B.degree
+    if degree_q is not None and degree_q >= 0:
+        n = degree_s + D.degree - degree_q
     elif degree_q == -1:
-        n = degree_s + D.degree() + 1
+        n = degree_s + D.degree + 1
         # R' + q R ~ (n - deg D + rho_oo) x^(n - deg D - 1) may cancel
-        rho = as_expr(cancel(as_expr(A.LC()) / as_expr(B.LC())))
+        rho = K.element_expr(K.field.quo(A.LC, B.LC))
         zero = _positive_integer(-rho)
         if zero is not None:
-            n = max(n, D.degree() + zero)
-        elif rho == 0:
-            n = max(n, D.degree())
+            n = max(n, D.degree + zero)
+        elif rho == _ZERO:
+            n = max(n, D.degree)
     else:
-        n = degree_s + D.degree() + 1
+        n = degree_s + D.degree + 1
     return max(n, 0)
+
+
+def _coefficient(P: KPoly, i: int) -> Element:
+    return P.coeff(i)
 
 
 def _telescope(q: Expr, p: Expr, x: Symbol, t: Symbol, order: int) -> Optional[tuple[list[Expr], Expr]]:
     """``(a_0, ..., a_J, R)`` for the given order ``J``, or ``None``."""
-    A, B = _polys(q, x, t)
-    ps: list[Expr] = [S.One]
+    ps: list[Expr] = [_ONE]
     for _ in range(order):
-        ps.append(as_expr(cancel(diff(ps[-1], t) + p * ps[-1])))
-    fractions: list[tuple[Poly, Poly]] = []
-    for pj in ps:
-        P, Lj = _polys(pj, x, t)
-        A, P = A.unify(P)
-        B, Lj = B.unify(Lj)
-        fractions.append((P, Lj))
-    K = A.domain
-    A, B = A.set_domain(K), B.set_domain(K)
-    fractions = [(P.set_domain(K), Lj.set_domain(K)) for P, Lj in fractions]
+        ps.append(cancel(diff(ps[-1], t) + p*ps[-1]))
+    K = _context([q] + ps, x)
+    if K is None:
+        return None
+    try:
+        A, B = K.fraction(q)
+        fractions = [K.fraction(pj) for pj in ps]
+    except _POLYNOMIAL_FAILURES:
+        return None
     denominators = [Lj for _, Lj in fractions]
-    D = _denominator_bound(A, B, denominators, x)
-    degree_s = max(P.degree() - Lj.degree() for P, Lj in fractions)
-    n = _numerator_degree(A, B, D, degree_s)
-    L = Poly(1, x, domain=K)
+    D = _denominator_bound(K, A, B, denominators)
+    degree_s = max(P.degree - Lj.degree for P, Lj in fractions if not P.is_zero)
+    n = _numerator_degree(K, A, B, D, degree_s)
+    L = K.constant(K.field.one)
     for _, Lj in fractions:
         L = L.lcm(Lj)
-    coefficients = [Dummy('c%d' % i) for i in range(n + 1)]
-    unknowns_a = [Dummy('a%d' % j) for j in range(order + 1)]
-    N = Add(*[c * x**i for i, c in enumerate(coefficients)])
-    D_e, A_e, B_e, L_e = D.as_expr(), A.as_expr(), B.as_expr(), L.as_expr()
-    # B L (N' D - N D') + A L N D = B D^2 sum_j a_j (L / L_j) P_j
-    lhs = B_e * L_e * (diff(N, x) * D_e - N * diff(D_e, x)) + A_e * L_e * N * D_e
-    rhs: Expr = S.Zero
-    for a, (P, Lj) in zip(unknowns_a, fractions):
-        rhs = rhs + a * L.quo(Lj).as_expr() * P.as_expr()
-    rhs = B_e * D_e**2 * rhs
-    equation = Poly(as_expr((lhs - rhs).expand()), x)
-    unknowns = coefficients + unknowns_a
-    rows: list[list[Expr]] = []
-    for coefficient in equation.all_coeffs():
-        c = as_expr(coefficient)
-        rows.append([as_expr(cancel(c.diff(u))) for u in unknowns])
-    if not rows:
+    # B L (N' D - N D') + A L N D = B D^2 sum_j a_j (L / L_j) P_j: a
+    # column per coefficient of N = sum c_i x**i and per a_j
+    columns: list[KPoly] = []
+    x_ = K.from_elements([K.field.one, K.field.zero])
+    D_prime = D.diff()
+    for i in range(n + 1):
+        monomial = x_**i
+        derivative = K.from_elements([K.field.from_int(i)])*x_**(i - 1) if i else K.constant(K.field.zero)
+        columns.append(B*L*(derivative*D - monomial*D_prime) + A*L*monomial*D)
+    for P, Lj in fractions:
+        columns.append(-(B*D*D*L.quo(Lj)*P))
+    height = max(c.degree for c in columns) + 1
+    if height <= 0:
         return None
-    matrix = Matrix(rows)
-    for vector in matrix.nullspace():
-        values = [as_expr(cancel(v)) for v in vector]
-        a_values = values[len(coefficients):]
-        if all(v == 0 for v in a_values):
+    rows = [[_coefficient(c, height - 1 - r) if r >= height - 1 - c.degree else K.field.zero for c in columns]
+            for r in range(height)]
+    for vector in K.field.nullspace(rows, len(columns)):
+        a_values = [K.element_expr(v) for v in vector[n + 1:]]
+        if all(v == _ZERO for v in a_values):
             continue
-        N_value = as_expr(Add(*[c * x**i for i, c in enumerate(values[:len(coefficients)])]))
-        R = as_expr(cancel(N_value / D_e))
+        N_value = K.from_elements(list(reversed(vector[:n + 1])))
+        R = K.fraction_expr(N_value, D)
         normalized, factor_ = _normalized(a_values, t)
-        return normalized, as_expr(cancel(R * factor_))
+        return normalized, cancel(R*factor_)
     return None
 
 
 def _normalized(values: list[Expr], t: Symbol) -> tuple[list[Expr], Expr]:
     """The coefficients cleared of denominators and common factors, and
     the factor they were multiplied by (which the certificate gets too)."""
-    denominators = [as_expr(together(v).as_numer_denom()[1]) for v in values]
-    scale = as_expr(lcm_list(denominators))
-    scaled = [as_expr(cancel(v * scale)) for v in values]
-    common = as_expr(gcd_list([v for v in scaled if v != 0]))
-    result = [as_expr(cancel(v / common)) for v in scaled]
-    factor_ = as_expr(cancel(scale / common))
+    denominators = [together(v).as_numer_denom()[1] for v in values]
+    try:
+        scale = lcm_list(denominators)
+        scaled = [cancel(v*scale) for v in values]
+        common = gcd_list([v for v in scaled if v != _ZERO])
+    except _POLYNOMIAL_FAILURES:
+        scale, scaled, common = _ONE, values, _ONE
+    result = [cancel(v/common) for v in scaled]
+    factor_ = cancel(scale/common)
     # a positive leading coefficient of the highest order term
     lead = result[-1]
-    if lead.is_negative or (lead.is_number is False and lead.is_polynomial(t)
-                            and as_expr(Poly(lead, t).LC()).is_negative):
+    negative = lead.is_negative is True
+    if not negative and lead.is_number is False and lead.is_polynomial(t) is True:
+        try:
+            negative = Poly(lead, t).LC().is_negative is True
+        except _POLYNOMIAL_FAILURES:
+            negative = False
+    if negative:
         result = [-v for v in result]
         factor_ = -factor_
     return result, factor_
@@ -372,10 +673,10 @@ def _terms(F: Expr, x: Symbol, t: Symbol) -> list[Expr]:
     """``F`` as a sum of hyperexponential terms (trigonometric and
     hyperbolic functions rewritten as exponentials), or ``[]``."""
     G = F
-    if G.has(TrigonometricFunction, HyperbolicFunction):
-        G = as_expr(G.rewrite(exp))
-    G = as_expr(G.expand())
-    terms = [as_expr(a) for a in Add.make_args(G)]
+    if G.has(*_TRIGONOMETRIC):
+        G = G.rewrite(Exp)
+    G = expand(G)
+    terms = list(Add.make_args(G))
     if all(is_hyperexponential(term, x, t) for term in terms):
         return terms
     if is_hyperexponential(F, x, t):
@@ -412,7 +713,8 @@ def almkvist_zeilberger(F: ExprLike, x: Symbol, t: Symbol, max_order: int = 4,
     Examples
     ========
 
-    >>> from sympy import symbols, exp
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.telescoping import almkvist_zeilberger
     >>> x, t = symbols('x t')
     >>> telescoper = almkvist_zeilberger(1/(x**2 + t**2), x, t)
@@ -423,7 +725,7 @@ def almkvist_zeilberger(F: ExprLike, x: Symbol, t: Symbol, max_order: int = 4,
     >>> almkvist_zeilberger(exp(-x**2)*exp(2*x*t), x, t).coefficients
     [-2*t, 1]
     """
-    F_ = as_expr(sympify(F))
+    F_ = to_expr(F)
     terms = _terms(F_, x, t)
     if not terms:
         return None
@@ -443,14 +745,14 @@ def almkvist_zeilberger(F: ExprLike, x: Symbol, t: Symbol, max_order: int = 4,
         found.append((result[0], result[1], term))
     coefficients = found[0][0]
     for other, _, _ in found[1:]:
-        if len(other) != len(coefficients) or any(cancel(a - b) != 0 for a, b in zip(other, coefficients)):
+        if len(other) != len(coefficients) or any(cancel(a - b) != _ZERO for a, b in zip(other, coefficients)):
             # the terms of the sum satisfy different equations: the
             # least common left multiple is not computed
             return None
     if len(found) == 1:
         certificate = found[0][1]
     else:
-        certificate = as_expr(cancel(Add(*[R * term for _, R, term in found]) / F_))
+        certificate = cancel(add(*[R*term for _, R, term in found])/F_)
     return DifferentialTelescoper(F_, x, t, coefficients, certificate)
 
 
@@ -458,10 +760,23 @@ def almkvist_zeilberger(F: ExprLike, x: Symbol, t: Symbol, max_order: int = 4,
 # The differential equation of the integral, and its solution
 
 def _boundary(G: Expr, x: Symbol, point: Expr, direction: str, assumptions: Assumptions) -> Optional[Expr]:
-    value = attempt(lambda: limit(G, x, point, direction, assumptions), settings.timeout)
-    if value is None or value.has(nan, zoo, oo, -oo, Piecewise) or value.has(x):
+    value = attempt(lambda: limit(G, x, point, direction, assumptions), settings.timeout, native=True)
+    if value is None or value.has(nan, zoo, oo, -oo, NaN, ComplexInfinity, Piecewise) or value.has(x):
         return None
     return value
+
+
+def _equation(coefficients: Sequence[Expr], G: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol,
+              assumptions: Assumptions, name: str) -> Optional[Eq]:
+    """``sum_j a_j I^(j) = [G]_a^b`` (the boundary values as limits),
+    ``None`` when one of them is not finite."""
+    upper = _boundary(G, x, b, '-', assumptions)
+    lower = _boundary(G, x, a, '+', assumptions)
+    if upper is None or lower is None:
+        return None
+    f = Function(name)(t)
+    operator = add(*[mul(c, diff(f, (t, j))) for j, c in enumerate(coefficients)])
+    return Eq(operator, simplify(upper - lower))
 
 
 def holonomic_ode(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol,
@@ -474,53 +789,135 @@ def holonomic_ode(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol,
     Examples
     ========
 
-    >>> from sympy import symbols, exp, oo
+    >>> from sympy_extras.core import symbols, oo
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.telescoping import holonomic_ode
     >>> x, t = symbols('x t')
     >>> holonomic_ode(exp(-x**2)*exp(2*x*t), x, -oo, oo, t)
     Eq(-2*t*I(t) + Derivative(I(t), t), 0)
     """
-    F_ = as_expr(sympify(F))
-    a_, b_ = as_expr(sympify(a)), as_expr(sympify(b))
+    F_ = to_expr(F)
     telescoper = almkvist_zeilberger(F_, x, t)
     if telescoper is None:
         return None
-    G = as_expr(telescoper.certificate * F_)
-    upper = _boundary(G, x, b_, '-', assumptions)
-    lower = _boundary(G, x, a_, '+', assumptions)
-    if upper is None or lower is None:
-        return None
-    return Eq(telescoper.operator(name), as_expr(simplify(upper - lower)))
-
-
-def _constants(solution: Expr) -> list[Symbol]:
-    return sorted([s for s in solution.free_symbols if isinstance(s, Symbol) and s.name.startswith('C')
-                   and s.name[1:].isdigit()], key=lambda s: s.name)
+    return _equation(telescoper.coefficients, telescoper.certificate*F_, x, to_expr(a), to_expr(b), t, assumptions,
+                     name)
 
 
 def _initial_values(F: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol, t0: Expr, order: int,
                     assumptions: Assumptions) -> Optional[list[Expr]]:
     """``I^(j)(t0)`` for ``j < order`` by integrating ``d^j F/dt^j`` at
     ``t = t0`` (differentiation under the integral sign), or ``None``."""
-    from .definite import definite_integral
+    from sympy_extras.solvers.linear_ode import has_integral
+    from .telescoping_sympy import definite_integral_of_core
     values: list[Expr] = []
     for j in range(order):
-        integrand = as_expr(diff(F, t, j).subs(t, t0))
-        value = attempt(lambda: definite_integral(integrand, (x, a, b), assumptions, special_values=False),
-                        settings.timeout)
-        if value is None or value.has(Integral, Piecewise, nan, zoo, oo, -oo):
+        integrand = as_expr(diff(F, (t, j)).subs(t, t0))
+        value = definite_integral_of_core(integrand, x, a, b, assumptions, False, settings.timeout)
+        if value is None or has_integral(value) or value.has(Piecewise, nan, zoo, oo, -oo):
             return None
         values.append(value)
     return values
+
+
+def _general_solution(coefficients: Sequence[Expr], rhs: Expr, t: Symbol,
+                      equation: Eq) -> Optional[tuple[Expr, list[Symbol]]]:
+    """The general solution of ``sum_j a_j I^(j) = rhs`` with its
+    constants: a basis of the homogeneous equation and a particular
+    solution by variation of parameters (the native linear solvers),
+    SymPy's ``dsolve`` when they do not find them."""
+    from sympy_extras.solvers.factorization import variation_of_parameters
+    from sympy_extras.solvers.linear_ode import LinearOperator, dsolve_linear, has_integral
+    order = len(coefficients) - 1
+    if order == 0:
+        return cancel(rhs/coefficients[0]), []
+    y = Function('_y')(t)
+    homogeneous = add(*[mul(c, diff(y, (t, j))) for j, c in enumerate(coefficients)])
+    basis = attempt(lambda: dsolve_linear(homogeneous, y, use_dsolve=False, special_values=False),
+                    settings.timeout, native=True)
+    if basis is not None and len(basis) == order and not any(has_integral(s) for s in basis):
+        L = LinearOperator(list(coefficients), t)
+        particular: Optional[Expr] = _ZERO
+        if rhs != _ZERO:
+            particular = attempt(lambda: variation_of_parameters(L, basis, rhs), settings.timeout, native=True)
+        if particular is not None and not has_integral(particular):
+            constants = [Dummy('_C%d' % (j + 1)) for j in range(order)]
+            return add(particular, *[mul(c, s) for c, s in zip(constants, basis)]), list(constants)
+    from .telescoping_sympy import dsolve_of_core
+    return dsolve_of_core(equation, Function('I')(t))
+
+
+def _solve_constants(equations: list[Expr], constants: list[Symbol]) -> Optional[list[Expr]]:
+    """The unique solution of linear equations in the constants."""
+    from sympy_extras.solvers.linsolve import solve_linear_unique
+    from sympy_extras.solvers.recurr import _is_zero, _row_reduce
+    found = solve_linear_unique(equations, constants)
+    if found is not None:
+        return found
+    zeros: dict[Basic, Basic] = {c: _ZERO for c in constants}
+    rows: list[list[Expr]] = []
+    for e in equations:
+        row = [diff(e, c) for c in constants]
+        constant = as_expr(e._xreplace_evaluated(zeros))
+        if any(v.has(*constants) for v in row):
+            return None
+        rows.append(row + [-constant])
+    try:
+        reduced, pivots = _row_reduce(rows)
+    except _POLYNOMIAL_FAILURES:
+        return None
+    if pivots != list(range(len(constants))):
+        return None
+    if any(not _is_zero(row[-1]) for row in reduced[len(pivots):]):
+        return None
+    return [reduced[i][-1] for i in range(len(constants))]
+
+
+def _solve(coefficients: Sequence[Expr], equation: Eq, F: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol,
+           assumptions: Assumptions) -> Optional[Expr]:
+    """The solution of the equation of the integral with its constants
+    fixed by the initial values at ``t0`` (``1``, ``2``, ``1/2``, ``3``,
+    the first at which they are found), ``None`` when a step fails."""
+    rhs = as_expr(equation.rhs)
+    general = _general_solution(coefficients, rhs, t, equation)
+    if general is None:
+        return None
+    solution, constants = general
+    order = len(coefficients) - 1
+    if len(constants) != order:
+        return None
+    if not constants:
+        return solution
+    for t0 in (_ONE, Integer(2), Rational(1, 2), Integer(3)):
+        values = _initial_values(F, x, a, b, t, t0, order, assumptions)
+        if values is None:
+            continue
+        equations = [as_expr(diff(solution, (t, j)).subs(t, t0)) - v for j, v in enumerate(values)]
+        solved = attempt(lambda: _solve_constants(equations, constants), settings.timeout, native=True)
+        if solved is None:
+            continue
+        assignment: dict[Basic, Basic] = dict(zip(constants, solved))
+        return as_expr(solution._xreplace_evaluated(assignment))
+    return None
+
+
+def _verified(value: Expr, F: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions) -> bool:
+    """Whether the numerical check (when it is on) does not reject the
+    value."""
+    if not settings.numerical_checks:
+        return True
+    from .telescoping_sympy import verify_numerically_of_core
+    return verify_numerically_of_core(value, F, x, a, b, assumptions) is not False
 
 
 def holonomic_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol,
                        assumptions: Assumptions = None) -> Optional[ConditionalValue]:
     """``Integral(F, (x, a, b))`` as a function of the parameter ``t`` by
     the holonomic method: the differential equation of
-    :func:`holonomic_ode` solved by ``dsolve``, its constants fixed by
-    the values of the integral and its derivatives at a point ``t0``
-    (``1``, ``2``, ``1/2``, ``3``, the first at which
+    :func:`holonomic_ode` solved by the linear ODE solvers (SymPy's
+    ``dsolve`` when they do not solve it), its constants fixed by the
+    values of the integral and its derivatives at a point ``t0`` (``1``,
+    ``2``, ``1/2``, ``3``, the first at which
     :func:`~sympy_extras.integrals.definite.definite_integral` gives them).
 
     The value holds where the integral converges and may be
@@ -530,59 +927,30 @@ def holonomic_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symb
     Examples
     ========
 
-    >>> from sympy import symbols, exp, oo, cos
+    >>> from sympy_extras.core import symbols, oo
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.telescoping import holonomic_integral
+    >>> from sympy_extras.settings import configure
     >>> x = symbols('x')
     >>> t = symbols('t', positive=True)
-    >>> holonomic_integral(exp(-x**2)*cos(2*t*x), x, 0, oo, t)
-    ConditionalValue(sqrt(pi)*exp(-t**2)/2)
-    >>> holonomic_integral(1/(x**2 + t**2)**2, x, -oo, oo, t)
-    ConditionalValue(pi/(2*t**3))
+    >>> with configure(numerical_checks=False):
+    ...     holonomic_integral(x*exp(-t*x**2), x, 0, oo, t)
+    ConditionalValue(1/(2*t))
     """
-    from .definite import verify_numerically
-    from .marichev_sympy import tidy
-    F_ = as_expr(sympify(F))
-    a_, b_ = as_expr(sympify(a)), as_expr(sympify(b))
-    equation = holonomic_ode(F_, x, a_, b_, t, assumptions)
+    from .marichev import tidy
+    F_ = to_expr(F)
+    a_, b_ = to_expr(a), to_expr(b)
+    telescoper = almkvist_zeilberger(F_, x, t)
+    if telescoper is None:
+        return None
+    equation = _equation(telescoper.coefficients, telescoper.certificate*F_, x, a_, b_, t, assumptions, 'I')
     if equation is None:
         return None
-    unknown = Function('I')(t)
-    if not isinstance(unknown, AppliedUndef):
+    solution = _solve(telescoper.coefficients, equation, F_, x, a_, b_, t, assumptions)
+    if solution is None:
         return None
-    order = _order(equation.lhs, unknown, t)
-    general = attempt(lambda: dsolve(equation, unknown), settings.timeout)
-    if not isinstance(general, Eq) or general.lhs != unknown:
-        return None
-    solution = as_expr(general.rhs)
-    constants = _constants(solution)
-    if len(constants) != order:
-        return None
-    if constants:
-        fixed: Optional[Expr] = None
-        for t0 in (S.One, Integer(2), S.Half, Integer(3)):
-            values = _initial_values(F_, x, a_, b_, t, t0, order, assumptions)
-            if values is None:
-                continue
-            equations = [as_expr(diff(solution, t, j).subs(t, t0)) - v for j, v in enumerate(values)]
-            solved = attempt(lambda: linsolve(equations, constants), settings.timeout)
-            if not isinstance(solved, FiniteSet) or len(solved) != 1:
-                continue
-            assignment = dict(zip(constants, [as_expr(v) for v in list(solved)[0]]))
-            fixed = as_expr(solution.xreplace(assignment))
-            break
-        if fixed is None:
-            return None
-        solution = fixed
     value = tidy(solution, assumptions)
-    if settings.numerical_checks and verify_numerically(value, F_, x, a_, b_, assumptions) is False:
+    if not _verified(value, F_, x, a_, b_, assumptions):
         return None
     return ConditionalValue(value)
 
-
-def _order(lhs: Expr, unknown: Expr, t: Symbol) -> int:
-    """The order of a linear differential expression in ``unknown``."""
-    order = 0
-    for j in range(1, 8):
-        if lhs.has(diff(unknown, t, j)):
-            order = j
-    return order
