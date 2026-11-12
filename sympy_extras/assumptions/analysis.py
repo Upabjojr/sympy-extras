@@ -570,7 +570,19 @@ def _zero_set(f: Expr, x: Symbol) -> Optional[Set]:
     (no step on SymPy: the linear relations of its kernels natively, no
     Lambert W candidates), factor by factor of its common factors as
     SymPy's ``solveset`` does (``exp(x)*(sin(x) + cos(x))``; the callers
-    have checked that every factor is finite); ``None`` when it fails."""
+    have checked that every factor is finite); ``None`` when it fails.
+    The zeros are those of a real variable whatever the assumptions of
+    ``x``: the domain is the caller's."""
+    from sympy_extras.core.symbol import Dummy
+    v = Dummy('v', real=True)
+    found = _zero_set_of(as_expr(f._xreplace_evaluated({x: v})), v)
+    if found is None:
+        return None
+    rebuilt = found._xreplace_evaluated({v: x})
+    return rebuilt if isinstance(rebuilt, Set) else None
+
+
+def _zero_set_of(f: Expr, x: Symbol) -> Optional[Set]:
     from sympy_extras.solvers.transcendental import solve_transcendental
     g = factor_terms(f)
     if isinstance(g, Mul):
@@ -578,14 +590,14 @@ def _zero_set(f: Expr, x: Symbol) -> Optional[Set]:
         for a in g.args:
             if not isinstance(a, Expr) or x not in a.free_symbols:
                 continue
-            part = _zero_set(a, x)
+            part = _zero_set_of(a, x)
             if part is None:
                 return None
             parts.append(part)
         return union(*parts) if parts else EmptySet
     if isinstance(g, Pow) and x not in g.exp.free_symbols:
         if g.exp.is_positive is True:
-            return _zero_set(g.base, x)
+            return _zero_set_of(g.base, x)
         if g.exp.is_negative is True:
             return EmptySet
     if isinstance(g, Exp):
