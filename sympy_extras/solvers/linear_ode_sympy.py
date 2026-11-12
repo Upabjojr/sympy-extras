@@ -11,13 +11,6 @@ converted by :mod:`sympy_extras.interop` around the native module. The
 tests use the private helpers (``_solve_operator``, ``_nullspace``,
 ``_indicial_at``, ``_indicial_at_infinity``).
 
-The step of the native module which stays written on SymPy is called from
-it at run time (it takes and returns objects of the core):
-
-- :func:`dsolve_of_core`: SymPy's ``dsolve``, the last resort of
-  :func:`~sympy_extras.solvers.linear_ode.dsolve_linear` on the reduced
-  equations; the independent parts of its general solution.
-
 The antiderivatives are native (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`).
 
 Examples
@@ -32,7 +25,7 @@ Examples
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import Sequence
 
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
@@ -40,21 +33,19 @@ from sympy.core.function import AppliedUndef
 from sympy.core.symbol import Symbol
 from sympy.polys.polytools import Poly
 
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import as_expr, free_symbols
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.ask_sympy import _core_symbol, _sympy_symbol
 from sympy_extras.assumptions.intervals_sympy import core_expr, sympy_expr
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef
 from sympy_extras.interop import from_sympy, to_sympy
-from sympy_extras.settings import settings
 
 from . import linear_ode as native
 
 __all__ = ['LinearOperator', 'polynomial_solutions', 'rational_solutions',
            'hyperexponential_solutions', 'reduce_order_linear', 'dsolve_linear',
-           'gcrd', 'lclm', 'log_derivative', 'hyperexponential_search', 'dsolve_of_core']
+           'gcrd', 'lclm', 'log_derivative', 'hyperexponential_search']
 
 
 # ---------------------------------------------------------------------------
@@ -102,39 +93,6 @@ def sympy_poly(p: native.UPoly) -> Poly:
 
 # ---------------------------------------------------------------------------
 # the step of the native module which stays on SymPy
-
-def dsolve_of_core(equation: CoreExpr, f: CoreAppliedUndef) -> Optional[list[CoreExpr]]:
-    """The independent parts of the general solution of ``equation = 0``
-    which SymPy's ``dsolve`` finds under the time limit of the settings
-    (the coefficients of the constants ``C1, C2, ...`` of an explicit
-    solution), ``None`` when it finds none."""
-    from sympy.core.function import expand
-    from sympy.core.relational import Eq
-    from sympy.integrals.integrals import Integral
-    from sympy.series.order import Order
-    from sympy.solvers.ode import dsolve
-    e, y = sympy_expr(equation), _sympy_function(f)
-    try:
-        result = attempt(lambda: dsolve(e, y), settings.timeout)
-    except IndexError:
-        # SymPy 1.14: the reduced equation's power series truncated to
-        # Eq(g(x), O(1)), then dsolve(Eq(f(x).diff(x), O(1)), f(x))
-        # raises IndexError in the matcher of the hint factorable
-        # (sympy-extras#25): nothing found by dsolve
-        result = None
-    # a truncated power series with an O term is not a solution either
-    # (sympy-extras#37)
-    if not isinstance(result, Eq) or result.rhs.has(Integral, Order):
-        return None
-    rhs = as_expr(expand(as_expr(result.rhs)))
-    constants = sorted((s for s in free_symbols(rhs) if s.name.startswith('C')), key=lambda s: s.name)
-    parts: list[CoreExpr] = []
-    for c in constants:
-        part = as_expr(rhs.coeff(c))
-        if part != 0 and not part.has(*constants):
-            parts.append(core_expr(part))
-    return parts
-
 
 # ---------------------------------------------------------------------------
 # the face

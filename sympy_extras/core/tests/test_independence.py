@@ -2876,3 +2876,50 @@ def test_native_exact_solutions_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_DSOLVE = r'''
+import sys
+from sympy_extras.core import Function, Symbol, symbols, Integer
+from sympy_extras.functions import exp
+from sympy_extras.matrices.dense import ExprMatrix
+from sympy_extras.solvers.dsolve import dsolve
+from sympy_extras.solvers.ode import solve_ode
+from sympy_extras.solvers.kovacic import rational_riccati
+from sympy_extras.solvers.linear_systems import _commuting_columns, _entries
+from sympy_extras.solvers.first_order import lagrange_ode
+from sympy_extras.integrals.telescoping import _general_solution
+from sympy_extras.core import Eq
+x, k, t = symbols('x k t')
+y = Function('y')(x)
+assert str(dsolve(y.diff(x, 2) + y, y)) == '[Eq(y(x), C1*sin(x) + C2*cos(x))]'
+# solve_ode went to SymPy's dsolve first (pde_sympy.dsolve_of_core)
+assert str(solve_ode(y.diff(x) - k*y - exp(x), y)) == \
+    '[Eq(y(x), Piecewise(((C1 + x)*exp(x), Eq(k, 1)), (C1*exp(k*x) - exp(x)/(k - 1), True)))]'
+# lagrange_ode went to first_order_sympy.dsolve_of_core
+assert str(lagrange_ode(Eq(y, 2*x*y.diff(x) + y.diff(x)**2), y)) == \
+    '[Eq(x, C1/p**2 - 2*p/3), Eq(y(x), (6*C1 - p**3)/(3*p))]'
+# Kovacic case 1 went to kovacic_sympy.riccati_of_core
+assert str(rational_riccati(2/x**2, x)) == '[-1/x, 2/x]'
+# the last resort of dsolve_system went to linear_systems_sympy.linodesolve_of_core
+A = ExprMatrix.from_rows([[0, 2*x], [-2*x, 0]])
+assert str(_commuting_columns(_entries(A, x), x)) == '[[cos(x**2), -sin(x**2)], [sin(x**2), cos(x**2)]]'
+# telescoping's general solution went to telescoping_sympy.dsolve_of_core
+I = Function('I')(t)
+found = _general_solution([1/t, Integer(1)], Integer(1), t, Eq(I.diff(t) + I/t, 1))
+assert found is not None and len(found[1]) == 1, found
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_dsolve_routes_do_not_load_sympy() -> None:
+    """The ODE solvers which handed equations to SymPy's ``dsolve``
+    (``pde_sympy``, ``first_order_sympy``, ``linear_ode_sympy`` and
+    ``telescoping_sympy.dsolve_of_core``), to its rational Riccati solver
+    (``kovacic_sympy.riccati_of_core``) and to its ``linodesolve``
+    (``linear_systems_sympy.linodesolve_of_core``) load no SymPy: the
+    classical hints of ``solvers.dsolve``, the hyperexponential solutions
+    and the native matrix exponential replace them."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DSOLVE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

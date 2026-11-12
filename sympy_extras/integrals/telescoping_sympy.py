@@ -5,11 +5,7 @@ objects.
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of
 :mod:`.conditions_sympy`, the telescopers as :class:`DifferentialTelescoper`
-on SymPy objects). The step of the native modules
-:mod:`.telescoping`, :mod:`.reduction` and :mod:`.dfinite` which stays on
-SymPy is here too, imported by the native modules when it is needed:
-SymPy's ``dsolve`` of an equation of the integral which the native
-linear solvers leave unsolved (:func:`dsolve_of_core`).
+on SymPy objects).
 
 Examples
 ========
@@ -37,24 +33,21 @@ from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_expr, free_symbols
+from sympy_extras._typing_sympy import ExprLike
 from sympy_extras.assumptions import ask as native_ask
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions, sympy_boolean
-from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef
 from sympy_extras.core.logic import Boolean as CoreBoolean, to_boolean
 from sympy_extras.core.relational import Eq as CoreEq
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
-from sympy_extras.settings import settings
 
 from . import conditions as native_conditions
 from . import telescoping as native
 from .conditions_sympy import ConditionalValue
 
 __all__ = ['DifferentialTelescoper', 'logarithmic_derivative', 'is_hyperexponential', 'almkvist_zeilberger',
-           'holonomic_ode', 'holonomic_integral', 'dsolve_of_core']
+           'holonomic_ode', 'holonomic_integral']
 
 
 def _core_symbol(s: Basic) -> CoreSymbol:
@@ -246,20 +239,3 @@ def _sympy_function(f: CoreAppliedUndef) -> AppliedUndef:
     return converted
 
 
-def dsolve_of_core(equation: CoreEq, unknown: CoreAppliedUndef) -> Optional[tuple[CoreExpr, list[CoreSymbol]]]:
-    """The general solution of a linear equation by SymPy's ``dsolve``
-    under the time limit of the settings, on core expressions: the right
-    hand side of the explicit solution and its constants ``C1, C2, ...``
-    in order; ``None`` when it is not found or cannot be converted."""
-    from sympy.solvers.ode import dsolve
-    e, f = _sympy_eq(equation), _sympy_function(unknown)
-    general = attempt(lambda: dsolve(e, f), settings.timeout)
-    if not isinstance(general, Eq) or general.lhs != f:
-        return None
-    solution = as_expr(general.rhs)
-    constants = sorted([s for s in free_symbols(solution) if s.name.startswith('C') and s.name[1:].isdigit()],
-                       key=lambda s: s.name)
-    try:
-        return core_expr(solution), [_core_symbol(c) for c in constants]
-    except (TypeError, ValueError, NotImplementedError):
-        return None

@@ -12,9 +12,10 @@ looking at the orders of the poles of `r` (and its order at infinity):
 
 * **Case 1** (`\\omega` rational): `\\omega` is a rational solution of the
   Riccati equation `\\omega' + \\omega^2 = r`, found from the Laurent parts
-  of `\\sqrt r` at the poles and at infinity, and else with SymPy's
-  rational Riccati solver. The second solution follows by reduction of
-  order.
+  of `\\sqrt r` at the poles and at infinity, and else from the
+  hyperexponential solutions of `z'' = r z` (:func:`rational_riccati`,
+  in place of SymPy's rational Riccati solver). The second solution
+  follows by reduction of order.
 * **Case 2** (`\\omega` quadratic): for each pole and for infinity a finite
   set `E_c` of integers is built from the order of the pole and the
   coefficient of `(x - c)^{-2}`; the families `(e_c)` with
@@ -41,9 +42,10 @@ simplifications are the native ones, and
 The antiderivatives come from the native verified indefinite
 integration (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`, SymPy's routes
 its last methods), the integrals it cannot do are left unevaluated (the
-node :class:`~sympy_extras.integrals.integral.Integral`), and SymPy's
-rational Riccati solver, the fallback of case 1, is called at run time
-through the face (:func:`~sympy_extras.solvers.kovacic_sympy.riccati_of_core`). The cases of the isolated values of the
+node :class:`~sympy_extras.integrals.integral.Integral`), and the
+fallback of case 1, the rational solutions of the Riccati equation,
+comes from the native hyperexponential solutions
+(:func:`~sympy_extras.solvers.linear_ode.hyperexponential_solutions`). The cases of the isolated values of the
 parameters are those of :mod:`sympy_extras.solvers._special_values`.
 
 References
@@ -91,7 +93,10 @@ from sympy_extras.simplify.simplify import simplify
 from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 
-__all__ = ['liouvillian_solution', 'dsolve_kovacic', 'normal_form', 'KovacicSolution']
+__all__ = ['liouvillian_solution', 'dsolve_kovacic', 'normal_form', 'KovacicSolution', 'rational_riccati']
+
+#: what the polynomial routines raise on coefficients they cannot take
+_FAILURES = (BasePolynomialError, NotImplementedError, ValueError, TypeError, ZeroDivisionError)
 
 _ZERO = Integer(0)
 _ONE = Integer(1)
@@ -359,11 +364,12 @@ def _case1(r: Expr, num: _Polynomial, den: _Polynomial, poles: dict[Expr, int], 
            ) -> Optional[KovacicSolution]:
     """Kovacic's case 1: ``omega`` rational, from the Laurent parts of
     ``sqrt(r)`` at the poles and at infinity and the exponents
-    ``alpha``; SymPy's rational Riccati solver is tried as well."""
+    ``alpha``; the rational Riccati solutions of :func:`rational_riccati`
+    are tried as well."""
     result = _case1_kovacic(r, num, den, poles, x)
     if result is not None:
         return result
-    return _case1_sympy(r, x)
+    return _case1_riccati(r, x)
 
 
 def _laurent_sqrt(r: Expr, c: Expr, order: int, x: Symbol) -> Optional[tuple[Expr, Expr]]:
@@ -456,9 +462,49 @@ def _case1_kovacic(r: Expr, num: _Polynomial, den: _Polynomial, poles: dict[Expr
     return None
 
 
-def _case1_sympy(r: Expr, x: Symbol) -> Optional[KovacicSolution]:
-    from .kovacic_sympy import riccati_of_core
-    solutions = riccati_of_core(r, x)
+def rational_riccati(r: Expr, x: Symbol) -> list[Expr]:
+    """The rational solutions ``omega`` of ``omega' + omega**2 = r`` (``r``
+    rational in ``x``) given by the hyperexponential solutions ``z =
+    exp(Integral(omega))`` of ``z'' = r z``
+    (:func:`~sympy_extras.solvers.linear_ode.hyperexponential_solutions`,
+    the native counterpart of SymPy's ``solve_riccati``), each checked.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.solvers.kovacic import rational_riccati
+    >>> x = Symbol('x')
+    >>> rational_riccati(2/x**2, x)
+    [-1/x, 2/x]
+    """
+    from .linear_ode import LinearOperator, hyperexponential_solutions, log_derivative
+    try:
+        L = LinearOperator.from_equation(_equation_of(r, x), _unknown(x))
+        found = hyperexponential_solutions(L)
+    except _FAILURES:
+        return []
+    solutions: list[Expr] = []
+    for z in found:
+        omega = log_derivative(z, x)
+        try:
+            if cancel(omega.diff(x) + omega**2 - r) != _ZERO:
+                continue
+        except _FAILURES:
+            continue
+        if omega not in solutions:
+            solutions.append(omega)
+    return solutions
+
+
+def _unknown(x: Symbol) -> AppliedUndef:
+    return Function('_z')(x)
+
+
+def _equation_of(r: Expr, x: Symbol) -> Expr:
+    z = _unknown(x)
+    return z.diff(x, 2) - r*z
+
+
+def _case1_riccati(r: Expr, x: Symbol) -> Optional[KovacicSolution]:
+    solutions = attempt(lambda: rational_riccati(r, x), settings.timeout, native=True)
     if not solutions:
         return None
     for solution in solutions:
