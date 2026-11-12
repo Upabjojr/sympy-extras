@@ -433,9 +433,14 @@ def piecewise_fold(expr: Expr, evaluate: Optional[bool] = True) -> Expr:
                 args.extend(group)
         else:
             args = [a for a in expr.args if isinstance(a, Expr)]
-        folded = [piecewise_fold(a) for a in args]
-        options: list[list[tuple[Expr, Boolean]]] = [
-            [(pair.expr, pair.cond) for pair in f.args] if isinstance(f, Piecewise) else [(f, true)] for f in folded]
+        # the arguments which are not expressions (the limits of a Sum) are
+        # kept as they are: dropped, the node could not be rebuilt
+        parts: list[Basic] = list(args) if len(args) == len(expr.args) or isinstance(expr, (Add, Mul)) \
+            else list(expr.args)
+        options: list[list[tuple[Basic, Boolean]]] = []
+        for part in parts:
+            f = piecewise_fold(part) if isinstance(part, Expr) else part
+            options.append([(pair.expr, pair.cond) for pair in f.args] if isinstance(f, Piecewise) else [(f, true)])
         for combination in product(*options):
             expressions = tuple(e for e, _ in combination)
             conditions: list[Boolean] = [c for _, c in combination]
