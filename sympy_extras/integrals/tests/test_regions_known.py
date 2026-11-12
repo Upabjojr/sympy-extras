@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from sympy import Rational, exp, pi, sqrt, symbols
 
-from sympy_extras.integrals.regions import integrate_by_ranges
+from sympy_extras.integrals.regions_sympy import integrate_by_ranges
 
 x, y, z = symbols('x y z')
 

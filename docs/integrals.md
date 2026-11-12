@@ -919,9 +919,15 @@ condition whose relations are linear in the last variable (`y < exp(x)`,
 theorem with the bounds solved for that variable, the crossings of the
 bounds found by `solve`, and unbounded outer variables allowed.
 
+The module `sympy_extras.integrals.regions` is native (core objects, no
+SymPy); the one-dimensional integrals are a typed `Integrator` given as
+`integrator=`, by default `definite_integral` on SymPy's side. The
+functions on SymPy objects, used below, are in
+`sympy_extras.integrals.regions_sympy`.
+
 ```python
 >>> from sympy import symbols, exp
->>> from sympy_extras.integrals.regions import IntegralByRanges, integrate_by_ranges
+>>> from sympy_extras.integrals.regions_sympy import IntegralByRanges, integrate_by_ranges
 >>> x, y, z, r = symbols('x y z r')
 >>> IntegralByRanges(1, x**2 + y**2 < 1).doit()
 pi

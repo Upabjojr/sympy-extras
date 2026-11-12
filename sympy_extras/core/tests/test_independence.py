@@ -2277,6 +2277,51 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
+
+def test_native_regions_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.regions` does not load
+    SymPy, nor do the region integrals with an integrator written on the
+    core (the polytopes, polar and cylindrical coordinates, the
+    decomposition with its explicit branches and parameter cells, the
+    Hausdorff measure and the rotational symmetry); only the default
+    integrator (``definite_integral``) reaches SymPy's side, through the
+    face."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REGIONS], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_REGIONS = r'''
+import sys
+from sympy_extras.core import Integer, Rational, Symbol, eq, expand, oo, pi
+from sympy_extras.integrals.axisymmetric import axisymmetric_integral
+from sympy_extras.integrals.regions import IntegralByRanges, _coefficients, integrate_by_ranges
+assert 'sympy' not in sys.modules
+x, y, z, a = Symbol('x'), Symbol('y'), Symbol('z'), Symbol('a')
+def polynomial(f, v, lower, upper, assumptions):
+    terms = _coefficients(f, [v])
+    if lower == -oo or upper == oo or terms is None:
+        return None
+    F = Integer(0)
+    for (k,), c in terms.items():
+        F = F + c*v**(k + 1)/(k + 1)
+    return expand(F.subs(v, upper) - F.subs(v, lower))
+one = Integer(1)
+assert integrate_by_ranges(x*y, (x > 0) & (y > 0) & (x + y < 1), integrator=polynomial) == Rational(1, 24)
+assert integrate_by_ranges(one, (0 < x) & (x < y) & (y < x**2) & (x < 2), integrator=polynomial) == Rational(5, 6)
+assert integrate_by_ranges(one, x**2 + y**2 < 1, integrator=polynomial) == pi
+assert integrate_by_ranges(one, (x**2 + y**2 < 1) & (z > 0) & (z < x**2 + y**2), integrator=polynomial) == pi/2
+found = integrate_by_ranges(one, (x > 0) & (x < a), [x], integrator=polynomial)
+assert [found.subs(a, v) for v in (-1, 0, 2)] == [0, 0, 2]
+assert integrate_by_ranges(one, eq(y, 2*x) & (x > 0) & (x < 1), measure='hausdorff', integrator=polynomial) \
+    == 5**Rational(1, 2)
+assert axisymmetric_integral(one, (x**2 + y**2 < 1) & (z > 0) & (z < 1), [x, y, z], integrator=polynomial) == pi
+assert isinstance(integrate_by_ranges(x**2*y, (x > 0) & (x < 1) & (y > 0) & (y < x**2), [x, y], a > 0,
+                                      integrator=lambda f, v, lo, hi, facts: None), IntegralByRanges)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
 def test_native_algebraic_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.integrals.algebraic` does not load
     SymPy, nor do the recognition of the substitutions (Möbius roots,
