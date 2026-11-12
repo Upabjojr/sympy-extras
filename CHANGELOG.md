@@ -10,6 +10,39 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- **Breaking**: the verified indefinite integration
+  `sympy_extras.integrals.indefinite` (`indefinite_integral`,
+  `verified_antiderivative`, `is_antiderivative`, `real_form`,
+  `conjugate_logarithms`) is native on the typed core: its functions take
+  and return objects of `sympy_extras.core`, and importing it and running
+  its native methods loads no SymPy (the native rational integrator, the
+  radical, exponential and trigonometric tables, the Risch package,
+  Trager's algorithm on the native curves, the binomial differentials, the
+  rewritings and substitutions, the heuristic Risch integrator; the checks
+  by the native `cancel`, `simplify`, structure theorem and reliable
+  values; the cases of the special values by the native
+  `sympy_extras._special_values`). An integral which no method does is the
+  new unevaluated node `sympy_extras.integrals.integral.Integral`
+  (converted to SymPy's `Integral`). SymPy's routes have no native
+  counterpart and are the last methods, reached through the new face
+  `sympy_extras.integrals.indefinite_sympy` (`heurisch_of_core`,
+  `manualintegrate_of_core`, `meijerint_of_core`, `integrate_of_core`), so
+  that SymPy loads only when every native method has failed; SymPy's
+  heuristic Risch integrator, which ran right after the native one, is
+  now the method `'sympy heurisch'` among them. The old API on SymPy
+  objects is `sympy_extras.integrals.indefinite_sympy`, which `definite`
+  uses. The native `antiderivative` calls the native `indefinite`
+  directly: `antiderivative_sympy.verified_antiderivative_of_core` is
+  removed. The quadratures of the native ODE solvers (`kovacic`,
+  `linear_ode`, `factorization`, `linear_systems`, `special`, `darboux`,
+  `abel`, `ode`, `second_order`, `first_order`, `dae`) go through the
+  native `indefinite` too (the new `closed_antiderivative`; SymPy's
+  `integrate(conds='none')` becomes the generic antiderivative,
+  `conds='piecewise'` the one with the cases of the special values), and
+  an integral left undone is the native `Integral`:
+  `kovacic_sympy.integrate_of_core` and `integral_of_core`,
+  `first_order_sympy.integrate_of_core` and `dae_sympy.integral_of_core`
+  are removed.
 - **Breaking**: Trager's algorithm `sympy_extras.integrals.trager`
   (`trager_antiderivative`, `trager_reduce`, `hermite_reduce_algebraic`,
   `is_nonelementary_algebraic`) is native on the typed core: its functions

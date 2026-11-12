@@ -16,8 +16,7 @@ from it at run time (they take and return objects of the core):
   for a fundamental matrix (systems with a commuting antiderivative).
 
 The antiderivatives of Liouville's formula and of variation of constants
-go through :func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`
-and :func:`~sympy_extras.solvers.kovacic_sympy.integral_of_core`.
+are native (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`).
 
 Examples
 ========

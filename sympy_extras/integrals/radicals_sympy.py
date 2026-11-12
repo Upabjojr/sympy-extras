@@ -4,8 +4,7 @@
 :func:`quadratic_radical_antiderivative` and
 :func:`euler_substitution_antiderivative` take and return SymPy objects,
 converted by :mod:`sympy_extras.interop` around the native functions;
-the integrators still written on SymPy (:mod:`.antiderivative`,
-:mod:`.definite`, :mod:`.indefinite`) use them.
+the integrators still written on SymPy (:mod:`.definite`) use them.
 
 Examples
 ========

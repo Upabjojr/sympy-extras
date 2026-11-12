@@ -51,10 +51,10 @@ coefficients, the factorisations, the cancellations, the
 simplifications, the linear systems of the structure constants and the
 symmetries (:mod:`sympy_extras.solvers.ode`) are the native ones, and
 :mod:`sympy_extras.solvers.second_order_sympy` is its face on SymPy
-objects. Three steps have no native counterpart and go through SymPy at
-run time (the functions ending in ``_of_core`` of the faces): SymPy's
-``integrate`` of the quadratures
-(:func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`), its
+objects. The quadratures come from the native indefinite integration
+(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`); two steps have no
+native counterpart and go through SymPy at run time (the functions
+ending in ``_of_core`` of the faces): SymPy's
 ``dsolve`` of the linear equations, the first integrals and the
 equations ``u'' = F(u')``
 (:func:`~sympy_extras.solvers.first_order_sympy.dsolve_of_core`) and its
@@ -258,8 +258,8 @@ def second_order_rhs(equation: Basic, f: AppliedUndef) -> tuple[Expr, Symbol, Sy
 def _integrate(e: Expr, v: Symbol) -> Optional[Expr]:
     """An antiderivative by SymPy's ``integrate`` under the time limit of
     the settings, ``None`` when it gives up or leaves an ``Integral``."""
-    from .kovacic_sympy import integrate_of_core
-    return integrate_of_core(e, v, 'piecewise', False)
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    return closed_antiderivative(e, v, cases=True)
 
 
 def _dsolve(equation: Basic, f: AppliedUndef) -> Optional[list[Basic]]:
@@ -396,7 +396,7 @@ def integrating_factor_p(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> Optional
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate (kovacic_sympy.integrate_of_core)
+    >>> import sympy_extras.interop  # SymPy's routes of indefinite, if reached
     >>> from sympy_extras.core import symbols
     >>> from sympy_extras.solvers.second_order import integrating_factor_p
     >>> x, y, p = symbols('x y p')
@@ -802,8 +802,14 @@ def _unknown_under_integral(candidate: Basic, f: AppliedUndef) -> bool:
     no solution. An integral over a dummy with ``f`` as a limit,
     ``Integral(exp(t**2/2), (t, y(x)))``, is an ordinary implicit solution
     and is kept."""
+    from sympy_extras.integrals.integral import Integral
     x = f.args[0]
     for node in preorder_traversal(candidate):
+        if isinstance(node, Integral):
+            # a native integral is over its own variable
+            if node.function.has(f) and node.variable == x:
+                return True
+            continue
         if not (node._is_foreign_node() and node._compare_name() == 'Integral') or not node.args:
             continue
         if not node.args[0].has(f):

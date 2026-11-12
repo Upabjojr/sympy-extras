@@ -105,3 +105,19 @@ def test_dae_matrices_native() -> None:
     raises(ValueError, lambda: dae_matrices([Eq(y1.diff(x), y1**2)], [y1]))
     raises(ValueError, lambda: dae_matrices([], []))
     assert Symbol('C1') not in A.entries
+
+
+def test_check_dae_with_exponential_and_hyperbolic_forms() -> None:
+    # the native antiderivative of exp(x)*sinh(x) is exp(2*x)/4 - x/2 (SymPy's
+    # stayed hyperbolic): the residual of the right solution mixed both forms,
+    # simplify did not make it zero, and check_dae returned False
+    from sympy_extras.functions.elementary.hyperbolic import Cosh, Sinh
+    A = E([[1, 0, 0], [0, 1, 0], [0, 0, 0]])
+    B = E([[0, 1, 0], [1, 0, 0], [-1, -1, 1]])
+    f = ExprMatrix.column([exp(x), Integer(0), Integer(0)])
+    result = dsolve_dae(A, B, f, x)
+    assert result.solution.has(Sinh) and result.solution.has(Cosh)
+    assert check_dae(A, B, f, result.solution, x)
+    wrong = ExprMatrix.column([result.solution.entries[0] + exp(2*x), result.solution.entries[1],
+                               result.solution.entries[2]])
+    assert not check_dae(A, B, f, wrong, x)

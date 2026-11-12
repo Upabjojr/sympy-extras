@@ -66,9 +66,8 @@ parameters as further variables) and Trager's
 :mod:`sympy_extras.polys.ideals` and :mod:`sympy_extras.polys.fglm` and
 the sparse linear algebra of the domains;
 :mod:`sympy_extras.solvers.darboux_sympy` is its face on SymPy objects.
-One step is not ported and goes through SymPy at run time: the
-quadratures of the integrating factor
-(:func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`).
+The quadratures of the integrating factor come from the native
+indefinite integration (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`).
 
 References
 ==========
@@ -1581,8 +1580,8 @@ class _Darboux(Generic[T]):
 # the quadratures
 
 def _integrate(e: Expr, v: Symbol, x: Symbol, y: Symbol) -> Optional[Expr]:
-    """``Integral(e, v)`` by SymPy (through
-    :func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`) within
+    """``Integral(e, v)`` by the native indefinite integration
+    (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`) within
     half of the time left, with ``x``, ``y`` and the parameters real
     first (the logarithms of a rational integrand come out real:
     ``atan((x + y)/a)`` rather than ``I*log(x + y - I*a)/2 - I*log(x + y
@@ -1592,7 +1591,7 @@ def _integrate(e: Expr, v: Symbol, x: Symbol, y: Symbol) -> Optional[Expr]:
     - b), y)`` is ``0`` for real ``a``, ``b``, ``y``; every antiderivative
     is checked by differentiation); ``None`` when neither is an
     antiderivative in closed form."""
-    from .kovacic_sympy import integrate_of_core
+    from sympy_extras.integrals.indefinite import closed_antiderivative
     real: dict[Symbol, Symbol] = {s: Dummy(s.name, real=True) for s in e.free_symbols}
     real.setdefault(x, Dummy(x.name, real=True))
     real.setdefault(y, Dummy(y.name, real=True))
@@ -1602,7 +1601,7 @@ def _integrate(e: Expr, v: Symbol, x: Symbol, y: Symbol) -> Optional[Expr]:
     integrand = e.xreplace(forward)
     limit = remaining_time()
     budget = settings.timeout if limit is None else limit/2
-    result = attempt(lambda: integrate_of_core(integrand, variable, 'none', False), budget)
+    result = attempt(lambda: closed_antiderivative(integrand, variable), budget)
     if result is not None:
         generic = _generic_branch(result)
         if generic is not None:
@@ -1611,7 +1610,7 @@ def _integrate(e: Expr, v: Symbol, x: Symbol, y: Symbol) -> Optional[Expr]:
                 return candidate
     limit = remaining_time()
     budget = settings.timeout if limit is None else limit/2
-    result = attempt(lambda: integrate_of_core(e, v, 'none', False), budget)
+    result = attempt(lambda: closed_antiderivative(e, v), budget)
     if result is None:
         return None
     generic = _generic_branch(result)
@@ -1622,8 +1621,8 @@ def _integrate(e: Expr, v: Symbol, x: Symbol, y: Symbol) -> Optional[Expr]:
 
 def _is_antiderivative(F: Expr, e: Expr, v: Symbol) -> bool:
     """Whether ``F`` is an antiderivative of ``e`` in closed form: no
-    derivative left, and ``F' - e`` zero (the integrals were refused by
-    :func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`)."""
+    derivative left, and ``F' - e`` zero (the integration in real
+    dummies is checked against the integrand in the original symbols)."""
     if F.has(Derivative):
         return False
     return _is_zero(F.diff(v) - e)

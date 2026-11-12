@@ -6,9 +6,8 @@ The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of
 :mod:`.conditions_sympy`). The steps of the native module which stay on
 SymPy are here too, imported by it at run time: SymPy's ``integrate``
-(:func:`integrate_of_core`) and the verified methods of
-:mod:`.indefinite`, which is not ported yet
-(:func:`verified_antiderivative_of_core`).
+of the polynomials in elementary functions and of the parts of the
+integrations by parts (:func:`integrate_of_core`).
 
 Examples
 ========
@@ -33,7 +32,6 @@ from sympy.integrals.integrals import Integral, integrate
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
 from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import ExprLike, as_expr
-from sympy_extras.assumptions import ask as native_ask
 from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
@@ -41,12 +39,10 @@ from sympy_extras.core.symbol import Symbol as CoreSymbol
 from . import antiderivative as native
 from . import conditions as native_conditions
 from .conditions_sympy import ConditionalValue
-from .laplace_sympy import _sympy_assumptions
 
 __all__ = ['antiderivative', 'elementary_polynomial', 'quick_shape', 'by_parts_shape', 'singularities',
            'discontinuities', 'antiderivative_integral', 'one_sided_limit', 'select_branch', 'real_logarithms',
-           'principal_value_integral', 'finite_part_integral', 'integrate_of_core',
-           'verified_antiderivative_of_core']
+           'principal_value_integral', 'finite_part_integral', 'integrate_of_core']
 
 
 def _conditional(found: Optional[native_conditions.ConditionalValue]) -> Optional[ConditionalValue]:
@@ -280,20 +276,3 @@ def integrate_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> O
     cannot be converted."""
     integrand, variable = sympy_expr(f), _sympy_symbol(x)
     return _back(attempt(lambda: as_expr(integrate(integrand, variable, risch=False)), seconds))
-
-
-def verified_antiderivative_of_core(f: CoreExpr, x: CoreSymbol, assumptions: native_ask.Assumptions,
-                                    methods: list[str], seconds: Optional[float]) -> Optional[CoreExpr]:
-    """:func:`~sympy_extras.integrals.indefinite.verified_antiderivative`
-    (not ported yet) with the ``methods`` within ``seconds``, on core
-    expressions; ``None`` when no method gives an antiderivative, it has
-    an ``Integral`` or it cannot be converted."""
-    from .indefinite import verified_antiderivative
-    integrand, variable, facts = sympy_expr(f), _sympy_symbol(x), _sympy_assumptions(assumptions)
-    try:
-        verified = attempt(lambda: verified_antiderivative(integrand, variable, facts, methods), seconds)
-    except (AttributeError, ZeroDivisionError, AssertionError):
-        # SymPy 1.14: the cache wrapper of meijerint fails on a lazy
-        # exception message ('LazyExceptionMessage' has no 'startswith')
-        return None
-    return None if verified is None else _back(verified[0])

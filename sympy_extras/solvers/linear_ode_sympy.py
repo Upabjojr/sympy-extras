@@ -18,9 +18,7 @@ it at run time (it takes and returns objects of the core):
   :func:`~sympy_extras.solvers.linear_ode.dsolve_linear` on the reduced
   equations; the independent parts of its general solution.
 
-The antiderivatives go through
-:func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core` and
-:func:`~sympy_extras.solvers.kovacic_sympy.integral_of_core`.
+The antiderivatives are native (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`).
 
 Examples
 ========

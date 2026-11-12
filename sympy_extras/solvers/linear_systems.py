@@ -85,12 +85,13 @@ determinants) and the simplifications are the native ones;
 matrices. The antiderivatives of rational functions are the native
 ones (``ratint_ratpart`` and ``ratint_logpart`` of
 :mod:`sympy_extras.integrals.risch.rationaltools`, with the native
-``RootSum`` of :mod:`sympy_extras.polys.rootoftools`). Two steps are not
-ported and go through SymPy at run time: the antiderivative of the trace
-in Liouville's formula and the quadratures of variation of constants
-(:func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`,
-:func:`~sympy_extras.solvers.kovacic_sympy.integral_of_core`), and SymPy's
-``linodesolve``, the last resort for a fundamental matrix
+``RootSum`` of :mod:`sympy_extras.polys.rootoftools`). The antiderivative of
+the trace in Liouville's formula comes from the native indefinite
+integration (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`), the
+quadratures it cannot do are left unevaluated
+(:class:`~sympy_extras.integrals.integral.Integral`), and SymPy's
+``linodesolve``, the last resort for a fundamental matrix, goes through
+SymPy at run time
 (:func:`~sympy_extras.solvers.linear_systems_sympy.linodesolve_of_core`).
 
 References
@@ -352,7 +353,7 @@ def _simplified(e: Expr) -> Expr:
     ``exp_polar`` arguments, which the quadratures had refused), and with
     ``RootSum``s, which it writes in radicals."""
     from sympy_extras.polys.rootoftools import RootSum
-    if _ops(e) >= 400 or e.has(RootSum) or _has_foreign(e, ('Integral', 'RootSum')):
+    if _ops(e) >= 400 or e.has(RootSum) or has_integral(e) or _has_foreign(e, ('RootSum',)):
         return e
     simplified = attempt(lambda: simplify(e), settings.timeout, native=True)
     if simplified is None or simplified.has(ExpPolar, Piecewise) \
@@ -851,9 +852,9 @@ def _sympy_columns(A: Rows, x: Symbol) -> Rows:
 def _liouville(A: Rows, determinant_: Expr, x: Symbol) -> Expr:
     """``det Phi`` as ``C exp(Integral(trace A))`` when the ratio is found
     to be constant, else the simplified determinant."""
-    from .kovacic_sympy import integrate_of_core
+    from sympy_extras.integrals.indefinite import closed_antiderivative
     trace = _normal(_sum([A[i][i] for i in range(len(A))]))
-    integral = attempt(lambda: integrate_of_core(trace, x, 'none', True), settings.timeout, native=True)
+    integral = attempt(lambda: closed_antiderivative(trace, x, closed=True), settings.timeout, native=True)
     if integral is not None:
         abel = exp(integral)
         ratio = attempt(lambda: simplify(determinant_/abel), settings.timeout, native=True)
@@ -867,7 +868,7 @@ def _variation_of_constants(A: Rows, fundamental: ExprMatrix, b: list[Expr], x: 
     """``Phi Integral(Phi**-1 b)``, the components of ``Phi**-1 b`` by
     Cramer's rule."""
     from .factorization import _quadrature
-    from .kovacic_sympy import integral_of_core
+    from sympy_extras.integrals.integral import Integral
     n = len(A)
     rows = [list(fundamental.row(i)) for i in range(n)]
     W = _liouville(A, determinant(rows), x)
@@ -883,7 +884,7 @@ def _variation_of_constants(A: Rows, fundamental: ExprMatrix, b: list[Expr], x: 
             # an integrand with the unevaluated integrals of a fundamental
             # matrix: SymPy does not integrate it, and trying takes the
             # time limit
-            c = integral_of_core(integrand, x)
+            c = Integral(integrand, x)
         else:
             c = _quadrature(integrand, x)
         for i in range(n):

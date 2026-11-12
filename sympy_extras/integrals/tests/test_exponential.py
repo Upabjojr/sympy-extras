@@ -119,7 +119,7 @@ def test_a_linear_shift_reaches_the_exponential_integrals() -> None:
     # form, the exponential integral E_k and the incomplete gamma
     from sympy import Ei, diff, exp, simplify, symbols
     from sympy_extras.integrals.exponential_sympy import exponential_antiderivative
-    from sympy_extras.integrals.indefinite import is_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative
     a, b, c, d, w, z = symbols('a b c d w z')
     F = exponential_antiderivative(exp(2*z)/(z + 1)**2, z)
     assert F is not None and F.has(Ei) and simplify(diff(F, z) - exp(2*z)/(z + 1)**2) == 0
@@ -135,7 +135,7 @@ def test_symbolic_exponents_and_summed_exponents() -> None:
     # whose exponent is a sum, one monomial after factoring
     from sympy import exp, log, symbols
     from sympy_extras.integrals.exponential_sympy import power_exponential
-    from sympy_extras.integrals.indefinite import is_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative
     A, a, b, c, h, r, v, z = symbols('A a b c h r v z')
     for f in (z**(v - 1)*exp(A*z**r), exp(A*z**r), exp(b*z**2*log(a) + c*z**2*log(h))):
         F = power_exponential(f, z)
@@ -149,7 +149,7 @@ def test_linear_factors_shift_and_the_confluent_form_for_odd_powers() -> None:
     # real on the whole line
     from sympy import exp, hyper, symbols, uppergamma
     from sympy_extras.integrals.exponential_sympy import exponential_antiderivative
-    from sympy_extras.integrals.indefinite import is_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative
     x = symbols('x')
     f = (x + 1) * exp(-x**3 - 3 * x**2 - 3 * x)
     F = exponential_antiderivative(f, x)
@@ -196,7 +196,7 @@ def test_exponentials_of_a_square_and_its_reciprocal_by_the_error_function() -> 
     # dispatcher's rewriting, exp(-x**2 - 1/x**2) directly
     from sympy import diff, simplify, erf
     from sympy_extras.integrals.exponential_sympy import reciprocal_square_exponential
-    from sympy_extras.integrals.indefinite import indefinite_integral
+    from sympy_extras.integrals.indefinite_sympy import indefinite_integral
     x, z, a, b, d = symbols('x z a b d')
     F = reciprocal_square_exponential(exp(-x**2 - 1 / x**2), x)
     assert F == sqrt(pi) * (exp(-2) * erf(x - 1 / x) + exp(2) * erf(x + 1 / x)) / 4
@@ -237,7 +237,7 @@ def test_the_error_function_of_a_composite_argument() -> None:
     assert F == -sqrt(pi) * erfi((x**2 + 1) / x) / 4 + sqrt(pi) * exp(4) * erfi(x - 1 / x) / 4
     # a sum with a plain monomial, and the logarithmic substitution with
     # powers of x (FriCAS's integ 200, 127, 128)
-    from sympy_extras.integrals.indefinite import verified_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import verified_antiderivative
     found = verified_antiderivative((1 - exp(-x**2))**2 / x**3, x)
     assert found is not None and found[1] == 'exponential' and found[0].has(Ei)
     found = verified_antiderivative(exp(-log(x)**2 - 1) / x**3, x)
