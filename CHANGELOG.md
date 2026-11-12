@@ -10,6 +10,30 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The native ODE solvers no longer call SymPy's `dsolve`, its rational
+  Riccati solver or its `linodesolve` at run time. The new
+  `sympy_extras.solvers.dsolve` (`dsolve`, `explicit_solution`,
+  `solution_parts`, `linear_coefficients`, `linear_basis`) ports SymPy's
+  classical hints to the core: linear equations with constant
+  coefficients (conjugate roots as `sin`/`cos`), Euler's equations, the
+  first order linear equation, the reduction to the lowest derivative and
+  rational coefficients through `linear_ode`, the particular solutions
+  by variation of parameters; separable, Bernoulli, exact and
+  homogeneous-coefficient first order equations and factorable ones. It
+  replaces SymPy's `dsolve` in `solvers.ode` (`solve_ode`, `dsolve_lie`),
+  `solvers.pde`, `solvers.second_order`, `solvers.first_order`
+  (`lagrange_ode`), `solvers.abel` (`air_solution`), `solvers.linear_ode`
+  (the last resort of `dsolve_linear`) and `integrals.telescoping`. The
+  fallback of Kovacic's case 1 is the new `kovacic.rational_riccati`
+  (the hyperexponential solutions of `z'' = r z`), and the last resort
+  for a fundamental matrix of `linear_systems.dsolve_system` is
+  `exp(M g(x))` for `A = g'(x) M` by the native matrix exponential. The
+  routes `pde_sympy.dsolve_of_core`, `first_order_sympy.dsolve_of_core`,
+  `linear_ode_sympy.dsolve_of_core`, `telescoping_sympy.dsolve_of_core`,
+  `kovacic_sympy.riccati_of_core` and
+  `linear_systems_sympy.linodesolve_of_core` are removed. The solutions
+  are SymPy's or equivalent ones (checked by substitution); a first
+  order linear solution keeps SymPy's form `(C1 + x)*exp(x)` when shorter.
 - **Breaking**: the verified indefinite integration
   `sympy_extras.integrals.indefinite` (`indefinite_integral`,
   `verified_antiderivative`, `is_antiderivative`, `real_form`,
