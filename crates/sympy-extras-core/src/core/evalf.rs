@@ -284,6 +284,20 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             crate::functions::special::gamma_functions::gamma_value(*g, &values, prec)
         }
         Head::Function(
+            g @ (super::basic::Function::Zeta
+            | super::basic::Function::DirichletEta
+            | super::basic::Function::PolyLog
+            | super::basic::Function::LerchPhi
+            | super::basic::Function::RiemannXi
+            | super::basic::Function::Stieltjes),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::zeta_functions::zeta_value(*g, &values, prec)
+        }
+        Head::Function(
             g @ (super::basic::Function::Factorial
             | super::basic::Function::Binomial
             | super::basic::Function::RisingFactorial
@@ -437,7 +451,13 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::LogGamma
                 | super::basic::Function::PolyGamma
                 | super::basic::Function::DiGamma
-                | super::basic::Function::TriGamma => {
+                | super::basic::Function::TriGamma
+                | super::basic::Function::Zeta
+                | super::basic::Function::DirichletEta
+                | super::basic::Function::PolyLog
+                | super::basic::Function::LerchPhi
+                | super::basic::Function::RiemannXi
+                | super::basic::Function::Stieltjes => {
                     unreachable!("evaluated above with all their arguments")
                 }
                 g

@@ -138,7 +138,13 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Factorial2
         | Function::PolyGamma
         | Function::DiGamma
-        | Function::TriGamma => {
+        | Function::TriGamma
+        | Function::Zeta
+        | Function::DirichletEta
+        | Function::PolyLog
+        | Function::LerchPhi
+        | Function::RiemannXi
+        | Function::Stieltjes => {
             // DefinedFunction._eval_conjugate
             if is_true(e, extended_real) {
                 return Ok(Some(e.clone()));
@@ -493,6 +499,12 @@ fn function_real_imag(
         | Function::PolyGamma
         | Function::DiGamma
         | Function::TriGamma
+        | Function::Zeta
+        | Function::DirichletEta
+        | Function::PolyLog
+        | Function::LerchPhi
+        | Function::RiemannXi
+        | Function::Stieltjes
         | Function::Sign
         | Function::Conjugate => {
             if ignore == Some(e) {

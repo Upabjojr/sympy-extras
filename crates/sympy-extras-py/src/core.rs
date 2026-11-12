@@ -203,6 +203,12 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "PolyGamma" => Basic::new(Head::Function(Function::PolyGamma), args()?),
         "DiGamma" => Basic::new(Head::Function(Function::DiGamma), args()?),
         "TriGamma" => Basic::new(Head::Function(Function::TriGamma), args()?),
+        "Zeta" => Basic::new(Head::Function(Function::Zeta), args()?),
+        "DirichletEta" => Basic::new(Head::Function(Function::DirichletEta), args()?),
+        "PolyLog" => Basic::new(Head::Function(Function::PolyLog), args()?),
+        "LerchPhi" => Basic::new(Head::Function(Function::LerchPhi), args()?),
+        "RiemannXi" => Basic::new(Head::Function(Function::RiemannXi), args()?),
+        "Stieltjes" => Basic::new(Head::Function(Function::Stieltjes), args()?),
         "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
@@ -357,6 +363,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 Function::Max | Function::Min => "miscellaneous",
                 Function::Floor | Function::Ceiling | Function::Frac => "integers",
                 Function::DiracDelta | Function::Heaviside => "delta_functions",
+                Function::Zeta
+                | Function::DirichletEta
+                | Function::PolyLog
+                | Function::LerchPhi
+                | Function::RiemannXi
+                | Function::Stieltjes => "zeta_functions",
                 Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
                     "gamma_functions"
                 }
@@ -375,6 +387,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             };
             let package: &str = if matches!(f, Function::DiracDelta | Function::Heaviside)
                 || sympy_extras_core::functions::special::gamma_functions::is_gamma_function(*f)
+                || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
             {
                 "special"
             } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f) {
@@ -2036,6 +2049,18 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
         "ab_contains" => {
             let v: bool = sympy_extras_core::core::accumbounds::contains(&a[0], &a[1]).map_err(e)?;
             return Ok(pyo3::types::PyBool::new(py, v).to_owned().into_any());
+        }
+        "zeta" | "dirichlet_eta" | "polylog" | "lerchphi" | "riemann_xi" | "stieltjes" => {
+            use sympy_extras_core::functions::special::zeta_functions as zf;
+            match name {
+                "zeta" => zf::zeta(&a[0], a.get(1)),
+                "dirichlet_eta" => zf::dirichlet_eta(&a[0], a.get(1)),
+                "polylog" => zf::polylog(&a[0], &a[1]),
+                "lerchphi" => zf::lerchphi(&a[0], &a[1], &a[2]),
+                "riemann_xi" => zf::riemann_xi(&a[0]),
+                _ => zf::stieltjes(&a[0], a.get(1)),
+            }
+            .map_err(e)?
         }
         "gamma" | "loggamma" | "polygamma" | "digamma" | "trigamma" => {
             use sympy_extras_core::functions::special::gamma_functions as gf;

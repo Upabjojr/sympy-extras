@@ -263,6 +263,12 @@ pub enum Function {
     PolyGamma,
     DiGamma,
     TriGamma,
+    Zeta,
+    DirichletEta,
+    PolyLog,
+    LerchPhi,
+    RiemannXi,
+    Stieltjes,
 }
 
 impl Function {
@@ -320,6 +326,12 @@ impl Function {
             Function::PolyGamma => "polygamma",
             Function::DiGamma => "digamma",
             Function::TriGamma => "trigamma",
+            Function::Zeta => "zeta",
+            Function::DirichletEta => "dirichlet_eta",
+            Function::PolyLog => "polylog",
+            Function::LerchPhi => "lerchphi",
+            Function::RiemannXi => "riemann_xi",
+            Function::Stieltjes => "stieltjes",
         }
     }
 
@@ -377,6 +389,12 @@ impl Function {
             Function::PolyGamma => "PolyGamma",
             Function::DiGamma => "DiGamma",
             Function::TriGamma => "TriGamma",
+            Function::Zeta => "Zeta",
+            Function::DirichletEta => "DirichletEta",
+            Function::PolyLog => "PolyLog",
+            Function::LerchPhi => "LerchPhi",
+            Function::RiemannXi => "RiemannXi",
+            Function::Stieltjes => "Stieltjes",
         }
     }
 
@@ -398,9 +416,17 @@ impl Function {
             | Function::FallingFactorial
             | Function::Subfactorial
             | Function::Factorial2 => 10000,
-            Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
-                10000
-            }
+            Function::Zeta
+            | Function::DirichletEta
+            | Function::PolyLog
+            | Function::LerchPhi
+            | Function::RiemannXi
+            | Function::Stieltjes
+            | Function::Gamma
+            | Function::LogGamma
+            | Function::PolyGamma
+            | Function::DiGamma
+            | Function::TriGamma => 10000,
             Function::Sin => 20,
             Function::Cos => 21,
             Function::Tan => 22,

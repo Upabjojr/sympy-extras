@@ -245,7 +245,14 @@ fn polygamma_eval(n: &Basic, z: &Basic) -> PolyResult<Basic> {
     if is_true(n, Predicate::integer) && is_true(n, Predicate::nonnegative) {
         let integral: bool = integer_value(z).is_some();
         if integral || *z == Basic::half() {
-            return Err(not_ported("zeta (polygamma at the integers and at 1/2)"));
+            use super::zeta_functions::zeta;
+            let n1: Basic = add(&[n.clone(), Basic::one()])?;
+            let sign: Basic = pow(&Basic::negative_one(), &n1)?;
+            if integral {
+                return mul(&[sign, factorial(n)?, zeta(&n1, Some(z))?]);
+            }
+            let factor: Basic = sub(&pow(&int(2), &n1)?, &Basic::one())?;
+            return mul(&[sign, factorial(n)?, factor, zeta(&n1, None)?]);
         }
     }
     Ok(node(Function::PolyGamma, vec![n.clone(), z.clone()]))

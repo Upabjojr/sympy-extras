@@ -15,7 +15,7 @@ thread_local! {
 }
 
 /// The Bernoulli number `B_m` (`B_1 = -1/2`).
-fn bernoulli(m: usize) -> Rat {
+pub(crate) fn bernoulli(m: usize) -> Rat {
     BERNOULLI.with(|cell| {
         let mut b = cell.borrow_mut();
         while b.len() <= m {
@@ -247,4 +247,122 @@ pub fn polygamma(m: u64, z: &Complex, prec: usize) -> Option<Complex> {
     let back: Complex = &factor * &correction;
     let value: Complex = if m % 2 == 0 { &total - &back } else { &total + &back };
     Some(finish(&value, prec, real))
+}
+
+fn c_pow(base: &Complex, s: &Complex) -> Complex {
+    (s * &base.ln()).exp()
+}
+
+/// The Hurwitz zeta `zeta(s, a)` to `prec` bits (the Riemann zeta for
+/// `a = 1`) by Euler-Maclaurin summation; `None` at `s = 1` and at a
+/// nonpositive integer `a`.
+pub fn hurwitz_zeta(s: &Complex, a: &Complex, prec: usize) -> Option<Complex> {
+    let (sr, si) = parts(s);
+    if si == Real::ZERO && sr == real_int(&Int::ONE, prec) {
+        return None;
+    }
+    if is_pole(a) {
+        return hurwitz_at_nonpositive_integer(s, a, prec);
+    }
+    let (ar, ai) = parts(a);
+    let real: bool = si == Real::ZERO && ai == Real::ZERO && ar > Real::ZERO;
+    let s_size: f64 = (to_f64(&sr).powi(2) + to_f64(&si).powi(2)).sqrt();
+    let wp: usize = prec + 40 + (s_size.log2().max(0.0) as usize) * 4;
+    let s: Complex = complex(sr.with_precision(wp).value(), si.with_precision(wp).value());
+    let a: Complex = complex(ar.clone().with_precision(wp).value(), ai.with_precision(wp).value());
+    let n: i64 = (wp as f64 * 0.25 + s_size + 10.0 - to_f64(&ar).min(0.0)).ceil() as i64;
+    let minus_s: Complex = -&s;
+    let mut total: Complex = c_int(0, wp);
+    for k in 0..n {
+        total = &total + &c_pow(&(&a + &c_int(k, wp)), &minus_s);
+    }
+    let an: Complex = &a + &c_int(n, wp);
+    let one: Complex = c_int(1, wp);
+    total = &total + &(&c_pow(&an, &(&one - &s)) / &(&s - &one));
+    let an_minus_s: Complex = c_pow(&an, &minus_s);
+    total = &total + &(&an_minus_s * &complex_real(real_rat(&rat(1, 2), wp), wp));
+    // sum_j B_2j/(2j)! * s(s+1)...(s+2j-2) * an**(-s-2j+1)
+    let an_size: f64 = modulus(&an);
+    let mut rising: Complex = s.clone();
+    let mut power: Complex = &an_minus_s / &an;
+    let inverse_square: Complex = &one / &(&an * &an);
+    let mut factorial: Int = Int::from(2u8);
+    let mut magnitude: f64 = s_size.max(1.0).log2();
+    for j in 1..4 * wp {
+        let b: Rat = bernoulli(2 * j);
+        let coefficient: Rat = b / Rat::from(factorial.clone());
+        let term: Complex = &(&complex_real(real_rat(&coefficient, wp), wp) * &rising) * &power;
+        total = &total + &term;
+        let size: f64 = log2_abs(&coefficient) + magnitude - (2 * j) as f64 * an_size.log2();
+        if size < -(wp as f64) {
+            break;
+        }
+        // the next rising factorial s(s+1)...(s+2j)
+        let next1: Complex = &s + &c_int(2 * j as i64 - 1, wp);
+        let next2: Complex = &s + &c_int(2 * j as i64, wp);
+        magnitude += modulus(&next1).max(1.0).log2() + modulus(&next2).max(1.0).log2();
+        rising = &(&rising * &next1) * &next2;
+        power = &power * &inverse_square;
+        factorial = factorial * Int::from(2 * j + 1) * Int::from(2 * j + 2);
+    }
+    Some(finish(&total, prec, real))
+}
+
+/// `polylog(s, z)` by its series `sum z**k/k**s` for `|z| < 3/4`; `None`
+/// elsewhere (mpmath's other formulas are not ported).
+pub fn polylog_series(s: &Complex, z: &Complex, prec: usize) -> Option<Complex> {
+    let size: f64 = modulus(z);
+    if size >= 0.75 {
+        return None;
+    }
+    let (sr, si) = parts(s);
+    let (zr, zi) = parts(z);
+    let real: bool = si == Real::ZERO && zi == Real::ZERO;
+    let wp: usize = prec + 40;
+    if size == 0.0 {
+        return Some(complex(real_int(&Int::ZERO, prec), real_int(&Int::ZERO, prec)));
+    }
+    let re_s: f64 = to_f64(&sr);
+    let s: Complex = complex(sr.with_precision(wp).value(), si.with_precision(wp).value());
+    let z: Complex = complex(zr.with_precision(wp).value(), zi.with_precision(wp).value());
+    let minus_s: Complex = -&s;
+    let mut total: Complex = c_int(0, wp);
+    let mut power: Complex = z.clone();
+    for k in 1..(100 * wp as i64) {
+        let term: Complex = &power * &c_pow(&c_int(k, wp), &minus_s);
+        total = &total + &term;
+        let estimate: f64 = k as f64 * size.log2() - re_s * (k as f64).log2();
+        if estimate < -((wp + 10) as f64) && k > 2 {
+            break;
+        }
+        power = &power * &z;
+    }
+    Some(finish(&total, prec, real))
+}
+
+/// `zeta(s, -m)` for an integer `m >= 0` as mpmath extends the sum: the
+/// terms `(-j)**(-s)` on the principal branch, and the term of `0`: zero
+/// for `re(-s) > 0`, one for `re(-s) = 0`, a pole otherwise.
+fn hurwitz_at_nonpositive_integer(s: &Complex, a: &Complex, prec: usize) -> Option<Complex> {
+    let (sr, si) = parts(s);
+    if sr > Real::ZERO {
+        return None;
+    }
+    let wp: usize = prec + 40;
+    let m: i64 = (-parts(a).0).to_int().value().try_into().ok()?;
+    if m > 0 && si != Real::ZERO {
+        // mpmath's fast sum for a complex s takes the log of a negative
+        // integer there (ComplexResult): no value
+        return None;
+    }
+    let s_wp: Complex = complex(sr.clone().with_precision(wp).value(), si.with_precision(wp).value());
+    let minus_s: Complex = -&s_wp;
+    let mut total: Complex = hurwitz_zeta(&s_wp, &c_int(1, wp), wp)?;
+    if sr == Real::ZERO {
+        total = &total + &c_int(1, wp);
+    }
+    for j in 1..=m {
+        total = &total + &c_pow(&c_int(-j, wp), &minus_s);
+    }
+    Some(finish(&total, prec, false))
 }
