@@ -1,15 +1,12 @@
 """The SymPy face of Charpit's method
-(:mod:`sympy_extras.solvers.charpit`), and the two steps of it which stay
-on SymPy.
+(:mod:`sympy_extras.solvers.charpit`), and the step of it which stays on
+SymPy.
 
 :func:`complete_integral` and :func:`check_complete_integral` take SymPy
 equations and functions, converted by :mod:`sympy_extras.interop` around
-the native functions. The native module calls two functions of this
-module at run time (they take and return objects of the core):
+the native functions. The native module calls one function of this
+module at run time (it takes and returns objects of the core):
 
-* :func:`solve_of_core`, SymPy's ``solve`` for the equations which are
-  not polynomial in the unknown (radicals, exponentials and logarithms of
-  it), which the native polynomial roots do not cover;
 * :func:`antiderivative_of_core`, SymPy's ``integrate`` for the
   integrands which are not sums of powers of the variable.
 
@@ -29,12 +26,10 @@ from __future__ import annotations
 from typing import Optional
 
 from sympy.core.basic import Basic
-from sympy.core.expr import Expr
 from sympy.core.function import AppliedUndef
 from sympy.core.relational import Eq
 from sympy.core.symbol import Symbol
 from sympy.integrals.integrals import Integral, integrate
-from sympy.solvers.solvers import solve
 
 from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import as_expr
@@ -50,21 +45,11 @@ from sympy_extras.settings import settings
 
 from . import charpit as native
 
-__all__ = ['complete_integral', 'check_complete_integral', 'solve_of_core', 'antiderivative_of_core']
+__all__ = ['complete_integral', 'check_complete_integral', 'antiderivative_of_core']
 
 
 # ---------------------------------------------------------------------------
 # the steps of the native method which stay on SymPy
-
-def solve_of_core(expression: CoreExpr, variable: CoreSymbol) -> list[CoreExpr]:
-    """The solutions of ``expression = 0`` for ``variable`` by SymPy's
-    ``solve`` (under the time limit; none when it gives up)."""
-    sympy_expression, sympy_variable = sympy_expr(expression), as_symbol_of(variable)
-    found = attempt(lambda: solve(sympy_expression, sympy_variable), settings.timeout)
-    if not found:
-        return []
-    return [core_expr(v) for v in found if isinstance(v, Expr)]
-
 
 def antiderivative_of_core(e: CoreExpr, x: CoreSymbol) -> Optional[CoreExpr]:
     """An antiderivative of ``e`` in ``x`` by SymPy's ``integrate`` (under

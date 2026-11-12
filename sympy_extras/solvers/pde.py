@@ -13,12 +13,12 @@ The module imports no SymPy: the equations, the symmetries and the
 reductions are objects of the core (:mod:`sympy_extras.core`); the
 reduced equation is normalised by the native polynomial factorisation,
 and the solutions are verified by substitution with the native
-:func:`~sympy_extras.simplify.simplify.simplify`, and the characteristic
+:func:`~sympy_extras.simplify.simplify.simplify`, the characteristic
 equations and the reduced equations are solved by the native classical
-hints of :func:`~sympy_extras.solvers.dsolve.dsolve`. One step has no
-native counterpart and is taken from SymPy at run time through the face
-:mod:`sympy_extras.solvers.pde_sympy`: SymPy's ``solve`` for the
-equations which are not linear in the unknown (``solve_of_core``). The face also keeps the old API on SymPy
+hints of :func:`~sympy_extras.solvers.dsolve.dsolve`, and the equations
+which are not linear in the unknown by the native port of SymPy's
+``solve`` (:func:`~sympy_extras.solvers.solvers.solve_equation`). The
+face :mod:`sympy_extras.solvers.pde_sympy` keeps the old API on SymPy
 objects.
 """
 from __future__ import annotations
@@ -134,14 +134,15 @@ def _dsolve(equation: Basic, f: AppliedUndef, timeout: Optional[float]) -> Optio
 
 def _solve(e: Expr, v: Symbol, timeout: Optional[float]) -> list[Expr]:
     """The solutions of ``e = 0`` for ``v``: natively when ``e`` is linear
-    in ``v``, by SymPy's ``solve`` otherwise (none when it gives up)."""
+    in ``v``, by the native port of SymPy's ``solve`` otherwise (none when it
+    gives up)."""
     a = diff(e, v)
     if a != 0 and not a.has(v):
         b = e.subs(v, Integer(0))
         if isinstance(b, Expr) and not b.has(v):
             return [-b/a]
-    from .pde_sympy import solve_of_core
-    found = attempt(lambda: solve_of_core(e, v), timeout)
+    from .solvers import solve_equation
+    found = attempt(lambda: solve_equation(e, v), timeout, native=True)
     return found if found is not None else []
 
 

@@ -10,6 +10,57 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `assumptions.solve` loads no SymPy at run time: the systems which the
+  regular chains do not solve go to the native `solve_system` (the
+  substitution method of SymPy's `nonlinsolve`, the unknowns left free
+  standing for themselves) instead of SymPy's `nonlinsolve`, and the
+  intersections the sets of the core leave unevaluated are evaluated
+  natively (a condition set restricted to the other set, the images
+  `a*k + b` of the integers in a bounded interval as a finite set, a finite
+  set filtered by its decided memberships) instead of by SymPy's
+  constructors; the integers in an interval stay an `Intersection` natively
+  (SymPy's face still gives its `Range`). `solve_sympy.nonlinsolve_of_core`
+  and `solve_sympy.evaluated_set_of_core` are removed. The points of
+  `nonlinsolve` repeated in two radical forms (`sqrt(1 - y**2)` and
+  `sqrt(-(y - 1)*(y + 1))`) are given once.
+
+- The relations in one unknown which `assumptions.solve`, the
+  transcendental solver and `sympy_extras._special_values` solved with
+  SymPy's `solveset` at run time (`assumptions.solve_sympy.solveset_of_core`,
+  `solvers.transcendental_sympy.solveset_of_core`, both removed) are solved
+  by the new native port `sympy_extras.solvers.solveset` (`solveset`,
+  `real_polynomial_solutions`): over the reals the polynomials with
+  irrational coefficients (all their roots, the real ones told apart by
+  reliable values, the signs between them for an inequality), the
+  parametric linear and even binomial inequalities, the transcendental
+  relations through `solve_transcendental`, the equations in exponentials
+  and logarithms by their checked candidates and `g(u(x)) = c` for a sine,
+  a cosine or a tangent; over the complex numbers the rational equations,
+  `g(u(x)) = c` for an exponential, trigonometric or hyperbolic `g` (images
+  of the integers) and the radical equations. What it does not solve is
+  the `ConditionSet` of the relation, as SymPy's answer. The roots which
+  are numbers are written `a + b*I`, as SymPy's `_solve_as_poly` does (the
+  formulas of Ferrari put a square root on its branch cut). The extraneous
+  root `-1` which SymPy's `solveset` gave for `log(x) + log(x - 1) = log(2)`
+  over the reals is not returned.
+
+- The solvers which called SymPy's `solve` at run time through the
+  `solve_of_core` functions of the faces (`charpit`, `second_order`,
+  `lie`, `abel`, `ode`, `pde`, `factorization`, and the Lambert W
+  candidates of `transcendental`) use the native port of it, the new
+  modules `sympy_extras.solvers.solvers` (`solve_equation`: one equation
+  in one unknown by its roots, one generator, the radicals of one base,
+  the inversion of the outer functions; `solve_system`: polynomial systems
+  by a Gröbner basis and substitution; `invert`, `checksol`) and
+  `sympy_extras.solvers.bivariate` (`solve_lambert`, SymPy's Lambert W
+  forms), so that these steps load no SymPy. The functions
+  `charpit_sympy.solve_of_core`, `factorization_sympy.solve_of_core`,
+  `pde_sympy.solve_of_core` and `transcendental_sympy.solve_of_core` are
+  removed. The Lambert W candidates of `solve_transcendental` include the
+  branch `-1` whenever it is real (SymPy's `solve` gave only the principal
+  branch of `x = exp(x) - 2`, which the transcendental solver completed
+  already).
+
 - **Breaking**: the definite integration driver `sympy_extras.integrals.definite`
   (`definite_integral`, `conditional_integral`, `verify_numerically`) is
   native on the typed core: its functions take and return objects of

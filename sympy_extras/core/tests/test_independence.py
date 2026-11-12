@@ -2923,3 +2923,98 @@ def test_native_dsolve_routes_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_DSOLVE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SOLVE_EQUATION = r'''
+import sys
+from sympy_extras.core import Eq, Function, symbols, sqrt
+from sympy_extras.functions import exp, log
+from sympy_extras.solvers.solvers import solve_equation, solve_system
+from sympy_extras.solvers.transcendental import solve_transcendental
+from sympy_extras.solvers.abel import particular_solution
+from sympy_extras.solvers.charpit import complete_integral
+assert 'sympy' not in sys.modules
+x, y, a, C1, C2 = symbols('x y a C1 C2')
+assert str(solve_equation(log(y) - C1*x - C2, y)) == '[exp(C1*x + C2)]'
+assert str(solve_equation(2*sqrt(x) - a, x)) == '[a**2/4]'
+assert str(solve_system([x*y - 1, x - y], [x, y])) == '[{x: -1, y: -1}, {x: 1, y: 1}]'
+assert str(solve_transcendental(Eq(x, exp(x) - 2), x)) == '{-2 - LambertW(-exp(-2)), -2 - LambertW(-exp(-2), -1)}'
+assert str(particular_solution((1, 0, -x**2, 1), x)) == 'x'
+u = Function('u')(x, y)
+p, q = u.diff(x), u.diff(y)
+assert str(complete_integral(Eq(u, p*x + q*y + sqrt(1 + p**2 + q**2)), u)) == \
+    'Eq(u(x, y), a*x + b*y + sqrt(a**2 + b**2 + 1))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_solve_equation_does_not_load_sympy() -> None:
+    """The native port of SymPy's ``solve`` (:mod:`sympy_extras.solvers.solvers`,
+    the Lambert W forms of :mod:`sympy_extras.solvers.bivariate`) loads no
+    SymPy, nor do the solvers which called SymPy's ``solve`` through the
+    ``solve_of_core`` functions of the faces of charpit, factorization, pde
+    and transcendental: a radical in the unknown of a Clairaut equation, the
+    undetermined coefficients of an Abel equation, the Lambert W roots of
+    ``x = exp(x) - 2``."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVE_EQUATION], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SOLVESET = r'''
+import sys
+from sympy_extras.core import Eq, I, sqrt, symbols
+from sympy_extras.functions import log, sin, sinh
+from sympy_extras.sets import Complexes, Reals
+from sympy_extras.solvers.solveset import solveset
+from sympy_extras.assumptions.solve import solve
+assert 'sympy' not in sys.modules
+x, y, n = symbols('x y n')
+assert str(solveset(Eq(sinh(x), I), x, Complexes)) == 'ImageSet(Lambda(_n, 2*_n*I*pi + I*pi/2), Integers)'
+assert str(solveset(Eq(sin(3/n), 0), n, Reals)) == \
+    'Union(ImageSet(Lambda(_n, 3/(2*_n*pi)), Integers), ImageSet(Lambda(_n, 3/(pi*(2*_n + 1))), Integers))'
+assert str(solveset(x**2 - 2 > sqrt(2), x, Reals)) == \
+    'Union(Interval.open(-oo, -sqrt(sqrt(2) + 2)), Interval.open(sqrt(sqrt(2) + 2), oo))'
+assert len(solve(y**4 - y**3 - 10*y**2 + 5*y + 24, y, domain=Complexes).args) == 4
+assert str(solve(Eq(log(x) + log(x - 1), log(2)), x, domain=Reals)) == '{2}'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_solveset_does_not_load_sympy() -> None:
+    """The native port of SymPy's ``solveset`` (:mod:`sympy_extras.solvers.solveset`)
+    loads no SymPy, nor do the steps which went through the
+    ``solveset_of_core`` functions of ``assumptions.solve_sympy`` and
+    ``solvers.transcendental_sympy``: the images of the integers of
+    ``sinh(x) = I`` and ``sin(3/n) = 0``, a polynomial inequality with
+    irrational coefficients, a quartic over the complex numbers, and a sum
+    of logarithms."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVESET], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SYSTEMS_AND_INTERSECTIONS = r'''
+import sys
+from sympy_extras.core import Rational, symbols
+from sympy_extras.functions import sin
+from sympy_extras.assumptions.solve import solve
+assert 'sympy' not in sys.modules
+x, y, z = symbols('x y z')
+assert str(solve([x*z - y, x - y*z], [x, y, z])) == '{(0, 0, z), (-y, y, -1), (y, y, 1)}'
+assert str(solve([x**2 + y**2 - 1], [x, y])) == '{(-sqrt(1 - y**2), y), (sqrt(1 - y**2), y)}'
+assert str(solve(sin(x) - Rational(1, 2), x, (x > 0) & (x < 1))) == '{pi/6}'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_systems_and_intersections_do_not_load_sympy() -> None:
+    """The systems in positive dimension which ``assumptions.solve`` gave
+    to SymPy's ``nonlinsolve`` (``solve_sympy.nonlinsolve_of_core``) and
+    the intersections of images of the integers with intervals which it
+    gave to SymPy's constructors (``solve_sympy.evaluated_set_of_core``)
+    load no SymPy: the native ``solve_system`` and evaluation."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SYSTEMS_AND_INTERSECTIONS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

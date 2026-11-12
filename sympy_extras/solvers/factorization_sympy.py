@@ -9,14 +9,6 @@ and SymPy expressions (the solver given to :func:`solve_factored` too),
 converted by :mod:`sympy_extras.interop` around the native functions;
 :class:`OperatorFactorization` carries SymPy operators.
 
-The step of the native module which stays written on SymPy is called from
-it at run time (it takes and returns objects of the core):
-
-- :func:`solve_of_core`: SymPy's ``solve`` on the quadratic
-  Grassmann–Plücker relations of Beke's method, when several
-  hyperexponential solutions of an associated equation differ by rational
-  factors.
-
 Examples
 ========
 
@@ -31,56 +23,25 @@ LinearOperator([0, -1, 0, 1], x)
 """
 from __future__ import annotations
 
-from typing import Callable, Optional, Sequence
+from typing import Callable, Optional
 
-from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
 
-from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import Truth, as_expr
 from sympy_extras.assumptions.ask_sympy import _core_symbol, _sympy_symbol
 from sympy_extras.assumptions.intervals_sympy import core_expr, sympy_expr
 from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.symbol import Symbol as CoreSymbol
-from sympy_extras.interop import from_sympy
-from sympy_extras.settings import settings
 
 from . import factorization as native
 from . import linear_ode as native_ode
 from .linear_ode_sympy import LinearOperator
 
 __all__ = ['OperatorFactorization', 'right_factor', 'left_factor', 'factor_operator',
-           'variation_of_parameters', 'solve_factored', 'solve_of_core']
+           'variation_of_parameters', 'solve_factored']
 
 #: a solver of homogeneous equations: a list of independent solutions
 Solver = Callable[[LinearOperator], list[Expr]]
-
-
-# ---------------------------------------------------------------------------
-# the step of the native module which stays on SymPy
-
-def solve_of_core(equations: Sequence[CoreExpr], unknowns: Sequence[CoreSymbol]
-                  ) -> Optional[list[dict[CoreSymbol, CoreExpr]]]:
-    """The solutions of a polynomial system which SymPy's ``solve`` finds
-    (``dict=True``) under the time limit of the settings, ``None`` when it
-    does not finish."""
-    from sympy.solvers.solvers import solve
-    system = [sympy_expr(e) for e in equations]
-    symbols = [_sympy_symbol(u) for u in unknowns]
-    found = attempt(lambda: [{k: as_expr(v) for k, v in d.items() if isinstance(k, Basic)}
-                             for d in solve(system, symbols, dict=True)], settings.timeout)
-    if found is None:
-        return None
-    result: list[dict[CoreSymbol, CoreExpr]] = []
-    for d in found:
-        converted: dict[CoreSymbol, CoreExpr] = {}
-        for k, v in d.items():
-            key = from_sympy(k)
-            if isinstance(key, CoreSymbol):
-                converted[key] = core_expr(v)
-        result.append(converted)
-    return result
 
 
 # ---------------------------------------------------------------------------

@@ -58,9 +58,8 @@ The quadratures of the variation of parameters and of Abel's identity
 come from the native indefinite integration
 (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`, the integrals it cannot do
 left unevaluated as :class:`~sympy_extras.integrals.integral.Integral`);
-SymPy's ``solve`` on the quadratic Grassmann–Plücker systems goes through
-SymPy at run time
-(:func:`~sympy_extras.solvers.factorization_sympy.solve_of_core`).
+the quadratic Grassmann–Plücker systems are solved by the native port of
+SymPy's ``solve`` (:func:`~sympy_extras.solvers.solvers.solve_system`).
 
 References
 ==========
@@ -319,7 +318,7 @@ def _decomposable(vectors: list[list[Expr]], position: dict[tuple[int, ...], int
     Plücker relations ``sum_l (-1)**l w_{I + j_l} w_{J - j_l} = 0``
     (``|I| = k - 1``, ``|J| = k + 1``), one point per component found,
     and whether the polynomial system was solved."""
-    from .factorization_sympy import solve_of_core
+    from .solvers import solve_system
     m = len(vectors)
     unknowns: list[Symbol] = [Dummy('c%d' % j) for j in range(m)]
     combined = [_sum([c*v[p] for c, v in zip(unknowns, vectors)]) for p in range(len(vectors[0]))]
@@ -348,7 +347,8 @@ def _decomposable(vectors: list[list[Expr]], position: dict[tuple[int, ...], int
         free = unknowns[chart + 1:]
         found: Optional[list[dict[Symbol, Expr]]] = [{}]
         if reduced:
-            found = solve_of_core(reduced, free)
+            system, unknowns_left = reduced, free
+            found = attempt(lambda: solve_system(system, unknowns_left), settings.timeout, native=True)
         if found is None:
             complete = False
             continue

@@ -24,14 +24,16 @@ solution sets are objects of the core (:mod:`sympy_extras.core`,
 :mod:`sympy_extras.sets`) and the module imports no SymPy: the
 cylindrical algebraic decomposition (:mod:`sympy_extras.polys.cad.qe`),
 the radical forms of its roots (:mod:`sympy_extras.polys.roots`) and the
-relations linear in the unknown with real coefficients are native.
-Three steps go through SymPy at run time
-(:mod:`sympy_extras.solvers.transcendental_sympy`, its face on SymPy
-objects, holds them, the functions ending in ``_of_core``): SymPy's
-``solveset`` of the other relations polynomial in the unknown with
-transcendental or symbolic coefficients when no solver is given, the candidates of
-SymPy's ``solve`` with the Lambert W function, and the reliable numerical
-values of :mod:`sympy_extras._numeric` which check them.
+relations linear in the unknown with real coefficients are native, and
+so are the Lambert W candidates (the native port of SymPy's ``solve``,
+:mod:`sympy_extras.solvers.solvers` and :mod:`sympy_extras.solvers.bivariate`)
+and the reliable numerical values of :mod:`sympy_extras._numeric` which
+check them, and the other relations polynomial in the unknown with
+transcendental or symbolic coefficients, when no solver is given, are
+solved by the native port of SymPy's ``solveset``
+(:mod:`sympy_extras.solvers.solveset`).
+:mod:`sympy_extras.solvers.transcendental_sympy` is its face on SymPy
+objects.
 
 Examples
 ========
@@ -725,8 +727,9 @@ def _linear_solution(relation: Relational, x: Symbol) -> Optional[Set]:
 def _solve_real(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
     """The real solutions of a formula in ``x``: by the cylindrical
     algebraic decomposition when polynomial with rational coefficients,
-    by the solver of the context (or SymPy's) when polynomial with other
-    constant coefficients, through the kernels otherwise."""
+    by the solver of the context (or the native port of SymPy's
+    ``solveset``) when polynomial with other constant coefficients, through
+    the kernels otherwise."""
     if isinstance(formula, BooleanTrue):
         return Reals
     if isinstance(formula, BooleanFalse):
@@ -743,11 +746,8 @@ def _solve_real(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
             linear = _linear_solution(formula, x)
             if linear is not None:
                 return linear
-            from .transcendental_sympy import solveset_of_core
-            try:
-                return solveset_of_core(formula, x)
-            except (NotImplementedError, ValueError, TypeError):
-                return None
+            from .solveset import solveset
+            return solveset(formula, x, Reals)
         if isinstance(formula, (And, Or)):
             parts: list[Set] = []
             for a in formula.args:
@@ -764,9 +764,9 @@ def _solve_real(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
 
 def _lambert(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
     """Equations ``x`` appears in both inside and outside an exponential
-    or logarithm (``x*exp(x) = 1``, ``x + log(x) = 2``): SymPy's ``solve``
-    has the Lambert W patterns; its candidates are checked on the
-    equation and kept only when real."""
+    or logarithm (``x*exp(x) = 1``, ``x + log(x) = 2``): the Lambert W
+    patterns of the native port of SymPy's ``solve``; its candidates are
+    checked on the equation and kept only when real."""
     if not ctx.lambert or not isinstance(formula, Relational) or formula.rel_op != '==':
         return None
     e = formula.lhs - formula.rhs
@@ -774,8 +774,8 @@ def _lambert(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
         return None
     if not (e.has(Exp) or e.has(Log)):
         return None
-    from .transcendental_sympy import solve_of_core
-    found = attempt(lambda: solve_of_core(e, x), settings.timeout)
+    from .solvers import solve_equation
+    found = attempt(lambda: solve_equation(e, x), settings.timeout, native=True)
     if not found:
         return None
     candidates: list[Expr] = []
@@ -862,7 +862,9 @@ def solve_transcendental(formula: Boolean, x: Symbol, solver: Optional[Solver] =
         The real unknown.
     solver : callable, optional
         Solves a formula polynomial in a variable (with parameters or
-        transcendental constants) for it; SymPy's ``solveset`` by default.
+        transcendental constants) for it; the native port of SymPy's
+        ``solveset`` (:func:`~sympy_extras.solvers.solveset.solveset`) by
+        default.
         The formulas with rational coefficients and no parameters are
         always solved by the cylindrical algebraic decomposition.
     decide : callable, optional
@@ -872,8 +874,8 @@ def solve_transcendental(formula: Boolean, x: Symbol, solver: Optional[Solver] =
     lambert : bool, optional
         Whether the equations with the unknown inside and outside an
         exponential or a logarithm are tried with the Lambert W candidates
-        of SymPy's ``solve`` (the only step which loads SymPy when a
-        ``solver`` is given); ``False`` gives ``None`` for them.
+        of the native port of SymPy's ``solve``; ``False`` gives ``None``
+        for them.
 
     Examples
     ========

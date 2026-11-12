@@ -268,9 +268,9 @@ an integral it cannot do left as the unevaluated
 `sympy_extras.integrals.integral.Integral`); the last resort on the
 reduced equations is the native classical hints of
 `sympy_extras.solvers.dsolve` (constant coefficients, Euler's equations,
-the reduction to the lowest derivative), and SymPy's `solve` (the
-Grassmann–Plücker relations of Beke's method) is called through the face
-(`solve_of_core`).
+the reduction to the lowest derivative), and the Grassmann–Plücker
+relations of Beke's method are solved by the native port of SymPy's
+`solve` (`sympy_extras.solvers.solvers.solve_system`).
 
 ```python
 >>> from sympy import Matrix, Function

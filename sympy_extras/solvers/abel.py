@@ -55,12 +55,10 @@ invariants, the gcd of the equivalence, the simplifications and the
 numerical check of a relation (a secant method in mpmath) are native,
 and :mod:`sympy_extras.solvers.abel_sympy` is its face on SymPy objects.
 The antiderivatives come from the native indefinite integration
-(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`); two steps go through
-SymPy at run time (the functions ending in ``_of_core`` of the faces):
-SymPy's ``solve`` of the undetermined coefficients of a particular solution
-(:func:`~sympy_extras.solvers.factorization_sympy.solve_of_core`) and of
-a common factor of degree two or more of the equivalence
-(:func:`~sympy_extras.solvers.charpit_sympy.solve_of_core`); an inverse
+(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`), the
+undetermined coefficients of a particular solution and a common factor of
+degree two or more of the equivalence are solved by the native ports of
+SymPy's ``solve`` (:mod:`sympy_extras.solvers.solvers`), and an inverse
 Riccati equation which the native
 :func:`~sympy_extras.solvers.first_order.riccati_ode` does not solve goes
 to the native classical hints of :func:`~sympy_extras.solvers.dsolve.dsolve`.
@@ -324,8 +322,9 @@ def _xi_candidates(invariants: AbelInvariants, reference: AbelInvariants, x: Sym
         lead, constant = common.all_coeffs()
         candidates.append(_normal(-constant/lead))
     else:
-        from .charpit_sympy import solve_of_core
-        found = solve_of_core(common.as_expr(), xi_symbol)
+        from .solvers import solve_equation
+        polynomial = common.as_expr()
+        found = attempt(lambda: solve_equation(polynomial, xi_symbol), settings.timeout, native=True) or []
         candidates.extend(c for c in found if not (c.free_symbols - {x}))
     return candidates
 
@@ -384,7 +383,6 @@ def particular_solution(coefficients: CoefficientsLike, x: Symbol, degree: int =
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's solve (factorization_sympy.solve_of_core)
     >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.solvers.abel import particular_solution
     >>> x = Symbol('x')
@@ -393,7 +391,7 @@ def particular_solution(coefficients: CoefficientsLike, x: Symbol, degree: int =
     >>> particular_solution((1, 0, -x**2, 1), x)         # y = x solves y' = y**3 - x**2 y + 1
     x
     """
-    from .factorization_sympy import solve_of_core
+    from .solvers import solve_system
     f3, f2, f1, f0 = _coefficients_of(coefficients)
     if f0 == _ZERO:
         return _ZERO
@@ -408,7 +406,8 @@ def particular_solution(coefficients: CoefficientsLike, x: Symbol, degree: int =
         if equations is None:
             continue
         variables = unknowns + denominators[:shape]
-        solutions = solve_of_core(equations, variables)
+        system = equations
+        solutions = attempt(lambda: solve_system(system, variables), settings.timeout, native=True)
         if not solutions:
             continue
         for solution in solutions:
@@ -590,7 +589,7 @@ def air_solution(coefficients: CoefficientsLike, x: Symbol, f: AppliedUndef, Q: 
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate and solve (the *_of_core functions)
+    >>> import sympy_extras.interop  # SymPy's integrate (the *_of_core functions)
     >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.abel import air_solution
     >>> x = Symbol('x')
@@ -687,7 +686,7 @@ def abel_by_invariants(equation: Basic, f: AppliedUndef,
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate and solve (the *_of_core functions)
+    >>> import sympy_extras.interop  # SymPy's integrate (the *_of_core functions)
     >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.abel import abel_by_invariants
     >>> x = Symbol('x')

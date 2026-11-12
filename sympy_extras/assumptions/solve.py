@@ -15,15 +15,16 @@ is its face on SymPy objects. The assumptions are decided by the native
 the complex numbers are solved by the native
 :func:`~sympy_extras.polys.rationalsolve.solveset_rational`, the families
 of a regular chain with the native polynomials, and the candidates are
-checked natively. The steps which are not ported go through SymPy at run
-time (the face holds them, the functions ending in ``_of_core``): SymPy's
-``solveset`` (the other equations and the inequalities in one unknown),
-``nonlinsolve`` and the evaluation of an intersection of
-sets which is not ported (with ``Range``, ...), the exact points of
-the zero-dimensional regular chains (SymPy's ``CRootOf``, through
-:mod:`sympy_extras.polys.regularchains_sympy`). The transcendental
-equations (:mod:`sympy_extras.solvers.transcendental`, whose Lambert W
-candidates go through SymPy's ``solve``), the periods of the periodic
+checked natively. The systems which are not solved by the regular chains
+(the substitution method of SymPy's ``nonlinsolve``, by
+:func:`~sympy_extras.solvers.solvers.solve_system`), the intersections
+which the sets of the core leave unevaluated (the images ``a*k + b`` of
+the integers in a bounded interval, as SymPy's ``ImageSet`` evaluates
+them), the other equations and the
+inequalities in one unknown (the native port of SymPy's ``solveset``,
+:mod:`sympy_extras.solvers.solveset`), the transcendental
+equations (:mod:`sympy_extras.solvers.transcendental`, with the Lambert W
+candidates of the native port of SymPy's ``solve``), the periods of the periodic
 formulas (:func:`sympy_extras.calculus.util.periodicity`), the reliable numerical values
 of :mod:`sympy_extras._numeric`, the cylindrical algebraic decomposition
 (:mod:`sympy_extras.polys.cad.qe`: ``solution_set``;
@@ -112,12 +113,144 @@ def _unevaluated(s: Basic) -> bool:
 
 
 def _evaluated_set(s: Set) -> Set:
-    """The set evaluated by SymPy when the core leaves an operation on it
-    unevaluated (an intersection with the integers, ...)."""
+    """The set with the operations the core leaves unevaluated evaluated
+    as SymPy's constructors do (see :func:`_evaluate_operations`)."""
     if not _unevaluated(s):
         return s
-    from .solve_sympy import evaluated_set_of_core
-    return evaluated_set_of_core(s)
+    return _evaluate_operations(s)
+
+
+def _evaluate_operations(s: Set) -> Set:
+    """The intersections and complements of ``s`` evaluated bottom up
+    (SymPy's ``Intersection`` and ``Complement``): a condition set
+    restricted to the other set, the images ``a*k + b`` of the integers in
+    a bounded interval as a finite set, a finite set filtered by the
+    decided memberships; what is not decided stays unevaluated, and so do
+    the integers in an interval (SymPy's ``Range``, which the sets of the
+    core do not have: the face rebuilds it)."""
+    if isinstance(s, SetUnion):
+        return union(*[_evaluate_operations(a) for a in s.sets])
+    if isinstance(s, Complement):
+        a, b = s.args_sets
+        return complement(_evaluate_operations(a), _evaluate_operations(b))
+    if not isinstance(s, Intersection):
+        return s
+    parts = [_evaluate_operations(a) for a in s.sets]
+    result = parts[0]
+    for other in parts[1:]:
+        result = _intersect_two(result, other)
+    return result
+
+
+def _intersect_two(a: Set, b: Set) -> Set:
+    from sympy_extras.sets.fancysets import ImageSet
+    plain = intersection(a, b)
+    if not isinstance(plain, Intersection):
+        return plain
+    for first, second in ((a, b), (b, a)):
+        if isinstance(first, ConditionSet):
+            return condition_set(first.sym, first.condition, _intersect_two(first.base_set, second))
+        if isinstance(first, FiniteSet):
+            return _filtered_elements(first, second, plain)
+        if isinstance(first, ImageSet) and isinstance(second, Interval):
+            found = _image_in(first, second)
+            if found is not None:
+                return found
+    return plain
+
+
+def _membership_truth(e: Expr, s: Set) -> Truth:
+    """Whether ``e`` is in ``s``: decided by the core, by certified
+    comparisons with the ends of an interval, or by the equality of
+    numbers for a finite set."""
+    found = s.contains(e)
+    if isinstance(found, BooleanTrue):
+        return True
+    if isinstance(found, BooleanFalse):
+        return False
+    if isinstance(s, FiniteSet):
+        if any(_same_number(e, k) for k in s.elements):
+            return True
+        return None
+    if isinstance(s, Interval) and e.is_number:
+        from sympy_extras.solvers.isolation import compare_points
+        if _clearly_not_real(e):
+            return False
+        low = compare_points(e, s.start) if s.start.is_finite else 1
+        high = compare_points(s.end, e) if s.end.is_finite else 1
+        if low is None or high is None:
+            return None
+        if low < 0 or high < 0 or (low == 0 and s.left_open) or (high == 0 and s.right_open):
+            return False
+        return True
+    return None
+
+
+def _filtered_elements(elements: FiniteSet, other: Set, unevaluated: Set) -> Set:
+    kept: list[Expr] = []
+    for e in elements.elements:
+        truth = _membership_truth(e, other)
+        if truth is None:
+            return unevaluated
+        if truth:
+            kept.append(e)
+    return finite_set(*kept) if kept else EmptySet
+
+
+#: the most integers listed for a bounded interval
+_MAX_INTEGERS = 10000
+
+
+def _integer_bounds(low: Expr, high: Expr) -> Optional[tuple[int, int]]:
+    """Integers ``m <= n`` with every integer of ``[low, high]`` between
+    them, from reliable values of the (finite) ends."""
+    import math
+    from sympy_extras._numeric import reliable_complex
+    lo = reliable_complex(low, 30) if low.is_finite else None
+    hi = reliable_complex(high, 30) if high.is_finite else None
+    if lo is None or hi is None:
+        return None
+    m, n = math.floor(lo.real) - 1, math.ceil(hi.real) + 1
+    if n - m > _MAX_INTEGERS:
+        return None
+    return m, n
+
+
+def _image_in(image: Set, region: Interval) -> Optional[Set]:
+    """The images ``a*k + b`` (``a``, ``b`` real numbers, ``k`` an
+    integer) in a bounded interval, as a finite set."""
+    from sympy_extras.core.function import diff
+    from sympy_extras.sets.fancysets import ImageSet
+    assert isinstance(image, ImageSet)
+    if len(image.variables) != 1 or image.base_sets != (Integers,) or not isinstance(image.image, Expr):
+        return None
+    if not (region.start.is_finite and region.end.is_finite):
+        return None
+    k = image.variables[0]
+    expression = image.image
+    a = diff(expression, k)
+    if a.has(k) or not a.is_number or a.is_real is not True or a.is_zero is not False:
+        return None
+    b = as_expr(expression.subs(k, Integer(0)))
+    if not b.is_number or b.is_real is not True:
+        return None
+    if a.is_positive is not True and a.is_negative is not True:
+        return None
+    low, high = (region.start - b)/a, (region.end - b)/a
+    if a.is_negative is True:
+        low, high = high, low
+    bounds = _integer_bounds(low, high)
+    if bounds is None:
+        return None
+    kept: list[Expr] = []
+    for n in range(bounds[0], bounds[1] + 1):
+        point = as_expr(expression.subs(k, Integer(n)))
+        truth = _membership_truth(point, region)
+        if truth is None:
+            return None
+        if truth:
+            kept.append(point)
+    return finite_set(*kept) if kept else EmptySet
 
 
 def _intersect(*sets: Set) -> Set:
@@ -138,8 +271,9 @@ def _domain_set(facts: Facts, symbols: Sequence[Symbol], domain: Optional[Set]) 
 
 def _solveset(formula: Boolean, x: Symbol, domain: Set) -> Set:
     """Solve a Boolean combination of relations in one variable, atom by
-    atom: a rational equation over the complex numbers natively, the
-    others with SymPy's ``solveset``."""
+    atom: a rational equation over the complex numbers by the port of
+    SymPy's ``solveset_rational``, the others by the native port of
+    SymPy's ``solveset`` (:mod:`sympy_extras.solvers.solveset`)."""
     if isinstance(formula, BooleanTrue):
         return domain
     if isinstance(formula, BooleanFalse):
@@ -162,11 +296,8 @@ def _solveset(formula: Boolean, x: Symbol, domain: Set) -> Set:
         rational = _rational_solutions(formula, x, domain)
         if rational is not None:
             return rational
-        from .solve_sympy import solveset_of_core
-        try:
-            return solveset_of_core(formula, x, domain)
-        except (NotImplementedError, ValueError, TypeError):
-            return condition_set(x, formula, domain)
+        from sympy_extras.solvers.solveset import solveset
+        return solveset(formula, x, domain)
     return condition_set(x, formula, domain)
 
 
@@ -674,13 +805,8 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
     unchecked = solutions is None
     refuted = False
     if solutions is None:
-        from .solve_sympy import nonlinsolve_of_core
-        try:
-            solutions = nonlinsolve_of_core(equations, list(symbols))
-            # None: points with sets among their coordinates
-            refuted = solutions is None
-        except (NotImplementedError, ValueError, TypeError):
-            unsolved = True
+        solutions = _nonlinsolve(equations, symbols)
+        unsolved = solutions is None
     # the points of the chains are not substituted back: they are exact, and
     # evalf spends the whole time limit on a residual which is exactly zero
     # at a root object (the bug: 34 s for two quadratic equations)
@@ -719,6 +845,20 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
         inside = and_(*[_membership(s, dom) for s in symbols]) if not isinstance(dom, ComplexesClass) else true
         result = union(result, condition_set(Tuple(*symbols), and_(condition, inside), point_set(*undecided)))
     return result
+
+
+def _nonlinsolve(equations: Sequence[Expr], symbols: Sequence[Symbol]) -> Optional[Set]:
+    """The solutions of a system as SymPy's ``nonlinsolve`` gives them, a
+    finite set of points with the unknowns it leaves free standing for
+    themselves: the native port of SymPy's ``solve`` of a system
+    (:func:`~sympy_extras.solvers.solvers.solve_system`, its substitution
+    method), ``None`` when it does not solve it."""
+    from sympy_extras.solvers.solvers import solve_system
+    found = attempt(lambda: solve_system(list(equations), list(symbols)), settings.timeout, native=True)
+    if found is None:
+        return None
+    points = [Tuple(*[solution.get(s, s) for s in symbols]) for solution in found]
+    return point_set(*points) if points else EmptySet
 
 
 def _informative(c: Boolean) -> bool:
