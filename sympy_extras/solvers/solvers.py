@@ -661,7 +661,10 @@ def _solve(f: Expr, x: Symbol, depth: int) -> Optional[list[Expr]]:
             if solved is None:
                 return None
             found.extend(solved)
-        return _distinct(found)
+        # SymPy's checkdens: no root of a denominator
+        denominators = [_expr(m.base) for m in f.args if isinstance(m, Pow) and isinstance(m.exp, Expr)
+                        and m.exp.is_negative is True and isinstance(m.base, Expr) and m.base.has(x)]
+        return [v for v in _distinct(found) if not any(_zeroes_denominator(d, x, v) for d in denominators)]
     from sympy_extras.polys.rationaltools import together
     from sympy_extras.simplify.radsimp import fraction
     numerator, denominator = fraction(together(f))
