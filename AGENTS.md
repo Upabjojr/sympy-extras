@@ -269,7 +269,18 @@ sympy_extras/
                              numerically_equal, numerical_verdict (native: the native ask, find_instance, structure theorem)
         conditions_sympy.py  the SymPy face of conditions, which the integrators written on SymPy use (ConditionalValue
                              on SymPy objects; the translation of SymPy's symbol flags stays on SymPy)
-        telescoping.py       Almkvist–Zeilberger creative telescoping, holonomic_ode, holonomic_integral
+        telescoping.py       Almkvist–Zeilberger creative telescoping, holonomic_ode, holonomic_integral (native: the polynomials
+                             over QQ_I(parameters) of the typed layer, the native limits and linear ODE solvers; the
+                             initial values, the numerical check and SymPy's dsolve through telescoping_sympy)
+        telescoping_sympy.py the SymPy face of telescoping, and definite_integral_of_core, verify_numerically_of_core,
+                             dsolve_of_core (also used by reduction and dfinite)
+        reduction.py         HermiteReducer, hermite_reduce, reduction_telescoper, reduction_ode, reduction_integral:
+                             reduction-based creative telescoping by Hermite reduction (native)
+        reduction_sympy.py   the SymPy face of reduction, used by definite
+        dfinite.py           Chyzak's algorithm: chyzak, closure, annihilators, normal_form, dfinite_ode, dfinite_integral
+                             (native; SymPy's expr_to_holonomic of annihilators and of the factors not written down
+                             through dfinite_sympy)
+        dfinite_sympy.py     the SymPy face of dfinite, used by definite, and holonomic_of_core
         parametric.py        differentiation under the integral sign (Feynman's trick)
         antiderivative.py    antiderivatives evaluated by one-sided limits at every discontinuity
         brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)

@@ -539,6 +539,30 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- Creative telescoping for integrals is native (**breaking**):
+  `sympy_extras.integrals.telescoping` (`almkvist_zeilberger`,
+  `holonomic_ode`, `holonomic_integral`, `DifferentialTelescoper`, ...),
+  `sympy_extras.integrals.reduction` (`HermiteReducer`, `hermite_reduce`,
+  `reduction_telescoper`, `reduction_ode`, `reduction_integral`) and
+  `sympy_extras.integrals.dfinite` (`chyzak`, `closure`, `annihilators`,
+  `normal_form`, `dfinite_ode`, `dfinite_integral`, ...) take and return
+  objects of the core and import no SymPy. The polynomials in `x` have
+  their coefficients in the field `QQ_I(parameters)` of the typed layer
+  (factored over `QQ`, or over `QQ_I` when `I` occurs, as SymPy's
+  `QQ(t)` and `QQ_I(t)` factor), the linear systems are solved by its
+  null spaces, the boundary limits are the native ones, the equation of
+  the integral is solved by the native linear ODE solvers with variation
+  of parameters (SymPy's `dsolve` only when they leave it unsolved), and
+  the equations of the factors `exp`, `sin`, `cos`, `sinh`, `cosh`,
+  `besselj`, `erf`, `erfc`, `erfi` and `log` are written down. What stays
+  on SymPy goes through the `*_of_core` functions of the faces: the
+  initial values and the numerical check (`definite_integral`,
+  `verify_numerically`; `definite` is not ported), `expr_to_holonomic`
+  for `annihilators` and the other factors. `HermiteReducer.A` and `.B`
+  are expressions on the core. The old API on SymPy objects is
+  `sympy_extras.integrals.telescoping_sympy`, `reduction_sympy` and
+  `dfinite_sympy` (used by `definite`).
+
 - The mean value integrals of periodic integrands are native
   (**breaking**): `sympy_extras.integrals.periodic` (`mean_value_integral`,
   `laurent_coefficient`, `to_laurent`) takes and returns objects of the
