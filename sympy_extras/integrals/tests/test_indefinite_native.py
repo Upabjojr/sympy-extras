@@ -35,11 +35,12 @@ def test_sympys_routes_come_last_and_are_checked() -> None:
     # SymPy's integrate (the face, loaded at run time) gives a core expression
     found = verified_antiderivative(sin(x), x, methods=['sympy'])
     assert found == (-cos(x), 'sympy')
-    # every native method comes first, but the port of manualintegrate,
-    # which keeps the place SymPy's had among them
+    # every native method (the port of manualintegrate the last of them)
+    # comes before SymPy's routes
     names = [name for name, _ in indefinite.METHODS]
     tail = names[names.index(indefinite.SYMPY_METHODS[0]):]
-    assert [name for name in tail if name not in indefinite.SYMPY_METHODS] == ['manual']
+    assert tail == list(indefinite.SYMPY_METHODS)
+    assert names[names.index(indefinite.SYMPY_METHODS[0]) - 1] == 'manual'
     assert [name for name in names if name in indefinite.SYMPY_METHODS] == list(indefinite.SYMPY_METHODS)
 
 
