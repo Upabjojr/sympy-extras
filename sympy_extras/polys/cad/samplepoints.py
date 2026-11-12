@@ -73,7 +73,7 @@ from sympy_extras.polys.sqfreetools import dup_sqf_list, dup_sqf_p
 
 __all__ = ['RealAlgebraic', 'SamplePoint', 'Specialization', 'compare_real', 'rational_real_roots',
            'real_roots_of', 'simplest_between', 'rational_between', 'rational_below', 'rational_above',
-           'floor_scaled', 'as_poly', 'Sign']
+           'floor_scaled', 'scaled_real', 'as_poly', 'Sign']
 
 T = TypeVar('T')
 
@@ -113,6 +113,29 @@ def _normalised(f: list[int]) -> list[int]:
     if f and f[0] < 0:
         g = -g
     return [c // g for c in f] if g not in (0, 1) else list(f)
+
+
+def scaled_real(a: Algebraic, c: Fraction) -> Algebraic:
+    """``c a`` for a rational ``c`` and a real algebraic ``a``: the
+    minimal polynomial and the isolating interval scaled.
+
+    >>> from fractions import Fraction
+    >>> from sympy_extras.polys.cad.samplepoints import scaled_real, real_roots_of
+    >>> scaled_real(real_roots_of([1, 0, -2])[1], Fraction(-3, 2))
+    Algebraic([2, 0, -9], -2.121320344)
+    """
+    if a.is_rational:
+        return Algebraic.from_rational(c*a.rational_value())
+    if c == 0:
+        return Algebraic.from_rational(0)
+    m = a.minpoly
+    d = len(m) - 1
+    # m(x/c) c**d with c = p/q, times q**d: sum m_i p**i q**(d-i) x**(d-i)
+    p, q = c.numerator, c.denominator
+    scaled = _normalised([coefficient*p**i*q**(d - i) for i, coefficient in enumerate(m)])
+    lo, hi = a.real_interval()
+    bounds = (c*lo, c*hi) if c > 0 else (c*hi, c*lo)
+    return Algebraic(scaled, bounds, None)
 
 
 def _gcd(a: int, b: int) -> int:

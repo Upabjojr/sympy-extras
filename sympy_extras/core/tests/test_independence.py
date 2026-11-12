@@ -266,8 +266,7 @@ def test_native_solve_does_not_load_sympy() -> None:
 def test_native_sat_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.assumptions.sat` does not load SymPy,
     nor do the formulas decided without a SAT search or a decomposition
-    (SymPy's SAT solver, the predicates' facts, the CAD and Hermite's
-    count go through SymPy at run time)."""
+    (see :func:`test_native_sat_search_does_not_load_sympy` for those)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_SAT], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -2430,5 +2429,42 @@ def test_native_risch_does_not_load_sympy() -> None:
     parametric and coupled versions, the structure theorems and the proofs
     of nonelementarity."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_RISCH], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SAT_SEARCH = r'''
+import sys
+from sympy_extras.core import symbols, Integer, Eq
+from sympy_extras.functions import sin
+from sympy_extras.sets import Integers
+from sympy_extras.assumptions.sat import satisfiable, tautology, find_instance, _floor, _compare
+from sympy_extras.assumptions.satask import predicates_consistent
+from sympy_extras.assumptions.limits import limit
+from sympy_extras.polys.cad.indexedroot import IndexedRoot
+from sympy_extras.core import Q
+p, q, x, y, a = symbols('p q x y a')
+models = satisfiable((p | q) & (~p | (x > 1)), all_models=True)
+assert models is not None and len(models) == 4, models
+assert satisfiable(Q.positive(x) & Q.negative(x)) is False and tautology(p | ~p) is True
+assert not predicates_consistent(Q.positive(x) & Q.positive(y) & Q.negative(x + y))
+found = find_instance((x > 1) | p, [x], domain=None, count=3)
+assert found is not None and len(found) >= 1, found
+assert str(find_instance((x**2 > 5) & (x < 0), [x], Integers)) == '[{x: -3}]'
+assert str(limit(sin(a*x)/x, x, Integer(0))) == 'a'
+r2, r3 = IndexedRoot(x**2 - 2, x, 1), IndexedRoot(x**3 - 2, x, 0)
+assert _floor(3*r2) == 4 and _floor(-r2*r3) == -2 and _compare(r2*r3, Integer(2)) == -1
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_sat_search_does_not_load_sympy() -> None:
+    """The native ``satisfiable``, ``tautology`` and ``find_instance`` do
+    not load SymPy: the SAT solver (a port of DPLL2), the consistency of
+    the predicates with their known facts and the floor and comparison
+    of real algebraic numbers are native, and so is the native ``limit``
+    with a parameter carrying no assumptions, which asks ``satisfiable``
+    for the cases of the parameter."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SAT_SEARCH], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

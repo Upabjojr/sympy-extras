@@ -9,8 +9,8 @@ from sympy_extras.functions import sin
 from sympy_extras.sets import FiniteSet, Integers, Interval, Naturals, Reals, Union
 from sympy_extras.assumptions.facts import element
 from sympy_extras.assumptions.quantifiers import Exists, ForAll
-from sympy_extras.assumptions.sat import _integer_in, _without_real_solution, find_instance, satisfiable, \
-    tautology
+from sympy_extras.assumptions.sat import _compare, _floor, _integer_in, _without_real_solution, find_instance, \
+    satisfiable, tautology
 
 x, y, z, p, q = Symbol('x'), Symbol('y'), Symbol('z'), Symbol('p'), Symbol('q')
 
@@ -79,3 +79,19 @@ def test_native_without_real_solution() -> None:
     system = and_(Eq(x**2 + y**2 + z**2, 3), Eq(x*y + y*z + z*x, 3), Eq(x*y*z, 1))
     assert _without_real_solution(and_(system, x - y > 0), [x, y, z])
     assert not _without_real_solution(and_(Eq(x**2 + y**2, -1), x > 0), [x, y])
+
+
+def test_floor_and_compare_of_real_algebraic_numbers() -> None:
+    from sympy_extras.core.mul import Mul
+    from sympy_extras.polys.cad.indexedroot import IndexedRoot
+    from sympy.testing.pytest import raises
+    r2, r3 = IndexedRoot(x**2 - 2, x, 1), IndexedRoot(x**3 - 2, x, 0)
+    # 3*sqrt(2) = 4.24..., -sqrt(2)*2**(1/3) = -1.78..., (2/7)*sqrt(2) = 0.40...
+    assert _floor(3*r2) == 4 and _floor(-r2*r3) == -2 and _floor(Rational(2, 7)*r2) == 0
+    assert _floor(Rational(-7, 2)) == -4 and _floor(Mul(Integer(2), Rational(1, 2))) == 1
+    assert _compare(r2*r3, Integer(2)) == -1 and _compare(Integer(2), r2*r3) == 1
+    assert _compare(2*r2, r2*r2*r2) == 0 and _compare(Rational(3, 2), r2) == 1
+    assert _compare(-3*r2, Rational(-17, 4)) == 1      # -4.2426... > -4.25
+    # not a real algebraic number of these forms
+    raises(ValueError, lambda: _floor(sin(Integer(1))))
+    raises(ValueError, lambda: _compare(IndexedRoot(x**2 + 1, x, 0), Integer(0)))

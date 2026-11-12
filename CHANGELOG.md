@@ -566,6 +566,28 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The native `sympy_extras.assumptions.sat` (`satisfiable`, `tautology`,
+  `find_instance`) no longer loads SymPy at run time (internal change,
+  same API): the propositional abstraction is solved by a typed port of
+  SymPy's DPLL2 (the new `sympy_extras.logic.dpll2`:
+  `propositional_models`, `is_satisfiable`, `SATSolver`) on conjunctive
+  normal forms of the core's Booleans (the new `sympy_extras.logic.cnf`:
+  `to_clauses`, `conjunction`, `Clauses`, a port of the conversion of
+  `sympy.assumptions.cnf`); the consistency of the predicates with their
+  known facts is a port of SymPy's `satask` with the class facts of
+  `sathandlers` and the known number facts (the new
+  `sympy_extras.assumptions.satask.predicates_consistent`); the floor and
+  the comparison of rational multiples, products and integer powers of
+  real roots are native (`polys.cad.samplepoints.scaled_real`, new). The
+  routes `sat_sympy.propositional_models_of_core`,
+  `predicates_consistent_of_core`, `floor_of_core` and
+  `compare_real_of_core` are gone. The models of `all_models=True` now
+  come in an order which does not depend on the hash seed (SymPy's
+  numbering of the atoms followed the iteration of a set). The native
+  limits under assumptions (`assumptions.limits`) set native time limits
+  around their native engines, `simplify` and `resolve`, so that a
+  `limit` with a parameter without assumptions (`limit(sin(a*x)/x, x,
+  0)`) loads no SymPy either.
 - The definite integrals from an antiderivative are native
   (**breaking**): `sympy_extras.integrals.antiderivative`
   (`antiderivative`, `antiderivative_integral`,
