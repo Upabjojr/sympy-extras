@@ -1,18 +1,9 @@
 """The SymPy face of the operational rules of the Laplace transform
-(:mod:`sympy_extras.integrals.laplace`), for the integrators which are
-still written on SymPy (:mod:`.definite`).
+(:mod:`sympy_extras.integrals.laplace`): the old interface on SymPy objects.
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of
-:mod:`.conditions_sympy`). The steps of the native integrators of this
-package which stay on SymPy are here too, on core expressions (the
-functions ending in ``_of_core``, imported by the native modules at run
-time): the definite integrals of the pieces by
-:func:`~sympy_extras.integrals.definite.definite_integral` and
-:func:`~sympy_extras.integrals.definite.conditional_integral`, not ported
-yet (:func:`definite_integral_of_core`, :func:`conditional_integral_of_core`,
-also used by :mod:`.summability`, :mod:`.transformations` and
-:mod:`.parametric`).
+:mod:`.conditions_sympy`).
 
 Examples
 ========
@@ -38,20 +29,16 @@ from sympy.core.sympify import sympify
 from sympy.logic.boolalg import Boolean
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import ExprLike
 from sympy_extras.assumptions import ask as native_ask
 from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, core_assumptions, sympy_boolean
-from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean, to_boolean
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 
 from . import conditions as native_conditions
 from . import laplace as native
 from .conditions_sympy import ConditionalValue
 
-__all__ = ['laplace_rules', 'laplace_integral', 'laplace_of_convolution', 'transform', 'real_arguments',
-           'definite_integral_of_core', 'conditional_integral_of_core']
+__all__ = ['laplace_rules', 'laplace_integral', 'laplace_of_convolution', 'transform', 'real_arguments']
 
 
 def _conditional(found: Optional[native_conditions.ConditionalValue]) -> Optional[ConditionalValue]:
@@ -169,24 +156,3 @@ def _sympy_assumptions(assumptions: native_ask.Assumptions) -> Assumptions:
     return items
 
 
-def definite_integral_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr,
-                              assumptions: native_ask.Assumptions, special_values: bool,
-                              seconds: Optional[float]) -> Optional[CoreExpr]:
-    """:func:`~sympy_extras.integrals.definite.definite_integral` of
-    ``Integral(f, (x, a, b))`` within ``seconds``, on core expressions
-    (not ported yet); ``None`` when it does not finish or its value
-    cannot be converted."""
-    from .definite import definite_integral
-    return attempt(lambda: definite_integral(f, (x, a, b), assumptions, special_values=special_values), seconds,
-                   native=True)
-
-
-def conditional_integral_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr,
-                                 assumptions: native_ask.Assumptions,
-                                 seconds: Optional[float]) -> Optional[native_conditions.ConditionalValue]:
-    """:func:`~sympy_extras.integrals.definite.conditional_integral` of
-    ``Integral(f, (x, a, b))`` within ``seconds`` (no limit for
-    ``None``), on core expressions (not ported yet); ``None`` when it is
-    not found, does not finish or cannot be converted."""
-    from .definite import conditional_integral
-    return attempt(lambda: conditional_integral(f, x, a, b, assumptions), seconds, native=True)

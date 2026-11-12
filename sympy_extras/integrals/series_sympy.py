@@ -1,13 +1,13 @@
-"""The SymPy face of the definite integrals by series expansion and
-termwise integration (:mod:`sympy_extras.integrals.series`), for the
-integrators which are still written on SymPy (:mod:`.definite`).
+"""The SymPy face of the definite integrals by series expansion and termwise
+integration (:mod:`sympy_extras.integrals.series`): the old interface on
+SymPy objects.
 
 :class:`Expansion` is the container of the native module on SymPy
 objects, with ``to_core`` and ``from_core``; the functions convert their
 arguments by :mod:`sympy_extras.interop`, run the native code and convert
 the results back (the values of :mod:`.conditions_sympy`). The moments
-and the mean values of the native module reach :func:`~sympy_extras.integrals.definite.definite_integral`
-through :func:`~sympy_extras.integrals.laplace_sympy.definite_integral_of_core`.
+and the mean values of the native module come from the native
+:func:`~sympy_extras.integrals.definite.definite_integral`.
 
 Examples
 ========

@@ -268,8 +268,7 @@ sympy_extras/
         residues.py          rational, Fourier and trigonometric integrals by the residue theorem (native: the native
                              roots with placeholders for the constants, factor over ZZ_I, ask, find_instance, limits,
                              simplify, the validated quadrature; CRootOf of unwieldy numerical poles through residues_sympy)
-        residues_sympy.py    the SymPy face of residues, used by definite, and complex_roots_of_core,
-                             verify_numerically_of_core
+        residues_sympy.py    the SymPy face of residues, and complex_roots_of_core
         contours.py          the rectangle, the sector and the indented real line for the residue theorem (native: the
                              native residues, the core's residue, elimination on core expressions)
         contours_sympy.py    the SymPy face of contours, used by definite
@@ -282,8 +281,8 @@ sympy_extras/
         integral.py          Integral (node): the unevaluated indefinite or definite integral; is_unevaluated (native)
         regions.py           IntegralByRanges, integrate_by_ranges, Integrator: integrals over semialgebraic regions through
                              the CAD (native: the native CAD, ask, refine, solve, simplify, roots and simplex; the
-                             one-dimensional integrals by a typed integrator, definite's through regions_sympy by default)
-        regions_sympy.py     the SymPy face of regions (the old API), and definite_integral_of_core
+                             one-dimensional integrals by a typed integrator, the native definite's by default)
+        regions_sympy.py     the SymPy face of regions (the old API)
         tables.py            TABLE, TableEntry, lookup, table_integral: definite integrals by table lookup (Gradshteyn–Ryzhik)
                              with the conditions on the parameters (native: the native decide, powsimp and trigsimp)
         tables_sympy.py      the SymPy face of tables (the entries on SymPy objects, TableEntry.from_core), which definite uses
@@ -292,29 +291,28 @@ sympy_extras/
         conditions_sympy.py  the SymPy face of conditions, which the integrators written on SymPy use (ConditionalValue
                              on SymPy objects; the translation of SymPy's symbol flags stays on SymPy)
         telescoping.py       Almkvist–Zeilberger creative telescoping, holonomic_ode, holonomic_integral (native: the polynomials
-                             over QQ_I(parameters) of the typed layer, the native limits and linear ODE solvers; the
-                             initial values, the numerical check and SymPy's dsolve through telescoping_sympy)
-        telescoping_sympy.py the SymPy face of telescoping, and definite_integral_of_core, verify_numerically_of_core,
-                             dsolve_of_core (also used by reduction and dfinite)
+                             over QQ_I(parameters) of the typed layer, the native limits and linear ODE solvers, the
+                             initial values and the numerical check by the native definite; SymPy's dsolve through
+                             telescoping_sympy)
+        telescoping_sympy.py the SymPy face of telescoping, and dsolve_of_core (also used by reduction and dfinite)
         reduction.py         HermiteReducer, hermite_reduce, reduction_telescoper, reduction_ode, reduction_integral:
                              reduction-based creative telescoping by Hermite reduction (native)
-        reduction_sympy.py   the SymPy face of reduction, used by definite
+        reduction_sympy.py   the SymPy face of reduction
         dfinite.py           Chyzak's algorithm: chyzak, closure, annihilators, normal_form, dfinite_ode, dfinite_integral
                              (native; SymPy's expr_to_holonomic of annihilators and of the factors not written down
                              through dfinite_sympy)
-        dfinite_sympy.py     the SymPy face of dfinite, used by definite, and holonomic_of_core
+        dfinite_sympy.py     the SymPy face of dfinite, and holonomic_of_core
         parametric.py        parametric_integral, candidate_parameters, ParametricIntegrator: differentiation under the
-                             integral sign (Feynman's trick) (native; the integrals and the numerical check by definite's
-                             integrator, SymPy's integrate in the parameter, through parametric_sympy)
-        parametric_sympy.py  the SymPy face of parametric, used by definite; DefiniteIntegrator, antiderivative_of_core
+                             integral sign (Feynman's trick) (native; the integrals and the numerical check by the native
+                             definite's DefiniteIntegrator; SymPy's integrate in the parameter through parametric_sympy)
+        parametric_sympy.py  the SymPy face of parametric, and antiderivative_of_core
         laplace.py           laplace_rules, laplace_integral, laplace_of_convolution, transform, real_arguments: the
-                             operational rules of the Laplace transform (native; the transforms of the pieces by
-                             definite through laplace_sympy; the periods by calculus.util.periodicity)
-        laplace_sympy.py     the SymPy face of laplace, used by definite, and definite_integral_of_core,
-                             conditional_integral_of_core (also for summability, transformations)
+                             operational rules of the Laplace transform (native; the transforms of the pieces by the
+                             native definite; the periods by calculus.util.periodicity)
+        laplace_sympy.py     the SymPy face of laplace
         transformations.py   frullani, glasser, transformation_integral: Frullani's theorem, Glasser's master theorem
                              (native: the native limits and partial fractions; the transformed integral by definite)
-        transformations_sympy.py the SymPy face of transformations, used by definite
+        transformations_sympy.py the SymPy face of transformations
         antiderivative.py    antiderivative_integral, principal_value_integral, finite_part_integral, singularities,
                              discontinuities, one_sided_limit: antiderivatives evaluated by one-sided limits at every
                              discontinuity (native: the native solve, ask and limits; the antiderivative a typed step,
@@ -334,10 +332,9 @@ sympy_extras/
         series.py            series_integral, fourier_integral, fourier_expansion, expansions, moments, sum_series: definite
                              integrals by series expansion of a factor (power, geometric and Fourier series) and termwise
                              integration (native: the native summation, partial fractions over the roots, hyperexpand,
-                             convergence tests, Euler sums and Zeilberger; the moments by definite through laplace_sympy,
-                             the computed Fourier coefficients by antiderivative through series_sympy, the numerical check
-                             through residues_sympy)
-        series_sympy.py      the SymPy face of series, used by definite
+                             convergence tests, Euler sums and Zeilberger; the moments, the computed Fourier coefficients
+                             and the numerical check by the native definite and antiderivative)
+        series_sympy.py      the SymPy face of series
         dirichlet.py         dirichlet_integral, trigonometric_sum: the Dirichlet, Frullani and Borwein integrals of
                              trigonometric sums over powers of x (native)
         dirichlet_sympy.py   the SymPy face of dirichlet
@@ -380,7 +377,7 @@ sympy_extras/
         curves_sympy.py      the SymPy face of curves (the field of the residues as SymPy's, CRootOf), used by trager_sympy
         summability.py       summable_integral, oscillatory_tail: Abel, Cesàro and Gaussian means of divergent
                              oscillatory integrals (native: the native limits; the regularised integrals by definite)
-        summability_sympy.py the SymPy face of summability, used by definite
+        summability_sympy.py the SymPy face of summability
         axisymmetric.py      region integrals with a rotational symmetry (bodies and surfaces of revolution) reduced to their
                              profile (native: the native cancel, numerical comparison and Gram–Schmidt process, PORTED FROM
                              SYMPY; the profile integral by the native regions, with the integrator given)
@@ -401,10 +398,8 @@ sympy_extras/
         rewriting_sympy.py   the SymPy face of rewriting, which indefinite uses
         algebraic.py         algebraic_integral, euler_substitutions, moebius_root, binomial_exponents, chebyshev_elementary,
                              binomial_hypergeometric_antiderivative: algebraic integrands of genus zero (native: the native
-                             ask, limits and tidy; the rational integral and its numerical check by definite, through
-                             algebraic_sympy)
-        algebraic_sympy.py   the SymPy face of algebraic, used by definite, indefinite and trager, and
-                             verify_numerically_of_core, conditional_integral_of_core
+                             ask, limits and tidy; the rational integral and its numerical check by the native definite)
+        algebraic_sympy.py   the SymPy face of algebraic, used by indefinite and trager
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)
                              (native, with the native ratint)
         exponential_sympy.py the SymPy face of exponential, used by indefinite

@@ -135,13 +135,11 @@ native simplex method for the boundedness of a polytope, and the region
 integrals with a rotational symmetry of :mod:`.axisymmetric`. The
 one-dimensional integrals are the business of a typed
 :data:`~sympy_extras.integrals.axisymmetric.Integrator`, a parameter of
-:func:`integrate_by_ranges`: by default
-:func:`~sympy_extras.integrals.definite.definite_integral`, which is
-still written on SymPy, through
-:func:`~sympy_extras.integrals.regions_sympy.definite_integral_of_core`
-(SymPy is loaded on that path only); an integrator written on the core
-(polynomials by their antiderivatives) runs the decomposition and the
-iterated integrals without SymPy. The solutions of a polynomial equation
+:func:`integrate_by_ranges`: by default the native
+:func:`~sympy_extras.integrals.definite.definite_integral` (which loads
+SymPy only for SymPy's ``integrate``, its last method); an integrator
+written on the core (polynomials by their antiderivatives) runs the
+decomposition and the iterated integrals without SymPy. The solutions of a polynomial equation
 for the branches follow the polynomial case of SymPy's ``solve``
 (``sympy.solvers.solvers._solve``), ported. The functions on SymPy
 objects are in :mod:`.regions_sympy`.
@@ -315,10 +313,16 @@ def _ops(e: Expr) -> int:
 
 def _definite(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: list[Boolean]) -> Optional[Expr]:
     """The default integrator: :func:`~sympy_extras.integrals.definite.definite_integral`
-    (not ported yet) through
-    :func:`~sympy_extras.integrals.regions_sympy.definite_integral_of_core`."""
-    from .regions_sympy import definite_integral_of_core
-    return definite_integral_of_core(f, x, a, b, assumptions)
+    without the cases of the special values of the parameters; ``None``
+    when the integral is not computed (it keeps an ``Integral``). The
+    ``ValueError`` of bounds which contradict the assumptions goes on to
+    the caller (an empty cell)."""
+    from .definite import definite_integral
+    from .integral import is_unevaluated
+    value = definite_integral(f, (x, a, b), list(assumptions), special_values=False)
+    if is_unevaluated(value) or value.has(IntegralByRanges):
+        return None
+    return value
 
 
 class IntegralByRanges(Expr):

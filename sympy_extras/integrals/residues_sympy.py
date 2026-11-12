@@ -1,16 +1,14 @@
-"""The SymPy face of the residue integrator (:mod:`sympy_extras.integrals.residues`),
-for the integrators which are still written on SymPy (:mod:`.definite`).
+"""The SymPy face of the residue integrator
+(:mod:`sympy_extras.integrals.residues`): the old interface on SymPy
+objects.
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of
 :mod:`.conditions_sympy`; the rational functions with SymPy's ``Poly``,
 the poles as SymPy expressions, ``CRootOf`` for the roots of numerical
-denominators whose radicals are unwieldy). Two steps of the native
-module stay on SymPy and are here: :func:`complex_roots_of_core`, the
-``CRootOf`` roots of such a denominator, and
-:func:`verify_numerically_of_core`, the quadratures of :mod:`.definite`
-for a value placed by sampling which the native quadratures do not
-settle.
+denominators whose radicals are unwieldy). One step of the native
+module stays on SymPy and is here: :func:`complex_roots_of_core`, the
+``CRootOf`` roots of such a denominator.
 
 Examples
 ========
@@ -55,8 +53,7 @@ from .conditions import ConditionalValue as CoreConditionalValue
 from .conditions_sympy import ConditionalValue
 
 __all__ = ['residue_integral', 'rational_function', 'poles', 'real_line_integral',
-           'fourier_integral', 'keyhole_integral', 'period_integral', 'complex_roots_of_core',
-           'verify_numerically_of_core']
+           'fourier_integral', 'keyhole_integral', 'period_integral', 'complex_roots_of_core']
 
 
 def _core_symbol(s: Basic) -> CoreSymbol:
@@ -292,13 +289,3 @@ def _sympy_assumptions(assumptions: CoreAssumptions) -> Assumptions:
     return [as_boolean(to_sympy(to_boolean(a))) for a in assumptions]
 
 
-def verify_numerically_of_core(value: CoreExpr, f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr,
-                               assumptions: CoreAssumptions) -> Optional[bool]:
-    """:func:`sympy_extras.integrals.definite.verify_numerically` of a value
-    of the native module (the step of
-    :mod:`sympy_extras.integrals.residues` which stays on SymPy, taken
-    when the native quadratures settle nothing): ``False`` when the value
-    disagrees with the quadratures at samples of the parameters, ``True``
-    when it agrees, ``None`` when nothing could be checked."""
-    from .definite import verify_numerically
-    return verify_numerically(value, f, x, a, b, assumptions)

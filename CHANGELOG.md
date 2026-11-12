@@ -30,7 +30,15 @@ remove public functions. Breaking changes are listed here when they happen.
   native yet (`verified_antiderivative_of_core`). The private helpers
   (`_Integrator`, `_quadrature`, `_positions`, ...) take native objects;
   the native `DefiniteIntegrator` and `definite_integrator` of
-  `definite` replace those of `parametric_sympy`.
+  `definite` replace those of `parametric_sympy`. The native modules call
+  the native driver directly, and the routes back into it are removed:
+  `laplace_sympy.definite_integral_of_core` and
+  `conditional_integral_of_core` (with their re-exports in
+  `summability_sympy`, `transformations_sympy` and `algebraic_sympy`),
+  `telescoping_sympy.definite_integral_of_core` and
+  `verify_numerically_of_core`, `residues_sympy.verify_numerically_of_core`,
+  `algebraic_sympy.verify_numerically_of_core` and
+  `regions_sympy.definite_integral_of_core`.
 - **Breaking**: Trager's algorithm `sympy_extras.integrals.trager`
   (`trager_antiderivative`, `trager_reduce`, `hermite_reduce_algebraic`,
   `is_nonelementary_algebraic`) is native on the typed core: its functions

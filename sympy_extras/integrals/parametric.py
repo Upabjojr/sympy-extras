@@ -23,10 +23,10 @@ The module works on the objects of :mod:`sympy_extras.core` and imports
 no SymPy: the native derivatives and limits under assumptions. The
 definite integrals of the derivative and at the anchors, and the
 numerical check against a quadrature, are those of
-:func:`~sympy_extras.integrals.definite.conditional_integral`, which is
-still written on SymPy: they are asked of a :class:`ParametricIntegrator`,
-by default the one of :mod:`.parametric_sympy` (``definite_integrator``,
-which loads SymPy), and the antiderivative in the parameter is SymPy's
+:func:`~sympy_extras.integrals.definite.conditional_integral`: they are
+asked of a :class:`ParametricIntegrator`, by default the native one of
+:mod:`.definite` (:func:`~sympy_extras.integrals.definite.definite_integrator`),
+and the antiderivative in the parameter is SymPy's
 ``integrate``, through
 :func:`sympy_extras.integrals.parametric_sympy.antiderivative_of_core`.
 The functions on SymPy objects are in :mod:`.parametric_sympy`.
@@ -100,9 +100,8 @@ class ParametricIntegrator(ABC):
     sign calls, for the derivative and for the integrals at the anchors
     (it must not use the method again), and the numerical check of a
     result: the boundary with
-    :func:`~sympy_extras.integrals.definite.conditional_integral`, which
-    is still written on SymPy
-    (:class:`sympy_extras.integrals.parametric_sympy.DefiniteIntegrator`).
+    :func:`~sympy_extras.integrals.definite.conditional_integral`
+    (:class:`sympy_extras.integrals.definite.DefiniteIntegrator`).
     """
 
     @abstractmethod
@@ -151,8 +150,8 @@ def parametric_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike, parameter:
     sign with respect to ``parameter``: the derivative is integrated by
     the ``integrator`` (by default
     :func:`~sympy_extras.integrals.definite.conditional_integral` under the
-    assumptions, which does not use this method again: SymPy's side,
-    through :func:`sympy_extras.integrals.parametric_sympy.definite_integrator`),
+    assumptions, which does not use this method again:
+    :func:`sympy_extras.integrals.definite.definite_integrator`),
     integrated back in the parameter, and the constant is fixed at
     ``parameter = 0`` or ``1`` where the integral is computed directly,
     or by the limit of ``f`` at infinity when it vanishes there. ``None``

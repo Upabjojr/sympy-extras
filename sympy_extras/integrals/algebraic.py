@@ -57,12 +57,8 @@ when ``settings.numerical_checks`` is on.
 The module works on the objects of :mod:`sympy_extras.core` and imports
 no SymPy: the native ask, limits under assumptions, ``cancel``, roots of
 quadratics, ``tidy`` and conditional values. The rational integral and
-its numerical check are computed by :mod:`.definite`, which is still
-written on SymPy, through
-:func:`sympy_extras.integrals.algebraic_sympy.conditional_integral_of_core`
-and :func:`sympy_extras.integrals.algebraic_sympy.verify_numerically_of_core`
-(SymPy is loaded on that path only). The functions on SymPy objects are
-in :mod:`.algebraic_sympy`.
+its numerical check are computed by the native :mod:`.definite`. The
+functions on SymPy objects are in :mod:`.algebraic_sympy`.
 
 Examples
 ========
@@ -823,8 +819,7 @@ def _transformed(f: Expr, x: Symbol, a: Expr, b: Expr, substitution: Rationalisa
                  assumptions: Assumptions, g: Optional[Expr] = None) -> Optional[ConditionalValue]:
     """The integral of the transformed integrand ``g`` (built from the
     substitution unless given) over the image of the range, by
-    :func:`~sympy_extras.integrals.definite.conditional_integral` (SymPy's
-    side, through :func:`.algebraic_sympy.conditional_integral_of_core`)."""
+    :func:`~sympy_extras.integrals.definite.conditional_integral`."""
     t = substitution.t
     if g is None:
         rule: dict[Basic, Basic] = {k: v for k, v in substitution.radicals.items()}
@@ -839,12 +834,12 @@ def _transformed(f: Expr, x: Symbol, a: Expr, b: Expr, substitution: Rationalisa
     upper = _bound(substitution.t_of_x, x, b, assumptions)
     if lower is None or upper is None or lower == upper:
         return None
-    from .algebraic_sympy import conditional_integral_of_core, verify_numerically_of_core
-    found = conditional_integral_of_core(g, t, lower, upper, assumptions, None)
+    from .definite import conditional_integral, verify_numerically
+    found = conditional_integral(g, t, lower, upper, assumptions)
     if found is None:
         return None
     value = tidy(found.value, assumptions, found.condition)
-    if settings.numerical_checks and verify_numerically_of_core(value, f, x, a, b, assumptions) is False:
+    if settings.numerical_checks and verify_numerically(value, f, x, a, b, assumptions) is False:
         return None
     return ConditionalValue(value, found.condition)
 
@@ -862,8 +857,7 @@ def algebraic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
     root of a polynomial of degree at most two, and Chebyshev's binomial
     differentials, in this order; ``None`` when none applies. The
     rational integral is computed by
-    :func:`~sympy_extras.integrals.definite.conditional_integral` (SymPy's
-    side, through :func:`.algebraic_sympy.conditional_integral_of_core`).
+    :func:`~sympy_extras.integrals.definite.conditional_integral`.
 
     Examples
     ========

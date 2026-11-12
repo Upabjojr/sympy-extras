@@ -6,14 +6,7 @@ the integrators which are still written on SymPy (:mod:`.definite`,
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of
 :mod:`.conditions_sympy`, :class:`Rationalisation` and
-:class:`BinomialDifferential` with SymPy attributes). The steps of the
-native module which stay on SymPy are here too, on core expressions: the
-rational integral by
-:func:`~sympy_extras.integrals.definite.conditional_integral`
-(:func:`conditional_integral_of_core`, of :mod:`.laplace_sympy`) and its
-numerical check by
-:func:`~sympy_extras.integrals.definite.verify_numerically`
-(:func:`verify_numerically_of_core`), both not ported yet.
+:class:`BinomialDifferential` with SymPy attributes).
 
 Examples
 ========
@@ -39,21 +32,16 @@ from sympy.core.sympify import sympify
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
 from sympy_extras._typing_sympy import ExprLike
-from sympy_extras.assumptions import ask as native_ask
 from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions
-from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.numbers import Rational as CoreRational
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 
 from . import algebraic as native
 from . import conditions as native_conditions
 from .conditions_sympy import ConditionalValue
-from .laplace_sympy import conditional_integral_of_core
 
 __all__ = ['algebraic_integral', 'euler_substitution', 'euler_substitutions', 'binomial_differential', 'moebius_root',
            'rationalised_integral', 'Rationalisation', 'BinomialDifferential', 'binomial_exponents',
-           'chebyshev_elementary', 'binomial_hypergeometric_antiderivative', 'conditional_integral_of_core',
-           'verify_numerically_of_core']
+           'chebyshev_elementary', 'binomial_hypergeometric_antiderivative']
 
 
 def _conditional(found: Optional[native_conditions.ConditionalValue]) -> Optional[ConditionalValue]:
@@ -277,12 +265,3 @@ def algebraic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
 # ---------------------------------------------------------------------------
 # the steps of the native module which stay on SymPy
 
-def verify_numerically_of_core(value: CoreExpr, f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr,
-                               assumptions: native_ask.Assumptions) -> Optional[bool]:
-    """:func:`~sympy_extras.integrals.definite.verify_numerically` of
-    ``value`` against ``Integral(f, (x, a, b))``, on core expressions (not
-    ported yet): ``False`` when a quadrature disagrees, ``True`` when it
-    agrees, ``None`` when nothing was checked or the expressions cannot be
-    converted."""
-    from .definite import verify_numerically
-    return verify_numerically(value, f, x, a, b, assumptions)

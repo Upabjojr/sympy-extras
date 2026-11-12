@@ -4,12 +4,7 @@
 :class:`IntegralByRanges` is the unevaluated integral on SymPy objects
 and :func:`integrate_by_ranges` computes it: the arguments are converted
 by :mod:`sympy_extras.interop`, the native code runs and the value is
-converted back (the algebraic numbers of the bounds as ``CRootOf``). The
-step of the native module which stays on SymPy is here too, on core
-expressions: the one-dimensional integrals by
-:func:`~sympy_extras.integrals.definite.definite_integral`, not ported
-yet (:func:`definite_integral_of_core`, the default integrator of the
-native module).
+converted back (the algebraic numbers of the bounds as ``CRootOf``).
 
 Examples
 ========
@@ -90,7 +85,7 @@ from sympy_extras.polys.polytools import Poly as CorePoly
 
 from . import regions as native
 
-__all__ = ['IntegralByRanges', 'integrate_by_ranges', 'definite_integral_of_core']
+__all__ = ['IntegralByRanges', 'integrate_by_ranges']
 
 #: the measures of integration (see :mod:`sympy_extras.integrals.regions`)
 _MEASURES = ('lebesgue', 'hausdorff')
@@ -321,24 +316,6 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
 
 # ---------------------------------------------------------------------------
 # the step of the native module which stays on SymPy
-
-def definite_integral_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr,
-                              assumptions: Sequence[CoreBoolean]) -> Optional[CoreExpr]:
-    """:func:`~sympy_extras.integrals.definite.definite_integral` of
-    ``Integral(f, (x, a, b))`` under the assumptions, without the cases of
-    the special values of the parameters, on core expressions (not ported
-    yet): the default integrator of
-    :func:`sympy_extras.integrals.regions.integrate_by_ranges`. ``None``
-    when the integral is not computed (it keeps an ``Integral``) or its
-    value cannot be converted; the ``ValueError`` of bounds which
-    contradict the assumptions goes on to the caller (an empty cell)."""
-    from .definite import definite_integral
-    from .integral import is_unevaluated
-    value = definite_integral(f, (x, a, b), list(assumptions), special_values=False)
-    if is_unevaluated(value) or value.has(native.IntegralByRanges):
-        return None
-    return value
-
 
 # ---------------------------------------------------------------------------
 # the private steps of the native module on SymPy objects, for the tests

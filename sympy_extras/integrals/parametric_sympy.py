@@ -1,6 +1,6 @@
 """The SymPy face of differentiation under the integral sign
-(:mod:`sympy_extras.integrals.parametric`), for the integrators which are
-still written on SymPy (:mod:`.definite`).
+(:mod:`sympy_extras.integrals.parametric`): the old interface on SymPy
+objects.
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of

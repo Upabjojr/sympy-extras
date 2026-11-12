@@ -72,9 +72,8 @@ SymPy: the complex roots of a numerical denominator whose roots in
 radicals are unwieldy (SymPy's ``CRootOf``, which the core has no node
 for) come from :func:`sympy_extras.integrals.residues_sympy.complex_roots_of_core`,
 imported only then; the verification of a value placed by sampling,
-when no native quadrature settles it, goes to
-:func:`~sympy_extras.integrals.residues_sympy.verify_numerically_of_core`
-(the quadratures of :mod:`.definite`). :mod:`.residues_sympy` is the
+when no native quadrature settles it, goes to the quadratures of
+:func:`~sympy_extras.integrals.definite.verify_numerically`. :mod:`.residues_sympy` is the
 face of the module on SymPy objects.
 
 Examples
@@ -1327,8 +1326,8 @@ def _checked(result: ConditionalValue, f: Expr, x: Symbol, a: Expr, b: Expr,
         return result
     verdict = _verified(result.value, f, x, a, b, assumptions)
     if verdict is None:
-        from .residues_sympy import verify_numerically_of_core
-        verdict = verify_numerically_of_core(result.value, f, x, a, b, assumptions)
+        from .definite import verify_numerically
+        verdict = verify_numerically(result.value, f, x, a, b, assumptions)
     if verdict is False:
         return None
     return result
