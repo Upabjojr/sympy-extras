@@ -26,9 +26,10 @@ numerical check against a quadrature, are those of
 :func:`~sympy_extras.integrals.definite.conditional_integral`: they are
 asked of a :class:`ParametricIntegrator`, by default the native one of
 :mod:`.definite` (:func:`~sympy_extras.integrals.definite.definite_integrator`),
-and the antiderivative in the parameter is SymPy's
-``integrate``, through
-:func:`sympy_extras.integrals.parametric_sympy.antiderivative_of_core`.
+and the antiderivative in the parameter is that of the native
+:func:`~sympy_extras.integrals.indefinite.closed_antiderivative` (the
+generic antiderivative, without the cases of the special values of the
+other parameters: the value found is checked numerically).
 The functions on SymPy objects are in :mod:`.parametric_sympy`.
 
 Examples
@@ -169,9 +170,9 @@ def parametric_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike, parameter:
     inner = integrator.integrate(derivative, x, a_, b_, depth + 1)
     if inner is None or has_integral(inner.value):
         return None
-    from .parametric_sympy import antiderivative_of_core
+    from .indefinite import closed_antiderivative
     q = _fresh('q', real=True)
-    primitive = antiderivative_of_core(inner.value.subs(p, q), q, settings.timeout)
+    primitive = closed_antiderivative(inner.value.subs(p, q), q, seconds=settings.timeout)
     if primitive is None:
         return None
     for anchor in _ANCHORS + (oo,):

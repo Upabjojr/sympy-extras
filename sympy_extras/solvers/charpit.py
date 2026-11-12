@@ -32,14 +32,14 @@ The module imports no SymPy: the equation is an expression of the core
 (:mod:`sympy_extras.core`) in an applied undefined function and its
 first derivatives; the equations polynomial in the unknown are solved by
 the native :func:`~sympy_extras.polys.polyroots.roots`, the polynomials
-in a variable are integrated term by term, and the checks use the native
-:func:`~sympy_extras.simplify.simplify.simplify`. Two steps have no
-native counterpart and are taken from SymPy at run time through the face
+in a variable are integrated term by term and the other integrands by
+the native :func:`~sympy_extras.integrals.indefinite.closed_antiderivative`,
+and the checks use the native
+:func:`~sympy_extras.simplify.simplify.simplify`. One step has no
+native counterpart and is taken from SymPy at run time through the face
 :mod:`sympy_extras.solvers.charpit_sympy`: ``solve`` for the equations
-which are not polynomial in the unknown (``solve_of_core``) and
-``integrate`` for the integrands which are not polynomials in the
-variable (``antiderivative_of_core``). The face also keeps the old API
-on SymPy objects.
+which are not polynomial in the unknown (``solve_of_core``). The face
+also keeps the old API on SymPy objects.
 """
 from __future__ import annotations
 
@@ -219,12 +219,15 @@ def _integrate_exact(p_value: Expr, q_value: Expr, e: _Equation, b: Symbol) -> O
 def _antiderivative(e: Expr, x: Symbol) -> Optional[Expr]:
     """An antiderivative of ``e`` in ``x``, ``None`` when none is found:
     term by term for a sum of terms ``c*x**n`` (``c`` free of ``x``, ``n``
-    rational), from SymPy's ``integrate`` otherwise."""
+    rational), from the native
+    :func:`~sympy_extras.integrals.indefinite.closed_antiderivative`
+    otherwise (the generic antiderivative: a complete integral is generic
+    in its constants, and it is checked by substitution)."""
     native = _power_antiderivative(e, x)
     if native is not None:
         return native
-    from .charpit_sympy import antiderivative_of_core
-    return antiderivative_of_core(e, x)
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    return closed_antiderivative(e, x)
 
 
 def _power_antiderivative(e: Expr, x: Symbol) -> Optional[Expr]:

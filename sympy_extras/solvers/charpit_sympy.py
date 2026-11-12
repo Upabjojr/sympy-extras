@@ -1,17 +1,16 @@
 """The SymPy face of Charpit's method
-(:mod:`sympy_extras.solvers.charpit`), and the two steps of it which stay
+(:mod:`sympy_extras.solvers.charpit`), and the step of it which stays
 on SymPy.
 
 :func:`complete_integral` and :func:`check_complete_integral` take SymPy
 equations and functions, converted by :mod:`sympy_extras.interop` around
-the native functions. The native module calls two functions of this
-module at run time (they take and return objects of the core):
-
-* :func:`solve_of_core`, SymPy's ``solve`` for the equations which are
-  not polynomial in the unknown (radicals, exponentials and logarithms of
-  it), which the native polynomial roots do not cover;
-* :func:`antiderivative_of_core`, SymPy's ``integrate`` for the
-  integrands which are not sums of powers of the variable.
+the native functions. The native module calls one function of this
+module at run time (it takes and returns objects of the core):
+:func:`solve_of_core`, SymPy's ``solve`` for the equations which are
+not polynomial in the unknown (radicals, exponentials and logarithms of
+it), which the native polynomial roots do not cover. The integrands
+which are not sums of powers of the variable go to the native
+:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`.
 
 Examples
 ========
@@ -33,11 +32,9 @@ from sympy.core.expr import Expr
 from sympy.core.function import AppliedUndef
 from sympy.core.relational import Eq
 from sympy.core.symbol import Symbol
-from sympy.integrals.integrals import Integral, integrate
 from sympy.solvers.solvers import solve
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.analysis_sympy import as_symbol_of
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr
 from sympy_extras.core.basic import Basic as CoreBasic
@@ -50,7 +47,7 @@ from sympy_extras.settings import settings
 
 from . import charpit as native
 
-__all__ = ['complete_integral', 'check_complete_integral', 'solve_of_core', 'antiderivative_of_core']
+__all__ = ['complete_integral', 'check_complete_integral', 'solve_of_core']
 
 
 # ---------------------------------------------------------------------------
@@ -64,16 +61,6 @@ def solve_of_core(expression: CoreExpr, variable: CoreSymbol) -> list[CoreExpr]:
     if not found:
         return []
     return [core_expr(v) for v in found if isinstance(v, Expr)]
-
-
-def antiderivative_of_core(e: CoreExpr, x: CoreSymbol) -> Optional[CoreExpr]:
-    """An antiderivative of ``e`` in ``x`` by SymPy's ``integrate`` (under
-    the time limit), ``None`` when it is not found."""
-    sympy_e, sympy_x = sympy_expr(e), as_symbol_of(x)
-    integral = attempt(lambda: as_expr(integrate(sympy_e, sympy_x)), settings.timeout)
-    if integral is None or integral.has(Integral):
-        return None
-    return core_expr(integral)
 
 
 # ---------------------------------------------------------------------------
