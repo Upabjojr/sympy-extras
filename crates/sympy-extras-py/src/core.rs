@@ -1625,6 +1625,55 @@ fn samplepoint_report<'py>(
     Ok(out)
 }
 
+/// The cylindrical algebraic decomposition of `polys`: its repr, the
+/// method used, the projection sets and every top cell's repr and signs.
+#[pyfunction]
+#[pyo3(signature = (polys, gens, method=None))]
+fn cad_report<'py>(
+    py: Python<'py>,
+    polys: Vec<Bound<'py, PyAny>>,
+    gens: Vec<Bound<'py, PyAny>>,
+    method: Option<&str>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::polys::cad::{lifting, projection::Method};
+    let e = crate::convert::err;
+    let polys: Vec<Basic> = polys.iter().map(from_python).collect::<PyResult<_>>()?;
+    let gens: Vec<Basic> = gens.iter().map(from_python).collect::<PyResult<_>>()?;
+    let method: Option<Method> = method.map(Method::from_name).transpose().map_err(e)?;
+    let cad = lifting::cylindrical_algebraic_decomposition(&polys, &gens, method).map_err(e)?;
+    let out = PyDict::new(py);
+    out.set_item("repr", cad.repr())?;
+    out.set_item(
+        "method",
+        if cad.method == Method::McCallum {
+            "mccallum"
+        } else {
+            "hong"
+        },
+    )?;
+    let projection: Vec<Vec<String>> = cad
+        .projection
+        .iter()
+        .map(|l| l.iter().map(|p| p.to_str().map_err(e)).collect())
+        .collect::<PyResult<_>>()?;
+    out.set_item("projection", projection)?;
+    let mut cells: Vec<String> = Vec::new();
+    for cell in cad.cells() {
+        let signs: Vec<String> = cell
+            .signs
+            .lock()
+            .expect("signs")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        cells.push(format!("{} {}", cell.repr().map_err(e)?, signs.join(",")));
+    }
+    out.set_item("cells", cells)?;
+    let sizes: Vec<usize> = cad.levels().iter().map(|l| l.len()).collect();
+    out.set_item("sizes", sizes)?;
+    Ok(out)
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -1676,6 +1725,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(roots, m)?)?;
     m.add_function(wrap_pyfunction!(cad_projection_sets, m)?)?;
     m.add_function(wrap_pyfunction!(samplepoint_report, m)?)?;
+    m.add_function(wrap_pyfunction!(cad_report, m)?)?;
     m.add_function(wrap_pyfunction!(sorted_by_key, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;

@@ -67,6 +67,12 @@ create_exception!(
     BasePolynomialError,
     "polys.polyerrors.NotAlgebraic"
 );
+create_exception!(
+    polyerrors,
+    NotWellOriented,
+    PolynomialError,
+    "polys.cad.lifting.NotWellOriented"
+);
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let py: Python<'_> = m.py();
@@ -80,6 +86,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("OperationNotSupported", py.get_type::<OperationNotSupported>())?;
     m.add("NotInvertible", py.get_type::<NotInvertible>())?;
     m.add("NotAlgebraic", py.get_type::<NotAlgebraic>())?;
+    m.add("NotWellOriented", py.get_type::<NotWellOriented>())?;
 
     Ok(())
 }
@@ -96,5 +103,6 @@ pub fn polys_error(kind: sympy_extras_core::error::PolysErrorKind, message: Stri
         K::OperationNotSupported => OperationNotSupported::new_err(message),
         K::NotInvertible => NotInvertible::new_err(message),
         K::NotAlgebraic => NotAlgebraic::new_err(message),
+        K::NotWellOriented => NotWellOriented::new_err(message),
     }
 }

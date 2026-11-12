@@ -36,6 +36,8 @@ pub enum PolysErrorKind {
     OperationNotSupported,
     NotInvertible,
     NotAlgebraic,
+    /// `polys.cad.lifting.NotWellOriented`, a `PolynomialError`.
+    NotWellOriented,
 }
 
 impl PolysErrorKind {
@@ -50,6 +52,7 @@ impl PolysErrorKind {
             PolysErrorKind::OperationNotSupported => "OperationNotSupported",
             PolysErrorKind::NotInvertible => "NotInvertible",
             PolysErrorKind::NotAlgebraic => "NotAlgebraic",
+            PolysErrorKind::NotWellOriented => "NotWellOriented",
         }
     }
 }

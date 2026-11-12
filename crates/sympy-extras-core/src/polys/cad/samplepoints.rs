@@ -192,6 +192,12 @@ fn order(values: &[Real]) -> PolyResult<Vec<Vec<usize>>> {
     Ok(groups)
 }
 
+/// The positions of `values` in increasing order, equal ones grouped
+/// (`_order`).
+pub fn order_of(values: &[Real]) -> PolyResult<Vec<Vec<usize>>> {
+    order(values)
+}
+
 fn dense_real_roots(f: &[Rat]) -> PolyResult<Vec<(Real, usize)>> {
     let g: Vec<Rat> = dup_strip(f, &QQ);
     if dup_degree(&g) < 1 {
