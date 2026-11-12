@@ -4,10 +4,7 @@
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the annihilators, factors
 and telescopers as classes on SymPy objects, the values of
-:mod:`.conditions_sympy`). The step of the native module which stays on
-SymPy is here too: SymPy's ``expr_to_holonomic``, for the annihilators
-of whole integrands and the equations of the factors which the native
-module does not write down (:func:`holonomic_of_core`).
+:mod:`.conditions_sympy`).
 
 Examples
 ========
@@ -34,20 +31,17 @@ from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions
-from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
-from sympy_extras.settings import settings
 
 from . import dfinite as native
 from .conditions_sympy import ConditionalValue
 from .telescoping_sympy import _optional_eq
 
 __all__ = ['Annihilator', 'DFiniteTelescoper', 'Factor', 'annihilators', 'normal_form', 'closure', 'chyzak',
-           'dfinite_ode', 'dfinite_integral', 'holonomic_of_core']
+           'dfinite_ode', 'dfinite_integral']
 
 #: a mixed derivative ``d^i/dx^i d^j/dt^j F`` by its orders
 Derivative_ = tuple[int, int]
@@ -311,32 +305,3 @@ def dfinite_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol
     found = native.dfinite_integral(core_expr(sympify(F)), _core_symbol(x), core_expr(sympify(a)),
                                     core_expr(sympify(b)), _core_symbol(t), core_assumptions(assumptions))
     return None if found is None else ConditionalValue.from_core(found)
-
-
-# ---------------------------------------------------------------------------
-# the step of the native module which stays on SymPy
-
-def holonomic_of_core(F: CoreExpr, v: CoreSymbol, parameters: Sequence[CoreSymbol]) -> Optional[list[CoreExpr]]:
-    """The coefficients (lowest order first) of the annihilator of ``F`` in
-    ``v`` which SymPy's ``expr_to_holonomic`` gives, with the
-    ``parameters`` in the coefficient field, under the time limit of the
-    settings; ``None`` when it fails or the result cannot be converted."""
-    from sympy.holonomic.holonomic import expr_to_holonomic
-    from sympy.polys.domains import QQ
-    from sympy.polys.polyerrors import CoercionFailed, GeneratorsError, PolynomialError
-    f, variable = sympy_expr(F), _sympy_symbol(v)
-    symbols = [_sympy_symbol(p) for p in parameters]
-    domain = QQ.frac_field(*symbols) if symbols else QQ
-    try:
-        h = attempt(lambda: expr_to_holonomic(f, variable, domain=domain), settings.timeout)
-    except (PolynomialError, CoercionFailed, GeneratorsError, AttributeError, KeyError, ZeroDivisionError,
-            AssertionError, NotImplementedError):
-        return None
-    if h is None:
-        return None
-    operator = h.annihilator
-    ring = operator.parent.base
-    try:
-        return [core_expr(as_expr(ring.to_sympy(p))) for p in operator.listofpoly]
-    except (TypeError, ValueError, NotImplementedError):
-        return None

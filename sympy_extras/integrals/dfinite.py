@@ -17,10 +17,10 @@ Every mixed derivative `\\partial_x^i \\partial_t^j F` is then a combination,
 with rational coefficients, of finitely many functions. Two ways to
 that closure are implemented: the *normal forms* modulo the two
 annihilators (`i \\ge r` reduced with `L_x`, `j \\ge s` with `L_t`,
-Leibniz's rule taking the derivatives of the coefficients; the
-annihilators come from SymPy's ``expr_to_holonomic`` with the other
-variable in the coefficient field, a scaled argument which it refuses,
-`J_0(t x)`, through the substitution `x = y/t` and back), which is exact
+Leibniz's rule taking the derivatives of the coefficients; each
+annihilator is the first linear dependency among the derivatives of `F`
+in the closure below, with the other variable in the coefficient field,
+so of least order there), which is exact
 when the ideal of the two operators is rectangular; and, for the
 algorithm itself, the closure of a *product of D-finite factors*
 `f_i(\\text{argument}_i)` with polynomial arguments: the basis is the set
@@ -62,16 +62,16 @@ rational function of the Almkvist–Zeilberger algorithm.
 
 The module works on the expressions of the core and imports no SymPy:
 the equations of the factors ``exp``, ``sin``, ``cos``, ``sinh``,
-``cosh``, ``besselj``, ``erf``, ``erfc``, ``erfi`` and ``log`` are
-written down (as SymPy's ``expr_to_holonomic`` gives them), the linear
-systems are solved over the field of the parameters of the typed
-polynomial layer. The steps which stay on SymPy are reached through
-:mod:`.dfinite_sympy` when they are needed: ``expr_to_holonomic`` for the
-other factors and for :func:`annihilators`
-(:func:`~sympy_extras.integrals.dfinite_sympy.holonomic_of_core`), and
-the initial values and numerical check of :func:`dfinite_integral`
-(:mod:`.telescoping_sympy`). :mod:`.dfinite_sympy` is the old interface
-on SymPy objects.
+``cosh``, ``erf``, ``erfc``, ``erfi``, ``log``, the Bessel and Hankel
+functions and the Airy functions are written down (as SymPy's
+``expr_to_holonomic`` gives them where it has them), the equation of
+another factor `f(u)` whose derivative is in the closure (``Ei``, ``Si``,
+``Ci``, ``atan``, ``asin``) is that of `f'` composed with `d/du`, and for
+:func:`annihilators` the closure also takes sums, rational arguments and
+the powers `b^r` of rational functions with constant exponents (`b^r`
+satisfies `b y' = r b' y`). The linear systems are solved over the field
+of the parameters of the typed polynomial layer. :mod:`.dfinite_sympy`
+is the old interface on SymPy objects.
 
 Examples
 ========
@@ -107,10 +107,9 @@ from typing import Callable, Final, Optional, Sequence
 
 from sympy_extras._timeout import attempt
 from sympy_extras.assumptions.ask import Assumptions
-from sympy_extras.core.add import add
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.add import Add, add
 from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
-from sympy_extras.core.function import Application, Function, diff, expand_func
+from sympy_extras.core.function import Application, Derivative, Function, diff, expand_func
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import Integer, nan, oo, zoo
 from sympy_extras.core.power import Pow, pow
@@ -120,7 +119,8 @@ from sympy_extras.functions.elementary.exponential import Exp, Log
 from sympy_extras.functions.elementary.hyperbolic import Cosh, Sinh
 from sympy_extras.functions.elementary.piecewise import Piecewise
 from sympy_extras.functions.elementary.trigonometric import Cos, Sin
-from sympy_extras.functions.special.bessel import BesselJ
+from sympy_extras.functions.special.bessel import (AiryAi, AiryAiPrime, AiryBi, AiryBiPrime, BesselI, BesselJ, BesselK,
+                                                    BesselY, Hankel1, Hankel2)
 from sympy_extras.functions.special.error_functions import Erf, Erfc, Erfi
 from sympy_extras.polys.polytools import Poly, cancel, factor_list
 from sympy_extras.polys.rationaltools import together
@@ -256,59 +256,78 @@ class DFiniteTelescoper:
 # ---------------------------------------------------------------------------
 # Annihilators
 
-def _holonomic(F: Expr, v: Symbol, parameter: Symbol) -> Optional[Annihilator]:
-    """The annihilator of ``F`` in ``v`` from SymPy's ``expr_to_holonomic``
-    with ``parameter`` in the coefficient field, ``None`` when it fails."""
-    from .dfinite_sympy import holonomic_of_core
-    parameters = [parameter] if F.has(parameter) else []
-    coefficients = holonomic_of_core(F, v, parameters)
-    if coefficients is None or not coefficients or coefficients[-1] == _ZERO:
+def _minimal_annihilator(F: Expr, v: Symbol, parameter: Symbol, depth: int = 0) -> Optional[Annihilator]:
+    """The annihilator of least order of ``F`` in ``v`` within the closure
+    of its terms: each term is a rational coefficient times D-finite
+    factors (:func:`_closure_of`, the arguments rational in ``v`` and
+    ``parameter``), its derivatives are vectors in the basis of its
+    factors, and the first linear dependency over the rational functions
+    of ``v`` and the parameters among ``F, F', F'', ...`` (the terms in
+    the direct sum of their spaces) gives the coefficients, cleared of
+    denominators and common factors; ``None`` when a term is not of this
+    kind."""
+    if F == _ZERO:
         return None
-    try:
-        return Annihilator(v, coefficients)
-    except ValueError:
-        return None
-
-
-def _scales(F: Expr, v: Symbol) -> list[Expr]:
-    """The factors ``c`` of arguments ``c*v`` of the functions of ``F``,
-    ``c`` free of ``v`` and not a number."""
-    found: list[Expr] = []
-    for node in F.atoms(Application):
-        for argument in node.args:
-            if not isinstance(argument, Expr):
-                continue
-            coefficient, rest = argument.as_independent(v, as_Add=False)
-            if rest == v and coefficient.is_number is not True and coefficient not in found:
-                found.append(coefficient)
-    return found
-
-
-def _annihilator(F: Expr, v: Symbol, parameter: Symbol) -> Optional[Annihilator]:
-    """The annihilator in ``v``, with the substitution ``v = y/c`` and back
-    when a scaled argument ``c*v`` stops ``expr_to_holonomic``."""
-    found = _holonomic(F, v, parameter)
-    if found is not None:
-        return found
-    for c in _scales(F, v):
-        y = _fresh('y')
-        scaled = _holonomic(as_expr(F.subs(v, y/c)), y, parameter)
-        if scaled is None:
-            continue
-        # d/dy = (1/c) d/dv and p_i(y) = p_i(c v)
-        coefficients = [cancel(as_expr(p.subs(y, c*v))*pow(c, Integer(-i))) for i, p in enumerate(scaled.coefficients)]
-        try:
-            return Annihilator(v, coefficients)
-        except ValueError:
-            continue
+    terms = [a for a in F.args if isinstance(a, Expr)] if isinstance(F, Add) else [F]
+    spaces: list[list[Factor]] = []
+    current: list[Vector] = []
+    dimension = 0
+    for term in terms:
+        found = _closure_of(term, v, parameter, True, depth)
+        if found is None:
+            return None
+        coefficient, factors = found
+        spaces.append(factors)
+        current.append({tuple(0 for _ in factors): coefficient})
+        size = 1
+        for factor in factors:
+            size *= factor.order
+        dimension += size
+    columns: list[list[Vector]] = [current]
+    for _ in range(dimension):
+        columns.append([_derive(vector, v, factors) for factors, vector in zip(spaces, columns[-1])])
+        relation = _relation(columns, v)
+        if relation is not None:
+            try:
+                return Annihilator(v, relation)
+            except ValueError:
+                return None
     return None
 
 
+def _relation(columns: Sequence[Sequence[Vector]], v: Symbol) -> Optional[list[Expr]]:
+    """The coefficients of a linear dependency of the derivatives (one
+    column per order, each a vector per term), polynomials in ``v``
+    without common factors, the leading one nonzero; ``None`` when the
+    columns are independent."""
+    keys: list[tuple[int, Basis]] = []
+    for column in columns:
+        for s, vector in enumerate(column):
+            for basis in vector:
+                if (s, basis) not in keys:
+                    keys.append((s, basis))
+    entries = [value for column in columns for vector in column for value in vector.values()]
+    width = len(columns)
+    try:
+        K = _Context(entries, _fresh('z'))
+        rows = [[K.element(columns[k][s].get(basis, _ZERO)) for k in range(width)] for s, basis in keys]
+        null = K.field.nullspace(rows, width)
+    except _POLYNOMIAL_FAILURES:
+        return None
+    if not null:
+        return None
+    coefficients, _ = _normalized([K.element_expr(c) for c in null[0]], v)
+    if coefficients[-1] == _ZERO:
+        return None
+    return coefficients
+
+
 def annihilators(F: ExprLike, x: Symbol, t: Symbol) -> Optional[tuple[Annihilator, Annihilator]]:
-    """The annihilators ``L_x`` and ``L_t`` of ``F`` (see the module
-    documentation, SymPy's ``expr_to_holonomic`` through
-    :func:`~sympy_extras.integrals.dfinite_sympy.holonomic_of_core`), or
-    ``None`` when SymPy finds none.
+    """The annihilators ``L_x`` and ``L_t`` of ``F`` of least order in the
+    closure of its terms (see the module documentation and
+    :func:`closure`; the arguments of the factors rational in ``x`` and
+    ``t``, sums, products and algebraic powers of rational functions), or
+    ``None`` when a term is not a product of D-finite factors.
 
     Examples
     ========
@@ -324,10 +343,10 @@ def annihilators(F: ExprLike, x: Symbol, t: Symbol) -> Optional[tuple[Annihilato
     True
     """
     F_ = to_expr(F)
-    L_x = _annihilator(F_, x, t)
+    L_x = _minimal_annihilator(F_, x, t)
     if L_x is None:
         return None
-    L_t = _annihilator(F_, t, x)
+    L_t = _minimal_annihilator(F_, t, x)
     if L_t is None:
         return None
     return L_x, L_t
@@ -448,9 +467,13 @@ Vector = dict[Basis, Expr]
 
 
 def _table(function: Expr, u: Symbol) -> Optional[list[Expr]]:
-    """The coefficients of the annihilator of ``function`` in ``u`` which
-    SymPy's ``expr_to_holonomic`` gives (lowest order first), written
-    down for the common factors; ``None`` for the others."""
+    """The coefficients of the annihilator of ``function`` in ``u``
+    (lowest order first), written down for the common factors from their
+    differential equations (the forms of SymPy's ``expr_to_holonomic``
+    for those it has; the second order Bessel and Airy equations, where
+    SymPy's Meijer G route gives a third order one for ``besseli`` and
+    ``bessely`` and none for the Airy functions); ``None`` for the
+    others."""
     if not isinstance(function, Application) or not function.args or function.args[-1] != u:
         return None
     if isinstance(function, Exp):
@@ -465,31 +488,66 @@ def _table(function: Expr, u: Symbol) -> Optional[list[Expr]]:
         return [_ZERO, -2*u, _ONE]
     if isinstance(function, Log) and len(function.args) == 1:
         return [_ZERO, _ONE, u]
-    if isinstance(function, BesselJ):
+    if isinstance(function, (AiryAi, AiryBi)):
+        return [-u, _ZERO, _ONE]
+    if isinstance(function, (AiryAiPrime, AiryBiPrime)):
+        # w = Ai': w' = u Ai, w'' = Ai + u w = w'/u + u w
+        return [-u**2, Integer(-1), u]
+    if isinstance(function, (BesselJ, BesselY, Hankel1, Hankel2, BesselI, BesselK)):
         nu = function.args[0]
         if isinstance(nu, Expr):
+            if isinstance(function, (BesselI, BesselK)):
+                return [-u**2 - nu**2, u, u**2]
             return [u**2 - nu**2, u, u**2]
     return None
 
 
-def _dfinite_factor(f: Expr, x: Symbol, t: Symbol) -> Optional[Factor]:
-    """``f`` as a D-finite function of a polynomial argument."""
+#: the depth of the derivatives through which the annihilator of a factor
+#: outside the table is sought (``Si(u)`` through ``sin(u)/u``)
+_MAX_DEPTH: Final[int] = 3
+
+
+def _derivative_annihilator(function: Expr, u: Symbol, depth: int) -> Optional[list[Expr]]:
+    """The annihilator of ``function`` in ``u`` as ``L o d/du`` with ``L``
+    the annihilator of its derivative, when the derivative is D-finite in
+    the closure (the exponential, sine, cosine and logarithmic integrals,
+    the arctangent; ``asin`` through an algebraic power)."""
+    if depth >= _MAX_DEPTH:
+        return None
+    derivative = diff(function, u)
+    if derivative.has(Derivative) or function in derivative.atoms(Application):
+        return None
+    inner = _minimal_annihilator(derivative, u, _fresh('w'), depth + 1)
+    if inner is None:
+        return None
+    return [_ZERO] + inner.coefficients
+
+
+def _dfinite_factor(f: Expr, x: Symbol, t: Symbol, rational: bool = False, depth: int = 0) -> Optional[Factor]:
+    """``f`` as a D-finite function of a polynomial argument (rational in
+    ``x`` and ``t`` with ``rational``, which also takes the powers
+    ``b**r`` of rational functions ``b`` with a constant exponent)."""
+    if rational and isinstance(f, Pow) and not f.exp.has(x, t) and f.base.is_rational_function(x, t) is True:
+        w = _fresh('u')
+        return Factor(pow(w, f.exp), w, f.base, [f.exp/w])
     if not isinstance(f, Application) or not f.args:
         return None
     arguments = [a for a in f.args if isinstance(a, Expr)]
     if len(arguments) != len(f.args):
         return None
     argument = arguments[-1]
-    if argument.is_polynomial(x, t) is not True or any(a.has(x, t) for a in arguments[:-1]):
+    if any(a.has(x, t) for a in arguments[:-1]):
+        return None
+    if rational:
+        if argument.is_rational_function(x, t) is not True:
+            return None
+    elif argument.is_polynomial(x, t) is not True:
         return None
     u = _fresh('u')
     function = as_expr(f._evaluated(tuple(arguments[:-1]) + (u,)))
     coefficients = _table(function, u)
     if coefficients is None:
-        from .dfinite_sympy import holonomic_of_core
-        parameters = sorted([s for s in function.free_symbols if isinstance(s, Symbol) and s != u],
-                            key=lambda s: s.name)
-        coefficients = holonomic_of_core(function, u, parameters)
+        coefficients = _derivative_annihilator(function, u, depth)
     if coefficients is None or len(coefficients) < 2 or coefficients[-1] == _ZERO:
         return None
     leading = coefficients[-1]
@@ -515,10 +573,15 @@ def closure(F: ExprLike, x: Symbol, t: Symbol) -> Optional[tuple[Expr, list[Fact
     >>> closure(x*exp(-x**2)*besselj(0, t*x), x, t)
     (x, [Factor(besselj(0, t*x), 2), Factor(exp(-x**2), 1)])
     """
-    F_ = to_expr(F)
+    return _closure_of(to_expr(F), x, t, False, 0)
+
+
+def _closure_of(F: Expr, x: Symbol, t: Symbol, rational: bool, depth: int) -> Optional[tuple[Expr, list[Factor]]]:
+    """:func:`closure`, with the factors of :func:`_dfinite_factor` under
+    ``rational``."""
     coefficient: Expr = _ONE
     factors: list[Factor] = []
-    parts = [a for a in F_.args if isinstance(a, Expr)] if isinstance(F_, Mul) else [F_]
+    parts = [a for a in F.args if isinstance(a, Expr)] if isinstance(F, Mul) else [F]
     for part in parts:
         e = part
         if e.is_rational_function(x, t) is True:
@@ -528,11 +591,11 @@ def closure(F: ExprLike, x: Symbol, t: Symbol) -> Optional[tuple[Expr, list[Fact
         if isinstance(e, Pow) and isinstance(e.exp, Integer) and e.exp.p > 0:
             multiplicity = e.exp.p
             e = e.base
-        factor = _dfinite_factor(e, x, t)
+        factor = _dfinite_factor(e, x, t, rational, depth)
         if factor is None:
             expanded = expand_func(e)
             if expanded != e:
-                inner = closure(expanded, x, t)
+                inner = _closure_of(expanded, x, t, rational, depth)
                 if inner is None:
                     return None
                 coefficient = mul(coefficient, pow(inner[0], Integer(multiplicity)))
@@ -710,17 +773,6 @@ def _normalized(values: Sequence[Expr], t: Symbol) -> tuple[list[Expr], Expr]:
     return scaled, scale
 
 
-def _with_fresh_parameter(F: Expr, t: Symbol) -> tuple[Expr, Symbol]:
-    """``F`` with the parameter written as a fresh plain symbol: SymPy's
-    ``expr_to_holonomic`` keeps a lookup table built for one coefficient
-    domain, and after a call with another domain over a symbol of the
-    same name it fails on functions it knows (the bug: the telescoper of
-    ``exp(-x**2)*besselj(0, t*x)`` was not found after a Laplace
-    transform over a plain ``t``)."""
-    fresh = Dummy(t.name)
-    return as_expr(F.xreplace({t: fresh})), fresh
-
-
 def chyzak(F: ExprLike, x: Symbol, t: Symbol, max_order: int = 3, max_degree: int = 6) -> Optional[DFiniteTelescoper]:
     """A telescoper and certificate for ``F(x, t)`` by Chyzak's algorithm
     with Koutschan's ansatz (see the module documentation), the order of
@@ -742,28 +794,16 @@ def chyzak(F: ExprLike, x: Symbol, t: Symbol, max_order: int = 3, max_degree: in
     """
     F_ = to_expr(F)
     found = closure(F_, x, t)
-    parameter = t
     if found is None:
-        # SymPy's lookup table may be stale for this symbol: once more
-        # with a fresh one, mapped back below
-        F_, parameter = _with_fresh_parameter(F_, t)
-        found = closure(F_, x, parameter)
-        if found is None:
-            return None
+        return None
     coefficient, factors = found
-    closure_ = _Closure(F_, x, parameter, coefficient, factors)
+    closure_ = _Closure(F_, x, t, coefficient, factors)
     for order in range(max_order + 1):
         for power in (1, 2):
             for degree in range(max_degree + 1):
                 telescoper = attempt(lambda: _telescope(closure_, order, degree, power), settings.timeout,
                                      native=True)
                 if telescoper is not None:
-                    if parameter is not t:
-                        back: dict[Basic, Basic] = {parameter: t}
-                        return DFiniteTelescoper(as_expr(telescoper.term.xreplace(back)), x, t,
-                                                 [as_expr(c.xreplace(back)) for c in telescoper.coefficients],
-                                                 {as_expr(k.xreplace(back)): as_expr(v.xreplace(back))
-                                                  for k, v in telescoper.certificate.items()})
                     return telescoper
     return None
 
