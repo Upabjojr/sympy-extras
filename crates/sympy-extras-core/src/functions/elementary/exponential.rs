@@ -50,6 +50,11 @@ pub fn exp_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
         Head::Rational { value, .. } if *value == Rat::ONE => return Ok(Some(Basic::e())),
         Head::Infinity => return Ok(Some(Basic::oo())),
         Head::NegativeInfinity => return Ok(Some(Basic::zero())),
+        Head::AccumBounds => {
+            // exp.eval (AccumBounds)
+            let (lo, hi) = (exp(&arg.args()[0])?, exp(&arg.args()[1])?);
+            return Ok(Some(crate::core::accumbounds::accum_bounds(&lo, &hi)?));
+        }
         Head::ComplexInfinity => return Ok(Some(Basic::nan())),
         Head::Function(Function::Log) => return Ok(Some(arg.args()[0].clone())),
         _ => {}
@@ -191,6 +196,20 @@ pub fn log_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
             return Ok(Some(arg.args()[0].clone()))
         }
         _ => {}
+    }
+    if matches!(arg.head(), Head::AccumBounds) {
+        // log.eval (AccumBounds)
+        let (lo, hi) = (&arg.args()[0], &arg.args()[1]);
+        if is_true(lo, positive) {
+            return Ok(Some(crate::core::accumbounds::accum_bounds(&log(lo)?, &log(hi)?)?));
+        }
+        if is_true(lo, zero) {
+            return Ok(Some(crate::core::accumbounds::accum_bounds(
+                &Basic::negative_oo(),
+                &log(hi)?,
+            )?));
+        }
+        return Ok(Some(Basic::nan()));
     }
     if is_number(arg) {
         if is_true(arg, negative) {

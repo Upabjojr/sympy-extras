@@ -51,6 +51,16 @@ pub fn add(args: &[Basic]) -> PolyResult<Basic> {
         }
         return Ok(raw_add(flat));
     }
+    let has_bounds = |a: &Basic| {
+        if a.is_add() {
+            a.args().iter().any(super::accumbounds::is_bounds)
+        } else {
+            super::accumbounds::is_bounds(a)
+        }
+    };
+    if stack.iter().any(has_bounds) {
+        return super::accumbounds::sum_with_bounds(&stack);
+    }
     // SymPy's AssocOp.__new__: the identities dropped, a single argument
     // returned as it is
     let nonidentity: Vec<&Basic> = stack
@@ -142,5 +152,16 @@ pub fn add(args: &[Basic]) -> PolyResult<Basic> {
 
 /// The evaluated difference `a - b`.
 pub fn sub(a: &Basic, b: &Basic) -> PolyResult<Basic> {
+    // the operators of AccumBounds (its _op_priority is the higher)
+    if evaluate() && super::accumbounds::is_bounds(a) {
+        return super::accumbounds::ab_sub(a, b);
+    }
+    if evaluate() && super::accumbounds::is_bounds(b) {
+        let negated: Basic = super::accumbounds::ab_neg(b)?;
+        if super::accumbounds::is_bounds(&negated) {
+            return super::accumbounds::ab_add(&negated, a);
+        }
+        return add(&[negated, a.clone()]);
+    }
     add(&[a.clone(), mul(&[Basic::negative_one(), b.clone()])?])
 }

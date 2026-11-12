@@ -634,6 +634,7 @@ pub fn is_number(e: &Basic) -> bool {
     if e.is_symbol()
         || matches!(e.head(), Head::Undefined(_) | Head::Derivative | Head::Tuple)
         || crate::sets::sets::is_set(e)
+        || matches!(e.head(), Head::AccumBounds)
     {
         return false;
     }
@@ -1277,6 +1278,7 @@ fn eval_facts(e: &Basic) -> FactList {
         Head::Tuple => FactList::new(),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_facts(e),
         // a boolean is not an expression: no facts
+        Head::AccumBounds => super::accumbounds::bounds_facts(e),
         _ if super::logic::is_boolean(e) || crate::sets::sets::is_set(e) => FactList::new(),
         _ => constant_facts(e),
     }
@@ -1306,6 +1308,12 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::Csch => crate::functions::elementary::hyperbolic::hyperbolic_facts(f, &e.args()[0]),
         f if crate::functions::elementary::inverse::is_inverse(f) => {
             crate::functions::elementary::inverse::inverse_facts(f, &e.args()[0])
+        }
+        g @ (super::basic::Function::Floor | super::basic::Function::Ceiling | super::basic::Function::Frac) => {
+            crate::functions::elementary::integers::rounding_facts(g, &e.args()[0])
+        }
+        super::basic::Function::DiracDelta | super::basic::Function::Heaviside => {
+            crate::functions::special::delta_functions::delta_facts()
         }
         g @ (super::basic::Function::Max | super::basic::Function::Min) => {
             crate::functions::elementary::miscellaneous::minmax_facts(g, e.args())

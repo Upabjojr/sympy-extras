@@ -1,6 +1,7 @@
 //! Port of `sympy_extras/functions`: the function classes on the core.
 
 pub mod elementary;
+pub mod special;
 
 use crate::core::basic::{Basic, Function};
 use crate::error::PolyResult;
@@ -44,6 +45,7 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::Asech
         | Function::Acsch) => elementary::inverse::inverse_fdiff(g, x),
         Function::Atan2 => elementary::argument::atan2_fdiff(e, argindex),
+        g @ (Function::DiracDelta | Function::Heaviside) => special::delta_functions::delta_fdiff(g, e),
         Function::Re
         | Function::Im
         | Function::Conjugate
@@ -51,7 +53,10 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::Abs
         | Function::Arg
         | Function::Max
-        | Function::Min => {
+        | Function::Min
+        | Function::Floor
+        | Function::Ceiling
+        | Function::Frac => {
             unreachable!("these functions have their own derivatives")
         }
     }
@@ -101,13 +106,19 @@ pub fn eval_derivative(f: Function, e: &Basic, s: &Basic) -> PolyResult<Option<B
             }
         }
         Function::Sign => {
-            if is_true(a, extended_real) || is_true(a, imaginary) {
-                return Err(crate::error::not_ported("DiracDelta"));
+            use special::delta_functions::dirac_delta;
+            if is_true(a, extended_real) {
+                mul(&[Basic::int(2), derivative(a, s)?, dirac_delta(a, None)?])?
+            } else if is_true(a, imaginary) {
+                let rotated: Basic = mul(&[Basic::negative_one(), i, a.clone()])?;
+                mul(&[Basic::int(2), derivative(a, s)?, dirac_delta(&rotated, None)?])?
+            } else {
+                unevaluated()
             }
-            unevaluated()
         }
         Function::Arg => elementary::argument::arg_derivative(e, s)?,
         Function::Max | Function::Min => elementary::miscellaneous::minmax_derivative(e, s)?,
+        Function::Floor | Function::Ceiling | Function::Frac => unevaluated(),
         Function::Conjugate => {
             if is_true(s, real) {
                 c::conjugate(&derivative(a, s)?)?
@@ -129,6 +140,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     }
     if matches!(f, Function::Max | Function::Min) {
         return elementary::miscellaneous::minmax(f, args);
+    }
+    if matches!(f, Function::DiracDelta | Function::Heaviside) {
+        return special::delta_functions::delta_function(f, args);
     }
     let x: &Basic = &args[0];
     use elementary::{complexes as c, exponential as e, hyperbolic as h, trigonometric as t};
@@ -165,6 +179,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         Function::Asech => elementary::inverse::asech(x),
         Function::Acsch => elementary::inverse::acsch(x),
         Function::Arg => elementary::argument::arg(x),
-        Function::Atan2 | Function::Max | Function::Min => unreachable!("evaluated above with all their arguments"),
+        g @ (Function::Floor | Function::Ceiling | Function::Frac) => elementary::integers::rounding(g, x),
+        Function::Atan2 | Function::Max | Function::Min | Function::DiracDelta | Function::Heaviside => {
+            unreachable!("evaluated above with all their arguments")
+        }
     }
 }

@@ -27,6 +27,7 @@
 // never read it, so nodes are sound keys of maps and sets
 #![allow(clippy::mutable_key_type)]
 
+pub mod accumbounds;
 pub mod add;
 pub mod assumptions;
 pub mod basic;

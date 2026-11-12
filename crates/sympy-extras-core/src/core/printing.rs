@@ -188,11 +188,12 @@ fn negative_exponent(e: &Basic) -> bool {
 /// Whether the arguments are as an evaluating function stores them: a
 /// number first, then the `compare` order (`_in_compare_order`).
 pub fn in_compare_order(args: &[Basic]) -> bool {
-    let rest: &[Basic] = if !args.is_empty() && args[0].is_number_class() {
-        &args[1..]
-    } else {
-        args
-    };
+    let rest: &[Basic] =
+        if !args.is_empty() && (args[0].is_number_class() || matches!(args[0].head(), Head::AccumBounds)) {
+            &args[1..]
+        } else {
+            args
+        };
     rest.windows(2).all(|w| w[0].compare_key() <= w[1].compare_key())
 }
 
@@ -316,7 +317,8 @@ impl StrPrinter {
             Head::Mul => self.print_mul(e.args()),
             Head::Pow => self.print_pow(&e.args()[0], &e.args()[1]),
             Head::Function(f) => {
-                let args: Vec<String> = e.args().iter().map(|a| self.doprint(a)).collect();
+                let shown: Vec<Basic> = crate::functions::special::delta_functions::printed_args(e);
+                let args: Vec<String> = shown.iter().map(|a| self.doprint(a)).collect();
                 format!("{}({})", f.name(), args.join(", "))
             }
             Head::Undefined(u) => {
@@ -346,6 +348,11 @@ impl StrPrinter {
             _ if crate::sets::sets::is_set(e) || matches!(e.head(), Head::Contains) => {
                 crate::sets::sets::print_set(e, &|a: &Basic| self.doprint(a))
             }
+            Head::AccumBounds => format!(
+                "AccumBounds({}, {})",
+                self.doprint(&e.args()[0]),
+                self.doprint(&e.args()[1])
+            ),
             Head::BooleanTrue => "True".to_string(),
             Head::BooleanFalse => "False".to_string(),
             Head::And | Head::Or | Head::Xor => {

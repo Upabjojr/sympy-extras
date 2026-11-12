@@ -90,6 +90,9 @@ pub enum Head {
     Contains,
     ProductSet,
     PointSet,
+    ConditionSet,
+    /// `AccumBounds(min, max)` (`core.accumbounds`).
+    AccumBounds,
 }
 
 /// The relations of `core.relational`.
@@ -244,6 +247,11 @@ pub enum Function {
     Atan2,
     Max,
     Min,
+    Floor,
+    Ceiling,
+    Frac,
+    DiracDelta,
+    Heaviside,
 }
 
 impl Function {
@@ -285,6 +293,11 @@ impl Function {
             Function::Atan2 => "atan2",
             Function::Max => "Max",
             Function::Min => "Min",
+            Function::Floor => "floor",
+            Function::Ceiling => "ceiling",
+            Function::Frac => "frac",
+            Function::DiracDelta => "DiracDelta",
+            Function::Heaviside => "Heaviside",
         }
     }
 
@@ -326,6 +339,11 @@ impl Function {
             Function::Atan2 => "Atan2",
             Function::Max => "Max",
             Function::Min => "Min",
+            Function::Floor => "Floor",
+            Function::Ceiling => "Ceiling",
+            Function::Frac => "Frac",
+            Function::DiracDelta => "DiracDelta",
+            Function::Heaviside => "Heaviside",
         }
     }
 
@@ -339,6 +357,8 @@ impl Function {
             Function::Im => 42,
             Function::Arg => 43,
             Function::Atan2 | Function::Max | Function::Min => 10000,
+            Function::Floor | Function::Ceiling | Function::Frac => 10000,
+            Function::DiracDelta | Function::Heaviside => 10000,
             Function::Sin => 20,
             Function::Cos => 21,
             Function::Tan => 22,
@@ -418,6 +438,8 @@ impl Head {
             Head::Contains => "Contains",
             Head::ProductSet => "ProductSet",
             Head::PointSet => "PointSet",
+            Head::ConditionSet => "ConditionSet",
+            Head::AccumBounds => "AccumBounds",
         }
     }
 
@@ -485,6 +507,8 @@ impl Head {
                 | Head::Contains
                 | Head::ProductSet
                 | Head::PointSet
+                | Head::ConditionSet
+                | Head::AccumBounds
         )
     }
 
@@ -809,6 +833,7 @@ impl Basic {
                     .filter(|s| s != variable)
                     .collect()
             }
+            Head::ConditionSet => crate::sets::conditionset::condition_set_free_symbols(self),
             _ if self.is_symbol() => std::iter::once(self.clone()).collect(),
             _ => {
                 let mut result: BTreeSet<Basic> = BTreeSet::new();

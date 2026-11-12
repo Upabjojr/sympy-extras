@@ -172,6 +172,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Contains" => Basic::new(Head::Contains, args()?),
         "ProductSet" => Basic::new(Head::ProductSet, args()?),
         "PointSet" => Basic::new(Head::PointSet, args()?),
+        "ConditionSet" => Basic::new(Head::ConditionSet, args()?),
+        "AccumBounds" | "AccumulationBounds" => Basic::new(Head::AccumBounds, args()?),
         "Exp" => Basic::new(Head::Function(Function::Exp), args()?),
         "Log" => Basic::new(Head::Function(Function::Log), args()?),
         "Re" => Basic::new(Head::Function(Function::Re), args()?),
@@ -188,6 +190,11 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Sinh" => Basic::new(Head::Function(Function::Sinh), args()?),
         "Arg" => Basic::new(Head::Function(Function::Arg), args()?),
         "Max" => Basic::new(Head::Function(Function::Max), args()?),
+        "Floor" => Basic::new(Head::Function(Function::Floor), args()?),
+        "DiracDelta" => Basic::new(Head::Function(Function::DiracDelta), args()?),
+        "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
+        "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
+        "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
         "Min" => Basic::new(Head::Function(Function::Min), args()?),
         "Atan2" => Basic::new(Head::Function(Function::Atan2), args()?),
         "Asin" => Basic::new(Head::Function(Function::Asin), args()?),
@@ -316,6 +323,13 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 .getattr(e.class_name())?
                 .call1(PyTuple::new(py, items)?)?
         }
+        Head::AccumBounds => rebuilt("AccumBounds", "accumbounds")?,
+        Head::ConditionSet => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.sets.conditionset")?
+                .getattr("ConditionSet")?
+                .call1(PyTuple::new(py, items)?)?
+        }
         Head::IndexedRoot => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.polys.cad.indexedroot")?
@@ -330,6 +344,8 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                     "trigonometric"
                 }
                 Function::Max | Function::Min => "miscellaneous",
+                Function::Floor | Function::Ceiling | Function::Frac => "integers",
+                Function::DiracDelta | Function::Heaviside => "delta_functions",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse_trigonometric(*f) => "trigonometric",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse(*f) => "hyperbolic",
                 Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
@@ -337,7 +353,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 }
                 _ => "complexes",
             };
-            py.import(format!("sympy_extras.functions.elementary.{}", module))?
+            let package: &str = if matches!(f, Function::DiracDelta | Function::Heaviside) {
+                "special"
+            } else {
+                "elementary"
+            };
+            py.import(format!("sympy_extras.functions.{}.{}", package, module))?
                 .getattr(f.class_name())?
                 .call1(PyTuple::new(py, items)?)?
         }
@@ -566,6 +587,37 @@ unary!(acot, sympy_extras_core::functions::elementary::inverse::acot);
 unary!(asec, sympy_extras_core::functions::elementary::inverse::asec);
 unary!(acsc, sympy_extras_core::functions::elementary::inverse::acsc);
 unary!(asinh, sympy_extras_core::functions::elementary::inverse::asinh);
+unary!(floor, sympy_extras_core::functions::elementary::integers::floor);
+
+/// `dirac_delta(x, k)` (`k` omitted: one argument).
+#[pyfunction]
+#[pyo3(signature = (x, k=None))]
+fn dirac_delta<'py>(
+    py: Python<'py>,
+    x: &Bound<'py, PyAny>,
+    k: Option<Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let k: Option<Basic> = k.as_ref().map(from_python).transpose()?;
+    let value = sympy_extras_core::functions::special::delta_functions::dirac_delta(&from_python(x)?, k.as_ref())
+        .map_err(crate::convert::err)?;
+    to_python(py, &value)
+}
+
+/// `heaviside(x, H0)` (`H0` omitted: 1/2).
+#[pyfunction]
+#[pyo3(signature = (x, h0=None))]
+fn heaviside<'py>(
+    py: Python<'py>,
+    x: &Bound<'py, PyAny>,
+    h0: Option<Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let h0: Option<Basic> = h0.as_ref().map(from_python).transpose()?;
+    let value = sympy_extras_core::functions::special::delta_functions::heaviside(&from_python(x)?, h0.as_ref())
+        .map_err(crate::convert::err)?;
+    to_python(py, &value)
+}
+unary!(ceiling, sympy_extras_core::functions::elementary::integers::ceiling);
+unary!(frac, sympy_extras_core::functions::elementary::integers::frac);
 unary!(acosh, sympy_extras_core::functions::elementary::inverse::acosh);
 unary!(atanh, sympy_extras_core::functions::elementary::inverse::atanh);
 unary!(acoth, sympy_extras_core::functions::elementary::inverse::acoth);
@@ -1690,6 +1742,141 @@ fn samplepoint_report<'py>(
     Ok(out)
 }
 
+/// The functions of `polys.cad.cylindrical` (`cylindrical_formula`,
+/// `cylindrical_set`, `cylindrical_cases`; for the cases `gens` are the
+/// parameters and `unknowns` the unknowns).
+#[pyfunction]
+#[pyo3(signature = (name, formula, gens, quantifiers=Vec::new(), unknowns=Vec::new(), method=None, partial=true))]
+#[allow(clippy::too_many_arguments)]
+fn cylindrical_call<'py>(
+    py: Python<'py>,
+    name: &str,
+    formula: Bound<'py, PyAny>,
+    gens: Vec<Bound<'py, PyAny>>,
+    quantifiers: Vec<(String, Bound<'py, PyAny>)>,
+    unknowns: Vec<Bound<'py, PyAny>>,
+    method: Option<&str>,
+    partial: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::polys::cad::{cylindrical as cy, projection::Method, qe};
+    let e = crate::convert::err;
+    let method: Option<Method> = method.map(Method::from_name).transpose().map_err(e)?;
+    let mut prefix: qe::QuantifierPrefix = Vec::new();
+    for (kind, variables) in &quantifiers {
+        let kind: qe::Quantifier = qe::Quantifier::from_name(kind).map_err(e)?;
+        let class: String = variables.get_type().name()?.to_string();
+        if class == "list" || class == "tuple" {
+            for v in variables.try_iter()? {
+                prefix.push((kind, from_python(&v?)?));
+            }
+        } else {
+            prefix.push((kind, from_python(variables)?));
+        }
+    }
+    let formula: Basic = from_python(&formula)?;
+    let gens: Vec<Basic> = gens.iter().map(from_python).collect::<PyResult<_>>()?;
+    let unknowns: Vec<Basic> = unknowns.iter().map(from_python).collect::<PyResult<_>>()?;
+    Ok(match name {
+        "cylindrical_formula" => to_python(
+            py,
+            &cy::cylindrical_formula(&formula, &gens, &prefix, method, partial).map_err(e)?,
+        )?,
+        "cylindrical_set" => to_python(py, &cy::cylindrical_set(&formula, &gens, method, partial).map_err(e)?)?,
+        "cylindrical_cases" => {
+            let cases = cy::cylindrical_cases(&formula, &gens, &unknowns, method, partial).map_err(e)?;
+            let out = pyo3::types::PyList::empty(py);
+            for (c, s) in cases {
+                out.append(PyTuple::new(py, [to_python(py, &c)?, to_python(py, &s)?])?)?;
+            }
+            out.into_any()
+        }
+        _ => return Err(PyTypeError::new_err(format!("unknown cylindrical function {}", name))),
+    })
+}
+
+/// The functions of `polys.cad.qe` (`quantifier_elimination`, `decide`,
+/// `sample_points`, `solution_set`, `truth_tables`): `formula` is a list of
+/// formulas for `truth_tables`, `free` the free variables (the generators
+/// for `sample_points` and `truth_tables`, `[x]` for `solution_set`).
+#[pyfunction]
+#[pyo3(signature = (name, formula, quantifiers, free=None, method=None, partial=true))]
+fn qe_call<'py>(
+    py: Python<'py>,
+    name: &str,
+    formula: Bound<'py, PyAny>,
+    quantifiers: Vec<(String, Bound<'py, PyAny>)>,
+    free: Option<Vec<Bound<'py, PyAny>>>,
+    method: Option<&str>,
+    partial: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::polys::cad::{projection::Method, qe};
+    let e = crate::convert::err;
+    let method: Option<Method> = method.map(Method::from_name).transpose().map_err(e)?;
+    let mut prefix: qe::QuantifierPrefix = Vec::new();
+    for (kind, variables) in &quantifiers {
+        let kind: qe::Quantifier = qe::Quantifier::from_name(kind).map_err(e)?;
+        let class: String = variables.get_type().name()?.to_string();
+        if class == "list" || class == "tuple" {
+            for v in variables.try_iter()? {
+                prefix.push((kind, from_python(&v?)?));
+            }
+        } else {
+            prefix.push((kind, from_python(variables)?));
+        }
+    }
+    let free: Option<Vec<Basic>> = free
+        .map(|f| f.iter().map(from_python).collect::<PyResult<_>>())
+        .transpose()?;
+    if name == "truth_tables" {
+        let mut formulas: Vec<Basic> = Vec::new();
+        for f in formula.try_iter()? {
+            formulas.push(from_python(&f?)?);
+        }
+        let (cells, tables) = qe::truth_tables(&formulas, &free.unwrap_or_default(), method, partial).map_err(e)?;
+        let shown: Vec<String> = cells.iter().map(|c| c.repr()).collect::<Result<_, _>>().map_err(e)?;
+        return Ok(PyTuple::new(
+            py,
+            [
+                shown.into_pyobject(py)?.into_any(),
+                tables.into_pyobject(py)?.into_any(),
+            ],
+        )?
+        .into_any());
+    }
+    let formula: Basic = from_python(&formula)?;
+    Ok(match name {
+        "quantifier_elimination" => to_python(
+            py,
+            &qe::quantifier_elimination(&formula, &prefix, free.as_deref(), method, partial).map_err(e)?,
+        )?,
+        "decide" => pyo3::types::PyBool::new(py, qe::decide(&formula, &prefix, method, partial).map_err(e)?)
+            .to_owned()
+            .into_any(),
+        "solution_set" => {
+            let x: Basic = free
+                .and_then(|f| f.into_iter().next())
+                .ok_or_else(|| PyTypeError::new_err("no variable"))?;
+            to_python(
+                py,
+                &qe::solution_set(&formula, &x, &prefix, method, partial).map_err(e)?,
+            )?
+        }
+        "sample_points" => {
+            let points = qe::sample_points(&formula, &free.unwrap_or_default(), method, partial).map_err(e)?;
+            let out = pyo3::types::PyList::empty(py);
+            for point in points {
+                let d = PyDict::new(py);
+                for (v, c) in point {
+                    d.set_item(to_python(py, &v)?, to_python(py, &c)?)?;
+                }
+                out.append(d)?;
+            }
+            out.into_any()
+        }
+        _ => return Err(PyTypeError::new_err(format!("unknown qe function {}", name))),
+    })
+}
+
 /// The cylindrical algebraic decomposition of `polys`: its repr, the
 /// method used, the projection sets and every top cell's repr and signs.
 #[pyfunction]
@@ -1782,6 +1969,7 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             st::interval(&a[0], &a[1], a.get(2).is_some_and(flag), a.get(3).is_some_and(flag)).map_err(e)?
         }
         "finite_set" => st::finite_set(&a),
+        "condition_set" => sympy_extras_core::sets::conditionset::condition_set(&a[0], &a[1], &a[2]).map_err(e)?,
         "union" => st::union(&a).map_err(e)?,
         "intersection" => st::intersection(&a).map_err(e)?,
         "complement" => st::complement(&a[0], &a[1]).map_err(e)?,
@@ -1800,6 +1988,30 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 Some(b) => pyo3::types::PyBool::new(py, b).to_owned().into_any(),
                 None => py.None().into_bound(py),
             });
+        }
+        "accum_bounds" => sympy_extras_core::core::accumbounds::accum_bounds(&a[0], &a[1]).map_err(e)?,
+        "ab_abs" => {
+            if sympy_extras_core::core::accumbounds::is_bounds(&a[0]) {
+                sympy_extras_core::core::accumbounds::ab_abs(&a[0]).map_err(e)?
+            } else {
+                sympy_extras_core::functions::elementary::complexes::abs_(&a[0]).map_err(e)?
+            }
+        }
+        "ab_union" | "ab_intersection" => {
+            use sympy_extras_core::core::accumbounds as ab;
+            let found = if name == "ab_union" {
+                ab::union(&a[0], &a[1])
+            } else {
+                ab::intersection(&a[0], &a[1])
+            };
+            match found.map_err(e)? {
+                Some(v) => v,
+                None => return Ok(py.None().into_bound(py)),
+            }
+        }
+        "ab_contains" => {
+            let v: bool = sympy_extras_core::core::accumbounds::contains(&a[0], &a[1]).map_err(e)?;
+            return Ok(pyo3::types::PyBool::new(py, v).to_owned().into_any());
         }
         "reversed" => rl::reversed(&a[0]),
         "negated" => rl::negated(&a[0]),
@@ -1862,6 +2074,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cad_projection_sets, m)?)?;
     m.add_function(wrap_pyfunction!(samplepoint_report, m)?)?;
     m.add_function(wrap_pyfunction!(cad_report, m)?)?;
+    m.add_function(wrap_pyfunction!(qe_call, m)?)?;
+    m.add_function(wrap_pyfunction!(cylindrical_call, m)?)?;
     m.add_function(wrap_pyfunction!(indexed_root, m)?)?;
     m.add_function(wrap_pyfunction!(logic_call, m)?)?;
     m.add_function(wrap_pyfunction!(sorted_by_key, m)?)?;
@@ -1890,6 +2104,11 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(asec, m)?)?;
     m.add_function(wrap_pyfunction!(acsc, m)?)?;
     m.add_function(wrap_pyfunction!(asinh, m)?)?;
+    m.add_function(wrap_pyfunction!(floor, m)?)?;
+    m.add_function(wrap_pyfunction!(dirac_delta, m)?)?;
+    m.add_function(wrap_pyfunction!(heaviside, m)?)?;
+    m.add_function(wrap_pyfunction!(ceiling, m)?)?;
+    m.add_function(wrap_pyfunction!(frac, m)?)?;
     m.add_function(wrap_pyfunction!(acosh, m)?)?;
     m.add_function(wrap_pyfunction!(atanh, m)?)?;
     m.add_function(wrap_pyfunction!(acoth, m)?)?;

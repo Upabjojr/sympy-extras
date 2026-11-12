@@ -23,6 +23,9 @@ pub enum PolyError {
     /// `TypeError`: an operation on the wrong kind of object (a comparison
     /// of non-real numbers, a boolean where an expression is expected).
     Type(String),
+    /// `RecursionError`: what Python's code runs into without end (the
+    /// sum of accumulation bounds and `zoo`).
+    Recursion(String),
     /// One of the exceptions of `polys.polyerrors` (`PolynomialError`,
     /// `GeneratorsNeeded`, `CoercionFailed`, ...).
     Polys(PolysErrorKind, String),
@@ -77,6 +80,7 @@ impl fmt::Display for PolyError {
             PolyError::Arithmetic(message) => write!(f, "{}", message),
             PolyError::Polys(_, message) => write!(f, "{}", message),
             PolyError::Type(message) => write!(f, "{}", message),
+            PolyError::Recursion(message) => write!(f, "{}", message),
             PolyError::NotImplemented(message) => write!(f, "{}", message),
         }
     }

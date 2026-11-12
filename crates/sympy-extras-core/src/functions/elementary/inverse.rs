@@ -29,7 +29,7 @@ use crate::core::mul::mul;
 use crate::core::parameters::evaluate;
 use crate::core::power::pow;
 use crate::core::printing::could_extract_minus_sign;
-use crate::error::{not_ported, PolyResult};
+use crate::error::PolyResult;
 use crate::numbers::*;
 
 use super::exponential::log;
@@ -37,6 +37,20 @@ use super::exponential::log;
 use Predicate::*;
 
 type Table = HashMap<Basic, Basic>;
+
+/// `AccumBounds(-pi/2, pi/2)`.
+fn half_pi_bounds() -> PolyResult<Basic> {
+    let half_pi: Basic = mul(&[Basic::pi(), Basic::half()])?;
+    Ok(crate::core::accumbounds::bounds_node(
+        &mul(&[Basic::negative_one(), half_pi.clone()])?,
+        &half_pi,
+    ))
+}
+
+/// `I*AccumBounds(-pi/2, pi/2)` (`ab_mul` with `I`: an unevaluated product).
+fn i_half_pi_bounds() -> PolyResult<Basic> {
+    crate::core::accumbounds::ab_mul(&half_pi_bounds()?, &Basic::imaginary_unit())
+}
 
 fn node(f: Function, x: Basic) -> Basic {
     Basic::new(Head::Function(f), vec![x])
@@ -594,7 +608,7 @@ fn atan_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
         Head::NaN => return Ok(Some(Basic::nan())),
         Head::Infinity => return Ok(Some(half_pi()?)),
         Head::NegativeInfinity => return Ok(Some(neg(&half_pi()?)?)),
-        Head::ComplexInfinity => return Err(not_ported("AccumBounds (atan(zoo))")),
+        Head::ComplexInfinity => return Ok(Some(half_pi_bounds()?)),
         _ => {}
     }
     if arg.as_rational().is_some() {
@@ -865,7 +879,7 @@ fn atanh_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
         }
     } else {
         if matches!(arg.head(), Head::ComplexInfinity) {
-            return Err(not_ported("AccumBounds (atanh(zoo))"));
+            return Ok(Some(i_half_pi_bounds()?));
         }
         if let Some(c) = imaginary_coefficient(arg)? {
             return Ok(Some(mul(&[i(), atan(&c)?])?));
@@ -946,7 +960,7 @@ fn asech_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
         }
     }
     if matches!(arg.head(), Head::ComplexInfinity) {
-        return Err(not_ported("AccumBounds (asech(zoo))"));
+        return Ok(Some(i_half_pi_bounds()?));
     }
     if is_zero(arg) {
         return Ok(Some(Basic::oo()));
