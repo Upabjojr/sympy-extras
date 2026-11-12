@@ -10,6 +10,21 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- **Breaking**: `sympy_extras.polys.polytools_sympy` (`invert_of_core`,
+  `cancel_of_core`, `factor_of_core`) is removed: the native `cancel`
+  cancels over `CC` (the gcd over `QQ_I`, the cofactors rounded back, as
+  SymPy's `PolyElement.cancel` of an inexact domain), over `EX` (numbers
+  such as `zoo` or `oo` among the coefficients; a zero `EX` cannot detect
+  leaves the fraction as it is where SymPy raises `PolynomialDivisionFailed`)
+  and with generators over a composite domain (the other factors as
+  elements of `EX`, the same rational function as SymPy's in another form,
+  and a generator which is not a factor of the expression, `x**2` in `x**3`,
+  through the same path); `factor` with generators over `ZZ_I`, `QQ_I` and
+  `RR` factors in every symbol, and leaves a polynomial over `CC` or `EX`
+  as it is (SymPy's `DomainError`); `invert` of two numbers follows
+  SymPy's `Domain.invert` over `ZZ_I`, `QQ_I` and `RR` (the `TypeError` of
+  SymPy over `CC`). The dense pseudo-division raises
+  `PolynomialDivisionFailed` when the degree does not drop, as SymPy's.
 - **Breaking**: `solvers.isolation_sympy.real_roots_of_core` is removed:
   the real roots of a polynomial with rational coefficients which are not
   in radicals are the native canonical `IndexedRoot` of their minimal

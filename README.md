@@ -1135,7 +1135,6 @@ sympy_extras/
         buchberger.py        Buchberger's algorithm on the typed rings (ported from SymPy)
         orderings.py         monomial orders: lex, grlex, grevlex, WeightOrder, BlockOrder, elimination_order (native)
         orderings_sympy.py   WeightOrder, BlockOrder as SymPy monomial orders (its SymPy face)
-        polytools_sympy.py   the steps of polytools which stay on SymPy (cancel, factor, invert over EX, CC, ...)
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (native)
         virtual_substitution_sympy.py  its SymPy face
         comprehensive.py     comprehensive Gröbner systems, reduction over the complex numbers (native)

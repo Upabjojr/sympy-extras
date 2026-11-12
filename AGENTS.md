@@ -521,8 +521,7 @@ sympy_extras/
         densearith.py        dup_add/mul/pow/div/pdiv/exquo over a Domain[T]
         densetools.py        dup_diff/eval/shift/compose/content/primitive/monic/trunc/clear_denoms
         euclidtools.py       dup_gcd (Euclid, subresultant PRS), dup_resultant, dup_prs_resultant (ported), dup_discriminant, dup_gcdex (typed, no SymPy)
-        polytools.py         Poly over ZZ, QQ, ZZ[a,..], QQ[a,..] (ported from SymPy, printed as SymPy): gcd, lcm, resultant, factor_list (multivariate, ZZ[a]), sqf_list, div; degree, LC, gcd, lcm, resultant, factor, factor_list, sqf, sqf_list, cancel, invert (no SymPy; EX, CC and the other domains not ported through polytools_sympy)
-        polytools_sympy.py   the steps of polytools which stay on SymPy: invert_of_core, cancel_of_core, factor_of_core
+        polytools.py         Poly over ZZ, QQ, ZZ[a,..], QQ[a,..] (ported from SymPy, printed as SymPy): gcd, lcm, resultant, factor_list (multivariate, ZZ[a]), sqf_list, div; degree, LC, gcd, lcm, resultant, factor, factor_list, sqf, sqf_list, cancel, invert (no SymPy; cancel over CC and EX too)
         gaussianfactor.py    multivariate factorisation over ZZ_I and QQ_I (Trager over QQ<I>, ported from SymPy)
         polyerrors.py        SymPy's polynomial exceptions (ported)
         algebraicfactor.py   ext_factor_list, AlgebraicPolynomialRing: multivariate factorisation and gcd over a number field QQ(alpha) (Trager)

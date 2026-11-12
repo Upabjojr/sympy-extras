@@ -23,8 +23,15 @@ in ``Poly`` (``factor`` without generators factors over ``ZZ_I``/``QQ_I``,
 :mod:`~sympy_extras.polys.gaussianfactor`, and ``RR``); the division of
 multivariate polynomials and of polynomials with symbolic coefficients.
 ``cancel``, ``factor`` and ``invert`` of expressions which need such a
-domain go through SymPy, in :mod:`sympy_extras.polys.polytools_sympy`
-(imported only then: this module does not load SymPy).
+domain are computed natively all the same: ``cancel`` over ``CC`` (the gcd
+over the exact ``QQ_I``, as SymPy's inexact domains do), over ``EX``
+(numbers such as ``zoo`` among the coefficients) and with generators over
+a composite domain (the other factors taken as elements of ``EX``);
+``factor`` with generators over ``ZZ_I``/``QQ_I``/``RR`` by the
+factorisation in every symbol, over ``CC`` and ``EX`` leaving the
+polynomial as it is (SymPy's ``DomainError``); ``invert`` of numbers in
+``ZZ_I``, ``QQ_I`` and ``RR`` by SymPy's ``Domain.invert``. The module
+does not load SymPy.
 
 Examples
 ========
@@ -63,6 +70,8 @@ from fractions import Fraction
 from math import gcd as integer_gcd
 from typing import Final, Literal, Optional, Sequence, Union
 
+import mpmath
+
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
@@ -75,12 +84,13 @@ from sympy_extras.core.symbol import Symbol
 
 from builtins import pow as builtins_pow
 
-from . import densearith, densebasic, euclidtools, factortools, sqfreetools
+from . import densearith, densebasic, densetools, euclidtools, factortools, sqfreetools
 from .domains import QQ, ZZ
 from .domains.gaussiandomains import QQ_I, ZZ_I, GaussianInteger, GaussianRational
 from .domains.sparsepolynomialring import (IntegerPolynomialRing, IteratedPolynomialRing, RationalPolynomialRing,
                                            SparsePolynomialRing)
-from .polyerrors import CoercionFailed, GeneratorsError, GeneratorsNeeded, OperationNotSupported, PolynomialError
+from .polyerrors import (CoercionFailed, GeneratorsError, GeneratorsNeeded, OperationNotSupported, PolynomialDivisionFailed,
+                         PolynomialError)
 from .polyutils import dict_from_expr
 from .rings import Monomial, PolyElement, PolyRing
 
@@ -1449,6 +1459,206 @@ def _real_expr_of(f: dict[Monomial, Fraction], gens: tuple[Expr, ...], prec: int
     return add(*parts) if parts else Float(Integer(0), precision=prec)
 
 
+#: a coefficient of ``CC``: the exact binary values of the real and imaginary parts
+ComplexPair = tuple[Fraction, Fraction]
+
+
+def _float_or_rational(e: Expr) -> Optional[tuple[Fraction, int]]:
+    """The exact value of a float or a rational and the precision of the
+    float (``0`` for a rational); ``None`` for any other number."""
+    from sympy_extras.core.numbers import Float
+    if isinstance(e, Float):
+        return e._value, e._prec
+    if isinstance(e, Rational):
+        return e.as_fraction(), 0
+    return None
+
+
+def _joint_rings_complex(exprs: Sequence[Expr]) -> tuple[tuple[Expr, ...], list[dict[Monomial, ComplexPair]], int]:
+    """:func:`_joint_rings` over SymPy's ``CC`` (coefficients ``a + b*I``
+    with float or rational parts, some float): the parts at the largest
+    precision of the floats (their exact binary values); with that
+    precision. ``CoercionFailed`` for other coefficients (``EX``)."""
+    from sympy_extras.core.numbers import _round_to_prec
+    from .domains.gaussiandomains import _gaussian_parts
+    decomposed, gens = _decompose_without_gens_many(exprs)
+    prec = 0
+    sums: list[dict[Monomial, ComplexPair]] = []
+    for terms in decomposed:
+        summed: dict[Monomial, ComplexPair] = {}
+        for m, cs in terms.items():
+            c = add(*cs)
+            try:
+                re, im = _gaussian_parts(c)
+            except ValueError:
+                raise CoercionFailed('the domain of %s (EX) is not ported yet' % (c,)) from None
+            vre, vim = _float_or_rational(re), _float_or_rational(im)
+            if vre is None or vim is None:
+                raise CoercionFailed('the domain of %s (EX) is not ported yet' % (c,))
+            prec = max(prec, vre[1], vim[1])
+            summed[m] = (vre[0], vim[0])
+        sums.append(summed)
+    if prec == 0:
+        raise CoercionFailed('no float coefficient')
+    result: list[dict[Monomial, ComplexPair]] = []
+    for summed in sums:
+        rep: dict[Monomial, ComplexPair] = {}
+        for m, (a, b) in summed.items():
+            # CC.from_sympy: the parts at the precision of the domain
+            value = (_round_to_prec(a, prec), _round_to_prec(b, prec))
+            if value[0] or value[1]:
+                rep[m] = value
+        result.append(rep)
+    return gens, result, prec
+
+
+# PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement.cancel and cofactors (over CC)
+def _cancel_complex(f: dict[Monomial, ComplexPair], g: dict[Monomial, ComplexPair], n: int, prec: int
+                    ) -> tuple[dict[Monomial, ComplexPair], dict[Monomial, ComplexPair]]:
+    """``f/g`` over ``CC`` (SymPy's ``PolyElement.cancel``): a term divides
+    out its monomial gcd with the floats kept (``CC.gcd`` is ``1``);
+    otherwise the gcd is computed over the exact domain ``QQ_I``
+    (``dmp_inner_gcd`` of an inexact domain: each part rounded to a float
+    of ``RealField()`` and made rational by ``RealField.to_rational``), and
+    the cofactors of the monic gcd are rounded back to the precision. The
+    canonical unit of ``CC`` is ``1`` (no element is negative): no sign
+    is changed."""
+    from sympy_extras.core.numbers import _round_to_prec
+    if not f:
+        return {}, {(0,) * n: (Fraction(1), Fraction(0))}
+    if len(f) == 1 or len(g) == 1:
+        # PORTED FROM SYMPY: PolyElement._gcd_monom (the ground gcd of CC is 1)
+        term, other = (f, g) if len(f) == 1 else (g, f)
+        (mt, ct), = term.items()
+        common = mt
+        for m in other:
+            common = tuple(min(a, b) for a, b in zip(common, m))
+        reduced_term = {tuple(a - b for a, b in zip(mt, common)): ct}
+        reduced_other = {tuple(a - b for a, b in zip(m, common)): c for m, c in other.items()}
+        return (reduced_term, reduced_other) if len(f) == 1 else (reduced_other, reduced_term)
+    max_denom = max(2**53 // 200, 99)
+
+    def exact(c: ComplexPair) -> GaussianRational:
+        # QQ_I.from_ComplexField: QQ.convert of each part, through RealField()
+        return GaussianRational(real_to_rational(_round_to_prec(c[0], 53), max_denom),
+                                real_to_rational(_round_to_prec(c[1], 53), max_denom))
+
+    R = SparsePolynomialRing(ZZ_I, _internal_names(n, 0))
+
+    def cleared(h: dict[Monomial, ComplexPair]) -> tuple[GaussianRational, PolyElement[GaussianInteger]]:
+        values = {m: exact(c) for m, c in h.items()}
+        common = ZZ_I.one
+        for c in values.values():
+            common = ZZ_I.lcm(common, ZZ_I.denom_of(c))
+        k = QQ_I.convert(common, ZZ_I)
+        terms = {m: ZZ_I.convert(QQ_I.mul(c, k), QQ_I) for m, c in values.items()}
+        return k, R.ring.from_dict({m: c for m, c in terms.items() if c})
+
+    cf, F = cleared(f)
+    cg, G = cleared(g)
+    h = R.gcd(F, G)
+    lc = QQ_I.convert(h.LC, ZZ_I)
+
+    def cofactor(H: PolyElement[GaussianInteger], c: GaussianRational) -> dict[Monomial, ComplexPair]:
+        found: dict[Monomial, ComplexPair] = {}
+        for m, v in H.exquo(h).terms.items():
+            value = QQ_I.exquo(QQ_I.mul(QQ_I.convert(v, ZZ_I), lc), c)
+            found[m] = (_round_to_prec(value.x, prec), _round_to_prec(value.y, prec))
+        return found
+
+    return cofactor(F, cf), cofactor(G, cg)
+
+
+def _complex_expr_of(f: dict[Monomial, ComplexPair], gens: tuple[Expr, ...], prec: int) -> Expr:
+    """The polynomial with complex float coefficients of the precision
+    (SymPy's ``CC.to_sympy``: ``Float(re) + I*Float(im)``)."""
+    from sympy_extras.core.numbers import Float
+    parts: list[Expr] = []
+    for m in sorted(f, reverse=True):
+        re, im = f[m]
+        value = add(Float(number_from_fraction(re), precision=prec),
+                    mul(I, Float(number_from_fraction(im), precision=prec)))
+        factors: list[Expr] = [value]
+        factors += [pow(g, Integer(k)) for g, k in zip(gens, m) if k]
+        parts.append(mul(*factors))
+    return add(*parts) if parts else Float(Integer(0), precision=prec)
+
+
+def _joint_rings_ex(exprs: Sequence[Expr]) -> tuple[tuple[Expr, ...], list[dict[Monomial, Expr]]]:
+    """:func:`_joint_rings` over SymPy's ``EX``: the coefficients are the
+    numbers which no other domain takes (``zoo``, ``oo``, ``nan`` among
+    rationals, floats and ``I``), kept as expressions."""
+    from .domains.expressiondomain import EX
+    decomposed, gens = _decompose_without_gens_many(exprs)
+    result: list[dict[Monomial, Expr]] = []
+    for terms in decomposed:
+        rep: dict[Monomial, Expr] = {}
+        for m, cs in terms.items():
+            c = add(*cs)
+            if not EX.is_zero(c):
+                rep[m] = c
+        result.append(rep)
+    return gens, result
+
+
+# PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement.cancel, cofactors, _gcd_monom (over EX)
+def _cancel_ex(f: dict[Monomial, Expr], g: dict[Monomial, Expr], n: int
+               ) -> tuple[dict[Monomial, Expr], dict[Monomial, Expr]]:
+    """``f/g`` over ``EX`` (SymPy's ``PolyElement.cancel``): a term divides
+    out its monomial gcd (``EX.gcd`` is ``1``); otherwise the cofactors of
+    the monic gcd, by dense division in one generator (``dmp_inner_gcd``
+    over a field), and in several by the gcd of the sparse ring when every
+    coefficient is finite (with ``zoo``, ``oo`` or ``nan`` a division need
+    not end: no common factor is taken out, where SymPy's result is
+    meaningless anyway); the denominator's leading coefficient without a
+    minus sign it could extract (the canonical unit of ``EX``)."""
+    from .domains.expressiondomain import EX
+    if not f:
+        return {}, {(0,) * n: Integer(1)}
+    P: dict[Monomial, Expr]
+    Q: dict[Monomial, Expr]
+    if len(f) == 1 or len(g) == 1:
+        term, other = (f, g) if len(f) == 1 else (g, f)
+        (mt, ct), = term.items()
+        common = mt
+        for m in other:
+            common = tuple(min(a, b) for a, b in zip(common, m))
+        reduced_term = {tuple(a - b for a, b in zip(mt, common)): ct}
+        reduced_other = {tuple(a - b for a, b in zip(m, common)): c for m, c in other.items()}
+        P, Q = (reduced_term, reduced_other) if len(f) == 1 else (reduced_other, reduced_term)
+    elif n == 1:
+        df = densebasic.dup_from_dict({m[0]: c for m, c in f.items()}, EX)
+        dg = densebasic.dup_from_dict({m[0]: c for m, c in g.items()}, EX)
+        # dup_ff_prs_gcd: the last subresultant made monic
+        h = densetools.dup_monic(euclidtools.dup_subresultants(df, dg, EX)[-1], EX)
+
+        def sparse(d: list[Expr]) -> dict[Monomial, Expr]:
+            k = len(d) - 1
+            return {(k - i,): c for i, c in enumerate(d) if not EX.is_zero(c)}
+        P, Q = sparse(densearith.dup_quo(df, h, EX)), sparse(densearith.dup_quo(dg, h, EX))
+    elif all(c.is_finite is True for c in list(f.values()) + list(g.values())):
+        R = SparsePolynomialRing(EX, _internal_names(n, 0))
+        F, G = R.ring.from_dict(f), R.ring.from_dict(g)
+        H = R.gcd(F, G)
+        P, Q = dict(F.exquo(H).terms), dict(G.exquo(H).terms)
+    else:
+        P, Q = dict(f), dict(g)
+    lead = max(Q)
+    if EX.is_negative(Q[lead]):
+        P = {m: EX.neg(c) for m, c in P.items()}
+        Q = {m: EX.neg(c) for m, c in Q.items()}
+    return P, Q
+
+
+def _ex_expr_of(f: dict[Monomial, Expr], gens: tuple[Expr, ...]) -> Expr:
+    parts: list[Expr] = []
+    for m in sorted(f, reverse=True):
+        factors: list[Expr] = [f[m]]
+        factors += [pow(g, Integer(k)) for g, k in zip(gens, m) if k]
+        parts.append(mul(*factors))
+    return add(*parts)
+
+
 # PORTED FROM SYMPY: sympy/polys/factortools.py:dmp_factor_list (an inexact domain)
 def _real_factor_list(base: Expr) -> tuple[Expr, list[tuple[Expr, int]]]:
     """The factorisation over ``RR``: the floats made rational
@@ -1613,8 +1823,8 @@ def invert(f: ExprLike, g: ExprLike) -> Expr:
     inverse, for univariate polynomials the polynomial ``s`` of degree
     below ``g``'s with ``s*f = 1 (mod g)`` over ``QQ`` (``NotInvertible``
     when they are not coprime); ``ValueError`` for several generators, as
-    in SymPy. Numbers other than rationals go through SymPy
-    (:func:`~sympy_extras.polys.polytools_sympy.invert_of_core`).
+    in SymPy. Numbers other than rationals are inverted in their domain
+    (``ZZ_I``, ``QQ_I``, ``RR``) as SymPy's ``Domain.invert`` does.
 
     >>> from sympy_extras.core import Symbol
     >>> x = Symbol('x')
@@ -1634,9 +1844,7 @@ def invert(f: ExprLike, g: ExprLike) -> Expr:
         raise ValueError('univariate polynomial expected')
     if not gens:
         if not (isinstance(a, Rational) and isinstance(b, Rational)):
-            # two numbers in ZZ_I, QQ_I, RR, CC or EX: SymPy's invert
-            from .polytools_sympy import invert_of_core
-            return invert_of_core(a, b)
+            return _invert_numbers(a, b)
         fa, fb = a.as_fraction(), b.as_fraction()
         if fa.denominator == 1 and fb.denominator == 1:
             try:
@@ -1657,6 +1865,74 @@ def invert(f: ExprLike, g: ExprLike) -> Expr:
         raise NotInvertible('zero divisor') from None
     n = len(h) - 1
     return add(*[mul(number_from_fraction(c), pow(gens[0], Integer(n - i))) for i, c in enumerate(h) if c])
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:invert (construct_domain and Domain.invert of two numbers)
+def _invert_numbers(a: Expr, b: Expr) -> Expr:
+    """SymPy's ``invert`` of two numbers which are not both rational, in
+    the domain ``construct_domain`` gives them: over ``ZZ_I`` the extended
+    Euclidean algorithm (``s % b`` when the gcd is ``1``); over ``QQ_I`` no
+    inverse (``Field.gcdex``: the gcd ``gcd(numerators)/lcm(denominators)``
+    is never ``1`` for an element which is not a Gaussian integer); over
+    ``RR`` ``(1/a) % b`` (the gcd of ``RR`` is ``1``); over ``CC`` the
+    ``TypeError`` of ``mpc % mpc``. An infinity or ``nan`` is a generator
+    for SymPy (the inverse modulo a constant is ``0``)."""
+    from sympy_extras.core.numbers import Float, _round_to_prec
+    from sympy_extras.core.symbol import Dummy
+    from .domains.gaussiandomains import _gaussian_parts
+    from .polyerrors import NotInvertible
+    infinite = [n for n in (a, b) if n.is_finite is not True]
+    if infinite:
+        forward: dict[Basic, Basic] = {}
+        back: dict[Basic, Basic] = {}
+        for n in infinite:
+            d = Dummy('g')
+            forward[n] = d
+            back[d] = n
+        found = invert(_expr_of_basic(a._xreplace_evaluated(forward)), _expr_of_basic(b._xreplace_evaluated(forward)))
+        return _expr_of_basic(found._xreplace_evaluated(back))
+    try:
+        ga, gb = QQ_I.from_expr(a), QQ_I.from_expr(b)
+    except ValueError:
+        pass
+    else:
+        if all(v.denominator == 1 for v in (ga.x, ga.y, gb.x, gb.y)):
+            za, zb = ZZ_I.convert(ga, QQ_I), ZZ_I.convert(gb, QQ_I)
+            inverse, _, h = ZZ_I.gcdex(za, zb)
+            if h != ZZ_I.one:
+                raise NotInvertible('zero divisor')
+            return ZZ_I.to_expr(ZZ_I.rem(inverse, zb))
+        raise NotInvertible('zero divisor')
+    values: list[tuple[Fraction, int]] = []
+    for n in (a, b):
+        v = _float_or_rational(n)
+        if v is None:
+            try:
+                re, im = _gaussian_parts(n)
+            except ValueError:
+                raise NotImplementedError('the domain of %s is not supported' % (n,)) from None
+            if _float_or_rational(re) is None or _float_or_rational(im) is None:
+                raise NotImplementedError('the domain of %s is not supported' % (n,))
+            raise TypeError("unsupported operand type(s) for %: 'mpc' and 'mpc'")
+        values.append(v)
+    prec = max(p for _, p in values)
+    fa, fb = _round_to_prec(values[0][0], prec), _round_to_prec(values[1][0], prec)
+    if not fb:
+        raise ZeroDivisionError('integer modulo by zero')
+    with mpmath.workprec(prec):
+        ma = mpmath.mpf(fa.numerator)/fa.denominator
+        mb = mpmath.mpf(fb.numerator)/fb.denominator
+        result = mpmath.mpf(0) % mb if not fa else (1/ma) % mb
+        exact = _mpf_fraction(result)
+    return Float(number_from_fraction(exact), precision=prec)
+
+
+def _mpf_fraction(value: mpmath.mpf) -> Fraction:
+    """The exact value of a binary float."""
+    man, exp = value.man, value.exp
+    m = int(man)
+    e = int(exp)
+    return Fraction(m * 2**e) if e >= 0 else Fraction(m, 2**-e)
 
 
 # PORTED FROM SYMPY: sympy/polys/polytools.py:cancel (a pair)
@@ -1694,8 +1970,8 @@ def cancel(f: ExprLike, *gens: Expr) -> Expr:
     >>> cancel((-x*y - y)/(x*y + x), x), cancel(x/y + 1, x)
     ((-x*y - y)/(x*(y + 1)), (x + y)/y)
 
-    The domains ``RR`` and ``EX`` are not ported: those fractions are
-    cancelled by SymPy. Gaussian coefficients are cancelled over ``ZZ_I``.
+    Gaussian coefficients are cancelled over ``ZZ_I``, floats over ``RR``
+    and ``CC``, other numbers (``zoo``) over ``EX``.
     """
     from sympy_extras.simplify.signsimp import signsimp
     e = signsimp(to_expr(f))
@@ -1725,16 +2001,16 @@ def _cancel_with_gens(p: Expr, q: Expr, e: Expr, factored: Expr, gens: tuple[Exp
     try:
         joint, (fp, fq) = _joint_rings([p, q])
     except CoercionFailed:
-        # the domains other than ZZ[...] and QQ[...] are not ported: SymPy's cancel
-        from .polytools_sympy import cancel_of_core
-        return cancel_of_core(e, gens)
+        # coefficients in a domain other than ZZ[...] and QQ[...] (ZZ_I[y],
+        # RR[y], EX): the polynomials in gens over EX
+        return _cancel_gens_ex(p, q, gens)
     joint_symbols: set[Symbol] = set()
     for j in joint:
         joint_symbols |= j.free_symbols
     if any(g not in joint and g.free_symbols & joint_symbols for g in gens):
-        # a generator which is not one of the factors (x**2 for x): SymPy's
-        from .polytools_sympy import cancel_of_core
-        return cancel_of_core(e, gens)
+        # a generator which is not one of the factors (x**2 for x): the
+        # other factors are coefficients, over EX
+        return _cancel_gens_ex(p, q, gens)
     if not joint:
         return _expanded(factored)
     P, Q, Z = _cancel_reps(fp, fq, len(joint))
@@ -1764,6 +2040,30 @@ def _cancel_with_gens(p: Expr, q: Expr, e: Expr, factored: Expr, gens: tuple[Exp
     return mul(expr_of(P), pow(expr_of(Q), Integer(-1)))
 
 
+def _cancel_gens_ex(p: Expr, q: Expr, gens: tuple[Expr, ...]) -> Expr:
+    """``cancel(p/q, *gens)`` with the coefficients (everything which is
+    not a power of a generator) taken as elements of ``EX``, where SymPy
+    takes the polynomial ring of the composite domain: the same rational
+    function, the coefficients as ``EX`` normalises them."""
+    from .domains.expressiondomain import EX
+
+    def ex_rep(h: Expr) -> dict[Monomial, Expr]:
+        rep: dict[Monomial, Expr] = {}
+        for m, cs in _decompose_with_gens(h, gens).items():
+            c = EX.normal(add(*cs))
+            if not EX.is_zero(c):
+                rep[m] = c
+        return rep
+    fp, fq = ex_rep(p), ex_rep(q)
+    if not fq:
+        raise ZeroDivisionError('cancel of %s/0' % (p,))
+    try:
+        P, Q = _cancel_ex(fp, fq, len(gens))
+    except PolynomialDivisionFailed:
+        return mul(p, pow(q, Integer(-1)))
+    return mul(_ex_expr_of(P, gens), pow(_ex_expr_of(Q, gens), Integer(-1)))
+
+
 def _cancel_expanded(p: Expr, q: Expr, e: Expr, factored: Expr) -> Expr:
     """The cancellation of ``p/q``, numerator and denominator expanded (the
     preprocessing of ``cancel`` done once, as SymPy does)."""
@@ -1776,9 +2076,7 @@ def _cancel_expanded(p: Expr, q: Expr, e: Expr, factored: Expr) -> Expr:
             try:
                 rgens, (rp, rq), prec = _joint_rings_real([p, q])
             except CoercionFailed:
-                # the domains CC and EX are not ported: SymPy's cancel
-                from .polytools_sympy import cancel_of_core
-                return cancel_of_core(e, ())
+                return _cancel_complex_or_ex(p, q, factored)
             if not rgens:
                 return _expanded(factored)
             RP, RQ = _cancel_real(rp, rq, len(rgens), prec)
@@ -1791,6 +2089,28 @@ def _cancel_expanded(p: Expr, q: Expr, e: Expr, factored: Expr) -> Expr:
         return _expanded(factored)
     P, Q, _ = _cancel_reps(fp, fq, len(gens))
     return mul(_expr_of(P, gens), pow(_expr_of(Q, gens), Integer(-1)))
+
+
+def _cancel_complex_or_ex(p: Expr, q: Expr, factored: Expr) -> Expr:
+    """The cancellation over ``CC`` (complex floats), else over ``EX``."""
+    try:
+        cgens, (cp, cq), prec = _joint_rings_complex([p, q])
+    except CoercionFailed:
+        egens, (ep, eq) = _joint_rings_ex([p, q])
+        if not egens:
+            return _expanded(factored)
+        try:
+            EP, EQ = _cancel_ex(ep, eq, len(egens))
+        except PolynomialDivisionFailed:
+            # a zero EX does not detect (oo - oo): nothing is cancelled
+            # (SymPy's cancel raises, unless its factor_terms took the
+            # infinity out first)
+            return mul(p, pow(q, Integer(-1)))
+        return mul(_ex_expr_of(EP, egens), pow(_ex_expr_of(EQ, egens), Integer(-1)))
+    if not cgens:
+        return _expanded(factored)
+    CP, CQ = _cancel_complex(cp, cq, len(cgens), prec)
+    return mul(_complex_expr_of(CP, cgens, prec), pow(_complex_expr_of(CQ, cgens, prec), Integer(-1)))
 
 
 def _expr_of_basic(b: Basic) -> Expr:
@@ -1852,14 +2172,20 @@ def _symbolic_factor_list(expr: Expr, gens: Sequence[ExprLike], method: Method =
             continue
         except CoercionFailed:
             # Gaussian coefficients: SymPy's factorisation over ZZ_I and
-            # QQ_I through QQ<I>
-            if gens or method != 'factor':
+            # QQ_I through QQ<I>; with generators, over ZZ_I[params] (the
+            # irreducible factors in every symbol are the same)
+            if method != 'factor':
                 raise
             try:
                 c, gaussian = _gaussian_factor_list(base)
             except CoercionFailed:
-                # float coefficients: SymPy's factorisation over RR
-                c, gaussian = _real_factor_list(base)
+                try:
+                    # float coefficients: SymPy's factorisation over RR
+                    c, gaussian = _real_factor_list(base)
+                except CoercionFailed:
+                    # CC and EX: SymPy's dmp_factor_list raises DomainError,
+                    # and Poly.factor_list keeps the polynomial as it is
+                    c, gaussian = Integer(1), [(_expanded(base), 1)]
             found = [(g, Integer(k)) for g, k in gaussian]
         else:
             c, poly_factors = p.factor_list() if method == 'factor' else p.sqf_list()
@@ -2031,13 +2357,7 @@ def factor(f: ExprLike, *gens: ExprLike, deep: bool = False, fraction: bool = Tr
     if e.is_commutative is False:
         from sympy_extras.core.exprtools import factor_nc
         return factor_nc(e)
-    try:
-        return _symbolic_factor(e, gens, fraction)
-    except CoercionFailed:
-        # EX, and ZZ_I, QQ_I or RR with explicit generators, are not
-        # ported: SymPy's factor
-        from .polytools_sympy import factor_of_core
-        return factor_of_core(e, [to_expr(g) for g in gens], fraction)
+    return _symbolic_factor(e, gens, fraction)
 
 
 def _symbolic_factor(e: Expr, gens: Sequence[ExprLike], fraction: bool, method: Method = 'factor') -> Expr:

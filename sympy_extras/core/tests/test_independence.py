@@ -2518,3 +2518,29 @@ def test_native_real_roots_of_polynomials_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_REAL_ROOTS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_POLYTOOLS_DOMAINS = r'''
+import sys
+from sympy_extras.core import symbols, I, Float, Integer, zoo, oo
+from sympy_extras.polys.polytools import cancel, factor, invert
+x, y = symbols('x y')
+assert str(cancel(zoo*x)) == 'zoo*x' and str(cancel(oo*x/(x**2 + x))) == 'oo/(x + 1)'
+assert str(cancel((Float(1.5) + I)*x/(x**2 + x))) == '(1.5 + 1.0*I)/(1.0*x + 1.0)'
+assert str(cancel((I*x*y + I*x)/(y + 1), x)) == 'I*x'
+assert str(factor(x**2 + 2*I*x - 1, x)) == '(x + I)**2' and str(factor(zoo*x**2 + zoo)) == 'zoo*(x**2 + 1)'
+assert str(invert(I, Integer(3))) == '-I' and str(invert(Float(1.5), Integer(3))) == '0.666666666666667'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_polytools_domains_do_not_load_sympy() -> None:
+    """``cancel`` over ``CC`` and ``EX`` and with generators over a
+    composite domain, ``factor`` with generators over ``ZZ_I``, ``invert``
+    of Gaussian and float numbers do not load SymPy (they went through
+    ``polytools_sympy``: ``cancel_of_core``, ``factor_of_core``,
+    ``invert_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_POLYTOOLS_DOMAINS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
