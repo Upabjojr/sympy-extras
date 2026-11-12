@@ -10,6 +10,15 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The cases of the isolated values of the parameters of the native sums
+  (`concrete.karr`, `creative`, `zeilberger`, `qhyper`, `rational`) no
+  longer load SymPy at run time (internal change, same API): the
+  summation rules of `karr_sympy.with_sum_special_values` (no case where
+  the summand is undefined or has a pole in the range, the powers of `0`
+  summed by their values, the numerical check against the sum term by
+  term) are written on the core over the native
+  `_special_values.with_special_values`; the route
+  `karr_sympy.sum_special_values_of_core` is gone.
 - The last resort of the convergence tests for terms without parameters
   (`concrete.convergence`) no longer loads SymPy at run time (internal
   change, same API): the integral of the integral test comes from a

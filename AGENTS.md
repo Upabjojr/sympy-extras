@@ -237,7 +237,8 @@ sympy_extras/
                              of any SymPy object; see docs/core.md
     concrete/                summation algorithms extending sympy.concrete
         pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver (typed, no SymPy)
-        karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation (native)
+        karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation, the cases of the
+                             isolated values of the parameters of sums (_sum_special_values_native) (native)
         karr_sympy.py        the SymPy face of karr: karr_sum, karr_term, summation, with_sum_special_values
         creative.py          creative telescoping in PiSigma-fields: creative_telescoping, definite_sum (native)
         guess.py             guess_recurrence, guess_differential_equation, guess_algebraic_equation, guess_closed_form: equations from the first terms (native)

@@ -87,14 +87,21 @@ assert str(zeilberger_sum(binomial(n, k)**2, (k, 0, n))) == 'binomial(2*n, n)'
 assert str(zeilberger_sum(1/k, (k, 1, n))) == 'harmonic(n)'
 assert str(zeilberger_sum(binomial(2*n, k), (k, 0, n))) == '4**n/2 + factorial(2*n)/(2*factorial(n)**2)'
 assert wz_prove(binomial(n, k), 2**n, n, k) is True
+# the cases of the isolated values of a parameter (SymPy's
+# with_sum_special_values, through karr_sympy, before)
+from sympy_extras.concrete.karr import karr_sum
+y = symbols('y')
+assert str(karr_sum(y**k, (k, 0, n))) == 'Piecewise((n + 1, Eq(y, 1)), ((y*y**n - 1)/(y - 1), True))'
+assert str(karr_sum(k*y**k, (k, 0, n))).startswith('Piecewise((n*(n + 1)/2, Eq(y, 1)),')
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
 def test_native_zeilberger_does_not_load_sympy() -> None:
     """:mod:`sympy_extras.concrete.zeilberger` on a summand without
-    parameters (the cases of the parameters are the only step through
-    SymPy) does not load SymPy."""
+    parameters does not load SymPy, nor do the cases of the isolated values
+    of the parameters of a sum (SymPy's ``with_sum_special_values``
+    before)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_ZEILBERGER], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

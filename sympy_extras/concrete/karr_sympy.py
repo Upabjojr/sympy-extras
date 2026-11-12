@@ -9,11 +9,11 @@ instead:
   (:mod:`sympy_extras.interop`) around the native functions;
 - :func:`with_sum_special_values` gives a sum the cases of the isolated
   values of its parameters (:mod:`sympy_extras._special_values_sympy`,
-  the SymPy face of :mod:`sympy_extras._special_values`), for these modules and, through
-  :func:`sum_special_values_of_core`, for the native ones
-  (:mod:`~sympy_extras.concrete.karr`,
+  the SymPy face of :mod:`sympy_extras._special_values`), for these
+  modules; the native ones (:mod:`~sympy_extras.concrete.karr`,
   :mod:`~sympy_extras.concrete.creative`,
-  :mod:`~sympy_extras.concrete.zeilberger`, ...).
+  :mod:`~sympy_extras.concrete.zeilberger`, ...) use its counterpart on
+  the core, :func:`sympy_extras.concrete.karr._sum_special_values_native`.
 
 Examples
 ========
@@ -58,9 +58,8 @@ from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import expr_from_sympy, to_sympy
 
 from . import karr as core_karr
-from .karr import SumCompute, SumPoint
 
-__all__ = ['karr_term', 'karr_sum', 'summation', 'with_sum_special_values', 'sum_special_values_of_core']
+__all__ = ['karr_term', 'karr_sum', 'summation', 'with_sum_special_values']
 
 
 # ----------------------------------------------------------------------
@@ -144,29 +143,6 @@ def summation(f: Union[Expr, int], *symbols: Sequence[Union[Symbol, Expr, int]],
         limits.append(core_spec)
     return _sympy(core_karr.summation(_core(f), *limits, extensions=[_core(e) for e in extensions], auto=auto,
                                       special_values=special_values))
-
-
-def sum_special_values_of_core(value: CoreExpr, f: CoreExpr, indices: Sequence[CoreSymbol],
-                               limits: Sequence[CoreExpr], compute: SumCompute,
-                               keep_unevaluated: bool = True,
-                               defined: Optional[Callable[[SumPoint], bool]] = None) -> CoreExpr:
-    """:func:`with_sum_special_values` for core expressions, the sum at a
-    point computed by ``compute`` on core expressions (and ``defined``
-    deciding on core points)."""
-    def at_point(point: Point, at: Assumptions) -> Optional[Expr]:
-        core_point: SumPoint = {_core_symbol(s): _core(v) for s, v in point.items()}
-        return _result(compute(core_point))
-
-    sympy_defined: Optional[Callable[[Point], bool]] = None
-    if defined is not None:
-        core_defined = defined
-
-        def sympy_defined_(point: Point) -> bool:
-            return core_defined({_core_symbol(s): _core(v) for s, v in point.items()})
-        sympy_defined = sympy_defined_
-    return _core(with_sum_special_values(_sympy(value), _sympy(f), [_sympy_symbol(i) for i in indices],
-                                         [_sympy(e) for e in limits], at_point, keep_unevaluated,
-                                         sympy_defined))
 
 
 # ----------------------------------------------------------------------
