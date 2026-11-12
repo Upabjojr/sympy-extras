@@ -10,6 +10,20 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The power series of Ramanujan's master theorem and the method of
+  brackets (`integrals.brackets`, and `integrals.series` through
+  `taylor_coefficient`) no longer load SymPy at run time (internal change,
+  same API): the new `brackets.formal_series_terms` finds the coefficients
+  of a single residue class as a hypergeometric term, its ratio guessed
+  from the native series (`concrete.guess.guess_recurrence`) and proved by
+  the differential equation it implies, checked on the function (in place
+  of SymPy's `fps`; the Bessel function `besselj(0, x)`, which `fps` did
+  not expand, now has its series), and the strip of convergence comes
+  from the order at 0 and the behaviour at infinity (powers with
+  logarithms, decays faster than every power, and oscillations
+  `x**q sin(a x**p)` by Dirichlet's test) in place of the strip of SymPy's
+  `mellin_transform`. The routes `brackets_sympy.fps_of_core` and
+  `mellin_strip_of_core` are gone.
 - The periods of the periodic formulas of `assumptions.solve` and of the
   periodic rule of `integrals.laplace` no longer load SymPy at run time
   (internal change, same API): SymPy's `periodicity` and `lcim` are

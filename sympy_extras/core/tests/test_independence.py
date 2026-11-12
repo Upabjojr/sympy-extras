@@ -1482,6 +1482,15 @@ c = SeriesCoefficient((Integer(-1)/4)**j/(rf(Rational(3, 2), j)*factorial(j)), j
 assert str(c.phi()) == 'sqrt(pi)/(2*2**(2*_j)*gamma(_j + 3/2))'
 assert str(_factors(3*x**2*exp(-x)*sin(2*x), x)) == '(3, 2, [(exp(-_y), 1, 1), (sin(_y), 2, 1)])'
 assert (_order_at_infinity(1/(1 + x)**2, x), _order_at_infinity(atan(x), x)) == (2, 0)
+# the power series and the strips (SymPy's fps and mellin_transform before)
+from sympy_extras.integrals.brackets import ramanujan_master_theorem, taylor_coefficient
+from sympy_extras.functions import cos, log, sqrt
+s = symbols('s')
+assert str(ramanujan_master_theorem(exp(-x), x, s)) == 'MellinTransform(gamma(s), (0, oo))'
+assert str(ramanujan_master_theorem(cos(sqrt(x)), x, s).strip) == '(0, 1/2)'
+assert str(ramanujan_master_theorem(log(1 + x), x, s).strip) == '(-1, 0)'
+c = taylor_coefficient(sin(x), x)
+assert c is not None and (c.period, c.offset) == (2, 1)
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -1505,9 +1514,10 @@ def test_native_brackets_and_dirichlet_do_not_load_sympy() -> None:
     :mod:`sympy_extras.integrals.dirichlet` does not load SymPy, nor do the
     Dirichlet integrals (the product formulas, the native ``ask``,
     ``simplify`` and ``logcombine``) and the steps of the method of
-    brackets after the formal power series (the coefficient function,
-    the factors, the decay at infinity by the native series); SymPy's
-    ``fps`` is reached through the face only when a series is needed."""
+    brackets (the coefficient function, the factors, the decay at
+    infinity by the native series), nor the power series and the strips of
+    Ramanujan's master theorem (SymPy's ``fps`` and ``mellin_transform``
+    before)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_BRACKETS_DIRICHLET], capture_output=True, text=True,
                          timeout=600)
     assert out.returncode == 0, out.stderr

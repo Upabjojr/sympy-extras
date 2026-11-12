@@ -5,10 +5,8 @@ still written on SymPy (:mod:`.definite`, :mod:`.series`).
 :class:`SeriesCoefficient` is the container of the native module on SymPy
 objects, with ``to_core`` and ``from_core``; the functions convert their
 arguments by :mod:`sympy_extras.interop`, run the native code and return
-the transforms of :mod:`.mellin_sympy`. The steps of the native module
-which stay on SymPy are here too (the functions ending in ``_of_core``):
-SymPy's formal power series (:func:`fps_of_core`) and the strip of SymPy's
-``mellin_transform`` (:func:`mellin_strip_of_core`).
+the transforms of :mod:`.mellin_sympy`. No step of the native module
+stays on SymPy.
 
 Examples
 ========
@@ -32,20 +30,16 @@ from sympy.core.expr import Expr
 from sympy.core.symbol import Dummy, Symbol
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions
-from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Dummy as CoreDummy, Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
-from sympy_extras.settings import settings
 
 from . import brackets as native
 from . import mellin as native_mellin
 from .mellin_sympy import MellinTransform
 
 __all__ = ['SeriesCoefficient', 'taylor_coefficient', 'ramanujan_master_theorem', 'method_of_brackets',
-           'mellin_transform_series', 'fps_of_core', 'mellin_strip_of_core']
+           'mellin_transform_series']
 
 
 def _core_symbol(s: Basic) -> CoreSymbol:
@@ -211,61 +205,3 @@ def mellin_transform_series(f: Expr, x: Symbol, s: Symbol, assumptions: Assumpti
     """
     return _transform(native.mellin_transform_series(core_expr(f), _core_symbol(x), _core_symbol(s),
                                                      core_assumptions(assumptions)))
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native module which stay on SymPy
-
-def fps_of_core(f: CoreExpr, x: CoreSymbol) -> Optional[native.FormalSeriesTerms]:
-    """SymPy's formal power series of ``f`` about 0 (``sympy.fps``) under
-    the time limit of the settings, read as the formula of the
-    coefficients, its index, its start and the independent terms; ``None``
-    when there is none or ``fps`` fails.
-
-    >>> from sympy_extras.core import symbols
-    >>> from sympy_extras.functions import exp
-    >>> from sympy_extras.integrals.brackets_sympy import fps_of_core
-    >>> x = symbols('x')
-    >>> terms = fps_of_core(exp(-x), x)
-    >>> terms.formula.subs(terms.index, 2), terms.start, terms.independent
-    (1/2, 1, 1)
-    """
-    from sympy.series.formal import FormalPowerSeries, fps
-    g, v = sympy_expr(f), _sympy_symbol(x)
-    try:
-        series = attempt(lambda: fps(g, v), settings.timeout)
-    except (KeyError, IndexError, ValueError, TypeError):
-        # fps fails inside its hypergeometric algorithm on some inputs
-        # (a KeyError popping the symbol of a constant)
-        return None
-    if not isinstance(series, FormalPowerSeries):
-        return None
-    k = series.ak.variables[0]
-    if not isinstance(k, Symbol):
-        return None
-    try:
-        return native.FormalSeriesTerms(core_expr(as_expr(series.ak.formula)), _core_symbol(k),
-                                        core_expr(as_expr(series.ak.start)), core_expr(as_expr(series.ind)))
-    except TypeError:
-        return None
-
-
-def mellin_strip_of_core(f: CoreExpr, x: CoreSymbol, s: CoreSymbol) -> Optional[tuple[CoreExpr, CoreExpr]]:
-    """The strip of convergence of SymPy's ``mellin_transform(f, x, s)``
-    under the time limit of the settings, ``None`` when it finds no
-    transform.
-
-    >>> from sympy_extras.core import symbols
-    >>> from sympy_extras.functions import exp
-    >>> from sympy_extras.integrals.brackets_sympy import mellin_strip_of_core
-    >>> x, s = symbols('x s')
-    >>> mellin_strip_of_core(exp(-x), x, s)
-    (0, oo)
-    """
-    from sympy.integrals.transforms import mellin_transform
-    g, v, w = sympy_expr(f), _sympy_symbol(x), _sympy_symbol(s)
-    known = attempt(lambda: mellin_transform(g, v, w), settings.timeout)
-    if isinstance(known, tuple) and len(known) == 3:
-        strip = known[1]
-        return (core_expr(as_expr(strip[0])), core_expr(as_expr(strip[1])))
-    return None

@@ -311,10 +311,10 @@ sympy_extras/
         antiderivative_sympy.py the SymPy face of antiderivative, used by definite and series, and integrate_of_core,
                              verified_antiderivative_of_core
         brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)
-                             (native: the native series, limits, summation, gammasimp, hyperexpand; SymPy's fps and
-                             the strip of its mellin_transform through brackets_sympy)
-        brackets_sympy.py    the SymPy face of brackets (SeriesCoefficient on SymPy objects, used by series), and
-                             fps_of_core, mellin_strip_of_core
+                             (native: the native series, limits, summation, guessing, gammasimp, hyperexpand;
+                             formal_series_terms: hypergeometric coefficients guessed and proved by their ODE; the
+                             strips from the orders at 0 and infinity, oscillations by Dirichlet's test)
+        brackets_sympy.py    the SymPy face of brackets (SeriesCoefficient on SymPy objects, used by series)
         periodic.py          mean_value_integral, laurent_coefficient, to_laurent: integrals over whole periods as the
                              constant Laurent coefficient in exp(I x) (native: the native summation and simplify, the
                              series of exp, sin, cos, sinh, cosh written down; other series by brackets' fps)

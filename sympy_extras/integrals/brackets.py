@@ -30,22 +30,22 @@ exactly (:func:`sympy_extras.concrete.summations.summation`, as a
 hypergeometric function, expanded when possible), so the value is right
 whenever the summation converges.
 
-The coefficient functions come from SymPy's formal power series
-(``sympy.series.formal.fps``), which gives a closed form of the `k`-th
-coefficient with factorials and rising factorials, rewritten with the
-gamma function so that `k` can be replaced by `-s`.
+The coefficient functions come from the power series of the function:
+the coefficients of one residue class are a hypergeometric term, its
+ratio guessed from the first coefficients and proved by the differential
+equation it implies (:func:`formal_series_terms`, in place of SymPy's
+formal power series ``sympy.series.formal.fps``), a closed form with
+factorials and rising factorials, rewritten with the gamma function so
+that `k` can be replaced by `-s`. The strip of convergence is read off
+the order of the series at `0` and of the behaviour at infinity: a power
+(of the series of ``f(1/y)``, powers of logarithms aside), a decay faster
+than every power, or an oscillation ``x**q sin(a x**p)`` (Dirichlet's
+test).
 
 The module works on the objects of the core (:mod:`sympy_extras.core`, the
 functions of :mod:`sympy_extras.functions`) with the native ``ask``,
-series, limits, summation, ``gammasimp`` and ``hyperexpand``, and imports
-no SymPy. Two steps stay on SymPy and go through the face
-:mod:`sympy_extras.integrals.brackets_sympy` when they are reached (the
-functions ending in ``_of_core``): the formal power series
-(:func:`~sympy_extras.integrals.brackets_sympy.fps_of_core`, SymPy's
-``fps``, not ported: its rational and hypergeometric algorithms are a
-module of their own) and, for a function whose decay at infinity the
-series do not give, the strip of SymPy's ``mellin_transform``
-(:func:`~sympy_extras.integrals.brackets_sympy.mellin_strip_of_core`).
+series, limits, summation, guessing, ``gammasimp`` and ``hyperexpand``,
+and imports no SymPy, nor goes through it at run time.
 
 Examples
 ========
@@ -84,21 +84,21 @@ from sympy_extras.concrete.expr_with_limits import Sum
 from sympy_extras.concrete.summations import summation
 from sympy_extras.core.add import Add
 from sympy_extras.core.coreerrors import PoleError
-from sympy_extras.core.expr import Expr
+from sympy_extras.core.expr import Expr, as_expr
 from sympy_extras.core.limits import limit
-from sympy_extras.core.logic import BooleanTrue
+from sympy_extras.core.logic import BooleanTrue, true
 from sympy_extras.core.mod import Mod
 from sympy_extras.core.mul import Mul
 from sympy_extras.core.numbers import Integer, oo
 from sympy_extras.core.order import Order
 from sympy_extras.core.power import Pow
-from sympy_extras.core.relational import Equality
+from sympy_extras.core.relational import Eq, Equality
 from sympy_extras.core.singleton import S
 from sympy_extras.core.symbol import Dummy, Symbol
 from sympy_extras.functions.combinatorial.factorials import factorial
 from sympy_extras.functions.elementary.complexes import abs_ as Abs
 from sympy_extras.functions.elementary.miscellaneous import max_ as Max, min_ as Min
-from sympy_extras.functions.elementary.piecewise import Piecewise
+from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise
 from sympy_extras.functions.special.gamma_functions import Gamma, gamma
 from sympy_extras.functions.special.hyper import Hyper
 from sympy_extras.settings import settings
@@ -108,7 +108,7 @@ from sympy_extras.simplify.powsimp import powsimp
 from sympy_extras.simplify.simplify import simplify
 from .mellin import MellinTransform, monomial
 
-__all__ = ['SeriesCoefficient', 'FormalSeriesTerms', 'taylor_coefficient', 'ramanujan_master_theorem',
+__all__ = ['SeriesCoefficient', 'FormalSeriesTerms', 'formal_series_terms', 'taylor_coefficient', 'ramanujan_master_theorem',
            'method_of_brackets', 'mellin_transform_series']
 
 #: ``(g_i(y), beta_i, gamma_i)``: a factor ``g_i(beta_i x**gamma_i)`` of a product
@@ -167,8 +167,7 @@ class SeriesCoefficient:
 
 
 class FormalSeriesTerms:
-    """SymPy's formal power series of a function read on the core (see
-    :func:`~sympy_extras.integrals.brackets_sympy.fps_of_core`): the
+    """The power series of a function (:func:`formal_series_terms`): the
     ``formula`` of the coefficient of ``x**index``, a ``Piecewise`` on the
     residue classes of the index or a single expression, valid from
     ``start`` on, and the ``independent`` terms, the polynomial part which
@@ -197,7 +196,7 @@ def _has_sign_power(e: Expr, j: Dummy) -> bool:
 
 
 def _residue_class(formula: Expr, k: Symbol) -> Optional[tuple[Expr, int, int]]:
-    """A ``Piecewise`` coefficient of ``fps`` read as ``(value, m, r)``:
+    """A ``Piecewise`` coefficient of :func:`formal_series_terms` read as ``(value, m, r)``:
     ``value`` for ``k = r mod m`` and zero otherwise; a plain formula is
     ``(formula, 1, 0)``. ``None`` when two residue classes are nonzero."""
     if not isinstance(formula, Piecewise):
@@ -231,9 +230,211 @@ def _replaced(e: Expr, old: Symbol, new: Expr) -> Optional[Expr]:
         return None
 
 
+#: the first coefficients read to find the exponents of the series
+_PROBE_TERMS = 12
+#: the terms of the residue class from which the recurrence is guessed
+_CLASS_TERMS = 12
+#: the most coefficients computed
+_MAX_TERMS = 80
+
+
+def _taylor_coefficients(f: Expr, x: Symbol, count: int) -> Optional[list[Expr]]:
+    """The first ``count`` Taylor coefficients of ``f`` about 0 by the
+    native series, ``None`` when ``f`` has no power series there (poles,
+    fractional powers, logarithms) or the series is not found in time."""
+    try:
+        truncated = attempt(lambda: f.series(x, S.Zero, count).removeO(), settings.timeout, native=True)
+    except (PoleError, NotImplementedError, ValueError, TypeError):
+        return None
+    if truncated is None or truncated.is_polynomial(x) is not True:
+        return None
+    expanded = truncated.expand()
+    if expanded.is_polynomial(x) is not True:
+        return None
+    coefficients: list[Expr] = []
+    for n in range(count):
+        c = expanded.coeff(x, n) if n else expanded.subs(x, S.Zero)
+        if c.has(x):
+            return None
+        coefficients.append(c)
+    return coefficients
+
+
+def _is_zero_constant(c: Expr) -> Optional[bool]:
+    """Whether a constant is zero (``None`` when undecided)."""
+    from sympy_extras.assumptions.analysis import certified_sign
+    if c == 0:
+        return True
+    z = c.is_zero
+    if z is not None:
+        return z
+    sign = certified_sign(c)
+    return None if sign is None else sign == 0
+
+
+def _support(coefficients: list[Expr]) -> Optional[list[int]]:
+    """The exponents of the nonzero coefficients (``None`` when a
+    coefficient is not decided zero or not)."""
+    found: list[int] = []
+    for n, c in enumerate(coefficients):
+        z = _is_zero_constant(c)
+        if z is None:
+            return None
+        if not z:
+            found.append(n)
+    return found
+
+
+def _polynomial_of(coefficients: list[int], t: Symbol) -> Expr:
+    """The polynomial of a list of integers, highest degree first."""
+    value: Expr = Integer(0)
+    for c in coefficients:
+        value = value*t + c
+    return value
+
+
+def _apply_in_theta(polynomial: Expr, t: Symbol, g: Expr, x: Symbol, s: int, m: int) -> Expr:
+    """``polynomial(J) g`` for the operator ``J = (x d/dx - s)/m``, which
+    multiplies ``x**(s + m*i)`` by ``i``."""
+    from sympy_extras.polys.polytools import Poly
+    poly = Poly(polynomial, t)
+    result: Expr = Integer(0)
+    power = g
+    for degree in range(poly.degree() + 1):
+        coefficient = poly.coeff_monomial((degree,))
+        if coefficient != 0:
+            result = result + coefficient*power
+        power = (x*power.diff(x) - s*power)/m
+    return result
+
+
+def _vanishes(e: Expr) -> bool:
+    """Whether the expression is recognised as zero (cancellation of the
+    expanded form, then the native simplification)."""
+    from sympy_extras.polys.polytools import cancel
+    expanded = attempt(lambda: cancel(e.expand()), settings.timeout, native=True)
+    if expanded is not None and expanded == 0:
+        return True
+    simplified = attempt(lambda: simplify(e), settings.timeout, native=True)
+    return simplified is not None and simplified == 0
+
+
+def formal_series_terms(f: Expr, x: Symbol) -> Optional[FormalSeriesTerms]:
+    """The power series of ``f`` about 0 when its nonzero coefficients
+    form one residue class ``k = s (mod m)`` and are a hypergeometric term
+    there: the coefficient of ``x**k`` in closed form with rising
+    factorials, as a ``Piecewise`` on the class (a plain formula for
+    ``m = 1``); ``None`` otherwise.
+
+    The ratio of consecutive coefficients of the class is guessed from
+    the first terms of the native series
+    (:func:`sympy_extras.concrete.guess.guess_recurrence`, order one) and
+    then proved: with ``Q(i) e(i + 1) = P(i) e(i)`` the series satisfies
+    the differential equation ``Q(J - 1)(f - e(0) x**s) = x**m P(J) f`` in
+    the operator ``J = (x d/dx - s)/m``, which is checked on ``f``
+    symbolically; it determines every coefficient beyond the roots of
+    ``Q``, which the computed terms cover. This replaces SymPy's
+    ``fps`` (whose rational and hypergeometric algorithms find a
+    differential equation by linear algebra first), for the single
+    hypergeometric classes which :func:`taylor_coefficient` accepts.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Integer, symbols
+    >>> from sympy_extras.functions import exp, sin, atan
+    >>> from sympy_extras.integrals.brackets import formal_series_terms
+    >>> x = symbols('x')
+    >>> terms = formal_series_terms(exp(-x), x)
+    >>> terms.formula.subs(terms.index, Integer(3))
+    -1/6
+    >>> terms = formal_series_terms(sin(x), x)
+    >>> [terms.formula.subs(terms.index, Integer(k)) for k in range(6)]
+    [0, 1, 0, -1/6, 0, 1/120]
+    >>> formal_series_terms(exp(x) + sin(x), x) is None
+    True
+    """
+    from fractions import Fraction
+    from sympy_extras.concrete.guess import guess_recurrence
+    from sympy_extras.core.numbers import Rational
+    from sympy_extras.functions.combinatorial.factorials import rf
+    from sympy_extras.polys.polyroots import roots
+    from sympy_extras.polys.polytools import Poly, cancel
+    from math import gcd
+    probe = _taylor_coefficients(f, x, _PROBE_TERMS)
+    if probe is None:
+        return None
+    support = _support(probe)
+    if support is None or len(support) < 2:
+        return None
+    s = support[0]
+    m = 0
+    for n in support[1:]:
+        m = gcd(m, n - s)
+    count = s + m*_CLASS_TERMS + m
+    if count > _MAX_TERMS:
+        return None
+    coefficients = _taylor_coefficients(f, x, count)
+    if coefficients is None:
+        return None
+    support = _support(coefficients)
+    if support is None or any((n - s) % m for n in support) or support[0] != s:
+        return None
+    if [n for n in range(s, count) if (n - s) % m == 0] != support:
+        # a zero inside the class: not a hypergeometric term
+        return None
+    e0 = coefficients[s]
+    ratios: list[Fraction] = []
+    for n in support:
+        q = cancel(coefficients[n]/e0)
+        if not isinstance(q, Rational):
+            return None
+        ratios.append(q.as_fraction())
+    recurrence = guess_recurrence(ratios, max_order=1)
+    if recurrence is None or recurrence.order != 1:
+        return None
+    i = Dummy('i')
+    P = -_polynomial_of(recurrence.coefficients[0], i)
+    Q = _polynomial_of(recurrence.coefficients[1], i)
+    p_roots, q_roots = roots(Poly(P, i)), roots(Poly(Q, i))
+    if not isinstance(p_roots, dict) or not isinstance(q_roots, dict):
+        return None
+    p_poly, q_poly = Poly(P, i), Poly(Q, i)
+    if sum(p_roots.values()) != p_poly.degree() or sum(q_roots.values()) != q_poly.degree():
+        return None
+    # Q must not vanish at a nonnegative integer (the closed form and the
+    # recurrence would break there), and its roots t give the exponents
+    # n = m (t + 1) + s which the differential equation leaves free: they
+    # must be among the coefficients computed
+    for root in q_roots:
+        if isinstance(root, Rational):
+            if root.q == 1 and root.p >= 0:
+                return None
+            n_free = m*(root + 1) + s
+            if isinstance(n_free, Rational) and n_free.q == 1 and n_free.p >= count:
+                return None
+    # the differential equation of the class, checked on f
+    t = Dummy('t')
+    residual = _apply_in_theta(as_expr(Q.subs(i, t - 1)), t, f - e0*x**s, x, s, m) - \
+        x**m*_apply_in_theta(as_expr(P.subs(i, t)), t, f, x, s, m)
+    if not _vanishes(residual):
+        return None
+    k = Dummy('k', integer=True, nonnegative=True)
+    j = (k - s)/m
+    value = e0*(p_poly.LC()/q_poly.LC())**j
+    for root, multiplicity in p_roots.items():
+        value = value*rf(-root, j)**multiplicity
+    for root, multiplicity in q_roots.items():
+        value = value/rf(-root, j)**multiplicity
+    formula: Expr = value
+    if m > 1:
+        formula = piecewise((value, Eq(Mod(k, m), s % m)), (S.Zero, true))
+    return FormalSeriesTerms(formula, k, Integer(0), S.Zero)
+
+
 def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
     """The power series of ``f`` about 0 as a :class:`SeriesCoefficient`,
-    from SymPy's formal power series; ``None`` when there is none or its
+    from :func:`formal_series_terms`; ``None`` when there is none or its
     coefficients have no single closed form.
 
     Examples
@@ -252,8 +453,7 @@ def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
     """
     if f.is_polynomial(x) is True:
         return None
-    from .brackets_sympy import fps_of_core
-    series = fps_of_core(f, x)
+    series = formal_series_terms(f, x)
     if series is None:
         return None
     k = series.index
@@ -279,14 +479,14 @@ def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
         at_power = _replaced(value, k, power)
         if at_power is None or simplify(at_power - coefficient) != 0:
             return None
-    # and the whole must agree with the Taylor expansion by the other
-    # algorithm for the first terms: fps is not to be trusted alone. Its
+    # and the whole must agree with the Taylor expansion for the first
+    # terms (SymPy's fps, used before, was not to be trusted alone: its
     # formula for (exp(4*x) - exp(-4*x))**2 holds from k = 3 and gives 2
     # at k = 0, where the series has no term (the bug: the integral over
     # (0, 1) came out as sinh(8)/4, 2 too much), and its formula for
     # 1/(x**2 + x + 1) is (-1)**k, the series of 1/(x + 1) (the bug: the
     # integral of (1 - x)/(x**2 + x + 1) over (0, 1) came out as
-    # log(4) - 1, an eighth too much)
+    # log(4) - 1, an eighth too much))
     first = series.start
     if not isinstance(first, Integer):
         return None
@@ -298,7 +498,7 @@ def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
     if truncated is None:
         return None
     # the one formula returned must give every coefficient of its residue
-    # class, the ones below the start of fps included; where it is
+    # class, the ones below the start of the formula included; where it is
     # infinite (-x**k/k for log(1 - x) at k = 0) the callers start the sum
     # after it, so the coefficient must be zero there
     for k0 in range(terms):
@@ -319,37 +519,90 @@ def taylor_coefficient(f: Expr, x: Symbol) -> Optional[SeriesCoefficient]:
     return SeriesCoefficient(coefficient_, j, m, Integer(r))
 
 
+def _decays_fast(f: Expr, x: Symbol) -> bool:
+    """Whether ``f`` decays faster than the powers of ``x`` met in practice
+    (``x**50 f`` tends to zero): an exponential decay."""
+    decays = attempt(lambda: limit(f * x**50, x, oo), settings.timeout, native=True)
+    return decays is not None and decays == 0
+
+
+def _oscillation_order(f: Expr, x: Symbol) -> Optional[Expr]:
+    """``p - q`` for ``f = C x**q T(a x**p)`` with ``T`` a sine or a
+    cosine, ``a`` a real constant and ``p > 0`` rational: the integral of
+    ``x**(s - 1) f`` converges at infinity exactly for ``Re s < p - q``
+    (Dirichlet's test after ``u = x**p``); ``None`` for another ``f``."""
+    from sympy_extras.core.numbers import Rational
+    from sympy_extras.functions.elementary.trigonometric import Cos, Sin
+    q: Expr = S.Zero
+    oscillating: Optional[Expr] = None
+    for factor in Mul.make_args(f):
+        if not factor.has(x):
+            continue
+        if isinstance(factor, (Sin, Cos)):
+            if oscillating is not None:
+                return None
+            oscillating = factor.args[0] if isinstance(factor.args[0], Expr) else None
+            if oscillating is None:
+                return None
+            continue
+        found = monomial(factor, x)
+        if found is None or found[0] != 1:
+            return None
+        q = q + found[1]
+    if oscillating is None:
+        return None
+    argument = monomial(oscillating, x)
+    if argument is None:
+        return None
+    a, p = argument
+    if not isinstance(p, Rational) or p <= 0 or a.has(x) or a.is_extended_real is not True or a.is_zero is not False:
+        return None
+    return p - q
+
+
 def _order_at_infinity(f: Expr, x: Symbol) -> Optional[Expr]:
     """``e`` such that ``f ~ C x**(-e)`` as ``x -> oo`` (the exponent of
-    the leading term), from the series of ``f(1/y)`` at ``y = 0``; ``oo``
-    when ``f`` decays faster than every power (an exponential)."""
+    the leading term, powers of ``log(x)`` aside), from the series of
+    ``f(1/y)`` at ``y = 0``; ``oo`` when ``f`` decays faster than every
+    power (an exponential); for an oscillation ``C x**q sin(a x**p)`` the
+    bound ``p - q`` of the convergence of its Mellin transform."""
     y = Dummy('y', positive=True)
     g = f.subs(x, 1 / y)
     try:
         leading = attempt(lambda: g.series(y, S.Zero, 1).removeO(), settings.timeout, native=True)
     except PoleError:
         # an essential singularity at infinity: exponential decay or oscillation
-        decays = attempt(lambda: limit(f * x**50, x, oo), settings.timeout, native=True)
-        if decays is not None and decays == 0:
+        if _decays_fast(f, x):
             return oo
-        return None
+        return _oscillation_order(f, x)
     if leading is None or leading == 0:
         # the leading term is beyond the first order: ask for the leading term itself
         try:
             found = attempt(lambda: g.leadterm(y), settings.timeout, native=True)
-        except PoleError:
-            return None
-        if found is None:
-            return None
-        return found[1]
+        except (PoleError, ValueError, NotImplementedError):
+            found = None
+        if found is not None and not found[1].has(y):
+            return found[1]
+        # no term at all (exp(-1/y) is O(y**n) for every n): an
+        # exponential decay, or an oscillation
+        if _decays_fast(f, x):
+            return oo
+        return _oscillation_order(f, x)
     if isinstance(leading, Order):
-        return None
+        if _decays_fast(f, x):
+            return oo
+        return _oscillation_order(f, x)
+    from sympy_extras.functions.elementary.exponential import Log
     exponents: list[Expr] = []
     for term in Add.make_args(leading):
         found_ = monomial(term, x) if term.has(x) else None
         if found_ is not None:
             return None
         rest = term.as_independent(y, as_Add=False)[1]
+        # powers of log(y) do not change the exponent of convergence
+        rest = Mul(*[a for a in Mul.make_args(rest)
+                     if not (isinstance(a, Log) and a.args[0] == y)
+                     and not (isinstance(a, Pow) and isinstance(a.base, Log) and a.base.args[0] == y)]).doit()
         if not rest.has(y):
             exponents.append(S.Zero)
             continue
@@ -362,15 +615,27 @@ def _order_at_infinity(f: Expr, x: Symbol) -> Optional[Expr]:
     return min(exponents, key=lambda e: float(e))
 
 
+def _order_at_zero(f: Expr, x: Symbol, offset: Expr) -> Expr:
+    """The exponent of the first term of the series of ``f`` at 0 (the
+    ``offset`` of its coefficients when it is not found): ``log(1 + x)``
+    starts with ``x``, its formula ``(-1)**(k + 1)/k`` with ``k = 0``."""
+    try:
+        found = attempt(lambda: f.leadterm(x), settings.timeout, native=True)
+    except (PoleError, ValueError, NotImplementedError):
+        return offset
+    if found is None or found[1].has(x) or not isinstance(found[1], Integer):
+        return offset
+    return found[1] if (found[1] - offset).is_positive is True else offset
+
+
 def _strip(f: Expr, x: Symbol, s: Symbol, offset: Expr) -> Optional[tuple[Expr, Expr]]:
-    """The strip of convergence: ``-offset < Re s < e`` with ``e`` the
-    order of decay at infinity; SymPy's own strip when it knows one and
-    the decay cannot be found."""
+    """The strip of convergence: ``-r < Re s < e`` with ``r`` the order of
+    ``f`` at 0 and ``e`` the order of decay at infinity, ``None`` when it
+    cannot be found."""
     upper = _order_at_infinity(f, x)
     if upper is None or upper.has(x):
-        from .brackets_sympy import mellin_strip_of_core
-        return mellin_strip_of_core(f, x, s)
-    return (-offset, upper)
+        return None
+    return (-_order_at_zero(f, x, offset), upper)
 
 
 def ramanujan_master_theorem(f: Expr, x: Symbol, s: Symbol,
