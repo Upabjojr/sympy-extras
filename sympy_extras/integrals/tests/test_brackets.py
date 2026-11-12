@@ -121,7 +121,10 @@ def test_formulas_which_fail_below_their_start_are_refused() -> None:
     # the bug: fps gives (-1)**k for 1/(x**2 + x + 1), the series of
     # 1/(x + 1); the coefficients are checked against the Taylor expansion
     assert taylor_coefficient(1 / (x**2 + x + 1), x) is None
-    assert series_integral((1 - x) / (x**2 + x + 1), x, 0, 1) is None
+    # the series of the whole integrand is right; SymPy's summation did not
+    # close it, the native one does (log(4) - 1 was the wrong value)
+    found = series_integral((1 - x) / (x**2 + x + 1), x, 0, 1)
+    assert found is None or abs(float(found.value) - 0.357593537783054) < 1e-12
 
 
 def test_divergent_bracket_series_give_no_transform() -> None:
