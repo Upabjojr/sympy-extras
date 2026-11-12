@@ -6,7 +6,8 @@ from sympy_extras.core import Function, Integer, Rational, Symbol, diff, expand,
 from sympy_extras.core.expr import Expr
 from sympy_extras.functions import cos, cosh, exp, sin, sqrt
 from sympy_extras.functions.elementary.exponential import Exp
-from sympy_extras.integrals.telescoping import (_Context, _nullspace, almkvist_zeilberger, holonomic_integral,
+from sympy_extras.integrals.telescoping import (DifferentialTelescoper, _Context, _nullspace, almkvist_zeilberger,
+                                                holonomic_integral,
                                                 holonomic_ode, is_hyperexponential, logarithmic_derivative)
 from sympy_extras.polys.polytools import cancel
 from sympy_extras.settings import configure
@@ -25,7 +26,8 @@ def _telescopes(F: Expr) -> None:
     # checked independently of DifferentialTelescoper.check: by the
     # exponential form
     difference = ((lhs - diff(found.certificate*F, x))/F).rewrite(Exp)
-    assert simplify(cancel(expand(difference))) == 0, F
+    cancelled = cancel(expand(difference))
+    assert cancelled == 0 or simplify(cancelled) == 0, F
 
 
 def test_telescopers_satisfy_their_identity() -> None:
@@ -114,3 +116,21 @@ def test_symbols_named_like_the_internal_variables() -> None:
     _telescopes(exp(-x**2)*exp(2*x*t)*k)
     found = almkvist_zeilberger(1/(x**2 + kx**2), x, kx)
     assert found is not None and found.coefficients == [1, kx]
+
+
+def test_checks_reject_wrong_certificates() -> None:
+    # the check on the hyperexponential terms proves the identity; a wrong
+    # certificate or operator is rejected by it and by the simplification
+    F = 1/(x**2 + t**2)
+    assert DifferentialTelescoper(F, x, t, [Integer(1), t], -x).check()
+    assert not DifferentialTelescoper(F, x, t, [Integer(1), t], 1 - x).check()
+    assert not DifferentialTelescoper(F, x, t, [Integer(2), t], -x).check()
+    # a sum of non-similar terms: the certificate is not rational
+    G = exp(-t*x**2) + exp(-t**2*x**2)
+    found = almkvist_zeilberger(G, x, t, max_order=0)
+    assert found is None
+    from sympy_extras.integrals.reduction import reduction_telescoper
+    found = reduction_telescoper(G, x, t)
+    assert found is not None and found._check_by_terms() and found.check()
+    wrong = DifferentialTelescoper(G, x, t, found.coefficients, found.certificate + x)
+    assert not wrong.check()

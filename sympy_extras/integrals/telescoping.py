@@ -191,6 +191,8 @@ class DifferentialTelescoper:
 
     def check(self) -> bool:
         """Verify ``sum_j a_j d^j F/dt^j = d(R F)/dx`` by simplification."""
+        if self._check_by_terms():
+            return True
         F = self.term
         lhs = add(*[mul(a, diff(F, (self.t, j))) for j, a in enumerate(self.coefficients)])
         difference = (lhs - diff(self.certificate*F, self.x))/F
@@ -198,6 +200,49 @@ class DifferentialTelescoper:
             difference = difference.rewrite(Exp)
         difference = cancel(expand(difference))
         return difference == _ZERO or simplify(difference) == _ZERO
+
+    def _check_by_terms(self) -> bool:
+        """The identity proved on hyperexponential terms: with ``T`` the
+        terms of ``F`` and ``U`` those of ``G = R F``,
+        ``sum_j a_j d^j T/dt^j = T sum_j a_j p_j`` and ``dU/dx = q_U U`` with
+        rational ``p_j`` and ``q_U``, and the rational coefficients of the
+        similar terms add up to zero. ``False`` when this does not prove
+        it (the expression is then simplified as a whole)."""
+        x, t = self.x, self.t
+        try:
+            G = self.certificate*self.term
+            if self.certificate.is_rational_function(x, t) is not True:
+                G = cancel(G)
+            # (representative term, sum of the rational coefficients of the
+            # terms similar to it)
+            groups: list[tuple[Expr, Expr]] = []
+
+            def collect(T: Expr, c: Expr) -> None:
+                for i, (S, sum_) in enumerate(groups):
+                    ratio = cancel(T/S)
+                    if ratio.is_rational_function(x, t) is True:
+                        groups[i] = (S, sum_ + ratio*c)
+                        return
+                groups.append((T, c))
+
+            for T in _terms(self.term, x, t):
+                p = logarithmic_derivative(T, t)
+                if p is None:
+                    return False
+                pj: Expr = _ONE
+                total = self.coefficients[0]
+                for a in self.coefficients[1:]:
+                    pj = cancel(diff(pj, t) + p*pj)
+                    total = total + a*pj
+                collect(T, total)
+            for U in _terms(G, x, t):
+                q = logarithmic_derivative(U, x)
+                if q is None:
+                    return False
+                collect(U, -q)
+            return bool(groups) and all(cancel(sum_) == _ZERO for _, sum_ in groups)
+        except _POLYNOMIAL_FAILURES:
+            return False
 
     def __repr__(self) -> str:
         return "DifferentialTelescoper(%s, %s)" % (self.coefficients, self.certificate)
