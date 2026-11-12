@@ -50,3 +50,11 @@ def test_rational_function_of_a_root_is_a_root() -> None:
 def test_radicals() -> None:
     assert exact_solutions([y**2 - 2, x*y - 1], [y, x]) == [{y: -sqrt(2), x: -sqrt(2)/2}, {y: sqrt(2), x: sqrt(2)/2}]
     assert exact_solutions([y**2 + 1, x - y], [y, x], real=True) == []
+
+
+def test_roots_with_an_integer_basis() -> None:
+    # the roots of y**3 + 64 are 4 times those of y**3 + 1: the complex
+    # ones are not real (the SymPy face took 4*CRootOf(x**2 - x + 1, 0) for
+    # a real root)
+    assert exact_solutions([y**3 + 64, x - y], [y, x], real=True) == [{y: -4, x: -4}]
+    assert len(exact_solutions([y**3 + 64, x - y], [y, x])) == 3

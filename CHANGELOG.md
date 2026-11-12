@@ -2866,6 +2866,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `polys.regularchains_sympy.solutions.exact_solutions` with `real=True`
+  returned the complex points whose coordinate is a root times an integer
+  basis (`4*CRootOf(x**2 - x + 1, 0)` for `y**3 + 64`, taken for a real
+  root).
+
 - The native `solve` (`sympy_extras.assumptions.solve`) kept the
   solutions contradicting the flags of the unknown: `pi*k = 1` gave
   `{1/pi}` for `k = Symbol('k', integer=True)`, `p**2 = 4` gave `{-2, 2}`
