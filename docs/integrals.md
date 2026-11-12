@@ -812,7 +812,7 @@ the bound is left undecided, never answered.
 
 ```python
 >>> from sympy import symbols, sqrt, log, Rational
->>> from sympy_extras.integrals.trager import trager_antiderivative, is_nonelementary_algebraic
+>>> from sympy_extras.integrals.trager_sympy import trager_antiderivative, is_nonelementary_algebraic
 >>> from sympy_extras.integrals.definite import definite_integral
 >>> x = symbols('x')
 >>> trager_antiderivative(x/sqrt(x**4 + 1), x)

@@ -348,16 +348,21 @@ sympy_extras/
             cde.py           the coupled differential systems of the hypertangent cases (native), PORTED FROM SYMPY
             polymatrix.py    FieldMatrix: immutable matrices over the field of the tower, rref, nullspace (native)
             risch_sympy.py   the SymPy face: risch_integrate, risch_antiderivative, is_nonelementary, NonElementaryIntegral
-                             (a SymPy Integral), rational_risch_de (used by trager)
+                             (a SymPy Integral), rational_risch_de
             rationaltools.py ratint, ratint_ratpart, ratint_logpart, log_to_real, log_to_atan, polynomial_part: rational
                              functions by Hermite's reduction and Lazard–Rioboo–Trager over QQ and EX, the real forms
                              of Rioboo, the native RootSum (native), PORTED FROM SYMPY
-            rationaltools_sympy.py the SymPy face of rationaltools (used by risch, trager, indefinite, trigonometric,
+            rationaltools_sympy.py the SymPy face of rationaltools (used by risch, indefinite, trigonometric,
                              radicals)
-        trager.py            Trager's algorithm for integrands rational in x and one square root of a polynomial
+        trager.py            Trager's algorithm for integrands rational in x and one square root of a polynomial, and for
+                             one root of index n (native: the dense polynomials over QQ, number fields of a primitive
+                             element of the constants, QQ(parameters), EX; the native rational integrator, Risch DE,
+                             curves and Chebyshev's criterion)
+        trager_sympy.py      the SymPy face of trager, used by indefinite (the residues of the fields without radicals
+                             of the general curve as CRootOf, through curves_sympy)
         curves.py            Trager's algorithm on an arbitrary curve: several or nested radicals through a primitive element, the change of variable x = N + 1/z, Hermite reduction in a normal integral basis, residues by Puiseux expansions, the logarithmic part by linear algebra
                              (native: the native function fields, Puiseux expansions, number fields and cancel)
-        curves_sympy.py      the SymPy face of curves (the field of the residues as SymPy's, CRootOf), used by trager
+        curves_sympy.py      the SymPy face of curves (the field of the residues as SymPy's, CRootOf), used by trager_sympy
         summability.py       summable_integral, oscillatory_tail: Abel, Cesàro and Gaussian means of divergent
                              oscillatory integrals (native: the native limits; the regularised integrals by definite)
         summability_sympy.py the SymPy face of summability, used by definite

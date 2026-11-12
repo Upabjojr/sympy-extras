@@ -1,13 +1,12 @@
 """Tests of Trager's algorithm for algebraic functions (quadratic extensions)."""
 from __future__ import annotations
 
-from sympy import symbols, sqrt, log, I, S, Pow, simplify, exp, sin
-from sympy.polys.polyerrors import NotInvertible
+from sympy import symbols, sqrt, log, I, S, simplify, exp, sin
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
 from sympy_extras._typing_sympy import as_expr
-from sympy_extras.integrals.trager import (trager_antiderivative, trager_reduce, hermite_reduce_algebraic,
+from sympy_extras.integrals.trager_sympy import (trager_antiderivative, trager_reduce, hermite_reduce_algebraic,
                                            is_nonelementary_algebraic)
 
 x, a = symbols('x a')
@@ -171,19 +170,12 @@ def test_residues_algebraic_over_the_parameters() -> None:
     # QQ<I>(alpha, beta1, beta2, ...), and the answer's radicand is the
     # original one
     from sympy_extras.integrals.indefinite import is_antiderivative
-    from sympy_extras.integrals.trager import _rational_parameters
     b, c = symbols('b c')
     f = as_expr(sqrt(a + b * x**2 + c * x**4) / (a - c * x**4))
     F = trager_antiderivative(f, x)
     assert F is not None and F.has(sqrt(a + b * x**2 + c * x**4)) and F.has(log)
     assert is_antiderivative(F, f, x) is True
-    found = _rational_parameters([sqrt(b - 2 * sqrt(a) * sqrt(c)) / 4, sqrt(c)], [a, b, c])
-    assert found is not None
-    substitution, back = found
-    assert set(substitution) <= {a, b, c} and all(not value.has(sqrt) for value in substitution.values())
-    assert all(any(node.exp == S.Half for node in value.atoms(Pow)) for value in back.values())
-    # a root linear in no parameter: no reparametrization
-    assert _rational_parameters([sqrt(a**2 + 1)], [a]) is None
+    # the reparametrization itself: test_trager_native.py
 
 
 def test_rational_radicands() -> None:
@@ -205,7 +197,6 @@ def test_roots_of_index_three_and_more() -> None:
     # Risch differential equation R' + k*P'/(n*P)*R = A_k
     from sympy import Rational
     from sympy_extras.integrals.indefinite import is_antiderivative, verified_antiderivative
-    from sympy_extras.integrals.trager import _root_components
     cases = [x**2 * (x**3 + 1)**Rational(1, 3), x**5 * (x**3 + 1)**Rational(2, 3), x**2 * (x**3 + a)**Rational(1, 3),
              x / (x**2 + 1)**Rational(1, 3), (x**3 + 1)**Rational(-2, 3) * x**2 + (x**3 + 1)**Rational(1, 3) * x**2]
     for f in cases:
@@ -220,15 +211,7 @@ def test_roots_of_index_three_and_more() -> None:
     assert G is not None and is_antiderivative(G, g, x) is True
     found = verified_antiderivative(g, x)
     assert found is not None and found[1] == 'trager'
-    # the components: 1/(1 + y) is (1 - y + y**2)/(1 + P) for y**3 = P
-    parsed = _root_components(as_expr(1 / (1 + (x**3 + 1)**Rational(1, 3))), x)
-    assert parsed is not None
-    P, n, components = parsed
-    assert n == 3 and [simplify(c * (x**3 + 2)) for c in components] == [1, -1, 1]
-    # not squarefree, a square root, two radicands: not this route
-    assert _root_components(as_expr((x**2 * (x + 1))**Rational(1, 3)), x) is None
-    assert _root_components(as_expr(sqrt(x**3 + 1)), x) is None
-    assert _root_components(as_expr((x + 1)**Rational(1, 3) * (x + 2)**Rational(1, 3)), x) is None
+    # the components themselves: test_trager_native.py
 
 
 def test_logarithmic_part_of_roots_of_index_n() -> None:
@@ -277,49 +260,3 @@ def test_logarithmic_part_of_roots_of_index_n() -> None:
     # parameters: the residues would be algebraic over the parameters
     assert trager_antiderivative(1 / (x * (x**3 + a)**R(1, 3)), x) is None
     assert trager_antiderivative(a / (x * (x**3 + 1)**R(1, 3)), x) is None
-
-
-def test_hermite_reduction_and_residues_on_the_curve_of_index_n() -> None:
-    from sympy import Rational, Poly, QQ
-    from sympy_extras.integrals.trager import _hermite_index_n, _residue_at_infinity, _rational_basis
-    P = Poly(x**3 + 1, x, domain=QQ)
-    y = (x**3 + 1)**Rational(1, 3)
-    # 1/(x**4*y) = y**2/(x**4*P): the pole of order four at 0 lowered to a
-    # simple one by the exact part, the remainder with simple poles
-    A = as_expr(1 / (x**4 * (x**3 + 1)))
-    reduced = _hermite_index_n(A, P, 3, 2, x)
-    assert reduced is not None
-    terms, M, D = reduced
-    assert D.as_expr() == x and all(T.as_expr() != 1 for _, T in terms)
-    exact = sum((S_.as_expr() * y**2 / T.as_expr() for S_, T in terms), S.Zero)
-    assert simplify(exact.diff(x) + M.as_expr() * y**2 / (D.as_expr() * (x**3 + 1)) - A * y**2) == 0
-    # the pole of order two at infinity of x*y**2/P dx = x/y dx, which no
-    # function of the curve removes: also what is left of 1/(x**2*y) once
-    # the double pole at 0 is removed, and of 1/((x + 1)*y) once the
-    # ramified pole at x = -1 (a root of P) is
-    for A in [x / (x**3 + 1), 1 / (x**2 * (x**3 + 1)), 1 / ((x + 1) * (x**3 + 1))]:
-        assert _hermite_index_n(as_expr(A), P, 3, 2, x) is None, A
-    # y**2/P dx = dx/y has the residue -s**2 at the point at infinity where
-    # y ~ s*x, s**3 = 1: kappa = 1; 1/(x*y) has none there
-    one = Poly(1, x, domain=QQ)
-    assert _residue_at_infinity(one, one, P, 3, 2) == 1
-    assert _residue_at_infinity(one, Poly(x, x, domain=QQ), P, 3, 2) == 0
-    # the residues 1, zeta, zeta**2 span a plane over the rationals
-    K = QQ.algebraic_field(Rational(-1, 2) + sqrt(3) * I / 2)
-    zeta = K.from_sympy(Rational(-1, 2) + sqrt(3) * I / 2)
-    basis = _rational_basis([K.one, zeta, zeta**2], K)
-    assert basis is not None and basis[0] == [0, 1] and basis[1] == [[1, 0], [0, 1], [-1, -1]]
-
-
-def test_the_inverse_modulo_a_polynomial_over_the_gaussian_parametric_field() -> None:
-    # Poly.invert reports a zero divisor over QQ<I>(a, b) where the
-    # extended Euclidean algorithm finds the unit
-    from sympy import Poly, QQ, cancel
-    from sympy_extras.integrals.trager import _inverse
-    b = symbols('b')
-    K = QQ.algebraic_field(I).frac_field(a, b)
-    G = Poly(x**2 - (a**2 + b**2) / 4, x, domain=K)
-    p = Poly(4 * x**3, x, domain=K).mul_ground(K.from_sympy(I * b / (a**2 + b**2)))
-    inverse = _inverse(p, G)
-    assert cancel((p * inverse).rem(G).as_expr()) == 1
-    raises(NotInvertible, lambda: _inverse(Poly(x, x, domain=K), Poly(x**2, x, domain=K)))

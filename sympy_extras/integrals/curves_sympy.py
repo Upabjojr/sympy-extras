@@ -1,6 +1,7 @@
 """The SymPy face of Trager's algorithm on a general curve
-(:mod:`sympy_extras.integrals.curves`), for the integrators which are
-still written on SymPy (:mod:`sympy_extras.integrals.trager`).
+(:mod:`sympy_extras.integrals.curves`), for the code which is still
+written on SymPy (:mod:`sympy_extras.integrals.trager_sympy`, which takes
+from it the residues of the fields without radicals as ``CRootOf``).
 
 The functions and classes take and return SymPy objects, converted by
 :mod:`sympy_extras.interop` around the native ones; nothing of the

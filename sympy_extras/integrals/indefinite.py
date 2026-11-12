@@ -32,7 +32,8 @@ The order of the methods:
 7. the heuristic Risch integrator (:mod:`.heurisch`, then SymPy's), on
    the integrand and then on its canonical forms (on the exponentials of
    hyperbolic functions already in 6, after the substitutions);
-8. Trager's algorithm for one square root of a polynomial (:mod:`.trager`),
+8. Trager's algorithm for one square root of a polynomial (:mod:`.trager`,
+   through its face :mod:`.trager_sympy`),
    and on the curve of several or nested radicals (:mod:`.curves`),
    and right after it the Gauss hypergeometric antiderivative of a
    binomial differential `x^m (a + b x^n)^p` whose integral Chebyshev's
@@ -411,7 +412,7 @@ def _heurisch(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
 
 
 def _trager(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
-    from .trager import trager_antiderivative
+    from .trager_sympy import trager_antiderivative
     return attempt(lambda: trager_antiderivative(f, x), _budget())
 
 
