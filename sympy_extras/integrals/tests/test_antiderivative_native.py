@@ -102,3 +102,19 @@ def test_default_step_through_the_face() -> None:
     assert antiderivative_integral(exp(-a * x), x, S.Zero, oo, a > 0) == ConditionalValue(1 / a)
     found = antiderivative_integral(1 / (2 + cos(x)), x, S.Zero, 2 * pi)
     assert found is not None and numerically_equal(found.value, 2 * sqrt(3) * pi / 3)
+
+
+def test_a_complex_limit_of_a_real_antiderivative_is_refused() -> None:
+    # the bug: this antiderivative of u*log(1 - u**2)*atanh(u) (another
+    # form of the one the verified methods usually give) has the limit
+    # log(2)/2 - I*pi at 1 from below by SymPy's and the core's limit
+    # (the value is -3/2 + log(2)), and the integral over (0, 1) came out
+    # as -3/2 + log(2) - I*pi
+    from sympy_extras.functions import atanh
+    u = Symbol('u', positive=True)
+    f = u * (log(1 - u) + log(u + 1)) * atanh(u)
+    F = (u**2 * log(1 - u) * atanh(u) / 2 + u**2 * log(u + 1) * atanh(u) / 2 - u**2 * atanh(u) / 2
+         + u * log(1 - u) / 2 + u * log(u + 1) / 2 - 3 * u / 2 - log(1 - u) * atanh(u) / 2 - log(1 - u)
+         - log(u + 1) * atanh(u) / 2 + log(u + 1) - atanh(u) / 2)
+    found = antiderivative_integral(f, u, S.Zero, S.One, known=F)
+    assert found is None or numerically_equal(found.value, Rational(-3, 2) + log(2))

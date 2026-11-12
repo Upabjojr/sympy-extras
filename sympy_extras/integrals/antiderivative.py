@@ -726,7 +726,43 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     if total.has(nan, zoo):
         # oo - oo: infinities of both signs, nothing is claimed
         return None
+    if _not_real_number(total) and _real_on_range(f, x, bounds):
+        # a real integrand has a real integral: a complex limit is wrong
+        # (SymPy's and the core's limit of a real antiderivative of
+        # u*log(1 - u**2)*atanh(u) at 1 from below is log(2)/2 - I*pi)
+        return None
     return ConditionalValue(_absorbed(total))
+
+
+def _real_on_range(f: Expr, x: Symbol, bounds: list[Expr]) -> bool:
+    """Whether ``f`` without parameters is real at a point inside every
+    piece between the ``bounds`` (numbers, or infinities at the ends)."""
+    if f.free_symbols - {x}:
+        return False
+    for lower, upper in zip(bounds[:-1], bounds[1:]):
+        if not (lower.is_number and upper.is_number):
+            return False
+        if lower == -oo and upper == oo:
+            sample: Expr = S.Zero
+        elif lower == -oo:
+            sample = upper - 1
+        elif upper == oo:
+            sample = lower + 1
+        else:
+            sample = (lower + upper) / 2
+        try:
+            value = reliable_value(f.subs(x, sample), 15)
+        except ZeroDivisionError:
+            return False
+        if value is None or value.is_extended_real is not True:
+            return False
+    return True
+
+
+def _not_real_number(total: Expr) -> bool:
+    """Whether ``total`` has an imaginary part known to be nonzero."""
+    imaginary = im(total)
+    return not imaginary.has(Im) and imaginary.is_zero is False
 
 
 def real_logarithms(F: Expr, x: Symbol) -> Expr:
