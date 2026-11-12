@@ -10,6 +10,19 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The limits of sequences (`assumptions.limits.limit_seq`, and the
+  convergence tests through it) no longer load SymPy at run time
+  (internal change, same API): SymPy's `limit_seq` is ported to the core
+  as the new `sympy_extras.series.limitseq` (`limit_seq`,
+  `difference_delta`, `dominant`), and the route
+  `limits_sympy.limit_seq_of_core` is gone. The core gains the rules it
+  needed from SymPy: the power of a negative number to an even or odd
+  symbol takes the sign out (`(-2)**n` is `-2**n` for an odd `n`), the
+  tractable forms of the limit algorithm for `gamma`, `binomial`, the
+  rising and falling factorials and `harmonic` (and the intractable one of
+  `loggamma`), and the asymptotic series of `polygamma`. Without SymPy the
+  core's `limit(exp(x)/gamma(x), x, oo)` gave `oo` (the tractable form of
+  `gamma` was SymPy's rule only, silently skipped); it is `0`.
 - The signs of the functions which are not rational
   (`assumptions.analysis.sign_on`, and through it `ask`, `refine`, `solve`,
   `solvers.isolation`, the convergence tests) no longer load SymPy at run

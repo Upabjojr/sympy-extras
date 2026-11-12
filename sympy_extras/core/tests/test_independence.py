@@ -311,6 +311,20 @@ a, x = symbols('a x')
 assert limit(sin(x)/x, x, Integer(0)) == 1 and limit(exp(a*x), x, oo, assumptions=a < 0) == 0
 assert limit(x**a, x, oo, assumptions=a > 0) == oo
 assert str(series(sqrt(a**2 + x), x, 0, 2, assumptions=a > 0)) == 'x/(2*a) + a + O(x**2)'
+# limits of sequences (SymPy's limit_seq before)
+from sympy_extras.core import EulerGamma, Rational
+from sympy_extras.core.accumbounds import accum_bounds
+from sympy_extras.functions import binomial, factorial, harmonic, log
+n = symbols('n')
+assert limit_seq(a**n, n, assumptions=a > 1) == oo and limit_seq((-1)**n, n) == accum_bounds(-1, 1)
+assert limit_seq(harmonic(n) - log(n), n) == EulerGamma and limit_seq(binomial(2*n, n)/4**n, n) == 0
+assert limit_seq((-2)**n, n) == accum_bounds(-oo, oo)
+# the core's limit of a gamma function: its tractable form exp(loggamma)
+# was SymPy's rule only, and without SymPy exp(x)/gamma(x) came out oo
+from sympy_extras.core.limits import limit as core_limit
+from sympy_extras.functions import gamma
+assert core_limit(exp(x)/gamma(x), x, oo) == 0 and core_limit(2**x/gamma(x + 1), x, oo) == 0
+assert limit_seq(2**n/factorial(n), n) == 0
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -328,9 +342,8 @@ def test_native_structure_does_not_load_sympy() -> None:
 def test_native_limits_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.assumptions.limits` does not load
     SymPy, nor do the limits and series whose parameters have signs
-    decided by the predicates (SymPy's ``limit_seq``, the reliable
-    numerical values, and the SAT and CAD of the case distinctions go
-    through SymPy at run time)."""
+    decided by the predicates, the limits of sequences (SymPy's
+    ``limit_seq`` before) and the core's limits of gamma functions."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_LIMITS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

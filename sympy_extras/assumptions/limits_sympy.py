@@ -1,17 +1,11 @@
 """The SymPy face of limits and series expansions under statement
-assumptions (:mod:`sympy_extras.assumptions.limits`), and the steps which
-are not ported.
+assumptions (:mod:`sympy_extras.assumptions.limits`).
 
 :func:`limit`, :func:`limit_seq` and :func:`series` take and return SymPy
 objects (expressions, symbols, and assumptions written with SymPy's
 relations and the memberships of
 :mod:`sympy_extras.assumptions.facts_sympy`), converted by
 :mod:`sympy_extras.interop` around the native functions.
-
-The steps of the native functions which stay written on SymPy are called
-from them at run time (the functions ending in ``_of_core``, which take
-and return objects of the core): SymPy's ``limit_seq``
-(:func:`sympy.series.limitseq.limit_seq`, not ported).
 
 Examples
 ========
@@ -33,26 +27,11 @@ from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
 from sympy.sets.sets import Set
 
-from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.symbol import Symbol as CoreSymbol
-
 from . import limits as native
-from .ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions, core_domain
+from .ask_sympy import Assumptions, _core_symbol, core_assumptions, core_domain
 from .intervals_sympy import core_expr, sympy_expr
 
-__all__ = ['limit', 'limit_seq', 'series', 'limit_seq_of_core']
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native functions which stay on SymPy
-
-def limit_seq_of_core(e: CoreExpr, n: CoreSymbol) -> Optional[CoreExpr]:
-    """SymPy's :func:`~sympy.series.limitseq.limit_seq` of a sequence in
-    ``n`` (``None`` when it gives up; its ``NotImplementedError`` when a
-    result depends on a sign is passed on)."""
-    from sympy.series.limitseq import limit_seq as _limit_seq
-    value = _limit_seq(sympy_expr(e), _sympy_symbol(n))
-    return None if value is None else core_expr(sympify(value))
+__all__ = ['limit', 'limit_seq', 'series']
 
 
 # ---------------------------------------------------------------------------

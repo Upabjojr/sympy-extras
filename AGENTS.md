@@ -196,8 +196,8 @@ sympy_extras/
                              and transcendental equations; solveset, nonlinsolve through solve_sympy)
         solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions)
         limits.py            limit(), limit_seq(), series() under assumptions, with case distinctions (native; the core's
-                             Gruntz and series, the native reliable values; SymPy's limit_seq through limits_sympy)
-        limits_sympy.py      the SymPy face of limits, and the steps which stay on SymPy (the *_of_core functions)
+                             Gruntz and series, the native reliable values, series.limitseq)
+        limits_sympy.py      the SymPy face of limits
         tests/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
         elementary/
@@ -510,7 +510,7 @@ sympy_extras/
                              model in a deterministic order (native, PORTED FROM SYMPY logic/algorithms/dpll2)
         tests/
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
-    series/                  residue (ported from SymPy)
+    series/                  residue; limit_seq, difference_delta, dominant (limitseq.py) (ported from SymPy)
     sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains, ProductSet, PointSet (finite sets of tuples);
                              Naturals, Naturals0, Integers, Rationals, Complexes, ImageSet (fancysets.py); ConditionSet (conditionset.py) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)

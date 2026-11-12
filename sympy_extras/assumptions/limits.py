@@ -15,10 +15,9 @@ negative) compatible with the assumptions and returned as a
 
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.assumptions.limits_sympy` is its face on SymPy objects.
-One step is not ported and goes through SymPy at run time (the face
-holds it, :func:`~sympy_extras.assumptions.limits_sympy.limit_seq_of_core`):
-SymPy's ``limit_seq`` (:func:`sympy.series.limitseq.limit_seq`, the
-limits of sequences by the Stolz--Cesaro theorem and the dominant terms).
+The limits of sequences are those of the port of SymPy's ``limit_seq``
+(:func:`sympy_extras.series.limitseq.limit_seq`, the Stolz--Cesaro
+theorem and the dominant terms).
 The reliable numerical values of
 :func:`sympy_extras._numeric.reliable_value`, with which an infinite limit
 of a function taking complex values on the approach is recognised as
@@ -46,7 +45,7 @@ from sympy_extras.functions.elementary.complexes import Sign
 from sympy_extras.functions.elementary.exponential import Log, exp, log
 from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise
 from sympy_extras.sets.sets import Reals, Set
-from sympy_extras._timeout import attempt, prepare_sympy
+from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 
 from .ask import Assumptions, _evaluate, _facts
@@ -234,13 +233,18 @@ def _continuous(x0: Expr, direction: str) -> Engine:
     return engine
 
 
+def _limit_seq_native(e: Expr, n: Symbol) -> Optional[Expr]:
+    """The limit of the sequence by the port of SymPy's ``limit_seq``
+    (:func:`sympy_extras.series.limitseq.limit_seq`), ``None`` when it
+    gives up."""
+    from sympy_extras.series.limitseq import limit_seq as _limit_seq
+    return _limit_seq(e, n)
+
+
 def _sequence(e: Expr, n: Symbol) -> Expr:
-    """SymPy's ``limit_seq`` as an engine (an unevaluated ``Limit`` when
-    it gives up); called under native time limits, it prepares SymPy's
-    tables first."""
-    from .limits_sympy import limit_seq_of_core
-    prepare_sympy()
-    value = limit_seq_of_core(e, n)
+    """The limit of a sequence as an engine (an unevaluated ``Limit`` when
+    it gives up)."""
+    value = _limit_seq_native(e, n)
     if value is None:
         # the limit of the function of a real variable, when it exists,
         # is the limit of the sequence (an oscillation in the real
