@@ -2901,3 +2901,29 @@ def test_native_solveset_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVESET], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SYSTEMS_AND_INTERSECTIONS = r'''
+import sys
+from sympy_extras.core import Rational, symbols
+from sympy_extras.functions import sin
+from sympy_extras.assumptions.solve import solve
+assert 'sympy' not in sys.modules
+x, y, z = symbols('x y z')
+assert str(solve([x*z - y, x - y*z], [x, y, z])) == '{(0, 0, z), (-y, y, -1), (y, y, 1)}'
+assert str(solve([x**2 + y**2 - 1], [x, y])) == '{(-sqrt(1 - y**2), y), (sqrt(1 - y**2), y)}'
+assert str(solve(sin(x) - Rational(1, 2), x, (x > 0) & (x < 1))) == '{pi/6}'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_systems_and_intersections_do_not_load_sympy() -> None:
+    """The systems in positive dimension which ``assumptions.solve`` gave
+    to SymPy's ``nonlinsolve`` (``solve_sympy.nonlinsolve_of_core``) and
+    the intersections of images of the integers with intervals which it
+    gave to SymPy's constructors (``solve_sympy.evaluated_set_of_core``)
+    load no SymPy: the native ``solve_system`` and evaluation."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SYSTEMS_AND_INTERSECTIONS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

@@ -10,6 +10,20 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `assumptions.solve` loads no SymPy at run time: the systems which the
+  regular chains do not solve go to the native `solve_system` (the
+  substitution method of SymPy's `nonlinsolve`, the unknowns left free
+  standing for themselves) instead of SymPy's `nonlinsolve`, and the
+  intersections the sets of the core leave unevaluated are evaluated
+  natively (a condition set restricted to the other set, the images
+  `a*k + b` of the integers in a bounded interval as a finite set, a finite
+  set filtered by its decided memberships) instead of by SymPy's
+  constructors; the integers in an interval stay an `Intersection` natively
+  (SymPy's face still gives its `Range`). `solve_sympy.nonlinsolve_of_core`
+  and `solve_sympy.evaluated_set_of_core` are removed. The points of
+  `nonlinsolve` repeated in two radical forms (`sqrt(1 - y**2)` and
+  `sqrt(-(y - 1)*(y + 1))`) are given once.
+
 - The relations in one unknown which `assumptions.solve`, the
   transcendental solver and `sympy_extras._special_values` solved with
   SymPy's `solveset` at run time (`assumptions.solve_sympy.solveset_of_core`,

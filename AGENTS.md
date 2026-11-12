@@ -194,10 +194,9 @@ sympy_extras/
         satask.py            predicates_consistent: predicates against SymPy's known number facts and class facts by the
                              native SAT solver (native, PORTED FROM SYMPY satask, sathandlers, ask_generated)
         solve.py             solve(): Solve under assumptions (native, with the native CAD, regular chains, parametric cases,
-                             transcendental equations and solvers.solveset; nonlinsolve and the intersections not
-                             evaluated by the core through solve_sympy)
-        solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions;
-                             the periods by the native calculus.util.periodicity)
+                             transcendental equations, solvers.solveset and solvers.solvers.solve_system; no SymPy at
+                             run time)
+        solve_sympy.py       the SymPy face of solve (the periods by the native calculus.util.periodicity)
         limits.py            limit(), limit_seq(), series() under assumptions, with case distinctions (native; the core's
                              Gruntz and series, the native reliable values, series.limitseq)
         limits_sympy.py      the SymPy face of limits
