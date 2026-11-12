@@ -51,6 +51,8 @@ remove public functions. Breaking changes are listed here when they happen.
   `_eval_aseries` of its own in SymPy (`airyai`, ...) at an argument
   going to an infinity raises SymPy's `PoleError` natively (they went to
   SymPy through the bridge).
+- `core.bridge.Bridge.is_hypergeometric` (and its SymPy implementation)
+  is removed: `Expr.is_hypergeometric` is native and nothing asked it.
 
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's

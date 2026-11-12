@@ -81,9 +81,6 @@ class Bridge:
     def is_constant(self, e: Expr, wrt: Sequence[Symbol]) -> Truth:
         return None
 
-    def is_hypergeometric(self, e: Expr, k: Symbol) -> Truth:
-        return None
-
     def minimal_polynomial(self, e: Expr, x: Symbol) -> Expr:
         raise self._missing('minimal_polynomial')
 

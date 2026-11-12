@@ -1647,13 +1647,6 @@ class SymPyBridge(Bridge):
         answer = _with_fixed_random(lambda: s.is_constant(*variables))
         return answer if isinstance(answer, bool) else None
 
-    def is_hypergeometric(self, e: Expr, k: Symbol) -> Truth:
-        s = to_sympy(e)
-        if not isinstance(s, SymPyExpr):
-            return None
-        answer = s.is_hypergeometric(to_sympy(k))
-        return answer if isinstance(answer, bool) else None
-
     def minimal_polynomial(self, e: Expr, x: Symbol) -> Expr:
         return expr_from_sympy(sympy.minimal_polynomial(to_sympy(e), to_sympy(x)))
 
