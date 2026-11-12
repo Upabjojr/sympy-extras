@@ -138,6 +138,17 @@ def test_unknown_outside_a_root_of_a_linear_argument() -> None:
     assert solve_transcendental(Eq(x + 1 - cbrt(x), 0), x) == EmptySet
 
 
+def test_rational_after_the_absolute_values() -> None:
+    # 1/Abs(x) > 1 is rational in x once the absolute value is split: it
+    # gave None (no kernel), the set is (-1, 0) U (0, 1)
+    found = solve_transcendental(1/Abs(x) > 1, x)
+    assert found is not None
+    for inside in (Rational(-1, 2), Rational(1, 2), Rational(9, 10)):
+        assert found.contains(inside) is true
+    for outside in (Integer(-1), Integer(0), Integer(1), Integer(2)):
+        assert found.contains(outside) is not true
+
+
 def test_lambert_can_be_disabled() -> None:
     # without the Lambert W candidates (SymPy's solve) nothing is found
     assert solve_transcendental(Eq(x*exp(x), 1), x, lambert=False) is None

@@ -10,6 +10,16 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- **Breaking**: `solvers.inequalities.solve_inequality` no longer loads
+  SymPy at run time: a relational which is not rational in the variable
+  is solved by the native `solve_transcendental` (absolute values by
+  cases, then the kernels) in place of SymPy's
+  `solve_univariate_inequality`, and raises `NotImplementedError` (as
+  SymPy did) when the solutions are not a union of intervals and points.
+  The module `solvers.inequalities_sympy` (only the route
+  `solve_inequality_of_core`) is removed. `solve_transcendental` solves
+  the formulas which the absolute values leave rational in the unknown
+  (`1/Abs(c) > 1`), which gave `None`.
 - The cases of the isolated values of the parameters of the native sums
   (`concrete.karr`, `creative`, `zeilberger`, `qhyper`, `rational`) no
   longer load SymPy at run time (internal change, same API): the

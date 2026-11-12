@@ -411,8 +411,7 @@ sympy_extras/
         transcendental_sympy.py the SymPy face of transcendental, and solveset_of_core, solve_of_core,
                              reliable_form_of_core, reliable_value_of_core
         inequalities.py      solve_inequality: a relational solved for one variable (native, the rational case by
-                             the CAD; the others through inequalities_sympy), PORTED FROM SYMPY
-        inequalities_sympy.py solve_inequality_of_core (SymPy's _solve_inequality)
+                             the CAD, the others by the native transcendental solver), PORTED FROM SYMPY
         integers.py          linear Diophantine systems (Hermite), Contejean-Devie, Cooper's algorithm (native;
                              SymPy's simplify_logic through integers_sympy)
         integers_sympy.py    the SymPy face of integers, and simplify_logic_of_core (from virtual_substitution_sympy)

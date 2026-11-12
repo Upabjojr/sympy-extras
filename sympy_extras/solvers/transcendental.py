@@ -892,10 +892,34 @@ def solve_transcendental(formula: Boolean, x: Symbol, solver: Optional[Solver] =
     return _solve_transcendental(formula, x, _Context(solver, decide, 0, lambert))
 
 
+def _cleared(formula: Boolean, x: Symbol) -> Optional[Boolean]:
+    """A formula rational in ``x`` with rational coefficients as a
+    polynomial one: each relation ``p/q op 0`` as ``p*q op 0`` with
+    ``q != 0``; ``None`` when an atom is not rational so."""
+    from sympy_extras.polys.rationaltools import together
+
+    def rational(e: Expr) -> bool:
+        coefficients = _coefficients(e, x)
+        return coefficients is not None and all(c.is_rational is True for c in coefficients.values())
+
+    cleared: dict[Basic, Basic] = {}
+    for atom in _atoms(formula):
+        numerator, denominator = together(atom.lhs - atom.rhs).as_numer_denom()
+        if not rational(numerator) or not rational(denominator):
+            return None
+        relation = _relation(atom.rel_op, expand(numerator*denominator), Integer(0))
+        cleared[atom] = and_(relation, ne(denominator, 0)) if denominator.has(x) else relation
+    return _xreplace(formula, cleared)
+
+
 def _solve_transcendental(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
     formula = _without_abs(formula, x)
     if _polynomial(formula, x):
         return in_radicals(solution_set(formula, x))
+    rational = _cleared(formula, x)
+    if rational is not None and _polynomial(rational, x):
+        # a rational formula (after the absolute values): 1/c > 1
+        return in_radicals(solution_set(rational, x))
     reduction = polynomialize(formula, x)
     if reduction is None:
         return _lambert(formula, x, ctx)

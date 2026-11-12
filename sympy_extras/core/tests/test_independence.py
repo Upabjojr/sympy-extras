@@ -1180,6 +1180,9 @@ assert str(solve_transcendental(Eq(tan(x), 1), x)).startswith('Union(ImageSet(La
 assert str(polynomialize(Eq(exp(x/2) + exp(x), 6), x)) == 'Reduction(Eq(_t**2 + _t - 6, 0), _t = exp(x/2))'
 assert str(solve_inequality(x**2 - 4 < 0, x)) == '(-2 < x) & (x < 2)'
 assert str(solve_inequality(x < x*(2/x - 1), x)) == '(x < 1) & Ne(x, 0)'
+# relationals which are not rational (SymPy's _solve_inequality before)
+assert str(solve_inequality(exp(x) > 2, x)) == 'log(2) < x'
+assert str(solve_inequality(1/Abs(x) > 1, x)) == '(x > -1) & (x < 1) & Ne(x, 0)'
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -1242,11 +1245,10 @@ def test_native_transcendental_and_inequalities_do_not_load_sympy() -> None:
     :mod:`sympy_extras.solvers.inequalities` does not load SymPy, nor do
     the equations and inequalities in exponentials, logarithms, sines and
     cosines, roots and absolute values whose reduced polynomial formulas
-    are rational or linear, and the relationals rational in the variable
-    (SymPy's ``solveset`` of the other polynomial relations, the Lambert
-    W candidates of its ``solve``, the reliable numerical values and
-    SymPy's ``_solve_inequality`` of the other relationals go through it
-    at run time)."""
+    are rational or linear, and the relationals solved for a variable,
+    rational in it or not (SymPy's ``solveset`` of the other polynomial
+    relations, the Lambert W candidates of its ``solve`` and the reliable
+    numerical values go through it at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_TRANSCENDENTAL], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
