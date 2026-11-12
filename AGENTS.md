@@ -177,8 +177,8 @@ sympy_extras/
         intervals.py         rigorous interval arithmetic: evaluate, signs_on_box, corner_signs, isolate_signs (native)
         intervals_sympy.py   the SymPy face of intervals
         analysis.py          signs beyond polynomials: certified_sign, sign_on, domain_of, decide_relational (native;
-                             the native CAD; continuous_domain/solveset of non-rational expressions through analysis_sympy)
-        analysis_sympy.py    the SymPy face of analysis, and the steps which stay on SymPy (the *_of_core functions)
+                             the native CAD, continuity and transcendental zeros; no SymPy at run time)
+        analysis_sympy.py    the SymPy face of analysis
         ask.py               ask(): the core's ask first, then the CAD (native, with the native CAD and virtual
                              substitution, the native structure theorem, sample points and reliable values)
         ask_sympy.py         the SymPy face of ask
@@ -398,12 +398,13 @@ sympy_extras/
         tests/
     solvers/                 solvers extending sympy.solvers (exports nothing: import the modules)
         isolation.py         TranscendentalRoot (node), isolate_real_roots, point_between, compare_points: exact real roots of
-                             exp-log functions (native; SymPy's real_roots with CRootOf and continuous_domain through isolation_sympy)
-        isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts), the *_of_core functions
+                             exp-log functions (native; SymPy's real_roots with CRootOf through isolation_sympy)
+        isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts), and
+                             real_roots_of_core
         transcendental.py    solve_transcendental, polynomialize, Reduction: transcendental equations and inequalities
                              reduced to polynomial ones through kernels (native; SymPy's solveset of the non-rational
-                             polynomial relations, the Lambert W candidates of its solve and _numeric through
-                             transcendental_sympy)
+                             polynomial relations, the Lambert W candidates of its solve (lambert=False skips them)
+                             and _numeric through transcendental_sympy)
         transcendental_sympy.py the SymPy face of transcendental, and solveset_of_core, solve_of_core,
                              reliable_form_of_core, reliable_value_of_core
         inequalities.py      solve_inequality: a relational solved for one variable (native, the rational case by

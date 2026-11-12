@@ -185,6 +185,16 @@ assert sign_on((x - 1)/(x**2 + 1), x, Reals) == frozenset([-1, 0, 1])
 assert sign_on(1/x, x, Interval(-1, 1, True, True)) is None
 assert decide_relational(x**2 > 1, Facts([x > 2])) is True
 assert decide_relational(1/(x - 3) < 0, Facts([x > 0, x < 2])) is True
+# continuity and zeros of functions which are not rational (SymPy's
+# continuous_domain and solveset before)
+from sympy_extras.functions import tan, cos, asin
+from sympy_extras.assumptions.analysis import _continuous_on, _finite_zeros, _has_discrete_zeros
+assert sign_on(sin(x), x, Interval(0, pi, True, True)) == frozenset([1])
+assert sorted(sign_on(exp(x) - 2, x, Reals)) == [-1, 0, 1]
+assert _continuous_on(log(x) + sqrt(x - 1), x, Interval(1, 2)) and not _continuous_on(tan(x), x, Interval(0, 2))
+assert _continuous_on(asin(x/2), x, Interval(-2, 2)) and not _continuous_on(log(x), x, Interval(0, 1))
+assert str(_finite_zeros(exp(x)*sin(x) + exp(x)*cos(x), x, Interval(0, 5, True, True))) == '[3*pi/4]'
+assert str(_finite_zeros(exp(x) - 2, x, Reals)) == '[log(2)]' and _has_discrete_zeros(sin(x), x, Reals)
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -192,8 +202,9 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 def test_native_analysis_does_not_load_sympy() -> None:
     """:mod:`sympy_extras.assumptions.intervals` and
     :mod:`sympy_extras.assumptions.analysis` on rational functions,
-    boxes and constants do not load SymPy (``continuous_domain`` and
-    ``solveset`` of the other expressions and the CAD go through it)."""
+    boxes and constants do not load SymPy, nor do the continuity and the
+    zeros of the other expressions (SymPy's ``continuous_domain`` and
+    ``solveset`` before)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_ANALYSIS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -369,6 +380,11 @@ assert minimal_nonnegative_solutions([[3, 5]], [22]) == ([[4, 2]], [])
 assert str(cooper((x > y) & (x < y + 2), x)) == 'True' and is_presburger(Eq(Mod(x, 3), 1), {x})
 assert str(with_sides(x - y > 0)) == 'x > y'
 assert radical_form(x) is None and in_radicals(finite_set(1, 2)) == finite_set(1, 2)
+# a function which is not rational: its continuity was SymPy's continuous_domain
+from sympy_extras.functions import sin, log
+roots = isolate_real_roots(exp(x)*sin(x) - 1, x, interval(0, 5))
+assert roots is not None and len(roots) == 2 and compare_points(roots[0], roots[1]) == -1
+assert str(isolate_real_roots(log(x) - 1, x, interval(0, oo, True, True))) == '[E]'
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -388,10 +404,9 @@ def test_native_isolation_integers_roots_do_not_load_sympy() -> None:
     :mod:`sympy_extras.solvers.integers` and :mod:`sympy_extras.polys.roots`
     does not load SymPy, nor do the polynomial and rational roots, the root
     objects, the Diophantine systems and the eliminations which need no
-    simplification (SymPy's ``real_roots`` with ``CRootOf``,
-    ``continuous_domain``, ``solveset`` of the transcendental functions,
-    ``simplify_logic`` and ``roots`` over ``EX`` go through it at run
-    time)."""
+    simplification, nor the roots of the functions which are not rational
+    (SymPy's ``real_roots`` with ``CRootOf``, ``simplify_logic`` and
+    ``roots`` over ``EX`` go through it at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_ISOLATION], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

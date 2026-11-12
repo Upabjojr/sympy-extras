@@ -10,6 +10,25 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The signs of the functions which are not rational
+  (`assumptions.analysis.sign_on`, and through it `ask`, `refine`, `solve`,
+  `solvers.isolation`, the convergence tests) no longer load SymPy at run
+  time (internal change, same API): the continuity on a set is checked
+  natively on the subexpressions (the functions of SymPy's
+  `continuous_domain`: powers, `exp`, `log`, `Abs`, the trigonometric and
+  hyperbolic functions and their inverses, each continuous where the
+  signs of its argument allow), the zeros are those of the native
+  `solve_transcendental` factor by factor of the common factors, the
+  periodic families listed on bounded sets, and the intersections of the
+  CAD's solution sets with other intervals are made by certified
+  comparisons of their ends. The routes `analysis_sympy.continuous_on_of_core`,
+  `finite_zeros_of_core`, `has_discrete_zeros_of_core`,
+  `intersection_of_core` and `isolation_sympy.continuous_on_of_core` are
+  gone. `solve_transcendental` takes `lambert=False` to skip the Lambert W
+  candidates of SymPy's `solve`, reduces `x` outside the roots of a
+  linear argument (`x = sqrt(x + 2)`), and no longer rewrites a power of a
+  negative base as an exponential: `(-1)**x = 1` gave `{0}` and
+  `(-2)**x = 4` no solution; both give `None` now.
 - **Breaking**: the transcendental Risch package `sympy_extras.integrals.risch`
   (`risch.py`, `rde.py`, `prde.py`, `cde.py`, `polymatrix.py`) is native on
   the typed core: its functions take and return objects of

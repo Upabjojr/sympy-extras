@@ -43,13 +43,13 @@ The module works on objects of the core (:mod:`sympy_extras.core`,
 :mod:`sympy_extras.solvers.isolation_sympy` is its face on SymPy objects.
 The signs, the zeros of the rational functions and the limits are native
 (:mod:`sympy_extras.assumptions.analysis`,
-:mod:`sympy_extras.assumptions.intervals`). Two steps go through SymPy at
-run time (the face holds them, the functions ending in ``_of_core``): the
-real roots of a polynomial which are not in radicals (SymPy's
-``real_roots``, whose ``CRootOf`` is not ported) and the continuity of a
-function which is not rational (SymPy's ``continuous_domain``); the zeros
-of such a function listed by SymPy's ``solveset`` come through
-:mod:`sympy_extras.assumptions.analysis`. The real roots in radicals
+:mod:`sympy_extras.assumptions.intervals`), and so are the continuity of
+a function which is not rational and its zeros listed exactly (the
+native continuity and transcendental solver of
+:mod:`sympy_extras.assumptions.analysis`). One step goes through SymPy at
+run time (the face holds it, :func:`~sympy_extras.solvers.isolation_sympy.real_roots_of_core`):
+the real roots of a polynomial which are not in radicals (SymPy's
+``real_roots``, whose ``CRootOf`` is not ported). The real roots in radicals
 follow SymPy's ``ComplexRootOf._get_roots_qq``
 (``sympy/polys/rootoftools.py``), ported.
 
@@ -76,11 +76,10 @@ from typing import Final, Optional, Union
 
 import mpmath
 
-from sympy_extras.core.basic import Basic, preorder_traversal
+from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, as_expr
 from sympy_extras.core.mul import mul
 from sympy_extras.core.numbers import Float, Infinity, Integer, NegativeInfinity, Rational, number_from_fraction
-from sympy_extras.core.power import Pow
 from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.polys.polyerrors import BasePolynomialError
@@ -90,8 +89,8 @@ from sympy_extras.polys.rootisolation import dup_count_real_roots
 from sympy_extras.polys.roots import _trivial_roots
 from sympy_extras.sets.sets import Interval, Reals, Set, finite_set, interval
 from sympy_extras.settings import settings
-from sympy_extras.assumptions.analysis import (_between, _endpoint_value, _finite_zeros, _has_discrete_zeros,
-    _is_rational_in, _pieces, _real_zeros_in, _sorted_constants, certified_compare, certified_sign, sign_on)
+from sympy_extras.assumptions.analysis import (_between, _continuous_on, _endpoint_value, _finite_zeros,
+    _has_discrete_zeros, _pieces, _sorted_constants, certified_compare, certified_sign, sign_on)
 from sympy_extras.assumptions.intervals import Sign, evaluate, interval_sign
 
 __all__ = ['TranscendentalRoot', 'isolate_real_roots', 'real_roots_of', 'point_between', 'compare_points', 'Point']
@@ -566,8 +565,8 @@ def _bounds(p: Point) -> tuple[Expr, Expr]:
 
 
 def _exact_zeros(f: Expr, x: Symbol, a: Point, b: Point) -> Optional[list[Expr]]:
-    """The zeros in ``(a, b)`` when they are listed exactly (natively for
-    a rational function, by SymPy's ``solveset`` otherwise)."""
+    """The zeros in ``(a, b)`` when they are listed exactly (by the
+    native solvers of :mod:`sympy_extras.assumptions.analysis`)."""
     outer = interval(_bounds(a)[0], _bounds(b)[1], True, True)
     zeros = _finite_zeros(f, x, outer)
     if zeros is None:
@@ -632,27 +631,6 @@ def _roots_between(f: Expr, x: Symbol, a: Point, b: Point, depth: int) -> Option
                 return None
             result.append(root)
     return result
-
-
-def _continuous_on(f: Expr, x: Symbol, piece: Interval) -> bool:
-    """Whether ``f`` is continuous on the piece: a rational function
-    natively, when no zero of a denominator is in the piece, another
-    function by SymPy's ``continuous_domain`` (through the face)."""
-    if _is_rational_in(f, x):
-        known = True
-        for node in preorder_traversal(f):
-            if isinstance(node, Pow) and isinstance(node.exp, Integer) and node.exp.p < 0 \
-                    and x in node.base.free_symbols:
-                found, poles = _real_zeros_in(node.base, x, piece)
-                if not found:
-                    known = False
-                    break
-                if poles:
-                    return False
-        if known:
-            return True
-    from .isolation_sympy import continuous_on_of_core
-    return continuous_on_of_core(f, x, piece)
 
 
 def isolate_real_roots(f: Expr, x: Symbol, domain: Set = Reals, depth: int = 4) -> Optional[list[Expr]]:
