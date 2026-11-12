@@ -1379,6 +1379,10 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::MultiGamma) => {
             crate::functions::special::gamma_functions::incomplete_facts(g, e.args())
         }
+        super::basic::Function::MathieuS
+        | super::basic::Function::MathieuC
+        | super::basic::Function::MathieuSPrime
+        | super::basic::Function::MathieuCPrime => crate::functions::special::mathieu_functions::mathieu_facts(),
         super::basic::Function::Ynm | super::basic::Function::Znm => {
             crate::functions::special::spherical_harmonics::spherical_facts()
         }

@@ -144,6 +144,9 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         }
         g @ (Function::Gamma | Function::LogGamma) => crate::functions::special::gamma_functions::gamma_conjugate(g, e),
         Function::Ynm => crate::functions::special::spherical_harmonics::spherical_conjugate(e),
+        g @ (Function::MathieuS | Function::MathieuC | Function::MathieuSPrime | Function::MathieuCPrime) => {
+            crate::functions::special::mathieu_functions::mathieu_conjugate(g, e)
+        }
         g @ (Function::LowerGamma | Function::UpperGamma | Function::MultiGamma) => {
             crate::functions::special::gamma_functions::incomplete_conjugate(g, e)
         }
@@ -555,6 +558,10 @@ fn function_real_imag(
         | Function::PolyGamma
         | Function::SingularityFunction
         | Function::Ynm
+        | Function::MathieuS
+        | Function::MathieuC
+        | Function::MathieuSPrime
+        | Function::MathieuCPrime
         | Function::Znm
         | Function::LowerGamma
         | Function::UpperGamma

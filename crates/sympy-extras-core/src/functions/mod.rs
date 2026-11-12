@@ -101,6 +101,9 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         }
         Function::SingularityFunction => special::singularity_functions::singularity_fdiff(e, argindex),
         g @ (Function::Ynm | Function::Znm) => special::spherical_harmonics::spherical_fdiff(g, e, argindex),
+        g @ (Function::MathieuS | Function::MathieuC | Function::MathieuSPrime | Function::MathieuCPrime) => {
+            special::mathieu_functions::mathieu_fdiff(g, e, argindex)
+        }
         g @ (Function::LowerGamma | Function::UpperGamma | Function::MultiGamma) => {
             special::gamma_functions::incomplete_fdiff(g, e, argindex)
         }
@@ -235,6 +238,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if special::zeta_functions::is_zeta_function(f) {
         return special::zeta_functions::zeta_function(f, args);
     }
+    if special::mathieu_functions::is_mathieu(f) && args.len() == 3 {
+        return special::mathieu_functions::mathieu(f, args);
+    }
     if special::spherical_harmonics::is_spherical_harmonic(f) && args.len() == 4 {
         return special::spherical_harmonics::spherical_harmonic(f, args);
     }
@@ -352,6 +358,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         }
         Function::SingularityFunction => unreachable!("evaluated above with all their arguments"),
         Function::Ynm | Function::Znm => unreachable!("evaluated above with all their arguments"),
+        Function::MathieuS | Function::MathieuC | Function::MathieuSPrime | Function::MathieuCPrime => {
+            unreachable!("evaluated above with all their arguments")
+        }
         Function::LowerGamma | Function::UpperGamma | Function::MultiGamma => {
             unreachable!("evaluated above with all their arguments")
         }

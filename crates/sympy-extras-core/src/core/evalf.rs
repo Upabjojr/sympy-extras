@@ -552,6 +552,11 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Stieltjes => {
                     unreachable!("evaluated above with all their arguments")
                 }
+                // no numerical value (neither SymPy nor mpmath has one)
+                super::basic::Function::MathieuS
+                | super::basic::Function::MathieuC
+                | super::basic::Function::MathieuSPrime
+                | super::basic::Function::MathieuCPrime => return None,
                 // no value of its own (Python asks SymPy)
                 super::basic::Function::Mod
                 | super::basic::Function::KroneckerDelta

@@ -267,6 +267,10 @@ pub enum Function {
     PolyGamma,
     SingularityFunction,
     Ynm,
+    MathieuS,
+    MathieuC,
+    MathieuSPrime,
+    MathieuCPrime,
     Znm,
     LowerGamma,
     UpperGamma,
@@ -383,6 +387,10 @@ impl Function {
             Function::PolyGamma => "polygamma",
             Function::SingularityFunction => "SingularityFunction",
             Function::Ynm => "Ynm",
+            Function::MathieuS => "mathieus",
+            Function::MathieuC => "mathieuc",
+            Function::MathieuSPrime => "mathieusprime",
+            Function::MathieuCPrime => "mathieucprime",
             Function::Znm => "Znm",
             Function::LowerGamma => "lowergamma",
             Function::UpperGamma => "uppergamma",
@@ -498,6 +506,10 @@ impl Function {
             Function::PolyGamma => "PolyGamma",
             Function::SingularityFunction => "SingularityFunctionNode",
             Function::Ynm => "YnmNode",
+            Function::MathieuS => "MathieuS",
+            Function::MathieuC => "MathieuC",
+            Function::MathieuSPrime => "MathieuSPrime",
+            Function::MathieuCPrime => "MathieuCPrime",
             Function::Znm => "ZnmNode",
             Function::LowerGamma => "LowerGamma",
             Function::UpperGamma => "UpperGamma",
@@ -634,6 +646,10 @@ impl Function {
             | Function::PolyGamma
             | Function::SingularityFunction
             | Function::Ynm
+            | Function::MathieuS
+            | Function::MathieuC
+            | Function::MathieuSPrime
+            | Function::MathieuCPrime
             | Function::Znm
             | Function::LowerGamma
             | Function::UpperGamma
