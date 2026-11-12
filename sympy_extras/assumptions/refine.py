@@ -26,7 +26,7 @@ The module works on the objects of the core and imports no SymPy:
 objects. The simplification of a relation is a port of SymPy's
 (:func:`simplify_relational`), and that of a compound Boolean formula
 which is not polynomial in real variables too
-(:mod:`sympy_extras.assumptions.boolsimp`: ``simplify_univariate``,
+(:mod:`sympy_extras.logic.boolsimp`: ``simplify_univariate``,
 ``simplify_logic`` and the patterns of the relations of ``And`` and
 ``Or``).
 """
@@ -813,7 +813,7 @@ def _simplify_boolean(formula: Boolean, refiner: _Refiner, assumptions: Assumpti
     polynomial in real variables, else a relation is simplified by
     :func:`simplify_relational` and a compound formula by the port of
     SymPy's ``simplify`` of Booleans,
-    :func:`~sympy_extras.assumptions.boolsimp.simplify_boolean`."""
+    :func:`~sympy_extras.logic.boolsimp.simplify_boolean`."""
     if formula.has(Quantifier):
         formula = _resolve_quantified(formula, assumptions, domain)
     formula = refiner.refine_boolean(formula)
@@ -838,7 +838,7 @@ def _simplify_boolean(formula: Boolean, refiner: _Refiner, assumptions: Assumpti
         # a compound formula: the port of SymPy's simplify of Booleans
         # (simplify_univariate, simplify_logic, the patterns of the
         # relations of And and Or)
-        from .boolsimp import simplify_boolean
+        from sympy_extras.logic.boolsimp import simplify_boolean
         return simplify_boolean(b, relation, _measure, ratio)
     simplified = refiner.through(formula, operation)
     return refiner.refine_boolean(to_boolean(simplified))
