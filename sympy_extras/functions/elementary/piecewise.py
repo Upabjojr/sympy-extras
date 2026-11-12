@@ -12,8 +12,7 @@ the same condition, and merges successive pairs with the same expression
 derivative and the conjugate apply to the expressions; the facts are
 those all the expressions agree on. :func:`piecewise_fold` brings the
 ``Piecewise`` of a sum, product or function to the top. Not ported:
-``piecewise_exclusive`` and the integration; ``piecewise_simplify``
-simplifies the conditions of several variables through SymPy; ``piecewise_fold`` keeps an ``ITE`` condition as it is where
+``piecewise_exclusive`` and the integration; ``piecewise_fold`` keeps an ``ITE`` condition as it is where
 SymPy rewrites it in conjunctive normal form.
 
 Examples
@@ -33,7 +32,7 @@ Piecewise((1, x > 1), (2, True))
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py (Piecewise, ExprCondPair,
 # _piecewise_collapse_arguments), sympy/core/relational.py (_canonical_coeff),
-# sympy/logic/boolalg.py (distribute_and_over_or) (SymPy 1.14)
+# sympy/logic/boolalg.py (distribute_and_over_or, to_nnf) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: an unevaluating class with an evaluating function, strict
@@ -479,22 +478,57 @@ def _lts_gts(r: Relational) -> tuple[Expr, Expr]:
     return r.rhs, r.lhs
 
 
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:to_nnf (simplify=False; And, Or, Not, Xor, Implies,
+# Equivalent, ITE)
 def _to_nnf(b: Boolean) -> Boolean:
-    """The negations pushed to the relations (SymPy's
-    ``eliminate_implications`` on the connectives of a condition)."""
-    from sympy_extras.core.logic import Not, not_
+    """The negations pushed to the relations and ``Xor``, ``Implies``,
+    ``Equivalent`` and ``ITE`` written with ``And`` and ``Or`` (SymPy's
+    ``eliminate_implications``, ``to_nnf(simplify=False)``)."""
+    from itertools import combinations
+    from sympy_extras.core.logic import ITE, Equivalent, Implies, Not, Xor, not_
+    from sympy_extras.logic.boolalg import is_literal
+
+    def xor_clauses(args: tuple[Boolean, ...], first: int) -> list[Boolean]:
+        # the clauses with an even (first = 0) or odd (first = 1) number of
+        # negated arguments
+        clauses: list[Boolean] = []
+        for i in range(first, len(args) + 1, 2):
+            for negated in combinations(args, i):
+                clauses.append(or_(*[not_(s) if s in negated else s for s in args]))
+        return clauses
+
     if isinstance(b, Not):
-        inner = b.args[0]
-        assert isinstance(inner, Boolean)
+        if is_literal(b):
+            return b
+        inner = b.arg
         if isinstance(inner, And):
             return or_(*[_to_nnf(not_(to_boolean(a))) for a in inner.args])
         if isinstance(inner, Or):
             return and_(*[_to_nnf(not_(to_boolean(a))) for a in inner.args])
+        if isinstance(inner, Implies):
+            return and_(_to_nnf(inner.args[0]), _to_nnf(not_(inner.args[1])))
+        if isinstance(inner, Equivalent):
+            return and_(_to_nnf(or_(*inner.args)), _to_nnf(or_(*[not_(a) for a in inner.args])))
+        if isinstance(inner, Xor):
+            return and_(*[_to_nnf(c) for c in xor_clauses(inner.args, 1)])
+        if isinstance(inner, ITE):
+            c, t, e = inner.args
+            return and_(_to_nnf(or_(c, not_(e))), _to_nnf(or_(not_(c), not_(t))))
         return b
     if isinstance(b, And):
         return and_(*[_to_nnf(to_boolean(a)) for a in b.args])
     if isinstance(b, Or):
         return or_(*[_to_nnf(to_boolean(a)) for a in b.args])
+    if isinstance(b, Xor):
+        return and_(*[_to_nnf(c) for c in xor_clauses(b.args, 0)])
+    if isinstance(b, Implies):
+        return or_(_to_nnf(not_(b.args[0])), _to_nnf(b.args[1]))
+    if isinstance(b, Equivalent):
+        args = b.args
+        return and_(*[_to_nnf(or_(not_(p), q)) for p, q in zip(args, args[1:] + args[:1])])
+    if isinstance(b, ITE):
+        c, t, e = b.args
+        return and_(_to_nnf(or_(not_(c), t)), _to_nnf(or_(c, e)))
     return b
 
 
@@ -672,17 +706,10 @@ def piecewise_intervals(pw: Piecewise, sym: Symbol,
 def _simplify_condition(c: Boolean) -> Boolean:
     """SymPy's ``simplify`` of a condition, natively
     (:func:`~sympy_extras.logic.boolsimp.simplify_boolean` on SymPy's
-    univariate intervals, ``sympy_intervals``); a condition
-    with an ``Xor`` (whose simplification by the algebraic normal form is
-    not ported) through SymPy."""
-    from sympy_extras.core.logic import Xor
+    univariate intervals, ``sympy_intervals``; an ``Xor`` by its algebraic
+    normal form, :mod:`sympy_extras.logic.anf`)."""
     from sympy_extras.logic.boolsimp import simplify_boolean
-    if not c.has(Xor):
-        return simplify_boolean(c, sympy_intervals=True)
-    import sympy
-    from sympy_extras.interop import from_sympy, to_sympy
-    r = from_sympy(sympy.simplify(to_sympy(c)))
-    return r if isinstance(r, Boolean) else c
+    return simplify_boolean(c, sympy_intervals=True)
 
 
 # PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:piecewise_simplify_arguments

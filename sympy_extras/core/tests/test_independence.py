@@ -3291,6 +3291,34 @@ def test_native_piecewise_relational_conditions_do_not_load_sympy() -> None:
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
 
 
+_NATIVE_PIECEWISE_XOR_CONDITIONS = r'''
+import sys
+from sympy_extras.core import Symbol, Integer
+from sympy_extras.core.logic import Not, Xor, or_
+from sympy_extras.functions import piecewise
+from sympy_extras.functions.elementary.piecewise import piecewise_simplify
+x, y, a, b = Symbol('x'), Symbol('y'), Symbol('a'), Symbol('b')
+assert str(piecewise_simplify(piecewise((x, Xor(a, or_(b, x > y))), (0, True)))) == \
+    'Piecewise((x, a ^ b ^ (x > y) ^ (b & (x > y))), (0, True))'
+assert str(piecewise_simplify(piecewise((x, Not(Xor(x > 1, x > 2))), (0, True)))) == \
+    'Piecewise((x, (x <= 1) | (x > 2)), (0, True))'
+assert str(piecewise_simplify(piecewise((x, Xor(x + y > 1, y > 0)), (0, True)))) == \
+    'Piecewise((x, (y > 0) ^ (x + y > 1)), (0, True))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_piecewise_xor_conditions_do_not_load_sympy() -> None:
+    """A condition with an ``Xor`` is simplified by the native algebraic
+    normal form (:mod:`sympy_extras.logic.anf`, the port of SymPy's
+    ``Xor._eval_simplify`` in :mod:`sympy_extras.logic.boolsimp`; it
+    went to SymPy's ``simplify``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PIECEWISE_XOR_CONDITIONS], capture_output=True,
+                         text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
 def test_native_last_small_routes_do_not_load_sympy() -> None:
     """The annihilators of :mod:`sympy_extras.integrals.dfinite` (they
     came from SymPy's ``expr_to_holonomic``,

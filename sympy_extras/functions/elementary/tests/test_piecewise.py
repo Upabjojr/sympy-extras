@@ -135,6 +135,47 @@ def test_piecewise_simplify_matches_sympy() -> None:
     assert checked > 50
 
 
+def test_piecewise_simplify_of_xor_conditions_matches_sympy() -> None:
+    # conditions with Xor: the algebraic normal form (several variables)
+    # and the conjunctive normal form of Piecewise._intervals (one)
+    import random
+    import sympy
+    from sympy.core.cache import clear_cache
+    from sympy.functions.elementary.piecewise import piecewise_simplify as sympy_piecewise_simplify
+    from sympy_extras.interop import expr_from_sympy
+    from sympy_extras.functions.elementary.piecewise import piecewise_simplify
+    sx, sy = sympy.symbols('x y')
+    rng = random.Random(2)
+    consts = [-2, -1, 0, sympy.Rational(1, 2), 1, 2]
+
+    def rel() -> sympy.logic.boolalg.Boolean:
+        r = rng.choice([sympy.Lt, sympy.Le, sympy.Gt, sympy.Ge, sympy.Ne])
+        return r(rng.choice([sx, 2*sx, -sx, sy]), rng.choice(consts))
+
+    def cond() -> sympy.Basic:
+        k = rng.random()
+        c = sympy.Xor(rel(), rel())
+        if k < 0.3:
+            return sympy.Not(c)
+        if k < 0.5:
+            return sympy.And(c, rel())
+        return c
+    checked = 0
+    for _ in range(40):
+        e = sympy.Piecewise((sx, cond()), (sy, True))
+        if not isinstance(e, sympy.Piecewise) or not e.has(sympy.Xor):
+            continue
+        # SymPy decides the endpoints of the intervals of one variable on
+        # the relation of the previous interval (see logic.boolsimp)
+        if len(e.free_symbols) == 1 or e.args[0].args[1].free_symbols == {sx}:
+            continue
+        clear_cache()
+        expected = str(sympy_piecewise_simplify(e))
+        assert str(to_sympy(piecewise_simplify(expr_from_sympy(e)), evaluate=False)) == expected, e
+        checked += 1
+    assert checked > 15
+
+
 def test_relations_with_unknown_symbols_match_sympy() -> None:
     # SymPy decides a relation by the sign of the difference only between
     # extended reals: x + 1 > x is not decided for an x not known real
