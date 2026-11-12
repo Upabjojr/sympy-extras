@@ -119,3 +119,17 @@ def test_continuity_and_zeros_of_elementary_functions() -> None:
     assert zeros is not None and sorted(zeros, key=float) == [0, pi, 2*pi]
     assert _finite_zeros(sin(x), x, Reals) is None
     assert _has_discrete_zeros(sin(x) - Rational(1, 2), x, Reals)
+
+
+def test_zero_of_a_harmonic_combination_at_an_end() -> None:
+    # sin(x) - tan(1)*cos(x) vanishes at 1: the half-angle substitution
+    # wrote the zero as 2*atan((sqrt(1 + tan(1)**2) - 1)/tan(1)), which no
+    # comparison told apart from 1, so the zeros on (0, 1) were None (and
+    # antiderivative_integral(sin(x)**2*cot(x - 1), x, 0, 1) gave None)
+    from sympy_extras.functions import tan
+    from sympy_extras.assumptions.analysis import _finite_zeros
+    x = Symbol('x')
+    f = sin(x) - tan(Integer(1))*cos(x)
+    assert _finite_zeros(f, x, Interval(0, 1, True, True)) == []
+    assert _finite_zeros(f, x, Interval(0, 1)) == [Integer(1)]
+    assert sign_on(f, x, Interval(0, 1, True, True)) == frozenset([-1])

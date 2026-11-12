@@ -122,13 +122,58 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Asech
         | Function::Acsch) => super::inverse::inverse_conjugate(e, g),
         Function::Arg | Function::Atan2 => super::argument::argument_conjugate(e, f),
+        g @ (Function::Beta | Function::BetaInc | Function::BetaIncRegularized) => {
+            Ok(Some(crate::functions::special::beta_functions::beta_conjugate(g, e)?))
+        }
+        g @ (Function::Gamma | Function::LogGamma) => crate::functions::special::gamma_functions::gamma_conjugate(g, e),
         Function::Max
         | Function::Min
         | Function::Floor
         | Function::Ceiling
         | Function::Frac
         | Function::DiracDelta
-        | Function::Heaviside => {
+        | Function::Heaviside
+        | Function::Factorial
+        | Function::Binomial
+        | Function::RisingFactorial
+        | Function::FallingFactorial
+        | Function::Subfactorial
+        | Function::Factorial2
+        | Function::PolyGamma
+        | Function::DiGamma
+        | Function::TriGamma
+        | Function::Zeta
+        | Function::DirichletEta
+        | Function::PolyLog
+        | Function::LerchPhi
+        | Function::RiemannXi
+        | Function::Stieltjes
+        | Function::Mod
+        | Function::KroneckerDelta
+        | Function::LeviCivita
+        | Function::Catalan
+        | Function::Fibonacci
+        | Function::Lucas
+        | Function::Harmonic
+        | Function::Bernoulli
+        | Function::Euler
+        | Function::Bell
+        | Function::Genocchi
+        | Function::Partition
+        | Function::Totient
+        | Function::ReducedTotient
+        | Function::DivisorSigma
+        | Function::UDivisorSigma
+        | Function::PrimeNu
+        | Function::PrimeOmega
+        | Function::Mobius
+        | Function::PrimePi
+        | Function::LegendreSymbol
+        | Function::JacobiSymbol
+        | Function::KroneckerSymbol
+        | Function::Tribonacci
+        | Function::Motzkin
+        | Function::Andre => {
             // DefinedFunction._eval_conjugate
             if is_true(e, extended_real) {
                 return Ok(Some(e.clone()));
@@ -472,6 +517,52 @@ fn function_real_imag(
         | Function::Frac
         | Function::DiracDelta
         | Function::Heaviside
+        | Function::Factorial
+        | Function::Binomial
+        | Function::RisingFactorial
+        | Function::FallingFactorial
+        | Function::Subfactorial
+        | Function::Factorial2
+        | Function::Gamma
+        | Function::LogGamma
+        | Function::PolyGamma
+        | Function::DiGamma
+        | Function::TriGamma
+        | Function::Zeta
+        | Function::DirichletEta
+        | Function::PolyLog
+        | Function::LerchPhi
+        | Function::RiemannXi
+        | Function::Stieltjes
+        | Function::Mod
+        | Function::KroneckerDelta
+        | Function::LeviCivita
+        | Function::Catalan
+        | Function::Fibonacci
+        | Function::Lucas
+        | Function::Harmonic
+        | Function::Bernoulli
+        | Function::Euler
+        | Function::Bell
+        | Function::Genocchi
+        | Function::Partition
+        | Function::Totient
+        | Function::ReducedTotient
+        | Function::DivisorSigma
+        | Function::UDivisorSigma
+        | Function::PrimeNu
+        | Function::PrimeOmega
+        | Function::Mobius
+        | Function::PrimePi
+        | Function::LegendreSymbol
+        | Function::JacobiSymbol
+        | Function::KroneckerSymbol
+        | Function::Tribonacci
+        | Function::Motzkin
+        | Function::Andre
+        | Function::Beta
+        | Function::BetaInc
+        | Function::BetaIncRegularized
         | Function::Sign
         | Function::Conjugate => {
             if ignore == Some(e) {

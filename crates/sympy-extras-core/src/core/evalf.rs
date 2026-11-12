@@ -270,6 +270,75 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             }
             crate::functions::elementary::argument::argument_value(*g, &values, wp)
         }
+        Head::Function(
+            g @ (super::basic::Function::Gamma
+            | super::basic::Function::LogGamma
+            | super::basic::Function::PolyGamma
+            | super::basic::Function::DiGamma
+            | super::basic::Function::TriGamma),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::gamma_functions::gamma_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Beta
+            | super::basic::Function::BetaInc
+            | super::basic::Function::BetaIncRegularized),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::beta_functions::beta_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Catalan
+            | super::basic::Function::Fibonacci
+            | super::basic::Function::Lucas
+            | super::basic::Function::Harmonic
+            | super::basic::Function::Bernoulli
+            | super::basic::Function::Euler
+            | super::basic::Function::Bell
+            | super::basic::Function::Genocchi
+            | super::basic::Function::Partition),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::combinatorial::numbers::number_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Zeta
+            | super::basic::Function::DirichletEta
+            | super::basic::Function::PolyLog
+            | super::basic::Function::LerchPhi
+            | super::basic::Function::RiemannXi
+            | super::basic::Function::Stieltjes),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::zeta_functions::zeta_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Factorial
+            | super::basic::Function::Binomial
+            | super::basic::Function::RisingFactorial
+            | super::basic::Function::FallingFactorial
+            | super::basic::Function::Subfactorial
+            | super::basic::Function::Factorial2),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::combinatorial::factorials::combinatorial_value(*g, &values, prec)
+        }
         Head::Function(g @ (super::basic::Function::DiracDelta | super::basic::Function::Heaviside)) => {
             let mut values: Vec<Complex> = Vec::new();
             for a in e.args() {
@@ -399,8 +468,57 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Max
                 | super::basic::Function::Min
                 | super::basic::Function::DiracDelta
-                | super::basic::Function::Heaviside => {
+                | super::basic::Function::Heaviside
+                | super::basic::Function::Factorial
+                | super::basic::Function::Binomial
+                | super::basic::Function::RisingFactorial
+                | super::basic::Function::FallingFactorial
+                | super::basic::Function::Subfactorial
+                | super::basic::Function::Factorial2
+                | super::basic::Function::Gamma
+                | super::basic::Function::LogGamma
+                | super::basic::Function::PolyGamma
+                | super::basic::Function::DiGamma
+                | super::basic::Function::TriGamma
+                | super::basic::Function::Zeta
+                | super::basic::Function::DirichletEta
+                | super::basic::Function::PolyLog
+                | super::basic::Function::LerchPhi
+                | super::basic::Function::RiemannXi
+                | super::basic::Function::Stieltjes => {
                     unreachable!("evaluated above with all their arguments")
+                }
+                // no value of its own (Python asks SymPy)
+                super::basic::Function::Mod
+                | super::basic::Function::KroneckerDelta
+                | super::basic::Function::LeviCivita
+                | super::basic::Function::Catalan
+                | super::basic::Function::Fibonacci
+                | super::basic::Function::Lucas
+                | super::basic::Function::Harmonic
+                | super::basic::Function::Bernoulli
+                | super::basic::Function::Euler
+                | super::basic::Function::Bell
+                | super::basic::Function::Genocchi
+                | super::basic::Function::Partition
+                | super::basic::Function::Totient
+                | super::basic::Function::ReducedTotient
+                | super::basic::Function::DivisorSigma
+                | super::basic::Function::UDivisorSigma
+                | super::basic::Function::PrimeNu
+                | super::basic::Function::PrimeOmega
+                | super::basic::Function::Mobius
+                | super::basic::Function::PrimePi
+                | super::basic::Function::LegendreSymbol
+                | super::basic::Function::JacobiSymbol
+                | super::basic::Function::KroneckerSymbol
+                | super::basic::Function::Tribonacci
+                | super::basic::Function::Motzkin
+                | super::basic::Function::Andre
+                | super::basic::Function::Beta
+                | super::basic::Function::BetaInc
+                | super::basic::Function::BetaIncRegularized => {
+                    return None;
                 }
                 g
                 @ (super::basic::Function::Floor | super::basic::Function::Ceiling | super::basic::Function::Frac) => {

@@ -36,6 +36,7 @@ pub mod expr;
 pub mod exprtools;
 pub mod function;
 pub mod logic;
+pub mod modulo;
 pub mod mul;
 pub mod numbers;
 pub mod parameters;

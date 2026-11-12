@@ -90,7 +90,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Pi" => Basic::pi(),
         "Exp1" => Basic::e(),
         "EulerGammaType" | "EulerGamma" => Basic::euler_gamma(),
-        "CatalanType" | "Catalan" => Basic::catalan(),
+        "CatalanType" => Basic::catalan(),
         "GoldenRatioType" | "GoldenRatio" => Basic::golden_ratio(),
         "TribonacciConstantType" | "TribonacciConstant" => Basic::tribonacci_constant(),
         "ImaginaryUnit" => Basic::imaginary_unit(),
@@ -192,6 +192,52 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Max" => Basic::new(Head::Function(Function::Max), args()?),
         "Floor" => Basic::new(Head::Function(Function::Floor), args()?),
         "DiracDelta" => Basic::new(Head::Function(Function::DiracDelta), args()?),
+        "Factorial" => Basic::new(Head::Function(Function::Factorial), args()?),
+        "Binomial" => Basic::new(Head::Function(Function::Binomial), args()?),
+        "RisingFactorial" => Basic::new(Head::Function(Function::RisingFactorial), args()?),
+        "FallingFactorial" => Basic::new(Head::Function(Function::FallingFactorial), args()?),
+        "Subfactorial" => Basic::new(Head::Function(Function::Subfactorial), args()?),
+        "Factorial2" => Basic::new(Head::Function(Function::Factorial2), args()?),
+        "Gamma" => Basic::new(Head::Function(Function::Gamma), args()?),
+        "LogGamma" => Basic::new(Head::Function(Function::LogGamma), args()?),
+        "PolyGamma" => Basic::new(Head::Function(Function::PolyGamma), args()?),
+        "DiGamma" => Basic::new(Head::Function(Function::DiGamma), args()?),
+        "TriGamma" => Basic::new(Head::Function(Function::TriGamma), args()?),
+        "Zeta" => Basic::new(Head::Function(Function::Zeta), args()?),
+        "DirichletEta" => Basic::new(Head::Function(Function::DirichletEta), args()?),
+        "PolyLog" => Basic::new(Head::Function(Function::PolyLog), args()?),
+        "LerchPhi" => Basic::new(Head::Function(Function::LerchPhi), args()?),
+        "RiemannXi" => Basic::new(Head::Function(Function::RiemannXi), args()?),
+        "Stieltjes" => Basic::new(Head::Function(Function::Stieltjes), args()?),
+        "Mod" => Basic::new(Head::Function(Function::Mod), args()?),
+        "KroneckerDeltaNode" => Basic::new(Head::Function(Function::KroneckerDelta), args()?),
+        "LeviCivitaNode" => Basic::new(Head::Function(Function::LeviCivita), args()?),
+        "Catalan" => Basic::new(Head::Function(Function::Catalan), args()?),
+        "Fibonacci" => Basic::new(Head::Function(Function::Fibonacci), args()?),
+        "Lucas" => Basic::new(Head::Function(Function::Lucas), args()?),
+        "Harmonic" => Basic::new(Head::Function(Function::Harmonic), args()?),
+        "Bernoulli" => Basic::new(Head::Function(Function::Bernoulli), args()?),
+        "Euler" => Basic::new(Head::Function(Function::Euler), args()?),
+        "Bell" => Basic::new(Head::Function(Function::Bell), args()?),
+        "Genocchi" => Basic::new(Head::Function(Function::Genocchi), args()?),
+        "Partition" => Basic::new(Head::Function(Function::Partition), args()?),
+        "Totient" => Basic::new(Head::Function(Function::Totient), args()?),
+        "ReducedTotient" => Basic::new(Head::Function(Function::ReducedTotient), args()?),
+        "DivisorSigma" => Basic::new(Head::Function(Function::DivisorSigma), args()?),
+        "UDivisorSigma" => Basic::new(Head::Function(Function::UDivisorSigma), args()?),
+        "PrimeNu" => Basic::new(Head::Function(Function::PrimeNu), args()?),
+        "PrimeOmega" => Basic::new(Head::Function(Function::PrimeOmega), args()?),
+        "Mobius" => Basic::new(Head::Function(Function::Mobius), args()?),
+        "PrimePi" => Basic::new(Head::Function(Function::PrimePi), args()?),
+        "LegendreSymbol" => Basic::new(Head::Function(Function::LegendreSymbol), args()?),
+        "JacobiSymbol" => Basic::new(Head::Function(Function::JacobiSymbol), args()?),
+        "KroneckerSymbol" => Basic::new(Head::Function(Function::KroneckerSymbol), args()?),
+        "Tribonacci" => Basic::new(Head::Function(Function::Tribonacci), args()?),
+        "Motzkin" => Basic::new(Head::Function(Function::Motzkin), args()?),
+        "Andre" => Basic::new(Head::Function(Function::Andre), args()?),
+        "Beta" => Basic::new(Head::Function(Function::Beta), args()?),
+        "BetaInc" => Basic::new(Head::Function(Function::BetaInc), args()?),
+        "BetaIncRegularized" => Basic::new(Head::Function(Function::BetaIncRegularized), args()?),
         "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
@@ -336,6 +382,13 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 .getattr("IndexedRoot")?
                 .call1(PyTuple::new(py, items)?)?
         }
+        Head::Function(Function::Mod) => rebuilt("Mod", "mod")?,
+        Head::Function(f @ (Function::KroneckerDelta | Function::LeviCivita)) => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.functions.special.tensor_functions")?
+                .getattr(f.class_name())?
+                .call1(PyTuple::new(py, items)?)?
+        }
         Head::Function(f) => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             let module: &str = match f {
@@ -345,7 +398,46 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 }
                 Function::Max | Function::Min => "miscellaneous",
                 Function::Floor | Function::Ceiling | Function::Frac => "integers",
+                Function::Catalan
+                | Function::Fibonacci
+                | Function::Lucas
+                | Function::Harmonic
+                | Function::Bernoulli
+                | Function::Euler
+                | Function::Bell
+                | Function::Genocchi
+                | Function::Partition
+                | Function::Totient
+                | Function::ReducedTotient
+                | Function::DivisorSigma
+                | Function::UDivisorSigma
+                | Function::PrimeNu
+                | Function::PrimeOmega
+                | Function::Mobius
+                | Function::PrimePi
+                | Function::LegendreSymbol
+                | Function::JacobiSymbol
+                | Function::KroneckerSymbol
+                | Function::Tribonacci
+                | Function::Motzkin
+                | Function::Andre => "numbers",
+                Function::Beta | Function::BetaInc | Function::BetaIncRegularized => "beta_functions",
                 Function::DiracDelta | Function::Heaviside => "delta_functions",
+                Function::Zeta
+                | Function::DirichletEta
+                | Function::PolyLog
+                | Function::LerchPhi
+                | Function::RiemannXi
+                | Function::Stieltjes => "zeta_functions",
+                Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
+                    "gamma_functions"
+                }
+                Function::Factorial
+                | Function::Binomial
+                | Function::RisingFactorial
+                | Function::FallingFactorial
+                | Function::Subfactorial
+                | Function::Factorial2 => "factorials",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse_trigonometric(*f) => "trigonometric",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse(*f) => "hyperbolic",
                 Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
@@ -353,8 +445,17 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 }
                 _ => "complexes",
             };
-            let package: &str = if matches!(f, Function::DiracDelta | Function::Heaviside) {
+            let package: &str = if matches!(f, Function::DiracDelta | Function::Heaviside)
+                || sympy_extras_core::functions::special::gamma_functions::is_gamma_function(*f)
+                || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
+                || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
+            {
                 "special"
+            } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f)
+                || sympy_extras_core::functions::combinatorial::numbers::is_combinatorial_number(*f)
+                || sympy_extras_core::functions::combinatorial::numbertheory::is_number_theoretic(*f)
+            {
+                "combinatorial"
             } else {
                 "elementary"
             };
@@ -2012,6 +2113,108 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
         "ab_contains" => {
             let v: bool = sympy_extras_core::core::accumbounds::contains(&a[0], &a[1]).map_err(e)?;
             return Ok(pyo3::types::PyBool::new(py, v).to_owned().into_any());
+        }
+        "mod" => sympy_extras_core::core::modulo::modulo(&a[0], &a[1]).map_err(e)?,
+        "beta" => sympy_extras_core::functions::special::beta_functions::beta(&a[0], a.get(1)).map_err(e)?,
+        "betainc" | "betainc_regularized" => {
+            use sympy_extras_core::core::basic::Function as F;
+            let f: F = if name == "betainc" {
+                F::BetaInc
+            } else {
+                F::BetaIncRegularized
+            };
+            sympy_extras_core::functions::special::beta_functions::betainc(f, &a).map_err(e)?
+        }
+        n if [
+            "totient",
+            "reduced_totient",
+            "divisor_sigma",
+            "udivisor_sigma",
+            "primenu",
+            "primeomega",
+            "mobius",
+            "primepi",
+            "legendre_symbol",
+            "jacobi_symbol",
+            "kronecker_symbol",
+            "tribonacci",
+            "motzkin",
+            "andre",
+        ]
+        .contains(&n) =>
+        {
+            use sympy_extras_core::core::basic::Function as F;
+            let f: F = match n {
+                "totient" => F::Totient,
+                "reduced_totient" => F::ReducedTotient,
+                "divisor_sigma" => F::DivisorSigma,
+                "udivisor_sigma" => F::UDivisorSigma,
+                "primenu" => F::PrimeNu,
+                "primeomega" => F::PrimeOmega,
+                "mobius" => F::Mobius,
+                "primepi" => F::PrimePi,
+                "legendre_symbol" => F::LegendreSymbol,
+                "jacobi_symbol" => F::JacobiSymbol,
+                "kronecker_symbol" => F::KroneckerSymbol,
+                "tribonacci" => F::Tribonacci,
+                "motzkin" => F::Motzkin,
+                _ => F::Andre,
+            };
+            sympy_extras_core::functions::combinatorial::numbertheory::number_theoretic(f, &a).map_err(e)?
+        }
+        "catalan" | "fibonacci" | "lucas" | "harmonic" | "bernoulli" | "euler" | "bell" | "genocchi" | "partition" => {
+            use sympy_extras_core::functions::combinatorial::numbers as nb;
+            match name {
+                "catalan" => nb::catalan(&a[0]),
+                "fibonacci" => nb::fibonacci(&a[0], a.get(1)),
+                "lucas" => nb::lucas(&a[0]),
+                "harmonic" => nb::harmonic(&a[0], a.get(1)),
+                "bernoulli" => nb::bernoulli(&a[0], a.get(1)),
+                "euler" => nb::euler(&a[0], a.get(1)),
+                "bell" => nb::bell(&a[0], a.get(1)),
+                "genocchi" => nb::genocchi(&a[0], a.get(1)),
+                _ => nb::partition(&a[0]),
+            }
+            .map_err(e)?
+        }
+        "KroneckerDelta" => {
+            sympy_extras_core::functions::special::tensor_functions::kronecker_delta(&a[0], &a[1]).map_err(e)?
+        }
+        "LeviCivita" => sympy_extras_core::functions::special::tensor_functions::levi_civita(&a).map_err(e)?,
+        "zeta" | "dirichlet_eta" | "polylog" | "lerchphi" | "riemann_xi" | "stieltjes" => {
+            use sympy_extras_core::functions::special::zeta_functions as zf;
+            match name {
+                "zeta" => zf::zeta(&a[0], a.get(1)),
+                "dirichlet_eta" => zf::dirichlet_eta(&a[0], a.get(1)),
+                "polylog" => zf::polylog(&a[0], &a[1]),
+                "lerchphi" => zf::lerchphi(&a[0], &a[1], &a[2]),
+                "riemann_xi" => zf::riemann_xi(&a[0]),
+                _ => zf::stieltjes(&a[0], a.get(1)),
+            }
+            .map_err(e)?
+        }
+        "gamma" | "loggamma" | "polygamma" | "digamma" | "trigamma" => {
+            use sympy_extras_core::functions::special::gamma_functions as gf;
+            match name {
+                "gamma" => gf::gamma(&a[0]),
+                "loggamma" => gf::loggamma(&a[0]),
+                "polygamma" => gf::polygamma(&a[0], &a[1]),
+                "digamma" => gf::digamma(&a[0]),
+                _ => gf::trigamma(&a[0]),
+            }
+            .map_err(e)?
+        }
+        "factorial" | "binomial" | "rf" | "ff" | "subfactorial" | "factorial2" => {
+            use sympy_extras_core::functions::combinatorial::factorials as fc;
+            match name {
+                "factorial" => fc::factorial(&a[0]),
+                "binomial" => fc::binomial(&a[0], &a[1]),
+                "rf" => fc::rf(&a[0], &a[1]),
+                "ff" => fc::ff(&a[0], &a[1]),
+                "subfactorial" => fc::subfactorial(&a[0]),
+                _ => fc::factorial2(&a[0]),
+            }
+            .map_err(e)?
         }
         "reversed" => rl::reversed(&a[0]),
         "negated" => rl::negated(&a[0]),
