@@ -2,9 +2,8 @@
 (:mod:`sympy_extras.integrals.risch.rationaltools`): ``ratint``,
 ``ratint_ratpart``, ``ratint_logpart``, ``log_to_atan`` and
 ``log_to_real`` on SymPy expressions and ``Poly`` objects, for the
-integrators which are still written on SymPy (:mod:`..risch.risch`,
-:mod:`..trager`, :mod:`..indefinite`, :mod:`..trigonometric`,
-:mod:`..radicals`).
+integrators which are still written on SymPy (:mod:`..indefinite` and
+the faces of :mod:`..trigonometric` and :mod:`..radicals`).
 
 The arguments are converted by :mod:`sympy_extras.interop` (a ``Poly`` by
 its expression), the native functions run on the core, and the results

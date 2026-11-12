@@ -10,6 +10,21 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- **Breaking**: Trager's algorithm `sympy_extras.integrals.trager`
+  (`trager_antiderivative`, `trager_reduce`, `hermite_reduce_algebraic`,
+  `is_nonelementary_algebraic`) is native on the typed core: its functions
+  take and return objects of `sympy_extras.core`, and importing and running
+  it loads no SymPy (the dense polynomials of `polys.polyclasses` over
+  `QQ`, number fields of a primitive element of the constants, the fields
+  of rational functions of the parameters and `EX`; the native rational
+  integrator, Risch differential equation, general curve and Chebyshev
+  criterion). The old API on SymPy objects is
+  `sympy_extras.integrals.trager_sympy`, which `indefinite` uses; it
+  reaches the general curve through `curves_sympy`, so that the residues
+  of fields without radicals are still written with SymPy's `CRootOf`
+  (the native module leaves those integrals undone). The private helpers
+  (`_rational_parameters`, `_root_components`, `_hermite_index_n`, ...)
+  take native objects.
 - **Breaking**: the transcendental Risch package `sympy_extras.integrals.risch`
   (`risch.py`, `rde.py`, `prde.py`, `cde.py`, `polymatrix.py`) is native on
   the typed core: its functions take and return objects of

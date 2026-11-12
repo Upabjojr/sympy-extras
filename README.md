@@ -1032,7 +1032,8 @@ sympy_extras/
         series_sympy.py      the SymPy face of series
         recognize.py         PSLQ recognition of integrals (an oracle)
         risch/               Risch algorithm ported from Aaron Meurer's SymPy pull requests (native; risch_sympy.py is the face)
-        trager.py            Trager's algorithm for algebraic functions (one square root)
+        trager.py            Trager's algorithm for algebraic functions (one square root, roots of index n) (native)
+        trager_sympy.py      the SymPy face of trager
         curves.py            Trager's algorithm on a general curve (several or nested radicals) (native)
         curves_sympy.py      the SymPy face of curves
         summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals (native)

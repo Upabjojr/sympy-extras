@@ -808,11 +808,17 @@ the logarithmic derivatives found must vanish exactly on the curve, and
 the antiderivative is verified by differentiation; a component with a
 pole of order two or more at infinity after the reduction, a
 differential of the first kind, or a divisor not found torsion within
-the bound is left undecided, never answered.
+the bound is left undecided, never answered. The module is native
+(objects of the core, no SymPy imported: dense polynomials over `QQ`,
+over the number field of a primitive element of the constants, over the
+fields of rational functions of the parameters, or `EX`);
+`sympy_extras.integrals.trager_sympy` is its face on SymPy objects, used
+below, which reaches the general curve through `curves_sympy` (the
+residues of a field without radicals written with `CRootOf`).
 
 ```python
 >>> from sympy import symbols, sqrt, log, Rational
->>> from sympy_extras.integrals.trager import trager_antiderivative, is_nonelementary_algebraic
+>>> from sympy_extras.integrals.trager_sympy import trager_antiderivative, is_nonelementary_algebraic
 >>> from sympy_extras.integrals.definite import definite_integral
 >>> x = symbols('x')
 >>> trager_antiderivative(x/sqrt(x**4 + 1), x)

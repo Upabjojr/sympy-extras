@@ -6,7 +6,7 @@ import mpmath
 
 from sympy import symbols, sqrt, N, log, Rational, asinh
 
-from sympy_extras.integrals.trager import trager_antiderivative
+from sympy_extras.integrals.trager_sympy import trager_antiderivative
 
 x = symbols('x')
 

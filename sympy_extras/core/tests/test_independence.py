@@ -1840,6 +1840,41 @@ def test_native_curves_does_not_load_sympy() -> None:
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
 
 
+_NATIVE_TRAGER = r'''
+import sys
+from sympy_extras.core import symbols, Rational
+from sympy_extras.functions import sqrt
+from sympy_extras.integrals.trager import (hermite_reduce_algebraic, is_nonelementary_algebraic,
+                                           trager_antiderivative, trager_reduce)
+assert 'sympy' not in sys.modules
+x, a, b, c = symbols('x a b c')
+assert str(trager_antiderivative(1/(x*sqrt(x**3 + 1)), x)) == '-log((x**3/2 + sqrt(x**3 + 1) + 1)/x**3)/3'
+assert str(trager_reduce((2*x**2 + 1)/((x**2 + 1)*sqrt(x**4 + x**2 + 1)), x)) == \
+    '(-I*log((-I*x + sqrt(x**4 + x**2 + 1))/(x**2 + 1))/2, 3/(2*sqrt(x**4 + x**2 + 1)))'
+assert str(hermite_reduce_algebraic(1/(x**2*sqrt(x**3 + 1)), x)) == '(-sqrt(x**3 + 1)/x, x/(2*sqrt(x**3 + 1)))'
+assert is_nonelementary_algebraic(x/sqrt(x**3 + 1), x) is True
+assert is_nonelementary_algebraic(sqrt(x**7/(1 - 5*x**2)), x) is True     # Chebyshev
+assert trager_antiderivative(1/sqrt(x**2 + a), x) is not None                # over QQ(a)
+assert trager_antiderivative(sqrt(a + b*x**2 + c*x**4)/(a - c*x**4), x) is not None   # reparametrized
+assert trager_antiderivative(1/(x*(x**4 + 1)**Rational(1, 4)), x) is not None          # index four
+assert trager_antiderivative(x**2*(x**3 + a)**Rational(1, 3), x) is not None           # the Risch DE
+assert trager_antiderivative(sqrt(x) + sqrt(x + 1), x) is not None                     # the general curve
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_trager_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.trager` does not load SymPy,
+    nor does Trager's algorithm on the square roots (the Hermite reduction,
+    the residues in number fields and fields of the parameters, the
+    torsion search, the reparametrization of algebraic residues), on the
+    roots of index ``n`` (the Risch differential equation, the orbits of
+    places) or through the general curve."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_TRAGER], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
 _NATIVE_PERIODIC = r'''
 import sys
 from sympy_extras.core import Symbol, symbols, pi

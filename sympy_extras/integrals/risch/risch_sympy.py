@@ -2,8 +2,9 @@
 (:mod:`sympy_extras.integrals.risch.risch`, ported from SymPy with Aaron
 Meurer's extensions, native on the typed core): ``risch_integrate``,
 ``risch_antiderivative`` and ``is_nonelementary`` on SymPy objects, and the
-rational solutions of the Risch differential equation over ``QQ(x)`` that
-:mod:`sympy_extras.integrals.trager` uses.
+rational solutions of the Risch differential equation over ``QQ(x)``
+(which the native :mod:`sympy_extras.integrals.trager` solves on the core
+itself).
 
 The functions convert their arguments to the core
 (:mod:`sympy_extras.interop`), call the native ones and convert the
