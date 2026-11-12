@@ -10,6 +10,11 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The series of `Hyper` and `MeijerG` at an argument going to an infinity
+  follow SymPy's generic branch of `Function._eval_nseries` natively
+  (ported): `PoleError` when the leading term goes to an infinity (these
+  classes have no `_eval_aseries`, as in SymPy), the expansion around the
+  logarithmic term otherwise; they went through SymPy's `_eval_nseries`.
 - `simplify.ratsimp` loads no SymPy at run time: the division of the
   numerator by the denominator runs over the typed domains `QQ`, `QQ_I`
   (Gaussian coefficients) and `EX` (floats and the other numbers),

@@ -3167,3 +3167,37 @@ def test_native_ratsimp_domains_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_HYPER_ASYMPTOTIC_SERIES = r'''
+import sys
+from sympy_extras.core import Symbol, Integer
+from sympy_extras.core.coreerrors import PoleError
+from sympy_extras.functions import exp, log
+from sympy_extras.functions.special.hyper import Hyper, hyper, meijerg
+x, L = Symbol('x'), Symbol('L')
+for e in (hyper([1, 2], [3], 1/x), meijerg([], [], [0], [], 1/x)):
+    try:
+        e._eval_nseries(x, 3, None, Integer(0))
+    except PoleError:
+        pass
+    else:
+        raise AssertionError('SymPy raises PoleError: no asymptotic expansion of %s' % e)
+s = Hyper([1], [2], log(x) + x)._eval_nseries(x, 2, L, Integer(0))
+# hyper([1], [2], w) = (exp(w) - 1)/w at w = L + x: f(L) + x*f'(L)
+expected = (exp(L) - 1)/L + x*(exp(L)/L - (exp(L) - 1)/L**2)
+assert (s.removeO() - expected).expand() == 0, s
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_hyper_asymptotic_series_do_not_load_sympy() -> None:
+    """The series of ``hyper`` and ``meijerg`` at an argument going to an
+    infinity follow SymPy's generic branch natively: ``PoleError`` when
+    the leading term goes to an infinity, the expansion around the
+    logarithmic term otherwise (they went through SymPy's
+    ``_eval_nseries``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_HYPER_ASYMPTOTIC_SERIES], capture_output=True,
+                         text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
