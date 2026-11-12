@@ -299,6 +299,13 @@ pub enum Function {
     Beta,
     BetaInc,
     BetaIncRegularized,
+    Erf,
+    Erfc,
+    Erfi,
+    Erfinv,
+    Erfcinv,
+    Erf2,
+    Erf2inv,
 }
 
 impl Function {
@@ -391,6 +398,13 @@ impl Function {
             Function::Beta => "beta",
             Function::BetaInc => "betainc",
             Function::BetaIncRegularized => "betainc_regularized",
+            Function::Erf => "erf",
+            Function::Erfc => "erfc",
+            Function::Erfi => "erfi",
+            Function::Erfinv => "erfinv",
+            Function::Erfcinv => "erfcinv",
+            Function::Erf2 => "erf2",
+            Function::Erf2inv => "erf2inv",
         }
     }
 
@@ -483,6 +497,13 @@ impl Function {
             Function::Beta => "Beta",
             Function::BetaInc => "BetaInc",
             Function::BetaIncRegularized => "BetaIncRegularized",
+            Function::Erf => "Erf",
+            Function::Erfc => "Erfc",
+            Function::Erfi => "Erfi",
+            Function::Erfinv => "Erfinv",
+            Function::Erfcinv => "Erfcinv",
+            Function::Erf2 => "Erf2",
+            Function::Erf2inv => "Erf2inv",
         }
     }
 
@@ -539,6 +560,13 @@ impl Function {
             | Function::Beta
             | Function::BetaInc
             | Function::BetaIncRegularized
+            | Function::Erf
+            | Function::Erfc
+            | Function::Erfi
+            | Function::Erfinv
+            | Function::Erfcinv
+            | Function::Erf2
+            | Function::Erf2inv
             | Function::Gamma
             | Function::LogGamma
             | Function::PolyGamma

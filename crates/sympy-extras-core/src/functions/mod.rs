@@ -53,6 +53,13 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::LerchPhi
         | Function::RiemannXi
         | Function::Stieltjes) => special::zeta_functions::zeta_fdiff(g, e, argindex),
+        g @ (Function::Erf
+        | Function::Erfc
+        | Function::Erfi
+        | Function::Erfinv
+        | Function::Erfcinv
+        | Function::Erf2
+        | Function::Erf2inv) => special::error_functions::error_fdiff(g, e, argindex),
         g @ (Function::Beta | Function::BetaInc | Function::BetaIncRegularized) => {
             special::beta_functions::beta_fdiff(g, e, argindex)
         }
@@ -189,6 +196,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if matches!(f, Function::DiracDelta | Function::Heaviside) {
         return special::delta_functions::delta_function(f, args);
     }
+    if special::error_functions::is_error_function(f) {
+        return special::error_functions::error_function(f, args);
+    }
     if special::beta_functions::is_beta_function(f) {
         return special::beta_functions::beta_function(f, args);
     }
@@ -249,6 +259,13 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         Function::Acsch => elementary::inverse::acsch(x),
         Function::Arg => elementary::argument::arg(x),
         g @ (Function::Floor | Function::Ceiling | Function::Frac) => elementary::integers::rounding(g, x),
+        Function::Erf
+        | Function::Erfc
+        | Function::Erfi
+        | Function::Erfinv
+        | Function::Erfcinv
+        | Function::Erf2
+        | Function::Erf2inv => unreachable!("evaluated above with all their arguments"),
         Function::Beta | Function::BetaInc | Function::BetaIncRegularized => {
             unreachable!("evaluated above with all their arguments")
         }

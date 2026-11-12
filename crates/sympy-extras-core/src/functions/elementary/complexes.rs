@@ -122,6 +122,13 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Asech
         | Function::Acsch) => super::inverse::inverse_conjugate(e, g),
         Function::Arg | Function::Atan2 => super::argument::argument_conjugate(e, f),
+        g @ (Function::Erf
+        | Function::Erfc
+        | Function::Erfi
+        | Function::Erfinv
+        | Function::Erfcinv
+        | Function::Erf2
+        | Function::Erf2inv) => crate::functions::special::error_functions::error_conjugate(g, e),
         g @ (Function::Beta | Function::BetaInc | Function::BetaIncRegularized) => {
             Ok(Some(crate::functions::special::beta_functions::beta_conjugate(g, e)?))
         }
@@ -448,6 +455,9 @@ fn function_real_imag(
 ) -> PolyResult<Option<RealImag>> {
     use crate::core::function::expand_with_hints;
     match f {
+        g @ (Function::Erf | Function::Erfc | Function::Erfi) => {
+            Ok(crate::functions::special::error_functions::error_real_imag(g, e, deep)?.flatten())
+        }
         Function::Re | Function::Im | Function::Abs => Ok(Some((e.clone(), Basic::zero()))),
         Function::Exp => {
             // exp.as_real_imag: exp(re)*cos(im), exp(re)*sin(im)
@@ -560,6 +570,10 @@ fn function_real_imag(
         | Function::Tribonacci
         | Function::Motzkin
         | Function::Andre
+        | Function::Erfinv
+        | Function::Erfcinv
+        | Function::Erf2
+        | Function::Erf2inv
         | Function::Beta
         | Function::BetaInc
         | Function::BetaIncRegularized

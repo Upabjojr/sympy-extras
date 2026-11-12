@@ -238,6 +238,13 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Beta" => Basic::new(Head::Function(Function::Beta), args()?),
         "BetaInc" => Basic::new(Head::Function(Function::BetaInc), args()?),
         "BetaIncRegularized" => Basic::new(Head::Function(Function::BetaIncRegularized), args()?),
+        "Erf" => Basic::new(Head::Function(Function::Erf), args()?),
+        "Erfc" => Basic::new(Head::Function(Function::Erfc), args()?),
+        "Erfi" => Basic::new(Head::Function(Function::Erfi), args()?),
+        "Erfinv" => Basic::new(Head::Function(Function::Erfinv), args()?),
+        "Erfcinv" => Basic::new(Head::Function(Function::Erfcinv), args()?),
+        "Erf2" => Basic::new(Head::Function(Function::Erf2), args()?),
+        "Erf2inv" => Basic::new(Head::Function(Function::Erf2inv), args()?),
         "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
@@ -422,6 +429,13 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::Motzkin
                 | Function::Andre => "numbers",
                 Function::Beta | Function::BetaInc | Function::BetaIncRegularized => "beta_functions",
+                Function::Erf
+                | Function::Erfc
+                | Function::Erfi
+                | Function::Erfinv
+                | Function::Erfcinv
+                | Function::Erf2
+                | Function::Erf2inv => "error_functions",
                 Function::DiracDelta | Function::Heaviside => "delta_functions",
                 Function::Zeta
                 | Function::DirichletEta
@@ -449,6 +463,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || sympy_extras_core::functions::special::gamma_functions::is_gamma_function(*f)
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
+                || sympy_extras_core::functions::special::error_functions::is_error_function(*f)
             {
                 "special"
             } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f)
@@ -2116,6 +2131,19 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
         }
         "mod" => sympy_extras_core::core::modulo::modulo(&a[0], &a[1]).map_err(e)?,
         "beta" => sympy_extras_core::functions::special::beta_functions::beta(&a[0], a.get(1)).map_err(e)?,
+        "erf" | "erfc" | "erfi" | "erfinv" | "erfcinv" | "erf2" | "erf2inv" => {
+            use sympy_extras_core::core::basic::Function as F;
+            let f: F = match name {
+                "erf" => F::Erf,
+                "erfc" => F::Erfc,
+                "erfi" => F::Erfi,
+                "erfinv" => F::Erfinv,
+                "erfcinv" => F::Erfcinv,
+                "erf2" => F::Erf2,
+                _ => F::Erf2inv,
+            };
+            sympy_extras_core::functions::special::error_functions::error_function(f, &a).map_err(e)?
+        }
         "betainc" | "betainc_regularized" => {
             use sympy_extras_core::core::basic::Function as F;
             let f: F = if name == "betainc" {

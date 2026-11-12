@@ -1355,6 +1355,13 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::BetaIncRegularized) => {
             crate::functions::special::beta_functions::beta_facts(g, e.args())
         }
+        g @ (super::basic::Function::Erf
+        | super::basic::Function::Erfc
+        | super::basic::Function::Erfi
+        | super::basic::Function::Erfinv
+        | super::basic::Function::Erfcinv
+        | super::basic::Function::Erf2
+        | super::basic::Function::Erf2inv) => crate::functions::special::error_functions::error_facts(g, e.args()),
         super::basic::Function::KroneckerDelta | super::basic::Function::LeviCivita => {
             crate::functions::special::tensor_functions::tensor_facts()
         }

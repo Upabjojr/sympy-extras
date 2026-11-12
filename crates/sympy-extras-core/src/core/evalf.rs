@@ -284,6 +284,21 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             crate::functions::special::gamma_functions::gamma_value(*g, &values, prec)
         }
         Head::Function(
+            g @ (super::basic::Function::Erf
+            | super::basic::Function::Erfc
+            | super::basic::Function::Erfi
+            | super::basic::Function::Erfinv
+            | super::basic::Function::Erfcinv
+            | super::basic::Function::Erf2
+            | super::basic::Function::Erf2inv),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::error_functions::error_value(*g, &values, prec)
+        }
+        Head::Function(
             g @ (super::basic::Function::Beta
             | super::basic::Function::BetaInc
             | super::basic::Function::BetaIncRegularized),
@@ -517,7 +532,14 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Andre
                 | super::basic::Function::Beta
                 | super::basic::Function::BetaInc
-                | super::basic::Function::BetaIncRegularized => {
+                | super::basic::Function::BetaIncRegularized
+                | super::basic::Function::Erf
+                | super::basic::Function::Erfc
+                | super::basic::Function::Erfi
+                | super::basic::Function::Erfinv
+                | super::basic::Function::Erfcinv
+                | super::basic::Function::Erf2
+                | super::basic::Function::Erf2inv => {
                     return None;
                 }
                 g
