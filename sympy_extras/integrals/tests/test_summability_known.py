@@ -11,7 +11,7 @@ import mpmath
 from sympy import symbols, sin, cos, exp, besselj, oo, pi, I, S, Expr, lambdify, Rational
 
 from sympy_extras._typing_sympy import as_expr
-from sympy_extras.integrals.summability import summable_integral, oscillatory_tail
+from sympy_extras.integrals.summability_sympy import summable_integral, oscillatory_tail
 
 x = symbols('x')
 

@@ -8,7 +8,7 @@ from sympy import symbols, exp, sin, log, oo, atan, pi, simplify, cos, sqrt, S
 from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.integrals.definite import definite_integral
 from sympy_extras.integrals.definite import verify_numerically
-from sympy_extras.integrals.parametric import parametric_integral, candidate_parameters
+from sympy_extras.integrals.parametric_sympy import parametric_integral, candidate_parameters
 
 x = symbols('x')
 p, t = symbols('p t', positive=True)

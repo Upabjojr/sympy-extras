@@ -31,10 +31,20 @@ Where a mean does not exist (`\\sin^2 x`, whose regularised integral grows
 like `1/(4 \\varepsilon)`; `x^k` with `k \\ge 0`) the functions return
 ``None``, never a finite number.
 
+The module works on the objects of :mod:`sympy_extras.core` and imports
+no SymPy: the native limits under assumptions and the native
+conditions. The regularised integrals are computed by
+:func:`~sympy_extras.integrals.definite.conditional_integral`, which is
+still written on SymPy, through
+:func:`sympy_extras.integrals.summability_sympy.conditional_integral_of_core`
+(SymPy is loaded on that path only). The functions on SymPy objects are
+in :mod:`.summability_sympy`.
+
 Examples
 ========
 
->>> from sympy import symbols, sin, cos, exp, oo
+>>> from sympy_extras.core import symbols, oo
+>>> from sympy_extras.functions import sin, cos
 >>> from sympy_extras.integrals.summability import summable_integral
 >>> x = symbols('x')
 >>> summable_integral(sin(x), x, 0, oo, 'abel')
@@ -57,33 +67,51 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional
-
-from sympy.calculus.accumulationbounds import AccumBounds
-from sympy.core.expr import Expr
-from sympy.core.numbers import nan, oo, zoo
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.exponential import exp
-from sympy.logic.boolalg import And, Boolean, true
-from sympy.series.limits import Limit
+import itertools
+from typing import Final, Optional
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions
-from sympy_extras.assumptions.limits_sympy import limit
+from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.assumptions.limits import limit
+from sympy_extras.core.accumbounds import AccumBounds
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.limits import Limit
+from sympy_extras.core.logic import And, Boolean, BooleanTrue, and_, to_boolean, true
+from sympy_extras.core.numbers import nan, oo, zoo
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.exponential import exp
 from sympy_extras.settings import settings
-from .conditions_sympy import ConditionalValue, decide
+
+from .conditions import ConditionalValue, decide
 
 __all__ = ['summable_integral', 'oscillatory_tail', 'METHODS']
 
 #: the summability methods: the Abel mean with the kernel ``exp(-eps*x)``,
 #: the Gaussian mean with ``exp(-eps*x**2)``, the Cesàro means ``(C, k)``
 #: with the kernels ``(1 - x/R)**k``, ``k = 1, 2, 3``
-METHODS = ('abel', 'cesaro', 'gaussian')
+METHODS: Final = ('abel', 'cesaro', 'gaussian')
 
 #: the Cesàro orders tried in turn
-_CESARO_ORDERS = (1, 2, 3)
+_CESARO_ORDERS: Final = (1, 2, 3)
+
+_COUNTER: Final = itertools.count()
+
+
+def _fresh(name: str, **assumptions: bool) -> Dummy:
+    """A dummy with a name of its own: the typed polynomials map their
+    symbols by name, so a dummy ``t`` beside a parameter ``t`` would be
+    taken for it."""
+    return Dummy('%s%d' % (name, next(_COUNTER)), **assumptions)
+
+
+def _integral(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions,
+              seconds: Optional[float]) -> Optional[ConditionalValue]:
+    """:func:`~sympy_extras.integrals.definite.conditional_integral` within
+    ``seconds`` (SymPy's side, through the face)."""
+    from .summability_sympy import conditional_integral_of_core
+    return conditional_integral_of_core(f, x, a, b, assumptions, seconds)
 
 
 def summable_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, method: str,
@@ -99,10 +127,11 @@ def summable_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, method: 
     Examples
     ========
 
-    >>> from sympy import symbols, sin, cos, exp, I, oo
+    >>> from sympy_extras.core import I, Symbol, oo, symbols
+    >>> from sympy_extras.functions import sin, cos, exp
     >>> from sympy_extras.integrals.summability import summable_integral
     >>> x = symbols('x')
-    >>> a = symbols('a', positive=True)
+    >>> a = Symbol('a', positive=True)
     >>> summable_integral(sin(a*x), x, 0, oo, 'abel')
     ConditionalValue(1/a)
     >>> summable_integral(exp(I*x), x, 0, oo, 'gaussian')
@@ -114,7 +143,7 @@ def summable_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, method: 
     """
     if method not in METHODS:
         raise ValueError("method must be one of %s, got %r" % (", ".join(METHODS), method))
-    f_, a_, b_ = as_expr(f), as_expr(a), as_expr(b)
+    f_, a_, b_ = to_expr(f), to_expr(a), to_expr(b)
     if a_ == b_:
         return ConditionalValue(S.Zero)
     if a_ == oo or b_ == -oo:
@@ -124,16 +153,15 @@ def summable_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, method: 
         right = oscillatory_tail(f_, x, S.Zero, method, assumptions)
         if right is None:
             return None
-        left = oscillatory_tail(as_expr(f_.subs(x, -x)), x, S.Zero, method, assumptions)
+        left = oscillatory_tail(f_.subs(x, -x), x, S.Zero, method, assumptions)
         return None if left is None else left.add(right)
     if a_ == -oo:
         # x = b - t maps (-oo, b) onto (0, oo)
-        t = Dummy('t')
-        return oscillatory_tail(as_expr(f_.subs(x, b_ - t)), t, S.Zero, method, assumptions)
+        t = _fresh('t')
+        return oscillatory_tail(f_.subs(x, b_ - t), t, S.Zero, method, assumptions)
     if b_ == oo:
         return oscillatory_tail(f_, x, a_, method, assumptions)
-    from .definite import conditional_integral
-    return conditional_integral(f_, x, a_, b_, assumptions)
+    return _integral(f_, x, a_, b_, assumptions, None)
 
 
 def oscillatory_tail(f: ExprLike, x: Symbol, a: ExprLike, method: str,
@@ -151,7 +179,8 @@ def oscillatory_tail(f: ExprLike, x: Symbol, a: ExprLike, method: str,
     Examples
     ========
 
-    >>> from sympy import symbols, sin, oo, pi
+    >>> from sympy_extras.core import symbols, pi
+    >>> from sympy_extras.functions import sin
     >>> from sympy_extras.integrals.summability import oscillatory_tail
     >>> x = symbols('x')
     >>> oscillatory_tail(sin(x), x, pi, 'abel')
@@ -161,14 +190,13 @@ def oscillatory_tail(f: ExprLike, x: Symbol, a: ExprLike, method: str,
     """
     if method not in METHODS:
         raise ValueError("method must be one of %s, got %r" % (", ".join(METHODS), method))
-    f_, a_ = as_expr(f), as_expr(a)
-    t = Dummy('t', positive=True)
-    g = as_expr(f_.subs(x, t + a_)) if a_ != 0 else as_expr(f_.subs(x, t))
+    f_, a_ = to_expr(f), to_expr(a)
+    t = _fresh('t', positive=True)
+    g = f_.subs(x, t + a_) if a_ != 0 else f_.subs(x, t)
     # the consistency theorem: a convergent integral is its own mean (the
     # partial integrals of a Bessel function, and its Gaussian
     # regularisation, do not close)
-    from .definite import conditional_integral
-    found = attempt(lambda: conditional_integral(g, t, S.Zero, oo, assumptions), settings.timeout)
+    found = _integral(g, t, S.Zero, oo, assumptions, settings.timeout)
     if found is not None and not found.value.has(nan, zoo, oo, -oo, AccumBounds):
         return found
     if method == 'cesaro':
@@ -177,16 +205,16 @@ def oscillatory_tail(f: ExprLike, x: Symbol, a: ExprLike, method: str,
             if found is not None:
                 return found
         return None
-    eps = Dummy('epsilon', positive=True)
+    eps = _fresh('epsilon', positive=True)
     kernel = exp(-eps * t) if method == 'abel' else exp(-eps * t**2)
-    return _regularised_limit(as_expr(g * kernel), t, S.Zero, oo, eps, S.Zero, '+', assumptions)
+    return _regularised_limit(g * kernel, t, S.Zero, oo, eps, S.Zero, '+', assumptions)
 
 
 def _cesaro_mean(g: Expr, t: Symbol, order: int, assumptions: Assumptions) -> Optional[ConditionalValue]:
     """The ``(C, order)`` mean of ``Integral(g, (t, 0, oo))``."""
-    R = Dummy('R', positive=True)
-    kernel = as_expr((1 - t / R)**order)
-    return _regularised_limit(as_expr(g * kernel), t, S.Zero, R, R, oo, '-', assumptions)
+    R = _fresh('R', positive=True)
+    kernel = (1 - t / R)**order
+    return _regularised_limit(g * kernel, t, S.Zero, R, R, oo, '-', assumptions)
 
 
 def _regularised_limit(h: Expr, t: Symbol, lower: Expr, upper: Expr, regulator: Symbol, point: Expr,
@@ -195,15 +223,14 @@ def _regularised_limit(h: Expr, t: Symbol, lower: Expr, upper: Expr, regulator: 
     ``regulator > 0``, then its limit as the regulator tends to
     ``point``; ``None`` unless the limit is a finite number free of the
     regulator."""
-    from .definite import conditional_integral
-    facts = _items(assumptions) + [as_boolean(regulator > 0)]
-    inner = attempt(lambda: conditional_integral(h, t, lower, upper, facts), settings.timeout)
+    facts = _items(assumptions) + [regulator > 0]
+    inner = _integral(h, t, lower, upper, facts, settings.timeout)
     if inner is None or inner.value.has(nan, zoo, AccumBounds):
         return None
     condition = decide(inner.condition, facts)
     if condition is None or condition.has(regulator):
         return None
-    value = attempt(lambda: as_expr(limit(inner.value, regulator, point, direction, facts)), settings.timeout)
+    value = attempt(lambda: limit(inner.value, regulator, point, direction, facts), settings.timeout, native=True)
     if value is None or value.has(regulator, nan, zoo, oo, -oo, AccumBounds, Limit):
         return None
     if value.is_finite is False:
@@ -214,15 +241,15 @@ def _regularised_limit(h: Expr, t: Symbol, lower: Expr, upper: Expr, regulator: 
 def _items(assumptions: Assumptions) -> list[Boolean]:
     if assumptions is None:
         return []
-    if isinstance(assumptions, (Boolean, bool)):
-        return [as_boolean(assumptions)]
-    return [as_boolean(item) for item in assumptions]
+    if isinstance(assumptions, (Basic, bool)):
+        return [to_boolean(assumptions)]
+    return [to_boolean(item) for item in assumptions]
 
 
 def _without(condition: Boolean, regulator: Symbol) -> Boolean:
     """The conjuncts of ``condition`` free of the regulator (the others
     hold: the regulator is positive and the limit was taken)."""
-    if condition is true:
+    if isinstance(condition, BooleanTrue):
         return true
     parts = condition.args if isinstance(condition, And) else (condition,)
-    return as_boolean(And(*[part for part in parts if not part.has(regulator)]))
+    return and_(*[to_boolean(part) for part in parts if not part.has(regulator)])

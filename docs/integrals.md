@@ -260,7 +260,9 @@ The driver tries, after the Mellin method and the residues:
   transform), the shifts `Heaviside(t - a)` and `exp(c*t)`, periodic
   integrands (`Abs(sin(t))` gives `coth(pi*s/2)/(s**2 + 1)`) and
   convolutions `Integral(p(u)*q(t - u), (u, 0, t))` (the product of the
-  transforms), each piece transformed by the other methods.
+  transforms), each piece transformed by the other methods. The module
+  is native, on the core; `sympy_extras.integrals.laplace_sympy` is its
+  face on SymPy objects.
 - **More contours** (`sympy_extras.integrals.contours`): the rectangle of
   height `2*pi/c` for `x**n*exp(k*x)*R(exp(c*x))` over the real line
   (`x**2/cosh(x)` is `pi**3/4`, `exp(a*x)/(1 + exp(x))` is `pi/sin(pi*a)`),
@@ -271,7 +273,9 @@ The driver tries, after the Mellin method and the residues:
   (`sympy_extras.integrals.transformations`): `(f(a x) - f(b x))/x` over
   `(0, oo)` is `(f(0) - f(oo)) log(b/a)`, and `F(x - sum(a_i/(x - b_i)))`
   over the real line (or over `(0, oo)` for an even `F`, the
-  Cauchy–Schlömilch transformation) integrates like `F` itself.
+  Cauchy–Schlömilch transformation) integrates like `F` itself. The
+  module is native, on the core; `sympy_extras.integrals.transformations_sympy`
+  is its face on SymPy objects.
 - **Trigonometric sums over powers of `x`** (`sympy_extras.integrals.dirichlet`):
   `g(x)/x**n` over `(0, oo)` or the real line for a trigonometric sum `g`
   (a product of sines and cosines is written as one by the product
@@ -390,7 +394,10 @@ The driver tries, after the Mellin method and the residues:
   (a factor `1/x` disappears against `exp(-p x)`, a logarithm against
   `x**p`), integrated by the other methods, integrated back in `p`, with
   the constant fixed at `p = 0`, `1` or at infinity; the interchange is
-  checked numerically when `settings.numerical_checks` is on.
+  checked numerically when `settings.numerical_checks` is on. The
+  module is native, on the core (its integrals are asked of a
+  `ParametricIntegrator`, by default the integrator of `definite`);
+  `sympy_extras.integrals.parametric_sympy` is its face on SymPy objects.
 - **An antiderivative evaluated by one-sided limits**
   (`sympy_extras.integrals.antiderivative`): the range is cut at the
   singularities of the integrand *and* at the discontinuities of the
@@ -458,7 +465,9 @@ The driver tries, after the Mellin method and the residues:
   integral under `eps > 0` and the limit under the assumptions; a value
   is kept only when the limit is finite and free of the regulator, so
   `sin(x)**2` over `(0, oo)` has none, and a convergent integral keeps its
-  value (Hardy, *Divergent series*, ch. 4-5).
+  value (Hardy, *Divergent series*, ch. 4-5). The module is native, on
+  the core; `sympy_extras.integrals.summability_sympy` is its face on
+  SymPy objects.
 - **Radicals of quadratics** (`sympy_extras.integrals.radicals`, native on
   the core; its SymPy face `sympy_extras.integrals.radicals_sympy`): the
   real antiderivatives of `x**n * Q**(m/2)`, `Q` a quadratic and `m` odd,
@@ -487,7 +496,7 @@ The driver tries, after the Mellin method and the residues:
 >>> from sympy import symbols, exp, sin, log, atan, cos, oo, pi
 >>> from sympy_extras.integrals.definite import definite_integral
 >>> from sympy_extras.integrals.telescoping import holonomic_ode
->>> from sympy_extras.integrals.parametric import parametric_integral
+>>> from sympy_extras.integrals.parametric_sympy import parametric_integral
 >>> x = symbols('x')
 >>> p, t = symbols('p t', positive=True)
 >>> holonomic_ode(exp(-x**2)*cos(2*t*x), x, 0, oo, t)
