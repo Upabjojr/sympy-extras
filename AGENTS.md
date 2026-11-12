@@ -205,6 +205,7 @@ sympy_extras/
         limits_sympy.py      the SymPy face of limits
         tests/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
+        _meromorphic.py      is_meromorphic of the incomplete gamma and Bessel functions, PORTED FROM SYMPY
         elementary/
             exponential.py   Exp, Log, LambertW (nodes) and exp, log, lambertw (evaluating), PORTED FROM SYMPY
             complexes.py     Re, Im, Abs, Sign, Arg, Conjugate, Atan2 / re, im, abs_, ...; as_real_imag, conjugate_of, PORTED FROM SYMPY

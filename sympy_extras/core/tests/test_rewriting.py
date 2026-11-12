@@ -228,3 +228,26 @@ def test_log_and_special_rewrites_match_sympy() -> None:
     for e, theirs, ours in pairs:
         got = to_sympy(expr_from_sympy(e).rewrite(ours), evaluate=False)
         assert str(got) == str(e.rewrite(theirs)), (e, ours)
+
+
+def test_pochhammer_binomial_and_eta_rewrites_are_native() -> None:
+    # the rules of ff, rf, binomial between themselves and of dirichlet_eta
+    # in zeta are ported (they went to SymPy through the bridge); checked
+    # against SymPy's
+    from sympy_extras.core.rewriting import _rule_for
+    from sympy_extras.functions.combinatorial.factorials import Binomial, FallingFactorial, RisingFactorial
+    from sympy_extras.functions.special.zeta_functions import DirichletEta, Zeta
+    k = s.Symbol('k', integer=True)
+    a = s.Symbol('a')
+    cases = [(s.ff(x, k, evaluate=False), s.binomial, FallingFactorial, Binomial),
+             (s.ff(x, k, evaluate=False), s.rf, FallingFactorial, RisingFactorial),
+             (s.rf(x, k, evaluate=False), s.binomial, RisingFactorial, Binomial),
+             (s.rf(x, k, evaluate=False), s.ff, RisingFactorial, FallingFactorial),
+             (s.binomial(x, k, evaluate=False), s.ff, Binomial, FallingFactorial),
+             (s.ff(x, y, evaluate=False), s.binomial, FallingFactorial, Binomial),
+             (s.dirichlet_eta(y, evaluate=False), s.zeta, DirichletEta, Zeta),
+             (s.dirichlet_eta(y, a, evaluate=False), s.zeta, DirichletEta, Zeta),
+             (s.dirichlet_eta(3, evaluate=False), s.zeta, DirichletEta, Zeta)]
+    for e, theirs, cls, target in cases:
+        assert _rule_for(cls, target) is not None
+        assert str(expr_from_sympy(e).rewrite(target)) == str(e.rewrite(theirs)), e

@@ -63,10 +63,13 @@ def _rule_for(cls: type, target: type) -> Optional[Rule]:
 
 
 def _without_rules(e: Basic) -> bool:
-    """The core nodes SymPy has no rewrite rules for."""
+    """The core nodes SymPy has no rewrite rules for (the applied undefined
+    functions have none either: no class of their MRO but ``Basic``
+    defines a rule)."""
     from .add import Add
+    from .function import AppliedUndef
     from .mul import Mul
-    return not e.args or isinstance(e, (Add, Mul))
+    return not e.args or isinstance(e, (Add, Mul, AppliedUndef))
 
 
 # PORTED FROM SYMPY: sympy/core/basic.py:Basic.rewrite

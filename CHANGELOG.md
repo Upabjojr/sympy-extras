@@ -23,6 +23,12 @@ remove public functions. Breaking changes are listed here when they happen.
   answers `ask(Q.real(sqrt(x)), Q.real(x))` and
   `ask(Q.real(sqrt(-1 - x**2)), Q.real(x))` with `True` (here `None` and
   `False`). SymPy's relational step (`lra_satask`) is not ported.
+- `is_meromorphic` of the incomplete gamma, Bessel, Hankel and spherical
+  Bessel functions, the rewrites of `ff`, `rf` and `binomial` in terms of
+  each other and of `dirichlet_eta` in terms of `zeta` are native ports
+  of SymPy's methods (they went to SymPy through the bridge); an applied
+  undefined function is not sent to the bridge to be rewritten (SymPy has
+  no rule for it).
 
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's
