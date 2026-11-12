@@ -3,4 +3,5 @@
 pub mod indexedroot;
 pub mod lifting;
 pub mod projection;
+pub mod qe;
 pub mod samplepoints;

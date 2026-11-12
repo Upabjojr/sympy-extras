@@ -93,6 +93,12 @@ impl CadCell {
         Ok(format!("CADCell({}, {})", python_tuple(&index), python_tuple(&point)))
     }
 
+    /// The signs of the projection factors of this level at the point
+    /// (`_signs`).
+    pub fn own_signs(&self) -> &[Sign] {
+        &self.factor_signs
+    }
+
     /// The sign of the `i`-th projection factor of `level` at the point.
     pub fn factor_sign(&self, level: usize, i: usize) -> PolyResult<Sign> {
         let mut cell: &CadCell = self;
@@ -132,6 +138,24 @@ pub struct Cad {
 }
 
 impl Cad {
+    /// The decomposition of its parts (`CAD(gens, polys, projection,
+    /// method, levels)`).
+    pub fn from_parts(
+        gens: Vec<Basic>,
+        polys: Vec<Poly>,
+        projection: Vec<Vec<Poly>>,
+        method: Method,
+        levels: Vec<Vec<Arc<CadCell>>>,
+    ) -> Cad {
+        Cad {
+            gens,
+            polys,
+            projection,
+            method,
+            levels,
+        }
+    }
+
     /// The cells of `R^n`, in lexicographic order of their indices.
     pub fn cells(&self) -> &[Arc<CadCell>] {
         self.levels.last().map(|l| l.as_slice()).unwrap_or(&[])

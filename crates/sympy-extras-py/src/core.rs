@@ -1690,6 +1690,89 @@ fn samplepoint_report<'py>(
     Ok(out)
 }
 
+/// The functions of `polys.cad.qe` (`quantifier_elimination`, `decide`,
+/// `sample_points`, `solution_set`, `truth_tables`): `formula` is a list of
+/// formulas for `truth_tables`, `free` the free variables (the generators
+/// for `sample_points` and `truth_tables`, `[x]` for `solution_set`).
+#[pyfunction]
+#[pyo3(signature = (name, formula, quantifiers, free=None, method=None, partial=true))]
+fn qe_call<'py>(
+    py: Python<'py>,
+    name: &str,
+    formula: Bound<'py, PyAny>,
+    quantifiers: Vec<(String, Bound<'py, PyAny>)>,
+    free: Option<Vec<Bound<'py, PyAny>>>,
+    method: Option<&str>,
+    partial: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::polys::cad::{projection::Method, qe};
+    let e = crate::convert::err;
+    let method: Option<Method> = method.map(Method::from_name).transpose().map_err(e)?;
+    let mut prefix: qe::QuantifierPrefix = Vec::new();
+    for (kind, variables) in &quantifiers {
+        let kind: qe::Quantifier = qe::Quantifier::from_name(kind).map_err(e)?;
+        let class: String = variables.get_type().name()?.to_string();
+        if class == "list" || class == "tuple" {
+            for v in variables.try_iter()? {
+                prefix.push((kind, from_python(&v?)?));
+            }
+        } else {
+            prefix.push((kind, from_python(variables)?));
+        }
+    }
+    let free: Option<Vec<Basic>> = free
+        .map(|f| f.iter().map(from_python).collect::<PyResult<_>>())
+        .transpose()?;
+    if name == "truth_tables" {
+        let mut formulas: Vec<Basic> = Vec::new();
+        for f in formula.try_iter()? {
+            formulas.push(from_python(&f?)?);
+        }
+        let (cells, tables) = qe::truth_tables(&formulas, &free.unwrap_or_default(), method, partial).map_err(e)?;
+        let shown: Vec<String> = cells.iter().map(|c| c.repr()).collect::<Result<_, _>>().map_err(e)?;
+        return Ok(PyTuple::new(
+            py,
+            [
+                shown.into_pyobject(py)?.into_any(),
+                tables.into_pyobject(py)?.into_any(),
+            ],
+        )?
+        .into_any());
+    }
+    let formula: Basic = from_python(&formula)?;
+    Ok(match name {
+        "quantifier_elimination" => to_python(
+            py,
+            &qe::quantifier_elimination(&formula, &prefix, free.as_deref(), method, partial).map_err(e)?,
+        )?,
+        "decide" => pyo3::types::PyBool::new(py, qe::decide(&formula, &prefix, method, partial).map_err(e)?)
+            .to_owned()
+            .into_any(),
+        "solution_set" => {
+            let x: Basic = free
+                .and_then(|f| f.into_iter().next())
+                .ok_or_else(|| PyTypeError::new_err("no variable"))?;
+            to_python(
+                py,
+                &qe::solution_set(&formula, &x, &prefix, method, partial).map_err(e)?,
+            )?
+        }
+        "sample_points" => {
+            let points = qe::sample_points(&formula, &free.unwrap_or_default(), method, partial).map_err(e)?;
+            let out = pyo3::types::PyList::empty(py);
+            for point in points {
+                let d = PyDict::new(py);
+                for (v, c) in point {
+                    d.set_item(to_python(py, &v)?, to_python(py, &c)?)?;
+                }
+                out.append(d)?;
+            }
+            out.into_any()
+        }
+        _ => return Err(PyTypeError::new_err(format!("unknown qe function {}", name))),
+    })
+}
+
 /// The cylindrical algebraic decomposition of `polys`: its repr, the
 /// method used, the projection sets and every top cell's repr and signs.
 #[pyfunction]
@@ -1862,6 +1945,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cad_projection_sets, m)?)?;
     m.add_function(wrap_pyfunction!(samplepoint_report, m)?)?;
     m.add_function(wrap_pyfunction!(cad_report, m)?)?;
+    m.add_function(wrap_pyfunction!(qe_call, m)?)?;
     m.add_function(wrap_pyfunction!(indexed_root, m)?)?;
     m.add_function(wrap_pyfunction!(logic_call, m)?)?;
     m.add_function(wrap_pyfunction!(sorted_by_key, m)?)?;
