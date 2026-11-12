@@ -1102,9 +1102,19 @@ def _conditional(value: Expr, bound: Expr, assumptions: list[Boolean]) -> Expr:
 
 
 def _zeros(bound: Expr, parameters: list[Symbol]) -> Optional[list[dict[Basic, Basic]]]:
-    """The points of the parameters where ``bound`` vanishes, for one
-    parameter (the roots of a polynomial, or the finite solution set of
-    :func:`~sympy_extras.assumptions.solve.solve`); ``None`` otherwise."""
+    """The points of the parameters where ``bound`` vanishes, solved for
+    the first parameter of which it is a polynomial with all its roots
+    explicit (as SymPy's ``solve(bound, parameters, dict=True)``: ``a =
+    I*b`` and ``a = -I*b`` for ``a**2 + b**2``), or for a single parameter
+    the finite solution set of :func:`~sympy_extras.assumptions.solve.solve`;
+    ``None`` otherwise."""
+    for p in parameters:
+        terms = _coefficients(bound, [p])
+        if terms is None or _total_degree(terms) < 1:
+            continue
+        found = roots(bound, p)
+        if isinstance(found, dict) and sum(found.values()) == _total_degree(terms):
+            return [{p: r} for r in found]
     if len(parameters) != 1:
         return None
     p = parameters[0]
