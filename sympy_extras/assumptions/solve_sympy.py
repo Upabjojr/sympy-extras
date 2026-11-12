@@ -10,9 +10,9 @@ SymPy's constructors.
 The steps of the native ``solve`` which stay written on SymPy are called
 from it at run time (the functions ending in ``_of_core``, which take and
 return objects of the core): SymPy's ``solveset`` for the equations which
-are not rational and for the inequalities, ``nonlinsolve``,
-``periodicity`` and the intersections of sets which the core does not
-evaluate (with ``Range``, ``ImageSet``, ...).
+are not rational and for the inequalities, ``nonlinsolve`` and the
+intersections of sets which the core does not evaluate (with ``Range``,
+``ImageSet``, ...).
 The transcendental equations (:mod:`sympy_extras.solvers.transcendental`),
 :func:`sympy_extras._numeric.reliable_value`, the cylindrical
 algebraic decomposition (:mod:`sympy_extras.polys.cad`),
@@ -47,8 +47,7 @@ from . import solve as native
 from .ask_sympy import Assumptions, _sympy_symbol, core_assumptions, core_boolean, core_domain, sympy_boolean
 from .intervals_sympy import core_expr, core_symbol, sympy_expr, sympy_set
 
-__all__ = ['solve', 'Statement', 'evaluated_set_of_core', 'solveset_of_core',
-    'periodicity_of_core', 'nonlinsolve_of_core']
+__all__ = ['solve', 'Statement', 'evaluated_set_of_core', 'solveset_of_core', 'nonlinsolve_of_core']
 
 #: an equation or inequality to solve: an expression (equated to zero), a
 #: relation or a Boolean combination of relations
@@ -87,13 +86,6 @@ def solveset_of_core(relation: CoreBoolean, x: CoreSymbol, domain: CoreSet) -> C
     return _core_set(solveset(sympy_boolean(relation), _sympy_symbol(x), sympy_set(domain)))
 
 
-
-
-def periodicity_of_core(f: CoreExpr, x: CoreSymbol) -> Optional[CoreExpr]:
-    """SymPy's ``periodicity`` (``None`` when ``f`` is not periodic)."""
-    from sympy.calculus.util import periodicity
-    value = periodicity(sympy_expr(f), _sympy_symbol(x))
-    return core_expr(value) if isinstance(value, Expr) else None
 
 
 def nonlinsolve_of_core(equations: list[CoreExpr], symbols: list[CoreSymbol]) -> Optional[CoreSet]:

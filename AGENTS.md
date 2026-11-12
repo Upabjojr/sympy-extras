@@ -194,7 +194,8 @@ sympy_extras/
                              native SAT solver (native, PORTED FROM SYMPY satask, sathandlers, ask_generated)
         solve.py             solve(): Solve under assumptions (native, with the native CAD, regular chains, parametric cases
                              and transcendental equations; solveset, nonlinsolve through solve_sympy)
-        solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions)
+        solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions;
+                             the periods by the native calculus.util.periodicity)
         limits.py            limit(), limit_seq(), series() under assumptions, with case distinctions (native; the core's
                              Gruntz and series, the native reliable values, series.limitseq)
         limits_sympy.py      the SymPy face of limits
@@ -296,9 +297,9 @@ sympy_extras/
         parametric_sympy.py  the SymPy face of parametric, used by definite; DefiniteIntegrator, antiderivative_of_core
         laplace.py           laplace_rules, laplace_integral, laplace_of_convolution, transform, real_arguments: the
                              operational rules of the Laplace transform (native; the transforms of the pieces by
-                             definite and SymPy's periodicity through laplace_sympy)
+                             definite through laplace_sympy; the periods by calculus.util.periodicity)
         laplace_sympy.py     the SymPy face of laplace, used by definite, and definite_integral_of_core,
-                             conditional_integral_of_core (also for summability, transformations), periodicity_of_core
+                             conditional_integral_of_core (also for summability, transformations)
         transformations.py   frullani, glasser, transformation_integral: Frullani's theorem, Glasser's master theorem
                              (native: the native limits and partial fractions; the transformed integral by definite)
         transformations_sympy.py the SymPy face of transformations, used by definite
@@ -510,6 +511,7 @@ sympy_extras/
                              model in a deterministic order (native, PORTED FROM SYMPY logic/algorithms/dpll2)
         tests/
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
+    calculus/                periodicity, lcim (util.py): the period of a function (ported from SymPy)
     series/                  residue; limit_seq, difference_delta, dominant (limitseq.py) (ported from SymPy)
     sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains, ProductSet, PointSet (finite sets of tuples);
                              Naturals, Naturals0, Integers, Rationals, Complexes, ImageSet (fancysets.py); ConditionSet (conditionset.py) (ported from SymPy)

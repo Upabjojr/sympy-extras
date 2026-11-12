@@ -247,6 +247,11 @@ assert 'sympy' not in sys.modules
 x, a = symbols('x a')
 assert str(solve(x**2 + 1, x)) == '{-I, I}' and str(solve(x**2 - 2, x)) == '{-sqrt(2), sqrt(2)}'
 assert str(solve(a*x - 1, x, a > 0)) == '{1/a}'
+# a periodic inequality: the period was SymPy's periodicity
+from sympy_extras.functions import sin, Abs
+from sympy_extras.calculus.util import periodicity
+assert str(solve(sin(x) > 0, x, (x > 0) & (x < 10))) == 'Union(Interval.open(0, pi), Interval.open(2*pi, 3*pi))'
+assert str(periodicity(Abs(sin(x)), x)) == 'pi'
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -266,9 +271,8 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 
 def test_native_solve_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.assumptions.solve` does not load SymPy,
-    nor do the rational equations over the complex numbers (``solveset``,
-    the CAD and the triangular decompositions go through SymPy at run
-    time)."""
+    nor do the rational equations over the complex numbers and the
+    periodic inequalities (their periods were SymPy's ``periodicity``)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

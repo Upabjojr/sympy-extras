@@ -12,8 +12,7 @@ time): the definite integrals of the pieces by
 :func:`~sympy_extras.integrals.definite.conditional_integral`, not ported
 yet (:func:`definite_integral_of_core`, :func:`conditional_integral_of_core`,
 also used by :mod:`.summability`, :mod:`.transformations` and
-:mod:`.parametric`), and SymPy's ``periodicity``
-(:func:`periodicity_of_core`).
+:mod:`.parametric`).
 
 Examples
 ========
@@ -33,7 +32,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sympy.calculus.util import periodicity
 from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
@@ -53,7 +51,7 @@ from . import laplace as native
 from .conditions_sympy import ConditionalValue
 
 __all__ = ['laplace_rules', 'laplace_integral', 'laplace_of_convolution', 'transform', 'real_arguments',
-           'definite_integral_of_core', 'conditional_integral_of_core', 'periodicity_of_core']
+           'definite_integral_of_core', 'conditional_integral_of_core']
 
 
 def _conditional(found: Optional[native_conditions.ConditionalValue]) -> Optional[ConditionalValue]:
@@ -206,19 +204,5 @@ def conditional_integral_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: Cor
         return None
     try:
         return found.to_core()
-    except (TypeError, ValueError, NotImplementedError):
-        return None
-
-
-def periodicity_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
-    """SymPy's ``periodicity(f, x)`` within ``seconds``, on core
-    expressions; ``None`` when ``f`` is not periodic, the time is up or
-    the period cannot be converted."""
-    function, variable = sympy_expr(f), _sympy_symbol(x)
-    found = attempt(lambda: periodicity(function, variable), seconds)
-    if not isinstance(found, Expr):
-        return None
-    try:
-        return core_expr(found)
     except (TypeError, ValueError, NotImplementedError):
         return None

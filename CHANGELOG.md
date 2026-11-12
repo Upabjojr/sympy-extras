@@ -10,6 +10,14 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The periods of the periodic formulas of `assumptions.solve` and of the
+  periodic rule of `integrals.laplace` no longer load SymPy at run time
+  (internal change, same API): SymPy's `periodicity` and `lcim` are
+  ported to the core as the new `sympy_extras.calculus.util` (the periods
+  of the trigonometric functions of linear arguments and the
+  decomposition of compositions written down there), and the routes
+  `solve_sympy.periodicity_of_core` and `laplace_sympy.periodicity_of_core`
+  are gone.
 - The limits of sequences (`assumptions.limits.limit_seq`, and the
   convergence tests through it) no longer load SymPy at run time
   (internal change, same API): SymPy's `limit_seq` is ported to the core
