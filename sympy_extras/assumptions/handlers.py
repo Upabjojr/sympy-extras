@@ -27,7 +27,10 @@ answers ``ask(Q.real(sqrt(x)), Q.real(x))`` and
 ``ask(Q.real(sqrt(-1 - x**2)), Q.real(x))`` with ``True`` (both are
 imaginary at ``x = -1``), a SymPy bug (issue #25). The relational step
 of SymPy's ``ask`` (``lra_satask``, linear real arithmetic over the
-relations of the assumptions) is not ported.
+relations of the assumptions) is not ported, except for its most frequent case: a sign
+predicate of ``e`` decided by an assumed one of ``f`` when ``e/f`` is a
+nonzero rational number (``Q.positive(1 - a)`` from ``Q.negative(a -
+1)``).
 
 Examples
 ========
@@ -155,6 +158,12 @@ def _real_number(e: Expr) -> Truth:
 def _imaginary_number(e: Expr) -> Truth:
     z = _value(e)
     return None if z is None else _is_zero_part(z.real, z)
+
+
+def _proved_number_zero(e: Expr) -> bool:
+    """Whether the number is proved zero (by its minimal polynomial)."""
+    from sympy_extras._numeric import _proved_zero
+    return _proved_zero(e)
 
 
 def _not_integer_number(e: Expr) -> Truth:
@@ -601,6 +610,8 @@ def _nonpositive(e: Expr, assumptions: Boolean) -> Truth:
 def _nonzero(e: Expr, assumptions: Boolean) -> Truth:
     if isinstance(e, NaN):
         return None
+    if e.is_number and _proved_number_zero(e):
+        return False
     if isinstance(e, Add):
         if all(_ask(_q('positive', _e(a)), assumptions) for a in e.args) or all(
                 _ask(_q('negative', _e(a)), assumptions) for a in e.args):
@@ -629,6 +640,9 @@ def _nonzero(e: Expr, assumptions: Boolean) -> Truth:
 
 # PORTED FROM SYMPY: sympy/assumptions/handlers/order.py (ZeroPredicate)
 def _zero(e: Expr, assumptions: Boolean) -> Truth:
+    if e.is_number and _proved_number_zero(e):
+        # SymPy proves it with equals (here the minimal polynomial)
+        return True
     if isinstance(e, Mul):
         return fuzzy_or(_ask(_q('zero', _e(a)), assumptions) for a in e.args)
     return fuzzy_and([fuzzy_not(_ask(_q('nonzero', e), assumptions)), _ask(_q('real', e), assumptions)])
@@ -871,6 +885,61 @@ _HANDLERS: Final[dict[str, Handler]] = {
     'positive': _positive, 'prime': _prime, 'composite': _composite, 'even': _even, 'odd': _odd,
 }
 
+#: the sign predicates, and their counterparts under a negative factor
+_SIGN_FLIPS: Final[dict[str, str]] = {
+    'positive': 'negative', 'negative': 'positive', 'nonnegative': 'nonpositive', 'nonpositive': 'nonnegative',
+    'zero': 'zero', 'nonzero': 'nonzero'}
+
+#: what a sign fact implies about the other sign predicates (True: holds,
+#: False: fails)
+_SIGN_IMPLIES: Final[dict[str, dict[str, bool]]] = {
+    'positive': {'positive': True, 'nonnegative': True, 'nonzero': True, 'negative': False, 'nonpositive': False,
+                 'zero': False},
+    'negative': {'negative': True, 'nonpositive': True, 'nonzero': True, 'positive': False, 'nonnegative': False,
+                 'zero': False},
+    'zero': {'zero': True, 'nonnegative': True, 'nonpositive': True, 'positive': False, 'negative': False,
+             'nonzero': False},
+    'nonnegative': {'nonnegative': True, 'negative': False},
+    'nonpositive': {'nonpositive': True, 'positive': False},
+    'nonzero': {'nonzero': True, 'zero': False},
+}
+
+
+def _scaled_literal(proposition: Boolean, assumptions: Boolean) -> Truth:
+    """A sign predicate of ``e`` decided by an assumed sign predicate of
+    ``f`` with ``e/f`` a nonzero rational number (``Q.positive(1 - a)``
+    from ``Q.negative(a - 1)``): the case of SymPy's ``lra_satask``
+    (linear real arithmetic over the assumptions, not ported) met in
+    practice."""
+    from sympy_extras.core.logic import And
+    from sympy_extras.polys.polytools import cancel
+    if not (isinstance(proposition, AppliedPredicate) and proposition.function._defined):
+        return None
+    name = proposition.function.name
+    if name not in _SIGN_FLIPS or len(proposition.arguments) != 1:
+        return None
+    e = proposition.arguments[0]
+    if not isinstance(e, Expr) or e.is_number:
+        return None
+    for literal in And.make_args(assumptions):
+        if not (isinstance(literal, AppliedPredicate) and literal.function._defined):
+            continue
+        known = literal.function.name
+        if known not in _SIGN_FLIPS or len(literal.arguments) != 1:
+            continue
+        f = literal.arguments[0]
+        if not isinstance(f, Expr) or f.is_number or f.free_symbols != e.free_symbols:
+            continue
+        ratio = cancel(e / f)
+        if not isinstance(ratio, Rational) or ratio.p == 0:
+            continue
+        sign = known if ratio.p > 0 else _SIGN_FLIPS[known]
+        answer = _SIGN_IMPLIES[sign].get(name)
+        if answer is not None:
+            return answer
+    return None
+
+
 #: the depth of the nested questions of the handlers
 _depth: list[int] = [0]
 #: the deepest nesting: past it the handlers give up
@@ -926,6 +995,9 @@ def final_ask(proposition: Boolean, assumptions: Boolean) -> Truth:
     """
     from .satask import predicates_consistent
     answer = handler_ask(proposition, assumptions)
+    if answer is not None:
+        return answer
+    answer = _scaled_literal(proposition, assumptions)
     if answer is not None:
         return answer
     # PORTED FROM SYMPY: sympy/assumptions/satask.py:satask, check_satisfiability

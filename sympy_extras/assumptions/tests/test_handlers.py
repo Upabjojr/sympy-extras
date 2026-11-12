@@ -74,3 +74,22 @@ def test_numbers_equal_to_integers() -> None:
     assert ask(Q.even(one)) is False and ask(Q.prime(one)) is False
     seven = (sqrt(2) + 1) * (sqrt(2) - 1) * 7
     assert ask(Q.prime(seven)) is True
+
+
+def test_signs_of_scaled_subjects() -> None:
+    # Q.positive(a*(1 - a)) under Q.negative(a - 1) with a positive was not
+    # decided (SymPy decides it by lra_satask): 1 - a is -(a - 1)
+    a = Symbol('a', positive=True)
+    assert ask(Q.positive(a * (1 - a)), Q.real(a) & Q.negative(a - 1)) is True
+    assert ask(Q.negative(a * (1 - a)), Q.real(a) & Q.negative(a - 1)) is False
+    x = Symbol('x')
+    assert ask(Q.nonpositive(2 - 2 * x), Q.nonnegative(x - 1)) is True
+    assert ask(Q.positive(x + 1), Q.negative(x - 1)) is None
+
+
+def test_algebraic_zero_is_proved() -> None:
+    # (-12 - 8*sqrt(2))*(2*sqrt(2) + 3) + 24*sqrt(2) + 34 + 2*(2*sqrt(2) + 3)**2
+    # is 0: Q.zero was not decided (SymPy proves it with equals)
+    r = sqrt(2)
+    e = (-12 - 8 * r) * (2 * r + 3) + 24 * r + 34 + 2 * (2 * r + 3)**2
+    assert ask(Q.zero(e)) is True and ask(Q.nonzero(e)) is False

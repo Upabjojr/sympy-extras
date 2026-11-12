@@ -22,7 +22,11 @@ remove public functions. Breaking changes are listed here when they happen.
   `Real**Real -> Real` for a base which may be zero is not ported: SymPy
   answers `ask(Q.real(sqrt(x)), Q.real(x))` and
   `ask(Q.real(sqrt(-1 - x**2)), Q.real(x))` with `True` (here `None` and
-  `False`). SymPy's relational step (`lra_satask`) is not ported.
+  `False`). SymPy's relational step (`lra_satask`) is not ported, but
+  for its frequent case: a sign of `e` decided by an assumed sign of `f`
+  with `e/f` a rational number (`Q.positive(1 - a)` from
+  `Q.negative(a - 1)`); the algebraic numbers are proved zero by their
+  minimal polynomial.
 - `is_meromorphic` of the incomplete gamma, Bessel, Hankel and spherical
   Bessel functions, the rewrites of `ff`, `rf` and `binomial` in terms of
   each other and of `dirichlet_eta` in terms of `zeta` are native ports
