@@ -787,7 +787,7 @@ rules are generators which yield the integrals they need to an
 >>> manualintegrate(tc**2*fn.cos(3*tc - 1), tc)
 t**2*sin(3*t - 1)/3 + 2*t*cos(3*t - 1)/9 - 2*sin(3*t - 1)/27
 >>> type(integral_steps(fn.exp(tc)*fn.sin(tc), tc)).__name__
-'CyclicPartsRule'
+CyclicPartsRule
 
 ```
 
