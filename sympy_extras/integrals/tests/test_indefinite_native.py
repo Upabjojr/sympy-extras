@@ -125,3 +125,18 @@ def test_every_sample_of_the_parameters_is_tested() -> None:
     # a right candidate with a parameter still checks on every sample
     assert is_antiderivative(exp(c * x) / c, exp(c * x), x) is True
     assert is_antiderivative(x * log(c * x) - x, log(c * x), x) is True
+
+
+
+def test_a_jump_of_the_integrand_is_not_kept_in_the_antiderivative() -> None:
+    from sympy_extras.integrals.indefinite import verified_antiderivative
+    y_ = Symbol('y')
+    # SymPy's heurisch (the removed method 'sympy heurisch') took the
+    # Piecewise for a constant, its derivative being zero almost
+    # everywhere: y*Piecewise((1, y > 1), (0, True)) was returned, which
+    # jumps at y = 1
+    found = verified_antiderivative(Piecewise((1, y_ > 1), (0, True)), y_)
+    assert found is not None
+    F = found[0]
+    near = [F.subs(y_, 1 + Rational(k, 10**6)) for k in (-1, 0, 1)]
+    assert all(isinstance(v, Rational) and abs(v) <= Rational(1, 10**6) for v in near), near

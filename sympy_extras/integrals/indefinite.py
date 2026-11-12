@@ -42,8 +42,9 @@ The order of the methods:
    functions already in 7, after the substitutions);
 9. SymPy's rule-based ``manualintegrate``, its Meijer G-function route
    and its ``integrate`` (SymPy's heuristic Risch integrator is no longer
-   tried: the native one of 8 is its port, and it answered none of the
-   integrals the native methods leave).
+   tried: the native one of 8 is its port, and on the integrals the
+   native methods leave it answered only Piecewise integrands, taking
+   them for constants, with antiderivatives which jump).
 
 The module works on the objects of :mod:`sympy_extras.core` and imports
 no SymPy: the methods 1 to 8, the checks (the native ``cancel``,

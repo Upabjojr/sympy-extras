@@ -96,7 +96,10 @@ remove public functions. Breaking changes are listed here when they happen.
 - The native indefinite integrator no longer tries SymPy's heuristic
   Risch integrator after its own (the method `'sympy heurisch'` and
   `indefinite_sympy.heurisch_of_core` are removed): on the integrals of
-  the test suites which reached it, it answered none, and on the
+  the test suites which reached it, it answered only Piecewise integrands
+  with conditions in the variable, taking the Piecewise for a constant
+  (`y*Piecewise((1, y > 1), (0, True))`, which jumps at `y = 1`, is now
+  `Piecewise((0, y <= 1), (y - 1, True))` by the Meijer route), and on the
   integrands of SymPy's own heurisch tests the native port missed only
   `1/(x + sin(y))`, which it now does (the transcendental constants of
   the parameters, `sin(y)`, `exp(y)`, are independent generators of the
