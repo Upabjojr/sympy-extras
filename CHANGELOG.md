@@ -185,6 +185,20 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.polys.complexrootof`: a native node for the complex roots
+  of polynomials with rational coefficients, `ComplexRootOf` (alias
+  `CRootOf`; SymPy's `CRootOf`, ported), which never evaluates, and the
+  evaluating `rootof`, `all_roots`, `real_roots`, `polynomial_roots`,
+  `root_count`, `algebraic_number`. The roots are in SymPy's order (the
+  real ones increasing, then the others factor by factor, each root after
+  its conjugate, the pairs by SymPy's Collins–Krandick rectangles, which
+  `complex_rectangles` reproduces from exact isolating regions); the
+  numerical values are refined exactly to any precision (a real part on
+  the imaginary axis is exactly zero). `sympy_extras.interop` converts
+  SymPy's `CRootOf` to the node and back (a `CRootOf` coming from SymPy
+  was a wrapped foreign node), `polys.roots.polynomial_root` and
+  `radical_form` recognise it, and the native `minimal_polynomial` knows
+  it and the `IndexedRoot` of the CAD.
 - `sympy_extras.polys.berlekampmassey`: `berlekamp_massey` (the shortest
   linear recurrence of a sequence over any field of the typed layer),
   `extend_sequence`, `satisfies_recurrence`.

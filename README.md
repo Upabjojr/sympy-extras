@@ -1101,6 +1101,7 @@ sympy_extras/
         multifactor.py       factorisation of multivariate polynomials over ZZ (Wang)
         multisqf.py          square-free decomposition of multivariate polynomials
         partfrac.py          apart: partial fraction decomposition
+        complexrootof.py     ComplexRootOf: complex roots of rational polynomials in SymPy's CRootOf order (native)
         polyroots.py         roots of univariate polynomials in radicals
         subresultants.py     principal subresultant coefficients on the typed layer (CAD projections) (native)
         subresultants_sympy.py  its SymPy face (SymPy's dense representation and rings)

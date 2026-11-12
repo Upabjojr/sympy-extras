@@ -22,7 +22,9 @@ coefficient, so it is unique.
 
 Only numbers: SymPy's coefficients in $\mathbb{Q}(y_1, \dots)$ for an
 expression with symbols, its ``domain`` option and its Gröbner variant
-(``compose=False``) are not ported, nor ``CRootOf``.
+(``compose=False``) are not ported. The roots of polynomials (the native
+``CRootOf`` and the ``IndexedRoot`` of the CAD) have their irreducible
+polynomials.
 
 Examples
 ========
@@ -58,7 +60,7 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Final
+from typing import Final, Optional
 
 import mpmath
 
@@ -128,6 +130,9 @@ def _minpoly(e: Expr) -> list[int]:
         return [1, -1, -1, -1]
     if isinstance(e, AlgebraicNumber):
         return _minpoly(e.as_expr())
+    root = _root_object(e)
+    if root is not None:
+        return root
     if isinstance(e, Add):
         return _fold([a for a in e.args if isinstance(a, Expr)], True)
     if isinstance(e, Mul):
@@ -152,6 +157,33 @@ def _minpoly(e: Expr) -> list[int]:
         p, q = _rational_multiple(e, e.args[0], True)
         return _choose_factor([1] + [0]*(q - 1) + [-1 if p % 2 == 0 else 1], e)
     raise NotAlgebraic('%s does not seem to be an algebraic element' % e)
+
+
+def _root_object(e: Expr) -> Optional[list[int]]:
+    """The minimal polynomial of a root object (the native ``CRootOf``,
+    an ``IndexedRoot`` with rational coefficients): its irreducible
+    polynomial; ``None`` for any other expression."""
+    from sympy_extras.polys.cad.indexedroot import IndexedRoot
+    from sympy_extras.polys.complexrootof import ComplexRootOf
+    if isinstance(e, ComplexRootOf):
+        f, _ = e.address()
+        return list(f)
+    if isinstance(e, IndexedRoot):
+        found = e.polynomial_root()
+        if found is None:
+            if e.free_symbols:
+                return None
+            from sympy_extras.polys.cad.indexedroot import algebraic_of
+            a = algebraic_of(e)
+            return None if a is None else a.minpoly
+        poly, _ = found
+        coefficients: list[int] = []
+        for c in poly.all_coeffs():
+            if not isinstance(c, Rational) or c.q != 1:
+                return None
+            coefficients.append(c.p)
+        return coefficients
+    return None
 
 
 def _rational_multiple(e: Expr, argument: object, imaginary: bool) -> tuple[int, int]:

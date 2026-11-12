@@ -522,6 +522,11 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
     if isinstance(e, IndexedRoot):
         from sympy_extras.polys.cad.indexedroot_sympy import sympy_indexed_root
         return sympy_indexed_root(e)
+    from sympy_extras.polys.complexrootof import ComplexRootOf
+    if isinstance(e, ComplexRootOf):
+        # SymPy's constructor on the stored polynomial and index (the
+        # canonical node of an irreducible factor gives the same node)
+        return sympy.CRootOf(_sympy_expr(to_sympy(e.expr)), _sympy_expr(to_sympy(e.variable)), e.index)
     from sympy_extras.polys.rootoftools import RootSum
     if isinstance(e, RootSum):
         # SymPy's constructor on the stored polynomial (an irreducible
@@ -808,6 +813,13 @@ def _from_sympy(e: SymPyBasic) -> Basic:
     from sympy_extras.polys.cad.indexedroot_sympy import IndexedRoot as SymPyIndexedRoot, native_indexed_root
     if isinstance(e, SymPyIndexedRoot):
         return native_indexed_root(e)
+    if isinstance(e, sympy.ComplexRootOf):
+        from sympy_extras.polys.complexrootof import ComplexRootOf
+        polynomial, index = e.args
+        converted = from_sympy(polynomial)
+        if not isinstance(converted, Expr) or not isinstance(index, sympy.Integer):
+            raise TypeError("cannot convert %s" % (e,))
+        return ComplexRootOf(converted, int(index))
     from sympy_extras.integrals.risch.risch_sympy import NonElementaryIntegral as SymPyNonElementaryIntegral
     if isinstance(e, SymPyNonElementaryIntegral) and len(e.limits) == 1 and len(e.limits[0]) == 1:
         from sympy_extras.integrals.risch.risch import NonElementaryIntegral

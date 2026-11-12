@@ -541,6 +541,8 @@ sympy_extras/
         partfrac.py          apart by undetermined coefficients (ported from SymPy; no full=True, no ZZ(a))
         rootoftools.py       RootSum (node), root_sum: sums of a function over the roots of a polynomial (the rational
                              case by the trace, doit, diff, numerical values; native), PORTED FROM SYMPY
+        complexrootof.py     ComplexRootOf (node, SymPy's CRootOf), rootof, all_roots, real_roots, algebraic_number: complex
+                             algebraic numbers in SymPy's order of the roots (native), PORTED FROM SYMPY
         polyroots.py         roots: linear, quadratic, binomial, cyclotomic, cubic, quartic, decomposition, factoring (ported from SymPy; no EX/simplify)
         roots.py             radical_form, in_radicals: SymPy's CRootOf (wrapped foreign nodes) in radicals (native; the components over EX by polyroots.ex_roots)
         roots_sympy.py       the SymPy face of roots
