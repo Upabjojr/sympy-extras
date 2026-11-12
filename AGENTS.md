@@ -247,8 +247,9 @@ sympy_extras/
         qhyper_sympy.py      the SymPy face of qhyper: QPochhammer as a SymPy function, qgosper_sum, qzeilberger, ...
         convergence.py       sum_convergence, product_convergence, is_convergent: the conditions on the parameters for
                              convergence by the ratio, Raabe, Bertrand, root, power, Leibniz, Dirichlet and integral
-                             tests (native; SymPy's integrate and Sum.is_convergent through convergence_sympy)
-        convergence_sympy.py the SymPy face of convergence, and improper_integral_of_core, is_convergent_of_core
+                             tests (native: the integral test by the native Risch and heuristic integrators, a port of
+                             SymPy's Sum.is_convergent), PORTED FROM SYMPY (is_convergent, is_decreasing)
+        convergence_sympy.py the SymPy face of convergence
         tests/
     integrals/               definite integration extending sympy.integrals (exports nothing: import the modules)
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels, the matching of

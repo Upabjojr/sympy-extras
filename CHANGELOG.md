@@ -10,6 +10,16 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The last resort of the convergence tests for terms without parameters
+  (`concrete.convergence`) no longer loads SymPy at run time (internal
+  change, same API): the integral of the integral test comes from a
+  native antiderivative (the transcendental Risch algorithm, then the
+  heuristic one, checked by differentiation) and the native limits, and
+  SymPy's `Sum.is_convergent` is ported (its `False` still counts as "not
+  shown"); the routes `convergence_sympy.improper_integral_of_core` and
+  `is_convergent_of_core` are gone. The native `ask` no longer prepares
+  SymPy's tables for the CAD of its MetiTarski bounds (a time limit
+  without `native=True` loaded SymPy).
 - The power series of Ramanujan's master theorem and the method of
   brackets (`integrals.brackets`, and `integrals.series` through
   `taylor_coefficient`) no longer load SymPy at run time (internal change,

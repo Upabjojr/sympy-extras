@@ -1538,6 +1538,14 @@ assert str(sum_convergence((sin(n) + 3)/(n**2 + 1), n)) == 'True'
 assert str(sum_convergence(2**(-n), n)) == 'True'
 assert str(product_convergence(1, n)) == 'True' and str(product_convergence(1 + 1/n**2, n)) == 'True'
 assert is_convergent(1/(n**2 + 1), n) is True
+# the integral test and the port of SymPy's Sum.is_convergent (SymPy's
+# integrate and is_convergent before)
+from sympy_extras.core import Integer
+from sympy_extras.functions import log, factorial
+from sympy_extras.concrete.convergence import _is_convergent_native
+assert str(sum_convergence(1/(n*log(n)), n, lower=Integer(2))) == 'False'
+assert str(sum_convergence(1/(n*log(n)**2), n, lower=Integer(2))) == 'True'
+assert _is_convergent_native(2**n/factorial(n), n, Integer(1)) is True
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -1583,9 +1591,9 @@ def test_native_convergence_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.concrete.convergence` does not load
     SymPy, nor do the comparison with a rational majorant, the term test
     and the ratio and Raabe tests on series without parameters, and the
-    products reduced to them (SymPy's ``integrate`` of the integral test,
-    its ``Sum.is_convergent`` and the steps of the native assumptions which
-    stay on SymPy go through the faces at run time)."""
+    products reduced to them, nor the integral test and the port of SymPy's
+    ``Sum.is_convergent`` (SymPy's ``integrate`` and ``is_convergent``
+    before)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_CONVERGENCE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

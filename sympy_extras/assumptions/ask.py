@@ -398,7 +398,7 @@ def _bounded_cad_ask(formula: Boolean, facts: Facts) -> Truth:
     from sympy_extras.settings import settings
     limit = None if settings.timeout is None else min(settings.timeout, 5.0)
     bounded = normalize(abstraction.formula)
-    return attempt(lambda: _cad_ask(bounded, extended), limit)
+    return attempt(lambda: _cad_ask(bounded, extended), limit, native=True)
 
 
 def _evaluate(formula: Boolean, facts: Facts) -> Truth:

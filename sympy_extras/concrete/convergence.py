@@ -44,12 +44,11 @@ limits, the decisions under assumptions, the boundary points, the signs
 and the simplifications are the native ones of
 :mod:`sympy_extras.assumptions` and :mod:`sympy_extras.simplify`.
 :mod:`sympy_extras.concrete.convergence_sympy` is its face on SymPy
-objects. Two steps of the last resort for terms without parameters are
-not ported and go through SymPy at run time (the face holds them):
-the integral of the integral test, by SymPy's ``integrate``
-(:func:`~sympy_extras.concrete.convergence_sympy.improper_integral_of_core`),
-and SymPy's ``Sum.is_convergent``
-(:func:`~sympy_extras.concrete.convergence_sympy.is_convergent_of_core`).
+objects. The last resort for terms without parameters is native too:
+the integral of the integral test from a native antiderivative (the
+transcendental Risch algorithm, then the heuristic one, checked by
+differentiation) and a port of SymPy's ``Sum.is_convergent`` (from
+``sympy/concrete/summations.py``); nothing goes through SymPy at run time.
 
 References
 ==========
@@ -59,6 +58,14 @@ References
 .. [Bromwich] T. J. Bromwich, An Introduction to the Theory of Infinite
    Series, Macmillan (1908), chapter III.
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/concrete/summations.py (Sum.is_convergent), sympy/calculus/singularities.py
+# (is_decreasing) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: strict typing; the native limits of sequences, orders, signs and integrals; None where SymPy
+# raises. The rest of the module is original.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
 from typing import Callable, Optional
@@ -66,6 +73,7 @@ from typing import Callable, Optional
 from sympy_extras.core.accumbounds import AccumBounds
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.basic import Basic
+from sympy_extras.core.coreerrors import PoleError
 from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
 from sympy_extras.core.function import expand
 from sympy_extras.core.limits import Limit
@@ -509,16 +517,14 @@ def _decreasing_to_zero(b: Expr, ctx: _Context) -> Condition:
 
 def _integral_test(term: Expr, ctx: _Context) -> Condition:
     """For eventually positive decreasing terms, the convergence of the
-    integral (SymPy's ``integrate``, at run time through
-    :func:`~sympy_extras.concrete.convergence_sympy.improper_integral_of_core`)."""
+    integral (:func:`_improper_integral_native`)."""
     if _parameters(term, ctx.n):
         return None
     if ctx.eventually(gt(term, 0)) is not True:
         return None
     if _decreasing_to_zero(term, ctx) is not true:
         return None
-    from .convergence_sympy import improper_integral_of_core
-    value = improper_integral_of_core(term, ctx.n, ctx.lower)
+    value = _improper_integral_native(term, ctx.n, ctx.lower)
     if value is None or value.has(ctx.n):
         return None
     if isinstance(value, Infinity):
@@ -610,10 +616,201 @@ def _power_comparison(term: Expr, ctx: _Context) -> Condition:
     return _by_cases(q, ctx, verdict)
 
 
+def _improper_integral_native(term: Expr, n: Symbol, lower: Expr) -> Optional[Expr]:
+    """The integral of ``term`` over ``(lower, oo)`` from a native
+    antiderivative checked by differentiation (the transcendental Risch
+    algorithm, then the heuristic one) and the native limits at the ends;
+    ``None`` when no antiderivative is found or a limit is not."""
+    from sympy_extras.core.limits import limit
+    from sympy_extras.integrals.heurisch import heurisch_antiderivative
+    from sympy_extras.integrals.risch.risch import risch_integrate_separate
+    x = Dummy('x', positive=True)
+    f = _replaced(term, {n: x})
+    antiderivative: Optional[Expr] = None
+    try:
+        found = attempt(lambda: risch_integrate_separate(f, x), settings.timeout, native=True)
+    except (NotImplementedError, ValueError, TypeError):
+        found = None
+    if found is not None and found[1] == 0:
+        antiderivative = found[0]
+    if antiderivative is None:
+        try:
+            antiderivative = attempt(lambda: heurisch_antiderivative(f, x), settings.timeout, native=True)
+        except (NotImplementedError, ValueError, TypeError):
+            antiderivative = None
+    if antiderivative is None:
+        return None
+    F = antiderivative
+    check = attempt(lambda: cancel(F.diff(x) - f), settings.timeout, native=True)
+    if check is None or (check != 0 and _simplify(check) != 0):
+        return None
+    try:
+        at_infinity = attempt(lambda: limit(F, x, oo), settings.timeout, native=True)
+        at_lower = attempt(lambda: limit(F, x, lower, '+'), settings.timeout, native=True)
+    except (NotImplementedError, ValueError, PoleError):
+        return None
+    if at_infinity is None or at_lower is None or at_infinity.has(Limit) or at_lower.has(Limit):
+        return None
+    if isinstance(at_infinity, Infinity) and at_lower.is_finite is True:
+        return oo
+    if at_infinity.is_finite is True and at_lower.is_finite is True:
+        return at_infinity - at_lower
+    return None
+
+
+# PORTED FROM SYMPY: sympy/calculus/singularities.py:is_decreasing
+def _is_decreasing_on(f: Expr, n: Symbol, lower: Expr) -> bool:
+    """SymPy's ``is_decreasing(f, Interval(lower, oo))``: the derivative in
+    a real variable is nowhere positive on the interval (natively by its
+    signs)."""
+    x = Dummy('x', real=True)
+    derivative = _replaced(f, {n: x}).diff(x)
+    signs = attempt(lambda: sign_on(derivative, x, interval(lower, oo)), settings.timeout, native=True)
+    return signs is not None and 1 not in signs
+
+
+def _limit_seq_of(e: Expr, n: Symbol) -> Optional[Expr]:
+    """The native ``limit_seq`` (``None`` when it fails or raises)."""
+    from sympy_extras.series.limitseq import limit_seq
+    try:
+        return attempt(lambda: limit_seq(e, n), settings.timeout, native=True)
+    except (NotImplementedError, ValueError, PoleError):
+        return None
+
+
+def _is_number_below(value: Optional[Expr], bound: int) -> Optional[bool]:
+    """Whether a numerical limit is below (``True``) or above (``False``)
+    the bound, ``None`` when it is not a number or equals it."""
+    if value is None or value.is_number is not True or isinstance(value, NaN) or value.has(AccumBounds):
+        return None
+    sign = certified_sign(value - bound)
+    if sign is None or sign == 0:
+        return None
+    return sign < 0
+
+
+# PORTED FROM SYMPY: sympy/concrete/summations.py:Sum.is_convergent
+def _is_convergent_native(term: Expr, n: Symbol, lower: Expr) -> Optional[bool]:
+    """SymPy's ``Sum(term, (n, lower, oo)).is_convergent()`` for a term
+    without parameters, on the core: the divergence, p-series,
+    logarithmic comparison, limit comparison, ratio, Raabe, root,
+    alternating and integral tests and the Dirichlet and bounded times
+    convergent tests, with the native limits of sequences, orders, signs
+    and integrals; ``None`` where SymPy raises (no test applies). Its
+    ``False`` means "not shown" for some terms (sympy-extras#41)."""
+    from itertools import combinations
+    from sympy_extras.core.order import Order, order
+    from sympy_extras.core.symbol import Wild
+    from sympy_extras.concrete.summations import summation
+    sequence_term = _simplify(term)
+    if len(sequence_term.free_symbols - {n}) > 0:
+        return None
+    sym = Dummy(n.name, integer=True, positive=True)
+    sequence_term = _replaced(sequence_term, {n: sym})
+    if isinstance(sequence_term, Piecewise):
+        for pair in sequence_term.args:
+            if pair.cond == true:
+                return _is_convergent_native(pair.expr, sym, lower)
+        return None
+
+    # the divergence test
+    lim_val = _limit_seq_of(sequence_term, sym)
+    if lim_val is not None and lim_val.is_zero is False:
+        return False
+    lim_val_abs = _limit_seq_of(abs_(sequence_term), sym)
+    if lim_val_abs is not None and lim_val_abs.is_zero is False:
+        return False
+
+    try:
+        big_o = attempt(lambda: order(sequence_term, (sym, oo)), settings.timeout, native=True)
+    except (NotImplementedError, ValueError, PoleError):
+        big_o = None
+    o_expr: Optional[Expr] = big_o.expr if isinstance(big_o, Order) else None
+
+    p, q, r = Wild('p'), Wild('q'), Wild('r')
+    if o_expr is not None:
+        # the p-series test
+        p_series = o_expr.match(sym**p)
+        if p_series is not None and isinstance(p_series.get(p), Expr):
+            exponent = as_expr(p_series[p])
+            below = _is_number_below(exponent, -1)
+            if below is not None:
+                return below
+            if exponent == -1:
+                return False
+        # the comparison with 1/(n**p*log(n)**q*log(log(n))**r)
+        n_log = o_expr.match(1/(sym**p*log(1/sym)**q*log(-log(1/sym))**r)) or \
+            o_expr.match(1/(sym**p*(-log(1/sym))**q*log(-log(1/sym))**r))
+        if n_log is not None and all(isinstance(n_log.get(w), Expr) for w in (p, q, r)):
+            ep, eq_, er = as_expr(n_log[p]), as_expr(n_log[q]), as_expr(n_log[r])
+            if ep.is_number and eq_.is_number and er.is_number:
+                if (ep > 1) == true or ((ep == 1) and (eq_ > 1) == true) or \
+                        (ep == 1 and eq_ == 1 and (er > 1) == true):
+                    return True
+                return False
+
+    # the limit comparison with 1/n
+    lim_comp = _limit_seq_of(sym*sequence_term, sym)
+    if lim_comp is not None and lim_comp.is_number and certified_sign(lim_comp) == 1:
+        return False
+
+    # the ratio test
+    next_term = _replaced(sequence_term, {sym: sym + 1})
+    ratio = combsimp(powsimp(next_term/sequence_term))
+    lim_ratio = _limit_seq_of(ratio, sym)
+    below_one = _is_number_below(abs_(lim_ratio) if lim_ratio is not None else None, 1)
+    if below_one is not None:
+        return below_one
+
+    # Raabe's test
+    if lim_ratio is not None and lim_ratio == 1:
+        test_val = (sym*(sequence_term/_replaced(sequence_term, {sym: sym + 1}) - 1)).gammasimp()
+        raabe = _is_number_below(_limit_seq_of(test_val, sym), 1)
+        if raabe is not None:
+            return not raabe
+
+    # the root test
+    root = _is_number_below(_limit_seq_of(abs_(sequence_term)**(1/sym), sym), 1)
+    if root is not None:
+        return root
+
+    # the alternating series test
+    alternating = sequence_term.match((-1)**(sym + p)*q)
+    if alternating is not None and isinstance(alternating.get(p), Expr) and isinstance(alternating.get(q), Expr):
+        if not as_expr(alternating[p]).has(sym) and _is_decreasing_on(as_expr(alternating[q]), sym, lower):
+            return True
+
+    # the integral test, for a monotone term
+    if _is_decreasing_on(sequence_term, sym, lower) or _is_decreasing_on(-sequence_term, sym, lower):
+        integral = _improper_integral_native(sequence_term, sym, lower)
+        if integral is not None and integral.is_number:
+            return integral.is_finite is True
+
+    # the Dirichlet and the bounded times convergent tests
+    if o_expr is not None and isinstance(o_expr, Mul):
+        args = [a for a in o_expr.args if isinstance(a, Expr)]
+        m = Dummy('m', integer=True)
+        for size in range(1, len(args)):
+            for chosen in combinations(range(len(args)), size):
+                a_n = mul(*[args[i] for i in chosen])
+                b_n = mul(*[args[i] for i in range(len(args)) if i not in chosen])
+                if _is_decreasing_on(a_n, sym, lower):
+                    partial = attempt(lambda: summation(b_n, (sym, lower, m)), settings.timeout, native=True)
+                    if partial is not None:
+                        bounded = _limit_seq_of(partial, m)
+                        if bounded is not None and bounded.is_finite is True:
+                            return True
+                lim_a = _limit_seq_of(a_n, sym)
+                if lim_a is not None and (lim_a.is_finite is True or (
+                        isinstance(lim_a, AccumBounds) and (lim_a.max - lim_a.min).is_finite is True)):
+                    if _is_convergent_native(abs_(b_n), sym, lower) is True:
+                        return True
+    return None
+
+
 def _last_resort(term: Expr, ctx: _Context) -> Condition:
     """The term, alternating and integral tests, and SymPy's own decision
-    for terms without parameters (at run time, through
-    :func:`~sympy_extras.concrete.convergence_sympy.is_convergent_of_core`)."""
+    for terms without parameters (its port, :func:`_is_convergent_native`)."""
     divergent = _term_test(term, ctx)
     if divergent is not None:
         return divergent
@@ -629,11 +826,10 @@ def _last_resort(term: Expr, ctx: _Context) -> Condition:
     if integral is not None:
         return integral
     if not _parameters(term, ctx.n):
-        from .convergence_sympy import is_convergent_of_core
         # SymPy's is_convergent() answering False means "not shown", not
         # divergence: it says False for sum sin(n)/n (sympy-extras#41).
         # Only True is a proof.
-        if is_convergent_of_core(term, ctx.n, ctx.lower) is True:
+        if attempt(lambda: _is_convergent_native(term, ctx.n, ctx.lower), settings.timeout, native=True) is True:
             return true
     return None
 
