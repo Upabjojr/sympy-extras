@@ -45,6 +45,12 @@ remove public functions. Breaking changes are listed here when they happen.
   finite sets, an image of the integers at `n = 0`); SymPy's `solveset`
   is asked only when the native one gives another set. The native solver
   also solves `exp(1/d) = k`, where SymPy's gives a `ConditionSet`.
+- The rewrites in terms of `sin` (of `cos`, `tan`, `cot`, `sec`, `csc`,
+  `sinh`, `csch`, `exp` and `E**x`) are native ports of SymPy's
+  `_eval_rewrite_as_sin`; the series of a function without an
+  `_eval_aseries` of its own in SymPy (`airyai`, ...) at an argument
+  going to an infinity raises SymPy's `PoleError` natively (they went to
+  SymPy through the bridge).
 
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's
