@@ -670,11 +670,17 @@ def piecewise_intervals(pw: Piecewise, sym: Symbol,
 
 
 def _simplify_condition(c: Boolean) -> Boolean:
-    """SymPy's ``simplify`` of a condition (through SymPy: the
-    simplification of the relations and the logic is not ported); ``True``
-    and ``False`` are left as they are, as SymPy does, without it."""
+    """SymPy's ``simplify`` of a condition: a relation by the native port
+    of ``Relational._eval_simplify``
+    (:func:`~sympy_extras.assumptions.refine.simplify_relational`), a
+    compound condition through SymPy (``BooleanFunction._eval_simplify``,
+    the patterns of the relations of ``And`` and ``Or``, is not ported);
+    ``True`` and ``False`` are left as they are, as SymPy does."""
     if isinstance(c, (BooleanTrue, BooleanFalse)):
         return c
+    if isinstance(c, Relational):
+        from sympy_extras.assumptions.refine import simplify_relational
+        return simplify_relational(c, 1.7, False, False, True)
     import sympy
     from sympy_extras.interop import from_sympy, to_sympy
     r = from_sympy(sympy.simplify(to_sympy(c)))

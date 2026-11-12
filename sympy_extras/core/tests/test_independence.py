@@ -3201,3 +3201,26 @@ def test_native_hyper_asymptotic_series_do_not_load_sympy() -> None:
                          text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PIECEWISE_RELATIONAL_CONDITIONS = r'''
+import sys
+from sympy_extras.core import Symbol, sqrt, Ne
+from sympy_extras.functions import log
+from sympy_extras.functions.elementary.piecewise import _simplify_condition
+x, y, a = Symbol('x'), Symbol('y'), Symbol('a')
+assert str(_simplify_condition(Ne(log(y), 0))) == 'Ne(log(y), 0)'
+assert str(_simplify_condition(x < -sqrt(5)/5)) == 'x < -sqrt(5)/5'
+assert str(_simplify_condition(2*x + 4 > 6*y)) == 'x - 3*y > -2'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_piecewise_relational_conditions_do_not_load_sympy() -> None:
+    """A relation among the conditions of ``piecewise_simplify_arguments``
+    is simplified by the native port of ``Relational._eval_simplify`` (it
+    went to SymPy's ``simplify``; the compound conditions still do)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PIECEWISE_RELATIONAL_CONDITIONS], capture_output=True,
+                         text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

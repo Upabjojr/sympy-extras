@@ -10,6 +10,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `piecewise_simplify_arguments` simplifies a relation among the
+  conditions by the native port of SymPy's `Relational._eval_simplify`
+  (`assumptions.refine.simplify_relational`) instead of SymPy's
+  `simplify`; a compound condition (`And`, `Or`) still goes to SymPy
+  (`BooleanFunction._eval_simplify` and the patterns of the relations of
+  `And` and `Or` are not ported).
 - The series of `Hyper` and `MeijerG` at an argument going to an infinity
   follow SymPy's generic branch of `Function._eval_nseries` natively
   (ported): `PoleError` when the leading term goes to an infinity (these
