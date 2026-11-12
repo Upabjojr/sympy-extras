@@ -18,6 +18,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyModule, PyTuple};
 
 use sympy_extras_core::core::assumptions::{facts_of, is_number, Predicate};
+use sympy_extras_core::core::basic::RelOp;
 use sympy_extras_core::core::evalf::{numeric_value, parts, Real};
 use sympy_extras_core::core::{self as rust_core, Basic, Dummy, Function, Head, Symbol};
 use sympy_extras_core::functions::elementary::{complexes, exponential, hyperbolic, trigonometric};
@@ -108,6 +109,22 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
             });
             node.0
         }
+        "BooleanTrue" => sympy_extras_core::core::logic::true_(),
+        "BooleanFalse" => sympy_extras_core::core::logic::false_(),
+        "bool" => sympy_extras_core::core::logic::boolean(ob.extract::<bool>()?),
+        "And" => Basic::new(Head::And, args()?),
+        "Or" => Basic::new(Head::Or, args()?),
+        "Not" => Basic::new(Head::Not, args()?),
+        "Xor" => Basic::new(Head::Xor, args()?),
+        "Implies" => Basic::new(Head::Implies, args()?),
+        "Equivalent" => Basic::new(Head::Equivalent, args()?),
+        "ITE" => Basic::new(Head::Ite, args()?),
+        "Eq" | "Equality" => Basic::new(Head::Relational(RelOp::Eq), args()?),
+        "Ne" | "Unequality" => Basic::new(Head::Relational(RelOp::Ne), args()?),
+        "Lt" | "StrictLessThan" => Basic::new(Head::Relational(RelOp::Lt), args()?),
+        "Le" | "LessThan" => Basic::new(Head::Relational(RelOp::Le), args()?),
+        "Gt" | "StrictGreaterThan" => Basic::new(Head::Relational(RelOp::Gt), args()?),
+        "Ge" | "GreaterThan" => Basic::new(Head::Relational(RelOp::Ge), args()?),
         "Add" => Basic::new(Head::Add, args()?),
         "Mul" => Basic::new(Head::Mul, args()?),
         "Pow" => Basic::new(Head::Pow, args()?),
@@ -144,6 +161,17 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Derivative" => Basic::new(Head::Derivative, args()?),
         "Subs" => Basic::new(Head::Subs, args()?),
         "IndexedRoot" => Basic::new(Head::IndexedRoot, args()?),
+        "EmptySetClass" => sympy_extras_core::sets::sets::empty_set(),
+        "UniversalSetClass" => sympy_extras_core::sets::sets::universal_set(),
+        "RealsClass" => sympy_extras_core::sets::sets::reals(),
+        "Interval" => Basic::new(Head::Interval, args()?),
+        "FiniteSet" => Basic::new(Head::FiniteSet, args()?),
+        "Union" => Basic::new(Head::Union, args()?),
+        "Intersection" => Basic::new(Head::Intersection, args()?),
+        "Complement" => Basic::new(Head::Complement, args()?),
+        "Contains" => Basic::new(Head::Contains, args()?),
+        "ProductSet" => Basic::new(Head::ProductSet, args()?),
+        "PointSet" => Basic::new(Head::PointSet, args()?),
         "Exp" => Basic::new(Head::Function(Function::Exp), args()?),
         "Log" => Basic::new(Head::Function(Function::Log), args()?),
         "Re" => Basic::new(Head::Function(Function::Re), args()?),
@@ -159,6 +187,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Csc" => Basic::new(Head::Function(Function::Csc), args()?),
         "Sinh" => Basic::new(Head::Function(Function::Sinh), args()?),
         "Arg" => Basic::new(Head::Function(Function::Arg), args()?),
+        "Max" => Basic::new(Head::Function(Function::Max), args()?),
+        "Min" => Basic::new(Head::Function(Function::Min), args()?),
         "Atan2" => Basic::new(Head::Function(Function::Atan2), args()?),
         "Asin" => Basic::new(Head::Function(Function::Asin), args()?),
         "Acos" => Basic::new(Head::Function(Function::Acos), args()?),
@@ -259,6 +289,33 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
         }
         Head::Derivative => rebuilt("Derivative", "function")?,
         Head::Subs => rebuilt("Subs", "function")?,
+        Head::BooleanTrue => class("logic", "true")?,
+        Head::BooleanFalse => class("logic", "false")?,
+        Head::And | Head::Or | Head::Not | Head::Xor | Head::Implies | Head::Equivalent | Head::Ite => {
+            rebuilt(e.class_name(), "logic")?
+        }
+        Head::Relational(op) => rebuilt(op.class_name(), "relational")?,
+        Head::EmptySet | Head::UniversalSet | Head::Reals => {
+            let name: &str = match e.head() {
+                Head::EmptySet => "EmptySet",
+                Head::UniversalSet => "UniversalSet",
+                _ => "Reals",
+            };
+            py.import("sympy_extras.sets.sets")?.getattr(name)?
+        }
+        Head::Interval
+        | Head::FiniteSet
+        | Head::Union
+        | Head::Intersection
+        | Head::Complement
+        | Head::Contains
+        | Head::ProductSet
+        | Head::PointSet => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.sets.sets")?
+                .getattr(e.class_name())?
+                .call1(PyTuple::new(py, items)?)?
+        }
         Head::IndexedRoot => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.polys.cad.indexedroot")?
@@ -272,6 +329,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
                     "trigonometric"
                 }
+                Function::Max | Function::Min => "miscellaneous",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse_trigonometric(*f) => "trigonometric",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse(*f) => "hyperbolic",
                 Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
@@ -1693,6 +1751,65 @@ fn indexed_root<'py>(
     to_python(py, &value.map_err(crate::convert::err)?)
 }
 
+/// The functions of `core.logic` and `core.relational` by name.
+#[pyfunction]
+fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::core::{logic as lg, relational as rl};
+    use sympy_extras_core::sets::sets as st;
+    let a: Vec<Basic> = args.iter().map(from_python).collect::<PyResult<_>>()?;
+    let e = crate::convert::err;
+    let value: Basic = match name {
+        "and_" => lg::and_(&a),
+        "or_" => lg::or_(&a),
+        "not_" => lg::not_(&a[0]),
+        "xor" => lg::xor(&a),
+        "implies" => lg::implies(&a[0], &a[1]),
+        "equivalent" => lg::equivalent(&a),
+        "ite" => lg::ite(&a[0], &a[1], &a[2]),
+        "Nand" => lg::nand(&a),
+        "Nor" => lg::nor(&a),
+        "Xnor" => lg::xnor(&a),
+        "eq" => rl::eq(&a[0], &a[1]).map_err(e)?,
+        "ne" => rl::ne(&a[0], &a[1]).map_err(e)?,
+        "lt" => rl::lt(&a[0], &a[1]).map_err(e)?,
+        "le" => rl::le(&a[0], &a[1]).map_err(e)?,
+        "gt" => rl::gt(&a[0], &a[1]).map_err(e)?,
+        "ge" => rl::ge(&a[0], &a[1]).map_err(e)?,
+        "max_" => sympy_extras_core::functions::elementary::miscellaneous::max_(&a).map_err(e)?,
+        "min_" => sympy_extras_core::functions::elementary::miscellaneous::min_(&a).map_err(e)?,
+        "interval" => {
+            let flag = |b: &Basic| sympy_extras_core::core::logic::truth(b) == Some(true);
+            st::interval(&a[0], &a[1], a.get(2).is_some_and(flag), a.get(3).is_some_and(flag)).map_err(e)?
+        }
+        "finite_set" => st::finite_set(&a),
+        "union" => st::union(&a).map_err(e)?,
+        "intersection" => st::intersection(&a).map_err(e)?,
+        "complement" => st::complement(&a[0], &a[1]).map_err(e)?,
+        "contains" => st::contains(&a[1], &a[0]).map_err(e)?,
+        "as_relational" => st::as_relational(&a[0], &a[1]).map_err(e)?,
+        "inf" => st::inf(&a[0]).map_err(e)?,
+        "sup" => st::sup(&a[0]).map_err(e)?,
+        "is_subset" | "is_empty" | "is_finite_set" => {
+            let v: Option<bool> = match name {
+                "is_subset" => st::is_subset(&a[0], &a[1]),
+                "is_empty" => st::is_empty(&a[0]),
+                _ => st::is_finite_set(&a[0]),
+            }
+            .map_err(e)?;
+            return Ok(match v {
+                Some(b) => pyo3::types::PyBool::new(py, b).to_owned().into_any(),
+                None => py.None().into_bound(py),
+            });
+        }
+        "reversed" => rl::reversed(&a[0]),
+        "negated" => rl::negated(&a[0]),
+        "reversedsign" => rl::reversedsign(&a[0]).map_err(e)?,
+        "canonical" => rl::canonical(&a[0]).map_err(e)?,
+        _ => return Err(PyTypeError::new_err(format!("unknown logic function {}", name))),
+    };
+    to_python(py, &value)
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -1746,6 +1863,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(samplepoint_report, m)?)?;
     m.add_function(wrap_pyfunction!(cad_report, m)?)?;
     m.add_function(wrap_pyfunction!(indexed_root, m)?)?;
+    m.add_function(wrap_pyfunction!(logic_call, m)?)?;
     m.add_function(wrap_pyfunction!(sorted_by_key, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;

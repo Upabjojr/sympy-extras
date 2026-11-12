@@ -270,6 +270,13 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             }
             crate::functions::elementary::argument::argument_value(*g, &values, wp)
         }
+        Head::Function(g @ (super::basic::Function::Max | super::basic::Function::Min)) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec)?);
+            }
+            crate::functions::elementary::miscellaneous::minmax_value(*g, &values)
+        }
         Head::Function(f) => {
             let v: Complex = numeric_value(&e.args()[0], prec)?;
             let value: Complex = match f {
@@ -380,7 +387,10 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Acoth
                 | super::basic::Function::Asech
                 | super::basic::Function::Acsch) => crate::functions::elementary::inverse::inverse_value(*g, &v, wp)?,
-                super::basic::Function::Arg | super::basic::Function::Atan2 => {
+                super::basic::Function::Arg
+                | super::basic::Function::Atan2
+                | super::basic::Function::Max
+                | super::basic::Function::Min => {
                     unreachable!("evaluated above with all their arguments")
                 }
                 super::basic::Function::Re => complex_real(parts(&v).0, wp),

@@ -631,7 +631,10 @@ pub fn constant_facts(e: &Basic) -> FactList {
 pub fn is_number(e: &Basic) -> bool {
     // an undefined function, a derivative, and a node with a Tuple argument
     // (not an expression: Subs) are not numbers
-    if e.is_symbol() || matches!(e.head(), Head::Undefined(_) | Head::Derivative | Head::Tuple) {
+    if e.is_symbol()
+        || matches!(e.head(), Head::Undefined(_) | Head::Derivative | Head::Tuple)
+        || crate::sets::sets::is_set(e)
+    {
         return false;
     }
     if matches!(e.head(), Head::IndexedRoot) {
@@ -1273,6 +1276,8 @@ fn eval_facts(e: &Basic) -> FactList {
         }
         Head::Tuple => FactList::new(),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_facts(e),
+        // a boolean is not an expression: no facts
+        _ if super::logic::is_boolean(e) || crate::sets::sets::is_set(e) => FactList::new(),
         _ => constant_facts(e),
     }
 }
@@ -1301,6 +1306,9 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::Csch => crate::functions::elementary::hyperbolic::hyperbolic_facts(f, &e.args()[0]),
         f if crate::functions::elementary::inverse::is_inverse(f) => {
             crate::functions::elementary::inverse::inverse_facts(f, &e.args()[0])
+        }
+        g @ (super::basic::Function::Max | super::basic::Function::Min) => {
+            crate::functions::elementary::miscellaneous::minmax_facts(g, e.args())
         }
         g @ (super::basic::Function::Arg | super::basic::Function::Atan2) => {
             crate::functions::elementary::argument::argument_facts(g, e.args())
